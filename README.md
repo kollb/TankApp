@@ -11,7 +11,9 @@ Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
   - §3 Zeitreihen-Engine (Quantile) · §4 Decision Layer (Ampel, €-Betrag, P_besser)
   - §5 Brier/Reliability + persönliche Erfolgsbilanz · §6 Produkt-KPIs
   - §8 UI: Alltags-Modus (Cockpit) & Werkstatt-Modus (Statistik-Labor)
-  - §11 `/v1/decide` + Outcome-Loop · §13 Roadmap M1–M7 (M7 = Kalibrierungs-Loop)
+  - §5.4 drei Uhren (Advice / Intent / Fill) — Feedback trotz asynchronem Tanken
+  - §5.5 drei Statistik-Schichten (Markt-Backtest · Live-Advice · Wallet) · §9.5 Azure ≤ 5 € = Rand, nicht Pi-Ersatz
+  - §11 `/v1/decide` + Episode/Fill-API · §13 Roadmap M1–M7 (M7 = Kalibrierungs-Loop)
   - Anhang A: Auswertung der externen Bewertung v3 → v4 (früher REVIEW-Dokument)
   - Anhang B: Zuordnung der zwei Sample-GUIs zu den zwei Modi
 - 🖥️ **UI-Prototypen:** [`sample/good gui/`](sample/good%20gui) — Alltags-Modus
