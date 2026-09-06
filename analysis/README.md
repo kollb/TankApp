@@ -19,6 +19,14 @@ Eine CSV je Stadt (oder eine große gemeinsame Datei), Spalten:
 | `price` | float | `1.629` | EUR/L |
 | `status` | string *(optional)* | `open` | `open`/`closed` — geschlossene Zeiten werden maskiert |
 
+## Wer wird beobachtet (vor allen Datenfragen)
+
+`data-tools/discover_stations.py` erzeugt aus der einen Tagesliste des Datenrepos (≈10 MB,
+keine Preisdaten nötig) je Ort: Kandidatenliste (25 km um die Anker aus dieser Config),
+Polling-Set mit max. 10 UUIDs (= 1 Request, `prices.php`-Bündelung) und den Statistik-Pool
+für δ̂/Baseline. Anker + Bundesländer kommen aus `analysis/config.local.json` (`home`/`subdiv`)
+— dieselbe Datei, die auch Ingest und Selektion lesen.
+
 ## Woher die Historie kommt
 
 Empfohlener Weg: **nicht** das Tankerkönig-Datenrepo (100 GB) clonen, sondern Tagesdateien per

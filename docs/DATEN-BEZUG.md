@@ -8,9 +8,15 @@ Kurzfassung für die drei Fragen aus der Anfrage:
 | **Reicht 2025/2026?** | **Ja — aber nicht per git.** `git sparse-checkout` verkleinert nur den Arbeitsbaum (mit `--no-checkout` auch den Platzbedarf), **nicht den Download**; und Gitea unterstützt `git clone --filter=blob:none` (Partial Clone) standardmäßig nicht. Richtig: die Tagesdateien **direkt per HTTP** holen → 613 Tage (2025-01-01…2026-09-05) ≈ **12,6 GB**, als `.gz` **≈ 1,5 GB**. |
 | **Wo ausführen?** | **Erst am PC (20 Min.), dann als Cron auf dem NAS.** Der Pi 2 ist dafür die falsche Maschine (1 GB RAM, 512 kB Cache, SD-Kartenverschleiß); er bleibt Collector. |
 
-**Dein erster Schritt ist ein Befehl, kein Commit:** `git pull` dein TankApp-Repo, Zugangsdaten in `~/.netrc` legen, dann
-`python3 data-tools/fetch_history.py --since 2025-01-01 --dry-run` — das zeigt dir **die echten Dateigrößen und die
-Rechengröße deines Anschlusses**, ohne etwas zu laden (Kapitel 4).
+**Reihenfolge (Korrektur nach Rückfrage):** zuerst **welche Tankstellen** an den drei Orten beobachtet
+werden — das ist die knappe Ressource (1 Poll = 10 UUIDs). Dazu brauchst du **eine einzige Datei**: die
+Tagesliste aller Tankstellen, ~10 MB, aus dem Browser downloadbar, ohne Git und ohne Preis-Historie
+(Kapitel 2). Erst danach lohnt die Frage, wie viel Historie du lädst (Kapitel 4 und 6): die Historie ist
+bundesweit, sie wird durch die Auswahl also **nicht** kleiner — aber du weißt dann, für welche UUIDs sie
+sich lohnt und ob diese Stationen überhaupt lückenlose Daten haben.
+
+**Plattform:** Anleitung ist für **Windows** gedacht (`py -3`, PowerShell, Browser-Download) — Kapitel 3.
+Die Linux/NAS-Befehle in Kapitel 8 bleiben für den Dauerbetrieb gültig.
 
 ---
 
@@ -30,9 +36,9 @@ Zwei Eigenschaften bestimmen die ganze Strategie:
    **~390 000 Zeilen/Tag bei ~20,6 MB** (30 Tage November 2019, öffentlicher Spiegel
    `gustavz/tankerkoenig_dataset`, per GitHub-API nachgemessen) — im Schnitt also **~28 Preisereignisse je Station und Tag**, ≈ alle 30–40 min eines.
    → Deine Historie ist **dünn besetzt**. `analysis/station_selection.py` misst Abdeckung auf einem 5-min-Raster; für
-   übernommene Historie gehört deshalb `--step-min 30` gesetzt (Kapitel 5.3).
+   übernommene Historie gehört deshalb `--step-min 30` gesetzt (Kapitel 7.3).
 2. **Kein Selektionsfilter im Rohformat.** Du lädst 14 000 Stationen, um ~150 zu brauchen. Der Filter läuft bei dir
-   (Kapitel 5.2) — das ist der eigentliche Datensparsamkeits-Hebel: **12 GB laden, ~150 MB behalten.**
+   (Kapitel 7.2) — das ist der eigentliche Datensparsamkeits-Hebel: **12 GB laden, ~150 MB behalten.**
 
 Größenordnung (Hochrechnung aus der Messung; ±25 % sind egal, `--dry-run` liefert deine echten Zahlen):
 
@@ -47,7 +53,75 @@ Das Repo-README selbst spricht von 50 GB (2021) bzw. über 100 GB (heute) für d
 konsistent mit ~7,5–10 GB/Jahr bei genau einer Datei pro Tag. Nach oben gilt: Preisereignisse nehmen zu (mehr Stationen, aggressiveres Repricing), die Größen
 wachsen also leicht.
 
-## 2. Option A/B/C — warum A
+## 2. Schritt 1: die Stationen finden (10 MB, ohne Historie, ohne Git)
+
+**Was du entscheidest, ist nicht „welche Daten", sondern „wen beobachten wir".** Dein Konzept setzt die
+Grenzen schon (KONZEPT.md §1.1): `list.php`/`prices.php` im 25-km-Radius, 1 Request/5 min, und
+`prices.php?ids=` bündelt **max. 10 UUIDs** → ein Polling-Set = 10 Stationen = ein Request. Ein zweites,
+viel größeres Set brauchst du für die Statistik (`analysis/station_selection.py` braucht ~100+ Stationen im
+Umkreis als Nachbarschafts-Baseline, sonst ist δ̂ = „relativ zu wem?" nicht beantwortbar).
+
+| Liste | Größe | Wofür | Wo sie entsteht |
+|---|---|---|---|
+| **Kandidaten** | alles im Radius (Frankfurt: 100+) | Prüfen, sortieren, verwerfen | `discover_stations.py` |
+| **Polling-Set** | 10 je Ort | Collector (Pi), 1 Request/5 min | `polling.json` |
+| **Statistik-Pool** | alle Kandidaten | Selektion/Engine (LOO-Median, AV) | `*_kandidaten.csv` + Historie |
+
+Drei Regeln, die das Skript umsetzt — und die du danach kennen solltest, falls du von Hand sortierst:
+
+1. **Ein Kandidat je Marke.** Zwei Stationen derselben Marke an derselben Ausfallstraße haben fast immer
+   denselben Preis (Kartell-Flat im Kleinen); der zweite Platz im Set bringt dir nichts, was du nicht
+   schon wüsstest. Zwillinge < 1,5 km werden zusammengefasst (`--dedupe-km`).
+2. **Eignung vor Nähe.** Eine Station, die in 4 km Entfernung 200 Tage im Jahr Daten liefert, schlägt
+   eine in 900 m, die nur sporadisch Preise meldet. `--check-history data/raw/prices --min-days 45`
+   zählt je Station Tage mit Preis und geführte Kraftstoffe (diesel/e5/e10) — die Spalte `Tage` im Report
+   ist das Ergebnis.
+3. **Deine Kundenkarte zählt mehr als Statistik.** `--prefer "aral;shell"` verschiebt Marken nach vorn;
+   2–4 ct Rabatt drehen ein Ranking sonst nachträglich um (KONZEPT.md §12, P1-Frage).
+
+Die drei Ankerpunkte liegen in `analysis/config.local.json` (Vorlage `config.local.example.json`,
+Datei ist gitignored): `"home": {"Frankfurt": [lat, lon], …}` plus `"subdiv": {"Frankfurt": "HE", …}`
+— Labels ASCII und in beiden Blöcken identisch, Reihenfolge **lat vor lon**. `discover_stations.py`,
+`ingest_history.py` und `station_selection.py` lesen dieselbe Datei, deshalb brauchst du Orte nur
+einmal zu notieren (`--anchor` überschreibt nur noch).
+
+```powershell
+# 1) Tagesliste besorgen (Browser: Repo -> stations -> 2026 -> 09 -> Datei -> Raw / Download)
+# 2) Auswahlen + Report erzeugen (braucht keine Preisdaten)
+py -3 data-tools/discover_stations.py --stations "$HOME\Downloads\2026-09-05-stations.csv" `
+    --anchor "Frankfurt:50.110,8.682" --anchor "Muenchen:48.1374,11.5755" --anchor "Koeln:50.9375,6.9603" `
+    --radius 25 --poll-size 10 --prefer "jet;bft;sprint" --out docs\analysis\stations
+```
+
+Danach liegt da: `report.md` (Kandidaten je Ort mit km/Marke/PLZ/uuid), `teststadt_kandidaten.csv`
+(alle, für den Pool), `polling.json` (die 10 UUIDs je Ort — direkt an den Collector in Kapitel 8).
+
+**Die Historie-Frage ist damit getrennt:** sie ist locationsunabhängig (bundesweite Tagesdateien), also
+kannst du die Auswahl treffen, *bevor* du 12 GB lädst, und später mit `--check-history` prüfen, ob deine
+Lieblinge wirklich lückenreich dabei sind. Wenn eine auserkorene Station dort `Tage: 12` zeigt, ist das
+kein Datenproblem, sondern ein Argument für die nächstbeste — besser, du weißt das vor dem Download.
+
+## 3. Windows: Werkzeug, Dateiablage, Autostart
+
+| Zweck | Linux/NAS | **Windows (dein PC)** |
+|---|---|---|
+| Python | `python3` | `winget install -e --id Python.Python.3.12` (oder Store) → Befehl **`py -3`** |
+| Repo | `git clone` | `winget install Git.Git` + **Git for Windows** (enthält Git-Bash, falls du die Linux-Snippets 1:1 fahren willst) |
+| Einzelne Datei aus dem Repo | `curl` | **Browser-Klick** (Repo → Ordner → Datei → „Raw"/Download) oder `curl.exe -L <url> -o datei.csv` (`Invoke-WebRequest` ist in PowerShell auch da, aber `curl.exe` ist zuverlässiger) |
+| gzip ansehen | `zcat` | kein `zcat` — `py -3 -c "import gzip;print(gzip.open(r'pfad','rt').readline())"` oder gleich das Skript füttern (`.gz` wird automatisch erkannt) |
+| Pfad-Notation | `~` | `$HOME\Downloads\…` bzw. `C:\Users\<du>\…`; in Python-Strings Backslash verdoppeln |
+| Zeilenenden | `\n` | egal — der Reader trennt an Universal-Newlines, das Datenrepo liefert `\r\n` |
+| Geplanter Job | cron (Kapitel 8) | **nicht** auf dem PC (läuft nicht dauerhaft) → Aufgabenplanung nur zum Testen: `schtasks /Create /SC DAILY /ST 06:20 /TN tankapp\history /TR "py -3 C:\dev\TankApp\data-tools\fetch_history.py --since yesterday"` — Dauerbetrieb gehört aufs NAS |
+| Zugangsdaten | `~/.netrc` | `%USERPROFILE%\_netrc` (Unterstrich-Version, sonst mag `netrc` den Punkt nicht); oder Umgebungsvariablen `setx TK_LOGIN …` **in einer PowerShell als dein Benutzer**, nie mit dem Token auf der Kommandozeile in einem Terminal, das du teilst |
+
+Zwei Dinge, die unter Windows anders sind als im Rest der Anleitung:
+
+- **Kein `~/.netrc` im klassischen Sinn.** Wenn du Token doch nicht in die Umgebungsvariablen legen willst:
+  die Skripte akzeptieren `--login`/`--token`, und `--token` kannst du interaktiv abfragen lassen, wenn du
+  `--login` angibst (der Prompt liest ohne Echo).
+- **Powershell-Auffrischung nach `setx`:** neue Umgebungsvariablen sieht nur ein **neu geöffnetes** Fenster.
+
+## 4. Option A/B/C — warum A
 
 | | A) HTTP-Tagesdateien (`data-tools/fetch_history.py`) | B) git clone + sparse-checkout (2025/2026) | C) git clone (voll) |
 |---|---|---|---|
@@ -63,7 +137,7 @@ wachsen also leicht.
 saubere Betriebstechnik, weil `git pull` danach minimal überträgt. Fürs **Erste Mal** ist A schneller, bruchsicherer
 und du behältst nur komprimierte Rohkost, statt einen halben Baum zu horten.
 
-Wenn du es trotzdem mit B testen willst (Kapitel 9.2) — in zwei Minuten geprüft, ob der Server Partial Clone
+Wenn du es trotzdem mit B testen willst (Kapitel 11.3) — in zwei Minuten geprüft, ob der Server Partial Clone
 überhaupt annimmt:
 
 ```bash
@@ -71,7 +145,7 @@ git clone --filter=blob:none --no-checkout https://data.tankerkoenig.de/tankerko
 du -sh /tmp/probe      # >1 GB? Abbruch (Strg-C) — der Server schickt dir die ganze Historie
 ```
 
-## 3. Zugangsdaten: einmal richtig ablegen
+## 5. Zugangsdaten: einmal richtig ablegen
 
 Der API-Key aus der Mail ist **persönlich** und landete bisher in einem Chat-Fenster — bitte im Datenportal neu
 erzeugen/rotieren, bevor du automatisierst. Nicht in die Shell-History, nicht ins Repo
@@ -91,7 +165,7 @@ Das fetch-Skript liest `~/.netrc` automatisch (Alternative: `TK_LOGIN`/`TK_TOKEN
 Einmallauf, oder `~/.config/tankapp/env` per `EnvironmentFile` im systemd-Unit — Keys gehören wie in KONZEPT.md §9.3
 nach `/etc/tankapp/env` mit `chmod 600`).
 
-## 4. Schritt 0 — dry-run: dein Anschluss, deine Zahlen
+## 6. dry-run: dein Anschluss, deine Zahlen
 
 Vom PC im Heimnetz (der Pi kann das auch, ist aber die falsche Maschine dafür):
 
@@ -109,9 +183,9 @@ python3 data-tools/fetch_history.py --since 2025-01-01 --dry-run
 Die Zeile mit der Hochrechnung entscheidet über deinen weiteren Abend: alles unter ~30 min → direkt los (Schritt 1).
 Darüber → erst 60-Tage-Fenster laden (Schritt 1b) und den Rest über Nacht nachziehen.
 
-## 5. Schritt 1 — laden (PC), Schritt 2 — Ingest, Schritt 3 — Selektion
+## 7. Laden (PC) → Ingest → Selektion
 
-### 5.1 Schritt 1: 60-Tage-Beweis, dann Vollausbau
+### 7.1 Laden: 60-Tage-Beweis, dann Vollausbau
 
 ```bash
 cd ~/dev/TankApp
@@ -139,7 +213,7 @@ python3 data-tools/fetch_history.py --stations-latest     # ~10–15 MB, eine Da
 > Kein `--until today`: die Datei für „heute" erscheint erst morgen früh (nächtlicher Export). Der Loader zählt
 > fehlende Tage als `nicht gefunden` und bricht nicht ab — aber sauberer ist `yesterday` als Obergrenze.
 
-### 5.2 Schritt 2: aus 12 GB Rohkost ~150 MB Analysefutter machen
+### 7.2 Ingest: aus 12 GB Rohkost ~150 MB Analysefutter machen
 
 ```bash
 # Privatdaten bleiben in der gitignorierten Config (analysis/config.local.json, Vorlage: config.local.example.json)
@@ -179,7 +253,7 @@ Standardbibliothek (≈ 3 min je 100 Tage auf dem NAS, ≈ 1 min auf dem PC) —
 Nützlich für späteres Backfill ohne Neuladen: `--since/--until` begrenzen den Ingest auf einen Zeitraum, die
 Rohdateien bleiben unverändert liegen (Single Source of Truth = `data/raw/`).
 
-### 5.3 Schritt 3: Selektion — und zwar gleich so
+### 7.3 Selektion — und zwar gleich so
 
 ```bash
 pip install -r analysis/requirements.txt          # numpy/pandas/matplotlib/holidays
@@ -194,19 +268,19 @@ inzwischen auch — `to_matrix()` füllt Lücken automatisch bis zur dreifachen 
 5-min-Raster auf 30-min-Daten ist nur teure Kosmetik (`--ffill-minutes` überschreibt die Automatik, z. B. `30`
 fürs alte Verhalten: jede Lücke > 30 min gilt als unbekannt).
 
-### 5.4 Abnahme-Kriterien für Schritt 1–3 (danach kennst du deine Datenqualität wirklich)
+### 7.4 Abnahme-Kriterien für die Kette (danach kennst du deine Datenqualität wirklich)
 
 - `QA.md`: **fehlende Tage ≤ 1 %** des Zeitraums; Coverage-Median ≥ 85 % je Station×Kraftstoff; sonst `--min-coverage`
-  **nicht** senken, sondern Zeitraum/Radius/Kadenz ändern (Kapitel 5.3).
+  **nicht** senken, sondern Zeitraum/Radius/Kadenz ändern (Kapitel 7.3).
 - Rohdaten zählen: `zcat data/raw/prices/2026/08/2026-08-15-prices.csv.gz | wc -l` → **350 000…450 000** für einen
   normalen Tag 2026 (Messwert 2019: 390 000). Deutlich weniger = Download abgebrochen/Tag teilleer → `--force` für diesen Tag.
 - Plausipreise: `zcat … | head -3` zeigt `1.789`-Form. Steht dort `178.9` oder `1789`, normalisiert der Ingest
-  automatisch (Kapitel 10, Zeile Exportformat-Variante).
+  automatisch (Kapitel 12, Zeile Exportformat-Variante).
 - Report: `docs/analysis/report_top10.md` hat ≥ 2 Städte, `q`-Spalte gefüllt, Split-Half-ρ ≥ 0,8 (sonst sind 60 Tage
-  zu kurz — auf 180 Tage erweitern, Kapitel 7).
+  zu kurz — auf 180 Tage erweitern, Kapitel 9).
 - **Erst danach** entscheidet sich M2 (M2-Meilenstein in KONZEPT.md §13) auf echten Daten.
 
-## 6. Betrieb: tägliches Update (NAS), Engine-Futter monatlich
+## 8. Betrieb: tägliches Update (NAS), Engine-Futter monatlich
 
 ```bash
 # /etc/cron.d/tankapp-history  (NAS, Root-Cron oder Benutzer-Cron mit Pfad zur netrc)
@@ -231,7 +305,7 @@ Delta-Overhead). Option A/A' braucht nur den Cron — und hat keinen 50-GB-Repo 
 automatischer Backoff (4 Versuche, exponentiell). Kein paralleles `curl`-Feuerwerk, kein Verteilen der CSVs oder des
 Keys — die Lizenz (CC BY-NC-SA 4.0) verbietet kommerzielle Nutzung, und dein Key ist personengebunden.
 
-## 7. Die entscheidende Reduktion: was du *wirklich* brauchst
+## 9. Die entscheidende Reduktion: was du *wirklich* brauchst
 
 | Zweck | Was reicht | Aufwand |
 |---|---|---|
@@ -244,7 +318,7 @@ Keys — die Lizenz (CC BY-NC-SA 4.0) verbietet kommerzielle Nutzung, und dein K
 Konsequenz: **60–180 Tage reichen für den ersten M2-Lauf.** Alles darüber ist Komfort. Wenn die Leitung langsam ist,
 lädt der Cron die Restjahre einfach über Wochen nebenher (fortsetzbar, idempotent) — du blockierst nichts.
 
-## 8. Hardware — und warum der Pi 2 verliert
+## 10. Hardware — und warum der Pi 2 verliert
 
 | Gerät | Rolle hier | Urteil |
 |---|---|---|
@@ -257,16 +331,56 @@ lädt der Cron die Restjahre einfach über Wochen nebenher (fortsetzbar, idempot
 `--raw-no-gzip` (kein Komprimieren auf der Pi-CPU), `--delay 2`, Zielverzeichnis auf NAS-Mount — nie auf die
 SD-Karte — und den Ingest auf PC/NAS lassen.
 
-## 9. Kochrezepte (Kopiervorlagen)
+## 11. Kochrezepte (Kopiervorlagen)
 
-### 9.1 PC (Debian/Ubuntu, 2026-09-06)
+### 11.1 Windows-PC (einmalig, ~15 min)
+
+```powershell
+# 0) Werkzeug (einmalig)
+winget install -e --id Python.Python.3.12
+winget install -e --id Git.Git
+git clone <dein TankApp-Remote> C:\dev\TankApp ; cd C:\dev\TankApp
+
+# 1) Orte festlegen -> analysis\config.local.json (Vorlage kopieren, Label = Dateiname = city)
+copy analysis\config.local.example.json analysis\config.local.json
+notepad analysis\config.local.json
+
+# 2) Stationen entdecken (nur die 10-MB-Tagesliste, kein Preis-Download, kein Git)
+py -3 data-tools/discover_stations.py --stations "$HOME\Downloads\2026-09-05-stations.csv" `
+    --radius 25 --poll-size 10 --check-history data\raw\prices --min-days 45 `
+    --out docs\analysis\stations
+#    -> report.md (Kandidaten je Ort), polling.json (10 UUIDs je Ort), *_kandidaten.csv (Pool)
+
+# 3) Größen-Check für die Historie (lädt nichts)
+py -3 data-tools/fetch_history.py --since 2025-01-01 --dry-run
+
+# 4) Historie laden (fortsetzbar; Strg-C ist jederzeit ok) und aufbereiten
+py -3 data-tools/fetch_history.py --stations-latest
+py -3 data-tools/fetch_history.py --since 2026-07-08 --until 2026-09-05
+py -3 data-tools/fetch_history.py --since 2025-01-01 --until 2026-09-05
+py -3 data-tools/ingest_history.py --config analysis\config.local.json --radius 25 `
+    --resample 30 --density 60 --out data\ready --qa data\ready\QA.md
+
+# 5) Selektion
+pip install -r analysis\requirements.txt
+py -3 analysis/station_selection.py --data data\ready\*.csv --fuel E10 --top 10 --step-min 30 `
+    --config analysis\config.local.json
+
+# 6) Daten + Werkzeuge aufs NAS (Dauerbetrieb, nicht der PC)
+robocopy data \\nas\tankapp\data /MIR /NFL /NDL
+```
+
+Der PC rechnet, das NAS sammelt: ab Schritt 6 läuft alles Notwendige als Cron auf dem NAS
+(Kapitel 8), der Windows-PC wird nur noch für Neuläufe der Selektion angemacht.
+
+### 11.2 NAS/WSL (Debian unter Linux, oder Windows per Git-Bash)
 
 ```bash
 # 0) Repo + Werkzeug
 cd ~/dev && git clone <dein TankApp-Remote> && cd TankApp && git pull
 python3 -V          # ≥ 3.8 nötig (nur Standardbibliothek im data-tools-Teil)
 
-# 1) netrc (Kapitel 3), dann Größen-Check
+# 1) netrc (Kapitel 5), dann Größen-Check
 python3 data-tools/fetch_history.py --since 2025-01-01 --dry-run
 
 # 2) 5-Tage-Test → 60 Tage → Vollausbau (Ctrl-C erlaubt, setzt fort)
@@ -275,7 +389,7 @@ python3 data-tools/fetch_history.py --stations-latest
 python3 data-tools/fetch_history.py --since 2026-07-08 --until 2026-09-05
 python3 data-tools/fetch_history.py --since 2025-01-01 --until 2026-09-05     # ggf. über Nacht
 
-# 3) Ingest + Selektion (Kapitel 5.2/5.3)
+# 3) Ingest + Selektion (Kapitel 7.2/7.3)
 python3 data-tools/ingest_history.py --config analysis/config.local.json --radius 25 \
     --resample 30 --density 60 --city campaign --out data/ready --qa data/ready/QA.md
 pip install -r analysis/requirements.txt
@@ -286,7 +400,7 @@ python3 analysis/station_selection.py --data data/ready/*.csv --fuel E10 --top 1
 rsync -a --progress data/ nas:/srv/tankapp/data/
 ```
 
-### 9.2 git-Alternative (nur wenn du die Vollhistorie willst)
+### 11.3 git-Alternative (nur wenn du die Vollhistorie willst)
 
 ```bash
 # NAS/PC, 150 GB frei
@@ -301,7 +415,7 @@ git checkout master       # entpackt ~12 GB; Abbruch ist hier ärgerlich, aber k
 Tägliches Update danach: `git pull` (≈ 1 neuer Tag, wenige 10 MB). Vorteil gegenüber A: eine einzige Quelle, `git`
 prüft Integrität. Nachteil: 25–50 GB `.git` auf Dauer, und der erste Schritt hängt an der Filter-Unterstützung.
 
-## 10. Fehlerbilder (die tatsächlich auftauchen)
+## 12. Fehlerbilder (die tatsächlich auftauchen)
 
 | Symptom | Ursache | Tun |
 |---|---|---|
@@ -309,13 +423,13 @@ prüft Integrität. Nachteil: 25–50 GB `.git` auf Dauer, und der erste Schritt
 | `Fehler HTTP 401/403` | Key rotiert/abgelaufen, oder User-Name falsch (`koll.bernhard_gmail.com` ist der Login aus der Mail, kein Tippfehler) | neu im Portal erzeugen, `~/.netrc` aktualisieren |
 | `TLS/SSL connection has been closed` / Timeout | Proxy/Firewall (Firmennetz!), IPv6-Experiment, oder Server drosselt | anderes Netz testen; `--timeout 300`; `--delay 2`; Git: `git config --global http.lowSpeedLimit 0; http.lowSpeedTime 999999` |
 | Ein Tag fehlt (`nicht gefunden 3`) | Export in dieser Nacht fehlgeschlagen (kommt vor) | Tag einzeln nachladen: `--since D --until D --force`; Lücke in `QA.md` dokumentieren |
-| Selektion: `nur 0 Station nach dem Coverage-Gate` | Kadenz vs. Raster (Kapitel 5.3) | `--step-min 30` setzen, Ingest mit `--density 60`; `--min-coverage 0.7` **nur** zum Anschauen |
+| Selektion: `nur 0 Station nach dem Coverage-Gate` | Kadenz vs. Raster (Kapitel 7.3) | `--step-min 30` setzen, Ingest mit `--density 60`; `--min-coverage 0.7` **nur** zum Anschauen |
 | Ingest: `Keine Station im Umkreis` | Anker-Koordinaten vertauscht (lat/lon!) oder Radius zu klein | `config.local.json` prüfen: `[lat, lon]`; `--radius 40` testweise |
 | Preise wie `1789` oder `178.9` | Exportformat-Variante | macht `parse_price()` automatisch; mit `--price-min/--price-max` (Default 0.5–3.5 €/L) begrenzen |
 | `price == 0` / `-1`-Zeilen | „Kraftstoff nicht geführt" (KONZEPT.md §1.2) | werden verworfen — niemals 0 in die Engine; `QA.md` zählt sie als `geprüfte/verworfene Werte` |
 | Platz wird knapp | Rohdateien müssen nicht alle bleiben | `--compress` ist Default; alte Jahre löschen, die Ingest-CSV + `manifest.json` reichen als Rekonstruktionsbeleg |
 
-## 11. Befehlsreferenz (Kurzform)
+## 13. Befehlsreferenz (Kurzform)
 
 ```text
 data-tools/fetch_history.py
@@ -328,6 +442,15 @@ data-tools/fetch_history.py
   --raw-no-gzip              Platz gegen CPU (Pi)
   --force                    vorhandenen Tag neu laden
   Login:  ~/.netrc | TK_LOGIN+TK_TOKEN | --login/--token
+
+data-tools/discover_stations.py
+  --stations <csv|verzeichnis>   Tagesliste (10 MB, auch .gz) — keine Historie nötig
+  --from-json <list.php>         alternativ gespeicherte API-Antwort
+  --api "Label:lat,lon"          oder live gegen transparent.tankerkoenig.de (offen, kein Key)
+  --anchor "Label:lat,lon[:radius]" --radius 25 --plz "Label:60,63"
+  --poll-size 10 --prefer "jet;bft" --dedupe-km 1.5
+  --check-history data/raw/prices --since … --until … --min-days 45
+  → <out>/report.md, <ort>_kandidaten.csv, polling.json (UUID-Listen je Ort)
 
 data-tools/ingest_history.py
   --raw data/raw/prices --stations <pfad>   Eingang
@@ -343,7 +466,7 @@ data-tools/ingest_history.py
 data-tools/make_demo_raw.py --days 21 --outdir data/raw     Demo im echten Rohformat (offline-Test der Kette)
 ```
 
-## 12. Was danach ansteht (Reihenfolge mit Sinn)
+## 14. Was danach ansteht (Reihenfolge mit Sinn)
 
 1. **Heute, 20 min:** `--dry-run`, 5-Tage-Test, `--stations-latest`. Du weißt dann: echte Dateigröße, Leitung, Format.
 2. **Diese Woche, abends:** 60–180 Tage laden + Ingest + erster Selektionslauf. Ergebnis: echter Report statt Demo-Report.
