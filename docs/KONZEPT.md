@@ -73,10 +73,12 @@ Drei Eigenschaften machen das mathematisch ehrlich:
    (Umweg, Unsicherheitsrisiko) übersteigt — die Wahrscheinlichkeit wird
    daneben ausgewiesen, sie ist nicht selbst die Regel (gleiche Philosophie
    wie im Statistik-Prototyp: `μ ≥ ε` entscheidet, `P(S>0)` wird gezeigt).
-3. **Die App kennt ihr eigenes Können.** Jede Empfehlung wird geloggt und
-   24 h später automatisch mit der Realität abgeglichen (§5.2) — die
-   persönliche Erfolgsbilanz ist die ehrlichste Marketing-Abteilung der App
-   gegen sich selbst.
+3. **Die App kennt ihr eigenes Können.** Jede *kollabierte* Empfehlung
+   wird geloggt und nach Fensterende automatisch mit der Realität
+   abgeglichen (Advice-Ledger, §5.2/§5.4) — unabhängig davon, ob jemand
+   getankt hat. Die persönliche €-Bilanz ist ein zweites Ledger und
+   braucht gemeldete Füllungen. Beides zusammen ist die ehrlichste
+   Marketing-Abteilung der App gegen sich selbst.
 
 ### 0.3 Zwei Modi: Alltag und Werkstatt
 
@@ -461,22 +463,26 @@ Deine App-Bilanz (letzte 30 Tage):
   Gesamt-Ersparnis vs. "immer sofort tanken": +42,50 €
 ```
 
-**Datenerfassung — minimal und ohne Nutzer-Input:**
+**Datenerfassung — zwei getrennte Ströme (§5.4):**
 
-- Log je Empfehlung: `recommendation_id, station_id, action, p_besser,
-  expected_saving_eur, emitted_at, window_start, window_end`.
-- Sobald der Ist-Preis für das empfohlene Fenster bekannt ist (automatisch
-  aus der eigenen Preishistorie, 24 h später), wird
-  `outcome ∈ {win, loss, tie}` ergänzt; dazu `regret_eur` (Orakel minus
-  realisiert — Definition wie im Statistik-Prototyp).
-- Optional: „Hast du getankt?“-Button für exakte €-Bilanz
-  (`POST /v1/recommendations/{id}/outcome`, §11.2).
-- Die Werkstatt aggregiert das zum **Scoreboard** (je Station: P behauptet
-  vs. real, Trefferquoten je Aktionsart, Ø Regret in ct/L und €/Füllung,
-  Regel-€ vs. Orakel-€ — exakt die Tabelle des Statistik-Prototyps).
+- **Advice-Ledger (ohne Nutzer-Input):** Log je *kollabiertem* Snapshot
+  einer Tank-Folge (`episode_id, snapshot_id, station_id, action, p_besser,
+  expected_saving_eur, emitted_at, window_start, window_end`). Sobald der
+  Ist-Preis für das Fenster bekannt ist (eigene Preishistorie, nach
+  `window_end` + Lag), wird `outcome ∈ {win, loss, tie}` plus `regret_eur`
+  ergänzt. Das ist Brier, Trefferquote, M7.
+- **Wallet-Ledger (mit Nutzer-Input, asynchron):** Fill-Events
+  (`station_id, tanked_at, liters, price_paid`) werden einer Folge
+  zugeordnet — nicht dem einzelnen `/v1/decide`-Aufruf. UX und Matching
+  in §5.4. Ohne Fill behauptet die App **keine** persönlichen Euros.
+- Die Werkstatt aggregiert das Advice-Ledger zum **Scoreboard** (je Station:
+  P behauptet vs. real, Trefferquoten je Aktionsart, Ø Regret, Regel-€ vs.
+  Orakel-€ — exakt die Tabelle des Statistik-Prototyps). Das Wallet-Ledger
+  erscheint im Alltag als „Deine Tank-Bilanz“.
 
-Ist die Bilanz negativ, weiß es der Nutzer sofort — die App kann sich nicht
-selbst schönlügen.
+Ist die Advice-Bilanz negativ, weiß es der Nutzer sofort — die App kann
+sich nicht selbst schönlügen. Ist die Wallet-Bilanz leer, steht dort ehrlich
+„0 Füllungen“, nicht eine hochgerechnete Compliance-Fantasie.
 
 ### 5.3 Was mit den Bändern passiert
 
@@ -485,6 +491,231 @@ für P_besser und €_netto. Aber: **UI zweiter Ordnung.** Versteckt unter
 „Details“/„Warum?“ (Werkstatt-Modus) oder als kleine Sparkline neben der
 Empfehlung. Wer wissen will „wie sicher genau?“, tippt drauf. Alle anderen
 sehen die Ampel.
+
+### 5.4 Feedback trotz asynchronem Tanken — drei Uhren, eine Folge
+
+Das ist die Stelle, an der v5 sonst in sich zusammenfällt. Empfehlung,
+Absicht und Zapfhahn liegen **stunden- bis tageweise auseinander**. Wer
+Feedback an den `/v1/decide`-Aufruf hängt, hat eines von zwei Problemen:
+
+1. Die App fragt nach jedem Öffnen „hast du getankt?“ — der Nutzer lernt,
+   die Frage zu ignorieren (und tankt ~1,2×/Woche, öffnet die App aber
+   5×/Tag).
+2. Die App nimmt an, die Empfehlung sei befolgt worden, und schreibt
+   +1,80 € ins Erfolgskonto — das ist gelogen, sobald er doch morgens
+   vollmacht.
+
+Beides zerstört genau die Vertrauensbildung, für die §5.2 existiert.
+Die Lösung ist nicht ein besserer Button an der Säule, sondern eine
+**andere Einheit**.
+
+#### Die drei Uhren
+
+```
+  Advice-Uhr          Intent-Uhr              Fill-Uhr
+  (Entscheidung)      (Absicht, kein Tank)    (Zapfhahn)
+       │                    │                      │
+  14:12  GET /v1/decide      │                      │
+       │  „WARTEN 18–20“     │                      │
+  14:18  Refresh (gleiche    │                      │
+       │  Advice → kein      │                      │
+       │  neuer Snapshot)    │                      │
+  14:19  Tap „Ich warte“ ────┘                      │
+       │                                            │
+  18:40  Advice kippt auf                           │
+       │  „JETZT“ (Fenster da)                      │
+  19:05  Nutzer tankt ──────────────────────────────┘
+  21:00  Job: Advice-Settlement aus Preishistorie
+         (unabhängig davon, ob ein Fill existiert)
+```
+
+| Uhr | Frage | Quelle | Nutzer nötig? | KPI |
+|---|---|---|---|---|
+| **Advice** | War die Empfehlung richtig? | Preishistorie vs. Snapshot | nein | Brier, Trefferquote WARTEN/JETZT, Regret |
+| **Intent** | Hat er die Ampel ernst genommen? | Tap „Ich warte“ / Navigation | ja, 1 Tap, 2 s | nur UX-Zustand (Erinnerung, Prompt) |
+| **Fill** | Hat *er* Geld gespart? | gemeldeter Tankvorgang | ja, asynchron | Wallet-€ vs. immer-sofort; Compliance |
+
+**Hartes Trenngebot:** Advice-Zahlen und Wallet-Zahlen dürfen im UI nie
+dieselbe Zeile sein. „19/23 WARTEN richtig“ ist Modell. „+12,40 € in
+7 Füllungen“ ist sein Geld. Wer die 19/23 mit 40 L hochrechnet, lügt
+über Compliance.
+
+#### Die Einheit ist die Episode, nicht der Decide-Call
+
+Eine **Tank-Folge** (`episode`) ist der Zyklus „ich muss demnächst
+tanken“ bis „ich habe getankt / die Folge ist verfallen“.
+
+```
+episode
+  status: open | waiting | due | resolved | expired
+  intent: none | wait | navigate | refuel_now | dismiss
+  snapshots[]     ← kollabierte /v1/decide-Antworten
+  fill?           ← 0 oder 1 FillEvent
+```
+
+Kollabierungsregel für Snapshots (sonst gewichtet der Viel-Öffner den
+Brier): gleicher `action` + gleiche Station + Δt < 30 min → Snapshot
+*aktualisieren*, nicht anhängen. Ein neuer Snapshot nur, wenn die
+Advice kippt (WARTEN → JETZT, andere Station) oder 30 min um sind.
+Brier/M7 scoren **Snapshots**, nicht HTTP-Requests — und sie scoren
+sie auch dann, wenn nie jemand getankt hat.
+
+Advice darf in der Folge kippen. Das ist ein Feature: morgens WARTEN,
+18:40 JETZT. **Compliance und Settlement bewerten den letzten Snapshot
+vor der Aktion**, nicht den ersten.
+
+Schließbedingungen: Fill gemeldet → `resolved`; `latest_by` oder 72 h
+ohne Fill → `expired`; Nutzer tippt „noch nicht“ auf den Prompt →
+`expired` (Advice bleibt trotzdem gesettled).
+
+#### Matching ist ein Join mit Slack, kein Foreign-Key vom Zapfhahn
+
+Ein Fill `(station, tanked_at, liters, price)` wird der offenen Folge
+zugeordnet, nicht einem Recommendation-Id, den niemand an der Säule
+parat hat.
+
+| Letzte Advice | `followed` | `partial` | `ignored` |
+|---|---|---|---|
+| JETZT | gleiche Station, ≤ 45 min | gleiche Station, später | andere Station |
+| WARTEN | gleiche Station, Fenster ± Slack (Start −30 min, Ende +60 min) | richtige Station oder richtiges Fenster | sofort an der Emit-Station |
+| WOANDERS | Fill an der empfohlenen Alternative | dritte Station | Emit-Station ohne Umweg |
+
+Kein Treffer in 72 h → Fill ist `unrelated` (Tank ohne App) oder die
+Folge verfällt ohne Fill. Nur `followed` zählt für „Ø Ersparnis pro
+*befolgte* Empfehlung“. Alle Fills zählen für „vs. immer sofort“
+(Counterfactual = `price_now` des *ersten* Snapshots der Folge).
+
+Preis am Fill **nicht abtippen lassen**: Nowcast bzw. eigener Poll der
+Station zur `tanked_at` ist Vorbelegung. Der Nutzer bestätigt oder
+korrigiert Liter. Das ist der ganze Beleg.
+
+#### UX-Prinzip: nie an der Säule, immer in der nächsten ruhigen Öffnung
+
+An der Zapfsäule ist schlechtes Netz, nasse Finger, kein Kopf für ein
+Formular. Deshalb:
+
+| Zeitpunkt | Was die App tut | Was sie nicht tut |
+|---|---|---|
+| Ampel JETZT | Primär-CTA **„Ich tanke jetzt“** (Fill sofort, Preis = Nowcast). Maps daneben. | Kein Modal, kein Liter-Dialog |
+| Ampel WARTEN | Primär-CTA **„Ich warte bis 18:30“** setzt nur Intent. Optional lokale Notification 15 min vor Fenster (P2). | Kein Fill fingieren, keine Frage |
+| Ampel WOANDERS | Navigation setzt Intent `navigate`. Fill wird **nicht** angenommen. | Location-Tracking, Geofence |
+| Fenster vorbei, Intent gesetzt, kein Fill | Folge → `due`. Beim **nächsten** Öffnen eine Karte: „Hast du getankt?“ mit drei Taps: *Ja, wie empfohlen* / *Anders* / *Noch nicht*. | Push-Nagging, Frage nach jedem Refresh |
+| Kein Intent, nur geschaut | nichts | Prompt |
+
+„Anders“ klappt Station/Zeit/Liter auf, alles vorbelegt. Ein Tap mehr.
+Offline: Fill und Intent landen in der PWA-Queue (IndexedDB), Sync
+gegen NAS sobald Netz da ist — Client-UUID, idempotent.
+
+Prototyp im Alltags-GUI (`sample/good gui`, `lib/feedback.ts`): der
+Uhrzeit-Slider *ist* die asynchrone Struktur. Intent „Ich warte“,
+Slider über das Fenster → Due-Prompt. Zwei getrennte Ledger-Karten
+darunter. Genau so soll es sich anfühlen.
+
+#### Was wir ausdrücklich nicht tun
+
+- Kein GPS-Geofence „5 min an Station = getankt“ (Privatsphäre, False
+  Positives an der Waschstraße).
+- Kein Beleg-OCR, kein Bankimport.
+- Kein Prompt nach jedem `/v1/decide`.
+- Keine persönlichen € aus Advice × angenommener Compliance.
+- P_besser weiterhin nur aus Advice-Settlements — Fills sind zu selten
+  für Brier (≥ 100 Snapshots in 4–6 Wochen sind realistisch, ≥ 100
+  Füllungen nicht).
+
+#### Job und API (Produktiv, NAS)
+
+Nach `window_end` + 30 min (bzw. 24 h-Lag, falls Poll-Lücken): Settlement
+aus Influx, unabhängig vom Fill. Endpunkte in §11.2. Wie daraus
+Werkstatt-Zahlen werden: §5.5.
+
+### 5.5 Wie Feedback in die Statistik eingeht (drei Schichten, nicht eine)
+
+Die Werkstatt-GUI (`sample/good statistic gui`) rechnet heute einen
+**Markt-Backtest**: 14 Tage Preise, jeden Morgen 08:00 hypothetisch
+WARTEN/JETZT, Regret gegen Orakel. Dafür braucht sie **keine Fills**.
+Live-Folgen und Tankbelege sind zwei *weitere* Schichten. Die drei dürfen
+im Scoreboard nie in eine Spalte fallen.
+
+```
+Preishistorie (Influx)                Episodes/Snapshots                 Fills
+        │                                    │                              │
+        │  A  Markt-Labor                    │  B  Live-Advice              │  C  Wallet
+        │  (wie die Statistik-GUI            │  Settlement-Job              │  Matching §5.4
+        │   heute: jeder Tag,                │  nach window_end             │
+        │   auch ohne App-Nutzung)           │                              │
+        ▼                                    ▼                              ▼
+  Trefferquote der REGEL              Brier, Reliability,            € vs. immer-sofort
+  auf dem Markt, ε-Scan,              Trefferquote der               Compliance
+  Orakel-€  (§8.2 Scoreboard)         AUSGESPIELTEN Advice            w(h)-Profil
+                                      → M7-Schwellen                  (≥ 8 Fills)
+```
+
+#### Schicht A — Markt-Labor (unverändert, ohne Nutzer)
+
+Input: Preisreihe je Station. Pro Eval-Tag: S = p(08:00) − p(Fenster),
+Regel `μ ≥ ε`, Regret gegen Tagesminimum. Output: die Tabelle, die der
+Statistik-Prototyp schon zeigt. Das beantwortet „ist die Regel auf dem
+Markt überhaupt geldwert?“, nicht „hat *du* getankt“. Läuft weiter als
+täglicher NAS-Job (Rolling-Origin, §3.4) → `GET /v1/stats/summary`
+Feld `backtest`.
+
+#### Schicht B — Live-Advice (automatisch, sobald M5 sendet)
+
+Jeder kollabierte Snapshot (§5.4) wird nach Fensterende gegen die
+**echte** Preishistorie gesettled — egal ob ein Fill existiert.
+
+Verarbeitung (NAS, nach Settlement-Job):
+
+1. `outcome ∈ {win,loss,tie}` und `regret_eur` am Snapshot (schon §5.2).
+2. Aggregation 7/30 Tage, je Station und Aktionsart:
+   Trefferquote WARTEN/JETZT, mittleres `p_besser`, empirische
+   Trefferrate, Brier, 10 Bins Reliability.
+3. Dieselben Kennzahlen, die der Statistik-Prototyp am Backtest zeigt —
+   nur diesmal über **ausgespielte** Empfehlungen, nicht über
+   hypothetische 08:00-Tage. Werkstatt: zweite Scoreboard-Zeile
+   „Live · n Snapshots“, Kalibrierungs-Plot bekommt Live-Punkte
+   (andere Farbe) sobald n ≥ 20.
+4. **M7:** wenn n ≥ 100 und Brier < 0,25 → P_besser-Anzeige an;
+   wenn Trefferquote WARTEN < 70 % → ε / Prozentgate anziehen.
+   Getuned wird an Schicht B, nie an Schicht C.
+
+Ein Fill ändert Schicht-B-Zahlen **nicht nachträglich**. Sonst würde
+„ich hab anders getankt“ die Kalibrierung der Ampel verbiegen.
+
+#### Schicht C — Wallet / Fills (selten, persönlich)
+
+~1,2 Füllungen/Woche. Zu wenig für Brier, genug für drei Dinge:
+
+| n Fills | Was passiert | Wohin |
+|---|---|---|
+| 0 | Wallet zeigt „0 Füllungen“, keine €-Erfindung | Alltag-Ledger |
+| ≥ 1 | `saved_vs_always_now`, Compliance followed/partial/ignored | Alltag + Werkstatt-Kachel „Deine Füllungen“ |
+| ≥ 8 | empirisches Tankzeit-Histogramm (Stunde × Werktag/WE), **geschrumpft** gegen Default-Pendlerprofil w(h): w ← (n·ŵ + 8·w₀)/(n+8) | Selektion AVᵢ, F3-Fenster-Gewichtung (§12 P1) |
+| ≥ 30 | grobe Jahres-€-Bilanz vs. immer-sofort und vs. Orakel der Tage mit Fill | Werkstatt, unterer Block, mit n in der Überschrift |
+
+Nicht verarbeiten (zu wenig Signal, zu viel Schaden): Fill-Outcomes in
+Brier mischen; ε aus 7 Füllungen nachziehen; Station-δ̂ aus dem eigenen
+Tankverhalten schätzen.
+
+#### Was `GET /v1/stats/summary` konkret liefert
+
+```json
+{
+  "backtest": { /* Schicht A, wie der Statistik-Prototyp */ },
+  "live_advice": {
+    "n": 64, "brier_30d": 0.14, "hit_wait": 0.83, "hit_now": 0.93,
+    "reliability": [ /* 10 Bins */ ]
+  },
+  "wallet": {
+    "n_fills": 7, "followed": 4, "saved_eur": 12.40,
+    "wh_hours": [ /* 24-Vektor, erst ab n≥8 ungleich Default */ ]
+  }
+}
+```
+
+Alltag zeigt `live_advice.hit_*` (ohne Brier-Zahl vor M7) und `wallet`.
+Werkstatt zeigt alle drei Blöcke, Backtest groß, Live daneben, Wallet
+klein und n-beschriftet.
 
 ---
 
@@ -495,7 +726,7 @@ sehen die Ampel.
 | **Brier-Score P_besser** | §5.1 | < 0,20 | Kalibrierung der Kernaussage |
 | **Trefferquote WARTEN** | Anteil richtiger „warten“-Empfehlungen | > 70 % | Nutzer verzeiht keine falschen Wartevorschläge |
 | **Trefferquote JETZT** | Anteil richtiger „jetzt“-Empfehlungen | > 85 % | Fehlalarm nach oben ist teurer (doppelter Schaden, §4.5) |
-| **Ø realisierte Ersparnis/Empfehlung** | € gespart bei befolgten Empfehlungen | > 1,00 € | unter 1 € ist die App die Aufmerksamkeit nicht wert |
+| **Ø realisierte Ersparnis/Empfehlung** | € gespart bei Fills mit `compliance=followed` (§5.4) | > 1,00 € | unter 1 € ist die App die Aufmerksamkeit nicht wert; ohne Fills ist diese KPI undefiniert, nicht 0 |
 | **Top-3-Fenster-Trefferquote** | tatsächliches Tagesminimum in einem der 3 empfohlenen Fenster | > 60 % | war schon in v4 Produkt-Kennzahl, bleibt gültig |
 | **Regret-Ratio** | realisierte Ersparnis / Oracle-Ersparnis | > 0,55 | wie viel des theoretisch Möglichen hebt die App (Kennzahl aus dem Statistik-Prototyp: „geholtes Potenzial“) |
 
@@ -546,7 +777,7 @@ Startbildschirm = **eine Karte, drei Zeilen**:
 │  🟢 JETZT TANKEN                     │
 │  Aral Hauptstr. · 1,649 € · 400 m   │
 │  Warten würde <1 € bringen           │
-│  [Navigation starten]                │
+│  [Ich tanke jetzt]  [Maps]           │
 └─────────────────────────────────────┘
 
   Alternativen (2)          [Details ▼]
@@ -568,11 +799,15 @@ Aufgeklappt:
 Die Hero-Karte übernimmt die Sprache des Alltags-Prototyps: Ampel-Badge
 („JETZT TANKEN“ / „WARTEN BIS ~18:30 UHR“ / „FAHRE ZU SHELL (+1,20 €
 NETTO)“), Headline mit €-Betrag, 2–3 Begründungs-Stichpunkte, großer
-**Google-Maps-Button** (Deep-Link ohne API-Key,
-`https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>`). Die
+**Handlungs-CTA nach Ampel** (§5.4): „Ich tanke jetzt“ (Fill sofort) /
+„Ich warte bis …“ (nur Intent) / Navigation (Intent `navigate`). Maps
+daneben (Deep-Link ohne API-Key,
+`https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>`). Beim
+nächsten Öffnen nach Fensterende: Due-Prompt „Hast du getankt?“. Die
 drei Optionen **Jetzt / Warten / Andere Station** stehen zusätzlich als
-vergleichs-Kacheln mit ihrem Netto-€-Ergebnis — die einzige „Vergleichstabelle“,
-die an der Säule noch funktioniert.
+Vergleichs-Kacheln mit ihrem Netto-€-Ergebnis — die einzige Tabelle,
+die an der Säule noch funktioniert. Unter der Karte: zwei getrennte
+Ledger (Advice vs. Wallet), nie in einer Zahl.
 
 **Kontext-Kontrolle** (aus dem Prototyp übernommen): Kampagnen-Umschalter
 (Frankfurt HE · München BY · Köln NW), Kraftstoff-Umschalter (E10 · E5 ·
@@ -599,11 +834,13 @@ Der Statistik-Prototyp wird hier 1:1 produktiv. Sektionen:
    als Analyse-Instrument („Was würde die Regel mit ε = 0,5 ct anders
    sagen?“) — **die Produktion entscheidet weiterhin mit der kalibrierten
    Tabelle §4.1**, der Slider zeigt nur Konsequenzen.
-2. **Scoreboard (out-of-sample):** je Station — P behauptet vs. S>0 real,
-   Anzahl+Trefferquote „Warten“/„Jetzt“, Ø Regret (ct/L und €/Füllung),
-   Regel-€ vs. Orakel-€, δ̂-Balken. Das ist §5.2 in Aggregatform.
-3. **Kalibrierung:** Reliability-Diagramm (§5.1) + mittlere
-   Kalibrier-Abweichung in pp + Brier-Score 30 d. Nach M7 auch das
+2. **Scoreboard (drei Schichten, §5.5):** groß der Markt-Backtest (wie
+   der Statistik-Prototyp, ohne Fills); daneben Live-Advice (gesettelte
+   Snapshots, Brier/Trefferquoten); unten klein Wallet (n Füllungen auf
+   der Kachel). ε-Slider wirkt nur auf den Backtest-Was-wäre-wenn, nicht
+   auf Live-Schwellen.
+3. **Kalibrierung:** Reliability-Diagramm (§5.1) aus Backtest, ab n ≥ 20
+   Live-Punkte in zweiter Farbe; Brier 30 d aus Schicht B. Nach M7 das
    offizielle Debug-Diagramm.
 4. **Stations-Labor:** Tag-für-Tag-Protokoll je Station, Preisverlauf mit
    Markern (Entscheidungszeitpunkt, vorhergesagtes Fenster, Ist-Verlauf),
@@ -637,6 +874,8 @@ Token-Bucket · Fenster 06–24 · Datenstand.
    Warnung“.
 5. Der Moduswechsel Alltag↔Werkstatt ist ein Tap, kein Architekturbruch —
    gleiche Daten, andere Übersetzung.
+6. Feedback nie an der Säule, immer in der nächsten ruhigen Öffnung
+   (§5.4). Advice-Ledger und Wallet-Ledger sind zwei Zahlen, nicht eine.
 
 ---
 
@@ -652,7 +891,7 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 | Hosting TankPuls-API + PWA | **Pi** | autark auch bei NAS-Ausfall |
 | Historie für Engine | NAS primär; Pi hält Cache-Aggregate (Parquet) | degradierter Modus ohne NAS |
 | **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi macht **nur Inference** (lädt joblib/Parquet-Artefakte); der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM (Anhang A, O1/N2) |
-| **Empfehlungs-/Outcome-Log (§5.2)** | NAS (Tabelle/Measurement) | Quelle für Bilanz, Brier, M7 |
+| **Episode-/Snapshot-/Fill-Log (§5.2, §5.4)** | NAS (Tabelle) | Advice-Settlement (Brier, M7) getrennt von Fill-Events (Wallet) |
 
 Ablauf: Collector appended JSON-Zeilen an
 `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt
@@ -697,6 +936,52 @@ vm.vfs_cache_pressure=50
 |---|---|---|
 | **NAS: Pentium Silver J5040, 16 GB** | InfluxDB-Ingest bei 6 480 Punkten/Tag ≈ Last 0; RAM 1–2 GB; Docker-fähig; **alle Fits/Backtests/Kalibrierungen** | ✅ **Empfehlung** |
 | PC: Ryzen 7 5700X, 32 GB, RX 9070 XT | fachlich ok, ~20× überdimensioniert; Idle ~50–90 W vs. NAS 10–15 W → 85–150 €/Jahr vs. 30–40 € Strom | ❌ im Dauerbetrieb; optional für Einmal-Analysen (WOL) |
+
+### 9.5 Cloud statt Pi? Azure bei ≤ 5 €/Monat
+
+Kurzantwort: **Azure ersetzt weder den Pi-Collector sinnvoll noch das
+NAS-Training.** Unter 5 €/Monat geht nur ein schmaler Serverless-Rand —
+und der hilft vor allem beim *Fernzugriff*, nicht bei der Mathematik.
+
+Was die drei Rollen wirklich kosten, wenn man sie in Azure nachbaut:
+
+| Rolle heute | Azure-Äquivalent | realistische Monatskosten | Unter 5 €? |
+|---|---|---|---|
+| **Pi: Poll alle 5 min, 06–24** (216×/Tag ≈ 6 500 Executions/Monat) | Functions Consumption + Timer | Executions weit unter 1 Mio. Free-Grant; Storage-Account ~1–2 € | ✅ Collector allein ja |
+| **Pi: FastAPI + PWA, an der Säule** | Functions/Static Web Apps (scale-to-zero) **oder** Container Apps minReplica=1 | Scale-to-zero: praktisch 0 €, aber **Cold Start 1–3 s** (an der Säule spürbar). Warm: 0,25 vCPU idle ≈ 2–7 € plus Memory | ⚠️ nur mit Cold Start |
+| **NAS: Influx + 5 Jahre Retention** | Azure Data Explorer / Timeseries Insights / Postgres Flexible | Postgres B1ms schon ~12–18 €; ADX klar darüber. Table Storage als DIY-TS: ~1 €, aber dann keine Influx-Queries | ❌ als Influx-Ersatz nein |
+| **NAS: tägliche Fits/Backtests** | Azure ML / Container Instance on-demand | Burst 30–60 min/Tag auf kleinem ACI: ein paar €, aber GPU/ML-Workspace sprengt das Budget sofort | ⚠️ nur als Timer-ACI, nicht als Plattform |
+
+Zusätzlich: IP-Egress, Log Analytics (Default-Workspace frisst gern die
+5 € allein), und ein vergessenes `minReplicas=1` macht aus „serverless“
+eine immer laufende Rechnung.
+
+**Was unter 5 € tatsächlich sinnvoll ist** (Hybrid, nicht Ersatz):
+
+1. **Öffentliche PWA-Kante** — Static Web Apps (Free) + Functions als
+   Read-Cache der letzten `/v1/decide`. Pi/NAS bleiben Source of Truth.
+   Nutzen: Handy unterwegs ohne VPN/Portforward auf den Pi. Cold Start
+   am Decide-Call ist akzeptabel, am Poll-Timer nicht relevant.
+2. **Offsite-Backup** der Episode-/Fill-Logs + wöchentliches
+   Parquet-Dump der Preise nach Blob (Cool). ~0,50 €.
+3. **Optional Push** (ntfy bleibt billiger als Notification Hubs).
+
+**Was man nicht tun sollte:** den 24/7-Poll auf Functions Consumption
+*und gleichzeitig* das NAS abschalten. Der Poll ist billig, der
+Zeitreihen-Speicher und das Training sind es nicht. Der Pi ist für
+genau diese Last gebaut (lokales Netz zum NAS, kein Cold Start, Strom
+im Rauschen der NAS-Rechnung).
+
+Ehrlicher 5-€-Vergleich außerhalb Azure: ein Hetzner CX22 (~4–5 €)
+ersetzt den *Pi als API-Host* besser als Azure — feste IP, kein Cold
+Start, 4 GB RAM. Collector+API dorthin, NAS bleibt Influx/Fits. Azure
+gewinnt nur, wenn schon ein Tenant da ist oder man ausdrücklich nicht
+noch einen VPS will.
+
+Entscheidung im Konzept: **Default bleibt Pi + NAS.** Azure ist ein
+optionaler Rand (Fernzugriff + Backup), kein Architekturwechsel. Wer
+den Pi loswerden will, nimmt eher einen Mini-VPS als „ein Azure
+Service“.
 
 ---
 
@@ -779,9 +1064,13 @@ Antwort:
   "alternatives_nearby": [ /* §4.2, Top 3 */ ],
   "windows_today":       [ /* §4.3, Top 3 innerhalb 24 h */ ],
   "windows_week":        [ /* §4.3, Top 3 innerhalb 7 d */ ],
+  "episode": {
+    "id": "...", "status": "open" | "waiting" | "due" | "resolved" | "expired",
+    "intent": "none" | "wait" | "navigate" | "refuel_now"
+  },
   "personal_stats": {
-    "last_30d_hits": 57, "last_30d_total": 64, "hit_rate": 0.89,
-    "saved_eur_30d": 42.50, "brier_30d": 0.14
+    "advice": {"last_30d_hits": 57, "last_30d_total": 64, "hit_rate": 0.89, "brier_30d": 0.14},
+    "wallet": {"fills_30d": 7, "followed": 4, "saved_eur_30d": 12.40}
   },
   "debug": {"forecast_url": "/v1/stations/.../forecast", "fitted_at": "..."}
 }
@@ -796,11 +1085,43 @@ Prototyp-Endpunkt `/v1/decision` (Station, Liter, Stunde, Zeitwert,
 Verbrauch → Entscheidungsobjekt). Produktiv wird daraus `/v1/decide` mit
 der §4-Logik inkl. P_besser und Outcome-Anbindung.
 
-### 11.2 Neu: `POST /v1/recommendations/{id}/outcome`
+### 11.2 Folge, Intent, Fill — nicht „Outcome an Recommendation“
 
-Optional vom Nutzer („habe getankt bei X um Y für Z €“). Ohne Nutzer-Input
-wird das Outcome 24 h später automatisch aus der Preishistorie befüllt
-(§5.2): `outcome ∈ {win, loss, tie}`, `regret_eur`, `realized_saving_eur`.
+`POST /v1/recommendations/{id}/outcome` bleibt als Alias (schreibt ein
+Fill gegen den letzten Snapshot), ist aber die falsche Granularität.
+Primär sind drei Endpunkte, die die drei Uhren aus §5.4 abbilden:
+
+**`POST /v1/episodes/{id}/intent`** — `{intent: wait|navigate|refuel_now|dismiss}`.
+Kein Fill. Setzt Erinnerung/Due-Zustand.
+
+**`POST /v1/fills`** — der Tankbeleg.
+
+```json
+{
+  "id": "client-uuid",
+  "episode_id": "...",
+  "station_id": "...",
+  "tanked_at": "2026-09-06T17:05:00+02:00",
+  "liters": 42.5,
+  "price_paid": 1.649,
+  "fuel": "e10",
+  "source": "explicit_now" | "prompt" | "manual"
+}
+```
+
+`episode_id` optional: fehlt er, matcht der Server die offene Folge
+(§5.4 Slack-Regeln). `price_paid` optional: fehlt er, setzt der Server
+den Nowcast/Poll der Station zur `tanked_at`. Antwort enthält
+`compliance` und `saved_vs_always_now_eur`. Idempotent über `id`.
+
+**`GET /v1/episodes?status=due`** — was der Alltag beim Öffnen braucht,
+inklusive vorbelegtem Prompt. `GET /v1/decide` liefert die aktuelle
+Folge gleich mit (`episode` in der Antwort).
+
+Advice-Settlement läuft **ohne** diese Endpunkte: Job nach `window_end`
++ Lag schreibt `outcome ∈ {win, loss, tie}`, `regret_eur` an den
+Snapshot. Ein Fill ändert das Settlement nicht nachträglich — es ändert
+nur das Wallet-Ledger.
 
 ### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug)
 
@@ -819,8 +1140,8 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
   `{delta_ct, gross_eur, detour_cost_eur, net_eur, worth_it, z_used}`).
 - `GET /v1/health` — Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand
   & Oldest-Age, Coverage, letzte Fehler.
-- Neu (Werkstatt): `GET /v1/stats/summary` — Scoreboard-/Kalibrierdaten
-  (§5.2, §8.2) für den Labor-Bildschirm.
+- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` /
+  `live_advice` / `wallet` (§5.5, §8.2).
 
 ---
 
@@ -836,7 +1157,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 | **P0** | Sind die Historie-Stationen real erreichbar? (Frankfurt: 100+ im 25-km-Radius) | Referenzpunkt je Stadt aus gitignorierter `config.local.json`, `onroute`-Modus, `--rank-by score`, `--max-radius` |
 | **P0** | E10-Verträglichkeit des Autos? | K.-o.-Kriterium; sonst `--fuel E5` (Äquivalenzpreis, §10) |
 | **P1** | Rabatt-/Kartenprogramme (2–4 ct können das Ranking umdrehen)? | geplant: `--brand-rebate "ARAL:0.02;…"`; bis dahin Top-10 der eigenen Karten-Marke gesondert betrachten |
-| **P1** | Wann tanke ich wirklich? (Pendlerprofil/Schicht/Homeoffice) | w(h)-Profil als Config; Kalibrierung aus eigenen Tankbelegen (`/outcome`-Log liefert das gratis mit) |
+| **P1** | Wann tanke ich wirklich? (Pendlerprofil/Schicht/Homeoffice) | w(h)-Profil als Config; Fill-Log (§5.4) kalibriert das Profil, sobald ≥ 8 Füllungen da sind |
 | **P1** | Lebenszyklus der Stationen (Umbau, Betreiberwechsel) | vierteljährliche Re-Selektion + **CUSUM-Driftschranke** (7-Tage-δ̂, Alarm bei \|CUSUM\| > 3σ über 14 d) + `no prices`-Alarm nach 7 Tagen |
 
 ### Mathematik
@@ -864,7 +1185,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 | **P1** | CC BY 4.0 sichtbar? | Fußzeile + Lizenz-Feld in API-Responses |
 | **P1** | Öffentliche API exponieren? | Rate-Limits + Key für Externe, nur lesend, TLS (Caddy), Fail2ban |
 | **P2** | Push („Jetzt 4 ct unter Tagesmedian“)? | Backlog: ntfy/Telegram; Trigger aus Decision-Layer-Schwellen |
-| **P2** | Eigene Tankbelege → echte €-Bilanz | jetzt Kern: `/v1/recommendations/{id}/outcome` (§11.2); jährliche Effektiv-Bilanz in der Werkstatt |
+| **P2** | Eigene Tankbelege → echte €-Bilanz | Kern: `POST /v1/fills` + Episode-Matching (§5.4/§11.2); Wallet-Ledger im Alltag, Jahresbilanz in der Werkstatt |
 
 ---
 
@@ -876,7 +1197,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 | M2 | Selektion mit echten Historien der 3 Kampagnen (HE/BY/NW; Anker + Subdivs aus lokaler Config, nie im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
 | M3 | Engine M1–M3 + ACI + Backtest (Fits auf NAS, Pi nur Inference) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball < Naive; PICP(95 %) ∈ [90, 98] % |
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
-| **M5** | **TankPuls: `/v1/decide` primär + `/v1/recommendations/{id}/outcome` + Outcome-Logging; klassische Endpunkte bleiben (deprecated-Header); Rate-Limits/Keys** | OpenAPI-Doku + Tests grün; jede Empfehlung erzeugt einen log-Eintrag mit automatischem 24-h-Outcome |
+| **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |
 | **M7 (neu)** | **Kalibrierungs-Loop nach 4 Wochen Live-Betrieb: Brier-Score + Reliability-Diagramm messen (Werkstatt/Debug), Entscheidungsschwellen §4.1/§4.2 an Trefferquoten anziehen, Kalibrierungs-Gate (§0.4) schalten** | Brier < 0,25 bei ≥ 100 Empfehlungen → P_besser-Anzeige freigeschaltet; Produkt-KPIs (§6) im Ziel oder Schwellen-Nachzug terminiert. **Erst nach M7 gilt das Produkt als „fertig kalibriert“.** |
 
@@ -979,10 +1300,15 @@ Beigesteuert zum Produkt:
 - API-Vorläufer `/v1/decision` (→ wird `/v1/decide`, §11.1).
 - Güte-Kacheln (Top-3-Quote, PICP, MASE sprungfrei, CUSUM) — bleiben im
   Produkt **in der Werkstatt**, nicht im Alltags-Startbildschirm.
+- **Asynchrones Feedback (§5.4):** Episode statt Decide-Call
+  (`lib/feedback.ts`), CTAs „Ich tanke jetzt“ / „Ich warte“, Due-Prompt
+  nach Fensterende, zwei getrennte Ledger. Der Uhrzeit-Slider simuliert
+  die asynchrone Lücke.
 
 Was der Prototyp noch nicht hat (Produkt-Lücke): P_besser als kalibrierte
-Prozentzahl (zeigt stattdessen feste Schwellen), Outcome-Log/Bilanz,
-„Keine klare Empfehlung“-Modus, deprecated-Headers.
+Prozentzahl (zeigt stattdessen feste Schwellen), „Keine klare
+Empfehlung“-Modus, Server-persistierte Episodes (Demo: localStorage),
+deprecated-Headers.
 
 ### B.2 `sample/good statistic gui` → Modus „Werkstatt“
 

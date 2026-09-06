@@ -1,24 +1,28 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Clock,
-  Navigation,
   CheckCircle2,
-  AlertTriangle,
   TrendingDown,
   TrendingUp,
   Fuel,
   ShieldCheck,
   Sparkles,
-  ArrowRight,
   Info,
   Car,
-  DollarSign,
   Sliders,
   RotateCcw
 } from "lucide-react";
-import { StationData, DecisionResult, evaluateRefuelingDecision, evaluateDetourEconomics } from "@/lib/engine";
+import { StationData, DecisionResult, evaluateRefuelingDecision } from "@/lib/engine";
+import {
+  DualLedger,
+  DuePrompt,
+  IntentButtons,
+  ManualFillButton,
+  WaitingChip,
+} from "@/components/FillFeedback";
+import { hourFromWindowLabel, recordFill, setIntent, syncFromDecision } from "@/lib/feedback";
 
 interface DecisionCockpitProps {
   currentStation: StationData;
@@ -54,6 +58,64 @@ export function DecisionCockpit({
     liters: fillLiters,
     userTimeValue: userTimeValue > 0 ? userTimeValue : undefined,
   });
+
+  const windowHours = hourFromWindowLabel(
+    decision.optimalTimeWindow.startHour,
+    decision.optimalTimeWindow.endHour,
+  );
+  const clockBucket = Math.round(simulatedHour * 2) / 2;
+
+  React.useEffect(() => {
+    syncFromDecision({
+      verdict: decision.verdict,
+      stationId: currentStation.id,
+      stationName: currentStation.name,
+      altStationId: decision.detourAnalysis?.candidateStation.id,
+      altStationName: decision.detourAnalysis?.candidateStation.name,
+      priceNow: decision.priceNow,
+      expectedPriceLater: decision.expectedPriceLater,
+      expectedSavingEur: decision.netSavingEur,
+      windowStartHour: windowHours.start,
+      windowEndHour: windowHours.end,
+      liters: fillLiters,
+      fuel,
+      clockHour: simulatedHour,
+    });
+    // collapse-Regel sitzt in syncFromDecision (30-min-Buckets)
+  }, [
+    decision.verdict,
+    currentStation.id,
+    fuel,
+    fillLiters,
+    clockBucket,
+    simulatedHour,
+    windowHours.start,
+    windowHours.end,
+    decision.priceNow,
+    decision.expectedPriceLater,
+    decision.netSavingEur,
+    currentStation.name,
+    decision.detourAnalysis?.candidateStation.id,
+    decision.detourAnalysis?.candidateStation.name,
+  ]);
+
+  const handleRefuelNow = () => {
+    setIntent("refuel_now");
+    recordFill({
+      stationId: currentStation.id,
+      stationName: currentStation.name,
+      liters: fillLiters,
+      pricePaid: decision.priceNow,
+      fuel,
+      clockHour: simulatedHour,
+      source: "explicit_now",
+    });
+  };
+
+  const mapsUrl =
+    decision.verdict === "SWITCH_STATION" && decision.detourAnalysis
+      ? decision.detourAnalysis.candidateStation.mapsUrl
+      : currentStation.mapsUrl;
 
   const isSimulated = Math.abs(simulatedHour - (new Date().getHours() + new Date().getMinutes() / 60)) > 0.5;
 
@@ -125,6 +187,16 @@ export function DecisionCockpit({
           </div>
         </div>
       </div>
+
+      <DuePrompt
+        stations={allStations}
+        currentStation={currentStation}
+        fuel={fuel}
+        liters={fillLiters}
+        clockHour={simulatedHour}
+        priceNow={currentPrice}
+      />
+      <WaitingChip clockHour={simulatedHour} />
 
       {/* --- HERO RECOMMENDATION CARD --- */}
       <div
@@ -201,21 +273,14 @@ export function DecisionCockpit({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <a
-                href={
-                  decision.verdict === "SWITCH_STATION" && decision.detourAnalysis
-                    ? decision.detourAnalysis.candidateStation.mapsUrl
-                    : currentStation.mapsUrl
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors shadow-lg shadow-emerald-500/20"
-              >
-                <Navigation className="w-4 h-4" />
-                Google Maps Navigation
-              </a>
-            </div>
+            <IntentButtons
+              verdict={decision.verdict}
+              stationName={currentStation.brand}
+              altName={decision.detourAnalysis?.candidateStation.brand}
+              windowLabel={decision.optimalTimeWindow.cheapestTime}
+              onRefuelNow={handleRefuelNow}
+              mapsUrl={mapsUrl ?? currentStation.mapsUrl ?? "#"}
+            />
           </div>
         </div>
       </div>
@@ -390,6 +455,19 @@ export function DecisionCockpit({
               )}
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <DualLedger />
+        <div className="mt-2 flex justify-end">
+          <ManualFillButton
+            station={currentStation}
+            fuel={fuel}
+            liters={fillLiters}
+            clockHour={simulatedHour}
+            priceNow={currentPrice}
+          />
         </div>
       </div>
 
