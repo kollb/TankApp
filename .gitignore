@@ -12,6 +12,9 @@ __pycache__/
 config.local.json
 analysis/config.local.json
 
+# polling.json enthält die privaten Anker-Koordinaten aus config.local.json
+polling.json
+
 # netrc-Zugangsdateien — auch wenn sie (Windows: _netrc) im Repo-Ordner liegen
 .netrc
 _netrc
