@@ -1,0 +1,9 @@
+{
+  "_hinweis": "NUR LOKAL: als config.local.json speichern (gitignored), NIEMALS mit echten Koordinaten/Adressen ins Repo legen. Koordinaten einmalig per Geocoding (z. B. Nominatim/Google Maps) ermitteln; 0.0/0.0 ist ein absichtlicher Platzhalter.",
+  "home": {
+    "Frankfurt": [0.0, 0.0]
+  },
+  "subdiv": {
+    "Frankfurt": "HE"
+  }
+}

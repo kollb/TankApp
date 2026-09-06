@@ -1,8 +1,17 @@
-# TankApp — Detailliertes Gesamtkonzept (v3)
+# TankApp — Detailliertes Gesamtkonzept (v4)
 
-> Stand: 2026-09-06 · Gegenüber v2 ergänzt: echte Tankerkönig-Payloads
-> (list.php / prices.php), empirisch belegte Antwort zur Poll-Fenster-Frage
-> 08–24 Uhr, Öffnungszeiten-bewusste Engine, verfeinerte Betriebsdetails.
+> Stand: 2026-09-06 · **v4 = v3 + Auswertung der externen Bewertung** (siehe
+> [`REVIEW-2026-09-06.md`](REVIEW-2026-09-06.md)). Übernommen: F1 (Punktzahl
+> §6.2 korrigiert), F2 (Abnahme-Kriterium MASE < 0,95 + Pinball statt < 0,8),
+> F3 (Poll-Fenster ohne adaptive Per-Station-Logik), O1 (M4 entschlackt &
+> zurückgestuft; Training/Backtests auf NAS/PC), O2 (ACI η = 0,005), O3
+> (Feiertage je Bundesland **Hessen/Bayern/NRW** — in der Selektion
+> implementiert, `--subdiv`), O4 (CUSUM-Driftschranke), O5 (PWA-Service-Worker),
+> O7 (zeitabhängiger Zeitwert). **Nicht übernommen: O6** (InfluxDB-Memory-Limit —
+> Betreiber-Anweisung). Über die Bewertung hinaus korrigiert: M3-Wochensaison
+> (≈ 6 Zyklen in 6 Wochen ist zu wenig), Feiertags-Dummies gepoolt statt pro
+> 6-Wochen-Fenster, keine Engine-Fits auf dem Pi, Live-IDs decken alle drei
+> Kampagnen ab (Detail §2).
 
 **Ziel:** Persönliche Tank-App, die
 1. aus historischen Daten (3 Städte) mathematisch hart die ~10 lohnenden
@@ -34,8 +43,10 @@
 Empfehlung/Limit: **1 Request / 5 min**. Der Preis-Endpunkt
 `prices.php?ids=<uuid1,…,uuid10>&apikey=…` bündelt **bis zu 10 Stationen in
 einem Request** → die 10 selektierten Stationen kosten exakt einen Poll je
-5 min: **288 Requests/Tag** bei Volltag, **216** beim empfohlenen Fenster
-06–24 Uhr (s. §4). Das Limit wird nie berührt; Engpass ist bewusst gewählt.
+5 min: **216 Requests/Tag** beim fixen Fenster 06–24 Uhr (s. §4), **288** bei
+Volltag. Das Fenster bleibt bewusst bei 06–24: 288/Tag entspräche exakt der
+1-R/5-min-Empfehlung ohne Puffer für Wiederholungen, und die Nachtstunden
+liefern bei geschlossenen Stationen keine Information (Review F3, Detail §4).
 
 Stations-Masterdaten (Name, Marke, Geo, Öffnungsstatus-Stichprobe) 1×/Tag aus
 `list.php?lat&lng&rad&sort=dist&type=e10` (Radius bis 25 km), gecacht —
@@ -109,6 +120,30 @@ Demo-Ergebnis (54 Stationen, 8 Wochen, 5-Min-Raster): Top-10 mit δ̂ zwischen
 −2,85 und −4,40 ct/L, alle q < 0,005, Ersparnis **≈ 71–110 €/Jahr** bei
 40 L/Füllung · 1,2 Füllungen/Woche.
 
+**Kampagnen-Setup (echte Daten, Anwender-Vorgabe):** drei Kampagnen in
+**Hessen, Bayern und NRW**; Heimat-Kampagne = **Frankfurt am Main**.
+**Privatsphäre:** Straße/Hausnummer stehen **nie** im Repo, und auch
+Koordinaten nur in der **lokal gitignorierten Datei**
+`analysis/config.local.json` (`--config`, Vorlage `config.local.example.json`).
+Dort liegen `home` (Referenzpunkt je Stadt, einmalig per Geocoding ermittelt)
+und `subdiv` (Bundesland je Stadt). CLI-Flags überschreiben die Datei; die
+Shell-History wird so nicht mit Privatdaten gefüllt. Für jede Stadt ein
+Bundesland: `"Frankfurt": "HE"`, `"<Bayern-Stadt>": "BY"`,
+`"<NRW-Stadt>": "NW"` (Paket `holidays`). Feiertage sind Ländersache —
+z. B. **Allerheiligen (01.11.) gilt in BY und NW, nicht in HE**, Heilige Drei
+Könige (06.01.) nur in BY (Fronleichnam dagegen gilt in allen drei Ländern).
+Da Frankfurt als Großstadt deutlich mehr Stationen im Umkreis hat als die
+beiden anderen Kampagnen, wird die globale Top-10 **quotiert** (Empfehlung
+**6/2/2**, konfigurierbar) — sonst dominiert die Heimatstadt das Ranking und
+die 10 live gepollten IDs decken die Reiseorte nicht ab (Review N3, §9 P1).
+
+**Kraftstoff-Setup (Anwender-Vorgabe):** primär **E10** (Selektion,
+Prognose, Heatmaps). `prices.php` liefert alle Sorten in derselben Antwort →
+**Diesel (und E5, falls geführt) wird ohne Extra-Request mitgesammelt und
+gespeichert** (Historie + Nowcast im Dashboard); in die E10-Auswahl mischt es
+sich nicht. Diesel-Selektion ist jederzeit als zweiter Lauf möglich
+(`--fuel DIESEL`, gleiche Daten).
+
 ---
 
 ## 3. Schritt 2: Zeitreihen-Engine
@@ -127,9 +162,10 @@ Demo-Ergebnis (54 Stationen, 8 Wochen, 5-Min-Raster): Top-10 mit δ̂ zwischen
 - **„Gute Konfidenz über die gesamte Zeitreihe?"** Ja, weil (i) die Intervalle
   verteilungsfrei kalibriert werden (Adaptive Conformal Inference) und (ii)
   die tatsächliche Überdeckung laufend gemessen und angezeigt wird
-  (Rolling-PICP). Ab ~8 Wochen 5-Min-Historie sind Tages- (Periode 288) und
-  Wochen-Saison (Periode 2016) stabil identifiziert; danach wächst die
-  Konfidenz messbar (MASE↓, Intervallbreite↓).
+  (Rolling-PICP). Ab ~8 Wochen 5-Min-Historie ist die Tages-Saison
+  (Periode 288) stabil identifiziert; die Wochen-Saison (Periode 2016) erst
+  ab ~1 Jahr Daten (Review N1 — bis dahin DoW-Dummies in M1). Danach wächst
+  die Konfidenz messbar (MASE↓, Intervallbreite↓).
 
 ### 3.1 Aufbereitung & Öffnungszeiten-Bewusstsein
 
@@ -144,22 +180,47 @@ Demo-Ergebnis (54 Stationen, 8 Wochen, 5-Min-Raster): Top-10 mit δ̂ zwischen
 ### 3.2 Modell-Stack (pro Station × Sorte; R² der Demo-Fits 0,94 im Median)
 
 **M1 Strukturmodell (robust):**
-p(t) = μ + Σₖ₌₁²[aₖcos(2πkh/24) + bₖsin(2πkh/24)] + Wochen-Harmonische
-       + γ′·X(t) + ε(t)
-mit X = DoW-/Feiertags-Dummies + Zeit-seit-letztem-Preissprung; Huber-IRLS,
-rollierendes 6-Wochen-Fenster, tägliches Refit.
+p(t) = μ + Σₖ₌₁²[aₖcos(2πkh/24) + bₖsin(2πkh/24)] + γ′·X(t) + ε(t)
+mit X = DoW-Dummies + **Feiertags-Dummy je Bundesland (HE/BY/NW)** +
+Zeit-seit-letztem-Preissprung; Huber-IRLS, rollierendes 6-Wochen-Fenster,
+tägliches Refit.
+
+- *Wochensaison:* In den ersten 12 Monaten über die 7 DoW-Dummies. Eine echte
+  5-min-Wochensaison (Periode 2016) braucht ~1 Jahr Daten — 6 Wochen ≙ nur
+  ~6 Zyklen sind zu wenig für eine stabile Schätzung (Eigenkorrektur N1).
+- *Feiertags-Dummy nicht pro 6-Wochen-Fenster schätzen:* dort liegen meist
+  0–1 Feiertage. Stattdessen **gepoolt über das Kalenderjahr je Bundesland**
+  (ein gemeinsamer Shift, geschrumpft); bis genug Daten da sind: `is_holiday`
+  als Interzept-Shift pro Stadt.
 
 **M2 Residuen-Nachlauf:** AR(2) auf ε(t) (Persistenz direkt nach Sprüngen),
 Yule-Walker.
 
-**M3 ETS/Holt-Winters** (gedämpfter Trend, Perioden 288/2016 gekoppelt) als
-unabhängige Zweitmeinung.
+**M3 Zweitmeinung:** statsmodels `UnobservedComponents` (Local-Level +
+Tagessaison 288 + DoW) bzw. Holt-Winters (gedämpfter Trend, Periode 288)
+**plus** saisonale Naive (Preis vor 24 h) als Benchmark. „Beide Perioden
+(288/2016) in einem Modell" erst ab ≥ 1 Jahr Daten; bis dahin übernimmt M1 die
+Woche (N1).
 
-**M4 (ab ≥ 3 Monaten Daten):** Quantile-Gradient-Boosting (τ = .05…​.95) auf
-[Stunde, DoW, Feiertag, Zeit-seit-Sprung, Abstand zum Stadtmedian, Offsetᵢ].
+**M4-Q (optional, zurückgestuft — Review O1; bewusst anders benannt als
+Roadmap-M4 „Dashboard"):** Quantile-Gradient-Boosting (LightGBM) **erst ab
+M5-Priorität und ≥ 3 Monaten Daten**, nur für die 3–5
+Stationen mit höchster Nutzungsgewichtung, nur τ ∈ {0,1; 0,5; 0,9} (3 Modelle,
+Zwischenquantile interpoliert), feste Hyperparameter (**kein tägliches
+Tuning**), Refit **wöchentlich** auf dem NAS. Grund: 30 Modelle × 19 Quantile ×
+täglich = 570 Fits/Tag sprengen das Pi-Budget (1 GB RAM, ARM). M1–M3 +
+Residuen-Bootstrap liefern bereits den Großteil der erreichbaren Genauigkeit.
 
 **Ensemble:** inverse-**MASE**-Gewichte aus 21-Tage-Rolling-Backtest,
-täglich neu; Benchmark = Persistenz. Abnahme: **MASE(24 h) < 0,8**.
+täglich neu; Benchmark = saisonale Naive. **Abnahme-Kriterien (Review F2):**
+1. MASE(24 h) < **0,95** gesamt (besser als Naive — auch inkl. Sprungtagen),
+2. MASE(24 h) < **0,80** an **sprungfreien** Tagen (Zyklusgüte; Sprungtage via
+   CUSUM auf Δp markiert),
+3. **Pinball-Loss** (τ = 0,5, 24 h) < Pinball der Naive-Baseline,
+4. Rolling-PICP(95 %) ∈ [90, 98] %.
+Zusätzlich als Produkt-Kennzahl: **Top-3-Trefferquote** — Anteil der Tage, an
+denen die tatsächlich billigste Stunde der Stadt unter den 3 empfohlenen
+Zeitfenstern liegt (das ist die Kennzahl, die der Nutzer wirklich spürt).
 
 ### 3.3 Konfidenz: Intervalle mit verteilungsfreier Garantie
 
@@ -167,9 +228,17 @@ täglich neu; Benchmark = Persistenz. Abnahme: **MASE(24 h) < 0,8**.
    q̂.05…q̂.95 → 80 %/95 %-Bänder.
 2. **Adaptive Conformal Inference:** Nonkonformitäts-Scores
    s(t) = max(q̂_lo − y, y − q̂_hi) über die letzten 14 Tage; die
-   Intervallbreite folgt einem Update mit Lernrate η, sodass die empirische
-   Überdeckung zum Nominalniveau konvergiert — ohne Verteilungsannahme und
-   adaptiv bei Regimewechseln (z. B. volatile Wochen).
+   Intervallbreite folgt dem Update α_t = α_{t−1} − η·(Überdeckung − Ziel),
+   damit die empirische Überdeckung zum Nominalniveau konvergiert — ohne
+   Verteilungsannahme, adaptiv bei Regimewechseln. **η = 0,005 als Startwert**,
+   im Dashboard konfigurierbar (Review O2): Die 5-min-Scores sind stark
+   autokorreliert (≈ 4 032 Scores/14 Tage, aber deutlich kleinere *effektive*
+   Stichprobe), ein zu großes η lässt die Intervalle oszillieren. **ACI erst
+   nach 4 Wochen Live-Betrieb aktivieren** — vorher feste Bootstrap-Intervalle
+   (früher erst, wenn die 8-Wochen-Historie bereits eine
+   Rolling-PICP-Kalibrierung erlaubt). Ehrlichkeit: Die Garantie der ACI ist
+   asymptotisch und unter Austauschbarkeit; die operationelle Wahrheit bleibt
+   das gemessene Rolling-PICP.
 3. **Monitoring:** 7-Tage-Rolling-PICP je Station als „Konfidenz-Badge" im
    Dashboard (grün ≥ Nominal − 2 pp, gelb ±5 pp, rot < → Hinweistext
    „Prognose derzeit unsicher").
@@ -222,13 +291,26 @@ Bericht `docs/analysis/report_window.md`:
   datiert — das p95 oben sind fast ausschließlich diese Stationen.
 - **00:00–06:00** liefert bei regulären Stationen ohnehin nur eingefrorene
   Preise (`status: closed`) — echter Informationsgehalt fast null.
-- **Empfehlung: Poll-Fenster 06:00–24:00** (216 Requests/Tag, unverändert
-  im Limit). Sichert den Morgensprung komplett und praktisch alle
-  Tagesminima, ignoriert nur die tote Phase. Der Scheduler wertet die
-  `isOpen`-Historie je Station aus und **erweitert das Fenster automatisch
-  auf 00–06 für Stationen mit 24h-Betrieb** (per-station adaptive Fenster;
-  Kriterium: ≥ 10 % der Tagesminima dieser Station lagen historisch vor
-  08:00 Uhr).
+- **Empfehlung: Poll-Fenster fix 06:00–24:00** (216 Requests/Tag, unter dem
+  Limit) — **ohne adaptive Per-Station-Logik** (Review F3). Sichert den
+  Morgensprung komplett und praktisch alle Tagesminima, ignoriert nur die
+  tote Phase. Der frühere Vorschlag (Fenster je Station anhand der
+  `isOpen`-Historie automatisch auf 00–06 erweitern) wird verworfen: ~72
+  Requests/Tag Zusatzaufwand, aber echte Scheduler-Komplexität — und für
+  24h-Stationen ändert ein Poll um 03:00 selten die Prognose (nachts sind die
+  Preise überwiegend stabil; `status: closed`-Segmente werden ohnehin als
+  stale markiert, §3.1).
+- **00–24 stattdessen?** Die Bewertung hat recht: 288 R/Tag ist kein
+  dokumentiertes Hard-Limit, sondern Empfehlung. Aber: 288/Tag = exakt die
+  1-R/5-min-Grenze **ohne Puffer** für Wiederholungen (429-Backoff), und 25 %
+  der Polls liefern bei geschlossenen Stationen keine Information. Deshalb
+  bleibt 06–24 der Default; wer Volltag will, stellt nur `POLL_START=00` —
+  der Collector bleibt identisch.
+- **24h-Stationen als Opt-in statt Auto-Detection:** Liste `NIGHT_IDS` im
+  Collector (standardmäßig leer). Für diese IDs wird das Fenster auf 00–06
+  erweitert, wenn die `isOpen`-Historie ≥ 7 Tage überwiegend offen zeigt und
+  historisch ≥ 10 % der Tagesminima der Station vor 08:00 Uhr lagen — als
+  einfache Regel, keine Scheduler-Maschinerie.
 
 ---
 
@@ -247,11 +329,21 @@ Bericht `docs/analysis/report_window.md`:
   4. **Top-10-Ranking** mit δ̂-Balken + Bootstrap-KI-Whiskern (Stil wie
      `docs/analysis/figures/top_selection.png`).
   5. **Konfidenz-Badge** (Rolling-PICP, §3.3) + Puffer-/System-Status.
+  6. **Diesel-Nowcast** (kleine Kachel, falls geführt): aktueller Preis +
+     Tagesverlauf als Historie — keine E10-Vermischung; Prognose nur nach
+     eigenem Backtest (§7.1).
 - **Google Maps Navigation:** kostenfreie Universal-Links, **kein API-Key**:
   `https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>&travelmode=driving`
   (iOS-Fallback `comgooglemaps://?daddr=…`). Karten-*Embed* bewusst nicht
   geplant (Key/Kosten/DSGVO); Station-Karte optional über freies
   OpenStreetMap/Leaflet(s) ohne Key.
+- **Offline-Strategie (Review O5):** Service Worker (Workbox, ~50 Zeilen) mit
+  **Cache-First** für den letzten Forecast (max-age 30 min) und
+  **Stale-While-Revalidate** für Heatmap-/Top-10-Antworten. Der Kern-Use-Case
+  „an der Tankstelle, schlechtes Netz, jetzt tanken oder warten?" funktioniert
+  damit auch offline; der Client zeigt immer den Datenstand
+  („Stand: 14:32") und kennzeichnet veraltete Prognosen. Voraussetzung:
+  HTTPS (Caddy) — für Service Worker Pflicht.
 
 ---
 
@@ -266,6 +358,7 @@ Bericht `docs/analysis/report_window.md`:
 | Langzeit-Speicher | **NAS: InfluxDB (Docker)** | Plattenplatz, Retention-Policies |
 | Hosting TankPuls-API + Frontend | **Pi** | FastAPI + statische Dateien, autark auch bei NAS-Ausfall |
 | Historie für Engine | NAS primär; Pi hält lokale Cache-Aggregate (Parquet) | degradierter Modus ohne NAS |
+| **Engine-Fits (Retraining, Rolling-Backtests, ACI-Kalibrierung)** | **NAS (oder PC per WOL)** | Pi macht **nur Inference**: lädt fertige Artefakte (joblib/Parquet) und berechnet Forecasts/Heatmaps. Der tägliche Rolling-Origin-Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM (Review O1/N2) |
 
 1. Collector appended je Poll eine JSON-Zeile an
    `/dev/shm/tankapp/YYYY-MM-DD.jsonl`.
@@ -289,8 +382,10 @@ Gegeben: **RAM 921 Mi total / 571 Mi verfügbar**, Swap 920 Mi (44 Mi belegt).
 
 **Datenvolumen:** JSONL ≈ 2,5 kB pro Poll (10 Stationen) → 216 Polls ≈
 **0,6 MB/Tag ≈ 4 MB/Woche** (tmpfs-Limit 32 M = 8-fache Reserve; selbst 100
-Stationen blieben unproblematisch). InfluxDB: 5 760 Punkte/Tag à ~20–60 B
-TSM-komprimiert → **≤ 0,4 MB/Tag ≈ 150 MB/Jahr**.
+Stationen blieben unproblematisch). InfluxDB: **6 480 Punkte/Tag**
+(10 Stationen × 3 Sorten × 216 Polls — korrigiert nach Review F1; realistisch
+2–3 Sorten, weil E5 oft nicht geführt wird, → 4 320–6 480) à ~20–60 B
+TSM-komprimiert → **~0,26–0,4 MB/Tag ≈ 95–150 MB/Jahr**.
 
 **Urteil: Der Ansatz reicht aus — mit komfortabler Reserve.** Er ist exakt
 das gleiche bewährte Muster wie deine Temperatur-Anzeige, nur mit einem
@@ -318,7 +413,7 @@ vm.vfs_cache_pressure=50
 
 | Kandidat | Eignung für InfluxDB + Grafana | Urteil |
 |---|---|---|
-| **NAS: Intel Pentium Silver J5040 (4 Kerne, 2.0 GHz), 16 GB RAM** | InfluxDB-Ingest: 5 760 Punkte/Tag → CPU-Last praktisch 0; RAM-Bedarf InfluxDB ≈ 1–2 GB, Grafana ≈ 0,3 GB → 16 GB massig; Docker-fähig (sofern NAS-OS Container zulässt: UGREEN/TerraMaster-TOS/TrueNAS/OMV ja) | ✅ **Reicht völlig aus — Empfehlung** |
+| **NAS: Intel Pentium Silver J5040 (4 Kerne, 2.0 GHz), 16 GB RAM** | InfluxDB-Ingest: 6 480 Punkte/Tag → CPU-Last praktisch 0; RAM-Bedarf InfluxDB ≈ 1–2 GB, Grafana ≈ 0,3 GB → 16 GB massig; Docker-fähig (sofern NAS-OS Container zulässt: UGREEN/TerraMaster-TOS/TrueNAS/OMV ja); **Engine-Retraining + Backtests laufen hier** (§6.1) | ✅ **Reicht völlig aus — Empfehlung** |
 | Privat-PC: Ryzen 7 5700X, 32 GB, RX 9070 XT | Fachlich ebenfalls völlig ausreichend, aber für diese Aufgabe ~20× überdimensioniert; **Idle-Stromverbrauch ~50–90 W** (GPU-System) vs. NAS ≈ 10–15 W → bei 24/7 grob **85–150 €/Jahr Strom vs. ~30–40 €** (bei ~0,30–0,40 €/kWh) | ❌ unnötig & teuer im Dauerbetrieb; GPU bringt hier nichts (kein GPU-Training; LightGBM-Backtests laufen in Sekunden auf CPU) |
 
 **Empfehlung: NAS (J5040).** Die Kombination „Pi = 24/7-Collector + Hosting,
@@ -334,7 +429,11 @@ nicht dauerhaft laufen; WOL (Wake-on-LAN) am NAS ausreichend.
 **Ja, wichtig — als Entscheidungs-/Ökonomie-Parameter, nicht als
 Prognose-Input.** Drei konkrete Stellen:
 
-1. **Kraftstoffart** wählt die Preisreihe. E5↔E10 korrekt vergleichen heißt
+1. **Kraftstoffart** wählt die Preisreihe — primär **E10** (Anwender-Vorgabe).
+   **Diesel wird trotzdem mitgesammelt** (gleiche API-Antwort, kein
+   Extra-Request) und als Historie/Nowcast angezeigt, fließt aber nicht in die
+   E10-Entscheidung ein; eine Diesel-Prognose erst nach eigener Kalibrierung.
+   E5↔E10 korrekt vergleichen (falls der Wagen E10 nicht verträgt) heißt
    *äquivalenter Preis*: E10 verbraucht ~1–2 % mehr → E5 lohnt erst bei
    p_E5 ≤ ~1,015·p_E10 (≈ 4–5 ct Differenz).
 2. **Tankvolumen V / Tankmenge L** skaliert die Ersparnis linear:
@@ -350,6 +449,17 @@ Prognose-Input.** Drei konkrete Stellen:
    v = 50 km/h, z = 12 €/h ⇒ K = 12·0,07·1,65 + (12/50)·12 =
    1,39 € Sprit + 2,88 € Zeit = **4,27 €** ⇒ bei L = 40 L lohnt sich der
    Umweg erst ab **Δp\* ≈ 10,7 ct/L** — und der Zeitwert dominiert.
+
+   **Zeitwert zeitabhängig (Review O7):** z = 12 €/h ist ein Durchschnitt —
+   auf dem Heimweg (Feierabend/Freizeit) ist eine Verzögerung subjektiv
+   teurer als auf dem Weg zur Arbeit („bin ohnehin unterwegs"). Deshalb ein
+   **z-Profil**: `value_of_time_peak` (z. B. 16 €/h, Fenster 17–20 Uhr) und
+   `value_of_time_offpeak` (z. B. 10 €/h), plus **Slider im Frontend**
+   („wie viel ist dir 10 min Umweg wert?"). Die Formel bleibt gleich, nur z
+   variiert; der API-Endpunkt rechnet optional mit `when` (Uhrzeit) und
+   liefert `z_used` zurück. Die **Selektion** rechnet konservativ mit dem
+   Durchschnittswert — eine z-Zeitreihe pro Kandidat bläht das Ranking auf,
+   ohne die Entscheidung qualitativ zu ändern.
 
    **Zwei Betriebsmodi, beide in der Pipeline implementiert** (`--trip-mode`):
    - `dedicated` (Extrafahrt von zuhause): fast nie lohnend — im Demo-Lauf
@@ -395,8 +505,10 @@ maps_url}]` — `maps_url` ist der Google-Deep-Link aus §5.
 `dow × hour` (Mediane bzw. Cheap-Probabilities) + Farbskalen-Grenzen.
 
 ### `GET /v1/route/evaluate`
-`?station_id=…&liters=40&detour_km=6&consumption=7.0&value_of_time=12` →
-`{delta_ct, gross_eur, detour_cost_eur, net_eur, worth_it}` (Formeln §7).
+`?station_id=…&liters=40&detour_km=6&consumption=7.0&value_of_time=12&when=2026-09-06T18:00`
+→ `{delta_ct, gross_eur, detour_cost_eur, net_eur, worth_it, z_used}` (Formeln §7).
+`when` ist optional — ohne `when` gilt das Tagesprofil (peak/offpeak, §7),
+`value_of_time` überschreibt das Profil.
 
 ### `GET /v1/health`
 Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand & -Oldest-Age,
@@ -415,18 +527,18 @@ wie das Konzept ihn abfängt.
 | P | Frage | Warum wichtig | Abdeckung im Konzept |
 |---|---|---|---|
 | **P0** | **Woher kommen die historischen Daten der 3 Städte — Auflösung, Zeitraum, Quelle (MTS-K-Rohdaten)?** | Die Selektion braucht ≥ 6–8 Wochen und idealerweise ≤ 15-Min-Auflösung; stündliche Daten schwächen die Harmonischen-Fits, Lücken < 85 % Coverage → Stations-Ausschluss | CSV-Schema (`analysis/README.md`), Coverage-Gate; bei Grob-Auflösung: Pipeline läuft trotzdem, aber R²/beste-Stunde-Aussagen schwächer — im Report sichtbar |
-| **P0** | **Sind die 20+ Stationen der Historie überhaupt meine real erreichbaren?** | Die Analyse rankt nur, was im Datensatz ist; Pendelrouten/Fernstraßen müssen im Sampling enthalten sein | `--home` je Stadt + `onroute`-Modus; vor Sichtung: Liste mit `--rank-by score` prüfen |
+| **P0** | **Sind die 20+ Stationen der Historie überhaupt meine real erreichbaren?** | Die Analyse rankt nur, was im Datensatz ist; Pendelrouten/Fernstraßen müssen im Sampling enthalten sein. **Frankfurt real:** im 25-km-Radius liegen 100+ Stationen — Radius/Stadtteilfilter vor der Analyse festlegen, sonst rechnet die Pipeline mit Stationen, die nie infrage kommen | Referenzpunkt je Stadt aus lokaler `analysis/config.local.json` (gitignored — **Heimadresse nie im Repo**) + `onroute`-Modus; Liste mit `--rank-by score` vor Sichtung prüfen; ggf. `--max-radius` |
 | **P0** | **E10-Verträglichkeit des Autos?** | Wenn das Fahrzeug kein E10 darf (ältere Modelle), ist die ganze E10-Selektion wertlos — dann Analyse mit `--fuel E5` wiederholen | Pipeline-Parameter; Konzept §7 Punkt 1 (Äquivalenzpreis) |
 | **P1** | **Rabatt-/Kartenprogramme (Payback bei Aral, DeutschlandCard, ADAC-, Firmen- oder Flottenkarten)?** | 2–4 ct äquivalenter Rabatt können das Stations-Ranking **umdrehen** — größer als viele δ̂ | persönlicher Rabatt je Marke als Parameter (geplant: `--brand-rebate "ARAL:0.02;HEM:0.0"`); heute: Top-10 der eigenen Karten-Marke gesondert betrachten |
 | **P1** | **Wann tanke ich wirklich?** (echtes Wochen-/Tagesprofil) | AV-Score und Heatmaps nutzen ein Default-Pendlerprofil; Schichtdienst/Homeoffice ändern die optimale Station | Gewichtungsprofil w(h) als Config (TODO: CLI-Flag), Empfehlung aus eigenen Tankbelegen kalibrieren |
-| **P1** | **Lebenszyklus der Stationen** (Umbau, Betreiberwechsel, Schließung) | δ̂ ist nur so lange gültig, wie die Preispolitik stabil ist | Re-Selektions-Kadenz vierteljährlich (Skript ist idempotent), CUSUM-Change-Alarm in der Engine (Backlog), `status: no prices`-Alarm nach 7 Tagen |
+| **P1** | **Lebenszyklus der Stationen** (Umbau, Betreiberwechsel, Schließung) | δ̂ ist nur so lange gültig, wie die Preispolitik stabil ist | Re-Selektions-Kadenz vierteljährlich (Skript ist idempotent) **+ CUSUM-Driftschranke (Review O4):** 7-Tage-Rolling-δ̂ je Top-10-Station, Alarm wenn \|CUSUM\| > 3σ über 14 Tage → Dashboard-Warnung „Station X prüfen, mögliche Re-Selektion" (täglich, < 1 s); `status: no prices`-Alarm nach 7 Tagen |
 
 ### Mathematik
 
 | P | Frage | Warum wichtig | Abdeckung |
 |---|---|---|---|
 | **P0** | **Selektionsbias („Winner's Curse"): Die beste von 54 Stationen ist immer auch die mit dem glücklichsten Zufall — wie ehrlich ist ihr δ̂?** | Ohne Validierung überschätzt man die Top-10 typischerweise | **implementiert:** Split-Half-Spearman-ρ je Stadt im Report; zusätzlich Out-of-Sample-Re-Check nach 4 Wochen Live-Betrieb |
-| **P1** | Reicht der Stadtmedian als Referenz, oder zählt die **lokale Konkurrenz** (3–5-km-Ring)? | Preisniveau ist räumlich korreliert; ‚günstig für Auerbach-Nord‘ ≠ ‚günstig für Auerbach‘ | Backlog: LOO-Median über k-nächste Nachbarn statt ganzer Stadt; heute: pro Stadtteil getrennte `city`-Werte möglich |
+| **P1** | Reicht der Stadtmedian als Referenz, oder zählt die **lokale Konkurrenz** (3–5-km-Ring)? | Preisniveau ist räumlich korreliert; ‚günstig für Auerbach-Nord‘ ≠ ‚günstig für Auerbach‘ | Backlog: LOO-Median über k-nächste Nachbarn statt ganzer Stadt; heute: pro Stadtteil getrennte `city`-Werte möglich |\n| **P1** | **Feiertage bundeslandspezifisch (HE/BY/NW)** | Feiertag in Stadt A = Werktag in Stadt B — verfälscht DoW-/Zyklus-Schätzung. Beispiele: Allerheiligen BY/NW, nicht HE; Dreikönig nur BY | `holidays`-Paket mit `subdiv` je Stadt: in der **Selektion implementiert** (`--subdiv`, AV/Tagesform ohne Feiertage), in der Engine als gepoolter Bundesland-Dummy (§3.2) |
 | **P2** | Interaktionen zwischen Stationen (Preisführerschaft, Edgeworth-Zyklen) | Erklärt Sprung-Timing; verbessert Nowcast um Minuten/Stunden | Backlog: Cross-Correlation/Granger-Screening; M2-AR-Nachlauf fängt das Gröbste |
 
 ### Technik & Betrieb
@@ -454,7 +566,8 @@ wie das Konzept ihn abfängt.
 | Meilenstein | Inhalt | Fertig-Kriterium |
 |---|---|---|
 | M1 | Collector + tmpfs-Ringpuffer + NAS-Uploader laufen 14 d | Datenlücken < 2 %, Ack-Protokoll fehlerfrei |
-| M2 | **Selektion mit echten Historien der 3 Städte** (Pipeline fertig in `analysis/`) | Top-10 gewählt, q < 0.05, Report archiviert |
-| M3 | Zeitreihen-Engine M1–M3 + ACI + Backtest | MASE(24 h) < 0,8 und PICP(95 %) ∈ [90, 98] % |
-| M4 | PWA-Dashboard (Fan, 2 Heatmaps, Top-10, Maps-Links) | Lighthouse > 90 |
-| M5 | TankPuls: 5 Endpunkte + Rate-Limits + Keys | OpenAPI-Doku + Tests grün |
+| M2 | **Selektion mit echten Historien der 3 Kampagnen** (HE/BY/NW; Heimstandort + Subdivs aus lokaler `config.local.json`, **nie** im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
+| M3 | Zeitreihen-Engine M1–M3 + ACI + Backtest (**Fits auf NAS**, Pi nur Inference) | MASE(24 h) < 0,95 gesamt **und** < 0,80 sprungfrei **und** Pinball < Naive; PICP(95 %) ∈ [90, 98] % |
+| M4 | PWA-Dashboard (Fan, 2 Heatmaps, Top-10, Maps-Links, Service-Worker-Cache) | Lighthouse > 90, installierbar, letzter Forecast offline abrufbar |
+| M5 | TankPuls: 5 Endpunkte + Rate-Limits + Keys (+ `when`/z-Profil in `/v1/route/evaluate`) | OpenAPI-Doku + Tests grün |
+| M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung ggü. Ensemble ohne M4-Q; sonst verworfen |

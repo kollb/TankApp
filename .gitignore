@@ -4,3 +4,10 @@ data/
 results/
 __pycache__/
 *.pyc
+
+# lokale venvs (nicht versioniert)
+.venv/
+
+# Privatdaten (Heimkoordinaten, API-Keys) — niemals versionieren
+config.local.json
+analysis/config.local.json
