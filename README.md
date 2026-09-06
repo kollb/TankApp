@@ -1,14 +1,22 @@
 # TankApp
 
-Persönliche Spritpreis-App: mathematische Tankstellen-Selektion aus
-historischen Daten, Preisprognose (heute / +3 / +7 Tage) mit kalibrierten
-Konfidenzintervallen, Betrieb auf Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
+Persönliche Spritpreis-**Entscheidungs**-App: mathematische Tankstellen-Selektion
+aus historischen Daten, Preisprognose mit kalibrierten Konfidenzintervallen —
+und einem Decision Layer, der daraus an der Zapfsäule genau eine Antwort macht:
+**jetzt tanken · warten · woanders** (+ Erfolgskonto). Betrieb auf
+Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
 
-- 📐 **Konzept (v4):** [`docs/KONZEPT.md`](docs/KONZEPT.md) — Zeitreihen-Engine,
-  Pi↔NAS-Architektur, Fahrzeug-Ökonomie, TankPuls-API
-- 🔍 **Kritische Analyse der Konzept-Bewertung (v3 → v4):**
-  [`docs/REVIEW-2026-09-06.md`](docs/REVIEW-2026-09-06.md) — was übernommen
-  wurde, wo die Bewertung korrigiert werden musste, was offen bleibt
+- 📐 **Konzept (v5) — das eine Dokument:** [`docs/KONZEPT.md`](docs/KONZEPT.md)
+  - §0 Produktprinzip: drei Fragen (jetzt/warten · hier/woanders · heute/später), zwei Modi
+  - §3 Zeitreihen-Engine (Quantile) · §4 Decision Layer (Ampel, €-Betrag, P_besser)
+  - §5 Brier/Reliability + persönliche Erfolgsbilanz · §6 Produkt-KPIs
+  - §8 UI: Alltags-Modus (Cockpit) & Werkstatt-Modus (Statistik-Labor)
+  - §11 `/v1/decide` + Outcome-Loop · §13 Roadmap M1–M7 (M7 = Kalibrierungs-Loop)
+  - Anhang A: Auswertung der externen Bewertung v3 → v4 (früher REVIEW-Dokument)
+  - Anhang B: Zuordnung der zwei Sample-GUIs zu den zwei Modi
+- 🖥️ **UI-Prototypen:** [`sample/good gui/`](sample/good%20gui) — Alltags-Modus
+  (Entscheidungs-Kompass) · [`sample/good statistic gui/`](sample/good%20statistic%20gui)
+  — Werkstatt-Modus (Entscheidungs-Labor: Scoreboard, Kalibrierung, Paarvergleich)
 - 🧮 **Schritt 1 – Selektion:** [`analysis/`](analysis/README.md) — Pipeline
   (robuste Statistik, Bootstrap, FDR, Composite-Score, bundeslandspezifische
   Feiertage via `--subdiv`) + [Report](docs/analysis/report_top10.md) (auf
