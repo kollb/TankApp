@@ -1,0 +1,6 @@
+numpy>=1.26
+pandas>=2.1
+matplotlib>=3.8
+# statsmodels ist nur für die Live-Prognose-Engine (KONZEPT.md §4) relevant,
+# die Selektion selbst rechnet mit numpy/pandas/matplotlib.
+statsmodels>=0.14

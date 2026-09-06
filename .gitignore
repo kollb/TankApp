@@ -1,0 +1,6 @@
+# Demo-/Rohdaten sind regenerierbar bzw. vertraulich -> nicht einchecken
+data/
+# Kennzahlen-CSV wird pro Lauf neu erzeugt (der Bericht in docs/analysis bleibt)
+results/
+__pycache__/
+*.pyc
