@@ -25,6 +25,8 @@ Methodik ist bewusst "hart" gerechnet:
   5. Risiko: σ_i = 1.4826·MAD(Δ_i) (robuste Volatilität) und
      Tagesrang-Stabilität ρ_i = Std der täglichen Mittelränge.
   6. Datenqualitäts-Gate: Coverage ≥ 85 %, sonst Ausschluss.
+  6b. Feiertage bundeslandspezifisch (--subdiv, z. B. HE/BY/NW): Feiertage werden
+      für AV/Tagesform ausgeschlossen; δ̂ bleibt auf allen Tagen (robust).
   7. Composite-Score als gewichtete Summe der z-standardisierten Komponenten
      (Default-Gewichte: Niveau .40, Verfügbarkeit .25, Vorhersagbarkeit .15,
       inverse Volatilität .10, inverse Rangstreuung .10) plus
@@ -49,6 +51,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Optional: bundeslandspezifische Feiertage (--subdiv, s. KONZEPT.md §2/§3.2).
+# Feiertage sind in Deutschland Ländersache: Heilige Drei Könige (06.01.) gilt
+# nur in Bayern, Allerheiligen (01.11.) in Bayern/NRW, aber nicht in Hessen —
+# deshalb je Stadt ein eigenes Bundesland-Subdiv.
+try:
+    import holidays as _holidays
+except ImportError:  # pragma: no cover
+    _holidays = None
+
 # ---------------------------------------------------------------- Konfiguration
 
 @dataclass
@@ -69,6 +80,9 @@ class Config:
     # --- Umweg-Ökonomie (KONZEPT.md §7) ---
     # Referenzpunkt je Stadt (lat, lon). Default: Stations-Schwerpunkt der Stadt.
     home: dict = field(default_factory=dict)
+    # Bundesland-Subdiv je Stadt (ISO 3166-2:DE, z. B. 'HE', 'BY', 'NW') für
+    # bundeslandspezifische Feiertage. Leer = Feiertage werden nicht modelliert.
+    subdiv: dict = field(default_factory=dict)
     consumption_l_100km: float = 7.0   # Fahrzeugverbrauch
     value_of_time: float = 12.0        # €/h Zeitwert
     avg_speed: float = 50.0            # km/h Stadtverkehr
@@ -256,6 +270,43 @@ def harmonic_fit(hour_bins: np.ndarray, med: np.ndarray, w: np.ndarray):
 
 
 
+# -------------------------------------------------------------- Feiertage (--subdiv)
+
+def parse_subdiv(spec: str | None) -> dict[str, str]:
+    """'Stadt:HE;Stadt:BY' -> {Stadt: Bundesland-Subdiv} (ISO 3166-2:DE).
+
+    Akzeptiert 'HE' und 'DE-HE' (wird normalisiert). Die Gültigkeit wird erst
+    bei der Auswertung über das `holidays`-Paket geprüft.
+    """
+    if not spec:
+        return {}
+    out: dict[str, str] = {}
+    for part in spec.split(";"):
+        if ":" not in part:
+            raise ValueError(f"--subdiv: 'Stadt:Subdiv' erwartet, bekam '{part}'")
+        name, sub = part.split(":", 1)
+        sub = sub.strip().upper().removeprefix("DE-")
+        if not sub:
+            raise ValueError(f"--subdiv: leeres Subdiv in '{part}'")
+        out[name.strip()] = sub
+    return out
+
+
+def holiday_mask(index: pd.DatetimeIndex, subdiv: str) -> pd.Series:
+    """True je Zeile, wenn der Kalendertag (lokal) ein Feiertag im Bundesland ist."""
+    if _holidays is None:
+        raise RuntimeError(
+            "--subdiv erfordert das Paket 'holidays' (pip install holidays)")
+    years = range(index.year.min(), index.year.max() + 1)
+    try:
+        cal = _holidays.Germany(subdiv=subdiv, years=years)
+    except NotImplementedError as exc:
+        raise ValueError(f"Unbekanntes Bundesland-Subdiv '{subdiv}'") from exc
+    hol = set(cal.keys())
+    days = pd.Series(index.normalize().date, index=index)
+    return days.isin(hol)
+
+
 # --------------------------------------------------------------- Hauptanalyse
 
 @dataclass
@@ -267,6 +318,9 @@ class CityResult:
     meta: pd.DataFrame
     excluded: list[str] = field(default_factory=list)
     stability: float = float("nan")   # Split-Half-Spearman-Rangkorrelation von δ̂
+    holiday_subdiv: str | None = None     # Bundesland (ISO 3166-2:DE)
+    holiday_days: int = 0                 # Feiertage im Analysefenster
+    holidays_applied: bool = False        # Feiertage von AV/Tagesform ausgeschlossen?
 
 
 def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
@@ -290,13 +344,29 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     day_keys = {d: i for i, d in enumerate(days.unique())}
     dnum = np.array([day_keys[d] for d in days], dtype=float)
 
-    # Top-3-Treffer je Stunde
+    # Feiertage (bundeslandspezifisch, --subdiv): werden für die Tagesform-/
+    # Verfügbarkeits-Schätzung ausgeschlossen, weil Öffnungszeiten und
+    # Pendlerverhalten an Feiertagen systematisch anders sind. Die robuste
+    # Niveau-Schätzung δ̂ bleibt auf allen Tagen (relativer Median ist robust).
+    subdiv = cfg.subdiv.get(city)
+    hol_mask = None
+    holiday_days = 0
+    holidays_applied = False
+    if subdiv:
+        hm = holiday_mask(mat.index, subdiv)
+        holiday_days = int(pd.unique(mat.index[hm].normalize()).size)
+        if holiday_days and (days.nunique() - holiday_days) >= 10:
+            hol_mask = hm.to_numpy()
+            holidays_applied = True
+    row_sel = ~hol_mask if hol_mask is not None else np.ones(len(mat), dtype=bool)
+
+    # Top-3-Treffer je Stunde (ohne Feiertage, sofern angewendet)
     rank = mat.rank(axis=1, method="min", na_option="keep")
     win = (rank <= 3).astype(float).where(mat.notna())
     P = np.full((mat.shape[1], 24), np.nan)
     hour_arr = np.floor(hours).astype(int)
     for hi in range(24):
-        sel = hour_arr == hi
+        sel = (hour_arr == hi) & row_sel
         P[:, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
 
     # Nutzerprofil: Pendlerfenster werktags, Wochenende gleichverteilt
@@ -337,8 +407,9 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
 
         half = np.floor(hours * 2) / 2
         bins = np.arange(0, 24, 0.5)
-        med = np.array([np.nanmedian(d[half == b]) for b in bins])
-        cnt = np.array([np.sum(~np.isnan(d[half == b])) for b in bins])
+        d_sel, half_sel = d[row_sel], half[row_sel]
+        med = np.array([np.nanmedian(d_sel[half_sel == b]) for b in bins])
+        cnt = np.array([np.sum(~np.isnan(d_sel[half_sel == b])) for b in bins])
         r2, amp, best_hour, grid, curve = harmonic_fit(bins, med, cnt)
 
         mad = np.nanmedian(np.abs(d - d_hat))
@@ -399,7 +470,9 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     tab.insert(0, "rank", tab.index + 1)
     return CityResult(city=city, table=tab, mat=mat, delta=delta,
                       meta=meta.reset_index(), excluded=excluded,
-                      stability=stability)
+                      stability=stability, holiday_subdiv=subdiv,
+                      holiday_days=holiday_days,
+                      holidays_applied=holidays_applied)
 
 # ------------------------------------------------------------------- Figuren
 
@@ -530,6 +603,15 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
         A(f"\n## Stadt: {res.city}\n")
         A(f"Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte): "
           f"**ρ = {res.stability:.2f}** (gegen Winner's Curse; ≥ 0.8 = stabil)\n")
+        if res.holiday_subdiv:
+            if res.holiday_days == 0:
+                status = "keine im Analysefenster"
+            elif res.holidays_applied:
+                status = "aus AV & Tagesform ausgeschlossen"
+            else:
+                status = "im Fenster, aber nicht ausgeschlossen (zu wenige Tage)"
+            A(f"Feiertage (Bundesland {res.holiday_subdiv}): **{res.holiday_days} Tage** — "
+              f"{status} · δ̂ wird auf allen Tagen geschätzt (robust)\n")
         if res.excluded:
             A(f"⚠️ **Ausgeschlossen (Datenqualität):** {', '.join(res.excluded)}\n")
         A("![Intraday-Zyklus](figures/cycle_" + res.city.lower() + ".png)\n")
@@ -576,6 +658,11 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
     A("- **Netto-Ranking** bezieht Umwegkosten (Sprit + Zeit) ein. Entfernungen sind "
       "Luftlinie × Straßenfaktor; wer Pendelrouten hat, reicht `--home` einen Routen-Anker "
       "(später: OSRM-Fahrzeit statt Circuity).")
+    if cfg.subdiv:
+        A("- **Feiertage bundeslandspezifisch** (z. B. Hessen/Bayern/NRW): ein Feiertag in "
+          "Stadt A kann Werktag in Stadt B sein. Sie werden über das `holidays`-Paket je "
+          "Bundesland erkannt und für AV/Tagesform ausgeschlossen (δ̂ bleibt robust auf "
+          "allen Tagen).")
     A(f"- Euro-Kennzahlen: {cfg.tank_volume:.0f} L je Füllung bzw. "
       f"{cfg.fills_per_week} Füllungen/Woche × 52.")
 
@@ -585,7 +672,12 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
 # ---------------------------------------------------------------------- Main
 
 def parse_home(spec: str | None) -> dict[str, tuple[float, float]]:
-    """'Stadt:lat,lon;Stadt:lat,lon' -> {Stadt: (lat, lon)}."""
+    """'Stadt:lat,lon;Stadt:lat,lon' -> {Stadt: (lat, lon)}.
+
+    Achtung Datenschutz: nur Koordinaten, niemals Straße/Hausnummer — und
+    auch die Koordinaten gehören in die lokale, gitignorierte config
+    (--config), nicht ins Repo oder in die Shell-History.
+    """
     if not spec:
         return {}
     out = {}
@@ -593,6 +685,36 @@ def parse_home(spec: str | None) -> dict[str, tuple[float, float]]:
         name, coords = part.split(":")
         lat, lon = coords.split(",")
         out[name.strip()] = (float(lat), float(lon))
+    return out
+
+
+def home_from_config(data: dict) -> dict[str, tuple[float, float]]:
+    """'{"home": {"Stadt": [lat, lon]}}' -> {Stadt: (lat, lon)}."""
+    out: dict[str, tuple[float, float]] = {}
+    for city, val in data.get("home", {}).items():
+        if val is None or (len(val) != 2):
+            raise ValueError(
+                f"--config: home['{city}'] muss [lat, lon] sein "
+                "(Platzhalter ersetzen!)")
+        lat, lon = float(val[0]), float(val[1])
+        if lat == 0.0 and lon == 0.0:
+            raise ValueError(
+                f"--config: home['{city}'] ist noch der Platzhalter [0.0, 0.0] — "
+                "Koordinaten einmalig per Geocoding ermitteln und eintragen "
+                "(Straße/Hausnummer aber nur lokal in config.local.json, niemals "
+                "ins Repo!)")
+        out[city] = (lat, lon)
+    return out
+
+
+def subdiv_from_config(data: dict) -> dict[str, str]:
+    """'{"subdiv": {"Stadt": "HE"}}' -> {Stadt: 'HE'}."""
+    out: dict[str, str] = {}
+    for city, sub in data.get("subdiv", {}).items():
+        sub = str(sub).strip().upper().removeprefix("DE-")
+        if not sub:
+            raise ValueError(f"--config: leeres subdiv für '{city}'")
+        out[city] = sub
     return out
 
 
@@ -608,7 +730,16 @@ def main() -> None:
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--home", default=None,
                     help="Referenzpunkt je Stadt: 'Stadt:lat,lon;Stadt:lat,lon' "
-                         "(Default: Stations-Schwerpunkt) — für Umweg-Netto")
+                         "(Default: Stations-Schwerpunkt; Werte bevorzugt aus "
+                         "--config, damit Koordinaten nicht im Repo/Shell landen)")
+    ap.add_argument("--config", type=Path, default=None,
+                    help="Lokale JSON-Konfiguration (gitignored, enthält "
+                         "Privatdaten): {'home': {'Stadt': [lat, lon]}, "
+                         "'subdiv': {'Stadt': 'HE'}} — CLI-Flags überschreiben")
+    ap.add_argument("--subdiv", default=None,
+                    help="Bundesland je Stadt (ISO 3166-2:DE) für Feiertage: "
+                         "'Stadt:HE;Stadt:BY;Stadt:NW' — Feiertage werden dann aus "
+                         "AV & Tagesform ausgeschlossen (erfordert Paket 'holidays')")
     ap.add_argument("--consumption", type=float, default=7.0, help="L/100km")
     ap.add_argument("--value-of-time", type=float, default=12.0, help="€/h")
     ap.add_argument("--avg-speed", type=float, default=50.0, help="km/h")
@@ -625,9 +756,20 @@ def main() -> None:
     cfg = Config(fuel=args.fuel.upper(), top=args.top, tank_volume=args.tank_volume,
                  fills_per_week=args.fills_per_week, min_coverage=args.min_coverage,
                  n_boot=args.boot, home=parse_home(args.home),
+                 subdiv=parse_subdiv(args.subdiv),
                  consumption_l_100km=args.consumption,
                  value_of_time=args.value_of_time, avg_speed=args.avg_speed,
                  trip_mode=args.trip_mode, rank_by=args.rank_by)
+    # Lokale, gitignorierte Konfiguration (Privatdaten) — CLI-Flags gewinnen.
+    if args.config:
+        import json
+        data = json.loads(args.config.read_text(encoding="utf-8"))
+        cfg.home = home_from_config(data)
+        cfg.home.update(parse_home(args.home))           # CLI überschreibt
+        cfg.subdiv = subdiv_from_config(data)
+        cfg.subdiv.update(parse_subdiv(args.subdiv))
+        print(f"Lokale Konfiguration geladen: {args.config} "
+              f"(Privatdaten — Datei ist gitignored)")
     rng = np.random.default_rng(cfg.seed)
 
     df = load_prices(args.data, cfg.fuel)

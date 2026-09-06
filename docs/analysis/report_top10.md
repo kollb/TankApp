@@ -24,6 +24,8 @@ Automatisch erzeugt durch `analysis/station_selection.py`.
 
 Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte): **ρ = 1.00** (gegen Winner's Curse; ≥ 0.8 = stabil)
 
+Feiertage (Bundesland HE): **0 Tage** — keine im Analysefenster · δ̂ wird auf allen Tagen geschätzt (robust)
+
 ![Intraday-Zyklus](figures/cycle_auerbach.png)
 
 ![Heatmap](figures/heatmap_auerbach.png)
@@ -53,6 +55,8 @@ Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte):
 
 Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte): **ρ = 1.00** (gegen Winner's Curse; ≥ 0.8 = stabil)
 
+Feiertage (Bundesland BY): **0 Tage** — keine im Analysefenster · δ̂ wird auf allen Tagen geschätzt (robust)
+
 ![Intraday-Zyklus](figures/cycle_lindenberg.png)
 
 ![Heatmap](figures/heatmap_lindenberg.png)
@@ -81,6 +85,8 @@ Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte):
 ## Stadt: Neuental
 
 Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte): **ρ = 0.99** (gegen Winner's Curse; ≥ 0.8 = stabil)
+
+Feiertage (Bundesland NW): **0 Tage** — keine im Analysefenster · δ̂ wird auf allen Tagen geschätzt (robust)
 
 ![Intraday-Zyklus](figures/cycle_neuental.png)
 
@@ -133,4 +139,5 @@ Split-Half-Stabilität der Rangfolge (Spearman-ρ δ̂ 1. vs. 2. Jahreshälfte):
 - Der Composite-Score ist innerhalb einer Stadt z-standardisiert; globaler Vergleich über Score ist daher eine Näherung (Städte haben unterschiedliche Streuungen).
 - **Winner's Curse:** Aus 54 Stationen wird das δ̂ der Gewinner systematisch leicht optimistisch geschätzt. Der Split-Half-Check (ρ je Stadt) misst, ob die Rangfolge auf ungesehenen Daten bestehen bleibt; zusätzlich empfiehlt sich ein Out-of-Sample-Re-Check nach 4 Wochen Live-Betrieb.
 - **Netto-Ranking** bezieht Umwegkosten (Sprit + Zeit) ein. Entfernungen sind Luftlinie × Straßenfaktor; wer Pendelrouten hat, reicht `--home` einen Routen-Anker (später: OSRM-Fahrzeit statt Circuity).
+- **Feiertage bundeslandspezifisch** (z. B. Hessen/Bayern/NRW): ein Feiertag in Stadt A kann Werktag in Stadt B sein. Sie werden über das `holidays`-Paket je Bundesland erkannt und für AV/Tagesform ausgeschlossen (δ̂ bleibt robust auf allen Tagen).
 - Euro-Kennzahlen: 40 L je Füllung bzw. 1.2 Füllungen/Woche × 52.

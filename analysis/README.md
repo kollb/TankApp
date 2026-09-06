@@ -24,10 +24,16 @@ Eine CSV je Stadt (oder eine große gemeinsame Datei), Spalten:
 ```bash
 pip install -r analysis/requirements.txt
 
-# Sobald echte Daten da sind:
+# 1) Lokale Privatdaten anlegen (gitignored!) — Straße/Nr. NIE ins Repo:
+cp analysis/config.local.example.json analysis/config.local.json
+#    → "home" mit Koordinaten füllen (einmal per Geocoding; Stadt reicht als
+#      Label, z. B. "Frankfurt"), "subdiv" mit Bundesland, z. B. "HE".
+
+# 2) Sobald echte Daten da sind (3 Kampagnen: Hessen/Bayern/NRW; Heimat = Frankfurt):
 python3 analysis/station_selection.py \
-    --data data/raw/stadt1.csv data/raw/stadt2.csv data/raw/stadt3.csv \
-    --fuel E10 --top 10 --tank-volume 40 --fills-per-week 1.2
+    --data data/raw/hessen.csv data/raw/bayern.csv data/raw/nrw.csv \
+    --fuel E10 --top 10 --tank-volume 40 --fills-per-week 1.2 \
+    --config analysis/config.local.json
 
 # Solange noch keine echten Daten da sind (Demo-Ersatz, deterministisch):
 python3 analysis/generate_demo_data.py --days 56 --out data/demo
@@ -54,9 +60,17 @@ python3 analysis/window_analysis.py --data data/demo/*.csv --fuel E10
 | `--fills-per-week` | 1.2 | Tankhäufigkeit |
 | `--min-coverage` | 0.85 | Datenqualitäts-Gate je Station |
 | `--boot` | 2000 | Bootstrap-Wiederholungen für KI/p-Werte |
-| `--home` | Stations-Schwerpunkt | Referenzpunkt je Stadt: `"Auerbach:52.40,13.05;…"` — steuert die Umweg-Entfernungen |
+| `--config` | leer | Lokale, **gitignorierte** JSON-Datei (`config.local.json`) mit Privatdaten: `{"home": {"Frankfurt": [lat, lon]}, "subdiv": {"Frankfurt": "HE"}}` — empfohlener Weg statt CLI-Flags, damit Adresse/Koordinaten nie im Repo oder in der Shell-History landen |
+| `--home` | Stations-Schwerpunkt | Referenzpunkt je Stadt (Koordinaten — **bevorzugt aus `--config`**, nicht als Kommandozeilen-Flag) |
+| `--subdiv` | leer | Bundesland je Stadt für Feiertage: `"Frankfurt:HE;Muenchen:BY;Koeln:NW"` — Feiertage werden dann aus AV & Tagesform ausgeschlossen (Paket `holidays`; Unterschiede z. B. Allerheiligen: BY/NW ja, HE nein) |
 | `--consumption` / `--value-of-time` / `--avg-speed` | 7.0 / 12.0 / 50 | Fahrzeug-Ökonomie (L/100km, €/h, km/h) |
 | `--trip-mode` | `onroute` | `onroute` = nur Mehrweg ggü. nächster Station · `dedicated` = Extrafahrt (strenger, Zeitwert meist dominant) |
 | `--rank-by` | `net` | Ranking: `net` = Netto-Ersparnis nach Umweg · `score` = Statistik-Composite |
 
-**Umweg-Beispiel:** `python3 analysis/station_selection.py --data data/demo/*.csv --home "Auerbach:52.401,13.051;Lindenberg:51.340,12.370;Neuental:50.980,11.030" --consumption 6.5 --value-of-time 10`
+**Umweg-Beispiel:** `python3 analysis/station_selection.py --data data/demo/*.csv --config analysis/config.local.json --consumption 6.5 --value-of-time 10`
+
+**Kraftstoff:** Pipeline läuft standardmäßig auf **E10** (primärer
+Kraftstoff). Diesel/E5 werden vom Collector mitgespeichert (gleiche
+API-Antwort) und sind als Nowcast verfügbar; eine eigene Diesel-Selektion/
+Prognose läuft mit `--fuel DIESEL` auf denselben Daten (zweiter Lauf,
+kostenlos).
