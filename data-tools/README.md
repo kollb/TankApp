@@ -6,6 +6,7 @@ Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
 
 | Skript | Zweck |
 |---|---|
+| **`run_pipeline.py`** | **Alles in einem Befehl:** fetch → ingest → Selektion → `polling.json`. Lädt fehlende Tage nach (idempotent), sichert die Stationsliste, ingesiet mit `--resample 30 --density 60 --fuel e10`, selektiert alle Städte aus `config.local.json` und baut das Polling-Set für eine Stadt (Default Frankfurt) nach der Regel **N_billigste im Gesamtumkreis (Preis-Leader) + N_billigste in der Nähe des Ankers** (max. 2 je Marke). Ausgabe u. a. `docs/analysis/stations/polling.json` (gitignored). Windows: `py -3 data-tools\run_pipeline.py` — netrc wird automatisch unter `data/_netrc` gefunden. |
 | `fetch_history.py` | Tagesdateien per HTTP (raw-Endpoint) laden: fortsetzbar, idempotent, gzip, Backoff. `--dry-run` zeigt Größe + Zeitprojektion. |
 | `discover_stations.py` | **Schritt 1**: Tankstellen je Ort finden (25-km-Radius über `config.local.json`-Anker), Zwillinge je Marke zusammenfassen, Polling-Set (max. 10 UUIDs = 1 Request) nach Marke/Präferenz wählen, Eignung aus der Historie prüfen (`--check-history`). Erzeugt `report.md`, `*_kandidaten.csv`, `polling.json`. Braucht nur die 10-MB-Tagesliste, keine Preisdateien. |
 | `ingest_history.py` | Rohhistorie → `data/ready/<kampagne>_hist.csv(.gz)` im Schema `analysis/README.md` (Radiusfilter, long-Format, Fortschreibung, Raster, QA-Bericht). |
