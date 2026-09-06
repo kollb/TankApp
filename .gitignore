@@ -11,3 +11,8 @@ __pycache__/
 # Privatdaten (Heimkoordinaten, API-Keys) — niemals versionieren
 config.local.json
 analysis/config.local.json
+
+# netrc-Zugangsdateien — auch wenn sie (Windows: _netrc) im Repo-Ordner liegen
+.netrc
+_netrc
+*.netrc
