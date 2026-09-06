@@ -19,6 +19,9 @@ Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
 - 🖥️ **UI-Prototypen:** [`sample/good gui/`](sample/good%20gui) — Alltags-Modus
   (Entscheidungs-Kompass) · [`sample/good statistic gui/`](sample/good%20statistic%20gui)
   — Werkstatt-Modus (Entscheidungs-Labor: Scoreboard, Kalibrierung, Paarvergleich)
+- 📥 **Schritt 0 – Datenbezug:** [`docs/DATEN-BEZUG.md`](docs/DATEN-BEZUG.md) —
+  Historie **ohne** 100-GB-Clone holen (`data-tools/`): ~1,5 GB gz für 2025/2026 statt 125 GB,
+  plus Radius-Filter (12 GB → 200 MB), Ingest ins Analyse-Schema, NAS-Cron für die Tagesdatei
 - 🧮 **Schritt 1 – Selektion:** [`analysis/`](analysis/README.md) — Pipeline
   (robuste Statistik, Bootstrap, FDR, Composite-Score, bundeslandspezifische
   Feiertage via `--subdiv`) + [Report](docs/analysis/report_top10.md) (auf

@@ -70,7 +70,8 @@ class Config:
     fills_per_week: float = 1.2
     min_coverage: float = 0.85
     n_boot: int = 2000
-    step_min: int = 5
+    step_min: int = 5            # Analyse-Raster in Minuten (Historie aus Änderungsdaten: 30/60)
+    ffill_minutes: float | None = None   # Horizont "Preis gilt noch" (s. to_matrix)
     w_level: float = 0.40
     w_avail: float = 0.25
     w_pred: float = 0.15
@@ -117,8 +118,15 @@ def load_prices(paths: list[Path], fuel: str) -> pd.DataFrame:
     return df
 
 
-def to_matrix(df: pd.DataFrame, city: str, step_min: int) -> pd.DataFrame:
-    """Pivot auf reguläres step_min-Raster; Stations-Metadaten gehen nicht verloren."""
+def to_matrix(df: pd.DataFrame, city: str, step_min: int,
+              ffill_min: int | None = None) -> pd.DataFrame:
+    """Pivot auf reguläres step_min-Raster; Stations-Metadaten gehen nicht verloren.
+
+    Lücken werden bis `ffill_min` Minuten vorwärts gefüllt. Default: max(30, 3× Median
+    Beobachtungsabstand) — damit auch Daten, die nur PreisÄNDERUNGEN enthalten
+    (Tankerkönig-Historie, Poll im 20-Min-Takt), nicht als Lücken verbucht werden.
+    NaN bleibt, wo der Preis wirklich unbekannt ist (Staleness, s. KONZEPT.md §3.1).
+    """
     d = df[df.city == city]
     mat = (d.pivot_table(index="timestamp", columns="station_id",
                          values="price", aggfunc="mean")
@@ -127,9 +135,17 @@ def to_matrix(df: pd.DataFrame, city: str, step_min: int) -> pd.DataFrame:
                          mat.index.max().ceil(f"{step_min}min"),
                          freq=f"{step_min}min")
     mat = mat.reindex(grid)
-    # kurze Lücken (<= 30 min) vorwärts füllen, Rest bleibt NaN (Staleness)
-    mat = mat.ffill(limit=max(1, 30 // step_min))
-    return mat
+    if ffill_min is None:
+        # Kadenz aus den ursprüglichen Beobachtungszeitpunkten (pro Station), nicht aus dem
+        # reindexed Raster — sonst misst man hier immer genau step_min.
+        st = d.sort_values(["station_id", "timestamp"]).groupby("station_id")["timestamp"]
+        gaps = st.diff().dropna() / pd.Timedelta(minutes=1)
+        med_gap = float(gaps.median()) if len(gaps) else 0.0
+        # dichte Daten (Poll alle 5 min) wie bisher; späte Historie (nur Änderungen,
+        # Lücken durch Nacht/Schließzeiten) braucht einen größeren Horizont, sonst
+        # fällt jede Station durchs Coverage-Gate.
+        ffill_min = max(30.0, 3.0 * med_gap) if med_gap <= 6 else max(180.0, 3.0 * med_gap)
+    return mat.ffill(limit=max(1, round(ffill_min / step_min)))
 
 # ------------------------------------------------- Statistik-Bausteine
 
@@ -325,7 +341,7 @@ class CityResult:
 
 def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
                  rng: np.random.Generator) -> CityResult:
-    mat = to_matrix(df, city, cfg.step_min)
+    mat = to_matrix(df, city, cfg.step_min, ffill_min=cfg.ffill_minutes)
     meta = (df[df.city == city]
             .drop_duplicates("station_id")
             .set_index("station_id")[["station_name", "brand", "lat", "lon"]])
@@ -335,6 +351,11 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     excluded = [f"{sid} (Coverage {coverage[sid]:.0%})"
                 for sid in coverage.index if sid not in set(keep)]
     mat = mat[keep]
+    if mat.shape[1] < 2:
+        raise ValueError(
+            f"Stadt '{city}': nur {mat.shape[1]} Station nach dem Coverage-Gate — "
+            f"Relativpreise (LOO-Median) sind damit nicht definierbar. "
+            f"Größeren Zeitraum wählen, Städte zusammenlegen oder --min-coverage senken.")
 
     base = loo_baseline(mat)
     delta = (mat - base) * 100.0  # ct/L relativ zum Stadt-LOO-Median
@@ -385,7 +406,8 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     dist_map = {sid: haversine_km(home_lat, home_lon,
                                   float(meta.loc[sid, "lat"]), float(meta.loc[sid, "lon"]))
                 for sid in mat.columns}
-    dist_ref = min(dist_map.values())   # nächste Station = "ohnehin-Alternative"
+    # einzelne Station der Stadt -> keine "ohnehin-Alternative": Referenzweg = 0
+    dist_ref = min(dist_map.values()) if dist_map else 0.0
 
     rows = []
     for j, sid in enumerate(mat.columns):
@@ -597,7 +619,6 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
     A(f"| − | Rangstabilität | Std(tägliche Mittelränge) | {cfg.w_rank} |")
     A("| 7 | Umweg-Netto | K(d)-Modell, Bootstrap-KI, P(Netto > 0) | Ranking 'net' |\n")
 
-    all_tab = pd.concat([r.table for r in results], ignore_index=True)
 
     for res in results:
         A(f"\n## Stadt: {res.city}\n")
@@ -727,6 +748,14 @@ def main() -> None:
     ap.add_argument("--tank-volume", type=float, default=40.0)
     ap.add_argument("--fills-per-week", type=float, default=1.2)
     ap.add_argument("--min-coverage", type=float, default=0.85)
+    ap.add_argument("--ffill-minutes", type=float, default=None,
+                    help="Lücken, die noch als 'Preis bekannt' gelten (min). Default: 30 bei "
+                         "dichten Daten, max(180, 3×Medianabstand) bei Änderungshistorie")
+    ap.add_argument("--step-min", type=int, default=5,
+                    help="Analyse-Raster in Minuten. Tankerkönig-Historie liefert nur "
+                         "PreisÄNDERUNGEN (~alle 15-30 min) — für übernommene Historie "
+                         "--step-min 30 oder 60 setzen, sonst wird Abdeckung auf einem zu "
+                         "feinen Raster gemessen (KONZEPT.md: Raster beliebig).")
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--home", default=None,
                     help="Referenzpunkt je Stadt: 'Stadt:lat,lon;Stadt:lat,lon' "
@@ -755,7 +784,8 @@ def main() -> None:
 
     cfg = Config(fuel=args.fuel.upper(), top=args.top, tank_volume=args.tank_volume,
                  fills_per_week=args.fills_per_week, min_coverage=args.min_coverage,
-                 n_boot=args.boot, home=parse_home(args.home),
+                 n_boot=args.boot, step_min=args.step_min, ffill_minutes=args.ffill_minutes,
+                 home=parse_home(args.home),
                  subdiv=parse_subdiv(args.subdiv),
                  consumption_l_100km=args.consumption,
                  value_of_time=args.value_of_time, avg_speed=args.avg_speed,
@@ -777,15 +807,28 @@ def main() -> None:
     print(f"Geladen: {len(df):,} Zeilen | Städte: {', '.join(cities)} | Kraftstoff: {cfg.fuel}")
 
     results: list[CityResult] = []
+    skipped: list[tuple[str, str]] = []
     for city in cities:
         print(f"  Analysiere {city} …")
-        res = analyse_city(df, city, cfg, rng)
+        try:
+            res = analyse_city(df, city, cfg, rng)
+        except ValueError as exc:          # zu wenige Stationen o. ä. -> Stadt überspringen
+            print(f"    ⚠ übersprungen: {exc}")
+            skipped.append((city, str(exc)))
+            continue
         results.append(res)
         t = res.table.iloc[0]
         print(f"    → bester Kandidat: {t.station_name} (δ̂={t.delta_ct:+.2f} ct, "
               f"q={t.q_value:.4f}, Netto={t.net_per_fill_eur:+.2f} €/Füllung, "
               f"Stabilität ρ={res.stability:.2f})")
 
+    if not results:
+        raise SystemExit("Keine Stadt erfüllt die Mindestanforderungen (≥2 Stationen nach dem "
+                         "Coverage-Gate). Zeitraum vergrößern, Städte zusammenlegen "
+                         "(data-tools/ingest_history.py --city campaign) oder --min-coverage senken.")
+    if skipped:
+        print(f"  ({len(skipped)} von {len(cities)} Städten übersprungen: "
+              f"{', '.join(c for c, _ in skipped[:6])})")
     all_tab = pd.concat([r.table for r in results], ignore_index=True)
     sort_key = "net_per_fill_eur" if cfg.rank_by == "net" else "score"
     all_tab = all_tab.sort_values(sort_key, ascending=False).reset_index(drop=True)

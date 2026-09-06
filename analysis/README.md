@@ -19,6 +19,19 @@ Eine CSV je Stadt (oder eine große gemeinsame Datei), Spalten:
 | `price` | float | `1.629` | EUR/L |
 | `status` | string *(optional)* | `open` | `open`/`closed` — geschlossene Zeiten werden maskiert |
 
+## Woher die Historie kommt
+
+Empfohlener Weg: **nicht** das Tankerkönig-Datenrepo (100 GB) clonen, sondern Tagesdateien per
+HTTP holen und nur den eigenen Radius behalten — Anleitung + Größen-/Zeitrechnung:
+[`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md), Werkzeuge in [`data-tools/`](../data-tools/README.md).
+
+Wichtig für übernommene Historie: sie enthält nur **Preisänderungen** (~28/Station/Tag), keine
+5-min-Reihe. Deshalb beim Selektionslauf `--step-min 30` setzen (Raster), oder im Ingest
+`--density 5` (lückenlose Stand-Zeilen, ~8× Datei) — sonst fällt jede Station durchs
+85-%-Coverage-Gate. `to_matrix()` füllt Lücken inzwischen automatisch bis zur dreifachen
+Median-Kadenz (`--ffill-minutes` überschreibbar), und Städte ohne ≥2 Stationen werden
+übersprungen statt abzustürzen (`--city campaign` im Ingest gruppiert Umland + Stadt zu einem Markt).
+
 ## Ausführen
 
 ```bash
@@ -60,6 +73,8 @@ python3 analysis/window_analysis.py --data data/demo/*.csv --fuel E10
 | `--fills-per-week` | 1.2 | Tankhäufigkeit |
 | `--min-coverage` | 0.85 | Datenqualitäts-Gate je Station |
 | `--boot` | 2000 | Bootstrap-Wiederholungen für KI/p-Werte |
+| `--step-min` | 5 | Analyse-Raster in Minuten — **30 für Tankerkönig-Historie** (Änderungsdaten), 5 für eigene Collector-Daten |
+| `--ffill-minutes` | auto | Horizont „Preis gilt noch": 30 min bei dichten Daten, sonst max(180, 3×Medianabstand) |
 | `--config` | leer | Lokale, **gitignorierte** JSON-Datei (`config.local.json`) mit Privatdaten: `{"home": {"Frankfurt": [lat, lon]}, "subdiv": {"Frankfurt": "HE"}}` — empfohlener Weg statt CLI-Flags, damit Adresse/Koordinaten nie im Repo oder in der Shell-History landen |
 | `--home` | Stations-Schwerpunkt | Referenzpunkt je Stadt (Koordinaten — **bevorzugt aus `--config`**, nicht als Kommandozeilen-Flag) |
 | `--subdiv` | leer | Bundesland je Stadt für Feiertage: `"Frankfurt:HE;Muenchen:BY;Koeln:NW"` — Feiertage werden dann aus AV & Tagesform ausgeschlossen (Paket `holidays`; Unterschiede z. B. Allerheiligen: BY/NW ja, HE nein) |
