@@ -1,0 +1,17 @@
+{
+  "name": "TankApp — TankPuls v4",
+  "short_name": "TankApp",
+  "description": "Mathematisch harte Selektion, kalibrierte Konfidenz und Tank-Entscheidungs-Kompass",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

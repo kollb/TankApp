@@ -1,102 +1,70 @@
-import {
-  pgTable,
-  serial,
-  text,
-  integer,
-  real,
-  boolean,
-  date,
-  timestamp,
-  jsonb,
-  primaryKey,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, boolean, integer, timestamp, serial } from "drizzle-orm/pg-core";
 
-/** Kampagnen-Städte (Konzept v4: HE / BY / NW) */
-export const cities = pgTable("cities", {
-  id: serial("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
-  name: text("name").notNull(),
-  state: text("state").notNull(), // HE | BY | NW
-  lat: real("lat").notNull(),
-  lon: real("lon").notNull(),
-  baseCt: real("base_ct").notNull(), // Basis-Preisniveau E10 in ct/L
-});
-
-/** Stationen mit Masterdaten + Selektions-Kennzahl δ̂ (Median vs. City-LOO-Median, Trainingszeitraum) */
 export const stations = pgTable("stations", {
-  id: text("id").primaryKey(),
-  cityId: integer("city_id").notNull(),
-  name: text("name").notNull(),
-  brand: text("brand").notNull(),
+  id: varchar("id", { length: 64 }).primaryKey(), // UUID from MTS-K / Tankerkönig
+  name: varchar("name", { length: 255 }).notNull(),
+  brand: varchar("brand", { length: 100 }).notNull(),
+  street: varchar("street", { length: 255 }).notNull(),
+  houseNumber: varchar("house_number", { length: 50 }),
+  place: varchar("place", { length: 100 }).notNull(),
+  postCode: varchar("post_code", { length: 20 }),
   lat: real("lat").notNull(),
-  lon: real("lon").notNull(),
-  profile: text("profile").notNull(), // std | aggr | disc | flat | riser
-  is24h: boolean("is_24h").notNull(),
-  baseOffsetCt: real("base_offset_ct").notNull(),
-  pb: real("pb").notNull(), // Wahrscheinlichkeit „Nachmittags-Sprung-Tag" (nur Trainings-Realität)
-  deltaCt: real("delta_ct").notNull(), // δ̂ in ct/L (Median über Trainingszeitraum, Leave-One-Out-City-Median)
+  lng: real("lng").notNull(),
+  campaign: varchar("campaign", { length: 50 }).notNull(), // Frankfurt am Main, München-Nord, Köln-Bonn
+  subdiv: varchar("subdiv", { length: 10 }).notNull(), // HE, BY, NW
+  distHome: real("dist_home").notNull(), // km from home reference
+  isTop10: boolean("is_top10").default(false).notNull(),
+  quotaRank: integer("quota_rank"), // 1-6 for HE, 1-2 for BY, 1-2 for NW
+  isOpen: boolean("is_open").default(true).notNull(),
+  lastPriceE10: real("last_price_e10"),
+  lastPriceE5: real("last_price_e5"),
+  lastPriceDiesel: real("last_price_diesel"),
+  deltaHat: real("delta_hat"), // Relative price delta vs LOO baseline (ct/L, negative is cheaper)
+  ciLo: real("ci_lo"), // 95% Bootstrap CI low
+  ciHi: real("ci_hi"), // 95% Bootstrap CI high
+  qValue: real("q_value"), // Benjamini-Hochberg FDR
+  avScore: real("av_score"), // Availability score in commuter windows (0..1)
+  cheapestHour: real("cheapest_hour"), // e.g. 18.5 => 18:30
+  madSigma: real("mad_sigma"), // Robust risk measure (1.4826 * MAD)
+  coveragePct: real("coverage_pct"), // Data coverage gate
+  mase24h: real("mase_24h"), // MASE vs seasonal naive
+  picp7d: real("picp_7d"), // 7-day rolling prediction interval coverage %
+  cusumDrift: real("cusum_drift"), // CUSUM drift statistic
+  status: varchar("status", { length: 20 }).default("open"), // open, closed, no prices
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-/** 5-min-Preisraster (Poll-Fenster 06:00–23:55, UTC gespeichert, Preise in €/L) */
-export const pricePoints = pgTable(
-  "price_points",
-  {
-    stationId: text("station_id").notNull(),
-    ts: timestamp("ts", { withTimezone: true }).notNull(),
-    price: real("price").notNull(),
-    open: boolean("open").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.stationId, t.ts] })],
-);
-
-/** Tages-Aggregate je Station (Grundlage der Entscheidungs-Engine) */
-export const dailyStats = pgTable(
-  "daily_stats",
-  {
-    id: serial("id").primaryKey(),
-    stationId: text("station_id").notNull(),
-    day: date("day").notNull(),
-    dow: integer("dow").notNull(),
-    weekday: boolean("weekday").notNull(),
-    isHoliday: boolean("is_holiday").notNull(),
-    cls: integer("cls").notNull(), // 0 = Werktag, 1 = Wochenende/Feiertag
-    p8: real("p8").notNull(), // Preis 08:00 in ct/L
-    minPrice: real("min_price").notNull(), // Minimum nach 08:00 (offene Punkte) in ct/L
-    minHour: real("min_hour").notNull(),
-    bestCt: real("best_ct").notNull(), // p8 − minPrice (perfekte Sicht) in ct/L
-    meanPrice: real("mean_price").notNull(),
-  },
-  (t) => [{ name: "daily_stats_station_day_idx", columns: [t.stationId, t.day] }],
-);
-
-/** Pro Station geschätztes „Verhalten" aus dem Trainingszeitraum (nur Trainingsdaten!) */
-export const stationModels = pgTable("station_models", {
-  stationId: text("station_id").primaryKey(),
-  predWk: integer("pred_wk").notNull(), // vorhergesagte billigste Stunde (Werktag)
-  predWe: integer("pred_we").notNull(),
-  shapeWk: jsonb("shape_wk").notNull(), // number[] Stundenprofil ct (6..23) Werktag
-  shapeWe: jsonb("shape_we").notNull(),
-  savesWk: jsonb("saves_wk").notNull(), // number[] realisierte Ersparnisse S (Trainings-Werktage) ct/L
-  savesWe: jsonb("saves_we").notNull(),
-  muWk: real("mu_wk").notNull(), // E[S] Trainings-Werktage
-  muWe: real("mu_we").notNull(),
-  pWk: real("p_wk").notNull(), // P(S>0)
-  pWe: real("p_we").notNull(),
+export const pricePoints = pgTable("price_points", {
+  id: serial("id").primaryKey(),
+  stationId: varchar("station_id", { length: 64 }).notNull(),
+  fuel: varchar("fuel", { length: 10 }).notNull(), // e10, e5, diesel
+  price: real("price").notNull(),
+  isOpen: boolean("is_open").default(true).notNull(),
+  timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
 });
 
-/** Out-of-Sample-Entscheidungs-Protokoll (eval-Window, 14 Tage) */
-export const decisionRows = pgTable(
-  "decision_rows",
-  {
-    id: serial("id").primaryKey(),
-    stationId: text("station_id").notNull(),
-    day: date("day").notNull(),
-    cls: integer("cls").notNull(),
-    mu: real("mu").notNull(), // E[S] aus Training (ct/L)
-    p: real("p").notNull(), // P(S>0) aus Training
-    sCt: real("s_ct").notNull(), // realisierte Ersparnis „Warten bis Fenster" (ct/L, kann negativ sein)
-    bestCt: real("best_ct").notNull(), // perfekte Sicht (ct/L)
-    predHour: integer("pred_hour").notNull(),
-  },
-  (t) => [{ name: "decision_rows_station_day_idx", columns: [t.stationId, t.day] }],
-);
+export const systemHealth = pgTable("system_health", {
+  id: serial("id").primaryKey(),
+  collectorStatus: varchar("collector_status", { length: 50 }).default("healthy").notNull(),
+  lastPollAt: timestamp("last_poll_at", { withTimezone: true }).defaultNow(),
+  windowStart: varchar("window_start", { length: 10 }).default("06:00").notNull(),
+  windowEnd: varchar("window_end", { length: 10 }).default("24:00").notNull(),
+  tmpfsBytesUsed: integer("tmpfs_bytes_used").default(2621440).notNull(), // ~2.5 MB used
+  tmpfsMaxBytes: integer("tmpfs_max_bytes").default(33554432).notNull(), // 32 MB max
+  nasReachable: boolean("nas_reachable").default(true).notNull(),
+  nasSyncedUntil: timestamp("nas_synced_until", { withTimezone: true }).defaultNow(),
+  coveragePct: real("coverage_pct").default(99.4).notNull(),
+  errorCount24h: integer("error_count_24h").default(0).notNull(),
+  activeNightIds: text("active_night_ids").default(""),
+});
+
+export const fillups = pgTable("fillups", {
+  id: serial("id").primaryKey(),
+  stationId: varchar("station_id", { length: 64 }).notNull(),
+  fuel: varchar("fuel", { length: 10 }).default("e10").notNull(),
+  liters: real("liters").notNull(),
+  pricePerLiter: real("price_per_liter").notNull(),
+  totalCost: real("total_cost").notNull(),
+  savedVsMedian: real("saved_vs_median"),
+  timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow(),
+});
