@@ -1014,6 +1014,41 @@ Prognose-Input.**
    `z_used` zurück. Die **Selektion** rechnet konservativ mit dem
    Durchschnitt.
 
+   **Warum Zeit überhaupt? — und die „nur Sprit“-Sicht (Stand 2026-09):**
+   Die Umwegkosten werden getrennt in `K_sprit` (~0,12 €/km bei
+   7 L/100 km, 1,65 €/L) und `K_zeit` (z/v; ~0,24 €/km bei 12 €/h und
+   50 km/h, ~0,40 €/km bei 30 km/h Stadt). Die **Zeit ist der größere
+   Block**: würde man sie weglassen, gewinnt im Ranking systematisch die
+   weit entfernte Billig-Station auf der grünen Wiese — ein Rat, den in
+   der Praxis niemand befolgt (~18 min Arbeit für 1 €), und der die
+   Erfolgsbilanz (§5.5) verfälscht. Statt dem Nutzer die eine Sicht
+   vorzuschreiben, weist die Selektion **beide Netto-Zahlen** aus:
+   `net_per_fill_eur` (Vollkosten, Default 12 €/h) und
+   `net_fuel_only_eur` (nur Sprit = was an der Zapfsäule bar übrig
+   bleibt), plus den **Break-even-Stundenlohn**
+   `break_even_wage_eur_h = (Ersparnis − K_sprit)/Umwegzeit`: liegt der
+   eigene Zeitwert darunter, lohnt der Umweg (Rente, Sonntag, Schlange an
+   der Stammstation), darüber nicht. Wer seine Zeit gar nicht bepreisen
+   will, rechnet `--value-of-time 0` (beide Sichten fallen zusammen).
+   Im `onroute`-Modus ist die Zeitfrage entschärft: es zählt nur der
+   Mehrweg gegenüber der nächsten Station (300 m/2 min ≈ 0,08 €).
+
+   **Rushhour (Staufaktor), kontextabhängig je Station:** OSRM liefert
+   Freifluss-Zeiten ohne Live-Stau; im Berufsverkehr kann eine Strecke
+   das 1,5- bis 2-fache dauern (10–15 min Freifluss → bis 30 min Stop&Go).
+   Die Selektion bewertet die Zeit deshalb je nach *Fahrtkontext* der
+   Station, nicht über einen einzigen Mischfaktor:
+   - **nahe Stationen** (≤ `--near-km`, Default 5 km): tankt man auf dem
+     Arbeitsweg → Fahrtzeit × `congestion_peak` (Default 1,45 ≈ 35 statt
+     50 km/h; Worst Case 2,0 = Stop&Go).
+   - **weitere Routen-Stationen** (Globus/Guericke …): fährt man gezielt
+     zum Einkaufen an, zeitlich frei wählbar (Wochenende/Vormittag) →
+     Fahrtzeit × `congestion_offpeak` (Default 1,0 = Freifluss). Ein
+     Mischfaktor würde den Einkaufs-Fall zu pessimistisch rechnen.
+   Die Nahbereichs-Grenze entspricht dem `--near-km` des Polling-Sets.
+   `--congestion-peak 1` schaltet die Staukorrektur ganz ab (reiner
+   Freifluss für alle).
+
    **Betriebsmodi** (`--trip-mode`, beide in der Pipeline implementiert):
    - `dedicated` (Extrafahrt von zuhause): fast nie lohnend — im Demo-Lauf
      bei 12 €/h keine Station netto positiv. Ehrliches Ergebnis.
@@ -1022,6 +1057,32 @@ Prognose-Input.**
      δ̂ und Entfernung gemeinsam.
    Je Station P(Netto > 0) aus der Bootstrap-Verteilung + konservatives
    Flag „Netto-KI-Untergrenze > 0“.
+
+   **Echte Straßen-km statt Luftlinie (`--router osrm`):** d und t
+   kommen dann von einem **OSRM-Server** (Open Source Routing Machine,
+   Datenbasis OpenStreetMap) — kostenlos, ohne API-Key. Eine Table-API-
+   Anfrage je Stadt (Anker → alle Stationen), Ergebnisse landen im Cache
+   `results/road_route_cache.json` (wiederholte Läufe offline); bei
+   Serverausfall fällt die Pipeline automatisch auf Luftlinie × Circuity
+   zurück. Default-Server ist der öffentliche Demo-Server
+   (`router.project-osrm.org`, Fair Use — für den privaten Wochenlauf
+   über ein paar hundert Stationen unkritisch); für Dauerbetrieb läuft
+   OSRM mit einem Docker-Befehl lokal auf dem NAS (komplett offline).
+   **Snapping-Falle:** liegt der Anker (oder eine Station) auf einer
+   Autobahnrampe/-kante, schnappt OSRM darauf und die Route wird
+   unsinnig lang (Straße/Luftlinie > ~2,3, oft in *beide* Richtungen,
+   weil man erst falsch abbiegen muss). Die Pipeline warnt dann
+   („Anker vermutlich auf Autobahnrampe geschnappt“); Abhilfe: den
+   Anker in `analysis/config.local.json` auf die eigene **Hausstraße**
+   setzen (Koordinate per Google Maps auf die Adresse, nicht aufs
+   Autobahnkreuz). `road_route.py` gibt je Strecke einen Google-Routen-
+   Link zum direkten Vergleich aus.
+   Achtung: ein **Straßen-Routing kann keine zu große Entfernung
+   reparieren** — Luftlinie ist immer kürzer als die Straße. Weicht die
+   App-Entfernung stark von Google Maps ab (statt ~0,7–0,8× sogar größer),
+   stimmen die Koordinaten nicht: Anker in `analysis/config.local.json`
+   prüfen (eigener Standort, nicht Stadtmitte, lat/lon nicht vertauscht)
+   bzw. den Stations-Pin über den Maps-Link im Polling-Report kontrollieren.
 
 ---
 

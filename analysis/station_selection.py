@@ -41,8 +41,23 @@ Ausgaben:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# json wird sowohl für die --config (unten) als auch für die scores-Metadaten
+# (station_scores_<fuel>.meta.json) gebraucht -> immer importieren.
+
+# Optionales Straßen-Routing (data-tools/road_route.py): OSRM/OpenStreetMap
+# liefert echte Fahrstrecken + Fahrzeiten statt Luftlinie × Circuity.
+# Nur Standardbibliothek; fehlt das Modul, läuft alles weiter mit Haversine.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-tools"))
+try:
+    from road_route import RoadRouter
+except ImportError:  # pragma: no cover
+    RoadRouter = None
 
 import matplotlib
 
@@ -86,10 +101,29 @@ class Config:
     subdiv: dict = field(default_factory=dict)
     consumption_l_100km: float = 7.0   # Fahrzeugverbrauch
     value_of_time: float = 12.0        # €/h Zeitwert
-    avg_speed: float = 50.0            # km/h Stadtverkehr
-    circuity: float = 1.3              # Luftlinie -> Straßenkilometer
+    avg_speed: float = 50.0            # km/h Stadtverkehr (nur ohne echtes Routing)
+    # Stau-/Rushhour-Faktor auf die OSRM-Freifluss-Zeit (OSRM kennt keinen Live-Stau):
+    # Fahrtzeit_real = Fahrtzeit_freifluss × F. Berufsverkehr 6-9/16-20 Uhr mit
+    # f_peak, sonst f_off; über das Nutzerprofil (s. w_user) gemittelt, weil der
+    # typische Tankvorgang gewichtet über diese Stunden stattfindet. Freifluss =
+    # 50 km/h, Berufsverkehr real ~35 km/h -> f_peak ~1,45 (Worst Case Stop&Go ~2).
+    congestion_peak: float = 1.45
+    congestion_offpeak: float = 1.0
+    # Nahbereich (Straßen-km ab Anker) für die Kontext-Zeitbewertung: Stationen
+    # innerhalb dessen tankt man auf dem Arbeitsweg (Berufsverkehr -> f_peak),
+    # weiter entfernte Routen-Stationen (Einkaufen/Arbeit am Wochenende, frei
+    # zeitlich wählbar) -> f_offpeak. Soll mit --near-km des Polling-Sets
+    # übereinstimmen (Default 5 km).
+    near_km: float = 5.0
+    circuity: float = 1.3              # Luftlinie -> Straßenkilometer (nur ohne/bei Fallback)
     trip_mode: str = "onroute"         # 'dedicated' = Extrafahrt | 'onroute' = beim Tanken ohnehin unterwegs
     rank_by: str = "net"               # 'net' = Netto-Ersparnis nach Umweg | 'score'
+    # --- Straßen-Routing (OSRM/OpenStreetMap) ---
+    # 'haversine' = Luftlinie × circuity (offline, Default); 'osrm' = echte
+    # Straßen-km + Fahrzeit vom OSRM-Server (--osrm-url, mit Cache/Fallback).
+    router: str = "haversine"
+    osrm_url: str | None = None
+    route_cache: Path = field(default_factory=lambda: Path("results") / "road_route_cache.json")
 
 PLT_DARK = {
     "figure.facecolor": "#0e1117", "axes.facecolor": "#0e1117",
@@ -158,16 +192,32 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return float(2 * R * np.arcsin(np.sqrt(a)))
 
 
-def detour_cost(extra_km_oneway: float, price_ref: float, cfg: Config) -> tuple[float, float]:
-    """Kosten des Umwegs zur Station.
+def detour_cost(extra_km_oneway: float, price_ref: float, cfg: Config,
+                extra_min_oneway: float | None = None,
+                congestion: float = 1.0
+                ) -> tuple[float, float, float]:
+    """Kosten des Umwegs zur Station, aufgeteilt in Sprit und Zeit.
 
-    K = d_rt·(c/100)·p + (d_rt/v)·z   [KONZEPT.md §7], d_rt = 2·circuity·extra_km_oneway.
-    Rückgabe: (Umweg-km gesamt, Kosten €)
+    K = K_sprit + K_Zeit  [KONZEPT.md §10]
+    d_rt = 2·circuity·extra_km_oneway (bzw. 2·extra_km_oneway bei echten
+    Straßen-km: circuity steckt schon in der Route, Faktor = 1).
+    K_sprit = d_rt·(c/100)·p
+    K_Zeit  = t_rt·z  (t_rt = OSRM-Freifluss-Zeit × Staufaktor congestion,
+             hin+zurück; ohne Routing d_rt/avg_speed)
+    `congestion` schlägt nur auf geroutete OSRM-Zeiten zu (Freifluss ohne
+    Stau); die avg_speed-Näherung enthält bereits gemischten Verkehr.
+    Rückgabe: (Umweg-km gesamt, Sprit-Kosten €, Zeit-Kosten €). Die Trennung
+    ist Absicht: Wer nur Sprit werten will ('lohnt der Umweg an der Zapfsäule
+    cash?'), setzt --value-of-time 0 bzw. liest net_fuel_only_eur im CSV.
     """
-    d_rt = 2.0 * cfg.circuity * extra_km_oneway
+    circ = 1.0 if (extra_min_oneway is not None and cfg.router == "osrm") else cfg.circuity
+    d_rt = 2.0 * circ * extra_km_oneway
     k_fuel = d_rt * (cfg.consumption_l_100km / 100.0) * price_ref
-    k_time = (d_rt / cfg.avg_speed) * cfg.value_of_time
-    return d_rt, k_fuel + k_time
+    if extra_min_oneway is not None:
+        k_time = (2.0 * extra_min_oneway * congestion / 60.0) * cfg.value_of_time
+    else:
+        k_time = (d_rt / cfg.avg_speed) * cfg.value_of_time
+    return d_rt, k_fuel, k_time
 
 
 
@@ -340,7 +390,8 @@ class CityResult:
 
 
 def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
-                 rng: np.random.Generator) -> CityResult:
+                 rng: np.random.Generator,
+                 router: "RoadRouter | None" = None) -> CityResult:
     mat = to_matrix(df, city, cfg.step_min, ffill_min=cfg.ffill_minutes)
     meta = (df[df.city == city]
             .drop_duplicates("station_id")
@@ -398,19 +449,68 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     w_weekend = np.full(24, 1 / 24) * we_weight
     w_user = w_weekday + w_weekend
 
+    # Staufaktor, über das Nutzerprofil gemittelt: Anteil der Tankvorgänge im
+    # Berufsverkehr (6-9/16-20 h werktags) bekommt f_peak, der Rest f_off.
+    # OSRM liefert Freifluss-Zeiten ohne Stau -> echte Fahrtzeit im Mittel ×f.
+    peak_hours = np.array([h in (6, 7, 8, 16, 17, 18, 19) for h in range(24)],
+                          dtype=float)
+    peak_share = float(np.sum(w_user * peak_hours))
+
     # Umweg-Referenz: konfigurierter Punkt der Stadt, sonst Stations-Schwerpunkt
     home_lat, home_lon = cfg.home.get(
         city, (float(meta.lat.median()), float(meta.lon.median())))
     price_ref = float(np.nanmedian(mat.to_numpy()))  # €/L Referenzpreis (Stadtmedian)
 
-    dist_map = {sid: haversine_km(home_lat, home_lon,
-                                  float(meta.loc[sid, "lat"]), float(meta.loc[sid, "lon"]))
-                for sid in mat.columns}
+    sids = list(mat.columns)
+    coords = [(float(meta.loc[sid, "lat"]), float(meta.loc[sid, "lon"])) for sid in sids]
+    dist_map: dict[str, float] = {}
+    dur_map: dict[str, float | None] = {}
+    routed = router is not None and cfg.router == "osrm"
+    if routed:
+        # EINE OSRM-Table-Anfrage je Stadt (Anker -> alle Stationen), mit Cache/Fallback.
+        routes = router.routes_from(home_lat, home_lon, coords)  # type: ignore[union-attr]
+        for k, sid in enumerate(sids):
+            dist_map[sid], dur_map[sid] = routes[k]
+        for idx, fac, d_road in getattr(router, "suspicious", []):
+            print(f"    ⚠ {sids[idx][:13]}… Straße/Luftlinie = {fac:.1f}× "
+                  f"({d_road:.1f} km) — Anker vermutlich auf Autobahnrampe "
+                  "geschnappt; home-Koordinate auf die Hausstraße prüfen.")
+        snap = getattr(router, "anchor_snap", None)
+        if snap and snap.get("on_autobahn"):
+            print(f"    ⚠ ANKER {city} schnappt auf {snap['first_road']} (AUTOBAHN): "
+                  "ALLE Routen laufen über die Autobahn -> home-Koordinate in "
+                  "config.local.json auf die Hausstraße setzen, nicht aufs "
+                  "Autobahnkreuz. Das Problem läge bei Google ebenso (Snap gleich).")
+    else:
+        for sid, (slat, slon) in zip(sids, coords):
+            dist_map[sid] = haversine_km(home_lat, home_lon, slat, slon)
+            dur_map[sid] = None
     # einzelne Station der Stadt -> keine "ohnehin-Alternative": Referenzweg = 0
     dist_ref = min(dist_map.values()) if dist_map else 0.0
+    # onroute: Referenz-Fahrzeit = die der nächstgelegenen Station (i.d.R. Ziel
+    # der ohnehin stattfindenden Fahrt); dedicated: Extrafahrt ab Anker.
+    dur_ref = None
+    if routed:
+        ref_sid = min(dist_map, key=lambda s: dist_map[s])
+        dur_ref = dur_map.get(ref_sid)
+        # Kontext-Staufaktor je Station:
+        #  * nahe Stationen (≤ near_km) tankt man auf dem Arbeitsweg (Berufsverkehr)
+        #    -> Fahrtzeit × congestion_peak (Default 1,45, Worst Case 2,0)
+        #  * weitere Routen-Stationen (Globus/Guericke …) fährt man gezielt zum
+        #    Einkaufen an, zeitlich frei wählbar (Wochenende/Vormittag) -> Freifluss
+        #    × congestion_offpeak (Default 1,0). Ein einziger Mischfaktor für alle
+        #    würde den Einkaufs-Fall zu pessimistisch rechnen.
+        n_near = sum(1 for s in dist_map.values() if s <= cfg.near_km)
+        n_far = len(dist_map) - n_near
+        if cfg.value_of_time > 0 and (cfg.congestion_peak != 1.0
+                                      or cfg.congestion_offpeak != 1.0):
+            print(f"      Rushhour-Kontext: {n_near} nahe Stationen (≤{cfg.near_km:g} km, "
+                  f"Arbeitsweg) mit ×{cfg.congestion_peak:g} Berufsverkehr, "
+                  f"{n_far} weitere (Einkaufen/Routen) mit ×{cfg.congestion_offpeak:g} "
+                  f"Freifluss auf die OSRM-Zeit")
 
     rows = []
-    for j, sid in enumerate(mat.columns):
+    for j, sid in enumerate(sids):
         d = delta[sid].to_numpy()
         d_hat = np.nanmedian(d)
         boots, _ = day_block_bootstrap(d, dnum, cfg.n_boot, rng)
@@ -419,13 +519,41 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
 
         # --- Umweg-Ökonomie: Netto-Ersparnis € je Füllung ---
         dist_km = dist_map[sid]
+        dur_min = dur_map.get(sid)
         # dedicated: Extrafahrt von zuhause (Hin+Rück)
         # onroute:   nur Mehrweg ggü. der nächstgelegenen Station (man ist eh unterwegs)
         extra = dist_km if cfg.trip_mode == "dedicated" else max(0.0, dist_km - dist_ref)
-        d_rt, K = detour_cost(extra, price_ref, cfg)
-        net_b = (-boots * cfg.tank_volume / 100.0) - K   # Verteilung des Netto-Gewinns
+        extra_min = None
+        if routed and dur_min is not None:
+            base_min = 0.0 if cfg.trip_mode == "dedicated" else (dur_ref or 0.0)
+            extra_min = max(0.0, dur_min - base_min)
+        # Kontext-Staufaktor dieser Station: nah = Arbeitsweg (Peak-Stau),
+        # weiter = frei wählbarer Einkaufs-/Routen-Trip (Offpeak/Freifluss).
+        if routed:
+            cong = cfg.congestion_peak if dist_km <= cfg.near_km else cfg.congestion_offpeak
+        else:
+            cong = 1.0      # avg_speed-Näherung enthält schon gemischten Verkehr
+        d_rt, K_fuel, K_time = detour_cost(extra, price_ref, cfg,
+                                           extra_min_oneway=extra_min,
+                                           congestion=cong)
+        K = K_fuel + K_time
+        # Netto-Gewinn: Vollkosten (Sprit + Zeit) für das Ranking,
+        # plus Sprit-only-Sicht (was an der Zapfsäule cash übrig bliebe).
+        net_b = (-boots * cfg.tank_volume / 100.0) - K
+        net_b_fuel = (-boots * cfg.tank_volume / 100.0) - K_fuel
         net_med, net_lo, net_hi = np.nanpercentile(net_b, [50, 2.5, 97.5])
+        net_fuel_med, net_fuel_lo, net_fuel_hi = np.nanpercentile(
+            net_b_fuel, [50, 2.5, 97.5])
         p_profit = float(np.mean(net_b > 0))
+        # „Break-even-Stundenlohn": bei welchem Zeitwert z ist Gesamt-Netto = 0?
+        # K = K_fuel + t_rt·z = Ersparnis  ->  z* = (Ersparnis − K_fuel)/t_rt.
+        # t_rt enthält den Kontext-Staufaktor (nah=Peak, weit=Offpeak).
+        if extra_min is not None:
+            t_rt_h = 2.0 * extra_min * cong / 60.0
+        else:
+            t_rt_h = 2.0 * d_rt / cfg.avg_speed / 60.0
+        saving_med = -d_hat * cfg.tank_volume / 100.0
+        be_wage = ((saving_med - K_fuel) / t_rt_h) if t_rt_h > 1e-9 else None
 
         half = np.floor(hours * 2) / 2
         bins = np.arange(0, 24, 0.5)
@@ -452,8 +580,12 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
             best_hour=best_hour, cycle_amp=amp, cycle_r2=r2,
             vol_ct=sigma, rank_std=rank_std,
             dist_km=dist_km, detour_km=d_rt, detour_cost_eur=K,
+            detour_fuel_eur=K_fuel, detour_time_eur=K_time,
             net_per_fill_eur=float(net_med), net_lo=float(net_lo),
             net_hi=float(net_hi), p_profit=p_profit,
+            net_fuel_only_eur=float(net_fuel_med), net_fuel_lo=float(net_fuel_lo),
+            net_fuel_hi=float(net_fuel_hi),
+            break_even_wage_eur_h=(float(be_wage) if be_wage is not None else np.nan),
         ))
 
     tab = pd.DataFrame(rows)
@@ -475,8 +607,11 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     tab["saving_per_fill_eur"] = -tab.delta_ct * cfg.tank_volume / 100.0
     tab["saving_per_year_eur"] = tab.saving_per_fill_eur * cfg.fills_per_week * 52
     tab["net_per_year_eur"] = tab.net_per_fill_eur * cfg.fills_per_week * 52
+    tab["net_fuel_only_year_eur"] = tab.net_fuel_only_eur * cfg.fills_per_week * 52
     # konservatives Kriterium: auch die untere 95-%-KI-Grenze des Netto-Gewinns > 0
     tab["worth_it"] = tab.net_lo > 0
+    # Sprit-only-Lohnt-Flag: nur Spritkosten eingerechnet (Zeit ist einem egal)
+    tab["worth_it_fuel_only"] = tab.net_fuel_lo > 0
     tab["city"] = city
 
     # Split-Half-Stabilität (Winner's-Curse-Kontrolle): Rangkorrelation der
@@ -600,9 +735,12 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
       f"Füllungen/Woche = {cfg.fills_per_week}, Bootstrap B = {cfg.n_boot}, "
       f"Coverage-Gate ≥ {cfg.min_coverage:.0%}, FDR-Schwelle q < 0.05, "
       f"Ranking nach **{cfg.rank_by}**.\n")
-    A(f"**Umweg-Modell `{cfg.trip_mode}`:** K = d·(c/100)·p + (d/v)·z mit d = 2·{cfg.circuity}×"
-      f"{'Luftlinie ab Referenzpunkt (Extrafahrt Hin+Rück)' if cfg.trip_mode == 'dedicated' else 'Mehrentfernung ggü. nächster Station (ohnehin unterwegs)'}"
-      f", c = {cfg.consumption_l_100km} L/100km, v = {cfg.avg_speed:.0f} km/h, "
+    dist_basis = ("echten Straßen-km/Fahrzeit via OSRM-OpenStreetMap" if cfg.router == "osrm"
+                  else f"Luftlinie × {cfg.circuity:g} (Circuity)")
+    A(f"**Umweg-Modell `{cfg.trip_mode}`:** K = d·(c/100)·p + t·z auf Basis der {dist_basis}"
+      f"{' (Extrafahrt Hin+Rück ab Referenzpunkt)' if cfg.trip_mode == 'dedicated' else ' (Mehrweg ggü. nächster Station, da ohnehin unterwegs)'}"
+      f", c = {cfg.consumption_l_100km} L/100km, "
+      f"{'t = OSRM-Fahrzeit' if cfg.router == 'osrm' else f'v = {cfg.avg_speed:.0f} km/h'}, "
       f"z = {cfg.value_of_time:.0f} €/h; p = Stadtmedian. "
       f"*Netto = −δ̂·V/100 − K* mit Bootstrap-Verteilung → P(Gewinn > 0) und "
       f"konservatives Lohnt-sich-Flag (KI-Untergrenze > 0)."
@@ -650,15 +788,31 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
 
     A(f"\n## 🏆 Globale Top-{cfg.top} (über alle Städte, Ranking: {cfg.rank_by})\n")
     A("![Top-N](figures/top_selection.png)\n")
-    A("| # | Stadt | Station | Marke | δ̂ [ct/L] | q | Entf. [km] | Umweg € | Netto €/Füll | P(Gewinn>0) | lohnt? | Maps |")
-    A("|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|")
+    A("| # | Stadt | Station | Marke | δ̂ [ct/L] | q | Entf. [km] | Sprit € | Zeit € | Netto €/Füll | **nur Sprit** € | Break-even z [€/h] | Maps |")
+    A("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for i, (_, r) in enumerate(top.iterrows(), 1):
         maps = (f"https://www.google.com/maps/dir/?api=1&destination={r.lat},{r.lon}")
-        worth = "✅" if r.worth_it else "⚠️"
+        wage = ("—" if np.isnan(r.break_even_wage_eur_h) or r.detour_time_eur <= 1e-9
+                else f"{r.break_even_wage_eur_h:.1f}")
         A(f"| {i} | {r.city} | {r.station_name} | {r.brand} | "
           f"{r.delta_ct:+.2f} | {r.q_value:.4f} | {r.dist_km:.1f} | "
-          f"{r.detour_cost_eur:.2f} | **{r.net_per_fill_eur:+.2f} €** | "
-          f"{r.p_profit:.0%} | {worth} | [Route]({maps}) |")
+          f"{r.detour_fuel_eur:.2f} | {r.detour_time_eur:.2f} | "
+          f"**{r.net_per_fill_eur:+.2f} €** | {r.net_fuel_only_eur:+.2f} € | "
+          f"{wage} | [Route]({maps}) |")
+
+    A("\n> **Zwei Netto-Sichten — du entscheidest, was dir die Zeit wert ist.** "
+      "*Netto €/Füll* rechnet voll: Sprit **und** Zeit (Default "
+      f"{cfg.value_of_time:.0f} €/h). *nur Sprit* blendet die Zeit aus — das ist "
+      "das, was an der Zapfsäule bar übrig bliebe. Die Spalte **Break-even z** "
+      "nennt den Stundenlohn, ab dem sich der Umweg rechnet: liegt dein eigener "
+      f"Zeitwert darunter (Rente, Sonntag, Warteschlange an der Stammstation), "
+      "fahr los; darüber, lass es. Faustregel: bei Stadtfahrt (≈30–50 km/h) "
+      f"kostet die Zeit ~0,24–0,40 € je Umweg-km, der Sprit nur ~0,12 €/km "
+      f"(bei {cfg.consumption_l_100km:.0f} L/100 km und 1,65 €/L) — die Zeit ist "
+      "also der größere Block. Wer sie gar nicht bepreisen will, rechnet die "
+      "Selektion mit `--value-of-time 0` (dann fallen beide Netto-Sichten "
+      "zusammen). Im `onroute`-Modus zählt nur der *Mehr*weg gegenüber der "
+      "nächsten Station: für 300 m/2 min ist die Zeit dann ohnehin vernachlässigbar.")
 
     A("\n## Interpretation & Caveats\n")
     A("- **δ̂ < 0** heißt: Station liegt median **unter** dem Stadtmedian der übrigen "
@@ -676,9 +830,16 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
       "optimistisch geschätzt. Der Split-Half-Check (ρ je Stadt) misst, ob die Rangfolge "
       "auf ungesehenen Daten bestehen bleibt; zusätzlich empfiehlt sich ein Out-of-Sample-"
       "Re-Check nach 4 Wochen Live-Betrieb.")
-    A("- **Netto-Ranking** bezieht Umwegkosten (Sprit + Zeit) ein. Entfernungen sind "
-      "Luftlinie × Straßenfaktor; wer Pendelrouten hat, reicht `--home` einen Routen-Anker "
-      "(später: OSRM-Fahrzeit statt Circuity).")
+    if cfg.router == "osrm":
+        A("- **Netto-Ranking** bezieht Umwegkosten (Sprit + Zeit) ein. Entfernungen und "
+          "Fahrzeiten stammen aus **OSRM/OpenStreetMap** (echte Straßen-routing, ein Anker "
+          "je Stadt; Cache in `results/road_route_cache.json`, bei Serverausfall Fallback "
+          "Luftlinie). Wer feste Pendelrouten hat, setzt den Anker passend zur Route.")
+    else:
+        A("- **Netto-Ranking** bezieht Umwegkosten (Sprit + Zeit) ein. Entfernungen sind "
+          "Luftlinie × Straßenfaktor; **echte Straßen-km + Fahrzeit gibt es mit "
+          "`--router osrm`** (OSRM/OpenStreetMap, kostenlos ohne Key, mit Cache/Fallback). "
+          "Wer Pendelrouten hat, reicht `--home` einen Routen-Anker.")
     if cfg.subdiv:
         A("- **Feiertage bundeslandspezifisch** (z. B. Hessen/Bayern/NRW): ein Feiertag in "
           "Stadt A kann Werktag in Stadt B sein. Sie werden über das `holidays`-Paket je "
@@ -772,11 +933,32 @@ def main() -> None:
     ap.add_argument("--consumption", type=float, default=7.0, help="L/100km")
     ap.add_argument("--value-of-time", type=float, default=12.0, help="€/h")
     ap.add_argument("--avg-speed", type=float, default=50.0, help="km/h")
+    ap.add_argument("--congestion-peak", type=float, default=1.45,
+                    help="Staufaktor im Berufsverkehr auf die OSRM-Freifluss-Zeit "
+                         "(6-9/16-20 h werktags; 1.0=kein Stau, 1.45=~35 statt 50 km/h, "
+                         "2.0=Stop&Go). Nur mit --router osrm wirksam.")
+    ap.add_argument("--congestion-offpeak", type=float, default=1.0,
+                    help="Staufaktor außerhalb des Berufsverkehrs (Freifluss = 1.0).")
+    ap.add_argument("--near-km", type=float, default=5.0,
+                    help="Nahbereich (Straßen-km ab Anker) für die Kontext-Zeitbewertung: "
+                         "Stationen innerhalb (Arbeitsweg) bekommen den Peak-Staufaktor, "
+                         "weitere (Einkaufen/Routen, frei wählbar) den Offpeak-Faktor. "
+                         "Sollte mit dem --near-km des Polling-Sets übereinstimmen.")
     ap.add_argument("--rank-by", choices=["net", "score"], default="net",
                     help="Ranking nach Netto-Ersparnis (inkl. Umweg) oder Statistik-Score")
     ap.add_argument("--trip-mode", choices=["onroute", "dedicated"], default="onroute",
                     help="Umweg-Modell: 'onroute' = nur Mehrweg ggü. nächster Station; "
                          "'dedicated' = Extrafahrt von zuhause (strenger)")
+    ap.add_argument("--router", choices=["haversine", "osrm"], default="haversine",
+                    help="Entfernungsbasis: 'haversine' = Luftlinie × Circuity (Default, "
+                         "offline); 'osrm' = echte Straßen-km + Fahrzeit via OSRM/"
+                         "OpenStreetMap (kostenlos, ohne Key; mit Cache + Luftlinie-Fallback)")
+    ap.add_argument("--osrm-url", default=None,
+                    help="OSRM-Server für --router osrm (Default: öffentlicher Demo-Server "
+                         "router.project-osrm.org; eigener Server z. B. http://nas:5000)")
+    ap.add_argument("--route-cache", type=Path,
+                    default=Path("results") / "road_route_cache.json",
+                    help="Cache-Datei für OSRM-Routen (wiederholte Läufe offline)")
     ap.add_argument("--results", type=Path, default=Path("results"))
     ap.add_argument("--report", type=Path, default=Path("docs/analysis/report_top10.md"))
     ap.add_argument("--figdir", type=Path, default=Path("docs/analysis/figures"))
@@ -789,10 +971,14 @@ def main() -> None:
                  subdiv=parse_subdiv(args.subdiv),
                  consumption_l_100km=args.consumption,
                  value_of_time=args.value_of_time, avg_speed=args.avg_speed,
-                 trip_mode=args.trip_mode, rank_by=args.rank_by)
+                 congestion_peak=args.congestion_peak,
+                 congestion_offpeak=args.congestion_offpeak,
+                 near_km=args.near_km,
+                 trip_mode=args.trip_mode, rank_by=args.rank_by,
+                 router=args.router, osrm_url=args.osrm_url,
+                 route_cache=args.route_cache)
     # Lokale, gitignorierte Konfiguration (Privatdaten) — CLI-Flags gewinnen.
     if args.config:
-        import json
         data = json.loads(args.config.read_text(encoding="utf-8"))
         cfg.home = home_from_config(data)
         cfg.home.update(parse_home(args.home))           # CLI überschreibt
@@ -800,6 +986,19 @@ def main() -> None:
         cfg.subdiv.update(parse_subdiv(args.subdiv))
         print(f"Lokale Konfiguration geladen: {args.config} "
               f"(Privatdaten — Datei ist gitignored)")
+
+    router = None
+    if cfg.router == "osrm":
+        if RoadRouter is None:
+            print("⚠ --router osrm: data-tools/road_route.py nicht gefunden — "
+                  "rechne mit Luftlinie × Circuity weiter.")
+            cfg.router = "haversine"
+        else:
+            router = RoadRouter(mode="driving", base_url=cfg.osrm_url,
+                                cache_path=cfg.route_cache, circuity=cfg.circuity)
+            print(f"Routing: OSRM/OpenStreetMap ({cfg.osrm_url or 'öffentlicher Demo-Server'}) "
+                  f"— echte Straßen-km + Fahrzeit, Cache {cfg.route_cache} "
+                  f"(Fallback: Luftlinie × {cfg.circuity:g})")
     rng = np.random.default_rng(cfg.seed)
 
     df = load_prices(args.data, cfg.fuel)
@@ -811,7 +1010,7 @@ def main() -> None:
     for city in cities:
         print(f"  Analysiere {city} …")
         try:
-            res = analyse_city(df, city, cfg, rng)
+            res = analyse_city(df, city, cfg, rng, router=router)
         except ValueError as exc:          # zu wenige Stationen o. ä. -> Stadt überspringen
             print(f"    ⚠ übersprungen: {exc}")
             skipped.append((city, str(exc)))
@@ -839,6 +1038,22 @@ def main() -> None:
     cfg_results.mkdir(parents=True, exist_ok=True)
     csv_path = cfg_results / f"station_scores_{cfg.fuel.lower()}.csv"
     all_tab.to_csv(csv_path, index=False)
+    # Begleit-Metadaten: damit run_pipeline erkennt, ob die Netto-Spalten noch
+    # zum aktuellen Anker/Routing passen (verhindert gemischt frische Distanzen
+    # + veraltete Netto-Werte nach --skip-select mit geänderter Config).
+    meta_path = cfg_results / f"station_scores_{cfg.fuel.lower()}.meta.json"
+    meta = {
+        "generated": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "router": cfg.router,
+        "trip_mode": cfg.trip_mode,
+        "value_of_time": cfg.value_of_time,
+        "congestion_peak": cfg.congestion_peak,
+        "congestion_offpeak": cfg.congestion_offpeak,
+        "near_km": cfg.near_km,
+        "homes": {c: [float(h[0]), float(h[1])] for c, h in cfg.home.items()},
+    }
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+                         encoding="utf-8")
 
     args.figdir.mkdir(parents=True, exist_ok=True)
     for res in results:
@@ -852,10 +1067,13 @@ def main() -> None:
     print(f"Plots:  {args.figdir}")
     print(f"\nTop-{cfg.top} (Ranking: {cfg.rank_by}):")
     for i, (_, r) in enumerate(top.iterrows(), 1):
-        print(f"  {i:2d}. [{r.city:<10}] {r.station_name:<38} δ̂={r.delta_ct:+5.2f} ct  "
-              f"Entf. {r.dist_km:4.1f} km  Umweg {r.detour_cost_eur:4.2f} €  "
-              f"→ Netto {r.net_per_fill_eur:+5.2f} €/Füll  "
-              f"({r.net_per_year_eur:+6.1f} €/Jahr)  P>0: {r.p_profit:.0%}")
+        wage = (f"ab {r.break_even_wage_eur_h:4.1f} €/h"
+                if not np.isnan(r.break_even_wage_eur_h) and r.detour_time_eur > 1e-9
+                else "Zeit n/a")
+        print(f"  {i:2d}. [{r.city:<10}] {r.station_name:<34} δ̂={r.delta_ct:+5.2f} ct  "
+              f"Entf. {r.dist_km:4.1f} km  "
+              f"→ Netto {r.net_per_fill_eur:+5.2f} €/Füll (nur Sprit {r.net_fuel_only_eur:+5.2f})  "
+              f"{wage}  P>0: {r.p_profit:.0%}")
 
 
 if __name__ == "__main__":
