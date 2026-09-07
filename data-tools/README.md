@@ -3,6 +3,7 @@
 Werkzeuge, um die **Historie** (Tankerkönig-Datenrepo, eine CSV pro Tag) zu holen und in das
 Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
 **Ausführliche Anleitung inkl. Größen-/Zeitrechnung und Fehlerbildern: [`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md).**
+**Erstinstallation & 24/7-Betrieb (Collector auf dem Raspberry Pi, systemd, Key): [`docs/INSTALL.md`](../docs/INSTALL.md).**
 
 | Skript | Zweck |
 |---|---|

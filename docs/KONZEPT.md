@@ -881,6 +881,11 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 
 ## 9. Systemarchitektur: Pi ↔ NAS
 
+> **Schritt-für-Schritt-Erstinstallation (welcher Baustein auf welches
+> Gerät gehört, Kommandos, systemd-Unit, Key, Störungsfälle):
+> [`INSTALL.md`](INSTALL.md).** Kurz: Collector 24/7 auf dem **Pi**
+> (Puffer im RAM), InfluxDB/Fits auf dem **NAS**, Pipeline auf dem **PC**.
+
 ### 9.1 Rollen & Datenfluss
 
 | Aufgabe | Gerät | Begründung |

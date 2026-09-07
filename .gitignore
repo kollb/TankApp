@@ -19,3 +19,6 @@ polling.json
 .netrc
 _netrc
 *.netrc
+
+# Tankerkoenig-API-Key-Datei fuer den Collector (data-tools/collect_prices.py)
+data/apikey.txt
