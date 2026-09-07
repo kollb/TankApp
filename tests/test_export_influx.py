@@ -328,3 +328,325 @@ def test_export_cannot_overwrite_a_polling_json(exporter, polling):
             polling,
         )
     assert "sets" in json.loads(polling.read_text())
+
+
+@pytest.fixture
+def influx_env_file(tmp_path):
+    path = tmp_path / "influx.env"
+    # Deliberately fictitious credential; no production secrets in fixtures.
+    path.write_text(
+        "TANKAPP_INFLUX_URL=http://nas:8086\n"
+        "TANKAPP_INFLUX_ORG=test-org\n"
+        "TANKAPP_INFLUX_BUCKET=tankapp\n"
+        "TANKAPP_INFLUX_TOKEN=not-a-real-token\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "TANKAPP_INFLUX_URL=http://nas:8086\r\nTANKAPP_INFLUX_TOKEN=not-a-real-token",
+        "TANKAPP_INFLUX_TOKEN=not-a-real-token",
+        "Token not-a-real-token",
+        "not-a-real-token\n",
+        "not-a-real-token\r",
+        "not-a-real-token\t",
+        "not-a-real-token\x00",
+        "not-a-real-token\x7f",
+        "\ufeffnot-a-real-token",
+        "not-a-real-token\x03",
+        "not-a-real-tokené",
+    ],
+)
+def test_malformed_token_rejected_before_http_without_echo(
+    exporter, monkeypatch, token
+):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Malformed credentials must never reach HTTP")
+
+    monkeypatch.setattr(exporter.urllib.request, "build_opener", forbidden)
+    cfg = exporter.InfluxConfig("http://nas:8086", "org", "tankapp", token)
+    with pytest.raises(exporter.ExportError, match="einzelnen Token") as error:
+        list(exporter.query_rows(cfg, "query"))
+    assert "--env-file" in str(error.value)
+    assert "not-a-real-token" not in str(error.value)
+    assert "not-a-real-token" not in repr(cfg)
+
+
+def test_main_multiline_token_does_not_echo_or_replace_export(
+    exporter, polling, influx_env_file, tmp_path, monkeypatch, capsys
+):
+    contents = influx_env_file.read_text(encoding="utf-8")
+    for name, value in exporter.read_env_file(influx_env_file).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("TANKAPP_INFLUX_TOKEN", contents)
+    out = tmp_path / "prices.csv"
+    out.write_text("last good export", encoding="utf-8")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("No HTTP request for a multiline token")
+
+    monkeypatch.setattr(exporter.urllib.request, "build_opener", forbidden)
+    assert (
+        exporter.main(
+            [
+                "--polling",
+                str(polling),
+                "--since",
+                "2026-07-01",
+                "--until",
+                "2026-07-02",
+                "--out",
+                str(out),
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "not-a-real-token" not in captured.out + captured.err
+    assert "--env-file" in captured.err
+    assert out.read_text(encoding="utf-8") == "last good export"
+
+
+@pytest.mark.parametrize("stage", ["request", "open"])
+@pytest.mark.parametrize("kind", ["value", "encoding", "http"])
+def test_http_library_errors_never_echo_token(exporter, monkeypatch, stage, kind):
+    import http.client
+
+    def fail(*args, **kwargs):
+        if kind == "encoding":
+            raise UnicodeEncodeError(
+                "ascii", "not-a-real-token", 0, 1, "header rejected"
+            )
+        if kind == "http":
+            raise http.client.InvalidURL("Invalid URL: not-a-real-token")
+        raise ValueError("Invalid header value b'Token not-a-real-token'")
+
+    if stage == "request":
+        monkeypatch.setattr(exporter.urllib.request, "Request", fail)
+    else:
+
+        class Opener:
+            open = staticmethod(fail)
+
+        monkeypatch.setattr(
+            exporter.urllib.request, "build_opener", lambda *args: Opener()
+        )
+    with pytest.raises(exporter.ExportError, match="HTTP-Anfrage/Antwort") as error:
+        list(exporter.query_rows(config(exporter), "query"))
+    assert "not-a-real-token" not in str(error.value)
+    assert error.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://nas:not-a-real-token",
+        "http://[not-a-real-token",
+        "http://nas:8086\r\nnot-a-real-token",
+        "http://nas:0",
+    ],
+)
+def test_malformed_url_errors_are_safe(exporter, url):
+    with pytest.raises(exporter.ExportError, match="TANKAPP_INFLUX_URL") as error:
+        exporter.InfluxConfig(url, "org", "tankapp", "valid-test-token").validate()
+    assert "not-a-real-token" not in str(error.value)
+
+
+def test_env_file_accepts_windows_bom_crlf_quotes_and_padding(exporter, tmp_path):
+    path = tmp_path / "influx.env"
+    path.write_bytes(
+        b"\xef\xbb\xbf"
+        + (
+            "# local configuration\r\n\r\n"
+            'TANKAPP_INFLUX_URL = "http://nas:8086"\r\n'
+            "TANKAPP_INFLUX_ORG='test-org'\r\n"
+            "TANKAPP_INFLUX_BUCKET = tankapp\r\n"
+            'TANKAPP_INFLUX_TOKEN="not-a-real-token=="\r\n'
+        ).encode("utf-8")
+    )
+    cfg = exporter.load_config(path, timeout=10)
+    cfg.validate()
+    assert (cfg.url, cfg.org, cfg.bucket, cfg.token, cfg.timeout) == (
+        "http://nas:8086",
+        "test-org",
+        "tankapp",
+        "not-a-real-token==",
+        10,
+    )
+
+
+def test_explicit_file_replaces_stale_environment_without_mutation(
+    exporter, influx_env_file, monkeypatch
+):
+    for name in exporter.INFLUX_KEYS:
+        monkeypatch.setenv(name, "stale environment\r\nnot-a-real-token")
+    cfg = exporter.load_config(influx_env_file)
+    cfg.validate()
+    assert cfg.url == "http://nas:8086"
+    assert cfg.token == "not-a-real-token"
+    assert exporter.os.environ["TANKAPP_INFLUX_TOKEN"].startswith("stale environment")
+
+
+def test_missing_file_values_do_not_fall_back_to_process_environment(
+    exporter, tmp_path, monkeypatch
+):
+    path = tmp_path / "partial.env"
+    path.write_text("TANKAPP_INFLUX_BUCKET=tankapp\n", encoding="utf-8")
+    monkeypatch.setenv("TANKAPP_INFLUX_TOKEN", "not-a-real-token")
+    cfg = exporter.load_config(path)
+    assert cfg.url == cfg.org == cfg.token == ""
+    with pytest.raises(exporter.ExportError):
+        cfg.validate()
+
+
+def test_existing_environment_mode_is_unchanged(exporter, monkeypatch):
+    monkeypatch.setenv("TANKAPP_INFLUX_URL", "http://nas:8086")
+    monkeypatch.setenv("TANKAPP_INFLUX_ORG", "test-org")
+    monkeypatch.setenv("TANKAPP_INFLUX_TOKEN", "not-a-real-token==")
+    monkeypatch.delenv("TANKAPP_INFLUX_BUCKET", raising=False)
+    cfg = exporter.load_config(None)
+    cfg.validate()
+    assert cfg.bucket == "tankapp"
+    assert cfg.token == "not-a-real-token=="
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not-a-real-token",  # a token-only file isn't an env file
+        "$env:TANKAPP_INFLUX_TOKEN='not-a-real-token'",  # no PowerShell execution
+        "TANKAPP_INFLUX_TOKEN='not-a-real-token",  # unclosed quotes
+        "TANKAPP_INFLUX_TOKEN=not-a-real-token\nTANKAPP_INFLUX_TOKEN=other",
+        "TANKAPP_INFLUX_TYPO=not-a-real-token",  # unknown keys must not silently fall back
+    ],
+)
+def test_env_syntax_errors_report_only_line_number(exporter, tmp_path, text):
+    path = tmp_path / "invalid.env"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(exporter.ExportError, match="Zeile") as error:
+        exporter.load_config(path)
+    assert "not-a-real-token" not in str(error.value)
+
+
+def test_env_file_never_expands_other_variables(exporter, tmp_path, monkeypatch):
+    path = tmp_path / "literal.env"
+    path.write_text("TANKAPP_INFLUX_TOKEN=${OTHER_SECRET}\n", encoding="utf-8")
+    monkeypatch.setenv("OTHER_SECRET", "not-a-real-token")
+    assert exporter.load_config(path).token == "${OTHER_SECRET}"
+
+
+def test_missing_oversized_or_non_utf8_env_files_fail_safely(exporter, tmp_path):
+    path = tmp_path / "influx.env"
+    with pytest.raises(exporter.ExportError, match="nicht lesbar"):
+        exporter.load_config(path)
+    path.write_bytes(b"x" * (exporter.MAX_ENV_BYTES + 1))
+    with pytest.raises(exporter.ExportError, match="zu groß"):
+        exporter.load_config(path)
+    path.write_bytes(b"TANKAPP_INFLUX_TOKEN=not-a-real-token\xff")
+    with pytest.raises(exporter.ExportError, match="UTF-8") as error:
+        exporter.load_config(path)
+    assert "not-a-real-token" not in str(error.value)
+
+
+def test_main_exports_with_env_file_ignoring_bad_token_variable(
+    exporter, polling, influx_env_file, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("TANKAPP_INFLUX_TOKEN", "full file contents\r\nnot-a-real-token")
+    seen = []
+
+    def query_rows(cfg, query):
+        cfg.validate()
+        seen.append(cfg)
+        return iter([point()])
+
+    monkeypatch.setattr(exporter, "query_rows", query_rows)
+    out = tmp_path / "export.csv"
+    assert (
+        exporter.main(
+            [
+                "--env-file",
+                str(influx_env_file),
+                "--polling",
+                str(polling),
+                "--since",
+                "2026-07-01",
+                "--until",
+                "2026-07-02",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert len(seen) == 1 and seen[0].token == "not-a-real-token"
+    assert "influxdb" in out.read_text(encoding="utf-8")
+    captured = capsys.readouterr()
+    assert "not-a-real-token" not in captured.out + captured.err
+
+
+def test_env_file_dry_run_needs_no_token_or_network(
+    exporter, polling, tmp_path, monkeypatch, capsys
+):
+    path = tmp_path / "preview.env"
+    path.write_text("TANKAPP_INFLUX_BUCKET=preview-bucket\n", encoding="utf-8")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("dry-run must not use the network")
+
+    monkeypatch.setattr(exporter.urllib.request, "build_opener", forbidden)
+    assert (
+        exporter.main(
+            [
+                "--env-file",
+                str(path),
+                "--polling",
+                str(polling),
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    assert 'from(bucket: "preview-bucket")' in capsys.readouterr().out
+
+
+def test_cli_does_not_echo_unexpected_library_error_details(
+    exporter, polling, influx_env_file, monkeypatch, capsys
+):
+    def failing(*args, **kwargs):
+        raise ValueError("Library error containing not-a-real-token")
+
+    monkeypatch.setattr(exporter, "export_prices", failing)
+    assert (
+        exporter.main(
+            [
+                "--env-file",
+                str(influx_env_file),
+                "--polling",
+                str(polling),
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "not-a-real-token" not in captured.out + captured.err
+    assert "Detailinhalte" in captured.err
+
+
+def test_env_file_cannot_be_the_export_target(exporter, polling, influx_env_file):
+    assert (
+        exporter.main(
+            [
+                "--env-file",
+                str(influx_env_file),
+                "--polling",
+                str(polling),
+                "--out",
+                str(influx_env_file),
+            ]
+        )
+        == 1
+    )
+    assert exporter.load_config(influx_env_file).token == "not-a-real-token"

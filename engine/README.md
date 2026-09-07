@@ -21,7 +21,7 @@ nicht die spätere Homepage.
 | Automatisierte Tests ausführen | **Keine**; die Tests verwenden temporäre Testdaten und kontaktieren das NAS nicht. |
 | Vorhandene Analyse-CSVs prüfen / backtesten / fitten | **Keine**; die Dateien liegen bereits auf deinem PC. |
 | Aktuelle Preise mit dem Collector abfragen | **`data\apikey.txt`**: vorhandener Tankerkönig-Schlüssel, wird automatisch gelesen (§7). |
-| Live-Historie aus InfluxDB exportieren | **Separater InfluxDB-Lese-Token**, hier in `data\influx-token.txt` abgelegt und per PowerShell geladen (§3B). |
+| Live-Historie aus InfluxDB exportieren | **Separater InfluxDB-Lese-Token**. Empfohlen: vier Konfigurationswerte in `data\influx.env`, mit `--env-file` laden (§3B). Eine reine Token-Datei bleibt als Alternative möglich. |
 
 **`data\apikey.txt` nicht mit einem InfluxDB-Token überschreiben.** Es sind zwei
 verschiedene Zugänge. Schlüsseldateien bleiben privat; `data\` ist gitignored.
@@ -120,19 +120,101 @@ Erwartet: `TcpTestSucceeded : True`. Den Port nicht dafür ins Internet freigebe
 **Einmalig:** In der InfluxDB-Weboberfläche unter API Tokens ein eigenes Custom-Token
 mit **Leserecht nur für den Bucket `tankapp`** anlegen. Kein Admin-Token, kein
 Schreibrecht. Das laufende Uploader-Token und `/etc/tankapp/env` auf dem Pi bleiben
-unverändert. Das neue Lese-Token in einer eigenen lokalen Datei speichern:
+unverändert. Es muss ein **InfluxDB-Token** sein, nicht der Tankerkönig-Key.
+
+#### Empfohlen: komplette Konfiguration als Datei laden
+
+Die vier Werte gehören zusammen in eine eigene private Datei **`data\influx.env`**.
+Nicht die Collector-Datei `data\apikey.txt` dafür verwenden oder überschreiben:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path .\data | Out-Null
-notepad .\data\influx-token.txt
+notepad .\data\influx.env
 ```
 
-In Notepad **nur den Lese-Token als eine Zeile** eintragen, ohne Anführungszeichen,
-`Token `-Präfix oder Variablennamen. Als `influx-token.txt` speichern, nicht
-`influx-token.txt.txt`; vorhandene gültige Datei einfach weiterverwenden.
-Die Datei privat halten, nicht teilen. `data\apikey.txt` wird dabei nicht verändert.
+Diesen Aufbau als **Klartext / UTF-8** speichern (auch UTF-8 mit BOM ist erlaubt).
+Nur den Platzhalter für den Token durch deinen tatsächlichen InfluxDB-Lese-Token
+ersetzen; NAS-Adresse/Org/Bucket gegebenenfalls anpassen:
 
-**In jedem neuen PowerShell-Fenster vor einem Export:**
+```dotenv
+TANKAPP_INFLUX_URL=http://192.168.178.61:8086
+TANKAPP_INFLUX_ORG=gtwrlab
+TANKAPP_INFLUX_BUCKET=tankapp
+TANKAPP_INFLUX_TOKEN=<DEIN-INFLUXDB-LESE-TOKEN>
+```
+
+Vier `NAME=WERT`-Zeilen, keine PowerShell-Befehle (`$env:`), kein `Token `-Präfix,
+keine Markdown-Links mit `[]()` um die URL. Die Datei muss `influx.env` heißen,
+nicht `influx.env.txt`. Leere Zeilen, ganze Kommentarzeilen mit `#` und passende
+äußere Anführungszeichen sind erlaubt. Keine weiteren Variablen/Inline-Kommentare
+hineinkopieren. Die Datei ist über `data\` gitignored; privat halten, nicht teilen.
+
+Nach dem Aktualisieren des Exporters kannst du direkt starten:
+
+```powershell
+# Optional: eine versehentlich mit dem gesamten Dateiinhalt befüllte Variable entfernen
+Remove-Item Env:\TANKAPP_INFLUX_TOKEN -ErrorAction SilentlyContinue
+
+# Vorschau: keine Verbindung / Authentifizierung, aber polling.json muss vorhanden sein
+.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --env-file .\data\influx.env --dry-run
+
+# Tatsächlicher Export: standardmäßig letzte 70 Tage, E10
+.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --env-file .\data\influx.env
+Test-Path .\data\engine\influx_e10.csv.gz
+```
+
+**Mit `--env-file` zählt nur diese Datei.** Alte oder falsch gesetzte
+`TANKAPP_INFLUX_…`-Variablen im PowerShell-Fenster werden ignoriert; fehlende Werte
+werden nicht daraus ergänzt. Der Exporter liest die Datei bei jedem Aufruf neu,
+führt ihren Inhalt aber niemals als Code aus. Keine Aktivierung oder
+Session-Konfiguration erforderlich. **Ohne `--env-file`** gilt weiterhin die
+Umgebungsvariablen-Variante unten; es wird keine Datei automatisch gesucht.
+
+Bei einem Fehler hier anhalten. Eine alte Exportdatei kann weiterhin existieren;
+`Test-Path : True` allein beweist deshalb keinen erfolgreichen neuen Export.
+Nach Erfolg meldet das Skript die exportierten Zeilen und gültigen Preise.
+
+Optional mit festem Zeitraum (`--until` ist **exklusiv**, Datumsgrenzen ohne
+Offset sind Berliner Ortszeit); das `--env-file` auch hier mitgeben:
+
+```powershell
+.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --env-file .\data\influx.env --since 2026-07-01 --until 2026-09-07
+```
+
+#### Fehlerfall: `Invalid header value` nach `Get-Content -Raw`
+
+Wenn die Datei mehrere Zeilen wie `TANKAPP_INFLUX_URL=…`, `…_ORG=…`,
+`…_BUCKET=…`, `…_TOKEN=…` enthält, ist sie eine **Konfigurationsdatei**, kein einzelner
+Token. `Get-Content -Raw` liest den gesamten Inhalt; `.Trim()` entfernt nur
+Leerzeichen/Zeilenumbrüche an den Rändern, nicht die inneren Zeilenumbrüche.
+Die ganze Datei landet dann fälschlich im Authorization-Header.
+
+- **Vier Konfigurationszeilen:** wie oben in `data\influx.env` speichern und
+  mit `--env-file .\data\influx.env` laden. Nicht per `Get-Content -Raw` in
+  `$env:TANKAPP_INFLUX_TOKEN` schreiben.
+- **Nur ein einzelner InfluxDB-Token:** dafür funktioniert die alternative
+  Token-Datei unten. Keine `TANKAPP_INFLUX_…=`-Zeilen hineinschreiben.
+- **`data\apikey.txt`:** ist für den Tankerkönig-Collector vorgesehen. Falls dort
+  versehentlich die Influx-Konfiguration gespeichert wurde, diese in einer eigenen
+  Datei ablegen und für den Collector wieder dessen tatsächlichen Schlüssel
+  bereitstellen. Ein Tankerkönig-Key authentifiziert nicht bei InfluxDB.
+
+Der aktualisierte Exporter erkennt mehrzeilige/ungültige Token **vor dem
+HTTP-Aufruf**, nennt den passenden Dateimodus und gibt den Token-Inhalt dabei
+nicht aus. Auch rohe Header-/Kodierungsfehler der HTTP-Bibliothek werden nicht
+mehr ungefiltert ins Terminal geschrieben.
+
+**Falls eine ältere Fehlermeldung einen echten Schlüssel vollständig angezeigt
+hat und er in Chat, Log oder Screenshot geteilt wurde:** den betroffenen Schlüssel
+beim jeweiligen Dienst ersetzen. Auch Linkziele in formatierten Fehlertexten
+prüfen: geschwärzter sichtbarer Text allein entfernt einen Token dort nicht.
+Keine ungeschwärzten Fehlertexte mit Tokens posten.
+
+#### Alternative: bestehende Datei mit nur einem Token weiterverwenden
+
+Wenn `data\influx-token.txt` **ausschließlich den InfluxDB-Token in einer Zeile**
+enthält, kannst du bei der bisherigen Methode bleiben. Nicht beide Dateiformate
+mischen. Die folgenden Variablen in jedem neuen PowerShell-Fenster setzen:
 
 ```powershell
 $env:TANKAPP_INFLUX_URL = 'http://192.168.178.61:8086'
@@ -140,31 +222,15 @@ $env:TANKAPP_INFLUX_ORG = 'gtwrlab'
 $env:TANKAPP_INFLUX_BUCKET = 'tankapp'
 $env:TANKAPP_INFLUX_TOKEN = ([string](Get-Content -LiteralPath .\data\influx-token.txt -Raw -ErrorAction Stop)).Trim()
 if ([string]::IsNullOrWhiteSpace($env:TANKAPP_INFLUX_TOKEN)) { throw 'data\influx-token.txt ist leer.' }
-```
 
-So steht der Token-Inhalt nicht im eingegebenen Befehl oder in der Shell-History.
-Der Exporter liest die Umgebungsvariable; die Datei wird durch die obigen
-PowerShell-Befehle geladen, **nicht automatisch durch den Exporter**.
-
-```powershell
-# Vorschau: keine Netzwerkabfrage und kein Token notwendig, aber polling.json muss vorhanden sein
-.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --dry-run
-
-# Tatsächlicher Export: standardmäßig letzte 70 Tage, E10
+# In dieser Variante ausdrücklich ohne --env-file
 .\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py
-Test-Path .\data\engine\influx_e10.csv.gz
 ```
 
-Bei einem Fehler hier anhalten. Eine alte Exportdatei kann weiterhin existieren;
-`Test-Path : True` allein beweist deshalb keinen erfolgreichen neuen Export.
-Nach Erfolg meldet das Skript die exportierten Zeilen und gültigen Preise.
-
-Optional mit festem Zeitraum (`--until` ist **exklusiv**, Datumsgrenzen ohne
-Offset sind Berliner Ortszeit):
-
-```powershell
-.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --since 2026-07-01 --until 2026-09-07
-```
+Hier lädt **PowerShell** die Token-Datei. Der Exporter liest anschließend die vier
+Umgebungsvariablen. Der Token-Inhalt steht nicht im eingegebenen Befehl oder in
+der Shell-History. `--dry-run` ist auch hier nur eine Query-Vorschau, kein Nachweis,
+dass URL, Token und Berechtigungen für den echten Export bereits korrekt sind.
 
 Für §4 **eine** Datenvariante wählen – nur Dateien aufnehmen, die existieren:
 
@@ -278,14 +344,18 @@ höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefit
 | `polling.json` fehlt | Originales aktives M2-Set auf den PC kopieren. Private Dateien kommen nicht mit Git. |
 | Keine Dateien für `data/ready/*.csv*` | Aufbereitete Historie bereitstellen oder erfolgreich exportieren und `$Daten` auf die tatsächlich vorhandenen Dateien umstellen. |
 | Fehlende ausgewählte UUIDs | CSV-Zeitraum und gewähltes Polling-Set abgleichen; bei mehreren Sets gezielt `--poll-city Frankfurt` (oder tatsächlichen Set-Namen) ergänzen. |
-| `$Daten` ist leer / neue PowerShell geöffnet | Eine passende Dateiliste aus §3 erneut setzen. Vor einem Export zusätzlich die vier Influx-Variablen laden. |
+| `$Daten` ist leer / neue PowerShell geöffnet | Eine passende Dateiliste aus §3 erneut setzen. Beim Export `--env-file` mitgeben oder in der alternativen Variante die vier Influx-Variablen laden. |
 | NAS nicht erreichbar | `Test-NetConnection` prüfen; Netz/VPN/Adresse kontrollieren. Für Variante A ist das NAS nicht nötig. |
+| `Invalid header value` / Token enthält Konfigurationszeilen | Ganze `NAME=WERT`-Datei mit `--env-file data/influx.env` laden, nicht mit `Get-Content -Raw` als Token. Siehe Fehlerfall in §3B. |
+| `--env-file` nicht erkannt | Repository auf den aktuellen Stand bringen; der alte Exporter kannte diesen Schalter noch nicht. |
+| Konfigurationsdatei, Zeile … | Nur die vier dokumentierten Namen verwenden; UTF-8, doppelte Einträge und Anführungszeichen prüfen. Keine PowerShell-Befehle, keine reine Token-Datei. |
 | Influx HTTP 401/403 | Separaten InfluxDB-Lese-Token und Bucket-Recht prüfen, **nicht** den Tankerkönig-Key verwenden. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
 | Stationsname mehrdeutig | Original-Polling-Set/Writer-Schema prüfen. Gleichnamige Stationen im alten Influx-Schema lassen sich nicht zuverlässig rückwirkend trennen. |
 | Zu wenig Training / Exit 2 | QA und Skip-Gründe lesen, mehr Historie bereitstellen; keine Demo-Daten als Ersatz einspeisen. |
 
-Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` setzen. Danach die
+Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` zusätzlich setzen
+(bei der Dateivariante weiterhin mit `--env-file`). Danach die
 entsprechende Datei (`influx_diesel.csv.gz` / `influx_e5.csv.gz`) in `$Daten`
 aufnehmen und bei `inspect`, `backtest` und `fit` `--fuel DIESEL` / `--fuel E5`
 ergänzen. Vorhandene Historie muss ebenfalls diese Sorte enthalten.

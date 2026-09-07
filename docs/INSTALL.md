@@ -588,9 +588,11 @@ Pi/NAS unverändert lassen.
    aufbereiteten CSV-Dateien aus `data\ready\` auf dem PC verwenden.
 4. Datenqualität prüfen, dann mit ausreichender Historie backtesten, fitten und
    Prognosen als lokale JSON-Dateien erzeugen. **Dafür ist kein API-Key erforderlich.**
-5. Optional Live-Daten vom NAS ergänzen: separates InfluxDB-Lese-Token in
-   `data\influx-token.txt`, per PowerShell in `TANKAPP_INFLUX_TOKEN` laden.
-   `data\apikey.txt` bleibt unverändert für Tankerkönig. Der Export ist nur lesend.
+5. Optional Live-Daten vom NAS ergänzen: vier `TANKAPP_INFLUX_…=…`-Zeilen
+   (URL, Org, Bucket, separater InfluxDB-Lese-Token) in `data\influx.env` speichern;
+   Export mit `--env-file data/influx.env`. Nicht die ganze Datei in eine
+   Token-Variable laden. `data\apikey.txt` bleibt für Tankerkönig. Der Export ist
+   nur lesend; die Anleitung erklärt auch die alternative reine Token-Datei.
 
 Nach dem Setup beispielsweise direkt mit deinen vorhandenen M2-Dateien:
 
@@ -625,6 +627,6 @@ hier nur die Engine-Werkzeuge getestet, nicht die Prototypen umgestaltet.
 | Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
 | InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
 | Pipeline (Polling-Set bauen) | `.\.venv\Scripts\python.exe data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | Windows-PC |
-| InfluxDB-Export für M3 | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py` (PowerShell-Variablen/Datei-Lese-Token: Engine-Anleitung §3B) | Windows-PC |
+| InfluxDB-Export für M3 | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py --env-file data/influx.env` (vier Konfigurationswerte: Engine-Anleitung §3B) | Windows-PC |
 | M3-Datenqualität mit vorhandener Historie | `.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json` | Windows-PC |
 | M3-Softwaretests | `.\.venv-m3\Scripts\python.exe -m pytest -q` (kein Key / NAS nötig) | Windows-PC |

@@ -4,6 +4,10 @@
 The existing uploader uses city + station NAME as tags. polling.json is needed
 for an unambiguous join back to the historical UUIDs. Collisions are errors,
 never guessed matches. Only Python >= 3.9's standard library is required.
+
+Configuration: TANKAPP_INFLUX_* environment variables, or --env-file with four
+literal NAME=VALUE lines (the file replaces, rather than merges with, the env).
+A whole config file is not a token; malformed credentials are never logged.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -41,6 +46,17 @@ COLUMNS = [
     "source",
 ]
 UTC = dt.timezone.utc
+INFLUX_KEYS = (
+    "TANKAPP_INFLUX_URL",
+    "TANKAPP_INFLUX_ORG",
+    "TANKAPP_INFLUX_BUCKET",
+    "TANKAPP_INFLUX_TOKEN",
+)
+MAX_ENV_BYTES = 64 * 1024
+
+
+class ExportError(ValueError):
+    """User-facing error with a deliberately credential-free message."""
 
 
 @dataclass(frozen=True)
@@ -52,24 +68,117 @@ class InfluxConfig:
     timeout: int = 60
 
     def validate(self):
-        parsed = urllib.parse.urlsplit(self.url)
-        if (
-            parsed.scheme not in ("http", "https")
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
+        # Validate BEFORE constructing HTTP headers. http.client can otherwise
+        # include the entire credential in "Invalid header value b'...'" errors.
+        if self.token and (
+            self.token.startswith(tuple(name + "=" for name in INFLUX_KEYS))
+            or any(not 33 <= ord(char) <= 126 for char in self.token)
         ):
-            raise ValueError(
-                "TANKAPP_INFLUX_URL: http(s)-Adresse ohne Zugangsdaten/Query erforderlich."
+            raise ExportError(
+                "TANKAPP_INFLUX_TOKEN darf nur den einzelnen Token enthalten: "
+                "keine Konfigurationszeilen, Leer-/Steuerzeichen, BOM oder Token-Präfixe. "
+                "Eine Datei mit NAME=WERT-Zeilen über --env-file data/influx.env laden; "
+                "nicht ihren gesamten Inhalt in die Token-Variable schreiben."
             )
+        invalid_url = False
+        try:
+            # urlsplit silently strips some controls; reject them first. Access
+            # .port inside this guard too: its ValueError may echo bad input.
+            parsed = urllib.parse.urlsplit(self.url)
+            port = parsed.port
+            invalid_url = (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+                or port == 0
+                or any(
+                    char.isspace() or unicodedata.category(char).startswith("C")
+                    for char in self.url
+                )
+            )
+        except ValueError:
+            invalid_url = True
+        if invalid_url:
+            raise ExportError(
+                "TANKAPP_INFLUX_URL: http(s)-Adresse ohne Zugangsdaten/Query erforderlich; "
+                "als Klartext ohne Markdown-Linkklammern eintragen."
+            ) from None
         if not self.org or not self.bucket or not self.token:
-            raise ValueError(
-                "TANKAPP_INFLUX_ORG, _BUCKET und _TOKEN setzen (nur Lese-Token nötig)."
+            raise ExportError(
+                "TANKAPP_INFLUX_ORG, _BUCKET und _TOKEN setzen (nur Lese-Token nötig). "
+                "Alternativ die vier Werte über --env-file data/influx.env laden."
             )
         if not 1 <= self.timeout <= 600:
-            raise ValueError("Timeout muss zwischen 1 und 600 Sekunden liegen.")
+            raise ExportError("Timeout muss zwischen 1 und 600 Sekunden liegen.")
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """Parse literal NAME=VALUE lines, never execute or expand shell content.
+
+    UTF-8 BOM/CRLF, blank lines, whole-line comments and matching outer quotes
+    are supported. Split at the first '=' so base64 padding is preserved.
+    Reject unknown/duplicate keys without echoing any file contents.
+    """
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_ENV_BYTES + 1)
+    except OSError:
+        raise ExportError(
+            "Konfigurationsdatei nicht lesbar: Pfad bei --env-file und Dateirechte prüfen."
+        ) from None
+    if len(raw) > MAX_ENV_BYTES:
+        raise ExportError("Konfigurationsdatei zu groß (maximal 64 KiB).")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeError:
+        raise ExportError(
+            "Konfigurationsdatei als UTF-8 speichern (BOM ist erlaubt)."
+        ) from None
+    values = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, value = line.partition("=")
+        name, value = name.strip(), value.strip()
+        if not separator or name not in INFLUX_KEYS:
+            raise ExportError(
+                f"Konfigurationsdatei, Zeile {number}: erwartet TANKAPP_INFLUX_URL, "
+                "_ORG, _BUCKET oder _TOKEN als NAME=WERT; keine PowerShell-Befehle."
+            )
+        if name in values:
+            raise ExportError(
+                f"Konfigurationsdatei, Zeile {number}: doppelter Eintrag."
+            )
+        if value[:1] in ("'", '"'):
+            if len(value) < 2 or value[-1] != value[0]:
+                raise ExportError(
+                    f"Konfigurationsdatei, Zeile {number}: Anführungszeichen nicht geschlossen."
+                )
+            value = value[1:-1]
+        values[name] = value
+    return values
+
+
+def load_config(env_file: Path | None, timeout: int = 60) -> InfluxConfig:
+    # A supplied file is authoritative. In particular, do not inherit a stale
+    # multi-line TANKAPP_INFLUX_TOKEN from the user's current PowerShell session.
+    if env_file is not None:
+        values = read_env_file(env_file)
+        bucket_default = ""
+    else:
+        values = os.environ
+        bucket_default = "tankapp"
+    return InfluxConfig(
+        values.get("TANKAPP_INFLUX_URL", ""),
+        values.get("TANKAPP_INFLUX_ORG", ""),
+        values.get("TANKAPP_INFLUX_BUCKET", bucket_default),
+        values.get("TANKAPP_INFLUX_TOKEN", ""),
+        timeout,
+    )
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -87,7 +196,7 @@ def instant(value: str, timezone: str = "Europe/Berlin") -> dt.datetime:
             parsed.replace(tzinfo=zone, fold=1),
         )
         if first.utcoffset() != second.utcoffset():
-            raise ValueError(
+            raise ExportError(
                 "Mehrdeutige/nicht existente lokale Zeit; UTC-Offset explizit angeben."
             )
         parsed = first
@@ -96,7 +205,7 @@ def instant(value: str, timezone: str = "Europe/Berlin") -> dt.datetime:
 
 def time_windows(start: dt.datetime, stop: dt.datetime):
     if start >= stop:
-        raise ValueError("--since muss vor --until liegen (until ist exklusiv).")
+        raise ExportError("--since muss vor --until liegen (until ist exklusiv).")
     while start < stop:
         end = min(start + dt.timedelta(days=1), stop)
         yield start, end
@@ -123,7 +232,7 @@ def station_lookup(path: Path, city: str | None = None) -> dict:
                 uid, {"uuid": uid, "name": uid}
             )
     if not lookup:
-        raise ValueError("Keine Stationen in polling.json / für die gewählte Stadt.")
+        raise ExportError("Keine Stationen in polling.json / für die gewählte Stadt.")
     return lookup
 
 
@@ -131,7 +240,7 @@ def flux_query(
     bucket: str, fuel: str, start: dt.datetime, stop: dt.datetime, cities: list[str]
 ) -> str:
     if fuel not in ("e5", "e10", "diesel"):
-        raise ValueError("Kraftstoff muss e5, e10 oder diesel sein.")
+        raise ExportError("Kraftstoff muss e5, e10 oder diesel sein.")
 
     # json.dumps produces valid Flux string literals, including escaped quotes.
     def quote(value):
@@ -167,19 +276,19 @@ def query_rows(cfg: InfluxConfig, query: str):
             },
         }
     ).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Authorization": f"Token {cfg.token}",
-            "Accept": "application/csv",
-            "Content-Type": "application/json",
-            "User-Agent": "TankApp-ReadOnly-Export/1.0",
-        },
-    )
-    opener = urllib.request.build_opener(NoRedirect())
     try:
+        request = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Token {cfg.token}",
+                "Accept": "application/csv",
+                "Content-Type": "application/json",
+                "User-Agent": "TankApp-ReadOnly-Export/1.0",
+            },
+        )
+        opener = urllib.request.build_opener(NoRedirect())
         with opener.open(request, timeout=cfg.timeout) as response:
             text = io.TextIOWrapper(response, encoding="utf-8-sig", newline="")
             try:
@@ -187,11 +296,13 @@ def query_rows(cfg: InfluxConfig, query: str):
                 # HTTPResponse.read1 (used by TextIOWrapper) can accept an early
                 # EOF without raising IncompleteRead. Check Content-Length too.
                 if getattr(response, "length", None) not in (None, 0):
-                    raise ValueError(
+                    raise ExportError(
                         "Unvollständige HTTP-Antwort; Export bleibt unverändert."
                     )
             finally:
                 text.close()
+    except ExportError:
+        raise
     except urllib.error.HTTPError as exc:
         hints = {
             401: "Token fehlt/falsch",
@@ -200,15 +311,20 @@ def query_rows(cfg: InfluxConfig, query: str):
             429: "Server ausgelastet; später erneut exportieren",
         }
         # No response body / URL / token in logs (a proxy may echo credentials).
-        raise ValueError(
+        raise ExportError(
             f"InfluxDB HTTP {exc.code}: " + hints.get(exc.code, "Query/Server prüfen")
         ) from None
     except http.client.IncompleteRead:
-        raise ValueError(
+        raise ExportError(
             "Unvollständige HTTP-Antwort; Export bleibt unverändert."
         ) from None
+    except (ValueError, http.client.HTTPException):
+        raise ExportError(
+            "Ungültige HTTP-Anfrage/Antwort; Influx-Konfiguration und Token-Format prüfen. "
+            "Header- und Antwortinhalte werden aus Sicherheitsgründen nicht ausgegeben."
+        ) from None
     except (urllib.error.URLError, TimeoutError, OSError):
-        raise ValueError(
+        raise ExportError(
             "InfluxDB nicht erreichbar / Zeitüberschreitung; URL, Netz und NAS prüfen."
         ) from None
 
@@ -223,18 +339,18 @@ def parse_flux_csv(handle):
         if not row or not any(row) or row[0].startswith("#"):
             continue
         if "error" in row and "reference" in row:
-            raise ValueError(
+            raise ExportError(
                 "InfluxDB meldet einen Flux-Query-Fehler; kein Export übernommen."
             )
         if "_time" in row and "station" in row:
             header = row
             if not {"_time", "city", "station", "status"}.issubset(header):
-                raise ValueError(
+                raise ExportError(
                     "InfluxDB-Schema unvollständig: _time/city/station/status erforderlich."
                 )
             continue
         if header is None or len(row) != len(header):
-            raise ValueError(
+            raise ExportError(
                 "Unerwartetes InfluxDB-CSV-Format; kein Export übernommen."
             )
         values = [
@@ -249,7 +365,7 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
     matches = lookup.get((city, tag), {})
     if len(matches) != 1:
         reason = "mehrdeutig" if matches else "nicht in polling.json"
-        raise ValueError(
+        raise ExportError(
             f"Influx-Station {city!r}/{tag!r}: {reason}. "
             "Originales Polling-Set prüfen; UUIDs werden nicht geraten. "
             "Gleichnamige Stationen sind im bisherigen Influx-Schema nicht trennbar."
@@ -263,7 +379,7 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
         try:
             number = float(raw)
         except ValueError:
-            raise ValueError(
+            raise ExportError(
                 "Nichtnumerischer Preis in InfluxDB; Export abgebrochen."
             ) from None
         if math.isfinite(number) and 0.4 <= number <= 5.0:
@@ -293,7 +409,7 @@ def export_prices(
 ) -> dict:
     cfg.validate()
     if not output.name.endswith((".csv", ".csv.gz")):
-        raise ValueError(
+        raise ExportError(
             "Exportziel muss .csv oder .csv.gz sein, keine Konfigurations-/Pufferdatei."
         )
     windows = list(time_windows(start, stop))
@@ -319,14 +435,14 @@ def export_prices(
                 for raw in query_rows(cfg, query):
                     row = normalized_row(raw, lookup, fuel)
                     if not lower <= instant(row["timestamp"]) < upper:
-                        raise ValueError(
+                        raise ExportError(
                             "InfluxDB lieferte einen Zeitpunkt außerhalb des Query-Fensters."
                         )
                     writer.writerow(row)
                     summary["rows"] += 1
                     summary["open_prices"] += bool(row["price"])
         if not summary["rows"]:
-            raise ValueError(
+            raise ExportError(
                 "Keine InfluxDB-Daten im Zeitraum; bestehende Exportdatei bleibt erhalten."
             )
         os.replace(name, output)
@@ -355,6 +471,11 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Lokale UTF-8-Datei mit TANKAPP_INFLUX_…=…; ersetzt die Prozessumgebung vollständig",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Nur Query zeigen; kein Netz, kein Token nötig",
@@ -366,13 +487,11 @@ def main(argv=None) -> int:
         start = instant(args.since) if args.since else stop - dt.timedelta(days=70)
         windows = list(time_windows(start, stop))
         lookup = station_lookup(args.polling, args.poll_city)
-        cfg = InfluxConfig(
-            os.environ.get("TANKAPP_INFLUX_URL", ""),
-            os.environ.get("TANKAPP_INFLUX_ORG", ""),
-            os.environ.get("TANKAPP_INFLUX_BUCKET", "tankapp"),
-            os.environ.get("TANKAPP_INFLUX_TOKEN", ""),
-            args.timeout,
-        )
+        cfg = load_config(args.env_file, args.timeout)
+        if args.env_file and args.out.resolve() == args.env_file.resolve():
+            raise ExportError(
+                "Exportziel darf nicht die Konfigurationsdatei überschreiben."
+            )
         if args.dry_run:
             print(
                 f"Nur lesend: {len(windows)} Tages-Queries, {start.isoformat()} bis {stop.isoformat()} (exklusiv)."
@@ -392,8 +511,18 @@ def main(argv=None) -> int:
             f"{summary['open_prices']} gültige {args.fuel.upper()}-Preise, {summary['queries']} Queries."
         )
         return 0
-    except (ValueError, OSError, KeyError, TypeError) as exc:
+    except ExportError as exc:
         print(f"Export abgebrochen: {exc}", file=sys.stderr)
+        return 1
+    except (ValueError, OSError, KeyError, TypeError):
+        # Library errors (including Unicode/header errors) may embed secrets.
+        # Do not print their raw repr/message or a traceback from this CLI.
+        print(
+            "Export abgebrochen: Eingaben/Dateien ungültig oder nicht lesbar/schreibbar. "
+            "Pfade, Dateirechte, UTF-8 und polling.json bzw. --env-file prüfen. "
+            "Detailinhalte werden aus Sicherheitsgründen nicht ausgegeben.",
+            file=sys.stderr,
+        )
         return 1
 
 
