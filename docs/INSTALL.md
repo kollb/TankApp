@@ -405,6 +405,7 @@ TANKAPP_INFLUX_URL=http://192.168.178.61:8086
 TANKAPP_INFLUX_ORG=gtwrlab
 TANKAPP_INFLUX_BUCKET=tankapp
 TANKAPP_INFLUX_TOKEN=<Token aus 3.1>
+TANKAPP_POLL_DIR=/dev/shm/tankapp
 ENV
 sudo chmod 600 /etc/tankapp/env
 ```
@@ -413,7 +414,9 @@ sudo chmod 600 /etc/tankapp/env
 
 ```bash
 cd ~/TankApp
-set -a; . /etc/tankapp/env; set +a      # Env für die manuellen Tests laden
+set -a; . /etc/tankapp/env; set +a      # Env laden — wichtig, sonst laufen die
+                                        # Tests gegen das leere data/poll statt
+                                        # gegen /dev/shm/tankapp (TANKAPP_POLL_DIR)
 python3 data-tools/upload_influx.py --dry-run   # Line Protocol zeigen, nichts senden
 python3 data-tools/upload_influx.py --once      # ein voller Zyklus: Ping + Upload + Ack
 ```
@@ -446,7 +449,6 @@ Type=notify
 User=pi
 WorkingDirectory=/home/pi/TankApp
 EnvironmentFile=/etc/tankapp/env
-Environment=TANKAPP_POLL_DIR=/dev/shm/tankapp
 ExecStart=/usr/bin/python3 /home/pi/TankApp/data-tools/upload_influx.py
 Restart=always
 RestartSec=10
