@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Read-only InfluxDB 2.x export for M3. No writes, deletes or collector ACKs.
 
-The existing uploader uses city + station NAME as tags. polling.json is needed
-for an unambiguous join back to the historical UUIDs. Collisions are errors,
-never guessed matches. Only Python >= 3.9's standard library is required.
+The uploader now tags each point with station_id (UUID), keeping city and
+station NAME for display. Legacy name-only points are supported only when
+unambiguous; --uuid-only deliberately excludes legacy points. polling.json
+selects known UUIDs. Collisions are errors, never guessed matches.
+Only Python >= 3.9's standard library is required.
 
 Configuration: TANKAPP_INFLUX_* environment variables, or --env-file with four
 literal NAME=VALUE lines (the file replaces, rather than merges with, the env).
@@ -287,8 +289,20 @@ def station_lookup(path: Path, city: str | None = None) -> dict:
     return lookup
 
 
+def selected_uuid_sets(lookup: dict) -> dict[str, list[str]]:
+    groups = {}
+    for (city, _), candidates in lookup.items():
+        groups.setdefault(city, set()).update(candidates)
+    return {city: sorted(ids) for city, ids in sorted(groups.items())}
+
+
 def flux_query(
-    bucket: str, fuel: str, start: dt.datetime, stop: dt.datetime, cities: list[str]
+    bucket: str,
+    fuel: str,
+    start: dt.datetime,
+    stop: dt.datetime,
+    cities: list[str],
+    station_ids: dict[str, list[str]] | None = None,
 ) -> str:
     if fuel not in ("e5", "e10", "diesel"):
         raise ExportError("Kraftstoff muss e5, e10 oder diesel sein.")
@@ -297,14 +311,29 @@ def flux_query(
     def quote(value):
         return json.dumps(value, ensure_ascii=False)
 
+    identity_filter = ""
+    if station_ids is not None:
+        clauses = [
+            f"(r.city == {quote(city)} and contains(value: r.station_id, set: {quote(sorted(ids))}))"
+            for city, ids in sorted(station_ids.items())
+            if ids
+        ]
+        if not clauses:
+            raise ExportError("Keine ausgewählten UUIDs für den UUID-Export.")
+        identity_filter = (
+            "  |> filter(fn: (r) => exists r.station_id and ("
+            + " or ".join(clauses)
+            + "))\n"
+        )
     return (
         f"from(bucket: {quote(bucket)})\n"
         f"  |> range(start: time(v: {quote(start.isoformat())}), stop: time(v: {quote(stop.isoformat())}))\n"
         '  |> filter(fn: (r) => r._measurement == "prices")\n'
         f"  |> filter(fn: (r) => contains(value: r.city, set: {quote(sorted(cities))}))\n"
+        f"{identity_filter}"
         f'  |> filter(fn: (r) => r._field == "status" or r._field == {quote(fuel)})\n'
         '  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")\n'
-        f'  |> keep(columns: ["_time", "city", "station", "status", {quote(fuel)}])\n'
+        f'  |> keep(columns: ["_time", "city", "station", "station_id", "status", {quote(fuel)}])\n'
         '  |> sort(columns: ["_time"])\n'
     )
 
@@ -644,15 +673,28 @@ def check_connection(cfg: InfluxConfig) -> None:
 
 def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
     city, tag = row.get("city", ""), row.get("station", "")
-    matches = lookup.get((city, tag), {})
-    if len(matches) != 1:
-        reason = "mehrdeutig" if matches else "nicht in polling.json"
-        raise ExportError(
-            f"Influx-Station {city!r}/{tag!r}: {reason}. "
-            "Originales Polling-Set prüfen; UUIDs werden nicht geraten. "
-            "Gleichnamige Stationen sind im bisherigen Influx-Schema nicht trennbar."
-        )
-    uid, meta = next(iter(matches.items()))
+    station_id = row.get("station_id", "").strip()
+    if station_id:
+        # Explicit UUID always wins, even when the display name is ambiguous,
+        # stale, or itself looks like another UUID. Never fall back on its name.
+        meta = lookup.get((city, station_id), {}).get(station_id)
+        if meta is None:
+            raise ExportError(
+                "Influx-UUID nicht im ausgewählten Polling-Set; Stadt/UUID-Zuordnung prüfen. Kein Namens-Fallback."
+            )
+        uid = station_id
+    else:
+        matches = lookup.get((city, tag), {})
+        if len(matches) != 1:
+            reason = "mehrdeutig" if matches else "nicht in polling.json"
+            raise ExportError(
+                f"Influx-Station {city!r}/{tag!r}: {reason}. "
+                "Legacy-Punkt ohne station_id; UUIDs werden nicht geraten. "
+                "Uploader auf UUID-Tags aktualisieren, Original-JSONL bei Bedarf nachliefern "
+                "und mit --uuid-only exportieren (docs/STATIONS-UUID.md). "
+                "Nicht einen Namenszwilling aus polling.json entfernen, um alte Punkte umzudeuten."
+            )
+        uid, meta = next(iter(matches.items()))
     timestamp = instant(row["_time"])
     status = row.get("status", "").strip().lower() or "no prices"
     raw = row.get(fuel, "").strip()
@@ -688,6 +730,7 @@ def export_prices(
     lookup: dict,
     fuel: str,
     output: Path,
+    uuid_only: bool = False,
 ) -> dict:
     cfg.validate()
     if not output.name.endswith((".csv", ".csv.gz")):
@@ -696,6 +739,7 @@ def export_prices(
         )
     windows = list(time_windows(start, stop))
     cities = sorted({city for city, _ in lookup})
+    selected = selected_uuid_sets(lookup)
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(
         dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
@@ -706,6 +750,7 @@ def export_prices(
         "open_prices": 0,
         "queries": len(windows),
         "source": "influxdb",
+        "identity_mode": "uuid_only" if uuid_only else "strict_mixed",
     }
     try:
         opener = gzip.open if output.suffix == ".gz" else open
@@ -713,8 +758,19 @@ def export_prices(
             writer = csv.DictWriter(handle, fieldnames=COLUMNS)
             writer.writeheader()
             for lower, upper in windows:
-                query = flux_query(cfg.bucket, fuel, lower, upper, cities)
+                query = flux_query(
+                    cfg.bucket,
+                    fuel,
+                    lower,
+                    upper,
+                    cities,
+                    selected if uuid_only else None,
+                )
                 for raw in query_rows(cfg, query):
+                    if uuid_only and not raw.get("station_id", "").strip():
+                        raise ExportError(
+                            "UUID-Export erhielt einen Punkt ohne station_id; Server-Filter/Schema prüfen."
+                        )
                     row = normalized_row(raw, lookup, fuel)
                     if not lower <= instant(row["timestamp"]) < upper:
                         raise ExportError(
@@ -726,6 +782,11 @@ def export_prices(
         if not summary["rows"]:
             raise ExportError(
                 "Keine InfluxDB-Daten im Zeitraum; bestehende Exportdatei bleibt erhalten."
+                + (
+                    " Für --uuid-only muss der aktualisierte Uploader station_id-Tags geschrieben haben; ggf. JSONL-Replay ausführen."
+                    if uuid_only
+                    else ""
+                )
             )
         os.replace(name, output)
     finally:
@@ -748,6 +809,11 @@ def main(argv=None) -> int:
         "--polling", type=Path, default=ROOT / "docs/analysis/stations/polling.json"
     )
     parser.add_argument("--poll-city")
+    parser.add_argument(
+        "--uuid-only",
+        action="store_true",
+        help="Nur station_id-getaggte Punkte der gewählten UUIDs lesen; alte Namensserien bewusst ausschließen, nicht löschen",
+    )
     parser.add_argument(
         "--out", type=Path, help="Default: data/engine/influx_<fuel>.csv.gz"
     )
@@ -774,6 +840,10 @@ def main(argv=None) -> int:
         help="Nur Konfiguration, Health und Bucket-Leserecht prüfen; keine Exportdatei / kein Polling-Set nötig",
     )
     args = parser.parse_args(argv)
+    if args.check_connection and args.uuid_only:
+        parser.error(
+            "--uuid-only betrifft den Export; --check-connection prüft nur den Zugriff und benötigt kein Polling-Set."
+        )
     args.out = args.out or ROOT / f"data/engine/influx_{args.fuel}.csv.gz"
     try:
         cfg = load_config(args.env_file, args.timeout, args.no_proxy)
@@ -798,10 +868,17 @@ def main(argv=None) -> int:
                     args.fuel,
                     *windows[0],
                     sorted({city for city, _ in lookup}),
+                    selected_uuid_sets(lookup) if args.uuid_only else None,
                 )
             )
             return 0
-        summary = export_prices(cfg, start, stop, lookup, args.fuel, args.out)
+        if args.uuid_only:
+            print(
+                "UUID-Modus: alte Punkte ohne station_id werden bewusst nicht exportiert; keine Daten werden gelöscht."
+            )
+        summary = export_prices(
+            cfg, start, stop, lookup, args.fuel, args.out, uuid_only=args.uuid_only
+        )
         print(
             f"Export → {args.out}: {summary['rows']} Statuszeilen, "
             f"{summary['open_prices']} gültige {args.fuel.upper()}-Preise, {summary['queries']} Queries."

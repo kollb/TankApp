@@ -17,7 +17,7 @@ InfluxDB-Export ist optional und benötigt einen eigenen Lese-Token.
 | Analyse/Pipeline (Historie holen, Stationen auswählen) | **PC (Windows)** — Einmal-/Werkstatt-Läufe | ✅ fertig |
 | **M1 Collector** (Preise pollt, JSONL-Ringpuffer) | **Raspberry Pi** — 24/7 | ✅ fertig (`data-tools/collect_prices.py`) |
 | Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
-| **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | ✅ fertig (`data-tools/upload_influx.py`, Phase C) |
+| **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | `data-tools/upload_influx.py`, Phase C; neue Punkte zusätzlich mit `station_id`-Tag. Bestehende Installationen: [UUID-Umstellung](STATIONS-UUID.md). |
 | Langzeit-Speicher (InfluxDB) | **NAS** (192.168.178.61, Org `gtwrlab`, Bucket `tankapp`) | ✅ läuft (Bucket/Token: Phase C §3.1) |
 | M3-Tests / Fits / Backtests | **Windows-PC** (NAS alternativ möglich) | PowerShell-Ablauf in Phase D / `engine/README.md`; noch unkalibriert |
 | Homepage / API | Pi | Geplant; beide GUI-Vorlagen bleiben erhalten |
@@ -525,8 +525,13 @@ cat /dev/shm/tankapp/meta/synced_until  # Ack-Stand (letzte übertragene Zeile)
 docker exec <name> influx query \
   'from(bucket: "tankapp") |> range(start: -24h)
     |> filter(fn: (r) => r._measurement == "prices" and r._field == "status")
-    |> group(columns: ["city", "station"]) |> count()'
+    |> filter(fn: (r) => exists r.station_id)
+    |> group(columns: ["city", "station_id", "station"]) |> count()'
 ```
+
+Der Zähler betrachtet nur UUID-getaggte Statuspunkte, nicht die alten
+Namensserien. Bei Namenskollisionen zuerst [UUID-Tags/Nachlieferung](STATIONS-UUID.md)
+herstellen; alte und neue Serien nicht doppelt als unterschiedliche Polls zählen.
 
 **Lücken-Check (Abnahme, 14 Tage, Lücken < 2 %):** pro Station und Tag sind
 ~216 Polls zu erwarten (18 h / 5 min); über 14 Tage ~3 000 — Lücken < 2 %
@@ -575,8 +580,10 @@ durchgehen und das Backup (§3.6) prüfen.
 ## 4. Phase D — M3 am Windows-PC testen
 
 **Hier weitermachen, wenn M1/M2 bereits laufen.** Keine neue InfluxDB und kein
-Uploader auf dem PC nötig. Collector, Uploader, Secrets und Ack-Dateien auf
-Pi/NAS unverändert lassen.
+Uploader auf dem PC nötig. Collector, Secrets und Ack-Dateien auf Pi/NAS
+unverändert lassen. Bei mehrdeutigen Stationsnamen einmalig den Uploader-Code
+nach der [UUID-Anleitung](STATIONS-UUID.md) aktualisieren und bei Bedarf aus
+Original-JSONL nachliefern; dazu keine neue Datenbank anlegen.
 
 **Vollständige Schritt-für-Schritt-Anleitung für PowerShell:**
 [`engine/README.md`](../engine/README.md)

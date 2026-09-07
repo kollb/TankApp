@@ -5,9 +5,11 @@ Windows-PC** ausführen. Mit den vorhandenen M2-CSV-Dateien brauchst du dafür
 weder NAS-Zugriff noch einen API-Schlüssel. Der Export der Live-Daten aus InfluxDB
 ist eine zusätzliche Möglichkeit, kein Pflichtschritt für den lokalen Einstieg.
 
-**Collector und Uploader auf dem Pi laufen unverändert weiter.** Auf dem PC wird
-für M3 kein weiterer Uploader gestartet, keine InfluxDB installiert und nichts
-am Bucket oder an den Ack-Dateien geändert. Kein WSL, Docker oder SSH erforderlich.
+Für die M3-Rechenläufe bleibt der Pi im normalen Betrieb. Auf dem PC wird kein
+weiterer Uploader und keine InfluxDB benötigt; der Export liest nur. **Ausnahme
+bei alten Namenskollisionen:** einmalig den Uploader auf Stations-UUIDs umstellen
+und gegebenenfalls Original-JSONL nachliefern – die [genauen RPi-/PC-Schritte](../docs/STATIONS-UUID.md)
+stehen separat. Keine alten Serien löschen und keinen Ack zurücksetzen.
 
 M3 ist weiterhin ein erster, **unkalibrierter** Durchstich, keine fertige
 Entscheidungs-App. Die beiden GUI-Samples bleiben die Homepage-Basis
@@ -99,7 +101,10 @@ einen expliziten UUID-Ausschluss für **separate** Pipeline-Vorschläge.
 [Windows-Anleitung: Preis-Zwillinge prüfen und Ersatz vorschlagen](../docs/PREIS-ZWILLINGE.md).
 Nicht anhand des Namens entscheiden und nicht das aktive Polling-Set ändern,
 um eine alte vermischte Influx-Serie scheinbar eindeutig zu machen. Die dafür
-notwendige UUID-Speicherung/Migration ist noch nicht Teil dieser Änderung.
+notwendige UUID-Speicherung und Nachlieferung ist jetzt als
+[gesonderter Migrationsablauf](../docs/STATIONS-UUID.md) verfügbar. Meldet der
+Vergleich unterschiedliche Preisverläufe, beide Stationen vorerst behalten und
+diese Identitätsumstellung durchführen statt eine UUID auszuschließen.
 
 ## 1. PowerShell und Python vorbereiten
 
@@ -215,9 +220,10 @@ Erwartet: `TcpTestSucceeded : True`. Den Port nicht dafür ins Internet freigebe
    Datei speichern und den Verbindungstest unten starten. In dieses Feld kommt
    weder der Tankerkönig-Key noch die gesamte Konfigurationsdatei.
 
-**Der bisherige Collector/Uploader samt dessen Token bleibt unverändert.**
+**Collector und die bisherigen Zugangsdaten bleiben unverändert.**
 Für den PC einen eigenen Lese-Token erstellen, nicht den laufenden Dienst
-umkonfigurieren. Anleitung des Herstellers:
+mit dem PC-Token umkonfigurieren. Die Stations-ID-Migration aktualisiert nur den
+Uploader-Code und verwendet beim Replay dessen vorhandenen Schreibzugang. Anleitung des Herstellers:
 [InfluxDB-API-Token anlegen](https://docs.influxdata.com/influxdb/v2/admin/tokens/create-token/).
 
 #### Empfohlen: komplette Konfiguration als Datei laden
@@ -400,9 +406,22 @@ $Daten = @('data/ready/*.csv*', 'data/engine/influx_e10.csv.gz')
 Der Export verwendet ausschließlich `POST /api/v2/query`, keine Writes/Deletes.
 Leere Abfragen oder Teil-Downloads ersetzen nicht den letzten guten Export.
 `closed`, `no prices` und fehlende Sorten bleiben Statuszeilen, niemals Preis 0.
-Der bestehende `station`-Tag enthält Namen: `(city, station)` wird über das
-Original-Polling-Set auf UUIDs aufgelöst. **Unbekannte/mehrdeutige Namen führen zum
-Abbruch**; bestehende mehrdeutige Serien werden nicht geraten oder verändert.
+Neue Uploader-Punkte enthalten den **`station_id`-Tag**. Dieser wird direkt mit
+dem ausgewählten Polling-Set abgeglichen; der Anzeigename `station` bleibt erhalten.
+Nur alte Punkte ohne UUID benötigen die Namenszuordnung. **Unbekannte/mehrdeutige
+Legacy-Namen führen zum Abbruch**, nicht zu geratenen IDs.
+
+Bei `Aral Tankstelle: mehrdeutig` und unterschiedlichen Preisverläufen im Vergleich:
+[Stations-UUID-Anleitung](../docs/STATIONS-UUID.md) durchführen. Danach bewusst nur
+UUID-getaggte Punkte lesen:
+
+```powershell
+python .\data-tools\export_influx.py --env-file .\data\influx.env --uuid-only
+```
+
+Das filtert alte Namensserien aus dem Export, **löscht sie aber nicht**. Für frühere
+Daten sind Original-JSONL oder bereits UUID-getrennte Historien nötig. Ein bloßes
+Entfernen einer Station aus `polling.json` repariert alte Namensserien nicht.
 
 ## 4. Datenqualität und Backtest auf dem PC
 
@@ -505,7 +524,7 @@ höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefit
 | Netz-/Lesefehler, obwohl der RPi schreibt | Schreib- und Lesezugriff sowie Rechner-/Proxy-Weg unterscheiden. Phase, HTTP-Status, Fehlerklasse und `errno`/`winerror` aus dem neuen Check beachten; Token zunächst unverändert lassen. |
 | Timeout, DNS-, Verbindungs- oder TLS-Fehler | Betroffenen Schritt beachten und Verbindung/Dienst prüfen. Ein sporadischer Timeout erklärt nicht gleichzeitig wiederkehrende HTTP 401. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
-| Stationsname mehrdeutig | Original-Polling-Set/Writer-Schema prüfen. Gleichnamige Stationen im alten Influx-Schema lassen sich nicht zuverlässig rückwirkend trennen. |
+| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](../docs/STATIONS-UUID.md). |
 | Zu wenig Training / Exit 2 | QA und Skip-Gründe lesen, mehr Historie bereitstellen; keine Demo-Daten als Ersatz einspeisen. |
 
 Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` zusätzlich setzen

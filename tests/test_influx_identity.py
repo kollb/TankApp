@@ -1,0 +1,299 @@
+"""UUID tagging and explicit JSONL replay, with fake writes only."""
+
+import importlib.util
+import json
+import os
+import sys
+import urllib.error
+from pathlib import Path
+
+import pytest
+
+A = "11111111-1111-4111-8111-111111111111"
+B = "22222222-2222-4222-8222-222222222222"
+TIME = "2026-09-07T06:00:00+00:00"
+
+
+@pytest.fixture
+def uploader():
+    path = Path(__file__).resolve().parents[1] / "data-tools/upload_influx.py"
+    spec = importlib.util.spec_from_file_location("test_uuid_uploader", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def snapshot(stamp=TIME):
+    return {
+        "source": "tankerkoenig-prices.php",
+        "fetched_at": stamp,
+        "city": "Testmarkt",
+        "prices": {
+            A: {"status": "open", "e10": 1.7, "e5": False},
+            B: {"status": "open", "e10": 1.8, "diesel": None},
+        },
+    }
+
+
+@pytest.fixture
+def saved_buffer(uploader, tmp_path):
+    poll = tmp_path / "saved-poll"
+    poll.mkdir()
+    meta = poll / "meta"
+    meta.mkdir()
+    (meta / "synced_until").write_text("2026-09-07T08:00:00+00:00\n", encoding="utf-8")
+    path = poll / "2026-09-07.jsonl"
+    path.write_text(json.dumps(snapshot()) + "\n", encoding="utf-8")
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Testmarkt": {
+                        "label": "Testmarkt",
+                        "batch": [A, B],
+                        "stations": [
+                            {"uuid": A, "name": "Aral Test"},
+                            {"uuid": B, "name": "Aral Test"},
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = uploader.Cfg(
+        "http://nas:8086", "org", "tankapp", "not-a-real-token", poll, polling
+    )
+    return cfg, path
+
+
+def test_equal_names_and_timestamp_have_distinct_point_identities(uploader):
+    lines = uploader.snap_to_lines(
+        uploader.parse_ts(TIME), snapshot(), {A: "Aral Test", B: "Aral Test"}
+    )
+    assert len(lines) == 2
+    assert f"station_id={A} " in lines[0]
+    assert f"station_id={B} " in lines[1]
+    assert "station=Aral\\ Test" in lines[0] and "station=Aral\\ Test" in lines[1]
+    assert "e10=1.700" in lines[0] and "e10=1.800" in lines[1]
+    assert lines[0].rsplit(" ", 1)[1] == lines[1].rsplit(" ", 1)[1]
+    assert "e5=" not in lines[0] and "diesel=" not in lines[1]
+    assert lines == uploader.snap_to_lines(
+        uploader.parse_ts(TIME), snapshot(), {A: "Aral Test", B: "Aral Test"}
+    )
+
+
+def test_name_fallback_tag_escaping_and_nonfinite_prices(uploader):
+    snap = snapshot()
+    snap["prices"][A] = {
+        "status": "closed",
+        "e10": float("nan"),
+        "diesel": float("inf"),
+    }
+    lines = uploader.snap_to_lines(
+        uploader.parse_ts(TIME), snap, {A: "Name = one, two"}
+    )
+    assert "station=Name\\ \\=\\ one\\,\\ two," in lines[0]
+    assert (
+        'status="closed"' in lines[0]
+        and "e10=" not in lines[0]
+        and "diesel=" not in lines[0]
+    )
+    assert f"station={B},station_id={B}" in lines[1]
+
+
+def test_normal_upload_keeps_ack_until_success_then_advances(
+    uploader, saved_buffer, monkeypatch
+):
+    cfg, path = saved_buffer
+    old = "2026-09-07T05:00:00+00:00\n"
+    cfg.ack_file.write_text(old)
+
+    def failed(*args):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(uploader, "influx_write", failed)
+    assert uploader.run_upload(cfg, uploader.State()) == 1
+    assert cfg.ack_file.read_text() == old
+    received = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: received.extend(lines)
+    )
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    assert cfg.ack_file.read_text().strip() == TIME
+    assert len(received) == 2 and all("station_id=" in line for line in received)
+
+
+def test_replay_ignores_ack_without_reading_writing_or_resetting_it(
+    uploader, saved_buffer, monkeypatch
+):
+    cfg, path = saved_buffer
+    original = path.read_bytes()
+    ack = cfg.ack_file.read_bytes()
+
+    def forbidden(*args):
+        raise AssertionError("Replay must never read/write the live ACK")
+
+    monkeypatch.setattr(uploader, "read_ack", forbidden)
+    monkeypatch.setattr(uploader, "write_ack", forbidden)
+    received = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: received.extend(lines)
+    )
+    assert uploader.run_replay(cfg) == 0
+    assert len(received) == 2
+    assert path.read_bytes() == original
+    assert cfg.ack_file.read_bytes() == ack
+    again = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: again.extend(lines)
+    )
+    assert uploader.run_replay(cfg) == 0
+    assert again == received
+
+
+def test_replay_dry_run_needs_no_credentials_and_sends_nothing(
+    uploader, saved_buffer, monkeypatch, capsys
+):
+    cfg, path = saved_buffer
+    for key in (
+        "TANKAPP_INFLUX_URL",
+        "TANKAPP_INFLUX_ORG",
+        "TANKAPP_INFLUX_BUCKET",
+        "TANKAPP_INFLUX_TOKEN",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "upload_influx.py",
+            "--replay",
+            "--dry-run",
+            "--poll-dir",
+            str(cfg.poll_dir),
+            "--poll-json",
+            str(cfg.poll_json),
+        ],
+    )
+
+    def forbidden(*args):
+        raise AssertionError("dry-run cannot write or touch ACKs")
+
+    monkeypatch.setattr(uploader, "influx_write", forbidden)
+    monkeypatch.setattr(uploader, "write_ack", forbidden)
+    assert uploader.main() == 0
+    output = capsys.readouterr().out
+    assert A in output and B in output and "station_id=" in output
+    assert "not-a-real-token" not in output
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["demo", "broken", "naive", "bad_uuid", "bad_status", "nonfinite", "conflict"],
+)
+def test_replay_preflights_every_row_before_any_write(
+    uploader, saved_buffer, monkeypatch, capsys, kind
+):
+    cfg, path = saved_buffer
+    bad = snapshot("2026-09-07T06:05:00+00:00")
+    if kind == "demo":
+        bad["source"] = "demo"
+    elif kind == "naive":
+        bad["fetched_at"] = "2026-09-07T06:05:00"
+    elif kind == "bad_uuid":
+        bad["prices"] = {"not-a-real-token": {"status": "open", "e10": 1.7}}
+    elif kind == "bad_status":
+        bad["prices"][A]["status"] = "not-a-real-token"
+    elif kind == "nonfinite":
+        bad["prices"][A]["e10"] = float("nan")
+    elif kind == "conflict":
+        bad["fetched_at"] = TIME
+        bad["prices"][A]["e10"] = 1.9
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            '{"not-a-real-token":' if kind == "broken" else json.dumps(bad) + "\n"
+        )
+    ack = cfg.ack_file.read_bytes()
+    original = path.read_bytes()
+
+    def forbidden(*args):
+        raise AssertionError("Invalid replay must fail before the first write")
+
+    monkeypatch.setattr(uploader, "influx_write", forbidden)
+    assert uploader.run_replay(cfg) == 1
+    assert cfg.ack_file.read_bytes() == ack
+    assert path.read_bytes() == original
+    assert "not-a-real-token" not in capsys.readouterr().out
+
+
+def test_replay_detects_source_changes_during_read(uploader, saved_buffer, monkeypatch):
+    cfg, path = saved_buffer
+    original_loads = uploader.json.loads
+    changed = False
+
+    def loads(value, *args, **kwargs):
+        nonlocal changed
+        result = original_loads(value, *args, **kwargs)
+        if isinstance(result, dict) and "fetched_at" in result and not changed:
+            stat = path.stat()
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            changed = True
+        return result
+
+    monkeypatch.setattr(uploader.json, "loads", loads)
+    with pytest.raises(ValueError, match="verändert"):
+        uploader.prepare_replay(cfg.poll_dir, cfg.poll_json)
+
+
+def test_partial_replay_can_be_repeated_without_touching_ack(
+    uploader, saved_buffer, monkeypatch, capsys
+):
+    cfg, path = saved_buffer
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(snapshot("2026-09-07T06:05:00+00:00")) + "\n")
+    ack = cfg.ack_file.read_bytes()
+    monkeypatch.setattr(uploader, "REPLAY_BATCH_POINTS", 2)
+    batches = []
+
+    def write(cfg, lines):
+        batches.append(lines)
+        if len(batches) == 2:
+            raise urllib.error.HTTPError(cfg.url, 503, "not-a-real-token", {}, None)
+
+    monkeypatch.setattr(uploader, "influx_write", write)
+    assert uploader.run_replay(cfg) == 1
+    assert cfg.ack_file.read_bytes() == ack
+    assert "not-a-real-token" not in capsys.readouterr().out
+    successful = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: successful.extend(lines)
+    )
+    assert uploader.run_replay(cfg) == 0
+    assert len(successful) == 4
+    assert cfg.ack_file.read_bytes() == ack
+
+
+def test_empty_replay_is_not_successful_migration(uploader, saved_buffer, monkeypatch):
+    cfg, path = saved_buffer
+    path.write_text("", encoding="utf-8")
+    assert uploader.run_replay(cfg) == 2
+    path.unlink()
+    assert uploader.run_replay(cfg) == 1
+
+
+def test_replay_non_utf8_input_never_logs_raw_contents(uploader, saved_buffer, capsys):
+    cfg, path = saved_buffer
+    path.write_bytes(b"not-a-real-token\xff")
+    assert uploader.run_replay(cfg) == 1
+    assert "not-a-real-token" not in capsys.readouterr().out
+
+
+def test_replay_exact_duplicate_copies_are_deduplicated(uploader, saved_buffer):
+    cfg, path = saved_buffer
+    path.write_text((json.dumps(snapshot()) + "\n") * 2, encoding="utf-8")
+    lines, rows = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json)
+    assert rows == 2
+    assert len(lines) == 2

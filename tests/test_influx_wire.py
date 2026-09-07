@@ -25,6 +25,12 @@ SERIES_CSV = """#datatype,string,long,string,string,double,dateTime:RFC3339,stri
 ,,3,prices,status,open,2026-09-07T06:00:00Z,Testmarkt,Teststation
 """.encode()
 
+UUID_PIVOT_CSV = """,result,table,_time,city,station,station_id,status,e10
+,,0,2026-09-07T06:00:00Z,Testmarkt,Aral Test,station-1,open,1.6
+,,1,2026-09-07T06:00:00Z,Testmarkt,Aral Test,station-2,open,1.8
+""".encode()
+
+
 PIVOT_CSV = """,result,table,_time,city,station,status,e10
 ,,0,2026-09-07T06:00:00Z,Testmarkt,Teststation,open,1.6
 ,,0,2026-09-07T06:05:00Z,Testmarkt,Teststation,closed,
@@ -59,7 +65,10 @@ def http_endpoint():
             if self.headers.get("Content-Type") != "application/vnd.flux":
                 self.send_error(415)  # enforce the simpler, documented wire format
                 return
-            data = PIVOT_CSV if b"pivot(" in body else SERIES_CSV
+            if b"exists r.station_id" in body:
+                data = UUID_PIVOT_CSV
+            else:
+                data = PIVOT_CSV if b"pivot(" in body else SERIES_CSV
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
             self.send_header("Transfer-Encoding", "chunked")
@@ -138,3 +147,36 @@ def test_export_reads_plain_flux_stream_without_custom_json_dialect(
     assert requests[0][2]["Content-Type"] == "application/vnd.flux"
     assert requests[0][3].startswith(b'from(bucket: "tankapp")\n')
     assert b"pivot(" in requests[0][3] and b'"dialect"' not in requests[0][3]
+
+
+def test_uuid_export_keeps_two_equal_names_distinct_over_http(
+    exporter, http_endpoint, tmp_path
+):
+    url, requests = http_endpoint
+    cfg = exporter.InfluxConfig(
+        url, "test org", "tankapp", "not-a-real-token", no_proxy=True
+    )
+    meta = {"station-1": {"name": "Aral Test"}, "station-2": {"name": "Aral Test"}}
+    lookup = {
+        ("Testmarkt", "Aral Test"): meta,
+        ("Testmarkt", "station-1"): {"station-1": meta["station-1"]},
+        ("Testmarkt", "station-2"): {"station-2": meta["station-2"]},
+    }
+    out = tmp_path / "uuid.csv"
+    summary = exporter.export_prices(
+        cfg,
+        dt.datetime(2026, 9, 7, tzinfo=dt.timezone.utc),
+        dt.datetime(2026, 9, 8, tzinfo=dt.timezone.utc),
+        lookup,
+        "e10",
+        out,
+        uuid_only=True,
+    )
+    assert summary["identity_mode"] == "uuid_only" and summary["rows"] == 2
+    with out.open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [(row["station_id"], row["price"]) for row in rows] == [
+        ("station-1", "1.600"),
+        ("station-2", "1.800"),
+    ]
+    assert b"exists r.station_id" in requests[0][3]

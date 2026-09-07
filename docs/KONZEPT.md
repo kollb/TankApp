@@ -888,7 +888,10 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 Ablauf: Collector appended JSON-Zeilen an
 `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt
 TCP 8086 alle 60 s, Batch-Transfer unbestätigter Zeilen, Ack via
-`meta/synced_until`, **idempotent** (§1.2). NAS-Ausfall: 7 Tage Puffertiefe
+`meta/synced_until`, **idempotent** (§1.2). Jeder neue Punkt enthält zusätzlich
+`station_id` als UUID-Tag; `station` bleibt Anzeigename. Alte Namenskollisionen
+werden nicht geraten: [UUID-Umstellung/Replay](STATIONS-UUID.md). Replay ist
+explizit und ändert keinen Ack. NAS-Ausfall: 7 Tage Puffertiefe
 (Urlaubssicher), bei Überlauf FIFO + Alarm.
 
 ### 9.2 Ressourcen-Rechnung (Pi: 921 Mi total / 571 Mi verfügbar)

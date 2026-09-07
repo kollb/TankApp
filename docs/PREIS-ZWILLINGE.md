@@ -140,8 +140,11 @@ Vor der Live-Übernahme muss die Datenspeicherung eindeutig nach **Stations-UUID
 erfolgen. Bereits vermischte Punkte lassen sich nur mit ursprünglichen
 UUID-getrennten Quellen (z. B. noch vorhandenen Collector-JSONL-Dateien) zuverlässig
 rekonstruieren, nicht durch Umbenennen oder Löschen eines Polling-Eintrags.
-**Dieser Vergleich und die Vorschlagsfunktion implementieren diese Influx-Migration
-noch nicht.** Alte Daten und Ack-Dateien nicht löschen/zurücksetzen.
+**Vergleich und Vorschlagsfunktion selbst migrieren keine Influx-Daten.**
+Dafür gibt es jetzt einen [eigenen Ablauf für UUID-Tags und JSONL-Nachlieferung](STATIONS-UUID.md).
+Alte Daten und Ack-Dateien nicht löschen/zurücksetzen. Zeigt der Vergleich
+unterschiedliche Preisverläufe, beide Stationen zunächst behalten und stattdessen
+diese Identitätsumstellung durchführen.
 
 Für den nächsten Schritt reichen die Ergebnis-Kategorie und die UUIDs aus dem
 Vergleich sowie der Ersatzvorschlag. Keine Schlüsseldateien, vollständigen

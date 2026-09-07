@@ -650,3 +650,142 @@ def test_env_file_cannot_be_the_export_target(exporter, polling, influx_env_file
         == 1
     )
     assert exporter.load_config(influx_env_file).token == "not-a-real-token"
+
+
+def test_explicit_station_id_resolves_identical_names(exporter, polling):
+    payload = json.loads(polling.read_text())
+    payload["sets"]["Testmarkt"]["batch"].append("station-2")
+    payload["sets"]["Testmarkt"]["stations"].append(
+        {"uuid": "station-2", "name": "JET, Straße 1"}
+    )
+    polling.write_text(json.dumps(payload))
+    lookup = exporter.station_lookup(polling)
+    a = exporter.normalized_row(
+        point(station_id="station-1", e10="1.709"), lookup, "e10"
+    )
+    b = exporter.normalized_row(
+        point(station_id="station-2", e10="1.809"), lookup, "e10"
+    )
+    assert a["station_id"] == "station-1" and b["station_id"] == "station-2"
+    assert a["price"] == "1.709" and b["price"] == "1.809"
+    with pytest.raises(exporter.ExportError, match="Legacy-Punkt"):
+        exporter.normalized_row(point(), lookup, "e10")
+
+
+def test_unknown_explicit_id_never_falls_back_to_name(exporter, polling):
+    with pytest.raises(exporter.ExportError, match="Kein Namens-Fallback"):
+        exporter.normalized_row(
+            point(station_id="unknown-uuid"), exporter.station_lookup(polling), "e10"
+        )
+    row = exporter.normalized_row(
+        point(station_id="station-1", station="renamed label"),
+        exporter.station_lookup(polling),
+        "e10",
+    )
+    assert row["station_id"] == "station-1"
+
+
+def test_uuid_only_query_preserves_id_and_filters_per_city(exporter):
+    q = exporter.flux_query(
+        "tankapp",
+        "e10",
+        exporter.instant("2026-09-07"),
+        exporter.instant("2026-09-08"),
+        ["A", "B"],
+        {"A": ["uuid-a"], "B": ["uuid-b"]},
+    )
+    assert "exists r.station_id" in q
+    assert 'r.city == "A" and contains(value: r.station_id, set: ["uuid-a"])' in q
+    assert 'r.city == "B" and contains(value: r.station_id, set: ["uuid-b"])' in q
+    assert '"station_id"' in q.split("keep(columns:")[1]
+
+
+def test_uuid_csv_header_and_status_survive_parser(exporter):
+    text = ",_time,city,station,station_id,status,e10\n,2026-09-07T06:00:00Z,Testmarkt,label,station-1,closed,\n"
+    rows = list(exporter.parse_flux_csv(io.StringIO(text)))
+    assert rows[0]["station_id"] == "station-1"
+    assert rows[0]["status"] == "closed"
+
+
+def test_uuid_only_export_refuses_legacy_and_preserves_last_file(
+    exporter, polling, tmp_path, monkeypatch
+):
+    out = tmp_path / "prices.csv"
+    out.write_text("old valid export")
+    monkeypatch.setattr(exporter, "query_rows", lambda cfg, query: iter([point()]))
+    with pytest.raises(exporter.ExportError, match="ohne station_id"):
+        exporter.export_prices(
+            config(exporter),
+            exporter.instant("2026-07-01"),
+            exporter.instant("2026-07-02"),
+            exporter.station_lookup(polling),
+            "e10",
+            out,
+            uuid_only=True,
+        )
+    assert out.read_text() == "old valid export"
+
+
+def test_uuid_only_export_has_actionable_empty_result(
+    exporter, polling, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(exporter, "query_rows", lambda cfg, query: iter([]))
+    with pytest.raises(exporter.ExportError, match="JSONL-Replay"):
+        exporter.export_prices(
+            config(exporter),
+            exporter.instant("2026-07-01"),
+            exporter.instant("2026-07-02"),
+            exporter.station_lookup(polling),
+            "e10",
+            tmp_path / "nothing.csv",
+            uuid_only=True,
+        )
+
+
+def test_uuid_only_export_and_dry_run(
+    exporter, polling, influx_env_file, tmp_path, monkeypatch, capsys
+):
+    seen = []
+
+    def query(cfg, text):
+        seen.append(text)
+        return iter([point(station_id="station-1")])
+
+    monkeypatch.setattr(exporter, "query_rows", query)
+    out = tmp_path / "prices.csv"
+    args = [
+        "--env-file",
+        str(influx_env_file),
+        "--polling",
+        str(polling),
+        "--since",
+        "2026-07-01",
+        "--until",
+        "2026-07-02",
+        "--uuid-only",
+        "--out",
+        str(out),
+    ]
+    assert exporter.main(args) == 0
+    assert "exists r.station_id" in seen[0]
+    assert "station-1" in out.read_text()
+    assert "UUID-Modus" in capsys.readouterr().out
+    assert exporter.main([*args, "--dry-run"]) == 0
+    assert "exists r.station_id" in capsys.readouterr().out
+
+
+def test_uuid_alias_like_another_name_still_uses_exact_id(exporter):
+    lookup = {
+        ("Testmarkt", "station-1"): {
+            "station-1": {"name": "Real station"},
+            "station-2": {"name": "station-1"},
+        }
+    }
+    row = exporter.normalized_row(point(station_id="station-1"), lookup, "e10")
+    assert row["station_id"] == "station-1" and row["station_name"] == "Real station"
+
+
+def test_uuid_mode_not_confused_with_connection_check(exporter):
+    with pytest.raises(SystemExit) as error:
+        exporter.main(["--check-connection", "--uuid-only"])
+    assert error.value.code == 2

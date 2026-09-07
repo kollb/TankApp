@@ -34,8 +34,10 @@ Dafür sind weder NAS noch API-Schlüssel nötig. Optional die Live-Historie aus
 InfluxDB mit separatem Lese-Token hinzunehmen. `data\apikey.txt` bleibt der
 Tankerkönig-Schlüssel für den Collector, nicht für InfluxDB.
 
-Collector, Uploader, Bucket und Ack-Dateien bleiben unverändert. Noch keine
-kalibrierten Empfehlungen; die Anleitung enthält auch Hilfe bei fehlender
+Der Export selbst ändert keine Dienste, Buckets oder Ack-Dateien. Für bestehende
+Namenskollisionen ist einmalig die [Stations-UUID-Umstellung](docs/STATIONS-UUID.md)
+auf dem RPi nötig (neuer Uploader-Tag, optionaler Replay aus Original-JSONL).
+Noch keine kalibrierten Empfehlungen; die Anleitung enthält auch Hilfe bei fehlender
 Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsseldatei.
 
 ## Dokumentation
@@ -44,6 +46,8 @@ Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsse
 - [Datenbezug](docs/DATEN-BEZUG.md) · [Werkzeuge](data-tools/README.md) —
   Historie holen, InfluxDB exportieren, Polling-Set bei Bedarf neu erstellen.
 - [Stationsselektion](analysis/README.md) — Methodik und lokale Ausgaben.
+- [Stationsnamen eindeutig machen](docs/STATIONS-UUID.md) — UUID-Tags und sichere
+  Nachlieferung, ohne alte Serien zu löschen oder den Ack zurückzusetzen.
 - [Preis-Zwillinge prüfen und Ersatz vorschlagen](docs/PREIS-ZWILLINGE.md) —
   Windows-Befehle für UUID-getrennte Preisvergleiche, ohne das aktive Set zu ändern.
 - [Produkt- und Architekturkonzept](docs/KONZEPT.md) — Zielbild und Roadmap;
