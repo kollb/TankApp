@@ -1,13 +1,22 @@
 # TankApp – InfluxDB 2.x auf dem NAS (Konzept §9.1/§9.3, INSTALL.md Phase C).
 #
-# Einrichtung (einmalig, auf dem NAS):
+# ACHTUNG: Läuft auf dem NAS bereits eine InfluxDB-Instanz (bei uns:
+# 192.168.178.61, Org gtwrlab mit smarthome-Bucket) → NICHTS hier starten
+# (Port 8086 belegt). Dann in der bestehenden Instanz nur Bucket + Token
+# anlegen (INSTALL.md §3.1):
+#   influx bucket create --org gtwrlab --name tankapp --retention 43800h
+#   influx auth create --org gtwrlab --read-bucket tankapp \
+#       --write-bucket tankapp --description "tankapp-uploader (Pi)"
+#
+# Nur für den Fall, dass noch KEINE InfluxDB läuft — Einrichtung (einmalig):
 #   cd ops/nas/influxdb
 #   cp .env.example .env && nano .env      # Token: openssl rand -hex 16
 #   docker compose up -d
 #
-# Beim ERSTEN Start (leeres Volume) werden Org + Bucket automatisch angelegt
-# (DOCKER_INFLUXDB_INIT_*) — mit 43800h ≈ 5 Jahre Retention. Danach Token
-# für den Pi anlegen (INSTALL.md §3.1) und Uploader auf dem Pi testen (§3.3).
+# Beim ERSTEN Start (leeres Volume) werden Org + Bucket aus der .env
+# automatisch angelegt (DOCKER_INFLUXDB_INIT_*) — mit 43800h ≈ 5 Jahre
+# Retention. Danach Token für den Pi anlegen (INSTALL.md §3.1) und
+# Uploader auf dem Pi testen (§3.3).
 #
 # Port 8086 ist nur für das lokale Netz (der Pi schiebt hier rein) — NICHT
 # ins Internet weiterleiten. Jeder Write braucht ein Token.

@@ -23,10 +23,10 @@ Line Protocol (Measurement `prices`):
     eindeutiger UTC-Moment); alte naive Zeilen = System-Lokalzeit
 
 Konfiguration (Umgebung, z. B. /etc/tankapp/env auf dem Pi, chmod 600 —
-nie im Repo):
-  TANKAPP_INFLUX_URL    http://<nas>:8086
-  TANKAPP_INFLUX_ORG    tankapp
-  TANKAPP_INFLUX_BUCKET prices
+nie im Repo; Werte bei uns, siehe INSTALL.md Phase C):
+  TANKAPP_INFLUX_URL    http://192.168.178.61:8086
+  TANKAPP_INFLUX_ORG    gtwrlab
+  TANKAPP_INFLUX_BUCKET tankapp
   TANKAPP_INFLUX_TOKEN  Least-Privilege-Token (auth create --read-bucket --write-bucket)
   TANKAPP_POLL_DIR      Ringpuffer (wie beim Collector; Default: data/poll)
 

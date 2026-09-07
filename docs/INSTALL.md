@@ -12,7 +12,7 @@ folgt später (Roadmap im Konzept §13).
 | **M1 Collector** (Preise pollt, JSONL-Ringpuffer) | **Raspberry Pi** — 24/7 | ✅ fertig (`data-tools/collect_prices.py`) |
 | Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
 | **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | ✅ fertig (`data-tools/upload_influx.py`, Phase C) |
-| Langzeit-Speicher (InfluxDB) | **NAS** — Docker (`ops/nas/influxdb/`) | ✅ einrichtbar (Phase C, §3.1) |
+| Langzeit-Speicher (InfluxDB) | **NAS** (192.168.178.61, Org `gtwrlab`, Bucket `tankapp`) | ✅ läuft (Bucket/Token: Phase C §3.1) |
 | Engine-Fits, API/PWA | NAS / Pi | ⏜ folgt später |
 
 **Faustregel:** Der Collector gehört auf den Pi. Er läuft 24/7, braucht
@@ -332,37 +332,54 @@ NAS-Ausfall wird so bis zur 7-Tage-Ringpuffertiefe überbrückt (Überlauf FIFO
 + Alarm ab 6 Tagen); neu gesendete Zeilen sind harmlos, weil InfluxDB-Punkte
 ihre Identität (Measurement+Tags+Timestamp) mitbringen (idempotent, §1.2).
 
-### 3.1 InfluxDB auf dem NAS (Docker, einmalig)
+### 3.1 InfluxDB auf dem NAS (einmalig)
+
+**InfluxDB läuft bereits** auf dem NAS (192.168.178.61, Org `gtwrlab`,
+u. a. mit dem `smarthome`-Bucket). Deshalb: **keine zweite Instanz**
+aufsetzen, TankApp bekommt nur ein **eigenes Bucket** + **eigenes
+Least-Privilege-Token** in der bestehenden Instanz — das `smarthome`-Bucket
+bleibt unberührt (der Uploader schreibt mit Precision `ns` nur ins eigene
+Bucket; die bestehende Writer-Konfiguration ändert sich nicht).
 
 ```bash
-# auf dem NAS (Docker + Compose v2 installiert)
-git clone https://github.com/kollb/TankApp.git ~/TankApp
-cd ~/TankApp/ops/nas/influxdb
-cp .env.example .env && nano .env        # Token: openssl rand -hex 16
-docker compose up -d
-# Erster Start (leeres Volume) legt automatisch Org `tankapp` + Bucket
-# `prices` mit 43800h ≈ 5 Jahre Retention an. Check:
-docker compose exec influxdb influx ping
-# Least-Privilege-Token für den Pi (nur lesen+schreiben auf `prices`):
+# auf dem NAS, im InfluxDB-Container (Compose-Service/Container-Name
+# entsprechend anpassen):
+docker compose exec influxdb influx bucket create \
+    --org gtwrlab --name tankapp --retention 43800h     # ≈ 5 Jahre
 docker compose exec influxdb influx auth create \
-    --org tankapp --read-bucket prices --write-bucket prices \
+    --org gtwrlab --read-bucket tankapp --write-bucket tankapp \
     --description "tankapp-uploader (Pi)"
+# Check:
+docker compose exec influxdb influx bucket list --org gtwrlab
+docker compose exec influxdb influx auth list --org gtwrlab
 # → das ausgegebene Token gehört auf den Pi nach /etc/tankapp/env (§3.2),
 #   nie ins Repo.
 ```
 
-> Die InfluxDB-Web-UI (http://\<nas-ip\>:8086) dient nur der Diagnose —
+> Die InfluxDB-Web-UI (http://192.168.178.61:8086) dient nur der Diagnose —
 > der Pi nutzt sie nie, er schreibt ausschließlich mit dem Uploader-Token.
 > Port 8086 nur im lokalen Netz, nie ins Internet weiterleiten.
+
+**Falls auf dem NAS noch gar keine InfluxDB läuft:** eigene Instanz
+per Docker (legt dieselben Namen `gtwrlab`/`tankapp` an, 43800 h ≈ 5 Jahre
+Retention, Healthcheck):
+
+```bash
+git clone https://github.com/kollb/TankApp.git ~/TankApp
+cd ~/TankApp/ops/nas/influxdb
+cp .env.example .env && nano .env        # Token: openssl rand -hex 16
+docker compose up -d
+docker compose exec influxdb influx ping
+```
 
 ### 3.2 Secrets auf dem Pi (einmalig)
 
 ```bash
 sudo install -d -m 0750 -o pi -g pi /etc/tankapp
 sudo tee /etc/tankapp/env > /dev/null <<'ENV'
-TANKAPP_INFLUX_URL=http://<nas-ip>:8086
-TANKAPP_INFLUX_ORG=tankapp
-TANKAPP_INFLUX_BUCKET=prices
+TANKAPP_INFLUX_URL=http://192.168.178.61:8086
+TANKAPP_INFLUX_ORG=gtwrlab
+TANKAPP_INFLUX_BUCKET=tankapp
 TANKAPP_INFLUX_TOKEN=<Token aus 3.1>
 ENV
 sudo chmod 600 /etc/tankapp/env
@@ -385,7 +402,7 @@ POST. Fehlerpfade (Exit-Code 1, **Ack bleibt stehen, nichts geht verloren**):
 |---|---|
 | `NAS nicht erreichbar …` | NAS aus oder falsche `TANKAPP_INFLUX_URL` — Uploader wartet (Backoff 60 s → 15 min), der Puffer läuft weiter |
 | `HTTP 401 — Token fehlt/falsch` | `TANKAPP_INFLUX_TOKEN` prüfen (NAS: `influx auth list`) |
-| `HTTP 403 — keine Schreibberechtigung` | Token neu anlegen mit `--write-bucket prices` (3.1) |
+| `HTTP 403 — keine Schreibberechtigung` | Token neu anlegen mit `--write-bucket tankapp` (3.1) |
 | `HTTP 404 — Org/Bucket existiert nicht` | `TANKAPP_INFLUX_ORG`/`_BUCKET` gegen NAS prüfen (`influx org list`, `influx bucket list`) |
 | `HTTP 400 — Line Protocol abgelehnt` | Fehlertext im Log — sollte nicht vorkommen, dann hier melden |
 | `⚠ PUFFER ÜBERFÜLLT …` | älteste unsynced Zeile ≥ 6 Tage — NAS-Ausfall zu lang, älteste Daten gehen FIFO verloren (Ringtiefe 7 Tage) |
@@ -437,7 +454,7 @@ cat /dev/shm/tankapp/meta/synced_until  # Ack-Stand (letzte übertragene Zeile)
 # Fenster 06–24 Uhr / 5 min):
 cd ~/TankApp/ops/nas/influxdb
 docker compose exec influxdb influx query \
-  'FROM bucket("prices") |> range(start: -24h) |> group(by: ["station"]) |> count()'
+  'FROM bucket("tankapp") |> range(start: -24h) |> group(by: ["station"]) |> count()'
 ```
 
 **Lücken-Check (Abnahme, 14 Tage, Lücken < 2 %):** pro Station und Tag sind
