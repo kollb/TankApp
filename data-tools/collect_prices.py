@@ -319,6 +319,21 @@ def main() -> int:
             "Falls Polls mit 'parameter error' scheitern, kann der Proxy den Aufruf "
             "verfälschen (prüfen: env | grep -i proxy).")
 
+    # Puffer-Verzeichnis früh prüfen: existiert und für den Dienst-User beschreibbar?
+    # (Sonst läuft der erste Poll erst erfolgreich und crasht DANN beim Schreiben mit
+    #  einem PermissionError — klassisch: /dev/shm/tankapp per sudo root-owned angelegt.)
+    try:
+        args.out.mkdir(parents=True, exist_ok=True)
+        probe = args.out / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as e:
+        raise SystemExit(
+            f"Puffer {args.out} nicht beschreibbar: {e} — das Verzeichnis muss für den "
+            "Dienst-User beschreibbar sein, z. B. "
+            f"'sudo install -d -o pi -g pi -m 0755 {args.out}' "
+            "(oder --out auf ein beschreibbares Verzeichnis setzen).")
+
     stale_no_price: dict[str, int] = {}
     while True:
         now = dt.datetime.now()
@@ -364,7 +379,13 @@ def main() -> int:
         snap = {"fetched_at": now.replace(microsecond=0).isoformat(),
                 "source": "demo" if args.demo else "tankerkoenig-prices.php",
                 "city": stset.get("label"), "prices": prices}
-        path = write_snapshot(args.out, snap)
+        try:
+            path = write_snapshot(args.out, snap)
+        except OSError as e:
+            log(f"✗ Puffer nicht beschreibbar: {e} — Ownership von {args.out} prüfen "
+                f"(Dienst-User muss schreiben dürfen). Wiederhole in {args.interval} s.")
+            time.sleep(args.interval)
+            continue
         n_open = sum(1 for r in prices.values() if r["status"] == "open")
         log(f"Poll ok: {n_open}/{len(ids)} offen → {path.name}")
 

@@ -133,6 +133,17 @@ echo 'tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,mode=0755  0  0'
 sudo mount /dev/shm/tankapp
 ```
 
+> ⚠️ **Eigentümer!** Das Verzeichnis gehört nach `sudo mkdir -p` dem User
+> `root`, der Dienst läuft aber als `pi` → beim Schreiben kommt
+> `PermissionError: [Errno 13] Permission denied`. Eigentümer korrigieren:
+>
+> ```bash
+> sudo chown pi:pi /dev/shm/tankapp        # Dienst-User = pi
+> ```
+>
+> Der Collector prüft die Schreibbarkeit jetzt beim Start und meldet das
+> klar („Puffer … nicht beschreibbar“), statt beim ersten Poll abzustürzen.
+
 32 MiB reichen weit: ~0,6 MB JSONL pro Tag, Ringpuffer hält 7 Tage.
 SD-Härtung zusätzlich (optional, Konzept §9.3): `vm.swappiness=10`.
 
@@ -217,6 +228,7 @@ Code aktualisieren: `git pull` im Repo, dann ebenfalls Restart.
 | `⚠ … UUIDs haben kein gültiges UUID-Format` | Collector hat beim Start kaputte UUIDs erkannt und übersprungen → `polling.json` neu erzeugen |
 | `⚠ API-Key sieht nicht nach einer UUID aus` | `apikey.txt` enthält mehr als den nackten Key (Label/Kommentar?) → nur den 36-Zeichen-Key in eine Zeile |
 | `⚠ Proxy-Umgebung gesetzt` | `http_proxy`/`https_proxy` ist gesetzt; ein Proxy kann den API-Aufruf verfälschen (s. u.) |
+| `Puffer … nicht beschreibbar` / `PermissionError: [Errno 13]` | `/dev/shm/tankapp` gehört `root`, Dienst läuft als `pi` → `sudo chown pi:pi /dev/shm/tankapp` (s. 2.3) |
 | Dienst startet nicht | `journalctl -u tankapp-collector -n 50`; meist fehlt `polling.json` (2.2) oder der Key |
 
 ### 2.7 Fehlerdiagnose „parameter error“
