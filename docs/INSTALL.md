@@ -373,6 +373,18 @@ docker exec Influxdb influx auth list --org gtwrlab
 > Admin-USER (Passwort) in der Web-UI anmelden und dort ein neues Token
 > anlegen — die bestehenden Daten bleiben dabei unberührt.
 
+**Alternativ komplett per Web-UI (ohne CLI):**
+
+1. http://192.168.178.61:8086 — mit dem Admin-User (Passwort) anmelden.
+2. **Load Data → Buckets → Create Bucket** (ältere UI: „Data“):
+   Name `tankapp`, Organisation `gtwrlab`, Retention `43800h` (≈ 5 Jahre).
+3. **Security → API Tokens → Create Token** (ältere UI: „Users & Tokens“):
+   Name `tankapp-uploader (Pi)`, Typ **Custom**, Ablauf **Never Expires**,
+   Organisation `gtwrlab`; Berechtigung hinzufügen: Bucket `tankapp` →
+   **Read buckets** + **Write points** → Generate Token.
+4. **Token sofort kopieren** (nur einmalig angezeigt!) → gehört in
+   `/etc/tankapp/env` auf dem Pi (§3.2).
+
 > `docker compose exec <service> influx …` (oder `docker-compose exec …` bei
 > Compose v1) ginge auch, aber nur, wenn Compose installiert ist — auf
 > Synology-NAS oft nicht. Plain `docker exec` funktioniert immer.
