@@ -344,20 +344,34 @@ Bucket; die bestehende Writer-Konfiguration ändert sich nicht).
 ```bash
 # Auf dem NAS. Zuerst den Container-Namen herausfinden:
 docker ps | grep -i influx
+# (hier: Influxdb — Groß-/Kleinschreibung zählt!)
 
-# Bucket + Token für TankApp (<name> = Container-Name von oben):
-docker exec <name> influx bucket create \
+# WICHTIG: Die CLI IM Container hat kein Token gespeichert — ohne das
+# Admin-Token der bestehenden InfluxDB kommt "401 Unauthorized" (bei
+# "failed to lookup org …"). Admin-Token heraussuchen: .env der
+# bestehenden Instanz (INFLUXDB_ADMIN_TOKEN bzw.
+# DOCKER_INFLUXDB_INIT_ADMIN_TOKEN) oder Web-UI (http://192.168.178.61:8086
+# → Security → API-Tokens). Einmalig speichern:
+docker exec Influxdb influx config set-token <ADMIN-TOKEN>
+
+# Bucket + Token für TankApp:
+docker exec Influxdb influx bucket create \
     --org gtwrlab --name tankapp --retention 43800h     # ≈ 5 Jahre
-docker exec <name> influx auth create \
+docker exec Influxdb influx auth create \
     --org gtwrlab --read-bucket tankapp --write-bucket tankapp \
     --description "tankapp-uploader (Pi)"
 
 # Check:
-docker exec <name> influx bucket list --org gtwrlab
-docker exec <name> influx auth list --org gtwrlab
-# → das ausgegebene Token gehört auf den Pi nach /etc/tankapp/env (§3.2),
-#   nie ins Repo.
+docker exec Influxdb influx bucket list --org gtwrlab
+docker exec Influxdb influx auth list --org gtwrlab
+# → das ausgegebene NEUE Token gehört auf den Pi nach /etc/tankapp/env
+#   (§3.2), nie ins Repo.
 ```
+
+> Wer das Admin-Token nicht in der CLI speichern will: jedem Befehl
+> `--token <ADMIN-TOKEN>` anhängen. Admin-Token vergessen? Mit dem
+> Admin-USER (Passwort) in der Web-UI anmelden und dort ein neues Token
+> anlegen — die bestehenden Daten bleiben dabei unberührt.
 
 > `docker compose exec <service> influx …` (oder `docker-compose exec …` bei
 > Compose v1) ginge auch, aber nur, wenn Compose installiert ist — auf
