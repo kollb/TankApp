@@ -39,6 +39,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -55,6 +56,50 @@ RING_DAYS = 7
 # Lizenz/Etikette (§1.3): Token-Bucket 1 Request / 300 s hart, 429 -> 60 s Pause.
 POLL_INTERVAL_S = 300
 BACKOFF_429_S = 60
+
+# Tankerkönig-IDs und -Keys sind UUIDs. Der API-Check dient nur dazu, GARANTIERT
+# kaputte Eingaben sofort (und verständlich) zu melden, statt auf das kryptische
+# "parameter error" der API zu warten.
+UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def is_uuid(value: str) -> bool:
+    return bool(value) and UUID_RE.match(value) is not None
+
+
+def mask_key(key: str) -> str:
+    """Key fürs Log unkenntlich machen (Geheimnis, nie voll ausgeben)."""
+    if not key:
+        return "(leer)"
+    if len(key) <= 8:
+        return key[:2] + "…"
+    return f"{key[:4]}…{key[-4:]} ({len(key)} Zeichen)"
+
+
+def explain_api_error(msg: str) -> str:
+    """ok=false-Meldung der API -> verständlicher Text mit Hinweis auf die Ursache.
+
+    Empirisch (prices.php, 2026-09):
+      * 'parameter error'            == ids ODER apikey kamen leer/fehlend an
+      * 'Key existiert nicht …'      == Key unbekannt/deaktiviert
+      * '… nicht im korrekten Format' == mind. eine UUID hat nicht das UUID-Format
+    """
+    low = (msg or "").lower()
+    if "parameter error" in low:
+        return ("API ok=false: 'parameter error' — d. h. ids ODER apikey kamen leer "
+                "bei der API an. Prüfe polling.json (batch-UUIDs) und data/apikey.txt. "
+                "Falls ein HTTPS-Proxy gesetzt ist (http_proxy/https_proxy), kann er "
+                "den Aufruf verfälschen.")
+    if "key existiert nicht" in low:
+        return ("API ok=false: 'Key existiert nicht oder ist deaktiviert' — der Key in "
+                "data/apikey.txt ist unbekannt oder nicht aktiviert. Key auf "
+                "tankerkoenig.de prüfen.")
+    if "nicht im korrekten format" in low:
+        return ("API ok=false: 'eine oder mehrere Tankstellen-IDs nicht im korrekten "
+                "Format' — polling.json enthält UUIDs außerhalb des Formats "
+                "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
+    return f"API ok=false: {msg!r}"
 
 
 def log(msg: str) -> None:
@@ -104,7 +149,7 @@ def fetch_prices(api_key: str, ids: list[str], timeout: int = 30) -> dict:
     with urllib.request.urlopen(req, timeout=timeout) as r:
         payload = json.loads(r.read().decode("utf-8"))
     if not payload.get("ok"):
-        raise RuntimeError(f"API ok=false: {payload.get('message')!r}")
+        raise RuntimeError(explain_api_error(payload.get("message") or ""))
     return payload.get("prices") or {}
 
 
@@ -242,6 +287,18 @@ def main() -> int:
     stations = {s["uuid"]: s for s in stset.get("stations", [])}
     if not ids:
         raise SystemExit("Polling-Set enthält keine UUIDs.")
+    # Garantiert kaputte UUIDs sofort melden statt auf das kryptische
+    # "parameter error"/"nicht im korrekten Format" der API zu warten.
+    bad_ids = [i for i in ids if not is_uuid(i)]
+    if bad_ids:
+        preview = ", ".join(repr(str(b))[:42] for b in bad_ids[:3])
+        log(f"⚠ {len(bad_ids)} von {len(ids)} UUIDs haben kein gültiges UUID-Format "
+            f"({preview}{' …' if len(bad_ids) > 3 else ''}) — diese Stationen werden "
+            "übersprungen. polling.json neu erzeugen (run_pipeline.py)!")
+        ids = [i for i in ids if is_uuid(i)]
+    if not ids:
+        raise SystemExit("Polling-Set enthält keine gültigen UUIDs — polling.json "
+                         "(docs/analysis/stations/polling.json) prüfen/neu erzeugen.")
     log(f"{len(ids)} Stationen im Set ({stset.get('label', '?')}), "
         f"Fenster {args.window_start:02d}-{args.window_end:02d} Uhr, "
         f"Puffer {args.out}")
@@ -251,6 +308,31 @@ def main() -> int:
         raise SystemExit("Kein Tankerkönig-API-Key (--api-key / Umgebungsvariable "
                          "TANKERKOENIG_API_KEY / data/apikey.txt). Kostenlos registrieren "
                          "auf tankerkoenig.de, oder --demo zum Testen.")
+    if api_key and not is_uuid(api_key):
+        log(f"⚠ API-Key sieht nicht nach einer UUID aus ({mask_key(api_key)}) — "
+            "data/apikey.txt muss GENAU eine Zeile im Format "
+            "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx enthalten (nur den Key, kein Label).")
+    proxy_env = sorted(k for k in os.environ
+                       if k.lower() in ("http_proxy", "https_proxy", "all_proxy"))
+    if proxy_env:
+        log(f"⚠ Proxy-Umgebung gesetzt ({', '.join(proxy_env)}) — urllib routet darüber. "
+            "Falls Polls mit 'parameter error' scheitern, kann der Proxy den Aufruf "
+            "verfälschen (prüfen: env | grep -i proxy).")
+
+    # Puffer-Verzeichnis früh prüfen: existiert und für den Dienst-User beschreibbar?
+    # (Sonst läuft der erste Poll erst erfolgreich und crasht DANN beim Schreiben mit
+    #  einem PermissionError — klassisch: /dev/shm/tankapp per sudo root-owned angelegt.)
+    try:
+        args.out.mkdir(parents=True, exist_ok=True)
+        probe = args.out / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as e:
+        raise SystemExit(
+            f"Puffer {args.out} nicht beschreibbar: {e} — das Verzeichnis muss für den "
+            "Dienst-User beschreibbar sein, z. B. "
+            f"'sudo install -d -o pi -g pi -m 0755 {args.out}' "
+            "(oder --out auf ein beschreibbares Verzeichnis setzen).")
 
     stale_no_price: dict[str, int] = {}
     while True:
@@ -281,7 +363,14 @@ def main() -> int:
             log(f"HTTP {e.code}: {e} — wiederhole in {args.interval} s.")
             time.sleep(args.interval)
             continue
-        except (urllib.error.URLError, TimeoutError, ConnectionError, RuntimeError) as e:
+        except RuntimeError as e:
+            # ok=false der API — in der Meldung steckt jetzt die konkrete Ursache.
+            log(f"Poll fehlgeschlagen: {e}")
+            log(f"  Request-Kontext: {len(ids)} ids, Key {mask_key(api_key or '')} — "
+                f"wiederhole in {args.interval} s.")
+            time.sleep(args.interval)
+            continue
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             log(f"Poll fehlgeschlagen ({type(e).__name__}: {e}) — wiederhole in "
                 f"{args.interval} s.")
             time.sleep(args.interval)
@@ -290,7 +379,13 @@ def main() -> int:
         snap = {"fetched_at": now.replace(microsecond=0).isoformat(),
                 "source": "demo" if args.demo else "tankerkoenig-prices.php",
                 "city": stset.get("label"), "prices": prices}
-        path = write_snapshot(args.out, snap)
+        try:
+            path = write_snapshot(args.out, snap)
+        except OSError as e:
+            log(f"✗ Puffer nicht beschreibbar: {e} — Ownership von {args.out} prüfen "
+                f"(Dienst-User muss schreiben dürfen). Wiederhole in {args.interval} s.")
+            time.sleep(args.interval)
+            continue
         n_open = sum(1 for r in prices.values() if r["status"] == "open")
         log(f"Poll ok: {n_open}/{len(ids)} offen → {path.name}")
 

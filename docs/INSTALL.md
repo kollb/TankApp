@@ -133,6 +133,17 @@ echo 'tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,mode=0755  0  0'
 sudo mount /dev/shm/tankapp
 ```
 
+> ⚠️ **Eigentümer!** Das Verzeichnis gehört nach `sudo mkdir -p` dem User
+> `root`, der Dienst läuft aber als `pi` → beim Schreiben kommt
+> `PermissionError: [Errno 13] Permission denied`. Eigentümer korrigieren:
+>
+> ```bash
+> sudo chown pi:pi /dev/shm/tankapp        # Dienst-User = pi
+> ```
+>
+> Der Collector prüft die Schreibbarkeit jetzt beim Start und meldet das
+> klar („Puffer … nicht beschreibbar“), statt beim ersten Poll abzustürzen.
+
 32 MiB reichen weit: ~0,6 MB JSONL pro Tag, Ringpuffer hält 7 Tage.
 SD-Härtung zusätzlich (optional, Konzept §9.3): `vm.swappiness=10`.
 
@@ -163,6 +174,14 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now tankapp-collector
 ```
+
+> ⚠️ **Wichtig:** `daemon-reload` + `enable --now` starten einen bereits
+> laufenden Dienst **nicht neu**. Nach jeder Änderung an der Unit (z. B.
+> `TANKAPP_POLL_DIR`) oder an `polling.json`/`apikey.txt` deshalb:
+>
+> ```bash
+> sudo systemctl restart tankapp-collector
+> ```
 
 Key als Datei sicherer als in der Unit:
 
@@ -203,7 +222,98 @@ Code aktualisieren: `git pull` im Repo, dann ebenfalls Restart.
 | `HTTP 429` | API-Limit (1 Request/5 min) — Collector wartet automatisch 60 s und wiederholt |
 | `no prices` (Station) | Station meldet gerade keine Preise; nach **7 Polls** (~35 min) Alarm im Log → Station prüfen (Urlaub/Baustelle) |
 | `Fenster zu … schlafe` | normal zwischen 00 und 06 Uhr |
+| `parameter error` | **ids ODER apikey kamen leer bei der API an** — siehe Fehlerdiagnose unten |
+| `Key existiert nicht oder ist deaktiviert` | Key in `data/apikey.txt` unbekannt/nicht aktiviert → bei tankerkoenig.de prüfen |
+| `eine oder mehrere Tankstellen-IDs nicht im korrekten Format` | `polling.json` enthält UUIDs außerhalb des Formats `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `⚠ … UUIDs haben kein gültiges UUID-Format` | Collector hat beim Start kaputte UUIDs erkannt und übersprungen → `polling.json` neu erzeugen |
+| `⚠ API-Key sieht nicht nach einer UUID aus` | `apikey.txt` enthält mehr als den nackten Key (Label/Kommentar?) → nur den 36-Zeichen-Key in eine Zeile |
+| `⚠ Proxy-Umgebung gesetzt` | `http_proxy`/`https_proxy` ist gesetzt; ein Proxy kann den API-Aufruf verfälschen (s. u.) |
+| `Puffer … nicht beschreibbar` / `PermissionError: [Errno 13]` | `/dev/shm/tankapp` gehört `root`, Dienst läuft als `pi` → `sudo chown pi:pi /dev/shm/tankapp` (s. 2.3) |
 | Dienst startet nicht | `journalctl -u tankapp-collector -n 50`; meist fehlt `polling.json` (2.2) oder der Key |
+
+### 2.7 Fehlerdiagnose „parameter error“
+
+Die Tankerkönig-API antwortet `ok=false` mit `parameter error` **nur**, wenn
+`ids` oder `apikey` **leer/fehlend** ankommen (ein falscher Key ergibt
+„Key existiert nicht…“, eine kaputte UUID „…nicht im korrekten Format“).
+Der Collector sendet immer beide Parameter — also nacheinander prüfen:
+
+```bash
+# 1) Was steht wirklich im Polling-Set?
+python3 - <<'PY'
+import json
+p = json.load(open("/home/pi/TankApp/docs/analysis/stations/polling.json"))
+s = next(iter(p["sets"].values()))
+print("label:", s.get("label"))
+print("batch:", s.get("batch"))
+PY
+
+# 2) Enthält apikey.txt GENAU eine Zeile mit dem 36-Zeichen-Key?
+#    (zeigt nur Länge + Anfangszeichen, nicht den ganzen Key)
+python3 - <<'PY'
+from pathlib import Path
+k = Path("/home/pi/TankApp/data/apikey.txt").read_text().strip().splitlines()
+print("Zeilen:", len(k), "| Zeile 1:", repr(k[0]) if k else "(leer)")
+PY
+
+# 3) Läuft der Dienst noch mit der ALTEN Konfiguration? (Unit geändert → neu starten)
+systemctl status tankapp-collector | head -3
+sudo systemctl restart tankapp-collector
+
+# 4) Direkter API-Test mit dem echten Key (rohe Antwort ansehen):
+#    IDs aus Schritt 1, Key aus apikey.txt einsetzen.
+curl -s "https://creativecommons.tankerkoenig.de/json/prices.php?ids=<uuid1>,<uuid2>&apikey=<KEY>"
+#    -> {"ok":true,…}                alles gut, Problem lag an alter Konfiguration
+#    -> {"ok":false,"message":"parameter error"}            ids oder apikey leer
+#    -> {"ok":false,"message":"Key existiert nicht …"}      Key falsch/inaktiv
+#    -> {"ok":false,"message":"… nicht im korrekten Format"} UUID kaputt
+
+# 5) Proxy? urllib nutzt http_proxy/https_proxy — ein Filter-/Tunnel-Proxy
+#    kann den Query-String verstümmeln.
+env | grep -i proxy
+sudo systemctl show tankapp-collector -p Environment
+```
+
+Häufigster Fall in der Praxis: Der Dienst lief noch mit der **alten** Unit/
+dem **alten** Key (siehe 2.4: erst `systemctl restart`!) oder `apikey.txt`
+war leer bzw. enthielt nur den Platzhalter aus dem Beispiel.
+
+### 2.8 Sicherung & Wiederherstellung des Pi
+
+Der Code liegt auf GitHub, aber **zwei Dateien sind gitignored** und existieren
+nur auf dem Pi. Sie müssen ins Pi-Backup (z. B. `smart_backup.sh` aufs NAS)
+aufgenommen werden, sonst ist der Collector nach einem Restore lahm:
+
+| Was | Pfad | Inhalt |
+|---|---|---|
+| API-Key | `~/TankApp/data/apikey.txt` | privater Tankerkönig-Key (chmod 600) |
+| Polling-Set | `~/TankApp/docs/analysis/stations/polling.json` | die 10 UUIDs + private Koordinaten |
+| systemd-Unit | `/etc/systemd/system/tankapp-collector.service` | Custom-Unit (Environment) |
+| tmpfs-Zeile | `/etc/fstab` (Zeile `/dev/shm/tankapp`) | RAM-Puffer-Mount |
+
+**Bewusst NICHT sichern:** `/dev/shm/tankapp/*.jsonl` — das ist der 7-Tage-
+Ringpuffer im RAM, er wird nach einem Neustart ohnehin neu aufgebaut. Die
+Langzeit-Historie kommt ab M2 vom NAS-Uploader (InfluxDB).
+
+Minimal-Snippet fürs Backup-Skript:
+
+```bash
+mkdir -p "$TARGET/tankapp"
+cp ~/TankApp/data/apikey.txt "$TARGET/tankapp/apikey.txt"
+cp ~/TankApp/docs/analysis/stations/polling.json "$TARGET/tankapp/polling.json"
+cp /etc/systemd/system/tankapp-collector.service "$TARGET/tankapp/" 2>/dev/null
+```
+
+Beim Restore: Repo klonen (`git clone`/`git pull`), die zwei Dateien
+zurückkopieren, Unit nach `/etc/systemd/system/` legen, tmpfs-Zeile in
+`/etc/fstab` ergänzen und `systemctl enable --now tankapp-collector`.
+Der Key gehört `pi:pi` mit `chmod 600`. Für den RAM-Puffer ist die
+`uid=pi,gid=pi`-Variante praktisch, dann entfällt das `chown` nach jedem
+Boot:
+
+```
+tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,uid=pi,gid=pi  0  0
+```
 
 ---
 
