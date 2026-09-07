@@ -42,6 +42,28 @@ kurze Test `--check-connection`, der Health und Bucket-Zugriff getrennt prüft.
 werden für diesen Ablauf **nicht benötigt**. Die Engine bekommt weder den
 Tankerkönig-Key noch das Passwort deiner Browser-Anmeldung.
 
+## RPi schreibt erfolgreich, aber der PC scheitert beim Lesen?
+
+Das ist kein Widerspruch: Der RPi-**Uploader** benutzt `POST /api/v2/write`,
+der PC-**Exporter** `POST /api/v2/query`. Ein InfluxDB-Token kann für denselben
+Bucket nur Schreibrechte haben. Die Datenansicht im Browser verwendet zudem
+die Rechte deiner Browser-Anmeldung, nicht zwingend diesen API-Token.
+Gemeint ist hier `TANKAPP_INFLUX_TOKEN` des Uploaders; der Tankerkönig-Key des
+Collectors ist ein anderer Zugang.
+
+**Bei einem Netz-/Lesefehler den Token aber nicht erneut blind wechseln.**
+`/health` ist ein eigener GET ohne Token. Sein Erfolg beweist, dass dieser
+Aufruf klappt, nicht dass auch der POST und dessen komplette Antwort ankommen.
+Der Windows-PC kann andere Proxy-/VPN-/Netzfilter-Einstellungen nutzen als der Pi.
+Vergleiche URL, Organisation und Bucket lokal mit der Uploader-Konfiguration,
+ohne deren Inhalte oder Schlüssel zu posten.
+
+Der aktualisierte Verbindungstest zeigt deshalb zusätzlich den von `urllib`
+vorgesehenen HTTP-Weg sowie bei Fehlern **Phase, HTTP-Status, Fehlerklasse,
+`errno` und gegebenenfalls `winerror`**. Rohe Fehlermeldungen, Proxy-Adressen und
+Zugangsdaten bleiben ausgeblendet. Details und ein gezielter Proxy-Vergleich
+stehen in §3B; zunächst denselben Standard-Test mit unverändertem Token ausführen.
+
 ## 1. PowerShell und Python vorbereiten
 
 Öffne **PowerShell im TankApp-Ordner** (z. B. über das Terminal von VS Code).
@@ -214,10 +236,44 @@ höchstens einen Zeitstempel. Auch ein leerer Zeitraum kann lesbar sein; ein
 entsprechender Hinweis ist **kein Nachweis**, dass der Collector gerade Daten liefert.
 Es werden keine Token-/Organisationslisten mit zusätzlichen Adminrechten abgefragt.
 
-Bei einer Zeitüberschreitung nennt die Ausgabe den betroffenen Schritt. Netz,
-VPN, Windows-/HTTP-Proxy und NAS-Dienst prüfen; bei tatsächlich langsamer Verbindung
-kann `--timeout 60` helfen. **Mehr Timeout behebt keinen 401.** Keine pauschale
-Proxy-/TLS-Abschaltung und keine Portfreigabe ins Internet vornehmen.
+#### Abbruch eingrenzen, statt den Token immer wieder zu wechseln
+
+Die Ausgabe `HTTP-Weg: …` beschreibt die Einstellungen, die Python/`urllib`
+für den Zielhost vorfindet. Unter Windows können diese auch aus den
+System-/Registry-Proxy-Einstellungen stammen. **Das ist ein Hinweis auf den
+vorgesehenen Weg, kein Beweis für einen Proxy-Fehler.** Transparente Filter oder
+Firewalls lassen sich dadurch nicht ausschließen.
+
+| Zusatz in der Fehlermeldung | Aussage / nächster Schritt |
+|---|---|
+| `Phase=POST senden / HTTP-Header empfangen; HTTP=unbekannt` | Der POST hat noch keinen auswertbaren HTTP-Status geliefert. Nicht als falschen Key interpretieren; Fehlerklasse/Code beachten. |
+| `Phase=CSV-Antwort lesen; HTTP=200` | Der Server hat eine HTTP-200-Antwort begonnen, der Abbruch liegt danach beim Lesen. Noch kein vollständiger Query-Erfolg; Stream-/Verbindungsproblem untersuchen statt blind den Token zu tauschen. |
+| `ConnectionResetError` oder `winerror=10054` | Verbindung wurde zurückgesetzt. NAS, Proxy oder andere Zwischenstation kommen als Ursache infrage; der Code allein benennt den Verursacher nicht. |
+| `ConnectionAbortedError` oder `winerror=10053` | Verbindung wurde abgebrochen. Windows-Netzfilter/Sicherheitssoftware, Netzwerk und NAS kontrollieren; nicht pauschal Schutzfunktionen deaktivieren. |
+| `RemoteDisconnected` / `BrokenPipeError` | Gegenstelle/Verbindung wurde geschlossen, ohne den Austausch regulär abzuschließen. |
+| HTTP 401/403 | Eine echte Antwort verweigert Zugriff. Hier sind Token-Rechte, Organisation/Bucket/Instanz oder Proxy-Zugriff zu prüfen. |
+| Unbekannter Netz-/Lesefehler | Die sicheren Typ-/Code-/Phasenangaben weitergeben. Die alte pauschale Meldung „Netz-/Proxyfehler“ reichte nicht zur Ursachenzuordnung. |
+
+Bei einer Zeitüberschreitung nennt die Ausgabe den betroffenen Schritt. Bei
+tatsächlich langsamer Verbindung kann `--timeout 60` helfen; **mehr Timeout
+behebt keinen 401 oder Verbindungs-Reset**. Keine Portfreigabe ins Internet und
+keine pauschale Proxy-/TLS-Abschaltung vornehmen.
+
+**Nur wenn ein Proxy vorgesehen ist und direkter NAS-Zugriff im eigenen LAN
+zulässig ist:** ein kontrollierter Vergleich mit **denselben vier Werten in
+`data/influx.env`**, ohne Key-Wechsel:
+
+```powershell
+python .\data-tools\export_influx.py --env-file .\data\influx.env --check-connection --timeout 15 --no-proxy
+```
+
+`--no-proxy` gilt nur für diesen Aufruf, verändert keine Windows-/Umgebungs-
+Einstellungen und lässt die TLS-Zertifikatsprüfung sowie den Redirect-Schutz
+aktiv. Nicht zum Umgehen verbindlicher Netzrichtlinien verwenden. Klappt nur
+der direkte Test, spricht das für den unterschiedlichen Proxy-Weg; bei gleichem
+Fehler nicht wahllos weitere Varianten ausprobieren, sondern die Diagnosezeilen
+vergleichen. Für einen anschließend bewusst direkten Export denselben Schalter
+auch beim Export mitgeben.
 
 Wenn der Test weiterhin fehlschlägt, nur seine **Status-/Fehlerzeilen** zur
 Fehlersuche weitergeben, **nicht den Inhalt von `influx.env` oder Schlüsseldateien**.
@@ -400,6 +456,7 @@ höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefit
 | Konfigurationsdatei, Zeile … | Nur die vier dokumentierten Namen verwenden; UTF-8, doppelte Einträge und Anführungszeichen prüfen. Keine PowerShell-Befehle, keine reine Token-Datei. |
 | Influx HTTP 401/403 bei Schritt 3 oder Export | Vollständigen neuen API-Token aus der richtigen InfluxDB-Instanz und Organisation verwenden, Read-Recht für `tankapp` setzen. Kein Token-ID/Name/Passwort/Tankerkönig-Key. Genauer Klickpfad in §3B. |
 | Health HTTP 401/404 oder anderer Dienst erkannt | Schritt 2 hat noch keinen Token gesendet. URL/Port/InfluxDB-Version und vorgeschalteten Proxy prüfen, nicht andere Schlüsseldateien durchprobieren. |
+| Netz-/Lesefehler, obwohl der RPi schreibt | Schreib- und Lesezugriff sowie Rechner-/Proxy-Weg unterscheiden. Phase, HTTP-Status, Fehlerklasse und `errno`/`winerror` aus dem neuen Check beachten; Token zunächst unverändert lassen. |
 | Timeout, DNS-, Verbindungs- oder TLS-Fehler | Betroffenen Schritt beachten und Verbindung/Dienst prüfen. Ein sporadischer Timeout erklärt nicht gleichzeitig wiederkehrende HTTP 401. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
 | Stationsname mehrdeutig | Original-Polling-Set/Writer-Schema prüfen. Gleichnamige Stationen im alten Influx-Schema lassen sich nicht zuverlässig rückwirkend trennen. |

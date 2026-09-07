@@ -18,6 +18,7 @@ import argparse
 import csv
 import datetime as dt
 import gzip
+import errno
 import http.client
 import io
 import json
@@ -73,6 +74,7 @@ class InfluxConfig:
     bucket: str
     token: str = field(repr=False)
     timeout: int = 60
+    no_proxy: bool = False
 
     def validate(self):
         if self.token in {
@@ -180,7 +182,9 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_config(env_file: Path | None, timeout: int = 60) -> InfluxConfig:
+def load_config(
+    env_file: Path | None, timeout: int = 60, no_proxy: bool = False
+) -> InfluxConfig:
     # A supplied file is authoritative. In particular, do not inherit a stale
     # multi-line TANKAPP_INFLUX_TOKEN from the user's current PowerShell session.
     if env_file is not None:
@@ -195,6 +199,7 @@ def load_config(env_file: Path | None, timeout: int = 60) -> InfluxConfig:
         values.get("TANKAPP_INFLUX_BUCKET", bucket_default),
         values.get("TANKAPP_INFLUX_TOKEN", ""),
         timeout,
+        no_proxy,
     )
 
 
@@ -202,6 +207,34 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         # Never forward the Authorization header to an unexpected host.
         return None
+
+
+def http_opener(cfg: InfluxConfig):
+    # Explicit opt-in for a single process, never mutate system/env proxy or TLS settings.
+    handlers = [NoRedirect()]
+    if cfg.no_proxy:
+        handlers.append(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener(*handlers)
+
+
+def proxy_diagnostic(cfg: InfluxConfig) -> str:
+    """Report routing intent only; proxy URLs may contain usernames/passwords."""
+    if cfg.no_proxy:
+        return "HTTP-Weg: direkt angefordert (--no-proxy); TLS-Prüfung unverändert."
+    try:
+        parsed = urllib.parse.urlsplit(cfg.url)
+        proxies = urllib.request.getproxies()
+        configured = bool(proxies.get(parsed.scheme))
+        bypass = urllib.request.proxy_bypass(parsed.netloc) if configured else False
+    except Exception:
+        # Registry/environment errors can embed credentials. This advisory must
+        # not fail the actual connection test or echo their contents.
+        return "HTTP-Weg: Proxy-Konfiguration nicht bestimmbar; keine Proxy-Werte ausgegeben."
+    if not configured:
+        return "HTTP-Weg: kein passender Proxy in urllib erkannt; transparente Filter bleiben möglich."
+    if bypass:
+        return "HTTP-Weg: Proxy konfiguriert, NAS laut Bypass-Regel direkt; keine Proxy-Werte ausgegeben."
+    return "HTTP-Weg: Proxy laut urllib vorgesehen; Windows-/Umgebungsproxy kann vom RPi abweichen."
 
 
 def instant(value: str, timezone: str = "Europe/Berlin") -> dt.datetime:
@@ -275,12 +308,92 @@ def flux_query(
     )
 
 
-def network_error(exc: BaseException, stage: str) -> ExportError:
-    """Classify only exception types; raw proxy/URL errors may contain secrets."""
-    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-    if isinstance(reason, (TimeoutError, socket.timeout)):
+def error_causes(exc: BaseException) -> list:
+    causes = [exc]
+    while isinstance(causes[-1], urllib.error.URLError) and len(causes) < 4:
+        following = causes[-1].reason
+        if any(following is item for item in causes):
+            break
+        causes.append(following)
+    return causes
+
+
+def error_details(exc: BaseException, phase: str, status: int | None = None) -> str:
+    """Only fixed type labels and numeric OS/HTTP codes; no exception strings/args."""
+    labels = (
+        (http.client.RemoteDisconnected, "RemoteDisconnected"),
+        (http.client.IncompleteRead, "IncompleteRead"),
+        (urllib.error.HTTPError, "HTTPError"),
+        (urllib.error.URLError, "URLError"),
+        (ssl.SSLCertVerificationError, "SSLCertVerificationError"),
+        (ssl.SSLError, "SSLError"),
+        (ConnectionResetError, "ConnectionResetError"),
+        (ConnectionAbortedError, "ConnectionAbortedError"),
+        (ConnectionRefusedError, "ConnectionRefusedError"),
+        (BrokenPipeError, "BrokenPipeError"),
+        (TimeoutError, "TimeoutError"),
+        (socket.gaierror, "gaierror"),
+        (http.client.HTTPException, "HTTPException"),
+        (UnicodeError, "UnicodeError"),
+        (ValueError, "ValueError"),
+        (OSError, "OSError"),
+        (str, "Textursache"),
+    )
+    causes = error_causes(exc)
+    kinds = [
+        next((label for kind, label in labels if isinstance(item, kind)), "unbekannt")
+        for item in causes
+    ]
+    http_status = (
+        str(status) if type(status) is int and 100 <= status <= 599 else "unbekannt"
+    )
+    details = [f"Phase={phase}", f"HTTP={http_status}", "Typ=" + "/".join(kinds)]
+    for name in ("errno", "winerror"):
+        # Windows socket exceptions are sometimes generic OSError rather than
+        # the more specific ConnectionResetError. Keep their numeric evidence.
+        values = [getattr(item, name, None) for item in reversed(causes)]
+        value = next(
+            (value for value in values if type(value) is int and abs(value) <= 65535),
+            None,
+        )
+        if value is not None:
+            details.append(f"{name}={value}")
+    return "[" + "; ".join(details) + "]"
+
+
+def network_error(
+    exc: BaseException,
+    stage: str,
+    phase: str = "HTTP-Aufruf",
+    status: int | None = None,
+) -> ExportError:
+    """Classify types/codes, not raw error messages that may contain secrets."""
+    reason = error_causes(exc)[-1]
+    codes = {
+        value
+        for name in ("errno", "winerror")
+        if type(value := getattr(reason, name, None)) is int and abs(value) <= 65535
+    }
+    if isinstance(reason, (TimeoutError, socket.timeout)) or codes & {
+        errno.ETIMEDOUT,
+        10060,
+    }:
         hint = "Zeitüberschreitung: NAS/Netz/VPN prüfen, bei Bedarf --timeout erhöhen. Das behebt keinen HTTP 401."
-    elif isinstance(reason, ConnectionRefusedError):
+    elif isinstance(reason, http.client.RemoteDisconnected):
+        hint = "Gegenstelle hat ohne vollständige HTTP-Antwort geschlossen; Server/Proxy prüfen."
+    elif isinstance(reason, ConnectionResetError) or codes & {errno.ECONNRESET, 10054}:
+        hint = "Verbindung zurückgesetzt: Gegenstelle oder Zwischenstation hat abgebrochen. Kein Beleg für einen falschen Token."
+    elif isinstance(reason, ConnectionAbortedError) or codes & {
+        errno.ECONNABORTED,
+        10053,
+    }:
+        hint = "Verbindung abgebrochen: Rechner/Netzfilter/NAS prüfen. Kein Beleg für einen falschen Token."
+    elif isinstance(reason, BrokenPipeError) or codes & {errno.EPIPE}:
+        hint = "Verbindung beim Senden geschlossen (Broken Pipe); Server/Proxy prüfen."
+    elif isinstance(reason, ConnectionRefusedError) or codes & {
+        errno.ECONNREFUSED,
+        10061,
+    }:
         hint = "Verbindung abgelehnt: Influx-Dienst, URL-Port und Firewall prüfen."
     elif isinstance(reason, socket.gaierror):
         hint = "Hostname nicht auflösbar: URL und DNS/VPN prüfen."
@@ -291,10 +404,8 @@ def network_error(exc: BaseException, stage: str) -> ExportError:
             "TLS-Verbindung fehlgeschlagen: http/https und Server-Konfiguration prüfen."
         )
     else:
-        hint = (
-            "Netz-/Proxyfehler: NAS-Erreichbarkeit, VPN und Windows-/HTTP-Proxy prüfen."
-        )
-    return ExportError(f"{stage}: {hint}")
+        hint = "Netz-/Lesefehler noch nicht eindeutig zugeordnet. Ein Proxy- oder Tokenfehler ist damit nicht nachgewiesen."
+    return ExportError(f"{stage}: {hint} {error_details(exc, phase, status)}")
 
 
 def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
@@ -315,6 +426,7 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
             },
         }
     ).encode("utf-8")
+    phase, status = "POST senden / HTTP-Header empfangen", None
     try:
         request = urllib.request.Request(
             url,
@@ -327,9 +439,15 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
                 "User-Agent": "TankApp-ReadOnly-Export/1.0",
             },
         )
-        opener = urllib.request.build_opener(NoRedirect())
+        opener = http_opener(cfg)
         with opener.open(request, timeout=cfg.timeout) as response:
+            status = response.status
+            phase = "CSV-Antwort lesen"
             if required_columns == PROBE_COLUMNS:
+                print(
+                    "3/3 HTTP-Antwort empfangen; Query-Ergebnis wird noch gelesen.",
+                    flush=True,
+                )
                 content_type = (
                     response.headers.get("Content-Type", "")
                     .split(";")[0]
@@ -372,17 +490,21 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
         raise ExportError(
             f"InfluxDB HTTP {exc.code}: " + hints.get(exc.code, "Query/Server prüfen")
         ) from None
-    except http.client.IncompleteRead:
+    except http.client.IncompleteRead as exc:
         raise ExportError(
-            "Unvollständige HTTP-Antwort; Export bleibt unverändert."
+            "Unvollständige HTTP-Antwort; Export bleibt unverändert. "
+            + error_details(exc, phase, status)
         ) from None
-    except (ValueError, http.client.HTTPException):
+    except (http.client.RemoteDisconnected, ConnectionError) as exc:
+        raise network_error(exc, "Flux-Query", phase, status) from None
+    except (ValueError, http.client.HTTPException) as exc:
         raise ExportError(
             "Ungültige HTTP-Anfrage/Antwort; Influx-Konfiguration und Token-Format prüfen. "
-            "Header- und Antwortinhalte werden aus Sicherheitsgründen nicht ausgegeben."
+            "Header- und Antwortinhalte werden aus Sicherheitsgründen nicht ausgegeben. "
+            + error_details(exc, phase, status)
         ) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise network_error(exc, "Flux-Query") from None
+        raise network_error(exc, "Flux-Query", phase, status) from None
 
 
 def parse_flux_csv(handle, required_columns=PRICE_COLUMNS):
@@ -421,6 +543,7 @@ def parse_flux_csv(handle, required_columns=PRICE_COLUMNS):
 def check_health(cfg: InfluxConfig) -> None:
     """Identify a ready InfluxDB service without sending any Authorization header."""
     cfg.validate()
+    phase, status = "GET senden / HTTP-Header empfangen", None
     try:
         request = urllib.request.Request(
             cfg.url.rstrip("/") + "/health",
@@ -430,10 +553,10 @@ def check_health(cfg: InfluxConfig) -> None:
                 "User-Agent": "TankApp-ReadOnly-Export/1.0",
             },
         )
-        with urllib.request.build_opener(NoRedirect()).open(
-            request, timeout=cfg.timeout
-        ) as response:
-            if response.status != 200:
+        with http_opener(cfg).open(request, timeout=cfg.timeout) as response:
+            status = response.status
+            phase = "Health-Antwort lesen"
+            if status != 200:
                 raise ExportError(
                     "Health-Endpunkt meldet keinen bereiten Dienst; NAS/InfluxDB prüfen."
                 )
@@ -466,12 +589,15 @@ def check_health(cfg: InfluxConfig) -> None:
             f"Health-Endpunkt HTTP {exc.code}: URL/Port, Influx-Dienst oder vorgeschalteten Proxy prüfen. "
             "Dieser Schritt sendet keinen Token; die Token-Berechtigung ist noch nicht geprüft."
         ) from None
-    except (ValueError, http.client.HTTPException):
+    except (http.client.RemoteDisconnected, ConnectionError) as exc:
+        raise network_error(exc, "Health-Endpunkt", phase, status) from None
+    except (ValueError, http.client.HTTPException) as exc:
         raise ExportError(
-            "Keine gültige InfluxDB-Health-Antwort; URL/Port/Reverse-Proxy prüfen."
+            "Keine gültige InfluxDB-Health-Antwort; URL/Port/Reverse-Proxy prüfen. "
+            + error_details(exc, phase, status)
         ) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise network_error(exc, "Health-Endpunkt") from None
+        raise network_error(exc, "Health-Endpunkt", phase, status) from None
 
 
 def check_connection(cfg: InfluxConfig) -> None:
@@ -481,6 +607,7 @@ def check_connection(cfg: InfluxConfig) -> None:
         "1/3 Konfiguration: OK (Format geprüft; Token wird nicht ausgegeben).",
         flush=True,
     )
+    print(proxy_diagnostic(cfg), flush=True)
     print("2/3 Prüfe InfluxDB /health ohne Token ...", flush=True)
     check_health(cfg)
     print("2/3 InfluxDB: bereit.", flush=True)
@@ -632,6 +759,11 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Expliziter Direktzugriff ohne urllib-/Windows-Proxy für diesen Aufruf; TLS-Prüfung bleibt aktiv",
+    )
+    parser.add_argument(
         "--env-file",
         type=Path,
         help="Lokale UTF-8-Datei mit TANKAPP_INFLUX_…=…; ersetzt die Prozessumgebung vollständig",
@@ -650,7 +782,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     args.out = args.out or ROOT / f"data/engine/influx_{args.fuel}.csv.gz"
     try:
-        cfg = load_config(args.env_file, args.timeout)
+        cfg = load_config(args.env_file, args.timeout, args.no_proxy)
         if args.check_connection:
             check_connection(cfg)
             return 0

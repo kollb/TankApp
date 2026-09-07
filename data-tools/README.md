@@ -10,6 +10,9 @@ inklusive separatem Lese-Token in `data\influx.env` speichern und mit
 einzelner Token; nicht komplett per `Get-Content -Raw` in die Token-Variable schreiben.
 Zuerst `python data-tools/export_influx.py --env-file data/influx.env --check-connection --timeout 15`
 verwenden: Health und Bucket-Leserecht werden ohne Export und ohne Polling-Set geprüft.
+Bei Fehlern zeigt die Diagnose HTTP-Phase/-Status und Fehlerklasse/-nummern, ohne
+Token-/Proxy-Inhalte. Erfolgreiches Schreiben vom RPi beweist weder Leserechte noch
+einen identischen HTTP-Weg am PC; ein optionaler Direktvergleich ist im Engine-README erklärt.
 
 **Ausführliche Anleitung inkl. Größen-/Zeitrechnung und Fehlerbildern: [`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md).**
 **Erstinstallation & 24/7-Betrieb (Collector auf dem Raspberry Pi, systemd, Key): [`docs/INSTALL.md`](../docs/INSTALL.md).**
