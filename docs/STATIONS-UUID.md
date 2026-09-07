@@ -97,6 +97,18 @@ cd ~/TankApp
 python3 data-tools/upload_influx.py --replay --dry-run --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json"
 ```
 
+**Zwei unterschiedliche Dateien, zwei unterschiedliche Zwecke:**
+
+| Datei / Argument | Inhalt | Was beim Replay geprüft wird |
+|---|---|---|
+| `$BACKUP/polling.json` / `--poll-json` | Stationsliste und Auswahlmetadaten. `source=run_pipeline.py …` ist hier richtig. | Namen werden daraus gelesen. Ankerkoordinaten und der Generator-`source` sind nicht die Live-Snapshot-Prüfung. |
+| `$BACKUP/poll/YYYY-MM-DD.jsonl` / `--poll-dir` | Eine vollständige Preisabfrage je Zeile mit `fetched_at`, `source`, `city`, UUID-indiziertem `prices`. | Diese Preiszeilen werden streng geprüft. „2026-09-07.jsonl, Zeile 1“ bezieht sich **nicht** auf `polling.json`. |
+
+Bei einer Replay-Fehlermeldung nicht `source` oder Koordinaten in der Stationsliste
+ändern. Keine kompletten Polling-Dateien mit privaten Ankern oder Rohpreisdateien
+zur Fehlersuche posten. Anonymisierte Koordinaten in einer Nachricht müssen für
+diesen Fehler nicht durch echte Werte ersetzt werden.
+
 Erwartet: Anzahl Original-Snapshots/UUID-Punkte sowie einige Line-Protocol-Zeilen.
 Bei gleichnamigen Stationen müssen darin **verschiedene `station_id=`-Werte**
 stehen. Die Vorschau braucht keinen Token, sendet nichts und liest/schreibt
@@ -107,6 +119,31 @@ kaputten Zeilen, Demo-/unbekannten Quellen, ungültigen UUIDs, fehlendem UTC-Off
 nicht endlichen Preisen oder widersprüchlichen Werten für dieselbe UUID/Zeit.
 Er ergänzt keine geratenen Zeitstempel oder Preise. Wird eine Quelldatei beim
 Lesen verändert, wird ebenfalls abgebrochen.
+
+### Wenn die Prüfung stoppt: den konkreten Fehlercode ansehen
+
+Die aktualisierte Ausgabe enthält Dateiname, Zeile, gegebenenfalls die **Nummer**
+des Stationseintrags und einen festen Fehlercode. Keine rohen Feldwerte, Preise,
+UUIDs, Koordinaten oder Bibliotheks-Fehlertexte werden in der Fehlermeldung ausgegeben.
+Die Validierung wird nicht umgangen; noch keine Replay-Punkte wurden geschrieben.
+
+| Fehlercode | Bedeutung / nächster Schritt |
+|---|---|
+| `JSON_INVALID` / `SNAPSHOT_OBJECT` | Zeile ist kein vollständiges Snapshot-JSON-Objekt. Richtige JSONL-Sicherung prüfen, nicht die Stationsliste verwenden. |
+| `SOURCE_DEMO` | Die Preiszeile ist ausdrücklich ein Demo-Poll. Nicht als Echtpreis importieren und nicht einfach auf `source=tankerkoenig-prices.php` umschreiben. |
+| `SOURCE_MISSING` / `SOURCE_UNKNOWN` | Der Preis-Snapshot trägt nicht die bekannte Live-Kennung. Collector-Version und ursprüngliches Format klären; keine Herkunft erfinden. Das Generatorfeld in `polling.json` ist davon unabhängig. |
+| `TIME_MISSING_OR_INVALID` | `fetched_at` fehlt oder ist kein gültiger ISO-Zeitstempel. Originalformat prüfen. |
+| `TIME_OFFSET_MISSING` | Älterer Zeitstempel ohne UTC-Offset möglich. Zuerst die ursprüngliche Zeitzone klären, nicht blind `+02:00` oder `Z` anhängen. |
+| `CITY_INVALID` / `PRICES_OBJECT` | Preis-Snapshot passt nicht zum erwarteten Objektformat. |
+| `STATION_UUID_INVALID` / `STATION_STATUS_INVALID` | Der genannte Stationseintrag enthält keine kanonische UUID oder keinen gültigen Status. Keine Station durch ihren Namen ersetzen. |
+| `PRICE_NONFINITE` | Ungültiger numerischer Preis; nicht durch einen erfundenen Wert ersetzen. |
+| `CONFLICTING_OBSERVATION` | Zwei Originalzeilen widersprechen sich für dieselbe UUID/Zeit. Herkunft prüfen, nicht willkürlich eine auswählen. |
+| `ENCODING_UTF8` | Die Preisdatei kann nicht als UTF-8 gelesen werden. Sicherung/ursprüngliche Kodierung klären; Originaldatei nicht überschreiben. |
+
+Nach dem Code-Update denselben `--replay --dry-run`-Befehl oben erneut ausführen
+und nur die neue **Fehlerzeile mit Code** weitergeben. Bis zur Klärung keinen
+Replay ohne `--dry-run` starten, keine Zeile löschen und keinen Ack zurücksetzen.
+Der normal laufende, aktualisierte Uploader kann weiter neue UUID-Punkte sammeln.
 
 Bei einer möglicherweise während des Kopierens unvollständigen letzten Zeile:
 neue Sicherung anlegen und erneut prüfen. Nicht den laufenden Puffer oder dessen

@@ -297,3 +297,103 @@ def test_replay_exact_duplicate_copies_are_deduplicated(uploader, saved_buffer):
     lines, rows = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json)
     assert rows == 2
     assert len(lines) == 2
+
+
+@pytest.mark.parametrize(
+    "kind,code",
+    [
+        ("json", "JSON_INVALID"),
+        ("object", "SNAPSHOT_OBJECT"),
+        ("source_missing", "SOURCE_MISSING"),
+        ("source_unknown", "SOURCE_UNKNOWN"),
+        ("source_demo", "SOURCE_DEMO"),
+        ("time_missing", "TIME_MISSING_OR_INVALID"),
+        ("time_invalid", "TIME_MISSING_OR_INVALID"),
+        ("time_naive", "TIME_OFFSET_MISSING"),
+        ("city", "CITY_INVALID"),
+        ("prices", "PRICES_OBJECT"),
+        ("uuid", "STATION_UUID_INVALID"),
+        ("status", "STATION_STATUS_INVALID"),
+        ("price", "PRICE_NONFINITE"),
+        ("huge_price", "PRICE_NONFINITE"),
+        ("conflict", "CONFLICTING_OBSERVATION"),
+    ],
+)
+def test_replay_reports_exact_validation_stage_without_record_values(
+    uploader, saved_buffer, monkeypatch, capsys, kind, code
+):
+    cfg, path = saved_buffer
+    bad = snapshot()
+    if kind == "object":
+        bad = ["not-a-real-token"]
+    elif kind == "source_missing":
+        del bad["source"]
+    elif kind == "source_unknown":
+        bad["source"] = "not-a-real-token"
+    elif kind == "source_demo":
+        bad["source"] = "demo"
+    elif kind == "time_missing":
+        del bad["fetched_at"]
+    elif kind == "time_invalid":
+        bad["fetched_at"] = "not-a-real-token"
+    elif kind == "time_naive":
+        bad["fetched_at"] = "2026-09-07T06:00:00"
+    elif kind == "city":
+        bad["city"] = {"not-a-real-token": 1}
+    elif kind == "prices":
+        bad["prices"] = ["not-a-real-token"]
+    elif kind == "uuid":
+        bad["prices"] = {"not-a-real-token": {"status": "open"}}
+    elif kind == "status":
+        bad["prices"][A]["status"] = "not-a-real-token"
+    elif kind == "price":
+        bad["prices"][A]["e10"] = float("nan")
+    elif kind == "huge_price":
+        bad["prices"][A]["e10"] = 10**500
+    elif kind == "conflict":
+        bad["prices"][A]["e10"] += 0.1
+    text = '{"not-a-real-token":' if kind == "json" else json.dumps(bad) + "\n"
+    if kind == "conflict":
+        text = json.dumps(snapshot()) + "\n" + text
+    path.write_text(text, encoding="utf-8")
+    original, ack = path.read_bytes(), cfg.ack_file.read_bytes()
+
+    def forbidden(*args):
+        raise AssertionError("Invalid original data cannot be sent or acknowledged")
+
+    monkeypatch.setattr(uploader, "influx_write", forbidden)
+    monkeypatch.setattr(uploader, "write_ack", forbidden)
+    assert uploader.run_replay(cfg, dry=True) == 1
+    output = capsys.readouterr().out
+    assert f"[{code}]" in output
+    assert "2026-09-07.jsonl" in output
+    assert "Zeile 2" in output if kind == "conflict" else "Zeile 1" in output
+    assert "nicht polling.json" in output
+    assert "not-a-real-token" not in output
+    assert A not in output and B not in output  # positions, never record contents
+    assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
+
+
+def test_polling_manifest_source_and_anchors_are_not_snapshot_validation(
+    uploader, saved_buffer
+):
+    cfg, path = saved_buffer
+    polling = json.loads(cfg.poll_json.read_text(encoding="utf-8"))
+    polling["generated"] = "2026-09-07T00:00:00Z"
+    polling["source"] = "run_pipeline.py aus station_scores_e10.csv"
+    polling["sets"]["Testmarkt"].update({"lat": 0.0, "lon": 0.0})
+    cfg.poll_json.write_text(json.dumps(polling), encoding="utf-8")
+    original = cfg.poll_json.read_bytes()
+    lines, rows = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json)
+    assert rows == 1 and len(lines) == 2
+    assert all("station_id=" in line for line in lines)
+    assert cfg.poll_json.read_bytes() == original
+
+
+def test_replay_encoding_diagnostic_does_not_echo_bytes(uploader, saved_buffer, capsys):
+    cfg, path = saved_buffer
+    path.write_bytes(b"not-a-real-token\xff")
+    assert uploader.run_replay(cfg, dry=True) == 1
+    output = capsys.readouterr().out
+    assert "[ENCODING_UTF8]" in output
+    assert "not-a-real-token" not in output

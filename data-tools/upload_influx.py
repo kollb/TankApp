@@ -433,6 +433,23 @@ class ReplayError(ValueError):
     """Credential-/record-free diagnostic for an explicitly requested replay."""
 
 
+REPLAY_HINTS = {
+    "JSON_INVALID": "Zeile ist kein gültiges JSON; unvollständige/falsche Sicherung prüfen.",
+    "SNAPSHOT_OBJECT": "Jede JSONL-Zeile muss ein einzelnes Snapshot-Objekt sein, nicht eine Liste oder Stationsliste.",
+    "SOURCE_MISSING": "Snapshot-Feld source fehlt. Collector-Version/Originalformat prüfen; nicht nachträglich eine Quelle erfinden.",
+    "SOURCE_UNKNOWN": "Snapshot-Feld source ist keine erkannte Live-Quelle. Den Wert nicht zum Erzwingen eines Replays umschreiben.",
+    "SOURCE_DEMO": "Snapshot ist ausdrücklich als demo markiert und darf nicht als echter Preis nachgeliefert werden.",
+    "TIME_MISSING_OR_INVALID": "fetched_at fehlt oder ist kein gültiger ISO-Zeitstempel.",
+    "TIME_OFFSET_MISSING": "fetched_at hat keinen UTC-Offset (älteres Format möglich). Ursprüngliche Zeitzone erst klären; keine Uhrzeit raten.",
+    "CITY_INVALID": "Snapshot-Feld city fehlt, ist leer oder enthält ein ungültiges Format.",
+    "PRICES_OBJECT": "Snapshot-Feld prices muss ein nach Stations-UUIDs indiziertes Objekt sein.",
+    "STATION_UUID_INVALID": "Ein Schlüssel in prices ist keine UUID im kanonischen Format.",
+    "STATION_STATUS_INVALID": "Ein Stationseintrag ist kein Objekt oder sein status ist nicht open, closed bzw. no prices.",
+    "PRICE_NONFINITE": "Ein numerischer Kraftstoffpreis ist nicht endlich oder nicht als Zahl darstellbar.",
+    "CONFLICTING_OBSERVATION": "Für dieselbe Stadt/UUID/Zeit liegen widersprüchliche Originalwerte vor; nicht willkürlich einen auswählen.",
+}
+
+
 def prepare_replay(poll_dir: Path, poll_json: Path) -> tuple[list[str], int]:
     """Preflight a saved live JSONL buffer before writing ANY points.
 
@@ -447,41 +464,68 @@ def prepare_replay(poll_dir: Path, poll_json: Path) -> tuple[list[str], int]:
     observations = {}
     for path in paths:
         before = path.stat()
-        with path.open(encoding="utf-8-sig") as handle:
-            for line_no, line in enumerate(handle, 1):
-                if not line.strip():
-                    continue
-                try:
-                    snap = json.loads(line)
-                    if not isinstance(snap, dict) or snap.get("source") != "tankerkoenig-prices.php":
-                        raise ValueError("keine originale Live-Quelle")
-                    stamp = dt.datetime.fromisoformat(snap["fetched_at"].replace("Z", "+00:00"))
-                    if stamp.tzinfo is None:
-                        raise ValueError("UTC-Offset fehlt")
-                    city = snap.get("city")
-                    prices = snap.get("prices")
-                    if not isinstance(city, str) or not city.strip() or any(c in city for c in "\r\n"):
-                        raise ValueError("Stadt fehlt/ungültig")
-                    if not isinstance(prices, dict):
-                        raise ValueError("prices ist kein Objekt")
-                    for uid, rec in prices.items():
-                        if not isinstance(uid, str) or str(uuid.UUID(uid)) != uid.lower():
-                            raise ValueError("ungültige UUID")
-                        if not isinstance(rec, dict) or rec.get("status") not in ("open", "closed", "no prices"):
-                            raise ValueError("Stationsstatus fehlt/ungültig")
-                        if any(isinstance(rec.get(fuel), (int, float)) and not math.isfinite(rec[fuel]) for fuel in FUELS):
-                            raise ValueError("nicht endlicher Preis")
-                        key = (city, uid, stamp)
-                        if key in observations and observations[key] != rec:
-                            raise ValueError("widersprüchliche Originalzeilen für dieselbe UUID/Zeit")
-                        observations[key] = rec
-                    rows.append((stamp, snap))
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    raise ReplayError(
-                        f"Replay-Prüfung fehlgeschlagen: {path.name}, Zeile {line_no}. "
-                        "Originale Live-JSONL mit UUIDs, Status und UTC-Offset erforderlich; "
-                        "keine Demo-/kaputten/widersprüchlichen Zeilen. Noch nichts geschrieben."
-                    ) from None
+        try:
+            with path.open(encoding="utf-8-sig") as handle:
+                for line_no, line in enumerate(handle, 1):
+                    if not line.strip():
+                        continue
+                    # Stage names/hints are fixed literals. Never echo the raw
+                    # record, UUID, source, timestamp or exception message.
+                    stage = "JSON_INVALID"
+                    station_no = None
+                    try:
+                        snap = json.loads(line)
+                        stage = "SNAPSHOT_OBJECT"
+                        if not isinstance(snap, dict):
+                            raise ValueError
+                        source = snap.get("source")
+                        stage = "SOURCE_DEMO" if source == "demo" else (
+                            "SOURCE_MISSING" if source is None or source == "" else "SOURCE_UNKNOWN")
+                        if source != "tankerkoenig-prices.php":
+                            raise ValueError
+                        stage = "TIME_MISSING_OR_INVALID"
+                        stamp = dt.datetime.fromisoformat(snap["fetched_at"].replace("Z", "+00:00"))
+                        stage = "TIME_OFFSET_MISSING"
+                        if stamp.tzinfo is None:
+                            raise ValueError
+                        stage = "CITY_INVALID"
+                        city = snap.get("city")
+                        if not isinstance(city, str) or not city.strip() or any(c in city for c in "\r\n"):
+                            raise ValueError
+                        stage = "PRICES_OBJECT"
+                        prices = snap.get("prices")
+                        if not isinstance(prices, dict):
+                            raise ValueError
+                        for station_no, (uid, rec) in enumerate(prices.items(), 1):
+                            stage = "STATION_UUID_INVALID"
+                            if not isinstance(uid, str) or str(uuid.UUID(uid)) != uid.lower():
+                                raise ValueError
+                            stage = "STATION_STATUS_INVALID"
+                            if not isinstance(rec, dict) or rec.get("status") not in ("open", "closed", "no prices"):
+                                raise ValueError
+                            stage = "PRICE_NONFINITE"
+                            if any(isinstance(rec.get(fuel), (int, float)) and not math.isfinite(rec[fuel]) for fuel in FUELS):
+                                raise ValueError
+                            stage = "CONFLICTING_OBSERVATION"
+                            key = (city, uid, stamp)
+                            if key in observations and observations[key] != rec:
+                                raise ValueError
+                            observations[key] = rec
+                        rows.append((stamp, snap))
+                    except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+                        position = f", Stationseintrag {station_no}" if station_no is not None else ""
+                        raise ReplayError(
+                            f"Replay-Prüfung fehlgeschlagen: {path.name}, Zeile {line_no}{position}. "
+                            f"[{stage}] {REPLAY_HINTS[stage]} "
+                            "Gemeint ist die Preis-JSONL, nicht polling.json. "
+                            "Noch nichts geschrieben; Quelle und Ack unverändert."
+                        ) from None
+        except UnicodeError:
+            raise ReplayError(
+                f"Replay-Prüfung fehlgeschlagen: {path.name}. [ENCODING_UTF8] "
+                "Preis-JSONL ist nicht als UTF-8 lesbar; Sicherung prüfen, keine Originaldaten überschreiben. "
+                "Noch nichts geschrieben; Quelle und Ack unverändert."
+            ) from None
         after = path.stat()
         if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
             raise ReplayError("Replay-Quelle wurde während des Lesens verändert. Eine ruhende Sicherung verwenden.")
