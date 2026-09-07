@@ -559,7 +559,7 @@ def step_poll(args: argparse.Namespace) -> None:
         "(Hausstraße, nicht Autobahnkreuz/Stadtmitte, lat/lon nicht vertauscht). "
         "Straßen-km statt Luftlinie: `--router osrm` (OSRM/OpenStreetMap, kostenlos).",
         "",
-        "Nächster Schritt: Sobald der Collector (M1) im Repo ist, frisst er genau "
+        "Der laufende Collector (`data-tools/collect_prices.py`) verwendet genau "
         "diese `polling.json`.",
     ]
     md_path = out_dir / f"polling_{label.casefold().replace(' ', '_')}.md"

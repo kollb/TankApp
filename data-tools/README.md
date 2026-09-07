@@ -2,6 +2,8 @@
 
 Werkzeuge, um die **Historie** (Tankerkönig-Datenrepo, eine CSV pro Tag) zu holen und in das
 Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
+**Aktueller nächster Schritt:** [M3 – Influx-Export, Prognose und Backtest](../engine/README.md).
+
 **Ausführliche Anleitung inkl. Größen-/Zeitrechnung und Fehlerbildern: [`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md).**
 **Erstinstallation & 24/7-Betrieb (Collector auf dem Raspberry Pi, systemd, Key): [`docs/INSTALL.md`](../docs/INSTALL.md).**
 
@@ -12,11 +14,15 @@ Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
 | `discover_stations.py` | **Schritt 1**: Tankstellen je Ort finden (25-km-Radius über `config.local.json`-Anker), Zwillinge je Marke zusammenfassen, Polling-Set (max. 10 UUIDs = 1 Request) nach Marke/Präferenz wählen, Eignung aus der Historie prüfen (`--check-history`). Erzeugt `report.md`, `*_kandidaten.csv`, `polling.json`. Braucht nur die 10-MB-Tagesliste, keine Preisdateien. |
 | `ingest_history.py` | Rohhistorie → `data/ready/<kampagne>_hist.csv(.gz)` im Schema `analysis/README.md` (Radiusfilter, long-Format, Fortschreibung, Raster, QA-Bericht). |
 | `road_route.py` | **Echte Straßen-km + Fahrzeit via OSRM/OpenStreetMap** (kostenlos, ohne Key): Table-API-Batch je Anker, Cache `results/road_route_cache.json`, automatischer Fallback auf Luftlinie. Direkt testen: `python3 data-tools/road_route.py 50.07,8.65 50.08,8.64`. Wird von `run_pipeline.py`/`station_selection.py` über `--router osrm` genutzt (Default: Luftlinie `--router haversine`). Eigener Server statt öffentlichem Demo-Server: `--osrm-url http://nas:5000` (Docker `osrm/osrm-backend`, läuft offline). |
-| `collect_prices.py` | **M1 Collector (live):** pollt die 10 Stationen aus `docs/analysis/stations/polling.json` über die Tankerkönig-`prices.php` (1 Request / 5 min, Fenster 06–24 Uhr), schreibt JSONL in einen 7-Tage-Ringpuffer (`data/poll/`, Pi: `/dev/shm/tankapp`). `fetched_at` mit UTC-Offset gespeichert (§9.3 „UTC speichern“), Anzeige/Dateiname in Lokalzeit. Statusfälle nach §1.2 (`false` = Sorte nicht geführt → weglassen, nie 0; `closed`/`no prices` ohne Preis), 429-Backoff. Key: `--api-key` / Umgebungsvariable `TANKERKOENIG_API_KEY` / `data/apikey.txt`. **Dauerbetrieb:** `python3 data-tools/collect_prices.py`; **Test ohne Key:** `--demo --once` (simulierte Preise nach Intraday-Zyklus). |
+| `collect_prices.py` | **M1 Collector (live):** pollt die 10 Stationen aus `docs/analysis/stations/polling.json` über die Tankerkönig-`prices.php` (1 Request / 5 min, Fenster 06–24 Uhr), schreibt JSONL in einen 7-Tage-Ringpuffer (`data/poll/`, Pi: `/dev/shm/tankapp`). `fetched_at` mit UTC-Offset gespeichert (§9.3 „UTC speichern“), Anzeige/Dateiname in Lokalzeit. Statusfälle nach §1.2 (`false` = Sorte nicht geführt → weglassen, nie 0; `closed`/`no prices` ohne Preis), 429-Backoff. Key: `--api-key` / Umgebungsvariable `TANKERKOENIG_API_KEY` / `data/apikey.txt`. **Dauerbetrieb:** `python3 data-tools/collect_prices.py`; Offline-Tests ausschließlich mit separatem `--out data/test-poll` ausführen; nie Demo-Snapshots in den Live-Puffer schreiben. |
 | `upload_influx.py` | **M1 Uploader (live):** schiebt die unsynced JSONL-Zeilen des Ringpuffers per Line-Protocol nach InfluxDB 2.x auf dem NAS (Measurement `prices`, Tags `city`/`station`, Feld `status` + Preise je geführter Sorte — `false`/`0` nie als 0.000, §1.2). **Ack-Protokoll §9.1:** `meta/synced_until` erst nach erfolgreichem Write weiter → idempotent, NAS-Ausfall bis 7 Tage Puffertiefe überbrückt (Überlauf-Alarm ab 6 Tagen, Backoff 60 s→15 min, klare Fehlermeldungen 401/403/404/400). systemd `tankapp-uploader.service` (Type=notify, WatchdogSec=30, sd_notify per Standardbibliothek). Konfiguration: `TANKAPP_INFLUX_URL`/`_ORG`/`_BUCKET`/`_TOKEN` + `TANKAPP_POLL_DIR` (Pi: `/etc/tankapp/env`, chmod 600). **Test:** `--dry-run` (zeigt Zeilen, sendet nichts), `--once` (ein Zyklus, Exit 0/1). NAS-Seite: `ops/nas/influxdb/` (Docker, Retention 5 Jahre) — Anleitung: [`INSTALL.md` Phase C](../docs/INSTALL.md). |
-| `make_demo_raw.py` | Demo-Rohdaten im echten Format erzeugen (Kette testen, ohne Netzzugang/Keys). |
+| `export_influx.py` | **M3, nur lesend:** vorhandenes `prices`-Measurement im TankApp-Bucket per Flux in CSV/CSV.gz exportieren; Status bleibt erhalten, Namen werden über das aktive `polling.json` auf UUIDs abgebildet. Unbekannte/mehrdeutige Namen und unvollständige Downloads brechen sicher ab. Ein reines Lese-Token genügt. `--dry-run` ohne Netz/Token. Anleitung: [`engine/README.md`](../engine/README.md). |
 
-Alle laufen mit **nur Standardbibliothek** (Python ≥ 3.8) — kein `pip`, damit auf Pi/NAS/PC identisch.
+Die Datenwerkzeuge selbst verwenden **nur Standardbibliothek** (Export: Python ≥ 3.9).
+Für lokale Datumsgrenzen benötigt der Export IANA-Zeitzonendaten; unter Windows
+bringt das Engine-Setup `tzdata` mit. Ohne diese Daten explizite ISO-Zeitstempel
+mit UTC-Offset für `--since/--until` verwenden. Die aufgerufene Selektion und
+die neue Engine haben eigene Python-Abhängigkeiten.
 `data/` ist gitignored: Rohdaten und Ready-CSVs verlassen den Rechner nie, Zugangsdaten liegen in `~/.netrc`
 (chmod 600) oder `/etc/tankapp/env` — **nie** im Repo, nie in der Shell-History.
 

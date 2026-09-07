@@ -228,7 +228,7 @@ python3 data-tools/ingest_history.py \
 |---|---|
 | `--radius 25` + `--anchor` | Datensparsamkeit: nur Stationen im Umfeld (Home aus `config.local.json`, Kampagnen per Flag). **Straße/Hausnummer werden nie eingelesen** — Adressen landen also nicht in `data/`. |
 | `--resample 30` | ~28 Einzelereignisse/Tag → Median je halbe Stunde, Intraday-Zyklus bleibt erhalten. `0` = änderungsgenau. Größer als das Dichte-Raster zu setzen bringt nichts: die Ausgabe läuft immer über `max(resample, density)`. |
-| `--density 60` | schreibt zusätzlich den **gültigen Stand auf einem Minuten-Raster** (max. `--max-hold 720` min alt, Nachtpausen werden nicht erfunden) — damit die dünne Änderungs-Historie nicht als Lücke zählt. Kosten gemessen: 60 min ≈ **+12 %** Zeilen, 30 min ≈ **+15 %**, 5 min ≈ **×12** (288 Zeilen/Station/Tag). |
+| `--density 60` | schreibt zusätzlich den **gültigen Stand auf einem Minuten-Raster** (max. `--max-hold 720` min alt, Nachtpausen werden nicht erfunden) — damit die dünne Änderungs-Historie nicht als Lücke zählt. Ein 5-min-Raster kann bis zu 288 Stand-Zeilen pro Station/Tag erzeugen; das sind keine zusätzlichen beobachteten Preisänderungen. |
 | `--city campaign` | eine Kampagne = **ein Markt** (Frankfurt-Umland + Offenbach + Bad Homburg sind ein zusammenhängendes Preissystem; dein 25-km-Radius wird sonst zu 30 Kleinstädten mit je 1–2 Stationen, und die Selektion braucht ≥ 2 Stationen je `city`, sonst wirft sie die Stadt raus). |
 | `--compress` | komprimiert zusätzlich die *fertigen* CSVs (≈8×). Die Rohdateien komprimiert `fetch_history.py`
      schon; pandas/parquet lesen `.csv.gz` transparent. |
@@ -238,17 +238,9 @@ Der Lauf schreibt `data/ready/<kampagne>_hist.csv(.gz)` im **Schema aus `analysi
 (`timestamp,station_id,station_name,brand,city,lat,lon,fuel,price`), dazu `manifest.json` (Zeilen, Tage, Stationen)
 und `QA.md` (fehlende Tage, Coverage je Station×Kraftstoff, verworfene unplausible Preise).
 
-Gemessene Kosten je Station×Kraftstoff (Demo-Rohdaten im echten Format, 21 Tage, `--fuel e10`):
-
-| Ingest-Konfiguration | Zeilen/Station/Tag | 136 St. × 21 T | 136 St. × 365 T | 20 St. × 365 T (Top-N nach Selektion) |
-|---|---:|---:|---:|---:|
-| `--resample 0 --density 0` (nur Änderungen) | 16,5 | 6 MB | ~100 MB | ~15 MB |
-| `--resample 30 --density 60` (Selektion, Default) | 25,6 | 8 MB | ~130 MB | ~19 MB |
-| `--resample 0 --density 5` (Engine, lückenlos) | 307 | 95 MB | ~1,6 GB | ~230 MB |
-
-→ Die Ready-Daten sind **kein** Platzproblem (130 MB für ein Jahr × 136 Stationen); die Rohdateien sind es.
-Der teure Teil ist das **einmalige** Durchlesen von 613 × 20 MB: gemessen ~2 300 Zeilen/s pro Kern in der
-Standardbibliothek (≈ 3 min je 100 Tage auf dem NAS, ≈ 1 min auf dem PC) — die Auswahl selbst kostet nichts.
+Die tatsächlichen Zeilen- und Dateigrößen stehen nach dem Lauf in `manifest.json`
+und `QA.md`. Frühere Größen-/Laufzeitmessungen auf Demo-Rohdaten wurden entfernt;
+sie sind keine Kapazitätsmessung der jetzt vorliegenden echten Historie.
 
 Nützlich für späteres Backfill ohne Neuladen: `--since/--until` begrenzen den Ingest auf einen Zeitraum, die
 Rohdateien bleiben unverändert liegen (Single Source of Truth = `data/raw/`).
@@ -463,17 +455,18 @@ data-tools/ingest_history.py
   --fuel e10 (mehrfach)  --compress  --qa data/ready/QA.md
   → data/ready/<label>_hist.csv(.gz)  (Schema analysis/README.md) + manifest.json
 
-data-tools/make_demo_raw.py --days 21 --outdir data/raw     Demo im echten Rohformat (offline-Test der Kette)
 ```
 
-## 14. Was danach ansteht (Reihenfolge mit Sinn)
+## 14. Nächster Arbeitsschritt: M3
 
-1. **Heute, 20 min:** `--dry-run`, 5-Tage-Test, `--stations-latest`. Du weißt dann: echte Dateigröße, Leitung, Format.
-2. **Diese Woche, abends:** 60–180 Tage laden + Ingest + erster Selektionslauf. Ergebnis: echter Report statt Demo-Report.
-3. **Parallel:** Collector (M1) anwerfen — die eigene Serie ist wichtiger als jede Historie, weil Historie nie dein
-   Poll-Raster, deine `isOpen`-States und deine Fills kennt.
-4. **Dann:** Rest 2025/2026 per Cron nachladen lassen, Engine-Fits (M3) mit `--resample 0 --density 5`-Ingest füttern.
-5. **Danach (optional):** 2024/2023 für Saisonalität — oder bewusst nie, wenn die 2 Jahre reichen.
+Collector/Uploader befüllen laut Betreiber die InfluxDB; M2 wird vorläufig
+als erledigt behandelt. Diese Anleitung bleibt für Backfill und Re-Selektion
+nützlich, der Einmal-Download muss nicht wiederholt werden.
+
+**Weiter:** [`engine/README.md`](../engine/README.md) – den Live-Bucket nur
+lesend exportieren, Datenqualität prüfen und Rolling-Backtests rechnen.
+Bestehende Historie kann das Training ergänzen; aus `--density 5` entstehen
+rekonstruierte Stand-Zeilen, kein Ersatz für echte Polls mit Öffnungsstatus.
 
 *Lizenz: Datensammlung CC BY-NC-SA 4.0 (nicht-kommerziell; kommerzielle Nutzung nur gegen Vertrag mit
 info@tankerkoenig.de). Datenquellen-Fußzeile der App wie in KONZEPT.md §1.3 („Daten: MTS-K via tankerkoenig.de,

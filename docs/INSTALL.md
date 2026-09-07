@@ -1,8 +1,9 @@
 # Installation & Betrieb (Erstinstallation)
 
 Diese Anleitung sagt **was wo läuft** und mit **welchen Kommandos**.
-Stand: M1 (Live-Collector + InfluxDB-Uploader) ist fertig; API/PWA
-folgt später (Roadmap im Konzept §13).
+Stand 07.09.2026: Collector/Uploader befüllen laut Betreiber InfluxDB; M2
+gilt vorläufig als erledigt. **Weiter mit M3:** [Engine-Anleitung](../engine/README.md).
+API/Homepage folgen mit beiden vorhandenen GUIs als Basis (Konzept §8/§13).
 
 ## 0. Kurzantwort: Was läuft wo?
 
@@ -13,7 +14,8 @@ folgt später (Roadmap im Konzept §13).
 | Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
 | **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | ✅ fertig (`data-tools/upload_influx.py`, Phase C) |
 | Langzeit-Speicher (InfluxDB) | **NAS** (192.168.178.61, Org `gtwrlab`, Bucket `tankapp`) | ✅ läuft (Bucket/Token: Phase C §3.1) |
-| Engine-Fits, API/PWA | NAS / Pi | ⏜ folgt später |
+| M3-Fits / Backtests | NAS / PC | Erster Durchstich in `engine/`; noch unkalibriert, Phase D |
+| Homepage / API | Pi | Geplant; beide GUI-Vorlagen bleiben erhalten |
 
 **Faustregel:** Der Collector gehört auf den Pi. Er läuft 24/7, braucht
 keine SD-Schreibzugriffe (Puffer im RAM) und nur ~40–60 MiB — reine
@@ -53,9 +55,9 @@ pip install -r analysis\requirements.txt
 
 ### 1.2 Anker & Tagesliste
 
-- Heankoordinaten in `analysis\config.local.json`
-  (Vorlage: `analysis\config.local.example.json`), z. B.
-  `"home": {"Frankfurt": [50.11738, 8.63657]}`.
+- Heimkoordinaten in `analysis\config.local.json`
+  (Vorlage: `analysis\config.local.example.json`).
+  Koordinaten nur in dieser privaten Datei eintragen, nicht im Repository dokumentieren.
 - Historische Tagesliste holen (Anleitung: `docs/DATEN-BEZUG.md`,
   Windows-Kapitel 11.1).
 
@@ -83,18 +85,15 @@ kommt per Mail. Er wird **nicht** eingecheckt. Drei Möglichkeiten
 $env:TANKERKOENIG_API_KEY = "00000000-0000-0000-0000-000000000000"
 ```
 
-### 1.5 Ersttest auf dem PC — ganz ohne Key
-
-```powershell
-py -3 data-tools\collect_prices.py --demo --once
-```
-
-Gibt eine Tabelle „billigste zuerst" mit simulierten Preisen aus und
-schreibt einen Test-Snapshot nach `data\poll\`. Gegen die echte API:
+### 1.5 Ersttest auf dem PC — echte API
 
 ```powershell
 py -3 data-tools\collect_prices.py --once
 ```
+
+Demo-Snapshots gehören **nicht** in den Live-Puffer. Falls ein Offline-Test
+nötig ist, ausschließlich mit getrenntem `--out data/test-poll`; dieses
+Verzeichnis niemals vom produktiven Uploader einlesen lassen.
 
 Bei Erfolg: `Poll ok: 10/10 offen → 2026-…jsonl`. Die drei API-Statusfälle
 werden korrekt behandelt (Konzept §1.2): `false` = Sorte nicht geführt
@@ -207,7 +206,7 @@ er pollt automatisch wieder ab 06 Uhr. Manueller Testpoll:
 
 ```bash
 python3 data-tools/collect_prices.py --once --out /dev/shm/tankapp
-python3 data-tools/collect_prices.py --demo --once   # ohne Key/Netz
+python3 data-tools/collect_prices.py --demo --once --out data/test-poll  # isoliert, nie hochladen
 ```
 
 Aktualisieren, wenn sich das Polling-Set ändert (neue `polling.json`
@@ -498,10 +497,12 @@ systemctl status tankapp-uploader
 journalctl -u tankapp-uploader -f       # Ping alle 60 s, Upload bei neuen Zeilen
 cat /dev/shm/tankapp/meta/synced_until  # Ack-Stand (letzte übertragene Zeile)
 
-# Datenvolumen auf dem NAS (erwartet: ~215–216 Punkte je offenen Station/Tag,
+# Datenvolumen auf dem NAS (erwartet: ~215–216 Status-Punkte je gepollter Station/Tag,
 # Fenster 06–24 Uhr / 5 min). <name> = Container-Name (docker ps | grep -i influx):
 docker exec <name> influx query \
-  'FROM bucket("tankapp") |> range(start: -24h) |> group(by: ["station"]) |> count()'
+  'from(bucket: "tankapp") |> range(start: -24h)
+    |> filter(fn: (r) => r._measurement == "prices" and r._field == "status")
+    |> group(columns: ["city", "station"]) |> count()'
 ```
 
 **Lücken-Check (Abnahme, 14 Tage, Lücken < 2 %):** pro Station und Tag sind
@@ -539,18 +540,37 @@ Konzept §13: M1 ist erfüllt, wenn **Collector + Ringpuffer + Uploader
 2. **Ack-Protokoll fehlerfrei**: keine verlorene Zeile, keine Duplikate —
    `meta/synced_until` ist stets ≥ dem Zeitstempel der zweit-neuesten
    Pufferzeile (nur die allerneuste darf noch offen sein), und die
-   Punktezahl in InfluxDB stimmt mit der Zeilenzahl im Puffer überein.
+   Punktezahl in InfluxDB stimmt mit der Anzahl der Stations-Snapshots im
+   Puffer überein (eine JSONL-Pollzeile enthält bis zu zehn Stationen, nicht
+   nur einen Influx-Punkt).
 
 Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich §3.5
 durchgehen und das Backup (§3.6) prüfen.
 
 ---
 
-## 4. Befehlsübersicht
+## 4. Phase D — M3 auf NAS/PC (nur lesender Zugriff)
+
+Die laufenden Collector-/Uploader-Dienste nicht neu einrichten und deren
+Secrets/Ack-Dateien nicht ändern. Ein separates Influx-Lese-Token auf NAS/PC
+und das aktive private Polling-Set reichen für den Export.
+
+**Vollständiger Ablauf:** [`engine/README.md`](../engine/README.md)
+
+1. InfluxDB nach `data/engine/influx_e10.csv.gz` exportieren.
+2. Mit `python -m engine inspect` die tatsächliche Historienlänge/Lücken prüfen.
+3. Erst bei ausreichender Historie fitten und täglich rollierend backtesten.
+4. Kein M3-Abnahme-Häkchen aus Beispielzahlen: Ensemble/ACI und der
+   Echt-Daten-Gütenachweis sind noch offen.
+
+Die Homepage nutzt anschließend Aufbau und Gestaltung von `sample/good gui`
+und `sample/good statistic gui`; sie bleiben bis zur visuellen Überführung erhalten.
+
+## 5. Befehlsübersicht
 
 | Zweck | Kommando | Gerät |
 |---|---|---|
-| Demo-Test ohne Key | `python3 data-tools/collect_prices.py --demo --once` | PC/Pi |
+| Isolierter Offline-Test | `python3 data-tools/collect_prices.py --demo --once --out data/test-poll` (nie hochladen) | PC/Pi |
 | Ein echter Poll + Tabelle | `python3 data-tools/collect_prices.py --once` | PC/Pi |
 | Dauerbetrieb (Vordergrund) | `python3 data-tools/collect_prices.py` | Pi |
 | Puffer-Verzeichnis setzen | `TANKAPP_POLL_DIR=/dev/shm/tankapp …` (oder `--out`) | Pi |
@@ -562,3 +582,5 @@ durchgehen und das Backup (§3.6) prüfen.
 | Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
 | InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
 | Pipeline (Polling-Set bauen) | `py -3 data-tools/run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | PC |
+| InfluxDB-Export für M3 | `python3 data-tools/export_influx.py` (separates Lese-Token, siehe Engine-Anleitung) | NAS/PC |
+| M3-Datenqualität | `python -m engine inspect --data data/engine/influx_e10.csv.gz` | NAS/PC |
