@@ -4,13 +4,20 @@ TankApp – Ein-Befehl-Pipeline: fetch → ingest → Selektion → Polling-Set.
 
 Macht genau die manuelle Kette aus docs/DATEN-BEZUG.md (Kapitel 7/11) in einem
 Aufruf und baut daraus das Live-Polling-Set (polling.json) für EINE Stadt
-(default: Frankfurt) nach der Regel:
+(default: Frankfurt) nach der Regel (Auswahl nach NETTO-Vorteil, nicht
+blankem Preis):
 
-    * die N_billigsten im Gesamt-Umkreis (Preis-Leader, auch weiter weg —
-      man ist im Alltag oft „woanders" (Nachbar, Einkauf, Arbeitsweg)),
-    * plus die N_billigsten in der Nähe des Ankers (zuhause/Standardecke),
-    * Auffüllung nach (Signifikanz, δ̂) bis poll_size, mit Marken-Dedupe
-      (max. 2 je Marke, gleiche Marke nicht < 1,5 km doppelt).
+    * die N NÄCHSTEN Stationen zum Anker (≤ --near-km, zuhause) — die man
+      wirklich anfährt (Bequemlichkeit, kleine δ̂-Unterschiede = Rauschen),
+    * plus die besten Stationen JENSEITS der Nähe aber innerhalb
+      --leader-max-km (Default 12 km Straße), deren Umweg sich nach
+      Sprit+Zeit NETTO lohnt (Netto €/Füll > 0) = Leader,
+    * Auffüllung bis poll_size mit den BILLIGSTEN weiteren Stationen im
+      Radius — das sind Routen-Stationen für ohnehin stattfindende Wege
+      (Einkaufen/Arbeit, z. B. Globus/Guericke), keine Extra-Fahr-Empfehlung;
+      Stationen > leader-max-km werden gar nicht gepollt
+      (30 km fahren für 2 € Rabatt lohnt sich nie),
+    * Marken-Dedupe (max. 2 je Marke, gleiche Marke nicht < 1,5 km doppelt).
 
 Nur Standardbibliothek; ruft die data-tools/analysis-Skripte mit demselben
 Python auf. Windows: `py -3 data-tools\\run_pipeline.py`.
@@ -50,6 +57,15 @@ RESULTS = ROOT / "results"
 FIGDIR = ROOT / "docs" / "analysis" / "figures"
 
 EARTH_R_KM = 6371.0088
+
+# Straßen-Routing (optional): echte Straßen-km statt Luftlinie. Selbes Modul
+# wie in analysis/station_selection.py — Import mit Fallback, damit die
+# Pipeline auch ohne funktionsfähigen Import läuft.
+sys.path.insert(0, str(HERE))
+try:
+    from road_route import RoadRouter, haversine_km as _osrm_haversine
+except ImportError:  # pragma: no cover
+    RoadRouter = None
 
 
 # --------------------------------------------------------------- Hilfen
@@ -170,10 +186,18 @@ def step_select(args: argparse.Namespace) -> None:
            "--fuel", args.fuel.upper(),
            "--top", str(args.top),
            "--step-min", str(args.step_min),
+           "--router", args.router,
            "--config", str(args.config),
            "--results", str(RESULTS),
            "--report", str(ROOT / "docs" / "analysis" / "report_top10.md"),
            "--figdir", str(FIGDIR)]
+    if args.osrm_url:
+        cmd += ["--osrm-url", args.osrm_url]
+    if args.router == "osrm":
+        cmd += ["--route-cache", str(RESULTS / "road_route_cache.json"),
+                "--congestion-peak", str(args.congestion_peak),
+                "--congestion-offpeak", str(args.congestion_offpeak),
+                "--near-km", str(args.near_km)]
     if subdiv_parts:
         cmd += ["--subdiv", ";".join(subdiv_parts)]
     run_script(ROOT / "analysis" / "station_selection.py", cmd[1:])
@@ -193,8 +217,23 @@ def _f(v: str) -> float:
 def build_polling_set(scores_csv: Path, anchor_label: str,
                       anchor_lat: float, anchor_lon: float,
                       near_km: float, near_n: int, leader_n: int,
-                      poll_size: int, fuel: str) -> dict:
-    """Wählt das Polling-Set: Preis-Leader im Gesamtumkreis + billigste in Nähe."""
+                      poll_size: int, fuel: str,
+                      leader_max_km: float = 12.0,
+                      router: "RoadRouter | None" = None) -> dict:
+    """Wählt das Polling-Set nach NETTO-Vorteil, nicht nach blankem Preis.
+
+    Drei Gruppen (Straßen-km ab Anker, sonst Luftlinie):
+      * **nahe**    : billigste in ≤ near_km (zuhause — man tankt eh hier,
+                      Mehrweg minimal); sortiert nach Preis.
+      * **leader**  : Stationen JENSEITS near_km, aber innerhalb
+                      leader_max_km, deren Umweg sich NETTO lohnt
+                      (net_per_fill_eur > 0, also Sprit+Zeit eingerechnet);
+                      sortiert nach Netto €/Füllung absteigend.
+      * **auffuellung**: Rest bis poll_size aus dem selben Radius.
+    Stationen weiter als leader_max_km werden GAR NICHT gepollt: ein
+    30-km-Umweg ist nie eine Empfehlung (netto stark negativ), egal wie
+    billig der Liter ist.
+    """
     rows = []
     with open(scores_csv, newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -209,9 +248,10 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
                 "name": r.get("station_name", "").strip(),
                 "brand": r.get("brand", "").strip() or "—",
                 "lat": lat, "lon": lon,
-                "dist_km": haversine_km(anchor_lat, anchor_lon, lat, lon),
+                "dist_km": haversine_km(anchor_lat, anchor_lon, lat, lon),  # Default, s.u.
                 "delta_ct": _f(r.get("delta_ct", "nan")),
                 "net_eur": _f(r.get("net_per_fill_eur", "nan")),
+                "net_fuel": _f(r.get("net_fuel_only_eur", "nan")),
                 "q": _f(r.get("q_value", "nan")),
                 "sig": (r.get("significant", "").strip() == "True"),
             })
@@ -219,13 +259,55 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
         raise SystemExit(f"{scores_csv}: keine Stationen für Stadt '{anchor_label}' — "
                          "Selektion (--skip-select?) oder city-Spalte prüfen.")
 
-    def sort_key(stat: dict) -> tuple:
+    if router is not None:
+        # EINE OSRM-Table-Anfrage für alle Stationen der Stadt (Cache + Fallback).
+        routes = router.routes_from(
+            anchor_lat, anchor_lon, [(s["lat"], s["lon"]) for s in rows])
+        for i, s in enumerate(rows):
+            s["dist_km"], s["dur_min"] = routes[i]
+        for idx, fac, d_road in getattr(router, "suspicious", []):
+            print(f"  ⚠ {rows[idx]['name'][:40]}: Straße/Luftlinie = {fac:.1f}× "
+                  f"({d_road:.1f} km) — Anker vermutlich auf eine Autobahnrampe "
+                  "geschnappt; Anker-Koordinate in config.local.json auf die "
+                  "eigene Hausstraße setzen (nicht auf das Autobahnkreuz).",
+                  file=sys.stderr)
+    else:
+        for s in rows:
+            s["dur_min"] = None
+
+    def is_num(x: float) -> bool:
+        return x == x and x not in (float("inf"), float("-inf"))
+
+    def key_price(stat: dict) -> tuple:
         # billigste zuerst; signifikant günstig vor nicht-signifikant
         sig = 0.0 if stat["sig"] else 1.0
         return (sig, stat["delta_ct"], stat["dist_km"])
 
-    ranked = sorted(rows, key=sort_key)
-    near_pool = sorted([s for s in rows if s["dist_km"] <= near_km], key=sort_key)
+    def key_near(stat: dict) -> tuple:
+        # NÄCHSTE zuerst (nah = eh da, Bequemlichkeit zählt); bei Gleichstand billiger.
+        # Die δ̂-Unterschiede im Nahbereich sind 0-1 ct = im Rauschen der KI.
+        return (stat["dist_km"], stat["delta_ct"])
+
+    def key_net(stat: dict) -> tuple:
+        # höchster Netto-Vorteil (Sprit+Zeit) zuerst; NaN/negativ nach hinten
+        net = stat["net_eur"] if is_num(stat["net_eur"]) else -1e9
+        sig = 0.0 if stat["sig"] else 1.0
+        return (-net, sig, stat["dist_km"])
+
+    # Pools nach Straßen-Entfernung
+    near_pool = sorted([s for s in rows if s["dist_km"] <= near_km], key=key_near)
+    far_rows = [s for s in rows if near_km < s["dist_km"] <= leader_max_km]
+    beyond = sorted([s for s in rows if s["dist_km"] > leader_max_km],
+                    key=lambda s: s["dist_km"])
+    # Leader-Kandidaten: billig SORTIERT für die Netto-Prüfung (take wählt dann
+    # die Netto-positiven aus); near_pool bleibt entfernungs-sortiert.
+    far_pool = sorted(far_rows, key=key_net)
+    if beyond:
+        print(f"  ℹ {len(beyond)} Stationen liegen > {leader_max_km:g} km Straße und "
+              f"werden NICHT gepollt (Umweg netto zu teuer), z. B.:", file=sys.stderr)
+        for s in beyond[:4]:
+            print(f"      {s['dist_km']:5.1f} km  netto {s['net_eur']:+5.2f} €  "
+                  f"{s['name'][:38]}", file=sys.stderr)
 
     chosen: list[dict] = []
     groups: list[str] = []
@@ -239,39 +321,119 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
             return False                        # gleiche Marke < 1,5 km = Zwilling
         return True
 
-    def take(s: dict, group: str) -> None:
+    def take(s: dict, group: str) -> bool:
         if len(chosen) >= poll_size or any(c["uuid"] == s["uuid"] for c in chosen):
-            return
+            return False
         if not ok_brand(s):
-            return
+            return False
         chosen.append(s)
         groups.append(group)
+        return True
 
-    # 1) Preis-Leader im GESAMTEN Umkreis (man ist oft woanders: Nachbar, Einkauf …)
-    for s in ranked:
-        if len([g for g in groups if g == "leader"]) >= leader_n:
+    # 1) PREIS-LEADER: weiter weg, aber der Umweg lohnt sich NETTO (Sprit+Zeit).
+    #    Nur Stationen mit nachweislich positivem Netto-Vorteil zählen als Leader;
+    #    gibt es keine, ist die ehrliche Antwort: lokal tanken.
+    n_leader = 0
+    for s in far_pool:
+        if n_leader >= leader_n:
             break
-        take(s, "leader")
-    # 2) die Billigsten in der NÄHE des Ankers (zuhause)
+        if is_num(s["net_eur"]) and s["net_eur"] > 0 and take(s, "leader"):
+            n_leader += 1
+    if n_leader == 0:
+        print(f"  ℹ Keine Station im Radius {near_km:g}–{leader_max_km:g} km, deren "
+              "Umweg sich nach Sprit+Zeit NETTO lohnt — die günstigste Entscheidung "
+              "ist: in der Nähe tanken.", file=sys.stderr)
+
+    # 2) NÄHE: die Billigsten rund um den Anker (zuhause — eh da)
+    n_near = 0
     for s in near_pool:
-        if len([g for g in groups if g == "nahe"]) >= near_n:
+        if n_near >= near_n:
             break
-        take(s, "nahe")
-    # 3) Auffüllen bis poll_size (bester Rest nach δ̂/Signifikanz)
-    for s in ranked:
+        if take(s, "nahe"):
+            n_near += 1
+
+    # 3) AUFFÜLLEN bis poll_size. Das sind KEINE Empfehlungen für eine
+    #    Extra-Fahrt, sondern die preiswertesten Stationen im Radius, die man
+    #    auf ohnehin stattfindenden Wegen (Einkaufen, Arbeitsweg) anfährt —
+    #    billigste zuerst (δ̂), damit bei mehr Stationen als Slots die
+    #    preiswertesten Routen-Kandidaten (z. B. Globus/Guericke) gewinnen.
+    far_by_price = sorted(far_rows, key=key_price)
+    for s in far_by_price + near_pool:
         take(s, "auffuellung")
 
     if len(chosen) < poll_size:
-        print(f"  ⚠ nur {len(chosen)} statt {poll_size} Stationen verfügbar "
-              f"(Coverage-Gate/Nähe) — Set bleibt kleiner.", file=sys.stderr)
+        print(f"  ⚠ nur {len(chosen)} statt {poll_size} Stationen im ≤{leader_max_km:g}-km-"
+              f"Radius verfügbar (Coverage-Gate/Nähe/Netto) — Set bleibt kleiner. "
+              "Ggf. --leader-max-km etwas erhöhen.", file=sys.stderr)
 
+    basis = "OSRM-Straßen-km" if router is not None else "Luftlinie (Haversine)"
     return {
         "anchor_label": anchor_label, "anchor_lat": anchor_lat, "anchor_lon": anchor_lon,
-        "rule": (f"{near_n} billigste in ≤ {near_km:g} km um Anker + {leader_n} billigste "
-                 f"im Gesamtumkreis (Preis-Leader) + Auffüllung; max. 2 je Marke, "
-                 f"gleiche Marke ≥ 1,5 km; Kraftstoff {fuel}"),
+        "rule": (f"{near_n} NÄCHSTE in ≤ {near_km:g} km um Anker (nahe, Bequemlichkeit) "
+                 f"+ die max. {leader_n} Stationen mit POSITIVEM Netto-Vorteil (Sprit+Zeit) "
+                 f"im Radius {near_km:g}–{leader_max_km:g} km (Leader, Umweg lohnt) "
+                 f"+ Auffüllung: die billigsten weiteren Stationen im ≤{leader_max_km:g}-km-"
+                 f"Radius für ohnehin stattfindende Wege (Einkaufen/Arbeit, z. B. Globus/"
+                 f"Guericke) — KEINE Extra-Fahr-Empfehlung; > {leader_max_km:g} km wird "
+                 f"nicht gepollt; max. 2 je Marke, gleiche Marke ≥ 1,5 km; Kraftstoff "
+                 f"{fuel}; Entfernung: {basis}"),
         "stations": chosen, "groups": groups,
     }
+
+
+def warn_if_scores_stale(args: argparse.Namespace, cfg: dict, label: str,
+                         scores_csv: Path) -> bool:
+    """Erkennt, ob die Netto-Spalten der scores-CSV nicht mehr zur aktuellen
+    Config passen (Anker verschoben oder Routing geändert, aber --skip-select
+    benutzt). Dann wären Entfernungen frisch (OSRM, poll-Schritt) und
+    Netto-Werte veraltet (select-Schritt mit altem Anker). Rückgabe: True =
+    nachweislich veraltet (Netto nicht vertrauenswürdig)."""
+    meta_path = scores_csv.with_suffix(".meta.json")
+    if not meta_path.exists():
+        # Alte CSV ohne Metadaten: nur warnen, nicht hart abbrechen (nicht beweisbar).
+        log("  ℹ scores-Metadaten fehlen — falls der Anker oder --router seit "
+            "dem letzten SELECT-Lauf geändert wurde, Netto-Werte neu rechnen "
+            "(ohne --skip-select).")
+        return False
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    home = cfg.get("home") or {}
+    if label not in home:
+        return False
+    try:
+        lat, lon = float(home[label][0]), float(home[label][1])
+    except (TypeError, ValueError, IndexError):
+        return False
+    mhome = meta.get("homes") or {}
+    same = False
+    if label in mhome:
+        try:
+            same = (abs(float(mhome[label][0]) - lat) < 1e-4
+                    and abs(float(mhome[label][1]) - lon) < 1e-4)
+        except (TypeError, ValueError, IndexError):
+            same = False
+    stale = []
+    if not same:
+        stale.append(f"Anker ({mhome.get(label)} → {[lat, lon]})")
+    if meta.get("router") != args.router:
+        stale.append(f"Routing ({meta.get('router')} → {args.router})")
+    if args.router == "osrm":
+        mp, mo = meta.get("congestion_peak"), meta.get("congestion_offpeak")
+        if mp is not None and (abs(mp - args.congestion_peak) > 1e-9
+                               or abs((mo or 1.0) - args.congestion_offpeak) > 1e-9):
+            stale.append(f"Staufaktor ({mp:.2g}/{mo:.2g} → "
+                         f"{args.congestion_peak:.2g}/{args.congestion_offpeak:.2g})")
+        mn = meta.get("near_km")
+        if mn is not None and abs(mn - args.near_km) > 1e-9:
+            stale.append(f"Nahbereich Stau-Kontext ({mn:g} → {args.near_km:g} km)")
+    if stale:
+        log("  ⚠ WARNUNG: Die Netto-Spalten stammen aus einem älteren Select-Lauf "
+            f"({', '.join(stale)} geändert), die Entfernungen sind aber frisch. "
+            "Ergebnis wäre gemischt/veraltet.")
+        return True
+    return False
 
 
 def step_poll(args: argparse.Namespace) -> None:
@@ -287,13 +449,33 @@ def step_poll(args: argparse.Namespace) -> None:
     scores_csv = RESULTS / f"station_scores_{args.fuel.lower()}.csv"
     if not scores_csv.exists():
         raise SystemExit(f"{scores_csv} fehlt — Selektion lief nicht (--skip-select?)")
+    if args.skip_select and warn_if_scores_stale(args, cfg, label, scores_csv):
+        raise SystemExit(
+            "❌ Abbruch: station_scores mit --skip-select übernommen, aber die "
+            "Netto-Spalten stammen von einem ANDEREN Anker/Routing (s. Warnung).\n"
+            "   Einmal mit aktuellem select rechnen:\n"
+            "      python3 data-tools/run_pipeline.py --router osrm --skip-fetch "
+            "--skip-ingest --leader-max-km 10 --near-km 5\n"
+            "   (danach sind Distanz UND Netto konsistent.)")
 
     lat, lon = homes[label]
-    log(f"[poll] Set für {label}: Leader {args.leader_n} + Nähe {args.near_n} "
-        f"(≤ {args.near_km:g} km), Zielgröße {args.poll_size}")
+    log(f"[poll] Set für {label}: Leader {args.leader_n} (Umweg lohnt netto, "
+        f"≤ {args.leader_max_km:g} km) + Nähe {args.near_n} (≤ {args.near_km:g} km), "
+        f"Zielgröße {args.poll_size}")
+    router = None
+    if getattr(args, "router", "haversine") == "osrm":
+        if RoadRouter is None:
+            log("⚠ --router osrm: road_route.py nicht importierbar — nutze Luftlinie.")
+        else:
+            router = RoadRouter(mode="driving", base_url=args.osrm_url,
+                                cache_path=RESULTS / "road_route_cache.json",
+                                quiet=False)
+            log(f"[poll] Entfernungen: OSRM/OpenStreetMap "
+                f"({args.osrm_url or 'öffentlicher Demo-Server'}) — echte Straßen-km")
     res = build_polling_set(scores_csv, label, float(lat), float(lon),
                             args.near_km, args.near_n, args.leader_n,
-                            args.poll_size, args.fuel.upper())
+                            args.poll_size, args.fuel.upper(),
+                            leader_max_km=args.leader_max_km, router=router)
 
     out_dir = args.out_stations
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -305,9 +487,14 @@ def step_poll(args: argparse.Namespace) -> None:
         "batch": [s["uuid"] for s in res["stations"]],
         "stations": [{
             "uuid": s["uuid"], "name": s["name"], "brand": s["brand"],
+            "lat": round(s["lat"], 6), "lon": round(s["lon"], 6),
             "dist_km": round(s["dist_km"], 2),
+            "drive_min": (round(s["dur_min"], 1) if s.get("dur_min") is not None else None),
+            "maps": f"https://www.google.com/maps/dir/?api=1&destination={s['lat']:.6f},{s['lon']:.6f}",
             "delta_ct": round(s["delta_ct"], 2),
             "net_per_fill_eur": round(s["net_eur"], 2),
+            "net_fuel_only_eur": (round(s["net_fuel"], 2)
+                                  if s["net_fuel"] == s["net_fuel"] else None),
             "significant": s["sig"], "group": g,
         } for s, g in zip(res["stations"], res["groups"])],
     }}
@@ -322,24 +509,55 @@ def step_poll(args: argparse.Namespace) -> None:
     log(f"[poll] polling.json → {out_dir / 'polling.json'} (gitignored!)")
 
     # menschenlesbarer Report
+    entf_hdr = "Entf. Straße [km]" if router is not None else "Entf. Luftlinie [km]"
     lines = [
         f"# Polling-Set {label} (E10, {args.poll_size} UUIDs = 1 prices.php-Request)",
         "",
         f"Regel: {res['rule']}",
         "",
-        "| # | Gruppe | Marke | Station | δ̂ [ct/L] | sign. | Entf. [km] | Netto €/Füll |",
-        "|---:|---|---|---|---:|---:|---:|---:|",
+        f"Anker: `{res['anchor_lat']:.5f}, {res['anchor_lon']:.5f}` "
+        f"(stammt aus analysis/config.local.json).",
+        "",
+        "| # | Gruppe | Marke | Station | δ̂ [ct/L] | sign. | " + entf_hdr + " | Netto €/Füll | davon nur Sprit | Koordinaten | Maps |",
+        "|---:|---|---|---|---:|---:|---:|---:|---:|---|---|",
     ]
     for i, (s, g) in enumerate(zip(res["stations"], res["groups"]), 1):
+        maps = (f"https://www.google.com/maps/dir/?api=1&destination="
+                f"{s['lat']:.6f},{s['lon']:.6f}")
+        nf = s.get("net_fuel")
+        nf_str = f"{nf:+.2f}" if isinstance(nf, float) and nf == nf else "—"
         lines.append(f"| {i} | {g} | {s['brand']} | {s['name'][:40]} | "
                      f"{s['delta_ct']:+.2f} | {'✅' if s['sig'] else ''} | "
-                     f"{s['dist_km']:.1f} | {s['net_eur']:+.2f} |")
+                     f"{s['dist_km']:.1f} | {s['net_eur']:+.2f} | {nf_str} | "
+                     f"`{s['lat']:.5f},{s['lon']:.5f}` | [Route]({maps}) |")
     lines += [
         "",
-        "Gruppen: **leader** = billigste im ganzen 25-km-Umkreis (auch weiter weg — "
-        "du bist oft woanders), **nahe** = billigste rund um den Anker (zuhause),",
-        "**auffuellung** = Rest bis zur Set-Größe. Automatisch erzeugt von "
-        "`data-tools/run_pipeline.py` — Änderungen bitte im Script, nicht von Hand.",
+        f"Gruppen: **nahe** = die {args.near_n} NÄCHSTEN in ≤ {args.near_km:g} km um den "
+        "Anker (zuhause, Bequemlichkeit — die fährt man wirklich); **leader** = Stationen "
+        "weiter weg, **deren Umweg sich nach Sprit UND Zeit NETTO lohnt** (Netto €/Füll > 0), "
+        f"nur bis {args.leader_max_km:g} km Straße; **auffuellung** = die billigsten weiteren "
+        "Stationen im Radius, gedacht für ohnehin stattfindende Wege (Einkaufen/Arbeit — "
+        "Globus/Guericke fährt man beim Einkaufen an, ohne Extra-Umweg); das sind **keine** "
+        f"Extra-Fahr-Empfehlungen. Stationen jenseits von {args.leader_max_km:g} km werden gar "
+        "nicht gepollt (egal wie billig — der Umweg ist netto ein Verlust). Erzeugt von "
+        "`data-tools/run_pipeline.py`.",
+        "",
+        "**Netto €/Füll > 0 prüfen:** Nur Leader mit positivem Netto sind eine echte "
+        "„woanders\"-Empfehlung; steht in der leader-Gruppe keine Station, heißt die "
+        "ehrliche Antwort: **nicht extra woanders hinfahren.** Die Spalte „davon nur "
+        "Sprit\" zeigt den Barvorteil OHNE Zeitbewertung — ist auch der negativ, "
+        "rechnet sich der Umweg selbst ohne Zeitkosten nicht (Faustregel: eine Station "
+        "5 km weiter braucht ≈ −10 ct/L Preisvorteil; im Stadtmarkt sind es nur 2–7 ct). "
+        "Bei der **nahe**-Gruppe ist die Netto-Spalte sekundär: dort zählt nicht ein "
+        "Umweg, sondern zur richtigen Zeit an einer ohnehin nahen Station zu tanken — "
+        "das Geld steckt im Intraday-Zeitfenster (abends billiger), nicht im Standort.",
+        "",
+        "**Entfernung prüfen:** Die Spalte „Entf.\" misst ab dem Anker oben. Weicht "
+        "der Wert stark von Google Maps ab, stimmen die Koordinaten nicht — über den "
+        "Maps-Link prüfen, ob der Pin auf der richtigen Station steht, und ob der "
+        "**Anker** in `analysis/config.local.json` wirklich der eigene Standort ist "
+        "(Hausstraße, nicht Autobahnkreuz/Stadtmitte, lat/lon nicht vertauscht). "
+        "Straßen-km statt Luftlinie: `--router osrm` (OSRM/OpenStreetMap, kostenlos).",
         "",
         "Nächster Schritt: Sobald der Collector (M1) im Repo ist, frisst er genau "
         "diese `polling.json`.",
@@ -373,10 +591,29 @@ def main() -> int:
                     help="Stadt, für die das 10er-Polling-Set gebaut wird")
     ap.add_argument("--near-km", type=float, default=4.0,
                     help="Nahbereich um den Anker (km)")
-    ap.add_argument("--near-n", type=int, default=5, help="billigste in der Nähe")
+    ap.add_argument("--near-n", type=int, default=5,
+                    help="wie viele der NÄCHSTEN Stationen in --near-km als 'nahe' "
+                         "(die fährt man wirklich). Rest bis poll_size wird mit "
+                         "billigen Routen-Stationen (Einkaufen/Arbeit) aufgefüllt.")
     ap.add_argument("--leader-n", type=int, default=5,
-                    help="billigste im Gesamtumkreis (Preis-Leader)")
+                    help="max. Anzahl Leader (Umweg lohnt sich NETTO)")
+    ap.add_argument("--leader-max-km", type=float, default=12.0,
+                    help="Harte Entfernungsgrenze für Leader/Auffüllung in Straßen-km "
+                         "(Luftlinie ohne --router). Stationen dahinter werden nie "
+                         "gepollt: ein so weiter Umweg lohnt sich nach Sprit+Zeit nie.")
     ap.add_argument("--poll-size", type=int, default=10)
+    ap.add_argument("--router", choices=["haversine", "osrm"], default="haversine",
+                    help="Entfernungsbasis: 'haversine' = Luftlinie (Default); "
+                         "'osrm' = echte Straßen-km/Fahrzeit via OSRM/OpenStreetMap "
+                         "(kostenlos, Cache in results/, Fallback Luftlinie)")
+    ap.add_argument("--osrm-url", default=None,
+                    help="OSRM-Server für --router osrm (Default: öffentlicher "
+                         "Demo-Server; eigener Server z. B. http://nas:5000)")
+    ap.add_argument("--congestion-peak", type=float, default=1.45,
+                    help="Staufaktor Berufsverkehr auf OSRM-Freifluss-Zeit "
+                         "(1.0=kein Stau, 1.45=~35 statt 50 km/h, 2.0=Stop&Go)")
+    ap.add_argument("--congestion-offpeak", type=float, default=1.0,
+                    help="Staufaktor außerhalb des Berufsverkehrs (Freifluss=1.0)")
     ap.add_argument("--out-stations", type=Path, default=DEFAULT_OUT_STATIONS,
                     help="Ziel für polling.json + Report")
     ap.add_argument("--skip-fetch", action="store_true")
@@ -396,8 +633,10 @@ def main() -> int:
             "(~/.netrc, data/_netrc oder --netrc)")
 
     t0 = time.time()
-    for step in (step_fetch, step_ingest, step_select, step_poll):
-        step(args)
+    step_fetch(args, netrc)          # netrc wird nur für fetch gebraucht
+    step_ingest(args)
+    step_select(args)
+    step_poll(args)
     log(f"\n✅ Fertig in {(time.time() - t0) / 60:.1f} min. "
         f"Ausgaben: {READY}/ (Historie), results/, docs/analysis/report_top10.md, "
         f"{args.out_stations}/polling.json")

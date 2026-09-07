@@ -6,8 +6,7 @@ und einem Decision Layer, der daraus an der Zapfsäule genau eine Antwort macht:
 **jetzt tanken · warten · woanders** (+ Erfolgskonto). Betrieb auf
 Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
 
-- 📐 **Konzept (v5) — das eine Dokument:** [`docs/KONZEPT.md`](docs/KONZEPT.md)
-  - §0 Produktprinzip: drei Fragen (jetzt/warten · hier/woanders · heute/später), zwei Modi
+- 📐 **Konzept (v5) — das eine Dokument:** [`docs/KONZEPT.md`](docs/KONZEPT.md)  - §0 Produktprinzip: drei Fragen (jetzt/warten · hier/woanders · heute/später), zwei Modi
   - §3 Zeitreihen-Engine (Quantile) · §4 Decision Layer (Ampel, €-Betrag, P_besser)
   - §5 Brier/Reliability + persönliche Erfolgsbilanz · §6 Produkt-KPIs
   - §8 UI: Alltags-Modus (Cockpit) & Werkstatt-Modus (Statistik-Labor)
@@ -16,6 +15,10 @@ Raspberry Pi (RAM-Puffer) + NAS (InfluxDB).
   - §11 `/v1/decide` + Episode/Fill-API · §13 Roadmap M1–M7 (M7 = Kalibrierungs-Loop)
   - Anhang A: Auswertung der externen Bewertung v3 → v4 (früher REVIEW-Dokument)
   - Anhang B: Zuordnung der zwei Sample-GUIs zu den zwei Modi
+- 🔧 **Erstinstallation & Betrieb (was läuft wo, welche Kommandos):**
+  [`docs/INSTALL.md`](docs/INSTALL.md) — Pipeline auf dem PC, **M1 Collector
+  24/7 auf dem Raspberry Pi** (RAM-Puffer), NAS später; inkl. systemd-Unit,
+  Key-Einrichtung und Störungstabelle
 - 🖥️ **UI-Prototypen:** [`sample/good gui/`](sample/good%20gui) — Alltags-Modus
   (Entscheidungs-Kompass) · [`sample/good statistic gui/`](sample/good%20statistic%20gui)
   — Werkstatt-Modus (Entscheidungs-Labor: Scoreboard, Kalibrierung, Paarvergleich)
