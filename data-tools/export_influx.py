@@ -61,6 +61,7 @@ INFLUX_KEYS = (
 MAX_ENV_BYTES = 64 * 1024
 PRICE_COLUMNS = ("_time", "city", "station", "status")
 PROBE_COLUMNS = ("_time",)
+MAX_PROBE_ROWS = 4096
 
 
 class ExportError(ValueError):
@@ -415,17 +416,10 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
         + "/api/v2/query?"
         + urllib.parse.urlencode({"org": cfg.org})
     )
-    body = json.dumps(
-        {
-            "query": query,
-            "type": "flux",
-            "dialect": {
-                "header": True,
-                "delimiter": ",",
-                "annotations": ["datatype", "group", "default"],
-            },
-        }
-    ).encode("utf-8")
+    # Use the documented plain Flux API, not a JSON wrapper with a custom
+    # dialect. Authorization is the same Token header used by the writer;
+    # the read endpoint and payload/content type are intentionally different.
+    body = query.encode("utf-8")
     phase, status = "POST senden / HTTP-Header empfangen", None
     try:
         request = urllib.request.Request(
@@ -435,7 +429,7 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
             headers={
                 "Authorization": f"Token {cfg.token}",
                 "Accept": "application/csv",
-                "Content-Type": "application/json",
+                "Content-Type": "application/vnd.flux",
                 "User-Agent": "TankApp-ReadOnly-Export/1.0",
             },
         )
@@ -612,25 +606,25 @@ def check_connection(cfg: InfluxConfig) -> None:
     check_health(cfg)
     print("2/3 InfluxDB: bereit.", flush=True)
     print(
-        "3/3 Prüfe Bucket-Lesezugriff mit einer begrenzten Flux-Query ...", flush=True
+        "3/3 Prüfe Bucket-Lesezugriff: POST /api/v2/query als Flux-Text ...", flush=True
     )
     query = (
         f"from(bucket: {json.dumps(cfg.bucket, ensure_ascii=False)})\n"
         "  |> range(start: -1h)\n"
         '  |> filter(fn: (r) => r._measurement == "prices")\n'
         "  |> limit(n: 1)\n"
-        '  |> keep(columns: ["_time"])\n'
-        "  |> group(columns: [])\n"
-        "  |> limit(n: 1)\n"
     )
-    # Read the entire (at most one point) result so late protocol/query errors
-    # cannot become a false success. An empty bucket is still readable.
+    # Exactly the simple query that can be checked in the Data Explorer.
+    # limit applies per table: different fuels and the status field legitimately
+    # produce several tables/types. Drain them all, with a diagnostic safety cap,
+    # so a late Flux error cannot become a false success. No prices are logged.
     count = 0
     for row in query_rows(cfg, query, required_columns=PROBE_COLUMNS):
         count += 1
-        if count > 1:
+        if count > MAX_PROBE_ROWS:
             raise ExportError(
-                "Verbindungs-Query lieferte mehr als einen Punkt; Antwort nicht wie erwartet."
+                "Diagnose-Limit erreicht (zu viele Serien); Bucket/Measurement prüfen. "
+                "Verbindungstest nicht vollständig ausgewertet."
             )
         try:
             instant(row["_time"])

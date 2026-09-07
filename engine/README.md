@@ -64,6 +64,34 @@ vorgesehenen HTTP-Weg sowie bei Fehlern **Phase, HTTP-Status, Fehlerklasse,
 Zugangsdaten bleiben ausgeblendet. Details und ein gezielter Proxy-Vergleich
 stehen in §3B; zunächst denselben Standard-Test mit unverändertem Token ausführen.
 
+## Browser-Abfrage funktioniert / anderes Projekt schreibt erfolgreich
+
+Eine Data-Explorer-Antwort mit `prices`, den numerischen Feldern `e10`, `e5`,
+`diesel` und einem getrennten String-Feld `status=open` passt zum vorhandenen
+Datenmodell. Mehrere Tabellen sind bei `limit(n: 1)` normal: Das Limit gilt
+**pro Serie/Tabelle**, nicht einmal über alle Kraftstoffe zusammen.
+
+Der Authorization-Header bleibt bei beiden Operationen **`Authorization: Token …`**.
+Der Unterschied liegt in Ziel und Datenformat:
+
+| Zweck | Endpunkt | Content-Type / Inhalt |
+|---|---|---|
+| Schreiben, wie im RPi-/Smarthome-Projekt | `/api/v2/write?org=…&bucket=…&precision=s` | `text/plain`, Influx Line Protocol |
+| Lesen für TankApp | `/api/v2/query?org=…` | `application/vnd.flux`, Flux-Abfrage als UTF-8-Text; Antwort CSV |
+
+In `data/influx.env` bleibt **nur die Basisadresse** bei `TANKAPP_INFLUX_URL`;
+keine vollständige `/api/v2/write?...`-URL hineinkopieren. Der Bucket `tankapp`
+steht bei Leseabfragen im Flux-Code. Rechte für `smarthome` gelten nicht automatisch
+auch für `tankapp` – bei einem Verbindungs-Reset den Token trotzdem nicht blind tauschen.
+
+Der Exporter verwendet jetzt den
+[dokumentierten Flux-Textmodus](https://docs.influxdata.com/influxdb/v2/query-data/execute-queries/influx-api/)
+und im Verbindungstest dieselbe einfache Abfrage wie im Data Explorer:
+`from` → `range` → `filter` → `limit(n: 1)`. Die bisherige JSON-Form mit
+Dialekt-Einstellungen ist ebenfalls Bestandteil der API; die Vereinfachung ist
+**ein gezielter Kompatibilitätstest**, kein Beweis für die Ursache von WinError 10054.
+Es sind keine neue Schlüsseldatei, andere Berechtigungen oder Änderungen am NAS nötig.
+
 ## 1. PowerShell und Python vorbereiten
 
 Öffne **PowerShell im TankApp-Ordner** (z. B. über das Terminal von VS Code).
@@ -232,8 +260,11 @@ keine Token-Inhalte aus. Er prüft nacheinander:
 
 Erwartet am Ende: **`3/3 Lesezugriff: OK`** und **`Verbindungstest erfolgreich`**.
 Die Probe fragt nur die letzte Stunde des `prices`-Measurements ab und liefert
-höchstens einen Zeitstempel. Auch ein leerer Zeitraum kann lesbar sein; ein
-entsprechender Hinweis ist **kein Nachweis**, dass der Collector gerade Daten liefert.
+höchstens eine Zeile **je Serie/Tabelle**, wie die funktionierende Browser-Abfrage.
+Numerische Kraftstofftabellen und die separate String-Statustabelle sind erlaubt;
+Preise werden nicht im Diagnoseprotokoll ausgegeben. Bei mehr als 4096 Ergebniszeilen
+bricht der Test mit einem Größenhinweis ab. Auch ein leerer Zeitraum kann lesbar sein;
+ein entsprechender Hinweis ist **kein Nachweis**, dass der Collector gerade Daten liefert.
 Es werden keine Token-/Organisationslisten mit zusätzlichen Adminrechten abgefragt.
 
 #### Abbruch eingrenzen, statt den Token immer wieder zu wechseln
@@ -277,6 +308,12 @@ auch beim Export mitgeben.
 
 Wenn der Test weiterhin fehlschlägt, nur seine **Status-/Fehlerzeilen** zur
 Fehlersuche weitergeben, **nicht den Inhalt von `influx.env` oder Schlüsseldateien**.
+Wenn insbesondere die Browser-Abfrage funktioniert, der PC aber weiterhin mit
+10054 vor den HTTP-Headern scheitert, beim nächsten Versuch zeitgleich die
+InfluxDB-/Container-Logs auf dem NAS prüfen. Ein passender Fehler/Neustart hilft
+bei der Zuordnung; fehlende Logzeilen beweisen bei deaktivierten Zugriffslogs
+nicht, dass der Request das NAS nie erreicht hat. Keine vollständigen Token- oder
+Header-Dumps veröffentlichen. Der Browser verwendet zudem seine eigene Anmeldung.
 Die NAS-Verbindung/Berechtigung muss auf deinem PC geprüft werden; erfolgreiche
 Softwaretests im Repository prüfen nicht deinen echten NAS-Token.
 

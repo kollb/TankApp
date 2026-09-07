@@ -82,8 +82,9 @@ def test_check_needs_no_polling_set_and_does_not_write_exports(
     seen_query = []
 
     def query(request):
-        payload = json.loads(request.data)
-        seen_query.append(payload["query"])
+        assert request.get_header("Content-type") == "application/vnd.flux"
+        assert request.get_header("Accept") == "application/csv"
+        seen_query.append(request.data.decode("utf-8"))
         return response(body, "application/csv; charset=utf-8")
 
     calls = attach_server(
@@ -116,8 +117,8 @@ def test_check_needs_no_polling_set_and_does_not_write_exports(
     assert len(calls) == 2
     assert 'from(bucket: "tankapp")' in seen_query[0]
     assert "range(start: -1h)" in seen_query[0]
-    assert seen_query[0].count("limit(n: 1)") == 2
-    assert 'keep(columns: ["_time"])' in seen_query[0]
+    assert seen_query[0].count("limit(n: 1)") == 1
+    assert "keep(" not in seen_query[0] and "group(" not in seen_query[0]
     assert "buckets()" not in seen_query[0] and "to(" not in seen_query[0]
     assert set(tmp_path.iterdir()) == before
     assert previous.read_text(encoding="utf-8") == "last good export"
@@ -281,7 +282,7 @@ def test_transport_failures_are_classified_without_exception_contents(
         (CSV, ""),
         (b",error,reference\n,not-a-real-token,1\n", "application/csv"),
         (b",result,table,_time\n,,0,not-a-real-token\n", "application/csv"),
-        (CSV + b",,0,2026-09-07T16:01:00Z\n", "application/csv"),
+        (CSV + b",,0,2026-09-07T16:01:00Z\n" * 4096, "application/csv"),
     ],
 )
 def test_bad_query_response_never_becomes_success(
