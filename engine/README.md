@@ -11,6 +11,12 @@ bei alten Namenskollisionen:** einmalig den Uploader auf Stations-UUIDs umstelle
 und gegebenenfalls Original-JSONL nachliefern – die [genauen RPi-/PC-Schritte](../docs/STATIONS-UUID.md)
 stehen separat. Keine alten Serien löschen und keinen Ack zurücksetzen.
 
+**Wenn die alte JSONL-Nachlieferung an einer ungeklärten Zeitzone hängt:**
+Nicht weiter raten. [Kurzweg ohne alten Replay](../docs/STATIONS-UUID.md): den
+aktualisierten Uploader laufen lassen, `--uuid-only` exportieren und die
+vorhandene M2-Historie hinzunehmen. Die Sicherung bleibt erhalten; ihre unklaren
+Altzeilen werden vorerst nicht nachgeladen.
+
 M3 ist weiterhin ein erster, **unkalibrierter** Durchstich, keine fertige
 Entscheidungs-App. Die beiden GUI-Samples bleiben die Homepage-Basis
 ([Übernahmeregeln](../sample/README.md)); diese Anleitung startet die M3-Werkzeuge,

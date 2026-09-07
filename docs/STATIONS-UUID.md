@@ -1,5 +1,55 @@
 # Gleiche Stationsnamen sauber trennen – RPi und Windows-PC
 
+## Schnellweg: jetzt weiterarbeiten, alten Replay vorerst weglassen
+
+Wenn `TIME_OFFSET_MISSING` die Nachlieferung blockiert und der ursprüngliche
+Zeitbezug nicht durchgehend geklärt ist, **keinen pauschalen UTC-/Berlin-Replay
+starten**. Für den M3-Einstieg ist diese Nachlieferung optional: Die vorhandenen
+UUID-getrennten M2-Historien können das Training abdecken, neue Live-Punkte werden
+bereits eindeutig mit `station_id` gespeichert.
+
+**Voraussetzung:** Der Code mit UUID-Tags ist auf PC und RPi aktualisiert und die
+Originaldaten sind bereits gesichert (§1–2). Die Sicherung behalten; nichts löschen.
+
+**1. Auf dem RPi nur den Uploader neu starten:**
+
+```bash
+sudo systemctl restart tankapp-uploader
+```
+
+Den Collector und die Pi-Zeitzone unverändert lassen, den Pi nicht rebooten.
+Der Uploader läuft mit dem neuen Code und schreibt neue/unbestätigte Punkte mit
+UUID. Seine bestehende Ack-Logik bleibt erhalten.
+
+**2. Auf dem Windows-PC exportieren:**
+
+```powershell
+python .\data-tools\export_influx.py --env-file .\data\influx.env --uuid-only
+```
+
+Sind noch keine UUID-Punkte vorhanden, den nächsten erfolgreichen Collector-Poll
+und dessen Upload abwarten: im normalen 06–24-Uhr-Fenster etwa alle fünf Minuten,
+außerhalb des Fensters erst beim nächsten Start. Bei einem leeren Export bleibt
+eine eventuell ältere Exportdatei erhalten – daher die Erfolgsmeldung prüfen.
+
+**3. Erst nach erfolgreichem Export: mit der bestehenden M2-Historie prüfen:**
+
+```powershell
+.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
+```
+
+**Grenze dieses Kurzwegs:** Alte Namensserien und die zeitlich noch nicht sicher
+zugeordneten Sicherungszeilen werden nicht nachträglich repariert oder neu
+hochgeladen. Der Export enthält nur vorhandene UUID-getaggte Punkte. Die
+Sicherung bleibt für eine spätere belegte Nachlieferung erhalten. Das ist ein
+sicherer Weiterarbeitsweg, **keine Behauptung einer vollständigen Altdatenmigration**.
+Die alte M2-Historie bleibt als rekonstruierte Historie gekennzeichnet und ersetzt
+keinen Live-Gütenachweis.
+
+Die folgenden ausführlichen Abschnitte sind für die Ersteinrichtung bzw. die
+**spätere optionale** Nachlieferung. Für den Kurzweg jetzt nicht bei §3a weiter
+mit Zeitzonen experimentieren.
+
 ## Entscheidung nach dem Preisvergleich
 
 Wenn der Bericht **„Unterschiedliche Preisverläufe“** meldet, eine Station nicht
@@ -16,8 +66,9 @@ Der aktualisierte Uploader ergänzt **`station_id=<MTS-K-UUID>`**. `city`,
 verschiedenen UUIDs sind auch bei identischen Namen getrennt. Der Exporter benutzt
 vorhandene UUID-Tags vorrangig; er rät keine fehlenden IDs.
 
-**Die folgenden Befehle ändern erst bei der ausdrücklich gestarteten Nachlieferung
-die InfluxDB.** Sie löschen keine alten Serien und setzen keinen Ack zurück.
+**Prüfung und Export sind nur lesend.** Der laufende Uploader und die ausdrücklich
+angeforderte Nachlieferung schreiben Punkte, löschen aber keine alten Serien.
+Kein Ablauf setzt den Ack zurück.
 Private Konfigurationen/Schlüssel nicht posten. Beide GUI-Vorlagen bleiben unverändert.
 
 ## 1. Code auf PC und RPi aktualisieren
