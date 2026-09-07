@@ -284,20 +284,24 @@ war leer bzw. enthielt nur den Platzhalter aus dem Beispiel.
 
 ### 2.8 Sicherung & Wiederherstellung des Pi
 
-Der Code liegt auf GitHub, aber **zwei Dateien sind gitignored** und existieren
-nur auf dem Pi. Sie müssen ins Pi-Backup (z. B. `smart_backup.sh` aufs NAS)
-aufgenommen werden, sonst ist der Collector nach einem Restore lahm:
+Der Code liegt auf GitHub, aber **einige Dateien sind gitignored** und
+existieren nur auf dem Pi. Sie müssen ins Pi-Backup (z. B.
+`smart_backup.sh` aufs NAS) aufgenommen werden, sonst sind Collector
+**und Uploader** nach einem Restore lahm:
 
 | Was | Pfad | Inhalt |
 |---|---|---|
 | API-Key | `~/TankApp/data/apikey.txt` | privater Tankerkönig-Key (chmod 600) |
 | Polling-Set | `~/TankApp/docs/analysis/stations/polling.json` | die 10 UUIDs + private Koordinaten |
 | systemd-Unit | `/etc/systemd/system/tankapp-collector.service` | Custom-Unit (Environment) |
+| systemd-Unit | `/etc/systemd/system/tankapp-uploader.service` | Uploader-Service (Phase C) |
+| InfluxDB-Zugang | `/etc/tankapp/env` | Uploader-URL/Org/Bucket/**Token** (chmod 600) |
 | tmpfs-Zeile | `/etc/fstab` (Zeile `/dev/shm/tankapp`) | RAM-Puffer-Mount |
 
 **Bewusst NICHT sichern:** `/dev/shm/tankapp/*.jsonl` — das ist der 7-Tage-
 Ringpuffer im RAM, er wird nach einem Neustart ohnehin neu aufgebaut. Die
-Langzeit-Historie kommt ab M2 vom NAS-Uploader (InfluxDB).
+Langzeit-Historie liegt in der InfluxDB auf dem NAS (der Uploader liefert
+sie in Echtzeit nach).
 
 Minimal-Snippet fürs Backup-Skript:
 
@@ -306,11 +310,17 @@ mkdir -p "$TARGET/tankapp"
 cp ~/TankApp/data/apikey.txt "$TARGET/tankapp/apikey.txt"
 cp ~/TankApp/docs/analysis/stations/polling.json "$TARGET/tankapp/polling.json"
 cp /etc/systemd/system/tankapp-collector.service "$TARGET/tankapp/" 2>/dev/null
+cp /etc/systemd/system/tankapp-uploader.service "$TARGET/tankapp/" 2>/dev/null
+cp /etc/tankapp/env "$TARGET/tankapp/env" 2>/dev/null && chmod 600 "$TARGET/tankapp/env"
 ```
 
-Beim Restore: Repo klonen (`git clone`/`git pull`), die zwei Dateien
-zurückkopieren, Unit nach `/etc/systemd/system/` legen, tmpfs-Zeile in
+Beim Restore: Repo klonen (`git clone`/`git pull`), die Dateien
+zurückkopieren, beide Units nach `/etc/systemd/system/` legen,
+`/etc/tankapp/env` mit `chown pi:pi` + `chmod 600` anlegen, tmpfs-Zeile in
 `/etc/fstab` ergänzen und `systemctl enable --now tankapp-collector`.
+Den Uploader erst starten, wenn `upload_influx.py` im Repo liegt
+(nach dem PR-Merge) UND `/etc/tankapp/env` existiert:
+`systemctl enable --now tankapp-uploader`.
 Der Key gehört `pi:pi` mit `chmod 600`. Für den RAM-Puffer ist die
 `uid=pi,gid=pi`-Variante praktisch, dann entfällt das `chown` nach jedem
 Boot:
