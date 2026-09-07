@@ -275,11 +275,11 @@ print("batch:", s.get("batch"))
 PY
 
 # 2) Enthält apikey.txt GENAU eine Zeile mit dem 36-Zeichen-Key?
-#    (zeigt nur Länge + Anfangszeichen, nicht den ganzen Key)
+#    (zeigt nur Zeilenanzahl und Länge, niemals den Key)
 python3 - <<'PY'
 from pathlib import Path
 k = Path("/home/pi/TankApp/data/apikey.txt").read_text().strip().splitlines()
-print("Zeilen:", len(k), "| Zeile 1:", repr(k[0]) if k else "(leer)")
+print("Zeilen:", len(k), "| Länge von Zeile 1:", len(k[0]) if k else 0)
 PY
 
 # 3) Läuft der Dienst noch mit der ALTEN Konfiguration? (Unit geändert → neu starten)
@@ -472,7 +472,7 @@ POST. Fehlerpfade (Exit-Code 1, **Ack bleibt stehen, nichts geht verloren**):
 | Log-Meldung | Bedeutung / Aktion |
 |---|---|
 | `NAS nicht erreichbar …` | NAS aus oder falsche `TANKAPP_INFLUX_URL` — Uploader wartet (Backoff 60 s → 15 min), der Puffer läuft weiter |
-| `HTTP 401 — Token fehlt/falsch` | `TANKAPP_INFLUX_TOKEN` prüfen (NAS: `influx auth list`) |
+| `HTTP 401 — Token fehlt/falsch` | In der InfluxDB-UI Token-Status/Rechte prüfen; keine Token-Listen oder Schlüsselwerte posten |
 | `HTTP 403 — keine Schreibberechtigung` | Token neu anlegen mit `--write-bucket tankapp` (3.1) |
 | `HTTP 404 — Org/Bucket existiert nicht` | `TANKAPP_INFLUX_ORG`/`_BUCKET` gegen NAS prüfen (`influx org list`, `influx bucket list`) |
 | `HTTP 400 — Line Protocol abgelehnt` | Fehlertext im Log — sollte nicht vorkommen, dann hier melden |
@@ -592,7 +592,10 @@ Pi/NAS unverändert lassen.
    (URL, Org, Bucket, separater InfluxDB-Lese-Token) in `data\influx.env` speichern;
    Export mit `--env-file data/influx.env`. Nicht die ganze Datei in eine
    Token-Variable laden. `data\apikey.txt` bleibt für Tankerkönig. Der Export ist
-   nur lesend; die Anleitung erklärt auch die alternative reine Token-Datei.
+   nur lesend. Zuerst `--check-connection --timeout 15` mit demselben `--env-file`
+   ausführen. Die Anleitung zeigt die konkrete Token-Anlage in der InfluxDB-UI und
+   trennt Health-/Netzfehler von einem verweigerten Bucket-Lesezugriff. Keine
+   zusätzlichen Token-Dateien/Sitzungsvariablen für diesen PC-Ablauf nötig.
 
 Nach dem Setup beispielsweise direkt mit deinen vorhandenen M2-Dateien:
 
@@ -627,6 +630,7 @@ hier nur die Engine-Werkzeuge getestet, nicht die Prototypen umgestaltet.
 | Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
 | InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
 | Pipeline (Polling-Set bauen) | `.\.venv\Scripts\python.exe data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | Windows-PC |
+| InfluxDB-Verbindung / Leserecht | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py --env-file data/influx.env --check-connection --timeout 15` (kein Polling-Set, keine Exportdatei) | Windows-PC |
 | InfluxDB-Export für M3 | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py --env-file data/influx.env` (vier Konfigurationswerte: Engine-Anleitung §3B) | Windows-PC |
 | M3-Datenqualität mit vorhandener Historie | `.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json` | Windows-PC |
 | M3-Softwaretests | `.\.venv-m3\Scripts\python.exe -m pytest -q` (kein Key / NAS nötig) | Windows-PC |

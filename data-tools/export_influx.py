@@ -8,6 +8,8 @@ never guessed matches. Only Python >= 3.9's standard library is required.
 Configuration: TANKAPP_INFLUX_* environment variables, or --env-file with four
 literal NAME=VALUE lines (the file replaces, rather than merges with, the env).
 A whole config file is not a token; malformed credentials are never logged.
+Use --check-connection before exporting to check health and bucket read access
+without a polling set or output files.
 """
 
 from __future__ import annotations
@@ -21,6 +23,9 @@ import io
 import json
 import math
 import os
+import re
+import socket
+import ssl
 import sys
 import tempfile
 import urllib.error
@@ -53,6 +58,8 @@ INFLUX_KEYS = (
     "TANKAPP_INFLUX_TOKEN",
 )
 MAX_ENV_BYTES = 64 * 1024
+PRICE_COLUMNS = ("_time", "city", "station", "status")
+PROBE_COLUMNS = ("_time",)
 
 
 class ExportError(ValueError):
@@ -68,6 +75,16 @@ class InfluxConfig:
     timeout: int = 60
 
     def validate(self):
+        if self.token in {
+            "<DEIN-INFLUXDB-LESE-TOKEN>",
+            "<NUR-LESE-TOKEN>",
+            "<Secret>",
+            "<SECRET>",
+        }:
+            raise ExportError(
+                "TANKAPP_INFLUX_TOKEN enthält noch einen Platzhalter. "
+                "Den vollständigen Wert eines neuen InfluxDB-Lese-Tokens eintragen, nicht seine ID."
+            )
         # Validate BEFORE constructing HTTP headers. http.client can otherwise
         # include the entire credential in "Invalid header value b'...'" errors.
         if self.token and (
@@ -258,7 +275,29 @@ def flux_query(
     )
 
 
-def query_rows(cfg: InfluxConfig, query: str):
+def network_error(exc: BaseException, stage: str) -> ExportError:
+    """Classify only exception types; raw proxy/URL errors may contain secrets."""
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, (TimeoutError, socket.timeout)):
+        hint = "Zeitüberschreitung: NAS/Netz/VPN prüfen, bei Bedarf --timeout erhöhen. Das behebt keinen HTTP 401."
+    elif isinstance(reason, ConnectionRefusedError):
+        hint = "Verbindung abgelehnt: Influx-Dienst, URL-Port und Firewall prüfen."
+    elif isinstance(reason, socket.gaierror):
+        hint = "Hostname nicht auflösbar: URL und DNS/VPN prüfen."
+    elif isinstance(reason, ssl.SSLCertVerificationError):
+        hint = "TLS-Zertifikat nicht vertrauenswürdig: Zertifikat/HTTPS-Adresse prüfen."
+    elif isinstance(reason, ssl.SSLError):
+        hint = (
+            "TLS-Verbindung fehlgeschlagen: http/https und Server-Konfiguration prüfen."
+        )
+    else:
+        hint = (
+            "Netz-/Proxyfehler: NAS-Erreichbarkeit, VPN und Windows-/HTTP-Proxy prüfen."
+        )
+    return ExportError(f"{stage}: {hint}")
+
+
+def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
     cfg.validate()
     url = (
         cfg.url.rstrip("/")
@@ -290,9 +329,20 @@ def query_rows(cfg: InfluxConfig, query: str):
         )
         opener = urllib.request.build_opener(NoRedirect())
         with opener.open(request, timeout=cfg.timeout) as response:
+            if required_columns == PROBE_COLUMNS:
+                content_type = (
+                    response.headers.get("Content-Type", "")
+                    .split(";")[0]
+                    .lower()
+                    .strip()
+                )
+                if content_type not in ("application/csv", "text/csv"):
+                    raise ExportError(
+                        "Query-Endpunkt liefert kein CSV: URL/Reverse-Proxy prüfen."
+                    )
             text = io.TextIOWrapper(response, encoding="utf-8-sig", newline="")
             try:
-                yield from parse_flux_csv(text)
+                yield from parse_flux_csv(text, required_columns)
                 # HTTPResponse.read1 (used by TextIOWrapper) can accept an early
                 # EOF without raising IncompleteRead. Check Content-Length too.
                 if getattr(response, "length", None) not in (None, 0):
@@ -305,9 +355,17 @@ def query_rows(cfg: InfluxConfig, query: str):
         raise
     except urllib.error.HTTPError as exc:
         hints = {
-            401: "Token fehlt/falsch",
-            403: "Token braucht Leserecht für den TankApp-Bucket",
+            401: (
+                "Zugriff abgelehnt: Token ungültig/deaktiviert oder keine Leseberechtigung "
+                "für die gewählte Organisation/den Bucket. Neuen Lese-Token in genau dieser "
+                "InfluxDB-Instanz erstellen und seinen vollständigen Wert in influx.env eintragen "
+                "(nicht Token-ID, Token-Name, Login-Passwort oder Tankerkönig-Key). "
+                "Bei vorgeschaltetem Proxy auch dessen Zugriff prüfen."
+            ),
+            403: "Token braucht Leserecht für den TankApp-Bucket; ggf. Proxy-Zugriff prüfen",
+            400: "Organisation, Bucket und Flux-Unterstützung prüfen; Query wurde nicht akzeptiert",
             404: "Org/Bucket/InfluxDB-2.x-URL prüfen",
+            407: "Proxy verlangt Anmeldung; Proxy-Einstellungen prüfen, nicht den InfluxDB-Token dafür verwenden",
             429: "Server ausgelastet; später erneut exportieren",
         }
         # No response body / URL / token in logs (a proxy may echo credentials).
@@ -323,13 +381,11 @@ def query_rows(cfg: InfluxConfig, query: str):
             "Ungültige HTTP-Anfrage/Antwort; Influx-Konfiguration und Token-Format prüfen. "
             "Header- und Antwortinhalte werden aus Sicherheitsgründen nicht ausgegeben."
         ) from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise ExportError(
-            "InfluxDB nicht erreichbar / Zeitüberschreitung; URL, Netz und NAS prüfen."
-        ) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise network_error(exc, "Flux-Query") from None
 
 
-def parse_flux_csv(handle):
+def parse_flux_csv(handle, required_columns=PRICE_COLUMNS):
     header = None
     defaults = []
     for row in csv.reader(handle):
@@ -342,11 +398,13 @@ def parse_flux_csv(handle):
             raise ExportError(
                 "InfluxDB meldet einen Flux-Query-Fehler; kein Export übernommen."
             )
-        if "_time" in row and "station" in row:
+        if "_time" in row and ("station" in row or required_columns == PROBE_COLUMNS):
             header = row
-            if not {"_time", "city", "station", "status"}.issubset(header):
+            if not set(required_columns).issubset(header):
                 raise ExportError(
-                    "InfluxDB-Schema unvollständig: _time/city/station/status erforderlich."
+                    "InfluxDB-Schema unvollständig: "
+                    + "/".join(required_columns)
+                    + " erforderlich."
                 )
             continue
         if header is None or len(row) != len(header):
@@ -358,6 +416,109 @@ def parse_flux_csv(handle):
             for i, value in enumerate(row)
         ]
         yield dict(zip(header, values))
+
+
+def check_health(cfg: InfluxConfig) -> None:
+    """Identify a ready InfluxDB service without sending any Authorization header."""
+    cfg.validate()
+    try:
+        request = urllib.request.Request(
+            cfg.url.rstrip("/") + "/health",
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "TankApp-ReadOnly-Export/1.0",
+            },
+        )
+        with urllib.request.build_opener(NoRedirect()).open(
+            request, timeout=cfg.timeout
+        ) as response:
+            if response.status != 200:
+                raise ExportError(
+                    "Health-Endpunkt meldet keinen bereiten Dienst; NAS/InfluxDB prüfen."
+                )
+            raw = response.read(MAX_ENV_BYTES + 1)
+            if len(raw) > MAX_ENV_BYTES or getattr(response, "length", None) not in (
+                None,
+                0,
+            ):
+                raise ExportError(
+                    "Health-Antwort unvollständig oder zu groß; URL/Proxy prüfen."
+                )
+            health = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(health, dict) or health.get("name") != "influxdb":
+            raise ExportError(
+                "Kein InfluxDB-Health-Endpunkt erkannt; URL/Port/Reverse-Proxy prüfen."
+            )
+        if health.get("status") != "pass":
+            raise ExportError(
+                "InfluxDB meldet sich noch nicht bereit; Dienst auf dem NAS prüfen."
+            )
+        major = re.match(r"v?(\d+)\.", str(health.get("version", "")))
+        if major and major.group(1) != "2":
+            raise ExportError(
+                "Andere InfluxDB-Hauptversion erkannt; dieser Exporter benötigt InfluxDB 2.x/Flux."
+            )
+    except ExportError:
+        raise
+    except urllib.error.HTTPError as exc:
+        raise ExportError(
+            f"Health-Endpunkt HTTP {exc.code}: URL/Port, Influx-Dienst oder vorgeschalteten Proxy prüfen. "
+            "Dieser Schritt sendet keinen Token; die Token-Berechtigung ist noch nicht geprüft."
+        ) from None
+    except (ValueError, http.client.HTTPException):
+        raise ExportError(
+            "Keine gültige InfluxDB-Health-Antwort; URL/Port/Reverse-Proxy prüfen."
+        ) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise network_error(exc, "Health-Endpunkt") from None
+
+
+def check_connection(cfg: InfluxConfig) -> None:
+    """Check configuration, service and bucket read access; no polling set/files needed."""
+    cfg.validate()
+    print(
+        "1/3 Konfiguration: OK (Format geprüft; Token wird nicht ausgegeben).",
+        flush=True,
+    )
+    print("2/3 Prüfe InfluxDB /health ohne Token ...", flush=True)
+    check_health(cfg)
+    print("2/3 InfluxDB: bereit.", flush=True)
+    print(
+        "3/3 Prüfe Bucket-Lesezugriff mit einer begrenzten Flux-Query ...", flush=True
+    )
+    query = (
+        f"from(bucket: {json.dumps(cfg.bucket, ensure_ascii=False)})\n"
+        "  |> range(start: -1h)\n"
+        '  |> filter(fn: (r) => r._measurement == "prices")\n'
+        "  |> limit(n: 1)\n"
+        '  |> keep(columns: ["_time"])\n'
+        "  |> group(columns: [])\n"
+        "  |> limit(n: 1)\n"
+    )
+    # Read the entire (at most one point) result so late protocol/query errors
+    # cannot become a false success. An empty bucket is still readable.
+    count = 0
+    for row in query_rows(cfg, query, required_columns=PROBE_COLUMNS):
+        count += 1
+        if count > 1:
+            raise ExportError(
+                "Verbindungs-Query lieferte mehr als einen Punkt; Antwort nicht wie erwartet."
+            )
+        try:
+            instant(row["_time"])
+        except (ValueError, KeyError, TypeError):
+            raise ExportError(
+                "Verbindungs-Query lieferte keinen gültigen Zeitstempel; Antwort nicht wie erwartet."
+            ) from None
+    print("3/3 Lesezugriff: OK (Query akzeptiert).", flush=True)
+    if not count:
+        print(
+            "Hinweis: keine prices-Punkte in der letzten Stunde; kein Nachweis für laufende Datenerfassung."
+        )
+    print(
+        "Verbindungstest erfolgreich. Kein Export geschrieben; kein Schreib-/Adminrecht benötigt."
+    )
 
 
 def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
@@ -475,19 +636,28 @@ def main(argv=None) -> int:
         type=Path,
         help="Lokale UTF-8-Datei mit TANKAPP_INFLUX_…=…; ersetzt die Prozessumgebung vollständig",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--dry-run",
         action="store_true",
         help="Nur Query zeigen; kein Netz, kein Token nötig",
     )
+    mode.add_argument(
+        "--check-connection",
+        action="store_true",
+        help="Nur Konfiguration, Health und Bucket-Leserecht prüfen; keine Exportdatei / kein Polling-Set nötig",
+    )
     args = parser.parse_args(argv)
     args.out = args.out or ROOT / f"data/engine/influx_{args.fuel}.csv.gz"
     try:
+        cfg = load_config(args.env_file, args.timeout)
+        if args.check_connection:
+            check_connection(cfg)
+            return 0
         stop = instant(args.until) if args.until else dt.datetime.now(UTC)
         start = instant(args.since) if args.since else stop - dt.timedelta(days=70)
         windows = list(time_windows(start, stop))
         lookup = station_lookup(args.polling, args.poll_city)
-        cfg = load_config(args.env_file, args.timeout)
         if args.env_file and args.out.resolve() == args.env_file.resolve():
             raise ExportError(
                 "Exportziel darf nicht die Konfigurationsdatei überschreiben."
