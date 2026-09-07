@@ -13,6 +13,12 @@ Fenster/Kadenz: 1 Poll / 5 min (hart, Token-Bucket) im Fenster 06:00-24:00
 (§7: nachts sind alle Stationen zu, Extra-Polls liefern nichts). Vor-
 /mitternachtspuffer auf /dev/shm beim Pi, sonst data/poll/.
 
+Zeitstempel: `fetched_at` wird **mit UTC-Offset** gespeichert (§9.3 „UTC
+speichern") — das ist ein eindeutiger UTC-Moment, egal in welcher Zeitzone
+der Pi läuft. Tabelle und Dateiname bleiben Lokalzeit. Der InfluxDB-
+Uploader (upload_influx.py) interpretiert alte naive Zeilen (vor diesem
+Fix) als System-Lokalzeit.
+
 API-Key (kostenlos, MTS-K CreativeCommons): einer von
   * --api-key
   * Umgebungsvariable TANKERKOENIG_API_KEY
@@ -336,7 +342,9 @@ def main() -> int:
 
     stale_no_price: dict[str, int] = {}
     while True:
-        now = dt.datetime.now()
+        # Mit Offset (§9.3 „UTC speichern"): eindeutiger UTC-Moment; Anzeige
+        # (.hour, Tabelle) und Dateiname bleiben Lokalzeit (gleiche Uhrzeit).
+        now = dt.datetime.now().astimezone()
         if not in_poll_window(now, args.window_start, args.window_end):
             if args.once:
                 log(f"außerhalb des Fensters {args.window_start:02d}-{args.window_end:02d} "
