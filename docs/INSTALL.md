@@ -342,19 +342,26 @@ bleibt unberührt (der Uploader schreibt mit Precision `ns` nur ins eigene
 Bucket; die bestehende Writer-Konfiguration ändert sich nicht).
 
 ```bash
-# auf dem NAS, im InfluxDB-Container (Compose-Service/Container-Name
-# entsprechend anpassen):
-docker compose exec influxdb influx bucket create \
+# Auf dem NAS. Zuerst den Container-Namen herausfinden:
+docker ps | grep -i influx
+
+# Bucket + Token für TankApp (<name> = Container-Name von oben):
+docker exec <name> influx bucket create \
     --org gtwrlab --name tankapp --retention 43800h     # ≈ 5 Jahre
-docker compose exec influxdb influx auth create \
+docker exec <name> influx auth create \
     --org gtwrlab --read-bucket tankapp --write-bucket tankapp \
     --description "tankapp-uploader (Pi)"
+
 # Check:
-docker compose exec influxdb influx bucket list --org gtwrlab
-docker compose exec influxdb influx auth list --org gtwrlab
+docker exec <name> influx bucket list --org gtwrlab
+docker exec <name> influx auth list --org gtwrlab
 # → das ausgegebene Token gehört auf den Pi nach /etc/tankapp/env (§3.2),
 #   nie ins Repo.
 ```
+
+> `docker compose exec <service> influx …` (oder `docker-compose exec …` bei
+> Compose v1) ginge auch, aber nur, wenn Compose installiert ist — auf
+> Synology-NAS oft nicht. Plain `docker exec` funktioniert immer.
 
 > Die InfluxDB-Web-UI (http://192.168.178.61:8086) dient nur der Diagnose —
 > der Pi nutzt sie nie, er schreibt ausschließlich mit dem Uploader-Token.
@@ -371,6 +378,9 @@ cp .env.example .env && nano .env        # Token: openssl rand -hex 16
 docker compose up -d
 docker compose exec influxdb influx ping
 ```
+
+(Ist der Befehl `docker compose` auf dem NAS nicht vorhanden — Synology —:
+`docker-compose` (v1) verwenden oder das Compose-Plugin installieren.)
 
 ### 3.2 Secrets auf dem Pi (einmalig)
 
@@ -451,9 +461,8 @@ journalctl -u tankapp-uploader -f       # Ping alle 60 s, Upload bei neuen Zeile
 cat /dev/shm/tankapp/meta/synced_until  # Ack-Stand (letzte übertragene Zeile)
 
 # Datenvolumen auf dem NAS (erwartet: ~215–216 Punkte je offenen Station/Tag,
-# Fenster 06–24 Uhr / 5 min):
-cd ~/TankApp/ops/nas/influxdb
-docker compose exec influxdb influx query \
+# Fenster 06–24 Uhr / 5 min). <name> = Container-Name (docker ps | grep -i influx):
+docker exec <name> influx query \
   'FROM bucket("tankapp") |> range(start: -24h) |> group(by: ["station"]) |> count()'
 ```
 
@@ -513,5 +522,5 @@ durchgehen und das Backup (§3.6) prüfen.
 | Collector-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-collector` | Pi |
 | Uploader-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-uploader` | Pi |
 | Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
-| InfluxDB-Check (Ping + Daten) | `docker compose exec influxdb influx ping` / `influx query …` (siehe §3.5) | NAS |
+| InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
 | Pipeline (Polling-Set bauen) | `py -3 data-tools/run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | PC |
