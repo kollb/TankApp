@@ -164,6 +164,14 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now tankapp-collector
 ```
 
+> ⚠️ **Wichtig:** `daemon-reload` + `enable --now` starten einen bereits
+> laufenden Dienst **nicht neu**. Nach jeder Änderung an der Unit (z. B.
+> `TANKAPP_POLL_DIR`) oder an `polling.json`/`apikey.txt` deshalb:
+>
+> ```bash
+> sudo systemctl restart tankapp-collector
+> ```
+
 Key als Datei sicherer als in der Unit:
 
 ```bash
@@ -203,7 +211,60 @@ Code aktualisieren: `git pull` im Repo, dann ebenfalls Restart.
 | `HTTP 429` | API-Limit (1 Request/5 min) — Collector wartet automatisch 60 s und wiederholt |
 | `no prices` (Station) | Station meldet gerade keine Preise; nach **7 Polls** (~35 min) Alarm im Log → Station prüfen (Urlaub/Baustelle) |
 | `Fenster zu … schlafe` | normal zwischen 00 und 06 Uhr |
+| `parameter error` | **ids ODER apikey kamen leer bei der API an** — siehe Fehlerdiagnose unten |
+| `Key existiert nicht oder ist deaktiviert` | Key in `data/apikey.txt` unbekannt/nicht aktiviert → bei tankerkoenig.de prüfen |
+| `eine oder mehrere Tankstellen-IDs nicht im korrekten Format` | `polling.json` enthält UUIDs außerhalb des Formats `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `⚠ … UUIDs haben kein gültiges UUID-Format` | Collector hat beim Start kaputte UUIDs erkannt und übersprungen → `polling.json` neu erzeugen |
+| `⚠ API-Key sieht nicht nach einer UUID aus` | `apikey.txt` enthält mehr als den nackten Key (Label/Kommentar?) → nur den 36-Zeichen-Key in eine Zeile |
+| `⚠ Proxy-Umgebung gesetzt` | `http_proxy`/`https_proxy` ist gesetzt; ein Proxy kann den API-Aufruf verfälschen (s. u.) |
 | Dienst startet nicht | `journalctl -u tankapp-collector -n 50`; meist fehlt `polling.json` (2.2) oder der Key |
+
+### 2.7 Fehlerdiagnose „parameter error“
+
+Die Tankerkönig-API antwortet `ok=false` mit `parameter error` **nur**, wenn
+`ids` oder `apikey` **leer/fehlend** ankommen (ein falscher Key ergibt
+„Key existiert nicht…“, eine kaputte UUID „…nicht im korrekten Format“).
+Der Collector sendet immer beide Parameter — also nacheinander prüfen:
+
+```bash
+# 1) Was steht wirklich im Polling-Set?
+python3 - <<'PY'
+import json
+p = json.load(open("/home/pi/TankApp/docs/analysis/stations/polling.json"))
+s = next(iter(p["sets"].values()))
+print("label:", s.get("label"))
+print("batch:", s.get("batch"))
+PY
+
+# 2) Enthält apikey.txt GENAU eine Zeile mit dem 36-Zeichen-Key?
+#    (zeigt nur Länge + Anfangszeichen, nicht den ganzen Key)
+python3 - <<'PY'
+from pathlib import Path
+k = Path("/home/pi/TankApp/data/apikey.txt").read_text().strip().splitlines()
+print("Zeilen:", len(k), "| Zeile 1:", repr(k[0]) if k else "(leer)")
+PY
+
+# 3) Läuft der Dienst noch mit der ALTEN Konfiguration? (Unit geändert → neu starten)
+systemctl status tankapp-collector | head -3
+sudo systemctl restart tankapp-collector
+
+# 4) Direkter API-Test mit dem echten Key (rohe Antwort ansehen):
+#    IDs aus Schritt 1, Key aus apikey.txt einsetzen.
+curl -s "https://creativecommons.tankerkoenig.de/json/prices.php?ids=<uuid1>,<uuid2>&apikey=<KEY>"
+#    -> {"ok":true,…}                alles gut, Problem lag an alter Konfiguration
+#    -> {"ok":false,"message":"parameter error"}            ids oder apikey leer
+#    -> {"ok":false,"message":"Key existiert nicht …"}      Key falsch/inaktiv
+#    -> {"ok":false,"message":"… nicht im korrekten Format"} UUID kaputt
+
+# 5) Proxy? urllib nutzt http_proxy/https_proxy — ein Filter-/Tunnel-Proxy
+#    kann den Query-String verstümmeln.
+env | grep -i proxy
+sudo systemctl show tankapp-collector -p Environment
+```
+
+Häufigster Fall in der Praxis: Der Dienst lief noch mit der **alten** Unit/
+dem **alten** Key (siehe 2.4: erst `systemctl restart`!) oder `apikey.txt`
+war leer bzw. enthielt nur den Platzhalter aus dem Beispiel.
 
 ---
 
