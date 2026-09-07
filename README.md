@@ -44,6 +44,8 @@ Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsse
 - [Datenbezug](docs/DATEN-BEZUG.md) · [Werkzeuge](data-tools/README.md) —
   Historie holen, InfluxDB exportieren, Polling-Set bei Bedarf neu erstellen.
 - [Stationsselektion](analysis/README.md) — Methodik und lokale Ausgaben.
+- [Preis-Zwillinge prüfen und Ersatz vorschlagen](docs/PREIS-ZWILLINGE.md) —
+  Windows-Befehle für UUID-getrennte Preisvergleiche, ohne das aktive Set zu ändern.
 - [Produkt- und Architekturkonzept](docs/KONZEPT.md) — Zielbild und Roadmap;
   **nicht** alle beschriebenen Funktionen sind schon implementiert.
 

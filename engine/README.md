@@ -92,6 +92,15 @@ Dialekt-Einstellungen ist ebenfalls Bestandteil der API; die Vereinfachung ist
 **ein gezielter Kompatibilitätstest**, kein Beweis für die Ursache von WinError 10054.
 Es sind keine neue Schlüsseldatei, andere Berechtigungen oder Änderungen am NAS nötig.
 
+## Zwei gleichpreisige Aral-Stationen durch einen Vertreter ersetzen?
+
+Dafür gibt es jetzt den nur lesenden Vergleich `engine compare-stations` und
+einen expliziten UUID-Ausschluss für **separate** Pipeline-Vorschläge.
+[Windows-Anleitung: Preis-Zwillinge prüfen und Ersatz vorschlagen](../docs/PREIS-ZWILLINGE.md).
+Nicht anhand des Namens entscheiden und nicht das aktive Polling-Set ändern,
+um eine alte vermischte Influx-Serie scheinbar eindeutig zu machen. Die dafür
+notwendige UUID-Speicherung/Migration ist noch nicht Teil dieser Änderung.
+
 ## 1. PowerShell und Python vorbereiten
 
 Öffne **PowerShell im TankApp-Ordner** (z. B. über das Terminal von VS Code).

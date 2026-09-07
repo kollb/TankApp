@@ -132,10 +132,43 @@ def parser() -> argparse.ArgumentParser:
         help="Ab Fit-Cutoff, 1–168 h; nur 24 h im Backtest geprüft",
     )
     forecast.add_argument("--out", type=Path, default=Path("data/engine/forecast.json"))
+    comparison = commands.add_parser(
+        "compare-stations",
+        help="Preis-Zwillinge anhand UUID-getrennter Historien prüfen; kein Auto-Ausschluss",
+    )
+    comparison.add_argument("--data", nargs="+", required=True)
+    comparison.add_argument("--polling", type=Path, required=True)
+    comparison.add_argument("--poll-city")
+    comparison.add_argument("--brand", help="Marke aus polling.json, z. B. ARAL")
+    comparison.add_argument("--fuel", choices=["E5", "E10", "DIESEL"], default="E10")
+    comparison.add_argument(
+        "--out", type=Path, default=Path("results/engine/price_twins")
+    )
     return root
 
 
 def run(args) -> int:
+    if args.command == "compare-stations":
+        from .station_comparison import (
+            compare_stations,
+            markdown_report as comparison_markdown,
+        )
+
+        report = compare_stations(
+            input_paths(args.data), args.polling, args.fuel, args.brand, args.poll_city
+        )
+        args.out.mkdir(parents=True, exist_ok=True)
+        write_json(args.out / "report.json", report)
+        (args.out / "report.md").write_text(
+            comparison_markdown(report), encoding="utf-8"
+        )
+        print(
+            f"{len(report['pairs'])} Stationspaar(e) geprüft → {args.out / 'report.md'}"
+        )
+        print(
+            "Nur lesend: keine automatische Auswahl, keine Änderung an Polling-Set oder InfluxDB."
+        )
+        return 0
     if args.command == "forecast":
         if args.model.resolve() == args.out.resolve():
             raise ValueError(

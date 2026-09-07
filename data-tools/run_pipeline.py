@@ -219,7 +219,8 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
                       near_km: float, near_n: int, leader_n: int,
                       poll_size: int, fuel: str,
                       leader_max_km: float = 12.0,
-                      router: "RoadRouter | None" = None) -> dict:
+                      router: "RoadRouter | None" = None,
+                      exclude_uuids: "set[str] | None" = None) -> dict:
     """Wählt das Polling-Set nach NETTO-Vorteil, nicht nach blankem Preis.
 
     Drei Gruppen (Straßen-km ab Anker, sonst Luftlinie):
@@ -258,6 +259,14 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
     if not rows:
         raise SystemExit(f"{scores_csv}: keine Stationen für Stadt '{anchor_label}' — "
                          "Selektion (--skip-select?) oder city-Spalte prüfen.")
+
+    excluded = set(exclude_uuids or ())
+    unknown = excluded - {s["uuid"] for s in rows}
+    if unknown:
+        raise SystemExit("Ausschluss enthält UUIDs, die in den Scores dieser Kampagne nicht vorkommen; Bericht/UUIDs prüfen.")
+    rows = [s for s in rows if s["uuid"] not in excluded]
+    if not rows:
+        raise SystemExit("Nach den Ausschlüssen sind keine Kandidaten übrig; kein Polling-Set erzeugt.")
 
     if router is not None:
         # EINE OSRM-Table-Anfrage für alle Stationen der Stadt (Cache + Fallback).
@@ -376,8 +385,10 @@ def build_polling_set(scores_csv: Path, anchor_label: str,
                  f"Radius für ohnehin stattfindende Wege (Einkaufen/Arbeit, z. B. Globus/"
                  f"Guericke) — KEINE Extra-Fahr-Empfehlung; > {leader_max_km:g} km wird "
                  f"nicht gepollt; max. 2 je Marke, gleiche Marke ≥ 1,5 km; Kraftstoff "
-                 f"{fuel}; Entfernung: {basis}"),
+                 f"{fuel}; Entfernung: {basis}"
+                 + (f"; VORSCHLAG, explizit ausgeschlossen: {', '.join(sorted(excluded))}" if excluded else "")),
         "stations": chosen, "groups": groups,
+        "excluded_uuids": sorted(excluded),
     }
 
 
@@ -436,7 +447,13 @@ def warn_if_scores_stale(args: argparse.Namespace, cfg: dict, label: str,
     return False
 
 
+def validate_proposal_target(args: argparse.Namespace) -> None:
+    if getattr(args, "exclude_uuid", None) and args.out_stations.resolve() == DEFAULT_OUT_STATIONS.resolve():
+        raise SystemExit("Ausschlüsse zunächst nur als Vorschlag speichern: --out-stations docs/analysis/stations-vorschlag. Aktives Polling-Set bleibt unverändert.")
+
+
 def step_poll(args: argparse.Namespace) -> None:
+    validate_proposal_target(args)
     if args.skip_poll:
         log("[poll] übersprungen (--skip-poll)")
         return
@@ -475,7 +492,8 @@ def step_poll(args: argparse.Namespace) -> None:
     res = build_polling_set(scores_csv, label, float(lat), float(lon),
                             args.near_km, args.near_n, args.leader_n,
                             args.poll_size, args.fuel.upper(),
-                            leader_max_km=args.leader_max_km, router=router)
+                            leader_max_km=args.leader_max_km, router=router,
+                            exclude_uuids=set(getattr(args, "exclude_uuid", ()) or ()))
 
     out_dir = args.out_stations
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -502,11 +520,17 @@ def step_poll(args: argparse.Namespace) -> None:
         "generated": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": f"run_pipeline.py aus {scores_csv.name} (Selektion, --step-min {args.step_min})",
         "poll_size": args.poll_size,
+        "proposal": bool(res["excluded_uuids"]),
+        "excluded_uuids": res["excluded_uuids"],
         "sets": sets,
     }
     (out_dir / "polling.json").write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     log(f"[poll] polling.json → {out_dir / 'polling.json'} (gitignored!)")
+
+    if res["excluded_uuids"]:
+        log("[poll] VORSCHLAG mit expliziten Ausschlüssen: " + ", ".join(res["excluded_uuids"]))
+        log("[poll] Nicht ungeprüft aktivieren: Auswahländerung repariert keine alten vermischten Influx-Namensserien.")
 
     # menschenlesbarer Report
     entf_hdr = "Entf. Straße [km]" if router is not None else "Entf. Luftlinie [km]"
@@ -616,11 +640,14 @@ def main() -> int:
                     help="Staufaktor außerhalb des Berufsverkehrs (Freifluss=1.0)")
     ap.add_argument("--out-stations", type=Path, default=DEFAULT_OUT_STATIONS,
                     help="Ziel für polling.json + Report")
+    ap.add_argument("--exclude-uuid", action="append", default=[],
+                    help="Nach Preis-/Nutzbarkeitsprüfung ausschließen (wiederholbar); benötigt separates --out-stations für einen Vorschlag")
     ap.add_argument("--skip-fetch", action="store_true")
     ap.add_argument("--skip-ingest", action="store_true")
     ap.add_argument("--skip-select", action="store_true")
     ap.add_argument("--skip-poll", action="store_true")
     args = ap.parse_args()
+    validate_proposal_target(args)
 
     if not (args.config).exists():
         raise SystemExit(f"Config fehlt: {args.config} — bitte aus "

@@ -104,3 +104,12 @@ kostenlos).
 Die vorhandenen Analyse-CSVs kannst du direkt ohne API-Key und ohne NAS-Verbindung
 verwenden; die Live-Serie aus InfluxDB lässt sich optional ergänzen. Die Qualitäts-/
 Öffnungsstatus-Grenzen rekonstruierter Historie bleiben ausdrücklich ausgewiesen.
+
+## Redundante Preisverläufe statt doppelt belegter Polling-Slots
+
+[Preis-Zwillinge am Windows-PC prüfen](../docs/PREIS-ZWILLINGE.md):
+`python -m engine compare-stations` vergleicht die originalen UUID-Historien,
+nicht Stationsnamen oder nur den aktuellen Preis. Nach manueller Prüfung kann
+`run_pipeline.py --exclude-uuid … --out-stations docs/analysis/stations-vorschlag`
+einen Ersatzvorschlag erzeugen. Keine automatische Änderung des aktiven Sets
+und keine nachträgliche Zuordnung vermischter Influx-Namensserien.

@@ -17,6 +17,12 @@ einen identischen HTTP-Weg am PC; ein optionaler Direktvergleich ist im Engine-R
 **Ausführliche Anleitung inkl. Größen-/Zeitrechnung und Fehlerbildern: [`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md).**
 **Erstinstallation & 24/7-Betrieb (Collector auf dem Raspberry Pi, systemd, Key): [`docs/INSTALL.md`](../docs/INSTALL.md).**
 
+
+**Doppelte Preisverläufe:** [Vergleich und Ersatzvorschlag unter Windows](../docs/PREIS-ZWILLINGE.md).
+Nach Prüfung eine Station mit `run_pipeline.py --exclude-uuid …` ausschließen;
+`--out-stations` muss dafür auf einen separaten Vorschlagsordner zeigen.
+Die bisherige Auswahl füllt den Platz mit dem nächsten geeigneten Kandidaten.
+
 | Skript | Zweck |
 |---|---|
 | **`run_pipeline.py`** | **Alles in einem Befehl:** fetch → ingest → Selektion → `polling.json`. Lädt fehlende Tage nach (idempotent), sichert die Stationsliste, ingesiet mit `--resample 30 --density 60 --fuel e10`, selektiert alle Städte aus `config.local.json` und baut das Polling-Set für eine Stadt (Default Frankfurt). Auswahl nach **NETTO-Vorteil**, nicht blankem Preis: die N billigsten in der Nähe (`--near-km`, Default 4) plus die Leader, deren **Umweg sich nach Sprit+Zeit NETTO lohnt** (Netto €/Füll > 0), nur innerhalb `--leader-max-km` (Default 12 Straßen-km mit `--router osrm`); weiter entfernte Stationen werden gar nicht gepollt. Max. 2 je Marke. Ausgabe u. a. `docs/analysis/stations/polling.json` (gitignored). Windows: `py -3 data-tools\run_pipeline.py` — netrc wird automatisch unter `data/_netrc` gefunden. |
