@@ -1,20 +1,16 @@
-# TankApp — Gesamtkonzept (v5)
+# TankApp — Produkt- und Architekturkonzept
 
-> Stand: 2026-09-06 · **v5 ist das eine Konzeptdokument.** Es vereinigt
+> Stand: 2026-09-07. Dieses Dokument beschreibt das **Zielbild**, nicht
+> ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
+> laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
+> M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
+> Güte- und Kalibrierungsziele sind erst nach einem echten Backtest abgenommen.
 >
-> 1. das technische Konzept v4 (Engine, Selektion, Architektur, API),
-> 2. die Auswertung der externen Bewertung v3 → v4 (früher
->    `REVIEW-2026-09-06.md`, jetzt Anhang A),
-> 3. den Umbau von der **Prognose-App zur Entscheidungs-App** (Decision
->    Layer, §4–§6),
-> 4. die Erkenntnisse aus den **zwei Sample-GUIs** (`sample/good gui` =
->    Alltags-Modus, `sample/good statistic gui` = Werkstatt-Modus, §8 und
->    Anhang B).
->
-> Frühere Dokumente sind damit obsolet; dieses hier ist die einzige
-> verbindliche Referenz.
+> **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
+> Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
+> [Übernahmeregeln](../sample/README.md), §8 und UI-Anhang.
 
-**Das Produktprinzip in einem Satz:** Aus den Prognose-Quantilen q̂.05…q̂.95
+**Das Produktprinzip in einem Satz:** Aus den Prognose-Quantilen q̂.025…q̂.975
 der Engine wird eine **Entscheidung mit Kalibrierungsangabe** gemacht —
 „Jetzt tanken / Warte bis 18–20 Uhr (+4 ct ≈ 1,60 €) / Fahre zu Shell
 (+1,20 € netto) — 82 % sicher“. Fan-Charts, Heatmaps und Konfidenzbänder
@@ -164,8 +160,9 @@ Fußzeile der App. Token-Bucket 1 R/300 s **hart verdrahtet**, dazu
 
 ## 2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)
 
-Pipeline: `analysis/station_selection.py` · Demo-Bericht:
-`docs/analysis/report_top10.md` · Schema: `analysis/README.md`.
+Pipeline: `analysis/station_selection.py` · Schema: `analysis/README.md`.
+Der echte Bericht wird lokal als `docs/analysis/report_top10.md` erzeugt
+und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfernt.
 
 | # | Komponente | Verfahren | Funktion im Score |
 |---|---|---|---|
@@ -176,15 +173,13 @@ Pipeline: `analysis/station_selection.py` · Demo-Bericht:
 | 5 | **Risiko** | σᵢ = 1.4826·MAD(Δᵢ); Streuung der Tages-Mittelränge | Gewicht 0.10 + 0.10 |
 | 6 | **Datenqualität** | Coverage-Gate ≥ 85 % je Station | Ausschluss |
 
-Demo-Ergebnis (54 Stationen, 8 Wochen, 5-Min-Raster): Top-10 mit δ̂ zwischen
-−2,85 und −4,40 ct/L, alle q < 0,005, Ersparnis ≈ 71–110 €/Jahr bei 40 L ·
-1,2 Füllungen/Woche.
-
 **Kampagnen-Setup:** drei Kampagnen in **Hessen, Bayern, NRW**; Heimat =
 **Frankfurt am Main**. Frankfurt hat im 25-km-Radius 100+ Stationen → die
 globale Top-10 wird **quotiert** (Empfehlung **6/2/2**, konfigurierbar),
 sonst dominieren Heimatstadt-Stationen das Ranking und die 10 live
-gepollten IDs decken die Reiseorte nicht (Anhang A, N3).
+gepollten IDs decken die Reiseorte nicht. Die derzeitige
+Ein-Befehl-Pipeline erstellt ein Set je gewählter Poll-Stadt (Default Frankfurt);
+eine gemeinsame Kampagnen-Quote bleibt davon zu unterscheiden.
 **Privatsphäre:** Straße/Hausnummer **nie** im Repo; Heimkoordinaten nur in
 der gitignorierten `analysis/config.local.json` (`--config`, Vorlage
 `config.local.example.json`); Feiertage je Bundesland via `--subdiv`
@@ -206,18 +201,19 @@ günstiger als Umgebung“) erscheint nur im Stations-Detail der Werkstatt.
 
 ## 3. Schritt 2: Zeitreihen-Engine — liefert Quantile, sieht das Frontend (im Alltag) nie
 
-### 3.0 Direkte Antworten
+### 3.0 Umsetzungsstand
 
-- **„Ist einfache Statistik ausreichend?“** Nein. Starke Tageszyklen
-  (Morgensprung, Abendtief), Wochenmuster, diskontinuierliche
-  Betreibersprünge, heteroskedastisches Rauschen → Strukturmodell +
-  Residuen-Dynamik + Ensemble + kalibrierte Intervalle.
-- **„Gute Konfidenz über die gesamte Zeitreihe?“** Ja: verteilungsfreie
-  Kalibrierung (ACI) + laufend gemessene Überdeckung (Rolling-PICP).
-  Tages-Saison (Periode 288) ab ~8 Wochen stabil identifiziert;
-  Wochen-Saison (2016) erst ab ~1 Jahr (bis dahin DoW-Dummies, Anhang A N1).
+Der erste Durchstich in `engine/` liest echte Daten, fittet robuste Tagesform
+und Wochentags-Dummies mit AR(2)-Nachlauf, vergleicht gegen eine saisonale
+Naive und schreibt JSON-Artefakte. Die Bootstrap-Intervalle sind ausdrücklich
+**unkalibriert**; `calibrated` und `decision_ready` bleiben `false`.
 
-### 3.1 Aufbereitung & Öffnungszeiten-Bewusstsein
+Der folgende Stack ist das M3-Ziel. Zweitmodell/Ensemble, gepoolte Feiertage,
+Sprungdiagnostik und ACI sind noch offen. Keine Modellgüte wird aus früheren
+Demo-Kurven übernommen. Wochensaisonalität wird zunächst über DoW-Dummies
+modelliert; eine volle Wochenperiode braucht wesentlich mehr beobachtete Zyklen.
+
+### 3.1 Aufbereitung & Öffnungszeiten-Bewusstsein (Ziel)
 
 1. 5-Min-Raster je (Station, fuel); Lücken → Forward-Fill ≤ 30 min, sonst
    NaN + Staleness-Maske.
@@ -227,7 +223,7 @@ günstiger als Umgebung“) erscheint nur im Stations-Detail der Werkstatt.
 3. Hampel-Filter (Fenster 1 h, Median ± 5·MAD) gegen API-Artefakte.
 4. Tagesblöcke als Bootstrap-/Backtest-Einheit.
 
-### 3.2 Modell-Stack (pro Station × Sorte; Demo-R² 0,94 im Median)
+### 3.2 Ziel-Stack (pro Station × Sorte)
 
 **M1 Strukturmodell (robust):**
 p(t) = μ + Σₖ₌₁²[aₖcos(2πkh/24) + bₖsin(2πkh/24)] + γ′·X(t) + ε(t)
@@ -254,7 +250,7 @@ Fits/Tag sprengen das Pi — deshalb so.
 **Ensemble:** inverse-**MASE**-Gewichte aus 21-Tage-Rolling-Backtest,
 täglich; Benchmark = saisonale Naive.
 
-**Abnahme-Kriterien Engine (F2 des Reviews):**
+**Abnahme-Kriterien Engine:**
 
 1. MASE(24 h) < **0,95** gesamt (inkl. Sprungtage),
 2. MASE(24 h) < **0,80** an **sprungfreien** Tagen (Sprungtage via CUSUM
@@ -262,31 +258,34 @@ täglich; Benchmark = saisonale Naive.
 3. **Pinball-Loss** (τ = 0,5, 24 h) < Pinball der Naive,
 4. Rolling-PICP(95 %) ∈ [90, 98] %.
 
-### 3.3 Konfidenz: Intervalle mit verteilungsfreier Garantie
+### 3.3 Intervallkalibrierung (Ziel, noch nicht freigeschaltet)
 
 1. Residuen-Block-Bootstrap (Block = Resttag, B = 500) → Quantile
-   q̂.05…q̂.95 → 80 %/95 %-Bänder.
+   q̂.10/q̂.90 für 80 %, q̂.025/q̂.975 für 95 %.
 2. **Adaptive Conformal Inference:** Nonkonformitäts-Scores
    s(t) = max(q̂_lo − y, y − q̂_hi) über 14 Tage;
-   α_t = α_{t−1} − η·(Überdeckung − Ziel), **η = 0,005** Startwert
+   α_{t+1} = α_t + η·(α_Ziel − 1{y außerhalb des Intervalls}), **η = 0,005** Startwert
    (stark autokorrelierte 5-min-Scores → kleine effektive Stichprobe),
    im Dashboard konfigurierbar. **ACI erst nach 4 Wochen Live-Betrieb**,
-   vorher feste Bootstrap-Intervalle. Die ACI-Garantie ist asymptotisch und
-   unter Austauschbarkeit; die operationelle Wahrheit bleibt das gemessene
-   Rolling-PICP.
+   vorher als unkalibriert gekennzeichnete Bootstrap-Intervalle.
+   Das ist keine Garantie für den nächsten Einzelpreis; unter Drift und
+   Abhängigkeit muss die tatsächliche Überdeckung laufend geprüft werden.
+   Die operationelle Wahrheit bleibt das gemessene Rolling-PICP.
 3. **Monitoring:** 7-Tage-Rolling-PICP je Station als Konfidenz-Badge
    (grün ≥ Nominal − 2 pp, gelb ± 5 pp, rot → §4.4-Modus).
 
-### 3.4 Horizonte & ehrlich bezifferte Genauigkeit
+### 3.4 Horizonte & Gütenachweis
 
-| Horizont | Inhalt | erwartbarer MAE* | 95 %-KI |
-|---|---|---|---|
-| **Heute 0–24 h** | Nowcast: Position im Tageszyklus + Sprung-Status | 0,8–1,5 ct punktuell; ≈ 0,5 ct im Tagesmittel | ± 2–3 ct |
-| **+3 Tage** | Saison + Trend, Sprung-Wahrscheinlichkeit | 1,5–2,5 ct | ± 3–5 ct |
-| **+7 Tage** | Wochenmuster/Tagesform; Trend nur gedämpft | 2–4 ct | ± 4–7 ct |
+| Horizont | Arbeitsstand |
+|---|---|
+| Heute / folgende 24 h | Vorläufige Prognose und täglicher Rolling-Origin-Backtest implementiert; noch kein Echt-Daten-Gütenachweis im Repo. |
+| +3 Tage / +7 Tage | Vorläufiger Ausblick ab Fit-Cutoff möglich; Mehrtage-Backtests und kalibrierte Bänder noch offen. |
 
-\* Nachgewiesen per Rolling-Origin-Backtest (Cutoff täglich 00:00, Training
-42 Tage): MAE, RMSE, MASE, sMAPE, PICP, MPIW, Pinball, CRPS.
+Der tägliche Cutoff liegt bei lokaler Mitternacht, das Trainingsfenster bei
+42 Tagen. MAE, RMSE, MASE, sMAPE, Pinball, PICP und MPIW werden gemessen,
+nicht als erwartete Beispielzahlen zugesagt. Der erste Backtest bewertet
+den folgenden Tag im Poll-Fenster; ein punktgenauer +24-h-Test und weitere
+Horizonte sind gesondert auszuweisen.
 
 **Grenze (bewusst):** Preissprünge sind Betreiber-Entscheidungen — nicht
 punktvorhersagbar. Die Engine sagt *Fenster + Verteilung*, der Decision
@@ -294,7 +293,7 @@ Layer (§4) macht daraus die Aussageform, die man handeln kann.
 
 ---
 
-## 4. Decision Layer (Kernstück — neu in v5)
+## 4. Decision Layer (Ziel)
 
 Input sind die Bootstrap-Draws der Engine (nicht nur Mediane!). Output ist
 pro Frage genau eine Antwortkarte. **Ein Bootstrap-Pfad = eine
@@ -738,31 +737,19 @@ stehen.
 
 ## 7. Polling-Fenster: 06:00–24:00 (fix)
 
-Empirisch beantwortet (`analysis/window_analysis.py`, Bericht
-`docs/analysis/report_window.md`):
+Produktions-Default des Collectors: **06:00–24:00**, 216 Requests pro Tag
+bei einem Request je fünf Minuten. Die frühere Zahlenbegründung stammte aus
+synthetischen Daten und wurde entfernt; sie ist kein Nachweis für den echten Markt.
 
-| Kennzahl | Fenster 08–24 | Fenster 06–24 |
-|---|---:|---:|
-| Tage mit Preis-Minimum im Fenster | 98,1 % | 98,1 % |
-| Median \|δ̂-Bias\| | 0,30 ct/L | 0,20 ct/L |
-| 95 %-Quantil \|δ̂-Bias\| | 0,84 ct/L | 0,68 ct/L |
-| Median Fehler „billigste Stunde“ | 0,5 h | 0,5 h |
-| 95 %-Quantil Fehler | 8,7 h ⚠ | 8,5 h ⚠ |
-
-- **Selektion** reicht mit 08–24; **Engine** braucht den Morgensprung
-  (≈ 05:30–07:30) → **fix 06:00–24:00** (216 R/Tag, unter dem Limit),
-  **ohne adaptive Per-Station-Logik** (Review F3: Komplexität ohne
-  messbaren Nutzen).
-- 00–24 (288 R/Tag) = exakt die Empfehlungsgrenze ohne Retry-Puffer; 25 %
-  der Extra-Polls liefern bei geschlossenen Stationen keine Information.
-  Wer Volltag will: `POLL_START=00`, Collector identisch.
-- **24h-Stationen als Opt-in:** Liste `NIGHT_IDS` (Default leer); bei
-  ≥ 7 Tagen überwiegend offen **und** ≥ 10 % der Tagesminima vor 08:00
-  wird nur für diese IDs bis 00:00 gepollt — einfache Regel, keine
-  Scheduler-Maschinerie.
-- Die p95-Fehler bei „billigste Stunde“ betreffen fast nur
-  24h-Discounter-Ausfallstraßen-Typen; für die F1/F3-Fenster nach 06:00
-  ohne Bedeutung.
+- Das Fenster deckt Morgen- und Abendverlauf ab, ohne eine zusätzliche
+  adaptive Per-Station-Scheduler-Logik.
+- Abweichende Fenster über die vorhandenen Flags `--window-start` und
+  `--window-end`; Volltag mit `--window-start 0 --window-end 24`.
+- `analysis/window_analysis.py` bleibt für eine erneute Prüfung mit **echter**
+  Historie erhalten; Bericht und Abbildungen werden lokal erzeugt.
+- Der M3-Backtest verwendet standardmäßig dasselbe Fenster (`--poll-start 6`
+  / `--poll-end 24`). Nicht beobachtete Nachtstunden werden nicht als
+  abgesicherte Empfehlung ausgegeben.
 
 ---
 
@@ -815,7 +802,7 @@ Diesel) mit E5-Äquivalenz-Hinweis (§10), „Stand: HH:MM“-Zeitstempel,
 What-If-Slider (Tankmenge 20–80 L, Zeitwert z inkl. Auto-Modus 16/10 €/h
 peak/offpeak) unter „Parameter“.
 
-**PWA/Offline (Review O5):** Service Worker mit Cache-First für die letzte
+**PWA/Offline:** Service Worker mit Cache-First für die letzte
 `/v1/decide`-Antwort (max-age 30 min), Stale-While-Revalidate für
 Werkstatt-Daten; Offline-Banner; der Kern-Use-Case „an der Säule, schlechtes
 Netz“ funktioniert offline mit gekennzeichnetem Datenstand. HTTPS via
@@ -895,13 +882,16 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 | Langzeit-Speicher | **NAS: InfluxDB (Docker)** | Plattenplatz, Retention |
 | Hosting TankPuls-API + PWA | **Pi** | autark auch bei NAS-Ausfall |
 | Historie für Engine | NAS primär; Pi hält Cache-Aggregate (Parquet) | degradierter Modus ohne NAS |
-| **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi macht **nur Inference** (lädt joblib/Parquet-Artefakte); der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM (Anhang A, O1/N2) |
+| **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi macht **nur Inference** (lädt versionierte JSON-Modelle; später zusätzlich Cache-Aggregate); der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM |
 | **Episode-/Snapshot-/Fill-Log (§5.2, §5.4)** | NAS (Tabelle) | Advice-Settlement (Brier, M7) getrennt von Fill-Events (Wallet) |
 
 Ablauf: Collector appended JSON-Zeilen an
 `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt
 TCP 8086 alle 60 s, Batch-Transfer unbestätigter Zeilen, Ack via
-`meta.synced_until`, **idempotent** (§1.2). NAS-Ausfall: 7 Tage Puffertiefe
+`meta/synced_until`, **idempotent** (§1.2). Jeder neue Punkt enthält zusätzlich
+`station_id` als UUID-Tag; `station` bleibt Anzeigename. Alte Namenskollisionen
+werden nicht geraten: [UUID-Umstellung/Replay](STATIONS-UUID.md). Replay ist
+explizit und ändert keinen Ack. NAS-Ausfall: 7 Tage Puffertiefe
 (Urlaubssicher), bei Überlauf FIFO + Alarm.
 
 ### 9.2 Ressourcen-Rechnung (Pi: 921 Mi total / 571 Mi verfügbar)
@@ -914,9 +904,11 @@ TCP 8086 alle 60 s, Batch-Transfer unbestätigter Zeilen, Ack via
 | **Summe** | **< 180 MiB → ~390 MiB Reserve** |
 
 Datenvolumen: JSONL ≈ 2,5 kB/Poll → 216 Polls ≈ 0,6 MB/Tag. InfluxDB:
-6 480 Punkte/Tag max (10 Stationen × 3 Sorten × 216 Polls; realistisch
-4 320–6 480, weil E5 oft nicht geführt wird) à ~20–60 B TSM →
-~0,26–0,4 MB/Tag ≈ 95–150 MB/Jahr. **Urteil: komfortabel ausreichend.**
+bis zu **2 160 Stations-Snapshots/Tag** (10 Stationen × 216 Polls).
+Der laufende Uploader schreibt je Snapshot den Status und bis zu drei
+Preisfelder in **einen** Punkt, nicht drei Stationen-Punkte. Die tatsächliche
+Speichergröße und Lückenquote werden im Betrieb gemessen, nicht aus
+Demo-Kompressionswerten abgeleitet.
 
 ### 9.3 SD-Härtung & Betrieb
 
@@ -942,54 +934,6 @@ vm.vfs_cache_pressure=50
 | **NAS: Pentium Silver J5040, 16 GB** | InfluxDB-Ingest bei 6 480 Punkten/Tag ≈ Last 0; RAM 1–2 GB; Docker-fähig; **alle Fits/Backtests/Kalibrierungen** | ✅ **Empfehlung** |
 | PC: Ryzen 7 5700X, 32 GB, RX 9070 XT | fachlich ok, ~20× überdimensioniert; Idle ~50–90 W vs. NAS 10–15 W → 85–150 €/Jahr vs. 30–40 € Strom | ❌ im Dauerbetrieb; optional für Einmal-Analysen (WOL) |
 
-### 9.5 Cloud statt Pi? Azure bei ≤ 5 €/Monat
-
-Kurzantwort: **Azure ersetzt weder den Pi-Collector sinnvoll noch das
-NAS-Training.** Unter 5 €/Monat geht nur ein schmaler Serverless-Rand —
-und der hilft vor allem beim *Fernzugriff*, nicht bei der Mathematik.
-
-Was die drei Rollen wirklich kosten, wenn man sie in Azure nachbaut:
-
-| Rolle heute | Azure-Äquivalent | realistische Monatskosten | Unter 5 €? |
-|---|---|---|---|
-| **Pi: Poll alle 5 min, 06–24** (216×/Tag ≈ 6 500 Executions/Monat) | Functions Consumption + Timer | Executions weit unter 1 Mio. Free-Grant; Storage-Account ~1–2 € | ✅ Collector allein ja |
-| **Pi: FastAPI + PWA, an der Säule** | Functions/Static Web Apps (scale-to-zero) **oder** Container Apps minReplica=1 | Scale-to-zero: praktisch 0 €, aber **Cold Start 1–3 s** (an der Säule spürbar). Warm: 0,25 vCPU idle ≈ 2–7 € plus Memory | ⚠️ nur mit Cold Start |
-| **NAS: Influx + 5 Jahre Retention** | Azure Data Explorer / Timeseries Insights / Postgres Flexible | Postgres B1ms schon ~12–18 €; ADX klar darüber. Table Storage als DIY-TS: ~1 €, aber dann keine Influx-Queries | ❌ als Influx-Ersatz nein |
-| **NAS: tägliche Fits/Backtests** | Azure ML / Container Instance on-demand | Burst 30–60 min/Tag auf kleinem ACI: ein paar €, aber GPU/ML-Workspace sprengt das Budget sofort | ⚠️ nur als Timer-ACI, nicht als Plattform |
-
-Zusätzlich: IP-Egress, Log Analytics (Default-Workspace frisst gern die
-5 € allein), und ein vergessenes `minReplicas=1` macht aus „serverless“
-eine immer laufende Rechnung.
-
-**Was unter 5 € tatsächlich sinnvoll ist** (Hybrid, nicht Ersatz):
-
-1. **Öffentliche PWA-Kante** — Static Web Apps (Free) + Functions als
-   Read-Cache der letzten `/v1/decide`. Pi/NAS bleiben Source of Truth.
-   Nutzen: Handy unterwegs ohne VPN/Portforward auf den Pi. Cold Start
-   am Decide-Call ist akzeptabel, am Poll-Timer nicht relevant.
-2. **Offsite-Backup** der Episode-/Fill-Logs + wöchentliches
-   Parquet-Dump der Preise nach Blob (Cool). ~0,50 €.
-3. **Optional Push** (ntfy bleibt billiger als Notification Hubs).
-
-**Was man nicht tun sollte:** den 24/7-Poll auf Functions Consumption
-*und gleichzeitig* das NAS abschalten. Der Poll ist billig, der
-Zeitreihen-Speicher und das Training sind es nicht. Der Pi ist für
-genau diese Last gebaut (lokales Netz zum NAS, kein Cold Start, Strom
-im Rauschen der NAS-Rechnung).
-
-Ehrlicher 5-€-Vergleich außerhalb Azure: ein Hetzner CX22 (~4–5 €)
-ersetzt den *Pi als API-Host* besser als Azure — feste IP, kein Cold
-Start, 4 GB RAM. Collector+API dorthin, NAS bleibt Influx/Fits. Azure
-gewinnt nur, wenn schon ein Tenant da ist oder man ausdrücklich nicht
-noch einen VPS will.
-
-Entscheidung im Konzept: **Default bleibt Pi + NAS.** Azure ist ein
-optionaler Rand (Fernzugriff + Backup), kein Architekturwechsel. Wer
-den Pi loswerden will, nimmt eher einen Mini-VPS als „ein Azure
-Service“.
-
----
-
 ## 10. Fahrzeug- & Umweg-Ökonomie
 
 **Ja, wichtig — als Entscheidungs-/Ökonomie-Parameter, nicht als
@@ -1012,7 +956,7 @@ Prognose-Input.**
    z = 12 €/h ⇒ K = 1,39 € Sprit + 2,88 € Zeit = **4,27 €** ⇒ bei L = 40 L
    lohnt der Umweg erst ab **Δp\* ≈ 10,7 ct/L** — der Zeitwert dominiert.
 
-   **Zeitwert zeitabhängig (Review O7):** z-Profil mit
+   **Zeitwert zeitabhängig:** z-Profil mit
    `value_of_time_peak` (16 €/h, 17–20 Uhr) und `value_of_time_offpeak`
    (10 €/h) plus Slider („Wie viel ist dir 10 min Umweg wert?“); die
    Formel bleibt gleich, `/v1/decide` rechnet mit `when` und liefert
@@ -1055,8 +999,8 @@ Prognose-Input.**
    Freifluss für alle).
 
    **Betriebsmodi** (`--trip-mode`, beide in der Pipeline implementiert):
-   - `dedicated` (Extrafahrt von zuhause): fast nie lohnend — im Demo-Lauf
-     bei 12 €/h keine Station netto positiv. Ehrliches Ergebnis.
+   - `dedicated` (Extrafahrt von zuhause): Hin- und Rückweg samt Zeitkosten
+     vollständig abziehen; ob es sich lohnt, entscheidet der echte Netto-Vorteil.
    - `onroute` (tanken ohnehin unterwegs; nur der Mehrweg gegenüber der
      nächstgelegenen Station zählt): der Alltagsfall; hier entscheiden
      δ̂ und Entfernung gemeinsam.
@@ -1191,7 +1135,8 @@ nur das Wallet-Ledger.
 
 ### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug)
 
-Bleiben bestehen, im Frontend nur noch im Werkstatt-Modus genutzt; als
+Geplante Detail-Endpunkte, teilweise als Demo im GUI-Prototyp vorhanden.
+Produktiv im Werkstatt-Modus genutzt; alte Alltags-Routen werden als
 deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 `/v1/decide` alle Alltags-Fälle abdeckt:
 
@@ -1257,6 +1202,13 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 
 ## 13. Roadmap
 
+**Arbeitsstand 07.09.2026:** InfluxDB wird laut Betreiber befüllt, M2 wird
+auf dessen Rückmeldung vorläufig als erledigter Arbeitsschritt behandelt.
+Die privaten Berichte/Quoten/Signifikanzen und der 14-Tage-M1-Nachweis sind
+hier nicht unabhängig geprüft. **Weiter geht es mit M3**, dessen erster
+Durchstich in `engine/` vorliegt; die Gesamtabnahme ist noch offen.
+Die M4-Homepage basiert ausdrücklich auf **beiden vorhandenen GUIs**.
+
 | Meilenstein | Inhalt | Fertig-Kriterium |
 |---|---|---|
 | M1 | Collector + tmpfs-Ringpuffer + NAS-Uploader laufen 14 d | Datenlücken < 2 %, Ack-Protokoll fehlerfrei |
@@ -1265,11 +1217,11 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
 | **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |
-| **M7 (neu)** | **Kalibrierungs-Loop nach 4 Wochen Live-Betrieb: Brier-Score + Reliability-Diagramm messen (Werkstatt/Debug), Entscheidungsschwellen §4.1/§4.2 an Trefferquoten anziehen, Kalibrierungs-Gate (§0.4) schalten** | Brier < 0,25 bei ≥ 100 Empfehlungen → P_besser-Anzeige freigeschaltet; Produkt-KPIs (§6) im Ziel oder Schwellen-Nachzug terminiert. **Erst nach M7 gilt das Produkt als „fertig kalibriert“.** |
+| **M7** | **Kalibrierungs-Loop nach 4 Wochen Live-Betrieb: Brier-Score + Reliability-Diagramm messen (Werkstatt/Debug), Entscheidungsschwellen §4.1/§4.2 an Trefferquoten anziehen, Kalibrierungs-Gate (§0.4) schalten** | Brier < 0,25 bei ≥ 100 Empfehlungen → P_besser-Anzeige freigeschaltet; Produkt-KPIs (§6) im Ziel oder Schwellen-Nachzug terminiert. **Erst nach M7 gilt das Produkt als „fertig kalibriert“.** |
 
 ---
 
-## 14. Ehrliche Grenzen dieser Umstellung
+## 14. Ehrliche Grenzen
 
 1. **P_besser ohne Kalibrierung ist Snakeoil.** Eine „82 %“-Anzeige ist
    ohne Erfolgsbilanz nicht besser als Wahrsagerei. Deshalb ist M7 kein
@@ -1287,67 +1239,17 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
    Sie werden in M7 an die gemessenen Trefferquoten angepasst; wer die App
    danach nicht mehr anfasst, lässt das Werkstatt-Scoreboard merken.
 
-Das Ganze macht die App fachlich weniger beeindruckend und praktisch erst
-nützlich: Die 2 000-Zeilen-Konzept-Mathematik wird zu drei Zeilen auf dem
-Handy — der Rest ist Werkstatt.
-
 ---
 
-## Anhang A: Auswertung der externen Bewertung (v3 → v4)
-
-Die externe Bewertung von KONZEPT v3 (F1–F3, O1–O7) wurde in v4
-verarbeitet; dieses Kapitel dokumentiert die Entscheidungen dauerhaft
-(früher eigenständiges Dokument `REVIEW-2026-09-06.md`).
-
-**Gesamturteil damals:** methodisch starkes Konzept; die Korrekturen waren
-überwiegend Sparsamkeit, nicht Reparatur. „Zusatznutzen von Ensemble/M4-Q
-ist marginal“ stimmt für die *Punktschätzung*, nicht für das
-*Produktziel* — weshalb produktseitige Kennzahlen (Top-3-Trefferquote,
-heute zusätzlich Brier/Regret, §6) eingeführt wurden.
-
-| Punkt | Bewertung sagte | Entscheidung | Umsetzung |
-|---|---|---|---|
-| F1 Datenpunkte/Tag | 5 760 falsch → 6 480 | ✅ übernommen | §9.2 (6 480; realistisch 4 320–6 480) |
-| F2 MASE < 0,8 zu streng | < 0,95 + Pinball | ✅ übernommen, **verschärft** | 4-stufige Kriterien + Top-3-Quote (§3.2) |
-| F3 Poll 00–24 | einfach Volltag | ⚠️ teils: adaptive Logik raus, Default bleibt 06–24 | §7, `POLL_START=00`, `NIGHT_IDS` |
-| O1 M4-Over-Engineering | später, weniger | ✅ übernommen, präzisiert | M4-Q (3 Quantile, wöchentlich, NAS); Training verlässt den Pi (§9.1) |
-| O2 ACI-η | 0,005, nach 4 Wochen | ✅ übernommen | §3.3 |
-| O3 Feiertage je Bundesland | `holidays`+`subdiv` | ✅ übernommen + implementiert | `--subdiv` (Selektion); gepoolter Dummy (§3.2) |
-| O4 Selektions-Drift | CUSUM auf Rolling-δ̂ | ✅ übernommen | §12 Daten & Markt |
-| O5 PWA-Offline | Service Worker | ✅ übernommen | §8.1 |
-| O6 InfluxDB-Memory-Limit | `--memory=4g` + Retention | ❌ **nicht übernommen** (Betreiber-Anweisung) | §9 unverändert; Weg ist dokumentiert und nachrüstbar |
-| O7 Zeitwert pauschal | peak/offpeak + Slider | ✅ übernommen | §10 + API `when`/`z_used` |
-
-**Eigene Korrekturen jenseits der Bewertung (N1–N5):**
-
-- **N1:** Wochen-Saison (Periode 2016) ist mit 6 Wochen Training (~6 Zyklen)
-  nicht schätzbar → DoW-Dummies für 12 Monate; ETS nur eine Saisonperiode.
-- **N2:** Der tägliche Rolling-Origin-Backtest (42 Refits × 10–30 Modelle +
-  Bootstrap B = 500) ist der größere Pi-Posten, nicht M4-Q → klare
-  Trennung Pi = Inference, NAS = Training (§9.1).
-- **N3:** Frankfurt (25-km-Radius: 100+ Stationen) → Sampling auf real
-  erreichbare Stationen begrenzen + **quotierte Top-10 (6/2/2)**, sonst
-  decken die 10 gepollten IDs die Reiseorte nicht.
-- **N4:** Namenskollision „M4“ (Modell vs. Meilenstein) → Modell heißt
-  **M4-Q**.
-- **N5:** Feiertags-Dummy pro 6-Wochen-Fenster unidentifizierbar (0–1
-  Fälle) → Poolschätzung über das Kalenderjahr je Bundesland.
-
-Datenschutz-Entscheidungen (früher §8 des Reviews): Stadtname darf ins Repo,
-**Straße/Hausnummer nie**; Heimkoordinaten nur in gitignorierter
-`analysis/config.local.json` (`--config`); keine Adressen in Reports;
-falls doch etwas in der Git-History landet: Repo privat oder
-Filter-Repo-Bereinigung — `git rm` allein reicht nicht.
-
----
-
-## Anhang B: Die zwei Sample-GUIs als UI-Prototypen
+## UI-Anhang: Die zwei GUI-Vorlagen als Homepage-Basis
 
 Der Anwender hat den Decision-Layer-Ansatz an **zwei Next.js-Prototypen**
-ausgeprobiert (`sample/`). Beide bleiben als Referenz im Repo; dieses
-Konzept macht aus ihnen die zwei Modi einer App.
+ausgeprobiert (`sample/`). **Beide bleiben als gestalterische und technische
+Basis im Repo**; dieses Konzept macht aus ihnen die zwei Modi einer App.
+Slate-/Emerald-/Sky-Design, Karten, Tabellen und Regler übernehmen, nicht
+neu erfinden. [Konkrete visuelle Leitplanken](../sample/README.md).
 
-### B.1 `sample/good gui` → Modus „Alltag“
+### UI.1 `sample/good gui` → Modus „Alltag“
 
 Beigesteuert zum Produkt:
 
@@ -1376,7 +1278,7 @@ Prozentzahl (zeigt stattdessen feste Schwellen), „Keine klare
 Empfehlung“-Modus, Server-persistierte Episodes (Demo: localStorage),
 deprecated-Headers.
 
-### B.2 `sample/good statistic gui` → Modus „Werkstatt“
+### UI.2 `sample/good statistic gui` → Modus „Werkstatt“
 
 Beigesteuert zum Produkt:
 
@@ -1401,7 +1303,7 @@ Was der Prototyp noch nicht hat: Multi-Kampagnen-Alltag (eine Station,
 Navigation), F3-Fenster über Tage (nur 08:00-Entscheidung), PWA/Offline,
 Anbindung an echte Historie.
 
-### B.3 Verschmelzungs-Regeln
+### UI.3 Verschmelzungs-Regeln
 
 1. Beide Prototypen teilen sich **eine** Datenbasis und **eine**
    Entscheidungslogik (§4); sie unterscheiden sich nur in der

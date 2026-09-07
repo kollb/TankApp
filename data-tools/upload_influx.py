@@ -14,9 +14,10 @@ InfluxDB-Punkte ihre Identität (Measurement+Tags+Timestamp) mitbringen und
 doppelte Writes nur überschreiben (idempotent, §1.2).
 
 Line Protocol (Measurement `prices`):
-  prices,city=<Stadt>,station=<Name> status="open",e10=1.620,e5=1.740 <ns>
+  prices,city=<Stadt>,station=<Name>,station_id=<UUID> status="open",e10=1.620,e5=1.740 <ns>
   * Tags: city (Label aus polling.json), station (Name aus polling.json,
-    sonst die UUID)
+    sonst die UUID), station_id (stabile UUID aus dem Snapshot).
+    Gleiche Namen können verschiedene Stationen sein; station_id trennt sie.
   * Felder: status + nur tatsächlich geführte Preise je Sorte —
     `false`/`0` = Sorte NICHT geführt → KEIN Feld, nie 0.000 (§1.2)
   * Zeitstempel: `fetched_at` der Zeile (seit dem UTC-Fix mit Offset, d. h.
@@ -43,13 +44,19 @@ Beispiele:
   python3 data-tools/upload_influx.py --dry-run   # Zeilen zeigen, nichts senden
   python3 data-tools/upload_influx.py --once      # ein Zyklus (Test), Exit 0/1
   python3 data-tools/upload_influx.py             # Dauerbetrieb (systemd)
+  python3 data-tools/upload_influx.py --replay --dry-run --poll-dir <SICHERUNG>
+  # --replay ist einmalig, liest auch bestätigte Original-JSONL-Zeilen,
+  # schreibt station_id-Tags und ändert weder Quelldateien noch Ack-Dateien.
 """
 
 from __future__ import annotations
 
 import argparse
+import http.client
 import datetime as dt
 import json
+import math
+import uuid
 import os
 import socket
 import sys
@@ -58,6 +65,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
@@ -73,6 +81,7 @@ BACKOFF_MAX_S = 900
 HTTP_TIMEOUT_S = 30
 PING_TIMEOUT_S = 5
 DRYRUN_MAX_LINES = 40
+REPLAY_BATCH_POINTS = 1000
 
 
 class Cfg:
@@ -117,7 +126,7 @@ def parse_ts(s: str) -> dt.datetime:
     Naive Zeilen (vom Collector vor dem UTC-Fix) werden als
     System-Lokalzeit interpretiert — das war deren Bedeutung.
     """
-    ts = dt.datetime.fromisoformat(s)
+    ts = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
     return ts
@@ -204,8 +213,8 @@ def load_station_names(poll_json: Path) -> "dict[str, dict[str, str]]":
 # ------------------------------------------------------------------ Line Protocol
 
 def esc_tag(v: str) -> str:
-    """Tag-Wert: Backslash, Komma, Leerzeichen escapen."""
-    return v.replace("\\", "\\\\").replace(",", "\\,").replace(" ", "\\ ")
+    """Tag-Wert: Backslash, Komma, Leerzeichen und Gleichheitszeichen escapen."""
+    return v.replace("\\", "\\\\").replace(",", "\\,").replace(" ", "\\ ").replace("=", "\\=")
 
 
 def esc_str(v: str) -> str:
@@ -215,7 +224,7 @@ def esc_str(v: str) -> str:
 
 def snap_to_lines(ts: dt.datetime, snap: dict,
                   names: "dict[str, str]") -> "list[str]":
-    """Ein Snapshot → Line-Protocol-Zeilen (je offene Station 1 Punkt)."""
+    """Ein Snapshot → ein Punkt je UUID, einschließlich geschlossener Stationen."""
     city = esc_tag(str(snap.get("city") or "unknown"))
     ns = int(ts.timestamp() * 1_000_000_000)
     out = []
@@ -229,10 +238,11 @@ def snap_to_lines(ts: dt.datetime, snap: dict,
             # §1.2: false/None/0 = Sorte wird nicht geführt → KEIN Feld.
             # bool explizit ausschließen: in Python ist False ein int und
             # würde sonst als 0.000 durchgehen.
-            if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0:
                 continue
             fields.append(f"{fu}={float(v):.3f}")
-        out.append(f"prices,city={city},station={station} {','.join(fields)} {ns}")
+        station_id = esc_tag(str(uid))
+        out.append(f"prices,city={city},station={station},station_id={station_id} {','.join(fields)} {ns}")
     return out
 
 
@@ -412,11 +422,200 @@ def dry_run(args: argparse.Namespace) -> int:
     log(f"[dry-run] {len(rows)} unsynced Zeilen "
         f"({rows[0][0].isoformat()} … {rows[-1][0].isoformat()}) → {len(lines)} Punkte, "
         "dies WÜRDE per POST /api/v2/write gesendet:")
-    for l in lines[:DRYRUN_MAX_LINES]:
-        print("  " + l)
+    for line in lines[:DRYRUN_MAX_LINES]:
+        print("  " + line)
     if len(lines) > DRYRUN_MAX_LINES:
         print(f"  … (+{len(lines) - DRYRUN_MAX_LINES} weitere)")
     log("[dry-run] nichts gesendet, Ack bleibt stehen.")
+    return 0
+
+
+class ReplayError(ValueError):
+    """Credential-/record-free diagnostic for an explicitly requested replay."""
+
+
+REPLAY_HINTS = {
+    "JSON_INVALID": "Zeile ist kein gültiges JSON; unvollständige/falsche Sicherung prüfen.",
+    "SNAPSHOT_OBJECT": "Jede JSONL-Zeile muss ein einzelnes Snapshot-Objekt sein, nicht eine Liste oder Stationsliste.",
+    "SOURCE_MISSING": "Snapshot-Feld source fehlt. Collector-Version/Originalformat prüfen; nicht nachträglich eine Quelle erfinden.",
+    "SOURCE_UNKNOWN": "Snapshot-Feld source ist keine erkannte Live-Quelle. Den Wert nicht zum Erzwingen eines Replays umschreiben.",
+    "SOURCE_DEMO": "Snapshot ist ausdrücklich als demo markiert und darf nicht als echter Preis nachgeliefert werden.",
+    "TIME_MISSING_OR_INVALID": "fetched_at fehlt oder ist kein gültiger ISO-Zeitstempel.",
+    "TIME_OFFSET_MISSING": "fetched_at hat keinen UTC-Offset (älteres Format möglich). Ursprüngliche Collector-Zeitzone erst klären, dann ausdrücklich --replay-timezone angeben; keine Uhrzeit raten.",
+    "TIME_LOCAL_NONEXISTENT": "Lokale Uhrzeit existiert in der gewählten Replay-Zeitzone nicht (Zeitumstellung). Originalen Offset klären, nicht verschieben.",
+    "TIME_LOCAL_AMBIGUOUS": "Lokale Uhrzeit ist in der gewählten Replay-Zeitzone doppelt vorhanden (Zeitumstellung). Ohne originalen Offset keine eindeutige Zuordnung.",
+    "CITY_INVALID": "Snapshot-Feld city fehlt, ist leer oder enthält ein ungültiges Format.",
+    "PRICES_OBJECT": "Snapshot-Feld prices muss ein nach Stations-UUIDs indiziertes Objekt sein.",
+    "STATION_UUID_INVALID": "Ein Schlüssel in prices ist keine UUID im kanonischen Format.",
+    "STATION_STATUS_INVALID": "Ein Stationseintrag ist kein Objekt oder sein status ist nicht open, closed bzw. no prices.",
+    "PRICE_NONFINITE": "Ein numerischer Kraftstoffpreis ist nicht endlich oder nicht als Zahl darstellbar.",
+    "CONFLICTING_OBSERVATION": "Für dieselbe Stadt/UUID/Zeit liegen widersprüchliche Originalwerte vor; nicht willkürlich einen auswählen.",
+}
+
+
+def replay_zone(name: str | None) -> ZoneInfo | None:
+    if name is None:
+        return None
+    try:
+        if name in ("localtime", "posixrules"):
+            raise ValueError
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        raise ReplayError(
+            "[REPLAY_TIMEZONE_INVALID] Benannte IANA-Zeitzone der ursprünglichen "
+            "Collector-Uhrzeit angeben (z. B. Europe/Berlin oder UTC); keine automatische lokale Annahme."
+        ) from None
+
+
+def local_time_candidates(stamp: dt.datetime, zone: ZoneInfo) -> list[dt.datetime]:
+    """UTC instants for a naive wall clock: zero in a DST gap, two in a fold."""
+    candidates = set()
+    for fold in (0, 1):
+        aware = stamp.replace(tzinfo=zone, fold=fold)
+        utc = aware.astimezone(dt.timezone.utc)
+        if utc.astimezone(zone).replace(tzinfo=None) == stamp:
+            candidates.add(utc)
+    return sorted(candidates)
+
+
+def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None = None) -> tuple[list[str], int]:
+    """Preflight a saved live JSONL buffer before writing ANY points.
+
+    Unlike the normal tailing reader this is strict: no silently skipped bad,
+    demo or conflicting rows. Naive times require an explicit, verified zone;
+    ambiguous/nonexistent local times still fail. No ACK/source edits.
+    """
+    zone = replay_zone(replay_timezone)
+    legacy_count = 0
+    paths = sorted(poll_dir.glob("*.jsonl"))
+    if not paths:
+        raise ReplayError("Keine JSONL-Dateien in der angegebenen Sicherung gefunden.")
+    names_by_city = load_station_names(poll_json)
+    rows = []
+    observations = {}
+    for path in paths:
+        before = path.stat()
+        try:
+            with path.open(encoding="utf-8-sig") as handle:
+                for line_no, line in enumerate(handle, 1):
+                    if not line.strip():
+                        continue
+                    # Stage names/hints are fixed literals. Never echo the raw
+                    # record, UUID, source, timestamp or exception message.
+                    stage = "JSON_INVALID"
+                    station_no = None
+                    try:
+                        snap = json.loads(line)
+                        stage = "SNAPSHOT_OBJECT"
+                        if not isinstance(snap, dict):
+                            raise ValueError
+                        source = snap.get("source")
+                        stage = "SOURCE_DEMO" if source == "demo" else (
+                            "SOURCE_MISSING" if source is None or source == "" else "SOURCE_UNKNOWN")
+                        if source != "tankerkoenig-prices.php":
+                            raise ValueError
+                        stage = "TIME_MISSING_OR_INVALID"
+                        stamp = dt.datetime.fromisoformat(snap["fetched_at"].replace("Z", "+00:00"))
+                        stage = "TIME_OFFSET_MISSING"
+                        if stamp.tzinfo is None:
+                            if zone is None:
+                                raise ValueError
+                            candidates = local_time_candidates(stamp, zone)
+                            stage = "TIME_LOCAL_NONEXISTENT"
+                            if not candidates:
+                                raise ValueError
+                            stage = "TIME_LOCAL_AMBIGUOUS"
+                            if len(candidates) != 1:
+                                raise ValueError
+                            stamp = candidates[0]
+                            legacy_count += 1
+                        stage = "CITY_INVALID"
+                        city = snap.get("city")
+                        if not isinstance(city, str) or not city.strip() or any(c in city for c in "\r\n"):
+                            raise ValueError
+                        stage = "PRICES_OBJECT"
+                        prices = snap.get("prices")
+                        if not isinstance(prices, dict):
+                            raise ValueError
+                        for station_no, (uid, rec) in enumerate(prices.items(), 1):
+                            stage = "STATION_UUID_INVALID"
+                            if not isinstance(uid, str) or str(uuid.UUID(uid)) != uid.lower():
+                                raise ValueError
+                            stage = "STATION_STATUS_INVALID"
+                            if not isinstance(rec, dict) or rec.get("status") not in ("open", "closed", "no prices"):
+                                raise ValueError
+                            stage = "PRICE_NONFINITE"
+                            if any(isinstance(rec.get(fuel), (int, float)) and not math.isfinite(rec[fuel]) for fuel in FUELS):
+                                raise ValueError
+                            stage = "CONFLICTING_OBSERVATION"
+                            key = (city, uid, stamp)
+                            if key in observations and observations[key] != rec:
+                                raise ValueError
+                            observations[key] = rec
+                        rows.append((stamp, snap))
+                    except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+                        position = f", Stationseintrag {station_no}" if station_no is not None else ""
+                        raise ReplayError(
+                            f"Replay-Prüfung fehlgeschlagen: {path.name}, Zeile {line_no}{position}. "
+                            f"[{stage}] {REPLAY_HINTS[stage]} "
+                            "Gemeint ist die Preis-JSONL, nicht polling.json. "
+                            "Noch nichts geschrieben; Quelle und Ack unverändert."
+                        ) from None
+        except UnicodeError:
+            raise ReplayError(
+                f"Replay-Prüfung fehlgeschlagen: {path.name}. [ENCODING_UTF8] "
+                "Preis-JSONL ist nicht als UTF-8 lesbar; Sicherung prüfen, keine Originaldaten überschreiben. "
+                "Noch nichts geschrieben; Quelle und Ack unverändert."
+            ) from None
+        after = path.stat()
+        if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
+            raise ReplayError("Replay-Quelle wurde während des Lesens verändert. Eine ruhende Sicherung verwenden.")
+    rows.sort(key=lambda row: row[0])
+    lines = []
+    for stamp, snap in rows:
+        names = names_by_city.get(snap["city"], {})
+        if any("\n" in name or "\r" in name for name in names.values()):
+            raise ReplayError("Stationsnamen enthalten Zeilenumbrüche; Metadaten prüfen.")
+        lines.extend(snap_to_lines(stamp, snap, names))
+    if zone is not None:
+        log(f"Replay-Zeitzone ausdrücklich gewählt: {zone.key}; {legacy_count} Snapshot(s) "
+            "ohne Offset zu UTC zugeordnet. Vorhandene Offsets und Quelldateien unverändert.")
+    # Exact re-copies of the same snapshot need not be sent twice.
+    return list(dict.fromkeys(lines)), len(rows)
+
+
+def run_replay(cfg: Cfg, dry: bool = False, replay_timezone: str | None = None) -> int:
+    """Explicit one-shot migration/backfill. Even on failure, never touch ACKs."""
+    try:
+        lines, snapshots = prepare_replay(cfg.poll_dir, cfg.poll_json, replay_timezone)
+    except ReplayError as exc:
+        log(f"Replay abgebrochen: {exc}")
+        return 1
+    except (ValueError, OSError, TypeError, KeyError, AttributeError):
+        log("Replay abgebrochen: Sicherung/Metadaten ungültig oder nicht lesbar; UTF-8, Pfade und Rechte prüfen.")
+        return 1
+    if not lines:
+        log("Replay: keine Stationspunkte vorhanden; nichts geschrieben, Ack unverändert.")
+        return 2
+    log(f"Replay: {snapshots} Original-Snapshot(s) → {len(lines)} UUID-Punkte. Ack bleibt unverändert.")
+    if dry:
+        for line in lines[:DRYRUN_MAX_LINES]:
+            print("  " + line)
+        log("[dry-run] nur Vorschau; keine Netzwerkabfrage, keine Datei-/Ack-Änderung.")
+        return 0
+    batches = (len(lines) + REPLAY_BATCH_POINTS - 1) // REPLAY_BATCH_POINTS
+    for offset in range(0, len(lines), REPLAY_BATCH_POINTS):
+        batch = offset // REPLAY_BATCH_POINTS + 1
+        try:
+            influx_write(cfg, lines[offset:offset + REPLAY_BATCH_POINTS])
+        except (urllib.error.HTTPError, urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError, RuntimeError) as exc:
+            code = f"HTTP {exc.code}" if isinstance(exc, urllib.error.HTTPError) else "Transport-/Write-Fehler"
+            log(f"Replay bei Batch {batch}/{batches} abgebrochen ({code}). "
+                "Quelle/Ack unverändert; bereits bestätigte UUID-Punkte bleiben erhalten. "
+                "Nach Behebung dieselbe Sicherung mit denselben Metadaten erneut senden.")
+            return 1
+        log(f"Replay: Batch {batch}/{batches} bestätigt; Ack unverändert.")
+    log("Replay erfolgreich: UUID-Punkte ergänzt, alte Namensserien nicht gelöscht, Ack unverändert.")
     return 0
 
 
@@ -434,10 +633,19 @@ def main() -> int:
     ap.add_argument("--once", action="store_true",
                     help="ein Zyklus (Ping + Upload + Ack), dann Ende (Exit 0/1)")
     ap.add_argument("--dry-run", action="store_true",
-                    help="unsynced Zeilen als Line Protocol zeigen, nichts senden")
+                    help="Zeilen als Line Protocol zeigen, nichts senden")
+    ap.add_argument("--replay", action="store_true",
+                    help="Einmalig ALLE Original-JSONL aus --poll-dir nachliefern, Ack niemals ändern; zuerst --dry-run und eine Sicherung verwenden")
+    ap.add_argument("--replay-timezone", default=None,
+                    help="Nur Replay: bestätigte ursprüngliche IANA-Zeitzone für Zeitstempel ohne Offset; vorhandene Offsets bleiben gültig, DST-Lücken/Dopplungen werden abgelehnt")
     args = ap.parse_args()
+    if args.replay_timezone is not None and not args.replay:
+        ap.error("--replay-timezone ist nur mit --replay zulässig.")
 
     if args.dry_run:
+        if args.replay:
+            return run_replay(Cfg("", "", "", "", args.poll_dir, args.poll_json), dry=True,
+                              replay_timezone=args.replay_timezone)
         return dry_run(args)
 
     url = args.url or os.environ.get("TANKAPP_INFLUX_URL", "")
@@ -454,6 +662,8 @@ def main() -> int:
 
     cfg = Cfg(url, org, bucket, token, args.poll_dir, args.poll_json)
     state = State()
+    if args.replay:
+        return run_replay(cfg, replay_timezone=args.replay_timezone)
     if args.once:
         return run_once(cfg, state)
     return run_loop(cfg, state)

@@ -1,7 +1,9 @@
 # analysis/ – Schritt 1: Tankstellen-Selektion
 
 Mathematische Auswahl der (z. B. 10) besten Tankstellen aus historischen
-Preisdaten. Details zur Methodik: `docs/KONZEPT.md` §3.
+Preisdaten. Details zur Methodik: `docs/KONZEPT.md` §2.
+M2 gilt nach Betreiber-Rückmeldung vorläufig als abgeschlossen; diese Werkzeuge
+bleiben für Re-Selektion und Nachprüfung mit echter Historie erhalten.
 
 ## Erwartetes Datenformat (historische Daten der 3 Städte)
 
@@ -9,11 +11,11 @@ Eine CSV je Stadt (oder eine große gemeinsame Datei), Spalten:
 
 | Spalte | Typ | Beispiel | Anmerkung |
 |---|---|---|---|
-| `timestamp` | ISO-8601 | `2026-07-01 06:05:00` | lokale Zeit; Raster beliebig (wird auf 5 min aggregiert) |
-| `station_id` | string | `AU-03` | stabil & eindeutig (z. B. MTS-K-ID) |
-| `station_name` | string | `JET Auerbach Bahnhofstraße` | |
+| `timestamp` | ISO-8601 | `2026-07-01T06:05:00+02:00` | Offset bevorzugt; alte Historie in lokaler Zeit, Raster beliebig (wird auf 5 min aggregiert) |
+| `station_id` | string | `<MTS-K-UUID>` | stabil & eindeutig (z. B. MTS-K-ID) |
+| `station_name` | string | `Stationsname` | |
 | `brand` | string | `JET` | |
-| `city` | string | `Auerbach` | Trennung der 3 Städte läuft über diese Spalte |
+| `city` | string | `Frankfurt` | Trennung der 3 Städte läuft über diese Spalte |
 | `lat`, `lon` | float | `52.4012, 13.0511` | WGS84 |
 | `fuel` | string | `E10` | `E5` · `E10` · `DIESEL` |
 | `price` | float | `1.629` | EUR/L |
@@ -50,22 +52,22 @@ cp analysis/config.local.example.json analysis/config.local.json
 #    → "home" mit Koordinaten füllen (einmal per Geocoding; Stadt reicht als
 #      Label, z. B. "Frankfurt"), "subdiv" mit Bundesland, z. B. "HE".
 
-# 2) Sobald echte Daten da sind (3 Kampagnen: Hessen/Bayern/NRW; Heimat = Frankfurt):
+# 2) Bei Bedarf erneut selektieren (Dateien/aktive Kampagnen lokal anpassen):
 python3 analysis/station_selection.py \
-    --data data/raw/hessen.csv data/raw/bayern.csv data/raw/nrw.csv \
-    --fuel E10 --top 10 --tank-volume 40 --fills-per-week 1.2 \
+    --data data/ready/*.csv* \
+    --fuel E10 --top 10 --step-min 30 --tank-volume 40 --fills-per-week 1.2 \
     --config analysis/config.local.json
 
-# Solange noch keine echten Daten da sind (Demo-Ersatz, deterministisch):
-python3 analysis/generate_demo_data.py --days 56 --out data/demo
-python3 analysis/station_selection.py --data data/demo/*.csv --fuel E10 --top 10
-
-# Zusatz: empirische Antwort auf "reicht Polling 08–24 Uhr?" (Fenster-Analyse):
-python3 analysis/window_analysis.py --data data/demo/*.csv --fuel E10
-#   → docs/analysis/report_window.md + figures/window_minhours.png
+# Optional: Poll-Fenster auf echter Historie überprüfen
+python3 analysis/window_analysis.py --data data/ready/*.csv* --fuel E10
+# → lokaler Fensterbericht und Abbildung
 ```
 
-## Ausgaben
+## Ausgaben (lokal, gitignored)
+
+Die früher eingecheckten Demo-Berichte und -Abbildungen wurden entfernt.
+Berichte mit echten Daten lokal archivieren, nicht die Beispielzahlen als
+M2-Nachweis verwenden.
 
 - `results/station_scores_<fuel>.csv` – alle Kennzahlen je Station
 - `docs/analysis/report_top10.md` – Auswahlbericht inkl. Signifikanzen (BH-FDR),
@@ -77,7 +79,7 @@ python3 analysis/window_analysis.py --data data/demo/*.csv --fuel E10
 | Flag | Default | Bedeutung |
 |---|---|---|
 | `--top` | 10 | Anzahl ausgewählter Stationen (global) |
-| `--tank-volume` | 40 | getankte Liter pro Füllung (Fahrzeug-Frage, s. KONZEPT.md §7) |
+| `--tank-volume` | 40 | getankte Liter pro Füllung (Fahrzeug-Frage, s. KONZEPT.md §10) |
 | `--fills-per-week` | 1.2 | Tankhäufigkeit |
 | `--min-coverage` | 0.85 | Datenqualitäts-Gate je Station |
 | `--boot` | 2000 | Bootstrap-Wiederholungen für KI/p-Werte |
@@ -90,10 +92,24 @@ python3 analysis/window_analysis.py --data data/demo/*.csv --fuel E10
 | `--trip-mode` | `onroute` | `onroute` = nur Mehrweg ggü. nächster Station · `dedicated` = Extrafahrt (strenger, Zeitwert meist dominant) |
 | `--rank-by` | `net` | Ranking: `net` = Netto-Ersparnis nach Umweg · `score` = Statistik-Composite |
 
-**Umweg-Beispiel:** `python3 analysis/station_selection.py --data data/demo/*.csv --config analysis/config.local.json --consumption 6.5 --value-of-time 10`
+**Umweg-Beispiel:** `python3 analysis/station_selection.py --data data/ready/*.csv* --config analysis/config.local.json --consumption 6.5 --value-of-time 10`
 
 **Kraftstoff:** Pipeline läuft standardmäßig auf **E10** (primärer
 Kraftstoff). Diesel/E5 werden vom Collector mitgespeichert (gleiche
 API-Antwort) und sind als Nowcast verfügbar; eine eigene Diesel-Selektion/
 Prognose läuft mit `--fuel DIESEL` auf denselben Daten (zweiter Lauf,
 kostenlos).
+
+**Danach am Windows-PC:** [M3-Prognose und Backtest mit PowerShell](../engine/README.md).
+Die vorhandenen Analyse-CSVs kannst du direkt ohne API-Key und ohne NAS-Verbindung
+verwenden; die Live-Serie aus InfluxDB lässt sich optional ergänzen. Die Qualitäts-/
+Öffnungsstatus-Grenzen rekonstruierter Historie bleiben ausdrücklich ausgewiesen.
+
+## Redundante Preisverläufe statt doppelt belegter Polling-Slots
+
+[Preis-Zwillinge am Windows-PC prüfen](../docs/PREIS-ZWILLINGE.md):
+`python -m engine compare-stations` vergleicht die originalen UUID-Historien,
+nicht Stationsnamen oder nur den aktuellen Preis. Nach manueller Prüfung kann
+`run_pipeline.py --exclude-uuid … --out-stations docs/analysis/stations-vorschlag`
+einen Ersatzvorschlag erzeugen. Keine automatische Änderung des aktiven Sets
+und keine nachträgliche Zuordnung vermischter Influx-Namensserien.

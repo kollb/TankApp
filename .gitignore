@@ -1,12 +1,13 @@
-# Demo-/Rohdaten sind regenerierbar bzw. vertraulich -> nicht einchecken
+# Rohdaten, Exporte und Modell-Artefakte bleiben lokal
 data/
-# Kennzahlen-CSV wird pro Lauf neu erzeugt (der Bericht in docs/analysis bleibt)
+# Kennzahlen, Berichte und Abbildungen werden pro Lauf neu erzeugt
 results/
 __pycache__/
 *.pyc
 
 # lokale venvs (nicht versioniert)
 .venv/
+.venv-m3/
 
 # Privatdaten (Heimkoordinaten, API-Keys) — niemals versionieren
 config.local.json
@@ -25,3 +26,19 @@ data/apikey.txt
 
 # InfluxDB-Config auf dem NAS (Admin-Token) — nie versionieren
 ops/nas/influxdb/.env
+
+# Lokale Selektionsberichte und Stations-Metadaten (inkl. privatem Polling-Set)
+/docs/analysis/
+# Test-/Lint-Ausgaben
+.pytest_cache/
+.ruff_cache/
+# Lokale Secrets, auch außerhalb des bisherigen NAS-Pfads
+.env
+apikey.txt
+
+# GUI-Vorlagen bleiben im Repo, lokale JS-Artefakte/Secrets nicht
+node_modules/
+.next/
+.env.local
+.env.*.local
+*.tsbuildinfo
