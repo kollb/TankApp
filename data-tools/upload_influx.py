@@ -65,6 +65,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
@@ -440,7 +441,9 @@ REPLAY_HINTS = {
     "SOURCE_UNKNOWN": "Snapshot-Feld source ist keine erkannte Live-Quelle. Den Wert nicht zum Erzwingen eines Replays umschreiben.",
     "SOURCE_DEMO": "Snapshot ist ausdrücklich als demo markiert und darf nicht als echter Preis nachgeliefert werden.",
     "TIME_MISSING_OR_INVALID": "fetched_at fehlt oder ist kein gültiger ISO-Zeitstempel.",
-    "TIME_OFFSET_MISSING": "fetched_at hat keinen UTC-Offset (älteres Format möglich). Ursprüngliche Zeitzone erst klären; keine Uhrzeit raten.",
+    "TIME_OFFSET_MISSING": "fetched_at hat keinen UTC-Offset (älteres Format möglich). Ursprüngliche Collector-Zeitzone erst klären, dann ausdrücklich --replay-timezone angeben; keine Uhrzeit raten.",
+    "TIME_LOCAL_NONEXISTENT": "Lokale Uhrzeit existiert in der gewählten Replay-Zeitzone nicht (Zeitumstellung). Originalen Offset klären, nicht verschieben.",
+    "TIME_LOCAL_AMBIGUOUS": "Lokale Uhrzeit ist in der gewählten Replay-Zeitzone doppelt vorhanden (Zeitumstellung). Ohne originalen Offset keine eindeutige Zuordnung.",
     "CITY_INVALID": "Snapshot-Feld city fehlt, ist leer oder enthält ein ungültiges Format.",
     "PRICES_OBJECT": "Snapshot-Feld prices muss ein nach Stations-UUIDs indiziertes Objekt sein.",
     "STATION_UUID_INVALID": "Ein Schlüssel in prices ist keine UUID im kanonischen Format.",
@@ -450,12 +453,40 @@ REPLAY_HINTS = {
 }
 
 
-def prepare_replay(poll_dir: Path, poll_json: Path) -> tuple[list[str], int]:
+def replay_zone(name: str | None) -> ZoneInfo | None:
+    if name is None:
+        return None
+    try:
+        if name in ("localtime", "posixrules"):
+            raise ValueError
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        raise ReplayError(
+            "[REPLAY_TIMEZONE_INVALID] Benannte IANA-Zeitzone der ursprünglichen "
+            "Collector-Uhrzeit angeben (z. B. Europe/Berlin oder UTC); keine automatische lokale Annahme."
+        ) from None
+
+
+def local_time_candidates(stamp: dt.datetime, zone: ZoneInfo) -> list[dt.datetime]:
+    """UTC instants for a naive wall clock: zero in a DST gap, two in a fold."""
+    candidates = set()
+    for fold in (0, 1):
+        aware = stamp.replace(tzinfo=zone, fold=fold)
+        utc = aware.astimezone(dt.timezone.utc)
+        if utc.astimezone(zone).replace(tzinfo=None) == stamp:
+            candidates.add(utc)
+    return sorted(candidates)
+
+
+def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None = None) -> tuple[list[str], int]:
     """Preflight a saved live JSONL buffer before writing ANY points.
 
     Unlike the normal tailing reader this is strict: no silently skipped bad,
-    demo, naive-time or conflicting rows. No ACK read/write and no source edits.
+    demo or conflicting rows. Naive times require an explicit, verified zone;
+    ambiguous/nonexistent local times still fail. No ACK/source edits.
     """
+    zone = replay_zone(replay_timezone)
+    legacy_count = 0
     paths = sorted(poll_dir.glob("*.jsonl"))
     if not paths:
         raise ReplayError("Keine JSONL-Dateien in der angegebenen Sicherung gefunden.")
@@ -487,7 +518,17 @@ def prepare_replay(poll_dir: Path, poll_json: Path) -> tuple[list[str], int]:
                         stamp = dt.datetime.fromisoformat(snap["fetched_at"].replace("Z", "+00:00"))
                         stage = "TIME_OFFSET_MISSING"
                         if stamp.tzinfo is None:
-                            raise ValueError
+                            if zone is None:
+                                raise ValueError
+                            candidates = local_time_candidates(stamp, zone)
+                            stage = "TIME_LOCAL_NONEXISTENT"
+                            if not candidates:
+                                raise ValueError
+                            stage = "TIME_LOCAL_AMBIGUOUS"
+                            if len(candidates) != 1:
+                                raise ValueError
+                            stamp = candidates[0]
+                            legacy_count += 1
                         stage = "CITY_INVALID"
                         city = snap.get("city")
                         if not isinstance(city, str) or not city.strip() or any(c in city for c in "\r\n"):
@@ -536,14 +577,17 @@ def prepare_replay(poll_dir: Path, poll_json: Path) -> tuple[list[str], int]:
         if any("\n" in name or "\r" in name for name in names.values()):
             raise ReplayError("Stationsnamen enthalten Zeilenumbrüche; Metadaten prüfen.")
         lines.extend(snap_to_lines(stamp, snap, names))
+    if zone is not None:
+        log(f"Replay-Zeitzone ausdrücklich gewählt: {zone.key}; {legacy_count} Snapshot(s) "
+            "ohne Offset zu UTC zugeordnet. Vorhandene Offsets und Quelldateien unverändert.")
     # Exact re-copies of the same snapshot need not be sent twice.
     return list(dict.fromkeys(lines)), len(rows)
 
 
-def run_replay(cfg: Cfg, dry: bool = False) -> int:
+def run_replay(cfg: Cfg, dry: bool = False, replay_timezone: str | None = None) -> int:
     """Explicit one-shot migration/backfill. Even on failure, never touch ACKs."""
     try:
-        lines, snapshots = prepare_replay(cfg.poll_dir, cfg.poll_json)
+        lines, snapshots = prepare_replay(cfg.poll_dir, cfg.poll_json, replay_timezone)
     except ReplayError as exc:
         log(f"Replay abgebrochen: {exc}")
         return 1
@@ -592,11 +636,16 @@ def main() -> int:
                     help="Zeilen als Line Protocol zeigen, nichts senden")
     ap.add_argument("--replay", action="store_true",
                     help="Einmalig ALLE Original-JSONL aus --poll-dir nachliefern, Ack niemals ändern; zuerst --dry-run und eine Sicherung verwenden")
+    ap.add_argument("--replay-timezone", default=None,
+                    help="Nur Replay: bestätigte ursprüngliche IANA-Zeitzone für Zeitstempel ohne Offset; vorhandene Offsets bleiben gültig, DST-Lücken/Dopplungen werden abgelehnt")
     args = ap.parse_args()
+    if args.replay_timezone is not None and not args.replay:
+        ap.error("--replay-timezone ist nur mit --replay zulässig.")
 
     if args.dry_run:
         if args.replay:
-            return run_replay(Cfg("", "", "", "", args.poll_dir, args.poll_json), dry=True)
+            return run_replay(Cfg("", "", "", "", args.poll_dir, args.poll_json), dry=True,
+                              replay_timezone=args.replay_timezone)
         return dry_run(args)
 
     url = args.url or os.environ.get("TANKAPP_INFLUX_URL", "")
@@ -614,7 +663,7 @@ def main() -> int:
     cfg = Cfg(url, org, bucket, token, args.poll_dir, args.poll_json)
     state = State()
     if args.replay:
-        return run_replay(cfg)
+        return run_replay(cfg, replay_timezone=args.replay_timezone)
     if args.once:
         return run_once(cfg, state)
     return run_loop(cfg, state)

@@ -94,7 +94,8 @@ bleiben an ihrem Platz.
 
 ```bash
 cd ~/TankApp
-python3 data-tools/upload_influx.py --replay --dry-run --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json"
+REPLAY_TIME_ARGS=()
+python3 data-tools/upload_influx.py --replay --dry-run --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json" "${REPLAY_TIME_ARGS[@]}"
 ```
 
 **Zwei unterschiedliche Dateien, zwei unterschiedliche Zwecke:**
@@ -115,9 +116,10 @@ stehen. Die Vorschau braucht keinen Token, sendet nichts und liest/schreibt
 keine Ack-Datei. Die Ausgabe enthält Preise/Stationsdaten, aber keine API-Schlüssel.
 
 Der Replay-Modus prüft **alle Eingaben vor dem ersten Write**. Er stoppt bei
-kaputten Zeilen, Demo-/unbekannten Quellen, ungültigen UUIDs, fehlendem UTC-Offset,
-nicht endlichen Preisen oder widersprüchlichen Werten für dieselbe UUID/Zeit.
-Er ergänzt keine geratenen Zeitstempel oder Preise. Wird eine Quelldatei beim
+kaputten Zeilen, Demo-/unbekannten Quellen, ungültigen UUIDs, fehlendem UTC-Offset
+**ohne ausdrücklich bestätigte Replay-Zeitzone**, nicht endlichen Preisen oder
+widersprüchlichen Werten für dieselbe UUID/Zeit. Er ergänzt keine geratenen
+Zeitstempel oder Preise. Wird eine Quelldatei beim
 Lesen verändert, wird ebenfalls abgebrochen.
 
 ### Wenn die Prüfung stoppt: den konkreten Fehlercode ansehen
@@ -133,7 +135,9 @@ Die Validierung wird nicht umgangen; noch keine Replay-Punkte wurden geschrieben
 | `SOURCE_DEMO` | Die Preiszeile ist ausdrücklich ein Demo-Poll. Nicht als Echtpreis importieren und nicht einfach auf `source=tankerkoenig-prices.php` umschreiben. |
 | `SOURCE_MISSING` / `SOURCE_UNKNOWN` | Der Preis-Snapshot trägt nicht die bekannte Live-Kennung. Collector-Version und ursprüngliches Format klären; keine Herkunft erfinden. Das Generatorfeld in `polling.json` ist davon unabhängig. |
 | `TIME_MISSING_OR_INVALID` | `fetched_at` fehlt oder ist kein gültiger ISO-Zeitstempel. Originalformat prüfen. |
-| `TIME_OFFSET_MISSING` | Älterer Zeitstempel ohne UTC-Offset möglich. Zuerst die ursprüngliche Zeitzone klären, nicht blind `+02:00` oder `Z` anhängen. |
+| `TIME_OFFSET_MISSING` | Älterer Zeitstempel ohne UTC-Offset. Ursprüngliche Collector-Zeitzone klären, dann **§3a** mit `--replay-timezone` verwenden; nicht die Originaldatei ändern. |
+| `TIME_LOCAL_NONEXISTENT` / `TIME_LOCAL_AMBIGUOUS` | Die gewählte Zeitzone liefert für diese lokale Uhrzeit keinen bzw. zwei mögliche UTC-Zeitpunkte. Ohne ursprünglichen Offset nicht zuverlässig zuordnen; keine automatische Sommerzeit-Korrektur. |
+| `REPLAY_TIMEZONE_INVALID` | Unbekannter/nicht installierter IANA-Zonenname. Expliziten historischen Namen wie `Europe/Berlin` oder `UTC` verwenden, nicht `localtime` oder einen geratenen festen Offset. |
 | `CITY_INVALID` / `PRICES_OBJECT` | Preis-Snapshot passt nicht zum erwarteten Objektformat. |
 | `STATION_UUID_INVALID` / `STATION_STATUS_INVALID` | Der genannte Stationseintrag enthält keine kanonische UUID oder keinen gültigen Status. Keine Station durch ihren Namen ersetzen. |
 | `PRICE_NONFINITE` | Ungültiger numerischer Preis; nicht durch einen erfundenen Wert ersetzen. |
@@ -152,6 +156,95 @@ mehr vorhanden sind, §4 überspringen und mit §5 nur die neuen UUID-Punkte les
 Ältere, nur nach Namen zusammengefallene Daten sind ohne Originalquelle nicht
 rückwirkend zuverlässig rekonstruierbar.
 
+## 3a. Alte Preiszeitstempel ohne Offset kontrolliert nachliefern
+
+`TIME_OFFSET_MISSING` bedeutet: Der Zeitstempel ist lesbar, aber sein UTC-Bezug
+fehlt. Ältere Collector-Versionen speicherten die **System-Lokalzeit** ohne Offset.
+**Frankfurt als Tankort beweist nicht die Zeitzone des Pi/Collectors.**
+
+### Zuerst die ursprüngliche Zeitzone klären
+
+Auf dem **RPi**, nicht am Windows-PC:
+
+```bash
+timedatectl show -p Timezone --value
+```
+
+Das zeigt die **heutige Systemzeitzone**. Sie darf nur dann für die Sicherung
+verwendet werden, wenn sie während der damaligen Erfassung ebenfalls galt und
+der Collector keine eigene `TZ`-Vorgabe hatte. Bei einer späteren Änderung nicht
+automatisch den heutigen Wert übernehmen.
+
+Falls unklar ist, ob der laufende Dienst `TZ` separat setzt, zeigt dieser
+**nur lesende** Check ausschließlich die Zeitzoneninformation, nicht die übrige
+Prozessumgebung oder API-Keys:
+
+```bash
+PID="$(systemctl show tankapp-collector -p MainPID --value)"
+sudo python3 - "$PID" <<'PY'
+from pathlib import Path
+from zoneinfo import ZoneInfo
+import sys
+try:
+    pid = int(sys.argv[1])
+    if pid <= 0:
+        raise ValueError
+    entries = (Path('/proc') / str(pid) / 'environ').read_bytes().split(b'\0')
+    value = next((item[3:] for item in entries if item.startswith(b'TZ=')), None)
+    if value is None:
+        print('Collector: keine TZ-Variable; Systemzeitzone maßgeblich (sofern damals unverändert).')
+    else:
+        try:
+            zone = ZoneInfo(value.decode('utf-8').removeprefix(':'))
+            if zone.key in ('localtime', 'posixrules'):
+                raise ValueError
+            print('Collector-TZ: ' + zone.key)
+        except Exception:
+            print('Collector: eigene TZ-Vorgabe, nicht als benannte Zone erkannt; Originalkonfiguration privat prüfen.')
+except Exception:
+    print('Collector-Prozess nicht lesbar/aktiv; ursprüngliche Zeitzone anderweitig klären.')
+PY
+```
+
+Die aktuelle Prozessumgebung ist ebenfalls nur ein Hinweis, kein historischer
+Nachweis nach Konfigurationsänderungen. Bei Unsicherheit zunächst nur die
+Zeitzonen-Ausgaben und die Information, ob diese Einstellung geändert wurde,
+weitergeben; **keine vollständige Prozessumgebung oder Sicherung posten**.
+
+### Danach ausdrücklich wählen, weiterhin nur Dry-Run
+
+**Erst wenn die ursprüngliche Zone bestätigt ist.** Zum Beispiel `Europe/Berlin`,
+wenn der alte Collector tatsächlich in dieser Zone lief; `UTC`, wenn er UTC
+benutzte. Nicht zwischen beiden ausprobieren, um einen Fehler verschwinden zu lassen.
+
+```bash
+read -r -p "Bestätigte ursprüngliche Collector-Zeitzone (IANA-Name): " REPLAY_TZ
+REPLAY_TIME_ARGS=(--replay-timezone "$REPLAY_TZ")
+python3 data-tools/upload_influx.py --replay --dry-run --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json" "${REPLAY_TIME_ARGS[@]}"
+```
+
+Der Zusatz gilt **nur** für Snapshot-Zeiten ohne Offset. Vorhandene `Z`-/Offset-
+Zeitstempel bleiben maßgeblich. Die Zuordnung erfolgt im Speicher nach den
+Zeitzonenregeln des jeweiligen Datums (Winter/Sommer), nicht mit dem heutigen
+festen Offset. Die Originaldateien und Ack-Dateien werden nicht verändert.
+Mehrdeutige oder nicht existente Uhrzeiten an Zeitumstellungen bleiben Fehler.
+Wenn die Sicherung mehrere ursprüngliche Zeitzonen mischt, erst deren Zeiträume
+belegen und getrennt behandeln; keine pauschale Zone über alles legen.
+
+Bei Erfolg nennt die Vorschau die ausdrücklich gewählte Zone und die Anzahl
+zugeordneter alter Snapshots. Danach **im selben SSH-Fenster** mit §4 fortfahren:
+Die dort verwendete Argumentliste übernimmt dieselbe bestätigte Zone.
+`REPLAY_TIME_ARGS` vor dem tatsächlichen Replay nicht wieder leeren. Nach einem
+neuen Login `BACKUP` und gegebenenfalls die bestätigte Zeitzonen-Argumentliste
+wieder setzen. Ohne `--replay-timezone` bleibt der alte strikte Abbruch bestehen.
+
+**Für künftige Aufzeichnungen:** Der aktuelle Collector speichert Offsets. Ein
+Git-Update ersetzt jedoch nicht den Code eines bereits laufenden Python-Prozesses.
+Falls neue Originalzeilen weiterhin keinen Offset tragen, ist später ein
+kontrollierter Collector-Neustart nötig; dabei mindestens 300 Sekunden Abstand
+zwischen Tankerkönig-Requests einhalten. Ein Neustart verändert die alte Sicherung
+nicht. Weder Pi-Zeitzone noch `source`/Zeitstempel in der Sicherung als Reparatur umschreiben.
+
 ## 4. Geprüfte Sicherung mit dem vorhandenen RPi-Schreibzugang nachliefern
 
 **Erst nach erfolgreicher Vorschau.** Das ist ein bewusster Write ins bestehende
@@ -163,7 +256,7 @@ Den Token nicht auf die Kommandozeile kopieren und die Env-Datei nicht ausgeben.
 Im selben SSH-Fenster (Repository-Ordner und `BACKUP` wie oben):
 
 ```bash
-sudo systemd-run --wait --pipe --collect -p "User=$(id -un)" -p EnvironmentFile=/etc/tankapp/env /usr/bin/python3 "$PWD/data-tools/upload_influx.py" --replay --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json"
+sudo systemd-run --wait --pipe --collect -p "User=$(id -un)" -p EnvironmentFile=/etc/tankapp/env /usr/bin/python3 "$PWD/data-tools/upload_influx.py" --replay --poll-dir "$BACKUP/poll" --poll-json "$BACKUP/polling.json" "${REPLAY_TIME_ARGS[@]}"
 ```
 
 `systemd-run` startet einen einmaligen Prozess und lädt die bestehende private
@@ -178,8 +271,8 @@ Erwartet: bestätigte Batches und am Ende **`Replay erfolgreich`**. Der Vorgang:
 - löscht keine alten Namensserien; Ziel ist der in der bestehenden Uploader-
   Umgebung konfigurierte Bucket (hier `tankapp`, nicht die Einstellungen eines
   anderen Smarthome-Projekts übernehmen);
-- ist mit **derselben Sicherung und demselben Polling-Metadaten-Snapshot**
-  wiederholbar: dieselben Tags/Zeitstempel adressieren dieselben UUID-Punkte.
+- ist mit **derselben Sicherung, demselben Polling-Metadaten-Snapshot und derselben
+  gegebenenfalls gewählten ursprünglichen Zeitzone** wiederholbar: dieselben Tags/Zeitstempel adressieren dieselben UUID-Punkte.
 
 Der normale Uploader kann parallel weiterlaufen; Replay fasst seinen Ack nicht
 an. Stationsnamen/Metadaten während dieser Migration nicht umbenennen, damit die

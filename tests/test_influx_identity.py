@@ -397,3 +397,153 @@ def test_replay_encoding_diagnostic_does_not_echo_bytes(uploader, saved_buffer, 
     output = capsys.readouterr().out
     assert "[ENCODING_UTF8]" in output
     assert "not-a-real-token" not in output
+
+
+@pytest.mark.parametrize(
+    "local,zone,utc",
+    [
+        ("2026-09-07T06:00:00", "Europe/Berlin", "2026-09-07T04:00:00+00:00"),
+        ("2026-01-07T06:00:00", "Europe/Berlin", "2026-01-07T05:00:00+00:00"),
+        ("2026-09-07T06:00:00", "UTC", "2026-09-07T06:00:00+00:00"),
+    ],
+)
+def test_explicit_legacy_zone_maps_wall_clock_without_editing_source(
+    uploader, saved_buffer, monkeypatch, capsys, local, zone, utc
+):
+    cfg, path = saved_buffer
+    path.write_text(json.dumps(snapshot(local)) + "\n", encoding="utf-8")
+    original, ack = path.read_bytes(), cfg.ack_file.read_bytes()
+    received = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: received.extend(lines)
+    )
+    monkeypatch.setenv(
+        "TZ", "Pacific/Honolulu"
+    )  # must not infer the executing process's zone
+    assert uploader.run_replay(cfg, replay_timezone=zone) == 0
+    expected = str(int(uploader.parse_ts(utc).timestamp() * 1_000_000_000))
+    assert len(received) == 2 and all(
+        line.endswith(" " + expected) for line in received
+    )
+    assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
+    assert "1 Snapshot(s) ohne Offset" in capsys.readouterr().out
+
+
+def test_explicit_zone_never_overrides_an_existing_offset(uploader, saved_buffer):
+    cfg, path = saved_buffer
+    path.write_text(
+        json.dumps(snapshot("2026-09-07T06:00:00+02:00")) + "\n", encoding="utf-8"
+    )
+    before, _ = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json)
+    after, _ = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json, "UTC")
+    assert before == after
+
+
+@pytest.mark.parametrize(
+    "local,code",
+    [
+        ("2026-03-29T02:30:00", "TIME_LOCAL_NONEXISTENT"),
+        ("2026-10-25T02:30:00", "TIME_LOCAL_AMBIGUOUS"),
+    ],
+)
+def test_legacy_dst_holes_and_folds_are_not_guessed(
+    uploader, saved_buffer, monkeypatch, capsys, local, code
+):
+    cfg, path = saved_buffer
+    path.write_text(
+        json.dumps(snapshot()) + "\n" + json.dumps(snapshot(local)) + "\n",
+        encoding="utf-8",
+    )
+    original, ack = path.read_bytes(), cfg.ack_file.read_bytes()
+
+    def forbidden(*args):
+        raise AssertionError("No write or ACK on ambiguous/nonexistent local times")
+
+    monkeypatch.setattr(uploader, "influx_write", forbidden)
+    monkeypatch.setattr(uploader, "write_ack", forbidden)
+    assert uploader.run_replay(cfg, replay_timezone="Europe/Berlin") == 1
+    output = capsys.readouterr().out
+    assert f"[{code}]" in output and "Zeile 2" in output
+    assert local not in output
+    assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
+
+
+def test_mixed_naive_and_aware_copies_deduplicate_after_timezone_conversion(
+    uploader, saved_buffer
+):
+    cfg, path = saved_buffer
+    path.write_text(
+        json.dumps(snapshot("2026-09-07T08:00:00"))
+        + "\n"
+        + json.dumps(snapshot())
+        + "\n",
+        encoding="utf-8",
+    )
+    lines, count = uploader.prepare_replay(cfg.poll_dir, cfg.poll_json, "Europe/Berlin")
+    assert count == 2 and len(lines) == 2
+
+
+def test_conflicting_mixed_time_records_still_stop_replay(
+    uploader, saved_buffer, capsys
+):
+    cfg, path = saved_buffer
+    changed = snapshot("2026-09-07T08:00:00")
+    changed["prices"][A]["e10"] = 1.9
+    path.write_text(
+        json.dumps(snapshot()) + "\n" + json.dumps(changed) + "\n", encoding="utf-8"
+    )
+    assert uploader.run_replay(cfg, dry=True, replay_timezone="Europe/Berlin") == 1
+    assert "CONFLICTING_OBSERVATION" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "name", ["not-a-real-token", "", "localtime", "posixrules", "../secret"]
+)
+def test_invalid_or_machine_dependent_replay_zone_is_rejected_safely(uploader, name):
+    with pytest.raises(uploader.ReplayError, match="REPLAY_TIMEZONE_INVALID") as error:
+        uploader.replay_zone(name)
+    assert "not-a-real-token" not in str(error.value)
+    assert "../secret" not in str(error.value)
+
+
+def test_replay_timezone_option_only_valid_in_replay_mode(uploader, monkeypatch):
+    monkeypatch.setattr(
+        sys, "argv", ["upload_influx.py", "--dry-run", "--replay-timezone", "UTC"]
+    )
+    with pytest.raises(SystemExit) as error:
+        uploader.main()
+    assert error.value.code == 2
+
+
+def test_cli_timezone_dry_run_without_credentials(
+    uploader, saved_buffer, monkeypatch, capsys
+):
+    cfg, path = saved_buffer
+    path.write_text(
+        json.dumps(snapshot("2026-09-07T06:00:00")) + "\n", encoding="utf-8"
+    )
+    original, ack = path.read_bytes(), cfg.ack_file.read_bytes()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "upload_influx.py",
+            "--replay",
+            "--dry-run",
+            "--replay-timezone",
+            "Europe/Berlin",
+            "--poll-dir",
+            str(cfg.poll_dir),
+            "--poll-json",
+            str(cfg.poll_json),
+        ],
+    )
+
+    def forbidden(*args):
+        raise AssertionError("Timezone dry-run must remain offline")
+
+    monkeypatch.setattr(uploader, "influx_write", forbidden)
+    assert uploader.main() == 0
+    output = capsys.readouterr().out
+    assert "Europe/Berlin" in output and "1 Snapshot(s) ohne Offset" in output
+    assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
