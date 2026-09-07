@@ -2,7 +2,10 @@
 
 Werkzeuge, um die **Historie** (Tankerkönig-Datenrepo, eine CSV pro Tag) zu holen und in das
 Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
-**Aktueller nächster Schritt:** [M3 – Influx-Export, Prognose und Backtest](../engine/README.md).
+**Aktueller nächster Schritt:** [M3 am Windows-PC testen – PowerShell-Anleitung](../engine/README.md).
+Mit vorhandenen M2-CSVs direkt ohne NAS/API-Key starten; Live-Export nur optional.
+`data\apikey.txt` gehört zum Collector. Ein InfluxDB-Lese-Token kann separat in
+`data\influx-token.txt` liegen und wird per PowerShell in die Export-Umgebung geladen.
 
 **Ausführliche Anleitung inkl. Größen-/Zeitrechnung und Fehlerbildern: [`docs/DATEN-BEZUG.md`](../docs/DATEN-BEZUG.md).**
 **Erstinstallation & 24/7-Betrieb (Collector auf dem Raspberry Pi, systemd, Key): [`docs/INSTALL.md`](../docs/INSTALL.md).**

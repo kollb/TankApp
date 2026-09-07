@@ -7,6 +7,7 @@ __pycache__/
 
 # lokale venvs (nicht versioniert)
 .venv/
+.venv-m3/
 
 # Privatdaten (Heimkoordinaten, API-Keys) — niemals versionieren
 config.local.json

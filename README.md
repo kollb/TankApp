@@ -27,10 +27,16 @@ dem NAS, später eine gemeinsame Homepage mit Alltag und Statistik-Werkstatt.
 
 ## Weiter mit echten Daten
 
-**[M3 ausführen → `engine/README.md`](engine/README.md)** — auf NAS oder PC:
-InfluxDB nur lesen, Datenqualität prüfen, historische Daten bei Bedarf
-hinzunehmen, Backtest rechnen. Keine Änderungen an Collector, Uploader,
-Bucket oder Ack-Dateien erforderlich. Noch keine kalibrierten Empfehlungen.
+**[M3 am Windows-PC testen → `engine/README.md`](engine/README.md)** —
+Schritt für Schritt mit **PowerShell**, ohne WSL oder Aktivierungsskripte:
+Tests ausführen und vorhandene M2-CSVs direkt prüfen, backtesten und fitten.
+Dafür sind weder NAS noch API-Schlüssel nötig. Optional die Live-Historie aus
+InfluxDB mit separatem Lese-Token hinzunehmen. `data\apikey.txt` bleibt der
+Tankerkönig-Schlüssel für den Collector, nicht für InfluxDB.
+
+Collector, Uploader, Bucket und Ack-Dateien bleiben unverändert. Noch keine
+kalibrierten Empfehlungen; die Anleitung enthält auch Hilfe bei fehlender
+Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsseldatei.
 
 ## Dokumentation
 
@@ -45,14 +51,18 @@ Die alten synthetischen Selektionsberichte, Abbildungen und separaten
 Demo-Datengeneratoren wurden entfernt. Neue Berichte, Exporte, Modelle und
 private Konfigurationen bleiben gitignored; keine Beispielzahlen als Abnahmenachweis.
 
-## Entwicklung prüfen
+## Entwicklung am Windows-PC prüfen
 
-Python 3.11+, in einer separaten Entwicklungsumgebung:
+PowerShell im Repository-Ordner, Python **3.11+**. Eigene M3-Umgebung anlegen;
+eine bestehende passende `.venv-m3` weiterverwenden und dann den ersten Befehl auslassen:
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements-dev.txt
-python -m pytest -q
-python -m ruff check engine data-tools/export_influx.py tests
+```powershell
+py -3 -m venv .venv-m3
+.\.venv-m3\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv-m3\Scripts\python.exe -m pytest -q
+.\.venv-m3\Scripts\python.exe -m ruff check engine data-tools/export_influx.py tests
 ```
+
+Die M2-Umgebung `.venv` bleibt bestehen. Keine `Activate.ps1` oder Änderung
+der ExecutionPolicy nötig. Python-Versionsprüfung und alle folgenden Schritte:
+[Windows-Anleitung](engine/README.md).

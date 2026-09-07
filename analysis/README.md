@@ -100,6 +100,7 @@ API-Antwort) und sind als Nowcast verfügbar; eine eigene Diesel-Selektion/
 Prognose läuft mit `--fuel DIESEL` auf denselben Daten (zweiter Lauf,
 kostenlos).
 
-**Danach:** [M3-Prognose und Backtest](../engine/README.md) verwenden die
-Live-Serie aus InfluxDB; zusätzliche Historie nur mit ausgewiesenen
-Qualitäts-/Öffnungsstatus-Grenzen.
+**Danach am Windows-PC:** [M3-Prognose und Backtest mit PowerShell](../engine/README.md).
+Die vorhandenen Analyse-CSVs kannst du direkt ohne API-Key und ohne NAS-Verbindung
+verwenden; die Live-Serie aus InfluxDB lässt sich optional ergänzen. Die Qualitäts-/
+Öffnungsstatus-Grenzen rekonstruierter Historie bleiben ausdrücklich ausgewiesen.

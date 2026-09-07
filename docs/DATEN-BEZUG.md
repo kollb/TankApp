@@ -363,7 +363,7 @@ robocopy data \\nas\tankapp\data /MIR /NFL /NDL
 ```
 
 Der PC rechnet, das NAS sammelt: ab Schritt 6 läuft alles Notwendige als Cron auf dem NAS
-(Kapitel 8), der Windows-PC wird nur noch für Neuläufe der Selektion angemacht.
+(Kapitel 8), der Windows-PC wird für Re-Selektion und für [M3-Tests/Fits/Backtests](../engine/README.md) verwendet.
 
 ### 11.2 NAS/WSL (Debian unter Linux, oder Windows per Git-Bash)
 
@@ -463,9 +463,11 @@ Collector/Uploader befüllen laut Betreiber die InfluxDB; M2 wird vorläufig
 als erledigt behandelt. Diese Anleitung bleibt für Backfill und Re-Selektion
 nützlich, der Einmal-Download muss nicht wiederholt werden.
 
-**Weiter:** [`engine/README.md`](../engine/README.md) – den Live-Bucket nur
-lesend exportieren, Datenqualität prüfen und Rolling-Backtests rechnen.
-Bestehende Historie kann das Training ergänzen; aus `--density 5` entstehen
+**Weiter am Windows-PC:** [`engine/README.md`](../engine/README.md) – konkrete
+PowerShell-Schritte für Tests, Datenqualität, Rolling-Backtest und Modell-Fit.
+Die vorhandenen Analyse-CSVs reichen als Eingang ohne API-Key/NAS-Verbindung;
+Live-Historie aus InfluxDB kann optional nur lesend exportiert und ergänzt werden.
+Aus `--density 5` entstehen
 rekonstruierte Stand-Zeilen, kein Ersatz für echte Polls mit Öffnungsstatus.
 
 *Lizenz: Datensammlung CC BY-NC-SA 4.0 (nicht-kommerziell; kommerzielle Nutzung nur gegen Vertrag mit

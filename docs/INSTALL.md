@@ -2,8 +2,13 @@
 
 Diese Anleitung sagt **was wo läuft** und mit **welchen Kommandos**.
 Stand 07.09.2026: Collector/Uploader befüllen laut Betreiber InfluxDB; M2
-gilt vorläufig als erledigt. **Weiter mit M3:** [Engine-Anleitung](../engine/README.md).
+gilt vorläufig als erledigt. **Weiter mit M3 am Windows-PC:**
+[PowerShell-Anleitung](../engine/README.md) bzw. Phase D (§4) unten.
 API/Homepage folgen mit beiden vorhandenen GUIs als Basis (Konzept §8/§13).
+
+**Wenn Collector/InfluxDB und M2 schon laufen, Phasen A–C nicht erneut einrichten.**
+Mit den vorhandenen Analyse-CSVs kannst du M3 direkt am PC testen; ein
+InfluxDB-Export ist optional und benötigt einen eigenen Lese-Token.
 
 ## 0. Kurzantwort: Was läuft wo?
 
@@ -14,7 +19,7 @@ API/Homepage folgen mit beiden vorhandenen GUIs als Basis (Konzept §8/§13).
 | Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
 | **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | ✅ fertig (`data-tools/upload_influx.py`, Phase C) |
 | Langzeit-Speicher (InfluxDB) | **NAS** (192.168.178.61, Org `gtwrlab`, Bucket `tankapp`) | ✅ läuft (Bucket/Token: Phase C §3.1) |
-| M3-Fits / Backtests | NAS / PC | Erster Durchstich in `engine/`; noch unkalibriert, Phase D |
+| M3-Tests / Fits / Backtests | **Windows-PC** (NAS alternativ möglich) | PowerShell-Ablauf in Phase D / `engine/README.md`; noch unkalibriert |
 | Homepage / API | Pi | Geplant; beide GUI-Vorlagen bleiben erhalten |
 
 **Faustregel:** Der Collector gehört auf den Pi. Er läuft 24/7, braucht
@@ -41,7 +46,7 @@ hinterher braucht.
 ### 1.1 Voraussetzungen
 
 ```powershell
-py -3 --version        # Python 3.9+ reicht
+py -3 --version        # Auf dem PC 3.11+ für M3; der Pi-Collector bleibt bei seiner bisherigen Version
 ```
 
 Analyse-Abhängigkeiten (nur für die Pipeline, nicht für den Collector):
@@ -49,8 +54,7 @@ Analyse-Abhängigkeiten (nur für die Pipeline, nicht für den Collector):
 ```powershell
 cd "G:\Meine Ablage\dev\TankApp"
 py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r analysis\requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r analysis\requirements.txt
 ```
 
 ### 1.2 Anker & Tagesliste
@@ -64,40 +68,59 @@ pip install -r analysis\requirements.txt
 ### 1.3 Pipeline laufen lassen
 
 ```powershell
-py -3 data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest `
-    --near-km 5 --near-n 3 --leader-max-km 10
+.\.venv\Scripts\python.exe .\data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10
 ```
 
 Ergebnis (gitignored, enthält private Koordinaten):
 `docs\analysis\stations\polling.json` mit den 10 Polling-Stationen je Stadt.
 
-### 1.4 Tankerkönig-API-Key (kostenlos)
+### 1.4 Tankerkönig-API-Key auf dem PC
 
-Registrieren auf <https://www.tankerkoenig.de/> (Menü „API"), Key
-kommt per Mail. Er wird **nicht** eingecheckt. Drei Möglichkeiten
-(Reihenfolge der Suche: `--api-key` → Umgebungsvariable → Datei):
-
-```powershell
-# Möglichkeit 1: Datei im Repo (bereits gitignored)
-"00000000-0000-0000-0000-000000000000" | Out-File -Encoding ascii data\apikey.txt
-
-# Möglichkeit 2: Umgebungsvariable (PowerShell-Profil)
-$env:TANKERKOENIG_API_KEY = "00000000-0000-0000-0000-000000000000"
-```
-
-### 1.5 Ersttest auf dem PC — echte API
+**Vorhandene `data\apikey.txt` weiterverwenden, nicht überschreiben.**
+Der Collector liest sie automatisch. Es ist der Tankerkönig-Key für aktuelle
+Preise, kein InfluxDB-Token; M3 mit vorhandenen CSV-Dateien braucht ihn nicht.
 
 ```powershell
-py -3 data-tools\collect_prices.py --once
+Test-Path .\data\apikey.txt
 ```
 
-Demo-Snapshots gehören **nicht** in den Live-Puffer. Falls ein Offline-Test
-nötig ist, ausschließlich mit getrenntem `--out data/test-poll`; dieses
-Verzeichnis niemals vom produktiven Uploader einlesen lassen.
+Falls noch kein Key vorhanden ist: auf <https://www.tankerkoenig.de/> registrieren
+und die private Datei in Notepad anlegen:
 
-Bei Erfolg: `Poll ok: 10/10 offen → 2026-…jsonl`. Die drei API-Statusfälle
-werden korrekt behandelt (Konzept §1.2): `false` = Sorte nicht geführt
-(wird weggelassen, nie als 0 geschrieben), `closed`/`no prices` ohne Preis.
+```powershell
+New-Item -ItemType Directory -Force -Path .\data | Out-Null
+notepad .\data\apikey.txt
+```
+
+Nur den echten Key als eine Zeile speichern, UTF-8 ohne BOM, keine
+Anführungszeichen. Keine Dummy-UUID über eine bestehende Schlüsseldatei schreiben
+und den Inhalt nicht im Terminal ausgeben. `data\` ist gitignored.
+Die Suchreihenfolge bleibt `--api-key` → `TANKERKOENIG_API_KEY` → Datei.
+
+### 1.5 Optionaler Collector-Einzeltest auf dem PC
+
+**Nicht für die M3-Backtests nötig.** Wenn der Pi denselben Key nutzt,
+seinen Collector für diesen optionalen Einzeltest pausieren: mindestens
+300 Sekunden nach dem letzten Pi-Request warten und nach dem PC-Test wieder
+mindestens 300 Sekunden bis zum nächsten Request einhalten. Keinen zweiten
+Dauer-Collector daneben starten. Für normale M3-Läufe bleibt der Pi unverändert an.
+
+```powershell
+# Nur diese PC-Sitzung: vorhandene Umgebungsvariable würde die Datei übersteuern
+Remove-Item Env:\TANKERKOENIG_API_KEY -ErrorAction SilentlyContinue
+py -3 .\data-tools\collect_prices.py --once --out .\data\pc-test-poll
+```
+
+Bei mehreren Polling-Sets `--poll-city Frankfurt` bzw. den tatsächlichen
+Set-Schlüssel ergänzen. Bei Erfolg: Preistabelle und `Poll ok: …` mit JSONL-Datei
+im **separaten** `data\pc-test-poll\`. Der produktive Uploader darf dieses
+Verzeichnis nicht einlesen. `false` wird nicht als Preis 0 geschrieben;
+`closed`/`no prices` bleiben ohne Preis. Bei API-Fehlern kann auch `--once`
+wiederholen; bei Bedarf mit Strg+C abbrechen.
+
+Ein Poll liefert keine mehrwöchige Trainingshistorie. Die M3-Schritte in Phase D
+verwenden die vorhandenen Analyse-CSVs oder einen InfluxDB-Export, nicht diesen
+JSONL-Testpuffer. Weitere Windows-Details: [M3-Anleitung §7](../engine/README.md).
 
 ---
 
@@ -549,29 +572,49 @@ durchgehen und das Backup (§3.6) prüfen.
 
 ---
 
-## 4. Phase D — M3 auf NAS/PC (nur lesender Zugriff)
+## 4. Phase D — M3 am Windows-PC testen
 
-Die laufenden Collector-/Uploader-Dienste nicht neu einrichten und deren
-Secrets/Ack-Dateien nicht ändern. Ein separates Influx-Lese-Token auf NAS/PC
-und das aktive private Polling-Set reichen für den Export.
+**Hier weitermachen, wenn M1/M2 bereits laufen.** Keine neue InfluxDB und kein
+Uploader auf dem PC nötig. Collector, Uploader, Secrets und Ack-Dateien auf
+Pi/NAS unverändert lassen.
 
-**Vollständiger Ablauf:** [`engine/README.md`](../engine/README.md)
+**Vollständige Schritt-für-Schritt-Anleitung für PowerShell:**
+[`engine/README.md`](../engine/README.md)
 
-1. InfluxDB nach `data/engine/influx_e10.csv.gz` exportieren.
-2. Mit `python -m engine inspect` die tatsächliche Historienlänge/Lücken prüfen.
-3. Erst bei ausreichender Historie fitten und täglich rollierend backtesten.
-4. Kein M3-Abnahme-Häkchen aus Beispielzahlen: Ensemble/ACI und der
-   Echt-Daten-Gütenachweis sind noch offen.
+1. Im lokalen TankApp-Ordner Python 3.11+ und die separate Umgebung `.venv-m3`
+   einrichten. Keine Aktivierung / ExecutionPolicy-Änderung nötig; M2 behält `.venv`.
+2. Automatisierte Tests starten – ohne Zugangsdaten, ohne NAS.
+3. Das aktive private `docs\analysis\stations\polling.json` und die
+   aufbereiteten CSV-Dateien aus `data\ready\` auf dem PC verwenden.
+4. Datenqualität prüfen, dann mit ausreichender Historie backtesten, fitten und
+   Prognosen als lokale JSON-Dateien erzeugen. **Dafür ist kein API-Key erforderlich.**
+5. Optional Live-Daten vom NAS ergänzen: separates InfluxDB-Lese-Token in
+   `data\influx-token.txt`, per PowerShell in `TANKAPP_INFLUX_TOKEN` laden.
+   `data\apikey.txt` bleibt unverändert für Tankerkönig. Der Export ist nur lesend.
 
-Die Homepage nutzt anschließend Aufbau und Gestaltung von `sample/good gui`
-und `sample/good statistic gui`; sie bleiben bis zur visuellen Überführung erhalten.
+Nach dem Setup beispielsweise direkt mit deinen vorhandenen M2-Dateien:
+
+```powershell
+.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json
+.\.venv-m3\Scripts\python.exe -m engine backtest --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json --days 21
+notepad .\results\engine\backtest\report.md
+```
+
+Bei einem Fehler erst die Diagnose beheben; ein älterer Bericht kann noch
+vorhanden sein. Die vollständige Anleitung beschreibt auch die Variante mit
+InfluxDB und gemischten Eingangsdateien. Export, CSVs, Berichte und Modelle
+bleiben lokal/gitignored. M3 ist nicht abgenommen: Ensemble/ACI und der
+Echt-Daten-Gütenachweis stehen noch aus.
+
+Beide GUI-Verzeichnisse bleiben die Basis der späteren Homepage; am PC werden
+hier nur die Engine-Werkzeuge getestet, nicht die Prototypen umgestaltet.
 
 ## 5. Befehlsübersicht
 
 | Zweck | Kommando | Gerät |
 |---|---|---|
-| Isolierter Offline-Test | `python3 data-tools/collect_prices.py --demo --once --out data/test-poll` (nie hochladen) | PC/Pi |
-| Ein echter Poll + Tabelle | `python3 data-tools/collect_prices.py --once` | PC/Pi |
+| Isolierter Offline-Test | `py -3 data-tools\collect_prices.py --demo --once --out data\test-poll` (nie hochladen) | Windows-PC |
+| Optionaler echter Poll + Tabelle | `py -3 data-tools\collect_prices.py --once --out data\pc-test-poll` (Request-Abstand mit Pi beachten, §1.5) | Windows-PC |
 | Dauerbetrieb (Vordergrund) | `python3 data-tools/collect_prices.py` | Pi |
 | Puffer-Verzeichnis setzen | `TANKAPP_POLL_DIR=/dev/shm/tankapp …` (oder `--out`) | Pi |
 | Fenster/Intervall ändern | `--window-start 6 --window-end 24 --interval 300` | Pi |
@@ -581,6 +624,7 @@ und `sample/good statistic gui`; sie bleiben bis zur visuellen Überführung erh
 | Uploader-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-uploader` | Pi |
 | Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
 | InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
-| Pipeline (Polling-Set bauen) | `py -3 data-tools/run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | PC |
-| InfluxDB-Export für M3 | `python3 data-tools/export_influx.py` (separates Lese-Token, siehe Engine-Anleitung) | NAS/PC |
-| M3-Datenqualität | `python -m engine inspect --data data/engine/influx_e10.csv.gz` | NAS/PC |
+| Pipeline (Polling-Set bauen) | `.\.venv\Scripts\python.exe data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | Windows-PC |
+| InfluxDB-Export für M3 | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py` (PowerShell-Variablen/Datei-Lese-Token: Engine-Anleitung §3B) | Windows-PC |
+| M3-Datenqualität mit vorhandener Historie | `.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json` | Windows-PC |
+| M3-Softwaretests | `.\.venv-m3\Scripts\python.exe -m pytest -q` (kein Key / NAS nötig) | Windows-PC |
