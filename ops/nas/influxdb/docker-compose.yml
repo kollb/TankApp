@@ -1,0 +1,42 @@
+# TankApp – InfluxDB 2.x auf dem NAS (Konzept §9.1/§9.3, INSTALL.md Phase C).
+#
+# Einrichtung (einmalig, auf dem NAS):
+#   cd ops/nas/influxdb
+#   cp .env.example .env && nano .env      # Token: openssl rand -hex 16
+#   docker compose up -d
+#
+# Beim ERSTEN Start (leeres Volume) werden Org + Bucket automatisch angelegt
+# (DOCKER_INFLUXDB_INIT_*) — mit 43800h ≈ 5 Jahre Retention. Danach Token
+# für den Pi anlegen (INSTALL.md §3.1) und Uploader auf dem Pi testen (§3.3).
+#
+# Port 8086 ist nur für das lokale Netz (der Pi schiebt hier rein) — NICHT
+# ins Internet weiterleiten. Jeder Write braucht ein Token.
+#
+# Backup: wöchentliches Tar-Backup des Volumes (INSTALL.md §3.6).
+
+services:
+  influxdb:
+    image: influxdb:2
+    container_name: tankapp-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      # Einmal-Setup beim ersten Start (skippt den Web-Wizard):
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
+      DOCKER_INFLUXDB_INIT_RETENTION: "43800h"   # = 5 Jahre (5*365*24 h)
+    volumes:
+      - tankapp_influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  tankapp_influxdb_data:

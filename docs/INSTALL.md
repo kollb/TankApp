@@ -1,8 +1,8 @@
 # Installation & Betrieb (Erstinstallation)
 
 Diese Anleitung sagt **was wo läuft** und mit **welchen Kommandos**.
-Stand: M1 (Live-Collector) ist fertig; Influx-Uploader und API/PWA
-folgen später (Roadmap im Konzept §13).
+Stand: M1 (Live-Collector + InfluxDB-Uploader) ist fertig; API/PWA
+folgt später (Roadmap im Konzept §13).
 
 ## 0. Kurzantwort: Was läuft wo?
 
@@ -11,12 +11,16 @@ folgen später (Roadmap im Konzept §13).
 | Analyse/Pipeline (Historie holen, Stationen auswählen) | **PC (Windows)** — Einmal-/Werkstatt-Läufe | ✅ fertig |
 | **M1 Collector** (Preise pollt, JSONL-Ringpuffer) | **Raspberry Pi** — 24/7 | ✅ fertig (`data-tools/collect_prices.py`) |
 | Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
-| Langzeit-Speicher (InfluxDB), Uploader, Engine-Fits, API | **NAS** | ⏜ folgt später |
+| **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | ✅ fertig (`data-tools/upload_influx.py`, Phase C) |
+| Langzeit-Speicher (InfluxDB) | **NAS** — Docker (`ops/nas/influxdb/`) | ✅ einrichtbar (Phase C, §3.1) |
+| Engine-Fits, API/PWA | NAS / Pi | ⏜ folgt später |
 
 **Faustregel:** Der Collector gehört auf den Pi. Er läuft 24/7, braucht
 keine SD-Schreibzugriffe (Puffer im RAM) und nur ~40–60 MiB — reine
-Python-Standardbibliothek, kein `pip install`. Das NAS wird erst ab
-M2 (Uploader/InfluxDB) angefasst. Der PC bleibt die „Werkstatt" für
+Python-Standardbibliothek, kein `pip install`. Das NAS wird in Phase C
+(§3) eingerichtet: InfluxDB per Docker; der Uploader — zweite systemd-
+Service auf demselben Pi — schiebt den Ringpuffer dorthin (idempotent,
+überbrückt NAS-Ausfall bis 7 Tage). Der PC bleibt die „Werkstatt" für
 Einmal-Analysen und läuft **nicht** dauernd mit (~50–90 W Leerlauf vs.
 Pi ~3 W).
 
@@ -317,15 +321,164 @@ tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,uid=pi,gid=pi  0  0
 
 ---
 
-## 3. Phase C — NAS (später, nicht Teil von M1)
+## 3. Phase C — NAS + Uploader (InfluxDB)
 
-Folgt mit dem Influx-Uploader (Konzept §9.1): NAS bekommt
-`influxdb:2` per Docker (Retention 5 Jahre), der Pi-Uploader pingt
-TCP 8086, schiebt unbestätigte JSONL-Zeilen nach und merkt sich
-`meta.synced_until` — idempotent, damit ein NAS-Ausfall bis zur
-7-Tage-Puffertiefe überbrückt wird. **Jetzt noch nichts auf dem NAS
-eingerichtet.** Der Ringpuffer auf dem Pi läuft unabhängig davon und
-sammelt schon die Historie.
+Der Collector bleibt unverändert. Neuer Baustein: der **Uploader** läuft als
+zweite systemd-Service **auf demselben Pi** (Konzept §9.1). Er liest dieselben
+JSONL-Zeilen aus dem Ringpuffer, schiebt die noch nicht bestätigten Zeilen an
+die InfluxDB auf dem NAS und schiebt das Ack
+(`<puffer>/meta/synced_until`) **erst nach erfolgreichem Write** weiter.
+NAS-Ausfall wird so bis zur 7-Tage-Ringpuffertiefe überbrückt (Überlauf FIFO
++ Alarm ab 6 Tagen); neu gesendete Zeilen sind harmlos, weil InfluxDB-Punkte
+ihre Identität (Measurement+Tags+Timestamp) mitbringen (idempotent, §1.2).
+
+### 3.1 InfluxDB auf dem NAS (Docker, einmalig)
+
+```bash
+# auf dem NAS (Docker + Compose v2 installiert)
+git clone https://github.com/kollb/TankApp.git ~/TankApp
+cd ~/TankApp/ops/nas/influxdb
+cp .env.example .env && nano .env        # Token: openssl rand -hex 16
+docker compose up -d
+# Erster Start (leeres Volume) legt automatisch Org `tankapp` + Bucket
+# `prices` mit 43800h ≈ 5 Jahre Retention an. Check:
+docker compose exec influxdb influx ping
+# Least-Privilege-Token für den Pi (nur lesen+schreiben auf `prices`):
+docker compose exec influxdb influx auth create \
+    --org tankapp --read-bucket prices --write-bucket prices \
+    --description "tankapp-uploader (Pi)"
+# → das ausgegebene Token gehört auf den Pi nach /etc/tankapp/env (§3.2),
+#   nie ins Repo.
+```
+
+> Die InfluxDB-Web-UI (http://\<nas-ip\>:8086) dient nur der Diagnose —
+> der Pi nutzt sie nie, er schreibt ausschließlich mit dem Uploader-Token.
+> Port 8086 nur im lokalen Netz, nie ins Internet weiterleiten.
+
+### 3.2 Secrets auf dem Pi (einmalig)
+
+```bash
+sudo install -d -m 0750 -o pi -g pi /etc/tankapp
+sudo tee /etc/tankapp/env > /dev/null <<'ENV'
+TANKAPP_INFLUX_URL=http://<nas-ip>:8086
+TANKAPP_INFLUX_ORG=tankapp
+TANKAPP_INFLUX_BUCKET=prices
+TANKAPP_INFLUX_TOKEN=<Token aus 3.1>
+ENV
+sudo chmod 600 /etc/tankapp/env
+```
+
+### 3.3 Uploader testen (Pi)
+
+```bash
+cd ~/TankApp
+set -a; . /etc/tankapp/env; set +a      # Env für die manuellen Tests laden
+python3 data-tools/upload_influx.py --dry-run   # Line Protocol zeigen, nichts senden
+python3 data-tools/upload_influx.py --once      # ein voller Zyklus: Ping + Upload + Ack
+```
+
+Erwartet: `Ping …: ok (HTTP 204)` und `⇡ N Zeile(n) (M Punkte) → InfluxDB
+(synced until …)`. Zweites `--once`: `0 unsynced Zeilen` bzw. kein zweiter
+POST. Fehlerpfade (Exit-Code 1, **Ack bleibt stehen, nichts geht verloren**):
+
+| Log-Meldung | Bedeutung / Aktion |
+|---|---|
+| `NAS nicht erreichbar …` | NAS aus oder falsche `TANKAPP_INFLUX_URL` — Uploader wartet (Backoff 60 s → 15 min), der Puffer läuft weiter |
+| `HTTP 401 — Token fehlt/falsch` | `TANKAPP_INFLUX_TOKEN` prüfen (NAS: `influx auth list`) |
+| `HTTP 403 — keine Schreibberechtigung` | Token neu anlegen mit `--write-bucket prices` (3.1) |
+| `HTTP 404 — Org/Bucket existiert nicht` | `TANKAPP_INFLUX_ORG`/`_BUCKET` gegen NAS prüfen (`influx org list`, `influx bucket list`) |
+| `HTTP 400 — Line Protocol abgelehnt` | Fehlertext im Log — sollte nicht vorkommen, dann hier melden |
+| `⚠ PUFFER ÜBERFÜLLT …` | älteste unsynced Zeile ≥ 6 Tage — NAS-Ausfall zu lang, älteste Daten gehen FIFO verloren (Ringtiefe 7 Tage) |
+| `⚠ Stationsnamen nicht verfügbar` | `polling.json` fehlt auf dem Pi (2.2) — station-Tag enthält dann die UUID statt des Namens |
+
+### 3.4 systemd-Service (mit Watchdog)
+
+```bash
+sudo tee /etc/systemd/system/tankapp-uploader.service > /dev/null <<'UNIT'
+[Unit]
+Description=TankApp M1 InfluxDB-Uploader (JSONL-Ringpuffer → NAS)
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=pi
+WorkingDirectory=/home/pi/TankApp
+EnvironmentFile=/etc/tankapp/env
+Environment=TANKAPP_POLL_DIR=/dev/shm/tankapp
+ExecStart=/usr/bin/python3 /home/pi/TankApp/data-tools/upload_influx.py
+Restart=always
+RestartSec=10
+WatchdogSec=30
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now tankapp-uploader
+```
+
+`Type=notify`: der Uploader meldet `READY=1` beim Start und `WATCHDOG=1`
+alle 10 s (per sd_notify, reine Standardbibliothek); bei `WatchdogSec=30`
+startet systemd den Dienst neu, wenn er hängt. Ein NAS-Ausfall ist **kein**
+Fehlerzustand der Service — sie pingt weiter und schiebt nach, sobald der
+NAS zurück ist. Nach jeder Änderung an `EnvironmentFile`/Unit:
+`sudo systemctl restart tankapp-uploader`.
+
+### 3.5 Betrieb & Kontrolle
+
+```bash
+systemctl status tankapp-uploader
+journalctl -u tankapp-uploader -f       # Ping alle 60 s, Upload bei neuen Zeilen
+cat /dev/shm/tankapp/meta/synced_until  # Ack-Stand (letzte übertragene Zeile)
+
+# Datenvolumen auf dem NAS (erwartet: ~215–216 Punkte je offenen Station/Tag,
+# Fenster 06–24 Uhr / 5 min):
+cd ~/TankApp/ops/nas/influxdb
+docker compose exec influxdb influx query \
+  'FROM bucket("prices") |> range(start: -24h) |> group(by: ["station"]) |> count()'
+```
+
+**Lücken-Check (Abnahme, 14 Tage, Lücken < 2 %):** pro Station und Tag sind
+~216 Polls zu erwarten (18 h / 5 min); über 14 Tage ~3 000 — Lücken < 2 %
+bedeuten ≥ ~2 940 Punkte pro Station. Abweichungen im `journalctl`-Log des
+Collectors suchen (429s, Fenster, Key).
+
+### 3.6 Backup (NAS)
+
+Der Ringpuffer auf dem Pi wird **bewusst nicht** gesichert (7-Tage-Fenster
+im RAM; die Langzeit-Historie liegt ab jetzt in InfluxDB). Wöchentliches
+Tar-Backup des InfluxDB-Volumes per cron auf dem NAS:
+
+```cron
+0 3 * * 0 cd $HOME/TankApp/ops/nas/influxdb && docker run --rm \
+    -v tankapp_influxdb_data:/data -v $PWD/backup:/backup alpine \
+    tar czf /backup/influxdb-$(date +\%F).tar.gz -C /data .
+```
+
+Restore: neues leeres Volume anlegen, dann
+
+```bash
+docker run --rm -v tankapp_influxdb_data:/data -v $PWD/backup:/backup alpine \
+    tar xzf /backup/influxdb-<datum>.tar.gz -C /data
+```
+
+danach `docker compose up -d` (Org/Bucket/Token sind im Volume enthalten).
+
+### 3.7 M1-Abnahme: 14 Tage Live-Betrieb
+
+Konzept §13: M1 ist erfüllt, wenn **Collector + Ringpuffer + Uploader
+14 Tage** durchgelaufen sind und
+
+1. **Datenlücken < 2 %** (Lücken-Check in §3.5),
+2. **Ack-Protokoll fehlerfrei**: keine verlorene Zeile, keine Duplikate —
+   `meta/synced_until` ist stets ≥ dem Zeitstempel der zweit-neuesten
+   Pufferzeile (nur die allerneuste darf noch offen sein), und die
+   Punktezahl in InfluxDB stimmt mit der Zeilenzahl im Puffer überein.
+
+Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich §3.5
+durchgehen und das Backup (§3.6) prüfen.
 
 ---
 
@@ -338,6 +491,10 @@ sammelt schon die Historie.
 | Dauerbetrieb (Vordergrund) | `python3 data-tools/collect_prices.py` | Pi |
 | Puffer-Verzeichnis setzen | `TANKAPP_POLL_DIR=/dev/shm/tankapp …` (oder `--out`) | Pi |
 | Fenster/Intervall ändern | `--window-start 6 --window-end 24 --interval 300` | Pi |
+| Uploader: was gesendet WÜRDE | `python3 data-tools/upload_influx.py --dry-run` | Pi |
+| Uploader: ein Upload-Zyklus | `python3 data-tools/upload_influx.py --once` | Pi |
+| Collector-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-collector` | Pi |
+| Uploader-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-uploader` | Pi |
+| Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
+| InfluxDB-Check (Ping + Daten) | `docker compose exec influxdb influx ping` / `influx query …` (siehe §3.5) | NAS |
 | Pipeline (Polling-Set bauen) | `py -3 data-tools/run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | PC |
-| Dienst starten/stoppen | `sudo systemctl start/stop/restart tankapp-collector` | Pi |
-| Log ansehen | `journalctl -u tankapp-collector -f` | Pi |

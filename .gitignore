@@ -22,3 +22,6 @@ _netrc
 
 # Tankerkoenig-API-Key-Datei fuer den Collector (data-tools/collect_prices.py)
 data/apikey.txt
+
+# InfluxDB-Config auf dem NAS (Admin-Token) — nie versionieren
+ops/nas/influxdb/.env
