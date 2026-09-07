@@ -278,6 +278,43 @@ Häufigster Fall in der Praxis: Der Dienst lief noch mit der **alten** Unit/
 dem **alten** Key (siehe 2.4: erst `systemctl restart`!) oder `apikey.txt`
 war leer bzw. enthielt nur den Platzhalter aus dem Beispiel.
 
+### 2.8 Sicherung & Wiederherstellung des Pi
+
+Der Code liegt auf GitHub, aber **zwei Dateien sind gitignored** und existieren
+nur auf dem Pi. Sie müssen ins Pi-Backup (z. B. `smart_backup.sh` aufs NAS)
+aufgenommen werden, sonst ist der Collector nach einem Restore lahm:
+
+| Was | Pfad | Inhalt |
+|---|---|---|
+| API-Key | `~/TankApp/data/apikey.txt` | privater Tankerkönig-Key (chmod 600) |
+| Polling-Set | `~/TankApp/docs/analysis/stations/polling.json` | die 10 UUIDs + private Koordinaten |
+| systemd-Unit | `/etc/systemd/system/tankapp-collector.service` | Custom-Unit (Environment) |
+| tmpfs-Zeile | `/etc/fstab` (Zeile `/dev/shm/tankapp`) | RAM-Puffer-Mount |
+
+**Bewusst NICHT sichern:** `/dev/shm/tankapp/*.jsonl` — das ist der 7-Tage-
+Ringpuffer im RAM, er wird nach einem Neustart ohnehin neu aufgebaut. Die
+Langzeit-Historie kommt ab M2 vom NAS-Uploader (InfluxDB).
+
+Minimal-Snippet fürs Backup-Skript:
+
+```bash
+mkdir -p "$TARGET/tankapp"
+cp ~/TankApp/data/apikey.txt "$TARGET/tankapp/apikey.txt"
+cp ~/TankApp/docs/analysis/stations/polling.json "$TARGET/tankapp/polling.json"
+cp /etc/systemd/system/tankapp-collector.service "$TARGET/tankapp/" 2>/dev/null
+```
+
+Beim Restore: Repo klonen (`git clone`/`git pull`), die zwei Dateien
+zurückkopieren, Unit nach `/etc/systemd/system/` legen, tmpfs-Zeile in
+`/etc/fstab` ergänzen und `systemctl enable --now tankapp-collector`.
+Der Key gehört `pi:pi` mit `chmod 600`. Für den RAM-Puffer ist die
+`uid=pi,gid=pi`-Variante praktisch, dann entfällt das `chown` nach jedem
+Boot:
+
+```
+tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,uid=pi,gid=pi  0  0
+```
+
 ---
 
 ## 3. Phase C — NAS (später, nicht Teil von M1)
