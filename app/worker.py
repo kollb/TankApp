@@ -18,12 +18,16 @@ def execute(name, settings):
     if name == "archive":
         if not settings.netrc.is_file() or settings.netrc.stat().st_size == 0:
             return {"state": "waiting", "error_code": "archive_not_configured"}
+        # State/lock in the runtime dir (SSD-friendly): the hourly run must
+        # not wake a sleeping archive disk (Unraid HDD pools).
         code = tankapp.history_sync(
             argparse.Namespace(
                 archive_dir=settings.archive,
                 days=settings.history_days,
                 since=None,
                 netrc=settings.netrc,
+                state_dir=settings.runtime / "jobs" / "archive-sync",
+                force=False,
             ),
             today=dt.datetime.now(ZoneInfo("Europe/Berlin")).date(),
         )

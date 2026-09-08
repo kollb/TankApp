@@ -58,7 +58,7 @@ npm --prefix web run test:e2e
 
 Für eine lokale Vorschau nach dem Build: `python tankapp.py serve`; nur mit
 `--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten ihren
-eigenen Server, sofern auf Port 8080 keiner läuft. `app/requirements.txt` enthält
+eigenen Server, sofern auf Port 1355 keiner läuft. `app/requirements.txt` enthält
 die Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
 
 Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git.

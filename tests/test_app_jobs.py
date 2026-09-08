@@ -1,6 +1,7 @@
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
 
 import pytest
@@ -195,6 +196,82 @@ def test_nas_up_reuses_influx_and_mounts_secrets_read_only(
     assert "private-token" not in stored
     assert json.loads(stored)["history_days"] == 365
     assert model_setup.polling.read_text().count(UID) == 2  # no active-set changes
+
+
+def test_nas_up_applies_and_remembers_explicit_container_uid_gid(
+    model_setup, monkeypatch, tmp_path
+):
+    import app.nas as nas
+
+    monkeypatch.setattr(nas, "ROOT", tmp_path)
+    monkeypatch.setattr("tankapp.netrc_args", lambda *a: [])
+    calls = []
+
+    def command(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(nas.subprocess, "run", command)
+    args = argparse.Namespace(
+        polling=model_setup.polling,
+        influx_env=model_setup.influx_env,
+        archive_dir=model_setup.archive,
+        runtime_dir=model_setup.runtime,
+        uid=99,
+        gid=100,
+    )
+    assert nas.up(args) == 0
+    env = calls[-1][1]["env"]
+    assert env["TANKAPP_UID"] == "99" and env["TANKAPP_GID"] == "100"
+    stored = json.loads((tmp_path / "data/nas-settings.json").read_text())
+    assert stored["uid"] == 99 and stored["gid"] == 100
+    # A later run without flags keeps the stored Unraid IDs.
+    calls.clear()
+    assert (
+        nas.up(
+            argparse.Namespace(
+                polling=model_setup.polling,
+                influx_env=model_setup.influx_env,
+                archive_dir=model_setup.archive,
+                runtime_dir=model_setup.runtime,
+            )
+        )
+        == 0
+    )
+    env = calls[-1][1]["env"]
+    assert env["TANKAPP_UID"] == "99" and env["TANKAPP_GID"] == "100"
+
+
+def test_nas_up_defaults_to_executing_user_without_flags(
+    model_setup, monkeypatch, tmp_path
+):
+    import app.nas as nas
+
+    monkeypatch.setattr(nas, "ROOT", tmp_path)
+    monkeypatch.setattr("tankapp.netrc_args", lambda *a: [])
+    monkeypatch.delenv("SUDO_UID", raising=False)
+    monkeypatch.delenv("SUDO_GID", raising=False)
+    calls = []
+
+    def command(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(nas.subprocess, "run", command)
+    assert (
+        nas.up(
+            argparse.Namespace(
+                polling=model_setup.polling,
+                influx_env=model_setup.influx_env,
+                archive_dir=model_setup.archive,
+                runtime_dir=model_setup.runtime,
+            )
+        )
+        == 0
+    )
+    env = calls[-1][1]["env"]
+    assert env["TANKAPP_UID"] == str(os.getuid())
+    assert env["TANKAPP_GID"] == str(os.getgid())
 
 
 def test_nas_container_rejects_host_localhost_url(model_setup, monkeypatch, tmp_path):
