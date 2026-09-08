@@ -42,3 +42,12 @@ node_modules/
 .env.local
 .env.*.local
 *.tsbuildinfo
+
+# Compiled application assets are built by the NAS image / local web build
+/web/dist/
+/web/test-results/
+/web/playwright-report/
+
+# Private NAS read access, also when placed outside data/
+influx.env
+netrc

@@ -8,9 +8,9 @@ Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 **[Installation und nächster Schritt → docs/INSTALL.md](docs/INSTALL.md)**
 
 1. **Gütersloh ins gemeinsame Polling aufnehmen.** Frankfurt läuft weiter.
-2. **Vorhandene GUI mit echten Live-Preisen verbinden.** Nicht auf fertige Prognosen warten.
+2. **NAS-App mit echten Live-Preisen starten.** Nicht auf fertige Prognosen warten.
 3. **Parallel das NAS-Archiv automatisch aufbauen:** ein Jahr oder mehr Tankerkönig-Historie, fehlende Tage nachholen.
-4. **Berechnung auf dem NAS automatisieren**, danach geprüfte Empfehlungen in derselben GUI ergänzen.
+4. **NAS-App berechnet und veröffentlicht automatisch**, danach geprüfte Empfehlungen in derselben GUI ergänzen.
 
 | Gerät | Aufgabe im Endzustand |
 |---|---|
@@ -18,11 +18,16 @@ Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 | **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits, API und Web-GUI. |
 | **PC / Handy** | GUI im Browser. PC optional zur Einrichtung oder für schnellere Rechenläufe; kein Dauerbetrieb und keine verpflichtende venv. |
 
-**Stand 08.09.2026:** Collector/Uploader und Offline-Engine vorhanden. Neu sind
-gebündelte Stadtaufnahme, Mehrstadt-Polling und ein NAS-Archiv-Sync für cron bzw.
-NAS-Aufgabenplanung. Diese Programme sind getestet, auf deinen Geräten aber noch
-nicht aktiviert. Die produktive GUI-/API-Anbindung und automatische Modellveröffentlichung
-sind noch offen. Die GUI-Vorlagen sind keine bereits fertige Live-App.
+**Stand 08.09.2026:** Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/
+System, Nur-Lese-API und gebündelter NAS-App-Dienst sind implementiert. Ein Start
+über `python3 tankapp.py nas-up` übernimmt GUI, Archiv-Nachholung und automatische
+Modellberechnung/-veröffentlichung. Bestehende InfluxDB weiterverwenden; Ablauf
+und private Konfiguration stehen ausschließlich in der Installationsanleitung.
+
+**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen
+Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt die GUI den
+Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und
+nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
 
 <details>
 <summary>Nur für Entwicklung und Fehlersuche — keine zusätzliche Installationsreihenfolge</summary>
@@ -40,6 +45,21 @@ vorhandenem Python 3.11+, ohne neue venv:
 py -3 -m pip install -r requirements-dev.txt
 py -3 -m pytest -q
 ```
+
+Frontend-Prüfungen (nur Entwicklung, Node 22):
+
+```bash
+npm --prefix web ci
+npm --prefix web test
+npm --prefix web run build
+npx --prefix web playwright install chromium
+npm --prefix web run test:e2e
+```
+
+Für eine lokale Vorschau nach dem Build: `python tankapp.py serve`; nur mit
+`--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten ihren
+eigenen Server, sofern auf Port 8080 keiner läuft. `app/requirements.txt` enthält
+die Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
 
 Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git.
 Die Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben erhalten.

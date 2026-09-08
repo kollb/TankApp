@@ -19,11 +19,11 @@ Tankerkönig-Archiv ────────────────────
 
 - **Pi:** 24/7 sammeln und hochladen, keine Jahresarchive herunterladen oder Modelle fitten.
 - **NAS:** dauerhafter Daten- und App-Server. Archivabruf, Lückennachholung,
-  InfluxDB, künftig automatische Fits, API und GUI. Eine bestehende InfluxDB
+  InfluxDB, automatische Fits, API und GUI. Eine bestehende InfluxDB
   weiterverwenden; keine zweite Instanz anlegen.
 - **PC:** optional einrichten oder Rechenläufe beschleunigen. Für den Alltag nur
   ein Browser. **Keine verpflichtende venv, kein tägliches Kopieren aufs NAS.**
-- **Wenn das NAS aus ist:** keine NAS-Jobs und später keine dort gehostete GUI.
+- **Wenn das NAS aus ist:** keine NAS-Jobs und keine dort gehostete GUI.
   Der Pi sammelt weiter; der bestehende RAM-Puffer überbrückt bis zu sieben Tage,
   aber keinen Pi-Neustart/Stromverlust. Archivdateien werden beim nächsten
   NAS-Lauf nachgeholt. Das ersetzt keine verlorenen Live-Statusbeobachtungen.
@@ -33,15 +33,17 @@ Tankerkönig-Archiv ────────────────────
 | Schritt | Ergebnis für dich | Heute ausführbar? |
 |---|---|---|
 | **1. Gütersloh mitpolling starten** | Beide Städte sammeln Live-Daten, ohne Preis-Historienanalyse abzuwarten. | Ja: Vorbereitung + Aktivierung unten. |
-| **2. Echte Preise in die vorhandene GUI** | Stadt auswählen, Preise/Status/Alter sehen; noch keine erfundene Warteempfehlung. | Nächster Entwicklungsbaustein; Live-Anbindung noch nicht fertig. |
-| **Parallel: NAS-Archiv einschalten** | Ein Jahr oder mehr Vorgeschichte wird selbstständig geladen und vervollständigt. | Ja: ein Sync-Befehl + einmalige Zeitplanung unten. Blockiert Schritt 1/2 nicht. |
-| **3. NAS-Berechnung automatisieren** | Archiv und Polling aufbereiten, Modelle erneuern, letzte gute Veröffentlichung bei Fehlern behalten. | Einzelwerkzeuge vorhanden, gesamte Job-/Veröffentlichungskette noch offen. |
+| **2. NAS-App starten** | Echte Preise, Stadt/Kraftstoff wählen, Status und Datenalter sehen. | Implementiert: `nas-up` unten. Keine erfundene Warteempfehlung. |
+| **Parallel: NAS-Archiv aufbauen** | Ein Jahr oder mehr Vorgeschichte, fehlende Tage nachholen. | Im App-Dienst enthalten; blockiert Live-Preise nicht. |
+| **3. Automatische Berechnung** | Aufbereitung, Fits, Prüfwerte und Veröffentlichung; letzte gute Ergebnisse bei Fehlern behalten. | Im App-Dienst enthalten, zunächst ausdrücklich unkalibriert. |
 | **4. Empfehlungen in derselben GUI** | Jetzt / warten / woanders mit nachvollziehbarem Netto-Vorteil. | Nach Echt-Datenprüfung und Kalibrierung, nicht nach einer pauschalen 90-Tage-Frist. |
 
 **Für deine bestehende Installation gilt:** Pi-Collector, Uploader und InfluxDB
 nicht neu installieren. Zuerst denselben aktuellen TankApp-Code auf den verwendeten
-Geräten bereitstellen. Die folgenden Programme brauchen nur vorhandenes Python
-3.11+ und die Standardbibliothek, **keine pip-/venv-Einrichtung**.
+Geräten bereitstellen. Die gebündelten Einrichtungsbefehle brauchen auf dem jeweiligen Gerät nur
+Python 3.11+ und die Standardbibliothek, **keine pip-/venv-Einrichtung**.
+Auf dem NAS wird zusätzlich Docker mit Compose v2 benötigt; das App-Image
+installiert seine Rechenpakete und baut die GUI selbst.
 Die Aktivierung ist für die bestehenden Standard-systemd-Dienste vorgesehen;
 abweichende Startpfade oder ein festes `--poll-city` werden nicht heimlich geändert.
 
@@ -95,7 +97,8 @@ Freigabe. Alternativ zeigt `--archive-dir <Verzeichnis>` auf das NAS-Archiv.
 Wenn kein Archivzugang auf dem Pi eingerichtet ist, ist das der Weg ohne einen
 zusätzlichen Zugang auf dem Pi. Danach nur `data/setup/polling.json` auf den Pi
 an denselben relativen Ort übertragen und dort den Aktivierungsbefehl ausführen.
-Ankerkonfiguration für spätere Berechnungen auch privat auf dem NAS bereitstellen.
+Für die Preis-GUI genügen die Stationsmetadaten im gemeinsamen Polling-Set;
+private Anker werden nicht an den Browser übertragen.
 
 Andere Stadt: `--city Name`; Radius/Anzahl nur bei Bedarf mit `--radius`/`--size`.
 Die Standard-Aktivierung erwartet `tankapp-collector` und `tankapp-uploader` als
@@ -104,79 +107,127 @@ oder Dateipfade zu erraten. Der Vorschlag ist kein Deployment des Programm-Codes
 
 </details>
 
-## Parallel auf dem NAS: Archiv einmal einschalten, danach automatisch
+## Danach auf dem NAS: ein App-Dienst für GUI, Archiv und Berechnung
 
-**Das NAS ist der Hauptspeicher für die Tankerkönig-Historie.** Preis- **und**
-Stationsdateien werden als komprimierte Tagesdateien gespeichert, nicht als
-riesiger Git-Clone und nicht als vorgetäuschtes Polling in InfluxDB importiert.
-Ein Jahr ist der Startwert, keine Obergrenze und keine Löschfrist. Das Modell
-muss nicht bei jedem Fit den kompletten Jahresbestand verwenden.
+**Einmalig bereitstellen**, auf dem NAS im aktuellen TankApp-Checkout:
 
-Einmalig sicherstellen:
+1. Das **aktive gemeinsame** `docs/analysis/stations/polling.json` vom Pi,
+   nach dessen Aktivierung — nicht den alten Frankfurt-Stand. Bei späteren
+   Änderungen dieselbe Datei erneut bereitstellen und `nas-up` wiederholen.
+2. `data/influx.env` mit dem vorhandenen InfluxDB-Lesezugang. Format siehe
+   technische Referenz unten: `TANKAPP_INFLUX_URL`, `TANKAPP_INFLUX_ORG`,
+   `TANKAPP_INFLUX_BUCKET`, `TANKAPP_INFLUX_TOKEN`. Möglichst eigenen
+   **Nur-Lese-Token** für denselben Bucket nutzen; den Pi-Schreibzugang nicht ändern.
+   Die URL muss aus dem Container erreichbar sein, z. B. die NAS-LAN-Adresse
+   mit Port 8086 — **nicht `localhost`**.
+3. Den vorhandenen Tankerkönig-Archivzugang privat als `data/_netrc` oder
+   `~/.netrc` für den ausführenden NAS-Benutzer. Das ist **nicht** der
+   Collector-API-Key. Keine Zugangsdaten in Git, Befehlszeilen oder Chat.
+   Ohne Archivzugang kann die Live-GUI trotzdem starten.
 
-- TankApp-Code und Python auf dem NAS; genügend freier Speicher im gewählten Datenverzeichnis.
-- Derselbe Archivzugang wie bisher, nun auch **für den ausführenden NAS-Benutzer**:
-  vorhandene netrc-Datei privat ablegen (`data/_netrc`, `~/.netrc` oder explizit
-  `--netrc /privater/pfad`). Datei nur für diesen Benutzer lesbar. Keine
-  Zugangsdaten in cron, Git oder Chat. Das ist nicht der Collector-API-Key.
-
-**Ein Befehl für Erstbefüllung und jeden späteren Lauf:**
+Dann auf dem NAS:
 
 ```bash
-python3 tankapp.py history-sync --archive-dir /srv/tankapp/archive
+python3 tankapp.py nas-up
 ```
 
-`/srv/tankapp/archive` ist ein **Beispielpfad**; einmal durch deinen dauerhaften
-NAS-Datenpfad ersetzen (nicht ins flüchtige Container-Dateisystem schreiben).
-Für zwei Jahre `--days 730`, für einen festen früheren Beginn z. B.
-`--since 2025-01-01` ergänzen. Spätere Läufe verschieben den gespeicherten Beginn
-nicht nach vorne. Ältere Dateien werden nicht gelöscht.
+Danach im Browser **`http://<NAS-Adresse>:8080`** öffnen. Das NAS braucht Docker
+mit Compose v2 und beim ersten Build Internetzugang. Auf dem PC/Handy braucht
+es weder Node noch Python-Pakete. Bestehende InfluxDB, Collector und Uploader
+werden von diesem Befehl **nicht neu installiert oder verändert**.
 
-**Einmal in der NAS-Aufgabenplanung hinterlegen:** als derselbe Benutzer beim
-NAS-Start und danach stündlich ausführen. Alternativ cron; Python-/Repository-/
-Datenpfad einmal anpassen, keine spätere Pflege des Datums nötig:
+Andere Speicher-/Konfigurationspfade beim ersten Aufruf angeben, beispielsweise:
 
-```cron
-@reboot /usr/bin/python3 /srv/tankapp/TankApp/tankapp.py history-sync --archive-dir /srv/tankapp/archive >> /srv/tankapp/history-sync.log 2>&1
-17 * * * * /usr/bin/python3 /srv/tankapp/TankApp/tankapp.py history-sync --archive-dir /srv/tankapp/archive >> /srv/tankapp/history-sync.log 2>&1
+```bash
+python3 tankapp.py nas-up --archive-dir /srv/tankapp/archive --runtime-dir /srv/tankapp/runtime --polling /privater/pfad/polling.json --influx-env /privater/pfad/influx.env --netrc /privater/pfad/netrc
 ```
 
-Wähle **NAS-Aufgabenplanung oder cron**, nicht beides. Manche NAS verwalten ihre
-crontab selbst; dort die Aufgabenplanung benutzen. Kein separater Hintergrund-
-Downloader zusätzlich zum geplanten Job. Die Prozesssperre verhindert überlappende
-Downloads; ein zweiter Lauf meldet „bereits ein Prozess“ statt doppelt zu laden.
-Der erste Jahresabruf darf länger dauern; spätere Läufe überspringen vorhandene Dateien.
+Das sind **Beispielpfade**, keine zusätzlich anzulegenden Pflichtverzeichnisse.
+Ohne Optionen liegen Archiv und Laufdaten dauerhaft unter `data/raw` und
+`data/runtime` im NAS-Checkout, nicht im flüchtigen Container-Dateisystem.
+Der ausführende Benutzer benötigt Docker-Zugriff, Lesezugriff auf die privaten
+Dateien und Schreibzugriff auf Archiv/Laufdaten. Neu angelegte Ausgabeordner
+bekommen bei `sudo` den ursprünglichen Benutzer; vorhandene NAS-ACLs werden
+nicht rekursiv verändert. Private Dateien nur für diesen Benutzer lesbar halten.
 
-**Verhalten ohne Handarbeit:**
+**Start und spätere Updates bleiben derselbe Befehl:** `python3 tankapp.py nas-up`.
+Er merkt sich Pfade/Optionen in der privaten `data/nas-settings.json`, baut das
+aktuelle App-Image und startet es neu. Der Code selbst muss vorher aktualisiert
+werden. Auch nach Austausch privater Konfigurationsdateien diesen Befehl wiederholen,
+weil die Dateien schreibgeschützt eingebunden sind. Zugangsdaten kommen nicht ins Image.
 
-- Immer bis gestern prüfen, **alle fehlenden Tage seit dem gespeicherten Beginn**
-  nachladen — nicht bloß `--since yesterday`. So werden NAS-Auszeiten und ältere
-  Download-Lücken geschlossen.
-- Bestehende nichtleere Tagesdateien überspringen, Download erst über `.part`
-  vollständig schreiben und danach umbenennen. Abbruch kann erneut gestartet werden.
-- Noch nicht veröffentlichte Dateien (404), Netz-/Zugriffsfehler und leere Dateien
-  zählen nicht als vollständiger Bestand; nächster Lauf versucht es wieder.
-- Status in `<Archiv>/.sync/state.json`: `complete`/`incomplete`, fehlende Dateien
-  und letzter vollständig abgedeckter Tag. `complete` prüft Dateivollständigkeit,
-  nicht fachliche Preisqualität oder Integrität bereits vorhandener Altdateien.
-- Der Job **ändert keine Dienste, Modelle, InfluxDB-Daten oder Polling-Sets** und
-  fragt im cron-Betrieb nie interaktiv nach einem Passwort.
+**Nur Heimnetz/VPN:** Die App hat bewusst noch keine Benutzeranmeldung. Keine
+ungeschützte Portfreigabe ins Internet. Für TLS einen vorhandenen privaten
+NAS-Reverse-Proxy verwenden; die API bleibt unter derselben Browser-Adresse.
 
-## Danach musst du nicht noch fünf Werkstatt-Anleitungen abarbeiten
+### Was danach automatisch läuft
 
-Der nächste Entwicklungsauftrag ist die **Live-GUI mit Stadtwahl und Datenalter**,
-auf Basis von `sample/good gui` und `sample/good statistic gui`. Dazu gehören
-NAS-API und ein gemeinsamer Start-/Updateweg. Modellveröffentlichung und
-kalibrierte Empfehlungen kommen anschließend; der laufende Archiv-Sync liefert
-bereits die Vorgeschichte. Derzeit existiert **noch kein fertiger GUI-Installationsbefehl**.
+| Aufgabe | Zeitplanung und Verhalten |
+|---|---|
+| **GUI + Nur-Lese-API** | Ein gemeinsamer Dienst. Preise alle 30 Sekunden neu lesen; Anzeige höchstens 30 Minuten alter, offener Preisbeobachtungen. Keine zusätzlichen Tankerkönig-Live-Requests. |
+| **Archiv** | Bei App-/NAS-Start, danach stündlich. Preis- und Stationsdateien bis gestern; alle fehlenden Tage seit gespeichertem Beginn nachladen. |
+| **Modelle** | Bei App-/NAS-Start, danach täglich nach erfolgreichem Lauf. Bei fehlenden Daten/Fehlern stündlich erneut versuchen. Läuft unabhängig vom Archivabruf. |
+| **Veröffentlichung** | Erst nach fertiger Berechnung atomar ersetzen. Teilweise erneuerte Stationen kennzeichnen alte Ergebnisse; ohne erfolgreichen Fit bleibt der letzte brauchbare Stand erhalten. |
+| **Neustart** | Docker `restart: unless-stopped`; startet mit Docker auf dem NAS, sofern nicht ausdrücklich gestoppt. Zeitplanung braucht keinen PC und holt nach dem Start nach. |
 
-Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
-Die vorhandene Bootstrap-Engine nutzt Archiv vor Beginn der Live-Beobachtungen,
-dann Polling. Standardtraining: letzte 42 Tage; 90 ausreichend abgedeckte Live-
-Tage können die ältere Archiv-Vorgeschichte aus der Trainingsdatei entfernen.
-**Das löscht nicht das NAS-Archiv und schaltet seinen cron-Job nicht ab.** Das
-Archiv bleibt für weitere Städte, Vergleiche und längere Forschungsfenster nützlich.
-Die genaue Modellregel ist Entwicklerreferenz, keine Installationshandlung.
+**Keinen zusätzlichen cron-Job einrichten.** Der gebündelte App-Dienst übernimmt
+jetzt die früher separat beschriebene NAS-Zeitplanung. Bereits eingerichtete
+`history-sync`-/Modell-cron-Jobs einmal deaktivieren, nicht zusätzlich laufen lassen.
+`history-sync` bleibt als Einzelwerkzeug für Installationen ohne App-Dienst erhalten.
+Prozesssperren schützen vor überlappenden Läufen.
+
+**Archivumfang:** standardmäßig **365 Tage**, für zwei Jahre beim `nas-up`-Aufruf
+`--history-days 730` ergänzen. Ein Jahr ist keine Obergrenze und keine Löschfrist:
+der gespeicherte Beginn wird bei Folgeläufen nicht nach vorne verschoben,
+ältere Rohdateien bleiben erhalten. Genügend NAS-Speicher einplanen — es ist das
+nationale Tagesarchiv, nicht nur das kleine Stationsset. Modelle verwenden einen
+kleineren, abgeleiteten Ausschnitt; der komplette Bestand wird nicht jedes Mal gefittet.
+
+Abgebrochene Downloads werden über temporäre Dateien fortgesetzt/neu versucht;
+vorhandene nichtleere Tagesdateien werden übersprungen. 404, leere Dateien und
+Zugriffsfehler lassen den Bestand unvollständig. Der Systembereich zeigt Lücken
+und letzten vollständigen Tag. **Dateivollständigkeit ist noch keine fachliche
+Preisqualitätsprüfung oder Integritätsprüfung bereits vorhandener Altdateien.**
+
+**Modellumfang:** zunächst E10; bei Bedarf `--model-fuels e10,e5,diesel` ergänzen.
+Die Live-GUI unterstützt alle drei Kraftstoffe unabhängig davon. Die Kette liest
+InfluxDB, verarbeitet rohe Archiv-Änderungsereignisse mit exakten Zeitstempeln,
+erzeugt den gemeinsamen Trainingsbestand, fittet/publiziert den 24-Stunden-Ausblick
+und berechnet einen siebentägigen retrospektiven Backtest. Das ist **kein
+zeitgetreuer Betriebs-Replay und kein Kalibrierungsnachweis**.
+
+Archiv und Polling sind **dieselben Tankerkönig-Marktdaten über zwei Bezugswege**.
+Historie kann den Modellstart tragen; es gibt **keine dreimonatige Wartepflicht**.
+Standardtraining: letzte 42 Tage, Archiv nur vor Beginn der Live-Beobachtungen;
+es repariert danach keine Live-Lücken oder beobachteten Schließungen.
+Nach 90 vollständigen Live-Tagen mit ausreichender tatsächlicher Polling-Abdeckung
+kann je Station/Kraftstoff auf Polling-only umgestellt werden. Die Statistik zeigt
+Fortschritt und verwendete Regel. **Das NAS-Roharchiv und sein Sync bleiben bestehen.**
+
+### Was du in der GUI siehst — und was noch nicht freigegeben ist
+
+- **Alltag:** Stadt/Kraftstoff, günstigster aktuell gemeldeter offener Preis,
+  Datenalter, Tankmenge, reiner Preisvergleich und Route bei gültigen Koordinaten.
+  Stadt, Kraftstoff und Tankmenge merkt sich der Browser. Keine Tankbuchung,
+  keine als netto ausgegebene Umweg-Ersparnis.
+- **Statistik:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
+  Backtestwerte samt Datenbasis. Fehlende/alte Modelle sind sichtbar markiert.
+- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte Veröffentlichung.
+  Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine Demo-Preise.
+
+**Einmalige Echt-Daten-Abnahme:** Nach dem Start im Alltag beide Städte und den
+gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte
+Preise. Unter System müssen der Lesezugang und nach dem ersten Abruf die
+Archiv-/Job-Stände passen. Ein laufender Container allein bestätigt das nicht.
+NAS-Auszeiten und Pi-Puffergrenze stehen bei den Rollen oben.
+
+**Stand dieser Lieferung:** GUI, API, App-Start, Archiv-Zeitplanung und
+Modellveröffentlichung sind implementiert und softwaregetestet. Der Docker-Build
+und der Betrieb mit deinen privaten Daten auf deinem NAS sind hier noch nicht
+abgenommen. Zweitmodell/Ensemble, weitere Modellbausteine, echte Güteprüfung und
+Out-of-sample-Kalibrierung bleiben offen; deshalb weiterhin
+`calibrated=false` / `decision_ready=false`. Noch kein belastbares „bis 18 Uhr
+warten“, keine erfundenen Wahrscheinlichkeiten oder garantierten Ersparnisse.
 
 ---
 
@@ -189,7 +240,8 @@ abzuarbeiten. Bestehende Dienste, Buckets und Secrets weiterverwenden.
 
 ## 2. Technische Referenz — Collector auf dem Raspberry Pi (24/7)
 
-Getestet mit Raspberry Pi OS (Lite reicht), Python 3.9+ ist vorinstalliert.
+Raspberry Pi OS (Lite reicht). Für den gebündelten Launcher Python 3.11+
+verwenden; auf älteren Images zuerst die Python-Version prüfen.
 
 ### 2.1 Repo auf den Pi bringen
 

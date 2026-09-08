@@ -4,7 +4,7 @@
 stehen in [INSTALL.md](../docs/INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
 NAS-Archiv parallel füllen, danach automatische Berechnung/Empfehlungen.
 
-Im Endzustand laufen Archiv, Aufbereitung und Fits auf dem NAS. Der Windows-PC
+Der gebündelte NAS-App-Dienst führt Archivabruf, Aufbereitung und Fits aus. Der Windows-PC
 kann optional schneller rechnen; dafür vorhandenes Python 3.11+ verwenden,
 **keine neue venv erforderlich**. Für `tankapp.py add-city` und `history-sync`
 sind auch die untenstehenden Python-Pakete nicht nötig.
@@ -24,8 +24,13 @@ Das Modell verwendet standardmäßig nur die letzten 42 Tage. **Das NAS-Roharchi
 und sein Sync laufen unabhängig davon weiter**, auch für ein Jahr oder mehr.
 
 Die M2-CSVs können bereits rückwärts beschriftete Median-Buckets und Fortschreibungen
-enthalten. Bootstrap macht daraus keinen zeitgenauen Live-Replay. Ereignisgenauer
-Archivadapter, Out-of-sample-Kalibrierung und echte Güteabnahme bleiben offen.
+enthalten. Bootstrap macht daraus keinen zeitgenauen Live-Replay. Der NAS-Dienst
+verwendet deshalb `app/history.py`: rohe Änderungsereignisse mit exakten,
+offsetbehafteten Zeitstempeln, Änderungsflags und Löschsperren, keine M2-Median-
+Buckets. Der Rohbestand wird nicht gelöscht. `app/refresh.py` bündelt Export,
+Bootstrap, Fits, retrospektiven Backtest und atomare Veröffentlichung; diese
+kann mit `python tankapp.py refresh-models` auch optional lokal angestoßen werden.
+Out-of-sample-Kalibrierung, Betriebs-Replay und echte Güteabnahme bleiben offen.
 `decision_ready=false` und `calibrated=false` bleiben deshalb richtig.
 
 Entwicklerbeispiel (kein täglicher Bedienablauf):

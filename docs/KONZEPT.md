@@ -4,7 +4,9 @@
 > ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
 > laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
-> Güte- und Kalibrierungsziele sind erst nach einem echten Backtest abgenommen.
+> `web/` und `app/` implementieren inzwischen Live-GUI, Nur-Lese-API und
+> automatische NAS-Archiv-/Modelljobs. Kein Nachweis des Betriebs auf dem Ziel-NAS.
+> Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
 > Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
@@ -1146,7 +1148,14 @@ nur das Wallet-Ledger.
 
 ### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug)
 
-Geplante Detail-Endpunkte, teilweise als Demo im GUI-Prototyp vorhanden.
+Aktuell implementierte Nur-Lese-API der gemeinsamen GUI:
+`GET /api/v1/health`, `/api/v1/stations?fuel=e10`,
+`/api/v1/series?city=...&station_id=...&fuel=e10` und
+`/api/v1/forecast?city=...&station_id=...&fuel=e10`.
+Keine Schreib-/Feedback-Endpunkte und noch kein `/v1/decide`.
+
+Die folgenden Detail-Endpunkte sind weiterhin **geplant**, teilweise als Demo
+im GUI-Prototyp vorhanden.
 Produktiv im Werkstatt-Modus genutzt; alte Alltags-Routen werden als
 deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 `/v1/decide` alle Alltags-Fälle abdeckt:

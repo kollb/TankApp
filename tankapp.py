@@ -334,9 +334,70 @@ def activate(args):
     return 0
 
 
+def serve_app(args):
+    from app.config import Settings
+    from app.server import serve
+
+    serve(Settings.from_env(), args.host, args.port, args.jobs)
+    return 0
+
+
+def nas_up(args):
+    from app.nas import up
+
+    return up(args)
+
+
+def refresh_models(args):
+    from dataclasses import replace
+    from app.config import Settings
+    from app.worker import run
+
+    settings = Settings.from_env()
+    overrides = {
+        name: value
+        for name, value in {
+            "archive": args.archive_dir,
+            "data": args.data_dir,
+            "polling": args.polling,
+            "influx_env": args.influx_env,
+        }.items()
+        if value is not None
+    }
+    return run("models", replace(settings, **overrides))
+
+
 def parser():
     ap = argparse.ArgumentParser(description=__doc__)
     commands = ap.add_subparsers(dest="command", required=True)
+    web = commands.add_parser(
+        "serve", help="GUI + nur lesende API; NAS-Dauerbetrieb bevorzugt mit nas-up"
+    )
+    web.add_argument("--host", default="0.0.0.0")
+    web.add_argument("--port", type=int, default=8080)
+    web.add_argument(
+        "--jobs", action="store_true", help="Archiv-/Modelljobs mitstarten"
+    )
+    nas = commands.add_parser(
+        "nas-up",
+        help="NAS: GUI, API und automatische Jobs gemeinsam starten/aktualisieren",
+    )
+    nas.add_argument("--polling", type=Path)
+    nas.add_argument("--influx-env", type=Path)
+    nas.add_argument("--netrc", type=Path)
+    nas.add_argument("--archive-dir", type=Path)
+    nas.add_argument("--runtime-dir", type=Path)
+    nas.add_argument("--port", type=int)
+    nas.add_argument("--history-days", type=int)
+    nas.add_argument("--model-fuels", help="Default e10; optional e10,e5,diesel")
+    models = commands.add_parser(
+        "refresh-models",
+        help="Ein Rechenlauf: Export → Archiv-Ereignisse → Bootstrap → Fit/Backtest → Veröffentlichung",
+    )
+    models.add_argument("--archive-dir", type=Path)
+    models.add_argument("--data-dir", type=Path)
+    models.add_argument("--polling", type=Path)
+    models.add_argument("--influx-env", type=Path)
     sync = commands.add_parser(
         "history-sync", help="NAS: Archiv initial laden und alle Lücken nachholen"
     )
@@ -376,6 +437,9 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         return {
+            "serve": serve_app,
+            "nas-up": nas_up,
+            "refresh-models": refresh_models,
             "history-sync": history_sync,
             "add-city": add_city,
             "activate-polling": activate,
