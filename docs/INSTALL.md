@@ -222,9 +222,11 @@ Archiv-/Job-Stände passen. Ein laufender Container allein bestätigt das nicht.
 NAS-Auszeiten und Pi-Puffergrenze stehen bei den Rollen oben.
 
 **Stand dieser Lieferung:** GUI, API, App-Start, Archiv-Zeitplanung und
-Modellveröffentlichung sind implementiert und softwaregetestet. Der Docker-Build
-und der Betrieb mit deinen privaten Daten auf deinem NAS sind hier noch nicht
-abgenommen. Zweitmodell/Ensemble, weitere Modellbausteine, echte Güteprüfung und
+Modellveröffentlichung sind implementiert und softwaregetestet. GitHub CI hat
+328 Python-Tests unter 3.11/3.12, drei Frontend-Unit-Tests, vier Desktop-/Smartphone-
+Browsertests, den GUI-Build sowie Docker-Image-Build und grundlegende Runtime-
+Prüfung bestanden. Der Betrieb mit deinen privaten Daten auf deinem NAS ist
+noch nicht abgenommen. Zweitmodell/Ensemble, weitere Modellbausteine, echte Güteprüfung und
 Out-of-sample-Kalibrierung bleiben offen; deshalb weiterhin
 `calibrated=false` / `decision_ready=false`. Noch kein belastbares „bis 18 Uhr
 warten“, keine erfundenen Wahrscheinlichkeiten oder garantierten Ersparnisse.
