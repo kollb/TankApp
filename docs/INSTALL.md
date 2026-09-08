@@ -1,130 +1,193 @@
-# Installation & Betrieb (Erstinstallation)
+# TankApp einrichten — vom Polling zur GUI
 
-Diese Anleitung sagt **was wo läuft** und mit **welchen Kommandos**.
-Stand 07.09.2026: Collector/Uploader befüllen laut Betreiber InfluxDB; M2
-gilt vorläufig als erledigt. **Weiter mit M3 am Windows-PC:**
-[PowerShell-Anleitung](../engine/README.md) bzw. Phase D (§4) unten.
-API/Homepage folgen mit beiden vorhandenen GUIs als Basis (Konzept §8/§13).
+**Das ist der einzige Installationseinstieg.** Stand: 08.09.2026.
+Die anderen Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden
+Checklisten. Tests, Backtests und Stationslabore sind **keine Pflichtschritte für dich**.
 
-**Wenn Collector/InfluxDB und M2 schon laufen, Phasen A–C nicht erneut einrichten.**
-Mit den vorhandenen Analyse-CSVs kannst du M3 direkt am PC testen; ein
-InfluxDB-Export ist optional und benötigt einen eigenen Lese-Token.
+## Ziel und Rollen
 
-## 0. Kurzantwort: Was läuft wo?
+```text
+Tankerkönig live ──→ Pi: gemeinsamer Collector + RAM-Puffer ──→ NAS: InfluxDB
+Tankerkönig-Archiv ─────────────────────────────────────────→ NAS: Preis-/Stationsdateien
+                                                            ↓
+                                                   Aufbereitung + Modelle
+                                                            ↓
+                                                   NAS: API + Web-GUI
+                                                            ↓
+                                                    Handy / PC: Browser
+```
 
-| Baustein | Gerät | Status |
+- **Pi:** 24/7 sammeln und hochladen, keine Jahresarchive herunterladen oder Modelle fitten.
+- **NAS:** dauerhafter Daten- und App-Server. Archivabruf, Lückennachholung,
+  InfluxDB, künftig automatische Fits, API und GUI. Eine bestehende InfluxDB
+  weiterverwenden; keine zweite Instanz anlegen.
+- **PC:** optional einrichten oder Rechenläufe beschleunigen. Für den Alltag nur
+  ein Browser. **Keine verpflichtende venv, kein tägliches Kopieren aufs NAS.**
+- **Wenn das NAS aus ist:** keine NAS-Jobs und später keine dort gehostete GUI.
+  Der Pi sammelt weiter; der bestehende RAM-Puffer überbrückt bis zu sieben Tage,
+  aber keinen Pi-Neustart/Stromverlust. Archivdateien werden beim nächsten
+  NAS-Lauf nachgeholt. Das ersetzt keine verlorenen Live-Statusbeobachtungen.
+
+## Die verbindliche Reihenfolge
+
+| Schritt | Ergebnis für dich | Heute ausführbar? |
 |---|---|---|
-| Analyse/Pipeline (Historie holen, Stationen auswählen) | **PC (Windows)** — Einmal-/Werkstatt-Läufe | ✅ fertig |
-| **M1 Collector** (Preise pollt, JSONL-Ringpuffer) | **Raspberry Pi** — 24/7 | ✅ fertig (`data-tools/collect_prices.py`) |
-| Kurzzeit-Puffer (7 Tage) | **Pi: RAM** (`/dev/shm/tankapp`, tmpfs → SD-Schonung) | ✅ über Ringpuffer gelöst |
-| **M1 Uploader** (JSONL → InfluxDB, Ack-Protokoll) | **Pi** — systemd (`tankapp-uploader.service`) | `data-tools/upload_influx.py`, Phase C; neue Punkte zusätzlich mit `station_id`-Tag. Bestehende Installationen: [UUID-Umstellung](STATIONS-UUID.md). |
-| Langzeit-Speicher (InfluxDB) | **NAS** (192.168.178.61, Org `gtwrlab`, Bucket `tankapp`) | ✅ läuft (Bucket/Token: Phase C §3.1) |
-| M3-Tests / Fits / Backtests | **Windows-PC** (NAS alternativ möglich) | PowerShell-Ablauf in Phase D / `engine/README.md`; noch unkalibriert |
-| Homepage / API | Pi | Geplant; beide GUI-Vorlagen bleiben erhalten |
+| **1. Gütersloh mitpolling starten** | Beide Städte sammeln Live-Daten, ohne Preis-Historienanalyse abzuwarten. | Ja: Vorbereitung + Aktivierung unten. |
+| **2. Echte Preise in die vorhandene GUI** | Stadt auswählen, Preise/Status/Alter sehen; noch keine erfundene Warteempfehlung. | Nächster Entwicklungsbaustein; Live-Anbindung noch nicht fertig. |
+| **Parallel: NAS-Archiv einschalten** | Ein Jahr oder mehr Vorgeschichte wird selbstständig geladen und vervollständigt. | Ja: ein Sync-Befehl + einmalige Zeitplanung unten. Blockiert Schritt 1/2 nicht. |
+| **3. NAS-Berechnung automatisieren** | Archiv und Polling aufbereiten, Modelle erneuern, letzte gute Veröffentlichung bei Fehlern behalten. | Einzelwerkzeuge vorhanden, gesamte Job-/Veröffentlichungskette noch offen. |
+| **4. Empfehlungen in derselben GUI** | Jetzt / warten / woanders mit nachvollziehbarem Netto-Vorteil. | Nach Echt-Datenprüfung und Kalibrierung, nicht nach einer pauschalen 90-Tage-Frist. |
 
-**Faustregel:** Der Collector gehört auf den Pi. Er läuft 24/7, braucht
-keine SD-Schreibzugriffe (Puffer im RAM) und nur ~40–60 MiB — reine
-Python-Standardbibliothek, kein `pip install`. Das NAS wird in Phase C
-(§3) eingerichtet: InfluxDB per Docker; der Uploader — zweite systemd-
-Service auf demselben Pi — schiebt den Ringpuffer dorthin (idempotent,
-überbrückt NAS-Ausfall bis 7 Tage). Der PC bleibt die „Werkstatt" für
-Einmal-Analysen und läuft **nicht** dauernd mit (~50–90 W Leerlauf vs.
-Pi ~3 W).
+**Für deine bestehende Installation gilt:** Pi-Collector, Uploader und InfluxDB
+nicht neu installieren. Zuerst denselben aktuellen TankApp-Code auf den verwendeten
+Geräten bereitstellen. Die folgenden Programme brauchen nur vorhandenes Python
+3.11+ und die Standardbibliothek, **keine pip-/venv-Einrichtung**.
+Die Aktivierung ist für die bestehenden Standard-systemd-Dienste vorgesehen;
+abweichende Startpfade oder ein festes `--poll-city` werden nicht heimlich geändert.
 
-> Übergangslösung, bevor ein Pi vorhanden ist: der Collector läuft auch
-> auf dem Windows-PC (Puffer dann unter `data\poll\` auf der Platte).
-> Ein Rechner, der nachts aus ist, verpasst Polls — für den ersten
-> Live-Test ist es aber völlig ausreichend.
+## Jetzt: Gütersloh aufnehmen
+
+Am einfachsten **direkt auf dem Pi im TankApp-Ordner**, damit keine Dateien
+zwischen PC und Pi hin- und herkopiert werden müssen:
+
+```bash
+python3 tankapp.py add-city
+sudo python3 tankapp.py activate-polling
+```
+
+**Was du einmalig angibst:** den tatsächlichen Gütersloher Anker als Breitengrad
+und Längengrad (Dezimalpunkt). Liegt er bereits in `analysis/config.local.json`,
+wird nicht erneut gefragt. Koordinaten bleiben lokal. Bei Gütersloh wird `NW`
+für Nordrhein-Westfalen ergänzt. Frankfurt bleibt unverändert.
+
+**Was der erste Befehl erledigt:** vorhandene Stationsliste verwenden oder über
+den bereits eingerichteten Archivzugang die neueste laden; nahe Stationen im
+5-km-Radius auswählen, nach Marke/Standort entzerren, alle bisherigen Stadtsets
+beibehalten und einen gemeinsamen Vorschlag schreiben. **Kein Preis-Jahresdownload,
+keine M2-/M3-Analyse nötig.** Vorläufige Auswahl nach Nähe/Markenvielfalt, noch
+keine Aussage „diese Station ist die billigste“. Stationsliste und spätere Live-
+Antworten müssen tatsächliche Verfügbarkeit/Kraftstoffe bestätigen.
+
+Der zweite Befehl sichert die alte Auswahl, übernimmt den Vorschlag und startet
+Collector und Uploader neu. Bei fehlgeschlagenem Neustart wird die vorige Auswahl
+zurückgespielt. Keine Datenbankänderung, kein Ack-Reset. Geänderte/entfernte alte
+Stadtsets werden auf diesem Additionspfad abgewiesen. Ein erfolgreicher Dienststart
+ist noch kein Nachweis erfolgreicher API-Antworten.
+
+**Request-Budget:** ein gemeinsamer Collector, höchstens zehn UUIDs pro Request,
+standardmäßig ein Request alle fünf Minuten. Mit Frankfurt + Gütersloh wird
+**jede Stadt etwa alle zehn Minuten** abgefragt. Die erste echte Abfrage nach
+Start ohne gespeicherten Zeitplan wartet vorsichtshalber fünf Minuten. Der
+Zeitplan bleibt bei Prozessneustarts erhalten, solange der Puffer besteht;
+429/Fehler erlauben keinen sofortigen zusätzlichen Request. Nicht parallel
+mit demselben Key auf dem PC oder in einem zweiten Puffer pollen.
+
+Im Collector-/Uploader-Log bzw. InfluxDB prüfen, dass beide Stadtlabels ankommen.
+Die 90-Tage-Prüfung der Engine berücksichtigt mit `--polling` die gemeinsame
+Kadenz; zehnminütige Abfragen sind nicht automatisch 50 % Ausfall.
+
+<details>
+<summary>Nur falls die Vorbereitung lieber am PC oder mit der NAS-Stationsliste stattfinden soll</summary>
+
+Windows verwendet einfach `py -3 tankapp.py add-city`; keine venv erforderlich.
+`--stations <Datei.csv.gz>` erlaubt die vorhandene Stationsliste auf einer NAS-
+Freigabe. Alternativ zeigt `--archive-dir <Verzeichnis>` auf das NAS-Archiv.
+Wenn kein Archivzugang auf dem Pi eingerichtet ist, ist das der Weg ohne einen
+zusätzlichen Zugang auf dem Pi. Danach nur `data/setup/polling.json` auf den Pi
+an denselben relativen Ort übertragen und dort den Aktivierungsbefehl ausführen.
+Ankerkonfiguration für spätere Berechnungen auch privat auf dem NAS bereitstellen.
+
+Andere Stadt: `--city Name`; Radius/Anzahl nur bei Bedarf mit `--radius`/`--size`.
+Die Standard-Aktivierung erwartet `tankapp-collector` und `tankapp-uploader` als
+laufende systemd-Dienste. Bei Sonderkonfiguration sicher abbrechen statt Dienste
+oder Dateipfade zu erraten. Der Vorschlag ist kein Deployment des Programm-Codes.
+
+</details>
+
+## Parallel auf dem NAS: Archiv einmal einschalten, danach automatisch
+
+**Das NAS ist der Hauptspeicher für die Tankerkönig-Historie.** Preis- **und**
+Stationsdateien werden als komprimierte Tagesdateien gespeichert, nicht als
+riesiger Git-Clone und nicht als vorgetäuschtes Polling in InfluxDB importiert.
+Ein Jahr ist der Startwert, keine Obergrenze und keine Löschfrist. Das Modell
+muss nicht bei jedem Fit den kompletten Jahresbestand verwenden.
+
+Einmalig sicherstellen:
+
+- TankApp-Code und Python auf dem NAS; genügend freier Speicher im gewählten Datenverzeichnis.
+- Derselbe Archivzugang wie bisher, nun auch **für den ausführenden NAS-Benutzer**:
+  vorhandene netrc-Datei privat ablegen (`data/_netrc`, `~/.netrc` oder explizit
+  `--netrc /privater/pfad`). Datei nur für diesen Benutzer lesbar. Keine
+  Zugangsdaten in cron, Git oder Chat. Das ist nicht der Collector-API-Key.
+
+**Ein Befehl für Erstbefüllung und jeden späteren Lauf:**
+
+```bash
+python3 tankapp.py history-sync --archive-dir /srv/tankapp/archive
+```
+
+`/srv/tankapp/archive` ist ein **Beispielpfad**; einmal durch deinen dauerhaften
+NAS-Datenpfad ersetzen (nicht ins flüchtige Container-Dateisystem schreiben).
+Für zwei Jahre `--days 730`, für einen festen früheren Beginn z. B.
+`--since 2025-01-01` ergänzen. Spätere Läufe verschieben den gespeicherten Beginn
+nicht nach vorne. Ältere Dateien werden nicht gelöscht.
+
+**Einmal in der NAS-Aufgabenplanung hinterlegen:** als derselbe Benutzer beim
+NAS-Start und danach stündlich ausführen. Alternativ cron; Python-/Repository-/
+Datenpfad einmal anpassen, keine spätere Pflege des Datums nötig:
+
+```cron
+@reboot /usr/bin/python3 /srv/tankapp/TankApp/tankapp.py history-sync --archive-dir /srv/tankapp/archive >> /srv/tankapp/history-sync.log 2>&1
+17 * * * * /usr/bin/python3 /srv/tankapp/TankApp/tankapp.py history-sync --archive-dir /srv/tankapp/archive >> /srv/tankapp/history-sync.log 2>&1
+```
+
+Wähle **NAS-Aufgabenplanung oder cron**, nicht beides. Manche NAS verwalten ihre
+crontab selbst; dort die Aufgabenplanung benutzen. Kein separater Hintergrund-
+Downloader zusätzlich zum geplanten Job. Die Prozesssperre verhindert überlappende
+Downloads; ein zweiter Lauf meldet „bereits ein Prozess“ statt doppelt zu laden.
+Der erste Jahresabruf darf länger dauern; spätere Läufe überspringen vorhandene Dateien.
+
+**Verhalten ohne Handarbeit:**
+
+- Immer bis gestern prüfen, **alle fehlenden Tage seit dem gespeicherten Beginn**
+  nachladen — nicht bloß `--since yesterday`. So werden NAS-Auszeiten und ältere
+  Download-Lücken geschlossen.
+- Bestehende nichtleere Tagesdateien überspringen, Download erst über `.part`
+  vollständig schreiben und danach umbenennen. Abbruch kann erneut gestartet werden.
+- Noch nicht veröffentlichte Dateien (404), Netz-/Zugriffsfehler und leere Dateien
+  zählen nicht als vollständiger Bestand; nächster Lauf versucht es wieder.
+- Status in `<Archiv>/.sync/state.json`: `complete`/`incomplete`, fehlende Dateien
+  und letzter vollständig abgedeckter Tag. `complete` prüft Dateivollständigkeit,
+  nicht fachliche Preisqualität oder Integrität bereits vorhandener Altdateien.
+- Der Job **ändert keine Dienste, Modelle, InfluxDB-Daten oder Polling-Sets** und
+  fragt im cron-Betrieb nie interaktiv nach einem Passwort.
+
+## Danach musst du nicht noch fünf Werkstatt-Anleitungen abarbeiten
+
+Der nächste Entwicklungsauftrag ist die **Live-GUI mit Stadtwahl und Datenalter**,
+auf Basis von `sample/good gui` und `sample/good statistic gui`. Dazu gehören
+NAS-API und ein gemeinsamer Start-/Updateweg. Modellveröffentlichung und
+kalibrierte Empfehlungen kommen anschließend; der laufende Archiv-Sync liefert
+bereits die Vorgeschichte. Derzeit existiert **noch kein fertiger GUI-Installationsbefehl**.
+
+Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
+Die vorhandene Bootstrap-Engine nutzt Archiv vor Beginn der Live-Beobachtungen,
+dann Polling. Standardtraining: letzte 42 Tage; 90 ausreichend abgedeckte Live-
+Tage können die ältere Archiv-Vorgeschichte aus der Trainingsdatei entfernen.
+**Das löscht nicht das NAS-Archiv und schaltet seinen cron-Job nicht ab.** Das
+Archiv bleibt für weitere Städte, Vergleiche und längere Forschungsfenster nützlich.
+Die genaue Modellregel ist Entwicklerreferenz, keine Installationshandlung.
 
 ---
 
-## 1. Phase A — Werkstatt auf dem PC (einmalig)
+<details>
+<summary>Technische Referenz: nur bei Erstinstallation von Pi/InfluxDB oder einer konkreten Störung öffnen</summary>
 
-Ziel: das Polling-Set (`polling.json`) erzeugen, das der Collector
-hinterher braucht.
+Die folgenden Service-/Backup-Details sind für eine noch nicht eingerichtete
+Basis oder die Fehlersuche. Sie sind **nicht** nach den obigen Schritten erneut
+abzuarbeiten. Bestehende Dienste, Buckets und Secrets weiterverwenden.
 
-### 1.1 Voraussetzungen
-
-```powershell
-py -3 --version        # Auf dem PC 3.11+ für M3; der Pi-Collector bleibt bei seiner bisherigen Version
-```
-
-Analyse-Abhängigkeiten (nur für die Pipeline, nicht für den Collector):
-
-```powershell
-cd "G:\Meine Ablage\dev\TankApp"
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r analysis\requirements.txt
-```
-
-### 1.2 Anker & Tagesliste
-
-- Heimkoordinaten in `analysis\config.local.json`
-  (Vorlage: `analysis\config.local.example.json`).
-  Koordinaten nur in dieser privaten Datei eintragen, nicht im Repository dokumentieren.
-- Historische Tagesliste holen (Anleitung: `docs/DATEN-BEZUG.md`,
-  Windows-Kapitel 11.1).
-
-### 1.3 Pipeline laufen lassen
-
-```powershell
-.\.venv\Scripts\python.exe .\data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10
-```
-
-Ergebnis (gitignored, enthält private Koordinaten):
-`docs\analysis\stations\polling.json` mit den 10 Polling-Stationen je Stadt.
-
-### 1.4 Tankerkönig-API-Key auf dem PC
-
-**Vorhandene `data\apikey.txt` weiterverwenden, nicht überschreiben.**
-Der Collector liest sie automatisch. Es ist der Tankerkönig-Key für aktuelle
-Preise, kein InfluxDB-Token; M3 mit vorhandenen CSV-Dateien braucht ihn nicht.
-
-```powershell
-Test-Path .\data\apikey.txt
-```
-
-Falls noch kein Key vorhanden ist: auf <https://www.tankerkoenig.de/> registrieren
-und die private Datei in Notepad anlegen:
-
-```powershell
-New-Item -ItemType Directory -Force -Path .\data | Out-Null
-notepad .\data\apikey.txt
-```
-
-Nur den echten Key als eine Zeile speichern, UTF-8 ohne BOM, keine
-Anführungszeichen. Keine Dummy-UUID über eine bestehende Schlüsseldatei schreiben
-und den Inhalt nicht im Terminal ausgeben. `data\` ist gitignored.
-Die Suchreihenfolge bleibt `--api-key` → `TANKERKOENIG_API_KEY` → Datei.
-
-### 1.5 Optionaler Collector-Einzeltest auf dem PC
-
-**Nicht für die M3-Backtests nötig.** Wenn der Pi denselben Key nutzt,
-seinen Collector für diesen optionalen Einzeltest pausieren: mindestens
-300 Sekunden nach dem letzten Pi-Request warten und nach dem PC-Test wieder
-mindestens 300 Sekunden bis zum nächsten Request einhalten. Keinen zweiten
-Dauer-Collector daneben starten. Für normale M3-Läufe bleibt der Pi unverändert an.
-
-```powershell
-# Nur diese PC-Sitzung: vorhandene Umgebungsvariable würde die Datei übersteuern
-Remove-Item Env:\TANKERKOENIG_API_KEY -ErrorAction SilentlyContinue
-py -3 .\data-tools\collect_prices.py --once --out .\data\pc-test-poll
-```
-
-Bei mehreren Polling-Sets `--poll-city Frankfurt` bzw. den tatsächlichen
-Set-Schlüssel ergänzen. Bei Erfolg: Preistabelle und `Poll ok: …` mit JSONL-Datei
-im **separaten** `data\pc-test-poll\`. Der produktive Uploader darf dieses
-Verzeichnis nicht einlesen. `false` wird nicht als Preis 0 geschrieben;
-`closed`/`no prices` bleiben ohne Preis. Bei API-Fehlern kann auch `--once`
-wiederholen; bei Bedarf mit Strg+C abbrechen.
-
-Ein Poll liefert keine mehrwöchige Trainingshistorie. Die M3-Schritte in Phase D
-verwenden die vorhandenen Analyse-CSVs oder einen InfluxDB-Export, nicht diesen
-JSONL-Testpuffer. Weitere Windows-Details: [M3-Anleitung §7](../engine/README.md).
-
----
-
-## 2. Phase B — Collector auf dem Raspberry Pi (24/7)
+## 2. Technische Referenz — Collector auf dem Raspberry Pi (24/7)
 
 Getestet mit Raspberry Pi OS (Lite reicht), Python 3.9+ ist vorinstalliert.
 
@@ -353,7 +416,7 @@ tmpfs  /dev/shm/tankapp  tmpfs  defaults,noatime,size=32M,uid=pi,gid=pi  0  0
 
 ---
 
-## 3. Phase C — NAS + Uploader (InfluxDB)
+## 3. Technische Referenz — NAS + Uploader (InfluxDB)
 
 Der Collector bleibt unverändert. Neuer Baustein: der **Uploader** läuft als
 zweite systemd-Service **auf demselben Pi** (Konzept §9.1). Er liest dieselben
@@ -577,67 +640,5 @@ durchgehen und das Backup (§3.6) prüfen.
 
 ---
 
-## 4. Phase D — M3 am Windows-PC testen
 
-**Hier weitermachen, wenn M1/M2 bereits laufen.** Keine neue InfluxDB und kein
-Uploader auf dem PC nötig. Collector, Secrets und Ack-Dateien auf Pi/NAS
-unverändert lassen. Bei mehrdeutigen Stationsnamen einmalig den Uploader-Code
-nach der [UUID-Anleitung](STATIONS-UUID.md) aktualisieren und bei Bedarf aus
-Original-JSONL nachliefern; dazu keine neue Datenbank anlegen.
-
-**Vollständige Schritt-für-Schritt-Anleitung für PowerShell:**
-[`engine/README.md`](../engine/README.md)
-
-1. Im lokalen TankApp-Ordner Python 3.11+ und die separate Umgebung `.venv-m3`
-   einrichten. Keine Aktivierung / ExecutionPolicy-Änderung nötig; M2 behält `.venv`.
-2. Automatisierte Tests starten – ohne Zugangsdaten, ohne NAS.
-3. Das aktive private `docs\analysis\stations\polling.json` und die
-   aufbereiteten CSV-Dateien aus `data\ready\` auf dem PC verwenden.
-4. Datenqualität prüfen, dann mit ausreichender Historie backtesten, fitten und
-   Prognosen als lokale JSON-Dateien erzeugen. **Dafür ist kein API-Key erforderlich.**
-5. Optional Live-Daten vom NAS ergänzen: vier `TANKAPP_INFLUX_…=…`-Zeilen
-   (URL, Org, Bucket, separater InfluxDB-Lese-Token) in `data\influx.env` speichern;
-   Export mit `--env-file data/influx.env`. Nicht die ganze Datei in eine
-   Token-Variable laden. `data\apikey.txt` bleibt für Tankerkönig. Der Export ist
-   nur lesend. Zuerst `--check-connection --timeout 15` mit demselben `--env-file`
-   ausführen. Die Anleitung zeigt die konkrete Token-Anlage in der InfluxDB-UI und
-   trennt Health-/Netzfehler von einem verweigerten Bucket-Lesezugriff. Keine
-   zusätzlichen Token-Dateien/Sitzungsvariablen für diesen PC-Ablauf nötig.
-
-Nach dem Setup beispielsweise direkt mit deinen vorhandenen M2-Dateien:
-
-```powershell
-.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json
-.\.venv-m3\Scripts\python.exe -m engine backtest --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json --days 21
-notepad .\results\engine\backtest\report.md
-```
-
-Bei einem Fehler erst die Diagnose beheben; ein älterer Bericht kann noch
-vorhanden sein. Die vollständige Anleitung beschreibt auch die Variante mit
-InfluxDB und gemischten Eingangsdateien. Export, CSVs, Berichte und Modelle
-bleiben lokal/gitignored. M3 ist nicht abgenommen: Ensemble/ACI und der
-Echt-Daten-Gütenachweis stehen noch aus.
-
-Beide GUI-Verzeichnisse bleiben die Basis der späteren Homepage; am PC werden
-hier nur die Engine-Werkzeuge getestet, nicht die Prototypen umgestaltet.
-
-## 5. Befehlsübersicht
-
-| Zweck | Kommando | Gerät |
-|---|---|---|
-| Isolierter Offline-Test | `py -3 data-tools\collect_prices.py --demo --once --out data\test-poll` (nie hochladen) | Windows-PC |
-| Optionaler echter Poll + Tabelle | `py -3 data-tools\collect_prices.py --once --out data\pc-test-poll` (Request-Abstand mit Pi beachten, §1.5) | Windows-PC |
-| Dauerbetrieb (Vordergrund) | `python3 data-tools/collect_prices.py` | Pi |
-| Puffer-Verzeichnis setzen | `TANKAPP_POLL_DIR=/dev/shm/tankapp …` (oder `--out`) | Pi |
-| Fenster/Intervall ändern | `--window-start 6 --window-end 24 --interval 300` | Pi |
-| Uploader: was gesendet WÜRDE | `python3 data-tools/upload_influx.py --dry-run` | Pi |
-| Uploader: ein Upload-Zyklus | `python3 data-tools/upload_influx.py --once` | Pi |
-| Collector-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-collector` | Pi |
-| Uploader-Service starten/stoppen | `sudo systemctl start/stop/restart tankapp-uploader` | Pi |
-| Log ansehen | `journalctl -u tankapp-collector -f` / `-u tankapp-uploader` | Pi |
-| InfluxDB-Check (Ping + Daten) | `docker exec <name> influx ping` / `influx query …` (siehe §3.5) | NAS |
-| Pipeline (Polling-Set bauen) | `.\.venv\Scripts\python.exe data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --near-km 5 --near-n 3 --leader-max-km 10` | Windows-PC |
-| InfluxDB-Verbindung / Leserecht | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py --env-file data/influx.env --check-connection --timeout 15` (kein Polling-Set, keine Exportdatei) | Windows-PC |
-| InfluxDB-Export für M3 | `.\.venv-m3\Scripts\python.exe data-tools\export_influx.py --env-file data/influx.env` (vier Konfigurationswerte: Engine-Anleitung §3B) | Windows-PC |
-| M3-Datenqualität mit vorhandener Historie | `.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json` | Windows-PC |
-| M3-Softwaretests | `.\.venv-m3\Scripts\python.exe -m pytest -q` (kein Key / NAS nötig) | Windows-PC |
+</details>

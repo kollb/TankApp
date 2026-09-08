@@ -108,6 +108,11 @@ def parser() -> argparse.ArgumentParser:
         if name == "bootstrap":
             command.add_argument("--at", help="Exklusiver Cutoff (Default: jetzt)")
             command.add_argument("--live-only-days", type=int, default=90)
+            command.add_argument(
+                "--expected-poll-minutes",
+                type=int,
+                help="Default: aus gemeinsamem Polling-Plan; sonst 5 Minuten",
+            )
             command.add_argument("--min-daily-coverage", type=float, default=0.95)
             command.add_argument(
                 "--out", type=Path, default=Path("data/engine/bootstrap.csv.gz")
@@ -176,12 +181,21 @@ def run(args) -> int:
         }:
             raise ValueError("Bootstrap-Ausgabe darf polling.json nicht überschreiben.")
         cfg, observations, quality = load_raw_input(args)
+        cadence = args.expected_poll_minutes
+        if cadence is None and args.polling:
+            payload = json.loads(args.polling.read_text(encoding="utf-8"))
+            # All sets share the collector's request budget, even when only one
+            # city is being evaluated here. --poll-city is NOT a collector setting.
+            cadence = (
+                len(payload["sets"]) * payload.get("request_interval_seconds", 300) / 60
+            )
         output, policy = bootstrap(
             observations,
             cfg,
             args.at if args.at else pd.Timestamp.now(tz="UTC"),
             args.live_only_days,
             args.min_daily_coverage,
+            cadence if cadence is not None else 5,
         )
         if args.polling:
             missing = selected_ids(args.polling, args.poll_city) - set(

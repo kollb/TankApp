@@ -187,3 +187,13 @@ def test_selected_station_only_in_future_fails_without_output(observations, tmp_
         == 1
     )
     assert not out.exists()
+
+
+def test_two_city_ten_minute_cadence_is_not_a_fifty_percent_outage(observations, cfg):
+    raw = observations(days=90, start="2026-06-01").iloc[::2]
+    data = normalized(raw, cfg)
+    _, default = bootstrap(data, cfg, "2026-08-30")
+    assert default["stations"][0]["mode"] == "bootstrap"
+    _, report = bootstrap(data, cfg, "2026-08-30", expected_poll_minutes=10)
+    assert report["stations"][0]["mode"] == "live_only"
+    assert report["stations"][0]["expected_poll_minutes"] == 10

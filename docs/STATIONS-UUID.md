@@ -35,7 +35,7 @@ eine eventuell ältere Exportdatei erhalten – daher die Erfolgsmeldung prüfen
 **3. Erst nach erfolgreichem Export: mit der bestehenden M2-Historie prüfen:**
 
 ```powershell
-.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
+py -3 -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
 ```
 
 **Grenze dieses Kurzwegs:** Alte Namensserien und die zeitlich noch nicht sicher
@@ -362,7 +362,7 @@ Der Live-Export enthält möglicherweise nur wenige Tage. Deine ursprünglichen
 M2-CSV-Dateien haben weiterhin die getrennten UUIDs und können das Training ergänzen:
 
 ```powershell
-.\.venv-m3\Scripts\python.exe -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
+py -3 -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
 ```
 
 Bei ausreichender Historie folgt der Backtest nach [Engine-Anleitung](../engine/README.md).

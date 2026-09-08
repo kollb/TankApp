@@ -11,12 +11,11 @@ Keine API-Schlüssel und keine InfluxDB-Verbindung für den Preisvergleich nöti
 ## 1. Vorbereitung
 
 PowerShell im TankApp-Ordner öffnen und den aktuellen Repository-Stand verwenden.
-Python 3.11+ und die M3-Umgebung werden wie im [Engine-README](../engine/README.md)
-eingerichtet. Wenn `.venv-m3` noch fehlt:
+Dies ist eine optionale Analyse, keine Installation. Vorhandenes Python 3.11+
+verwenden; keine neue venv nötig:
 
 ```powershell
-py -3 -m venv .venv-m3
-.\.venv-m3\Scripts\python.exe -m pip install -r engine\requirements.txt
+py -3 -m pip install -r engine/requirements.txt
 ```
 
 Benötigt werden:
@@ -34,7 +33,7 @@ Test-Path .\docs\analysis\stations\polling.json
 ## 2. Die Aral-Stationen vergleichen
 
 ```powershell
-.\.venv-m3\Scripts\python.exe -m engine compare-stations --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json --poll-city Frankfurt --brand ARAL
+py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling .\docs\analysis\stations\polling.json --poll-city Frankfurt --brand ARAL
 notepad .\results\engine\price_twins\report.md
 ```
 
@@ -93,11 +92,11 @@ Routing-, Nähe- und Auswahlparametern**. Ergänze `--exclude-uuid` und einen
 **separaten Ausgabeordner**. Beispiel mit den Parametern aus der Installationsanleitung:
 
 ```powershell
-.\.venv\Scripts\python.exe .\data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --skip-select --near-km 5 --near-n 3 --leader-max-km 10 --exclude-uuid $Ausgeschlossen --out-stations docs/analysis/stations-vorschlag
+py -3 .\data-tools\run_pipeline.py --router osrm --skip-fetch --skip-ingest --skip-select --near-km 5 --near-n 3 --leader-max-km 10 --exclude-uuid $Ausgeschlossen --out-stations docs/analysis/stations-vorschlag
 ```
 
-Hier wird die bisherige **M2-Umgebung `.venv`** verwendet, nicht die reine
-M3-Umgebung. Falls deine bisherigen Parameter abweichen, diese beibehalten.
+Für diesen optionalen Selektionslauf werden zusätzlich die Pakete aus
+`analysis/requirements.txt` benötigt. Falls deine bisherigen Parameter abweichen, diese beibehalten.
 `--skip-select` ist nur zulässig, wenn Scores und Metadaten noch zu Anker/Routing
 passen; bei einer Staleness-Meldung nicht darüber hinweggehen, sondern die
 Selektion mit den passenden Parametern erneut rechnen. OSRM nutzt wie bisher

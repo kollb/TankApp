@@ -1,4 +1,9 @@
-# Datenbezug – Tankerkönig-Historie (Anleitung, Stand 2026-09-06)
+# Datenbezug — technische Referenz
+
+**Keine Installationsreihenfolge.** Für NAS-Erstbefüllung und automatische
+Lückennachholung `tankapp.py history-sync` verwenden; der einzige Einstieg steht
+in [INSTALL.md](INSTALL.md). Das NAS ist der Archiv-Hauptspeicher, der PC optional.
+Die folgenden Größenrechnungen und Einzelwerkzeuge sind Hintergrund (Stand 06.09.2026).
 
 Kurzfassung für die drei Fragen aus der Anfrage:
 
@@ -6,7 +11,7 @@ Kurzfassung für die drei Fragen aus der Anfrage:
 |---|---|
 | **Gesamtes Repo klonen?** | **Nein.** ~100 GB Arbeitsbaum + ~25–50 GB `.git` → 125–150 GB, ~1,5 h Download bei 25 MB/s (bei 5 MB/s: ein Tag), und >99 % davon brauchst du nicht. |
 | **Reicht 2025/2026?** | **Ja — aber nicht per git.** `git sparse-checkout` verkleinert nur den Arbeitsbaum (mit `--no-checkout` auch den Platzbedarf), **nicht den Download**; und Gitea unterstützt `git clone --filter=blob:none` (Partial Clone) standardmäßig nicht. Richtig: die Tagesdateien **direkt per HTTP** holen → 613 Tage (2025-01-01…2026-09-05) ≈ **12,6 GB**, als `.gz` **≈ 1,5 GB**. |
-| **Wo ausführen?** | **Erst am PC (20 Min.), dann als Cron auf dem NAS.** Der Pi 2 ist dafür die falsche Maschine (1 GB RAM, 512 kB Cache, SD-Kartenverschleiß); er bleibt Collector. |
+| **Wo ausführen?** | **Direkt auf dem NAS, danach per Aufgabenplanung/cron.** Der PC ist optional. Der Pi 2 ist dafür die falsche Maschine (1 GB RAM, 512 kB Cache, SD-Kartenverschleiß); er bleibt Collector. |
 
 **Reihenfolge (Korrektur nach Rückfrage):** zuerst **welche Tankstellen** an den drei Orten beobachtet
 werden — das ist die knappe Ressource (1 Poll = 10 UUIDs). Dazu brauchst du **eine einzige Datei**: die
@@ -15,7 +20,7 @@ Tagesliste aller Tankstellen, ~10 MB, aus dem Browser downloadbar, ohne Git und 
 bundesweit, sie wird durch die Auswahl also **nicht** kleiner — aber du weißt dann, für welche UUIDs sie
 sich lohnt und ob diese Stationen überhaupt lückenlose Daten haben.
 
-**Plattform:** Anleitung ist für **Windows** gedacht (`py -3`, PowerShell, Browser-Download) — Kapitel 3.
+**Einzelwerkzeuge:** Die folgenden historischen Beispiele sind für **Windows** gedacht (`py -3`, PowerShell, Browser-Download) — Kapitel 3.
 Die Linux/NAS-Befehle in Kapitel 8 bleiben für den Dauerbetrieb gültig.
 
 ---

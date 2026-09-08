@@ -33,6 +33,7 @@ def bootstrap(
     at,
     live_only_days: int = 90,
     min_daily_coverage: float = 0.95,
+    expected_poll_minutes: int = 5,
 ) -> tuple[pd.DataFrame, dict]:
     """Accept normalized observations; return a CSV-safe view and its policy report.
 
@@ -44,12 +45,17 @@ def bootstrap(
         raise ValueError("live_only_days muss zwischen 7 und 366 liegen.")
     if not 0 < min_daily_coverage <= 1:
         raise ValueError("min_daily_coverage muss größer 0 und höchstens 1 sein.")
+    if expected_poll_minutes not in (5, 10, 15, 20, 30, 60):
+        raise ValueError("Erwartete Polling-Kadenz: 5, 10, 15, 20, 30 oder 60 Minuten.")
+    expected_poll_minutes = int(expected_poll_minutes)
     origin = utc_time(at, cfg.timezone)
     if pd.isna(origin):
         raise ValueError("Ungültiger Bootstrap-Cutoff.")
     local_end = origin.tz_convert(cfg.timezone).normalize()
     start = local_end - pd.DateOffset(days=live_only_days)
-    grid = pd.date_range(start, local_end, freq="5min", inclusive="left")
+    grid = pd.date_range(
+        start, local_end, freq=f"{expected_poll_minutes}min", inclusive="left"
+    )
     grid = grid[scheduled(grid, cfg)]
     # Latest scheduled bucket strictly before the cutoff, including at night.
     recent = pd.date_range(
@@ -81,7 +87,12 @@ def bootstrap(
             latest.status.eq("closed")
             | (latest.status.eq("open") & latest.price.notna())
         )
-        coverage = pd.Series(grid.isin(latest.index[usable]), index=grid)
+        actual_slots = (
+            latest.index[usable]
+            .tz_convert(cfg.timezone)
+            .floor(f"{expected_poll_minutes}min", ambiguous="NaT", nonexistent="NaT")
+        )
+        coverage = pd.Series(grid.isin(actual_slots), index=grid)
         daily = coverage.groupby(coverage.index.normalize()).mean()
         good_days = int(daily.ge(min_daily_coverage).sum())
         # A missing/invalid newest response must not be hidden by an older open one.
@@ -126,6 +137,7 @@ def bootstrap(
                 "good_complete_live_days": good_days,
                 "required_complete_live_days": live_only_days,
                 "min_daily_coverage": min_daily_coverage,
+                "expected_poll_minutes": expected_poll_minutes,
                 "worst_daily_coverage": float(daily.min()),
                 "fresh_live": fresh,
                 "live_age_minutes_at_last_scheduled_bucket": age,
