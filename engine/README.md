@@ -121,17 +121,34 @@ Dialekt-Einstellungen ist ebenfalls Bestandteil der API; die Vereinfachung ist
 **ein gezielter Kompatibilitätstest**, kein Beweis für die Ursache von WinError 10054.
 Es sind keine neue Schlüsseldatei, andere Berechtigungen oder Änderungen am NAS nötig.
 
-## Zwei gleichpreisige Aral-Stationen durch einen Vertreter ersetzen?
+## Preis-Zwillinge
 
-Dafür gibt es jetzt den nur lesenden Vergleich `engine compare-stations` und
-einen expliziten UUID-Ausschluss für **separate** Pipeline-Vorschläge.
-[Windows-Anleitung: Preis-Zwillinge prüfen und Ersatz vorschlagen](../docs/PREIS-ZWILLINGE.md).
-Nicht anhand des Namens entscheiden und nicht das aktive Polling-Set ändern,
-um eine alte vermischte Influx-Serie scheinbar eindeutig zu machen. Die dafür
-notwendige UUID-Speicherung und Nachlieferung ist jetzt als
-[gesonderter Migrationsablauf](../docs/STATIONS-UUID.md) verfügbar. Meldet der
-Vergleich unterschiedliche Preisverläufe, beide Stationen vorerst behalten und
-diese Identitätsumstellung durchführen statt eine UUID auszuschließen.
+Optionale Analyse, keine Installationsaufgabe: `engine compare-stations` vergleicht
+originale UUID-getrennte Historien, nicht Stationsnamen oder einzelne aktuelle Preise.
+Mit vorhandenen Engine-Paketen beispielsweise:
+
+```powershell
+py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json --poll-city Frankfurt --brand ARAL
+```
+
+Ausgabe: `results/engine/price_twins/report.md` und `report.json`. Zu kurze oder
+lückenhafte gemeinsame Historie ist kein Beleg für Preisgleichheit. Bei
+unterschiedlichen Preisverläufen beide Stationen vorerst behalten. Eine mögliche
+Redundanz ist ein Prüfhinweis, keine automatische Ausschlussentscheidung; auch
+Nutzbarkeit und Standort zählen.
+
+Nach manueller Prüfung kann `run_pipeline.py` mit `--exclude-uuid` und einem
+**separaten** `--out-stations` einen Ersatzvorschlag aus bestehenden Kandidaten
+berechnen. Die bisherigen Routing-/Kostenparameter beibehalten; `--skip-select`
+nur bei passenden, unveränderten Scores/Metadaten. Dafür gelten zusätzlich die
+Pakete aus `analysis/requirements.txt`. Ohne separates Ziel wird der Ausschluss
+abgelehnt. Keine Kandidaten erfinden oder Grenzen lockern, um das Set aufzufüllen.
+
+**Nicht als Reparatur vermischter Influx-Namensserien aktivieren.** Erst die
+[UUID-Identität klären](../docs/STATIONS-UUID.md); Vergleich und Vorschlag migrieren
+keine Daten. Alte Daten oder Ack-Dateien nicht löschen/zurücksetzen. Der gebündelte
+Aktivierungsbefehl `tankapp.py activate-polling` ist ausdrücklich nur für die
+Addition neuer Stadtsets gedacht und weist Änderungen bestehender Sets ab.
 
 ## 1. PowerShell und Python vorbereiten
 
@@ -483,7 +500,7 @@ Alte M2-Dateien (`--resample 30 --density 60`) sind kein dichtes Live-Raster.
 Rekonstruierte Stand-Zeilen und fehlende Öffnungsstatus bleiben Einschränkungen;
 `open` ist bei Historie ohne Status nur eine Annahme. Bei Bedarf vorhandene
 Rohdateien separat mit `ingest_history.py --resample 0 --density 5` aufbereiten
-([Datenbezug](../docs/DATEN-BEZUG.md)), nicht die M2-Dateien überschreiben.
+([Datenformate](../data-tools/README.md#datenformate)), nicht die M2-Dateien überschreiben.
 Das erzeugt **keine zusätzlichen echten Polls**. Exakt überlappende Live-Statuszeilen
 haben Vorrang. Mehrdeutige/nicht existente lokale Sommerzeit-Zeitstempel werden
 verworfen und gezählt, nicht erfunden.

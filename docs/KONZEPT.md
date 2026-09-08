@@ -169,7 +169,7 @@ Fußzeile der App. Token-Bucket 1 R/300 s **hart verdrahtet**, dazu
 
 ## 2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)
 
-Pipeline: `analysis/station_selection.py` · Schema: `analysis/README.md`.
+Pipeline: `analysis/station_selection.py` · Schema: [Werkzeugreferenz](../data-tools/README.md#datenformate).
 Der echte Bericht wird lokal als `docs/analysis/report_top10.md` erzeugt
 und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfernt.
 
@@ -1175,7 +1175,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 
 | P | Frage | Abdeckung |
 |---|---|---|
-| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema (`analysis/README.md`), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
+| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema ([Werkzeugreferenz](../data-tools/README.md#datenformate)), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
 | **P0** | Sind die Historie-Stationen real erreichbar? (Frankfurt: 100+ im 25-km-Radius) | Referenzpunkt je Stadt aus gitignorierter `config.local.json`, `onroute`-Modus, `--rank-by score`, `--max-radius` |
 | **P0** | E10-Verträglichkeit des Autos? | K.-o.-Kriterium; sonst `--fuel E5` (Äquivalenzpreis, §10) |
 | **P1** | Rabatt-/Kartenprogramme (2–4 ct können das Ranking umdrehen)? | geplant: `--brand-rebate "ARAL:0.02;…"`; bis dahin Top-10 der eigenen Karten-Marke gesondert betrachten |

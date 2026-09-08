@@ -31,7 +31,7 @@ sind noch offen. Die GUI-Vorlagen sind keine bereits fertige Live-App.
 - [Werkzeugübersicht](data-tools/README.md): interne Einzelprogramme.
 - [Architekturkonzept](docs/KONZEPT.md): fachliches Zielbild; der Betriebsplan in INSTALL.md hat Vorrang.
 - [GUI-Basis](sample/README.md): beide vorhandenen Oberflächen erhalten, Demo-Inhalte nicht als Echt-Daten ausgeben.
-- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](docs/PREIS-ZWILLINGE.md).
+- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](engine/README.md#preis-zwillinge).
 
 Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit
 vorhandenem Python 3.11+, ohne neue venv:

@@ -29,7 +29,8 @@ python .\data-tools\export_influx.py --env-file .\data\influx.env --uuid-only
 
 Sind noch keine UUID-Punkte vorhanden, den nächsten erfolgreichen Collector-Poll
 und dessen Upload abwarten: im normalen 06–24-Uhr-Fenster etwa alle fünf Minuten,
-außerhalb des Fensters erst beim nächsten Start. Bei einem leeren Export bleibt
+bei zwei Stadtsets etwa alle zehn Minuten je Stadt; außerhalb des Fensters
+erst beim nächsten Start. Bei einem leeren Export bleibt
 eine eventuell ältere Exportdatei erhalten – daher die Erfolgsmeldung prüfen.
 
 **3. Erst nach erfolgreichem Export: mit der bestehenden M2-Historie prüfen:**
@@ -73,31 +74,15 @@ Private Konfigurationen/Schlüssel nicht posten. Beide GUI-Vorlagen bleiben unve
 
 ## 1. Code auf PC und RPi aktualisieren
 
-Auf beiden Rechnern den Stand mit `station_id`, `--replay` und `--uuid-only`
-übernehmen. Aktueller Arbeitsbranch dieser Änderung: `arena/01a07be6-tankapp`.
+Den aktuellen freigegebenen Code mit `station_id`, `--replay` und `--uuid-only`
+auf dem Pi und dem verwendeten Export-Rechner bereitstellen. Ein alter Feature-
+Branch ist dafür nicht mehr erforderlich. Die Rollen und die Installation stehen
+in [INSTALL.md](INSTALL.md); der PC ist kein Pflichtgerät.
 
 Zuerst `git status --short` ansehen. Bei eigenen Änderungen, Konflikten oder
-Git-Fehlern anhalten; kein `reset --hard`, keine privaten Daten löschen.
-Die laufenden Dienste müssen für das Git-Update noch nicht gestoppt werden.
-
-**Windows/PowerShell**, im TankApp-Ordner:
-
-```powershell
-git status --short
-git fetch origin
-git switch arena/01a07be6-tankapp
-git pull --ff-only origin arena/01a07be6-tankapp
-```
-
-**RPi/SSH**, als Benutzer des bisherigen TankApp-Checkouts (im Standard-Setup `pi`):
-
-```bash
-cd ~/TankApp
-git status --short
-git fetch origin
-git switch arena/01a07be6-tankapp
-git pull --ff-only origin arena/01a07be6-tankapp
-```
+Git-Fehlern anhalten; kein `reset --hard`, keine privaten Daten löschen und nicht
+für diese Migration den Branch wechseln. Die laufenden Dienste müssen für das
+Code-Update noch nicht gestoppt werden.
 
 Die Beispiele unten verwenden die bisherigen Standardpfade:
 `/dev/shm/tankapp`, `~/TankApp` und `/etc/tankapp/env`. Bei abweichender Installation

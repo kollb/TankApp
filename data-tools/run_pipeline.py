@@ -2,7 +2,7 @@
 """
 TankApp – Ein-Befehl-Pipeline: fetch → ingest → Selektion → Polling-Set.
 
-Macht genau die manuelle Kette aus docs/DATEN-BEZUG.md (Kapitel 7/11) in einem
+Bündelt die optionale vertiefte Analyse aus data-tools/README.md in einem
 Aufruf und baut daraus das Live-Polling-Set (polling.json) für EINE Stadt
 (default: Frankfurt) nach der Regel (Auswahl nach NETTO-Vorteil, nicht
 blankem Preis):
