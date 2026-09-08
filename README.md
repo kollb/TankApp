@@ -4,7 +4,7 @@ Persönliche Spritpreis-Entscheidungs-App: **jetzt tanken · warten · woanders*
 Collector und RAM-Puffer auf dem Raspberry Pi, InfluxDB und Modell-Fits auf
 dem NAS, später eine gemeinsame Homepage mit Alltag und Statistik-Werkstatt.
 
-## Stand · 07.09.2026
+## Stand · 08.09.2026
 
 | Bereich | Arbeitsstand |
 |---|---|
@@ -27,6 +27,12 @@ dem NAS, später eine gemeinsame Homepage mit Alltag und Statistik-Werkstatt.
 
 ## Weiter mit echten Daten
 
+**Neu: [Archiv-Warmstart, 90-Tage-Übergang und Gütersloh](docs/HISTORIE-LIVE-STRATEGIE.md).**
+Dieselben Tankerkönig-Preise über Archiv und Polling nutzen, statt drei Monate
+zu warten. `engine bootstrap` erzeugt eine gemeinsame Trainingsdatei mit
+Bezugsweg-Grenze und geprüftem Übergang je Station. Die Anleitung trennt klar
+zwischen umgesetzt, noch zu automatisieren und noch zu kalibrieren.
+
 **[M3 am Windows-PC testen → `engine/README.md`](engine/README.md)** —
 Schritt für Schritt mit **PowerShell**, ohne WSL oder Aktivierungsskripte:
 Tests ausführen und vorhandene M2-CSVs direkt prüfen, backtesten und fitten.
@@ -43,6 +49,8 @@ Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsse
 ## Dokumentation
 
 - [Installation & Betrieb](docs/INSTALL.md) — Pi/NAS, systemd, Secrets, Kontrolle.
+- [Historie + Live: Strategie und nächste Schritte](docs/HISTORIE-LIVE-STRATEGIE.md) —
+  sofortiger Warmstart, Übergangsregeln und Gütersloh ohne Überschreiben Frankfurts.
 - [Datenbezug](docs/DATEN-BEZUG.md) · [Werkzeuge](data-tools/README.md) —
   Historie holen, InfluxDB exportieren, Polling-Set bei Bedarf neu erstellen.
 - [Stationsselektion](analysis/README.md) — Methodik und lokale Ausgaben.

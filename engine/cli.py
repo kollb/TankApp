@@ -44,7 +44,7 @@ def selected_ids(path: Path | None, city: str | None) -> set[str] | None:
     return ids
 
 
-def load_input(args):
+def load_raw_input(args):
     cfg = Config(
         train_days=args.train_days,
         min_train_days=args.min_train_days,
@@ -63,6 +63,11 @@ def load_input(args):
                 + ", ".join(sorted(missing))
                 + ". Nicht stillschweigend aus der Auswertung ausgeschlossen."
             )
+    return cfg, observations, quality
+
+
+def load_input(args):
+    cfg, observations, quality = load_raw_input(args)
     series = prepare_series(observations, cfg)
     return (
         cfg,
@@ -77,6 +82,7 @@ def parser() -> argparse.ArgumentParser:
     )
     commands = root.add_subparsers(dest="command", required=True)
     for name, help_text in [
+        ("bootstrap", "Historischer Warmstart mit geprüftem Übergang zu Polling-Daten"),
         ("inspect", "Datenqualität prüfen, auch bei erst wenigen Live-Tagen"),
         ("fit", "Struktur + AR(2) auf NAS/PC fitten, JSON-Artefakt schreiben"),
         ("backtest", "Täglicher Rolling-Origin-Backtest gegen saisonale Naive"),
@@ -99,7 +105,14 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--min-train-days", type=int, default=28)
         command.add_argument("--poll-start", type=int, default=6)
         command.add_argument("--poll-end", type=int, default=24)
-        if name == "inspect":
+        if name == "bootstrap":
+            command.add_argument("--at", help="Exklusiver Cutoff (Default: jetzt)")
+            command.add_argument("--live-only-days", type=int, default=90)
+            command.add_argument("--min-daily-coverage", type=float, default=0.95)
+            command.add_argument(
+                "--out", type=Path, default=Path("data/engine/bootstrap.csv.gz")
+            )
+        elif name == "inspect":
             command.add_argument(
                 "--out", type=Path, default=Path("results/engine/quality.json")
             )
@@ -148,6 +161,49 @@ def parser() -> argparse.ArgumentParser:
 
 
 def run(args) -> int:
+    if args.command == "bootstrap":
+        from .bootstrap import bootstrap, write_csv
+
+        if not args.out.name.endswith((".csv", ".csv.gz")):
+            raise ValueError("Bootstrap-Ausgabe muss .csv oder .csv.gz sein.")
+        paths = {path.resolve() for path in input_paths(args.data)}
+        report_path = Path(str(args.out) + ".policy.json")
+        if args.out.resolve() in paths or report_path.resolve() in paths:
+            raise ValueError("Bootstrap-Ausgabe darf keine Eingabedatei überschreiben.")
+        if args.polling and args.polling.resolve() in {
+            args.out.resolve(),
+            report_path.resolve(),
+        }:
+            raise ValueError("Bootstrap-Ausgabe darf polling.json nicht überschreiben.")
+        cfg, observations, quality = load_raw_input(args)
+        output, policy = bootstrap(
+            observations,
+            cfg,
+            args.at if args.at else pd.Timestamp.now(tz="UTC"),
+            args.live_only_days,
+            args.min_daily_coverage,
+        )
+        if args.polling:
+            missing = selected_ids(args.polling, args.poll_city) - set(
+                output.station_id
+            )
+            if missing:
+                raise ValueError(
+                    "Vor dem Cutoff fehlen Stationen: " + ", ".join(sorted(missing))
+                )
+        write_csv(args.out, output)
+        write_json(report_path, {**policy, "input_quality": quality})
+        for item in policy["stations"]:
+            print(
+                f"{item['city']} / {item['station_id']} / {item['fuel']}: "
+                f"{item['mode']} – {item['good_complete_live_days']}/"
+                f"{item['required_complete_live_days']} vollständige Live-Tage mit Zielabdeckung"
+            )
+        print(f"Bootstrap-Daten → {args.out}; Übergangsbericht → {report_path}")
+        print(
+            "Keine Live-Lücken mit Archivpreisen gefüllt; keine kalibrierte Tankempfehlung."
+        )
+        return 0
     if args.command == "compare-stations":
         from .station_comparison import (
             compare_stations,

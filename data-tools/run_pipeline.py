@@ -452,8 +452,32 @@ def validate_proposal_target(args: argparse.Namespace) -> None:
         raise SystemExit("Ausschlüsse zunächst nur als Vorschlag speichern: --out-stations docs/analysis/stations-vorschlag. Aktives Polling-Set bleibt unverändert.")
 
 
+def validate_polling_target(args: argparse.Namespace) -> None:
+    """A one-city run must never erase another city's already generated set."""
+    if getattr(args, "skip_poll", False):
+        return
+    target = args.out_stations / "polling.json"
+    if not target.exists():
+        return
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        sets = payload["sets"]
+        if not isinstance(sets, dict) or not sets:
+            raise ValueError("sets fehlt/leer")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SystemExit(f"Vorhandenes {target} ist ungültig; wird nicht überschrieben.") from exc
+    others = set(sets) - {args.poll_city}
+    if others:
+        raise SystemExit(
+            f"{target} enthält andere Städte ({', '.join(sorted(others))}). "
+            "Ein Stadtlauf darf diese nicht ersetzen. Separates --out-stations "
+            "verwenden, z. B. docs/analysis/stations-guetersloh."
+        )
+
+
 def step_poll(args: argparse.Namespace) -> None:
     validate_proposal_target(args)
+    validate_polling_target(args)
     if args.skip_poll:
         log("[poll] übersprungen (--skip-poll)")
         return
@@ -648,6 +672,7 @@ def main() -> int:
     ap.add_argument("--skip-poll", action="store_true")
     args = ap.parse_args()
     validate_proposal_target(args)
+    validate_polling_target(args)
 
     if not (args.config).exists():
         raise SystemExit(f"Config fehlt: {args.config} — bitte aus "

@@ -1,5 +1,12 @@
 # M3 am Windows-PC testen – PowerShell-Anleitung
 
+**Neu (08.09.): [Warmstart statt drei Monate warten](../docs/HISTORIE-LIVE-STRATEGIE.md).**
+`python -m engine bootstrap --data …` verbindet die Archiv-Vorgeschichte mit
+Polling, meldet den Übergangsstatus je Station und entfernt Archivzeilen nach
+geprüfter 90-Tage-Live-Abdeckung aus der abgeleiteten Datei. Gleicher
+Datenanbieter, zwei Bezugswege; keine automatische Gütefreigabe. Dort stehen
+auch die konkreten Schritte für Gütersloh und die noch offene Automatisierung.
+
 Du kannst **Tests, Datenprüfung, Backtests und Modell-Fits vollständig auf deinem
 Windows-PC** ausführen. Mit den vorhandenen M2-CSV-Dateien brauchst du dafür
 weder NAS-Zugriff noch einen API-Schlüssel. Der Export der Live-Daten aus InfluxDB

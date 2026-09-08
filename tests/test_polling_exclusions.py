@@ -153,3 +153,29 @@ def test_step_poll_writes_only_marked_proposal_and_keeps_active_set(
         encoding="utf-8"
     ) == "existing active set"
     assert "VORSCHLAG" in (proposal / "polling_test.md").read_text(encoding="utf-8")
+
+
+def test_new_city_cannot_erase_existing_polling_set(pipeline, tmp_path):
+    import json
+
+    target = tmp_path / "polling.json"
+    target.write_text(json.dumps({"sets": {"Frankfurt": {"batch": ["existing"]}}}))
+    original = target.read_bytes()
+    args = argparse.Namespace(
+        out_stations=tmp_path, poll_city="Gütersloh", skip_poll=False
+    )
+    with pytest.raises(SystemExit, match="andere Städte"):
+        pipeline.validate_polling_target(args)
+    assert target.read_bytes() == original
+    args.poll_city = "Frankfurt"
+    pipeline.validate_polling_target(args)
+    args.poll_city = "Gütersloh"
+    args.skip_poll = True
+    pipeline.validate_polling_target(args)
+
+
+def test_malformed_polling_set_is_not_overwritten(pipeline, tmp_path):
+    (tmp_path / "polling.json").write_text("broken")
+    args = argparse.Namespace(out_stations=tmp_path, poll_city="Gütersloh")
+    with pytest.raises(SystemExit, match="ungültig"):
+        pipeline.validate_polling_target(args)

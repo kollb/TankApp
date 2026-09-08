@@ -1,5 +1,11 @@
 # data-tools/ – Datenbezug für die TankApp
 
+**Archiv und Polling gemeinsam nutzen / Gütersloh ergänzen:**
+[Neue Strategie und Bootstrap-Anleitung](../docs/HISTORIE-LIVE-STRATEGIE.md).
+`run_pipeline.py` erzeugt weiterhin ein Stadtset pro Lauf. Neu schützt es
+bestehende Sets anderer Städte vor Überschreiben; für Gütersloh ein separates
+`--out-stations docs/analysis/stations-guetersloh` wählen.
+
 Werkzeuge, um die **Historie** (Tankerkönig-Datenrepo, eine CSV pro Tag) zu holen und in das
 Analyse-Schema zu überführen — ohne das 100-GB-Repo zu clonen.
 **Aktueller nächster Schritt:** [M3 am Windows-PC testen – PowerShell-Anleitung](../engine/README.md).

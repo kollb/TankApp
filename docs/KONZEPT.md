@@ -1,6 +1,6 @@
 # TankApp — Produkt- und Architekturkonzept
 
-> Stand: 2026-09-07. Dieses Dokument beschreibt das **Zielbild**, nicht
+> Stand: 2026-09-08. Dieses Dokument beschreibt das **Zielbild**, nicht
 > ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
 > laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
@@ -9,6 +9,13 @@
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
 > Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
 > [Übernahmeregeln](../sample/README.md), §8 und UI-Anhang.
+
+**Strategie-Ergänzung vom 08.09.:** [Archiv-Warmstart, automatische
+Bezugsweg-Wahl und mehrere Städte](HISTORIE-LIVE-STRATEGIE.md). Archiv und Polling
+sind dieselben Tankerkönig-Marktdaten mit unterschiedlichen Bezugszeiten.
+Keine dreimonatige Wartepflicht: PC-Fits mit Archivhistorie sofort, echte
+Live-Kalibrierung parallel. Der Bootstrap-Befehl ist implementiert, Zeitsteuerung,
+Mehrstadt-Collector und automatische Alltagsempfehlungen noch nicht.
 
 **Das Produktprinzip in einem Satz:** Aus den Prognose-Quantilen q̂.025…q̂.975
 der Engine wird eine **Entscheidung mit Kalibrierungsangabe** gemacht —
