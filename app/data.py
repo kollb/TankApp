@@ -313,14 +313,16 @@ class LiveData:
         """Gibt alle letzten Prognosen für den RP2-Cache zurück."""
         bundle = publication(self.settings)
         forecasts = bundle.get("forecasts", [])
-        
+
         # Filtere nur gültige Prognosen
         valid_forecasts = []
         for row in forecasts:
-            if not all(k in row for k in ["station_id", "city", "fuel", "origin", "points"]):
+            if not all(
+                k in row for k in ["station_id", "city", "fuel", "origin", "points"]
+            ):
                 continue
             valid_forecasts.append(row)
-        
+
         return {
             "generated_at": bundle.get("published_at"),
             "forecasts": valid_forecasts,
