@@ -1,0 +1,18 @@
+[Unit]
+Description=TankApp RP2 Forecast Cache - Lädt Prognosen vom NAS
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/TankApp/rp2
+ExecStart=/usr/bin/python3 /home/pi/TankApp/rp2/cache_forecasts.py
+Restart=always
+RestartSec=60
+
+# Umgebungsvariablen für NAS-IP
+Environment=NAS_IP=<NAS-IP>  # Hier deine NAS-IP eintragen!
+
+[Install]
+WantedBy=multi-user.target

@@ -162,6 +162,8 @@ class Handler(SimpleHTTPRequestHandler):
             )
         if path == "/api/v1/forecast":
             return self.data.forecast(value("station_id"), city, fuel)
+        if path == "/api/v1/last_forecasts":
+            return self.data.last_forecasts()
         return None
 
     def do_GET(self):
