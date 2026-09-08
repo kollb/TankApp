@@ -111,6 +111,53 @@ def test_larger_history_retains_older_existing_files(tmp_path, monkeypatch):
     assert partial.exists()  # never considered a completed download or deleted
 
 
+def test_complete_sync_skips_archive_until_new_day(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(tankapp, "run_tool", fake_downloader(tmp_path, calls))
+    args = sync_args(tmp_path)
+    assert tankapp.history_sync(args, dt.date(2026, 9, 8)) == 0
+    assert len(calls) == 1
+    # Same day again: nothing new can exist → skipped, archive untouched.
+    assert tankapp.history_sync(args, dt.date(2026, 9, 8)) == 0
+    assert len(calls) == 1
+    # Next day: the stop date advances → a real run happens again.
+    assert tankapp.history_sync(args, dt.date(2026, 9, 9)) == 0
+    assert len(calls) == 2
+
+
+def test_force_rechecks_despite_complete_state(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(tankapp, "run_tool", fake_downloader(tmp_path, calls))
+    args = sync_args(tmp_path)
+    assert tankapp.history_sync(args, dt.date(2026, 9, 8)) == 0
+    forced = argparse.Namespace(
+        archive_dir=tmp_path, days=3, since=None, netrc=None, force=True
+    )
+    assert tankapp.history_sync(forced, dt.date(2026, 9, 8)) == 0
+    assert len(calls) == 2
+
+
+def test_state_dir_keeps_state_and_lock_out_of_archive(tmp_path, monkeypatch):
+    state_dir = tmp_path / "runtime" / "jobs" / "archive-sync"
+    args = argparse.Namespace(
+        archive_dir=tmp_path, days=3, since=None, netrc=None, state_dir=state_dir
+    )
+    calls = []
+    monkeypatch.setattr(tankapp, "run_tool", fake_downloader(tmp_path, calls))
+    assert tankapp.history_sync(args, dt.date(2026, 9, 8)) == 0
+    assert (
+        json.loads((state_dir / "state.json").read_text())["last_complete_until"]
+        == "2026-09-07"
+    )
+    assert not (tmp_path / ".sync").exists()
+    # The relocated state drives the skip, the lock lives with the state.
+    assert tankapp.history_sync(args, dt.date(2026, 9, 8)) == 0
+    assert len(calls) == 1
+    with collector_lock(state_dir):
+        with pytest.raises(ValueError, match="bereits"):
+            tankapp.history_sync(args, dt.date(2026, 9, 9))
+
+
 def test_sync_lock_prevents_second_download(tmp_path, monkeypatch):
     monkeypatch.setattr(tankapp, "run_tool", lambda *a: pytest.fail("second download"))
     with collector_lock(tmp_path / ".sync"):

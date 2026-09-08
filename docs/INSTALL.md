@@ -42,8 +42,9 @@ Tankerkönig-Archiv ────────────────────
 nicht neu installieren. Zuerst denselben aktuellen TankApp-Code auf den verwendeten
 Geräten bereitstellen. Die gebündelten Einrichtungsbefehle brauchen auf dem jeweiligen Gerät nur
 Python 3.11+ und die Standardbibliothek, **keine pip-/venv-Einrichtung**.
-Auf dem NAS wird zusätzlich Docker mit Compose v2 benötigt; das App-Image
-installiert seine Rechenpakete und baut die GUI selbst.
+Auf dem NAS wird zusätzlich Docker mit Compose v2 benötigt (Unraid: zuerst
+Compose-Plugin installieren, siehe „Unraid — konkreter Ablauf“); das
+App-Image installiert seine Rechenpakete und baut die GUI selbst.
 Die Aktivierung ist für die bestehenden Standard-systemd-Dienste vorgesehen;
 abweichende Startpfade oder ein festes `--poll-city` werden nicht heimlich geändert.
 
@@ -131,7 +132,7 @@ Dann auf dem NAS:
 python3 tankapp.py nas-up
 ```
 
-Danach im Browser **`http://<NAS-Adresse>:8080`** öffnen. Das NAS braucht Docker
+Danach im Browser **`http://<NAS-Adresse>:1355`** öffnen. Das NAS braucht Docker
 mit Compose v2 und beim ersten Build Internetzugang. Auf dem PC/Handy braucht
 es weder Node noch Python-Pakete. Bestehende InfluxDB, Collector und Uploader
 werden von diesem Befehl **nicht neu installiert oder verändert**.
@@ -160,12 +161,96 @@ weil die Dateien schreibgeschützt eingebunden sind. Zugangsdaten kommen nicht i
 ungeschützte Portfreigabe ins Internet. Für TLS einen vorhandenen privaten
 NAS-Reverse-Proxy verwenden; die API bleibt unter derselben Browser-Adresse.
 
+**Portwechsel nach dem ersten Start:** `nas-up` merkt sich den Port in der
+privaten `data/nas-settings.json`. Wer `nas-up` schon mit dem älteren Port
+(8080) ausgeführt hat, führt nach dem Code-Update einmal
+`python3 tankapp.py nas-up --port 1355` aus oder ändert den `port`-Eintrag in
+dieser Datei.
+
+### Unraid — konkreter Ablauf
+
+Ein Unraid-NAS wird wie jedes Docker-NAS behandelt; der Pi-Teil (Collector/
+Uploader mit systemd) ist davon unberührt. Auf Unraid zusätzlich:
+
+1. **Compose-Plugin installieren:** Unraid bringt Docker mit, aber Docker
+   Compose v2 ist nicht im Standard enthalten — einmalig ein Compose-Plugin
+   aus den Community Apps (z. B. „Compose Manager Plus“). Ohne es schlägt
+   `nas-up` mit „Docker mit Compose v2 wird auf dem NAS benötigt“ fehl.
+2. **Repo nach `/mnt/user/appdata/tankapp` klonen** (SSD-Share) — die
+   Verzeichnisse müssen vorab nicht existieren:
+
+   ```bash
+   git clone https://github.com/kollb/TankApp.git /mnt/user/appdata/tankapp
+   ```
+
+   Grundsatz: **große Dateien auf der HDD, kleine/häufig geschriebene auf
+   der SSD** — die HDD (Sleep-Modus) soll möglichst selten geweckt werden:
+
+   | Pfad | Pool | Inhalt |
+   |---|---|---|
+   | `/mnt/user/appdata/tankapp` | SSD | Code + private Konfiguration (`data/influx.env`, `data/_netrc`, `data/nas-settings.json`, `docs/analysis/stations/polling.json`) + **Runtime** (`data/runtime`: Job-Zustände, Modelle, Archiv-Sync-Status — alles klein, stündlich geschrieben) |
+   | `/mnt/user/data/tankapp` | HDD | nur das Tankerkönig-Roharchiv (nationale Tagesdateien, ein Jahr mehrere GB) |
+
+   Das Archivverzeichnis legt `nas-up` beim Start an und übergibt es dem
+   Container-User (99:100). Selbst vorangelegte Verzeichnisse müssen diesem
+   User gehören (`chown -R 99:100`), sonst hat der Container keine
+   Schreibrechte.
+3. **Private Dateien wie oben bereitstellen** — relativ zum Checkout, also
+   unter `/mnt/user/appdata/tankapp/` (`docs/analysis/stations/polling.json`,
+   `data/influx.env`, netrc als `data/_netrc`) — und dem Container-User
+   lesbar machen, sonst scheitert der Read-only-Bind-Mount:
+
+   ```bash
+   chown 99:100 data/influx.env data/_netrc && chmod 600 data/influx.env data/_netrc
+   ```
+
+   Dann starten:
+
+   ```bash
+   cd /mnt/user/appdata/tankapp
+   python3 tankapp.py nas-up --uid 99 --gid 100 --archive-dir /mnt/user/data/tankapp
+   ```
+
+   **Nur `--archive-dir`, kein `--runtime-dir`:** Damit bleibt die Runtime
+   (alle kleinen, häufig geschriebenen Dateien) unter dem Checkout auf der
+   SSD und die HDD nimmt nur das große Roharchiv auf.
+4. **Browser:** `http://<NAS-Adresse>:1355`.
+
+Warum `--uid 99 --gid 100`: Unraid-Shares stehen standardmäßig unter
+`nobody:users` (UID 99, GID 100), und Container auf Unraid laufen üblich-
+erweise mit genau diesem User. Ohne `--uid/--gid` erbt der Container den
+ausführenden Benutzer (auf Unraid typischerweise root) — das funktioniert,
+erzeugt aber root-eigene Dateien, die Unraids Rechte-Tools („New
+Permissions“) später zurücksetzen und die der Konvention widersprechen.
+`nas-up` merkt sich UID/GID (wie den Port) in der privaten
+`data/nas-settings.json`; neu angelegte Datenordner übergibt es dem
+Container-User, vorhandene Ordner müssen durch ihn beschreibbar sein.
+
+Weitere Unraid-Hinweise:
+
+- **Autostart:** `restart: unless-stopped` — der Container startet mit dem
+  Docker-Dienst beim NAS-Boot; die Zeitpläne holen danach nach. Im
+  Compose-Plugin bzw. im Docker-Tab des Unraid sichtbar.
+- **Kein `sudo` nötig:** `nas-up` wird direkt als Docker-Berechtigt
+  ausgeführt (auf Unraid üblicherweise root).
+- **Docker-Verzeichnis (Flash-Stick):** Unraid legt Images und Container-
+  Verzeichnisse standardmäßig unter `/boot/config/docker` (USB-Flash). Das
+  App-Image (zweistufiger Build mit Node- und Python-Rechenstack) ist nicht
+  klein — bei kleinem Stick in **Settings → Docker → Docker Directory** auf
+  eine Share verlegen (z. B. `/mnt/user/docker`), bevor `nas-up` den ersten
+  Build startet.
+- **InfluxDB bleibt unverändert:** bestehende Instanz auf dem Unraid wird
+  nur mit eigenem Bucket + Nur-Lese-Token bedient; `TANKAPP_INFLUX_URL` ist
+  die LAN-Adresse des NAS mit Port 8086, **nicht** `localhost`.
+- **Unraid-Web-UI (Port 80) bleibt unberührt.** Die TankApp-GUI auf Port
+  1355 hat dort keinen Standard-Konflikt.
+
 ### Was danach automatisch läuft
 
 | Aufgabe | Zeitplanung und Verhalten |
 |---|---|
 | **GUI + Nur-Lese-API** | Ein gemeinsamer Dienst. Preise alle 30 Sekunden neu lesen; Anzeige höchstens 30 Minuten alter, offener Preisbeobachtungen. Keine zusätzlichen Tankerkönig-Live-Requests. |
-| **Archiv** | Bei App-/NAS-Start, danach stündlich. Preis- und Stationsdateien bis gestern; alle fehlenden Tage seit gespeichertem Beginn nachladen. |
+| **Archiv** | Bei App-/NAS-Start, danach stündlich. Preis- und Stationsdateien bis gestern; alle fehlenden Tage seit gespeichertem Beginn nachholen. Bereits vollständig bis gestern: Lauf wird übersprungen, ohne das Archiv anzufassen (State/Sperrdatei in der Runtime, HDD bleibt im Sleep-Modus). |
 | **Modelle** | Bei App-/NAS-Start, danach täglich nach erfolgreichem Lauf. Bei fehlenden Daten/Fehlern stündlich erneut versuchen. Läuft unabhängig vom Archivabruf. |
 | **Veröffentlichung** | Erst nach fertiger Berechnung atomar ersetzen. Teilweise erneuerte Stationen kennzeichnen alte Ergebnisse; ohne erfolgreichen Fit bleibt der letzte brauchbare Stand erhalten. |
 | **Neustart** | Docker `restart: unless-stopped`; startet mit Docker auf dem NAS, sofern nicht ausdrücklich gestoppt. Zeitplanung braucht keinen PC und holt nach dem Start nach. |
@@ -675,6 +760,28 @@ docker run --rm -v tankapp_influxdb_data:/data -v $PWD/backup:/backup alpine \
 ```
 
 danach `docker compose up -d` (Org/Bucket/Token sind im Volume enthalten).
+
+### 3.7 M1-Abnahme: 14 Tage Live-Betrieb
+
+Konzept §13: M1 ist erfüllt, wenn **Collector + Ringpuffer + Uploader
+14 Tage** durchgelaufen sind und
+
+1. **Datenlücken < 2 %** (Lücken-Check in §3.5),
+2. **Ack-Protokoll fehlerfrei**: keine verlorene Zeile, keine Duplikate —
+   `meta/synced_until` ist stets ≥ dem Zeitstempel der zweit-neuesten
+   Pufferzeile (nur die allerneuste darf noch offen sein), und die
+   Punktezahl in InfluxDB stimmt mit der Anzahl der Stations-Snapshots im
+   Puffer überein (eine JSONL-Pollzeile enthält bis zu zehn Stationen, nicht
+   nur einen Influx-Punkt).
+
+Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich §3.5
+durchgehen und das Backup (§3.6) prüfen.
+
+---
+
+
+</details>
+oken sind im Volume enthalten).
 
 ### 3.7 M1-Abnahme: 14 Tage Live-Betrieb
 

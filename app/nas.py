@@ -51,14 +51,25 @@ def up(args):
         raise ValueError(
             "InfluxDB-URL muss aus dem App-Container erreichbar sein: NAS-LAN-Adresse statt localhost verwenden."
         )
-    port, days = int(chosen("port", 8080)), int(chosen("history_days", 365))
+    port, days = int(chosen("port", 1355)), int(chosen("history_days", 365))
     fuels = str(chosen("model_fuels", "e10"))
+    default_uid = os.environ.get(
+        "SUDO_UID", str(os.getuid() if hasattr(os, "getuid") else 1000)
+    )
+    default_gid = os.environ.get(
+        "SUDO_GID", str(os.getgid() if hasattr(os, "getgid") else 1000)
+    )
+    uid, gid = int(chosen("uid", default_uid)), int(chosen("gid", default_gid))
     if (
         not 1024 <= port <= 65535
+        or not 0 <= uid <= 65534
+        or not 0 <= gid <= 65534
         or not 1 <= days <= 7300
         or not set(fuels.split(",")) <= {"e10", "e5", "diesel"}
     ):
-        raise ValueError("Ungültiger Port, Archivzeitraum oder Modell-Kraftstoff.")
+        raise ValueError(
+            "Ungültiger Port, Container-UID/GID, Archivzeitraum oder Modell-Kraftstoff."
+        )
     selected_netrc = chosen("netrc", None)
     access = tankapp.netrc_args(selected_netrc)
     netrc = Path(access[1]) if access else ROOT / "data/nas-empty-netrc"
@@ -70,12 +81,6 @@ def up(args):
         raise ValueError(
             "Docker mit Compose v2 wird auf dem NAS benötigt. Kein Python-venv-Setup erforderlich."
         ) from None
-    uid = int(
-        os.environ.get("SUDO_UID", str(os.getuid() if hasattr(os, "getuid") else 1000))
-    )
-    gid = int(
-        os.environ.get("SUDO_GID", str(os.getgid() if hasattr(os, "getgid") else 1000))
-    )
     for name in ("archive_dir", "runtime_dir"):
         path = paths[name]
         existed = path.exists()
@@ -125,6 +130,8 @@ def up(args):
             **{name: str(path) for name, path in paths.items()},
             "netrc": str(netrc) if access else None,
             "port": port,
+            "uid": uid,
+            "gid": gid,
             "history_days": days,
             "model_fuels": fuels,
         },

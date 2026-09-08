@@ -9,7 +9,7 @@ services:
     init: true
     user: "${TANKAPP_UID:-1000}:${TANKAPP_GID:-1000}"
     ports:
-      - "${TANKAPP_WEB_PORT:-8080}:8080"
+      - "${TANKAPP_WEB_PORT:-1355}:1355"
     environment:
       TANKAPP_DATA_DIR: /data
       TANKAPP_ARCHIVE_DIR: /archive

@@ -203,13 +203,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.do_GET()
 
 
-def make_server(settings, host="0.0.0.0", port=8080, data=None):
+def make_server(settings, host="0.0.0.0", port=1355, data=None):
     return ThreadingHTTPServer(
         (host, port), functools.partial(Handler, data=data or LiveData(settings))
     )
 
 
-def serve(settings, host="0.0.0.0", port=8080, jobs=False):
+def serve(settings, host="0.0.0.0", port=1355, jobs=False):
     if not (settings.static / "index.html").is_file():
         raise ValueError(
             "GUI-Build fehlt. NAS: tankapp.py nas-up; Entwicklung: npm --prefix web run build."

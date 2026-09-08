@@ -64,16 +64,32 @@ def history_sync(args, today=None):
     if not 1 <= args.days <= 7300:
         raise ValueError("--days muss zwischen 1 und 7300 liegen.")
     archive = args.archive_dir.resolve()
-    archive.mkdir(parents=True, exist_ok=True)
-    # Same OS-lock primitive as the collector, but in an independent directory.
-    with collector_lock(archive / ".sync", label="Archiv-Sync"):
-        state_path = archive / ".sync/state.json"
-        state = (
-            json.loads(state_path.read_text(encoding="utf-8"))
-            if state_path.exists()
-            else {}
+    # State/lock may live apart from the archive, so hourly bookkeeping never
+    # touches a sleeping archive disk (e.g. Unraid HDD pools).
+    state_dir = Path(getattr(args, "state_dir", None) or (archive / ".sync")).resolve()
+    stop = (today or dt.date.today()) - dt.timedelta(days=1)
+    state_path = state_dir / "state.json"
+    state = (
+        json.loads(state_path.read_text(encoding="utf-8"))
+        if state_path.exists()
+        else {}
+    )
+    # A run complete through yesterday implies no newer archive day can exist;
+    # skip entirely (no archive I/O) until the next day, --since or --force.
+    if (
+        isinstance(state, dict)
+        and state.get("last_complete_until") == str(stop)
+        and not args.since
+        and not getattr(args, "force", False)
+    ):
+        print(
+            f"NAS-Archiv aktuell: vollständig bis {stop}, keine neue Tagesdatei möglich. "
+            "Archiv nicht angefasst (Erzwingen: --force)."
         )
-        stop = (today or dt.date.today()) - dt.timedelta(days=1)
+        return 0
+    # Same OS-lock primitive as the collector, but in an independent directory.
+    with collector_lock(state_dir, label="Archiv-Sync"):
+        archive.mkdir(parents=True, exist_ok=True)
         requested = (
             dt.date.fromisoformat(args.since)
             if args.since
@@ -374,7 +390,7 @@ def parser():
         "serve", help="GUI + nur lesende API; NAS-Dauerbetrieb bevorzugt mit nas-up"
     )
     web.add_argument("--host", default="0.0.0.0")
-    web.add_argument("--port", type=int, default=8080)
+    web.add_argument("--port", type=int, default=1355)
     web.add_argument(
         "--jobs", action="store_true", help="Archiv-/Modelljobs mitstarten"
     )
@@ -388,6 +404,8 @@ def parser():
     nas.add_argument("--archive-dir", type=Path)
     nas.add_argument("--runtime-dir", type=Path)
     nas.add_argument("--port", type=int)
+    nas.add_argument("--uid", type=int, help="Container-UID; Unraid-Konvention: 99")
+    nas.add_argument("--gid", type=int, help="Container-GID; Unraid-Konvention: 100")
     nas.add_argument("--history-days", type=int)
     nas.add_argument("--model-fuels", help="Default e10; optional e10,e5,diesel")
     models = commands.add_parser(
@@ -410,6 +428,16 @@ def parser():
     )
     sync.add_argument("--since", help="Alternativer früherer Archivbeginn YYYY-MM-DD")
     sync.add_argument("--netrc", type=Path)
+    sync.add_argument(
+        "--state-dir",
+        type=Path,
+        help="State-/Sperrverzeichnis; Default: <archive>/.sync",
+    )
+    sync.add_argument(
+        "--force",
+        action="store_true",
+        help="Lückenprüfung erzwingen, auch wenn der letzte Lauf vollständig bis gestern war",
+    )
     city = commands.add_parser(
         "add-city",
         help="Pi/NAS/PC: Stadt anhand Stationsliste vorbereiten, ohne Preisdownload",

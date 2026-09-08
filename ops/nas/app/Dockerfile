@@ -20,7 +20,7 @@ COPY tankapp.py /app/tankapp.py
 COPY --from=web /web/dist /app/web/dist
 RUN mkdir -p /data/runtime /archive /config && chown -R 1000:1000 /data /archive
 USER 1000:1000
-EXPOSE 8080
+EXPOSE 1355
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health', timeout=3).read()"
-CMD ["python", "-m", "app", "--host", "0.0.0.0", "--port", "8080", "--jobs"]
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1355/api/v1/health', timeout=3).read()"
+CMD ["python", "-m", "app", "--host", "0.0.0.0", "--port", "1355", "--jobs"]

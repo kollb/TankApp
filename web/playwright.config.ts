@@ -4,13 +4,13 @@ export default defineConfig({
   webServer: process.env.TANKAPP_TEST_URL
     ? undefined
     : {
-        command: `${process.platform === "win32" ? "py -3" : "python3"} ../tankapp.py serve --host 0.0.0.0 --port 8080`,
-        url: "http://127.0.0.1:8080/api/v1/health",
+        command: `${process.platform === "win32" ? "py -3" : "python3"} ../tankapp.py serve --host 0.0.0.0 --port 1355`,
+        url: "http://127.0.0.1:1355/api/v1/health",
         reuseExistingServer: !process.env.CI,
         timeout: 30000,
       },
   use: {
-    baseURL: process.env.TANKAPP_TEST_URL || "http://127.0.0.1:8080",
+    baseURL: process.env.TANKAPP_TEST_URL || "http://127.0.0.1:1355",
     headless: true,
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
       ? {
