@@ -31,9 +31,13 @@ Nicht mit Produktions-Zugangsdaten starten, keine Demo-Preise in den Live-Bucket
 schreiben. Aussagen wie „kalibriert“, simulierte Ersparnisse und fixe
 Gütewerte sind keine Nachweise der neuen Engine.
 
-Bei M4/M5: Komponenten in eine gemeinsame Homepage mit Alltag und Werkstatt
-überführen, Datenzugriff/Entscheidungslogik durch die echten Server-Schnittstellen
-ersetzen. Fehlende Daten als fehlend darstellen, nicht durch Sample-Werte ersetzen;
+Die lauffähige gemeinsame Umsetzung liegt jetzt in `web/`: React/Tailwind,
+Alltags-/Statistik-/Systemansicht, übernommene Slate/Emerald/Sky-Gestaltung und
+adaptierte SVG-Charts. `app/` liefert die echten Nur-Lese-Schnittstellen; das
+NAS-Image baut die GUI mit Vite, ohne die Next-/PostgreSQL-Demo-Runtime.
+Noch nicht freigegebene Entscheidungs-, Feedback- und Kalibrierungsfunktionen
+werden nicht durch die Demo-Implementierung ersetzt. Beide Vorlagen bleiben
+für diese weitere Übernahme unverändert erhalten. Fehlende Daten als fehlend darstellen, nicht durch Sample-Werte ersetzen;
 Kalibrierungs-Gate aus dem [Konzept](../docs/KONZEPT.md) beachten.
 Erst nach visueller Prüfung beider Bereiche auf Desktop **und** Smartphone
 werden nicht mehr benötigte Seed-/Prototyp-Dateien entfernt.

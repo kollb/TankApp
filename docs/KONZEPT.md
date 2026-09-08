@@ -1,14 +1,26 @@
 # TankApp — Produkt- und Architekturkonzept
 
-> Stand: 2026-09-07. Dieses Dokument beschreibt das **Zielbild**, nicht
+> Stand: 2026-09-08. Dieses Dokument beschreibt das **Zielbild**, nicht
 > ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
 > laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
-> Güte- und Kalibrierungsziele sind erst nach einem echten Backtest abgenommen.
+> `web/` und `app/` implementieren inzwischen Live-GUI, Nur-Lese-API und
+> automatische NAS-Archiv-/Modelljobs. Kein Nachweis des Betriebs auf dem Ziel-NAS.
+> Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
 > Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
 > [Übernahmeregeln](../sample/README.md), §8 und UI-Anhang.
+
+**Verbindlicher Betriebsplan vom 08.09.: [INSTALL.md](INSTALL.md).**
+Reihenfolge: Gütersloh mitpolling starten → echte Live-Preise in die vorhandene
+GUI → automatische Berechnung → kalibrierte Entscheidungen. Parallel lädt das
+NAS selbst ein Jahr oder mehr Archiv und holt beim nächsten geplanten Lauf alle
+Lücken nach. Pi = Collector/Uploader; NAS = Archiv + InfluxDB + Berechnung +
+API/Web-GUI; PC = optionales Rechnen/Einrichten, sonst Browser. Keine verpflichtende
+PC-venv. Historische Pi-API-/PC-Pflicht-Zuordnungen weiter unten sind damit abgelöst.
+Archiv und Polling sind dieselben Tankerkönig-Marktdaten. Der Archiv-Sync wird
+nicht abgeschaltet, nur weil ein Modell ausschließlich auf jüngsten Polls trainiert.
 
 **Das Produktprinzip in einem Satz:** Aus den Prognose-Quantilen q̂.025…q̂.975
 der Engine wird eine **Entscheidung mit Kalibrierungsangabe** gemacht —
@@ -17,16 +29,15 @@ der Engine wird eine **Entscheidung mit Kalibrierungsangabe** gemacht —
 sind nicht weg, aber sie sind **Begründung auf Nachfrage** (Modus
 „Werkstatt“), nie die primäre Antwort.
 
+```text
+Tankerkönig prices.php → Pi: Collector/RAM/Uploader → NAS: InfluxDB
+Tankerkönig Archiv ────────────────────────────────→ NAS: Preise + Stationen (≥ 1 Jahr)
+                                                    │
+                          NAS: Aufbereitung/Fits → API + vorhandene Web-GUI
+                                                    │
+                                                Handy/PC: Browser
 ```
- Tankerkönig        Pi (Collector)      NAS (Daten + Fits)            Handy (PWA)
- ┌───────────┐ 1R/5m ┌─────────────┐ LP  ┌────────────────────┐        ┌──────────────────┐
- │ prices.php│──────►│ tmpfs-Ring  │────►│ InfluxDB-Historie  │        │  MODUS ALLTAG:   │
- └───────────┘       │ └ Uploader  │     │ Engine-Fits/Backt. │        │  1 Karte, 3 Zahlen│
-                     ├─────────────┤     ├────────────────────┤  JSON  ├──────────────────┤
-                     │ FastAPI     │◄────│ DECISION LAYER     │───────►│  MODUS WERKSTATT:│
-                     │ „TankPuls“  │     │ (Quantile → Ampel) │/v1/    │  Labor + Details  │
-                     └─────────────┘     └────────────────────┘ decide └──────────────────┘
-```
+
 
 ---
 
@@ -160,7 +171,7 @@ Fußzeile der App. Token-Bucket 1 R/300 s **hart verdrahtet**, dazu
 
 ## 2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)
 
-Pipeline: `analysis/station_selection.py` · Schema: `analysis/README.md`.
+Pipeline: `analysis/station_selection.py` · Schema: [Werkzeugreferenz](../data-tools/README.md#datenformate).
 Der echte Bericht wird lokal als `docs/analysis/report_top10.md` erzeugt
 und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfernt.
 
@@ -871,18 +882,18 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 > **Schritt-für-Schritt-Erstinstallation (welcher Baustein auf welches
 > Gerät gehört, Kommandos, systemd-Unit, Key, Störungsfälle):
 > [`INSTALL.md`](INSTALL.md).** Kurz: Collector 24/7 auf dem **Pi**
-> (Puffer im RAM), InfluxDB/Fits auf dem **NAS**, Pipeline auf dem **PC**.
+> (Puffer im RAM), Archiv/InfluxDB/Fits/API/GUI auf dem **NAS**, PC optional.
 
 ### 9.1 Rollen & Datenfluss
 
 | Aufgabe | Gerät | Begründung |
 |---|---|---|
-| Collector (Poll alle 5 min, 06–24) | **Pi** | 24/7-Bereitschaft |
+| Collector (ein Request alle 5 min; Städte abwechselnd, 06–24) | **Pi** | 24/7-Bereitschaft |
 | Kurzzeit-Puffer | **Pi: tmpfs** `/dev/shm/tankapp` | RAM statt SD → SD-Schonung |
 | Langzeit-Speicher | **NAS: InfluxDB (Docker)** | Plattenplatz, Retention |
-| Hosting TankPuls-API + PWA | **Pi** | autark auch bei NAS-Ausfall |
-| Historie für Engine | NAS primär; Pi hält Cache-Aggregate (Parquet) | degradierter Modus ohne NAS |
-| **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi macht **nur Inference** (lädt versionierte JSON-Modelle; später zusätzlich Cache-Aggregate); der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM |
+| Hosting TankPuls-API + Web-GUI | **NAS** | ein gemeinsamer Daten-/App-Server; bei ausgeschaltetem NAS nicht erreichbar |
+| Archiv für Engine und Langzeitvergleiche | **NAS: komprimierte Preis-/Stationsdateien, mindestens ein Jahr bei Bedarf** | automatischer Sync bei Start und regelmäßig; alte Lücken nachholen |
+| **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi bleibt Collector/Uploader, Inference läuft auf dem NAS; der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM |
 | **Episode-/Snapshot-/Fill-Log (§5.2, §5.4)** | NAS (Tabelle) | Advice-Settlement (Brier, M7) getrennt von Fill-Events (Wallet) |
 
 Ablauf: Collector appended JSON-Zeilen an
@@ -899,9 +910,9 @@ explizit und ändert keinen Ack. NAS-Ausfall: 7 Tage Puffertiefe
 | Posten | Bedarf |
 |---|---|
 | Collector + Uploader | ~40–60 MiB RSS |
-| FastAPI/uvicorn + statisches Frontend | ~60–80 MiB |
+| API/Web-GUI | läuft auf dem NAS, nicht im Pi-Budget |
 | tmpfs-Ringpuffer (Limit 32 M) | ≤ 32 MiB |
-| **Summe** | **< 180 MiB → ~390 MiB Reserve** |
+| **Pi-Budget (Schätzung)** | **Collector/Uploader + bis zu 32 MiB Puffer; im Betrieb messen** |
 
 Datenvolumen: JSONL ≈ 2,5 kB/Poll → 216 Polls ≈ 0,6 MB/Tag. InfluxDB:
 bis zu **2 160 Stations-Snapshots/Tag** (10 Stationen × 216 Polls).
@@ -921,10 +932,12 @@ vm.vfs_cache_pressure=50
 ```
 
 - `log2ram`/journald-Limits, `noatime` auf `/`; systemd-Units (collector,
-  uploader, api) mit `WatchdogSec=30`, `Restart=always`; **NTP Pflicht**
+  uploader) mit `WatchdogSec=30`, `Restart=always`; **NTP Pflicht**
   (`After=time-sync.target`, UTC speichern, Berlin nur im Frontend).
 - NAS: `influxdb:2` + Volume, Retention 5 Jahre, wöchentliches Backup;
-  Pi hostet uvicorn auf 0.0.0.0, CORS eng, TLS via Caddy.
+  API/Web-GUI auf dem NAS, CORS eng, TLS im Zielbetrieb via Reverse Proxy.
+- NAS-Archiv: `tankapp.py history-sync`, bei Start und regelmäßig planen;
+  dauerhaftes Volume, eigener Archivzugang, keine Kopplung an das Modell-Trainingsfenster.
 - Keys nur in `/etc/tankapp/env` (chmod 600), nie im Repo.
 
 ### 9.4 Hardware-Bewertung
@@ -1039,7 +1052,7 @@ Prognose-Input.**
 
 Auth: anonym (**60/min, 10 000/Tag**) oder Header `X-Api-Key`
 (**300/min, 50 000/Tag**). JSON/UTF-8, Zeiten Europe/Berlin (Speicherung
-UTC), `Cache-Control` an `/v1/health`. Implementierung: FastAPI auf dem Pi.
+UTC), `Cache-Control` an `/v1/health`. Zielimplementierung: API auf dem NAS.
 
 ### 11.1 Primär: `GET /v1/decide` — der eine Endpunkt fürs Frontend
 
@@ -1135,7 +1148,14 @@ nur das Wallet-Ledger.
 
 ### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug)
 
-Geplante Detail-Endpunkte, teilweise als Demo im GUI-Prototyp vorhanden.
+Aktuell implementierte Nur-Lese-API der gemeinsamen GUI:
+`GET /api/v1/health`, `/api/v1/stations?fuel=e10`,
+`/api/v1/series?city=...&station_id=...&fuel=e10` und
+`/api/v1/forecast?city=...&station_id=...&fuel=e10`.
+Keine Schreib-/Feedback-Endpunkte und noch kein `/v1/decide`.
+
+Die folgenden Detail-Endpunkte sind weiterhin **geplant**, teilweise als Demo
+im GUI-Prototyp vorhanden.
 Produktiv im Werkstatt-Modus genutzt; alte Alltags-Routen werden als
 deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 `/v1/decide` alle Alltags-Fälle abdeckt:
@@ -1164,7 +1184,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 
 | P | Frage | Abdeckung |
 |---|---|---|
-| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema (`analysis/README.md`), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
+| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema ([Werkzeugreferenz](../data-tools/README.md#datenformate)), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
 | **P0** | Sind die Historie-Stationen real erreichbar? (Frankfurt: 100+ im 25-km-Radius) | Referenzpunkt je Stadt aus gitignorierter `config.local.json`, `onroute`-Modus, `--rank-by score`, `--max-radius` |
 | **P0** | E10-Verträglichkeit des Autos? | K.-o.-Kriterium; sonst `--fuel E5` (Äquivalenzpreis, §10) |
 | **P1** | Rabatt-/Kartenprogramme (2–4 ct können das Ranking umdrehen)? | geplant: `--brand-rebate "ARAL:0.02;…"`; bis dahin Top-10 der eigenen Karten-Marke gesondert betrachten |
@@ -1205,15 +1225,17 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 **Arbeitsstand 07.09.2026:** InfluxDB wird laut Betreiber befüllt, M2 wird
 auf dessen Rückmeldung vorläufig als erledigter Arbeitsschritt behandelt.
 Die privaten Berichte/Quoten/Signifikanzen und der 14-Tage-M1-Nachweis sind
-hier nicht unabhängig geprüft. **Weiter geht es mit M3**, dessen erster
-Durchstich in `engine/` vorliegt; die Gesamtabnahme ist noch offen.
+hier nicht unabhängig geprüft. **Als Nächstes Gütersloh mitpolling aufnehmen
+und die Live-GUI anbinden; das NAS-Archiv parallel starten.** Die Reihenfolge
+steht in INSTALL.md, die M-Nummern unten sind Paketnamen, keine Warteketten.
+M3 bleibt unkalibriert; die erste nutzbare Live-Preisansicht wartet nicht darauf.
 Die M4-Homepage basiert ausdrücklich auf **beiden vorhandenen GUIs**.
 
 | Meilenstein | Inhalt | Fertig-Kriterium |
 |---|---|---|
 | M1 | Collector + tmpfs-Ringpuffer + NAS-Uploader laufen 14 d | Datenlücken < 2 %, Ack-Protokoll fehlerfrei |
 | M2 | Selektion mit echten Historien der 3 Kampagnen (HE/BY/NW; Anker + Subdivs aus lokaler Config, nie im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
-| M3 | Engine M1–M3 + ACI + Backtest (Fits auf NAS, Pi nur Inference) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball < Naive; PICP(95 %) ∈ [90, 98] % |
+| M3 | Engine M1–M3 + ACI + Backtest (Fits und Inference auf NAS) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball < Naive; PICP(95 %) ∈ [90, 98] % |
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
 | **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |

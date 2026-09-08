@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-TankApp – M1 Collector: pollt die 10 selektierten Stationen live von der
+TankApp – Collector: pollt Stadtsets (je bis zu 10 Stationen) live von der
 Tankerkönig-Preis-API (prices.php, 1 Request für bis zu 10 UUIDs) und
 schreibt die Snapshots als JSONL in einen Ringpuffer (7 Tage), ganz nach
 docs/KONZEPT.md §1.2/§7/§9.1.
 
 Läuft auf dem Raspberry Pi 24/7 (nur Standardbibliothek, ~40-60 MiB RSS);
-der NAS-InfluxDB-Uploader (§9.1) ist ein späterer Schritt — hier wird erst
-mal gepuffert.
+der bestehende Uploader liest denselben Puffer und schreibt auf das NAS.
+Mehrere Stadtsets teilen EIN Request-Budget und werden abwechselnd gepollt.
+Zwei Sets bei 300 s Request-Abstand: zehn Minuten je Stadt.
 
 Fenster/Kadenz: 1 Poll / 5 min (hart, Token-Bucket) im Fenster 06:00-24:00
 (§7: nachts sind alle Stationen zu, Extra-Polls liefern nichts). Vor-
@@ -53,15 +54,17 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from polling_plan import RequestSchedule, collector_lock, load_plan
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
 DEFAULT_OUT = Path(os.environ.get("TANKAPP_POLL_DIR", ROOT / "data" / "poll"))
 API_URL = "https://creativecommons.tankerkoenig.de/json/prices.php"
 FUELS = ("e5", "e10", "diesel")
 RING_DAYS = 7
-# Lizenz/Etikette (§1.3): Token-Bucket 1 Request / 300 s hart, 429 -> 60 s Pause.
+# Lizenz/Etikette (§1.3): Token-Bucket 1 Request / 300 s hart, 429 -> mindestens 300 s Pause.
 POLL_INTERVAL_S = 300
-BACKOFF_429_S = 60
+BACKOFF_429_S = 300
 
 # Tankerkönig-IDs und -Keys sind UUIDs. Der API-Check dient nur dazu, GARANTIERT
 # kaputte Eingaben sofort (und verständlich) zu melden, statt auf das kryptische
@@ -170,7 +173,7 @@ def normalize(raw_prices: dict, ids: list[str]) -> dict:
             for fu in FUELS:
                 v = st.get(fu)
                 # false/None = Sorte wird nicht geführt -> GAR KEINEN Punkt (nicht 0)
-                if isinstance(v, (int, float)) and v > 0:
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0:
                     rec[fu] = round(float(v), 3)
         out[uid] = rec
     return out
@@ -270,11 +273,11 @@ def in_poll_window(now: dt.datetime, start_h: int, end_h: int) -> bool:
     return start_h <= now.hour < end_h
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="TankApp M1-Collector: live-Preise der 10 Polling-Stationen")
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="TankApp Collector: Stadtsets mit gemeinsamem Request-Budget")
     ap.add_argument("--poll-json", type=Path, default=DEFAULT_POLL_JSON,
                     help="Polling-Set aus run_pipeline.py")
-    ap.add_argument("--poll-city", default=None, help="Stadt bei mehreren Sets")
+    ap.add_argument("--poll-city", default=None, help="Optional nur diese Stadt; Default: alle Sets abwechselnd")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT,
                     help="Puffer-Verzeichnis (Pi: /dev/shm/tankapp)")
     ap.add_argument("--fuel", default="e10", choices=["e5", "e10", "diesel"])
@@ -286,27 +289,24 @@ def main() -> int:
     ap.add_argument("--window-end", type=int, default=24, help="Fensterende Stunde")
     ap.add_argument("--once", action="store_true", help="ein Poll, dann beenden")
     ap.add_argument("--demo", action="store_true", help="simulierte Preise (kein Key/Netz)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.interval < POLL_INTERVAL_S:
+        ap.error("--interval muss mindestens 300 Sekunden betragen.")
+    if not 0 <= args.window_start < args.window_end <= 24:
+        ap.error("Polling-Fenster muss innerhalb 00–24 Uhr liegen.")
+    try:
+        with collector_lock(args.out):
+            return collect(args)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"Collector abgebrochen: {exc}") from None
 
-    stset = load_poll_set(args.poll_json, args.poll_city)
-    ids = stset.get("batch") or [s["uuid"] for s in stset.get("stations", [])]
-    stations = {s["uuid"]: s for s in stset.get("stations", [])}
-    if not ids:
-        raise SystemExit("Polling-Set enthält keine UUIDs.")
-    # Garantiert kaputte UUIDs sofort melden statt auf das kryptische
-    # "parameter error"/"nicht im korrekten Format" der API zu warten.
-    bad_ids = [i for i in ids if not is_uuid(i)]
-    if bad_ids:
-        preview = ", ".join(repr(str(b))[:42] for b in bad_ids[:3])
-        log(f"⚠ {len(bad_ids)} von {len(ids)} UUIDs haben kein gültiges UUID-Format "
-            f"({preview}{' …' if len(bad_ids) > 3 else ''}) — diese Stationen werden "
-            "übersprungen. polling.json neu erzeugen (run_pipeline.py)!")
-        ids = [i for i in ids if is_uuid(i)]
-    if not ids:
-        raise SystemExit("Polling-Set enthält keine gültigen UUIDs — polling.json "
-                         "(docs/analysis/stations/polling.json) prüfen/neu erzeugen.")
-    log(f"{len(ids)} Stationen im Set ({stset.get('label', '?')}), "
-        f"Fenster {args.window_start:02d}-{args.window_end:02d} Uhr, "
+
+def collect(args):
+
+    plan = load_plan(args.poll_json, args.poll_city)
+    schedule = RequestSchedule(args.out, args.interval, cold_start=not args.demo)
+    log(f"{len(plan)} Stadtset(s), ein Request je {args.interval} s; "
+        f"jede Stadt ungefähr alle {len(plan) * args.interval / 60:g} Minuten. "
         f"Puffer {args.out}")
 
     api_key = None if args.demo else find_api_key(args.api_key)
@@ -357,6 +357,15 @@ def main() -> int:
                 time.sleep(min(wait, 3600))
                 continue
 
+        wait = schedule.wait_seconds()
+        if wait:
+            log(f"Gemeinsames Request-Budget: warte {wait:.0f} Sekunden.")
+            time.sleep(wait)
+            continue
+        stset = plan[schedule.claim(len(plan))]
+        ids = stset["batch"]
+        stations = {s["uuid"]: s for s in stset.get("stations", [])}
+
         try:
             if args.demo:
                 raw = demo_prices(ids, stations, args.fuel)
@@ -366,9 +375,13 @@ def main() -> int:
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 log(f"429 (Kontingent) — {BACKOFF_429_S} s Backoff.")
-                time.sleep(BACKOFF_429_S)
+                if args.once:
+                    return 1
+                time.sleep(max(BACKOFF_429_S, args.interval))
                 continue
             log(f"HTTP {e.code}: {e} — wiederhole in {args.interval} s.")
+            if args.once:
+                return 1
             time.sleep(args.interval)
             continue
         except RuntimeError as e:
@@ -376,15 +389,19 @@ def main() -> int:
             log(f"Poll fehlgeschlagen: {e}")
             log(f"  Request-Kontext: {len(ids)} ids, Key {mask_key(api_key or '')} — "
                 f"wiederhole in {args.interval} s.")
+            if args.once:
+                return 1
             time.sleep(args.interval)
             continue
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             log(f"Poll fehlgeschlagen ({type(e).__name__}: {e}) — wiederhole in "
                 f"{args.interval} s.")
+            if args.once:
+                return 1
             time.sleep(args.interval)
             continue
 
-        snap = {"fetched_at": now.replace(microsecond=0).isoformat(),
+        snap = {"fetched_at": dt.datetime.now().astimezone().replace(microsecond=0).isoformat(),
                 "source": "demo" if args.demo else "tankerkoenig-prices.php",
                 "city": stset.get("label"), "prices": prices}
         try:
@@ -392,6 +409,8 @@ def main() -> int:
         except OSError as e:
             log(f"✗ Puffer nicht beschreibbar: {e} — Ownership von {args.out} prüfen "
                 f"(Dienst-User muss schreiben dürfen). Wiederhole in {args.interval} s.")
+            if args.once:
+                return 1
             time.sleep(args.interval)
             continue
         n_open = sum(1 for r in prices.values() if r["status"] == "open")

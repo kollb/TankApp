@@ -1,74 +1,67 @@
 # TankApp
 
-Persönliche Spritpreis-Entscheidungs-App: **jetzt tanken · warten · woanders**.
-Collector und RAM-Puffer auf dem Raspberry Pi, InfluxDB und Modell-Fits auf
-dem NAS, später eine gemeinsame Homepage mit Alltag und Statistik-Werkstatt.
+**Ziel: GUI öffnen → passende Tankstelle und Zeitpunkt sehen → tanken.**
+Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 
-## Stand · 07.09.2026
+## Ein Einstieg, eine Reihenfolge
 
-| Bereich | Arbeitsstand |
+**[Installation und nächster Schritt → docs/INSTALL.md](docs/INSTALL.md)**
+
+1. **Gütersloh ins gemeinsame Polling aufnehmen.** Frankfurt läuft weiter.
+2. **NAS-App mit echten Live-Preisen starten.** Nicht auf fertige Prognosen warten.
+3. **Parallel das NAS-Archiv automatisch aufbauen:** ein Jahr oder mehr Tankerkönig-Historie, fehlende Tage nachholen.
+4. **NAS-App berechnet und veröffentlicht automatisch**, danach geprüfte Empfehlungen in derselben GUI ergänzen.
+
+| Gerät | Aufgabe im Endzustand |
 |---|---|
-| M1 – Collector / Uploader / InfluxDB | Läuft; InfluxDB wird laut Betreiber befüllt. Der formale 14-Tage-Lücken-/Ack-Nachweis bleibt eine Betriebsprüfung. |
-| M2 – Stationsauswahl | Nach Betreiber-Rückmeldung vorläufig abgeschlossen. Polling-Set und echter Selektionsbericht liegen lokal, nicht im Git-Checkout. |
-| **M3 – Prognose / Backtest** | **In Arbeit:** nur lesender Influx-Export, Datenprüfung, robustes Strukturmodell + AR(2), saisonale Naive, vorläufige Intervalle, Rolling-Backtest und JSON-Artefakte. Ensemble, ACI und Echt-Daten-Abnahme stehen noch aus. |
-| M4/M5 – Homepage / API | Die beiden vorhandenen GUIs sind die Basis, kein neues beliebiges Design. Produktive Datenanbindung folgt auf die Engine. |
+| **Pi** | Collector für alle Städte, RAM-Puffer, Upload zum NAS; läuft unabhängig weiter. |
+| **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits, API und Web-GUI. |
+| **PC / Handy** | GUI im Browser. PC optional zur Einrichtung oder für schnellere Rechenläufe; kein Dauerbetrieb und keine verpflichtende venv. |
 
-### Die GUI-Vorlagen bleiben erhalten
+**Stand 08.09.2026:** Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/
+System, Nur-Lese-API und gebündelter NAS-App-Dienst sind implementiert. Ein Start
+über `python3 tankapp.py nas-up` übernimmt GUI, Archiv-Nachholung und automatische
+Modellberechnung/-veröffentlichung. Bestehende InfluxDB weiterverwenden; Ablauf
+und private Konfiguration stehen ausschließlich in der Installationsanleitung.
 
-- **[`sample/good gui`](sample/good%20gui/):** Optik, Navigation und
-  Entscheidungs-Kompass als Basis der Alltags-Homepage.
-- **[`sample/good statistic gui`](sample/good%20statistic%20gui/):**
-  Scoreboard, Kalibrierungsansicht und Stations-/Paar-Labor als Basis des
-  Statistikbereichs.
-- [Übernahmeregeln](sample/README.md): Layout, Farben und Komponenten
-  bewahren; simulierte Preise und Beispiel-Gütewerte **nicht** als echte
-  Ergebnisse übernehmen. Die benötigten Preview-Seeds bleiben bis zur
-  Überführung der Oberflächen bestehen.
+**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen
+Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt die GUI den
+Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und
+nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
 
-## Weiter mit echten Daten
+<details>
+<summary>Nur für Entwicklung und Fehlersuche — keine zusätzliche Installationsreihenfolge</summary>
 
-**[M3 am Windows-PC testen → `engine/README.md`](engine/README.md)** —
-Schritt für Schritt mit **PowerShell**, ohne WSL oder Aktivierungsskripte:
-Tests ausführen und vorhandene M2-CSVs direkt prüfen, backtesten und fitten.
-Dafür sind weder NAS noch API-Schlüssel nötig. Optional die Live-Historie aus
-InfluxDB mit separatem Lese-Token hinzunehmen. `data\apikey.txt` bleibt der
-Tankerkönig-Schlüssel für den Collector, nicht für InfluxDB.
+- [Engine-Referenz](engine/README.md): Modellwerkstatt, Datenqualität, Übergangsregel.
+- [Werkzeugübersicht](data-tools/README.md): interne Einzelprogramme.
+- [Architekturkonzept](docs/KONZEPT.md): fachliches Zielbild; der Betriebsplan in INSTALL.md hat Vorrang.
+- [GUI-Basis](sample/README.md): beide vorhandenen Oberflächen erhalten, Demo-Inhalte nicht als Echt-Daten ausgeben.
+- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](engine/README.md#preis-zwillinge).
 
-Der Export selbst ändert keine Dienste, Buckets oder Ack-Dateien. Für bestehende
-Namenskollisionen ist einmalig die [Stations-UUID-Umstellung](docs/STATIONS-UUID.md)
-auf dem RPi nötig (neuer Uploader-Tag, optionaler Replay aus Original-JSONL).
-Noch keine kalibrierten Empfehlungen; die Anleitung enthält auch Hilfe bei fehlender
-Historie und einen isolierten Collector-Einzeltest mit der vorhandenen Schlüsseldatei.
-
-## Dokumentation
-
-- [Installation & Betrieb](docs/INSTALL.md) — Pi/NAS, systemd, Secrets, Kontrolle.
-- [Datenbezug](docs/DATEN-BEZUG.md) · [Werkzeuge](data-tools/README.md) —
-  Historie holen, InfluxDB exportieren, Polling-Set bei Bedarf neu erstellen.
-- [Stationsselektion](analysis/README.md) — Methodik und lokale Ausgaben.
-- [Stationsnamen eindeutig machen](docs/STATIONS-UUID.md) — UUID-Tags und sichere
-  Nachlieferung, ohne alte Serien zu löschen oder den Ack zurückzusetzen.
-- [Preis-Zwillinge prüfen und Ersatz vorschlagen](docs/PREIS-ZWILLINGE.md) —
-  Windows-Befehle für UUID-getrennte Preisvergleiche, ohne das aktive Set zu ändern.
-- [Produkt- und Architekturkonzept](docs/KONZEPT.md) — Zielbild und Roadmap;
-  **nicht** alle beschriebenen Funktionen sind schon implementiert.
-
-Die alten synthetischen Selektionsberichte, Abbildungen und separaten
-Demo-Datengeneratoren wurden entfernt. Neue Berichte, Exporte, Modelle und
-private Konfigurationen bleiben gitignored; keine Beispielzahlen als Abnahmenachweis.
-
-## Entwicklung am Windows-PC prüfen
-
-PowerShell im Repository-Ordner, Python **3.11+**. Eigene M3-Umgebung anlegen;
-eine bestehende passende `.venv-m3` weiterverwenden und dann den ersten Befehl auslassen:
+Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit
+vorhandenem Python 3.11+, ohne neue venv:
 
 ```powershell
-py -3 -m venv .venv-m3
-.\.venv-m3\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv-m3\Scripts\python.exe -m pytest -q
-.\.venv-m3\Scripts\python.exe -m ruff check engine data-tools/export_influx.py tests
+py -3 -m pip install -r requirements-dev.txt
+py -3 -m pytest -q
 ```
 
-Die M2-Umgebung `.venv` bleibt bestehen. Keine `Activate.ps1` oder Änderung
-der ExecutionPolicy nötig. Python-Versionsprüfung und alle folgenden Schritte:
-[Windows-Anleitung](engine/README.md).
+Frontend-Prüfungen (nur Entwicklung, Node 22):
+
+```bash
+npm --prefix web ci
+npm --prefix web test
+npm --prefix web run build
+npx --prefix web playwright install chromium
+npm --prefix web run test:e2e
+```
+
+Für eine lokale Vorschau nach dem Build: `python tankapp.py serve`; nur mit
+`--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten ihren
+eigenen Server, sofern auf Port 8080 keiner läuft. `app/requirements.txt` enthält
+die Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
+
+Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git.
+Die Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben erhalten.
+
+</details>

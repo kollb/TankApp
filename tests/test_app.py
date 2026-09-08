@@ -1,0 +1,241 @@
+import datetime as dt
+import json
+import threading
+import urllib.error
+import urllib.request
+from dataclasses import replace
+
+import pytest
+
+from app.config import Settings
+from app.data import LiveData
+from app.server import make_server
+
+UID = "00000000-0000-0000-0000-000000000001"
+OTHER = "00000000-0000-0000-0000-000000000002"
+NOW = dt.datetime(2026, 9, 8, 10, tzinfo=dt.timezone.utc)
+
+
+@pytest.fixture
+def app_settings(tmp_path):
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "batch": [UID],
+                        "stations": [
+                            {
+                                "uuid": UID,
+                                "name": "Station One",
+                                "lat": 50.1,
+                                "lon": 8.6,
+                                "maps": "javascript:evil",
+                            }
+                        ],
+                    },
+                    "Gütersloh": {
+                        "label": "Gütersloh",
+                        "batch": [OTHER],
+                        "stations": [{"uuid": OTHER, "name": "Station Two"}],
+                    },
+                }
+            }
+        )
+    )
+    env = tmp_path / "influx.env"
+    env.write_text(
+        "TANKAPP_INFLUX_URL=http://nas:8086\nTANKAPP_INFLUX_ORG=local\nTANKAPP_INFLUX_BUCKET=tankapp\nTANKAPP_INFLUX_TOKEN=never-expose-me\n"
+    )
+    static = tmp_path / "web"
+    static.mkdir()
+    (static / "index.html").write_text("<html>TankApp test shell</html>")
+    return Settings(
+        data=tmp_path / "data",
+        archive=tmp_path / "archive",
+        polling=polling,
+        influx_env=env,
+        netrc=tmp_path / "netrc",
+        static=static,
+    )
+
+
+def raw(status="open", value="1.729", age=5, uid=UID, city="Frankfurt"):
+    return {
+        "_time": (NOW - dt.timedelta(minutes=age)).isoformat(),
+        "city": city,
+        "station_id": uid,
+        "station": "Station",
+        "status": status,
+        "e10": value,
+    }
+
+
+def test_live_uses_uuid_status_and_only_selected_stations(app_settings):
+    queries = []
+
+    def query(cfg, text):
+        queries.append(text)
+        return [raw()]
+
+    live = LiveData(app_settings, query=query, clock=lambda: NOW)
+    data = live.stations()
+    one, two = data["stations"]
+    assert one["station_id"] == UID and one["price"] == 1.729
+    assert one["fresh"] and one["maps_url"].startswith("https://www.google.com/maps/")
+    assert two["station_id"] == OTHER and two["price"] is None
+    assert data["cities"] == ["Frankfurt", "Gütersloh"]
+    assert data["decision_ready"] is False
+    assert "exists r.station_id" in queries[0] and "tail(n: 1)" in queries[0]
+    assert "never-expose-me" not in json.dumps(data)
+    assert "anchor" not in json.dumps(data)
+
+
+@pytest.mark.parametrize(
+    "status,value,age",
+    [
+        ("closed", "1.729", 5),
+        ("no prices", "", 5),
+        ("open", "false", 5),
+        ("open", "", 5),
+        ("open", "1.729", 31),
+        ("open", "nan", 5),
+    ],
+)
+def test_bad_or_stale_prices_never_rank(app_settings, status, value, age):
+    live = LiveData(
+        app_settings, query=lambda *_: [raw(status, value, age)], clock=lambda: NOW
+    )
+    data = live.stations()
+    assert data["fresh_prices"] == 0
+    assert all(item["price"] is None for item in data["stations"])
+
+
+def test_cache_rechecks_age_and_failure_does_not_publish_partial_result(
+    app_settings, monkeypatch
+):
+    clock = [NOW]
+    monotonic = [1000]
+    monkeypatch.setattr("app.data.time.monotonic", lambda: monotonic[0])
+
+    def query(*_):
+        yield raw()
+        if monotonic[0] > 1000:
+            raise ValueError("never-expose-me")
+
+    live = LiveData(app_settings, query=query, clock=lambda: clock[0])
+    assert live.stations()["fresh_prices"] == 1
+    clock[0] += dt.timedelta(minutes=26)
+    assert (
+        live.stations()["fresh_prices"] == 0
+    )  # cached payload is not automatically fresh
+    clock[0] = NOW
+    monotonic[0] += 31
+    data = live.stations()
+    assert data["connection_error"] == "influx_read_failed"
+    assert data["fresh_prices"] == 0
+    assert data["stations"][0]["last_price"] == 1.729
+    assert "never-expose-me" not in json.dumps(data)
+
+
+def test_future_and_legacy_or_foreign_uuid_rows_are_rejected(app_settings):
+    for row in [raw(age=-1), {**raw(), "station_id": ""}, raw(uid=OTHER)]:
+        live = LiveData(app_settings, query=lambda *_: [row], clock=lambda: NOW)
+        data = live.stations()
+        assert data["connection_error"] == "influx_read_failed"
+        assert data["fresh_prices"] == 0
+
+
+def test_missing_setup_is_explicit_and_does_not_call_network(app_settings):
+    settings = replace(app_settings, polling=app_settings.data / "missing.json")
+    live = LiveData(settings, query=lambda *_: pytest.fail("network"))
+    data = live.stations()
+    assert data["connection_error"] == "polling_missing" and not data["stations"]
+    assert live.health()["app"] == "online"
+    settings = replace(app_settings, influx_env=app_settings.data / "missing.env")
+    live = LiveData(settings, query=lambda *_: pytest.fail("network"))
+    assert live.stations()["connection_error"] == "influx_not_configured"
+
+
+def test_series_does_not_forward_fill_closed_or_missing_fuel(app_settings):
+    live = LiveData(
+        app_settings,
+        query=lambda *_: [raw(age=20), raw("closed", age=10), raw(value="", age=5)],
+        clock=lambda: NOW,
+    )
+    points = live.series(UID, "Frankfurt", "e10")["points"]
+    assert [point["price"] for point in points] == [1.729, None, None]
+    with pytest.raises(ValueError):
+        live.series("not-selected", "Frankfurt", "e10")
+    with pytest.raises(ValueError):
+        live.series(UID, "Frankfurt", "e10", 999)
+
+
+def test_forecast_never_releases_calibration_from_artifact_flags(app_settings):
+    path = app_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E10",
+                        "origin": (NOW - dt.timedelta(days=2)).isoformat(),
+                        "points": [],
+                        "decision_ready": True,
+                        "calibrated": True,
+                    }
+                ]
+            }
+        )
+    )
+    live = LiveData(app_settings, clock=lambda: NOW)
+    forecast = live.forecast(UID, "Frankfurt", "e10")
+    assert forecast["stale"] is True
+    assert forecast["calibrated"] is False and forecast["decision_ready"] is False
+
+
+def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(base + "/") as response:
+            assert b"TankApp test shell" in response.read()
+            assert response.headers["Cache-Control"] == "no-store"
+        with urllib.request.urlopen(base + "/api/v1/stations?fuel=e10") as response:
+            assert json.load(response)["fresh_prices"] == 1
+        for path in [
+            "/data/influx.env",
+            "/.env",
+            "/%2e%2e/influx.env",
+            "/api/v1/unknown",
+            "/assets/",
+        ]:
+            with pytest.raises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(base + path)
+            assert error.value.code == 404
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + "/api/v1/stations?fuel=invalid")
+        assert error.value.code == 400
+        with urllib.request.urlopen(
+            urllib.request.Request(base + "/", method="HEAD")
+        ) as response:
+            assert response.read() == b""
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(
+                urllib.request.Request(
+                    base + "/api/v1/restart", data=b"{}", method="POST"
+                )
+            )
+        assert error.value.code == 501
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

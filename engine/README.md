@@ -1,26 +1,52 @@
-# M3 am Windows-PC testen – PowerShell-Anleitung
+# Engine-Referenz — optionale Modellwerkstatt
 
-Du kannst **Tests, Datenprüfung, Backtests und Modell-Fits vollständig auf deinem
-Windows-PC** ausführen. Mit den vorhandenen M2-CSV-Dateien brauchst du dafür
-weder NAS-Zugriff noch einen API-Schlüssel. Der Export der Live-Daten aus InfluxDB
-ist eine zusätzliche Möglichkeit, kein Pflichtschritt für den lokalen Einstieg.
+**Keine Installations-Checkliste.** Der einzige Einstieg und die Reihenfolge
+stehen in [INSTALL.md](../docs/INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
+NAS-Archiv parallel füllen, danach automatische Berechnung/Empfehlungen.
 
-Für die M3-Rechenläufe bleibt der Pi im normalen Betrieb. Auf dem PC wird kein
-weiterer Uploader und keine InfluxDB benötigt; der Export liest nur. **Ausnahme
-bei alten Namenskollisionen:** einmalig den Uploader auf Stations-UUIDs umstellen
-und gegebenenfalls Original-JSONL nachliefern – die [genauen RPi-/PC-Schritte](../docs/STATIONS-UUID.md)
-stehen separat. Keine alten Serien löschen und keinen Ack zurücksetzen.
+Der gebündelte NAS-App-Dienst führt Archivabruf, Aufbereitung und Fits aus. Der Windows-PC
+kann optional schneller rechnen; dafür vorhandenes Python 3.11+ verwenden,
+**keine neue venv erforderlich**. Für `tankapp.py add-city` und `history-sync`
+sind auch die untenstehenden Python-Pakete nicht nötig.
 
-**Wenn die alte JSONL-Nachlieferung an einer ungeklärten Zeitzone hängt:**
-Nicht weiter raten. [Kurzweg ohne alten Replay](../docs/STATIONS-UUID.md): den
-aktualisierten Uploader laufen lassen, `--uuid-only` exportieren und die
-vorhandene M2-Historie hinzunehmen. Die Sicherung bleibt erhalten; ihre unklaren
-Altzeilen werden vorerst nicht nachgeladen.
+## Bezugsweg-Regel für die Entwicklung
 
-M3 ist weiterhin ein erster, **unkalibrierter** Durchstich, keine fertige
-Entscheidungs-App. Die beiden GUI-Samples bleiben die Homepage-Basis
-([Übernahmeregeln](../sample/README.md)); diese Anleitung startet die M3-Werkzeuge,
-nicht die spätere Homepage.
+`engine bootstrap` erzeugt eine abgeleitete CSV samt `.policy.json` aus vorhandenen
+Archiv- und Influx-CSV-Dateien. Ein Datenanbieter, zwei Bezugswege. Archiv nur
+vor dem ersten Live-Verfügbarkeitsbucket; danach Polling, ohne Archiv-Reparatur
+von Live-Lücken oder Öffnungsstatus-Sperren. Unbekannter Archivstatus bleibt unbekannt.
+Nach standardmäßig 90 vollständigen lokalen Tagen mit täglich mindestens 95 %
+verwertbaren Antworten und frischer letzter Antwort entfällt die Archiv-Vorgeschichte
+je UUID/Kraftstoff aus der abgeleiteten Datei. `--polling` berücksichtigt die
+Kadenz des gemeinsamen Stadtplans; bei abweichendem Collector-Intervall oder
+explizitem Ein-Stadt-Collector `--expected-poll-minutes` passend angeben.
+Das Modell verwendet standardmäßig nur die letzten 42 Tage. **Das NAS-Roharchiv
+und sein Sync laufen unabhängig davon weiter**, auch für ein Jahr oder mehr.
+
+Die M2-CSVs können bereits rückwärts beschriftete Median-Buckets und Fortschreibungen
+enthalten. Bootstrap macht daraus keinen zeitgenauen Live-Replay. Der NAS-Dienst
+verwendet deshalb `app/history.py`: rohe Änderungsereignisse mit exakten,
+offsetbehafteten Zeitstempeln, Änderungsflags und Löschsperren, keine M2-Median-
+Buckets. Der Rohbestand wird nicht gelöscht. `app/refresh.py` bündelt Export,
+Bootstrap, Fits, retrospektiven Backtest und atomare Veröffentlichung; diese
+kann mit `python tankapp.py refresh-models` auch optional lokal angestoßen werden.
+Out-of-sample-Kalibrierung, Betriebs-Replay und echte Güteabnahme bleiben offen.
+`decision_ready=false` und `calibrated=false` bleiben deshalb richtig.
+
+Entwicklerbeispiel (kein täglicher Bedienablauf):
+
+```powershell
+py -3 -m pip install -r engine/requirements.txt
+py -3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling docs/analysis/stations/polling.json
+```
+
+Ohne Live-Export nur die vorhandenen Archiv-CSVs angeben. Zum Nachweis von 90
+Tagen mindestens diesen Zeitraum exportieren; der Exporter-Default von 70 Tagen
+reicht dafür nicht. Beispielsweise mit `--since` einen Zeitpunkt 120 Tage vor
+jetzt wählen. Exporte sind nicht der dauerhafte Archivspeicher: der liegt auf dem NAS.
+
+<details>
+<summary>Entwicklerdiagnose und manuelle Einzelwerkzeuge — nur bei Bedarf</summary>
 
 ## Welcher Schlüssel wird wofür verwendet?
 
@@ -100,17 +126,34 @@ Dialekt-Einstellungen ist ebenfalls Bestandteil der API; die Vereinfachung ist
 **ein gezielter Kompatibilitätstest**, kein Beweis für die Ursache von WinError 10054.
 Es sind keine neue Schlüsseldatei, andere Berechtigungen oder Änderungen am NAS nötig.
 
-## Zwei gleichpreisige Aral-Stationen durch einen Vertreter ersetzen?
+## Preis-Zwillinge
 
-Dafür gibt es jetzt den nur lesenden Vergleich `engine compare-stations` und
-einen expliziten UUID-Ausschluss für **separate** Pipeline-Vorschläge.
-[Windows-Anleitung: Preis-Zwillinge prüfen und Ersatz vorschlagen](../docs/PREIS-ZWILLINGE.md).
-Nicht anhand des Namens entscheiden und nicht das aktive Polling-Set ändern,
-um eine alte vermischte Influx-Serie scheinbar eindeutig zu machen. Die dafür
-notwendige UUID-Speicherung und Nachlieferung ist jetzt als
-[gesonderter Migrationsablauf](../docs/STATIONS-UUID.md) verfügbar. Meldet der
-Vergleich unterschiedliche Preisverläufe, beide Stationen vorerst behalten und
-diese Identitätsumstellung durchführen statt eine UUID auszuschließen.
+Optionale Analyse, keine Installationsaufgabe: `engine compare-stations` vergleicht
+originale UUID-getrennte Historien, nicht Stationsnamen oder einzelne aktuelle Preise.
+Mit vorhandenen Engine-Paketen beispielsweise:
+
+```powershell
+py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json --poll-city Frankfurt --brand ARAL
+```
+
+Ausgabe: `results/engine/price_twins/report.md` und `report.json`. Zu kurze oder
+lückenhafte gemeinsame Historie ist kein Beleg für Preisgleichheit. Bei
+unterschiedlichen Preisverläufen beide Stationen vorerst behalten. Eine mögliche
+Redundanz ist ein Prüfhinweis, keine automatische Ausschlussentscheidung; auch
+Nutzbarkeit und Standort zählen.
+
+Nach manueller Prüfung kann `run_pipeline.py` mit `--exclude-uuid` und einem
+**separaten** `--out-stations` einen Ersatzvorschlag aus bestehenden Kandidaten
+berechnen. Die bisherigen Routing-/Kostenparameter beibehalten; `--skip-select`
+nur bei passenden, unveränderten Scores/Metadaten. Dafür gelten zusätzlich die
+Pakete aus `analysis/requirements.txt`. Ohne separates Ziel wird der Ausschluss
+abgelehnt. Keine Kandidaten erfinden oder Grenzen lockern, um das Set aufzufüllen.
+
+**Nicht als Reparatur vermischter Influx-Namensserien aktivieren.** Erst die
+[UUID-Identität klären](../docs/STATIONS-UUID.md); Vergleich und Vorschlag migrieren
+keine Daten. Alte Daten oder Ack-Dateien nicht löschen/zurücksetzen. Der gebündelte
+Aktivierungsbefehl `tankapp.py activate-polling` ist ausdrücklich nur für die
+Addition neuer Stadtsets gedacht und weist Änderungen bestehender Sets ab.
 
 ## 1. PowerShell und Python vorbereiten
 
@@ -126,32 +169,24 @@ py -3 --version
 `Test-Path` muss `True` liefern. Python muss **3.11 oder neuer** sein.
 Falls `py` fehlt, Python mit Python-Launcher installieren und PowerShell neu öffnen.
 Falls `py -3` eine ältere Version auswählt, eine aktuelle Version installieren
-oder beim folgenden Anlegen gezielt z. B. `py -3.11` statt `py -3` verwenden.
+oder beim Aufruf gezielt z. B. `py -3.11` statt `py -3` verwenden.
 
-Eigene Umgebung für M3 anlegen; die bisherige M2-Umgebung `.venv` bleibt erhalten:
+Vorhandenes Python verwenden; eine freiwillige bestehende Umgebung darf bleiben.
+Für Softwareentwicklung (nicht den normalen Betrieb) die Testpakete installieren:
 
 ```powershell
-py -3 -m venv .venv-m3
-.\.venv-m3\Scripts\python.exe --version
-.\.venv-m3\Scripts\python.exe -m pip install -r requirements-dev.txt
+py -3 -m pip install -r requirements-dev.txt
 ```
 
-Auch die zweite Versionsausgabe muss mindestens 3.11 sein. Eine bereits passende
-`.venv-m3` kannst du weiterverwenden; dann den ersten Befehl auslassen.
-`.venv-m3\` ist gitignored. `requirements-dev.txt` installiert die Engine und die
-Testwerkzeuge; die benötigten Windows-Zeitzonendaten (`tzdata`) kommen über pandas mit.
+Keine `Activate.ps1`, keine Änderung der ExecutionPolicy. Bei Paketkonflikten
+nicht mit `--break-system-packages` erzwingen; das verwendete Python prüfen.
 
-**Keine Aktivierung nötig:** Wir rufen `python.exe` direkt aus dieser Umgebung auf.
-Dadurch musst du weder `Activate.ps1` ausführen noch die PowerShell-ExecutionPolicy
-ändern. Bei Installationsfehlern erst deren Ursache beheben, nicht mit den
-nächsten Schritten fortfahren.
-
-## 2. Zuerst die automatisierten Tests (ohne Daten / Schlüssel / NAS)
+## 2. Optionale Softwaretests (ohne Daten / Schlüssel / NAS)
 
 ```powershell
-.\.venv-m3\Scripts\python.exe -m pytest -q
-.\.venv-m3\Scripts\python.exe -m ruff check engine data-tools/export_influx.py tests
-.\.venv-m3\Scripts\python.exe -m ruff format --check engine data-tools/export_influx.py tests
+py -3 -m pytest -q
+py -3 -m ruff check engine data-tools/export_influx.py tests
+py -3 -m ruff format --check engine data-tools/export_influx.py tests
 ```
 
 Erwartet: Tests erfolgreich, Lint/Formatprüfung ohne Fehler. Die Fixtures werden
@@ -347,7 +382,7 @@ Modus bleibt für bestehende Aufrufe erhalten, ist aber **nicht Teil dieses PC-A
 #### Erst nach erfolgreichem Zugriff: eigentlichen Export starten
 
 ```powershell
-.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --env-file .\data\influx.env
+py -3 .\data-tools\export_influx.py --env-file .\data\influx.env
 Test-Path .\data\engine\influx_e10.csv.gz
 ```
 
@@ -359,7 +394,7 @@ Optional mit festem Zeitraum (`--until` ist **exklusiv**, Datumsgrenzen ohne
 Offset sind Berliner Ortszeit); das `--env-file` auch hier mitgeben:
 
 ```powershell
-.\.venv-m3\Scripts\python.exe .\data-tools\export_influx.py --env-file .\data\influx.env --since 2026-07-01 --until 2026-09-07
+py -3 .\data-tools\export_influx.py --env-file .\data\influx.env --since 2026-07-01 --until 2026-09-07
 ```
 
 #### Fehlerfall: `Invalid header value` nach `Get-Content -Raw`
@@ -438,13 +473,13 @@ der passenden `$Daten = @(...)`-Zeilen ausführen.
 
 ```powershell
 # Funktioniert auch mit wenigen Live-Tagen
-.\.venv-m3\Scripts\python.exe -m engine inspect --data @Daten --polling .\docs\analysis\stations\polling.json
+py -3 -m engine inspect --data @Daten --polling .\docs\analysis\stations\polling.json
 
 # Qualitätsbericht ansehen
 Get-Content .\results\engine\quality.json -Encoding UTF8
 
 # Anschließend täglich rollierend prüfen, nicht zufällig Training/Test mischen
-.\.venv-m3\Scripts\python.exe -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21
+py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21
 
 # Direkt nach dem Backtest: 0 = berechnet, 1 = Eingabefehler, 2 = keine Vergleichspunkte
 $LASTEXITCODE
@@ -470,7 +505,7 @@ Alte M2-Dateien (`--resample 30 --density 60`) sind kein dichtes Live-Raster.
 Rekonstruierte Stand-Zeilen und fehlende Öffnungsstatus bleiben Einschränkungen;
 `open` ist bei Historie ohne Status nur eine Annahme. Bei Bedarf vorhandene
 Rohdateien separat mit `ingest_history.py --resample 0 --density 5` aufbereiten
-([Datenbezug](../docs/DATEN-BEZUG.md)), nicht die M2-Dateien überschreiben.
+([Datenformate](../data-tools/README.md#datenformate)), nicht die M2-Dateien überschreiben.
 Das erzeugt **keine zusätzlichen echten Polls**. Exakt überlappende Live-Statuszeilen
 haben Vorrang. Mehrdeutige/nicht existente lokale Sommerzeit-Zeitstempel werden
 verworfen und gezählt, nicht erfunden.
@@ -486,10 +521,10 @@ Ein exakter Einzelpunkt-Test bei +24 h und weitere Horizonte sind gesondert offe
 Nach ausreichender Datenprüfung, weiterhin mit derselben Dateiliste:
 
 ```powershell
-.\.venv-m3\Scripts\python.exe -m engine fit --data @Daten --polling .\docs\analysis\stations\polling.json --out .\data\models\forecast.json
+py -3 -m engine fit --data @Daten --polling .\docs\analysis\stations\polling.json --out .\data\models\forecast.json
 
 # Nur nach erfolgreichem Fit: Inference aus dem gespeicherten Modell, ohne Netzwerk / Refit
-.\.venv-m3\Scripts\python.exe -m engine forecast --model .\data\models\forecast.json --hours 24
+py -3 -m engine forecast --model .\data\models\forecast.json --hours 24
 
 # Ausgabe ansehen
 Get-Content .\data\engine\forecast.json -Encoding UTF8
@@ -514,8 +549,8 @@ höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefit
 
 | Meldung / Situation | Was du tun solltest |
 |---|---|
-| `py` nicht gefunden / Python <3.11 | Aktuelles Python samt Launcher installieren; PowerShell neu öffnen. Bei mehreren Versionen die gewünschte beim Anlegen von `.venv-m3` ausdrücklich auswählen. |
-| `python.exe` / Modul `engine` nicht gefunden | Repository-Wurzel und aktuellen Code-Stand prüfen; §1 ausführen. Nicht den globalen Interpreter statt `.venv-m3\Scripts\python.exe` verwenden. |
+| `py` nicht gefunden / Python <3.11 | Aktuelles Python samt Launcher installieren; PowerShell neu öffnen. Bei mehreren Versionen die gewünschte beim Aufruf von Python ausdrücklich auswählen. |
+| `python.exe` / Modul `engine` nicht gefunden | Repository-Wurzel und aktuellen Code-Stand prüfen; §1 ausführen. Dasselbe Python für Paketinstallation und Ausführung verwenden. |
 | `Activate.ps1` wird blockiert | Keine ExecutionPolicy ändern. Die Anleitung braucht keine Aktivierung. |
 | `polling.json` fehlt | Originales aktives M2-Set auf den PC kopieren. Private Dateien kommen nicht mit Git. |
 | Keine Dateien für `data/ready/*.csv*` | Aufbereitete Historie bereitstellen oder erfolgreich exportieren und `$Daten` auf die tatsächlich vorhandenen Dateien umstellen. |
@@ -562,7 +597,7 @@ Test-Path .\docs\analysis\stations\polling.json
 Remove-Item Env:\TANKERKOENIG_API_KEY -ErrorAction SilentlyContinue
 
 # Separater Testpuffer, nie der produktive Pi-/Uploader-Puffer
-.\.venv-m3\Scripts\python.exe .\data-tools\collect_prices.py --once --out .\data\pc-test-poll
+py -3 .\data-tools\collect_prices.py --once --out .\data\pc-test-poll
 ```
 
 Beide `Test-Path`-Abfragen müssen `True` sein. Bei mehreren Polling-Sets
@@ -583,3 +618,5 @@ Analyse-CSVs aus §3, nicht direkt diese JSONL-Datei.
 4. Out-of-sample-Intervallkalibrierung / ACI nach ausreichender Live-Historie.
 5. Echt-Daten-Abnahme: MASE <0,95 gesamt, Pinball besser als Naive,
    PICP 95 % zwischen 90–98 %. Keine alten Demo-Messwerte übernehmen.
+
+</details>

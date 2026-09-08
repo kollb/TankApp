@@ -30,7 +30,7 @@ python3 data-tools/fetch_history.py --since 2025-01-01
 python3 data-tools/fetch_history.py --stations-latest
 
 # 5) Täglich per cron (ein Tag ≈ 20 MB, dauert Sekunden):
-#    20 6 * * *  cd /srv/tankapp/TankApp && python3 data-tools/fetch_history.py --since yesterday --quiet >> data/raw/fetch.log 2>&1
+#    17 * * * *  /usr/bin/python3 /srv/tankapp/TankApp/tankapp.py history-sync --archive-dir /srv/tankapp/archive >> /srv/tankapp/history-sync.log 2>&1
 
 Ablage: data/raw/prices/YYYY/MM/YYYY-MM-DD-prices.csv.gz
         data/raw/stations/YYYY/MM/YYYY-MM-DD-stations.csv.gz
@@ -192,6 +192,10 @@ def download(url: str, dest: str, headers: dict, args: argparse.Namespace) -> tu
     """Eine Datei laden. -> Status, übertragene Bytes."""
     if os.path.exists(dest) and os.path.getsize(dest) > 0 and not args.force:
         return "skip", 0
+    if getattr(args, "reuse_existing_format", False) and not args.force:
+        alternate = dest[:-3] if dest.endswith(".gz") else dest + ".gz"
+        if os.path.isfile(alternate) and os.path.getsize(alternate) > 0:
+            return "skip", 0
     body = None
     for attempt in range(1, args.retries + 1):
         try:
@@ -370,6 +374,8 @@ def main() -> int:
     ap.add_argument("--no-netrc", action="store_true")
     ap.add_argument("--no-prompt", action="store_true", help="nie interaktiv nach dem Key fragen")
     ap.add_argument("--force", action="store_true", help="vorhandene Dateien neu laden")
+    ap.add_argument("--reuse-existing-format", action="store_true",
+                    help="Auch vorhandene CSV/gzip-Gegenstücke als erledigt zählen (NAS-Sync)")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
     if args.stations_latest:

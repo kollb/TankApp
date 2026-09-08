@@ -1,0 +1,50 @@
+# One application service. Reuses the existing InfluxDB; never creates/replaces it.
+# Paths and user IDs are set by tankapp.py nas-up, not maintained by hand.
+services:
+  app:
+    build:
+      context: ../../..
+      dockerfile: ops/nas/app/Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "${TANKAPP_UID:-1000}:${TANKAPP_GID:-1000}"
+    ports:
+      - "${TANKAPP_WEB_PORT:-8080}:8080"
+    environment:
+      TANKAPP_DATA_DIR: /data
+      TANKAPP_ARCHIVE_DIR: /archive
+      TANKAPP_POLLING_FILE: /config/polling.json
+      TANKAPP_INFLUX_ENV: /config/influx.env
+      TANKAPP_NETRC: /config/netrc
+      TANKAPP_HISTORY_DAYS: "${TANKAPP_HISTORY_DAYS:-365}"
+      TANKAPP_MODEL_FUELS: "${TANKAPP_MODEL_FUELS:-e10}"
+      TZ: Europe/Berlin
+    volumes:
+      - type: bind
+        source: ${TANKAPP_RUNTIME_DIR:?Run tankapp.py nas-up}
+        target: /data/runtime
+      - type: bind
+        source: ${TANKAPP_ARCHIVE_DIR:?Run tankapp.py nas-up}
+        target: /archive
+      - type: bind
+        source: ${TANKAPP_POLLING_FILE:?Run tankapp.py nas-up}
+        target: /config/polling.json
+        read_only: true
+      - type: bind
+        source: ${TANKAPP_INFLUX_ENV:?Run tankapp.py nas-up}
+        target: /config/influx.env
+        read_only: true
+      - type: bind
+        source: ${TANKAPP_NETRC:?Run tankapp.py nas-up}
+        target: /config/netrc
+        read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    stop_grace_period: 20s
