@@ -99,7 +99,9 @@ def test_refresh_warmstarts_without_months_of_polling_and_marks_retained_model(
     assert (output.parent / publication["model_file"]).exists()
 
 
-def test_no_successful_fits_keep_last_good_publication(model_setup, monkeypatch, capsys):
+def test_no_successful_fits_keep_last_good_publication(
+    model_setup, monkeypatch, capsys
+):
     path = model_setup.runtime / "engine/current.json"
     path.parent.mkdir(parents=True)
     path.write_text('{"published_at":"last-good","forecasts":[]}')
@@ -112,9 +114,7 @@ def test_no_successful_fits_keep_last_good_publication(model_setup, monkeypatch,
     result = refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
     assert result["state"] == "waiting"
     assert path.read_bytes() == before
-    attempt = json.loads(
-        (model_setup.runtime / "engine/last-attempt.json").read_text()
-    )
+    attempt = json.loads((model_setup.runtime / "engine/last-attempt.json").read_text())
     assert attempt["failures"][0]["detail"] == "insufficient data"
     assert "insufficient data" in capsys.readouterr().out
 
