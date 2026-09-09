@@ -36,6 +36,9 @@ ops/nas/influxdb/.env
 .env
 apikey.txt
 
+# RP2-Fallback-GUI schreibt ihre HTML-Vorlage beim Start selbst
+rp2/templates/
+
 # GUI-Vorlagen bleiben im Repo, lokale JS-Artefakte/Secrets nicht
 node_modules/
 .next/
