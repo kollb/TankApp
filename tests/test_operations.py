@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -372,3 +373,26 @@ def test_cold_start_without_persistent_schedule_waits(tmp_path, monkeypatch):
     assert schedule.wait_seconds() == 300
     with pytest.raises(ValueError, match="Abstand"):
         schedule.claim(2)
+
+
+def test_broken_host_python_fails_with_guidance_not_traceback():
+    """NAS case: python3 built against a newer glibc dies at ``import math``."""
+    # Preload tankapp.py's plain imports (their C accelerators work on the
+    # broken NAS build, too), then poison only math — the extension that
+    # failed there with "version `GLIBC_2.44' not found".
+    shim = (
+        "import argparse, datetime, json, os, pathlib, subprocess, sys; "
+        "sys.modules['math'] = None; sys.argv = sys.argv[1:]; "
+        "import runpy; runpy.run_path(sys.argv[0], run_name='__main__')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", shim, "tankapp.py", "nas-up"],
+        cwd=tankapp.ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "Kein TankApp-Codefehler" in result.stderr
+    assert "docs/INSTALL.md" in result.stderr

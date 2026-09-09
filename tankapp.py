@@ -4,11 +4,29 @@
 import argparse
 import datetime as dt
 import json
-import math
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    import math
+except ImportError as _exc:
+    # Interpreter built for a different system (NAS case: newer glibc, so even
+    # ``import math`` fails with e.g. "version `GLIBC_2.44' not found" from
+    # libm). No TankApp command can run on such an interpreter; fail with
+    # guidance instead of a raw traceback that looks like a TankApp bug.
+    sys.stderr.write(
+        f"TankApp: Dieses Python ({sys.executable}) kann die eigene "
+        f"Standardbibliothek nicht laden: {_exc}\n"
+        "Das Python wurde für ein anderes System gebaut (typisch: auf dem NAS "
+        "für eine neuere glibc, z. B. Fehler `GLIBC_2.44' von libm) und passt "
+        "nicht zu diesem Gerät. Kein TankApp-Codefehler; nichts wurde verändert.\n"
+        "Abhilfe: ein zur System-glibc passendes python3 verwenden; glibc nie von "
+        "Hand aktualisieren. Siehe docs/INSTALL.md, Abschnitt "
+        "„Störungsfall NAS: unpassendes Python“.\n"
+    )
+    raise SystemExit(2)
 
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "data-tools"
