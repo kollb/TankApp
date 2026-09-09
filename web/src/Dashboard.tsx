@@ -20,10 +20,16 @@ import {
   SlidersHorizontal,
   HelpCircle,
   Route,
+  Terminal,
+  CalendarDays,
+  Scale,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
   autoTimeTicks,
+  autoTimeValue,
+  berlinHour,
+  clockLabel,
   currentPrice,
   detourEconomics,
   euro,
@@ -150,6 +156,81 @@ function JobCard({
   );
 }
 
+function ApiExplorer({
+  fuel,
+  identity,
+}: {
+  fuel: Fuel;
+  identity: string;
+}) {
+  const [path, setPath] = useState("/api/v1/health");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const dynamic = identity
+    ? [
+        {
+          label: "Preisverlauf (24 h)",
+          path: `/api/v1/series?${identity}`,
+        },
+        {
+          label: "Modell-Ausblick",
+          path: `/api/v1/forecast?${identity}`,
+        },
+      ]
+    : [];
+  const endpoints = [
+    { label: "Systemstatus", path: "/api/v1/health" },
+    { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
+    ...dynamic,
+  ];
+  const run = async (target: string) => {
+    setPath(target);
+    setLoading(true);
+    setAnswer(null);
+    try {
+      const response = await fetch(target, { cache: "no-store" });
+      const data: unknown = await response.json();
+      const text = JSON.stringify(data, null, 2);
+      setAnswer(text.length > 4000 ? `${text.slice(0, 4000)}\n… gekürzt` : text);
+    } catch {
+      setAnswer('{\n  "error_code": "request_failed"\n}');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {endpoints.map((entry) => (
+          <button
+            key={entry.path}
+            onClick={() => void run(entry.path)}
+            aria-pressed={path === entry.path && answer !== null}
+            className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+              path === entry.path && answer !== null
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
+            }`}
+          >
+            GET {entry.label}
+          </button>
+        ))}
+      </div>
+      {!identity && (
+        <p className="mb-3 text-[11px] text-slate-500">
+          Verlauf und Ausblick erscheinen hier, sobald eine Station mit Stadt
+          gewählt ist — die GUI fragt sie dann live ab, genau wie die Tabs.
+        </p>
+      )}
+      <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
+        {loading
+          ? "// Rufe Endpunkt auf …"
+          : answer || "// Oben einen Endpunkt wählen — nur lesend, kein Poll."}
+      </pre>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [fuel, setFuel] = usePreference<Fuel>(
     "fuel",
@@ -195,8 +276,41 @@ export function Dashboard() {
     "onroute",
     (value) => value === "onroute" || value === "dedicated",
   );
+  const [speed, setSpeed] = usePreference(
+    "speed",
+    45,
+    (value) =>
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 25 &&
+      value <= 80,
+  );
+  // Zeitraum des Stations-Labors (Stunden) und Horizont des Ausblicks (Tage).
+  const [spanHours, setSpanHours] = usePreference(
+    "spanHours",
+    24,
+    (value) => value === 24 || value === 72 || value === 168,
+  );
+  const [horizon, setHorizon] = usePreference(
+    "horizon",
+    0,
+    (value) => value === 0 || value === 3 || value === 7,
+  );
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(performance.now());
+  const [browserOnline, setBrowserOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  useEffect(() => {
+    const on = () => setBrowserOnline(true);
+    const off = () => setBrowserOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
   const prices = useResource<Stations>(
     `/api/v1/stations?fuel=${fuel}`,
     30000,
@@ -224,6 +338,10 @@ export function Dashboard() {
     stations[0];
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
+  // Zeitwert: 0 = Automatik (16 €/h im Peak 16:30–20:00, sonst 10 €/h),
+  // sonst der fest eingestellte Stundensatz.
+  const autoZ = autoTimeValue();
+  const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
     bestPrice !== null && selectedPrice !== null
       ? (selectedPrice - bestPrice) * liters
@@ -258,8 +376,8 @@ export function Dashboard() {
                   km,
                   mode: detourMode,
                   consumption,
-                  speedKmh: 45,
-                  timeValueEurH: timeValue,
+                  speedKmh: speed,
+                  timeValueEurH: timeValueUsed,
                 }),
               },
             ];
@@ -274,8 +392,16 @@ export function Dashboard() {
       }).toString()
     : "";
   const history = useResource<{ points: Point[]; error_code: string | null }>(
-    tab === "statistics" && identity ? `/api/v1/series?${identity}` : null,
+    tab === "statistics" && identity
+      ? `/api/v1/series?${identity}&hours=${spanHours}`
+      : null,
     60000,
+    refresh,
+  );
+  // Tagesstreifen im Alltag: derselbe 24-h-Verlauf, stündlich verdichtet.
+  const dayStrip = useResource<{ points: Point[]; error_code: string | null }>(
+    tab === "daily" && identity ? `/api/v1/series?${identity}` : null,
+    300000,
     refresh,
   );
   const forecast = useResource<Forecast>(
@@ -291,20 +417,34 @@ export function Dashboard() {
   const f = forecast.data;
   const metrics = f?.metrics;
   const series = segments(observations);
-  // Feste 24-Stunden-Fenster statt auto-Skalen: die Achse bleibt stabil und
-  // fehlende Phasen sind als markierte Lücke sichtbar, nicht als Puffer.
-  const obsWindow: [number, number] = [Date.now() - 86_400_000, Date.now()];
-  const modelPts =
-    f?.points
-      .filter((p) => p.q50 !== null)
-      .map((p) => ({ x: Date.parse(p.timestamp), y: p.q50! })) || [];
+  // Festes Zeitfenster statt auto-Skala: die Achse bleibt stabil, gestauchte
+  // Lücken tragen die Info („Pause · h“) statt leerer Fläche.
+  const obsWindow: [number, number] = [
+    Date.now() - spanHours * 3600 * 1000,
+    Date.now(),
+  ];
+  const spanLabel =
+    spanHours === 24 ? "letzte 24 Stunden" : spanHours === 72 ? "letzte 3 Tage" : "letzte 7 Tage";
+  // Ausblick-Horizont: 24 h Standard, +3/+7 Tage aus eigener Publikation.
+  // Fehlt ein Horizont (altes NAS-Ergebnis), fällt der Tab auf 24 h zurück.
+  const horizonPts =
+    horizon === 3 && f?.points_3d?.length
+      ? f.points_3d
+      : horizon === 7 && f?.points_7d?.length
+        ? f.points_7d
+        : f?.points || [];
+  const horizonDays =
+    horizon === 3 && f?.points_3d?.length ? 3 : horizon === 7 && f?.points_7d?.length ? 7 : 1;
+  const modelPts = horizonPts
+    .filter((p) => p.q50 !== null)
+    .map((p) => ({ x: Date.parse(p.timestamp), y: p.q50! }));
   const modelSeries = splitOnGap(modelPts, 20).map((pts, i) => ({
     name: i === 0 ? "Unkalibrierter Median" : undefined,
     color: "#38bdf8",
     dash: "5 4",
     pts,
   }));
-  const fanBand = splitOnGap(
+  const fanBand95 = splitOnGap(
     (f?.points || [])
       .filter((p) => p.q025 !== null && p.q975 !== null)
       .map((p) => ({
@@ -314,14 +454,146 @@ export function Dashboard() {
       })),
     20,
   ).map((pts, i) => ({
-    name: i === 0 ? "95-%-Band (unkalibriert)" : undefined,
+    name: i === 0 ? "95-%-Band" : undefined,
     color: "#38bdf8",
+    pts,
+  }));
+  const fanBand80 = splitOnGap(
+    (f?.points || [])
+      .filter(
+        (p) =>
+          p.q10 !== null &&
+          p.q10 !== undefined &&
+          p.q90 !== null &&
+          p.q90 !== undefined,
+      )
+      .map((p) => ({
+        x: Date.parse(p.timestamp),
+        yLow: p.q10!,
+        yHigh: p.q90!,
+      })),
+    20,
+  ).map((pts, i) => ({
+    name: i === 0 ? "80-%-Band" : undefined,
+    color: "#34d399",
     pts,
   }));
   const forecastWindow: [number, number] | null =
     f?.origin && modelSeries.length
-      ? [Date.parse(f.origin), Date.parse(f.origin) + 86_400_000]
+      ? [Date.parse(f.origin), Date.parse(f.origin) + horizonDays * 86_400_000]
       : null;
+  const nowMs = Date.now();
+  // Markierungen aus der Medianlinie abgelesen: Jetzt plus billigste und
+  // teuerste Stunde des sichtbaren Horizonts (Analyse, keine Empfehlung).
+  const extremeMarks = (() => {
+    if (modelPts.length < 12) return [];
+    let lo = modelPts[0];
+    let hi = modelPts[0];
+    for (const p of modelPts) {
+      if (p.y < lo.y) lo = p;
+      if (p.y > hi.y) hi = p;
+    }
+    if (!(hi.y > lo.y)) return [];
+    return [
+      { x: lo.x, color: "#34d399", label: `Tief ${clockLabel(new Date(lo.x).toISOString())}` },
+      { x: hi.x, color: "#fb7185", label: `Hoch ${clockLabel(new Date(hi.x).toISOString())}` },
+    ];
+  })();
+  const forecastMarks = [
+    ...(forecastWindow && nowMs > forecastWindow[0] && nowMs < forecastWindow[1]
+      ? [{ x: nowMs, color: "#f59e0b", label: "Jetzt" }]
+      : []),
+    ...extremeMarks,
+  ];
+  // Echte 24-h-Kennzahlen aus offenen Meldungen: Zählung und Spanne, keine
+  // erfundenen Trefferquoten.
+  const openPrices = observations
+    .filter(
+      (p) =>
+        p.status === "open" &&
+        p.price !== null &&
+        Number.isFinite(p.price) &&
+        Number.isFinite(Date.parse(p.timestamp)),
+    )
+    .map((p) => p.price!);
+  const dayStats = openPrices.length
+    ? {
+        n: openPrices.length,
+        min: Math.min(...openPrices),
+        max: Math.max(...openPrices),
+      }
+    : null;
+  // Günstigste Modell-Fenster (Werkstatt-Analyse, keine Empfehlung): Die drei
+  // billigsten 2-h-Blöcke des unkalibrierten Medians, ohne Prozent, ohne CTA.
+  const modelWindows = (() => {
+    const medians = horizonPts
+      .filter((p) => p.q50 !== null && Number.isFinite(Date.parse(p.timestamp)))
+      .map((p) => ({ x: Date.parse(p.timestamp), y: p.q50! }));
+    if (medians.length < 4) return [];
+    const blocks: { start: number; end: number; values: number[] }[] = [];
+    const blockMs = 2 * 3600 * 1000;
+    const first = Math.floor(medians[0].x / blockMs) * blockMs;
+    for (const m of medians) {
+      const start = Math.floor((m.x - first) / blockMs) * blockMs + first;
+      let block = blocks.find((b) => b.start === start);
+      if (!block) {
+        block = { start, end: start + blockMs, values: [] };
+        blocks.push(block);
+      }
+      block.values.push(m.y);
+    }
+    return blocks
+      .filter((b) => b.values.length >= 4)
+      .map((b) => ({
+        start: b.start,
+        end: b.end,
+        median: b.values.sort((a, c) => a - c)[Math.floor(b.values.length / 2)],
+      }))
+      .sort((a, b) => a.median - b.median)
+      .slice(0, 3);
+  })();
+  // Tagesstreifen: letzte Meldung je Stunde (06–24, Berlin) der Vergleichsstation.
+  const stripCells = (() => {
+    const points =
+      tab === "daily" && !dayStrip.error && !dayStrip.data?.error_code
+        ? dayStrip.data?.points || []
+        : [];
+    const byHour = new Map<number, number>();
+    for (const p of points) {
+      const ms = Date.parse(p.timestamp);
+      if (
+        p.status !== "open" ||
+        p.price === null ||
+        !Number.isFinite(p.price) ||
+        !Number.isFinite(ms)
+      )
+        continue;
+      const hour = Math.floor(berlinHour(new Date(ms)));
+      if (hour >= 6 && hour < 24) byHour.set(hour, p.price);
+    }
+    const values = [...byHour.values()];
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 0;
+    const span = max - min || 1;
+    const nowHour = Math.floor(berlinHour());
+    return Array.from({ length: 18 }, (_, i) => {
+      const hour = 6 + i;
+      const value = byHour.get(hour);
+      return {
+        hour,
+        value: value ?? null,
+        tone:
+          value === undefined
+            ? "empty"
+            : value <= min + span / 3
+              ? "cheap"
+              : value >= max - span / 3
+                ? "pricey"
+                : "mid",
+        current: hour === nowHour,
+      };
+    });
+  })();
   const calibrationTip = f?.data_policy
     ? `Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Bisher ${f.data_policy.good_complete_live_days} von ${f.data_policy.required_complete_live_days} guten Live-Tagen. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.`
     : "Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.";
@@ -440,13 +712,37 @@ export function Dashboard() {
             )}
             <span>
               {online && fresh.length
-                ? `${fresh.length} frische Preise · ${activeCity}`
+                ? `${fresh.length} frische Preise · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
                 : prices.pending && !data
                   ? "Daten werden geladen …"
-                  : "Kein bestätigter Live-Preis"}
+                  : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
             </span>
           </div>
         </div>
+        {!browserOnline && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
+          >
+            <WifiOff size={18} className="mt-0.5 shrink-0" />
+            <p>
+              Browser ist offline — gezeigt wird der letzte abgerufene Stand,
+              keine Live-Preise. Sobald das Netz zurück ist, lädt die Ansicht
+              neu.
+            </p>
+          </div>
+        )}
+        {fuel === "e5" && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-4 text-xs leading-relaxed text-sky-200">
+            <FuelIcon size={17} className="mt-0.5 shrink-0" />
+            <p>
+              <span className="font-semibold">E5↔E10-Äquivalenz:</span> E10
+              verbraucht ~1–2 % mehr Kraftstoff — E5 lohnt sich erst bei p_E5 ≤
+              ~1,015 · p_E10 (etwa 4–5 ct/L Differenz). Vergleiche E5-Preise
+              nur mit E5, nie mit E10.
+            </p>
+          </div>
+        )}
         {connectionProblem && (
           <div
             role="alert"
@@ -624,6 +920,88 @@ export function Dashboard() {
             </div>
             <section
               className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="daystrip-heading"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3
+                  id="daystrip-heading"
+                  className="flex items-center gap-2 text-sm font-semibold"
+                >
+                  <CalendarDays size={16} className="text-emerald-400" />
+                  Heute im Überblick · {selected?.name || "—"}
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  06–24 Uhr · letzte Meldung je Stunde
+                </span>
+              </div>
+              {dayStrip.error || dayStrip.data?.error_code ? (
+                <Empty>
+                  {problem(dayStrip.data?.error_code) ||
+                    "Der Tagesverlauf konnte nicht geladen werden."}
+                </Empty>
+              ) : stripCells.some((c) => c.value !== null) ? (
+                <>
+                  <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">
+                    {stripCells.map((cell) => (
+                      <div
+                        key={cell.hour}
+                        title={
+                          cell.value === null
+                            ? `${String(cell.hour).padStart(2, "0")}:00 — keine offene Meldung`
+                            : `${String(cell.hour).padStart(2, "0")}:00 — ${euro(cell.value, 3)} €/L`
+                        }
+                        className={`rounded-lg border p-2 text-center ${
+                          cell.current
+                            ? "z-10 scale-105 border-emerald-400 bg-emerald-950/80"
+                            : cell.tone === "cheap"
+                              ? "border-emerald-500/30 bg-emerald-900/30"
+                              : cell.tone === "pricey"
+                                ? "border-rose-500/30 bg-rose-950/30"
+                                : cell.tone === "mid"
+                                  ? "border-slate-700/40 bg-slate-800/40"
+                                  : "border-slate-800 bg-slate-950/40"
+                        }`}
+                      >
+                        <div className="font-mono text-[10px] text-slate-400">
+                          {String(cell.hour).padStart(2, "0")}:00
+                        </div>
+                        <div
+                          className={`mt-0.5 truncate font-mono text-[11px] font-bold sm:text-xs ${
+                            cell.value === null
+                              ? "text-slate-600"
+                              : cell.tone === "cheap"
+                                ? "text-emerald-300"
+                                : cell.tone === "pricey"
+                                  ? "text-rose-300"
+                                  : "text-slate-200"
+                          }`}
+                        >
+                          {cell.value === null ? "–" : euro(cell.value, 3)}
+                        </div>
+                        {cell.current && (
+                          <div className="mt-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-400">
+                            Jetzt
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                    Grün = unteres Preisdrittel dieses Tages an dieser Station,
+                    rot = oberes Drittel. Nur echte offene Meldungen — leere
+                    Stunden hatten keine. Keine Prognose, keine Empfehlung.
+                  </p>
+                </>
+              ) : (
+                <Empty>
+                  {dayStrip.pending
+                    ? "Tagesverlauf wird geladen …"
+                    : "Noch keine offenen Stundenmeldungen für diese Station — leere Stunden werden nicht erfunden."}
+                </Empty>
+              )}
+            </section>
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
               aria-labelledby="detour-heading"
             >
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -649,7 +1027,15 @@ export function Dashboard() {
                     als Luftlinie — der echte Straßenweg ist meist länger, der
                     Umweg rechnet sich also eher noch weniger.
                   </p>
-                  <div className="mb-5 grid gap-4 sm:grid-cols-3">
+                  {detourMode === "dedicated" && (
+                    <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-200">
+                      <span className="font-semibold">Extrafahrt:</span> Bei
+                      12 €/h Zeitwert ist eine Extrafahrt von zuhause praktisch
+                      nie wirtschaftlich — fahr nur hin, wenn du ohnehin an der
+                      Station vorbeikommst.
+                    </p>
+                  )}
+                  <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <label
                       htmlFor="consumption"
                       className="text-xs text-slate-400"
@@ -669,13 +1055,31 @@ export function Dashboard() {
                         className="mt-3 w-full"
                       />
                     </label>
+                    <label htmlFor="speed" className="text-xs text-slate-400">
+                      Stadt-/Pendel-Tempo{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {speed} km/h
+                      </span>
+                      <input
+                        id="speed"
+                        type="range"
+                        min={25}
+                        max={80}
+                        step={5}
+                        value={speed}
+                        onChange={(e) => setSpeed(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </label>
                     <label
                       htmlFor="timeValue"
                       className="text-xs text-slate-400"
                     >
                       Zeitwert{" "}
                       <span className="font-mono font-semibold text-emerald-400">
-                        {timeValue} €/h
+                        {timeValue > 0
+                          ? `${timeValue} €/h`
+                          : `Auto (${timeValueUsed} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
                       </span>
                       <input
                         id="timeValue"
@@ -687,6 +1091,9 @@ export function Dashboard() {
                         onChange={(e) => setTimeValue(Number(e.target.value))}
                         className="mt-3 w-full"
                       />
+                      <span className="mt-1 block text-[10px] text-slate-500">
+                        0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
+                      </span>
                     </label>
                     <label
                       htmlFor="detourMode"
@@ -815,13 +1222,17 @@ export function Dashboard() {
                             ? "Kein Kraftstoffpreis"
                             : "Offen";
                     return (
-                      <button
+                      <div
                         key={row.station_id}
-                        onClick={() => setSelectedId(row.station_id)}
-                        aria-pressed={selected?.station_id === row.station_id}
-                        className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-slate-800/40 ${selected?.station_id === row.station_id ? "bg-emerald-500/[.04]" : ""}`}
+                        className={`flex w-full items-center justify-between gap-2 px-5 py-4 transition-colors hover:bg-slate-800/40 ${selected?.station_id === row.station_id ? "bg-emerald-500/[.04]" : ""}`}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
+                        <button
+                          onClick={() => setSelectedId(row.station_id)}
+                          aria-pressed={selected?.station_id === row.station_id}
+                          aria-label={`${row.name} als Vergleich wählen`}
+                          className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
                           <div
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${row.station_id === best?.station_id ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-700 bg-slate-800 text-slate-500"}`}
                           >
@@ -871,25 +1282,41 @@ export function Dashboard() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <div className="text-right">
-                            <div
-                              className={`font-mono text-lg font-bold tabular-nums ${row.station_id === best?.station_id ? "text-emerald-400" : "text-slate-200"}`}
-                            >
-                              {euro(value, 3)}{" "}
-                              <span className="text-[10px] font-normal text-slate-500">
-                                €/L
-                              </span>
-                            </div>
-                            {value === null && row.last_price !== null && (
-                              <div className="text-[10px] text-slate-500">
-                                Letzte Meldung: {euro(row.last_price, 3)} €
+                            <div className="flex shrink-0 items-center gap-3">
+                              <div className="text-right">
+                                <div
+                                  className={`font-mono text-lg font-bold tabular-nums ${row.station_id === best?.station_id ? "text-emerald-400" : "text-slate-200"}`}
+                                >
+                                  {euro(value, 3)}{" "}
+                                  <span className="text-[10px] font-normal text-slate-500">
+                                    €/L
+                                  </span>
+                                </div>
+                                {value === null && row.last_price !== null && (
+                                  <div className="text-[10px] text-slate-500">
+                                    Letzte Meldung: {euro(row.last_price, 3)} €
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                          <ChevronRight size={15} className="text-slate-600" />
+                              <ChevronRight
+                                size={15}
+                                className="text-slate-600"
+                              />
+                            </div>
+                          </button>
+                          {row.maps_url ? (
+                            <a
+                              href={row.maps_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Route zu ${row.name} öffnen`}
+                              title="Route öffnen"
+                              className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
+                            >
+                              <ArrowUpRight size={15} />
+                            </a>
+                          ) : null}
                         </div>
-                      </button>
                     );
                   })}
                 </div>
@@ -951,7 +1378,7 @@ export function Dashboard() {
                 </select>
               </label>
             </div>
-            <div className="mb-6 grid gap-4 sm:grid-cols-3">
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Metric
                 label="Backtest · mittlerer absoluter Fehler"
                 value={
@@ -977,15 +1404,43 @@ export function Dashboard() {
                 detail="5-Minuten-Zeitpunkte, an denen Prognose und echter gemeldeter Preis verglichen wurden."
                 tip="Nur hier gezählt: Zeitpunkte mit echten gemeldeten Preisen im Backtest-Fenster. Keine simulierten Trefferquoten, keine Füllwerte. Wenige Punkte machen MAE und MASE unsicherer — die Zahl zeigt, wie viel Material die Kennzahlen tragen."
               />
+              <Metric
+                label="95-%-Band-Trefferquote · PICP"
+                value={
+                  <>
+                    {euro(metrics?.picp95_pct, 1)}{" "}
+                    <span className="text-sm font-normal text-slate-500">
+                      %
+                    </span>
+                  </>
+                }
+                detail="Anteil echter Preise im 95-%-Band des Backtests. Ziel: 90–98 %."
+                tip="Prediction Interval Coverage Probability (PICP): Wie viel Prozent der echten Preise lagen im vorhergesagten 95-%-Band? Zielkorridor 90–98 %. Darunter: Band zu eng oder Markt zu unruhig. Darüber: Band zu breit, Aussage zu vage. Backtest-Wert, kein Live-Nachweis."
+              />
             </div>
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">
-                  Stations-Labor · letzte 24 Stunden
+                  Stations-Labor · {spanLabel}
                 </h3>
-                <Badge warning={!observations.length}>
-                  Echte Polling-Beobachtungen
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-500">
+                    Zeitraum{" "}
+                    <select
+                      aria-label="Zeitraum des Stations-Labors"
+                      value={spanHours}
+                      onChange={(e) => setSpanHours(Number(e.target.value))}
+                      className="ml-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-200"
+                    >
+                      <option value={24}>24 Stunden</option>
+                      <option value={72}>3 Tage</option>
+                      <option value={168}>7 Tage</option>
+                    </select>
+                  </label>
+                  <Badge warning={!observations.length}>
+                    Echte Polling-Beobachtungen
+                  </Badge>
+                </div>
               </div>
               {history.error || history.data?.error_code ? (
                 <Empty>
@@ -1009,11 +1464,20 @@ export function Dashboard() {
                     : "Noch kein Preisverlauf vorhanden. Lücken und geschlossene Zeiträume werden nicht mit erfundenen Preisen verbunden."}
                 </Empty>
               )}
-              <p className="mt-4 text-[11px] text-slate-500">
-                Letzte 24 Stunden, Europe/Berlin · €/L. Der letzte offene Preis
-                bleibt als Stufe stehen, bis die nächste Meldung kommt.
-                Lange Pausen (Nacht, geschlossen) werden auf der Achse
-                zusammengeschoben, damit der Verlauf lesbar bleibt.
+              {dayStats && (
+                <p className="mt-4 text-xs text-slate-400">
+                  {dayStats.n} offene Meldungen · Spanne{" "}
+                  <span className="font-mono font-semibold text-slate-200">
+                    {euro(dayStats.min, 3)}–{euro(dayStats.max, 3)} €/L
+                  </span>
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-slate-500">
+                {spanLabel[0].toUpperCase() + spanLabel.slice(1)},
+                Europe/Berlin · €/L. Der letzte offene Preis bleibt als Stufe
+                stehen, bis die nächste Meldung kommt. Lange Pausen (Nacht,
+                geschlossen) werden auf der Achse gestaucht — die Markierung
+                „Pause · h“ zeigt die echte Dauer, der Verlauf behält den Platz.
               </p>
             </section>
             <section className={`${panel} p-5 sm:p-6`}>
@@ -1021,8 +1485,44 @@ export function Dashboard() {
                 <div>
                   <h3 className="text-sm font-semibold">Modell-Ausblick</h3>
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Ab Fit-Zeitpunkt {timeLabel(f?.origin)}
+                    Ab Fit-Zeitpunkt {timeLabel(f?.origin)} · 12-Uhr-Regel:
+                    Erhöhungen nur um 12:00 Uhr, Median und Bänder sind darauf
+                    projiziert
                   </p>
+                </div>
+                <div
+                  role="group"
+                  aria-label="Horizont des Modell-Ausblicks"
+                  className="flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+                >
+                  {(
+                    [
+                      { days: 0, label: "Heute" },
+                      { days: 3, label: "+3 Tage" },
+                      { days: 7, label: "+7 Tage" },
+                    ] as const
+                  ).map((entry) => {
+                    const available =
+                      entry.days === 0 ||
+                      (entry.days === 3 && !!f?.points_3d?.length) ||
+                      (entry.days === 7 && !!f?.points_7d?.length);
+                    return (
+                      <button
+                        key={entry.days}
+                        disabled={!available}
+                        aria-pressed={horizon === entry.days}
+                        title={
+                          available
+                            ? undefined
+                            : "Dieser Horizont fehlt im NAS-Ergebnis"
+                        }
+                        onClick={() => setHorizon(entry.days)}
+                        className={`rounded-lg px-3 py-1.5 transition-colors ${horizon === entry.days ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+                      >
+                        {entry.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <Badge warning>
                   <span className="cursor-help" title={calibrationTip}>
@@ -1038,12 +1538,20 @@ export function Dashboard() {
                   Nicht als aktuellen Tankzeitpunkt verwenden.
                 </p>
               ) : null}
+              {(horizon === 3 && horizonDays !== 3) ||
+              (horizon === 7 && horizonDays !== 7) ? (
+                <p className="mb-4 rounded-lg bg-slate-800/60 p-3 text-xs text-slate-400">
+                  Der gewählte Horizont fehlt in diesem NAS-Ergebnis — gezeigt
+                  werden 24 Stunden.
+                </p>
+              ) : null}
               {forecast.error ? (
                 <Empty>Modellstand konnte nicht geladen werden.</Empty>
               ) : modelSeries.length ? (
                 <LineChart
                   series={modelSeries}
-                  bands={fanBand}
+                  bands={[...fanBand95, ...fanBand80]}
+                  marks={forecastMarks}
                   xDomain={forecastWindow ?? undefined}
                   xTicks={
                     forecastWindow
@@ -1083,6 +1591,134 @@ export function Dashboard() {
                   Warteempfehlungen bleibt gesperrt.
                 </p>
               </div>
+            </section>
+            <section className={`${panel} mt-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Clock size={16} className="text-sky-400" />
+                  Günstigste Modell-Fenster · {selected?.name || "—"}
+                </h3>
+                <Badge warning>Analyse, keine Empfehlung</Badge>
+              </div>
+              {modelWindows.length ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {modelWindows.map((window, i) => (
+                      <div
+                        key={window.start}
+                        className={`rounded-xl border p-4 ${
+                          i === 0
+                            ? "border-emerald-500/30 bg-emerald-500/[.06]"
+                            : "border-slate-800 bg-slate-950/40"
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-slate-300">
+                          {i === 0 ? "🏆 " : i === 1 ? "🥈 " : "🥉 "}
+                          {clockLabel(new Date(window.start).toISOString())}–
+                          {clockLabel(new Date(window.end).toISOString())} Uhr
+                        </p>
+                        <p className="mt-1 font-mono text-xl font-bold text-slate-100">
+                          ~{euro(window.median, 3)} €/L
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Median des unkalibrierten Ausblicks in diesem
+                          2-h-Block.
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                    Abgelesen aus der Medianlinie oben — ohne Prozent, ohne
+                    Ersparnisversprechen, ohne Handlung. Erst nach
+                    nachgewiesener Kalibrierung (Brier &lt; 0,25 bei ≥ 100
+                    Empfehlungen) wird daraus eine Alltags-Empfehlung.
+                  </p>
+                </>
+              ) : (
+                <Empty>
+                  Keine Modell-Fenster: Erst mit einem erfolgreichen
+                  Modellergebnis lassen sich Blöcke ablesen. Es werden keine
+                  Fenster erfunden.
+                </Empty>
+              )}
+            </section>
+            <section className={`${panel} mt-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Scale size={16} className="text-emerald-400" />
+                  Entscheidungs-Regel · Startwerte
+                </h3>
+                <Badge warning>M7-Kalibrierung steht aus</Badge>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-500">
+                      <th className="py-2 pr-3 font-medium">
+                        Erwartete Ersparnis
+                      </th>
+                      <th className="py-2 pr-3 font-medium">P_besser</th>
+                      <th className="py-2 font-medium">Regel-Antwort</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    <tr>
+                      <td className="py-2 pr-3 font-mono">≥ 2,00 €</td>
+                      <td className="py-2 pr-3 font-mono">≥ 70 %</td>
+                      <td className="py-2">
+                        <span className="font-semibold text-emerald-400">
+                          WARTEN
+                        </span>{" "}
+                        bis zum besten Fenster
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 font-mono">≥ 1,00 €</td>
+                      <td className="py-2 pr-3 font-mono">≥ 60 %</td>
+                      <td className="py-2">Warten lohnt eher</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 font-mono">&lt; 1,00 €</td>
+                      <td className="py-2 pr-3 font-mono">beliebig</td>
+                      <td className="py-2">
+                        <span className="font-semibold text-emerald-400">
+                          JETZT
+                        </span>{" "}
+                        tanken
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 font-mono">beliebig</td>
+                      <td className="py-2 pr-3 font-mono">&lt; 50 %</td>
+                      <td className="py-2">
+                        JETZT tanken (Prognose unsicher)
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                Signifikanzschwelle θ = 1 ct gegen Rauschen · Umweg lohnt ab
+                1,50 € netto, grenzwertig ab 0,50 € · P_besser 40–60 % oder
+                Band außerhalb Toleranz → „Keine klare Empfehlung“. Die
+                Produktion entscheidet erst mit diesen Schwellen, wenn M7 sie
+                an gemessenen Trefferquoten bestätigt hat.
+              </p>
+            </section>
+            <section className={`${panel} mt-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  Heatmaps · Wochentag × Stunde
+                </h3>
+                <Badge warning>Noch kein Backend</Badge>
+              </div>
+              <Empty>
+                Preisniveau (Median 6 Wochen) und Cheap-Probability P(p ≤
+                Stadtmedian) je Stunde und Wochentag erscheinen hier, sobald
+                der NAS-Endpunkt sie aus echten Polling-Daten liefert. Bis
+                dahin: keine Muster erfinden, kein Ersatz durch
+                Beispiel-Heatmaps.
+              </Empty>
             </section>
           </>
         )}
@@ -1179,6 +1815,17 @@ export function Dashboard() {
                 verwendet.
               </p>
             </section>
+            <section className={`${panel} mb-6 p-5 sm:p-6`}>
+              <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                <Terminal size={17} className="text-emerald-400" />
+                API-Explorer · nur lesend
+              </h3>
+              <p className="mb-4 text-[11px] text-slate-500">
+                Dieselben Endpunkte, die diese GUI nutzt — live abgerufen,
+                ohne Poll auszulösen.
+              </p>
+              <ApiExplorer fuel={fuel} identity={identity} />
+            </section>
             <section className={`${panel} p-5 sm:p-6`}>
               <h3 className="mb-4 text-sm font-semibold">
                 Einrichtung & Betriebsgrenzen
@@ -1231,7 +1878,10 @@ export function Dashboard() {
           </>
         )}
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
-          <span>TankApp · Tankerkönig-Marktdaten / Live-Polling & Archiv</span>
+          <span>
+            Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
+            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr
+          </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />
             Keine Demo-Preise. Keine erfundene Sicherheit.

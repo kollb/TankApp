@@ -58,13 +58,18 @@ export type Health = {
   };
 };
 export type Point = { timestamp: string; price: number | null; status: string };
+export type ForecastPoint = {
+  timestamp: string;
+  q50: number | null;
+  q10?: number | null;
+  q90?: number | null;
+  q025: number | null;
+  q975: number | null;
+};
 export type Forecast = {
-  points: {
-    timestamp: string;
-    q50: number | null;
-    q025: number | null;
-    q975: number | null;
-  }[];
+  points: ForecastPoint[];
+  points_3d?: ForecastPoint[];
+  points_7d?: ForecastPoint[];
   origin?: string;
   error_code?: string;
   stale?: boolean;
@@ -243,35 +248,46 @@ export function splitOnGap<T extends { x: number }>(
   return groups;
 }
 
-// Lange Datenlöcher bekommen auf der Achse nur noch maxGapMs Breite,
+export type GapBand = { from: number; to: number };
+
+// Lange Datenlöcher bekommen auf der Achse nur noch maxMinutes Breite,
 // damit der tatsächliche Verlauf den Chart füllt statt in einer Ecke zu kleben.
-export function gapCompressedAxis(
+// map(x) rechnet echte Zeit in komprimierte Achsenposition (ms-Einheiten),
+// total ist die komprimierte Gesamtspanne. Innerhalb einer Lücke läuft die
+// Abbildung linear weiter, damit Marker und Bänder dort nicht kollabieren.
+export function compressedAxis(
   xMin: number,
   xMax: number,
-  knots: number[],
-  maxGapMs: number,
+  gaps: GapBand[],
+  maxMinutes: number,
 ) {
-  const xs = [
-    ...new Set(
-      [xMin, xMax, ...knots.filter((x) => x >= xMin && x <= xMax)].filter(
-        Number.isFinite,
-      ),
-    ),
-  ].sort((a, b) => a - b);
-  const display = [0];
-  for (let i = 1; i < xs.length; i++) {
-    display.push(display[i - 1] + Math.min(xs[i] - xs[i - 1], maxGapMs));
+  const maxGapMs = Math.max(0, maxMinutes * 60000);
+  const merged: GapBand[] = [];
+  for (const gap of [...gaps].sort((a, b) => a.from - b.from)) {
+    if (!Number.isFinite(gap.from) || !Number.isFinite(gap.to)) continue;
+    const from = Math.max(gap.from, xMin);
+    const to = Math.min(gap.to, xMax);
+    if (!(to > from)) continue;
+    const last = merged[merged.length - 1];
+    if (last && from <= last.to) last.to = Math.max(last.to, to);
+    else merged.push({ from, to });
   }
-  const total = display[display.length - 1] || 1;
+  const cut = (gap: GapBand) => Math.max(0, gap.to - gap.from - maxGapMs);
+  const total = Math.max(1, xMax - xMin - merged.reduce((s, g) => s + cut(g), 0));
   const map = (x: number) => {
-    if (x <= xs[0]) return 0;
-    if (x >= xs[xs.length - 1]) return total;
-    let i = 1;
-    while (i < xs.length && xs[i] < x) i++;
-    const span = xs[i] - xs[i - 1] || 1;
-    return display[i - 1] + ((x - xs[i - 1]) / span) * (display[i] - display[i - 1]);
+    if (x <= xMin) return 0;
+    if (x >= xMax) return total;
+    let removed = 0;
+    for (const gap of merged) {
+      if (x >= gap.to) removed += cut(gap);
+      else if (x > gap.from) {
+        const span = gap.to - gap.from || 1;
+        return x - xMin - removed - ((x - gap.from) / span) * cut(gap);
+      } else break;
+    }
+    return x - xMin - removed;
   };
-  return { total, map, xs };
+  return { total, map, gaps: merged };
 }
 
 // Zeitliche Lücken zwischen allen Punkten einer Diagrammserie; das Diagramm
@@ -430,4 +446,36 @@ export function timeLabel(stamp?: string | null) {
         minute: "2-digit",
       })
     : "Noch kein Stand";
+}
+// Berliner Stunde als Dezimalzahl (z. B. 18,5) — für Peak-Erkennung und
+// Tagesraster, unabhängig von der Zeitzone des Browsers.
+export function berlinHour(when: Date = new Date()) {
+  const parts = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(when);
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return (get("hour") % 24) + get("minute") / 60;
+}
+
+// Zeitwert-Automatik (Konzept §10, Sample computeValueOfTime): Peak
+// 16:30–20:00 Uhr zu 16 €/h, sonst 10 €/h. Schalterwert 0 = Auto.
+export function autoTimeValue(when: Date = new Date()) {
+  const hour = berlinHour(when);
+  const isPeak = hour >= 16.5 && hour <= 20;
+  return { z: isPeak ? 16 : 10, isPeak };
+}
+
+export function clockLabel(stamp?: string | null) {
+  if (!stamp) return "—";
+  const ms = Date.parse(stamp);
+  if (!Number.isFinite(ms)) return "—";
+  return new Date(ms).toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
