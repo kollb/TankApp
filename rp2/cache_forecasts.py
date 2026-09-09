@@ -71,28 +71,6 @@ def cache_forecasts():
         return False
 
 
-def load_live_prices():
-    """Lädt aktuelle Preise aus dem RP2-Puffer (/dev/shm/tankapp)."""
-    poll_dir = Path("/dev/shm/tankapp")
-    today = datetime.now().strftime("%Y-%m-%d")
-    poll_file = poll_dir / f"{today}.jsonl"
-    
-    prices = []
-    if poll_file.exists():
-        try:
-            with open(poll_file, "r") as f:
-                for line in f:
-                    data = json.loads(line)
-                    prices.append(data)
-            log(f"✅ Live-Preise geladen: {len(prices)} Einträge")
-        except Exception as e:
-            log(f"⚠️  Fehler beim Laden der Preise: {e}")
-    else:
-        log(f"⚠️  Poll-Datei nicht gefunden: {poll_file}")
-    
-    return prices
-
-
 def main():
     log("=== RP2 Forecast Cache gestartet ===")
 
