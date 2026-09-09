@@ -48,9 +48,7 @@ def write_poll_file(poll_dir: Path, lines: list[dict], day_offset: int = 0) -> P
     poll_dir.mkdir(parents=True, exist_ok=True)
     day = (dt.datetime.now() - dt.timedelta(days=day_offset)).strftime("%Y-%m-%d")
     path = poll_dir / f"{day}.jsonl"
-    path.write_text(
-        "\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8"
-    )
+    path.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
     return path
 
 
@@ -77,12 +75,26 @@ POLLING_JSON = {
             "label": "Frankfurt",
             "batch": [UID_B, UID_C],
             "stations": [
-                {"uuid": UID_B, "name": "Station Beta", "brand": "Esso",
-                 "lat": 50.11, "lon": 8.68, "group": "Nähe", "dist_km": 4.2,
-                 "drive_min": 11.0},
-                {"uuid": UID_C, "name": "Station Gamma", "brand": "Jet",
-                 "lat": 50.10, "lon": 8.70, "group": "Umweg", "dist_km": 9.9,
-                 "drive_min": 20.0},
+                {
+                    "uuid": UID_B,
+                    "name": "Station Beta",
+                    "brand": "Esso",
+                    "lat": 50.11,
+                    "lon": 8.68,
+                    "group": "Nähe",
+                    "dist_km": 4.2,
+                    "drive_min": 11.0,
+                },
+                {
+                    "uuid": UID_C,
+                    "name": "Station Gamma",
+                    "brand": "Jet",
+                    "lat": 50.10,
+                    "lon": 8.70,
+                    "group": "Umweg",
+                    "dist_km": 9.9,
+                    "drive_min": 20.0,
+                },
             ],
         },
     }
@@ -101,22 +113,28 @@ def forecast_points(base: float, origin: dt.datetime, hours: int = 26) -> list[d
     for h in range(hours):
         ts = origin + dt.timedelta(hours=h)
         dip = 0.0 if h < 14 else min(0.03, (h - 14) * 0.004)
-        out.append({
-            "timestamp": ts.isoformat(),
-            "q025": round(base - 0.02 - dip, 3),
-            "q10": round(base - 0.01 - dip, 3),
-            "q50": round(base - dip, 3),
-            "q90": round(base + 0.01 - dip, 3),
-            "q975": round(base + 0.02 - dip, 3),
-        })
+        out.append(
+            {
+                "timestamp": ts.isoformat(),
+                "q025": round(base - 0.02 - dip, 3),
+                "q10": round(base - 0.01 - dip, 3),
+                "q50": round(base - dip, 3),
+                "q90": round(base + 0.01 - dip, 3),
+                "q975": round(base + 0.02 - dip, 3),
+            }
+        )
     return out
 
 
-def write_forecast_cache(cache_dir: Path, entries: list[dict], age_hours: float = 1.0) -> Path:
+def write_forecast_cache(
+    cache_dir: Path, entries: list[dict], age_hours: float = 1.0
+) -> Path:
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / "last_forecasts.json"
     payload = {
-        "generated_at": (dt.datetime.now(UTC) - dt.timedelta(hours=age_hours)).isoformat(),
+        "generated_at": (
+            dt.datetime.now(UTC) - dt.timedelta(hours=age_hours)
+        ).isoformat(),
         "_cached_at": dt.datetime.now(UTC).isoformat(),
         "count": len(entries),
         "forecasts": entries,
@@ -125,8 +143,17 @@ def write_forecast_cache(cache_dir: Path, entries: list[dict], age_hours: float 
     return path
 
 
-def make_ctx(tmp_path, *, nas_base=None, poll_lines=None, poll_day_offset=0,
-             with_meta=True, with_forecast=True, ttl_offline=0.2, ttl_online=0.2):
+def make_ctx(
+    tmp_path,
+    *,
+    nas_base=None,
+    poll_lines=None,
+    poll_day_offset=0,
+    with_meta=True,
+    with_forecast=True,
+    ttl_offline=0.2,
+    ttl_online=0.2,
+):
     poll_dir = tmp_path / "poll"
     cache_dir = tmp_path / "cache"
     meta_path = tmp_path / "polling.json"
@@ -145,17 +172,26 @@ def make_ctx(tmp_path, *, nas_base=None, poll_lines=None, poll_day_offset=0,
         write_forecast_cache(
             cache_dir,
             [
-                {"station_id": UID_A, "city": "Gütersloh", "fuel": "E10",
-                 "origin": origin.isoformat(),
-                 "points": forecast_points(1.71, origin)},
-                {"station_id": UID_B, "city": "Frankfurt", "fuel": "E10",
-                 "origin": origin.isoformat(),
-                 "points": forecast_points(1.76, origin)},
+                {
+                    "station_id": UID_A,
+                    "city": "Gütersloh",
+                    "fuel": "E10",
+                    "origin": origin.isoformat(),
+                    "points": forecast_points(1.71, origin),
+                },
+                {
+                    "station_id": UID_B,
+                    "city": "Frankfurt",
+                    "fuel": "E10",
+                    "origin": origin.isoformat(),
+                    "points": forecast_points(1.76, origin),
+                },
             ],
         )
     nas_state = (
-        rp2.NasState(nas_base, ttl_online=ttl_online, ttl_offline=ttl_offline,
-                     timeout=1.0)
+        rp2.NasState(
+            nas_base, ttl_online=ttl_online, ttl_offline=ttl_offline, timeout=1.0
+        )
         if nas_base
         else rp2.NasState(None, ttl_online=ttl_online, ttl_offline=ttl_offline)
     )
@@ -172,13 +208,24 @@ def make_ctx(tmp_path, *, nas_base=None, poll_lines=None, poll_day_offset=0,
 
 def default_poll_lines():
     return [
-        {"fetched_at": now_iso(12), "source": "test", "city": "Gütersloh",
-         "prices": {UID_A: {"status": "open", "e10": 1.699, "e5": 1.819,
-                            "diesel": 1.489},
-                    UID_B: {"status": "open", "e10": 1.749, "diesel": 1.539}}},
-        {"fetched_at": now_iso(3), "source": "test", "city": "Frankfurt",
-         "prices": {UID_B: {"status": "open", "e10": 1.739, "diesel": 1.529},
-                    UID_C: {"status": "closed"}}},
+        {
+            "fetched_at": now_iso(12),
+            "source": "test",
+            "city": "Gütersloh",
+            "prices": {
+                UID_A: {"status": "open", "e10": 1.699, "e5": 1.819, "diesel": 1.489},
+                UID_B: {"status": "open", "e10": 1.749, "diesel": 1.539},
+            },
+        },
+        {
+            "fetched_at": now_iso(3),
+            "source": "test",
+            "city": "Frankfurt",
+            "prices": {
+                UID_B: {"status": "open", "e10": 1.739, "diesel": 1.529},
+                UID_C: {"status": "closed"},
+            },
+        },
     ]
 
 
@@ -191,6 +238,7 @@ def get_json(base: str, path: str):
 # Metadaten + Puffer
 # ---------------------------------------------------------------------------
 
+
 def test_meta_loads_names_from_polling_json(tmp_path):
     meta_path = write_polling_json(tmp_path / "p.json")
     meta = rp2.StationMeta([meta_path])
@@ -202,8 +250,9 @@ def test_meta_loads_names_from_polling_json(tmp_path):
 
 
 def test_meta_missing_falls_back_to_uuid_and_reports_error(tmp_path):
-    ctx = make_ctx(tmp_path, with_meta=False, poll_lines=default_poll_lines(),
-                   with_forecast=False)
+    ctx = make_ctx(
+        tmp_path, with_meta=False, poll_lines=default_poll_lines(), with_forecast=False
+    )
     snap = ctx.snapshot()
     names = {s["station_id"]: s["name"] for s in snap["stations"]}
     assert names[UID_A] == UID_A  # UUID statt Name
@@ -227,8 +276,12 @@ def test_snapshots_use_latest_line_per_station(tmp_path):
 
 def test_snapshots_fall_back_to_yesterday_at_night(tmp_path):
     # Heutige Datei fehlt -> vorgestrige? Nein: gestern wird genommen.
-    ctx = make_ctx(tmp_path, poll_lines=default_poll_lines(),
-                   poll_day_offset=1, with_forecast=False)
+    ctx = make_ctx(
+        tmp_path,
+        poll_lines=default_poll_lines(),
+        poll_day_offset=1,
+        with_forecast=False,
+    )
     snap = ctx.snapshot()
     assert len(snap["stations"]) == 3
 
@@ -236,6 +289,7 @@ def test_snapshots_fall_back_to_yesterday_at_night(tmp_path):
 # ---------------------------------------------------------------------------
 # Prognose-Zusammenfassung + Entscheidung
 # ---------------------------------------------------------------------------
+
 
 def test_point_stats_uniform_assumption():
     # q025=1.60, q975=1.80, aktuell 1.70 -> P(günstiger)=0.5,
@@ -276,6 +330,7 @@ def test_summarize_forecast_none_when_only_past():
 # ---------------------------------------------------------------------------
 # Server: Fallback-Modus
 # ---------------------------------------------------------------------------
+
 
 def start_fallback_server(tmp_path, **kwargs):
     ctx = make_ctx(tmp_path, **kwargs)
@@ -335,8 +390,9 @@ def test_fallback_index_served_and_forced(tmp_path):
 
 
 def test_decide_without_open_prices_503(tmp_path):
-    lines = [{"fetched_at": now_iso(1), "city": "X",
-              "prices": {UID_A: {"status": "closed"}}}]
+    lines = [
+        {"fetched_at": now_iso(1), "city": "X", "prices": {UID_A: {"status": "closed"}}}
+    ]
     server, _ = start_fallback_server(tmp_path, poll_lines=lines, with_forecast=False)
     base = f"http://127.0.0.1:{server.server_port}"
     try:
@@ -349,8 +405,9 @@ def test_decide_without_open_prices_503(tmp_path):
 
 
 def test_forecasts_endpoint_503_without_cache(tmp_path):
-    server, _ = start_fallback_server(tmp_path, poll_lines=default_poll_lines(),
-                                      with_forecast=False)
+    server, _ = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), with_forecast=False
+    )
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         with pytest.raises(urllib.error.HTTPError) as exc:
@@ -364,6 +421,7 @@ def test_forecasts_endpoint_503_without_cache(tmp_path):
 # ---------------------------------------------------------------------------
 # Server: NAS-Proxy
 # ---------------------------------------------------------------------------
+
 
 class FakeNasHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -395,7 +453,8 @@ def test_proxy_forwards_gui_and_api_when_nas_online(tmp_path):
     nas, nas_base = start_fake_nas()
     try:
         server, _ = start_fallback_server(
-            tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base)
+            tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+        )
         base = f"http://127.0.0.1:{server.server_port}"
         try:
             # GUI-Root wird proxied (nicht die Fallback-Seite)
@@ -419,8 +478,12 @@ def test_proxy_forwards_gui_and_api_when_nas_online(tmp_path):
 def test_proxy_falls_back_to_local_when_nas_dies(tmp_path):
     nas, nas_base = start_fake_nas()
     server, _ = start_fallback_server(
-        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base,
-        ttl_online=5.0, ttl_offline=0.2)
+        tmp_path,
+        poll_lines=default_poll_lines(),
+        nas_base=nas_base,
+        ttl_online=5.0,
+        ttl_offline=0.2,
+    )
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         with urllib.request.urlopen(base + "/", timeout=5) as resp:
@@ -442,8 +505,12 @@ def test_proxy_falls_back_to_local_when_nas_dies(tmp_path):
 def test_nas_check_endpoint_forces_reprobe(tmp_path):
     nas, nas_base = start_fake_nas()
     server, ctx = start_fallback_server(
-        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base,
-        ttl_online=5.0, ttl_offline=5.0)
+        tmp_path,
+        poll_lines=default_poll_lines(),
+        nas_base=nas_base,
+        ttl_online=5.0,
+        ttl_offline=5.0,
+    )
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         result = get_json(base, "/api/v1/nas-check")
@@ -476,6 +543,7 @@ def test_nas_unconfigured_always_fallback(tmp_path):
 # Template-Installation
 # ---------------------------------------------------------------------------
 
+
 def test_install_default_template_replaces_stale_version(tmp_path):
     template_dir = tmp_path / "tpl"
     template_dir.mkdir()
@@ -492,9 +560,7 @@ def test_install_default_template_replaces_stale_version(tmp_path):
 def test_install_default_template_keeps_custom_same_marker(tmp_path):
     template_dir = tmp_path / "tpl"
     template_dir.mkdir()
-    custom = (
-        "<html>" + rp2.VERSION_MARKER + "<body>customisiert</body></html>"
-    )
+    custom = "<html>" + rp2.VERSION_MARKER + "<body>customisiert</body></html>"
     (template_dir / "index.html").write_text(custom, encoding="utf-8")
     rp2.install_default_template(template_dir)
     assert (template_dir / "index.html").read_text(encoding="utf-8") == custom
@@ -503,6 +569,7 @@ def test_install_default_template_keeps_custom_same_marker(tmp_path):
 # ---------------------------------------------------------------------------
 # Konfiguration
 # ---------------------------------------------------------------------------
+
 
 def test_nas_config_from_env(monkeypatch):
     monkeypatch.setenv("NAS_HEALTH_URL", "http://nas.lan:9999/api/v1/health")
