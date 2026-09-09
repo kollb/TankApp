@@ -31,7 +31,7 @@ Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 
 ## Stand B3
 
-**Stand 10.09.2026:** B3 — Mittel (neue Backend-Aggregate + Endpunkte) implementiert:
+**Stand 09.09.2026:** B3 — Mittel (neue Backend-Aggregate + Endpunkte) implementiert:
 
 - **B3.9 Heatmaps DoW×Stunde** (Niveau + Cheap-Probability) → `GET /api/v1/heatmap`, GUI Statistik → Heatmaps
 - **B3.10 Meine Stationen mit δ̂** (Ranking, Bootstrap-KI, AV-Score, billigste Stunde) → `GET /api/v1/selection`, Artefakt `runtime/selection/current.json`, Job `selection`

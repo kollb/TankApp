@@ -27,14 +27,15 @@ def read_selection(settings):
     raw = read_json(settings.runtime / "selection/current.json", None)
     if isinstance(raw, dict) and raw:
         if "by_fuel" in raw:
+            # Alle gerankten Stationen zählen (top_global ist auf 10/Fuel gekappt).
             count = 0
             for fuel_data in raw["by_fuel"].values():
                 if isinstance(fuel_data, dict):
-                    if "top_global" in fuel_data:
-                        count += len(fuel_data.get("top_global", []))
+                    cities = fuel_data.get("cities") or []
+                    if cities:
+                        count += sum(len(c.get("stations", [])) for c in cities)
                     else:
-                        for city in fuel_data.get("cities", []):
-                            count += len(city.get("stations", []))
+                        count += len(fuel_data.get("top_global", []))
             raw["count"] = count
         return raw
 

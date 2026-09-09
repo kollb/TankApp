@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import re
 
 import pytest
 
@@ -297,3 +298,299 @@ def test_http_new_endpoints(b3_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+# ---------------------------------------------------------------------------
+# Regressionstests zu den B3-Fixes (Heartbeat, Health ohne Netzwerk,
+# Route-Evaluate when/detour/alt_price, Selection dist_km + Count)
+# ---------------------------------------------------------------------------
+
+
+def _post_heartbeat(base, payload):
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/api/v1/collector/heartbeat",
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return r.status, json.load(r)
+
+
+def test_heartbeat_last_poll_only_succeeds(b3_settings):
+    """Nur last_poll (ohne timestamp) darf kein 503/KeyError werfen."""
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b3_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, body = _post_heartbeat(
+            base, {"last_poll": "2026-09-09T14:00:00+00:00", "city": "Frankfurt"}
+        )
+        assert status == 200
+        assert body["status"] == "ok"
+        assert body["received_at"] == "2026-09-09T14:00:00+00:00"
+        stored = json.loads(
+            (b3_settings.runtime / "collector" / "heartbeat.json").read_text()
+        )
+        assert stored["timestamp"] == "2026-09-09T14:00:00+00:00"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_heartbeat_malformed_content_length_gets_400(b3_settings):
+    """Malformed Content-Length -> HTTP 400 statt connection drop."""
+    import socket
+
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b3_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_port = server.server_port
+    try:
+        s = socket.create_connection(("127.0.0.1", base_port), timeout=5)
+        s.sendall(
+            b"POST /api/v1/collector/heartbeat HTTP/1.1\r\n"
+            b"Host: x\r\nContent-Length: abc\r\n\r\n"
+        )
+        # Komplette HTTP-Antwort lesen (Body kann in 2. Segment ankommen)
+        s.settimeout(2.0)
+        response = b""
+        try:
+            response += s.recv(400)
+        except socket.timeout:
+            pass
+        while True:
+            head, _, _ = response.partition(b"\r\n\r\n")
+            match = re.search(rb"Content-Length: (\d+)", head)
+            if not match or len(response) >= len(head) + 4 + int(match.group(1)):
+                break
+            try:
+                chunk = s.recv(400)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            response += chunk
+        s.close()
+        assert response, "Server hat die Verbindung ohne Antwort getrennt"
+        head, _, body = response.partition(b"\r\n\r\n")
+        assert b"400" in head.split(b"\r\n")[0]
+        assert b"invalid_request" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_health_does_not_query_influx(b3_settings):
+    """/health darf kein Netzwerk mehr auslösen (Docker-Healthcheck 3–5 s)."""
+
+    def fail_network(*_):
+        raise AssertionError("health muss ohne Netzwerk-Query funktionieren")
+
+    live = LiveData(b3_settings, query=fail_network, clock=lambda: NOW)
+    health = live.health()
+    assert health["app"] == "online"
+    assert health["collector"]["influx"]["error_code"] == "influx_not_queried"
+    # Dedizierter Endpunkt fragt dagegen weiter InfluxDB ab
+    live2 = LiveData(
+        b3_settings,
+        query=lambda cfg, flux: iter(
+            [
+                {
+                    "_time": (NOW - dt.timedelta(minutes=1)).isoformat(),
+                    "_field": "last_poll_at",
+                    "_value": NOW.isoformat(),
+                }
+            ]
+        ),
+        clock=lambda: NOW,
+    )
+    status = live2.collector_status()
+    assert status["available"] is True
+    assert status["source"] == "influx"
+
+
+def test_collector_status_falls_back_to_nas_file(b3_settings):
+    """Ohne Influx-Punkt liefert das per POST abgelegte File den Status."""
+    nas_path = b3_settings.runtime / "collector" / "heartbeat.json"
+    nas_path.parent.mkdir(parents=True, exist_ok=True)
+    nas_path.write_text(
+        json.dumps(
+            {
+                "timestamp": (NOW - dt.timedelta(minutes=3)).isoformat(),
+                "city": "Frankfurt",
+                "open_count": 2,
+                "total_count": 2,
+                "tmpfs_used_mb": 10.0,
+                "tmpfs_total_mb": 100.0,
+                "oldest_file_age_days": 1.5,
+            }
+        )
+    )
+
+    def fail_network(*_):
+        raise AssertionError(
+            "collector/status ohne Influx-Punkt darf failen, aber File nutzen"
+        )
+
+    live = LiveData(b3_settings, query=fail_network, clock=lambda: NOW)
+    status = live.collector_status()
+    assert status["available"] is True
+    assert status["source"] == "nas"
+    assert status["fresh"] is True
+    assert status["tmpfs_used_bytes"] == 10_000_000
+    assert status["oldest_age_days"] == 1.5
+    assert status["city"] == "Frankfurt"
+
+    # health nutzt dieselbe Datei ohne Netzwerk
+    health = live.health()
+    assert health["collector"]["available"] is True
+    assert health["collector"]["source"] == "nas"
+
+
+def test_route_when_hhmm_and_peak(b3_settings):
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.60)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.70)
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+    base_params = {
+        "city": "Frankfurt",
+        "station_id": UID,
+        "ref_price": "1.70",
+        "detour_km": "2",
+        "value_of_time": "0",
+    }
+    peak = live.route_evaluate({**base_params, "when": "18:00"})
+    assert peak["z_used"] == 16.0
+    assert peak["is_peak"] is True
+    assert peak["z_auto"] is True
+    assert peak["when_hour"] == 18.0
+
+    offpeak = live.route_evaluate({**base_params, "when": "10:30"})
+    assert offpeak["z_used"] == 10.0
+    assert offpeak["is_peak"] is False
+    assert offpeak["when_hour"] == 10.5
+
+    iso = live.route_evaluate({**base_params, "when": "2026-09-09T19:00:00+02:00"})
+    assert iso["z_used"] == 16.0
+
+    explicit = live.route_evaluate({**base_params, "value_of_time": "12"})
+    assert explicit["z_used"] == 12.0
+    assert explicit["z_auto"] is False
+
+    try:
+        live.route_evaluate({**base_params, "when": "garbage"})
+        raise AssertionError("ungültiges when muss ValueError werfen")
+    except ValueError:
+        pass
+
+
+def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
+    """Ohne detour_km: aus den Anker-Distanzen ableiten (OSRM-Cache/Luftlinie)."""
+    monkeypatch.setenv("TANKAPP_OSRM", "0")
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.60)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.70)
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+    from app.data import haversine_km
+
+    anchor = (50.11, 8.68)
+    dist_uid = haversine_km(*anchor, 50.12, 8.69)
+    dist_other = haversine_km(*anchor, 50.13, 8.70)
+    assert dist_other > dist_uid  # OTHER liegt weiter vom Anker entfernt
+
+    # onroute: Mehrweg = dist(Ziel) − dist(Referenz)
+    onroute = live.route_evaluate(
+        {
+            "city": "Frankfurt",
+            "station_id": OTHER,
+            "ref_station_id": UID,
+            "detour_km": None,
+            "mode": "onroute",
+        }
+    )
+    assert onroute["detour_km_source"] == "derived"
+    expected = max(0.0, round(dist_other, 1) - round(dist_uid, 1))
+    assert abs(onroute["detour_km_oneway"] - expected) < 0.05
+    assert onroute["ref_station_name"] == "Station One"
+
+    # dedicated: Einweg = dist(Ziel) ab Anker, gesamt = ×2
+    dedicated = live.route_evaluate(
+        {"city": "Frankfurt", "station_id": OTHER, "mode": "dedicated"}
+    )
+    assert dedicated["detour_km_source"] == "derived"
+    assert abs(dedicated["detour_km_oneway"] - round(dist_other, 1)) < 0.05
+    assert dedicated["detour_km_total"] == round(dedicated["detour_km_oneway"] * 2, 2)
+
+
+def test_route_alt_price_param(b3_settings):
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.60)
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+    result = live.route_evaluate(
+        {
+            "city": "Frankfurt",
+            "fuel": "e10",
+            "alt_price": "1.55",
+            "ref_price": "1.66",
+            "detour_km": "5",
+        }
+    )
+    assert result["target_price"] == 1.55
+    assert result["gross_eur"] == round((1.66 - 1.55) * 40.0, 2)
+
+
+def _by_fuel_artifact(n_stations):
+    stations = []
+    for i in range(n_stations):
+        stations.append(
+            {
+                "station_id": f"station-{i}",
+                "city": "Frankfurt",
+                "name": f"S{i}",
+                "delta_ct": -float(i),
+                "rank": i + 1,
+                "score": 10.0 - i,
+                "dist_km": round(1.0 + i * 0.3, 1),
+                "dist_mode": "air",
+                "maps_url": f"https://maps.example/{i}",
+            }
+        )
+    return {
+        "generated_at": NOW.isoformat(),
+        "fuels": ["e10"],
+        "by_fuel": {
+            "e10": {
+                "generated_at": NOW.isoformat(),
+                "fuel": "E10",
+                "cities": [{"city": "Frankfurt", "stations": stations}],
+                "top_global": stations[:10],
+            }
+        },
+    }
+
+
+def test_selection_counts_all_stations_not_top_global(b3_settings):
+    """Count = alle gerankten Stationen (top_global ist auf 10 gekappt)."""
+    sel_path = b3_settings.runtime / "selection" / "current.json"
+    sel_path.parent.mkdir(parents=True, exist_ok=True)
+    sel_path.write_text(json.dumps(_by_fuel_artifact(12)))
+
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+    sel = live.selection("e10", "Frankfurt")
+    assert sel["count"] == 12
+    assert sel["stations"][0]["dist_km"] == 1.0
+    assert sel["stations"][0]["maps_url"] == "https://maps.example/0"
+
+    health = live.health()
+    assert health["selection"]["count"] == 12

@@ -2,7 +2,7 @@
 
 **Ein Einstieg, eine Reihenfolge:** [INSTALL.md](INSTALL.md) ist der verbindliche Betriebsplan.
 
-> Stand: 10.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate) implementiert.
+> Stand: 09.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate) implementiert.
 > Alle Dokumente haben ein klickbares Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis (klickbar)

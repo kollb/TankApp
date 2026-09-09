@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy — Konsolidierte Anleitung
 
-> Stand: 10.09.2026 — Konsolidiert aus `rp2/README.md` + `rp2/ANLEITUNG.md`, mit klickbarem Inhaltsverzeichnis.
+> Stand: 09.09.2026 — Konsolidiert aus `rp2/README.md` + `rp2/ANLEITUNG.md`, mit klickbarem Inhaltsverzeichnis.
 > Originale bleiben in `rp2/`, diese Datei ist die kanonische Doku im `docs/`-Ordner.
 
 ## Inhaltsverzeichnis
@@ -367,7 +367,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
-| 2.1 | 10.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
+| 2.1 | 09.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
 | 2.0 | 09.09.2026 | NAS-Proxy: Port 8000 zeigt bei NAS online volle NAS-GUI, Fallback sonst. Namen/Marken/Navigation aus polling.json. Neue Fallback-GUI: Dark/Light, E10/E5/Diesel, Datenalter, Tankgröße, F1/F3 aus Quantil-Prognosen, Sparklines, Auto-Refresh, NAS prüfen. JSON-API: health/stations/forecasts/decide/nas-check. Template-Update per Hash. |
 | 1.1 | 09.09.2026 | NAS-IP über Env statt fest im Code; nur Standardbibliothek; atomarer Cache-Write |
 | 1.0 | 08.09.2026 | Initial: RP2 Fallback-GUI mit F1/F2/F3 |

@@ -233,7 +233,8 @@ def refresh(settings: Settings, now=None):
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():
                     metas_by_city.setdefault(city, {})[uid] = meta
-                sel_cfg = SelectionConfig(fuel=fuel.upper())
+                # n_boot=200 wie Standalone-Job „selection“ und Doku (ANALYSE.md)
+                sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=200)
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
                 print(
