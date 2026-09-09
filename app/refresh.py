@@ -184,8 +184,7 @@ def refresh(settings: Settings, now=None):
                         }
                     )
                     print(
-                        f"models: [{position}/{len(metas)}] {label} "
-                        f"({fuel}): ok",
+                        f"models: [{position}/{len(metas)}] {label} ({fuel}): ok",
                         flush=True,
                     )
                 except ValueError:
@@ -206,8 +205,7 @@ def refresh(settings: Settings, now=None):
         )
         if not forecasts:
             print(
-                "models: keine Station fittbar; Details in "
-                "engine/last-attempt.json",
+                "models: keine Station fittbar; Details in engine/last-attempt.json",
                 flush=True,
             )
             write_json(
