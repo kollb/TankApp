@@ -1,6 +1,9 @@
 # TankApp RP2 Fallback-GUI – Anleitung
 
-**Ziel:** 24/7 Verfügbarkeit von F1/F2/F3 durch Caching der NAS-Prognosen auf dem RP2.
+**Ziel:** 24/7 Verfügbarkeit der TankApp über **eine einzige Adresse** — den RP2
+(Port 8000). Das NAS ist online → der RP2 leitet transparent zur **vollen
+NAS-GUI** weiter. Das NAS ist offline → dieselbe Adresse zeigt die
+**Fallback-GUI** (Live-Preise + gecachte Prognosen).
 
 ---
 
@@ -10,14 +13,15 @@
 |------------|-------|---------|
 | **Collector + Uploader** | RP2 | Sammelt Live-Preise, uploadet zu NAS (wie bisher) |
 | **Prognose-Berechnung** | NAS | Berechnet Prognosen täglich nach Mitternacht |
-| **Vollwertige GUI** | NAS | Zeigt alles an (wenn online) |
-| **Fallback-GUI** | RP2 | Zeigt Live-Preise + gecachte Prognosen (24/7) |
+| **Vollwertige GUI** | NAS (über RP2-Proxy) | Zeigt alles an (wenn online) — erreichbar unter `<RP2-IP>:8000` **und** `<NAS-IP>:1355` |
+| **Fallback-GUI** | RP2 | Zeigt Live-Preise + gecachte Prognosen (24/7), inkl. Dark Mode |
 | **Forecast Cache** | RP2 | Lädt Prognosen vom NAS und cached sie |
 
-**Ergebnis:** 
+**Ergebnis:**
 - ✅ **F2 (Hier oder woanders?):** Immer verfügbar (Live-Preise aus RP2-Puffer)
 - ✅ **F1 (Jetzt oder warten?):** Verfügbar mit gecachten Prognosen (max. 24h alt)
 - ✅ **F3 (Heute oder später?):** Verfügbar mit gecachten Prognosen (max. 24h alt)
+- ✅ **Eine Adresse:** `http://<RP2-IP>:8000` zeigt automatisch NAS- oder Fallback-GUI
 
 ---
 
@@ -35,6 +39,10 @@
 - ✅ RP2 läuft 24/7 (bereits der Fall)
 - ✅ Collector + Uploader bereits aktiv (`tankapp-collector`, `tankapp-uploader`)
 - ✅ `/dev/shm/tankapp` als tmpfs gemountet (bereits der Fall)
+- ✅ `polling.json` liegt unter `~/TankApp/docs/analysis/stations/polling.json`
+  (wie für den Collector, [INSTALL.md](../docs/INSTALL.md) §2.2) — **ohne diese
+  Datei fehlen in der Fallback-GUI Stationennamen, Marken und Navigation**
+  (die UUID wird angezeigt)
 
 ---
 
@@ -218,11 +226,24 @@ journalctl -u tankapp-forecast-cache -n 30
 cat /tmp/tankapp_cache/last_forecasts.json | python3 -m json.tool | head -20
 ```
 
-### 2. Fallback-GUI im Browser öffnen:
+### 2. Im Browser öffnen (immer dieselbe Adresse):
 ```
 http://<RP2-IP>:8000
 ```
 (Ersetze `<RP2-IP>` mit der IP deines RP2)
+
+- **NAS online:** du siehst die **vollwertige NAS-GUI** (React, Live-Charts,
+  System-Panel) — der RP2 proxyst das transparent weiter. Proxied ist, was
+  auch unter `<NAS-IP>:1355` läuft.
+- **NAS offline:** du siehst die **Fallback-GUI** (Markierung
+  „FALLBACK · RP2“ oben rechts) mit:
+  - Status-Pills: NAS-Status + echtes Alter der Preise („Preise: 7 min alt · 8/10 offen“)
+  - Treibstoff-Umschalter **E10 / E5 / Diesel**, einstellbare Tankgröße (Default 40 L)
+  - 🏆 Günstigste Station (Name, Marke, Entfernung, Navigation)
+  - „Jetzt tanken oder warten?“ + beste Zeitfenster (aus gecachten Prognosen)
+  - Stationentabelle mit Preisen, Datenalter und Ersparnis
+  - Prognose-Sparklines (Median + q025/q975-Band, aktuelle Preislinie)
+  - 🌙/☀️ Dark-Mode-Umschalter (Dark ist Default, Auswahl wird gespeichert)
 
 ### 3. NAS offline testen:
 ```bash
@@ -230,11 +251,10 @@ http://<RP2-IP>:8000
 docker stop tankapp  # oder den Container-Namen prüfen mit: docker ps
 ```
 
-→ Die Fallback-GUI sollte weiter funktionieren und anzeigen:
-- **NAS: ❌ Offline**
-- **Prognosen: Xh alt** (z.B. "3h alt")
-- **Preise: <5 Min** (Live aus RP2-Puffer)
-- **Günstigste Station** mit aktuellem Preis
+→ Die Fallback-GUI erscheint **ab dem nächsten Request** unter derselben
+Adresse (`<RP2-IP>:8000`) — kein Neuladen nötig, aber ein Reload schadet
+nicht. Alternativ erzwingst du sie auch bei NAS online mit
+`http://<RP2-IP>:8000/?fallback=1`.
 
 ### 4. NAS wieder online:
 ```bash
@@ -242,18 +262,21 @@ docker stop tankapp  # oder den Container-Namen prüfen mit: docker ps
 docker start tankapp
 ```
 
-→ Die GUI sollte automatisch zur vollwertigen NAS-GUI umschalten (wenn du auf Port 1355 zugreifst).
+→ Innerhalb von ~15 s (oder nach Klick auf **„🔄 NAS prüfen“** bzw.
+`curl http://<RP2-IP>:8000/api/v1/nas-check`) zeigt dieselbe Adresse
+automatisch wieder die volle NAS-GUI.
 
 ---
 
 ## 📊 Was du jetzt hast
 
-| Funktion | NAS Online | NAS Offline | Datenqualität |
-|----------|------------|-------------|---------------|
-| **Live-Preise** | ✅ Live | ✅ Live (<5 Min) | **Optimal** |
-| **F2 (Hier/woanders?)** | ✅ Voll | ✅ Voll | **Optimal** |
-| **F1 (Jetzt/warten?)** | ✅ Live-Prognose | ✅ Gecachte Prognose | Gut (max. 24h alt) |
-| **F3 (Heute/später?)** | ✅ Live-Prognose | ✅ Gecachte Prognose | Gut (max. 24h alt) |
+| Funktion | NAS Online (proxied) | NAS Offline (Fallback) | Datenqualität |
+|----------|----------------------|------------------------|---------------|
+| **Vollständige NAS-GUI** (Charts, System) | ✅ unter `<RP2-IP>:8000` | ❌ bewusst reduziert | **Optimal** |
+| **Live-Preise** | ✅ Live | ✅ aus Puffer, echte Datenalter | **Optimal** |
+| **F2 (Günstigste Station)** | ✅ Voll | ✅ + Ersparnis je Liter & Tank | **Optimal** |
+| **F1 (Jetzt/warten?)** | ✅ exakt (NAS-Logik) | ✅ vereinfachte Quantil-Logik | Gut (max. 24h alt) |
+| **F3 (Heute/später?)** | ✅ exakt (NAS-Logik) | ✅ Top-3-Fenster aus Cache | Gut (max. 24h alt) |
 
 ---
 
@@ -286,6 +309,31 @@ tail -n 1 /dev/shm/tankapp/$(date +%F).jsonl | python3 -m json.tool
 **Mögliche Ursachen:**
 - Collector läuft nicht (`systemctl status tankapp-collector`)
 - Polling-Set ist leer
+- Nachts (00–06 Uhr) pollt der Collector nicht — die letzte Zeile von gestern
+  wird dann angezeigt und hat entsprechend Datenalter
+
+### Problem: UUIDs statt Stationennamen
+```bash
+ls -la ~/TankApp/docs/analysis/stations/polling.json
+```
+
+**Ursache:** `polling.json` fehlt auf dem Pi oder ist kaputt. Die
+JSONL-Snapshots im Puffer enthalten bewusst nur UUID + Preis — Namen,
+Marken und Koordinaten liefert `polling.json`. Datei ggf. neu vom NAS/PC
+kopieren ([INSTALL.md](../docs/INSTALL.md) §2.2), dann
+`sudo systemctl restart tankapp-fallback-gui`.
+
+### Problem: Fallback-GUI statt NAS-GUI, obwohl NAS online
+```bash
+curl -s http://<RP2-IP>:8000/api/v1/nas-check
+curl -s http://<NAS-IP>:1355/api/v1/health
+```
+
+**Mögliche Ursachen:**
+- `NAS_IP` im Drop-in falsch/leer (`systemctl show tankapp-fallback-gui -p Environment`)
+- `FORCE_FALLBACK=1` gesetzt
+- `?fallback=1` in der URL
+- NAS antwortet auf `/api/v1/health` nicht mit `{"app": "online"}`
 
 ### Problem: Port 8000 ist belegt
 ```bash
@@ -320,9 +368,10 @@ ss -tulnp | grep 8000
 ## 🎯 Empfohlene Nutzung
 
 ### Alltag:
-1. **Immer auf RP2-GUI zugreifen:** `http://<RP2-IP>:8000`
-2. **Wenn NAS online:** Vollwertige GUI mit Live-Prognosen
-3. **Wenn NAS offline:** Fallback mit Live-Preisen + gecachten Prognosen
+1. **Immer dieselbe Adresse:** `http://<RP2-IP>:8000`
+2. **Wenn NAS online:** automatisch die vollwertige NAS-GUI (proxied)
+3. **Wenn NAS offline:** automatisch Fallback mit Live-Preisen + gecachten Prognosen
+4. **Fallback erzwingen** (z.B. zum Prüfen): `http://<RP2-IP>:8000/?fallback=1`
 
 ### Für beste Ergebnisse:
 - **NAS mindestens 1x täglich starten** (z.B. 06:00–24:00)
@@ -350,8 +399,9 @@ sudo systemctl restart tankapp-fallback-gui
 
 | Version | Datum | Änderungen |
 |---------|-------|-----------|
-| 1.0 | 08.09.2026 | Erstellung: RP2 Fallback-GUI mit F1/F2/F3 |
+| 2.0 | 09.09.2026 | **NAS-Proxy**: `<RP2-IP>:8000` zeigt bei NAS online automatisch die volle NAS-GUI (sonst Fallback; `?fallback=1` erzwingt Fallback, `FORCE_FALLBACK`-Env). Stationennamen/Marken/Navigation aus `polling.json` (bisher UUIDs). Neue Fallback-GUI: Dark/Light-Mode, E10/E5/Diesel, echte Datenalter je Station, Tankgröße, F1/F3 aus echten Quantil-Prognosen, Prognose-Sparklines, Auto-Refresh, „NAS prüfen“-Knopf. JSON-API: `health/stations/forecasts/decide/nas-check`. Template-Update per Inhalts-Hash (`index.html.old` als Backup) |
 | 1.1 | 09.09.2026 | NAS-IP über `NAS_IP`-Env statt fest im Code; `requests`/Flask entfernt (nur Standardbibliothek); Cache schreibt atomar; NAS-Statusfarbe korrigiert |
+| 1.0 | 08.09.2026 | Erstellung: RP2 Fallback-GUI mit F1/F2/F3 |
 
 ---
 

@@ -1,219 +1,109 @@
-# RP2 Fallback-GUI für TankApp
+# RP2 Fallback-GUI + NAS-Proxy für TankApp
 
-**24/7 Verfügbarkeit von Tank-Entscheidungen (F1/F2/F3) durch Caching der NAS-Prognosen auf dem Raspberry Pi 2.**
+**24/7 Zugang zur TankApp über eine einzige Adresse — den RP2 (Port 8000).**
 
-## 🎯 Ziel
+```
+Browser ──► http://<RP2-IP>:8000
+                 │
+                 ├─ NAS online  ──► transparenter Proxy: volle NAS-GUI + Live-API
+                 │
+                 └─ NAS offline ──► Fallback-GUI:
+                     • Live-Preise aus /dev/shm/tankapp (eigene Datenalter)
+                     • Stationennamen/Marken/Koordinaten aus polling.json
+                     • gecachte Prognosen (F1/F2/F3) aus /tmp/tankapp_cache
+```
 
-Dein NAS läuft nur 6h/Tag, aber der RP2 läuft 24/7. Diese Lösung ermöglicht dir:
+Das NAS läuft nur ~6 h/Tag, der RP2 24/7. Seit v2.0 leitet der RP2 alle
+Requests an das NAS weiter, solange es erreichbar ist — du musst zwischen
+`<NAS-IP>:1355` und `<RP2-IP>:8000` nie mehr wechseln. Ist das NAS weg,
+wechseln dieselbe Adresse automatisch (max. 1 Request später) in den
+Fallback-Modus.
 
-- ✅ **F2 (Hier oder woanders?):** **Immer** verfügbar – zeigt die günstigste Station mit aktuellen Preisen
-- ✅ **F1 (Jetzt oder warten?):** Verfügbar mit gecachten Prognosen (max. 24h alt)
-- ✅ **F3 (Heute oder später?):** Verfügbar mit gecachten Prognosen (max. 24h alt)
+## 🎯 Funktionen
 
-**→ Du tankst immer günstig, auch wenn das NAS schläft!**
+| Funktion | NAS Online (proxied) | NAS Offline (Fallback) |
+|----------|----------------------|------------------------|
+| **Vollständige GUI** (React, Live-Charts, System) | ✅ direkt vom NAS | ❌ (bewusst reduziert) |
+| **Live-Preise** | ✅ | ✅ aus RP2-Puffer, echte Datenalter je Station |
+| **F2 (Günstigste Station)** | ✅ | ✅ mit Ersparnis je Liter & pro Tank (Tankgröße einstellbar) |
+| **F1 (Jetzt oder warten?)** | ✅ exakt (NAS) | ✅ vereinfachte Quantil-Logik aus gecachten Prognosen |
+| **F3 (Beste Zeitfenster)** | ✅ exakt (NAS) | ✅ Top-3-Fenster aus gecachten Prognosen (24 h) |
+| **Dark/Light Mode** | ✅ (NAS-GUI) | ✅ Default Dark, Toggle wird gespeichert |
+| **E10/E5/Diesel-Umschalter** | ✅ | ✅ |
+
+Die Fallback-Entscheidung arbeitet ehrlich: aus den quantilierten Punkten
+(q025…q975) der NAS-Prognosen werden Wahrscheinlichkeit
+(P(Prognose < aktueller Preis)) und erwartete Ersparnis pro Liter unter
+Gleichverteilungs-Annahme geschätzt — Basis steht im Antworttext und in der
+GUI. Die exakte Berechnung läuft weiterhin nur auf dem NAS.
 
 ## 📁 Dateistruktur
 
 ```
 rp2/
-├── cache_forecasts.py      # Lädt Prognosen vom NAS und cached sie
-├── fallback_gui.py        # Webserver für die Fallback-GUI (Port 8000)
-├── templates/             # HTML-Templates (wird automatisch erstellt)
-│   └── index.html         # Haupt-GUI-Template
-├── tankapp-forecast-cache.service    # systemd-Service für Cache
-├── tankapp-fallback-gui.service      # systemd-Service für GUI
-├── ANLEITUNG.md           # Detaillierte Schritt-für-Schritt-Anleitung
-└── README.md              # Diese Datei
+├── fallback_gui.py               # Webserver: NAS-Proxy + Fallback-GUI (Port 8000)
+├── cache_forecasts.py            # Lädt /api/v1/last_forecasts vom NAS (alle 5 min)
+├── templates/                    # wird beim Start selbst erzeugt (gitignored)
+│   └── index.html                # Fallback-GUI (HTML+CSS+JS, eine Datei)
+├── tankapp-forecast-cache.service
+├── tankapp-fallback-gui.service
+├── ANLEITUNG.md                  # Schritt-für-Schritt-Anleitung
+└── README.md                     # diese Datei
 ```
 
-## 🚀 Schnellstart
+## ⚙️ Konfiguration (systemd-Drop-in, `sudo systemctl edit tankapp-fallback-gui`)
 
-### 1. Dateien kopieren
-```bash
-# Auf dem RP2
-mkdir -p ~/TankApp/rp2
-# Kopiere alle Dateien aus diesem Verzeichnis nach ~/TankApp/rp2/
-```
+| Variable | Default | Bedeutung |
+|----------|---------|-----------|
+| `NAS_IP` | – | NAS-Adresse; **ohne Wert: immer Fallback, kein Proxy** |
+| `NAS_PORT` | `1355` | NAS-Port |
+| `NAS_HEALTH_URL` | – | komplette Health-URL (überschreibt IP/Port) |
+| `FALLBACK_GUI_PORT` | `8000` | Port der RP2-GUI |
+| `POLL_DIR` | `/dev/shm/tankapp` | Collector-Ringpuffer |
+| `CACHE_DIR` | `/tmp/tankapp_cache` | Prognose-Cache |
+| `STATION_META` | – | Pfad zu `polling.json` (sonst Standardorte) |
+| `FORCE_FALLBACK` | – | `1` = Proxy deaktiviert, immer Fallback-GUI |
 
-### 2. NAS-IP anpassen
-In allen Dateien `<NAS-IP>` durch die **lokale IP deines NAS** ersetzen:
-- `cache_forecasts.py` (Zeile 14)
-- `fallback_gui.py` (alle Vorkommen)
-- `tankapp-forecast-cache.service` (Environment-Block)
+`polling.json` wird aus diesen Orten gesucht (erste Treffer zählt):
+1. `STATION_META` (Umgebungsvariable)
+2. `~/TankApp/docs/analysis/stations/polling.json`
+3. `<Repo>/docs/analysis/stations/polling.json`
 
-### 3. Abhängigkeiten installieren
-```bash
-sudo apt update && sudo apt install -y python3-pip
-# Keine pip-Pakete noetig - nur Python-Standardbibliothek
-python3 --version   # 3.11+
-```
+**Ohne `polling.json` fehlen Namen, Marken und Navigation** — die UUID wird
+dann angezeigt. Die Datei liegt beim Collector bereits auf dem Pi
+(siehe [docs/INSTALL.md](../docs/INSTALL.md) §2.2).
 
-### 4. Services einrichten
-```bash
-sudo cp ~/TankApp/rp2/tankapp-*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now tankapp-forecast-cache tankapp-fallback-gui
-```
+## 🧪 Verhalten & Tests
 
-### 5. Testen
-```
-# Cache prüfen
-cat /tmp/tankapp_cache/last_forecasts.json | python3 -m json.tool | head -20
+- `http://<RP2-IP>:8000/` — NAS-GUI (proxied) oder Fallback-GUI
+- `http://<RP2-IP>:8000/?fallback=1` — Fallback-GUI **erzwingen** (auch bei NAS online)
+- `http://<RP2-IP>:8000/api/v1/health` — Status (NAS, Preise, Prognosen, Metadaten)
+- `http://<RP2-IP>:8000/api/v1/stations?fuel=e10` — alle Stationen, alle Preise
+- `http://<RP2-IP>:8000/api/v1/forecasts?fuel=e10` — gecachte Prognosen + 24-h-Zusammenfassung
+- `http://<RP2-IP>:8000/api/v1/decide?fuel=e10&liters=40` — F1/F2/F3-Entscheidung
+- `http://<RP2-IP>:8000/api/v1/nas-check` — NAS sofort neu prüfen (auch im Proxy-Modus)
 
-# GUI öffnen
-http://<RP2-IP>:8000
-```
+Umschaltzeiten:
+- NAS geht aus → **nächster Request** fällt sofort in den Fallback zurück.
+- NAS kommt zurück → innerhalb von **15 s** (Online-TTL) bzw. spätestens
+  beim nächsten `/api/v1/nas-check` (Knopf „🔄 NAS prüfen“ in der Fallback-GUI).
 
-## 📊 Funktionen
+Tests: `python3 -m pytest tests/test_rp2_fallback.py`
 
-| Funktion | Beschreibung | Datenquelle |
-|----------|--------------|-------------|
-| **Live-Preise** | Aktuelle Preise aller Stationen | RP2-Puffer (`/dev/shm/tankapp`) |
-| **Günstigste Station** | F2: Welche Station ist jetzt am günstigsten? | Live-Preise |
-| **Jetzt oder warten?** | F1: Soll ich jetzt tanken oder warten? | Gecachte Prognosen |
-| **Heute oder später?** | F3: Wann ist der beste Zeitpunkt heute? | Gecachte Prognosen |
+## 🔄 Template-Updates
 
-## 🔧 Technische Details
-
-### Cache-Mechanismus
-- **Aktualisierungsintervall:** Alle 5 Minuten
-- **Speicherort:** `/tmp/tankapp_cache/last_forecasts.json`
-- **Maximales Alter:** 24 Stunden (wenn NAS um 00:01 offline geht)
-- **Typisches Alter:** 6–12 Stunden (wenn NAS tagsüber läuft)
-
-### Fallback-GUI
-- **Port:** 8000
-- **Technologie:** Python `http.server` (Standardbibliothek)
-- **Daten:**
-  - Live-Preise: Direkt aus `/dev/shm/tankapp` (<5 Min alt)
-  - Prognosen: Aus Cache-Datei (max. 24h alt)
-- **API-Endpunkte:**
-  - `/` – Haupt-GUI
-  - `/api/v1/health` – Status
-  - `/api/v1/stations` – Stationen mit Preisen
-  - `/api/v1/forecasts` – Gecachte Prognosen
-  - `/api/v1/decide` – Entscheidungs-API (F1/F2/F3)
-
-## 🎨 GUI-Beispiel
-
-```
-┌─────────────────────────────────────────────┐
-│  🚗 TankApp - RP2 Fallback                    │
-│  NAS: ❌ Offline | Prognosen: 3h alt | Preise: 2 Min │
-├─────────────────────────────────────────────┤
-│  🏆 GÜNSTIGSTE: Shell Hauptbahnhof            │
-│     1,649 €/L · 📍 Navigation                   │
-├─────────────────────────────────────────────┤
-│  Station                     | Preis   | Ersparnis │
-│  Aral Stadtmitte            | 1,679 € | +0,30 €   │
-│  Esso Industriestr.          | 1,689 € | +0,40 €   │
-│  Jet Tankstelle              | 1,699 € | +0,50 €   │
-├─────────────────────────────────────────────┤
-│  💡 Hinweis: Für volle Funktionen (Live-Prognosen) NAS starten. │
-└─────────────────────────────────────────────┘
-```
-
-## 📈 Datenqualität
-
-| Daten | Alter | Qualität |
-|-------|-------|----------|
-| Live-Preise | <5 Minuten | ⭐⭐⭐⭐⭐ Optimal |
-| Prognosen | 0–6 Stunden | ⭐⭐⭐⭐⭐ Sehr gut |
-| Prognosen | 6–12 Stunden | ⭐⭐⭐⭐ Gut |
-| Prognosen | 12–24 Stunden | ⭐⭐⭐ Akzeptabel |
-
-**→ Selbst 24h alte Prognosen sind besser als gar keine!**
-
-## 🔄 NAS-Betrieb
-
-### Empfohlener Zeitplan
-| Uhrzeit | NAS-Status | Aktion |
-|---------|------------|--------|
-| 00:00–06:00 | ❌ Offline | Prognosen werden nicht aktualisiert |
-| 06:00–24:00 | ✅ Online | Prognosen werden berechnet, Cache aktualisiert |
-
-**→ Prognosen sind immer max. 24h alt!**
-
-### Prognose-Berechnung
-- **Wann:** Täglich nach Mitternacht
-- **Trainingsfenster:** 42 Tage (6 Wochen)
-- **Modelle:** M1 (Tagesform) + M2 (AR(2)) + M3 (UnobservedComponents)
-- **Ensemble:** Gewichtet nach MASE (Mean Absolute Scaled Error)
-
-## 🛠️ Anpassungen
-
-### NAS-IP ändern
-1. In allen Dateien `<NAS-IP>` durch die neue IP ersetzen
-2. Services neu starten:
-```bash
-sudo systemctl restart tankapp-forecast-cache tankapp-fallback-gui
-```
-
-### Port ändern
-In `tankapp-fallback-gui.service`:
-```ini
-Environment=FALLBACK_GUI_PORT=8080
-```
-Dann:
-```bash
-sudo systemctl restart tankapp-fallback-gui
-```
-
-### Prognose-Cache-Intervall ändern
-In `cache_forecasts.py`:
-```python
-time.sleep(300)  # 300 Sekunden = 5 Minuten
-```
+Die GUI speichert sich beim Start `templates/index.html` mit einem
+Inhalts-Hash-Marker (`<!-- tankapp-fallback-gui v2.0 sha:… -->`). Ändert sich
+das Template im Repo, wird die alte Datei beim nächsten Service-Start nach
+`index.html.old` gesichert und die neue Version installiert — **lokale
+Änderungen überleben aber, solange sie den aktuellen Marker tragen**
+(Zusatz-Bausteine unterhalb des Markers sind möglich). Update-Workflow:
+`git pull && sudo systemctl restart tankapp-fallback-gui`.
 
 ## 📝 Changelog
 
 | Version | Datum | Änderungen |
 |---------|-------|-----------|
+| 2.0 | 09.09.2026 | **NAS-Proxy**: bei NAS online zeigt Port 8000 die volle NAS-GUI (automatisch, `?fallback=1` erzwingt Fallback). Stationennamen/Marken/Koordinaten aus `polling.json` (bisher UUIDs). Neue Fallback-GUI: Dark/Light-Mode, E10/E5/Diesel-Umschalter, echte Datenalter je Station, Tankgröße einstellbar, F1/F3 aus echten Quantil-Prognosen (Wahrscheinlichkeit + erwartete Ersparnis), Prognose-Sparklines (q025/q50/q975), Auto-Refresh, „NAS prüfen“-Knopf. Saubere JSON-API (`health/stations/forecasts/decide/nas-check`). Template-Update per Inhalts-Hash. `cache_forecasts.py`: tote `load_live_prices()` entfernt |
+| 1.1 | 09.09.2026 | NAS-IP über `NAS_IP`-Env; nur Standardbibliothek; atomarer Cache-Write |
 | 1.0 | 08.09.2026 | Initial: RP2 Fallback-GUI mit F1/F2/F3-Caching |
-
-## 🙏 Troubleshooting
-
-### Cache funktioniert nicht
-```bash
-# Log prüfen
-cat /tmp/tankapp_cache/cache.log
-
-# Manuell testen
-python3 ~/TankApp/rp2/cache_forecasts.py
-
-# NAS-Endpunkt testen
-curl http://<NAS-IP>:1355/api/v1/last_forecasts
-```
-
-### GUI zeigt keine Daten
-```bash
-# Live-Preise prüfen
-ls -la /dev/shm/tankapp/
-tail -n 1 /dev/shm/tankapp/$(date +%F).jsonl | python3 -m json.tool
-
-# Collector prüfen
-systemctl status tankapp-collector
-```
-
-### Port ist belegt
-```bash
-# Belegte Ports prüfen
-ss -tulnp | grep 8000
-
-# Service stoppen und Port ändern
-sudo systemctl stop tankapp-fallback-gui
-# Port in Service-Datei ändern
-# Dann neu starten
-sudo systemctl start tankapp-fallback-gui
-```
-
-## 📚 Siehe auch
-
-- [Detaillierte Anleitung](ANLEITUNG.md)
-- [TankApp Haupt-Dokumentation](../README.md)
-- [Konzept](../docs/KONZEPT.md)
-- [Installation](../docs/INSTALL.md)
-
----
-
-**Mit dieser Lösung hast du 24/7 Zugang zu allen Tank-Entscheidungen – auch wenn das NAS schläft!** 🚀💰
