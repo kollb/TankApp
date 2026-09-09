@@ -3,6 +3,7 @@
 import datetime as dt
 import json
 import math
+import os
 import threading
 import time
 
@@ -13,8 +14,11 @@ UTC = dt.timezone.utc
 FUELS = {"e10", "e5", "diesel"}
 
 
+_ROUTE_LOCK = threading.Lock()
+
+
 def haversine_km(lat1, lon1, lat2, lon2):
-    """Luftlinie für das Entfernungs-Bubble; kein Routing, keine Dritt-API."""
+    """Luftlinie als Fallback, wenn keine Straßenroute vorliegt."""
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
@@ -23,6 +27,42 @@ def haversine_km(lat1, lon1, lat2, lon2):
         + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
     )
     return 6371.0 * 2 * math.asin(math.sqrt(inner))
+
+
+def driving_km(anchor, targets, cache_path):
+    """Fahrstrecke Anker → Stationen (OSRM). Cache-Treffer ohne Netz.
+
+    targets: list[(lat, lon)]. Rückgabe: list[(km, 'road'|'air')].
+    'air' nur wenn der Router ausfällt — dann Luftlinie, nie erfunden.
+    Der Anker bleibt intern; nur abgeleitete Kilometer verlassen die Funktion.
+    """
+    if not targets:
+        return []
+    air = [(round(haversine_km(*anchor, lat, lon), 1), "air") for lat, lon in targets]
+    if os.environ.get("TANKAPP_OSRM", "1") in {"0", "off", "false"}:
+        return air
+    try:
+        from road_route import RoadRouter
+    except ImportError:
+        return air
+    with _ROUTE_LOCK:
+        router = RoadRouter(
+            mode="driving",
+            cache_path=cache_path,
+            timeout=4,
+            quiet=True,
+            circuity=1.0,
+        )
+        routes = router.routes_from(anchor[0], anchor[1], list(targets), want_duration=False)
+        out = []
+        for i, (lat, lon) in enumerate(targets):
+            km, _ = routes[i]
+            key = f"car|{anchor[0]:.5f},{anchor[1]:.5f}|{lat:.5f},{lon:.5f}"
+            kind = "road" if key in router.cache else "air"
+            if kind == "air":
+                km = haversine_km(*anchor, lat, lon)
+            out.append((round(float(km), 1), kind))
+        return out
 
 
 def read_json(path, default=None):
@@ -81,20 +121,31 @@ def metadata(settings):
                 and -180 <= lon <= 180
             )
             # Rebuild links, never trust arbitrary URLs from a config file.
-            stations[(city, uid)] = {
+            identity = (city, uid)
+            stations[identity] = {
                 "station_id": uid,
                 "city": city,
                 "name": item.get("name") or uid,
                 "brand": item.get("brand") or "",
                 "lat": lat if coordinates else None,
                 "lon": lon if coordinates else None,
-                "dist_km": round(haversine_km(anchor[0], anchor[1], lat, lon), 1)
-                if anchor_ok and coordinates
-                else None,
+                "dist_km": None,
+                "dist_mode": None,
                 "maps_url": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
                 if coordinates
                 else None,
             }
+            if anchor_ok and coordinates:
+                pending.append((identity, (lat, lon), tuple(anchor)))
+    # Eine Table-Anfrage je Anker (Stadt), Treffer aus dem NAS-Cache ohne Netz.
+    by_anchor = {}
+    for identity, coords, anchor in pending:
+        by_anchor.setdefault(anchor, []).append((identity, coords))
+    for anchor, items in by_anchor.items():
+        distances = driving_km(anchor, [coords for _, coords in items], cache_file)
+        for (identity, _), (km, kind) in zip(items, distances):
+            stations[identity]["dist_km"] = km
+            stations[identity]["dist_mode"] = kind
     return stations, None
 
 
