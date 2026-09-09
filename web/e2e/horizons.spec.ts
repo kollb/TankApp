@@ -16,17 +16,35 @@ function stationsFixture(fuel: string) {
         name: "F-Station",
         brand: "Test",
         fuel,
-        price: 1.709,
-        last_price: 1.709,
+        price: 1.759,
+        last_price: 1.759,
         status: "open",
         fresh: true,
         age_minutes: 2,
         observed_at: new Date().toISOString(),
         maps_url: "https://www.google.com/maps/dir/?api=1&destination=1,2",
+        lat: 50.1,
+        lon: 8.6,
+      },
+      {
+        station_id: "b",
+        city: "Frankfurt",
+        name: "B-Station",
+        brand: "Test",
+        fuel,
+        price: 1.689,
+        last_price: 1.689,
+        status: "open",
+        fresh: true,
+        age_minutes: 2,
+        observed_at: new Date().toISOString(),
+        maps_url: "https://www.google.com/maps/dir/?api=1&destination=3,4",
+        lat: 50.12,
+        lon: 8.65,
       },
     ],
     connection_error: null,
-    fresh_prices: 1,
+    fresh_prices: 2,
   };
 }
 
@@ -134,6 +152,11 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
 test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await stubApi(page, { horizons: true });
   await page.goto("/");
+  // Der Umweg-Rechner (mit Zeitwert-Slider) erscheint nur, wenn die
+  // Vergleichsstation eine günstigere Alternative hat: F wählen, B ist billiger.
+  await page
+    .getByRole("button", { name: "F-Station als Vergleich wählen" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "F-Station", exact: true }),
   ).toBeVisible();
