@@ -137,6 +137,8 @@ def prepare_archive(archive, metas, fuels, start, stop, cache):
             "invalid_flags": 0,
         },
     )
+    total = (stop - start).days
+    converted, cached = 0, 0
     day = start
     while day < stop:
         source = files.get(day)
@@ -156,8 +158,23 @@ def prepare_archive(archive, metas, fuels, start, stop, cache):
             stats = convert_day(source, destination, stations, fuels)
             prior = {"signature": signature, "quality": stats}
             atomic_json(manifest, prior)
+            converted += 1
+            print(
+                f"models: Archiv {day} aufbereitet "
+                f"({converted + cached}/{total} Tage, "
+                f"{stats['events']} Ereignisse)",
+                flush=True,
+            )
+        else:
+            cached += 1
         for key, value in prior["quality"].items():
             quality[key] += value
         results.append(destination)
         day += dt.timedelta(days=1)
+    if total:
+        print(
+            f"models: Archiv-Cache: {converted} Tage aufbereitet, "
+            f"{cached} aus Cache, {quality['missing_days']} fehlend",
+            flush=True,
+        )
     return results, quality

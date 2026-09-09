@@ -39,21 +39,40 @@ def refresh(settings: Settings, now=None):
     output = settings.runtime / "engine"
     output.mkdir(parents=True, exist_ok=True)
     ids = {uid for _, uid in metas}
+    print(
+        f"models: {len(metas)} Stationen, Kraftstoffe "
+        f"{','.join(settings.model_fuels)}, Cutoff {origin.isoformat()}",
+        flush=True,
+    )
     with collector_lock(output, label="Modellaktualisierung"):
         live_paths = []
         for fuel in settings.model_fuels:
             path = settings.runtime / "exports" / f"influx_{fuel}.csv.gz"
+            print(
+                f"models: exportiere InfluxDB {fuel} "
+                f"(letzte {settings.model_days} Tage) ...",
+                flush=True,
+            )
             # Failure preserves the prior export and must not masquerade as a current update.
-            influx.export_prices(
-                env,
-                origin.to_pydatetime() - dt.timedelta(days=settings.model_days),
-                origin.to_pydatetime(),
-                lookup,
-                fuel,
-                path,
-                uuid_only=True,
+            summary = (
+                influx.export_prices(
+                    env,
+                    origin.to_pydatetime() - dt.timedelta(days=settings.model_days),
+                    origin.to_pydatetime(),
+                    lookup,
+                    fuel,
+                    path,
+                    uuid_only=True,
+                )
+                or {}
+            )
+            print(
+                f"models: Export {fuel}: {summary.get('rows', '?')} Zeilen, "
+                f"{summary.get('open_prices', '?')} offene Preise",
+                flush=True,
             )
             live_paths.append(path)
+        print("models: prüfe Live-Abdeckung (90-Tage-Regel) ...", flush=True)
         all_live = True
         for fuel in settings.model_fuels:
             live, _ = load_observations(live_paths, cfg, fuel, ids)
@@ -61,18 +80,37 @@ def refresh(settings: Settings, now=None):
             all_live &= ids == set(live.station_id) and all(
                 item["mode"] == "live_only" for item in policy["stations"]
             )
+        print(
+            f"models: alle Stationen live_only: {'ja' if all_live else 'nein'}",
+            flush=True,
+        )
         history_paths, archive_quality = [], {}
         if not all_live:
+            start = local_day - dt.timedelta(days=settings.model_days)
+            print(
+                f"models: bereite Archiv {start} bis {local_day} auf ...",
+                flush=True,
+            )
             history_paths, archive_quality = prepare_archive(
                 settings.archive,
                 metas,
                 settings.model_fuels,
-                local_day - dt.timedelta(days=settings.model_days),
+                start,
                 local_day,
                 settings.runtime / "archive-cache",
             )
+            print(
+                f"models: Archiv: {archive_quality.get('events', '?')} Ereignisse, "
+                f"{archive_quality.get('missing_days', '?')} fehlende Tage",
+                flush=True,
+            )
         forecasts, models, policies, failures = [], [], [], []
         for fuel in settings.model_fuels:
+            print(
+                f"models: Training {fuel}: Bootstrap + Fit "
+                f"für {len(metas)} Stationen ...",
+                flush=True,
+            )
             observations, _ = load_observations(
                 history_paths + live_paths, cfg, fuel, ids
             )
@@ -88,9 +126,15 @@ def refresh(settings: Settings, now=None):
                 (item.city, item.station_id): item
                 for item in prepare_series(normalized, cfg)
             }
-            for identity in metas:
+            for position, identity in enumerate(metas, start=1):
+                label = f"{identity[0]} – {metas[identity].get('name', identity[1])}"
                 item = series.get(identity)
                 if item is None:
+                    print(
+                        f"models: [{position}/{len(metas)}] {label} "
+                        f"({fuel}): FEHLER missing_history",
+                        flush=True,
+                    )
                     failures.append(
                         {
                             "city": identity[0],
@@ -139,14 +183,31 @@ def refresh(settings: Settings, now=None):
                             "retained_previous": False,
                         }
                     )
+                    print(
+                        f"models: [{position}/{len(metas)}] {label} ({fuel}): ok",
+                        flush=True,
+                    )
                 except ValueError:
+                    print(
+                        f"models: [{position}/{len(metas)}] {label} "
+                        f"({fuel}): FEHLER unzureichende Trainingsdaten",
+                        flush=True,
+                    )
                     failures.append(
                         {
                             **item.identity(),
                             "reason": "insufficient_or_invalid_training_data",
                         }
                     )
+        print(
+            f"models: {len(forecasts)} Prognosen, {len(failures)} Fehler",
+            flush=True,
+        )
         if not forecasts:
+            print(
+                "models: keine Station fittbar; Details in engine/last-attempt.json",
+                flush=True,
+            )
             write_json(
                 output / "last-attempt.json",
                 {
@@ -173,6 +234,7 @@ def refresh(settings: Settings, now=None):
                 and key not in fresh_keys
             ):
                 forecasts.append({**prior, "retained_previous": True})
+        print("models: publiziere ...", flush=True)
         model_name = "models-" + uuid.uuid4().hex + ".json"
         write_json(output / model_name, {"schema_version": 1, "models": models})
         # This is the sole publication point. Partial files or failed fits never replace it.

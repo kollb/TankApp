@@ -239,3 +239,36 @@ def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_health_prefers_nas_worker_archive_state_with_legacy_fallback(app_settings):
+    worker_state = app_settings.runtime / "jobs" / "archive-sync" / "state.json"
+    worker_state.parent.mkdir(parents=True)
+    worker_state.write_text(
+        json.dumps(
+            {
+                "archive_since": "2025-09-09",
+                "requested_until": "2026-09-08",
+                "status": "complete",
+                "missing_files": 0,
+                "last_complete_until": "2026-09-08",
+            }
+        )
+    )
+    live = LiveData(app_settings, query=lambda *_: [], clock=lambda: NOW)
+    assert live.health()["archive"]["last_complete_until"] == "2026-09-08"
+    worker_state.unlink()
+    legacy = app_settings.archive / ".sync" / "state.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps(
+            {
+                "archive_since": "2024-01-01",
+                "requested_until": "2026-09-08",
+                "status": "incomplete",
+                "missing_files": 5,
+                "last_complete_until": None,
+            }
+        )
+    )
+    assert live.health()["archive"]["missing_files"] == 5
