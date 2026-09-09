@@ -1,0 +1,18 @@
+[Unit]
+Description=TankApp RP2 Fallback GUI - Zeigt Live-Preise + gecachte Prognosen
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/TankApp/rp2
+ExecStart=/usr/bin/python3 /home/pi/TankApp/rp2/fallback_gui.py
+Restart=always
+RestartSec=5
+
+# Port-Konfiguration
+Environment=FALLBACK_GUI_PORT=8000
+
+[Install]
+WantedBy=multi-user.target

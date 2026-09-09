@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TankApp - GUI Vergleich: Richtige vs. Fallback</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #020617 0%, #1e293b 50%, #f5f5f5 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin-bottom: 20px;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #cbd5e1;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+        
+        .cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .card h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #0f172a;
+        }
+        
+        .card p {
+            color: #475569;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+        
+        .features {
+            list-style: none;
+            margin-bottom: 25px;
+        }
+        
+        .features li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .features li:last-child {
+            border-bottom: none;
+        }
+        
+        .check {
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .cross {
+            color: #f44336;
+            font-weight: bold;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .btn:hover {
+            background: linear-gradient(135deg, #1e293b, #334155);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .card-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .card-icon.nas {
+            background: linear-gradient(135deg, #020617, #10b981);
+        }
+        
+        .card-icon.rp2 {
+            background: linear-gradient(135deg, #f5f5f5, #4CAF50);
+        }
+        
+        .comparison {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .comparison h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #0f172a;
+            text-align: center;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .comparison-table th,
+        .comparison-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .comparison-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .comparison-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        @media (max-width: 768px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 TankApp GUI Vergleich</h1>
+        <p class="subtitle">Vergleiche die richtige GUI (NAS) mit der Fallback-GUI (RP2)</p>
+        
+        <div class="cards">
+            <!-- Richtige GUI Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon nas">🖥️</div>
+                    <h2>Richtige GUI</h2>
+                </div>
+                <p>
+                    Die vollwertige <strong>Next.js/React-GUI</strong>, die auf dem NAS läuft (Port 1355).
+                    Schönes Design mit allen Funktionen.
+                </p>
+                <ul class="features">
+                    <li><span class="check">✓</span> Vollwertiges Design (Slate-950, Emerald-Akzente)</li>
+                    <li><span class="check">✓</span> Alle Funktionen (F1/F2/F3 + Heatmaps + Top-10)</li>
+                    <li><span class="check">✓</span> Live-Daten + Live-Prognosen</li>
+                    <li><span class="check">✓</span> Kampagnen- und Kraftstoff-Umschalter</li>
+                    <li><span class="check">✓</span> Heatmaps und Fan-Charts</li>
+                    <li><span class="check">✓</span> API Explorer</li>
+                    <li><span class="check">✓</span> Responsive Design (Tabs für Mobile)</li>
+                    <li><span class="check">✓</span> Service Worker für Offline-Cache</li>
+                </ul>
+                <a href="richtige_gui.html" class="btn">Mockup anzeigen</a>
+            </div>
+            
+            <!-- Fallback GUI Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon rp2">📱</div>
+                    <h2>Fallback GUI</h2>
+                </div>
+                <p>
+                    Die <strong>leichtgewichtige Python-GUI</strong>, die auf dem RP2 läuft (Port 8000).
+                    Einfaches Design für 24/7 Verfügbarkeit.
+                </p>
+                <ul class="features">
+                    <li><span class="check">✓</span> Einfaches, funktionales Design</li>
+                    <li><span class="check">✓</span> Wichtigste Funktionen (F1/F2/F3)</li>
+                    <li><span class="check">✓</span> Live-Preise + gecachte Prognosen</li>
+                    <li><span class="check">✓</span> Günstigste Station + Alternativen</li>
+                    <li><span class="check">✓</span> Zeitfenster-Empfehlungen</li>
+                    <li><span class="check">✓</span> Navigation zu Stationen</li>
+                    <li><span class="check">✓</span> NAS-Status-Anzeige</li>
+                    <li><span class="cross">✗</span> Keine Heatmaps/Fan-Charts</li>
+                </ul>
+                <a href="fallback_gui.html" class="btn">Mockup anzeigen</a>
+            </div>
+        </div>
+        
+        <!-- Vergleichstabelle -->
+        <div class="comparison">
+            <h2>📊 Direktvergleich</h2>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Kriterium</th>
+                        <th style="text-align: center;">Richtige GUI</th>
+                        <th style="text-align: center;">Fallback GUI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Verfügbarkeit</strong></td>
+                        <td style="text-align: center;">NAS online (6h/Tag)</td>
+                        <td style="text-align: center;"><strong>24/7</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Technologie</strong></td>
+                        <td style="text-align: center;">Next.js/React</td>
+                        <td style="text-align: center;">Python Flask</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Design</strong></td>
+                        <td style="text-align: center;">Professionell (Dark Mode)</td>
+                        <td style="text-align: center;">Einfach (Light Mode)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>F1 (Jetzt/warten?)</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="check">✓</span> (gecached)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>F2 (Hier/woanders?)</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>F3 (Heute/später?)</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="check">✓</span> (gecached)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Heatmaps</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="cross">✗</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Top-10 Selektion</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="cross">✗</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Umweg-Ökonomie</strong></td>
+                        <td style="text-align: center;"><span class="check">✓</span></td>
+                        <td style="text-align: center;"><span class="cross">✗</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Daten-Aktualität</strong></td>
+                        <td style="text-align: center;">Live</td>
+                        <td style="text-align: center;">Live-Preise, Prognosen max. 24h alt</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Port</strong></td>
+                        <td style="text-align: center;">1355</td>
+                        <td style="text-align: center;"><strong>8000</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px; color: white;">
+            <p><strong>💡 Tipp:</strong> Öffne die Mockups in neuen Tabs, um sie nebeneinander zu vergleichen!</p>
+        </div>
+    </div>
+</body>
+</html>
