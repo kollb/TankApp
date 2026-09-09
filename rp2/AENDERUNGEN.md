@@ -130,7 +130,7 @@ In folgenden Dateien `<NAS-IP>` durch die **lokale IP deines NAS** ersetzen:
 ### 2. Abhängigkeiten installieren (auf RP2)
 ```bash
 sudo apt update && sudo apt install -y python3-pip
-python3 -m pip install flask requests
+# Keine pip-Pakete noetig - nur Python-Standardbibliothek
 ```
 
 ### 3. Services einrichten (auf RP2)

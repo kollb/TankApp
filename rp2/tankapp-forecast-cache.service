@@ -11,8 +11,14 @@ ExecStart=/usr/bin/python3 /home/pi/TankApp/rp2/cache_forecasts.py
 Restart=always
 RestartSec=60
 
-# Umgebungsvariablen für NAS-IP
-Environment=NAS_IP=<NAS-IP>  # Hier deine NAS-IP eintragen!
+# NAS-IP NICHT hier eintragen, sondern in einem Drop-in, damit ein
+# "git pull" die Konfiguration nicht ueberschreibt:
+#   sudo systemctl edit tankapp-forecast-cache
+# und dort eintragen:
+#   [Service]
+#   Environment=NAS_IP=192.168.178.50
+Environment=NAS_PORT=1355
+Environment=CACHE_INTERVAL_SECONDS=300
 
 [Install]
 WantedBy=multi-user.target
