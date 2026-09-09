@@ -1,3 +1,3 @@
 # Offline fits/backtests on NAS or PC; the running collector needs neither package.
 numpy>=1.26,<3
-pandas>=2.1,<3
+pandas>=3.0.5,<4
