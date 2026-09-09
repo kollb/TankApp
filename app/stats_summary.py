@@ -29,8 +29,19 @@ def _mulberry32(seed: int):
     def rng():
         nonlocal a
         a = (a + 0x6D2B79F5) & 0xFFFFFFFF
-        t = math.imul(a ^ (a >> 15), 1 | a) if hasattr(math, "imul") else ((a ^ (a >> 15)) * (1 | a)) & 0xFFFFFFFF
-        t = (t + (math.imul(t ^ (t >> 7), 61 | t) if hasattr(math, "imul") else ((t ^ (t >> 7)) * (61 | t)) & 0xFFFFFFFF)) & 0xFFFFFFFF
+        t = (
+            math.imul(a ^ (a >> 15), 1 | a)
+            if hasattr(math, "imul")
+            else ((a ^ (a >> 15)) * (1 | a)) & 0xFFFFFFFF
+        )
+        t = (
+            t
+            + (
+                math.imul(t ^ (t >> 7), 61 | t)
+                if hasattr(math, "imul")
+                else ((t ^ (t >> 7)) * (61 | t)) & 0xFFFFFFFF
+            )
+        ) & 0xFFFFFFFF
         return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
 
     return rng
@@ -50,13 +61,18 @@ def _gauss(rng) -> float:
     return math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
 
 
-def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | None = None) -> dict[str, Any]:
+def generate_backtest_lab(
+    metas: dict, fuel: str = "e10", target_city: str | None = None
+) -> dict[str, Any]:
     """Erzeugt das 14-Tage-Out-of-Sample-Marktlabor (Schicht A) deterministisch."""
     days_train = 42
     days_eval = 14
     start_date = dt.date(2026, 8, 1)
 
-    all_days = [(start_date + dt.timedelta(days=i)).isoformat() for i in range(days_train + days_eval)]
+    all_days = [
+        (start_date + dt.timedelta(days=i)).isoformat()
+        for i in range(days_train + days_eval)
+    ]
     eval_days = all_days[days_train:]
 
     # Stationen filtern
@@ -64,22 +80,48 @@ def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | Non
     for (city, uid), meta in metas.items():
         if target_city and city != target_city:
             continue
-        stations_info.append({
-            "id": uid,
-            "city": city,
-            "name": meta.get("name") or uid,
-            "brand": meta.get("brand") or "",
-            "lat": meta.get("lat") or 50.11,
-            "lon": meta.get("lon") or 8.68,
-            "dist_km": meta.get("dist_km"),
-        })
+        stations_info.append(
+            {
+                "id": uid,
+                "city": city,
+                "name": meta.get("name") or uid,
+                "brand": meta.get("brand") or "",
+                "lat": meta.get("lat") or 50.11,
+                "lon": meta.get("lon") or 8.68,
+                "dist_km": meta.get("dist_km"),
+            }
+        )
 
     if not stations_info:
         # Fallback Default Stationen
         stations_info = [
-            {"id": "s1", "city": "Frankfurt", "name": "Aral Hauptstraße", "brand": "ARAL", "lat": 50.12, "lon": 8.65, "dist_km": 1.2},
-            {"id": "s2", "city": "Frankfurt", "name": "Shell Westend", "brand": "Shell", "lat": 50.11, "lon": 8.67, "dist_km": 2.1},
-            {"id": "s3", "city": "Frankfurt", "name": "JET Gallus", "brand": "JET", "lat": 50.10, "lon": 8.64, "dist_km": 2.8},
+            {
+                "id": "s1",
+                "city": "Frankfurt",
+                "name": "Aral Hauptstraße",
+                "brand": "ARAL",
+                "lat": 50.12,
+                "lon": 8.65,
+                "dist_km": 1.2,
+            },
+            {
+                "id": "s2",
+                "city": "Frankfurt",
+                "name": "Shell Westend",
+                "brand": "Shell",
+                "lat": 50.11,
+                "lon": 8.67,
+                "dist_km": 2.1,
+            },
+            {
+                "id": "s3",
+                "city": "Frankfurt",
+                "name": "JET Gallus",
+                "brand": "JET",
+                "lat": 50.10,
+                "lon": 8.64,
+                "dist_km": 2.8,
+            },
         ]
 
     models: dict[str, dict[str, Any]] = {}
@@ -106,8 +148,46 @@ def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | Non
         p_we = round(min(0.90, max(0.50, 0.72 + _gauss(rng) * 0.06)), 3)
 
         # Shapes (18 Werte 06-23 Uhr)
-        base_wk = [0.7, 3.9, 3.55, 3.3, 3.4, 3.0, 2.6, 2.0, 1.6, 0.5, -0.8, -1.8, -1.2, -0.8, 0.0, 0.5, 1.2, 1.8]
-        base_we = [0.4, 2.0, 2.9, 3.1, 2.9, 2.5, 2.2, 1.8, 1.3, 0.6, -0.4, -1.0, -1.4, -0.8, 0.0, 0.4, 0.8, 1.2]
+        base_wk = [
+            0.7,
+            3.9,
+            3.55,
+            3.3,
+            3.4,
+            3.0,
+            2.6,
+            2.0,
+            1.6,
+            0.5,
+            -0.8,
+            -1.8,
+            -1.2,
+            -0.8,
+            0.0,
+            0.5,
+            1.2,
+            1.8,
+        ]
+        base_we = [
+            0.4,
+            2.0,
+            2.9,
+            3.1,
+            2.9,
+            2.5,
+            2.2,
+            1.8,
+            1.3,
+            0.6,
+            -0.4,
+            -1.0,
+            -1.4,
+            -0.8,
+            0.0,
+            0.4,
+            0.8,
+            1.2,
+        ]
         shape_wk = [round(v + _gauss(rng) * 0.15, 2) for v in base_wk]
         shape_we = [round(v + _gauss(rng) * 0.15, 2) for v in base_we]
 
@@ -186,15 +266,17 @@ def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | Non
             if s > 0:
                 s_pos_count += 1
 
-            st_evals.append({
-                "day": day_str,
-                "cls": cls,
-                "mu": mu,
-                "p": p,
-                "s": s,
-                "best": best,
-                "predHour": pred_h,
-            })
+            st_evals.append(
+                {
+                    "day": day_str,
+                    "cls": cls,
+                    "mu": mu,
+                    "p": p,
+                    "s": s,
+                    "best": best,
+                    "predHour": pred_h,
+                }
+            )
 
         eval_rows[sid] = st_evals
 
@@ -211,49 +293,55 @@ def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | Non
         hit_freq = round(s_pos_count / n_eval, 3) if n_eval else 0.0
         pot_share = round(sum_smart_eur / max(0.01, sum_best_eur), 3)
 
-        station_scores.append({
-            "station_id": sid,
-            "name": st["name"],
-            "brand": st["brand"],
-            "city": st["city"],
-            "delta_ct": delta_ct,
-            "n": n_eval,
-            "n_wait": n_wait,
-            "hit_wait": round(hit_wait / n_wait, 3) if n_wait else None,
-            "n_now": n_now,
-            "hit_now": round(hit_now / n_now, 3) if n_now else None,
-            "sum_smart_eur": sum_smart_eur,
-            "sum_commit_eur": sum_commit_eur,
-            "sum_best_eur": sum_best_eur,
-            "sum_always_eur": sum_always_eur,
-            "avg_regret_ct": avg_regret_ct,
-            "avg_regret_eur": avg_regret_eur,
-            "p_avg": p_avg,
-            "hit_freq": hit_freq,
-            "pot_share": pot_share,
-        })
+        station_scores.append(
+            {
+                "station_id": sid,
+                "name": st["name"],
+                "brand": st["brand"],
+                "city": st["city"],
+                "delta_ct": delta_ct,
+                "n": n_eval,
+                "n_wait": n_wait,
+                "hit_wait": round(hit_wait / n_wait, 3) if n_wait else None,
+                "n_now": n_now,
+                "hit_now": round(hit_now / n_now, 3) if n_now else None,
+                "sum_smart_eur": sum_smart_eur,
+                "sum_commit_eur": sum_commit_eur,
+                "sum_best_eur": sum_best_eur,
+                "sum_always_eur": sum_always_eur,
+                "avg_regret_ct": avg_regret_ct,
+                "avg_regret_eur": avg_regret_eur,
+                "p_avg": p_avg,
+                "hit_freq": hit_freq,
+                "pot_share": pot_share,
+            }
+        )
 
         # Kalibrierungs-Punkte für diese Station
         wk_rows = [r for r in st_evals if r["cls"] == 0]
         we_rows = [r for r in st_evals if r["cls"] == 1]
         if wk_rows:
             pos_wk = sum(1 for r in wk_rows if r["s"] > 0)
-            calib_points.append({
-                "p": wk_rows[0]["p"],
-                "hit": round(pos_wk / len(wk_rows), 3),
-                "n": len(wk_rows),
-                "stationId": sid,
-                "cls": 0,
-            })
+            calib_points.append(
+                {
+                    "p": wk_rows[0]["p"],
+                    "hit": round(pos_wk / len(wk_rows), 3),
+                    "n": len(wk_rows),
+                    "stationId": sid,
+                    "cls": 0,
+                }
+            )
         if we_rows:
             pos_we = sum(1 for r in we_rows if r["s"] > 0)
-            calib_points.append({
-                "p": we_rows[0]["p"],
-                "hit": round(pos_we / len(we_rows), 3),
-                "n": len(we_rows),
-                "stationId": sid,
-                "cls": 1,
-            })
+            calib_points.append(
+                {
+                    "p": we_rows[0]["p"],
+                    "hit": round(pos_we / len(we_rows), 3),
+                    "n": len(we_rows),
+                    "stationId": sid,
+                    "cls": 1,
+                }
+            )
 
     # Totals
     total_smart = round(sum(s["sum_smart_eur"] for s in station_scores), 2)
@@ -261,9 +349,15 @@ def generate_backtest_lab(metas: dict, fuel: str = "e10", target_city: str | Non
     total_best = round(sum(s["sum_best_eur"] for s in station_scores), 2)
     total_always = round(sum(s["sum_always_eur"] for s in station_scores), 2)
     total_n = sum(s["n"] for s in station_scores)
-    total_regret_eur = round(sum(s["avg_regret_eur"] * s["n"] for s in station_scores) / max(1, total_n), 2)
-    total_hit_freq = round(sum(s["hit_freq"] * s["n"] for s in station_scores) / max(1, total_n), 3)
-    total_p_avg = round(sum(s["p_avg"] * s["n"] for s in station_scores) / max(1, total_n), 3)
+    total_regret_eur = round(
+        sum(s["avg_regret_eur"] * s["n"] for s in station_scores) / max(1, total_n), 2
+    )
+    total_hit_freq = round(
+        sum(s["hit_freq"] * s["n"] for s in station_scores) / max(1, total_n), 3
+    )
+    total_p_avg = round(
+        sum(s["p_avg"] * s["n"] for s in station_scores) / max(1, total_n), 3
+    )
     total_pot_share = round(total_smart / max(0.01, total_best), 3)
 
     # ε-Scan (0.0 bis 4.0 ct/L in 0.1 Schritten)

@@ -321,12 +321,21 @@ class Handler(SimpleHTTPRequestHandler):
             if len(parts) == 6:
                 episode_id = parts[4]
                 intent = payload.get("intent")
-                if not intent or intent not in ("wait", "navigate", "refuel_now", "dismiss", "none"):
+                if not intent or intent not in (
+                    "wait",
+                    "navigate",
+                    "refuel_now",
+                    "dismiss",
+                    "none",
+                ):
                     self.json({"error_code": "invalid_query"}, 400)
                     return
                 try:
                     res = self.data.set_intent(episode_id, intent)
-                    if isinstance(res, dict) and res.get("error_code") == "episode_not_found":
+                    if (
+                        isinstance(res, dict)
+                        and res.get("error_code") == "episode_not_found"
+                    ):
                         self.json(res, 404)
                     else:
                         self.json(res, 200)
@@ -344,7 +353,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         # --- B4 Outcome Alias: POST /api/v1/recommendations/{id}/outcome ---
-        if norm_path.startswith("/api/v1/recommendations/") and norm_path.endswith("/outcome"):
+        if norm_path.startswith("/api/v1/recommendations/") and norm_path.endswith(
+            "/outcome"
+        ):
             try:
                 res = self.data.record_fill(payload)
                 self.json(res, 200)

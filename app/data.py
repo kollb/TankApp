@@ -762,4 +762,3 @@ class LiveData:
             return {"ok": True, "station_id": station_id, "day": day, "points": pts}
         except Exception:
             return {"ok": False, "station_id": station_id, "day": day, "points": []}
-

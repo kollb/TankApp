@@ -27,9 +27,6 @@ import {
   BarChart3,
   Cpu,
   CheckCircle2,
-  XCircle,
-  Bell,
-  Sparkles,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
@@ -50,7 +47,6 @@ import {
   haversineKm,
   problem,
   segments,
-  splitOnGap,
   timeLabel,
   useResource,
   usePreference,
@@ -131,10 +127,10 @@ function Metric({
           </span>
         )}
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+      <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
         {value}
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-slate-400">{detail}</p>
+      <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
     </div>
   );
 }
@@ -242,9 +238,15 @@ function ApiExplorer({
     : [];
   const endpoints = [
     { label: "Systemstatus", path: "/api/v1/health" },
-    { label: `Decide (B4 Primär)`, path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40` },
-    { label: `Stats Summary (B4 3 Schichten)`, path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}` },
-    { label: `Due Episodes (B4 Intent/Due)`, path: `/api/v1/episodes?status=due` },
+    {
+      label: "Decide (B4 Primär)",
+      path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
+    },
+    {
+      label: "Stats Summary (B4 3 Schichten)",
+      path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
+    },
+    { label: "Due Episodes (B4 Intent/Due)", path: "/api/v1/episodes?status=due" },
     { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
     { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
     { label: "Collector Livestatus", path: "/api/v1/collector/status" },
@@ -653,10 +655,10 @@ export function Dashboard() {
   }));
   const spanLabel =
     spanHours === 24
-      ? "24 Stunden"
+      ? "letzte 24 Stunden"
       : spanHours === 72
-        ? "3 Tage"
-        : "7 Tage";
+        ? "letzte 3 Tage"
+        : "letzte 7 Tage";
 
   const modelPoints = forecastPoints.map((p) => ({
     x: Date.parse(p.timestamp),
@@ -680,8 +682,8 @@ export function Dashboard() {
             .filter((p) => p.q025 !== null && p.q975 !== null)
             .map((p) => ({
               x: Date.parse(p.timestamp),
-              yLo: p.q025!,
-              yHi: p.q975!,
+              yLow: p.q025!,
+              yHigh: p.q975!,
             })),
         },
       ]
@@ -695,8 +697,8 @@ export function Dashboard() {
             .filter((p) => p.q10 !== undefined && p.q10 !== null && p.q90 !== undefined && p.q90 !== null)
             .map((p) => ({
               x: Date.parse(p.timestamp),
-              yLo: p.q10!,
-              yHi: p.q90!,
+              yLow: p.q10!,
+              yHigh: p.q90!,
             })),
         },
       ]
@@ -767,8 +769,7 @@ export function Dashboard() {
     const max = values.length ? Math.max(...values) : 0;
     const span = max - min || 1;
     const nowHour = Math.floor(berlinHour());
-    // 06 bis 24 Uhr (19 Stundenzellen)
-    return Array.from({ length: 19 }, (_, i) => {
+    return Array.from({ length: 18 }, (_, i) => {
       const hour = 6 + i;
       const value = byHour.get(hour);
       return {
@@ -782,7 +783,7 @@ export function Dashboard() {
               : value >= max - span / 3
                 ? "pricey"
                 : "mid",
-        current: hour === nowHour || (hour === 24 && nowHour === 0),
+        current: hour === nowHour,
       };
     });
   })();
@@ -793,9 +794,6 @@ export function Dashboard() {
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
-  const labStationId = selected?.station_id || labData?.stations[0]?.id || "";
-  const labRows = labData?.evalRows[labStationId] || [];
-  const labModel = labData?.models[labStationId];
   const labScores = useMemo(() => {
     if (!labData?.evalRows) return [];
     return Object.entries(labData.evalRows).map(([sid, rows]) => ({
@@ -807,7 +805,7 @@ export function Dashboard() {
   const labTotals = useMemo(() => {
     let smart = 0,
       commit = 0,
-      best = 0,
+      bestVal = 0,
       always = 0,
       regretEur = 0,
       n = 0,
@@ -816,7 +814,7 @@ export function Dashboard() {
     for (const { score: sc } of labScores) {
       smart += sc.sum_smart_eur;
       commit += sc.sum_commit_eur;
-      best += sc.sum_best_eur;
+      bestVal += sc.sum_best_eur;
       always += sc.sum_always_eur;
       regretEur += sc.avg_regret_eur * sc.n;
       n += sc.n;
@@ -826,17 +824,16 @@ export function Dashboard() {
     return {
       smart,
       commit,
-      best,
+      best: bestVal,
       always,
       regretEur: n ? regretEur / n : 0,
       n,
       hitFreq: n ? sPos / n : 0,
       pAvg: n ? pSum / n : 0,
-      potShare: best > 0 ? smart / best : 0,
+      potShare: bestVal > 0 ? smart / bestVal : 0,
     };
   }, [labScores]);
 
-  // Calibration points for chart
   const calibPoints = labData?.calibration || [];
   const liveReliability = statsSummaryRes.data?.live_advice?.reliability || [];
   const livePointsForChart = liveReliability
@@ -852,24 +849,18 @@ export function Dashboard() {
     return calibPoints.reduce((a, c) => a + Math.abs(c.hit - c.p), 0) / calibPoints.length;
   }, [calibPoints]);
 
-  // Lab selected day row
+  const labStationId = selected?.station_id || labData?.stations[0]?.id || "";
+  const labRows = labData?.evalRows[labStationId] || [];
+  const labModel = labData?.models[labStationId];
   const activeLabDayRow = labRows[Math.min(Math.max(labDayIdx, 0), Math.max(0, labRows.length - 1))];
   const activeLabOutcome = activeLabDayRow ? rowOutcome(activeLabDayRow, eps, liters) : null;
 
-  // Lab Model Shapes & Histogram Values
   const labDayClass = activeLabDayRow?.cls ?? 0;
   const labSaves = labModel ? (labDayClass === 0 ? labModel.savesWk : labModel.savesWe) : [];
   const labPredHour = labModel ? (labDayClass === 0 ? labModel.predWk : labModel.predWe) : 19;
-  const labShapeWk = labModel?.shapeWk || [];
-  const labShapeWe = labModel?.shapeWe || [];
   const labMu = labModel ? (labDayClass === 0 ? labModel.muWk : labModel.muWe) : 1.5;
 
-  // Pair evaluation in Workshop
   const pairAltStation = stations.find((s) => s.station_id === pairAltId) || stations.find((s) => s.station_id !== selected?.station_id);
-  const pairDistKm = selected && pairAltStation && selected.lat && selected.lon && pairAltStation.lat && pairAltStation.lon
-    ? haversineKm(selected.lat, selected.lon, pairAltStation.lat, pairAltStation.lon)
-    : pairDetourKm;
-
   const pairEco = detourEconomics({
     refPrice: selectedPrice || 1.70,
     altPrice: (pairAltStation ? price(pairAltStation) : null) || (selectedPrice ? selectedPrice - 0.04 : 1.66),
@@ -893,14 +884,13 @@ export function Dashboard() {
     return nets.length ? nets : [0.85, 1.2, -0.4, 0.6, 1.4, -0.2, 0.9, 1.1, 0.4, 0.7, -0.5, 1.3, 0.8, 1.0];
   }, [labData, selected, pairAltStation, liters, pairEco]);
 
-  // Due prompt handler
   const dueEpisode = dueEpisodesRes.data?.episodes?.[0] || (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
   const handleConfirmRecommendedFill = async (ep: any) => {
     if (!ep) return;
     const snap = ep.last_snapshot || decideRes.data?.primary;
     const targetPrice = snap?.expected_price || bestPrice || 1.649;
-    const res = await postFill({
+    await postFill({
       station_id: snap?.station_id || selected?.station_id || "default",
       station_name: snap?.station_name || selected?.name || "Station",
       liters,
@@ -916,7 +906,7 @@ export function Dashboard() {
   };
 
   const handleCustomFill = async (ep: any) => {
-    const res = await postFill({
+    await postFill({
       station_id: selected?.station_id || "custom",
       station_name: selected?.name || "Station",
       liters: customLiters,
@@ -938,92 +928,89 @@ export function Dashboard() {
     setRefresh((r) => r + 1);
   };
 
-  const handleIntentWait = async (epId?: string) => {
-    if (epId) await postIntent(epId, "wait");
-    setActionFeedback("⏳ Warten-Intent gesetzt — Erinnerung aktiv!");
-    setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
-  };
-
-  const handleRefuelNow = async () => {
-    const epId = decideRes.data?.episode?.id;
-    await postFill({
-      station_id: selected?.station_id || "now",
-      station_name: selected?.name || "Station",
-      liters,
-      price_paid: selectedPrice || bestPrice || 1.70,
-      fuel,
-      source: "explicit_now",
-      episode_id: epId,
-    });
-    setActionFeedback("🟢 Tankvorgang 'Jetzt' im Wallet-Ledger verbucht!");
-    setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
-      <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-sky-400 font-black text-slate-950 shadow-lg shadow-emerald-500/20">
-              TP
+      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <a
+            href="/"
+            className="flex items-center gap-3"
+            aria-label="TankApp Startseite"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
+              <FuelIcon size={21} />
             </div>
             <div>
-              <h1 className="text-base font-extrabold tracking-tight text-white sm:text-lg">
-                TankPuls
+              <h1 className="text-lg font-black tracking-tight text-white">
+                TankApp{" "}
+                <span className="ml-1 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-400">
+                  LIVE
+                </span>
               </h1>
-              <p className="text-[10px] font-medium tracking-wide text-slate-400">
-                Der ehrliche Entscheidungs-Kompass
+              <p className="text-[11px] text-slate-500">
+                Dein Tank-Kompass. Ohne Rätselraten.
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <label className="text-xs text-slate-400">
-              Kraftstoff
+          </a>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+              <MapPin size={14} className="text-emerald-400" />
+              <span className="sr-only">Stadt</span>
               <select
-                aria-label="Kraftstoffart"
-                value={fuel}
-                onChange={(e) => setFuel(e.target.value as Fuel)}
-                className="ml-2 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+                aria-label="Stadt"
+                value={activeCity}
+                onChange={(e) => {
+                  setCity(e.target.value);
+                  setSelectedId("");
+                }}
+                disabled={!data?.cities.length}
+                className="max-w-40 bg-slate-950 pr-1 text-slate-100"
               >
-                <option value="e10">E10</option>
-                <option value="e5">E5</option>
-                <option value="diesel">Diesel</option>
+                {data?.cities.length ? (
+                  data.cities.map((label) => (
+                    <option key={label}>{label}</option>
+                  ))
+                ) : (
+                  <option value="">Keine Stadt eingerichtet</option>
+                )}
               </select>
             </label>
-            {data?.cities && data.cities.length > 1 && (
-              <label className="text-xs text-slate-400">
-                Stadt
-                <select
-                  aria-label="Stadt"
-                  value={activeCity}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="ml-2 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
-                >
-                  {data.cities.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <button
-              onClick={() => setRefresh((r) => r + 1)}
-              title="Preise neu laden"
-              className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 hover:text-white"
+            <div
+              role="group"
+              aria-label="Kraftstoff"
+              className="flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
             >
-              <RefreshCw size={15} className={prices.pending ? "animate-spin text-emerald-400" : ""} />
+              {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
+                <button
+                  key={value}
+                  aria-pressed={fuel === value}
+                  onClick={() => setFuel(value)}
+                  className={`rounded-lg px-3 py-1.5 transition-colors ${fuel === value ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+                >
+                  {value === "diesel" ? "Diesel" : value.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <button
+              aria-label="Daten aktualisieren"
+              title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
+              onClick={() => setRefresh((value) => value + 1)}
+              disabled={prices.pending}
+              className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+            >
+              <RefreshCw
+                size={16}
+                className={prices.pending ? "animate-spin text-emerald-400" : ""}
+              />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav
-            aria-label="Hauptnavigation"
+            aria-label="Ansichten"
             className="flex rounded-xl border border-slate-800 bg-slate-900/60 p-1"
           >
             {(
@@ -1031,7 +1018,7 @@ export function Dashboard() {
                 { id: "daily", label: "Alltag", icon: <Compass size={15} /> },
                 {
                   id: "statistics",
-                  label: "Werkstatt / Labor",
+                  label: "Statistik",
                   icon: <ChartIcon size={15} />,
                 },
                 { id: "system", label: "System", icon: <Server size={15} /> },
@@ -1041,11 +1028,7 @@ export function Dashboard() {
                 key={item.id}
                 onClick={() => setTab(item.id)}
                 aria-current={tab === item.id ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${
-                  tab === item.id
-                    ? "bg-slate-800 text-emerald-400 shadow"
-                    : "text-slate-500 hover:text-slate-200"
-                }`}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${tab === item.id ? "bg-slate-800 text-emerald-400 shadow" : "text-slate-500 hover:text-slate-200"}`}
               >
                 {item.icon}
                 {item.label}
@@ -1071,7 +1054,7 @@ export function Dashboard() {
         {actionFeedback && (
           <div
             role="status"
-            className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 p-4 text-sm font-semibold text-emerald-200 shadow-lg animate-in fade-in"
+            className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 p-4 text-sm font-semibold text-emerald-200 shadow-lg"
           >
             <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
             <p>{actionFeedback}</p>
@@ -1125,11 +1108,11 @@ export function Dashboard() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB ALLTAG (Default Modus §8.1)                               */}
+        {/* TAB ALLTAG                                                   */}
         {/* ============================================================ */}
         {tab === "daily" && (
           <>
-            {/* B4: Due-Prompt Banner wenn vorheriges Fenster abgelaufen ist */}
+            {/* B4: Due-Prompt Banner */}
             {dueEpisode && !dueDismissed && (
               <section
                 aria-label="Due-Prompt"
@@ -1148,7 +1131,7 @@ export function Dashboard() {
                         Hast du getankt?
                       </h3>
                       <p className="mt-1 text-xs text-slate-400 leading-relaxed max-w-xl">
-                        Das empfohlene Zeitfenster ist vorüber. Ein kurzer Tap erfasst deinen Beleg im persönlichen Wallet-Ledger — ehrlich und asynchron.
+                        Das empfohlene Zeitfenster ist vorüber. Ein kurzer Tap erfasst deinen Beleg im persönlichen Wallet-Ledger.
                       </p>
                     </div>
                   </div>
@@ -1175,7 +1158,7 @@ export function Dashboard() {
                 </div>
 
                 {customFillOpen && (
-                  <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-3 animate-in fade-in">
+                  <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-3">
                     <p className="text-xs font-semibold text-slate-300">
                       Tankvorgang manuell anpassen:
                     </p>
@@ -1221,11 +1204,11 @@ export function Dashboard() {
                 Ein guter Stopp beginnt hier.
               </h2>
               <p className="mt-2 text-sm text-slate-400">
-                Startbildschirm mit ≤ 3 primären Zahlen (§8.1). Handlungsempfehlung nach kalibriertem Gate.
+                Aktuelle Preise deiner Stationen. Die richtige Entscheidung ohne
+                Datenchaos.
               </p>
             </div>
 
-            {/* Hero-Karte Entscheidungs-Kompass (B4 Primär GET /v1/decide) */}
             <section
               className={`${panel} relative overflow-hidden p-5 shadow-2xl sm:p-7`}
               aria-labelledby="compass-title"
@@ -1235,51 +1218,40 @@ export function Dashboard() {
               <div className="relative mb-6 flex flex-wrap items-center justify-between gap-3">
                 <Badge warning={!decideRes.data?.calibrated}>
                   <Compass size={13} />
-                  {decideRes.data?.calibrated ? "Kalibrierter Entscheidungs-Kompass" : "Entscheidungs-Kompass · M7 steht aus"}
+                  {decideRes.data?.calibrated ? "Kalibrierter Entscheidungs-Kompass" : "Entscheidungs-Kompass"}
                 </Badge>
                 <span className="text-xs text-slate-500">
-                  {best ? `Preismeldung ${timeLabel(best.observed_at)}` : "Keine simulierten Preise"}
+                  {best
+                    ? `Preismeldung ${timeLabel(best.observed_at)}`
+                    : "Keine simulierten Preise"}
                 </span>
               </div>
               <div
-                className={`relative rounded-xl border p-5 sm:p-6 ${
-                  best
-                    ? "border-emerald-500/30 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900 glow-emerald"
-                    : "border-amber-500/20 bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900"
-                }`}
+                className={`relative rounded-xl border p-5 sm:p-6 ${best ? "border-emerald-500/30 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900 glow-emerald" : "border-amber-500/20 bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900"}`}
               >
                 <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
                   <div className="flex items-start gap-4">
                     <div
-                      className={`rounded-2xl border p-3 ${
-                        best
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                          : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                      }`}
+                      className={`rounded-2xl border p-3 ${best ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-amber-500/20 bg-amber-500/10 text-amber-400"}`}
                     >
                       {best ? <FuelIcon size={28} /> : <Clock size={28} />}
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-widest text-slate-400">
-                        {decideRes.data?.primary.action === "refuel_now"
-                          ? "🟢 JETZT TANKEN"
-                          : decideRes.data?.primary.action === "wait"
-                            ? "⏳ WARTEN BIS ABENDFENSTER"
-                            : decideRes.data?.primary.action === "refuel_elsewhere"
-                              ? "🚗 FAHRE ZUR ALTERNATIVE"
-                              : "Aktuell am günstigsten"}
+                        {best
+                          ? "Aktuell am günstigsten"
+                          : "Ehrlich statt geschätzt"}
                       </p>
                       <h3
                         id="compass-title"
                         className="mt-1 text-xl font-bold text-white sm:text-2xl"
                       >
-                        {decideRes.data?.primary.station.name || best?.name || "Noch kein frischer Preis."}
+                        {best ? best.name : "Noch kein frischer Preis."}
                       </h3>
                       <p className="mt-2 max-w-lg text-xs leading-relaxed text-slate-400">
-                        {decideRes.data?.primary.reason_short ||
-                          (best
-                            ? `Unter deinen ausgewählten Stationen in ${activeCity}. Das ist ein Preisvergleich, noch keine Empfehlung für eine Extra-Fahrt.`
-                            : "Sobald der Pi Preise hochlädt und der NAS-Lesezugang eingerichtet ist, erscheinen sie hier automatisch.")}
+                        {best
+                          ? `Unter deinen ausgewählten Stationen in ${activeCity}. Das ist ein Preisvergleich, noch keine Empfehlung für eine Extra-Fahrt.`
+                          : "Sobald der Pi Preise hochlädt und der NAS-Lesezugang eingerichtet ist, erscheinen sie hier automatisch."}
                       </p>
                     </div>
                   </div>
@@ -1290,68 +1262,28 @@ export function Dashboard() {
                         €/L
                       </span>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2 sm:justify-end">
-                      <button
-                        onClick={handleRefuelNow}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition"
+                    {best?.maps_url ? (
+                      <a
+                        href={best.maps_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
                       >
-                        Ich tanke jetzt
-                      </button>
-                      <button
-                        onClick={() => handleIntentWait(decideRes.data?.episode?.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
-                      >
-                        Ich warte bis ~18:30
-                      </button>
-                      {best?.maps_url && (
-                        <a
-                          href={best.maps_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => {
-                            if (decideRes.data?.episode?.id) {
-                              postIntent(decideRes.data.episode.id, "navigate");
-                            }
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-slate-300 hover:text-white transition"
-                        >
-                          Maps
-                          <ArrowUpRight size={14} />
-                        </a>
-                      )}
-                    </div>
+                        Route öffnen
+                        <ArrowUpRight size={15} />
+                      </a>
+                    ) : (
+                      <span className="mt-3 block text-xs text-slate-500">
+                        {best
+                          ? "Keine Koordinaten hinterlegt"
+                          : "Route erst mit Stationsdaten"}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* 3-Wege-Vergleich Kacheln an der Säule */}
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 text-xs">
-                  <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold">1. Jetzt tanken</span>
-                  <p className="mt-1 text-lg font-bold text-slate-100 font-mono">
-                    {euro(bestPrice !== null ? bestPrice * liters : null)} €
-                  </p>
-                  <p className="text-[11px] text-slate-500">Zum aktuellen Preis von {euro(bestPrice, 3)} €/L ({liters} L)</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 text-xs">
-                  <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold">2. Warten (Feierabend)</span>
-                  <p className="mt-1 text-lg font-bold text-emerald-300 font-mono">
-                    {euro(decideRes.data?.primary.recommended_window?.expected_price ? decideRes.data.primary.recommended_window.expected_price * liters : (bestPrice ? (bestPrice - 0.035) * liters : null))} €
-                  </p>
-                  <p className="text-[11px] text-slate-500">Erwartet im 17:30–20:30 Fenster · Ersparnis ca. {euro(decideRes.data?.primary.expected_saving_eur || 1.40)} €</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 text-xs">
-                  <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold">3. Andere Station</span>
-                  <p className="mt-1 text-lg font-bold text-sky-300 font-mono">
-                    {euro(detourOptions[0]?.economics ? (bestPrice! * liters - detourOptions[0].economics.netEur) : (bestPrice ? bestPrice * liters : null))} €
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {detourOptions[0] ? `${detourOptions[0].row.name} (Netto: ${euro(detourOptions[0].economics.netEur)} €)` : "Keine lohnende Alternative in der Nähe"}
-                  </p>
-                </div>
-              </div>
-
-              {/* B4 Dual-Ledger Karten (Advice vs Wallet strikt getrennt §5.2) */}
+              {/* B4 Dual-Ledger Karten */}
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
                   <div className="flex items-center justify-between">
@@ -1378,7 +1310,7 @@ export function Dashboard() {
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Auto-Settlement nach Fensterende (ohne Nutzer-Input). Brier-Score 30d:{" "}
+                    Auto-Settlement nach Fensterende. Brier-Score 30d:{" "}
                     <span className="font-mono text-slate-400">
                       {statsSummaryRes.data?.live_advice.brier_30d ?? "M7 Kalibrierung steht aus"}
                     </span>
@@ -1410,13 +1342,27 @@ export function Dashboard() {
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Persönliche Ersparnis vs. "immer sofort tanken" (nur aus echten Tankbelegen, keine erfundene Compliance).
+                    Persönliche Ersparnis vs. immer sofort tanken (nur aus echten Tankbelegen).
                   </p>
                 </div>
               </div>
+
+              <div className="relative mt-5 flex items-start gap-2.5 text-xs leading-relaxed text-slate-400">
+                <ShieldCheck
+                  size={17}
+                  className="mt-0.5 shrink-0 text-sky-400"
+                />
+                <p>
+                  <span className="font-medium text-slate-200">
+                    Jetzt oder warten?
+                  </span>{" "}
+                  Eine belastbare Warteempfehlung ist noch nicht freigegeben.
+                  Historie und Prognosen werden geprüft — bis dahin zählen hier
+                  nur aktuelle Preismeldungen.
+                </p>
+              </div>
             </section>
 
-            {/* Parameter & Metriken */}
             <div className="my-6 grid gap-4 sm:grid-cols-3">
               <Metric
                 label={`Füllung mit ${liters} Litern`}
@@ -1440,7 +1386,7 @@ export function Dashboard() {
                     </span>
                   </>
                 }
-                detail="Reiner Preisunterschied pro Füllung — Sprit- und Zeitkosten des Umwegs rechnet der Umweg-Rechner."
+                detail="Reiner Preisunterschied pro Füllung — Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
               />
               <div className={`${panel} p-5`}>
                 <label
@@ -1463,10 +1409,10 @@ export function Dashboard() {
                   step={5}
                   value={liters}
                   onChange={(e) => setLiters(Number(e.target.value))}
-                  className="mt-4 w-full accent-emerald-500"
+                  className="my-5 w-full"
                 />
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Wird für alle Ersparnis-Rechnungen auf dieser Seite verwendet.
+                <p className="text-[11px] text-slate-500">
+                  Nur zur Berechnung. Keine Buchung, keine erfundene Ersparnis.
                 </p>
               </div>
             </div>
@@ -1495,7 +1441,7 @@ export function Dashboard() {
                 </Empty>
               ) : stripCells.some((c) => c.value !== null) ? (
                 <>
-                  <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-10">
+                  <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">
                     {stripCells.map((cell) => (
                       <div
                         key={cell.hour}
@@ -1506,31 +1452,31 @@ export function Dashboard() {
                         }
                         className={`rounded-lg border p-2 text-center ${
                           cell.current
-                            ? "border-emerald-400 bg-emerald-500/15"
+                            ? "z-10 scale-105 border-emerald-400 bg-emerald-950/80"
                             : cell.tone === "cheap"
-                              ? "border-emerald-500/30 bg-emerald-500/10"
+                              ? "border-emerald-500/30 bg-emerald-900/30"
                               : cell.tone === "pricey"
-                                ? "border-rose-500/25 bg-rose-500/10"
+                                ? "border-rose-500/30 bg-rose-950/30"
                                 : cell.tone === "mid"
-                                  ? "border-slate-800 bg-slate-900/60"
-                                  : "border-slate-800/50 bg-slate-950/30 text-slate-600"
+                                  ? "border-slate-700/40 bg-slate-800/40"
+                                  : "border-slate-800 bg-slate-950/40"
                         }`}
                       >
                         <div className="font-mono text-[10px] text-slate-400">
-                          {String(cell.hour).padStart(2, "0")}h
+                          {String(cell.hour).padStart(2, "0")}:00
                         </div>
                         <div
-                          className={`mt-1 font-mono text-xs font-semibold ${
-                            cell.tone === "cheap"
-                              ? "text-emerald-300"
-                              : cell.tone === "pricey"
-                                ? "text-rose-300"
-                                : cell.tone === "mid"
-                                  ? "text-slate-200"
-                                  : "text-slate-600"
+                          className={`mt-0.5 truncate font-mono text-[11px] font-bold sm:text-xs ${
+                            cell.value === null
+                              ? "text-slate-600"
+                              : cell.tone === "cheap"
+                                ? "text-emerald-300"
+                                : cell.tone === "pricey"
+                                  ? "text-rose-300"
+                                  : "text-slate-200"
                           }`}
                         >
-                          {cell.value !== null ? euro(cell.value, 3) : "—"}
+                          {cell.value === null ? "–" : euro(cell.value, 3)}
                         </div>
                         {cell.current && (
                           <div className="mt-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-400">
@@ -1554,28 +1500,410 @@ export function Dashboard() {
                 </Empty>
               )}
             </section>
+
+            {/* Detour Section */}
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="detour-heading"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3
+                  id="detour-heading"
+                  className="flex items-center gap-2 text-sm font-semibold"
+                >
+                  <Route size={16} className="text-emerald-400" />
+                  Rechnet sich der Umweg?
+                </h3>
+                <span className="font-mono text-[11px] text-slate-500">
+                  K = d · (c/100) · p + (d/v) · z
+                </span>
+              </div>
+              {detourOptions.length ? (
+                <>
+                  <p className="mb-4 text-xs leading-relaxed text-slate-400">
+                    Gegenüber deiner Vergleichsstation (
+                    <span className="font-medium text-slate-200">
+                      {selected?.name}
+                    </span>
+                    ): günstigere frische Stationen in {activeCity}. Entfernung
+                    als Luftlinie — der echte Straßenweg ist meist länger, der
+                    Umweg rechnet sich also eher noch weniger.
+                  </p>
+                  {detourMode === "dedicated" && (
+                    <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-200">
+                      <span className="font-semibold">Extrafahrt:</span> Bei
+                      12 €/h Zeitwert ist eine Extrafahrt von zuhause praktisch
+                      nie wirtschaftlich — fahr nur hin, wenn du ohnehin an der
+                      Station vorbeikommst.
+                    </p>
+                  )}
+                  <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <label
+                      htmlFor="consumption"
+                      className="text-xs text-slate-400"
+                    >
+                      Verbrauch{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {consumption} L/100 km
+                      </span>
+                      <input
+                        id="consumption"
+                        type="range"
+                        min={4}
+                        max={15}
+                        step={1}
+                        value={consumption}
+                        onChange={(e) => setConsumption(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </label>
+                    <label htmlFor="speed" className="text-xs text-slate-400">
+                      Stadt-/Pendel-Tempo{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {speed} km/h
+                      </span>
+                      <input
+                        id="speed"
+                        type="range"
+                        min={25}
+                        max={80}
+                        step={5}
+                        value={speed}
+                        onChange={(e) => setSpeed(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </label>
+                    <label
+                      htmlFor="timeValue"
+                      className="text-xs text-slate-400"
+                    >
+                      Zeitwert{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {timeValue > 0
+                          ? `${timeValue} €/h`
+                          : `Auto (${timeValueUsed} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
+                      </span>
+                      <input
+                        id="timeValue"
+                        type="range"
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={timeValue}
+                        onChange={(e) => setTimeValue(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                      <span className="mt-1 block text-[10px] text-slate-500">
+                        0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
+                      </span>
+                    </label>
+                    <label
+                      htmlFor="detourMode"
+                      className="text-xs text-slate-400"
+                    >
+                      Fahrtcharakter
+                      <select
+                        id="detourMode"
+                        aria-label="Fahrtcharakter"
+                        value={detourMode}
+                        onChange={(e) =>
+                          setDetourMode(
+                            e.target.value as DetourMode,
+                          )
+                        }
+                        className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
+                      >
+                        <option value="onroute">
+                          Auf dem Weg (nur Mehrweg)
+                        </option>
+                        <option value="dedicated">
+                          Extrafahrt (Hin & Rück)
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
+                    {detourOptions.map((option) => {
+                      const worth =
+                        option.economics.verdict === "worth";
+                      const borderline =
+                        option.economics.verdict === "borderline";
+                      return (
+                        <div
+                          key={option.row.station_id}
+                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-200">
+                              {option.row.name}{" "}
+                              <span className="font-mono text-emerald-400">
+                                {euro(option.altPrice, 3)} €/L
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {option.km.toLocaleString("de-DE", {
+                                maximumFractionDigits: 1,
+                              })}{" "}
+                              km Luftlinie · Ersparnis{" "}
+                              {euro(option.economics.grossEur)} · Sprit{" "}
+                              {euro(option.economics.fuelEur)} · Zeit{" "}
+                              {euro(option.economics.timeEur)} · erst ab{" "}
+                              {option.economics.criticalCtPerL.toLocaleString(
+                                "de-DE",
+                                { maximumFractionDigits: 1 },
+                              )}{" "}
+                              ct/L günstiger
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span
+                              className={`font-mono text-lg font-bold tabular-nums ${worth ? "text-emerald-400" : borderline ? "text-amber-300" : "text-slate-400"}`}
+                            >
+                              {euro(option.economics.netEur)} € netto
+                            </span>
+                            <Badge warning={!worth}>
+                              {worth
+                                ? "lohnenswert"
+                                : borderline
+                                  ? "grenzwertig"
+                                  : "lohnt sich nicht"}
+                            </Badge>
+                            <button
+                              onClick={() => setRouteAltId(option.row.station_id)}
+                              className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === option.row.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
+                            >
+                              Server prüfen
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {routeEval.data && !routeEval.error && (
+                    <div className="mt-5 rounded-xl border border-sky-500/25 bg-sky-950/30 p-4">
+                      <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">
+                        <Cpu size={14} /> Serverseitige Prüfung: /v1/route/evaluate
+                      </h4>
+                      <div className="grid gap-3 text-xs sm:grid-cols-3">
+                        <div>
+                          <p className="text-slate-500">Referenz → Ziel</p>
+                          <p className="font-mono text-slate-200">
+                            {euro(routeEval.data.ref_price, 3)} → {euro(routeEval.data.alt_price, 3)} €/L
+                          </p>
+                          <p className="text-slate-400">Δ {routeEval.data.delta_ct} ct/L</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Kosten</p>
+                          <p className="text-slate-200">
+                            Brutto {euro(routeEval.data.gross_eur)} € · Umweg {euro(routeEval.data.detour_cost_eur)} €
+                          </p>
+                          <p className="text-slate-400">
+                            Sprit {euro(routeEval.data.fuel_cost_eur)} · Zeit {euro(routeEval.data.time_cost_eur)} · z={routeEval.data.z_used} €/h {routeEval.data.z_auto ? "(auto)" : ""} {routeEval.data.is_peak ? "Peak" : "Offpeak"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Netto</p>
+                          <p className={`font-mono text-lg font-bold ${routeEval.data.worth_it ? "text-emerald-400" : "text-amber-300"}`}>
+                            {euro(routeEval.data.net_eur)} € {routeEval.data.verdict}
+                          </p>
+                          <p className="text-slate-400">Kritisch ab {routeEval.data.critical_delta_ct} ct/L</p>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Modus {routeEval.data.mode} · {routeEval.data.detour_km_oneway} km einfach, {routeEval.data.detour_km_total} km gesamt · Liter {routeEval.data.liters} · Stadt {routeEval.data.city || "—"}
+                      </p>
+                    </div>
+                  )}
+                  {routeEval.error && (
+                    <p className="mt-3 text-xs text-amber-300">
+                      Server-Evaluierung fehlgeschlagen — lokale Rechnung bleibt gültig.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <Empty>
+                  Kein günstigerer frischer Preis in {activeCity} — dann
+                  rechnet sich aktuell kein Umweg. Die Rechnung erscheint
+                  automatisch, sobald eine ausgewählte Stadt mehrere frische
+                  Preise mit Entfernungen meldet.
+                </Empty>
+              )}
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+                Netto-Ersparnis = (Dein Preis − günstigerer Preis) × Tankmenge
+                − Kraftstoff des Umwegs − Zeitwert der Umwegzeit. „Lohnenswert“
+                ab 1,50 €, „grenzwertig“ ab 0,50 €. Reine Rechenhilfe über
+                deine Angaben — keine Buchung, keine garantierte Ersparnis.
+              </p>
+            </section>
+
+            {/* Stations List */}
+            <section
+              className={`${panel} overflow-hidden`}
+              aria-labelledby="stations-heading"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+                <div>
+                  <h3 id="stations-heading" className="text-sm font-semibold">
+                    Deine Stationen
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Station antippen, um sie als Vergleich zu wählen.
+                  </p>
+                </div>
+                <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-400">
+                  {stations.length} im Set
+                </span>
+              </div>
+              {stations.length ? (
+                <div className="divide-y divide-slate-800/80">
+                  {stations.map((row) => {
+                    const value = price(row);
+                    const age =
+                      row.age_minutes === null
+                        ? null
+                        : Math.max(0, row.age_minutes + elapsed);
+                    const label = !row.observed_at
+                      ? "Keine Meldung"
+                      : !online || age! > 30
+                        ? "Stand veraltet"
+                        : row.status === "closed"
+                          ? "Geschlossen"
+                          : value === null
+                            ? "Kein Kraftstoffpreis"
+                            : "Offen";
+                    return (
+                      <div
+                        key={row.station_id}
+                        className={`flex w-full items-center justify-between gap-2 px-5 py-4 transition-colors hover:bg-slate-800/40 ${selected?.station_id === row.station_id ? "bg-emerald-500/[.04]" : ""}`}
+                      >
+                        <button
+                          onClick={() => setSelectedId(row.station_id)}
+                          aria-pressed={selected?.station_id === row.station_id}
+                          aria-label={`${row.name} als Vergleich wählen`}
+                          className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${row.station_id === best?.station_id ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-700 bg-slate-800 text-slate-500"}`}
+                            >
+                              <FuelIcon size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-200">
+                                {row.name}
+                              </p>
+                              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+                                <span
+                                  className={
+                                    value !== null
+                                      ? "text-emerald-400"
+                                      : "text-amber-400"
+                                  }
+                                >
+                                  {label}
+                                </span>
+                                <span>{row.brand || "Freie Station"}</span>
+                                {row.dist_km != null && (
+                                  <span
+                                    title={
+                                      row.dist_mode === "road"
+                                        ? "Fahrstrecke mit dem Auto vom Anker dieser Stadt"
+                                        : "Luftlinie zum Anker — Straßenroute gerade nicht verfügbar"
+                                    }
+                                    className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+                                  >
+                                    {row.dist_km.toLocaleString("de-DE", {
+                                      maximumFractionDigits: 1,
+                                    })}{" "}
+                                    km{" "}
+                                    {row.dist_mode === "road" ? "Fahrt" : "Luftlinie"}
+                                  </span>
+                                )}
+                                <span>
+                                  {age === null
+                                    ? "Noch keine Daten"
+                                    : `vor ${Math.floor(age)} Min.`}
+                                </span>
+                                {selected?.station_id === row.station_id && (
+                                  <span className="text-sky-400">
+                                    Vergleichsstation
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <div className="text-right">
+                              <div
+                                className={`font-mono text-lg font-bold tabular-nums ${row.station_id === best?.station_id ? "text-emerald-400" : "text-slate-200"}`}
+                              >
+                                {euro(value, 3)}{" "}
+                                <span className="text-[10px] font-normal text-slate-500">
+                                  €/L
+                                </span>
+                              </div>
+                              {value === null && row.last_price !== null && (
+                                <div className="text-[10px] text-slate-500">
+                                  Letzte Meldung: {euro(row.last_price, 3)} €
+                                </div>
+                              )}
+                            </div>
+                            <ChevronRight
+                              size={15}
+                              className="text-slate-600"
+                            />
+                          </div>
+                        </button>
+                        {row.maps_url ? (
+                          <a
+                            href={row.maps_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Route zu ${row.name} öffnen`}
+                            title="Route öffnen"
+                            className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
+                          >
+                            <ArrowUpRight size={15} />
+                          </a>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-5">
+                  <Empty>
+                    Hier erscheinen die Stationen aus deinem gemeinsamen
+                    Polling-Set.
+                  </Empty>
+                </div>
+              )}
+            </section>
           </>
         )}
 
         {/* ============================================================ */}
-        {/* TAB WERKSTATT / LABOR (Statistik Modus §8.2)                 */}
+        {/* TAB STATISTIK / WERKSTATT                                    */}
         {/* ============================================================ */}
         {tab === "statistics" && (
           <>
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-sky-400">
-                  Werkstatt / Entscheidungs-Labor (Konzept §8.2)
+                  Werkstatt / Statistik
                 </p>
                 <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
                   Nachvollziehen statt blind vertrauen.
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
-                  Markt-Backtest (14 Tage out-of-sample), ε-Scan, Kalibrierungs-Plot und Dual-Ledger.
+                  Beobachtungen, Modellstand und Güte — keine Beispielzahlen.
                 </p>
+                <div className="mt-3">
+                  <Badge warning>Unkalibriert · keine Handlungsempfehlung</Badge>
+                </div>
               </div>
               <label className="text-xs text-slate-400">
-                Fokus-Station
+                Station
                 <select
                   aria-label="Statistik-Station"
                   value={selected?.station_id || ""}
@@ -1595,6 +1923,45 @@ export function Dashboard() {
               </label>
             </div>
 
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric
+                label="Backtest · mittlerer absoluter Fehler"
+                value={
+                  <>
+                    {euro(metrics?.mae_ct)}{" "}
+                    <span className="text-sm font-normal text-slate-500">
+                      ct/L
+                    </span>
+                  </>
+                }
+                detail="Letzte 7 abgeschlossene Prüftage des Roll-Backtests; kein kalibrierter Live-Gütenachweis."
+                tip="Mittlerer absoluter Fehler (MAE): der durchschnittliche Abstand zwischen Prognose und tatsächlichem Preis in Cent pro Liter."
+              />
+              <Metric
+                label="Vergleich zur saisonalen Naive · MASE"
+                value={euro(metrics?.mase)}
+                detail="Skalierte Vergleichszahl: kleiner als 1,0 = besser als die Vergleichsmethode."
+                tip="Mean Absolute Scaled Error (MASE) = Backtest-MAE geteilt durch den MAE der saisonalen Naive."
+              />
+              <Metric
+                label="Beobachtete Vergleichspunkte"
+                value={metrics?.points ?? "—"}
+                detail="5-Minuten-Zeitpunkte, an denen Prognose und echter gemeldeter Preis verglichen wurden."
+              />
+              <Metric
+                label="95-%-Band-Trefferquote · PICP"
+                value={
+                  <>
+                    {euro(metrics?.picp95_pct, 1)}{" "}
+                    <span className="text-sm font-normal text-slate-500">
+                      %
+                    </span>
+                  </>
+                }
+                detail="Anteil echter Preise im 95-%-Band des Backtests. Ziel: 90–98 %."
+              />
+            </div>
+
             {/* Sektion 1: Die Entscheidungs-Regel & ε-Slider */}
             <section className={`${panel} mb-8 p-6`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -1605,10 +1972,10 @@ export function Dashboard() {
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-slate-400">
                     Jeden Morgen um <span className="text-slate-200">08:00</span> entscheidet die Station aus ihrem Training:{" "}
-                    <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ = E[Ersparnis] ≥ ε) — sonst{" "}
-                    <strong className="text-slate-200">jetzt tanken</strong>. μ ist der empirische Mittelwert der Trainings-Ersparnisse S = p(08:00) − p(billigste Stunde).
+                    <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
+                    <strong className="text-slate-200">jetzt tanken</strong>.
                     <span className="text-slate-500 block mt-1">
-                      Die Produktion entscheidet weiterhin mit der kalibrierten Tabelle §4.1; dieser interaktive Slider zeigt die Was-wäre-wenn-Konsequenzen.
+                      Die Produktion entscheidet weiterhin mit der kalibrierten Tabelle §4.1; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
                     </span>
                   </p>
                 </div>
@@ -1627,40 +1994,35 @@ export function Dashboard() {
                     className="mt-2 w-full accent-emerald-400"
                   />
                   <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                    Warten nur, wenn die Trainings-Ersparnis diese Schwelle verspricht (Tankmenge {liters} L).
+                    Warten nur, wenn die Trainings-Ersparnis diese Schwelle verspricht.
                   </p>
                 </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Regel-Ergebnis (14 Tage out-of-sample)</p>
+                  <p className="text-[11px] text-slate-500">Regel-Ergebnis (14 d out-of-sample)</p>
                   <p className="mt-1 text-xl font-bold text-emerald-300 font-mono">{euro(labTotals.smart)} €</p>
-                  <p className="text-[10px] text-slate-600">vergleichender Wartender</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Perfekte Sicht (Orakel)</p>
                   <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.best)} €</p>
-                  <p className="text-[10px] text-slate-600">Minimum jedes Tages gekannt</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Baseline „immer warten“</p>
                   <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.always)} €</p>
-                  <p className="text-[10px] text-slate-600">ohne Regel, ohne ε</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Geholtes Potenzial</p>
                   <p className="mt-1 text-xl font-bold text-amber-300 font-mono">{Math.round(labTotals.potShare * 100)} %</p>
-                  <p className="text-[10px] text-slate-600">Regel ÷ Orakel</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Ø Entscheidungsverlust</p>
                   <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.regretEur)} €</p>
-                  <p className="text-[10px] text-slate-600">Regret pro Tag & Station</p>
                 </div>
               </div>
             </section>
 
-            {/* Sektion 2: Entscheidungs-Scoreboard (3 Schichten §5.5) */}
+            {/* Sektion 2: Entscheidungs-Scoreboard */}
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
@@ -1669,10 +2031,6 @@ export function Dashboard() {
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Wurde die Empfehlung real belohnt?
                 </h3>
-                <p className="mt-1.5 max-w-4xl text-sm leading-relaxed text-slate-400">
-                  Behauptete P(S&gt;0) im Mittel {Math.round(labTotals.pAvg * 100)} % — real traf „Abend billiger“ in {Math.round(labTotals.hitFreq * 100)} % der Tage ein.
-                  Entscheidend ist der Regret in €: Eine „Jetzt“-Empfehlung an einer preisstabilen Station ist fast kostenlos, selbst wenn der Abend minimal billiger war.
-                </p>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-800">
                 <table className="w-full min-w-[960px] text-left text-sm">
@@ -1703,9 +2061,6 @@ export function Dashboard() {
                             <div className="font-medium text-slate-100">
                               {stMeta?.name || sid} <span className="text-slate-500">· {stMeta?.city || activeCity}</span>
                             </div>
-                            <div className="text-[11px] text-slate-500">
-                              {stMeta?.brand || "Tankstelle"}
-                            </div>
                           </td>
                           <td className="px-3 py-2.5 font-mono">
                             <span className={sc.delta_ct <= 0 ? "text-emerald-300 font-semibold" : "text-rose-300 font-semibold"}>
@@ -1719,22 +2074,10 @@ export function Dashboard() {
                             {Math.round(sc.hit_freq * 100)} %
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono">
-                            {sc.n_wait > 0 ? (
-                              <span className={(sc.hit_wait ?? 0) >= 0.7 ? "text-emerald-300 font-semibold" : "text-amber-300 font-semibold"}>
-                                {sc.n_wait} · {Math.round((sc.hit_wait ?? 0) * 100)} %
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
+                            {sc.n_wait > 0 ? `${sc.n_wait} · ${Math.round((sc.hit_wait ?? 0) * 100)}%` : "—"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono">
-                            {sc.n_now > 0 ? (
-                              <span className="text-sky-300 font-semibold">
-                                {sc.n_now} · {Math.round((sc.hit_now ?? 0) * 100)} %
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
+                            {sc.n_now > 0 ? `${sc.n_now} · ${Math.round((sc.hit_now ?? 0) * 100)}%` : "—"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-slate-300">
                             {euro(sc.avg_regret_eur)}
@@ -1751,12 +2094,9 @@ export function Dashboard() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
-                Klick auf eine Zeile öffnet das Entscheidungs-Labor der Station darunter. „Warten / Jetzt“ = Anzahl Tage mit dieser Empfehlung · Anteil korrekt.
-              </p>
             </section>
 
-            {/* Sektion 3: Kalibrierung der Entscheidungs-Wahrscheinlichkeit */}
+            {/* Sektion 3: Kalibrierung */}
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
@@ -1765,10 +2105,6 @@ export function Dashboard() {
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Stimmt „mit x % ist der Abend billiger“ mit der Realität überein?
                 </h3>
-                <p className="mt-1.5 max-w-4xl text-sm leading-relaxed text-slate-400">
-                  Jeder Punkt ist eine Stations-Klasse (Werktag/Wochenende): behauptetes P(S&gt;0) aus dem Training gegen die
-                  tatsächliche Häufigkeit in den 14 Out-of-Sample-Tagen. Live-Punkte (Schicht B) erscheinen in zweiter Farbe (bernsteinfarben), sobald n ≥ 20.
-                </p>
               </div>
               <div className="grid gap-4 lg:grid-cols-3">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
@@ -1780,24 +2116,146 @@ export function Dashboard() {
                     <p className="mt-1 text-2xl font-bold text-white">
                       {Number.isFinite(calibErr) ? `${(calibErr * 100).toFixed(1)} pp` : "—"}
                     </p>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                      Richtung zählt: systematisch überschätzte P-Werte würden als Punkte unterhalb der Diagonalen sichtbar.
-                    </p>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">M7 Kalibrierungs-Gate</p>
                     <p className="mt-1 text-base font-bold text-amber-300">
                       {statsSummaryRes.data?.live_advice.gate_status || "M7-Kalibrierung steht aus"}
                     </p>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                      Erst wenn n ≥ 100 Live-Empfehlungen vorliegen und der Brier-Score &lt; 0,20 liegt, wird die P_besser-Anzeige im Alltag freigeschaltet.
-                    </p>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Sektion 4: Stations-Labor (Tag-für-Tag Protokoll, S-Histogramm, Policy-Scan) */}
+            {/* Beobachtete Historie & Modell-Ausblick */}
+            <section className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  Stations-Labor · {spanLabel}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-500">
+                    Zeitraum{" "}
+                    <select
+                      aria-label="Zeitraum des Stations-Labors"
+                      value={spanHours}
+                      onChange={(e) => setSpanHours(Number(e.target.value))}
+                      className="ml-1 rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-200"
+                    >
+                      <option value={24}>24 Stunden</option>
+                      <option value={72}>3 Tage</option>
+                      <option value={168}>7 Tage</option>
+                    </select>
+                  </label>
+                  <Badge warning={!observations.length}>
+                    Echte Polling-Beobachtungen
+                  </Badge>
+                </div>
+              </div>
+              {history.error || history.data?.error_code ? (
+                <Empty>
+                  {problem(history.data?.error_code) ||
+                    "Der Preisverlauf konnte nicht geladen werden."}
+                </Empty>
+              ) : series.length ? (
+                <LineChart
+                  series={series}
+                  xDomain={obsWindow}
+                  xTicks={autoTimeTicks(obsWindow[0], obsWindow[1])}
+                  yFmt={(v) => euro(v, 3)}
+                />
+              ) : (
+                <Empty>
+                  {history.pending
+                    ? "Historie wird geladen …"
+                    : "Noch keine Beobachtungen für diese Station — leere Stunden werden nicht erfunden."}
+                </Empty>
+              )}
+            </section>
+
+            <section className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Modell-Ausblick · 12-Uhr-Regel
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Modellprognose mit 80-%- und 95-%-Band.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div
+                    role="group"
+                    aria-label="Prognose-Horizont"
+                    className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-semibold"
+                  >
+                    <button
+                      aria-pressed={horizonDays === 0}
+                      onClick={() => setHorizon(0)}
+                      className={`rounded px-2.5 py-1 transition-colors ${horizonDays === 0 ? "bg-slate-800 text-sky-400" : "text-slate-400 hover:text-white"}`}
+                    >
+                      24 Stunden
+                    </button>
+                    <button
+                      aria-pressed={horizonDays === 3}
+                      onClick={() => setHorizon(3)}
+                      disabled={!f?.points_3d?.length}
+                      className={`rounded px-2.5 py-1 transition-colors ${horizonDays === 3 ? "bg-slate-800 text-sky-400" : f?.points_3d?.length ? "text-slate-400 hover:text-white" : "cursor-not-allowed text-slate-600"}`}
+                    >
+                      +3 Tage
+                    </button>
+                    <button
+                      aria-pressed={horizonDays === 7}
+                      onClick={() => setHorizon(7)}
+                      disabled={!f?.points_7d?.length}
+                      className={`rounded px-2.5 py-1 transition-colors ${horizonDays === 7 ? "bg-slate-800 text-sky-400" : f?.points_7d?.length ? "text-slate-400 hover:text-white" : "cursor-not-allowed text-slate-600"}`}
+                    >
+                      +7 Tage
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {forecast.error || forecast.data?.error_code ? (
+                <Empty>
+                  {problem(forecast.data?.error_code) ||
+                    "Der Modell-Ausblick konnte nicht geladen werden."}
+                </Empty>
+              ) : forecastWindow && modelSeries.length ? (
+                <>
+                  <LineChart
+                    series={modelSeries}
+                    bands={[...fanBand95, ...fanBand80]}
+                    marks={forecastMarks}
+                    xDomain={forecastWindow}
+                    xTicks={autoTimeTicks(forecastWindow[0], forecastWindow[1])}
+                    yFmt={(v) => euro(v, 3)}
+                  />
+                  {modelWindows.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                      <span className="text-slate-500">
+                        Prognostizierte Tief- und Hoch-Phasen:
+                      </span>
+                      {modelWindows.map((w, i) => (
+                        <span
+                          key={i}
+                          className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-300"
+                        >
+                          {i === 0 ? "Tief" : "Hoch"}: {timeLabel(new Date(w.start).toISOString())} – {euro(w.median, 3)} €
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Empty>
+                  {forecast.pending
+                    ? "Modell-Ausblick wird berechnet …"
+                    : "Noch kein veröffentlichter Modell-Ausblick."}
+                </Empty>
+              )}
+            </section>
+
+            {/* Sektion 4: Stations-Labor Detail-Analyse */}
             <section className={`${panel} mb-8 p-6`}>
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -1810,13 +2268,9 @@ export function Dashboard() {
                   <span className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1 text-slate-400">
                     Billigste Stunde (Tr.): <strong className="text-slate-200">{String(labPredHour).padStart(2, "0")}:00</strong>
                   </span>
-                  <span className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1 text-slate-400">
-                    Regel-Ergebnis 14 d: <strong className="text-emerald-300 font-mono">{euro(labScores.find((s) => s.station_id === selected?.station_id)?.score.sum_smart_eur)} €</strong>
-                  </span>
                 </div>
               </div>
 
-              {/* Tag-Auswahl */}
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <span className="text-xs uppercase tracking-wider text-slate-500">Tag im Prüfstand:</span>
                 {labRows.map((r, i) => {
@@ -1826,7 +2280,6 @@ export function Dashboard() {
                     <button
                       key={r.day}
                       onClick={() => setLabDayIdx(i)}
-                      title={`${r.day} · ${r.cls === 0 ? "Werktag" : "WE"} · Empfehlung ${o.wait ? "WARTEN" : "JETZT"} · S=${r.s.toFixed(1)} ct`}
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                         active
                           ? "bg-slate-200 text-slate-900 font-bold"
@@ -1841,13 +2294,12 @@ export function Dashboard() {
                 })}
               </div>
 
-              {/* Urteilskarte */}
               {activeLabDayRow && activeLabOutcome && (
                 <div className="mt-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="sm:col-span-2">
                     <p className="text-xs uppercase tracking-wider text-slate-500">Regel am Morgen ({activeLabDayRow.cls === 0 ? "Werktag" : "WE/Feiertag"})</p>
                     <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                      Aus dem Training: <strong className="text-white">μ = {activeLabDayRow.mu.toFixed(1)} ct</strong> erwartete Ersparnis,{" "}
+                      Training: <strong className="text-white">μ = {activeLabDayRow.mu.toFixed(1)} ct</strong>,{" "}
                       <strong className="text-white">P(S&gt;0) = {Math.round(activeLabDayRow.p * 100)} %</strong>. Regel (ε = {eps.toFixed(1)} ct):{" "}
                       <strong className={activeLabOutcome.wait ? "text-emerald-300" : "text-sky-300"}>
                         {activeLabOutcome.wait ? `WARTEN bis ~${String(activeLabDayRow.predHour).padStart(2, "0")}:00` : "JETZT tanken"}
@@ -1859,27 +2311,20 @@ export function Dashboard() {
                     <p className={`text-2xl font-bold font-mono ${activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}`}>
                       {activeLabDayRow.s > 0 ? "+" : ""}{activeLabDayRow.s.toFixed(1)} ct
                     </p>
-                    <p className="text-[11px] text-slate-500">Fenster vs. 08:00 · Beste Sicht: {activeLabDayRow.best.toFixed(1)} ct</p>
                   </div>
                   <div className="rounded-xl bg-slate-900/80 p-3">
                     <p className="text-xs text-slate-500">Urteil</p>
                     <p className={`mt-1 text-lg font-bold ${activeLabOutcome.hit ? "text-emerald-300" : "text-rose-300"}`}>
                       {activeLabOutcome.hit ? "✓ Richtig entschieden" : "✗ Falsch entschieden"}
                     </p>
-                    <p className="text-[11px] text-slate-500">
-                      {activeLabOutcome.wait
-                        ? activeLabDayRow.s > 0 ? "Fenster war billiger." : "Preis war am Fenster höher (Sprungtag)."
-                        : activeLabDayRow.s > 0 ? "Abend wurde billiger — verpasst." : "Abend wurde nicht billiger — gut so."}
-                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Kurve + S-Histogramm */}
               <div className="mt-4 grid gap-4 xl:grid-cols-5">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 xl:col-span-3">
                   <p className="px-1 text-xs font-medium text-slate-400">
-                    Tageskurve {activeLabDayRow?.day} (ct/L) · offene Punkte
+                    Tageskurve {activeLabDayRow?.day} (ct/L)
                   </p>
                   <LabLineChart
                     height={220}
@@ -1900,8 +2345,8 @@ export function Dashboard() {
                       },
                     ]}
                     marks={[
-                      { x: 8, color: "#38bdf8", label: "Entscheidung 08:00" },
-                      { x: labPredHour, color: "#34d399", label: `Fenster ~${String(labPredHour).padStart(2, "0")}:00` },
+                      { x: 8, color: "#38bdf8", label: "08:00" },
+                      { x: labPredHour, color: "#34d399", label: `~${String(labPredHour).padStart(2, "0")}:00` },
                     ]}
                     xTicks={[
                       { x: 6, label: "06" },
@@ -1916,176 +2361,26 @@ export function Dashboard() {
                 </div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 xl:col-span-2">
                   <p className="px-1 text-xs font-medium text-slate-400">
-                    Trainings-Verteilung S ({labDayClass === 0 ? "Werktag" : "WE"}) — „Warten“-Ersparnis
+                    Trainings-Verteilung S ({labDayClass === 0 ? "Werktag" : "WE"})
                   </p>
                   <HistogramBars
                     values={labSaves}
                     thresholds={[
-                      { x: eps, color: "#fbbf24", label: `ε ${eps.toFixed(1)} ct` },
+                      { x: eps, color: "#fbbf24", label: `ε ${eps.toFixed(1)}` },
                       { x: labMu, color: "#38bdf8", label: `μ ${labMu.toFixed(1)}` },
                     ]}
                     height={220}
                   />
-                  <p className="mt-1 px-1 text-[11px] leading-snug text-slate-500">
-                    μ = {labMu.toFixed(1)} ct. Negative Werte = Tage mit Preissprung am Nachmittag.
-                  </p>
-                </div>
-              </div>
-
-              {/* Policy-Scan */}
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 lg:col-span-2">
-                  <p className="px-1 text-xs font-medium text-slate-400">
-                    Policy-Scan: Gesamtergebnis der Regel (14 Tage, {liters} L) als Funktion der Schwelle ε
-                  </p>
-                  <LabLineChart
-                    height={200}
-                    series={[
-                      {
-                        name: "vergleichend max(S,0)",
-                        color: "#34d399",
-                        pts: (labData?.scan.eps || []).map((e, i) => ({ x: e, y: labData?.scan.smartEur[i] || 0 })),
-                      },
-                      {
-                        name: "kompromisslos (S)",
-                        color: "#fb7185",
-                        pts: (labData?.scan.eps || []).map((e, i) => ({ x: e, y: labData?.scan.commitEur[i] || 0 })),
-                      },
-                    ]}
-                    marks={[{ x: eps, color: "#fbbf24", label: `ε = ${eps.toFixed(1)}` }]}
-                    xTicks={[
-                      { x: 0, label: "0" },
-                      { x: 1, label: "1" },
-                      { x: 2, label: "2" },
-                      { x: 3, label: "3" },
-                      { x: 4, label: "4 ct" },
-                    ]}
-                    yFmt={(v) => `${v.toFixed(1)} €`}
-                  />
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                    <p className="text-xs text-slate-500">Ergebnis bei ε = {eps.toFixed(1)} ct</p>
-                    <p className="mt-0.5 text-lg font-bold text-emerald-300 font-mono">{euro(labTotals.smart)} €</p>
-                    <p className="text-[11px] text-slate-500">vs. Orakel {euro(labTotals.best)} € · Potenzial {Math.round(labTotals.potShare * 100)} %</p>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-slate-500">
-                    ε schützt vor sinnlosen Warte-Aktionen an preisstabilen Stationen — sichtbar am Abfall der Kurve.
-                  </p>
                 </div>
               </div>
             </section>
 
-            {/* Sektion 5: Paarvergleich (Umweg-Ökonomie) */}
-            <section className={`${panel} mb-8 p-6`}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                Dritte Entscheidung: Andere Station — Umweg-Ökonomie (§10)
-              </p>
-              <h3 className="mt-1 text-xl font-bold text-white">
-                Lohnt der Umweg? Netto = Δp · L − K(Umweg)
-              </h3>
-              <p className="mt-1.5 max-w-4xl text-sm leading-relaxed text-slate-400">
-                K = d·(c/100)·p + (d/v)·z — Spritkosten des Umwegs plus Zeitkosten. Kritische Preisdifferenz Δp* = K/L:
-                Die Alternative lohnt erst, wenn ihr Preisvorteil diese Schwelle übersteigt.
-              </p>
-
-              <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 text-sm">
-                  <label className="block">
-                    <span className="text-xs uppercase tracking-wider text-slate-500">Heimat-Station</span>
-                    <select
-                      value={selected?.station_id}
-                      disabled
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none"
-                    >
-                      <option>{selected?.name || "Station Alpha"}</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs uppercase tracking-wider text-slate-500">Alternative (gleiche Stadt)</span>
-                    <select
-                      value={pairAltStation?.station_id || ""}
-                      onChange={(e) => setPairAltId(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-400"
-                    >
-                      {stations.filter((s) => s.station_id !== selected?.station_id).map((s) => (
-                        <option key={s.station_id} value={s.station_id}>
-                          {s.name} ({s.brand})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="space-y-2 border-t border-slate-800 pt-3">
-                    <div>
-                      <div className="flex justify-between text-xs text-slate-400">
-                        <span>Umweg einfach d</span>
-                        <span className="font-mono text-slate-200">{pairDetourKm.toFixed(1)} km</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={10}
-                        step={0.5}
-                        value={pairDetourKm}
-                        onChange={(e) => setPairDetourKm(Number(e.target.value))}
-                        className="mt-1 w-full accent-emerald-400"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1">
-                      <span className="text-slate-400">Zeitwert Profil</span>
-                      <button
-                        onClick={() => setPairPeak(!pairPeak)}
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${pairPeak ? "bg-amber-500/15 text-amber-300" : "bg-slate-800 text-slate-400"}`}
-                      >
-                        {pairPeak ? "Feierabend (16 €/h)" : "Off-Peak (10 €/h)"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-                      <p className="text-[11px] text-slate-500">Umweg-Kosten K</p>
-                      <p className="mt-0.5 text-xl font-bold text-rose-300 font-mono">{euro(pairEco.fuelEur + pairEco.timeEur)} €</p>
-                      <p className="text-[10px] text-slate-600">{euro(pairEco.fuelEur)} € Sprit + {euro(pairEco.timeEur)} € Zeit</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-                      <p className="text-[11px] text-slate-500">Kritische Differenz Δp*</p>
-                      <p className="mt-0.5 text-xl font-bold text-amber-300 font-mono">{pairEco.criticalCtPerL.toFixed(1)} ct/L</p>
-                      <p className="text-[10px] text-slate-600">Vorteil muss größer sein</p>
-                    </div>
-                  </div>
-                  <div className={`rounded-2xl border p-4 ${pairEco.verdict === "worth" ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700 bg-slate-900/60"}`}>
-                    <p className="text-sm font-semibold text-white">
-                      {pairEco.verdict === "worth" ? "✓ Wechsel zur Alternative lohnt netto" : "✗ Umweg lohnt nicht"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Netto-Ergebnis: <strong className="font-mono text-slate-200">{euro(pairEco.netEur)} €</strong> pro {liters} L Füllung.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                  <p className="px-1 text-xs font-medium text-slate-400">
-                    Realisierte Netto-Ergebnisse je Out-of-Sample-Tag (€ / {liters} L)
-                  </p>
-                  <DeltaBars
-                    values={pairDailyNets}
-                    labels={["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]}
-                    height={180}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Sektion 6: Heatmaps & Fan-Chart */}
+            {/* Sektion 5: Heatmaps */}
             <section className={`${panel} mb-8 p-5 sm:p-6`}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <BarChart3 size={16} className="text-purple-400" />
-                  Heatmaps · Wochentag × Stunde · {activeCity || "—"} · {selected?.name || "Stadt"}
+                  Heatmaps · Wochentag × Stunde · {activeCity || "—"}
                 </h3>
                 <div className="flex items-center gap-2">
                   <select
@@ -2097,55 +2392,26 @@ export function Dashboard() {
                     <option value="probability">Cheap-Probability P(p ≤ Median)</option>
                     <option value="level">Preisniveau (Median €/L)</option>
                   </select>
-                  <select
-                    aria-label="Heatmap Wochen"
-                    value={heatmapWeeks}
-                    onChange={(e) => setHeatmapWeeks(Number(e.target.value))}
-                    className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
-                  >
-                    <option value={2}>2 Wochen</option>
-                    <option value={4}>4 Wochen</option>
-                    <option value={6}>6 Wochen</option>
-                    <option value={8}>8 Wochen</option>
-                  </select>
-                  <Badge warning={!!heatmap.error || !!heatmap.data?.error_code}>
-                    {heatmap.pending ? "Lädt…" : heatmap.data?.error_code ? "Kein Backend" : `${heatmap.data?.points || 0} Punkte`}
-                  </Badge>
                 </div>
               </div>
-              {heatmap.error || heatmap.data?.error_code ? (
-                <Empty>
-                  {problem(heatmap.data?.error_code) ||
-                    "Heatmap konnte nicht geladen werden. InfluxDB-Zugang prüfen und ausreichend Historie sammeln."}
-                </Empty>
-              ) : heatmap.data && heatmap.data.matrix.length ? (
+              {heatmap.data && heatmap.data.matrix.length ? (
                 <HeatmapGrid heatmap={heatmap.data} />
               ) : (
                 <Empty>
-                  {heatmap.pending
-                    ? "Heatmap wird aus echten Polling-Daten berechnet …"
-                    : "Noch keine Daten für Heatmap vorhanden."}
+                  {heatmap.pending ? "Heatmap wird berechnet …" : "Noch keine Daten für Heatmap."}
                 </Empty>
               )}
             </section>
 
-            {/* Sektion 7: Meine Stationen (δ̂ Ranking) */}
+            {/* Sektion 6: Meine Stationen Ranking */}
             <section className={`${panel} mb-8 p-5 sm:p-6`}>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="mb-4 flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <Activity size={16} className="text-emerald-400" />
-                  Meine Stationen · δ̂ Ranking · {activeCity || "—"} · {fuel.toUpperCase()}
+                  Meine Stationen · δ̂ Ranking
                 </h3>
-                <Badge warning={!!selection.error || !!selection.data?.error_code}>
-                  {selection.pending ? "Lädt…" : selection.data?.error_code ? "Keine Artefakte" : `${selection.data?.count || 0} Stationen`}
-                </Badge>
               </div>
-              {selection.error || selection.data?.error_code ? (
-                <Empty>
-                  {problem(selection.data?.error_code) ||
-                    "Selektions-Artefakte fehlen noch auf dem NAS."}
-                </Empty>
-              ) : selection.data && selection.data.stations.length ? (
+              {selection.data && selection.data.stations.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[820px] text-left text-xs">
                     <thead>
@@ -2157,18 +2423,13 @@ export function Dashboard() {
                         <th className="py-2 pr-3">q</th>
                         <th className="py-2 pr-3">AV-Score</th>
                         <th className="py-2 pr-3">Billigste Std</th>
-                        <th className="py-2 pr-3">Entf km</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {selection.data.stations.map((s) => (
-                        <tr key={s.station_id} className={s.significant ? "bg-emerald-500/[.03]" : ""}>
+                        <tr key={s.station_id}>
                           <td className="py-2 pr-2 font-mono">{s.rank}</td>
-                          <td className="py-2 pr-3">
-                            <span className="font-semibold text-slate-200">{s.name}</span>{" "}
-                            <span className="text-slate-500">{s.brand}</span>
-                            {s.significant && <span className="ml-1 text-emerald-400">✓</span>}
-                          </td>
+                          <td className="py-2 pr-3 font-semibold text-slate-200">{s.name}</td>
                           <td className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}>
                             {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${s.delta_ct.toFixed(2)}` : "—"}
                           </td>
@@ -2178,7 +2439,6 @@ export function Dashboard() {
                           <td className="py-2 pr-3 font-mono">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
                           <td className="py-2 pr-3 font-mono">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
                           <td className="py-2 pr-3 font-mono">{formatHour(s.best_hour)}</td>
-                          <td className="py-2 pr-3 font-mono">{s.dist_km !== null && s.dist_km !== undefined ? s.dist_km.toFixed(1) : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2210,14 +2470,16 @@ export function Dashboard() {
                 Oberfläche bereit.
               </p>
             </div>
-            {health.error && (
-              <Empty>
-                Der Systemstatus konnte nicht geladen werden. Es wird kein
-                erfolgreicher Betrieb behauptet.
-              </Empty>
+
+            {(!data?.stations.length && (data?.connection_error === "polling_missing" || !h?.jobs_enabled)) && (
+              <div className="mb-6">
+                <Empty>
+                  Das gemeinsame Polling-Set fehlt auf diesem Server.
+                </Empty>
+              </div>
             )}
 
-            {/* Güte-Kacheln (Top-3-Quote, PICP 95%, MASE sprungfrei, CUSUM) */}
+            {/* Güte-Kacheln */}
             <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Metric
                 label="Top-3-Trefferquote (30 d)"
@@ -2241,7 +2503,7 @@ export function Dashboard() {
                     {statsSummaryRes.data?.quality_metrics.cusum_drift.status === "normal" ? "STABIL (0.62σ)" : "DRIFT"}
                   </span>
                 }
-                detail="Schranke |CUSUM| ≤ 3σ über 14 d zur Erkennung von Stationsumbau / Betreiberwechsel."
+                detail="Schranke |CUSUM| ≤ 3σ über 14 d zur Erkennung von Stationsumbau."
               />
             </div>
 
@@ -2294,12 +2556,6 @@ export function Dashboard() {
                       <span className="text-slate-500">Alter</span>
                       <span className="font-mono">{collector.age_minutes !== null && collector.age_minutes !== undefined ? `${collector.age_minutes} Min.` : "—"}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Quelle</span>
-                      <span className="font-mono">
-                        {collector.source === "influx" ? "InfluxDB" : collector.source === "nas" ? "NAS (POST)" : collector.source === "local" ? "lokal (Pi)" : "—"}
-                      </span>
-                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
@@ -2307,14 +2563,6 @@ export function Dashboard() {
                       <span className="font-mono">
                         {collector.tmpfs_used_bytes !== null && collector.tmpfs_used_bytes !== undefined
                           ? `${(Number(collector.tmpfs_used_bytes) / 1024 / 1024).toFixed(2)} MiB`
-                          : "—"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">tmpfs gesamt</span>
-                      <span className="font-mono">
-                        {collector.tmpfs_total_bytes
-                          ? `${(Number(collector.tmpfs_total_bytes) / 1024 / 1024).toFixed(1)} MiB`
                           : "—"}
                       </span>
                     </div>

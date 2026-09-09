@@ -47,6 +47,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if hour is None:
         try:
             from zoneinfo import ZoneInfo
+
             berlin_dt = clock_now.astimezone(ZoneInfo("Europe/Berlin"))
             hour = berlin_dt.hour + berlin_dt.minute / 60.0
         except Exception:
@@ -111,10 +112,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     if points:
         # Finde günstigste verbleibende Stunden heute
-        today_points = [
-            p for p in points
-            if p.get("q50") is not None
-        ]
+        today_points = [p for p in points if p.get("q50") is not None]
         if today_points:
             # Sortiere nach q50
             sorted_pts = sorted(today_points, key=lambda p: p["q50"])
@@ -123,8 +121,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
             # Versuche Zeitstempel oder Stunde zu parsen
             try:
-                pt_ts = dt.datetime.fromisoformat(best_pt["timestamp"].replace("Z", "+00:00"))
+                pt_ts = dt.datetime.fromisoformat(
+                    best_pt["timestamp"].replace("Z", "+00:00")
+                )
                 from zoneinfo import ZoneInfo
+
                 pt_berlin = pt_ts.astimezone(ZoneInfo("Europe/Berlin"))
                 best_h = pt_berlin.hour + pt_berlin.minute / 60.0
             except Exception:
@@ -138,11 +139,13 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 p1 = today_points[i]
                 p2 = today_points[i + 1]
                 med = round(((p1.get("q50") or 0) + (p2.get("q50") or 0)) / 2, 3)
-                windows_today.append({
-                    "start": p1.get("timestamp"),
-                    "end": p2.get("timestamp"),
-                    "expected_price": med,
-                })
+                windows_today.append(
+                    {
+                        "start": p1.get("timestamp"),
+                        "end": p2.get("timestamp"),
+                        "expected_price": med,
+                    }
+                )
             windows_today = sorted(windows_today, key=lambda w: w["expected_price"])[:3]
 
     if not windows_today:
@@ -170,12 +173,16 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if points_7d:
         for p in points_7d[:5]:
             if p.get("q50") is not None:
-                windows_week.append({
-                    "timestamp": p.get("timestamp"),
-                    "expected_price": p.get("q50"),
-                })
+                windows_week.append(
+                    {
+                        "timestamp": p.get("timestamp"),
+                        "expected_price": p.get("q50"),
+                    }
+                )
 
-    expected_saving_eur = round(max(0.0, (price_now - expected_price_later) * liters), 2)
+    expected_saving_eur = round(
+        max(0.0, (price_now - expected_price_later) * liters), 2
+    )
 
     # Alternativen (F2 Umweg-Ökonomie)
     alternatives_nearby = []
@@ -214,7 +221,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if best_alt is None or net_eur > best_alt["net_eur"]:
             best_alt = alt_entry
 
-    alternatives_nearby = sorted(alternatives_nearby, key=lambda a: a["net_eur"], reverse=True)[:3]
+    alternatives_nearby = sorted(
+        alternatives_nearby, key=lambda a: a["net_eur"], reverse=True
+    )[:3]
 
     # Kalibrierungs-Gate & Entscheidungs-Logik (§0.4, §4, §6)
     store = load_store(live_data.settings)
@@ -228,7 +237,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # „Heute später/Diese Woche“ im Alltag, Warten-Option im 3-Wege-Vergleich."
     p_correct = None
     confidence_badge = "low"
-    reason_short = "M7-Kalibrierungs-Gate steht aus (noch keine kalibrierte Empfehlung)."
+    reason_short = (
+        "M7-Kalibrierungs-Gate steht aus (noch keine kalibrierte Empfehlung)."
+    )
 
     if not is_calibrated:
         action = "no_advice"
@@ -242,7 +253,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if is_golden_window or price_now <= expected_price_later + 0.01:
             action = "refuel_now"
             confidence_badge = "high"
-            reason_short = "Aktueller Preis liegt im Tagestief-Bereich. Jetzt tanken empfohlen."
+            reason_short = (
+                "Aktueller Preis liegt im Tagestief-Bereich. Jetzt tanken empfohlen."
+            )
             p_correct = 0.88
         elif best_alt and best_alt["net_eur"] >= 1.5:
             action = "refuel_elsewhere"

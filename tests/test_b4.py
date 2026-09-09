@@ -116,7 +116,9 @@ def test_decide_endpoint_and_gate(b4_settings):
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         # GET /api/v1/decide
-        status, body = _get_json(base + "/api/v1/decide?city=Frankfurt&fuel=e10&liters=40")
+        status, body = _get_json(
+            base + "/api/v1/decide?city=Frankfurt&fuel=e10&liters=40"
+        )
         assert status == 200
         assert "primary" in body
         assert "alternatives_nearby" in body
@@ -127,7 +129,12 @@ def test_decide_endpoint_and_gate(b4_settings):
         # Before M7, calibrated is False and p_correct is None (Gate §0.4, §11.1)
         assert body["calibrated"] is False
         assert body["primary"]["p_correct"] is None
-        assert body["primary"]["action"] in ("no_advice", "refuel_now", "wait", "refuel_elsewhere")
+        assert body["primary"]["action"] in (
+            "no_advice",
+            "refuel_now",
+            "wait",
+            "refuel_elsewhere",
+        )
         assert body["episode"]["status"] in ("open", "waiting", "due")
 
         # Alias /v1/decide
@@ -157,6 +164,7 @@ def test_snapshot_collapse_rule(b4_settings):
     d1 = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
     ep_id = d1["episode"]["id"]
     from app.feedback import load_store
+
     store = load_store(b4_settings)
     assert len(store["episodes"]) == 1
     assert len(store["episodes"][0]["snapshots"]) == 1
@@ -188,11 +196,15 @@ def test_intent_and_due_prompt(b4_settings):
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         # Create episode
-        _, d = _get_json(base + "/api/v1/decide?city=Frankfurt&fuel=e10&station_id=" + UID)
+        _, d = _get_json(
+            base + "/api/v1/decide?city=Frankfurt&fuel=e10&station_id=" + UID
+        )
         ep_id = d["episode"]["id"]
 
         # POST intent 'wait'
-        st, res = _post_json(base + f"/api/v1/episodes/{ep_id}/intent", {"intent": "wait"})
+        st, res = _post_json(
+            base + f"/api/v1/episodes/{ep_id}/intent", {"intent": "wait"}
+        )
         assert st == 200
         assert res["intent"] == "wait"
         assert res["status"] == "waiting"
@@ -203,7 +215,9 @@ def test_intent_and_due_prompt(b4_settings):
         assert ep_list["count"] >= 1
 
         # POST intent 'dismiss'
-        st_dis, res_dis = _post_json(base + f"/api/v1/episodes/{ep_id}/intent", {"intent": "dismiss"})
+        st_dis, res_dis = _post_json(
+            base + f"/api/v1/episodes/{ep_id}/intent", {"intent": "dismiss"}
+        )
         assert st_dis == 200
         assert res_dis["status"] == "expired"
     finally:

@@ -74,7 +74,13 @@ def _same_advice(a: dict, b: dict) -> bool:
         delta_m = abs((t_b - t_a).total_seconds()) / 60.0
     except Exception:
         delta_m = 999.0
-    return action_match and station_match and alt_match and fuel_match and delta_m < SNAPSHOT_COLLAPSE_MINUTES
+    return (
+        action_match
+        and station_match
+        and alt_match
+        and fuel_match
+        and delta_m < SNAPSHOT_COLLAPSE_MINUTES
+    )
 
 
 def _open_episode(store: dict[str, Any]) -> dict[str, Any] | None:
@@ -84,7 +90,9 @@ def _open_episode(store: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def record_snapshot(settings, snapshot_data: dict[str, Any], clock=None) -> tuple[dict[str, Any], dict[str, Any]]:
+def record_snapshot(
+    settings, snapshot_data: dict[str, Any], clock=None
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Registriert einen Snapshot nach der 30-min-Kollabierungsregel (§5.4).
 
     Gibt (store, episode) zurück.
@@ -97,7 +105,9 @@ def record_snapshot(settings, snapshot_data: dict[str, Any], clock=None) -> tupl
     for ep in store.get("episodes", []):
         if ep.get("status") in ("open", "waiting", "due"):
             try:
-                opened = dt.datetime.fromisoformat(ep.get("opened_at", "").replace("Z", "+00:00"))
+                opened = dt.datetime.fromisoformat(
+                    ep.get("opened_at", "").replace("Z", "+00:00")
+                )
                 age_h = (clock_now - opened).total_seconds() / 3600.0
                 if age_h > EPISODE_MAX_HOURS:
                     ep["status"] = "expired"
@@ -145,9 +155,17 @@ def record_snapshot(settings, snapshot_data: dict[str, Any], clock=None) -> tupl
         last = ep.get("last_snapshot")
         if last and _same_advice(last, snap):
             # Kollabieren: Vorhandenen Snapshot aktualisieren
-            updated_snap = {**last, **snap, "id": last["id"], "emitted_at": last["emitted_at"]}
+            updated_snap = {
+                **last,
+                **snap,
+                "id": last["id"],
+                "emitted_at": last["emitted_at"],
+            }
             ep["last_snapshot"] = updated_snap
-            ep["snapshots"] = [updated_snap if s["id"] == last["id"] else s for s in ep.get("snapshots", [])]
+            ep["snapshots"] = [
+                updated_snap if s["id"] == last["id"] else s
+                for s in ep.get("snapshots", [])
+            ]
         else:
             # Advice gekippt oder > 30 min vergangen -> neuen Snapshot anhängen
             ep["last_snapshot"] = snap
@@ -190,7 +208,9 @@ def set_intent(settings, episode_id: str, intent: str, clock=None) -> dict[str, 
     return {"error_code": "episode_not_found"}
 
 
-def classify_compliance(ep: dict[str, Any] | None, fill_hour: float, station_id: str) -> str:
+def classify_compliance(
+    ep: dict[str, Any] | None, fill_hour: float, station_id: str
+) -> str:
     """Slack-Matching (§5.4): followed | partial | ignored | unrelated."""
     if not ep:
         return "unrelated"
@@ -301,7 +321,9 @@ def record_fill(settings, fill_data: dict[str, Any], clock=None) -> dict[str, An
     return fill_event
 
 
-def _settle_one_snapshot(store: dict[str, Any], ep: dict[str, Any], snap: dict[str, Any], now_str: str) -> dict[str, Any]:
+def _settle_one_snapshot(
+    store: dict[str, Any], ep: dict[str, Any], snap: dict[str, Any], now_str: str
+) -> dict[str, Any]:
     snap_id = snap.get("id")
     for s in store.get("settlements", []):
         if s.get("snapshot_id") == snap_id:
@@ -371,6 +393,7 @@ def settle_snapshots(settings, live_data=None, clock=None) -> dict[str, Any]:
         # Wir ermitteln aktuelle Berlin-Stunde
         try:
             from zoneinfo import ZoneInfo
+
             berlin_dt = clock_now.astimezone(ZoneInfo("Europe/Berlin"))
             current_berlin_hour = berlin_dt.hour + berlin_dt.minute / 60.0
         except Exception:
@@ -423,7 +446,17 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
     brier_sq_errors = []
 
     # 10 Bins für Reliability Diagramm (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
-    bins = [{"bin": i, "min_p": i * 0.1, "max_p": (i + 1) * 0.1, "count": 0, "p_sum": 0.0, "hits": 0} for i in range(10)]
+    bins = [
+        {
+            "bin": i,
+            "min_p": i * 0.1,
+            "max_p": (i + 1) * 0.1,
+            "count": 0,
+            "p_sum": 0.0,
+            "hits": 0,
+        }
+        for i in range(10)
+    ]
 
     for s in settlements:
         snap = snapshots_by_id.get(s.get("snapshot_id"))
@@ -443,7 +476,9 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
                 now_hits += 1
 
         # Brier
-        p_val = p_correct if (p_correct is not None and math.isfinite(p_correct)) else 0.75
+        p_val = (
+            p_correct if (p_correct is not None and math.isfinite(p_correct)) else 0.75
+        )
         brier_sq_errors.append((p_val - is_win) ** 2)
 
         bin_idx = min(9, max(0, int(p_val * 10)))
@@ -460,15 +495,21 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
     reliability = []
     for b in bins:
         count = b["count"]
-        mean_p = round(b["p_sum"] / count, 3) if count > 0 else round((b["min_p"] + b["max_p"]) / 2, 3)
+        mean_p = (
+            round(b["p_sum"] / count, 3)
+            if count > 0
+            else round((b["min_p"] + b["max_p"]) / 2, 3)
+        )
         emp_hit = round(b["hits"] / count, 3) if count > 0 else None
-        reliability.append({
-            "bin": b["bin"],
-            "range": f"{int(b['min_p']*100)}–{int(b['max_p']*100)}%",
-            "count": count,
-            "mean_p": mean_p,
-            "empirical_hit_rate": emp_hit,
-        })
+        reliability.append(
+            {
+                "bin": b["bin"],
+                "range": f"{int(b['min_p'] * 100)}–{int(b['max_p'] * 100)}%",
+                "count": count,
+                "mean_p": mean_p,
+                "empirical_hit_rate": emp_hit,
+            }
+        )
 
     # M7 Kalibrierungs-Gate (§0.4, §6): Brier < 0.25 bei n >= 100
     calibrated = (n >= 100) and (brier_30d is not None and brier_30d < 0.25)
@@ -531,7 +572,10 @@ def compute_wallet_stats(store: dict[str, Any]) -> dict[str, Any]:
             w_hat[h] += 1.0
         w_hat = [v / n_fills for v in w_hat]
         # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + 8*w0) / (n + 8)
-        wh_hours = [round((n_fills * w_hat[i] + 8 * w0[i]) / (n_fills + 8), 4) for i in range(24)]
+        wh_hours = [
+            round((n_fills * w_hat[i] + 8 * w0[i]) / (n_fills + 8), 4)
+            for i in range(24)
+        ]
 
     return {
         "n_fills": n_fills,
