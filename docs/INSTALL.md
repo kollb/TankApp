@@ -251,6 +251,49 @@ Weitere Unraid-Hinweise:
 - **Unraid-Web-UI (Port 80) bleibt unberührt.** Die TankApp-GUI auf Port
   1355 hat dort keinen Standard-Konflikt.
 
+### Störungsfall NAS: unpassendes Python („GLIBC_… not found“)
+
+Symptom direkt beim Start, noch vor jeder TankApp-Ausgabe — `git pull` selbst
+läuft fehlerfrei durch:
+
+```text
+ImportError: /lib64/libm.so.6: version `GLIBC_2.44' not found (required by
+/usr/lib64/python3.12/lib-dynload/math.cpython-312-x86_64-linux-gnu.so)
+```
+
+Das ist **kein TankApp-Fehler**. Das auf dem NAS installierte `python3` wurde
+für ein anderes System gebaut (dort neuere glibc) und kann nicht einmal seine
+eigene Standardbibliothek laden — schon `import math` scheitert. Mit einem
+solchen Python bricht auf dem NAS jedes Python-Programm ab, nicht nur
+TankApp. Schnell prüfen:
+
+```bash
+python3 -c "import math"   # gleicher Fehler => Python-Ursache, nicht TankApp
+ldd --version              # glibc, die das NAS wirklich hat
+which -a python3           # welches python3 wird tatsächlich ausgeführt?
+```
+
+Abhilfe: ein `python3` verwenden, das zur glibc des NAS passt. Auf Unraid
+gehören python3-Pakete in die für die installierte Unraid-Version vorgesehenen
+Paketquellen (klassisch NerdTools; bei Unraid 7 gepflegte Nachfolge-Repos oder
+`un-get`) — **nie** Pakete aus `slackware64-current` oder einer anderen
+Distribution: Current ist eine Rollverteilung mit stets neuerer glibc als das
+feste Slackware-Fundament von Unraid, und genau daraus entsteht dieser Import-
+Fehler. Ein bereits installiertes fremdes Paket vorher mit `removepkg`
+entfernen (auf Unraid zusätzlich prüfen, ob es in `/boot/extra` liegt — dort
+liegende Pakete werden bei jedem Boot neu installiert). TankApp braucht nur
+Python ≥ 3.9 mit Standardbibliothek, keine Zusatzpakete und keine venv.
+
+Ausdrücklich **nicht** versuchen: glibc von Hand zu aktualisieren, zu
+downgraden oder neu zu bauen — das legt erfahrungsgemäß das gesamte NAS lahm.
+Ein „neueres“ Python zusätzlich zu entpacken bringt denselben Fehler wieder,
+weil die System-glibc älter bleibt.
+
+`bash ops/nas/preflight.sh` prüft neben der Version auch, ob `python3` seine
+Standardbibliothek wirklich laden kann, und meldet diesen Fall eigenständig.
+Nach dem Wechsel des Interpreters preflight erneut ausführen und dann wie
+gewohnt `python3 tankapp.py nas-up` starten.
+
 ### Was danach automatisch läuft
 
 | Aufgabe | Zeitplanung und Verhalten |
