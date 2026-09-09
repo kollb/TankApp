@@ -1,11 +1,15 @@
-# TankApp API — Nur-Lese Endpunkte
+# TankApp API — Endpunkte & Spezifikation
 
-> Stand: 09.09.2026 — B3 Endpunkte enthalten, serverseitig, keine Demo-Fallbacks.
+> Stand: 09.09.2026 — B3 & B4 Endpunkte enthalten, serverseitig, keine Demo-Fallbacks.
 
 ## Inhaltsverzeichnis
 
 - [Auth & Limits](#auth--limits)
 - [Übersicht](#übersicht)
+- [Decide (B4 Primär)](#decide-b4-primär)
+- [Episodes & Intent (B4)](#episodes--intent-b4)
+- [Fills (B4 Belege)](#fills-b4-belege)
+- [Stats Summary (B4 3 Schichten)](#stats-summary-b4-3-schichten)
 - [Health](#health)
 - [Stations](#stations)
 - [Series](#series)
@@ -24,23 +28,90 @@
 - Anonym: 60/min, 10 000/Tag (via NAS Reverse Proxy, falls eingerichtet)
 - Header `X-Api-Key`: 300/min, 50 000/Tag
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
-- Einziger Schreib-Endpunkt: `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11); alle anderen POST/PUT/DELETE/PATCH → 501 (außer RP2 Fallback lokal)
+- Schreib-Endpunkte:
+  - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
+  - `POST /api/v1/episodes` bzw. `POST /api/v1/recommendations/{id}/outcome` (Nutzer-Intents, B4)
+  - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
+- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal)
 
 ## Übersicht
 
 | Endpunkt | Neu | Aufgabe |
 |---|---|---|
-| `GET /api/v1/health` | erweitert | App online, Jobs, Archiv, Modelle, Selektion, Collector |
+| `GET /api/v1/decide?city=...&fuel=...&liters=40` | **B4** | Handlungsempfehlung + 3-Wege-Vergleich + Snapshot-Emission |
+| `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
+| `POST /api/v1/episodes` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
+| `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
+| `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
+| `GET /api/v1/health` | erweitert | App online, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
 | `GET /api/v1/stations?fuel=e10&city=...` |  | Aktuelle Preise, frisch ≤30 Min |
 | `GET /api/v1/series?city=...&station_id=...&fuel=...&hours=24` |  | Verlauf 1–168h |
 | `GET /api/v1/forecast?city=...&station_id=...&fuel=...` |  | Modell-Ausblick 24h + 3d/7d |
 | `GET /api/v1/last_forecasts` |  | Für RP2-Cache, nur 24h Horizonte |
 | `GET /api/v1/heatmap?city=...&fuel=...&kind=...&weeks=6&station_id=...` | **B3.9** | DoW×Stunde Niveau + Cheap-Prob |
 | `GET /api/v1/selection?fuel=...&city=...` | **B3.10** | Meine Stationen mit δ̂ |
-| `GET /api/v1/stations/selection` | Alias | Gleich wie selection |
 | `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
 | `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
 | `GET /api/v1/route/evaluate?...` | **B3.12** | Umweg-Ökonomie serverseitig |
+
+## Decide (B4 Primär)
+
+`GET /api/v1/decide?city=Frankfurt&fuel=e10&liters=40&value_of_time=12` (auch als `/v1/decide` erreichbar)
+
+Ermittelt die primäre Handlungsempfehlung an der Zapfsäule mit M7-Gate-Prüfung:
+- `refuel_now`: Aktueller Preis ist bereits günstig / kein nennenswerter Abend-Vorteil
+- `wait`: Warten bis zum Abendfenster lohnt sich (μ ≥ ε)
+- `refuel_elsewhere`: Alternative Station lohnt netto trotz Umweg
+- `no_advice`: Unkalibriert / M7 steht aus (reiner Preisvergleich)
+
+Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten).
+
+## Episodes & Intent (B4)
+
+`GET /api/v1/episodes?status=due`
+
+Liefert fällige Episoden nach Fensterende für den Due-Prompt Banner in der GUI.
+
+`POST /api/v1/episodes`
+
+Setzt die Nutzer-Absicht:
+```json
+{
+  "episode_id": "ep_123456",
+  "intent": "wait",
+  "source": "compass"
+}
+```
+
+## Fills (B4 Belege)
+
+`POST /api/v1/fills`
+
+Erfasst einen echten Tankbeleg im persönlichen Wallet-Ledger:
+```json
+{
+  "station_id": "uuid",
+  "station_name": "Aral Hauptstr.",
+  "liters": 40.0,
+  "price_paid": 1.689,
+  "fuel": "e10",
+  "source": "prompt",
+  "episode_id": "ep_123456"
+}
+```
+
+Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `manual`) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken.
+
+## Stats Summary (B4 3 Schichten)
+
+`GET /api/v1/stats/summary?city=Frankfurt&fuel=e10` (auch als `/v1/stats/summary` erreichbar)
+
+Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
+1. **Schicht A (Markt-Labor Backtest)**: 14 Tage Out-of-Sample Evaluation aller Stationen mit Orakel-Vergleich, Regret und ε-Scan.
+2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt, Brier-Score (30d) und Kalibrierungs-Bins.
+3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
+4. **Güte-Kacheln**: Top-3-Quote, PICP-95%, MASE sprungfrei, CUSUM-Drift-Status (|CUSUM| ≤ 3σ).
+
 
 ## Health
 

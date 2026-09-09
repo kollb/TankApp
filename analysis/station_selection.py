@@ -454,7 +454,7 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     # OSRM liefert Freifluss-Zeiten ohne Stau -> echte Fahrtzeit im Mittel ×f.
     peak_hours = np.array([h in (6, 7, 8, 16, 17, 18, 19) for h in range(24)],
                           dtype=float)
-    peak_share = float(np.sum(w_user * peak_hours))
+    _ = float(np.sum(w_user * peak_hours))
 
     # Umweg-Referenz: konfigurierter Punkt der Stadt, sonst Stations-Schwerpunkt
     home_lat, home_lon = cfg.home.get(
@@ -730,7 +730,7 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
     lines = []
     A = lines.append
     A(f"# TankApp – Tankstellen-Selektion ({cfg.fuel})\n")
-    A(f"Automatisch erzeugt durch `analysis/station_selection.py`.\n")
+    A("Automatisch erzeugt durch `analysis/station_selection.py`.\n")
     A(f"**Parameter:** Top-N = {cfg.top}, Tankvolumen = {cfg.tank_volume:.0f} L, "
       f"Füllungen/Woche = {cfg.fills_per_week}, Bootstrap B = {cfg.n_boot}, "
       f"Coverage-Gate ≥ {cfg.min_coverage:.0%}, FDR-Schwelle q < 0.05, "

@@ -149,22 +149,23 @@ class Handler(SimpleHTTPRequestHandler):
             return values[0]
 
         fuel, city = value("fuel", "e10"), value("city")
+        norm_path = path if path.startswith("/api/") else f"/api{path}"
 
-        if path == "/api/v1/health":
+        if norm_path == "/api/v1/health":
             return self.data.health()
-        if path == "/api/v1/stations":
+        if norm_path == "/api/v1/stations":
             return self.data.stations(fuel, city)
-        if path == "/api/v1/series":
+        if norm_path == "/api/v1/series":
             return self.data.series(
                 value("station_id"), city, fuel, int(value("hours", "24"))
             )
-        if path == "/api/v1/forecast":
+        if norm_path == "/api/v1/forecast":
             return self.data.forecast(value("station_id"), city, fuel)
-        if path == "/api/v1/last_forecasts":
+        if norm_path == "/api/v1/last_forecasts":
             return self.data.last_forecasts()
 
         # --- B3 neue Endpunkte ---
-        if path == "/api/v1/heatmap":
+        if norm_path == "/api/v1/heatmap":
             kind = value("kind", "level")
             weeks_raw = value("weeks", "6")
             try:
@@ -177,21 +178,36 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("invalid_query")
             return self.data.heatmap(city, fuel, kind, weeks, station_id)
 
-        if path == "/api/v1/selection":
-            # Alias: /api/v1/stations/selection
+        if norm_path in ("/api/v1/selection", "/api/v1/stations/selection"):
             return self.data.selection(fuel, city)
 
-        if path == "/api/v1/stations/selection":
-            return self.data.selection(fuel, city)
-
-        if path == "/api/v1/collector/status":
+        if norm_path == "/api/v1/collector/status":
             return self.data.collector_status()
 
-        if path == "/api/v1/route/evaluate":
+        if norm_path == "/api/v1/route/evaluate":
             # Sammelt alle Query-Parameter in ein dict (max 15 Felder)
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
-            # city/fuel defaults handled inside
             return self.data.route_evaluate(params)
+
+        # --- B4 M5/M7 neue Endpunkte ---
+        if norm_path == "/api/v1/decide":
+            params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
+            return self.data.decide(params)
+
+        if norm_path == "/api/v1/episodes":
+            status = value("status")
+            return self.data.episodes(status)
+
+        if norm_path == "/api/v1/stats/summary":
+            params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
+            return self.data.stats_summary(params)
+
+        if norm_path in ("/api/v1/day", "/api/day"):
+            st_id = value("station") or value("station_id")
+            day_str = value("day")
+            if not st_id or not day_str:
+                raise ValueError("invalid_query")
+            return self.data.day_series(st_id, day_str)
 
         return None
 
@@ -203,7 +219,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_get(self):
         url = urlsplit(self.path)
-        if url.path.startswith("/api/"):
+        if url.path.startswith("/api/") or url.path.startswith("/v1/"):
             try:
                 payload = self.api(
                     url.path,
@@ -244,25 +260,31 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_post(self):
         url = urlsplit(self.path)
-        if url.path == "/api/v1/collector/heartbeat":
-            try:
-                length = int(self.headers.get("Content-Length", "0") or "0")
-            except (TypeError, ValueError):
-                # Malformed header: answer 400 instead of dropping the connection.
-                self.json({"error_code": "invalid_request"}, 400)
-                return
-            if length < 0 or length > 10_000:
-                self.json({"error_code": "payload_too_large"}, 413)
-                return
-            try:
-                body = self.rfile.read(length) if length else b"{}"
-                payload = json.loads(body.decode("utf-8") or "{}")
-            except Exception:
-                self.json({"error_code": "invalid_json"}, 400)
-                return
-            if not isinstance(payload, dict):
-                self.json({"error_code": "invalid_query"}, 400)
-                return
+        norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
+
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except (TypeError, ValueError):
+            # Malformed header: answer 400 instead of dropping the connection.
+            self.json({"error_code": "invalid_request"}, 400)
+            return
+
+        if length < 0 or length > 100_000:
+            self.json({"error_code": "payload_too_large"}, 413)
+            return
+
+        try:
+            body = self.rfile.read(length) if length else b"{}"
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except Exception:
+            self.json({"error_code": "invalid_json"}, 400)
+            return
+
+        if not isinstance(payload, dict):
+            self.json({"error_code": "invalid_query"}, 400)
+            return
+
+        if norm_path == "/api/v1/collector/heartbeat":
             allowed = {
                 "timestamp",
                 "last_poll",
@@ -291,7 +313,46 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 self.json({"error_code": "server_error"}, 503)
             return
-        # Unknown POST -> 501 to keep read-only contract (original behavior)
+
+        # --- B4 Intent Endpoint: POST /api/v1/episodes/{id}/intent ---
+        if norm_path.startswith("/api/v1/episodes/") and norm_path.endswith("/intent"):
+            parts = norm_path.split("/")
+            # /api/v1/episodes/<id>/intent => parts = ['', 'api', 'v1', 'episodes', '<id>', 'intent']
+            if len(parts) == 6:
+                episode_id = parts[4]
+                intent = payload.get("intent")
+                if not intent or intent not in ("wait", "navigate", "refuel_now", "dismiss", "none"):
+                    self.json({"error_code": "invalid_query"}, 400)
+                    return
+                try:
+                    res = self.data.set_intent(episode_id, intent)
+                    if isinstance(res, dict) and res.get("error_code") == "episode_not_found":
+                        self.json(res, 404)
+                    else:
+                        self.json(res, 200)
+                except Exception:
+                    self.json({"error_code": "server_error"}, 503)
+                return
+
+        # --- B4 Fills Endpoint: POST /api/v1/fills ---
+        if norm_path == "/api/v1/fills":
+            try:
+                res = self.data.record_fill(payload)
+                self.json(res, 200)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+            return
+
+        # --- B4 Outcome Alias: POST /api/v1/recommendations/{id}/outcome ---
+        if norm_path.startswith("/api/v1/recommendations/") and norm_path.endswith("/outcome"):
+            try:
+                res = self.data.record_fill(payload)
+                self.json(res, 200)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+            return
+
+        # Unknown POST -> 501 to keep read-only contract
         self.send_error(501)
 
     def do_PUT(self):

@@ -401,7 +401,7 @@ class LiveData:
                         else {}
                     ),
                 }
-                for name in ("archive", "models", "selection")
+                for name in ("archive", "models", "selection", "settlement")
             },
             "models": {
                 "published_at": bundle.get("published_at"),
@@ -675,3 +675,91 @@ class LiveData:
             raise e
         except Exception:
             return {"error_code": "route_evaluate_failed"}
+
+    def decide(self, params: dict):
+        """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1)."""
+        try:
+            from .decide import evaluate_decide
+
+            return evaluate_decide(self, params)
+        except ValueError as e:
+            raise e
+        except Exception:
+            return {"error_code": "decide_failed"}
+
+    def episodes(self, status: str | None = None):
+        """Liefert Episoden (z. B. ?status=due für Due-Prompt beim Öffnen)."""
+        try:
+            from .feedback import load_store
+
+            store = load_store(self.settings)
+            episodes = store.get("episodes", [])
+            if status:
+                filtered = [e for e in episodes if e.get("status") == status]
+            else:
+                filtered = episodes
+            return {
+                "generated_at": self.clock().isoformat(),
+                "count": len(filtered),
+                "episodes": filtered,
+                "error_code": None,
+            }
+        except Exception:
+            return {"error_code": "episodes_read_failed", "episodes": [], "count": 0}
+
+    def set_intent(self, episode_id: str, intent: str):
+        """Setzt den Intent einer Episode (wait, navigate, refuel_now, dismiss)."""
+        try:
+            from .feedback import set_intent
+
+            res = set_intent(self.settings, episode_id, intent, clock=self.clock)
+            return res
+        except Exception:
+            return {"error_code": "set_intent_failed"}
+
+    def record_fill(self, fill_data: dict):
+        """Registriert einen Tankbeleg (Wallet-Ledger)."""
+        try:
+            from .feedback import record_fill
+
+            return record_fill(self.settings, fill_data, clock=self.clock)
+        except Exception:
+            return {"error_code": "record_fill_failed"}
+
+    def stats_summary(self, params: dict):
+        """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""
+        try:
+            from .stats_summary import evaluate_stats_summary
+
+            return evaluate_stats_summary(self, params)
+        except Exception:
+            return {"error_code": "stats_summary_failed"}
+
+    def day_series(self, station_id: str, day: str):
+        """Tageskurve für das Stations-Labor im Statistik-Bereich."""
+        try:
+            # Versuche aus Backtest-Lab die Punkte zu generieren
+            metas, _ = metadata(self.settings)
+            from .stats_summary import generate_backtest_lab
+
+            lab = generate_backtest_lab(metas)
+            models = lab.get("models", {})
+            st_model = models.get(station_id)
+
+            # Basispreis und Form
+            pts = []
+            if st_model:
+                try:
+                    d_obj = dt.date.fromisoformat(day)
+                    cls = 1 if d_obj.weekday() in (5, 6) else 0
+                except Exception:
+                    cls = 0
+                shape = st_model.get("shapeWk") if cls == 0 else st_model.get("shapeWe")
+                base = 169.9
+                for i, diff in enumerate(shape or []):
+                    h = 6.0 + i
+                    pts.append({"h": h, "ct": round(base + diff, 1), "open": True})
+            return {"ok": True, "station_id": station_id, "day": day, "points": pts}
+        except Exception:
+            return {"ok": False, "station_id": station_id, "day": day, "points": []}
+

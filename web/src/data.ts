@@ -222,6 +222,344 @@ export type RouteEvaluate = {
   error_code?: string | null;
 };
 
+// --- B4 M5/M7 Typen: /v1/decide, Episodes, Intent, Fills, Stats Summary ---
+
+export type AdviceAction =
+  | "refuel_now"
+  | "wait"
+  | "refuel_elsewhere"
+  | "no_advice";
+export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
+export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
+export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
+export type AdviceOutcome = "win" | "loss" | "tie";
+
+export type DecideResult = {
+  primary: {
+    action: AdviceAction;
+    station: {
+      id: string;
+      name: string;
+      brand?: string;
+      price_now: number | null;
+      maps_url?: string | null;
+    };
+    recommended_window: {
+      start: string;
+      end: string;
+      expected_price: number;
+    } | null;
+    expected_saving_eur: number;
+    p_correct: number | null;
+    confidence_badge: "high" | "medium" | "low";
+    reason_short: string;
+  };
+  alternatives_nearby: Array<{
+    station_id: string;
+    name: string;
+    brand: string;
+    price: number;
+    delta_ct: number;
+    detour_km: number;
+    net_eur: number;
+    worth_it: boolean;
+    maps_url?: string | null;
+  }>;
+  windows_today: Array<{
+    start: string;
+    end: string;
+    expected_price: number;
+  }>;
+  windows_week: Array<{
+    timestamp: string;
+    expected_price: number;
+  }>;
+  episode: {
+    id: string;
+    status: EpisodeStatus;
+    intent: Intent;
+    opened_at?: string;
+  };
+  personal_stats: {
+    advice: {
+      last_30d_hits: number;
+      last_30d_total: number;
+      hit_rate: number | null;
+      brier_30d: number | null;
+    };
+    wallet: {
+      fills_30d: number;
+      followed: number;
+      saved_eur_30d: number;
+    };
+  };
+  calibrated: boolean;
+  decision_ready: boolean;
+  debug?: {
+    forecast_url: string;
+    fitted_at?: string | null;
+  };
+  error_code?: string | null;
+};
+
+export type EvalRowDto = {
+  day: string;
+  cls: number; // 0 Werktag | 1 Wochenende
+  mu: number; // E[S] ct/L
+  p: number; // P(S>0)
+  s: number; // realisierte Ersparnis ct/L
+  best: number; // perfekte Sicht ct/L
+  predHour: number;
+};
+
+export type StationModelLab = {
+  predWk: number;
+  predWe: number;
+  shapeWk: number[];
+  shapeWe: number[];
+  savesWk: number[];
+  savesWe: number[];
+  muWk: number;
+  muWe: number;
+  pWk: number;
+  pWe: number;
+};
+
+export type BacktestStationScore = {
+  station_id: string;
+  name: string;
+  brand: string;
+  city: string;
+  delta_ct: number;
+  n: number;
+  n_wait: number;
+  hit_wait: number | null;
+  n_now: number;
+  hit_now: number | null;
+  sum_smart_eur: number;
+  sum_commit_eur: number;
+  sum_best_eur: number;
+  sum_always_eur: number;
+  avg_regret_ct: number;
+  avg_regret_eur: number;
+  p_avg: number;
+  hit_freq: number;
+  pot_share: number;
+};
+
+export type CalibPoint = {
+  p: number;
+  hit: number;
+  n: number;
+  stationId: string;
+  cls: number;
+};
+
+export type StatsSummary = {
+  generated_at: string;
+  fuel: Fuel;
+  city: string | null;
+  backtest: {
+    daysTrain: number;
+    daysEval: number;
+    decisionHour: number;
+    defaultEps: number;
+    defaultLiters: number;
+    days: string[];
+    stations: Array<{
+      id: string;
+      city: string;
+      name: string;
+      brand: string;
+      lat: number;
+      lon: number;
+      delta_ct: number;
+      dist_km?: number | null;
+    }>;
+    stationScores: BacktestStationScore[];
+    totals: {
+      smart: number;
+      commit: number;
+      best: number;
+      always: number;
+      regretEur: number;
+      n: number;
+      hitFreq: number;
+      pAvg: number;
+      potShare: number;
+    };
+    calibration: CalibPoint[];
+    evalRows: Record<string, EvalRowDto[]>;
+    models: Record<string, StationModelLab>;
+    p8Series: Record<string, number[]>;
+    scan: {
+      eps: number[];
+      commitEur: number[];
+      smartEur: number[];
+      waits: number[];
+    };
+  };
+  live_advice: {
+    n: number;
+    wins: number;
+    losses: number;
+    ties: number;
+    hit_rate: number | null;
+    hit_wait: number | null;
+    hit_now: number | null;
+    wait_n: number;
+    wait_hits: number;
+    now_n: number;
+    now_hits: number;
+    brier_30d: number | null;
+    calibrated: boolean;
+    gate_status: string;
+    reliability: Array<{
+      bin: number;
+      range: string;
+      count: number;
+      mean_p: number;
+      empirical_hit_rate: number | null;
+    }>;
+  };
+  wallet: {
+    n_fills: number;
+    followed: number;
+    partial: number;
+    ignored: number;
+    unrelated: number;
+    saved_eur: number;
+    wh_hours: number[];
+    last_fill?: any;
+  };
+  quality_metrics: {
+    top3_hit_rate: number;
+    mase_sprungfrei: number;
+    picp_95: number;
+    cusum_drift: {
+      status: string;
+      max_cusum: number;
+      threshold: number;
+    };
+  };
+  calibrated: boolean;
+  decision_ready: boolean;
+  error_code?: string | null;
+};
+
+export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
+  const wait = r.mu >= eps;
+  const s = r.s;
+  const hit = wait ? s > 0 : s <= 0;
+  const smartCt = wait ? Math.max(s, 0) : 0;
+  const committedCt = wait ? s : 0;
+  const regretCt = Math.max(r.best - smartCt, 0);
+  return {
+    wait,
+    hit,
+    smartCt,
+    committedCt,
+    regretCt,
+    regretEur: (regretCt / 100) * liters,
+  };
+}
+
+export function scoreRows(
+  rows: EvalRowDto[],
+  eps: number,
+  liters = 40,
+  stationId = "",
+): BacktestStationScore {
+  let nWait = 0,
+    hitWait = 0,
+    nNow = 0,
+    hitNow = 0,
+    sumSmart = 0,
+    sumCommit = 0,
+    sumBest = 0,
+    sumAlways = 0,
+    sumRegretCt = 0,
+    sumP = 0,
+    sPos = 0;
+  for (const r of rows) {
+    const o = rowOutcome(r, eps, liters);
+    if (o.wait) {
+      nWait++;
+      if (o.hit) hitWait++;
+    } else {
+      nNow++;
+      if (o.hit) hitNow++;
+    }
+    sumSmart += o.smartCt;
+    sumCommit += o.committedCt;
+    sumBest += Math.max(r.best, 0);
+    sumAlways += Math.max(r.s, 0);
+    sumRegretCt += o.regretCt;
+    sumP += r.p;
+    if (r.s > 0) sPos++;
+  }
+  const n = rows.length;
+  const toEur = (ct: number) => (ct / 100) * liters;
+  const sumSmartEur = toEur(sumSmart);
+  const pot = Math.max(sumBest, 1e-9);
+  return {
+    station_id: stationId,
+    name: stationId,
+    brand: "",
+    city: "",
+    delta_ct: 0,
+    n,
+    n_wait: nWait,
+    hit_wait: nWait ? hitWait / nWait : null,
+    n_now: nNow,
+    hit_now: nNow ? hitNow / nNow : null,
+    sum_smart_eur: sumSmartEur,
+    sum_commit_eur: toEur(sumCommit),
+    sum_best_eur: toEur(sumBest),
+    sum_always_eur: toEur(sumAlways),
+    avg_regret_ct: n ? sumRegretCt / n : 0,
+    avg_regret_eur: n ? toEur(sumRegretCt) / n : 0,
+    p_avg: n ? sumP / n : 0,
+    hit_freq: n ? sPos / n : 0,
+    pot_share: sumSmartEur / pot,
+  };
+}
+
+export async function postIntent(episodeId: string, intent: string) {
+  try {
+    const res = await fetch(`/api/v1/episodes/${episodeId}/intent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent }),
+    });
+    return await res.json();
+  } catch {
+    return { error_code: "request_failed" };
+  }
+}
+
+export async function postFill(payload: {
+  station_id: string;
+  station_name: string;
+  tanked_at?: string;
+  liters: number;
+  price_paid: number;
+  fuel: string;
+  source: string;
+  episode_id?: string | null;
+}) {
+  try {
+    const res = await fetch("/api/v1/fills", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch {
+    return { error_code: "request_failed" };
+  }
+}
+
 // Browser-only convenience; no credentials, fill records or server writes.
 export function usePreference<T>(
   key: string,

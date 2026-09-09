@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re as _re
 import sys
 import urllib.error
 import urllib.parse
@@ -51,7 +52,6 @@ TABLE_BATCH = 100
 # Region bis ~2,0; > 2,3 -> Anker/Stationspunkt auf die Hausstraße setzen.
 CIRCUITY_WARN = 2.3
 # Deutsche Autobahn-Kennzeichnung (A5, A648 …) im OSM 'ref'-Feld.
-import re as _re
 _AUTOBAHN_RE = _re.compile(r"^A\s?\d{1,3}")
 
 
