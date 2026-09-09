@@ -53,7 +53,9 @@ def driving_km(anchor, targets, cache_path):
             quiet=True,
             circuity=1.0,
         )
-        routes = router.routes_from(anchor[0], anchor[1], list(targets), want_duration=False)
+        routes = router.routes_from(
+            anchor[0], anchor[1], list(targets), want_duration=False
+        )
         out = []
         for i, (lat, lon) in enumerate(targets):
             km, _ = routes[i]
@@ -83,6 +85,9 @@ def metadata(settings):
     except (ValueError, TypeError, KeyError):
         return {}, "polling_invalid"
     stations = {}
+    pending = []
+    cache_path = getattr(settings, "runtime", None)
+    cache_file = (cache_path / "road_route_cache.json") if cache_path else None
     for key, group in groups.items():
         city = group.get("label") or key
         # The set anchor is a private home position (add-city); only derived
