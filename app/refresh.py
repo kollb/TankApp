@@ -151,6 +151,26 @@ def refresh(settings: Settings, now=None):
                     prediction["timestamp"] = prediction.index.map(
                         lambda stamp: stamp.isoformat()
                     )
+                    # Erweiterte Horizonte (+3/+7 Tage) für die Werkstatt-Ansicht.
+                    # Jeweils eigener Predict ab Cutoff (kein Slicing), damit die
+                    # 12-Uhr-Projektion denselben Kontext wie der 24-h-Lauf sieht.
+                    # Nur Quantile + Zeitstempel: Diagnostikspalten blieben Ballast.
+                    horizons = {}
+                    for key, hours in (("points_3d", 72), ("points_7d", 168)):
+                        wide = predict(model, hours=hours)
+                        wide["timestamp"] = wide.index.map(
+                            lambda stamp: stamp.isoformat()
+                        )
+                        horizons[key] = wide[
+                            [
+                                "timestamp",
+                                "q025",
+                                "q10",
+                                "q50",
+                                "q90",
+                                "q975",
+                            ]
+                        ].to_dict(orient="records")
                     models.append(model)
                     last = model.get("last_observation")
                     age = (
@@ -167,6 +187,7 @@ def refresh(settings: Settings, now=None):
                             "stale_data_at_origin": age is None
                             or age > cfg.ffill_minutes,
                             "points": prediction.to_dict(orient="records"),
+                            **horizons,
                             "metrics": report["metrics"],
                             "backtest_days": 7,
                             "operational_replay": False,

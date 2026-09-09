@@ -1,7 +1,7 @@
 // Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
 
 import React, { useId, useState } from "react";
-import { gapBands, gapCompressedAxis } from "../data";
+import { compressedAxis, gapBands } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -123,7 +123,29 @@ export function LineChart({
   yMin -= yPad;
   yMax += yPad;
 
-  const X = (x: number) => padL + ((x - xMin) / (xMax - xMin)) * iw;
+  // Lücken (innen wie am Fensterrand) werden auf der Achse gestaucht statt
+  // als leere Fläche angezeigt: Bei einem festen 24-h-Fenster zählt auch
+  // „keine Meldung seit 6 h“ als Lücke und frisst kein Diagramm mehr.
+  const gaps =
+    gapMinutes > 0
+      ? gapBands(
+          [
+            ...clipped,
+            ...clippedBands.map((b) => ({
+              pts: b.pts.map((p) => ({ x: p.x })),
+            })),
+          ],
+          gapMinutes,
+          hasDomain ? [xMin, xMax] : undefined,
+        )
+      : [];
+  const compress = gapMinutes > 0 && maxGapMinutes > 0 && gaps.length > 0;
+  const axis = compress
+    ? compressedAxis(xMin, xMax, gaps, maxGapMinutes)
+    : null;
+
+  const X = (x: number) =>
+    padL + ((axis ? axis.map(x) : x - xMin) / (axis ? axis.total : xMax - xMin)) * iw;
   const Y = (y: number) => padT + ih - ((y - yMin) / (yMax - yMin)) * ih;
 
   const path = (s: SeriesPts) =>
@@ -136,10 +158,8 @@ export function LineChart({
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
 
-  // Nur Innenlücken: ein schmaler Achsenstrich, keine Vollflächen.
-  // Randlücken zum 24h-Fenster bleiben leer — die Achse ist das Fenster.
-  const bandGaps =
-    gapMinutes > 0 ? gapBands(clipped, gapMinutes) : [];
+  const insideGap = (x: number) =>
+    gaps.some((g) => x > g.from && x < g.to);
   const hoursLabel = (ms: number) => {
     const hours = ms / 3600000;
     const rounded = hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10;
@@ -222,6 +242,9 @@ export function LineChart({
       {xTicks
         .filter((t, i, all) => {
           if (t.x < xMin || t.x > xMax) return false;
+          // Ticks in gestauchten Lücken würden aufeinander kleben — die
+          // Lückenbeschriftung („Pause · 6 h“) trägt die Info stattdessen.
+          if (compress && insideGap(t.x)) return false;
           if (i === 0) return true;
           return X(t.x) - X(all[i - 1].x) >= 36;
         })
@@ -237,16 +260,15 @@ export function LineChart({
             {t.label}
           </text>
         ))}
-      {bandGaps.map((band, i) => {
+      {gaps.map((band, i) => {
         const x1 = X(band.from);
         const x2 = X(band.to);
         const width = Math.max(1, x2 - x1);
         const barH = 7;
         const barY = H - padB - barH;
-        const label =
-          gapLabel && width >= 44
-            ? `${gapLabel} · ${hoursLabel(band.to - band.from)} h`
-            : null;
+        const label = gapLabel
+          ? `${gapLabel} · ${hoursLabel(band.to - band.from)} h`
+          : null;
         return (
           <g key={`gap-${i}`}>
             <rect
@@ -266,10 +288,26 @@ export function LineChart({
               fill={`url(#${hatchId})`}
               opacity={0.55}
             />
+            {compress && (
+              <g stroke="#64748b" strokeWidth={1.2}>
+                <line
+                  x1={x1 + 1}
+                  y1={barY + barH + 1}
+                  x2={x1 + 5}
+                  y2={barY - 3}
+                />
+                <line
+                  x1={x2 - 1}
+                  y1={barY + barH + 1}
+                  x2={x2 - 5}
+                  y2={barY - 3}
+                />
+              </g>
+            )}
             {label && (
               <text
                 x={(x1 + x2) / 2}
-                y={barY - 3}
+                y={barY - 4}
                 textAnchor="middle"
                 fontSize={8}
                 fill="#64748b"
@@ -320,32 +358,42 @@ export function LineChart({
           </text>
         </g>
       ))}
-      {clipped.map((s, i) => (
-        <g key={i}>
-          <path
-            d={path(s)}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={2}
-            strokeDasharray={s.dash}
-          />
-          {s.pts.map((p, j) => (
-            <circle key={j} cx={X(p.x)} cy={Y(p.y)} r={1.8} fill={s.color} />
-          ))}
-          {s.pts.map((p, j) => (
-            <circle
-              key={`hit-${j}`}
-              cx={X(p.x)}
-              cy={Y(p.y)}
-              r={9}
-              fill="transparent"
-              style={{ cursor: "crosshair" }}
-              onMouseEnter={() => setHover({ si: i, pi: j })}
-              onClick={() => setHover({ si: i, pi: j })}
+      {clipped.map((s, i) => {
+        // Große Zeiträume (7 Tage ≈ 2000 Punkte): Die Linie bleibt vollständig,
+        // Punkte und Trefferflächen werden ausgedünnt — sonst erstickt das SVG.
+        const total = clipped.reduce((n, g) => n + g.pts.length, 0);
+        const step = Math.max(1, Math.ceil(total / 800));
+        return (
+          <g key={i}>
+            <path
+              d={path(s)}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={2}
+              strokeDasharray={s.dash}
             />
-          ))}
-        </g>
-      ))}
+            {s.pts.map((p, j) =>
+              j % step === 0 ? (
+                <circle key={j} cx={X(p.x)} cy={Y(p.y)} r={1.8} fill={s.color} />
+              ) : null,
+            )}
+            {s.pts.map((p, j) =>
+              j % step === 0 ? (
+                <circle
+                  key={`hit-${j}`}
+                  cx={X(p.x)}
+                  cy={Y(p.y)}
+                  r={9}
+                  fill="transparent"
+                  style={{ cursor: "crosshair" }}
+                  onMouseEnter={() => setHover({ si: i, pi: j })}
+                  onClick={() => setHover({ si: i, pi: j })}
+                />
+              ) : null,
+            )}
+          </g>
+        );
+      })}
       {hovered && (
         <g pointerEvents="none">
           <line
@@ -393,7 +441,7 @@ export function LineChart({
       {legendItems.length > 0 && (
         <g>
           {legendItems.map((item, i) => (
-            <g key={i} transform={`translate(${padL + i * 130}, 6)`}>
+            <g key={i} transform={`translate(${padL + i * 165}, 6)`}>
               {item.band ? (
                 <rect
                   x={0}

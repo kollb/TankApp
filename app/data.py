@@ -136,7 +136,7 @@ def metadata(settings):
                 "lon": lon if coordinates else None,
                 "dist_km": None,
                 "dist_mode": None,
-                "maps_url": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
+                "maps_url": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}&travelmode=driving"
                 if coordinates
                 else None,
             }
@@ -423,7 +423,10 @@ class LiveData:
                 k in row for k in ["station_id", "city", "fuel", "origin", "points"]
             ):
                 continue
-            valid_forecasts.append(row)
+            # Der RP2 braucht nur den 24-h-Ausblick; erweiterte Horizonte
+            # (+3/+7 Tage) bleiben NAS-seitig und blähen den Cache nicht auf.
+            slim = {k: v for k, v in row.items() if k not in ("points_3d", "points_7d")}
+            valid_forecasts.append(slim)
 
         return {
             "generated_at": bundle.get("published_at"),

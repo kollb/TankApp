@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   autoTimeTicks,
+  autoTimeValue,
+  berlinHour,
+  compressedAxis,
   currentPrice,
   detourEconomics,
   gapBands,
-  gapCompressedAxis,
   haversineKm,
   segments,
   splitOnGap,
@@ -99,6 +101,49 @@ describe("chart gap bands", () => {
   });
 });
 
+describe("compressed gap axis", () => {
+  const hour = 3600000;
+  it("shrinks an 8 h night gap to the configured display width", () => {
+    const from = 0;
+    const to = 24 * hour;
+    const gaps = [{ from: 14 * hour, to: 22 * hour }];
+    const axis = compressedAxis(from, to, gaps, 40);
+    // 24 h minus 8 h Lücke plus 40 min Restbreite = 16 h 40 min.
+    expect(axis.total).toBe(24 * hour - 8 * hour + 40 * 60000);
+    expect(axis.map(from)).toBe(0);
+    expect(axis.map(to)).toBe(axis.total);
+    // Punkte vor der Lücke behalten ihren Abstand, Punkte danach rücken auf.
+    expect(axis.map(14 * hour) - axis.map(10 * hour)).toBe(4 * hour);
+    expect(axis.map(23 * hour) - axis.map(22 * hour)).toBe(hour);
+    // Die Lücke selbst ist nur noch 40 Minuten breit.
+    expect(axis.map(22 * hour) - axis.map(14 * hour)).toBe(40 * 60000);
+    // Innerhalb der Lücke läuft die Abbildung linear weiter.
+    expect(axis.map(18 * hour) - axis.map(14 * hour)).toBe(20 * 60000);
+  });
+  it("merges overlaps, clips to the window and keeps order", () => {
+    const axis = compressedAxis(0, 10 * hour, [
+      { from: 8 * hour, to: 20 * hour },
+      { from: 1 * hour, to: 3 * hour },
+      { from: 2 * hour, to: 4 * hour },
+    ], 30);
+    expect(axis.gaps).toEqual([
+      { from: 1 * hour, to: 4 * hour },
+      { from: 8 * hour, to: 10 * hour },
+    ]);
+    let prev = -1;
+    for (let x = 0; x <= 10 * hour; x += 30 * 60000) {
+      const value = axis.map(x);
+      expect(value).toBeGreaterThanOrEqual(prev);
+      prev = value;
+    }
+  });
+  it("passes small gaps through unchanged", () => {
+    const axis = compressedAxis(0, 4 * hour, [{ from: hour, to: 1.5 * hour }], 40);
+    expect(axis.total).toBe(4 * hour);
+    expect(axis.map(3 * hour)).toBe(3 * hour);
+  });
+});
+
 describe("air distance between stations", () => {
   it("measures Frankfurt–Gütersloh as roughly 200 km", () => {
     const km = haversineKm(50.11, 8.68, 51.9, 8.4);
@@ -139,6 +184,21 @@ describe("automatic axis ticks", () => {
   it("returns nothing for invalid windows", () => {
     expect(autoTimeTicks(10, 5)).toEqual([]);
     expect(autoTimeTicks(NaN, 5)).toEqual([]);
+  });
+});
+
+describe("berlinHour/autoTimeValue", () => {
+  it("meldet Berliner Stunde und Peak-Fenster", () => {
+    // 18:00 UTC = 20:00 CEST (Sommerzeit) → Peak; 12:00 UTC = 14:00 CEST → offpeak.
+    expect(berlinHour(new Date("2026-07-01T18:00:00Z"))).toBeCloseTo(20, 0);
+    expect(autoTimeValue(new Date("2026-07-01T18:00:00Z"))).toEqual({
+      z: 16,
+      isPeak: true,
+    });
+    expect(autoTimeValue(new Date("2026-07-01T12:00:00Z"))).toEqual({
+      z: 10,
+      isPeak: false,
+    });
   });
 });
 

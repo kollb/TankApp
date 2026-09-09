@@ -9,7 +9,7 @@ import pytest
 
 from app.config import Settings
 from app.data import LiveData, metadata
-from app.server import make_server
+from app.server import Handler, make_server
 
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
@@ -335,6 +335,32 @@ def test_forecast_never_releases_calibration_from_artifact_flags(app_settings):
     forecast = live.forecast(UID, "Frankfurt", "e10")
     assert forecast["stale"] is True
     assert forecast["calibrated"] is False and forecast["decision_ready"] is False
+
+
+def test_http_client_disconnect_stays_silent(app_settings):
+    # Browser-Reload mitten in der Antwort: erst ConnectionReset, dann
+    # BrokenPipe bei der Fehlerantwort — beides ohne Traceback schlucken.
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+
+    class Disconnecting:
+        def __init__(self):
+            self.calls = 0
+
+        def write(self, chunk):
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionResetError(104, "Connection reset by peer")
+            raise BrokenPipeError(32, "Broken pipe")
+
+    handler = Handler.__new__(Handler)
+    handler.command = "GET"
+    handler.path = "/api/v1/stations?fuel=e10"
+    handler.requestline = "GET /api/v1/stations?fuel=e10 HTTP/1.1"
+    handler.request_version = "HTTP/1.1"
+    handler._headers_buffer = []
+    handler.data = data
+    handler.wfile = Disconnecting()
+    handler.do_GET()
 
 
 def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
