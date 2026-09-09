@@ -152,14 +152,15 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
 test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await stubApi(page, { horizons: true });
   await page.goto("/");
-  // Der Umweg-Rechner (mit Zeitwert-Slider) erscheint nur, wenn die
-  // Vergleichsstation eine günstigere Alternative hat: F wählen, B ist billiger.
+  // Der Kompass zeigt die günstigste Station (B); als Vergleich dient F,
+  // damit der Umweg-Rechner mit Zeitwert-Slider erscheint.
+  await expect(
+    page.getByRole("heading", { name: "B-Station", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "F-Station als Vergleich wählen" })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "F-Station", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   await expect(page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/)).toBeVisible();
   await expect(
