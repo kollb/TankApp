@@ -198,6 +198,49 @@ def test_anchor_distance_is_derived_but_never_exposed(tmp_path):
     assert "anchor" not in json.dumps(list(metas.values()))
 
 
+def test_discover_format_anchor_lat_lon_also_derives_distances(tmp_path):
+    """discover_stations schreibt lat/lon auf Set-Ebene; add-city nutzt 'anchor'.
+
+    Beide bezeichnen denselben privaten Referenzpunkt — beide liefern
+    Entfernungen, sonst würde dieselbe Stadt je nach Herkunft des Sets
+    mit oder ohne km-Badge angezeigt (z. B. Frankfurt ohne Gütersloh).
+    """
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Gütersloh": {
+                        "label": "Gütersloh",
+                        "anchor": [51.9, 8.4],
+                        "batch": [UID],
+                        "stations": [
+                            {"uuid": UID, "name": "A", "lat": 51.91, "lon": 8.41}
+                        ],
+                    },
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "lat": 50.11,
+                        "lon": 8.68,
+                        "radius_km": 25,
+                        "batch": [OTHER],
+                        "stations": [
+                            {"uuid": OTHER, "name": "B", "lat": 50.12, "lon": 8.69}
+                        ],
+                    },
+                }
+            }
+        )
+    )
+    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+    assert error is None
+    assert 0.5 < metas[("Gütersloh", UID)]["dist_km"] < 2.0
+    assert 0.5 < metas[("Frankfurt", OTHER)]["dist_km"] < 2.0
+    # Der Referenzpunkt selbst bleibt privat, auch im discover-Format.
+    payload = json.dumps(list(metas.values()))
+    assert "50.11" not in payload and "8.68" not in payload
+
+
 def test_invalid_anchor_is_ignored_instead_of_guessing(tmp_path):
     polling = tmp_path / "polling.json"
     polling.write_text(

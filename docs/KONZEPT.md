@@ -217,7 +217,12 @@ günstiger als Umgebung“) erscheint nur im Stations-Detail der Werkstatt.
 Der erste Durchstich in `engine/` liest echte Daten, fittet robuste Tagesform
 und Wochentags-Dummies mit AR(2)-Nachlauf, vergleicht gegen eine saisonale
 Naive und schreibt JSON-Artefakte. Die Bootstrap-Intervalle sind ausdrücklich
-**unkalibriert**; `calibrated` und `decision_ready` bleiben `false`.
+**unkalibriert**; `calibrated` und `decision_ready` bleiben `false`. Seit
+September 2026 trägt das Strukturmodell die 12-Uhr-Regel (Erhöhungen nur um
+12:00 Uhr, seit 2026-04-01): Mittags-Schritt als Feature plus Projektion von
+Median und Bootstrap-Pfaden auf nicht-steigende [12:00, nächste 12:00)-Segmente;
+unerlaubte Anstiege in den Beobachtungen werden als `law_rise_outside_noon`
+gezählt statt still korrigiert. Details: [Engine-Referenz](../engine/README.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
 
 Der folgende Stack ist das M3-Ziel. Zweitmodell/Ensemble, gepoolte Feiertage,
 Sprungdiagnostik und ACI sind noch offen. Keine Modellgüte wird aus früheren

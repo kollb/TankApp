@@ -9,6 +9,8 @@ export type Station = {
   fuel: Fuel;
   maps_url: string | null;
   dist_km?: number | null;
+  lat?: number | null;
+  lon?: number | null;
   price: number | null;
   last_price: number | null;
   status: string;
@@ -219,19 +221,111 @@ export function segments(points: Point[]) {
 
 // Zeitliche Lücken zwischen allen Punkten einer Diagrammserie; das Diagramm
 // markiert sie als Band, statt Linien über geschlossene Zeiträume zu ziehen.
+// Mit `window` (festes Zeitfenster) zählen auch die Randlücken vor dem ersten
+// bzw. nach dem letzten Punkt als Lücke — sonst verschwände z. B. „keine
+// Meldung seit 6 h“ am Fensterende einfach.
 export function gapBands(
   series: { pts: { x: number }[] }[],
   minMinutes: number,
+  window?: [number, number],
 ): { from: number; to: number }[] {
   const times = [...new Set(series.flatMap((s) => s.pts.map((p) => p.x)))].sort(
     (a, b) => a - b,
   );
+  const min = minMinutes * 60000;
   const bands: { from: number; to: number }[] = [];
+  if (window && times.length) {
+    if (times[0] - window[0] > min) bands.push({ from: window[0], to: times[0] });
+    const last = times[times.length - 1];
+    if (window[1] - last > min) bands.push({ from: last, to: window[1] });
+  }
   for (let i = 1; i < times.length; i++) {
-    if (times[i] - times[i - 1] > minMinutes * 60000)
+    if (times[i] - times[i - 1] > min)
       bands.push({ from: times[i - 1], to: times[i] });
   }
   return bands;
+}
+
+// Luftlinie zwischen zwei Stationen (WGS84). Nur für die Umweg-Ökonomie;
+// Straßenkilometer sind meist länger — das weist die UI aus.
+export function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+export type TimeTick = { x: number; label: string };
+
+// Gleichmäßige, an die Berliner Uhrzeit ausgerichtete X-Achsen-Ticks für ein
+// festes Fenster (Default: 24 h). Schritt 30 min … 6 h, max. neun Ticks.
+export function autoTimeTicks(from: number, to: number): TimeTick[] {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+  const span = to - from;
+  const candidates = [30, 60, 120, 180, 360, 720, 1440].map((m) => m * 60000);
+  const step = candidates.find((s) => span / s <= 9) ?? candidates.at(-1)!;
+  const ticks: TimeTick[] = [];
+  const clock = (x: number) =>
+    new Date(x).toLocaleTimeString("de-DE", {
+      timeZone: "Europe/Berlin",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  for (let x = Math.ceil(from / step) * step; x <= to; x += step) {
+    const label =
+      clock(x) === "00:00"
+        ? `${new Date(x).toLocaleDateString("de-DE", {
+            timeZone: "Europe/Berlin",
+            day: "2-digit",
+            month: "2-digit",
+          })} 00:00`
+        : clock(x);
+    ticks.push({ x, label });
+  }
+  return ticks;
+}
+
+export type DetourMode = "onroute" | "dedicated";
+export type DetourResult = {
+  km: number;
+  grossEur: number;
+  fuelEur: number;
+  timeEur: number;
+  netEur: number;
+  criticalCtPerL: number;
+  verdict: "worth" | "borderline" | "not_worth";
+};
+
+// K = d·(c/100)·p + (d/v)·z (Konzept §10). onroute: nur der Mehrweg zählt
+// (einmalig); dedicated: Extrafahrt, Hin und Rück.
+export function detourEconomics(input: {
+  refPrice: number;
+  altPrice: number;
+  liters: number;
+  km: number;
+  mode: DetourMode;
+  consumption: number;
+  speedKmh: number;
+  timeValueEurH: number;
+}): DetourResult {
+  const { refPrice, altPrice, liters, km, mode } = input;
+  const d = km * (mode === "dedicated" ? 2 : 1);
+  const fuelEur = (d / 100) * input.consumption * altPrice;
+  const timeEur = (d / Math.max(1, input.speedKmh)) * input.timeValueEurH;
+  const grossEur = (refPrice - altPrice) * liters;
+  const netEur = grossEur - fuelEur - timeEur;
+  const criticalCtPerL = liters > 0 ? ((fuelEur + timeEur) / liters) * 100 : 0;
+  const verdict =
+    netEur >= 1.5 ? "worth" : netEur >= 0.5 ? "borderline" : "not_worth";
+  return { km, grossEur, fuelEur, timeEur, netEur, criticalCtPerL, verdict };
 }
 
 export const messages: Record<string, string> = {

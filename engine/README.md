@@ -45,6 +45,30 @@ Tagen mindestens diesen Zeitraum exportieren; der Exporter-Default von 70 Tagen
 reicht dafür nicht. Beispielsweise mit `--since` einen Zeitpunkt 120 Tage vor
 jetzt wählen. Exporte sind nicht der dauerhafte Archivspeicher: der liegt auf dem NAS.
 
+## 12-Uhr-Regel: Preiserhöhungen nur um 12:00 Uhr
+
+Seit 2026-04-01 dürfen Tankstellen in Deutschland den Preis nur um 12:00 Uhr
+erhöhen; Senkungen sind jederzeit möglich (`price_law_local` in der
+`Config`). Die Engine überträgt das auf drei Ebenen:
+
+1. **Strukturmodell:** Neben den Harmonischen und Wochentags-Dummies trägt ein
+   Mittags-Schritt („nach 12:00 Uhr, ab Gesetzesbeginn") das eigene
+   Nachmittag-Niveau direkt ab. Die Harmonischen müssen den täglichen
+   Sprung dadurch nicht mehr als glatte Kurve nachzeichnen — eine Prognose
+   zeigt deshalb keinen unrechtmäßigen intraday-Anstieg mehr.
+2. **Prognose-Projektion:** Median und jede Bootstrap-Path werden je Segment
+   [12:00 Uhr, nächste 12:00 Uhr) auf *nicht-steigend* projiziert
+   (Pool-adjacent-violators). Der erlaubte Sprung liegt exakt an der
+   Segmentgrenze und bleibt erhalten; Segmente, die vor dem Gesetzesbeginn
+   begannen (z. B. in alten Backtests), werden nicht projiziert. NaN bleibt
+   NaN — über Lücken hinweg wird nicht gekoppelt.
+3. **Datenqualität statt stiller Korrektur:** Beobachtete Anstiege von
+   mindestens 1 ct, deren 5-Minuten-Intervall keinen erlaubten 12:00-Uhr-Punkt
+   enthält, werden im Fit als `law_rise_outside_noon` gezählt und im
+   Backtest-Report ausgewiesen. Solche Punkte sind mögliche Datenartefakte
+   (z. B. gemeldete Zwischenstände) oder Regelverstöße; sie verbleiben im
+   Modell und werden nicht still gelöscht.
+
 <details>
 <summary>Entwicklerdiagnose und manuelle Einzelwerkzeuge — nur bei Bedarf</summary>
 

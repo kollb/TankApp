@@ -47,7 +47,19 @@ def metadata(settings):
         city = group.get("label") or key
         # The set anchor is a private home position (add-city); only derived
         # distances leave the server, never the coordinates themselves.
+        # discover_stations writes the reference as top-level lat/lon; the
+        # bundled add-city uses "anchor": [lat, lon]. Both describe the same
+        # private reference point, so both are usable for derived distances.
         anchor = group.get("anchor")
+        if anchor is None:
+            lat0, lon0 = group.get("lat"), group.get("lon")
+            if (
+                type(lat0) in (int, float)
+                and type(lon0) in (int, float)
+                and math.isfinite(lat0)
+                and math.isfinite(lon0)
+            ):
+                anchor = [lat0, lon0]
         anchor_ok = (
             isinstance(anchor, list)
             and len(anchor) == 2
