@@ -11,7 +11,11 @@ ExecStart=/usr/bin/python3 /home/pi/TankApp/rp2/fallback_gui.py
 Restart=always
 RestartSec=5
 
-# Port-Konfiguration
+# NAS-IP NICHT hier eintragen, sondern in einem Drop-in:
+#   sudo systemctl edit tankapp-fallback-gui
+#   [Service]
+#   Environment=NAS_IP=192.168.178.50
+Environment=NAS_PORT=1355
 Environment=FALLBACK_GUI_PORT=8000
 
 [Install]

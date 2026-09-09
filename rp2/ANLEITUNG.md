@@ -24,104 +24,188 @@
 ## 🛠️ Voraussetzungen
 
 ### Auf dem NAS:
+- ✅ Private Konfiguration liegt vor (`polling.json`, `data/influx.env`,
+  für Prognosen zusätzlich `data/_netrc`) — Prüfung: `bash ops/nas/preflight.sh`
 - ✅ TankApp bereits mit `python3 tankapp.py nas-up` gestartet
 - ✅ NAS läuft mindestens 6h/Tag (für Prognose-Berechnung)
 - ✅ Port 1355 ist erreichbar (Standard-GUI-Port)
 
 ### Auf dem RP2:
-- ✅ Python 3.11+ installiert
+- ✅ Python 3.11+ installiert (keine pip-Pakete nötig — nur Standardbibliothek)
 - ✅ RP2 läuft 24/7 (bereits der Fall)
 - ✅ Collector + Uploader bereits aktiv (`tankapp-collector`, `tankapp-uploader`)
 - ✅ `/dev/shm/tankapp` als tmpfs gemountet (bereits der Fall)
 
 ---
 
-## 📥 Schritt 1: Dateien auf den RP2 kopieren
+## 📥 Schritt 1: NAS aktualisieren
 
-### Von deinem PC/NAS:
+Der API-Endpunkt `/api/v1/last_forecasts` muss auf dem NAS laufen, sonst hat
+der RP2 nichts zu cachen.
+
+### 1a) Private Konfigurationsdateien bereitstellen
+
+**Wichtig:** `git clone`/`git pull` liefert nur den Code. Die privaten
+Konfigurationsdateien sind gitignored und **müssen einmalig manuell** aufs
+NAS — sonst bricht `nas-up` ab. Details und Herkunft: siehe
+[docs/INSTALL.md](../docs/INSTALL.md), Abschnitt „Danach auf dem NAS“.
+
+| Datei auf dem NAS | Pflicht? | Woher |
+|---|---|---|
+| `docs/analysis/stations/polling.json` | **ja** | vom **Pi** (aktives Set nach `activate-polling`) |
+| `data/influx.env` | **ja** | selbst anlegen: InfluxDB-Nur-Lese-Zugang |
+| `data/_netrc` | für Prognosen | vorhandener Tankerkönig-**Archiv**-Zugang |
+
+`data/apikey.txt` gehört **nicht** aufs NAS — das ist der Collector-Key des Pi.
+
+### 1b) Vorab prüfen, was fehlt
+
 ```bash
-# Kopiere die RP2-Dateien auf den Pi
-scp -r /home/user/TankApp/rp2/* pi@<RP2-IP>:~/TankApp/rp2/
+cd /mnt/user/appdata/tankapp
+git pull
+bash ops/nas/preflight.sh
 ```
 
-### Oder direkt auf dem RP2:
-```bash
-# Auf dem RP2 ausführen
-mkdir -p ~/TankApp/rp2
-cd ~/TankApp/rp2
+Das Skript sagt dir vor dem Start, welche Datei fehlt, ob ein Schlüssel in
+`influx.env` fehlt und ob die Influx-URL fälschlich auf `localhost` zeigt
+(aus dem Container nicht erreichbar). Es liest keine Token aus.
 
-# Dateien herunterladen (wenn GitHub-Zugriff)
-git clone https://github.com/kollb/TankApp.git ~/TankApp 2>/dev/null || echo "Repo bereits vorhanden"
+### 1c) Starten
+
+```bash
+python3 tankapp.py nas-up
+# Unraid: python3 tankapp.py nas-up --uid 99 --gid 100 --archive-dir /mnt/user/data/tankapp
+```
+
+Prüfen, dass der Endpunkt antwortet:
+
+```bash
+curl -s http://localhost:1355/api/v1/last_forecasts | head -c 300
+```
+
+**`"count": 0` ist am Anfang normal, kein Fehler.** Der Endpunkt liefert nur,
+was bereits berechnet und veröffentlicht wurde. Bis Archiv und Modelle
+durchgelaufen sind, ist die Liste leer — die Fallback-GUI zeigt dann
+Live-Preise, aber keine Warte-Empfehlungen. Ohne `data/_netrc` (Archivzugang)
+bleibt `count` **dauerhaft** 0.
+
+---
+
+## 📥 Schritt 2: Code auf den RP2 holen
+
+Am einfachsten per `git` direkt auf dem RP2 — dann geht ein späteres Update
+mit `git pull`:
+
+```bash
+# Auf dem RP2
+git clone https://github.com/kollb/TankApp.git ~/TankApp   # nur beim ersten Mal
+cd ~/TankApp && git pull
+```
+
+Alternativ per `scp` von deinem PC:
+
+```bash
+scp -r ~/TankApp/rp2 pi@<RP2-IP>:~/TankApp/
 ```
 
 ---
 
-## ⚙️ Schritt 2: Konfiguration anpassen
+## ⚙️ Schritt 3: NAS-IP konfigurieren
 
-### 1. NAS-IP in den Skripten eintragen
+**Kein `sed` in den Quelldateien!** Die IP wird als Umgebungsvariable gesetzt,
+sonst überschreibt der nächste `git pull` deine Änderung.
 
-**In `cache_forecasts.py`:**
-```python
-NAS_URL = "http://<NAS-IP>:1355/api/v1/last_forecasts"
-```
-Ersetze `<NAS-IP>` mit der **lokalen IP deines NAS** (z.B. `192.168.178.50`).
+Die Skripte lesen `NAS_IP` (optional auch `NAS_PORT`, Standard `1355`).
 
-**In `fallback_gui.py`:**
-Suche alle Vorkommen von `<NAS-IP>` und ersetze sie mit deiner NAS-IP.
-
-### 2. Service-Dateien anpassen
-
-**In `tankapp-forecast-cache.service`:**
-```ini
-Environment=NAS_IP=<NAS-IP>
-```
-
----
-
-## 📦 Schritt 3: Abhängigkeiten installieren (RP2)
+Erst nach Schritt 4 (Services installieren) setzt du die IP dauerhaft.
+Zum schnellen Ausprobieren vorab:
 
 ```bash
-# Auf dem RP2 ausführen
-sudo apt update
-sudo apt install -y python3-pip
+NAS_IP=192.168.178.50 python3 ~/TankApp/rp2/cache_forecasts.py
+```
 
-# Flask installieren (für Fallback-GUI)
-python3 -m pip install flask requests
+Fehlt `NAS_IP`, beendet sich das Skript sofort mit einer klaren Meldung,
+statt endlos ins Leere zu laufen.
+
+---
+
+## 📦 Schritt 4: Abhängigkeiten
+
+**Es sind keine zu installieren.** Beide Skripte nutzen ausschließlich die
+Python-Standardbibliothek (`http.server`, `urllib`). Kein `flask`, kein
+`requests`, kein `pip`.
+
+Nur prüfen, dass Python vorhanden ist:
+
+```bash
+python3 --version   # 3.11+ erwartet
 ```
 
 ---
 
-## 🚀 Schritt 4: Services einrichten und starten
-
-### 1. Service-Dateien nach `/etc/systemd/system/` kopieren
+## 🚀 Schritt 5: Services einrichten
 
 ```bash
 # Auf dem RP2
 sudo cp ~/TankApp/rp2/tankapp-forecast-cache.service /etc/systemd/system/
 sudo cp ~/TankApp/rp2/tankapp-fallback-gui.service /etc/systemd/system/
+sudo systemctl daemon-reload
 ```
 
-### 2. Services laden und aktivieren
+### NAS-IP als Drop-in hinterlegen
+
+Ein Drop-in liegt außerhalb des Git-Repos und überlebt jedes Update:
 
 ```bash
-# systemd neu laden
-sudo systemctl daemon-reload
+sudo systemctl edit tankapp-forecast-cache
+```
 
-# Services aktivieren und starten
+Im Editor eintragen (IP anpassen!):
+
+```ini
+[Service]
+Environment=NAS_IP=192.168.178.50
+```
+
+Dasselbe für die GUI (damit sie den Online/Offline-Status erkennt):
+
+```bash
+sudo systemctl edit tankapp-fallback-gui
+```
+
+```ini
+[Service]
+Environment=NAS_IP=192.168.178.50
+```
+
+### Starten
+
+```bash
+sudo systemctl daemon-reload
 sudo systemctl enable --now tankapp-forecast-cache
 sudo systemctl enable --now tankapp-fallback-gui
 ```
 
-### 3. Status prüfen
+### Läuft der Benutzer richtig?
+
+Die Service-Dateien nutzen `User=pi` und `/home/pi/TankApp/rp2`. Heißt dein
+Benutzer anders (z.B. `bkoll`), passe beides an:
 
 ```bash
-# Cache-Service
-systemctl status tankapp-forecast-cache
-journalctl -u tankapp-forecast-cache -f
+whoami   # zeigt deinen Benutzernamen
+sudo sed -i "s|User=pi|User=$(whoami)|; s|/home/pi/|$HOME/|g" \
+  /etc/systemd/system/tankapp-forecast-cache.service \
+  /etc/systemd/system/tankapp-fallback-gui.service
+sudo systemctl daemon-reload
+sudo systemctl restart tankapp-forecast-cache tankapp-fallback-gui
+```
 
-# GUI-Service  
+### Status prüfen
+
+```bash
+systemctl status tankapp-forecast-cache
 systemctl status tankapp-fallback-gui
-journalctl -u tankapp-fallback-gui -f
+journalctl -u tankapp-forecast-cache -n 30
 ```
 
 ---
@@ -185,7 +269,10 @@ python3 ~/TankApp/rp2/cache_forecasts.py
 ```
 
 **Mögliche Ursachen:**
-- Falsche NAS-IP in `cache_forecasts.py`
+- `NAS_IP` nicht gesetzt oder falsch (prüfen: `systemctl show tankapp-forecast-cache -p Environment`)
+- NAS liefert `"count": 0` — dann ist der Cache technisch in Ordnung, es gibt
+  nur noch keine Prognosen. Auf dem NAS `bash ops/nas/preflight.sh` prüfen:
+  meist fehlt `data/_netrc` (Archivzugang) → kein Archiv → keine Modelle.
 - NAS ist nicht erreichbar (Firewall?)
 - NAS-GUI läuft nicht auf Port 1355
 
@@ -205,10 +292,11 @@ tail -n 1 /dev/shm/tankapp/$(date +%F).jsonl | python3 -m json.tool
 # Andere Services prüfen
 ss -tulnp | grep 8000
 
-# Port ändern
-# In tankapp-fallback-gui.service:
-# Environment=FALLBACK_GUI_PORT=8080
-# Dann: sudo systemctl restart tankapp-fallback-gui
+# Port ändern per Drop-in:
+#   sudo systemctl edit tankapp-fallback-gui
+#   [Service]
+#   Environment=FALLBACK_GUI_PORT=8080
+# Dann: sudo systemctl daemon-reload && sudo systemctl restart tankapp-fallback-gui
 ```
 
 ---
@@ -263,6 +351,7 @@ sudo systemctl restart tankapp-fallback-gui
 | Version | Datum | Änderungen |
 |---------|-------|-----------|
 | 1.0 | 08.09.2026 | Erstellung: RP2 Fallback-GUI mit F1/F2/F3 |
+| 1.1 | 09.09.2026 | NAS-IP über `NAS_IP`-Env statt fest im Code; `requests`/Flask entfernt (nur Standardbibliothek); Cache schreibt atomar; NAS-Statusfarbe korrigiert |
 
 ---
 

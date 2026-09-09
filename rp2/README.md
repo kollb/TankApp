@@ -44,7 +44,8 @@ In allen Dateien `<NAS-IP>` durch die **lokale IP deines NAS** ersetzen:
 ### 3. Abhängigkeiten installieren
 ```bash
 sudo apt update && sudo apt install -y python3-pip
-python3 -m pip install flask requests
+# Keine pip-Pakete noetig - nur Python-Standardbibliothek
+python3 --version   # 3.11+
 ```
 
 ### 4. Services einrichten
@@ -82,7 +83,7 @@ http://<RP2-IP>:8000
 
 ### Fallback-GUI
 - **Port:** 8000
-- **Technologie:** Python Flask
+- **Technologie:** Python `http.server` (Standardbibliothek)
 - **Daten:**
   - Live-Preise: Direkt aus `/dev/shm/tankapp` (<5 Min alt)
   - Prognosen: Aus Cache-Datei (max. 24h alt)

@@ -11,8 +11,15 @@ from pathlib import Path
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import socket
 import threading
+import urllib.request
 
-# Konfiguration
+# Konfiguration ueber Umgebungsvariablen (systemd: Environment=NAS_IP=...)
+NAS_IP = os.environ.get("NAS_IP", "")
+NAS_PORT = os.environ.get("NAS_PORT", "1355")
+NAS_HEALTH_URL = os.environ.get(
+    "NAS_HEALTH_URL", f"http://{NAS_IP}:{NAS_PORT}/api/v1/health"
+)
+GUI_PORT = int(os.environ.get("FALLBACK_GUI_PORT", "8000"))
 CACHE_DIR = Path("/tmp/tankapp_cache")
 CACHE_FILE = CACHE_DIR / "last_forecasts.json"
 POLL_DIR = Path("/dev/shm/tankapp")
@@ -302,7 +309,9 @@ class FallbackHandler(SimpleHTTPRequestHandler):
             template = f.read()
         
         # Ersetze Platzhalter
-        nas_status = "❌ Offline" if not self.check_nas() else "✅ Online"
+        nas_online = self.check_nas()
+        nas_status = "✅ Online" if nas_online else "❌ Offline"
+        nas_status_class = "online" if nas_online else "offline"
         forecast_age = self._get_forecast_age()
         forecast_age_text = f"{forecast_age}h alt" if forecast_age else "nicht verfügbar"
         data_age = "<5 Min"  # Live-Preise sind immer aktuell
@@ -320,6 +329,7 @@ class FallbackHandler(SimpleHTTPRequestHandler):
         
         # HTML generieren
         html = template.replace("{{NAS_STATUS}}", nas_status)
+        html = html.replace("{{NAS_STATUS_CLASS}}", nas_status_class)
         html = html.replace("{{FORECAST_AGE}}", forecast_age_text)
         html = html.replace("{{DATA_AGE}}", data_age)
         
@@ -417,11 +427,12 @@ class FallbackHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def check_nas():
         """Prüft, ob NAS erreichbar ist."""
+        if not NAS_IP and "NAS_URL" not in os.environ:
+            return False
         try:
-            import requests
-            requests.get("http://<NAS-IP>:1355/api/v1/health", timeout=2)
-            return True
-        except:
+            with urllib.request.urlopen(NAS_HEALTH_URL, timeout=2) as response:
+                return response.status == 200
+        except Exception:
             return False
 
 
@@ -523,7 +534,7 @@ def main():
     
     # Starte Server
     host = "0.0.0.0"
-    port = 8000
+    port = GUI_PORT
     
     print(f"Starte RP2 Fallback GUI auf {host}:{port}")
     print(f"Template-Verzeichnis: {TEMPLATE_DIR}")
