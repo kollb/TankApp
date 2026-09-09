@@ -11,10 +11,20 @@ from .config import Settings
 from .data import read_json
 
 
-INTERVALS = {"archive": 3600, "models": 86400, "selection": 86400}
+INTERVALS = {
+    "archive": 3600,
+    "models": 86400,
+    "selection": 86400,
+    "settlement": 1800,
+}
 
 
 def execute(name, settings):
+    if name == "settlement":
+        from .settlement import run_settlement_job
+
+        return run_settlement_job(settings)
+
     if name == "archive":
         if not settings.netrc.is_file() or settings.netrc.stat().st_size == 0:
             return {"state": "waiting", "error_code": "archive_not_configured"}

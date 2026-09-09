@@ -8,6 +8,8 @@ import {
   detourEconomics,
   gapBands,
   haversineKm,
+  rowOutcome,
+  scoreRows,
   segments,
   splitOnGap,
   type Station,
@@ -256,3 +258,55 @@ describe("detour economics", () => {
     ).toBe("borderline");
   });
 });
+
+describe("B4 decision scoring and lab outcomes", () => {
+  const sampleRow = {
+    day: "2026-09-01",
+    cls: 0,
+    mu: 2.4,
+    p: 0.82,
+    predHour: 19,
+    p8: 173.9,
+    predPrice: 169.5,
+    s: 4.4,
+    best: 5.2,
+  };
+
+  it("evaluates a wait outcome when mu >= eps", () => {
+    const outcome = rowOutcome(sampleRow, 1.0, 40);
+    expect(outcome.wait).toBe(true);
+    expect(outcome.hit).toBe(true);
+    expect(outcome.regretEur).toBeCloseTo(0.32, 2);
+  });
+
+  it("evaluates a now outcome when mu < eps", () => {
+    const outcome = rowOutcome(sampleRow, 3.0, 40);
+    expect(outcome.wait).toBe(false);
+    expect(outcome.hit).toBe(false); // since s > 0, waiting would have been better
+    expect(outcome.regretEur).toBeCloseTo(2.08, 2);
+  });
+
+  it("scores a collection of eval rows correctly", () => {
+    const rows = [
+      sampleRow,
+      {
+        day: "2026-09-02",
+        cls: 0,
+        mu: 1.2,
+        p: 0.65,
+        predHour: 18,
+        p8: 172.0,
+        predPrice: 174.0,
+        s: -2.0, // price jump afternoon
+        best: 0.0,
+      },
+    ];
+    const score = scoreRows(rows, 1.5, 40, "test-station");
+    expect(score.n).toBe(2);
+    expect(score.n_wait).toBe(1);
+    expect(score.n_now).toBe(1);
+    expect(score.hit_wait).toBe(1.0);
+    expect(score.hit_now).toBe(1.0); // day 2 had s < 0, so "now" was correct!
+  });
+});
+

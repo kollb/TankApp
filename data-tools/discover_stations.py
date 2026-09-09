@@ -45,7 +45,6 @@ import argparse
 import csv
 import datetime as dt
 import gzip
-import io
 import json
 import math
 import re
@@ -53,7 +52,6 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import defaultdict
 from pathlib import Path
 
 EARTH_R_KM = 6371.0088
@@ -526,9 +524,9 @@ def main() -> int:
             print(f"# {lab}: Polling-Set {len(p['batch'])} → {', '.join(p['batch'])[:70]}")
         print(f"# Ausgaben: {args.out}/ (polling.json, *_kandidaten.csv"
               + (", *_pool.csv" if args.write_pool else "") + f"), Report {rep}")
-    print(f"# nächsten Schritt: python3 data-tools/fetch_history.py --stations-latest "
-          f"(falls noch nicht da) und --check-history erneut, danach Ingest mit den "
-          f"Pool-CSVs als Basis")
+    print("# nächsten Schritt: python3 data-tools/fetch_history.py --stations-latest "
+          "(falls noch nicht da) und --check-history erneut, danach Ingest mit den "
+          "Pool-CSVs als Basis")
     return 0
 
 

@@ -63,7 +63,7 @@ EARTH_R_KM = 6371.0088
 # Pipeline auch ohne funktionsfähigen Import läuft.
 sys.path.insert(0, str(HERE))
 try:
-    from road_route import RoadRouter, haversine_km as _osrm_haversine
+    from road_route import RoadRouter
 except ImportError:  # pragma: no cover
     RoadRouter = None
 
