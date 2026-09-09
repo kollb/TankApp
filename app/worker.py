@@ -52,28 +52,38 @@ def run(name, settings):
         "error_code": None,
     }
     atomic_json(path, state)
+    print(f"{name}: gestartet {started.isoformat()}", flush=True)
+
+    def finish(outcome):
+        finished = dt.datetime.now(dt.timezone.utc)
+        interval = INTERVALS[name] if outcome["state"] == "success" else 3600
+        state.update(
+            outcome,
+            finished_at=finished.isoformat(),
+            next_run_at=(finished + dt.timedelta(seconds=interval)).isoformat(),
+        )
+        if outcome["state"] == "success":
+            state["last_success_at"] = finished.isoformat()
+        atomic_json(path, state)
+        suffix = f" ({outcome['error_code']})" if outcome.get("error_code") else ""
+        print(f"{name}: {state['state']}{suffix}", flush=True)
+        return 0 if outcome["state"] == "success" else 2
+
     try:
-        result = execute(name, settings)
+        return finish(execute(name, settings))
     except ModuleNotFoundError:
-        result = {"state": "failed", "error_code": "dependencies_missing"}
+        return finish({"state": "failed", "error_code": "dependencies_missing"})
     except Exception as exc:
         print(
             f"{name}: {type(exc).__name__}; Details/Zugangsdaten werden nicht ausgegeben.",
             file=sys.stderr,
+            flush=True,
         )
-        result = {"state": "failed", "error_code": "job_failed"}
-    finished = dt.datetime.now(dt.timezone.utc)
-    interval = INTERVALS[name] if result["state"] == "success" else 3600
-    state.update(
-        result,
-        finished_at=finished.isoformat(),
-        next_run_at=(finished + dt.timedelta(seconds=interval)).isoformat(),
-    )
-    if result["state"] == "success":
-        state["last_success_at"] = finished.isoformat()
-    atomic_json(path, state)
-    print(f"{name}: {state['state']}")
-    return 0 if result["state"] == "success" else 2
+        return finish({"state": "failed", "error_code": "job_failed"})
+    except BaseException:
+        # Ctrl-C / SIGTERM must not leave a stale "running" state behind.
+        finish({"state": "failed", "error_code": "interrupted"})
+        raise
 
 
 def main(argv=None):

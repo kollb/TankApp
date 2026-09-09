@@ -1,6 +1,6 @@
 // Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
 
-import React from "react";
+import React, { useState } from "react";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -18,20 +18,34 @@ export interface Mark {
   label: string;
 }
 
-/** Kompakter SVG-Liniendiagramm-Baustein (dunkles Theme). */
+const defaultXFmt = (x: number) =>
+  new Date(x).toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** Kompakter SVG-Liniendiagramm-Baustein (dunkles Theme), mit Hover-Tooltip. */
 export function LineChart({
   series,
   marks = [],
   height = 220,
   yFmt = (v: number) => v.toFixed(1),
+  xFmt = defaultXFmt,
+  ySuffix = " €/L",
   xTicks = [],
 }: {
   series: SeriesPts[];
   marks?: Mark[];
   height?: number;
   yFmt?: (v: number) => string;
+  xFmt?: (x: number) => string;
+  ySuffix?: string;
   xTicks?: { x: number; label: string }[];
 }) {
+  const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
   const W = 720;
   const H = height;
   const padL = 46;
@@ -86,12 +100,32 @@ export function LineChart({
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
 
+  const hovered =
+    hover && series[hover.si]?.pts[hover.pi]
+      ? { ...series[hover.si].pts[hover.pi], color: series[hover.si].color }
+      : null;
+  const tipLines = hovered
+    ? [xFmt(hovered.x), `${yFmt(hovered.y)}${ySuffix}`]
+    : [];
+  const tipW =
+    Math.max(...tipLines.map((l) => l.length), 0) * 6.4 + 18;
+  const tipH = 40;
+  let tipX = hovered ? X(hovered.x) + 10 : 0;
+  tipX = Math.min(Math.max(tipX, padL), W - padR - tipW);
+  const above = hovered ? Y(hovered.y) - tipH - 12 >= padT - 14 : true;
+  const tipY = hovered
+    ? above
+      ? Y(hovered.y) - tipH - 10
+      : Y(hovered.y) + 12
+    : 0;
+
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
       aria-label="Diagramm"
+      onMouseLeave={() => setHover(null)}
     >
       {gridYs.map((gy, i) => (
         <g key={i}>
@@ -161,8 +195,64 @@ export function LineChart({
           {s.pts.map((p, j) => (
             <circle key={j} cx={X(p.x)} cy={Y(p.y)} r={1.8} fill={s.color} />
           ))}
+          {s.pts.map((p, j) => (
+            <circle
+              key={`hit-${j}`}
+              cx={X(p.x)}
+              cy={Y(p.y)}
+              r={9}
+              fill="transparent"
+              style={{ cursor: "crosshair" }}
+              onMouseEnter={() => setHover({ si: i, pi: j })}
+              onClick={() => setHover({ si: i, pi: j })}
+            />
+          ))}
         </g>
       ))}
+      {hovered && (
+        <g pointerEvents="none">
+          <line
+            x1={X(hovered.x)}
+            x2={X(hovered.x)}
+            y1={padT - 4}
+            y2={H - padB}
+            stroke={hovered.color}
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            opacity={0.7}
+          />
+          <circle
+            cx={X(hovered.x)}
+            cy={Y(hovered.y)}
+            r={4.5}
+            fill={hovered.color}
+            stroke="#fff"
+            strokeWidth={1.5}
+          />
+          <rect
+            x={tipX}
+            y={tipY}
+            width={tipW}
+            height={tipH}
+            rx={6}
+            fill="#0f172a"
+            stroke="#334155"
+            strokeWidth={1}
+          />
+          {tipLines.map((line, i) => (
+            <text
+              key={i}
+              x={tipX + 9}
+              y={tipY + 16 + i * 15}
+              fontSize={11}
+              fill={i === 0 ? TXT : "#f1f5f9"}
+              fontWeight={i === 0 ? 400 : 700}
+            >
+              {line}
+            </text>
+          ))}
+        </g>
+      )}
       {series.some((s) => s.name) && (
         <g>
           {series
