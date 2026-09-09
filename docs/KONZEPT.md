@@ -1,22 +1,23 @@
 # TankApp — Produkt- und Architekturkonzept
 
-> Stand: 2026-09-08. Dieses Dokument beschreibt das **Zielbild**, nicht
+> Stand: 2026-09-10. Dieses Dokument beschreibt das **Zielbild**, nicht
 > ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
 > laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
 > `web/` und `app/` implementieren inzwischen Live-GUI, Nur-Lese-API und
-> automatische NAS-Archiv-/Modelljobs. Kein Nachweis des Betriebs auf dem Ziel-NAS.
+> automatische NAS-Archiv-/Modelljobs **inkl. B3**: Heatmaps, Meine Stationen (δ̂),
+> Collector-Herzschlag, Route-Evaluate. Siehe [API-Doku](API.md).
 > Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
 > Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
 > [Übernahmeregeln](../sample/README.md), §8 und UI-Anhang.
 
-**Verbindlicher Betriebsplan vom 08.09.: [INSTALL.md](INSTALL.md).**
+**Verbindlicher Betriebsplan vom 10.09.: [INSTALL.md](INSTALL.md).**  
 Reihenfolge: Gütersloh mitpolling starten → echte Live-Preise in die vorhandene
 GUI → automatische Berechnung → kalibrierte Entscheidungen. Parallel lädt das
 NAS selbst ein Jahr oder mehr Archiv und holt beim nächsten geplanten Lauf alle
-Lücken nach. Pi = Collector/Uploader; NAS = Archiv + InfluxDB + Berechnung +
+Lücken nach. Pi = Collector/Uploader (inkl. Heartbeat); NAS = Archiv + InfluxDB + Berechnung +
 API/Web-GUI; PC = optionales Rechnen/Einrichten, sonst Browser. Keine verpflichtende
 PC-venv. Historische Pi-API-/PC-Pflicht-Zuordnungen weiter unten sind damit abgelöst.
 Archiv und Polling sind dieselben Tankerkönig-Marktdaten. Der Archiv-Sync wird
@@ -38,8 +39,34 @@ Tankerkönig Archiv ────────────────────
                                                 Handy/PC: Browser
 ```
 
+## Inhaltsverzeichnis (klickbar)
+
+- [0. Produktprinzip: drei Fragen, zwei Modi, eine Zahl](#0-produktprinzip-drei-fragen-zwei-modi-eine-zahl)
+  - [0.1 Die drei einzigen Fragen, die zählen](#01-die-drei-einzigen-fragen-die-zählen)
+  - [0.2 Von der Verteilung zur Entscheidung](#02-von-der-verteilung-zur-entscheidung)
+  - [0.3 Zwei Modi: Alltag und Werkstatt](#03-zwei-modi-alltag-und-werkstatt)
+  - [0.4 Die Ehrlichkeits-Regel (hartes Gate)](#04-die-ehrlichkeits-regel-hartes-gate)
+- [1. Datenquelle: Tankerkönig API](#1-datenquelle-tankerkönig-api)
+- [2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)](#2-schritt-1-mathematische-stations-selektion-fertig-implementiert)
+- [3. Schritt 2: Zeitreihen-Engine — liefert Quantile, sieht das Frontend (im Alltag) nie](#3-schritt-2-zeitreihen-engine--liefert-quantile-sieht-das-frontend-im-alltag-nie)
+- [4. Decision Layer (Ziel)](#4-decision-layer-ziel)
+- [5. Konfidenz, die man wirklich fühlen kann](#5-konfidenz-die-man-wirklich-fühlen-kann)
+- [6. Abnahme-Kriterien: Produkt-KPIs (neben den Engine-Kriterien §3.2)](#6-abnahme-kriterien-produkt-kpis-neben-den-engine-kriterien-32)
+- [7. Polling-Fenster: 06:00–24:00 (fix)](#7-polling-fenster-06002400-fix)
+- [8. UI: zwei Moden, ein Startbildschirm mit ≤ 3 primären Zahlen](#8-ui-zwei-moden-ein-startbildschirm-mit--3-primären-zahlen)
+- [9. Systemarchitektur: Pi ↔ NAS](#9-systemarchitektur-pi--nas)
+- [10. Fahrzeug- & Umweg-Ökonomie](#10-fahrzeug---umweg-ökonomie)
+- [11. TankPuls-API](#11-tankpuls-api)
+  - [11.1 Primär: `GET /v1/decide` — der eine Endpunkt fürs Frontend](#111-primär-get-v1decide--der-eine-endpunkt-fürs-frontend)
+  - [11.2 Folge, Intent, Fill — nicht „Outcome an Recommendation“](#112-folge-intent-fill--nicht-outcome-an-recommendation)
+  - [11.3 Detail-Endpunkte (Werkstatt-Modus, Debug) — inkl. B3](#113-detail-endpunkte-werkstatt-modus-debug--inkl-b3)
+- [12. Noch nicht gestellte, aber wichtige Fragen (Lücken-Checkliste)](#12-noch-nicht-gestellte-aber-wichtige-fragen-lücken-checkliste)
+- [13. Roadmap](#13-roadmap)
+- [14. Ehrliche Grenzen](#14-ehrliche-grenzen)
+- [UI-Anhang: Die zwei GUI-Vorlagen als Homepage-Basis](#ui-anhang-die-zwei-gui-vorlagen-als-homepage-basis)
 
 ---
+
 
 ## 0. Produktprinzip: drei Fragen, zwei Modi, eine Zahl
 
@@ -1151,33 +1178,35 @@ Advice-Settlement läuft **ohne** diese Endpunkte: Job nach `window_end`
 Snapshot. Ein Fill ändert das Settlement nicht nachträglich — es ändert
 nur das Wallet-Ledger.
 
-### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug)
+### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug) — inkl. B3
 
-Aktuell implementierte Nur-Lese-API der gemeinsamen GUI:
-`GET /api/v1/health`, `/api/v1/stations?fuel=e10`,
-`/api/v1/series?city=...&station_id=...&fuel=e10` und
-`/api/v1/forecast?city=...&station_id=...&fuel=e10`.
-Keine Schreib-/Feedback-Endpunkte und noch kein `/v1/decide`.
+Aktuell implementierte Nur-Lese-API der gemeinsamen GUI (Stand 10.09.2026, B3):
+`GET /api/v1/health` (erweitert um selection + collector),
+`GET /api/v1/stations?fuel=e10`,
+`GET /api/v1/series?city=...&station_id=...&fuel=e10`,
+`GET /api/v1/forecast?city=...&station_id=...&fuel=e10`,
+`GET /api/v1/heatmap?city=...&fuel=...&kind=level|probability&weeks=6&station_id=...` (**B3.9**),
+`GET /api/v1/selection?fuel=...&city=...` (**B3.10** Meine Stationen mit δ̂),
+`GET /api/v1/collector/status` (**B3.11** Pi/tmpfs Livestatus),
+`GET /api/v1/route/evaluate?city=...&station_id=...&ref_station_id=...&liters=40&detour_km=3&consumption=7&value_of_time=12&when=...&mode=onroute` (**B3.12** serverseitig, UI rechnet auch lokal),
+`GET /api/v1/last_forecasts` (für RP2-Cache).
 
-Die folgenden Detail-Endpunkte sind weiterhin **geplant**, teilweise als Demo
-im GUI-Prototyp vorhanden.
+Noch geplant: `/v1/decide` primär (liefert episode), `/v1/episodes`, `POST /v1/fills`, `GET /v1/stats/summary` (drei Blöcke backtest/live_advice/wallet).
+
 Produktiv im Werkstatt-Modus genutzt; alte Alltags-Routen werden als
 deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 `/v1/decide` alle Alltags-Fälle abdeckt:
 
-- `GET /v1/stations` — Umkreis-Liste
-  (`lat, lon, radius ≤ 25 km, fuel, sort`), inkl. `maps_url`.
-- `GET /v1/stations/{id}/forecast` — Rohprognose
-  (`fuel, horizon 0|3|7`) + `{mase_24h, picp_7d, confidence_badge,
-  fitted_at}`; Debugging und Werkstatt-Fan-Chart.
-- `GET /v1/heatmap` — `kind=level|probability, weeks=6` → DoW × Stunde.
-- `GET /v1/route/evaluate` — Umweg-Ökonomik-Einzelrechnung
-  (`station_id, liters, detour_km, consumption, value_of_time, when` →
-  `{delta_ct, gross_eur, detour_cost_eur, net_eur, worth_it, z_used}`).
-- `GET /v1/health` — Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand
-  & Oldest-Age, Coverage, letzte Fehler.
-- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` /
-  `live_advice` / `wallet` (§5.5, §8.2).
+- `GET /v1/stations` — Umkreis-Liste (`lat, lon, radius ≤ 25 km, fuel, sort`), inkl. `maps_url` — **implementiert als /api/v1/stations**
+- `GET /v1/stations/{id}/forecast` — Rohprognose (`fuel, horizon 0|3|7`) + `{mase_24h, picp_7d, confidence_badge, fitted_at}` — **implementiert als /api/v1/forecast**
+- `GET /v1/heatmap` — `kind=level|probability, weeks=6` → DoW × Stunde — **B3.9 implementiert, echte InfluxDB-Daten, Berlin-Zeit**
+- `GET /v1/route/evaluate` — Umweg-Ökonomik-Einzelrechnung (`station_id, liters, detour_km, consumption, value_of_time, when` → `{delta_ct, gross_eur, detour_cost_eur, net_eur, worth_it, z_used}`) — **B3.12 implementiert, serverseitig, UI rechnet lokal optional**
+- `GET /v1/health` — Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand & Oldest-Age, Coverage, letzte Fehler — **implementiert, erweitert um collector + selection**
+- `GET /v1/selection` — Meine Stationen mit δ̂, Bootstrap-KI, AV-Score, billigste Stunde — **B3.10 implementiert, Artefakt runtime/selection/current.json**
+- `GET /v1/collector/status` — Pi/tmpfs Livestatus (Collector-Herzschlag) — **B3.11 implementiert**
+- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` / `live_advice` / `wallet` (§5.5, §8.2) — **noch offen**
+
+Details und Beispiele: [API.md](API.md)
 
 ---
 

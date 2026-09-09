@@ -11,15 +11,13 @@ from .config import Settings
 from .data import read_json
 
 
-INTERVALS = {"archive": 3600, "models": 86400}
+INTERVALS = {"archive": 3600, "models": 86400, "selection": 86400}
 
 
 def execute(name, settings):
     if name == "archive":
         if not settings.netrc.is_file() or settings.netrc.stat().st_size == 0:
             return {"state": "waiting", "error_code": "archive_not_configured"}
-        # State/lock in the runtime dir (SSD-friendly): the hourly run must
-        # not wake a sleeping archive disk (Unraid HDD pools).
         code = tankapp.history_sync(
             argparse.Namespace(
                 archive_dir=settings.archive,
@@ -35,9 +33,49 @@ def execute(name, settings):
             "state": "success" if code == 0 else "partial",
             "error_code": None if code == 0 else "archive_incomplete",
         }
+    if name == "selection":
+        try:
+            from .selection import build_selection
+            from engine.storage import write_json
+
+            result = build_selection(
+                settings, fuels=list(settings.model_fuels), n_boot=200
+            )
+            out = settings.runtime / "selection" / "current.json"
+            write_json(out, result)
+            if result.get("count", 0) == 0:
+                return {
+                    "state": "waiting",
+                    "error_code": result.get("error_code") or "selection_not_available",
+                }
+            return {"state": "success", "error_code": None}
+        except ModuleNotFoundError:
+            raise
+        except Exception as exc:
+            print(
+                f"selection: {type(exc).__name__}; Details werden nicht ausgegeben.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return {"state": "failed", "error_code": "selection_failed"}
+
     from .refresh import refresh
 
-    return refresh(settings)
+    outcome = refresh(settings)
+    # After successful model refresh, also try to update selection (best effort)
+    if outcome.get("state") in ("success", "partial"):
+        try:
+            from .selection import build_selection
+            from engine.storage import write_json
+
+            sel = build_selection(
+                settings, fuels=list(settings.model_fuels), n_boot=200
+            )
+            write_json(settings.runtime / "selection" / "current.json", sel)
+        except Exception:
+            # Selection failure must not fail model job
+            pass
+    return outcome
 
 
 def run(name, settings):
@@ -81,7 +119,6 @@ def run(name, settings):
         )
         return finish({"state": "failed", "error_code": "job_failed"})
     except BaseException:
-        # Ctrl-C / SIGTERM must not leave a stale "running" state behind.
         finish({"state": "failed", "error_code": "interrupted"})
         raise
 

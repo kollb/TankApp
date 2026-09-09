@@ -69,8 +69,10 @@ BACKOFF_429_S = 300
 # Tankerkönig-IDs und -Keys sind UUIDs. Der API-Check dient nur dazu, GARANTIERT
 # kaputte Eingaben sofort (und verständlich) zu melden, statt auf das kryptische
 # "parameter error" der API zu warten.
-UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-                     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 def is_uuid(value: str) -> bool:
@@ -96,18 +98,24 @@ def explain_api_error(msg: str) -> str:
     """
     low = (msg or "").lower()
     if "parameter error" in low:
-        return ("API ok=false: 'parameter error' — d. h. ids ODER apikey kamen leer "
-                "bei der API an. Prüfe polling.json (batch-UUIDs) und data/apikey.txt. "
-                "Falls ein HTTPS-Proxy gesetzt ist (http_proxy/https_proxy), kann er "
-                "den Aufruf verfälschen.")
+        return (
+            "API ok=false: 'parameter error' — d. h. ids ODER apikey kamen leer "
+            "bei der API an. Prüfe polling.json (batch-UUIDs) und data/apikey.txt. "
+            "Falls ein HTTPS-Proxy gesetzt ist (http_proxy/https_proxy), kann er "
+            "den Aufruf verfälschen."
+        )
     if "key existiert nicht" in low:
-        return ("API ok=false: 'Key existiert nicht oder ist deaktiviert' — der Key in "
-                "data/apikey.txt ist unbekannt oder nicht aktiviert. Key auf "
-                "tankerkoenig.de prüfen.")
+        return (
+            "API ok=false: 'Key existiert nicht oder ist deaktiviert' — der Key in "
+            "data/apikey.txt ist unbekannt oder nicht aktiviert. Key auf "
+            "tankerkoenig.de prüfen."
+        )
     if "nicht im korrekten format" in low:
-        return ("API ok=false: 'eine oder mehrere Tankstellen-IDs nicht im korrekten "
-                "Format' — polling.json enthält UUIDs außerhalb des Formats "
-                "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
+        return (
+            "API ok=false: 'eine oder mehrere Tankstellen-IDs nicht im korrekten "
+            "Format' — polling.json enthält UUIDs außerhalb des Formats "
+            "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx."
+        )
     return f"API ok=false: {msg!r}"
 
 
@@ -133,22 +141,29 @@ def find_api_key(explicit: str | None) -> str | None:
 
 def load_poll_set(path: Path, city: str | None) -> dict:
     if not path.exists():
-        raise SystemExit(f"polling.json fehlt: {path} — erst data-tools/run_pipeline.py "
-                         "laufen lassen (baut das Polling-Set).")
+        raise SystemExit(
+            f"polling.json fehlt: {path} — erst data-tools/run_pipeline.py "
+            "laufen lassen (baut das Polling-Set)."
+        )
     payload = json.loads(path.read_text(encoding="utf-8"))
     sets = payload.get("sets") or {}
     if not sets:
         raise SystemExit(f"{path}: keine 'sets' (leer?).")
     if city:
         if city not in sets:
-            raise SystemExit(f"Stadt '{city}' nicht in {path} (vorhanden: {', '.join(sets)})")
+            raise SystemExit(
+                f"Stadt '{city}' nicht in {path} (vorhanden: {', '.join(sets)})"
+            )
         return sets[city]
     if len(sets) == 1:
         return next(iter(sets.values()))
-    raise SystemExit(f"Mehrere Städte in {path} ({', '.join(sets)}) — --poll-city wählen.")
+    raise SystemExit(
+        f"Mehrere Städte in {path} ({', '.join(sets)}) — --poll-city wählen."
+    )
 
 
 # ----------------------------------------------------------------- Poll-API
+
 
 def fetch_prices(api_key: str, ids: list[str], timeout: int = 30) -> dict:
     """prices.php für bis zu 10 UUIDs. Rückgabe: {uuid: {status, e5?, e10?, diesel?}}."""
@@ -173,7 +188,12 @@ def normalize(raw_prices: dict, ids: list[str]) -> dict:
             for fu in FUELS:
                 v = st.get(fu)
                 # false/None = Sorte wird nicht geführt -> GAR KEINEN Punkt (nicht 0)
-                if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0:
+                if (
+                    isinstance(v, (int, float))
+                    and not isinstance(v, bool)
+                    and math.isfinite(v)
+                    and v > 0
+                ):
                     rec[fu] = round(float(v), 3)
         out[uid] = rec
     return out
@@ -192,7 +212,7 @@ def demo_prices(ids: list[str], stations: dict, fuel: str) -> dict:
     for uid in ids:
         meta = stations.get(uid, {})
         delta_ct = float(meta.get("delta_ct", 0.0) or 0.0)
-        closed = (now.hour < 6)  # nachts zu (im Demo nicht abgefragt, aber falls doch)
+        closed = now.hour < 6  # nachts zu (im Demo nicht abgefragt, aber falls doch)
         price = round(base + (cyc + delta_ct) / 100.0, 3)
         rec = {"status": "closed" if closed else "open"}
         if not closed:
@@ -204,6 +224,7 @@ def demo_prices(ids: list[str], stations: dict, fuel: str) -> dict:
 
 # ------------------------------------------------------------- Ringpuffer/IO
 
+
 def write_snapshot(out_dir: Path, snap: dict) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = dt.datetime.fromisoformat(snap["fetched_at"])
@@ -214,12 +235,7 @@ def write_snapshot(out_dir: Path, snap: dict) -> Path:
 
 
 def ring_prune(out_dir: Path, keep_days: int = RING_DAYS) -> list[str]:
-    """JSONL-Dateien löschen, die älter als die Puffertiefe sind (FIFO, §9.1).
-
-    Puffer = keep_days Tag-DATEIEN: der heutige Tag plus die (keep_days-1)
-    vorherigen bleiben (7 Tage Tiefe -> die Dateien 'heute' bis 'heute-6',
-    'heute-7' fällt raus), also gelöscht ab Alter >= keep_days.
-    """
+    """JSONL-Dateien löschen, die älter als die Puffertiefe sind (FIFO, §9.1)."""
     cutoff = dt.date.today() - dt.timedelta(days=keep_days - 1)
     removed = []
     for p in out_dir.glob("*.jsonl"):
@@ -233,7 +249,128 @@ def ring_prune(out_dir: Path, keep_days: int = RING_DAYS) -> list[str]:
     return removed
 
 
+def write_heartbeat(out_dir: Path, snap: dict, poll_count: int) -> None:
+    """Collector-Herzschlag für NAS-Livestatus (Pi/tmpfs).
+
+    Schreibt meta/heartbeat.json mit letztem Poll, tmpfs-Auslastung und
+    ältester Datei. Nur Standardbibliothek, atomar via tmp+rename.
+    Sendet zusätzlich best-effort ans NAS, wenn TANKAPP_NAS_URL gesetzt ist.
+    """
+    import shutil
+
+    meta_dir = out_dir / "meta"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+
+    # tmpfs-Nutzung
+    try:
+        usage = shutil.disk_usage(out_dir)
+        total, used, free = usage.total, usage.used, usage.free
+    except OSError:
+        total = used = free = None
+
+    # Älteste Datei
+    oldest_name = None
+    oldest_age_days = None
+    try:
+        files = sorted(out_dir.glob("*.jsonl"))
+        if files:
+            oldest = min(files, key=lambda p: p.stat().st_mtime)
+            oldest_name = oldest.name
+            age_s = time.time() - oldest.stat().st_mtime
+            oldest_age_days = round(age_s / 86400.0, 2)
+    except OSError:
+        pass
+
+    # Für NAS-API: flache Struktur mit abgeleiteten MB-Werten
+    tmpfs_used_mb = (
+        round(used / 1_000_000, 2) if isinstance(used, (int, float)) else None
+    )
+    tmpfs_total_mb = (
+        round(total / 1_000_000, 2) if isinstance(total, (int, float)) else None
+    )
+
+    payload = {
+        "timestamp": snap.get("fetched_at"),
+        "last_poll_at": snap.get("fetched_at"),
+        "city": snap.get("city"),
+        "source": snap.get("source"),
+        "poll_count": poll_count,
+        "open_count": sum(
+            1 for v in snap.get("prices", {}).values() if v.get("status") == "open"
+        ),
+        "total_count": len(snap.get("prices", {})),
+        "tmpfs_used_mb": tmpfs_used_mb,
+        "tmpfs_total_mb": tmpfs_total_mb,
+        "oldest_file_age_days": oldest_age_days,
+        "tmpfs": {
+            "total_bytes": total,
+            "used_bytes": used,
+            "free_bytes": free,
+        },
+        "oldest_file": {
+            "name": oldest_name,
+            "age_days": oldest_age_days,
+        },
+        "ring_days": RING_DAYS,
+        "generated_at": dt.datetime.now().astimezone().isoformat(),
+    }
+
+    tmp = meta_dir / ".heartbeat.json.tmp"
+    try:
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        tmp.replace(meta_dir / "heartbeat.json")
+    except OSError:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+
+    # Best-effort POST ans NAS (falls konfiguriert)
+    nas_url = os.environ.get("TANKAPP_NAS_URL") or os.environ.get(
+        "TANKAPP_NAS_HEARTBEAT_URL"
+    )
+    if nas_url:
+        # Erlaube sowohl Basis-URL als auch volle Heartbeat-URL
+        if nas_url.rstrip("/").endswith("/api/v1/collector/heartbeat"):
+            target = nas_url
+        else:
+            target = nas_url.rstrip("/") + "/api/v1/collector/heartbeat"
+        try:
+            data = json.dumps(
+                {
+                    "timestamp": payload.get("timestamp"),
+                    "city": payload.get("city"),
+                    "open_count": payload.get("open_count"),
+                    "total_count": payload.get("total_count"),
+                    "tmpfs_used_mb": tmpfs_used_mb,
+                    "tmpfs_total_mb": tmpfs_total_mb,
+                    "oldest_file_age_days": oldest_age_days,
+                    "poll_count": poll_count,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                target,
+                data=data,
+                method="POST",
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "User-Agent": "TankApp-Collector/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status not in (200, 204):
+                    raise RuntimeError(f"NAS heartbeat HTTP {resp.status}")
+        except Exception:
+            # NAS offline ist kein Collector-Fehler — nur im Log, nicht crashen
+            pass
+
+
 # ------------------------------------------------------------------ Ausgabe
+
 
 def print_table(snap: dict, stset: dict, fuel: str) -> None:
     """Aktuelle Preise der 10 Stationen, billigste zuerst (live 'wo ist es
@@ -246,8 +383,10 @@ def print_table(snap: dict, stset: dict, fuel: str) -> None:
         if rec["status"] == "open" and p is not None:
             rows.append((p, uid, meta, rec))
     rows.sort(key=lambda r: r[0])
-    print(f"\nAktuelle {fuel.upper()}-Preise  ({snap['fetched_at'][11:16]} Uhr, "
-          f"{len(rows)} offen):")
+    print(
+        f"\nAktuelle {fuel.upper()}-Preise  ({snap['fetched_at'][11:16]} Uhr, "
+        f"{len(rows)} offen):"
+    )
     print(f"  {'#':>2} {'€/L':>5}  {'Gruppe':<11} {'Station'[:36]}")
     for i, (p, uid, meta, rec) in enumerate(rows, 1):
         grp = meta.get("group", "?")
@@ -260,6 +399,7 @@ def print_table(snap: dict, stset: dict, fuel: str) -> None:
 
 
 # --------------------------------------------------------------------- Loop
+
 
 def seconds_until_window(now: dt.datetime, start_h: int) -> float:
     """Sekunden bis zum nächsten Fensterbeginn (start_h Uhr)."""
@@ -274,21 +414,44 @@ def in_poll_window(now: dt.datetime, start_h: int, end_h: int) -> bool:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="TankApp Collector: Stadtsets mit gemeinsamem Request-Budget")
-    ap.add_argument("--poll-json", type=Path, default=DEFAULT_POLL_JSON,
-                    help="Polling-Set aus run_pipeline.py")
-    ap.add_argument("--poll-city", default=None, help="Optional nur diese Stadt; Default: alle Sets abwechselnd")
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT,
-                    help="Puffer-Verzeichnis (Pi: /dev/shm/tankapp)")
+    ap = argparse.ArgumentParser(
+        description="TankApp Collector: Stadtsets mit gemeinsamem Request-Budget"
+    )
+    ap.add_argument(
+        "--poll-json",
+        type=Path,
+        default=DEFAULT_POLL_JSON,
+        help="Polling-Set aus run_pipeline.py",
+    )
+    ap.add_argument(
+        "--poll-city",
+        default=None,
+        help="Optional nur diese Stadt; Default: alle Sets abwechselnd",
+    )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Puffer-Verzeichnis (Pi: /dev/shm/tankapp)",
+    )
     ap.add_argument("--fuel", default="e10", choices=["e5", "e10", "diesel"])
-    ap.add_argument("--api-key", default=None, help="Tankerkönig-Key (Default: "
-                    "TANKERKOENIG_API_KEY bzw. data/apikey.txt)")
-    ap.add_argument("--interval", type=int, default=POLL_INTERVAL_S,
-                    help="Sekunden je Poll (Default 300 = 1/5 min, Limit der API)")
+    ap.add_argument(
+        "--api-key",
+        default=None,
+        help="Tankerkönig-Key (Default: TANKERKOENIG_API_KEY bzw. data/apikey.txt)",
+    )
+    ap.add_argument(
+        "--interval",
+        type=int,
+        default=POLL_INTERVAL_S,
+        help="Sekunden je Poll (Default 300 = 1/5 min, Limit der API)",
+    )
     ap.add_argument("--window-start", type=int, default=6, help="Fensterbeginn Stunde")
     ap.add_argument("--window-end", type=int, default=24, help="Fensterende Stunde")
     ap.add_argument("--once", action="store_true", help="ein Poll, dann beenden")
-    ap.add_argument("--demo", action="store_true", help="simulierte Preise (kein Key/Netz)")
+    ap.add_argument(
+        "--demo", action="store_true", help="simulierte Preise (kein Key/Netz)"
+    )
     args = ap.parse_args(argv)
     if args.interval < POLL_INTERVAL_S:
         ap.error("--interval muss mindestens 300 Sekunden betragen.")
@@ -305,25 +468,34 @@ def collect(args):
 
     plan = load_plan(args.poll_json, args.poll_city)
     schedule = RequestSchedule(args.out, args.interval, cold_start=not args.demo)
-    log(f"{len(plan)} Stadtset(s), ein Request je {args.interval} s; "
+    log(
+        f"{len(plan)} Stadtset(s), ein Request je {args.interval} s; "
         f"jede Stadt ungefähr alle {len(plan) * args.interval / 60:g} Minuten. "
-        f"Puffer {args.out}")
+        f"Puffer {args.out}"
+    )
 
     api_key = None if args.demo else find_api_key(args.api_key)
     if not args.demo and not api_key:
-        raise SystemExit("Kein Tankerkönig-API-Key (--api-key / Umgebungsvariable "
-                         "TANKERKOENIG_API_KEY / data/apikey.txt). Kostenlos registrieren "
-                         "auf tankerkoenig.de, oder --demo zum Testen.")
+        raise SystemExit(
+            "Kein Tankerkönig-API-Key (--api-key / Umgebungsvariable "
+            "TANKERKOENIG_API_KEY / data/apikey.txt). Kostenlos registrieren "
+            "auf tankerkoenig.de, oder --demo zum Testen."
+        )
     if api_key and not is_uuid(api_key):
-        log(f"⚠ API-Key sieht nicht nach einer UUID aus ({mask_key(api_key)}) — "
+        log(
+            f"⚠ API-Key sieht nicht nach einer UUID aus ({mask_key(api_key)}) — "
             "data/apikey.txt muss GENAU eine Zeile im Format "
-            "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx enthalten (nur den Key, kein Label).")
-    proxy_env = sorted(k for k in os.environ
-                       if k.lower() in ("http_proxy", "https_proxy", "all_proxy"))
+            "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx enthalten (nur den Key, kein Label)."
+        )
+    proxy_env = sorted(
+        k for k in os.environ if k.lower() in ("http_proxy", "https_proxy", "all_proxy")
+    )
     if proxy_env:
-        log(f"⚠ Proxy-Umgebung gesetzt ({', '.join(proxy_env)}) — urllib routet darüber. "
+        log(
+            f"⚠ Proxy-Umgebung gesetzt ({', '.join(proxy_env)}) — urllib routet darüber. "
             "Falls Polls mit 'parameter error' scheitern, kann der Proxy den Aufruf "
-            "verfälschen (prüfen: env | grep -i proxy).")
+            "verfälschen (prüfen: env | grep -i proxy)."
+        )
 
     # Puffer-Verzeichnis früh prüfen: existiert und für den Dienst-User beschreibbar?
     # (Sonst läuft der erste Poll erst erfolgreich und crasht DANN beim Schreiben mit
@@ -338,22 +510,28 @@ def collect(args):
             f"Puffer {args.out} nicht beschreibbar: {e} — das Verzeichnis muss für den "
             "Dienst-User beschreibbar sein, z. B. "
             f"'sudo install -d -o pi -g pi -m 0755 {args.out}' "
-            "(oder --out auf ein beschreibbares Verzeichnis setzen).")
+            "(oder --out auf ein beschreibbares Verzeichnis setzen)."
+        )
 
     stale_no_price: dict[str, int] = {}
+    poll_count = 0
     while True:
         # Mit Offset (§9.3 „UTC speichern"): eindeutiger UTC-Moment; Anzeige
         # (.hour, Tabelle) und Dateiname bleiben Lokalzeit (gleiche Uhrzeit).
         now = dt.datetime.now().astimezone()
         if not in_poll_window(now, args.window_start, args.window_end):
             if args.once:
-                log(f"außerhalb des Fensters {args.window_start:02d}-{args.window_end:02d} "
-                    "Uhr — --once pollt trotzdem einmal (Test).")
+                log(
+                    f"außerhalb des Fensters {args.window_start:02d}-{args.window_end:02d} "
+                    "Uhr — --once pollt trotzdem einmal (Test)."
+                )
                 # bei --once nicht schlafen, direkt einen Poll durchführen
             else:
                 wait = seconds_until_window(now, args.window_start)
-                log(f"Fenster zu (vor {args.window_start:02d} Uhr) — schlafe "
-                    f"{wait/3600:.1f} h bis zum Fensterbeginn.")
+                log(
+                    f"Fenster zu (vor {args.window_start:02d} Uhr) — schlafe "
+                    f"{wait / 3600:.1f} h bis zum Fensterbeginn."
+                )
                 time.sleep(min(wait, 3600))
                 continue
 
@@ -387,34 +565,48 @@ def collect(args):
         except RuntimeError as e:
             # ok=false der API — in der Meldung steckt jetzt die konkrete Ursache.
             log(f"Poll fehlgeschlagen: {e}")
-            log(f"  Request-Kontext: {len(ids)} ids, Key {mask_key(api_key or '')} — "
-                f"wiederhole in {args.interval} s.")
+            log(
+                f"  Request-Kontext: {len(ids)} ids, Key {mask_key(api_key or '')} — "
+                f"wiederhole in {args.interval} s."
+            )
             if args.once:
                 return 1
             time.sleep(args.interval)
             continue
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            log(f"Poll fehlgeschlagen ({type(e).__name__}: {e}) — wiederhole in "
-                f"{args.interval} s.")
+            log(
+                f"Poll fehlgeschlagen ({type(e).__name__}: {e}) — wiederhole in "
+                f"{args.interval} s."
+            )
             if args.once:
                 return 1
             time.sleep(args.interval)
             continue
 
-        snap = {"fetched_at": dt.datetime.now().astimezone().replace(microsecond=0).isoformat(),
-                "source": "demo" if args.demo else "tankerkoenig-prices.php",
-                "city": stset.get("label"), "prices": prices}
+        snap = {
+            "fetched_at": dt.datetime.now()
+            .astimezone()
+            .replace(microsecond=0)
+            .isoformat(),
+            "source": "demo" if args.demo else "tankerkoenig-prices.php",
+            "city": stset.get("label"),
+            "prices": prices,
+        }
         try:
             path = write_snapshot(args.out, snap)
         except OSError as e:
-            log(f"✗ Puffer nicht beschreibbar: {e} — Ownership von {args.out} prüfen "
-                f"(Dienst-User muss schreiben dürfen). Wiederhole in {args.interval} s.")
+            log(
+                f"✗ Puffer nicht beschreibbar: {e} — Ownership von {args.out} prüfen "
+                f"(Dienst-User muss schreiben dürfen). Wiederhole in {args.interval} s."
+            )
             if args.once:
                 return 1
             time.sleep(args.interval)
             continue
         n_open = sum(1 for r in prices.values() if r["status"] == "open")
+        poll_count += 1
         log(f"Poll ok: {n_open}/{len(ids)} offen → {path.name}")
+        write_heartbeat(args.out, snap, poll_count)
 
         # 'no prices' über Tage zählen (§1.2: nach 7 Tagen aus dem Monitoring -> Alarm)
         for uid, rec in prices.items():

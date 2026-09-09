@@ -1,5 +1,17 @@
 # GUI-Vorlagen für die neue Homepage — behalten
 
+# GUI-Vorlagen für die neue Homepage — behalten
+
+## Inhaltsverzeichnis
+
+- [Vorlagen-Übernahme](#gui-vorlagen-für-die-neue-homepage--behalten)
+- [Visuelle Leitplanken](#visuelle-leitplanken-aus-dem-vorhandenen-code)
+- [Daten und Design getrennt migrieren](#daten-und-design-getrennt-migrieren)
+
+---
+
+
+
 **Beide Prototypen sind ausdrücklich die gestalterische und technische Basis
 der neuen TankApp-Homepage.** Nicht zusammen mit entbehrlichen Demo-Daten
 löschen und nicht durch ein unverbundenes Landingpage-Design ersetzen.

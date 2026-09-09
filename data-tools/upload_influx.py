@@ -2,51 +2,6 @@
 """
 TankApp – M1 Uploader: schiebt die unbestätigten Zeilen des JSONL-Ringpuffers
 nach InfluxDB 2.x auf dem NAS (Konzept §9.1). Nur Standardbibliothek.
-
-Der Collector (collect_prices.py) hängt je Poll eine JSON-Zeile an
-<PUFFER>/YYYY-MM-DD.jsonl. Dieser Uploader — als zweite systemd-Service auf
-demselben Pi (tankapp-uploader.service) — überträgt alle Zeilen, deren
-Zeitstempel hinter dem Ack (<PUFFER>/meta/synced_until) liegen, nach InfluxDB
-und schiebt das Ack **erst nach erfolgreichem Write** weiter (Ack-Protokoll
-§9.1). NAS-Ausfall wird so bis zur 7-Tage-Ringpuffertiefe überbrückt
-(Überlauf FIFO + Alarm ab 6 Tagen); neu gesendete Zeilen sind harmlos, weil
-InfluxDB-Punkte ihre Identität (Measurement+Tags+Timestamp) mitbringen und
-doppelte Writes nur überschreiben (idempotent, §1.2).
-
-Line Protocol (Measurement `prices`):
-  prices,city=<Stadt>,station=<Name>,station_id=<UUID> status="open",e10=1.620,e5=1.740 <ns>
-  * Tags: city (Label aus polling.json), station (Name aus polling.json,
-    sonst die UUID), station_id (stabile UUID aus dem Snapshot).
-    Gleiche Namen können verschiedene Stationen sein; station_id trennt sie.
-  * Felder: status + nur tatsächlich geführte Preise je Sorte —
-    `false`/`0` = Sorte NICHT geführt → KEIN Feld, nie 0.000 (§1.2)
-  * Zeitstempel: `fetched_at` der Zeile (seit dem UTC-Fix mit Offset, d. h.
-    eindeutiger UTC-Moment); alte naive Zeilen = System-Lokalzeit
-
-Konfiguration (Umgebung, z. B. /etc/tankapp/env auf dem Pi, chmod 600 —
-nie im Repo; Werte bei uns, siehe INSTALL.md Phase C):
-  TANKAPP_INFLUX_URL    http://192.168.178.61:8086
-  TANKAPP_INFLUX_ORG    gtwrlab
-  TANKAPP_INFLUX_BUCKET tankapp
-  TANKAPP_INFLUX_TOKEN  Least-Privilege-Token (auth create --read-bucket --write-bucket)
-  TANKAPP_POLL_DIR      Ringpuffer (wie beim Collector; Default: data/poll)
-
-Verhalten:
-  * alle 60 s: GET /ping (Liveness) — NAS-Ausfall ist im Log in < 1 min sichtbar
-  * Zyklus: unsynced Zeilen lesen → Line Protocol → POST /api/v2/write →
-    erst bei 2xx meta/synced_until weiter (atomares Schreiben, nie rückwärts)
-  * Fehler: klare Meldung (401/403 Token, 404 Org/Bucket, 400 Line Protocol),
-    Backoff 60 s, 2 min, 4 min, … bis 15 min, dann weiter versuchen
-  * systemd: Type=notify + WatchdogSec=30 (READY=1 beim Start, WATCHDOG=1
-    alle 10 s) — ein NAS-Ausfall ist KEIN Fehlerzustand des Dienstes
-
-Beispiele:
-  python3 data-tools/upload_influx.py --dry-run   # Zeilen zeigen, nichts senden
-  python3 data-tools/upload_influx.py --once      # ein Zyklus (Test), Exit 0/1
-  python3 data-tools/upload_influx.py             # Dauerbetrieb (systemd)
-  python3 data-tools/upload_influx.py --replay --dry-run --poll-dir <SICHERUNG>
-  # --replay ist einmalig, liest auch bestätigte Original-JSONL-Zeilen,
-  # schreibt station_id-Tags und ändert weder Quelldateien noch Ack-Dateien.
 """
 
 from __future__ import annotations
@@ -71,12 +26,12 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
 DEFAULT_POLL_DIR = Path(os.environ.get("TANKAPP_POLL_DIR", ROOT / "data" / "poll"))
 FUELS = ("e5", "e10", "diesel")
-PING_EVERY_S = 60           # Liveness-Ping an den NAS (§9.1)
-PING_FAIL_LOG_EVERY_S = 300  # Ping-Fehlalarm im Log höchstens alle 5 min
-CYCLE_TICK_S = 10           # Hauptloop-Takt = Watchdog-Nachricht
-OVERFLOW_ALARM_DAYS = 6     # Alarm, wenn älteste unsynced Zeile so alt ist (Ringtiefe 7 d)
+PING_EVERY_S = 60
+PING_FAIL_LOG_EVERY_S = 300
+CYCLE_TICK_S = 10
+OVERFLOW_ALARM_DAYS = 6
 OVERFLOW_LOG_EVERY_S = 3600
-BACKOFF_BASE_S = 60         # 60 s, 2 min, 4 min, … (Verschlechterung bei Wiederholung)
+BACKOFF_BASE_S = 60
 BACKOFF_MAX_S = 900
 HTTP_TIMEOUT_S = 30
 PING_TIMEOUT_S = 5
@@ -85,8 +40,15 @@ REPLAY_BATCH_POINTS = 1000
 
 
 class Cfg:
-    def __init__(self, url: str, org: str, bucket: str, token: str,
-                 poll_dir: Path, poll_json: Path):
+    def __init__(
+        self,
+        url: str,
+        org: str,
+        bucket: str,
+        token: str,
+        poll_dir: Path,
+        poll_json: Path,
+    ):
         self.url = url.rstrip("/")
         self.org = org
         self.bucket = bucket
@@ -103,6 +65,7 @@ class State:
         self.last_ping_fail_log = 0.0
         self.last_overflow_log = 0.0
         self.names_warned = False
+        self.last_heartbeat = 0.0
 
 
 def log(msg: str) -> None:
@@ -110,7 +73,6 @@ def log(msg: str) -> None:
 
 
 def mask_token(token: str) -> str:
-    """Token fürs Log unkenntlich machen (Geheimnis, nie voll ausgeben)."""
     if not token:
         return "(leer)"
     if len(token) <= 8:
@@ -118,14 +80,7 @@ def mask_token(token: str) -> str:
     return f"{token[:4]}…{token[-4:]} ({len(token)} Zeichen)"
 
 
-# ------------------------------------------------------------------- Zeitstempel
-
 def parse_ts(s: str) -> dt.datetime:
-    """ISO-Zeitstempel → aware Datetime.
-
-    Naive Zeilen (vom Collector vor dem UTC-Fix) werden als
-    System-Lokalzeit interpretiert — das war deren Bedeutung.
-    """
     ts = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
@@ -142,21 +97,23 @@ def read_ack(meta_dir: Path) -> "dt.datetime | None":
     try:
         return parse_ts(s)
     except ValueError:
-        log(f"⚠ Ack-Datei nicht lesbar ({s!r}) — als 'nichts gesynced' behandelt "
-            "(Neusenden ist dank Punkt-Identität in InfluxDB harmlos).")
+        log(
+            f"⚠ Ack-Datei nicht lesbar ({s!r}) — als 'nichts gesynced' behandelt "
+            "(Neusenden ist dank Punkt-Identität in InfluxDB harmlos)."
+        )
         return None
 
 
 def write_ack(meta_dir: Path, ts: dt.datetime) -> None:
-    """Ack atomar weiter (tmp + rename) — kein teilgeschriebenes Ack."""
     meta_dir.mkdir(parents=True, exist_ok=True)
     tmp = meta_dir / ".synced_until.tmp"
     tmp.write_text(ts.isoformat() + "\n", encoding="utf-8")
     tmp.replace(meta_dir / "synced_until")
 
 
-def read_unsynced(poll_dir: Path, ack: "dt.datetime | None") -> "list[tuple[dt.datetime, dict]]":
-    """Alle Puffer-Zeilen mit fetched_at > ack, chronologisch sortiert."""
+def read_unsynced(
+    poll_dir: Path, ack: "dt.datetime | None"
+) -> "list[tuple[dt.datetime, dict]]":
     rows: "list[tuple[dt.datetime, dict]]" = []
     bad = 0
     if not poll_dir.is_dir():
@@ -167,7 +124,6 @@ def read_unsynced(poll_dir: Path, ack: "dt.datetime | None") -> "list[tuple[dt.d
             file_date = dt.date.fromisoformat(path.stem)
         except ValueError:
             file_date = None
-        # Ganze Dateien vor dem Ack-Tag sind durchsynchroniert.
         if ack_date is not None and file_date is not None and file_date < ack_date:
             continue
         with open(path, encoding="utf-8") as f:
@@ -184,16 +140,15 @@ def read_unsynced(poll_dir: Path, ack: "dt.datetime | None") -> "list[tuple[dt.d
                 if ack is None or ts > ack:
                     rows.append((ts, snap))
     if bad:
-        log(f"⚠ {bad} kaputte Puffer-Zeile(n) übersprungen (Abbruch während Schreibens?) "
-            "— sie werden nicht nachgeschickt.")
+        log(
+            f"⚠ {bad} kaputte Puffer-Zeile(n) übersprungen (Abbruch während Schreibens?) "
+            "— sie werden nicht nachgeschickt."
+        )
     rows.sort(key=lambda r: r[0])
     return rows
 
 
-# ----------------------------------------------------------------- Stationsnamen
-
 def load_station_names(poll_json: Path) -> "dict[str, dict[str, str]]":
-    """polling.json → {City-Label: {uuid: Stationsname}} für den station-Tag."""
     try:
         payload = json.loads(poll_json.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -202,29 +157,30 @@ def load_station_names(poll_json: Path) -> "dict[str, dict[str, str]]":
     for city_key, stset in (payload.get("sets") or {}).items():
         if not isinstance(stset, dict):
             continue
-        names = {s["uuid"]: (s.get("name") or s["uuid"])
-                 for s in stset.get("stations", [])
-                 if isinstance(s, dict) and s.get("uuid")}
+        names = {
+            s["uuid"]: (s.get("name") or s["uuid"])
+            for s in stset.get("stations", [])
+            if isinstance(s, dict) and s.get("uuid")
+        }
         if names:
             out[stset.get("label") or city_key] = names
     return out
 
 
-# ------------------------------------------------------------------ Line Protocol
-
 def esc_tag(v: str) -> str:
-    """Tag-Wert: Backslash, Komma, Leerzeichen und Gleichheitszeichen escapen."""
-    return v.replace("\\", "\\\\").replace(",", "\\,").replace(" ", "\\ ").replace("=", "\\=")
+    return (
+        v.replace("\\", "\\\\")
+        .replace(",", "\\,")
+        .replace(" ", "\\ ")
+        .replace("=", "\\=")
+    )
 
 
 def esc_str(v: str) -> str:
-    """String-Feld: Backslash + Anführungszeichen escapen."""
     return v.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def snap_to_lines(ts: dt.datetime, snap: dict,
-                  names: "dict[str, str]") -> "list[str]":
-    """Ein Snapshot → ein Punkt je UUID, einschließlich geschlossener Stationen."""
+def snap_to_lines(ts: dt.datetime, snap: dict, names: "dict[str, str]") -> "list[str]":
     city = esc_tag(str(snap.get("city") or "unknown"))
     ns = int(ts.timestamp() * 1_000_000_000)
     out = []
@@ -235,18 +191,83 @@ def snap_to_lines(ts: dt.datetime, snap: dict,
         fields = [f'status="{esc_str(str(rec.get("status") or "no prices"))}"']
         for fu in FUELS:
             v = rec.get(fu)
-            # §1.2: false/None/0 = Sorte wird nicht geführt → KEIN Feld.
-            # bool explizit ausschließen: in Python ist False ein int und
-            # würde sonst als 0.000 durchgehen.
-            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0:
+            if (
+                isinstance(v, bool)
+                or not isinstance(v, (int, float))
+                or not math.isfinite(v)
+                or v <= 0
+            ):
                 continue
             fields.append(f"{fu}={float(v):.3f}")
         station_id = esc_tag(str(uid))
-        out.append(f"prices,city={city},station={station},station_id={station_id} {','.join(fields)} {ns}")
+        out.append(
+            f"prices,city={city},station={station},station_id={station_id} {','.join(fields)} {ns}"
+        )
     return out
 
 
-# --------------------------------------------------------------------- InfluxDB
+def read_heartbeat_file(poll_dir: Path) -> dict | None:
+    hb_path = poll_dir / "meta" / "heartbeat.json"
+    try:
+        if not hb_path.is_file() or hb_path.stat().st_size > 10_000_000:
+            return None
+        data = json.loads(hb_path.read_text(encoding="utf-8-sig"))
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def heartbeat_to_line(heartbeat: dict) -> str | None:
+    if not heartbeat:
+        return None
+    last_poll = heartbeat.get("last_poll_at")
+    if not last_poll:
+        return None
+    try:
+        # use current time as point time, not last_poll
+        ns = int(dt.datetime.now().astimezone().timestamp() * 1_000_000_000)
+    except Exception:
+        ns = int(time.time() * 1_000_000_000)
+
+    host = esc_tag("pi")
+    city = esc_tag(str(heartbeat.get("city") or "unknown"))
+
+    fields = []
+    try:
+        fields.append(f'last_poll_at="{esc_str(str(last_poll))}"')
+    except Exception:
+        pass
+
+    tmpfs = (
+        heartbeat.get("tmpfs", {}) if isinstance(heartbeat.get("tmpfs"), dict) else {}
+    )
+    for key, field_name in (
+        ("total_bytes", "tmpfs_total_bytes"),
+        ("used_bytes", "tmpfs_used_bytes"),
+        ("free_bytes", "tmpfs_free_bytes"),
+    ):
+        v = tmpfs.get(key)
+        if isinstance(v, (int, float)) and math.isfinite(v):
+            fields.append(f"{field_name}={int(v)}i")
+
+    oldest = (
+        heartbeat.get("oldest_file", {})
+        if isinstance(heartbeat.get("oldest_file"), dict)
+        else {}
+    )
+    age = oldest.get("age_days")
+    if isinstance(age, (int, float)) and math.isfinite(age):
+        fields.append(f"oldest_age_days={float(age):.3f}")
+
+    poll_count = heartbeat.get("poll_count")
+    if isinstance(poll_count, (int, float)) and math.isfinite(poll_count):
+        fields.append(f"poll_count={int(poll_count)}i")
+
+    if not fields:
+        return None
+
+    return f"collector_status,host={host},city={city} {','.join(fields)} {ns}"
+
 
 def influx_ping(cfg: Cfg) -> "tuple[bool, str]":
     try:
@@ -255,25 +276,32 @@ def influx_ping(cfg: Cfg) -> "tuple[bool, str]":
             return True, f"ok (HTTP {r.status})"
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         reason = getattr(e, "reason", None) or (str(e) or type(e).__name__)
-        return False, f"unreachable ({reason}) — NAS aus oder TANKAPP_INFLUX_URL={cfg.url} falsch?"
+        return (
+            False,
+            f"unreachable ({reason}) — NAS aus oder TANKAPP_INFLUX_URL={cfg.url} falsch?",
+        )
 
 
 def influx_write(cfg: Cfg, lines: "list[str]") -> None:
-    qs = urllib.parse.urlencode({"org": cfg.org, "bucket": cfg.bucket, "precision": "ns"})
+    qs = urllib.parse.urlencode(
+        {"org": cfg.org, "bucket": cfg.bucket, "precision": "ns"}
+    )
     req = urllib.request.Request(
         f"{cfg.url}/api/v2/write?{qs}",
         data="\n".join(lines).encode("utf-8"),
         method="POST",
-        headers={"Authorization": f"Token {cfg.token}",
-                 "Content-Type": "text/plain; charset=utf-8",
-                 "User-Agent": "TankApp-Uploader/1.0"})
+        headers={
+            "Authorization": f"Token {cfg.token}",
+            "Content-Type": "text/plain; charset=utf-8",
+            "User-Agent": "TankApp-Uploader/1.0",
+        },
+    )
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as r:
         if r.status not in (200, 204):
             raise RuntimeError(f"unerwartetes HTTP {r.status} bei /api/v2/write")
 
 
 def explain_write_error(e: Exception, cfg: Cfg) -> str:
-    """Fehler → konkrete Ursache + was wo zu prüfen ist (keine Rätsel)."""
     if isinstance(e, urllib.error.HTTPError):
         code = e.code
         body = ""
@@ -283,33 +311,40 @@ def explain_write_error(e: Exception, cfg: Cfg) -> str:
         except (OSError, IndexError):
             pass
         if code == 401:
-            msg = ("Token fehlt/falsch — TANKAPP_INFLUX_TOKEN in /etc/tankapp/env prüfen "
-                   "(NAS: 'docker compose exec influxdb influx auth list').")
+            msg = (
+                "Token fehlt/falsch — TANKAPP_INFLUX_TOKEN in /etc/tankapp/env prüfen "
+                "(NAS: 'docker compose exec influxdb influx auth list')."
+            )
         elif code == 403:
-            msg = (f"Token existiert, aber keine Schreibberechtigung — Token neu anlegen: "
-                   f"'influx auth create --org {cfg.org} --read-bucket {cfg.bucket} "
-                   f"--write-bucket {cfg.bucket}'.")
+            msg = (
+                f"Token existiert, aber keine Schreibberechtigung — Token neu anlegen: "
+                f"'influx auth create --org {cfg.org} --read-bucket {cfg.bucket} "
+                f"--write-bucket {cfg.bucket}'."
+            )
         elif code == 404:
-            msg = (f"Org '{cfg.org}' oder Bucket '{cfg.bucket}' existiert nicht — "
-                   f"TANKAPP_INFLUX_ORG/_BUCKET prüfen (NAS: 'influx org list', "
-                   f"'influx bucket list --org {cfg.org}').")
+            msg = (
+                f"Org '{cfg.org}' oder Bucket '{cfg.bucket}' existiert nicht — "
+                f"TANKAPP_INFLUX_ORG/_BUCKET prüfen (NAS: 'influx org list', "
+                f"'influx bucket list --org {cfg.org}')."
+            )
         elif code == 400:
             msg = f"Line Protocol abgelehnt. InfluxDB: {body or '(keine Meldung)'}"
         else:
             msg = f"InfluxDB: {body or '(keine Meldung)'}"
         return f"HTTP {code} — {msg}"
     if isinstance(e, TimeoutError):
-        return f"Timeout nach {HTTP_TIMEOUT_S} s — NAS sehr langsam oder nicht erreichbar"
+        return (
+            f"Timeout nach {HTTP_TIMEOUT_S} s — NAS sehr langsam oder nicht erreichbar"
+        )
     if isinstance(e, urllib.error.URLError):
-        return (f"NAS nicht erreichbar ({e.reason}) — NAS aus oder "
-                f"TANKAPP_INFLUX_URL={cfg.url} falsch?")
+        return (
+            f"NAS nicht erreichbar ({e.reason}) — NAS aus oder "
+            f"TANKAPP_INFLUX_URL={cfg.url} falsch?"
+        )
     return str(e) or type(e).__name__
 
 
-# ------------------------------------------------------------------ systemd-notify
-
 def sd_notify(state: str) -> None:
-    """sd_notify per RAW-Socket (Standardbibliothek): READY=1 / WATCHDOG=1."""
     addr = os.environ.get("NOTIFY_SOCKET")
     if not addr:
         return
@@ -323,42 +358,65 @@ def sd_notify(state: str) -> None:
         pass
 
 
-# ---------------------------------------------------------------------- Zyklen
-
 def run_upload(cfg: Cfg, state: State) -> int:
-    """Einen Upload-Zyklus. Return 0 = ok, 1 = Write fehlgeschlagen."""
     ack = read_ack(cfg.meta_dir)
     rows = read_unsynced(cfg.poll_dir, ack)
 
     if rows:
         age_d = (dt.datetime.now().astimezone() - rows[0][0]).total_seconds() / 86400.0
-        if age_d >= OVERFLOW_ALARM_DAYS and \
-                time.time() - state.last_overflow_log >= OVERFLOW_LOG_EVERY_S:
+        if (
+            age_d >= OVERFLOW_ALARM_DAYS
+            and time.time() - state.last_overflow_log >= OVERFLOW_LOG_EVERY_S
+        ):
             state.last_overflow_log = time.time()
-            log(f"⚠ PUFFER ÜBERFÜLLT: älteste unsynced Zeile ist {age_d:.1f} Tage alt "
+            log(
+                f"⚠ PUFFER ÜBERFÜLLT: älteste unsynced Zeile ist {age_d:.1f} Tage alt "
                 "(Ringpuffer hält nur 7 Tage) — NAS-Ausfall zu lange, älteste Daten "
-                "werden FIFO verloren! Uploader + NAS prüfen.")
+                "werden FIFO verloren! Uploader + NAS prüfen."
+            )
 
-    if not rows:
+    # Even if no price rows, try to upload heartbeat periodically (every 60s)
+    heartbeat_line = None
+    now_mono = time.monotonic()
+    if now_mono - state.last_heartbeat >= 60:
+        hb = read_heartbeat_file(cfg.poll_dir)
+        if hb:
+            heartbeat_line = heartbeat_to_line(hb)
+
+    if not rows and not heartbeat_line:
         return 0
 
     names_by_city = load_station_names(cfg.poll_json)
     if not names_by_city and not state.names_warned:
         state.names_warned = True
-        log("⚠ Stationsnamen nicht verfügbar (polling.json fehlt?) — station-Tag "
-            "enthält die UUID statt des Namens.")
+        log(
+            "⚠ Stationsnamen nicht verfügbar (polling.json fehlt?) — station-Tag "
+            "enthält die UUID statt des Namens."
+        )
 
     lines: "list[str]" = []
-    for ts, snap in rows:
-        lines.extend(snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {})))
-    newest = rows[-1][0]
+    newest = None
+    if rows:
+        for ts, snap in rows:
+            lines.extend(
+                snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {}))
+            )
+        newest = rows[-1][0]
+
+        if not lines and newest:
+            write_ack(cfg.meta_dir, newest)
+            log(
+                f"⇡ {len(rows)} Zeile(n) ohne Punkt als gesendet markiert "
+                f"(synced until {newest.isoformat()})"
+            )
+            # still try heartbeat below
+            lines = []
+            newest = None  # don't ack twice
+
+    if heartbeat_line:
+        lines.append(heartbeat_line)
 
     if not lines:
-        # Zeilen ohne einzige Punkt (leerer 'prices') trotzdem acken,
-        # sonst blieben sie für immer 'unsynced'.
-        write_ack(cfg.meta_dir, newest)
-        log(f"⇡ {len(rows)} Zeile(n) ohne Punkt als gesendet markiert "
-            f"(synced until {newest.isoformat()})")
         return 0
 
     try:
@@ -366,14 +424,22 @@ def run_upload(cfg: Cfg, state: State) -> int:
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as e:
         state.fails += 1
         wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
-        log(f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
-            f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren).")
+        log(
+            f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
+            f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
+        )
         return 1
 
     state.fails = 0
-    write_ack(cfg.meta_dir, newest)
-    log(f"⇡ {len(rows)} Zeile(n) ({len(lines)} Punkte) → InfluxDB "
-        f"(synced until {newest.isoformat()})")
+    if newest:
+        write_ack(cfg.meta_dir, newest)
+        log(
+            f"⇡ {len(rows)} Zeile(n) ({len(lines)} Punkte) → InfluxDB "
+            f"(synced until {newest.isoformat()})"
+        )
+    if heartbeat_line:
+        state.last_heartbeat = now_mono
+        log("⇡ Collector-Herzschlag → InfluxDB (collector_status)")
     return 0
 
 
@@ -384,10 +450,14 @@ def run_once(cfg: Cfg, state: State) -> int:
 
 
 def run_loop(cfg: Cfg, state: State) -> int:
-    log(f"Uploader startet: {cfg.url} org={cfg.org} bucket={cfg.bucket} "
-        f"(Token {mask_token(cfg.token)})")
-    log(f"Uploader: Puffer {cfg.poll_dir}, Ack {cfg.ack_file}, "
-        f"Ping alle {PING_EVERY_S} s, Watchdog alle {CYCLE_TICK_S} s")
+    log(
+        f"Uploader startet: {cfg.url} org={cfg.org} bucket={cfg.bucket} "
+        f"(Token {mask_token(cfg.token)})"
+    )
+    log(
+        f"Uploader: Puffer {cfg.poll_dir}, Ack {cfg.ack_file}, "
+        f"Ping alle {PING_EVERY_S} s, Watchdog alle {CYCLE_TICK_S} s"
+    )
     sd_notify("READY=1")
     next_ping = 0.0
     retry_at = 0.0
@@ -398,30 +468,48 @@ def run_loop(cfg: Cfg, state: State) -> int:
             if now_m >= next_ping:
                 next_ping = now_m + PING_EVERY_S
                 ok, detail = influx_ping(cfg)
-                if not ok and time.time() - state.last_ping_fail_log >= PING_FAIL_LOG_EVERY_S:
+                if (
+                    not ok
+                    and time.time() - state.last_ping_fail_log >= PING_FAIL_LOG_EVERY_S
+                ):
                     state.last_ping_fail_log = time.time()
-                    log(f"⚠ Ping {cfg.url} fehlgeschlagen: {detail} — Uploader "
-                        "versucht trotzdem weiter, Puffer läuft weiter.")
+                    log(
+                        f"⚠ Ping {cfg.url} fehlgeschlagen: {detail} — Uploader "
+                        "versucht trotzdem weiter, Puffer läuft weiter."
+                    )
             rc = run_upload(cfg, state)
             if rc:
-                retry_at = time.monotonic() + \
-                    min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
+                retry_at = time.monotonic() + min(
+                    BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S
+                )
         time.sleep(CYCLE_TICK_S)
 
 
 def dry_run(args: argparse.Namespace) -> int:
     ack = read_ack(args.poll_dir / "meta")
     rows = read_unsynced(args.poll_dir, ack)
-    if not rows:
-        log(f"0 unsynced Zeilen in {args.poll_dir} — Puffer voll gesynct ✓ (oder leer).")
+    hb = read_heartbeat_file(args.poll_dir)
+    hb_line = heartbeat_to_line(hb) if hb else None
+    if not rows and not hb_line:
+        log(
+            f"0 unsynced Zeilen in {args.poll_dir} — Puffer voll gesynct ✓ (oder leer)."
+        )
+        if hb:
+            log(f"[dry-run] Herzschlag vorhanden: {hb_line}")
         return 0
     names_by_city = load_station_names(args.poll_json)
     lines: "list[str]" = []
     for ts, snap in rows:
-        lines.extend(snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {})))
-    log(f"[dry-run] {len(rows)} unsynced Zeilen "
-        f"({rows[0][0].isoformat()} … {rows[-1][0].isoformat()}) → {len(lines)} Punkte, "
-        "dies WÜRDE per POST /api/v2/write gesendet:")
+        lines.extend(
+            snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {}))
+        )
+    if hb_line:
+        lines.append(hb_line)
+    log(
+        f"[dry-run] {len(rows)} unsynced Zeilen "
+        f"({rows[0][0].isoformat() if rows else '–'} … {rows[-1][0].isoformat() if rows else '–'}) → {len(lines)} Punkte, "
+        "dies WÜRDE per POST /api/v2/write gesendet:"
+    )
     for line in lines[:DRYRUN_MAX_LINES]:
         print("  " + line)
     if len(lines) > DRYRUN_MAX_LINES:
@@ -431,7 +519,7 @@ def dry_run(args: argparse.Namespace) -> int:
 
 
 class ReplayError(ValueError):
-    """Credential-/record-free diagnostic for an explicitly requested replay."""
+    pass
 
 
 REPLAY_HINTS = {
@@ -468,7 +556,6 @@ def replay_zone(name: str | None) -> ZoneInfo | None:
 
 
 def local_time_candidates(stamp: dt.datetime, zone: ZoneInfo) -> list[dt.datetime]:
-    """UTC instants for a naive wall clock: zero in a DST gap, two in a fold."""
     candidates = set()
     for fold in (0, 1):
         aware = stamp.replace(tzinfo=zone, fold=fold)
@@ -478,13 +565,9 @@ def local_time_candidates(stamp: dt.datetime, zone: ZoneInfo) -> list[dt.datetim
     return sorted(candidates)
 
 
-def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None = None) -> tuple[list[str], int]:
-    """Preflight a saved live JSONL buffer before writing ANY points.
-
-    Unlike the normal tailing reader this is strict: no silently skipped bad,
-    demo or conflicting rows. Naive times require an explicit, verified zone;
-    ambiguous/nonexistent local times still fail. No ACK/source edits.
-    """
+def prepare_replay(
+    poll_dir: Path, poll_json: Path, replay_timezone: str | None = None
+) -> tuple[list[str], int]:
     zone = replay_zone(replay_timezone)
     legacy_count = 0
     paths = sorted(poll_dir.glob("*.jsonl"))
@@ -500,8 +583,6 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
                 for line_no, line in enumerate(handle, 1):
                     if not line.strip():
                         continue
-                    # Stage names/hints are fixed literals. Never echo the raw
-                    # record, UUID, source, timestamp or exception message.
                     stage = "JSON_INVALID"
                     station_no = None
                     try:
@@ -510,12 +591,21 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
                         if not isinstance(snap, dict):
                             raise ValueError
                         source = snap.get("source")
-                        stage = "SOURCE_DEMO" if source == "demo" else (
-                            "SOURCE_MISSING" if source is None or source == "" else "SOURCE_UNKNOWN")
+                        stage = (
+                            "SOURCE_DEMO"
+                            if source == "demo"
+                            else (
+                                "SOURCE_MISSING"
+                                if source is None or source == ""
+                                else "SOURCE_UNKNOWN"
+                            )
+                        )
                         if source != "tankerkoenig-prices.php":
                             raise ValueError
                         stage = "TIME_MISSING_OR_INVALID"
-                        stamp = dt.datetime.fromisoformat(snap["fetched_at"].replace("Z", "+00:00"))
+                        stamp = dt.datetime.fromisoformat(
+                            snap["fetched_at"].replace("Z", "+00:00")
+                        )
                         stage = "TIME_OFFSET_MISSING"
                         if stamp.tzinfo is None:
                             if zone is None:
@@ -531,7 +621,11 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
                             legacy_count += 1
                         stage = "CITY_INVALID"
                         city = snap.get("city")
-                        if not isinstance(city, str) or not city.strip() or any(c in city for c in "\r\n"):
+                        if (
+                            not isinstance(city, str)
+                            or not city.strip()
+                            or any(c in city for c in "\r\n")
+                        ):
                             raise ValueError
                         stage = "PRICES_OBJECT"
                         prices = snap.get("prices")
@@ -539,13 +633,24 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
                             raise ValueError
                         for station_no, (uid, rec) in enumerate(prices.items(), 1):
                             stage = "STATION_UUID_INVALID"
-                            if not isinstance(uid, str) or str(uuid.UUID(uid)) != uid.lower():
+                            if (
+                                not isinstance(uid, str)
+                                or str(uuid.UUID(uid)) != uid.lower()
+                            ):
                                 raise ValueError
                             stage = "STATION_STATUS_INVALID"
-                            if not isinstance(rec, dict) or rec.get("status") not in ("open", "closed", "no prices"):
+                            if not isinstance(rec, dict) or rec.get("status") not in (
+                                "open",
+                                "closed",
+                                "no prices",
+                            ):
                                 raise ValueError
                             stage = "PRICE_NONFINITE"
-                            if any(isinstance(rec.get(fuel), (int, float)) and not math.isfinite(rec[fuel]) for fuel in FUELS):
+                            if any(
+                                isinstance(rec.get(fuel), (int, float))
+                                and not math.isfinite(rec[fuel])
+                                for fuel in FUELS
+                            ):
                                 raise ValueError
                             stage = "CONFLICTING_OBSERVATION"
                             key = (city, uid, stamp)
@@ -553,8 +658,18 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
                                 raise ValueError
                             observations[key] = rec
                         rows.append((stamp, snap))
-                    except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
-                        position = f", Stationseintrag {station_no}" if station_no is not None else ""
+                    except (
+                        ValueError,
+                        KeyError,
+                        TypeError,
+                        AttributeError,
+                        OverflowError,
+                    ):
+                        position = (
+                            f", Stationseintrag {station_no}"
+                            if station_no is not None
+                            else ""
+                        )
                         raise ReplayError(
                             f"Replay-Prüfung fehlgeschlagen: {path.name}, Zeile {line_no}{position}. "
                             f"[{stage}] {REPLAY_HINTS[stage]} "
@@ -569,35 +684,45 @@ def prepare_replay(poll_dir: Path, poll_json: Path, replay_timezone: str | None 
             ) from None
         after = path.stat()
         if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
-            raise ReplayError("Replay-Quelle wurde während des Lesens verändert. Eine ruhende Sicherung verwenden.")
+            raise ReplayError(
+                "Replay-Quelle wurde während des Lesens verändert. Eine ruhende Sicherung verwenden."
+            )
     rows.sort(key=lambda row: row[0])
     lines = []
     for stamp, snap in rows:
         names = names_by_city.get(snap["city"], {})
         if any("\n" in name or "\r" in name for name in names.values()):
-            raise ReplayError("Stationsnamen enthalten Zeilenumbrüche; Metadaten prüfen.")
+            raise ReplayError(
+                "Stationsnamen enthalten Zeilenumbrüche; Metadaten prüfen."
+            )
         lines.extend(snap_to_lines(stamp, snap, names))
     if zone is not None:
-        log(f"Replay-Zeitzone ausdrücklich gewählt: {zone.key}; {legacy_count} Snapshot(s) "
-            "ohne Offset zu UTC zugeordnet. Vorhandene Offsets und Quelldateien unverändert.")
-    # Exact re-copies of the same snapshot need not be sent twice.
+        log(
+            f"Replay-Zeitzone ausdrücklich gewählt: {zone.key}; {legacy_count} Snapshot(s) "
+            "ohne Offset zu UTC zugeordnet. Vorhandene Offsets und Quelldateien unverändert."
+        )
     return list(dict.fromkeys(lines)), len(rows)
 
 
 def run_replay(cfg: Cfg, dry: bool = False, replay_timezone: str | None = None) -> int:
-    """Explicit one-shot migration/backfill. Even on failure, never touch ACKs."""
     try:
         lines, snapshots = prepare_replay(cfg.poll_dir, cfg.poll_json, replay_timezone)
     except ReplayError as exc:
         log(f"Replay abgebrochen: {exc}")
         return 1
     except (ValueError, OSError, TypeError, KeyError, AttributeError):
-        log("Replay abgebrochen: Sicherung/Metadaten ungültig oder nicht lesbar; UTF-8, Pfade und Rechte prüfen.")
+        log(
+            "Replay abgebrochen: Sicherung/Metadaten ungültig oder nicht lesbar; UTF-8, Pfade und Rechte prüfen."
+        )
         return 1
     if not lines:
-        log("Replay: keine Stationspunkte vorhanden; nichts geschrieben, Ack unverändert.")
+        log(
+            "Replay: keine Stationspunkte vorhanden; nichts geschrieben, Ack unverändert."
+        )
         return 2
-    log(f"Replay: {snapshots} Original-Snapshot(s) → {len(lines)} UUID-Punkte. Ack bleibt unverändert.")
+    log(
+        f"Replay: {snapshots} Original-Snapshot(s) → {len(lines)} UUID-Punkte. Ack bleibt unverändert."
+    )
     if dry:
         for line in lines[:DRYRUN_MAX_LINES]:
             print("  " + line)
@@ -607,58 +732,114 @@ def run_replay(cfg: Cfg, dry: bool = False, replay_timezone: str | None = None) 
     for offset in range(0, len(lines), REPLAY_BATCH_POINTS):
         batch = offset // REPLAY_BATCH_POINTS + 1
         try:
-            influx_write(cfg, lines[offset:offset + REPLAY_BATCH_POINTS])
-        except (urllib.error.HTTPError, urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError, RuntimeError) as exc:
-            code = f"HTTP {exc.code}" if isinstance(exc, urllib.error.HTTPError) else "Transport-/Write-Fehler"
-            log(f"Replay bei Batch {batch}/{batches} abgebrochen ({code}). "
+            influx_write(cfg, lines[offset : offset + REPLAY_BATCH_POINTS])
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            http.client.HTTPException,
+            TimeoutError,
+            OSError,
+            ValueError,
+            RuntimeError,
+        ) as exc:
+            code = (
+                f"HTTP {exc.code}"
+                if isinstance(exc, urllib.error.HTTPError)
+                else "Transport-/Write-Fehler"
+            )
+            log(
+                f"Replay bei Batch {batch}/{batches} abgebrochen ({code}). "
                 "Quelle/Ack unverändert; bereits bestätigte UUID-Punkte bleiben erhalten. "
-                "Nach Behebung dieselbe Sicherung mit denselben Metadaten erneut senden.")
+                "Nach Behebung dieselbe Sicherung mit denselben Metadaten erneut senden."
+            )
             return 1
         log(f"Replay: Batch {batch}/{batches} bestätigt; Ack unverändert.")
-    log("Replay erfolgreich: UUID-Punkte ergänzt, alte Namensserien nicht gelöscht, Ack unverändert.")
+    log(
+        "Replay erfolgreich: UUID-Punkte ergänzt, alte Namensserien nicht gelöscht, Ack unverändert."
+    )
     return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="TankApp M1-Uploader: JSONL-Ringpuffer → InfluxDB 2.x (NAS)")
-    ap.add_argument("--url", default=None, help="InfluxDB-URL (Default: TANKAPP_INFLUX_URL)")
+        description="TankApp M1-Uploader: JSONL-Ringpuffer → InfluxDB 2.x (NAS)"
+    )
+    ap.add_argument(
+        "--url", default=None, help="InfluxDB-URL (Default: TANKAPP_INFLUX_URL)"
+    )
     ap.add_argument("--org", default=None, help="Org (Default: TANKAPP_INFLUX_ORG)")
-    ap.add_argument("--bucket", default=None, help="Bucket (Default: TANKAPP_INFLUX_BUCKET)")
-    ap.add_argument("--token", default=None, help="Token (Default: TANKAPP_INFLUX_TOKEN)")
-    ap.add_argument("--poll-dir", type=Path, default=DEFAULT_POLL_DIR,
-                    help="JSONL-Ringpuffer (Default: TANKAPP_POLL_DIR bzw. data/poll)")
-    ap.add_argument("--poll-json", type=Path, default=DEFAULT_POLL_JSON,
-                    help="polling.json für Stationsnamen (Default: docs/analysis/stations/)")
-    ap.add_argument("--once", action="store_true",
-                    help="ein Zyklus (Ping + Upload + Ack), dann Ende (Exit 0/1)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Zeilen als Line Protocol zeigen, nichts senden")
-    ap.add_argument("--replay", action="store_true",
-                    help="Einmalig ALLE Original-JSONL aus --poll-dir nachliefern, Ack niemals ändern; zuerst --dry-run und eine Sicherung verwenden")
-    ap.add_argument("--replay-timezone", default=None,
-                    help="Nur Replay: bestätigte ursprüngliche IANA-Zeitzone für Zeitstempel ohne Offset; vorhandene Offsets bleiben gültig, DST-Lücken/Dopplungen werden abgelehnt")
+    ap.add_argument(
+        "--bucket", default=None, help="Bucket (Default: TANKAPP_INFLUX_BUCKET)"
+    )
+    ap.add_argument(
+        "--token", default=None, help="Token (Default: TANKAPP_INFLUX_TOKEN)"
+    )
+    ap.add_argument(
+        "--poll-dir",
+        type=Path,
+        default=DEFAULT_POLL_DIR,
+        help="JSONL-Ringpuffer (Default: TANKAPP_POLL_DIR bzw. data/poll)",
+    )
+    ap.add_argument(
+        "--poll-json",
+        type=Path,
+        default=DEFAULT_POLL_JSON,
+        help="polling.json für Stationsnamen (Default: docs/analysis/stations/)",
+    )
+    ap.add_argument(
+        "--once",
+        action="store_true",
+        help="ein Zyklus (Ping + Upload + Ack), dann Ende (Exit 0/1)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Zeilen als Line Protocol zeigen, nichts senden",
+    )
+    ap.add_argument(
+        "--replay",
+        action="store_true",
+        help="Einmalig ALLE Original-JSONL aus --poll-dir nachliefern, Ack niemals ändern; zuerst --dry-run und eine Sicherung verwenden",
+    )
+    ap.add_argument(
+        "--replay-timezone",
+        default=None,
+        help="Nur Replay: bestätigte ursprüngliche IANA-Zeitzone für Zeitstempel ohne Offset; vorhandene Offsets bleiben gültig, DST-Lücken/Dopplungen werden abgelehnt",
+    )
     args = ap.parse_args()
     if args.replay_timezone is not None and not args.replay:
         ap.error("--replay-timezone ist nur mit --replay zulässig.")
 
     if args.dry_run:
         if args.replay:
-            return run_replay(Cfg("", "", "", "", args.poll_dir, args.poll_json), dry=True,
-                              replay_timezone=args.replay_timezone)
+            return run_replay(
+                Cfg("", "", "", "", args.poll_dir, args.poll_json),
+                dry=True,
+                replay_timezone=args.replay_timezone,
+            )
         return dry_run(args)
 
     url = args.url or os.environ.get("TANKAPP_INFLUX_URL", "")
     org = args.org or os.environ.get("TANKAPP_INFLUX_ORG", "")
     bucket = args.bucket or os.environ.get("TANKAPP_INFLUX_BUCKET", "")
     token = args.token or os.environ.get("TANKAPP_INFLUX_TOKEN", "")
-    missing = [n for n, v in (("TANKAPP_INFLUX_URL", url), ("TANKAPP_INFLUX_ORG", org),
-                              ("TANKAPP_INFLUX_BUCKET", bucket),
-                              ("TANKAPP_INFLUX_TOKEN", token)) if not v]
+    missing = [
+        n
+        for n, v in (
+            ("TANKAPP_INFLUX_URL", url),
+            ("TANKAPP_INFLUX_ORG", org),
+            ("TANKAPP_INFLUX_BUCKET", bucket),
+            ("TANKAPP_INFLUX_TOKEN", token),
+        )
+        if not v
+    ]
     if missing:
-        raise SystemExit("Fehlende Konfiguration: " + ", ".join(missing) +
-                         " — auf dem Pi in /etc/tankapp/env (chmod 600, siehe "
-                         "INSTALL.md Phase C, §3.2).")
+        raise SystemExit(
+            "Fehlende Konfiguration: "
+            + ", ".join(missing)
+            + " — auf dem Pi in /etc/tankapp/env (chmod 600, siehe "
+            "INSTALL.md Phase C, §3.2)."
+        )
 
     cfg = Cfg(url, org, bucket, token, args.poll_dir, args.poll_json)
     state = State()

@@ -1,23 +1,38 @@
 # RP2 Fallback-GUI + NAS-Proxy für TankApp
 
+> **Kanonische Anleitung jetzt unter [docs/RP2.md](../docs/RP2.md)** mit klickbarem Inhaltsverzeichnis.
+> Diese Datei bleibt als Kurzreferenz im `rp2/`-Ordner.
+
 **24/7 Zugang zur TankApp über eine einzige Adresse — den RP2 (Port 8000).**
 
-```
+```text
 Browser ──► http://<RP2-IP>:8000
                  │
                  ├─ NAS online  ──► transparenter Proxy: volle NAS-GUI + Live-API
-                 │
+                 │                   inkl. B3: heatmap, selection, collector/status, route/evaluate
                  └─ NAS offline ──► Fallback-GUI:
                      • Live-Preise aus /dev/shm/tankapp (eigene Datenalter)
                      • Stationennamen/Marken/Koordinaten aus polling.json
                      • gecachte Prognosen (F1/F2/F3) aus /tmp/tankapp_cache
+                     • Heartbeat aus meta/heartbeat.json (Collector-Livestatus B3.11)
 ```
+
+## Inhaltsverzeichnis
+
+- [Funktionen](#-funktionen)
+- [Dateistruktur](#-dateistruktur)
+- [Konfiguration](#️-konfiguration-systemd-drop-in-sudo-systemctl-edit-tankapp-fallback-gui)
+- [Verhalten & Tests](#-verhalten--tests)
+- [Template-Updates](#-template-updates)
+- [Changelog](#-changelog)
+- [Vollständige Anleitung](#vollständige-anleitung)
 
 Das NAS läuft nur ~6 h/Tag, der RP2 24/7. Seit v2.0 leitet der RP2 alle
 Requests an das NAS weiter, solange es erreichbar ist — du musst zwischen
 `<NAS-IP>:1355` und `<RP2-IP>:8000` nie mehr wechseln. Ist das NAS weg,
 wechseln dieselbe Adresse automatisch (max. 1 Request später) in den
-Fallback-Modus.
+Fallback-Modus. Seit v2.1 (B3) werden auch die neuen Endpunkte heatmap/selection/collector/route
+transparent geproxyt, und der Fallback zeigt Heartbeat (tmpfs-Nutzung).
 
 ## 🎯 Funktionen
 
@@ -28,6 +43,10 @@ Fallback-Modus.
 | **F2 (Günstigste Station)** | ✅ | ✅ mit Ersparnis je Liter & pro Tank (Tankgröße einstellbar) |
 | **F1 (Jetzt oder warten?)** | ✅ exakt (NAS) | ✅ vereinfachte Quantil-Logik aus gecachten Prognosen |
 | **F3 (Beste Zeitfenster)** | ✅ exakt (NAS) | ✅ Top-3-Fenster aus gecachten Prognosen (24 h) |
+| **Heatmaps DoW×Stunde** | ✅ **B3.9** via NAS `/api/v1/heatmap` | ❌ braucht InfluxDB |
+| **Meine Stationen δ̂** | ✅ **B3.10** via NAS `/api/v1/selection` | ❌ braucht Training |
+| **Collector Livestatus** | ✅ **B3.11** via NAS `/api/v1/collector/status` | ✅ aus heartbeat.json |
+| **Route Evaluate** | ✅ **B3.12** via NAS `/api/v1/route/evaluate` | ✅ lokal im Fallback |
 | **Dark/Light Mode** | ✅ (NAS-GUI) | ✅ Default Dark, Toggle wird gespeichert |
 | **E10/E5/Diesel-Umschalter** | ✅ | ✅ |
 
@@ -39,7 +58,7 @@ GUI. Die exakte Berechnung läuft weiterhin nur auf dem NAS.
 
 ## 📁 Dateistruktur
 
-```
+```text
 rp2/
 ├── fallback_gui.py               # Webserver: NAS-Proxy + Fallback-GUI (Port 8000)
 ├── cache_forecasts.py            # Lädt /api/v1/last_forecasts vom NAS (alle 5 min)
@@ -47,8 +66,8 @@ rp2/
 │   └── index.html                # Fallback-GUI (HTML+CSS+JS, eine Datei)
 ├── tankapp-forecast-cache.service
 ├── tankapp-fallback-gui.service
-├── ANLEITUNG.md                  # Schritt-für-Schritt-Anleitung
-└── README.md                     # diese Datei
+├── ANLEITUNG.md                  # Alte ausführliche Anleitung (jetzt konsolidiert in docs/RP2.md)
+└── README.md                     # diese Datei (Kurzreferenz)
 ```
 
 ## ⚙️ Konfiguration (systemd-Drop-in, `sudo systemctl edit tankapp-fallback-gui`)
@@ -71,13 +90,13 @@ rp2/
 
 **Ohne `polling.json` fehlen Namen, Marken und Navigation** — die UUID wird
 dann angezeigt. Die Datei liegt beim Collector bereits auf dem Pi
-(siehe [docs/INSTALL.md](../docs/INSTALL.md) §2.2).
+(siehe [docs/INSTALL.md](../docs/INSTALL.md) §2.2, Details [docs/BETRIEB.md](../docs/BETRIEB.md)).
 
 ## 🧪 Verhalten & Tests
 
 - `http://<RP2-IP>:8000/` — NAS-GUI (proxied) oder Fallback-GUI
 - `http://<RP2-IP>:8000/?fallback=1` — Fallback-GUI **erzwingen** (auch bei NAS online)
-- `http://<RP2-IP>:8000/api/v1/health` — Status (NAS, Preise, Prognosen, Metadaten)
+- `http://<RP2-IP>:8000/api/v1/health` — Status (NAS, Preise, Prognosen, Metadaten, Collector)
 - `http://<RP2-IP>:8000/api/v1/stations?fuel=e10` — alle Stationen, alle Preise
 - `http://<RP2-IP>:8000/api/v1/forecasts?fuel=e10` — gecachte Prognosen + 24-h-Zusammenfassung
 - `http://<RP2-IP>:8000/api/v1/decide?fuel=e10&liters=40` — F1/F2/F3-Entscheidung
@@ -104,6 +123,13 @@ das Template im Repo, wird die alte Datei beim nächsten Service-Start nach
 
 | Version | Datum | Änderungen |
 |---------|-------|-----------|
+| 2.1 | 10.09.2026 | **B3**: Proxy leitet auch heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung, älteste Datei, poll_count). |
 | 2.0 | 09.09.2026 | **NAS-Proxy**: bei NAS online zeigt Port 8000 die volle NAS-GUI (automatisch, `?fallback=1` erzwingt Fallback). Stationennamen/Marken/Koordinaten aus `polling.json` (bisher UUIDs). Neue Fallback-GUI: Dark/Light-Mode, E10/E5/Diesel-Umschalter, echte Datenalter je Station, Tankgröße einstellbar, F1/F3 aus echten Quantil-Prognosen (Wahrscheinlichkeit + erwartete Ersparnis), Prognose-Sparklines (q025/q50/q975), Auto-Refresh, „NAS prüfen“-Knopf. Saubere JSON-API (`health/stations/forecasts/decide/nas-check`). Template-Update per Inhalts-Hash. `cache_forecasts.py`: tote `load_live_prices()` entfernt |
 | 1.1 | 09.09.2026 | NAS-IP über `NAS_IP`-Env; nur Standardbibliothek; atomarer Cache-Write |
 | 1.0 | 08.09.2026 | Initial: RP2 Fallback-GUI mit F1/F2/F3-Caching |
+
+## Vollständige Anleitung
+
+**→ [docs/RP2.md](../docs/RP2.md)** — konsolidierte Schritt-für-Schritt Anleitung mit TOC, Fehlersuche, Prognose-Qualität, Nutzung.
+
+Alte `rp2/ANLEITUNG.md` bleibt erhalten, ist aber jetzt in `docs/RP2.md` konsolidiert. Siehe auch [docs/README.md](../docs/README.md) für alle Dokumente.

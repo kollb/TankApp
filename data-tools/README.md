@@ -1,5 +1,18 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
+# Datenwerkzeuge — Referenz, keine Installationskette
+
+## Inhaltsverzeichnis
+
+- [Gebündelte Befehle](#datenwerkzeuge--referenz-keine-installationskette)
+- [Interne Einzelprogramme](#interne-einzelprogramme)
+- [Datenformate](#datenformate)
+- [Optionale vertiefte Stationsanalyse](#optionale-vertiefte-stationsanalyse)
+
+---
+
+
+
 **[Einziger Installationseinstieg: docs/INSTALL.md](../docs/INSTALL.md).**
 Nicht alle Skripte nacheinander ausführen. Der normale Einstieg sind die
 gebündelten Befehle aus `tankapp.py`, mit vorhandener Python-Standardbibliothek:

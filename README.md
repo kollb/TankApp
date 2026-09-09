@@ -3,43 +3,67 @@
 **Ziel: GUI öffnen → passende Tankstelle und Zeitpunkt sehen → tanken.**
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 
+## Inhaltsverzeichnis (klickbar)
+
+- [Ein Einstieg, eine Reihenfolge](#ein-einstieg-eine-reihenfolge)
+- [Geräte-Rollen](#geräte-rollen)
+- [Stand B3](#stand-b3)
+- [Dokumentation](#dokumentation)
+- [Entwicklung & Tests](#entwicklung--tests)
+
 ## Ein Einstieg, eine Reihenfolge
 
-**[Installation und nächster Schritt → docs/INSTALL.md](docs/INSTALL.md)**
+**[Installation und nächster Schritt → docs/INSTALL.md](docs/INSTALL.md)**  
+**[Alle Dokumente im Überblick → docs/README.md](docs/README.md)** mit klickbarem Inhaltsverzeichnis
 
 1. **Gütersloh ins gemeinsame Polling aufnehmen.** Frankfurt läuft weiter.
 2. **NAS-App mit echten Live-Preisen starten.** Nicht auf fertige Prognosen warten.
 3. **Parallel das NAS-Archiv automatisch aufbauen:** ein Jahr oder mehr Tankerkönig-Historie, fehlende Tage nachholen.
 4. **NAS-App berechnet und veröffentlicht automatisch**, danach geprüfte Empfehlungen in derselben GUI ergänzen.
 
+## Geräte-Rollen
+
 | Gerät | Aufgabe im Endzustand |
 |---|---|
-| **Pi** | Collector für alle Städte, RAM-Puffer, Upload zum NAS; läuft unabhängig weiter. |
-| **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits, API und Web-GUI. |
+| **Pi** | Collector für alle Städte, RAM-Puffer, Heartbeat, Upload zum NAS; läuft unabhängig weiter. |
+| **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits/Selektion, API und Web-GUI (inkl. Heatmaps, Meine Stationen, Collector-Status, Route-Evaluate). |
 | **PC / Handy** | GUI im Browser. PC optional zur Einrichtung oder für schnellere Rechenläufe; kein Dauerbetrieb und keine verpflichtende venv. |
 
-**Stand 08.09.2026:** Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/
-System, Nur-Lese-API und gebündelter NAS-App-Dienst sind implementiert. Ein Start
-über `python3 tankapp.py nas-up` übernimmt GUI, Archiv-Nachholung und automatische
-Modellberechnung/-veröffentlichung. Bestehende InfluxDB weiterverwenden; Ablauf
-und private Konfiguration stehen ausschließlich in der Installationsanleitung.
+## Stand B3
 
-**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen
-Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt die GUI den
-Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und
-nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
+**Stand 10.09.2026:** B3 — Mittel (neue Backend-Aggregate + Endpunkte) implementiert:
 
-<details>
-<summary>Nur für Entwicklung und Fehlersuche — keine zusätzliche Installationsreihenfolge</summary>
+- **B3.9 Heatmaps DoW×Stunde** (Niveau + Cheap-Probability) → `GET /api/v1/heatmap`, GUI Statistik → Heatmaps
+- **B3.10 Meine Stationen mit δ̂** (Ranking, Bootstrap-KI, AV-Score, billigste Stunde) → `GET /api/v1/selection`, Artefakt `runtime/selection/current.json`, Job `selection`
+- **B3.11 Pi/tmpfs-Livestatus** (Collector-Herzschlag ans NAS) → Collector schreibt `meta/heartbeat.json`, Uploader `collector_status` Measurement, `GET /api/v1/collector/status`, GUI System → Pi/tmpfs Livestatus
+- **B3.12 /v1/route/evaluate serverseitig** (optional, UI rechnet lokal) → `GET /api/v1/route/evaluate`, Button „Server prüfen“ im Alltag
 
-- [Engine-Referenz](engine/README.md): Modellwerkstatt, Datenqualität, Übergangsregel.
-- [Werkzeugübersicht](data-tools/README.md): interne Einzelprogramme.
-- [Architekturkonzept](docs/KONZEPT.md): fachliches Zielbild; der Betriebsplan in INSTALL.md hat Vorrang.
-- [GUI-Basis](sample/README.md): beide vorhandenen Oberflächen erhalten, Demo-Inhalte nicht als Echt-Daten ausgeben.
-- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](engine/README.md#preis-zwillinge).
+Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/System, Nur-Lese-API und gebündelter NAS-App-Dienst sind implementiert. Ein Start über `python3 tankapp.py nas-up` übernimmt GUI, Archiv-Nachholung und automatische Modellberechnung/-veröffentlichung + Selektion. Bestehende InfluxDB weiterverwenden; Ablauf und private Konfiguration stehen ausschließlich in der Installationsanleitung.
 
-Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit
-vorhandenem Python 3.11+, ohne neue venv:
+**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt GUI Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
+
+## Dokumentation
+
+- **[Dokumentations-Index](docs/README.md)** — klickbares Inhaltsverzeichnis, alle Dokumente nach Aufgabe
+- **[Installation](docs/INSTALL.md)** — verbindlicher Betriebsplan, mit TOC, ohne 600 Zeilen Technik-Details
+- **[Architektur](docs/ARCHITEKTUR.md)** — Pi↔NAS↔Browser, Rollen, Datenfluss, Heartbeat, Ressourcen
+- **[API](docs/API.md)** — alle Endpunkte inkl. B3, mit Beispielen
+- **[Betrieb](docs/BETRIEB.md)** — systemd, Backup, Fehlersuche, InfluxDB, Unraid, aus INSTALL.md konsolidiert
+- **[Analyse](docs/ANALYSE.md)** — Selektion, Modelle, Heatmaps, Umweg-Ökonomie
+- **[Konzept](docs/KONZEPT.md)** — fachliches Zielbild, Decision Layer, mit TOC
+- **[RP2 Fallback + Proxy](docs/RP2.md)** — konsolidiert aus rp2/README + ANLEITUNG, 24/7 Zugang über Pi Port 8000
+- **[Stations-UUID](docs/STATIONS-UUID.md)** — gleiche Namen trennen, mit TOC
+- [Engine-Referenz](engine/README.md): Modellwerkstatt, Datenqualität, 12-Uhr-Regel
+- [Werkzeugübersicht](data-tools/README.md): interne Einzelprogramme
+- [GUI-Basis](sample/README.md): beide vorhandenen Oberflächen erhalten
+- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](engine/README.md#preis-zwillinge)
+- RP2 Originale: [rp2/README.md](rp2/README.md), [rp2/ANLEITUNG.md](rp2/ANLEITUNG.md), [Changelog](rp2/AENDERUNGEN.md)
+
+Alte verstreute Anleitungen wurden konsolidiert: INSTALL.md enthält nur verbindlichen Ablauf, Technik-Details → BETRIEB.md, Analyse → ANALYSE.md, API → API.md, Architektur → ARCHITEKTUR.md, RP2 → RP2.md. Keine Demo-Daten oder GUI-Vorlagen gelöscht.
+
+## Entwicklung & Tests
+
+Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit vorhandenem Python 3.11+, ohne neue venv:
 
 ```powershell
 py -3 -m pip install -r requirements-dev.txt
@@ -56,12 +80,6 @@ npx --prefix web playwright install chromium
 npm --prefix web run test:e2e
 ```
 
-Für eine lokale Vorschau nach dem Build: `python tankapp.py serve`; nur mit
-`--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten ihren
-eigenen Server, sofern auf Port 1355 keiner läuft. `app/requirements.txt` enthält
-die Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
+Für lokale Vorschau nach Build: `python tankapp.py serve`; nur mit `--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten eigenen Server, sofern auf Port 1355 keiner läuft. `app/requirements.txt` enthält Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
 
-Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git.
-Die Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben erhalten.
-
-</details>
+Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git. Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben erhalten.

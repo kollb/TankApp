@@ -1,5 +1,25 @@
 # Engine-Referenz — optionale Modellwerkstatt
 
+## Inhaltsverzeichnis
+
+- [Bezugsweg-Regel](#bezugsweg-regel-für-die-entwicklung)
+- [12-Uhr-Regel](#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr)
+- [Schlüssel-Übersicht](#welcher-schlüssel-wird-wofür-verwendet)
+- [HTTP 401](#bereits-eingerichtet-aber-http-401)
+- [RPi schreibt, PC scheitert](#rpi-schreibt-erfolgreich-aber-der-pc-scheitert-beim-lesen)
+- [Browser-Abfrage](#browser-abfrage-funktioniert--anderes-projekt-schreibt-erfolgreich)
+- [Preis-Zwillinge](#preis-zwillinge)
+- [PowerShell & Python](#1-powershell-und-python-vorbereiten)
+- [Softwaretests](#2-optionale-softwaretests-ohne-daten--schlüssel--nas)
+- [Echte Daten wählen](#3-echte-daten-auswählen--a-oder-b)
+- [Datenqualität & Backtest](#4-datenqualität-und-backtest-auf-dem-pc)
+- [Modell fitten](#5-modell-fitten-und-prognose-erzeugen)
+- [Häufige Probleme](#6-häufige-probleme-am-windows-pc)
+- [Noch offen M3](#noch-offen-in-m3)
+
+---
+
+
 **Keine Installations-Checkliste.** Der einzige Einstieg und die Reihenfolge
 stehen in [INSTALL.md](../docs/INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
 NAS-Archiv parallel füllen, danach automatische Berechnung/Empfehlungen.

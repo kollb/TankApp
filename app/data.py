@@ -90,11 +90,6 @@ def metadata(settings):
     cache_file = (cache_path / "road_route_cache.json") if cache_path else None
     for key, group in groups.items():
         city = group.get("label") or key
-        # The set anchor is a private home position (add-city); only derived
-        # distances leave the server, never the coordinates themselves.
-        # discover_stations writes the reference as top-level lat/lon; the
-        # bundled add-city uses "anchor": [lat, lon]. Both describe the same
-        # private reference point, so both are usable for derived distances.
         anchor = group.get("anchor")
         if anchor is None:
             lat0, lon0 = group.get("lat"), group.get("lon")
@@ -125,7 +120,6 @@ def metadata(settings):
                 and -90 <= lat <= 90
                 and -180 <= lon <= 180
             )
-            # Rebuild links, never trust arbitrary URLs from a config file.
             identity = (city, uid)
             stations[identity] = {
                 "station_id": uid,
@@ -142,7 +136,6 @@ def metadata(settings):
             }
             if anchor_ok and coordinates:
                 pending.append((identity, (lat, lon), tuple(anchor)))
-    # Eine Table-Anfrage je Anker (Stadt), Treffer aus dem NAS-Cache ohne Netz.
     by_anchor = {}
     for identity, coords, anchor in pending:
         by_anchor.setdefault(anchor, []).append((identity, coords))
@@ -173,6 +166,11 @@ def public_job(settings, name):
 
 def publication(settings):
     raw = read_json(settings.runtime / "engine/current.json", {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def selection_publication(settings):
+    raw = read_json(settings.runtime / "selection/current.json", {})
     return raw if isinstance(raw, dict) else {}
 
 
@@ -226,7 +224,6 @@ class LiveData:
                             raise ValueError("Unselected station")
                         rows[identity] = row
                 except (ValueError, OSError, KeyError, TypeError):
-                    # A partial/failed query must not become a new successful snapshot.
                     error = "influx_read_failed"
             if error:
                 rows = previous
@@ -332,10 +329,6 @@ class LiveData:
     def health(self):
         job_errors = self.job_errors.copy()
         metas, problem = metadata(self.settings)
-        # NAS worker keeps state/lock on the SSD runtime (Unraid HDD stays
-        # asleep); manual history-sync uses <archive>/.sync. Prefer the
-        # worker location so /health and System show the real sync state
-        # without waking the archive disk on every request.
         archive = read_json(
             self.settings.runtime / "jobs" / "archive-sync" / "state.json", None
         )
@@ -344,6 +337,40 @@ class LiveData:
         if not isinstance(archive, dict):
             archive = {}
         bundle = publication(self.settings)
+        sel = selection_publication(self.settings)
+        # Avoid network calls when polling is missing/invalid or influx not configured,
+        # otherwise test_missing_setup_is_explicit_and_does_not_call_network would fail
+        # because query is set to pytest.fail("network").
+        if problem or not self.settings.influx_env.is_file():
+            collector = {
+                "available": False,
+                "error_code": problem or "influx_not_configured",
+                "generated_at": self.clock().isoformat(),
+            }
+        else:
+            try:
+                from .collector_status import build_collector_status
+
+                collector = build_collector_status(
+                    self.settings, self.query, self.clock
+                )
+            except BaseException:
+                collector = {
+                    "available": False,
+                    "error_code": "collector_check_failed",
+                }
+
+        # Selection count: support both old flat and new by_fuel formats
+        sel_count = 0
+        if isinstance(sel, dict):
+            if "by_fuel" in sel:
+                sel_count = sum(
+                    len(v.get("top_global", []))
+                    for v in sel.get("by_fuel", {}).values()
+                )
+            else:
+                sel_count = sel.get("count", 0)
+
         return {
             "app": "online",
             "generated_at": self.clock().isoformat(),
@@ -372,7 +399,7 @@ class LiveData:
                         else {}
                     ),
                 }
-                for name in ("archive", "models")
+                for name in ("archive", "models", "selection")
             },
             "models": {
                 "published_at": bundle.get("published_at"),
@@ -380,6 +407,15 @@ class LiveData:
                 "calibrated": False,
                 "decision_ready": False,
             },
+            "selection": {
+                "published_at": sel.get("generated_at")
+                if isinstance(sel, dict)
+                else None,
+                "fuels": sel.get("fuels", []) if isinstance(sel, dict) else [],
+                "count": sel_count,
+                "error_code": None if sel else "selection_not_available",
+            },
+            "collector": collector,
         }
 
     def forecast(self, uid, city, fuel):
@@ -416,15 +452,12 @@ class LiveData:
         bundle = publication(self.settings)
         forecasts = bundle.get("forecasts", [])
 
-        # Filtere nur gültige Prognosen
         valid_forecasts = []
         for row in forecasts:
             if not all(
                 k in row for k in ["station_id", "city", "fuel", "origin", "points"]
             ):
                 continue
-            # Der RP2 braucht nur den 24-h-Ausblick; erweiterte Horizonte
-            # (+3/+7 Tage) bleiben NAS-seitig und blähen den Cache nicht auf.
             slim = {k: v for k, v in row.items() if k not in ("points_3d", "points_7d")}
             valid_forecasts.append(slim)
 
@@ -435,3 +468,208 @@ class LiveData:
             "calibrated": False,
             "decision_ready": False,
         }
+
+    def heatmap(self, city, fuel="e10", kind="level", weeks=6, station_id=None):
+        """Heatmaps DoW×Stunde: Niveau (Median) + Cheap-Probability."""
+        if fuel not in FUELS:
+            raise ValueError("invalid_fuel")
+        if kind not in ("level", "probability"):
+            raise ValueError("invalid_kind")
+        if not 1 <= weeks <= 12:
+            raise ValueError("invalid_weeks")
+        metas, problem = metadata(self.settings)
+        if problem:
+            return {"error_code": problem, "days": [], "hours": [], "matrix": []}
+        cities = list(dict.fromkeys(c for c, _ in metas))
+        if city not in cities:
+            raise ValueError("unknown_city")
+        if station_id and (city, station_id) not in metas:
+            raise ValueError("unknown_station")
+
+        now = self.clock()
+        start = now - dt.timedelta(days=weeks * 7)
+
+        if not self.settings.influx_env.is_file():
+            return {
+                "error_code": "influx_not_configured",
+                "days": [],
+                "hours": [],
+                "matrix": [],
+            }
+
+        try:
+            cfg = influx.load_config(self.settings.influx_env, timeout=10)
+            cfg.validate()
+            lookup = influx.station_lookup(self.settings.polling)
+            city_stations = [sid for (c, sid) in metas if c == city]
+            if not city_stations:
+                raise ValueError("unknown_city")
+            query = influx.flux_query(
+                cfg.bucket,
+                fuel,
+                start,
+                now,
+                [city],
+                {city: city_stations},
+            )
+            points = []
+            for raw in self.query(cfg, query):
+                if raw.get("city") != city:
+                    continue
+                try:
+                    row = influx.normalized_row(raw, lookup, fuel)
+                except Exception:
+                    continue
+                stamp = influx.instant(row["timestamp"])
+                if not start <= stamp <= now:
+                    continue
+                if row["status"] != "open" or not row["price"]:
+                    continue
+                try:
+                    price_val = float(row["price"])
+                except Exception:
+                    continue
+                points.append(
+                    {
+                        "timestamp": stamp,
+                        "station_id": row["station_id"],
+                        "price": price_val,
+                    }
+                )
+                if len(points) > 200_000:
+                    raise ValueError("Too many points")
+        except ValueError as e:
+            if str(e) == "Too many points":
+                return {
+                    "error_code": "too_many_points",
+                    "days": [],
+                    "hours": [],
+                    "matrix": [],
+                }
+            return {
+                "error_code": "influx_read_failed",
+                "days": [],
+                "hours": [],
+                "matrix": [],
+            }
+        except Exception:
+            return {
+                "error_code": "influx_read_failed",
+                "days": [],
+                "hours": [],
+                "matrix": [],
+            }
+
+        from .heatmap import build_heatmap
+
+        result = build_heatmap(points, kind=kind, station_id=station_id)
+
+        return {
+            "generated_at": now.isoformat(),
+            "city": city,
+            "fuel": fuel,
+            "kind": kind,
+            "weeks": weeks,
+            "station_id": station_id,
+            "days": result["days"],
+            "hours": result["hours"],
+            "matrix": result["matrix"],
+            "points": result["points"],
+            "stations": result["stations"],
+            "error_code": None,
+        }
+
+    def selection(self, fuel="e10", city=None):
+        """Meine Stationen mit δ̂ — Ranking, Bootstrap-KI, AV-Score, billigste Stunde."""
+        if fuel not in FUELS:
+            raise ValueError("invalid_fuel")
+        metas, problem = metadata(self.settings)
+        if problem:
+            return {"error_code": problem, "stations": [], "count": 0}
+        cities = list(dict.fromkeys(c for c, _ in metas))
+        if city and city not in cities:
+            raise ValueError("unknown_city")
+
+        try:
+            from .selection import read_selection
+
+            data = read_selection(self.settings)
+        except Exception:
+            return {"error_code": "selection_read_failed", "stations": [], "count": 0}
+
+        # data kann entweder by_fuel Struktur oder flache Liste sein
+        if "by_fuel" in data:
+            fuel_data = data["by_fuel"].get(fuel, {})
+            # fuel_data enthält cities und top_global
+            if city:
+                # Finde Stadt
+                city_entry = next(
+                    (c for c in fuel_data.get("cities", []) if c.get("city") == city),
+                    None,
+                )
+                if city_entry:
+                    stations = city_entry.get("stations", [])
+                else:
+                    stations = []
+            else:
+                # Alle Städte zusammen oder top_global
+                stations = []
+                for c in fuel_data.get("cities", []):
+                    stations.extend(c.get("stations", []))
+                # Sortiere nach rank
+                stations = sorted(stations, key=lambda x: x.get("rank", 999))
+            return {
+                "generated_at": data.get("generated_at")
+                or fuel_data.get("generated_at"),
+                "fuel": fuel,
+                "city": city,
+                "cities": [c.get("city") for c in fuel_data.get("cities", [])],
+                "count": len(stations),
+                "total_count": len(stations),
+                "stations": stations,
+                "top_global": fuel_data.get("top_global", [])[:10],
+                "error_code": None,
+                "calibrated": False,
+                "decision_ready": False,
+            }
+        else:
+            # Fallback altes Format
+            stations = data.get("stations", [])
+            filtered = [
+                s
+                for s in stations
+                if s.get("fuel", "").lower() == fuel.lower()
+                and (city is None or s.get("city") == city)
+            ]
+            return {
+                "generated_at": data.get("generated_at"),
+                "fuel": fuel,
+                "city": city,
+                "cities": data.get("cities", []),
+                "count": len(filtered),
+                "total_count": data.get("count", 0),
+                "stations": sorted(filtered, key=lambda x: x.get("rank", 999)),
+                "error_code": data.get("error_code"),
+                "calibrated": False,
+                "decision_ready": False,
+            }
+
+    def collector_status(self):
+        """Pi/tmpfs Livestatus — Collector-Herzschlag ans NAS."""
+        try:
+            from .collector_status import build_collector_status
+
+            return build_collector_status(self.settings, self.query, self.clock)
+        except Exception:
+            return {"available": False, "error_code": "collector_check_failed"}
+
+    def route_evaluate(self, params: dict):
+        """Serverseitige Umweg-Ökonomie."""
+        try:
+            from .route import evaluate_route
+
+            return evaluate_route(self, params)
+        except ValueError as e:
+            raise e
+        except Exception:
+            return {"error_code": "route_evaluate_failed"}
