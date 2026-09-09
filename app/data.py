@@ -238,7 +238,15 @@ class LiveData:
     def health(self):
         job_errors = self.job_errors.copy()
         metas, problem = metadata(self.settings)
-        archive = read_json(self.settings.archive / ".sync/state.json", {})
+        # NAS worker keeps state/lock on the SSD runtime (Unraid HDD stays
+        # asleep); manual history-sync uses <archive>/.sync. Prefer the
+        # worker location so /health and System show the real sync state
+        # without waking the archive disk on every request.
+        archive = read_json(
+            self.settings.runtime / "jobs" / "archive-sync" / "state.json", None
+        )
+        if not isinstance(archive, dict):
+            archive = read_json(self.settings.archive / ".sync/state.json", {})
         if not isinstance(archive, dict):
             archive = {}
         bundle = publication(self.settings)
