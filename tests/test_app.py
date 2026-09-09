@@ -8,11 +8,12 @@ from dataclasses import replace
 import pytest
 
 from app.config import Settings
-from app.data import LiveData
+from app.data import LiveData, metadata
 from app.server import make_server
 
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
+THIRD = "00000000-0000-0000-0000-000000000003"
 NOW = dt.datetime(2026, 9, 8, 10, tzinfo=dt.timezone.utc)
 
 
@@ -157,6 +158,66 @@ def test_missing_setup_is_explicit_and_does_not_call_network(app_settings):
     settings = replace(app_settings, influx_env=app_settings.data / "missing.env")
     live = LiveData(settings, query=lambda *_: pytest.fail("network"))
     assert live.stations()["connection_error"] == "influx_not_configured"
+
+
+def test_anchor_distance_is_derived_but_never_exposed(tmp_path):
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "anchor": [50.11, 8.68],
+                        "batch": [UID, OTHER],
+                        "stations": [
+                            {"uuid": UID, "name": "Nah", "lat": 50.12, "lon": 8.69},
+                            {"uuid": OTHER, "name": "Ohne Koordinaten"},
+                        ],
+                    },
+                    "Gütersloh": {
+                        "label": "Gütersloh",
+                        "batch": [THIRD],
+                        "stations": [
+                            {"uuid": THIRD, "name": "Weit", "lat": 51.9, "lon": 8.4}
+                        ],
+                    },
+                }
+            }
+        )
+    )
+    settings = Settings(data=tmp_path / "data", polling=polling)
+    metas, error = metadata(settings)
+    assert error is None
+    near = metas[("Frankfurt", UID)]["dist_km"]
+    assert 1.0 < near < 2.0
+    # No coordinates or no anchor: no distance, never an invented one.
+    assert metas[("Frankfurt", OTHER)]["dist_km"] is None
+    assert metas[("Gütersloh", THIRD)]["dist_km"] is None
+    # The private anchor coordinates themselves never enter a public payload.
+    assert "anchor" not in json.dumps(list(metas.values()))
+
+
+def test_invalid_anchor_is_ignored_instead_of_guessing(tmp_path):
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "anchor": [0, 0],
+                        "batch": [UID],
+                        "stations": [
+                            {"uuid": UID, "name": "Nah", "lat": 50.12, "lon": 8.69}
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+    assert error is None and metas[("Frankfurt", UID)]["dist_km"] is None
 
 
 def test_series_does_not_forward_fill_closed_or_missing_fuel(app_settings):
