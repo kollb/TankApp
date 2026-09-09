@@ -23,6 +23,9 @@ import {
   Terminal,
   CalendarDays,
   Scale,
+  Activity,
+  BarChart3,
+  Cpu,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
@@ -33,6 +36,7 @@ import {
   currentPrice,
   detourEconomics,
   euro,
+  formatHour,
   haversineKm,
   problem,
   segments,
@@ -48,6 +52,9 @@ import {
   type Forecast,
   type Point,
   type Job,
+  type Heatmap,
+  type Selection,
+  type RouteEvaluate,
 } from "./data";
 
 const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
@@ -159,9 +166,11 @@ function JobCard({
 function ApiExplorer({
   fuel,
   identity,
+  activeCity,
 }: {
   fuel: Fuel;
   identity: string;
+  activeCity: string;
 }) {
   const [path, setPath] = useState("/api/v1/health");
   const [answer, setAnswer] = useState<string | null>(null);
@@ -176,11 +185,25 @@ function ApiExplorer({
           label: "Modell-Ausblick",
           path: `/api/v1/forecast?${identity}`,
         },
+        {
+          label: "Heatmap Niveau (6 Wochen)",
+          path: `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=level&weeks=6&${identity}`,
+        },
+        {
+          label: "Heatmap Cheap-Prob (6 Wochen)",
+          path: `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=probability&weeks=6&${identity}`,
+        },
       ]
     : [];
   const endpoints = [
     { label: "Systemstatus", path: "/api/v1/health" },
     { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
+    { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
+    { label: "Collector Livestatus", path: "/api/v1/collector/status" },
+    {
+      label: "Route Evaluate (serverseitig)",
+      path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
+    },
     ...dynamic,
   ];
   const run = async (target: string) => {
@@ -191,7 +214,7 @@ function ApiExplorer({
       const response = await fetch(target, { cache: "no-store" });
       const data: unknown = await response.json();
       const text = JSON.stringify(data, null, 2);
-      setAnswer(text.length > 4000 ? `${text.slice(0, 4000)}\n… gekürzt` : text);
+      setAnswer(text.length > 5000 ? `${text.slice(0, 5000)}\n… gekürzt` : text);
     } catch {
       setAnswer('{\n  "error_code": "request_failed"\n}');
     } finally {
@@ -218,15 +241,110 @@ function ApiExplorer({
       </div>
       {!identity && (
         <p className="mb-3 text-[11px] text-slate-500">
-          Verlauf und Ausblick erscheinen hier, sobald eine Station mit Stadt
+          Verlauf, Ausblick und Heatmaps erscheinen hier, sobald eine Station mit Stadt
           gewählt ist — die GUI fragt sie dann live ab, genau wie die Tabs.
         </p>
       )}
-      <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
+      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
         {loading
           ? "// Rufe Endpunkt auf …"
           : answer || "// Oben einen Endpunkt wählen — nur lesend, kein Poll."}
       </pre>
+    </div>
+  );
+}
+
+function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
+  const isLevel = heatmap.kind === "level";
+  const matrix = heatmap.matrix;
+  // Determine min/max for color scaling
+  const flat = matrix.flat().filter((v) => v !== null) as number[];
+  const min = flat.length ? Math.min(...flat) : 0;
+  const max = flat.length ? Math.max(...flat) : 1;
+  const span = max - min || 1;
+
+  const getColor = (val: number | null) => {
+    if (val === null) return "bg-slate-950/40 border-slate-800 text-slate-600";
+    if (isLevel) {
+      // Level: cheap = emerald, expensive = rose, centered around median
+      const norm = (val - min) / span; // 0 cheap, 1 expensive
+      if (norm <= 0.2) return "bg-emerald-500 text-slate-950 font-bold";
+      if (norm <= 0.4) return "bg-emerald-600/80 text-white";
+      if (norm <= 0.6) return "bg-slate-700/80 text-slate-200";
+      if (norm <= 0.8) return "bg-amber-600/70 text-slate-100";
+      return "bg-rose-600/80 text-white";
+    } else {
+      // Probability: 0% red, 100% emerald
+      if (val >= 80) return "bg-emerald-500 text-slate-950 font-bold";
+      if (val >= 65) return "bg-emerald-600/80 text-white";
+      if (val >= 45) return "bg-slate-700/80 text-slate-200";
+      if (val >= 30) return "bg-amber-600/70 text-slate-100";
+      return "bg-rose-600/80 text-white";
+    }
+  };
+
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="min-w-[720px]">
+        <div className="flex items-center mb-1 text-[10px] text-slate-400 font-mono">
+          <div className="w-10 flex-shrink-0 text-right pr-2">Tag</div>
+          <div className="flex-1 grid grid-cols-24 gap-0.5">
+            {heatmap.hours.map((h) => (
+              <div
+                key={h}
+                className={`text-center ${
+                  (h >= 6 && h <= 9) || (h >= 16 && h <= 20) ? "text-emerald-400 font-bold" : ""
+                }`}
+              >
+                {h % 2 === 0 ? h : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+        {heatmap.days.map((day, dayIdx) => (
+          <div key={dayIdx} className="flex items-center mb-1">
+            <div className="w-10 flex-shrink-0 text-right pr-2 text-xs font-semibold text-slate-300">
+              {day}
+            </div>
+            <div className="flex-1 grid grid-cols-24 gap-0.5">
+              {heatmap.hours.map((h, hourIdx) => {
+                const val = matrix[dayIdx]?.[hourIdx] ?? null;
+                return (
+                  <div
+                    key={h}
+                    title={`${day} ${h}:00 Uhr: ${val === null ? "–" : val + (isLevel ? " €/L" : "%")}`}
+                    className={`h-7 rounded-[3px] text-[10px] flex items-center justify-center border ${getColor(val)}`}
+                  >
+                    {val === null
+                      ? "–"
+                      : isLevel
+                        ? val.toFixed(2)
+                        : `${Math.round(val)}`}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>
+          {heatmap.points} Punkte · {heatmap.stations} Stationen · {heatmap.weeks} Wochen ·{" "}
+          {isLevel ? "Median €/L" : "Cheap-Probability %"} · Stadt: {heatmap.city}
+          {heatmap.station_id ? ` · Station: ${heatmap.station_id.slice(0, 8)}…` : ""}
+        </span>
+        <div className="flex items-center gap-2">
+          <span>{isLevel ? "Günstig" : "Hohe Chance"}</span>
+          <div className="flex h-3 w-28 rounded overflow-hidden">
+            <div className="flex-1 bg-emerald-500" />
+            <div className="flex-1 bg-emerald-600" />
+            <div className="flex-1 bg-slate-700" />
+            <div className="flex-1 bg-amber-600" />
+            <div className="flex-1 bg-rose-600" />
+          </div>
+          <span>{isLevel ? "Teuer" : "Niedrig"}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -285,7 +403,6 @@ export function Dashboard() {
       value >= 25 &&
       value <= 80,
   );
-  // Zeitraum des Stations-Labors (Stunden) und Horizont des Ausblicks (Tage).
   const [spanHours, setSpanHours] = usePreference(
     "spanHours",
     24,
@@ -296,6 +413,17 @@ export function Dashboard() {
     0,
     (value) => value === 0 || value === 3 || value === 7,
   );
+  const [heatmapKind, setHeatmapKind] = usePreference<"level" | "probability">(
+    "heatmapKind",
+    "probability",
+    (v) => v === "level" || v === "probability",
+  );
+  const [heatmapWeeks, setHeatmapWeeks] = usePreference(
+    "heatmapWeeks",
+    6,
+    (v) => typeof v === "number" && [2, 4, 6, 8].includes(v),
+  );
+  const [routeAltId, setRouteAltId] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(performance.now());
   const [browserOnline, setBrowserOnline] = useState(
@@ -338,16 +466,12 @@ export function Dashboard() {
     stations[0];
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
-  // Zeitwert: 0 = Automatik (16 €/h im Peak 16:30–20:00, sonst 10 €/h),
-  // sonst der fest eingestellte Stundensatz.
   const autoZ = autoTimeValue();
   const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
     bestPrice !== null && selectedPrice !== null
       ? (selectedPrice - bestPrice) * liters
       : null;
-  // Umweg-Ökonomie (Konzept §10) gegen günstigere frische Stationen derselben
-  // Stadt; Entfernung als Luftlinie, weil dafür keine Routendaten nötig sind.
   const selectedLat = selected?.lat;
   const selectedLon = selected?.lon;
   const detourOptions =
@@ -398,7 +522,6 @@ export function Dashboard() {
     60000,
     refresh,
   );
-  // Tagesstreifen im Alltag: derselbe 24-h-Verlauf, stündlich verdichtet.
   const dayStrip = useResource<{ points: Point[]; error_code: string | null }>(
     tab === "daily" && identity ? `/api/v1/series?${identity}` : null,
     300000,
@@ -409,6 +532,28 @@ export function Dashboard() {
     300000,
     refresh,
   );
+  const heatmap = useResource<Heatmap>(
+    tab === "statistics" && activeCity
+      ? `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=${heatmapKind}&weeks=${heatmapWeeks}${selected ? `&station_id=${selected.station_id}` : ""}`
+      : null,
+    120000,
+    refresh,
+  );
+  const selection = useResource<Selection>(
+    tab === "statistics" || tab === "system"
+      ? `/api/v1/selection?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
+      : null,
+    120000,
+    refresh,
+  );
+  const routeEval = useResource<RouteEvaluate>(
+    tab === "daily" && activeCity && (routeAltId || detourOptions[0]?.row.station_id)
+      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&mode=${detourMode}`
+      : null,
+    30000,
+    refresh,
+  );
+
   const connectionProblem = prices.error
     ? "Der App-Server ist nicht erreichbar. Angezeigte ältere Preise werden nicht als aktuell gewertet."
     : problem(data?.connection_error);
@@ -417,16 +562,12 @@ export function Dashboard() {
   const f = forecast.data;
   const metrics = f?.metrics;
   const series = segments(observations);
-  // Festes Zeitfenster statt auto-Skala: die Achse bleibt stabil, gestauchte
-  // Lücken tragen die Info („Pause · h“) statt leerer Fläche.
   const obsWindow: [number, number] = [
     Date.now() - spanHours * 3600 * 1000,
     Date.now(),
   ];
   const spanLabel =
     spanHours === 24 ? "letzte 24 Stunden" : spanHours === 72 ? "letzte 3 Tage" : "letzte 7 Tage";
-  // Ausblick-Horizont: 24 h Standard, +3/+7 Tage aus eigener Publikation.
-  // Fehlt ein Horizont (altes NAS-Ergebnis), fällt der Tab auf 24 h zurück.
   const horizonPts =
     horizon === 3 && f?.points_3d?.length
       ? f.points_3d
@@ -483,8 +624,6 @@ export function Dashboard() {
       ? [Date.parse(f.origin), Date.parse(f.origin) + horizonDays * 86_400_000]
       : null;
   const nowMs = Date.now();
-  // Markierungen aus der Medianlinie abgelesen: Jetzt plus billigste und
-  // teuerste Stunde des sichtbaren Horizonts (Analyse, keine Empfehlung).
   const extremeMarks = (() => {
     if (modelPts.length < 12) return [];
     let lo = modelPts[0];
@@ -505,8 +644,6 @@ export function Dashboard() {
       : []),
     ...extremeMarks,
   ];
-  // Echte 24-h-Kennzahlen aus offenen Meldungen: Zählung und Spanne, keine
-  // erfundenen Trefferquoten.
   const openPrices = observations
     .filter(
       (p) =>
@@ -523,8 +660,6 @@ export function Dashboard() {
         max: Math.max(...openPrices),
       }
     : null;
-  // Günstigste Modell-Fenster (Werkstatt-Analyse, keine Empfehlung): Die drei
-  // billigsten 2-h-Blöcke des unkalibrierten Medians, ohne Prozent, ohne CTA.
   const modelWindows = (() => {
     const medians = horizonPts
       .filter((p) => p.q50 !== null && Number.isFinite(Date.parse(p.timestamp)))
@@ -552,7 +687,6 @@ export function Dashboard() {
       .sort((a, b) => a.median - b.median)
       .slice(0, 3);
   })();
-  // Tagesstreifen: letzte Meldung je Stunde (06–24, Berlin) der Vergleichsstation.
   const stripCells = (() => {
     const points =
       tab === "daily" && !dayStrip.error && !dayStrip.data?.error_code
@@ -1166,11 +1300,57 @@ export function Dashboard() {
                                   ? "grenzwertig"
                                   : "lohnt sich nicht"}
                             </Badge>
+                            <button
+                              onClick={() => setRouteAltId(option.row.station_id)}
+                              className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === option.row.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
+                            >
+                              Server prüfen
+                            </button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
+                  {routeEval.data && !routeEval.error && (
+                    <div className="mt-5 rounded-xl border border-sky-500/25 bg-sky-950/30 p-4">
+                      <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">
+                        <Cpu size={14} /> Serverseitige Prüfung: /v1/route/evaluate
+                      </h4>
+                      <div className="grid gap-3 text-xs sm:grid-cols-3">
+                        <div>
+                          <p className="text-slate-500">Referenz → Ziel</p>
+                          <p className="font-mono text-slate-200">
+                            {euro(routeEval.data.ref_price, 3)} → {euro(routeEval.data.alt_price, 3)} €/L
+                          </p>
+                          <p className="text-slate-400">Δ {routeEval.data.delta_ct} ct/L</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Kosten</p>
+                          <p className="text-slate-200">
+                            Brutto {euro(routeEval.data.gross_eur)} € · Umweg {euro(routeEval.data.detour_cost_eur)} €
+                          </p>
+                          <p className="text-slate-400">
+                            Sprit {euro(routeEval.data.fuel_cost_eur)} · Zeit {euro(routeEval.data.time_cost_eur)} · z={routeEval.data.z_used} €/h {routeEval.data.z_auto ? "(auto)" : ""} {routeEval.data.is_peak ? "Peak" : "Offpeak"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Netto</p>
+                          <p className={`font-mono text-lg font-bold ${routeEval.data.worth_it ? "text-emerald-400" : "text-amber-300"}`}>
+                            {euro(routeEval.data.net_eur)} € {routeEval.data.verdict}
+                          </p>
+                          <p className="text-slate-400">Kritisch ab {routeEval.data.critical_delta_ct} ct/L</p>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Modus {routeEval.data.mode} · {routeEval.data.detour_km_oneway} km einfach, {routeEval.data.detour_km_total} km gesamt · Liter {routeEval.data.liters} · Stadt {routeEval.data.city || "—"}
+                      </p>
+                    </div>
+                  )}
+                  {routeEval.error && (
+                    <p className="mt-3 text-xs text-amber-300">
+                      Server-Evaluierung fehlgeschlagen — lokale Rechnung bleibt gültig.
+                    </p>
+                  )}
                 </>
               ) : (
                 <Empty>
@@ -1184,7 +1364,9 @@ export function Dashboard() {
                 Netto-Ersparnis = (Dein Preis − günstigerer Preis) × Tankmenge
                 − Kraftstoff des Umwegs − Zeitwert der Umwegzeit. „Lohnenswert“
                 ab 1,50 €, „grenzwertig“ ab 0,50 €. Reine Rechenhilfe über
-                deine Angaben — keine Buchung, keine garantierte Ersparnis.
+                deine Angaben — keine Buchung, keine garantierte Ersparnis. Der
+                Server-Endpunkt /v1/route/evaluate rechnet dieselbe Formel mit
+                denselben Preisen serverseitig (optional, UI rechnet auch lokal).
               </p>
             </section>
             <section
@@ -1705,20 +1887,130 @@ export function Dashboard() {
                 an gemessenen Trefferquoten bestätigt hat.
               </p>
             </section>
+
+            {/* B3: Heatmaps DoW×Stunde */}
+            <section className={`${panel} mt-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <BarChart3 size={16} className="text-purple-400" />
+                  Heatmaps · Wochentag × Stunde · {activeCity || "—"} · {selected?.name || "Stadt"}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <select
+                    aria-label="Heatmap Art"
+                    value={heatmapKind}
+                    onChange={(e) => setHeatmapKind(e.target.value as "level" | "probability")}
+                    className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
+                  >
+                    <option value="probability">Cheap-Probability P(p ≤ Median)</option>
+                    <option value="level">Preisniveau (Median €/L)</option>
+                  </select>
+                  <select
+                    aria-label="Heatmap Wochen"
+                    value={heatmapWeeks}
+                    onChange={(e) => setHeatmapWeeks(Number(e.target.value))}
+                    className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
+                  >
+                    <option value={2}>2 Wochen</option>
+                    <option value={4}>4 Wochen</option>
+                    <option value={6}>6 Wochen</option>
+                    <option value={8}>8 Wochen</option>
+                  </select>
+                  <Badge warning={!!heatmap.error || !!heatmap.data?.error_code}>
+                    {heatmap.pending ? "Lädt…" : heatmap.data?.error_code ? "Kein Backend" : `${heatmap.data?.points || 0} Punkte`}
+                  </Badge>
+                </div>
+              </div>
+              {heatmap.error || heatmap.data?.error_code ? (
+                <Empty>
+                  {problem(heatmap.data?.error_code) ||
+                    "Heatmap konnte nicht geladen werden. InfluxDB-Zugang prüfen und ausreichend Historie (≥2 Wochen) sammeln. Keine Muster erfinden."}
+                </Empty>
+              ) : heatmap.data && heatmap.data.matrix.length ? (
+                <HeatmapGrid heatmap={heatmap.data} />
+              ) : (
+                <Empty>
+                  {heatmap.pending
+                    ? "Heatmap wird aus echten Polling-Daten berechnet …"
+                    : "Noch keine Daten für Heatmap vorhanden. Erst nach einigen Tagen Live-Betrieb erscheinen hier Muster."}
+                </Empty>
+              )}
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                Niveau = Medianpreis je (Wochentag, Stunde) über {heatmapWeeks} Wochen, Europe/Berlin. Cheap-Probability =
+                P(Station ≤ Stadtmedian zum gleichen Zeitpunkt). Grün = günstig/hohe Chance. Nur echte offene Meldungen, keine
+                erfundenen Preise. Quelle: InfluxDB.
+              </p>
+            </section>
+
+            {/* B3: Meine Stationen mit δ̂ */}
             <section className={`${panel} mt-6 p-5 sm:p-6`}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">
-                  Heatmaps · Wochentag × Stunde
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Activity size={16} className="text-emerald-400" />
+                  Meine Stationen · δ̂ Ranking · {activeCity || "—"} · {fuel.toUpperCase()}
                 </h3>
-                <Badge warning>Noch kein Backend</Badge>
+                <Badge warning={!!selection.error || !!selection.data?.error_code}>
+                  {selection.pending ? "Lädt…" : selection.data?.error_code ? "Keine Artefakte" : `${selection.data?.count || 0} Stationen`}
+                </Badge>
               </div>
-              <Empty>
-                Preisniveau (Median 6 Wochen) und Cheap-Probability P(p ≤
-                Stadtmedian) je Stunde und Wochentag erscheinen hier, sobald
-                der NAS-Endpunkt sie aus echten Polling-Daten liefert. Bis
-                dahin: keine Muster erfinden, kein Ersatz durch
-                Beispiel-Heatmaps.
-              </Empty>
+              {selection.error || selection.data?.error_code ? (
+                <Empty>
+                  {problem(selection.data?.error_code) ||
+                    "Selektions-Artefakte fehlen noch auf dem NAS. Nach Modell-Job (training/*.csv.gz) erscheint hier das Ranking mit δ̂, Bootstrap-KI, AV-Score und billigster Stunde."}
+                </Empty>
+              ) : selection.data && selection.data.stations.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-500">
+                        <th className="py-2 pr-2">#</th>
+                        <th className="py-2 pr-3">Station</th>
+                        <th className="py-2 pr-3">δ̂ ct/L</th>
+                        <th className="py-2 pr-3">95%-KI</th>
+                        <th className="py-2 pr-3">q</th>
+                        <th className="py-2 pr-3">AV-Score</th>
+                        <th className="py-2 pr-3">Billigste Std</th>
+                        <th className="py-2 pr-3">σ ct</th>
+                        <th className="py-2 pr-3">Coverage</th>
+                        <th className="py-2 pr-3">Entf km</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {selection.data.stations.map((s) => (
+                        <tr key={s.station_id} className={s.significant ? "bg-emerald-500/[.03]" : ""}>
+                          <td className="py-2 pr-2 font-mono">{s.rank}</td>
+                          <td className="py-2 pr-3">
+                            <span className="font-semibold text-slate-200">{s.name}</span>{" "}
+                            <span className="text-slate-500">{s.brand}</span>
+                            {s.significant && <span className="ml-1 text-emerald-400">✓</span>}
+                          </td>
+                          <td className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}>
+                            {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${s.delta_ct.toFixed(2)}` : "—"}
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-slate-400">
+                            {s.ci_lo != null && s.ci_hi != null ? `[${s.ci_lo.toFixed(2)}, ${s.ci_hi.toFixed(2)}]` : "—"}
+                          </td>
+                          <td className="py-2 pr-3 font-mono">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono">{formatHour(s.best_hour)}</td>
+                          <td className="py-2 pr-3 font-mono">{s.vol_ct != null ? s.vol_ct.toFixed(2) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono">{s.coverage !== undefined ? `${(s.coverage * 100).toFixed(0)}%` : "—"}</td>
+                          <td className="py-2 pr-3 font-mono">{s.dist_km !== null && s.dist_km !== undefined ? s.dist_km.toFixed(1) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty>
+                  {selection.pending ? "Ranking wird geladen …" : "Noch keine Stationen im Ranking."}
+                </Empty>
+              )}
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                δ̂ = Median(p_i − LOO-Stadtmedian) in ct/L, negativ = günstiger als Umgebung. 95%-KI aus Tages-Block-Bootstrap (B=200),
+                q = Benjamini-Hochberg-FDR, signifikant bei q&lt;0.05. AV-Score = Σ w_h·P(Top-3|h) mit Pendlerprofil Mo–Fr 06–09/16–20.
+                Billigste Stunde = argmin Medianpreis je halbe Stunde (Berlin). Nur echte Trainingsdaten, keine Demo-Rankings.
+              </p>
             </section>
           </>
         )}
@@ -1764,7 +2056,7 @@ export function Dashboard() {
                 detail={`${h?.models.count ?? 0} vorhandene Ausblicke; Empfehlungen noch nicht kalibriert.`}
               />
             </div>
-            <div className="mb-6 grid gap-4 lg:grid-cols-2">
+            <div className="mb-6 grid gap-4 lg:grid-cols-3">
               <JobCard
                 title="Tankerkönig-Archiv"
                 icon={<Database size={17} className="text-emerald-400" />}
@@ -1777,7 +2069,85 @@ export function Dashboard() {
                 job={h?.jobs.models}
                 enabled={h?.jobs_enabled}
               />
+              <JobCard
+                title="Selektion δ̂ Ranking"
+                icon={<Activity size={17} className="text-emerald-400" />}
+                job={h?.jobs.selection}
+                enabled={h?.jobs_enabled}
+              />
             </div>
+
+            {/* B3: Pi/tmpfs Livestatus */}
+            <section className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Cpu size={17} className="text-emerald-400" />
+                  Pi / tmpfs Livestatus · Collector-Herzschlag
+                </h3>
+                <Badge warning={!h?.collector?.available}>
+                  {h?.collector?.fresh ? "Frisch" : h?.collector?.available ? "Veraltet" : "Kein Herzschlag"}
+                </Badge>
+              </div>
+              {h?.collector?.available ? (
+                <div className="grid gap-4 text-xs sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Letzter Poll (Pi)</span>
+                      <span className="font-mono text-slate-200">{timeLabel(h.collector.last_poll_at)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Alter</span>
+                      <span className="font-mono">{h.collector.age_minutes !== null ? `${h.collector.age_minutes} Min.` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Letzter Herzschlag (Influx)</span>
+                      <span className="font-mono text-slate-200">{timeLabel(h.collector.influx?.last_heartbeat_at || h.collector.last_poll_at)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Poll Count</span>
+                      <span className="font-mono">{(h.collector.influx?.fields?.poll_count as number) ?? h.collector.local?.poll_count ?? "—"}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">tmpfs belegt</span>
+                      <span className="font-mono">
+                        {h.collector.tmpfs_used_bytes !== null && h.collector.tmpfs_used_bytes !== undefined
+                          ? `${(Number(h.collector.tmpfs_used_bytes) / 1024 / 1024).toFixed(2)} MiB`
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">tmpfs gesamt</span>
+                      <span className="font-mono">
+                        {h.collector.tmpfs_total_bytes
+                          ? `${(Number(h.collector.tmpfs_total_bytes) / 1024 / 1024).toFixed(1)} MiB`
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Älteste Datei</span>
+                      <span className="font-mono">{h.collector.oldest_age_days !== null && h.collector.oldest_age_days !== undefined ? `${h.collector.oldest_age_days} Tage` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Stadt (letzter Poll)</span>
+                      <span className="font-mono">{(h.collector.local?.city as string) || (h.collector.influx?.fields?.city as string) || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Empty>
+                  {problem(h?.collector?.error_code || h?.collector?.influx?.error_code) ||
+                    "Noch kein Collector-Herzschlag auf dem NAS. Der Pi muss meta/heartbeat.json schreiben und der Uploader collector_status nach InfluxDB liefern. Siehe docs/BETRIEB.md."}
+                </Empty>
+              )}
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+                Der Collector (Pi) schreibt jede 5 Min. einen Snapshot nach /dev/shm/tankapp und aktualisiert meta/heartbeat.json
+                (tmpfs-Nutzung, älteste Datei). Der Uploader überträgt den Herzschlag als Measurement collector_status in InfluxDB
+                (alle 60s). Das NAS liest den letzten Punkt und zeigt ihn hier. Frisch = ≤15 Min. alter Herzschlag.
+              </p>
+            </section>
+
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
                 <Database size={17} className="text-emerald-400" />
@@ -1815,6 +2185,38 @@ export function Dashboard() {
                 verwendet.
               </p>
             </section>
+
+            {/* Selection summary in System */}
+            <section className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Activity size={17} className="text-emerald-400" />
+                  Meine Stationen · NAS Artefakte
+                </h3>
+                <Badge warning={!h?.selection || h.selection.count === 0}>
+                  {h?.selection?.count ? `${h.selection.count} Stationen` : "Keine Artefakte"}
+                </Badge>
+              </div>
+              {h?.selection?.count ? (
+                <div className="text-xs text-slate-400">
+                  <p>
+                    Letzte Selektion: {timeLabel(h.selection.published_at)} · {h.selection.count} Stationen im Ranking.
+                    Vollständige Tabelle in der Werkstatt (Tab Statistik).
+                  </p>
+                  {selection.data && (
+                    <p className="mt-2">
+                      Top-1: {selection.data.stations[0]?.name} (δ̂ {selection.data.stations[0]?.delta_ct} ct/L, AV {selection.data.stations[0]?.avail})
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <Empty>
+                  {problem(h?.selection?.error_code) ||
+                    "Selektions-Artefakte fehlen noch auf dem NAS. Der Job 'selection' baut sie aus training/*.csv.gz. Siehe docs/ANALYSE.md."}
+                </Empty>
+              )}
+            </section>
+
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
               <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
                 <Terminal size={17} className="text-emerald-400" />
@@ -1822,9 +2224,9 @@ export function Dashboard() {
               </h3>
               <p className="mb-4 text-[11px] text-slate-500">
                 Dieselben Endpunkte, die diese GUI nutzt — live abgerufen,
-                ohne Poll auszulösen.
+                ohne Poll auszulösen. Neu in B3: heatmap, selection, collector/status, route/evaluate.
               </p>
-              <ApiExplorer fuel={fuel} identity={identity} />
+              <ApiExplorer fuel={fuel} identity={identity} activeCity={activeCity} />
             </section>
             <section className={`${panel} p-5 sm:p-6`}>
               <h3 className="mb-4 text-sm font-semibold">
@@ -1866,12 +2268,12 @@ export function Dashboard() {
                 <li>
                   Bei ausgeschaltetem NAS ist diese Web-App nicht erreichbar.
                   Der Pi puffert unabhängig weiter; der RAM-Puffer überlebt
-                  keinen Pi-Stromausfall.
+                  keinen Pi-Stromausfall. Collector-Herzschlag: /dev/shm/tankapp/meta/heartbeat.json → InfluxDB collector_status.
                 </li>
                 <li>
                   Eine Anleitung, ein Einstieg:{" "}
-                  <code className="text-slate-200">docs/INSTALL.md</code> im
-                  TankApp-Repository.
+                  <code className="text-slate-200">docs/README.md</code> mit
+                  klickbarem Inhaltsverzeichnis.
                 </li>
               </ul>
             </section>
@@ -1880,7 +2282,7 @@ export function Dashboard() {
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>
             Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
-            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr
+            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · B3: heatmap/selection/collector/route
           </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />

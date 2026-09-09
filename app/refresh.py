@@ -17,6 +17,7 @@ def refresh(settings: Settings, now=None):
     from engine.config import Config
     from engine.data import load_observations, prepare_series
     from engine.models import fit, predict
+    from engine.selection import SelectionConfig, compute_all as compute_selection
     from engine.storage import write_json
     from polling_plan import collector_lock
     from .history import prepare_archive
@@ -105,6 +106,7 @@ def refresh(settings: Settings, now=None):
                 flush=True,
             )
         forecasts, models, policies, failures = [], [], [], []
+        selections = {}
         for fuel in settings.model_fuels:
             print(
                 f"models: Training {fuel}: Bootstrap + Fit "
@@ -225,6 +227,25 @@ def refresh(settings: Settings, now=None):
                             "detail": detail,
                         }
                     )
+            # --- Selektion (δ̂, KI, AV, billigste Stunde) je Kraftstoff ---
+            try:
+                # metas gruppiert nach Stadt für die Selektion
+                metas_by_city: dict[str, dict[str, dict]] = {}
+                for (city, uid), meta in metas.items():
+                    metas_by_city.setdefault(city, {})[uid] = meta
+                sel_cfg = SelectionConfig(fuel=fuel.upper())
+                sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
+                selections[fuel] = sel_result
+                print(
+                    f"models: Selektion {fuel}: {len(sel_result.get('top_global', []))} Top-Stationen, "
+                    f"{len(sel_result.get('cities', []))} Städte",
+                    flush=True,
+                )
+            except Exception as exc:
+                print(
+                    f"models: Selektion {fuel} übersprungen ({type(exc).__name__}: {exc})",
+                    flush=True,
+                )
         print(
             f"models: {len(forecasts)} Prognosen, {len(failures)} Fehler",
             flush=True,
@@ -287,6 +308,30 @@ def refresh(settings: Settings, now=None):
                     old.unlink(missing_ok=True)
                 except OSError:
                     pass  # Publication succeeded; cleanup must not turn it into a failed update.
+
+        # --- Selektions-Artefakte publizieren (für „Meine Stationen“) ---
+        try:
+            sel_dir = settings.runtime / "selection"
+            sel_dir.mkdir(parents=True, exist_ok=True)
+            # Einzeldateien je Kraftstoff + kombinierte current.json
+            for fuel_key, sel_data in selections.items():
+                write_json(sel_dir / f"{fuel_key}.json", sel_data)
+            # Kombiniert
+            combined = {
+                "generated_at": origin.isoformat(),
+                "fuels": list(selections.keys()),
+                "by_fuel": selections,
+            }
+            write_json(sel_dir / "current.json", combined)
+            print(
+                f"models: Selektion publiziert nach {sel_dir}/current.json", flush=True
+            )
+        except Exception as exc:
+            print(
+                f"models: Selektion-Publish übersprungen ({type(exc).__name__})",
+                flush=True,
+            )
+
         return {
             "state": "partial" if failures else "success",
             "error_code": "some_models_unavailable" if failures else None,

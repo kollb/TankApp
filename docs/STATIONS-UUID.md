@@ -1,5 +1,21 @@
 # Gleiche Stationsnamen sauber trennen – RPi und Windows-PC
 
+## Inhaltsverzeichnis
+
+- [Schnellweg: jetzt weiterarbeiten](#schnellweg-jetzt-weiterarbeiten-alten-replay-vorerst-weglassen)
+- [Entscheidung nach Preisvergleich](#entscheidung-nach-dem-preisvergleich)
+- [1. Code aktualisieren](#1-code-auf-pc-und-rpi-aktualisieren)
+- [2. Rohdaten sichern](#2-auf-dem-rpi-rohdaten-sichern-und-den-aktualisierten-uploader-starten)
+- [3. JSONL prüfen](#3-gesicherte-jsonl-dateien-prüfen--noch-nichts-nachschreiben)
+  - [Fehlercodes](#wenn-die-prüfung-stoppt-den-konkreten-fehlercode-ansehen)
+- [3a. Alte Zeitstempel ohne Offset](#3a-alte-preiszeitstempel-ohne-offset-kontrolliert-nachliefern)
+- [4. Nachliefern](#4-geprüfte-sicherung-mit-dem-vorhandenen-rpi-schreibzugang-nachliefern)
+- [5. UUID-only Export](#5-auf-dem-windows-pc-nur-die-eindeutigen-uuid-punkte-exportieren)
+- [6. Datenqualität prüfen](#6-erst-danach-datenqualität-und-m3-weiter-prüfen)
+
+---
+
+
 ## Schnellweg: jetzt weiterarbeiten, alten Replay vorerst weglassen
 
 Wenn `TIME_OFFSET_MISSING` die Nachlieferung blockiert und der ursprüngliche

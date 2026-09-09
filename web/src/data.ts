@@ -35,6 +35,33 @@ export type Job = {
   next_run_at: string | null;
   error_code: string | null;
 };
+export type CollectorStatus = {
+  available: boolean;
+  last_poll_at?: string | null;
+  age_minutes?: number | null;
+  fresh?: boolean;
+  tmpfs_used_bytes?: number | null;
+  tmpfs_total_bytes?: number | null;
+  tmpfs_free_bytes?: number | null;
+  oldest_age_days?: number | null;
+  generated_at?: string;
+  error_code?: string | null;
+  influx?: {
+    available: boolean;
+    last_heartbeat_at?: string | null;
+    age_minutes?: number | null;
+    fresh?: boolean;
+    error_code?: string | null;
+    fields?: Record<string, unknown>;
+  };
+  local?: {
+    last_poll_at?: string;
+    city?: string;
+    poll_count?: number;
+    tmpfs?: { total_bytes?: number; used_bytes?: number; free_bytes?: number };
+    oldest_file?: { name?: string; age_days?: number };
+  } | null;
+};
 export type Health = {
   app: string;
   polling_error: string | null;
@@ -42,6 +69,7 @@ export type Health = {
   archive_configured: boolean;
   jobs_enabled: boolean;
   station_count: number;
+  generated_at?: string;
   archive: {
     status: string | null;
     archive_since: string | null;
@@ -49,13 +77,19 @@ export type Health = {
     missing_files: number | null;
     last_complete_until: string | null;
   };
-  jobs: { archive: Job; models: Job };
+  jobs: { archive: Job; models: Job; selection?: Job };
   models: {
     published_at: string | null;
     count: number;
     calibrated: false;
     decision_ready: false;
   };
+  selection?: {
+    published_at: string | null;
+    count: number;
+    error_code?: string | null;
+  };
+  collector?: CollectorStatus;
 };
 export type Point = { timestamp: string; price: number | null; status: string };
 export type ForecastPoint = {
@@ -87,6 +121,91 @@ export type Forecast = {
     mase: number | null;
     picp95_pct: number | null;
   };
+};
+
+export type Heatmap = {
+  generated_at: string;
+  city: string;
+  fuel: Fuel;
+  kind: "level" | "probability";
+  weeks: number;
+  station_id?: string | null;
+  days: string[];
+  hours: number[];
+  matrix: (number | null)[][];
+  points?: number;
+  stations?: number;
+  error_code?: string | null;
+};
+
+export type SelectionStation = {
+  station_id: string;
+  city: string;
+  fuel: string;
+  name: string;
+  brand: string;
+  lat?: number | null;
+  lon?: number | null;
+  coverage?: number;
+  delta_ct?: number | null;
+  ci_lo?: number | null;
+  ci_hi?: number | null;
+  p_value?: number | null;
+  q_value?: number | null;
+  significant?: boolean;
+  avail?: number;
+  best_hour?: number | null;
+  vol_ct?: number | null;
+  rank_std?: number | null;
+  dist_km?: number | null;
+  dist_mode?: string | null;
+  maps_url?: string | null;
+  score?: number;
+  rank?: number;
+};
+
+export type Selection = {
+  generated_at?: string;
+  fuel: string;
+  city?: string | null;
+  cities?: string[];
+  count: number;
+  total_count?: number;
+  stations: SelectionStation[];
+  error_code?: string | null;
+  calibrated?: boolean;
+  decision_ready?: boolean;
+};
+
+export type RouteEvaluate = {
+  city?: string;
+  fuel?: string;
+  station_id?: string | null;
+  station_name?: string | null;
+  ref_station_id?: string | null;
+  ref_station_name?: string | null;
+  ref_price: number;
+  alt_price: number;
+  delta_ct: number;
+  gross_eur: number;
+  detour_km_oneway: number;
+  detour_km_total: number;
+  mode: string;
+  fuel_cost_eur: number;
+  time_cost_eur: number;
+  detour_cost_eur: number;
+  net_eur: number;
+  critical_delta_ct: number;
+  worth_it: boolean;
+  verdict: "worth" | "borderline" | "not_worth";
+  z_used: number;
+  z_auto?: boolean;
+  is_peak?: boolean | null;
+  consumption?: number;
+  speed_kmh?: number;
+  liters: number;
+  generated_at?: string;
+  error_code?: string | null;
 };
 
 // Browser-only convenience; no credentials, fill records or server writes.
@@ -422,6 +541,18 @@ export const messages: Record<string, string> = {
     "Der NAS-Job konnte nicht ausgeführt werden. Schreibrechte des Datenverzeichnisses und App-Dienst prüfen; erneuter Versuch folgt.",
   job_failed:
     "Der Lauf ist fehlgeschlagen. Letzte Ergebnisse bleiben erhalten; erneuter Versuch folgt.",
+  selection_not_available:
+    "Noch keine Selektions-Artefakte vorhanden. Nach Modell-Job erscheint hier das Ranking mit δ̂.",
+  selection_failed:
+    "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
+  collector_no_heartbeat:
+    "Noch kein Collector-Herzschlag in InfluxDB. Pi-Uploader muss heartbeat.json liefern.",
+  collector_check_failed:
+    "Collector-Status konnte nicht geprüft werden.",
+  too_many_points:
+    "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",
+  invalid_query: "Ungültige Anfrageparameter.",
+  not_found: "Endpunkt nicht gefunden.",
 };
 export function problem(code?: string | null) {
   return code
@@ -478,4 +609,11 @@ export function clockLabel(stamp?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export function formatHour(h: number | null | undefined) {
+  if (h == null || !Number.isFinite(h)) return "—";
+  const hour = Math.floor(h);
+  const min = Math.round((h - hour) * 60);
+  return `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
