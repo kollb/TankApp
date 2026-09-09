@@ -11,6 +11,8 @@ from engine.models import (
     features,
     fit,
     fit_ar2,
+    isotonic_decreasing,
+    noon_law_projection,
     predict,
     seasonal_scale,
     utc_time,
@@ -143,8 +145,13 @@ def test_local_clock_features_survive_dst(cfg):
 def test_sparse_forecast_grid_advances_ar_from_origin(series, cfg):
     model = fit(series, "2026-08-01", cfg)
     full = predict(model)
-    partial = predict(model, index=full.index[75:100])
-    assert_frame_equal(full.iloc[75:100], partial)
+    # Teilraster == Ausschnitt des Vollrasters, wenn der Schnitt ganze
+    # Segmente der 12-Uhr-Regel überdeckt (PAV-Pools koppeln nur innerhalb
+    # eines Segments). [144:288] ist exakt das Nachmittagssegment (lokale
+    # 12:00–23:55 Uhr) und damit ein legaler Schnitt.
+    segment = 144
+    partial = predict(model, index=full.index[segment:])
+    assert_frame_equal(full.iloc[segment:], partial)
 
 
 def test_forecast_before_cutoff_rejected(series, cfg):
@@ -153,6 +160,141 @@ def test_forecast_before_cutoff_rejected(series, cfg):
         predict(
             model, index=pd.date_range("2026-07-31", periods=5, freq="5min", tz="UTC")
         )
+
+
+def test_isotonic_decreasing_pooling():
+    # Non-increasing input is unchanged.
+    descending = np.array([1.5, 1.4, 1.4, 1.2, 1.0])
+    np.testing.assert_array_equal(isotonic_decreasing(descending), descending)
+    # A rising run is pooled with its left neighbours into a flat block:
+    # the pool value is the weighted mean of the merged run.
+    out = isotonic_decreasing(np.array([1.0, 1.0, 1.2, 1.2, 1.0, 0.9]))
+    assert np.all(np.diff(out) <= 1e-12)
+    np.testing.assert_allclose(out, [1.1, 1.1, 1.1, 1.1, 1.0, 0.9])
+    # NaNs stay NaN and act as a barrier (no bridging across gaps).
+    out_nan = isotonic_decreasing(np.array([1.0, np.nan, 1.1, 0.9]))
+    assert np.isnan(out_nan[1]) and out_nan[2] == 1.1 and out_nan[3] == 0.9
+
+
+def test_features_include_noon_step(cfg):
+    index = pd.date_range("2026-08-01T06:00:00+02:00", periods=288, freq="5min")
+    x = features(index, cfg)
+    assert x.shape == (288, 12)
+    step = x[:, -1]
+    # Before the law started the step is 0 even in the afternoon.
+    pre = features(
+        pd.date_range("2026-03-01T06:00:00+01:00", periods=288, freq="5min"), cfg
+    )
+    assert np.all(pre[:, -1] == 0)
+    # After the law: 0 before 12:00, 1 from 12:00 on.
+    local = index.tz_convert(cfg.timezone)
+    expected = np.asarray(local.hour >= 12, dtype=float)
+    np.testing.assert_array_equal(step, expected)
+
+
+def test_noon_law_projection_flattens_illegal_afternoon_rise(cfg):
+    index = pd.date_range("2026-08-01T00:00:00+02:00", periods=2 * 288, freq="5min")
+    values = np.full(len(index), 1.0)
+    local = index.tz_convert(cfg.timezone)
+    rise_start = index.get_loc(pd.Timestamp("2026-08-01T14:00:00+02:00"))
+    rise_end = index.get_loc(pd.Timestamp("2026-08-01T15:00:00+02:00"))
+    values[rise_start:rise_end] = 1.05  # illegal: rise after 12:00
+    projected = noon_law_projection(values, index, cfg)
+    assert not np.allclose(projected, values)
+    # The whole segment [12:00 08-01, 12:00 08-02) must end up non-increasing.
+    seg_start = index.get_loc(pd.Timestamp("2026-08-01T12:00:00+02:00"))
+    seg_end = index.get_loc(pd.Timestamp("2026-08-02T12:00:00+02:00"))
+    seg = projected[seg_start:seg_end]
+    assert np.all(np.diff(seg) <= 1e-12)
+    _ = local
+
+
+def test_noon_law_projection_keeps_legal_noon_jump_and_pre_law(cfg):
+    # A jump exactly at 12:00 is legal and must survive the projection.
+    index = pd.date_range("2026-08-01T06:00:00+02:00", periods=288, freq="5min")
+    values = np.full(len(index), 1.0)
+    noon = index.get_loc(pd.Timestamp("2026-08-01T12:00:00+02:00"))
+    values[noon:] = 1.04
+    projected = noon_law_projection(values, index, cfg)
+    assert projected[noon] == 1.04
+    assert projected[noon - 1] == 1.0
+    # Pre-law history is left completely untouched (no structural claim).
+    pre = pd.date_range("2026-03-01T06:00:00+01:00", periods=288, freq="5min")
+    rising = np.linspace(1.0, 1.2, 288)
+    np.testing.assert_array_equal(noon_law_projection(rising, pre, cfg), rising)
+
+
+def test_noon_law_projection_keeps_nan_and_short_input(cfg):
+    index = pd.date_range("2026-08-01T12:00:00+02:00", periods=10, freq="5min")
+    values = np.array([1.0, np.nan, 1.1, 1.2, 1.0, np.nan, 0.9, 0.8, np.nan, 0.7])
+    projected = noon_law_projection(values, index, cfg)
+    assert np.isnan(projected[1]) and np.isnan(projected[5]) and np.isnan(projected[8])
+    # Inner rise 1.1 → 1.2 is pooled; the NaN gap is a barrier (Lücken
+    # bleiben Lücken: keine Kopplung über unbekannte Intervalle hinweg).
+    np.testing.assert_allclose(projected[2:4], [1.15, 1.15])
+    for run in (projected[2:5], projected[6:8], projected[9:10]):
+        assert np.all(np.diff(run) <= 1e-12)
+    np.testing.assert_array_equal(
+        noon_law_projection(np.array([1.0]), index[:1], cfg), [1.0]
+    )
+
+
+def _noon_step_observations(violate_day=None):
+    """Deterministische 12-Uhr-Struktur: Tagesabfall + erlaubter 12-Uhr-Sprung.
+
+    ``violate_day`` injiziert an einem Tag einen unerlaubten Anstieg um 15:00.
+    """
+    index = pd.date_range("2026-07-01T00:00:00+02:00", periods=35 * 288, freq="5min")
+    hour = np.asarray(index.hour + index.minute / 60)
+    price = 1.70 - 0.02 * hour / 24 + np.where(hour >= 12, 0.03, 0.0)
+    if violate_day is not None:
+        day = index.date == violate_day
+        afternoon = np.asarray(index.hour >= 15, dtype=day.dtype)
+        price = price + np.where(day & afternoon, 0.02, 0.0)
+    return pd.DataFrame(
+        {
+            "timestamp": index.astype(str),
+            "city": "Testmarkt",
+            "station_id": "station-1",
+            "station_name": "Teststation",
+            "fuel": "E10",
+            "price": np.round(price, 3),
+            "status": "open",
+            "source": "influxdb",
+        }
+    )
+
+
+def test_legal_noon_rises_are_not_flagged_as_irregular(cfg):
+    rows, _ = normalize_observations(_noon_step_observations(), cfg)
+    model = fit(prepare_series(rows, cfg)[0], "2026-08-01", cfg)
+    assert model["law_rise_outside_noon"] == 0
+    forecast = predict(model)
+    values = forecast["harmonic_ar2"].to_numpy()
+    local = forecast.index.tz_convert(cfg.timezone)
+    for segment in (local.hour < 12, local.hour >= 12):
+        part = values[np.asarray(segment)]
+        part = part[np.isfinite(part)]
+        assert np.all(np.diff(part) <= 1e-9)
+    quantiles = forecast.loc[forecast.supported, ["q025", "q50", "q975"]].to_numpy()
+    assert np.all(np.diff(quantiles, axis=1) >= 0)
+
+
+def test_non_noon_rise_is_counted_and_forecast_stays_legal(cfg):
+    rows, _ = normalize_observations(
+        _noon_step_observations(violate_day=pd.Timestamp("2026-07-20").date()), cfg
+    )
+    model = fit(prepare_series(rows, cfg)[0], "2026-08-01", cfg)
+    # Der injizierte 15:00-Anstieg ist der einzige illegale Sprung: der
+    # Rückfall um Mitternacht ist eine Senkung (immer erlaubt).
+    assert model["law_rise_outside_noon"] == 1
+    forecast = predict(model)
+    values = forecast["harmonic_ar2"].to_numpy()
+    local = forecast.index.tz_convert(cfg.timezone)
+    for segment in (local.hour < 12, local.hour >= 12):
+        part = values[np.asarray(segment)]
+        part = part[np.isfinite(part)]
+        assert np.all(np.diff(part) <= 1e-9)
 
 
 @pytest.mark.parametrize("value", ["2026-03-29T02:30:00", "2026-10-25T02:30:00"])

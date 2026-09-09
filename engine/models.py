@@ -47,6 +47,11 @@ def slots(index: pd.DatetimeIndex, cfg: Config) -> np.ndarray:
     return np.asarray((local.hour * 60 + local.minute) // cfg.step_minutes)
 
 
+def law_since_utc(cfg: Config) -> pd.Timestamp:
+    """Erster gesetzlich zulässiger Preiserhöhungspunkt, als UTC-Instanz."""
+    return pd.Timestamp(cfg.price_law_local).tz_localize(cfg.timezone).tz_convert("UTC")
+
+
 def features(index: pd.DatetimeIndex, cfg: Config) -> np.ndarray:
     local = index.tz_convert(cfg.timezone)
     hour = np.asarray(local.hour + local.minute / 60)
@@ -57,7 +62,103 @@ def features(index: pd.DatetimeIndex, cfg: Config) -> np.ndarray:
     columns.extend(
         [np.asarray(local.dayofweek == day, dtype=float) for day in range(1, 7)]
     )
+    # 12-Uhr-Regel (seit 2026-04-01): Erhöhungen nur um 12:00, danach nur
+    # noch Senkungen. Der Nachmittag liegt deshalb strukturell auf einem
+    # eigenen Niveau; das trägt der Schritt ab, statt die Harmonischen einen
+    # glatten, unrechtmäßigen Tagesanstieg kurven zu lassen.
+    after_law = np.asarray(local >= law_since_utc(cfg))
+    columns.append(np.asarray(after_law & (local.hour >= 12), dtype=float))
     return np.column_stack(columns)
+
+
+def isotonic_decreasing(values: np.ndarray) -> np.ndarray:
+    """Pool-adjacent-violators: L2-Projektion auf die nicht-steigenden Verläufe.
+
+    Wichtig: die Projektion ist ein Ganzheitsproblem — ein späterer Anstieg
+    wird zusammen mit den vorhergehenden Punkten zu einem flachen Pool und
+    schreibt deren Werte mit um. Der Kontext muss also genau der zusammen-
+    hängende Ausschnitt sein, über den projektiert werden soll (hier: ein
+    vollständiges [12:00-Uhr-Segment], siehe ``noon_law_projection``).
+    """
+    blocks: list[list[float]] = []
+    for value in values:
+        blocks.append([float(value), 1])
+        while len(blocks) > 1 and blocks[-2][0] < blocks[-1][0]:
+            value = (blocks[-2][0] * blocks[-2][1] + blocks[-1][0] * blocks[-1][1]) / (
+                blocks[-2][1] + blocks[-1][1]
+            )
+            count = blocks[-2][1] + blocks[-1][1]
+            blocks.pop()
+            blocks[-1] = [value, count]
+    out = np.empty(len(values), dtype=float)
+    start = 0
+    for value, count in blocks:
+        out[start : start + count] = value
+        start += count
+    return out
+
+
+def _segment_bounds(
+    local: pd.DatetimeIndex,
+) -> list[tuple[int, int, object, bool]]:
+    """Kontinuierliche Segmente [12:00 Uhr, nächste 12:00 Uhr) auf dem Raster.
+
+    Liefert (start, stop, lokales Datum, vor_Mittag): Ein Punkt vor 12:00
+    gehört zum Segment, das um 12:00 Uhr des Vortags begonnen hat.
+    """
+    dates = np.asarray(local.date)
+    before_noon = np.asarray(local.hour < 12)
+    segments = []
+    start = 0
+    for position in range(1, len(local) + 1):
+        if position == len(local) or (
+            dates[position] != dates[start]
+            or before_noon[position] != before_noon[start]
+        ):
+            segments.append((start, position, dates[start], before_noon[start]))
+            start = position
+    return segments
+
+
+def noon_law_projection(
+    values: np.ndarray, index: pd.DatetimeIndex, cfg: Config
+) -> np.ndarray:
+    """Projektiert einen Preisverlauf auf die 12-Uhr-Regel.
+
+    Innerhalb jedes Segments [12:00 Uhr, nächste 12:00 Uhr) darf der Preis
+    nur gleich bleiben oder sinken; der erlaubte Sprung liegt exakt an der
+    Segmentgrenze. Segmente, die vor dem Gesetzesbeginn (lokale Zeit)
+    begannen, bleiben unverändert; NaN bleibt NaN.
+    """
+    result = np.asarray(values, dtype=float).copy()
+    if len(index) < 2:
+        return result
+    law = law_since_utc(cfg).tz_convert(index.tz)
+    for start, stop, day, before_noon in _segment_bounds(
+        index.tz_convert(cfg.timezone)
+    ):
+        boundary = (
+            (pd.Timestamp(day).tz_localize(cfg.timezone) - pd.Timedelta(days=1))
+            if before_noon
+            else pd.Timestamp(day).tz_localize(cfg.timezone)
+        )
+        boundary += pd.Timedelta(hours=12)
+        if boundary < law:
+            continue
+        chunk = result[start:stop]
+        mask = np.isfinite(chunk)
+        position = 0
+        while position < len(chunk):
+            if not mask[position]:
+                position += 1
+                continue
+            end = position
+            while end < len(chunk) and mask[end]:
+                end += 1
+            chunk[position:end] = isotonic_decreasing(chunk[position:end])
+            position = end
+        result[start:stop] = chunk
+    return result
 
 
 def huber_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -161,6 +262,28 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         .agg(lambda group: group.iloc[-1])
     )
     naive = naive.reindex(range(288)).to_numpy()
+    # 12-Uhr-Regel als Datenqualitäts-Signal: beobachtete Anstiege von
+    # mindestens 1 ct, deren 5-Minuten-Intervall keinen erlaubten
+    # Erhöhungspunkt (12:00 Uhr, ab Gesetzesbeginn) enthalten. Das sind
+    # mögliche Datenartefakte oder Regelverstöße; sie bleiben im Modell,
+    # werden nur sichtbar gezählt.
+    price_values = price.to_numpy()
+    finite = np.isfinite(price_values)
+    local_index = index.tz_convert(cfg.timezone)
+    law = law_since_utc(cfg).tz_convert(index.tz)
+    irregular_rises = 0
+    for position in range(1, len(index)):
+        if not (finite[position] and finite[position - 1]):
+            continue
+        if price_values[position] <= price_values[position - 1] + 0.001:
+            continue
+        # Der erlaubte Erhöhungspunkt ist die lokale 12:00 Uhr des Rasterpunkts.
+        noon = (local_index[position].normalize() + pd.Timedelta(hours=12)).tz_convert(
+            index.tz
+        )
+        if noon < law or index[position - 1] < noon <= index[position]:
+            continue
+        irregular_rises += 1
     last_observation = frame.observed_at.dropna()
     return {
         "schema_version": SCHEMA_VERSION,
@@ -176,6 +299,7 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "training_days": int(days),
         "training_points": int(valid.sum()),
         "status_known_fraction": float(frame.loc[price.notna(), "status_known"].mean()),
+        "law_rise_outside_noon": int(irregular_rises),
         "beta": beta,
         "ar_phi": phi,
         "ar_state": state,
@@ -195,7 +319,7 @@ def validate_model(model: dict) -> Config:
     ):
         raise ValueError("Unbekannte Modell-/Artefakt-Version; neu fitten.")
     cfg = Config(**model["config"])
-    for key, shape in (("beta", (11,)), ("ar_phi", (2,)), ("ar_state", (2,))):
+    for key, shape in (("beta", (12,)), ("ar_phi", (2,)), ("ar_state", (2,))):
         value = np.asarray(model[key], dtype=float)
         if value.shape != shape or not np.isfinite(value).all():
             raise ValueError(f"Ungültiger Modellzustand: {key}.")
@@ -231,6 +355,12 @@ def validate_model(model: dict) -> Config:
 def predict(
     model: dict, hours: int = 24, *, index: pd.DatetimeIndex | None = None
 ) -> pd.DataFrame:
+    """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
+    5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
+    übergebene Raster als Kontext: Teilraster sind mit dem Vollraster
+    identisch, wenn sie ganze Segmente [12:00 Uhr, nächste 12:00 Uhr)
+    überdecken (Pools koppeln nur innerhalb eines Segments).
+    """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
     if not 1 <= hours <= 168:
@@ -265,7 +395,10 @@ def predict(
         correction[i] = following
         state = [following, state[0]]
     structure = features(index, cfg) @ beta
-    point = structure + correction[offsets]
+    # 12-Uhr-Regel: Median und Struktur dürfen innerhalb der Segmente
+    # [12:00 Uhr, nächste 12:00 Uhr) nicht steigen; der erlaubte Sprung liegt
+    # an der Segmentgrenze. Segmente vor dem Gesetzesbeginn bleiben unverändert.
+    point = noon_law_projection(structure + correction[offsets], index, cfg)
     block = np.asarray(model["residual_blocks"], dtype=float)
     slot = slots(index, cfg)
     counts = np.isfinite(block).sum(axis=0)
@@ -278,6 +411,9 @@ def predict(
         positions = np.flatnonzero(local_dates == day)
         draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
         paths[:, positions] = point[positions] + block[draws[:, None], slot[positions]]
+    # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
+    for sample in range(cfg.bootstrap_samples):
+        paths[sample] = noon_law_projection(paths[sample], index, cfg)
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="All-NaN slice encountered", category=RuntimeWarning

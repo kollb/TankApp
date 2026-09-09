@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
 
 @dataclass(frozen=True)
 class Config:
@@ -14,9 +16,18 @@ class Config:
     seed: int = 42
     poll_start: int = 6
     poll_end: int = 24
+    # Seit diesem lokalen Zeitpunkt dürfen Tankstellen in Deutschland den
+    # Preis nur noch um 12:00 Uhr erhöhen (Senkungen jederzeit).
+    price_law_local: str = "2026-04-01T12:00"
 
     def __post_init__(self):
         ZoneInfo(self.timezone)
+        parsed = pd.Timestamp(self.price_law_local).tz_localize(self.timezone)
+        if pd.isna(parsed):
+            raise ValueError(
+                "price_law_local muss ein gültiger lokaler Zeitpunkt sein, "
+                f"erhalten {self.price_law_local!r}."
+            )
         if self.step_minutes != 5:
             raise ValueError("Die erste Engine-Version verwendet ein 5-Minuten-Raster.")
         if not 0 <= self.ffill_minutes <= 30:

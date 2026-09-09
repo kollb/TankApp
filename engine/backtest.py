@@ -9,7 +9,7 @@ from .models import fit, predict, utc_time
 
 PENDING = [
     "M3-Zweitmodell (ETS/Local-Level) und inverse-MASE-Ensemble",
-    "gepoolte Feiertagseffekte und Sprungzustand im Strukturmodell",
+    "gepoolte Feiertagseffekte im Strukturmodell (12-Uhr-Sprung ist bereits Struktur)",
     "CUSUM-Sprungtage und gesonderte MASE-Abnahme sprungfreier Tage",
     "Out-of-sample-Kalibrierung / ACI nach ausreichender Live-Historie",
     "Echt-Daten-Abnahme aller M3-Kriterien auf NAS/PC",
@@ -134,6 +134,7 @@ def run_backtest(
                     "status": "scored" if len(rows) else "no_common_observations",
                     "training_days": model["training_days"],
                     "mase_scale": model["mase_scale"],
+                    "law_rise_outside_noon": model["law_rise_outside_noon"],
                     "training_status_known_fraction": model["status_known_fraction"],
                     "comparison_coverage_pct": 100 * len(rows) / int(observed.sum())
                     if observed.any()
@@ -193,6 +194,13 @@ def run_backtest(
         "test_start": origins[0].isoformat(),
         "test_end_exclusive": end.isoformat(),
         "config": cfg.to_dict(),
+        "law_rise_outside_noon": int(
+            sum(
+                fold.get("law_rise_outside_noon", 0)
+                for fold in folds
+                if fold["status"] == "scored"
+            )
+        ),
         "requested_test_days": days,
         "test_sources": sorted(rows.source.unique().tolist()) if len(rows) else [],
         "metrics": aggregate,
@@ -265,6 +273,10 @@ def markdown_report(report: dict) -> str:
         "## Datenlücken und Grenzen",
         "",
         "Intervalle: Residuen-Tagesblock-Bootstrap aus dem Training, **unkalibriert**, nicht ACI.",
+        f"12-Uhr-Regel: {report['law_rise_outside_noon']} beobachtete Erhöhung(en) ≥ 1 ct "
+        "außerhalb des erlaubten 12-Uhr-Zeitpunkts im Training der bewerteten Folds "
+        "(seit 2026-04-01) — mögliche Datenartefakte, im Fit verbleibend; Median und "
+        "Bänder werden auf nicht-steigende [12:00, nächste 12:00)-Segmente projiziert.",
         "Fehlende Nacht-/Öffnungszeiten werden nicht erfunden. Geschlossene und veraltete Preise",
         "gehen nicht in den Fit ein; von der Engine ergänzte Forward-Fill-Zeilen nicht in die Testwahrheit.",
         "MASE bei konstanter saisonaler Trainingsreihe ist undefiniert, nicht 0.",

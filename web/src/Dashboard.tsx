@@ -18,16 +18,22 @@ import {
   Wifi,
   WifiOff,
   SlidersHorizontal,
+  HelpCircle,
+  Route,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
+  autoTimeTicks,
   currentPrice,
+  detourEconomics,
   euro,
+  haversineKm,
   problem,
   segments,
   timeLabel,
   useResource,
   usePreference,
+  type DetourMode,
   type Fuel,
   type Station,
   type Stations,
@@ -64,14 +70,28 @@ function Metric({
   label,
   value,
   detail,
+  tip,
 }: {
   label: string;
   value: ReactNode;
   detail: string;
+  tip?: string;
 }) {
   return (
     <div className={`${panel} p-5`}>
-      <div className="text-xs text-slate-400">{label}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-xs text-slate-400">{label}</div>
+        {tip && (
+          <span
+            tabIndex={0}
+            title={tip}
+            aria-label={`Erklärung: ${tip}`}
+            className="cursor-help rounded-full p-1 text-slate-500 outline-none hover:bg-slate-800 hover:text-slate-300 focus:bg-slate-800 focus:text-slate-300"
+          >
+            <HelpCircle size={14} />
+          </span>
+        )}
+      </div>
       <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums">
         {value}
       </div>
@@ -151,6 +171,29 @@ export function Dashboard() {
       value >= 10 &&
       value <= 80,
   );
+  const [consumption, setConsumption] = usePreference(
+    "consumption",
+    7,
+    (value) =>
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 4 &&
+      value <= 15,
+  );
+  const [timeValue, setTimeValue] = usePreference(
+    "timeValue",
+    12,
+    (value) =>
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 30,
+  );
+  const [detourMode, setDetourMode] = usePreference<DetourMode>(
+    "detourMode",
+    "onroute",
+    (value) => value === "onroute" || value === "dedicated",
+  );
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(performance.now());
   const prices = useResource<Stations>(
@@ -184,6 +227,44 @@ export function Dashboard() {
     bestPrice !== null && selectedPrice !== null
       ? (selectedPrice - bestPrice) * liters
       : null;
+  // Umweg-Ökonomie (Konzept §10) gegen günstigere frische Stationen derselben
+  // Stadt; Entfernung als Luftlinie, weil dafür keine Routendaten nötig sind.
+  const selectedLat = selected?.lat;
+  const selectedLon = selected?.lon;
+  const detourOptions =
+    selected &&
+    selectedPrice !== null &&
+    typeof selectedLat === "number" &&
+    typeof selectedLon === "number"
+      ? fresh
+          .flatMap((row) => {
+            if (row.station_id === selected.station_id) return [];
+            const altPrice = price(row);
+            if (altPrice === null || !(altPrice < selectedPrice - 1e-9))
+              return [];
+            if (typeof row.lat !== "number" || typeof row.lon !== "number")
+              return [];
+            const km = haversineKm(selectedLat, selectedLon, row.lat, row.lon);
+            return [
+              {
+                row,
+                altPrice,
+                km,
+                economics: detourEconomics({
+                  refPrice: selectedPrice,
+                  altPrice,
+                  liters,
+                  km,
+                  mode: detourMode,
+                  consumption,
+                  speedKmh: 45,
+                  timeValueEurH: timeValue,
+                }),
+              },
+            ];
+          })
+          .sort((a, b) => b.economics.netEur - a.economics.netEur)
+      : [];
   const identity = selected
     ? new URLSearchParams({
         city: activeCity,
@@ -209,24 +290,27 @@ export function Dashboard() {
   const f = forecast.data;
   const metrics = f?.metrics;
   const series = segments(observations);
-  const ticks = observations.length
-    ? [
-        observations[0],
-        observations[Math.floor(observations.length / 2)],
-        observations[observations.length - 1],
-      ].map((p) => ({
-        x: Date.parse(p.timestamp),
-        label: new Date(p.timestamp).toLocaleTimeString("de-DE", {
-          timeZone: "Europe/Berlin",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      }))
-    : [];
+  // Feste 24-Stunden-Fenster statt auto-Skalen: die Achse bleibt stabil und
+  // fehlende Phasen sind als markierte Lücke sichtbar, nicht als Puffer.
+  const obsWindow: [number, number] = [Date.now() - 86_400_000, Date.now()];
   const modelSeries =
     f?.points
       .filter((p) => p.q50 !== null)
       .map((p) => ({ x: Date.parse(p.timestamp), y: p.q50! })) || [];
+  const fanBand = (f?.points || [])
+    .filter((p) => p.q025 !== null && p.q975 !== null)
+    .map((p) => ({
+      x: Date.parse(p.timestamp),
+      yLow: p.q025!,
+      yHigh: p.q975!,
+    }));
+  const forecastWindow: [number, number] | null =
+    f?.origin && modelSeries.length
+      ? [Date.parse(f.origin), Date.parse(f.origin) + 86_400_000]
+      : null;
+  const calibrationTip = f?.data_policy
+    ? `Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Bisher ${f.data_policy.good_complete_live_days} von ${f.data_policy.required_complete_live_days} guten Live-Tagen. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.`
+    : "Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.";
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-100 selection:bg-emerald-500 selection:text-slate-950">
@@ -494,7 +578,7 @@ export function Dashboard() {
                     </span>
                   </>
                 }
-                detail="Reiner Preisunterschied pro Füllung, ohne Sprit- und Zeitkosten des Umwegs."
+                detail="Reiner Preisunterschied pro Füllung — Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
               />
               <div className={`${panel} p-5`}>
                 <label
@@ -524,6 +608,164 @@ export function Dashboard() {
                 </p>
               </div>
             </div>
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="detour-heading"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3
+                  id="detour-heading"
+                  className="flex items-center gap-2 text-sm font-semibold"
+                >
+                  <Route size={16} className="text-emerald-400" />
+                  Rechnet sich der Umweg?
+                </h3>
+                <span className="font-mono text-[11px] text-slate-500">
+                  K = d · (c/100) · p + (d/v) · z
+                </span>
+              </div>
+              {detourOptions.length ? (
+                <>
+                  <p className="mb-4 text-xs leading-relaxed text-slate-400">
+                    Gegenüber deiner Vergleichsstation (
+                    <span className="font-medium text-slate-200">
+                      {selected?.name}
+                    </span>
+                    ): günstigere frische Stationen in {activeCity}. Entfernung
+                    als Luftlinie — der echte Straßenweg ist meist länger, der
+                    Umweg rechnet sich also eher noch weniger.
+                  </p>
+                  <div className="mb-5 grid gap-4 sm:grid-cols-3">
+                    <label
+                      htmlFor="consumption"
+                      className="text-xs text-slate-400"
+                    >
+                      Verbrauch{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {consumption} L/100 km
+                      </span>
+                      <input
+                        id="consumption"
+                        type="range"
+                        min={4}
+                        max={15}
+                        step={1}
+                        value={consumption}
+                        onChange={(e) => setConsumption(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </label>
+                    <label
+                      htmlFor="timeValue"
+                      className="text-xs text-slate-400"
+                    >
+                      Zeitwert{" "}
+                      <span className="font-mono font-semibold text-emerald-400">
+                        {timeValue} €/h
+                      </span>
+                      <input
+                        id="timeValue"
+                        type="range"
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={timeValue}
+                        onChange={(e) => setTimeValue(Number(e.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </label>
+                    <label
+                      htmlFor="detourMode"
+                      className="text-xs text-slate-400"
+                    >
+                      Fahrtcharakter
+                      <select
+                        id="detourMode"
+                        aria-label="Fahrtcharakter"
+                        value={detourMode}
+                        onChange={(e) =>
+                          setDetourMode(
+                            e.target.value as DetourMode,
+                          )
+                        }
+                        className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
+                      >
+                        <option value="onroute">
+                          Auf dem Weg (nur Mehrweg)
+                        </option>
+                        <option value="dedicated">
+                          Extrafahrt (Hin & Rück)
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
+                    {detourOptions.map((option) => {
+                      const worth =
+                        option.economics.verdict === "worth";
+                      const borderline =
+                        option.economics.verdict === "borderline";
+                      return (
+                        <div
+                          key={option.row.station_id}
+                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-200">
+                              {option.row.name}{" "}
+                              <span className="font-mono text-emerald-400">
+                                {euro(option.altPrice, 3)} €/L
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {option.km.toLocaleString("de-DE", {
+                                maximumFractionDigits: 1,
+                              })}{" "}
+                              km Luftlinie · Ersparnis{" "}
+                              {euro(option.economics.grossEur)} · Sprit{" "}
+                              {euro(option.economics.fuelEur)} · Zeit{" "}
+                              {euro(option.economics.timeEur)} · erst ab{" "}
+                              {option.economics.criticalCtPerL.toLocaleString(
+                                "de-DE",
+                                { maximumFractionDigits: 1 },
+                              )}{" "}
+                              ct/L günstiger
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span
+                              className={`font-mono text-lg font-bold tabular-nums ${worth ? "text-emerald-400" : borderline ? "text-amber-300" : "text-slate-400"}`}
+                            >
+                              {euro(option.economics.netEur)} € netto
+                            </span>
+                            <Badge warning={!worth}>
+                              {worth
+                                ? "lohnenswert"
+                                : borderline
+                                  ? "grenzwertig"
+                                  : "lohnt sich nicht"}
+                            </Badge>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <Empty>
+                  Kein günstigerer frischer Preis in {activeCity} — dann
+                  rechnet sich aktuell kein Umweg. Die Rechnung erscheint
+                  automatisch, sobald eine ausgewählte Stadt mehrere frische
+                  Preise mit Entfernungen meldet.
+                </Empty>
+              )}
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+                Netto-Ersparnis = (Dein Preis − günstigerer Preis) × Tankmenge
+                − Kraftstoff des Umwegs − Zeitwert der Umwegzeit. „Lohnenswert“
+                ab 1,50 €, „grenzwertig“ ab 0,50 €. Reine Rechenhilfe über
+                deine Angaben — keine Buchung, keine garantierte Ersparnis.
+              </p>
+            </section>
             <section
               className={`${panel} overflow-hidden`}
               aria-labelledby="stations-heading"
@@ -641,6 +883,17 @@ export function Dashboard() {
                   </Empty>
                 </div>
               )}
+              {stations.length > 0 &&
+                !stations.some((row) => row.dist_km != null) && (
+                  <p className="border-t border-slate-800/80 px-5 py-3 text-[11px] leading-relaxed text-slate-500">
+                    Kein km-Wert angezeigt: Für dieses Set ist noch kein
+                    Referenzpunkt dieser Stadt hinterlegt. Einmal mit{" "}
+                    <code className="text-slate-300">
+                      tankapp.py add-city
+                    </code>{" "}
+                    setzen — danach erscheinen die Luftlinien-Entfernungen.
+                  </p>
+                )}
             </section>
           </>
         )}
@@ -690,17 +943,20 @@ export function Dashboard() {
                     </span>
                   </>
                 }
-                detail="Letzte 7 abgeschlossene Prüftage; kein kalibrierter Live-Gütenachweis."
+                detail="Letzte 7 abgeschlossene Prüftage des Roll-Backtests; kein kalibrierter Live-Gütenachweis."
+                tip="Mittlerer absoluter Fehler (MAE): der durchschnittliche Abstand zwischen Prognose und tatsächlichem Preis in Cent pro Liter. 1,0 ct/L heißt: über die letzten 7 Prüftage lag die Prognose im Schnitt 1 Cent daneben — Richtung (zu hoch/zu tief) wird nicht gemischt, nur die Größe zählt."
               />
               <Metric
                 label="Vergleich zur saisonalen Naive · MASE"
                 value={euro(metrics?.mase)}
-                detail="Kleiner als 1 ist im ausgewerteten Zeitraum besser als die Vergleichsmethode."
+                detail="Skalierte Vergleichszahl: kleiner als 1,0 = besser als die Vergleichsmethode."
+                tip="Mean Absolute Scaled Error (MASE) = Backtest-MAE geteilt durch den MAE der saisonalen Naive, die einfach das Tagesprofil von gestern wiederholt. MASE 1,0 heißt: genau so gut wie 'gestern übernehmen'. Werte deutlich unter 1,0: das Modell liefert echten Zusatznutzen. Werte über 1,0: die einfache Vergleichsmethode war besser."
               />
               <Metric
                 label="Beobachtete Vergleichspunkte"
                 value={metrics?.points ?? "—"}
-                detail="Keine simulierten Trefferquoten und keine als Live-Polls gezählten Füllwerte."
+                detail="5-Minuten-Zeitpunkte, an denen Prognose und echter gemeldeter Preis verglichen wurden."
+                tip="Nur hier gezählt: Zeitpunkte mit echten gemeldeten Preisen im Backtest-Fenster. Keine simulierten Trefferquoten, keine Füllwerte. Wenige Punkte machen MAE und MASE unsicherer — die Zahl zeigt, wie viel Material die Kennzahlen tragen."
               />
             </div>
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
@@ -720,8 +976,9 @@ export function Dashboard() {
               ) : series.length ? (
                 <LineChart
                   series={series}
+                  xDomain={obsWindow}
+                  xTicks={autoTimeTicks(obsWindow[0], obsWindow[1])}
                   yFmt={(v) => euro(v, 3)}
-                  xTicks={ticks}
                   gapMinutes={30}
                   gapLabel="keine Meldung"
                 />
@@ -733,8 +990,9 @@ export function Dashboard() {
                 </Empty>
               )}
               <p className="mt-4 text-[11px] text-slate-500">
-                Zeit in Europe/Berlin · Preis in €/L · Unterbrechungen über 30
-                Minuten werden als Band markiert, nicht mit Preisen überbrückt.
+                Fester 24-Stunden-Verlauf in Europe/Berlin · Preis in €/L ·
+                Unterbrechungen über 30 Minuten — auch am Fensterende — werden
+                als Band markiert, nicht mit Preisen überbrückt.
               </p>
             </section>
             <section className={`${panel} p-5 sm:p-6`}>
@@ -745,7 +1003,11 @@ export function Dashboard() {
                     Ab Fit-Zeitpunkt {timeLabel(f?.origin)}
                   </p>
                 </div>
-                <Badge warning>Unkalibriert · keine Handlungsempfehlung</Badge>
+                <Badge warning>
+                  <span className="cursor-help" title={calibrationTip}>
+                    Unkalibriert · keine Handlungsempfehlung
+                  </span>
+                </Badge>
               </div>
               {f?.stale || f?.retained_previous || f?.stale_data_at_origin ? (
                 <p className="mb-4 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-300">
@@ -767,17 +1029,26 @@ export function Dashboard() {
                       pts: modelSeries,
                     },
                   ]}
+                  bands={
+                    fanBand.length
+                      ? [
+                          {
+                            name: "95-%-Band (unkalibriert)",
+                            color: "#38bdf8",
+                            pts: fanBand,
+                          },
+                        ]
+                      : []
+                  }
+                  xDomain={forecastWindow ?? undefined}
+                  xTicks={
+                    forecastWindow
+                      ? autoTimeTicks(forecastWindow[0], forecastWindow[1])
+                      : []
+                  }
                   gapMinutes={30}
                   gapLabel="keine Prognose"
                   yFmt={(v) => euro(v, 3)}
-                  xTicks={
-                    modelSeries.length
-                      ? [modelSeries[0], modelSeries.at(-1)!].map((p) => ({
-                          x: p.x,
-                          label: timeLabel(new Date(p.x).toISOString()),
-                        }))
-                      : []
-                  }
                 />
               ) : (
                 <Empty>

@@ -13,6 +13,12 @@ export interface SeriesPts {
   pts: { x: number; y: number }[];
 }
 
+export interface BandPts {
+  name?: string;
+  color: string;
+  pts: { x: number; yLow: number; yHigh: number }[];
+}
+
 export interface Mark {
   x: number;
   color: string;
@@ -31,7 +37,9 @@ const defaultXFmt = (x: number) =>
 /** Kompakter SVG-Liniendiagramm-Baustein (dunkles Theme), mit Hover-Tooltip. */
 export function LineChart({
   series,
+  bands = [],
   marks = [],
+  xDomain,
   height = 220,
   yFmt = (v: number) => v.toFixed(1),
   xFmt = defaultXFmt,
@@ -41,7 +49,9 @@ export function LineChart({
   gapLabel = "keine Daten",
 }: {
   series: SeriesPts[];
+  bands?: BandPts[];
   marks?: Mark[];
+  xDomain?: [number, number];
   height?: number;
   yFmt?: (v: number) => string;
   xFmt?: (x: number) => string;
@@ -60,16 +70,34 @@ export function LineChart({
   const iw = W - padL - padR;
   const ih = H - padT - padB;
 
-  let xMin = Infinity,
-    xMax = -Infinity,
-    yMin = Infinity,
+  // Optionales festes Zeitfenster (z. B. 24 h): Daten außerhalb werden
+  // ausgeschnitten, die Achse bleibt stabil statt an den Daten klebend.
+  const hasDomain =
+    xDomain !== undefined &&
+    Number.isFinite(xDomain[0]) &&
+    Number.isFinite(xDomain[1]) &&
+    xDomain[1] > xDomain[0];
+  const clip = <T extends { x: number }>(pts: T[]) =>
+    hasDomain ? pts.filter((p) => p.x >= xDomain![0] && p.x <= xDomain![1]) : pts;
+  const clipped = series.map((s) => ({ ...s, pts: clip(s.pts) }));
+  const clippedBands = bands.map((b) => ({ ...b, pts: clip(b.pts) }));
+
+  let xMin = hasDomain ? xDomain![0] : Infinity;
+  let xMax = hasDomain ? xDomain![1] : -Infinity;
+  let yMin = Infinity,
     yMax = -Infinity;
-  for (const s of series) {
+  for (const s of clipped) {
     for (const p of s.pts) {
       if (p.x < xMin) xMin = p.x;
       if (p.x > xMax) xMax = p.x;
       if (p.y < yMin) yMin = p.y;
       if (p.y > yMax) yMax = p.y;
+    }
+  }
+  for (const b of clippedBands) {
+    for (const p of b.pts) {
+      if (p.yLow < yMin) yMin = p.yLow;
+      if (p.yHigh > yMax) yMax = p.yHigh;
     }
   }
   for (const m of marks) {
@@ -105,8 +133,11 @@ export function LineChart({
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
 
-  // Lücken bleiben Lücken: sie werden als Band markiert, nie überbrückt.
-  const bands = gapMinutes > 0 ? gapBands(series, gapMinutes) : [];
+  // Lücken bleiben Lücken: sie werden als dezent markiert, nie überbrückt.
+  // Mit festem Fenster zählen auch Fenster-Randlücken (vor dem ersten bzw.
+  // nach dem letzten Punkt) als Lücke.
+  const bandGaps =
+    gapMinutes > 0 ? gapBands(clipped, gapMinutes, hasDomain ? xDomain : undefined) : [];
   const hoursLabel = (ms: number) => {
     const hours = ms / 3600000;
     const rounded = hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10;
@@ -114,8 +145,8 @@ export function LineChart({
   };
 
   const hovered =
-    hover && series[hover.si]?.pts[hover.pi]
-      ? { ...series[hover.si].pts[hover.pi], color: series[hover.si].color }
+    hover && clipped[hover.si]?.pts[hover.pi]
+      ? { ...clipped[hover.si].pts[hover.pi], color: clipped[hover.si].color }
       : null;
   const tipLines = hovered
     ? [xFmt(hovered.x), `${yFmt(hovered.y)}${ySuffix}`]
@@ -131,6 +162,19 @@ export function LineChart({
       ? Y(hovered.y) - tipH - 10
       : Y(hovered.y) + 12
     : 0;
+
+  const legendItems: { name: string; color: string; band: boolean }[] = [
+    ...series.filter((s) => s.name).map((s) => ({
+      name: s.name!,
+      color: s.color,
+      band: false,
+    })),
+    ...bands.filter((b) => b.name).map((b) => ({
+      name: b.name!,
+      color: b.color,
+      band: true,
+    })),
+  ];
 
   return (
     <svg
@@ -174,33 +218,90 @@ export function LineChart({
           {t.label}
         </text>
       ))}
-      {bands.map((band, i) => {
+      {bandGaps.map((band, i) => {
         const x1 = X(band.from);
         const x2 = X(band.to);
         const width = x2 - x1;
+        const top = padT + 8;
+        const bottom = H - padB - 8;
+        const label =
+          gapLabel && width >= 56
+            ? `${gapLabel} · ${hoursLabel(band.to - band.from)} h`
+            : null;
+        const labelW = label ? label.length * 5.2 + 12 : 0;
         return (
           <g key={`gap-${i}`}>
             <rect
               x={x1}
-              y={padT - 4}
+              y={top}
               width={width}
-              height={ih + 8}
-              rx={4}
+              height={bottom - top}
+              rx={6}
               fill="#020617"
+              opacity={0.38}
+            />
+            <line
+              x1={x1 + 0.5}
+              y1={top}
+              x2={x1 + 0.5}
+              y2={bottom}
+              stroke="#475569"
+              strokeWidth={0.7}
+              strokeDasharray="2 4"
               opacity={0.55}
             />
-            {width >= 90 && (
-              <text
-                x={(x1 + x2) / 2}
-                y={padT + ih / 2}
-                textAnchor="middle"
-                fontSize={10}
-                fill="#64748b"
-              >
-                {gapLabel} · {hoursLabel(band.to - band.from)} h
-              </text>
+            <line
+              x1={x2 - 0.5}
+              y1={top}
+              x2={x2 - 0.5}
+              y2={bottom}
+              stroke="#475569"
+              strokeWidth={0.7}
+              strokeDasharray="2 4"
+              opacity={0.55}
+            />
+            {label && (
+              <g>
+                <rect
+                  x={(x1 + x2) / 2 - labelW / 2}
+                  y={top + 4}
+                  width={labelW}
+                  height={13}
+                  rx={6.5}
+                  fill="#0f172a"
+                  stroke="#334155"
+                  strokeWidth={0.6}
+                />
+                <text
+                  x={(x1 + x2) / 2}
+                  y={top + 13.5}
+                  textAnchor="middle"
+                  fontSize={8.5}
+                  fill="#94a3b8"
+                >
+                  {label}
+                </text>
+              </g>
             )}
           </g>
+        );
+      })}
+      {clippedBands.map((b, i) => {
+        if (b.pts.length < 2) return null;
+        const top = b.pts
+          .map((p) => `${X(p.x).toFixed(1)},${Y(p.yHigh).toFixed(1)}`)
+          .join(" ");
+        const bottom = [...b.pts]
+          .reverse()
+          .map((p) => `${X(p.x).toFixed(1)},${Y(p.yLow).toFixed(1)}`)
+          .join(" ");
+        return (
+          <path
+            key={`band-${i}`}
+            d={`M${top} L${bottom} Z`}
+            fill={b.color}
+            opacity={0.16}
+          />
         );
       })}
       {marks.map((m, i) => (
@@ -225,7 +326,7 @@ export function LineChart({
           </text>
         </g>
       ))}
-      {series.map((s, i) => (
+      {clipped.map((s, i) => (
         <g key={i}>
           <path
             d={path(s)}
@@ -295,18 +396,28 @@ export function LineChart({
           ))}
         </g>
       )}
-      {series.some((s) => s.name) && (
+      {legendItems.length > 0 && (
         <g>
-          {series
-            .filter((s) => s.name)
-            .map((s, i) => (
-              <g key={i} transform={`translate(${padL + i * 110}, 6)`}>
-                <circle cx={4} cy={4} r={4} fill={s.color} />
-                <text x={12} y={8} fontSize={10.5} fill={TXT}>
-                  {s.name}
-                </text>
-              </g>
-            ))}
+          {legendItems.map((item, i) => (
+            <g key={i} transform={`translate(${padL + i * 130}, 6)`}>
+              {item.band ? (
+                <rect
+                  x={0}
+                  y={0}
+                  width={8}
+                  height={8}
+                  rx={1.5}
+                  fill={item.color}
+                  opacity={0.4}
+                />
+              ) : (
+                <circle cx={4} cy={4} r={4} fill={item.color} />
+              )}
+              <text x={12} y={8} fontSize={10.5} fill={TXT}>
+                {item.name}
+              </text>
+            </g>
+          ))}
         </g>
       )}
     </svg>
