@@ -13,6 +13,18 @@ UTC = dt.timezone.utc
 FUELS = {"e10", "e5", "diesel"}
 
 
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Luftlinie für das Entfernungs-Bubble; kein Routing, keine Dritt-API."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    inner = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
+    return 6371.0 * 2 * math.asin(math.sqrt(inner))
+
+
 def read_json(path, default=None):
     try:
         if path.stat().st_size > 10_000_000:
@@ -33,6 +45,17 @@ def metadata(settings):
     stations = {}
     for key, group in groups.items():
         city = group.get("label") or key
+        # The set anchor is a private home position (add-city); only derived
+        # distances leave the server, never the coordinates themselves.
+        anchor = group.get("anchor")
+        anchor_ok = (
+            isinstance(anchor, list)
+            and len(anchor) == 2
+            and all(type(value) in (int, float) for value in anchor)
+            and all(math.isfinite(value) for value in anchor)
+            and 47 <= anchor[0] <= 56
+            and 5 <= anchor[1] <= 16
+        )
         details = {item["uuid"]: item for item in group.get("stations", [])}
         for uid in group.get("batch") or list(details):
             item = details.get(uid, {})
@@ -53,6 +76,9 @@ def metadata(settings):
                 "brand": item.get("brand") or "",
                 "lat": lat if coordinates else None,
                 "lon": lon if coordinates else None,
+                "dist_km": round(haversine_km(anchor[0], anchor[1], lat, lon), 1)
+                if anchor_ok and coordinates
+                else None,
                 "maps_url": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
                 if coordinates
                 else None,

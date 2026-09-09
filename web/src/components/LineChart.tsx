@@ -1,6 +1,7 @@
 // Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
 
 import React, { useState } from "react";
+import { gapBands } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -36,6 +37,8 @@ export function LineChart({
   xFmt = defaultXFmt,
   ySuffix = " €/L",
   xTicks = [],
+  gapMinutes = 0,
+  gapLabel = "keine Daten",
 }: {
   series: SeriesPts[];
   marks?: Mark[];
@@ -44,6 +47,8 @@ export function LineChart({
   xFmt?: (x: number) => string;
   ySuffix?: string;
   xTicks?: { x: number; label: string }[];
+  gapMinutes?: number;
+  gapLabel?: string;
 }) {
   const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
   const W = 720;
@@ -99,6 +104,14 @@ export function LineChart({
       .join(" ");
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
+
+  // Lücken bleiben Lücken: sie werden als Band markiert, nie überbrückt.
+  const bands = gapMinutes > 0 ? gapBands(series, gapMinutes) : [];
+  const hoursLabel = (ms: number) => {
+    const hours = ms / 3600000;
+    const rounded = hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10;
+    return `${rounded}`.replace(".", ",");
+  };
 
   const hovered =
     hover && series[hover.si]?.pts[hover.pi]
@@ -161,6 +174,35 @@ export function LineChart({
           {t.label}
         </text>
       ))}
+      {bands.map((band, i) => {
+        const x1 = X(band.from);
+        const x2 = X(band.to);
+        const width = x2 - x1;
+        return (
+          <g key={`gap-${i}`}>
+            <rect
+              x={x1}
+              y={padT - 4}
+              width={width}
+              height={ih + 8}
+              rx={4}
+              fill="#020617"
+              opacity={0.55}
+            />
+            {width >= 90 && (
+              <text
+                x={(x1 + x2) / 2}
+                y={padT + ih / 2}
+                textAnchor="middle"
+                fontSize={10}
+                fill="#64748b"
+              >
+                {gapLabel} · {hoursLabel(band.to - band.from)} h
+              </text>
+            )}
+          </g>
+        );
+      })}
       {marks.map((m, i) => (
         <g key={i}>
           <line

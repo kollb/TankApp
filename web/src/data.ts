@@ -8,6 +8,7 @@ export type Station = {
   brand: string;
   fuel: Fuel;
   maps_url: string | null;
+  dist_km?: number | null;
   price: number | null;
   last_price: number | null;
   status: string;
@@ -214,6 +215,23 @@ export function segments(points: Point[]) {
   }
   flush();
   return result;
+}
+
+// Zeitliche Lücken zwischen allen Punkten einer Diagrammserie; das Diagramm
+// markiert sie als Band, statt Linien über geschlossene Zeiträume zu ziehen.
+export function gapBands(
+  series: { pts: { x: number }[] }[],
+  minMinutes: number,
+): { from: number; to: number }[] {
+  const times = [...new Set(series.flatMap((s) => s.pts.map((p) => p.x)))].sort(
+    (a, b) => a - b,
+  );
+  const bands: { from: number; to: number }[] = [];
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] - times[i - 1] > minMinutes * 60000)
+      bands.push({ from: times[i - 1], to: times[i] });
+  }
+  return bands;
 }
 
 export const messages: Record<string, string> = {

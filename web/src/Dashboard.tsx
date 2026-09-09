@@ -586,6 +586,17 @@ export function Dashboard() {
                                 {label}
                               </span>
                               <span>{row.brand || "Freie Station"}</span>
+                              {row.dist_km != null && (
+                                <span
+                                  title="Luftlinie zum Anker dieser Stadt"
+                                  className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+                                >
+                                  {row.dist_km.toLocaleString("de-DE", {
+                                    maximumFractionDigits: 1,
+                                  })}{" "}
+                                  km
+                                </span>
+                              )}
                               <span>
                                 {age === null
                                   ? "Noch keine Daten"
@@ -711,6 +722,8 @@ export function Dashboard() {
                   series={series}
                   yFmt={(v) => euro(v, 3)}
                   xTicks={ticks}
+                  gapMinutes={30}
+                  gapLabel="keine Meldung"
                 />
               ) : (
                 <Empty>
@@ -721,7 +734,7 @@ export function Dashboard() {
               )}
               <p className="mt-4 text-[11px] text-slate-500">
                 Zeit in Europe/Berlin · Preis in €/L · Unterbrechungen über 30
-                Minuten bleiben sichtbar.
+                Minuten werden als Band markiert, nicht mit Preisen überbrückt.
               </p>
             </section>
             <section className={`${panel} p-5 sm:p-6`}>
@@ -754,6 +767,8 @@ export function Dashboard() {
                       pts: modelSeries,
                     },
                   ]}
+                  gapMinutes={30}
+                  gapLabel="keine Prognose"
                   yFmt={(v) => euro(v, 3)}
                   xTicks={
                     modelSeries.length
