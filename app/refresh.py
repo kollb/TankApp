@@ -187,16 +187,21 @@ def refresh(settings: Settings, now=None):
                         f"models: [{position}/{len(metas)}] {label} ({fuel}): ok",
                         flush=True,
                     )
-                except ValueError:
+                except ValueError as error:
+                    # The engine message quantifies the actual shortfall (usable
+                    # days and open price points). Fixed German text from the
+                    # engine, no credentials; surface it instead of swallowing.
+                    detail = str(error)
                     print(
                         f"models: [{position}/{len(metas)}] {label} "
-                        f"({fuel}): FEHLER unzureichende Trainingsdaten",
+                        f"({fuel}): FEHLER unzureichende Trainingsdaten – {detail}",
                         flush=True,
                     )
                     failures.append(
                         {
                             **item.identity(),
                             "reason": "insufficient_or_invalid_training_data",
+                            "detail": detail,
                         }
                     )
         print(

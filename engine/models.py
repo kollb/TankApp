@@ -132,8 +132,10 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     days = price.index[valid].tz_convert(cfg.timezone).normalize().nunique()
     if days < cfg.min_train_days or valid.sum() < cfg.min_train_days * 24:
         raise ValueError(
-            f"{series.station_id}: nur {days} nutzbare Tage; mindestens "
-            f"{cfg.min_train_days} mit ausreichend offenen Preisen erforderlich."
+            f"{series.station_id}: nur {days} nutzbare Tage mit "
+            f"{int(valid.sum())} offenen 5-Minuten-Preisen in "
+            f"{cfg.train_days} Tagen; mindestens {cfg.min_train_days} Tage "
+            f"mit {cfg.min_train_days * 24} Punkten erforderlich."
         )
     x = features(index, cfg)
     beta = huber_fit(x[valid], price.to_numpy()[valid])
