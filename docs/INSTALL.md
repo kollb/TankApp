@@ -1,6 +1,6 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 10.09.2026.  
+**Das ist der einzige Installationseinstieg.** Stand: 09.09.2026.  
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten.  
 **[Alle Dokumente im Überblick → README.md](README.md)** mit klickbarem Inhaltsverzeichnis.
 

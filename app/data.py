@@ -338,36 +338,38 @@ class LiveData:
             archive = {}
         bundle = publication(self.settings)
         sel = selection_publication(self.settings)
-        # Avoid network calls when polling is missing/invalid or influx not configured,
-        # otherwise test_missing_setup_is_explicit_and_does_not_call_network would fail
-        # because query is set to pytest.fail("network").
-        if problem or not self.settings.influx_env.is_file():
+        # Collector status without network: /health is polled by the Docker
+        # HEALTHCHECK (3–5 s budget) and must not depend on InfluxDB response
+        # times. Full details (incl. InfluxDB) live in /api/v1/collector/status.
+        try:
+            from .collector_status import build_collector_status
+
+            collector = build_collector_status(
+                self.settings, None, self.clock, allow_influx=False
+            )
+        except BaseException:
             collector = {
                 "available": False,
-                "error_code": problem or "influx_not_configured",
+                "error_code": "collector_check_failed",
                 "generated_at": self.clock().isoformat(),
             }
-        else:
-            try:
-                from .collector_status import build_collector_status
+        if problem:
+            collector["polling_error"] = problem
 
-                collector = build_collector_status(
-                    self.settings, self.query, self.clock
-                )
-            except BaseException:
-                collector = {
-                    "available": False,
-                    "error_code": "collector_check_failed",
-                }
-
-        # Selection count: support both old flat and new by_fuel formats
+        # Selection count: support both old flat and new by_fuel formats.
+        # Count all ranked stations (not top_global, which is capped at 10/fuel),
+        # so /health and /api/v1/selection agree.
         sel_count = 0
         if isinstance(sel, dict):
             if "by_fuel" in sel:
-                sel_count = sum(
-                    len(v.get("top_global", []))
-                    for v in sel.get("by_fuel", {}).values()
-                )
+                for fuel_data in sel.get("by_fuel", {}).values():
+                    if not isinstance(fuel_data, dict):
+                        continue
+                    cities = fuel_data.get("cities") or []
+                    if cities:
+                        sel_count += sum(len(c.get("stations", [])) for c in cities)
+                    else:
+                        sel_count += len(fuel_data.get("top_global", []))
             else:
                 sel_count = sel.get("count", 0)
 

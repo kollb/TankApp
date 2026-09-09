@@ -1002,7 +1002,7 @@ Prognose-Input.**
    lohnt der Umweg erst ab **Δp\* ≈ 10,7 ct/L** — der Zeitwert dominiert.
 
    **Zeitwert zeitabhängig:** z-Profil mit
-   `value_of_time_peak` (16 €/h, 17–20 Uhr) und `value_of_time_offpeak`
+   `value_of_time_peak` (16 €/h, 16:30–20:00 Uhr) und `value_of_time_offpeak`
    (10 €/h) plus Slider („Wie viel ist dir 10 min Umweg wert?“); die
    Formel bleibt gleich, `/v1/decide` rechnet mit `when` und liefert
    `z_used` zurück. Die **Selektion** rechnet konservativ mit dem
@@ -1180,7 +1180,7 @@ nur das Wallet-Ledger.
 
 ### 11.3 Detail-Endpunkte (Werkstatt-Modus, Debug) — inkl. B3
 
-Aktuell implementierte Nur-Lese-API der gemeinsamen GUI (Stand 10.09.2026, B3):
+Aktuell implementierte Nur-Lese-API der gemeinsamen GUI (Stand 09.09.2026, B3):
 `GET /api/v1/health` (erweitert um selection + collector),
 `GET /api/v1/stations?fuel=e10`,
 `GET /api/v1/series?city=...&station_id=...&fuel=e10`,

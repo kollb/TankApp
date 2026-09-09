@@ -40,10 +40,14 @@ export type CollectorStatus = {
   last_poll_at?: string | null;
   age_minutes?: number | null;
   fresh?: boolean;
+  source?: "influx" | "nas" | "local" | null;
   tmpfs_used_bytes?: number | null;
   tmpfs_total_bytes?: number | null;
   tmpfs_free_bytes?: number | null;
   oldest_age_days?: number | null;
+  city?: string | null;
+  open_count?: number | null;
+  total_count?: number | null;
   generated_at?: string;
   error_code?: string | null;
   influx?: {
@@ -53,7 +57,17 @@ export type CollectorStatus = {
     fresh?: boolean;
     error_code?: string | null;
     fields?: Record<string, unknown>;
-  };
+  } | null;
+  nas?: {
+    timestamp?: string | null;
+    city?: string | null;
+    open_count?: number | null;
+    total_count?: number | null;
+    poll_interval_s?: number | null;
+    tmpfs_used_bytes?: number | null;
+    tmpfs_total_bytes?: number | null;
+    oldest_age_days?: number | null;
+  } | null;
   local?: {
     last_poll_at?: string;
     city?: string;

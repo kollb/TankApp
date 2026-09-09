@@ -55,6 +55,7 @@ import {
   type Heatmap,
   type Selection,
   type RouteEvaluate,
+  type CollectorStatus,
 } from "./data";
 
 const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
@@ -546,9 +547,16 @@ export function Dashboard() {
     120000,
     refresh,
   );
+  // Vollständiger Collector-Status aus dem dedizierten Endpunkt (fragt InfluxDB ab).
+  // /api/v1/health bleibt ohne Netzwerk-Abhängigkeit (Docker-Healthcheck).
+  const collectorStatus = useResource<CollectorStatus>(
+    tab === "system" ? "/api/v1/collector/status" : null,
+    60000,
+    refresh,
+  );
   const routeEval = useResource<RouteEvaluate>(
     tab === "daily" && activeCity && (routeAltId || detourOptions[0]?.row.station_id)
-      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&mode=${detourMode}`
+      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
       : null,
     30000,
     refresh,
@@ -558,6 +566,11 @@ export function Dashboard() {
     ? "Der App-Server ist nicht erreichbar. Angezeigte ältere Preise werden nicht als aktuell gewertet."
     : problem(data?.connection_error);
   const h = health.error ? null : health.data;
+  // Dedizierter Collector-Endpunkt bevorzugt; health bleibt Fallback
+  // (health liefert ohne Influx-Query nur lokale Quellen).
+  const collector = (collectorStatus.pending
+    ? h?.collector
+    : (collectorStatus.data ?? h?.collector)) as CollectorStatus | undefined;
   const observations = history.data?.points || [];
   const f = forecast.data;
   const metrics = f?.metrics;
@@ -2084,67 +2097,69 @@ export function Dashboard() {
                   <Cpu size={17} className="text-emerald-400" />
                   Pi / tmpfs Livestatus · Collector-Herzschlag
                 </h3>
-                <Badge warning={!h?.collector?.available}>
-                  {h?.collector?.fresh ? "Frisch" : h?.collector?.available ? "Veraltet" : "Kein Herzschlag"}
+                <Badge warning={!collector?.available}>
+                  {collector?.fresh ? "Frisch" : collector?.available ? "Veraltet" : "Kein Herzschlag"}
                 </Badge>
               </div>
-              {h?.collector?.available ? (
+              {collector?.available ? (
                 <div className="grid gap-4 text-xs sm:grid-cols-2">
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Letzter Poll (Pi)</span>
-                      <span className="font-mono text-slate-200">{timeLabel(h.collector.last_poll_at)}</span>
+                      <span className="font-mono text-slate-200">{timeLabel(collector.last_poll_at)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Alter</span>
-                      <span className="font-mono">{h.collector.age_minutes !== null ? `${h.collector.age_minutes} Min.` : "—"}</span>
+                      <span className="font-mono">{collector.age_minutes !== null && collector.age_minutes !== undefined ? `${collector.age_minutes} Min.` : "—"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Letzter Herzschlag (Influx)</span>
-                      <span className="font-mono text-slate-200">{timeLabel(h.collector.influx?.last_heartbeat_at || h.collector.last_poll_at)}</span>
+                      <span className="text-slate-500">Quelle</span>
+                      <span className="font-mono">
+                        {collector.source === "influx" ? "InfluxDB" : collector.source === "nas" ? "NAS (POST)" : collector.source === "local" ? "lokal (Pi)" : "—"}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Poll Count</span>
-                      <span className="font-mono">{(h.collector.influx?.fields?.poll_count as number) ?? h.collector.local?.poll_count ?? "—"}</span>
+                      <span className="font-mono">{(collector.influx?.fields?.poll_count as number) ?? (collector.local?.poll_count as number) ?? (collector.nas ? collector.nas.total_count ?? "—" : "—")}</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-500">tmpfs belegt</span>
                       <span className="font-mono">
-                        {h.collector.tmpfs_used_bytes !== null && h.collector.tmpfs_used_bytes !== undefined
-                          ? `${(Number(h.collector.tmpfs_used_bytes) / 1024 / 1024).toFixed(2)} MiB`
+                        {collector.tmpfs_used_bytes !== null && collector.tmpfs_used_bytes !== undefined
+                          ? `${(Number(collector.tmpfs_used_bytes) / 1024 / 1024).toFixed(2)} MiB`
                           : "—"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">tmpfs gesamt</span>
                       <span className="font-mono">
-                        {h.collector.tmpfs_total_bytes
-                          ? `${(Number(h.collector.tmpfs_total_bytes) / 1024 / 1024).toFixed(1)} MiB`
+                        {collector.tmpfs_total_bytes
+                          ? `${(Number(collector.tmpfs_total_bytes) / 1024 / 1024).toFixed(1)} MiB`
                           : "—"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Älteste Datei</span>
-                      <span className="font-mono">{h.collector.oldest_age_days !== null && h.collector.oldest_age_days !== undefined ? `${h.collector.oldest_age_days} Tage` : "—"}</span>
+                      <span className="font-mono">{collector.oldest_age_days !== null && collector.oldest_age_days !== undefined ? `${collector.oldest_age_days} Tage` : "—"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Stadt (letzter Poll)</span>
-                      <span className="font-mono">{(h.collector.local?.city as string) || (h.collector.influx?.fields?.city as string) || "—"}</span>
+                      <span className="font-mono">{collector.city || (collector.local?.city as string) || (collector.influx?.fields?.city as string) || "—"}</span>
                     </div>
                   </div>
                 </div>
               ) : (
                 <Empty>
-                  {problem(h?.collector?.error_code || h?.collector?.influx?.error_code) ||
-                    "Noch kein Collector-Herzschlag auf dem NAS. Der Pi muss meta/heartbeat.json schreiben und der Uploader collector_status nach InfluxDB liefern. Siehe docs/BETRIEB.md."}
+                  {problem(collector?.error_code || collector?.influx?.error_code) ||
+                    "Noch kein Collector-Herzschlag auf dem NAS. Der Pi muss meta/heartbeat.json schreiben und der Uploader collector_status nach InfluxDB liefern (oder per POST /api/v1/collector/heartbeat ans NAS). Siehe docs/BETRIEB.md."}
                 </Empty>
               )}
               <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
                 Der Collector (Pi) schreibt jede 5 Min. einen Snapshot nach /dev/shm/tankapp und aktualisiert meta/heartbeat.json
                 (tmpfs-Nutzung, älteste Datei). Der Uploader überträgt den Herzschlag als Measurement collector_status in InfluxDB
-                (alle 60s). Das NAS liest den letzten Punkt und zeigt ihn hier. Frisch = ≤15 Min. alter Herzschlag.
+                (alle 60s); alternativ POST /api/v1/collector/heartbeat direkt ans NAS (ohne InfluxDB). Frisch = ≤15 Min. alter Herzschlag.
               </p>
             </section>
 

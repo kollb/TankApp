@@ -1,5 +1,6 @@
 """Single-origin read-only API + compiled GUI. No credentials or raw files served."""
 
+import datetime as dt
 import functools
 import json
 import os
@@ -244,8 +245,13 @@ class Handler(SimpleHTTPRequestHandler):
     def serve_post(self):
         url = urlsplit(self.path)
         if url.path == "/api/v1/collector/heartbeat":
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            if length > 10_000:
+            try:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+            except (TypeError, ValueError):
+                # Malformed header: answer 400 instead of dropping the connection.
+                self.json({"error_code": "invalid_request"}, 400)
+                return
+            if length < 0 or length > 10_000:
                 self.json({"error_code": "payload_too_large"}, 413)
                 return
             try:
@@ -269,11 +275,12 @@ class Handler(SimpleHTTPRequestHandler):
                 "poll_interval_s",
             }
             cleaned = {k: payload[k] for k in allowed if k in payload}
+            # timestamp may arrive as "timestamp" or "last_poll"; normalize to
+            # "timestamp" so the response and the stored file always have it.
             ts_raw = cleaned.get("timestamp") or cleaned.get("last_poll")
-            if not ts_raw:
-                import datetime as dt
-
-                cleaned["timestamp"] = dt.datetime.now(dt.timezone.utc).isoformat()
+            if not isinstance(ts_raw, str) or not ts_raw:
+                ts_raw = dt.datetime.now(dt.timezone.utc).isoformat()
+            cleaned["timestamp"] = ts_raw
             try:
                 from polling_plan import atomic_json
 

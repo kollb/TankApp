@@ -1,6 +1,6 @@
 # TankApp API — Nur-Lese Endpunkte
 
-> Stand: 10.09.2026 — B3 Endpunkte enthalten, serverseitig, keine Demo-Fallbacks.
+> Stand: 09.09.2026 — B3 Endpunkte enthalten, serverseitig, keine Demo-Fallbacks.
 
 ## Inhaltsverzeichnis
 
@@ -14,6 +14,7 @@
 - [Heatmap (B3.9)](#heatmap-b39)
 - [Selection / Meine Stationen (B3.10)](#selection--meine-stationen-b310)
 - [Collector Status (B3.11)](#collector-status-b311)
+- [Collector Heartbeat (POST, B3.11)](#collector-heartbeat-post-b311)
 - [Route Evaluate (B3.12)](#route-evaluate-b312)
 - [Fehlercodes](#fehlercodes)
 - [Beispiele](#beispiele)
@@ -23,7 +24,7 @@
 - Anonym: 60/min, 10 000/Tag (via NAS Reverse Proxy, falls eingerichtet)
 - Header `X-Api-Key`: 300/min, 50 000/Tag
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
-- Keine Schreib-Endpunkte in dieser Lieferung (außer RP2 Fallback lokal)
+- Einziger Schreib-Endpunkt: `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11); alle anderen POST/PUT/DELETE/PATCH → 501 (außer RP2 Fallback lokal)
 
 ## Übersicht
 
@@ -37,7 +38,8 @@
 | `GET /api/v1/heatmap?city=...&fuel=...&kind=...&weeks=6&station_id=...` | **B3.9** | DoW×Stunde Niveau + Cheap-Prob |
 | `GET /api/v1/selection?fuel=...&city=...` | **B3.10** | Meine Stationen mit δ̂ |
 | `GET /api/v1/stations/selection` | Alias | Gleich wie selection |
-| `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus |
+| `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
+| `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
 | `GET /api/v1/route/evaluate?...` | **B3.12** | Umweg-Ökonomie serverseitig |
 
 ## Health
@@ -65,18 +67,19 @@ Antwort:
   "selection": {"published_at": "...", "count": 20},
   "collector": {
     "available": true,
+    "source": "nas",
     "last_poll_at": "2026-09-10T14:12:03+02:00",
     "age_minutes": 2.5,
     "fresh": true,
     "tmpfs_used_bytes": 1234567,
     "tmpfs_total_bytes": 33554432,
     "oldest_age_days": 6.2,
-    "influx": {"available": true, "last_heartbeat_at": "...", "fields": {"poll_count": 1234}}
+    "influx": {"available": false, "error_code": "influx_not_queried"}
   }
 }
 ```
 
-Collector frisch = Herzschlag ≤15 Min.
+Collector frisch = Herzschlag ≤15 Min. **Wichtig:** `/health` evaluiert den Collector nur aus lokalen Quellen (NAS-Heartbeat-File, lokales tmpfs) und fragt InfluxDB **nicht** ab — der Docker-Healthcheck (3–5 s Budget) darf nicht an InfluxDB-Antwortzeiten scheitern. Volle Details (inkl. Influx-Felder wie `poll_count`) liefert `GET /api/v1/collector/status`, den der GUI-System-Tab nutzt.
 
 ## Stations
 
@@ -174,9 +177,11 @@ Für RP2 Fallback-GUI Cache, nur 24h Horizonte (ohne 3d/7d):
 - `fuel`: e10|e5|diesel, Default e10
 - `kind`: level|probability, Default level
   - `level`: Median €/L je (Wochentag, Stunde)
-  - `probability`: Cheap-Probability P(p ≤ Stadtmedian) in % je Zelle
-- `weeks`: 1–12, Default 6 (Median 6 Wochen)
-- `station_id`: optional, wenn gesetzt nur diese Station, sonst Stadt-Median
+  - `probability`: Cheap-Probability in % je Zelle:
+    - mit `station_id`: P(Station ≤ Stadtmedian **der Zelle**) — teilt den Preis der Station mit dem Median aller Stationen des gleichen (DoW, Stunde)
+    - ohne `station_id`: P(Preis ≤ **Gesamtmedian des Zeitfensters**) — Anteil der offenen Preise der Stadt, die unter dem Gesamtmedian liegen
+- `weeks`: 1–12, Default 6
+- `station_id`: optional, wenn gesetzt nur diese Station, sonst Stadt
 
 Antwort:
 
@@ -204,11 +209,11 @@ Antwort:
 - level: Werte €/L (z. B. 1.689) oder null
 - probability: Werte 0–100 % (z. B. 73.5) oder null
 - `points`: Anzahl berücksichtigter offener Preise
-- Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise, Stadtmedian je Timestamp für probability
+- Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:
 
-- `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `unknown_city`, `unknown_station`, `invalid_query`
+- `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `polling_invalid`, `invalid_query` (u. a. bei unbekannter Stadt/Station, ungültigem fuel/kind/weeks)
 
 Frontend: Tab Statistik → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl.
 
@@ -263,14 +268,16 @@ Antwort:
 Felder:
 
 - `delta_ct` (δ̂): Median(p_i − LOO-Stadtmedian) ct/L, negativ = günstiger
-- `ci_lo`, `ci_hi`: 95% KI aus Tages-Block-Bootstrap B=200
-- `p_value`: einseitig H0: δ≥0, `q_value`: Benjamini-Hochberg FDR, `significant`: q<0.05
-- `avail`: AV-Score = Σ w_h·P(Top-3|h), w = Pendlerprofil Mo–Fr 06–09/16–20
-- `best_hour`: billigste Stunde (Medianpreis minimal), z. B. 19.5 = 19:30
+- `ci_lo`, `ci_hi`: 95% KI aus Tages-Block-Bootstrap B=200 (Seed 42)
+- `p_value`: einseitig H0: δ≥0 (small = signifikant günstiger), `q_value`: Benjamini-Hochberg FDR, `significant`: q<0.05
+- `avail`: AV-Score = Σ w_h·P(Top-3|h); w = Pendlerprofil Mo–Fr 06–09/16–20 (Gewicht 5/7, Wochenende gleichmäßig 2/7)
+- `best_hour`: günstigste Stunde aus robuster harmonischer Regression auf δ (2. Ordnung, Huber-IRLS), z. B. 19.5 = 19:30
 - `vol_ct`: 1.4826·MAD(Δ) Volatilität
 - `rank_std`: Std täglicher Mittelränge
 - `coverage`: Anteil nutzbarer Preise
-- `dist_km`, `dist_mode`, `maps_url`: aus polling.json + OSRM Cache
+- `dist_km`, `dist_mode`, `maps_url`: aus polling.json + OSRM-Cache (`air` = Luftlinie-Fallback)
+
+`count` = Anzahl aller gerankten Stationen des Kraftstoffs (nicht `top_global`, das ist auf 10 gekappt). `/api/v1/health` und `/api/v1/selection` zeigen dieselbe Zahl.
 
 Artefakt fehlt auf dem NAS bis ersten Modell-Job: `selection_not_available` → Frontend zeigt Hinweis, keine erfundenen Rankings.
 
@@ -281,6 +288,8 @@ Quelle: `runtime/training/*.csv.gz` (aus InfluxDB + Archiv), Job `selection` tä
 `GET /api/v1/collector/status`
 
 Liefert Pi/tmpfs Livestatus (Collector-Herzschlag ans NAS).
+
+Quellen in dieser Reihenfolge (`source`): `influx` (Measurement `collector_status`) → `nas` (File `runtime/collector/heartbeat.json`, vom Collector per POST abgelegt) → `local` (`meta/heartbeat.json`, nur wenn NAS selbst Pi ist bzw. `TANKAPP_POLL_DIR`). `influx.fields` enthält die letzten Influx-Felder (u. a. `poll_count`).
 
 Antwort:
 
@@ -319,34 +328,45 @@ Antwort:
 }
 ```
 
-- `available`: true wenn Influx-Punkt oder lokales heartbeat.json vorhanden
+- `available`: true wenn Influx-Punkt, NAS-Heartbeat-File oder lokales heartbeat.json vorhanden
 - `fresh`: Herzschlag ≤15 Min
 - tmpfs: belegte Bytes, gesamt, frei, älteste Datei Alter
-- `local`: nur vorhanden wenn NAS selbst Pi ist oder TANKAPP_POLL_DIR gesetzt (Tests)
-- Fehler: `influx_not_configured`, `collector_no_heartbeat`, `collector_check_failed`
+- `nas`: Herzschlag-File des NAS (siehe POST-Endpunkt unten), `local`: nur wenn NAS selbst Pi ist oder TANKAPP_POLL_DIR gesetzt (Tests)
+- Fehler: `influx_not_configured`, `collector_no_heartbeat`, `collector_check_failed`, `influx_read_failed`
 
-Frontend: System-Tab → Pi/tmpfs Livestatus.
+Frontend: System-Tab → Pi/tmpfs Livestatus (holt diesen Endpunkt; `/api/v1/health` enthält denselben Status **ohne** Influx-Query, damit der Docker-Healthcheck nicht von InfluxDB-Antwortzeiten abhängt).
 
 Collector schreibt `meta/heartbeat.json` nach jedem Poll, Uploader schreibt `collector_status` Measurement alle 60s.
+
+## Collector Heartbeat (POST, B3.11)
+
+`POST /api/v1/collector/heartbeat` — optionaler, InfluxDB-freier Weg: Der Collector POSTet den Herzschlag direkt ans NAS (`TANKAPP_NAS_URL` oder `TANKAPP_NAS_HEARTBEAT_URL` setzen; Base-URL oder volle Endpunkt-URL).
+
+- Erlaubte Felder (Übriges wird verworfen): `timestamp`, `last_poll`, `city`, `open_count`, `total_count`, `tmpfs_used_mb`, `tmpfs_total_mb`, `oldest_file_age_days`, `poll_interval_s`
+- `timestamp` fehlt → `last_poll` wird übernommen; fehlt auch → Server-Zeit (UTC)
+- Antwort: `{"status": "ok", "received_at": "…"}` (200); Fehler: `400 invalid_json` / `400 invalid_request` (u. a. defekter Content-Length) / `413 payload_too_large` (>10 kB) / `503 server_error`
+- Das File liegt unter `runtime/collector/heartbeat.json` und wird von `GET /api/v1/collector/status` als Fallback-Quelle `nas` ausgewertet (ohne InfluxDB)
+- Alle anderen POST/PUT/DELETE/PATCH auf dem Server: `501` (Nur-Lese-Vertrag)
 
 ## Route Evaluate (B3.12)
 
 `GET /api/v1/route/evaluate?city=Frankfurt&fuel=e10&station_id=uuid&ref_station_id=uuid&liters=40&detour_km=3&consumption=7&speed=45&value_of_time=12&when=2026-09-10T18:00:00+02:00&mode=onroute`
 
 - `city`: optional, für Stadtmedian als Referenz
-- `fuel`: e10|e5|diesel
+- `fuel`: e10|e5|diesel, Default e10
 - `station_id`: Ziel-Station (Alternative)
 - `ref_station_id`: Referenz-Station (z. B. aktuell ausgewählte), optional — falls fehlt, Stadtmedian frischer Preise als Referenz
 - `liters`: Tankmenge 5–100, Default 40
-- `detour_km`: einfache Mehrweg-Distanz km (für onroute) oder einfache Entfernung für dedicated, Default 0 (versucht aus dist_km Differenz zu berechnen)
+- `detour_km`: einfache Mehrweg-Distanz km (onroute) bzw. einfache Entfernung (dedicated). **Ohne Angabe wird sie aus den Anker-Distanzen abgeleitet:** onroute = max(0, dist(ziel) − dist(ref)), dedicated = dist(ziel) (Quelle in Antwortfeld `detour_km_source`: `query` | `derived` | `zero`)
 - `consumption`: L/100km 3–20, Default 7
 - `speed`: km/h 10–130, Default 45
-- `value_of_time`: €/h 0–100, Default auto (0 = auto)
-- `when`: ISO Zeit oder Stunde 0–23 für Zeitwert-Automatik, Default jetzt
+- `value_of_time`: €/h 0–100, 0/entfällt = Auto
+- `when`: ISO-Zeitstempel, `HH:MM[:SS]` (Berlin) oder Stunde 0–23 (Dezimal) — nur für die Zeitwert-Automatik relevant; fehlt → offpeak
 - `mode`: onroute|dedicated, Default onroute
   - onroute: nur Mehrweg zählt (einmalig)
   - dedicated: Extrafahrt Hin+Rück (doppelt)
-- `alt_price`, `ref_price`: optional explizit für Tests, sonst live Preise
+- `price`/`target_price`/`alt_price`: Ziel-Preis explizit (Tests), sonst Live-Preis
+- `ref_price`: Referenz-Preis explizit, sonst Live-Preis bzw. Stadtmedian
 
 Antwort:
 
@@ -360,10 +380,12 @@ Antwort:
   "ref_station_name": "Aral ...",
   "ref_price": 1.729,
   "alt_price": 1.689,
+  "target_price": 1.689,
   "delta_ct": 4.0,
   "gross_eur": 1.6,
   "detour_km_oneway": 3.0,
   "detour_km_total": 3.0,
+  "detour_km_source": "query",
   "mode": "onroute",
   "fuel_cost_eur": 0.35,
   "time_cost_eur": 0.8,
@@ -375,22 +397,24 @@ Antwort:
   "z_used": 12.0,
   "z_auto": true,
   "is_peak": false,
-  "consumption": 7.0,
+  "consumption_l_100km": 7.0,
   "speed_kmh": 45.0,
   "liters": 40.0,
   "generated_at": "2026-09-10T14:00:00Z"
 }
 ```
 
+`alt_price` = `target_price` (die günstigere Station, zu der gefahren wird); `ref_price` ist die teurere Referenz. `z_auto=true` wenn `value_of_time` 0/fehlte.
+
 Formel: K = d·(c/100)·p + (d/v)·z, brutto = (p_ref − p_alt)·L, netto = brutto − K, kritisch Δp* = K/L
 
 Verdict: worth ab 1.50€ netto, borderline ab 0.50€, sonst not_worth
 
-Zeitwert-Automatik: 0 = auto, sonst explizit. Auto: Peak 16:30–20:00 = 16€/h, sonst 10€/h (Berlin Zeit).
+Zeitwert-Automatik: 0/fehlend = auto, sonst explizit. Auto: Peak 16:30–20:00 = 16€/h, sonst 10€/h (Berlin Zeit). Die GUI sendet `when=<jetzt>` mit, damit Server- und lokale Rechnung dieselbe Zeit verwenden.
 
 UI rechnet lokal (schnell), kann optional Server-Endpunkt zur Validierung nutzen (Button „Server prüfen“).
 
-Fehler: `invalid_fuel`, `unknown_city`, `unknown_station`, `no_stations`, `no_prices`, `invalid_query`
+Fehler: `invalid_fuel`, `invalid_liters`, `invalid_detour`, `invalid_consumption`, `invalid_speed`, `invalid_mode`, `invalid_value_of_time`, `invalid_when`, `unknown_station`, `price_not_available`, `polling_missing`, `polling_invalid`, `route_evaluate_failed`
 
 ## Fehlercodes
 

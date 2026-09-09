@@ -5,8 +5,17 @@ meta/heartbeat.json. Der Uploader schreibt zusätzlich einen Punkt
 `collector_status` in InfluxDB. Das NAS liest den letzten Punkt aus
 InfluxDB und zeigt ihn im System-Bereich.
 
-Falls InfluxDB nicht konfiguriert ist oder kein Punkt vorhanden ist,
-wird ein expliziter Hinweis zurückgegeben, statt einen Status zu erfinden.
+Quellen (in dieser Reihenfolge):
+  1. InfluxDB Measurement `collector_status` (primär, nur /api/v1/collector/status)
+  2. `runtime/collector/heartbeat.json` — vom Collector per
+     POST /api/v1/collector/heartbeat abgelegt (Fallback ohne InfluxDB)
+  3. lokales `meta/heartbeat.json` (NAS selbst Pi / TANKAPP_POLL_DIR)
+
+/api/v1/health nutzt nur die lokalen Quellen 2+3 (kein Netzwerk), damit der
+Docker-Healthcheck nicht von InfluxDB-Antwortzeiten abhängt.
+
+Falls keine Quelle einen Punkt liefert, wird ein expliziter Hinweis
+zurückgegeben, statt einen Status zu erfinden.
 """
 
 import datetime as dt
@@ -141,12 +150,61 @@ def collector_status_from_influx(settings, query_func, clock):
         }
 
 
-def build_collector_status(settings, query_func, clock):
-    """Combine Influx heartbeat + local tmpfs inspection if available."""
+def nas_heartbeat(settings):
+    """Liest das vom Collector per POST abgelegte Herzschlag-File (ohne InfluxDB)."""
+    data = read_json(settings.runtime / "collector" / "heartbeat.json", None)
+    if not isinstance(data, dict) or not data:
+        return None
+    out = {
+        "timestamp": data.get("timestamp") or data.get("last_poll"),
+        "city": data.get("city"),
+        "open_count": data.get("open_count"),
+        "total_count": data.get("total_count"),
+        "poll_interval_s": data.get("poll_interval_s"),
+    }
+    for src, dst in (
+        ("tmpfs_used_mb", "tmpfs_used_bytes"),
+        ("tmpfs_total_mb", "tmpfs_total_bytes"),
+    ):
+        value = data.get(src)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[dst] = int(value * 1_000_000)
+    age = data.get("oldest_file_age_days")
+    if isinstance(age, (int, float)) and not isinstance(age, bool):
+        out["oldest_age_days"] = age
+    if not out["timestamp"]:
+        return None
+    return out
+
+
+def _age_minutes(ts_raw: str, clock) -> float | None:
     try:
-        influx_part = collector_status_from_influx(settings, query_func, clock)
-    except BaseException:
-        influx_part = {"available": False, "error_code": "influx_read_failed"}
+        stamp = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        return round((clock() - stamp).total_seconds() / 60, 1)
+    except Exception:
+        return None
+
+
+def build_collector_status(settings, query_func, clock, allow_influx=True):
+    """Combine Influx heartbeat, NAS heartbeat file and local tmpfs.
+
+    allow_influx=False (verwendet /api/v1/health): keine Netzwerk-Queries,
+    nur lokale Quellen — der Healthcheck muss ohne InfluxDB-Antwortzeiten
+    funktionieren (Docker HEALTHCHECK hat 3–5 s Budget).
+    """
+    if allow_influx:
+        try:
+            influx_part = collector_status_from_influx(settings, query_func, clock)
+        except BaseException:
+            influx_part = {"available": False, "error_code": "influx_read_failed"}
+    else:
+        influx_part = {
+            "available": False,
+            "error_code": "influx_not_queried",
+            "detail": "nur /api/v1/collector/status fragt InfluxDB ab",
+        }
 
     poll_dir_env = os.environ.get("TANKAPP_POLL_DIR")
     local = None
@@ -166,14 +224,25 @@ def build_collector_status(settings, query_func, clock):
     except BaseException:
         local = None
 
+    try:
+        nas = nas_heartbeat(settings)
+    except BaseException:
+        nas = None
+
     result = {
         "generated_at": clock().isoformat(),
         "influx": influx_part,
         "local": local,
-        "available": influx_part.get("available", False) or (local is not None),
+        "nas": nas,
+        "available": bool(
+            influx_part.get("available", False)
+            or (local is not None)
+            or (nas is not None)
+        ),
     }
 
     if influx_part.get("available"):
+        result["source"] = "influx"
         result["last_poll_at"] = influx_part.get("fields", {}).get(
             "last_poll_at"
         ) or influx_part.get("last_heartbeat_at")
@@ -189,7 +258,21 @@ def build_collector_status(settings, query_func, clock):
             "tmpfs_free_bytes"
         )
         result["oldest_age_days"] = influx_part.get("fields", {}).get("oldest_age_days")
+    elif nas:
+        result["source"] = "nas"
+        result["last_poll_at"] = nas["timestamp"]
+        age = _age_minutes(nas["timestamp"], clock)
+        result["age_minutes"] = age
+        result["fresh"] = age is not None and age <= 15
+        result["tmpfs_used_bytes"] = nas.get("tmpfs_used_bytes")
+        result["tmpfs_total_bytes"] = nas.get("tmpfs_total_bytes")
+        result["tmpfs_free_bytes"] = None
+        result["oldest_age_days"] = nas.get("oldest_age_days")
+        result["city"] = nas.get("city")
+        result["open_count"] = nas.get("open_count")
+        result["total_count"] = nas.get("total_count")
     elif local:
+        result["source"] = "local"
         result["last_poll_at"] = local.get("last_poll_at")
         try:
             lp = dt.datetime.fromisoformat(

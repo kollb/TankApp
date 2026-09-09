@@ -1,6 +1,6 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser
 
-> Stand: 10.09.2026 — Extrahiert aus KONZEPT.md §9 und INSTALL.md, konsolidiert für B3.
+> Stand: 09.09.2026 — Extrahiert aus KONZEPT.md §9 und INSTALL.md, konsolidiert für B3.
 
 ## Inhaltsverzeichnis
 
@@ -178,15 +178,21 @@ TANKAPP_POLL_DIR=/dev/shm/tankapp
 
 ### Heatmaps (B3.9)
 
-- Kein eigener Job, On-the-fly aus InfluxDB letzte N Wochen (2–8)
-- DoW×Stunde: Niveau = Median €/L je Zelle, Cheap-Probability = P(Station ≤ Stadtmedian)
+- Kein eigener Job, On-the-fly aus InfluxDB letzte N Wochen (1–12)
+- DoW×Stunde: Niveau = Median €/L je Zelle; Cheap-Probability: mit Station = P(Station ≤ Zellen-Stadtmedian), ohne Station = P(Preis ≤ Gesamtmedian des Fensters)
 - Berlin-Zeitzone, nur offene Preise
 
 ### Route Evaluate (B3.12)
 
 - Kein externer Routing-Call, nur Ökonomie: K = d·(c/100)·p + (d/v)·z
 - Vergleicht Referenz (Stadtmedian oder explizite Station) gegen Ziel-Station
-- Liefert brutto/netto, kritisch Δp*, worth_it, z_used (peak/offpeak Auto)
+- detour_km ohne Angabe: aus dist_km abgeleitet (onroute: dist(ziel)−dist(ref), dedicated: dist(ziel))
+- Liefert brutto/netto, kritisch Δp*, worth_it, z_used/z_auto/is_peak (peak 16:30–20:00 = 16€/h, sonst 10€/h)
+
+### Collector-Status in /health (B3.11)
+
+- `/api/v1/health` zeigt den Collector-Status **nur aus lokalen Quellen** (NAS-Heartbeat-File, lokales tmpfs) — keine InfluxDB-Query, damit der Docker-Healthcheck (3–5 s) nicht an Influx-Antwortzeiten scheitert
+- Volle Details inkl. Influx-Felder: `GET /api/v1/collector/status` (GUI-System-Tab)
 
 ## Ressourcen & SD-Härtung
 

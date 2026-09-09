@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Fehlersuche
 
-> Stand: 10.09.2026 — Konsolidiert aus INSTALL.md <details>-Block, collector/uploader Details, Unraid, Störungsfälle.
+> Stand: 09.09.2026 — Konsolidiert aus INSTALL.md <details>-Block, collector/uploader Details, Unraid, Störungsfälle.
 > Mit klickbarem Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis
@@ -158,11 +158,12 @@ docker exec <influx-container> influx query \
 
 ### Heartbeat B3.11
 
-Collector schreibt `meta/heartbeat.json` nach jedem Poll (tmpfs-Nutzung, älteste Datei, poll_count). Uploader liest alle 60s und schreibt `collector_status` nach InfluxDB. NAS zeigt in `/api/v1/health` und `/api/v1/collector/status` sowie im System-Tab.
+Collector schreibt `meta/heartbeat.json` nach jedem Poll (tmpfs-Nutzung, älteste Datei, poll_count). Uploader liest alle 60s und schreibt `collector_status` nach InfluxDB. NAS zeigt in `/api/v1/collector/status` (System-Tab) und `/api/v1/health` (nur lokale Quellen, ohne Influx-Query).
 
 - Frisch = ≤15 Min.
 - `dry-run` zeigt Heartbeat-Zeile
 - Auch ohne Preis-Zeilen wird Heartbeat übertragen
+- **Ohne InfluxDB:** Collector POSTet den Herzschlag direkt ans NAS (`TANKAPP_NAS_URL` oder `TANKAPP_NAS_HEARTBEAT_URL` setzen, Base-URL oder `…/api/v1/collector/heartbeat`). Das NAS legt ihn unter `runtime/collector/heartbeat.json` ab und `GET /api/v1/collector/status` wertet es als Fallback-Quelle `source: "nas"` aus. Siehe [API.md → Collector Heartbeat (POST)](API.md#collector-heartbeat-post-b311).
 
 ## NAS: InfluxDB
 

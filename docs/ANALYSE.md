@@ -1,6 +1,6 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 10.09.2026 — B3 Aggregate enthalten, mit klickbarem Inhaltsverzeichnis.
+> Stand: 09.09.2026 — B3 Aggregate enthalten, mit klickbarem Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis
 
@@ -110,12 +110,10 @@ Datei `results/station_scores_<fuel>.csv` bleibt lokal für vertiefte Analyse, n
 
 ### Cheap-Probability
 
-- `kind=probability`: Cheap-Probability P(p ≤ Stadtmedian) in % je Zelle
-- Berechnung:
-  1. Für jeden Timestamp (auf Minute gefloort) alle offenen Preise der Stadt sammeln, Stadtmedian berechnen
-  2. Für jede Beobachtung: is_cheap = 1 wenn Preis ≤ Stadtmedian
-  3. Je Zelle (DoW, Stunde, Berlin) Mittel über is_cheap → %
-- Wenn `station_id` gesetzt: nur diese Station; sonst Mittel über alle Stationen (durchschnittliche Chance, dass eine zufällige Station günstig ist)
+- `kind=probability`: Cheap-Probability in % je Zelle (DoW × Stunde, Berlin):
+  - **mit `station_id`**: Stadtmedian pro Zelle = Median aller Stationen im selben (DoW, Stunde); je Zelle der Anteil der Preise der Station, die ≤ diesem Zellen-Median sind
+  - **ohne `station_id`**: Gesamtmedian = Median aller offenen Preise des Zeitfensters; je Zelle der Anteil der Preise ≤ Gesamtmedian (durchschnittliche Chance, dass ein zufälliger Preis günstiger als der Schnitt ist)
+- Nur offene Preise, InfluxDB letzte N Wochen
 - Grün = hohe Chance (≥80%), Rot = niedrige
 
 Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der Werkstatt (Tab Statistik), nicht im Alltags-Startbildschirm.
@@ -168,7 +166,7 @@ Formel Konzept §10: K = d·(c/100)·p + (d/v)·z
 - d = Umweg gesamt (Hin+Rück) km, c = Verbrauch L/100km, p = Preis €/L, v = Geschwindigkeit km/h, z = Zeitwert €/h
 - Kritische Differenz Δp* = K/L
 - Beispiel: 6km einfach → d=12km, c=7, p=1,65, v=50, z=12 ⇒ K=1,39 Sprit+2,88 Zeit=4,27€ ⇒ bei L=40 lohnt erst ab Δp*≈10,7 ct/L — Zeitwert dominiert
-- Zeitwert zeitabhängig: peak 16€/h (17–20 Uhr), offpeak 10€/h, Slider, Auto-Modus 16/10, 0=Auto
+- Zeitwert zeitabhängig: peak 16€/h (16:30–20:00 Berlin), offpeak 10€/h, Slider, Auto-Modus 16/10, 0=Auto
 - Nur Sprit-Sicht: K_sprit ~0,12€/km bei 7L/100km 1,65€/L, K_zeit ~0,24€/km bei 12€/h 50km/h — Zeit größerer Block. Deshalb Selektion weist beide Netto-Zahlen aus: Vollkosten und nur Sprit, plus Break-even Stundenlohn.
 - Rushhour: OSRM liefert Freifluss ohne Live-Stau, im Berufsverkehr 1,5–2×. Selektion bewertet je Fahrtkontext: nahe ≤near_km (5km) auf Arbeitsweg → congestion_peak 1,45, weitere Routen-Stationen → congestion_offpeak 1,0
 - Betriebsmodi: dedicated (Extrafahrt) vs onroute (nur Mehrweg ggü. nächster Station)
@@ -176,9 +174,9 @@ Formel Konzept §10: K = d·(c/100)·p + (d/v)·z
 
 **B3.12 serverseitig:** Endpunkt `/api/v1/route/evaluate` rechnet dieselbe Formel serverseitig mit live Preisen, ohne externen Routing-Call. UI rechnet lokal (schnell), kann optional Server zur Validierung nutzen.
 
-Parameter: city, fuel, station_id (Ziel), ref_station_id (Referenz, sonst Stadtmedian), liters, detour_km, consumption, speed, value_of_time, when, mode, alt_price/ref_price (optional für Tests).
+Parameter: city, fuel, station_id (Ziel), ref_station_id (Referenz, sonst Stadtmedian), liters, detour_km (optional — fehlt: aus dist_km ableiten: onroute = max(0, dist(ziel) − dist(ref)), dedicated = dist(ziel)), consumption, speed, value_of_time, when (ISO, `HH:MM` oder Stunde; die GUI sendet die Ist-Zeit mit), mode, price/target_price/alt_price + ref_price (optional für Tests).
 
-Antwort: delta_ct, gross_eur, fuel_cost, time_cost, detour_cost, net_eur, critical_delta_ct, worth_it, verdict, z_used, is_peak, etc.
+Antwort: delta_ct, gross_eur, fuel_cost_eur, time_cost_eur, detour_cost_eur, net_eur, critical_delta_ct, worth_it, verdict, z_used, z_auto, is_peak, detour_km_source, ref_station_name, consumption_l_100km, etc.
 
 ## Verweise
 
