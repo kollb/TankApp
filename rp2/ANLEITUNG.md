@@ -24,6 +24,8 @@
 ## 🛠️ Voraussetzungen
 
 ### Auf dem NAS:
+- ✅ Private Konfiguration liegt vor (`polling.json`, `data/influx.env`,
+  für Prognosen zusätzlich `data/_netrc`) — Prüfung: `bash ops/nas/preflight.sh`
 - ✅ TankApp bereits mit `python3 tankapp.py nas-up` gestartet
 - ✅ NAS läuft mindestens 6h/Tag (für Prognose-Berechnung)
 - ✅ Port 1355 ist erreichbar (Standard-GUI-Port)
@@ -41,19 +43,51 @@
 Der API-Endpunkt `/api/v1/last_forecasts` muss auf dem NAS laufen, sonst hat
 der RP2 nichts zu cachen.
 
+### 1a) Private Konfigurationsdateien bereitstellen
+
+**Wichtig:** `git clone`/`git pull` liefert nur den Code. Die privaten
+Konfigurationsdateien sind gitignored und **müssen einmalig manuell** aufs
+NAS — sonst bricht `nas-up` ab. Details und Herkunft: siehe
+[docs/INSTALL.md](../docs/INSTALL.md), Abschnitt „Danach auf dem NAS“.
+
+| Datei auf dem NAS | Pflicht? | Woher |
+|---|---|---|
+| `docs/analysis/stations/polling.json` | **ja** | vom **Pi** (aktives Set nach `activate-polling`) |
+| `data/influx.env` | **ja** | selbst anlegen: InfluxDB-Nur-Lese-Zugang |
+| `data/_netrc` | für Prognosen | vorhandener Tankerkönig-**Archiv**-Zugang |
+
+`data/apikey.txt` gehört **nicht** aufs NAS — das ist der Collector-Key des Pi.
+
+### 1b) Vorab prüfen, was fehlt
+
 ```bash
-# Auf dem NAS
-cd /mnt/user/appdata/tankapp   # dein TankApp-Verzeichnis
+cd /mnt/user/appdata/tankapp
 git pull
-python3 tankapp.py nas-up
+bash ops/nas/preflight.sh
 ```
 
-Prüfen, dass der Endpunkt antwortet (liefert JSON, notfalls mit leerer
-`forecasts`-Liste — das ist okay, solange kein Fehler kommt):
+Das Skript sagt dir vor dem Start, welche Datei fehlt, ob ein Schlüssel in
+`influx.env` fehlt und ob die Influx-URL fälschlich auf `localhost` zeigt
+(aus dem Container nicht erreichbar). Es liest keine Token aus.
+
+### 1c) Starten
+
+```bash
+python3 tankapp.py nas-up
+# Unraid: python3 tankapp.py nas-up --uid 99 --gid 100 --archive-dir /mnt/user/data/tankapp
+```
+
+Prüfen, dass der Endpunkt antwortet:
 
 ```bash
 curl -s http://localhost:1355/api/v1/last_forecasts | head -c 300
 ```
+
+**`"count": 0` ist am Anfang normal, kein Fehler.** Der Endpunkt liefert nur,
+was bereits berechnet und veröffentlicht wurde. Bis Archiv und Modelle
+durchgelaufen sind, ist die Liste leer — die Fallback-GUI zeigt dann
+Live-Preise, aber keine Warte-Empfehlungen. Ohne `data/_netrc` (Archivzugang)
+bleibt `count` **dauerhaft** 0.
 
 ---
 
@@ -236,6 +270,9 @@ python3 ~/TankApp/rp2/cache_forecasts.py
 
 **Mögliche Ursachen:**
 - `NAS_IP` nicht gesetzt oder falsch (prüfen: `systemctl show tankapp-forecast-cache -p Environment`)
+- NAS liefert `"count": 0` — dann ist der Cache technisch in Ordnung, es gibt
+  nur noch keine Prognosen. Auf dem NAS `bash ops/nas/preflight.sh` prüfen:
+  meist fehlt `data/_netrc` (Archivzugang) → kein Archiv → keine Modelle.
 - NAS ist nicht erreichbar (Firewall?)
 - NAS-GUI läuft nicht auf Port 1355
 

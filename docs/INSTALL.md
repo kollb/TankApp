@@ -126,6 +126,12 @@ oder Dateipfade zu erraten. Der Vorschlag ist kein Deployment des Programm-Codes
    Collector-API-Key. Keine Zugangsdaten in Git, Befehlszeilen oder Chat.
    Ohne Archivzugang kann die Live-GUI trotzdem starten.
 
+Vorab prüfen, ob alles davon vorhanden ist (liest keine Token aus):
+
+```bash
+bash ops/nas/preflight.sh
+```
+
 Dann auf dem NAS:
 
 ```bash
