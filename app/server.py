@@ -167,6 +167,13 @@ class Handler(SimpleHTTPRequestHandler):
         return None
 
     def do_GET(self):
+        try:
+            self.serve_get()
+        except (BrokenPipeError, ConnectionError):
+            # Client disconnected mid-response (reload/navigation); not a server fault.
+            pass
+
+    def serve_get(self):
         url = urlsplit(self.path)
         if url.path.startswith("/api/"):
             try:

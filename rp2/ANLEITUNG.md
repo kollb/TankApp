@@ -382,15 +382,63 @@ ss -tulnp | grep 8000
 
 ## 🔄 Updates
 
-### Code aktualisieren:
+Dependabot öffnet **montags automatisch Update-PRs** — für Python-Pakete,
+npm-Pakete, CI-Actions und die Docker-Basisimages (gesteuert über
+`.github/dependabot.yml`). So gehst du vor:
+
+### 1. Benachrichtigung bekommen
+
+Auf GitHub im Repo rechts oben **Watch → Custom → Pull requests** anhaken —
+dann meldet sich GitHub bei jedem Update-PR. Optional in den
+Repo-Einstellungen (*Settings → Security → Dependabot alerts*) zusätzlich
+Sicherheitswarnungen aktivieren: Dann kommen kritische Updates auch
+außerhalb des Montags-Rhythmus als eigene PRs.
+
+### 2. PR prüfen und mergen
+
+- **CI-Ampel abwarten:** Die Checks `engine`, `web` und `nas-image` müssen
+  grün sein. Rot → nicht mergen, sondern erst schauen, was klemmt.
+- **Patch/Minor** (z. B. `1.2.3` → `1.2.4` oder `1.3.0`) mit grüner CI:
+  einfach mergen.
+- **Major** (z. B. `1.x` → `2.0`): erst die im PR verlinkten Release-Notes
+  auf „Breaking Changes“ prüfen, im Zweifel lokal testen
+  (`pytest`, `npm --prefix web test`) und dann mergen.
+- Mehrere offene Update-PRs nacheinander einzeln mergen, damit die CI
+  jeden Stand prüft.
+
+### 3. Nach dem Merge ausrollen
+
+**NAS** — Python-, npm- und Docker-Updates wirken erst nach neuem
+Image-Build (`nas-up` baut mit `--build` neu):
+
+```bash
+cd /mnt/user/appdata/tankapp   # dein Checkout-Pfad
+git pull
+python3 tankapp.py nas-up      # Unraid: Flags aus Schritt 1c mitgeben
+```
+
+Danach kurz prüfen: `http://<NAS-IP>:1355` lädt, `/api/v1/health` meldet
+sich, und die Hintergrundjobs laufen (`nas-up` gibt Fehler im Log aus).
+
+**RP2** — die RP2-Skripte nutzen nur die Python-Standardbibliothek,
+Abhängigkeits-Updates ändern dort nichts. Nur bei geändertem RP2-Code:
+
 ```bash
 # Auf dem RP2
 cd ~/TankApp
 git pull
+sudo systemctl restart tankapp-forecast-cache tankapp-fallback-gui
+```
 
-# Services neu starten
-sudo systemctl restart tankapp-forecast-cache
-sudo systemctl restart tankapp-fallback-gui
+**Nur CI-Actions im PR geändert?** Dann ist nach dem Merge nichts weiter
+zu tun — das betrifft nur GitHubs Prüfläufe.
+
+### 4. Wenn nach einem Update etwas klemmt
+
+```bash
+git log --oneline -5        # verdächtigen Merge finden
+git revert <commit>         # Update zurückdrehen ...
+python3 tankapp.py nas-up   # ... und auf dem NAS neu ausrollen
 ```
 
 ---
