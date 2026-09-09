@@ -30,6 +30,7 @@ import {
   haversineKm,
   problem,
   segments,
+  splitOnGap,
   timeLabel,
   useResource,
   usePreference,
@@ -293,17 +294,30 @@ export function Dashboard() {
   // Feste 24-Stunden-Fenster statt auto-Skalen: die Achse bleibt stabil und
   // fehlende Phasen sind als markierte Lücke sichtbar, nicht als Puffer.
   const obsWindow: [number, number] = [Date.now() - 86_400_000, Date.now()];
-  const modelSeries =
+  const modelPts =
     f?.points
       .filter((p) => p.q50 !== null)
       .map((p) => ({ x: Date.parse(p.timestamp), y: p.q50! })) || [];
-  const fanBand = (f?.points || [])
-    .filter((p) => p.q025 !== null && p.q975 !== null)
-    .map((p) => ({
-      x: Date.parse(p.timestamp),
-      yLow: p.q025!,
-      yHigh: p.q975!,
-    }));
+  const modelSeries = splitOnGap(modelPts, 20).map((pts, i) => ({
+    name: i === 0 ? "Unkalibrierter Median" : undefined,
+    color: "#38bdf8",
+    dash: "5 4",
+    pts,
+  }));
+  const fanBand = splitOnGap(
+    (f?.points || [])
+      .filter((p) => p.q025 !== null && p.q975 !== null)
+      .map((p) => ({
+        x: Date.parse(p.timestamp),
+        yLow: p.q025!,
+        yHigh: p.q975!,
+      })),
+    20,
+  ).map((pts, i) => ({
+    name: i === 0 ? "95-%-Band (unkalibriert)" : undefined,
+    color: "#38bdf8",
+    pts,
+  }));
   const forecastWindow: [number, number] | null =
     f?.origin && modelSeries.length
       ? [Date.parse(f.origin), Date.parse(f.origin) + 86_400_000]
@@ -830,13 +844,18 @@ export function Dashboard() {
                               <span>{row.brand || "Freie Station"}</span>
                               {row.dist_km != null && (
                                 <span
-                                  title="Luftlinie zum Anker dieser Stadt"
+                                  title={
+                                    row.dist_mode === "road"
+                                      ? "Fahrstrecke mit dem Auto vom Anker dieser Stadt"
+                                      : "Luftlinie zum Anker — Straßenroute gerade nicht verfügbar"
+                                  }
                                   className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
                                 >
                                   {row.dist_km.toLocaleString("de-DE", {
                                     maximumFractionDigits: 1,
                                   })}{" "}
-                                  km
+                                  km{" "}
+                                  {row.dist_mode === "road" ? "Fahrt" : "Luftlinie"}
                                 </span>
                               )}
                               <span>
@@ -891,7 +910,7 @@ export function Dashboard() {
                     <code className="text-slate-300">
                       tankapp.py add-city
                     </code>{" "}
-                    setzen — danach erscheinen die Luftlinien-Entfernungen.
+                    setzen — danach erscheint die Autostrecke vom Anker.
                   </p>
                 )}
             </section>
@@ -979,8 +998,9 @@ export function Dashboard() {
                   xDomain={obsWindow}
                   xTicks={autoTimeTicks(obsWindow[0], obsWindow[1])}
                   yFmt={(v) => euro(v, 3)}
-                  gapMinutes={30}
-                  gapLabel="keine Meldung"
+                  gapMinutes={90}
+                  gapLabel="Pause"
+                  maxGapMinutes={40}
                 />
               ) : (
                 <Empty>
@@ -990,9 +1010,10 @@ export function Dashboard() {
                 </Empty>
               )}
               <p className="mt-4 text-[11px] text-slate-500">
-                Fester 24-Stunden-Verlauf in Europe/Berlin · Preis in €/L ·
-                Unterbrechungen über 30 Minuten — auch am Fensterende — werden
-                als Band markiert, nicht mit Preisen überbrückt.
+                Letzte 24 Stunden, Europe/Berlin · €/L. Der letzte offene Preis
+                bleibt als Stufe stehen, bis die nächste Meldung kommt.
+                Lange Pausen (Nacht, geschlossen) werden auf der Achse
+                zusammengeschoben, damit der Verlauf lesbar bleibt.
               </p>
             </section>
             <section className={`${panel} p-5 sm:p-6`}>
@@ -1021,33 +1042,17 @@ export function Dashboard() {
                 <Empty>Modellstand konnte nicht geladen werden.</Empty>
               ) : modelSeries.length ? (
                 <LineChart
-                  series={[
-                    {
-                      name: "Unkalibrierter Median",
-                      color: "#38bdf8",
-                      dash: "5 4",
-                      pts: modelSeries,
-                    },
-                  ]}
-                  bands={
-                    fanBand.length
-                      ? [
-                          {
-                            name: "95-%-Band (unkalibriert)",
-                            color: "#38bdf8",
-                            pts: fanBand,
-                          },
-                        ]
-                      : []
-                  }
+                  series={modelSeries}
+                  bands={fanBand}
                   xDomain={forecastWindow ?? undefined}
                   xTicks={
                     forecastWindow
                       ? autoTimeTicks(forecastWindow[0], forecastWindow[1])
                       : []
                   }
-                  gapMinutes={30}
-                  gapLabel="keine Prognose"
+                  gapMinutes={90}
+                  gapLabel="ohne Stütze"
+                  maxGapMinutes={40}
                   yFmt={(v) => euro(v, 3)}
                 />
               ) : (

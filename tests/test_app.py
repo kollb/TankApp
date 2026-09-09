@@ -191,6 +191,7 @@ def test_anchor_distance_is_derived_but_never_exposed(tmp_path):
     assert error is None
     near = metas[("Frankfurt", UID)]["dist_km"]
     assert 1.0 < near < 2.0
+    assert metas[("Frankfurt", UID)]["dist_mode"] == "air"
     # No coordinates or no anchor: no distance, never an invented one.
     assert metas[("Frankfurt", OTHER)]["dist_km"] is None
     assert metas[("Gütersloh", THIRD)]["dist_km"] is None
@@ -239,6 +240,39 @@ def test_discover_format_anchor_lat_lon_also_derives_distances(tmp_path):
     # Der Referenzpunkt selbst bleibt privat, auch im discover-Format.
     payload = json.dumps(list(metas.values()))
     assert "50.11" not in payload and "8.68" not in payload
+
+
+def test_driving_distance_uses_osrm_not_air(tmp_path, monkeypatch):
+    monkeypatch.setenv("TANKAPP_OSRM", "1")
+
+    def fake_driving(anchor, targets, cache_path):
+        assert anchor == (50.11, 8.68)
+        assert cache_path.name == "road_route_cache.json"
+        return [(3.4, "road") for _ in targets]
+
+    monkeypatch.setattr("app.data.driving_km", fake_driving)
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "anchor": [50.11, 8.68],
+                        "batch": [UID],
+                        "stations": [
+                            {"uuid": UID, "name": "Nah", "lat": 50.12, "lon": 8.69}
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+    assert error is None
+    assert metas[("Frankfurt", UID)]["dist_km"] == 3.4
+    assert metas[("Frankfurt", UID)]["dist_mode"] == "road"
+    assert "50.11" not in json.dumps(list(metas.values()))
 
 
 def test_invalid_anchor_is_ignored_instead_of_guessing(tmp_path):

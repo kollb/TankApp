@@ -4,8 +4,10 @@ import {
   currentPrice,
   detourEconomics,
   gapBands,
+  gapCompressedAxis,
   haversineKm,
   segments,
+  splitOnGap,
   type Station,
 } from "./data";
 
@@ -36,7 +38,7 @@ describe("fresh price guard", () => {
 });
 
 describe("observed chart segments", () => {
-  it("does not draw lines across closures or long outages", () => {
+  it("does not draw lines across closures, but holds the last open price", () => {
     const point = (hour: string, price: number | null, status = "open") => ({
       timestamp: `2026-09-08T${hour}:00Z`,
       price,
@@ -48,7 +50,10 @@ describe("observed chart segments", () => {
       point("10:10", 1.8),
       point("11:00", 1.6),
     ]);
-    expect(result.map((s) => s.pts.length)).toEqual([1, 1, 1]);
+    expect(result.map((s) => s.pts.map((p) => p.y))).toEqual([
+      [1.7],
+      [1.8, 1.8, 1.6],
+    ]);
   });
   it("never invents an empty price history", () =>
     expect(segments([])).toEqual([]));
@@ -81,11 +86,12 @@ describe("chart gap bands", () => {
     expect(gapBands([{ pts: a }, { pts: b }], 30)).toEqual([]);
   });
   it("returns nothing without points", () => expect(gapBands([], 30)).toEqual([]));
-  it("marks window edge gaps when a fixed window is passed", () => {
+  it("marks window edge gaps only when a fixed window is requested", () => {
     const day = Date.parse("2026-09-08T06:00:00Z");
     // 20 Minuten Abstand: innen keine Lücke, an beiden Fensterrändern schon.
     const pts = [{ x: day + 60 * minute }, { x: day + 80 * minute }];
     const window: [number, number] = [day, day + 24 * 60 * minute];
+    expect(gapBands([{ pts }], 30)).toEqual([]);
     expect(gapBands([{ pts }], 30, window)).toEqual([
       { from: day, to: day + 60 * minute },
       { from: day + 80 * minute, to: day + 24 * 60 * minute },

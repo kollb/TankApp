@@ -1,8 +1,12 @@
 """Tiny deterministic fixtures; never exported into the live collector/bucket."""
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
+
+# Tests never wait on the public OSRM demo server.
+os.environ.setdefault("TANKAPP_OSRM", "0")
 
 import numpy as np
 import pandas as pd

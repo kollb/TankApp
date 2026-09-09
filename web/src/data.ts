@@ -9,6 +9,7 @@ export type Station = {
   fuel: Fuel;
   maps_url: string | null;
   dist_km?: number | null;
+  dist_mode?: "road" | "air" | null;
   lat?: number | null;
   lon?: number | null;
   price: number | null;
@@ -183,7 +184,9 @@ export function currentPrice(
     : null;
 }
 
-// Real gaps and status barriers split the line; do not interpolate over a closed station/outage.
+// Geschlossen/fehlend trennt die Linie. Offene Preise bleiben stehen
+// (Treppenstufe), bis die nächste Meldung kommt — Polling-Pausen sind
+// kein unbekannter Preis.
 export function segments(points: Point[]) {
   const result: {
     name?: string;
@@ -212,11 +215,63 @@ export function segments(points: Point[]) {
       flush();
       continue;
     }
-    if (group.length && x - group[group.length - 1].x > 30 * 60000) flush();
+    if (group.length) {
+      const prev = group[group.length - 1];
+      if (x > prev.x && prev.y !== point.price) group.push({ x, y: prev.y });
+    }
     group.push({ x, y: point.price });
   }
   flush();
   return result;
+}
+
+export function splitOnGap<T extends { x: number }>(
+  pts: T[],
+  maxMinutes: number,
+): T[][] {
+  const max = maxMinutes * 60000;
+  const groups: T[][] = [];
+  let group: T[] = [];
+  for (const p of pts) {
+    if (group.length && p.x - group[group.length - 1].x > max) {
+      groups.push(group);
+      group = [];
+    }
+    group.push(p);
+  }
+  if (group.length) groups.push(group);
+  return groups;
+}
+
+// Lange Datenlöcher bekommen auf der Achse nur noch maxGapMs Breite,
+// damit der tatsächliche Verlauf den Chart füllt statt in einer Ecke zu kleben.
+export function gapCompressedAxis(
+  xMin: number,
+  xMax: number,
+  knots: number[],
+  maxGapMs: number,
+) {
+  const xs = [
+    ...new Set(
+      [xMin, xMax, ...knots.filter((x) => x >= xMin && x <= xMax)].filter(
+        Number.isFinite,
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  const display = [0];
+  for (let i = 1; i < xs.length; i++) {
+    display.push(display[i - 1] + Math.min(xs[i] - xs[i - 1], maxGapMs));
+  }
+  const total = display[display.length - 1] || 1;
+  const map = (x: number) => {
+    if (x <= xs[0]) return 0;
+    if (x >= xs[xs.length - 1]) return total;
+    let i = 1;
+    while (i < xs.length && xs[i] < x) i++;
+    const span = xs[i] - xs[i - 1] || 1;
+    return display[i - 1] + ((x - xs[i - 1]) / span) * (display[i] - display[i - 1]);
+  };
+  return { total, map, xs };
 }
 
 // Zeitliche Lücken zwischen allen Punkten einer Diagrammserie; das Diagramm

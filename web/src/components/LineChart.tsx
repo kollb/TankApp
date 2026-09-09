@@ -1,7 +1,7 @@
 // Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
 
-import React, { useState } from "react";
-import { gapBands } from "../data";
+import React, { useId, useState } from "react";
+import { gapBands, gapCompressedAxis } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -47,6 +47,7 @@ export function LineChart({
   xTicks = [],
   gapMinutes = 0,
   gapLabel = "keine Daten",
+  maxGapMinutes = 45,
 }: {
   series: SeriesPts[];
   bands?: BandPts[];
@@ -59,8 +60,10 @@ export function LineChart({
   xTicks?: { x: number; label: string }[];
   gapMinutes?: number;
   gapLabel?: string;
+  maxGapMinutes?: number;
 }) {
   const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
+  const hatchId = useId().replace(/:/g, "");
   const W = 720;
   const H = height;
   const padL = 46;
@@ -116,7 +119,7 @@ export function LineChart({
     yMax += 1;
     yMin -= 1;
   }
-  const yPad = (yMax - yMin) * 0.12;
+  const yPad = (yMax - yMin) * 0.05;
   yMin -= yPad;
   yMax += yPad;
 
@@ -133,11 +136,10 @@ export function LineChart({
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
 
-  // Lücken bleiben Lücken: sie werden als dezent markiert, nie überbrückt.
-  // Mit festem Fenster zählen auch Fenster-Randlücken (vor dem ersten bzw.
-  // nach dem letzten Punkt) als Lücke.
+  // Nur Innenlücken: ein schmaler Achsenstrich, keine Vollflächen.
+  // Randlücken zum 24h-Fenster bleiben leer — die Achse ist das Fenster.
   const bandGaps =
-    gapMinutes > 0 ? gapBands(clipped, gapMinutes, hasDomain ? xDomain : undefined) : [];
+    gapMinutes > 0 ? gapBands(clipped, gapMinutes) : [];
   const hoursLabel = (ms: number) => {
     const hours = ms / 3600000;
     const rounded = hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10;
@@ -184,6 +186,17 @@ export function LineChart({
       aria-label="Diagramm"
       onMouseLeave={() => setHover(null)}
     >
+      <defs>
+        <pattern
+          id={hatchId}
+          width="6"
+          height="6"
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#475569" strokeWidth="2" />
+        </pattern>
+      </defs>
       {gridYs.map((gy, i) => (
         <g key={i}>
           <line
@@ -206,82 +219,63 @@ export function LineChart({
           </text>
         </g>
       ))}
-      {xTicks.map((t, i) => (
-        <text
-          key={i}
-          x={X(t.x)}
-          y={H - 7}
-          textAnchor="middle"
-          fontSize={10.5}
-          fill={TXT}
-        >
-          {t.label}
-        </text>
-      ))}
+      {xTicks
+        .filter((t, i, all) => {
+          if (t.x < xMin || t.x > xMax) return false;
+          if (i === 0) return true;
+          return X(t.x) - X(all[i - 1].x) >= 36;
+        })
+        .map((t, i) => (
+          <text
+            key={i}
+            x={X(t.x)}
+            y={H - 7}
+            textAnchor="middle"
+            fontSize={10.5}
+            fill={TXT}
+          >
+            {t.label}
+          </text>
+        ))}
       {bandGaps.map((band, i) => {
         const x1 = X(band.from);
         const x2 = X(band.to);
-        const width = x2 - x1;
-        const top = padT + 8;
-        const bottom = H - padB - 8;
+        const width = Math.max(1, x2 - x1);
+        const barH = 7;
+        const barY = H - padB - barH;
         const label =
-          gapLabel && width >= 56
+          gapLabel && width >= 44
             ? `${gapLabel} · ${hoursLabel(band.to - band.from)} h`
             : null;
-        const labelW = label ? label.length * 5.2 + 12 : 0;
         return (
           <g key={`gap-${i}`}>
             <rect
               x={x1}
-              y={top}
+              y={barY}
               width={width}
-              height={bottom - top}
-              rx={6}
-              fill="#020617"
-              opacity={0.38}
+              height={barH}
+              rx={3}
+              fill="#1e293b"
             />
-            <line
-              x1={x1 + 0.5}
-              y1={top}
-              x2={x1 + 0.5}
-              y2={bottom}
-              stroke="#475569"
-              strokeWidth={0.7}
-              strokeDasharray="2 4"
-              opacity={0.55}
-            />
-            <line
-              x1={x2 - 0.5}
-              y1={top}
-              x2={x2 - 0.5}
-              y2={bottom}
-              stroke="#475569"
-              strokeWidth={0.7}
-              strokeDasharray="2 4"
+            <rect
+              x={x1}
+              y={barY}
+              width={width}
+              height={barH}
+              rx={3}
+              fill={`url(#${hatchId})`}
               opacity={0.55}
             />
             {label && (
-              <g>
-                <rect
-                  x={(x1 + x2) / 2 - labelW / 2}
-                  y={top + 4}
-                  width={labelW}
-                  height={13}
-                  rx={6.5}
-                  fill="#0f172a"
-                  stroke="#334155"
-                  strokeWidth={0.6}
-                />
-                <text
-                  x={(x1 + x2) / 2}
-                  y={top + 13.5}
-                  textAnchor="middle"
-                  fontSize={8.5}
-                  fill="#94a3b8"
-                >
-                  {label}
-                </text>
-              </g>
+              <text
+                x={(x1 + x2) / 2}
+                y={barY - 3}
+                textAnchor="middle"
+                fontSize={8}
+                fill="#64748b"
+              >
+                {label}
+              </text>
             )}
           </g>
         );
