@@ -7,6 +7,9 @@ from pathlib import Path
 
 # Tests never wait on the public OSRM demo server.
 os.environ.setdefault("TANKAPP_OSRM", "0")
+# Modell-Läufe in Tests seriell (deterministisch, kein Prozess-Pool);
+# die parallele Variante prüft tests/test_model_jobs.py explizit.
+os.environ.setdefault("TANKAPP_MODEL_WORKERS", "1")
 
 import numpy as np
 import pandas as pd

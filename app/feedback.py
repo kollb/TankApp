@@ -719,6 +719,7 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
 
     wait_n, wait_hits = 0, 0
     now_n, now_hits = 0, 0
+    elsewhere_n, elsewhere_hits = 0, 0
 
     # Brier-Score Berechnung: BS = 1/N * sum((p_pred - actual)^2)
     # actual = 1 für win, 0 für loss/tie
@@ -753,6 +754,10 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
             now_n += 1
             if outcome == "win":
                 now_hits += 1
+        elif action == "refuel_elsewhere":
+            elsewhere_n += 1
+            if outcome == "win":
+                elsewhere_hits += 1
 
         # Brier nur über Snapshots mit gespeicherter interner P-Schätzung.
         # Snapshots ohne p (Altdaten) würden mit einem erfundenen Default den
@@ -772,6 +777,7 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
     hit_rate = round((wins + 0.5 * ties) / n, 3) if n > 0 else None
     hit_wait = round(wait_hits / wait_n, 3) if wait_n > 0 else None
     hit_now = round(now_hits / now_n, 3) if now_n > 0 else None
+    hit_elsewhere = round(elsewhere_hits / elsewhere_n, 3) if elsewhere_n > 0 else None
 
     reliability = []
     for b in bins:
@@ -811,10 +817,13 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
         "hit_rate": hit_rate,
         "hit_wait": hit_wait,
         "hit_now": hit_now,
+        "hit_elsewhere": hit_elsewhere,
         "wait_n": wait_n,
         "wait_hits": wait_hits,
         "now_n": now_n,
         "now_hits": now_hits,
+        "elsewhere_n": elsewhere_n,
+        "elsewhere_hits": elsewhere_hits,
         "brier_30d": brier_30d,
         "calibrated": calibrated,
         "gate_status": gate_status,

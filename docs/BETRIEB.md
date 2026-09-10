@@ -23,6 +23,8 @@
   - [Unraid Ablauf](#unraid-ablauf)
   - [Portwechsel](#portwechsel)
   - [Was automatisch läuft](#was-automatisch-läuft)
+  - [Modell-Lauf beobachten](#modell-lauf-beobachten)
+  - [Modell-Lauf beschleunigen](#modell-lauf-beschleunigen)
 - [Backup & Wiederherstellung](#backup--wiederherstellung)
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
@@ -293,6 +295,48 @@ Keinen zusätzlichen cron einrichten, gebündelter Dienst übernimmt Zeitplanung
 Archivumfang Standard 365 Tage, für 730: `--history-days 730`. Genug Speicher (nationale Tagesdateien). Modelle verwenden kleineren Ausschnitt (42 Tage Training, 120 Tage Export).
 
 Modellumfang: zunächst e10, bei Bedarf `--model-fuels e10,e5,diesel`.
+
+### Modell-Lauf beobachten
+
+„Läuft …“ ohne Fortschritt ist die häufigste Frage beim ersten Modell-Lauf.
+Drei Stellen, an denen derselbe Fortschritt steht (B5):
+
+1. **GUI → System-Tab**: Job-Karte zeigt Phase (`InfluxDB-Export`,
+   `Archiv aufbereiten`, `Modelle fitten + Backtest`, `Selektion (δ̂)`,
+   `Veröffentlichen`), Schritt `x/y`, aktuelles Label (Station), Balken,
+   Laufzeit und Restschätzung. Während eines Laufs wird `/api/v1/health`
+   alle 15 s statt 60 s gepollt.
+2. **Statusdatei** (Maschine): `data/runtime/jobs/models.progress.json` —
+   Phase, Schritt, Prozent, `eta_s`. Sie existiert nur während eines Laufs.
+3. **Log**: `docker logs -f tankapp-app` bzw. `journalctl -u tankapp -f`
+   **und** zusätzlich als Datei `data/runtime/jobs/models.log`
+   (letzte 500 Zeilen, auch ohne Docker-Zugriff lesbar).
+
+```bash
+# Fortschritt live
+docker logs -f tankapp-app | grep models
+# oder ohne Docker
+tail -f data/runtime/jobs/models.log
+# Status auf einen Blick
+cat data/runtime/jobs/models.progress.json
+```
+
+Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
+rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
+
+### Modell-Lauf beschleunigen
+
+Zwei Stellschrauben, beide ohne Änderung der Ergebnisse:
+
+| Hebel | Wirkung |
+|---|---|
+| `TANKAPP_MODEL_WORKERS` | Prozesse für Fit/Prognose/Backtest. `0` (Default) = automatisch, maximal 8 (bzw. CPU-Kerne); `1` = seriell. Stationen und Horizonte sind unabhängig — der Lauf ist „peinlich parallel“. Ohne nutzbaren Prozess-Pool rechnet die App automatisch seriell weiter. |
+| Engine-Fix der 12-Uhr-Projektion | Vor B5 baute die Projektion je Rasterpunkt ein `pd.Timestamp` (≈8 Mio. Boxing-Operationen pro 7-Tage-Prognose). Jetzt vektorisiert: 24-h-Prognose 12,4 s → 0,8 s, 7-Tage 82 s → 4,9 s, Backtest 44 s → 6,4 s — **bitgleich** zu vorher (geprüft gegen die alte Implementierung). |
+
+```bash
+# NAS: vier Prozesse explizit erlauben
+TANKAPP_MODEL_WORKERS=4 python3 tankapp.py nas-up
+```
 
 Archiv und Polling sind dieselben Marktdaten über zwei Bezugswege. Historie kann Modellstart tragen, keine 3-Monats-Wartepflicht. Standardtraining letzte 42 Tage, Archiv nur vor Live-Beginn. Nach 90 vollständigen Live-Tagen mit 95% Abdeckung je UUID/Kraftstoff auf Polling-only umstellbar. NAS-Roharchiv bleibt bestehen.
 

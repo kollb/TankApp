@@ -8,22 +8,27 @@ from .config import Settings
 from .data import metadata, publication
 
 
-def refresh(settings: Settings, now=None):
+# Aufgaben je Station: Fit+24 h, +3 d, +7 d, Backtest (siehe app/model_jobs.py).
+TASKS_PER_STATION = 4
+
+
+def refresh(settings: Settings, now=None, progress=None):
     # Heavy numerical dependencies are confined to this worker, not the live API.
     import pandas as pd
     import export_influx as influx
-    from engine.backtest import run_backtest
     from engine.bootstrap import bootstrap, write_csv
     from engine.config import Config
     from engine.data import load_observations, prepare_series
-    from engine.models import fit, predict
     from engine.selection import SelectionConfig, compute_all as compute_selection
     from engine.storage import write_json
     from polling_plan import collector_lock
     from .history import prepare_archive
+    from .model_jobs import HORIZON_COLUMNS, resolve_workers, run_tasks
 
     metas, error = metadata(settings)
     if error or not settings.influx_env.is_file():
+        if progress:
+            progress.finish("waiting", error or "influx_not_configured")
         return {"state": "waiting", "error_code": error or "influx_not_configured"}
     cfg = Config()
     origin = (
@@ -40,6 +45,13 @@ def refresh(settings: Settings, now=None):
     output = settings.runtime / "engine"
     output.mkdir(parents=True, exist_ok=True)
     ids = {uid for _, uid in metas}
+    if progress:
+        progress.phase(
+            "export",
+            total=len(settings.model_fuels),
+            message=f"{len(metas)} Stationen, "
+            f"{len(settings.model_fuels)} Kraftstoff(e)",
+        )
     print(
         f"models: {len(metas)} Stationen, Kraftstoffe "
         f"{','.join(settings.model_fuels)}, Cutoff {origin.isoformat()}",
@@ -72,7 +84,11 @@ def refresh(settings: Settings, now=None):
                 f"{summary.get('open_prices', '?')} offene Preise",
                 flush=True,
             )
+            if progress:
+                progress.step(label=f"{fuel}: {summary.get('rows', '?')} Zeilen")
             live_paths.append(path)
+        if progress:
+            progress.phase("coverage", message="Live-Abdeckung (90-Tage-Regel)")
         print("models: prüfe Live-Abdeckung (90-Tage-Regel) ...", flush=True)
         all_live = True
         for fuel in settings.model_fuels:
@@ -88,6 +104,8 @@ def refresh(settings: Settings, now=None):
         history_paths, archive_quality = [], {}
         if not all_live:
             start = local_day - dt.timedelta(days=settings.model_days)
+            if progress:
+                progress.phase("archive", message=f"Archiv {start} bis {local_day}")
             print(
                 f"models: bereite Archiv {start} bis {local_day} auf ...",
                 flush=True,
@@ -105,9 +123,25 @@ def refresh(settings: Settings, now=None):
                 f"{archive_quality.get('missing_days', '?')} fehlende Tage",
                 flush=True,
             )
+            if progress:
+                progress.note(
+                    f"Archiv: {archive_quality.get('events', '?')} Ereignisse, "
+                    f"{archive_quality.get('missing_days', '?')} fehlende Tage"
+                )
         forecasts, models, policies, failures = [], [], [], []
         selections = {}
+        # Der Fit-Block ist der lange Teil: je Station laufen vier Aufgaben
+        # (24 h, +3 d, +7 d, Backtest) — der Fortschritt zählt sie einzeln,
+        # damit „Schritt x/y“ die Wartezeit erklärt.
+        fit_total = len(metas) * len(settings.model_fuels) * TASKS_PER_STATION
+        fit_done = 0
+        # Prozessparallel (Konzept §9.4): 0/None = automatisch (CPU-Kerne).
+        workers = resolve_workers(getattr(settings, "model_workers", 0) or None)
+        if workers > 1:
+            print(f"models: {workers} Prozesse für Fit/Prognose/Backtest", flush=True)
         for fuel in settings.model_fuels:
+            if progress:
+                progress.phase("bootstrap", message=f"Bootstrap {fuel}")
             print(
                 f"models: Training {fuel}: Bootstrap + Fit "
                 f"für {len(metas)} Stationen ...",
@@ -128,116 +162,173 @@ def refresh(settings: Settings, now=None):
                 (item.city, item.station_id): item
                 for item in prepare_series(normalized, cfg)
             }
-            for position, identity in enumerate(metas, start=1):
-                label = f"{identity[0]} – {metas[identity].get('name', identity[1])}"
-                item = series.get(identity)
-                if item is None:
-                    print(
-                        f"models: [{position}/{len(metas)}] {label} "
-                        f"({fuel}): FEHLER missing_history",
-                        flush=True,
-                    )
-                    failures.append(
-                        {
-                            "city": identity[0],
-                            "station_id": identity[1],
-                            "fuel": fuel,
-                            "reason": "missing_history",
-                        }
-                    )
+            if progress:
+                progress.phase("fit", total=fit_total, message=f"Fit + Backtest {fuel}")
+            # --- Fit, Horizonte und Backtest (prozessparallel, §9.4) ---
+            # Je Station sind 24 h, +3 d, +7 d und der 7-Tage-Backtest
+            # voneinander unabhängig; seriell bliebe ein Kern ungenutzt.
+            series_map = {
+                identity: series[identity] for identity in metas if identity in series
+            }
+            # Fehler je Station sammeln und in Stationsreihenfolge anhängen —
+            # die Reihenfolge der Veröffentlichung soll stabil bleiben.
+            station_failures: dict[tuple, dict] = {}
+            labels = {
+                identity: f"{identity[0]} – {metas[identity].get('name', identity[1])}"
+                for identity in metas
+            }
+            for identity in metas:
+                if identity in series_map:
                     continue
-                try:
-                    model = fit(item, origin, cfg)
-                    prediction = predict(model, hours=24)
-                    report, _ = run_backtest([item], cfg, days=7)
-                    prediction["timestamp"] = prediction.index.map(
-                        lambda stamp: stamp.isoformat()
+                fit_done += 1
+                if progress:
+                    progress.step(
+                        fit_done, label=f"{labels[identity]}: fehlende Historie"
                     )
-                    # Erweiterte Horizonte (+3/+7 Tage) für die Werkstatt-Ansicht.
-                    # Jeweils eigener Predict ab Cutoff (kein Slicing), damit die
-                    # 12-Uhr-Projektion denselben Kontext wie der 24-h-Lauf sieht.
+                print(
+                    f"models: {labels[identity]} ({fuel}): FEHLER missing_history",
+                    flush=True,
+                )
+                station_failures[identity] = {
+                    "city": identity[0],
+                    "station_id": identity[1],
+                    "fuel": fuel,
+                    "reason": "missing_history",
+                }
+
+            def note(result):
+                """Fortschritt je fertiger Teilaufgabe (auch im Fehlerfall)."""
+                nonlocal fit_done
+                fit_done += 1
+                if progress:
+                    suffix = "" if result.get("ok") else " – Fehler"
+                    progress.step(
+                        fit_done,
+                        label=f"{labels.get(result['key'], '')} · {result['kind']}"
+                        f"{result.get('hours') or ''}{suffix}",
+                    )
+
+            # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
+            first = run_tasks(
+                [("fit", identity, 24) for identity in series_map],
+                series_map,
+                cfg,
+                origin,
+                workers,
+                on_done=note,
+            )
+            fitted = {}
+            for result in first:
+                if result.get("ok"):
+                    fitted[result["key"]] = result
+                    continue
+                detail = result.get("detail", "")
+                print(
+                    f"models: {labels[result['key']]} ({fuel}): FEHLER "
+                    f"unzureichende Trainingsdaten – {detail}",
+                    flush=True,
+                )
+                station_failures[result["key"]] = {
+                    **series_map[result["key"]].identity(),
+                    "reason": "insufficient_or_invalid_training_data",
+                    "detail": detail,
+                }
+
+            # Phase B: erweiterte Horizonte + Backtest je Station.
+            following = []
+            for identity in fitted:
+                following.extend(
+                    [
+                        ("wide", identity, 72),
+                        ("wide", identity, 168),
+                        ("backtest", identity, 7),
+                    ]
+                )
+            second = run_tasks(
+                following, series_map, cfg, origin, workers, on_done=note
+            )
+            horizons_by_station: dict[tuple, dict[int, list]] = {}
+            backtests: dict[tuple, dict] = {}
+            broken = set()
+            for result in second:
+                identity = result["key"]
+                if not result.get("ok"):
+                    broken.add(identity)
+                    station_failures[identity] = {
+                        **series_map[identity].identity(),
+                        "reason": "horizon_or_backtest_failed",
+                        "detail": result.get("detail", ""),
+                    }
+                    continue
+                if result["kind"] == "wide":
                     # Nur Quantile + Zeitstempel: Diagnostikspalten blieben Ballast.
-                    horizons = {}
-                    for key, hours in (("points_3d", 72), ("points_7d", 168)):
-                        wide = predict(model, hours=hours)
-                        wide["timestamp"] = wide.index.map(
-                            lambda stamp: stamp.isoformat()
-                        )
-                        horizons[key] = wide[
-                            [
-                                "timestamp",
-                                "q025",
-                                "q10",
-                                "q50",
-                                "q90",
-                                "q975",
-                            ]
-                        ].to_dict(orient="records")
-                    models.append(model)
-                    last = model.get("last_observation")
-                    age = (
-                        (origin - pd.Timestamp(last)).total_seconds() / 60
-                        if last
-                        else None
-                    )
-                    forecasts.append(
-                        {
-                            **item.identity(),
-                            "origin": origin.isoformat(),
-                            "last_observation": last,
-                            "data_age_minutes_at_origin": age,
-                            "stale_data_at_origin": age is None
-                            or age > cfg.ffill_minutes,
-                            "points": prediction.to_dict(orient="records"),
-                            **horizons,
-                            "metrics": report["metrics"],
-                            "backtest_days": 7,
-                            "train_days": cfg.train_days,
-                            "decision_rows": [
-                                r
-                                for r in report.get("decision", {}).get("rows", [])
-                                if (r.get("city"), r.get("station_id")) == identity
-                            ],
-                            "decision_hour": report.get("decision", {}).get(
-                                "decision_hour", 8
+                    horizons_by_station.setdefault(identity, {})[result["hours"]] = [
+                        {key: row[key] for key in HORIZON_COLUMNS}
+                        for row in result["points"]
+                    ]
+                else:
+                    backtests[identity] = result
+
+            for position, identity in enumerate(metas, start=1):
+                if identity not in fitted or identity in broken:
+                    continue
+                item = series_map[identity]
+                model = fitted[identity]["model"]
+                report = backtests.get(identity) or {}
+                models.append(model)
+                last = model.get("last_observation")
+                age = (
+                    (origin - pd.Timestamp(last)).total_seconds() / 60 if last else None
+                )
+                wide = horizons_by_station.get(identity, {})
+                forecasts.append(
+                    {
+                        **item.identity(),
+                        "origin": origin.isoformat(),
+                        "last_observation": last,
+                        "data_age_minutes_at_origin": age,
+                        "stale_data_at_origin": age is None or age > cfg.ffill_minutes,
+                        "points": fitted[identity]["points"],
+                        "points_3d": wide.get(72, []),
+                        "points_7d": wide.get(168, []),
+                        "metrics": report.get("metrics"),
+                        "backtest_days": 7,
+                        "train_days": cfg.train_days,
+                        "decision_rows": [
+                            row
+                            for row in report.get("decision_rows", [])
+                            if (row.get("city"), row.get("station_id")) == identity
+                        ],
+                        "decision_hour": report.get("decision_hour", 8),
+                        "operational_replay": False,
+                        "data_policy": next(
+                            (
+                                p
+                                for p in policy["stations"]
+                                if (p["city"], p["station_id"]) == identity
                             ),
-                            "operational_replay": False,
-                            "data_policy": next(
-                                (
-                                    p
-                                    for p in policy["stations"]
-                                    if (p["city"], p["station_id"]) == identity
-                                ),
-                                None,
-                            ),
-                            "calibrated": False,
-                            "decision_ready": False,
-                            "retained_previous": False,
-                        }
-                    )
-                    print(
-                        f"models: [{position}/{len(metas)}] {label} ({fuel}): ok",
-                        flush=True,
-                    )
-                except ValueError as error:
-                    # The engine message quantifies the actual shortfall (usable
-                    # days and open price points). Fixed German text from the
-                    # engine, no credentials; surface it instead of swallowing.
-                    detail = str(error)
-                    print(
-                        f"models: [{position}/{len(metas)}] {label} "
-                        f"({fuel}): FEHLER unzureichende Trainingsdaten – {detail}",
-                        flush=True,
-                    )
-                    failures.append(
-                        {
-                            **item.identity(),
-                            "reason": "insufficient_or_invalid_training_data",
-                            "detail": detail,
-                        }
-                    )
+                            None,
+                        ),
+                        "calibrated": False,
+                        "decision_ready": False,
+                        "retained_previous": False,
+                    }
+                )
+                print(
+                    f"models: [{position}/{len(metas)}] {labels[identity]} "
+                    f"({fuel}): ok",
+                    flush=True,
+                )
+            failures.extend(
+                station_failures[identity]
+                for identity in metas
+                if identity in station_failures
+            )
+
             # --- Selektion (δ̂, KI, AV, billigste Stunde) je Kraftstoff ---
             try:
+                if progress:
+                    progress.phase("selection", message=f"δ̂-Ranking {fuel}")
                 # metas gruppiert nach Stadt für die Selektion
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():
@@ -274,6 +365,10 @@ def refresh(settings: Settings, now=None):
                     "archive_quality": archive_quality,
                 },
             )
+            if progress:
+                progress.finish(
+                    "waiting", "keine Station fittbar (insufficient_history)"
+                )
             return {"state": "waiting", "error_code": "insufficient_history"}
         # A new station must not block updates for mature stations. Keep old successful
         # forecasts only for still-selected identities, with original origin + explicit flag.
@@ -292,6 +387,11 @@ def refresh(settings: Settings, now=None):
                 and key not in fresh_keys
             ):
                 forecasts.append({**prior, "retained_previous": True})
+        if progress:
+            progress.phase(
+                "publish",
+                message=f"{len(forecasts)} Prognosen, {len(failures)} Fehler",
+            )
         print("models: publiziere ...", flush=True)
         model_name = "models-" + uuid.uuid4().hex + ".json"
         write_json(output / model_name, {"schema_version": 1, "models": models})

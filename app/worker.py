@@ -10,6 +10,7 @@ import tankapp
 from polling_plan import atomic_json
 from .config import Settings
 from .data import read_json
+from .progress import JobProgress
 
 
 INTERVALS = {
@@ -20,13 +21,17 @@ INTERVALS = {
 }
 
 
-def execute(name, settings):
+def execute(name, settings, progress=None):
     if name == "settlement":
         from .settlement import run_settlement_job
 
+        if progress:
+            progress.phase("settle", message="Snapshots gegen Preishistorie abrechnen")
         return run_settlement_job(settings)
 
     if name == "archive":
+        if progress:
+            progress.phase("sync", message="Tankerkönig-Archiv nachladen")
         if not settings.netrc.is_file() or settings.netrc.stat().st_size == 0:
             return {"state": "waiting", "error_code": "archive_not_configured"}
         code = tankapp.history_sync(
@@ -50,7 +55,10 @@ def execute(name, settings):
             from engine.storage import write_json
 
             result = build_selection(
-                settings, fuels=list(settings.model_fuels), n_boot=2000
+                settings,
+                fuels=list(settings.model_fuels),
+                n_boot=2000,
+                progress=progress,
             )
             out = settings.runtime / "selection" / "current.json"
             write_json(out, result)
@@ -72,7 +80,7 @@ def execute(name, settings):
 
     from .refresh import refresh
 
-    outcome = refresh(settings)
+    outcome = refresh(settings, progress=progress)
     # After successful model refresh, also try to update selection (best effort)
     if outcome.get("state") in ("success", "partial"):
         try:
@@ -80,7 +88,10 @@ def execute(name, settings):
             from engine.storage import write_json
 
             sel = build_selection(
-                settings, fuels=list(settings.model_fuels), n_boot=2000
+                settings,
+                fuels=list(settings.model_fuels),
+                n_boot=2000,
+                progress=progress,
             )
             write_json(settings.runtime / "selection" / "current.json", sel)
         except Exception:
@@ -106,6 +117,8 @@ def run(name, settings):
         "error_code": None,
     }
     atomic_json(path, state)
+    progress = JobProgress(settings, name)
+    progress.phase("start", message="Job gestartet")
     print(f"{name}: gestartet {started.isoformat()}", flush=True)
 
     def finish(outcome):
@@ -122,11 +135,16 @@ def run(name, settings):
                 state["data_watermark"] = trigger_watermark
         atomic_json(path, state)
         suffix = f" ({outcome['error_code']})" if outcome.get("error_code") else ""
+        progress.finish(
+            state["state"],
+            f"{state['state']}{suffix}, Dauer "
+            f"{(finished - started).total_seconds() / 60:.1f} min",
+        )
         print(f"{name}: {state['state']}{suffix}", flush=True)
         return 0 if outcome["state"] == "success" else 2
 
     try:
-        return finish(execute(name, settings))
+        return finish(execute(name, settings, progress))
     except ModuleNotFoundError:
         return finish({"state": "failed", "error_code": "dependencies_missing"})
     except Exception as exc:

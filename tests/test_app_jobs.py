@@ -462,7 +462,10 @@ def test_worker_records_trigger_watermark_on_success(tmp_path, monkeypatch):
     monkeypatch.setattr(
         worker,
         "execute",
-        lambda name, settings: {"state": "success", "error_code": None},
+        lambda name, settings, progress=None: {
+            "state": "success",
+            "error_code": None,
+        },
     )
     settings = Settings(data=tmp_path, polling=tmp_path / "missing")
     assert worker.run("models", settings) == 0
@@ -475,7 +478,10 @@ def test_worker_records_trigger_watermark_on_success(tmp_path, monkeypatch):
     monkeypatch.setattr(
         worker,
         "execute",
-        lambda name, settings: {"state": "failed", "error_code": "job_failed"},
+        lambda name, settings, progress=None: {
+            "state": "failed",
+            "error_code": "job_failed",
+        },
     )
     assert worker.run("models", settings) == 2
     state = json.loads((tmp_path / "runtime" / "jobs" / "models.json").read_text())
@@ -626,3 +632,113 @@ def test_webhook_endpoint_disabled_without_token_or_jobs(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+# --- Fortschritts-Protokoll (lange Modellläufe) -----------------------------
+
+
+def test_progress_file_tracks_phases_and_steps(model_setup):
+    """Jede Phase und jeder Schritt landet in Status + Log (kein Rätselraten)."""
+    from app.progress import JobProgress, read_progress
+
+    progress = JobProgress(model_setup, "models", verbose=False)
+    assert read_progress(model_setup, "models") is None
+    progress.phase("fit", total=3, message="Fit + Backtest")
+    progress.step(1, label="Frankfurt – One")
+    raw = read_progress(model_setup, "models")
+    assert raw is not None
+    assert raw["phase"] == "fit"
+    assert (raw["step"], raw["total"]) == (1, 3)
+    assert raw["label"] == "Frankfurt – One"
+    assert 0 < raw["pct"] < 100
+    assert raw["eta_s"] is not None  # Restschätzung aus Schritt 1 von 3
+    progress.finish("success", "fertig")
+    # Nach dem Lauf kein „Läuft …“ mehr: die GUI zeigt den Endzustand.
+    assert read_progress(model_setup, "models") is None
+
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "Modelle fitten" in log
+    assert "Frankfurt – One" in log
+    assert "fertig" in log
+
+
+def test_progress_log_rotates_instead_of_growing_forever(model_setup):
+    from app.progress import append_log
+
+    path = model_setup.runtime / "jobs" / "models.log"
+    for index in range(40):
+        append_log(path, f"Zeile {index}", max_lines=10)
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 10
+    assert lines[-1].endswith("Zeile 39")
+    assert "Zeile 0" not in "\n".join(lines)
+
+
+def test_refresh_reports_every_phase(model_setup, capsys):
+    cutoff = dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc)
+    outcome = refresh(model_setup, now=cutoff, progress=None)
+    assert outcome["state"] == "partial"  # eine Station hat keine Historie
+
+    from app.progress import JobProgress
+
+    progress = JobProgress(model_setup, "models", verbose=False)
+    refresh(model_setup, now=cutoff, progress=progress)
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    # Der lange Teil ist sichtbar: Export, Fit je Station, Veröffentlichen.
+    assert "InfluxDB-Export" in log
+    assert "Modelle fitten" in log
+    assert "Veröffentlichen" in log
+    # Stationen erscheinen mit Namen — „läuft seit 20 min“ wird erklärbar.
+    assert "Frankfurt – One" in log
+
+
+def test_health_shows_progress_only_while_running(model_setup):
+    """/api/v1/health liefert den Fortschritt, solange der Job läuft."""
+    import datetime as dt
+
+    from app.data import LiveData
+    from app.progress import JobProgress
+
+    jobs = model_setup.runtime / "jobs"
+    jobs.mkdir(parents=True, exist_ok=True)
+    running = JobProgress(model_setup, "models", verbose=False)
+    running.phase("fit", total=2)
+    running.step(1, label="Frankfurt – One")
+    (jobs / "models.json").write_text(
+        json.dumps(
+            {
+                "state": "running",
+                "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            }
+        )
+    )
+    health = LiveData(model_setup, query=lambda *_: [], clock=lambda: NOW).health()
+    progress = health["jobs"]["models"]["progress"]
+    assert progress and progress["phase"] == "fit"
+    assert progress["step"] == 1 and progress["total"] == 2
+
+    # Fertig → kein Fortschrittsblock mehr (sonst „Läuft …“ bis zum nächsten Lauf).
+    running.finish("success")
+    health = LiveData(model_setup, query=lambda *_: [], clock=lambda: NOW).health()
+    assert health["jobs"]["models"]["progress"] is None
+
+
+def test_worker_run_writes_progress_and_duration(model_setup, monkeypatch):
+    """Der NAS-Job protokolliert Start, Phasen und Dauer (docker logs / Datei)."""
+    import app.worker as worker
+
+    def fake(name, settings, progress=None):
+        progress.phase("fit", total=2)
+        progress.step(1, label="Frankfurt – One")
+        return {"state": "success", "error_code": None}
+
+    monkeypatch.setattr(worker, "execute", fake)
+    assert worker.run("models", model_setup) == 0
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "Start" in log
+    assert "Modelle fitten" in log
+    assert "Frankfurt – One" in log
+    assert "Dauer" in log
+    assert "beendet: success" in log
+    state = json.loads((model_setup.runtime / "jobs" / "models.json").read_text())
+    assert state["state"] == "success"

@@ -16,7 +16,19 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from polling_plan import collector_lock
 from .config import ROOT
 from .data import LiveData, read_json
+from .ratelimit import RateLimiter
 from .worker import INTERVALS
+
+# Konzept §11.3 / M5: Alte Alltags-Routen werden markiert, sobald
+# /api/v1/decide alle Alltags-Fälle abdeckt (Ampel + Alternativen + Fenster).
+# Werkstatt-Routen (series, forecast, heatmap, selection, collector/status,
+# health) bleiben bewusst unmarkiert — sie sind Analyse, nicht Alltag.
+DEPRECATED_ROUTES = {
+    "/api/v1/stations": "/api/v1/decide",
+    "/api/v1/day": "/api/v1/decide",
+    "/api/v1/route/evaluate": "/api/v1/decide",
+}
+SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 
 # Issue 50: Der Uploader-Webhook darf ausschließlich diese Inferenz-Jobs
 # anstoßen. Separation of Concerns: Der Webhook meldet nur „neue Daten liegen
@@ -197,10 +209,37 @@ class Scheduler:
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, data, **kwargs):
         self.data = data
+        self._rate_info = None
+        self._successor = None
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
         pass
+
+    def _rate_limit(self):
+        """Konzept §11: 60/min anonym, 300/min mit X-Api-Key.
+
+        Ohne Limiter am Datenobjekt (z. B. ältere Aufrufer) greift kein
+        Limit — der Schutz ist ein Auftrag der API, keine stillere Falle.
+        """
+        limiter = getattr(self.data, "rate_limiter", None)
+        if limiter is None:
+            return True
+        allowed, info = limiter.check(
+            self.headers.get("X-Api-Key"), self.client_address[0]
+        )
+        self._rate_info = info
+        if allowed:
+            return True
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Retry-After", str(info["retry_after"]))
+        content = json.dumps({"error_code": "rate_limited"}).encode()
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(content)
+        return False
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -210,6 +249,18 @@ class Handler(SimpleHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
         )
+        info = getattr(self, "_rate_info", None)
+        if info:
+            self.send_header("X-RateLimit-Limit", str(info["limit"]))
+            self.send_header("X-RateLimit-Remaining", str(info["remaining"]))
+            self.send_header("X-RateLimit-Reset", str(info["reset"]))
+            self.send_header("X-RateLimit-Policy", "keyed" if info["keyed"] else "anon")
+        successor = getattr(self, "_successor", None)
+        if successor:
+            # RFC 8594 (Deprecation) + RFC 8594-kompatibler Sunset.
+            self.send_header("Deprecation", "true")
+            self.send_header("Sunset", SUNSET_DATE)
+            self.send_header("Link", f'<{successor}>; rel="successor-version"')
         super().end_headers()
 
     def list_directory(self, path):
@@ -234,6 +285,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         fuel, city = value("fuel", "e10"), value("city")
         norm_path = path if path.startswith("/api/") else f"/api{path}"
+        self._successor = DEPRECATED_ROUTES.get(norm_path)
 
         if norm_path == "/api/v1/health":
             return self.data.health()
@@ -303,6 +355,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_get(self):
         url = urlsplit(self.path)
+        if not self._rate_limit():
+            return
         if url.path.startswith("/api/") or url.path.startswith("/v1/"):
             try:
                 payload = self.api(
@@ -330,6 +384,8 @@ class Handler(SimpleHTTPRequestHandler):
                     "invalid_value_of_time",
                     "invalid_mode",
                     "invalid_detour",
+                    "invalid_latest_by",
+                    "invalid_home",
                 ):
                     self.json({"error_code": code}, 400)
                 else:
@@ -365,6 +421,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_post(self):
         url = urlsplit(self.path)
+        if not self._rate_limit():
+            return
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
 
         try:
@@ -514,9 +572,10 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def make_server(settings, host="0.0.0.0", port=1355, data=None):
-    return ThreadingHTTPServer(
-        (host, port), functools.partial(Handler, data=data or LiveData(settings))
-    )
+    data = data or LiveData(settings)
+    if not hasattr(data, "rate_limiter"):
+        data.rate_limiter = RateLimiter.from_settings(settings)
+    return ThreadingHTTPServer((host, port), functools.partial(Handler, data=data))
 
 
 def serve(settings, host="0.0.0.0", port=1355, jobs=False):

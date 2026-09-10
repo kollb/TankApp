@@ -73,10 +73,16 @@ def read_selection(settings):
     }
 
 
-def build_selection(settings, fuels=None, n_boot=2000):
-    """Baut Selektions-Artefakt aus Trainingsbestand (standalone Job)."""
+def build_selection(settings, fuels=None, n_boot=2000, progress=None):
+    """Baut Selektions-Artefakt aus Trainingsbestand (standalone Job).
+
+    ``progress`` ist das optionale Fortschritts-Protokoll (app/progress.py),
+    damit der System-Status der GUI zeigt, welcher Kraftstoff gerade läuft.
+    """
     if fuels is None:
         fuels = ["e10"]
+    if progress:
+        progress.phase("selection", total=len(fuels), message="δ̂-Ranking")
 
     try:
         from engine.data import load_observations
@@ -112,14 +118,24 @@ def build_selection(settings, fuels=None, n_boot=2000):
                 from engine.config import Config
 
                 cfg_engine = Config()
+                if progress:
+                    progress.step(label=f"{fuel}: Trainingsdaten laden")
                 obs, _ = load_observations([train_path], cfg_engine, fuel, ids)
                 if obs.empty:
+                    if progress:
+                        progress.step(label=f"{fuel}: keine Daten")
                     continue
                 sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=n_boot)
                 result = compute_all(obs, sel_cfg, metas_by_city)
                 by_fuel[fuel] = result
                 all_flat.extend(result.get("top_global", []))
+                if progress:
+                    progress.step(
+                        label=f"{fuel}: {len(result.get('top_global', []))} Stationen"
+                    )
             except Exception:
+                if progress:
+                    progress.step(label=f"{fuel}: Fehler")
                 continue
 
         return {

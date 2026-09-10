@@ -159,7 +159,7 @@ def public_job(settings, name):
     raw = read_json(settings.runtime / "jobs" / f"{name}.json", {})
     if not isinstance(raw, dict):
         raw = {}
-    return {
+    payload = {
         key: raw.get(key)
         for key in (
             "state",
@@ -173,6 +173,17 @@ def public_job(settings, name):
             "error_code",
         )
     }
+    # Fortschritt nur für *laufende* Jobs (app/progress.py): „Läuft …“ ohne
+    # „wo?“ ist bei einem 20-Minuten-Modelllauf genau die Lücke, die der
+    # System-Status schließen soll.
+    if raw.get("state") == "running":
+        try:
+            from .progress import read_progress
+
+            payload["progress"] = read_progress(settings, name)
+        except Exception:
+            payload["progress"] = None
+    return payload
 
 
 def publication(settings):

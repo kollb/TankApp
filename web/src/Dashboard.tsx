@@ -231,6 +231,51 @@ function JobCard({
           {problem(job.error_code)}
         </p>
       )}
+      {job?.state === "running" && job.progress && (
+        <div className="mt-3">
+          <div className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="truncate font-medium text-sky-300">
+              {job.progress.phase_label ||
+                job.progress.phase ||
+                "Arbeitet …"}
+            </span>
+            <span className="shrink-0 font-mono text-[11px] text-slate-400">
+              {job.progress.total
+                ? `${job.progress.step}/${job.progress.total}`
+                : `${Math.round(job.progress.pct)} %`}
+            </span>
+          </div>
+          <div
+            className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-800"
+            role="progressbar"
+            aria-valuenow={Math.round(job.progress.pct)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Fortschritt ${title}`}
+          >
+            <div
+              className="h-full rounded-full bg-sky-400 transition-all duration-500"
+              style={{ width: `${Math.max(2, job.progress.pct)}%` }}
+            />
+          </div>
+          <p className="mt-1.5 truncate text-[11px] text-slate-500">
+            {job.progress.label || job.progress.message || "…"}
+          </p>
+          <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+            seit {Math.round(job.progress.elapsed_s / 60)} min
+            {job.progress.eta_s
+              ? ` · ca. ${Math.max(1, Math.round(job.progress.eta_s / 60))} min restlich`
+              : ""}
+          </p>
+        </div>
+      )}
+      {job?.state === "running" && !job.progress && (
+        <p className="mt-3 text-[11px] text-slate-500">
+          Kein Fortschrittssignal — der Job schreibt erst nach der
+          InfluxDB-/Archiv-Phase (Log:{" "}
+          <code className="text-slate-400">docker logs -f tankapp-app</code>).
+        </p>
+      )}
     </div>
   );
 }
@@ -487,6 +532,10 @@ export function Dashboard() {
   const [eps, setEps] = useState(1.0);
   const [labDayIdx, setLabDayIdx] = useState(13);
 
+  // Läuft ein NAS-Job, wird der Systemstatus dichter gepollt — ein
+  // 20-Minuten-Modelllauf soll seinen Fortschritt zeigen, nicht raten lassen.
+  const [healthInterval, setHealthInterval] = useState(60000);
+
   // B4 Pair Panel State (Umweg-Ökonomie in Werkstatt)
   const [pairAltId, setPairAltId] = useState("");
   const [pairDetourKm, setPairDetourKm] = useState(2.5);
@@ -522,7 +571,14 @@ export function Dashboard() {
     30000,
     refresh,
   );
-  const health = useResource<Health>("/api/v1/health", 60000, refresh);
+  const health = useResource<Health>("/api/v1/health", healthInterval, refresh);
+
+  useEffect(() => {
+    const running = Object.values(health.data?.jobs || {}).some(
+      (job) => job?.state === "running",
+    );
+    setHealthInterval(running ? 15000 : 60000);
+  }, [health.data?.jobs]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(performance.now()), 10000);
