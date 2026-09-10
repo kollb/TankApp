@@ -264,18 +264,36 @@ def test_fills_recording_and_compliance(b4_settings):
         thread.join(timeout=2)
 
 
+class _FakeLive:
+    """Minimaler LiveData-Stub für ehrliches Settlement (beobachtete Preise)."""
+
+    def __init__(self, points):
+        self._points = points
+
+    def series(self, station_id, city, fuel, hours=24):
+        assert hours <= 168
+        return {"points": self._points, "error_code": None}
+
+
 def test_settlement_worker_job(b4_settings):
-    """Settlement-Job (app.worker settlement) schließt abgelaufene Snapshots ab."""
+    """Settlement-Job (app.worker settlement) rechnet gegen beobachtete Preise ab."""
     from app.feedback import record_snapshot, load_store, settle_snapshots
     from app.worker import execute
 
-    # Create past snapshot
+    # Fenster gestern 17:30–20:30 Berlin = 15:30–17:30 UTC (September: UTC+2).
+    window_start = dt.datetime(2026, 9, 9, 15, 30, tzinfo=dt.timezone.utc)
+    window_end = dt.datetime(2026, 9, 9, 17, 30, tzinfo=dt.timezone.utc)
+    emitted = dt.datetime(2026, 9, 9, 12, 0, tzinfo=dt.timezone.utc)
+
     snap_data = {
-        "clock_hour": 8.0,
+        "clock_hour": 14.0,
         "action": "wait",
+        "city": "Frankfurt",
         "station_id": UID,
         "station_name": "Station Alpha",
         "price_now": 1.709,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
         "window_start_hour": 17.5,
         "window_end_hour": 20.5,
         "expected_price": 1.649,
@@ -283,33 +301,83 @@ def test_settlement_worker_job(b4_settings):
         "liters_assumed": 40.0,
         "fuel": "e10",
     }
-    record_snapshot(b4_settings, snap_data, clock=lambda: NOW - dt.timedelta(hours=24))
+    record_snapshot(b4_settings, snap_data, clock=lambda: emitted)
 
-    # Settlement braucht eine Berlin-Stunde nach 21:00 (Fensterende 20.5 + 0.5h
-    # grace). clock_now muss nach Berlin 21 Uhr sein. NOW (14:00 UTC) plus
-    # +9h = 23:00 UTC = 01:00+1 Berlin — zykelt. Stattdessen: NOW+12h setzen,
-    # das ergibt 02:00 UTC des Folgetages = 04:00 Berlin … auch zu früh.
-    # Saubere Lösung: NOW durch NOW.replace(tzinfo=ZoneInfo("Europe/Berlin"))
-    # ersetzen und auf 22:00 Berlin setzen. Wir setzen hier explizit den
-    # Berlin-Tag-Offset: 22:00 lokal = 20:00 UTC.
-    berlin_now = NOW.astimezone(dt.timezone(dt.timedelta(hours=2)))
-    settlement_dt = berlin_now.replace(hour=22, minute=0, second=0, microsecond=0)
+    # Beobachtete Preise: Tiefstpreis 1.649 im Fenster (win), der billigere
+    # Punkt um 19:00 UTC liegt außerhalb (Fenster + 60 min Slack endet 18:30).
+    live = _FakeLive(
+        [
+            {
+                "timestamp": "2026-09-09T15:45:00+00:00",
+                "status": "open",
+                "price": 1.679,
+            },
+            {
+                "timestamp": "2026-09-09T16:30:00+00:00",
+                "status": "open",
+                "price": 1.649,
+            },
+            {
+                "timestamp": "2026-09-09T16:45:00+00:00",
+                "status": "closed",
+                "price": None,
+            },
+            {
+                "timestamp": "2026-09-09T19:00:00+00:00",
+                "status": "open",
+                "price": 1.599,
+            },
+        ]
+    )
 
-    def _settlement_clock():
-        return settlement_dt
-
-    result = settle_snapshots(b4_settings, clock=_settlement_clock)
+    result = settle_snapshots(b4_settings, live_data=live, clock=lambda: NOW)
     assert result["status"] == "ok"
-    assert result["settled_count"] >= 1
+    assert result["settled_count"] == 1
 
-    # Auch der execute()-Wrapper muss durchlaufen.
+    store = load_store(b4_settings)
+    assert len(store["settlements"]) == 1
+    settlement = store["settlements"][0]
+    assert settlement["outcome"] == "win"
+    assert settlement["p_realized"] == 1.649
+    assert settlement["regret_eur"] == 0.0
+
+    # Auch der execute()-Wrapper muss durchlaufen (idempotent: nichts mehr offen).
     outcome = execute("settlement", b4_settings)
     assert outcome["state"] == "success"
     assert outcome["error_code"] is None
 
+
+def test_settlement_pending_without_live_data(b4_settings):
+    """Ohne beobachtete Preise bleibt ein Snapshot pending (kein Self-Grading)."""
+    from app.feedback import record_snapshot, load_store, settle_snapshots
+
+    window_start = dt.datetime(2026, 9, 9, 15, 30, tzinfo=dt.timezone.utc)
+    window_end = dt.datetime(2026, 9, 9, 17, 30, tzinfo=dt.timezone.utc)
+    emitted = dt.datetime(2026, 9, 9, 12, 0, tzinfo=dt.timezone.utc)
+    snap_data = {
+        "clock_hour": 14.0,
+        "action": "refuel_now",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station_name": "Station Alpha",
+        "price_now": 1.709,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "expected_price": 1.729,
+        "expected_saving_eur": 0.0,
+        "liters_assumed": 40.0,
+        "fuel": "e10",
+    }
+    record_snapshot(b4_settings, snap_data, clock=lambda: emitted)
+
+    # Fenster + Lag vorüber, aber live_data=None und noch innerhalb der
+    # 6-h-Gnadenfrist → pending, kein Settlement (kein Self-Grading).
+    pending_clock = dt.datetime(2026, 9, 9, 19, 0, tzinfo=dt.timezone.utc)
+    result = settle_snapshots(b4_settings, live_data=None, clock=lambda: pending_clock)
+    assert result["status"] == "ok"
+    assert result["settled_count"] == 0
     store = load_store(b4_settings)
-    assert len(store["settlements"]) >= 1
-    assert store["settlements"][0]["outcome"] in ("win", "loss", "tie")
+    assert store["settlements"] == []
 
 
 def test_stats_summary_three_layers(b4_settings):

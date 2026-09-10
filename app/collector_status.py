@@ -61,7 +61,9 @@ def collector_status_from_influx(settings, query_func, clock):
             f"  |> range(start: -7d)\n"
             f'  |> filter(fn: (r) => r["_measurement"] == "collector_status")\n'
             f'  |> sort(columns: ["_time"], desc: true)\n'
-            f"  |> limit(n: 10)\n"
+            # Long-Format: jedes Feld eine Zeile — 50 deckt den jüngsten Punkt
+            # (~10 Felder) plus Vorgänger sicher ab.
+            f"  |> limit(n: 50)\n"
         )
         rows = list(query_func(cfg, flux))
         if not rows:
@@ -142,7 +144,7 @@ def collector_status_from_influx(settings, query_func, clock):
             "raw_time": latest_time.isoformat() if latest_time else None,
         }
 
-    except BaseException as e:
+    except Exception as e:
         return {
             "error_code": "influx_read_failed",
             "available": False,
@@ -197,7 +199,7 @@ def build_collector_status(settings, query_func, clock, allow_influx=True):
     if allow_influx:
         try:
             influx_part = collector_status_from_influx(settings, query_func, clock)
-        except BaseException:
+        except Exception:
             influx_part = {"available": False, "error_code": "influx_read_failed"}
     else:
         influx_part = {
@@ -221,12 +223,12 @@ def build_collector_status(settings, query_func, clock, allow_influx=True):
                     local = local_heartbeat(cand)
                     if local:
                         break
-    except BaseException:
+    except Exception:
         local = None
 
     try:
         nas = nas_heartbeat(settings)
-    except BaseException:
+    except Exception:
         nas = None
 
     result = {

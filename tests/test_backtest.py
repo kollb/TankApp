@@ -131,3 +131,42 @@ def test_reconstructed_history_never_passes_live_evidence_gate(observations, cfg
     assert report["test_sources"] == ["history"]
     assert report["criteria"]["all_test_prices_have_live_status"] is False
     assert not report["m3_complete"]
+
+
+def test_decision_rows_evaluate_8am_rule_against_realized_prices(series, cfg):
+    """08:00-Zeilen: Mitternachts-Fit als Erwartung, offene Preise als Wahrheit."""
+    from engine.backtest import DECISION_HOUR
+
+    report, _ = run_backtest([series], cfg, days=2, until="2026-08-01")
+    decision = report["decision"]
+    assert decision["decision_hour"] == DECISION_HOUR == 8
+    assert decision["days_evaluated"] == 2
+    assert decision["days_skipped"] == 0
+    assert len(decision["rows"]) == 2
+    for row in decision["rows"]:
+        assert row["station_id"] == series.station_id
+        assert set(row) >= {"day", "cls", "mu", "p", "s", "best", "predHour"}
+        assert isinstance(row["mu"], float)
+        assert isinstance(row["s"], float)
+        assert row["best"] == round(max(row["s"], 0.0), 2)
+        assert row["p"] is None  # kein P-Modell: ehrlich null
+        assert 8.0 < row["predHour"] <= 24.0
+
+
+def test_decision_row_skips_days_without_anchor_or_realization(cfg):
+    """Tage ohne Anker/Erwartung/Realisierung werden übersprungen, nicht erfunden."""
+    import pandas as pd
+
+    from engine.backtest import decision_row
+
+    target = pd.date_range(
+        "2026-07-31 00:00", "2026-08-01 00:00", freq="10min", inclusive="left", tz="UTC"
+    )
+    local_origin = pd.Timestamp("2026-07-31", tz=cfg.timezone)
+    # Nur Preise nach 08:00 UTC (= 10:00 Berlin): kein 08:00-Anker.
+    truth = pd.DataFrame(
+        {"price": [1.70] * len(target), "observed": [True] * len(target)}, index=target
+    )
+    truth.loc[target <= pd.Timestamp("2026-07-31 06:00", tz="UTC"), "observed"] = False
+    forecast = pd.DataFrame({"q50": [1.65] * len(target)}, index=target)
+    assert decision_row(truth, forecast, target, local_origin, cfg.timezone) is None

@@ -228,17 +228,30 @@ class LiveData:
                         selected,
                     )
                     query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
+                    seen, kept = 0, 0
                     for raw in self.query(cfg, query):
-                        if not raw.get("station_id"):
-                            raise ValueError("UUID required")
-                        row = influx.normalized_row(raw, lookup, fuel)
-                        stamp = influx.instant(row["timestamp"])
-                        if not now - dt.timedelta(days=2) <= stamp <= now:
-                            raise ValueError("Timestamp outside query")
-                        identity = (row["city"], row["station_id"])
-                        if identity not in metas:
-                            raise ValueError("Unselected station")
-                        rows[identity] = row
+                        # Einzelne defekte Zeilen überspringen, statt alle
+                        # Stationen auf influx_read_failed zu setzen. Werden
+                        # aber ALLE gelieferten Zeilen verworfen, ist das kein
+                        # Teilerfolg, sondern ein expliziter Lesefehler (kein
+                        # stilles Leer-Ergebnis bei Totalausfall).
+                        seen += 1
+                        try:
+                            if not raw.get("station_id"):
+                                raise ValueError("UUID required")
+                            row = influx.normalized_row(raw, lookup, fuel)
+                            stamp = influx.instant(row["timestamp"])
+                            if not now - dt.timedelta(days=2) <= stamp <= now:
+                                raise ValueError("Timestamp outside query")
+                            identity = (row["city"], row["station_id"])
+                            if identity not in metas:
+                                raise ValueError("Unselected station")
+                            rows[identity] = row
+                            kept += 1
+                        except (ValueError, KeyError, TypeError):
+                            continue
+                    if seen and not kept:
+                        error = "influx_read_failed"
                 except (ValueError, OSError, KeyError, TypeError):
                     error = "influx_read_failed"
             if error:

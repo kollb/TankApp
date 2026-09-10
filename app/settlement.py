@@ -12,7 +12,10 @@ from .feedback import settle_snapshots
 
 def run_settlement_job(settings) -> dict[str, str | None]:
     try:
-        result = settle_snapshots(settings)
+        from .data import LiveData
+
+        live = LiveData(settings)
+        result = settle_snapshots(settings, live_data=live)
         print(
             f"settlement: {result.get('settled_count', 0)} Snapshots abgerechnet, "
             f"{result.get('due_count', 0)} Episoden due gesetzt, "

@@ -100,22 +100,28 @@ def isotonic_decreasing(values: np.ndarray) -> np.ndarray:
 
 def _segment_bounds(
     local: pd.DatetimeIndex,
-) -> list[tuple[int, int, object, bool]]:
-    """Kontinuierliche Segmente [12:00 Uhr, nächste 12:00 Uhr) auf dem Raster.
+) -> list[tuple[int, int, pd.Timestamp]]:
+    """Segmente [12:00 Uhr, nächste 12:00 Uhr) auf dem Raster.
 
-    Liefert (start, stop, lokales Datum, vor_Mittag): Ein Punkt vor 12:00
+    Segment-Key ist der lokale 12:00-Uhr-Beginn: Ein Punkt vor 12:00 Uhr
     gehört zum Segment, das um 12:00 Uhr des Vortags begonnen hat.
+    Mitternacht ist KEINE Segmentgrenze — Nachmittag und Folgevormittag
+    werden gemeinsam projiziert (ein Anstieg über Mitternacht ist
+    außerhalb des 12-Uhr-Punkts ebenfalls unzulässig).
+    Liefert (start, stop, segment_beginn_noon).
     """
-    dates = np.asarray(local.date)
-    before_noon = np.asarray(local.hour < 12)
+    day = local.normalize()
+    before_noon = local.hour < 12
+    seg = (
+        day
+        + pd.Timedelta(hours=12)
+        - pd.to_timedelta(before_noon.astype(int), unit="D")
+    )
     segments = []
     start = 0
     for position in range(1, len(local) + 1):
-        if position == len(local) or (
-            dates[position] != dates[start]
-            or before_noon[position] != before_noon[start]
-        ):
-            segments.append((start, position, dates[start], before_noon[start]))
+        if position == len(local) or seg[position] != seg[start]:
+            segments.append((start, position, seg[start]))
             start = position
     return segments
 
@@ -133,16 +139,8 @@ def noon_law_projection(
     result = np.asarray(values, dtype=float).copy()
     if len(index) < 2:
         return result
-    law = law_since_utc(cfg).tz_convert(index.tz)
-    for start, stop, day, before_noon in _segment_bounds(
-        index.tz_convert(cfg.timezone)
-    ):
-        boundary = (
-            (pd.Timestamp(day).tz_localize(cfg.timezone) - pd.Timedelta(days=1))
-            if before_noon
-            else pd.Timestamp(day).tz_localize(cfg.timezone)
-        )
-        boundary += pd.Timedelta(hours=12)
+    law = law_since_utc(cfg).tz_convert(cfg.timezone)
+    for start, stop, boundary in _segment_bounds(index.tz_convert(cfg.timezone)):
         if boundary < law:
             continue
         chunk = result[start:stop]
@@ -275,7 +273,9 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     for position in range(1, len(index)):
         if not (finite[position] and finite[position - 1]):
             continue
-        if price_values[position] <= price_values[position - 1] + 0.001:
+        # Zählschwelle 1 ct/L (0,01 €): Kleinere Bewegungen sind
+        # Rundungs-/Meldungsrauschen, keine Preiserhöhungen im Sinn der Regel.
+        if price_values[position] <= price_values[position - 1] + 0.01:
             continue
         # Der erlaubte Erhöhungspunkt ist die lokale 12:00 Uhr des Rasterpunkts.
         noon = (local_index[position].normalize() + pd.Timedelta(hours=12)).tz_convert(

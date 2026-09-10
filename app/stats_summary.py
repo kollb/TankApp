@@ -42,10 +42,14 @@ def set_publication_provider(fn) -> None:
 
 
 def _empty_backtest() -> dict[str, Any]:
-    """Struktur des leeren Backtest-Felds — UI kann Felder abfragen ohne Fehler."""
+    """Struktur des leeren Backtest-Felds — UI kann Felder abfragen ohne Fehler.
+
+    Zähler sind null (nicht 0,0): 0,00 € sähe nach gemessener Null aus,
+    tatsächlich wurde nichts gemessen.
+    """
     return {
-        "daysTrain": 42,
-        "daysEval": 14,
+        "daysTrain": None,
+        "daysEval": None,
         "decisionHour": 8,
         "defaultEps": 1.0,
         "defaultLiters": 40.0,
@@ -53,15 +57,15 @@ def _empty_backtest() -> dict[str, Any]:
         "stations": [],
         "stationScores": [],
         "totals": {
-            "smart": 0.0,
-            "commit": 0.0,
-            "best": 0.0,
-            "always": 0.0,
-            "regretEur": 0.0,
+            "smart": None,
+            "commit": None,
+            "best": None,
+            "always": None,
+            "regretEur": None,
             "n": 0,
-            "hitFreq": 0.0,
-            "pAvg": 0.0,
-            "potShare": 0.0,
+            "hitFreq": None,
+            "pAvg": None,
+            "potShare": None,
         },
         "calibration": [],
         "evalRows": {},
@@ -69,6 +73,75 @@ def _empty_backtest() -> dict[str, Any]:
         "p8Series": {},
         "scan": {"eps": [], "commitEur": [], "smartEur": [], "waits": []},
         "error_code": "backtest_not_available",
+    }
+
+
+def _score_rows(
+    rows: list[dict[str, Any]], eps: float, liters: float
+) -> dict[str, Any]:
+    """Server-Spiegel von web/src/data.ts scoreRows (gleiche Formeln).
+
+    wait = mu ≥ eps; hit = (s > 0) bei wait, (s ≤ 0) bei now;
+    smart = Ersparnis nur bei korrektem wait; commit = gebuchte Ersparnis;
+    regret = best − smart. p ist null, solange die Engine kein P-Modell hat.
+    """
+    n_wait = hit_wait = n_now = hit_now = 0
+    sum_smart = sum_commit = sum_best = sum_always = sum_regret = 0.0
+    sum_p = 0.0
+    n_p = 0
+    s_pos = 0
+    for r in rows:
+        mu = float(r.get("mu") or 0.0)
+        s = float(r.get("s") or 0.0)
+        best = float(r.get("best") or 0.0)
+        wait = mu >= eps
+        hit = (s > 0) if wait else (s <= 0)
+        if wait:
+            n_wait += 1
+            hit_wait += 1 if hit else 0
+            smart_ct = max(s, 0.0)
+            commit_ct = s
+        else:
+            n_now += 1
+            hit_now += 1 if hit else 0
+            smart_ct = 0.0
+            commit_ct = 0.0
+        sum_smart += smart_ct
+        sum_commit += commit_ct
+        sum_best += max(best, 0.0)
+        sum_always += max(s, 0.0)
+        sum_regret += max(best - smart_ct, 0.0)
+        p = r.get("p")
+        if p is not None:
+            try:
+                sum_p += float(p)
+                n_p += 1
+            except (TypeError, ValueError):
+                pass
+        if s > 0:
+            s_pos += 1
+    n = len(rows)
+
+    def to_eur(ct: float) -> float:
+        return round((ct / 100.0) * liters, 2)
+
+    return {
+        "n": n,
+        "n_wait": n_wait,
+        "hit_wait": round(hit_wait / n_wait, 4) if n_wait else None,
+        "n_now": n_now,
+        "hit_now": round(hit_now / n_now, 4) if n_now else None,
+        "sum_smart_eur": to_eur(sum_smart),
+        "sum_commit_eur": to_eur(sum_commit),
+        "sum_best_eur": to_eur(sum_best),
+        "sum_always_eur": to_eur(sum_always),
+        "avg_regret_ct": round(sum_regret / n, 3) if n else 0.0,
+        "avg_regret_eur": round(to_eur(sum_regret) / n, 3) if n else 0.0,
+        "p_avg": round(sum_p / n_p, 4) if n_p else None,
+        "hit_freq": round(s_pos / n, 4) if n else 0.0,
+        "pot_share": round(sum_smart / sum_best, 4)
+        if sum_best > 0
+        else (0.0 if n else None),
     }
 
 
@@ -95,12 +168,14 @@ def _build_backtest_from_publication(
     # Stationen, die tatsächlich einen Backtest haben
     stations_info: list[dict[str, Any]] = []
     station_scores: list[dict[str, Any]] = []
-    calib_points: list[dict[str, Any]] = []
     eval_rows: dict[str, list[dict[str, Any]]] = {}
-    p8_series: dict[str, list[float]] = {}
-    models: dict[str, dict[str, Any]] = {}
 
     backtest_days = rows[0].get("backtest_days", 7) or 7
+    train_days = rows[0].get("train_days") or 42
+    decision_hour = rows[0].get("decision_hour", 8) or 8
+    default_eps = 1.0
+    default_liters = 40.0
+    all_eval: list[dict[str, Any]] = []
 
     for row in rows:
         if target_city and row.get("city") != target_city:
@@ -124,66 +199,72 @@ def _build_backtest_from_publication(
             }
         )
 
-        # Reale Engine-Metriken (MAE, MASE, PICP). UI kann sie 1:1 anzeigen.
-        mae_ct = metrics.get("mae_ct")
-        mase = metrics.get("mase")
-        picp = metrics.get("picp95_pct")
+        # Echte 08:00-Entscheidungszeilen der Engine (Schicht A).
+        station_rows = [
+            {
+                "day": r.get("day"),
+                "cls": r.get("cls", 0),
+                "mu": r.get("mu"),
+                "p": r.get("p"),
+                "s": r.get("s"),
+                "best": r.get("best"),
+                "predHour": r.get("predHour"),
+                "curve": r.get("curve") or [],
+            }
+            for r in (row.get("decision_rows") or [])
+            if r.get("mu") is not None and r.get("s") is not None
+        ]
+        eval_rows[sid] = station_rows
+        all_eval.extend(station_rows)
 
+        # Reale Engine-Metriken (MAE, MASE, PICP) + Entscheidungs-Scores.
+        score = _score_rows(station_rows, default_eps, default_liters)
         station_scores.append(
             {
                 "station_id": sid,
                 "name": name,
                 "brand": brand,
                 "city": city,
-                "mae_ct": mae_ct,
-                "mase": mase,
-                "picp_95": picp,
-                "n": backtest_days,
-                "n_wait": 0,
-                "hit_wait": None,
-                "n_now": 0,
-                "hit_now": None,
-                "sum_smart_eur": 0.0,
-                "sum_commit_eur": 0.0,
-                "sum_best_eur": 0.0,
-                "sum_always_eur": 0.0,
-                "avg_regret_ct": 0.0,
-                "avg_regret_eur": 0.0,
-                "p_avg": 0.0,
-                "hit_freq": 0.0,
-                "pot_share": 0.0,
+                "mae_ct": metrics.get("mae_ct"),
+                "mase": metrics.get("mase"),
+                "picp_95": metrics.get("picp95_pct"),
+                **score,
             }
         )
 
+    total_score = _score_rows(all_eval, default_eps, default_liters)
+    n_total = total_score["n"]
     totals: dict[str, Any] = {
-        "smart": 0.0,
-        "commit": 0.0,
-        "best": 0.0,
-        "always": 0.0,
-        "regretEur": 0.0,
-        "n": sum(s["n"] for s in station_scores),
-        "hitFreq": 0.0,
-        "pAvg": 0.0,
-        "potShare": 0.0,
+        "smart": total_score["sum_smart_eur"] if n_total else None,
+        "commit": total_score["sum_commit_eur"] if n_total else None,
+        "best": total_score["sum_best_eur"] if n_total else None,
+        "always": total_score["sum_always_eur"] if n_total else None,
+        "regretEur": total_score["avg_regret_eur"] if n_total else None,
+        "n": n_total,
+        "hitFreq": total_score["hit_freq"] if n_total else None,
+        "pAvg": total_score["p_avg"],
+        "potShare": total_score["pot_share"],
         "mae_ct": _safe_median([s["mae_ct"] for s in station_scores]),
         "mase": _safe_median([s["mase"] for s in station_scores]),
         "picp_95": _safe_median([s["picp_95"] for s in station_scores]),
     }
 
     return {
-        "daysTrain": 42,
+        "daysTrain": train_days,
         "daysEval": backtest_days,
-        "decisionHour": 8,
-        "defaultEps": 1.0,
-        "defaultLiters": 40.0,
-        "days": [],
+        "decisionHour": decision_hour,
+        "defaultEps": default_eps,
+        "defaultLiters": default_liters,
+        "days": sorted({r["day"] for r in all_eval if r.get("day")}),
         "stations": stations_info,
         "stationScores": station_scores,
         "totals": totals,
-        "calibration": calib_points,
+        # calibration/models/p8Series/scan: kein P-/Form-Modell in der Engine —
+        # ehrlich leer, bis die Engine sie liefert (Konzept §6, offen).
+        "calibration": [],
         "evalRows": eval_rows,
-        "models": models,
-        "p8Series": p8_series,
+        "models": {},
+        "p8Series": {},
         "scan": {"eps": [], "commitEur": [], "smartEur": [], "waits": []},
         "source": "engine",
         "published_at": pub.get("published_at"),
@@ -233,11 +314,14 @@ def _quality_metrics_from_publication() -> dict[str, Any]:
                 "threshold": 3.0,
             },
         }
-    mase = _safe_median([r["metrics"].get("mase") for r in rows])
     picp = _safe_median([r["metrics"].get("picp95_pct") for r in rows])
     return {
-        "top3_hit_rate": None,  # wird aus echtem Backtest/Settlement berechnet
-        "mase_sprungfrei": mase,
+        # top3_hit_rate: erst aus echtem Backtest/Settlement (Konzept §6, offen).
+        "top3_hit_rate": None,
+        # mase_sprungfrei: die Engine berechnet bewusst keine sprungfreie MASE
+        # (engine/backtest.py: kein Ad-hoc-Sprunglabel) — die Gesamt-MASE hier
+        # zu zeigen wäre Etikettenschwindel.
+        "mase_sprungfrei": None,
         "picp_95": picp,
         "cusum_drift": {
             "status": "unknown",

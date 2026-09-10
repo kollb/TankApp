@@ -261,17 +261,29 @@ def loo_baseline(mat: pd.DataFrame) -> pd.DataFrame:
 
 def day_block_bootstrap(delta: np.ndarray, days: np.ndarray,
                         n_boot: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
-    """Block-Bootstrap über Tage -> verteilte Mediane (B,) und Tagesvektor."""
+    """Block-Bootstrap über Tage -> verteilte Mediane (B,) und Tagesvektor.
+
+    Jede Ziehung konkateniert die (endlichen) Tagesblöcke und nimmt den
+    Median des Pools — dieselbe Statistik wie δ̂ (Median über alle
+    Zeitpunkte). Ein Median von Tagesmedianen würde dünn besetzte Tage
+    (z. B. Anlaufrümpfe) übergewichten.
+    """
     uniq = np.unique(days[~np.isnan(days)])
-    day_med = np.array([np.nanmedian(delta[days == d]) for d in uniq])
-    ok = ~np.isnan(day_med)
-    day_med = day_med[ok]
-    uniq = uniq[ok]
+    blocks = []
+    for day in uniq:
+        values = delta[days == day]
+        values = values[np.isfinite(values)]
+        if len(values):
+            blocks.append(values)
     boots = np.empty(n_boot)
-    n_days = len(uniq)
+    boots[:] = np.nan
+    day_med = np.array([np.median(block) for block in blocks])
+    if not blocks:
+        return boots, day_med
     for b in range(n_boot):
-        take = rng.choice(day_med, size=n_days, replace=True)
-        boots[b] = np.median(take)
+        take = rng.integers(0, len(blocks), size=len(blocks))
+        pooled = np.concatenate([blocks[i] for i in take])
+        boots[b] = np.median(pooled)
     return boots, day_med
 
 
@@ -402,10 +414,11 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     excluded = [f"{sid} (Coverage {coverage[sid]:.0%})"
                 for sid in coverage.index if sid not in set(keep)]
     mat = mat[keep]
-    if mat.shape[1] < 2:
+    if mat.shape[1] < 4:
         raise ValueError(
-            f"Stadt '{city}': nur {mat.shape[1]} Station nach dem Coverage-Gate — "
-            f"Relativpreise (LOO-Median) sind damit nicht definierbar. "
+            f"Stadt '{city}': nur {mat.shape[1]} Stationen nach dem Coverage-Gate — "
+            f"die LOO-Baseline verlangt ≥ 3 Vergleichsstationen je Zeitpunkt, "
+            f"δ̂ wäre sonst überall NaN. "
             f"Größeren Zeitraum wählen, Städte zusammenlegen oder --min-coverage senken.")
 
     base = loo_baseline(mat)
@@ -567,7 +580,15 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
         daily_rank = rank[sid].groupby(days).mean()
         rank_std = daily_rank.std()
 
-        avail = float(np.nansum(P[j] * w_user))
+        # AV über endliche Zellen renormiert: Stunden ohne Beobachtung
+        # würden bei nansum als 0 eingehen und den Score systematisch drücken.
+        _mask = np.isfinite(P[j])
+        _wsum = float(w_user[_mask].sum()) if _mask.any() else 0.0
+        avail = (
+            float(np.sum(P[j][_mask] * w_user[_mask]) / _wsum)
+            if _wsum > 0
+            else float("nan")
+        )
         # Anzahl Tage als n für Wilson (gewichtet über Stundenanteile)
         rows.append(dict(
             station_id=sid,

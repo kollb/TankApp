@@ -58,13 +58,17 @@
 
 `GET /api/v1/decide?city=Frankfurt&fuel=e10&liters=40&value_of_time=12` (auch als `/v1/decide` erreichbar)
 
-Ermittelt die primäre Handlungsempfehlung an der Zapfsäule mit M7-Gate-Prüfung:
-- `refuel_now`: Aktueller Preis ist bereits günstig / kein nennenswerter Abend-Vorteil
-- `wait`: Warten bis zum Abendfenster lohnt sich (μ ≥ ε)
-- `refuel_elsewhere`: Alternative Station lohnt netto trotz Umweg
-- `no_advice`: Unkalibriert / M7 steht aus (reiner Preisvergleich)
+Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (Konzept §4.1/§4.2/§4.4, Auswertungsreihenfolge §4.5: F2 → F1 → Grauzone):
+- `refuel_now`: Warten brächte < 1,00 € Ersparnis, oder P(Warten) < 50 %
+- `wait`: Fenster-Ersparnis ≥ 2 € bei P ≥ 70 % (grün) bzw. ≥ 1 € bei P ≥ 60 % (gelb)
+- `refuel_elsewhere`: Alternative spart netto ≥ 1,50 € trotz Umweg (P ≥ 50 %)
+- `no_advice`: kein Ankerpreis, keine Prognose, Grauzone P ∈ [40, 60] % — oder M7-Gate steht aus
 
-Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten).
+M7-Gate (§0.4): Vor der Kalibrierung (n < 100 oder Brier ≥ 0,25) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb mit interner, Laplace-geglätteter P-Schätzung), damit sich das Gate je öffnen kann.
+
+Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_week` enthält je Kalendertag den billigsten Punkt (Top 3). Alternativen nutzen die Luftlinie zwischen den Stationskoordinaten × 1,3 (`detour_mode: haversine`, Fallback `anchor_diff`).
+
+Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).
 
 ## Episodes & Intent (B4)
 
@@ -72,16 +76,16 @@ Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-
 
 Liefert fällige Episoden nach Fensterende für den Due-Prompt Banner in der GUI.
 
-`POST /api/v1/episodes`
+`POST /api/v1/episodes/{episode_id}/intent`
 
-Setzt die Nutzer-Absicht:
+Setzt die Nutzer-Absicht (`wait` | `navigate` | `refuel_now` | `dismiss`):
 ```json
 {
-  "episode_id": "ep_123456",
-  "intent": "wait",
-  "source": "compass"
+  "intent": "wait"
 }
 ```
+
+Unbekannte Episoden-IDs liefern strikt `404 episode_not_found` (kein stilles Umschreiben einer anderen Episode).
 
 ## Fills (B4 Belege)
 
@@ -100,17 +104,17 @@ Erfasst einen echten Tankbeleg im persönlichen Wallet-Ledger:
 }
 ```
 
-Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `manual`) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken.
+Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken.
 
 ## Stats Summary (B4 3 Schichten)
 
 `GET /api/v1/stats/summary?city=Frankfurt&fuel=e10` (auch als `/v1/stats/summary` erreichbar)
 
 Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
-1. **Schicht A (Markt-Labor Backtest)**: 14 Tage Out-of-Sample Evaluation aller Stationen mit Orakel-Vergleich, Regret und ε-Scan.
-2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt, Brier-Score (30d) und Kalibrierungs-Bins.
+1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten 08:00-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ 08:00, Wahrheit = realisierte offene Preise). Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
+2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen).
 3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
-4. **Güte-Kacheln**: Top-3-Quote, PICP-95%, MASE sprungfrei, CUSUM-Drift-Status (|CUSUM| ≤ 3σ).
+4. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 
 
 ## Health
@@ -428,7 +432,7 @@ Collector schreibt `meta/heartbeat.json` nach jedem Poll, Uploader schreibt `col
 - `station_id`: Ziel-Station (Alternative)
 - `ref_station_id`: Referenz-Station (z. B. aktuell ausgewählte), optional — falls fehlt, Stadtmedian frischer Preise als Referenz
 - `liters`: Tankmenge 5–100, Default 40
-- `detour_km`: einfache Mehrweg-Distanz km (onroute) bzw. einfache Entfernung (dedicated). **Ohne Angabe wird sie aus den Anker-Distanzen abgeleitet:** onroute = max(0, dist(ziel) − dist(ref)), dedicated = dist(ziel) (Quelle in Antwortfeld `detour_km_source`: `query` | `derived` | `zero`)
+- `detour_km`: einfache Mehrweg-Distanz km (onroute) bzw. einfache Entfernung (dedicated). **Ohne Angabe abgeleitet:** onroute = Luftlinie(Referenz, Ziel) × 1,3 (gleiche Umweg-Konvention wie `data-tools/road_route.py`), dedicated = Anker-Distanz zum Ziel; Fallback Anker-Differenz, dann 0 (Quelle in Antwortfeld `detour_km_source`: `query` | `derived` | `derived_anchor` | `zero`). Die reine Anker-Differenz |dist(Ziel) − dist(Ref)| wäre nur eine Dreiecksungleichungs-Schranke (0 bei gleicher Anker-Entfernung trotz km-Weite).
 - `consumption`: L/100km 3–20, Default 7
 - `speed`: km/h 10–130, Default 45
 - `value_of_time`: €/h 0–100, 0/entfällt = Auto
@@ -436,8 +440,8 @@ Collector schreibt `meta/heartbeat.json` nach jedem Poll, Uploader schreibt `col
 - `mode`: onroute|dedicated, Default onroute
   - onroute: nur Mehrweg zählt (einmalig)
   - dedicated: Extrafahrt Hin+Rück (doppelt)
-- `price`/`target_price`/`alt_price`: Ziel-Preis explizit (Tests), sonst Live-Preis
-- `ref_price`: Referenz-Preis explizit, sonst Live-Preis bzw. Stadtmedian
+- `price`/`target_price`/`alt_price`: Ziel-Preis explizit (Was-wäre-wenn) — **explizite Preise haben immer Vorrang vor Live-Preisen**, sonst Live-Preis (frisch > zuletzt beobachtet)
+- `ref_price`: Referenz-Preis explizit, sonst Live-Preis der Referenzstation, sonst Stadtmedian frischer Preise. Ohne jeden bestimmbaren Referenzpreis: `price_not_available` (kein erfundener +5-ct-Referenzpreis)
 
 Antwort:
 
@@ -475,7 +479,7 @@ Antwort:
 }
 ```
 
-`alt_price` = `target_price` (die günstigere Station, zu der gefahren wird); `ref_price` ist die teurere Referenz. `z_auto=true` wenn `value_of_time` 0/fehlte.
+`alt_price` = `target_price` (die günstigere Station, zu der gefahren wird); `ref_price` ist die teurere Referenz. `z_auto=true` wenn `value_of_time` 0/fehlte. Preis-Herkunft in `target_price_source`/`ref_price_source` (`query` | `live` | `live_stale` | `city_min` | `city_median`).
 
 Formel: K = d·(c/100)·p + (d/v)·z, brutto = (p_ref − p_alt)·L, netto = brutto − K, kritisch Δp* = K/L
 
@@ -499,8 +503,12 @@ Siehe `web/src/data.ts` messages:
 - selection_not_available, selection_failed
 - collector_no_heartbeat, collector_check_failed
 - too_many_points, invalid_query, not_found
+- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
+- price_not_available, decide_failed, backtest_not_available
+- episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
+- payload_too_large (413), invalid_json, invalid_request, server_error
 
-Alle Endpunkte liefern `error_code` statt Exception-Text, nie Tokens.
+Alle Endpunkte liefern `error_code` statt Exception-Text, nie Tokens. Unbekannte Stationen/Städte liefern 404 mit spezifischem Code (kein pauschales `invalid_query`).
 
 ## Beispiele
 

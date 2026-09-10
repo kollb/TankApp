@@ -161,9 +161,9 @@ describe("air distance between stations", () => {
 });
 
 describe("automatic axis ticks", () => {
-  it("covers a 24 h window with at most nine aligned ticks", () => {
+  it("covers a 12 h window with at most nine aligned ticks", () => {
     const from = Date.parse("2026-09-09T06:00:00Z");
-    const to = from + 24 * 3600 * 1000;
+    const to = from + 12 * 3600 * 1000;
     const ticks = autoTimeTicks(from, to);
     expect(ticks.length).toBeGreaterThanOrEqual(2);
     expect(ticks.length).toBeLessThanOrEqual(9);
@@ -186,6 +186,14 @@ describe("automatic axis ticks", () => {
   it("returns nothing for invalid windows", () => {
     expect(autoTimeTicks(10, 5)).toEqual([]);
     expect(autoTimeTicks(NaN, 5)).toEqual([]);
+  });
+  it("aligns ticks to Berlin wall clock, not UTC epoch", () => {
+    // 24 h ab 08:00 Berlin, Schritt 180 min → Raster 09:00, 12:00, … (Berlin).
+    const from = Date.parse("2026-09-09T06:00:00Z");
+    const to = from + 24 * 3600 * 1000;
+    const ticks = autoTimeTicks(from, to);
+    expect(ticks[0].label).toBe("09:00");
+    expect(ticks[1].label).toBe("12:00");
   });
 });
 
@@ -307,6 +315,21 @@ describe("B4 decision scoring and lab outcomes", () => {
     expect(score.n_now).toBe(1);
     expect(score.hit_wait).toBe(1.0);
     expect(score.hit_now).toBe(1.0); // day 2 had s < 0, so "now" was correct!
+    expect(score.p_known).toBe(true);
+    expect(score.p_avg).toBeCloseTo((0.82 + 0.65) / 2, 4);
+  });
+
+  it("treats null p as unknown, not as 0 %", () => {
+    const rows = [
+      { ...sampleRow, p: null },
+      { ...sampleRow, day: "2026-09-02", p: 0.6 },
+    ];
+    const score = scoreRows(rows, 1.5, 40, "test-station");
+    expect(score.p_known).toBe(true);
+    expect(score.p_avg).toBeCloseTo(0.6, 4);
+    const none = scoreRows([{ ...sampleRow, p: null }], 1.5, 40, "s");
+    expect(none.p_known).toBe(false);
+    expect(none.p_avg).toBe(0);
   });
 });
 

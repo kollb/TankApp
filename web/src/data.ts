@@ -91,7 +91,7 @@ export type Health = {
     missing_files: number | null;
     last_complete_until: string | null;
   };
-  jobs: { archive: Job; models: Job; selection?: Job };
+  jobs: { archive: Job; models: Job; selection?: Job; settlement?: Job };
   models: {
     published_at: string | null;
     count: number;
@@ -199,11 +199,15 @@ export type RouteEvaluate = {
   ref_station_id?: string | null;
   ref_station_name?: string | null;
   ref_price: number;
+  ref_price_source?: string | null;
+  target_price?: number;
+  target_price_source?: string | null;
   alt_price: number;
   delta_ct: number;
   gross_eur: number;
   detour_km_oneway: number;
   detour_km_total: number;
+  detour_km_source?: string | null;
   mode: string;
   fuel_cost_eur: number;
   time_cost_eur: number;
@@ -232,7 +236,7 @@ export type AdviceAction =
 export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
-export type AdviceOutcome = "win" | "loss" | "tie";
+export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
 export type DecideResult = {
   primary: {
@@ -261,6 +265,7 @@ export type DecideResult = {
     price: number;
     delta_ct: number;
     detour_km: number;
+    detour_mode?: string | null;
     net_eur: number;
     worth_it: boolean;
     maps_url?: string | null;
@@ -306,10 +311,11 @@ export type EvalRowDto = {
   day: string;
   cls: number; // 0 Werktag | 1 Wochenende
   mu: number; // E[S] ct/L
-  p: number; // P(S>0)
+  p: number | null; // P(S>0) — null, solange die Engine kein P-Modell hat
   s: number; // realisierte Ersparnis ct/L
   best: number; // perfekte Sicht ct/L
   predHour: number;
+  curve?: Array<{ x: number; y: number }>; // Erwartungskurve ct vs. Anker
 };
 
 export type StationModelLab = {
@@ -343,6 +349,7 @@ export type BacktestStationScore = {
   avg_regret_ct: number;
   avg_regret_eur: number;
   p_avg: number;
+  p_known: boolean;
   hit_freq: number;
   pot_share: number;
 };
@@ -360,8 +367,8 @@ export type StatsSummary = {
   fuel: Fuel;
   city: string | null;
   backtest: {
-    daysTrain: number;
-    daysEval: number;
+    daysTrain: number | null;
+    daysEval: number | null;
     decisionHour: number;
     defaultEps: number;
     defaultLiters: number;
@@ -378,15 +385,15 @@ export type StatsSummary = {
     }>;
     stationScores: BacktestStationScore[];
     totals: {
-      smart: number;
-      commit: number;
-      best: number;
-      always: number;
-      regretEur: number;
+      smart: number | null;
+      commit: number | null;
+      best: number | null;
+      always: number | null;
+      regretEur: number | null;
       n: number;
-      hitFreq: number;
-      pAvg: number;
-      potShare: number;
+      hitFreq: number | null;
+      pAvg: number | null;
+      potShare: number | null;
     };
     calibration: CalibPoint[];
     evalRows: Record<string, EvalRowDto[]>;
@@ -401,6 +408,8 @@ export type StatsSummary = {
   };
   live_advice: {
     n: number;
+    n_void?: number;
+    n_brier?: number;
     wins: number;
     losses: number;
     ties: number;
@@ -433,12 +442,12 @@ export type StatsSummary = {
     last_fill?: any;
   };
   quality_metrics: {
-    top3_hit_rate: number;
-    mase_sprungfrei: number;
-    picp_95: number;
+    top3_hit_rate: number | null;
+    mase_sprungfrei: number | null;
+    picp_95: number | null;
     cusum_drift: {
       status: string;
-      max_cusum: number;
+      max_cusum: number | null;
       threshold: number;
     };
   };
@@ -480,6 +489,7 @@ export function scoreRows(
     sumAlways = 0,
     sumRegretCt = 0,
     sumP = 0,
+    nP = 0,
     sPos = 0;
   for (const r of rows) {
     const o = rowOutcome(r, eps, liters);
@@ -495,7 +505,10 @@ export function scoreRows(
     sumBest += Math.max(r.best, 0);
     sumAlways += Math.max(r.s, 0);
     sumRegretCt += o.regretCt;
-    sumP += r.p;
+    if (r.p != null && Number.isFinite(r.p)) {
+      sumP += r.p;
+      nP++;
+    }
     if (r.s > 0) sPos++;
   }
   const n = rows.length;
@@ -519,7 +532,8 @@ export function scoreRows(
     sum_always_eur: toEur(sumAlways),
     avg_regret_ct: n ? sumRegretCt / n : 0,
     avg_regret_eur: n ? toEur(sumRegretCt) / n : 0,
-    p_avg: n ? sumP / n : 0,
+    p_avg: nP ? sumP / nP : 0,
+    p_known: nP > 0,
     hit_freq: n ? sPos / n : 0,
     pot_share: sumSmartEur / pot,
   };
@@ -821,7 +835,39 @@ export function autoTimeTicks(from: number, to: number): TimeTick[] {
       hour: "2-digit",
       minute: "2-digit",
     });
-  for (let x = Math.ceil(from / step) * step; x <= to; x += step) {
+  // An Berliner Wanduhr ausrichten (nicht an UTC-Epoche): sonst stünden bei
+  // 24-h-Spannen krumme Labels wie 01:00/04:00 statt 00:00/03:00.
+  const berlinWall = (x: number) => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(x)
+      .reduce<Record<string, string>>((acc, p) => {
+        acc[p.type] = p.value;
+        return acc;
+      }, {});
+    return Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour) % 24,
+      Number(parts.minute),
+      Number(parts.second),
+    );
+  };
+  const offset = berlinWall((from + to) / 2) - (from + to) / 2;
+  for (
+    let x = Math.ceil((from + offset) / step) * step - offset;
+    x <= to;
+    x += step
+  ) {
     const label =
       clock(x) === "00:00"
         ? `${new Date(x).toLocaleDateString("de-DE", {
@@ -904,6 +950,31 @@ export const messages: Record<string, string> = {
   too_many_points:
     "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",
   invalid_query: "Ungültige Anfrageparameter.",
+  invalid_fuel: "Unbekannter Kraftstoff (e10, e5 oder diesel erwartet).",
+  invalid_liters: "Tankmenge außerhalb 5–100 Liter.",
+  invalid_consumption: "Verbrauch außerhalb 3–20 L/100 km.",
+  invalid_speed: "Tempo außerhalb 10–130 km/h.",
+  invalid_when: "Zeitpunkt nicht parsebar (ISO, HH:MM oder Stunde erwartet).",
+  invalid_value_of_time: "Zeitwert außerhalb 0–100 €/h.",
+  invalid_mode: "Unbekannter Trip-Modus (onroute oder dedicated erwartet).",
+  invalid_detour: "Umweg außerhalb 0–100 km.",
+  unknown_station: "Station nicht im Polling-Set.",
+  unknown_city: "Stadt nicht im Polling-Set.",
+  price_not_available:
+    "Kein Preis bestimmbar — weder live noch als Referenz. Später erneut versuchen.",
+  decide_failed: "Empfehlung konnte nicht berechnet werden.",
+  episode_not_found: "Episode unbekannt oder abgelaufen.",
+  episodes_read_failed: "Episoden konnten nicht gelesen werden.",
+  set_intent_failed: "Intent konnte nicht gespeichert werden.",
+  record_fill_failed: "Tankbeleg konnte nicht gespeichert werden.",
+  settlement_failed: "Settlement-Lauf ist fehlgeschlagen.",
+  stats_summary_failed: "Statistik konnte nicht berechnet werden.",
+  backtest_not_available:
+    "Noch kein Engine-Backtest veröffentlicht. Nach dem Modell-Job erscheinen hier echte 08:00-Entscheidungszeilen.",
+  payload_too_large: "Anfrage zu groß (max. 100 KB).",
+  invalid_json: "Anfrage ist kein gültiges JSON.",
+  invalid_request: "Ungültige Anfrage.",
+  server_error: "Serverfehler. Erneuter Versuch folgt.",
   not_found: "Endpunkt nicht gefunden.",
 };
 export function problem(code?: string | null) {
