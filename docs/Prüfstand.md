@@ -282,4 +282,173 @@ Emit-Station) die Folge schließen. Kein Test deckt das ab (in
 ### 3.3 P1 — Rate-Limit-Kontingent der GUI ist zu klein, und der Schlüssel ist unerreichbar
 
 Rechenweg aus den Poll-Intervallen (`web/src/Dashboard.tsx:569-718`):
-stations 30 s, decide 30 s, due 30 s, route/evaluate 30 s, stats 60 s, health 60 
+stations 30 s, decide 30 s, due 30 s, route/evaluate 30 s, stats 60 s, health 60 s
+(15 s während eines Job-Laufs), dayStrip 300 s ⇒ ≈ **10,2 Anfragen/min ≈ 14 700/Tag**
+pro offenem Tab — bei `rate_limit_anon_per_day = 10_000` (`app/config.py`).
+Ein dauerhaft geöffneter Handy-Tab ist also nach ~16 h den Rest des Tages auf 429.
+Dazu passend antwortet `Retry-After` minutes-based (`app/ratelimit.py:120`), als
+könne der Client in 60 s weitermachen; der Tageszähler braucht bis zu 24 h.
+Der Keyed-Tier (300/min, 50 000/Tag) ist für die GUI praktisch unerreichbar, weil
+kein Fetch `X-Api-Key` mitsendet und es dafür keine Einstellung gibt.
+Außerdem: `self._buckets` ist ein dict nach Peer-Adresse **ohne Eviction** — als
+öffentlich exponierte API (§12 P1) ein langsamer Speicherfresser.
+Fix-Richtung: Long-Polling/SSE oder ein gebündelter Endpunkt statt 6 Ressourcen,
+Tagesgrenze hoch oder GUI-interner Key via Same-Origin-Cookie/Header, LRU + Sweep.
+
+### 3.4 P1 — `no prices`-Alarm nach 35 Minuten statt nach 7 Tagen
+
+`data-tools/collect_prices.py:611-616` zählt die Kommentarzeile „nach 7 Tagen" als
+**Polls**: `stale_no_price[uid] >= 7` bei 5-min-Kadenz = 35 min. Ein Zapfhahn, der
+morgens um 6 Uhr noch keine Preise liefert, löst damit jeden Tag Alarme aus
+(und der Zähler verpufft, weil er bei jedem `open`/`closed` zurückgesetzt wird).
+Auf 7 × 288 Polls (bzw. explizit `no_prices_days`-Zählung über Kalendertage)
+stellen, sonst ist §1.2 nicht erfüllt und der Alarm nur Rauschen.
+
+### 3.5 P2 — Zu großer Feedback-Store wird stillschweigend geleert
+
+`app/data.py:78-83` (von `feedback.load_store` mitbenutzt):
+
+```python
+if path.stat().st_size > 10_000_000:
+    return default          # → load_store liefert {episodes:[], fills:[], settlements:[]}
+```
+
+`locked_store` schreibt danach zurück ⇒ ab 10 MB sind Advice-Historie, Brier-Grundlage
+und Wallet **weg**, ohne Fehler. Verschärfend: `record_snapshot` läuft bei *jedem*
+`/api/v1/decide` (GUI: alle 30 s) und es gibt **keine Retention** für
+Episodes/Snapshots/Settlements. Fix: expliziter `store_too_large`-Fehler statt
+Default-Rückfall, Kappung/Rotation (z. B. 90 Tage + Parquet/JSONL-Archiv), und
+Schreibdrossel (Snapshot nur bei echtem Wechsel oder ≥ 30 min, nicht bei jedem GET).
+
+### 3.6 P2 — „30 Tage"-Kennzahlen sind Allzeit-Zahlen
+
+`compute_advice_stats` (`app/feedback.py:700-833`) und `compute_wallet_stats` filtern
+**nie nach Zeit**, nennen die Ergebnisse aber `brier_30d`; `app/decide.py:655-663`
+tauscht sie in `last_30d_hits` / `last_30d_total` / `fills_30d` / `saved_eur_30d`, und
+`Dashboard.tsx:1650` schreibt wörtlich „Brier-Score 30d:". §5.2 zeigt dem Nutzer eine
+30-Tage-Bilanz als *Vertrauensbeweis*, §5.5 verlangt „Aggregation 7/30 Tage". Eine
+Wochensaison alter Zahlen überdeckt einen Regimewechsel. Fix: Fenster wirklich
+schneiden (und optional zusätzlich allzeit ausweisen).
+
+Nebenbefund: Das Gate `calibrated = n >= 100 and brier_30d < 0.25` vergleicht die
+Gesamtzahl `n` mit dem Brier über `n_brier` (nur Snapshots mit gespeicherter
+P-Schätzung). Bei `n = 100, n_brier = 3` öffnet das Gate wegen dreier Fälle.
+§0.4 meint „100 **abgeschlossene Empfehlungen**" *derselben* Grundgesamtheit.
+
+### 3.7 P2 — Konzepteigene Felder gehen auf dem Weg in den Store verloren
+
+`evaluate_decide` schreibt `trip_mode` und `latest_by` in `snapshot_input`
+(`app/decide.py:601-627`), `record_snapshot` baut das Snapshot-Objekt aber aus einer
+festen Feldliste (`app/feedback.py:206-230`) — beide Werte landen nie im Store.
+Für die spätere Auswertung (Wurde unter einem Deadline-Druck empfohlen? Dedicated-
+Fahrt?) sind sie damit verloren; das Matching in `classify_compliance` kann sie auch
+nicht nutzen.
+
+### 3.8 P3 — Kleinigkeiten
+
+* `ops/nas/preflight.sh:31-35`: Stationszahl wird als `sum(len(v) for v in sets.values())`
+  berechnet — das zählt **JSON-Schlüssel je Set** (label/anchor/batch/stations/…), nicht
+  Stationen. Ausgabe „(6 Stationen)" statt 10.
+* `app/server.py:247` sendet `Cache-Control: no-store` auf **allen** Antworten, auch auf
+  die content-hashierten Vite-Assets — verhindert Asset-Caching und steht dem
+  Lighthouse-Ziel aus §13 M4 im Weg; der Service Worker holt das nur teilweise zurück.
+* `python -m engine.cli …` ist ein Stillstand-Null-Exit (`engine/cli.py` hat keinen
+  `__main__`-Block); korrekt ist `python -m engine`. Einzelfehler in der Doku wäre es
+  nicht, aber die Hürde ist vermeidbar.
+* `docs/ANALYSE.md:139` listet den Hampel-Filter als Aufbereitungsschritt 3,
+  ohne „Ziel"; er existiert nicht.
+* `app/decide.py:475` und `app/feedback.py:580` fallbacken die Stadt auf das
+  Hartcodierte `"Frankfurt"`. Bei einem Snapshot ohne `city` rechnet das Settlement
+  gegen eine andere Stadt — still.
+* Engine-Doku (`engine/README.md`) verwendet durchgängig `py -3` und Backslash-Pfade;
+  Zielsystem ist das Linux-NAS.
+
+---
+
+## 4. Was fehlt (gegenüber dem Zielbild), knapp sortiert
+
+**Konzeptseitig offen, aber dokumentiert** (Widerspruch nur in LUECKEN.md, die diese
+Punkte als „fertig" führt: §4.1–4.3):
+
+1. P_besser aus der Prognoseverteilung (§4.1) — heute Ledger-Grundrate.
+2. P_lohnt aus gemeinsamer Ziehung (§4.2) — fehlt völlig; setzt Veröffentlichung von
+   Bootstrap-Pfaden (oder Entscheidung im Worker) voraus.
+3. F3 je Fenster: P(Fenster schlägt ±6-h-Umfeld) und Ersparnis vs. jetzt (§4.3).
+4. Güte-Gate als Vorstufe aller Ratschläge: Rolling-PICP je Station +
+   Badge-Prüfung (§3.3.3, §4.4, §4.5 Schritt 1).
+5. Produkt-KPI Top-3-Fenster-Trefferquote (§6) — Engine liefert je Tag nur eine
+   Entscheidungsstunde; braucht Fensterstruktur im Backtest.
+6. §11.1 Standortwahl `lat`/`lon` (und damit freie Umkreissuche).
+7. Offline-Queue für Intent/Fill (IndexedDB, §5.4) — `postIntent`/`postFill`
+   verlieren POSTs kommentarlos; das hängt mit §3.1/3.2 zusammen: eine Queue ohne
+   Server-Validierung wiederholt nur die giftigen Payloads.
+8. ACI, Zweitmodell/Ensemble, Mehrtage-Backtests, Markenrabatte, w(h)-Rückkopplung,
+   Push — alle bewusst zurückgestellt, Begründungen sind gut.
+
+**Nicht im Konzept, aber für den Betrieb nötig:**
+
+9. CI für die M4-Hartkriterien (Lighthouse, „≤ 3 primäre Zahlen") und für
+   Browser-Tests der B4-Flows.
+10. Auth/Rollenschiene für die Schreib-Endpunkte: Fills/Intents sind an keinen
+    Nutzer gebunden; ein zweiter Nutzer schreibt in dasselbe Wallet und in dieselbe
+    Episode (und damit in dasselbe M7-Gate).
+
+---
+
+## 5. Was auffällig gut ist (und gehalten hat)
+
+* **Ehrlichkeits-Regel ist Code, nicht Prosa**: `calibrated=False`,
+  `decision_ready=False`, leere Listen/`error_code` statt Hochrechnungen — an ~15
+  Stellen konsistent durchgehalten und durch Tests erzwungen
+  (`test_stats_summary_no_demo_data`, `test_day_series_no_demo_data`).
+* Engine verweigert Demo-/Synthetikeingänge aktiv (`engine/data.py:69`) und markiert
+  `mase_jump_free_below_0_80` als `None`, statt mit einem Ad-hoc-Sprunglabel zu
+  schummeln (`engine/backtest.py:264`).
+* Saubere Idempotenz-Ideen überall: Influx-Dedup über festen Zeitstempel,
+  Fill-`id`, Webhook-Watermark mit Debounce, `pending` vs. `void` im Settlement statt
+  Raten.
+* Fortschritt/Log der NAS-Jobs ohne Credentials, atomare Veröffentlichung,
+  alte Artefakte bleiben bei Fehlern stehen.
+* Die LUECKEN.md ist — für die Punkte, die sie nennt — akkurat. Man kann sie als
+  Arbeitsgrundlage benutzen; sie ist nur an §4 und §6 zu optimistisch.
+
+---
+
+## 6. Test- und Doku-Abdeckung
+
+| Bereich | Python | Web |
+|---|---|---|
+| Collector/Uploader/Polling | `test_data.py`, `test_export_influx.py`, `test_influx_*`, `test_polling_exclusions.py` | – |
+| Engine/Backtest/Bootstrap/Selektion | `test_backtest.py`, `test_models.py`, `test_bootstrap.py`, `test_selection.py`, `test_station_comparison.py` | – |
+| API + Jobs + B5-Schutz | `test_app.py`, `test_app_jobs.py`, `test_model_jobs.py`, `test_operations.py`, `test_b5.py` (Rate-Limit, Deprecation, `latest_by`, Fahrtmodus, Tuning) | – |
+| Decision Layer/Fills | `test_b4.py` (11 Tests) | ⚠️ **kein e2e** für `decide`, `fills`, `intent`, Due-Prompt — `app.spec.ts`/`horizons.spec.ts` mocken nur `stations`/`series`/`forecast` |
+| Rechenlogik der GUI | – | `src/data.test.ts` (26) |
+| RP2 | `test_rp2_fallback.py` | – |
+| Lighthouse / M4-Kriterien | ❌ nirgends | ❌ kein Job |
+
+Lücken im Verhalten, die ich vermissen würde: Fill-Validierung (3.1), Episode-
+Schluss bei `unrelated` (3.2), Store-Größenfall (3.5), Tagesfenster der Statistik
+(3.6), verlorene Snapshot-Felder (3.7).
+
+---
+
+## 7. Empfohlene Reihenfolge
+
+1. **P1-Schreibpfad dicht machen:** Fill-Validierung + Nowcast-Preis statt 1,70,
+   4xx-Status, `compliance`-Bedingung fürs Resolve, `worth_it` aus der Schwellen-Config.
+   (½ Tag, incl. Tests.)
+2. **Ledger-Integrität:** Retention/Rotation + `store_too_large`-Fehler statt
+   Silent-Reset, Schreibdrossel für Snapshots. (½ Tag)
+3. **GUI-Kontingent:** Poll-Bündelung oder Key für die eigene App, `Retry-After`
+   korrekt, Bucket-Eviction. (½ Tag)
+4. **Doku-Schnellkorrektur:** API.md `POST /v1/episodes` streichen bzw. auf
+   `/intent` stellen, 501 → JSON, `lat`/`lon`-Status in §11.1 klar als „offen",
+   `docs/ANALYSE.md` Hampel als „offen" markieren, LUECKEN-Eintrag §4.1–4.3 von
+   „fertig" auf „Regel fertig, Wahrscheinlichkeiten abweichend" stellen. (¼ Tag)
+5. **Alarm-Semantik:** `no prices` auf Tage umstellen. (¼ Tag)
+6. **Die P-Seite bauen, die das Konzept verspricht:** Pfade (oder Draw-Berechnung im
+   Worker) veröffentlichen → `p_besser`/`p_lohnt` je Fall; `rolling_picp` je Station
+   als Gate vor §4.1/§4.2; F3 je Fenster mit ±6-h-Vergleich. Das ist der einzige
+   Punkt auf dieser Liste, der ein echtes M5-M6-Projekt ist — und der einzige, der
+   den Produktkern („Entscheidung mit Kalibrierungsangabe") von einer netten
+   Historienstatistik unterscheidet.

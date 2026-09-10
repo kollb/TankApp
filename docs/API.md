@@ -52,7 +52,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 |---|---|---|
 | `GET /api/v1/decide?city=...&fuel=...&liters=40` | **B4** | Handlungsempfehlung + 3-Wege-Vergleich + Snapshot-Emission |
 | `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
-| `POST /api/v1/episodes` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
+| `POST /api/v1/episodes/{episode_id}/intent` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
 | `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |

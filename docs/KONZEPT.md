@@ -1106,7 +1106,7 @@ Parameter:
 
 | Parameter | Bedeutung |
 |---|---|
-| `lat`, `lon` | Standort (Pflicht) |
+| `lat`, `lon` | Standort (Pflicht im Zielbild; **offen**: die App arbeitet heute mit dem kuratierten Polling-Set, beide Parameter werden noch nicht ausgewertet — [LUECKEN](LUECKEN.md) / [TODO D6](TODO.md)) |
 | `fuel` | `E10` (Default) · `E5` · `Diesel` |
 | `liters` | Tankmenge, Default 40 |
 | `consumption` | L/100 km, Default Profil |

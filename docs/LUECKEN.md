@@ -68,11 +68,11 @@
 | 0.1–0.3 | Drei Fragen, zwei Modi, eine Zahl |fertig (Alltag/Werkstatt-Tabs, Ampelkarte) |
 | 0.4 | Kalibrierungs-Gate (Brier < 0,25, n ≥ 100) |fertig als hartes Gate; offen bis echte Daten (M7) |
 | 1 | Tankerkönig-Collector, tmpfs, Upload |fertig (M1) |
-| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10) |
-| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |fertig; M3-Zweitmodell/Ensemble offen |
+| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10); **Abweichung**: GUI sortiert nach δ̂-Score, Konzept §2/§8.2 Nr. 7 verlangt Sortierung nach Empfehlungsstärke ([Prüfstand §1.2](Prüfstand.md), [TODO C7/D2](TODO.md)) |
+| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **offen**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy, Zeit-seit-Sprung-Feature, M3-Zweitmodell/Ensemble ([Prüfstand §1.3](Prüfstand.md)) |
 | 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
 | 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; Mehrtage-Backtests offen |
-| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |fertig (B4) + `latest_by` (B5) |
+| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite abweichend**: `p_besser` ist eine Ledger-Trefferquote (Laplace-geglättet), nicht die Prognoseverteilungs-Wahrscheinlichkeit aus §4.1; `p_lohnt` (§4.2) und F3-Fenster-P fehlen ([Prüfstand §1.4](Prüfstand.md), [TODO C8](TODO.md)) |
 | 4.4 | „Keine klare Empfehlung“ |fertig |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig |
@@ -92,7 +92,7 @@
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
 | 12 P2 | Push, Belege |offen (siehe unten) |
 | 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig; M3 ohne Echt-Daten-Abnahme |
-| 13 M5 | TankPuls-API |fertig (B4 + B5: Rate-Limit, Deprecation) |
+| 13 M5 | TankPuls-API |fertig (B4 + B5: Rate-Limit, Deprecation); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium ([TODO D5](TODO.md)) |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
 | 13 M7 | Kalibrierungs-Loop |Vorschlag und Regler fertig (B5); Anziehen der Schwellen erst mit echten Live-Daten sinnvoll |
 
