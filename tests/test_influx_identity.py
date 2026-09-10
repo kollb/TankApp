@@ -547,3 +547,175 @@ def test_cli_timezone_dry_run_without_credentials(
     output = capsys.readouterr().out
     assert "Europe/Berlin" in output and "1 Snapshot(s) ohne Offset" in output
     assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
+
+
+# ---------------------------------------------------------------------------
+# Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write
+# ---------------------------------------------------------------------------
+
+
+def webhook_cfg(uploader, saved_buffer, url, token=""):
+    cfg, _ = saved_buffer
+    # Ack vor den Snapshot zurücksetzen, damit der Upload Zeilen hat
+    # ( gleiche Ausgangslage wie test_normal_upload_keeps_ack_until_success...).
+    if url:
+        cfg.ack_file.write_text("2026-09-07T05:00:00+00:00\n")
+    return uploader.Cfg(
+        cfg.url,
+        cfg.org,
+        cfg.bucket,
+        cfg.token,
+        cfg.poll_dir,
+        cfg.poll_json,
+        nas_webhook_url=url,
+        nas_webhook_token=token,
+    )
+
+
+def test_upload_success_triggers_nas_webhook_with_watermark(
+    uploader, saved_buffer, monkeypatch, capsys
+):
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        status = 200
+
+    def fake_urlopen(request, timeout):
+        calls.append(
+            (
+                request.full_url,
+                json.loads(request.data.decode()),
+                dict(request.headers),
+                timeout,
+            )
+        )
+        return FakeResponse()
+
+    monkeypatch.setattr(uploader.urllib.request, "urlopen", fake_urlopen)
+    cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="shared-secret")
+    monkeypatch.setattr(uploader, "influx_write", lambda cfg, lines: None)
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    assert len(calls) == 1
+    url, payload, headers, timeout = calls[0]
+    assert url == "http://nas:1355/api/v1/jobs/trigger"
+    assert payload["job"] == "models"
+    # Watermark = Epochensekunden des neuesten Snapshots (TIME, UTC).
+    import datetime as dt
+
+    expected = int(dt.datetime.fromisoformat(TIME).timestamp())
+    assert payload["watermark"] == expected
+    assert headers.get("Authorization") == "Bearer shared-secret"
+    assert timeout <= uploader.WEBHOOK_TIMEOUT_S
+    # Trigger-Log darf das Secret nie enthalten.
+    captured = capsys.readouterr()
+    assert "shared-secret" not in captured.out + captured.err
+
+
+def test_webhook_failure_never_breaks_upload(uploader, saved_buffer, monkeypatch):
+    def boom(request, timeout):
+        raise urllib.error.URLError("trigger weg")
+
+    monkeypatch.setattr(uploader.urllib.request, "urlopen", boom)
+    cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="t")
+    received = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: received.extend(lines)
+    )
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    assert len(received) == 2
+    # Ack trotzdem vorgerückt — der Webhook ist reiner Optimierungsweg.
+    assert cfg.ack_file.read_text().strip() == TIME
+
+
+def test_webhook_rate_limited_and_only_with_price_rows(
+    uploader, saved_buffer, monkeypatch
+):
+    import datetime as dt
+    import time as time_mod
+
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        status = 200
+
+    monkeypatch.setattr(
+        uploader.urllib.request,
+        "urlopen",
+        lambda request, timeout: calls.append(request) or FakeResponse(),
+    )
+    cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="t")
+    monkeypatch.setattr(uploader, "influx_write", lambda cfg, lines: None)
+    state = uploader.State()
+    assert uploader.run_upload(cfg, state) == 0
+    assert len(calls) == 1
+
+    # Gap-Sperre: zweiter Trigger direkt danach wird gedrosselt.
+    uploader.notify_nas(cfg, state, dt.datetime.fromisoformat(TIME))
+    assert len(calls) == 1
+    state.last_webhook = time_mod.monotonic() - uploader.WEBHOOK_MIN_GAP_S - 1
+    uploader.notify_nas(cfg, state, dt.datetime.fromisoformat(TIME))
+    assert len(calls) == 2
+
+    # Ohne konfigurierte URL: gar kein Netzwerkcall (Standardbetrieb).
+    cfg_off = webhook_cfg(uploader, saved_buffer, "")
+    state.last_webhook = 0.0
+    uploader.notify_nas(cfg_off, state, dt.datetime.fromisoformat(TIME))
+    assert len(calls) == 2
+
+
+def test_webhook_skipped_when_only_heartbeat_uploaded(
+    uploader, saved_buffer, monkeypatch
+):
+    cfg, path = saved_buffer
+    writes = []
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        status = 200
+
+    monkeypatch.setattr(
+        uploader.urllib.request,
+        "urlopen",
+        lambda request, timeout: calls.append(request) or FakeResponse(),
+    )
+    cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="t")
+    cfg.ack_file.write_text(TIME + "\n")  # alles schon hochgeladen
+
+    def write(cfg, lines):
+        writes.extend(lines)
+
+    monkeypatch.setattr(uploader, "influx_write", write)
+    # Heartbeat vorhanden, aber keine Preiszeilen hinter dem Ack.
+    heartbeat = cfg.poll_dir / "meta" / "heartbeat.json"
+    heartbeat.write_text(
+        json.dumps(
+            {
+                "last_poll_at": "2026-09-07T06:05:00+00:00",
+                "city": "Testmarkt",
+                "poll_count": 12,
+                "tmpfs": {"total_bytes": 1, "used_bytes": 1},
+                "oldest_file": {"age_days": 0.1},
+            }
+        )
+    )
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    assert len(writes) == 1 and "collector_status" in writes[0]
+    assert calls == []  # Heartbeat-Write löst keinen Modell-Trigger aus

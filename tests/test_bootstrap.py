@@ -1,11 +1,15 @@
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from engine.bootstrap import bootstrap
 from engine.cli import main
+from engine.config import Config
 from engine.data import load_observations, normalize_observations, prepare_series
+from engine.models import exp_block_weights
+from engine.selection import _day_block_bootstrap, exp_weights
 
 
 def normalized(raw, cfg):
@@ -197,3 +201,61 @@ def test_two_city_ten_minute_cadence_is_not_a_fifty_percent_outage(observations,
     _, report = bootstrap(data, cfg, "2026-08-30", expected_poll_minutes=10)
     assert report["stations"][0]["mode"] == "live_only"
     assert report["stations"][0]["expected_poll_minutes"] == 10
+
+
+# --- Issue 46: exponentiell gewichteter Tagesblock-Bootstrap ---
+
+
+def test_exp_weights_none_is_uniform_and_sum_is_one():
+    assert exp_weights(10, None) is None
+    assert exp_weights(10, 0) is None
+    assert exp_weights(10, -3) is None
+    assert exp_weights(0, 14.0) is None
+    weights = exp_weights(42, 14.0)
+    assert weights is not None
+    assert len(weights) == 42
+    assert weights.sum() == pytest.approx(1.0)
+    # Neueste Blöcke (hinten) wiegen am stärksten, monoton steigend.
+    assert bool(np.all(np.diff(weights) > 0))
+    # Halbwertszeit: Gewicht halbiert sich je 14 Tage Alter.
+    assert weights[-1] / weights[-15] == pytest.approx(2.0)
+    # 5 Wochen alter Block wiegt noch ~18 % eines aktuellen Blocks.
+    assert weights[0] / weights[-1] == pytest.approx(0.5 ** (41 / 14.0))
+    # Letzte 5 Tage dominieren die ersten 5 Tage deutlich.
+    assert weights[-5:].sum() > 5 * weights[:5].sum()
+
+
+def test_models_and_selection_weights_agree():
+    for n, half_life in ((1, 14.0), (7, 7.0), (42, 14.0), (84, 14.0)):
+        a = exp_block_weights(n, half_life)
+        b = exp_weights(n, half_life)
+        np.testing.assert_allclose(a, b)
+
+
+def test_config_default_is_ew_and_uniform_is_selectable():
+    assert Config().bootstrap_ew_half_life_days == 14.0
+    assert Config(bootstrap_ew_half_life_days=None).bootstrap_ew_half_life_days is None
+    with pytest.raises(ValueError, match="half_life"):
+        Config(bootstrap_ew_half_life_days=0.5)
+    with pytest.raises(ValueError, match="half_life"):
+        Config(bootstrap_ew_half_life_days=400)
+
+
+def test_ew_bootstrap_reacts_faster_after_regime_shift():
+    """Synthetischer Regimewechsel: EW-Bootstrap liegt näher am neuen Regime."""
+    rng = np.random.default_rng(7)
+    days = np.repeat(np.arange(42), 24)
+    noise = rng.normal(0, 0.2, len(days))
+    delta = np.where(days < 21, noise, -5.0 + noise)
+    boots_uniform, _ = _day_block_bootstrap(
+        delta, days.astype(float), 500, np.random.default_rng(11), None
+    )
+    boots_ew, _ = _day_block_bootstrap(
+        delta, days.astype(float), 500, np.random.default_rng(11), 14.0
+    )
+    mean_uniform = float(np.median(boots_uniform))
+    mean_ew = float(np.median(boots_ew))
+    # Uniform mischt beide Regime (~-2,5), EW liegt näher bei -5.
+    assert mean_uniform == pytest.approx(-2.5, abs=0.6)
+    assert mean_ew < mean_uniform
+    assert abs(mean_ew - (-5.0)) < abs(mean_uniform - (-5.0))

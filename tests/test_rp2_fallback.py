@@ -295,18 +295,28 @@ def test_point_stats_uniform_assumption():
     # q025=1.60, q975=1.80, aktuell 1.70 -> P(günstiger)=0.5,
     # E[min(0, 1.70-X)] = d^2/(2w) = 0.1^2/(2*0.2) = 0.025
     stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.70)
-    assert stats["p_better"] == pytest.approx(0.5, abs=1e-9)
+    assert stats["price_score"] == pytest.approx(0.5, abs=1e-9)
     assert stats["exp_saving_per_l"] == pytest.approx(0.025, abs=1e-9)
     # aktuell über q975 -> P=1, Ersparnis = 1.90 - Mittel(1.70) = 0.20
     stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.90)
-    assert stats["p_better"] == 1.0
+    assert stats["price_score"] == 1.0
     assert stats["exp_saving_per_l"] == pytest.approx(0.20, abs=1e-9)
     # aktuell unter q025 -> kein Gewinn
     stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.50)
-    assert stats["p_better"] == 0.0
+    assert stats["price_score"] == 0.0
     assert stats["exp_saving_per_l"] == 0.0
     # kaputte Quantile -> None
     assert rp2.point_stats({"q025": 1.9, "q975": 1.8}, 1.7) is None
+
+
+def test_template_labels_score_not_probability():
+    """Issue 49: Fallback-UI nennt den Wert „Preis-Score“ (historisches
+    Quantil), nie „Wahrscheinlichkeit“ — die kalibrierte M7-Wahrscheinlichkeit
+    bleibt dem NAS vorbehalten."""
+    html = rp2.DEFAULT_INDEX_HTML
+    assert "Wahrsch. günstiger" not in html
+    assert "Preis-Score" in html
+    assert "keine kalibrierte Wahrscheinlichkeit" in html
 
 
 def test_summarize_forecast_ignores_past_points():
@@ -370,6 +380,14 @@ def test_fallback_api_endpoints(tmp_path):
         assert decide["f2"]["price"] == 1.699
         assert decide["f1"]["available"] is True
         assert decide["f1"]["recommendation"] in ("wait", "refuel_now")
+        # Issue 49: Der Gleichverteilungs-Fallback darf sich nicht
+        # „Wahrscheinlichkeit“ nennen — nur Preis-Score/historisches Quantil.
+        f1_text = decide["f1"]["reason"] + " " + decide["f1"]["basis"]
+        # Die alte falsche Behauptung darf nicht mehr auftreten; der Wert wird
+        # als Preis-Score/historisches Quantil ausgewiesen (der explizite
+        # Disclaimer „keine kalibrierte Wahrscheinlichkeit“ ist erlaubt).
+        assert "Wahrscheinlichkeit unter dem jetzigen Preis" not in f1_text
+        assert "Preis-Score" in f1_text and "Quantil" in f1_text
         if decide["f1"]["recommendation"] == "wait":
             assert decide["f1"]["expected_saving_eur_tank"] >= 1.0
     finally:

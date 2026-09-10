@@ -257,25 +257,32 @@ def load_forecasts(cache_file: Path) -> dict | None:
 
 
 def point_stats(point: dict, current_price: float | None) -> dict | None:
-    """P(Prognose < aktueller Preis) + erwartete Ersparnis/Liter.
+    """Preis-Score (0…1) + erwartete Ersparnis/Liter — KEINE Wahrscheinlichkeit.
 
-    Vereinfachte Annahme: gleichförmige Verteilung zwischen q025 und q975
-    (transparente Schätzung ohne Modell — die exakte Logik läuft auf dem NAS).
+    Vereinfachte Annahme: gleichförmige Verteilung zwischen den historischen
+    Quantilen q025 und q975 (Formfehler bis ~8,4 Prozentpunkte gegenüber der
+    kalibrierten Posterior M7). Die GUI darf das deshalb nicht
+    „Wahrscheinlichkeit“ nennen, sondern nur „Preis-Score“ auf Basis des
+    historischen Quantils. Die kalibrierte Wahrscheinlichkeit liefert
+    ausschließlich das NAS (M7).
     """
     lo, hi = point.get("q025"), point.get("q975")
     if not (is_number(lo) and is_number(hi) and hi > lo):
         return None
-    p_better = 0.0
+    price_score = 0.0
     exp_saving = 0.0
     if current_price is not None:
-        p_better = max(0.0, min(1.0, (current_price - lo) / (hi - lo)))
+        price_score = max(0.0, min(1.0, (current_price - lo) / (hi - lo)))
         if current_price > lo:
             if current_price >= hi:
                 exp_saving = current_price - (lo + hi) / 2.0
             else:
                 d = current_price - lo
                 exp_saving = d * d / (2.0 * (hi - lo))
-    return {"p_better": round(p_better, 3), "exp_saving_per_l": round(exp_saving, 5)}
+    return {
+        "price_score": round(price_score, 3),
+        "exp_saving_per_l": round(exp_saving, 5),
+    }
 
 
 def summarize_forecast(
@@ -306,7 +313,7 @@ def summarize_forecast(
             "q50": p.get("q50"),
             "q025": p.get("q025"),
             "q975": p.get("q975"),
-            "p_better": stats["p_better"],
+            "price_score": stats["price_score"],
             "expected_saving_ct_per_l": round(stats["exp_saving_per_l"] * 100, 1),
         }
 
@@ -837,14 +844,18 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     if summary:
                         best = summary["best"]
                         saving_eur = best["expected_saving_ct_per_l"] / 100.0 * liters
-                        wait = saving_eur >= WAIT_THRESHOLD_EUR and best["p_better"] >= 0.5
+                        wait = (
+                            saving_eur >= WAIT_THRESHOLD_EUR
+                            and best["price_score"] >= 0.5
+                        )
                         f1 = {
                             "available": True,
                             "recommendation": "wait" if wait else "refuel_now",
                             "reason": (
                                 f"Prognose rechnet bis {best['time']} Uhr mit ~"
-                                f"{best['q50']:.3f} € ({int(round(best['p_better'] * 100))} % "
-                                f"Wahrscheinlichkeit unter dem jetzigen Preis), erwartet "
+                                f"{best['q50']:.3f} € (Preis-Score "
+                                f"{int(round(best['price_score'] * 100))} % auf Basis "
+                                f"des historischen Quantils), erwartet "
                                 f"~{saving_eur:.2f} € Ersparnis für {liters} L."
                                 if wait
                                 else "Kein deutlich günstigeres Fenster in den nächsten 24 h "
@@ -852,11 +863,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                             ),
                             "best_at": best["at"],
                             "expected_price": best["q50"],
-                            "p_better": best["p_better"],
+                            "price_score": best["price_score"],
                             "expected_saving_eur_tank": round(saving_eur, 2),
                             "current_price": cheapest[fuel],
-                            "basis": "gecachte Prognose, vereinfachte Quantils-Logik "
-                                     "(q025/q975-Annahme); exakte Berechnung läuft auf dem NAS",
+                            "basis": "Preis-Score aus historischen Quantilen "
+                                     "(Gleichverteilung zwischen q025/q975) — "
+                                     "keine kalibrierte Wahrscheinlichkeit; "
+                                     "die exakte M7-Berechnung läuft auf dem NAS",
                         }
                         windows = summary["windows"]
 
@@ -1437,9 +1450,10 @@ function renderDecision(decide, forecasts) {
     html += '<div class="numbers">' +
       '<div class="num"><b>' + eur(f1.current_price) + " €</b><span>jetzt (" + esc(FUEL_LABEL[state.fuel]) + ")</span></div>" +
       '<div class="num"><b>' + eur(f1.expected_price) + " €</b><span>erwartet " + esc((f1.best_at || "").slice(11, 16)) + " Uhr</span></div>" +
-      '<div class="num"><b>' + pct(f1.p_better) + "</b><span>Wahrsch. günstiger</span></div>" +
+      '<div class="num"><b>' + pct(f1.price_score) + "</b><span>Preis-Score</span></div>" +
     "</div>";
-    html += '<div class="detail muted" style="margin-top:10px">Basis: Prognose von ' +
+    html += '<div class="detail muted">Preis-Score: 0–100 % auf Basis des historischen Quantils (q025–q975), keine kalibrierte Wahrscheinlichkeit. Die kalibrierte M7-Wahrscheinlichkeit liefert nur das NAS.</div>' +
+    '<div class="detail muted" style="margin-top:10px">Basis: Prognose von ' +
       esc(fc.station || "?") + " vom " + esc(fc.generated_at ? relDay(fc.generated_at) : "?") +
       " (" + (fc.age_hours ?? "?") + " h alt) · " + esc(f1.basis || "") + "</div>";
   } else {
@@ -1454,7 +1468,7 @@ function renderDecision(decide, forecasts) {
     for (const w of windows) {
       html += '<div class="window">' +
         '<span class="when">' + esc(relDay(w.at)) + "</span>" +
-        '<span class="muted">~' + eur(w.q50) + " € · " + pct(w.p_better) + " günstiger</span>" +
+        '<span class="muted">~' + eur(w.q50) + " € · Preis-Score " + pct(w.price_score) + "</span>" +
         '<span class="save">−' + eurTank((w.expected_saving_ct_per_l / 100) * state.liters) + "</span>" +
       "</div>";
     }

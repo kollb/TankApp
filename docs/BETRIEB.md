@@ -103,6 +103,8 @@ TANKAPP_INFLUX_ORG=gtwrlab
 TANKAPP_INFLUX_BUCKET=tankapp
 TANKAPP_INFLUX_TOKEN=<Token>
 TANKAPP_POLL_DIR=/dev/shm/tankapp
+TANKAPP_NAS_WEBHOOK_URL=http://192.168.178.61:1355
+TANKAPP_NAS_WEBHOOK_TOKEN=<gleiches Secret wie TANKAPP_WEBHOOK_TOKEN auf dem NAS>
 ENV
 sudo chmod 600 /etc/tankapp/env
 
@@ -222,6 +224,12 @@ Benötigt:
 1. Aktives `docs/analysis/stations/polling.json` vom Pi nach Aktivierung
 2. `data/influx.env` mit Lesezugang (Nur-Lese-Token, URL = NAS-LAN-Adresse:8086, nicht localhost)
 3. Archivzugang privat als `data/_netrc` oder `~/.netrc` (nicht Collector-Key). Ohne ihn startet Live-GUI trotzdem, aber keine Modelle.
+
+Optional, für die Ereignis-Pipeline (Uploader-Webhook, siehe `docs/ARCHITEKTUR.md`):
+`TANKAPP_WEBHOOK_TOKEN=<Secret>` exportieren, bevor `nas-up` das Compose-Projekt
+baut/aktualisiert; denselben Wert auf dem Pi als `TANKAPP_NAS_WEBHOOK_TOKEN`
+hinterlegen. Ohne Token bleibt der Trigger-Endpoint deaktiviert und die Jobs
+laufen rein intervallbasiert weiter.
 
 Mit anderen Pfaden:
 

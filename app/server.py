@@ -2,12 +2,14 @@
 
 import datetime as dt
 import functools
+import hmac
 import json
 import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -15,6 +17,15 @@ from polling_plan import collector_lock
 from .config import ROOT
 from .data import LiveData, read_json
 from .worker import INTERVALS
+
+# Issue 50: Der Uploader-Webhook darf ausschließlich diese Inferenz-Jobs
+# anstoßen. Separation of Concerns: Der Webhook meldet nur „neue Daten liegen
+# sicher in der InfluxDB“, ob/wann der Job läuft, entscheidet allein der
+# Scheduler; ohne Webhook bleibt alles beim intervallo-basierten Betrieb.
+TRIGGERABLE_JOBS = ("models", "selection")
+# Debounce: Mindestabstand zwischen zwei webhook-ausgelösten Läufen.
+TRIGGER_MIN_GAP_S = {"models": 900.0, "selection": 3600.0}
+DEFAULT_TRIGGER_GAP_S = 600.0
 
 
 class Scheduler:
@@ -25,6 +36,12 @@ class Scheduler:
         self.lock = threading.Lock()
         self.threads = []
         self.errors = {}
+        # Issue 50: pro Job ein Wake-Event + vorgemerkte Daten-Watermark.
+        self.wake = {name: threading.Event() for name in INTERVALS}
+        self.pending = {}
+        self.trigger_counts = {name: 0 for name in INTERVALS}
+        self.trigger_skips = {}
+        self.last_start = {}
 
     def start(self):
         for name in INTERVALS:
@@ -32,27 +49,87 @@ class Scheduler:
             thread.start()
             self.threads.append(thread)
 
+    def request(self, name, watermark=None):
+        """Webhook-Eingang: Watermark vormerken und die Job-Schleife aufwecken."""
+        if name not in TRIGGERABLE_JOBS:
+            return {"status": "rejected", "reason": "unknown_job"}
+        with self.lock:
+            self.pending[name] = watermark
+        self.wake[name].set()
+        return {"status": "queued", "job": name}
+
+    def job_state(self, name):
+        return read_json(self.settings.runtime / "jobs" / f"{name}.json", {})
+
+    def stale(self, name, state):
+        """True, wenn der letzte Erfolg älter als das Job-Intervall ist."""
+        try:
+            finished = dt.datetime.fromisoformat(str(state.get("last_success_at")))
+        except (TypeError, ValueError):
+            return True
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=dt.timezone.utc)
+        age = (dt.datetime.now(dt.timezone.utc) - finished).total_seconds()
+        return age >= INTERVALS[name]
+
+    def admit_trigger(self, name, watermark):
+        """Entscheidet über einen Webhook-Trigger: Debounce + Idempotenz."""
+        gap = TRIGGER_MIN_GAP_S.get(name, DEFAULT_TRIGGER_GAP_S)
+        if time.monotonic() - self.last_start.get(name, 0.0) < gap:
+            return "debounced"
+        state = self.job_state(name)
+        if (
+            watermark is not None
+            and isinstance(state, dict)
+            and state.get("state") == "success"
+            and str(state.get("data_watermark")) == str(watermark)
+            and not self.stale(name, state)
+        ):
+            # Gleicher Datenstand wie beim letzten erfolgreichen Lauf:
+            # Idempotenz — kein erneutes Trainieren für identische Eingabe.
+            return "duplicate"
+        return "run"
+
+    def next_delay(self, name, state):
+        if name in self.errors:
+            return 3600
+        if not isinstance(state, dict) or state.get("state") != "success":
+            return 3600
+        return INTERVALS[name]
+
     def loop(self, name):
+        wake = self.wake[name]
+        state = self.job_state(name)
+        first = True
         while not self.stop_event.is_set():
+            # Erster Lauf im Prozess: sofort (bisheriges Verhalten), danach
+            # Intervall bzw. Fehler-Backoff — unterbrochen durch Webhook-Triggers.
+            fired = wake.wait(0.0 if first else self.next_delay(name, state))
+            first = False
+            if self.stop_event.is_set():
+                break
+            watermark = None
+            if fired or wake.is_set():
+                wake.clear()
+                with self.lock:
+                    watermark = self.pending.pop(name, None)
+                    self.trigger_counts[name] += 1
+                decision = self.admit_trigger(name, watermark)
+                if decision != "run":
+                    with self.lock:
+                        self.trigger_skips[name] = decision
+                    continue
             try:
-                code = self.run_once(name)
+                code = self.run_once(name, watermark=watermark)
                 if code not in (None, 0, 2):
                     self.errors[name] = "job_start_failed"
                 else:
                     self.errors.pop(name, None)
             except OSError:
                 self.errors[name] = "job_start_failed"
-            state = read_json(self.settings.runtime / "jobs" / f"{name}.json", {})
-            delay = (
-                INTERVALS[name]
-                if name not in self.errors
-                and isinstance(state, dict)
-                and state.get("state") == "success"
-                else 3600
-            )
-            self.stop_event.wait(delay)
+            state = self.job_state(name)
 
-    def run_once(self, name):
+    def run_once(self, name, watermark=None):
         path = self.settings.runtime / "logs" / f"{name}.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and path.stat().st_size > 2_000_000:
@@ -68,10 +145,15 @@ class Scheduler:
             "TANKAPP_MODEL_FUELS": ",".join(self.settings.model_fuels),
             "OPENBLAS_NUM_THREADS": "1",
         }
+        if watermark is not None:
+            # Watermark mitgeben, damit der Worker sie bei Erfolg im
+            # Job-Status verankert (Grundlage der Idempotenz über Neustarts).
+            env["TANKAPP_TRIGGER_WATERMARK"] = str(watermark)
         with path.open("ab") as log:
             with self.lock:
                 if self.stop_event.is_set():
                     return
+                self.last_start[name] = time.monotonic()
                 process = subprocess.Popen(
                     [sys.executable, "-m", "app.worker", name],
                     cwd=ROOT,
@@ -89,6 +171,8 @@ class Scheduler:
 
     def stop(self):
         self.stop_event.set()
+        for wake in self.wake.values():
+            wake.set()
         with self.lock:
             for process in self.processes.values():
                 if process.poll() is None:
@@ -335,6 +419,38 @@ class Handler(SimpleHTTPRequestHandler):
                 self.json({"error_code": "server_error"}, 503)
             return
 
+        # --- Issue 50: Uploader-Webhook — Trigger nach sicherem InfluxDB-Write ---
+        if norm_path == "/api/v1/jobs/trigger":
+            expected = getattr(self.data.settings, "webhook_token", "")
+            scheduler = getattr(self.data, "scheduler", None)
+            endpoint_live = (
+                bool(expected)
+                and scheduler is not None
+                and bool(getattr(self.data, "jobs_enabled", False))
+            )
+            if not endpoint_live:
+                # Ohne Secret/Job-Betrieb existiert der Endpoint bewusst nicht.
+                self.json({"error_code": "not_found"}, 404)
+                return
+            auth = self.headers.get("Authorization", "")
+            if not hmac.compare_digest(auth, "Bearer " + expected):
+                self.json({"error_code": "unauthorized"}, 403)
+                return
+            job = payload.get("job")
+            raw_watermark = payload.get("watermark")
+            if job not in TRIGGERABLE_JOBS:
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            watermark = None
+            if raw_watermark is not None:
+                try:
+                    watermark = int(raw_watermark)
+                except (TypeError, ValueError):
+                    self.json({"error_code": "invalid_query"}, 400)
+                    return
+            self.json(scheduler.request(job, watermark), 200)
+            return
+
         # --- B4 Intent Endpoint: POST /api/v1/episodes/{id}/intent ---
         if norm_path.startswith("/api/v1/episodes/") and norm_path.endswith("/intent"):
             parts = norm_path.split("/")
@@ -412,6 +528,7 @@ def serve(settings, host="0.0.0.0", port=1355, jobs=False):
     live = LiveData(settings)
     live.jobs_enabled = jobs
     live.job_errors = scheduler.errors
+    live.scheduler = scheduler
     server = make_server(settings, host, port, live)
     context = (
         collector_lock(settings.runtime / "scheduler", label="NAS-Jobs")

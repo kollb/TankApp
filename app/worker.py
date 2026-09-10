@@ -2,6 +2,7 @@
 
 import argparse
 import datetime as dt
+import os
 import sys
 from zoneinfo import ZoneInfo
 
@@ -93,10 +94,15 @@ def run(name, settings):
     before = read_json(path, {})
     before = before if isinstance(before, dict) else {}
     started = dt.datetime.now(dt.timezone.utc)
+    # Issue 50: Daten-Watermark des auslösenden Webhooks (Epochensekunden).
+    # Der Scheduler nutzt sie für die Idempotenz-Entscheidung; sie wird nur
+    # bei Erfolg im Job-Status verankert.
+    trigger_watermark = os.environ.get("TANKAPP_TRIGGER_WATERMARK") or None
     state = {
         "state": "running",
         "started_at": started.isoformat(),
         "last_success_at": before.get("last_success_at"),
+        "data_watermark": before.get("data_watermark"),
         "error_code": None,
     }
     atomic_json(path, state)
@@ -112,6 +118,8 @@ def run(name, settings):
         )
         if outcome["state"] == "success":
             state["last_success_at"] = finished.isoformat()
+            if trigger_watermark:
+                state["data_watermark"] = trigger_watermark
         atomic_json(path, state)
         suffix = f" ({outcome['error_code']})" if outcome.get("error_code") else ""
         print(f"{name}: {state['state']}{suffix}", flush=True)

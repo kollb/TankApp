@@ -12,6 +12,7 @@ from app.worker import run
 
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
+NOW = dt.datetime(2026, 9, 8, 10, tzinfo=dt.timezone.utc)
 
 
 @pytest.fixture
@@ -310,18 +311,20 @@ def test_scheduler_retries_failed_starts_and_exposes_safe_status(
     scheduler = Scheduler(settings)
     calls = []
 
-    def once(name):
+    def once(name, watermark=None):
         calls.append(name)
         if isinstance(failure, Exception):
             raise failure
         return failure
 
     def wait(delay):
-        assert delay == 3600
-        scheduler.stop_event.set()
+        assert delay in (0, 3600)  # 0 = erster Starlauf im Prozess
+        if delay == 3600:
+            scheduler.stop_event.set()
+        return False
 
     monkeypatch.setattr(scheduler, "run_once", once)
-    monkeypatch.setattr(scheduler.stop_event, "wait", wait)
+    monkeypatch.setattr(scheduler.wake["archive"], "wait", wait)
     scheduler.loop("archive")
     assert calls == ["archive"]
     live = LiveData(settings)
@@ -347,3 +350,255 @@ def test_archive_worker_uses_explicit_berlin_calendar(tmp_path, monkeypatch):
     settings = Settings(data=tmp_path, netrc=netrc)
     assert worker.execute("archive", settings)["state"] == "success"
     assert isinstance(received["today"], dt.date)
+
+
+# ---------------------------------------------------------------------------
+# Issue 50: Ereignis-Pipeline — Webhook-Trigger, Debounce, Idempotenz
+# ---------------------------------------------------------------------------
+
+
+def write_job_state(tmp_path, name, *, success_at, watermark=None, state="success"):
+    import time as time_mod
+
+    path = tmp_path / "runtime" / "jobs" / f"{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(
+        time_mod.time() - success_at, tz=dt.timezone.utc
+    ).isoformat()
+    path.write_text(
+        json.dumps(
+            {
+                "state": state,
+                "last_success_at": stamp,
+                "data_watermark": str(watermark) if watermark is not None else None,
+                "error_code": None,
+            }
+        )
+    )
+
+
+def test_trigger_admit_debounce_and_idempotency(tmp_path):
+    import time as time_mod
+
+    from app.server import Scheduler
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    scheduler = Scheduler(settings)
+    write_job_state(tmp_path, "models", success_at=100, watermark=42)
+
+    # Innerhalb des Debounce-Fensters wird selbst neue Data nicht sofort
+    # verarbeitet (Modell-Läufe werden nicht im 5-Minuten-Takt gefahren).
+    scheduler.last_start["models"] = time_mod.monotonic() - 60
+    assert scheduler.admit_trigger("models", 43) == "debounced"
+
+    # Nach dem Debounce: gleiche Watermark wie beim letzten Erfolg -> kein Lauf.
+    scheduler.last_start["models"] = time_mod.monotonic() - 10_000
+    assert scheduler.admit_trigger("models", 42) == "duplicate"
+    # Neue Watermark -> Lauf.
+    assert scheduler.admit_trigger("models", 43) == "run"
+
+    # Letzter Erfolg älter als das Job-Intervall: Lauf trotz alter Watermark
+    # (Prognosefenster bleiben am aktuellen Tag verankert).
+    write_job_state(tmp_path, "models", success_at=100_000, watermark=42)
+    assert scheduler.admit_trigger("models", 42) == "run"
+
+    # Kaputter Job-Status: nie als "duplicate" fehlinterpretieren.
+    (tmp_path / "runtime" / "jobs" / "models.json").write_text("{broken")
+    assert scheduler.admit_trigger("models", 42) == "run"
+
+    # Nur Inferenz-Jobs sind triggerbar; Unbekanntes wird abgewiesen.
+    assert scheduler.request("settlement", 42)["status"] == "rejected"
+    assert scheduler.request("models", 43)["status"] == "queued"
+    assert scheduler.pending["models"] == 43
+    assert scheduler.wake["models"].is_set()
+
+
+def test_scheduler_wakes_for_webhook_trigger_and_passes_watermark(
+    tmp_path, monkeypatch
+):
+    import threading
+    import time as time_mod
+
+    from app.server import Scheduler
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    scheduler = Scheduler(settings)
+    calls = []
+    waits = []
+
+    def once(name, watermark=None):
+        calls.append((name, watermark))
+        scheduler.last_start[name] = time_mod.monotonic() - 10_000
+        write_job_state(tmp_path, name, success_at=0, watermark=watermark)
+        return 0
+
+    def wait(delay):
+        waits.append(delay)
+        if len(waits) == 1:
+            assert delay == 0  # erster Lauf im Prozess: sofort
+            return False
+        if len(waits) >= 3:
+            scheduler.stop_event.set()
+            return False
+        # "Webhook" trifft ein, während der Scheduler eigentlich until tomorrow
+        # warten würde (models-Intervall = 86400 s).
+        assert delay == 86400
+        scheduler.request("models", watermark=1727)
+        return True
+
+    monkeypatch.setattr(scheduler, "run_once", once)
+    monkeypatch.setattr(scheduler.wake["models"], "wait", wait)
+    thread = threading.Thread(target=scheduler.loop, args=("models",), daemon=True)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert calls == [("models", None), ("models", 1727)]
+
+
+def test_worker_records_trigger_watermark_on_success(tmp_path, monkeypatch):
+    import app.worker as worker
+
+    monkeypatch.setenv("TANKAPP_TRIGGER_WATERMARK", "1727")
+    monkeypatch.setattr(
+        worker,
+        "execute",
+        lambda name, settings: {"state": "success", "error_code": None},
+    )
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    assert worker.run("models", settings) == 0
+    state = json.loads((tmp_path / "runtime" / "jobs" / "models.json").read_text())
+    assert state["data_watermark"] == "1727"
+
+    # Ohne Trigger bleibt die verankerte Watermark erhalten (Grundlage der
+    # Idempotenz-Entscheidung über Neustarts hinweg).
+    monkeypatch.delenv("TANKAPP_TRIGGER_WATERMARK")
+    monkeypatch.setattr(
+        worker,
+        "execute",
+        lambda name, settings: {"state": "failed", "error_code": "job_failed"},
+    )
+    assert worker.run("models", settings) == 2
+    state = json.loads((tmp_path / "runtime" / "jobs" / "models.json").read_text())
+    assert state["state"] == "failed"
+    assert state["data_watermark"] == "1727"
+
+
+def test_webhook_endpoint_auth_and_wiring(tmp_path, monkeypatch):
+    import threading
+    import urllib.request
+    from dataclasses import replace
+
+    from app.data import LiveData
+    from app.server import Scheduler, make_server
+
+    polling = tmp_path / "polling.json"
+    polling.write_text(json.dumps({"sets": {}}))
+    static = tmp_path / "web"
+    static.mkdir()
+    (static / "index.html").write_text("<html>t</html>")
+    base_settings = Settings(
+        data=tmp_path / "data",
+        archive=tmp_path / "archive",
+        polling=polling,
+        influx_env=tmp_path / "influx.env",
+        netrc=tmp_path / "netrc",
+        static=static,
+    )
+    settings = replace(base_settings, webhook_token="secret-token")
+    row = {
+        "_time": "2026-09-08T09:55:00+00:00",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station": "Station",
+        "status": "open",
+        "e10": "1.729",
+    }
+    data = LiveData(settings, query=lambda *_: [row], clock=lambda: NOW)
+    scheduler = Scheduler(settings)
+    data.jobs_enabled = True
+    data.scheduler = scheduler
+
+    server = make_server(settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    url = base + "/api/v1/jobs/trigger"
+    body = json.dumps({"job": "models", "watermark": 1727}).encode()
+
+    def post(token=None, payload=body, job=None):
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        data_bytes = payload
+        if job is not None:
+            data_bytes = json.dumps({"job": job, "watermark": 1727}).encode()
+        request = urllib.request.Request(
+            url, data=data_bytes, headers=headers, method="POST"
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.load(response), response.status
+
+    try:
+        # Ohne Secret/Job-Betrieb bewusst 404 — hier konfiguriert.
+        with pytest.raises(urllib.error.HTTPError) as error:
+            post(token="falsches-token")
+        assert error.value.code == 403
+        with pytest.raises(urllib.error.HTTPError) as error:
+            post()  # ganz ohne Authorization
+        assert error.value.code == 403
+        with pytest.raises(urllib.error.HTTPError) as error:
+            post(token="secret-token", job="archive")
+        assert error.value.code == 400
+        with pytest.raises(urllib.error.HTTPError) as error:
+            post(token="secret-token", payload=b'{"job": "models", "watermark": "x"}')
+        assert error.value.code == 400
+        result, status = post(token="secret-token")
+        assert status == 200 and result == {"status": "queued", "job": "models"}
+        assert scheduler.pending["models"] == 1727
+        assert scheduler.wake["models"].is_set()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_webhook_endpoint_disabled_without_token_or_jobs(tmp_path):
+    import threading
+    import urllib.request
+
+    from app.data import LiveData
+    from app.server import make_server
+
+    polling = tmp_path / "polling.json"
+    polling.write_text(json.dumps({"sets": {}}))
+    static = tmp_path / "web"
+    static.mkdir()
+    (static / "index.html").write_text("<html>t</html>")
+    settings = Settings(
+        data=tmp_path / "data",
+        archive=tmp_path / "archive",
+        polling=polling,
+        influx_env=tmp_path / "influx.env",
+        netrc=tmp_path / "netrc",
+        static=static,
+    )
+    data = LiveData(settings, query=lambda *_: [], clock=lambda: None)
+    server = make_server(settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        request = urllib.request.Request(
+            base + "/api/v1/jobs/trigger",
+            data=json.dumps({"job": "models", "watermark": 1}).encode(),
+            headers={"Authorization": "Bearer x", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=5)
+        # Ohne konfiguriertes Secret existiert der Endpoint nicht (404).
+        assert error.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

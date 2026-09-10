@@ -7,6 +7,12 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from engine.data import normalize_observations, prepare_series
+from engine.selection import (
+    cusum_break,
+    daily_median_series,
+    exp_weights,
+    weighted_median,
+)
 from engine.models import (
     features,
     fit,
@@ -309,3 +315,66 @@ def test_fit_at_night_handles_dst_gap_in_previous_day(observations, cfg):
     rows, _ = normalize_observations(raw, cfg)
     model = fit(prepare_series(rows, cfg)[0], "2026-03-30T02:30:00+02:00", cfg)
     assert predict(model).q50.notna().all()
+
+
+# --- Issue 48 (F5): Strukturbruch / EWMA für δ̂ ---
+
+
+def test_weighted_median_falls_back_to_classic_median():
+    values = np.array([1.0, 2.0, 3.0, 100.0])
+    assert weighted_median(values, None) == pytest.approx(2.5)
+    assert weighted_median(values, np.ones(4)) == pytest.approx(2.5)
+    # Hohes Gewicht auf dem Ausreißer zieht den EW-Median nach oben.
+    assert weighted_median(values, np.array([1.0, 1.0, 1.0, 10.0])) == pytest.approx(
+        100.0
+    )
+    assert np.isnan(weighted_median(np.array([np.nan]), None))
+    # Falsche Gewichtslänge: Fallback auf klassischen Median statt Crash.
+    assert weighted_median(values, np.ones(3)) == pytest.approx(2.5)
+
+
+def test_daily_median_series_is_chronological():
+    delta = np.array([1.0, 2.0, 3.0, 4.0])
+    keys, medians = daily_median_series(delta, np.array([5.0, 3.0, 5.0, 3.0]))
+    np.testing.assert_array_equal(keys, [3.0, 5.0])
+    np.testing.assert_allclose(medians, [3.0, 2.0])
+
+
+def test_cusum_flags_level_shift_but_not_stable_series():
+    # Stabile Reihen: höchstens vereinzelte Fehlalarme (konservative Schwelle).
+    false_alarms = sum(
+        cusum_break(np.random.default_rng(seed).normal(0, 0.3, 42))[0]
+        for seed in range(20)
+    )
+    assert false_alarms <= 2
+    # Niveauwechsel (5 ct bei σ=0,3) wird zuverlässig erkannt.
+    for seed in range(5):
+        shifted = np.concatenate(
+            [
+                np.random.default_rng(seed).normal(0, 0.3, 21),
+                np.random.default_rng(1000 + seed).normal(-5, 0.3, 21),
+            ]
+        )
+        flag, stat = cusum_break(shifted)
+        assert flag is True
+        assert stat > 2.0
+    # Zu kurz oder konstant: ehrlich kein Flag, kein Crash.
+    assert cusum_break(np.array([1.0, 2.0])) == (False, 0.0)
+    assert cusum_break(np.full(20, 1.5)) == (False, 0.0)
+
+
+def test_ew_median_reacts_faster_than_classic_after_21_days():
+    """Backtest-Idee F5: Regimewechsel nach 21 Tagen, 42 Tage Fenster."""
+    rng = np.random.default_rng(9)
+    days = np.repeat(np.arange(42), 24)
+    noise = rng.normal(0, 0.2, len(days))
+    delta = np.where(days < 21, noise, -5.0 + noise)
+    classic = float(np.nanmedian(delta))
+    _, day_meds = daily_median_series(delta, days.astype(float))
+    ew = weighted_median(day_meds, exp_weights(len(day_meds), 7.0))
+    # Klassischer Median mischt beide Regime (~-2,5 → ~21 Tage blind).
+    assert classic == pytest.approx(-2.5, abs=0.5)
+    # EW-Median (HWZ 7 Tage) liegt deutlich näher am neuen Regime (-5).
+    assert abs(ew - (-5.0)) < abs(classic - (-5.0))
+    assert ew < -3.5
+    assert cusum_break(day_meds)[0] is True
