@@ -204,8 +204,8 @@ und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfe
 
 | # | Komponente | Verfahren | Funktion im Score |
 |---|---|---|---|
-| 1 | **Relative Preislage δ̂ᵢ** | Medianᵢ(t) von pᵢ(t) − Medianⱼ≠ᵢ pⱼ(t) (Leave-One-Out-Baseline) | Gewicht 0.40 |
-| 2 | **Inferenz** | Tages-Block-Bootstrap (B = 2000) → 95 %-KI; p-Wert H₀: δᵢ ≥ 0; **Benjamini-Hochberg-FDR** (q < 0.05) | Signifikanz-Gate |
+| 1 | **Relative Preislage δ̂ᵢ** | Medianᵢ(t) von pᵢ(t) − Medianⱼ≠ᵢ pⱼ(t) (Leave-One-Out-Baseline) + EW-Median über Tages-δ̂ (HWZ 7 d, F5) + CUSUM-Bruchflag | Gewicht 0.40 (auf EW-Median) |
+| 2 | **Inferenz** | Exponentiell gewichteter Tages-Block-Bootstrap (B = 2000, HWZ 14 d) → 95 %-KI; p-Wert H₀: δᵢ ≥ 0; **Benjamini-Hochberg-FDR** (q < 0.05) | Signifikanz-Gate |
 | 3 | **Verfügbarkeit AVᵢ** | Σₕ wₕ·P(Station ∈ Top-3 · Stunde h); w = Tankzeitprofil (werktags 06–09/16–20 h) | Gewicht 0.25 |
 | 4 | **Tagesform** | robuste harmonische Regression (Huber-IRLS, 1.+2. Harmonische) → Amplitude, billigste Stunde, R² | Gewicht 0.15 |
 | 5 | **Risiko** | σᵢ = 1.4826·MAD(Δᵢ); Streuung der Tages-Mittelränge | Gewicht 0.10 + 0.10 |
@@ -298,7 +298,11 @@ täglich; Benchmark = saisonale Naive.
 1. MASE(24 h) < **0,95** gesamt (inkl. Sprungtage),
 2. MASE(24 h) < **0,80** an **sprungfreien** Tagen (Sprungtage via CUSUM
    auf Δp markiert),
-3. **Pinball-Loss** (τ = 0,5, 24 h) < Pinball der Naive,
+3. **Pinball-Loss** (τ = 0,5, 24 h) < Pinball der Naive **und**
+   asymmetrischer Pinball (τ = 0,75: Unterschätzung des Preises 3× so stark
+   bestraft, weil Warten in eine Erhöhung Vertrauen kostet) < asym-Pinball
+   der Naiven — Gate `pinball_asym_better_than_naive`, ergänzt MASE/PICP,
+   ersetzt sie nicht,
 4. Rolling-PICP(95 %) ∈ [90, 98] %.
 
 ### 3.3 Intervallkalibrierung (Ziel, noch nicht freigeschaltet)
@@ -325,10 +329,13 @@ täglich; Benchmark = saisonale Naive.
 | +3 Tage / +7 Tage | Vorläufiger Ausblick ab Fit-Cutoff möglich; Mehrtage-Backtests und kalibrierte Bänder noch offen. |
 
 Der tägliche Cutoff liegt bei lokaler Mitternacht, das Trainingsfenster bei
-42 Tagen. MAE, RMSE, MASE, sMAPE, Pinball, PICP und MPIW werden gemessen,
-nicht als erwartete Beispielzahlen zugesagt. Der erste Backtest bewertet
+42 Tagen (nicht pauschal verdoppelt; stattdessen exponentiell gewichteter
+Tagesblock-Bootstrap, Halbwertszeit 14 Tage, neuere Tage höheres Ziehgewicht).
+MAE, RMSE, MASE, sMAPE, Pinball (τ=0,5 und asym τ=0,75), PICP und MPIW werden
+gemessen, nicht als erwartete Beispielzahlen zugesagt. Der erste Backtest bewertet
 den folgenden Tag im Poll-Fenster; ein punktgenauer +24-h-Test und weitere
-Horizonte sind gesondert auszuweisen.
+Horizonte sind gesondert auszuweisen. Abdeckung-vs.-Reaktionszeit-Vergleich
+(42d-EW vs. 42d-uniform vs. 84d): [Engine-Referenz §4](../engine/README.md).
 
 **Grenze (bewusst):** Preissprünge sind Betreiber-Entscheidungen — nicht
 punktvorhersagbar. Die Engine sagt *Fenster + Verteilung*, der Decision
@@ -1269,7 +1276,7 @@ Die M4-Homepage basiert ausdrücklich auf **beiden vorhandenen GUIs**.
 |---|---|---|
 | M1 | Collector + tmpfs-Ringpuffer + NAS-Uploader laufen 14 d | Datenlücken < 2 %, Ack-Protokoll fehlerfrei |
 | M2 | Selektion mit echten Historien der 3 Kampagnen (HE/BY/NW; Anker + Subdivs aus lokaler Config, nie im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
-| M3 | Engine M1–M3 + ACI + Backtest (Fits und Inference auf NAS) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball < Naive; PICP(95 %) ∈ [90, 98] % |
+| M3 | Engine M1–M3 + ACI + Backtest (Fits und Inference auf NAS) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball (τ=0,5 und asym τ=0,75) < Naive; PICP(95 %) ∈ [90, 98] % |
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
 | **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |

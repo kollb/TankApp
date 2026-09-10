@@ -15,6 +15,23 @@ PENDING = [
     "Echt-Daten-Abnahme aller M3-Kriterien auf NAS/PC",
 ]
 
+# Issue 47: asymmetrischer Pinball-Loss. Warten in eine Preiserhöhung
+# (tatsächlich teurer als prognostiziert) kostet Vertrauen; 2 ct zu früh
+# tanken schmerzt weniger. Mit τ=0,75 wird Unterschätzung des Preises
+# (actual > q50) dreimal so stark bestraft wie Überschätzung:
+#   L = τ·(y−q) falls y ≥ q, sonst (1−τ)·(q−y).
+PINBALL_TAU_ASYM = 0.75
+
+
+def pinball_loss(actual, forecast, tau: float = PINBALL_TAU_ASYM):
+    """Pinball-Verlust je Punkt (gleiche Einheit wie die Preise).
+
+    Für τ=0,5 symmetrisch (0,5·|Fehler|); für τ>0,5 wird Unterschätzung
+    (actual > forecast) stärker bestraft.
+    """
+    diff = np.asarray(actual, dtype=float) - np.asarray(forecast, dtype=float)
+    return np.where(diff >= 0, tau * diff, (tau - 1.0) * diff)
+
 
 def metrics(rows: pd.DataFrame) -> dict:
     if rows.empty:
@@ -27,6 +44,8 @@ def metrics(rows: pd.DataFrame) -> dict:
             "smape_pct": None,
             "pinball50_ct": None,
             "naive_pinball50_ct": None,
+            "pinball_asym_ct": None,
+            "naive_pinball_asym_ct": None,
             "picp95_pct": None,
             "mpiw95_ct": None,
         }
@@ -43,6 +62,9 @@ def metrics(rows: pd.DataFrame) -> dict:
         ),
         "pinball50_ct": 50 * float(error.abs().mean()),
         "naive_pinball50_ct": 50 * float((rows.actual - rows.naive).abs().mean()),
+        "pinball_asym_ct": 100 * float(pinball_loss(rows.actual, rows.q50).mean()),
+        "naive_pinball_asym_ct": 100
+        * float(pinball_loss(rows.actual, rows.naive).mean()),
         "picp95_pct": 100
         * float(((rows.actual >= rows.q025) & (rows.actual <= rows.q975)).mean()),
         "mpiw95_ct": 100 * float((rows.q975 - rows.q025).mean()),
@@ -244,6 +266,10 @@ def run_backtest(
         < aggregate["naive_pinball50_ct"]
         if len(rows)
         else None,
+        "pinball_asym_better_than_naive": aggregate["pinball_asym_ct"]
+        < aggregate["naive_pinball_asym_ct"]
+        if len(rows)
+        else None,
         "picp95_between_90_and_98": 90 <= aggregate["picp95_pct"] <= 98
         if len(rows)
         else None,
@@ -287,6 +313,12 @@ def run_backtest(
             "rows": decision_rows,
         },
         "metrics": aggregate,
+        "pinball_asym_tau": PINBALL_TAU_ASYM,
+        "pinball_asym_note": (
+            "τ=0,75: Unterschätzung des Preises (actual > q50, "
+            "Warten in eine Erhöhung) wird 3× so stark bestraft wie "
+            "Überschätzung. Gate: asym-Pinball < asym-Pinball der Naiven."
+        ),
         "criteria": criteria,
         "pending": PENDING,
         "stations": per_station,
@@ -324,6 +356,8 @@ def markdown_report(report: dict) -> str:
         f"| sMAPE [%] | {number(m['smape_pct'])} |",
         f"| Pinball τ=0,5 [ct/L] | {number(m['pinball50_ct'])} |",
         f"| Naive Pinball τ=0,5 [ct/L] | {number(m['naive_pinball50_ct'])} |",
+        f"| Pinball τ=0,75 asym [ct/L] | {number(m.get('pinball_asym_ct'))} |",
+        f"| Naive Pinball τ=0,75 asym [ct/L] | {number(m.get('naive_pinball_asym_ct'))} |",
         f"| PICP 95 % [%] | {number(m['picp95_pct'])} |",
         f"| MPIW 95 % [ct/L] | {number(m['mpiw95_ct'])} |",
         "",
@@ -355,7 +389,11 @@ def markdown_report(report: dict) -> str:
         "",
         "## Datenlücken und Grenzen",
         "",
-        "Intervalle: Residuen-Tagesblock-Bootstrap aus dem Training, **unkalibriert**, nicht ACI.",
+        "Intervalle: Residuen-Tagesblock-Bootstrap aus dem Training (exponentiell gewichtet, "
+        "neuere Tage höheres Ziehgewicht), **unkalibriert**, nicht ACI.",
+        "Asymmetrie: Pinball τ=0,75 bestraft Unterschätzung des Preises (Warten in eine "
+        "Erhöhung) 3× stärker als Überschätzung; Gate `pinball_asym_better_than_naive` "
+        "ergänzt MASE/PICP95, ersetzt sie nicht.",
         f"12-Uhr-Regel: {report['law_rise_outside_noon']} beobachtete Erhöhung(en) ≥ 1 ct "
         "außerhalb des erlaubten 12-Uhr-Zeitpunkts im Training der bewerteten Folds "
         "(seit 2026-04-01) — mögliche Datenartefakte, im Fit verbleibend; Median und "

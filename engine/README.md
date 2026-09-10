@@ -560,6 +560,31 @@ Naiven. Engine-Forward-Fill wird nicht als Testbeobachtung gezählt. MASE nutzt 
 die saisonale Fehlerskala aus dem Training und ist bei konstanten Reihen undefiniert.
 Ein exakter Einzelpunkt-Test bei +24 h und weitere Horizonte sind gesondert offen.
 
+**Gate-Metriken (Schwellen, Issue 47):** MASE und PICP95 bleiben; ergänzt um
+asymmetrischen Pinball-Loss τ=0,75 — Unterschätzung des Preises (tatsächlich
+teurer als prognostiziert, also Warten in eine Erhöhung) wird 3× so stark
+bestraft wie Überschätzung. Kriterien in `report.json`/`report.md`:
+`mase_24h_below_0_95` (MASE < 0,95), `pinball50_better_than_naive`,
+`pinball_asym_better_than_naive` (τ=0,75 besser als saisonale Naive),
+`picp95_between_90_and_98` (PICP 95 % ∈ [90, 98] %).
+
+**Abdeckung vs. Reaktionszeit (Issue 46):** Der Residuen-Tagesblock-Bootstrap
+zieht neuere Tagesblöcke exponentiell höher gewichtet (Default-Halbwertszeit
+14 Tage, `--bootstrap-ew-half-life`; `0` = uniform). Das 42-Tage-Fenster wird
+nicht pauschal verdoppelt. Zum Vergleich drei Backtests mit denselben Daten:
+
+```powershell
+# 42 Tage, exponentiell gewichtet (Default, empfohlen)
+py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --out .\results\engine\backtest-42d-ew
+# 42 Tage, uniform (Vergleich)
+py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-42d-uniform
+# 84 Tage, uniform (Trägheits-Vergleich; braucht 105+ Tage Historie)
+py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --train-days 84 --min-train-days 28 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-84d-uniform
+```
+
+Vergleiche `pinball_asym_ct` und `mase` je Variante: 42d-EW sollte nach
+Preiswechseln schneller aufholen als 42d-uniform und weniger träge sein als 84d.
+
 ## 5. Modell fitten und Prognose erzeugen
 
 Nach ausreichender Datenprüfung, weiterhin mit derselben Dateiliste:
@@ -584,7 +609,9 @@ Optional: Backtest-Ende mit `--until 2026-09-07`, Fit-Cutoff mit
 Zeitraum ersetzen. `--hours 72` / `168` liefert nur vorläufige Mehrtage-Ausblicke.
 
 Die JSON-Artefakte enthalten robuste Tagesform/Wochentags-Dummies, AR(2)-Nachlauf
-und einen Residuen-Tagesblock-Bootstrap. q.025/.10/.50/.90/.975 sind
+und einen exponentiell gewichteten Residuen-Tagesblock-Bootstrap (neuere Tage
+höheres Ziehgewicht, Halbwertszeit 14 Tage, `interval_method:
+residual_day_bootstrap_ew_uncalibrated`). q.025/.10/.50/.90/.975 sind
 **unkalibrierte Intervalle**, keine ACI-Erfolgswahrscheinlichkeiten.
 `calibrated: false` und `decision_ready: false` bleiben gesetzt. Preise werden
 höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefittet.
@@ -660,7 +687,8 @@ Analyse-CSVs aus §3, nicht direkt diese JSONL-Datei.
 2. Gepoolte Feiertagseffekte und Sprungzustand im Strukturmodell.
 3. CUSUM-Sprungtage, gesonderte MASE <0,80 an sprungfreien Tagen.
 4. Out-of-sample-Intervallkalibrierung / ACI nach ausreichender Live-Historie.
-5. Echt-Daten-Abnahme: MASE <0,95 gesamt, Pinball besser als Naive,
-   PICP 95 % zwischen 90–98 %. Keine alten Demo-Messwerte übernehmen.
+5. Echt-Daten-Abnahme: MASE <0,95 gesamt, Pinball (τ=0,5 und asym τ=0,75)
+   besser als Naive, PICP 95 % zwischen 90–98 %. Keine alten Demo-Messwerte
+   übernehmen.
 
 </details>

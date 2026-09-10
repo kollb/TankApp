@@ -343,7 +343,12 @@ Antwort:
 Felder:
 
 - `delta_ct` (δ̂): Median(p_i − LOO-Stadtmedian) ct/L, negativ = günstiger
-- `ci_lo`, `ci_hi`: 95% KI aus Tages-Block-Bootstrap B=2000 (Seed 42)
+- `delta_ew_ct`: EW-Median über Tages-δ̂ (Halbwertszeit 7 Tage, F5 — reagiert bei
+  Betreiber-/Strategiewechsel schneller als der 42-Tage-Median; Ranking-Grundlage),
+  `delta_recent5_ct`: Median der letzten 5 Tage, `delta_days`: Anzahl Tages-δ̂,
+  `break_flag`/`break_stat`: retrospektiver CUSUM-Changepoint (Schwelle h=2,0)
+- `ci_lo`, `ci_hi`: 95% KI aus exponentiell gewichtetem Tages-Block-Bootstrap B=2000
+  (Seed 42, neuere Tage höheres Ziehgewicht, Halbwertszeit 14 Tage)
 - `p_value`: einseitig H0: δ≥0 (small = signifikant günstiger), `q_value`: Benjamini-Hochberg FDR, `significant`: q<0.05
 - `avail`: AV-Score = Σ w_h·P(Top-3|h); w = Pendlerprofil Mo–Fr 06–09/16–20 (Gewicht 5/7, Wochenende gleichmäßig 2/7)
 - `best_hour`: günstigste Stunde aus robuster harmonischer Regression auf δ (2. Ordnung, Huber-IRLS), z. B. 19.5 = 19:30

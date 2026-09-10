@@ -9,10 +9,15 @@ Methodik ist bewusst "hart" gerechnet:
   1. Robuste Relative Preislage  δ_i = median_t[ p_i(t) − median_{j≠i} p_j(t) ]
      (Leave-One-Out-Stadtmedian als Baseline -> keine mechanische Verzerrung;
       Median statt Mittelwert -> resistent gegen Preissprung-Artefakte)
-  2. Inferenz: Tages-Block-Bootstrap (B=2000) -> 95 %-KI für δ_i sowie
-     einseitiger p-Wert H0: δ_i ≥ 0, Benjamini-Hochberg-FDR-Korrektur über
-     alle getesteten Stationen (q-Wert). Damit ist "signifikant billiger"
-     multiplizitätsbereinigt nachgewiesen.
+     plus EW-Median über Tages-δ̂ (Halbwertszeit 7 Tage, Issue 48/F5) und
+     CUSUM-Strukturbruch-Flag — das Ranking nutzt das aktuelle Regime,
+     nicht die Mischung zweier Verteilungen nach einem Betreiberwechsel.
+  2. Inferenz: exponentiell gewichteter Tages-Block-Bootstrap (B=2000,
+     neuere Tage höheres Ziehgewicht, Halbwertszeit 14 Tage, Issue 46)
+     -> 95 %-KI für δ_i sowie einseitiger p-Wert H0: δ_i ≥ 0,
+     Benjamini-Hochberg-FDR-Korrektur über alle getesteten Stationen
+     (q-Wert). Damit ist "signifikant billiger" multiplizitätsbereinigt
+     nachgewiesen.
   3. Intraday-Struktur: robuste harmonische Regression (Huber-IRLS) der
      Halbstunden-Medianprofile
          Δ_i(h) = a1 cos(ωh) + b1 sin(ωh) + a2 cos(2ωh) + b2 sin(2ωh),  ω = 2π/24
@@ -87,6 +92,12 @@ class Config:
     n_boot: int = 2000
     step_min: int = 5            # Analyse-Raster in Minuten (Historie aus Änderungsdaten: 30/60)
     ffill_minutes: float | None = None   # Horizont "Preis gilt noch" (s. to_matrix)
+    # Issue 46: Tagesblock-Bootstrap exponentiell gewichtet (neuere Tage
+    # höhere Ziehwahrscheinlichkeit). Halbwertszeit in Tagen, None = uniform.
+    boot_ew_half_life_days: float | None = 14.0
+    # Issue 48 (F5): δ̂ als EW-Median über Tages-δ̂ (schnellere Reaktion
+    # auf Betreiber-/Strategiewechsel). Halbwertszeit in Tagen.
+    delta_ew_half_life_days: float | None = 7.0
     w_level: float = 0.40
     w_avail: float = 0.25
     w_pred: float = 0.15
@@ -259,14 +270,115 @@ def loo_baseline(mat: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out, index=mat.index, columns=mat.columns)
 
 
+def exp_weights(n: int, half_life_days: float | None) -> np.ndarray | None:
+    """Exponentielle Gewichte (ältester zuerst, neuester zuletzt).
+
+    Gewicht bei Alter ``a`` (0 = neuester): ``0.5 ** (a / half_life)``,
+    normiert auf Summe 1. ``None`` (oder ungültig) = uniform.
+    """
+    if n <= 0 or half_life_days is None:
+        return None
+    try:
+        half_life = float(half_life_days)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(half_life) or half_life <= 0:
+        return None
+    ages = np.arange(n - 1, -1, -1, dtype=float)
+    weights = 0.5 ** (ages / half_life)
+    total = float(weights.sum())
+    if total <= 0 or not np.isfinite(total):
+        return None
+    return weights / total
+
+
+def weighted_median(values: np.ndarray, weights: np.ndarray | None) -> float:
+    """Median mit Gewichten; ohne Gewichte der klassische Median.
+
+    Bei exakt kumuliertem Gewicht 0,5 an einer Stufe wird mit dem
+    Nachbarwert gemittelt — dadurch stimmt der EW-Median bei uniformen
+    Gewichten mit dem klassischen Median überein.
+    """
+    values = np.asarray(values, dtype=float)
+    mask = np.isfinite(values)
+    raw_weights = None if weights is None else np.asarray(weights, dtype=float)
+    values = values[mask]
+    if len(values) == 0:
+        return float("nan")
+    if raw_weights is None or len(raw_weights) != len(mask):
+        return float(np.median(values))
+    weights = raw_weights[mask]
+    total = float(weights.sum())
+    if total <= 0 or not np.isfinite(total):
+        return float(np.median(values))
+    order = np.argsort(values, kind="stable")
+    cumulative = np.cumsum(weights[order]) / total
+    position = int(np.searchsorted(cumulative, 0.5))
+    if (position + 1 < len(values)
+            and abs(float(cumulative[position]) - 0.5) < 1e-12):
+        return float((values[order[position]] + values[order[position + 1]]) / 2.0)
+    return float(values[order[position]])
+
+
+def daily_median_series(delta: np.ndarray, days: np.ndarray
+                        ) -> tuple[np.ndarray, np.ndarray]:
+    """Tages-δ̂-Werte in chronologischer Reihenfolge (ältester zuerst)."""
+    uniq = np.unique(days[~np.isnan(days)])
+    keys, medians = [], []
+    for day in uniq:
+        values = delta[days == day]
+        values = values[np.isfinite(values)]
+        if len(values):
+            keys.append(day)
+            medians.append(float(np.median(values)))
+    return np.asarray(keys, dtype=float), np.asarray(medians, dtype=float)
+
+
+def cusum_break(daily: np.ndarray, h: float = 2.0
+                ) -> tuple[bool, float]:
+    """Retrospektiver CUSUM-Changepoint-Test auf Tages-δ̂ (Issue 48 / F5).
+
+    Statistik: maximale kumulierte Median-Abweichung, robust skaliert:
+    ``max|Σ(x−median)| / (σ·√n)``. Die Skala σ kommt aus dem MAD der
+    sukzessiven Differenzen (ein Niveauwechsel kontaminiert nur eine
+    Differenz; ein gepoolter MAD würde den Wechsel selbst als Streuung
+    maskieren). Schwelle ``h=2,0`` (≈96–97 %-Niveau unter iid-Normalität,
+    empirisch kalibriert; konservativ, damit der Flag ein Warnsignal
+    bleibt und kein Dauerfeuer). Liefert (flag, stat). Der primäre
+    Mechanismus gegen Strukturblindheit bleibt der EW-Median; der Flag
+    markiert nur plausible Regimewechsel (z. B. Betreiberwechsel) zur
+    manuellen Prüfung.
+    """
+    daily = np.asarray(daily, dtype=float)
+    daily = daily[np.isfinite(daily)]
+    count = len(daily)
+    if count < 10:
+        return False, 0.0
+    med = float(np.median(daily))
+    gaps = np.diff(daily)
+    mad_gap = float(np.median(np.abs(gaps - np.median(gaps))))
+    sigma = 1.4826 * mad_gap / np.sqrt(2)
+    if not np.isfinite(sigma) or sigma < 1e-9:
+        return False, 0.0
+    stat = float(np.max(np.abs(np.cumsum(daily - med))) / (sigma * np.sqrt(count)))
+    if not np.isfinite(stat):
+        return False, 0.0
+    return bool(stat > h), stat
+
+
 def day_block_bootstrap(delta: np.ndarray, days: np.ndarray,
-                        n_boot: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+                        n_boot: int, rng: np.random.Generator,
+                        half_life_days: float | None = None
+                        ) -> tuple[np.ndarray, np.ndarray]:
     """Block-Bootstrap über Tage -> verteilte Mediane (B,) und Tagesvektor.
 
     Jede Ziehung konkateniert die (endlichen) Tagesblöcke und nimmt den
     Median des Pools — dieselbe Statistik wie δ̂ (Median über alle
     Zeitpunkte). Ein Median von Tagesmedianen würde dünn besetzte Tage
     (z. B. Anlaufrümpfe) übergewichten.
+
+    Mit ``half_life_days`` (Issue 46) werden neuere Tagesblöcke
+    exponentiell höher gewichtet gezogen; ``None`` = uniform.
     """
     uniq = np.unique(days[~np.isnan(days)])
     blocks = []
@@ -280,8 +392,12 @@ def day_block_bootstrap(delta: np.ndarray, days: np.ndarray,
     day_med = np.array([np.median(block) for block in blocks])
     if not blocks:
         return boots, day_med
+    weights = exp_weights(len(blocks), half_life_days)
     for b in range(n_boot):
-        take = rng.integers(0, len(blocks), size=len(blocks))
+        if weights is None:
+            take = rng.integers(0, len(blocks), size=len(blocks))
+        else:
+            take = rng.choice(len(blocks), size=len(blocks), p=weights)
         pooled = np.concatenate([blocks[i] for i in take])
         boots[b] = np.median(pooled)
     return boots, day_med
@@ -526,9 +642,18 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     for j, sid in enumerate(sids):
         d = delta[sid].to_numpy()
         d_hat = np.nanmedian(d)
-        boots, _ = day_block_bootstrap(d, dnum, cfg.n_boot, rng)
+        boots, _ = day_block_bootstrap(d, dnum, cfg.n_boot, rng,
+                                       cfg.boot_ew_half_life_days)
         lo, hi = np.nanpercentile(boots, [2.5, 97.5])
         p_raw = (1 + np.sum(boots >= 0)) / (cfg.n_boot + 1)
+        # Issue 48 (F5): EW-Median über Tages-δ̂ + CUSUM-Strukturbruch.
+        _day_keys, _day_meds = daily_median_series(d, dnum)
+        _ew_weights = exp_weights(len(_day_meds), cfg.delta_ew_half_life_days)
+        d_ew = weighted_median(_day_meds, _ew_weights)
+        d_recent5 = (float(np.median(_day_meds[-5:]))
+                     if len(_day_meds) >= 5 and np.isfinite(_day_meds[-5:]).any()
+                     else float("nan"))
+        break_flag, break_stat = cusum_break(_day_meds)
 
         # --- Umweg-Ökonomie: Netto-Ersparnis € je Füllung ---
         dist_km = dist_map[sid]
@@ -596,7 +721,11 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
             brand=meta.loc[sid, "brand"],
             lat=meta.loc[sid, "lat"], lon=meta.loc[sid, "lon"],
             coverage=coverage[sid],
-            delta_ct=d_hat, ci_lo=lo, ci_hi=hi, p_value=p_raw,
+            delta_ct=d_hat, delta_ew_ct=float(d_ew),
+            delta_recent5_ct=float(d_recent5),
+            delta_days=int(len(_day_meds)),
+            break_flag=bool(break_flag), break_stat=float(break_stat),
+            ci_lo=lo, ci_hi=hi, p_value=p_raw,
             avail=avail,
             best_hour=best_hour, cycle_amp=amp, cycle_r2=r2,
             vol_ct=sigma, rank_std=rank_std,
@@ -618,14 +747,18 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
         sd = s.std(ddof=0)
         return (s - s.mean()) / (sd if sd > 1e-12 else 1.0)
 
+    # Issue 48: Niveau-Gewicht auf dem EW-Median (aktuelles Regime),
+    # Fallback auf den klassischen Median bei zu kurzer Historie.
+    _level = tab["delta_ew_ct"].fillna(tab["delta_ct"])
     tab["score"] = (
-        cfg.w_level * z(-tab.delta_ct)
+        cfg.w_level * z(-_level)
         + cfg.w_avail * z(tab.avail)
         + cfg.w_pred * z(tab.cycle_r2)
         - cfg.w_vol * z(tab.vol_ct)
         - cfg.w_rank * z(tab.rank_std)
     )
     tab["saving_per_fill_eur"] = -tab.delta_ct * cfg.tank_volume / 100.0
+    tab["saving_ew_per_fill_eur"] = -_level * cfg.tank_volume / 100.0
     tab["saving_per_year_eur"] = tab.saving_per_fill_eur * cfg.fills_per_week * 52
     tab["net_per_year_eur"] = tab.net_per_fill_eur * cfg.fills_per_week * 52
     tab["net_fuel_only_year_eur"] = tab.net_fuel_only_eur * cfg.fills_per_week * 52
@@ -753,7 +886,9 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
     A(f"# TankApp – Tankstellen-Selektion ({cfg.fuel})\n")
     A("Automatisch erzeugt durch `analysis/station_selection.py`.\n")
     A(f"**Parameter:** Top-N = {cfg.top}, Tankvolumen = {cfg.tank_volume:.0f} L, "
-      f"Füllungen/Woche = {cfg.fills_per_week}, Bootstrap B = {cfg.n_boot}, "
+      f"Füllungen/Woche = {cfg.fills_per_week}, Bootstrap B = {cfg.n_boot} "
+      f"(EW-Halbwertszeit {cfg.boot_ew_half_life_days} Tage, uniform falls None), "
+      f"δ̂-EW-Halbwertszeit {cfg.delta_ew_half_life_days} Tage, "
       f"Coverage-Gate ≥ {cfg.min_coverage:.0%}, FDR-Schwelle q < 0.05, "
       f"Ranking nach **{cfg.rank_by}**.\n")
     dist_basis = ("echten Straßen-km/Fahrzeit via OSRM-OpenStreetMap" if cfg.router == "osrm"
@@ -939,6 +1074,12 @@ def main() -> None:
                          "--step-min 30 oder 60 setzen, sonst wird Abdeckung auf einem zu "
                          "feinen Raster gemessen (KONZEPT.md: Raster beliebig).")
     ap.add_argument("--boot", type=int, default=2000)
+    ap.add_argument("--boot-ew-half-life", type=float, default=14.0,
+                    help="Halbwertszeit (Tage) für den exponentiell gewichteten "
+                         "Tagesblock-Bootstrap (Issue 46); <=0 = uniform.")
+    ap.add_argument("--delta-ew-half-life", type=float, default=7.0,
+                    help="Halbwertszeit (Tage) für den EW-Median von δ̂ über "
+                         "Tages-δ̂ (Issue 48/F5); <=0 = klassischer Median.")
     ap.add_argument("--home", default=None,
                     help="Referenzpunkt je Stadt: 'Stadt:lat,lon;Stadt:lat,lon' "
                          "(Default: Stations-Schwerpunkt; Werte bevorzugt aus "
@@ -988,6 +1129,10 @@ def main() -> None:
     cfg = Config(fuel=args.fuel.upper(), top=args.top, tank_volume=args.tank_volume,
                  fills_per_week=args.fills_per_week, min_coverage=args.min_coverage,
                  n_boot=args.boot, step_min=args.step_min, ffill_minutes=args.ffill_minutes,
+                 boot_ew_half_life_days=(None if args.boot_ew_half_life <= 0
+                                         else args.boot_ew_half_life),
+                 delta_ew_half_life_days=(None if args.delta_ew_half_life <= 0
+                                          else args.delta_ew_half_life),
                  home=parse_home(args.home),
                  subdiv=parse_subdiv(args.subdiv),
                  consumption_l_100km=args.consumption,

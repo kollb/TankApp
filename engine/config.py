@@ -14,6 +14,14 @@ class Config:
     min_slot_days: int = 7
     bootstrap_samples: int = 2000
     seed: int = 42
+    # Exponentiell gewichteter Tagesblock-Bootstrap (Issue 46): neuere
+    # Tagesblöcke werden mit höherer Wahrscheinlichkeit gezogen.
+    # Halbwertszeit in Tagen (Gewicht halbiert sich je Halbwertszeit);
+    # None = uniform (alle Tage gleich). Default 14: ein 5 Wochen alter
+    # Block wiegt noch ~18 % eines aktuellen Blocks — Abdeckung bleibt
+    # erhalten, Reaktion auf Preiswechsel wird schneller, ohne das
+    # 42-Tage-Fenster pauschal auf 84 Tage zu verdoppeln.
+    bootstrap_ew_half_life_days: float | None = 14.0
     poll_start: int = 6
     poll_end: int = 24
     # Seit diesem lokalen Zeitpunkt dürfen Tankstellen in Deutschland den
@@ -40,6 +48,12 @@ class Config:
             raise ValueError("100 bis 10000 Bootstrap-Ziehungen erforderlich.")
         if self.seed < 0:
             raise ValueError("seed muss nichtnegativ sein.")
+        half_life = self.bootstrap_ew_half_life_days
+        if half_life is not None and not 1 <= float(half_life) <= 366:
+            raise ValueError(
+                "bootstrap_ew_half_life_days muss zwischen 1 und 366 liegen "
+                "(oder None für uniform)."
+            )
         if not 0 <= self.poll_start < self.poll_end <= 24:
             raise ValueError("Polling-Fenster muss innerhalb 00–24 Uhr liegen.")
 
