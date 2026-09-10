@@ -627,6 +627,20 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 self._error(404, "Endpunkt unbekannt")
 
         @staticmethod
+        def _city(query: dict) -> str | None:
+            """Normalisierte Stadtfilterung; leer bedeutet alle Städte."""
+            values = query.get("city", [])
+            value = values[0].strip() if values else ""
+            return value or None
+
+        @staticmethod
+        def _filter_city(rows: list[dict], city: str | None) -> list[dict]:
+            if not city:
+                return rows
+            wanted = city.casefold()
+            return [row for row in rows if str(row.get("city", "")).casefold() == wanted]
+
+        @staticmethod
         def _fuel(query: dict) -> str:
             values = query.get("fuel", ["e10"])
             fuel = values[0].lower() if values else "e10"
@@ -636,6 +650,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             snap = ctx.snapshot()
             stations = snap["stations"]
             forecasts = snap["forecasts"]
+            cities = sorted({s["city"] for s in stations if s.get("city")})
             price_now = utcnow()
             newest = None
             for st in stations:
@@ -648,6 +663,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             self._json({
                 "status": "fallback",
                 "version": VERSION,
+                "cities": cities,
                 "generated_at": price_now.isoformat(),
                 "nas": ctx.nas.info(),
                 "prices": {
@@ -672,8 +688,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         def _api_stations(self, query: dict):
             fuel = self._fuel(query)
+            city = self._city(query)
             snap = ctx.snapshot()
-            rows = list(snap["stations"])
+            rows = self._filter_city(list(snap["stations"]), city)
             rows.sort(
                 key=lambda s: (
                     0 if s["status"] == "open" and is_number(s.get(fuel)) else 1,
@@ -699,6 +716,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         def _api_forecasts(self, query: dict):
             fuel = self._fuel(query)
+            city = self._city(query)
             snap = ctx.snapshot()
             forecasts = snap["forecasts"]
             if not forecasts or not forecasts.get("forecasts"):
@@ -710,7 +728,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                              " — cache_forecasts.py prüfen.",
                 }, status=503)
                 return
-            by_station = {s["station_id"]: s for s in snap["stations"]}
+            by_station = {
+                s["station_id"]: s
+                for s in self._filter_city(list(snap["stations"]), city)
+            }
             now = utcnow()
             entries = []
             for fc in forecasts["forecasts"]:
@@ -751,6 +772,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         def _api_decide(self, query: dict):
             fuel = self._fuel(query)
+            city = self._city(query)
             try:
                 liters = int(query.get("liters", [str(DEFAULT_LITERS)])[0])
             except (ValueError, TypeError):
@@ -760,7 +782,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             snap = ctx.snapshot()
             now = utcnow()
             open_stations = [
-                s for s in snap["stations"]
+                s for s in self._filter_city(list(snap["stations"]), city)
                 if s["status"] == "open" and is_number(s.get(fuel))
             ]
             if not open_stations:
@@ -1036,7 +1058,20 @@ body {
   background: var(--accent); border-color: var(--accent); color: #04150d;
 }
 .btn.primary:hover { background: var(--accent-2); }
-.wrap { max-width: 1080px; margin: 0 auto; padding: 18px 16px 48px; }
+.wrap { width: min(100%, 1080px); margin: 0 auto; padding: 18px 16px 48px; }
+button, input, select { max-width: 100%; }
+select { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 5px 30px 5px 8px; }
+@media (max-width: 560px) {
+  body { font-size: 14px; }
+  .topbar { padding: 10px 12px; }
+  .topbar-right { width: 100%; margin-left: 0; }
+  .topbar-right .pill { flex: 1 1 auto; }
+  .wrap { padding: 12px 10px 32px; }
+  .card { padding: 14px; border-radius: 14px; }
+  .hero .price { font-size: 34px; }
+  .decision .numbers { grid-template-columns: 1fr; }
+  .liters { width: 100%; }
+}
 .banner {
   border-radius: 14px; border: 1px solid var(--border);
   background: var(--panel); padding: 10px 14px; margin-bottom: 14px;
@@ -1112,7 +1147,9 @@ tr.closed { color: var(--muted); }
 .stale { color: var(--warn); font-size: 11px; font-weight: 700; }
 .navlink { color: var(--info); text-decoration: none; font-weight: 600; font-size: 12.5px; }
 .navlink:hover { text-decoration: underline; }
-.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.fcard { min-width: 0; }
+.fcard svg { max-width: 100%; }
 .fcard { background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
 .fcard .fhead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .fcard .fname { font-weight: 700; font-size: 14px; }
@@ -1150,6 +1187,11 @@ svg text { fill: var(--muted); font-size: 10.5px; font-family: inherit; }
   <section id="banner" class="banner hidden"></section>
 
   <nav class="fuelbar">
+    <label class="liters">Ort
+      <select id="city" aria-label="Ort auswählen">
+        <option value="">Alle Orte</option>
+      </select>
+    </label>
     <div class="tabs" id="fuel-tabs">
       <button class="tab" data-fuel="e10">E10</button>
       <button class="tab" data-fuel="e5">E5</button>
@@ -1222,6 +1264,7 @@ function savedFuel() {
 }
 const state = {
   fuel: savedFuel(),
+  city: String(LS.get("city", "") || ""),
   liters: Math.max(5, Math.min(100, Number(LS.get("liters", 40)) || 40)),
 };
 let lastPayload = null;
@@ -1294,7 +1337,8 @@ function banner(msg, bad) {
 
 async function refresh() {
   try {
-    const q = "?fuel=" + encodeURIComponent(state.fuel) + "&liters=" + state.liters;
+    const q = "?fuel=" + encodeURIComponent(state.fuel) +
+      "&city=" + encodeURIComponent(state.city) + "&liters=" + state.liters;
     const [health, stations, forecasts, decide] = await Promise.all([
       j("/api/v1/health"),
       j("/api/v1/stations" + q),
@@ -1319,6 +1363,13 @@ function renderAll({ health, stations, forecasts, decide }) {
 }
 
 function renderHeader(health) {
+  const citySelect = $("#city");
+  const cities = Array.isArray(health.cities) ? health.cities : [];
+  if (!cities.includes(state.city)) state.city = "";
+  citySelect.innerHTML = '<option value="">Alle Orte</option>' + cities.map((city) =>
+    '<option value="' + esc(city) + '">' + esc(city) + '</option>'
+  ).join("");
+  citySelect.value = state.city;
   const nas = health.nas || {};
   const nasPill = $("#nas-pill");
   if (!nas.configured) {
@@ -1560,6 +1611,11 @@ function setFuel(fuel) {
 }
 document.querySelectorAll("#fuel-tabs .tab").forEach((b) =>
   b.addEventListener("click", () => setFuel(b.dataset.fuel)));
+$("#city").addEventListener("change", () => {
+  state.city = $("#city").value;
+  LS.set("city", state.city);
+  refresh();
+});
 setFuel(state.fuel); // Tabs markieren + initial laden
 
 $("#liters").value = state.liters;
