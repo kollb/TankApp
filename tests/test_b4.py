@@ -266,7 +266,7 @@ def test_fills_recording_and_compliance(b4_settings):
 
 def test_settlement_worker_job(b4_settings):
     """Settlement-Job (app.worker settlement) schließt abgelaufene Snapshots ab."""
-    from app.feedback import record_snapshot, load_store
+    from app.feedback import record_snapshot, load_store, settle_snapshots
     from app.worker import execute
 
     # Create past snapshot
@@ -285,7 +285,21 @@ def test_settlement_worker_job(b4_settings):
     }
     record_snapshot(b4_settings, snap_data, clock=lambda: NOW - dt.timedelta(hours=24))
 
-    # Run settlement job
+    # Settlement braucht eine Berlin-Stunde nach 21:00 (Fensterende 20.5 + 0.5h
+    # grace). clock_now muss nach Berlin 21 Uhr sein. NOW (14:00 UTC) plus
+    # +9h = 23:00 UTC = 01:00+1 Berlin — zykelt. Stattdessen: NOW+12h setzen,
+    # das ergibt 02:00 UTC des Folgetages = 04:00 Berlin … auch zu früh.
+    # Saubere Lösung: NOW durch NOW.replace(tzinfo=ZoneInfo("Europe/Berlin"))
+    # ersetzen und auf 22:00 Berlin setzen. Wir setzen hier explizit den
+    # Berlin-Tag-Offset: 22:00 lokal = 20:00 UTC.
+    berlin_now = NOW.astimezone(dt.timezone(dt.timedelta(hours=2)))
+    settlement_dt = berlin_now.replace(hour=22, minute=0, second=0, microsecond=0)
+    settlement_clock = lambda: settlement_dt
+    result = settle_snapshots(b4_settings, clock=settlement_clock)
+    assert result["status"] == "ok"
+    assert result["settled_count"] >= 1
+
+    # Auch der execute()-Wrapper muss durchlaufen.
     outcome = execute("settlement", b4_settings)
     assert outcome["state"] == "success"
     assert outcome["error_code"] is None
