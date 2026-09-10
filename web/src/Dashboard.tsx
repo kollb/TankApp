@@ -105,11 +105,13 @@ function Metric({
   value,
   detail,
   tip,
+  hint,
 }: {
   label: string;
   value: ReactNode;
   detail: string;
   tip?: string;
+  hint?: ReactNode;
 }) {
   return (
     <div className={`${panel} p-5`}>
@@ -131,6 +133,11 @@ function Metric({
         {value}
       </div>
       <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
+      {hint && (
+        <div className="mt-2 text-[10px] leading-relaxed text-slate-500">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -788,9 +795,32 @@ export function Dashboard() {
     });
   })();
 
-  const calibrationTip = f?.data_policy
-    ? `Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Bisher ${f.data_policy.good_complete_live_days} von ${f.data_policy.required_complete_live_days} guten Live-Tagen. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.`
-    : "Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.";
+  // Dezente Hinweise zur Kalibrierung: aus data_policy (gut/benötigt) + gate_status
+  // berechnen wir, wann ungefähr mit Werten zu rechnen ist. Tagessprung: 1 Live-Tag
+  // ≈ 1 Kalendertag. Wir nehmen das heutige Datum (Europe/Berlin).
+  const policy = f?.data_policy;
+  const goodDays = policy?.good_complete_live_days ?? 0;
+  const requiredDays = policy?.required_complete_live_days ?? 21;
+  const daysMissing = Math.max(0, requiredDays - goodDays);
+  const etaDate = (() => {
+    if (!daysMissing) return null;
+    const d = new Date();
+    d.setDate(d.getDate() + daysMissing);
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  })();
+  const calibrationHint = (() => {
+    if (daysMissing === 0) {
+      return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
+    }
+    return `Wert erscheint, sobald die Live-Phase ${requiredDays} bewertete Tage erreicht hat (noch ${daysMissing} · voraussichtlich ab ${etaDate}).`;
+  })();
+  const brierHint = (() => {
+    if (statsSummaryRes.data?.live_advice.brier_30d != null) return null;
+    if (daysMissing === 0) {
+      return "Noch keine 100 Empfehlungen im Live-Ledger — Wert erscheint automatisch.";
+    }
+    return `Wert erscheint mit den ersten Live-Empfehlungen (frühestens ${etaDate}).`;
+  })();
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
@@ -1312,9 +1342,12 @@ export function Dashboard() {
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
                     Auto-Settlement nach Fensterende. Brier-Score 30d:{" "}
                     <span className="font-mono text-slate-400">
-                      {statsSummaryRes.data?.live_advice.brier_30d ?? "M7 Kalibrierung steht aus"}
+                      {statsSummaryRes.data?.live_advice.brier_30d ?? "—"}
                     </span>
                   </p>
+                  {brierHint && (
+                    <p className="mt-1 text-[10px] text-slate-500 leading-snug">{brierHint}</p>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
@@ -2122,6 +2155,11 @@ export function Dashboard() {
                     <p className="mt-1 text-base font-bold text-amber-300">
                       {statsSummaryRes.data?.live_advice.gate_status || "Kalibrierung steht aus"}
                     </p>
+                    {daysMissing > 0 && (
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                        Noch {daysMissing} von {requiredDays} bewerteten Live-Tagen · voraussichtlich ab {etaDate}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2494,6 +2532,11 @@ export function Dashboard() {
                   )
                 }
                 detail="Tagesminimum in einem der 3 empfohlenen Zeitfenster. Ziel > 60 %."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.top3_hit_rate == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="MASE sprungfrei"
@@ -2505,6 +2548,11 @@ export function Dashboard() {
                   )
                 }
                 detail="Skalierter Fehler an sprungfreien Tagen. Ziel < 0.80."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.mase_sprungfrei == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="95-%-Band PICP"
@@ -2516,6 +2564,11 @@ export function Dashboard() {
                   )
                 }
                 detail="Anteil echter Preise im Konfidenzband. Ziel 90–98 %."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.picp_95 == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="CUSUM Drift-Status"
@@ -2537,6 +2590,11 @@ export function Dashboard() {
                   )
                 }
                 detail="Schranke |CUSUM| ≤ 3σ über 14 d zur Erkennung von Stationsumbau."
+                hint={
+                  !statsSummaryRes.data?.quality_metrics.cusum_drift
+                    ? calibrationHint
+                    : null
+                }
               />
             </div>
 
