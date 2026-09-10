@@ -73,7 +73,7 @@ def read_selection(settings):
     }
 
 
-def build_selection(settings, fuels=None, n_boot=200):
+def build_selection(settings, fuels=None, n_boot=2000):
     """Baut Selektions-Artefakt aus Trainingsbestand (standalone Job)."""
     if fuels is None:
         fuels = ["e10"]

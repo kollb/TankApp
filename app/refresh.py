@@ -242,8 +242,9 @@ def refresh(settings: Settings, now=None):
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():
                     metas_by_city.setdefault(city, {})[uid] = meta
-                # n_boot=200 wie Standalone-Job „selection“ und Doku (ANALYSE.md)
-                sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=200)
+                # n_boot=2000 fest (Davison/Hinkley): bei m=11 Stationen
+                # ist B=200 mathematisch unter α=0,05 nach BH unmöglich.
+                sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=2000)
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
                 print(

@@ -245,7 +245,7 @@ def _table_action(
         return (
             "no_advice",
             "low",
-            f"Warte-Signal zu unsicher (P ≈ {p_wait:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
+            f"Warte-Signal zu unsicher (P ≈ {p_wait * 100:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
         )
     # F1 (§4.1).
     if expected_saving_eur >= 2.0 and p_wait >= 0.7:

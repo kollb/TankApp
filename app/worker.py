@@ -49,7 +49,7 @@ def execute(name, settings):
             from engine.storage import write_json
 
             result = build_selection(
-                settings, fuels=list(settings.model_fuels), n_boot=200
+                settings, fuels=list(settings.model_fuels), n_boot=2000
             )
             out = settings.runtime / "selection" / "current.json"
             write_json(out, result)
@@ -79,7 +79,7 @@ def execute(name, settings):
             from engine.storage import write_json
 
             sel = build_selection(
-                settings, fuels=list(settings.model_fuels), n_boot=200
+                settings, fuels=list(settings.model_fuels), n_boot=2000
             )
             write_json(settings.runtime / "selection" / "current.json", sel)
         except Exception:
