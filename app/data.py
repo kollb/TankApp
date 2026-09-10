@@ -6,12 +6,20 @@ import math
 import os
 import threading
 import time
+from typing import Any
 
 import export_influx as influx
 from polling_plan import validate_sets
 
 UTC = dt.timezone.utc
 FUELS = {"e10", "e5", "diesel"}
+
+try:
+    from zoneinfo import ZoneInfo
+
+    BERLIN_TZ = ZoneInfo("Europe/Berlin")
+except Exception:  # pragma: no cover
+    BERLIN_TZ = UTC
 
 
 _ROUTE_LOCK = threading.Lock()
@@ -185,6 +193,14 @@ class LiveData:
         self.cache = {}
         self.jobs_enabled = False
         self.job_errors = {}
+        # stats_summary liest die Engine-Veröffentlichung über diesen Provider,
+        # damit kein circular import entsteht (data ↔ stats_summary).
+        try:
+            from .stats_summary import set_publication_provider
+
+            set_publication_provider(lambda: publication(self.settings))
+        except Exception:
+            pass
 
     def _load(self, fuel, metas):
         key = (fuel, tuple(sorted(metas)))
@@ -736,29 +752,88 @@ class LiveData:
             return {"error_code": "stats_summary_failed"}
 
     def day_series(self, station_id: str, day: str):
-        """Tageskurve für das Stations-Labor im Statistik-Bereich."""
+        """Tageskurve für das Stations-Labor im Statistik-Bereich.
+
+        Quelle ist die Engine-Veröffentlichung (runtime/engine/current.json).
+        Wenn keine Engine-Daten vorhanden sind, wird ein leeres Array
+        zurückgegeben — keine Demo-Daten, keine erfundenen Punkte.
+        """
         try:
-            # Versuche aus Backtest-Lab die Punkte zu generieren
             metas, _ = metadata(self.settings)
-            from .stats_summary import generate_backtest_lab
+            # Bestimme die Stadt der Station aus den Metadaten
+            city_for_station = None
+            for (city, uid), _meta in metas.items():
+                if uid == station_id:
+                    city_for_station = city
+                    break
 
-            lab = generate_backtest_lab(metas)
-            models = lab.get("models", {})
-            st_model = models.get(station_id)
+            if not city_for_station:
+                return {
+                    "ok": False,
+                    "station_id": station_id,
+                    "day": day,
+                    "points": [],
+                    "error_code": "unknown_station",
+                }
 
-            # Basispreis und Form
-            pts = []
-            if st_model:
+            bundle = publication(self.settings)
+            points: list[dict[str, Any]] = []
+            for row in bundle.get("forecasts", []) or []:
+                if row.get("station_id") != station_id:
+                    continue
+                if row.get("city") != city_for_station:
+                    continue
+                forecast_points = row.get("points") or []
                 try:
-                    d_obj = dt.date.fromisoformat(day)
-                    cls = 1 if d_obj.weekday() in (5, 6) else 0
+                    target_date = dt.date.fromisoformat(day)
                 except Exception:
-                    cls = 0
-                shape = st_model.get("shapeWk") if cls == 0 else st_model.get("shapeWe")
-                base = 169.9
-                for i, diff in enumerate(shape or []):
-                    h = 6.0 + i
-                    pts.append({"h": h, "ct": round(base + diff, 1), "open": True})
-            return {"ok": True, "station_id": station_id, "day": day, "points": pts}
+                    return {
+                        "ok": False,
+                        "station_id": station_id,
+                        "day": day,
+                        "points": [],
+                        "error_code": "invalid_day",
+                    }
+                for fp in forecast_points:
+                    try:
+                        ts = dt.datetime.fromisoformat(
+                            str(fp.get("timestamp", "")).replace("Z", "+00:00")
+                        )
+                    except Exception:
+                        continue
+                    local_date = (
+                        ts.astimezone(BERLIN_TZ).date() if ts.tzinfo else ts.date()
+                    )
+                    if local_date != target_date:
+                        continue
+                    q50 = fp.get("q50")
+                    if q50 is None:
+                        continue
+                    # €/L → ct/L
+                    ct_value = round(float(q50) * 100.0, 1)
+                    points.append(
+                        {
+                            "h": ts.astimezone(BERLIN_TZ).hour
+                            if ts.tzinfo
+                            else ts.hour,
+                            "ct": ct_value,
+                            "open": True,
+                        }
+                    )
+                if points:
+                    break
+
+            return {
+                "ok": True,
+                "station_id": station_id,
+                "day": day,
+                "points": points,
+                "source": "engine" if points else None,
+            }
         except Exception:
-            return {"ok": False, "station_id": station_id, "day": day, "points": []}
+            return {
+                "ok": False,
+                "station_id": station_id,
+                "day": day,
+                "points": [],
+            }

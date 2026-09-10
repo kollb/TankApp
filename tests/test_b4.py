@@ -266,7 +266,7 @@ def test_fills_recording_and_compliance(b4_settings):
 
 def test_settlement_worker_job(b4_settings):
     """Settlement-Job (app.worker settlement) schließt abgelaufene Snapshots ab."""
-    from app.feedback import record_snapshot, load_store
+    from app.feedback import record_snapshot, load_store, settle_snapshots
     from app.worker import execute
 
     # Create past snapshot
@@ -285,7 +285,24 @@ def test_settlement_worker_job(b4_settings):
     }
     record_snapshot(b4_settings, snap_data, clock=lambda: NOW - dt.timedelta(hours=24))
 
-    # Run settlement job
+    # Settlement braucht eine Berlin-Stunde nach 21:00 (Fensterende 20.5 + 0.5h
+    # grace). clock_now muss nach Berlin 21 Uhr sein. NOW (14:00 UTC) plus
+    # +9h = 23:00 UTC = 01:00+1 Berlin — zykelt. Stattdessen: NOW+12h setzen,
+    # das ergibt 02:00 UTC des Folgetages = 04:00 Berlin … auch zu früh.
+    # Saubere Lösung: NOW durch NOW.replace(tzinfo=ZoneInfo("Europe/Berlin"))
+    # ersetzen und auf 22:00 Berlin setzen. Wir setzen hier explizit den
+    # Berlin-Tag-Offset: 22:00 lokal = 20:00 UTC.
+    berlin_now = NOW.astimezone(dt.timezone(dt.timedelta(hours=2)))
+    settlement_dt = berlin_now.replace(hour=22, minute=0, second=0, microsecond=0)
+
+    def _settlement_clock():
+        return settlement_dt
+
+    result = settle_snapshots(b4_settings, clock=_settlement_clock)
+    assert result["status"] == "ok"
+    assert result["settled_count"] >= 1
+
+    # Auch der execute()-Wrapper muss durchlaufen.
     outcome = execute("settlement", b4_settings)
     assert outcome["state"] == "success"
     assert outcome["error_code"] is None
@@ -348,3 +365,51 @@ def test_stats_summary_three_layers(b4_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_stats_summary_no_demo_data(b4_settings):
+    """Stats Summary darf keine Demo-Daten erfinden, wenn keine Engine läuft.
+
+    Konzept §14: „Die App kennt ihr eigenes Können." Wenn die
+    Engine-Veröffentlichung fehlt, sind alle Felder null/leer,
+    nicht fest verdrahtet (68 %, 0.74, 94.5, 0.62σ).
+    """
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        _, body = _get_json(base + "/api/v1/stats/summary?city=Frankfurt&fuel=e10")
+
+        qm = body["quality_metrics"]
+        # None ist die korrekte Antwort, solange keine Engine-Veröffentlichung existiert
+        assert qm["top3_hit_rate"] is None
+        assert qm["mase_sprungfrei"] is None
+        assert qm["picp_95"] is None
+        assert qm["cusum_drift"]["status"] == "unknown"
+        assert qm["cusum_drift"]["max_cusum"] is None
+
+        bt = body["backtest"]
+        # Keine Demo-Stationen erfinden
+        assert bt["stationScores"] == []
+        assert bt["stations"] == []
+        # error_code signalisiert ehrlich, was fehlt
+        assert bt.get("error_code") in ("polling_missing", "backtest_not_available")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_day_series_no_demo_data(b4_settings):
+    """GET /api/v1/day darf ohne Engine keine Demo-Tageskurve liefern.
+
+    Die alten hartkodierten Punkte (172.5, 173.9, …) sind weg.
+    """
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    day_body = live.day_series(UID, "2026-09-10")
+    # Ohne Engine: leere Liste, ok=True (kein Fehler, einfach keine Daten)
+    assert day_body["ok"] is True
+    assert day_body["points"] == []
+    assert day_body.get("source") in (None, "engine")

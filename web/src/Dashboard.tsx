@@ -105,11 +105,13 @@ function Metric({
   value,
   detail,
   tip,
+  hint,
 }: {
   label: string;
   value: ReactNode;
   detail: string;
   tip?: string;
+  hint?: ReactNode;
 }) {
   return (
     <div className={`${panel} p-5`}>
@@ -131,6 +133,11 @@ function Metric({
         {value}
       </div>
       <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
+      {hint && (
+        <div className="mt-2 text-[10px] leading-relaxed text-slate-500">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -239,14 +246,14 @@ function ApiExplorer({
   const endpoints = [
     { label: "Systemstatus", path: "/api/v1/health" },
     {
-      label: "Decide (B4 Primär)",
+      label: "Decide (Kauf-Empfehlung)",
       path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
     },
     {
-      label: "Stats Summary (B4 3 Schichten)",
+      label: "Stats Summary (Übersicht aller 3 Layer)",
       path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
     },
-    { label: "Due Episodes (B4 Intent/Due)", path: "/api/v1/episodes?status=due" },
+    { label: "Fällige Einträge (Episodes due)", path: "/api/v1/episodes?status=due" },
     { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
     { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
     { label: "Collector Livestatus", path: "/api/v1/collector/status" },
@@ -788,9 +795,32 @@ export function Dashboard() {
     });
   })();
 
-  const calibrationTip = f?.data_policy
-    ? `Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Bisher ${f.data_policy.good_complete_live_days} von ${f.data_policy.required_complete_live_days} guten Live-Tagen. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.`
-    : "Kalibrierung braucht nachgewiesene Live-Vorhersagen — keine Archiv-Historie: mindestens 21 bewertete Tage, Abdeckung ≥ 85 %, MASE < 0,95, 95-%-Abdeckung zwischen 90 und 98 %, dazu der noch ausstehende Abnahmetest. Deshalb keine Handlungsempfehlung — nur transparente Kennzahlen.";
+  // Dezente Hinweise zur Kalibrierung: aus data_policy (gut/benötigt) + gate_status
+  // berechnen wir, wann ungefähr mit Werten zu rechnen ist. Tagessprung: 1 Live-Tag
+  // ≈ 1 Kalendertag. Wir nehmen das heutige Datum (Europe/Berlin).
+  const policy = f?.data_policy;
+  const goodDays = policy?.good_complete_live_days ?? 0;
+  const requiredDays = policy?.required_complete_live_days ?? 21;
+  const daysMissing = Math.max(0, requiredDays - goodDays);
+  const etaDate = (() => {
+    if (!daysMissing) return null;
+    const d = new Date();
+    d.setDate(d.getDate() + daysMissing);
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  })();
+  const calibrationHint = (() => {
+    if (daysMissing === 0) {
+      return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
+    }
+    return `Wert erscheint, sobald die Live-Phase ${requiredDays} bewertete Tage erreicht hat (noch ${daysMissing} · voraussichtlich ab ${etaDate}).`;
+  })();
+  const brierHint = (() => {
+    if (statsSummaryRes.data?.live_advice.brier_30d != null) return null;
+    if (daysMissing === 0) {
+      return "Noch keine 100 Empfehlungen im Live-Ledger — Wert erscheint automatisch.";
+    }
+    return `Wert erscheint mit den ersten Live-Empfehlungen (frühestens ${etaDate}).`;
+  })();
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
@@ -881,7 +911,7 @@ export function Dashboard() {
       const net = (d / 100) * liters - pairEco.fuelEur - pairEco.timeEur;
       nets.push(roundTo(net, 2));
     }
-    return nets.length ? nets : [0.85, 1.2, -0.4, 0.6, 1.4, -0.2, 0.9, 1.1, 0.4, 0.7, -0.5, 1.3, 0.8, 1.0];
+    return nets;
   }, [labData, selected, pairAltStation, liters, pairEco]);
 
   const dueEpisode = dueEpisodesRes.data?.episodes?.[0] || (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
@@ -1292,7 +1322,7 @@ export function Dashboard() {
                       Modell-Trefferquote (Advice-Ledger)
                     </span>
                     <Badge warning={!statsSummaryRes.data?.live_advice.calibrated}>
-                      {statsSummaryRes.data?.live_advice.calibrated ? "M7 Kalibriert" : "M7 Gate aktiv"}
+                      {statsSummaryRes.data?.live_advice.gate_status || (statsSummaryRes.data?.live_advice.calibrated ? "Kalibriert" : "Vor-Kalibrierung")}
                     </Badge>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-slate-400 font-mono">
@@ -1312,9 +1342,12 @@ export function Dashboard() {
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
                     Auto-Settlement nach Fensterende. Brier-Score 30d:{" "}
                     <span className="font-mono text-slate-400">
-                      {statsSummaryRes.data?.live_advice.brier_30d ?? "M7 Kalibrierung steht aus"}
+                      {statsSummaryRes.data?.live_advice.brier_30d ?? "—"}
                     </span>
                   </p>
+                  {brierHint && (
+                    <p className="mt-1 text-[10px] text-slate-500 leading-snug">{brierHint}</p>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
@@ -2118,10 +2151,15 @@ export function Dashboard() {
                     </p>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-                    <p className="text-slate-400">M7 Kalibrierungs-Gate</p>
+                    <p className="text-slate-400">Kalibrierungs-Freigabe</p>
                     <p className="mt-1 text-base font-bold text-amber-300">
-                      {statsSummaryRes.data?.live_advice.gate_status || "M7-Kalibrierung steht aus"}
+                      {statsSummaryRes.data?.live_advice.gate_status || "Kalibrierung steht aus"}
                     </p>
+                    {daysMissing > 0 && (
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                        Noch {daysMissing} von {requiredDays} bewerteten Live-Tagen · voraussichtlich ab {etaDate}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2324,40 +2362,43 @@ export function Dashboard() {
               <div className="mt-4 grid gap-4 xl:grid-cols-5">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 xl:col-span-3">
                   <p className="px-1 text-xs font-medium text-slate-400">
-                    Tageskurve {activeLabDayRow?.day} (ct/L)
+                    Tageskurve {activeLabDayRow?.day || "—"} (ct/L)
                   </p>
-                  <LabLineChart
-                    height={220}
-                    series={[
-                      {
-                        name: "Preis",
-                        color: "#e2e8f0",
-                        pts: [
-                          { x: 6, y: 172.5 },
-                          { x: 8, y: 173.9 },
-                          { x: 12, y: 173.4 },
-                          { x: 15, y: 172.6 },
-                          { x: 17, y: 171.6 },
-                          { x: 19, y: 169.2 },
-                          { x: 20, y: 168.1 },
-                          { x: 22, y: 171.2 },
-                        ],
-                      },
-                    ]}
-                    marks={[
-                      { x: 8, color: "#38bdf8", label: "08:00" },
-                      { x: labPredHour, color: "#34d399", label: `~${String(labPredHour).padStart(2, "0")}:00` },
-                    ]}
-                    xTicks={[
-                      { x: 6, label: "06" },
-                      { x: 9, label: "09" },
-                      { x: 12, label: "12" },
-                      { x: 15, label: "15" },
-                      { x: 18, label: "18" },
-                      { x: 21, label: "21" },
-                    ]}
-                    yFmt={(v) => `${v.toFixed(1)} ct`}
-                  />
+                  {(() => {
+                    const dayPts: { x: number; y: number }[] =
+                      activeLabDayRow && (activeLabDayRow as any).curve
+                        ? ((activeLabDayRow as any).curve as { x: number; y: number }[])
+                        : [];
+                    return dayPts.length ? (
+                      <LabLineChart
+                        height={220}
+                        series={[
+                          {
+                            name: "Preis",
+                            color: "#e2e8f0",
+                            pts: dayPts,
+                          },
+                        ]}
+                        marks={[
+                          { x: 8, color: "#38bdf8", label: "08:00" },
+                          { x: labPredHour, color: "#34d399", label: `~${String(labPredHour).padStart(2, "0")}:00` },
+                        ]}
+                        xTicks={[
+                          { x: 6, label: "06" },
+                          { x: 9, label: "09" },
+                          { x: 12, label: "12" },
+                          { x: 15, label: "15" },
+                          { x: 18, label: "18" },
+                          { x: 21, label: "21" },
+                        ]}
+                        yFmt={(v) => `${v.toFixed(1)} ct`}
+                      />
+                    ) : (
+                      <div className="flex h-[220px] items-center justify-center text-xs text-slate-500">
+                        Tageskurve wird geladen …
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 xl:col-span-2">
                   <p className="px-1 text-xs font-medium text-slate-400">
@@ -2483,27 +2524,77 @@ export function Dashboard() {
             <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Metric
                 label="Top-3-Trefferquote (30 d)"
-                value={<span className="text-emerald-300 font-mono">{statsSummaryRes.data?.quality_metrics.top3_hit_rate ? `${Math.round(statsSummaryRes.data.quality_metrics.top3_hit_rate * 100)} %` : "68 %"}</span>}
+                value={
+                  statsSummaryRes.data?.quality_metrics.top3_hit_rate != null ? (
+                    <span className="text-emerald-300 font-mono">{`${Math.round(statsSummaryRes.data.quality_metrics.top3_hit_rate * 100)} %`}</span>
+                  ) : (
+                    <span className="text-slate-500 font-mono">—</span>
+                  )
+                }
                 detail="Tagesminimum in einem der 3 empfohlenen Zeitfenster. Ziel > 60 %."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.top3_hit_rate == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="MASE sprungfrei"
-                value={<span className="text-sky-300 font-mono">{statsSummaryRes.data?.quality_metrics.mase_sprungfrei?.toFixed(2) ?? "0.74"}</span>}
+                value={
+                  statsSummaryRes.data?.quality_metrics.mase_sprungfrei != null ? (
+                    <span className="text-sky-300 font-mono">{statsSummaryRes.data.quality_metrics.mase_sprungfrei.toFixed(2)}</span>
+                  ) : (
+                    <span className="text-slate-500 font-mono">—</span>
+                  )
+                }
                 detail="Skalierter Fehler an sprungfreien Tagen. Ziel < 0.80."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.mase_sprungfrei == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="95-%-Band PICP"
-                value={<span className="text-slate-100 font-mono">{statsSummaryRes.data?.quality_metrics.picp_95?.toFixed(1) ?? "94.5"} %</span>}
+                value={
+                  statsSummaryRes.data?.quality_metrics.picp_95 != null ? (
+                    <span className="text-slate-100 font-mono">{statsSummaryRes.data.quality_metrics.picp_95.toFixed(1)} %</span>
+                  ) : (
+                    <span className="text-slate-500 font-mono">—</span>
+                  )
+                }
                 detail="Anteil echter Preise im Konfidenzband. Ziel 90–98 %."
+                hint={
+                  statsSummaryRes.data?.quality_metrics.picp_95 == null
+                    ? calibrationHint
+                    : null
+                }
               />
               <Metric
                 label="CUSUM Drift-Status"
                 value={
-                  <span className={statsSummaryRes.data?.quality_metrics.cusum_drift.status === "normal" ? "text-emerald-400 font-mono" : "text-amber-400 font-mono"}>
-                    {statsSummaryRes.data?.quality_metrics.cusum_drift.status === "normal" ? "STABIL (0.62σ)" : "DRIFT"}
-                  </span>
+                  statsSummaryRes.data?.quality_metrics.cusum_drift ? (
+                    <span
+                      className={
+                        statsSummaryRes.data.quality_metrics.cusum_drift.status === "normal"
+                          ? "text-emerald-400 font-mono"
+                          : "text-amber-400 font-mono"
+                      }
+                    >
+                      {statsSummaryRes.data.quality_metrics.cusum_drift.status === "normal"
+                        ? `STABIL${statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum != null ? ` (${statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum.toFixed(2)}σ)` : ""}`
+                        : statsSummaryRes.data.quality_metrics.cusum_drift.status.toUpperCase()}
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 font-mono">—</span>
+                  )
                 }
                 detail="Schranke |CUSUM| ≤ 3σ über 14 d zur Erkennung von Stationsumbau."
+                hint={
+                  !statsSummaryRes.data?.quality_metrics.cusum_drift
+                    ? calibrationHint
+                    : null
+                }
               />
             </div>
 
@@ -2527,7 +2618,7 @@ export function Dashboard() {
                 enabled={h?.jobs_enabled}
               />
               <JobCard
-                title="Settlement (B4)"
+                title="Beleg-Verarbeitung"
                 icon={<Scale size={17} className="text-emerald-400" />}
                 job={(h?.jobs as any)?.settlement}
                 enabled={h?.jobs_enabled}
@@ -2587,7 +2678,7 @@ export function Dashboard() {
               </h3>
               <p className="mb-4 text-[11px] text-slate-500">
                 Dieselben Endpunkte, die diese GUI nutzt — live abgerufen,
-                ohne Poll auszulösen. Neu in B4: decide, episodes, fills, stats/summary.
+                ohne Poll auszulösen. Aktuelle Endpunkte: decide, episodes, fills, stats/summary.
               </p>
               <ApiExplorer fuel={fuel} identity={identity} activeCity={activeCity} />
             </section>
