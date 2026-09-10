@@ -2,7 +2,7 @@
 
 **Ein Einstieg, eine Reihenfolge:** [INSTALL.md](INSTALL.md) ist der verbindliche Betriebsplan.
 
-> Stand: 09.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate) implementiert.
+> Stand: 10.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate), B4 (Decision Layer) und die Ereignis-Pipeline (Uploader-Webhook, Issue 50) implementiert.
 > Alle Dokumente haben ein klickbares Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis (klickbar)
@@ -23,7 +23,7 @@
    Rollen, Datenfluss, Ressourcen, SD-Härtung, Hardware-Bewertung. Extrahiert aus Konzept §9 und Installations-Details.
 
 3. **[API — Nur-Lese Endpunkte](API.md)**  
-   Alle `/api/v1/*` Endpunkte inkl. B3: heatmap, selection, collector/status, route/evaluate. Mit Beispielen.
+   Alle `/api/v1/*` Endpunkte inkl. B3 und Ereignis-Pipeline: heatmap, selection, collector/status, route/evaluate, jobs/trigger. Mit Beispielen.
 
 4. **[Betrieb — systemd, Backup, Fehlersuche](BETRIEB.md)**  
    Collector/Uploader systemd-Units, tmpfs, Sicherung/Wiederherstellung, Störungsfälle, InfluxDB-Setup, Unraid-Spezial.

@@ -167,6 +167,9 @@ def public_job(settings, name):
             "finished_at",
             "last_success_at",
             "next_run_at",
+            # Issue 50: Datenstand des letzten erfolgreichen
+            # Webhook-Triggerlaufs (Epochensekunden) — Idempotenz-Anker.
+            "data_watermark",
             "error_code",
         )
     }
@@ -355,8 +358,27 @@ class LiveData:
         except (ValueError, OSError, KeyError, TypeError):
             return {"points": [], "error_code": "influx_read_failed"}
 
+    def trigger_info(self):
+        """Issue 50: Webhook-Trigger-Statistik des Schedulers (Prozesslebenszeit).
+
+        Ohne anhängenden Scheduler (z. B. reine Read-Only-Instanzen) bleibt
+        das Feld leer — die intervallo-basierten Jobs ändern dadurch nichts.
+        """
+        scheduler = getattr(self, "scheduler", None)
+        if scheduler is None:
+            return {}
+        with scheduler.lock:
+            return {
+                name: {
+                    "triggers": scheduler.trigger_counts.get(name, 0),
+                    "last_trigger_skip": scheduler.trigger_skips.get(name),
+                }
+                for name in ("models", "selection")
+            }
+
     def health(self):
         job_errors = self.job_errors.copy()
+        trigger_stats = self.trigger_info()
         metas, problem = metadata(self.settings)
         archive = read_json(
             self.settings.runtime / "jobs" / "archive-sync" / "state.json", None
@@ -429,6 +451,9 @@ class LiveData:
                         if name in job_errors
                         else {}
                     ),
+                    # Issue 50: Trigger-Zählung/Sprung-Grund nur für die
+                    # inferenz-baren Jobs (models/selection) vorhanden.
+                    **trigger_stats.get(name, {}),
                 }
                 for name in ("archive", "models", "selection", "settlement")
             },

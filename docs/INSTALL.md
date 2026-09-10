@@ -172,7 +172,7 @@ Weitere Hinweise in [BETRIEB.md](BETRIEB.md) Unraid Abschnitt.
 |---|---|
 | GUI + Nur-Lese-API | Gemeinsamer Dienst, Preise alle 30s neu lesen, Anzeige ≤30 Min alter offener Preise, keine zusätzlichen Tankerkönig-Requests |
 | Archiv | Bei App-/NAS-Start, danach stündlich, Preis-/Stationsdateien bis gestern, fehlende Tage nachholen, vollständig → überspringen ohne Archiv anzufassen (State in Runtime, HDD bleibt Sleep) |
-| Modelle | Bei Start, danach täglich nach erfolgreichem Lauf, bei Fehler stündlich erneut, unabhängig vom Archiv |
+| Modelle | Bei Start, danach täglich nach erfolgreichem Lauf, bei Fehler stündlich erneut, unabhängig vom Archiv; optionaler Uploader-Webhook (Issue 50, Setup in [BETRIEB.md](BETRIEB.md)) weckt den Lauf nach sicherem InfluxDB-Write — Debounce + Idempotenz entscheidet der Scheduler, ohne Webhook bleibt alles intervallbasiert |
 | Selektion | Bei Start, danach täglich, nach Modell best-effort, publiziert nach `runtime/selection/current.json` (B3.10) |
 | Veröffentlichung | Erst nach fertiger Berechnung atomar ersetzen, teilweise erneuerte Stationen kennzeichnen alte Ergebnisse, ohne erfolgreichen Fit bleibt letzter brauchbarer Stand |
 | Neustart | Docker `restart: unless-stopped`, startet mit Docker, holt nach |
@@ -189,7 +189,7 @@ Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
 
 - **Alltag:** Stadt/Kraftstoff, günstigster aktuell gemeldeter offener Preis, Datenalter, Tankmenge, reiner Preisvergleich und Route bei gültigen Koordinaten. Stadt, Kraftstoff, Tankmenge merkt sich Browser. Keine Tankbuchung, keine als netto ausgegebene Umweg-Ersparnis. Neu B3.12: Button „Server prüfen“ für serverseitige Umweg-Ökonomie.
 - **Statistik:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und Backtestwerte samt Datenbasis. Fehlende/alte Modelle sichtbar markiert. Neu B3.9: Heatmaps DoW×Stunde Niveau + Cheap-Probability. Neu B3.10: Meine Stationen mit δ̂ Ranking, Bootstrap-KI, AV-Score, billigste Stunde.
-- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte Veröffentlichung. Fehlende Zugangsdaten ergeben ehrlichen Einrichtungszustand, keine Demo-Preise. Neu B3.11: Pi/tmpfs Livestatus (Collector-Herzschlag ans NAS) mit tmpfs-Nutzung, ältester Datei, Poll Count.
+- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte Veröffentlichung. Fehlende Zugangsdaten ergeben ehrlichen Einrichtungszustand, keine Demo-Preise. Neu B3.11: Pi/tmpfs Livestatus (Collector-Herzschlag ans NAS) mit tmpfs-Nutzung, ältester Datei, Poll Count. Neu Issue 50: bei Modell-/Selektions-Jobs Datenstand des letzten Webhook-Triggerlaufs und Trigger-Statistik (Debounce/Idempotenz) sichtbar.
 
 Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte Preise. Unter System müssen Lesezugang und nach erstem Abruf Archiv-/Job-Stände passen. Laufender Container allein bestätigt das nicht. NAS-Auszeiten und Pi-Puffergrenze stehen bei Rollen oben.
 
