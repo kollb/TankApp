@@ -17,6 +17,33 @@ Q_COLUMNS = ("q025", "q10", "q50", "q90", "q975")
 SCHEMA_VERSION = 1
 
 
+def exp_block_weights(n_blocks: int, half_life_days: float | None) -> np.ndarray | None:
+    """Exponentielle Ziehgewichte für Tagesblöcke (Issue 46).
+
+    Blöcke sind chronologisch sortiert (ältester zuerst, neuester zuletzt).
+    Gewicht des Blocks mit Alter ``a`` (Tage, 0 = neuester):
+    ``0.5 ** (a / half_life_days)``, normiert auf Summe 1.
+    ``None`` (oder ungültig) bedeutet uniform — der Aufrufer zieht dann
+    ungewichtet.
+    """
+    if n_blocks <= 0:
+        return None
+    if half_life_days is None:
+        return None
+    try:
+        half_life = float(half_life_days)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(half_life) or half_life <= 0:
+        return None
+    ages = np.arange(n_blocks - 1, -1, -1, dtype=float)
+    weights = 0.5 ** (ages / half_life)
+    total = float(weights.sum())
+    if total <= 0 or not np.isfinite(total):
+        return None
+    return weights / total
+
+
 def utc_time(value, timezone: str = "Europe/Berlin") -> pd.Timestamp:
     result = pd.Timestamp(value)
     if pd.isna(result):
@@ -285,6 +312,12 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
             continue
         irregular_rises += 1
     last_observation = frame.observed_at.dropna()
+    ew_half_life = getattr(cfg, "bootstrap_ew_half_life_days", None)
+    interval_method = (
+        "residual_day_bootstrap_ew_uncalibrated"
+        if ew_half_life
+        else "residual_day_bootstrap_uncalibrated"
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "model": "harmonic_ar2",
@@ -306,7 +339,7 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "residual_blocks": blocks,
         "naive_profile": naive,
         "mase_scale": seasonal_scale(price, cfg),
-        "interval_method": "residual_day_bootstrap_uncalibrated",
+        "interval_method": interval_method,
         "calibrated": False,
         "decision_ready": False,
     }
@@ -407,9 +440,17 @@ def predict(
     rng = np.random.default_rng(cfg.seed)
     local_dates = index.tz_convert(cfg.timezone).strftime("%Y-%m-%d")
     # A single draw supplies a whole day's error path, not independent ticks.
+    # Issue 46: neuere Tagesblöcke werden exponentiell höher gewichtet
+    # (Halbwertszeit aus der Config, Default 14 Tage); None = uniform.
+    block_weights = exp_block_weights(
+        len(block), getattr(cfg, "bootstrap_ew_half_life_days", None)
+    )
     for day in np.unique(local_dates):
         positions = np.flatnonzero(local_dates == day)
-        draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
+        if block_weights is None:
+            draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
+        else:
+            draws = rng.choice(len(block), size=cfg.bootstrap_samples, p=block_weights)
         paths[:, positions] = point[positions] + block[draws[:, None], slot[positions]]
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
     for sample in range(cfg.bootstrap_samples):

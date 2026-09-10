@@ -45,11 +45,15 @@ def selected_ids(path: Path | None, city: str | None) -> set[str] | None:
 
 
 def load_raw_input(args):
+    half_life = getattr(args, "bootstrap_ew_half_life", 14.0)
     cfg = Config(
         train_days=args.train_days,
         min_train_days=args.min_train_days,
         poll_start=args.poll_start,
         poll_end=args.poll_end,
+        bootstrap_ew_half_life_days=(
+            None if half_life is not None and half_life <= 0 else half_life
+        ),
     )
     ids = selected_ids(args.polling, args.poll_city)
     observations, quality = load_observations(
@@ -103,6 +107,13 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--poll-city")
         command.add_argument("--train-days", type=int, default=42)
         command.add_argument("--min-train-days", type=int, default=28)
+        command.add_argument(
+            "--bootstrap-ew-half-life",
+            type=float,
+            default=14.0,
+            help="Halbwertszeit (Tage) für den exponentiell gewichteten "
+            "Tagesblock-Bootstrap (Issue 46); <=0 = uniform.",
+        )
         command.add_argument("--poll-start", type=int, default=6)
         command.add_argument("--poll-end", type=int, default=24)
         if name == "bootstrap":

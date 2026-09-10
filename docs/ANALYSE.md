@@ -37,8 +37,8 @@ Pipeline: `analysis/station_selection.py` — Schema siehe `data-tools/README.md
 
 | # | Komponente | Verfahren | Funktion |
 |---|---|---|---|
-| 1 | Relative Preislage δ̂ᵢ | Medianᵢ(t) von pᵢ(t) − Medianⱼ≠ᵢ pⱼ(t) (Leave-One-Out-Baseline) | Gewicht 0.40 |
-| 2 | Inferenz | Tages-Block-Bootstrap B=2000 → 95%-KI; p-Wert H0: δᵢ≥0; Benjamini-Hochberg FDR q<0.05 | Signifikanz-Gate |
+| 1 | Relative Preislage δ̂ᵢ | Medianᵢ(t) von pᵢ(t) − Medianⱼ≠ᵢ pⱼ(t) (Leave-One-Out-Baseline) + EW-Median über Tages-δ̂ (HWZ 7d, F5) + CUSUM-Bruchflag | Gewicht 0.40 (auf EW-Median) |
+| 2 | Inferenz | Exponentiell gewichteter Tages-Block-Bootstrap B=2000 (HWZ 14d, neuere Tage höheres Ziehgewicht) → 95%-KI; p-Wert H0: δᵢ≥0; Benjamini-Hochberg FDR q<0.05 | Signifikanz-Gate |
 | 3 | Verfügbarkeit AVᵢ | Σₕ wₕ·P(Top-3\|h); w = Tankzeitprofil werktags 06–09/16–20 | Gewicht 0.25 |
 | 4 | Tagesform | robuste harmonische Regression (Huber-IRLS, 1.+2. Harmonische) → Amplitude, billigste Stunde, R² | Gewicht 0.15 |
 | 5 | Risiko | σᵢ = 1.4826·MAD(Δᵢ); Streuung Tages-Mittelränge | Gewicht 0.10+0.10 |
@@ -57,12 +57,20 @@ Kraftstoff: primär E10 für Selektion/Prognose/Heatmaps. Diesel/E5 werden ohne 
 - LOO-Median vermeidet mechanische Verzerrung (eigener Preis nicht in Baseline)
 - Median statt Mittelwert → resistent gegen Preissprung-Artefakte
 - Einheit ct/L, negativ = günstiger als Umgebung
+- **F5/EW-Median (Issue 48):** Zusätzlich EW-Median über Tages-δ̂ (Halbwertszeit 7 Tage:
+  5 Tage alte Tage wiegen ~61 %, 5 Wochen alte ~3 %) als `delta_ew_ct`, Median der
+  letzten 5 Tage als `delta_recent5_ct` und retrospektiver CUSUM-Changepoint-Flag
+  (`break_flag`, `break_stat`, Schwelle h=2,0; Skala aus Differenzen-MAD, damit ein
+  Wechsel die Skala nicht maskiert). Der klassische
+  Median über 42 Tage wäre bei Betreiber-/Strategiewechsel ~21 Tage blind (Mischung
+  zweier Verteilungen); Ranking/Score nutzen deshalb den EW-Median (Fallback klassisch).
 
 Beispiel: „langfristig 3,80 ct/L günstiger als Umgebung“ erscheint nur im Stations-Detail der Werkstatt.
 
 ### Bootstrap-KI & FDR
 
-- Tages-Block-Bootstrap B=2000: ziehe Tage mit Zurücklegen, berechne je Ziehung Median Δ, erhalte Verteilung von δ̂
+- Exponentiell gewichteter Tages-Block-Bootstrap B=2000 (Issue 46): ziehe Tage mit Zurücklegen,
+  neuere Tage mit höherer Wahrscheinlichkeit (Halbwertszeit 14 Tage), berechne je Ziehung Median Δ
 - 95%-KI = 2,5% und 97,5% Quantile
 - p-Wert = (1 + Anzahl(Bootstrap ≥0)) / (B+1), einseitig H0: δ≥0
 - Benjamini-Hochberg über alle Stationen → q-Wert, signifikant bei q<0.05 (FDR kontrolliert)
@@ -140,7 +148,8 @@ Ziel-Stack pro Station×Sorte:
 - **M3 Zweitmeinung:** UnobservedComponents / Holt-Winters plus saisonale Naive als Benchmark
 - **Ensemble:** inverse-MASE-Gewichte aus 21-Tage Rolling-Backtest
 
-Abnahme-Kriterien: MASE(24h) <0,95 gesamt und <0,80 sprungfrei, Pinball < Naive, Rolling-PICP(95%) ∈ [90,98]%.
+Abnahme-Kriterien: MASE(24h) <0,95 gesamt und <0,80 sprungfrei, Pinball (τ=0,5 und asym τ=0,75,
+Unterschätzung 3× bestraft) < Naive, Rolling-PICP(95%) ∈ [90,98]%.
 
 ### 12-Uhr-Regel
 
@@ -157,7 +166,10 @@ Seit 2026-04-01 dürfen Tankstellen Preis nur um 12:00 Uhr erhöhen; Senkungen j
 | Heute / 24h | Vorläufige Prognose + täglicher Rolling-Origin-Backtest implementiert, noch kein Echt-Daten-Gütenachweis |
 | +3d / +7d | Vorläufiger Ausblick ab Cutoff, Mehrtage-Backtests offen |
 
-Cutoff lokale Mitternacht, Trainingsfenster 42 Tage. MAE, RMSE, MASE, sMAPE, Pinball, PICP, MPIW werden gemessen. Erster Backtest bewertet folgenden Tag im Poll-Fenster.
+Cutoff lokale Mitternacht, Trainingsfenster 42 Tage (nicht pauschal verdoppelt; stattdessen
+exponentiell gewichteter Tagesblock-Bootstrap, HWZ 14d). MAE, RMSE, MASE, sMAPE, Pinball
+(τ=0,5 und asym τ=0,75), PICP, MPIW werden gemessen. Erster Backtest bewertet folgenden Tag
+im Poll-Fenster. Vergleich 42d-EW vs. 42d-uniform vs. 84d siehe Engine-Referenz §4.
 
 ## Umweg-Ökonomie B3.12
 
