@@ -26,6 +26,7 @@ from .feedback import (
 
 UTC = dt.timezone.utc
 
+
 # Provider-Hook für die Engine-Veröffentlichung. Wird in
 # evaluate_stats_summary() je Request auf die echte settings-gebundene
 # Funktion gesetzt. Das verhindert einen circular import (data ↔ stats_summary)

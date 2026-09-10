@@ -801,7 +801,9 @@ class LiveData:
                         )
                     except Exception:
                         continue
-                    local_date = ts.astimezone(BERLIN_TZ).date() if ts.tzinfo else ts.date()
+                    local_date = (
+                        ts.astimezone(BERLIN_TZ).date() if ts.tzinfo else ts.date()
+                    )
                     if local_date != target_date:
                         continue
                     q50 = fp.get("q50")

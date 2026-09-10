@@ -294,8 +294,11 @@ def test_settlement_worker_job(b4_settings):
     # Berlin-Tag-Offset: 22:00 lokal = 20:00 UTC.
     berlin_now = NOW.astimezone(dt.timezone(dt.timedelta(hours=2)))
     settlement_dt = berlin_now.replace(hour=22, minute=0, second=0, microsecond=0)
-    settlement_clock = lambda: settlement_dt
-    result = settle_snapshots(b4_settings, clock=settlement_clock)
+
+    def _settlement_clock():
+        return settlement_dt
+
+    result = settle_snapshots(b4_settings, clock=_settlement_clock)
     assert result["status"] == "ok"
     assert result["settled_count"] >= 1
 
