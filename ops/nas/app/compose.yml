@@ -18,6 +18,7 @@ services:
       TANKAPP_NETRC: /config/netrc
       TANKAPP_HISTORY_DAYS: "${TANKAPP_HISTORY_DAYS:-365}"
       TANKAPP_MODEL_FUELS: "${TANKAPP_MODEL_FUELS:-e10}"
+      TANKAPP_WEBHOOK_TOKEN: "${TANKAPP_WEBHOOK_TOKEN:-}"
       TZ: Europe/Berlin
     volumes:
       - type: bind

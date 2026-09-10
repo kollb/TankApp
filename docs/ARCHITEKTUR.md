@@ -8,6 +8,7 @@
 - [Rollen & Datenfluss](#rollen--datenfluss)
 - [Pi: Collector + tmpfs + Heartbeat](#pi-collector--tmpfs--heartbeat)
 - [Uploader: Ack + Heartbeat](#uploader-ack--heartbeat)
+- [Ereignis-Pipeline: Webhook statt reinem Polling](#ereignis-pipeline-webhook-statt-reinem-polling)
 - [NAS: InfluxDB + Archiv + Modelle + Selektion](#nas-influxdb--archiv--modelle--selektion)
 - [Ressourcen & SD-Härtung](#ressourcen--sd-härtung)
 - [Hardware-Bewertung](#hardware-bewertung)
@@ -145,7 +146,42 @@ TANKAPP_INFLUX_ORG=gtwrlab
 TANKAPP_INFLUX_BUCKET=tankapp
 TANKAPP_INFLUX_TOKEN=<Token>
 TANKAPP_POLL_DIR=/dev/shm/tankapp
+TANKAPP_NAS_WEBHOOK_URL=http://192.168.178.61:1355
+TANKAPP_NAS_WEBHOOK_TOKEN=<gleiches Secret wie TANKAPP_WEBHOOK_TOKEN auf dem NAS>
 ```
+
+## Ereignis-Pipeline: Webhook statt reinem Polling
+
+Race-Condition-Problem: Der Uploader schreibt in 5-Minuten-Abständen in die
+InfluxDB, der Modell-Job lief aber rein cron-artig nach festem Intervall —
+der Lauf konnte damit starten, bevor die frischen Daten sicher geschrieben
+waren, oder tagelang trotz Datenfluss nicht.
+
+**Ablauf (Issue 50):**
+
+1. Uploader schreibt Punkte in die InfluxDB und **erst danach** (nach Ack)
+   sendet er Fire-and-Forget `POST /api/v1/jobs/trigger` an die NAS-App:
+   `{"job": "models", "watermark": <Epochensekunden des neuesten Snapshots>}`,
+   Auth via `Authorization: Bearer <TANKAPP_NAS_WEBHOOK_TOKEN>`.
+2. Der NAS-Scheduler weckt die Job-Schleife (`models`/`selection`) sofort,
+   entscheidet aber selbst per Debounce (Mindestabstand 15 min für `models`,
+   1 h für `selection`) und **Idempotenz**: Die Watermark wird bei Erfolg im
+   Job-Status (`runtime/jobs/<name>.json → data_watermark`) verankert; ein
+   Trigger mit gleichem Datenstand wird übersprungen, statt doppelt zu
+   trainieren. Älter als das Job-Intervall → Lauf trotzdem (Fenster bleiben
+   am aktuellen Tag verankert).
+3. Gemeinsames Secret: Uploader und NAS müssen dasselbe Secret kennen
+   (`TANKAPP_NAS_WEBHOOK_TOKEN` auf dem Pi, `TANKAPP_WEBHOOK_TOKEN` in der
+   NAS-App-Umgebung). Ohne Secret bleibt der Endpoint 404 (bewusst
+   unsichtbar), ohne Webhook bleibt alles beim intervallo-basierten Betrieb —
+   die Pipeline degradiert graceful, es gibt keine neue harte Abhängigkeit.
+
+**Separation of Concerns bleibt gewahrt:** Der Uploader meldet nur „Daten
+liegen sicher in der InfluxDB“. Ob/wann der Inferenz-Job läuft, entscheidet
+allein der NAS-Scheduler; gerechnet wird weiterhin nur im Worker
+(`app.worker`), der nur abgeschlossene Ergebnisse veröffentlicht. Mehrere
+Trigger während eines Laufs werden zusammengeführt (jeweils nur der neueste
+Watermark bleibt gemerkt).
 
 ## NAS: InfluxDB + Archiv + Modelle + Selektion
 
@@ -163,7 +199,7 @@ TANKAPP_POLL_DIR=/dev/shm/tankapp
 
 ### Modelle
 
-- Bei Start, danach täglich, bei Fehler stündlich
+- Bei Start, danach täglich (Webhook-Triggern beschleunigt, siehe [Ereignis-Pipeline](#ereignis-pipeline-webhook-statt-reinem-polling)), bei Fehler stündlich
 - Liest InfluxDB, verarbeitet rohe Archiv-Änderungsereignisse mit exakten Zeitstempeln, erzeugt Trainingsbestand, fittet 24h-Ausblick + 3d/7d Horizonte, 7-Tage Backtest
 - Veröffentlichung atomar nach `runtime/engine/current.json`, alte Ergebnisse bleiben bei Fehler erhalten
 - `calibrated=false`, `decision_ready=false` bis M7

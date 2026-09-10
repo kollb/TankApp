@@ -18,6 +18,8 @@ class Settings:
     history_days: int = 365
     model_days: int = 120
     model_fuels: tuple[str, ...] = ("e10",)
+    # Issue 50: gemeinsames Secret für den Uploader-Webhook (leer = Endpoint aus).
+    webhook_token: str = ""
 
     @property
     def runtime(self):
@@ -49,4 +51,9 @@ class Settings:
             raise ValueError(
                 "Ungültiger Archivzeitraum oder Kraftstoff in der NAS-Konfiguration."
             )
-        return cls(**fields, history_days=days, model_fuels=fuels)
+        return cls(
+            **fields,
+            history_days=days,
+            model_fuels=fuels,
+            webhook_token=os.environ.get("TANKAPP_WEBHOOK_TOKEN", "").strip(),
+        )

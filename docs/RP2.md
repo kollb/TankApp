@@ -244,7 +244,12 @@ docker start tankapp
 | Collector Livestatus | ✅ **B3.11** via `/api/v1/collector/status` | ✅ aus heartbeat.json | Optimal |
 | Route Evaluate | ✅ **B3.12** via `/api/v1/route/evaluate` | ✅ lokal im Fallback | Gut |
 
-Fallback-Entscheidung arbeitet ehrlich: aus quantilierten Punkten (q025…q975) werden Wahrscheinlichkeit und erwartete Ersparnis unter Gleichverteilungs-Annahme geschätzt — exakte Berechnung nur auf NAS.
+Fallback-Entscheidung arbeitet ehrlich: aus quantilierten Punkten (q025…q975)
+werden **Preis-Score** (0–100 % auf Basis des historischen Quantils,
+Gleichverteilungs-Annahme, Formfehler bis ~8,4 Prozentpunkte) und erwartete
+Ersparnis geschätzt. Der Fallback nennt das bewusst **nicht**
+„Wahrscheinlichkeit“ — die kalibrierte Posterior-Wahrscheinlichkeit (M7)
+liefert ausschließlich das NAS; dort bleibt die Bezeichnung unverändert.
 
 ## Konfiguration
 

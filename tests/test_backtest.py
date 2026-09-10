@@ -1,8 +1,15 @@
 import numpy as np
 import pandas as pd
+import pytest
 from pandas.testing import assert_frame_equal
 
-from engine.backtest import markdown_report, metrics, run_backtest
+from engine.backtest import (
+    PINBALL_TAU_ASYM,
+    markdown_report,
+    metrics,
+    pinball_loss,
+    run_backtest,
+)
 from engine.config import Config
 from engine.data import normalize_observations, prepare_series
 
@@ -170,3 +177,59 @@ def test_decision_row_skips_days_without_anchor_or_realization(cfg):
     truth.loc[target <= pd.Timestamp("2026-07-31 06:00", tz="UTC"), "observed"] = False
     forecast = pd.DataFrame({"q50": [1.65] * len(target)}, index=target)
     assert decision_row(truth, forecast, target, local_origin, cfg.timezone) is None
+
+
+# --- Issue 47: asymmetrischer Pinball-Loss ---
+
+
+def test_pinball_tau_is_documented_075():
+    assert PINBALL_TAU_ASYM == 0.75
+
+
+def test_pinball_loss_symmetry_and_3x_ratio():
+    # τ=0,5: symmetrisch 0,5·|Fehler|.
+    np.testing.assert_allclose(
+        pinball_loss([1.7, 1.8], [1.75, 1.75], tau=0.5), [0.025, 0.025]
+    )
+    # τ=0,75: Unterschätzung (actual > q) kostet 0,75·e, Überschätzung 0,25·|e|.
+    assert float(pinball_loss([1.80], [1.70])[0]) == pytest.approx(0.075)
+    assert float(pinball_loss([1.70], [1.80])[0]) == pytest.approx(0.025)
+    assert float(pinball_loss([1.80], [1.70])[0]) / float(
+        pinball_loss([1.70], [1.80])[0]
+    ) == pytest.approx(3.0)
+
+
+def test_metrics_reports_asym_pinball_and_empty_is_none():
+    empty = metrics(pd.DataFrame())
+    assert empty["pinball_asym_ct"] is None
+    assert empty["naive_pinball_asym_ct"] is None
+    rows = pd.DataFrame(
+        {
+            "actual": [1.70, 1.80],
+            "q50": [1.72, 1.78],
+            "naive": [1.70, 1.70],
+            "q025": [1.60, 1.60],
+            "q975": [1.90, 1.90],
+            "mase_scale": [0.01, 0.01],
+        }
+    )
+    result = metrics(rows)
+    # Punkt 1: Überschätzung 2 ct → 0,25·2 = 0,5; Punkt 2: Unterschätzung
+    # 2 ct → 0,75·2 = 1,5; Mittel = 1,0 ct.
+    assert result["pinball_asym_ct"] == pytest.approx(1.0)
+    assert result["pinball50_ct"] == pytest.approx(1.0)
+    # Naive: 0 ct + Unterschätzung 10 ct → (0 + 7,5)/2 = 3,75 ct.
+    assert result["naive_pinball_asym_ct"] == pytest.approx(3.75)
+
+
+def test_backtest_report_has_asym_criterion_and_threshold(series, cfg):
+    report, _ = run_backtest([series], cfg, days=2, until="2026-08-01")
+    assert report["pinball_asym_tau"] == 0.75
+    assert "pinball_asym_better_than_naive" in report["criteria"]
+    assert report["criteria"]["pinball_asym_better_than_naive"] in (True, False)
+    # MASE/PICP95 bleiben daneben bestehen.
+    assert "mase_24h_below_0_95" in report["criteria"]
+    assert "picp95_between_90_and_98" in report["criteria"]
+    text = markdown_report(report)
+    assert "τ=0,75 asym" in text
+    assert "pinball_asym_better_than_naive" in text

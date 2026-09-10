@@ -37,6 +37,11 @@ HTTP_TIMEOUT_S = 30
 PING_TIMEOUT_S = 5
 DRYRUN_MAX_LINES = 40
 REPLAY_BATCH_POINTS = 1000
+# Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write. Der Trigger
+# ist Feuer-und-Vergessen: Scheitert er, läuft der intervallo-basierte Job
+# unverändert weiter (Graceful Degradation, keine neue Abhängigkeit).
+WEBHOOK_TIMEOUT_S = 5
+WEBHOOK_MIN_GAP_S = 240
 
 
 class Cfg:
@@ -48,6 +53,8 @@ class Cfg:
         token: str,
         poll_dir: Path,
         poll_json: Path,
+        nas_webhook_url: str = "",
+        nas_webhook_token: str = "",
     ):
         self.url = url.rstrip("/")
         self.org = org
@@ -57,6 +64,9 @@ class Cfg:
         self.poll_json = poll_json
         self.meta_dir = poll_dir / "meta"
         self.ack_file = self.meta_dir / "synced_until"
+        # Issue 50: optionaler Webhook an die NAS-App nach sicherem Write.
+        self.nas_webhook_url = nas_webhook_url.strip()
+        self.nas_webhook_token = nas_webhook_token.strip()
 
 
 class State:
@@ -66,6 +76,7 @@ class State:
         self.last_overflow_log = 0.0
         self.names_warned = False
         self.last_heartbeat = 0.0
+        self.last_webhook = 0.0
 
 
 def log(msg: str) -> None:
@@ -344,6 +355,41 @@ def explain_write_error(e: Exception, cfg: Cfg) -> str:
     return str(e) or type(e).__name__
 
 
+def notify_nas(cfg: Cfg, state: State, watermark: dt.datetime) -> None:
+    """NAS-App nach sicherem InfluxDB-Write anstoßen (Issue 50).
+
+    Feuer-und-Vergessen: erzeugt nie einen Upload-Fehler und gibt niemals den
+    Token preis. Der NAS-Scheduler entscheidet selbst (Debounce + Idempotenz),
+    ob ein Inferenzlauf startet.
+    """
+    if not cfg.nas_webhook_url:
+        return
+    now_mono = time.monotonic()
+    if now_mono - state.last_webhook < WEBHOOK_MIN_GAP_S:
+        return
+    state.last_webhook = now_mono
+    body = json.dumps(
+        {"job": "models", "watermark": int(watermark.timestamp())}
+    ).encode()
+    headers = {"Content-Type": "application/json"}
+    if cfg.nas_webhook_token:
+        headers["Authorization"] = "Bearer " + cfg.nas_webhook_token
+    request = urllib.request.Request(
+        cfg.nas_webhook_url.rstrip("/") + "/api/v1/jobs/trigger",
+        data=body,
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT_S) as response:
+            log(f"⇡ NAS-Webhook: Modelle-Trigger gemeldet (HTTP {response.status})")
+    except Exception as exc:
+        log(
+            f"⚠ NAS-Webhook nicht erreicht ({type(exc).__name__}) — "
+            "ignoriert, Intervaljob läuft unverändert weiter."
+        )
+
+
 def sd_notify(state: str) -> None:
     addr = os.environ.get("NOTIFY_SOCKET")
     if not addr:
@@ -437,6 +483,8 @@ def run_upload(cfg: Cfg, state: State) -> int:
             f"⇡ {len(rows)} Zeile(n) ({len(lines)} Punkte) → InfluxDB "
             f"(synced until {newest.isoformat()})"
         )
+        # Issue 50: sichere Write-Bestätigung als Ereignis an die NAS-App.
+        notify_nas(cfg, state, newest)
     if heartbeat_line:
         state.last_heartbeat = now_mono
         log("⇡ Collector-Herzschlag → InfluxDB (collector_status)")
@@ -841,7 +889,16 @@ def main() -> int:
             "INSTALL.md Phase C, §3.2)."
         )
 
-    cfg = Cfg(url, org, bucket, token, args.poll_dir, args.poll_json)
+    cfg = Cfg(
+        url,
+        org,
+        bucket,
+        token,
+        args.poll_dir,
+        args.poll_json,
+        nas_webhook_url=os.environ.get("TANKAPP_NAS_WEBHOOK_URL", ""),
+        nas_webhook_token=os.environ.get("TANKAPP_NAS_WEBHOOK_TOKEN", ""),
+    )
     state = State()
     if args.replay:
         return run_replay(cfg, replay_timezone=args.replay_timezone)

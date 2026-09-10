@@ -51,10 +51,13 @@ transparent geproxyt, und der Fallback zeigt Heartbeat (tmpfs-Nutzung).
 | **E10/E5/Diesel-Umschalter** | ✅ | ✅ |
 
 Die Fallback-Entscheidung arbeitet ehrlich: aus den quantilierten Punkten
-(q025…q975) der NAS-Prognosen werden Wahrscheinlichkeit
-(P(Prognose < aktueller Preis)) und erwartete Ersparnis pro Liter unter
+(q025…q975) der NAS-Prognosen werden **Preis-Score** (0–100 % auf Basis des
+historischen Quantils) und erwartete Ersparnis pro Liter unter
 Gleichverteilungs-Annahme geschätzt — Basis steht im Antworttext und in der
-GUI. Die exakte Berechnung läuft weiterhin nur auf dem NAS.
+GUI. Der Fallback nennt den Wert bewusst **nicht** „Wahrscheinlichkeit“
+(Formfehler bis ~8,4 Prozentpunkte gegenüber der kalibrierten Posterior M7);
+die kalibrierte Wahrscheinlichkeit liefert weiterhin nur das NAS. Die exakte
+Berechnung läuft weiterhin nur auf dem NAS.
 
 ## 📁 Dateistruktur
 
