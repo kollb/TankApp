@@ -149,6 +149,19 @@ def test_future_and_legacy_or_foreign_uuid_rows_are_rejected(app_settings):
         assert data["fresh_prices"] == 0
 
 
+def test_single_bad_row_does_not_hide_good_stations(app_settings):
+    # Hybrid: Eine defekte Zeile neben einer guten verwirft nur die defekte —
+    # Totalausfall gibt es nur, wenn ALLE Zeilen unbrauchbar sind.
+    bad = raw(uid=THIRD)  # fremde UUID, nicht im Polling-Set
+    live = LiveData(app_settings, query=lambda *_: [bad, raw()], clock=lambda: NOW)
+    data = live.stations()
+    assert data["connection_error"] is None
+    assert data["fresh_prices"] == 1
+    one = next(s for s in data["stations"] if s["station_id"] == UID)
+    assert one["price"] == 1.729 and one["fresh"]
+    assert all(s["station_id"] != THIRD for s in data["stations"])
+
+
 def test_missing_setup_is_explicit_and_does_not_call_network(app_settings):
     settings = replace(app_settings, polling=app_settings.data / "missing.json")
     live = LiveData(settings, query=lambda *_: pytest.fail("network"))

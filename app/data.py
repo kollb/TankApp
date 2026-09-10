@@ -228,9 +228,14 @@ class LiveData:
                         selected,
                     )
                     query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
+                    seen, kept = 0, 0
                     for raw in self.query(cfg, query):
                         # Einzelne defekte Zeilen überspringen, statt alle
-                        # Stationen auf influx_read_failed zu setzen.
+                        # Stationen auf influx_read_failed zu setzen. Werden
+                        # aber ALLE gelieferten Zeilen verworfen, ist das kein
+                        # Teilerfolg, sondern ein expliziter Lesefehler (kein
+                        # stilles Leer-Ergebnis bei Totalausfall).
+                        seen += 1
                         try:
                             if not raw.get("station_id"):
                                 raise ValueError("UUID required")
@@ -242,8 +247,11 @@ class LiveData:
                             if identity not in metas:
                                 raise ValueError("Unselected station")
                             rows[identity] = row
+                            kept += 1
                         except (ValueError, KeyError, TypeError):
                             continue
+                    if seen and not kept:
+                        error = "influx_read_failed"
                 except (ValueError, OSError, KeyError, TypeError):
                     error = "influx_read_failed"
             if error:
