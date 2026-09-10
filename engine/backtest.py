@@ -58,6 +58,73 @@ def last_complete_day(series: list[PriceSeries], cfg: Config) -> pd.Timestamp:
     return last.tz_convert(cfg.timezone).normalize()
 
 
+DECISION_HOUR = 8
+DECISION_THETA_CT = 1.0
+
+
+def decision_row(
+    truth: pd.DataFrame,
+    forecast: pd.DataFrame,
+    target: pd.DatetimeIndex,
+    local_origin: pd.Timestamp,
+    timezone: str,
+) -> dict | None:
+    """Eine 08:00-Entscheidungszeile (Konzept §6, Schicht A).
+
+    Entscheidungsregel wie im Live-Betrieb: Um 08:00 Ortszeit gilt der zuletzt
+    beobachtete Preis p08 als Anker; der Mitternachts-Fit (reines
+    Vergangenheits-Training, identisch zum Produktiv-Regime mit nächtlichem
+    Fit) liefert die Tageserwartung. Bewertet gegen realisierte offene Preise.
+    None, wenn der Tag nicht entscheidbar ist (kein Anker, keine Erwartung
+    oder keine Realisierung nach 08:00) — solche Tage werden gezählt, nicht
+    erfunden.
+    """
+    if len(target) == 0:
+        return None
+    cutoff = (local_origin + pd.DateOffset(hours=DECISION_HOUR)).tz_convert("UTC")
+    before = target <= cutoff
+    after = target > cutoff
+    if not bool(after.any()):
+        return None
+    anchor_sel = truth.loc[before & truth.observed, "price"].dropna()
+    if anchor_sel.empty:
+        return None
+    expected_sel = forecast.loc[after, "q50"].dropna()
+    if expected_sel.empty:
+        return None
+    realized_sel = truth.loc[after & truth.observed, "price"].dropna()
+    if realized_sel.empty:
+        return None
+    p08 = float(anchor_sel.iloc[-1])
+    exp_min = float(expected_sel.min())
+    real_min = float(realized_sel.min())
+    pred_ts = expected_sel.idxmin()
+    pred_local = pd.Timestamp(pred_ts).tz_convert(timezone)
+    pred_hour = round(pred_local.hour + pred_local.minute / 60.0, 2)
+    mu = round((p08 - exp_min) * 100.0, 2)
+    saving = round((p08 - real_min) * 100.0, 2)
+    # Tageskurve der Erwartung (ct vs. 08:00-Anker, x = Berlin-Stunde) fürs Labor.
+    curve = []
+    for ts, q50 in expected_sel.items():
+        local = pd.Timestamp(ts).tz_convert(timezone)
+        curve.append(
+            {
+                "x": round(local.hour + local.minute / 60.0, 2),
+                "y": round((float(q50) - p08) * 100.0, 2),
+            }
+        )
+    return {
+        "day": local_origin.date().isoformat(),
+        "cls": 1 if local_origin.dayofweek >= 5 else 0,
+        "mu": mu,
+        "p": None,  # P(S>0): kein P-Modell in der Engine (ehrlich null)
+        "s": saving,
+        "best": round(max(saving, 0.0), 2),
+        "predHour": pred_hour,
+        "curve": curve,
+    }
+
+
 def run_backtest(
     series: list[PriceSeries], cfg: Config, days: int = 21, until=None
 ) -> tuple[dict, pd.DataFrame]:
@@ -76,6 +143,8 @@ def run_backtest(
         end - pd.DateOffset(days=days), end, freq="D", inclusive="left"
     )
     folds, predictions = [], []
+    decision_rows: list[dict] = []
+    decision_skipped = 0
     for item in series:
         for local_origin in origins:
             origin = local_origin.tz_convert("UTC")
@@ -113,6 +182,13 @@ def run_backtest(
                     }
                 )
                 continue
+            # 08:00-Entscheidungszeile (Schicht A): Mitternachts-Fit als
+            # Erwartung, realisierte offene Preise als Wahrheit.
+            decision = decision_row(truth, forecast, target, local_origin, cfg.timezone)
+            if decision is None:
+                decision_skipped += 1
+            else:
+                decision_rows.append({**item.identity(), **decision})
             # Same support for every comparison. Engine-added fill is never
             # scored as truth. Legacy inputs may already contain reconstructed
             # rows; keep that provenance explicit and block live-evidence gates.
@@ -203,6 +279,13 @@ def run_backtest(
         ),
         "requested_test_days": days,
         "test_sources": sorted(rows.source.unique().tolist()) if len(rows) else [],
+        "decision": {
+            "decision_hour": DECISION_HOUR,
+            "theta_ct": DECISION_THETA_CT,
+            "days_evaluated": len(decision_rows),
+            "days_skipped": decision_skipped,
+            "rows": decision_rows,
+        },
         "metrics": aggregate,
         "criteria": criteria,
         "pending": PENDING,
@@ -288,6 +371,12 @@ def markdown_report(report: dict) -> str:
     skipped = [fold for fold in report["folds"] if fold["status"] != "scored"]
     lines.append(
         f"Nicht auswertbare Stationstage: **{len(skipped)} / {len(report['folds'])}**."
+    )
+    decision = report.get("decision", {})
+    lines.append(
+        f"08:00-Entscheidungszeilen (Schicht A): **{decision.get('days_evaluated', 0)}** "
+        f"auswertbar, {decision.get('days_skipped', 0)} übersprungen "
+        "(kein Anker/keine Erwartung/keine Realisierung nach 08:00)."
     )
     for fold in skipped[:20]:
         lines.append(

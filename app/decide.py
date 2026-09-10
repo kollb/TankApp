@@ -2,23 +2,282 @@
 
 Der eine Endpunkt fürs Frontend: liefert alles, was das UI für die
 Startkarte und Detail-Aufklappungen braucht.
+
+Grundsätze:
+- Kein erfundener Ankerpreis: Ohne frischen/letzten Preis gibt es keine
+  Ersparnis-Rechnung (expected_saving 0, keine Alternativen, action no_advice).
+- Kein erfundenes Fenster: Ohne Prognose gibt es keine Fenster
+  (windows_today leer, recommended_window null).
+- Die €/P-Entscheidungstabelle folgt Konzept §4.1/§4.2/§4.4. Der Advice-Ledger
+  misst die Tabellen-Qualität ab Tag 1 (Shadow-Betrieb); angezeigt wird die
+  Empfehlung erst nach dem M7-Gate (Konzept §0.4).
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import statistics
 from typing import Any
 
-from .data import metadata
+from .data import haversine_km, metadata
 from .feedback import (
+    action_track_record,
     compute_advice_stats,
     compute_wallet_stats,
     load_store,
     record_snapshot,
 )
-from .route import _auto_time_value, _berlin_hour, _parse_float
+from .route import CIRCUITY, _auto_time_value, _berlin_hour, _parse_float
 
 FUELS = {"e10", "e5", "diesel"}
+
+try:
+    from zoneinfo import ZoneInfo
+
+    BERLIN_TZ = ZoneInfo("Europe/Berlin")
+except Exception:  # pragma: no cover
+    BERLIN_TZ = dt.timezone.utc
+
+# Mindest-Stichprobe, ab der die Grauzone (§4.4, P in [40, 60] %) greift.
+# Mit n = 0 ist p = 0,5 nur das uninformative Prior — die Grauzone darf den
+# Kaltstart nicht fangen, sonst öffnet sich das M7-Gate nie.
+GRAY_MIN_N = 20
+
+
+def _parse_ts(value: Any) -> dt.datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        stamp = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=dt.timezone.utc)
+    return stamp
+
+
+def _q50(point: dict[str, Any]) -> float | None:
+    try:
+        value = float(point.get("q50"))
+    except (TypeError, ValueError):
+        return None
+    import math
+
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _today_windows(
+    points: list[dict[str, Any]], clock_now: dt.datetime
+) -> list[dict[str, Any]]:
+    """2-h-Blöcke (Berlin) des Heute-Forecasts, billigste zuerst.
+
+    Fenstergrenzen sind echte Prognose-Zeitstempel (ISO), keine erfundenen
+    Stunden. Nur Blöcke, die noch nicht vollständig vergangen sind.
+    """
+    blocks: dict[tuple, list[tuple[dt.datetime, float]]] = {}
+    for point in points:
+        stamp = _parse_ts(point.get("timestamp"))
+        q50 = _q50(point)
+        if stamp is None or q50 is None:
+            continue
+        berlin = stamp.astimezone(BERLIN_TZ)
+        key = (berlin.date().isoformat(), int(berlin.hour // 2))
+        blocks.setdefault(key, []).append((stamp, q50))
+    today_key = clock_now.astimezone(BERLIN_TZ).date().isoformat()
+    windows = []
+    for (day, _block), entries in blocks.items():
+        if day != today_key:
+            continue
+        entries.sort(key=lambda e: e[0])
+        end = entries[-1][0]
+        if end <= clock_now:
+            continue  # Block vollständig vergangen
+        start = entries[0][0]
+        median = round(statistics.median(q for _, q in entries), 3)
+        start_berlin = start.astimezone(BERLIN_TZ)
+        end_berlin = end.astimezone(BERLIN_TZ)
+        windows.append(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "expected_price": median,
+                "start_hour": round(start_berlin.hour + start_berlin.minute / 60.0, 2),
+                "end_hour": round(end_berlin.hour + end_berlin.minute / 60.0, 2),
+            }
+        )
+    windows.sort(key=lambda w: w["expected_price"])
+    return windows[:3]
+
+
+def _week_windows(points_7d: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Je Kalendertag (Berlin) der billigste Prognose-Punkt, Top 3 Tage."""
+    per_day: dict[str, dict[str, Any]] = {}
+    for point in points_7d:
+        stamp = _parse_ts(point.get("timestamp"))
+        q50 = _q50(point)
+        if stamp is None or q50 is None:
+            continue
+        day = stamp.astimezone(BERLIN_TZ).date().isoformat()
+        current = per_day.get(day)
+        if current is None or q50 < current["expected_price"]:
+            per_day[day] = {"timestamp": stamp.isoformat(), "expected_price": q50}
+    days = sorted(per_day.values(), key=lambda d: d["expected_price"])
+    return days[:3]
+
+
+def _detour_km(chosen: dict[str, Any], cand: dict[str, Any]) -> tuple[float, str]:
+    """Onroute-Mehrweg zwischen zwei Stationen (km, einseitig).
+
+    Primär Luftlinie zwischen den Stationskoordinaten × 1,3 (gleiche
+    Umweg-Konvention wie data-tools/road_route.py). Fallback Anker-Distanz-
+    Differenz (Dreiecksungleichungs-Schranke, kann 0 sein).
+    """
+    coords = []
+    for station in (chosen, cand):
+        lat, lon = station.get("lat"), station.get("lon")
+        import math
+
+        if (
+            type(lat) in (int, float)
+            and type(lon) in (int, float)
+            and math.isfinite(lat)
+            and math.isfinite(lon)
+        ):
+            coords.append((float(lat), float(lon)))
+        else:
+            coords.append(None)
+    if coords[0] and coords[1]:
+        km = haversine_km(coords[0][0], coords[0][1], coords[1][0], coords[1][1])
+        return round(km * CIRCUITY, 2), "haversine"
+    dist_cand = cand.get("dist_km")
+    dist_self = chosen.get("dist_km")
+    if isinstance(dist_cand, (int, float)) and isinstance(dist_self, (int, float)):
+        return round(max(0.0, abs(dist_cand - dist_self)), 2), "anchor_diff"
+    return 0.0, "unknown"
+
+
+def _alternatives(
+    station_list: list[dict[str, Any]],
+    chosen_station: dict[str, Any],
+    anchor: float,
+    liters: float,
+    consumption: float,
+    speed: float,
+    z_used: float,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    alternatives = []
+    best = None
+    for cand in station_list:
+        if cand["station_id"] == chosen_station["station_id"]:
+            continue
+        cand_price = (
+            cand.get("price")
+            if cand.get("price") is not None
+            else cand.get("last_price")
+        )
+        if cand_price is None:
+            continue
+        detour_km, detour_mode = _detour_km(chosen_station, cand)
+        fuel_eur = (detour_km / 100.0) * consumption * cand_price
+        time_eur = (detour_km / max(1.0, speed)) * z_used
+        detour_cost = fuel_eur + time_eur
+        gross_eur = (anchor - cand_price) * liters
+        net_eur = gross_eur - detour_cost
+        entry = {
+            "station_id": cand["station_id"],
+            "name": cand.get("name") or cand["station_id"],
+            "brand": cand.get("brand") or "",
+            "price": round(cand_price, 3),
+            "delta_ct": round((anchor - cand_price) * 100.0, 2),
+            "detour_km": detour_km,
+            "detour_mode": detour_mode,
+            "net_eur": round(net_eur, 2),
+            "worth_it": net_eur >= 1.5,
+            "maps_url": cand.get("maps_url"),
+        }
+        alternatives.append(entry)
+        if best is None or net_eur > best["net_eur"]:
+            best = entry
+    alternatives.sort(key=lambda a: a["net_eur"], reverse=True)
+    return alternatives[:3], best
+
+
+def _table_action(
+    anchor: float | None,
+    expected_price_later: float | None,
+    expected_saving_eur: float,
+    best_alt: dict[str, Any] | None,
+    track_wait: dict[str, Any],
+    track_now: dict[str, Any],
+    track_else: dict[str, Any],
+) -> tuple[str, str, str]:
+    """€/P-Entscheidungstabelle (Konzept §4.1, §4.2, §4.4).
+
+    Gibt (action, confidence_badge, reason_short) zurück. Die Aktion wird
+    immer in den Advice-Ledger geschrieben (Shadow-Betrieb ab Tag 1);
+    angezeigt wird sie erst nach dem M7-Gate.
+    """
+    if anchor is None:
+        return (
+            "no_advice",
+            "low",
+            "Kein aktueller Preis für diese Station — ohne Anker keine Empfehlung.",
+        )
+    if expected_price_later is None:
+        return (
+            "no_advice",
+            "low",
+            "Keine Prognose verfügbar — Empfehlung erst mit Modelldaten.",
+        )
+    p_wait, n_wait = track_wait["p"], track_wait["n"]
+    p_else = track_else["p"]
+    # F2 zuerst (§4.2): Alternative nur bei netto ≥ 1,50 € und Plausibilität.
+    if best_alt is not None and best_alt["net_eur"] >= 1.5 and p_else >= 0.5:
+        badge = "high" if p_else >= 0.7 else "medium"
+        return (
+            "refuel_elsewhere",
+            badge,
+            f"Fahre zu {best_alt['name']}: spart netto +{best_alt['net_eur']:.2f} € trotz Umweg.",
+        )
+    # Grauzone (§4.4): P in [40, 60] % → kein Advice. Nur bei belastbarer
+    # Stichprobe (Kaltstart-Schutz, siehe GRAY_MIN_N).
+    if n_wait >= GRAY_MIN_N and 0.40 <= p_wait <= 0.60 and expected_saving_eur >= 1.0:
+        return (
+            "no_advice",
+            "low",
+            f"Warte-Signal zu unsicher (P ≈ {p_wait:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
+        )
+    # F1 (§4.1).
+    if expected_saving_eur >= 2.0 and p_wait >= 0.7:
+        return (
+            "wait",
+            "high",
+            f"Preis fällt im Fenster voraussichtlich — Warten spart ca. {expected_saving_eur:.2f} €.",
+        )
+    if expected_saving_eur >= 1.0 and p_wait >= 0.6:
+        return (
+            "wait",
+            "medium",
+            f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+        )
+    if p_wait < 0.5 and n_wait >= GRAY_MIN_N:
+        return (
+            "refuel_now",
+            "low",
+            "Warte-Empfehlung zu unsicher (P < 50 %) — jetzt tanken.",
+        )
+    if expected_saving_eur < 1.0:
+        return (
+            "refuel_now",
+            "medium",
+            "Warten brächte < 1,00 € Ersparnis — jetzt tanken.",
+        )
+    # Kaltstart-Fallback (€-Gates ohne belastbares P): Ersparnis ≥ 1 € → warten.
+    return (
+        "wait",
+        "medium",
+        f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+    )
 
 
 def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
@@ -46,9 +305,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     clock_now = live_data.clock()
     if hour is None:
         try:
-            from zoneinfo import ZoneInfo
-
-            berlin_dt = clock_now.astimezone(ZoneInfo("Europe/Berlin"))
+            berlin_dt = clock_now.astimezone(BERLIN_TZ)
             hour = berlin_dt.hour + berlin_dt.minute / 60.0
         except Exception:
             hour = clock_now.hour + clock_now.minute / 60.0
@@ -97,196 +354,115 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     station_id = chosen_station["station_id"]
     station_name = chosen_station.get("name") or station_id
     station_city = chosen_station.get("city") or city or "Frankfurt"
-    price_now = chosen_station.get("price") or chosen_station.get("last_price") or 1.689
+
+    # Ankerpreis: frisch > zuletzt beobachtet > unbekannt (None — nie erfunden).
+    anchor = chosen_station.get("price")
+    if anchor is None:
+        anchor = chosen_station.get("last_price")
 
     # Prognose für Station laden
     forecast_data = live_data.forecast(station_id, station_city, fuel)
     points = forecast_data.get("points") or []
     points_7d = forecast_data.get("points_7d") or []
 
-    # Beste Fenster heute bestimmen
-    windows_today = []
-    expected_price_later = price_now
-    start_hour_later = 17.5
-    end_hour_later = 20.5
+    # Beste Fenster heute (echte 2-h-Blöcke) und billigste Folgetage.
+    windows_today = _today_windows(points, clock_now)
+    windows_week = _week_windows(points_7d)
 
-    if points:
-        # Finde günstigste verbleibende Stunden heute
-        today_points = [p for p in points if p.get("q50") is not None]
-        if today_points:
-            # Sortiere nach q50
-            sorted_pts = sorted(today_points, key=lambda p: p["q50"])
-            best_pt = sorted_pts[0]
-            expected_price_later = best_pt["q50"]
-
-            # Versuche Zeitstempel oder Stunde zu parsen
-            try:
-                pt_ts = dt.datetime.fromisoformat(
-                    best_pt["timestamp"].replace("Z", "+00:00")
-                )
-                from zoneinfo import ZoneInfo
-
-                pt_berlin = pt_ts.astimezone(ZoneInfo("Europe/Berlin"))
-                best_h = pt_berlin.hour + pt_berlin.minute / 60.0
-            except Exception:
-                best_h = 19.0
-
-            start_hour_later = max(6.0, best_h - 1.0)
-            end_hour_later = min(23.5, best_h + 1.5)
-
-            # 2-Stunden-Blöcke
-            for i in range(len(today_points) - 1):
-                p1 = today_points[i]
-                p2 = today_points[i + 1]
-                med = round(((p1.get("q50") or 0) + (p2.get("q50") or 0)) / 2, 3)
-                windows_today.append(
-                    {
-                        "start": p1.get("timestamp"),
-                        "end": p2.get("timestamp"),
-                        "expected_price": med,
-                    }
-                )
-            windows_today = sorted(windows_today, key=lambda w: w["expected_price"])[:3]
-
-    if not windows_today:
-        # Fallback Fenster
-        today_iso = clock_now.date().isoformat()
-        start_iso = f"{today_iso}T17:30:00+02:00"
-        end_iso = f"{today_iso}T20:30:00+02:00"
-        expected_price_later = round(price_now - 0.035, 3)
-        windows_today = [
-            {
-                "start": start_iso,
-                "end": end_iso,
-                "expected_price": expected_price_later,
-            }
-        ]
-
-    recommended_window = {
-        "start": windows_today[0]["start"],
-        "end": windows_today[0]["end"],
-        "expected_price": windows_today[0]["expected_price"],
-    }
-
-    # Fenster Woche
-    windows_week = []
-    if points_7d:
-        for p in points_7d[:5]:
-            if p.get("q50") is not None:
-                windows_week.append(
-                    {
-                        "timestamp": p.get("timestamp"),
-                        "expected_price": p.get("q50"),
-                    }
-                )
-
-    expected_saving_eur = round(
-        max(0.0, (price_now - expected_price_later) * liters), 2
-    )
-
-    # Alternativen (F2 Umweg-Ökonomie)
-    alternatives_nearby = []
-    best_alt = None
-    for cand in station_list:
-        if cand["station_id"] == station_id:
-            continue
-        cand_price = cand.get("price") or cand.get("last_price")
-        if cand_price is None:
-            continue
-        # Distanz ab Anker oder Luftlinie
-        dist_cand = cand.get("dist_km") or 2.0
-        dist_self = chosen_station.get("dist_km") or 1.5
-        detour_km = max(0.5, abs(dist_cand - dist_self))
-
-        d = detour_km  # onroute
-        fuel_eur = (d / 100.0) * consumption * cand_price
-        time_eur = (d / max(1.0, speed)) * z_used
-        detour_cost = fuel_eur + time_eur
-        gross_eur = (price_now - cand_price) * liters
-        net_eur = gross_eur - detour_cost
-        delta_ct = (price_now - cand_price) * 100.0
-
-        alt_entry = {
-            "station_id": cand["station_id"],
-            "name": cand.get("name") or cand["station_id"],
-            "brand": cand.get("brand") or "",
-            "price": round(cand_price, 3),
-            "delta_ct": round(delta_ct, 2),
-            "detour_km": round(detour_km, 1),
-            "net_eur": round(net_eur, 2),
-            "worth_it": net_eur >= 1.5,
-            "maps_url": cand.get("maps_url"),
+    if windows_today:
+        recommended_window = {
+            "start": windows_today[0]["start"],
+            "end": windows_today[0]["end"],
+            "expected_price": windows_today[0]["expected_price"],
         }
-        alternatives_nearby.append(alt_entry)
-        if best_alt is None or net_eur > best_alt["net_eur"]:
-            best_alt = alt_entry
+        expected_price_later = windows_today[0]["expected_price"]
+        start_hour_later = windows_today[0]["start_hour"]
+        end_hour_later = windows_today[0]["end_hour"]
+    else:
+        # Kein erfundenes Fenster: ohne Prognose keine Empfehlung.
+        recommended_window = None
+        expected_price_later = None
+        start_hour_later = None
+        end_hour_later = None
 
-    alternatives_nearby = sorted(
-        alternatives_nearby, key=lambda a: a["net_eur"], reverse=True
-    )[:3]
+    if anchor is not None and expected_price_later is not None:
+        expected_saving_eur = round(
+            max(0.0, (anchor - expected_price_later) * liters), 2
+        )
+    else:
+        expected_saving_eur = 0.0
 
-    # Kalibrierungs-Gate & Entscheidungs-Logik (§0.4, §4, §6)
+    # Alternativen (F2 Umweg-Ökonomie) — nur mit Ankerpreis rechenbar.
+    if anchor is not None:
+        alternatives_nearby, best_alt = _alternatives(
+            station_list, chosen_station, anchor, liters, consumption, speed, z_used
+        )
+    else:
+        alternatives_nearby, best_alt = [], None
+
+    # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion.
     store = load_store(live_data.settings)
     advice_stats = compute_advice_stats(store)
     wallet_stats = compute_wallet_stats(store)
-
     is_calibrated = advice_stats.get("calibrated", False)
 
-    # Vor M7 ist kalibriert = False
-    # "Korrekt absent (Gate, kein Handlungsbedarf): Ampel-Empfehlung, P_besser-%,
-    # „Heute später/Diese Woche“ im Alltag, Warten-Option im 3-Wege-Vergleich."
-    p_correct = None
-    confidence_badge = "low"
-    reason_short = (
-        "M7-Kalibrierungs-Gate steht aus (noch keine kalibrierte Empfehlung)."
+    track_wait = action_track_record(store, "wait")
+    track_now = action_track_record(store, "refuel_now")
+    track_else = action_track_record(store, "refuel_elsewhere")
+
+    table_action, badge, reason = _table_action(
+        anchor,
+        expected_price_later,
+        expected_saving_eur,
+        best_alt,
+        track_wait,
+        track_now,
+        track_else,
     )
+    p_internal = {
+        "wait": track_wait["p"],
+        "refuel_now": track_now["p"],
+        "refuel_elsewhere": track_else["p"],
+    }.get(table_action)
 
-    if not is_calibrated:
-        action = "no_advice"
-        confidence_badge = "low"
-        reason_short = "M7-Kalibrierung steht aus: Preismeldungen sind unverfälscht, Empfehlungen noch unkalibriert."
+    # M7-Gate (§0.4): Vor der Kalibrierung keine Handlungsempfehlung und
+    # kein P anzeigen — der Ledger misst die Tabelle trotzdem (Shadow).
+    if is_calibrated:
+        action = table_action
+        p_correct = p_internal
+        confidence_badge = badge
+        reason_short = reason
     else:
-        # Kalibrierter Modus (nach M7)
-        is_golden_window = 17.5 <= hour <= 20.5
-        hours_until = max(0.0, start_hour_later - hour)
+        action = "no_advice"
+        p_correct = None
+        confidence_badge = "low"
+        reason_short = (
+            "M7-Kalibrierung steht aus: Preismeldungen sind unverfälscht, "
+            "Empfehlungen noch unkalibriert."
+        )
 
-        if is_golden_window or price_now <= expected_price_later + 0.01:
-            action = "refuel_now"
-            confidence_badge = "high"
-            reason_short = (
-                "Aktueller Preis liegt im Tagestief-Bereich. Jetzt tanken empfohlen."
-            )
-            p_correct = 0.88
-        elif best_alt and best_alt["net_eur"] >= 1.5:
-            action = "refuel_elsewhere"
-            confidence_badge = "high"
-            reason_short = f"Fahre zu {best_alt['name']}: spart netto +{best_alt['net_eur']:.2f} € trotz Umweg."
-            p_correct = 0.82
-        elif expected_saving_eur >= 1.0 and hours_until >= 0.5:
-            action = "wait"
-            confidence_badge = "medium"
-            reason_short = f"Preis fällt im Abendfenster voraussichtlich — Warten spart ca. {expected_saving_eur:.2f} €."
-            p_correct = 0.76
-        else:
-            action = "refuel_now"
-            confidence_badge = "medium"
-            reason_short = "Warten würde < 1,00 € Ersparnis bringen. Jetzt tanken."
-            p_correct = 0.90
-
-    # Snapshot im Feedback-Store erfassen
+    # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
     snapshot_input = {
         "clock_hour": hour,
-        "action": action,
+        "action": table_action,
+        "city": station_city,
         "station_id": station_id,
         "station_name": station_name,
-        "alt_station_id": best_alt["station_id"] if best_alt else None,
-        "alt_station_name": best_alt["name"] if best_alt else None,
-        "price_now": round(price_now, 3),
+        "alt_station_id": best_alt["station_id"]
+        if table_action == "refuel_elsewhere" and best_alt
+        else None,
+        "alt_station_name": best_alt["name"]
+        if table_action == "refuel_elsewhere" and best_alt
+        else None,
+        "price_now": round(anchor, 3) if anchor is not None else None,
+        "window_start": recommended_window["start"] if recommended_window else None,
+        "window_end": recommended_window["end"] if recommended_window else None,
         "window_start_hour": start_hour_later,
         "window_end_hour": end_hour_later,
-        "expected_price": round(expected_price_later, 3),
+        "expected_price": round(expected_price_later, 3)
+        if expected_price_later is not None
+        else None,
         "expected_saving_eur": expected_saving_eur,
-        "p_correct": p_correct,
         "liters_assumed": liters,
         "fuel": fuel,
     }
@@ -300,7 +476,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 "id": station_id,
                 "name": station_name,
                 "brand": chosen_station.get("brand") or "",
-                "price_now": round(price_now, 3),
+                "price_now": round(anchor, 3) if anchor is not None else None,
                 "maps_url": chosen_station.get("maps_url"),
             },
             "recommended_window": recommended_window,
@@ -310,7 +486,14 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             "reason_short": reason_short,
         },
         "alternatives_nearby": alternatives_nearby,
-        "windows_today": windows_today,
+        "windows_today": [
+            {
+                "start": w["start"],
+                "end": w["end"],
+                "expected_price": w["expected_price"],
+            }
+            for w in windows_today
+        ],
         "windows_week": windows_week,
         "episode": {
             "id": ep.get("id"),

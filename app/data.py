@@ -229,16 +229,21 @@ class LiveData:
                     )
                     query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
                     for raw in self.query(cfg, query):
-                        if not raw.get("station_id"):
-                            raise ValueError("UUID required")
-                        row = influx.normalized_row(raw, lookup, fuel)
-                        stamp = influx.instant(row["timestamp"])
-                        if not now - dt.timedelta(days=2) <= stamp <= now:
-                            raise ValueError("Timestamp outside query")
-                        identity = (row["city"], row["station_id"])
-                        if identity not in metas:
-                            raise ValueError("Unselected station")
-                        rows[identity] = row
+                        # Einzelne defekte Zeilen überspringen, statt alle
+                        # Stationen auf influx_read_failed zu setzen.
+                        try:
+                            if not raw.get("station_id"):
+                                raise ValueError("UUID required")
+                            row = influx.normalized_row(raw, lookup, fuel)
+                            stamp = influx.instant(row["timestamp"])
+                            if not now - dt.timedelta(days=2) <= stamp <= now:
+                                raise ValueError("Timestamp outside query")
+                            identity = (row["city"], row["station_id"])
+                            if identity not in metas:
+                                raise ValueError("Unselected station")
+                            rows[identity] = row
+                        except (ValueError, KeyError, TypeError):
+                            continue
                 except (ValueError, OSError, KeyError, TypeError):
                     error = "influx_read_failed"
             if error:

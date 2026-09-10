@@ -229,7 +229,28 @@ class Handler(SimpleHTTPRequestHandler):
                     payload if payload is not None else {"error_code": "not_found"},
                     200 if payload is not None else 404,
                 )
-            except (ValueError, TypeError):
+            except ValueError as exc:
+                # Bekannte Fach-Codes (unknown_station, invalid_fuel, …)
+                # passieren, alles andere bleibt pauschal invalid_query, damit
+                # keine Interna (Flux-/Datei-Details) nach außen dringen.
+                code = str(exc) or "invalid_query"
+                if code in ("unknown_station", "unknown_city"):
+                    self.json({"error_code": code}, 404)
+                elif code in (
+                    "invalid_query",
+                    "invalid_fuel",
+                    "invalid_liters",
+                    "invalid_consumption",
+                    "invalid_speed",
+                    "invalid_when",
+                    "invalid_value_of_time",
+                    "invalid_mode",
+                    "invalid_detour",
+                ):
+                    self.json({"error_code": code}, 400)
+                else:
+                    self.json({"error_code": "invalid_query"}, 400)
+            except TypeError:
                 self.json({"error_code": "invalid_query"}, 400)
             except Exception:
                 self.json({"error_code": "server_error"}, 503)

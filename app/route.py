@@ -15,9 +15,15 @@ Eingabe params dict aus Query:
   mode (onroute|dedicated), ref_station_id,
   price/target_price/alt_price (Ziel explizit), ref_price (Referenz explizit)
 
-detour_km ohne Angabe: aus den Anker-Distanzen (dist_km, OSRM-Cache) abgeleitet —
-  onroute: max(0, dist(Ziel) − dist(Referenz)), dedicated: dist(Ziel) als Einweg.
-  Fehlt dist_km, so 0 (siehe Antwortfeld detour_km_source: query|derived|zero).
+detour_km ohne Angabe: aus den Stationskoordinaten abgeleitet (Luftlinie × 1,3,
+  gleiche Umweg-Konvention wie data-tools/road_route.py) —
+  onroute: Mehrweg gegenüber der Referenz, dedicated: Einweg zur Zielstation.
+  Fallback Anker-Distanzen, dann 0 (detour_km_source:
+  query|derived|derived_anchor|zero).
+
+Explizit per Query übergebene Preise (price/ref_price) haben immer Vorrang
+vor Live-Preisen; ohne bestimmbaren Referenzpreis antwortet der Endpunkt mit
+price_not_available statt einen Preis zu erfinden.
 
 Ausgabe: delta_ct, gross_eur, fuel_eur, time_eur, net_eur, critical_ct, worth_it,
 z_used, z_auto, is_peak, detour_km_source, ref_station_name, etc.
@@ -26,9 +32,26 @@ z_used, z_auto, is_peak, detour_km_source, ref_station_name, etc.
 import datetime as dt
 import math
 
-from .data import metadata
+from .data import haversine_km, metadata
 
 FUELS = {"e10", "e5", "diesel"}
+
+# Umweg-Faktor Luftlinie → Straße (Konvention aus data-tools/road_route.py).
+CIRCUITY = 1.3
+
+
+def _coords(meta: dict | None) -> tuple | None:
+    if not meta:
+        return None
+    lat, lon = meta.get("lat"), meta.get("lon")
+    if (
+        type(lat) in (int, float)
+        and type(lon) in (int, float)
+        and math.isfinite(lat)
+        and math.isfinite(lon)
+    ):
+        return (float(lat), float(lon))
+    return None
 
 
 def _parse_float(v, default=None):
@@ -152,6 +175,8 @@ def evaluate_route(live_data, params: dict):
         None,
     )
 
+    target_price_source = "query" if target_price is not None else None
+
     if station_id:
         # Finde Meta
         for (c, sid), meta in metas.items():
@@ -161,40 +186,41 @@ def evaluate_route(live_data, params: dict):
                 break
         if not target_meta:
             raise ValueError("unknown_station")
-        # Versuche aktuellen Preis aus LiveData
-        try:
-            stations_data = live_data.stations(fuel=fuel, city=city)
-            for s in stations_data.get("stations", []):
-                if s["station_id"] == station_id:
-                    if s.get("price") is not None:
-                        target_price = s["price"]
-                    elif s.get("last_price") is not None:
-                        target_price = s["last_price"]
-                    break
-        except Exception:
-            pass
+        # Live-Preis nur, wenn kein expliziter Preis übergeben wurde —
+        # explizite Query-Preise haben Vorrang (Was-wäre-wenn-Rechnung).
+        if target_price is None:
+            try:
+                stations_data = live_data.stations(fuel=fuel, city=city)
+                for s in stations_data.get("stations", []):
+                    if s["station_id"] == station_id:
+                        if s.get("price") is not None:
+                            target_price = s["price"]
+                            target_price_source = "live"
+                        elif s.get("last_price") is not None:
+                            target_price = s["last_price"]
+                            target_price_source = "live_stale"
+                        break
+            except Exception:
+                pass
     else:
         # Kein station_id: nimm erste Stadt falls nicht angegeben
         if not city:
             city = next((c for c, _ in metas), None)
 
     if target_price is None:
-        # Fallback: nimm günstigsten Preis der Stadt als Ziel? Dann kein Vergleich
-        # Besser: Fehler wenn kein Preis bekannt, außer ref_price gegeben
-        target_price = _parse_float(params.get("ref_price"), None)
-        if target_price is None:
-            # Versuche aus stations_data günstigsten zu nehmen
-            try:
-                stations_data = live_data.stations(fuel=fuel, city=city)
-                fresh = [
-                    s
-                    for s in stations_data.get("stations", [])
-                    if s.get("price") is not None
-                ]
-                if fresh:
-                    target_price = min(s["price"] for s in fresh)
-            except Exception:
-                pass
+        # Fallback: günstigster frischer Preis der Stadt als Ziel.
+        try:
+            stations_data = live_data.stations(fuel=fuel, city=city)
+            fresh = [
+                s
+                for s in stations_data.get("stations", [])
+                if s.get("price") is not None
+            ]
+            if fresh:
+                target_price = min(s["price"] for s in fresh)
+                target_price_source = "city_min"
+        except Exception:
+            pass
 
     if target_price is None:
         return {"error_code": "price_not_available"}
@@ -208,18 +234,26 @@ def evaluate_route(live_data, params: dict):
                 ref_meta = meta
                 break
     ref_price = _parse_float(params.get("ref_price"), None)
+    ref_price_source = "query" if ref_price is not None else None
     if ref_price is None and ref_meta is not None:
         try:
             stations_data = live_data.stations(fuel=fuel, city=ref_meta["city"])
             for s in stations_data.get("stations", []):
-                if s["station_id"] == ref_station_id and s.get("price") is not None:
-                    ref_price = s["price"]
+                if s["station_id"] == ref_station_id:
+                    if s.get("price") is not None:
+                        ref_price = s["price"]
+                        ref_price_source = "live"
+                    elif s.get("last_price") is not None:
+                        ref_price = s["last_price"]
+                        ref_price_source = "live_stale"
                     break
         except Exception:
             pass
     if ref_price is None:
-        # Default: teuerste oder median? Für Umweg-Rechnung: Referenz = aktuelle Station (teurer)
-        # Wenn target billiger sein soll, ist ref > target. Wir nehmen median der Stadt als ref wenn möglich
+        # Median der frischen Stadtpreise als Referenz (echte Daten, Quelle
+        # wird ausgewiesen). Ohne jeden Preis: ehrlicher Fehler statt
+        # erfundener +5-ct-Annahme — ein inventierter Referenzpreis würde
+        # jede Umweg-Empfehlung wertlos machen.
         try:
             stations_data = live_data.stations(fuel=fuel, city=city)
             prices = [
@@ -231,44 +265,62 @@ def evaluate_route(live_data, params: dict):
                 prices_sorted = sorted(prices)
                 # Median als Referenz
                 n = len(prices_sorted)
-                median = (
+                ref_price = (
                     prices_sorted[n // 2]
                     if n % 2 == 1
                     else (prices_sorted[n // 2 - 1] + prices_sorted[n // 2]) / 2
                 )
-                ref_price = median
-            else:
-                ref_price = target_price + 0.05  # 5ct mehr als Ziel als Annahme
+                ref_price_source = "city_median"
         except Exception:
-            ref_price = target_price + 0.05
+            pass
+    if ref_price is None:
+        return {"error_code": "price_not_available"}
 
-    # Umweg: explizit per Query, sonst aus den Anker-Distanzen abgeleitet
+    # Umweg: explizit per Query, sonst aus den Stationskoordinaten abgeleitet.
+    # |dist(Ziel) − dist(Referenz)| wäre nur eine Dreiecksungleichungs-Schranke
+    # (0 bei gleicher Anker-Entfernung trotz km-Weite) — die Luftlinie zwischen
+    # den Stationen × 1,3 ist die bessere Näherung.
     detour_km = _parse_float(params.get("detour_km") or params.get("km"), None)
     detour_source = "query" if detour_km is not None else None
     if detour_km is None:
-        target_dist = target_meta.get("dist_km") if target_meta else None
-        target_dist_ok = (
-            isinstance(target_dist, (int, float))
-            and not isinstance(target_dist, bool)
-            and math.isfinite(target_dist)
-            and target_dist >= 0
-        )
-        if target_dist_ok:
-            if mode == "dedicated":
-                # Extrafahrt ab Anker (Zuhause): Einweg = Distanz zur Zielstation
+        target_coords = _coords(target_meta)
+        ref_coords = _coords(ref_meta)
+        if mode == "dedicated":
+            # Extrafahrt ab Anker (Zuhause): Einweg = Anker-Distanz zur Zielstation.
+            target_dist = target_meta.get("dist_km") if target_meta else None
+            if (
+                isinstance(target_dist, (int, float))
+                and not isinstance(target_dist, bool)
+                and math.isfinite(target_dist)
+                and target_dist >= 0
+            ):
                 detour_km = float(target_dist)
+                detour_source = "derived"
+        else:
+            if target_coords and ref_coords:
+                detour_km = (
+                    haversine_km(
+                        target_coords[0],
+                        target_coords[1],
+                        ref_coords[0],
+                        ref_coords[1],
+                    )
+                    * CIRCUITY
+                )
+                detour_source = "derived"
             else:
+                target_dist = target_meta.get("dist_km") if target_meta else None
                 ref_dist = ref_meta.get("dist_km") if ref_meta else None
-                ref_dist_ok = (
-                    isinstance(ref_dist, (int, float))
-                    and not isinstance(ref_dist, bool)
-                    and math.isfinite(ref_dist)
-                    and ref_dist >= 0
+                dists_ok = all(
+                    isinstance(v, (int, float))
+                    and not isinstance(v, bool)
+                    and math.isfinite(v)
+                    and v >= 0
+                    for v in (target_dist, ref_dist)
                 )
-                detour_km = max(
-                    0.0, float(target_dist) - (float(ref_dist) if ref_dist_ok else 0.0)
-                )
-            detour_source = "derived"
+                if dists_ok:
+                    detour_km = max(0.0, float(target_dist) - float(ref_dist))
+                    detour_source = "derived_anchor"
     if detour_km is None:
         detour_km = 0.0
         detour_source = "zero"
@@ -299,8 +351,10 @@ def evaluate_route(live_data, params: dict):
         "station_name": target_meta.get("name") if target_meta else None,
         "ref_station_name": ref_meta.get("name") if ref_meta else None,
         "target_price": round(target_price, 3),
+        "target_price_source": target_price_source,
         "alt_price": round(target_price, 3),
         "ref_price": round(ref_price, 3),
+        "ref_price_source": ref_price_source,
         "delta_ct": round(delta_ct, 2),
         "liters": liters,
         "detour_km_oneway": round(detour_km, 3),

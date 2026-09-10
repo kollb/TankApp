@@ -919,9 +919,20 @@ export function Dashboard() {
   const handleConfirmRecommendedFill = async (ep: any) => {
     if (!ep) return;
     const snap = ep.last_snapshot || decideRes.data?.primary;
-    const targetPrice = snap?.expected_price || bestPrice || 1.649;
+    const targetPrice = snap?.expected_price ?? snap?.price_now ?? bestPrice ?? null;
+    if (targetPrice == null || !Number.isFinite(targetPrice)) {
+      setActionFeedback("! Kein Preis bekannt — bitte manuell erfassen.");
+      setTimeout(() => setActionFeedback(null), 4000);
+      return;
+    }
+    const fillStationId = snap?.station_id || selected?.station_id || null;
+    if (!fillStationId) {
+      setActionFeedback("! Keine Station bekannt — bitte manuell erfassen.");
+      setTimeout(() => setActionFeedback(null), 4000);
+      return;
+    }
     await postFill({
-      station_id: snap?.station_id || selected?.station_id || "default",
+      station_id: fillStationId,
       station_name: snap?.station_name || selected?.name || "Station",
       liters,
       price_paid: targetPrice,
@@ -956,6 +967,15 @@ export function Dashboard() {
     if (epId) await postIntent(epId, "dismiss");
     setDueDismissed(true);
     setRefresh((r) => r + 1);
+  };
+
+  const handleIntent = async (intent: string, mapsUrl?: string | null) => {
+    const epId = decideRes.data?.episode?.id;
+    if (epId) await postIntent(epId, intent);
+    if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
+    setActionFeedback("✓ Auswahl gespeichert!");
+    setRefresh((r) => r + 1);
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   return (
@@ -1313,6 +1333,213 @@ export function Dashboard() {
                 </div>
               </div>
 
+              {/* F1/F2/F3 Empfehlung aus /v1/decide (Ampel + Fenster + Alternativen) */}
+              {(() => {
+                const rec = decideRes.data;
+                if (decideRes.pending && !rec) {
+                  return (
+                    <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs text-slate-500">
+                      Empfehlung wird berechnet …
+                    </div>
+                  );
+                }
+                if (decideRes.error || rec?.error_code) {
+                  return (
+                    <div className="mt-5 rounded-xl border border-rose-500/25 bg-rose-950/20 p-4 text-xs text-rose-300">
+                      {problem(rec?.error_code) || "Empfehlung derzeit nicht erreichbar."}
+                    </div>
+                  );
+                }
+                if (!rec) return null;
+                const p = rec.primary;
+                const meta = {
+                  refuel_now: {
+                    chip: "JETZT TANKEN",
+                    cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+                    Icon: FuelIcon,
+                  },
+                  wait: {
+                    chip: "WARTEN",
+                    cls: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+                    Icon: Clock,
+                  },
+                  refuel_elsewhere: {
+                    chip: "WOANDERS TANKEN",
+                    cls: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+                    Icon: Route,
+                  },
+                  no_advice: {
+                    chip: "KEINE EMPFEHLUNG",
+                    cls: "border-slate-700 bg-slate-800/60 text-slate-300",
+                    Icon: ShieldCheck,
+                  },
+                }[p.action];
+                const anchor = p.station.price_now;
+                const bestAlt = [...rec.alternatives_nearby]
+                  .sort((a, b) => b.net_eur - a.net_eur)
+                  .find((a) => a.worth_it);
+                const nearest3 = [...stations]
+                  .sort((a, b) => (a.dist_km ?? 1e9) - (b.dist_km ?? 1e9))
+                  .slice(0, 3);
+                const savingVs = (expected: number | null | undefined) =>
+                  anchor != null && expected != null
+                    ? (anchor - expected) * liters
+                    : null;
+                return (
+                  <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.cls}`}>
+                        <meta.Icon size={13} />
+                        {meta.chip}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500">
+                        {p.p_correct != null
+                          ? `${Math.round(p.p_correct * 100)} % sicher`
+                          : "unkalibriert"}
+                        {p.confidence_badge !== "low" ? ` · ${p.confidence_badge}` : ""}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[13px] leading-snug text-slate-200">{p.reason_short}</p>
+                    {p.action === "wait" && p.recommended_window && (
+                      <p className="mt-1 font-mono text-[11px] text-amber-300">
+                        {clockLabel(p.recommended_window.start)}–{clockLabel(p.recommended_window.end)} Uhr ·{" "}
+                        ~{euro(p.recommended_window.expected_price, 3)} €/L · −{euro(p.expected_saving_eur)} €
+                      </p>
+                    )}
+                    {p.action === "refuel_elsewhere" && bestAlt && (
+                      <p className="mt-1 font-mono text-[11px] text-sky-300">
+                        {bestAlt.name} · {euro(bestAlt.price, 3)} €/L · +{euro(bestAlt.detour_km, 1)} km · netto +{euro(bestAlt.net_eur)} €
+                      </p>
+                    )}
+                    {p.action === "refuel_now" && (
+                      <p className="mt-1 font-mono text-[11px] text-emerald-300">
+                        {p.station.name} · {anchor != null ? `${euro(anchor, 3)} €/L` : "Preis unbekannt"}
+                      </p>
+                    )}
+                    {p.action === "no_advice" && (
+                      <div className="mt-2 grid gap-1 font-mono text-[11px] text-slate-400">
+                        {nearest3.map((s) => (
+                          <div key={s.station_id} className="flex justify-between gap-2">
+                            <span className="truncate">{s.name}</span>
+                            <span>{price(s) != null ? `${euro(price(s), 3)} €/L` : "—"}</span>
+                          </div>
+                        ))}
+                        {nearest3.length === 0 && <span>Keine Stationen im Polling-Set.</span>}
+                      </div>
+                    )}
+
+                    {/* F3: Heute später / Diese Woche */}
+                    {(rec.windows_today.length > 0 || rec.windows_week.length > 0) && (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {rec.windows_today.length > 0 && (
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                            <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                              <Clock size={11} /> Heute später
+                            </p>
+                            {rec.windows_today.map((w) => {
+                              const sv = savingVs(w.expected_price);
+                              return (
+                                <div key={w.start} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
+                                  <span className="text-slate-300">
+                                    {clockLabel(w.start)}–{clockLabel(w.end)}
+                                  </span>
+                                  <span className="text-slate-400">~{euro(w.expected_price, 3)}</span>
+                                  <span className={sv != null && sv > 0 ? "text-emerald-300" : "text-slate-500"}>
+                                    {sv != null ? `−${euro(sv)} €` : "—"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {rec.windows_week.length > 0 && (
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                            <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                              <CalendarDays size={11} /> Diese Woche
+                            </p>
+                            {rec.windows_week.map((w) => {
+                              const sv = savingVs(w.expected_price);
+                              return (
+                                <div key={w.timestamp} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
+                                  <span className="text-slate-300">
+                                    {new Date(w.timestamp).toLocaleDateString("de-DE", {
+                                      weekday: "short",
+                                      timeZone: "Europe/Berlin",
+                                    })}{" "}
+                                    {clockLabel(w.timestamp)}
+                                  </span>
+                                  <span className="text-slate-400">~{euro(w.expected_price, 3)}</span>
+                                  <span className={sv != null && sv > 0 ? "text-emerald-300" : "text-slate-500"}>
+                                    {sv != null ? `−${euro(sv)} €` : "—"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* F2: Alternativen */}
+                    {rec.alternatives_nearby.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                        <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          <Route size={11} /> Hier oder woanders?
+                        </p>
+                        {rec.alternatives_nearby.map((a) => (
+                          <div key={a.station_id} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
+                            <span className="truncate text-slate-300">{a.name}</span>
+                            <span className="text-slate-400">
+                              {euro(a.price, 3)} · +{euro(a.detour_km, 1)} km
+                            </span>
+                            <span className={a.worth_it ? "font-bold text-emerald-300" : "text-slate-500"}>
+                              {a.net_eur >= 0 ? "+" : ""}{euro(a.net_eur)} €{a.worth_it ? " ✓" : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Intent-CTAs */}
+                    {p.action !== "no_advice" && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => handleIntent("wait")}
+                          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"
+                        >
+                          Ich warte
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleIntent(
+                              "navigate",
+                              p.action === "refuel_elsewhere" && bestAlt?.maps_url
+                                ? bestAlt.maps_url
+                                : p.station.maps_url,
+                            )
+                          }
+                          className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/20"
+                        >
+                          Navigieren
+                        </button>
+                        <button
+                          onClick={() => handleIntent("refuel_now")}
+                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20"
+                        >
+                          Jetzt tanken
+                        </button>
+                        <button
+                          onClick={() => handleIntent("dismiss")}
+                          className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-800"
+                        >
+                          Verwerfen
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* B4 Dual-Ledger Karten */}
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
@@ -1389,9 +1616,9 @@ export function Dashboard() {
                   <span className="font-medium text-slate-200">
                     Jetzt oder warten?
                   </span>{" "}
-                  Eine belastbare Warteempfehlung ist noch nicht freigegeben.
-                  Historie und Prognosen werden geprüft — bis dahin zählen hier
-                  nur aktuelle Preismeldungen.
+                  {decideRes.data?.calibrated
+                    ? "Kalibrierte Empfehlung aktiv — Ampel oben beachten. Trefferquoten und Brier-Score stehen im Advice-Ledger."
+                    : "Eine belastbare Warteempfehlung ist noch nicht freigegeben. Historie und Prognosen werden geprüft — bis dahin zählen hier nur aktuelle Preismeldungen."}
                 </p>
               </div>
             </section>
@@ -2031,9 +2258,15 @@ export function Dashboard() {
                   </p>
                 </div>
               </div>
+              {labTotals.n === 0 ? (
+                <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-xs leading-relaxed text-slate-400">
+                  {problem((labData as any)?.error_code) ||
+                    "Noch keine 08:00-Entscheidungszeilen — nach dem ersten Modell-Job erscheint hier das echte Regel-Ergebnis."}
+                </div>
+              ) : (
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Regel-Ergebnis (14 d out-of-sample)</p>
+                  <p className="text-[11px] text-slate-500">Regel-Ergebnis ({labData?.daysEval ?? "–"} d out-of-sample)</p>
                   <p className="mt-1 text-xl font-bold text-emerald-300 font-mono">{euro(labTotals.smart)} €</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
@@ -2046,20 +2279,21 @@ export function Dashboard() {
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Geholtes Potenzial</p>
-                  <p className="mt-1 text-xl font-bold text-amber-300 font-mono">{Math.round(labTotals.potShare * 100)} %</p>
+                  <p className="mt-1 text-xl font-bold text-amber-300 font-mono">{labTotals.best > 0 ? `${Math.round(labTotals.potShare * 100)} %` : "—"}</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
                   <p className="text-[11px] text-slate-500">Ø Entscheidungsverlust</p>
                   <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.regretEur)} €</p>
                 </div>
               </div>
+              )}
             </section>
 
             {/* Sektion 2: Entscheidungs-Scoreboard */}
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                  Entscheidungs-Scoreboard · Out-of-Sample (14 Tage)
+                  Entscheidungs-Scoreboard · Out-of-Sample ({labData?.daysEval ?? "–"} Tage)
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Wurde die Empfehlung real belohnt?
@@ -2081,9 +2315,17 @@ export function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
+                    {labScores.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-6 text-center text-xs text-slate-500">
+                          {problem((labData as any)?.error_code) || "Noch keine Entscheidungszeilen — der Modell-Job füllt dieses Scoreboard."}
+                        </td>
+                      </tr>
+                    )}
                     {labScores.map(({ station_id: sid, score: sc }) => {
                       const stMeta = labData?.stations.find((s) => s.id === sid);
                       const active = sid === selected?.station_id;
+                      const selDelta = selection.data?.stations.find((s) => s.station_id === sid)?.delta_ct;
                       return (
                         <tr
                           key={sid}
@@ -2096,12 +2338,16 @@ export function Dashboard() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5 font-mono">
-                            <span className={sc.delta_ct <= 0 ? "text-emerald-300 font-semibold" : "text-rose-300 font-semibold"}>
-                              {sc.delta_ct > 0 ? "+" : ""}{sc.delta_ct.toFixed(1)} ct
-                            </span>
+                            {selDelta != null ? (
+                              <span className={selDelta <= 0 ? "text-emerald-300 font-semibold" : "text-rose-300 font-semibold"}>
+                                {selDelta > 0 ? "+" : ""}{selDelta.toFixed(1)} ct
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-slate-300">
-                            {Math.round(sc.p_avg * 100)} %
+                            {sc.p_known ? `${Math.round(sc.p_avg * 100)} %` : "—"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-slate-300">
                             {Math.round(sc.hit_freq * 100)} %
@@ -2304,7 +2550,10 @@ export function Dashboard() {
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <span className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1 text-slate-400">
-                    Billigste Stunde (Tr.): <strong className="text-slate-200">{String(labPredHour).padStart(2, "0")}:00</strong>
+                    Billigste Stunde (Tr.):{" "}
+                    <strong className="text-slate-200">
+                      {labModel ? `${String(labPredHour).padStart(2, "0")}:00` : "—"}
+                    </strong>
                   </span>
                 </div>
               </div>
@@ -2338,7 +2587,7 @@ export function Dashboard() {
                     <p className="text-xs uppercase tracking-wider text-slate-500">Regel am Morgen ({activeLabDayRow.cls === 0 ? "Werktag" : "WE/Feiertag"})</p>
                     <p className="mt-1 text-sm leading-relaxed text-slate-300">
                       Training: <strong className="text-white">μ = {activeLabDayRow.mu.toFixed(1)} ct</strong>,{" "}
-                      <strong className="text-white">P(S&gt;0) = {Math.round(activeLabDayRow.p * 100)} %</strong>. Regel (ε = {eps.toFixed(1)} ct):{" "}
+                      <strong className="text-white">P(S&gt;0) = {activeLabDayRow.p != null ? `${Math.round(activeLabDayRow.p * 100)} %` : "—"}</strong>. Regel (ε = {eps.toFixed(1)} ct):{" "}
                       <strong className={activeLabOutcome.wait ? "text-emerald-300" : "text-sky-300"}>
                         {activeLabOutcome.wait ? `WARTEN bis ~${String(activeLabDayRow.predHour).padStart(2, "0")}:00` : "JETZT tanken"}
                       </strong>
@@ -2366,22 +2615,31 @@ export function Dashboard() {
                   </p>
                   {(() => {
                     const dayPts: { x: number; y: number }[] =
-                      activeLabDayRow && (activeLabDayRow as any).curve
-                        ? ((activeLabDayRow as any).curve as { x: number; y: number }[])
+                      activeLabDayRow?.curve && activeLabDayRow.curve.length
+                        ? activeLabDayRow.curve
                         : [];
+                    const rowPredHour = activeLabDayRow?.predHour;
                     return dayPts.length ? (
                       <LabLineChart
                         height={220}
                         series={[
                           {
-                            name: "Preis",
+                            name: "Erwartung vs. 08:00",
                             color: "#e2e8f0",
                             pts: dayPts,
                           },
                         ]}
                         marks={[
                           { x: 8, color: "#38bdf8", label: "08:00" },
-                          { x: labPredHour, color: "#34d399", label: `~${String(labPredHour).padStart(2, "0")}:00` },
+                          ...(rowPredHour != null
+                            ? [
+                                {
+                                  x: rowPredHour,
+                                  color: "#34d399",
+                                  label: `~${String(Math.floor(rowPredHour)).padStart(2, "0")}:${String(Math.round((rowPredHour % 1) * 60)).padStart(2, "0")}`,
+                                },
+                              ]
+                            : []),
                         ]}
                         xTicks={[
                           { x: 6, label: "06" },
@@ -2394,8 +2652,8 @@ export function Dashboard() {
                         yFmt={(v) => `${v.toFixed(1)} ct`}
                       />
                     ) : (
-                      <div className="flex h-[220px] items-center justify-center text-xs text-slate-500">
-                        Tageskurve wird geladen …
+                      <div className="flex h-[220px] items-center justify-center px-6 text-center text-xs leading-relaxed text-slate-500">
+                        Keine Tageskurve für diesen Tag — wähle einen bewerteten Tag im Prüfstand.
                       </div>
                     );
                   })()}
@@ -2404,14 +2662,20 @@ export function Dashboard() {
                   <p className="px-1 text-xs font-medium text-slate-400">
                     Trainings-Verteilung S ({labDayClass === 0 ? "Werktag" : "WE"})
                   </p>
-                  <HistogramBars
-                    values={labSaves}
-                    thresholds={[
-                      { x: eps, color: "#fbbf24", label: `ε ${eps.toFixed(1)}` },
-                      { x: labMu, color: "#38bdf8", label: `μ ${labMu.toFixed(1)}` },
-                    ]}
-                    height={220}
-                  />
+                  {labModel ? (
+                    <HistogramBars
+                      values={labSaves}
+                      thresholds={[
+                        { x: eps, color: "#fbbf24", label: `ε ${eps.toFixed(1)}` },
+                        { x: labMu, color: "#38bdf8", label: `μ ${labMu.toFixed(1)}` },
+                      ]}
+                      height={220}
+                    />
+                  ) : (
+                    <div className="flex h-[220px] items-center justify-center px-6 text-center text-xs leading-relaxed text-slate-500">
+                      Noch kein Form-Modell veröffentlicht — die Engine liefert bisher Tageszeilen, aber keine Trainings-Verteilung.
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
@@ -2620,7 +2884,7 @@ export function Dashboard() {
               <JobCard
                 title="Beleg-Verarbeitung"
                 icon={<Scale size={17} className="text-emerald-400" />}
-                job={(h?.jobs as any)?.settlement}
+                job={h?.jobs.settlement}
                 enabled={h?.jobs_enabled}
               />
             </div>

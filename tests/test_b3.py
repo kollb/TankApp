@@ -493,7 +493,12 @@ def test_route_when_hhmm_and_peak(b3_settings):
 
 
 def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
-    """Ohne detour_km: aus den Anker-Distanzen ableiten (OSRM-Cache/Luftlinie)."""
+    """Ohne detour_km: aus den Stationskoordinaten ableiten (Luftlinie × 1,3).
+
+    |dist(Ziel) − dist(Referenz)| wäre nur eine Dreiecksungleichungs-Schranke
+    (0 bei gleicher Anker-Entfernung trotz km-Weite) — die Luftlinie zwischen
+    den Stationen × 1,3 ist die bessere Näherung (Konvention road_route.py).
+    """
     monkeypatch.setenv("TANKAPP_OSRM", "0")
 
     def query(cfg, flux):
@@ -508,7 +513,7 @@ def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
     dist_other = haversine_km(*anchor, 50.13, 8.70)
     assert dist_other > dist_uid  # OTHER liegt weiter vom Anker entfernt
 
-    # onroute: Mehrweg = dist(Ziel) − dist(Referenz)
+    # onroute: Mehrweg = Luftlinie(Referenz, Ziel) × 1,3
     onroute = live.route_evaluate(
         {
             "city": "Frankfurt",
@@ -519,7 +524,7 @@ def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
         }
     )
     assert onroute["detour_km_source"] == "derived"
-    expected = max(0.0, round(dist_other, 1) - round(dist_uid, 1))
+    expected = haversine_km(50.12, 8.69, 50.13, 8.70) * 1.3
     assert abs(onroute["detour_km_oneway"] - expected) < 0.05
     assert onroute["ref_station_name"] == "Station One"
 

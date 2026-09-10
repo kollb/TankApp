@@ -276,6 +276,7 @@ Nur `--archive-dir`, kein `--runtime-dir`: Runtime bleibt auf SSD, HDD nur Rohar
 | Archiv | Bei Start, danach stündlich, bis gestern, Lücken nachholen, vollständig → überspringen ohne HDD Wake |
 | Modelle | Bei Start, danach täglich, bei Fehler stündlich, unabhängig vom Archiv |
 | Selektion | Bei Start, danach täglich, nach Modell best-effort, publiziert nach `runtime/selection/current.json` |
+| Settlement | Bei Start, danach alle 30 min: rechnet Advice-Snapshots nach Fensterende + 30 min Lag gegen *beobachtete* Preise ab (`runtime/feedback/store.json`), setzt fällige Episoden auf `due` |
 | Veröffentlichung | Erst nach fertiger Berechnung atomar ersetzen, alte Ergebnisse bei Fehlern behalten |
 | Neustart | Docker restart unless-stopped, startet mit Docker, holt nach |
 

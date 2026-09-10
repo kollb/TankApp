@@ -192,6 +192,15 @@ def refresh(settings: Settings, now=None):
                             **horizons,
                             "metrics": report["metrics"],
                             "backtest_days": 7,
+                            "train_days": cfg.train_days,
+                            "decision_rows": [
+                                r
+                                for r in report.get("decision", {}).get("rows", [])
+                                if (r.get("city"), r.get("station_id")) == identity
+                            ],
+                            "decision_hour": report.get("decision", {}).get(
+                                "decision_hour", 8
+                            ),
                             "operational_replay": False,
                             "data_policy": next(
                                 (
