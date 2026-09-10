@@ -21,13 +21,23 @@
 - [Collector Heartbeat (POST, B3.11)](#collector-heartbeat-post-b311)
 - [Jobs Trigger (POST, Issue 50)](#jobs-trigger-post-issue-50)
 - [Route Evaluate (B3.12)](#route-evaluate-b312)
+- [Deprecation alter Alltags-Routen (B5)](#deprecation-alter-alltags-routen-b5-konzept-113)
 - [Fehlercodes](#fehlercodes)
 - [Beispiele](#beispiele)
 
 ## Auth & Limits
 
-- Anonym: 60/min, 10 000/Tag (via NAS Reverse Proxy, falls eingerichtet)
+- Anonym: 60/min, 10 000/Tag
 - Header `X-Api-Key`: 300/min, 50 000/Tag
+
+Der Zähler läuft **in der App** (Konzept §11): jede Antwort trägt
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` und
+`X-RateLimit-Policy` (`anon` | `keyed`). Bei Überschreitung: `429` mit
+`Retry-After` und `{"error_code": "rate_limited"}`. Grenzen je Deployment
+konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
+`TANKAPP_RATE_KEY_PER_MIN` (300), `TANKAPP_RATE_ANON_PER_DAY` (10 000),
+`TANKAPP_RATE_KEY_PER_DAY` (50 000). Schlüssel kommen ausschließlich aus
+`TANKAPP_API_KEYS` (kommagetrennt) — nie ins Image, nie ins Repo.
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
@@ -60,6 +70,23 @@
 ## Decide (B4 Primär)
 
 `GET /api/v1/decide?city=Frankfurt&fuel=e10&liters=40&value_of_time=12` (auch als `/v1/decide` erreichbar)
+
+Parameter (Ergänzung zu B4, Konzept §11.1):
+
+| Parameter | Bedeutung |
+|---|---|
+| `latest_by` | ISO-Zeit (naiv = Europe/Berlin); spätester akzeptabler Tankzeitpunkt. Fenster (`windows_today`/`windows_week`) und die F1-Entscheidung enden spätestens hier (§4.1 H, §4.3 T_max). Unlesbar → `400 invalid_latest_by`. |
+| `mode` | `onroute` (Default, nur Mehrweg gegenüber der Vergleichsstation) oder `dedicated` (Extrafahrt ab Zuhause: Hin + Rück, §10) |
+| `home_lat`, `home_lon` | Heimatkoordinate für `mode=dedicated`; ohne Angabe nutzt die App die Ankerdistanz aus dem Polling-Set. Ungültig → `400 invalid_home`. |
+| `value_of_time`, `consumption`, `speed` | wie B4; der verwendete Zeitwert steht in `context` |
+
+Antwort (Ergänzung): `context` enthält `trip_mode`, `home_used`, `latest_by`,
+`horizon_cut`, `liters`, `consumption_l_100km`, `speed_kmh`,
+`value_of_time_eur_h`, `z_auto`, `is_peak`. `thresholds` zeigt die aktiven
+Entscheidungsschwellen und den M7-Vorschlag (siehe
+[Stats Summary](#stats-summary-b4-3-schichten)). Liegt kein Fenster mehr vor
+`latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
+spätesten Tankzeitpunkt.
 
 Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (Konzept §4.1/§4.2/§4.4, Auswertungsreihenfolge §4.5: F2 → F1 → Grauzone):
 - `refuel_now`: Warten brächte < 1,00 € Ersparnis, oder P(Warten) < 50 %
@@ -117,7 +144,8 @@ Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten 08:00-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ 08:00, Wahrheit = realisierte offene Preise). Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
 2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen).
 3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
-4. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
+4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
+5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 
 
 ## Health
@@ -155,6 +183,18 @@ Antwort:
     "influx": {"available": false, "error_code": "influx_not_queried"}
   }
 }
+```
+
+**Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
+`progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
+Restschätzung — der System-Tab zeigt daraus Balken und Text. Nach dem Lauf
+(oder ohne Lebenszeichen seit 6 h) ist `progress` wieder `null`, damit die
+GUI kein „Läuft …“ konserviert.
+
+```json
+{"state": "running", "phase": "fit", "phase_label": "Modelle fitten + Backtest",
+ "step": 7, "total": 22, "label": "Frankfurt – Aral Hauptstr.", "pct": 31.8,
+ "elapsed_s": 421.5, "eta_s": 902.0, "updated_at": "2026-09-10T15:02:11+00:00"}
 ```
 
 Job-Felder: `data_watermark` = Datenstand (Epochensekunden) des letzten erfolgreichen Webhook-Triggerlaufs, `null` solange kein Webhook eingetroffen ist (Issue 50, Idempotenz-Anker); `triggers` / `last_trigger_skip` = Webhook-Trigger-Statistik des laufenden App-Prozesses (nur `models`/`selection`, siehe [Jobs Trigger](#jobs-trigger-post-issue-50)).
@@ -521,7 +561,25 @@ UI rechnet lokal (schnell), kann optional Server-Endpunkt zur Validierung nutzen
 
 Fehler: `invalid_fuel`, `invalid_liters`, `invalid_detour`, `invalid_consumption`, `invalid_speed`, `invalid_mode`, `invalid_value_of_time`, `invalid_when`, `unknown_station`, `price_not_available`, `polling_missing`, `polling_invalid`, `route_evaluate_failed`
 
+## Deprecation alter Alltags-Routen (B5, Konzept §11.3)
+
+Sobald `/api/v1/decide` alle Alltags-Fälle abdeckt, markiert die App die
+alten Alltags-Routen mit RFC-8594-Headern:
+
+| Route | Header | Nachfolger |
+|---|---|---|
+| `GET /api/v1/stations` | `Deprecation: true`, `Sunset`, `Link` | `/api/v1/decide` |
+| `GET /api/v1/day` | dto. | `/api/v1/decide` (Fenster „Heute später“) |
+| `GET /api/v1/route/evaluate` | dto. | `/api/v1/decide` (`alternatives_nearby`) |
+
+Werkstatt-Routen (`series`, `forecast`, `heatmap`, `selection`,
+`collector/status`, `health`) bleiben bewusst unmarkiert — sie sind Analyse,
+nicht Alltag.
+
 ## Fehlercodes
+
+Zusätzlich zu den bekannten Codes: `rate_limited` (429, Konzept §11),
+`invalid_latest_by`, `invalid_mode`, `invalid_home` (400, `/api/v1/decide`).
 
 Siehe `web/src/data.ts` messages:
 

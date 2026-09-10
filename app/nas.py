@@ -102,6 +102,11 @@ def up(args):
         "TANKAPP_MODEL_FUELS": fuels,
         "TANKAPP_UID": str(uid),
         "TANKAPP_GID": str(gid),
+        # B5: Betriebsknöpfe des App-Dienstes (Defaults in app/config.py).
+        # Keine Geheimnisse — Werte kommen aus der Umgebung des Aufrufs.
+        "TANKAPP_MODEL_WORKERS": os.environ.get("TANKAPP_MODEL_WORKERS", "0"),
+        "TANKAPP_M7_AUTO_APPLY": os.environ.get("TANKAPP_M7_AUTO_APPLY", "0"),
+        "TANKAPP_API_KEYS": os.environ.get("TANKAPP_API_KEYS", ""),
     }
     command = [
         "docker",

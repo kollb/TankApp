@@ -7,6 +7,10 @@
 > `web/` und `app/` implementieren inzwischen Live-GUI, Nur-Lese-API und
 > automatische NAS-Archiv-/Modelljobs **inkl. B3**: Heatmaps, Meine Stationen (δ̂),
 > Collector-Herzschlag, Route-Evaluate. Siehe [API-Doku](API.md).
+> **B5** schließt die offenen Konzeptpunkte `latest_by`, Fahrtmodus in
+> `/v1/decide`, Rate-Limit/API-Key (§11), Deprecation-Header (§11.3),
+> M7-Schwellen-Nachzug (§13) und den Fortschritt lang laufender Jobs —
+> der Abgleich Zielbild ↔ Code steht in [LUECKEN.md](LUECKEN.md).
 > Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**

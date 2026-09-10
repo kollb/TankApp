@@ -107,20 +107,34 @@ def isotonic_decreasing(values: np.ndarray) -> np.ndarray:
     hängende Ausschnitt sein, über den projektiert werden soll (hier: ein
     vollständiges [12:00-Uhr-Segment], siehe ``noon_law_projection``).
     """
-    blocks: list[list[float]] = []
+    values = np.asarray(values, dtype=float)
+    # Schnellpfad: bereits nicht-steigend → nichts zu poolen. Bei glatten
+    # Strukturverläufen der Regelfall und der teure PAVA-Lauf entfällt.
+    if values.size < 2 or bool(np.all(np.diff(values) <= 0)):
+        return values.copy()
+    # PAVA über flache Arrays statt über Python-Floats: gleicher Algorithmus
+    # (L2-Projektion, gewichtete Pool-Mittel), aber ohne Boxing je Punkt.
+    size = values.size
+    block_values = np.empty(size, dtype=float)
+    block_counts = np.empty(size, dtype=np.int64)
+    top = 0
     for value in values:
-        blocks.append([float(value), 1])
-        while len(blocks) > 1 and blocks[-2][0] < blocks[-1][0]:
-            value = (blocks[-2][0] * blocks[-2][1] + blocks[-1][0] * blocks[-1][1]) / (
-                blocks[-2][1] + blocks[-1][1]
-            )
-            count = blocks[-2][1] + blocks[-1][1]
-            blocks.pop()
-            blocks[-1] = [value, count]
-    out = np.empty(len(values), dtype=float)
+        block_values[top] = float(value)
+        block_counts[top] = 1
+        top += 1
+        while top > 1 and block_values[top - 2] < block_values[top - 1]:
+            count = block_counts[top - 2] + block_counts[top - 1]
+            block_values[top - 2] = (
+                block_values[top - 2] * block_counts[top - 2]
+                + block_values[top - 1] * block_counts[top - 1]
+            ) / count
+            block_counts[top - 2] = count
+            top -= 1
+    out = np.empty(size, dtype=float)
     start = 0
-    for value, count in blocks:
-        out[start : start + count] = value
+    for position in range(top):
+        count = int(block_counts[position])
+        out[start : start + count] = block_values[position]
         start += count
     return out
 
@@ -136,7 +150,14 @@ def _segment_bounds(
     werden gemeinsam projiziert (ein Anstieg über Mitternacht ist
     außerhalb des 12-Uhr-Punkts ebenfalls unzulässig).
     Liefert (start, stop, segment_beginn_noon).
+
+    Vektorisiert über die int64-Rohwerte: Der frühere Skalarvergleich
+    ``seg[position] != seg[start]`` baute je Punkt ein ``pd.Timestamp``
+    (ca. 8 Mio. Boxing-Operationen pro 7-Tage-Prognose) und war damit der
+    mit Abstand teuerste Teil des Modell-Laufs.
     """
+    if len(local) == 0:
+        return []
     day = local.normalize()
     before_noon = local.hour < 12
     seg = (
@@ -144,17 +165,30 @@ def _segment_bounds(
         + pd.Timedelta(hours=12)
         - pd.to_timedelta(before_noon.astype(int), unit="D")
     )
-    segments = []
-    start = 0
-    for position in range(1, len(local) + 1):
-        if position == len(local) or seg[position] != seg[start]:
-            segments.append((start, position, seg[start]))
-            start = position
-    return segments
+    values = _asi8(seg)
+    starts = np.flatnonzero(np.concatenate(([True], values[1:] != values[:-1])))
+    stops = np.concatenate((starts[1:], [len(values)]))
+    # Nur die Segment-Anfänge werden als Zeitstempel gebraucht (<< Punkte).
+    heads = seg[starts]
+    return [
+        (int(start), int(stop), heads[position])
+        for position, (start, stop) in enumerate(zip(starts, stops))
+    ]
+
+
+def _asi8(index: pd.DatetimeIndex) -> np.ndarray:
+    """int64-Rohwerte eines DatetimeIndex ohne Timestamp-Boxing."""
+    values = getattr(index, "asi8", None)
+    if values is not None:
+        return np.asarray(values, dtype="int64")
+    return np.asarray(index, dtype="datetime64[ns]").astype("int64")
 
 
 def noon_law_projection(
-    values: np.ndarray, index: pd.DatetimeIndex, cfg: Config
+    values: np.ndarray,
+    index: pd.DatetimeIndex,
+    cfg: Config,
+    segments: list[tuple[int, int, pd.Timestamp]] | None = None,
 ) -> np.ndarray:
     """Projektiert einen Preisverlauf auf die 12-Uhr-Regel.
 
@@ -162,12 +196,18 @@ def noon_law_projection(
     nur gleich bleiben oder sinken; der erlaubte Sprung liegt exakt an der
     Segmentgrenze. Segmente, die vor dem Gesetzesbeginn (lokale Zeit)
     begannen, bleiben unverändert; NaN bleibt NaN.
+
+    ``segments`` erlaubt es, die Segmentgrenzen einmal zu berechnen und für
+    alle Bootstrap-Pfade wiederzuverwenden (predict() projiziert bis zu
+    2000 Pfade auf dasselbe Raster).
     """
     result = np.asarray(values, dtype=float).copy()
     if len(index) < 2:
         return result
     law = law_since_utc(cfg).tz_convert(cfg.timezone)
-    for start, stop, boundary in _segment_bounds(index.tz_convert(cfg.timezone)):
+    if segments is None:
+        segments = _segment_bounds(index.tz_convert(cfg.timezone))
+    for start, stop, boundary in segments:
         if boundary < law:
             continue
         chunk = result[start:stop]
@@ -428,10 +468,15 @@ def predict(
         correction[i] = following
         state = [following, state[0]]
     structure = features(index, cfg) @ beta
+    # Segmentgrenzen des 12-Uhr-Gesetzes einmal je Raster bestimmen (statt
+    # je Bootstrap-Pfade erneut) — das war der zeitaufwendige Teil.
+    segments = _segment_bounds(index.tz_convert(cfg.timezone))
     # 12-Uhr-Regel: Median und Struktur dürfen innerhalb der Segmente
     # [12:00 Uhr, nächste 12:00 Uhr) nicht steigen; der erlaubte Sprung liegt
     # an der Segmentgrenze. Segmente vor dem Gesetzesbeginn bleiben unverändert.
-    point = noon_law_projection(structure + correction[offsets], index, cfg)
+    point = noon_law_projection(
+        structure + correction[offsets], index, cfg, segments=segments
+    )
     block = np.asarray(model["residual_blocks"], dtype=float)
     slot = slots(index, cfg)
     counts = np.isfinite(block).sum(axis=0)
@@ -454,7 +499,9 @@ def predict(
         paths[:, positions] = point[positions] + block[draws[:, None], slot[positions]]
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
     for sample in range(cfg.bootstrap_samples):
-        paths[sample] = noon_law_projection(paths[sample], index, cfg)
+        paths[sample] = noon_law_projection(
+            paths[sample], index, cfg, segments=segments
+        )
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="All-NaN slice encountered", category=RuntimeWarning

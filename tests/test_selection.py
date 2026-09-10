@@ -29,7 +29,12 @@ def test_nas_jobs_fix_b_at_2000():
         "n_boot=2000", ""
     )
     assert "n_boot=2000" in inspect.getsource(refresh.refresh)
-    assert selection.build_selection.__defaults__[-1] == 2000
+    # Default über die Signatur prüfen (nicht über __defaults__: die
+    # Parameterreihenfolge darf sich ändern, B=2000 darf es nicht).
+    assert (
+        inspect.signature(selection.build_selection).parameters["n_boot"].default
+        == 2000
+    )
 
 
 def test_bh_q_unreachable_at_b200_reachable_at_b2000():

@@ -2,7 +2,7 @@
 
 **Ein Einstieg, eine Reihenfolge:** [INSTALL.md](INSTALL.md) ist der verbindliche Betriebsplan.
 
-> Stand: 10.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate), B4 (Decision Layer) und die Ereignis-Pipeline (Uploader-Webhook, Issue 50) implementiert.
+> Stand: 10.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate), B4 (Decision Layer), die Ereignis-Pipeline (Uploader-Webhook, Issue 50) und **B5** (Konzept-Lücken: Job-Fortschritt, schnellerer Modell-Lauf, Rate-Limit, Deprecation-Header, `latest_by`, Fahrtmodus, M7-Schwellen) implementiert.
 > Alle Dokumente haben ein klickbares Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis (klickbar)
@@ -10,6 +10,7 @@
 - [Überblick](#überblick)
 - [Schnellstart](#schnellstart)
 - [Dokumente nach Aufgabe](#dokumente-nach-aufgabe)
+- [Lücken-Check: Konzept gegen Stand](LUECKEN.md) — was fehlt noch, was ist bewusst offen
 - [Architektur Kurzfassung](#architektur-kurzfassung)
 - [API Übersicht](#api-übersicht)
 - [Alte Anleitungen aufräumen](#alte-anleitungen-aufräumen)
@@ -31,13 +32,16 @@
 5. **[Analyse — Selektion, Modelle, Heatmaps](ANALYSE.md)**  
    δ̂ Ranking, Bootstrap-KI, AV-Score, billigste Stunde, Heatmaps DoW×Stunde, Backtest, Kalibrierung.
 
-6. **[Produkt- und Architekturkonzept](KONZEPT.md)**  
+6. **[Lücken-Check — Konzept gegen Stand](LUECKEN.md)**  
+   Abgleich Zielbild ↔ Code: was B5 geschlossen hat, was bewusst offen bleibt und warum.
+
+7. **[Produkt- und Architekturkonzept](KONZEPT.md)**  
    Fachliches Zielbild, Decision Layer, drei Fragen (Jetzt/warten, Hier/woanders, Heute/später), Ehrlichkeits-Regel.
 
-7. **[RP2 Fallback-GUI + NAS-Proxy](RP2.md)**  
+8. **[RP2 Fallback-GUI + NAS-Proxy](RP2.md)**  
    Konsolidiert aus `rp2/README.md` + `rp2/ANLEITUNG.md`. 24/7 Zugang über Pi Port 8000.
 
-8. **[Stations-UUID — Gleiche Namen trennen](STATIONS-UUID.md)**  
+9. **[Stations-UUID — Gleiche Namen trennen](STATIONS-UUID.md)**  
    Migration von Namens-Serien auf UUID-Tags, Replay mit Zeitzone.
 
 9. **Weitere Referenzen (keine Installationspflicht)**
@@ -102,7 +106,8 @@ Pi → NAS: collector_status (Herzschlag) via InfluxDB
 | `GET /api/v1/heatmap?city=...&fuel=...&kind=level\|probability&weeks=6&station_id=...` | **B3.9** DoW×Stunde Niveau + Cheap-Prob |
 | `GET /api/v1/selection?fuel=...&city=...` | **B3.10** Meine Stationen mit δ̂, KI, AV, billigste Stunde |
 | `GET /api/v1/collector/status` | **B3.11** Pi/tmpfs Livestatus |
-| `GET /api/v1/route/evaluate?city=...&fuel=...&station_id=...&ref_station_id=...&liters=40&detour_km=3&consumption=7&speed=45&value_of_time=12&when=...&mode=onroute` | **B3.12** Umweg-Ökonomie serverseitig |
+| `GET /api/v1/route/evaluate?...` | **B3.12** Umweg-Ökonomie serverseitig (deprecated, Nachfolger `/api/v1/decide`) |
+| `GET /api/v1/decide?...&latest_by=...&mode=...` | **B4/B5** Ampel, Alternativen, Fenster — jetzt mit Zeithorizont und Fahrtmodus |
 
 Details: [API.md](API.md)
 

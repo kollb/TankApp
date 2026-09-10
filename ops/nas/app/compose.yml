@@ -7,6 +7,8 @@ services:
       dockerfile: ops/nas/app/Dockerfile
     restart: unless-stopped
     init: true
+    # Prozess-Pool des Modell-Laufs braucht ein wenig /dev/shm.
+    shm_size: 256m
     user: "${TANKAPP_UID:-1000}:${TANKAPP_GID:-1000}"
     ports:
       - "${TANKAPP_WEB_PORT:-1355}:1355"
@@ -19,6 +21,12 @@ services:
       TANKAPP_HISTORY_DAYS: "${TANKAPP_HISTORY_DAYS:-365}"
       TANKAPP_MODEL_FUELS: "${TANKAPP_MODEL_FUELS:-e10}"
       TANKAPP_WEBHOOK_TOKEN: "${TANKAPP_WEBHOOK_TOKEN:-}"
+      # B5: 0 = automatisch (CPU-Kerne, max. 8), 1 = seriell.
+      TANKAPP_MODEL_WORKERS: "${TANKAPP_MODEL_WORKERS:-0}"
+      # B5: 1 = vorgeschlagene Schwellen aus dem Advice-Ledger anwenden (M7).
+      TANKAPP_M7_AUTO_APPLY: "${TANKAPP_M7_AUTO_APPLY:-0}"
+      # B5: kommagetrennte API-Schlüssel für 300/min (Konzept §11); leer = nur anonym.
+      TANKAPP_API_KEYS: "${TANKAPP_API_KEYS:-}"
       TZ: Europe/Berlin
     volumes:
       - type: bind

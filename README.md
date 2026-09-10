@@ -8,6 +8,7 @@ Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
 - [Ein Einstieg, eine Reihenfolge](#ein-einstieg-eine-reihenfolge)
 - [Geräte-Rollen](#geräte-rollen)
 - [Stand B3](#stand-b3)
+- [Stand B5 — Konzept-Lücken geschlossen](#stand-b5--konzept-lücken-geschlossen)
 - [Dokumentation](#dokumentation)
 - [Entwicklung & Tests](#entwicklung--tests)
 
@@ -42,6 +43,24 @@ Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/System, Nur-Lese-AP
 
 **Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt GUI Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
 
+## Stand B5 — Konzept-Lücken geschlossen
+
+**Stand 10.09.2026:** Der Abgleich des [Konzepts](docs/KONZEPT.md) mit dem Code
+steht in **[docs/LUECKEN.md](docs/LUECKEN.md)**. Geschlossen wurden:
+
+- **Job-Fortschritt statt „Läuft …“**: Phasen, Schritt x/y, Balken und
+  Restschätzung im System-Tab, in `runtime/jobs/<job>.progress.json` und in
+  `runtime/jobs/<job>.log` (auch ohne Docker lesbar).
+- **Modell-Lauf ~17× schneller und mehrkernig**: vektorisierte
+  12-Uhr-Regel-Projektion (bitgleiche Ergebnisse) plus Prozessparallelität
+  (`TANKAPP_MODEL_WORKERS`, Default automatisch, serieller Rückfall).
+- **API-Schutz**: 60/min anonym, 300/min mit `X-Api-Key`, `X-RateLimit-*`,
+  `429` (Konzept §11).
+- **Deprecation-Header** auf den alten Alltags-Routen (§11.3).
+- **`latest_by`** in `/api/v1/decide` („bis wann muss ich getankt haben?“)
+  und **Fahrtmodus** `onroute`/`dedicated` mit Heimatkoordinate (§10).
+- **M7-Schwellen-Nachzug** aus dem Advice-Ledger (Vorschlag, abschaltbar).
+
 ## Dokumentation
 
 - **[Dokumentations-Index](docs/README.md)** — klickbares Inhaltsverzeichnis, alle Dokumente nach Aufgabe
@@ -50,6 +69,7 @@ Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/System, Nur-Lese-AP
 - **[API](docs/API.md)** — alle Endpunkte inkl. B3, mit Beispielen
 - **[Betrieb](docs/BETRIEB.md)** — systemd, Backup, Fehlersuche, InfluxDB, Unraid, aus INSTALL.md konsolidiert
 - **[Analyse](docs/ANALYSE.md)** — Selektion, Modelle, Heatmaps, Umweg-Ökonomie
+- **[Lücken-Check](docs/LUECKEN.md)** — Konzept gegen Stand, offene Punkte mit Grund
 - **[Konzept](docs/KONZEPT.md)** — fachliches Zielbild, Decision Layer, mit TOC
 - **[RP2 Fallback + Proxy](docs/RP2.md)** — konsolidiert aus rp2/README + ANLEITUNG, 24/7 Zugang über Pi Port 8000
 - **[Stations-UUID](docs/STATIONS-UUID.md)** — gleiche Namen trennen, mit TOC

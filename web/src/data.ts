@@ -27,12 +27,32 @@ export type Stations = {
   connection_error: string | null;
   fresh_prices: number;
 };
+/** Fortschritt eines laufenden NAS-Jobs (app/progress.py → /api/v1/health). */
+export type JobProgress = {
+  job: string;
+  state: string;
+  phase: string;
+  phase_label: string;
+  step: number;
+  total: number;
+  label: string;
+  pct: number;
+  started_at: string;
+  updated_at: string;
+  elapsed_s: number;
+  eta_s: number | null;
+  message: string;
+  done: boolean;
+};
+
 export type Job = {
   state: string | null;
   started_at: string | null;
   finished_at: string | null;
   last_success_at: string | null;
   next_run_at: string | null;
+  /** Nur während eines Laufs gesetzt: Phase, Schritt x/y, Restschätzung. */
+  progress?: JobProgress | null;
   /** Issue 50: Datenstand (Epochensekunden) des letzten erfolgreichen Webhook-Triggerlaufs. */
   data_watermark?: string | null;
   /** Issue 50: Webhook-Trigger des laufenden App-Prozesses (nur models/selection). */

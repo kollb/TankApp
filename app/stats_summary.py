@@ -23,6 +23,7 @@ from .feedback import (
     compute_wallet_stats,
     load_store,
 )
+from .thresholds import active_thresholds
 
 UTC = dt.timezone.utc
 
@@ -356,6 +357,11 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
     live_advice = compute_advice_stats(store)
     wallet = compute_wallet_stats(store)
 
+    # M7-Schwellen-Nachzug (Konzept §5.5 Schicht B Schritt 4, §13 M7):
+    # Vorschlag aus den gemessenen Trefferquoten; wirksam nur mit auto_apply.
+    auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
+    thresholds, tuning = active_thresholds(live_advice, auto_apply=auto_apply)
+
     # Güte-Kacheln: aus engine/current.json, sonst None
     quality_metrics = _quality_metrics_from_publication()
 
@@ -366,6 +372,8 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "backtest": backtest,
         "live_advice": live_advice,
         "wallet": wallet,
+        "threshold_tuning": tuning,
+        "thresholds": thresholds,
         "quality_metrics": quality_metrics,
         "calibrated": live_advice.get("calibrated", False),
         "decision_ready": False,
