@@ -343,7 +343,7 @@ Antwort:
 Felder:
 
 - `delta_ct` (δ̂): Median(p_i − LOO-Stadtmedian) ct/L, negativ = günstiger
-- `ci_lo`, `ci_hi`: 95% KI aus Tages-Block-Bootstrap B=200 (Seed 42)
+- `ci_lo`, `ci_hi`: 95% KI aus Tages-Block-Bootstrap B=2000 (Seed 42)
 - `p_value`: einseitig H0: δ≥0 (small = signifikant günstiger), `q_value`: Benjamini-Hochberg FDR, `significant`: q<0.05
 - `avail`: AV-Score = Σ w_h·P(Top-3|h); w = Pendlerprofil Mo–Fr 06–09/16–20 (Gewicht 5/7, Wochenende gleichmäßig 2/7)
 - `best_hour`: günstigste Stunde aus robuster harmonischer Regression auf δ (2. Ordnung, Huber-IRLS), z. B. 19.5 = 19:30

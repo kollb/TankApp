@@ -67,7 +67,7 @@ Beispiel: „langfristig 3,80 ct/L günstiger als Umgebung“ erscheint nur im S
 - p-Wert = (1 + Anzahl(Bootstrap ≥0)) / (B+1), einseitig H0: δ≥0
 - Benjamini-Hochberg über alle Stationen → q-Wert, signifikant bei q<0.05 (FDR kontrolliert)
 
-NAS-Variante B3.10: B=200 für Speed (statt 2000), gleiche Methodik, Artefakt `runtime/selection/current.json`.
+NAS-Job (B3.10): B=2000 fest (nicht sequenziell erhöhen). B=200 wäre ein Signifikanzblocker: p_min=1/(B+1) ergibt mit BH und m=11 Stationen q≥0,0547>0,05. Artefakt `runtime/selection/current.json`.
 
 ### AV-Score & billigste Stunde
 

@@ -172,7 +172,7 @@ TANKAPP_POLL_DIR=/dev/shm/tankapp
 
 - Job `selection` täglich, nach Modell-Job best-effort
 - Liest `runtime/training/*.csv.gz` (oder `exports/influx_*.csv.gz`)
-- Berechnet δ̂ = Median(p_i − LOO-Median), Tages-Block-Bootstrap B=200 → 95%-KI, p-Wert, Benjamini-Hochberg q, AV-Score = Σ w_h·P(Top-3|h), billigste Stunde, Volatilität, Rang-Stabilität
+- Berechnet δ̂ = Median(p_i − LOO-Median), Tages-Block-Bootstrap B=2000 → 95%-KI, p-Wert, Benjamini-Hochberg q, AV-Score = Σ w_h·P(Top-3|h), billigste Stunde, Volatilität, Rang-Stabilität
 - Publiziert nach `runtime/selection/current.json`
 - API `/api/v1/selection` liefert „Meine Stationen“
 

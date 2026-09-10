@@ -12,7 +12,7 @@ class Config:
     train_days: int = 42
     min_train_days: int = 28
     min_slot_days: int = 7
-    bootstrap_samples: int = 500
+    bootstrap_samples: int = 2000
     seed: int = 42
     poll_start: int = 6
     poll_end: int = 24

@@ -481,3 +481,21 @@ def test_day_series_no_demo_data(b4_settings):
     assert day_body["ok"] is True
     assert day_body["points"] == []
     assert day_body.get("source") in (None, "engine")
+
+
+def test_gray_zone_percent_is_times_100():
+    """F1: P intern 0–1, Anzeige ×100 (0,5 → 50 %, nicht 0 %)."""
+    from app.decide import _table_action
+
+    _, _, reason = _table_action(
+        1.70,
+        1.64,
+        2.40,
+        None,
+        {"p": 0.5, "n": 40},
+        {"p": 0.5, "n": 40},
+        {"p": 0.4, "n": 40},
+    )
+    assert "50 %" in reason
+    assert "P ≈ 0 %" not in reason
+    assert "0.5 %" not in reason
