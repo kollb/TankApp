@@ -6,12 +6,14 @@ import {
   compressedAxis,
   currentPrice,
   detourEconomics,
+  epochLabel,
   gapBands,
   haversineKm,
   rowOutcome,
   scoreRows,
   segments,
   splitOnGap,
+  triggerSkipLabel,
   type Station,
 } from "./data";
 
@@ -333,3 +335,24 @@ describe("B4 decision scoring and lab outcomes", () => {
   });
 });
 
+
+describe("issue 50 trigger labels (Ereignis-Pipeline)", () => {
+  it("formats epoch seconds as Berlin time and hides invalid values", () => {
+    expect(epochLabel(1767268800)).toBe("01.01., 13:00");
+    expect(epochLabel("1767268800")).toBe("01.01., 13:00");
+    expect(epochLabel(null)).toBe("—");
+    expect(epochLabel(undefined)).toBe("—");
+    expect(epochLabel("")).toBe("—");
+    expect(epochLabel("x")).toBe("—");
+    expect(epochLabel(-5)).toBe("—");
+    expect(epochLabel(NaN)).toBe("—");
+  });
+
+  it("maps scheduler skip decisions to honest copy", () => {
+    expect(triggerSkipLabel("debounced")).toBe("Debounce (Mindestabstand)");
+    expect(triggerSkipLabel("duplicate")).toBe("Idempotenz (gleiche Daten)");
+    expect(triggerSkipLabel(null)).toBeNull();
+    expect(triggerSkipLabel(undefined)).toBeNull();
+    expect(triggerSkipLabel("other")).toBeNull();
+  });
+});

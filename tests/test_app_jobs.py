@@ -483,6 +483,30 @@ def test_worker_records_trigger_watermark_on_success(tmp_path, monkeypatch):
     assert state["data_watermark"] == "1727"
 
 
+def test_health_exposes_watermark_and_trigger_stats(tmp_path):
+    """Issue 50: Idempotenz-Anker und Trigger-Statistik sind via /health sichtbar."""
+    from app.data import LiveData
+    from app.server import Scheduler
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    scheduler = Scheduler(settings)
+    write_job_state(tmp_path, "models", success_at=10, watermark=1727)
+    scheduler.trigger_counts["models"] = 3
+    scheduler.trigger_skips["models"] = "debounced"
+    live = LiveData(settings)
+    live.scheduler = scheduler
+    jobs = live.health()["jobs"]
+    assert jobs["models"]["data_watermark"] == "1727"
+    assert jobs["models"]["triggers"] == 3
+    assert jobs["models"]["last_trigger_skip"] == "debounced"
+    # Nur Inferenz-Jobs tragen Trigger-Statistik; andere Jobs bleiben unberührt.
+    assert "triggers" not in jobs["archive"]
+    assert "triggers" not in jobs["settlement"]
+    assert jobs["settlement"]["data_watermark"] is None
+    # Ohne anhängenden Scheduler (Read-Only-Instanz) bleibt das Feld leer.
+    assert LiveData(settings).trigger_info() == {}
+
+
 def test_webhook_endpoint_auth_and_wiring(tmp_path, monkeypatch):
     import threading
     import urllib.request

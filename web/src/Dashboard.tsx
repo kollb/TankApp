@@ -42,12 +42,14 @@ import {
   clockLabel,
   currentPrice,
   detourEconomics,
+  epochLabel,
   euro,
   formatHour,
   haversineKm,
   problem,
   segments,
   timeLabel,
+  triggerSkipLabel,
   useResource,
   usePreference,
   postIntent,
@@ -201,6 +203,28 @@ function JobCard({
             {timeLabel(job?.next_run_at)}
           </span>
         </div>
+        {/* Issue 50: Ereignis-Pipeline — Datenstand des letzten erfolgreichen
+            Webhook-Triggerlaufs (nur bei models/selection vorhanden). */}
+        {job?.data_watermark != null && (
+          <div className="flex justify-between">
+            <span>Trigger-Datenstand</span>
+            <span className="font-mono text-slate-200">
+              {epochLabel(job.data_watermark)}
+            </span>
+          </div>
+        )}
+        {job?.triggers != null && job.triggers > 0 && (
+          <div className="flex justify-between">
+            <span>Webhook-Trigger</span>
+            <span className="font-mono text-slate-200">
+              {job.triggers}×
+              {(() => {
+                const skip = triggerSkipLabel(job?.last_trigger_skip);
+                return skip ? ` · letzter Skip: ${skip}` : "";
+              })()}
+            </span>
+          </div>
+        )}
       </div>
       {job?.error_code && (
         <p className="mt-3 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-300">

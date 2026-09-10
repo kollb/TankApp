@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 09.09.2026 — B3 & B4 Endpunkte enthalten, serverseitig, keine Demo-Fallbacks.
+> Stand: 10.09.2026 — B3 & B4 Endpunkte + Ereignis-Pipeline (`POST /api/v1/jobs/trigger`, Issue 50) enthalten, serverseitig, keine Demo-Fallbacks.
 
 ## Inhaltsverzeichnis
 
@@ -19,6 +19,7 @@
 - [Selection / Meine Stationen (B3.10)](#selection--meine-stationen-b310)
 - [Collector Status (B3.11)](#collector-status-b311)
 - [Collector Heartbeat (POST, B3.11)](#collector-heartbeat-post-b311)
+- [Jobs Trigger (POST, Issue 50)](#jobs-trigger-post-issue-50)
 - [Route Evaluate (B3.12)](#route-evaluate-b312)
 - [Fehlercodes](#fehlercodes)
 - [Beispiele](#beispiele)
@@ -30,6 +31,7 @@
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
+  - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
   - `POST /api/v1/episodes` bzw. `POST /api/v1/recommendations/{id}/outcome` (Nutzer-Intents, B4)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
 - Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal)
@@ -52,6 +54,7 @@
 | `GET /api/v1/selection?fuel=...&city=...` | **B3.10** | Meine Stationen mit δ̂ |
 | `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
 | `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
+| `POST /api/v1/jobs/trigger` | **Issue 50** | Uploader-Webhook: Inferenz-Job nach sicherem InfluxDB-Write (Debounce + Idempotenz) |
 | `GET /api/v1/route/evaluate?...` | **B3.12** | Umweg-Ökonomie serverseitig |
 
 ## Decide (B4 Primär)
@@ -135,7 +138,7 @@ Antwort:
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
     "archive": {"state": "success", "last_success_at": "...", "next_run_at": "..."},
-    "models": {"state": "success", ...},
+    "models": {"state": "success", "last_success_at": "...", "next_run_at": "...", "data_watermark": "1757584800", "triggers": 12, "last_trigger_skip": "debounced"},
     "selection": {"state": "success", ...}
   },
   "models": {"published_at": "...", "count": 20, "calibrated": false, "decision_ready": false},
@@ -153,6 +156,8 @@ Antwort:
   }
 }
 ```
+
+Job-Felder: `data_watermark` = Datenstand (Epochensekunden) des letzten erfolgreichen Webhook-Triggerlaufs, `null` solange kein Webhook eingetroffen ist (Issue 50, Idempotenz-Anker); `triggers` / `last_trigger_skip` = Webhook-Trigger-Statistik des laufenden App-Prozesses (nur `models`/`selection`, siehe [Jobs Trigger](#jobs-trigger-post-issue-50)).
 
 Collector frisch = Herzschlag ≤15 Min. **Wichtig:** `/health` evaluiert den Collector nur aus lokalen Quellen (NAS-Heartbeat-File, lokales tmpfs) und fragt InfluxDB **nicht** ab — der Docker-Healthcheck (3–5 s Budget) darf nicht an InfluxDB-Antwortzeiten scheitern. Volle Details (inkl. Influx-Felder wie `poll_count`) liefert `GET /api/v1/collector/status`, den der GUI-System-Tab nutzt.
 
@@ -426,7 +431,27 @@ Collector schreibt `meta/heartbeat.json` nach jedem Poll, Uploader schreibt `col
 - `timestamp` fehlt → `last_poll` wird übernommen; fehlt auch → Server-Zeit (UTC)
 - Antwort: `{"status": "ok", "received_at": "…"}` (200); Fehler: `400 invalid_json` / `400 invalid_request` (u. a. defekter Content-Length) / `413 payload_too_large` (>10 kB) / `503 server_error`
 - Das File liegt unter `runtime/collector/heartbeat.json` und wird von `GET /api/v1/collector/status` als Fallback-Quelle `nas` ausgewertet (ohne InfluxDB)
-- Alle anderen POST/PUT/DELETE/PATCH auf dem Server: `501` (Nur-Lese-Vertrag)
+- Alle anderen POST/PUT/DELETE/PATCH auf dem Server: `501` (Nur-Lese-Vertrag, ausgenommen die oben gelisteten Schreib-Endpunkte)
+
+## Jobs Trigger (POST, Issue 50)
+
+`POST /api/v1/jobs/trigger` — Uploader-Webhook der Ereignis-Pipeline (Detaillierung: `ARCHITEKTUR.md`, Abschnitt „Ereignis-Pipeline: Webhook statt reinem Polling“). Der Uploader sendet ihn Fire-and-Forget **nach dem sicheren InfluxDB-Write**; der NAS-Scheduler entscheidet allein, ob ein Lauf startet (Separation of Concerns).
+
+```bash
+curl -s -X POST http://nas:1355/api/v1/jobs/trigger \
+  -H "Authorization: Bearer <TANKAPP_WEBHOOK_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"job": "models", "watermark": 1757584800}'
+```
+
+- Body: `{"job": "models"|"selection", "watermark": <Epochensekunden>}` — `watermark` optional (Datenstand des sicheren Writes)
+- Auth: `Authorization: Bearer <TANKAPP_WEBHOOK_TOKEN>` — derselbe Secret, den der Uploader auf dem Pi als `TANKAPP_NAS_WEBHOOK_TOKEN` sendet; verglichen per `hmac.compare_digest` (kein Timing-Leak)
+- Ohne konfiguriertes `TANKAPP_WEBHOOK_TOKEN` oder ohne laufenden Job-Betrieb (`--jobs`) existiert der Endpoint bewusst nicht: `404 not_found`
+- Fehler: `403 unauthorized` (Token fehlt/stimmt nicht), `400 invalid_query` (Job außerhalb `models`/`selection` oder `watermark` keine Zahl)
+- Erfolg: `200 {"status": "queued", "job": "models"}` — der Trigger ist nur vorgemerkt; die Job-Schleife wird aufgeweckt und entscheidet:
+  - **Debounce:** Mindestabstand 15 min für `models`, 1 h für `selection` → Übersprung `debounced`
+  - **Idempotenz:** gleiche `watermark` wie beim letzten erfolgreichen Lauf (verankert in `runtime/jobs/<job>.json → data_watermark`, sichtbar in `GET /api/v1/health`) und letzter Erfolg jünger als das Job-Intervall → Übersprung `duplicate`; letzter Erfolg älter als das Job-Intervall → Lauf trotzdem (Prognosefenster bleiben am aktuellen Tag verankert)
+- Mehrere Trigger während eines Laufs werden zusammengeführt (nur die neueste `watermark` bleibt gemerkt); fehlschlägt der Webhook beim Uploader, läuft alles unverändert intervallbasiert weiter (keine neue harte Abhängigkeit)
 
 ## Route Evaluate (B3.12)
 
@@ -511,6 +536,7 @@ Siehe `web/src/data.ts` messages:
 - unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
 - price_not_available, decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
+- unauthorized (403, nur `POST /api/v1/jobs/trigger` ohne oder mit falschem Bearer-Token)
 - payload_too_large (413), invalid_json, invalid_request, server_error
 
 Alle Endpunkte liefern `error_code` statt Exception-Text, nie Tokens. Unbekannte Stationen/Städte liefern 404 mit spezifischem Code (kein pauschales `invalid_query`).
@@ -524,4 +550,5 @@ curl -s "http://nas:1355/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability
 curl -s "http://nas:1355/api/v1/selection?fuel=e10&city=Frankfurt" | jq
 curl -s http://nas:1355/api/v1/collector/status | jq
 curl -s "http://nas:1355/api/v1/route/evaluate?city=Frankfurt&fuel=e10&detour_km=3&liters=40" | jq
+curl -s -X POST http://nas:1355/api/v1/jobs/trigger -H "Authorization: Bearer <TANKAPP_WEBHOOK_TOKEN>" -H "Content-Type: application/json" -d '{"job":"models","watermark":1757584800}' | jq
 ```

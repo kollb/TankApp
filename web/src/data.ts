@@ -33,6 +33,12 @@ export type Job = {
   finished_at: string | null;
   last_success_at: string | null;
   next_run_at: string | null;
+  /** Issue 50: Datenstand (Epochensekunden) des letzten erfolgreichen Webhook-Triggerlaufs. */
+  data_watermark?: string | null;
+  /** Issue 50: Webhook-Trigger des laufenden App-Prozesses (nur models/selection). */
+  triggers?: number | null;
+  /** Issue 50: letzter übersprungener Trigger („debounced“ | „duplicate“). */
+  last_trigger_skip?: string | null;
   error_code: string | null;
 };
 export type CollectorStatus = {
@@ -1000,6 +1006,26 @@ export function timeLabel(stamp?: string | null) {
         minute: "2-digit",
       })
     : "Noch kein Stand";
+}
+// Issue 50: Daten-Watermark der Ereignis-Pipeline ist Epochensekunde —
+// als Berliner de-DE-Zeit anzeigen, ungültige/fehlende Werte ehrlich „—“.
+export function epochLabel(stamp?: string | number | null) {
+  if (stamp === null || stamp === undefined || stamp === "") return "—";
+  const seconds = Number(stamp);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+  return new Date(seconds * 1000).toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+// Issue 50: letzte Trigger-Entscheidung des Schedulers als Kurzkopie.
+export function triggerSkipLabel(skip?: string | null) {
+  if (skip === "debounced") return "Debounce (Mindestabstand)";
+  if (skip === "duplicate") return "Idempotenz (gleiche Daten)";
+  return null;
 }
 // Berliner Stunde als Dezimalzahl (z. B. 18,5) — für Peak-Erkennung und
 // Tagesraster, unabhängig von der Zeitzone des Browsers.
