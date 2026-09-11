@@ -42,9 +42,9 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
-  - `POST /api/v1/episodes` bzw. `POST /api/v1/recommendations/{id}/outcome` (Nutzer-Intents, B4)
+  - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal)
+- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal; die 501-Antwort ist aktuell noch HTML, nicht JSON — siehe [Prüfstand §1.5](Prüfstand.md))
 
 ## Übersicht
 
@@ -52,7 +52,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 |---|---|---|
 | `GET /api/v1/decide?city=...&fuel=...&liters=40` | **B4** | Handlungsempfehlung + 3-Wege-Vergleich + Snapshot-Emission |
 | `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
-| `POST /api/v1/episodes` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
+| `POST /api/v1/episodes/{episode_id}/intent` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
 | `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |

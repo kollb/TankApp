@@ -1255,7 +1255,7 @@ export function Dashboard() {
                     </div>
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
-                        Rückmeldung nach Fensterende (Due-Prompt §5.4)
+                        Rückmeldung nach Fensterende (Due-Prompt)
                       </span>
                       <h3 className="mt-0.5 text-lg font-bold text-white">
                         Hast du getankt?
@@ -2315,7 +2315,7 @@ export function Dashboard() {
                     <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
                     <strong className="text-slate-200">jetzt tanken</strong>.
                     <span className="text-slate-500 block mt-1">
-                      Die Produktion entscheidet weiterhin mit der kalibrierten Tabelle §4.1; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
+                      Die Produktion entscheidet weiterhin mit der kalibrierten Entscheidungstabelle; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
                     </span>
                   </p>
                 </div>
@@ -2459,7 +2459,7 @@ export function Dashboard() {
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                  Kalibrierung der Entscheidungs-Wahrscheinlichkeit (§5.1, §6)
+                  Kalibrierung der Entscheidungs-Wahrscheinlichkeit
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Stimmt „mit x % ist der Abend billiger“ mit der Realität überein?
@@ -3032,7 +3032,7 @@ export function Dashboard() {
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>
             Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
-            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · B4: decide/episodes/fills/settlement/summary
+            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · Entscheidungs-API: decide · episodes · fills · settlement · summary
           </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />

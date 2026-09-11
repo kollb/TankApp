@@ -44,7 +44,13 @@
 9. **[Stations-UUID — Gleiche Namen trennen](STATIONS-UUID.md)**  
    Migration von Namens-Serien auf UUID-Tags, Replay mit Zeitzone.
 
-9. **Weitere Referenzen (keine Installationspflicht)**
+10. **[Prüfstand — Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten](Prüfstand.md)**  
+    Unabhängige Prüfung vom 10.09.2026: Abweichungen, die nicht in LUECKEN stehen, plus offene Code-Aufgaben (§3, §7).
+
+11. **[Gutachten — gutachterliche Stellungnahme](Gutachten.md)**  
+    Externe Zweitmeinung zur statistischen Methodik; Bewertung der Empfehlungen im Nachtrag des Dokuments.
+
+12. **Weitere Referenzen (keine Installationspflicht)**
    - [Engine-Referenz](../engine/README.md) — Modellwerkstatt, 12-Uhr-Regel
    - [Werkzeugübersicht](../data-tools/README.md) — interne Einzelprogramme
    - [GUI-Vorlagen](../sample/README.md) — Basis der neuen Homepage
