@@ -1718,7 +1718,7 @@ export function Dashboard() {
                               <Clock size={11} /> Heute später
                             </p>
                             {rec.windows_today.map((w) => {
-                              const sv = savingVs(w.expected_price);
+                              const sv = w.expected_saving_eur ?? savingVs(w.expected_price);
                               return (
                                 <div key={w.start} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
                                   <span className="text-slate-300">
@@ -1727,6 +1727,7 @@ export function Dashboard() {
                                   <span className="text-slate-400">~{euro(w.expected_price, 3)}</span>
                                   <span className={sv != null && sv > 0 ? "text-emerald-300" : "text-slate-500"}>
                                     {sv != null ? `−${euro(sv)} €` : "—"}
+                                    {w.p != null ? ` · ${Math.round(w.p * 100)} %` : ""}
                                   </span>
                                 </div>
                               );
@@ -1739,19 +1740,20 @@ export function Dashboard() {
                               <CalendarDays size={11} /> Diese Woche
                             </p>
                             {rec.windows_week.map((w) => {
-                              const sv = savingVs(w.expected_price);
+                              const sv = w.expected_saving_eur ?? savingVs(w.expected_price);
                               return (
-                                <div key={w.timestamp} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
+                                <div key={w.start} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
                                   <span className="text-slate-300">
-                                    {new Date(w.timestamp).toLocaleDateString("de-DE", {
+                                    {new Date(w.start).toLocaleDateString("de-DE", {
                                       weekday: "short",
                                       timeZone: "Europe/Berlin",
                                     })}{" "}
-                                    {clockLabel(w.timestamp)}
+                                    {clockLabel(w.start)}–{clockLabel(w.end)}
                                   </span>
                                   <span className="text-slate-400">~{euro(w.expected_price, 3)}</span>
                                   <span className={sv != null && sv > 0 ? "text-emerald-300" : "text-slate-500"}>
                                     {sv != null ? `−${euro(sv)} €` : "—"}
+                                    {w.p != null ? ` · ${Math.round(w.p * 100)} %` : ""}
                                   </span>
                                 </div>
                               );
@@ -1775,6 +1777,7 @@ export function Dashboard() {
                             </span>
                             <span className={a.worth_it ? "font-bold text-emerald-300" : "text-slate-500"}>
                               {a.net_eur >= 0 ? "+" : ""}{euro(a.net_eur)} €{a.worth_it ? " ✓" : ""}
+                              {a.p_lohnt != null ? ` · ${Math.round(a.p_lohnt * 100)} %` : ""}
                             </span>
                           </div>
                         ))}

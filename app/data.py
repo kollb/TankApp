@@ -526,7 +526,7 @@ class LiveData:
             "collector": collector,
         }
 
-    def forecast(self, uid, city, fuel):
+    def forecast(self, uid, city, fuel, include_draws: bool = False):
         metas, _ = metadata(self.settings)
         if fuel not in FUELS or (city, uid) not in metas:
             raise ValueError("unknown_station")
@@ -540,7 +540,7 @@ class LiveData:
                 continue
             origin = influx.instant(row["origin"])
             age = (self.clock() - origin).total_seconds() / 3600
-            return {
+            result = {
                 **row,
                 "stale": age < 0 or age > 24,
                 "model_age_hours": max(0, age),
@@ -548,6 +548,11 @@ class LiveData:
                 "calibrated": False,
                 "decision_ready": False,
             }
+            if not include_draws:
+                # Draws sind Decision-Layer-Input, kein öffentlicher Forecast-Ballast.
+                result.pop("draws_24h", None)
+                result.pop("draws_7d", None)
+            return result
         return {
             "points": [],
             "error_code": "model_not_available",
@@ -566,7 +571,11 @@ class LiveData:
                 k in row for k in ["station_id", "city", "fuel", "origin", "points"]
             ):
                 continue
-            slim = {k: v for k, v in row.items() if k not in ("points_3d", "points_7d")}
+            slim = {
+                k: v
+                for k, v in row.items()
+                if k not in ("points_3d", "points_7d", "draws_24h", "draws_7d")
+            }
             valid_forecasts.append(slim)
 
         return {

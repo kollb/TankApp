@@ -313,16 +313,22 @@ export type DecideResult = {
     detour_mode?: string | null;
     net_eur: number;
     worth_it: boolean;
+    p_lohnt?: number | null;
     maps_url?: string | null;
   }>;
   windows_today: Array<{
     start: string;
     end: string;
     expected_price: number;
+    expected_saving_eur: number | null;
+    p: number | null;
   }>;
   windows_week: Array<{
-    timestamp: string;
+    start: string;
+    end: string;
     expected_price: number;
+    expected_saving_eur: number | null;
+    p: number | null;
   }>;
   episode: {
     id: string;

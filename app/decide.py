@@ -20,14 +20,14 @@ import math
 import statistics
 from typing import Any
 
-from .data import haversine_km, metadata
+from .data import haversine_km, metadata, publication
 from .feedback import (
-    action_track_record,
     compute_advice_stats,
     compute_wallet_stats,
     load_store,
     record_snapshot,
 )
+from .pside import THETA_CT, p_better, p_lohnt, window_p
 from .route import CIRCUITY, _auto_time_value, _berlin_hour, _parse_float
 from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
 
@@ -39,12 +39,6 @@ try:
     BERLIN_TZ = ZoneInfo("Europe/Berlin")
 except Exception:  # pragma: no cover
     BERLIN_TZ = dt.timezone.utc
-
-# Mindest-Stichprobe, ab der die Grauzone (§4.4, P in [40, 60] %) greift.
-# Mit n = 0 ist p = 0,5 nur das uninformative Prior — die Grauzone darf den
-# Kaltstart nicht fangen, sonst öffnet sich das M7-Gate nie.
-GRAY_MIN_N = 20
-
 
 def _parse_ts(value: Any) -> dt.datetime | None:
     if not value or not isinstance(value, str):
@@ -86,6 +80,51 @@ def _parse_deadline(value: Any) -> dt.datetime | None:
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=BERLIN_TZ)
     return stamp
+
+
+def _floor_2h(stamp: dt.datetime) -> dt.datetime:
+    """Blockbeginn eines 2-h-Fensters (Berlin), sekundengenau gefloort."""
+    local = stamp.astimezone(BERLIN_TZ).replace(minute=0, second=0, microsecond=0)
+    return local.replace(hour=(local.hour // 2) * 2)
+
+
+def _block_for_window(draws: dict[str, Any], window_start: str) -> int | None:
+    """Index des veröffentlichten Blocks zu einem Fensterbeginn.
+
+    Blockanfänge liegen als UTC-ISO vor; der Vergleich erfolgt über den
+    gefloorten Zeitpunkt selbst (nicht über String-Gleichheit), damit
+    Zeitzonen-Schreibweisen keine Rolle spielen.
+    """
+    stamp = _parse_ts(window_start)
+    if stamp is None:
+        return None
+    target = _floor_2h(stamp).astimezone(dt.timezone.utc)
+    for index, block in enumerate(draws.get("blocks", []) or []):
+        if _parse_ts(block.get("start")) == target:
+            return index
+    return None
+
+
+def _p_besser_value(
+    draws: dict[str, Any] | None, window_start: str | None, anchor: float | None
+) -> float | None:
+    """F1: ``P(min über Fenster ≤ p_jetzt − θ)`` aus den veröffentlichten Draws."""
+    if not draws or not window_start or anchor is None:
+        return None
+    minima = draws.get("minima")
+    if not minima:
+        return None
+    return p_better(minima, _block_for_window(draws, window_start), anchor, THETA_CT)
+
+
+def _window_p_value(draws: dict[str, Any] | None, window_start: str | None) -> float | None:
+    """F3: ``P(Fenster ≤ Minimum im ±6-h-Umfeld)`` aus den Draws."""
+    if not draws or not window_start:
+        return None
+    minima = draws.get("minima")
+    if not minima:
+        return None
+    return window_p(minima, _block_for_window(draws, window_start))
 
 
 def _today_windows(
@@ -138,27 +177,45 @@ def _today_windows(
 
 
 def _week_windows(
-    points_7d: list[dict[str, Any]], latest_by: dt.datetime | None = None
+    points_7d: list[dict[str, Any]],
+    clock_now: dt.datetime,
+    latest_by: dt.datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Je Kalendertag (Berlin) der billigste Prognose-Punkt, Top 3 Tage.
+    """2-h-Blöcke (Berlin) über den 7-Tage-Horizont, billigste zuerst.
 
-    Mit ``latest_by`` zählen nur Tage, deren günstigster Punkt vor dem
-    spätesten akzeptablen Tankzeitpunkt liegt (§4.3).
+    Dieselbe Blockstruktur wie ``_today_windows`` — F3 zeigt über die ganze
+    Woche echte Fenster (nicht nur den billigsten Punkt je Tag, Prüfstand
+    §1.4). Nur Blöcke, die noch nicht vollständig vergangen sind, und mit
+    ``latest_by`` nur Blöcke, die vor dem spätesten Tankzeitpunkt enden.
     """
-    per_day: dict[str, dict[str, Any]] = {}
+    blocks: dict[tuple, list[tuple[dt.datetime, float]]] = {}
     for point in points_7d:
         stamp = _parse_ts(point.get("timestamp"))
         q50 = _q50(point)
         if stamp is None or q50 is None:
             continue
-        if latest_by is not None and stamp > latest_by:
-            continue
-        day = stamp.astimezone(BERLIN_TZ).date().isoformat()
-        current = per_day.get(day)
-        if current is None or q50 < current["expected_price"]:
-            per_day[day] = {"timestamp": stamp.isoformat(), "expected_price": q50}
-    days = sorted(per_day.values(), key=lambda d: d["expected_price"])
-    return days[:3]
+        berlin = stamp.astimezone(BERLIN_TZ)
+        key = (berlin.date().isoformat(), int(berlin.hour // 2))
+        blocks.setdefault(key, []).append((stamp, q50))
+    windows = []
+    for (_day, _block), entries in blocks.items():
+        entries.sort(key=lambda e: e[0])
+        start = entries[0][0]
+        end = entries[-1][0]
+        if end <= clock_now:
+            continue  # Block vollständig vergangen
+        if latest_by is not None and end > latest_by:
+            continue  # Block endet nach dem spätesten Tankzeitpunkt
+        median = round(statistics.median(q for _, q in entries), 3)
+        windows.append(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "expected_price": median,
+            }
+        )
+    windows.sort(key=lambda w: w["expected_price"])
+    return windows[:3]
 
 
 def _coords(station: dict[str, Any]) -> tuple[float, float] | None:
@@ -227,15 +284,23 @@ def _alternatives(
     th: dict[str, float],
     mode: str = "onroute",
     home: tuple[float, float] | None = None,
+    nowcasts: dict[str, list[float]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """F2-Liste: Netto-€ je Alternative (Konzept §4.2, Umweg-Ökonomie §10).
 
     ``mode``: ``onroute`` zählt nur den Mehrweg gegenüber der
     Vergleichsstation, ``dedicated`` den vollen Hin+Rückweg ab Zuhause
     (Konzept §10 „Betriebsmodi“).
+
+    Mit ``nowcasts`` (Station → Nowcast-Draws) wird je Zeile zusätzlich
+    ``p_lohnt = P(netto > 0)`` aus den Draws ausgewiesen (§4.2 — die
+    „kritische Zusatzinformation“). Ohne Draws bleibt ``p_lohnt`` None.
     """
     alternatives = []
     best = None
+    ref_nowcast = (
+        nowcasts.get(chosen_station["station_id"]) if nowcasts else None
+    )
     for cand in station_list:
         if cand["station_id"] == chosen_station["station_id"]:
             continue
@@ -254,6 +319,7 @@ def _alternatives(
         detour_cost = fuel_eur + time_eur
         gross_eur = (anchor - cand_price) * liters
         net_eur = gross_eur - detour_cost
+        alt_nowcast = nowcasts.get(cand["station_id"]) if nowcasts else None
         entry = {
             "station_id": cand["station_id"],
             "name": cand.get("name") or cand["station_id"],
@@ -272,6 +338,17 @@ def _alternatives(
                 (detour_cost / liters * 100.0) if liters else 0.0, 2
             ),
             "worth_it": net_eur >= th["elsewhere_net_eur"],
+            "p_lohnt": p_lohnt(
+                ref_nowcast,
+                alt_nowcast,
+                liters,
+                total_km,
+                consumption,
+                speed,
+                z_used,
+            )
+            if ref_nowcast and alt_nowcast
+            else None,
             "maps_url": cand.get("maps_url"),
         }
         alternatives.append(entry)
@@ -286,9 +363,7 @@ def _table_action(
     expected_price_later: float | None,
     expected_saving_eur: float,
     best_alt: dict[str, Any] | None,
-    track_wait: dict[str, Any],
-    track_now: dict[str, Any],
-    track_else: dict[str, Any],
+    p_besser: float | None = None,
     th: dict[str, float] | None = None,
     no_window_reason: str | None = None,
 ) -> tuple[str, str, str]:
@@ -297,6 +372,12 @@ def _table_action(
     Gibt (action, confidence_badge, reason_short) zurück. Die Aktion wird
     immer in den Advice-Ledger geschrieben (Shadow-Betrieb ab Tag 1);
     angezeigt wird sie erst nach dem M7-Gate.
+
+    Die Prozent-Gates rechnen mit der **Prognoseverteilung**, nicht mit einer
+    Ledger-Trefferquote: ``p_besser`` (§4.1) und, am F2-Zweig,
+    ``best_alt["p_lohnt"]`` (§4.2). Ist die Verteilung nicht verfügbar
+    (``None``), entfallen die Prozent-Gates — dann entscheidet allein die
+    €-Seite, ehrlich statt einer geratenen Zahl.
 
     Alle Schwellen kommen aus ``th`` (Konzept §4.5: „Alle Schwellen liegen in
     einer Config“; M7 zieht sie an gemessene Trefferquoten nach, §13).
@@ -315,46 +396,52 @@ def _table_action(
             no_window_reason
             or "Keine Prognose verfügbar — Empfehlung erst mit Modelldaten.",
         )
-    p_wait, n_wait = track_wait["p"], track_wait["n"]
-    p_else = track_else["p"]
-    # F2 zuerst (§4.2): Alternative nur bei netto ≥ Schwelle und Plausibilität.
+    # F2 zuerst (§4.5 Schritt 2): Alternative bei netto ≥ Schwelle und
+    # P_lohnt ≥ Schwelle (ohne Draws entfällt nur das Prozent-Gate).
+    alt_p = best_alt.get("p_lohnt") if best_alt is not None else None
     if (
         best_alt is not None
         and best_alt["net_eur"] >= th["elsewhere_net_eur"]
-        and p_else >= th["elsewhere_p"]
+        and (alt_p is None or alt_p >= th["elsewhere_p"])
     ):
-        badge = "high" if p_else >= 0.7 else "medium"
+        badge = "high" if alt_p is not None and alt_p >= 0.7 else "medium"
         return (
             "refuel_elsewhere",
             badge,
             f"Fahre zu {best_alt['name']}: spart netto +{best_alt['net_eur']:.2f} € trotz Umweg.",
         )
-    # Grauzone (§4.4): P in [40, 60] % → kein Advice. Nur bei belastbarer
-    # Stichprobe (Kaltstart-Schutz, siehe GRAY_MIN_N).
+    # Grauzone (§4.4): P_besser in [40, 60] % → kein Advice. Kein Kaltstart-
+    # Schutz nötig: die Verteilung liefert P_besser direkt, ohne Stichprobe.
     if (
-        n_wait >= GRAY_MIN_N
-        and 0.40 <= p_wait <= 0.60
+        p_besser is not None
+        and 0.40 <= p_besser <= 0.60
         and expected_saving_eur >= th["now_eur"]
     ):
         return (
             "no_advice",
             "low",
-            f"Warte-Signal zu unsicher (P ≈ {p_wait * 100:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
+            f"Warte-Signal zu unsicher (P ≈ {p_besser * 100:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
         )
-    # F1 (§4.1).
-    if expected_saving_eur >= th["wait_eur_high"] and p_wait >= th["wait_p_high"]:
+    # F1 (§4.1). Ohne Verteilungs-P kann die grüne Ampel („≥ 70 %“) nicht
+    # belegt werden → dann höchstens „gelb“ (ehrlich statt geraten).
+    if expected_saving_eur >= th["wait_eur_high"] and (
+        p_besser is None or p_besser >= th["wait_p_high"]
+    ):
+        badge = "high" if p_besser is not None else "medium"
         return (
             "wait",
-            "high",
+            badge,
             f"Preis fällt im Fenster voraussichtlich — Warten spart ca. {expected_saving_eur:.2f} €.",
         )
-    if expected_saving_eur >= th["wait_eur_mid"] and p_wait >= th["wait_p_mid"]:
+    if expected_saving_eur >= th["wait_eur_mid"] and (
+        p_besser is None or p_besser >= th["wait_p_mid"]
+    ):
         return (
             "wait",
             "medium",
             f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
         )
-    if p_wait < th["now_p"] and n_wait >= GRAY_MIN_N:
+    if p_besser is not None and p_besser < th["now_p"]:
         return (
             "refuel_now",
             "low",
@@ -366,7 +453,7 @@ def _table_action(
             "medium",
             f"Warten brächte < {th['now_eur']:.2f} € Ersparnis — jetzt tanken.",
         )
-    # Kaltstart-Fallback (€-Gates ohne belastbares P): Ersparnis ≥ Schwelle → warten.
+    # Fallback (€-Gates ohne belastbares P): Ersparnis ≥ Schwelle → warten.
     return (
         "wait",
         "medium",
@@ -484,15 +571,31 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if anchor is None:
         anchor = chosen_station.get("last_price")
 
-    # Prognose für Station laden
-    forecast_data = live_data.forecast(station_id, station_city, fuel)
+    # Prognosen laden — einmal die Veröffentlichung lesen, damit Draws und
+    # Nowcasts aller Stationen für P_besser/P_lohnt/F3-P da sind, ohne je
+    # Alternative erneut die Datei zu parsen.
+    bundle = publication(live_data.settings)
+    forecasts = [
+        row
+        for row in bundle.get("forecasts", [])
+        if row.get("fuel", "").lower() == fuel
+    ]
+    by_station = {row.get("station_id"): row for row in forecasts}
+    forecast_data = by_station.get(station_id) or {}
     points = forecast_data.get("points") or []
     points_7d = forecast_data.get("points_7d") or []
+    draws_24h = forecast_data.get("draws_24h") or {}
+    draws_7d = forecast_data.get("draws_7d") or {}
+    nowcasts: dict[str, list[float]] = {
+        row.get("station_id"): (row.get("draws_24h") or {}).get("nowcast")
+        for row in forecasts
+        if (row.get("draws_24h") or {}).get("nowcast")
+    }
 
-    # Beste Fenster heute (echte 2-h-Blöcke) und billigste Folgetage.
+    # Beste Fenster heute und über die Woche (echte 2-h-Blöcke).
     # latest_by schneidet den Horizont ab (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
     windows_today = _today_windows(points, clock_now, latest_by)
-    windows_week = _week_windows(points_7d, latest_by)
+    windows_week = _week_windows(points_7d, clock_now, latest_by)
     # „Es gäbe Prognosen, aber keins mehr vor deinem spätesten Zeitpunkt“ —
     # das ist eine andere Aussage als „keine Prognose vorhanden“.
     horizon_cut = bool(latest_by is not None and not windows_today and bool(points))
@@ -545,13 +648,22 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             thresholds,
             mode,
             home,
+            nowcasts,
         )
     else:
         alternatives_nearby, best_alt = [], None
 
-    track_wait = action_track_record(store, "wait")
-    track_now = action_track_record(store, "refuel_now")
-    track_else = action_track_record(store, "refuel_elsewhere")
+    # P-Seite aus der Prognoseverteilung (Konzept §4.1–4.3), nicht aus der
+    # Ledger-Grundrate. p_besser = P(min über Fenster ≤ p_jetzt − θ), θ = 1 ct.
+    # Ohne Draws bleibt p None — dann entscheidet die €-Seite ohne Prozent-Gate.
+    rec_start = recommended_window["start"] if recommended_window else None
+    p_better_own = _p_besser_value(draws_24h, rec_start, anchor)
+    alt_draws = (
+        by_station.get(best_alt["station_id"], {}).get("draws_24h")
+        if best_alt
+        else None
+    )
+    p_better_alt = _p_besser_value(alt_draws, rec_start, anchor)
 
     no_window_reason = (
         "Kein Fenster mehr vor deinem spätesten Tankzeitpunkt "
@@ -565,23 +677,30 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         expected_price_later,
         expected_saving_eur,
         best_alt,
-        track_wait,
-        track_now,
-        track_else,
+        p_better_own,
         thresholds,
         no_window_reason,
     )
-    p_internal = {
-        "wait": track_wait["p"],
-        "refuel_now": track_now["p"],
-        "refuel_elsewhere": track_else["p"],
-    }.get(table_action)
+    # Die P, die zum Settlement-Ereignis passt (§5.2): wait → P(min ≤ p−θ),
+    # refuel_now → 1 − P(min ≤ p−θ), refuel_elsewhere → P(Alt-Fenster ≤ p−θ).
+    if table_action == "wait":
+        p_decision = p_better_own
+    elif table_action == "refuel_now":
+        p_decision = (
+            None if p_better_own is None else round(1.0 - p_better_own, 4)
+        )
+    elif table_action == "refuel_elsewhere":
+        p_decision = p_better_alt
+    else:
+        p_decision = None
 
     # M7-Gate (§0.4): Vor der Kalibrierung keine Handlungsempfehlung und
-    # kein P anzeigen — der Ledger misst die Tabelle trotzdem (Shadow).
+    # kein P_besser anzeigen — der Ledger misst die Tabelle trotzdem (Shadow).
+    # F2-P_lohnt und F3-Fenster-P sind Informationswerte aus der Verteilung
+    # (§4.2/§4.3) und hängen nicht am Kalibrierungs-Gate.
     if is_calibrated:
         action = table_action
-        p_correct = p_internal
+        p_correct = p_decision
         confidence_badge = badge
         reason_short = reason
     else:
@@ -594,6 +713,8 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
+    # p_besser ist die Verteilungs-P, die Brier gegen das Settlement misst —
+    # dieselbe Zahl, die nach dem M7-Gate im UI erscheint.
     snapshot_input = {
         "clock_hour": hour,
         "action": table_action,
@@ -615,6 +736,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if expected_price_later is not None
         else None,
         "expected_saving_eur": expected_saving_eur,
+        "p_besser": p_decision,
         "liters_assumed": liters,
         "fuel": fuel,
         "trip_mode": mode,
@@ -645,10 +767,29 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 "start": w["start"],
                 "end": w["end"],
                 "expected_price": w["expected_price"],
+                "expected_saving_eur": round(
+                    max(0.0, (anchor - w["expected_price"]) * liters), 2
+                )
+                if anchor is not None
+                else None,
+                "p": _window_p_value(draws_24h, w["start"]),
             }
             for w in windows_today
         ],
-        "windows_week": windows_week,
+        "windows_week": [
+            {
+                "start": w["start"],
+                "end": w["end"],
+                "expected_price": w["expected_price"],
+                "expected_saving_eur": round(
+                    max(0.0, (anchor - w["expected_price"]) * liters), 2
+                )
+                if anchor is not None
+                else None,
+                "p": _window_p_value(draws_7d, w["start"]),
+            }
+            for w in windows_week
+        ],
         "episode": {
             "id": ep.get("id"),
             "status": ep.get("status"),

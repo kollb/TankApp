@@ -182,3 +182,8 @@ Plus P1-P3 Fehlerliste (siehe §6 unten) – alle noch im aktuellen Code vorhand
 - **Gesamturteil Prüfstand bleibt:** „bemerkenswert weit und bemerkenswert ehrlich, keine Demo-Preise in Live-Pfaden, substanzielle Probleme nicht Mock, sondern Wahrscheinlichkeiten ≠ Konzept, Schreibpfade unvalidiert, Betriebsmechanik Kontingent/Store.“
 
 Nächster Schritt sollte P1-Fixes sein, danach bewusste Entscheidung ob P-Seite aus Verteilung (echtes M7) gebaut wird oder LUECKEN ehrlich auf „Regel fertig, P=Ledger-Quote“ gestellt wird.
+
+> **Nachtrag 11.09.2026:** Die Entscheidung ist gefallen — die P-Seite wurde
+> aus der Prognoseverteilung gebaut (§4.1–4.3: `p_besser`/`p_lohnt`/
+> F3-Fenster-P aus veröffentlichten Draws). Offen bleibt nur die *gemeinsame*
+> Ziehung über Stationen (§4.2); siehe [LUECKEN.md](LUECKEN.md).

@@ -426,13 +426,23 @@ def validate_model(model: dict) -> Config:
 
 
 def predict(
-    model: dict, hours: int = 24, *, index: pd.DatetimeIndex | None = None
-) -> pd.DataFrame:
+    model: dict,
+    hours: int = 24,
+    *,
+    index: pd.DatetimeIndex | None = None,
+    return_paths: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
     """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
     5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
     übergebene Raster als Kontext: Teilraster sind mit dem Vollraster
     identisch, wenn sie ganze Segmente [12:00 Uhr, nächste 12:00 Uhr)
     überdecken (Pools koppeln nur innerhalb eines Segments).
+
+    ``return_paths=True`` liefert zusätzlich die Bootstrap-Pfade
+    ``(n_samples, n_timesteps)`` — die Grundlage der P-Seite des Decision
+    Layers (Konzept §4.1–4.3): P_besser/P_lohnt/F3-Fenster-P werden aus der
+    Verteilung gerechnet, nicht aus einer Ledger-Trefferquote. NaN bedeutet
+    „Punkt nicht gestützt“ (wie bei den Quantilen).
     """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
@@ -516,4 +526,11 @@ def predict(
     result["naive"] = np.asarray(model["naive_profile"], dtype=float)[slot]
     result["support_days"] = counts[slot]
     result["supported"] = supported
+    if return_paths:
+        # P-Seite (Konzept §4.1–4.3): die volle Verteilung mitliefern. An
+        # ungestützten Punkten gibt es keine definierte Wahrscheinlichkeit —
+        # dort wie bei den Quantilen NaN, damit der Decision Layer sauber
+        # zwischen „P=0“ und „keine Aussage“ unterscheiden kann.
+        paths[:, ~supported] = np.nan
+        return result, paths
     return result

@@ -152,6 +152,140 @@ def test_decide_endpoint_and_gate(b4_settings):
         thread.join(timeout=2)
 
 
+def test_decide_p_side_from_forecast_distribution(b4_settings):
+    """P-Seite (Konzept §4.1–4.3) aus den Draws — nicht aus der Ledger-Quote.
+
+    Regression gegen Prüfstand §1.4: p_besser war die Laplace-geglättete
+    Trefferquote, p_lohnt fehlte, F3 hatte kein Fenster-P. Mit Draws im
+    Artefakt liefern alle drei die Verteilungs-Wahrscheinlichkeit — und der
+    Snapshot speichert dieselbe P, die Brier später gegen das Settlement
+    misst (bzw. nach dem M7-Gate im UI erscheint).
+    """
+    from app.decide import evaluate_decide
+    from app.feedback import load_store
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.729)
+
+    # Berlin: NOW 16:00 (UTC 14:00). Drei 2-h-Blöcke, billigster zuerst.
+    block_starts = [
+        "2026-09-10T14:00:00+00:00",
+        "2026-09-10T16:00:00+00:00",
+        "2026-09-10T18:00:00+00:00",
+        "2026-09-10T20:00:00+00:00",
+    ]
+    points = [
+        {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
+        {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},
+        {"timestamp": "2026-09-10T18:00:00+02:00", "q50": 1.62},
+        {"timestamp": "2026-09-10T19:00:00+02:00", "q50": 1.63},
+        {"timestamp": "2026-09-10T20:00:00+02:00", "q50": 1.64},
+    ]
+    # Block 0: 3 von 4 Draws ≥ 1 ct unter dem Anker (p_besser = 0.75) und
+    # 3 von 4 Draws unter dem ±6-h-Umfeld (F3-P = 0.75).
+    minima = [
+        [1.67, 1.70, 1.71],
+        [1.60, 1.71, 1.72],
+        [1.70, 1.68, 1.72],
+        [1.66, 1.71, 1.72],
+    ]
+    draws = {
+        "n": 4,
+        "block_minutes": 120,
+        "blocks": [
+            {"start": block_starts[i], "end": block_starts[i + 1]} for i in range(3)
+        ],
+        "minima": minima,
+        "nowcast": [1.68, 1.69, 1.70, 1.71],
+    }
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "origin": NOW.isoformat(),
+                        "points": points,
+                        "points_7d": points,
+                        "draws_24h": draws,
+                        "draws_7d": draws,
+                    },
+                    {
+                        "station_id": OTHER,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "points": [],
+                        "points_7d": [],
+                        "draws_24h": {
+                            "n": 4,
+                            "block_minutes": 120,
+                            "blocks": [],
+                            "minima": [],
+                            "nowcast": [1.60, 1.61, 1.62, 1.63],
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    body = evaluate_decide(
+        live, {"city": "Frankfurt", "fuel": "e10", "liters": 40}
+    )
+
+    # Vor dem M7-Gate bleibt p_correct null — die Verteilungs-P wird aber
+    # trotzdem berechnet und gespeichert (Brier braucht sie, um das Gate zu öffnen).
+    assert body["primary"]["p_correct"] is None
+    assert body["calibrated"] is False
+
+    # F3-Fenster-P (§4.3): Block 0 (1.605 €) schlägt das ±6-h-Umfeld in 3/4 Draws.
+    assert body["windows_today"][0]["p"] == 0.75
+    assert body["windows_today"][0]["expected_saving_eur"] == 3.36
+    assert body["windows_week"][0]["p"] == 0.75
+
+    # F2-P_lohnt (§4.2): die günstigere Alternative lohnt in jedem Draw.
+    assert body["alternatives_nearby"][0]["p_lohnt"] == 1.0
+
+    # Der Snapshot speichert dieselbe P (p_besser = 0.75), nicht die Ledger-Quote.
+    store = load_store(b4_settings)
+    snap = store["episodes"][0]["snapshots"][0]
+    assert snap["action"] == "wait"
+    assert snap["p_besser"] == 0.75
+    assert snap["p_correct"] == 0.75
+
+
+def test_table_action_gates_use_distribution_p(b4_settings):
+    """F1/F2-Gates rechnen mit p_besser/p_lohnt, nicht mit einer Ledger-Quote."""
+    from app.decide import _table_action
+
+    # Grauzone (§4.4): p_besser ∈ [40, 60] % → no_advice, ohne n-Hürde.
+    action, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
+    assert action == "no_advice"
+    assert "50 %" in reason
+
+    # F1: € ≥ 2,00 und p_besser ≥ 70 % → wait.
+    assert _table_action(1.70, 1.64, 2.40, None, 0.8)[0] == "wait"
+
+    # Ohne Draws (p_besser None) entfällt das Prozent-Gate: €-Seite entscheidet.
+    assert _table_action(1.70, 1.64, 2.40, None, None)[0] == "wait"
+    assert _table_action(1.70, 1.695, 0.20, None, None)[0] == "refuel_now"
+
+    # F2: netto ≥ Schwelle und p_lohnt ≥ elsewhere_p → refuel_elsewhere.
+    alt = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.8}
+    assert _table_action(1.70, 1.64, 2.40, alt, 0.8)[0] == "refuel_elsewhere"
+    # p_lohnt unter der Schwelle → F2-Zweig greift nicht, F1 entscheidet.
+    alt_weak = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.3}
+    assert _table_action(1.70, 1.64, 2.40, alt_weak, 0.8)[0] == "wait"
+
+
 def test_snapshot_collapse_rule(b4_settings):
     """Gleiche Advice + gleiche Station innerhalb 30 min aktualisiert denselben Snapshot."""
     t0 = NOW
@@ -584,18 +718,14 @@ def test_day_series_no_demo_data(b4_settings):
 
 
 def test_gray_zone_percent_is_times_100():
-    """F1: P intern 0–1, Anzeige ×100 (0,5 → 50 %, nicht 0 %)."""
+    """F1: P intern 0–1, Anzeige ×100 (0,5 → 50 %, nicht 0 %).
+
+    ``p_besser`` ist jetzt die Verteilungs-P (§4.1), nicht mehr die
+    Ledger-Quote — die Grauzone liest sie direkt, ohne n-Hürde.
+    """
     from app.decide import _table_action
 
-    _, _, reason = _table_action(
-        1.70,
-        1.64,
-        2.40,
-        None,
-        {"p": 0.5, "n": 40},
-        {"p": 0.5, "n": 40},
-        {"p": 0.4, "n": 40},
-    )
+    _, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
     assert "50 %" in reason
     assert "P ≈ 0 %" not in reason
     assert "0.5 %" not in reason

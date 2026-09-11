@@ -314,6 +314,13 @@ def record_snapshot(
         ep = _open_episode(store)
         action = snapshot_data.get("action", "no_advice")
 
+        # Verteilungs-P (§4.1/§4.2): dieselbe Zahl, die das UI nach dem
+        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt Brier auf
+        # die interne Ledger-Schätzung zurück — sonst könnte das Gate nie öffnen.
+        p_besser = snapshot_data.get("p_besser")
+        if p_besser is None:
+            p_besser = estimate_p(store, action)
+
         snap_id = _uid("snap")
         snap = {
             "id": snap_id,
@@ -332,7 +339,8 @@ def record_snapshot(
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
             "expected_saving_eur": snapshot_data.get("expected_saving_eur", 0.0),
-            "p_correct": estimate_p(store, action),
+            "p_besser": snapshot_data.get("p_besser"),
+            "p_correct": p_besser,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
             "fuel": snapshot_data.get("fuel", "e10"),
             # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
@@ -367,6 +375,7 @@ def record_snapshot(
                     "id": last["id"],
                     "emitted_at": last["emitted_at"],
                     "p_correct": last.get("p_correct"),
+                    "p_besser": last.get("p_besser"),
                 }
                 ep["last_snapshot"] = updated_snap
                 ep["snapshots"] = [

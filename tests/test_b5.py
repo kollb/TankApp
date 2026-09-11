@@ -146,9 +146,9 @@ def test_week_windows_respect_deadline():
         {"timestamp": (base + dt.timedelta(days=offset)).isoformat(), "q50": 1.60}
         for offset in range(1, 6)
     ]
-    assert len(_week_windows(points)) == 3
-    assert len(_week_windows(points, base + dt.timedelta(days=2))) == 2
-    assert _week_windows(points, base) == []
+    assert len(_week_windows(points, base)) == 3
+    assert len(_week_windows(points, base, base + dt.timedelta(days=2))) == 2
+    assert _week_windows(points, base, base) == []
 
 
 def test_decide_rejects_broken_latest_by(settings_with_prices):

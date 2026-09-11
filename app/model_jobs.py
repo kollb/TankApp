@@ -62,6 +62,44 @@ def _records(frame) -> list[dict[str, Any]]:
     return frame.to_dict(orient="records")
 
 
+def _draws(index, paths, cfg) -> dict[str, Any]:
+    """Kompakte Draw-Veröffentlichung für den Decision Layer (Konzept §4).
+
+    Die vollen Pfade bleiben im Worker; veröffentlicht werden nur die
+    Fenster-Minima je Draw (2-h-Blöcke) und die Nowcast-Draws — daraus
+    rechnet der Live-API-Pfad ``P_besser``/``P_lohnt``/F3-Fenster-P ohne
+    Numerik-Abhängigkeit (app/pside.py).
+    """
+    from engine.probabilities import (
+        BLOCK_MINUTES,
+        DECISION_DRAWS,
+        block_ids,
+        block_minima,
+        block_starts,
+        nowcast_draws,
+    )
+    import pandas as pd
+
+    n = min(DECISION_DRAWS, paths.shape[0])
+    ids = block_ids(index, cfg.timezone, BLOCK_MINUTES)
+    starts = block_starts(index, cfg.timezone, BLOCK_MINUTES)
+    minima = block_minima(paths[:n], ids)
+    blocks = [
+        {
+            "start": stamp.isoformat(),
+            "end": (stamp + pd.Timedelta(minutes=BLOCK_MINUTES)).isoformat(),
+        }
+        for stamp in starts
+    ]
+    return {
+        "n": n,
+        "block_minutes": BLOCK_MINUTES,
+        "blocks": blocks,
+        "minima": minima.tolist(),
+        "nowcast": nowcast_draws(paths[:n]).tolist(),
+    }
+
+
 def _run(task: tuple) -> dict[str, Any]:
     """Eine Aufgabe: kind = 'fit' | 'wide' | 'backtest'."""
     kind, key, hours = task
@@ -85,11 +123,12 @@ def _run(task: tuple) -> dict[str, Any]:
                 model=model,
             )
             return out
-        frame = predict(model, hours=hours)
+        frame, paths = predict(model, hours=hours, return_paths=True)
         out.update(
             ok=True,
             model=model,
             points=_records(frame),
+            draws=_draws(frame.index, paths, cfg),
         )
         return out
     except ValueError as exc:
