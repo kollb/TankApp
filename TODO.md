@@ -83,6 +83,7 @@
 | D2 | P1 | **e2e-Abdeckung der Entscheidungs-Flows** | Jetzige Playwright-Specs mocken nur `stations`/`series`/`forecast`. Fehlt: `decide`-Mock → Intent „Ich warte" → Due-Prompt → Fill buchen → Fehlerfall 429/Offline (Erfolgsmeldung darf nur bei Erfolg — V3-Fix ist drin, aber ungesichert). |
 | D3 | P2 | **Property-Tests Umweg-Ökonomie** | `K = d·(c/100)·p + (d/v)·z`: Monotonie in Litern, Grenzfälle `z=0`, `d=0`, `liters→∞` mit fast-check abstecken (Schwellen-`worth_it`-Logik inklusive). |
 | D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90" nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
+| D5 | P1 | **`test:e2e` ist auf `main` rot (Feststellung 11.09. bei PR-Vorbereitung)** | Die letzten ≥5 Läufe auf `main` scheitern am Schritt `npm run test:e2e` (web-Job) — unabhängig vom Inhalt der jeweiligen Änderungen (auch Docs-only). Damit liefert CI faktisch kein Merge-Signal mehr und jeder PR „erbt" Rot. Ziel: Ursache finden (Playwright-Browser/Deps/Port-1355-Annahme), Schritt stabilisieren; bis dahin gehört der e2e-Lauf in den lokalen Pflicht-Spiegel vor jedem Push (AGENTS.md aktualisieren), nicht in „läuft schon in CI". |
 
 ---
 
