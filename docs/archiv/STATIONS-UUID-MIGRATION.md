@@ -1,5 +1,13 @@
 # Gleiche Stationsnamen sauber trennen – RPi und Windows-PC
 
+> **Archiviert — abgeschlossene Migration (ca. 07.–09.09.2026).**
+> Der Uploader schreibt seitdem `station_id`-UUID-Tags; Namens-Serien werden
+> nicht mehr geraten. Was bleibt, ist der Umgang mit Legacy-Punkten ohne
+> `station_id`: Kurzfassung in
+> [../BETRIEB.md](../BETRIEB.md#legacy-punkte-ohne-station_id-namens-zwillinge),
+> Diagnose-Tabelle in [../ENGINE.md](../ENGINE.md).
+> Archiv-Übersicht: [README.md](README.md).
+
 ## Inhaltsverzeichnis
 
 - [Schnellweg: jetzt weiterarbeiten](#schnellweg-jetzt-weiterarbeiten-alten-replay-vorerst-weglassen)
@@ -93,7 +101,7 @@ Private Konfigurationen/Schlüssel nicht posten. Beide GUI-Vorlagen bleiben unve
 Den aktuellen freigegebenen Code mit `station_id`, `--replay` und `--uuid-only`
 auf dem Pi und dem verwendeten Export-Rechner bereitstellen. Ein alter Feature-
 Branch ist dafür nicht mehr erforderlich. Die Rollen und die Installation stehen
-in [INSTALL.md](INSTALL.md); der PC ist kein Pflichtgerät.
+in [INSTALL.md](../INSTALL.md); der PC ist kein Pflichtgerät.
 
 Zuerst `git status --short` ansehen. Bei eigenen Änderungen, Konflikten oder
 Git-Fehlern anhalten; kein `reset --hard`, keine privaten Daten löschen und nicht
@@ -366,7 +374,7 @@ M2-CSV-Dateien haben weiterhin die getrennten UUIDs und können das Training erg
 py -3 -m engine inspect --data "data/ready/*.csv*" data/engine/influx_e10.csv.gz --polling .\docs\analysis\stations\polling.json
 ```
 
-Bei ausreichender Historie folgt der Backtest nach [Engine-Anleitung](../engine/README.md).
+Bei ausreichender Historie folgt der Backtest nach [Engine-Anleitung](../ENGINE.md).
 Fehlende Originalzeiträume, rekonstruierte M2-Raster und unbekannte Öffnungszeiten
 bleiben Qualitätsgrenzen. Diese Migration ist **keine M3-Güteabnahme**.
 

@@ -1,24 +1,32 @@
 # TankApp — Produkt- und Architekturkonzept
 
-> Stand: 2026-09-10. Dieses Dokument beschreibt das **Zielbild**, nicht
-> ausschließlich bereits laufende Funktionen. Collector/Uploader befüllen
-> laut Betreiber die InfluxDB; M2 gilt vorläufig als erledigter Arbeitsstand.
-> M3 ist in Arbeit: [Implementierung und Kommandos](../engine/README.md).
-> `web/` und `app/` implementieren inzwischen Live-GUI, Nur-Lese-API und
-> automatische NAS-Archiv-/Modelljobs **inkl. B3**: Heatmaps, Meine Stationen (δ̂),
-> Collector-Herzschlag, Route-Evaluate. Siehe [API-Doku](API.md).
-> **B5** schließt die offenen Konzeptpunkte `latest_by`, Fahrtmodus in
-> `/v1/decide`, Rate-Limit/API-Key (§11), Deprecation-Header (§11.3),
-> M7-Schwellen-Nachzug (§13) und den Fortschritt lang laufender Jobs —
-> der Abgleich Zielbild ↔ Code steht in [LUECKEN.md](LUECKEN.md).
-> Eine unabhängige Prüfung vom 10.09.2026 steht im [Prüfstand](Prüfstand.md)
-> (u. a.: die Wahrscheinlichkeitsseite von §4 ist abweichend implementiert);
-> offene Punkte daraus sind in [LUECKEN.md](LUECKEN.md) verlinkt.
+> Stand: 12.09.2026 · App-Version 0.10.1. Dieses Dokument beschreibt das
+> **Zielbild**, nicht ausschließlich bereits laufende Funktionen. Der Abgleich
+> Zielbild ↔ Code — § für §, mit Grund für jeden offenen Punkt — steht in
+> [LUECKEN.md](LUECKEN.md); die priorisierte Arbeitsliste in
+> [TODO.md](../TODO.md).
+> Collector/Uploader befüllen die InfluxDB; M2 gilt als erledigter Arbeitsstand.
+> M3 ist in Arbeit: [Implementierung und Kommandos](ENGINE.md).
+> `web/` und `app/` implementieren Live-GUI (Alltag/Werkstatt/System),
+> Nur-Lese-API mit Rate-Limit und automatische NAS-Archiv-/Modelljobs inkl.
+> **B3** (Heatmaps, Meine Stationen δ̂, Collector-Herzschlag, Route-Evaluate),
+> **B4/B5** (Decision Layer, `latest_by`, Fahrtmodus, Deprecation-Header,
+> M7-Schwellen-Nachzug, Job-Fortschritt) und **0.10.0** (Beleg-Storno,
+> CSV-Export, `runtime/`-Backup, `alarms[]`, Version/Commit, Checkliste) —
+> Endpunkte: [API.md](API.md).
+> Die Wahrscheinlichkeitsseite von §4 ist seit 11.09.2026 aus den
+> Bootstrap-Draws gebaut (`p_besser`, `p_lohnt`, Fenster-P); **dokumentierte
+> Abweichung** bleibt die gemeinsame Ziehung über Stationen (§4.2) — Begründung
+> in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+> Die unabhängige Prüfung vom 10.09.2026 liegt im
+> [Archiv](archiv/PRUEFSTAND-2026-09-10.md); ihre Befunde sind eingearbeitet
+> ([LUECKEN.md](LUECKEN.md#umgesetzt-seit-der-prüfung-am-10092026)).
 > Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
-> **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
+> **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage**
+> (Übernahmeregeln: [GUI-VORLAGEN.md](GUI-VORLAGEN.md)).
 > Aufbau und Optik bewahren, nur die Demo-Datenlogik durch echte Daten ersetzen:
-> [Übernahmeregeln](../sample/README.md), §8 und UI-Anhang.
+> [Übernahmeregeln](GUI-VORLAGEN.md), §8 und UI-Anhang.
 
 **Verbindlicher Betriebsplan vom 10.09.: [INSTALL.md](INSTALL.md).**  
 Reihenfolge: Gütersloh mitpolling starten → echte Live-Preise in die vorhandene
@@ -205,7 +213,7 @@ Fußzeile der App. Token-Bucket 1 R/300 s **hart verdrahtet**, dazu
 
 ## 2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)
 
-Pipeline: `analysis/station_selection.py` · Schema: [Werkzeugreferenz](../data-tools/README.md#datenformate).
+Pipeline: `analysis/station_selection.py` · Schema: [Werkzeugreferenz](DATENWERKZEUGE.md#datenformate).
 Der echte Bericht wird lokal als `docs/analysis/report_top10.md` erzeugt
 und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfernt.
 
@@ -256,7 +264,7 @@ September 2026 trägt das Strukturmodell die 12-Uhr-Regel (Erhöhungen nur um
 12:00 Uhr, seit 2026-04-01): Mittags-Schritt als Feature plus Projektion von
 Median und Bootstrap-Pfaden auf nicht-steigende [12:00, nächste 12:00)-Segmente;
 unerlaubte Anstiege in den Beobachtungen werden als `law_rise_outside_noon`
-gezählt statt still korrigiert. Details: [Engine-Referenz](../engine/README.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
+gezählt statt still korrigiert. Details: [Engine-Referenz](ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
 
 Der folgende Stack ist das M3-Ziel. Zweitmodell/Ensemble, gepoolte Feiertage,
 Sprungdiagnostik und ACI sind noch offen. Keine Modellgüte wird aus früheren
@@ -342,7 +350,7 @@ MAE, RMSE, MASE, sMAPE, Pinball (τ=0,5 und asym τ=0,75), PICP und MPIW werden
 gemessen, nicht als erwartete Beispielzahlen zugesagt. Der erste Backtest bewertet
 den folgenden Tag im Poll-Fenster; ein punktgenauer +24-h-Test und weitere
 Horizonte sind gesondert auszuweisen. Abdeckung-vs.-Reaktionszeit-Vergleich
-(42d-EW vs. 42d-uniform vs. 84d): [Engine-Referenz §4](../engine/README.md).
+(42d-EW vs. 42d-uniform vs. 84d): [Engine-Referenz §4](ENGINE.md).
 
 **Grenze (bewusst):** Preissprünge sind Betreiber-Entscheidungen — nicht
 punktvorhersagbar. Die Engine sagt *Fenster + Verteilung*, der Decision
@@ -950,7 +958,7 @@ Ablauf: Collector appended JSON-Zeilen an
 TCP 8086 alle 60 s, Batch-Transfer unbestätigter Zeilen, Ack via
 `meta/synced_until`, **idempotent** (§1.2). Jeder neue Punkt enthält zusätzlich
 `station_id` als UUID-Tag; `station` bleibt Anzeigename. Alte Namenskollisionen
-werden nicht geraten: [UUID-Umstellung/Replay](STATIONS-UUID.md). Replay ist
+werden nicht geraten: [UUID-Umstellung/Replay](archiv/STATIONS-UUID-MIGRATION.md). Replay ist
 explizit und ändert keinen Ack. NAS-Ausfall: 7 Tage Puffertiefe
 (Urlaubssicher), bei Überlauf FIFO + Alarm.
 
@@ -1235,7 +1243,7 @@ Details und Beispiele: [API.md](API.md)
 
 | P | Frage | Abdeckung |
 |---|---|---|
-| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema ([Werkzeugreferenz](../data-tools/README.md#datenformate)), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
+| **P0** | Historische Daten der 3 Städte: Quelle, Zeitraum, Auflösung? | CSV-Schema ([Werkzeugreferenz](DATENWERKZEUGE.md#datenformate)), Coverage-Gate ≥ 85 %; bei Grob-Auflösung schwächere Fits (im Report sichtbar) |
 | **P0** | Sind die Historie-Stationen real erreichbar? (Frankfurt: 100+ im 25-km-Radius) | Referenzpunkt je Stadt aus gitignorierter `config.local.json`, `onroute`-Modus, `--rank-by score`, `--max-radius` |
 | **P0** | E10-Verträglichkeit des Autos? | K.-o.-Kriterium; sonst `--fuel E5` (Äquivalenzpreis, §10) |
 | **P1** | Rabatt-/Kartenprogramme (2–4 ct können das Ranking umdrehen)? | geplant: `--brand-rebate "ARAL:0.02;…"`; bis dahin Top-10 der eigenen Karten-Marke gesondert betrachten |
@@ -1320,7 +1328,7 @@ Der Anwender hat den Decision-Layer-Ansatz an **zwei Next.js-Prototypen**
 ausgeprobiert (`sample/`). **Beide bleiben als gestalterische und technische
 Basis im Repo**; dieses Konzept macht aus ihnen die zwei Modi einer App.
 Slate-/Emerald-/Sky-Design, Karten, Tabellen und Regler übernehmen, nicht
-neu erfinden. [Konkrete visuelle Leitplanken](../sample/README.md).
+neu erfinden. [Konkrete visuelle Leitplanken](GUI-VORLAGEN.md).
 
 ### UI.1 `sample/good gui` → Modus „Alltag“
 

@@ -1,9 +1,16 @@
 # TankApp — Prüfstand: Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten
 
+> **Archiviert — unabhängige Stichtagsprüfung vom 10.09.2026.**
+> Die Fehler §3.1–3.8 sind seit 11.09.2026 gefixt (siehe
+> [../LUECKEN.md](../LUECKEN.md)); was offen blieb, steht priorisiert in
+> [../../TODO.md](../../TODO.md). Paragraphennummern werden aus Code-Kommentaren
+> zitiert („Prüfstand §3.1“) und bleiben deshalb unverändert.
+> Schritte aus diesem Blatt nicht mehr ausführen. Archiv-Übersicht: [README.md](README.md).
+
 > Geprüft am 10.09.2026 auf Branch `arena/01a08cad-tankapp` (Commit `378947a`).
 > Methode: Dokuabgleich (KONZEPT/API/ARCHITEKTUR/LUECKEN/ANALYSE/RP2) gegen Code,
 > vollständige Prüfläufe, Live-Probe gegen eine gestartete Instanz der NAS-App.
-> Dieses Blatt ergänzt [LUECKEN.md](LUECKEN.md): LUECKEN listet die *selbst erkannten*
+> Dieses Blatt ergänzt [LUECKEN.md](../LUECKEN.md): LUECKEN listet die *selbst erkannten*
 > offenen Punkte; hier stehen die Abweichungen, die **nicht** in LUECKEN stehen.
 
 ## 0. Ausgeführte Prüfungen (Ergebnis)
@@ -106,7 +113,7 @@ Kampagnen-Quote 6/2/2 existiert nur in der Offline-Pipeline
 > inzwischen behoben — `p_besser`, `p_lohnt` und F3-Fenster-P kommen jetzt
 > aus der Prognoseverteilung (veröffentlichte Draws). Einzige verbleibende
 > Abweichung: die *gemeinsame* Ziehung über Stationen (§4.2) ist offen;
-> Details und Begründung in [LUECKEN.md](LUECKEN.md) („Bewusst offen“).
+> Details und Begründung in [LUECKEN.md](../LUECKEN.md) („Bewusst offen“).
 
 Das ist die gewichtigste Abweichung im ganzen Repo. `LUECKEN.md` führt
 „4.1–4.3 F1/F2/F3 inkl. Fenster-Top-3 → fertig (B4) + `latest_by` (B5)".

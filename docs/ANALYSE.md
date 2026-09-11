@@ -1,6 +1,10 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 09.09.2026 — B3 Aggregate enthalten, mit klickbarem Inhaltsverzeichnis.
+> Stand: 12.09.2026 · App-Version 0.10.1 — B3-Aggregate, P-Seite aus der
+> Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
+> enthalten. Methodik-Nachschlagewerk, keine Checkliste: Einrichten
+> [INSTALL.md](INSTALL.md), rechnen lassen [BETRIEB.md](BETRIEB.md),
+> offene Punkte [LUECKEN.md](LUECKEN.md) · [TODO.md](../TODO.md).
 
 ## Inhaltsverzeichnis
 
@@ -18,6 +22,7 @@
   - [Strukturmodell + AR2](#strukturmodell--ar2)
   - [12-Uhr-Regel](#12-uhr-regel)
   - [Backtest & Güte](#backtest--güte)
+- [Wahrscheinlichkeiten aus der Prognoseverteilung (P-Seite)](#wahrscheinlichkeiten-aus-der-prognoseverteilung-p-seite)
 - [Umweg-Ökonomie B3.12](#umweg-ökonomie-b312)
 - [Verweise](#verweise)
 
@@ -33,7 +38,7 @@ Alle Schichten liefern JSON-Artefakte nach `data/runtime/`, die die GUI via Nur-
 
 ## Stations-Selektion — Meine Stationen mit δ̂
 
-Pipeline: `analysis/station_selection.py` — Schema siehe `data-tools/README.md`. Echter Bericht lokal als `docs/analysis/report_top10.md`, synthetische Berichte sind kein Abnahmenachweis.
+Pipeline: `analysis/station_selection.py` — Schema siehe [DATENWERKZEUGE.md](DATENWERKZEUGE.md#datenformate). Echter Bericht lokal als `docs/analysis/report_top10.md`, synthetische Berichte sind kein Abnahmenachweis.
 
 | # | Komponente | Verfahren | Funktion |
 |---|---|---|---|
@@ -124,9 +129,29 @@ Datei `results/station_scores_<fuel>.csv` bleibt lokal für vertiefte Analyse, n
 - Nur offene Preise, InfluxDB letzte N Wochen
 - Grün = hohe Chance (≥80%), Rot = niedrige
 
-Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der Werkstatt (Tab Werkstatt), nicht im Alltags-Startbildschirm.
+Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der
+Werkstatt (Tab **Werkstatt**), nicht im Alltags-Startbildschirm. Sie zeigen die
+**Vergangenheit** (letzte N Wochen), keine Prognose für die kommende Woche.
 
-Frontend: Umschalter Level/Probability, Wochen-Wahl 2/4/6/8, Station aus Dropdown.
+Frontend: Umschalter Level/Probability, Wochen-Wahl 2/4/6/8, Station aus
+Dropdown. Seit 0.10.0 (C10) zusätzlich unter der 7×24-Matrix:
+
+- **Tages-Zusammenfassung** je Wochentag (Median + günstigste Stunde),
+- **hervorgehobene heutige Zeile**,
+- ein **Fazit-Satz** („Typisch am günstigsten: Di 18–20 Uhr — Median 1,653 €/L“)
+  und eine Erklärzeile, was „Niveau“ und „Cheap-Prob“ bedeuten.
+
+**Bekannte Grenze (TODO B12):** `kind=probability` **ohne** `station_id`
+vergleicht jede Zelle mit dem Gesamtmedian aller Zellen. Weil der Tagesgang
+(nachts/abends günstig, mittags teuer) größer ist als der Wochentags-Effekt,
+werden Abendzellen fast immer grün und Mittagszellen fast immer rot — die Frage
+„an welchem *Wochentag* ist es günstig?“ ist aus dieser Ansicht ohne
+`station_id` nur eingeschränkt ablesbar. Mit `station_id` ist der Vergleich fair
+(Station gegen Stadt im selben Slot). Geplant: optional Spalten-Basis (Median
+derselben Stunde), damit der Tagesgang herausgerechnet ist.
+
+Die Tages-Zusammenfassung (Median je Wochentag) ist von dieser Grenze **nicht**
+betroffen — sie rechnet auf dem Niveau, nicht auf der Cheap-Probability.
 
 ## Zeitreihen-Engine
 
@@ -163,13 +188,42 @@ Seit 2026-04-01 dürfen Tankstellen Preis nur um 12:00 Uhr erhöhen; Senkungen j
 
 | Horizont | Arbeitsstand |
 |---|---|
-| Heute / 24h | Vorläufige Prognose + täglicher Rolling-Origin-Backtest implementiert, noch kein Echt-Daten-Gütenachweis |
-| +3d / +7d | Vorläufiger Ausblick ab Cutoff, Mehrtage-Backtests offen |
+| Heute / 24 h | Prognose + täglicher Rolling-Origin-Backtest implementiert; **kein** Echt-Daten-Gütenachweis (M3-Abnahme offen) |
+| +3 d / +7 d | Ausblick ab Cutoff **und** Mehrtage-Backtests gegen beobachtete Preise (`horizons` im Report, seit 11.09.2026); ehrlich als Zusatz ausgewiesen, kein M3-Abnahmekriterium |
+| Rolling-PICP 7 d | Je Station im Backtest; Badge grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %, < 72 Punkte = keine Aussage). Publiziert als `rolling_picp_7d`, in `/v1/decide` als `quality` |
+| Backtest-Fenster des NAS-Jobs | **21 Tage** statt 7 (`app/refresh.py`), damit das Gate `at_least_21_complete_test_days_per_station` aus dem automatischen Lauf erfüllbar ist |
+| Güte-Gate | Rolling-PICP **rot** → `no_advice` („Keine klare Empfehlung — Prognose derzeit unsicher …“) als Auswertungsschritt 1, *vor* F2/F1 (§4.5) |
 
 Cutoff lokale Mitternacht, Trainingsfenster 42 Tage (nicht pauschal verdoppelt; stattdessen
 exponentiell gewichteter Tagesblock-Bootstrap, HWZ 14d). MAE, RMSE, MASE, sMAPE, Pinball
 (τ=0,5 und asym τ=0,75), PICP, MPIW werden gemessen. Erster Backtest bewertet folgenden Tag
 im Poll-Fenster. Vergleich 42d-EW vs. 42d-uniform vs. 84d siehe Engine-Referenz §4.
+
+## Wahrscheinlichkeiten aus der Prognoseverteilung (P-Seite)
+
+Seit 11.09.2026 reduziert der Worker die Bootstrap-Pfade auf **2-h-Fenster-Minima
+je Draw** und **Nowcast-Draws** und veröffentlicht sie im Artefakt
+(`forecasts[].draws_24h` / `draws_7d`, `engine/probabilities.py`). Der Decision
+Layer rechnet daraus ohne Numerik-Abhängigkeit (`app/pside.py`):
+
+| Größe | Definition | Verwendung |
+|---|---|---|
+| `p_besser` | P(Minimum über dem Fenster ≤ Preis jetzt − 1 ct) | F1-Gate **und** Brier-Input des Advice-Ledgers |
+| `p_lohnt` | P(€_netto > 0) je Alternative | F2-Zeilen („lohnt sich der Umweg?“) |
+| Fenster-P | P(Fenster ≤ Minimum im ±6-h-Umfeld) | F3-Top-3-Fenster |
+
+Fallback: Sind keine Draws veröffentlicht (Altbestand, kein Modell), greift die
+Laplace-geglättete Ledger-Quote `(hits + 10·0,5)/(n + 10)` — gekennzeichnet,
+nicht vermischt.
+
+**Dokumentierte Abweichung (§4.2):** die Draws je Station sind **unabhängig**;
+eine gemeinsame Bootstrap-Ziehung über Stationen (gleicher Tagesblock je Ziehung,
+damit der Marktgleichlauf nicht wegkorreliert wird) ist nicht umgesetzt. Richtung
+der Abweichung: konservativ — Marktgleichlauf würde die Unsicherheit von
+`p_lohnt` verringern. Begründung und Folgen:
+[LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund). Das M7-Gate (§0.4)
+bleibt hart: `primary.p_correct` erscheint erst nach der Kalibrierung
+(n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
 
 ## Umweg-Ökonomie B3.12
 
@@ -197,5 +251,7 @@ Antwort: delta_ct, gross_eur, fuel_cost_eur, time_cost_eur, detour_cost_eur, net
 - [API](API.md)
 - [Betrieb](BETRIEB.md)
 - [Konzept](KONZEPT.md) — vollständiges Zielbild
-- [Engine-Referenz](../engine/README.md)
-- [Werkzeuge](../data-tools/README.md)
+- [Lücken-Check](LUECKEN.md) — Konzept ↔ Stand, bewusst offene Punkte mit Grund
+- [TODO](../TODO.md) — priorisierte Arbeitsliste (u. a. B12 Cheap-Prob-Basis, A11 gemeinsame Ziehung)
+- [Engine-Referenz](ENGINE.md) — Backtest-Rezepte, Datenqualität, 12-Uhr-Regel
+- [Werkzeuge](DATENWERKZEUGE.md)

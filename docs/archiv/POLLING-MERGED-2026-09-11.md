@@ -1,5 +1,11 @@
 # Gemergtes Polling-Set (Frankfurt Basis + Gütersloh aktualisiert 2026-09-11)
 
+> **Archiviert — Punktstand des gemergten Polling-Sets vom 11.09.2026.**
+> Das **aktive** Set liegt gitignored in `docs/analysis/stations/polling.json`.
+> Stationen tauschen: [../STATIONEN-TAUSCH.md](../STATIONEN-TAUSCH.md); neue Stadt:
+> `python3 tankapp.py add-city`. Ergebnis-JSON: [POLLING-MERGED-2026-09-11.json](POLLING-MERGED-2026-09-11.json).
+> Archiv-Übersicht: [README.md](README.md).
+
 Erzeugt: 2026-09-11T09:22:29Z
 Quelle: run_pipeline.py aus station_scores_e10.csv (Selektion, --step-min 30) + data/raw/stations/2026/09/2026-09-10-stations.csv.gz (Gütersloh aktualisiert, 2026-09-11)
 poll_size: 10, proposal: False, Intervall: 300s (5 min pro Request, je Stadt ~ 10 min)

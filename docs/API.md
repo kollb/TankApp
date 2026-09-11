@@ -1,6 +1,11 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 10.09.2026 — B3 & B4 Endpunkte + Ereignis-Pipeline (`POST /api/v1/jobs/trigger`, Issue 50) enthalten, serverseitig, keine Demo-Fallbacks.
+> Stand: 12.09.2026 · App-Version **0.10.1** — B3/B4/B5, Ereignis-Pipeline
+> (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
+> Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
+> (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
+> `alarms[]` + `version`/`commit` in `/health` (B4/B9).
+> Alles serverseitig, keine Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4).
 
 ## Inhaltsverzeichnis
 
@@ -9,6 +14,9 @@
 - [Decide (B4 Primär)](#decide-b4-primär)
 - [Episodes & Intent (B4)](#episodes--intent-b4)
 - [Fills (B4 Belege)](#fills-b4-belege)
+  - [Beleg-Verlauf (GET)](#beleg-verlauf-get)
+  - [Beleg stornieren (DELETE, A3)](#beleg-stornieren-delete-a3)
+  - [CSV-Export (A6)](#csv-export-a6)
 - [Stats Summary (B4 3 Schichten)](#stats-summary-b4-3-schichten)
 - [Health](#health)
 - [Stations](#stations)
@@ -20,8 +28,10 @@
 - [Collector Status (B3.11)](#collector-status-b311)
 - [Collector Heartbeat (POST, B3.11)](#collector-heartbeat-post-b311)
 - [Jobs Trigger (POST, Issue 50)](#jobs-trigger-post-issue-50)
+- [Job starten (POST, B6 — Startknopf)](#job-starten-post-b6--startknopf)
+- [Job-Log (GET, B6)](#job-log-get-b6)
 - [Route Evaluate (B3.12)](#route-evaluate-b312)
-- [Deprecation alter Alltags-Routen (B5)](#deprecation-alter-alltags-routen-b5-konzept-113)
+- [Deprecation alter Alltags-Routen (B5, Konzept §11.3)](#deprecation-alter-alltags-routen-b5-konzept-113)
 - [Fehlercodes](#fehlercodes)
 - [Beispiele](#beispiele)
 
@@ -44,6 +54,8 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
   - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
+  - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3)
+- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf) und `GET /api/v1/fills.csv` (Export, A6)
 - Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht
@@ -54,8 +66,11 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 | `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
 | `POST /api/v1/episodes/{episode_id}/intent` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
 | `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
+| `GET /api/v1/fills` | **A3/A6** | Beleg-Verlauf (auch stornierte, mit `voided`-Flag) |
+| `DELETE /api/v1/fills/{id}` | **A3** | Beleg stornieren — Flag + Audit-Zeile, kein Löschen |
+| `GET /api/v1/fills.csv` | **A6** | Eigene Tankbelege als CSV (`;`, deutsche Dezimalkommas) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
-| `GET /api/v1/health` | erweitert | App online, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
+| `GET /api/v1/health` | erweitert | App online, **`version`/`commit` (B9)**, **`alarms[]` (B4)**, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
 | `GET /api/v1/stations?fuel=e10&city=...` |  | Aktuelle Preise, frisch ≤30 Min |
 | `GET /api/v1/series?city=...&station_id=...&fuel=...&hours=24` |  | Verlauf 1–168h |
 | `GET /api/v1/forecast?city=...&station_id=...&fuel=...` |  | Modell-Ausblick 24h + 3d/7d |
@@ -164,6 +179,85 @@ erfundener Default-Preis verbucht. Fehler kommen als 4xx/503
 
 Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
+### Beleg-Verlauf (GET)
+
+`GET /api/v1/fills`
+
+```json
+{
+  "generated_at": "2026-09-12T08:15:00+02:00",
+  "count": 2,
+  "fills": [
+    {
+      "id": "f_2026…",
+      "episode_id": "ep_123456",
+      "station_id": "6a7fe9a1-…",
+      "station_name": "Aral Hauptstr.",
+      "tanked_at": "2026-09-12T07:58:00+02:00",
+      "clock_hour": 7,
+      "liters": 41.2,
+      "price_paid": 1.679,
+      "price_source": "explicit",
+      "fuel": "e10",
+      "source": "prompt",
+      "compliance": "followed",
+      "saved_vs_always_now_eur": 1.84
+    }
+  ],
+  "error_code": null
+}
+```
+
+Feldbedeutung: `price_source` = `explicit` (Preis selbst eingegeben) oder
+`nowcast` (Preis zur Tankzeit aus den Daten ermittelt, weil `price_paid`
+fehlte); `saved_vs_always_now_eur` = realisierte Ersparnis gegen „immer
+sofort getankt“ (Referenz: `price_now` des ersten Snapshots der Folge, sonst
+`price_paid`). `compliance` ∈ `followed`, `partial`, `ignored`, `unrelated`
+(Zeitstempel-Matching, siehe [Fills](#fills-b4-belege)). Storno-Felder:
+`voided`, `voided_at`.
+
+Stornierte Belege bleiben mit `voided: true` und `voided_at` in der Liste —
+gezählt wird sie in Wallet-Bilanz und w(h)-Profil **nicht** mehr. Fehler:
+`store_too_large` (503-Pfad), `fills_read_failed`.
+
+### Beleg stornieren (DELETE, A3)
+
+`DELETE /api/v1/fills/{id}`
+
+Setzt `voided` statt zu löschen und schreibt eine Audit-Zeile
+(`{"at", "action": "void_fill", "fill_id"}`) in den Store. Idempotent: ein
+zweites Storno desselben Belegs ändert nichts und liefert denselben Beleg.
+
+| Antwort | Bedeutung |
+|---|---|
+| `200` + Beleg | storniert (oder war schon storniert) |
+| `404 {"error_code":"fill_not_found"}` | `id` nicht im Store |
+| `400 {"error_code":"invalid_query"}` | leere `id` oder Pfad mit weiterem `/` |
+| `503 {"error_code":"store_too_large"}` | Store über der Größen-Grenze |
+| `503 {"error_code":"void_fill_failed"}` | Store nicht schreibbar o. ä. |
+
+GUI: Tankbelege-Verlauf im Alltag mit „Stornieren“-Knopf. Ein Storno ist kein
+Löschen — die Audit-Spur bleibt, damit die Bilanz nachvollziehbar bleibt.
+
+### CSV-Export (A6)
+
+`GET /api/v1/fills.csv` → `Content-Type: text/csv; charset=utf-8`,
+`Content-Disposition: attachment; filename="tankapp-fills.csv"`.
+
+Trennzeichen `;`, Dezimalkomma, zwei Nachkommastellen bei `liter`,
+`preis_eur_l` und `ersparnis_eur`; `storniert` = `ja` oder leer. Spalten
+(in dieser Reihenfolge):
+
+```text
+id;getankt_am;station_id;station;liter;preis_eur_l;kraftstoff;quelle;compliance;ersparnis_eur;storniert
+```
+
+`getankt_am` = `tanked_at`, `station` = `station_name`, `quelle` = `source`,
+`ersparnis_eur` = `saved_vs_always_now_eur`.
+
+Download-Link im System-Tab. Der Export ist dieselbe Datenbasis wie
+`GET /api/v1/fills` — keine zusätzliche Aggregation, keine erfundenen Spalten.
+
 ## Stats Summary (B4 3 Schichten)
 
 `GET /api/v1/stats/summary?city=Frankfurt&fuel=e10` (auch als `/v1/stats/summary` erreichbar)
@@ -187,11 +281,17 @@ Antwort:
 {
   "app": "online",
   "generated_at": "2026-09-10T14:00:00+02:00",
+  "version": "0.10.1",
+  "commit": "35c737234d9d",
   "polling_error": null,
   "station_count": 20,
   "influx_configured": true,
   "archive_configured": true,
   "jobs_enabled": true,
+  "alarms": [
+    {"code": "collector_stale", "severity": "warn",
+     "message": "Collector-Herzschlag ist veraltet (Preise können eingefroren sein)."}
+  ],
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
     "archive": {"state": "success", "last_success_at": "...", "next_run_at": "..."},
@@ -213,6 +313,29 @@ Antwort:
   }
 }
 ```
+
+**Version und Build-Hash** (B9): `version` kommt aus `app/version.py`
+(`VERSION`, je Release angehoben), `commit` ist der Kurzhash des Checkouts bzw.
+`TANKAPP_BUILD_COMMIT`. Im Docker-Image ist `commit` `null` — das Image enthält
+kein `.git`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
+Oberflächen (NAS, RP2-Proxy/Fallback, Pi) die Frage „was läuft hier?“.
+
+**`alarms[]`** (B4): Aggregation der vorhandenen Prüfungen, **ohne** neue Netz-
+oder InfluxDB-Zugriffe (das 3–5-s-Budget des Docker-Healthchecks bleibt). Jeder
+Eintrag: `code`, `severity` (`error` | `warn`), `message` (deutscher Klartext),
+bei Job-Alarmen zusätzlich `job`. Die GUI zeigt rot bei `error`, gelb bei `warn`,
+grün ohne Alarm.
+
+| `code` | Schwere | Auslöser |
+|---|---|---|
+| `polling_missing` / `polling_invalid` | error | gemeinsames Polling-Set fehlt bzw. ist ungültig |
+| `collector_no_heartbeat` | error | noch kein Herzschlag des Pi auf dem NAS |
+| `collector_stale` | warn | Herzschlag älter als 15 min |
+| `job_failed` (+ `job`) | error | Job `archive`, `models`, `selection` oder `settlement` fehlgeschlagen |
+| `store_too_large` | error | Feedback-Store über `FEEDBACK_MAX_BYTES` — Belege werden abgelehnt |
+| `store_growing` | warn | Feedback-Store über 80 % der Grenze |
+
+Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
@@ -678,6 +801,7 @@ Siehe `web/src/data.ts` messages:
 - price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
 - store_too_large (503), not_implemented (501)
+- fill_not_found (404, `DELETE /api/v1/fills/{id}`), void_fill_failed (503), fills_read_failed
 - unauthorized (403, nur `POST /api/v1/jobs/trigger` ohne oder mit falschem Bearer-Token)
 - payload_too_large (413), invalid_json, invalid_request, server_error
 

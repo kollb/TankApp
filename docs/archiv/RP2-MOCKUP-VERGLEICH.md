@@ -1,5 +1,12 @@
 # 📊 Vergleich: Richtige GUI vs. Fallback GUI
 
+> **Archiviert — Mockup-Vergleich aus der Zeit vor der `web/`-GUI.**
+> Technik-Angaben (Flask, Next.js) und Funktionsumfang stimmen nicht mehr:
+> live sind `web/` (NAS-GUI, Vite/React) und `rp2/fallback_gui.py`
+> (Standardbibliothek). Beschrieben in [../RP2.md](../RP2.md), Design-Basis in
+> [../GUI-VORLAGEN.md](../GUI-VORLAGEN.md). Die HTML-Mockups liegen in
+> [mockups/](mockups/richtige_gui.html). Archiv-Übersicht: [README.md](README.md).
+
 Hier siehst du den **visuellen Unterschied** zwischen der vollwertigen GUI (NAS) und der Fallback-GUI (RP2).
 
 ---
@@ -20,7 +27,7 @@ Hier siehst du den **visuellen Unterschied** zwischen der vollwertigen GUI (NAS)
 ## 🖼️ **Mockups zum Vergleich**
 
 ### 1. **Richtige GUI** (NAS, Port 1355)
-🔗 **[Mockup anzeigen](richtige_gui.html)**
+🔗 **[Mockup anzeigen](mockups/richtige_gui.html)**
 
 **Screenshot-Vorschau:**
 ```
@@ -79,7 +86,7 @@ Hier siehst du den **visuellen Unterschied** zwischen der vollwertigen GUI (NAS)
 ---
 
 ### 2. **Fallback GUI** (RP2, Port 8000)
-🔗 **[Mockup anzeigen](fallback_gui.html)**
+🔗 **[Mockup anzeigen](mockups/fallback_gui.html)**
 
 **Screenshot-Vorschau:**
 ```
@@ -208,7 +215,7 @@ Hier siehst du den **visuellen Unterschied** zwischen der vollwertigen GUI (NAS)
 
 | Datei | Beschreibung |
 |-------|--------------|
-| [richtige_gui.html](richtige_gui.html) | Mockup der vollwertigen GUI |
-| [fallback_gui.html](fallback_gui.html) | Mockup der Fallback-GUI |
+| [richtige_gui.html](mockups/richtige_gui.html) | Mockup der vollwertigen GUI |
+| [fallback_gui.html](mockups/fallback_gui.html) | Mockup der Fallback-GUI |
 
 **→ Öffne die HTML-Dateien in deinem Browser, um den Unterschied live zu sehen!**

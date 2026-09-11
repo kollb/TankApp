@@ -1,5 +1,10 @@
 # TankApp RP2 Fallback-GUI – Anleitung
 
+> **Archiviert — alte RP2-Anleitung.** Kanonisch ist [../RP2.md](../RP2.md)
+> (Einrichtung, Konfiguration per systemd-Drop-in, Fallback-API, Template-Updates,
+> Fehlersuche, Log-Cap). Schritte aus dieser Datei nicht mehr ausführen.
+> Archiv-Übersicht: [README.md](README.md).
+
 **Ziel:** 24/7 Verfügbarkeit der TankApp über **eine einzige Adresse** — den RP2
 (Port 8000). Das NAS ist online → der RP2 leitet transparent zur **vollen
 NAS-GUI** weiter. Das NAS ist offline → dieselbe Adresse zeigt die
@@ -40,7 +45,7 @@ NAS-GUI** weiter. Das NAS ist offline → dieselbe Adresse zeigt die
 - ✅ Collector + Uploader bereits aktiv (`tankapp-collector`, `tankapp-uploader`)
 - ✅ `/dev/shm/tankapp` als tmpfs gemountet (bereits der Fall)
 - ✅ `polling.json` liegt unter `~/TankApp/docs/analysis/stations/polling.json`
-  (wie für den Collector, [INSTALL.md](../docs/INSTALL.md) §2.2) — **ohne diese
+  (wie für den Collector, [INSTALL.md](../INSTALL.md) §2.2) — **ohne diese
   Datei fehlen in der Fallback-GUI Stationennamen, Marken und Navigation**
   (die UUID wird angezeigt)
 
@@ -56,7 +61,7 @@ der RP2 nichts zu cachen.
 **Wichtig:** `git clone`/`git pull` liefert nur den Code. Die privaten
 Konfigurationsdateien sind gitignored und **müssen einmalig manuell** aufs
 NAS — sonst bricht `nas-up` ab. Details und Herkunft: siehe
-[docs/INSTALL.md](../docs/INSTALL.md), Abschnitt „Danach auf dem NAS“.
+[docs/INSTALL.md](../INSTALL.md), Abschnitt „Danach auf dem NAS“.
 
 | Datei auf dem NAS | Pflicht? | Woher |
 |---|---|---|
@@ -320,7 +325,7 @@ ls -la ~/TankApp/docs/analysis/stations/polling.json
 **Ursache:** `polling.json` fehlt auf dem Pi oder ist kaputt. Die
 JSONL-Snapshots im Puffer enthalten bewusst nur UUID + Preis — Namen,
 Marken und Koordinaten liefert `polling.json`. Datei ggf. neu vom NAS/PC
-kopieren ([INSTALL.md](../docs/INSTALL.md) §2.2), dann
+kopieren ([INSTALL.md](../INSTALL.md) §2.2), dann
 `sudo systemctl restart tankapp-fallback-gui`.
 
 ### Problem: Fallback-GUI statt NAS-GUI, obwohl NAS online

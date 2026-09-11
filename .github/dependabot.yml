@@ -1,6 +1,6 @@
 # Wöchentliche Update-PRs (montags) für alle Abhängigkeiten im Repo.
 # Ablauf: PR prüfen → CI-Ampel abwarten → mergen → ausrollen,
-# siehe rp2/ANLEITUNG.md, Abschnitt „Updates“.
+# siehe docs/RP2.md, Abschnitt „Updates & Changelog“.
 version: 2
 updates:
   # Python (NAS-Image + CI): requirements-dev.txt bindet per -r

@@ -1,5 +1,11 @@
 # TankApp – Tiefe Analyse Konzept ↔ API ↔ Engine ↔ GUI
 
+> **Archiviert — Tiefenanalyse vom 11.09.2026 (Prüfstrang 1: Konzept ↔ Code).**
+> Die Befunde beziehen sich auf den Stand vor App-Version 0.10.0. Die
+> priorisierte Arbeitsliste daraus ist [../../TODO.md](../../TODO.md); erledigte
+> Punkte sind dort entfernt. Änderungen seitdem: [../../CHANGELOG.md](../../CHANGELOG.md).
+> Archiv-Übersicht: [README.md](README.md).
+
 > Datum: 2026-09-11 · Branch `arena/01a08eeb-tankapp` (aus `main` 440402e) · Basis: Prüfstand 10.09.2026 + LUECKEN.md + Live-Code-Review
 
 ## 0. Methode
@@ -186,4 +192,4 @@ Nächster Schritt sollte P1-Fixes sein, danach bewusste Entscheidung ob P-Seite 
 > **Nachtrag 11.09.2026:** Die Entscheidung ist gefallen — die P-Seite wurde
 > aus der Prognoseverteilung gebaut (§4.1–4.3: `p_besser`/`p_lohnt`/
 > F3-Fenster-P aus veröffentlichten Draws). Offen bleibt nur die *gemeinsame*
-> Ziehung über Stationen (§4.2); siehe [LUECKEN.md](LUECKEN.md).
+> Ziehung über Stationen (§4.2); siehe [LUECKEN.md](../LUECKEN.md).

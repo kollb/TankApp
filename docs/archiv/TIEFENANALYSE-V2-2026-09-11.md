@@ -1,5 +1,10 @@
 # TankApp – V2 Analyse: Ist das Beschriebene auch *richtig* umgesetzt? Was fehlt unabhängig vom Konzept?
 
+> **Archiviert — Tiefenanalyse V2 vom 11.09.2026 (Prüfstrang 2: Korrektheit +
+> was unabhängig vom Konzept fehlt).** Befundstand vor App-Version 0.10.0; die
+> abgeleiteten Aufgaben stehen in [../../TODO.md](../../TODO.md) (Abschnitte E–H).
+> Archiv-Übersicht: [README.md](README.md).
+
 > 2026-09-11 · Commit 440402e + Live-Code Review · Ergänzung zu `TIEFENANALYSE.md` + `Prüfstand.md`
 
 **Kurzantwort:** Nein. Es fehlt nicht nur die im Konzept als „bewusst offen“ markierte P-Seite, sondern auch innerhalb des als „fertig“ markierten Teils ist einiges *falsch* bzw. unvollständig. Und unabhängig vom Konzept fehlen für einen echten 24/7-Produktbetrieb noch ganze Kategorien (Security/Multi-User/Privacy/Observability).

@@ -1,6 +1,10 @@
-# TankApp Betrieb — systemd, Backup, Fehlersuche
+# TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 09.09.2026 — Konsolidiert aus INSTALL.md <details>-Block, collector/uploader Details, Unraid, Störungsfälle.
+> Stand: 12.09.2026 · App-Version 0.10.1 — alles, was nach der Ersteinrichtung
+> wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
+> Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
+> GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
+> in `/health` und im GUI-Footer, Beleg-Storno und CSV-Export der Tankbelege.
 > Mit klickbarem Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis
@@ -24,12 +28,20 @@
   - [Portwechsel](#portwechsel)
   - [Was automatisch läuft](#was-automatisch-läuft)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
+  - [Wann erscheinen die 08:00-Zeilen im Scoreboard?](#wann-erscheinen-die-0800-zeilen-im-scoreboard)
+  - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
+  - [Fehlgeschlagener Lauf: Ursache statt Raten](#fehlgeschlagener-lauf-ursache-statt-raten)
   - [Modell-Lauf beschleunigen](#modell-lauf-beschleunigen)
 - [Backup & Wiederherstellung](#backup--wiederherstellung)
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
+  - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
+- [System-Alarme lesen](#system-alarme-lesen)
+  - [Version und Build-Hash prüfen](#version-und-build-hash-prüfen)
 - [Fehlersuche](#fehlersuche)
   - [Collector Störungsfälle](#collector-störungsfälle)
+  - [Preislücke nachholen (Polling-Ausfall / beschädigtes polling.json)](#preislücke-nachholen-polling-ausfall--beschädigtes-pollingjson)
+  - [Legacy-Punkte ohne `station_id` (Namens-Zwillinge)](#legacy-punkte-ohne-station_id-namens-zwillinge)
   - [Uploader Störungsfälle](#uploader-störungsfälle)
   - [parameter error Diagnose](#parameter-error-diagnose)
   - [NAS Python GLIBC Fehler](#nas-python-glibc-fehler)
@@ -503,6 +515,51 @@ Danach einmal `GET /api/v1/health` prüfen: `app` = `online`, kein Alarm
 `store_too_large`. Preise kommen aus InfluxDB (separates Backup) und bleiben
 vom runtime-Restore unberührt.
 
+## System-Alarme lesen
+
+`GET /api/v1/health` fasst die vorhandenen Zustandsprüfungen zu einem
+`alarms[]`-Block zusammen (`app/alarms.py`). Bewusst **ohne** neue Netz- oder
+InfluxDB-Zugriffe, damit der Docker-Healthcheck im 3–5-s-Budget bleibt. Die GUI
+zeigt daraus einen Punkt im Header aller Tabs: **rot** bei `severity: "error"`,
+**gelb** bei `"warn"`, grün ohne Alarm; der Tooltip listet die Meldungen im
+Klartext.
+
+| `code` | Schwere | Bedeutung | Erste Aktion |
+|---|---|---|---|
+| `polling_missing` | error | gemeinsames Polling-Set fehlt | `docs/analysis/stations/polling.json` vom Pi bereitstellen → [INSTALL.md](INSTALL.md#private-dateien) |
+| `polling_invalid` | error | Polling-Set ungültig (Format, leere/doppelte Sets) | Set prüfen und neu aufbauen → [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
+| `collector_no_heartbeat` | error | noch kein Herzschlag des Pi auf dem NAS | Uploader + Heartbeat prüfen → [Heartbeat B3.11](#heartbeat-b311) |
+| `collector_stale` | warn | Herzschlag älter als 15 min — Preise können eingefroren sein | `systemctl status tankapp-collector tankapp-uploader` auf dem Pi |
+| `job_failed` (mit `job`) | error | NAS-Job `archive`, `models`, `selection` oder `settlement` ist fehlgeschlagen | Ursache im Job-Log → [Fehlgeschlagener Lauf](#fehlgeschlagener-lauf-ursache-statt-raten) |
+| `store_too_large` | error | persönlicher Feedback-Store über der Größen-Grenze — neue Belege werden abgelehnt | Restore/Retention → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
+| `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
+
+Ein Alarm ist eine **Zusammenfassung**, keine neue Prüfung: Dieselbe Information
+steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,
+`/api/v1/jobs/<job>/log`, `/api/v1/stats/summary`). Wer nur einen einzigen Check
+im Haushalt laufen lassen will, pollt `/health` und schaut auf `alarms`.
+
+Offen (siehe [TODO B4/B8](../TODO.md)): optionale Benachrichtigung per ntfy und
+Webhook-Retry Pi → NAS — heute ist `POST /api/v1/jobs/trigger` Fire-and-Forget.
+
+### Version und Build-Hash prüfen
+
+`GET /api/v1/health` liefert `version` (z. B. `0.10.1`, gepflegt in
+`app/version.py`) und `commit` (Kurzhash des Checkouts). Beide Werte stehen auch
+im GUI-Footer. Bei drei Oberflächen — NAS-GUI, RP2-Proxy/Fallback, Collector auf
+dem Pi — ist das die Antwort auf „was läuft hier eigentlich?“:
+
+```bash
+curl -s http://<NAS>:1355/api/v1/health |
+  python3 -c 'import json,sys; h=json.load(sys.stdin); print(h["version"], h["commit"], [a["code"] for a in h["alarms"]])'
+```
+
+Im Docker-Image ist `commit` `null`, weil das Image kein `.git` enthält; bei
+Bedarf `TANKAPP_BUILD_COMMIT=<hash>` als Umgebung für den Container setzen
+(`app/version.py` liest sie beim Import). Die RP2-Fallback-GUI trägt einen
+eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
+Version: [CHANGELOG](../CHANGELOG.md).
+
 ## Fehlersuche
 
 ### Collector Störungsfälle
@@ -510,7 +567,7 @@ vom runtime-Restore unberührt.
 | Log-Meldung | Bedeutung / Aktion |
 |---|---|
 | `HTTP 429` | API-Limit (1/5min) — wartet 60s |
-| `no prices` | Station meldet keine Preise; nach 7 Polls (~35min) Alarm |
+| `no prices` | Station meldet keine Preise; Alarm erst nach **7 Kalendertagen** ohne Daten (nicht nach 7 Polls) |
 | `Fenster zu … schlafe` | normal 00–06 Uhr |
 | `parameter error` | ids ODER apikey leer — siehe Diagnose unten |
 | `Key existiert nicht` | Key unbekannt/deaktiviert → tankerkoenig.de prüfen |
@@ -546,8 +603,46 @@ python3 tankapp.py history-sync --archive-dir /pfad/zum/archiv --since 2026-09-1
 ```
 
 Der nächste Modell-Lauf nutzt die nachgeladene Historie für Training und
-Prüfstand (08:00-Entscheidungszeilen im Scoreboard). Das Nachladen schreibt
+Backtest (08:00-Entscheidungszeilen im Scoreboard). Das Nachladen schreibt
 **nicht** in InfluxDB — die Live-Kurve bleibt unverändert.
+
+### Legacy-Punkte ohne `station_id` (Namens-Zwillinge)
+
+Der Uploader schreibt seit 09/2026 `station_id`-UUID-Tags. Ältere InfluxDB-Punkte
+tragen nur `city` + `station` (Anzeigename) — zwei Stationen mit gleichem Namen
+sind daraus **nicht** trennbar. Der Exporter rät deshalb keine UUIDs, sondern
+bricht mit einer Erklärung ab:
+
+```text
+Influx-Station 'Frankfurt'/'Aral Tankstelle': mehrdeutig. Legacy-Punkt ohne
+station_id; UUIDs werden nicht geraten. Uploader auf UUID-Tags aktualisieren,
+Original-JSONL bei Bedarf nachliefern und mit --uuid-only exportieren …
+```
+
+Vorgehen (nur lesend, kein Ack-Reset, kein Löschen alter Serien):
+
+1. Code auf Pi und NAS aktuell halten (`git pull`), dann **nur** den Uploader neu
+   starten: `sudo systemctl restart tankapp-uploader`. Collector, Pi-Zeitzone und
+   Reboot-Verhalten unverändert lassen.
+2. Nächsten erfolgreichen Poll abwarten (06–24 Uhr, je Stadtset ~10 min) und dann
+   ausschließlich die eindeutigen Punkte exportieren:
+
+```bash
+python3 data-tools/export_influx.py --env-file data/influx.env --uuid-only
+```
+
+3. Alte Namensserien bleiben unangetastet; sie sind als Legacy gekennzeichnet und
+   ersetzen keinen Live-Gütenachweis.
+
+Eine **optionale** Nachlieferung alter JSONL-Sicherungen (Replay) ist nur mit
+belegter ursprünglicher Zeitzone zulässig und steht vollständig im Archiv:
+[archiv/STATIONS-UUID-MIGRATION.md](archiv/STATIONS-UUID-MIGRATION.md) —
+`upload_influx.py --replay --replay-timezone …`, erst im Dry-Run; bei
+`TIME_OFFSET_MISSING` keine Uhrzeit raten.
+
+**Nie:** einen Namenszwilling aus `polling.json` entfernen, um alte Punkte
+umzudeuten. Das ändert die Bedeutung der Historie, nicht die Daten. Diagnose
+am PC: [ENGINE.md](ENGINE.md) (Tabelle „Stationsname mehrdeutig“).
 
 ### Uploader Störungsfälle
 

@@ -1,16 +1,17 @@
 # GUI-Vorlagen für die neue Homepage — behalten
 
-# GUI-Vorlagen für die neue Homepage — behalten
+> Stand: 12.09.2026. Übernahmeregeln für die beiden Prototypen in `sample/`.
+> Früher `sample/README.md`; Dokumentation hat jetzt einen Ort (`docs/`).
+> Die Regel selbst steht auch in [AGENTS.md](../AGENTS.md): Beim Aufräumen von
+> Demo-Daten werden diese Vorlagen **nicht** gelöscht.
 
 ## Inhaltsverzeichnis
 
-- [Vorlagen-Übernahme](#gui-vorlagen-für-die-neue-homepage--behalten)
-- [Visuelle Leitplanken](#visuelle-leitplanken-aus-dem-vorhandenen-code)
+- [Vorlagen und Übernahme](#vorlagen-und-übernahme)
+- [Visuelle Leitplanken aus dem vorhandenen Code](#visuelle-leitplanken-aus-dem-vorhandenen-code)
 - [Daten und Design getrennt migrieren](#daten-und-design-getrennt-migrieren)
 
----
-
-
+## Vorlagen und Übernahme
 
 **Beide Prototypen sind ausdrücklich die gestalterische und technische Basis
 der neuen TankApp-Homepage.** Nicht zusammen mit entbehrlichen Demo-Daten
@@ -18,8 +19,8 @@ löschen und nicht durch ein unverbundenes Landingpage-Design ersetzen.
 
 | Vorlage | Übernahme |
 |---|---|
-| [`good gui`](good%20gui/) | Alltags-Homepage: `TankAppDashboard`, sticky Navigation, Kampagnen-/Kraftstoff-Umschalter, `DecisionCockpit`, Tagesstreifen, Umwegvergleich und Feedback-Karten. |
-| [`good statistic gui`](good%20statistic%20gui/) | Statistik/Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
+| [`good gui`](../sample/good%20gui/) | Alltags-Homepage: `TankAppDashboard`, sticky Navigation, Kampagnen-/Kraftstoff-Umschalter, `DecisionCockpit`, Tagesstreifen, Umwegvergleich und Feedback-Karten. |
+| [`good statistic gui`](../sample/good%20statistic%20gui/) | Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
 
 ## Visuelle Leitplanken aus dem vorhandenen Code
 
@@ -31,7 +32,7 @@ löschen und nicht durch ein unverbundenes Landingpage-Design ersetzen.
   kompakte Badges; `max-w-7xl` und die bestehenden responsiven Raster.
 - Abgerundete Karten (`rounded-2xl` / `rounded-3xl`), Tabs, Regler,
   Tabellen und Diagramme aus den vorhandenen Komponenten übernehmen.
-- Alltag: Kompass/Handlung zuerst. Statistik: das ausführliche Labor bleibt
+- Alltag: Kompass/Handlung zuerst. Werkstatt: das ausführliche Labor bleibt
   erhalten, nicht auf eine einzelne Kennzahlen-Kachel reduzieren.
 
 ## Daten und Design getrennt migrieren
@@ -50,6 +51,6 @@ NAS-Image baut die GUI mit Vite, ohne die Next-/PostgreSQL-Demo-Runtime.
 Noch nicht freigegebene Entscheidungs-, Feedback- und Kalibrierungsfunktionen
 werden nicht durch die Demo-Implementierung ersetzt. Beide Vorlagen bleiben
 für diese weitere Übernahme unverändert erhalten. Fehlende Daten als fehlend darstellen, nicht durch Sample-Werte ersetzen;
-Kalibrierungs-Gate aus dem [Konzept](../docs/KONZEPT.md) beachten.
+Kalibrierungs-Gate aus dem [Konzept](KONZEPT.md) beachten.
 Erst nach visueller Prüfung beider Bereiche auf Desktop **und** Smartphone
 werden nicht mehr benötigte Seed-/Prototyp-Dateien entfernt.

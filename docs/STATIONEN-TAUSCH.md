@@ -6,8 +6,8 @@ Modelllauf jede Stunde einen `insufficient_or_invalid_training_data`-Fehler und
 den Gesamtstatus `partial (some_models_unavailable)` zu. Dieses Runbook tauscht
 sie kontrolliert oder filtert sie bereits bei der Kandidatensuche aus.
 
-Verwandt, aber anders gelagert: [Preis-Zwillinge](../engine/README.md#preis-zwillinge)
-(redundante Stationen per Selektion ersetzen) und [UUID-Migration](STATIONS-UUID.md)
+Verwandt, aber anders gelagert: [Preis-Zwillinge](ENGINE.md#preis-zwillinge)
+(redundante Stationen per Selektion ersetzen) und [UUID-Migration](archiv/STATIONS-UUID-MIGRATION.md)
 (vermischte Namensserien — nicht durch einen Tausch reparierbar).
 
 ## Inhaltsverzeichnis

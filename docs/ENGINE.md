@@ -1,5 +1,11 @@
 # Engine-Referenz — optionale Modellwerkstatt
 
+> Stand: 12.09.2026 · App-Version 0.10.1. Werkstatt-Referenz für `engine/` —
+> **keine Installations-Checkliste**. Einrichtung: [INSTALL.md](INSTALL.md),
+> Betrieb: [BETRIEB.md](BETRIEB.md), Methodik im Überblick:
+> [ANALYSE.md](ANALYSE.md). Früher lag diese Datei als `engine/README.md` neben
+> dem Code; Dokumentation hat jetzt einen Ort (`docs/`).
+
 ## Inhaltsverzeichnis
 
 - [Bezugsweg-Regel](#bezugsweg-regel-für-die-entwicklung)
@@ -15,13 +21,14 @@
 - [Datenqualität & Backtest](#4-datenqualität-und-backtest-auf-dem-pc)
 - [Modell fitten](#5-modell-fitten-und-prognose-erzeugen)
 - [Häufige Probleme](#6-häufige-probleme-am-windows-pc)
+- [Collector am PC prüfen](#7-optional-collector-am-pc-mit-dataapikeytxt-prüfen)
 - [Noch offen M3](#noch-offen-in-m3)
 
 ---
 
 
 **Keine Installations-Checkliste.** Der einzige Einstieg und die Reihenfolge
-stehen in [INSTALL.md](../docs/INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
+stehen in [INSTALL.md](INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
 NAS-Archiv parallel füllen, danach automatische Berechnung/Empfehlungen.
 
 Der gebündelte NAS-App-Dienst führt Archivabruf, Aufbereitung und Fits aus. Der Windows-PC
@@ -206,7 +213,7 @@ Pakete aus `analysis/requirements.txt`. Ohne separates Ziel wird der Ausschluss
 abgelehnt. Keine Kandidaten erfinden oder Grenzen lockern, um das Set aufzufüllen.
 
 **Nicht als Reparatur vermischter Influx-Namensserien aktivieren.** Erst die
-[UUID-Identität klären](../docs/STATIONS-UUID.md); Vergleich und Vorschlag migrieren
+[UUID-Identität klären](archiv/STATIONS-UUID-MIGRATION.md); Vergleich und Vorschlag migrieren
 keine Daten. Alte Daten oder Ack-Dateien nicht löschen/zurücksetzen. Der gebündelte
 Aktivierungsbefehl `tankapp.py activate-polling` ist ausdrücklich nur für die
 Addition neuer Stadtsets gedacht und weist Änderungen bestehender Sets ab.
@@ -509,7 +516,7 @@ Nur alte Punkte ohne UUID benötigen die Namenszuordnung. **Unbekannte/mehrdeuti
 Legacy-Namen führen zum Abbruch**, nicht zu geratenen IDs.
 
 Bei `Aral Tankstelle: mehrdeutig` und unterschiedlichen Preisverläufen im Vergleich:
-[Stations-UUID-Anleitung](../docs/STATIONS-UUID.md) durchführen. Danach bewusst nur
+[Stations-UUID-Anleitung](archiv/STATIONS-UUID-MIGRATION.md) durchführen. Danach bewusst nur
 UUID-getaggte Punkte lesen:
 
 ```powershell
@@ -561,7 +568,7 @@ Alte M2-Dateien (`--resample 30 --density 60`) sind kein dichtes Live-Raster.
 Rekonstruierte Stand-Zeilen und fehlende Öffnungsstatus bleiben Einschränkungen;
 `open` ist bei Historie ohne Status nur eine Annahme. Bei Bedarf vorhandene
 Rohdateien separat mit `ingest_history.py --resample 0 --density 5` aufbereiten
-([Datenformate](../data-tools/README.md#datenformate)), nicht die M2-Dateien überschreiben.
+([Datenformate](DATENWERKZEUGE.md#datenformate)), nicht die M2-Dateien überschreiben.
 Das erzeugt **keine zusätzlichen echten Polls**. Exakt überlappende Live-Statuszeilen
 haben Vorrang. Mehrdeutige/nicht existente lokale Sommerzeit-Zeitstempel werden
 verworfen und gezählt, nicht erfunden.
@@ -685,9 +692,9 @@ höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefit
 | Netz-/Lesefehler, obwohl der RPi schreibt | Schreib- und Lesezugriff sowie Rechner-/Proxy-Weg unterscheiden. Phase, HTTP-Status, Fehlerklasse und `errno`/`winerror` aus dem neuen Check beachten; Token zunächst unverändert lassen. |
 | Timeout, DNS-, Verbindungs- oder TLS-Fehler | Betroffenen Schritt beachten und Verbindung/Dienst prüfen. Ein sporadischer Timeout erklärt nicht gleichzeitig wiederkehrende HTTP 401. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
-| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](../docs/STATIONS-UUID.md). |
-| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. [Ablauf §3a](../docs/STATIONS-UUID.md). Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
-| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache: [Replay-Prüfung](../docs/STATIONS-UUID.md). Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
+| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](archiv/STATIONS-UUID-MIGRATION.md). |
+| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. [Ablauf §3a](archiv/STATIONS-UUID-MIGRATION.md). Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
+| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache: [Replay-Prüfung](archiv/STATIONS-UUID-MIGRATION.md). Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
 | Zu wenig Training / Exit 2 | QA und Skip-Gründe lesen, mehr Historie bereitstellen; keine Demo-Daten als Ersatz einspeisen. |
 
 Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` zusätzlich setzen

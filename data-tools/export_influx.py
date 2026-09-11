@@ -691,7 +691,7 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
                 f"Influx-Station {city!r}/{tag!r}: {reason}. "
                 "Legacy-Punkt ohne station_id; UUIDs werden nicht geraten. "
                 "Uploader auf UUID-Tags aktualisieren, Original-JSONL bei Bedarf nachliefern "
-                "und mit --uuid-only exportieren (docs/STATIONS-UUID.md). "
+                "und mit --uuid-only exportieren (docs/archiv/STATIONS-UUID-MIGRATION.md). "
                 "Nicht einen Namenszwilling aus polling.json entfernen, um alte Punkte umzudeuten."
             )
         uid, meta = next(iter(matches.items()))

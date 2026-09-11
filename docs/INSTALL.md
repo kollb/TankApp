@@ -1,8 +1,10 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 09.09.2026.  
-Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten.  
-**[Alle Dokumente im Überblick → README.md](README.md)** mit klickbarem Inhaltsverzeichnis.
+**Das ist der einzige Installationseinstieg.** Stand: 12.09.2026 · App-Version 0.10.1.  
+Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
+Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
+[BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](API.md).  
+**[Alle Dokumente im Überblick → README.md](README.md)** — ein Ordner, ein Index.
 
 ## Inhaltsverzeichnis
 
@@ -187,13 +189,44 @@ Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
 
 ## Was du in der GUI siehst
 
-- **Alltag:** Stadt/Kraftstoff, günstigster aktuell gemeldeter offener Preis, Datenalter, Tankmenge, reiner Preisvergleich und Route bei gültigen Koordinaten. Stadt, Kraftstoff, Tankmenge merkt sich Browser. Keine Tankbuchung, keine als netto ausgegebene Umweg-Ersparnis. Neu B3.12: Button „Server prüfen“ für serverseitige Umweg-Ökonomie.
-- **Statistik:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und Backtestwerte samt Datenbasis. Fehlende/alte Modelle sichtbar markiert. Neu B3.9: Heatmaps DoW×Stunde Niveau + Cheap-Probability. Neu B3.10: Meine Stationen mit δ̂ Ranking, Bootstrap-KI, AV-Score, billigste Stunde.
-- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte Veröffentlichung. Fehlende Zugangsdaten ergeben ehrlichen Einrichtungszustand, keine Demo-Preise. Neu B3.11: Pi/tmpfs Livestatus (Collector-Herzschlag ans NAS) mit tmpfs-Nutzung, ältester Datei, Poll Count. Neu Issue 50: bei Modell-/Selektions-Jobs Datenstand des letzten Webhook-Triggerlaufs und Trigger-Statistik (Debounce/Idempotenz) sichtbar.
+Die GUI hat drei Tabs: **Alltag**, **Werkstatt**, **System**. („Statistik“ ist der
+alte Name des Werkstatt-Tabs und steht nur noch in Archiv-Dokumenten.)
+
+- **Alltag:** Ampel/Empfehlung aus `/api/v1/decide`, Stadt/Kraftstoff, günstigster
+  aktuell gemeldeter offener Preis, Datenalter, Tankmenge, Umweg-Vergleich mit
+  Button „Server prüfen“ (B3.12). Stadt, Kraftstoff und Tankmenge merkt sich der
+  Browser. Neu (0.10.0): Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und
+  Dezimaleingabe mit Komma (E2). Keine Tankbuchung ohne Station, keine als netto
+  ausgegebene Umweg-Ersparnis.
+- **Werkstatt:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
+  Backtestwerte samt Datenbasis; fehlende/alte Modelle sichtbar markiert.
+  Heatmaps DoW×Stunde (B3.9) **mit Tages-Zusammenfassung, hervorgehobener
+  heutiger Zeile und Fazit-Satz** (C10), Meine Stationen mit δ̂-Ranking,
+  Bootstrap-KI, AV-Score und billigster Stunde (B3.10).
+- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
+  Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
+  Trigger-Statistik (Issue 50). Neu (0.10.0): geführte
+  **Einrichtungs-Checkliste** (C1), **M7-Fortschritts-Kachel** „n/100
+  Empfehlungen, Brier …“ (A7) und **CSV-Export der eigenen Tankbelege** (A6).
+  Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine
+  Demo-Preise.
+- **Über allen Tabs:** Alarm-Punkt im Header (rot/gelb/grün) aus `alarms[]` in
+  `/api/v1/health` (B4) und App-Version + Commit-Hash im Footer (B9) — was die
+  Punkte bedeuten: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 
 Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte Preise. Unter System müssen Lesezugang und nach erstem Abruf Archiv-/Job-Stände passen. Laufender Container allein bestätigt das nicht. NAS-Auszeiten und Pi-Puffergrenze stehen bei Rollen oben.
 
-Stand dieser Lieferung: GUI, API, App-Start, Archiv-Zeitplanung, Modellveröffentlichung, Selektion, Heatmaps, Collector-Status, Route-Evaluate sind implementiert und softwaregetestet. GitHub CI hat Python-Tests, Frontend-Unit-Tests, Browsertests, GUI-Build, Docker-Image-Build bestanden. Betrieb mit privaten Daten auf NAS noch nicht abgenommen. Zweitmodell/Ensemble, weitere Modellbausteine, echte Güteprüfung und Out-of-sample-Kalibrierung bleiben offen; deshalb weiterhin `calibrated=false` / `decision_ready=false`. Noch kein belastbares „bis 18 Uhr warten“, keine erfundenen Wahrscheinlichkeiten oder garantierten Ersparnisse.
+Stand dieser Lieferung (0.10.1): GUI, API, App-Start, Archiv-Zeitplanung,
+Modellveröffentlichung, Selektion, Heatmaps, Collector-Status, Route-Evaluate,
+Job-Fortschritt, Rate-Limit, Alarm-Block, Beleg-Storno/CSV-Export,
+`runtime/`-Backup und Versionsanzeige sind implementiert und softwaregetestet.
+GitHub CI hat Python-Tests, Frontend-Unit-Tests, Browsertests, GUI-Build und
+Docker-Image-Build bestanden. **Betrieb mit privaten Daten auf dem NAS ist
+weiterhin nicht abgenommen.** Zweitmodell/Ensemble, echte Güteprüfung und
+Out-of-sample-Kalibrierung bleiben offen; deshalb weiterhin `calibrated=false` /
+`decision_ready=false`. Noch kein belastbares „bis 18 Uhr warten“, keine
+erfundenen Wahrscheinlichkeiten oder garantierten Ersparnisse. Was offen ist und
+warum: [LUECKEN.md](LUECKEN.md) · [TODO.md](../TODO.md).
 
 Details Betrieb: [BETRIEB.md](BETRIEB.md)  
 API Details: [API.md](API.md)  
@@ -214,5 +247,8 @@ Analyse: [ANALYSE.md](ANALYSE.md)
 4. Nach einigen Tagen: Heatmaps und Meine Stationen in Werkstatt prüfen
 5. Collector-Status im System-Tab prüfen
 6. Route-Evaluate im Alltag testen (lokal + Server)
+7. Alarm-Punkt im Header und Version im Footer gegenprüfen (`GET /api/v1/health`)
+8. Backups einrichten, solange die Bilanz noch klein ist:
+   [BETRIEB.md](BETRIEB.md#backup--wiederherstellung)
 
 Technische Referenz (systemd, Backup, Fehlersuche, InfluxDB, Unraid Details) ist bewusst aus diesem Dokument herausgezogen → [BETRIEB.md](BETRIEB.md) — dort mit eigenem Inhaltsverzeichnis.
