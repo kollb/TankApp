@@ -25,6 +25,13 @@ def test_fuel_and_day_threshold():
     assert not history_eligible(hist(28, []), 28, "e10")
 
 
+def test_all_fuels_requires_diesel_e5_e10():
+    assert history_eligible(hist(28, ["diesel", "e5", "e10"]), 28, "all")
+    assert not history_eligible(hist(367, ["diesel"]), 28, "all")
+    assert not history_eligible(hist(367, ["diesel", "e10"]), 28, "all")
+    assert not history_eligible(hist(27, ["diesel", "e5", "e10"]), 28, "all")
+
+
 def test_without_history_scan_everything_stays_eligible():
     assert not history_eligible(None, 28, "e10")
     assert not history_eligible({"days": 0, "fuels": []}, 28, "any")
