@@ -410,11 +410,14 @@ Zwei Stellschrauben, beide ohne Änderung der Ergebnisse:
 | Hebel | Wirkung |
 |---|---|
 | `TANKAPP_MODEL_WORKERS` | Prozesse für Fit/Prognose/Backtest. `0` (Default) = automatisch, maximal 8 (bzw. CPU-Kerne); `1` = seriell. Stationen und Horizonte sind unabhängig — der Lauf ist „peinlich parallel“. Ohne nutzbaren Prozess-Pool rechnet die App automatisch seriell weiter. |
+| `TANKAPP_CITY_SUBDIVS` | Bundesländer für den gepoolten Feiertags-Dummy, z. B. `Frankfurt:HE;Gütersloh:NW`. Ohne Wert bleibt der Dummy bewusst null. `nas-up` reicht den Wert über Compose in den App-Container durch. |
 | Engine-Fix der 12-Uhr-Projektion | Vor B5 baute die Projektion je Rasterpunkt ein `pd.Timestamp` (≈8 Mio. Boxing-Operationen pro 7-Tage-Prognose). Jetzt vektorisiert: 24-h-Prognose 12,4 s → 0,8 s, 7-Tage 82 s → 4,9 s, Backtest 44 s → 6,4 s — **bitgleich** zu vorher (geprüft gegen die alte Implementierung). |
 
 ```bash
-# NAS: vier Prozesse explizit erlauben
-TANKAPP_MODEL_WORKERS=4 python3 tankapp.py nas-up
+# NAS: vier Prozesse und die Bundesländer der Städte explizit setzen
+TANKAPP_MODEL_WORKERS=4 \
+TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW" \
+python3 tankapp.py nas-up
 ```
 
 Archiv und Polling sind dieselben Marktdaten über zwei Bezugswege. Historie kann Modellstart tragen, keine 3-Monats-Wartepflicht. Standardtraining letzte 42 Tage, Archiv nur vor Live-Beginn. Nach 90 vollständigen Live-Tagen mit 95% Abdeckung je UUID/Kraftstoff auf Polling-only umstellbar. NAS-Roharchiv bleibt bestehen.

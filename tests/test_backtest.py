@@ -7,6 +7,7 @@ from engine.backtest import (
     PINBALL_TAU_ASYM,
     markdown_report,
     metrics,
+    picp_badge,
     pinball_loss,
     run_backtest,
 )
@@ -33,7 +34,33 @@ def test_rolling_backtest_uses_only_actual_common_prices(series, cfg):
     )
     assert report["criteria"]["at_least_21_complete_test_days_per_station"] is False
     assert report["criteria"]["mase_jump_free_below_0_80"] is None
-    assert "nicht abgenommen" in markdown_report(report)
+    assert set(report["horizons"]) == {"72h", "168h"}
+    assert report["horizons"]["72h"]["days_evaluated"] > 0
+    rolling = report["rolling_picp_7d"]
+    assert len(rolling) == 1
+    assert len(rolling[0]["days"]) == 2
+    assert rolling[0]["current"] == rolling[0]["days"][-1]
+    assert rolling[0]["current"]["points"] == 2 * 216
+    text = markdown_report(report)
+    assert "nicht abgenommen" in text
+    assert "Mehrtage-Horizonte" in text
+    assert "Rolling-PICP 7 Tage" in text
+
+
+@pytest.mark.parametrize(
+    "picp,points,expected",
+    [
+        (95.0, 72, "green"),
+        (93.0, 72, "green"),
+        (92.99, 72, "yellow"),
+        (90.0, 72, "yellow"),
+        (89.99, 72, "red"),
+        (100.0, 71, None),
+        (None, 999, None),
+    ],
+)
+def test_rolling_picp_badge_thresholds(picp, points, expected):
+    assert picp_badge(picp, points) == expected
 
 
 def test_filled_prices_are_not_test_truth(series, cfg):

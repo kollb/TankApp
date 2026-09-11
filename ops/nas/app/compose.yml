@@ -20,6 +20,8 @@ services:
       TANKAPP_NETRC: /config/netrc
       TANKAPP_HISTORY_DAYS: "${TANKAPP_HISTORY_DAYS:-365}"
       TANKAPP_MODEL_FUELS: "${TANKAPP_MODEL_FUELS:-e10}"
+      # Konzept §3.2: Stadt:Bundesland-Paare für den Feiertags-Dummy.
+      TANKAPP_CITY_SUBDIVS: "${TANKAPP_CITY_SUBDIVS:-}"
       TANKAPP_WEBHOOK_TOKEN: "${TANKAPP_WEBHOOK_TOKEN:-}"
       # B5: 0 = automatisch (CPU-Kerne, max. 8), 1 = seriell.
       TANKAPP_MODEL_WORKERS: "${TANKAPP_MODEL_WORKERS:-0}"

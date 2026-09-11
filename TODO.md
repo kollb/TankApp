@@ -32,7 +32,7 @@
 | A7 | D | **Kalibrierung M7 „Inbetriebnahme"** | `p_correct` bleibt bis ≥100 abgeschlossene Settlements und Brier < 0,25 gesperrt — richtig so, aber es fehlt die **Checkliste/Anzeige**, wie weit der Weg ist („37/100 Settlements, Brier 0,31"). Ziel: Fortschritts-Kachel im System-Tab + Doku, was beim Freischalten zu prüfen ist. |
 | A8 | D | **Markenrabatte/Karten** (`--brand-rebate`) | 2–4 ct können das F2-Ranking umdrehen. Erst sinnvoll, sobald echte Rabattdaten vorliegen; bis dahin soll die GUI im Ranking anzeigen „rechnet ohne Rabattprogramme" (Transparenz-Hinweis). |
 | A9 | D | **w(h)-Rückkopplung anschließen** | Persönliches Zeitprofil (`wallet.wh_hours`) wird berechnet, fließt aber nicht in „billigste Stunde"/F3 ein (Konzept §5.5). Ab ≥8 Füllungen aktivieren, vorher Default — mit UI-Hinweis ab wann personalisiert. |
-| A10 | D | **Engine-Ausbau nach Konzept §3** | Hampel-Filter (§3.1), gepoolter Feiertags-Dummy je Bundesland, Zeit-seit-letztem-Sprung-Feature, M3-Zweitmodell/Ensemble, Mehrtage-Backtests (+3/+7 d), 21-Tage-Backtest im Auto-Lauf, Rolling-PICP als Live-Badge je Station. Alles dokumentiert offen; erst nach echter Datenabnahme kalibrierbar. |
+| A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** | Hampel-Filter, Feiertags-/Sprung-Features, Mehrtage- und 21-Tage-Backtest sowie Rolling-PICP sind seit PR #69 implementiert und testgedeckt. Offen bleiben das unabhängige Zweitmodell mit inverse-MASE-Ensemble und die Abnahme aller M3-Kriterien auf echten Live-Daten. |
 | A11 | D | **Gemeinsame Bootstrap-Ziehung für `p_lohnt`** | Konzept §4.2: Marktgleichlauf darf nicht wegkorreliert werden. Braucht stationsübergreifenden Resampling-Schritt (gleicher Tagesblock je Ziehung) — eigener Arbeitsschritt, in LUECKEN begründet offen. |
 | A12 | P2 | **Station-Lebenszyklus & Zustandsehrlichkeit** | „führt E10 nicht" vs. „temporär geschlossen" vs. „keine Daten seit n Tagen" wird in der GUI nicht unterschieden. Tote Stationen (`no prices` > 7 Kalendertage) sollen automatisch aus Ranking/Polling-Set fallen (konfigurierbar), nicht dauerhaft Kontingent kosten. |
 | A13 | P2 | **Preis-Zwillinge: automatische Warnung** | Identische Preisverläufe zweier Stationen (Doppel-Source/Franchise) werden nur manuell per `compare-stations` gefunden. Ziel: Warnung im Selektions-Artefakt + System-Tab. |
@@ -47,7 +47,7 @@
 | B2 | P0 | **Schema-Version & Migration des Feedback-Stores** | `store.json` hat kein `schema_version`; die nächste Feldänderung bricht alte Stores still. Ziel: Versionsfeld + Migrations-Funktionen je Versionssprung, Test „alter Store → neue Version". |
 | B4 | P1 | **Aggregierter System-Alarm (ein Block in `/health` + GUI-Badge)** | Heartbeat fehlt, `no prices` > Schwelle, Job 2× fehlgeschlagen, Store-Größe, freier Festplattenplatz, CUSUM-`break_flag` — heute über sieben Endpunkte verteilt und niemand schaut aktiv. Ziel: `alarms[]` in `/api/v1/health`, roter/grüner Punkt im Header aller Tabs, optional ntfy-Versand (siehe A5). |
 | B5 | P1 | **POST-/Schreib-Endpunkte gegen Flut härten** | Rate-Limit deckt GET gut ab, aber `POST /fills`/`/intent` können von einem defekten Client das Ledger fluten. Zusätzlich Plausibilitätsgrenzen serverseitig: `tanked_at` nur plausibles Fenster (nicht 1970/2100), Liter/Preis Obergrenzen, Stringlängen. Kein Auth — einfache IP-/Minuten-Drossel reicht. |
-| B6 | P1 | **Luftlinien-/Umweg-Faktor vereinheitlichen** | Server rechnet in `/decide` Luftlinie × 1,3 (`CIRCUITY`), die GUI rechnet lokal × 1,0 und schickt das an `/route/evaluate` → „Server prüfen" kann eine als lohnend angezeigte Alternative für unlohnend erklären. Ziel: Server liefert `detour_km_est` + `dist_mode` pro Alternative; die GUI zeigt exakt diese Zahl, keine eigene Schätzung. |
+| B6 | P1 | **Server als einzige Quelle der Umweg-Strecke** | GUI und Server verwenden seit PR #69 beide Luftlinie × 1,3; der frühere Faktor-Widerspruch ist behoben. Die Schätzung bleibt aber doppelt implementiert. Ziel: Server liefert `detour_km_est` + `dist_mode` pro Alternative; die GUI zeigt exakt diese Zahl und berechnet die Strecke nicht selbst. |
 | B7 | P1 | **HTTP-Effizienz: gzip, getrenntes Caching, Poll-Bündelung** | `no-store` auf allem, keine Kompression, GUI pollt 8+ Ressourcen (~14.700 Req/Tag > 10.000er Anonym-Budget, Zählerstand aus V2-Analyse vor den B5-Fixes — jetzt mit LRU gemildert, aber strukturell ungelöst). Ziel: `Content-Encoding: gzip`; Hash-Assets `immutable`; semi-statische Endpunkte (heatmap, last_forecasts) 15–120 min cachebar; ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls. |
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
 | B9 | P2 | **Versionierung & Nachverfolgbarkeit** | Keine App-Version/kein Commit-Hash in `/health`, kein `CHANGELOG.md`. Bei Pi/NAS/Fallback-GUI (3 Oberflächen!) weiß man im Fehlerfall nicht, was wo läuft. Ziel: Version + Build-Hash in `/health`, Anzeige im Footer, kurzes CHANGELOG ab jetzt. |
@@ -80,7 +80,6 @@
 | D2 | P1 | **e2e-Abdeckung der Entscheidungs-Flows** | Jetzige Playwright-Specs mocken nur `stations`/`series`/`forecast`. Fehlt: `decide`-Mock → Intent „Ich warte" → Due-Prompt → Fill buchen → Fehlerfall 429/Offline (Erfolgsmeldung darf nur bei Erfolg — V3-Fix ist drin, aber ungesichert). |
 | D3 | P2 | **Property-Tests Umweg-Ökonomie** | `K = d·(c/100)·p + (d/v)·z`: Monotonie in Litern, Grenzfälle `z=0`, `d=0`, `liters→∞` mit fast-check abstecken (Schwellen-`worth_it`-Logik inklusive). |
 | D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90" nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
-| D5 | P1 | **`test:e2e` ist auf `main` rot (Feststellung 11.09. bei PR-Vorbereitung)** | Die letzten ≥5 Läufe auf `main` scheitern am Schritt `npm run test:e2e` (web-Job) — unabhängig vom Inhalt der jeweiligen Änderungen (auch Docs-only). Damit liefert CI faktisch kein Merge-Signal mehr und jeder PR „erbt" Rot. Ziel: Ursache finden (Playwright-Browser/Deps/Port-1355-Annahme), Schritt stabilisieren; bis dahin gehört der e2e-Lauf in den lokalen Pflicht-Spiegel vor jedem Push (AGENTS.md aktualisieren), nicht in „läuft schon in CI". |
 
 ---
 
@@ -95,7 +94,6 @@ Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persisten
 
 | # | Prio | Fehlt / falsch | Definition of Done |
 |---|---|---|---|
-| E1 | **P0** | **Toter Block „Paar-Ökonomie" im Stations-Labor:** `pairEco`/`pairDailyNets` werden berechnet, aber **nirgends gerendert**; die drei Steuerungs-State-Setter (`setPairAltId`, `setPairDetourKm`, `setPairPeak`) haben **0 Aufrufe** — keine Eingabemöglichkeit. Zusätzlich §0.4-Verstoß: `refPrice: selectedPrice \|\| 1.70`, `altPrice: … \|\| (selectedPrice - 0.04 \|\| 1.66)` → **erfundene Preise**, exakt die Kategorie, die V3 im Hero behoben hat. | Entscheiden: Panel mit echten Controls fertig bauen (Vergleichsstation-Select, Umweg-km, Peak-Schalter, Preise nur aus echten Meldungen) **oder** den Block samt States entfernen. Kein dritter Zustand. |
 | E2 | **P0** | **Komma-Dezimalzahlen nicht eingebbar:** Beleg-Dialog nutzt `type="number"` ohne `inputMode="decimal"`; deutsche Mobil-Tastaturen liefern `1,689` → `Number("1,689") = NaN` → generische Fehlermeldung, ohne Hinweis warum. Der Hauptbeleg der App scheitert an der Tastatur. | `inputMode="decimal"`, Wert als String state, `,`→`.`-Normalisierung, Sofort-Validierung mit Klartext („Preis wie an der Säule, z. B. 1,629"). Unit-Test in `data.test.ts`. |
 | E3 | P1 | **GUI-Validierung deckt Server-Regeln nicht ab:** `customLiters`/`customPrice` haben **keine min/max-Attribute**; GUI prüft nur `> 0`, Server verlangt 5–100 L / 0,40–5,00 €/L → Eingaben wie 101 L oder 9,99 € scheitern erst nach Server-Roundtrip mit Fachfehler. | `min`/`max`/`step` am Input + gleiche Grenzen clientseitig prüfen, Fehlermeldung direkt am Feld. |
 | E4 | P1 | **Beleg ohne Station wählbar:** Bei nicht ausgewählter Station sendet `handleCustomFill` `station_id: "custom"` → Server lehnt mit `unknown_station` ab. Der Nutzer kann den Fehler nicht selbst beheben. | Stations-Auswahl im Beleg-Dialog oder Button deaktivieren + Hinweis „Station wählen". |
@@ -129,12 +127,10 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| H1 | **P1** | **Umweg-Schwellen sind doppelt gepflegt:** GUI `detourEconomics` kodiert hart `netEur ≥ 1,5 / ≥ 0,5`; Server nutzt `active_thresholds()["elsewhere_net_eur"]` (verändert sich mit M7-Tuning). Dieselbe B6-Divergenz wie Circuitity ×1,0 (GUI) vs ×1,3 (Server) — zusammen ein Formel-Konsistenz-Problem: „Server prüfen" kann das Gegenteil der GUI-Badge sagen. | Server liefert `verdict`/`worth_it` + Schwellen in der Antwort; GUI zeigt ausschließlich das; `data.ts`-Konstanten entfernen. (Mit B6 zusammenführen.) |
-| H2 | P1 | **Platzhalterpreise in `pairEco`** (1,70 / −0,04 / 1,66): macht jede dahinter liegende Rechnung mathematisch falsch angezeigt — redundant zu E1, weil dort die Lösung (bauen oder löschen) festgelegt wird. | Siehe E1. |
+| H1 | **P1** | **Umweg-Schwellen sind doppelt gepflegt:** GUI `detourEconomics` kodiert hart `netEur ≥ 1,5 / ≥ 0,5`; Server nutzt `active_thresholds()["elsewhere_net_eur"]` (verändert sich mit M7-Tuning). Trotz des seit PR #69 einheitlichen Streckenfaktors kann „Server prüfen" deshalb noch das Gegenteil der GUI-Ampel sagen. | Server liefert `verdict`/`worth_it` + Schwellen in der Antwort; GUI zeigt ausschließlich das; `data.ts`-Konstanten entfernen. (Mit B6 zusammenführen.) |
 | H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn \|Δ\| > Rauschband) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten". |
-| H4 | D | **Weiterhin offen (bereits gelistet, hier qualifiziert):** Hampel-Filter, Feiertags-Dummy je Bundesland, Zeitsprung-Hazard, M3-Ensemble, Mehrtage-Backtests, 21-Tage-Gate im Auto-Lauf, Rolling-PICP live, gemeinsame Bootstrap-Ziehung über Stationen (§4.2), w(h)-Rückkopplung ≥ 8 Füllungen. | Bleiben A9–A11 mit Datenbedarf; Reihenfolge nach M7-Fortschritt (A7). |
+| H4 | D | **Weiterhin offen (bereits gelistet, hier qualifiziert):** M3-Zweitmodell/Ensemble, gemeinsame Bootstrap-Ziehung über Stationen (§4.2) und w(h)-Rückkopplung ab ≥8 Füllungen. | Bleiben A9–A11 mit Datenbedarf; Reihenfolge nach M7-Fortschritt (A7). |
 | H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in engine/README, statt stillem `None`. |
-| H6 | P2 | **Magic Numbers in Auswertungen:** `pairDailyNets` startet bei `i = 42` (Warm-up) ohne Kommentar/Config; Scoreboard-Formeln sind Tests gedeckt, die Zahl aber nicht benannt. | Konstante benennen + Herkunft (42-Tage-Trainingsfenster) kommentieren; in D3-Property-Tests mit aufnehmen. |
 
 ---
 
@@ -150,11 +146,9 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 8. **C5** Zwei schnelle A11y-Fixes: Ampel-Chip mit Symbol (▲/▼/●) statt nur Farbe, Slider-`aria-valuetext` in €.
 9. **D2** Eine Playwright-Spec „decide → intent → fill → due" mit Mocks — schützt alle V3-Fixes.
 10. **A7** Fortschritts-Kachel „M7: n/100 Settlements, Brier x (Ziel < 0,25)" — Daten liegen in `/stats/summary` schon vor.
-11. **E1** `pairEco`-Block löschen (wenn nicht sofort fertig gebaut) — entfernt toten Code **und** den letzten erfundenen-Preis-Verstoß.
-12. **E2** Komma-Eingabe: `inputMode="decimal"` + `,`→`.`-Normalisierung im Beleg-Dialog.
-13. **G1** `cache.log`-Cap (20 Zeilen Code) — stoppt unbegrenztes Wachstum auf dem RP2.
-14. **F1** Tab-Label „Statistik" → „Werkstatt" (inkl. Sekundär-Texte) — eine Zeile Code + Terminologie-Commit.
-15. **H6** `i = 42` benennen — fünf Minuten, rechtfertigt sich beim nächsten Lesen.
+11. **E2** Komma-Eingabe: `inputMode="decimal"` + `,`→`.`-Normalisierung im Beleg-Dialog.
+12. **G1** `cache.log`-Cap (20 Zeilen Code) — stoppt unbegrenztes Wachstum auf dem RP2.
+13. **F1** Tab-Label „Statistik" → „Werkstatt" (inkl. Sekundär-Texte) — eine Zeile Code + Terminologie-Commit.
 
 ---
 
@@ -168,7 +162,7 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 ## Reihenfolge-Empfehlung
 
 1. **P0 zuerst:** A3 (Storno), B1 (Backup), B2 (Schema-Version) — schützt die persönliche Bilanz, bevor echte Daten anwachsen.
-2. **P0 aus Prüfstrang 2 sofort danach:** E1 (toten Block + erfundene Preise entfernen/fertig bauen) und E2 (Komma-Eingabe) — beides betrifft den Alltags-Hauptweg des Produkts.
+2. **P0 aus Prüfstrang 2 sofort danach:** E2 (Komma-Eingabe) — betrifft den Alltags-Hauptweg des Produkts.
 3. **Dann B6/H1 + B7** (Entscheidungs-Zahlen intern widerspruchsfrei und API-Last gesenkt) und **C1** (Inbetriebnahme führbar machen).
 4. **D1 direkt vor dem ersten größeren C-Feature** — sonst verdoppelt sich der Aufwand.
 5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie stehen begründet in docs/LUECKEN.md.

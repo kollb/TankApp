@@ -152,6 +152,62 @@ def test_decide_endpoint_and_gate(b4_settings):
         thread.join(timeout=2)
 
 
+def test_decide_red_rolling_picp_is_published_and_blocks_advice(b4_settings):
+    from app.decide import evaluate_decide
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.729)
+
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "origin": NOW.isoformat(),
+                        "points": [
+                            {
+                                "timestamp": "2026-09-10T18:00:00+02:00",
+                                "q50": 1.60,
+                            }
+                        ],
+                        "rolling_picp_7d": {
+                            "current": {
+                                "day": "2026-09-09",
+                                "picp_pct": 88.5,
+                                "points": 144,
+                                "badge": "red",
+                            }
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    body = evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
+
+    assert body["primary"]["action"] == "no_advice"
+    assert "Intervallquote" in body["primary"]["reason_short"]
+    assert body["quality"] == {
+        "rolling_picp_7d_pct": 88.5,
+        "rolling_picp_7d_points": 144,
+        "rolling_picp_7d_badge": "red",
+        "rolling_picp_7d_as_of": "2026-09-09",
+        "rolling_picp_window_days": 7,
+        "rolling_picp_nominal_pct": 95.0,
+        "gate": "picp",
+    }
+
+
 def test_decide_p_side_from_forecast_distribution(b4_settings):
     """P-Seite (Konzept §4.1–4.3) aus den Draws — nicht aus der Ledger-Quote.
 
@@ -263,6 +319,15 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
 def test_table_action_gates_use_distribution_p(b4_settings):
     """F1/F2-Gates rechnen mit p_besser/p_lohnt, nicht mit einer Ledger-Quote."""
     from app.decide import _table_action
+
+    # Güte-Gate (§4.5 Schritt 1) hat Vorrang vor F1/F2 und unterdrückt
+    # die Empfehlung bei rotem Rolling-PICP.
+    quality_action, quality_badge, quality_reason = _table_action(
+        1.70, 1.64, 2.40, None, 0.9, quality_gate="picp"
+    )
+    assert quality_action == "no_advice"
+    assert quality_badge == "low"
+    assert "Intervallquote" in quality_reason
 
     # Grauzone (§4.4): p_besser ∈ [40, 60] % → no_advice, ohne n-Hürde.
     action, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)

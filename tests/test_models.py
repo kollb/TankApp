@@ -7,6 +7,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from engine.data import normalize_observations, prepare_series
+from engine.holidays import holiday_flags
 from engine.selection import (
     cusum_break,
     daily_median_series,
@@ -18,6 +19,7 @@ from engine.models import (
     fit,
     fit_ar2,
     isotonic_decreasing,
+    jump_age_hours,
     noon_law_projection,
     predict,
     seasonal_scale,
@@ -80,6 +82,16 @@ def test_ar_does_not_bridge_gaps_or_fit_short_data():
     residual = np.tile([1.0, np.nan, 1.0, np.nan], 100)
     np.testing.assert_array_equal(fit_ar2(residual), [0, 0])
     np.testing.assert_array_equal(fit_ar2(np.array([1.0])), [0, 0])
+
+
+def test_jump_age_resets_to_unknown_across_missing_prices():
+    index = pd.date_range("2026-07-01", periods=7, freq="1h", tz="UTC")
+    price = pd.Series([1.70, 1.72, 1.72, np.nan, 1.72, 1.75, 1.75], index=index)
+
+    np.testing.assert_allclose(
+        jump_age_hours(price),
+        [168.0, 0.0, 1.0, 168.0, 168.0, 0.0, 1.0],
+    )
 
 
 def test_artifact_round_trip_is_deterministic(series, cfg, tmp_path):
@@ -146,6 +158,17 @@ def test_local_clock_features_survive_dst(cfg):
     times = pd.DatetimeIndex(["2026-03-28T06:00:00+00:00", "2026-03-29T05:00:00+00:00"])
     x = features(times, cfg)
     np.testing.assert_allclose(x[0, :5], x[1, :5])
+
+
+def test_holiday_flags_use_local_day_and_degrade_without_subdivision(cfg):
+    times = pd.date_range("2026-10-02 12:00", periods=3, freq="D", tz=cfg.timezone)
+    flags, source = holiday_flags(times, "HE", cfg.timezone)
+    np.testing.assert_array_equal(flags, [0.0, 1.0, 0.0])
+    assert source == "holidays:HE"  # 03.10.: bundesweiter Feiertag
+
+    flags, source = holiday_flags(times, None, cfg.timezone)
+    np.testing.assert_array_equal(flags, np.zeros(3))
+    assert source == "none"
 
 
 def test_sparse_forecast_grid_advances_ar_from_origin(series, cfg):

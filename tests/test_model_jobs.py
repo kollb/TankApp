@@ -156,3 +156,16 @@ def test_config_carries_worker_setting():
 
     assert Settings().model_workers == 0
     assert isinstance(Config(), Config)
+
+
+def test_settings_parse_city_subdivisions(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv(
+        "TANKAPP_CITY_SUBDIVS",
+        "Frankfurt:DE-HE; Gütersloh : nw;kaputt;Leer:;ZuLang:XYZ",
+    )
+    assert Settings.from_env().city_subdivs == {
+        "Frankfurt": "HE",
+        "Gütersloh": "NW",
+    }

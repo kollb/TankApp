@@ -354,6 +354,13 @@ def test_history_default_is_one_year_without_a_retention_delete():
     assert args.since is None
 
 
+def test_nas_compose_forwards_city_subdivisions_to_engine():
+    compose = (
+        Path(__file__).resolve().parents[1] / "ops" / "nas" / "app" / "compose.yml"
+    ).read_text(encoding="utf-8")
+    assert 'TANKAPP_CITY_SUBDIVS: "${TANKAPP_CITY_SUBDIVS:-}"' in compose
+
+
 def test_nas_download_reuses_existing_uncompressed_day(tmp_path, monkeypatch):
     import fetch_history
 

@@ -365,7 +365,11 @@ def notify_nas(cfg: Cfg, state: State, watermark: dt.datetime) -> None:
     if not cfg.nas_webhook_url:
         return
     now_mono = time.monotonic()
-    if now_mono - state.last_webhook < WEBHOOK_MIN_GAP_S:
+    # ``0.0`` means "noch nie gesendet".  On a freshly booted Pi,
+    # ``monotonic()`` is itself smaller than the minimum gap; comparing it
+    # unconditionally with zero would therefore suppress the very first
+    # trigger for up to four minutes after boot.
+    if state.last_webhook and now_mono - state.last_webhook < WEBHOOK_MIN_GAP_S:
         return
     state.last_webhook = now_mono
     body = json.dumps(

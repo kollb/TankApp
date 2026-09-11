@@ -4,6 +4,7 @@ import pytest
 
 from engine.config import Config
 from engine.data import (
+    describe,
     load_observations,
     normalize_observations,
     parse_times,
@@ -161,6 +162,29 @@ def test_loading_gzip_preserves_null_prices_and_fuel_filter(cfg, tmp_path):
     assert len(rows) == 2
     assert rows.price.isna().all()
     assert quality["invalid_open_prices"] == 1
+
+
+def test_hampel_removes_only_isolated_poll_artifact(cfg):
+    times = pd.date_range("2026-07-01T06:00:00Z", periods=31, freq="5min")
+    prices = np.full(len(times), 1.70)
+    prices[15] = 1.90
+    rows, _ = normalize_observations(raw(times.astype(str), prices, ["open"] * 31), cfg)
+    series = prepare_series(rows, cfg)[0]
+
+    assert series.hampel_removed == 1
+    assert pd.isna(series.frame.loc[times[15], "price"])
+    assert describe(series, cfg)["hampel_removed_points"] == 1
+
+
+def test_hampel_preserves_persistent_real_price_change(cfg):
+    times = pd.date_range("2026-07-01T06:00:00Z", periods=31, freq="5min")
+    prices = np.full(len(times), 1.70)
+    prices[15:] = 1.80
+    rows, _ = normalize_observations(raw(times.astype(str), prices, ["open"] * 31), cfg)
+    series = prepare_series(rows, cfg)[0]
+
+    assert series.hampel_removed == 0
+    assert series.frame.loc[times[15] :, "price"].eq(1.80).all()
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,7 @@ def refresh(settings: Settings, now=None, progress=None):
     from engine.bootstrap import bootstrap, write_csv
     from engine.config import Config
     from engine.data import load_observations, prepare_series
+    from engine.models import SCHEMA_VERSION
     from engine.selection import SelectionConfig, compute_all as compute_selection
     from engine.storage import write_json
     from polling_plan import collector_lock
@@ -419,7 +420,14 @@ def refresh(settings: Settings, now=None, progress=None):
             )
         print("models: publiziere ...", flush=True)
         model_name = "models-" + uuid.uuid4().hex + ".json"
-        write_json(output / model_name, {"schema_version": 1, "models": models})
+        # Das Bundle-Schema muss der von ``engine forecast`` geprüften
+        # Modellversion entsprechen.  Nach dem Schema-2-Sprung darf hier kein
+        # historisch fest verdrahtetes ``1`` stehen, sonst ist das soeben vom
+        # NAS erzeugte Artefakt für die CLI sofort ungültig.
+        write_json(
+            output / model_name,
+            {"schema_version": SCHEMA_VERSION, "models": models},
+        )
         # This is the sole publication point. Partial files or failed fits never replace it.
         write_json(
             output / "current.json",

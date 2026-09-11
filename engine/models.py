@@ -129,14 +129,21 @@ def jump_age_hours(
         delta = np.abs(np.diff(values))
         both = finite[1:] & finite[:-1]
         jump[1:] = both & (delta >= threshold)
-    positions = np.where(jump, np.arange(n), -1)
-    last = np.maximum.accumulate(positions)
-    has = last >= 0
+    # A missing price invalidates knowledge of the last jump.  Do not carry a
+    # pre-outage jump through the gap: when observations resume at the same
+    # level we cannot know whether another jump happened while the station was
+    # closed/offline.  The capped "unknown" state remains in force until a new
+    # jump is directly observed between adjacent finite points.
     age = np.full(n, JUMP_AGE_CAP_HOURS, dtype=float)
-    if has.any():
+    events = jump | ~finite
+    event_positions = np.where(events, np.arange(n), -1)
+    last_event = np.maximum.accumulate(event_positions)
+    lookup = np.maximum(last_event, 0)
+    known = finite & (last_event >= 0) & jump[lookup]
+    if known.any():
         index = np.asarray(price.index, dtype="datetime64[ns]")
-        elapsed = (index[has] - index[last[has]]) / np.timedelta64(1, "h")
-        age[has] = np.minimum(elapsed, JUMP_AGE_CAP_HOURS)
+        elapsed = (index[known] - index[last_event[known]]) / np.timedelta64(1, "h")
+        age[known] = np.minimum(elapsed, JUMP_AGE_CAP_HOURS)
     return age
 
 
