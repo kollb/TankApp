@@ -65,6 +65,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 | `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
 | `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
 | `POST /api/v1/jobs/trigger` | **Issue 50** | Uploader-Webhook: Inferenz-Job nach sicherem InfluxDB-Write (Debounce + Idempotenz) |
+| `GET /api/v1/jobs/{job}/log?lines=200` | **B6** | Letzte Zeilen von `runtime/jobs/{job}.log` — dieselbe Datei wie `tail -f` auf dem NAS |
 | `GET /api/v1/route/evaluate?...` | **B3.12** | Umweg-Ökonomie serverseitig |
 
 ## Decide (B4 Primär)
@@ -492,6 +493,33 @@ curl -s -X POST http://nas:1355/api/v1/jobs/trigger \
   - **Debounce:** Mindestabstand 15 min für `models`, 1 h für `selection` → Übersprung `debounced`
   - **Idempotenz:** gleiche `watermark` wie beim letzten erfolgreichen Lauf (verankert in `runtime/jobs/<job>.json → data_watermark`, sichtbar in `GET /api/v1/health`) und letzter Erfolg jünger als das Job-Intervall → Übersprung `duplicate`; letzter Erfolg älter als das Job-Intervall → Lauf trotzdem (Prognosefenster bleiben am aktuellen Tag verankert)
 - Mehrere Trigger während eines Laufs werden zusammengeführt (nur die neueste `watermark` bleibt gemerkt); fehlschlägt der Webhook beim Uploader, läuft alles unverändert intervallbasiert weiter (keine neue harte Abhängigkeit)
+
+## Job-Log (GET, B6)
+
+`GET /api/v1/jobs/{job}/log?lines=200` — liefert die letzten Zeilen des
+Job-Logs, das `app/progress.py` je Job fortschreibt
+(`tail -f data/runtime/jobs/<job>.log` zeigt dieselben Zeilen).
+
+```bash
+curl -s "http://nas:1355/api/v1/jobs/models/log?lines=200" | jq
+```
+
+- `{job}`: nur `archive`, `models`, `selection`, `settlement`; alles andere →
+  `404 not_found` (keine beliebigen Pfade, kein Directory-Listing)
+- `lines`: 1–500, Standard 200; keine Zahl → `400 invalid_query`
+- Antwort: `{"job": "models", "available": true, "count": 200, "total": 300,
+  "lines": ["2026-09-11T06:10:00Z models: [31 %] …", …], "updated_at": "…",
+  "error_code": null}`
+- Fehlt die Datei (noch kein Lauf): `200` mit
+  `{"available": false, "count": 0, "lines": [], "error_code": "log_missing"}`
+  — kein 500, damit die GUI einen ehrlichen Leerzustand zeigen kann
+- Jede Zeile wird beim Auslesen bereinigt (`app/errors.redact`): absolute
+  Pfade werden auf den Dateinamen gekürzt, `token=…`/`password=…`/`Bearer …`,
+  URL-Zugangsdaten und lange Schlüssel-Blobs entfernt
+- Die **Ursache** eines Fehlschlags steht zusätzlich als ein Satz im Status:
+  `GET /api/v1/health → jobs.<job>.error_detail` (z. B.
+  `"ValueError: zu wenig Historie für current.json"`), geschrieben von
+  `app/worker.py` bei `state: failed`
 
 ## Route Evaluate (B3.12)
 

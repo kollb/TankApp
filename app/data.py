@@ -171,6 +171,8 @@ def public_job(settings, name):
             # Webhook-Triggerlaufs (Epochensekunden) — Idempotenz-Anker.
             "data_watermark",
             "error_code",
+            # Bereinigte Ursache des letzten Fehlschlags (app/errors.py).
+            "error_detail",
         )
     }
     # Fortschritt nur für *laufende* Jobs (app/progress.py): „Läuft …“ ohne
@@ -368,6 +370,45 @@ class LiveData:
             }
         except (ValueError, OSError, KeyError, TypeError):
             return {"points": [], "error_code": "influx_read_failed"}
+
+    def job_log(self, name: str, lines: int = 200):
+        """Letzte Zeilen von ``runtime/jobs/<name>.log`` (bereinigt, begrenzt).
+
+        Dieselbe Datei, die auf dem NAS auch ``tail -f`` lesen kann; über die
+        API erreichbar, damit „Modell-Update fehlgeschlagen“ im GUI nicht das
+        Ende der Diagnose ist. Nur bekannte Jobs, nur diese eine Datei, jede
+        Zeile durch :func:`app.errors.redact` — nie ein beliebiger Pfad.
+        """
+        from .errors import redact
+        from .worker import INTERVALS
+
+        empty = {
+            "job": name,
+            "available": False,
+            "count": 0,
+            "total": 0,
+            "lines": [],
+            "updated_at": None,
+            "error_code": "log_missing",
+        }
+        if name not in INTERVALS:
+            return {**empty, "error_code": "unknown_job"}
+        path = self.settings.runtime / "jobs" / f"{name}.log"
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            stamp = path.stat().st_mtime
+        except OSError:
+            return empty
+        tail = raw[-max(1, min(500, lines)) :]
+        return {
+            "job": name,
+            "available": True,
+            "count": len(tail),
+            "total": len(raw),
+            "lines": [redact(line, 400) for line in tail],
+            "updated_at": dt.datetime.fromtimestamp(stamp, UTC).isoformat(),
+            "error_code": None,
+        }
 
     def trigger_info(self):
         """Issue 50: Webhook-Trigger-Statistik des Schedulers (Prozesslebenszeit).

@@ -742,3 +742,176 @@ def test_worker_run_writes_progress_and_duration(model_setup, monkeypatch):
     assert "beendet: success" in log
     state = json.loads((model_setup.runtime / "jobs" / "models.json").read_text())
     assert state["state"] == "success"
+
+
+# --- Fehlerursache statt „fehlgeschlagen“ (B6) ------------------------------
+
+
+def test_redact_hides_paths_credentials_and_blobs():
+    from app.errors import public_detail, redact
+
+    # Pfade: nur der Dateiname bleibt, das Verzeichnislayout nicht.
+    assert redact("No such file or directory: '/data/runtime/jobs/models.json'") == (
+        "No such file or directory: 'models.json'"
+    )
+    # Zugangsdaten in jeder Schreibweise verschwinden.
+    assert "supergeheim" not in redact("token=supergeheim")
+    assert "geheim" not in redact("password: geheim")
+    assert "geheim" not in redact("Authorization: Bearer geheim")
+    assert "user:pw" not in redact("http://user:pw@nas:8086 fehlt")
+    # Influx-Token-artige Blobs sind weg, Stations-UUIDs bleiben lesbar.
+    assert "a" * 64 not in redact("token " + "a" * 64)
+    assert UID in redact(f"Station {UID} ohne Modell")
+
+    class Broken(Exception):
+        pass
+
+    detail = public_detail(
+        Broken("lesbar: /data/runtime/jobs/models.json mit token=geheim")
+    )
+    assert detail.startswith("Broken: lesbar:")
+    assert "models.json" in detail and "geheim" not in detail
+    # Unbegrenzte Meldungen werden auf einen Satz gekürzt.
+    assert len(public_detail(Broken("x" * 5000))) <= 240
+
+
+def test_worker_failure_keeps_sanitized_reason_in_status_and_log(
+    model_setup, monkeypatch
+):
+    """„Fehlgeschlagen“ allein ist keine Diagnose — die Ursache schon."""
+    import app.worker as worker
+
+    def boom(name, settings, progress=None):
+        raise RuntimeError(
+            "InfluxDB nicht erreichbar: "
+            "url=http://tankapp:geheim@nas:8086 token=supergeheim "
+            "Datei /data/runtime/jobs/models.json"
+        )
+
+    monkeypatch.setattr(worker, "execute", boom)
+    assert worker.run("models", model_setup) == 2
+
+    state = json.loads((model_setup.runtime / "jobs" / "models.json").read_text())
+    assert state["state"] == "failed" and state["error_code"] == "job_failed"
+    detail = state["error_detail"]
+    assert "RuntimeError" in detail and "InfluxDB nicht erreichbar" in detail
+    assert "geheim" not in detail and "supergeheim" not in detail
+    assert "/data" not in detail
+
+    # Dieselbe Zeile steht im Log (tail -f) und damit auch im GUI-Logpanel.
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "Fehler:" in log and "InfluxDB nicht erreichbar" in log
+    assert "supergeheim" not in log
+
+
+def test_missing_dependency_names_the_module(model_setup, monkeypatch):
+    import app.worker as worker
+
+    def boom(name, settings, progress=None):
+        raise ModuleNotFoundError("No module named pandas")
+
+    monkeypatch.setattr(worker, "execute", boom)
+    assert worker.run("models", model_setup) == 2
+    state = json.loads((model_setup.runtime / "jobs" / "models.json").read_text())
+    assert state["error_code"] == "dependencies_missing"
+    assert "pandas" in state["error_detail"]
+
+
+def test_health_exposes_error_detail(tmp_path):
+    from app.data import LiveData
+
+    settings = Settings(
+        data=tmp_path / "data",
+        archive=tmp_path / "archive",
+        polling=tmp_path / "polling.json",
+        influx_env=tmp_path / "influx.env",
+        netrc=tmp_path / "netrc",
+    )
+    jobs = settings.runtime / "jobs"
+    jobs.mkdir(parents=True)
+    (jobs / "models.json").write_text(
+        json.dumps(
+            {
+                "state": "failed",
+                "error_code": "job_failed",
+                "error_detail": "ValueError: zu wenig Historie für models.json",
+            }
+        )
+    )
+    health = LiveData(settings, query=lambda *_: [], clock=lambda: NOW).health()
+    assert health["jobs"]["models"]["error_detail"].startswith("ValueError")
+
+
+def test_job_log_endpoint_serves_tail_lines(tmp_path):
+    import threading
+    import urllib.error
+    import urllib.request
+
+    from app.data import LiveData
+    from app.server import make_server
+
+    polling = tmp_path / "polling.json"
+    polling.write_text(json.dumps({"sets": {}}))
+    static = tmp_path / "web"
+    static.mkdir()
+    (static / "index.html").write_text("<html>t</html>")
+    settings = Settings(
+        data=tmp_path / "data",
+        archive=tmp_path / "archive",
+        polling=polling,
+        influx_env=tmp_path / "influx.env",
+        netrc=tmp_path / "netrc",
+        static=static,
+    )
+    jobs = settings.runtime / "jobs"
+    jobs.mkdir(parents=True)
+    # 300 Zeilen, eine davon mit einem Geheimnis — es darf nicht herausgehen.
+    (jobs / "models.log").write_text(
+        "\n".join(
+            [f"2026-09-11T06:0{i % 10}:00Z models: [10 %] Start" for i in range(299)]
+            + ["2026-09-11T06:10:00Z models: token=supergeheim Datei /data/x.json"]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    data = LiveData(settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def get(path):
+        with urllib.request.urlopen(base + path, timeout=5) as response:
+            return json.load(response), response.status
+
+    try:
+        payload, status = get("/api/v1/jobs/models/log?lines=50")
+        assert status == 200
+        assert payload["available"] is True
+        assert payload["count"] == 50 and payload["total"] == 300
+        assert payload["lines"][-1].endswith("Datei x.json")
+        assert "supergeheim" not in payload["lines"][-1]
+        assert all("/data" not in line for line in payload["lines"])
+
+        # Ohne Logdatei: ehrliche Antwort statt 500.
+        payload, status = get("/api/v1/jobs/selection/log")
+        assert status == 200
+        assert payload == {
+            "job": "selection",
+            "available": False,
+            "count": 0,
+            "total": 0,
+            "lines": [],
+            "updated_at": None,
+            "error_code": "log_missing",
+        }
+
+        # Unbekannte Jobs und Müll-Parameter existieren nicht.
+        for bad in ("/api/v1/jobs/backup/log", "/api/v1/jobs/models/log?lines=abc"):
+            with pytest.raises(urllib.error.HTTPError) as error:
+                get(bad)
+            assert error.value.code in (400, 404)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

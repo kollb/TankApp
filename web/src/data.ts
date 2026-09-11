@@ -60,6 +60,25 @@ export type Job = {
   /** Issue 50: letzter übersprungener Trigger („debounced“ | „duplicate“). */
   last_trigger_skip?: string | null;
   error_code: string | null;
+  /** Bereinigte Ursache des letzten Fehlschlags (app/errors.py, ohne Pfade/Token). */
+  error_detail?: string | null;
+};
+/** Letzte Zeilen von `runtime/jobs/<job>.log` (GET /api/v1/jobs/<job>/log). */
+export type JobLog = {
+  job: string;
+  available: boolean;
+  count: number;
+  total: number;
+  lines: string[];
+  updated_at: string | null;
+  error_code?: string | null;
+};
+/** Anzeigenamen der vier NAS-Jobs (wie die Job-Karten im System-Tab). */
+export const JOB_LABELS: Record<string, string> = {
+  archive: "Archiv-Sync",
+  models: "Modell-Update",
+  selection: "Selektion Ranking",
+  settlement: "Beleg-Verarbeitung",
 };
 export type CollectorStatus = {
   available: boolean;

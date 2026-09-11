@@ -299,7 +299,7 @@ Modellumfang: zunächst e10, bei Bedarf `--model-fuels e10,e5,diesel`.
 ### Modell-Lauf beobachten
 
 „Läuft …“ ohne Fortschritt ist die häufigste Frage beim ersten Modell-Lauf.
-Drei Stellen, an denen derselbe Fortschritt steht (B5):
+Vier Stellen, an denen derselbe Fortschritt steht (B5/B6):
 
 1. **GUI → System-Tab**: Job-Karte zeigt Phase (`InfluxDB-Export`,
    `Archiv aufbereiten`, `Modelle fitten + Backtest`, `Selektion (δ̂)`,
@@ -311,6 +311,11 @@ Drei Stellen, an denen derselbe Fortschritt steht (B5):
 3. **Log**: `docker logs -f tankapp-app` bzw. `journalctl -u tankapp -f`
    **und** zusätzlich als Datei `data/runtime/jobs/models.log`
    (letzte 500 Zeilen, auch ohne Docker-Zugriff lesbar).
+4. **Log im GUI/per API** (B6): System-Tab → „Job-Log“ (Umschalter
+   Archiv-Sync / Modell-Update / Selektion / Beleg-Verarbeitung, 100–500
+   Zeilen, alle 15 s neu, solange ein Job läuft) bzw.
+   `GET /api/v1/jobs/<job>/log?lines=200`. Der Sprung direkt dorthin geht
+   über das Log-Symbol in der jeweiligen Job-Karte.
 
 ```bash
 # Fortschritt live
@@ -319,10 +324,59 @@ docker logs -f tankapp-app | grep models
 tail -f data/runtime/jobs/models.log
 # Status auf einen Blick
 cat data/runtime/jobs/models.progress.json
+# Log per API (ohne Terminal auf dem NAS)
+curl -s "http://<nas>:1355/api/v1/jobs/models/log?lines=200" | jq -r '.lines[]'
 ```
 
 Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
 rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
+
+### Lauf manuell anstoßen
+
+Der Scheduler läuft im App-Dienst; im GUI gibt es bewusst keinen Startknopf
+(Schreibpfade gehören nicht in eine Nur-Lese-Oberfläche). Zwei Wege, beide
+ohne Neustart des Dienstes:
+
+```bash
+# 1) Webhook — nur für models und selection. Der Scheduler entscheidet über
+#    Debounce (models 15 min, selection 60 min) und Idempotenz.
+curl -fsS -X POST http://<nas>:1355/api/v1/jobs/trigger \
+  -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"job":"models"}'
+# Antwort {"status":"queued","job":"models"} heißt geweckt, nicht gelaufen:
+# Der Scheduler prüft Debounce und Datenstand selbst (docs/API.md).
+
+# 2) Direkt im Container — startet sofort und umgeht Debounce/Idempotenz.
+docker exec tankapp-app python3 -m app.worker models
+# Exit-Code 0 = Erfolg, 2 = fehlgeschlagen (wie vom Scheduler gewertet).
+```
+
+Ohne konfiguriertes `TANKAPP_WEBHOOK_TOKEN` oder ohne Job-Betrieb
+(`tankapp.py nas-up --jobs`) existiert der Webhook-Endpunkt nicht (404).
+Weg 2 schreibt Status und Log genau wie ein planmäßiger Lauf und ist damit
+auch die beste Probe, wenn ein Lauf nachts fehlgeschlagen ist.
+
+### Fehlgeschlagener Lauf: Ursache statt Raten
+
+Steht auf einer Job-Karte „Fehlgeschlagen“ (bzw. `state: failed` in
+`runtime/jobs/<job>.json`), nennt dieselbe Karte die **Ursache** in einem
+Satz — z. B. `ValueError: zu wenig Historie für current.json`. Der Text wird
+vor dem Rausgeben bereinigt (`app/errors.py`): Pfade bleiben nur als
+Dateiname, Token, Passwörter und lange Schlüssel-Blobs verschwinden.
+Derselbe Satz steht an vier Stellen:
+
+| Wo | Fundstelle |
+|---|---|
+| GUI | System-Tab → Job-Karte, Zeile „Ursache:“ |
+| API | `GET /api/v1/health` → `jobs.<job>.error_detail` |
+| Statusdatei | `data/runtime/jobs/<job>.json` → `error_detail` |
+| Log | `data/runtime/jobs/<job>.log`, Zeile „Fehler: …“ (auch im GUI-Logpanel) |
+
+Häufige Ursachen: zu wenig/lückenhaftes Archiv (`insufficient_history`,
+`archive_incomplete`), fehlende Rechenpakete (`dependencies_missing`, im
+NAS-Image nicht zu erwarten), fehlende Konfiguration (`waiting`, keine
+Störung) — sonst `job_failed` mit der bereinigten Ausnahme.
 
 ### Modell-Lauf beschleunigen
 

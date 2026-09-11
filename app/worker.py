@@ -1,4 +1,9 @@
-"""Supervised NAS jobs. No interactive prompts, no unchecked error text in status files."""
+"""Supervised NAS jobs. No interactive prompts, no raw error text in status files.
+
+Scheitert ein Lauf, steht die Ursache bereinigt (ohne Pfade und Zugangsdaten)
+in ``runtime/jobs/<job>.json → error_detail``, in ``runtime/jobs/<job>.log``
+und damit auch im GUI — siehe ``app/errors.py``.
+"""
 
 import argparse
 import datetime as dt
@@ -10,6 +15,7 @@ import tankapp
 from polling_plan import atomic_json
 from .config import Settings
 from .data import read_json
+from .errors import public_detail
 from .progress import JobProgress
 
 
@@ -71,12 +77,17 @@ def execute(name, settings, progress=None):
         except ModuleNotFoundError:
             raise
         except Exception as exc:
+            detail = public_detail(exc)
             print(
-                f"selection: {type(exc).__name__}; Details werden nicht ausgegeben.",
+                f"selection: {detail}",
                 file=sys.stderr,
                 flush=True,
             )
-            return {"state": "failed", "error_code": "selection_failed"}
+            return {
+                "state": "failed",
+                "error_code": "selection_failed",
+                "error_detail": detail,
+            }
 
     from .refresh import refresh
 
@@ -145,17 +156,33 @@ def run(name, settings):
 
     try:
         return finish(execute(name, settings, progress))
-    except ModuleNotFoundError:
-        return finish({"state": "failed", "error_code": "dependencies_missing"})
-    except Exception as exc:
-        print(
-            f"{name}: {type(exc).__name__}; Details/Zugangsdaten werden nicht ausgegeben.",
-            file=sys.stderr,
-            flush=True,
+    except ModuleNotFoundError as exc:
+        # Modulname ist Teil der Ursache („No module named pandas“) und trägt
+        # keine Interna — deshalb anders als unten bereinigt, aber begrenzt.
+        return finish(
+            {
+                "state": "failed",
+                "error_code": "dependencies_missing",
+                "error_detail": public_detail(exc, max_len=120),
+            }
         )
-        return finish({"state": "failed", "error_code": "job_failed"})
-    except BaseException:
-        finish({"state": "failed", "error_code": "interrupted"})
+    except Exception as exc:
+        # Bereinigte Ursache: derselbe Text landet in Job-Status, Job-Log und
+        # GUI. Rohe Meldungen können Pfade und Zugangsdaten enthalten.
+        detail = public_detail(exc)
+        progress.note(f"Fehler: {detail}")
+        print(f"{name}: {detail}", file=sys.stderr, flush=True)
+        return finish(
+            {"state": "failed", "error_code": "job_failed", "error_detail": detail}
+        )
+    except BaseException as exc:
+        finish(
+            {
+                "state": "failed",
+                "error_code": "interrupted",
+                "error_detail": public_detail(exc, max_len=120),
+            }
+        )
         raise
 
 

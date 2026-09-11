@@ -320,6 +320,21 @@ class Handler(SimpleHTTPRequestHandler):
         if norm_path == "/api/v1/collector/status":
             return self.data.collector_status()
 
+        # --- Job-Log: dieselben Zeilen wie `tail -f runtime/jobs/<job>.log` ---
+        # Nur die vier bekannten Jobs, nur deren Logdatei, zeilenweise bereinigt
+        # (app/errors.redact). Damit ist „fehlgeschlagen“ im GUI erklärbar,
+        # ohne Pfade, Token oder Konfigurationsinhalte herauszugeben.
+        if norm_path.startswith("/api/v1/jobs/") and norm_path.endswith("/log"):
+            name = norm_path[len("/api/v1/jobs/") : -len("/log")]
+            if name not in INTERVALS:
+                return None
+            raw_lines = value("lines", "200")
+            try:
+                lines = int(raw_lines) if raw_lines is not None else 200
+            except (TypeError, ValueError):
+                raise ValueError("invalid_query")
+            return self.data.job_log(name, lines)
+
         if norm_path == "/api/v1/route/evaluate":
             # Sammelt alle Query-Parameter in ein dict (max 15 Felder)
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
