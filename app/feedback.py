@@ -1066,26 +1066,24 @@ def compute_advice_stats(
     )
     limit = _de(M7_BRIER_THRESHOLD)
     if n_all < M7_MIN_RECOMMENDATIONS:
-        gate_status = f"M7-Kalibrierung steht aus (n={n_all} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
+        gate_status = f"Kalibrierung steht aus (n={n_all} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
     elif brier_all is None:
         # Zählstand reicht, aber kein Settlement trägt eine P-Schätzung: Der
         # Score ist nicht messbar. „kalibriert" wäre erfunden (§0.4).
         gate_status = (
-            f"M7-Kalibrierung nicht messbar (n={n_all}, keine P-Schätzung im Ledger)"
+            f"Kalibrierung nicht messbar (n={n_all}, keine P-Schätzung im Ledger)"
         )
     elif n_brier_all < M7_MIN_RECOMMENDATIONS:
         # Gesamt-n reicht, aber die P-Teilmenge nicht — der Brier wäre über
         # eine andere Grundgesamtheit gemessen als der Zähler (Prüfstand §3.6).
         gate_status = (
-            f"M7-Kalibrierung nicht messbar (n={n_all}, nur {n_brier_all} "
+            f"Kalibrierung nicht messbar (n={n_all}, nur {n_brier_all} "
             "mit P-Schätzung im Ledger)"
         )
     elif brier_all >= M7_BRIER_THRESHOLD:
-        gate_status = (
-            f"M7-Kalibrierung nicht erreicht (Brier {_de(brier_all)} ≥ {limit})"
-        )
+        gate_status = f"Kalibrierung nicht erreicht (Brier {_de(brier_all)} ≥ {limit})"
     else:
-        gate_status = f"M7 kalibriert (n={n_all}, Brier {_de(brier_all)} < {limit})"
+        gate_status = f"Kalibriert (n={n_all}, Brier {_de(brier_all)} < {limit})"
 
     return {
         "n": n,

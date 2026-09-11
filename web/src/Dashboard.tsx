@@ -1154,7 +1154,7 @@ export function Dashboard() {
       setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
-    setActionFeedback("✓ Füllung im Wallet-Ledger verbucht!");
+    setActionFeedback("✓ Füllung in deiner Tank-Bilanz verbucht!");
     setDueDismissed(true);
     setRefresh((r) => r + 1);
     setTimeout(() => setActionFeedback(null), 4000);
@@ -1180,7 +1180,7 @@ export function Dashboard() {
       setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
-    setActionFeedback("✓ Angepasste Füllung im Wallet-Ledger gespeichert!");
+    setActionFeedback("✓ Angepasste Füllung in deiner Tank-Bilanz gespeichert!");
     setCustomFillOpen(false);
     setDueDismissed(true);
     setRefresh((r) => r + 1);
@@ -1460,7 +1460,7 @@ export function Dashboard() {
                         Hast du getankt?
                       </h3>
                       <p className="mt-1 text-xs text-slate-400 leading-relaxed max-w-xl">
-                        Das empfohlene Zeitfenster ist vorüber. Ein kurzer Tap erfasst deinen Beleg im persönlichen Wallet-Ledger.
+                        Das empfohlene Zeitfenster ist vorüber. Ein kurzer Tap erfasst deinen Beleg in deiner persönlichen Tank-Bilanz.
                       </p>
                     </div>
                   </div>
@@ -1770,15 +1770,25 @@ export function Dashboard() {
                           <Route size={11} /> Hier oder woanders?
                         </p>
                         {rec.alternatives_nearby.map((a) => (
-                          <div key={a.station_id} className="flex items-center justify-between gap-2 py-0.5 font-mono text-[11px]">
-                            <span className="truncate text-slate-300">{a.name}</span>
-                            <span className="text-slate-400">
-                              {euro(a.price, 3)} · +{euro(a.detour_km, 1)} km
-                            </span>
-                            <span className={a.worth_it ? "font-bold text-emerald-300" : "text-slate-500"}>
-                              {a.net_eur >= 0 ? "+" : ""}{euro(a.net_eur)} €{a.worth_it ? " ✓" : ""}
-                              {a.p_lohnt != null ? ` · ${Math.round(a.p_lohnt * 100)} %` : ""}
-                            </span>
+                          <div key={a.station_id} className="py-1.5 first:pt-0.5 last:pb-0.5">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="min-w-0 text-[12px] leading-snug text-slate-300">
+                                {a.name}
+                              </span>
+                              <span className={`shrink-0 font-mono text-[12px] font-bold ${a.worth_it ? "text-emerald-300" : "text-slate-500"}`}>
+                                {a.net_eur >= 0 ? "+" : "−"}
+                                {euro(Math.abs(a.net_eur))} €
+                                {a.worth_it ? " ✓" : ""}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 flex items-center justify-between gap-3 font-mono text-[11px] text-slate-500">
+                              <span>
+                                {euro(a.price, 3)} €/L · +{euro(a.detour_km, 1)} km
+                              </span>
+                              <span className="shrink-0">
+                                {a.p_lohnt != null ? `${Math.round(a.p_lohnt * 100)} % lohnt sich` : ""}
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1830,7 +1840,7 @@ export function Dashboard() {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                       <Scale size={14} className="text-emerald-400" />
-                      Modell-Trefferquote (Advice-Ledger)
+                      Modell-Trefferquote
                     </span>
                     <Badge warning={!statsSummaryRes.data?.live_advice.calibrated}>
                       {statsSummaryRes.data?.live_advice.gate_status || (statsSummaryRes.data?.live_advice.calibrated ? "Kalibriert" : "Vor-Kalibrierung")}
@@ -1851,7 +1861,8 @@ export function Dashboard() {
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Auto-Settlement nach Fensterende. Brier-Score 30d:{" "}
+                    Wie oft lag die Empfehlung „warten“ / „jetzt tanken“ rückblickend richtig.
+                    Brier-Score 30d:{" "}
                     <span className="font-mono text-slate-400">
                       {statsSummaryRes.data?.live_advice.brier_30d ?? "—"}
                     </span>
@@ -1867,7 +1878,7 @@ export function Dashboard() {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                       <FuelIcon size={14} className="text-sky-400" />
-                      Deine Tank-Bilanz (Wallet-Ledger)
+                      Deine Tank-Bilanz
                     </span>
                     <span className="font-mono text-[11px] text-emerald-400 font-bold">
                       +{euro(statsSummaryRes.data?.wallet.saved_eur ?? 0)} €
@@ -1888,7 +1899,13 @@ export function Dashboard() {
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Persönliche Ersparnis vs. immer sofort tanken (nur aus echten Tankbelegen).
+                    Dein Geld: gespart gegenüber „immer sofort tanken“ — gerechnet
+                    nur aus deinen echten Tankbelegen.
+                    {(statsSummaryRes.data?.wallet.n_fills ?? 0) === 0 && (
+                      <span className="block mt-1 text-slate-400">
+                        So geht's: nach dem Tanken oben „Ja, wie empfohlen“ oder „✎ Anders“ tippen.
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1903,7 +1920,7 @@ export function Dashboard() {
                     Einordnung
                   </span>{" "}
                   {decideRes.data?.calibrated
-                    ? "Kalibrierte Empfehlung aktiv — Ampel oben beachten. Trefferquoten und Brier-Score stehen im Advice-Ledger."
+                    ? "Kalibrierte Empfehlung aktiv — Ampel oben beachten. Trefferquoten und Brier-Score stehen in der Modell-Trefferquote."
                     : "Eine belastbare Warteempfehlung ist noch nicht freigegeben. Historie und Prognosen werden geprüft — bis dahin zählen hier nur aktuelle Preismeldungen."}
                 </p>
               </div>
@@ -1982,7 +1999,7 @@ export function Dashboard() {
               </div>
               {dayStrip.error || dayStrip.data?.error_code ? (
                 <Empty>
-                  {problem(dayStrip.data?.error_code) ||
+                  {problem(dayStrip.data?.error_code || dayStrip.errorCode) ||
                     "Der Tagesverlauf konnte nicht geladen werden."}
                 </Empty>
               ) : stripCells.some((c) => c.value !== null) ? (
@@ -2529,6 +2546,13 @@ export function Dashboard() {
                     <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
                     <strong className="text-slate-200">jetzt tanken</strong>.
                     <span className="text-slate-500 block mt-1">
+                      08:00 ist der feste Tages-Anker: Ausgangslage ist der letzte
+                      gemeldete Preis vor 08:00, verglichen mit der billigsten
+                      Stunde des restlichen Tages. So ist jeder Tag im Prüfstand
+                      gleich bewertbar — nicht abhängig davon, wann man zufällig
+                      nachschaut.
+                    </span>
+                    <span className="text-slate-500 block mt-1">
                       Die Produktion entscheidet weiterhin mit der kalibrierten Entscheidungstabelle; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
                     </span>
                   </p>
@@ -2554,8 +2578,8 @@ export function Dashboard() {
               </div>
               {labTotals.n === 0 ? (
                 <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-xs leading-relaxed text-slate-400">
-                  {problem((labData as any)?.error_code) ||
-                    "Noch keine 08:00-Entscheidungszeilen — nach dem ersten Modell-Job erscheint hier das echte Regel-Ergebnis."}
+                  {problem((labData as any)?.error_code || statsSummaryRes.errorCode) ||
+                    "Noch keine Tages-Entscheidungen. Sie erscheinen, sobald der Modell-Lauf genug echte Preishistorie ausgewertet hat (mind. 7 vollständige Tage je Station)."}
                 </div>
               ) : (
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -2612,7 +2636,7 @@ export function Dashboard() {
                     {labScores.length === 0 && (
                       <tr>
                         <td colSpan={9} className="px-4 py-6 text-center text-xs text-slate-500">
-                          {problem((labData as any)?.error_code) || "Noch keine Entscheidungszeilen — der Modell-Job füllt dieses Scoreboard."}
+                          {problem((labData as any)?.error_code || statsSummaryRes.errorCode) || "Noch keine Entscheidungszeilen — sie kommen aus dem täglichen Modell-Lauf, sobald genug Preishistorie vorliegt."}
                         </td>
                       </tr>
                     )}
@@ -2694,7 +2718,7 @@ export function Dashboard() {
                       Empfehlungen. Kein Tages-Nenner: 90 Übergangs-Tage sind
                       keine 100 Empfehlungen. */}
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-                    <p className="text-slate-400">Kalibrierungs-Freigabe · M7-Gate (§0.4)</p>
+                    <p className="text-slate-400">Kalibrierungs-Freigabe</p>
                     <p className="mt-1 text-base font-bold text-amber-300">{gateStatus}</p>
                     {m7Line && (
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
@@ -2707,7 +2731,7 @@ export function Dashboard() {
                       Fortschritt; sie schaltet keine Prozentanzeige frei. */}
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">
-                      Übergangsregel · Datenhygiene (nicht das M7-Gate)
+                      Datenumstellung (Archiv → Live)
                     </p>
                     <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
                       {transitionLine}
@@ -2753,7 +2777,7 @@ export function Dashboard() {
               </div>
               {history.error || history.data?.error_code ? (
                 <Empty>
-                  {problem(history.data?.error_code) ||
+                  {problem(history.data?.error_code || history.errorCode) ||
                     "Der Preisverlauf konnte nicht geladen werden."}
                 </Empty>
               ) : series.length ? (
@@ -2816,7 +2840,7 @@ export function Dashboard() {
               </div>
               {forecast.error || forecast.data?.error_code ? (
                 <Empty>
-                  {problem(forecast.data?.error_code) ||
+                  {problem(forecast.data?.error_code || forecast.errorCode) ||
                     "Der Modell-Ausblick konnte nicht geladen werden."}
                 </Empty>
               ) : forecastWindow && modelSeries.length ? (

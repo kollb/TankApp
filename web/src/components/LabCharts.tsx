@@ -265,12 +265,21 @@ export function CalibChart({
   points: { p: number; hit: number; n: number; cls: number }[];
   livePoints?: { p: number; hit: number; n: number }[];
 }) {
+  if (points.length === 0 && livePoints.length === 0) {
+    return (
+      <div className="rounded-lg bg-slate-900/60 p-4 text-xs leading-relaxed text-slate-500">
+        Noch keine Kalibrierungsdaten — die Punkte erscheinen mit den ersten
+        ausgewerteten Empfehlungen (Backtest) bzw. Live-Entscheidungen.
+      </div>
+    );
+  }
+
   const W = 720;
-  const H = 300;
-  const padL = 46;
-  const padR = 16;
-  const padT = 18;
-  const padB = 30;
+  const H = 340;
+  const padL = 52;
+  const padR = 20;
+  const padT = 22;
+  const padB = 58;
   const iw = W - padL - padR;
   const ih = H - padT - padB;
   const X = (v: number) => padL + v * iw;
@@ -285,18 +294,18 @@ export function CalibChart({
         <g key={f}>
           <line x1={X(0)} x2={X(1)} y1={Y(f)} y2={Y(f)} stroke="#1e293b" strokeWidth={0.6} />
           <line x1={X(f)} x2={X(f)} y1={Y(0)} y2={Y(1)} stroke="#1e293b" strokeWidth={0.6} />
-          <text x={padL - 6} y={Y(f) + 3.5} textAnchor="end" fontSize={10.5} fill="#64748b">
+          <text x={padL - 6} y={Y(f) + 4} textAnchor="end" fontSize={11} fill="#64748b">
             {Math.round(f * 100)}%
           </text>
-          <text x={X(f)} y={H - 9} textAnchor="middle" fontSize={10.5} fill="#64748b">
+          <text x={X(f)} y={H - 36} textAnchor="middle" fontSize={11} fill="#64748b">
             {Math.round(f * 100)}%
           </text>
         </g>
       ))}
-      <text x={padL} y={H - 18} fontSize={10} fill="#64748b">
+      <text x={padL} y={H - 22} fontSize={10.5} fill="#64748b">
         behauptet P(S&gt;0)
       </text>
-      <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10} fill="#64748b">
+      <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10.5} fill="#64748b">
         real beobachtet
       </text>
 
@@ -319,19 +328,19 @@ export function CalibChart({
         </g>
       ))}
 
-      <g transform={`translate(${padL}, ${H - 14})`}>
+      <g transform={`translate(${padL}, ${H - 10})`}>
         <circle cx={4} cy={0} r={4} fill="#34d399" />
-        <text x={12} y={4} fontSize={10.5} fill="#94a3b8">
+        <text x={12} y={4} fontSize={11} fill="#94a3b8">
           Werktag
         </text>
-        <circle cx={90} cy={0} r={4} fill="#38bdf8" />
-        <text x={98} y={4} fontSize={10.5} fill="#94a3b8">
+        <circle cx={96} cy={0} r={4} fill="#38bdf8" />
+        <text x={104} y={4} fontSize={11} fill="#94a3b8">
           Wochenende
         </text>
         {livePoints.length > 0 && (
           <>
-            <circle cx={200} cy={0} r={4} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />
-            <text x={208} y={4} fontSize={10.5} fill="#f59e0b">
+            <circle cx={216} cy={0} r={4} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />
+            <text x={224} y={4} fontSize={11} fill="#f59e0b">
               Live (Schicht B)
             </text>
           </>

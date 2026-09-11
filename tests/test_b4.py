@@ -237,9 +237,7 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     )
 
     live = LiveData(b4_settings, query=query, clock=lambda: NOW)
-    body = evaluate_decide(
-        live, {"city": "Frankfurt", "fuel": "e10", "liters": 40}
-    )
+    body = evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
 
     # Vor dem M7-Gate bleibt p_correct null — die Verteilungs-P wird aber
     # trotzdem berechnet und gespeichert (Brier braucht sie, um das Gate zu öffnen).
@@ -745,9 +743,7 @@ def test_m7_gate_thresholds_come_from_the_ledger_not_the_calendar(b4_settings):
     advice = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})["live_advice"]
     assert advice["min_recommendations"] == M7_MIN_RECOMMENDATIONS == 100
     assert advice["brier_threshold"] == M7_BRIER_THRESHOLD == 0.25
-    assert advice["gate_status"] == (
-        "M7-Kalibrierung steht aus (n=0 < 100 Empfehlungen)"
-    )
+    assert advice["gate_status"] == ("Kalibrierung steht aus (n=0 < 100 Empfehlungen)")
     # Kein Tageszähler im Gate-Text: Die Übergangsregel ist eine andere Freigabe.
     assert "Tage" not in advice["gate_status"]
 
@@ -763,7 +759,7 @@ def test_m7_gate_calibrated_counts_settlements_and_brier():
     assert advice["n"] == 100
     assert advice["brier_30d"] == 0.01
     assert advice["calibrated"] is True
-    assert advice["gate_status"] == "M7 kalibriert (n=100, Brier 0,01 < 0,25)"
+    assert advice["gate_status"] == "Kalibriert (n=100, Brier 0,01 < 0,25)"
 
 
 def test_m7_gate_is_unmeasurable_without_probability():
@@ -782,7 +778,7 @@ def test_m7_gate_is_unmeasurable_without_probability():
     assert advice["brier_30d"] is None
     assert advice["calibrated"] is False
     assert advice["gate_status"] == (
-        "M7-Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
+        "Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
     )
 
 

@@ -466,9 +466,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
 
   it("keeps the 90-day transition rule in its own line", () => {
     const line = transitionRuleLine(phase);
-    expect(line).toContain("Übergangsregel Datenhygiene");
-    expect(line).toContain("live_only_days");
-    expect(line).toContain("kein Nenner des M7-Gates");
+    expect(line).toContain("Datenumstellung Archiv → Live-Polling");
     expect(line).toContain("Noch 88 von 90 bewerteten Live-Tagen");
     // Ohne Veröffentlichung bleibt es bei der Aussage, nicht bei einer Zahl.
     expect(transitionRuleLine(null)).toContain("noch keine Engine-Daten");
