@@ -459,6 +459,46 @@ class LiveData:
         if problem:
             collector["polling_error"] = problem
 
+        # Jobs einmal zusammenbauen — derselbe Block dient unten den Alarmen.
+        jobs = {
+            name: {
+                **public_job(self.settings, name),
+                **(
+                    {"state": "failed", "error_code": job_errors[name]}
+                    if name in job_errors
+                    else {}
+                ),
+                # Issue 50: Trigger-Zählung/Sprung-Grund nur für die
+                # inferenz-baren Jobs (models/selection) vorhanden.
+                **trigger_stats.get(name, {}),
+            }
+            for name in ("archive", "models", "selection", "settlement")
+        }
+
+        # B4: aggregierter Alarm-Block — nur Aggregation der obigen Prüfungen,
+        # keine neuen Netz-/Influx-Zugriffe (Healthcheck-Budget 3–5 s).
+        try:
+            from .alarms import build_alarms
+
+            alarms = build_alarms(
+                self.settings,
+                collector=collector,
+                jobs=jobs,
+                job_errors=job_errors,
+                polling_error=problem,
+                station_count=len(metas),
+            )
+        except Exception:
+            alarms = []
+
+        # B9: Version + Build-Hash (einmalig beim Import bestimmt).
+        try:
+            from .version import build_info
+
+            version = build_info()
+        except Exception:
+            version = {"version": None, "commit": None}
+
         # Selection count: support both old flat and new by_fuel formats.
         # Count all ranked stations (not top_global, which is capped at 10/fuel),
         # so /health and /api/v1/selection agree.
@@ -479,12 +519,15 @@ class LiveData:
         return {
             "app": "online",
             "generated_at": self.clock().isoformat(),
+            "version": version.get("version"),
+            "commit": version.get("commit"),
             "polling_error": problem,
             "station_count": len(metas),
             "influx_configured": self.settings.influx_env.is_file(),
             "archive_configured": self.settings.netrc.is_file()
             and self.settings.netrc.stat().st_size > 0,
             "jobs_enabled": self.jobs_enabled,
+            "alarms": alarms,
             "archive": {
                 key: archive.get(key)
                 for key in (
@@ -495,20 +538,7 @@ class LiveData:
                     "last_complete_until",
                 )
             },
-            "jobs": {
-                name: {
-                    **public_job(self.settings, name),
-                    **(
-                        {"state": "failed", "error_code": job_errors[name]}
-                        if name in job_errors
-                        else {}
-                    ),
-                    # Issue 50: Trigger-Zählung/Sprung-Grund nur für die
-                    # inferenz-baren Jobs (models/selection) vorhanden.
-                    **trigger_stats.get(name, {}),
-                }
-                for name in ("archive", "models", "selection", "settlement")
-            },
+            "jobs": jobs,
             "models": {
                 "published_at": bundle.get("published_at"),
                 "count": len(bundle.get("forecasts", [])),
@@ -855,6 +885,89 @@ class LiveData:
             return {"error_code": str(exc) or "invalid_query"}
         except Exception:
             return {"error_code": "record_fill_failed"}
+
+    def fills(self):
+        """Wallet-Verlauf: alle Tankbelege (auch stornierte, mit ``voided``-Flag)."""
+        try:
+            from .feedback import StoreTooLarge, load_store
+
+            store = load_store(self.settings)
+            fills = store.get("fills", [])
+            return {
+                "generated_at": self.clock().isoformat(),
+                "count": len(fills),
+                "fills": fills,
+                "error_code": None,
+            }
+        except StoreTooLarge:
+            return {"error_code": "store_too_large", "fills": [], "count": 0}
+        except Exception:
+            return {"error_code": "fills_read_failed", "fills": [], "count": 0}
+
+    def void_fill(self, fill_id: str):
+        """Storniert einen Beleg (A3) — Flag statt Löschen, mit Audit-Spur."""
+        try:
+            from .feedback import StoreTooLarge, void_fill
+
+            return void_fill(self.settings, fill_id, clock=self.clock)
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
+        except Exception:
+            return {"error_code": "void_fill_failed"}
+
+    def fills_csv(self) -> str:
+        """Tankbelege als CSV (A6) — ``;``-getrennt, deutsche Dezimalkommas.
+
+        Die eigene Bilanz gehört dem Nutzer: ein Download im System-Tab macht
+        sie portabel (Tabellenkalkulation, Archiv), ohne Fremdformate.
+        """
+        import csv
+        import io
+
+        payload = self.fills()
+        rows = payload.get("fills", []) or []
+        buf = io.StringIO()
+        writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(
+            [
+                "id",
+                "getankt_am",
+                "station_id",
+                "station",
+                "liter",
+                "preis_eur_l",
+                "kraftstoff",
+                "quelle",
+                "compliance",
+                "ersparnis_eur",
+                "storniert",
+            ]
+        )
+
+        def de(number) -> str:
+            try:
+                value = float(number)
+            except (TypeError, ValueError):
+                return ""
+            return f"{value:.2f}".replace(".", ",")
+
+        for f in rows:
+            writer.writerow(
+                [
+                    f.get("id", ""),
+                    f.get("tanked_at", ""),
+                    f.get("station_id", ""),
+                    f.get("station_name", ""),
+                    de(f.get("liters")),
+                    de(f.get("price_paid")),
+                    f.get("fuel", ""),
+                    f.get("source", ""),
+                    f.get("compliance", ""),
+                    de(f.get("saved_vs_always_now_eur")),
+                    "ja" if f.get("voided") else "",
+                ]
+            )
+        return buf.getvalue()
 
     def stats_summary(self, params: dict):
         """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""

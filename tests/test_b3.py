@@ -599,3 +599,36 @@ def test_selection_counts_all_stations_not_top_global(b3_settings):
 
     health = live.health()
     assert health["selection"]["count"] == 12
+
+
+def test_health_reports_version_and_alarms(b3_settings):
+    """B9/B4: /health trägt Version, Commit und einen aggregierten alarms[]-Block."""
+
+    def fail_network(*_):
+        raise AssertionError("health muss ohne Netzwerk-Query funktionieren")
+
+    live = LiveData(b3_settings, query=fail_network, clock=lambda: NOW)
+    health = live.health()
+
+    # B9: Version ist gesetzt (Fallback None nur in Docker ohne .git möglich).
+    assert "version" in health
+    assert isinstance(health["version"], str) or health["version"] is None
+    assert "commit" in health
+
+    # B4: Alarme als Liste — ohne Collector-Herzschlag mindestens dieser eine.
+    assert isinstance(health["alarms"], list)
+    codes = {a["code"] for a in health["alarms"]}
+    assert "collector_no_heartbeat" in codes
+    for alarm in health["alarms"]:
+        assert alarm["severity"] in ("error", "warn")
+        assert alarm["message"]
+
+
+def test_health_alarm_for_failed_job(b3_settings):
+    """B4: ein fehlgeschlagener NAS-Job erscheint als Alarm in /health."""
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+    live.job_errors = {"models": "job_start_failed"}
+    health = live.health()
+    failed = [a for a in health["alarms"] if a["code"] == "job_failed"]
+    assert failed, health["alarms"]
+    assert failed[0]["job"] == "models"

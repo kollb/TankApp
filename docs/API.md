@@ -364,7 +364,7 @@ Fehler:
 
 - `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `polling_invalid`, `invalid_query` (u. a. bei unbekannter Stadt/Station, ungültigem fuel/kind/weeks)
 
-Frontend: Tab Statistik → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl.
+Frontend: Tab Werkstatt → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl.
 
 ## Selection / Meine Stationen (B3.10)
 

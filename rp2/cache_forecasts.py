@@ -24,15 +24,46 @@ CACHE_DIR = Path("/tmp/tankapp_cache")
 CACHE_FILE = CACHE_DIR / "last_forecasts.json"
 LOG_FILE = CACHE_DIR / "cache.log"
 
+# G1: cache.log wächst sonst unbegrenzt (alle 5 min ein Anhang, auf der SD-Karte
+# des RP2 zusätzlich Schreibverschleiß). Ring-Cap: ab dieser Größe wird nur die
+# jüngere Hälfte behalten.
+LOG_MAX_BYTES = int(os.environ.get("CACHE_LOG_MAX_BYTES", str(1024 * 1024)))
+
 # Stelle sicher, dass Cache-Verzeichnis existiert
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def cap_log_file(path: Path, max_bytes: int = LOG_MAX_BYTES) -> None:
+    """Kappt eine Logdatei auf einen Ring (ältere Hälfte verwerfen).
+
+    Überschreitet ``path`` die Größe ``max_bytes``, bleiben nur die letzten
+    ``max_bytes // 2`` Bytes erhalten (mit Markierungszeile). Ein Anhang von
+    288 Zeilen/Tag lässt die Datei so nie über die Grenze wachsen.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return
+    if size <= max_bytes:
+        return
+    keep = max(max_bytes // 2, 1)
+    try:
+        with open(path, "rb") as f:
+            f.seek(max(0, size - keep))
+            tail = f.read()
+        with open(path, "wb") as f:
+            f.write(b"... (aeltere Zeilen verworfen, Log-Cap) ...\n" + tail)
+    except OSError:
+        # Nicht kaputt gehen, nur weil das Log nicht gekappt werden kann.
+        pass
+
+
 def log(message):
-    """Loggt Nachrichten mit Zeitstempel."""
+    """Loggt Nachrichten mit Zeitstempel (Datei mit Größen-Cap)."""
     timestamp = datetime.now(timezone.utc).isoformat()
     with open(LOG_FILE, "a") as f:
         f.write(f"[{timestamp}] {message}\n")
+    cap_log_file(LOG_FILE)
     print(f"[{timestamp}] {message}")
 
 

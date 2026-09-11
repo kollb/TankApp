@@ -5,7 +5,7 @@ test("honest setup state and all three views", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Noch kein frischer Preis." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Statistik", exact: true }).click();
+  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
   await expect(
     page.getByRole("heading", {
       name: "Nachvollziehen statt blind vertrauen.",
