@@ -786,17 +786,20 @@ class LiveData:
         """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1)."""
         try:
             from .decide import evaluate_decide
+            from .feedback import StoreTooLarge
 
             return evaluate_decide(self, params)
         except ValueError as e:
             raise e
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
         except Exception:
             return {"error_code": "decide_failed"}
 
     def episodes(self, status: str | None = None):
         """Liefert Episoden (z. B. ?status=due für Due-Prompt beim Öffnen)."""
         try:
-            from .feedback import load_store
+            from .feedback import StoreTooLarge, load_store
 
             store = load_store(self.settings)
             episodes = store.get("episodes", [])
@@ -810,34 +813,49 @@ class LiveData:
                 "episodes": filtered,
                 "error_code": None,
             }
+        except StoreTooLarge:
+            return {"error_code": "store_too_large", "episodes": [], "count": 0}
         except Exception:
             return {"error_code": "episodes_read_failed", "episodes": [], "count": 0}
 
     def set_intent(self, episode_id: str, intent: str):
         """Setzt den Intent einer Episode (wait, navigate, refuel_now, dismiss)."""
         try:
-            from .feedback import set_intent
+            from .feedback import StoreTooLarge, set_intent
 
             res = set_intent(self.settings, episode_id, intent, clock=self.clock)
             return res
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
         except Exception:
             return {"error_code": "set_intent_failed"}
 
     def record_fill(self, fill_data: dict):
-        """Registriert einen Tankbeleg (Wallet-Ledger)."""
+        """Registriert einen Tankbeleg (Wallet-Ledger) — validiert (§11.2)."""
         try:
-            from .feedback import record_fill
+            from .feedback import StoreTooLarge, record_fill
 
-            return record_fill(self.settings, fill_data, clock=self.clock)
+            return record_fill(
+                self.settings, fill_data, live_data=self, clock=self.clock
+            )
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
+        except ValueError as exc:
+            # Fach-Codes aus der Validierung (invalid_liters, invalid_price,
+            # unknown_station, price_not_available, …) statt Pauschal-Fehler.
+            return {"error_code": str(exc) or "invalid_query"}
         except Exception:
             return {"error_code": "record_fill_failed"}
 
     def stats_summary(self, params: dict):
         """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""
         try:
+            from .feedback import StoreTooLarge
             from .stats_summary import evaluate_stats_summary
 
             return evaluate_stats_summary(self, params)
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
         except Exception:
             return {"error_code": "stats_summary_failed"}
 

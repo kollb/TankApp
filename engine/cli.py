@@ -378,3 +378,10 @@ def main(argv=None) -> int:
     except (ValueError, OSError, KeyError, TypeError, EOFError) as exc:
         print(f"Engine abgebrochen: {exc}", file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":
+    # Vorher war `python -m engine.cli` ein stiller Null-Exit (kein
+    # __main__-Block); korrekt ist `python -m engine`, aber `-m engine.cli`
+    # darf ruhig dasselbe tun statt zu verpuffen (Prüfstand §3.8).
+    raise SystemExit(main())

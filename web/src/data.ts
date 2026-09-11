@@ -1081,6 +1081,10 @@ export const messages: Record<string, string> = {
   invalid_query: "Ungültige Anfrageparameter.",
   invalid_fuel: "Unbekannter Kraftstoff (e10, e5 oder diesel erwartet).",
   invalid_liters: "Tankmenge außerhalb 5–100 Liter.",
+  invalid_price: "Preis außerhalb 0,40–5,00 €/L.",
+  store_too_large:
+    "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
+  not_implemented: "Dieser Endpunkt ist (bewusst) nicht implementiert.",
   invalid_consumption: "Verbrauch außerhalb 3–20 L/100 km.",
   invalid_speed: "Tempo außerhalb 10–130 km/h.",
   invalid_when: "Zeitpunkt nicht parsebar (ISO, HH:MM oder Stunde erwartet).",

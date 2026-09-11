@@ -44,7 +44,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
   - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal; die 501-Antwort ist aktuell noch HTML, nicht JSON — siehe [Prüfstand §1.5](Prüfstand.md))
+- Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht
 
@@ -136,7 +136,16 @@ Erfasst einen echten Tankbeleg im persönlichen Wallet-Ledger:
 }
 ```
 
-Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken.
+Der Endpunkt **validiert** (§11.2): `liters` 5–100, `price_paid` 0,40–5,00 €/L,
+`fuel` ∈ {e10, e5, diesel}, `station_id` ∈ Polling-Set. Fehlt `price_paid`,
+wird der Nowcast-Preis der Station zur Tankzeit gesucht; ohne bestimmbaren
+Preis antwortet der Server `400 price_not_available` — es wird **kein**
+erfundener Default-Preis verbucht. Fehler kommen als 4xx/503
+(`invalid_liters`/`invalid_price`/`invalid_fuel`/`price_not_available` → 400,
+`unknown_station` → 404, `store_too_large` → 503), nicht mehr als
+`200 {"error_code": …}`.
+
+Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
 ## Stats Summary (B4 3 Schichten)
 
@@ -648,9 +657,10 @@ Siehe `web/src/data.ts` messages:
 - selection_not_available, selection_failed
 - collector_no_heartbeat, collector_check_failed
 - too_many_points, invalid_query, not_found
-- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
-- price_not_available, decide_failed, backtest_not_available
+- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_price, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
+- price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
+- store_too_large (503), not_implemented (501)
 - unauthorized (403, nur `POST /api/v1/jobs/trigger` ohne oder mit falschem Bearer-Token)
 - payload_too_large (413), invalid_json, invalid_request, server_error
 

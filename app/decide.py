@@ -472,7 +472,12 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     station_id = chosen_station["station_id"]
     station_name = chosen_station.get("name") or station_id
-    station_city = chosen_station.get("city") or city or "Frankfurt"
+    station_city = chosen_station.get("city") or city
+    if not station_city:
+        # Die Station stammt aus dem Polling-Set (metadata) — city muss also
+        # gesetzt sein. Ohne Stadt wäre die spätere Abrechnung gegen eine
+        # geratene Stadt gelaufen (vorher still „Frankfurt", Prüfstand §3.8).
+        return {"error_code": "unknown_city"}
 
     # Ankerpreis: frisch > zuletzt beobachtet > unbekannt (None — nie erfunden).
     anchor = chosen_station.get("price")
@@ -521,8 +526,8 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion.
     store = load_store(live_data.settings)
-    advice_stats = compute_advice_stats(store)
-    wallet_stats = compute_wallet_stats(store)
+    advice_stats = compute_advice_stats(store, now=clock_now)
+    wallet_stats = compute_wallet_stats(store, now=clock_now)
     is_calibrated = advice_stats.get("calibrated", False)
 
     thresholds, tuning = active_thresholds(advice_stats, auto_apply=auto_apply)

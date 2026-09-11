@@ -654,3 +654,324 @@ def test_m7_gate_is_unmeasurable_without_probability():
     assert advice["gate_status"] == (
         "M7-Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
     )
+
+
+# --- P1/P2-Fixes aus Prüfstand §3 / TIEFENANALYSE §6 -----------------------
+
+
+def test_fills_validation_rejects_garbage(b4_settings):
+    """Belege mit Müll (Liter/Preis/Sorte/Station) bekommen 4xx statt 200.
+
+    Regression: POST /api/v1/fills {\"liters\":-5} wurde mit 200 quittiert
+    und verbuchte einen erfundenen Preis (Prüfstand §3.1).
+    """
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        cases = [
+            (
+                {"station_id": UID, "liters": -5, "price_paid": 1.6},
+                400,
+                "invalid_liters",
+            ),
+            (
+                {"station_id": UID, "liters": 40, "price_paid": 0.0},
+                400,
+                "invalid_price",
+            ),
+            (
+                {
+                    "station_id": UID,
+                    "liters": 40,
+                    "price_paid": 1.6,
+                    "fuel": "hydrogen",
+                },
+                400,
+                "invalid_fuel",
+            ),
+            (
+                {"station_id": "custom", "liters": 40, "price_paid": 1.6},
+                404,
+                "unknown_station",
+            ),
+            ({"station_id": UID, "liters": 40}, 400, "price_not_available"),
+        ]
+        for payload, status, code in cases:
+            with pytest.raises(urllib.error.HTTPError) as error:
+                _post_json(base + "/api/v1/fills", payload)
+            assert error.value.code == status, (payload, error.value.code)
+            body = json.loads(error.value.read())
+            assert body["error_code"] == code, (payload, body)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_fills_nowcast_when_price_missing(b4_settings):
+    """Fehlt price_paid, wird der Nowcast-Preis genommen (kein 1,70-Default)."""
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, res = _post_json(
+            base + "/api/v1/fills",
+            {"station_id": UID, "liters": 40, "fuel": "e10"},
+        )
+        assert status == 200
+        assert res["price_paid"] == 1.689
+        assert res["price_source"] == "nowcast"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_ignored_fill_does_not_close_episode(b4_settings):
+    """Ein nicht befolgter Beleg (fremde Station, außerhalb des Fensters)
+    beendet die Advice-Folge nicht (Prüfstand §3.2: vorher schloss JEDER
+    Beleg die Episode, auch ein fachlich fremder)."""
+    from app.feedback import load_store, record_fill, record_snapshot
+
+    emitted = NOW
+    snap_data = {
+        "clock_hour": 14.0,
+        "action": "wait",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station_name": "Station Alpha",
+        "price_now": 1.709,
+        "window_start": (NOW + dt.timedelta(hours=3)).isoformat(),
+        "window_end": (NOW + dt.timedelta(hours=6)).isoformat(),
+        "expected_price": 1.649,
+        "expected_saving_eur": 2.40,
+        "liters_assumed": 40.0,
+        "fuel": "e10",
+    }
+    _, ep = record_snapshot(b4_settings, snap_data, clock=lambda: emitted)
+    assert ep["status"] == "open"
+
+    # Tanken an einer fremden Station und außerhalb des Fensters → ignored.
+    fill = record_fill(
+        b4_settings,
+        {
+            "station_id": OTHER,
+            "liters": 40,
+            "price_paid": 1.60,
+            "fuel": "e10",
+            "tanked_at": (NOW + dt.timedelta(hours=30)).isoformat(),
+        },
+        live_data=None,
+        clock=lambda: NOW + dt.timedelta(hours=30),
+    )
+    assert fill["compliance"] == "ignored"
+    store = load_store(b4_settings)
+    ep_after = next(e for e in store["episodes"] if e["id"] == ep["id"])
+    assert ep_after["status"] == "open"
+
+
+def test_followed_fill_closes_episode(b4_settings):
+    """Ein befolgter Beleg (folgt der Warte-Empfehlung) schließt die Folge."""
+    from app.feedback import load_store, record_fill, record_snapshot
+
+    window_start = NOW + dt.timedelta(hours=3)
+    window_end = NOW + dt.timedelta(hours=6)
+    snap_data = {
+        "clock_hour": 14.0,
+        "action": "wait",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station_name": "Station Alpha",
+        "price_now": 1.709,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "expected_price": 1.649,
+        "expected_saving_eur": 2.40,
+        "liters_assumed": 40.0,
+        "fuel": "e10",
+    }
+    _, ep = record_snapshot(b4_settings, snap_data, clock=lambda: NOW)
+    fill = record_fill(
+        b4_settings,
+        {
+            "station_id": UID,
+            "liters": 40,
+            "price_paid": 1.649,
+            "fuel": "e10",
+            "tanked_at": window_start.isoformat(),
+        },
+        live_data=None,
+        clock=lambda: window_start,
+    )
+    assert fill["compliance"] == "followed"
+    store = load_store(b4_settings)
+    ep_after = next(e for e in store["episodes"] if e["id"] == ep["id"])
+    assert ep_after["status"] == "resolved"
+
+
+def test_snapshot_persists_trip_mode_and_latest_by(b4_settings):
+    """Fahrtmodus + Deadline dürfen nicht auf dem Weg in den Store verloren gehen."""
+    from app.feedback import load_store, record_snapshot
+
+    _, ep = record_snapshot(
+        b4_settings,
+        {
+            "clock_hour": 14.0,
+            "action": "wait",
+            "city": "Frankfurt",
+            "station_id": UID,
+            "price_now": 1.709,
+            "fuel": "e10",
+            "trip_mode": "dedicated",
+            "latest_by": "2026-09-10T20:00:00+02:00",
+        },
+        clock=lambda: NOW,
+    )
+    store = load_store(b4_settings)
+    snap = store["episodes"][0]["last_snapshot"]
+    assert snap["trip_mode"] == "dedicated"
+    assert snap["latest_by"] == "2026-09-10T20:00:00+02:00"
+    assert ep["last_snapshot"]["trip_mode"] == "dedicated"
+
+
+def test_store_too_large_errors_instead_of_silent_reset(b4_settings, monkeypatch):
+    """Ein zu großer Store wird gemeldet, nicht still geleert (Prüfstand §3.5)."""
+    from app import feedback
+    from app.feedback import StoreTooLarge, feedback_path, load_store
+
+    monkeypatch.setattr(feedback, "FEEDBACK_MAX_BYTES", 10)
+    store_file = feedback_path(b4_settings)
+    store_file.parent.mkdir(parents=True, exist_ok=True)
+    store_file.write_text(
+        json.dumps({"episodes": [{"id": "e1"}], "fills": [], "settlements": []})
+    )
+
+    with pytest.raises(StoreTooLarge):
+        load_store(b4_settings)
+
+    # Auch die API liefert ehrlich store_too_large statt record_fill_failed.
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    assert live.record_fill({"station_id": UID, "liters": 40, "price_paid": 1.6}) == {
+        "error_code": "store_too_large"
+    }
+
+
+def test_retention_prunes_and_archives(b4_settings):
+    """Einträge älter als 90 Tage werden ausgelagert (Rotation statt 10-MB-Knall)."""
+    from app.feedback import (
+        FEEDBACK_RETENTION_DAYS,
+        feedback_archive_path,
+        load_store,
+    )
+
+    # Wanduhr-unabhängig: „alt" liegt sicher vor der 90-Tage-Retention.
+    wall = dt.datetime.now(dt.timezone.utc)
+    old = wall - dt.timedelta(days=FEEDBACK_RETENTION_DAYS + 30)
+    from app.feedback import locked_store
+
+    # Direkt einen alten + einen frischen Eintrag in den Store legen.
+    with locked_store(b4_settings) as store:
+        store["episodes"].append(
+            {
+                "id": "ep_old",
+                "opened_at": old.isoformat(),
+                "status": "resolved",
+                "snapshots": [],
+            }
+        )
+        store["episodes"].append(
+            {
+                "id": "ep_new",
+                "opened_at": wall.isoformat(),
+                "status": "open",
+                "snapshots": [],
+            }
+        )
+
+    store = load_store(b4_settings)
+    ids = [e["id"] for e in store["episodes"]]
+    assert "ep_old" not in ids
+    assert "ep_new" in ids
+    archive = feedback_archive_path(b4_settings)
+    assert archive.is_file()
+    lines = archive.read_text(encoding="utf-8").splitlines()
+    assert any("ep_old" in line for line in lines)
+    assert not any("ep_new" in line for line in lines)
+
+
+def test_advice_stats_uses_real_30d_window():
+    """brier_30d/n sind 30 Tage, das M7-Gate bleibt ein Allzeit-Zähl-Gate."""
+    from app.feedback import compute_advice_stats
+
+    base = dt.datetime(2026, 9, 10, 12, 0, tzinfo=dt.timezone.utc)
+    snaps = [{"id": f"s{i}", "action": "wait", "p_correct": 0.9} for i in range(3)]
+    store = {
+        "episodes": [{"id": "ep", "snapshots": snaps}],
+        "settlements": [
+            {"snapshot_id": "s0", "outcome": "win", "settled_at": base.isoformat()},
+            {"snapshot_id": "s1", "outcome": "loss", "settled_at": base.isoformat()},
+            # 60 Tage alt → raus aus dem 30-Tage-Fenster
+            {
+                "snapshot_id": "s2",
+                "outcome": "loss",
+                "settled_at": (base - dt.timedelta(days=60)).isoformat(),
+            },
+        ],
+    }
+    advice = compute_advice_stats(store, now=base)
+    assert advice["n"] == 2
+    assert advice["n_brier"] == 2
+    assert advice["n_all"] == 3  # Allzeit-Gate zählt alle drei
+    assert advice["wins"] == 1
+    assert advice["brier_30d"] is not None
+
+
+def test_wallet_stats_uses_real_30d_window():
+    from app.feedback import compute_wallet_stats
+
+    base = dt.datetime(2026, 9, 10, 12, 0, tzinfo=dt.timezone.utc)
+    store = {
+        "fills": [
+            {
+                "tanked_at": base.isoformat(),
+                "compliance": "followed",
+                "saved_vs_always_now_eur": 2.0,
+                "clock_hour": 14,
+            },
+            {
+                "tanked_at": (base - dt.timedelta(days=60)).isoformat(),
+                "compliance": "followed",
+                "saved_vs_always_now_eur": 100.0,
+                "clock_hour": 14,
+            },
+        ]
+    }
+    wallet = compute_wallet_stats(store, now=base)
+    assert wallet["n_fills"] == 1
+    assert wallet["saved_eur"] == 2.0
+
+
+def test_gate_requires_p_population_not_total_n():
+    """n=100 ohne P-Schätzung öffnet das Gate nicht (gleiche Grundgesamtheit).
+
+    Vorher verglich das Gate Gesamt-n mit dem Brier über die P-Teilmenge
+    (Prüfstand §3.6): bei n=100, n_brier=3 wäre „kalibriert" gemeldet worden.
+    """
+    from app.feedback import compute_advice_stats
+
+    store = {
+        "episodes": [],
+        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
+    }
+    advice = compute_advice_stats(store)
+    assert advice["calibrated"] is False
+    assert "P-Schätzung" in advice["gate_status"]

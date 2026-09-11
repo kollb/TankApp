@@ -8,6 +8,19 @@
 > dieses Blatt: Dort stehen weitere Abweichungen und die offenen Code-Aufgaben
 > (§3, §7); hier sind die Stellen verlinkt, die Konzeptaussagen betreffen.
 
+> **Update 11.09.2026 — P1/P2/P3-Fixes aus [Prüfstand §3/§7](Prüfstand.md):**
+> Fill-Validierung + Nowcast statt 1,70-€-Default, 4xx-Status, Compliance-
+> Bedingung fürs Episode-Resolve, `worth_it` aus der Schwellen-Config,
+> Store-Größenfehler statt Silent-Reset + 90-Tage-Retention/-Archiv,
+> echtes 30-Tage-Fenster der Kennzahlen (M7-Gate bleibt Allzeit-Zähl-Gate
+> über dieselbe P-Grundgesamtheit), `trip_mode`/`latest_by` persistiert,
+> `no prices`-Alarm in Kalendertagen, Rate-Limit-LRU + korrektes
+> `Retry-After`, 501 als JSON, Asset-Caching, Preflight-Stationszahl und
+> `python -m engine.cli`. **Bewusst offen bleibt die P-Seite (§4.1–4.3):**
+> `p_besser`/`p_lohnt`/F3-Fenster-P aus der Prognoseverteilung sind ein
+> echtes M5-M6-Projekt — bis dahin gilt ehrlich „Regel fertig, P =
+> Ledger-Trefferquote“.
+
 ## Inhaltsverzeichnis
 
 - [Kurzfassung](#kurzfassung)

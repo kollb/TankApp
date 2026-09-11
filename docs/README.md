@@ -2,7 +2,7 @@
 
 **Ein Einstieg, eine Reihenfolge:** [INSTALL.md](INSTALL.md) ist der verbindliche Betriebsplan.
 
-> Stand: 10.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate), B4 (Decision Layer), die Ereignis-Pipeline (Uploader-Webhook, Issue 50) und **B5** (Konzept-Lücken: Job-Fortschritt, schnellerer Modell-Lauf, Rate-Limit, Deprecation-Header, `latest_by`, Fahrtmodus, M7-Schwellen) implementiert.
+> Stand: 11.09.2026 — B3 (Heatmaps, Meine Stationen, Collector-Livestatus, Route-Evaluate), B4 (Decision Layer), die Ereignis-Pipeline (Uploader-Webhook, Issue 50) und **B5** (Konzept-Lücken: Job-Fortschritt, schnellerer Modell-Lauf, Rate-Limit, Deprecation-Header, `latest_by`, Fahrtmodus, M7-Schwellen) implementiert. Dazu die **P1/P2/P3-Fixes** aus dem [Prüfstand](Prüfstand.md): Fill-Validierung (kein erfundener Preis, 4xx), Episode-Schluss nur bei Befolgung, Ledger-Integrität (Store-Fehler statt Silent-Reset, 90-Tage-Retention/-Archiv, echte 30-Tage-Kennzahlen), `worth_it` aus der Config, `no prices`-Alarm in Tagen, Rate-Limit-LRU + korrektes `Retry-After`, 501 als JSON, Asset-Caching. Details: [LUECKEN.md](LUECKEN.md).
 > Alle Dokumente haben ein klickbares Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis (klickbar)
