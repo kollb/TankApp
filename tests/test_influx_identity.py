@@ -598,6 +598,10 @@ def test_upload_success_triggers_nas_webhook_with_watermark(
         return FakeResponse()
 
     monkeypatch.setattr(uploader.urllib.request, "urlopen", fake_urlopen)
+    # Kurz nach einem Pi-Neustart ist monotonic() kleiner als die 240-s-Sperre.
+    # Der erste Trigger muss trotzdem sofort gesendet werden; erst Folgetrigger
+    # werden gedrosselt.
+    monkeypatch.setattr(uploader.time, "monotonic", lambda: 10.0)
     cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="shared-secret")
     monkeypatch.setattr(uploader, "influx_write", lambda cfg, lines: None)
     assert uploader.run_upload(cfg, uploader.State()) == 0

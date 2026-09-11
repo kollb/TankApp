@@ -9,6 +9,7 @@ import pytest
 from app.config import Settings
 from app.refresh import refresh
 from app.worker import run
+from engine.models import SCHEMA_VERSION
 
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
@@ -97,7 +98,13 @@ def test_refresh_warmstarts_without_months_of_polling_and_marks_retained_model(
     assert by_id[OTHER]["origin"] == old["forecasts"][0]["origin"]
     assert by_id[OTHER]["retained_previous"] is True
     assert publication["policies"][0]["mode"] == "bootstrap"
-    assert (output.parent / publication["model_file"]).exists()
+    model_path = output.parent / publication["model_file"]
+    assert model_path.exists()
+    model_bundle = json.loads(model_path.read_text())
+    assert model_bundle["schema_version"] == SCHEMA_VERSION == 2
+    assert all(
+        model["schema_version"] == SCHEMA_VERSION for model in model_bundle["models"]
+    )
 
 
 def test_no_successful_fits_keep_last_good_publication(
@@ -180,6 +187,7 @@ def test_nas_up_reuses_influx_and_mounts_secrets_read_only(
 
     monkeypatch.setattr(nas, "ROOT", tmp_path)
     monkeypatch.setattr("tankapp.netrc_args", lambda *a: [])
+    monkeypatch.setenv("TANKAPP_CITY_SUBDIVS", "Frankfurt:HE;Gütersloh:NW")
     calls = []
 
     def command(cmd, **kwargs):
@@ -197,6 +205,7 @@ def test_nas_up_reuses_influx_and_mounts_secrets_read_only(
     assert calls[-1][0][-4:] == ["up", "-d", "--build", "--force-recreate"]
     env = calls[-1][1]["env"]
     assert env["TANKAPP_INFLUX_ENV"] == str(model_setup.influx_env)
+    assert env["TANKAPP_CITY_SUBDIVS"] == "Frankfurt:HE;Gütersloh:NW"
     assert "TANKAPP_INFLUX_TOKEN" not in env
     stored = (tmp_path / "data/nas-settings.json").read_text()
     assert "private-token" not in stored

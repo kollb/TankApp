@@ -135,6 +135,7 @@ def up(args):
         "TANKAPP_WEB_PORT": str(port),
         "TANKAPP_HISTORY_DAYS": str(days),
         "TANKAPP_MODEL_FUELS": fuels,
+        "TANKAPP_CITY_SUBDIVS": os.environ.get("TANKAPP_CITY_SUBDIVS", ""),
         "TANKAPP_UID": str(uid),
         "TANKAPP_GID": str(gid),
         # B5: Betriebsknöpfe des App-Dienstes (Defaults in app/config.py).

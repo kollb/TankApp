@@ -729,9 +729,16 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         action = "no_advice"
         p_correct = None
         confidence_badge = "low"
+        # Das Güte-Gate ist Auswertungsschritt 1 (§4.5) und bleibt auch vor
+        # der M7-Freigabe die konkretere Warnung.  Sonst würde der allgemeine
+        # Kalibrierungstext den neuen roten PICP-Befund vollständig verdecken.
         reason_short = (
-            "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
-            "Empfehlungen aber noch nicht freigegeben."
+            reason
+            if quality_gate is not None
+            else (
+                "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
+                "Empfehlungen aber noch nicht freigegeben."
+            )
         )
 
     # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
