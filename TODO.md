@@ -53,6 +53,7 @@
 | B9 | P2 | **Versionierung & Nachverfolgbarkeit** | Keine App-Version/kein Commit-Hash in `/health`, kein `CHANGELOG.md`. Bei Pi/NAS/Fallback-GUI (3 Oberflächen!) weiß man im Fehlerfall nicht, was wo läuft. Ziel: Version + Build-Hash in `/health`, Anzeige im Footer, kurzes CHANGELOG ab jetzt. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?"-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online"-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
+| B12 | P2 | **Cheap-Prob ohne Station: Basis überstrahlt den Wochentag** | `app/heatmap.py` vergleicht bei `kind=probability` **ohne** `station_id` jede Zelle gegen den Gesamtmedian **aller** Zellen des Zeitraums. Weil der Tagesgang (nachts/abends billig, Mittag teuer) viel größer ist als der Wochentags-Effekt, werden Abendzellen fast immer grün und Mittagszellen fast immer rot — egal welcher Wochentag. Die Frage „an welchem *Wochentag* ist es billig?“ ist aus dieser Ansicht so nicht ablesbar (mit `station_id` funktioniert es, weil dort Station gegen Stadt im selben Slot verglichen wird). Ziel: ohne Station optional gegen den Median **derselben Stunde** (Spalten-Basis) rechnen, damit der Tagesgang herausgerechnet ist und die Zeilen (Wochentage) fair vergleichbar bleiben; Umschalter/Modus + kurze Begründung in [docs/ANALYSE.md](docs/ANALYSE.md). |
 
 ---
 
@@ -69,6 +70,7 @@
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?"-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
 | C8 | P2 | **Mobile-Feinschliff & PWA** | Sticky-Aktions-Chip im Alltag („Jetzt tanken / Warten bis …" beim Scrollen sichtbar), Install-/„Zum Homescreen"-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
 | C9 | P2 | **Formatierungs-Konventionen** | Durchgängig de-DE: ct/L vs €/L nicht mischen (beides vorkommend), einheitliche Rundung (3 Nachkommastellen €/L, 1 Nachkommastelle ct), Uhrzeiten „18–20 Uhr" überall in Europe/Berlin. Kleiner ESLint-/Test-geschützter Formatter-Satz in `data.ts`. |
+| C10 | P2 | **Heatmap beantwortet „An welchem Wochentag ist es am günstigsten?“ nicht** | `HeatmapGrid` zeigt nur die rohe 7×24-Tabelle (168 Zellen). Wer am Montag wissen will, welcher *Tag* der Woche typisch günstig ist, muss 7 Zeilen Augemaß vergleichen und bekommt keine Antwort in Worten — auch fehlt die Markierung „heutige Zeile“. Ziel: Tages-Zusammenfassung je Wochentag unter/neben der Tabelle (Median je Tag + billigste Stunde, heutige Zeile hervorgehoben) **plus** ein Satz Fazit („Typisch am günstigsten: Di 18–20 Uhr — Median 1,653 €/L“) **plus** eine Erklärzeile, was „Niveau“ und „Cheap-Prob“ bedeuten und dass die Heatmap die *Vergangenheit* (letzte N Wochen) zeigt, keine Prognose für die kommende Woche (Fach-Begriffe dann über C7). Mit `windows_week` aus `/api/v1/decide` (Alltag → „Diese Woche“) verbinden: dort stehen die 3 billigsten 2-h-Blöcke der nächsten 7 Tage — auch dort Wochentag prominent statt nur Timestamp. |
 
 ---
 
@@ -155,6 +157,7 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 13. **G1** `cache.log`-Cap (20 Zeilen Code) — stoppt unbegrenztes Wachstum auf dem RP2.
 14. **F1** Tab-Label „Statistik" → „Werkstatt" (inkl. Sekundär-Texte) — eine Zeile Code + Terminologie-Commit.
 15. **H6** `i = 42` benennen — fünf Minuten, rechtfertigt sich beim nächsten Lesen.
+16. **C10** Tages-Zeilen + Fazit-Satz unter der Heatmap — reines Frontend, die 7×24-Matrix liegt bereits vor.
 
 ---
 
