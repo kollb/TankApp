@@ -98,9 +98,13 @@ leerem `fuels` heißt *nie Preise gesehen* (UUID praktisch tot).
 
 **Zu `GÃœTERSLOH SÃœD`:** das ist doppelt kodierte UTF-8-Anzeige
 („GÜTERSLOH SÜD“, so in den Stationslisten des Datenrepos) — rein kosmetisch,
-betrifft nur den Anzeigenamen, nie UUIDs oder Preise. `swap_stations.py`
-repariert Namen/Marken beim Tausch automatisch; gefiltert wird ausschließlich
-nach UUID, Tagen und Kraftstoff.
+betrifft nur den Anzeigenamen, nie UUIDs oder Preise. Sowohl
+`discover_stations.py` (beim Lesen der Stationsliste) als auch
+`swap_stations.py` (beim Tausch) reparieren Namen/Marken automatisch; gefiltert
+wird ausschließlich nach UUID, Tagen und Kraftstoff. Werden in der eigenen
+Terminal-Ausgabe trotzdem „Ã¼/Ã¤/Ã¶“ angezeigt, ist zusätzlich das Terminal
+nicht auf UTF-8 gestellt (`locale`/`LANG` prüfen) — die Dateien selbst sind
+UTF-8.
 
 ### A2 — hatte die Station jemals Preise? (NAS-Archiv, korrektes Namensmuster)
 
@@ -155,18 +159,32 @@ python3 data-tools/discover_stations.py \
 ```
 
 * `--min-days 28` entspricht der Modell-Schwelle: Stationen mit weniger Tagen
-  Archivpreis gelten als *nicht geeignet*, werden im Report markiert und
-  hinten gereiht — genau das „bei der Suche rausfiltern“. Ist das Archiv
-  jünger als 28 Tage, den Wert senken (z. B. 14) und im Report auf
-  `hist_first` achten.
+  Archivpreis gelten als *nicht geeignet*. Sie erscheinen weiter in Report und
+  `*_kandidaten.csv` (dort mit Grund markiert), kommen aber **nicht** ins
+  erzeugte `polling.json`-Set. Ist das Archiv jünger als 28 Tage, den Wert
+  senken (z. B. 14) und im Report auf `hist_first` achten.
 * `--fuel e10` verlangt zusätzlich, dass die Station genau diese Sorte im
   Archiv wirklich geliefert hat. Ohne dieses Flag gilt eine Station schon
   mit *irgendeinem* Kraftstoff als geeignet — eine 367-Tage-Diesel-Only-Bude
-  (AVIA-Fall) würde sonst fälschlich ins Set rutschen.
-* `--radius 5` wie `add-city`-Default; bei zu wenigen Treffern Radius/PLZ
-  erweitern (`--plz "<Stadt>:33"`), nicht die Eignungsgrenze diskutieren.
+  (AVIA-Fall) würde sonst fälschlich ins Set rutschen. `--fuel all` verlangt
+  alle drei Sorten (diesel/e5/e10) gemeinsam — praktisch, wenn ein Set alle
+  drei Kraftstoffmodelle aus derselben Station bedienen soll.
+* Reichen die geeigneten Kandidaten nicht für 10 Plätze, bleibt das Set
+  **bewusst kürzer** und der Report warnt (`⚠ nur N geeignete Stationen …`).
+  Dann `--radius`/`--plz` erweitern (`--plz "<Stadt>:33"`), nicht die
+  Eignungsgrenze aufweichen. Wer das alte Verhalten (Auffüllen auch mit
+  ungeeigneten Stationen) ausnahmsweise braucht: `--allow-ineligible`.
 * Die Spalte `hist_fuels` zeigt, welche Sorten die Station im Archiv wirklich
-  geliefert hat — Kandidaten ohne `e10` sind für ein E10-Set unbrauchbar.
+  geliefert hat — leer (`""`) zusammen mit `hist_days: 0` heißt *nie im
+  Preisarchiv gesehen*. Vor dem Schluss „tote UUID“ erst prüfen, ob das
+  Archiv überhaupt aktuell ist (letzter Tag in `data/raw/prices`,
+  `hist_last` im Report): Fehlende Tage holt
+  `python3 data-tools/fetch_history.py --since <YYYY-MM-DD> --outdir data/raw`
+  resümierbar nach; `--stations-latest` aktualisiert **nur die
+  Stationsliste**, keine Preise. Nach dem Nachladen `--check-history`
+  wiederholen. Bleibt es bei 0 Tagen (Neubau/neue UUID/geschlossen), ist die
+  Station für einen sofortigen Tausch unbrauchbar; eine brandneue Station
+  sammelt erst ab jetzt die nötigen 28 Tage.
 * Ausgaben landen im **separaten** Ordner (`*_kandidaten.csv`, `report.md`,
   `polling.json`) — nie direkt in `docs/analysis/stations/`, das aktive Set
   bleibt unberührt.

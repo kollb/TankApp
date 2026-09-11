@@ -9,8 +9,11 @@ APIs `transparent.tankerkoenig.de/list.php`. Daraus entstehen je Ort:
   1. **Kandidatenliste** (alle Stationen im Radius, dedupliziert nach Marke+Position),
   2. **Polling-Set** — die harte Währung der App: `prices.php?ids=` bündelt max. **10 UUIDs
      je Request**, und das Kontingent ist 1 Request / 5 min (KONZEPT.md §1.1). Ein Set =
-     10 Stationen = 1 Poll. Deshalb: Marken-Diversität vor Nähe (zwei Stationen derselben
-     Marke am selben Ort zeigen fast denselben Preis),
+     max. 10 Stationen = 1 Poll. Deshalb: Marken-Diversität vor Nähe (zwei Stationen
+     derselben Marke am selben Ort zeigen fast denselben Preis). Mit `--check-history`
+     kommen nur geeignete Stationen (Mindesttage, gewünschte Sorte) ins Set; gibt es im
+     Radius keine 10, bleibt es kürzer (Warnung im Report) — Radius erweitern statt an
+     der Eignung drehen; `--allow-ineligible` stellt das alte Auffüllverhalten wieder her,
   3. **Statistik-Pool** — die volle Liste als CSV für Selektion/Baseline (`--data`).
   4. Optional **Historie-Eignung** (`--check-history`): liest die bereits geladenen
      Tagesdateien und sagt je Station: Tage mit Preis, erster/letzter Tag, welche
@@ -79,6 +82,24 @@ def open_text(path: Path):
     return open(path, "r", newline="", encoding="utf-8-sig")
 
 
+def repair_text(value: str) -> str:
+    """Doppelt-kodierte Namen aus dem Datenrepo reparieren (UTF-8 als cp1252/
+    latin-1 gelesen): „GÃœTERSLOH SÃœD“ → „GÜTERSLOH SÜD“. Einige Stationslisten
+    des Datenrepos enthalten diese Zeichenketten unverändert. Rein kosmetisch
+    (Anzeigenamen/Marken) — UUIDs und Preise bleiben unberührt. Gibt den Wert
+    unverändert zurück, wenn sich nichts sauber zurückrechnen lässt; nie raten."""
+    if not value or ("Ã" not in value and "Â" not in value):
+        return value
+    for codec in ("cp1252", "latin-1"):
+        try:
+            fixed = value.encode(codec).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if fixed != value:
+            return fixed
+    return value
+
+
 def parse_anchor(spec: str) -> tuple[str, float, float, float | None]:
     """'Label:lat,lon' oder 'Label:lat,lon:radius'."""
     label, _, rest = (spec.partition(":") if ":" in spec else (spec, "", ""))
@@ -131,8 +152,8 @@ def stations_from_csv(path: Path) -> dict[str, dict]:
                 continue
             out[uuid] = {
                 "uuid": uuid,
-                "name": (row.get(cols.get("name", ""), "") or "").strip(),
-                "brand": (row.get(cols.get("brand", ""), "") or "").strip(),
+                "name": repair_text((row.get(cols.get("name", ""), "") or "").strip()),
+                "brand": repair_text((row.get(cols.get("brand", ""), "") or "").strip()),
                 "plz": (row.get(cols.get("post_code", ""), "") or "").strip(),
                 "city": (row.get(cols.get("city", ""), "") or "").strip(),
                 "lat": lat, "lon": lon,
@@ -170,8 +191,8 @@ def stations_from_list(raw: dict) -> dict[str, dict]:
         if not uuid:
             continue
         out[uuid] = {
-            "uuid": uuid, "name": (st.get("name") or "").strip(),
-            "brand": (st.get("brand") or "").strip(),
+            "uuid": uuid, "name": repair_text((st.get("name") or "").strip()),
+            "brand": repair_text((st.get("brand") or "").strip()),
             "plz": str(st.get("postcity") or "").split("-")[0].strip(),
             "city": (st.get("city") or "").strip(), "lat": lat, "lon": lon,
             "open": bool(st.get("isOpen")),
@@ -260,23 +281,33 @@ def brand_key(st: dict) -> str:
 def history_eligible(hist: dict | None, min_days: int, fuel: str = "any") -> bool:
     """Eignung fürs Monitoring: genug Tage mit Preis UND der gewünschte
     Kraftstoff. Eine Station mit 367 Tagen, aber nur `diesel`, ist für ein
-    E10-Set ungeeignet — Tage allein sind kein Eignungsnachweis."""
+    E10-Set ungeeignet — Tage allein sind kein Eignungsnachweis.
+    fuel='all' verlangt alle drei Sorten (diesel/e5/e10) im Archiv."""
     if not hist:
         return False
     if hist.get("days", 0) < min_days:
         return False
-    fuels = hist.get("fuels") or []
+    fuels = set(hist.get("fuels") or [])
+    if fuel == "all":
+        return set(FUELS) <= fuels
     return fuel == "any" or fuel in fuels
 
 
-def select_polling_set(cands: list[dict], size: int, prefer: set[str]) -> list[dict]:
+def select_polling_set(cands: list[dict], size: int, prefer: set[str],
+                       require_eligible: bool = False) -> list[dict]:
     """Greedy: erst jede Marke einmal (nach Nähe), dann auffüllen. Kein Duplikat
-    derselben Marke, es sei denn, es bleibt nichts anderes."""
+    derselben Marke, es sei denn, es bleibt nichts anderes.
+
+    require_eligible (Default bei aktiviertem --check-history): Stationen ohne
+    Eignung (zu wenige Archivtage / falsche Sorte) kommen in KEINER Phase ins
+    Set — vorher wurden sie beim Auffüllen auf poll-size still mitgenommen."""
     if size <= 0:
         return []
     chosen: list[dict] = []
     used_brand: set[str] = set()
     pool = sorted(cands, key=lambda s: (0 if brand_key(s) in prefer else 1, s["dist_km"]))
+    if require_eligible:
+        pool = [s for s in pool if s.get("eligible", True)]
     for st in pool:
         if len(chosen) >= size:
             break
@@ -371,9 +402,14 @@ def main() -> int:
     hist.add_argument("--until", default=None, help="Historie-Scan bis Tag")
     hist.add_argument("--min-days", type=int, default=45,
                       help="unter so vielen Tagen mit Preis: nicht ins Monitoring")
-    hist.add_argument("--fuel", choices=("e5", "e10", "diesel", "any"), default="any",
+    hist.add_argument("--fuel", choices=("e5", "e10", "diesel", "any", "all"), default="any",
                       help="Eignung nur, wenn dieser Kraftstoff im Archiv auftaucht "
-                           "(z. B. --fuel e10 für ein E10-Modell-Set; Default: beliebiger)")
+                           "(z. B. --fuel e10 für ein E10-Modell-Set; 'all' verlangt "
+                           "diesel/e5/e10 gemeinsam; Default: beliebiger)")
+    hist.add_argument("--allow-ineligible", action="store_true",
+                      help="Polling-Set auch mit Stationen füllen, die die Eignung "
+                           "(Tage/Sorte) nicht erfüllen. Default bei --check-history: "
+                           "nein — das Set bleibt dann ggf. kürzer als --poll-size")
     out = ap.add_argument_group("Ausgabe")
     out.add_argument("--out", type=Path, default=Path("docs/analysis/stations"),
                      help="Zielverzeichnis für CSVs/Report")
@@ -483,11 +519,15 @@ def main() -> int:
              f"{args.dedupe_km:g} km zusammengefasst)"
              + (f", bevorzugte Marken: {', '.join(sorted(prefer))}" if prefer else ""),
              "",
-             "Eignung: min. "
-             + (f"{args.min_days} Tage mit Preis"
-                + ("" if args.fuel == "any" else f" und Sorte {args.fuel}")
-                + f" in {args.since or 'anfang'}…{args.until or 'ende'}"
-                if args.check_history else "nicht geprüft (--check-history fehlt)"),
+            "Eignung: min. "
+            + (f"{args.min_days} Tage mit Preis"
+               + ("" if args.fuel == "any"
+                  else " und alle Sorten diesel/e5/e10" if args.fuel == "all"
+                  else f" und Sorte {args.fuel}")
+               + f" in {args.since or 'anfang'}…{args.until or 'ende'}"
+               + ("; ungeeignete bleiben außerhalb des Polling-Sets"
+                  if not args.allow_ineligible else "; --allow-ineligible: Auffüllen erlaubt")
+               if args.check_history else "nicht geprüft (--check-history fehlt)"),
              ""]
     pool_all: dict[str, list[dict]] = {}
     for lab, c in all_cands.items():
@@ -500,7 +540,10 @@ def main() -> int:
                 s["hist_fuels"] = "/".join(h["fuels"])
                 s["eligible"] = history_eligible(h, args.min_days, args.fuel)
         ranked = sorted(cand, key=lambda s: (not s.get("eligible", True), s["dist_km"]))
-        poll = select_polling_set(ranked, args.poll_size, prefer)
+        n_ok = sum(1 for s in cand if s.get("eligible", True))
+        strict = bool(hist_stats) and not args.allow_ineligible
+        poll = select_polling_set(ranked, args.poll_size, prefer,
+                                  require_eligible=strict)
         polling[lab] = {"label": lab, "lat": round(r["anchor"]["lat"], 5),
                         "lon": round(r["anchor"]["lon"], 5), "radius_km": r["anchor"]["radius"],
                         "batch": [s["uuid"] for s in poll],
@@ -508,18 +551,35 @@ def main() -> int:
                                       "dist_km": s["dist_km"], "fuels": s.get("hist_fuels", ""),
                                       "hist_days": s.get("hist_days", "")} for s in poll]}
         pool_all[lab] = c["full"]
+        eignung = (f", {n_ok} geeignet / {len(cand) - n_ok} ungeeignet"
+                   if hist_stats else "")
         lines += [f"## {lab}", "",
                   f"{r['n_all']} Stationen im Radius, {r['n_cand']} nach Marke/Dedupe "
-                  f"(−{r['dropped_dupes']} Zwillinge), {len(poll)} im Polling-Set."
+                  f"(−{r['dropped_dupes']} Zwillinge){eignung}, {len(poll)} im Polling-Set."
                   + ("" if not poll else
                      f" Marken im Set: {', '.join(sorted({(s['brand'] or '—') for s in poll}))}"),
                   "", header(bool(hist_stats)),
                   "\n".join(fmt_row(s, hist_stats.get(s["uuid"]) if hist_stats else None)
                             for s in ranked[:args.show])]
+        if strict and len(poll) < args.poll_size:
+            hinweis = (f"⚠ nur {len(poll)} geeignete Stationen für {args.poll_size} Plätze "
+                       f"({len(cand) - n_ok} nach Tagen/Sorte ausgeschlossen) — Set bleibt "
+                       "absichtlich kurz; für einen vollen Tausch --radius/--plz erweitern"
+                       " (oder --allow-ineligible, dann aber selbst auf hist_fuels achten).")
+            lines += ["", hinweis]
+            if not args.quiet:
+                print(f"! {lab}: {hinweis}", file=sys.stderr)
         excl = [s for s in ranked if s.get("eligible") is False]
         if excl:
+            def warum(s: dict) -> str:
+                tage = int(s.get("hist_days") or 0)
+                if tage < args.min_days:
+                    return f"{tage} Tage"
+                sorten = s.get("hist_fuels") or "keine Preise"
+                return f"nur {sorten}" if args.fuel == "all" else f"ohne {args.fuel} ({sorten})"
+
             lines += ["", f"*nicht fürs Monitoring geeignet ({len(excl)}):* "
-                      + ", ".join(f"{s['brand']} {s['name']} ({s.get('hist_days', 0)} Tage)"
+                      + ", ".join(f"{s['brand'] or '—'} {s['name']} [{warum(s)}]"
                                   for s in excl[:12])
                       + (" …" if len(excl) > 12 else "")]
         write_csv(args.out / f"{slug(lab)}_kandidaten.csv", ranked, bool(hist_stats))

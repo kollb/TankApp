@@ -282,3 +282,17 @@ def test_repair_text_roundtrip():
     assert swap_stations.repair_text(f"Aral {MOJIBAKE}") == f"Aral {REPAIRED}"
     assert swap_stations.repair_text("Gütersloh Hempel") == "Gütersloh Hempel"
     assert swap_stations.repair_text("") == ""
+
+
+def test_eligible_fuel_all_requires_all_three():
+    voll = {"hist_days": "200", "hist_fuels": "diesel/e5/e10"}
+    assert swap_stations.eligible(voll, 28, "all")
+    assert not swap_stations.eligible(
+        {"hist_days": "200", "hist_fuels": "diesel/e10"}, 28, "all"
+    )
+    assert not swap_stations.eligible(
+        {"hist_days": "10", "hist_fuels": "diesel/e5/e10"}, 28, "all"
+    )
+    assert swap_stations.eligible(
+        {"hist_days": "200", "hist_fuels": "diesel/e10"}, 28, "e10"
+    )

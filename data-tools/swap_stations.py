@@ -38,30 +38,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "data-tools"))
 
-from discover_stations import brand_key, haversine_km, open_text  # noqa: E402
+from discover_stations import (  # noqa: E402
+    FUELS,
+    brand_key,
+    haversine_km,
+    open_text,
+    repair_text,
+)
 from polling_plan import atomic_json, validate_sets  # noqa: E402
 
 FAILURES_DEFAULT = ROOT / "data/runtime/engine/current.json"
 ACTIVE_DEFAULT = ROOT / "docs/analysis/stations/polling.json"
 OUT_DEFAULT = ROOT / "data/setup/polling.json"
-
-
-def repair_text(value: str) -> str:
-    """Doppelt-kodierte Namen reparieren (UTF-8 als cp1252/latin-1 gelesen).
-
-    „GÃœTERSLOH SÃœD“ → „GÜTERSLOH SÜD“. Gibt den Wert unverändert zurück,
-    wenn sich nichts sauber zurückrechnen lässt — nie raten, nie kürzen.
-    """
-    if not value or ("Ã" not in value and "Â" not in value):
-        return value
-    for codec in ("cp1252", "latin-1"):
-        try:
-            fixed = value.encode(codec).decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            continue
-        if fixed != value:
-            return fixed
-    return value
 
 
 def find_group(plan: dict, city: str) -> tuple[str, dict]:
@@ -148,7 +136,10 @@ def eligible(row: dict, min_days: int, fuel: str) -> bool:
         return False
     if days < min_days:
         return False
-    fuels = {part.strip().lower() for part in (row.get("hist_fuels") or "").split("/")}
+    fuels = {part.strip().lower()
+             for part in (row.get("hist_fuels") or "").split("/") if part.strip()}
+    if fuel == "all":
+        return set(FUELS) <= fuels
     return fuel == "any" or fuel in fuels
 
 
@@ -177,9 +168,10 @@ def parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--fuel",
-        choices=("e10", "e5", "diesel", "any"),
+        choices=("e10", "e5", "diesel", "any", "all"),
         default="e10",
-        help="Ersatz muss diesen Kraftstoff im Archiv geliefert haben",
+        help="Ersatz muss diesen Kraftstoff im Archiv geliefert haben; "
+        "'all' = alle drei Sorten diesel/e5/e10",
     )
     ap.add_argument(
         "--min-days",
