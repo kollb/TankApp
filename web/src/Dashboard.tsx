@@ -47,7 +47,6 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
-  brierGateHint,
   clockLabel,
   currentPrice,
   detourEconomics,
@@ -55,11 +54,12 @@ import {
   euro,
   formatHour,
   haversineKm,
-  livePhaseCountdown,
   livePhaseHint,
+  m7GateLine,
   problem,
   segments,
   timeLabel,
+  transitionRuleLine,
   triggerSkipLabel,
   useResource,
   usePreference,
@@ -1009,21 +1009,26 @@ export function Dashboard() {
     });
   })();
 
-  // Hinweise zur Kalibrierung: ausschließlich aus echten Daten. Die Zählung
-  // bewerteter Live-Tage liefert die Engine (Bootstrap-Policies) über
-  // stats_summary.live_phase — Schwelle und Stand kommen aus dem Datenpfad,
-  // nicht aus einem Frontend-Kontext. Fehlen die Policies (kein Modell-Lauf,
-  // Statistik nicht geladen), sagt die UI genau das und erfindet keinen
-  // Countdown (§0.4 Ehrlichkeitsregel).
+  // Zwei Freigaben, zwei Zeilen — sie haben verschiedene Nenner:
+  //   1. M7-Gate (§0.4): Zähl-Gate über abgeschlossene Empfehlungen
+  //      (live_advice.min_recommendations, Default 100) plus Brier-Schwelle.
+  //   2. Übergangsregel Datenhygiene (Archiv → Live-Polling): bewertete
+  //      Live-Tage, Schwelle = live_only_days der Engine (Default 90), aus den
+  //      Bootstrap-Policies über stats_summary.live_phase — nicht aus dem
+  //      Browserdatum. Fehlen die Policies, sagt die UI das und erfindet
+  //      keinen Countdown (§0.4 Ehrlichkeitsregel).
   const livePhase = statsSummaryRes.data?.live_phase ?? null;
+  const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
+  const gateStatus =
+    liveAdvice?.gate_status ||
+    (statsSummaryRes.data ? "Kalibrierung steht aus" : "kein Statistik-Lauf");
+  const m7Line = statsSummaryRes.data ? m7GateLine(liveAdvice) : null;
+  const transitionLine = transitionRuleLine(livePhase);
+  // Hint für leere Güte-Kacheln im System-Tab: erklärt die fehlende
+  // Live-Abdeckung, ohne eine Tageszahl zu erfinden.
   const calibrationHint = statsSummaryRes.data
     ? livePhaseHint(livePhase)
     : "Statistik nicht geladen — zur Live-Phase liegen keine Daten vor.";
-  const brierHint = statsSummaryRes.data
-    ? brierGateHint(livePhase, statsSummaryRes.data.live_advice)
-    : null;
-  const livePhaseLine = livePhaseCountdown(livePhase);
-  const livePhaseNotice = livePhaseLine ?? (livePhase ? null : calibrationHint);
   const stationPhase = f?.data_policy;
 
   // --- B4 Workshop Dynamic Calculations ---
@@ -1848,8 +1853,10 @@ export function Dashboard() {
                       {statsSummaryRes.data?.live_advice.brier_30d ?? "—"}
                     </span>
                   </p>
-                  {brierHint && (
-                    <p className="mt-1 text-[10px] text-slate-500 leading-snug">{brierHint}</p>
+                  {m7Line && (
+                    <p className="mt-1 text-[10px] text-slate-500 leading-snug">
+                      {m7Line}
+                    </p>
                   )}
                 </div>
 
@@ -2680,19 +2687,28 @@ export function Dashboard() {
                       {Number.isFinite(calibErr) ? `${(calibErr * 100).toFixed(1)} pp` : "—"}
                     </p>
                   </div>
+                  {/* Freigabe 1 — M7-Gate (§0.4): Zähl-Gate über abgeschlossene
+                      Empfehlungen. Kein Tages-Nenner: 90 Übergangs-Tage sind
+                      keine 100 Empfehlungen. */}
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-                    <p className="text-slate-400">Kalibrierungs-Freigabe</p>
-                    <p className="mt-1 text-base font-bold text-amber-300">
-                      {statsSummaryRes.data?.live_advice?.gate_status ||
-                        (statsSummaryRes.data
-                          ? "Kalibrierung steht aus"
-                          : "kein Statistik-Lauf")}
-                    </p>
-                    {livePhaseNotice && (
+                    <p className="text-slate-400">Kalibrierungs-Freigabe · M7-Gate (§0.4)</p>
+                    <p className="mt-1 text-base font-bold text-amber-300">{gateStatus}</p>
+                    {m7Line && (
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                        {livePhaseNotice}
+                        {m7Line}
                       </p>
                     )}
+                  </div>
+                  {/* Freigabe 2 — Übergangsregel Datenhygiene (Archiv →
+                      Live-Polling). Eigene Schwelle (live_only_days), eigener
+                      Fortschritt; sie schaltet keine Prozentanzeige frei. */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
+                    <p className="text-slate-400">
+                      Übergangsregel · Datenhygiene (nicht das M7-Gate)
+                    </p>
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                      {transitionLine}
+                    </p>
                     {stationPhase && (
                       <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
                         Ausgewählte Station: {stationPhase.good_complete_live_days}/

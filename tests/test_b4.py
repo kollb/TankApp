@@ -20,6 +20,11 @@ import pytest
 
 from app.config import Settings
 from app.data import LiveData
+from app.feedback import (
+    M7_BRIER_THRESHOLD,
+    M7_MIN_RECOMMENDATIONS,
+    compute_advice_stats,
+)
 from app.server import make_server
 
 UID = "00000000-0000-0000-0000-000000000001"
@@ -594,3 +599,58 @@ def test_gray_zone_percent_is_times_100():
     assert "50 %" in reason
     assert "P ≈ 0 %" not in reason
     assert "0.5 %" not in reason
+
+
+def test_m7_gate_thresholds_come_from_the_ledger_not_the_calendar(b4_settings):
+    """M7 ist ein Zähl-Gate — Schwellen und Stand kommen aus dem Advice-Ledger.
+
+    Regression: Die Kalibrierungs-Kachel zeigte den Countdown der
+    90-Tage-Übergangsregel (live_only_days) unter der M7-Freigabe, als wäre die
+    Tageszahl ihr Nenner. Bei ~1 Empfehlung/Tag wären 100 Settlements ~100
+    Tage; M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (§13). Die
+    GUI bekommt den Zähl-Schwellwert deshalb mit dem Payload und muss die
+    Übergangsregel nicht mehr zweckentfremden.
+    """
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    advice = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})["live_advice"]
+    assert advice["min_recommendations"] == M7_MIN_RECOMMENDATIONS == 100
+    assert advice["brier_threshold"] == M7_BRIER_THRESHOLD == 0.25
+    assert advice["gate_status"] == (
+        "M7-Kalibrierung steht aus (n=0 < 100 Empfehlungen)"
+    )
+    # Kein Tageszähler im Gate-Text: Die Übergangsregel ist eine andere Freigabe.
+    assert "Tage" not in advice["gate_status"]
+
+
+def test_m7_gate_calibrated_counts_settlements_and_brier():
+    """Ab n ≥ 100 mit Brier < 0,25 ist das Gate offen (Konzept §0.4)."""
+    snaps = [{"id": f"s{i}", "action": "wait", "p_correct": 0.9} for i in range(100)]
+    store = {
+        "episodes": [{"id": "ep", "snapshots": snaps}],
+        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
+    }
+    advice = compute_advice_stats(store)
+    assert advice["n"] == 100
+    assert advice["brier_30d"] == 0.01
+    assert advice["calibrated"] is True
+    assert advice["gate_status"] == "M7 kalibriert (n=100, Brier 0,01 < 0,25)"
+
+
+def test_m7_gate_is_unmeasurable_without_probability():
+    """n ≥ 100 ohne P-Schätzung heißt „nicht messbar“ — nicht „kalibriert“.
+
+    Snapshots ohne gespeichertes ``p_correct`` fallen aus Zähler und Nenner des
+    Brier-Scores; „kalibriert“ zu melden wäre erfunden (§0.4).
+    """
+    store = {
+        "episodes": [],
+        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
+    }
+    advice = compute_advice_stats(store)
+    assert advice["n"] == 100
+    assert advice["n_brier"] == 0
+    assert advice["brier_30d"] is None
+    assert advice["calibrated"] is False
+    assert advice["gate_status"] == (
+        "M7-Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
+    )

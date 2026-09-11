@@ -488,6 +488,10 @@ export type StatsSummary = {
     brier_30d: number | null;
     calibrated: boolean;
     gate_status: string;
+    // Schwellen des M7-Zähl-Gates, wie app/feedback.py sie rechnet. Optional:
+    // ältere Statistik-Stände liefern sie nicht, dann gilt der Fallback unten.
+    min_recommendations?: number;
+    brier_threshold?: number;
     reliability: Array<{
       bin: number;
       range: string;
@@ -1272,23 +1276,77 @@ export function livePhaseHint(phase?: LivePhase | null): string {
   );
 }
 
-// §0.4 ist ein Zähl-Gate, kein Datum: Brier braucht ≥ 100 abgeschlossene
-// Empfehlungen. Die Live-Tage sind nur die Vorbedingung der Übergangsregel.
+// §0.4 ist ein Zähl-Gate, kein Datum: Brier < 0,25 bei ≥ 100 abgeschlossenen
+// Empfehlungen. Maßgeblich sind die Schwellen des Backends
+// (app/feedback.py → live_advice.min_recommendations / brier_threshold); die
+// Konstanten hier sind nur der Rückfall für Statistik-Stände, die sie nicht
+// mitschicken. Die 90-Tage-Übergangsregel (live_only_days der Engine) gehört
+// bewusst nicht in diesen Zähler: 90 Übergangs-Tage sind keine 100
+// Empfehlungen, bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
 export const M7_MIN_RECOMMENDATIONS = 100;
+export const M7_BRIER_THRESHOLD = 0.25;
 
-export function brierGateHint(
-  phase: LivePhase | null | undefined,
-  advice?: { n?: number; brier_30d?: number | null } | null,
-): string | null {
-  if (advice?.brier_30d != null) return null;
-  const n = advice?.n ?? 0;
-  const open = `Wert erscheint ab ${M7_MIN_RECOMMENDATIONS} abgeschlossenen Empfehlungen im Live-Ledger (aktuell ${n}).`;
-  if (!phase) {
-    return `${open} Zur Live-Phase liegen noch keine Engine-Daten vor.`;
+export type M7Advice = {
+  n?: number | null;
+  brier_30d?: number | null;
+  min_recommendations?: number | null;
+  brier_threshold?: number | null;
+};
+
+// Kurzer Schwellwert in deutscher Schreibweise (0,25 statt 0.25).
+export function deNumber(value: number, decimals = 2): string {
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/**
+ * Fortschrittszeile des M7-Gates: Zählstand abgeschlossener Empfehlungen und
+ * Brier gegen Schwellwert — ohne Tageszahl. Die Übergangsregel (Datenhygiene)
+ * hat mit {@link transitionRuleLine} ihre eigene Zeile und ihren eigenen
+ * Nenner. `null` ohne Statistik-Lauf: dann gibt es keinen Zähler zu zeigen.
+ */
+export function m7GateLine(advice?: M7Advice | null): string | null {
+  if (!advice) return null;
+  const n = advice.n ?? 0;
+  const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
+  const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+  if (n < need) {
+    return (
+      `Zähl-Gate offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
+      `(Brier-Schwelle < ${limit}).`
+    );
   }
-  if (phase.complete) return open;
-  const eta = dayAfterLabel(phase.days_missing, phase.as_of);
-  return `${open} Übergangsregel: noch ${phase.days_missing} vollständige Live-Tage${
-    eta ? ` (frühestens am ${eta})` : ""
-  }.`;
+  if (advice.brier_30d == null) {
+    return (
+      `Zähl-Gate erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
+      `(keine P-Schätzung im Ledger).`
+    );
+  }
+  return (
+    `Zähl-Gate erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
+    `(Schwelle < ${limit}).`
+  );
+}
+
+/**
+ * Übergangsregel der Datenhygiene: Archiv → Live-Polling, Schwelle ist
+ * `live_only_days` der Engine (bootstrap/CLI, Default 90). Eigene Zeile, weil
+ * es eine eigene Freigabe ist — diese Tage zählen nicht auf das M7-Gate.
+ */
+export function transitionRuleLine(phase?: LivePhase | null): string {
+  const head =
+    "Übergangsregel Datenhygiene (Archiv → Live-Polling, live_only_days der Engine) " +
+    "— kein Nenner des M7-Gates";
+  if (!phase) {
+    return `${head}: noch keine Engine-Daten, die Tageszählung beginnt mit dem ersten Modell-Lauf.`;
+  }
+  if (phase.complete) {
+    return (
+      `${head}: erfüllt, ${phase.live_only_stations} von ${phase.stations} ` +
+      `Stationen laufen nur auf Live-Polling.`
+    );
+  }
+  return `${head}: ${livePhaseCountdown(phase) ?? livePhaseHint(phase)}`;
 }
