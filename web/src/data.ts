@@ -597,6 +597,64 @@ export async function postIntent(episodeId: string, intent: string) {
   }
 }
 
+/** Antwort des Startknopfs: POST /api/v1/jobs/{job}/run (B6, ohne Passwort). */
+export type JobRunResult = {
+  status?: "queued" | "running" | "debounced" | "rejected";
+  job?: string;
+  /** Sekunden bis zum nächsten möglichen Start (nur bei „debounced“). */
+  retry_after?: number;
+  error_code?: string | null;
+};
+export type JobRunNote = { tone: "ok" | "warn" | "error"; text: string };
+
+/** Übersetzt die Start-Antwort ehrlich — „läuft schon“ ist kein Fehler. */
+export function jobRunMessage(result: JobRunResult | null): JobRunNote {
+  if (!result) return { tone: "error", text: "Keine Antwort vom Server." };
+  if (result.error_code === "not_found")
+    return {
+      tone: "error",
+      text: "Start ist hier nicht freigegeben (Hintergrundjobs aus oder abgeschaltet).",
+    };
+  if (result.error_code === "rate_limited")
+    return {
+      tone: "warn",
+      text: "Zu viele Anfragen — kurz warten und erneut versuchen.",
+    };
+  if (result.error_code === "request_failed")
+    return { tone: "error", text: "App-Server nicht erreichbar." };
+  if (result.error_code)
+    return {
+      tone: "error",
+      text: problem(result.error_code) || "Start nicht möglich.",
+    };
+  switch (result.status) {
+    case "queued":
+      return { tone: "ok", text: "Gestartet — der Lauf beginnt sofort." };
+    case "running":
+      return { tone: "ok", text: "Läuft bereits; Fortschritt steht in dieser Karte." };
+    case "debounced":
+      return {
+        tone: "warn",
+        text: `Gerade erst gelaufen — in ${result.retry_after ?? 60} s erneut möglich.`,
+      };
+    default:
+      return { tone: "error", text: "Start abgelehnt." };
+  }
+}
+
+export async function postJobRun(job: string): Promise<JobRunResult> {
+  try {
+    const res = await fetch(`/api/v1/jobs/${job}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return (await res.json()) as JobRunResult;
+  } catch {
+    return { error_code: "request_failed" };
+  }
+}
+
 export async function postFill(payload: {
   station_id: string;
   station_name: string;

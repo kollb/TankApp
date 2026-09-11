@@ -20,6 +20,9 @@ class Settings:
     model_fuels: tuple[str, ...] = ("e10",)
     # Issue 50: gemeinsames Secret für den Uploader-Webhook (leer = Endpoint aus).
     webhook_token: str = ""
+    # Startknopf im GUI (POST /api/v1/jobs/{job}/run). Ohne Passwort, dafür
+    # nur bei laufendem Job-Betrieb; wer ihn abschalten will: =0.
+    gui_job_start: bool = True
     # M7 (Konzept §13): Schwellen-Nachzug an gemessene Trefferquoten.
     # Default aus: die Tabelle rechnet mit den Startwerten (§4.1/§4.2), der
     # Vorschlag wird in /api/v1/stats/summary nur ausgewiesen.
@@ -68,6 +71,8 @@ class Settings:
             history_days=days,
             model_fuels=fuels,
             webhook_token=os.environ.get("TANKAPP_WEBHOOK_TOKEN", "").strip(),
+            gui_job_start=os.environ.get("TANKAPP_GUI_JOB_START", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
             m7_auto_apply=os.environ.get("TANKAPP_M7_AUTO_APPLY", "0").strip()
             in {"1", "true", "on", "yes"},
             api_keys=tuple(

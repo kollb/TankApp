@@ -9,6 +9,7 @@ import {
   epochLabel,
   gapBands,
   haversineKm,
+  jobRunMessage,
   rowOutcome,
   scoreRows,
   segments,
@@ -354,5 +355,31 @@ describe("issue 50 trigger labels (Ereignis-Pipeline)", () => {
     expect(triggerSkipLabel(null)).toBeNull();
     expect(triggerSkipLabel(undefined)).toBeNull();
     expect(triggerSkipLabel("other")).toBeNull();
+  });
+});
+
+describe("job start button (Startknopf ohne Passwort)", () => {
+  it("translates scheduler answers into honest copy", () => {
+    expect(jobRunMessage({ status: "queued", job: "models" })).toEqual({
+      tone: "ok",
+      text: "Gestartet — der Lauf beginnt sofort.",
+    });
+    expect(jobRunMessage({ status: "running", job: "models" }).tone).toBe("ok");
+    expect(jobRunMessage({ status: "debounced", retry_after: 42 }).text).toBe(
+      "Gerade erst gelaufen — in 42 s erneut möglich.",
+    );
+    // Unbekannte Antwort ist ein Fehler, kein stilles „ok“.
+    expect(jobRunMessage({ status: "rejected" }).tone).toBe("error");
+    expect(jobRunMessage(null).tone).toBe("error");
+  });
+
+  it("explains refused starts instead of blaming the user", () => {
+    expect(jobRunMessage({ error_code: "not_found" }).text).toContain(
+      "nicht freigegeben",
+    );
+    expect(jobRunMessage({ error_code: "rate_limited" }).tone).toBe("warn");
+    expect(jobRunMessage({ error_code: "request_failed" }).text).toContain(
+      "nicht erreichbar",
+    );
   });
 });

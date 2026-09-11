@@ -38,6 +38,10 @@ TRIGGERABLE_JOBS = ("models", "selection")
 # Debounce: Mindestabstand zwischen zwei webhook-ausgelösten Läufen.
 TRIGGER_MIN_GAP_S = {"models": 900.0, "selection": 3600.0}
 DEFAULT_TRIGGER_GAP_S = 600.0
+# Mindestabstand zwischen zwei Starts per Knopf („Jetzt starten“). Deutlich
+# kürzer als das Webhook-Debounce: Der Knopf soll nach einer Korrektur
+# sofort wirken, aber Dauergeklicke keine Läufe stapeln.
+MANUAL_MIN_GAP_S = 60.0
 
 
 class Scheduler:
@@ -54,6 +58,8 @@ class Scheduler:
         self.trigger_counts = {name: 0 for name in INTERVALS}
         self.trigger_skips = {}
         self.last_start = {}
+        # B6: Startwunsch aus dem GUI (POST /api/v1/jobs/{job}/run).
+        self.manual_flags: set[str] = set()
 
     def start(self):
         for name in INTERVALS:
@@ -67,6 +73,36 @@ class Scheduler:
             return {"status": "rejected", "reason": "unknown_job"}
         with self.lock:
             self.pending[name] = watermark
+        self.wake[name].set()
+        return {"status": "queued", "job": name}
+
+    def manual(self, name):
+        """Start aus dem GUI — sofort, aber nie doppelt und nicht im Takt.
+
+        Anders als der Webhook ist der Knopf ein **Wille**, keine „neue Daten
+        liegen bereit“-Meldung: Er überspringt Debounce und Idempotenz, weil
+        sonst genau der Fall blockiert würde, für den er gedacht ist — nach
+        einer Korrektur den letzten Fehlschlag sofort nachholen. Zwei Dinge
+        gelten trotzdem: ein laufender Job wird nicht ein zweites Mal
+        gestartet, und innerhalb von ``MANUAL_MIN_GAP_S`` gilt der letzte
+        Start noch als „gerade eben“.
+        """
+        if name not in INTERVALS:
+            return {"status": "rejected", "reason": "unknown_job"}
+        with self.lock:
+            process = self.processes.get(name)
+            if process is not None and process.poll() is None:
+                return {"status": "running", "job": name}
+        waited = time.monotonic() - self.last_start.get(name, 0.0)
+        if waited < MANUAL_MIN_GAP_S:
+            return {
+                "status": "debounced",
+                "job": name,
+                "retry_after": round(MANUAL_MIN_GAP_S - waited),
+            }
+        with self.lock:
+            self.pending.pop(name, None)
+            self.manual_flags.add(name)
         self.wake[name].set()
         return {"status": "queued", "job": name}
 
@@ -126,7 +162,10 @@ class Scheduler:
                 with self.lock:
                     watermark = self.pending.pop(name, None)
                     self.trigger_counts[name] += 1
-                decision = self.admit_trigger(name, watermark)
+                    # Vom Knopf aus gewollt: Debounce/Idempotenz überspringen.
+                    manual = name in self.manual_flags
+                    self.manual_flags.discard(name)
+                decision = "run" if manual else self.admit_trigger(name, watermark)
                 if decision != "run":
                     with self.lock:
                         self.trigger_skips[name] = decision
@@ -139,6 +178,9 @@ class Scheduler:
                     self.errors.pop(name, None)
             except OSError:
                 self.errors[name] = "job_start_failed"
+            # Ein Wake, das *während* des Laufs gesetzt wurde, ist erledigt:
+            # der Job hat ja gerade gerechnet. Sonst startet er sofort erneut.
+            wake.clear()
             state = self.job_state(name)
 
     def run_once(self, name, watermark=None):
@@ -460,6 +502,27 @@ class Handler(SimpleHTTPRequestHandler):
 
         if not isinstance(payload, dict):
             self.json({"error_code": "invalid_query"}, 400)
+            return
+
+        # --- Startknopf im GUI: POST /api/v1/jobs/{job}/run (B6) ---
+        # Bewusst ohne Token: der Knopf wirkt nur im selben NAS-Webauftritt,
+        # und nur wenn der Dienst überhaupt Jobs fährt (--jobs). Der Body wird
+        # ignoriert — der Ablauf entscheidet, nicht der Aufrufer. Wer den
+        # Knopf abschalten will: TANKAPP_GUI_JOB_START=0.
+        if norm_path.startswith("/api/v1/jobs/") and norm_path.endswith("/run"):
+            name = norm_path[len("/api/v1/jobs/") : -len("/run")]
+            scheduler = getattr(self.data, "scheduler", None)
+            if (
+                name not in INTERVALS
+                or scheduler is None
+                or not getattr(self.data, "jobs_enabled", False)
+                or not getattr(self.data.settings, "gui_job_start", True)
+            ):
+                # Ohne Job-Betrieb (oder abgeschaltet) existiert der Knopf
+                # nicht — dieselbe Regel wie beim Webhook-Endpunkt.
+                self.json({"error_code": "not_found"}, 404)
+                return
+            self.json(scheduler.manual(name), 200)
             return
 
         if norm_path == "/api/v1/collector/heartbeat":

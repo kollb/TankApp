@@ -333,12 +333,20 @@ rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
 
 ### Lauf manuell anstoßen
 
-Der Scheduler läuft im App-Dienst; im GUI gibt es bewusst keinen Startknopf
-(Schreibpfade gehören nicht in eine Nur-Lese-Oberfläche). Zwei Wege, beide
-ohne Neustart des Dienstes:
+Drei Wege, alle ohne Neustart des Dienstes:
+
+**1. Knopf im GUI** (System-Tab, grünes ▶ in der Job-Karte) — der
+direkteste Weg. Ohne Passwort, weil er nur im NAS-Webauftritt wirkt und nur,
+wenn der Dienst Jobs fährt. Der Scheduler antwortet ehrlich: „Gestartet“,
+„Läuft bereits“ oder „Gerade erst gelaufen — in 37 s erneut möglich“.
+Abschalten (z. B. wenn die GUI aus dem Internet erreichbar ist):
+`TANKAPP_GUI_JOB_START=0` in `ops/nas/app/compose.yml` (Umgebung des
+App-Dienstes), danach `python3 tankapp.py nas-up`. Wege 2 und 3 bleiben.
+
+**2 und 3. Kommandozeile** — für Scripts, SSH und den Pi:
 
 ```bash
-# 1) Webhook — nur für models und selection. Der Scheduler entscheidet über
+# a) Webhook — nur für models und selection. Der Scheduler entscheidet über
 #    Debounce (models 15 min, selection 60 min) und Idempotenz.
 curl -fsS -X POST http://<nas>:1355/api/v1/jobs/trigger \
   -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" \
@@ -347,14 +355,14 @@ curl -fsS -X POST http://<nas>:1355/api/v1/jobs/trigger \
 # Antwort {"status":"queued","job":"models"} heißt geweckt, nicht gelaufen:
 # Der Scheduler prüft Debounce und Datenstand selbst (docs/API.md).
 
-# 2) Direkt im Container — startet sofort und umgeht Debounce/Idempotenz.
+# b) Direkt im Container — startet sofort und umgeht Debounce/Idempotenz.
 docker exec tankapp-app python3 -m app.worker models
 # Exit-Code 0 = Erfolg, 2 = fehlgeschlagen (wie vom Scheduler gewertet).
 ```
 
 Ohne konfiguriertes `TANKAPP_WEBHOOK_TOKEN` oder ohne Job-Betrieb
 (`tankapp.py nas-up --jobs`) existiert der Webhook-Endpunkt nicht (404).
-Weg 2 schreibt Status und Log genau wie ein planmäßiger Lauf und ist damit
+Weg 3 schreibt Status und Log genau wie ein planmäßiger Lauf und ist damit
 auch die beste Probe, wenn ein Lauf nachts fehlgeschlagen ist.
 
 ### Fehlgeschlagener Lauf: Ursache statt Raten

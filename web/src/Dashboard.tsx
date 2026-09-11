@@ -34,6 +34,7 @@ import {
   Cpu,
   CheckCircle2,
   ScrollText,
+  Play,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
@@ -60,6 +61,8 @@ import {
   useResource,
   usePreference,
   postIntent,
+  postJobRun,
+  jobRunMessage,
   postFill,
   rowOutcome,
   scoreRows,
@@ -78,6 +81,7 @@ import {
   type DecideResult,
   type StatsSummary,
   type JobLog,
+  type JobRunNote,
   JOB_LABELS,
 } from "./data";
 
@@ -160,15 +164,30 @@ function JobCard({
   enabled,
   logKey,
   onShowLog,
+  onStarted,
 }: {
   title: string;
   icon: ReactNode;
   job?: Job;
   enabled?: boolean;
-  /** Job-Name für den Log-Sprung (siehe JOB_LABELS). */
+  /** Job-Name für Log-Sprung und Startknopf (siehe JOB_LABELS). */
   logKey?: string;
   onShowLog?: (job: string) => void;
+  /** Nach einem Start: Status sofort neu laden. */
+  onStarted?: () => void;
 }) {
+  const [note, setNote] = useState<JobRunNote | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Eine neue Job-Phase macht die letzte Start-Meldung gegenstandslos.
+  useEffect(() => setNote(null), [job?.state]);
+  const startNow = async () => {
+    if (!logKey || busy) return;
+    setBusy(true);
+    const result = await postJobRun(logKey);
+    setNote(jobRunMessage(result));
+    setBusy(false);
+    if (result.status === "queued" || result.status === "running") onStarted?.();
+  };
   const state = !enabled
     ? "aus"
     : job?.state === "success"
@@ -204,6 +223,18 @@ function JobCard({
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
+          {logKey && enabled ? (
+            <button
+              type="button"
+              onClick={() => void startNow()}
+              disabled={busy}
+              title={`${title} jetzt starten`}
+              aria-label={`${title} jetzt starten`}
+              className="rounded-md border border-emerald-600/50 p-1 text-emerald-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 disabled:opacity-40"
+            >
+              <Play size={13} />
+            </button>
+          ) : null}
           {logKey && onShowLog ? (
             <button
               type="button"
@@ -262,6 +293,19 @@ function JobCard({
       {job?.error_detail && (
         <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-500/10 p-2 text-[11px] leading-relaxed text-rose-300">
           <span className="font-semibold">Ursache:</span> {job.error_detail}
+        </p>
+      )}
+      {note && (
+        <p
+          className={`mt-2 rounded-lg p-2 text-[11px] leading-relaxed ${
+            note.tone === "ok"
+              ? "bg-emerald-500/10 text-emerald-300"
+              : note.tone === "warn"
+                ? "bg-amber-500/10 text-amber-300"
+                : "bg-rose-500/10 text-rose-300"
+          }`}
+        >
+          {note.text}
         </p>
       )}
       {job?.state === "running" && job.progress && (
@@ -789,9 +833,15 @@ export function Dashboard() {
   const collector = collectorStatus.data || h?.collector;
   // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
   const logLines = jobLog.data?.lines ?? [];
+  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Tabs (Alltag/Statistik).
+  const failedJobs = Object.entries(h?.jobs || {}).filter(
+    ([, job]) => job?.state === "failed",
+  );
   const webhookCapable = logJob === "models" || logJob === "selection";
   const triggerCommand = `curl -X POST http://<nas>:1355/api/v1/jobs/trigger -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" -H 'Content-Type: application/json' -d '{"job":"${logJob}"}'`;
   const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
+  // Nach einem Knopf-Start: Health sofort neu laden, nicht erst im Intervall.
+  const refreshNow = () => setRefresh((count) => count + 1);
   const showJobLog = (name: string) => {
     setLogJob(name);
     setLogReload((count) => count + 1);
@@ -1341,6 +1391,47 @@ export function Dashboard() {
                   Einrichtung im Systembereich ansehen
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Fehlgeschlagene NAS-Jobs: in Alltag und Statistik sichtbar, nicht
+            nur im System-Tab — sonst wirken veraltete Prognosen wie aktuelle. */}
+        {failedJobs.length > 0 && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
+          >
+            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p>
+                {failedJobs.length === 1
+                  ? "Ein NAS-Job ist fehlgeschlagen:"
+                  : `${failedJobs.length} NAS-Jobs sind fehlgeschlagen:`}{" "}
+                {failedJobs
+                  .map(
+                    ([name, job]) =>
+                      `${JOB_LABELS[name] ?? name} — ${
+                        job?.error_detail ??
+                        problem(job?.error_code) ??
+                        "unbekannte Ursache"
+                      }`,
+                  )
+                  .join(" · ")}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-rose-300/80">
+                Angezeigte Prognosen und Rankings können veraltet sein; die
+                letzten guten Ergebnisse bleiben erhalten.
+              </p>
+              <button
+                onClick={() => {
+                  setTab("system");
+                  showJobLog(failedJobs[0][0]);
+                }}
+                className="mt-1 text-xs underline underline-offset-4"
+              >
+                Log ansehen
+              </button>
             </div>
           </div>
         )}
@@ -3068,6 +3159,7 @@ export function Dashboard() {
                 enabled={h?.jobs_enabled}
                 logKey="archive"
                 onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Modell-Update"
@@ -3076,6 +3168,7 @@ export function Dashboard() {
                 enabled={h?.jobs_enabled}
                 logKey="models"
                 onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Selektion Ranking"
@@ -3084,6 +3177,7 @@ export function Dashboard() {
                 enabled={h?.jobs_enabled}
                 logKey="selection"
                 onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Beleg-Verarbeitung"
@@ -3092,6 +3186,7 @@ export function Dashboard() {
                 enabled={h?.jobs_enabled}
                 logKey="settlement"
                 onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
             </div>
 
@@ -3172,19 +3267,21 @@ export function Dashboard() {
                 ) : null}
               </div>
               <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-500">
-                Starten geht bewusst nicht per Knopf, sondern auf dem NAS
-                (Einmal-Befehl, siehe{" "}
-                <span className="text-slate-400">docs/BETRIEB.md</span>):
-                {webhookCapable ? (
-                  <>
-                    {" "}
-                    <code className="text-slate-400">{triggerCommand}</code> —
-                    Debounce 15 min, der Scheduler entscheidet.
-                  </>
-                ) : null}{" "}
-                <code className="text-slate-400">{workerCommand}</code> startet
-                sofort im App-Container.
+                Starten: der Knopf{" "}
+                <Play size={11} className="inline align-[-1px]" /> in der
+                jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im
+                NAS-Webauftritt, nie zwei Läufe gleichzeitig). Auf der
+                Kommandozeile stattdessen{" "}
+                <code className="text-slate-400">{workerCommand}</code> —
+                Details in{" "}
+                <span className="text-slate-400">docs/BETRIEB.md</span>.
               </p>
+              {webhookCapable ? (
+                <p className="mt-2 break-words text-[11px] leading-relaxed text-slate-500">
+                  Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook:{" "}
+                  <code className="text-slate-400">{triggerCommand}</code>
+                </p>
+              ) : null}
             </section>
 
             {/* Pi/tmpfs Livestatus */}
