@@ -1,7 +1,13 @@
 // Layout/visual foundation: sample/good gui/TankAppDashboard + DecisionCockpit.
 // Workshop composition and charts: sample/good statistic gui/DecisionLab.
 // No demo engine, seeds, simulated decisions or PostgreSQL are imported.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Fuel as FuelIcon,
   Compass,
@@ -27,6 +33,8 @@ import {
   BarChart3,
   Cpu,
   CheckCircle2,
+  ScrollText,
+  Play,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
@@ -53,6 +61,8 @@ import {
   useResource,
   usePreference,
   postIntent,
+  postJobRun,
+  jobRunMessage,
   postFill,
   rowOutcome,
   scoreRows,
@@ -70,6 +80,9 @@ import {
   type CollectorStatus,
   type DecideResult,
   type StatsSummary,
+  type JobLog,
+  type JobRunNote,
+  JOB_LABELS,
 } from "./data";
 
 const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
@@ -149,12 +162,32 @@ function JobCard({
   icon,
   job,
   enabled,
+  logKey,
+  onShowLog,
+  onStarted,
 }: {
   title: string;
   icon: ReactNode;
   job?: Job;
   enabled?: boolean;
+  /** Job-Name für Log-Sprung und Startknopf (siehe JOB_LABELS). */
+  logKey?: string;
+  onShowLog?: (job: string) => void;
+  /** Nach einem Start: Status sofort neu laden. */
+  onStarted?: () => void;
 }) {
+  const [note, setNote] = useState<JobRunNote | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Eine neue Job-Phase macht die letzte Start-Meldung gegenstandslos.
+  useEffect(() => setNote(null), [job?.state]);
+  const startNow = async () => {
+    if (!logKey || busy) return;
+    setBusy(true);
+    const result = await postJobRun(logKey);
+    setNote(jobRunMessage(result));
+    setBusy(false);
+    if (result.status === "queued" || result.status === "running") onStarted?.();
+  };
   const state = !enabled
     ? "aus"
     : job?.state === "success"
@@ -188,7 +221,32 @@ function JobCard({
           {icon}
           {title}
         </div>
-        <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
+          {logKey && enabled ? (
+            <button
+              type="button"
+              onClick={() => void startNow()}
+              disabled={busy}
+              title={`${title} jetzt starten`}
+              aria-label={`${title} jetzt starten`}
+              className="rounded-md border border-emerald-600/50 p-1 text-emerald-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 disabled:opacity-40"
+            >
+              <Play size={13} />
+            </button>
+          ) : null}
+          {logKey && onShowLog ? (
+            <button
+              type="button"
+              onClick={() => onShowLog(logKey)}
+              title={`Log von ${title} anzeigen`}
+              aria-label={`Log von ${title} anzeigen`}
+              className="rounded-md border border-slate-700 p-1 text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+            >
+              <ScrollText size={13} />
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="mt-4 space-y-1.5 text-xs text-slate-400">
         <div className="flex justify-between">
@@ -229,6 +287,25 @@ function JobCard({
       {job?.error_code && (
         <p className="mt-3 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-300">
           {problem(job.error_code)}
+        </p>
+      )}
+      {/* Bereinigte Ursache (app/errors.py): „fehlgeschlagen“ allein hilft nicht. */}
+      {job?.error_detail && (
+        <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-500/10 p-2 text-[11px] leading-relaxed text-rose-300">
+          <span className="font-semibold">Ursache:</span> {job.error_detail}
+        </p>
+      )}
+      {note && (
+        <p
+          className={`mt-2 rounded-lg p-2 text-[11px] leading-relaxed ${
+            note.tone === "ok"
+              ? "bg-emerald-500/10 text-emerald-300"
+              : note.tone === "warn"
+                ? "bg-amber-500/10 text-amber-300"
+                : "bg-rose-500/10 text-rose-300"
+          }`}
+        >
+          {note.text}
         </p>
       )}
       {job?.state === "running" && job.progress && (
@@ -326,6 +403,7 @@ function ApiExplorer({
     { label: `stations ${fuel}`, path: `/api/v1/stations?fuel=${fuel}` },
     { label: `selection ${fuel}`, path: `/api/v1/selection?fuel=${fuel}` },
     { label: "collector/status", path: "/api/v1/collector/status" },
+    { label: "jobs/models/log", path: "/api/v1/jobs/models/log?lines=50" },
     { label: "last_forecasts", path: "/api/v1/last_forecasts" },
     { label: "day (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
     {
@@ -576,6 +654,17 @@ export function Dashboard() {
   );
   const health = useResource<Health>("/api/v1/health", healthInterval, refresh);
 
+  // Job-Log im System-Tab: welcher Job, wie viele Zeilen, wann neu laden.
+  const [logJob, setLogJob] = useState("models");
+  const [logLineCount, setLogLineCount] = useState(200);
+  const [logReload, setLogReload] = useState(0);
+  const logRef = useRef<HTMLElement | null>(null);
+  const logBodyRef = useRef<HTMLPreElement | null>(null);
+  const runningJob =
+    Object.entries(health.data?.jobs || {}).find(
+      ([, job]) => job?.state === "running",
+    )?.[0] ?? null;
+
   useEffect(() => {
     const running = Object.values(health.data?.jobs || {}).some(
       (job) => job?.state === "running",
@@ -721,6 +810,14 @@ export function Dashboard() {
     60000,
     refresh,
   );
+  // Job-Log: nur im System-Tab, dichter gepollt, solange ein Job läuft.
+  const jobLog = useResource<JobLog>(
+    tab === "system"
+      ? `/api/v1/jobs/${logJob}/log?lines=${logLineCount}`
+      : null,
+    runningJob ? 15000 : 120000,
+    logReload,
+  );
   const routeEval = useResource<RouteEvaluate>(
     tab === "daily" && activeCity && (routeAltId || detourOptions[0]?.row.station_id)
       ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
@@ -734,6 +831,28 @@ export function Dashboard() {
     : problem(data?.connection_error);
   const h = health.error ? null : health.data;
   const collector = collectorStatus.data || h?.collector;
+  // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
+  const logLines = jobLog.data?.lines ?? [];
+  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Tabs (Alltag/Statistik).
+  const failedJobs = Object.entries(h?.jobs || {}).filter(
+    ([, job]) => job?.state === "failed",
+  );
+  const webhookCapable = logJob === "models" || logJob === "selection";
+  const triggerCommand = `curl -X POST http://<nas>:1355/api/v1/jobs/trigger -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" -H 'Content-Type: application/json' -d '{"job":"${logJob}"}'`;
+  const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
+  // Nach einem Knopf-Start: Health sofort neu laden, nicht erst im Intervall.
+  const refreshNow = () => setRefresh((count) => count + 1);
+  const showJobLog = (name: string) => {
+    setLogJob(name);
+    setLogReload((count) => count + 1);
+    requestAnimationFrame(() =>
+      logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+  useEffect(() => {
+    const box = logBodyRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [logLines.length, logJob]);
   const f = forecast.data;
   const horizonDays = horizon;
   const forecastPoints =
@@ -1272,6 +1391,47 @@ export function Dashboard() {
                   Einrichtung im Systembereich ansehen
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Fehlgeschlagene NAS-Jobs: in Alltag und Statistik sichtbar, nicht
+            nur im System-Tab — sonst wirken veraltete Prognosen wie aktuelle. */}
+        {failedJobs.length > 0 && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
+          >
+            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p>
+                {failedJobs.length === 1
+                  ? "Ein NAS-Job ist fehlgeschlagen:"
+                  : `${failedJobs.length} NAS-Jobs sind fehlgeschlagen:`}{" "}
+                {failedJobs
+                  .map(
+                    ([name, job]) =>
+                      `${JOB_LABELS[name] ?? name} — ${
+                        job?.error_detail ??
+                        problem(job?.error_code) ??
+                        "unbekannte Ursache"
+                      }`,
+                  )
+                  .join(" · ")}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-rose-300/80">
+                Angezeigte Prognosen und Rankings können veraltet sein; die
+                letzten guten Ergebnisse bleiben erhalten.
+              </p>
+              <button
+                onClick={() => {
+                  setTab("system");
+                  showJobLog(failedJobs[0][0]);
+                }}
+                className="mt-1 text-xs underline underline-offset-4"
+              >
+                Log ansehen
+              </button>
             </div>
           </div>
         )}
@@ -2997,26 +3157,132 @@ export function Dashboard() {
                 icon={<Database size={17} className="text-emerald-400" />}
                 job={h?.jobs.archive}
                 enabled={h?.jobs_enabled}
+                logKey="archive"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Modell-Update"
                 icon={<ChartIcon size={17} className="text-sky-400" />}
                 job={h?.jobs.models}
                 enabled={h?.jobs_enabled}
+                logKey="models"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Selektion Ranking"
                 icon={<Activity size={17} className="text-emerald-400" />}
                 job={h?.jobs.selection}
                 enabled={h?.jobs_enabled}
+                logKey="selection"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Beleg-Verarbeitung"
                 icon={<Scale size={17} className="text-emerald-400" />}
                 job={h?.jobs.settlement}
                 enabled={h?.jobs_enabled}
+                logKey="settlement"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
             </div>
+
+            {/* Job-Log: dieselben Zeilen wie `tail -f data/runtime/jobs/<job>.log` */}
+            <section ref={logRef} className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold">
+                    <ScrollText size={17} className="text-emerald-400" />
+                    Job-Log · letzte Zeilen direkt vom NAS
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    Dieselben Zeilen liegen als Datei unter{" "}
+                    <code className="text-slate-400">
+                      data/runtime/jobs/{logJob}.log
+                    </code>{" "}
+                    (die letzten 500). Beim Auslesen werden Pfade und
+                    Zugangsdaten entfernt.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLogReload((n) => n + 1)}
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
+                >
+                  Aktualisieren
+                </button>
+              </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {Object.keys(JOB_LABELS).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setLogJob(name)}
+                    aria-pressed={logJob === name}
+                    className={`rounded-lg border px-3 py-1.5 text-[11px] transition-colors ${
+                      logJob === name
+                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
+                        : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                    }`}
+                  >
+                    {JOB_LABELS[name]}
+                  </button>
+                ))}
+                <select
+                  aria-label="Anzahl Logzeilen"
+                  value={logLineCount}
+                  onChange={(e) => setLogLineCount(Number(e.target.value))}
+                  className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[11px] text-slate-200"
+                >
+                  <option value={100}>letzte 100</option>
+                  <option value={200}>letzte 200</option>
+                  <option value={500}>letzte 500</option>
+                </select>
+              </div>
+              <pre
+                ref={logBodyRef}
+                className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-slate-300"
+              >
+                {logLines.length
+                  ? logLines.join("\n")
+                  : jobLog.pending
+                    ? "Log wird geladen …"
+                    : "Noch keine Logzeilen für diesen Job."}
+              </pre>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-slate-500">
+                <span>
+                  {jobLog.data?.available
+                    ? `${jobLog.data.count} von ${jobLog.data.total} Zeilen im Log`
+                    : jobLog.data
+                      ? "Noch kein Log — der erste Lauf dieses Jobs schreibt es."
+                      : ""}
+                </span>
+                {jobLog.data?.updated_at ? (
+                  <span className="font-mono">
+                    Stand {timeLabel(jobLog.data.updated_at)}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-500">
+                Starten: der Knopf{" "}
+                <Play size={11} className="inline align-[-1px]" /> in der
+                jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im
+                NAS-Webauftritt, nie zwei Läufe gleichzeitig). Auf der
+                Kommandozeile stattdessen{" "}
+                <code className="text-slate-400">{workerCommand}</code> —
+                Details in{" "}
+                <span className="text-slate-400">docs/BETRIEB.md</span>.
+              </p>
+              {webhookCapable ? (
+                <p className="mt-2 break-words text-[11px] leading-relaxed text-slate-500">
+                  Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook:{" "}
+                  <code className="text-slate-400">{triggerCommand}</code>
+                </p>
+              ) : null}
+            </section>
 
             {/* Pi/tmpfs Livestatus */}
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
