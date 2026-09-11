@@ -9,7 +9,6 @@
 
 import csv
 import gzip
-import io
 import json
 import math
 import sys
@@ -77,43 +76,66 @@ def archiv(tmp_path):
     stations_csv = stations_dir / "2026-08-30-stations.csv"
     with stations_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["uuid", "name", "brand", "post_code", "city",
-                    "latitude", "longitude"])
+        w.writerow(
+            ["uuid", "name", "brand", "post_code", "city", "latitude", "longitude"]
+        )
         for u, name, brand, dist, _ in stationen:
             lon = LON + dist / (111.32 * math.cos(math.radians(LAT)))
-            w.writerow([u, name, brand, "33334", "Gütersloh",
-                        f"{LAT:.5f}", f"{lon:.5f}"])
+            w.writerow(
+                [u, name, brand, "33334", "Gütersloh", f"{LAT:.5f}", f"{lon:.5f}"]
+            )
 
     preise = {u: sorten.split("/") for u, _, _, _, sorten in stationen if sorten}
-    header = ["station_uuid", "date", "diesel", "e5", "e10",
-              "diesel_change", "e5_change", "e10_change"]
+    header = [
+        "station_uuid",
+        "date",
+        "diesel",
+        "e5",
+        "e10",
+        "diesel_change",
+        "e5_change",
+        "e10_change",
+    ]
     for tag in range(1, 30):  # 29 Tage
         tag_p = prices_dir / f"2026-08-{tag:02d}-prices.csv.gz"
         with gzip.open(tag_p, "wt", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(header)
             for u, fuels in preise.items():
-                w.writerow([
-                    u, f"2026-08-{tag:02d} 00:00:00",
-                    "1.29" if "diesel" in fuels else "",
-                    "1.71" if "e5" in fuels else "",
-                    "1.65" if "e10" in fuels else "",
-                    "1", "1", "1",
-                ])
+                w.writerow(
+                    [
+                        u,
+                        f"2026-08-{tag:02d} 00:00:00",
+                        "1.29" if "diesel" in fuels else "",
+                        "1.71" if "e5" in fuels else "",
+                        "1.65" if "e10" in fuels else "",
+                        "1",
+                        "1",
+                        "1",
+                    ]
+                )
     return tmp_path
 
 
 def run_discover(root, out, fuel, *extra, quiet=True):
     argv = [
         "discover_stations.py",
-        "--stations", str(root / "stations"),
-        "--config", str(root / "gibt-es-nicht.json"),
-        "--anchor", f"GT:{LAT},{LON}",
-        "--radius", "5",
-        "--check-history", str(root / "prices"),
-        "--min-days", "28",
-        "--fuel", fuel,
-        "--out", str(out),
+        "--stations",
+        str(root / "stations"),
+        "--config",
+        str(root / "gibt-es-nicht.json"),
+        "--anchor",
+        f"GT:{LAT},{LON}",
+        "--radius",
+        "5",
+        "--check-history",
+        str(root / "prices"),
+        "--min-days",
+        "28",
+        "--fuel",
+        fuel,
+        "--out",
+        str(out),
         *(["--quiet"] if quiet else []),
         *extra,
     ]
@@ -174,15 +196,16 @@ def test_e10_set_nimmt_keine_toten_oder_diesel_only(archiv, tmp_path):
     data = json.loads((out / "polling.json").read_text(encoding="utf-8"))
     gt = data["sets"]["GT"]
     assert len(gt["batch"]) == 10
-    assert uid(2) not in gt["batch"]   # Diesel-Only, näher als die meisten
-    assert uid(3) not in gt["batch"]   # ganz ohne Historie
-    assert uid(12) in gt["batch"]      # trägt e10 → dabei
+    assert uid(2) not in gt["batch"]  # Diesel-Only, näher als die meisten
+    assert uid(3) not in gt["batch"]  # ganz ohne Historie
+    assert uid(12) in gt["batch"]  # trägt e10 → dabei
 
     namen = [s["name"] for s in gt["stations"]]
     assert f"Rast {FIXED}" in namen
     assert not any("Ã" in name for name in namen)
-    assert all(s["hist_days"] >= 28 and "e10" in (s["fuels"] or "")
-               for s in gt["stations"])
+    assert all(
+        s["hist_days"] >= 28 and "e10" in (s["fuels"] or "") for s in gt["stations"]
+    )
 
     report = (out / "report.md").read_text(encoding="utf-8")
     assert "GÜTERSLOH SÜD" in report
@@ -197,12 +220,11 @@ def test_fuel_all_laesst_set_kurz_und_warnt(archiv, tmp_path, capsys):
 
     data = json.loads((out / "polling.json").read_text(encoding="utf-8"))
     gt = data["sets"]["GT"]
-    assert len(gt["batch"]) == 9       # Station J fehlt e5
+    assert len(gt["batch"]) == 9  # Station J fehlt e5
     assert uid(12) not in gt["batch"]
     assert uid(2) not in gt["batch"]
     assert all(
-        {"diesel", "e5", "e10"} <= set(s["fuels"].split("/"))
-        for s in gt["stations"]
+        {"diesel", "e5", "e10"} <= set(s["fuels"].split("/")) for s in gt["stations"]
     )
     report = (out / "report.md").read_text(encoding="utf-8")
     assert "⚠" in report
