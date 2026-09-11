@@ -10,6 +10,8 @@ Trennt strikt:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import math
 import threading
 import time
@@ -19,9 +21,22 @@ from pathlib import Path
 from typing import Any
 
 from polling_plan import atomic_json, collector_lock
-from .data import read_json
+from .data import metadata
 
 UTC = dt.timezone.utc
+
+FUELS = {"e10", "e5", "diesel"}
+# Füllungs-Validierung (§11.2, Prüfstand §3.1): ein Beleg außerhalb dieser
+# Grenzen ist kein Messwert, sondern Eingabemüll — 4xx statt still verbuchen.
+MIN_LITERS = 5.0
+MAX_LITERS = 100.0
+MIN_PRICE_PAID = 0.40
+MAX_PRICE_PAID = 5.00
+# Feedback-Store-Grenze: darüber wird nicht mehr still geleert, sondern
+# explizit ``store_too_large`` gemeldet (Prüfstand §3.5). Rotation 90 Tage
+# verhindert, dass der Store überhaupt dort ankommt.
+FEEDBACK_MAX_BYTES = 10_000_000
+FEEDBACK_RETENTION_DAYS = 90
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -48,28 +63,59 @@ M7_BRIER_THRESHOLD = 0.25
 _STORE_THREAD_LOCK = threading.Lock()
 
 
+class StoreTooLarge(RuntimeError):
+    """Feedback-Store überschreitet die Größen-Grenze (Prüfstand §3.5).
+
+    Bewusst KEIN ``ValueError``: ``locked_store`` fängt ``ValueError`` ab und
+    würde sonst endlos neu laden. Der Aufrufer muss das als expliziten
+    Fehlerzustand behandeln statt still mit einem leeren Store
+    weiterzurechnen — sonst wären Advice-Historie, Brier-Grundlage und
+    Wallet ohne Warnung weg.
+    """
+
+
 @contextmanager
 def locked_store(settings):
     """Thread- + prozessübergreifend essicheres Lesen/Schreiben des Feedback-Stores.
 
     Server (decide/fills/intent) und Worker (settlement) schreiben dieselbe
     Datei; ohne Sperre gingen Snapshots bei gleichzeitigen Requests verloren.
+
+    Schreibt nur bei echter Änderung (Digest-Vergleich) und kappt dabei die
+    Retention (90 Tage) — ausgelagerte Einträge landen im JSONL-Archiv.
+
+    Die Lock-Akquise wird bei Kollision retryt; ein ``ValueError`` aus dem
+    Rumpf (z. B. Fill-Validierung) wird dagegen unverändert durchgereicht —
+    sonst würde die Validierung als „Lock belegt" verschluckt und endlos neu
+    versucht.
     """
     with _STORE_THREAD_LOCK:
+        lock = None
         last_error = None
         for _ in range(50):
             try:
-                with collector_lock(
+                lock = collector_lock(
                     feedback_path(settings).parent, label="Feedback-Store"
-                ):
-                    store = load_store(settings)
-                    yield store
-                    save_store(settings, store)
-                    return
+                )
+                lock.__enter__()
+                break
             except ValueError as exc:
                 last_error = exc
+                lock = None
                 time.sleep(0.05)
-        raise last_error
+        if lock is None:
+            raise last_error
+        try:
+            store = load_store(settings)
+            before = _store_digest(store)
+            yield store
+            archived = _prune_and_archive(store)
+            if archived:
+                _append_archive(settings, archived)
+            if _store_digest(store) != before:
+                save_store(settings, store)
+        finally:
+            lock.__exit__(None, None, None)
 
 
 def _now_iso(clock=None) -> str:
@@ -87,8 +133,60 @@ def feedback_path(settings) -> Path:
     return p
 
 
+def feedback_archive_path(settings) -> Path:
+    return feedback_path(settings).parent / "archive.jsonl"
+
+
+def _store_digest(store: dict[str, Any]) -> bytes:
+    """Kanonischer Fingerabdruck des Stores — Grundlage des Write-Throttles."""
+    payload = json.dumps(store, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).digest()
+
+
+def _prune_and_archive(store: dict[str, Any]) -> list[dict[str, Any]]:
+    """Retention: Einträge älter als ``FEEDBACK_RETENTION_DAYS`` auslagern.
+
+    Gibt die ausgelagerten Einträge zurück (der Aufrufer archiviert sie als
+    JSONL). Felder ohne parsebaren Zeitstempel bleiben erhalten (Altdaten).
+    """
+    cutoff = dt.datetime.now(UTC) - dt.timedelta(days=FEEDBACK_RETENTION_DAYS)
+    archived: list[dict[str, Any]] = []
+    for key, field in (
+        ("episodes", "opened_at"),
+        ("settlements", "settled_at"),
+        ("fills", "tanked_at"),
+    ):
+        kept = []
+        for item in store.get(key, []):
+            stamp = _parse_ts(item.get(field))
+            if stamp is None or stamp >= cutoff:
+                kept.append(item)
+            else:
+                archived.append({"collection": key, **item})
+        store[key] = kept
+    return archived
+
+
+def _append_archive(settings, items: list[dict[str, Any]]) -> None:
+    if not items:
+        return
+    with feedback_archive_path(settings).open("a", encoding="utf-8") as fh:
+        for item in items:
+            fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
+
+
 def load_store(settings) -> dict[str, Any]:
-    raw = read_json(feedback_path(settings), None)
+    path = feedback_path(settings)
+    raw = None
+    try:
+        if path.exists() and path.stat().st_size > FEEDBACK_MAX_BYTES:
+            raise StoreTooLarge(
+                f"Feedback-Store zu groß ({path.stat().st_size} Bytes > "
+                f"{FEEDBACK_MAX_BYTES}) — Retention/Archivierung prüfen."
+            )
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        raw = None
     if isinstance(raw, dict) and "episodes" in raw:
         return {
             "episodes": raw.get("episodes") or [],
@@ -216,6 +314,13 @@ def record_snapshot(
         ep = _open_episode(store)
         action = snapshot_data.get("action", "no_advice")
 
+        # Verteilungs-P (§4.1/§4.2): dieselbe Zahl, die das UI nach dem
+        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt Brier auf
+        # die interne Ledger-Schätzung zurück — sonst könnte das Gate nie öffnen.
+        p_besser = snapshot_data.get("p_besser")
+        if p_besser is None:
+            p_besser = estimate_p(store, action)
+
         snap_id = _uid("snap")
         snap = {
             "id": snap_id,
@@ -234,9 +339,15 @@ def record_snapshot(
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
             "expected_saving_eur": snapshot_data.get("expected_saving_eur", 0.0),
-            "p_correct": estimate_p(store, action),
+            "p_besser": snapshot_data.get("p_besser"),
+            "p_correct": p_besser,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
             "fuel": snapshot_data.get("fuel", "e10"),
+            # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
+            # Deadline müssen im Store landen, sonst sind spätere
+            # Auswertungen (Dedicated? Deadline-Druck?) unmöglich.
+            "trip_mode": snapshot_data.get("trip_mode"),
+            "latest_by": snapshot_data.get("latest_by"),
         }
 
         if not ep:
@@ -264,6 +375,7 @@ def record_snapshot(
                     "id": last["id"],
                     "emitted_at": last["emitted_at"],
                     "p_correct": last.get("p_correct"),
+                    "p_besser": last.get("p_besser"),
                 }
                 ep["last_snapshot"] = updated_snap
                 ep["snapshots"] = [
@@ -393,17 +505,103 @@ def classify_compliance(
     return "unrelated"
 
 
-def record_fill(settings, fill_data: dict[str, Any], clock=None) -> dict[str, Any]:
-    """Registriert einen Tankbeleg (Wallet-Ledger)."""
+def _to_float(value: Any) -> float | None:
+    """Strikte Zahl ohne stillen Default: None bei Nicht-Zahl/NaN/∞."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _nowcast_price(
+    live_data: Any, station_id: str, city: str, fuel: str
+) -> float | None:
+    """Frischer Live-Preis der Station (Nowcast, §11.2) — oder None."""
+    if live_data is None:
+        return None
+    try:
+        data = live_data.stations(fuel=fuel, city=city)
+    except Exception:
+        return None
+    for s in data.get("stations", []):
+        if s.get("station_id") == station_id and s.get("price") is not None:
+            try:
+                return float(s["price"])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _closes_episode(compliance: str, ep: dict[str, Any], station_id: str) -> bool:
+    """Nur ein Beleg, der die Empfehlung betrifft, schließt die Folge (§5.4).
+
+    ``unrelated`` (Tanken ohne App) beendet die Advice-Folge NICHT — sonst
+    killt ein fachlich fremder Beleg Due-Prompt und M7-Zählfolge
+    (Prüfstand §3.2). ``ignored`` schließt nur an der Emit-/Alt-Station
+    (z. B. „doch an der empfohlenen Station geblieben“).
+    """
+    if compliance in ("followed", "partial"):
+        return True
+    if compliance == "ignored":
+        snap = ep.get("last_snapshot") or {}
+        emit = snap.get("station_id")
+        alt = snap.get("alt_station_id")
+        return bool(station_id) and station_id in (emit, alt)
+    return False
+
+
+def record_fill(
+    settings, fill_data: dict[str, Any], live_data=None, clock=None
+) -> dict[str, Any]:
+    """Registriert einen Tankbeleg (Wallet-Ledger) — validiert (§11.2).
+
+    Validierung (Prüfstand §3.1): ``liters`` 5–100, ``price_paid`` 0,40–5,00,
+    ``fuel`` ∈ {e10, e5, diesel}, ``station_id`` ∈ Polling-Set. Fehlt
+    ``price_paid``, wird der Nowcast-Preis der Station gesucht; ohne ihn
+    ``ValueError("price_not_available")`` — kein erfundener 1,70-€-Default.
+    """
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
 
         fill_id = fill_data.get("id") or _uid("fill")
 
-        # Idempotenz
+        # Idempotenz: derselbe Beleg wird nie doppelt verbucht.
         for existing in store.get("fills", []):
             if existing.get("id") == fill_id:
                 return existing
+
+        # --- Validierung (§11.2, Prüfstand §3.1) ---
+        fuel = str(fill_data.get("fuel") or "e10").lower()
+        if fuel not in FUELS:
+            raise ValueError("invalid_fuel")
+
+        station_id = fill_data.get("station_id") or ""
+        metas, _problem = metadata(settings)
+        city = next((c for (c, uid) in metas if uid == station_id), None)
+        if city is None:
+            raise ValueError("unknown_station")
+
+        liters = _to_float(fill_data.get("liters"))
+        if liters is None or not (MIN_LITERS <= liters <= MAX_LITERS):
+            raise ValueError("invalid_liters")
+
+        price_paid_raw = fill_data.get("price_paid")
+        if price_paid_raw is None:
+            # §11.2: fehlt price_paid → Nowcast/Poll der Station.
+            price_paid = _nowcast_price(live_data, station_id, city, fuel)
+            if price_paid is None:
+                raise ValueError("price_not_available")
+            price_source = "nowcast"
+        else:
+            price_paid = _to_float(price_paid_raw)
+            if price_paid is None or not (
+                MIN_PRICE_PAID <= price_paid <= MAX_PRICE_PAID
+            ):
+                raise ValueError("invalid_price")
+            price_source = "explicit"
 
         episode_id = fill_data.get("episode_id")
         ep = None
@@ -416,11 +614,7 @@ def record_fill(settings, fill_data: dict[str, Any], clock=None) -> dict[str, An
             ep = _open_episode(store)
 
         clock_hour = fill_data.get("clock_hour", 12.0)
-        station_id = fill_data.get("station_id", "")
         station_name = fill_data.get("station_name", "")
-        liters = float(fill_data.get("liters", 40.0))
-        price_paid = float(fill_data.get("price_paid", 1.70))
-        fuel = fill_data.get("fuel", "e10")
         source = fill_data.get("source", "manual")
 
         compliance = classify_compliance(
@@ -443,6 +637,7 @@ def record_fill(settings, fill_data: dict[str, Any], clock=None) -> dict[str, An
             "clock_hour": clock_hour,
             "liters": liters,
             "price_paid": price_paid,
+            "price_source": price_source,
             "fuel": fuel,
             "source": source,
             "compliance": compliance,
@@ -451,12 +646,14 @@ def record_fill(settings, fill_data: dict[str, Any], clock=None) -> dict[str, An
 
         store["fills"].insert(0, fill_event)
 
-        # Episode abschließen. Das Snapshot-Settlement bleibt Sache des
-        # Settlement-Jobs (Fensterende + Lag, gegen beobachtete Preise) —
-        # zum Tankzeitpunkt ist das Fenster ggf. noch offen.
-        if ep and ep.get("status") != "expired":
-            ep["status"] = "resolved"
-            ep["closed_at"] = now_str
+        # Episode abschließen — nur wenn der Beleg die Folge betrifft.
+        # Das Snapshot-Settlement bleibt Sache des Settlement-Jobs
+        # (Fensterende + Lag, gegen beobachtete Preise) — zum Tankzeitpunkt
+        # ist das Fenster ggf. noch offen.
+        if ep and ep.get("status") in ("open", "waiting", "due"):
+            if _closes_episode(compliance, ep, station_id):
+                ep["status"] = "resolved"
+                ep["closed_at"] = now_str
 
         return fill_event
 
@@ -588,7 +785,11 @@ def _settle_one_snapshot(
     if not station_id:
         return _void_settlement(store, ep, snap, now_str, "no_station")
 
-    city = snap.get("city") or "Frankfurt"
+    city = snap.get("city")
+    if not city:
+        # Ohne Stadt wäre die Abrechnung gegen eine geratene Stadt gelaufen
+        # (vorher still „Frankfurt", Prüfstand §3.8) — ehrlich void statt falsch.
+        return _void_settlement(store, ep, snap, now_str, "no_city")
     fuel = snap.get("fuel") or "e10"
     try:
         p_real = _realized_min(live_data, station_id, city, fuel, start, end, now)
@@ -716,20 +917,42 @@ def _de(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
-def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
+def compute_advice_stats(
+    store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
+) -> dict[str, Any]:
     """Berechnet Advice-Ledger-KPIs (Brier, Trefferquoten, Reliability).
 
     'void'-Settlements (nicht bewertbar, z. B. no_advice oder Station
     geschlossen) zählen weder zu n noch zu Brier.
+
+    Die angezeigten Kennzahlen (``n``, Trefferquoten, ``brier_30d``,
+    Reliability) sind ein echtes 30-Tage-Fenster (Prüfstand §3.6) — vorher
+    waren es Allzeit-Zahlen unter einem „30d"-Namen. Das M7-Gate selbst ist
+    ein Allzeit-Zähl-Gate (§0.4, §13) und rechnet über dieselbe
+    Grundgesamtheit wie der Brier (``n_brier_all``), statt Gesamt-n gegen
+    die P-Teilmenge zu vergleichen.
     """
+    now = now or dt.datetime.now(UTC)
+    cutoff = now - dt.timedelta(days=window_days)
+
     episodes = store.get("episodes", [])
     snapshots_by_id = {s["id"]: s for ep in episodes for s in ep.get("snapshots", [])}
-    settlements = [
+
+    def in_window(settlement: dict[str, Any]) -> bool:
+        stamp = _parse_ts(settlement.get("settled_at"))
+        return stamp is None or stamp >= cutoff
+
+    settlements_all = [
         s
         for s in store.get("settlements", [])
         if s.get("outcome") in ("win", "loss", "tie")
     ]
-    n_void = len(store.get("settlements", [])) - len(settlements)
+    settlements = [s for s in settlements_all if in_window(s)]
+    n_void = sum(
+        1
+        for s in store.get("settlements", [])
+        if s.get("outcome") not in ("win", "loss", "tie") and in_window(s)
+    )
 
     n = len(settlements)
     wins = sum(1 for s in settlements if s.get("outcome") == "win")
@@ -817,34 +1040,60 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # M7 Kalibrierungs-Gate (§0.4, §6): Brier < 0,25 bei n ≥ 100
-    # abgeschlossenen Empfehlungen. Reiner Zählstand — die 90-Tage-
-    # Übergangsregel (live_only_days) ist Datenhygiene und kein Nenner hier.
-    calibrated = (n >= M7_MIN_RECOMMENDATIONS) and (
-        brier_30d is not None and brier_30d < M7_BRIER_THRESHOLD
+    # Allzeit-Brier über dieselbe Grundgesamtheit wie das Zähl-Gate: nur
+    # Settlements, deren Snapshot eine P-Schätzung trägt.
+    brier_all_sq: list[float] = []
+    for s in settlements_all:
+        snap = snapshots_by_id.get(s.get("snapshot_id"))
+        p_correct = snap.get("p_correct") if snap else None
+        if p_correct is None or not math.isfinite(p_correct):
+            continue
+        is_win = 1.0 if s.get("outcome") == "win" else 0.0
+        p_val = min(1.0, max(0.0, float(p_correct)))
+        brier_all_sq.append((p_val - is_win) ** 2)
+    n_brier_all = len(brier_all_sq)
+    brier_all = round(sum(brier_all_sq) / n_brier_all, 4) if n_brier_all > 0 else None
+
+    # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die gleiche
+    # Grundgesamtheit, deren Brier wir messen (n_brier_all), Brier < 0,25.
+    # Die 90-Tage-Übergangsregel (live_only_days) ist Datenhygiene und kein
+    # Nenner hier.
+    n_all = len(settlements_all)
+    calibrated = (
+        n_brier_all >= M7_MIN_RECOMMENDATIONS
+        and brier_all is not None
+        and brier_all < M7_BRIER_THRESHOLD
     )
     limit = _de(M7_BRIER_THRESHOLD)
-    if n < M7_MIN_RECOMMENDATIONS:
-        gate_status = (
-            f"M7-Kalibrierung steht aus (n={n} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
-        )
-    elif brier_30d is None:
+    if n_all < M7_MIN_RECOMMENDATIONS:
+        gate_status = f"M7-Kalibrierung steht aus (n={n_all} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
+    elif brier_all is None:
         # Zählstand reicht, aber kein Settlement trägt eine P-Schätzung: Der
-        # Score ist nicht messbar. „kalibriert“ wäre erfunden (§0.4).
+        # Score ist nicht messbar. „kalibriert" wäre erfunden (§0.4).
         gate_status = (
-            f"M7-Kalibrierung nicht messbar (n={n}, keine P-Schätzung im Ledger)"
+            f"M7-Kalibrierung nicht messbar (n={n_all}, keine P-Schätzung im Ledger)"
         )
-    elif brier_30d >= M7_BRIER_THRESHOLD:
+    elif n_brier_all < M7_MIN_RECOMMENDATIONS:
+        # Gesamt-n reicht, aber die P-Teilmenge nicht — der Brier wäre über
+        # eine andere Grundgesamtheit gemessen als der Zähler (Prüfstand §3.6).
         gate_status = (
-            f"M7-Kalibrierung nicht erreicht (Brier {_de(brier_30d)} ≥ {limit})"
+            f"M7-Kalibrierung nicht messbar (n={n_all}, nur {n_brier_all} "
+            "mit P-Schätzung im Ledger)"
+        )
+    elif brier_all >= M7_BRIER_THRESHOLD:
+        gate_status = (
+            f"M7-Kalibrierung nicht erreicht (Brier {_de(brier_all)} ≥ {limit})"
         )
     else:
-        gate_status = f"M7 kalibriert (n={n}, Brier {_de(brier_30d)} < {limit})"
+        gate_status = f"M7 kalibriert (n={n_all}, Brier {_de(brier_all)} < {limit})"
 
     return {
         "n": n,
         "n_void": n_void,
         "n_brier": n_brier,
+        "n_all": n_all,
+        "n_brier_all": n_brier_all,
+        "brier_all": brier_all,
         "wins": wins,
         "losses": losses,
         "ties": ties,
@@ -862,7 +1111,7 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
         "calibrated": calibrated,
         "gate_status": gate_status,
         # Schwellen des Zähl-Gates mitliefern: Die GUI zeigt damit „n von 100
-        # Empfehlungen“ aus demselben Wert, an dem auch hier gerechnet wird —
+        # Empfehlungen" aus demselben Wert, an dem auch hier gerechnet wird —
         # und muss nicht die 90-Tage-Übergangsregel als Nenner missbrauchen.
         "min_recommendations": M7_MIN_RECOMMENDATIONS,
         "brier_threshold": M7_BRIER_THRESHOLD,
@@ -870,9 +1119,26 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def compute_wallet_stats(store: dict[str, Any]) -> dict[str, Any]:
-    """Berechnet Wallet-Ledger-KPIs (Fills, Ersparnis, Compliance, w(h)-Profil)."""
-    fills = store.get("fills", [])
+def compute_wallet_stats(
+    store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
+) -> dict[str, Any]:
+    """Berechnet Wallet-Ledger-KPIs (Fills, Ersparnis, Compliance, w(h)-Profil).
+
+    ``n_fills``/Compliance/``saved_eur`` sind ein echtes 30-Tage-Fenster
+    (Prüfstand §3.6: die Felder hießen vorher ``…_30d``, zählten aber
+    Allzeit). Das w(h)-Profil nutzt weiterhin alle Füllungen — es ist ein
+    Langzeitprofil, kein 30-Tage-Wert.
+    """
+    now = now or dt.datetime.now(UTC)
+    cutoff = now - dt.timedelta(days=window_days)
+
+    fills_all = store.get("fills", [])
+
+    def in_window(fill: dict[str, Any]) -> bool:
+        stamp = _parse_ts(fill.get("tanked_at"))
+        return stamp is None or stamp >= cutoff
+
+    fills = [f for f in fills_all if in_window(f)]
     n_fills = len(fills)
 
     followed = sum(1 for f in fills if f.get("compliance") == "followed")
@@ -893,19 +1159,19 @@ def compute_wallet_stats(store: dict[str, Any]) -> dict[str, Any]:
     s0 = sum(w0)
     w0 = [round(v / s0, 4) for v in w0]
 
-    if n_fills < 8:
+    n_all = len(fills_all)
+    if n_all < 8:
         wh_hours = w0
     else:
-        # Empirisches Histogramm
+        # Empirisches Histogramm über ALLE Füllungen (Langzeitprofil).
         w_hat = [0.0] * 24
-        for f in fills:
+        for f in fills_all:
             h = int(f.get("clock_hour", 12.0)) % 24
             w_hat[h] += 1.0
-        w_hat = [v / n_fills for v in w_hat]
+        w_hat = [v / n_all for v in w_hat]
         # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + 8*w0) / (n + 8)
         wh_hours = [
-            round((n_fills * w_hat[i] + 8 * w0[i]) / (n_fills + 8), 4)
-            for i in range(24)
+            round((n_all * w_hat[i] + 8 * w0[i]) / (n_all + 8), 4) for i in range(24)
         ]
 
     return {
@@ -916,5 +1182,5 @@ def compute_wallet_stats(store: dict[str, Any]) -> dict[str, Any]:
         "unrelated": unrelated,
         "saved_eur": saved_eur,
         "wh_hours": wh_hours,
-        "last_fill": fills[0] if fills else None,
+        "last_fill": fills_all[0] if fills_all else None,
     }

@@ -33,11 +33,32 @@ import datetime as dt
 import math
 
 from .data import haversine_km, metadata
+from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
 
 FUELS = {"e10", "e5", "diesel"}
 
 # Umweg-Faktor Luftlinie → Straße (Konvention aus data-tools/road_route.py).
 CIRCUITY = 1.3
+
+
+def _active_elsewhere_net_eur(live_data) -> float:
+    """Netto-Schwelle aus derselben Config wie /api/v1/decide (Konzept §4.5).
+
+    Nur eine Stelle darf die WOANDERS-Schwelle bestimmen — sonst divergieren
+    ``/api/v1/route/evaluate`` und ``/api/v1/decide``, sobald M7 nachzieht.
+    """
+    try:
+        from .feedback import compute_advice_stats, load_store
+
+        auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
+        store = load_store(live_data.settings)
+        advice_stats = compute_advice_stats(store)
+        thresholds, _ = active_thresholds(advice_stats, auto_apply=auto_apply)
+        return float(
+            thresholds.get("elsewhere_net_eur", DEFAULT_THRESHOLDS["elsewhere_net_eur"])
+        )
+    except Exception:
+        return float(DEFAULT_THRESHOLDS["elsewhere_net_eur"])
 
 
 def _coords(meta: dict | None) -> tuple | None:
@@ -337,8 +358,11 @@ def evaluate_route(live_data, params: dict):
     critical_ct = (detour_cost / liters * 100) if liters else 0.0
     delta_ct = (ref_price - target_price) * 100
 
-    worth_it = net_eur >= 1.5
-    borderline = 0.5 <= net_eur < 1.5
+    # Schwelle aus derselben Config wie /api/v1/decide (Konzept §4.5: „alle
+    # Schwellen in einer Config"). Vorher hart 1,50 € — das divergierte,
+    # sobald M7 nachzieht (Prüfstand §1.5/§3).
+    worth_it = net_eur >= _active_elsewhere_net_eur(live_data)
+    borderline = 0.5 <= net_eur < _active_elsewhere_net_eur(live_data)
 
     verdict = "worth" if worth_it else "borderline" if borderline else "not_worth"
 

@@ -44,7 +44,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
   - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal; die 501-Antwort ist aktuell noch HTML, nicht JSON — siehe [Prüfstand §1.5](Prüfstand.md))
+- Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht
 
@@ -90,15 +90,21 @@ Entscheidungsschwellen und den M7-Vorschlag (siehe
 `latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
 spätesten Tankzeitpunkt.
 
-Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (Konzept §4.1/§4.2/§4.4, Auswertungsreihenfolge §4.5: F2 → F1 → Grauzone):
-- `refuel_now`: Warten brächte < 1,00 € Ersparnis, oder P(Warten) < 50 %
-- `wait`: Fenster-Ersparnis ≥ 2 € bei P ≥ 70 % (grün) bzw. ≥ 1 € bei P ≥ 60 % (gelb)
-- `refuel_elsewhere`: Alternative spart netto ≥ 1,50 € trotz Umweg (P ≥ 50 %)
-- `no_advice`: kein Ankerpreis, keine Prognose, Grauzone P ∈ [40, 60] % — oder M7-Gate steht aus
+Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (Konzept §4.1/§4.2/§4.4, Auswertungsreihenfolge §4.5: F2 → Grauzone → F1). Die Prozent-Gates sind jetzt die **Verteilungs-P** (§4.1–4.3):
+- `refuel_now`: Warten brächte < 1,00 € Ersparnis, oder `p_besser` < 50 %
+- `wait`: Fenster-Ersparnis ≥ 2 € bei `p_besser` ≥ 70 % (grün) bzw. ≥ 1 € bei ≥ 60 % (gelb)
+- `refuel_elsewhere`: Alternative spart netto ≥ 1,50 € trotz Umweg (`p_lohnt` ≥ 50 %)
+- `no_advice`: kein Ankerpreis, keine Prognose, Grauzone `p_besser` ∈ [40, 60] % — oder M7-Gate steht aus
 
-M7-Gate (§0.4): Vor der Kalibrierung (n < 100 oder Brier ≥ 0,25) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb mit interner, Laplace-geglätteter P-Schätzung), damit sich das Gate je öffnen kann.
+`p_besser` = P(min über dem empfohlenen Fenster ≤ p_jetzt − 1 ct) aus den
+Bootstrap-Draws; `p_lohnt` je F2-Zeile = P(€_netto > 0); F3-Fenster-P je
+Fenster = P(Fenster ≤ Minimum im ±6-h-Umfeld). Ohne veröffentlichte Draws
+(Altbestand, kein Modell) entfällt das Prozent-Gate ehrlich — es wird keine
+Zahl geraten, die €-Seite entscheidet allein.
 
-Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_week` enthält je Kalendertag den billigsten Punkt (Top 3). Alternativen nutzen die Luftlinie zwischen den Stationskoordinaten × 1,3 (`detour_mode: haversine`, Fallback `anchor_diff`).
+M7-Gate (§0.4): Vor der Kalibrierung (n < 100 oder Brier ≥ 0,25) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb): der Snapshot speichert die Verteilungs-P (`p_besser`), Brier misst sie gegen das Settlement — ohne Draws fällt die Schätzung auf die interne Ledger-Quote zurück, damit sich das Gate je öffnen kann. `alternatives_nearby[].p_lohnt` und `windows_today/week[].p` sind Informationswerte aus der Verteilung und hängen nicht am Gate.
+
+Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_today` und `windows_week` liefern je Fenster `expected_price`, `expected_saving_eur` (vs. jetzt tanken) und `p` (F3-Fenster-P, null ohne Draws). Alternativen nutzen die Luftlinie zwischen den Stationskoordinaten × 1,3 (`detour_mode: haversine`, Fallback `anchor_diff`).
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).
 
@@ -136,7 +142,16 @@ Erfasst einen echten Tankbeleg im persönlichen Wallet-Ledger:
 }
 ```
 
-Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken.
+Der Endpunkt **validiert** (§11.2): `liters` 5–100, `price_paid` 0,40–5,00 €/L,
+`fuel` ∈ {e10, e5, diesel}, `station_id` ∈ Polling-Set. Fehlt `price_paid`,
+wird der Nowcast-Preis der Station zur Tankzeit gesucht; ohne bestimmbaren
+Preis antwortet der Server `400 price_not_available` — es wird **kein**
+erfundener Default-Preis verbucht. Fehler kommen als 4xx/503
+(`invalid_liters`/`invalid_price`/`invalid_fuel`/`price_not_available` → 400,
+`unknown_station` → 404, `store_too_large` → 503), nicht mehr als
+`200 {"error_code": …}`.
+
+Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
 ## Stats Summary (B4 3 Schichten)
 
@@ -648,9 +663,10 @@ Siehe `web/src/data.ts` messages:
 - selection_not_available, selection_failed
 - collector_no_heartbeat, collector_check_failed
 - too_many_points, invalid_query, not_found
-- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
-- price_not_available, decide_failed, backtest_not_available
+- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_price, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
+- price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
+- store_too_large (503), not_implemented (501)
 - unauthorized (403, nur `POST /api/v1/jobs/trigger` ohne oder mit falschem Bearer-Token)
 - payload_too_large (413), invalid_json, invalid_request, server_error
 

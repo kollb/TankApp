@@ -43,6 +43,25 @@ DEFAULT_TRIGGER_GAP_S = 600.0
 # sofort wirken, aber Dauergeklicke keine Läufe stapeln.
 MANUAL_MIN_GAP_S = 60.0
 
+# Validierungs-/Fachfehler der Fill-Endpunkte → echter HTTP-Status statt
+# 200 {"error_code": …} (Prüfstand §3.1). Alles Unbekannte ist ein
+# Serverfehler (503), nie ein stiller Erfolg.
+_FILL_STATUS = {
+    "invalid_liters": 400,
+    "invalid_price": 400,
+    "invalid_fuel": 400,
+    "price_not_available": 400,
+    "unknown_station": 404,
+    "store_too_large": 503,
+}
+
+
+def _fill_status(res) -> int:
+    code = res.get("error_code") if isinstance(res, dict) else None
+    if not code:
+        return 200
+    return _FILL_STATUS.get(code, 503)
+
 
 class Scheduler:
     def __init__(self, settings):
@@ -286,7 +305,13 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Cache-Control", "no-store")
+        # API und Dokumente bleiben no-store; content-hashierte Vite-Assets
+        # dürfen (und sollen) cachen — sonst bremst no-store das
+        # Lighthouse-Ziel aus §13 M4 (Prüfstand §3.8).
+        if self.path.startswith("/assets/"):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-store")
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
@@ -620,7 +645,7 @@ class Handler(SimpleHTTPRequestHandler):
         if norm_path == "/api/v1/fills":
             try:
                 res = self.data.record_fill(payload)
-                self.json(res, 200)
+                self.json(res, _fill_status(res))
             except Exception:
                 self.json({"error_code": "server_error"}, 503)
             return
@@ -631,22 +656,23 @@ class Handler(SimpleHTTPRequestHandler):
         ):
             try:
                 res = self.data.record_fill(payload)
-                self.json(res, 200)
+                self.json(res, _fill_status(res))
             except Exception:
                 self.json({"error_code": "server_error"}, 503)
             return
 
-        # Unknown POST -> 501 to keep read-only contract
-        self.send_error(501)
+        # Unknown POST -> 501 to keep read-only contract. JSON statt HTML
+        # (Prüfstand §1.5: „Alle Endpunkte liefern error_code“).
+        self.json({"error_code": "not_implemented"}, 501)
 
     def do_PUT(self):
-        self.send_error(501)
+        self.json({"error_code": "not_implemented"}, 501)
 
     def do_DELETE(self):
-        self.send_error(501)
+        self.json({"error_code": "not_implemented"}, 501)
 
     def do_PATCH(self):
-        self.send_error(501)
+        self.json({"error_code": "not_implemented"}, 501)
 
 
 def make_server(settings, host="0.0.0.0", port=1355, data=None):

@@ -24,6 +24,11 @@ from typing import Any
 
 MINUTE = 60.0
 DAY = 86400.0
+# Obergrenze der vorgehaltenen Client-Buckets. Darüber hinaus werden die am
+# längsten ungenutzten Einträge verworfen (LRU) — als öffentlich exponierte
+# API (§12 P1) darf ``self._buckets`` kein unbegrenzt wachsender
+# Speicherfresser sein (Prüfstand §3.3).
+MAX_BUCKETS = 4096
 
 
 def key_fingerprint(api_key: str) -> str:
@@ -95,9 +100,12 @@ class RateLimiter:
         per_day = self.key_per_day if keyed else self.anon_per_day
 
         with self._lock:
-            bucket = self._buckets.setdefault(
-                client, {"minute": [0.0, 0], "day": [0.0, 0]}
-            )
+            bucket = self._buckets.get(client)
+            if bucket is None:
+                bucket = {"minute": [0.0, 0], "day": [0.0, 0]}
+                self._buckets[client] = bucket
+            bucket["_last"] = stamp
+
             for window, span in (("minute", MINUTE), ("day", DAY)):
                 start, count = bucket[window]
                 if stamp - start >= span:
@@ -112,15 +120,39 @@ class RateLimiter:
 
             remaining_min = max(0, per_min - bucket["minute"][1])
             remaining_day = max(0, per_day - bucket["day"][1])
-            retry_after = max(1, int(MINUTE - (stamp - bucket["minute"][0])) + 1)
+            minute_reset = max(1, int(MINUTE - (stamp - bucket["minute"][0])) + 1)
+            day_reset = max(1, int(DAY - (stamp - bucket["day"][0])) + 1)
+            if bucket["minute"][1] >= per_min:
+                # Minuten-Kontingent ist der Flaschenhals.
+                retry_after = minute_reset
+            elif bucket["day"][1] >= per_day:
+                # Tages-Kontingent erschöpft: Retry-After bis zum Tages-Reset
+                # (vorher stand hier minutes-based, als könnte der Client in
+                # 60 s weitermachen, Prüfstand §3.3).
+                retry_after = day_reset
+            else:
+                retry_after = minute_reset
+
+            self._evict_if_needed()
 
         info = {
             "keyed": keyed,
             "limit": per_min,
             "remaining": remaining_min,
-            "reset": retry_after,
+            "reset": minute_reset,
             "daily_limit": per_day,
             "daily_remaining": remaining_day,
             "retry_after": retry_after,
         }
         return allowed, info
+
+    def _evict_if_needed(self) -> None:
+        """LRU-Eviction: am längsten ungenutzte Buckets verwerfen (Prüfstand §3.3)."""
+        if len(self._buckets) <= MAX_BUCKETS:
+            return
+        overflow = len(self._buckets) - MAX_BUCKETS
+        oldest = sorted(
+            self._buckets.items(), key=lambda item: item[1].get("_last", 0.0)
+        )
+        for client, _ in oldest[:overflow]:
+            self._buckets.pop(client, None)

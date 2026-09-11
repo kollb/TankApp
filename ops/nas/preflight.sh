@@ -29,7 +29,15 @@ if [ -f "$POLL" ]; then
 import json
 d=json.load(open('$POLL',encoding='utf-8-sig'))
 s=d.get('sets',d) if isinstance(d,dict) else d
-print(sum(len(v) for v in s.values()) if isinstance(s,dict) else len(s))
+if isinstance(s,dict):
+    total=0
+    for stset in s.values():
+        if isinstance(stset,dict):
+            batch=stset.get('batch')
+            total+=len(batch) if isinstance(batch,list) else len(stset.get('stations',[]))
+    print(total)
+else:
+    print(len(s))
 " 2>/dev/null || echo "?")
     say_ok "$POLL  ($n Stationen)"
   else

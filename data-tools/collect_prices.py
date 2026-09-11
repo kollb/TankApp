@@ -30,7 +30,7 @@ Statusfälle (§1.2):
   "open"   -> Preise schreiben; `false` = Sorte wird NICHT geführt -> weglassen
   "closed" -> Status schreiben, keinen Preis (letzter Preis gilt am Hahn weiter;
               die Engine markiert die Spanne später als stale, §3.1)
-  "no prices" -> Status schreiben; nach 7 Tagen ohne Daten -> Alarm (gezählt)
+  "no prices" -> Status schreiben; nach 7 Kalendertagen ohne Daten -> Alarm
 
 Beispiele:
   python3 data-tools/collect_prices.py --once            # ein Poll, Tabelle zeigen
@@ -538,7 +538,7 @@ def collect(args):
             "(oder --out auf ein beschreibbares Verzeichnis setzen)."
         )
 
-    stale_no_price: dict[str, int] = {}
+    stale_no_price: dict[str, dt.date] = {}
     poll_count = 0
     while True:
         # Mit Offset (§9.3 „UTC speichern"): eindeutiger UTC-Moment; Anzeige
@@ -643,12 +643,15 @@ def collect(args):
         log(f"Poll ok: {n_open}/{len(ids)} offen → {path.name}")
         write_heartbeat(args.out, snap, poll_count)
 
-        # 'no prices' über Tage zählen (§1.2: nach 7 Tagen aus dem Monitoring -> Alarm)
+        # 'no prices' über KALENDERTAGE zählen (§1.2: nach 7 Tagen ohne
+        # Daten -> Alarm). Vorher wurden Polls gezählt — bei 5-min-Kadenz
+        # hätte das schon nach 35 Minuten Alarm geschlagen (Prüfstand §3.4).
+        today = dt.date.today()
         for uid, rec in prices.items():
             if rec["status"] == "no prices":
-                stale_no_price[uid] = stale_no_price.get(uid, 0) + 1
-                if stale_no_price[uid] >= 7:
-                    log(f"⚠ {uid} seit 7 Polls 'no prices' — aus Monitoring prüfen!")
+                stale_no_price.setdefault(uid, today)
+                if (today - stale_no_price[uid]).days >= 7:
+                    log(f"⚠ {uid} seit 7 Tagen 'no prices' — aus Monitoring prüfen!")
             else:
                 stale_no_price.pop(uid, None)
 

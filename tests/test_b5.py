@@ -146,9 +146,9 @@ def test_week_windows_respect_deadline():
         {"timestamp": (base + dt.timedelta(days=offset)).isoformat(), "q50": 1.60}
         for offset in range(1, 6)
     ]
-    assert len(_week_windows(points)) == 3
-    assert len(_week_windows(points, base + dt.timedelta(days=2))) == 2
-    assert _week_windows(points, base) == []
+    assert len(_week_windows(points, base)) == 3
+    assert len(_week_windows(points, base, base + dt.timedelta(days=2))) == 2
+    assert _week_windows(points, base, base) == []
 
 
 def test_decide_rejects_broken_latest_by(settings_with_prices):
@@ -359,3 +359,37 @@ def test_legacy_daily_routes_are_marked_deprecated(settings_with_prices):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+# --- Rate-Limit-Fixes (Prüfstand §3.3) -------------------------------------
+
+
+def test_rate_limit_day_quota_retry_after_is_day_based():
+    """Erschöpft das Tageskontingent, zeigt Retry-After bis zum Tages-Reset.
+
+    Vorher antwortete Retry-After minutes-based, als könne der Client in 60 s
+    weitermachen, obwohl der Tageszähler bis zu 24 h sperrt.
+    """
+    from app.ratelimit import RateLimiter
+
+    limiter = RateLimiter(anon_per_min=1000, anon_per_day=3)
+    allowed, _ = limiter.check(None, "10.0.0.1", now=0.0)
+    assert allowed
+    allowed, _ = limiter.check(None, "10.0.0.1", now=1.0)
+    assert allowed
+    allowed, _ = limiter.check(None, "10.0.0.1", now=2.0)
+    assert allowed
+    allowed, info = limiter.check(None, "10.0.0.1", now=3.0)
+    assert not allowed
+    # Tagesgrenze ist der Flaschenhals → Retry-After ≈ Rest des Tages.
+    assert info["retry_after"] > 60
+
+
+def test_rate_limiter_evicts_old_buckets():
+    """Die Bucket-Map wächst nicht unbegrenzt (LRU-Eviction)."""
+    from app.ratelimit import MAX_BUCKETS, RateLimiter
+
+    limiter = RateLimiter(anon_per_min=1000, anon_per_day=10_000_000)
+    for i in range(MAX_BUCKETS + 50):
+        limiter.check(None, f"10.0.{i // 256}.{i % 256}", now=float(i))
+    assert len(limiter._buckets) <= MAX_BUCKETS

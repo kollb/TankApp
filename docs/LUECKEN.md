@@ -8,6 +8,30 @@
 > dieses Blatt: Dort stehen weitere Abweichungen und die offenen Code-Aufgaben
 > (§3, §7); hier sind die Stellen verlinkt, die Konzeptaussagen betreffen.
 
+> **Update 11.09.2026 — P1/P2/P3-Fixes aus [Prüfstand §3/§7](Prüfstand.md):**
+> Fill-Validierung + Nowcast statt 1,70-€-Default, 4xx-Status, Compliance-
+> Bedingung fürs Episode-Resolve, `worth_it` aus der Schwellen-Config,
+> Store-Größenfehler statt Silent-Reset + 90-Tage-Retention/-Archiv,
+> echtes 30-Tage-Fenster der Kennzahlen (M7-Gate bleibt Allzeit-Zähl-Gate
+> über dieselbe P-Grundgesamtheit), `trip_mode`/`latest_by` persistiert,
+> `no prices`-Alarm in Kalendertagen, Rate-Limit-LRU + korrektes
+> `Retry-After`, 501 als JSON, Asset-Caching, Preflight-Stationszahl und
+> `python -m engine.cli`.
+>
+> **Update 11.09.2026 (nachmittags) — P-Seite aus der Prognoseverteilung (§4.1–4.3):**
+> Die Bootstrap-Pfade werden jetzt im Worker zu **2-h-Fenster-Minima je Draw
+> und Nowcast-Draws** reduziert und im Artefakt veröffentlicht
+> (`forecasts[].draws_24h`/`draws_7d`, `engine/probabilities.py`). Der
+> Decision Layer rechnet daraus ohne Numerik-Abhängigkeit (`app/pside.py`):
+> - `p_besser` = P(min über dem Fenster ≤ p_jetzt − 1 ct) — ersetzt die
+>   Ledger-Trefferquote als F1-Gate **und** als Brier-Input,
+> - `p_lohnt` = P(€_netto > 0) je F2-Zeile,
+> - F3-Fenster-P = P(Fenster ≤ Minimum im ±6-h-Umfeld) je Fenster.
+> **Dokumentierte Abweichung:** die gemeinsame Bootstrap-Ziehung über
+> Stationen (§4.2) ist nicht umgesetzt — `p_lohnt` rechnet mit unabhängigen
+> Nowcast-Draws (siehe „Bewusst offen“). Das M7-Gate (§0.4) bleibt hart:
+> `primary.p_correct` erscheint erst nach der Kalibrierung.
+
 ## Inhaltsverzeichnis
 
 - [Kurzfassung](#kurzfassung)
@@ -75,7 +99,7 @@
 | 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **offen**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy, Zeit-seit-Sprung-Feature, M3-Zweitmodell/Ensemble ([Prüfstand §1.3](Prüfstand.md)) |
 | 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
 | 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; Mehrtage-Backtests offen |
-| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite abweichend**: `p_besser` ist eine Ledger-Trefferquote (Laplace-geglättet), nicht die Prognoseverteilungs-Wahrscheinlichkeit aus §4.1; `p_lohnt` (§4.2) und F3-Fenster-P fehlen ([Prüfstand §1.4](Prüfstand.md)) |
+| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite jetzt aus der Prognoseverteilung**: `p_besser` = P(min ≤ p−1 ct) aus den Draws (F1-Gate + Brier), `p_lohnt` je F2-Zeile, F3-Fenster-P je Fenster. **Abweichung**: gemeinsame Ziehung über Stationen (§4.2) offen — `p_lohnt` nutzt unabhängige Nowcast-Draws (siehe „Bewusst offen“) |
 | 4.4 | „Keine klare Empfehlung“ |fertig |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig |
@@ -115,7 +139,8 @@
 | **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün" als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
 | **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](Prüfstand.md)). |
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](Prüfstand.md)). |
-| **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. |
+| **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
+| **Gemeinsame Bootstrap-Ziehung über Stationen (§4.2)** | `P_lohnt` soll die Marktbewegung *nicht* wegkorrelieren („steigt der ganze Markt, steigen alle mit“). Die Engine fittet Stationen unabhängig mit eigenem seed-basiertem Generator; die veröffentlichten Nowcast-Draws je Station sind daher **unabhängig**. Eine echte gemeinsame Ziehung braucht einen stationenübergreifenden Resampling-Schritt (gleicher Tagesblock für alle Stationen einer Ziehung) — das ist ein eigener Arbeitsschritt, keine Nebenwirkung der P-Seite. Bis dahin ist `p_lohnt` die relative Häufigkeit über die *unabhängigen* Nowcast-Draws (konservativer Richtung: Marktgleichlauf würde die Unsicherheit *reduzieren*). |
 | **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [engine/README §4](../engine/README.md#4-datenqualität-und-backtest-auf-dem-pc). |
 
 ## Nicht umgesetzt und warum nicht

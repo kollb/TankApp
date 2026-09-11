@@ -102,6 +102,12 @@ Kampagnen-Quote 6/2/2 existiert nur in der Offline-Pipeline
 
 ### 1.4 Decision Layer (Konzept §4) — ⚠️ die Kernidee ist anders gebaut
 
+> **Nachtrag 11.09.2026:** Die unten festgehaltene P-Seiten-Abweichung ist
+> inzwischen behoben — `p_besser`, `p_lohnt` und F3-Fenster-P kommen jetzt
+> aus der Prognoseverteilung (veröffentlichte Draws). Einzige verbleibende
+> Abweichung: die *gemeinsame* Ziehung über Stationen (§4.2) ist offen;
+> Details und Begründung in [LUECKEN.md](LUECKEN.md) („Bewusst offen“).
+
 Das ist die gewichtigste Abweichung im ganzen Repo. `LUECKEN.md` führt
 „4.1–4.3 F1/F2/F3 inkl. Fenster-Top-3 → fertig (B4) + `latest_by` (B5)".
 Formal stimmt die Tabelle, inhaltlich ist die Wahrscheinlichkeitsseite nicht die des Konzepts:

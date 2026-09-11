@@ -542,3 +542,58 @@ def test_archive_cache_skips_unchanged_raw_days_and_invalidates_on_selection(
     )
     assert new_paths != paths
     assert raw.read_bytes() == original
+
+
+def test_hashed_assets_are_immutable_cacheable(app_settings):
+    """Content-hashierte Vite-Assets dürfen cachen — no-store nur fürs Übrige.
+
+    Regression: ``Cache-Control: no-store`` auf ALLEN Antworten (auch auf die
+    content-hashierten Assets) verhinderte Asset-Caching und stand dem
+    Lighthouse-Ziel aus §13 M4 im Weg (Prüfstand §3.8).
+    """
+    assets = app_settings.static / "assets"
+    assets.mkdir()
+    (assets / "index-abc123.js").write_text("console.log('hi')")
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(base + "/assets/index-abc123.js") as response:
+            assert response.headers["Cache-Control"] == (
+                "public, max-age=31536000, immutable"
+            )
+        with urllib.request.urlopen(base + "/") as response:
+            assert response.headers["Cache-Control"] == "no-store"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_501_is_json_not_html(app_settings):
+    """Unbekannte Schreib-Endpunkte liefern JSON mit error_code statt HTML.
+
+    Vorher antwortete ``send_error(501)`` mit HTML — das widersprach der
+    eigenen Regel „Alle Endpunkte liefern error_code" (Prüfstand §1.5).
+    """
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        for method in ("POST", "PUT", "DELETE", "PATCH"):
+            req = urllib.request.Request(
+                base + "/api/v1/restart", data=b"{}", method=method
+            )
+            with pytest.raises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(req)
+            assert error.value.code == 501
+            assert error.value.headers["Content-Type"].startswith("application/json")
+            assert json.loads(error.value.read()) == {"error_code": "not_implemented"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

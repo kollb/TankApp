@@ -363,6 +363,40 @@ def test_cusum_flags_level_shift_but_not_stable_series():
     assert cusum_break(np.full(20, 1.5)) == (False, 0.0)
 
 
+def test_predict_return_paths_matches_classic_and_masks_unsupported(series, cfg):
+    """P-Seite (Konzept §4): ``return_paths=True`` liefert die volle Verteilung.
+
+    Das klassische Ergebnis ist identisch; die Pfade haben Shape
+    (B, Zeitpunkte) und sind an ungestützten Punkten NaN — damit kann der
+    Decision Layer „P = 0“ von „keine Aussage“ unterscheiden.
+    """
+    model = fit(series, "2026-08-01", cfg)
+    classic = predict(model)
+    result, paths = predict(model, return_paths=True)
+    assert_frame_equal(result, classic)
+    assert paths.shape == (cfg.bootstrap_samples, len(classic))
+    supported = classic["supported"].to_numpy()
+    # Der Median der Pfade reproduziert q50 an gestützten Punkten.
+    q50 = np.nanquantile(paths[:, supported], 0.5, axis=0)
+    np.testing.assert_allclose(
+        q50, classic.loc[supported, "q50"].to_numpy(), rtol=1e-9, atol=1e-9
+    )
+    # Ungestützte Punkte (hier: Nachtstunden) sind in den Pfaden NaN.
+    if not supported.all():
+        assert np.isnan(paths[:, ~supported]).all()
+
+
+def test_predict_return_paths_index_subset_matches(series, cfg):
+    model = fit(series, "2026-08-01", cfg)
+    full, full_paths = predict(model, return_paths=True)
+    segment = full.index[144:]
+    partial, partial_paths = predict(model, index=segment, return_paths=True)
+    assert_frame_equal(partial, full.loc[segment])
+    np.testing.assert_allclose(
+        partial_paths, full_paths[:, 144:], rtol=1e-9, atol=1e-9, equal_nan=True
+    )
+
+
 def test_ew_median_reacts_faster_than_classic_after_21_days():
     """Backtest-Idee F5: Regimewechsel nach 21 Tagen, 42 Tage Fenster."""
     rng = np.random.default_rng(9)

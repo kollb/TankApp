@@ -255,6 +255,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 following, series_map, cfg, origin, workers, on_done=note
             )
             horizons_by_station: dict[tuple, dict[int, list]] = {}
+            draws_by_station: dict[tuple, dict[int, dict]] = {}
             backtests: dict[tuple, dict] = {}
             broken = set()
             for result in second:
@@ -273,6 +274,9 @@ def refresh(settings: Settings, now=None, progress=None):
                         {key: row[key] for key in HORIZON_COLUMNS}
                         for row in result["points"]
                     ]
+                    draws_by_station.setdefault(identity, {})[result["hours"]] = (
+                        result.get("draws") or {}
+                    )
                 else:
                     backtests[identity] = result
 
@@ -288,6 +292,7 @@ def refresh(settings: Settings, now=None, progress=None):
                     (origin - pd.Timestamp(last)).total_seconds() / 60 if last else None
                 )
                 wide = horizons_by_station.get(identity, {})
+                draws_wide = draws_by_station.get(identity, {})
                 forecasts.append(
                     {
                         **item.identity(),
@@ -298,6 +303,11 @@ def refresh(settings: Settings, now=None, progress=None):
                         "points": fitted[identity]["points"],
                         "points_3d": wide.get(72, []),
                         "points_7d": wide.get(168, []),
+                        # P-Seite (Konzept §4.1–4.3): Fenster-Minima + Nowcast-Draws
+                        # je Horizont; daraus rechnet der Decision Layer
+                        # P_besser/P_lohnt/F3-Fenster-P (app/pside.py).
+                        "draws_24h": fitted[identity].get("draws") or {},
+                        "draws_7d": draws_wide.get(168) or {},
                         "metrics": report.get("metrics"),
                         "backtest_days": 7,
                         "train_days": cfg.train_days,

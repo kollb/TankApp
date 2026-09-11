@@ -152,6 +152,140 @@ def test_decide_endpoint_and_gate(b4_settings):
         thread.join(timeout=2)
 
 
+def test_decide_p_side_from_forecast_distribution(b4_settings):
+    """P-Seite (Konzept §4.1–4.3) aus den Draws — nicht aus der Ledger-Quote.
+
+    Regression gegen Prüfstand §1.4: p_besser war die Laplace-geglättete
+    Trefferquote, p_lohnt fehlte, F3 hatte kein Fenster-P. Mit Draws im
+    Artefakt liefern alle drei die Verteilungs-Wahrscheinlichkeit — und der
+    Snapshot speichert dieselbe P, die Brier später gegen das Settlement
+    misst (bzw. nach dem M7-Gate im UI erscheint).
+    """
+    from app.decide import evaluate_decide
+    from app.feedback import load_store
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.729)
+
+    # Berlin: NOW 16:00 (UTC 14:00). Drei 2-h-Blöcke, billigster zuerst.
+    block_starts = [
+        "2026-09-10T14:00:00+00:00",
+        "2026-09-10T16:00:00+00:00",
+        "2026-09-10T18:00:00+00:00",
+        "2026-09-10T20:00:00+00:00",
+    ]
+    points = [
+        {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
+        {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},
+        {"timestamp": "2026-09-10T18:00:00+02:00", "q50": 1.62},
+        {"timestamp": "2026-09-10T19:00:00+02:00", "q50": 1.63},
+        {"timestamp": "2026-09-10T20:00:00+02:00", "q50": 1.64},
+    ]
+    # Block 0: 3 von 4 Draws ≥ 1 ct unter dem Anker (p_besser = 0.75) und
+    # 3 von 4 Draws unter dem ±6-h-Umfeld (F3-P = 0.75).
+    minima = [
+        [1.67, 1.70, 1.71],
+        [1.60, 1.71, 1.72],
+        [1.70, 1.68, 1.72],
+        [1.66, 1.71, 1.72],
+    ]
+    draws = {
+        "n": 4,
+        "block_minutes": 120,
+        "blocks": [
+            {"start": block_starts[i], "end": block_starts[i + 1]} for i in range(3)
+        ],
+        "minima": minima,
+        "nowcast": [1.68, 1.69, 1.70, 1.71],
+    }
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "origin": NOW.isoformat(),
+                        "points": points,
+                        "points_7d": points,
+                        "draws_24h": draws,
+                        "draws_7d": draws,
+                    },
+                    {
+                        "station_id": OTHER,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "points": [],
+                        "points_7d": [],
+                        "draws_24h": {
+                            "n": 4,
+                            "block_minutes": 120,
+                            "blocks": [],
+                            "minima": [],
+                            "nowcast": [1.60, 1.61, 1.62, 1.63],
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    body = evaluate_decide(
+        live, {"city": "Frankfurt", "fuel": "e10", "liters": 40}
+    )
+
+    # Vor dem M7-Gate bleibt p_correct null — die Verteilungs-P wird aber
+    # trotzdem berechnet und gespeichert (Brier braucht sie, um das Gate zu öffnen).
+    assert body["primary"]["p_correct"] is None
+    assert body["calibrated"] is False
+
+    # F3-Fenster-P (§4.3): Block 0 (1.605 €) schlägt das ±6-h-Umfeld in 3/4 Draws.
+    assert body["windows_today"][0]["p"] == 0.75
+    assert body["windows_today"][0]["expected_saving_eur"] == 3.36
+    assert body["windows_week"][0]["p"] == 0.75
+
+    # F2-P_lohnt (§4.2): die günstigere Alternative lohnt in jedem Draw.
+    assert body["alternatives_nearby"][0]["p_lohnt"] == 1.0
+
+    # Der Snapshot speichert dieselbe P (p_besser = 0.75), nicht die Ledger-Quote.
+    store = load_store(b4_settings)
+    snap = store["episodes"][0]["snapshots"][0]
+    assert snap["action"] == "wait"
+    assert snap["p_besser"] == 0.75
+    assert snap["p_correct"] == 0.75
+
+
+def test_table_action_gates_use_distribution_p(b4_settings):
+    """F1/F2-Gates rechnen mit p_besser/p_lohnt, nicht mit einer Ledger-Quote."""
+    from app.decide import _table_action
+
+    # Grauzone (§4.4): p_besser ∈ [40, 60] % → no_advice, ohne n-Hürde.
+    action, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
+    assert action == "no_advice"
+    assert "50 %" in reason
+
+    # F1: € ≥ 2,00 und p_besser ≥ 70 % → wait.
+    assert _table_action(1.70, 1.64, 2.40, None, 0.8)[0] == "wait"
+
+    # Ohne Draws (p_besser None) entfällt das Prozent-Gate: €-Seite entscheidet.
+    assert _table_action(1.70, 1.64, 2.40, None, None)[0] == "wait"
+    assert _table_action(1.70, 1.695, 0.20, None, None)[0] == "refuel_now"
+
+    # F2: netto ≥ Schwelle und p_lohnt ≥ elsewhere_p → refuel_elsewhere.
+    alt = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.8}
+    assert _table_action(1.70, 1.64, 2.40, alt, 0.8)[0] == "refuel_elsewhere"
+    # p_lohnt unter der Schwelle → F2-Zweig greift nicht, F1 entscheidet.
+    alt_weak = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.3}
+    assert _table_action(1.70, 1.64, 2.40, alt_weak, 0.8)[0] == "wait"
+
+
 def test_snapshot_collapse_rule(b4_settings):
     """Gleiche Advice + gleiche Station innerhalb 30 min aktualisiert denselben Snapshot."""
     t0 = NOW
@@ -584,18 +718,14 @@ def test_day_series_no_demo_data(b4_settings):
 
 
 def test_gray_zone_percent_is_times_100():
-    """F1: P intern 0–1, Anzeige ×100 (0,5 → 50 %, nicht 0 %)."""
+    """F1: P intern 0–1, Anzeige ×100 (0,5 → 50 %, nicht 0 %).
+
+    ``p_besser`` ist jetzt die Verteilungs-P (§4.1), nicht mehr die
+    Ledger-Quote — die Grauzone liest sie direkt, ohne n-Hürde.
+    """
     from app.decide import _table_action
 
-    _, _, reason = _table_action(
-        1.70,
-        1.64,
-        2.40,
-        None,
-        {"p": 0.5, "n": 40},
-        {"p": 0.5, "n": 40},
-        {"p": 0.4, "n": 40},
-    )
+    _, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
     assert "50 %" in reason
     assert "P ≈ 0 %" not in reason
     assert "0.5 %" not in reason
@@ -654,3 +784,324 @@ def test_m7_gate_is_unmeasurable_without_probability():
     assert advice["gate_status"] == (
         "M7-Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
     )
+
+
+# --- P1/P2-Fixes aus Prüfstand §3 / TIEFENANALYSE §6 -----------------------
+
+
+def test_fills_validation_rejects_garbage(b4_settings):
+    """Belege mit Müll (Liter/Preis/Sorte/Station) bekommen 4xx statt 200.
+
+    Regression: POST /api/v1/fills {\"liters\":-5} wurde mit 200 quittiert
+    und verbuchte einen erfundenen Preis (Prüfstand §3.1).
+    """
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        cases = [
+            (
+                {"station_id": UID, "liters": -5, "price_paid": 1.6},
+                400,
+                "invalid_liters",
+            ),
+            (
+                {"station_id": UID, "liters": 40, "price_paid": 0.0},
+                400,
+                "invalid_price",
+            ),
+            (
+                {
+                    "station_id": UID,
+                    "liters": 40,
+                    "price_paid": 1.6,
+                    "fuel": "hydrogen",
+                },
+                400,
+                "invalid_fuel",
+            ),
+            (
+                {"station_id": "custom", "liters": 40, "price_paid": 1.6},
+                404,
+                "unknown_station",
+            ),
+            ({"station_id": UID, "liters": 40}, 400, "price_not_available"),
+        ]
+        for payload, status, code in cases:
+            with pytest.raises(urllib.error.HTTPError) as error:
+                _post_json(base + "/api/v1/fills", payload)
+            assert error.value.code == status, (payload, error.value.code)
+            body = json.loads(error.value.read())
+            assert body["error_code"] == code, (payload, body)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_fills_nowcast_when_price_missing(b4_settings):
+    """Fehlt price_paid, wird der Nowcast-Preis genommen (kein 1,70-Default)."""
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, res = _post_json(
+            base + "/api/v1/fills",
+            {"station_id": UID, "liters": 40, "fuel": "e10"},
+        )
+        assert status == 200
+        assert res["price_paid"] == 1.689
+        assert res["price_source"] == "nowcast"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_ignored_fill_does_not_close_episode(b4_settings):
+    """Ein nicht befolgter Beleg (fremde Station, außerhalb des Fensters)
+    beendet die Advice-Folge nicht (Prüfstand §3.2: vorher schloss JEDER
+    Beleg die Episode, auch ein fachlich fremder)."""
+    from app.feedback import load_store, record_fill, record_snapshot
+
+    emitted = NOW
+    snap_data = {
+        "clock_hour": 14.0,
+        "action": "wait",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station_name": "Station Alpha",
+        "price_now": 1.709,
+        "window_start": (NOW + dt.timedelta(hours=3)).isoformat(),
+        "window_end": (NOW + dt.timedelta(hours=6)).isoformat(),
+        "expected_price": 1.649,
+        "expected_saving_eur": 2.40,
+        "liters_assumed": 40.0,
+        "fuel": "e10",
+    }
+    _, ep = record_snapshot(b4_settings, snap_data, clock=lambda: emitted)
+    assert ep["status"] == "open"
+
+    # Tanken an einer fremden Station und außerhalb des Fensters → ignored.
+    fill = record_fill(
+        b4_settings,
+        {
+            "station_id": OTHER,
+            "liters": 40,
+            "price_paid": 1.60,
+            "fuel": "e10",
+            "tanked_at": (NOW + dt.timedelta(hours=30)).isoformat(),
+        },
+        live_data=None,
+        clock=lambda: NOW + dt.timedelta(hours=30),
+    )
+    assert fill["compliance"] == "ignored"
+    store = load_store(b4_settings)
+    ep_after = next(e for e in store["episodes"] if e["id"] == ep["id"])
+    assert ep_after["status"] == "open"
+
+
+def test_followed_fill_closes_episode(b4_settings):
+    """Ein befolgter Beleg (folgt der Warte-Empfehlung) schließt die Folge."""
+    from app.feedback import load_store, record_fill, record_snapshot
+
+    window_start = NOW + dt.timedelta(hours=3)
+    window_end = NOW + dt.timedelta(hours=6)
+    snap_data = {
+        "clock_hour": 14.0,
+        "action": "wait",
+        "city": "Frankfurt",
+        "station_id": UID,
+        "station_name": "Station Alpha",
+        "price_now": 1.709,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "expected_price": 1.649,
+        "expected_saving_eur": 2.40,
+        "liters_assumed": 40.0,
+        "fuel": "e10",
+    }
+    _, ep = record_snapshot(b4_settings, snap_data, clock=lambda: NOW)
+    fill = record_fill(
+        b4_settings,
+        {
+            "station_id": UID,
+            "liters": 40,
+            "price_paid": 1.649,
+            "fuel": "e10",
+            "tanked_at": window_start.isoformat(),
+        },
+        live_data=None,
+        clock=lambda: window_start,
+    )
+    assert fill["compliance"] == "followed"
+    store = load_store(b4_settings)
+    ep_after = next(e for e in store["episodes"] if e["id"] == ep["id"])
+    assert ep_after["status"] == "resolved"
+
+
+def test_snapshot_persists_trip_mode_and_latest_by(b4_settings):
+    """Fahrtmodus + Deadline dürfen nicht auf dem Weg in den Store verloren gehen."""
+    from app.feedback import load_store, record_snapshot
+
+    _, ep = record_snapshot(
+        b4_settings,
+        {
+            "clock_hour": 14.0,
+            "action": "wait",
+            "city": "Frankfurt",
+            "station_id": UID,
+            "price_now": 1.709,
+            "fuel": "e10",
+            "trip_mode": "dedicated",
+            "latest_by": "2026-09-10T20:00:00+02:00",
+        },
+        clock=lambda: NOW,
+    )
+    store = load_store(b4_settings)
+    snap = store["episodes"][0]["last_snapshot"]
+    assert snap["trip_mode"] == "dedicated"
+    assert snap["latest_by"] == "2026-09-10T20:00:00+02:00"
+    assert ep["last_snapshot"]["trip_mode"] == "dedicated"
+
+
+def test_store_too_large_errors_instead_of_silent_reset(b4_settings, monkeypatch):
+    """Ein zu großer Store wird gemeldet, nicht still geleert (Prüfstand §3.5)."""
+    from app import feedback
+    from app.feedback import StoreTooLarge, feedback_path, load_store
+
+    monkeypatch.setattr(feedback, "FEEDBACK_MAX_BYTES", 10)
+    store_file = feedback_path(b4_settings)
+    store_file.parent.mkdir(parents=True, exist_ok=True)
+    store_file.write_text(
+        json.dumps({"episodes": [{"id": "e1"}], "fills": [], "settlements": []})
+    )
+
+    with pytest.raises(StoreTooLarge):
+        load_store(b4_settings)
+
+    # Auch die API liefert ehrlich store_too_large statt record_fill_failed.
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    assert live.record_fill({"station_id": UID, "liters": 40, "price_paid": 1.6}) == {
+        "error_code": "store_too_large"
+    }
+
+
+def test_retention_prunes_and_archives(b4_settings):
+    """Einträge älter als 90 Tage werden ausgelagert (Rotation statt 10-MB-Knall)."""
+    from app.feedback import (
+        FEEDBACK_RETENTION_DAYS,
+        feedback_archive_path,
+        load_store,
+    )
+
+    # Wanduhr-unabhängig: „alt" liegt sicher vor der 90-Tage-Retention.
+    wall = dt.datetime.now(dt.timezone.utc)
+    old = wall - dt.timedelta(days=FEEDBACK_RETENTION_DAYS + 30)
+    from app.feedback import locked_store
+
+    # Direkt einen alten + einen frischen Eintrag in den Store legen.
+    with locked_store(b4_settings) as store:
+        store["episodes"].append(
+            {
+                "id": "ep_old",
+                "opened_at": old.isoformat(),
+                "status": "resolved",
+                "snapshots": [],
+            }
+        )
+        store["episodes"].append(
+            {
+                "id": "ep_new",
+                "opened_at": wall.isoformat(),
+                "status": "open",
+                "snapshots": [],
+            }
+        )
+
+    store = load_store(b4_settings)
+    ids = [e["id"] for e in store["episodes"]]
+    assert "ep_old" not in ids
+    assert "ep_new" in ids
+    archive = feedback_archive_path(b4_settings)
+    assert archive.is_file()
+    lines = archive.read_text(encoding="utf-8").splitlines()
+    assert any("ep_old" in line for line in lines)
+    assert not any("ep_new" in line for line in lines)
+
+
+def test_advice_stats_uses_real_30d_window():
+    """brier_30d/n sind 30 Tage, das M7-Gate bleibt ein Allzeit-Zähl-Gate."""
+    from app.feedback import compute_advice_stats
+
+    base = dt.datetime(2026, 9, 10, 12, 0, tzinfo=dt.timezone.utc)
+    snaps = [{"id": f"s{i}", "action": "wait", "p_correct": 0.9} for i in range(3)]
+    store = {
+        "episodes": [{"id": "ep", "snapshots": snaps}],
+        "settlements": [
+            {"snapshot_id": "s0", "outcome": "win", "settled_at": base.isoformat()},
+            {"snapshot_id": "s1", "outcome": "loss", "settled_at": base.isoformat()},
+            # 60 Tage alt → raus aus dem 30-Tage-Fenster
+            {
+                "snapshot_id": "s2",
+                "outcome": "loss",
+                "settled_at": (base - dt.timedelta(days=60)).isoformat(),
+            },
+        ],
+    }
+    advice = compute_advice_stats(store, now=base)
+    assert advice["n"] == 2
+    assert advice["n_brier"] == 2
+    assert advice["n_all"] == 3  # Allzeit-Gate zählt alle drei
+    assert advice["wins"] == 1
+    assert advice["brier_30d"] is not None
+
+
+def test_wallet_stats_uses_real_30d_window():
+    from app.feedback import compute_wallet_stats
+
+    base = dt.datetime(2026, 9, 10, 12, 0, tzinfo=dt.timezone.utc)
+    store = {
+        "fills": [
+            {
+                "tanked_at": base.isoformat(),
+                "compliance": "followed",
+                "saved_vs_always_now_eur": 2.0,
+                "clock_hour": 14,
+            },
+            {
+                "tanked_at": (base - dt.timedelta(days=60)).isoformat(),
+                "compliance": "followed",
+                "saved_vs_always_now_eur": 100.0,
+                "clock_hour": 14,
+            },
+        ]
+    }
+    wallet = compute_wallet_stats(store, now=base)
+    assert wallet["n_fills"] == 1
+    assert wallet["saved_eur"] == 2.0
+
+
+def test_gate_requires_p_population_not_total_n():
+    """n=100 ohne P-Schätzung öffnet das Gate nicht (gleiche Grundgesamtheit).
+
+    Vorher verglich das Gate Gesamt-n mit dem Brier über die P-Teilmenge
+    (Prüfstand §3.6): bei n=100, n_brier=3 wäre „kalibriert" gemeldet worden.
+    """
+    from app.feedback import compute_advice_stats
+
+    store = {
+        "episodes": [],
+        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
+    }
+    advice = compute_advice_stats(store)
+    assert advice["calibrated"] is False
+    assert "P-Schätzung" in advice["gate_status"]

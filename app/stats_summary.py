@@ -422,8 +422,8 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo)
     store = load_store(live_data.settings)
-    live_advice = compute_advice_stats(store)
-    wallet = compute_wallet_stats(store)
+    live_advice = compute_advice_stats(store, now=live_data.clock())
+    wallet = compute_wallet_stats(store, now=live_data.clock())
 
     # M7-Schwellen-Nachzug (Konzept §5.5 Schicht B Schritt 4, §13 M7):
     # Vorschlag aus den gemessenen Trefferquoten; wirksam nur mit auto_apply.
