@@ -331,6 +331,23 @@ curl -s "http://<nas>:1355/api/v1/jobs/models/log?lines=200" | jq -r '.lines[]'
 Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
 rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
 
+### Wann erscheinen die 08:00-Zeilen im Scoreboard?
+
+Das Scoreboard („Entscheidungs-Scoreboard · Out-of-Sample“) und die
+Regel-Ergebnis-Kachel füllen sich erst, wenn zwei Dinge zusammenkommen:
+
+1. **Der Modell-Job ist einmal erfolgreich durchgelaufen** (siehe oben:
+   Phase „Modelle fitten + Backtest“).
+2. **Es liegt genug echte Preishistorie vor.** Der Backtest bewertet tägliche
+   08:00-Entscheidungen rollierend über die letzten 7 Tage je Station. Ist
+   eine Station erst seit wenigen Tagen im Polling-Set, liefert sie noch keine
+   auswertbaren Entscheidungszeilen — das ist Ehrlichkeit (§14), kein Fehler.
+
+Solange beides nicht erfüllt ist, zeigt die GUI ausdrücklich „Noch keine
+Tages-Entscheidungen“ statt erfundener Zahlen. Ein einzelner verpasster Tag
+(Polling-Ausfall) kostet dabei nur diesen einen Eval-Tag; das Nachholen des
+Archivs beschreibt „Preislücke nachholen“ weiter oben.
+
 ### Lauf manuell anstoßen
 
 Drei Wege, alle ohne Neustart des Dienstes:
@@ -470,6 +487,34 @@ Org/Bucket/Token sind im Volume enthalten.
 | `⚠ Proxy-Umgebung gesetzt` | http_proxy/https_proxy gesetzt, kann Aufruf verfälschen |
 | `Puffer … nicht beschreibbar` / PermissionError 13 | /dev/shm/tankapp gehört root, Dienst pi → `sudo chown pi:pi /dev/shm/tankapp` |
 | Dienst startet nicht | `journalctl -u tankapp-collector -n 50`; meist fehlt polling.json oder Key |
+
+### Preislücke nachholen (Polling-Ausfall / beschädigtes polling.json)
+
+Es gibt zwei getrennte Datenwege, und nur einer lässt sich nachträglich auffüllen:
+
+**Live-Ansicht („Heute im Überblick")** liest direkt aus InfluxDB — also nur die
+echten Polls des Pi. Ein wegen eines Ausfalls verpasster Poll lässt sich dort
+**nicht** nachträglich einspielen; die Lücke bleibt in der Live-Kurve, bis das
+Polling wieder normal läuft. Wichtig ist allein, das Polling-Set zu reparieren
+(polling.json neu aus der geprüften Vorlage aufbauen und mit
+`python3 -m json.tool docs/analysis/stations/polling.json` prüfen), damit die
+nächsten Polls wieder ankommen.
+
+**Archiv & Modell** sind ein zweiter Weg mit denselben Marktdaten: Das
+Tankerkönig-Archiv (MTS-K) hält die Tagesdateien unabhängig vom eigenen Polling.
+Ein verpasster Tag wird beim nächsten Archiv-Sync automatisch nachgeladen:
+
+```bash
+# Lückenprüfung erzwingen — holt fehlende Tagesdateien bis gestern nach:
+python3 tankapp.py history-sync --archive-dir /pfad/zum/archiv --force
+
+# Nur einen bestimmten Zeitraum nachholen:
+python3 tankapp.py history-sync --archive-dir /pfad/zum/archiv --since 2026-09-10
+```
+
+Der nächste Modell-Lauf nutzt die nachgeladene Historie für Training und
+Prüfstand (08:00-Entscheidungszeilen im Scoreboard). Das Nachladen schreibt
+**nicht** in InfluxDB — die Live-Kurve bleibt unverändert.
 
 ### Uploader Störungsfälle
 

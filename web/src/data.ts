@@ -744,9 +744,17 @@ export function useResource<T>(
     key: string | null;
     data: T | null;
     error: boolean;
+    errorCode: string | null;
     pending: boolean;
     receivedAt: number;
-  }>({ key: null, data: null, error: false, pending: false, receivedAt: 0 });
+  }>({
+    key: null,
+    data: null,
+    error: false,
+    errorCode: null,
+    pending: false,
+    receivedAt: 0,
+  });
   useEffect(() => {
     if (!url) return;
     let active = true,
@@ -763,19 +771,46 @@ export function useResource<T>(
           signal: controller.signal,
           cache: "no-store",
         });
-        if (!response.ok) throw new Error("request_failed");
+        if (!response.ok) {
+          // Fehlerantworten tragen ein error_code (z. B. "rate_limited" bei
+          // 429). Wir heben es hoch, damit die GUI eine verständliche
+          // Meldung zeigen kann statt des nackten Codes.
+          let errorCode: string | null = null;
+          try {
+            const body = (await response.json()) as {
+              error_code?: string | null;
+            };
+            errorCode = body?.error_code ?? null;
+          } catch {
+            errorCode = null;
+          }
+          if (active)
+            setState((prev) => ({
+              ...prev,
+              error: true,
+              errorCode,
+              pending: false,
+            }));
+          return;
+        }
         const data: T = await response.json();
         if (active)
           setState({
             key: url,
             data,
             error: false,
+            errorCode: null,
             pending: false,
             receivedAt: performance.now(),
           });
       } catch {
         if (active)
-          setState((prev) => ({ ...prev, error: true, pending: false }));
+          setState((prev) => ({
+            ...prev,
+            error: true,
+            errorCode: null,
+            pending: false,
+          }));
       } finally {
         clearTimeout(timeout);
         busy = false;
@@ -1109,7 +1144,9 @@ export const messages: Record<string, string> = {
   settlement_failed: "Settlement-Lauf ist fehlgeschlagen.",
   stats_summary_failed: "Statistik konnte nicht berechnet werden.",
   backtest_not_available:
-    "Noch kein Engine-Backtest veröffentlicht. Nach dem Modell-Job erscheinen hier echte 08:00-Entscheidungszeilen.",
+    "Noch kein Prüfstand-Ergebnis veröffentlicht. Sobald der tägliche Modell-Lauf genug echte Preishistorie auswerten konnte, erscheinen hier die echten Tages-Entscheidungen (Anker 08:00 Uhr).",
+  rate_limited:
+    "Zu viele Anfragen in kurzer Zeit. Bitte einen Moment warten — die Anzeige lädt automatisch neu.",
   payload_too_large: "Anfrage zu groß (max. 100 KB).",
   invalid_json: "Anfrage ist kein gültiges JSON.",
   invalid_request: "Ungültige Anfrage.",
@@ -1324,18 +1361,18 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
   const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
   if (n < need) {
     return (
-      `Zähl-Gate offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
+      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
       `(Brier-Schwelle < ${limit}).`
     );
   }
   if (advice.brier_30d == null) {
     return (
-      `Zähl-Gate erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
+      `Freigabe erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
       `(keine P-Schätzung im Ledger).`
     );
   }
   return (
-    `Zähl-Gate erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
+    `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
     `(Schwelle < ${limit}).`
   );
 }
@@ -1346,9 +1383,7 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
  * es eine eigene Freigabe ist — diese Tage zählen nicht auf das M7-Gate.
  */
 export function transitionRuleLine(phase?: LivePhase | null): string {
-  const head =
-    "Übergangsregel Datenhygiene (Archiv → Live-Polling, live_only_days der Engine) " +
-    "— kein Nenner des M7-Gates";
+  const head = "Datenumstellung Archiv → Live-Polling";
   if (!phase) {
     return `${head}: noch keine Engine-Daten, die Tageszählung beginnt mit dem ersten Modell-Lauf.`;
   }

@@ -42,7 +42,10 @@ def p_better(minima, block_idx: int, anchor: float, theta_ct: float = THETA_CT):
 
 
 def window_p(
-    minima, block_idx: int, half_hours: float = SURROUNDING_HOURS, block_hours: float = 2.0
+    minima,
+    block_idx: int,
+    half_hours: float = SURROUNDING_HOURS,
+    block_hours: float = 2.0,
 ):
     """F3: ``P(Fenster ≤ Minimum im ±half_hours-Umfeld)`` (§4.3).
 
