@@ -1,4 +1,4 @@
-# TankApp — ToDo aus der Tiefenanalyse (11.09.2026)
+# TankApp — ToDo aus der Tiefenanalyse (11.09.2026, zwei Prüfstränge)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -86,18 +86,77 @@
 
 ---
 
+## E. Funktional & Eingabe (Prüfstrang 2: „Funktioniert der Kern, kann man eingeben?")
+
+Vorab — **verifiziert funktionsfähig** (kein Task, zur Einordnung): Alle Schreibpfade
+existieren und sind mit der GUI verdrahtet: `POST /fills` (Validierung 5–100 L,
+0,40–5,00 €/L, unbekannte Station → `unknown_station`, Nowcast-Zufall),
+`POST /episodes/{id}/intent`, `POST /jobs/{job}/run` (Startknopf), `POST /collector/heartbeat`,
+`POST /jobs/trigger` (HMAC). Server-Statuscodes 4xx, GUI prüft `error_code` vor
+Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persistent.
+
+| # | Prio | Fehlt / falsch | Definition of Done |
+|---|---|---|---|
+| E1 | **P0** | **Toter Block „Paar-Ökonomie" im Stations-Labor:** `pairEco`/`pairDailyNets` werden berechnet, aber **nirgends gerendert**; die drei Steuerungs-State-Setter (`setPairAltId`, `setPairDetourKm`, `setPairPeak`) haben **0 Aufrufe** — keine Eingabemöglichkeit. Zusätzlich §0.4-Verstoß: `refPrice: selectedPrice \|\| 1.70`, `altPrice: … \|\| (selectedPrice - 0.04 \|\| 1.66)` → **erfundene Preise**, exakt die Kategorie, die V3 im Hero behoben hat. | Entscheiden: Panel mit echten Controls fertig bauen (Vergleichsstation-Select, Umweg-km, Peak-Schalter, Preise nur aus echten Meldungen) **oder** den Block samt States entfernen. Kein dritter Zustand. |
+| E2 | **P0** | **Komma-Dezimalzahlen nicht eingebbar:** Beleg-Dialog nutzt `type="number"` ohne `inputMode="decimal"`; deutsche Mobil-Tastaturen liefern `1,689` → `Number("1,689") = NaN` → generische Fehlermeldung, ohne Hinweis warum. Der Hauptbeleg der App scheitert an der Tastatur. | `inputMode="decimal"`, Wert als String state, `,`→`.`-Normalisierung, Sofort-Validierung mit Klartext („Preis wie an der Säule, z. B. 1,629"). Unit-Test in `data.test.ts`. |
+| E3 | P1 | **GUI-Validierung deckt Server-Regeln nicht ab:** `customLiters`/`customPrice` haben **keine min/max-Attribute**; GUI prüft nur `> 0`, Server verlangt 5–100 L / 0,40–5,00 €/L → Eingaben wie 101 L oder 9,99 € scheitern erst nach Server-Roundtrip mit Fachfehler. | `min`/`max`/`step` am Input + gleiche Grenzen clientseitig prüfen, Fehlermeldung direkt am Feld. |
+| E4 | P1 | **Beleg ohne Station wählbar:** Bei nicht ausgewählter Station sendet `handleCustomFill` `station_id: "custom"` → Server lehnt mit `unknown_station` ab. Der Nutzer kann den Fehler nicht selbst beheben. | Stations-Auswahl im Beleg-Dialog oder Button deaktivieren + Hinweis „Station wählen". |
+| E5 | P1 | **`heatmapWeeks` ohne Eingabeweg:** GUI sendet `weeks=` an `/api/v1/heatmap`, die Preference existiert, aber `setHeatmapWeeks` hat 0 Aufrufe → Zeitraum ist fest verdrahtet, kein Umschalten möglich. | Wochen-Select (4/6/12) neben „Heatmap Art" oder Parameter aufräumen. |
+| E6 | P2 | **Slider ohne Präzision/Direkteingabe:** Verbrauch `step=1` (6,3 L/100 unwählbar — beeinflusst jede Umweg-Rechnung), Liter `step=5`, Zeitwert `step=1`; kein Begleit-Zahlenfeld, kein `aria-valuetext` in Währung. | `step=0.5` beim Verbrauch, optional number-Begleitfeld, `aria-valuetext` (zählt zu C5). |
+| E7 | P2 | **API-Explorer „day (Beispiel)":** `identity` leer ⇒ Aufruf mit leerem `station_id` → nur Fehleranzeige. | Label dynamisch: Beispiel nur anbieten, wenn eine Station gewählt ist; sonst grau + Hinweis. |
+
+## F. App-Texte & UX-Sprache (Prüfstrang 2)
+
+| # | Prio | Befund | ToDo |
+|---|---|---|---|
+| F1 | P1 | **Begriffs-Wirrwarr:** Tab heißt „Statistik", Seitenkicker „Werkstatt / Statistik", Konzept/Doku sprechen von „Werkstatt"; Tooltip-Text nennt den internen Doku-Begriff „Prüfstand" („wähle einen bewerteten Tag im Prüfstand"). | Ein Nutzer-Vokabular festlegen (Empfehlung: Alltag / **Werkstatt** / System) und UI + Doku drauf ziehen; „Prüfstand" aus Nutzertexten streichen. |
+| F2 | P1 | **Anglizismen/Fachjargon in Labels:** „Cheap-Probability P(p ≤ Median)", „AV-Score", „δ̂ Ranking", „Out-of-Sample", „Regret", „Badge" intern. | Deutsche Kurzformen als Primärtext („Wahrscheinlichkeit für günstig", „Ampel-Stärke"), Formel/Fachwort ins Tooltip (→ C7 Glossar). |
+| F3 | P2 | **Typografie uneinheitlich:** Anführungszeichen gemischt („warten“ vs. gerade '"'), „Brier-Score 30d" statt „30 Tage"; ct/L und €/L wechseln ohne Regel; Footer/Microcopy teils englische Hook-Zeilen („Nachvollziehen statt blind vertrauen." ✓ gut) vs. Fachlabels. | Microcopy-Regelwerk (eine Seite, in docs/README verlinkt): Einheiten, Zitate, Zahlenformate, Tonfall „ehrlich, knapp, handlungsleitend". |
+| F4 | P2 | **Intent-Leiste zeigt immer alle 4 CTAs** („Ich warte / Navigieren / Jetzt tanken / Verwerfen") — bei Aktion `refuel_now` ist „Ich warte" als gleichrangiger CTA irritierend; bei `wait` ist „Jetzt tanken" irritierend. | Empfohlene Aktion als primären Button, kompatible Intents sekundär, widersprechende Intent mit Erklär-Tooltip (Logik ändert nichts, nur Sichtbarkeit/Gewichtung). |
+| F5 | P2 | **Sonst sauber geprüft:** Fehlertexte in `web/src/data.ts` (`messages`) durchgehend sachlich-deutsch ohne erfundene Inhalte ✓; Fallback-GUI-Texte konsistent ✓; keine Demo-/Lorem-Reste ✓; Ladezustände einheitlich formuliert („… wird geladen/berechnet"). | Kein Task — als Referenz in das F3-Regelwerk übernehmen. |
+
+## G. Storage-Management: rp2/Pi & NAS (Prüfstrang 2)
+
+| # | Prio | Befund | ToDo |
+|---|---|---|---|
+| G1 | **P1** | **`rp2/cache_forecasts.py` wächst unbegrenzt:** `cache.log` wird alle 5 min angehängt, **kein Rotate/Cap** — auf dem RP2 dauerhaft wachsend (je nach OS-Layout liegt `/tmp` auf der SD-Karte → zusätzlich SD-Wear durch 288 Schreibzugriffe/Tag). | Größen-Cap (z. B. 1 MB Ring: bei Überschreiten ältere Hälfte verwerfen) oder auf journald/stdout umstellen; in rp2/ANLEITUNG vermerken. Unit-Test auf Cap-Verhalten. |
+| G2 | P2 | **Journal-Wachstum der rp2-Dienste nicht begrenzt/dokumentiert:** `fallback_gui` + `cache_forecasts` loggen nach journald; auf der SD ohne Caps wächst das Journal monatelang. | In ANLEITUNG: `SystemMaxUse=50M` für die Units oder `journalctl --vacuum-size` als Wartungsschritt; optional Drop-in-Beispiel beilegen. |
+| G3 | P2 | **Datenverlust-Fenster ist implizit:** Ringpuffer behält 7 Tage (`RING_DAYS=7`); ist der NAS > 7 Tage offline, verwirft `ring_prune` noch nicht hochgeladene Snapshots — der Verlust ist nirgends benannt. | Fenster in docs/ARCHITEKTUR.md/BETRIEB.md nennen + Empfehlung: bei geplantem NAS-Ausfall Puffer lokal vergrößern (tmpfs-Größe vs. 15 Polls/Tag/Station beispielhaft rechnen). |
+| G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** → Fallback-GUI zeigt nach Pi-Neustart bis zum ersten erfolgreichen Fetch „keine Prognose". Ehrlich, aber unerwartet. | Ein Satz in rp2/ANLEITUNG; kein Code-Zwang. |
+| G5 | ✓ | **NAS-Seite geprüft, in Ordnung:** Influx-Bucket-Retention 43 800 h (5 J.) dokumentiert; Feedback-Store 90-Tage-Retention + Archiv (seit 11.09.); Job-Logs 500 Zeilen; Docker `json-file` 5m × 2; Container ohne root, `no-new-privileges`, `cap_drop: ALL`; tmpfs-Heartbeat (used/total MB, älteste Datei) fließt zur NAS. | Kein Task. Verbleibende Punkte dazu: `runtime/`-Gesamtgröße ins Monitoring (→ B4) und Backup (→ B1). |
+
+## H. Mathematik (Prüfstrang 2: „muss mathematisch was getan werden?")
+
+Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `p_besser`/`p_lohnt` aus Draws, Settlement gegen beobachtete Minima, PAVA/12-Uhr ist bekannt sauber). Die offenen mathematischen Punkte sind **Konsistenz und dokumentierte Ausbauten**, keine Bugs:
+
+| # | Prio | Befund | ToDo |
+|---|---|---|---|
+| H1 | **P1** | **Umweg-Schwellen sind doppelt gepflegt:** GUI `detourEconomics` kodiert hart `netEur ≥ 1,5 / ≥ 0,5`; Server nutzt `active_thresholds()["elsewhere_net_eur"]` (verändert sich mit M7-Tuning). Dieselbe B6-Divergenz wie Circuitity ×1,0 (GUI) vs ×1,3 (Server) — zusammen ein Formel-Konsistenz-Problem: „Server prüfen" kann das Gegenteil der GUI-Badge sagen. | Server liefert `verdict`/`worth_it` + Schwellen in der Antwort; GUI zeigt ausschließlich das; `data.ts`-Konstanten entfernen. (Mit B6 zusammenführen.) |
+| H2 | P1 | **Platzhalterpreise in `pairEco`** (1,70 / −0,04 / 1,66): macht jede dahinter liegende Rechnung mathematisch falsch angezeigt — redundant zu E1, weil dort die Lösung (bauen oder löschen) festgelegt wird. | Siehe E1. |
+| H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn \|Δ\| > Rauschband) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten". |
+| H4 | D | **Weiterhin offen (bereits gelistet, hier qualifiziert):** Hampel-Filter, Feiertags-Dummy je Bundesland, Zeitsprung-Hazard, M3-Ensemble, Mehrtage-Backtests, 21-Tage-Gate im Auto-Lauf, Rolling-PICP live, gemeinsame Bootstrap-Ziehung über Stationen (§4.2), w(h)-Rückkopplung ≥ 8 Füllungen. | Bleiben A9–A11 mit Datenbedarf; Reihenfolge nach M7-Fortschritt (A7). |
+| H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in engine/README, statt stillem `None`. |
+| H6 | P2 | **Magic Numbers in Auswertungen:** `pairDailyNets` startet bei `i = 42` (Warm-up) ohne Kommentar/Config; Scoreboard-Formeln sind Tests gedeckt, die Zahl aber nicht benannt. | Konstante benennen + Herkunft (42-Tage-Trainingsfenster) kommentieren; in D3-Property-Tests mit aufnehmen. |
+
+---
+
 ## Quick Wins (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
 
 1. **A3** Storno-Flag für Fills (`DELETE /fills/{id}` → `voided`, Audit-Zeile) + Button im Wallet.
 2. **A6** CSV-Export `GET /api/v1/fills.csv` + Download-Link im System-Tab.
 3. **B1** Eine Zeile Backup-Skript für `runtime/` + Restore-Absatz in BETRIEB.md.
 4. **B4** `alarms[]`-Array in `/health` (nur Aggregation vorhandener Prüfungen) + roter Punkt im Header.
-5. **B6** Server-Feld `detour_km_est` ausgeben, GUI-Eigenschätzung entfernen.
+5. **B6/H1** Umweg: Server liefert `detour_km_est` **und** `verdict`/Schwellen; GUI-Eigenrechnung raus.
 6. **B9** Version/Commit in `/health` + Footer-Anzeige.
 7. **C1** Einrichtungs-Checkliste als Daten-getriebene Karte (Status kommt aus vorhandenen Endpunkten).
 8. **C5** Zwei schnelle A11y-Fixes: Ampel-Chip mit Symbol (▲/▼/●) statt nur Farbe, Slider-`aria-valuetext` in €.
 9. **D2** Eine Playwright-Spec „decide → intent → fill → due" mit Mocks — schützt alle V3-Fixes.
 10. **A7** Fortschritts-Kachel „M7: n/100 Settlements, Brier x (Ziel < 0,25)" — Daten liegen in `/stats/summary` schon vor.
+11. **E1** `pairEco`-Block löschen (wenn nicht sofort fertig gebaut) — entfernt toten Code **und** den letzten erfundenen-Preis-Verstoß.
+12. **E2** Komma-Eingabe: `inputMode="decimal"` + `,`→`.`-Normalisierung im Beleg-Dialog.
+13. **G1** `cache.log`-Cap (20 Zeilen Code) — stoppt unbegrenztes Wachstum auf dem RP2.
+14. **F1** Tab-Label „Statistik" → „Werkstatt" (inkl. Sekundär-Texte) — eine Zeile Code + Terminologie-Commit.
+15. **H6** `i = 42` benennen — fünf Minuten, rechtfertigt sich beim nächsten Lesen.
 
 ---
 
@@ -111,6 +170,7 @@
 ## Reihenfolge-Empfehlung
 
 1. **P0 zuerst:** A3 (Storno), B1 (Backup), B2 (Schema-Version) — schützt die persönliche Bilanz, bevor echte Daten anwachsen.
-2. **Dann B6 + B7** (Entscheidungs-Zahlen intern widerspruchsfrei und API-Last gesenkt) und **C1** (Inbetriebnahme führbar machen).
-3. **D1 direkt vor dem ersten größeren C-Feature** — sonst verdoppelt sich der Aufwand.
-4. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie stehen begründet in docs/LUECKEN.md.
+2. **P0 aus Prüfstrang 2 sofort danach:** E1 (toten Block + erfundene Preise entfernen/fertig bauen) und E2 (Komma-Eingabe) — beides betrifft den Alltags-Hauptweg des Produkts.
+3. **Dann B6/H1 + B7** (Entscheidungs-Zahlen intern widerspruchsfrei und API-Last gesenkt) und **C1** (Inbetriebnahme führbar machen).
+4. **D1 direkt vor dem ersten größeren C-Feature** — sonst verdoppelt sich der Aufwand.
+5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie stehen begründet in docs/LUECKEN.md.
