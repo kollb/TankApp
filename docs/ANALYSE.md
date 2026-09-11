@@ -124,7 +124,7 @@ Datei `results/station_scores_<fuel>.csv` bleibt lokal für vertiefte Analyse, n
 - Nur offene Preise, InfluxDB letzte N Wochen
 - Grün = hohe Chance (≥80%), Rot = niedrige
 
-Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der Werkstatt (Tab Statistik), nicht im Alltags-Startbildschirm.
+Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der Werkstatt (Tab Werkstatt), nicht im Alltags-Startbildschirm.
 
 Frontend: Umschalter Level/Probability, Wochen-Wahl 2/4/6/8, Station aus Dropdown.
 

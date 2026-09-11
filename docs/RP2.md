@@ -346,8 +346,8 @@ Für beste Ergebnisse: NAS mindestens 1× täglich starten (06:00–24:00), Prog
 
 ### B3 Features im Alltag
 
-- Heatmaps: Tab Statistik → Heatmaps, wähle Niveau/Probability
-- Meine Stationen: Tab Statistik → Meine Stationen, sortiert nach Score, δ̂ mit KI
+- Heatmaps: Tab Werkstatt → Heatmaps, wähle Niveau/Probability
+- Meine Stationen: Tab Werkstatt → Meine Stationen, sortiert nach Score, δ̂ mit KI
 - Collector Status: Tab System → Pi/tmpfs Livestatus
 - Route Evaluate: Tab Alltag → Rechnet sich der Umweg? → Server prüfen Button
 

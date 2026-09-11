@@ -109,7 +109,7 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
 test("Stations-Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
   const seenHours = await stubApi(page, { horizons: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Statistik", exact: true }).click();
+  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Stations-Labor · letzte 24 Stunden" }),
   ).toBeVisible();
@@ -137,7 +137,7 @@ test("Stations-Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page
 test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page }) => {
   await stubApi(page, { horizons: false });
   await page.goto("/");
-  await page.getByRole("button", { name: "Statistik", exact: true }).click();
+  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Stations-Labor · letzte 24 Stunden" }),
   ).toBeVisible();

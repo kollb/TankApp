@@ -201,8 +201,8 @@ Analyse: [ANALYSE.md](ANALYSE.md)
 
 ## B3 Neue Features
 
-- **B3.9 Heatmaps DoW×Stunde:** `GET /api/v1/heatmap?city=...&fuel=...&kind=level|probability&weeks=6&station_id=...` — Niveau Median + Cheap-Probability P(p ≤ Stadtmedian), Berlin Zeit, echte InfluxDB Punkte letzte N Wochen. GUI Tab Statistik → Heatmaps.
-- **B3.10 Meine Stationen mit δ̂:** `GET /api/v1/selection?fuel=...&city=...` — Ranking, Bootstrap-KI, AV-Score, billigste Stunde, Volatilität, Coverage, Signifikanz q<0.05. Artefakt `runtime/selection/current.json`, Job `selection` täglich. GUI Tab Statistik → Meine Stationen, System → Artefakte.
+- **B3.9 Heatmaps DoW×Stunde:** `GET /api/v1/heatmap?city=...&fuel=...&kind=level|probability&weeks=6&station_id=...` — Niveau Median + Cheap-Probability P(p ≤ Stadtmedian), Berlin Zeit, echte InfluxDB Punkte letzte N Wochen. GUI Tab Werkstatt → Heatmaps.
+- **B3.10 Meine Stationen mit δ̂:** `GET /api/v1/selection?fuel=...&city=...` — Ranking, Bootstrap-KI, AV-Score, billigste Stunde, Volatilität, Coverage, Signifikanz q<0.05. Artefakt `runtime/selection/current.json`, Job `selection` täglich. GUI Tab Werkstatt → Meine Stationen, System → Artefakte.
 - **B3.11 Pi/tmpfs Livestatus:** Collector schreibt `meta/heartbeat.json` (tmpfs Nutzung, älteste Datei, poll_count), Uploader schreibt `collector_status` Measurement nach InfluxDB alle 60s. `GET /api/v1/collector/status` und `/api/v1/health` (Feld collector). GUI Tab System → Pi/tmpfs Livestatus.
 - **B3.12 Route Evaluate serverseitig:** `GET /api/v1/route/evaluate?city=...&fuel=...&station_id=...&ref_station_id=...&liters=40&detour_km=3&consumption=7&speed=45&value_of_time=12&when=...&mode=onroute` — K = d·(c/100)·p + (d/v)·z, brutto/netto, kritisch Δp*, worth_it, z_used peak/offpeak Auto. UI rechnet lokal, kann optional Server validieren (Button „Server prüfen“).
 

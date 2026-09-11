@@ -473,6 +473,36 @@ docker compose up -d
 
 Org/Bucket/Token sind im Volume enthalten.
 
+### NAS Laufzeitdaten (runtime/) Backup
+
+Das InfluxDB-Volume sichert die **Preise** — nicht die persönliche Tank-Bilanz.
+Die liegt in `runtime/` (Feedback-Store, Selektion, Job-Stände) und wird bisher
+nicht gesichert. Ein NAS-Disk-Crash wäre der Verlust der Bilanz. Täglich sichern:
+
+```cron
+30 3 * * * TANKAPP_RUNTIME_DIR=/data/runtime TANKAPP_BACKUP_DIR=/pfad/zu/backup $HOME/TankApp/ops/nas/backup.sh
+```
+
+`TANKAPP_RUNTIME_DIR` ist das in `compose.yml` gemountete `runtime/`-Verzeichnis
+(siehe `tankapp.py nas-up`), `TANKAPP_BACKUP_DIR` das vorhandene Backup-Ziel.
+Das Skript erzeugt `tankapp-runtime-<datum>.tar.gz` und behält 14 Tage
+(`TANKAPP_BACKUP_KEEP_DAYS` anpassbar).
+
+Restore (durchgespielt, nicht nur aufgeschrieben):
+
+```bash
+# App stoppen, damit der Store nicht während des Kopierens geschrieben wird.
+docker compose -f ops/nas/app/compose.yml stop app
+mkdir -p /data/runtime
+tar xzf tankapp-runtime-<datum>.tar.gz -C /data/runtime
+docker compose -f ops/nas/app/compose.yml start app
+# Gegenprobe: Wallet-Zähler in der GUI und GET /api/v1/fills zeigen den alten Stand.
+```
+
+Danach einmal `GET /api/v1/health` prüfen: `app` = `online`, kein Alarm
+`store_too_large`. Preise kommen aus InfluxDB (separates Backup) und bleiben
+vom runtime-Restore unberührt.
+
 ## Fehlersuche
 
 ### Collector Störungsfälle

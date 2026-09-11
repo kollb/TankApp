@@ -343,6 +343,16 @@ class Handler(SimpleHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(content)
 
+    def csv(self, content: str, filename: str, status=200):
+        body = content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
     def api(self, path, query):
         def value(key, default=None):
             values = query.get(key, [default])
@@ -416,6 +426,10 @@ class Handler(SimpleHTTPRequestHandler):
             status = value("status")
             return self.data.episodes(status)
 
+        if norm_path == "/api/v1/fills":
+            # A3/A6: Wallet-Verlauf (Liste) — JSON-Variante; CSV unter /fills.csv.
+            return self.data.fills()
+
         if norm_path == "/api/v1/stats/summary":
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
             return self.data.stats_summary(params)
@@ -438,6 +452,11 @@ class Handler(SimpleHTTPRequestHandler):
     def serve_get(self):
         url = urlsplit(self.path)
         if not self._rate_limit():
+            return
+        # A6: CSV-Export der eigenen Tankbelege — eigene Antwortform, deshalb
+        # vor dem generischen JSON-Pfad behandelt.
+        if url.path == "/api/v1/fills.csv":
+            self.csv(self.data.fills_csv(), "tankapp-fills.csv")
             return
         if url.path.startswith("/api/") or url.path.startswith("/v1/"):
             try:
@@ -669,6 +688,39 @@ class Handler(SimpleHTTPRequestHandler):
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_DELETE(self):
+        try:
+            self.serve_delete()
+        except (BrokenPipeError, ConnectionError):
+            pass
+
+    def serve_delete(self):
+        url = urlsplit(self.path)
+        if not self._rate_limit():
+            return
+        norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
+        # A3: Beleg-Storno — DELETE /api/v1/fills/{id} setzt voided statt zu löschen.
+        if norm_path.startswith("/api/v1/fills/"):
+            fill_id = norm_path[len("/api/v1/fills/") :].strip("/")
+            if not fill_id or "/" in fill_id:
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            try:
+                res = self.data.void_fill(fill_id)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            if not isinstance(res, dict):
+                self.json({"error_code": "server_error"}, 503)
+                return
+            code = res.get("error_code")
+            if code == "fill_not_found":
+                self.json(res, 404)
+            elif code:
+                # Store zu groß o. ä. — kein stiller Erfolg.
+                self.json(res, 503)
+            else:
+                self.json(res, 200)
+            return
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_PATCH(self):

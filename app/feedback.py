@@ -192,11 +192,15 @@ def load_store(settings) -> dict[str, Any]:
             "episodes": raw.get("episodes") or [],
             "fills": raw.get("fills") or [],
             "settlements": raw.get("settlements") or [],
+            # A3: Audit-Spur (Storno-Vermerke) bleibt beim Laden erhalten —
+            # sonst ginge die Nachvollziehbarkeit eines Stornos still verloren.
+            "audit": raw.get("audit") or [],
         }
     return {
         "episodes": [],
         "fills": [],
         "settlements": [],
+        "audit": [],
     }
 
 
@@ -656,6 +660,41 @@ def record_fill(
                 ep["closed_at"] = now_str
 
         return fill_event
+
+
+def void_fill(settings, fill_id: str, clock=None) -> dict[str, Any] | dict[str, str]:
+    """Storniert einen Tankbeleg (A3): ``voided``-Flag statt Löschen + Audit-Zeile.
+
+    Ein falsch gebuchter Beleg verzerrt Wallet, w(h)-Profil und Statistik —
+    Löschen wäre Datenverlust und ohne Nachweis. Stattdessen bleibt der Beleg
+    erhalten, zählt aber nicht mehr in die Bilanz; die Audit-Spur protokolliert
+    das Storno. Idempotent: ein zweites Storno desselben Belegs ändert nichts.
+
+    Rückgabe: der (stornierte) Beleg oder ``{"error_code": "fill_not_found"}``.
+    """
+    with locked_store(settings) as store:
+        for fill in store.get("fills", []):
+            if fill.get("id") != fill_id:
+                continue
+            if fill.get("voided"):
+                return fill
+            now_str = _now_iso(clock)
+            fill["voided"] = True
+            fill["voided_at"] = now_str
+            audit = store.setdefault("audit", [])
+            audit.insert(
+                0,
+                {
+                    "at": now_str,
+                    "action": "void_fill",
+                    "fill_id": fill_id,
+                    "station_id": fill.get("station_id"),
+                    "liters": fill.get("liters"),
+                    "price_paid": fill.get("price_paid"),
+                },
+            )
+            return fill
+        return {"error_code": "fill_not_found"}
 
 
 def _finite_price(value: Any) -> float | None:
@@ -1130,13 +1169,14 @@ def compute_wallet_stats(
     now = now or dt.datetime.now(UTC)
     cutoff = now - dt.timedelta(days=window_days)
 
-    fills_all = store.get("fills", [])
+    # A3: stornierte Belege (voided) zählen nicht in Bilanz und Profil.
+    fills_active = [f for f in store.get("fills", []) if not f.get("voided")]
 
     def in_window(fill: dict[str, Any]) -> bool:
         stamp = _parse_ts(fill.get("tanked_at"))
         return stamp is None or stamp >= cutoff
 
-    fills = [f for f in fills_all if in_window(f)]
+    fills = [f for f in fills_active if in_window(f)]
     n_fills = len(fills)
 
     followed = sum(1 for f in fills if f.get("compliance") == "followed")
@@ -1157,13 +1197,13 @@ def compute_wallet_stats(
     s0 = sum(w0)
     w0 = [round(v / s0, 4) for v in w0]
 
-    n_all = len(fills_all)
+    n_all = len(fills_active)
     if n_all < 8:
         wh_hours = w0
     else:
-        # Empirisches Histogramm über ALLE Füllungen (Langzeitprofil).
+        # Empirisches Histogramm über ALLE aktiven Füllungen (Langzeitprofil).
         w_hat = [0.0] * 24
-        for f in fills_all:
+        for f in fills_active:
             h = int(f.get("clock_hour", 12.0)) % 24
             w_hat[h] += 1.0
         w_hat = [v / n_all for v in w_hat]
@@ -1180,5 +1220,5 @@ def compute_wallet_stats(
         "unrelated": unrelated,
         "saved_eur": saved_eur,
         "wh_hours": wh_hours,
-        "last_fill": fills_all[0] if fills_all else None,
+        "last_fill": fills_active[0] if fills_active else None,
     }

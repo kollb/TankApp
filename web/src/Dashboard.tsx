@@ -48,14 +48,19 @@ import {
   autoTimeValue,
   berlinHour,
   clockLabel,
+  commaToDot,
   currentPrice,
   CIRCUITY,
+  deNumber,
   detourEconomics,
   epochLabel,
   euro,
   formatHour,
+  germanDecimalToNumber,
   haversineKm,
   livePhaseHint,
+  M7_BRIER_THRESHOLD,
+  M7_MIN_RECOMMENDATIONS,
   m7GateLine,
   problem,
   segments,
@@ -68,9 +73,12 @@ import {
   postJobRun,
   jobRunMessage,
   postFill,
+  voidFill,
   rowOutcome,
   scoreRows,
   type DetourMode,
+  type Fill,
+  type Fills,
   type Fuel,
   type Station,
   type Stations,
@@ -498,41 +506,146 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
     return v.toFixed(3);
   };
 
+  // C10: Tages-Zusammenfassung je Wochentag — Median + günstigste Stunde.
+  const todayIdx = (() => {
+    try {
+      const short = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Europe/Berlin",
+        weekday: "short",
+      }).format(new Date());
+      const order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const idx = order.indexOf(short);
+      return idx >= 0 ? idx : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const summaries = days
+    .map((dayName, dIdx) => {
+      const row = matrix[dIdx] ?? [];
+      const vals = row.filter(
+        (v): v is number => v !== null && Number.isFinite(v),
+      );
+      if (!vals.length) return null;
+      const sorted = [...vals].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      let bestHour = hours[0] ?? 0;
+      let bestValue = vals[0];
+      row.forEach((v, h) => {
+        if (v === null || !Number.isFinite(v)) return;
+        if (isProb ? v > bestValue : v < bestValue) {
+          bestValue = v;
+          bestHour = h;
+        }
+      });
+      return { day: dayName, median, bestHour, bestValue, index: dIdx };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const bestDay = summaries.length
+    ? summaries.reduce((acc, s) =>
+        isProb
+          ? s.median > acc.median
+            ? s
+            : acc
+          : s.median < acc.median
+            ? s
+            : acc,
+      )
+    : null;
+
+  const blockLabel = (h: number) =>
+    `${String(h).padStart(2, "0")}–${String((h + 2) % 24).padStart(2, "0")}`;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-center text-[10px] font-mono">
-        <thead>
-          <tr className="text-slate-500">
-            <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
-            {hours.map((h) => (
-              <th key={h} className="p-1 font-normal">
-                {String(h).padStart(2, "0")}
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-center text-[10px] font-mono">
+          <thead>
+            <tr className="text-slate-500">
+              <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
+              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
+                Median
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/40">
-          {days.map((dayName, dIdx) => (
-            <tr key={dayName}>
-              <td className="p-1 text-left font-sans text-xs font-medium text-slate-300">
-                {dayName}
-              </td>
-              {hours.map((h) => {
-                const val = matrix[dIdx]?.[h] ?? null;
-                return (
-                  <td
-                    key={h}
-                    title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${isProb ? (val !== null ? `${val.toFixed(1)} % Chance günstiger als Stadtmedian` : "keine Daten") : (val !== null ? `${val.toFixed(3)} €/L Median` : "keine Daten")}`}
-                    className={`p-1 transition-colors ${colorFor(val)}`}
-                  >
-                    {fmtVal(val)}
-                  </td>
-                );
-              })}
+              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
+                Günstigste Std.
+              </th>
+              {hours.map((h) => (
+                <th key={h} className="p-1 font-normal">
+                  {String(h).padStart(2, "0")}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-slate-800/40">
+            {days.map((dayName, dIdx) => {
+              const summary = summaries.find((s) => s.index === dIdx) ?? null;
+              const isToday = todayIdx === dIdx;
+              return (
+                <tr
+                  key={dayName}
+                  className={isToday ? "bg-sky-500/[.07]" : undefined}
+                >
+                  <td
+                    className={`p-1 text-left font-sans text-xs font-medium ${
+                      isToday ? "text-sky-300" : "text-slate-300"
+                    }`}
+                  >
+                    {dayName}
+                    {isToday ? (
+                      <span className="ml-1 text-[9px] font-bold uppercase text-sky-400">
+                        heute
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
+                    {summary
+                      ? isProb
+                        ? `${Math.round(summary.median)} %`
+                        : `${summary.median.toFixed(3)}`
+                      : "—"}
+                  </td>
+                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
+                    {summary ? blockLabel(summary.bestHour) : "—"}
+                  </td>
+                  {hours.map((h) => {
+                    const val = matrix[dIdx]?.[h] ?? null;
+                    return (
+                      <td
+                        key={h}
+                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${isProb ? (val !== null ? `${val.toFixed(1)} % Chance günstiger als Stadtmedian` : "keine Daten") : (val !== null ? `${val.toFixed(3)} €/L Median` : "keine Daten")}`}
+                        className={`p-1 transition-colors ${colorFor(val)}`}
+                      >
+                        {fmtVal(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {bestDay && (
+        <p className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-300">
+          <span className="font-semibold text-slate-200">
+            Typisch am günstigsten:
+          </span>{" "}
+          {bestDay.day} {blockLabel(bestDay.bestHour)} Uhr —{" "}
+          {isProb
+            ? `${Math.round(bestDay.bestValue)} % Chance günstig`
+            : `Median ${bestDay.bestValue.toFixed(3)} €/L`}
+          .
+        </p>
+      )}
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+        {isProb
+          ? "Cheap-Probability: Anteil der Stunden, in denen der Preis günstiger als der Median des Zeitraums war. "
+          : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
+        Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
+        (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.
+      </p>
     </div>
   );
 }
@@ -623,10 +736,15 @@ export function Dashboard() {
   // B4 Due-Prompt UI state
   const [dueDismissed, setDueDismissed] = useState(false);
   const [customFillOpen, setCustomFillOpen] = useState(false);
-  const [customLiters, setCustomLiters] = useState(40);
-  // Fix: kein erfundener Default-Preis (vorher 1.689) – 0 bedeutet "bitte eingeben", sync mit bestPrice wenn verfügbar
-  const [customPrice, setCustomPrice] = useState<number>(0);
+  // E2: Werte als String halten — deutsche Mobil-Tastaturen liefern „1,689“,
+  // Number("1,689") wäre NaN. Normalisierung erfolgt beim Parsen (data.ts).
+  const [customLitersStr, setCustomLitersStr] = useState("40");
+  // Fix: kein erfundener Default-Preis (vorher 1.689) – leer bedeutet "bitte
+  // eingeben", wird mit bestPrice vorbefüllt, sobald der bekannt ist.
+  const [customPriceStr, setCustomPriceStr] = useState("");
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  // A3: Rückmeldung beim Stornieren eines Belegs (lokal im Verlauf).
+  const [voidNote, setVoidNote] = useState<string | null>(null);
 
   const [routeAltId, setRouteAltId] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -694,12 +812,13 @@ export function Dashboard() {
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
 
-  // Wenn bester Live-Preis bekannt wird und Custom-Preis noch 0, vorbelegen (kein erfundener Fallback)
+  // Wenn bester Live-Preis bekannt wird und noch kein Custom-Preis eingegeben
+  // wurde, vorbelegen (kein erfundener Fallback, nur echter bekannter Preis).
   useEffect(() => {
-    if (bestPrice !== null && Number.isFinite(bestPrice) && customPrice === 0) {
-      setCustomPrice(Math.round(bestPrice * 1000) / 1000);
+    if (bestPrice !== null && Number.isFinite(bestPrice) && customPriceStr === "") {
+      setCustomPriceStr(bestPrice.toFixed(3));
     }
-  }, [bestPrice, customPrice]);
+  }, [bestPrice, customPriceStr]);
   const autoZ = autoTimeValue();
   const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
@@ -775,6 +894,13 @@ export function Dashboard() {
 
   const dueEpisodesRes = useResource<{ count: number; episodes: any[] }>(
     "/api/v1/episodes?status=due",
+    30000,
+    refresh,
+  );
+
+  // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
+  const fillsRes = useResource<Fills>(
+    tab === "daily" || tab === "system" ? "/api/v1/fills" : null,
     30000,
     refresh,
   );
@@ -1107,6 +1233,34 @@ export function Dashboard() {
 
   const dueEpisode = dueEpisodesRes.data?.episodes?.[0] || (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
+  // E2: Sofort-Validierung des Beleg-Dialogs (Komma normalisiert).
+  const customLitersVal = germanDecimalToNumber(customLitersStr);
+  const customPriceVal = germanDecimalToNumber(customPriceStr);
+  const litersError =
+    customLitersStr.trim() === ""
+      ? "Bitte Liter eingeben."
+      : customLitersVal == null
+        ? "Zahl eingeben (z. B. 45,5)."
+        : customLitersVal < 5 || customLitersVal > 100
+          ? "5–100 Liter erlaubt."
+          : null;
+  const priceError =
+    customPriceStr.trim() === ""
+      ? "Bitte Preis eingeben."
+      : customPriceVal == null
+        ? "Zahl eingeben (z. B. 1,629)."
+        : customPriceVal < 0.4 || customPriceVal > 5
+          ? "0,40–5,00 €/L erlaubt."
+          : null;
+
+  // B4: Alarme aus /health für den roten/grünen Punkt im Header.
+  const alarms = h?.alarms ?? [];
+  const errorAlarms = alarms.filter((a) => a.severity === "error");
+  const warnAlarms = alarms.filter((a) => a.severity !== "error");
+
+  // A3: Wallet-Verlauf.
+  const fillList = fillsRes.data?.fills ?? [];
+
   const handleConfirmRecommendedFill = async (ep: any) => {
     if (!ep) return;
     const snap = ep.last_snapshot || decideRes.data?.primary;
@@ -1143,16 +1297,24 @@ export function Dashboard() {
   };
 
   const handleCustomFill = async (ep: any) => {
-    if (!Number.isFinite(customPrice) || customPrice <= 0) {
-      setActionFeedback("! Bitte gültigen Preis eingeben (>0 €/L).");
+    // E2: Komma-Eingaben vor dem Runden akzeptieren, Fehler direkt am Feld.
+    const litersVal = germanDecimalToNumber(customLitersStr);
+    const priceVal = germanDecimalToNumber(customPriceStr);
+    if (litersVal == null || litersVal < 5 || litersVal > 100) {
+      setActionFeedback("! Liter außerhalb 5–100 — bitte korrigieren (Komma erlaubt, z. B. 45,5).");
+      setTimeout(() => setActionFeedback(null), 4000);
+      return;
+    }
+    if (priceVal == null || priceVal <= 0 || priceVal < 0.4 || priceVal > 5) {
+      setActionFeedback("! Preis außerhalb 0,40–5,00 €/L — bitte wie an der Säule eingeben (z. B. 1,629).");
       setTimeout(() => setActionFeedback(null), 4000);
       return;
     }
     const res = await postFill({
       station_id: selected?.station_id || "custom",
       station_name: selected?.name || "Station",
-      liters: customLiters,
-      price_paid: customPrice,
+      liters: litersVal,
+      price_paid: priceVal,
       fuel,
       source: "prompt",
       episode_id: ep?.id,
@@ -1167,6 +1329,19 @@ export function Dashboard() {
     setDueDismissed(true);
     setRefresh((r) => r + 1);
     setTimeout(() => setActionFeedback(null), 4000);
+  };
+
+  const handleVoidFill = async (fillId: string) => {
+    setVoidNote(null);
+    const res = await voidFill(fillId);
+    if (res?.error_code) {
+      setVoidNote(
+        `Storno fehlgeschlagen: ${problem(res.error_code) || res.error_code}`,
+      );
+      return;
+    }
+    setVoidNote(`Beleg ${fillId} storniert — zählt nicht mehr in deiner Bilanz.`);
+    setRefresh((r) => r + 1);
   };
 
   const handleDismissDue = async (epId?: string) => {
@@ -1261,6 +1436,40 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
+            {/* B4: aggregierter System-Alarm als roter/gelber/grüner Punkt. */}
+            {h && (
+              <span
+                role="status"
+                title={
+                  alarms.length
+                    ? alarms.map((a) => a.message).join(" · ")
+                    : "System in Ordnung — keine Alarme"
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${
+                  errorAlarms.length
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                    : warnAlarms.length
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-2 w-2 rounded-full ${
+                    errorAlarms.length
+                      ? "bg-rose-400"
+                      : warnAlarms.length
+                        ? "bg-amber-400"
+                        : "bg-emerald-400"
+                  }`}
+                />
+                {errorAlarms.length
+                  ? `${errorAlarms.length} Alarm${errorAlarms.length > 1 ? "e" : ""}`
+                  : warnAlarms.length
+                    ? `${warnAlarms.length} Hinweis${warnAlarms.length > 1 ? "e" : ""}`
+                    : "OK"}
+              </span>
+            )}
             <button
               aria-label="Daten aktualisieren"
               title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
@@ -1288,7 +1497,7 @@ export function Dashboard() {
                 { id: "daily", label: "Alltag", icon: <Compass size={15} /> },
                 {
                   id: "statistics",
-                  label: "Statistik",
+                  label: "Werkstatt",
                   icon: <ChartIcon size={15} />,
                 },
                 { id: "system", label: "System", icon: <Server size={15} /> },
@@ -1479,26 +1688,47 @@ export function Dashboard() {
                       <label className="text-xs text-slate-400">
                         Liter
                         <input
-                          type="number"
-                          value={customLiters}
-                          onChange={(e) => setCustomLiters(Number(e.target.value))}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={customLitersStr}
+                          onChange={(e) => setCustomLitersStr(commaToDot(e.target.value))}
+                          aria-invalid={litersError != null}
+                          aria-describedby={litersError ? "custom-liters-error" : undefined}
                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
                         />
+                        {litersError && (
+                          <p id="custom-liters-error" className="mt-1 text-[10px] leading-snug text-rose-300">
+                            {litersError}
+                          </p>
+                        )}
                       </label>
                       <label className="text-xs text-slate-400">
                         Gezahlter Preis (€/L)
                         <input
-                          type="number"
-                          step="0.001"
-                          value={customPrice}
-                          onChange={(e) => setCustomPrice(Number(e.target.value))}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={customPriceStr}
+                          onChange={(e) => setCustomPriceStr(commaToDot(e.target.value))}
+                          aria-invalid={priceError != null}
+                          aria-describedby={priceError ? "custom-price-error" : undefined}
                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
                         />
+                        {priceError && (
+                          <p id="custom-price-error" className="mt-1 text-[10px] leading-snug text-rose-300">
+                            {priceError}
+                          </p>
+                        )}
+                        <span className="mt-1 block text-[10px] text-slate-500">
+                          Wie an der Säule, z. B. 1,629.
+                        </span>
                       </label>
                       <div className="flex items-end">
                         <button
                           onClick={() => handleCustomFill(dueEpisode)}
-                          className="w-full rounded-lg bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                          disabled={litersError != null || priceError != null}
+                          className="w-full rounded-lg bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Beleg speichern
                         </button>
@@ -1615,24 +1845,30 @@ export function Dashboard() {
                 }
                 if (!rec) return null;
                 const p = rec.primary;
+                // C5: Symbol zusätzlich zur Farbe — die Ampel ist für
+                // Rot-Grün-Schwache nicht an der Farbe allein erkennbar.
                 const meta = {
                   refuel_now: {
                     chip: "JETZT TANKEN",
+                    symbol: "●",
                     cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
                     Icon: FuelIcon,
                   },
                   wait: {
                     chip: "WARTEN",
+                    symbol: "▼",
                     cls: "border-amber-500/30 bg-amber-500/10 text-amber-300",
                     Icon: Clock,
                   },
                   refuel_elsewhere: {
                     chip: "WOANDERS TANKEN",
+                    symbol: "→",
                     cls: "border-sky-500/30 bg-sky-500/10 text-sky-300",
                     Icon: Route,
                   },
                   no_advice: {
                     chip: "KEINE EMPFEHLUNG",
+                    symbol: "–",
                     cls: "border-slate-700 bg-slate-800/60 text-slate-300",
                     Icon: ShieldCheck,
                   },
@@ -1652,6 +1888,9 @@ export function Dashboard() {
                   <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.cls}`}>
+                        <span aria-hidden="true" className="text-[13px] leading-none">
+                          {meta.symbol}
+                        </span>
                         <meta.Icon size={13} />
                         {meta.chip}
                       </span>
@@ -1971,6 +2210,7 @@ export function Dashboard() {
                   max={80}
                   step={5}
                   value={liters}
+                  aria-valuetext={`${liters} Liter`}
                   onChange={(e) => setLiters(Number(e.target.value))}
                   className="my-5 w-full"
                 />
@@ -2118,6 +2358,7 @@ export function Dashboard() {
                         max={15}
                         step={1}
                         value={consumption}
+                        aria-valuetext={`${consumption} Liter pro 100 Kilometer`}
                         onChange={(e) => setConsumption(Number(e.target.value))}
                         className="mt-3 w-full"
                       />
@@ -2134,6 +2375,7 @@ export function Dashboard() {
                         max={80}
                         step={5}
                         value={speed}
+                        aria-valuetext={`${speed} Kilometer pro Stunde`}
                         onChange={(e) => setSpeed(Number(e.target.value))}
                         className="mt-3 w-full"
                       />
@@ -2155,6 +2397,11 @@ export function Dashboard() {
                         max={30}
                         step={1}
                         value={timeValue}
+                        aria-valuetext={
+                          timeValue > 0
+                            ? `${timeValue} Euro pro Stunde`
+                            : `Automatik ${timeValueUsed} Euro pro Stunde`
+                        }
                         onChange={(e) => setTimeValue(Number(e.target.value))}
                         className="mt-3 w-full"
                       />
@@ -2452,6 +2699,110 @@ export function Dashboard() {
                 </div>
               )}
             </section>
+
+            {/* A3: Tankbelege-Verlauf mit Storno (void statt löschen). */}
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="fills-heading"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 id="fills-heading" className="flex items-center gap-2 text-sm font-semibold">
+                  <FuelIcon size={16} className="text-emerald-400" />
+                  Deine Tankbelege
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  Ein falsch gebuchter Beleg lässt sich stornieren — er bleibt als
+                  Storno in der Spur, zählt aber nicht mehr in deine Bilanz.
+                </span>
+              </div>
+              {voidNote && (
+                <p
+                  role="status"
+                  className={`mb-3 rounded-lg p-2.5 text-xs ${
+                    voidNote.startsWith("Storno fehlgeschlagen")
+                      ? "bg-rose-500/10 text-rose-300"
+                      : "bg-emerald-500/10 text-emerald-300"
+                  }`}
+                >
+                  {voidNote}
+                </p>
+              )}
+              {fillsRes.error ? (
+                <Empty>
+                  {problem(fillsRes.data?.error_code || fillsRes.errorCode) ||
+                    "Tankbelege konnten nicht geladen werden."}
+                </Empty>
+              ) : fillList.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-500">
+                        <th className="py-2 pr-3">Getankt</th>
+                        <th className="py-2 pr-3">Station</th>
+                        <th className="py-2 pr-3 text-right">Liter</th>
+                        <th className="py-2 pr-3 text-right">€/L</th>
+                        <th className="py-2 pr-3 text-right">Ersparnis</th>
+                        <th className="py-2 pr-3 text-right">Status</th>
+                        <th className="py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {fillList.map((fill: Fill) => (
+                        <tr
+                          key={fill.id}
+                          className={fill.voided ? "opacity-60" : undefined}
+                        >
+                          <td className="py-2 pr-3 font-mono text-slate-300">
+                            {timeLabel(fill.tanked_at)}
+                          </td>
+                          <td className="py-2 pr-3 text-slate-200">
+                            {fill.station_name || fill.station_id}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono text-slate-300">
+                            {euro(fill.liters, 1)}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono text-slate-300">
+                            {euro(fill.price_paid, 3)}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono text-emerald-300">
+                            {fill.saved_vs_always_now_eur != null
+                              ? `${fill.saved_vs_always_now_eur > 0 ? "+" : "−"}${euro(Math.abs(fill.saved_vs_always_now_eur))} €`
+                              : "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-right">
+                            {fill.voided ? (
+                              <span className="font-semibold text-rose-300">
+                                storniert
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">gebucht</span>
+                            )}
+                          </td>
+                          <td className="py-2 text-right">
+                            {!fill.voided && (
+                              <button
+                                type="button"
+                                onClick={() => handleVoidFill(fill.id)}
+                                title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
+                                className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300"
+                              >
+                                Stornieren
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty>
+                  {fillsRes.pending
+                    ? "Tankbelege werden geladen …"
+                    : "Noch keine Tankbelege. Nach dem Tanken „Ja, wie empfohlen“ oder „✎ Anders“ tippen — dann erscheint der Beleg hier."}
+                </Empty>
+              )}
+            </section>
           </>
         )}
 
@@ -2463,7 +2814,7 @@ export function Dashboard() {
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-sky-400">
-                  Werkstatt / Statistik
+                  Werkstatt / Analyse
                 </p>
                 <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
                   Nachvollziehen statt blind vertrauen.
@@ -2478,7 +2829,7 @@ export function Dashboard() {
               <label className="text-xs text-slate-400">
                 Station
                 <select
-                  aria-label="Statistik-Station"
+                  aria-label="Werkstatt-Station"
                   value={selected?.station_id || ""}
                   onChange={(e) => setSelectedId(e.target.value)}
                   className="ml-3 max-w-64 rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
@@ -2570,6 +2921,7 @@ export function Dashboard() {
                     max={4}
                     step={0.05}
                     value={eps}
+                    aria-valuetext={`${eps.toFixed(2).replace(".", ",")} Cent pro Liter`}
                     onChange={(e) => setEps(Number(e.target.value))}
                     className="mt-2 w-full accent-emerald-400"
                   />
@@ -3125,8 +3477,104 @@ export function Dashboard() {
               </div>
             )}
 
+            {/* C1: geführte Einrichtungs-Checkliste — Status aus vorhandenen
+                Endpunkten, jeder Schritt mit Fix-Hinweis. */}
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="setup-heading"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 id="setup-heading" className="flex items-center gap-2 text-sm font-semibold">
+                  <ShieldCheck size={16} className="text-emerald-400" />
+                  Einrichtung &amp; eigene Daten
+                </h3>
+                <a
+                  href="/api/v1/fills.csv"
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
+                  title="Deine Tankbelege als CSV herunterladen"
+                >
+                  Belege als CSV herunterladen
+                </a>
+              </div>
+              {(() => {
+                const steps = [
+                  {
+                    label: "Polling-Set",
+                    done: (h?.station_count ?? 0) > 0,
+                    hint: h?.station_count
+                      ? `${h.station_count} Stationen eingebunden.`
+                      : "Gemeinsames Polling-Set fehlt — docs/INSTALL.md, Abschnitt „Polling-Set“.",
+                  },
+                  {
+                    label: "Collector-Herzschlag",
+                    done: !!collector?.available,
+                    hint: collector?.available
+                      ? collector.fresh
+                        ? "Der Pi meldet regelmäßig Preise."
+                        : "Herzschlag vorhanden, aber veraltet."
+                      : "Noch kein Herzschlag — Pi-Uploader prüfen.",
+                  },
+                  {
+                    label: "InfluxDB-Lesezugang",
+                    done: !!h?.influx_configured,
+                    hint: h?.influx_configured
+                      ? "Lesezugang eingebunden."
+                      : "influx.env fehlt — docs/INSTALL.md, Abschnitt „InfluxDB“.",
+                  },
+                  {
+                    label: "Erster Modell-Lauf",
+                    done: (h?.models.count ?? 0) > 0,
+                    hint: h?.models.count
+                      ? `${h.models.count} Prognosen veröffentlicht.`
+                      : "Noch kein Modell-Lauf — Job „Modell-Update“ starten.",
+                  },
+                  {
+                    label: "Erste Empfehlung",
+                    done: decideRes.data?.decision_ready === true,
+                    hint:
+                      decideRes.data?.decision_ready === true
+                        ? "Der Kompass gibt eine belastbare Empfehlung."
+                        : "Noch nicht freigegeben — bis dahin zählen nur aktuelle Preise.",
+                  },
+                ];
+                return (
+                  <ol className="divide-y divide-slate-800/60">
+                    {steps.map((step, i) => (
+                      <li
+                        key={step.label}
+                        className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${
+                            step.done
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                              : "border-slate-700 bg-slate-900 text-slate-500"
+                          }`}
+                        >
+                          {step.done ? "✓" : i + 1}
+                        </span>
+                        <span className="text-xs leading-relaxed">
+                          <span
+                            className={
+                              step.done
+                                ? "font-semibold text-slate-200"
+                                : "font-semibold text-slate-400"
+                            }
+                          >
+                            {step.label}
+                          </span>{" "}
+                          <span className="text-slate-500">{step.hint}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                );
+              })()}
+            </section>
+
             {/* Güte-Kacheln */}
-            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
               <Metric
                 label="Top-3-Trefferquote (30 d)"
                 value={
@@ -3200,6 +3648,22 @@ export function Dashboard() {
                     ? calibrationHint
                     : null
                 }
+              />
+              {/* A7: M7-Fortschritt — n/100 Empfehlungen + Brier gegen Ziel. */}
+              <Metric
+                label="M7-Kalibrierung"
+                value={
+                  <span className="text-amber-300 font-mono">
+                    {liveAdvice?.n ?? 0}/
+                    {liveAdvice?.min_recommendations ?? M7_MIN_RECOMMENDATIONS}
+                  </span>
+                }
+                detail={
+                  liveAdvice?.brier_30d != null
+                    ? `Brier ${deNumber(liveAdvice.brier_30d)} (Ziel < ${deNumber(liveAdvice.brier_threshold ?? M7_BRIER_THRESHOLD)})`
+                    : "Brier noch nicht messbar — braucht bewertete Empfehlungen."
+                }
+                hint={m7Line ?? calibrationHint}
               />
             </div>
 
@@ -3400,6 +3864,13 @@ export function Dashboard() {
           <span>
             Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
             Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · Entscheidungs-API: decide · episodes · fills · settlement · summary
+            {h?.version ? (
+              <>
+                {" "}
+                · TankApp {h.version}
+                {h?.commit ? <span className="font-mono"> ({h.commit})</span> : null}
+              </>
+            ) : null}
           </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />

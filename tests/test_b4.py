@@ -1166,3 +1166,133 @@ def test_gate_requires_p_population_not_total_n():
     advice = compute_advice_stats(store)
     assert advice["calibrated"] is False
     assert "P-Schätzung" in advice["gate_status"]
+
+
+def _delete_json(url):
+    req = urllib.request.Request(url, method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.load(r)
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.load(exc)
+
+
+def test_void_fill_flags_and_audits(b4_settings):
+    """A3: DELETE /api/v1/fills/{id} storniert (Flag + Audit), löscht nicht."""
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        payload = {
+            "id": "fill-void-1",
+            "station_id": UID,
+            "station_name": "Station Alpha",
+            "tanked_at": NOW.isoformat(),
+            "liters": 40.0,
+            "price_paid": 1.629,
+            "fuel": "e10",
+            "source": "prompt",
+        }
+        st, created = _post_json(base + "/api/v1/fills", payload)
+        assert st == 200
+        assert not created.get("voided")
+
+        # Storno setzt Flag statt Löschen.
+        st, voided = _delete_json(base + "/api/v1/fills/fill-void-1")
+        assert st == 200
+        assert voided["id"] == "fill-void-1"
+        assert voided["voided"] is True
+        assert "voided_at" in voided
+
+        # Idempotent: zweites Storno ändert nichts (200, kein neuer Audit-Satz).
+        st2, again = _delete_json(base + "/api/v1/fills/fill-void-1")
+        assert st2 == 200
+        assert again["voided"] is True
+
+        # Unbekannter Beleg: ehrlich 404.
+        st3, missing = _delete_json(base + "/api/v1/fills/nicht-da")
+        assert st3 == 404
+        assert missing["error_code"] == "fill_not_found"
+
+        # Verlauf listet den Beleg inkl. voided-Flag und Audit-Spur.
+        _, listing = _get_json(base + "/api/v1/fills")
+        assert listing["count"] == 1
+        assert listing["fills"][0]["voided"] is True
+
+        from app.feedback import load_store
+
+        store = load_store(b4_settings)
+        assert store["audit"][0]["action"] == "void_fill"
+        assert store["audit"][0]["fill_id"] == "fill-void-1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_voided_fill_leaves_wallet_balance(b4_settings):
+    """A3: ein stornierter Beleg verzerrt die Bilanz nicht mehr."""
+    from app.feedback import compute_wallet_stats, load_store, void_fill
+
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    live.record_fill(
+        {
+            "id": "fill-ok",
+            "station_id": UID,
+            "liters": 40.0,
+            "price_paid": 1.629,
+            "fuel": "e10",
+        }
+    )
+    live.record_fill(
+        {
+            "id": "fill-wrong",
+            "station_id": UID,
+            "liters": 40.0,
+            "price_paid": 1.999,
+            "fuel": "e10",
+        }
+    )
+    before = compute_wallet_stats(load_store(b4_settings), now=NOW)
+    assert before["n_fills"] == 2
+
+    void_fill(b4_settings, "fill-wrong", clock=lambda: NOW)
+
+    store = load_store(b4_settings)
+    after = compute_wallet_stats(store, now=NOW)
+    assert after["n_fills"] == 1
+    assert after["last_fill"]["id"] == "fill-ok"
+
+
+def test_fills_csv_export(b4_settings):
+    """A6: GET /api/v1/fills.csv liefert ;-getrenntes CSV mit deutschem Komma."""
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    live.record_fill(
+        {
+            "id": "fill-csv-1",
+            "station_id": UID,
+            "station_name": "Station Alpha",
+            "liters": 45.5,
+            "price_paid": 1.629,
+            "fuel": "e10",
+        }
+    )
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        req = urllib.request.Request(base + "/api/v1/fills.csv")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            assert r.headers["Content-Type"].startswith("text/csv")
+            body = r.read().decode("utf-8")
+        assert "getankt_am" in body
+        assert "fill-csv-1" in body
+        assert "45,50" in body
+        assert "1,63" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

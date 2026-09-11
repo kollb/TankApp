@@ -121,6 +121,14 @@ export type CollectorStatus = {
     oldest_file?: { name?: string; age_days?: number };
   } | null;
 };
+/** B4: aggregierter System-Alarm aus /api/v1/health → alarms[]. */
+export type Alarm = {
+  code: string;
+  severity: "error" | "warn";
+  message: string;
+  job?: string | null;
+};
+
 export type Health = {
   app: string;
   polling_error: string | null;
@@ -129,6 +137,11 @@ export type Health = {
   jobs_enabled: boolean;
   station_count: number;
   generated_at?: string;
+  /** B9: App-Version und Commit-Hash (app/version.py). */
+  version?: string | null;
+  commit?: string | null;
+  /** B4: aggregierte Alarme (Heartbeat, Jobs, Store, Polling). */
+  alarms?: Alarm[];
   archive: {
     status: string | null;
     archive_since: string | null;
@@ -282,6 +295,33 @@ export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
+
+/** Ein Tankbeleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
+export type Fill = {
+  id: string;
+  episode_id?: string | null;
+  station_id: string;
+  station_name?: string;
+  tanked_at?: string | null;
+  clock_hour?: number | null;
+  liters: number;
+  price_paid: number;
+  price_source?: string;
+  fuel: Fuel;
+  source?: string;
+  compliance?: Compliance;
+  saved_vs_always_now_eur?: number;
+  /** A3: storniert (voided) statt gelöscht — zählt nicht in die Bilanz. */
+  voided?: boolean;
+  voided_at?: string | null;
+};
+
+export type Fills = {
+  generated_at?: string;
+  count: number;
+  fills: Fill[];
+  error_code?: string | null;
+};
 
 export type DecideResult = {
   primary: {
@@ -718,6 +758,37 @@ export async function postFill(payload: {
   } catch {
     return { error_code: "request_failed" };
   }
+}
+
+/** A3: Beleg stornieren (DELETE /api/v1/fills/{id} → voided-Flag, kein Löschen). */
+export async function voidFill(fillId: string) {
+  try {
+    const res = await fetch(`/api/v1/fills/${encodeURIComponent(fillId)}`, {
+      method: "DELETE",
+    });
+    return await res.json();
+  } catch {
+    return { error_code: "request_failed" };
+  }
+}
+
+/**
+ * E2: deutsche Dezimaleingabe „1,689“ → Zahl 1.689.
+ *
+ * ``type="number"``-Eingaben liefern auf deutschen Mobil-Tastaturen ein
+ * Komma; ``Number("1,689")`` wäre NaN. Diese Funktion normalisiert das
+ * Komma zuerst und lehnt alles Nicht-Numerische ab.
+ */
+export function germanDecimalToNumber(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized || !/^[0-9]*([.][0-9]*)?$/.test(normalized)) return null;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** E2: „,,“ → „.“ für die Anzeige/Normalisierung der Dezimaleingabe. */
+export function commaToDot(value: string): string {
+  return value.replace(/,/g, ".");
 }
 
 // Browser-only convenience; no credentials, fill records or server writes.
@@ -1159,6 +1230,9 @@ export const messages: Record<string, string> = {
   episodes_read_failed: "Episoden konnten nicht gelesen werden.",
   set_intent_failed: "Intent konnte nicht gespeichert werden.",
   record_fill_failed: "Tankbeleg konnte nicht gespeichert werden.",
+  fills_read_failed: "Tankbelege konnten nicht gelesen werden.",
+  void_fill_failed: "Beleg konnte nicht storniert werden.",
+  fill_not_found: "Beleg nicht gefunden (oder bereits abgelaufen).",
   settlement_failed: "Settlement-Lauf ist fehlgeschlagen.",
   stats_summary_failed: "Statistik konnte nicht berechnet werden.",
   backtest_not_available:

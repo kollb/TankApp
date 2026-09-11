@@ -3,12 +3,14 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  commaToDot,
   compressedAxis,
   currentPrice,
   dayAfterLabel,
   detourEconomics,
   epochLabel,
   gapBands,
+  germanDecimalToNumber,
   haversineKm,
   jobRunMessage,
   livePhaseCountdown,
@@ -474,5 +476,28 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(transitionRuleLine({ ...phase, days_missing: 0, good_complete_days: 90, complete: true })).toContain(
       "erfüllt",
     );
+  });
+});
+
+describe("german decimal input (E2)", () => {
+  it("accepts comma decimals from German mobile keyboards", () => {
+    expect(germanDecimalToNumber("1,689")).toBe(1.689);
+    expect(germanDecimalToNumber("1.689")).toBe(1.689);
+    expect(germanDecimalToNumber("45,5")).toBe(45.5);
+    expect(germanDecimalToNumber("45")).toBe(45);
+    expect(germanDecimalToNumber("0,499")).toBe(0.499);
+  });
+
+  it("rejects non-numbers instead of silently producing NaN", () => {
+    expect(germanDecimalToNumber("")).toBeNull();
+    expect(germanDecimalToNumber("abc")).toBeNull();
+    expect(germanDecimalToNumber("1,6,8")).toBeNull();
+    expect(germanDecimalToNumber("1 2")).toBeNull();
+    expect(germanDecimalToNumber(".")).toBeNull();
+  });
+
+  it("normalizes commas to dots for the input value", () => {
+    expect(commaToDot("1,689")).toBe("1.689");
+    expect(commaToDot("1.689")).toBe("1.689");
   });
 });
