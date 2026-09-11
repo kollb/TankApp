@@ -52,8 +52,8 @@ VERSION = "2.0"
 VERSION_MARKER = ""
 
 FUELS = ("e5", "e10", "diesel")
-FRESH_MINUTES = 15          # Snapshot gilt als "aktuell" bis zu diesem Alter
-WAIT_THRESHOLD_EUR = 1.0    # F1: ab so viel erwarteter Ersparnis pro Tank -> warten
+FRESH_MINUTES = 15  # Snapshot gilt als "aktuell" bis zu diesem Alter
+WAIT_THRESHOLD_EUR = 1.0  # F1: ab so viel erwarteter Ersparnis pro Tank -> warten
 DEFAULT_LITERS = 40
 MIN_LITERS = 5
 MAX_LITERS = 100
@@ -61,7 +61,7 @@ NAS_CHECK_TIMEOUT_S = 2.0
 PROXY_TIMEOUT_S = 15.0
 HEALTH_TTL_ONLINE_S = 15.0  # wie schnell wird das NAS (nach Wiederkehr) bemerkt
 HEALTH_TTL_OFFLINE_S = 30.0  # wie oft wird nach einem Offline-Zustand neu geprüft
-SNAPSHOT_DAYS_BACK = 2      # letzte N Tag-Dateien berücksichtigen (Nacht-Puffer)
+SNAPSHOT_DAYS_BACK = 2  # letzte N Tag-Dateien berücksichtigen (Nacht-Puffer)
 MAX_PROXY_BODY = 32 * 1024 * 1024
 
 
@@ -89,6 +89,7 @@ def is_number(value) -> bool:
 # ---------------------------------------------------------------------------
 # Stationen-Metadaten aus polling.json
 # ---------------------------------------------------------------------------
+
 
 class StationMeta:
     """Lädt uuid -> {name, brand, lat, lon, ...} aus polling.json.
@@ -154,7 +155,10 @@ class StationMeta:
 # Live-Preise aus dem RAM-Puffer (JSONL)
 # ---------------------------------------------------------------------------
 
-def read_snapshots(poll_dir: Path, days_back: int = SNAPSHOT_DAYS_BACK) -> dict[str, dict]:
+
+def read_snapshots(
+    poll_dir: Path, days_back: int = SNAPSHOT_DAYS_BACK
+) -> dict[str, dict]:
     """Leset die letzten Tag-Dateien und liefert je Station den NEUESTEN Stand.
 
     Mehrere Stadtsets schreiben abwechselnd in dieselbe Datei; jede Station
@@ -201,7 +205,9 @@ def read_snapshots(poll_dir: Path, days_back: int = SNAPSHOT_DAYS_BACK) -> dict[
                     "status": rec.get("status") or "no prices",
                     "e5": rec.get("e5") if is_number(rec.get("e5")) else None,
                     "e10": rec.get("e10") if is_number(rec.get("e10")) else None,
-                    "diesel": rec.get("diesel") if is_number(rec.get("diesel")) else None,
+                    "diesel": rec.get("diesel")
+                    if is_number(rec.get("diesel"))
+                    else None,
                     "city": city,
                     "fetched_at": fetched.isoformat(),
                     "_fetched": fetched,
@@ -245,6 +251,7 @@ def build_stations(
 # ---------------------------------------------------------------------------
 # Gecachte Prognosen
 # ---------------------------------------------------------------------------
+
 
 def load_forecasts(cache_file: Path) -> dict | None:
     if not cache_file.is_file():
@@ -334,6 +341,7 @@ def summarize_forecast(
 # NAS-Erreichbarkeit + Proxy
 # ---------------------------------------------------------------------------
 
+
 class NasState:
     """Gemeinsamer (thread-sicherer) NAS-Status mit Kurzzeit-Cache."""
 
@@ -346,7 +354,9 @@ class NasState:
         timeout: float = NAS_CHECK_TIMEOUT_S,
     ):
         self.base_url = base_url
-        self.health_url = health_url or (f"{base_url}/api/v1/health" if base_url else None)
+        self.health_url = health_url or (
+            f"{base_url}/api/v1/health" if base_url else None
+        )
         self.ttl_online = ttl_online
         self.ttl_offline = ttl_offline
         self.timeout = timeout
@@ -402,6 +412,7 @@ class NasState:
 # Kontext (geteilter Zustand)
 # ---------------------------------------------------------------------------
 
+
 class Context:
     def __init__(
         self,
@@ -439,6 +450,7 @@ class Context:
 # HTTP-Server
 # ---------------------------------------------------------------------------
 
+
 def _json_bytes(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False).encode(
         "utf-8"
@@ -458,8 +470,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 flush=True,
             )
 
-        def _send(self, status: int, body: bytes, content_type: str,
-                  extra_headers: dict | None = None):
+        def _send(
+            self,
+            status: int,
+            body: bytes,
+            content_type: str,
+            extra_headers: dict | None = None,
+        ):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
@@ -593,7 +610,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             if decoded != path:
                 path = decoded
             candidate = (ctx.template_dir / path.lstrip("/")).resolve()
-            if not candidate.is_relative_to(ctx.template_dir.resolve()) or not candidate.is_file():
+            if (
+                not candidate.is_relative_to(ctx.template_dir.resolve())
+                or not candidate.is_file()
+            ):
                 self._error(404, "nicht gefunden")
                 return
             ctype = {
@@ -604,8 +624,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 ".ico": "image/x-icon",
                 ".json": "application/json",
             }.get(candidate.suffix.lower(), "application/octet-stream")
-            self._send(200, candidate.read_bytes(), f"{ctype}; charset=utf-8"
-                       if candidate.suffix in (".css", ".js", ".json") else ctype)
+            self._send(
+                200,
+                candidate.read_bytes(),
+                f"{ctype}; charset=utf-8"
+                if candidate.suffix in (".css", ".js", ".json")
+                else ctype,
+            )
 
         # -- Fallback: API ------------------------------------------------------
         def _api(self, path: str, query: dict):
@@ -620,16 +645,18 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             elif path == "/api/v1/nas-check":
                 online = ctx.nas.is_online(force=True)
                 info = ctx.nas.info()
-                self._json({
-                    "online": online,
-                    "nas": info,
-                    "hint": (
-                        "NAS ist online — jetzt neu laden (Reload) zeigt die "
-                        "vollwertige NAS-GUI."
-                        if online
-                        else "NAS nicht erreichbar — Fallback-GUI bleibt aktiv."
-                    ),
-                })
+                self._json(
+                    {
+                        "online": online,
+                        "nas": info,
+                        "hint": (
+                            "NAS ist online — jetzt neu laden (Reload) zeigt die "
+                            "vollwertige NAS-GUI."
+                            if online
+                            else "NAS nicht erreichbar — Fallback-GUI bleibt aktiv."
+                        ),
+                    }
+                )
             else:
                 self._error(404, "Endpunkt unbekannt")
 
@@ -645,7 +672,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             if not city:
                 return rows
             wanted = city.casefold()
-            return [row for row in rows if str(row.get("city", "")).casefold() == wanted]
+            return [
+                row for row in rows if str(row.get("city", "")).casefold() == wanted
+            ]
 
         @staticmethod
         def _fuel(query: dict) -> str:
@@ -667,31 +696,43 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             gen_ts = parse_ts(forecasts.get("generated_at")) if forecasts else None
             cached_ts = parse_ts(forecasts.get("_cached_at")) if forecasts else None
             with_names = sum(1 for st in stations if st["name"] != st["station_id"])
-            self._json({
-                "status": "fallback",
-                "version": VERSION,
-                "cities": cities,
-                "generated_at": price_now.isoformat(),
-                "nas": ctx.nas.info(),
-                "prices": {
-                    "available": bool(stations),
-                    "stations": len(stations),
-                    "open": sum(1 for st in stations if st["status"] == "open"),
-                    "fetched_at": newest.isoformat() if newest else None,
-                    "age_minutes": round((price_now - newest).total_seconds() / 60.0, 1)
-                    if newest else None,
-                    "meta_error": snap["meta_error"],
-                    "stations_with_name": with_names,
-                },
-                "forecasts": {
-                    "available": bool(forecasts and forecasts.get("forecasts")),
-                    "count": (len(forecasts.get("forecasts") or [])) if forecasts else 0,
-                    "generated_at": forecasts.get("generated_at") if forecasts else None,
-                    "cached_at": cached_ts.isoformat() if cached_ts else None,
-                    "age_hours": round((price_now - gen_ts).total_seconds() / 3600.0, 1)
-                    if gen_ts else None,
-                },
-            })
+            self._json(
+                {
+                    "status": "fallback",
+                    "version": VERSION,
+                    "cities": cities,
+                    "generated_at": price_now.isoformat(),
+                    "nas": ctx.nas.info(),
+                    "prices": {
+                        "available": bool(stations),
+                        "stations": len(stations),
+                        "open": sum(1 for st in stations if st["status"] == "open"),
+                        "fetched_at": newest.isoformat() if newest else None,
+                        "age_minutes": round(
+                            (price_now - newest).total_seconds() / 60.0, 1
+                        )
+                        if newest
+                        else None,
+                        "meta_error": snap["meta_error"],
+                        "stations_with_name": with_names,
+                    },
+                    "forecasts": {
+                        "available": bool(forecasts and forecasts.get("forecasts")),
+                        "count": (len(forecasts.get("forecasts") or []))
+                        if forecasts
+                        else 0,
+                        "generated_at": forecasts.get("generated_at")
+                        if forecasts
+                        else None,
+                        "cached_at": cached_ts.isoformat() if cached_ts else None,
+                        "age_hours": round(
+                            (price_now - gen_ts).total_seconds() / 3600.0, 1
+                        )
+                        if gen_ts
+                        else None,
+                    },
+                }
+            )
 
         def _api_stations(self, query: dict):
             fuel = self._fuel(query)
@@ -707,19 +748,25 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             )
             out = []
             for s in rows:
-                out.append({
-                    **s,
+                out.append(
+                    {
+                        **s,
+                        "fuel": fuel,
+                        "price": s.get(fuel) if s["status"] == "open" else None,
+                    }
+                )
+            self._json(
+                {
+                    "generated_at": utcnow().isoformat(),
                     "fuel": fuel,
-                    "price": s.get(fuel) if s["status"] == "open" else None,
-                })
-            self._json({
-                "generated_at": utcnow().isoformat(),
-                "fuel": fuel,
-                "fresh_minutes": FRESH_MINUTES,
-                "stations": out,
-                "fresh_prices": sum(1 for s in out if s["fresh"] and s["price"] is not None),
-                "nas_status": "offline" if not ctx.nas.online else "online",
-            })
+                    "fresh_minutes": FRESH_MINUTES,
+                    "stations": out,
+                    "fresh_prices": sum(
+                        1 for s in out if s["fresh"] and s["price"] is not None
+                    ),
+                    "nas_status": "offline" if not ctx.nas.online else "online",
+                }
+            )
 
         def _api_forecasts(self, query: dict):
             fuel = self._fuel(query)
@@ -727,13 +774,16 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             snap = ctx.snapshot()
             forecasts = snap["forecasts"]
             if not forecasts or not forecasts.get("forecasts"):
-                self._json({
-                    "available": False,
-                    "count": 0,
-                    "forecasts": [],
-                    "error": "Kein Prognose-Cache vorhanden (NAS war nie erreichbar?)"
-                             " — cache_forecasts.py prüfen.",
-                }, status=503)
+                self._json(
+                    {
+                        "available": False,
+                        "count": 0,
+                        "forecasts": [],
+                        "error": "Kein Prognose-Cache vorhanden (NAS war nie erreichbar?)"
+                        " — cache_forecasts.py prüfen.",
+                    },
+                    status=503,
+                )
                 return
             by_station = {
                 s["station_id"]: s
@@ -748,34 +798,45 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     continue
                 st = by_station.get(fc.get("station_id"))
                 current = (
-                    fc_price if (fc_price := st.get(fuel)) is not None and st["status"] == "open"
+                    (
+                        fc_price
+                        if (fc_price := st.get(fuel)) is not None
+                        and st["status"] == "open"
+                        else None
+                    )
+                    if st
                     else None
-                ) if st else None
+                )
                 points = fc.get("points") or []
-                entries.append({
-                    "station_id": fc.get("station_id"),
-                    "name": (st or {}).get("name") or fc.get("station_id"),
-                    "brand": (st or {}).get("brand", ""),
-                    "city": (st or {}).get("city", ""),
-                    "origin": fc.get("origin"),
-                    "last_observation": fc.get("last_observation"),
-                    "stale_data_at_origin": fc.get("stale_data_at_origin"),
-                    "current_price": current,
-                    "summary": summarize_forecast(points, now, current),
-                    "points": points,
-                })
+                entries.append(
+                    {
+                        "station_id": fc.get("station_id"),
+                        "name": (st or {}).get("name") or fc.get("station_id"),
+                        "brand": (st or {}).get("brand", ""),
+                        "city": (st or {}).get("city", ""),
+                        "origin": fc.get("origin"),
+                        "last_observation": fc.get("last_observation"),
+                        "stale_data_at_origin": fc.get("stale_data_at_origin"),
+                        "current_price": current,
+                        "summary": summarize_forecast(points, now, current),
+                        "points": points,
+                    }
+                )
             entries.sort(key=lambda e: (e["name"], e["station_id"]))
             gen_ts = parse_ts(forecasts.get("generated_at"))
-            self._json({
-                "available": True,
-                "fuel": fuel,
-                "count": len(entries),
-                "generated_at": forecasts.get("generated_at"),
-                "cached_at": forecasts.get("_cached_at"),
-                "age_hours": round((now - gen_ts).total_seconds() / 3600.0, 1)
-                if gen_ts else None,
-                "forecasts": entries,
-            })
+            self._json(
+                {
+                    "available": True,
+                    "fuel": fuel,
+                    "count": len(entries),
+                    "generated_at": forecasts.get("generated_at"),
+                    "cached_at": forecasts.get("_cached_at"),
+                    "age_hours": round((now - gen_ts).total_seconds() / 3600.0, 1)
+                    if gen_ts
+                    else None,
+                    "forecasts": entries,
+                }
+            )
 
         def _api_decide(self, query: dict):
             fuel = self._fuel(query)
@@ -789,15 +850,19 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             snap = ctx.snapshot()
             now = utcnow()
             open_stations = [
-                s for s in self._filter_city(list(snap["stations"]), city)
+                s
+                for s in self._filter_city(list(snap["stations"]), city)
                 if s["status"] == "open" and is_number(s.get(fuel))
             ]
             if not open_stations:
-                self._json({
-                    "available": False,
-                    "error": "Keine offenen Stationen mit Preisen "
-                             f"({fuel.upper()}) im Puffer.",
-                }, status=503)
+                self._json(
+                    {
+                        "available": False,
+                        "error": "Keine offenen Stationen mit Preisen "
+                        f"({fuel.upper()}) im Puffer.",
+                    },
+                    status=503,
+                )
                 return
             open_stations.sort(key=lambda s: s[fuel])
             cheapest = open_stations[0]
@@ -817,8 +882,16 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 "second_price": second[fuel] if second else None,
                 "second_name": second["name"] if second else None,
                 "most_expensive": priciest[fuel],
-                "saving_ct_per_l": round((ref_for_saving[fuel] - cheapest[fuel]) * 100, 1) if second else round((priciest[fuel] - cheapest[fuel]) * 100, 1),
-                "saving_eur_tank": round((ref_for_saving[fuel] - cheapest[fuel]) * liters, 2) if second else round((priciest[fuel] - cheapest[fuel]) * liters, 2),
+                "saving_ct_per_l": round(
+                    (ref_for_saving[fuel] - cheapest[fuel]) * 100, 1
+                )
+                if second
+                else round((priciest[fuel] - cheapest[fuel]) * 100, 1),
+                "saving_eur_tank": round(
+                    (ref_for_saving[fuel] - cheapest[fuel]) * liters, 2
+                )
+                if second
+                else round((priciest[fuel] - cheapest[fuel]) * liters, 2),
                 "saving_vs": "second" if second else "most_expensive",
             }
 
@@ -830,7 +903,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             if forecasts and forecasts.get("forecasts"):
                 fc = next(
                     (
-                        f for f in forecasts["forecasts"]
+                        f
+                        for f in forecasts["forecasts"]
                         if isinstance(f, dict)
                         and f.get("station_id") == cheapest["station_id"]
                         and str(f.get("fuel", "")).lower() == fuel
@@ -845,7 +919,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "available": summary is not None,
                         "generated_at": forecasts.get("generated_at"),
                         "age_hours": round((now - gen_ts).total_seconds() / 3600.0, 1)
-                        if gen_ts else None,
+                        if gen_ts
+                        else None,
                         "station": cheapest["name"],
                     }
                     if summary:
@@ -866,7 +941,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                                 f"~{saving_eur:.2f} € Ersparnis für {liters} L."
                                 if wait
                                 else "Kein deutlich günstigeres Fenster in den nächsten 24 h "
-                                     "abzusehen — jetzt tanken ist okay."
+                                "abzusehen — jetzt tanken ist okay."
                             ),
                             "best_at": best["at"],
                             "expected_price": best["q50"],
@@ -874,24 +949,26 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                             "expected_saving_eur_tank": round(saving_eur, 2),
                             "current_price": cheapest[fuel],
                             "basis": "Preis-Score aus historischen Quantilen "
-                                     "(Gleichverteilung zwischen q025/q975) — "
-                                     "keine kalibrierte Wahrscheinlichkeit; "
-                                     "die exakte M7-Berechnung läuft auf dem NAS",
+                            "(Gleichverteilung zwischen q025/q975) — "
+                            "keine kalibrierte Wahrscheinlichkeit; "
+                            "die exakte M7-Berechnung läuft auf dem NAS",
                         }
                         windows = summary["windows"]
 
-            self._json({
-                "available": True,
-                "mode": "fallback",
-                "fuel": fuel,
-                "liters": liters,
-                "generated_at": now.isoformat(),
-                "f2": f2,
-                "f1": f1,
-                "windows": windows,
-                "forecast": forecast_info,
-                "nas_status": "offline" if not ctx.nas.online else "online",
-            })
+            self._json(
+                {
+                    "available": True,
+                    "mode": "fallback",
+                    "fuel": fuel,
+                    "liters": liters,
+                    "generated_at": now.isoformat(),
+                    "f2": f2,
+                    "f1": f1,
+                    "windows": windows,
+                    "forecast": forecast_info,
+                    "nas_status": "offline" if not ctx.nas.online else "online",
+                }
+            )
 
     server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
@@ -901,6 +978,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 # ---------------------------------------------------------------------------
 # Template-Installation + Start
 # ---------------------------------------------------------------------------
+
 
 def install_default_template(template_dir: Path) -> Path:
     """Liefert templates/index.html; ersetzt ein veraltetes Template (Version-Check)."""
@@ -940,7 +1018,14 @@ def default_meta_candidates() -> list[str]:
         p
         for p in (
             os.environ.get("STATION_META", ""),
-            str(Path.home() / "TankApp" / "docs" / "analysis" / "stations" / "polling.json"),
+            str(
+                Path.home()
+                / "TankApp"
+                / "docs"
+                / "analysis"
+                / "stations"
+                / "polling.json"
+            ),
             str(repo / "docs" / "analysis" / "stations" / "polling.json"),
         )
         if p
@@ -949,12 +1034,20 @@ def default_meta_candidates() -> list[str]:
 
 def main():
     nas_base, nas_health = nas_config_from_env()
-    template_dir = Path(os.environ.get("TEMPLATE_DIR", str(Path(__file__).resolve().parent / "templates")))
+    template_dir = Path(
+        os.environ.get(
+            "TEMPLATE_DIR", str(Path(__file__).resolve().parent / "templates")
+        )
+    )
     poll_dir = Path(os.environ.get("POLL_DIR", "/dev/shm/tankapp"))
     cache_dir = Path(os.environ.get("CACHE_DIR", "/tmp/tankapp_cache"))
     cache_dir.mkdir(parents=True, exist_ok=True)
     port = int(os.environ.get("FALLBACK_GUI_PORT", "8000"))
-    force_fallback = os.environ.get("FORCE_FALLBACK", "").lower() in ("1", "true", "yes")
+    force_fallback = os.environ.get("FORCE_FALLBACK", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     ctx = Context(
         poll_dir=poll_dir,
@@ -969,8 +1062,10 @@ def main():
 
     print(f"Starte RP2 Fallback-GUI + NAS-Proxy auf 0.0.0.0:{port}")
     print(f"NAS: {ctx.nas.base_url or 'NICHT konfiguriert (immer Fallback)'}")
-    print(f"Puffer: {poll_dir} | Prognose-Cache: {ctx.cache_file} | Metadaten: "
-          f"{ctx.meta.paths}")
+    print(
+        f"Puffer: {poll_dir} | Prognose-Cache: {ctx.cache_file} | Metadaten: "
+        f"{ctx.meta.paths}"
+    )
     server = make_server(ctx, "0.0.0.0", port)
     try:
         server.serve_forever(poll_interval=0.2)
