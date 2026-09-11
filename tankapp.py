@@ -38,6 +38,35 @@ ACTIVE = ROOT / "docs/analysis/stations/polling.json"
 LOCAL = ROOT / "analysis/config.local.json"
 
 
+def _robust_json_load(path: Path) -> dict:
+    """Robustes JSON-Lesen: utf-8(-sig) primär, fallback cp1252/latin1 für alte latin1-Dateien (0xfc für ü).
+    Repariert auch mojibake (GÃ¼tersloh → Gütersloh)."""
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "utf-8"):
+        try:
+            text = raw.decode(enc)
+            return json.loads(text)
+        except UnicodeDecodeError:
+            continue
+        except json.JSONDecodeError:
+            raise
+    for enc in ("cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            try:
+                maybe = text.encode(enc).decode("utf-8")
+                if maybe != text:
+                    text = maybe
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
+            return json.loads(text)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    raise ValueError(
+        f"{path}: ungültiges JSON/Encoding (utf-8 erwartet, auch latin1 versucht)"
+    )
+
+
 def run_tool(name, args):
     subprocess.run(
         [sys.executable, str(TOOLS / name), *map(str, args)], cwd=ROOT, check=True
@@ -87,11 +116,7 @@ def history_sync(args, today=None):
     state_dir = Path(getattr(args, "state_dir", None) or (archive / ".sync")).resolve()
     stop = (today or dt.date.today()) - dt.timedelta(days=1)
     state_path = state_dir / "state.json"
-    state = (
-        json.loads(state_path.read_text(encoding="utf-8"))
-        if state_path.exists()
-        else {}
-    )
+    state = _robust_json_load(state_path) if state_path.exists() else {}
     # A run complete through yesterday implies no newer archive day can exist;
     # skip entirely (no archive I/O) until the next day, --since or --force.
     if (
@@ -194,17 +219,13 @@ def add_city(args):
         raise ValueError(
             "Vorschlag darf weder aktive Auswahl noch Ankerkonfiguration überschreiben."
         )
-    active = json.loads(args.polling.read_text(encoding="utf-8-sig"))
+    active = _robust_json_load(args.polling)
     validate_sets(active)
     if args.city in active["sets"]:
         raise ValueError(
             "Stadt ist bereits enthalten; bestehende Auswahl wird nicht neu ersetzt."
         )
-    config = (
-        json.loads(args.config.read_text(encoding="utf-8-sig"))
-        if args.config.exists()
-        else {}
-    )
+    config = _robust_json_load(args.config) if args.config.exists() else {}
     anchor = config.get("home", {}).get(args.city)
     if anchor is None:
         print(
@@ -304,9 +325,9 @@ def activate(args):
         raise ValueError(
             "Auf dem Pi mit sudo ausführen; PC startet keine produktiven Dienste."
         )
-    proposal = json.loads(args.proposal.read_text(encoding="utf-8-sig"))
+    proposal = _robust_json_load(args.proposal)
     validate_sets(proposal)
-    old = json.loads(ACTIVE.read_text(encoding="utf-8"))
+    old = _robust_json_load(ACTIVE)
     validate_sets(old)
     # This bundled path adds a city; changing/removing old stations is a separate operation.
     for city, group in old["sets"].items():

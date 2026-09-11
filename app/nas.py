@@ -12,10 +12,45 @@ from polling_plan import atomic_json, validate_sets
 from .config import ROOT
 
 
+def _robust_json_load(path: Path) -> dict:
+    """Lese JSON robust: utf-8(-sig) primär, fallback cp1252/latin1 für alte latin1-Dateien,
+    repariert zusätzlich doppelkodiertes UTF-8 (GÃ¼tersloh → Gütersloh). Gibt bei Fehler
+    OSError/ValueError weiter, damit Aufrufer entscheiden kann."""
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "utf-8"):
+        try:
+            text = raw.decode(enc)
+            return json.loads(text)
+        except UnicodeDecodeError:
+            continue
+        except json.JSONDecodeError:
+            raise
+    # Fallback: Datei ist latin1/cp1252 gespeichert (0xfc für ü) → reparieren und als utf-8 neu bewerten
+    for enc in ("cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            # Falls es eigentlich mojibake war (utf-8 Bytes als latin1 gespeichert: GÃ¼), noch einmal entwirren
+            try:
+                maybe = text.encode(enc).decode("utf-8")
+                if maybe != text:
+                    text = maybe
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
+            data = json.loads(text)
+            # Beim nächsten atomic_json wird automatisch utf-8 geschrieben → alte Datei still geheilt
+            return data
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    # Letzter Versuch: utf-8 mit replacement, um wenigstens Fehlermeldung sauber zu zeigen
+    raise ValueError(
+        f"{path}: ungültiges JSON/Encoding (utf-8 erwartet, auch latin1 versucht)"
+    )
+
+
 def up(args):
     state_path = ROOT / "data/nas-settings.json"
     try:
-        previous = json.loads(state_path.read_text(encoding="utf-8"))
+        previous = _robust_json_load(state_path)
     except (OSError, ValueError):
         previous = {}
     if not isinstance(previous, dict):
@@ -40,7 +75,7 @@ def up(args):
         raise ValueError(
             "Das gemeinsame polling.json fehlt auf dem NAS. Vorhandenes Set mit --polling einbinden."
         )
-    validate_sets(json.loads(paths["polling"].read_text(encoding="utf-8-sig")))
+    validate_sets(_robust_json_load(paths["polling"]))
     if not paths["influx_env"].is_file():
         raise ValueError(
             "Vorhandene private influx.env mit Lesezugang auf dem NAS bereitstellen (--influx-env)."
