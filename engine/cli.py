@@ -44,6 +44,27 @@ def selected_ids(path: Path | None, city: str | None) -> set[str] | None:
     return ids
 
 
+def parse_city_subdivs(spec: str | None) -> dict[str, str]:
+    """'Stadt:HE;Stadt2:BY' -> {Stadt: HE, Stadt2: BY} (ISO 3166-2:DE).
+
+    Gleiche Konvention wie ``analysis/station_selection.py --subdiv``;
+    'DE-HE' wird auf 'HE' normalisiert. Ohne Angabe bleibt der
+    Feiertags-Dummy beitragslos null (Konzept §3.2).
+    """
+    if not spec:
+        return {}
+    out: dict[str, str] = {}
+    for part in spec.split(";"):
+        if ":" not in part:
+            raise ValueError(f"--city-subdivs: 'Stadt:Subdiv' erwartet, bekam '{part}'")
+        name, sub = part.split(":", 1)
+        sub = sub.strip().upper().removeprefix("DE-")
+        if not sub:
+            raise ValueError(f"--city-subdivs: leeres Subdiv in '{part}'")
+        out[name.strip()] = sub
+    return out
+
+
 def load_raw_input(args):
     half_life = getattr(args, "bootstrap_ew_half_life", 14.0)
     cfg = Config(
@@ -51,6 +72,7 @@ def load_raw_input(args):
         min_train_days=args.min_train_days,
         poll_start=args.poll_start,
         poll_end=args.poll_end,
+        city_subdivs=parse_city_subdivs(getattr(args, "city_subdivs", None)),
         bootstrap_ew_half_life_days=(
             None if half_life is not None and half_life <= 0 else half_life
         ),
@@ -116,6 +138,11 @@ def parser() -> argparse.ArgumentParser:
         )
         command.add_argument("--poll-start", type=int, default=6)
         command.add_argument("--poll-end", type=int, default=24)
+        command.add_argument(
+            "--city-subdivs",
+            help="Gepoolter Feiertags-Dummy (Konzept §3.2), z. B. "
+            "'Frankfurt:HE;Gütersloh:NW'; ohne Angabe trägt der Dummy null.",
+        )
         if name == "bootstrap":
             command.add_argument("--at", help="Exklusiver Cutoff (Default: jetzt)")
             command.add_argument("--live-only-days", type=int, default=90)

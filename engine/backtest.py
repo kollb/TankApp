@@ -9,11 +9,20 @@ from .models import fit, predict, utc_time
 
 PENDING = [
     "M3-Zweitmodell (ETS/Local-Level) und inverse-MASE-Ensemble",
-    "gepoolte Feiertagseffekte im Strukturmodell (12-Uhr-Sprung ist bereits Struktur)",
     "CUSUM-Sprungtage und gesonderte MASE-Abnahme sprungfreier Tage",
     "Out-of-sample-Kalibrierung / ACI nach ausreichender Live-Historie",
     "Echt-Daten-Abnahme aller M3-Kriterien auf NAS/PC",
 ]
+
+# Mehrtage-Backtests (Konzept §3.4): zusätzlich zum 24-h-Tag je Origin wird
+# das 24-h-Fenster am Anfang des +3-d- bzw. +7-d-Horizonts bewertet.
+HORIZON_HOURS = (72, 168)
+
+# Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster, nominal 95 %.
+# Grün ≥ nominal − 2 pp, gelb ≥ nominal − 5 pp, rot darunter → §4.4-Modus.
+ROLLING_PICP_WINDOW_DAYS = 7
+ROLLING_PICP_NOMINAL_PCT = 95.0
+ROLLING_PICP_MIN_POINTS = 72  # 3 volle Tage — darunter keine Aussage
 
 # Issue 47: asymmetrischer Pinball-Loss. Warten in eine Preiserhöhung
 # (tatsächlich teurer als prognostiziert) kostet Vertrauen; 2 ct zu früh
@@ -147,6 +156,90 @@ def decision_row(
     }
 
 
+def picp_badge(picp_pct: float | None, points: int) -> str | None:
+    """Konfidenz-Badge (Konzept §3.3.3) aus einer Rolling-PICP-Zahl.
+
+    ``None`` bei zu wenig Punkten (keine Aussage, kein geratenes Grün).
+    """
+    if picp_pct is None or points < ROLLING_PICP_MIN_POINTS:
+        return None
+    if picp_pct >= ROLLING_PICP_NOMINAL_PCT - 2.0:
+        return "green"
+    if picp_pct >= ROLLING_PICP_NOMINAL_PCT - 5.0:
+        return "yellow"
+    return "red"
+
+
+def rolling_picp_7d(
+    rows: pd.DataFrame,
+    series: list[PriceSeries],
+    timezone: str,
+    test_days: list[pd.Timestamp],
+) -> list[dict]:
+    """7-Tage-Rolling-PICP je Station (Konzept §3.3.3).
+
+    Für jeden Testtag ``d`` werden die Vergleichspunkte der letzten 7 Tage
+    (inklusive ``d``) gepoolt; ausgedehnte Tage ohne bewertete Punkte
+    (übersprungene Folds) steuern ehrlich null Punkte bei. ``current`` ist
+    der zuletzt verlaufene Testtag — die Zahl, die das Güte-Gate (§4.4)
+    in der Entscheidung nutzt.
+    """
+    if not len(rows):
+        return [
+            {
+                **item.identity(),
+                "window_days": ROLLING_PICP_WINDOW_DAYS,
+                "nominal_pct": ROLLING_PICP_NOMINAL_PCT,
+                "days": [],
+                "current": None,
+            }
+            for item in series
+        ]
+    work = rows.copy()
+    origin_days = (
+        pd.to_datetime(work.origin, utc=True).dt.tz_convert(timezone).dt.normalize()
+    )
+    work["origin_day"] = origin_days
+    covered = (work.actual >= work.q025) & (work.actual <= work.q975)
+    results = []
+    for item in series:
+        sub = work[
+            (work.city == item.city)
+            & (work.station_id == item.station_id)
+            & (work.fuel == item.fuel)
+        ]
+        day_entries = []
+        for day in test_days:
+            pool = sub[
+                (
+                    sub.origin_day
+                    >= day - pd.DateOffset(days=ROLLING_PICP_WINDOW_DAYS - 1)
+                )
+                & (sub.origin_day <= day)
+            ]
+            points = int(len(pool))
+            picp = 100.0 * float(covered[pool.index].mean()) if points else None
+            day_entries.append(
+                {
+                    "day": day.tz_convert(timezone).strftime("%Y-%m-%d"),
+                    "picp_pct": round(picp, 2) if picp is not None else None,
+                    "points": points,
+                    "badge": picp_badge(picp, points),
+                }
+            )
+        current = day_entries[-1] if day_entries else None
+        results.append(
+            {
+                **item.identity(),
+                "window_days": ROLLING_PICP_WINDOW_DAYS,
+                "nominal_pct": ROLLING_PICP_NOMINAL_PCT,
+                "days": day_entries,
+                "current": current,
+            }
+        )
+    return results
+
+
 def run_backtest(
     series: list[PriceSeries], cfg: Config, days: int = 21, until=None
 ) -> tuple[dict, pd.DataFrame]:
@@ -167,6 +260,15 @@ def run_backtest(
     folds, predictions = [], []
     decision_rows: list[dict] = []
     decision_skipped = 0
+    # Mehrtage-Horizonte (Konzept §3.4): je Origin wird zusätzlich das
+    # 24-h-Fenster am Horizontbeginn bewertet (+3 d: [origin+72h, +96h),
+    # +7 d: [origin+168h, +192h)). Selbes Modell, selbe Wahrheit, selbe
+    # gemeinsame Abdeckung — die Güte der +3/+7-d-Prognose, die das Frontend
+    # als Fan-Chart zeigt, bekommt damit ihre eigene Messzahl.
+    horizon_predictions: dict[int, list[pd.DataFrame]] = {h: [] for h in HORIZON_HOURS}
+    horizon_folds: dict[int, dict[str, int]] = {
+        h: {"evaluated": 0, "no_common_observations": 0} for h in HORIZON_HOURS
+    }
     for item in series:
         for local_origin in origins:
             origin = local_origin.tz_convert("UTC")
@@ -242,8 +344,52 @@ def run_backtest(
             )
             if len(rows):
                 predictions.append(rows)
+            # Selbes Modell für die Mehrtage-Fenster; die 12-Uhr-Projektion
+            # und die AR-Fortsetzung laufen über dasselbe Raster wie live.
+            for horizon_hours in HORIZON_HOURS:
+                h_start = origin + pd.Timedelta(hours=horizon_hours)
+                h_target = pd.date_range(
+                    h_start,
+                    h_start + pd.Timedelta(days=1),
+                    freq=f"{cfg.step_minutes}min",
+                    inclusive="left",
+                )
+                h_target = h_target[scheduled(h_target, cfg)]
+                h_truth = item.frame.reindex(h_target)
+                h_observed = h_truth.observed.eq(True)
+                h_forecast = predict(model, index=h_target)
+                h_valid = h_observed & h_forecast.q50.notna() & h_forecast.naive.notna()
+                h_rows = h_forecast.loc[h_valid].copy()
+                if not len(h_rows):
+                    horizon_folds[horizon_hours]["no_common_observations"] += 1
+                    continue
+                h_rows["actual"] = h_truth.loc[h_valid, "price"]
+                h_rows["mase_scale"] = (
+                    model["mase_scale"] if model["mase_scale"] is not None else np.nan
+                )
+                for key, value in item.identity().items():
+                    h_rows[key] = value
+                h_rows["origin"] = origin.isoformat()
+                horizon_predictions[horizon_hours].append(h_rows)
+                horizon_folds[horizon_hours]["evaluated"] += 1
     rows = pd.concat(predictions, ignore_index=True) if predictions else pd.DataFrame()
     aggregate = metrics(rows)
+    horizon_report = {}
+    for horizon_hours in HORIZON_HOURS:
+        h_rows_all = (
+            pd.concat(horizon_predictions[horizon_hours], ignore_index=True)
+            if horizon_predictions[horizon_hours]
+            else pd.DataFrame()
+        )
+        horizon_report[f"{horizon_hours}h"] = {
+            "window": "24 h am Horizontbeginn (origin + "
+            f"{horizon_hours} h bis origin + {horizon_hours + 24} h)",
+            "days_evaluated": horizon_folds[horizon_hours]["evaluated"],
+            "days_no_common_observations": horizon_folds[horizon_hours][
+                "no_common_observations"
+            ],
+            "metrics": metrics(h_rows_all),
+        }
     # Evidence needs >=21 days for EACH requested station, enough actual polls,
     # and a benchmark over essentially the same observed opening times.
     enough = days >= 21 and all(
@@ -286,6 +432,12 @@ def run_backtest(
             else rows
         )
         per_station.append({**item.identity(), **metrics(subset)})
+    # Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster über die
+    # bewerteten Punkte; Basis des Güte-Gates (§4.4) und des Konfidenz-Badges.
+    test_days = [
+        local_origin.tz_convert(cfg.timezone).normalize() for local_origin in origins
+    ]
+    rolling = rolling_picp_7d(rows, series, cfg.timezone, test_days)
     report = {
         "schema_version": 1,
         "status": "preliminary",
@@ -305,6 +457,14 @@ def run_backtest(
         ),
         "requested_test_days": days,
         "test_sources": sorted(rows.source.unique().tolist()) if len(rows) else [],
+        # 7-Tage-Rolling-PICP je Station (Konzept §3.3.3): Konfidenz-Badge
+        # grün/gelb/rot; „current“ ist der zuletzt verlaufene Testtag und
+        # die Größe, die das Güte-Gate (§4.4) in der Entscheidung prüft.
+        "rolling_picp_7d": rolling,
+        # Mehrtage-Backtests (Konzept §3.4): Güte der +3-d/+7-d-Prognose.
+        # Kein M3-Abnahmekriterium (diese gelten für 24 h) — ehrlich
+        # ausgewiesen, damit die Fan-Chart-Horizonte messbar sind.
+        "horizons": horizon_report,
         "decision": {
             "decision_hour": DECISION_HOUR,
             "theta_ct": DECISION_THETA_CT,
@@ -385,6 +545,48 @@ def markdown_report(report: dict) -> str:
             f"| {cell(station['city'])} | {cell(station['station_name'])} | {station['points']} | "
             f"{number(station['mae_ct'])} | {number(station['mase'])} | {number(station['picp95_pct'])} |"
         )
+    horizons = report.get("horizons") or {}
+    if horizons:
+        lines += ["", "## Mehrtage-Horizonte (Konzept §3.4)", ""]
+        lines.append(
+            "24-h-Fenster am Horizontbeginn, bewertet gegen beobachtete offene "
+            "Preise — kein M3-Abnahmekriterium (diese gelten für 24 h)."
+        )
+        lines += [
+            "",
+            "| Horizont | Tage bewertet | MAE ct/L | MASE | PICP 95 % |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for label, horizon in horizons.items():
+            hm = horizon["metrics"]
+            lines.append(
+                f"| {label} | {horizon['days_evaluated']} "
+                f"({horizon['days_no_common_observations']} ohne gemeinsame Beobachtung) "
+                f"| {number(hm['mae_ct'])} | {number(hm['mase'])} | {number(hm['picp95_pct'])} |"
+            )
+    rolling = report.get("rolling_picp_7d") or []
+    if rolling:
+        lines += [
+            "",
+            "## Rolling-PICP 7 Tage je Station (Konzept §3.3.3)",
+            "",
+            "Badge: grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %); "
+            "weniger als 72 Punkte im Fenster = keine Aussage. Rot löst den "
+            "§4.4-Modus („Keine klare Empfehlung“) aus.",
+            "",
+            "| Stadt | Station | Letzter Testtag | PICP 7 d [%] | Punkte | Badge |",
+            "|---|---|---|---:|---:|---|",
+        ]
+        for entry in rolling:
+            current = entry.get("current") or {}
+            badge = current.get("badge")
+            lines.append(
+                f"| {cell(entry['city'])} | {cell(entry['station_name'])} "
+                f"| {current.get('day', '—')} "
+                f"| {number(current.get('picp_pct'))} "
+                f"| {current.get('points', 0)} "
+                f"| {'—' if badge is None else badge} |"
+            )
     lines += [
         "",
         "## Datenlücken und Grenzen",

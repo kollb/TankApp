@@ -136,14 +136,14 @@ Erster Durchstich in `engine/` liest echte Daten, fittet robuste Tagesform und W
 
 1. 5-Min-Raster je (Station, fuel); Lücken → Forward-Fill ≤30min, sonst NaN + Staleness-Maske
 2. closed-Spannen: Preis = letzter Open-Preis, Flag open=0; diese Segmente fließen nicht in Zyklus-Modellierung
-3. Hampel-Filter (Fenster 1h, Median ±5·MAD) gegen API-Artefakte — **geplant, noch nicht implementiert** (Konzept §3.1 Schritt 3, [Prüfstand §1.3](Prüfstand.md))
+3. Hampel-Filter (Fenster 1h, Median ±5·MAD) gegen API-Artefakte — **implementiert** in `engine/data.py::hampel_mask` (± 60 min, Schranke `max(5·1,4826·MAD, 1 ct)`, nur isolierte Einzel-Punkte; Zähler `hampel_removed_points` in `describe()`, Update 11.09.2026)
 4. Tagesblöcke als Bootstrap-/Backtest-Einheit
 
 ### Strukturmodell + AR2
 
 Ziel-Stack pro Station×Sorte:
 
-- **M1 Strukturmodell (robust):** p(t) = μ + Σ[aₖcos(2πkh/24)+bₖsin(...)] + γ·X(t) + ε(t), X = DoW-Dummies + gepoolter Feiertags-Dummy je Bundesland (HE/BY/NW) + Zeit-seit-letztem-Preissprung; Huber-IRLS, rollierendes 6-Wochen-Fenster, tägliches Refit
+- **M1 Strukturmodell (robust):** p(t) = μ + Σ[aₖcos(2πkh/24)+bₖsin(...)] + γ·X(t) + ε(t), X = DoW-Dummies + gepoolter Feiertags-Dummy je Bundesland (HE/BY/NW) + Zeit-seit-letztem-Preissprung; Huber-IRLS, rollierendes 6-Wochen-Fenster, tägliches Refit — **fertig** (Update 11.09.2026: Feiertags-γ aus bis zu 365-d-Pool via `TANKAPP_CITY_SUBDIVS`, Sprung-Hazard auf 168 h gedeckelt; Modell-Schema 2)
 - **M2 Residuen-Nachlauf:** AR(2) auf ε(t) (Yule-Walker)
 - **M3 Zweitmeinung:** UnobservedComponents / Holt-Winters plus saisonale Naive als Benchmark
 - **Ensemble:** inverse-MASE-Gewichte aus 21-Tage Rolling-Backtest

@@ -90,6 +90,17 @@ Entscheidungsschwellen und den M7-Vorschlag (siehe
 `latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
 spätesten Tankzeitpunkt.
 
+`quality` weist die Engine-Qualität der ausgewählten Station aus
+(Konzept §3.3.3): `rolling_picp_7d_pct` (Rolling-Intervallquote über die
+letzten 7 Backtest-Tage), `rolling_picp_7d_points`, `rolling_picp_7d_badge`
+(`green` ≥ 93 %, `yellow` ≥ 90 %, `red` < 90 %, nominal 95 %; `null` bei
+weniger als 72 Punkten oder ohne veröffentlichten Backtest) und `gate`
+(`"picp"`, wenn das Güte-Gate greift). Ist `gate` gesetzt, lautet die
+Tabellen-Aktion `no_advice` („Keine klare Empfehlung — Prognose derzeit
+unsicher …“), egal wie gut die €-Seite aussieht (§4.4/§4.5 Schritt 1);
+`primary.action` selbst bleibt vor M7 durch das Kalibrierungs-Gate auf
+`no_advice`.
+
 Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (Konzept §4.1/§4.2/§4.4, Auswertungsreihenfolge §4.5: F2 → Grauzone → F1). Die Prozent-Gates sind jetzt die **Verteilungs-P** (§4.1–4.3):
 - `refuel_now`: Warten brächte < 1,00 € Ersparnis, oder `p_besser` < 50 %
 - `wait`: Fenster-Ersparnis ≥ 2 € bei `p_besser` ≥ 70 % (grün) bzw. ≥ 1 € bei ≥ 60 % (gelb)

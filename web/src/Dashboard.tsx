@@ -49,6 +49,7 @@ import {
   berlinHour,
   clockLabel,
   currentPrice,
+  CIRCUITY,
   detourEconomics,
   epochLabel,
   euro,
@@ -619,11 +620,6 @@ export function Dashboard() {
   // 20-Minuten-Modelllauf soll seinen Fortschritt zeigen, nicht raten lassen.
   const [healthInterval, setHealthInterval] = useState(60000);
 
-  // B4 Pair Panel State (Umweg-Ökonomie in Werkstatt)
-  const [pairAltId, setPairAltId] = useState("");
-  const [pairDetourKm, setPairDetourKm] = useState(2.5);
-  const [pairPeak, setPairPeak] = useState(true);
-
   // B4 Due-Prompt UI state
   const [dueDismissed, setDueDismissed] = useState(false);
   const [customFillOpen, setCustomFillOpen] = useState(false);
@@ -725,7 +721,11 @@ export function Dashboard() {
               return [];
             if (typeof row.lat !== "number" || typeof row.lon !== "number")
               return [];
-            const km = haversineKm(selectedLat, selectedLon, row.lat, row.lon);
+            // Umweg-Konvention (Prüfstand §1.5): Luftlinie × 1,3 — dieselbe
+            // Größe, die der Server (route.py/decide.py) ableitet und mit der
+            // die lokale Rechnung arbeitet.
+            const km =
+              haversineKm(selectedLat, selectedLon, row.lat, row.lon) * CIRCUITY;
             return [
               {
                 row,
@@ -1099,29 +1099,11 @@ export function Dashboard() {
   const labPredHour = labModel ? (labDayClass === 0 ? labModel.predWk : labModel.predWe) : 19;
   const labMu = labModel ? (labDayClass === 0 ? labModel.muWk : labModel.muWe) : 1.5;
 
-  const pairAltStation = stations.find((s) => s.station_id === pairAltId) || stations.find((s) => s.station_id !== selected?.station_id);
-  const pairEco = detourEconomics({
-    refPrice: selectedPrice || 1.70,
-    altPrice: (pairAltStation ? price(pairAltStation) : null) || (selectedPrice ? selectedPrice - 0.04 : 1.66),
-    liters,
-    km: pairDetourKm,
-    mode: "onroute",
-    consumption,
-    speedKmh: speed,
-    timeValueEurH: pairPeak ? 16 : 10,
-  });
-
-  const pairDailyNets = useMemo(() => {
-    const s8 = labData?.p8Series[selected?.station_id || ""] || [];
-    const a8 = labData?.p8Series[pairAltStation?.station_id || ""] || [];
-    const nets: number[] = [];
-    for (let i = 42; i < s8.length && i < a8.length; i++) {
-      const d = s8[i] - a8[i];
-      const net = (d / 100) * liters - pairEco.fuelEur - pairEco.timeEur;
-      nets.push(roundTo(net, 2));
-    }
-    return nets;
-  }, [labData, selected, pairAltStation, liters, pairEco]);
+  // Paarvergleich-Werkstattpanel (Konzept §8.2 Nr. 5): bewusst nicht gebaut —
+  // die Umweg-Ökonomie läuft im Alltags-Panel „Rechnet sich der Umweg?“ und
+  // serverseitig in /api/v1/route/evaluate (LUECKEN „bewusst offen“). Ein
+  // zweites Panel wäre Duplikat; der frühere Prototyp-Code mit erfundenen
+  // Preisen (1,70/1,66 €/L) ist entfernt.
 
   const dueEpisode = dueEpisodesRes.data?.episodes?.[0] || (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
@@ -1681,6 +1663,24 @@ export function Dashboard() {
                       </span>
                     </div>
                     <p className="mt-2 text-[13px] leading-snug text-slate-200">{p.reason_short}</p>
+                    {rec.quality?.rolling_picp_7d_pct != null && (
+                      <p
+                        className={`mt-1 font-mono text-[11px] ${
+                          rec.quality.rolling_picp_7d_badge === "green"
+                            ? "text-emerald-400/80"
+                            : rec.quality.rolling_picp_7d_badge === "yellow"
+                              ? "text-amber-300/90"
+                              : "text-rose-300"
+                        }`}
+                      >
+                        Intervallqualität (7 d): {rec.quality.rolling_picp_7d_pct.toFixed(1)} %
+                        {rec.quality.rolling_picp_7d_badge === "green"
+                          ? " — im Zielbereich"
+                          : rec.quality.rolling_picp_7d_badge === "yellow"
+                            ? " — grenzwertig"
+                            : " — unsicher, Empfehlung unterdrückt"}
+                      </p>
+                    )}
                     {p.action === "wait" && p.recommended_window && (
                       <p className="mt-1 font-mono text-[11px] text-amber-300">
                         {clockLabel(p.recommended_window.start)}–{clockLabel(p.recommended_window.end)} Uhr ·{" "}
@@ -2088,9 +2088,11 @@ export function Dashboard() {
                     <span className="font-medium text-slate-200">
                       {selected?.name}
                     </span>
-                    ): günstigere frische Stationen in {activeCity}. Entfernung
-                    als Luftlinie — der echte Straßenweg ist meist länger, der
-                    Umweg rechnet sich also eher noch weniger.
+                    ): günstigere frische Stationen in {activeCity}. Umweg als
+                    Luftlinie × 1,3 — geschätzte Straßenstrecke, dieselbe
+                    Konvention wie die serverseitige Prüfung. Der echte Weg
+                    kann länger sein, dann rechnet sich der Umweg eher noch
+                    weniger.
                   </p>
                   {detourMode === "dedicated" && (
                     <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-200">
@@ -2207,7 +2209,7 @@ export function Dashboard() {
                               {option.km.toLocaleString("de-DE", {
                                 maximumFractionDigits: 1,
                               })}{" "}
-                              km Luftlinie · Ersparnis{" "}
+                              km Umweg (Luftlinie × 1,3) · Ersparnis{" "}
                               {euro(option.economics.grossEur)} · Sprit{" "}
                               {euro(option.economics.fuelEur)} · Zeit{" "}
                               {euro(option.economics.timeEur)} · erst ab{" "}
@@ -3407,9 +3409,4 @@ export function Dashboard() {
       </main>
     </div>
   );
-}
-
-function roundTo(num: number, decimals = 2) {
-  const factor = 10 ** decimals;
-  return Math.round(num * factor) / factor;
 }

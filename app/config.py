@@ -1,7 +1,7 @@
 """Paths only; credentials stay in the existing private files, never the browser."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +35,10 @@ class Settings:
     rate_limit_key_per_day: int = 50_000
     # Modell-Lauf: 0 = automatisch (CPU-Kerne, maximal 8), 1 = seriell.
     model_workers: int = 0
+    # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
+    # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
+    # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
+    city_subdivs: dict[str, str] = field(default_factory=dict)
 
     @property
     def runtime(self):
@@ -93,7 +97,29 @@ class Settings:
                 "TANKAPP_RATE_KEY_PER_DAY", 50_000, low=1, high=10_000_000
             ),
             model_workers=_env_int("TANKAPP_MODEL_WORKERS", 0, low=0, high=64),
+            city_subdivs=_city_subdivs_from_env(),
         )
+
+
+def _city_subdivs_from_env() -> dict[str, str]:
+    """TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW" -> {Stadt: Subdiv}.
+
+    Gleiche Schreibweise wie ``--subdiv`` der Selektion. Ungültige Einträge
+    werden verworfen (nicht stillschweigend halbgültig interpretiert); der
+    Fit läuft dann ohne Feiertags-Beitrag für die betroffene Stadt weiter.
+    """
+    raw = os.environ.get("TANKAPP_CITY_SUBDIVS", "")
+    out: dict[str, str] = {}
+    for part in raw.split(";"):
+        if not part.strip():
+            continue
+        if ":" not in part:
+            continue
+        name, sub = part.split(":", 1)
+        sub = sub.strip().upper().removeprefix("DE-")
+        if len(sub) == 2 and name.strip():
+            out[name.strip()] = sub
+    return out
 
 
 def _env_int(name: str, default: int, low: int, high: int) -> int:

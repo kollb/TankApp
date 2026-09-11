@@ -351,6 +351,17 @@ export type DecideResult = {
   };
   calibrated: boolean;
   decision_ready: boolean;
+  // Engine-Qualität der ausgewählten Station (Konzept §3.3.3): Rolling-PICP
+  // 7 d aus dem Backtest. null = nicht veröffentlicht (Altpublikation).
+  quality?: {
+    rolling_picp_7d_pct: number | null;
+    rolling_picp_7d_points: number | null;
+    rolling_picp_7d_badge: "green" | "yellow" | "red" | null;
+    rolling_picp_7d_as_of?: string | null;
+    rolling_picp_window_days: number;
+    rolling_picp_nominal_pct: number;
+    gate: string | null;
+  };
   debug?: {
     forecast_url: string;
     fitted_at?: string | null;
@@ -1061,6 +1072,13 @@ export type DetourResult = {
   criticalCtPerL: number;
   verdict: "worth" | "borderline" | "not_worth";
 };
+
+// Umweg-Konvention (Prüfstand §1.5): Die Luftlinie zwischen Stationskoordinaten
+// ist keine Straßenstrecke. Server (app/route.py, app/decide.py) und
+// data-tools/road_route.py rechnen mit Luftlinie × 1,3 — die GUI schickt
+// und rechnet mit derselben Größe, damit „Server prüfen“ und die lokale
+// Rechnung denselben km-Wert vergleichen.
+export const CIRCUITY = 1.3;
 
 // K = d·(c/100)·p + (d/v)·z (Konzept §10). onroute: nur der Mehrweg zählt
 // (einmalig); dedicated: Extrafahrt, Hin und Rück.
