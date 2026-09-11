@@ -45,15 +45,12 @@
    Migration von Namens-Serien auf UUID-Tags, Replay mit Zeitzone.
 
 10. **[Prüfstand — Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten](Prüfstand.md)**  
-    Unabhängige Prüfung vom 10.09.2026: Abweichungen, die nicht in LUECKEN stehen.
+    Unabhängige Prüfung vom 10.09.2026: Abweichungen, die nicht in LUECKEN stehen, plus offene Code-Aufgaben (§3, §7).
 
 11. **[Gutachten — gutachterliche Stellungnahme](Gutachten.md)**  
-    Externe Zweitmeinung zur statistischen Methodik; Bewertung der Empfehlungen in der [To-Do-Liste](TODO.md) (Abschnitt B).
+    Externe Zweitmeinung zur statistischen Methodik; Bewertung der Empfehlungen im Nachtrag des Dokuments.
 
-12. **[To-Do — Aufgaben aus Gutachten, Prüfstand und Doku-Abgleich](TODO.md)**  
-    Bearbeitbare Aufgaben mit Priorität, plus offene Konzept-Entscheidungen.
-
-13. **Weitere Referenzen (keine Installationspflicht)**
+12. **Weitere Referenzen (keine Installationspflicht)**
    - [Engine-Referenz](../engine/README.md) — Modellwerkstatt, 12-Uhr-Regel
    - [Werkzeugübersicht](../data-tools/README.md) — interne Einzelprogramme
    - [GUI-Vorlagen](../sample/README.md) — Basis der neuen Homepage

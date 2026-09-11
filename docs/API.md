@@ -42,9 +42,9 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
-  - `POST /api/v1/episodes` bzw. `POST /api/v1/recommendations/{id}/outcome` (Nutzer-Intents, B4)
+  - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal)
+- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal; die 501-Antwort ist aktuell noch HTML, nicht JSON — siehe [Prüfstand §1.5](Prüfstand.md))
 
 ## Übersicht
 

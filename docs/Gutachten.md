@@ -61,3 +61,27 @@ Obwohl das System eine hervorragende "Separation of Concerns" aufweist, sollten 
 * **Datenbank-Trennung:** Während InfluxDB für die 5-Minuten-Zeitreihen perfekt ist, müssen die transaktionalen Daten des Feedback-Ledgers (`app/feedback.py`) strikt davon getrennt in einer relationalen Datenbank (z.B. SQLite oder PostgreSQL) abgelegt werden, um ACID-Konformität zu gewährleisten.
 * **Event-Pipeline statt Polling:** Um Race Conditions zwischen dem Dateneingang (Poller) und der Verarbeitung (Inferenz-Cronjob) zu vermeiden, sollte die Architektur auf ein event-getriebenes Modell (z.B. Trigger via Webhook) umgestellt werden, sobald InfluxDB neue Datenpunkte sicher geschrieben hat.
 * **Fallback-UI:** Alternativ zum Betrieb eines redundanten Webservers für den Fallback (`rp2/fallback_gui.py`) bietet sich die Umsetzung als leichtgewichtiges PyQt6-Desktop-Widget an, das die Quantil-Daten ressourcenschonend und direkt im lokalen Umfeld visualisiert.
+
+---
+
+## Nachtrag des Repos (10.09.2026 — nicht Teil der Stellungnahme)
+
+Zur Einordnung: Dieses Gutachten entstand **vor** dem [Prüfstand](Prüfstand.md)
+(10.09.2026). Für den Prüfstand wurden Befunde und Empfehlungen gegen den Code
+gehalten — mit folgendem Ergebnis:
+
+| Befund / Empfehlung | Befund am Code |
+|---|---|
+| **F2:** NAS-Job müsse zwingend auf B ≥ 2000 konfiguriert werden | Bereits umgesetzt: `engine/selection.py` rechnet fest mit B = 2000; [ANALYSE.md](ANALYSE.md) dokumentiert den B=200-Blocker samt Begründung |
+| **F1:** Bug in der Prozentanzeige (Float 0,5 als % formatiert) | Im aktuellen Code nicht reproduzierbar — alle Anzeigen rechnen korrekt ×100 (`web/src/Dashboard.tsx`, `app/feedback.py`) |
+| Strukturbruch-Test (CUSUM) bzw. EW-Median auf δ̂ | Bereits implementiert: `delta_ew_ct` (EW-Median, HWZ 7 d) und `break_flag`/`break_stat` (CUSUM) in der Selektion |
+| Asymmetrischer Pinball-Loss | Bereits Konzept §3.2 Kriterium 3 und `engine/backtest.py` (asym. τ = 0,75, 3× Strafe) |
+| Event-getriebene Pipeline (Webhook statt Polling) | Bereits implementiert (Issue 50: `POST /api/v1/jobs/trigger`, Debounce + Idempotenz) |
+| Feedback-Ledger in relationale DB (ACID) | Offen entschieden — Status quo ist der JSON-Store; siehe [LUECKEN.md](LUECKEN.md) „Bewusst offen" und [Prüfstand §3.5](Prüfstand.md) (Retention als erster Handlungsbedarf) |
+| Fallback-UI als PyQt6-Desktop-Widget | Nicht übernommen — der browserbasierte RP2-Fallback bleibt Konzept ([RP2.md](RP2.md)) |
+| Beta-Binomial-Posterior statt Laplace-Glättung | Offen dokumentiert in [LUECKEN.md](LUECKEN.md) „Bewusst offen"; beide Schätzer sind priorsauber, ein Wechsel vor M7 bringt keinen messbaren Unterschied |
+
+Die Verweise auf „Kapitel 4.3" (668 ms) und „Kapitel 8" (Gutachterfragen) lassen
+sich keinem Repo-Dokument zuordnen (Referenzbruch); die Stellungnahme bleibt
+sonst unverändert als historisches Arbeitspapier stehen. Offene Code-Aufgaben
+aus der Prüfung stehen gebündelt im [Prüfstand §3/§7](Prüfstand.md).

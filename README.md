@@ -70,9 +70,8 @@ steht in **[docs/LUECKEN.md](docs/LUECKEN.md)**. Geschlossen wurden:
 - **[Betrieb](docs/BETRIEB.md)** — systemd, Backup, Fehlersuche, InfluxDB, Unraid, aus INSTALL.md konsolidiert
 - **[Analyse](docs/ANALYSE.md)** — Selektion, Modelle, Heatmaps, Umweg-Ökonomie
 - **[Lücken-Check](docs/LUECKEN.md)** — Konzept gegen Stand, offene Punkte mit Grund
-- **[Prüfstand](docs/Prüfstand.md)** — unabhängige Prüfung Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten (10.09.2026)
-- **[Gutachten](docs/Gutachten.md)** — gutachterliche Stellungnahme zur Methodik (Bewertung: [To-Do](docs/TODO.md) Abschnitt B)
-- **[To-Do](docs/TODO.md)** — Aufgaben aus Gutachten, Prüfstand und Doku-Abgleich
+- **[Prüfstand](docs/Prüfstand.md)** — unabhängige Prüfung Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten (10.09.2026), inkl. offener Code-Aufgaben (§3, §7)
+- **[Gutachten](docs/Gutachten.md)** — gutachterliche Stellungnahme zur Methodik, mit Repos-Nachtrag zum Umsetzungsstand
 - **[Konzept](docs/KONZEPT.md)** — fachliches Zielbild, Decision Layer, mit TOC
 - **[RP2 Fallback + Proxy](docs/RP2.md)** — konsolidiert aus rp2/README + ANLEITUNG, 24/7 Zugang über Pi Port 8000
 - **[Stations-UUID](docs/STATIONS-UUID.md)** — gleiche Namen trennen, mit TOC
