@@ -326,10 +326,13 @@ function ApiExplorer({
     { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
     { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
     { label: "Collector Livestatus", path: "/api/v1/collector/status" },
+    { label: "Letzte Forecasts", path: "/api/v1/last_forecasts" },
+    { label: "Day Series (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
     {
-      label: "Route Evaluate (serverseitig)",
+      label: "Route Evaluate (serverseitig, deprecated → decide)",
       path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
     },
+    { label: "Fills (GET nicht erlaubt – POST /api/v1/fills)", path: "/api/v1/fills" },
     ...dynamic,
   ];
   const run = async (target: string) => {
@@ -415,8 +418,8 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-center text-[10px] font-mono">
+    <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full text-center text-[10px] font-mono">
         <thead>
           <tr className="text-slate-500">
             <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
@@ -545,7 +548,8 @@ export function Dashboard() {
   const [dueDismissed, setDueDismissed] = useState(false);
   const [customFillOpen, setCustomFillOpen] = useState(false);
   const [customLiters, setCustomLiters] = useState(40);
-  const [customPrice, setCustomPrice] = useState(1.689);
+  // Fix: kein erfundener Default-Preis (vorher 1.689) – 0 bedeutet "bitte eingeben", sync mit bestPrice wenn verfügbar
+  const [customPrice, setCustomPrice] = useState<number>(0);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const [routeAltId, setRouteAltId] = useState("");
@@ -602,6 +606,13 @@ export function Dashboard() {
     stations[0];
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
+
+  // Wenn bester Live-Preis bekannt wird und Custom-Preis noch 0, vorbelegen (kein erfundener Fallback)
+  useEffect(() => {
+    if (bestPrice !== null && Number.isFinite(bestPrice) && customPrice === 0) {
+      setCustomPrice(Math.round(bestPrice * 1000) / 1000);
+    }
+  }, [bestPrice, customPrice]);
   const autoZ = autoTimeValue();
   const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
@@ -1011,7 +1022,7 @@ export function Dashboard() {
       setTimeout(() => setActionFeedback(null), 4000);
       return;
     }
-    await postFill({
+    const res = await postFill({
       station_id: fillStationId,
       station_name: snap?.station_name || selected?.name || "Station",
       liters,
@@ -1020,6 +1031,11 @@ export function Dashboard() {
       source: "prompt",
       episode_id: ep.id,
     });
+    if (res?.error_code) {
+      setActionFeedback(`! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`);
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
     setActionFeedback("✓ Füllung im Wallet-Ledger verbucht!");
     setDueDismissed(true);
     setRefresh((r) => r + 1);
@@ -1027,7 +1043,12 @@ export function Dashboard() {
   };
 
   const handleCustomFill = async (ep: any) => {
-    await postFill({
+    if (!Number.isFinite(customPrice) || customPrice <= 0) {
+      setActionFeedback("! Bitte gültigen Preis eingeben (>0 €/L).");
+      setTimeout(() => setActionFeedback(null), 4000);
+      return;
+    }
+    const res = await postFill({
       station_id: selected?.station_id || "custom",
       station_name: selected?.name || "Station",
       liters: customLiters,
@@ -1036,6 +1057,11 @@ export function Dashboard() {
       source: "prompt",
       episode_id: ep?.id,
     });
+    if (res?.error_code) {
+      setActionFeedback(`! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`);
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
     setActionFeedback("✓ Angepasste Füllung im Wallet-Ledger gespeichert!");
     setCustomFillOpen(false);
     setDueDismissed(true);
@@ -1044,14 +1070,28 @@ export function Dashboard() {
   };
 
   const handleDismissDue = async (epId?: string) => {
-    if (epId) await postIntent(epId, "dismiss");
+    if (epId) {
+      const res = await postIntent(epId, "dismiss");
+      if (res?.error_code) {
+        setActionFeedback(`! Verwerfen fehlgeschlagen: ${problem(res.error_code) || res.error_code}`);
+        setTimeout(() => setActionFeedback(null), 5000);
+        return;
+      }
+    }
     setDueDismissed(true);
     setRefresh((r) => r + 1);
   };
 
   const handleIntent = async (intent: string, mapsUrl?: string | null) => {
     const epId = decideRes.data?.episode?.id;
-    if (epId) await postIntent(epId, intent);
+    if (epId) {
+      const res = await postIntent(epId, intent);
+      if (res?.error_code) {
+        setActionFeedback(`! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – Offline? 429?`);
+        setTimeout(() => setActionFeedback(null), 5000);
+        return;
+      }
+    }
     if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
     setActionFeedback("✓ Auswahl gespeichert!");
     setRefresh((r) => r + 1);
@@ -1268,9 +1308,11 @@ export function Dashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => handleConfirmRecommendedFill(dueEpisode)}
-                      className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-md"
+                      disabled={bestPrice === null}
+                      title={bestPrice === null ? "Kein frischer Preis – bitte manuell erfassen" : `Wie empfohlen ${euro(bestPrice, 3)} €/L`}
+                      className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      ✓ Ja, wie empfohlen (~{euro(bestPrice || 1.649, 3)} €/L)
+                      ✓ Ja, wie empfohlen ({bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
                     </button>
                     <button
                       onClick={() => setCustomFillOpen(!customFillOpen)}
@@ -1694,7 +1736,7 @@ export function Dashboard() {
                 />
                 <p>
                   <span className="font-medium text-slate-200">
-                    Jetzt oder warten?
+                    Einordnung
                   </span>{" "}
                   {decideRes.data?.calibrated
                     ? "Kalibrierte Empfehlung aktiv — Ampel oben beachten. Trefferquoten und Brier-Score stehen im Advice-Ledger."
@@ -1719,14 +1761,14 @@ export function Dashboard() {
               <Metric
                 label="Unterschied zur Vergleichsstation"
                 value={
-                  <>
+                  <span className={difference != null && difference > 0.01 ? "text-rose-300" : difference != null && difference < -0.01 ? "text-emerald-300" : "text-slate-200"}>
                     {euro(difference)}{" "}
                     <span className="text-sm font-normal text-slate-500">
                       €
                     </span>
-                  </>
+                  </span>
                 }
-                detail="Reiner Preisunterschied pro Füllung — Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
+                detail="Reiner Preisunterschied pro Füllung — grün günstiger, dezent rot teurer. Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
               />
               <div className={`${panel} p-5`}>
                 <label
@@ -2001,13 +2043,21 @@ export function Dashboard() {
                             >
                               {euro(option.economics.netEur)} € netto
                             </span>
-                            <Badge warning={!worth}>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                worth
+                                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                                  : borderline
+                                    ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                                    : "border-rose-500/25 bg-rose-500/10 text-rose-300"
+                              }`}
+                            >
                               {worth
                                 ? "lohnenswert"
                                 : borderline
                                   ? "grenzwertig"
                                   : "lohnt sich nicht"}
-                            </Badge>
+                            </span>
                             <button
                               onClick={() => setRouteAltId(option.row.station_id)}
                               className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === option.row.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
@@ -2379,19 +2429,19 @@ export function Dashboard() {
                   Wurde die Empfehlung real belohnt?
                 </h3>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-slate-800">
-                <table className="w-full min-w-[960px] text-left text-sm">
+              <div className="overflow-x-auto rounded-2xl border border-slate-800 -mx-1">
+                <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="bg-slate-900 text-[11px] uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Station (Stadt)</th>
                       <th className="px-3 py-3">δ̂ vs. Stadt</th>
-                      <th className="px-3 py-3 text-right">P behauptet</th>
-                      <th className="px-3 py-3 text-right">S&gt;0 real</th>
-                      <th className="px-3 py-3 text-right">„Warten“</th>
-                      <th className="px-3 py-3 text-right">„Jetzt“</th>
-                      <th className="px-3 py-3 text-right">Ø Regret</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">P behauptet</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">S&gt;0 real</th>
+                      <th className="px-3 py-3 text-right hidden md:table-cell">„Warten“</th>
+                      <th className="px-3 py-3 text-right hidden md:table-cell">„Jetzt“</th>
+                      <th className="px-3 py-3 text-right hidden lg:table-cell">Ø Regret</th>
                       <th className="px-3 py-3 text-right">Regel-€</th>
-                      <th className="px-3 py-3 text-right">Orakel-€</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">Orakel-€</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
@@ -2426,25 +2476,25 @@ export function Dashboard() {
                               <span className="text-slate-500">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden sm:table-cell">
                             {sc.p_known ? `${Math.round(sc.p_avg * 100)} %` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden sm:table-cell">
                             {Math.round(sc.hit_freq * 100)} %
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono">
+                          <td className="px-3 py-2.5 text-right font-mono hidden md:table-cell">
                             {sc.n_wait > 0 ? `${sc.n_wait} · ${Math.round((sc.hit_wait ?? 0) * 100)}%` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono">
+                          <td className="px-3 py-2.5 text-right font-mono hidden md:table-cell">
                             {sc.n_now > 0 ? `${sc.n_now} · ${Math.round((sc.hit_now ?? 0) * 100)}%` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden lg:table-cell">
                             {euro(sc.avg_regret_eur)}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-semibold text-emerald-300">
                             {euro(sc.sum_smart_eur)} €
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-400">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-400 hidden sm:table-cell">
                             {euro(sc.sum_best_eur)} €
                           </td>
                         </tr>
@@ -2797,16 +2847,16 @@ export function Dashboard() {
                 </h3>
               </div>
               {selection.data && selection.data.stations.length ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[820px] text-left text-xs">
+                <div className="overflow-x-auto -mx-1">
+                  <table className="w-full min-w-[560px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-500">
                         <th className="py-2 pr-2">#</th>
                         <th className="py-2 pr-3">Station</th>
                         <th className="py-2 pr-3">δ̂ ct/L</th>
-                        <th className="py-2 pr-3">95%-KI</th>
-                        <th className="py-2 pr-3">q</th>
-                        <th className="py-2 pr-3">AV-Score</th>
+                        <th className="py-2 pr-3 hidden sm:table-cell">95%-KI</th>
+                        <th className="py-2 pr-3 hidden md:table-cell">q</th>
+                        <th className="py-2 pr-3 hidden md:table-cell">AV-Score</th>
                         <th className="py-2 pr-3">Billigste Std</th>
                       </tr>
                     </thead>
@@ -2814,15 +2864,15 @@ export function Dashboard() {
                       {selection.data.stations.map((s) => (
                         <tr key={s.station_id}>
                           <td className="py-2 pr-2 font-mono">{s.rank}</td>
-                          <td className="py-2 pr-3 font-semibold text-slate-200">{s.name}</td>
+                          <td className="py-2 pr-3 font-semibold text-slate-200 truncate max-w-[180px]">{s.name}</td>
                           <td className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}>
                             {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${s.delta_ct.toFixed(2)}` : "—"}
                           </td>
-                          <td className="py-2 pr-3 font-mono text-slate-400">
+                          <td className="py-2 pr-3 font-mono text-slate-400 hidden sm:table-cell">
                             {s.ci_lo != null && s.ci_hi != null ? `[${s.ci_lo.toFixed(2)}, ${s.ci_hi.toFixed(2)}]` : "—"}
                           </td>
-                          <td className="py-2 pr-3 font-mono">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
-                          <td className="py-2 pr-3 font-mono">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
                           <td className="py-2 pr-3 font-mono">{formatHour(s.best_hour)}</td>
                         </tr>
                       ))}

@@ -800,7 +800,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 }, status=503)
                 return
             open_stations.sort(key=lambda s: s[fuel])
-            cheapest, priciest = open_stations[0], open_stations[-1]
+            cheapest = open_stations[0]
+            second = open_stations[1] if len(open_stations) > 1 else None
+            priciest = open_stations[-1]
+            # Fix: spart vs zweitgünstigste statt vs teuerste (Top1 vs Top10 nicht sinnvoll)
+            ref_for_saving = second if second else priciest
             f2 = {
                 "station": {
                     "station_id": cheapest["station_id"],
@@ -810,9 +814,12 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "maps_url": cheapest["maps_url"],
                 },
                 "price": cheapest[fuel],
+                "second_price": second[fuel] if second else None,
+                "second_name": second["name"] if second else None,
                 "most_expensive": priciest[fuel],
-                "saving_ct_per_l": round((priciest[fuel] - cheapest[fuel]) * 100, 1),
-                "saving_eur_tank": round((priciest[fuel] - cheapest[fuel]) * liters, 2),
+                "saving_ct_per_l": round((ref_for_saving[fuel] - cheapest[fuel]) * 100, 1) if second else round((priciest[fuel] - cheapest[fuel]) * 100, 1),
+                "saving_eur_tank": round((ref_for_saving[fuel] - cheapest[fuel]) * liters, 2) if second else round((priciest[fuel] - cheapest[fuel]) * liters, 2),
+                "saving_vs": "second" if second else "most_expensive",
             }
 
             # F1/F3 aus gecachten Prognosen (für die günstigste Station)
@@ -1147,14 +1154,25 @@ select { font: inherit; color: var(--text); background: var(--panel-2); border: 
 .window .when { font-weight: 700; min-width: 64px; }
 .window .med { margin-left: auto; color: var(--muted); }
 .window .save { color: var(--accent); font-weight: 700; min-width: 84px; text-align: right; }
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.6px; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; }
+th.num, td.num { white-space: nowrap; }
+td.station-cell { white-space: normal; word-break: break-word; min-width: 180px; max-width: 380px; }
 tbody tr:hover { background: var(--row-hover); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num.save-pos { color: var(--accent); font-weight: 700; }
+td.num.save-neg { color: var(--bad); font-weight: 600; opacity: 0.9; }
+td.num.save-zero { color: var(--muted); }
 tr.best td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 tr.closed { color: var(--muted); }
+@media (max-width: 700px) {
+  table { table-layout: auto; font-size: 12.5px; }
+  th:nth-child(1), td:nth-child(1) { width: 32px; }
+  th:nth-child(4), td:nth-child(4), th:nth-child(6), td:nth-child(6), th:nth-child(7), td:nth-child(7) { display: none; }
+  td.station-cell { max-width: 200px; font-size: 12.5px; }
+}
 .muted { color: var(--muted); }
 .fresh { color: var(--accent); font-size: 11px; font-weight: 700; }
 .stale { color: var(--warn); font-size: 11px; font-weight: 700; }
@@ -1420,6 +1438,11 @@ function renderHero(stations, decide) {
   }
   const s = f2.station;
   const live = stations.stations.find((x) => x.station_id === s.station_id) || {};
+  const vsLabel = f2.saving_vs === "second" && f2.second_name
+    ? "vs. " + esc(f2.second_name) + " (2.)"
+    : f2.saving_vs === "second"
+      ? "vs. 2.-günstigste"
+      : "vs. teuerste (Top10-Vergleich)";
   el.innerHTML =
     '<div class="sub">' +
       (s.brand ? '<span class="tag brand-tag">' + esc(s.brand) + "</span>" : "") +
@@ -1429,7 +1452,7 @@ function renderHero(stations, decide) {
     "</div>" +
     '<div class="station-name">' + esc(s.name) + "</div>" +
     '<div class="price">' + eur(f2.price) + " <small>€/L</small></div>" +
-    '<div class="savings">spart bis zu ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) + " pro " + state.liters + " L-Tank</div>" +
+    '<div class="savings">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) + " pro " + state.liters + " L-Tank <span class=\"muted\" style=\"font-weight:400\">" + vsLabel + "</span></div>" +
     (s.maps_url ? '<div style="margin-top:12px"><a class="btn primary" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">📍 Navigation</a></div>' : "");
 }
 
@@ -1457,10 +1480,10 @@ function renderDecision(decide, forecasts) {
       esc(fc.station || "?") + " vom " + esc(fc.generated_at ? relDay(fc.generated_at) : "?") +
       " (" + (fc.age_hours ?? "?") + " h alt) · " + esc(f1.basis || "") + "</div>";
   } else {
-    html += '<div class="rec now">⛽ Jetzt tanken</div>';
+    html += '<div class="rec now">Aktueller Preisvergleich</div>';
     html += '<div class="detail">Keine Prognose für die günstigste Station verfügbar' +
       (fc.generated_at ? " (Cache von " + esc(relDay(fc.generated_at)) + ")" : "") +
-      " — es gibt keine Grundlage, um zu warten.</div>";
+      " — es gibt keine Grundlage, um zu warten. Nimm die günstigste frische Station.</div>";
   }
   const windows = decide.windows || [];
   if (windows.length) {
@@ -1498,6 +1521,9 @@ function renderStationsTable(stations) {
     const cls = [isBest ? "best" : "", closed ? "closed" : ""].filter(Boolean).join(" ");
     const delta = hasPrice && base !== null ? Math.round((s.price - base) * 100) : null;
     const save = hasPrice && base !== null ? (s.price - base) * state.liters : null;
+    // save >0 = teurer als günstigste -> negativer Spart-Wert -> dezent rot
+    const saveCls = save === null ? "save-zero" : save <= 0.001 ? "save-zero" : "save-neg";
+    const deltaCls = delta === null ? "" : delta > 0 ? "save-neg" : "save-zero";
     const age = s.age_minutes;
     const ageHtml = closed
       ? '<span class="muted">geschlossen</span>'
@@ -1506,14 +1532,14 @@ function renderStationsTable(stations) {
         : '<span class="stale">● ' + ageLabel(age) + " alt</span>";
     return '<tr class="' + cls + '">' +
       "<td>" + (hasPrice ? i : "·") + "</td>" +
-      "<td><b>" + esc(s.name) + "</b>" +
+      "<td class=\"station-cell\"><b>" + esc(s.name) + "</b>" +
         (s.brand ? ' <span class="tag brand-tag">' + esc(s.brand) + "</span>" : "") +
         (s.city ? ' <span class="muted">(' + esc(s.city) + ")</span>" : "") +
         (!hasPrice && !closed ? ' <span class="muted">— ' + esc(FUEL_LABEL[state.fuel]) + " nicht geführt</span>" : "") +
       "</td>" +
       '<td class="num"><b>' + (hasPrice ? eur(s.price) + " €" : "—") + "</b></td>" +
-      '<td class="num">' + (delta === null ? "—" : (delta > 0 ? "+" : "") + delta + " ct") + "</td>" +
-      '<td class="num">' + (save === null ? "—" : eurTank(-save)) + "</td>" +
+      '<td class="num ' + deltaCls + '">' + (delta === null ? "—" : (delta > 0 ? "+" : "") + delta + " ct") + "</td>" +
+      '<td class="num ' + saveCls + '">' + (save === null ? "—" : save <= 0.001 ? "±0,00 €" : "-" + eurTank(save)) + "</td>" +
       "<td>" + ageHtml + "</td>" +
       "<td>" + (s.maps_url ? '<a class="navlink" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">Los</a>' : "") + "</td>" +
     "</tr>";
