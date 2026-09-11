@@ -154,6 +154,13 @@ def refresh(settings: Settings, now=None, progress=None):
                 observations, cfg, origin, expected_poll_minutes=cadence
             )
             policies.extend(policy["stations"])
+            # Datenstand je Station für die Prognose: aus dem Bootstrap dieses
+            # Kraftstoffs (identisches Stationslabel in einem anderen Fuel darf
+            # nicht dazwischenfunken) und einmal nachgeschlagen statt je Station
+            # linear gesucht.
+            policy_by_identity = {
+                (row["city"], row["station_id"]): row for row in policy["stations"]
+            }
             path = settings.runtime / "training" / f"{fuel}.csv.gz"
             write_csv(path, data)
             # Reload preserves missing historical status; never serialize assumed open as evidence.
@@ -301,14 +308,7 @@ def refresh(settings: Settings, now=None, progress=None):
                         ],
                         "decision_hour": report.get("decision_hour", 8),
                         "operational_replay": False,
-                        "data_policy": next(
-                            (
-                                p
-                                for p in policy["stations"]
-                                if (p["city"], p["station_id"]) == identity
-                            ),
-                            None,
-                        ),
+                        "data_policy": policy_by_identity.get(identity),
                         "calibrated": False,
                         "decision_ready": False,
                         "retained_previous": False,

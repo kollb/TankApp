@@ -3,12 +3,17 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  brierGateHint,
   compressedAxis,
   currentPrice,
+  dayAfterLabel,
   detourEconomics,
   epochLabel,
   gapBands,
   haversineKm,
+  jobRunMessage,
+  livePhaseCountdown,
+  livePhaseHint,
   rowOutcome,
   scoreRows,
   segments,
@@ -354,5 +359,88 @@ describe("issue 50 trigger labels (Ereignis-Pipeline)", () => {
     expect(triggerSkipLabel(null)).toBeNull();
     expect(triggerSkipLabel(undefined)).toBeNull();
     expect(triggerSkipLabel("other")).toBeNull();
+  });
+});
+
+describe("job start button (Startknopf ohne Passwort)", () => {
+  it("translates scheduler answers into honest copy", () => {
+    expect(jobRunMessage({ status: "queued", job: "models" })).toEqual({
+      tone: "ok",
+      text: "Gestartet — der Lauf beginnt sofort.",
+    });
+    expect(jobRunMessage({ status: "running", job: "models" }).tone).toBe("ok");
+    expect(jobRunMessage({ status: "debounced", retry_after: 42 }).text).toBe(
+      "Gerade erst gelaufen — in 42 s erneut möglich.",
+    );
+    // Unbekannte Antwort ist ein Fehler, kein stilles „ok“.
+    expect(jobRunMessage({ status: "rejected" }).tone).toBe("error");
+    expect(jobRunMessage(null).tone).toBe("error");
+  });
+
+  it("explains refused starts instead of blaming the user", () => {
+    expect(jobRunMessage({ error_code: "not_found" }).text).toContain(
+      "nicht freigegeben",
+    );
+    expect(jobRunMessage({ error_code: "rate_limited" }).tone).toBe("warn");
+    expect(jobRunMessage({ error_code: "request_failed" }).text).toContain(
+      "nicht erreichbar",
+    );
+  });
+});
+
+describe("live phase hints (Kalibrierungs-Freigabe)", () => {
+  const phase = {
+    as_of: "2026-09-11T01:00:00+00:00",
+    stations: 2,
+    good_complete_days: 2,
+    best_complete_days: 7,
+    required_complete_days: 90,
+    days_missing: 88,
+    min_daily_coverage: 0.95,
+    live_only_stations: 0,
+    complete: false,
+  };
+
+  it("never invents a countdown when the engine published nothing", () => {
+    // Regression: ohne data_policy zeigte die Kachel „Noch 21 von 21 …“ —
+    // eine Frontend-Erfindung, die zwei Tage nach Live-Schaltung nicht sinkt.
+    expect(livePhaseCountdown(null)).toBeNull();
+    expect(livePhaseCountdown(undefined)).toBeNull();
+    expect(livePhaseHint(null)).toContain("keine Live-Abdeckungsdaten");
+    expect(livePhaseHint(null)).not.toMatch(/\d+ von \d+/);
+  });
+
+  it("quotes the engine threshold instead of a made-up 21 days", () => {
+    const line = livePhaseCountdown(phase);
+    expect(line).toContain("Noch 88 von 90 bewerteten Live-Tagen");
+    expect(line).toContain("(2/90, schwächste von 2 Stationen)");
+    expect(line).toContain("Tagesabdeckung ≥ 95 %");
+    expect(line).toContain("Datenstand 11.09.2026");
+    expect(line).toContain("voraussichtlich ab 08.12.2026");
+  });
+
+  it("stays silent once the live phase is reached", () => {
+    const done = { ...phase, days_missing: 0, good_complete_days: 90, complete: true };
+    expect(livePhaseCountdown(done)).toBeNull();
+    expect(livePhaseHint(done)).toContain("Live-Phase erreicht");
+  });
+
+  it("derives the ETA from the engine data date in Berlin days", () => {
+    // 22:00 UTC ist bereits Mitternacht Berlin → anderer Kalendertag als der
+    // des Browsers/UTC; ein Datum ohne Datenstand wird nicht erfunden.
+    expect(dayAfterLabel(1, "2026-09-11T22:00:00Z")).toBe("13.09.2026");
+    expect(dayAfterLabel(1, "2026-09-11T21:00:00Z")).toBe("12.09.2026");
+    expect(dayAfterLabel(5, null)).toBeNull();
+  });
+
+  it("explains the Brier gate as a count of recommendations, not a date", () => {
+    const hint = brierGateHint(phase, { n: 3, brier_30d: null });
+    expect(hint).toContain("100 abgeschlossenen Empfehlungen");
+    expect(hint).toContain("aktuell 3");
+    expect(hint).toContain("noch 88 vollständige Live-Tage");
+    expect(brierGateHint(null, { n: 3, brier_30d: null })).toContain(
+      "keine Engine-Daten",
+    );
+    expect(brierGateHint(phase, { n: 120, brier_30d: 0.18 })).toBeNull();
   });
 });

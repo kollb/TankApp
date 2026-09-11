@@ -136,7 +136,7 @@ Erster Durchstich in `engine/` liest echte Daten, fittet robuste Tagesform und W
 
 1. 5-Min-Raster je (Station, fuel); Lücken → Forward-Fill ≤30min, sonst NaN + Staleness-Maske
 2. closed-Spannen: Preis = letzter Open-Preis, Flag open=0; diese Segmente fließen nicht in Zyklus-Modellierung
-3. Hampel-Filter (Fenster 1h, Median ±5·MAD) gegen API-Artefakte
+3. Hampel-Filter (Fenster 1h, Median ±5·MAD) gegen API-Artefakte — **geplant, noch nicht implementiert** (Konzept §3.1 Schritt 3, [Prüfstand §1.3](Prüfstand.md))
 4. Tagesblöcke als Bootstrap-/Backtest-Einheit
 
 ### Strukturmodell + AR2

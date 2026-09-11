@@ -42,9 +42,9 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
-  - `POST /api/v1/episodes` bzw. `POST /api/v1/recommendations/{id}/outcome` (Nutzer-Intents, B4)
+  - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal)
+- Nicht implementierte Schreib-Endpunkte → 501 (außer RP2 Fallback lokal; die 501-Antwort ist aktuell noch HTML, nicht JSON — siehe [Prüfstand §1.5](Prüfstand.md))
 
 ## Übersicht
 
@@ -52,7 +52,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 |---|---|---|
 | `GET /api/v1/decide?city=...&fuel=...&liters=40` | **B4** | Handlungsempfehlung + 3-Wege-Vergleich + Snapshot-Emission |
 | `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
-| `POST /api/v1/episodes` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
+| `POST /api/v1/episodes/{episode_id}/intent` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
 | `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
@@ -65,6 +65,8 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 | `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
 | `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
 | `POST /api/v1/jobs/trigger` | **Issue 50** | Uploader-Webhook: Inferenz-Job nach sicherem InfluxDB-Write (Debounce + Idempotenz) |
+| `GET /api/v1/jobs/{job}/log?lines=200` | **B6** | Letzte Zeilen von `runtime/jobs/{job}.log` — dieselbe Datei wie `tail -f` auf dem NAS |
+| `POST /api/v1/jobs/{job}/run` | **B6** | Startknopf des GUI: Job jetzt ausführen (ohne Passwort; nur bei laufendem Job-Betrieb, abschaltbar per `TANKAPP_GUI_JOB_START=0`) |
 | `GET /api/v1/route/evaluate?...` | **B3.12** | Umweg-Ökonomie serverseitig |
 
 ## Decide (B4 Primär)
@@ -146,6 +148,7 @@ Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
+6. **`live_phase` (bewertete Live-Tage der Übergangsregel)**: gezählt aus den publizierten Bootstrap-Policies (`runtime/engine/current.json` → `policies`), nicht aus dem Browserdatum: `good_complete_days` (schwächste Station/Kraftstoff), `best_complete_days`, `required_complete_days` (Engine-Schwelle `live_only_days`, Default 90), `days_missing`, `min_daily_coverage`, `stations`, `live_only_stations`, `as_of` (Datenstand des Modell-Laufs), `complete`. Ohne Veröffentlichung oder bei uneinheitlichen Schwellen ist das Feld `null` — die GUI zeigt dann „noch keine Live-Abdeckungsdaten“ statt eines erfundenen Countdowns (§0.4). Achtung: Die Tageszahl ist die Übergangsregel (Archiv → Polling), **nicht** das M7-Gate; dieses bleibt „Brier < 0,25 bei ≥ 100 abgeschlossenen Empfehlungen“. Das Stationsdetail `data_policy` je Prognose (`GET /api/v1/forecast`) bleibt unverändert.
 
 
 ## Health
@@ -492,6 +495,60 @@ curl -s -X POST http://nas:1355/api/v1/jobs/trigger \
   - **Debounce:** Mindestabstand 15 min für `models`, 1 h für `selection` → Übersprung `debounced`
   - **Idempotenz:** gleiche `watermark` wie beim letzten erfolgreichen Lauf (verankert in `runtime/jobs/<job>.json → data_watermark`, sichtbar in `GET /api/v1/health`) und letzter Erfolg jünger als das Job-Intervall → Übersprung `duplicate`; letzter Erfolg älter als das Job-Intervall → Lauf trotzdem (Prognosefenster bleiben am aktuellen Tag verankert)
 - Mehrere Trigger während eines Laufs werden zusammengeführt (nur die neueste `watermark` bleibt gemerkt); fehlschlägt der Webhook beim Uploader, läuft alles unverändert intervallbasiert weiter (keine neue harte Abhängigkeit)
+
+## Job starten (POST, B6 — Startknopf)
+
+`POST /api/v1/jobs/{job}/run` — der Startknopf der Job-Karten im System-Tab.
+**Bewusst ohne Passwort**: Er wirkt nur im selben NAS-Webauftritt und nur,
+wenn der Dienst überhaupt Jobs fährt (`tankapp.py nas-up` / `serve --jobs`).
+Wer ihn abschalten will: `TANKAPP_GUI_JOB_START=0` in der Compose-Umgebung —
+dann antwortet der Endpunkt `404 not_found` (wie der Webhook ohne Secret).
+
+```bash
+curl -s -X POST http://nas:1355/api/v1/jobs/models/run -H 'Content-Type: application/json' -d '{}'
+```
+
+- `{job}`: `archive`, `models`, `selection`, `settlement`; anderes → `404 not_found`
+- Der Body wird ignoriert — der Ablauf entscheidet, nicht der Aufrufer
+- Antworten (immer `200`, solange der Endpunkt existiert):
+  - `{"status": "queued", "job": "models"}` — vorgemerkt, der Lauf startet sofort
+  - `{"status": "running", "job": "models"}` — läuft bereits; kein zweiter Start
+  - `{"status": "debounced", "job": "models", "retry_after": 37}` — vor weniger
+    als 60 s gestartet; `retry_after` in Sekunden
+- Unterschied zum Webhook (`POST /api/v1/jobs/trigger`): der Knopf ist ein
+  **Wille**, keine „neue Daten liegen bereit“-Meldung. Er überspringt deshalb
+  Debounce (15 min/1 h) und Idempotenz — sonst wäre genau der Fall blockiert,
+  für den er gedacht ist: nach einer Korrektur den Fehlschlag sofort nachholen.
+  Zwei Grenzen bleiben: nie zwei Läufe desselben Jobs gleichzeitig, und
+  mindestens 60 s Abstand (Schutz gegen Dauergeklicke).
+- Rate-Limit gilt auch hier (60/min anonym, 300/min mit Key) → `429 rate_limited`
+
+## Job-Log (GET, B6)
+
+`GET /api/v1/jobs/{job}/log?lines=200` — liefert die letzten Zeilen des
+Job-Logs, das `app/progress.py` je Job fortschreibt
+(`tail -f data/runtime/jobs/<job>.log` zeigt dieselben Zeilen).
+
+```bash
+curl -s "http://nas:1355/api/v1/jobs/models/log?lines=200" | jq
+```
+
+- `{job}`: nur `archive`, `models`, `selection`, `settlement`; alles andere →
+  `404 not_found` (keine beliebigen Pfade, kein Directory-Listing)
+- `lines`: 1–500, Standard 200; keine Zahl → `400 invalid_query`
+- Antwort: `{"job": "models", "available": true, "count": 200, "total": 300,
+  "lines": ["2026-09-11T06:10:00Z models: [31 %] …", …], "updated_at": "…",
+  "error_code": null}`
+- Fehlt die Datei (noch kein Lauf): `200` mit
+  `{"available": false, "count": 0, "lines": [], "error_code": "log_missing"}`
+  — kein 500, damit die GUI einen ehrlichen Leerzustand zeigen kann
+- Jede Zeile wird beim Auslesen bereinigt (`app/errors.redact`): absolute
+  Pfade werden auf den Dateinamen gekürzt, `token=…`/`password=…`/`Bearer …`,
+  URL-Zugangsdaten und lange Schlüssel-Blobs entfernt
+- Die **Ursache** eines Fehlschlags steht zusätzlich als ein Satz im Status:
+  `GET /api/v1/health → jobs.<job>.error_detail` (z. B.
+  `"ValueError: zu wenig Historie für current.json"`), geschrieben von
+  `app/worker.py` bei `state: failed`
 
 ## Route Evaluate (B3.12)
 

@@ -1,7 +1,13 @@
 // Layout/visual foundation: sample/good gui/TankAppDashboard + DecisionCockpit.
 // Workshop composition and charts: sample/good statistic gui/DecisionLab.
 // No demo engine, seeds, simulated decisions or PostgreSQL are imported.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Fuel as FuelIcon,
   Compass,
@@ -27,6 +33,8 @@ import {
   BarChart3,
   Cpu,
   CheckCircle2,
+  ScrollText,
+  Play,
 } from "lucide-react";
 import { LineChart } from "./components/LineChart";
 import {
@@ -39,6 +47,7 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  brierGateHint,
   clockLabel,
   currentPrice,
   detourEconomics,
@@ -46,6 +55,8 @@ import {
   euro,
   formatHour,
   haversineKm,
+  livePhaseCountdown,
+  livePhaseHint,
   problem,
   segments,
   timeLabel,
@@ -53,6 +64,8 @@ import {
   useResource,
   usePreference,
   postIntent,
+  postJobRun,
+  jobRunMessage,
   postFill,
   rowOutcome,
   scoreRows,
@@ -70,6 +83,9 @@ import {
   type CollectorStatus,
   type DecideResult,
   type StatsSummary,
+  type JobLog,
+  type JobRunNote,
+  JOB_LABELS,
 } from "./data";
 
 const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
@@ -149,12 +165,32 @@ function JobCard({
   icon,
   job,
   enabled,
+  logKey,
+  onShowLog,
+  onStarted,
 }: {
   title: string;
   icon: ReactNode;
   job?: Job;
   enabled?: boolean;
+  /** Job-Name für Log-Sprung und Startknopf (siehe JOB_LABELS). */
+  logKey?: string;
+  onShowLog?: (job: string) => void;
+  /** Nach einem Start: Status sofort neu laden. */
+  onStarted?: () => void;
 }) {
+  const [note, setNote] = useState<JobRunNote | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Eine neue Job-Phase macht die letzte Start-Meldung gegenstandslos.
+  useEffect(() => setNote(null), [job?.state]);
+  const startNow = async () => {
+    if (!logKey || busy) return;
+    setBusy(true);
+    const result = await postJobRun(logKey);
+    setNote(jobRunMessage(result));
+    setBusy(false);
+    if (result.status === "queued" || result.status === "running") onStarted?.();
+  };
   const state = !enabled
     ? "aus"
     : job?.state === "success"
@@ -188,7 +224,32 @@ function JobCard({
           {icon}
           {title}
         </div>
-        <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
+          {logKey && enabled ? (
+            <button
+              type="button"
+              onClick={() => void startNow()}
+              disabled={busy}
+              title={`${title} jetzt starten`}
+              aria-label={`${title} jetzt starten`}
+              className="rounded-md border border-emerald-600/50 p-1 text-emerald-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 disabled:opacity-40"
+            >
+              <Play size={13} />
+            </button>
+          ) : null}
+          {logKey && onShowLog ? (
+            <button
+              type="button"
+              onClick={() => onShowLog(logKey)}
+              title={`Log von ${title} anzeigen`}
+              aria-label={`Log von ${title} anzeigen`}
+              className="rounded-md border border-slate-700 p-1 text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+            >
+              <ScrollText size={13} />
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="mt-4 space-y-1.5 text-xs text-slate-400">
         <div className="flex justify-between">
@@ -229,6 +290,25 @@ function JobCard({
       {job?.error_code && (
         <p className="mt-3 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-300">
           {problem(job.error_code)}
+        </p>
+      )}
+      {/* Bereinigte Ursache (app/errors.py): „fehlgeschlagen“ allein hilft nicht. */}
+      {job?.error_detail && (
+        <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-500/10 p-2 text-[11px] leading-relaxed text-rose-300">
+          <span className="font-semibold">Ursache:</span> {job.error_detail}
+        </p>
+      )}
+      {note && (
+        <p
+          className={`mt-2 rounded-lg p-2 text-[11px] leading-relaxed ${
+            note.tone === "ok"
+              ? "bg-emerald-500/10 text-emerald-300"
+              : note.tone === "warn"
+                ? "bg-amber-500/10 text-amber-300"
+                : "bg-rose-500/10 text-rose-300"
+          }`}
+        >
+          {note.text}
         </p>
       )}
       {job?.state === "running" && job.progress && (
@@ -313,21 +393,24 @@ function ApiExplorer({
       ]
     : [];
   const endpoints = [
-    { label: "Systemstatus", path: "/api/v1/health" },
+    { label: "health", path: "/api/v1/health" },
     {
-      label: "Decide (Kauf-Empfehlung)",
+      label: "decide",
       path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
     },
     {
-      label: "Stats Summary (Übersicht aller 3 Layer)",
+      label: "stats/summary",
       path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
     },
-    { label: "Fällige Einträge (Episodes due)", path: "/api/v1/episodes?status=due" },
-    { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
-    { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
-    { label: "Collector Livestatus", path: "/api/v1/collector/status" },
+    { label: "episodes?due", path: "/api/v1/episodes?status=due" },
+    { label: `stations ${fuel}`, path: `/api/v1/stations?fuel=${fuel}` },
+    { label: `selection ${fuel}`, path: `/api/v1/selection?fuel=${fuel}` },
+    { label: "collector/status", path: "/api/v1/collector/status" },
+    { label: "jobs/models/log", path: "/api/v1/jobs/models/log?lines=50" },
+    { label: "last_forecasts", path: "/api/v1/last_forecasts" },
+    { label: "day (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
     {
-      label: "Route Evaluate (serverseitig)",
+      label: "route/evaluate (deprecated)",
       path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
     },
     ...dynamic,
@@ -416,7 +499,7 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-center text-[10px] font-mono">
+      <table className="w-full text-center text-[10px] font-mono">
         <thead>
           <tr className="text-slate-500">
             <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
@@ -545,7 +628,8 @@ export function Dashboard() {
   const [dueDismissed, setDueDismissed] = useState(false);
   const [customFillOpen, setCustomFillOpen] = useState(false);
   const [customLiters, setCustomLiters] = useState(40);
-  const [customPrice, setCustomPrice] = useState(1.689);
+  // Fix: kein erfundener Default-Preis (vorher 1.689) – 0 bedeutet "bitte eingeben", sync mit bestPrice wenn verfügbar
+  const [customPrice, setCustomPrice] = useState<number>(0);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const [routeAltId, setRouteAltId] = useState("");
@@ -572,6 +656,17 @@ export function Dashboard() {
     refresh,
   );
   const health = useResource<Health>("/api/v1/health", healthInterval, refresh);
+
+  // Job-Log im System-Tab: welcher Job, wie viele Zeilen, wann neu laden.
+  const [logJob, setLogJob] = useState("models");
+  const [logLineCount, setLogLineCount] = useState(200);
+  const [logReload, setLogReload] = useState(0);
+  const logRef = useRef<HTMLElement | null>(null);
+  const logBodyRef = useRef<HTMLPreElement | null>(null);
+  const runningJob =
+    Object.entries(health.data?.jobs || {}).find(
+      ([, job]) => job?.state === "running",
+    )?.[0] ?? null;
 
   useEffect(() => {
     const running = Object.values(health.data?.jobs || {}).some(
@@ -602,6 +697,13 @@ export function Dashboard() {
     stations[0];
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
+
+  // Wenn bester Live-Preis bekannt wird und Custom-Preis noch 0, vorbelegen (kein erfundener Fallback)
+  useEffect(() => {
+    if (bestPrice !== null && Number.isFinite(bestPrice) && customPrice === 0) {
+      setCustomPrice(Math.round(bestPrice * 1000) / 1000);
+    }
+  }, [bestPrice, customPrice]);
   const autoZ = autoTimeValue();
   const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
@@ -662,7 +764,9 @@ export function Dashboard() {
   );
 
   const statsSummaryRes = useResource<StatsSummary>(
-    tab === "statistics" || tab === "daily"
+    // Die Güte-Kacheln im System-Tab lesen dieselbe Antwort — ohne diesen Tab
+    // blieben sie dort dauerhaft „—“.
+    tab === "statistics" || tab === "daily" || tab === "system"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -711,6 +815,14 @@ export function Dashboard() {
     60000,
     refresh,
   );
+  // Job-Log: nur im System-Tab, dichter gepollt, solange ein Job läuft.
+  const jobLog = useResource<JobLog>(
+    tab === "system"
+      ? `/api/v1/jobs/${logJob}/log?lines=${logLineCount}`
+      : null,
+    runningJob ? 15000 : 120000,
+    logReload,
+  );
   const routeEval = useResource<RouteEvaluate>(
     tab === "daily" && activeCity && (routeAltId || detourOptions[0]?.row.station_id)
       ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
@@ -724,6 +836,28 @@ export function Dashboard() {
     : problem(data?.connection_error);
   const h = health.error ? null : health.data;
   const collector = collectorStatus.data || h?.collector;
+  // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
+  const logLines = jobLog.data?.lines ?? [];
+  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Tabs (Alltag/Statistik).
+  const failedJobs = Object.entries(h?.jobs || {}).filter(
+    ([, job]) => job?.state === "failed",
+  );
+  const webhookCapable = logJob === "models" || logJob === "selection";
+  const triggerCommand = `curl -X POST http://<nas>:1355/api/v1/jobs/trigger -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" -H 'Content-Type: application/json' -d '{"job":"${logJob}"}'`;
+  const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
+  // Nach einem Knopf-Start: Health sofort neu laden, nicht erst im Intervall.
+  const refreshNow = () => setRefresh((count) => count + 1);
+  const showJobLog = (name: string) => {
+    setLogJob(name);
+    setLogReload((count) => count + 1);
+    requestAnimationFrame(() =>
+      logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+  useEffect(() => {
+    const box = logBodyRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [logLines.length, logJob]);
   const f = forecast.data;
   const horizonDays = horizon;
   const forecastPoints =
@@ -875,32 +1009,22 @@ export function Dashboard() {
     });
   })();
 
-  // Dezente Hinweise zur Kalibrierung: aus data_policy (gut/benötigt) + gate_status
-  // berechnen wir, wann ungefähr mit Werten zu rechnen ist. Tagessprung: 1 Live-Tag
-  // ≈ 1 Kalendertag. Wir nehmen das heutige Datum (Europe/Berlin).
-  const policy = f?.data_policy;
-  const goodDays = policy?.good_complete_live_days ?? 0;
-  const requiredDays = policy?.required_complete_live_days ?? 21;
-  const daysMissing = Math.max(0, requiredDays - goodDays);
-  const etaDate = (() => {
-    if (!daysMissing) return null;
-    const d = new Date();
-    d.setDate(d.getDate() + daysMissing);
-    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  })();
-  const calibrationHint = (() => {
-    if (daysMissing === 0) {
-      return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
-    }
-    return `Wert erscheint, sobald die Live-Phase ${requiredDays} bewertete Tage erreicht hat (noch ${daysMissing} · voraussichtlich ab ${etaDate}).`;
-  })();
-  const brierHint = (() => {
-    if (statsSummaryRes.data?.live_advice.brier_30d != null) return null;
-    if (daysMissing === 0) {
-      return "Noch keine 100 Empfehlungen im Live-Ledger — Wert erscheint automatisch.";
-    }
-    return `Wert erscheint mit den ersten Live-Empfehlungen (frühestens ${etaDate}).`;
-  })();
+  // Hinweise zur Kalibrierung: ausschließlich aus echten Daten. Die Zählung
+  // bewerteter Live-Tage liefert die Engine (Bootstrap-Policies) über
+  // stats_summary.live_phase — Schwelle und Stand kommen aus dem Datenpfad,
+  // nicht aus einem Frontend-Kontext. Fehlen die Policies (kein Modell-Lauf,
+  // Statistik nicht geladen), sagt die UI genau das und erfindet keinen
+  // Countdown (§0.4 Ehrlichkeitsregel).
+  const livePhase = statsSummaryRes.data?.live_phase ?? null;
+  const calibrationHint = statsSummaryRes.data
+    ? livePhaseHint(livePhase)
+    : "Statistik nicht geladen — zur Live-Phase liegen keine Daten vor.";
+  const brierHint = statsSummaryRes.data
+    ? brierGateHint(livePhase, statsSummaryRes.data.live_advice)
+    : null;
+  const livePhaseLine = livePhaseCountdown(livePhase);
+  const livePhaseNotice = livePhaseLine ?? (livePhase ? null : calibrationHint);
+  const stationPhase = f?.data_policy;
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
@@ -1011,7 +1135,7 @@ export function Dashboard() {
       setTimeout(() => setActionFeedback(null), 4000);
       return;
     }
-    await postFill({
+    const res = await postFill({
       station_id: fillStationId,
       station_name: snap?.station_name || selected?.name || "Station",
       liters,
@@ -1020,6 +1144,11 @@ export function Dashboard() {
       source: "prompt",
       episode_id: ep.id,
     });
+    if (res?.error_code) {
+      setActionFeedback(`! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`);
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
     setActionFeedback("✓ Füllung im Wallet-Ledger verbucht!");
     setDueDismissed(true);
     setRefresh((r) => r + 1);
@@ -1027,7 +1156,12 @@ export function Dashboard() {
   };
 
   const handleCustomFill = async (ep: any) => {
-    await postFill({
+    if (!Number.isFinite(customPrice) || customPrice <= 0) {
+      setActionFeedback("! Bitte gültigen Preis eingeben (>0 €/L).");
+      setTimeout(() => setActionFeedback(null), 4000);
+      return;
+    }
+    const res = await postFill({
       station_id: selected?.station_id || "custom",
       station_name: selected?.name || "Station",
       liters: customLiters,
@@ -1036,6 +1170,11 @@ export function Dashboard() {
       source: "prompt",
       episode_id: ep?.id,
     });
+    if (res?.error_code) {
+      setActionFeedback(`! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`);
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
     setActionFeedback("✓ Angepasste Füllung im Wallet-Ledger gespeichert!");
     setCustomFillOpen(false);
     setDueDismissed(true);
@@ -1044,14 +1183,28 @@ export function Dashboard() {
   };
 
   const handleDismissDue = async (epId?: string) => {
-    if (epId) await postIntent(epId, "dismiss");
+    if (epId) {
+      const res = await postIntent(epId, "dismiss");
+      if (res?.error_code) {
+        setActionFeedback(`! Verwerfen fehlgeschlagen: ${problem(res.error_code) || res.error_code}`);
+        setTimeout(() => setActionFeedback(null), 5000);
+        return;
+      }
+    }
     setDueDismissed(true);
     setRefresh((r) => r + 1);
   };
 
   const handleIntent = async (intent: string, mapsUrl?: string | null) => {
     const epId = decideRes.data?.episode?.id;
-    if (epId) await postIntent(epId, intent);
+    if (epId) {
+      const res = await postIntent(epId, intent);
+      if (res?.error_code) {
+        setActionFeedback(`! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – Offline? 429?`);
+        setTimeout(() => setActionFeedback(null), 5000);
+        return;
+      }
+    }
     if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
     setActionFeedback("✓ Auswahl gespeichert!");
     setRefresh((r) => r + 1);
@@ -1237,6 +1390,47 @@ export function Dashboard() {
           </div>
         )}
 
+        {/* Fehlgeschlagene NAS-Jobs: in Alltag und Statistik sichtbar, nicht
+            nur im System-Tab — sonst wirken veraltete Prognosen wie aktuelle. */}
+        {failedJobs.length > 0 && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
+          >
+            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p>
+                {failedJobs.length === 1
+                  ? "Ein NAS-Job ist fehlgeschlagen:"
+                  : `${failedJobs.length} NAS-Jobs sind fehlgeschlagen:`}{" "}
+                {failedJobs
+                  .map(
+                    ([name, job]) =>
+                      `${JOB_LABELS[name] ?? name} — ${
+                        job?.error_detail ??
+                        problem(job?.error_code) ??
+                        "unbekannte Ursache"
+                      }`,
+                  )
+                  .join(" · ")}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-rose-300/80">
+                Angezeigte Prognosen und Rankings können veraltet sein; die
+                letzten guten Ergebnisse bleiben erhalten.
+              </p>
+              <button
+                onClick={() => {
+                  setTab("system");
+                  showJobLog(failedJobs[0][0]);
+                }}
+                className="mt-1 text-xs underline underline-offset-4"
+              >
+                Log ansehen
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ============================================================ */}
         {/* TAB ALLTAG                                                   */}
         {/* ============================================================ */}
@@ -1255,7 +1449,7 @@ export function Dashboard() {
                     </div>
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
-                        Rückmeldung nach Fensterende (Due-Prompt §5.4)
+                        Rückmeldung nach Fensterende (Due-Prompt)
                       </span>
                       <h3 className="mt-0.5 text-lg font-bold text-white">
                         Hast du getankt?
@@ -1268,9 +1462,11 @@ export function Dashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => handleConfirmRecommendedFill(dueEpisode)}
-                      className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-md"
+                      disabled={bestPrice === null}
+                      title={bestPrice === null ? "Kein frischer Preis – bitte manuell erfassen" : `Wie empfohlen ${euro(bestPrice, 3)} €/L`}
+                      className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      ✓ Ja, wie empfohlen (~{euro(bestPrice || 1.649, 3)} €/L)
+                      ✓ Ja, wie empfohlen ({bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
                     </button>
                     <button
                       onClick={() => setCustomFillOpen(!customFillOpen)}
@@ -1694,7 +1890,7 @@ export function Dashboard() {
                 />
                 <p>
                   <span className="font-medium text-slate-200">
-                    Jetzt oder warten?
+                    Einordnung
                   </span>{" "}
                   {decideRes.data?.calibrated
                     ? "Kalibrierte Empfehlung aktiv — Ampel oben beachten. Trefferquoten und Brier-Score stehen im Advice-Ledger."
@@ -1719,14 +1915,14 @@ export function Dashboard() {
               <Metric
                 label="Unterschied zur Vergleichsstation"
                 value={
-                  <>
+                  <span className={difference != null && difference > 0.01 ? "text-rose-300" : difference != null && difference < -0.01 ? "text-emerald-300" : "text-slate-200"}>
                     {euro(difference)}{" "}
                     <span className="text-sm font-normal text-slate-500">
                       €
                     </span>
-                  </>
+                  </span>
                 }
-                detail="Reiner Preisunterschied pro Füllung — Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
+                detail="Reiner Preisunterschied pro Füllung — grün günstiger, dezent rot teurer. Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
               />
               <div className={`${panel} p-5`}>
                 <label
@@ -2001,13 +2197,21 @@ export function Dashboard() {
                             >
                               {euro(option.economics.netEur)} € netto
                             </span>
-                            <Badge warning={!worth}>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                worth
+                                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                                  : borderline
+                                    ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                                    : "border-rose-500/25 bg-rose-500/10 text-rose-300"
+                              }`}
+                            >
                               {worth
                                 ? "lohnenswert"
                                 : borderline
                                   ? "grenzwertig"
                                   : "lohnt sich nicht"}
-                            </Badge>
+                            </span>
                             <button
                               onClick={() => setRouteAltId(option.row.station_id)}
                               className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === option.row.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
@@ -2315,7 +2519,7 @@ export function Dashboard() {
                     <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
                     <strong className="text-slate-200">jetzt tanken</strong>.
                     <span className="text-slate-500 block mt-1">
-                      Die Produktion entscheidet weiterhin mit der kalibrierten Tabelle §4.1; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
+                      Die Produktion entscheidet weiterhin mit der kalibrierten Entscheidungstabelle; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
                     </span>
                   </p>
                 </div>
@@ -2380,18 +2584,18 @@ export function Dashboard() {
                 </h3>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-800">
-                <table className="w-full min-w-[960px] text-left text-sm">
+                <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="bg-slate-900 text-[11px] uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Station (Stadt)</th>
                       <th className="px-3 py-3">δ̂ vs. Stadt</th>
-                      <th className="px-3 py-3 text-right">P behauptet</th>
-                      <th className="px-3 py-3 text-right">S&gt;0 real</th>
-                      <th className="px-3 py-3 text-right">„Warten“</th>
-                      <th className="px-3 py-3 text-right">„Jetzt“</th>
-                      <th className="px-3 py-3 text-right">Ø Regret</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">P behauptet</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">S&gt;0 real</th>
+                      <th className="px-3 py-3 text-right hidden md:table-cell">„Warten“</th>
+                      <th className="px-3 py-3 text-right hidden md:table-cell">„Jetzt“</th>
+                      <th className="px-3 py-3 text-right hidden lg:table-cell">Ø Regret</th>
                       <th className="px-3 py-3 text-right">Regel-€</th>
-                      <th className="px-3 py-3 text-right">Orakel-€</th>
+                      <th className="px-3 py-3 text-right hidden sm:table-cell">Orakel-€</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
@@ -2426,25 +2630,25 @@ export function Dashboard() {
                               <span className="text-slate-500">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden sm:table-cell">
                             {sc.p_known ? `${Math.round(sc.p_avg * 100)} %` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden sm:table-cell">
                             {Math.round(sc.hit_freq * 100)} %
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono">
+                          <td className="px-3 py-2.5 text-right font-mono hidden md:table-cell">
                             {sc.n_wait > 0 ? `${sc.n_wait} · ${Math.round((sc.hit_wait ?? 0) * 100)}%` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono">
+                          <td className="px-3 py-2.5 text-right font-mono hidden md:table-cell">
                             {sc.n_now > 0 ? `${sc.n_now} · ${Math.round((sc.hit_now ?? 0) * 100)}%` : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300 hidden lg:table-cell">
                             {euro(sc.avg_regret_eur)}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-semibold text-emerald-300">
                             {euro(sc.sum_smart_eur)} €
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-400">
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-400 hidden sm:table-cell">
                             {euro(sc.sum_best_eur)} €
                           </td>
                         </tr>
@@ -2459,7 +2663,7 @@ export function Dashboard() {
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                  Kalibrierung der Entscheidungs-Wahrscheinlichkeit (§5.1, §6)
+                  Kalibrierung der Entscheidungs-Wahrscheinlichkeit
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Stimmt „mit x % ist der Abend billiger“ mit der Realität überein?
@@ -2479,11 +2683,23 @@ export function Dashboard() {
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">Kalibrierungs-Freigabe</p>
                     <p className="mt-1 text-base font-bold text-amber-300">
-                      {statsSummaryRes.data?.live_advice.gate_status || "Kalibrierung steht aus"}
+                      {statsSummaryRes.data?.live_advice?.gate_status ||
+                        (statsSummaryRes.data
+                          ? "Kalibrierung steht aus"
+                          : "kein Statistik-Lauf")}
                     </p>
-                    {daysMissing > 0 && (
+                    {livePhaseNotice && (
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                        Noch {daysMissing} von {requiredDays} bewerteten Live-Tagen · voraussichtlich ab {etaDate}
+                        {livePhaseNotice}
+                      </p>
+                    )}
+                    {stationPhase && (
+                      <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
+                        Ausgewählte Station: {stationPhase.good_complete_live_days}/
+                        {stationPhase.required_complete_live_days} vollständige Live-Tage
+                        {stationPhase.mode === "live_only"
+                          ? " (nur Live-Daten)"
+                          : " (Archiv noch beteiligt)"}
                       </p>
                     )}
                   </div>
@@ -2798,15 +3014,15 @@ export function Dashboard() {
               </div>
               {selection.data && selection.data.stations.length ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[820px] text-left text-xs">
+                  <table className="w-full min-w-[560px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-500">
                         <th className="py-2 pr-2">#</th>
                         <th className="py-2 pr-3">Station</th>
                         <th className="py-2 pr-3">δ̂ ct/L</th>
-                        <th className="py-2 pr-3">95%-KI</th>
-                        <th className="py-2 pr-3">q</th>
-                        <th className="py-2 pr-3">AV-Score</th>
+                        <th className="py-2 pr-3 hidden sm:table-cell">95%-KI</th>
+                        <th className="py-2 pr-3 hidden md:table-cell">q</th>
+                        <th className="py-2 pr-3 hidden md:table-cell">AV-Score</th>
                         <th className="py-2 pr-3">Billigste Std</th>
                       </tr>
                     </thead>
@@ -2814,15 +3030,15 @@ export function Dashboard() {
                       {selection.data.stations.map((s) => (
                         <tr key={s.station_id}>
                           <td className="py-2 pr-2 font-mono">{s.rank}</td>
-                          <td className="py-2 pr-3 font-semibold text-slate-200">{s.name}</td>
+                          <td className="py-2 pr-3 font-semibold text-slate-200 truncate max-w-[180px]">{s.name}</td>
                           <td className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}>
                             {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${s.delta_ct.toFixed(2)}` : "—"}
                           </td>
-                          <td className="py-2 pr-3 font-mono text-slate-400">
+                          <td className="py-2 pr-3 font-mono text-slate-400 hidden sm:table-cell">
                             {s.ci_lo != null && s.ci_hi != null ? `[${s.ci_lo.toFixed(2)}, ${s.ci_hi.toFixed(2)}]` : "—"}
                           </td>
-                          <td className="py-2 pr-3 font-mono">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
-                          <td className="py-2 pr-3 font-mono">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
                           <td className="py-2 pr-3 font-mono">{formatHour(s.best_hour)}</td>
                         </tr>
                       ))}
@@ -2948,26 +3164,132 @@ export function Dashboard() {
                 icon={<Database size={17} className="text-emerald-400" />}
                 job={h?.jobs.archive}
                 enabled={h?.jobs_enabled}
+                logKey="archive"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Modell-Update"
                 icon={<ChartIcon size={17} className="text-sky-400" />}
                 job={h?.jobs.models}
                 enabled={h?.jobs_enabled}
+                logKey="models"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Selektion Ranking"
                 icon={<Activity size={17} className="text-emerald-400" />}
                 job={h?.jobs.selection}
                 enabled={h?.jobs_enabled}
+                logKey="selection"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
               <JobCard
                 title="Beleg-Verarbeitung"
                 icon={<Scale size={17} className="text-emerald-400" />}
                 job={h?.jobs.settlement}
                 enabled={h?.jobs_enabled}
+                logKey="settlement"
+                onShowLog={showJobLog}
+                onStarted={refreshNow}
               />
             </div>
+
+            {/* Job-Log: dieselben Zeilen wie `tail -f data/runtime/jobs/<job>.log` */}
+            <section ref={logRef} className={`${panel} mb-6 p-5 sm:p-6`}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold">
+                    <ScrollText size={17} className="text-emerald-400" />
+                    Job-Log · letzte Zeilen direkt vom NAS
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    Dieselben Zeilen liegen als Datei unter{" "}
+                    <code className="text-slate-400">
+                      data/runtime/jobs/{logJob}.log
+                    </code>{" "}
+                    (die letzten 500). Beim Auslesen werden Pfade und
+                    Zugangsdaten entfernt.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLogReload((n) => n + 1)}
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
+                >
+                  Aktualisieren
+                </button>
+              </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {Object.keys(JOB_LABELS).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setLogJob(name)}
+                    aria-pressed={logJob === name}
+                    className={`rounded-lg border px-3 py-1.5 text-[11px] transition-colors ${
+                      logJob === name
+                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
+                        : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                    }`}
+                  >
+                    {JOB_LABELS[name]}
+                  </button>
+                ))}
+                <select
+                  aria-label="Anzahl Logzeilen"
+                  value={logLineCount}
+                  onChange={(e) => setLogLineCount(Number(e.target.value))}
+                  className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[11px] text-slate-200"
+                >
+                  <option value={100}>letzte 100</option>
+                  <option value={200}>letzte 200</option>
+                  <option value={500}>letzte 500</option>
+                </select>
+              </div>
+              <pre
+                ref={logBodyRef}
+                className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-slate-300"
+              >
+                {logLines.length
+                  ? logLines.join("\n")
+                  : jobLog.pending
+                    ? "Log wird geladen …"
+                    : "Noch keine Logzeilen für diesen Job."}
+              </pre>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-slate-500">
+                <span>
+                  {jobLog.data?.available
+                    ? `${jobLog.data.count} von ${jobLog.data.total} Zeilen im Log`
+                    : jobLog.data
+                      ? "Noch kein Log — der erste Lauf dieses Jobs schreibt es."
+                      : ""}
+                </span>
+                {jobLog.data?.updated_at ? (
+                  <span className="font-mono">
+                    Stand {timeLabel(jobLog.data.updated_at)}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-500">
+                Starten: der Knopf{" "}
+                <Play size={11} className="inline align-[-1px]" /> in der
+                jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im
+                NAS-Webauftritt, nie zwei Läufe gleichzeitig). Auf der
+                Kommandozeile stattdessen{" "}
+                <code className="text-slate-400">{workerCommand}</code> —
+                Details in{" "}
+                <span className="text-slate-400">docs/BETRIEB.md</span>.
+              </p>
+              {webhookCapable ? (
+                <p className="mt-2 break-words text-[11px] leading-relaxed text-slate-500">
+                  Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook:{" "}
+                  <code className="text-slate-400">{triggerCommand}</code>
+                </p>
+              ) : null}
+            </section>
 
             {/* Pi/tmpfs Livestatus */}
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
@@ -3032,7 +3354,7 @@ export function Dashboard() {
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>
             Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
-            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · B4: decide/episodes/fills/settlement/summary
+            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · Entscheidungs-API: decide · episodes · fills · settlement · summary
           </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />

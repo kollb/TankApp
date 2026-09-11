@@ -4,6 +4,9 @@
 > Code. **B3** (Aggregate), **B4** (Decision Layer) und die Ereignis-Pipeline
 > waren vor diesem Durchgang fertig; **B5** schließt die Lücken dieses Blatts.
 > Kein Punkt behauptet Modellgüte: Kalibrierung bleibt M7 vorbehalten (§0.4).
+> Die unabhängige Prüfung vom 10.09.2026 ([Prüfstand](Prüfstand.md)) ergänzt
+> dieses Blatt: Dort stehen weitere Abweichungen und die offenen Code-Aufgaben
+> (§3, §7); hier sind die Stellen verlinkt, die Konzeptaussagen betreffen.
 
 ## Inhaltsverzeichnis
 
@@ -68,11 +71,11 @@
 | 0.1–0.3 | Drei Fragen, zwei Modi, eine Zahl |fertig (Alltag/Werkstatt-Tabs, Ampelkarte) |
 | 0.4 | Kalibrierungs-Gate (Brier < 0,25, n ≥ 100) |fertig als hartes Gate; offen bis echte Daten (M7) |
 | 1 | Tankerkönig-Collector, tmpfs, Upload |fertig (M1) |
-| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10) |
-| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |fertig; M3-Zweitmodell/Ensemble offen |
+| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10); **Abweichung**: GUI sortiert nach δ̂-Score, Konzept §2/§8.2 Nr. 7 verlangt Sortierung nach Empfehlungsstärke ([Prüfstand §1.2](Prüfstand.md)) |
+| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **offen**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy, Zeit-seit-Sprung-Feature, M3-Zweitmodell/Ensemble ([Prüfstand §1.3](Prüfstand.md)) |
 | 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
 | 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; Mehrtage-Backtests offen |
-| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |fertig (B4) + `latest_by` (B5) |
+| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite abweichend**: `p_besser` ist eine Ledger-Trefferquote (Laplace-geglättet), nicht die Prognoseverteilungs-Wahrscheinlichkeit aus §4.1; `p_lohnt` (§4.2) und F3-Fenster-P fehlen ([Prüfstand §1.4](Prüfstand.md)) |
 | 4.4 | „Keine klare Empfehlung“ |fertig |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig |
@@ -92,7 +95,7 @@
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
 | 12 P2 | Push, Belege |offen (siehe unten) |
 | 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig; M3 ohne Echt-Daten-Abnahme |
-| 13 M5 | TankPuls-API |fertig (B4 + B5: Rate-Limit, Deprecation) |
+| 13 M5 | TankPuls-API |fertig (B4 + B5: Rate-Limit, Deprecation); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen") |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
 | 13 M7 | Kalibrierungs-Loop |Vorschlag und Regler fertig (B5); Anziehen der Schwellen erst mit echten Live-Daten sinnvoll |
 
@@ -109,6 +112,10 @@
 | **Standortwahl per `lat`/`lon` (§11.1)** | Die App arbeitet mit dem kuratierten Polling-Set ( Kontingent 1 R/5 min). Freie Umkreissuche bräuchte eigene Requests und ein Kontingent-Modell. |
 | **Offline-Queue für Fill/Intent (§5.4)** | Der Service-Worker hält die letzte Antwort vor; eine IndexedDB-Warteschlange ist sinnvoll, aber erst nötig, wenn Füllungen im echten Betrieb häufig offline erfasst werden. |
 | **E5↔E10-Äquivalenz im Ranking (§10)** | 1,015-Faktor ist eine Näherung; ohne gemessenen Mehrverbrauch des Fahrzeugs wäre das Ranking damit weniger ehrlich, nicht mehr. |
+| **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün" als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
+| **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](Prüfstand.md)). |
+| **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](Prüfstand.md)). |
+| **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. |
 
 ## Nicht umgesetzt und warum nicht
 

@@ -11,6 +11,9 @@
 > `/v1/decide`, Rate-Limit/API-Key (§11), Deprecation-Header (§11.3),
 > M7-Schwellen-Nachzug (§13) und den Fortschritt lang laufender Jobs —
 > der Abgleich Zielbild ↔ Code steht in [LUECKEN.md](LUECKEN.md).
+> Eine unabhängige Prüfung vom 10.09.2026 steht im [Prüfstand](Prüfstand.md)
+> (u. a.: die Wahrscheinlichkeitsseite von §4 ist abweichend implementiert);
+> offene Punkte daraus sind in [LUECKEN.md](LUECKEN.md) verlinkt.
 > Güte- und Kalibrierungsziele sind erst nach einer echten Datenabnahme erfüllt.
 >
 > **Die beiden GUI-Prototypen bleiben ausdrücklich die Basis der neuen Homepage.**
@@ -896,7 +899,10 @@ Der Statistik-Prototyp wird hier 1:1 produktiv. Sektionen:
    Entscheidungswerkzeuge.
 7. **Meine Stationen:** das Top-10-Ranking, sortiert nach aktueller
    Empfehlungsstärke (§2); δ̂ nur im Stations-Detail („langfristig 3,80 ct/L
-   günstiger als Umgebung“), mit Bootstrap-KI-Whiskern.
+   günstiger als Umgebung“), mit Bootstrap-KI-Whiskern. *(Stand 10.09.2026: die
+   Werkstatt-Ansicht sortiert nach δ̂-Score — als Analyse-Werkzeug sachlich
+   korrekt; die Sortierung nach Empfehlungsstärke bleibt Zielbild, Abgleich in
+   [LUECKEN.md](LUECKEN.md).)*
 8. **System-Status:** Pi ↔ NAS (Collector-Stand, tmpfs-Füllstand,
    NAS-Erreichbarkeit, Coverage, CUSUM-Driftstatus, letzte Fehler).
 9. **API-Explorer:** die Endpunkte (§11) mit Live-Beispiel-Queries.
@@ -937,7 +943,7 @@ Token-Bucket · Fenster 06–24 · Datenstand.
 | Hosting TankPuls-API + Web-GUI | **NAS** | ein gemeinsamer Daten-/App-Server; bei ausgeschaltetem NAS nicht erreichbar |
 | Archiv für Engine und Langzeitvergleiche | **NAS: komprimierte Preis-/Stationsdateien, mindestens ein Jahr bei Bedarf** | automatischer Sync bei Start und regelmäßig; alte Lücken nachholen |
 | **Engine-Fits, Rolling-Backtests, ACI-Kalibrierung, Decision-Layer-Kalibrierung (M7)** | **NAS (oder PC per WOL)** | Pi bleibt Collector/Uploader, Inference läuft auf dem NAS; der tägliche Backtest (bis 42 Refits × 10–30 Modelle) gehört auf 16 GB/x86, nicht auf 1 GB ARM |
-| **Episode-/Snapshot-/Fill-Log (§5.2, §5.4)** | NAS (Tabelle) | Advice-Settlement (Brier, M7) getrennt von Fill-Events (Wallet) |
+| **Episode-/Snapshot-/Fill-Log (§5.2, §5.4)** | NAS (Tabelle; heute JSON-Store, relationale Ablage offen — [LUECKEN](LUECKEN.md)) | Advice-Settlement (Brier, M7) getrennt von Fill-Events (Wallet) |
 
 Ablauf: Collector appended JSON-Zeilen an
 `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt
@@ -1106,7 +1112,7 @@ Parameter:
 
 | Parameter | Bedeutung |
 |---|---|
-| `lat`, `lon` | Standort (Pflicht) |
+| `lat`, `lon` | Standort (Pflicht im Zielbild; **offen**: die App arbeitet heute mit dem kuratierten Polling-Set, beide Parameter werden noch nicht ausgewertet — [LUECKEN](LUECKEN.md)) |
 | `fuel` | `E10` (Default) · `E5` · `Diesel` |
 | `liters` | Tankmenge, Default 40 |
 | `consumption` | L/100 km, Default Profil |
@@ -1282,7 +1288,7 @@ Die M4-Homepage basiert ausdrücklich auf **beiden vorhandenen GUIs**.
 | M2 | Selektion mit echten Historien der 3 Kampagnen (HE/BY/NW; Anker + Subdivs aus lokaler Config, nie im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
 | M3 | Engine M1–M3 + ACI + Backtest (Fits und Inference auf NAS) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball (τ=0,5 und asym τ=0,75) < Naive; PICP(95 %) ∈ [90, 98] % |
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
-| **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
+| **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI (noch offen — bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung) + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |
 | **M7** | **Kalibrierungs-Loop nach 4 Wochen Live-Betrieb: Brier-Score + Reliability-Diagramm messen (Werkstatt/Debug), Entscheidungsschwellen §4.1/§4.2 an Trefferquoten anziehen, Kalibrierungs-Gate (§0.4) schalten** | Brier < 0,25 bei ≥ 100 Empfehlungen → P_besser-Anzeige freigeschaltet; Produkt-KPIs (§6) im Ziel oder Schwellen-Nachzug terminiert. **Erst nach M7 gilt das Produkt als „fertig kalibriert“.** |
 

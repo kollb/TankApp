@@ -60,6 +60,25 @@ export type Job = {
   /** Issue 50: letzter übersprungener Trigger („debounced“ | „duplicate“). */
   last_trigger_skip?: string | null;
   error_code: string | null;
+  /** Bereinigte Ursache des letzten Fehlschlags (app/errors.py, ohne Pfade/Token). */
+  error_detail?: string | null;
+};
+/** Letzte Zeilen von `runtime/jobs/<job>.log` (GET /api/v1/jobs/<job>/log). */
+export type JobLog = {
+  job: string;
+  available: boolean;
+  count: number;
+  total: number;
+  lines: string[];
+  updated_at: string | null;
+  error_code?: string | null;
+};
+/** Anzeigenamen der vier NAS-Jobs (wie die Job-Karten im System-Tab). */
+export const JOB_LABELS: Record<string, string> = {
+  archive: "Archiv-Sync",
+  models: "Modell-Update",
+  selection: "Selektion Ranking",
+  settlement: "Beleg-Verarbeitung",
 };
 export type CollectorStatus = {
   available: boolean;
@@ -388,6 +407,26 @@ export type CalibPoint = {
   cls: number;
 };
 
+/**
+ * Bewertete Live-Tage (Übergangsregel) — ausschließlich aus der
+ * Engine-Veröffentlichung (runtime/engine/current.json → policies).
+ *
+ * Die Zahlen zählen vollständige Kalendertage mit Tagesabdeckung ≥ Zielwert
+ * je Station/Kraftstoff; der angebrochene heutige Tag zählt nicht mit.
+ * `as_of` ist der Datenstand des Modell-Laufs, nicht „heute“.
+ */
+export type LivePhase = {
+  as_of: string | null;
+  stations: number;
+  good_complete_days: number;
+  best_complete_days: number;
+  required_complete_days: number;
+  days_missing: number;
+  min_daily_coverage: number | null;
+  live_only_stations: number;
+  complete: boolean;
+};
+
 export type StatsSummary = {
   generated_at: string;
   fuel: Fuel;
@@ -477,6 +516,8 @@ export type StatsSummary = {
       threshold: number;
     };
   };
+  /** null = die Engine hat noch keine Policies publiziert (kein Modell-Lauf). */
+  live_phase: LivePhase | null;
   calibrated: boolean;
   decision_ready: boolean;
   error_code?: string | null;
@@ -573,6 +614,64 @@ export async function postIntent(episodeId: string, intent: string) {
       body: JSON.stringify({ intent }),
     });
     return await res.json();
+  } catch {
+    return { error_code: "request_failed" };
+  }
+}
+
+/** Antwort des Startknopfs: POST /api/v1/jobs/{job}/run (B6, ohne Passwort). */
+export type JobRunResult = {
+  status?: "queued" | "running" | "debounced" | "rejected";
+  job?: string;
+  /** Sekunden bis zum nächsten möglichen Start (nur bei „debounced“). */
+  retry_after?: number;
+  error_code?: string | null;
+};
+export type JobRunNote = { tone: "ok" | "warn" | "error"; text: string };
+
+/** Übersetzt die Start-Antwort ehrlich — „läuft schon“ ist kein Fehler. */
+export function jobRunMessage(result: JobRunResult | null): JobRunNote {
+  if (!result) return { tone: "error", text: "Keine Antwort vom Server." };
+  if (result.error_code === "not_found")
+    return {
+      tone: "error",
+      text: "Start ist hier nicht freigegeben (Hintergrundjobs aus oder abgeschaltet).",
+    };
+  if (result.error_code === "rate_limited")
+    return {
+      tone: "warn",
+      text: "Zu viele Anfragen — kurz warten und erneut versuchen.",
+    };
+  if (result.error_code === "request_failed")
+    return { tone: "error", text: "App-Server nicht erreichbar." };
+  if (result.error_code)
+    return {
+      tone: "error",
+      text: problem(result.error_code) || "Start nicht möglich.",
+    };
+  switch (result.status) {
+    case "queued":
+      return { tone: "ok", text: "Gestartet — der Lauf beginnt sofort." };
+    case "running":
+      return { tone: "ok", text: "Läuft bereits; Fortschritt steht in dieser Karte." };
+    case "debounced":
+      return {
+        tone: "warn",
+        text: `Gerade erst gelaufen — in ${result.retry_after ?? 60} s erneut möglich.`,
+      };
+    default:
+      return { tone: "error", text: "Start abgelehnt." };
+  }
+}
+
+export async function postJobRun(job: string): Promise<JobRunResult> {
+  try {
+    const res = await fetch(`/api/v1/jobs/${job}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return (await res.json()) as JobRunResult;
   } catch {
     return { error_code: "request_failed" };
   }
@@ -1085,4 +1184,111 @@ export function formatHour(h: number | null | undefined) {
   const hour = Math.floor(h);
   const min = Math.round((h - hour) * 60);
   return `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+// Berliner Kalenderdatum (Jahr, Monat, Tag) zu einem Zeitpunkt. Die Live-Tage
+// zählt die Engine in Europe/Berlin — die UI darf dafür nicht die Zeitzone des
+// Browsers benutzen (sonst rutscht das Datum an Randstunden um einen Tag).
+export function berlinDay(ms: number): [number, number, number] | null {
+  if (!Number.isFinite(ms)) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(ms));
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? NaN);
+  const day = [get("year"), get("month"), get("day")];
+  return day.every(Number.isFinite)
+    ? [day[0], day[1], day[2]]
+    : null;
+}
+
+// „Datum des Datenstands + n Tage“ als dd.MM.yyyy. Ohne Datenstand (as_of fehlt)
+// gibt es kein Datum — die UI verspricht dann kein Datum, statt eines zu raten.
+export function dayAfterLabel(days: number, stamp?: string | null): string | null {
+  if (!stamp || !Number.isFinite(days) || days < 0) return null;
+  const day = berlinDay(Date.parse(stamp));
+  if (!day) return null;
+  const ms = Date.UTC(day[0], day[1] - 1, day[2] + days);
+  return utcDayLabel(ms);
+}
+
+// Kalenderblatt dd.MM.yyyy (hier bewusst UTC: der Wert kommt aus dayAfterLabel
+// und ist schon auf einen Berliner Kalendertag gerundet).
+export function utcDayLabel(ms: number): string {
+  return new Intl.DateTimeFormat("de-DE", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(ms));
+}
+
+// Countdown-Zeile für die Kalibrierungs-Freigabe. null = nichts anmerken
+// (keine Daten oder Live-Phase erreicht) — nie „0 von N“ erfinden.
+export function livePhaseCountdown(phase?: LivePhase | null): string | null {
+  if (!phase || phase.complete) return null;
+  const eta = dayAfterLabel(phase.days_missing, phase.as_of);
+  const coverage =
+    phase.min_daily_coverage == null
+      ? ""
+      : ` · Tagesabdeckung ≥ ${Math.round(phase.min_daily_coverage * 100)} %`;
+  const weakest =
+    phase.stations > 1 ? `, schwächste von ${phase.stations} Stationen` : "";
+  return (
+    `Noch ${phase.days_missing} von ${phase.required_complete_days} bewerteten Live-Tagen` +
+    ` (${phase.good_complete_days}/${phase.required_complete_days}${weakest})${coverage}` +
+    (phase.as_of ? ` · Datenstand ${dayLabel(phase.as_of)}` : "") +
+    (eta ? ` · voraussichtlich ab ${eta}` : "")
+  );
+}
+
+// Berliner Kalenderblatt dd.MM.yyyy aus einem Zeitstempel; „—“ ohne Wert.
+export function dayLabel(stamp?: string | null): string {
+  if (!stamp) return "—";
+  const day = berlinDay(Date.parse(stamp));
+  if (!day) return "—";
+  return utcDayLabel(Date.UTC(day[0], day[1] - 1, day[2]));
+}
+
+
+// Hinweis unter Kacheln, die noch keinen Wert zeigen: erklärt den Grund, ohne
+// eine Kalenderzahl vorzugeben, die niemand gemessen hat.
+export function livePhaseHint(phase?: LivePhase | null): string {
+  if (!phase) {
+    return "Noch keine Live-Abdeckungsdaten: Die Zählung vollständiger Live-Tage beginnt mit dem ersten Modell-Lauf der Engine.";
+  }
+  if (phase.complete) {
+    return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
+  }
+  const eta = dayAfterLabel(phase.days_missing, phase.as_of);
+  return (
+    `Wert erscheint, sobald jede Station ${phase.required_complete_days} vollständige ` +
+    `Live-Tage erreicht hat (noch ${phase.days_missing}${
+      eta ? ` · voraussichtlich ab ${eta}` : ""
+    }).`
+  );
+}
+
+// §0.4 ist ein Zähl-Gate, kein Datum: Brier braucht ≥ 100 abgeschlossene
+// Empfehlungen. Die Live-Tage sind nur die Vorbedingung der Übergangsregel.
+export const M7_MIN_RECOMMENDATIONS = 100;
+
+export function brierGateHint(
+  phase: LivePhase | null | undefined,
+  advice?: { n?: number; brier_30d?: number | null } | null,
+): string | null {
+  if (advice?.brier_30d != null) return null;
+  const n = advice?.n ?? 0;
+  const open = `Wert erscheint ab ${M7_MIN_RECOMMENDATIONS} abgeschlossenen Empfehlungen im Live-Ledger (aktuell ${n}).`;
+  if (!phase) {
+    return `${open} Zur Live-Phase liegen noch keine Engine-Daten vor.`;
+  }
+  if (phase.complete) return open;
+  const eta = dayAfterLabel(phase.days_missing, phase.as_of);
+  return `${open} Übergangsregel: noch ${phase.days_missing} vollständige Live-Tage${
+    eta ? ` (frühestens am ${eta})` : ""
+  }.`;
 }

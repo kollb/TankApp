@@ -435,6 +435,101 @@ def test_stats_summary_three_layers(b4_settings):
         thread.join(timeout=2)
 
 
+def test_stats_summary_live_phase_counts_published_policies(b4_settings):
+    """Live-Phase in stats_summary kommt aus den Engine-Policies — nicht aus der GUI.
+
+    Regression: Die Kalibrierungs-Kachel zeigte „Noch 21 von 21 bewerteten
+    Live-Tagen“, obwohl die Engine eine 90-Tage-Übergangsregel zählt und die
+    Oberfläche gar keine Policies hatte. Fehlende Policies müssen fehlende
+    Daten bleiben (null), sonst erfindet die UI einen Countdown (§0.4).
+    """
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": "2026-09-11T01:00:00+00:00",
+                "forecasts": [],
+                "policies": [
+                    {
+                        "city": "Frankfurt",
+                        "station_id": UID,
+                        "fuel": "e10",
+                        "mode": "bootstrap",
+                        "good_complete_live_days": 2,
+                        "required_complete_live_days": 90,
+                        "min_daily_coverage": 0.95,
+                    },
+                    {
+                        "city": "Frankfurt",
+                        "station_id": OTHER,
+                        "fuel": "e10",
+                        "mode": "bootstrap",
+                        # Die schwächste Station entscheidet — hier die bessere.
+                        "good_complete_live_days": 7,
+                        "required_complete_live_days": 90,
+                        "min_daily_coverage": 0.95,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    phase = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})["live_phase"]
+    assert phase["good_complete_days"] == 2
+    assert phase["best_complete_days"] == 7
+    assert phase["required_complete_days"] == 90
+    assert phase["days_missing"] == 88
+    assert phase["stations"] == 2
+    assert phase["live_only_stations"] == 0
+    assert phase["complete"] is False
+    assert phase["as_of"] == "2026-09-11T01:00:00+00:00"
+
+
+def test_stats_summary_live_phase_without_publication(b4_settings):
+    """Ohne Engine-Veröffentlichung ist live_phase null — kein 0-von-N-Countdown."""
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    summary = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})
+    assert summary["live_phase"] is None
+
+
+def test_stats_summary_live_phase_needs_consistent_threshold(b4_settings):
+    """Gemischte Schwellen (andere live_only_days) lassen sich nicht zu einem
+    ehrlichen Nenner verdichten — dann gibt es keine Tageszahl, auch keine halbe."""
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "policies": [
+                    {
+                        "city": "Frankfurt",
+                        "station_id": UID,
+                        "fuel": "e10",
+                        "mode": "bootstrap",
+                        "good_complete_live_days": 2,
+                        "required_complete_live_days": 90,
+                    },
+                    {
+                        "city": "Frankfurt",
+                        "station_id": OTHER,
+                        "fuel": "e10",
+                        "mode": "bootstrap",
+                        "good_complete_live_days": 2,
+                        "required_complete_live_days": 21,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    summary = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})
+    assert summary["live_phase"] is None
+
+
 def test_stats_summary_no_demo_data(b4_settings):
     """Stats Summary darf keine Demo-Daten erfinden, wenn keine Engine läuft.
 
