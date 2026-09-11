@@ -3,7 +3,6 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
-  brierGateHint,
   compressedAxis,
   currentPrice,
   dayAfterLabel,
@@ -14,10 +13,12 @@ import {
   jobRunMessage,
   livePhaseCountdown,
   livePhaseHint,
+  m7GateLine,
   rowOutcome,
   scoreRows,
   segments,
   splitOnGap,
+  transitionRuleLine,
   triggerSkipLabel,
   type Station,
 } from "./data";
@@ -434,13 +435,46 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
   });
 
   it("explains the Brier gate as a count of recommendations, not a date", () => {
-    const hint = brierGateHint(phase, { n: 3, brier_30d: null });
-    expect(hint).toContain("100 abgeschlossenen Empfehlungen");
-    expect(hint).toContain("aktuell 3");
-    expect(hint).toContain("noch 88 vollständige Live-Tage");
-    expect(brierGateHint(null, { n: 3, brier_30d: null })).toContain(
-      "keine Engine-Daten",
+    // Regression: Die Kachel nahm die 90-Tage-Übergangsregel als Nenner der
+    // M7-Freigabe. Bei ~1 Empfehlung/Tag wären 100 Settlements ~100 Tage —
+    // M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (§13).
+    const line = m7GateLine({ n: 3, brier_30d: null });
+    expect(line).toContain("3 von 100 abgeschlossenen Empfehlungen");
+    expect(line).toContain("Brier-Schwelle < 0,25");
+    expect(line).not.toMatch(/Tage|\d{2}\.\d{2}\.\d{4}/);
+  });
+
+  it("takes the gate thresholds from the backend, not from a frontend copy", () => {
+    const line = m7GateLine({
+      n: 12,
+      brier_30d: null,
+      min_recommendations: 25,
+      brier_threshold: 0.2,
+    });
+    expect(line).toContain("12 von 25 abgeschlossenen Empfehlungen");
+    expect(line).toContain("Brier-Schwelle < 0,20");
+  });
+
+  it("reports a measurable Brier against the threshold", () => {
+    expect(m7GateLine({ n: 120, brier_30d: 0.18 })).toContain(
+      "Brier 0,18 (Schwelle < 0,25)",
     );
-    expect(brierGateHint(phase, { n: 120, brier_30d: 0.18 })).toBeNull();
+    expect(m7GateLine({ n: 120, brier_30d: 0.31 })).toContain("Brier 0,31");
+    expect(m7GateLine(null)).toBeNull();
+    expect(m7GateLine(undefined)).toBeNull();
+  });
+
+  it("keeps the 90-day transition rule in its own line", () => {
+    const line = transitionRuleLine(phase);
+    expect(line).toContain("Übergangsregel Datenhygiene");
+    expect(line).toContain("live_only_days");
+    expect(line).toContain("kein Nenner des M7-Gates");
+    expect(line).toContain("Noch 88 von 90 bewerteten Live-Tagen");
+    // Ohne Veröffentlichung bleibt es bei der Aussage, nicht bei einer Zahl.
+    expect(transitionRuleLine(null)).toContain("noch keine Engine-Daten");
+    expect(transitionRuleLine(null)).not.toMatch(/\d+ von \d+/);
+    expect(transitionRuleLine({ ...phase, days_missing: 0, good_complete_days: 90, complete: true })).toContain(
+      "erfüllt",
+    );
   });
 });

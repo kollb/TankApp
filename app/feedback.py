@@ -34,6 +34,17 @@ THETA_CT = 1.0  # 1 ct/L Signifikanzschwelle
 # Laplace-Glättung der internen P-Schätzung (Schrumpfung zu 0,5 bei wenig Daten).
 P_PRIOR_WEIGHT = 10
 
+# M7-Kalibrierungs-Gate (Konzept §0.4, §13): ein **Zähl-Gate** über
+# abgeschlossene Advice-Settlements — keine Kalendergröße. Die 90-Tage-
+# Übergangsregel (engine/bootstrap.py → ``live_only_days``, CLI
+# ``--live-only-days``, Default 90) regelt nur die Datenhygiene
+# Archiv → Live-Polling und ist kein Nenner für M7: bei ~1 Empfehlung/Tag
+# wären 100 Settlements ~100 Tage, M7 soll aber nach ~4 Wochen Live-Betrieb
+# schaltbar sein (§13). Beide Schwellen gehen über ``stats_summary`` an die
+# GUI, damit dort keine zweite Wahrheit entsteht.
+M7_MIN_RECOMMENDATIONS = 100
+M7_BRIER_THRESHOLD = 0.25
+
 _STORE_THREAD_LOCK = threading.Lock()
 
 
@@ -697,6 +708,14 @@ def _legacy_window_over(window_end_hour: Any, clock_now: dt.datetime) -> bool:
     return current_hour >= end + WAIT_SLACK_AFTER_MINUTES / 60.0
 
 
+def _de(value: float) -> str:
+    """Zwei Dezimalstellen in deutscher Schreibweise (0,25 statt 0.25).
+
+    Nur für Anzeigetexte — gerechnet wird weiterhin mit dem Float.
+    """
+    return f"{value:.2f}".replace(".", ",")
+
+
 def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
     """Berechnet Advice-Ledger-KPIs (Brier, Trefferquoten, Reliability).
 
@@ -798,14 +817,29 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # M7 Kalibrierungs-Gate (§0.4, §6): Brier < 0.25 bei n >= 100
-    calibrated = (n >= 100) and (brier_30d is not None and brier_30d < 0.25)
-    if n < 100:
-        gate_status = f"M7-Kalibrierung steht aus (n={n} < 100 Empfehlungen)"
-    elif brier_30d is not None and brier_30d >= 0.25:
-        gate_status = f"M7-Kalibrierung nicht erreicht (Brier {brier_30d:.2f} ≥ 0,25)"
+    # M7 Kalibrierungs-Gate (§0.4, §6): Brier < 0,25 bei n ≥ 100
+    # abgeschlossenen Empfehlungen. Reiner Zählstand — die 90-Tage-
+    # Übergangsregel (live_only_days) ist Datenhygiene und kein Nenner hier.
+    calibrated = (n >= M7_MIN_RECOMMENDATIONS) and (
+        brier_30d is not None and brier_30d < M7_BRIER_THRESHOLD
+    )
+    limit = _de(M7_BRIER_THRESHOLD)
+    if n < M7_MIN_RECOMMENDATIONS:
+        gate_status = (
+            f"M7-Kalibrierung steht aus (n={n} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
+        )
+    elif brier_30d is None:
+        # Zählstand reicht, aber kein Settlement trägt eine P-Schätzung: Der
+        # Score ist nicht messbar. „kalibriert“ wäre erfunden (§0.4).
+        gate_status = (
+            f"M7-Kalibrierung nicht messbar (n={n}, keine P-Schätzung im Ledger)"
+        )
+    elif brier_30d >= M7_BRIER_THRESHOLD:
+        gate_status = (
+            f"M7-Kalibrierung nicht erreicht (Brier {_de(brier_30d)} ≥ {limit})"
+        )
     else:
-        gate_status = f"M7 kalibriert (n={n}, Brier {brier_30d:.2f} < 0,25)"
+        gate_status = f"M7 kalibriert (n={n}, Brier {_de(brier_30d)} < {limit})"
 
     return {
         "n": n,
@@ -827,6 +861,11 @@ def compute_advice_stats(store: dict[str, Any]) -> dict[str, Any]:
         "brier_30d": brier_30d,
         "calibrated": calibrated,
         "gate_status": gate_status,
+        # Schwellen des Zähl-Gates mitliefern: Die GUI zeigt damit „n von 100
+        # Empfehlungen“ aus demselben Wert, an dem auch hier gerechnet wird —
+        # und muss nicht die 90-Tage-Übergangsregel als Nenner missbrauchen.
+        "min_recommendations": M7_MIN_RECOMMENDATIONS,
+        "brier_threshold": M7_BRIER_THRESHOLD,
         "reliability": reliability,
     }
 
