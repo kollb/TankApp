@@ -418,7 +418,7 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   };
 
   return (
-    <div className="overflow-x-auto -mx-1 px-1">
+    <div className="overflow-x-auto">
       <table className="w-full text-center text-[10px] font-mono">
         <thead>
           <tr className="text-slate-500">
@@ -2429,7 +2429,7 @@ export function Dashboard() {
                   Wurde die Empfehlung real belohnt?
                 </h3>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-slate-800 -mx-1">
+              <div className="overflow-x-auto rounded-2xl border border-slate-800">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="bg-slate-900 text-[11px] uppercase tracking-wider text-slate-400">
                     <tr>
@@ -2847,7 +2847,7 @@ export function Dashboard() {
                 </h3>
               </div>
               {selection.data && selection.data.stations.length ? (
-                <div className="overflow-x-auto -mx-1">
+                <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-500">
