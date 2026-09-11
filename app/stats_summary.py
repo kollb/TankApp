@@ -332,6 +332,74 @@ def _quality_metrics_from_publication() -> dict[str, Any]:
     }
 
 
+def _int_or_none(value: Any) -> int | None:
+    """Nicht-negative Ganzzahl aus einem Publikationsfeld; sonst ``None``.
+
+    Ein fehlender Zähler wird zu ``None`` und nicht zu 0: „0 bewertete Tage“
+    wäre eine Aussage, die niemand getroffen hat (§0.4).
+    """
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _live_phase_from_publication() -> dict[str, Any] | None:
+    """Übergangsregel (bewertete Live-Tage) aus der Engine-Veröffentlichung.
+
+    Gezählt wird pro Station/Kraftstoff aus ``runtime/engine/current.json`` →
+    ``policies`` (engine/bootstrap.py): vollständige Kalendertage mit
+    Tagesabdeckung ≥ Zielwert. Der aktuelle (angebrochene) Tag zählt nicht,
+    die Zahl ist also der Datenstand des letzten Modell-Laufs (``as_of``) —
+    kein Browser-Tag und kein Countdown, der von selbst weiterläuft.
+
+    ``None`` wenn nichts publiziert ist: die GUI zeigt dann „noch keine
+    Live-Abdeckungsdaten“ statt einer erfundenen Tageszahl. Die Schwelle
+    kommt aus der Engine (Default 90 Tage), nicht aus der Oberfläche.
+    """
+    pub = _publication_provider() or {}
+    rows = [p for p in (pub.get("policies") or []) if isinstance(p, dict)]
+    if not rows:
+        return None
+    good = [
+        value
+        for value in (_int_or_none(r.get("good_complete_live_days")) for r in rows)
+        if value is not None
+    ]
+    required = {
+        value
+        for value in (_int_or_none(r.get("required_complete_live_days")) for r in rows)
+        if value is not None
+    }
+    # Uneinheitliche Schwellen (gemischte Konfigurationen) lassen sich nicht zu
+    # einem ehrlichen Nenner verdichten — lieber keine Zahl als eine falsche.
+    if not good or len(required) != 1:
+        return None
+    need = required.pop()
+    if need <= 0:
+        return None
+    # Die schwächste Station entscheidet: live_only gilt erst, wenn jede
+    # Station die vollständige Tagesabdeckung erreicht hat.
+    worst = min(good)
+    coverage = {
+        r.get("min_daily_coverage")
+        for r in rows
+        if isinstance(r.get("min_daily_coverage"), (int, float))
+    }
+    return {
+        "as_of": pub.get("published_at"),
+        "stations": len(rows),
+        "good_complete_days": worst,
+        "best_complete_days": max(good),
+        "required_complete_days": need,
+        "days_missing": max(0, need - worst),
+        "min_daily_coverage": min(coverage) if len(coverage) == 1 else None,
+        "live_only_stations": sum(1 for r in rows if r.get("mode") == "live_only"),
+        "complete": worst >= need,
+    }
+
+
 def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
     """Drei-Schichten-Statistik ohne Demo-Daten.
 
@@ -364,6 +432,10 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     # Güte-Kacheln: aus engine/current.json, sonst None
     quality_metrics = _quality_metrics_from_publication()
+    # Live-Abdeckung (Übergangsregel): aus den publizierten Policies, sonst None.
+    # Die GUI darf daraus keinen Kalender-Countdown ableiten, wenn die Engine
+    # nichts geliefert hat — fehlende Daten bleiben fehlende Daten.
+    live_phase = _live_phase_from_publication()
 
     return {
         "generated_at": live_data.clock().isoformat(),
@@ -375,6 +447,7 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "threshold_tuning": tuning,
         "thresholds": thresholds,
         "quality_metrics": quality_metrics,
+        "live_phase": live_phase,
         "calibrated": live_advice.get("calibrated", False),
         "decision_ready": False,
         "error_code": None,
