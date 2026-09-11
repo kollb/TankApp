@@ -300,6 +300,33 @@ def test_nas_container_rejects_host_localhost_url(model_setup, monkeypatch, tmp_
         )
 
 
+def test_nas_up_broken_polling_reports_file_without_touching_docker(
+    model_setup, monkeypatch, tmp_path
+):
+    import app.nas as nas
+
+    monkeypatch.setattr(nas, "ROOT", tmp_path)
+    model_setup.polling.write_text(
+        '{\n  "sets": {\n    "Frankfurt": {\n      "stations": [\n'
+        '        {"uuid": "00000000-0000-0000-0000-000000000001"},\n        '
+    )
+    monkeypatch.setattr(
+        nas.subprocess, "run", lambda *a, **kw: pytest.fail("Docker must not start")
+    )
+    with pytest.raises(ValueError) as excinfo:
+        nas.up(
+            argparse.Namespace(
+                polling=model_setup.polling, influx_env=model_setup.influx_env
+            )
+        )
+    message = str(excinfo.value)
+    assert "Polling-Auswahl" in message
+    assert str(model_setup.polling) in message
+    assert "Zeile 6, Spalte 9" in message
+    # Archive/runtime dirs are created only after the polling check.
+    assert not model_setup.archive.exists() and not model_setup.runtime.exists()
+
+
 @pytest.mark.parametrize("failure", [PermissionError("private-path"), 1])
 def test_scheduler_retries_failed_starts_and_exposes_safe_status(
     tmp_path, monkeypatch, failure

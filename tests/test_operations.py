@@ -12,7 +12,13 @@ from urllib.parse import unquote, urlsplit
 import pytest
 
 import tankapp
-from polling_plan import RequestSchedule, collector_lock, load_plan, validate_sets
+from polling_plan import (
+    RequestSchedule,
+    collector_lock,
+    load_plan,
+    robust_json_load,
+    validate_sets,
+)
 
 
 def uid(number):
@@ -197,6 +203,52 @@ def test_plan_limits_and_city_identity(tmp_path):
     data["sets"]["Gütersloh"]["batch"] = [uid(i) for i in range(10, 21)]
     with pytest.raises(ValueError, match="1–10"):
         validate_sets(data)
+
+
+def test_robust_json_load_reads_utf8_bom_and_legacy_latin1(tmp_path):
+    path = tmp_path / "polling.json"
+    path.write_text(json.dumps(payload(), ensure_ascii=False), encoding="utf-8-sig")
+    assert robust_json_load(path)["sets"]["Gütersloh"]["batch"] == [uid(2)]
+    # Alte latin1/cp1252-Datei (0xfc für ü) bleibt lesbar.
+    legacy = tmp_path / "legacy.json"
+    legacy.write_bytes(
+        ('{"sets": {"G\xfctersloh": {"batch": ["%s"]}}}' % uid(2)).encode("cp1252")
+    )
+    assert "Gütersloh" in robust_json_load(legacy)["sets"]
+
+
+def test_robust_json_load_truncation_error_names_file_and_position(tmp_path):
+    # Datei bricht mitten im stations-Array ab (unterbrochene Übertragung).
+    path = tmp_path / "polling.json"
+    path.write_text(
+        json.dumps(payload(), indent=2, ensure_ascii=False).split('"batch"')[0]
+        + '"stations": [\n        {\n        ',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as excinfo:
+        robust_json_load(path)
+    message = str(excinfo.value)
+    assert str(path) in message
+    assert "Zeile" in message and "Spalte" in message
+    assert "abgeschnitten" in message
+    assert "json.tool" in message
+
+
+def test_robust_json_load_structural_error_points_at_damage(tmp_path):
+    # Überflüssige schließende Klammer nach einem Komma im stations-Array.
+    path = tmp_path / "polling.json"
+    path.write_text(
+        '{\n  "sets": {\n    "X": {\n      "stations": [\n'
+        '        {"uuid": "%s"},\n        ]\n      ]\n    }\n  }\n}' % uid(1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as excinfo:
+        robust_json_load(path)
+    message = str(excinfo.value)
+    assert str(path) in message
+    assert "Zeile 6" in message
+    assert "Klammer" in message
+    assert "^" in message
 
 
 @pytest.fixture

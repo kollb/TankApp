@@ -278,6 +278,22 @@ Nur `--archive-dir`, kein `--runtime-dir`: Runtime bleibt auf SSD, HDD nur Rohar
 
 `nas-up` merkt sich Port in `data/nas-settings.json`. Wer alten Port 8080 hatte: `python3 tankapp.py nas-up --port 1355`
 
+### polling.json beschädigt (`JSON in Zeile …, Spalte … unleserlich`)
+
+`nas-up` liest das Polling-Set, bevor Docker oder Verzeichnisse angefasst werden. Meldet es `Expecting value` mit einer Zeilen-/Spaltenangabe, ist die Datei auf dem NAS selbst kaputt — typischerweise:
+
+- eine beim Kopieren über die SMB-/Unraid-Freigabe **abgeschnittene** Datei (Übertragung/Speichern unterbrochen), oder
+- ein beim manuellen Zusammenführen versetztes Komma / eine zu frühe schließende Klammer `]` bzw. `}`.
+
+Prüfen und reparieren (der genaue Pfad steht in der Fehlermeldung; ohne `--polling` ist es `docs/analysis/stations/polling.json`):
+
+```bash
+python3 -m json.tool docs/analysis/stations/polling.json >/dev/null   # nennt die Schadstelle
+wc -c docs/analysis/stations/polling.json                             # mit dem gültigen Ausgang vergleichen
+```
+
+Danach die Datei unverändert aus einer geprüften Vorlage (z. B. `polling-merged.json` aus dem Checkout, mit den echten privaten Anker-Koordinaten) neu auf das NAS kopieren, erneut mit `json.tool` prüfen und `nas-up` wiederholen. Der Container hängt die Datei nur lesend ein und kann sie nicht beschädigen.
+
 ### Was automatisch läuft
 
 | Aufgabe | Zeitplanung |

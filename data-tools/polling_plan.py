@@ -41,6 +41,79 @@ def validate_sets(payload):
     return sets
 
 
+def _json_syntax_error(path: Path, text: str, exc: json.JSONDecodeError):
+    """JSONDecodeError → ValueError mit Dateiname, Stelle und Handlungsempfehlung."""
+    lines = text.splitlines()
+    bad = lines[exc.lineno - 1] if 0 < exc.lineno <= len(lines) else ""
+    truncated = exc.pos >= len(text.rstrip())
+    diag = [
+        f"{path}: JSON in Zeile {exc.lineno}, Spalte {exc.colno} unleserlich "
+        f"({exc.msg})."
+    ]
+    if bad.strip():
+        diag.append("    " + bad.rstrip())
+        diag.append("    " + " " * max(0, exc.colno - 1) + "^")
+    elif 0 < exc.lineno <= len(lines) + 1:
+        diag.append("    " + " " * max(0, exc.colno - 1) + "^  (Dateiende)")
+    if truncated:
+        diag.append(
+            "Die Datei bricht genau dort ab: ein Kopier-/Speichervorgang wurde "
+            "vermutlich unterbrochen, die Datei ist unvollständig (abgeschnitten)."
+        )
+    else:
+        diag.append(
+            "Vermutlich wurde beim manuellen Bearbeiten/Zusammenführen ein Komma "
+            "oder eine Klammer ([ ] { }) zu viel oder zu wenig gesetzt."
+        )
+    diag.append(
+        f"Vor dem erneuten Aufruf prüfen mit: python3 -m json.tool {path} "
+        "und die Datei danach unverändert aus einer gültigen Vorlage neu kopieren."
+    )
+    return ValueError("\n".join(diag))
+
+
+def robust_json_load(path: Path):
+    """JSON lesen: utf-8(-sig) primär, cp1252/latin1-Fallback für alte Dateien;
+    repariert nebenbei doppelt kodiertes UTF-8 (Mojibake GÃ¼ → Gü).
+    Syntaxfehler werden zu einem ValueError mit Dateiname, Stelle und Tipp."""
+    path = Path(path)
+    raw = path.read_bytes()
+    decoded = None
+    for enc in ("utf-8-sig", "utf-8"):
+        try:
+            decoded = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if decoded is not None:
+        try:
+            return json.loads(decoded)
+        except json.JSONDecodeError as exc:
+            raise _json_syntax_error(path, decoded, exc) from None
+    last_failure = None
+    for enc in ("cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        try:
+            maybe = text.encode(enc).decode("utf-8")
+            if maybe != text:
+                text = maybe
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            last_failure = (text, exc)
+            continue
+    if last_failure is not None:
+        raise _json_syntax_error(path, last_failure[0], last_failure[1]) from None
+    raise ValueError(
+        f"{path}: ungültiges JSON/Encoding (utf-8 erwartet, auch latin1 versucht)"
+    )
+
+
 def load_plan(path: Path, city=None):
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
     sets = validate_sets(payload)
