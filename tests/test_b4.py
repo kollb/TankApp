@@ -237,9 +237,7 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     )
 
     live = LiveData(b4_settings, query=query, clock=lambda: NOW)
-    body = evaluate_decide(
-        live, {"city": "Frankfurt", "fuel": "e10", "liters": 40}
-    )
+    body = evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
 
     # Vor dem M7-Gate bleibt p_correct null — die Verteilungs-P wird aber
     # trotzdem berechnet und gespeichert (Brier braucht sie, um das Gate zu öffnen).

@@ -40,6 +40,7 @@ try:
 except Exception:  # pragma: no cover
     BERLIN_TZ = dt.timezone.utc
 
+
 def _parse_ts(value: Any) -> dt.datetime | None:
     if not value or not isinstance(value, str):
         return None
@@ -117,7 +118,9 @@ def _p_besser_value(
     return p_better(minima, _block_for_window(draws, window_start), anchor, THETA_CT)
 
 
-def _window_p_value(draws: dict[str, Any] | None, window_start: str | None) -> float | None:
+def _window_p_value(
+    draws: dict[str, Any] | None, window_start: str | None
+) -> float | None:
     """F3: ``P(Fenster ≤ Minimum im ±6-h-Umfeld)`` aus den Draws."""
     if not draws or not window_start:
         return None
@@ -298,9 +301,7 @@ def _alternatives(
     """
     alternatives = []
     best = None
-    ref_nowcast = (
-        nowcasts.get(chosen_station["station_id"]) if nowcasts else None
-    )
+    ref_nowcast = nowcasts.get(chosen_station["station_id"]) if nowcasts else None
     for cand in station_list:
         if cand["station_id"] == chosen_station["station_id"]:
             continue
@@ -686,9 +687,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if table_action == "wait":
         p_decision = p_better_own
     elif table_action == "refuel_now":
-        p_decision = (
-            None if p_better_own is None else round(1.0 - p_better_own, 4)
-        )
+        p_decision = None if p_better_own is None else round(1.0 - p_better_own, 4)
     elif table_action == "refuel_elsewhere":
         p_decision = p_better_alt
     else:

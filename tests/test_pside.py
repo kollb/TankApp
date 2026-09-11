@@ -5,8 +5,6 @@ numpy/pandas-Abhängigkeit. Alle P sind relative Häufigkeiten über dieselben
 Draws; ``None`` heißt „keine Aussage“ (keine Draws / kein gestützter Block).
 """
 
-import pytest
-
 from app.pside import p_better, p_lohnt, window_p
 
 
