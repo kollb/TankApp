@@ -22,6 +22,7 @@ gebündelten Befehle aus `tankapp.py`, mit vorhandener Python-Standardbibliothek
 | `tankapp.py add-city` | am einfachsten Pi; NAS/PC möglich | Anker lokal erfassen, Stationsliste nutzen/holen, neues Stadtset vorbereiten, alte Sets erhalten. Kein Preisdownload nötig. |
 | `tankapp.py activate-polling` | Pi, `sudo` | Vorige Auswahl sichern, validierten Vorschlag übernehmen, Collector/Uploader neu starten; Rückfall bei Restartfehler. |
 | `tankapp.py history-sync` | NAS | Ein Jahr Preis-/Stationsarchiv initial laden, vorhandene Dateien überspringen, alle fehlenden Tage nachholen; für cron/Start-Aufgabe. |
+| `data-tools/swap_stations.py` | NAS/PC/Pi | Tote oder sortenlose Stationen aus dem aktiven Polling-Set 1:1 tauschen; Fehler-UUIDs aus `engine/current.json`, Ersatz aus `discover_stations`-Kandidaten; schreibt nur den Vorschlag. Anleitung: [STATIONEN-TAUSCH.md](../docs/STATIONEN-TAUSCH.md). |
 
 Windows ruft `py -3 tankapp.py …` auf, Pi/NAS `python3 tankapp.py …`.
 Keine PC-venv und keine pip-Pakete für diese Abläufe. Schlüssel bleiben in den

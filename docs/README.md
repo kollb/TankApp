@@ -44,6 +44,10 @@
 9. **[Stations-UUID — Gleiche Namen trennen](STATIONS-UUID.md)**  
    Migration von Namens-Serien auf UUID-Tags, Replay mit Zeitzone.
 
+10. **[Stationen im Polling-Set tauschen](STATIONEN-TAUSCH.md)**  
+   Tote oder sortenlose Stationen ersetzen; Ersatzsuche mit Filter, Vorschlag per `swap_stations.py`, Aktivierung auf dem Pi.
+
+9. **Weitere Referenzen (keine Installationspflicht)**
 10. **[Prüfstand — Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten](Prüfstand.md)**  
     Unabhängige Prüfung vom 10.09.2026: Abweichungen, die nicht in LUECKEN stehen, plus offene Code-Aufgaben (§3, §7).
 

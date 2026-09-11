@@ -257,6 +257,18 @@ def brand_key(st: dict) -> str:
     return b or "unbekannt"
 
 
+def history_eligible(hist: dict | None, min_days: int, fuel: str = "any") -> bool:
+    """Eignung fürs Monitoring: genug Tage mit Preis UND der gewünschte
+    Kraftstoff. Eine Station mit 367 Tagen, aber nur `diesel`, ist für ein
+    E10-Set ungeeignet — Tage allein sind kein Eignungsnachweis."""
+    if not hist:
+        return False
+    if hist.get("days", 0) < min_days:
+        return False
+    fuels = hist.get("fuels") or []
+    return fuel == "any" or fuel in fuels
+
+
 def select_polling_set(cands: list[dict], size: int, prefer: set[str]) -> list[dict]:
     """Greedy: erst jede Marke einmal (nach Nähe), dann auffüllen. Kein Duplikat
     derselben Marke, es sei denn, es bleibt nichts anderes."""
@@ -359,6 +371,9 @@ def main() -> int:
     hist.add_argument("--until", default=None, help="Historie-Scan bis Tag")
     hist.add_argument("--min-days", type=int, default=45,
                       help="unter so vielen Tagen mit Preis: nicht ins Monitoring")
+    hist.add_argument("--fuel", choices=("e5", "e10", "diesel", "any"), default="any",
+                      help="Eignung nur, wenn dieser Kraftstoff im Archiv auftaucht "
+                           "(z. B. --fuel e10 für ein E10-Modell-Set; Default: beliebiger)")
     out = ap.add_argument_group("Ausgabe")
     out.add_argument("--out", type=Path, default=Path("docs/analysis/stations"),
                      help="Zielverzeichnis für CSVs/Report")
@@ -466,10 +481,13 @@ def main() -> int:
              "",
              "Auswahlregel: nächster Kandidat je Marke (Zwillinge < "
              f"{args.dedupe_km:g} km zusammengefasst)"
-             + (f", bevorzugte Marken: {', '.join(sorted(prefer))}" if prefer else "")
-             + (" | Eignung: min. "
-                f"{args.min_days} Tage mit Preis in "
-                f"{args.since or 'anfang'}…{args.until or 'ende'}" if args.check_history else ""),
+             + (f", bevorzugte Marken: {', '.join(sorted(prefer))}" if prefer else ""),
+             "",
+             "Eignung: min. "
+             + (f"{args.min_days} Tage mit Preis"
+                + ("" if args.fuel == "any" else f" und Sorte {args.fuel}")
+                + f" in {args.since or 'anfang'}…{args.until or 'ende'}"
+                if args.check_history else "nicht geprüft (--check-history fehlt)"),
              ""]
     pool_all: dict[str, list[dict]] = {}
     for lab, c in all_cands.items():
@@ -480,7 +498,7 @@ def main() -> int:
             if h:
                 s["hist_days"], s["hist_first"], s["hist_last"] = h["days"], h["first"], h["last"]
                 s["hist_fuels"] = "/".join(h["fuels"])
-                s["eligible"] = h["days"] >= args.min_days and bool(h["fuels"])
+                s["eligible"] = history_eligible(h, args.min_days, args.fuel)
         ranked = sorted(cand, key=lambda s: (not s.get("eligible", True), s["dist_km"]))
         poll = select_polling_set(ranked, args.poll_size, prefer)
         polling[lab] = {"label": lab, "lat": round(r["anchor"]["lat"], 5),
