@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -14,6 +14,15 @@ class Config:
     min_slot_days: int = 7
     bootstrap_samples: int = 2000
     seed: int = 42
+    # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2): Stadt-Label ->
+    # ISO-3166-2:DE-Subdiv (z. B. {"Frankfurt": "HE", "Gütersloh": "NW"}).
+    # Ohne Eintrag (oder ohne Paket `holidays`) trägt der Dummy null —
+    # der Effekt wird dann nicht modelliert, nicht geraten.
+    city_subdivs: dict[str, str] = field(default_factory=dict)
+    # Fenster, über das der Feiertagseffekt gepoolt geschätzt wird (Konzept
+    # §3.2: „0–1 Feiertage je 6-Wochen-Fenster wären unidentifizierbar“ —
+    # deshalb nicht das 42-Tage-Trainingsfenster, sondern bis zu einem Jahr).
+    holiday_pool_days: int = 365
     # Exponentiell gewichteter Tagesblock-Bootstrap (Issue 46): neuere
     # Tagesblöcke werden mit höherer Wahrscheinlichkeit gezogen.
     # Halbwertszeit in Tagen (Gewicht halbiert sich je Halbwertszeit);
@@ -28,8 +37,41 @@ class Config:
     # Preis nur noch um 12:00 Uhr erhöhen (Senkungen jederzeit).
     price_law_local: str = "2026-04-01T12:00"
 
+    def __hash__(self):
+        # Das Dict bleibt unhashbar — über den sortierten Inhalt hashen,
+        # damit Config wieder als Schlüssel nutzbar ist (wie vor dem
+        # city_subdivs-Feld).
+        return hash(
+            (
+                self.timezone,
+                self.step_minutes,
+                self.ffill_minutes,
+                self.train_days,
+                self.min_train_days,
+                self.min_slot_days,
+                self.bootstrap_samples,
+                self.seed,
+                tuple(sorted(self.city_subdivs.items())),
+                self.holiday_pool_days,
+                self.bootstrap_ew_half_life_days,
+                self.poll_start,
+                self.poll_end,
+                self.price_law_local,
+            )
+        )
+
     def __post_init__(self):
         ZoneInfo(self.timezone)
+        for name, sub in self.city_subdivs.items():
+            if not name.strip():
+                raise ValueError("city_subdivs: Stadt-Label darf nicht leer sein.")
+            if not (isinstance(sub, str) and len(sub.strip().upper()) == 2):
+                raise ValueError(
+                    f"city_subdivs: '{name}' -> '{sub}' ist kein "
+                    "zweistelliges Bundesland-Kürzel (z. B. HE, BY, NW)."
+                )
+        if not 7 <= self.holiday_pool_days <= 730:
+            raise ValueError("holiday_pool_days muss zwischen 7 und 730 Tagen liegen.")
         parsed = pd.Timestamp(self.price_law_local).tz_localize(self.timezone)
         if pd.isna(parsed):
             raise ValueError(

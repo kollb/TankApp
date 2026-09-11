@@ -11,10 +11,22 @@ import pandas as pd
 
 from .config import Config
 from .data import PriceSeries
+from .holidays import holiday_flags
 
 QUANTILES = (0.025, 0.10, 0.50, 0.90, 0.975)
 Q_COLUMNS = ("q025", "q10", "q50", "q90", "q975")
-SCHEMA_VERSION = 1
+# Schema 2 (Konzept §3.2): X trägt zusätzlich zum Kalender-Satz (12 Spalten)
+# den gepoolten Feiertags-Dummy und die Zeit seit dem letzten Preissprung.
+# beta wächst damit von 12 auf 13 Spalten (Feiertag läuft als eigener,
+# gepoolt geschätzter Koeffizient nebenher); alte Artefakte werden neu gefittet.
+SCHEMA_VERSION = 2
+
+# Sprung-Hazard-Feature: Preissprung = |Δp| ≥ 1 ct zwischen zwei beobachteten
+# Punkten (dieselbe Zählschwelle wie die 12-Uhr-Regel). Die Zeit seit dem
+# letzten Sprung ist auf 168 h gekappt: „länger als 7 Tage (oder im Blickfeld
+# unbekannt)“ ist ein Zustand, kein weiter laufender Zähler.
+JUMP_THRESHOLD_EUR = 0.01
+JUMP_AGE_CAP_HOURS = 168.0
 
 
 def exp_block_weights(n_blocks: int, half_life_days: float | None) -> np.ndarray | None:
@@ -96,6 +108,36 @@ def features(index: pd.DatetimeIndex, cfg: Config) -> np.ndarray:
     after_law = np.asarray(local >= law_since_utc(cfg))
     columns.append(np.asarray(after_law & (local.hour >= 12), dtype=float))
     return np.column_stack(columns)
+
+
+def jump_age_hours(
+    price: pd.Series, threshold: float = JUMP_THRESHOLD_EUR
+) -> np.ndarray:
+    """Stunden seit dem letzten Preissprung je Rasterpunkt (Konzept §3.2).
+
+    Sprung = |Δp| ≥ ``threshold`` (Default 1 ct) zwischen zwei *beobachteten*
+    Punkten; Lücken (NaN) brechen die Kette. Punkte vor dem ersten Sprung —
+    und Punkte, deren letzter Sprung weiter zurückliegt als
+    ``JUMP_AGE_CAP_HOURS`` — tragen den Deckel: „länger als 7 Tage (oder im
+    Blickfeld unbekannt)“ ist ein Zustand, kein unbeschränkter Zähler.
+    """
+    values = price.to_numpy(dtype=float)
+    n = len(values)
+    finite = np.isfinite(values)
+    jump = np.zeros(n, dtype=bool)
+    if n > 1:
+        delta = np.abs(np.diff(values))
+        both = finite[1:] & finite[:-1]
+        jump[1:] = both & (delta >= threshold)
+    positions = np.where(jump, np.arange(n), -1)
+    last = np.maximum.accumulate(positions)
+    has = last >= 0
+    age = np.full(n, JUMP_AGE_CAP_HOURS, dtype=float)
+    if has.any():
+        index = np.asarray(price.index, dtype="datetime64[ns]")
+        elapsed = (index[has] - index[last[has]]) / np.timedelta64(1, "h")
+        age[has] = np.minimum(elapsed, JUMP_AGE_CAP_HOURS)
+    return age
 
 
 def isotonic_decreasing(values: np.ndarray) -> np.ndarray:
@@ -303,9 +345,45 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
             f"{cfg.train_days} Tagen; mindestens {cfg.min_train_days} Tage "
             f"mit {cfg.min_train_days * 24} Punkten erforderlich."
         )
-    x = features(index, cfg)
-    beta = huber_fit(x[valid], price.to_numpy()[valid])
-    residual = price.to_numpy() - x @ beta
+    base = features(index, cfg)
+    jump_train = jump_age_hours(price)
+    x = np.column_stack([base, jump_train])
+    price_values = price.to_numpy()
+    # Gepoolter Feiertags-Dummy (Konzept §3.2): Der Koeffizient kommt aus
+    # einem bis zu einem Jahr breiten Fenster, nicht aus dem 42-Tage-Fit —
+    # 0–1 Feiertage je 6 Wochen wären dort unidentifizierbar. Ohne Subdiv,
+    # ohne Paket oder ohne Feiertag im Pool bleibt der Beitrag ehrlich 0.
+    subdiv = (cfg.city_subdivs or {}).get(series.city)
+    holiday_beta = 0.0
+    holiday_source = "none"
+    holiday_pool_days = 0
+    hol_train, holiday_source = holiday_flags(index, subdiv, cfg.timezone)
+    if holiday_source != "none":
+        pool_start = max(
+            calendar_before(origin, cfg.holiday_pool_days, cfg),
+            series.frame.index.min(),
+        )
+        pool_index = pd.date_range(
+            pool_start, origin, freq=f"{cfg.step_minutes}min", inclusive="left"
+        )
+        pool_frame = series.frame.reindex(pool_index)
+        pool_price = pool_frame.price.to_numpy()
+        pool_valid = pool_frame.price.notna().to_numpy()
+        if pool_valid.sum() >= cfg.min_train_days * 24:
+            hol_pool, _ = holiday_flags(pool_index, subdiv, cfg.timezone)
+            if hol_pool.sum() > 0:
+                x_pool = np.column_stack([features(pool_index, cfg), hol_pool])
+                pool_beta = huber_fit(x_pool[pool_valid], pool_price[pool_valid])
+                holiday_beta = float(pool_beta[12])
+                holiday_pool_days = (
+                    origin.tz_convert(cfg.timezone).normalize()
+                    - pool_start.tz_convert(cfg.timezone).normalize()
+                ).days + 1
+        else:
+            holiday_source = "none"
+    adjusted = price_values - holiday_beta * hol_train
+    beta = huber_fit(x[valid], adjusted[valid])
+    residual = adjusted - x @ beta
     phi = fit_ar2(residual)
     # [epsilon(t-1), epsilon(t-2)] at the forecast origin. No stale carryover.
     state = residual[-2:][::-1] if np.isfinite(residual[-2:]).all() else np.zeros(2)
@@ -374,6 +452,15 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "status_known_fraction": float(frame.loc[price.notna(), "status_known"].mean()),
         "law_rise_outside_noon": int(irregular_rises),
         "beta": beta,
+        # Schema 2 (Konzept §3.2): Feiertagseffekt gepoolt geschätzt (γ),
+        # Sprung-Hazard als Feature (Zeit seit letztem Sprung, gedeckelt).
+        "holiday_beta": holiday_beta,
+        "holiday_subdiv": subdiv.strip().upper() if subdiv else None,
+        "holiday_source": holiday_source,
+        "holiday_pool_days": holiday_pool_days,
+        "jump_age_hours": float(jump_train[-1]) if len(price) else JUMP_AGE_CAP_HOURS,
+        "jump_age_cap_hours": JUMP_AGE_CAP_HOURS,
+        "jump_threshold_eur": JUMP_THRESHOLD_EUR,
         "ar_phi": phi,
         "ar_state": state,
         "residual_blocks": blocks,
@@ -392,10 +479,29 @@ def validate_model(model: dict) -> Config:
     ):
         raise ValueError("Unbekannte Modell-/Artefakt-Version; neu fitten.")
     cfg = Config(**model["config"])
-    for key, shape in (("beta", (12,)), ("ar_phi", (2,)), ("ar_state", (2,))):
+    for key, shape in (("beta", (13,)), ("ar_phi", (2,)), ("ar_state", (2,))):
         value = np.asarray(model[key], dtype=float)
         if value.shape != shape or not np.isfinite(value).all():
             raise ValueError(f"Ungültiger Modellzustand: {key}.")
+    for key in (
+        "holiday_beta",
+        "holiday_subdiv",
+        "holiday_source",
+        "holiday_pool_days",
+        "jump_age_hours",
+        "jump_age_cap_hours",
+        "jump_threshold_eur",
+    ):
+        if key not in model:
+            raise ValueError(
+                f"Modell-Feld '{key}' fehlt — Schema 1-Artefakt, neu fitten."
+            )
+    if not np.isfinite(float(model["holiday_beta"])):
+        raise ValueError("Ungültiger Modellzustand: holiday_beta.")
+    if not np.isfinite(float(model["jump_age_hours"])):
+        raise ValueError("Ungültiger Modellzustand: jump_age_hours.")
+    if not isinstance(model["holiday_source"], str):
+        raise ValueError("Ungültiger Modellzustand: holiday_source.")
     phi = np.asarray(model["ar_phi"], dtype=float)
     if np.max(np.abs(np.roots([1, -phi[0], -phi[1]]))) >= 1:
         raise ValueError("Instabile AR-Koeffizienten im Artefakt.")
@@ -460,11 +566,13 @@ def predict(
         or not index.is_monotonic_increasing
         or not index.is_unique
         or index[0] < origin
-        or index[-1] >= origin + pd.Timedelta(days=7)
+        or index[-1] >= origin + pd.Timedelta(days=8)
         or not index.equals(index.floor(f"{cfg.step_minutes}min"))
     ):
         raise ValueError(
-            "Prognoseraster muss eindeutig, sortiert und innerhalb Cutoff + 7 Tage liegen."
+            "Prognoseraster muss eindeutig, sortiert und innerhalb Cutoff + 8 Tage "
+            "liegen (7-Tage-Horizont plus ein 24-h-Entscheidungsfenster darüber "
+            "für die Mehrtage-Backtests, Konzept §3.4)."
         )
     beta = np.asarray(model["beta"], dtype=float)
     phi = np.asarray(model["ar_phi"], dtype=float)
@@ -477,7 +585,21 @@ def predict(
         following = phi[0] * state[0] + phi[1] * state[1]
         correction[i] = following
         state = [following, state[0]]
-    structure = features(index, cfg) @ beta
+    # Konzept §3.2: Struktur = Kalender (12 Spalten) + Zeit-seit-Sprung +
+    # gepoolter Feiertags-Dummy (γ aus dem Pool-Fenster, hier nur ausgewiesen).
+    # Nach dem Cutoff passiert kein neuer beobachteter Sprung mehr, deshalb
+    # läuft das Sprung-Alter vom Cutoff-Wert weiter (gedeckelt).
+    base = features(index, cfg)
+    jump_forecast = np.minimum(
+        float(model["jump_age_hours"]) + (offsets * cfg.step_minutes / 60.0),
+        float(model.get("jump_age_cap_hours", JUMP_AGE_CAP_HOURS)),
+    )
+    hol_forecast, _ = holiday_flags(index, model.get("holiday_subdiv"), cfg.timezone)
+    structure = (
+        base @ beta[:12]
+        + jump_forecast * beta[12]
+        + float(model["holiday_beta"]) * hol_forecast
+    )
     # Segmentgrenzen des 12-Uhr-Gesetzes einmal je Raster bestimmen (statt
     # je Bootstrap-Pfade erneut) — das war der zeitaufwendige Teil.
     segments = _segment_bounds(index.tz_convert(cfg.timezone))

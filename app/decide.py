@@ -367,12 +367,19 @@ def _table_action(
     p_besser: float | None = None,
     th: dict[str, float] | None = None,
     no_window_reason: str | None = None,
+    quality_gate: str | None = None,
 ) -> tuple[str, str, str]:
     """€/P-Entscheidungstabelle (Konzept §4.1, §4.2, §4.4, Auswertung §4.5).
 
     Gibt (action, confidence_badge, reason_short) zurück. Die Aktion wird
     immer in den Advice-Ledger geschrieben (Shadow-Betrieb ab Tag 1);
     angezeigt wird sie erst nach dem M7-Gate.
+
+    Auswertungsreihenfolge (§4.5): Schritt 1 ist das **Güte-Gate** —
+    ``quality_gate`` ist gesetzt, wenn der Rolling-PICP der Station rot ist
+    (Konzept §3.3.3/§4.4: „Keine klare Empfehlung — tank nach Bedarf“).
+    Dann läuft keine F1/F2-Empfehlung, egal wie gut die €-Seite aussieht:
+    eine unzuverlässige Intervallqualität rechtfertigt keine Präzision.
 
     Die Prozent-Gates rechnen mit der **Prognoseverteilung**, nicht mit einer
     Ledger-Trefferquote: ``p_besser`` (§4.1) und, am F2-Zweig,
@@ -384,6 +391,15 @@ def _table_action(
     einer Config“; M7 zieht sie an gemessene Trefferquoten nach, §13).
     """
     th = th or DEFAULT_THRESHOLDS
+    # Güte-Gate (§4.5 Schritt 1, §4.4): Rot im Rolling-PICP → keine Ampel,
+    # kein Prozentwert, keine €-Rechnung als Empfehlung.
+    if quality_gate is not None:
+        return (
+            "no_advice",
+            "low",
+            "Keine klare Empfehlung — Prognose derzeit unsicher "
+            "(7-Tage-Intervallquote außerhalb Toleranz). Tank nach Bedarf.",
+        )
     if anchor is None:
         return (
             "no_advice",
@@ -673,6 +689,12 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if horizon_cut
         else None
     )
+    # Güte-Gate (§4.5 Schritt 1): Rolling-PICP 7 d der ausgewählten Station
+    # (Konzept §3.3.3). Nur „red“ greift; ohne veröffentlichte Zahl bleibt
+    # das Gate ehrlich aus — nicht belegt ist keine Aussage.
+    rolling = (forecast_data.get("rolling_picp_7d") or {}).get("current") or {}
+    rolling_badge = rolling.get("badge")
+    quality_gate = "picp" if rolling_badge == "red" else None
     table_action, badge, reason = _table_action(
         anchor,
         expected_price_later,
@@ -681,6 +703,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         p_better_own,
         thresholds,
         no_window_reason,
+        quality_gate,
     )
     # Die P, die zum Settlement-Ereignis passt (§5.2): wait → P(min ≤ p−θ),
     # refuel_now → 1 − P(min ≤ p−θ), refuel_elsewhere → P(Alt-Fenster ≤ p−θ).
@@ -810,6 +833,18 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         },
         "calibrated": is_calibrated,
         "decision_ready": False,
+        # Engine-Qualität der ausgewählten Station (Konzept §3.3.3):
+        # Rolling-PICP 7 d aus dem 21-Tage-Backtest. „gate“ ist gesetzt,
+        # wenn das Güte-Gate (§4.4/§4.5 Schritt 1) die Empfehlung blockiert.
+        "quality": {
+            "rolling_picp_7d_pct": rolling.get("picp_pct"),
+            "rolling_picp_7d_points": rolling.get("points"),
+            "rolling_picp_7d_badge": rolling_badge,
+            "rolling_picp_7d_as_of": rolling.get("day"),
+            "rolling_picp_window_days": 7,
+            "rolling_picp_nominal_pct": 95.0,
+            "gate": quality_gate,
+        },
         "context": {
             "fuel": fuel,
             "city": station_city,

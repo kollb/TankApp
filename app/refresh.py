@@ -11,6 +11,11 @@ from .data import metadata, publication
 # Aufgaben je Station: Fit+24 h, +3 d, +7 d, Backtest (siehe app/model_jobs.py).
 TASKS_PER_STATION = 4
 
+# Prüfstand §1.3: Der NAS-Job fährt den 21-Tage-Backtest, damit das
+# Kriterium `at_least_21_complete_test_days_per_station` aus dem
+# automatischen Lauf erfüllbar ist (bei 7 Tagen war es strukturell offen).
+BACKTEST_DAYS = 21
+
 
 def refresh(settings: Settings, now=None, progress=None):
     # Heavy numerical dependencies are confined to this worker, not the live API.
@@ -30,7 +35,9 @@ def refresh(settings: Settings, now=None, progress=None):
         if progress:
             progress.finish("waiting", error or "influx_not_configured")
         return {"state": "waiting", "error_code": error or "influx_not_configured"}
-    cfg = Config()
+    # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
+    # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
+    cfg = Config(city_subdivs=dict(getattr(settings, "city_subdivs", {})))
     origin = (
         (pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC"))
         .tz_convert("UTC")
@@ -248,7 +255,7 @@ def refresh(settings: Settings, now=None, progress=None):
                     [
                         ("wide", identity, 72),
                         ("wide", identity, 168),
-                        ("backtest", identity, 7),
+                        ("backtest", identity, BACKTEST_DAYS),
                     ]
                 )
             second = run_tasks(
@@ -309,8 +316,16 @@ def refresh(settings: Settings, now=None, progress=None):
                         "draws_24h": fitted[identity].get("draws") or {},
                         "draws_7d": draws_wide.get(168) or {},
                         "metrics": report.get("metrics"),
-                        "backtest_days": 7,
+                        "backtest_days": BACKTEST_DAYS,
                         "train_days": cfg.train_days,
+                        # Rolling-PICP 7 d je Station (Konzept §3.3.3):
+                        # Konfidenz-Badge + letzte 7 Testtage; „current“ ist
+                        # die Zahl fürs Güte-Gate (§4.4) in /v1/decide.
+                        "rolling_picp_7d": report.get("rolling_picp_7d"),
+                        # Mehrtage-Horizonte +3 d/+7 d (Konzept §3.4):
+                        # MASE/PICP der Fan-Chart-Horizonte, ehrlich
+                        # ausgewiesen (kein M3-Kriterium).
+                        "horizons": report.get("horizons") or {},
                         "decision_rows": [
                             row
                             for row in report.get("decision_rows", [])

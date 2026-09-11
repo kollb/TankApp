@@ -60,6 +60,18 @@ py -3 -m pip install -r engine/requirements.txt
 py -3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling docs/analysis/stations/polling.json
 ```
 
+Zielsystem ist das **Linux-NAS** (und jedes Linux/PC-Entwicklungssystem):
+dort lauten dieselben Befehle `python3` mit Schrägstrichen —
+
+```bash
+python3 -m pip install -r engine/requirements.txt
+python3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling docs/analysis/stations/polling.json
+```
+
+Die weiteren `py -3`-Befehle dieses Dokuments sind Windows-PC-Schreibweise
+(optionaler schneller Rechenweg); jede Zeile läuft auf Linux als
+`python3 <dieselbe Aufrufzeile>` ohne `py -3`-Prefix.
+
 Ohne Live-Export nur die vorhandenen Archiv-CSVs angeben. Zum Nachweis von 90
 Tagen mindestens diesen Zeitraum exportieren; der Exporter-Default von 70 Tagen
 reicht dafür nicht. Beispielsweise mit `--since` einen Zeitpunkt 120 Tage vor
@@ -558,7 +570,17 @@ verworfen und gezählt, nicht erfunden.
 lokalen Tag im Poll-Fenster 06–24 Uhr auf gemeinsamer Datenbasis mit der saisonalen
 Naiven. Engine-Forward-Fill wird nicht als Testbeobachtung gezählt. MASE nutzt nur
 die saisonale Fehlerskala aus dem Training und ist bei konstanten Reihen undefiniert.
-Ein exakter Einzelpunkt-Test bei +24 h und weitere Horizonte sind gesondert offen.
+Zusätzlich bewertet der Report die **Mehrtage-Horizonte** (+3 d/+7 d: 24-h-Fenster
+am Horizontbeginn, `horizons`) und das **Rolling-PICP 7 d je Station** mit
+Konfidenz-Badge (grün ≥ 93 %, gelb ≥ 90 %, rot < 90 %, nominal 95 %;
+weniger als 72 Punkte im Fenster = keine Aussage) — Grundlage des Güte-Gates
+in der Entscheidung (Konzept §3.3.3/§3.4/§4.4).
+
+**Feiertags-Dummy (§3.2):** Mit `--city-subdivs "Frankfurt:HE;Gütersloh:NW"`
+bekommt das Strukturmodell den gepoolten Feiertags-Dummy je Bundesland
+(Paket `holidays` aus `engine/requirements.txt`); ohne Angabe trägt der
+Dummy null. Der Koeffizient wird aus bis zu 365 Tagen geschätzt
+(`holiday_pool_days`), nicht aus dem 42-Tage-Fenster.
 
 **Gate-Metriken (Schwellen, Issue 47):** MASE und PICP95 bleiben; ergänzt um
 asymmetrischen Pinball-Loss τ=0,75 — Unterschätzung des Preises (tatsächlich
@@ -711,11 +733,15 @@ Analyse-CSVs aus §3, nicht direkt diese JSONL-Datei.
 ## Noch offen in M3
 
 1. Zweitmodell (ETS/Local-Level) und inverse-MASE-Ensemble aus vorangehenden Tests.
-2. Gepoolte Feiertagseffekte und Sprungzustand im Strukturmodell.
-3. CUSUM-Sprungtage, gesonderte MASE <0,80 an sprungfreien Tagen.
-4. Out-of-sample-Intervallkalibrierung / ACI nach ausreichender Live-Historie.
-5. Echt-Daten-Abnahme: MASE <0,95 gesamt, Pinball (τ=0,5 und asym τ=0,75)
+2. CUSUM-Sprungtage, gesonderte MASE <0,80 an sprungfreien Tagen.
+3. Out-of-sample-Intervallkalibrierung / ACI nach ausreichender Live-Historie.
+4. Echt-Daten-Abnahme: MASE <0,95 gesamt, Pinball (τ=0,5 und asym τ=0,75)
    besser als Naive, PICP 95 % zwischen 90–98 %. Keine alten Demo-Messwerte
    übernehmen.
+
+*(Geschlossen 11.09.2026: gepoolter Feiertags-Dummy je Bundesland und
+Sprung-Hazard im Strukturmodell (§3.2); Hampel-Filter (§3.1);
+Mehrtage-Backtests +3 d/+7 d und Rolling-PICP 7 d mit Badge (§3.3.3/§3.4);
+NAS-Job Backtest 21 d statt 7 d.)*
 
 </details>

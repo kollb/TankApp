@@ -10,7 +10,9 @@ Aufteilung (je Station ein Bündel unabhängiger Aufgaben):
 
 - ``fit``: Fit + 24-h-Prognose (liefert das Modell für die Veröffentlichung)
 - ``wide``: +3 d und +7 d Ausblick für die Werkstatt
-- ``backtest``: 7-Tage-Rolling-Origin-Backtest
+- ``backtest``: 21-Tage-Rolling-Origin-Backtest (Prüfstand §1.3: nur so
+  kann das 21-Tage-Gate aus dem automatischen Lauf erfüllt werden; liefert
+  zusätzlich Rolling-PICP 7 d je Station und die Mehrtage-Horizonte +3 d/+7 d)
 
 Die Aufgaben laufen in einem ``ProcessPoolExecutor``. Fällt der Pool aus
 (eingeschränktes /dev/shm, keine Prozesse erlaubt), rechnet derselbe Code
@@ -115,11 +117,17 @@ def _run(task: tuple) -> dict[str, Any]:
         model = fit(item, origin, cfg)
         if kind == "backtest":
             report, _ = run_backtest([item], cfg, days=hours)
+            # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag —
+            # das Güte-Gate in /v1/decide braucht die aktuelle Zahl der
+            # ausgewählten Station, nicht die aller anderen.
+            rolling = report.get("rolling_picp_7d") or []
             out.update(
                 ok=True,
                 metrics=report.get("metrics"),
                 decision_rows=list(report.get("decision", {}).get("rows", [])),
                 decision_hour=report.get("decision", {}).get("decision_hour", 8),
+                rolling_picp_7d=rolling[0] if rolling else None,
+                horizons=report.get("horizons") or {},
                 model=model,
             )
             return out

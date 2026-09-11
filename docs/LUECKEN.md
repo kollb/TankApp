@@ -18,6 +18,40 @@
 > `Retry-After`, 501 als JSON, Asset-Caching, Preflight-Stationszahl und
 > `python -m engine.cli`.
 >
+> **Update 11.09.2026 (abends) — Engine-Aufbau, Güte-Gate, Umweg-Konvention (Prüfstand §1.3/§1.5, §3.1–3.4):**
+> - **Hampel-Filter** (§3.1 Schritt 3) in `engine/data.py`: ± 1 h, Median ±
+>   5·MAD mit 1-ct-Boden und Isolations-Prüfung — entfernt nur isolierte
+>   Einzel-Poll-Artefakte, behält persistente Sprünge und die Tageskurve;
+>   Zähler in `describe()` (`hampel_removed_points`).
+> - **Strukturmodell X** (§3.2): gepoolter **Feiertags-Dummy je Bundesland**
+>   (`engine/holidays.py`, Paket `holidays` optional — ohne Subdiv/Paket
+>   trägt er ehrlich null; Koeffizient aus bis zu 365 d, nicht aus dem
+>   42-d-Fenster, wo 0–1 Feiertage unidentifizierbar wären) und
+>   **Zeit-seit-letztem-Preissprung** als Feature (Sprung ≥ 1 ct, auf 168 h
+>   gedeckelt). Modell-Schema 2, alte Artefakte werden beim nächsten Lauf
+>   neu gefittet.
+> - **Rolling-PICP 7 d je Station** (§3.3.3) im Backtest: Badge grün ≥ 93 %,
+>   gelb ≥ 90 %, rot < 90 % (nominal 95 %, < 72 Punkte = keine Aussage),
+>   publiziert in `current.json` (`rolling_picp_7d`), als `quality`-Feld in
+>   `/v1/decide` und als Intervall-Kachel-Zeile in der Startkarte.
+> - **Güte-Gate** (§4.4/§4.5 Schritt 1): Rot im Rolling-PICP der
+>   ausgewählten Station → `no_advice` „Keine klare Empfehlung — Prognose
+>   derzeit unsicher …“ *vor* F2/F1.
+> - **Mehrtage-Backtests** (§3.4): +3 d und +7 d (24-h-Fenster am
+>   Horizontbeginn) werden im Backtest gegen beobachtete Preise bewertet
+>   (`horizons` im Report + Markdown); ehrlich ausgewiesen, kein
+>   M3-Abnahmekriterium.
+> - **NAS-Job Backtest 7 d → 21 d** (`app/refresh.py`): das
+>   21-Tage-Gate `at_least_21_complete_test_days_per_station` ist damit aus
+>   dem automatischen Lauf erfüllbar (Prüfstand §1.3).
+> - **Umweg-Konvention vereinheitlicht** (Prüfstand §1.5): Die GUI rechnet
+>   und schickt Luftlinie × 1,3 (dieselbe Größe wie `route.py`/`decide.py`
+>   ableiten) statt × 1,0; GUI-Texte angepasst.
+> - **GUI aufgeräumt**: toter Paarvergleich-Prototypcode mit erfundenen
+>   Preisen (1,70/1,66 €/L) entfernt — die Umweg-Ökonomie läuft im
+>   Alltags-Panel und in `/api/v1/route/evaluate` (§8.2 Nr. 5, „bewusst
+>   offen“).
+>
 > **Update 11.09.2026 (nachmittags) — P-Seite aus der Prognoseverteilung (§4.1–4.3):**
 > Die Bootstrap-Pfade werden jetzt im Worker zu **2-h-Fenster-Minima je Draw
 > und Nowcast-Draws** reduziert und im Artefakt veröffentlicht
@@ -95,12 +129,12 @@
 | 0.1–0.3 | Drei Fragen, zwei Modi, eine Zahl |fertig (Alltag/Werkstatt-Tabs, Ampelkarte) |
 | 0.4 | Kalibrierungs-Gate (Brier < 0,25, n ≥ 100) |fertig als hartes Gate; offen bis echte Daten (M7) |
 | 1 | Tankerkönig-Collector, tmpfs, Upload |fertig (M1) |
-| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10); **Abweichung**: GUI sortiert nach δ̂-Score, Konzept §2/§8.2 Nr. 7 verlangt Sortierung nach Empfehlungsstärke ([Prüfstand §1.2](Prüfstand.md)) |
-| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **offen**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy, Zeit-seit-Sprung-Feature, M3-Zweitmodell/Ensemble ([Prüfstand §1.3](Prüfstand.md)) |
-| 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
-| 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; Mehrtage-Backtests offen |
+| 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10); **dokumentierte Abweichung** (Stand 10.09.2026, Konzept §8.2 Nr. 7): die Werkstatt-Ansicht ist ein Analyse-Werkzeug und sortiert nach δ̂; Sortierung nach aktueller Empfehlungsstärke bleibt das Zielbild für die Alltags-Ansicht ([Prüfstand §1.2](Prüfstand.md)) |
+| 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **fertig**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy je Bundesland + Zeit-seit-letztem-Sprung als Feature (§3.2, Update 11.09.2026 abends); **offen**: M3-Zweitmodell/Ensemble (Echt-Daten-Abnahme) |
+| 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **fertig**: 7-Tage-Rolling-PICP je Station als Konfidenz-Badge (§3.3.3, Update 11.09.2026 abends); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
+| 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; **fertig**: Mehrtage-Backtests +3 d/+7 d im Rolling-Origin-Backtest (Update 11.09.2026 abends) |
 | 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite jetzt aus der Prognoseverteilung**: `p_besser` = P(min ≤ p−1 ct) aus den Draws (F1-Gate + Brier), `p_lohnt` je F2-Zeile, F3-Fenster-P je Fenster. **Abweichung**: gemeinsame Ziehung über Stationen (§4.2) offen — `p_lohnt` nutzt unabhängige Nowcast-Draws (siehe „Bewusst offen“) |
-| 4.4 | „Keine klare Empfehlung“ |fertig |
+| 4.4 | „Keine klare Empfehlung“ |fertig (Grauzone P_besser ∈ [40, 60] % aus den Draws); **fertig**: Güte-Gate als Auswertungsschritt 1 (§4.5) — Rolling-PICP rot → „Keine klare Empfehlung“ ohne Ampel/Prozent (Update 11.09.2026 abends) |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig |
 | 5.4 | Drei Uhren, Episode, Slack-Matching, Due-Prompt |fertig; **Offline-Queue für Fill/Intent offen** (P2) |
@@ -109,9 +143,9 @@
 | 7 | Polling-Fenster 06–24 |fertig |
 | 8.1 | Alltag: Ampel, Alternativen, Tagesstreifen, What-If |fertig |
 | 8.2 Nr. 1–4, 6–9 | Werkstatt: Regel/ε, Scoreboard, Kalibrierung, Stations-Labor, Fan-Chart/Heatmaps, Meine Stationen, System-Status, API-Explorer |fertig (System-Status jetzt mit Fortschritt) |
-| 8.2 Nr. 5 | Paarvergleich als Werkstatt-Werkzeug |teilweise: die Umweg-Rechnung liegt im Alltag („Rechnet sich der Umweg?“) und serverseitig in `/api/v1/route/evaluate`; ein zweites Panel in der Werkstatt wäre Duplikat |
+| 8.2 Nr. 5 | Paarvergleich als Werkstatt-Werkzeug |bewusst kein zweites Panel: die Umweg-Rechnung liegt im Alltag („Rechnet sich der Umweg?“) und serverseitig in `/api/v1/route/evaluate`; ein zweites Panel wäre Duplikat. Der tote Prototypcode mit erfundenen Preisen (1,70/1,66 €/L) ist entfernt (Update 11.09.2026 abends) |
 | 9 | Pi ↔ NAS, Archiv, Jobs |fertig + Job-Fortschritt (B5) |
-| 10 | Umweg-Ökonomie, Zeitwert, Rushhour |fertig; E5↔E10-Äquivalenz nur als Hinweis, nicht im Ranking |
+| 10 | Umweg-Ökonomie, Zeitwert, Rushhour |fertig; E5↔E10-Äquivalenz nur als Hinweis, nicht im Ranking; **Konvention vereinheitlicht**: GUI rechnet und schickt Luftlinie × 1,3 wie Server und Selektion (Prüfstand §1.5, Update 11.09.2026 abends) |
 | 11.1 | `/v1/decide` inkl. `lat`/`lon`, `latest_by`, `home_*` |fertig außer Standortwahl per `lat`/`lon` (App arbeitet mit dem Polling-Set) |
 | 11.2 | Intent, Fills, Settlement |fertig |
 | 11.3 | Detail-Endpunkte + Deprecation |fertig (B5) |
@@ -173,3 +207,9 @@ Gemessen auf 8 Test-Stationen, 70 Tage Verlauf, 2 CPU-Kerne
 
 Die Zahlen sind Messwerte einer Testreihe, keine Zusage für den echten
 Bestand; entscheidend ist der Faktor, nicht der Absolutwert.
+
+Seit 11.09.2026 (abends) fährt der NAS-Job den **21-Tage-Backtest** (statt
+7 Tagen) plus die Mehrtage-Horizonte — der Backtest-Schritt dauert damit
+etwa 3–4× so lange (auf der Messmaschine: ~20 s statt 6,4 s je Station
+seriell, B = 2000). Der Gesamtlauf bleibt im einstelligen Minutenbereich
+und der Modell-Job läuft nachts ([Betrieb](BETRIEB.md)).

@@ -130,6 +130,44 @@ def load_observations(
     return normalize_observations(pd.concat(chunks, ignore_index=True), cfg)
 
 
+# Hampel-Filter (Konzept §3.1 Schritt 3): ±60 min auf dem 5-Minuten-Raster
+# (25 Punkte), Schranke max(5 · 1,4826 · MAD, 1 ct). Zwei Schutzstufen:
+# - Der 1-ct-Boden: bei flachem Fenster (MAD → 0) fällt nur, was über einer
+#   ganzen Cent-Abweichung liegt — Rauschen und die glatte Tageskurve bleiben.
+# - Isolation: entfernt wird nur der *einzelne* Punkt, dessen direkte
+#   Nachbarn innerhalb der Schranke bleiben. Echte Preissprünge persistieren
+#   (Nachbarn weichen ebenso ab) und bleiben; ein API-Artefakt (Einzel-Poll
+#   mit falscher Dezimalstelle) reitet im nächsten Poll zurück und wird als
+#   isoliert erkannt. Ohne Isolation würde der Filter auch Ecken der
+#   Tageskurve oder Sprungstellen löschen.
+HAMPEL_WINDOW_POINTS = 25
+HAMPEL_ABS_FLOOR_EUR = 0.01
+
+
+def hampel_mask(price: pd.Series) -> tuple[pd.Series, int]:
+    """0/1-Maske: 1, wenn der Punkt ein plausibles API-Artefakt ist.
+
+    Rechnet über die beobachteten Preise (NaN = geschlossen/fehlt und bricht
+    das Fenster nicht, liefert aber auch keine Schranke). Weniger als 3
+    unterstützte Punkte im Fenster → keine Robuststatistik, kein Flag.
+    """
+    median = price.rolling(HAMPEL_WINDOW_POINTS, center=True, min_periods=3).median()
+    mad = (
+        (price - median)
+        .abs()
+        .rolling(HAMPEL_WINDOW_POINTS, center=True, min_periods=3)
+        .median()
+    )
+    bound = np.maximum(5 * 1.4826 * mad, HAMPEL_ABS_FLOOR_EUR)
+    deviation = (price - median).abs()
+    deviated = (price.notna() & median.notna() & (deviation > bound)).fillna(False)
+    neighbor = deviated.shift(1, fill_value=False) | deviated.shift(
+        -1, fill_value=False
+    )
+    masked = deviated & ~neighbor
+    return masked, int(masked.sum())
+
+
 @dataclass
 class PriceSeries:
     city: str
@@ -137,6 +175,7 @@ class PriceSeries:
     station_name: str
     fuel: str
     frame: pd.DataFrame
+    hampel_removed: int = 0
 
     def identity(self) -> dict:
         return {
@@ -158,6 +197,12 @@ def prepare_series(observations: pd.DataFrame, cfg: Config) -> list[PriceSeries]
         group = group.drop_duplicates("available_at", keep="last").set_index(
             "available_at"
         )
+        # Hampel-Filter (Konzept §3.1 Schritt 3): gegen API-Artefakte *vor*
+        # Raster/FFill — ein Artefakt-Preis darf nicht gefillt oder gefittet
+        # werden. Entfernte Preise fallen aus; frische Nachbarn übernehmen
+        # über den bestehenden FFill, weiter entfernt wird es ehrlich stale.
+        artifact, removed = hampel_mask(group.price)
+        group["price"] = group.price.mask(artifact)
         grid = pd.date_range(
             group.index.min(), group.index.max(), freq=f"{cfg.step_minutes}min"
         )
@@ -180,7 +225,7 @@ def prepare_series(observations: pd.DataFrame, cfg: Config) -> list[PriceSeries]
             index=grid,
         )
         frame.index.name = "timestamp"
-        result.append(PriceSeries(city, station_id, name, fuel, frame))
+        result.append(PriceSeries(city, station_id, name, fuel, frame, removed))
     return result
 
 
@@ -204,6 +249,8 @@ def describe(series: PriceSeries, cfg: Config) -> dict:
         ),
         "observed_prices": int(frame.observed.sum()),
         "filled_prices": int((frame.price.notna() & ~frame.observed).sum()),
+        # Konzept §3.1 Schritt 3: vom Hampel-Filter entfernte Artefakt-Preise.
+        "hampel_removed_points": int(series.hampel_removed),
         "scheduled_buckets": len(active),
         "response_coverage_pct": 100 * float(active.response_observed.mean())
         if len(active)
