@@ -313,26 +313,25 @@ function ApiExplorer({
       ]
     : [];
   const endpoints = [
-    { label: "Systemstatus", path: "/api/v1/health" },
+    { label: "health", path: "/api/v1/health" },
     {
-      label: "Decide (Kauf-Empfehlung)",
+      label: "decide",
       path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
     },
     {
-      label: "Stats Summary (Übersicht aller 3 Layer)",
+      label: "stats/summary",
       path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
     },
-    { label: "Fällige Einträge (Episodes due)", path: "/api/v1/episodes?status=due" },
-    { label: `Stationen (${fuel.toUpperCase()})`, path: `/api/v1/stations?fuel=${fuel}` },
-    { label: `Meine Stationen (${fuel.toUpperCase()})`, path: `/api/v1/selection?fuel=${fuel}` },
-    { label: "Collector Livestatus", path: "/api/v1/collector/status" },
-    { label: "Letzte Forecasts", path: "/api/v1/last_forecasts" },
-    { label: "Day Series (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
+    { label: "episodes?due", path: "/api/v1/episodes?status=due" },
+    { label: `stations ${fuel}`, path: `/api/v1/stations?fuel=${fuel}` },
+    { label: `selection ${fuel}`, path: `/api/v1/selection?fuel=${fuel}` },
+    { label: "collector/status", path: "/api/v1/collector/status" },
+    { label: "last_forecasts", path: "/api/v1/last_forecasts" },
+    { label: "day (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
     {
-      label: "Route Evaluate (serverseitig, deprecated → decide)",
+      label: "route/evaluate (deprecated)",
       path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
     },
-    { label: "Fills (GET nicht erlaubt – POST /api/v1/fills)", path: "/api/v1/fills" },
     ...dynamic,
   ];
   const run = async (target: string) => {
