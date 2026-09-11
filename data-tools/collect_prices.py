@@ -49,6 +49,7 @@ import os
 import re
 import sys
 import time
+import uuid as uuidlib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,6 +78,17 @@ UUID_RE = re.compile(
 
 def is_uuid(value: str) -> bool:
     return bool(value) and UUID_RE.match(value) is not None
+
+
+def tankerkoenig_id(value: str) -> bool:
+    """Kanonische UUID, die prices.php nicht sofort als Formatfehler abweist."""
+    if not is_uuid(value):
+        return False
+    try:
+        parsed = uuidlib.UUID(value)
+    except ValueError:
+        return False
+    return str(parsed) == value.lower()
 
 
 def mask_key(key: str) -> str:
@@ -177,11 +189,24 @@ def fetch_prices(api_key: str, ids: list[str], timeout: int = 30) -> dict:
     return payload.get("prices") or {}
 
 
+def request_ids(ids: list[str]) -> tuple[list[str], list[str]]:
+    """Teilt Batch in API-taugliche IDs und übersprungene (kein Extra-Request)."""
+    usable, skipped = [], []
+    for uid in ids:
+        (usable if tankerkoenig_id(uid) else skipped).append(uid)
+    return usable, skipped
+
+
 def normalize(raw_prices: dict, ids: list[str]) -> dict:
     """API-Rohantwort -> kompakten Snapshot je Station (§1.2 Fallstricke)."""
+    by_lower = {
+        str(key).lower(): rec
+        for key, rec in (raw_prices or {}).items()
+        if isinstance(key, str)
+    }
     out: dict[str, dict] = {}
     for uid in ids:
-        st = raw_prices.get(uid) or {}
+        st = raw_prices.get(uid) or by_lower.get(uid.lower()) or {}
         status = st.get("status") or "no prices"
         rec: dict = {"status": status}
         if status == "open":
@@ -549,7 +574,17 @@ def collect(args):
                 raw = demo_prices(ids, stations, args.fuel)
                 prices = raw
             else:
-                prices = normalize(fetch_prices(api_key, ids), ids)
+                usable, skipped = request_ids(ids)
+                if skipped:
+                    log(
+                        f"⚠ {len(skipped)} UUID(s) in {stset.get('label')!r} nicht RFC-4122 — "
+                        "nicht mitgeschickt, sonst scheitert der ganze Stadt-Poll."
+                    )
+                if not usable:
+                    raise RuntimeError(
+                        "Keine API-taugliche UUID in diesem Stadtset — Poll übersprungen."
+                    )
+                prices = normalize(fetch_prices(api_key, usable), ids)
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 log(f"429 (Kontingent) — {BACKOFF_429_S} s Backoff.")
@@ -624,7 +659,8 @@ def collect(args):
         print_table(snap, stset, args.fuel)
         if args.once:
             return 0
-        time.sleep(args.interval)
+        # Kadenz liegt allein beim RequestSchedule — kein zweites sleep,
+        # sonst verdoppelt sich der Abstand (zwei Städte: 20 statt 10 min).
 
 
 if __name__ == "__main__":
