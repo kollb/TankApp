@@ -585,6 +585,33 @@ py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\pollin
 Vergleiche `pinball_asym_ct` und `mase` je Variante: 42d-EW sollte nach
 Preiswechseln schneller aufholen als 42d-uniform und weniger träge sein als 84d.
 
+**Übergangsregel: 90 vs. 42 Tage Live-Input (offene Konzeptentscheidung):**
+`live_only_days` (`bootstrap`, Default 90) entscheidet, ab wann das Archiv aus
+dem Modell-Input fällt — sie liegt **nicht** im M7-Pfad (das Kalibrierungs-Gate
+zählt abgeschlossene Empfehlungen, nicht Tage). Eine Senkung ist deshalb keine
+Zeitersparnis für M7, sondern ein Eingriff in die Trainingsdatenmenge: Ab
+Handover trainiert der Fit nur noch auf Live-Polling, sein Fenster ist
+`train_days` (Default 42), die harte Untergrenze `min_train_days` (28,
+`engine/models.py::fit`). Wer senken will, misst es auf **live-only**
+exportierten Daten — zwei Backtests, dieselben Tage:
+
+```powershell
+# Status quo: 42-Tage-Fenster (entspricht live_only_days = 90)
+py -3 -m engine backtest --data @LiveOnly --polling .\docs\analysis\stations\polling.json --days 21 --train-days 42 --min-train-days 28 --out .\results\engine\handover-42d
+# Untergrenze: 28-Tage-Fenster (entspricht einer Handover-Schwelle von 28)
+py -3 -m engine backtest --data @LiveOnly --polling .\docs\analysis\stations\polling.json --days 21 --train-days 28 --min-train-days 28 --out .\results\engine\handover-28d
+```
+
+**Entscheidungsregel:** Nur wenn die 28-Tage-Variante in `report.json` weiterhin
+`mase_24h_below_0_95` **und** `picp95_between_90_and_98` erfüllt und ihr
+`pinball_asym_ct` nicht über dem der 42-Tage-Variante liegt, ist eine Senkung
+vertretbar — und dann auf höchstens `train_days`, nie darunter: Bei 28 Tagen
+liegt der Fit exakt auf `min_train_days`, ein einziger Tag ohne Daten (Umbau,
+Collector-Ausfall) lässt ihn mit `ValueError` scheitern, während bei 90 Tagen 62
+Tage Puffer bleiben. Bleibt die Messung aus oder ist sie knapp, gilt der Default
+90. Der Offline-Vergleich bildet nur die Datenmenge ab, nicht die
+Abdeckungssicherheit: 28 Tage × ≥ 95 % Tagesabdeckung sind dünner belegt als 90.
+
 ## 5. Modell fitten und Prognose erzeugen
 
 Nach ausreichender Datenprüfung, weiterhin mit derselben Dateiliste:
