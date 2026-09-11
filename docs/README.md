@@ -44,6 +44,9 @@
 9. **[Stations-UUID — Gleiche Namen trennen](STATIONS-UUID.md)**  
    Migration von Namens-Serien auf UUID-Tags, Replay mit Zeitzone.
 
+10. **[Stationen im Polling-Set tauschen](STATIONEN-TAUSCH.md)**  
+   Tote oder sortenlose Stationen ersetzen; Ersatzsuche mit Filter, Vorschlag per `swap_stations.py`, Aktivierung auf dem Pi.
+
 9. **Weitere Referenzen (keine Installationspflicht)**
    - [Engine-Referenz](../engine/README.md) — Modellwerkstatt, 12-Uhr-Regel
    - [Werkzeugübersicht](../data-tools/README.md) — interne Einzelprogramme

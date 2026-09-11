@@ -12,16 +12,38 @@ Verwandt, aber anders gelagert: [Preis-Zwillinge](../engine/README.md#preis-zwil
 
 ## Inhaltsverzeichnis
 
+- [Kurzfassung](#kurzfassung-wenn-der-befund-schon-feststeht)
 - [Regeln, bevor du anfängst](#regeln-bevor-du-anfängst)
 - [A) Befund absichern (nur lesend)](#a-befund-absichern-nur-lesend)
 - [B) Ersatz suchen — ungeeignete bei der Suche ausfiltern](#b-ersatz-suchen--ungeeignete-bei-der-suche-ausfiltern)
-- [C) Vorschlag bauen (1:1-Tausch, validiert)](#c-vorschlag-bauen-11-tausch-validiert)
+- [C) Vorschlag bauen (1:1-Tausch, ein Befehl)](#c-vorschlag-bauen-11-tausch-ein-befehl)
 - [D) Auf dem Pi aktivieren](#d-auf-dem-pi-aktivieren)
 - [E) NAS-Kopie aktualisieren](#e-nas-kopie-aktualisieren)
 - [F) Verifikation und Erwartungen](#f-verifikation-und-erwartungen)
 - [Rollback](#rollback)
 
 ---
+
+## Kurzfassung (wenn der Befund schon feststeht)
+
+```bash
+# NAS — Ersatz suchen (filtert tote/ohne-e10-Stationen aus) …
+python3 data-tools/discover_stations.py --stations data/raw/stations \
+  --anchor "<Stadt>:<lat>,<lon>" --radius 5 \
+  --check-history data/raw/prices --min-days 28 --fuel e10 \
+  --out docs/analysis/stations-vorschlag-<Stadt> --write-pool
+# NAS … Vorschlag bauen (entfernt die Modell-Fehler-UUIDs dieser Stadt):
+python3 data-tools/swap_stations.py --city <Stadt> \
+  --kandidaten docs/analysis/stations-vorschlag-<Stadt> --stations data/raw/stations
+# PI — Vorschlag nach data/setup/ übertragen, dann:
+sudo systemctl stop tankapp-collector \
+  && cp -p data/setup/polling.json docs/analysis/stations/polling.json \
+  && sudo systemctl restart tankapp-collector tankapp-uploader
+# NAS — Kopie vom Pi holen und App neu starten:
+python3 tankapp.py nas-up
+```
+
+Details, Prüfschritte und Rollback: unten.
 
 ## Regeln, bevor du anfängst
 
@@ -64,9 +86,21 @@ Tagsüber (06–24 Uhr) gedeutet:
 
 | Befund | Bedeutung | Konsequenz |
 |---|---|---|
-| `status:"open"`, `e10` numerisch | Station lebt, liefert E10 | **nicht tauschen** — wenn trotzdem 0 Trainingspunkte: Upload/Export-Kette prüfen (Phase F/G) |
+| `status:"open"`, `e10` numerisch | Station lebt, liefert E10 | **nicht tauschen** — wenn trotzdem 0 Trainingspunkte: Upload/Export-Kette prüfen (Schritt F) |
 | `status:"closed"` oder Station fehlt in der Antwort | stillgelegt / UUID tot | tauschen |
 | `status:"open"`, aber `e10: false`/fehlt | führt den Kraftstoff nicht | für diesen Kraftstoff tauschen (für E5/Diesel-Modelle bleibt sie brauchbar) |
+
+Die Felder `fuels`/`hist_days` in den `stations`-Einträgen des aktiven
+`polling.json` stammen aus dem Archiv-Scan beim Aufbau des Sets und geben
+dieselbe Auskunft: `fuels:"diesel"` bei 367 Tagen heißt *führt kein E10/E5*
+(für E10-Modelle wertlos, auch wenn die Station lebt), `hist_days:0` mit
+leerem `fuels` heißt *nie Preise gesehen* (UUID praktisch tot).
+
+**Zu `GÃœTERSLOH SÃœD`:** das ist doppelt kodierte UTF-8-Anzeige
+(„GÜTERSLOH SÜD“, so in den Stationslisten des Datenrepos) — rein kosmetisch,
+betrifft nur den Anzeigenamen, nie UUIDs oder Preise. `swap_stations.py`
+repariert Namen/Marken beim Tausch automatisch; gefiltert wird ausschließlich
+nach UUID, Tagen und Kraftstoff.
 
 ### A2 — hatte die Station jemals Preise? (NAS-Archiv, korrektes Namensmuster)
 
@@ -112,11 +146,11 @@ python3 data-tools/fetch_history.py --stations-latest --outdir data/raw --netrc 
 # 2) Anker aus dem aktiven Set übernehmen (Label + Koordinaten):
 jq '.sets | to_entries[] | {set:.key, label:.value.label, anchor:(.value.anchor // [.value.lat,.value.lon])}' docs/analysis/stations/polling.json
 
-# 3) Kandidaten suchen — tote/ungeeignete fallen durch --check-history raus:
+# 3) Kandidaten suchen — tote/falsche-Sorte-Stationen fallen raus:
 python3 data-tools/discover_stations.py \
   --stations data/raw/stations \
   --anchor "<Stadt>:<lat>,<lon>" --radius 5 \
-  --check-history data/raw/prices --min-days 28 \
+  --check-history data/raw/prices --min-days 28 --fuel e10 \
   --out docs/analysis/stations-vorschlag-<Stadt> --write-pool
 ```
 
@@ -125,6 +159,10 @@ python3 data-tools/discover_stations.py \
   hinten gereiht — genau das „bei der Suche rausfiltern“. Ist das Archiv
   jünger als 28 Tage, den Wert senken (z. B. 14) und im Report auf
   `hist_first` achten.
+* `--fuel e10` verlangt zusätzlich, dass die Station genau diese Sorte im
+  Archiv wirklich geliefert hat. Ohne dieses Flag gilt eine Station schon
+  mit *irgendeinem* Kraftstoff als geeignet — eine 367-Tage-Diesel-Only-Bude
+  (AVIA-Fall) würde sonst fälschlich ins Set rutschen.
 * `--radius 5` wie `add-city`-Default; bei zu wenigen Treffern Radius/PLZ
   erweitern (`--plz "<Stadt>:33"`), nicht die Eignungsgrenze diskutieren.
 * Die Spalte `hist_fuels` zeigt, welche Sorten die Station im Archiv wirklich
@@ -144,89 +182,36 @@ Nur Kandidaten mit `status:"open"` **und** numerischem E10 einsetzen. Das
 Archiv beweist Vergangenheit, nicht Gegenwart — eine seit Kurzem geschlossene
 Station kann trotzdem ≥ 28 Archivtage haben.
 
-## C) Vorschlag bauen (1:1-Tausch, validiert)
+## C) Vorschlag bauen (1:1-Tausch, ein Befehl)
 
-Auf dem NAS (oder dem Pi — dann Pfade anpassen). Entfernt die toten UUIDs aus
-`batch` + `stations`, füllt mit den nächstgelegenen geeigneten Kandidaten auf,
-validiert das **gesamte** Set (UUID-Format, 1–10 pro Stadt, keine UUID in zwei
-Städten) und schreibt **nur** den Vorschlag `data/setup/polling.json`. Das
-aktive Set bleibt unverändert.
+Auf dem NAS. `swap_stations.py` entfernt die Fehler-UUIDs aus `batch` +
+`stations`, füllt mit den nächstgelegenen geeigneten Kandidaten aus der
+Kandidaten-CSV auf (Sorte + Mindesttage geprüft, keine Zwillings-Marke in
+1,5 km zu einer verbleibenden Station, exakte Koordinaten aus der
+Stationsliste, Namen/Marken mit reparierter Kodierung), validiert das
+**gesamte** Set und schreibt **nur** den Vorschlag `data/setup/polling.json`.
+Das aktive Set bleibt unverändert. Bei zu wenigen geeigneten Kandidaten wird
+sauber abgebrochen.
 
 ```bash
 cd /mnt/user/appdata/TankApp
-python3 - <<'PY'
-import csv, json, sys, datetime as dt
-from pathlib import Path
-sys.path.insert(0, "data-tools")
-from polling_plan import validate_sets, atomic_json
-
-CITY_KEY      = "<Stadt>"        # exakter Key aus: jq '.sets | keys'
-ACTIVE        = Path("docs/analysis/stations/polling.json")
-KANDIDATEN    = Path("docs/analysis/stations-vorschlag-<Stadt>/<stadt>_kandidaten.csv")
-MIN_HIST_DAYS = 28
-REMOVE = {                       # nur UUIDs eintragen, die A1/A2 als tot belegen
-    "<UUID1>", "<UUID2>", "<UUID3>", "<UUID4>",
-}
-
-plan = json.loads(ACTIVE.read_text(encoding="utf-8-sig"))
-validate_sets(plan)
-group = plan["sets"][CITY_KEY]
-batch = list(group.get("batch") or [s["uuid"] for s in group.get("stations", [])])
-by_id = {s["uuid"].lower(): s for s in group.get("stations", [])}
-drop  = {u.lower() for u in batch if u.lower() in REMOVE}
-if not drop:
-    sys.exit("Keine der REMOVE-UUIDs ist im Set — Schreibweise prüfen.")
-occupied = {u.lower()
-            for g in plan["sets"].values()
-            for u in (g.get("batch") or [s["uuid"] for s in g.get("stations", [])])}
-
-rows = []
-with KANDIDATEN.open(newline="", encoding="utf-8") as f:
-    for r in csv.DictReader(f):
-        uid = (r.get("uuid") or "").strip()
-        if uid.lower() in occupied or uid.lower() in REMOVE:
-            continue
-        try:
-            days = int(float(r.get("hist_days") or 0))
-        except ValueError:
-            days = 0
-        fuels = [x.strip().lower() for x in (r.get("hist_fuels") or "").split("/") if x.strip()]
-        if days < MIN_HIST_DAYS or "e10" not in fuels:
-            continue
-        rows.append((float(r["dist_km"]), uid, r))
-rows.sort(key=lambda t: t[0])
-
-need = len(drop)
-if len(rows) < need:
-    sys.exit(f"Nur {len(rows)} brauchbare Ersatz-Kandidaten für {need} Plätze — "
-             "erst Suche erweitern (Radius/PLZ/--min-days); aktives Set bleibt unverändert.")
-
-alive  = [u for u in batch if u.lower() not in drop]
-chosen = rows[:need]
-for _, uid, r in chosen:
-    by_id[uid.lower()] = {
-        "uuid": uid, "name": (r.get("name") or "").strip(),
-        "brand": (r.get("brand") or "").strip(),
-        "lat": float(r["lat"]), "lon": float(r["lon"]),
-        "dist_km": round(float(r["dist_km"]), 3),
-    }
-    alive.append(uid)
-
-group["batch"] = alive
-if "stations" in group:
-    group["stations"] = [by_id[u.lower()] for u in alive]
-plan["proposal"] = False          # Kandidaten wurden in B3 live verifiziert
-plan["source"] = ("manueller Stationswechsel "
-                  + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d"))
-validate_sets(plan)
-out = Path("data/setup/polling.json"); atomic_json(out, plan)
-print(f"Entfernt ({len(drop)}):"); [print("  -", u) for u in sorted(drop)]
-print(f"Neu ({len(chosen)}):")
-for _, uid, r in chosen:
-    print(f"  + {r.get('brand')} {r.get('name')} ({uid}), {r['dist_km']} km, {r.get('hist_days')} Archivtage")
-print(f"Vorschlag: {out} — {CITY_KEY}: {len(alive)} UUIDs, Gesamtset gültig.")
-PY
+python3 data-tools/swap_stations.py --city Gütersloh \
+  --kandidaten docs/analysis/stations-vorschlag-gt \
+  --stations data/raw/stations
 ```
+
+* Die zu entfernenden UUIDs kommen standardmäßig aus den Modell-Fehlern in
+  `data/runtime/engine/current.json` (nur die der gewählten Stadt und des
+  `--fuel`, Default `e10`). Zusätzlich/ersatzweise: `--remove-uuid <uuid>`.
+* Eine Fehler-Station behalten (z. B. GTB kurz unter der 28-Tage-Grenze, aber
+  live offen): `--keep-uuid <uuid>`.
+* Vorher ungesehen ansehen: `--dry-run` — gleiche Ausgabe, nichts geschrieben.
+* Ohne `--stations` werden gerundete Koordinaten (~100 m) aus der
+  Kandidaten-CSV übernommen; mit `--stations data/raw/stations` exakte.
+
+Die Ausgabe listet Entfernt/Neu auf und druckt die Folge-Befehle (inklusive
+der fertigen `curl`-Zeile für die Live-Gegenprobe der neuen UUIDs) —
+unterwegs nichts anfassen, das aktive Set bleibt bis Schritt D in Betrieb.
 
 ## D) Auf dem Pi aktivieren
 
