@@ -47,6 +47,7 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  brierGateHint,
   clockLabel,
   currentPrice,
   detourEconomics,
@@ -54,6 +55,8 @@ import {
   euro,
   formatHour,
   haversineKm,
+  livePhaseCountdown,
+  livePhaseHint,
   problem,
   segments,
   timeLabel,
@@ -761,7 +764,9 @@ export function Dashboard() {
   );
 
   const statsSummaryRes = useResource<StatsSummary>(
-    tab === "statistics" || tab === "daily"
+    // Die Güte-Kacheln im System-Tab lesen dieselbe Antwort — ohne diesen Tab
+    // blieben sie dort dauerhaft „—“.
+    tab === "statistics" || tab === "daily" || tab === "system"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -1004,32 +1009,22 @@ export function Dashboard() {
     });
   })();
 
-  // Dezente Hinweise zur Kalibrierung: aus data_policy (gut/benötigt) + gate_status
-  // berechnen wir, wann ungefähr mit Werten zu rechnen ist. Tagessprung: 1 Live-Tag
-  // ≈ 1 Kalendertag. Wir nehmen das heutige Datum (Europe/Berlin).
-  const policy = f?.data_policy;
-  const goodDays = policy?.good_complete_live_days ?? 0;
-  const requiredDays = policy?.required_complete_live_days ?? 21;
-  const daysMissing = Math.max(0, requiredDays - goodDays);
-  const etaDate = (() => {
-    if (!daysMissing) return null;
-    const d = new Date();
-    d.setDate(d.getDate() + daysMissing);
-    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  })();
-  const calibrationHint = (() => {
-    if (daysMissing === 0) {
-      return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
-    }
-    return `Wert erscheint, sobald die Live-Phase ${requiredDays} bewertete Tage erreicht hat (noch ${daysMissing} · voraussichtlich ab ${etaDate}).`;
-  })();
-  const brierHint = (() => {
-    if (statsSummaryRes.data?.live_advice.brier_30d != null) return null;
-    if (daysMissing === 0) {
-      return "Noch keine 100 Empfehlungen im Live-Ledger — Wert erscheint automatisch.";
-    }
-    return `Wert erscheint mit den ersten Live-Empfehlungen (frühestens ${etaDate}).`;
-  })();
+  // Hinweise zur Kalibrierung: ausschließlich aus echten Daten. Die Zählung
+  // bewerteter Live-Tage liefert die Engine (Bootstrap-Policies) über
+  // stats_summary.live_phase — Schwelle und Stand kommen aus dem Datenpfad,
+  // nicht aus einem Frontend-Kontext. Fehlen die Policies (kein Modell-Lauf,
+  // Statistik nicht geladen), sagt die UI genau das und erfindet keinen
+  // Countdown (§0.4 Ehrlichkeitsregel).
+  const livePhase = statsSummaryRes.data?.live_phase ?? null;
+  const calibrationHint = statsSummaryRes.data
+    ? livePhaseHint(livePhase)
+    : "Statistik nicht geladen — zur Live-Phase liegen keine Daten vor.";
+  const brierHint = statsSummaryRes.data
+    ? brierGateHint(livePhase, statsSummaryRes.data.live_advice)
+    : null;
+  const livePhaseLine = livePhaseCountdown(livePhase);
+  const livePhaseNotice = livePhaseLine ?? (livePhase ? null : calibrationHint);
+  const stationPhase = f?.data_policy;
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
@@ -2688,11 +2683,23 @@ export function Dashboard() {
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">Kalibrierungs-Freigabe</p>
                     <p className="mt-1 text-base font-bold text-amber-300">
-                      {statsSummaryRes.data?.live_advice.gate_status || "Kalibrierung steht aus"}
+                      {statsSummaryRes.data?.live_advice?.gate_status ||
+                        (statsSummaryRes.data
+                          ? "Kalibrierung steht aus"
+                          : "kein Statistik-Lauf")}
                     </p>
-                    {daysMissing > 0 && (
+                    {livePhaseNotice && (
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                        Noch {daysMissing} von {requiredDays} bewerteten Live-Tagen · voraussichtlich ab {etaDate}
+                        {livePhaseNotice}
+                      </p>
+                    )}
+                    {stationPhase && (
+                      <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
+                        Ausgewählte Station: {stationPhase.good_complete_live_days}/
+                        {stationPhase.required_complete_live_days} vollständige Live-Tage
+                        {stationPhase.mode === "live_only"
+                          ? " (nur Live-Daten)"
+                          : " (Archiv noch beteiligt)"}
                       </p>
                     )}
                   </div>
