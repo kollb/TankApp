@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from polling_plan import collector_lock
 from .config import ROOT
 from .data import LiveData, read_json
-from .worker import INTERVALS
+from .worker import INTERVALS, is_transient_error
 
 # Konzept §11.3 / M5: Alte Alltags-Routen werden markiert, sobald
 # /api/v1/decide alle Alltags-Fälle abdeckt (Ampel + Alternativen + Fenster).
@@ -220,7 +220,14 @@ class Scheduler:
     def next_delay(self, name, state):
         if name in self.errors:
             return 3600
-        if not isinstance(state, dict) or state.get("state") != "success":
+        if not isinstance(state, dict):
+            return 3600
+        if state.get("state") == "success":
+            return INTERVALS[name]
+        # B18: dauerhafte von flüchtigen Ursachen trennen. Eine strukturell
+        # unfitbare Station (some_models_unavailable) darf keinen Stundentakt
+        # auslösen — nächster Versuch erst im regulären Job-Intervall.
+        if is_transient_error(state.get("error_code")):
             return 3600
         return INTERVALS[name]
 

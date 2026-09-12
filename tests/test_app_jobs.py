@@ -1103,3 +1103,262 @@ def test_gui_job_start_switch_reads_environment(tmp_path, monkeypatch):
     assert Settings.from_env().gui_job_start is False
     monkeypatch.setenv("TANKAPP_GUI_JOB_START", "1")
     assert Settings.from_env().gui_job_start is True
+
+
+# ---------------------------------------------------------------------------
+# B18: dauerhaftes `partial` löst keinen Stundentakt aus
+# ---------------------------------------------------------------------------
+
+
+def test_partial_models_backoff_to_job_interval(tmp_path, monkeypatch):
+    """B18: `some_models_unavailable` → nächster Versuch im Tagesintervall."""
+    import app.worker as worker
+
+    monkeypatch.setattr(
+        worker,
+        "execute",
+        lambda name, settings, progress=None: {
+            "state": "partial",
+            "error_code": "some_models_unavailable",
+        },
+    )
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    assert worker.run("models", settings) == 2
+    state = json.loads((tmp_path / "runtime" / "jobs" / "models.json").read_text())
+    finished = dt.datetime.fromisoformat(state["finished_at"])
+    nxt = dt.datetime.fromisoformat(state["next_run_at"])
+    assert (nxt - finished).total_seconds() == pytest.approx(86400, abs=2)
+    assert state["state"] == "partial"
+
+
+def test_transient_failure_keeps_hourly_retry(tmp_path, monkeypatch):
+    """B18: ein flüchtiger Fehler behält den schnellen Wiederholungsversuch."""
+    import app.worker as worker
+
+    monkeypatch.setattr(
+        worker,
+        "execute",
+        lambda name, settings, progress=None: {
+            "state": "failed",
+            "error_code": "job_failed",
+        },
+    )
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    assert worker.run("models", settings) == 2
+    state = json.loads((tmp_path / "runtime" / "jobs" / "models.json").read_text())
+    finished = dt.datetime.fromisoformat(state["finished_at"])
+    nxt = dt.datetime.fromisoformat(state["next_run_at"])
+    assert (nxt - finished).total_seconds() == pytest.approx(3600, abs=2)
+
+
+def test_scheduler_next_delay_separates_transient_from_persistent(tmp_path):
+    """B18: Der Scheduler wartet nach strukturellen Codes das Job-Intervall ab."""
+    from app.server import Scheduler
+
+    scheduler = Scheduler(Settings(data=tmp_path, polling=tmp_path / "missing"))
+    assert (
+        scheduler.next_delay(
+            "models", {"state": "partial", "error_code": "some_models_unavailable"}
+        )
+        == 86400
+    )
+    assert (
+        scheduler.next_delay("models", {"state": "failed", "error_code": "job_failed"})
+        == 3600
+    )
+    assert scheduler.next_delay("models", {"state": "success"}) == 86400
+    # Ein Abbruch ist flüchtig (der Job wurde unterbrochen, nicht strukturell unfit).
+    assert (
+        scheduler.next_delay("models", {"state": "aborted", "error_code": "aborted"})
+        == 3600
+    )
+
+
+def test_partial_job_raises_warn_alarm(tmp_path):
+    """B18: ein unvollständiger Lauf ist als Warnung sichtbar, nicht als Fehler."""
+    from app.alarms import build_alarms
+
+    alarms = build_alarms(
+        Settings(data=tmp_path),
+        collector={"available": True, "fresh": True},
+        jobs={"models": {"state": "partial", "error_code": "some_models_unavailable"}},
+        job_errors={},
+        polling_error=None,
+        station_count=20,
+    )
+    partial = [a for a in alarms if a["code"] == "job_partial"]
+    assert partial, alarms
+    assert partial[0]["severity"] == "warn"
+    assert partial[0]["job"] == "models"
+
+
+def test_aborted_job_raises_warn_alarm(tmp_path):
+    """B24: ein abgebrochener Lauf ist als Warnung sichtbar, nicht als Fehler."""
+    from app.alarms import build_alarms
+
+    alarms = build_alarms(
+        Settings(data=tmp_path),
+        collector={"available": True, "fresh": True},
+        jobs={"models": {"state": "aborted", "error_code": "aborted"}},
+        job_errors={},
+        polling_error=None,
+        station_count=20,
+    )
+    aborted = [a for a in alarms if a["code"] == "job_aborted"]
+    assert aborted, alarms
+    assert aborted[0]["severity"] == "warn"
+    assert aborted[0]["job"] == "models"
+
+
+# ---------------------------------------------------------------------------
+# B24: hart abgebrochene Läufe werden `aborted` statt ewig `running`
+# ---------------------------------------------------------------------------
+
+
+def test_prior_running_is_booked_as_aborted(tmp_path):
+    """B24(b): Ein liegengebliebener `running`-Eintrag wird als `aborted` verbucht."""
+    import app.worker as worker
+    from app.data import public_job
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    path = settings.runtime / "jobs" / "models.json"
+    path.parent.mkdir(parents=True)
+    started = "2026-09-12T14:00:00Z"
+    path.write_text(
+        json.dumps(
+            {
+                "state": "running",
+                "started_at": started,
+                "last_success_at": "2026-09-11T00:00:00Z",
+                "data_watermark": "1727",
+            }
+        )
+    )
+    before = worker.read_json(path, {})
+    worker._mark_prior_aborted(path, "models", before, dt.datetime.now(dt.timezone.utc))
+    state = json.loads(path.read_text())
+    assert state["state"] == "aborted"
+    assert state["error_code"] == "aborted"
+    assert state["started_at"] == started  # der Abbruch bewahrt den Laufbeginn
+    assert state["last_success_at"] == "2026-09-11T00:00:00Z"
+    assert state["data_watermark"] == "1727"
+    assert state["aborted_at"] and state["next_run_at"]
+    assert state["aborted_phase"] is None  # kein Fortschritt hinterlegt
+
+    payload = public_job(settings, "models")
+    assert payload["state"] == "aborted"
+    assert payload["aborted_at"] and "aborted_phase" in payload
+    log = (settings.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "abgebrochen" in log
+
+
+def test_prior_aborted_keeps_last_progress_phase(tmp_path):
+    """B24(b): Die zuletzt protokollierte Phase bleibt als Abbruchphase erhalten."""
+    import app.worker as worker
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    jobs = settings.runtime / "jobs"
+    jobs.mkdir(parents=True)
+    (jobs / "models.json").write_text(
+        json.dumps({"state": "running", "started_at": "2026-09-12T14:00:00Z"})
+    )
+    (jobs / "models.progress.json").write_text(
+        json.dumps(
+            {"phase": "fit", "done": False, "updated_at": "2026-09-12T14:05:00Z"}
+        )
+    )
+    before = worker.read_json(jobs / "models.json", {})
+    worker._mark_prior_aborted(
+        jobs / "models.json", "models", before, dt.datetime.now(dt.timezone.utc)
+    )
+    assert json.loads((jobs / "models.json").read_text())["aborted_phase"] == "fit"
+
+
+def test_run_with_prior_running_records_abort_then_succeeds(tmp_path, monkeypatch):
+    """B24(b): Der nächste Lauf verbucht den Vorgänger als abgebrochen und läuft."""
+    import app.worker as worker
+
+    monkeypatch.setattr(
+        worker,
+        "execute",
+        lambda name, settings, progress=None: {"state": "success", "error_code": None},
+    )
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    jobs = settings.runtime / "jobs"
+    jobs.mkdir(parents=True)
+    (jobs / "models.json").write_text(
+        json.dumps({"state": "running", "started_at": "2026-09-12T10:00:00Z"})
+    )
+    assert worker.run("models", settings) == 0
+    assert json.loads((jobs / "models.json").read_text())["state"] == "success"
+    log = (jobs / "models.log").read_text(encoding="utf-8")
+    assert "vorheriger Lauf hart beendet" in log
+
+
+@pytest.mark.skipif(os.name != "posix", reason="SIGTERM-Handler ist POSIX-only")
+def test_sigterm_marks_aborted_then_completion_wins(tmp_path, monkeypatch):
+    """B24(a): SIGTERM schreibt `aborted`; läuft der Job doch zu Ende, gewinnt das Ergebnis."""
+    import signal
+    import threading
+
+    import app.worker as worker
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow(name, settings, progress=None):
+        progress.phase("fit", total=2)
+        progress.step(1, label="Frankfurt – One")
+        entered.set()
+        release.wait(5)
+        return {"state": "success", "error_code": None}
+
+    monkeypatch.setattr(worker, "execute", slow)
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+
+    def send_term():
+        assert entered.wait(5)
+        os.kill(os.getpid(), signal.SIGTERM)
+        release.set()
+
+    sender = threading.Thread(target=send_term, daemon=True)
+    sender.start()
+    assert worker.run("models", settings) == 0
+    sender.join(timeout=5)
+    log = (settings.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "abgebrochen in Phase 'fit'" in log
+    # Der Lauf wurde trotz SIGTERM regulär zu Ende geführt → das Ergebnis zählt.
+    assert (
+        json.loads((settings.runtime / "jobs" / "models.json").read_text())["state"]
+        == "success"
+    )
+
+
+def test_nas_up_warns_while_model_job_is_running(tmp_path, monkeypatch, capsys):
+    """B24(c): `nas-up` warnt vor dem Recreate, wenn der Modell-Lauf aktiv ist."""
+    import app.nas as nas
+
+    runtime = tmp_path / "runtime"
+    jobs = runtime / "jobs"
+    jobs.mkdir(parents=True)
+    started = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=2)
+    (jobs / "models.json").write_text(
+        json.dumps({"state": "running", "started_at": started.isoformat()})
+    )
+    capsys.readouterr()
+    nas._warn_if_model_job_active(runtime)
+    out = capsys.readouterr().out
+    assert "läuft noch" in out
+    # Ein liegengebliebener (alter) Zustand warnt nicht mehr.
+    (jobs / "models.json").write_text(
+        json.dumps(
+            {
+                "state": "running",
+                "started_at": (
+                    dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=9)
+                ).isoformat(),
+            }
+        )
+    )
+    nas._warn_if_model_job_active(runtime)
+    assert "läuft noch" not in capsys.readouterr().out

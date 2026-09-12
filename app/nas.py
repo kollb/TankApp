@@ -1,5 +1,6 @@
 """One-command NAS start/update. Secrets are bind-mounted read-only, not image/env content."""
 
+import datetime as dt
 import json
 import os
 import subprocess
@@ -44,6 +45,42 @@ def _robust_json_load(path: Path) -> dict:
     # Letzter Versuch: utf-8 mit replacement, um wenigstens Fehlermeldung sauber zu zeigen
     raise ValueError(
         f"{path}: ungültiges JSON/Encoding (utf-8 erwartet, auch latin1 versucht)"
+    )
+
+
+def _warn_if_model_job_active(runtime_dir: Path) -> None:
+    """B24(c): Warnt, wenn der Modell-Job gerade läuft — Recreate tötet ihn.
+
+    Ein frischer `running`-Zustand (jünger als die Staleness-Grenze aus
+    app/progress.py) heißt: der Lauf ist noch aktiv und würde durch
+    `compose up --force-recreate` hart beendet. Nur ein Hinweis — wer
+    bewusst aktualisiert, darf das trotzdem tun (der Job wird dann beim
+    nächsten Start als `aborted` verbucht statt ewig `running` zu bleiben).
+    """
+    path = runtime_dir / "jobs" / "models.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(raw, dict) or raw.get("state") != "running":
+        return
+    started_at = raw.get("started_at")
+    if not isinstance(started_at, str):
+        return
+    try:
+        started = dt.datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    except ValueError:
+        return
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=dt.timezone.utc)
+    if (dt.datetime.now(dt.timezone.utc) - started).total_seconds() > 6 * 3600:
+        return  # liegengebliebener Zustand, kein lebender Lauf
+    print(
+        "Warnung: Der Modell-Lauf läuft noch (running, gestartet "
+        f"{started.astimezone(dt.timezone.utc).isoformat()}). "
+        "`compose up --force-recreate` bricht ihn ab — der Abbruch wird "
+        "als abgebrochen verbucht. Für ein Update: Lauf beenden lassen "
+        "oder bewusst fortsetzen."
     )
 
 
@@ -175,6 +212,11 @@ def up(args):
         "-f",
         str(ROOT / "ops/nas/app/compose.yml"),
     ]
+    # B24(c): Vor dem Recreate warnen, wenn ein Modell-Lauf aktiv ist —
+    # `compose up --force-recreate` ersetzt den Container und tötet den
+    # laufenden Job; der Lauf würde sonst unbemerkt sterben (siehe Befund
+    # 14:48/18:07). Nur eine Warnung: Ein bewusstes Update darf weiterlaufen.
+    _warn_if_model_job_active(paths["runtime_dir"])
     # Process environment contains configuration paths, NEVER token contents.
     subprocess.run(
         [*command, "config", "--quiet"],

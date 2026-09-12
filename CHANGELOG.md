@@ -4,6 +4,41 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.21.0] – 2026-09-12
+
+**B18 + B24** (Batch 2 des Laufzeit-Bündels): Betrieb statt Rechnen — der NAS
+wiederholt strukturell aussichtslose Läufe nicht mehr stündlich, und hart
+beendete Läufe bleiben nicht mehr als „Läuft …“ hängen.
+
+### Hinzugefügt
+
+- **B18 — dauerhafte von flüchtigen Fehlern getrennt.** Strukturelle
+  Fehlercodes (`some_models_unavailable`, `insufficient_history`,
+  `archive_not_configured`, `influx_not_configured`, `selection_not_available`)
+  setzen den nächsten Versuch jetzt auf das reguläre Intervall des Jobs
+  (`models`: 1×/Tag statt stündlich) — `app/worker.py::is_transient_error`
+  entscheidet, `Scheduler.next_delay` und der Retry in `finish()` folgen
+  derselben Regel. Flüchtige Fehler behalten den schnellen
+  Wiederholungsversuch (3600 s). Eigener Fehlercode je Station verhindert,
+  dass eine unfitbare Station 24 erfolglose Läufe pro Tag auslöst.
+- **B24 — Abbruch statt ewigem `running`.** Ein SIGTERM-Handler im
+  Job-Prozess schreibt den Zustand als `state: aborted` samt `aborted_at`,
+  `aborted_phase` (letzte protokollierte Phase) und `error_code: aborted`;
+  ein liegengebliebener `running`-Vorgänger (Container-Recreate, SIGKILL)
+  wird beim nächsten Start als abgebrochen verbucht
+  (`_mark_prior_aborted`). `nas-up` warnt, solange ein Modell-Lauf aktiv ist,
+  bevor `docker compose config`/Recreate den Job kippen.
+- **Sichtbarkeit:** `public_job` exportiert `aborted_at`/`aborted_phase`;
+  die Job-Karte zeigt „Abgebrochen“ mit Zeit und Phase; neue Warn-Alarme
+  `job_partial` (bei `partial`) und `job_aborted` (bei `aborted`) in
+  `/health`; Klartext `messages["aborted"]` im GUI.
+
+### Gemessen
+
+Keine Rechenzeit-Relevanz — B18/B24 ändern nur die Wiederholungs- und
+Abbruch-Semantik der Job-Verwaltung, nicht die Modellrechnung. Die
+NAS-Laufdauer vorher/nachher für 0.20.0 steht weiterhin aus (siehe dort).
+
 ## [0.20.0] – 2026-09-12
 
 **B15 + B16** (Batch 1 des Laufzeit-Bündels aus der To-Do): die beiden

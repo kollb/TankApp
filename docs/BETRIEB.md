@@ -422,6 +422,15 @@ Häufige Ursachen: zu wenig/lückenhaftes Archiv (`insufficient_history`,
 NAS-Image nicht zu erwarten), fehlende Konfiguration (`waiting`, keine
 Störung) — sonst `job_failed` mit der bereinigten Ausnahme.
 
+**Zwei Sonderzustände (0.21.0):** „Abgebrochen“ (`state: aborted`) statt eines
+ewigen „Läuft …“ — hart beendete Läufe (Container-Recreate, SIGTERM) werden
+als Abbruch verbucht und im Log als „abgebrochen in Phase …“ erklärt; die
+letzte gute Publikation bleibt unangetastet. „Unvollständig“ (`state: partial`)
+löst keinen Stundentakt mehr aus: strukturelle Ursachen wie
+`some_models_unavailable` oder `insufficient_history` verschieben den nächsten
+Versuch auf das reguläre Intervall des Jobs (`models`: 1×/Tag), damit keine 24
+erfolglosen Läufe pro Tag anfallen.
+
 ### Modell-Lauf beschleunigen
 
 Zwei Stellschrauben, beide ohne Änderung der Ergebnisse:
@@ -550,6 +559,8 @@ Klartext.
 | `collector_no_heartbeat` | error | noch kein Herzschlag des Pi auf dem NAS | Uploader + Heartbeat prüfen → [Heartbeat B3.11](#heartbeat-b311) |
 | `collector_stale` | warn | Herzschlag älter als 15 min — Preise können eingefroren sein | `systemctl status tankapp-collector tankapp-uploader` auf dem Pi |
 | `job_failed` (mit `job`) | error | NAS-Job `archive`, `models`, `selection` oder `settlement` ist fehlgeschlagen | Ursache im Job-Log → [Fehlgeschlagener Lauf](#fehlgeschlagener-lauf-ursache-statt-raten) |
+| `job_partial` (mit `job`) | warn | Lauf unvollständig: mindestens eine Station ohne neues Modell (`state: partial`) | Nichts tun — nächster Versuch im regulären Intervall, nicht stündlich |
+| `job_aborted` (mit `job`) | warn | Lauf hart beendet, z. B. Container-Neustart (`state: aborted`) | Nichts tun — letzte Ergebnisse bleiben erhalten; nächster Versuch folgt |
 | `store_too_large` | error | persönlicher Feedback-Store über der Größen-Grenze — neue Belege werden abgelehnt | Restore/Retention → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 | `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
 

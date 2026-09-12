@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 12.09.2026 · App-Version **0.17.0** · gilt für `web/src/**`,
+> Stand: 12.09.2026 · App-Version **0.21.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -104,6 +104,8 @@ vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 | Fehler (Panel) | `components/LoadError.tsx` | `problem(error_code)` als Klartext, Rohcode darunter, Knopf „Erneut laden“ |
 | Fehler (Tabelle) | `components/CellError.tsx` | Gleiche Sprache als Tabellenzeile über die volle Breite; `empty` trennt „nichts da“ von „fehlgeschlagen“ |
 | keine Zahl bestimmbar | `—` (Geviertstrich) | Nie `0`, nie leer |
+| Job abgebrochen (0.21.0) | `components/JobCard.tsx` („Abgebrochen“) + `messages[\"aborted\"]` | Zustand benennen, keine Schuld: „Der Lauf wurde abgebrochen (z. B. durch einen Container-Neustart). Letzte Ergebnisse bleiben erhalten.“ |
+| Job unvollständig (0.21.0) | `components/JobCard.tsx` („Unvollständig“) + `messages[\"some_models_unavailable\"]` | Sache statt Tadel: „Einige Stationen haben noch kein neues Modell. Vorige Ergebnisse sind gekennzeichnet.“ |
 
 Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 `messages` in `web/src/data.ts`, je `error_code` genau einer.

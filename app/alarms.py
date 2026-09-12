@@ -82,6 +82,34 @@ def build_alarms(
                     ),
                 }
             )
+        elif job.get("state") == "partial":
+            # B18: Ein unvollständiger Lauf (z. B. eine Station strukturell
+            # unfitbar) wiederholt sich nicht mehr stündlich — sichtbar machen,
+            # warum der nächste Versuch erst im regulären Intervall kommt.
+            alarms.append(
+                {
+                    "code": "job_partial",
+                    "severity": "warn",
+                    "job": name,
+                    "message": (
+                        f"NAS-Job „{name}“ ist unvollständig — mindestens eine "
+                        "Station hat kein neues Modell. Nächster Versuch im "
+                        "regulären Intervall, nicht stündlich."
+                    ),
+                }
+            )
+        elif job.get("state") == "aborted":
+            alarms.append(
+                {
+                    "code": "job_aborted",
+                    "severity": "warn",
+                    "job": name,
+                    "message": (
+                        f"NAS-Job „{name}“ wurde abgebrochen (z. B. "
+                        "Container-Neustart). Letzte Ergebnisse bleiben erhalten."
+                    ),
+                }
+            )
 
     store_bytes = _store_size_bytes(settings)
     if store_bytes > FEEDBACK_MAX_BYTES:
