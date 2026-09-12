@@ -350,12 +350,32 @@ export type DecideResult = {
     price: number;
     delta_ct: number;
     detour_km: number;
+    detour_km_est?: number;
     detour_mode?: string | null;
+    dist_mode?: string | null;
+    trip_mode?: string;
+    fuel_cost_eur?: number;
+    time_cost_eur?: number;
+    detour_cost_eur?: number;
+    gross_eur?: number;
     net_eur: number;
+    critical_delta_ct?: number;
     worth_it: boolean;
+    verdict: "worth" | "borderline" | "not_worth";
     p_lohnt?: number | null;
     maps_url?: string | null;
   }>;
+  thresholds?: {
+    active: Record<string, number>;
+    auto_apply: boolean;
+    tuning: {
+      changed: boolean;
+      reasons: string[];
+      sample: Record<string, unknown>;
+      targets: Record<string, number>;
+      min_n?: number;
+    };
+  };
   windows_today: Array<{
     start: string;
     end: string;
@@ -1141,7 +1161,6 @@ export type DetourResult = {
   timeEur: number;
   netEur: number;
   criticalCtPerL: number;
-  verdict: "worth" | "borderline" | "not_worth";
 };
 
 // Umweg-Konvention (Prüfstand §1.5): Die Luftlinie zwischen Stationskoordinaten
@@ -1153,6 +1172,7 @@ export const CIRCUITY = 1.3;
 
 // K = d·(c/100)·p + (d/v)·z (Konzept §10). onroute: nur der Mehrweg zählt
 // (einmalig); dedicated: Extrafahrt, Hin und Rück.
+// H1/B6: keine hart kodierten Schwellen mehr — Verdict kommt ausschließlich vom Server.
 export function detourEconomics(input: {
   refPrice: number;
   altPrice: number;
@@ -1170,9 +1190,18 @@ export function detourEconomics(input: {
   const grossEur = (refPrice - altPrice) * liters;
   const netEur = grossEur - fuelEur - timeEur;
   const criticalCtPerL = liters > 0 ? ((fuelEur + timeEur) / liters) * 100 : 0;
-  const verdict =
-    netEur >= 1.5 ? "worth" : netEur >= 0.5 ? "borderline" : "not_worth";
-  return { km, grossEur, fuelEur, timeEur, netEur, criticalCtPerL, verdict };
+  return { km, grossEur, fuelEur, timeEur, netEur, criticalCtPerL };
+}
+
+// H1/B6: reines Verdict-Mapping ohne Konstanten — Schwellen kommen vom Server (thresholds.active).
+export function detourVerdict(
+  netEur: number,
+  worthEur: number,
+  borderlineEur: number,
+): "worth" | "borderline" | "not_worth" {
+  if (netEur >= worthEur) return "worth";
+  if (netEur >= borderlineEur) return "borderline";
+  return "not_worth";
 }
 
 export const messages: Record<string, string> = {

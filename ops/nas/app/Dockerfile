@@ -6,10 +6,12 @@ COPY web/ ./
 RUN npm run build
 
 FROM python:3.14-slim-bookworm
+ARG TANKAPP_BUILD_COMMIT=""
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 ENV TANKAPP_DATA_DIR=/data TANKAPP_ARCHIVE_DIR=/archive TANKAPP_POLLING_FILE=/config/polling.json \
-    TANKAPP_INFLUX_ENV=/config/influx.env TANKAPP_NETRC=/config/netrc
+    TANKAPP_INFLUX_ENV=/config/influx.env TANKAPP_NETRC=/config/netrc \
+    TANKAPP_BUILD_COMMIT=${TANKAPP_BUILD_COMMIT}
 COPY engine/requirements.txt /app/engine/requirements.txt
 COPY app/requirements.txt /app/app/requirements.txt
 RUN pip install --no-cache-dir -r /app/app/requirements.txt

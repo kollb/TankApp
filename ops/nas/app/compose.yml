@@ -5,6 +5,8 @@ services:
     build:
       context: ../../..
       dockerfile: ops/nas/app/Dockerfile
+      args:
+        TANKAPP_BUILD_COMMIT: "${TANKAPP_BUILD_COMMIT:-}"
     restart: unless-stopped
     init: true
     # Prozess-Pool des Modell-Laufs braucht ein wenig /dev/shm.
@@ -29,6 +31,7 @@ services:
       TANKAPP_M7_AUTO_APPLY: "${TANKAPP_M7_AUTO_APPLY:-0}"
       # B5: kommagetrennte API-Schlüssel für 300/min (Konzept §11); leer = nur anonym.
       TANKAPP_API_KEYS: "${TANKAPP_API_KEYS:-}"
+      TANKAPP_BUILD_COMMIT: "${TANKAPP_BUILD_COMMIT:-}"
       TZ: Europe/Berlin
     volumes:
       - type: bind

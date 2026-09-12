@@ -321,6 +321,15 @@ def _alternatives(
         gross_eur = (anchor - cand_price) * liters
         net_eur = gross_eur - detour_cost
         alt_nowcast = nowcasts.get(cand["station_id"]) if nowcasts else None
+        # H1/B6: Verdict aus denselben Schwellen wie route.py — server ist einzige Quelle.
+        worth_th = th.get("elsewhere_net_eur", 1.5)
+        borderline_th = th.get("elsewhere_borderline_eur", 0.5)
+        if net_eur >= worth_th:
+            verdict = "worth"
+        elif net_eur >= borderline_th:
+            verdict = "borderline"
+        else:
+            verdict = "not_worth"
         entry = {
             "station_id": cand["station_id"],
             "name": cand.get("name") or cand["station_id"],
@@ -328,7 +337,9 @@ def _alternatives(
             "price": round(cand_price, 3),
             "delta_ct": round((anchor - cand_price) * 100.0, 2),
             "detour_km": round(total_km, 2),
+            "detour_km_est": round(total_km, 2),
             "detour_mode": detour_source,
+            "dist_mode": detour_source,
             "trip_mode": mode,
             "fuel_cost_eur": round(fuel_eur, 2),
             "time_cost_eur": round(time_eur, 2),
@@ -338,7 +349,8 @@ def _alternatives(
             "critical_delta_ct": round(
                 (detour_cost / liters * 100.0) if liters else 0.0, 2
             ),
-            "worth_it": net_eur >= th["elsewhere_net_eur"],
+            "worth_it": net_eur >= worth_th,
+            "verdict": verdict,
             "p_lohnt": p_lohnt(
                 ref_nowcast,
                 alt_nowcast,

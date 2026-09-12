@@ -36,6 +36,7 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "wait_p_mid": 0.60,  #   … und P ≥ 60 %
     "elsewhere_net_eur": 1.5,  # WOANDERS: Netto ≥ 1,50 € …
     "elsewhere_p": 0.50,  #   … und P ≥ 50 %
+    "elsewhere_borderline_eur": 0.5,  # WOANDERS grenzwertig: Netto ≥ 0,50 € (untere Grenze der Grauzone, §4.2; route.py und decide teilen diesen Wert)
     "now_eur": 1.0,  # JETZT: Ersparnis < 1,00 €
     "now_p": 0.50,  # JETZT bei P(Warten) < 50 %
 }
@@ -58,6 +59,7 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "wait_p_mid": (0.60, 0.80),
     "elsewhere_net_eur": (1.5, 5.0),
     "elsewhere_p": (0.50, 0.85),
+    "elsewhere_borderline_eur": (0.25, 1.0),
     "now_eur": (0.50, 1.0),
     "now_p": (0.50, 0.50),  # fix: P(Warten) < 50 % → jetzt (§4.1)
 }
