@@ -50,7 +50,7 @@
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?“-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online“-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. Teilmessung vom 12.09.2026 (Synthetik-Datenstand, nicht Zielhardware): Privat-Speicher je Worker 105 MB (fork) bzw. 150 MB (forkserver), 8 Worker ≈ 0,8–1,2 GB — Details und Folgen in B19. Zielhardware am selben Tag gemessen: **4** Kerne (J5040) und damit 4 Worker, kein Pinning/Quota/Speicher-Limit (`CpusetCpus` leer, `NanoCpus=0`, `HostConfig.Memory=0`); Host 15 Gi gesamt / **4,2 Gi verfügbar** / Swap 0; Container laut `docker stats` 220–280 MiB im Leerlauf bzw. während leichter Phasen. `shm_size: 256m` bleibt ungetestet. Achtung Messfalle: `nproc` meldet im Container `1`, weil das Image `OMP_NUM_THREADS=1` setzt — Details in B23. |
 
-### Laufzeit des Modell-Laufs — Befund und Messwerte vom 12.09.2026 (B15–B23, nichts davon umgesetzt)
+### Laufzeit des Modell-Laufs — Befund und Messwerte vom 12.09.2026 (B15–B24, nichts davon umgesetzt)
 
 Auslöser sind zwei `models`-Läufe im Job-Log vom 12.09.2026: 80 Tasks
 (20 Stationen × fit24/wide72/wide168/backtest21), Dauer **8,3 min** bzw.
@@ -95,7 +95,29 @@ wegfallen könnte, und [ops/nas/app/compose.yml](ops/nas/app/compose.yml) baut
 bewusst lokal aus dem Repo (inklusive `TANKAPP_BUILD_COMMIT` als
 Versionsnachweis in der GUI).
 
-**Wo die Zeit hingeht (gemessen, eine Station):**
+**Echter Lauf auf der Zielhardware (12.09.2026, 18:31:09–18:41:25 UTC,
+`TANKAPP_MODEL_WORKERS=0` → 4 Worker, 20 Stationen, e10) — das ist die
+Belastungsmarke, nicht die Sandkasten-Messung:**
+
+| Phase | Dauer | Anteil |
+|---|---|---|
+| Start + InfluxDB-Export (9 518 Zeilen) | 13,5 s | 2 % |
+| Live-Abdeckung + Archiv (25 112 Ereignisse) + gapfill + Bootstrap | 6,5 s | 1 % |
+| **Phase A: 20 × `fit24`** | **22,3 s** | 4 % |
+| **Phase B: 20 × (`wide72` + `wide168` + `backtest21`) = 60 Tasks** | **566 s = 9,4 min** | **92 %** |
+| Selektion (doppelt, B21) + Veröffentlichen (19 Prognosen, 1 Fehler) | 8,5 s | 1 % |
+| Gesamt, Endzustand `partial (some_models_unavailable)` | **10,3 min** | 100 % |
+
+Umrechnung auf CPU-Zeit: 566 s Wandzeit × 4 Worker ≈ 2 264 s CPU für 20
+Stationen = **~113 s CPU je Station**; dieselbe Arbeit kostet im Sandkasten
+~31 s je Station. Ein J5040-Kern liefert also **rund 28 %** des Mess-Kerns —
+die frühere Abschätzung (¼–⅓) ist damit mit echten Zahlen belegt. Daraus folgen
+die Erwartungen für die Hebel (Skalierung aus den Sandkasten-Verhältnissen,
+**nicht** auf dem NAS gemessen): B15+B16 (5,4× weniger CPU) ⇒ Phase B ~1,8 min,
+Gesamtlauf ~2,3 min; zusätzlich B17 (Backtest je lokalem Tag gecacht) ⇒ Phase B
+untertägig ~1 min, weil nur `wide72`/`wide168` übrig bleiben.
+
+**Wo die Zeit hingeht (gemessen, eine Station, Sandkasten):**
 
 | Anteil | Messung |
 |---|---|
@@ -109,48 +131,47 @@ Versionsnachweis in der GUI).
 | B15 | P1 | **Bootstrap-Pfade vor der 12-Uhr-Projektion deduplizieren** | Ein Pfad hängt innerhalb eines Segments [12:00, nächste 12:00) nur von den gezogenen Tagesblöcken ab: bei 43 Blöcken gibt es je Segment höchstens 43² Kombinationen, bei Mitternachts-Origin — also in **allen** Backtest-Folds — genau 43. Gemessen: 86 von 4 000 Pfaden sind projektionspflichtig (46× weniger Arbeit), beim Tages-Origin 14:45 noch 1 065 von 4 000 (3,8×). Prototyp: Ziehungen je Segment über `np.unique(…, axis=0, return_inverse=True)` deduplizieren, eindeutige Zeilen projizieren, per `inverse` zurückschreiben — **bitgleich** (MAE, MASE, PICP, MPIW, Pinball, Vergleichszeilen und Rolling-PICP identisch). Wirkung allein: `predict` 24 h 0,41→0,16 s, 72 h 0,98→0,52 s, 168 h 2,18→1,21 s, `run_backtest(21 d)` 24,3→5,5 s. Ziel: Umsetzung in `engine/models.py::predict` mit Test „Dedup liefert bitgleiche Quantile/Pfade“ und Gegenmessung im Lauf. **Negatives Messergebnis, damit es niemand wiederholt:** ein PAVA, der über die Pfad-Achse vektorisiert (alle Zeilen gleichzeitig, Merge-Runden als Masken-Operation), war je Zeile ~7× **langsamer** als die bestehende skalare Fassung — die Zahl der Runden pro Position skaliert mit der tiefsten Merge-Kaskade über alle Zeilen (aus 1,3 µs/Pfad-Zeile wurden 9,6 µs). Der wirksame Hebel ist die Deduplizierung, nicht die Vektorisierung. Optionaler Nachsatz: `np.nanquantile` ist danach noch ~5 % von `predict` und ließe sich aus den deduplizierten Pfaden mit ihren Häufigkeiten rechnen. |
 | B16 | P1 | **`fit()` von String- und Aggregator-Overhead befreien** | 22 Fits je Station und Lauf. Prototyp **bitgleich** (219→79 ms): (a) Tagesschlüssel über `pd.factorize(index.tz_convert(tz).normalize())` statt `strftime("%Y-%m-%d")` (14,4→0,24 ms je 2016 Punkte; Auftretensreihenfolge = chronologisch, weil das Raster sortiert ist — dieselbe Ziehreihenfolge wie heute), (b) Feiertagsmaske über `searchsorted` auf Feiertags-Int64 statt List-Comprehension mit Timestamp-Iterierung (28,7→2,3 ms), (c) Residuen-Tagesblöcke als Index-Zuweisung `blocks[tag, slot] = residual` statt `pivot_table(aggfunc="median")` — (Tag, Slot) ist je Gitterpunkt eindeutig, der Median reduziert also genau einen Wert und verwirft NaN, (d) Naiv-Profil über stabilen Sortierindex + `searchsorted` statt `groupby(…).agg(lambda g: g.iloc[-1])`, (e) Zähler `law_rise_outside_noon` vektorisiert. Zusätzlich möglich, aber **nicht bitgleich**: Huber-IRLS über gewichtete Normalgleichungen (13 Spalten, `XᵀWX` bilden und lösen) statt `lstsq` — 79→56 ms, größte Abweichung in `beta` 3,2e-12, in den Residuen-Blöcken 3,4e-12. Nur mit ausdrücklichem Okay und dann als eigene, geprüfte Änderung. |
 | B17 | P1 | **21-Tage-Backtest je Tag cachen statt je Lauf** | Gemessen: eine zusätzliche Stunde Live-Daten am selben Tag ändert den Backtestbericht **nicht** (Kennzahlen, Vergleichszeilen und die 21 Fold-Origine identisch). Grund: alle Folds enden vor der heutigen lokalen Mitternacht, ihre Trainingsfenster und Wahrheiten liegen vollständig in der Vergangenheit; die +3-d/+7-d-Fenster der letzten Folds sind Zukunft. Der Bericht hängt also nur am lokalen Endtag und an den **vergangenen** Eingabedaten (Archiv-Nachholung, Lückenfüllung). Ziel: Cache je (Station, Kraftstoff, Endtag, Fingerabdruck der Eingabedaten bis Endtag) unter `runtime/engine/`; Treffer überspringt 21 Folds × (1 Fit + 3 Prognosen) = 86 % der CPU-Zeit eines Laufs, Fingerabdruck-Wechsel rechnet neu. Ehrlich ausweisen (`backtest_computed_at`/`backtest_cached`) statt Alter verschweigen; Test „gleicher Tag, neue Stundendaten → gleicher Bericht“ und „gapfill in der Vergangenheit → neuer Bericht“. |
-| B18 | P1 | **Dauerhaftes `partial` löst stündlichen Voll-Lauf aus** | `Scheduler.next_delay` und `worker.finish` setzen 3600 s, sobald der Zustand nicht `success` ist. Eine dauerhaft unfitbare Station (im Log jeden Lauf „Gütersloh – GTB-Tankstelle, Isselhorster Str. 10-12 · fit24 – Fehler“, Grund `insufficient_or_invalid_training_data`) hält den Zustand auf `partial` → der 8–11-minütige Lauf wiederholt sich **24×/Tag** (Log: Ende 13:48:01 → Start 14:48:03, exakt 3600 s). Ziel: dauerhafte von flüchtigen Ursachen trennen — „Station hat strukturell zu wenig Historie“ darf keinen Stundentakt auslösen (Backoff auf `INTERVALS`, eigener Fehlercode je Station, Alarm/Checkliste statt Wiederholung); gehört zu A12 (Station-Lebenszyklus: tote Stationen fallen aus Polling-Set und Ranking). `tests/test_app_jobs.py` erwartet heute `partial` und 3600 s — mitziehen, nicht umbiegen. |
-| B19 | P2 | **Prozess-Pool: eine Phase, explizite Startmethode, schlankere initargs** | Das Image baut auf `python:3.14-slim-bookworm`; seit 3.14 ist `forkserver` die Default-Startmethode (gh-84559), `app/model_jobs.py` legt keine fest — **auf der Zielhardware am 12.09.2026 bestätigt** (`get_start_method()` im Container `tankapp-web-app-1` = `forkserver`). Messung mit denselben Daten und 8 Workern: Pool-Start inklusive initargs **0,03 s (fork) gegen 1,3–1,8 s (forkserver)**, und `app/refresh.py` baut **zwei** Pools je Kraftstoff (Phase A fit, Phase B wide/backtest) — im NAS-Log sichtbar als 17 s bis zum ersten Task-Ergebnis von Phase A. Privat-Speicher (PSS) je Worker 105 MB (fork) gegen 150 MB (forkserver), weil `series_map` (30,6 MB gepickelt, alle 20 Stationen, obwohl ein Task genau eine braucht) je Worker privat entpackt wird: 8 Worker ≈ 0,8–1,2 GB, dazu 32 MB Pfade plus `nanquantile`-Temporäres je wide168-Task. Ziel: ein Pool für beide Phasen; Startmethode explizit wählen (der Job-Prozess `python -m app.worker` ist single-threaded, `fork` ist dort sicher — sonst forkserver mit Datentransfer als `.npy` in `/dev/shm` + `mmap_mode="r"`); initargs auf die wirklich gebrauchten Spalten reduzieren; Pfade ggf. `float32`; Worker-Zahl an `nproc` der Zielhardware ausrichten und die gemessenen Werte in [docs/BETRIEB.md](docs/BETRIEB.md#modell-lauf-beschleunigen) belegen. Ergänzt B11; die Worker-Zahl selbst ist B23 — auf der Zielhardware 4 Kerne und damit 4 Worker, also korrekt, der Aufwand hier skaliert mit 4 statt 8. Auf dieser Hardware kostet der doppelte Pool rund 1,3–1,8 s je Phase und ~0,6 GB Privat-Speicher bei 4,2 Gi verfügbarem Host-Speicher: Feinschliff und Robustheit, **kein** Durchsatz-Hebel. Durchsatz kommt aus B15/B16 (bitgleich) und B17 (Tages-Cache). |
-| B20 | P2 | **Verschenkte Arbeit in den Tasks** | Vier Punkte, alle ohne Änderung der Ergebnisse: (1) `app/model_jobs.py::_run` fittet auch für `kind="backtest"`, obwohl `app/refresh.py` das Modell ausschließlich aus Phase A liest (`fitted[identity]["model"]`) — Fit und zurückgeschicktes Artefakt (101 kB je Task) sind tot, ebenso `model` in `wide`-Ergebnissen. (2) `engine/backtest.py::run_backtest` ruft `predict` für das +3-d/+7-d-Fenster auf, **bevor** es prüft, ob dort Beobachtungen liegen — 8 von 63 Aufrufen je Station (13 %) enden sicher in `no_common_observations`; eine Vorab-Prüfung `h_observed.any()` ist bitgleich. (3) fit24/wide72/wide168 fitten dreimal dieselbe Station zum selben Cutoff — Fit plus beide Horizonte in einem Task spart zwei Fits je Station (Load-Balance beachten: `backtest` bleibt eigener Task). (4) `_records` baut je Zeile ein dict plus `isoformat()` über `index.map(lambda …)`; für die Publikation genügen die vorhandenen `HORIZON_COLUMNS`. (5) `run_tasks` holt Ergebnisse strikt in Einreichreihenfolge ab (`for _task, future in futures: future.result()`), der Fortschritt meldet also Fertigstellung in Task-Reihenfolge und nicht in Wahrheits-Reihenfolge — im Log sieht das aus wie ein Hänger (Task 21/22 kommen, dann 72 s Stille bis `backtest21`), und die `eta_s`-Schätzung erbt denselben Fehler. `as_completed` für `on_done` plus Ergebnisliste weiter in Task-Reihenfolge macht die Anzeige ehrlich, ohne die Publikation zu ändern. |
+| B18 | P1 | **Dauerhaftes `partial` löst stündlichen Voll-Lauf aus** | `Scheduler.next_delay` und `worker.finish` setzen 3600 s, sobald der Zustand nicht `success` ist. Eine dauerhaft unfitbare Station (im Log jeden Lauf „Gütersloh – GTB-Tankstelle, Isselhorster Str. 10-12 · fit24 – Fehler“, Grund `insufficient_or_invalid_training_data`) hält den Zustand auf `partial` → der 8–11-minütige Lauf wiederholt sich **24×/Tag** (Log: Ende 13:48:01 → Start 14:48:03, exakt 3600 s). Ziel: dauerhafte von flüchtigen Ursachen trennen — „Station hat strukturell zu wenig Historie“ darf keinen Stundentakt auslösen (Backoff auf `INTERVALS`, eigener Fehlercode je Station, Alarm/Checkliste statt Wiederholung); gehört zu A12 (Station-Lebenszyklus: tote Stationen fallen aus Polling-Set und Ranking). `tests/test_app_jobs.py` erwartet heute `partial` und 3600 s — mitziehen, nicht umbiegen. Am 12.09.2026 um 18:41:25 erneut eingetreten: Endzustand `partial (some_models_unavailable)`, wieder wegen derselben Station (Task 15/80 „Gütersloh – GTB-Tankstelle, Isselhorster Str. 10-12 · fit24 – Fehler“), `next_run_at` damit +3600 s — der 10,3-minütige Lauf wiederholt sich stündlich, solange diese eine Station nicht fitbar ist. |
+| B19 | P2 | **Prozess-Pool: eine Phase, explizite Startmethode, schlankere initargs** | Das Image baut auf `python:3.14-slim-bookworm`; seit 3.14 ist `forkserver` die Default-Startmethode (gh-84559), `app/model_jobs.py` legt keine fest — **auf der Zielhardware am 12.09.2026 bestätigt** (`get_start_method()` im Container `tankapp-web-app-1` = `forkserver`). Messung mit denselben Daten und 8 Workern: Pool-Start inklusive initargs **0,03 s (fork) gegen 1,3–1,8 s (forkserver)**, und `app/refresh.py` baut **zwei** Pools je Kraftstoff (Phase A fit, Phase B wide/backtest) — im NAS-Log sichtbar als 17 s bis zum ersten Task-Ergebnis von Phase A. Privat-Speicher (PSS) je Worker 105 MB (fork) gegen 150 MB (forkserver), weil `series_map` (30,6 MB gepickelt, alle 20 Stationen, obwohl ein Task genau eine braucht) je Worker privat entpackt wird: 8 Worker ≈ 0,8–1,2 GB, dazu 32 MB Pfade plus `nanquantile`-Temporäres je wide168-Task. Ziel: ein Pool für beide Phasen; Startmethode explizit wählen (der Job-Prozess `python -m app.worker` ist single-threaded, `fork` ist dort sicher — sonst forkserver mit Datentransfer als `.npy` in `/dev/shm` + `mmap_mode="r"`); initargs auf die wirklich gebrauchten Spalten reduzieren; Pfade ggf. `float32`; Worker-Zahl an `nproc` der Zielhardware ausrichten und die gemessenen Werte in [docs/BETRIEB.md](docs/BETRIEB.md#modell-lauf-beschleunigen) belegen. Ergänzt B11; die Worker-Zahl selbst ist B23 — auf der Zielhardware 4 Kerne und damit 4 Worker, also korrekt, der Aufwand hier skaliert mit 4 statt 8. Auf dieser Hardware kostet der doppelte Pool rund 1,3–1,8 s je Phase und ~0,6 GB Privat-Speicher bei 4,2 Gi verfügbarem Host-Speicher: Feinschliff und Robustheit, **kein** Durchsatz-Hebel. Durchsatz kommt aus B15/B16 (bitgleich) und B17 (Tages-Cache). Messung auf der Zielhardware (12.09.2026): Phase A (20 × `fit24`) dauert seriell 33,3 s und mit 4 Workern 22,3 s — nur **1,5×** statt ~4×, weil Pool-Start, Worker-Bootstrap (jeder `forkserver`-Worker importiert Python/numpy/pandas neu) und 4 × 30,6 MB initargs bei einer kurzen Phase überwiegen; geschätzter Overhead ~14 s je Pool, zwei Pools je Lauf ≈ 28 s. Das erklärt auch die früher beobachteten 17 s bis zum ersten Task-Ergebnis. Gegenüber Phase B (566 s) ist derselbe Overhead vernachlässigbar — B19 bleibt Feinschliff, kein Wandzeit-Hebel. |
+| B20 | P2 | **Verschenkte Arbeit in den Tasks** | Vier Punkte, alle ohne Änderung der Ergebnisse: (1) `app/model_jobs.py::_run` fittet auch für `kind="backtest"`, obwohl `app/refresh.py` das Modell ausschließlich aus Phase A liest (`fitted[identity]["model"]`) — Fit und zurückgeschicktes Artefakt (101 kB je Task) sind tot, ebenso `model` in `wide`-Ergebnissen. (2) `engine/backtest.py::run_backtest` ruft `predict` für das +3-d/+7-d-Fenster auf, **bevor** es prüft, ob dort Beobachtungen liegen — 8 von 63 Aufrufen je Station (13 %) enden sicher in `no_common_observations`; eine Vorab-Prüfung `h_observed.any()` ist bitgleich. (3) fit24/wide72/wide168 fitten dreimal dieselbe Station zum selben Cutoff — Fit plus beide Horizonte in einem Task spart zwei Fits je Station (Load-Balance beachten: `backtest` bleibt eigener Task). (4) `_records` baut je Zeile ein dict plus `isoformat()` über `index.map(lambda …)`; für die Publikation genügen die vorhandenen `HORIZON_COLUMNS`. (5) `run_tasks` holt Ergebnisse strikt in Einreichreihenfolge ab (`for _task, future in futures: future.result()`), der Fortschritt meldet also Fertigstellung in Task-Reihenfolge und nicht in Wahrheits-Reihenfolge — im Log sieht das aus wie ein Hänger (Task 21/22 kommen, dann 72 s Stille bis `backtest21`), und die `eta_s`-Schätzung erbt denselben Fehler. `as_completed` für `on_done` plus Ergebnisliste weiter in Task-Reihenfolge macht die Anzeige ehrlich, ohne die Publikation zu ändern. (6) Der Prozentwert springt rückwärts und steht dann lange still: im Lauf vom 12.09.2026 35 % (Archiv) → **0 %** (gapfill) → 85 % (Bootstrap) → 85–95 % während der **9,4 min** langen Phase B — die GUI zeigt also fast zehn Minuten lang praktisch keine Bewegung. (7) Im seriellen Pfad (`workers <= 1`) meldet `run_tasks` Fortschritt erst **nach** Abschluss der ganzen Phase; real beobachtet am 12.09.2026: 22,7 min ohne eine einzige Zeile (18:08:25 → 18:31), was wie ein Hänger aussieht und zunächst als „Abbruch an der Phasengrenze" fehlgedeutet wurde. Gegenmittel für beide: `on_done` je fertigem Task (auch im seriellen Pfad) und eine monoton wachsende Prozent-Abbildung über alle Phasen. |
 | B21 | P2 | **Selektion läuft doppelt und überschreibt das Artefakt** | `refresh()` rechnet δ̂ je Kraftstoff und schreibt `runtime/selection/{fuel}.json` plus `current.json`; `worker.execute("models")` ruft danach `build_selection()` erneut auf und überschreibt `current.json` mit einer anders aufgebauten Datei. Im Log: erste Selektion 0,13 s (Ergebnis nur im stdout-Log, nicht im Fortschritt), zweite 0,7 s mit „e10: **0 Stationen**“ und Fortschritt „2/1“ bei `total=1`. Zu klären: warum `top_global` leer ist (Eingabedaten, `min_coverage=0.85`, oder stiller Fehler im ersten Aufruf), welche der beiden Rechnungen die publizierte sein soll, ob die zweite entfallen kann, und ob „Meine Stationen“ in der GUI heute aus `by_fuel` oder aus `stations` liest. Fortschrittszähler darf nicht über `total` laufen. |
 | B22 | D | **Zahlen-ändernde Hebel: `bootstrap_samples` und Nacht-Raster — Entscheidung, kein Gratishebel** | Nach B15/B16 nicht mehr nötig; falls trotzdem gewollt: 2000→500 Ziehungen halbiert die Backtest-Zeit (24,3→9,6 s), verschiebt aber die publizierten Kennzahlen (Messung, eine Station: MASE 2,1059→2,0939, PICP 55,82→54,63 %, MPIW 1,866→1,830 ct, MAE 1,3590→1,3509 ct). Also Produktentscheidung mit eigener Konfiguration (`bootstrap_samples_backtest`) und Ausweis im Bericht — keine stille Änderung an einer Zahl, die ein Gate (§4.4) prüft. Zweiter Hebel derselben Klasse: `predict(hours=72/168)` rechnet das **volle** 5-Minuten-Raster inklusive Nachtstunden, obwohl der Collector nur 06–24 Uhr pollt und die Nachtzellen mangels Residuen-Unterstützung überwiegend NaN sind — mit `scheduled()`-Filter wären das 25 % weniger Punkte (168 h: 2016→1512). Ändert die publizierten `points_3d`/`points_7d` und damit den Fan-Chart, also erst entscheiden, ob die GUI die Nachtstunden braucht. |
-| B23 | P2 | **Worker-Zahl hängt an `os.cpu_count()` (ignoriert Affinität/Quota) — latent, heute ohne Wirkung** | Zielhardware-Messung 12.09.2026: Host **und** Container sehen 4 Kerne (J5040), `CpusetCpus` leer, `NanoCpus=0`, `CpuQuota=0`, `os.cpu_count()`/`os.process_cpu_count()`/Affinität = `4 / 4 / 4` → `resolve_workers` liefert 4; es gibt derzeit **keine** Fehlzuordnung, der Pool arbeitet sinnvoll. Eingebaut ist der Fehler trotzdem: `os.cpu_count()` meldet die Host-Kerne und ignoriert CPU-Affinität sowie cgroup-`cpu.max`. Sobald der Container gepinnt oder mit einer Quota belegt wird (unRAID-CPU-Pinning, `--cpuset-cpus`, `deploy.resources.limits.cpus`), startet die App weiter bis zu 8 Worker auf weniger Kernen — dann ohne Durchsatzgewinn, aber mit vollem Speicher- und initargs-Aufwand (B19). Ziel: `os.process_cpu_count()` (seit Python 3.13) statt `os.cpu_count()`, zusätzlich `cpu.max`/`NanoCpus` auswerten, plus Test „2 nutzbare bei 8 gemeldeten Kernen ⇒ 2 Worker“. **Messfalle, damit sie niemand wiederholt:** `nproc` im Container meldete `1`, obwohl 4 Kerne nutzbar sind — das Image setzt `OMP_NUM_THREADS=1` ([ops/nas/app/Dockerfile](ops/nas/app/Dockerfile), Zeile 11), und GNU `nproc` ehrt diese Variable (im Sandkasten nachgebaut: `nproc` = 2, `OMP_NUM_THREADS=1 nproc` = 1, Affinität unverändert). Kerne deshalb immer über die Affinität bestimmen, nie über `nproc`. **Fehlberatung aus derselben Messung, ausdrücklich zum Rückgängigmachen:** auf Basis der `nproc`-Zahl wurde `TANKAPP_MODEL_WORKERS=1` gesetzt. Das ist auf 4 Kernen eine Verschlechterung — `run_tasks` nimmt den seriellen Pfad, baut keinen Pool, die Wandzeit steigt grob um den Faktor 4 und damit vermutlich über das 3600-s-Intervall aus B18 (überlappende Läufe). Zurück auf `0` (automatisch = 4) oder bewusst `2`/`3`, wenn andere Dienste auf dem NAS Vorrang haben; Gegenmessung mit `docker stats` bzw. `docker top` während der Fit-Phase, nicht im Leerlauf. |
+| B23 | P2 | **Worker-Zahl hängt an `os.cpu_count()` (ignoriert Affinität/Quota) — latent, heute ohne Wirkung** | Zielhardware-Messung 12.09.2026: Host **und** Container sehen 4 Kerne (J5040), `CpusetCpus` leer, `NanoCpus=0`, `CpuQuota=0`, `os.cpu_count()`/`os.process_cpu_count()`/Affinität = `4 / 4 / 4` → `resolve_workers` liefert 4; es gibt derzeit **keine** Fehlzuordnung, der Pool arbeitet sinnvoll. Eingebaut ist der Fehler trotzdem: `os.cpu_count()` meldet die Host-Kerne und ignoriert CPU-Affinität sowie cgroup-`cpu.max`. Sobald der Container gepinnt oder mit einer Quota belegt wird (unRAID-CPU-Pinning, `--cpuset-cpus`, `deploy.resources.limits.cpus`), startet die App weiter bis zu 8 Worker auf weniger Kernen — dann ohne Durchsatzgewinn, aber mit vollem Speicher- und initargs-Aufwand (B19). Ziel: `os.process_cpu_count()` (seit Python 3.13) statt `os.cpu_count()`, zusätzlich `cpu.max`/`NanoCpus` auswerten, plus Test „2 nutzbare bei 8 gemeldeten Kernen ⇒ 2 Worker“. **Messfalle, damit sie niemand wiederholt:** `nproc` im Container meldete `1`, obwohl 4 Kerne nutzbar sind — das Image setzt `OMP_NUM_THREADS=1` ([ops/nas/app/Dockerfile](ops/nas/app/Dockerfile), Zeile 11), und GNU `nproc` ehrt diese Variable (im Sandkasten nachgebaut: `nproc` = 2, `OMP_NUM_THREADS=1 nproc` = 1, Affinität unverändert). Kerne deshalb immer über die Affinität bestimmen, nie über `nproc`. **Fehlberatung aus derselben Messung, ausdrücklich zum Rückgängigmachen:** auf Basis der `nproc`-Zahl wurde `TANKAPP_MODEL_WORKERS=1` gesetzt. Das ist auf 4 Kernen eine Verschlechterung — `run_tasks` nimmt den seriellen Pfad, baut keinen Pool, die Wandzeit steigt grob um den Faktor 4 und damit vermutlich über das 3600-s-Intervall aus B18 (überlappende Läufe). Zurück auf `0` (automatisch = 4) oder bewusst `2`/`3`, wenn andere Dienste auf dem NAS Vorrang haben; Gegenmessung mit `docker stats` bzw. `docker top` während der Fit-Phase, nicht im Leerlauf. Gegenmessung im echten Betrieb (12.09.2026): mit `TANKAPP_MODEL_WORKERS=1` dauerte Phase A 33,3 s statt 22,3 s mit 4 Workern; Phase B lief 22,7 min **ohne eine einzige Log-Zeile** (serieller Pfad meldet Fortschritt erst nach der Phase, B20 Punkt 7) und wäre bei ~38 min gelandet — länger als das 3600-s-Intervall aus B18. Um 18:31 auf `0` zurückgesetzt, der Lauf danach brauchte 10,3 min. |
+| B24 | P1 | **Hart abgebrochener Lauf bleibt als `state: running` liegen — kein `aborted`** | `app/worker.py::run` schreibt beim Start `{"state": "running", "started_at": …}` und aktualisiert `runtime/jobs/<name>.json` erst wieder in `finish()`. Wird der Prozess hart beendet — Container-Recreate durch `nas-up` (`compose up -d --build --force-recreate`), `docker restart`, SIGKILL nach `stop_grace_period: 20s` — läuft `finish()` nie: die Datei behauptet weiter `running`, ohne `finished_at`, `next_run_at` und `error_code`. `app/data.py::public_job` gibt das unverändert aus; nur das Fortschrittsfeld wird über die Staleness-Prüfung in `read_progress` unterdrückt. Die GUI kann also „läuft“ ohne Fortschritt zeigen, bis ein neuer Lauf die Datei überschreibt, und die Job-Historie kennt den Abbruch überhaupt nicht. Beleg: zwei Vorfälle am 12.09.2026 (14:48 und 18:07, Ursache im Diagnose-Block oben). Ziel: (a) SIGTERM-Handler im Job-Prozess, der den Zustand als `aborted` samt Abbruchphase schreibt — 20 s Grace-Periode reichen dafür; (b) beim Start einen `running`-Eintrag ohne lebenden Prozess als `aborted` verbuchen statt ihn still zu überschreiben; (c) `nas-up` warnen (oder warten), wenn ein Modell-Lauf aktiv ist, damit ein 10-Minuten-Lauf nicht unbemerkt stirbt; (d) Microcopy für „abgebrochen“ nach [docs/MICROCOPY.md](docs/MICROCOPY.md) und Test auf `aborted` in `tests/test_app_jobs.py`. Gehört zu B18 (Zustände und Intervalle) und B20 Punkt 7 (serieller Pfad meldet nichts). |
 
-**Offene Diagnose aus demselben Log (kein eigener Punkt, gehört zu B18/B19/B23):**
-um 14:48:03 startete ein Lauf und brach nach Task 20/80 (14:48:59) ohne
-`beendet`-Zeile ab; um 14:49:22 startete ein zweiter, der 11,2 min lief. Zwei
-überlappende Modell-Läufe verdoppeln die Last. `Scheduler.run_once` wartet auf
-das Ende des Kindprozesses, der zweite Lauf kann also nur von einem Neustart des
-App-Prozesses kommen (der Scheduler startet den ersten Job sofort) oder von einer
-zweiten App-Instanz. Der Abbruch lag zeitlich genau auf dem Pool-Wechsel zu
-Phase B, wo 8 neue Worker je ~150 MB Privat-Speicher anfordern; ein OOM-Kill war
-die naheliegendste Erklärung.
+**Abgebrochene Läufe — Ursache gefunden (12.09.2026, gehört zu B18/B20/B24):**
+zwei Abbrüche mit identischem Muster im Job-Log. Lauf 1: Start 14:48:03, letzte
+Zeile 14:48:59 (Task 20/80), neuer „Job gestartet" 14:49:22. Lauf 2: Start
+18:07:34, letzte Zeile 18:08:25 (Task 20/80), neuer „Job gestartet" 18:31:09.
 
-Stand nach der Messung auf der Zielhardware (12.09.2026): **ausgeschlossen** sind
-ein OOM-Kill des Containers, ein Container-Neustart und ein Kernel-OOM überhaupt
-(`OOMKilled=false`, `RestartCount=0`, `HostConfig.Memory=0`, `dmesg` ohne
-Treffer, 4,2 Gi verfügbar). Damit ist auch der Erklärungsversuch „Phase B fordert
-8 × ~150 MB an und der Speicher geht aus" vom Tisch — zumal auf dieser Hardware
-4 Worker starten, nicht 8 (Zielhardware-Tabelle oben). Ehrliche Einschränkung: ob
-der `dmesg`-Ringpuffer überhaupt bis 14:48 zurückreicht, ist nicht geprüft
-(`dmesg -T | tail -2` zeigt die jüngste Zeitmarke). Weiter offen, in dieser
-Reihenfolge: (1) lief der App-Prozess im Container neu an — `tankapp.py nas-up`,
-manueller Restart, Datei-Änderung mit `--reload`? Das beendet einen laufenden Job
-ohne `beendet`-Zeile, und der Scheduler startet beim Anlaufen sofort den nächsten;
-das Muster „Abbruch 14:48:59 → neuer Lauf 14:49:22" (83 s) passt dazu. Der
-Beweis über `State.StartedAt` ist allerdings verloren: das `nas-up` vom selben Tag
-hat den Container neu erzeugt. (2) Läuft eine zweite App-Instanz?
-(3) Warf der Job-Prozess eine Ausnahme, die nicht als Fehlerzustand verbucht
-wurde? Dann stünde ein Traceback im Log. Zu prüfen — am besten **vor** dem
-nächsten Lauf, weil beide Dateien weitergeschrieben werden:
-`cat data/runtime/jobs/models.json` (letzter Zustand mit `started_at`/`finished_at`),
-`grep -n "14:4[5-9]\|14:5[0-2]" data/runtime/jobs/models.log` (eigenes Job-Log,
-letzte 500 Zeilen, unabhängig von Docker),
-`docker logs --since 2026-09-12T14:47:00 --until 2026-09-12T14:52:00 tankapp-web-app-1`
-(Container-Logging ist auf 2 × 5 m begrenzt, möglicherweise schon rotiert),
-`docker ps --format '{{.Names}}' | grep -i tank` (Instanzen zählen) und
-`docker top tankapp-web-app-1` während eines Laufs — `ps` fehlt im Image
-`python:3.14-slim`, deshalb `docker top` statt `docker exec … ps`.
+Lauf 2 ist **beweisbar erklärt**: um ~18:31 lief `TANKAPP_MODEL_WORKERS=0 python3
+tankapp.py nas-up`, und `nas_up` ruft `compose up -d --build --force-recreate` —
+das ersetzt den Container und tötet den laufenden Job; der Scheduler des neuen
+Containers startet den Modell-Lauf sofort. Die 22,7 min ohne eine einzige
+Log-Zeile davor sind kein Hänger: dieser Lauf lief noch mit
+`TANKAPP_MODEL_WORKERS=1`, und `run_tasks` meldet im seriellen Pfad Fortschritt
+**erst nach Abschluss der ganzen Phase** (erst `results = [_run(task) …]`, dann
+die `on_done`-Schleife). Phase B hätte seriell ~38 min gebraucht
+(113 s CPU × 20 Stationen ÷ 1 Kern), der Lauf wurde mitten darin getötet —
+siehe B20 Punkt 7.
+
+Für Lauf 1 (14:48) ist dieselbe Erklärung **wahrscheinlich, aber nicht belegt**:
+`RestartCount=0` schließt ein *Recreate* nicht aus (Compose/unRAID ersetzen den
+Container, die Restart-Policy zählt das nicht), `OOMKilled=false`,
+`HostConfig.Memory=0` und ein leeres `dmesg` schließen Speicherdruck aus, und der
+Abstand von 23 s zwischen letzter Task-Zeile und neuem „Job gestartet" passt zu
+Container-Neustart plus Anlauf: mit 4 Workern erscheint Task 21/80 rund 11 s nach
+Task 20/80 (gemessen im Lauf um 18:31), hier kam er gar nicht. **Ausgeschlossen**
+sind damit OOM auf Container- und Kernel-Ebene, ein Speicher-Limit und
+CPU-Pinning/Quota. Die Läufe überlappten sich entgegen der ersten Deutung
+vermutlich **nicht** — der erste wurde beendet, bevor der zweite anlief.
+
+Falls es noch einmal ohne eigenes `nas-up` passiert, sofort sichern:
+`uptime -s`, `systemctl show docker -p ActiveEnterTimestamp`,
+`grep -n nas-up ~/.bash_history | tail -5`,
+`docker ps --format '{{.Names}}' | grep -i tank` (Instanzen zählen),
+`cat data/runtime/jobs/models.json` (`started_at` ohne `finished_at` = hart
+abgebrochen, B24) und `tail -n 60 data/runtime/jobs/models.log`.
 
 **Erwartete Wirkung, wenn B15+B16 zusammen umgesetzt sind (gemessen, ein Kern):**
 28,3 s → 5,2 s je Station, also 9,4 min → 1,7 min CPU für 20 Stationen
@@ -348,20 +369,20 @@ Footer-Zeilen offen).
    `FEEDBACK_SCHEMA_VERSION`.
 4. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
    stehen begründet in [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
-5. **Laufzeit-Bündel — Reihenfolge nach der Zielhardware-Messung vom
-   12.09.2026** (NAS: **4** Kerne J5040, kein Pinning/Quota/Limit,
-   `forkserver` bestätigt, kein OOM und kein Neustart, 4,2 Gi verfügbar, kein
-   Swap; `nproc` = 1 war eine Messfalle über `OMP_NUM_THREADS`, siehe B23):
-   zuerst **B15/B16** — bitgleich, kein Architektur-Eingriff, gemessen 5,4×
-   weniger CPU-Zeit je Station; auf 4 Kernen ist das der einzige Hebel, der die
-   Wandzeit deutlich senkt (8–11 min → grob 2 min, wenn die Skalierung hält).
-   **Zurückzunehmen vorher:** `TANKAPP_MODEL_WORKERS=1` wieder auf `0`
-   (automatisch = 4 Worker) — seriell würde der Lauf grob 4× länger und damit
-   vermutlich länger als das 3600-s-Intervall aus B18. Danach **B18** (kleinste
-   Änderung, größte Betriebswirkung: der Lauf fällt von 24×/Tag auf 1×/Tag),
-   dann **B17** (Tages-Cache, braucht einen Entwurf für Schlüssel und
-   Ehrlichkeits-Ausweis), dann **B19–B21** (Feinschliff: ein Pool statt zwei,
-   explizite Startmethode, schlanke initargs, verschenkte Arbeit, doppelte
-   Selektion) und **B23** (Robustheit der Worker-Zahl gegen Pinning/Quota).
+5. **Laufzeit-Bündel — Reihenfolge nach den Zielhardware-Messungen vom
+   12.09.2026** (NAS: **4** Kerne J5040, kein Pinning/Quota/Limit, `forkserver`,
+   kein OOM; echter Lauf 10,3 min mit **92 %** in Phase B; `nproc` = 1 war eine
+   Messfalle über `OMP_NUM_THREADS`, siehe B23): zuerst **B15/B16** — bitgleich,
+   kein Architektur-Eingriff, gemessen 5,4× weniger CPU-Zeit je Station; auf
+   4 Kernen hochgerechnet Phase B 9,4 min → ~1,8 min, Gesamtlauf ~2,3 min
+   (Skalierung aus dem Sandkasten, auf dem NAS noch zu messen). **B18** und
+   **B24** daneben als kleinste Betriebsänderungen: der Lauf fällt von 24×/Tag
+   auf 1×/Tag, und ein hart abgebrochener Lauf wird als `aborted` sichtbar statt
+   als ewiges `running` (zwei reale Vorfälle am 12.09.). Danach **B17**
+   (Tages-Cache, braucht einen Entwurf für Schlüssel und Ehrlichkeits-Ausweis;
+   hochgerechnet Phase B untertägig ~1 min), dann **B19–B21** (Feinschliff: ein
+   Pool statt zwei — gemessen ~28 s Overhead je Lauf —, explizite Startmethode,
+   schlanke initargs, verschenkte Arbeit, doppelte Selektion, ehrlicher
+   Fortschritt) und **B23** (Robustheit der Worker-Zahl gegen Pinning/Quota).
    B22 bleibt eine Produktentscheidung. Befund und Messwerte stehen im Abschnitt
-   [B — Laufzeit des Modell-Laufs](#laufzeit-des-modell-laufs--befund-und-messwerte-vom-12092026-b15b23-nichts-davon-umgesetzt).
+   [B — Laufzeit des Modell-Laufs](#laufzeit-des-modell-laufs--befund-und-messwerte-vom-12092026-b15b24-nichts-davon-umgesetzt).
