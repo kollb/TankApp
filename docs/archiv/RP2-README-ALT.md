@@ -1,6 +1,11 @@
 # RP2 Fallback-GUI + NAS-Proxy für TankApp
 
-> **Kanonische Anleitung jetzt unter [docs/RP2.md](../docs/RP2.md)** mit klickbarem Inhaltsverzeichnis.
+> **Archiviert — Kurzreferenz, die früher neben dem RP2-Code lag.**
+> Inhalt (Dateistruktur, Fallback-JSON-API, Umschaltzeiten, Template-Updates,
+> Changelog) ist in [../RP2.md](../RP2.md) aufgegangen. Dokumentation lebt nur
+> noch in `docs/`. Archiv-Übersicht: [README.md](README.md).
+
+> **Kanonische Anleitung jetzt unter [docs/RP2.md](../RP2.md)** mit klickbarem Inhaltsverzeichnis.
 > Diese Datei bleibt als Kurzreferenz im `rp2/`-Ordner.
 
 **24/7 Zugang zur TankApp über eine einzige Adresse — den RP2 (Port 8000).**
@@ -21,7 +26,7 @@ Browser ──► http://<RP2-IP>:8000
 
 - [Funktionen](#-funktionen)
 - [Dateistruktur](#-dateistruktur)
-- [Konfiguration](#️-konfiguration-systemd-drop-in-sudo-systemctl-edit-tankapp-fallback-gui)
+- [Konfiguration](#-konfiguration-systemd-drop-in-sudo-systemctl-edit-tankapp-fallback-gui)
 - [Verhalten & Tests](#-verhalten--tests)
 - [Template-Updates](#-template-updates)
 - [Changelog](#-changelog)
@@ -93,7 +98,7 @@ rp2/
 
 **Ohne `polling.json` fehlen Namen, Marken und Navigation** — die UUID wird
 dann angezeigt. Die Datei liegt beim Collector bereits auf dem Pi
-(siehe [docs/INSTALL.md](../docs/INSTALL.md) §2.2, Details [docs/BETRIEB.md](../docs/BETRIEB.md)).
+(siehe [docs/INSTALL.md](../INSTALL.md) §2.2, Details [docs/BETRIEB.md](../BETRIEB.md)).
 
 ## 🧪 Verhalten & Tests
 
@@ -133,6 +138,6 @@ das Template im Repo, wird die alte Datei beim nächsten Service-Start nach
 
 ## Vollständige Anleitung
 
-**→ [docs/RP2.md](../docs/RP2.md)** — konsolidierte Schritt-für-Schritt Anleitung mit TOC, Fehlersuche, Prognose-Qualität, Nutzung.
+**→ [docs/RP2.md](../RP2.md)** — konsolidierte Schritt-für-Schritt Anleitung mit TOC, Fehlersuche, Prognose-Qualität, Nutzung.
 
-Alte `rp2/ANLEITUNG.md` bleibt erhalten, ist aber jetzt in `docs/RP2.md` konsolidiert. Siehe auch [docs/README.md](../docs/README.md) für alle Dokumente.
+Alte `rp2/ANLEITUNG.md` bleibt erhalten, ist aber jetzt in `docs/RP2.md` konsolidiert. Siehe auch [docs/README.md](../../README.md) für alle Dokumente.

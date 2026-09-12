@@ -1,5 +1,10 @@
 # TankApp – V3 GUI Analyse: Grafische Inkonsistenzen & erfundene Defaults
 
+> **Archiviert — GUI-Analyse V3 vom 11.09.2026.** Alle hier genannten V3-Fixes
+> (erfundene Preis-Defaults, Erfolgsmeldung bei Fehler, Farb-/Badge-Semantik,
+> Fallback-GUI-Bugs) sind umgesetzt und durch `web/e2e/decision.spec.ts` sowie
+> `tests/test_rp2_fallback.py` abgesichert. Archiv-Übersicht: [README.md](README.md).
+
 > 2026-09-11 · Commit 440402e + Branch arena/01a08eeb-tankapp · Ergänzung zu TIEFENANALYSE + V2
 
 **Kurzantwort:** Fallback-GUI hatte 5 grafische/semantische Bugs (Top1 vs Top10, Doppel-Header, table-layout fixed, save-neg rot, mobile Spalten). Haupt-GUI hatte dieselben Kategorien plus erfundene Preis-Defaults (1.689 / 1.649) und fehlendes error_code Handling bei Intent/Fill. Alle jetzt gefixt.

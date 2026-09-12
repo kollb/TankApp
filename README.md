@@ -1,98 +1,98 @@
 # TankApp
 
-**Ziel: GUI öffnen → passende Tankstelle und Zeitpunkt sehen → tanken.**
-Kein tägliches CSV-Kopieren, kein manuelles Modelltraining.
+**GUI öffnen → passende Tankstelle und Zeitpunkt sehen → tanken.**
+Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
+Preise.
 
-## Inhaltsverzeichnis (klickbar)
+> Stand: 12.09.2026 · Version **0.10.1** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
-- [Ein Einstieg, eine Reihenfolge](#ein-einstieg-eine-reihenfolge)
-- [Geräte-Rollen](#geräte-rollen)
-- [Stand B3](#stand-b3)
-- [Stand B5 — Konzept-Lücken geschlossen](#stand-b5--konzept-lücken-geschlossen)
-- [Dokumentation](#dokumentation)
-- [Entwicklung & Tests](#entwicklung--tests)
+## Dokumentation: ein Ordner, ein Index
 
-## Ein Einstieg, eine Reihenfolge
+**→ [docs/README.md](docs/README.md)** ist das Inhaltsverzeichnis der gesamten
+Dokumentation („Ich will … → Dokument“). Alles liegt in `docs/`, Historisches in
+[`docs/archiv/`](docs/archiv/README.md). Daneben gibt es keine Modul-READMEs mehr.
 
-**[Installation und nächster Schritt → docs/INSTALL.md](docs/INSTALL.md)**  
-**[Alle Dokumente im Überblick → docs/README.md](docs/README.md)** mit klickbarem Inhaltsverzeichnis
+| Am häufigsten gebraucht | Dokument |
+|---|---|
+| Einrichten (Pi → NAS → Browser) | [docs/INSTALL.md](docs/INSTALL.md) |
+| Dauerbetrieb: systemd, Backup, Alarme, Fehlersuche | [docs/BETRIEB.md](docs/BETRIEB.md) |
+| Endpunkte, Fehlercodes, Beispiele | [docs/API.md](docs/API.md) |
+| Wie Selektion, Modelle und Heatmaps rechnen | [docs/ANALYSE.md](docs/ANALYSE.md) |
+| Warum Pi/NAS/Browser/RP2 so zusammenspielen | [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) |
+| Fachliches Zielbild (drei Fragen, Decision Layer) | [docs/KONZEPT.md](docs/KONZEPT.md) |
+| Konzept ↔ Stand: was offen ist und warum | [docs/LUECKEN.md](docs/LUECKEN.md) |
 
-1. **Gütersloh ins gemeinsame Polling aufnehmen.** Frankfurt läuft weiter.
-2. **NAS-App mit echten Live-Preisen starten.** Nicht auf fertige Prognosen warten.
-3. **Parallel das NAS-Archiv automatisch aufbauen:** ein Jahr oder mehr Tankerkönig-Historie, fehlende Tage nachholen.
-4. **NAS-App berechnet und veröffentlicht automatisch**, danach geprüfte Empfehlungen in derselben GUI ergänzen.
+## Was die App beantwortet
+
+An der Säule, in ≤ 5 Sekunden, drei Fragen:
+
+| Frage | Antwort der App |
+|---|---|
+| **F1 — Jetzt oder warten?** | Ampel, Zeitfenster, €-Differenz, `p_besser` |
+| **F2 — Hier oder woanders?** | Netto-€ nach Umweg (Sprit + Zeit), Alternativen |
+| **F3 — Heute oder später?** | Top-3-Fenster der nächsten Tage |
+
+Drei Tabs: **Alltag** (Entscheidungs-Kompass, ≤ 3 primäre Zahlen),
+**Werkstatt** (Scoreboard, Fan-Chart, Heatmaps, Meine Stationen), **System**
+(Konfiguration, Archiv, Jobs, Collector, Alarme, Checkliste, Beleg-Export).
+
+**Ehrlichkeits-Regel (Konzept §0.4):** Ohne echte Daten zeigt die App einen
+Einrichtungszustand — keine Demo-Preise, keine „82 % sicher“ vor der
+Kalibrierung. Bis M7 erreicht ist, bleiben `calibrated=false` und
+`decision_ready=false`.
 
 ## Geräte-Rollen
 
-| Gerät | Aufgabe im Endzustand |
+| Gerät | Aufgabe |
 |---|---|
-| **Pi** | Collector für alle Städte, RAM-Puffer, Heartbeat, Upload zum NAS; läuft unabhängig weiter. |
-| **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits/Selektion, API und Web-GUI (inkl. Heatmaps, Meine Stationen, Collector-Status, Route-Evaluate). |
-| **PC / Handy** | GUI im Browser. PC optional zur Einrichtung oder für schnellere Rechenläufe; kein Dauerbetrieb und keine verpflichtende venv. |
+| **Pi / RP2** | Collector für alle Städte (06–24 Uhr, 1 Request/5 min), RAM-Puffer `/dev/shm/tankapp` (7 Tage), Heartbeat, Upload zum NAS. Läuft unabhängig weiter. Optional: Port 8000 als 24/7-Zugang mit NAS-Proxy und Fallback-GUI. |
+| **NAS** | Tankerkönig-Archiv, InfluxDB, automatische Aufbereitung/Fits/Selektion, API und Web-GUI auf Port 1355, `runtime/` (Feedback-Store, Jobs, Publikationen). |
+| **PC / Handy** | GUI im Browser. PC optional für Einrichtung oder schnellere Rechenläufe — kein Dauerbetrieb, keine Pflicht-venv. |
 
-## Stand B3
+## Stand der Umsetzung
 
-**Stand 09.09.2026:** B3 — Mittel (neue Backend-Aggregate + Endpunkte) implementiert:
+**Implementiert und softwaregetestet:** Mehrstadt-Polling, Live-GUI mit
+Alltag/Werkstatt/System, Nur-Lese-API mit Rate-Limit, gebündelter NAS-Dienst
+(`nas-up`) mit Archiv-Nachholung, Modell-Läufen (prozessparallel), Selektion,
+Heatmaps, Collector-Status, Decision Layer (`/api/v1/decide` inkl. `latest_by`
+und Fahrtmodus), Job-Fortschritt, Advice-/Wallet-Ledger mit Beleg-Storno und
+CSV-Export, Alarm-Block, Backup-Skript, Versionsanzeige, RP2-Proxy/Fallback.
 
-- **B3.9 Heatmaps DoW×Stunde** (Niveau + Cheap-Probability) → `GET /api/v1/heatmap`, GUI Statistik → Heatmaps
-- **B3.10 Meine Stationen mit δ̂** (Ranking, Bootstrap-KI, AV-Score, billigste Stunde) → `GET /api/v1/selection`, Artefakt `runtime/selection/current.json`, Job `selection`
-- **B3.11 Pi/tmpfs-Livestatus** (Collector-Herzschlag ans NAS) → Collector schreibt `meta/heartbeat.json`, Uploader `collector_status` Measurement, `GET /api/v1/collector/status`, GUI System → Pi/tmpfs Livestatus
-- **B3.12 /v1/route/evaluate serverseitig** (optional, UI rechnet lokal) → `GET /api/v1/route/evaluate`, Button „Server prüfen“ im Alltag
+**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf den
+eigenen Geräten noch nicht abgenommen. Prognosen sind unkalibriert und nicht
+entscheidungsbereit; echte aktuelle Preise sind davon unabhängig nutzbar. Offen
+sind u. a. Zweitmodell/Ensemble, gemeinsame Bootstrap-Ziehung über Stationen,
+Kalibrierungs-Loop M7, ACI — jeweils mit Grund in
+[docs/LUECKEN.md](docs/LUECKEN.md) und als Aufgabe in [TODO.md](TODO.md).
 
-Gemeinsames Mehrstadt-Polling, Live-GUI mit Alltag/Statistik/System, Nur-Lese-API und gebündelter NAS-App-Dienst sind implementiert. Ein Start über `python3 tankapp.py nas-up` übernimmt GUI, Archiv-Nachholung und automatische Modellberechnung/-veröffentlichung + Selektion. Bestehende InfluxDB weiterverwenden; Ablauf und private Konfiguration stehen ausschließlich in der Installationsanleitung.
+## Repo-Struktur
 
-**Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf deinen Geräten noch nicht aktiviert/abgenommen. Ohne private Daten zeigt GUI Einrichtungszustand, keine Beispielpreise. Prognosen bleiben unkalibriert und nicht entscheidungsbereit; aktuelle echte Preise sind davon unabhängig nutzbar.
-
-## Stand B5 — Konzept-Lücken geschlossen
-
-**Stand 10.09.2026:** Der Abgleich des [Konzepts](docs/KONZEPT.md) mit dem Code
-steht in **[docs/LUECKEN.md](docs/LUECKEN.md)**. Geschlossen wurden:
-
-- **Job-Fortschritt statt „Läuft …“**: Phasen, Schritt x/y, Balken und
-  Restschätzung im System-Tab, in `runtime/jobs/<job>.progress.json` und in
-  `runtime/jobs/<job>.log` (auch ohne Docker lesbar).
-- **Modell-Lauf ~17× schneller und mehrkernig**: vektorisierte
-  12-Uhr-Regel-Projektion (bitgleiche Ergebnisse) plus Prozessparallelität
-  (`TANKAPP_MODEL_WORKERS`, Default automatisch, serieller Rückfall).
-- **API-Schutz**: 60/min anonym, 300/min mit `X-Api-Key`, `X-RateLimit-*`,
-  `429` (Konzept §11).
-- **Deprecation-Header** auf den alten Alltags-Routen (§11.3).
-- **`latest_by`** in `/api/v1/decide` („bis wann muss ich getankt haben?“)
-  und **Fahrtmodus** `onroute`/`dedicated` mit Heimatkoordinate (§10).
-- **M7-Schwellen-Nachzug** aus dem Advice-Ledger (Vorschlag, abschaltbar).
-
-## Dokumentation
-
-- **[Dokumentations-Index](docs/README.md)** — klickbares Inhaltsverzeichnis, alle Dokumente nach Aufgabe
-- **[Installation](docs/INSTALL.md)** — verbindlicher Betriebsplan, mit TOC, ohne 600 Zeilen Technik-Details
-- **[Architektur](docs/ARCHITEKTUR.md)** — Pi↔NAS↔Browser, Rollen, Datenfluss, Heartbeat, Ressourcen
-- **[API](docs/API.md)** — alle Endpunkte inkl. B3, mit Beispielen
-- **[Betrieb](docs/BETRIEB.md)** — systemd, Backup, Fehlersuche, InfluxDB, Unraid, aus INSTALL.md konsolidiert
-- **[Analyse](docs/ANALYSE.md)** — Selektion, Modelle, Heatmaps, Umweg-Ökonomie
-- **[Lücken-Check](docs/LUECKEN.md)** — Konzept gegen Stand, offene Punkte mit Grund
-- **[Prüfstand](docs/Prüfstand.md)** — unabhängige Prüfung Konzept ↔ API ↔ Engine ↔ GUI ↔ Live-Daten (10.09.2026), inkl. offener Code-Aufgaben (§3, §7)
-- **[Gutachten](docs/Gutachten.md)** — gutachterliche Stellungnahme zur Methodik, mit Repos-Nachtrag zum Umsetzungsstand
-- **[Konzept](docs/KONZEPT.md)** — fachliches Zielbild, Decision Layer, mit TOC
-- **[RP2 Fallback + Proxy](docs/RP2.md)** — konsolidiert aus rp2/README + ANLEITUNG, 24/7 Zugang über Pi Port 8000
-- **[Stations-UUID](docs/STATIONS-UUID.md)** — gleiche Namen trennen, mit TOC
-- [Engine-Referenz](engine/README.md): Modellwerkstatt, Datenqualität, 12-Uhr-Regel
-- [Werkzeugübersicht](data-tools/README.md): interne Einzelprogramme
-- [GUI-Basis](sample/README.md): beide vorhandenen Oberflächen erhalten
-- Spezialdiagnosen: [UUID-Umstellung](docs/STATIONS-UUID.md), [Preis-Zwillinge](engine/README.md#preis-zwillinge)
-- RP2 Originale: [rp2/README.md](rp2/README.md), [rp2/ANLEITUNG.md](rp2/ANLEITUNG.md), [Changelog](rp2/AENDERUNGEN.md)
-
-Alte verstreute Anleitungen wurden konsolidiert: INSTALL.md enthält nur verbindlichen Ablauf, Technik-Details → BETRIEB.md, Analyse → ANALYSE.md, API → API.md, Architektur → ARCHITEKTUR.md, RP2 → RP2.md. Keine Demo-Daten oder GUI-Vorlagen gelöscht.
+```text
+app/          NAS-App: HTTP-Server, Decision Layer, Ledger, Jobs, Alarme, Heatmaps
+engine/       Modellwerkstatt: Aufbereitung, Strukturmodell + AR(2), Bootstrap, Backtest
+data-tools/   Collector, Uploader, Archiv-Sync, Stations-Entdeckung, Tausch, Export
+analysis/     Offline-Stationsselektion (δ̂) und Polling-Fenster-Analyse
+web/          GUI (Vite/React/Tailwind) inkl. Unit- und Playwright-Tests
+rp2/          Fallback-GUI + Prognose-Cache für den Pi/RP2 (nur Standardbibliothek)
+sample/       beide GUI-Prototypen — gestalterische Basis, bleiben unverändert
+ops/nas/      Docker-Compose, Dockerfile, preflight.sh, backup.sh, InfluxDB-Setup
+tests/        Pytest für app/, engine/, data-tools/, rp2/, Betrieb
+docs/         gesamte Dokumentation (Index: docs/README.md), docs/archiv/ = historisch
+docs/analysis/  gitignored: lokale Ausgaben der Selektion inkl. aktivem polling.json
+```
 
 ## Entwicklung & Tests
 
-Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit vorhandenem Python 3.11+, ohne neue venv:
+Softwaretests sind Entwicklerprüfungen, keine Installationspflicht. Windows mit
+vorhandenem Python 3.11+, ohne neue venv:
 
 ```powershell
 py -3 -m pip install -r requirements-dev.txt
 py -3 -m pytest -q
 ```
 
-Frontend-Prüfungen (nur Entwicklung, Node 22):
+Frontend (nur Entwicklung, Node 22):
 
 ```bash
 npm --prefix web ci
@@ -102,6 +102,21 @@ npx --prefix web playwright install chromium
 npm --prefix web run test:e2e
 ```
 
-Für lokale Vorschau nach Build: `python tankapp.py serve`; nur mit `--jobs` werden Hintergrundaufgaben eingeschaltet. Browsertests starten eigenen Server, sofern auf Port 1355 keiner läuft. `app/requirements.txt` enthält Pakete für optionale lokale Modellläufe; im NAS-Image bereits installiert.
+Vor jedem Commit den CI-Spiegel aus `.github/workflows/tests.yml` lokal fahren
+(ruff check, ruff format --check, pytest, web test/build) — Details und
+Reihenfolge in [AGENTS.md](AGENTS.md).
 
-Private Konfiguration, Rohdaten, Berichte und Modelle bleiben außerhalb von Git. Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben erhalten.
+Lokale Vorschau nach dem Build: `python tankapp.py serve` (Hintergrundaufgaben
+nur mit `--jobs`). Browsertests starten einen eigenen Server, sofern auf Port
+1355 keiner läuft.
+
+## Daten, Privates, Lizenz
+
+Preisdaten: MTS-K via tankerkoenig.de (**CC BY 4.0**). Polling-Fenster 06–24 Uhr,
+Token-Bucket 1 Request/300 s.
+
+Private Konfiguration, Rohdaten, Berichte und Modelle bleiben **außerhalb von
+Git**: `config.local.json`, `docs/analysis/` (inkl. `polling.json`),
+`data/influx.env`, `data/_netrc`, `data/apikey.txt`, `runtime/`. Die
+Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben
+erhalten ([docs/GUI-VORLAGEN.md](docs/GUI-VORLAGEN.md)).

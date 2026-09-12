@@ -408,12 +408,15 @@ def test_broken_host_python_fails_with_guidance_not_traceback():
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Alle Markdown-Dokumente leben in docs/ (inkl. docs/archiv/) plus die
+# Wurzel-Dateien README/CHANGELOG/TODO/AGENTS. Modul-READMEs neben dem Code
+# gibt es bewusst nicht mehr — die Doku hat genau einen Ort.
 DOCUMENTS = [
     ROOT / "README.md",
-    *sorted((ROOT / "docs").glob("*.md")),
-    ROOT / "data-tools/README.md",
-    ROOT / "engine/README.md",
-    ROOT / "sample/README.md",
+    ROOT / "CHANGELOG.md",
+    ROOT / "TODO.md",
+    ROOT / "AGENTS.md",
+    *sorted((ROOT / "docs").rglob("*.md")),
 ]
 
 

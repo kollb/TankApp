@@ -1,25 +1,50 @@
-# RP2 Fallback-GUI + NAS-Proxy — Konsolidierte Anleitung
+# RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 09.09.2026 — Konsolidiert aus `rp2/README.md` + `rp2/ANLEITUNG.md`, mit klickbarem Inhaltsverzeichnis.
-> Originale bleiben in `rp2/`, diese Datei ist die kanonische Doku im `docs/`-Ordner.
+> Stand: 12.09.2026 · App-Version 0.10.1 · RP2-Fallback v2.2 — **die** Anleitung
+> für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
+> (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
+> liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
+> eigene Doku mehr.
 
 ## Inhaltsverzeichnis
 
 - [Ziel](#ziel)
 - [Übersicht](#übersicht)
+  - [Dateien im `rp2/`-Ordner](#dateien-im-rp2-ordner)
 - [Voraussetzungen](#voraussetzungen)
+  - [NAS](#nas)
+  - [RP2](#rp2)
 - [Schritt 1: NAS aktualisieren](#schritt-1-nas-aktualisieren)
 - [Schritt 2: Code auf RP2 holen](#schritt-2-code-auf-rp2-holen)
 - [Schritt 3: NAS-IP konfigurieren](#schritt-3-nas-ip-konfigurieren)
 - [Schritt 4: Abhängigkeiten](#schritt-4-abhängigkeiten)
 - [Schritt 5: Services einrichten](#schritt-5-services-einrichten)
+  - [NAS-IP als Drop-in](#nas-ip-als-drop-in)
+  - [Starten](#starten)
+  - [Benutzer prüfen](#benutzer-prüfen)
+  - [Status prüfen](#status-prüfen)
 - [Testen](#testen)
+  - [Cache prüfen](#cache-prüfen)
+  - [Browser (immer dieselbe Adresse)](#browser-immer-dieselbe-adresse)
+  - [NAS offline testen](#nas-offline-testen)
+  - [NAS wieder online](#nas-wieder-online)
+  - [Fallback-API und Umschaltzeiten](#fallback-api-und-umschaltzeiten)
 - [Funktionen](#funktionen)
 - [Konfiguration](#konfiguration)
 - [Fehlersuche](#fehlersuche)
+  - [Cache funktioniert nicht](#cache-funktioniert-nicht)
+  - [GUI zeigt keine Stationen](#gui-zeigt-keine-stationen)
+  - [UUIDs statt Namen](#uuids-statt-namen)
+  - [Fallback statt NAS, obwohl NAS online](#fallback-statt-nas-obwohl-nas-online)
+  - [Port 8000 belegt](#port-8000-belegt)
+- [Template-Updates](#template-updates)
+- [Wartung: Logs, Journal, SD-Karte](#wartung-logs-journal-sd-karte)
 - [Prognose-Qualität](#prognose-qualität)
 - [Nutzung](#nutzung)
+  - [Alltag](#alltag)
+  - [B3 Features im Alltag](#b3-features-im-alltag)
 - [Updates & Changelog](#updates--changelog)
+  - [Changelog](#changelog)
 
 ## Ziel
 
@@ -37,7 +62,7 @@ Browser ──► http://<RP2-IP>:8000
                      • Heartbeat aus meta/heartbeat.json (Collector-Livestatus)
 ```
 
-> Alternativvorschlag aus dem [Gutachten](Gutachten.md) (10.09.2026), ein
+> Alternativvorschlag aus dem [Gutachten](archiv/GUTACHTEN-2026-09-10.md) (10.09.2026), ein
 > PyQt6-Desktop-Widget als Fallback zu betreiben, wurde geprüft und **nicht
 > übernommen**: Der browserbasierte Fallback braucht auf dem RP2 keine
 > GUI-Runtime und bleibt Konzept (Bewertung: Gutachten-Nachtrag).
@@ -59,6 +84,21 @@ Ergebnis:
 - ✅ F3 (Heute oder später?): Verfügbar mit gecachten Prognosen
 - ✅ Eine Adresse: `http://<RP2-IP>:8000` zeigt automatisch NAS- oder Fallback-GUI
 - ✅ **B3.11**: Collector-Herzschlag im Fallback sichtbar (tmpfs-Nutzung, älteste Datei)
+
+### Dateien im `rp2/`-Ordner
+
+```text
+rp2/
+├── fallback_gui.py                  # Webserver: NAS-Proxy + Fallback-GUI (Port 8000)
+├── cache_forecasts.py               # lädt /api/v1/last_forecasts vom NAS (alle 5 min)
+├── tankapp-fallback-gui.service     # systemd-Unit für die GUI
+├── tankapp-forecast-cache.service   # systemd-Unit für den Cache
+└── templates/index.html             # wird beim Start selbst erzeugt (gitignored)
+```
+
+Dokumentation liegt ausschließlich in `docs/` — diese Datei. Die alten
+RP2-Anleitungen und die HTML-Mockups von 2026-09-08 sind im
+[Archiv](archiv/README.md#alte-rp2-dokumente).
 
 ## Voraussetzungen
 
@@ -235,6 +275,33 @@ docker start tankapp
 # → innerhalb ~15s oder nach Klick „🔄 NAS prüfen“ bzw. curl http://<RP2-IP>:8000/api/v1/nas-check wieder volle NAS-GUI
 ```
 
+### Fallback-API und Umschaltzeiten
+
+Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
+
+| Pfad auf `<RP2-IP>:8000` | Inhalt |
+|---|---|
+| `/` | Fallback-GUI (HTML) bzw. proxyste NAS-GUI |
+| `/?fallback=1` | Fallback erzwingen, auch bei erreichbarem NAS |
+| `/api/v1/health` | Status: NAS, Preise, Prognosen, Metadaten, Collector |
+| `/api/v1/stations?fuel=e10` | alle Stationen mit Preisen und echtem Datenalter |
+| `/api/v1/forecasts?fuel=e10` | gecachte Prognosen + 24-h-Zusammenfassung |
+| `/api/v1/decide?fuel=e10&liters=40` | F1/F2/F3-Entscheidung aus dem Cache |
+| `/api/v1/nas-check` | NAS sofort neu prüfen (auch im Proxy-Modus) |
+
+Umschaltverhalten:
+
+- NAS geht aus → **der nächste Request** fällt sofort in den Fallback zurück.
+- NAS kommt wieder → innerhalb von **15 s** (Online-TTL) oder sofort nach
+  `/api/v1/nas-check` bzw. Klick auf „🔄 NAS prüfen“.
+- `FORCE_FALLBACK=1` deaktiviert den Proxy dauerhaft (Testfall).
+
+Softwaretests (auf dem PC/NAS, nicht auf dem RP2 nötig):
+
+```bash
+python3 -m pytest tests/test_rp2_fallback.py tests/test_rp2_cache.py -q
+```
+
 ## Funktionen
 
 | Funktion | NAS Online (proxied) | NAS Offline (Fallback) | Datenqualität |
@@ -283,10 +350,14 @@ Ohne polling.json fehlen Namen/Marken/Navigation — UUID wird angezeigt. Datei 
 
 ```bash
 cat /tmp/tankapp_cache/cache.log
-python3 ~/TankApp/rp2/cache_forecasts.py
+systemctl show tankapp-forecast-cache -p Environment   # kommt NAS_IP wirklich an?
+NAS_IP=192.168.178.50 python3 ~/TankApp/rp2/cache_forecasts.py   # manuell, im Vordergrund
 ```
 
-Mögliche Ursachen: NAS_IP falsch, NAS liefert count 0 (noch keine Prognosen, meist fehlt data/_netrc), NAS nicht erreichbar, Port falsch.
+Mögliche Ursachen: `NAS_IP` fehlt oder ist falsch (Drop-in nicht geladen,
+`daemon-reload` vergessen), NAS liefert `count: 0` (noch keine Prognosen — meist
+fehlt `data/_netrc`, Gegenprobe `bash ops/nas/preflight.sh`), NAS nicht
+erreichbar (Firewall), Port falsch.
 
 ### GUI zeigt keine Stationen
 
@@ -324,6 +395,45 @@ ss -tulnp | grep 8000
 # [Service]
 # Environment=FALLBACK_GUI_PORT=8080
 ```
+
+## Template-Updates
+
+Die Fallback-GUI erzeugt ihre HTML-Vorlage beim Start selbst
+(`rp2/templates/index.html`, gitignored) und versieht sie mit einem
+Inhalts-Hash-Marker:
+
+```html
+<!-- tankapp-fallback-gui v2.x sha:… -->
+```
+
+Ändert sich das Template im Repo, wird die alte Datei beim nächsten Service-Start
+nach `index.html.old` gesichert und die neue installiert. **Lokale Anpassungen
+unterhalb des Markers überleben**, solange sie den aktuellen Marker tragen.
+Update-Workflow:
+
+```bash
+cd ~/TankApp && git pull
+sudo systemctl restart tankapp-fallback-gui
+grep -o "tankapp-fallback-gui [^>]*" rp2/templates/index.html   # Marker = neuer Stand?
+```
+
+## Wartung: Logs, Journal, SD-Karte
+
+Der RP2 läuft auf einer SD-Karte; Schreibzugriffe sind deshalb begrenzt.
+
+| Quelle | Verhalten | Wartung |
+|---|---|---|
+| `/tmp/tankapp_cache/cache.log` | Ring-Cap **1 MB** (`CACHE_LOG_MAX_BYTES`): wird die Grenze überschritten, bleibt nur die jüngere Hälfte plus Markierungszeile | keine — wächst nicht mehr unbegrenzt (Fix G1, Version 0.10.0) |
+| `/tmp/tankapp_cache/last_forecasts.json` | atomar überschrieben, feste Größe | keine |
+| `/dev/shm/tankapp/*.jsonl` | Ringpuffer im RAM, `RING_DAYS=7` | keine SD-Schreiblast; Inhalt liegt zusätzlich in InfluxDB |
+| journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | wächst ohne Cap | offen (TODO G2): `SystemMaxUse=50M` setzen oder regelmäßig `journalctl --vacuum-size=50M` |
+| `/tmp/tankapp_cache` nach Reboot | `/tmp` ist flüchtig → bis zum ersten erfolgreichen Fetch zeigt der Fallback ehrlich „keine Prognose“ | offen (TODO G4); Preise aus `/dev/shm` sind nach tmpfs-Mount ebenfalls erst nach dem nächsten Poll da |
+
+Datenverlust-Fenster: Der RAM-Puffer überbrückt **7 Tage** NAS-Ausfall
+(`RING_DAYS=7`); ist das NAS länger offline, verwirft `ring_prune` noch nicht
+hochgeladene Snapshots. Bei geplantem langen NAS-Ausfall den Puffer vorher
+vergrößern (tmpfs-Größe gegen 15 Polls/Tag/Station rechnen) — siehe
+[ARCHITEKTUR.md](ARCHITEKTUR.md#ressourcen--sd-härtung).
 
 ## Prognose-Qualität
 
@@ -377,11 +487,10 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 2.2 | 12.09.2026 | `cache.log` mit 1-MB-Ring-Cap (`CACHE_LOG_MAX_BYTES`) — kein unbegrenztes Wachstum/SD-Verschleiß mehr (TODO G1). Doku: alte RP2-Dateien ins Archiv, Inhalte hier konsolidiert (Dateistruktur, Fallback-API, Umschaltzeiten, Template-Updates, Wartung). |
 | 2.1 | 09.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
 | 2.0 | 09.09.2026 | NAS-Proxy: Port 8000 zeigt bei NAS online volle NAS-GUI, Fallback sonst. Namen/Marken/Navigation aus polling.json. Neue Fallback-GUI: Dark/Light, E10/E5/Diesel, Datenalter, Tankgröße, F1/F3 aus Quantil-Prognosen, Sparklines, Auto-Refresh, NAS prüfen. JSON-API: health/stations/forecasts/decide/nas-check. Template-Update per Hash. |
 | 1.1 | 09.09.2026 | NAS-IP über Env statt fest im Code; nur Standardbibliothek; atomarer Cache-Write |
 | 1.0 | 08.09.2026 | Initial: RP2 Fallback-GUI mit F1/F2/F3 |
 
-Support: Logs prüfen (`journalctl -u tankapp-forecast-cache -f`), Cache prüfen (`cat /tmp/tankapp_cache/last_forecasts.json`), NAS-GUI prüfen (`http://<NAS-IP>:1355`), Heartbeat prüfen (`cat /dev/shm/tankapp/meta/heartbeat.json`).
-
-Viel Erfolg! Mit dieser Lösung tankst du immer günstig – egal ob NAS online ist oder nicht! 🚀💰
+Support: Logs prüfen (`journalctl -u tankapp-forecast-cache -f`), Cache prüfen (`cat /tmp/tankapp_cache/last_forecasts.json`), NAS-GUI prüfen (`http://<NAS-IP>:1355`), Heartbeat prüfen (`cat /dev/shm/tankapp/meta/heartbeat.json`), Version/Commit des NAS (`GET /api/v1/health` → `version`, `commit`, siehe [BETRIEB.md](BETRIEB.md#version-und-build-hash-prüfen)). Die RP2-Template-Version steht im Marker der erzeugten `templates/index.html`.

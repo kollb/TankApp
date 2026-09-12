@@ -2,7 +2,7 @@
 """
 TankApp – Optionale mathematische Tankstellen-Selektion.
 
-Liest historische Preisdaten (CSV, Schema s. data-tools/README.md) für beliebig
+Liest historische Preisdaten (CSV, Schema s. docs/DATENWERKZEUGE.md) für beliebig
 viele Städte und wählt je Stadt bzw. global die besten Tankstellen aus. Die
 Methodik ist bewusst "hart" gerechnet:
 

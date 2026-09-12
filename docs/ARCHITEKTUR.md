@@ -1,15 +1,29 @@
-# TankApp Architektur — Pi ↔ NAS ↔ Browser
+# TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 09.09.2026 — Extrahiert aus KONZEPT.md §9 und INSTALL.md, konsolidiert für B3.
+> Stand: 12.09.2026 · App-Version 0.10.1 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
+> und [INSTALL.md](INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
+> benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](BETRIEB.md).
 
 ## Inhaltsverzeichnis
 
 - [Zielbild](#zielbild)
 - [Rollen & Datenfluss](#rollen--datenfluss)
 - [Pi: Collector + tmpfs + Heartbeat](#pi-collector--tmpfs--heartbeat)
+  - [tmpfs Mount](#tmpfs-mount)
+  - [Heartbeat (B3.11)](#heartbeat-b311)
+  - [systemd Collector](#systemd-collector)
 - [Uploader: Ack + Heartbeat](#uploader-ack--heartbeat)
+  - [systemd Uploader](#systemd-uploader)
 - [Ereignis-Pipeline: Webhook statt reinem Polling](#ereignis-pipeline-webhook-statt-reinem-polling)
 - [NAS: InfluxDB + Archiv + Modelle + Selektion](#nas-influxdb--archiv--modelle--selektion)
+  - [InfluxDB](#influxdb)
+  - [Archiv](#archiv)
+  - [Modelle](#modelle)
+  - [Selektion (B3.10)](#selektion-b310)
+  - [Heatmaps (B3.9)](#heatmaps-b39)
+  - [Route Evaluate (B3.12)](#route-evaluate-b312)
+  - [Collector-Status in /health (B3.11)](#collector-status-in-health-b311)
+  - [Zustands-Bündelung: `alarms[]` und Version (B4/B9)](#zustands-bündelung-alarms-und-version-b4b9)
 - [Ressourcen & SD-Härtung](#ressourcen--sd-härtung)
 - [Hardware-Bewertung](#hardware-bewertung)
 - [Verweise](#verweise)
@@ -20,9 +34,12 @@
 Tankerkönig prices.php → Pi: Collector/RAM/Uploader → NAS: InfluxDB
 Tankerkönig Archiv ────────────────────────────────→ NAS: Preise + Stationen (≥1 Jahr)
                                                     │
-                          NAS: Aufbereitung/Fits → API + vorhandene Web-GUI
+                          NAS: Aufbereitung/Fits → API + Web-GUI (1355)
                                                     │
-                                                Handy/PC: Browser
+                        Handy/PC: Browser ←─────────┤
+                                                    │
+Pi/RP2: Port 8000 ── NAS online → Proxy ────────────┘
+                  └─ NAS offline → Fallback-GUI (Live-Preise + Cache)
 ```
 
 Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsangabe — „Warte bis 18–20 Uhr (+4 ct ≈ 1,60 €) — 82% sicher“. Fan-Charts, Heatmaps, Konfidenzbänder sind Begründung auf Nachfrage (Werkstatt-Modus).
@@ -39,10 +56,24 @@ Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsa
 | Archiv für Engine | **NAS: komprimierte Tagesdateien, ≥1 Jahr** | Automatischer Sync stündlich |
 | Engine-Fits, Backtests, ACI, Decision-Kalibrierung, Selektion | **NAS (oder PC per WOL)** | Pi bleibt Collector/Uploader |
 | Episode-/Snapshot-/Fill-Log | NAS Tabelle | Advice-Settlement getrennt von Wallet |
+| 24/7-Zugang + Ausfall-GUI | **RP2/Pi: Port 8000** | proxyt das NAS, zeigt sonst Live-Preise + gecachte Prognosen → [RP2.md](RP2.md) |
+| Alarm-Aggregation | **NAS: `/api/v1/health`** | ein `alarms[]`-Block statt sieben Endpunkte, ohne zusätzliche Netz-/Influx-Zugriffe |
 
 Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
 
-NAS-Ausfall: 7 Tage Puffertiefe (Urlaubssicher), bei Überlauf FIFO + Alarm ab 6 Tagen.
+**Datenverlust-Fenster (explizit, TODO G3):** Der Ringpuffer behält
+`RING_DAYS = 7` Tage. Ist das NAS **länger** offline, verwirft `ring_prune`
+Snapshots, die nie hochgeladen wurden — diese Polls sind dann dauerhaft weg
+(kein Nachholen aus dem RAM-Puffer; das Tankerkönig-**Archiv** ist ein zweiter,
+unabhängiger Weg und wird beim nächsten Lauf nachgeholt, enthält aber nicht die
+eigenen 5-Minuten-Polls). Bei geplantem NAS-Ausfall über 7 Tage den Puffer
+vorher vergrößern: 32 MiB tmpfs ≈ 0,6 MB JSONL/Tag bei 10 Stationen, d. h. ein
+Vielfaches an Tagen ist ohne SD-Schreiblast möglich — `size=` in `/etc/fstab`
+anpassen und `RING_DAYS` erhöhen. Alarm: ab 6 Tagen (`oldest_age_days`).
+
+Ebenfalls flüchtig: `/tmp/tankapp_cache` des RP2 überlebt keinen Reboot — die
+Fallback-GUI zeigt dann bis zum ersten erfolgreichen Fetch ehrlich „keine
+Prognose“ (TODO G4).
 
 ## Pi: Collector + tmpfs + Heartbeat
 
@@ -200,7 +231,9 @@ Watermark bleibt gemerkt).
 ### Modelle
 
 - Bei Start, danach täglich (Webhook-Triggern beschleunigt, siehe [Ereignis-Pipeline](#ereignis-pipeline-webhook-statt-reinem-polling)), bei Fehler stündlich
-- Liest InfluxDB, verarbeitet rohe Archiv-Änderungsereignisse mit exakten Zeitstempeln, erzeugt Trainingsbestand, fittet 24h-Ausblick + 3d/7d Horizonte, 7-Tage Backtest
+- Liest InfluxDB, verarbeitet rohe Archiv-Änderungsereignisse mit exakten Zeitstempeln, erzeugt Trainingsbestand, fittet 24-h-Ausblick + 3d/7d Horizonte, **21-Tage-Rolling-Origin-Backtest** (seit 11.09.2026, davor 7 Tage) plus Mehrtage-Horizonte
+- Prozessparallel über `TANKAPP_MODEL_WORKERS` (Default automatisch, serieller Rückfall); Ergebnisse bitgleich zum seriellen Lauf
+- Fortschritt je Phase/Schritt in `runtime/jobs/<job>.progress.json` + `runtime/jobs/<job>.log` (500 Zeilen) → `/health` `progress` und System-Tab
 - Veröffentlichung atomar nach `runtime/engine/current.json`, alte Ergebnisse bleiben bei Fehler erhalten
 - `calibrated=false`, `decision_ready=false` bis M7
 
@@ -229,6 +262,17 @@ Watermark bleibt gemerkt).
 
 - `/api/v1/health` zeigt den Collector-Status **nur aus lokalen Quellen** (NAS-Heartbeat-File, lokales tmpfs) — keine InfluxDB-Query, damit der Docker-Healthcheck (3–5 s) nicht an Influx-Antwortzeiten scheitert
 - Volle Details inkl. Influx-Felder: `GET /api/v1/collector/status` (GUI-System-Tab)
+
+### Zustands-Bündelung: `alarms[]` und Version (B4/B9)
+
+- `alarms[]` fasst die vorhandenen Prüfungen zusammen (Polling-Set, Herzschlag,
+  Job-Fehler, Store-Größe) — **keine** neuen Zugriffe, damit das
+  Healthcheck-Budget hält. Codes und Aktionen:
+  [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+- `version` (aus `app/version.py`) und `commit` (Checkout bzw.
+  `TANKAPP_BUILD_COMMIT`) beantworten bei drei Oberflächen — NAS-GUI,
+  RP2-Proxy/Fallback, Collector auf dem Pi — die Frage „welcher Stand läuft wo?“.
+  Im Docker-Image ist `commit` `null` (kein `.git` im Image).
 
 ## Ressourcen & SD-Härtung
 
@@ -261,6 +305,9 @@ log2ram/journald-Limits, noatime, systemd Watchdog, NTP Pflicht (UTC speichern, 
 ## Verweise
 
 - [Installation](INSTALL.md) — verbindlicher Ablauf
-- [Betrieb](BETRIEB.md) — systemd, Backup, Fehlersuche
-- [API](API.md) — Endpunkte inkl. B3
+- [Betrieb](BETRIEB.md) — systemd, Backup, Alarme, Fehlersuche
+- [RP2](RP2.md) — 24/7-Zugang, Proxy und Fallback-GUI
+- [API](API.md) — Endpunkte inkl. `/health` mit `alarms[]`
+- [Analyse](ANALYSE.md) — Selektion, Modelle, Heatmaps, P-Seite
 - [Konzept](KONZEPT.md) — fachliches Zielbild
+- [Lücken-Check](LUECKEN.md) — was vom Konzept offen ist und warum

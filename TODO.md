@@ -1,4 +1,4 @@
-# TankApp — ToDo aus der Tiefenanalyse (11.09.2026, zwei Prüfstränge)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.1)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -12,11 +12,17 @@
 > - **P2** = Komfort, Ausbau, Feinschliff
 > - **D**  = braucht echte Live-Daten oder eine Produktentscheidung (kein reines Code-Task)
 >
-> **Quellen:** [docs/LUECKEN.md](docs/LUECKEN.md), [docs/Prüfstand.md](docs/Prüfstand.md),
-> [docs/TIEFENANALYSE.md](docs/TIEFENANALYSE.md), [docs/TIEFENANALYSE_V2.md](docs/TIEFENANALYSE_V2.md),
-> [docs/TIEFENANALYSE_V3_GUI.md](docs/TIEFENANALYSE_V3_GUI.md), [docs/Gutachten.md](docs/Gutachten.md)
-> — diese ToDo ist die priorisierte Arbeitsliste daraus; erledigte Punkte dort
-> sind hier nicht mehr enthalten.
+> **Quellen:** [docs/LUECKEN.md](docs/LUECKEN.md) (Konzept ↔ Stand) und die
+> Prüfberichte im [Archiv](docs/archiv/README.md) —
+> [Prüfstand 10.09.](docs/archiv/PRUEFSTAND-2026-09-10.md),
+> [Tiefenanalyse V1](docs/archiv/TIEFENANALYSE-2026-09-11.md)/
+> [V2](docs/archiv/TIEFENANALYSE-V2-2026-09-11.md)/
+> [V3-GUI](docs/archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md),
+> [Gutachten](docs/archiv/GUTACHTEN-2026-09-10.md).
+> Diese Liste ist die priorisierte Arbeitsliste daraus. **Erledigte Punkte stehen
+> hier nicht mehr** — sie sind im [CHANGELOG](CHANGELOG.md) und in
+> [docs/LUECKEN.md](docs/LUECKEN.md#umgesetzt-seit-der-prüfung-am-10092026)
+> nachvollziehbar; die IDs (A3, B4, …) bleiben dort stabil.
 
 ---
 
@@ -26,10 +32,8 @@
 |---|---|---|---|
 | A1 | P1 | **Fahrzeug-/Haushaltsprofile ohne Login** | Verbrauch, Zeitwert, Tankmenge, Kraftstoffart liegen heute im `localStorage` pro Browser → Handy ≠ PC, zweites Fahrzeug (Diesel vs. Benziner) unmöglich. Ziel: Profil-Umschalter im Header, serverseitig gespeichert (pro Haushalt, kein Account), GUI-Felder lesen daraus. |
 | A2 | P1 | **Tankstand / Restreichweite als Eingabe für F3** | Konzept-F3 („Tank bei ¼, kann ich warten?") hat keinen Tankstand-Input. Ziel: Fuellstand-Angabe (≈ Füllstand oder Rest-km), App sagt ehrlich „Warten riskant, Reserve reicht ~40 km" statt nur „bestes Fenster morgen". |
-| A3 | P0 | **Beleg-Korrektur/Storno fehlt komplett** | `DELETE /api/v1/fills` ist 501, kein Edit im Store. Ein falsch gebuchter Beleg verzerrt Wallet, w(h)-Profil und Statistik für immer. Ziel: Beleg korrigieren/stornieren (mit Storno-Flag statt Löschen, Audit-Spur), Button im Wallet-Verlauf. |
 | A4 | P1 | **Jahres-/Monatsbilanz in der Werkstatt** | Konzept §12 P2: „Wallet-Ledger im Alltag, **Jahresbilanz in der Werkstatt**". Heute nur Summen-Kacheln im Alltag. Ziel: Verlaufsliste der Fills, Monats-/Jahressumme, Ø €/Tankung, Vergleich gegen „immer sofort getankt"-Baseline (Regret-Ratio ist vorhanden, nur nicht persönlich aufbereitet). |
-| A6 | P1 | **Export & Share eigener Daten** | Kein CSV/JSON-Export von Fills/Wallet/Preisverläufen, keine Share-URL (`?city=…&fuel=…&station_id=…&liters=…`) zum Bookmarken oder im Haushalt weitergeben. Ziel: Download-Button im System-/Statistik-Tab + URL-Parameter, die die GUI beim Öffnen übernimmt. |
-| A7 | D | **Kalibrierung M7 „Inbetriebnahme"** | `p_correct` bleibt bis ≥100 abgeschlossene Settlements und Brier < 0,25 gesperrt — richtig so, aber es fehlt die **Checkliste/Anzeige**, wie weit der Weg ist („37/100 Settlements, Brier 0,31"). Ziel: Fortschritts-Kachel im System-Tab + Doku, was beim Freischalten zu prüfen ist. |
+| A6 | P2 | **Share-URL für die eigene Sicht** *(CSV-Export ist fertig, 0.10.0)* | `GET /api/v1/fills.csv` + Download im System-Tab sind da. Offen: URL-Parameter (`?city=…&fuel=…&station_id=…&liters=…`), die die GUI beim Öffnen übernimmt — zum Bookmarken und im Haushalt weitergeben. Kein JSON-Export der Preisverläufe nötig (liest ohnehin niemand). |
 | A8 | D | **Markenrabatte/Karten** (`--brand-rebate`) | 2–4 ct können das F2-Ranking umdrehen. Erst sinnvoll, sobald echte Rabattdaten vorliegen; bis dahin soll die GUI im Ranking anzeigen „rechnet ohne Rabattprogramme" (Transparenz-Hinweis). |
 | A9 | D | **w(h)-Rückkopplung anschließen** | Persönliches Zeitprofil (`wallet.wh_hours`) wird berechnet, fließt aber nicht in „billigste Stunde"/F3 ein (Konzept §5.5). Ab ≥8 Füllungen aktivieren, vorher Default — mit UI-Hinweis ab wann personalisiert. |
 | A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** | Hampel-Filter, Feiertags-/Sprung-Features, Mehrtage- und 21-Tage-Backtest sowie Rolling-PICP sind seit PR #69 implementiert und testgedeckt. Offen bleiben das unabhängige Zweitmodell mit inverse-MASE-Ensemble und die Abnahme aller M3-Kriterien auf echten Live-Daten. |
@@ -43,16 +47,16 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| B1 | P0 | **Backup der App-Laufzeitdaten** | [docs/BETRIEB.md](docs/BETRIEB.md) sichert Pi-Keys und das InfluxDB-Volume — **nicht** `runtime/` (Feedback-Store = persönliche Tank-Bilanz, Selektion, Job-Stände). NAS-Disk-Crash = Bilanz weg. Ziel: täglicher Tar/Snapshot in bestehendes Backup + dokumentierter, durchgespielter Restore. |
 | B2 | P0 | **Schema-Version & Migration des Feedback-Stores** | `store.json` hat kein `schema_version`; die nächste Feldänderung bricht alte Stores still. Ziel: Versionsfeld + Migrations-Funktionen je Versionssprung, Test „alter Store → neue Version". |
-| B4 | P1 | **Aggregierter System-Alarm (ein Block in `/health` + GUI-Badge)** | Heartbeat fehlt, `no prices` > Schwelle, Job 2× fehlgeschlagen, Store-Größe, freier Festplattenplatz, CUSUM-`break_flag` — heute über sieben Endpunkte verteilt und niemand schaut aktiv. Ziel: `alarms[]` in `/api/v1/health`, roter/grüner Punkt im Header aller Tabs, optional ntfy-Versand (siehe A5). |
+| B4 | P2 | **Alarm-Zustellung** *(Aggregation ist fertig, 0.10.0)* | `alarms[]` in `/api/v1/health` + roter/gelber Punkt im Header sind da ([docs/BETRIEB.md](docs/BETRIEB.md#system-alarme-lesen)). Offen: jemand **schaut** nur hin, wenn die GUI offen ist. Ziel: optionaler ntfy-Versand bei `severity: error` (ein Webhook, kein Auth-Ausbau), konfigurierbar per `TANKAPP_NTFY_URL`, aus Datenschutzgründen ohne Preis-/Stationsdetails im Text. |
 | B5 | P1 | **POST-/Schreib-Endpunkte gegen Flut härten** | Rate-Limit deckt GET gut ab, aber `POST /fills`/`/intent` können von einem defekten Client das Ledger fluten. Zusätzlich Plausibilitätsgrenzen serverseitig: `tanked_at` nur plausibles Fenster (nicht 1970/2100), Liter/Preis Obergrenzen, Stringlängen. Kein Auth — einfache IP-/Minuten-Drossel reicht. |
 | B6 | P1 | **Server als einzige Quelle der Umweg-Strecke** | GUI und Server verwenden seit PR #69 beide Luftlinie × 1,3; der frühere Faktor-Widerspruch ist behoben. Die Schätzung bleibt aber doppelt implementiert. Ziel: Server liefert `detour_km_est` + `dist_mode` pro Alternative; die GUI zeigt exakt diese Zahl und berechnet die Strecke nicht selbst. |
 | B7 | P1 | **HTTP-Effizienz: gzip, getrenntes Caching, Poll-Bündelung** | `no-store` auf allem, keine Kompression, GUI pollt 8+ Ressourcen (~14.700 Req/Tag > 10.000er Anonym-Budget, Zählerstand aus V2-Analyse vor den B5-Fixes — jetzt mit LRU gemildert, aber strukturell ungelöst). Ziel: `Content-Encoding: gzip`; Hash-Assets `immutable`; semi-statische Endpunkte (heatmap, last_forecasts) 15–120 min cachebar; ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls. |
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
-| B9 | P2 | **Versionierung & Nachverfolgbarkeit** | Keine App-Version/kein Commit-Hash in `/health`, kein `CHANGELOG.md`. Bei Pi/NAS/Fallback-GUI (3 Oberflächen!) weiß man im Fehlerfall nicht, was wo läuft. Ziel: Version + Build-Hash in `/health`, Anzeige im Footer, kurzes CHANGELOG ab jetzt. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?"-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online"-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
+| B13 | P2 | **Build-Commit fehlt im Docker-Image:** `/health` liefert `commit: null`, weil das Image kein `.git` enthält — B9 zeigt also auf dem NAS nur die Version, nicht den Stand. | `tankapp.py nas-up` setzt `TANKAPP_BUILD_COMMIT=$(git rev-parse --short=12 HEAD)` als Build-Arg bzw. Compose-Environment (`app/version.py` liest die Variable bereits). Test: `/health` → `commit` nicht null nach `nas-up`. |
+| B14 | P2 | **`docs/analysis/` ist ein Datenverzeichnis im Doku-Ordner:** gitignored, enthält das aktive `polling.json`, Berichte und Abbildungen (`app/config.py`, `data-tools/*`, `analysis/*` lesen/schreiben dorthin) — nach dem Doku-Umbau die letzte „wo liegt was?“-Unklarheit. | Umzug nach `data/analysis/` (privat, gitignored wie der Rest von `data/`): Default in `app/config.py`, CLI-Defaults in `data-tools/`, Doku. Übergangsweise beide Pfade akzeptieren und beim Fund des alten Pfads einen klaren Hinweis loggen; kein stiller Umzug privater Daten. |
 | B12 | P2 | **Cheap-Prob ohne Station: Basis überstrahlt den Wochentag** | `app/heatmap.py` vergleicht bei `kind=probability` **ohne** `station_id` jede Zelle gegen den Gesamtmedian **aller** Zellen des Zeitraums. Weil der Tagesgang (nachts/abends billig, Mittag teuer) viel größer ist als der Wochentags-Effekt, werden Abendzellen fast immer grün und Mittagszellen fast immer rot — egal welcher Wochentag. Die Frage „an welchem *Wochentag* ist es billig?“ ist aus dieser Ansicht so nicht ablesbar (mit `station_id` funktioniert es, weil dort Station gegen Stadt im selben Slot verglichen wird). Ziel: ohne Station optional gegen den Median **derselben Stunde** (Spalten-Basis) rechnen, damit der Tagesgang herausgerechnet ist und die Zeilen (Wochentage) fair vergleichbar bleiben; Umschalter/Modus + kurze Begründung in [docs/ANALYSE.md](docs/ANALYSE.md). |
 
 ---
@@ -61,16 +65,14 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| C1 | P1 | **Onboarding-/Einrichtungs-Checkliste** | Ohne private Daten zeigt die GUI den Einrichtungszustand — aber als Flachtext. Ziel: geführte Karte „1) Polling-Set ✓/✗ 2) Collector-Heartbeat 3) InfluxDB 4) erster Modell-Lauf 5) erste Empfehlung", jede Zeile mit direktem Fix-Hinweis (Link zu docs/INSTALL.md-Anker). |
 | C2 | P1 | **Stamm-Stationen pinnen + Suche/Filter/Sortierung** | „Meine Stationen" lebt nur in der Werkstatt; im Alltag will der Nutzer seine 2–3 Stammstationen oben sehen. Liste bei 20+ Stationen (Frankfurt-Radius) ohne Suche/Markenfilter/Sortierung (Preis, Distanz, Netto-€). Lokal speicherbar, kein Account nötig. |
 | C3 | P2 | **Karten-/Umgebungsansicht für F2** | „Hier oder woanders?" als Karte mit Netto-€-Pins. OSM-Tiles brauchen Internet (im LAN okay, wenn NAS/Handy online); Alternativen: statische Tile-Region oder reduzierte Luftlinien-Übersicht. |
 | C4 | P2 | **Einstellungen-Tab zentral** | Verbrauch, Zeitwert (manuell/auto), Liter-Default, Kraftstoff, Stadt liegen verteilt in Panels. Ziel: ein Tab „Einstellungen": alle Defaults inkl. aktiver Schwellen-Tabelle (read-only aus `/api/v1/stats/summary → thresholds`), Dark/Light-Umschaltung (Fallback-GUI kann dunkel, NAS-GUI nur dunkles Slate). |
-| C5 | P2 | **Barrierefreiheit-Runde** | Konkret: emerald/rose-Farbcodierung ist **Rot-Grün** — zusätzlich Symbol/Text; Charts `role="img"` mit `aria-describedby`; Slider `aria-valuetext` in €; sichtbarer Fokus-Ring; komplette Bedienung per Tastatur (Fill buchen ohne Maus); `prefers-reduced-motion`; Touch-Targets ≥ 44 px; Kontraste AA prüfen. |
+| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(zwei Fixes sind drin, 0.10.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→), Slider mit `aria-valuetext`. Offen: Charts `role="img"` **mit** `aria-describedby` (heute nur `aria-label`), sichtbarer Fokus-Ring durchgängig, komplette Bedienung per Tastatur (Beleg buchen ohne Maus), `prefers-reduced-motion`, Touch-Targets ≥ 44 px, Kontraste AA prüfen. |
 | C6 | P2 | **Einheitliche Leer-/Lade-/Fehler-Zustände** | Panels unterscheiden sich (Spinner vs. Text vs. nichts). Ziel: Skeletons, `Retry`-Button mit `error_code`-Text (Problem-Mapping existiert in `data.ts`), „Datenstand älter als X"-Banner konsistent, Anzeige „Reichweite der Daten" (z. B. Heatmap: 6 Wochen) je Panel. |
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?"-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
 | C8 | P2 | **Mobile-Feinschliff & PWA** | Sticky-Aktions-Chip im Alltag („Jetzt tanken / Warten bis …" beim Scrollen sichtbar), Install-/„Zum Homescreen"-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
 | C9 | P2 | **Formatierungs-Konventionen** | Durchgängig de-DE: ct/L vs €/L nicht mischen (beides vorkommend), einheitliche Rundung (3 Nachkommastellen €/L, 1 Nachkommastelle ct), Uhrzeiten „18–20 Uhr" überall in Europe/Berlin. Kleiner ESLint-/Test-geschützter Formatter-Satz in `data.ts`. |
-| C10 | P2 | **Heatmap beantwortet „An welchem Wochentag ist es am günstigsten?“ nicht** | `HeatmapGrid` zeigt nur die rohe 7×24-Tabelle (168 Zellen). Wer am Montag wissen will, welcher *Tag* der Woche typisch günstig ist, muss 7 Zeilen Augemaß vergleichen und bekommt keine Antwort in Worten — auch fehlt die Markierung „heutige Zeile“. Ziel: Tages-Zusammenfassung je Wochentag unter/neben der Tabelle (Median je Tag + billigste Stunde, heutige Zeile hervorgehoben) **plus** ein Satz Fazit („Typisch am günstigsten: Di 18–20 Uhr — Median 1,653 €/L“) **plus** eine Erklärzeile, was „Niveau“ und „Cheap-Prob“ bedeuten und dass die Heatmap die *Vergangenheit* (letzte N Wochen) zeigt, keine Prognose für die kommende Woche (Fach-Begriffe dann über C7). Mit `windows_week` aus `/api/v1/decide` (Alltag → „Diese Woche“) verbinden: dort stehen die 3 billigsten 2-h-Blöcke der nächsten 7 Tage — auch dort Wochentag prominent statt nur Timestamp. |
 
 ---
 
@@ -79,7 +81,6 @@
 | # | Prio | Fehlt | Details |
 |---|---|---|---|
 | D1 | P1 | **`Dashboard.tsx` zerlegen (3 415 Zeilen in einer Datei)** | Tab-weise Module (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`) + geteilte UI-Bausteine (Panel, Metric, Badge, EmptyState). Sonst kollidiert jede C-Arbeit mit Merge- und Review-Kosten. |
-| D2 | P1 | **e2e-Abdeckung der Entscheidungs-Flows** | Jetzige Playwright-Specs mocken nur `stations`/`series`/`forecast`. Fehlt: `decide`-Mock → Intent „Ich warte" → Due-Prompt → Fill buchen → Fehlerfall 429/Offline (Erfolgsmeldung darf nur bei Erfolg — V3-Fix ist drin, aber ungesichert). |
 | D3 | P2 | **Property-Tests Umweg-Ökonomie** | `K = d·(c/100)·p + (d/v)·z`: Monotonie in Litern, Grenzfälle `z=0`, `d=0`, `liters→∞` mit fast-check abstecken (Schwellen-`worth_it`-Logik inklusive). |
 | D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90" nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
 
@@ -96,7 +97,6 @@ Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persisten
 
 | # | Prio | Fehlt / falsch | Definition of Done |
 |---|---|---|---|
-| E2 | **P0** | **Komma-Dezimalzahlen nicht eingebbar:** Beleg-Dialog nutzt `type="number"` ohne `inputMode="decimal"`; deutsche Mobil-Tastaturen liefern `1,689` → `Number("1,689") = NaN` → generische Fehlermeldung, ohne Hinweis warum. Der Hauptbeleg der App scheitert an der Tastatur. | `inputMode="decimal"`, Wert als String state, `,`→`.`-Normalisierung, Sofort-Validierung mit Klartext („Preis wie an der Säule, z. B. 1,629"). Unit-Test in `data.test.ts`. |
 | E3 | P1 | **GUI-Validierung deckt Server-Regeln nicht ab:** `customLiters`/`customPrice` haben **keine min/max-Attribute**; GUI prüft nur `> 0`, Server verlangt 5–100 L / 0,40–5,00 €/L → Eingaben wie 101 L oder 9,99 € scheitern erst nach Server-Roundtrip mit Fachfehler. | `min`/`max`/`step` am Input + gleiche Grenzen clientseitig prüfen, Fehlermeldung direkt am Feld. |
 | E4 | P1 | **Beleg ohne Station wählbar:** Bei nicht ausgewählter Station sendet `handleCustomFill` `station_id: "custom"` → Server lehnt mit `unknown_station` ab. Der Nutzer kann den Fehler nicht selbst beheben. | Stations-Auswahl im Beleg-Dialog oder Button deaktivieren + Hinweis „Station wählen". |
 | E5 | P1 | **`heatmapWeeks` ohne Eingabeweg:** GUI sendet `weeks=` an `/api/v1/heatmap`, die Preference existiert, aber `setHeatmapWeeks` hat 0 Aufrufe → Zeitraum ist fest verdrahtet, kein Umschalten möglich. | Wochen-Select (4/6/12) neben „Heatmap Art" oder Parameter aufräumen. |
@@ -107,7 +107,6 @@ Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persisten
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| F1 | P1 | **Begriffs-Wirrwarr:** Tab heißt „Statistik", Seitenkicker „Werkstatt / Statistik", Konzept/Doku sprechen von „Werkstatt"; Tooltip-Text nennt den internen Doku-Begriff „Prüfstand" („wähle einen bewerteten Tag im Prüfstand"). | Ein Nutzer-Vokabular festlegen (Empfehlung: Alltag / **Werkstatt** / System) und UI + Doku drauf ziehen; „Prüfstand" aus Nutzertexten streichen. |
 | F2 | P1 | **Anglizismen/Fachjargon in Labels:** „Cheap-Probability P(p ≤ Median)", „AV-Score", „δ̂ Ranking", „Out-of-Sample", „Regret", „Badge" intern. | Deutsche Kurzformen als Primärtext („Wahrscheinlichkeit für günstig", „Ampel-Stärke"), Formel/Fachwort ins Tooltip (→ C7 Glossar). |
 | F3 | P2 | **Typografie uneinheitlich:** Anführungszeichen gemischt („warten“ vs. gerade '"'), „Brier-Score 30d" statt „30 Tage"; ct/L und €/L wechseln ohne Regel; Footer/Microcopy teils englische Hook-Zeilen („Nachvollziehen statt blind vertrauen." ✓ gut) vs. Fachlabels. | Microcopy-Regelwerk (eine Seite, in docs/README verlinkt): Einheiten, Zitate, Zahlenformate, Tonfall „ehrlich, knapp, handlungsleitend". |
 | F4 | P2 | **Intent-Leiste zeigt immer alle 4 CTAs** („Ich warte / Navigieren / Jetzt tanken / Verwerfen") — bei Aktion `refuel_now` ist „Ich warte" als gleichrangiger CTA irritierend; bei `wait` ist „Jetzt tanken" irritierend. | Empfohlene Aktion als primären Button, kompatible Intents sekundär, widersprechende Intent mit Erklär-Tooltip (Logik ändert nichts, nur Sichtbarkeit/Gewichtung). |
@@ -117,11 +116,8 @@ Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persisten
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| G1 | **P1** | **`rp2/cache_forecasts.py` wächst unbegrenzt:** `cache.log` wird alle 5 min angehängt, **kein Rotate/Cap** — auf dem RP2 dauerhaft wachsend (je nach OS-Layout liegt `/tmp` auf der SD-Karte → zusätzlich SD-Wear durch 288 Schreibzugriffe/Tag). | Größen-Cap (z. B. 1 MB Ring: bei Überschreiten ältere Hälfte verwerfen) oder auf journald/stdout umstellen; in rp2/ANLEITUNG vermerken. Unit-Test auf Cap-Verhalten. Oder irgendwann löschen? Das gilt auch für RP. Bis wann müssen Datenbehalten werden? |
 | G2 | P2 | **Journal-Wachstum der rp2-Dienste nicht begrenzt/dokumentiert:** `fallback_gui` + `cache_forecasts` loggen nach journald; auf der SD ohne Caps wächst das Journal monatelang. | In ANLEITUNG: `SystemMaxUse=50M` für die Units oder `journalctl --vacuum-size` als Wartungsschritt; optional Drop-in-Beispiel beilegen. |
-| G3 | P2 | **Datenverlust-Fenster ist implizit:** Ringpuffer behält 7 Tage (`RING_DAYS=7`); ist der NAS > 7 Tage offline, verwirft `ring_prune` noch nicht hochgeladene Snapshots — der Verlust ist nirgends benannt. | Fenster in docs/ARCHITEKTUR.md/BETRIEB.md nennen + Empfehlung: bei geplantem NAS-Ausfall Puffer lokal vergrößern (tmpfs-Größe vs. 15 Polls/Tag/Station beispielhaft rechnen). Wenn G1 eh zu influx wandert, ist es nicht schlimm wenn es größer wird. |
 | G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** → Fallback-GUI zeigt nach Pi-Neustart bis zum ersten erfolgreichen Fetch „keine Prognose". Ehrlich, aber unerwartet. | Wie geht man damit um? |
-| G5 | ✓ | **NAS-Seite geprüft, in Ordnung:** Influx-Bucket-Retention 43 800 h (5 J.) dokumentiert; Feedback-Store 90-Tage-Retention + Archiv (seit 11.09.); Job-Logs 500 Zeilen; Docker `json-file` 5m × 2; Container ohne root, `no-new-privileges`, `cap_drop: ALL`; tmpfs-Heartbeat (used/total MB, älteste Datei) fließt zur NAS. | Kein Task. Verbleibende Punkte dazu: `runtime/`-Gesamtgröße ins Monitoring (→ B4) und Backup (→ B1). Oder irgendwann löschen? Das gilt auch für RP. Bis wann müssen Datenbehalten werden? |
 
 ## H. Mathematik (Prüfstrang 2: „muss mathematisch was getan werden?")
 
@@ -132,16 +128,16 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 | H1 | **P1** | **Umweg-Schwellen sind doppelt gepflegt:** GUI `detourEconomics` kodiert hart `netEur ≥ 1,5 / ≥ 0,5`; Server nutzt `active_thresholds()["elsewhere_net_eur"]` (verändert sich mit M7-Tuning). Trotz des seit PR #69 einheitlichen Streckenfaktors kann „Server prüfen" deshalb noch das Gegenteil der GUI-Ampel sagen. | Server liefert `verdict`/`worth_it` + Schwellen in der Antwort; GUI zeigt ausschließlich das; `data.ts`-Konstanten entfernen. (Mit B6 zusammenführen.) |
 | H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn \|Δ\| > Rauschband) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten". |
 | H4 | D | **Weiterhin offen (bereits gelistet, hier qualifiziert):** M3-Zweitmodell/Ensemble, gemeinsame Bootstrap-Ziehung über Stationen (§4.2) und w(h)-Rückkopplung ab ≥8 Füllungen. | Bleiben A9–A11 mit Datenbedarf; Reihenfolge nach M7-Fortschritt (A7). |
-| H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in engine/README, statt stillem `None`. |
+| H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in docs/ENGINE.md, statt stillem `None`. |
 
 ---
 
 ## Quick Wins (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
 
-> Status: 13 von 14 umgesetzt (PR aus `arena/01a09275-tankapp`). Offen bleibt
-> nur **B6/H1** (Umweg: Server als einzige Quelle) — ein größerer Umbau der
-> Detour-Sektion, der zusammen mit der H1-Schwellen-Konsolidierung angegangen
-> werden sollte.
+> Status: **13 von 14 umgesetzt** (Version 0.10.0). Offen bleibt nur **B6/H1**
+> (Umweg: Server als einzige Quelle von Strecke und Schwellen) — ein größerer
+> Umbau der Detour-Sektion, der zusammen mit der H1-Schwellen-Konsolidierung
+> angegangen werden sollte.
 
 1. ✅ **A3** Storno-Flag für Fills (`DELETE /fills/{id}` → `voided`, Audit-Zeile) + Button im Wallet.
 2. ✅ **A6** CSV-Export `GET /api/v1/fills.csv` + Download-Link im System-Tab.
@@ -160,6 +156,20 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ---
 
+## Erledigt — hier gestrichen, im CHANGELOG nachvollziehbar
+
+IDs bleiben stabil, damit Commits, Tests und Code-Kommentare weiterhin lesbar
+sind. Vollständig erledigt und aus den Tabellen oben entfernt:
+
+| Version | Punkte |
+|---|---|
+| 0.10.0 (11.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md) |
+| 0.10.1 (12.09.2026) | Doku-Umbau: ein Ordner `docs/` mit Index, Historisches in `docs/archiv/`, Modul-READMEs eingezogen, Dokumente auf Stand 0.10.x gebracht, Link-Test auf alle Dokumente erweitert |
+
+Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **A6**
+(Share-URL offen), **B4** (ntfy-Zustellung offen), **C5** (Rest der
+A11y-Runde offen).
+
 ## Bewusst NICHT in dieser Liste
 
 - **Login, Benutzerkonten, Rollen, Mandanten, OAuth/SSO** — LAN-only per Vorgabe.
@@ -169,8 +179,16 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ## Reihenfolge-Empfehlung
 
-1. **P0 zuerst:** A3 (Storno), B1 (Backup), B2 (Schema-Version) — schützt die persönliche Bilanz, bevor echte Daten anwachsen.
-2. **P0 aus Prüfstrang 2 sofort danach:** E2 (Komma-Eingabe) — betrifft den Alltags-Hauptweg des Produkts.
-3. **Dann B6/H1 + B7** (Entscheidungs-Zahlen intern widerspruchsfrei und API-Last gesenkt) und **C1** (Inbetriebnahme führbar machen).
-4. **D1 direkt vor dem ersten größeren C-Feature** — sonst verdoppelt sich der Aufwand.
-5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie stehen begründet in docs/LUECKEN.md.
+1. **B2 (Schema-Version + Migration des Feedback-Stores)** — letzter offener
+   P0-Punkt: schützt die persönliche Bilanz, bevor echte Daten anwachsen.
+   Storno (A3), Backup (B1) und Komma-Eingabe (E2) sind seit 0.10.0 drin.
+2. **Dann B6/H1** (Entscheidungs-Zahlen intern widerspruchsfrei: Server liefert
+   `detour_km_est`, `verdict` und die Schwellen, GUI rechnet nicht selbst) und
+   **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
+   Anonym-Budget).
+3. **B5** (Schreib-Endpunkte gegen Flut härten) und **B12** (Cheap-Prob-Basis
+   ohne Station) — beide klein, beide ehrlichkeitsrelevant.
+4. **D1 direkt vor dem ersten größeren C-Feature** (`Dashboard.tsx` zerlegen) —
+   sonst verdoppelt sich der Aufwand.
+5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
+   stehen begründet in [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).

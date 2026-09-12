@@ -4,29 +4,9 @@
 
 ## Inhaltsverzeichnis
 
-- [Gebündelte Befehle](#datenwerkzeuge--referenz-keine-installationskette)
 - [Interne Einzelprogramme](#interne-einzelprogramme)
 - [Datenformate](#datenformate)
 - [Optionale vertiefte Stationsanalyse](#optionale-vertiefte-stationsanalyse)
-
----
-
-
-
-**[Einziger Installationseinstieg: docs/INSTALL.md](../docs/INSTALL.md).**
-Nicht alle Skripte nacheinander ausführen. Der normale Einstieg sind die
-gebündelten Befehle aus `tankapp.py`, mit vorhandener Python-Standardbibliothek:
-
-| Befehl | Gerät | Erledigt gemeinsam |
-|---|---|---|
-| `tankapp.py add-city` | am einfachsten Pi; NAS/PC möglich | Anker lokal erfassen, Stationsliste nutzen/holen, neues Stadtset vorbereiten, alte Sets erhalten. Kein Preisdownload nötig. |
-| `tankapp.py activate-polling` | Pi, `sudo` | Vorige Auswahl sichern, validierten Vorschlag übernehmen, Collector/Uploader neu starten; Rückfall bei Restartfehler. |
-| `tankapp.py history-sync` | NAS | Ein Jahr Preis-/Stationsarchiv initial laden, vorhandene Dateien überspringen, alle fehlenden Tage nachholen; für cron/Start-Aufgabe. |
-| `data-tools/swap_stations.py` | NAS/PC/Pi | Tote oder sortenlose Stationen aus dem aktiven Polling-Set 1:1 tauschen; Fehler-UUIDs aus `engine/current.json`, Ersatz aus `discover_stations`-Kandidaten; schreibt nur den Vorschlag. Anleitung: [STATIONEN-TAUSCH.md](../docs/STATIONEN-TAUSCH.md). |
-
-Windows ruft `py -3 tankapp.py …` auf, Pi/NAS `python3 tankapp.py …`.
-Keine PC-venv und keine pip-Pakete für diese Abläufe. Schlüssel bleiben in den
-vorhandenen privaten Dateien; nicht als Befehlsargument in cron hinterlegen.
 
 ## Interne Einzelprogramme
 
@@ -61,7 +41,7 @@ Preisdateien sind Änderungsprotokolle, keine regelmäßigen Polling-Snapshots.
 Original-Zeitstempel mit UTC-Offset und Änderungsflags aufbewahren; ein dichteres
 Raster liefert keine zusätzlichen Beobachtungen. Unbekannter Öffnungsstatus
 ist kein belegtes `open`. Der laufende NAS-Sync steht ausschließlich in
-[INSTALL.md](../docs/INSTALL.md); Download-Optionen zeigt `fetch_history.py --help`.
+[INSTALL.md](INSTALL.md); Download-Optionen zeigt `fetch_history.py --help`.
 
 Aufbereitete Analyse-CSVs verwenden folgendes Schema:
 
@@ -76,7 +56,7 @@ Aufbereitete Analyse-CSVs verwenden folgendes Schema:
 Nicht der Beginn der Installation: Für eine neue Stadt zuerst `tankapp.py add-city`
 verwenden. Die historische Optimierung kann später auf dem NAS oder optional am
 PC erfolgen. Dafür gelten `analysis/requirements.txt` und die Methodik in
-[KONZEPT.md](../docs/KONZEPT.md). `analysis/config.local.json` enthält Anker und
+[KONZEPT.md](KONZEPT.md). `analysis/config.local.json` enthält Anker und
 Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetzen.
 
 - `analysis/station_selection.py --help`: Raster, Coverage-Gate (Default 85 %),
@@ -86,8 +66,8 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
 - `analysis/window_analysis.py --help`: Polling-Fenster auf vorhandenen Daten prüfen.
 - Ausgaben bleiben lokal: `results/station_scores_<fuel>.csv`,
   `docs/analysis/report_top10.md` und `docs/analysis/figures/`.
-- Preis-Zwillinge und explizite Ersatzvorschläge: [Engine-Referenz](../engine/README.md#preis-zwillinge).
+- Preis-Zwillinge und explizite Ersatzvorschläge: [Engine-Referenz](ENGINE.md#preis-zwillinge).
   Ein Vorschlag ändert nicht das aktive Set und repariert keine Namenskollisionen.
 
-Spezialfälle nur bei Bedarf: [UUID-Migration](../docs/STATIONS-UUID.md) und
-[Engine-Diagnose](../engine/README.md).
+Spezialfälle nur bei Bedarf: [UUID-Migration](archiv/STATIONS-UUID-MIGRATION.md) und
+[Engine-Diagnose](ENGINE.md).

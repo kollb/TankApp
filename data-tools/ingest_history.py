@@ -4,7 +4,7 @@ TankApp – Analyse-Aufbereitung: aus bundesweiten Tages-CSVs kampagnenfähige Z
 
 Die Rohdateien des Tankerkönig-Datenrepos enthalten pro Tag ALLE Tankstellen Deutschlands
 (~14 000 Stationen, ~20 MB/Tag). gebraucht werden aber nur die Stationen im Umfeld der
-Ankerpunkte (Home + Kampagnenstädte) — und zwar im Schema aus `data-tools/README.md`.
+Ankerpunkte (Home + Kampagnenstädte) — und zwar im Schema aus `docs/DATENWERKZEUGE.md`.
 Dieses Skript
 
   1. wählt Stationen per Radius um die Anker aus (Straße/Hausnummer werden dabei nie
@@ -348,7 +348,7 @@ def daterange(d0: dt.date, d1: dt.date):
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Tankerkönig-Rohhistorie → analysefertige CSV je Kampagne (Schema data-tools/README.md).",
+        description="Tankerkönig-Rohhistorie → analysefertige CSV je Kampagne (Schema docs/DATENWERKZEUGE.md).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--raw", type=Path, default=Path("data/raw/prices"),
                     help="Verzeichnis der Tagesdateien (prices/)")
@@ -511,7 +511,7 @@ def main() -> int:
              f"- Gelesene Events: {n_events:,} · geschriebene Zeilen: {n_rows:,} · "
              f"geprüfte/verworfene Werte: {n_drop:,}",
              f"- Median-Coverage je Station×Kraftstoff: {cov_med:.0%} "
-             f"(Gate in data-tools/README.md: ≥ 85 %)", "",
+             f"(Gate in docs/DATENWERKZEUGE.md: ≥ 85 %)", "",
              "| Kampagne | Dateien | Zeilen | Stationen | Ø Zeilen/Station/Tag |", "|---|---|---|---|---|"]
     for label, info in manifest["campaigns"].items():
         per = info["rows"] / max(info["stations"], 1) / max(info["days"], 1)
