@@ -506,6 +506,13 @@ def analyse_city_light(
         "city": city,
         "fuel": cfg.fuel,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        # C11: Datenreichweite des Rankings. „Rang 1“ aus zehn Tagen ist eine
+        # andere Aussage als „Rang 1“ aus drei Monaten; ohne Fenster und
+        # Punktzahl kann die GUI diesen Unterschied nicht zeigen.
+        "range_from": mat.index.min().isoformat(),
+        "range_to": mat.index.max().isoformat(),
+        "n_points": int(mat.notna().to_numpy().sum()),
+        "n_days": int(len(uniq_days)),
         "station_count": len(tab),
         "excluded_count": len(excluded),
         "excluded": excluded[:20],
@@ -532,9 +539,18 @@ def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> 
     all_stations_sorted = sorted(
         all_stations, key=lambda x: x.get("score", 0), reverse=True
     )
+    # Reichweite über alle Städte: frühester Anfang, spätestes Ende, Summe
+    # der Beobachtungen. Fehlt sie für eine Stadt, bleibt das Feld None —
+    # lieber keine Angabe als eine erfundene.
+    froms = [r["range_from"] for r in results if r.get("range_from")]
+    tos = [r["range_to"] for r in results if r.get("range_to")]
     return {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "fuel": cfg.fuel,
         "cities": results,
         "top_global": all_stations_sorted[:10],
+        "range_from": min(froms) if froms else None,
+        "range_to": max(tos) if tos else None,
+        "n_points": sum(int(r.get("n_points") or 0) for r in results) or None,
+        "n_days": max((int(r.get("n_days") or 0) for r in results), default=0) or None,
     }

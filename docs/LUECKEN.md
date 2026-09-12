@@ -202,6 +202,21 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 12.09.2026 — Version 0.18.0: worauf beruht das, was hier steht?
+
+C11 geschlossen und damit C6 vollständig. Die Heatmap beantwortete die Frage
+nach dem Bestand seit 0.14.0, Preisverlauf, Modell-Ausblick und Ranking nicht —
+nicht aus Nachlässigkeit in der GUI, sondern weil die drei Endpunkte den
+Bestandsumfang gar nicht mitschickten. Behoben auf der Serverseite:
+`/api/v1/series` zählt die Punkte **mit** Preis und nennt deren echte Spanne,
+`/api/v1/forecast` reicht die Fit-Reichweite durch, die im Modell längst stand
+(`training_start`/`last_observation`/`training_points`/`training_days`), und
+`/api/v1/selection` bekommt sie neu aus `engine/selection.py`.
+
+Ehrlich geblieben: Wo ein Altbestand die Felder nicht hat, steht `null` und die
+GUI zeigt keine Zeile — eine aus dem angefragten Fenster abgeleitete Spanne wäre
+genau die Behauptung gewesen, die dieser Punkt beseitigen sollte.
+
 ### 12.09.2026 — Version 0.17.0: eine Sprache für alle Panel-Zustände
 
 C6 abgeschlossen (bis auf die Datenreichweite, die eine Serveränderung braucht

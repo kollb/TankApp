@@ -22,6 +22,7 @@ const FILES = [
   "components/ApiExplorer.tsx",
   "components/CellError.tsx",
   "components/DataAge.tsx",
+  "components/DataReach.tsx",
   "components/HeatmapGrid.tsx",
   "components/LabCharts.tsx",
   "components/LineChart.tsx",

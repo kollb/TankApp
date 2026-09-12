@@ -4,6 +4,49 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.18.0] – 2026-09-12
+
+C11 und damit C6 komplett: Die drei verbliebenen Panels sagen jetzt ebenfalls,
+**worauf** sie beruhen. Die Rechnungen selbst sind unverändert.
+
+### Hinzugefügt
+
+- **C11 — Datenreichweite in Preisverlauf, Modell-Ausblick und Ranking.** Die
+  Heatmap nennt seit 0.14.0 Bestand und Zeitraum; die übrigen Panels konnten das
+  nicht, weil die Endpunkte keinen Bestandsumfang zurückgaben. Eine
+  24-Stunden-Achse aus vier Punkten sah damit genauso solide aus wie eine aus
+  288, und „Rang 1“ aus zehn Tagen genauso belastbar wie „Rang 1“ aus drei
+  Monaten.
+  - `/api/v1/series`: `range_from`/`range_to`/`n_points`. Gezählt werden nur
+    Punkte **mit** Preis — eine geschlossene Meldung ist eine Beobachtung, aber
+    kein Preis-Bestand, und sie verlängert die Reichweite nicht.
+  - `/api/v1/forecast`: `range_from`/`range_to`/`n_points`/`n_days` als
+    Reichweite des **Fits**. Die Werte kannte das Modell längst
+    (`training_start`, `last_observation`, `training_points`, `training_days`),
+    sie standen bisher nur im Modell-Artefakt; `app/refresh.py` publiziert sie
+    jetzt mit der Prognose.
+  - `/api/v1/selection`: dieselben vier Felder je Kraftstoff, neu berechnet in
+    `engine/selection.py` (je Stadt aus der Preis-Matrix, darüber aggregiert:
+    frühester Anfang, spätestes Ende, Summe der Beobachtungen).
+  - Frontend: `dataReachLabel()` in `web/src/data.ts` und
+    `web/src/components/DataReach.tsx` — gleiche Beschriftung, gleiche
+    Reihenfolge und gleiche Berliner Zeitangabe wie in der Heatmap.
+
+### Ehrlich geblieben
+
+- Gibt ein Payload keine Reichweite her — Altbestand ohne die Felder, leeres
+  Ergebnis —, liefern Backend und Komponente `null` bzw. gar nichts. Keine
+  geschätzte Spanne, keine aus dem angefragten Fenster abgeleitete Zahl.
+- Die neuen Felder ändern keine Prognose, kein Ranking und keine Empfehlung.
+
+### Tests
+
+- Backend: drei Fälle in `tests/test_app.py` (Reichweite ≠ Fenster, nur
+  geschlossene Meldungen, Fit-Reichweite inkl. Altbestand-`None`), einer in
+  `tests/test_b3.py` (Ranking-Reichweite + Altformat).
+- Frontend: vier Fälle in `web/src/components/states.test.tsx`; beide
+  Ratchet-Dateilisten um `components/DataReach.tsx` erweitert.
+
 ## [0.17.0] – 2026-09-12
 
 C6 zu Ende gebracht: Die Panels haben jetzt **eine** Sprache für alle vier

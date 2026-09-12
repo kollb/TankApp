@@ -370,6 +370,49 @@ def test_selection_with_artifact(b3_settings, tmp_path):
     assert sel["stations"][0]["best_hour"] == 19.5
 
 
+def test_selection_reports_reach_of_ranking(b3_settings):
+    """C11: „Rang 1“ aus zehn Tagen ist etwas anderes als aus drei Monaten.
+
+    Das Artefakt nennt die Reichweite je Kraftstoff; die API reicht sie durch.
+    Ein Altbestand ohne die Felder liefert ``None`` statt einer Schaetzung.
+    """
+    sel_path = b3_settings.runtime / "selection" / "current.json"
+    sel_path.parent.mkdir(parents=True, exist_ok=True)
+    station = {"station_id": UID, "city": "Frankfurt", "fuel": "e10", "rank": 1}
+    sel_path.write_text(
+        json.dumps(
+            {
+                "generated_at": NOW.isoformat(),
+                "fuels": ["e10", "e5"],
+                "by_fuel": {
+                    "e10": {
+                        "cities": [{"city": "Frankfurt", "stations": [station]}],
+                        "top_global": [station],
+                        "range_from": "2026-07-01T00:00:00+00:00",
+                        "range_to": "2026-09-11T23:55:00+00:00",
+                        "n_points": 284310,
+                        "n_days": 73,
+                    },
+                    "e5": {
+                        "cities": [{"city": "Frankfurt", "stations": [station]}],
+                        "top_global": [station],
+                    },
+                },
+            }
+        )
+    )
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+
+    rich = live.selection("e10", "Frankfurt")
+    assert rich["range_from"] == "2026-07-01T00:00:00+00:00"
+    assert rich["range_to"] == "2026-09-11T23:55:00+00:00"
+    assert rich["n_points"] == 284310 and rich["n_days"] == 73
+
+    legacy = live.selection("e5", "Frankfurt")
+    assert legacy["count"] == 1
+    assert legacy["range_from"] is None and legacy["n_points"] is None
+
+
 def test_collector_status_from_influx(b3_settings):
     # Simulate collector_status measurement
     hb_time = NOW - dt.timedelta(minutes=2)

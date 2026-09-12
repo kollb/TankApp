@@ -353,6 +353,82 @@ def test_forecast_never_releases_calibration_from_artifact_flags(app_settings):
     assert forecast["calibrated"] is False and forecast["decision_ready"] is False
 
 
+def test_series_reports_reach_of_actual_prices_not_requested_window(app_settings):
+    """C11: Reichweite und Bestand kommen aus den Daten, nicht aus ``hours``.
+
+    Angefragt sind 24 Stunden, geliefert werden drei Meldungen über 20 Minuten,
+    davon eine geschlossene. Die Linie darf nicht so wirken, als deckte sie den
+    ganzen Tag ab — und die geschlossene Meldung ist eine Beobachtung, aber kein
+    Preis, zaehlt also nicht in ``n_points`` und begrenzt die Reichweite nicht.
+    """
+    live = LiveData(
+        app_settings,
+        query=lambda *_: [raw(age=20), raw(age=10), raw("closed", age=5)],
+        clock=lambda: NOW,
+    )
+    res = live.series(UID, "Frankfurt", "e10", 24)
+    assert res["error_code"] is None
+    assert len(res["points"]) == 3
+    assert res["n_points"] == 2
+    assert res["range_from"] == (NOW - dt.timedelta(minutes=20)).isoformat()
+    assert res["range_to"] == (NOW - dt.timedelta(minutes=10)).isoformat()
+
+
+def test_series_without_any_price_reports_empty_reach(app_settings):
+    """Nur geschlossene Meldungen: kein Bestand, also keine erfundene Spanne."""
+    live = LiveData(
+        app_settings,
+        query=lambda *_: [raw("closed", age=20)],
+        clock=lambda: NOW,
+    )
+    res = live.series(UID, "Frankfurt", "e10", 24)
+    assert res["n_points"] == 0
+    assert res["range_from"] is None and res["range_to"] is None
+
+
+def test_forecast_passes_fit_reach_through_and_defaults_to_none(app_settings):
+    """C11: Die Fit-Reichweite steht im Modell; sie muss in der Antwort ankommen.
+
+    Zweiter Eintrag ist eine aeltere Publikation ohne die Felder — dort darf
+    nichts geschaetzt werden, die Antwort nennt ``None``.
+    """
+    path = app_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True)
+    origin = (NOW - dt.timedelta(hours=2)).isoformat()
+    path.write_text(
+        json.dumps(
+            {
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E10",
+                        "origin": origin,
+                        "points": [],
+                        "range_from": "2026-07-28T00:00:00+00:00",
+                        "range_to": "2026-09-08T07:55:00+00:00",
+                        "n_points": 11712,
+                        "n_days": 41,
+                    },
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E5",
+                        "origin": origin,
+                        "points": [],
+                    },
+                ]
+            }
+        )
+    )
+    live = LiveData(app_settings, clock=lambda: NOW)
+    fresh = live.forecast(UID, "Frankfurt", "e10")
+    assert fresh["range_from"] == "2026-07-28T00:00:00+00:00"
+    assert fresh["n_points"] == 11712 and fresh["n_days"] == 41
+    old = live.forecast(UID, "Frankfurt", "e5")
+    assert old["range_from"] is None and old["n_points"] is None
+
+
 def test_http_client_disconnect_stays_silent(app_settings):
     # Browser-Reload mitten in der Antwort: erst ConnectionReset, dann
     # BrokenPipe bei der Fehlerantwort — beides ohne Traceback schlucken.

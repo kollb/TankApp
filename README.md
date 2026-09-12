@@ -4,7 +4,7 @@
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
 Preise.
 
-> Stand: 12.09.2026 · Version **0.17.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> Stand: 12.09.2026 · Version **0.18.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
 ## Dokumentation: ein Ordner, ein Index

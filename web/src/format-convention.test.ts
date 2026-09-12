@@ -36,6 +36,7 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 const CLEAN = [
   "components/CellError.tsx",
   "components/DataAge.tsx",
+  "components/DataReach.tsx",
   "components/HeatmapGrid.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",

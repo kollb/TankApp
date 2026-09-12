@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CellError } from "./CellError";
 import { DataAgeBanner } from "./DataAge";
+import { DataReachNote } from "./DataReach";
 import { SkeletonChart, SkeletonPanel, SkeletonRows } from "./Skeleton";
 import { messages } from "../data";
 
@@ -142,5 +143,52 @@ describe("CellError (C6: Fehler in Tabellenzellen)", () => {
     );
     expect(html).toContain('role="alert"');
     expect(html).toContain(messages.stats_summary_failed);
+  });
+});
+
+describe("DataReachNote (C11: worauf beruht das?)", () => {
+  it("nennt Bestand, Tage und Spanne in Berliner Zeit", () => {
+    const html = renderToStaticMarkup(
+      <DataReachNote
+        reach={{
+          range_from: "2026-09-08T03:10:00+00:00",
+          range_to: "2026-09-12T05:55:00+00:00",
+          n_points: 1234,
+          n_days: 5,
+        }}
+      />,
+    );
+    const plain = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(plain).toContain("Datenreichweite:");
+    expect(plain).toContain("1.234 Preise");
+    expect(plain).toContain("5 Tage");
+    // 03:10 UTC = 05:10 Berliner Sommerzeit, Dienstag.
+    expect(plain).toContain("Di 08.09. 05:10");
+    expect(plain).toContain("Sa 12.09. 07:55 Uhr");
+  });
+
+  it("schweigt, wenn der Payload keine Reichweite hergibt", () => {
+    expect(renderToStaticMarkup(<DataReachNote reach={{}} />)).toBe("");
+    expect(renderToStaticMarkup(<DataReachNote reach={null} />)).toBe("");
+  });
+
+  it("zeigt die Spanne auch ohne Punktzahl — halbe Auskunft schlägt keine", () => {
+    const html = renderToStaticMarkup(
+      <DataReachNote
+        reach={{
+          range_from: "2026-09-11T22:00:00+00:00",
+          range_to: "2026-09-12T05:55:00+00:00",
+        }}
+      />,
+    );
+    expect(html).toContain("Datenreichweite");
+    expect(html).not.toContain("Preise");
+  });
+
+  it("übernimmt das Zählwort des Panels", () => {
+    const html = renderToStaticMarkup(
+      <DataReachNote reach={{ n_points: 42 }} noun="Beobachtungen" />,
+    );
+    expect(html).toContain("42 Beobachtungen");
   });
 });

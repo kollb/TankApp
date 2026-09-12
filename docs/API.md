@@ -427,10 +427,17 @@ Antwort sortiert nach Preis (frisch zuerst):
 Antwort:
 
 ```json
-{"points": [{"timestamp": "...", "status": "open", "price": 1.729}, ...], "error_code": null}
+{"points": [{"timestamp": "...", "status": "open", "price": 1.729}, ...], "n_points": 118, "range_from": "2026-09-11T06:00:00+00:00", "range_to": "2026-09-12T06:00:00+00:00", "error_code": null}
 ```
 
 Geschlossen/fehlend trennt Linie, offener Preis bleibt als Stufe stehen.
+
+- `range_from`/`range_to`/`n_points` (0.18.0, C11): tatsächliche Reichweite der
+  gelieferten Preise und ihre Anzahl, oder `null` bei leerem Bestand. Gezählt
+  werden nur Punkte **mit** Preis — geschlossene Meldungen sind Beobachtungen,
+  kein Preis-Bestand. Das angefragte Fenster (`hours`) ist in der Anlaufphase
+  größer als der Bestand; die GUI nennt darum die echte Reichweite, statt die
+  Achse als volle Abdeckung erscheinen zu lassen.
 
 ## Forecast
 
@@ -448,11 +455,22 @@ Liefert letzten publizierten Ausblick:
   "points_3d": [...],
   "points_7d": [...],
   "metrics": {"points": 1234, "mae_ct": 1.2, "mase": 0.85, "picp95_pct": 94.5},
+  "range_from": "2026-07-30T00:00:00+00:00",
+  "range_to": "2026-09-09T23:55:00+00:00",
+  "n_points": 11712,
+  "n_days": 41,
   "stale": false,
   "calibrated": false,
   "decision_ready": false
 }
 ```
+
+- `range_from`/`range_to`/`n_points`/`n_days` (0.18.0, C11): Datenreichweite des
+  **Fits** — Trainingsfenster, letzte verwendete Beobachtung, Zahl der offenen
+  5-Minuten-Preise und nutzbaren Tage. Die Werte stammen unverändert aus dem
+  Modell (`training_start`, `last_observation`, `training_points`,
+  `training_days`); bisher standen sie nur im Modell-Artefakt. Ältere
+  Publikationen ohne die Felder liefern `null` — die GUI zeigt dann keine Zeile.
 
 `stale` wenn Alter >24h. Bänder projiziert auf 12-Uhr-Regel (Erhöhungen nur 12:00).
 
@@ -574,6 +592,10 @@ Antwort:
       "score": 1.23
     }
   ],
+  "range_from": "2026-07-01T00:00:00+00:00",
+  "range_to": "2026-09-11T23:55:00+00:00",
+  "n_points": 284310,
+  "n_days": 73,
   "error_code": null,
   "calibrated": false,
   "decision_ready": false
@@ -581,6 +603,12 @@ Antwort:
 ```
 
 Felder:
+
+- `range_from`/`range_to`/`n_points`/`n_days` (0.18.0, C11): Datenreichweite des
+  Rankings über alle Städte des Kraftstoffs (frühester Anfang, spätestes Ende,
+  Summe der Beobachtungen, längste Tagesreihe). „Rang 1“ aus zehn Tagen ist eine
+  andere Aussage als „Rang 1“ aus drei Monaten; die GUI weist das aus. Je Stadt
+  stehen dieselben Felder im Stadt-Eintrag. Altbestände ohne die Felder: `null`.
 
 - `delta_ct` (δ̂): Median(p_i − LOO-Stadtmedian) ct/L, negativ = günstiger
 - `delta_ew_ct`: EW-Median über Tages-δ̂ (Halbwertszeit 7 Tage, F5 — reagiert bei
