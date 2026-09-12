@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 12.09.2026 · App-Version 0.10.1. Abgleich von
+> Stand: 12.09.2026 · App-Version 0.11.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -19,6 +19,7 @@
   - [11.09.2026 — P1/P2/P3-Fixes (Prüfstand §3/§7)](#11092026--p1p2p3-fixes-prüfstand-37)
   - [11.09.2026 — Engine-Ausbau, Güte-Gate, Umweg-Konvention (Prüfstand §1.3/§1.5, §3.1–3.4)](#11092026--engine-ausbau-güte-gate-umweg-konvention-prüfstand-1315-3134)
   - [12.09.2026 — Version 0.10.0/0.10.1: Betrieb, GUI, Sprache](#12092026--version-01000101-betrieb-gui-sprache)
+  - [12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal](#12092026--version-0110-ehrliche-eingaben-heatmap-basis-rp2-journal)
 - [Konzept-Abdeckung im Einzelnen](#konzept-abdeckung-im-einzelnen)
 - [Bewusst offen (Backlog mit Grund)](#bewusst-offen-backlog-mit-grund)
 - [Nicht umgesetzt und warum nicht](#nicht-umgesetzt-und-warum-nicht)
@@ -26,7 +27,7 @@
 
 ## Kurzfassung
 
-| Bereich | Vor B5 (10.09.) | Heute (0.10.1) |
+| Bereich | Vor B5 (10.09.) | Heute (0.11.0) |
 |---|---|---|
 | „Läuft …“ beim Modell-Job | nur Zustand, kein Fortschritt | Phasen, Schritt x/y, Balken, Restschätzung in GUI, Statusdatei und Log |
 | Rechenzeit Modell-Lauf | ~3 min je Station, ein Kern | ~14 s je Station, mehrere Kerne |
@@ -39,6 +40,8 @@
 | Persönliche Bilanz | Beleg buchen, keine Korrektur | Storno mit Audit-Spur (A3), CSV-Export (A6), `runtime/`-Backup (B1) |
 | „Was läuft hier?“ | unsichtbar | `version` + `commit` in `/health` und Footer, `CHANGELOG.md` (B9) |
 | Dokumentation | verteilt über Root, `docs/`, `engine/`, `data-tools/`, `rp2/`, `sample/` | ein Ordner `docs/` mit Index, Historisches in `docs/archiv/` (0.10.1) |
+| Beleg-Eingabe | GUI prüft nur „> 0“, Station durfte fehlen | Felder mit den Server-Grenzen (5–100 L, 0,40–5,00 €/L), Buchung ohne Station deaktiviert (E3/E4) |
+| Cheap-Probability ohne Station | Gesamtmedian überstrahlt den Wochentag | umschaltbare Basis: Median derselben Stunde (Spalte) oder Gesamtmedian (B12) |
 
 ## B5: in diesem Durchgang geschlossen
 
@@ -161,10 +164,23 @@ echtes 30-Tage-Fenster der Kennzahlen (M7-Gate bleibt Allzeit-Zähl-Gate
 | e2e-Absicherung | Playwright-Spec `decide → intent → fill → due` | D2, Prüfstand §6 |
 | Doku an einem Ort | Alle Dokumente in `docs/` (Index `docs/README.md`), Historisches in `docs/archiv/` | 0.10.1 |
 
-Offen aus derselben Prüfung: **B6/H1** (Server als einzige Quelle der
-Umweg-Strecke und der Schwellen — GUI-Eigenrechnung raus), **B7** (gzip,
-getrenntes Caching, Poll-Bündelung), **B2** (Schema-Version des
-Feedback-Stores), **D1** (`Dashboard.tsx` zerlegen).
+Offen aus derselben Prüfung: **B7** (gzip, getrenntes Caching,
+Poll-Bündelung), **B2** (Schema-Version des Feedback-Stores), **D1**
+(`Dashboard.tsx` zerlegen). **B6/H1** ist seit 0.10.0 geschlossen (Server als
+einzige Quelle von Strecke und Schwellen), siehe
+[CHANGELOG](../CHANGELOG.md#0100--2026-09-12).
+
+### 12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Beleg-Eingabe | Felder prüfen vor dem Roundtrip dieselben Grenzen wie der Server (5–100 L, 0,40–5,00 €/L, `web/src/data.ts::FILL_LIMITS`), Hinweis direkt am Feld | E3, Prüfstand §3.1 |
+| Beleg ohne Station | Button „Beleg buchen“ deaktiviert + Hinweis „Station wählen“; kein `station_id: "custom"`, das erst der Server ablehnt | E4 |
+| Heatmap-Zeitraum | Wochen-Select 4/6/12 (Default 6), `setHeatmapWeeks` verdrahtet | E5 |
+| Slider-Präzision | Verbrauch 0,5-L/100-km-Schritte, Tankmenge 1-L-Schritte, Zeitwert 0,5 €/h — je ein Begleit-Zahlenfeld für exakte Werte (6,3 L/100 km) | E6 |
+| Cheap-Prob-Basis | `basis=hour`: Vergleich gegen den Median **derselben Stunde** (Spalten-Basis), GUI-Default ohne Station; API-Default bleibt `overall` | B12, [ANALYSE.md](ANALYSE.md#cheap-probability) |
+| API-Explorer | „day (Beispiel)“ nur mit gewählter Station, sonst grau + Hinweis | E7 |
+| RP2-Journal | Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`), `journalctl --vacuum-size=50M` als Wartungsschritt | G2, [RP2.md](RP2.md#journal-größe-begrenzen-sd-karte-schonen) |
 
 ## Konzept-Abdeckung im Einzelnen
 

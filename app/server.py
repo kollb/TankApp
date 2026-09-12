@@ -386,10 +386,13 @@ class Handler(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 raise ValueError("invalid_query")
             station_id = value("station_id")
+            # B12: Vergleichs-Basis der Cheap-Probability ohne Station
+            # (overall = Gesamtmedian des Fensters, hour = Median derselben Stunde)
+            basis = value("basis", "overall") or "overall"
             # city is required for heatmap
             if not city:
                 raise ValueError("invalid_query")
-            return self.data.heatmap(city, fuel, kind, weeks, station_id)
+            return self.data.heatmap(city, fuel, kind, weeks, station_id, basis)
 
         if norm_path in ("/api/v1/selection", "/api/v1/stations/selection"):
             return self.data.selection(fuel, city)
@@ -487,6 +490,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "invalid_detour",
                     "invalid_latest_by",
                     "invalid_home",
+                    "invalid_basis",
                 ):
                     self.json({"error_code": code}, 400)
                 else:

@@ -3,16 +3,28 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  checkFillDraft,
   commaToDot,
   compressedAxis,
   currentPrice,
   dayAfterLabel,
+  deTrimmed,
   detourEconomics,
   detourVerdict,
   epochLabel,
+  FILL_LIMITS,
+  fillFieldError,
+  fillLimitHint,
   gapBands,
   germanDecimalToNumber,
   haversineKm,
+  heatmapPath,
+  HEATMAP_BASES,
+  HEATMAP_DEFAULT_BASIS,
+  HEATMAP_DEFAULT_WEEKS,
+  HEATMAP_WEEKS,
+  isHeatmapBasis,
+  isHeatmapWeeks,
   jobRunMessage,
   livePhaseCountdown,
   livePhaseHint,
@@ -20,6 +32,7 @@ import {
   rowOutcome,
   scoreRows,
   segments,
+  sliderCommit,
   splitOnGap,
   transitionRuleLine,
   triggerSkipLabel,
@@ -483,5 +496,129 @@ describe("german decimal input (E2)", () => {
   it("normalizes commas to dots for the input value", () => {
     expect(commaToDot("1,689")).toBe("1.689");
     expect(commaToDot("1.689")).toBe("1.689");
+  });
+});
+
+describe("Beleg-Eingabe ehrlich (E3)", () => {
+  it("lehnt alles außerhalb der Server-Grenzen am Feld ab", () => {
+    expect(fillFieldError("liters", "45,5")).toBeNull();
+    expect(fillFieldError("liters", "5")).toBeNull();
+    expect(fillFieldError("liters", "100")).toBeNull();
+    expect(fillFieldError("liters", "101")).toBe("5–100 L erlaubt.");
+    expect(fillFieldError("liters", "4,9")).toBe("5–100 L erlaubt.");
+    expect(fillFieldError("price", "1,629")).toBeNull();
+    expect(fillFieldError("price", "9,99")).toBe("0,40–5,00 €/L erlaubt.");
+    expect(fillFieldError("price", "0,39")).toBe("0,40–5,00 €/L erlaubt.");
+  });
+
+  it("unterscheidet leeres Feld, Text und Zahl — ohne Server-Roundtrip", () => {
+    expect(fillFieldError("liters", "")).toBe("Bitte Liter eingeben.");
+    expect(fillFieldError("price", "  ")).toBe("Bitte Preis eingeben.");
+    expect(fillFieldError("liters", "voll")).toBe("Zahl eingeben (z. B. 45,5).");
+    expect(fillFieldError("price", "voll")).toBe("Zahl eingeben (z. B. 1,629).");
+  });
+
+  it("zeigt die Grenzen im Hinweistext in deutscher Schreibweise", () => {
+    expect(fillLimitHint("liters")).toBe("5–100 L");
+    expect(fillLimitHint("price")).toBe("0,40–5,00 €/L");
+  });
+
+  it("nutzt dieselben Grenzen wie der Server (app/feedback.py)", () => {
+    expect(FILL_LIMITS.liters).toMatchObject({ min: 5, max: 100 });
+    expect(FILL_LIMITS.price).toMatchObject({ min: 0.4, max: 5 });
+  });
+});
+
+describe("Beleg ohne Station (E4)", () => {
+  const valid = { liters: "45", price: "1,629" };
+
+  it("ist ohne gewählte Station nicht buchbar", () => {
+    const draft = checkFillDraft({ ...valid, stationId: "" });
+    expect(draft.stationMissing).toBe(true);
+    expect(draft.ok).toBe(false);
+    expect(draft.litersError).toBeNull();
+  });
+
+  it("ist mit Station und gültigen Werten buchbar", () => {
+    expect(checkFillDraft({ ...valid, stationId: "abc" })).toMatchObject({
+      ok: true,
+      stationMissing: false,
+    });
+  });
+
+  it("bleibt zu, wenn ein Feld außerhalb der Spanne liegt", () => {
+    const draft = checkFillDraft({ liters: "101", price: "1,629", stationId: "abc" });
+    expect(draft.ok).toBe(false);
+    expect(draft.litersError).toBe("5–100 L erlaubt.");
+  });
+});
+
+describe("Heatmap-Verdrahtung (E5, B12)", () => {
+  it("baut weeks und basis in die Anfrage-URL", () => {
+    expect(
+      heatmapPath({
+        city: "Frankfurt am Main",
+        fuel: "e10",
+        kind: "probability",
+        weeks: 12,
+        basis: "hour",
+        stationId: null,
+      }),
+    ).toBe(
+      "/api/v1/heatmap?city=Frankfurt+am+Main&fuel=e10&kind=probability&weeks=12&basis=hour",
+    );
+  });
+
+  it("hängt die Station an und lässt weg, was nicht wirkt", () => {
+    const url = new URL(
+      heatmapPath({
+        city: "Frankfurt",
+        fuel: "diesel",
+        kind: "level",
+        weeks: 6,
+        stationId: "00000000-0000-0000-0000-000000000001",
+      }),
+      "http://nas:1355",
+    );
+    expect(url.searchParams.get("station_id")).toBe(
+      "00000000-0000-0000-0000-000000000001",
+    );
+    expect(url.searchParams.has("basis")).toBe(false);
+    expect(url.searchParams.get("weeks")).toBe("6");
+  });
+
+  it("lässt nur 4/6/12 Wochen zu, Default 6", () => {
+    expect(HEATMAP_WEEKS).toEqual([4, 6, 12]);
+    expect(HEATMAP_DEFAULT_WEEKS).toBe(6);
+    expect(isHeatmapWeeks(4)).toBe(true);
+    expect(isHeatmapWeeks(2)).toBe(false);
+    expect(isHeatmapWeeks("6")).toBe(false);
+  });
+
+  it("hat zwei Basen, Default ist die Spalten-Basis", () => {
+    expect(HEATMAP_BASES).toEqual(["hour", "overall"]);
+    expect(HEATMAP_DEFAULT_BASIS).toBe("hour");
+    expect(isHeatmapBasis("hour")).toBe(true);
+    expect(isHeatmapBasis("gesamt")).toBe(false);
+  });
+});
+
+describe("Slider mit Begleitfeld (E6)", () => {
+  it("klemmt auf den Bereich des Sliders", () => {
+    expect(sliderCommit("6,3", { min: 4, max: 15 })).toBe(6.3);
+    expect(sliderCommit("2", { min: 4, max: 15 })).toBe(4);
+    expect(sliderCommit("99", { min: 10, max: 80 })).toBe(80);
+    expect(sliderCommit("12,5", { min: 0, max: 30 })).toBe(12.5);
+  });
+
+  it("liefert null für Nicht-Zahlen statt den Wert zu erfinden", () => {
+    expect(sliderCommit("", { min: 4, max: 15 })).toBeNull();
+    expect(sliderCommit("sieben", { min: 4, max: 15 })).toBeNull();
+  });
+
+  it("schreibt Kurzformen ohne erzwungene Nullen", () => {
+    expect(deTrimmed(6.3)).toBe("6,3");
+    expect(deTrimmed(12)).toBe("12");
+    expect(deTrimmed(Number.NaN)).toBe("—");
   });
 });

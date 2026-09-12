@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 12.09.2026 · App-Version **0.10.1**
+> Stand: 12.09.2026 · App-Version **0.11.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -141,7 +141,7 @@ Details und Reihenfolge: [INSTALL.md](INSTALL.md).
 | `GET /api/v1/series` | Preisverlauf einer Station |
 | `GET /api/v1/forecast` | Modell-Ausblick 24 h + 3 d/7 d je Station |
 | `GET /api/v1/last_forecasts` | Prognose-Bündel für den RP2-Cache |
-| `GET /api/v1/heatmap` | DoW × Stunde: Niveau oder Cheap-Probability |
+| `GET /api/v1/heatmap` | DoW × Stunde: Niveau oder Cheap-Probability, Vergleichs-Basis wählbar (B12) |
 | `GET /api/v1/selection` | Meine Stationen: δ̂, Bootstrap-KI, AV-Score, billigste Stunde |
 | `GET /api/v1/collector/status` | Pi/tmpfs-Livestatus |
 | `GET /api/v1/route/evaluate` | Umweg-Ökonomie serverseitig (deprecated → `decide`) |

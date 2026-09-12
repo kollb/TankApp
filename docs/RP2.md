@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 12.09.2026 · App-Version 0.10.1 · RP2-Fallback v2.2 — **die** Anleitung
+> Stand: 12.09.2026 · App-Version 0.11.0 · RP2-Fallback v2.3 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -23,6 +23,7 @@
   - [Starten](#starten)
   - [Benutzer prüfen](#benutzer-prüfen)
   - [Status prüfen](#status-prüfen)
+  - [Journal-Größe begrenzen (SD-Karte schonen)](#journal-größe-begrenzen-sd-karte-schonen)
 - [Testen](#testen)
   - [Cache prüfen](#cache-prüfen)
   - [Browser (immer dieselbe Adresse)](#browser-immer-dieselbe-adresse)
@@ -93,6 +94,7 @@ rp2/
 ├── cache_forecasts.py               # lädt /api/v1/last_forecasts vom NAS (alle 5 min)
 ├── tankapp-fallback-gui.service     # systemd-Unit für die GUI
 ├── tankapp-forecast-cache.service   # systemd-Unit für den Cache
+├── journald.conf.d/                 # Drop-in-Beispiel: Journal-Cap 50M (G2)
 └── templates/index.html             # wird beim Start selbst erzeugt (gitignored)
 ```
 
@@ -240,6 +242,37 @@ systemctl status tankapp-forecast-cache
 systemctl status tankapp-fallback-gui
 journalctl -u tankapp-forecast-cache -n 30
 ```
+
+### Journal-Größe begrenzen (SD-Karte schonen)
+
+Beide Dienste loggen nach journald. Ohne Begrenzung wächst das Journal auf der
+SD-Karte mit — über Monate, unbemerkt, bis die Karte voll ist. Seit 0.11.0 ist
+dafür ein Drop-in im Repo beigelegt (TODO G2).
+
+journald kennt **kein Cap je Unit**; `SystemMaxUse` gilt für das Journal des
+ganzen Systems. Auf einem RP2, der nur TankApp sammelt, ist genau das gemeint.
+Installiert wird der Wert nach `/etc/systemd/` — außerhalb des Git-Ordners,
+dahin bringt `git pull` also nichts und dort übersteht er auch Updates:
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo cp ~/TankApp/rp2/journald.conf.d/50-tankapp-journal.conf \
+  /etc/systemd/journald.conf.d/
+sudo systemctl restart systemd-journald
+journalctl --disk-usage          # sollte dauerhaft ≤ 50M bleiben
+```
+
+Wer nichts installieren will, räumt regelmäßig auf — z. B. als Wartungsauftrag
+einmal im Monat (der RP2 hat keinen Cron-Dienst von TankApp):
+
+```bash
+sudo journalctl --vacuum-size=50M
+```
+
+Größenangaben schreibt journald ohne Leerzeichen (`50M`, nicht `50 M`) — mit
+Leerzeichen wird der Wert stillschweigend ignoriert. Geprüft wird deshalb mit
+`journalctl --disk-usage` und nicht an der Unit: ein Cap je Dienst existiert
+nicht, `SystemMaxUse` ist eine Einstellung des Journals.
 
 ## Testen
 
@@ -426,7 +459,7 @@ Der RP2 läuft auf einer SD-Karte; Schreibzugriffe sind deshalb begrenzt.
 | `/tmp/tankapp_cache/cache.log` | Ring-Cap **1 MB** (`CACHE_LOG_MAX_BYTES`): wird die Grenze überschritten, bleibt nur die jüngere Hälfte plus Markierungszeile | keine — wächst nicht mehr unbegrenzt (Fix G1, Version 0.10.0) |
 | `/tmp/tankapp_cache/last_forecasts.json` | atomar überschrieben, feste Größe | keine |
 | `/dev/shm/tankapp/*.jsonl` | Ringpuffer im RAM, `RING_DAYS=7` | keine SD-Schreiblast; Inhalt liegt zusätzlich in InfluxDB |
-| journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | wächst ohne Cap | offen (TODO G2): `SystemMaxUse=50M` setzen oder regelmäßig `journalctl --vacuum-size=50M` |
+| journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | `SystemMaxUse=50M` + `SystemMaxFileSize=10M` durch das Drop-in [rp2/journald.conf.d/50-tankapp-journal.conf](../rp2/journald.conf.d/50-tankapp-journal.conf) | Einmal installieren (siehe [Journal-Größe begrenzen](#journal-größe-begrenzen-sd-karte-schonen)); Zwischendurch `journalctl --vacuum-size=50M` (Fix G2, Version 0.11.0) |
 | `/tmp/tankapp_cache` nach Reboot | `/tmp` ist flüchtig → bis zum ersten erfolgreichen Fetch zeigt der Fallback ehrlich „keine Prognose“ | offen (TODO G4); Preise aus `/dev/shm` sind nach tmpfs-Mount ebenfalls erst nach dem nächsten Poll da |
 
 Datenverlust-Fenster: Der RAM-Puffer überbrückt **7 Tage** NAS-Ausfall
@@ -456,7 +489,7 @@ Für beste Ergebnisse: NAS mindestens 1× täglich starten (06:00–24:00), Prog
 
 ### B3 Features im Alltag
 
-- Heatmaps: Tab Werkstatt → Heatmaps, wähle Niveau/Probability
+- Heatmaps: Tab Werkstatt → Heatmaps, wähle Niveau/Probability, Zeitraum (4/6/12 Wochen) und — ohne Station — die Vergleichsbasis (B12)
 - Meine Stationen: Tab Werkstatt → Meine Stationen, sortiert nach Score, δ̂ mit KI
 - Collector Status: Tab System → Pi/tmpfs Livestatus
 - Route Evaluate: Tab Alltag → Rechnet sich der Umweg? → Server prüfen Button
@@ -487,6 +520,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 2.3 | 12.09.2026 | Wartung: Journal-Cap für die RP2-Dienste — Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt (TODO G2). GUI-Code unverändert. |
 | 2.2 | 12.09.2026 | `cache.log` mit 1-MB-Ring-Cap (`CACHE_LOG_MAX_BYTES`) — kein unbegrenztes Wachstum/SD-Verschleiß mehr (TODO G1). Doku: alte RP2-Dateien ins Archiv, Inhalte hier konsolidiert (Dateistruktur, Fallback-API, Umschaltzeiten, Template-Updates, Wartung). |
 | 2.1 | 09.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
 | 2.0 | 09.09.2026 | NAS-Proxy: Port 8000 zeigt bei NAS online volle NAS-GUI, Fallback sonst. Namen/Marken/Navigation aus polling.json. Neue Fallback-GUI: Dark/Light, E10/E5/Diesel, Datenalter, Tankgröße, F1/F3 aus Quantil-Prognosen, Sparklines, Auto-Refresh, NAS prüfen. JSON-API: health/stations/forecasts/decide/nas-check. Template-Update per Hash. |

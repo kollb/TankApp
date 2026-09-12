@@ -47,21 +47,31 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  checkFillDraft,
   clockLabel,
   commaToDot,
   currentPrice,
   deNumber,
+  deTrimmed,
   detourVerdict,
   epochLabel,
   euro,
+  fillLimitHint,
   formatHour,
   germanDecimalToNumber,
+  heatmapPath,
+  HEATMAP_DEFAULT_BASIS,
+  HEATMAP_DEFAULT_WEEKS,
+  HEATMAP_WEEKS,
+  isHeatmapBasis,
+  isHeatmapWeeks,
   livePhaseHint,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
   m7GateLine,
   problem,
   segments,
+  sliderCommit,
   timeLabel,
   transitionRuleLine,
   triggerSkipLabel,
@@ -78,6 +88,7 @@ import {
   type Fill,
   type Fills,
   type Fuel,
+  type HeatmapBasis,
   type Station,
   type Stations,
   type Health,
@@ -371,14 +382,24 @@ function ApiExplorer({
   fuel,
   identity,
   activeCity,
+  heatmapWeeks,
 }: {
   fuel: Fuel;
   identity: string;
   activeCity: string;
+  heatmapWeeks: number;
 }) {
   const [path, setPath] = useState("/api/v1/health");
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // E7: „day“ braucht eine Station. Ohne Auswahl wäre der Knopf nur ein
+  // Aufruf ins Leere (leerer station_id → Fehleranzeige), deshalb grau.
+  const stationId = identity
+    ? new URLSearchParams(identity).get("station_id") || ""
+    : "";
+  const today = new Date().toISOString().slice(0, 10);
+  // Identität und Heatmap-Pfad teilen sich mit den Tabs dieselbe Bauanleitung
+  // (heatmapPath) — der Explorer zeigt damit exakt die Anfrage, die die GUI stellt.
   const dynamic = identity
     ? [
         {
@@ -390,38 +411,77 @@ function ApiExplorer({
           path: `/api/v1/forecast?${identity}`,
         },
         {
-          label: "Heatmap Niveau (6 Wochen)",
-          path: `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=level&weeks=6&${identity}`,
+          label: `Heatmap Niveau (${heatmapWeeks} Wochen)`,
+          path: heatmapPath({
+            city: activeCity,
+            fuel,
+            kind: "level",
+            weeks: heatmapWeeks,
+            stationId,
+          }),
         },
         {
-          label: "Heatmap Cheap-Prob (6 Wochen)",
-          path: `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=probability&weeks=6&${identity}`,
+          label: `Heatmap Cheap-Prob (${heatmapWeeks} Wochen)`,
+          path: heatmapPath({
+            city: activeCity,
+            fuel,
+            kind: "probability",
+            weeks: heatmapWeeks,
+            stationId,
+          }),
+        },
+        {
+          label: "day (Beispiel)",
+          path: `/api/v1/day?station_id=${encodeURIComponent(stationId)}&day=${today}`,
         },
       ]
     : [];
   const endpoints = [
-    { label: "health", path: "/api/v1/health" },
+    { label: "health", path: "/api/v1/health", note: "" },
     {
       label: "decide",
       path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
+      note: "",
     },
     {
       label: "stats/summary",
       path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
+      note: "",
     },
-    { label: "episodes?due", path: "/api/v1/episodes?status=due" },
-    { label: `stations ${fuel}`, path: `/api/v1/stations?fuel=${fuel}` },
-    { label: `selection ${fuel}`, path: `/api/v1/selection?fuel=${fuel}` },
-    { label: "collector/status", path: "/api/v1/collector/status" },
-    { label: "jobs/models/log", path: "/api/v1/jobs/models/log?lines=50" },
-    { label: "last_forecasts", path: "/api/v1/last_forecasts" },
-    { label: "day (Beispiel)", path: `/api/v1/day?station_id=${encodeURIComponent(identity ? new URLSearchParams(identity).get("station_id") || "" : "")}&day=${new Date().toISOString().slice(0, 10)}` },
+    { label: "episodes?due", path: "/api/v1/episodes?status=due", note: "" },
+    {
+      label: `stations ${fuel}`,
+      path: `/api/v1/stations?fuel=${fuel}`,
+      note: "",
+    },
+    {
+      label: `selection ${fuel}`,
+      path: `/api/v1/selection?fuel=${fuel}`,
+      note: "",
+    },
+    {
+      label: "collector/status",
+      path: "/api/v1/collector/status",
+      note: "",
+    },
+    {
+      label: "jobs/models/log",
+      path: "/api/v1/jobs/models/log?lines=50",
+      note: "",
+    },
+    { label: "last_forecasts", path: "/api/v1/last_forecasts", note: "" },
+    {
+      label: "day (Beispiel)",
+      path: "",
+      note: "erst Station wählen",
+    },
     {
       label: "route/evaluate (deprecated)",
       path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
+      note: "",
     },
-    ...dynamic,
-  ];
+    ...dynamic.map((entry) => ({ ...entry, note: "" })),
+  ].filter((entry) => entry.label !== "day (Beispiel)" || !identity);
   const run = async (target: string) => {
     setPath(target);
     setLoading(true);
@@ -440,25 +500,43 @@ function ApiExplorer({
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-2">
-        {endpoints.map((entry) => (
-          <button
-            key={entry.path}
-            onClick={() => void run(entry.path)}
-            aria-pressed={path === entry.path && answer !== null}
-            className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-              path === entry.path && answer !== null
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
-            }`}
-          >
-            GET {entry.label}
-          </button>
-        ))}
+        {endpoints.map((entry) => {
+          const blocked = entry.path === "";
+          return (
+            <button
+              key={entry.label}
+              onClick={() => (blocked ? undefined : void run(entry.path))}
+              disabled={blocked}
+              aria-disabled={blocked}
+              title={
+                blocked
+                  ? entry.note
+                  : `GET ${entry.path}${entry.note ? ` — ${entry.note}` : ""}`
+              }
+              aria-pressed={path === entry.path && answer !== null}
+              className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+                blocked
+                  ? "cursor-not-allowed border-slate-800 bg-slate-950/50 text-slate-600"
+                  : path === entry.path && answer !== null
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
+              }`}
+            >
+              GET {entry.label}
+              {blocked && entry.note ? (
+                <span className="ml-1 text-[10px] text-slate-500">
+                  · {entry.note}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
       {!identity && (
         <p className="mb-3 text-[11px] text-slate-500">
-          Verlauf, Ausblick und Heatmaps erscheinen hier, sobald eine Station mit Stadt
-          gewählt ist — die GUI fragt sie dann live ab, genau wie die Tabs.
+          Verlauf, Ausblick, Heatmaps und die Tageszeile („day“) erscheinen hier,
+          sobald eine Station mit Stadt gewählt ist — die GUI fragt sie dann live
+          ab, genau wie die Tabs.
         </p>
       )}
       <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
@@ -470,9 +548,146 @@ function ApiExplorer({
   );
 }
 
+/**
+ * E6: Slider mit Begleit-Zahlenfeld.
+ *
+ * Der Slider gibt die grobe Rasterung vor (Verbrauch in 0,5er-Schritten,
+ * Tankmenge in Litern), das Feld daneben erlaubt den exakten Wert — 6,3
+ * L/100 km ist mit einem 0,5er-Slider nicht erreichbar, beeinflusst aber
+ * jede Umweg-Rechnung. Komma und Punkt werden akzeptiert (E2), außerhalb
+ * des Bereichs wird geklemmt und offen gesagt.
+ */
+function PrecisionSlider({
+  id,
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  unit,
+  valueText,
+  valueSpeech,
+  hint,
+  icon,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  valueText?: string;
+  valueSpeech?: string;
+  hint?: ReactNode;
+  icon?: ReactNode;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [clampedNote, setClampedNote] = useState<string | null>(null);
+  const shown = draft ?? deTrimmed(value);
+  // Kein Zahl-Wert, kein Fortschritt: das Feld behält den bisherigen Wert,
+  // statt ihn zu löschen oder zu raten.
+  const noNumber = draft !== null && draft.trim() !== "" && sliderCommit(draft, { min, max }) === null;
+
+  const commit = (raw: string) => {
+    const next = sliderCommit(raw, { min, max });
+    if (next === null) return;
+    const parsed = germanDecimalToNumber(raw);
+    setClampedNote(
+      parsed !== null && parsed !== next
+        ? `außerhalb ${deTrimmed(min)}–${deTrimmed(max)} — auf ${deTrimmed(next)} geklemmt`
+        : null,
+    );
+    onChange(next);
+  };
+
+  return (
+    <div className="text-xs text-slate-400">
+      <label
+        htmlFor={id}
+        className="flex items-center justify-between gap-2 text-xs text-slate-400"
+      >
+        <span className="flex items-center gap-2">
+          {icon}
+          {label}
+        </span>
+        <span className="font-mono font-semibold text-emerald-400">
+          {valueText ?? `${deTrimmed(value)} ${unit}`}
+        </span>
+      </label>
+      <div className="mt-3 flex items-center gap-3">
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-valuetext={valueSpeech ?? `${deTrimmed(value)} ${unit}`}
+          onChange={(e) => {
+            setClampedNote(null);
+            onChange(Number(e.target.value));
+          }}
+          className="w-full"
+        />
+        <span className="flex items-center gap-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            aria-label={`${label} direkt eingeben (${unit}, ${deTrimmed(min)}–${deTrimmed(max)})`}
+            aria-invalid={noNumber}
+            value={shown}
+            title={`${deTrimmed(min)}–${deTrimmed(max)} ${unit} — Komma oder Punkt, Enter übernimmt`}
+            onChange={(e) => {
+              const raw = commaToDot(e.target.value);
+              setDraft(raw);
+              commit(raw);
+            }}
+            onBlur={() => {
+              setDraft(null);
+              setClampedNote(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-white outline-none focus:border-emerald-500"
+          />
+          <span className="text-[10px] text-slate-500">{unit}</span>
+        </span>
+      </div>
+      {clampedNote ? (
+        <p className="mt-1 text-[10px] leading-snug text-amber-300">
+          {clampedNote}
+        </p>
+      ) : noNumber ? (
+        <p className="mt-1 text-[10px] leading-snug text-rose-300">
+          Zahl erwartet (Komma oder Punkt) — {deTrimmed(min)}–{deTrimmed(max)}{" "}
+          {unit}.
+        </p>
+      ) : (
+        hint
+      )}
+    </div>
+  );
+}
+
 function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   const { days, hours, matrix, kind } = heatmap;
   const isProb = kind === "probability";
+  // B12: Spalten-Basis (Median derselben Stunde) — der Server liefert sie im
+  // Payload zurück; ohne Station und bei Cheap-Probability ist sie wirksam.
+  const byHour =
+    isProb && !heatmap.station_id && (heatmap.basis ?? "overall") === "hour";
+  const referenceLabel = isProb
+    ? byHour
+      ? "Median derselben Stunde"
+      : heatmap.station_id
+        ? "Stadtmedian dieser Zelle"
+        : "Gesamtmedian"
+    : "Median";
 
   const allVals = matrix
     .flatMap((r) => r)
@@ -612,7 +827,7 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                     return (
                       <td
                         key={h}
-                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${isProb ? (val !== null ? `${val.toFixed(1)} % Chance günstiger als Stadtmedian` : "keine Daten") : (val !== null ? `${val.toFixed(3)} €/L Median` : "keine Daten")}`}
+                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${isProb ? (val !== null ? `${val.toFixed(1)} % Chance günstiger als ${referenceLabel}` : "keine Daten") : (val !== null ? `${val.toFixed(3)} €/L Median` : "keine Daten")}`}
                         className={`p-1 transition-colors ${colorFor(val)}`}
                       >
                         {fmtVal(val)}
@@ -639,7 +854,11 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
       )}
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
         {isProb
-          ? "Cheap-Probability: Anteil der Stunden, in denen der Preis günstiger als der Median des Zeitraums war. "
+          ? byHour
+            ? "Cheap-Probability: Anteil der Preise, die günstiger waren als der Median derselben Stunde über alle Wochentage. "
+            : heatmap.station_id
+              ? "Cheap-Probability: Anteil der Preise dieser Station, die unter dem Median aller Stationen derselben Zelle lagen. "
+              : "Cheap-Probability: Anteil der Preise, die günstiger als der Gesamtmedian des Zeitraums waren — dabei dominiert der Tagesgang die Farben, Wochentage sind dann nur bedingt vergleichbar. "
           : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
         Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
         (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.
@@ -717,10 +936,20 @@ export function Dashboard() {
     "probability",
     (v) => v === "level" || v === "probability",
   );
-  const [heatmapWeeks, setHeatmapWeeks] = usePreference(
+  // E5: Wochen sind wählbar (4/6/12); die Preference war bisher ein Sackgasse,
+  // weil kein Eingabeweg existierte. Saved Werte außerhalb der Auswahl (z. B.
+  // 2/8 aus früheren Ständen) fallen auf den Default zurück.
+  const [heatmapWeeks, setHeatmapWeeks] = usePreference<number>(
     "heatmapWeeks",
-    6,
-    (v) => typeof v === "number" && [2, 4, 6, 8].includes(v),
+    HEATMAP_DEFAULT_WEEKS,
+    isHeatmapWeeks,
+  );
+  // B12: Vergleichs-Basis der Cheap-Probability ohne Station. Default
+  // „hour“ (Spalten-Basis) — nur die macht die Wochentage vergleichbar.
+  const [heatmapBasis, setHeatmapBasis] = usePreference<HeatmapBasis>(
+    "heatmapBasis",
+    HEATMAP_DEFAULT_BASIS,
+    isHeatmapBasis,
   );
 
   // B4 Workshop State: ε Handlungsschwelle Slider
@@ -883,9 +1112,19 @@ export function Dashboard() {
     300000,
     refresh,
   );
+  // E5: weeks kommt aus dem Wochen-Select, B12: basis aus dem Umschalter —
+  // beides nur dort, wo es wirkt (basis gilt ausschließlich Cheap-Prob ohne Station).
+  const heatmapBasisActive = heatmapKind === "probability" && !selected;
   const heatmap = useResource<Heatmap>(
     tab === "statistics" && activeCity
-      ? `/api/v1/heatmap?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&kind=${heatmapKind}&weeks=${heatmapWeeks}${selected ? `&station_id=${selected.station_id}` : ""}`
+      ? heatmapPath({
+          city: activeCity,
+          fuel,
+          kind: heatmapKind,
+          weeks: heatmapWeeks,
+          basis: heatmapBasisActive ? heatmapBasis : undefined,
+          stationId: selected?.station_id,
+        })
       : null,
     120000,
     refresh,
@@ -1196,25 +1435,18 @@ export function Dashboard() {
 
   const dueEpisode = dueEpisodesRes.data?.episodes?.[0] || (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
-  // E2: Sofort-Validierung des Beleg-Dialogs (Komma normalisiert).
-  const customLitersVal = germanDecimalToNumber(customLitersStr);
-  const customPriceVal = germanDecimalToNumber(customPriceStr);
-  const litersError =
-    customLitersStr.trim() === ""
-      ? "Bitte Liter eingeben."
-      : customLitersVal == null
-        ? "Zahl eingeben (z. B. 45,5)."
-        : customLitersVal < 5 || customLitersVal > 100
-          ? "5–100 Liter erlaubt."
-          : null;
-  const priceError =
-    customPriceStr.trim() === ""
-      ? "Bitte Preis eingeben."
-      : customPriceVal == null
-        ? "Zahl eingeben (z. B. 1,629)."
-        : customPriceVal < 0.4 || customPriceVal > 5
-          ? "0,40–5,00 €/L erlaubt."
-          : null;
+  // E2/E3: Sofort-Validierung des Beleg-Dialogs — dieselben Grenzen wie der
+  // Server (app/feedback.py), Komma normalisiert, Prüfung vor dem Roundtrip.
+  // E4: ohne gewählte Station ist der Beleg nicht buchbar (der Server würde
+  // mit unknown_station ablehnen, ohne dass der Nutzer selbst helfen kann).
+  const fillDraft = checkFillDraft({
+    liters: customLitersStr,
+    price: customPriceStr,
+    stationId: selected?.station_id,
+  });
+  const litersError = fillDraft.litersError;
+  const priceError = fillDraft.priceError;
+  const stationMissing = fillDraft.stationMissing;
 
   // B4: Alarme aus /health für den roten/grünen Punkt im Header.
   const alarms = h?.alarms ?? [];
@@ -1260,21 +1492,24 @@ export function Dashboard() {
   };
 
   const handleCustomFill = async (ep: any) => {
-    // E2: Komma-Eingaben vor dem Runden akzeptieren, Fehler direkt am Feld.
+    // E3: Vorprüfung mit denselben Grenzen wie der Server — 101 L oder 9,99 €/L
+    // brächten dem Nutzer nur eine Fehlermeldung nach dem Roundtrip.
+    // E4: ohne gewählte Station wird nicht gebucht; kein „custom“-Platzhalter,
+    // den der Server erst mit unknown_station ablehnen müsste.
     const litersVal = germanDecimalToNumber(customLitersStr);
     const priceVal = germanDecimalToNumber(customPriceStr);
-    if (litersVal == null || litersVal < 5 || litersVal > 100) {
-      setActionFeedback("! Liter außerhalb 5–100 — bitte korrigieren (Komma erlaubt, z. B. 45,5).");
-      setTimeout(() => setActionFeedback(null), 4000);
-      return;
-    }
-    if (priceVal == null || priceVal <= 0 || priceVal < 0.4 || priceVal > 5) {
-      setActionFeedback("! Preis außerhalb 0,40–5,00 €/L — bitte wie an der Säule eingeben (z. B. 1,629).");
-      setTimeout(() => setActionFeedback(null), 4000);
+    const stationId = selected?.station_id;
+    if (!fillDraft.ok || litersVal === null || priceVal === null || !stationId) {
+      setActionFeedback(
+        fillDraft.stationMissing
+          ? "! Ohne Station kein Beleg — bitte zuerst eine Station wählen."
+          : `! ${litersError ?? priceError ?? "Eingabe prüfen."}`,
+      );
+      setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
     const res = await postFill({
-      station_id: selected?.station_id || "custom",
+      station_id: stationId,
       station_name: selected?.name || "Station",
       liters: litersVal,
       price_paid: priceVal,
@@ -1647,6 +1882,18 @@ export function Dashboard() {
                     <p className="text-xs font-semibold text-slate-300">
                       Tankvorgang manuell anpassen:
                     </p>
+                    {/* E4: ohne Station ist nichts buchbar — vorher lief der
+                        Versuch gegen „custom“ und kam als unknown_station
+                        zurück, ohne dass der Nutzer selbst helfen konnte. */}
+                    {stationMissing && (
+                      <p
+                        id="custom-fill-station"
+                        role="alert"
+                        className="rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-[11px] leading-snug text-amber-200"
+                      >
+                        Station wählen — erst dann kann ein Beleg gebucht werden.
+                      </p>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-3">
                       <label className="text-xs text-slate-400">
                         Liter
@@ -1657,9 +1904,16 @@ export function Dashboard() {
                           value={customLitersStr}
                           onChange={(e) => setCustomLitersStr(commaToDot(e.target.value))}
                           aria-invalid={litersError != null}
-                          aria-describedby={litersError ? "custom-liters-error" : undefined}
+                          aria-describedby={`custom-liters-hint${litersError ? " custom-liters-error" : ""}`}
+                          title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
                         />
+                        <span
+                          id="custom-liters-hint"
+                          className="mt-1 block text-[10px] text-slate-500"
+                        >
+                          {fillLimitHint("liters")} · z. B. 45,5.
+                        </span>
                         {litersError && (
                           <p id="custom-liters-error" className="mt-1 text-[10px] leading-snug text-rose-300">
                             {litersError}
@@ -1675,7 +1929,8 @@ export function Dashboard() {
                           value={customPriceStr}
                           onChange={(e) => setCustomPriceStr(commaToDot(e.target.value))}
                           aria-invalid={priceError != null}
-                          aria-describedby={priceError ? "custom-price-error" : undefined}
+                          aria-describedby={`custom-price-hint${priceError ? " custom-price-error" : ""}`}
+                          title={`${fillLimitHint("price")} — wie an der Säule`}
                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
                         />
                         {priceError && (
@@ -1683,18 +1938,37 @@ export function Dashboard() {
                             {priceError}
                           </p>
                         )}
-                        <span className="mt-1 block text-[10px] text-slate-500">
-                          Wie an der Säule, z. B. 1,629.
+                        <span
+                          id="custom-price-hint"
+                          className="mt-1 block text-[10px] text-slate-500"
+                        >
+                          {fillLimitHint("price")} · wie an der Säule, z. B. 1,629.
                         </span>
                       </label>
-                      <div className="flex items-end">
+                      <div className="flex flex-col items-stretch justify-end gap-1">
                         <button
                           onClick={() => handleCustomFill(dueEpisode)}
-                          disabled={litersError != null || priceError != null}
+                          disabled={!fillDraft.ok}
+                          title={
+                            stationMissing
+                              ? "Erst Station wählen"
+                              : litersError || priceError
+                                ? "Eingabe korrigieren"
+                                : `Buchung für ${selected?.name || "die gewählte Station"}`
+                          }
                           className="w-full rounded-lg bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Beleg speichern
+                          Beleg buchen
                         </button>
+                        {stationMissing ? (
+                          <span className="text-[10px] text-amber-300">
+                            Station wählen
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500">
+                            für {selected?.name || "—"}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2154,32 +2428,25 @@ export function Dashboard() {
                 detail="Reiner Preisunterschied pro Füllung — grün günstiger, dezent rot teurer. Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
               />
               <div className={`${panel} p-5`}>
-                <label
-                  htmlFor="liters"
-                  className="flex items-center justify-between text-xs text-slate-400"
-                >
-                  <span className="flex items-center gap-2">
-                    <SlidersHorizontal size={14} />
-                    Deine Tankmenge
-                  </span>
-                  <span className="font-mono font-semibold text-emerald-400">
-                    {liters} L
-                  </span>
-                </label>
-                <input
+                {/* E6: 1-L-Schritte am Slider, exakte Menge im Begleitfeld. */}
+                <PrecisionSlider
                   id="liters"
-                  type="range"
+                  label="Deine Tankmenge"
+                  icon={<SlidersHorizontal size={14} />}
+                  value={liters}
+                  onChange={setLiters}
                   min={10}
                   max={80}
-                  step={5}
-                  value={liters}
-                  aria-valuetext={`${liters} Liter`}
-                  onChange={(e) => setLiters(Number(e.target.value))}
-                  className="my-5 w-full"
+                  step={1}
+                  unit="L"
+                  valueSpeech={`${liters} Liter`}
+                  hint={
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Nur zur Berechnung. Keine Buchung, keine erfundene
+                      Ersparnis.
+                    </p>
+                  }
                 />
-                <p className="text-[11px] text-slate-500">
-                  Nur zur Berechnung. Keine Buchung, keine erfundene Ersparnis.
-                </p>
               </div>
             </div>
 
@@ -2337,26 +2604,25 @@ export function Dashboard() {
                       </p>
                     )}
                     <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <label
-                        htmlFor="consumption"
-                        className="text-xs text-slate-400"
-                      >
-                        Verbrauch{" "}
-                        <span className="font-mono font-semibold text-emerald-400">
-                          {consumption} L/100 km
-                        </span>
-                        <input
-                          id="consumption"
-                          type="range"
-                          min={4}
-                          max={15}
-                          step={1}
-                          value={consumption}
-                          aria-valuetext={`${consumption} Liter pro 100 Kilometer`}
-                          onChange={(e) => setConsumption(Number(e.target.value))}
-                          className="mt-3 w-full"
-                        />
-                      </label>
+                      {/* E6: 0,5er-Schritte am Slider, Feinwerte im Feld —
+                          6,3 L/100 km war mit step=1 nicht wählbar und
+                          beeinflusst jede Umweg-Rechnung. */}
+                      <PrecisionSlider
+                        id="consumption"
+                        label="Verbrauch"
+                        value={consumption}
+                        onChange={setConsumption}
+                        min={4}
+                        max={15}
+                        step={0.5}
+                        unit="L/100 km"
+                        valueSpeech={`${deTrimmed(consumption)} Liter pro 100 Kilometer`}
+                        hint={
+                          <span className="mt-1 block text-[10px] text-slate-500">
+                            4–15 L/100 km · Feld: 6,3 möglich
+                          </span>
+                        }
+                      />
                       <label htmlFor="speed" className="text-xs text-slate-400">
                         Stadt-/Pendel-Tempo{" "}
                         <span className="font-mono font-semibold text-emerald-400">
@@ -2374,35 +2640,33 @@ export function Dashboard() {
                           className="mt-3 w-full"
                         />
                       </label>
-                      <label
-                        htmlFor="timeValue"
-                        className="text-xs text-slate-400"
-                      >
-                        Zeitwert{" "}
-                        <span className="font-mono font-semibold text-emerald-400">
-                          {timeValue > 0
-                            ? `${timeValue} €/h`
-                            : `Auto (${timeValueUsed} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
-                        </span>
-                        <input
-                          id="timeValue"
-                          type="range"
-                          min={0}
-                          max={30}
-                          step={1}
-                          value={timeValue}
-                          aria-valuetext={
-                            timeValue > 0
-                              ? `${timeValue} Euro pro Stunde`
-                              : `Automatik ${timeValueUsed} Euro pro Stunde`
-                          }
-                          onChange={(e) => setTimeValue(Number(e.target.value))}
-                          className="mt-3 w-full"
-                        />
-                        <span className="mt-1 block text-[10px] text-slate-500">
-                          0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
-                        </span>
-                      </label>
+                      {/* E6: halbe Stufen + Feld (12,5 €/h war bisher
+                          unerreichbar). 0 bleibt die Automatik. */}
+                      <PrecisionSlider
+                        id="timeValue"
+                        label="Zeitwert"
+                        value={timeValue}
+                        onChange={setTimeValue}
+                        min={0}
+                        max={30}
+                        step={0.5}
+                        unit="€/h"
+                        valueText={
+                          timeValue > 0
+                            ? `${deTrimmed(timeValue)} €/h`
+                            : `Auto (${deTrimmed(timeValueUsed)} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`
+                        }
+                        valueSpeech={
+                          timeValue > 0
+                            ? `${deTrimmed(timeValue)} Euro pro Stunde`
+                            : `Automatik ${deTrimmed(timeValueUsed)} Euro pro Stunde`
+                        }
+                        hint={
+                          <span className="mt-1 block text-[10px] text-slate-500">
+                            0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
+                          </span>
+                        }
+                      />
                       <label
                         htmlFor="detourMode"
                         className="text-xs text-slate-400"
@@ -3405,7 +3669,7 @@ export function Dashboard() {
                   <BarChart3 size={16} className="text-purple-400" />
                   Heatmaps · Wochentag × Stunde · {activeCity || "—"}
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
                     aria-label="Heatmap Art"
                     value={heatmapKind}
@@ -3415,8 +3679,54 @@ export function Dashboard() {
                     <option value="probability">Cheap-Probability P(p ≤ Median)</option>
                     <option value="level">Preisniveau (Median €/L)</option>
                   </select>
+                  {/* E5: Zeitraum war bisher fest verdrahtet — jetzt wählbar. */}
+                  <select
+                    aria-label="Heatmap Zeitraum"
+                    value={heatmapWeeks}
+                    onChange={(e) => setHeatmapWeeks(Number(e.target.value))}
+                    className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
+                    title="Zeitraum der Auswertung — die Heatmap zeigt Vergangenheit, keine Prognose"
+                  >
+                    {HEATMAP_WEEKS.map((weeks) => (
+                      <option key={weeks} value={weeks}>
+                        {weeks} Wochen
+                      </option>
+                    ))}
+                  </select>
+                  {/* B12: Die Basis ändert nur ohne Station etwas — mit Station
+                      ist sie deaktiviert und wird auch nicht mitgesendet. */}
+                  {heatmapKind === "probability" && (
+                    <select
+                      aria-label="Heatmap Vergleichsbasis"
+                      value={heatmapBasis}
+                      disabled={!!selected}
+                      onChange={(e) =>
+                        setHeatmapBasis(e.target.value as HeatmapBasis)
+                      }
+                      className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={
+                        selected
+                          ? "Mit gewählter Station vergleicht die Heatmap ohnehin gegen den Median derselben Zelle — die Basis ist dann wirkungslos."
+                          : "Billig gegen welche Referenz? Der Stunden-Median rechnet den Tagesgang heraus."
+                      }
+                    >
+                      <option value="hour">
+                        Basis: Median derselben Stunde
+                      </option>
+                      <option value="overall">
+                        Basis: Gesamtmedian des Zeitraums
+                      </option>
+                    </select>
+                  )}
                 </div>
               </div>
+              {heatmapKind === "probability" && selected && (
+                <p className="mb-3 text-[11px] leading-relaxed text-slate-500">
+                  Vergleich mit Station: jede Zelle gegen den Median aller
+                  Stationen derselben Zelle (gleicher Wochentag, gleiche Stunde).
+                  Der Basis-Umschalter ist hier deaktiviert, weil er nichts ändert.
+                </p>
+              )}
               {heatmap.data && heatmap.data.matrix.length ? (
                 <HeatmapGrid heatmap={heatmap.data} />
               ) : (
@@ -3880,7 +4190,12 @@ export function Dashboard() {
                 Dieselben Endpunkte, die diese GUI nutzt — live abgerufen,
                 ohne Poll auszulösen. Aktuelle Endpunkte: decide, episodes, fills, stats/summary.
               </p>
-              <ApiExplorer fuel={fuel} identity={identity} activeCity={activeCity} />
+              <ApiExplorer
+                fuel={fuel}
+                identity={identity}
+                activeCity={activeCity}
+                heatmapWeeks={heatmapWeeks}
+              />
             </section>
           </>
         )}

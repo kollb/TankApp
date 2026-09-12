@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.0)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.11.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -55,7 +55,6 @@
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?"-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online"-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
 | B14 | P2 | **`docs/analysis/` ist ein Datenverzeichnis im Doku-Ordner:** gitignored, enthält das aktive `polling.json`, Berichte und Abbildungen (`app/config.py`, `data-tools/*`, `analysis/*` lesen/schreiben dorthin) — nach dem Doku-Umbau die letzte „wo liegt was?“-Unklarheit. | Umzug nach `data/analysis/` (privat, gitignored wie der Rest von `data/`): Default in `app/config.py`, CLI-Defaults in `data-tools/`, Doku. Übergangsweise beide Pfade akzeptieren und beim Fund des alten Pfads einen klaren Hinweis loggen; kein stiller Umzug privater Daten. |
-| B12 | P2 | **Cheap-Prob ohne Station: Basis überstrahlt den Wochentag** | `app/heatmap.py` vergleicht bei `kind=probability` **ohne** `station_id` jede Zelle gegen den Gesamtmedian **aller** Zellen des Zeitraums. Weil der Tagesgang (nachts/abends billig, Mittag teuer) viel größer ist als der Wochentags-Effekt, werden Abendzellen fast immer grün und Mittagszellen fast immer rot — egal welcher Wochentag. Die Frage „an welchem *Wochentag* ist es billig?“ ist aus dieser Ansicht so nicht ablesbar (mit `station_id` funktioniert es, weil dort Station gegen Stadt im selben Slot verglichen wird). Ziel: ohne Station optional gegen den Median **derselben Stunde** (Spalten-Basis) rechnen, damit der Tagesgang herausgerechnet ist und die Zeilen (Wochentage) fair vergleichbar bleiben; Umschalter/Modus + kurze Begründung in [docs/ANALYSE.md](docs/ANALYSE.md). |
 
 ---
 
@@ -88,18 +87,17 @@
 
 Vorab — **verifiziert funktionsfähig** (kein Task, zur Einordnung): Alle Schreibpfade
 existieren und sind mit der GUI verdrahtet: `POST /fills` (Validierung 5–100 L,
-0,40–5,00 €/L, unbekannte Station → `unknown_station`, Nowcast-Zufall),
+0,40–5,00 €/L, unbekannte Station → `unknown_station`, Nowcast-Zufall — seit
+0.11.0 prüft die GUI dieselben Grenzen **vor** dem Roundtrip und bucht ohne
+gewählte Station gar nicht erst, E3/E4),
 `POST /episodes/{id}/intent`, `POST /jobs/{job}/run` (Startknopf), `POST /collector/heartbeat`,
 `POST /jobs/trigger` (HMAC). Server-Statuscodes 4xx, GUI prüft `error_code` vor
 Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persistent.
 
-| # | Prio | Fehlt / falsch | Definition of Done |
-|---|---|---|---|
-| E3 | P1 | **GUI-Validierung deckt Server-Regeln nicht ab:** `customLiters`/`customPrice` haben **keine min/max-Attribute**; GUI prüft nur `> 0`, Server verlangt 5–100 L / 0,40–5,00 €/L → Eingaben wie 101 L oder 9,99 € scheitern erst nach Server-Roundtrip mit Fachfehler. | `min`/`max`/`step` am Input + gleiche Grenzen clientseitig prüfen, Fehlermeldung direkt am Feld. |
-| E4 | P1 | **Beleg ohne Station wählbar:** Bei nicht ausgewählter Station sendet `handleCustomFill` `station_id: "custom"` → Server lehnt mit `unknown_station` ab. Der Nutzer kann den Fehler nicht selbst beheben. | Stations-Auswahl im Beleg-Dialog oder Button deaktivieren + Hinweis „Station wählen". |
-| E5 | P1 | **`heatmapWeeks` ohne Eingabeweg:** GUI sendet `weeks=` an `/api/v1/heatmap`, die Preference existiert, aber `setHeatmapWeeks` hat 0 Aufrufe → Zeitraum ist fest verdrahtet, kein Umschalten möglich. | Wochen-Select (4/6/12) neben „Heatmap Art" oder Parameter aufräumen. |
-| E6 | P2 | **Slider ohne Präzision/Direkteingabe:** Verbrauch `step=1` (6,3 L/100 unwählbar — beeinflusst jede Umweg-Rechnung), Liter `step=5`, Zeitwert `step=1`; kein Begleit-Zahlenfeld, kein `aria-valuetext` in Währung. | `step=0.5` beim Verbrauch, optional number-Begleitfeld, `aria-valuetext` (zählt zu C5). |
-| E7 | P2 | **API-Explorer „day (Beispiel)":** `identity` leer ⇒ Aufruf mit leerem `station_id` → nur Fehleranzeige. | Label dynamisch: Beispiel nur anbieten, wenn eine Station gewählt ist; sonst grau + Hinweis. |
+Die Prüfpunkte dieses Abschnitts (E1–E7) sind abgearbeitet — E2 in 0.10.0,
+E3/E4/E5/E6/E7 in 0.11.0; nachvollziehbar im
+[CHANGELOG](CHANGELOG.md#0110--2026-09-12). Neue Eingabefehler hier bitte mit
+demselben Muster melden: Befund, Grenze, Definition of Done.
 
 ## F. App-Texte & UX-Sprache (Prüfstrang 2)
 
@@ -114,7 +112,6 @@ Erfolgsmeldung. Fallback-GUI (rp2): Liter-Eingabe geclampt 5–100 und persisten
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| G2 | P2 | **Journal-Wachstum der rp2-Dienste nicht begrenzt/dokumentiert:** `fallback_gui` + `cache_forecasts` loggen nach journald; auf der SD ohne Caps wächst das Journal monatelang. | In ANLEITUNG: `SystemMaxUse=50M` für die Units oder `journalctl --vacuum-size` als Wartungsschritt; optional Drop-in-Beispiel beilegen. |
 | G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** → Fallback-GUI zeigt nach Pi-Neustart bis zum ersten erfolgreichen Fetch „keine Prognose". Ehrlich, aber unerwartet. | Wie geht man damit um? |
 
 ## H. Mathematik (Prüfstrang 2: „muss mathematisch was getan werden?")
@@ -155,15 +152,42 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ## Quick Wins 0.11 – Kandidaten (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
 
-> Diese Liste sind die nächsten kleinen Ehrlichkeits-/Bedienbarkeits-Fixes, die nach 0.10.0 sofort lohnen. Alle ohne Architektur-Umbau, alle testbar.
+> Status: **7 von 7 umgesetzt** (Version 0.11.0). Es waren die kleinen
+> Ehrlichkeits-/Bedienbarkeits-Fixes nach 0.10.0 — alle ohne Architektur-Umbau,
+> alle testbar. Die Nachfolger stehen unter der Liste.
 
-1. ✅ **B13** Build-Commit im Docker-Image: `tankapp.py nas-up` setzt `TANKAPP_BUILD_COMMIT=$(git rev-parse --short=12 HEAD)` als Build-Arg + Env, `compose.yml` + `Dockerfile` übernehmen es, `/health` liefert `commit` nicht mehr null (0.11 umgesetzt).
-2. ⬜ **E3/E4** Beleg-Eingabe ehrlich: `customLiters`/`customPrice` mit `min`/`max`/`step` (5–100 L / 0,40–5,00 €/L), clientseitige Prüfung vor Server-Roundtrip, Button „Beleg buchen“ deaktiviert wenn keine Station gewählt + Hinweis „Station wählen“ (statt `unknown_station` erst vom Server).
-3. ⬜ **E5** `heatmapWeeks` wählbar: Wochen-Select 4/6/12 neben „Heatmap Art“, `setHeatmapWeeks` verdrahtet, Default 6 Wochen, URL-Param bleibt.
-4. ⬜ **E6** Slider-Präzision: Verbrauch `step=0.5` (6,3 L/100 wählbar), Liter `step=1` + Begleit-Zahlenfeld, Zeitwert `step=0.5`, `aria-valuetext` in €/h bleibt, beeinflusst Umweg-Ökonomie sofort.
-5. ⬜ **B12** Cheap-Prob ohne Station: Basis gegen Median derselben Stunde (Spalten-Basis) statt Gesamtmedian, damit Wochentags-Effekt sichtbar wird; Umschalter/Modus + Notiz in `docs/ANALYSE.md`.
-6. ⬜ **G2** Journal-Wachstum rp2: `SystemMaxUse=50M` in ANLEITUNG/RP2.md + Drop-in-Beispiel `journald.conf.d/`, `journalctl --vacuum-size` als Wartungsschritt.
-7. ⬜ **E7** API-Explorer „day (Beispiel)“: Label dynamisch nur wenn Station gewählt, sonst grau + Hinweis „erst Station wählen“.
+1. ✅ **B13** Build-Commit im Docker-Image: `tankapp.py nas-up` setzt `TANKAPP_BUILD_COMMIT=$(git rev-parse --short=12 HEAD)` als Build-Arg + Env, `compose.yml` + `Dockerfile` übernehmen es, `/health` liefert `commit` nicht mehr null (0.11).
+2. ✅ **E3/E4** Beleg-Eingabe ehrlich: Grenzen (5–100 L / 0,40–5,00 €/L) stehen gemeinsam in `web/src/data.ts::FILL_LIMITS`, geprüft wird vor dem Roundtrip direkt am Feld; „Beleg buchen“ ist ohne gewählte Station deaktiviert + Hinweis „Station wählen“ (0.11). Statt `min`/`max`/`step`-Attributen am Komma-Textfeld (E2) wirken die Grenzen im Code — Attribute ohne Effekt an einem Textfeld wären die größere Lüge.
+3. ✅ **E5** `heatmapWeeks` wählbar: Wochen-Select 4/6/12 neben „Heatmap Art“, `setHeatmapWeeks` verdrahtet, Default 6 Wochen, `weeks=` bleibt URL-Param (0.11).
+4. ✅ **E6** Slider-Präzision: Verbrauch `step=0.5`, Liter `step=1`, Zeitwert `step=0.5` — jeweils mit Begleit-Zahlenfeld (6,3 L/100 km wählbar), `aria-valuetext` in €/h bleibt (0.11).
+5. ✅ **B12** Cheap-Prob ohne Station: `basis=hour` rechnet gegen den Median derselben Stunde (Spalten-Basis), GUI-Default ohne Station, Umschalter + Begründung in `docs/ANALYSE.md`; API-Default `overall` unverändert (0.11).
+6. ✅ **G2** Journal-Wachstum rp2: Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt, Anleitung in `docs/RP2.md` (0.11).
+7. ✅ **E7** API-Explorer „day (Beispiel)“: erscheint nur bei gewählter Station, sonst grauer, deaktivierter Knopf mit Hinweis „erst Station wählen“ (0.11).
+
+**Nächste Kandidaten (0.12) — ≤ ½ Tag, aus offenen Punkten herausgeschält,
+keine neuen Baustellen:**
+
+1. ⬜ **A6 (Rest)** Share-URL: `?city=…&fuel=…&station_id=…&liters=…` beim Start
+   in die Preferences übernehmen (ein Lese-Schritt beim Init, kein Schreiben in
+   die Adresszeile). Macht die Ansicht bookmarkbar — und zieht die neue
+   Wochenwahl (E5) gleich mit, weil sie schon in der Anfrage-URL steht.
+2. ⬜ **C5 (kleinster Rest)** Ein CSS-Block in `web/src/styles.css`: sichtbarer
+   Fokus-Ring durchgängig + `prefers-reduced-motion` — zwei Zeilen, die den
+   behindertenrelevanten Teil der Liste erledigen, ohne Komponenten anzufassen.
+3. ⬜ **F2 (kleinster Schnitt)** Deutsche Primär-Labels für die
+   Jargon-Stellen in der Werkstatt: „Wahrscheinlichkeit für günstig“ statt
+   „Cheap-Probability P(p ≤ Median)“, „Ampel-Stärke“ statt „AV-Score“,
+   „Preis-Abstand“ statt „δ̂ Ranking“; Fachwort im `title`/Tooltip. Reine
+   Textarbeit an denselben Kontrollen, die 0.11 angefasst hat.
+4. ⬜ **C9** Formatierungs-Satz in `data.ts` (€/L drei Nachkommastellen, ct/L
+   eine, Uhrzeiten immer Europe/Berlin) plus vitest-Test gegen Mischnutzung —
+   betrifft die neuen Slider- und Heatmap-Texte direkt.
+5. ⬜ **C6 (kleinster Schnitt)** Gemeinsamer Fehler-Zustand pro Panel:
+   Retry-Knopf mit `problem(error_code)`-Text. Die Meldung liegt schon im
+   Mapping, die GUI zeigt aber bisher nur „konnte nicht geladen werden“.
+6. ⬜ **D3** Property-Tests für die Umweg-Ökonomie (`K = d·(c/100)·p +
+   (d/v)·z`): Monotonie in Litern, Grenzfälle `z = 0`, `d = 0`. Reine Tests,
+   kein Produktcode — schützt die 0.10.0-Umstellung auf Server-only-Strecke.
 
 ---
 
@@ -174,6 +198,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.11.0 (12.09.2026) | **B12** Heatmap-Basis umschaltbar (`basis=hour` = Median derselben Stunde; API-Default `overall`), **B13** Build-Commit im Image (Doku nachgezogen), **E3** Beleg-Grenzen vor dem Roundtrip, **E4** Buchung nur mit gewählter Station, **E5** Wochen-Select 4/6/12, **E6** Slider 0,5/1 L/0,5 + Begleitfeld, **E7** API-Explorer „day“ nur mit Station, **G2** RP2-Journal-Cap (Drop-in + `--vacuum-size`) |
 | 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
 Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **A6**
@@ -195,8 +220,9 @@ A11y-Runde offen).
 2. **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
    Anonym-Budget) — seit **B6/H1** (0.10.0) ist die Umweg-Ökonomie
    server-einheitlich (`detour_km_est` + `verdict`/Schwellen vom Server).
-3. **B5** (Schreib-Endpunkte gegen Flut härten) und **B12** (Cheap-Prob-Basis
-   ohne Station) — beide klein, beide ehrlichkeitsrelevant.
+3. **B5** (Schreib-Endpunkte gegen Flut härten) — klein und
+   ehrlichkeitsrelevant; **B12** (Cheap-Prob-Basis ohne Station) ist seit
+   0.11.0 als umschaltbare Basis gelöst.
 4. **D1 direkt vor dem ersten größeren C-Feature** (`Dashboard.tsx` zerlegen) —
    sonst verdoppelt sich der Aufwand.
 5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie

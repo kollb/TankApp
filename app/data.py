@@ -616,14 +616,32 @@ class LiveData:
             "decision_ready": False,
         }
 
-    def heatmap(self, city, fuel="e10", kind="level", weeks=6, station_id=None):
-        """Heatmaps DoW×Stunde: Niveau (Median) + Cheap-Probability."""
+    def heatmap(
+        self,
+        city,
+        fuel="e10",
+        kind="level",
+        weeks=6,
+        station_id=None,
+        basis="overall",
+    ):
+        """Heatmaps DoW×Stunde: Niveau (Median) + Cheap-Probability.
+
+        ``basis`` (B12) ist nur für ``kind=probability`` **ohne** ``station_id``
+        wirksam: ``overall`` vergleicht jede Zelle gegen den Gesamtmedian des
+        Fensters, ``hour`` gegen den Median derselben Stunde (Spalten-Basis,
+        rechnet den Tagesgang heraus und macht die Wochentage vergleichbar).
+        """
+        from .heatmap import BASES as HEATMAP_BASES, build_heatmap
+
         if fuel not in FUELS:
             raise ValueError("invalid_fuel")
         if kind not in ("level", "probability"):
             raise ValueError("invalid_kind")
         if not 1 <= weeks <= 12:
             raise ValueError("invalid_weeks")
+        if basis not in HEATMAP_BASES:
+            raise ValueError("invalid_basis")
         metas, problem = metadata(self.settings)
         if problem:
             return {"error_code": problem, "days": [], "hours": [], "matrix": []}
@@ -707,9 +725,7 @@ class LiveData:
                 "matrix": [],
             }
 
-        from .heatmap import build_heatmap
-
-        result = build_heatmap(points, kind=kind, station_id=station_id)
+        result = build_heatmap(points, kind=kind, station_id=station_id, basis=basis)
 
         return {
             "generated_at": now.isoformat(),
@@ -718,6 +734,7 @@ class LiveData:
             "kind": kind,
             "weeks": weeks,
             "station_id": station_id,
+            "basis": result["basis"],
             "days": result["days"],
             "hours": result["hours"],
             "matrix": result["matrix"],

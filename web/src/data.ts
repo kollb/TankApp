@@ -202,6 +202,8 @@ export type Heatmap = {
   kind: "level" | "probability";
   weeks: number;
   station_id?: string | null;
+  /** B12: Vergleichs-Basis der Cheap-Probability ohne Station. */
+  basis?: HeatmapBasis;
   days: string[];
   hours: number[];
   matrix: (number | null)[][];
@@ -811,6 +813,158 @@ export function commaToDot(value: string): string {
   return value.replace(/,/g, ".");
 }
 
+/**
+ * E3: Grenzen der Beleg-Eingabe — Spiegel der Server-Validierung
+ * (`app/feedback.py`: `MIN_LITERS`/`MAX_LITERS`, `MIN_PRICE_PAID`/
+ * `MAX_PRICE_PAID`). Die GUI prüft damit *vor* dem Roundtrip, der Server prüft
+ * weiterhin selbst (Defensive in Depth: defekte Clients, Doppelführung).
+ *
+ * Bewusst keine `min`/`max`/`step`-Attribute am Feld: die Eingaben sind seit E2
+ * `type="text"` mit `inputMode="decimal"` (Komma!), und bei Textfeldern sind
+ * diese Attribute wirkungslos. Die Grenzen leben deshalb in dieser Konstante,
+ * die Feld-Hinweis und Prüfung gemeinsam nutzen — eine Zahl, eine Wahrheit.
+ */
+export const FILL_LIMITS = {
+  liters: {
+    label: "Liter",
+    min: 5,
+    max: 100,
+    step: 0.5,
+    decimals: 0,
+    example: "45,5",
+  },
+  price: {
+    label: "Preis",
+    min: 0.4,
+    max: 5,
+    step: 0.001,
+    decimals: 2,
+    example: "1,629",
+  },
+} as const;
+
+export type FillField = keyof typeof FILL_LIMITS;
+
+/** Kurztext der erlaubten Spanne in deutscher Schreibweise („5–100 L“). */
+export function fillLimitHint(field: FillField): string {
+  const limit = FILL_LIMITS[field];
+  const unit = field === "liters" ? "L" : "€/L";
+  return `${deNumber(limit.min, limit.decimals)}–${deNumber(limit.max, limit.decimals)} ${unit}`;
+}
+
+/**
+ * E3: Fehlermeldung eines Beleg-Felds oder `null`, wenn die Eingabe dem Server
+ * genügen würde. Leeres Feld ist ein Hinweis, kein Fehler im Sinne von
+ * „abgelehnt“ — deshalb hier ebenfalls eine Meldung (der Dialog bleibt zu).
+ */
+export function fillFieldError(
+  field: FillField,
+  raw: string,
+): string | null {
+  const limit = FILL_LIMITS[field];
+  if (raw.trim() === "") return `Bitte ${limit.label} eingeben.`;
+  const value = germanDecimalToNumber(raw);
+  if (value === null) return `Zahl eingeben (z. B. ${limit.example}).`;
+  // Wie der Server: offene Grenzen? Nein — `MIN <= x <= MAX` (app/feedback.py).
+  if (value < limit.min || value > limit.max)
+    return `${fillLimitHint(field)} erlaubt.`;
+  return null;
+}
+
+export type FillDraftCheck = {
+  litersError: string | null;
+  priceError: string | null;
+  /** E4: ohne gewählte Station kann die GUI keinen Beleg senden. */
+  stationMissing: boolean;
+  /** Erst wenn alles paßt, lohnt der Roundtrip zum Server. */
+  ok: boolean;
+};
+
+/**
+ * E3/E4: vollständige Vorprüfung des Beleg-Entwurfs. `stationId` fehlt, wenn
+ * keine Station gewählt ist — dann buchbar ist der Beleg erst nach der
+ * Stationswahl, statt beim Server mit `unknown_station` abzuprallen.
+ */
+export function checkFillDraft(input: {
+  liters: string;
+  price: string;
+  stationId?: string | null;
+}): FillDraftCheck {
+  const litersError = fillFieldError("liters", input.liters);
+  const priceError = fillFieldError("price", input.price);
+  const stationMissing = !input.stationId;
+  return {
+    litersError,
+    priceError,
+    stationMissing,
+    ok: !litersError && !priceError && !stationMissing,
+  };
+}
+
+/** E5: wählbare Zeiträume der Heatmap (Wochen). 6 ist der Default. */
+export const HEATMAP_WEEKS = [4, 6, 12] as const;
+export type HeatmapWeeks = (typeof HEATMAP_WEEKS)[number];
+export const HEATMAP_DEFAULT_WEEKS: HeatmapWeeks = 6;
+export function isHeatmapWeeks(value: unknown): boolean {
+  return (
+    typeof value === "number" &&
+    (HEATMAP_WEEKS as readonly number[]).includes(value)
+  );
+}
+
+/**
+ * B12: Vergleichs-Basis der Cheap-Probability ohne Station.
+ * `hour` = Median **derselben Stunde** (Spalten-Basis) — rechnet den Tagesgang
+ * heraus, damit die Wochentage untereinander vergleichbar sind.
+ * `overall` = Gesamtmedian des Zeitfensters (wie vor B12).
+ */
+export type HeatmapBasis = "overall" | "hour";
+export const HEATMAP_BASES: HeatmapBasis[] = ["hour", "overall"];
+export const HEATMAP_DEFAULT_BASIS: HeatmapBasis = "hour";
+export function isHeatmapBasis(value: unknown): boolean {
+  return (
+    typeof value === "string" && (HEATMAP_BASES as string[]).includes(value)
+  );
+}
+
+/**
+ * Anfrage-Pfad der Heatmap — als reine Funktion, damit die Verdrahtung von
+ * Wochen (E5) und Basis (B12) testbar ist und GUI und API-Explorer dieselbe
+ * URL bauen.
+ */
+export function heatmapPath(input: {
+  city: string;
+  fuel: string;
+  kind: "level" | "probability";
+  weeks: number;
+  basis?: HeatmapBasis;
+  stationId?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    city: input.city,
+    fuel: input.fuel,
+    kind: input.kind,
+    weeks: String(input.weeks),
+  });
+  if (input.basis) params.set("basis", input.basis);
+  if (input.stationId) params.set("station_id", input.stationId);
+  return `/api/v1/heatmap?${params.toString()}`;
+}
+
+/**
+ * E6: Wert aus einem Begleit-Zahlenfeld — deutsche Dezimaleingabe, in den
+ * Bereich des zugehörigen Sliders geklemmt. `null`, wenn noch keine Zahl
+ * drinsteht (das Feld behält dann seinen alten Wert, statt ihn zu erfinden).
+ */
+export function sliderCommit(
+  raw: string,
+  bounds: { min: number; max: number },
+): number | null {
+  const value = germanDecimalToNumber(raw);
+  if (value === null) return null;
+  return Math.min(bounds.max, Math.max(bounds.min, value));
+}
+
 // Browser-only convenience; no credentials, fill records or server writes.
 export function usePreference<T>(
   key: string,
@@ -1250,6 +1404,7 @@ export const messages: Record<string, string> = {
   invalid_value_of_time: "Zeitwert außerhalb 0–100 €/h.",
   invalid_mode: "Unbekannter Trip-Modus (onroute oder dedicated erwartet).",
   invalid_detour: "Umweg außerhalb 0–100 km.",
+  invalid_basis: "Unbekannte Vergleichs-Basis (overall oder hour erwartet).",
   unknown_station: "Station nicht im Polling-Set.",
   unknown_city: "Stadt nicht im Polling-Set.",
   price_not_available:
@@ -1460,6 +1615,15 @@ export type M7Advice = {
   min_recommendations?: number | null;
   brier_threshold?: number | null;
 };
+
+// Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
+// Werte, die direkt aus einem Eingabefeld kommen und nicht gerundet werden
+// sollen (E6: Begleitfeld am Slider).
+export function deTrimmed(value: number, maxDecimals = 2): string {
+  return !Number.isFinite(value)
+    ? "—"
+    : value.toLocaleString("de-DE", { maximumFractionDigits: maxDecimals });
+}
 
 // Kurzer Schwellwert in deutscher Schreibweise (0,25 statt 0.25).
 export function deNumber(value: number, decimals = 2): string {

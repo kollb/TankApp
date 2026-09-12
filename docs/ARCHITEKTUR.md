@@ -1,6 +1,6 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 12.09.2026 · App-Version 0.10.1 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
+> Stand: 12.09.2026 · App-Version 0.11.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
 > und [INSTALL.md](INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
 > benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](BETRIEB.md).
 
@@ -248,7 +248,7 @@ Watermark bleibt gemerkt).
 ### Heatmaps (B3.9)
 
 - Kein eigener Job, On-the-fly aus InfluxDB letzte N Wochen (1–12)
-- DoW×Stunde: Niveau = Median €/L je Zelle; Cheap-Probability: mit Station = P(Station ≤ Zellen-Stadtmedian), ohne Station = P(Preis ≤ Gesamtmedian des Fensters)
+- DoW×Stunde: Niveau = Median €/L je Zelle; Cheap-Probability: mit Station = P(Station ≤ Zellen-Stadtmedian), ohne Station je nach `basis` = P(Preis ≤ Gesamtmedian des Fensters) oder P(Preis ≤ Median **derselben Stunde**) — B12, GUI-Default ohne Station ist die Stunden-Basis
 - Berlin-Zeitzone, nur offene Preise
 
 ### Route Evaluate (B3.12)

@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 12.09.2026 · App-Version 0.10.1 — alles, was nach der Ersteinrichtung
+> Stand: 12.09.2026 · App-Version 0.11.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
 > GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
@@ -544,7 +544,7 @@ Webhook-Retry Pi → NAS — heute ist `POST /api/v1/jobs/trigger` Fire-and-Forg
 
 ### Version und Build-Hash prüfen
 
-`GET /api/v1/health` liefert `version` (z. B. `0.10.1`, gepflegt in
+`GET /api/v1/health` liefert `version` (z. B. `0.11.0`, gepflegt in
 `app/version.py`) und `commit` (Kurzhash des Checkouts). Beide Werte stehen auch
 im GUI-Footer. Bei drei Oberflächen — NAS-GUI, RP2-Proxy/Fallback, Collector auf
 dem Pi — ist das die Antwort auf „was läuft hier eigentlich?“:
