@@ -349,6 +349,134 @@ export type Fills = {
   error_code?: string | null;
 };
 
+/**
+ * A2: Tankstand-Bewertung aus /api/v1/decide — Restreichweite plus
+ * Warte-Risiko. Die Aufteilung (empty/low/ok) und die Reichweite rechnet der
+ * Server aus Füllstand (Prozent × Tankgröße ÷ Verbrauch) oder Rest-km; die
+ * GUI zeigt die Server-Zahlen, sie rechnet keine eigene Physik.
+ */
+export type TankInfo = {
+  input: "input" | "computed";
+  tank_percent: number | null;
+  tank_capacity_l: number | null;
+  range_km: number;
+  reserve_range_km: number;
+  state: "empty" | "low" | "ok";
+  blocks_wait: boolean;
+  message: string | null;
+};
+
+/**
+ * A1: Fahrzeug-/Haushaltsprofil — serverseitig gespeichert (ohne Login,
+ * LAN-only). Dieselben Felder wie die GUI-Preferences; ``city``/``station``
+ * bleiben bewusst Gerätesache (die Stadt gehört zur Sicht, nicht zum Auto).
+ */
+export type VehicleProfile = {
+  id: string;
+  name: string;
+  fuel: Fuel;
+  liters: number;
+  consumption: number;
+  time_value_eur_h: number;
+  speed_kmh: number;
+  detour_mode: DetourMode;
+  tank_capacity_l: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/** Dieselben Grenzen wie die Slider der GUI (app/profiles.py prüft dieselben). */
+export const PROFILE_BOUNDS = {
+  liters: { min: 10, max: 80 },
+  consumption: { min: 4, max: 15 },
+  timeValue: { min: 0, max: 30 },
+  speed: { min: 25, max: 80 },
+  tankCapacity: { min: 20, max: 120 },
+} as const;
+
+/** Die fahrzeugspezifischen Felder eines Profils (PUT-Body, Sync-Vergleich). */
+export type ProfileFields = Pick<
+  VehicleProfile,
+  | "fuel"
+  | "liters"
+  | "consumption"
+  | "time_value_eur_h"
+  | "speed_kmh"
+  | "detour_mode"
+  | "tank_capacity_l"
+>;
+
+/** A1: Antwort von GET /api/v1/profiles — Liste plus aktives Profil. */
+export type Profiles = {
+  profiles: VehicleProfile[];
+  active: string | null;
+  error_code?: string | null;
+};
+
+/** Setzt die GUI-Preferences in die Profil-Feldform (PUT-Body / Vergleich). */
+export function profileFields(
+  prefs: {
+    fuel: Fuel;
+    liters: number;
+    consumption: number;
+    timeValue: number;
+    speed: number;
+    detourMode: DetourMode;
+    tankCapacity: number;
+  },
+): ProfileFields {
+  return {
+    fuel: prefs.fuel,
+    liters: prefs.liters,
+    consumption: prefs.consumption,
+    time_value_eur_h: prefs.timeValue,
+    speed_kmh: prefs.speed,
+    detour_mode: prefs.detourMode,
+    tank_capacity_l: prefs.tankCapacity,
+  };
+}
+
+/** Ob sich ein Profil von den aktuellen GUI-Werten unterscheidet (Sync-Loop-Schutz). */
+export function profileFieldsDiffer(
+  a: ProfileFields,
+  b: ProfileFields,
+): boolean {
+  const keys: Array<keyof ProfileFields> = [
+    "fuel",
+    "liters",
+    "consumption",
+    "time_value_eur_h",
+    "speed_kmh",
+    "detour_mode",
+    "tank_capacity_l",
+  ];
+  return keys.some((key) => a[key] !== b[key]);
+}
+
+/**
+ * A4: Eine Zeile der Monats-/Jahresbilanz (GET /api/v1/fills/summary).
+ * ``baseline_eur`` ist die „immer sofort getankt“-Referenz: total + saved.
+ */
+export type BalanceRow = {
+  key: string;
+  fills: number;
+  liters: number;
+  total_eur: number;
+  avg_eur_per_fill: number | null;
+  avg_eur_per_liter: number | null;
+  saved_eur: number;
+  baseline_eur: number;
+};
+
+export type FillsSummary = {
+  generated_at?: string;
+  n_fills_total: number;
+  months: BalanceRow[];
+  years: BalanceRow[];
+  overall: BalanceRow & { n_without_date: number; saved_pct: number | null };
+  error_code?: string | null;
+};
+
 export type DecideResult = {
   primary: {
     action: AdviceAction;
@@ -437,6 +565,9 @@ export type DecideResult = {
   };
   calibrated: boolean;
   decision_ready: boolean;
+  // A2: Tankstand-Bewertung (Physik, unabhängig von der Ampel) — null ohne
+  // Tankstand-Eingabe (dann sagt die App nichts über den Tankstand).
+  tank?: TankInfo | null;
   // Engine-Qualität der ausgewählten Station (Konzept §3.3.3): Rolling-PICP
   // 7 d aus dem Backtest. null = nicht veröffentlicht (Altpublikation).
   quality?: {
@@ -757,6 +888,69 @@ export type JobRunResult = {
   error_code?: string | null;
 };
 export type JobRunNote = { tone: "ok" | "warn" | "error"; text: string };
+
+/**
+ * A1: Schreibende Profil-Requests (POST/PUT/DELETE) — Fach-Codes aus der
+ * Antwort, Transportfehler als „request_failed“ (dasselbe Muster wie
+ * postIntent). Pfad relativ zu ``/api/v1/profiles`` (z. B. ``""``,
+ * ``"/prof_…/activate"``).
+ */
+export async function profileRequest(
+  path: string,
+  method: "POST" | "PUT" | "DELETE",
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown> | null }> {
+  try {
+    const res = await fetch(`/api/v1/profiles${path}`, {
+      method,
+      headers:
+        body !== undefined
+          ? { "Content-Type": "application/json" }
+          : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    let data: Record<string, unknown> | null = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch {
+    return { ok: false, status: 0, data: { error_code: "request_failed" } };
+  }
+}
+
+/** Klartext zu Profil-Fehlercodes — die GUI zeigt den Satz, nicht den Code. */
+export function profileErrorText(
+  code: string | null | undefined,
+  fallback = "Das hat nicht geklappt.",
+): string {
+  switch (code) {
+    case null:
+    case undefined:
+    case "":
+      return "";
+    case "request_failed":
+      return "Server nicht erreichbar — Änderung gilt nur auf diesem Gerät.";
+    case "invalid_profile_name":
+      return "Profilname fehlt oder ist zu lang (höchstens 40 Zeichen).";
+    case "profile_limit":
+      return "Höchstens 8 Profile — erst eines löschen.";
+    case "profile_not_found":
+      return "Profil nicht gefunden — vielleicht auf einem anderen Gerät gelöscht.";
+    case "invalid_fuel":
+    case "invalid_liters":
+    case "invalid_consumption":
+    case "invalid_time_value_eur_h":
+    case "invalid_speed_kmh":
+    case "invalid_tank_capacity_l":
+    case "invalid_mode":
+      return `Wert außerhalb des zulässigen Bereichs (${code}).`;
+    default:
+      return fallback;
+  }
+}
 
 /** Übersetzt die Start-Antwort ehrlich — „läuft schon“ ist kein Fehler. */
 export function jobRunMessage(result: JobRunResult | null): JobRunNote {
@@ -2472,4 +2666,206 @@ export function transitionRuleLine(phase?: LivePhase | null): string {
     );
   }
   return `${head}: ${livePhaseCountdown(phase) ?? livePhaseHint(phase)}`;
+}
+
+// --- A2: Tankstand als Eingabe für F3 („Tank bei ¼ — kann ich warten?“) -----
+
+/** Spiegel der Server-Konstanten (app/decide.py) — nur für die Vorschau-Anzeige. */
+export const TANK_RESERVE_LITERS = 5;
+export const TANK_CAPACITY_DEFAULT_L = 50;
+
+/**
+ * Restreichweite aus Füllstand: Kapazität × Prozent ÷ Verbrauch. Die
+ * verbindliche Bewertung (leer/knapp/ok) kommt aus /decide → ``tank``; diese
+ * Funktion ist nur die Live-Vorschau am Slider, damit die Zahl nicht erst
+ * nach dem nächsten Poll erscheint.
+ */
+export function tankRangeKm(
+  tankPercent: number | null | undefined,
+  capacityL: number,
+  consumption: number,
+): number | null {
+  if (
+    tankPercent == null ||
+    !Number.isFinite(tankPercent) ||
+    tankPercent < 0 ||
+    tankPercent > 100 ||
+    !Number.isFinite(capacityL) ||
+    capacityL <= 0 ||
+    !Number.isFinite(consumption) ||
+    consumption <= 0
+  ) {
+    return null;
+  }
+  return (capacityL * (tankPercent / 100)) / consumption * 100;
+}
+
+/** Kilometer deutsch: „1.234 km“ (ganzzahlig, de-DE). */
+export function kilometersLabel(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : `${Math.round(value).toLocaleString("de-DE")} km`;
+}
+
+/** Live-Vorschau-Satz am Tankstand-Slider — die Bewertung selbst liefert /decide. */
+export function tankPreviewLine(
+  tankPercent: number | null,
+  capacityL: number,
+  consumption: number,
+): string | null {
+  const km = tankRangeKm(tankPercent, capacityL, consumption);
+  if (km === null) return null;
+  const reserveKm = (TANK_RESERVE_LITERS / consumption) * 100;
+  return `Restreichweite ≈ ${kilometersLabel(km)} · Reserve ab ≈ ${kilometersLabel(reserveKm)}`;
+}
+
+// --- C2: Stamm-Stationen pinnen + Suche/Filter/Sortierung -------------------
+
+/**
+ * Obergrenze der Stamm-Stationen. Zwei bis drei sind der Normalfall; die
+ * Grenze hält den Kopf der Liste lesbar — der Zähler „N im Set“ bleibt die
+ * volle Anzahl, das Pinnen sortiert nur.
+ */
+export const PINNED_MAX = 8;
+export type StationSort = "price" | "distance" | "fill";
+export const STATION_SORTS: Array<{
+  value: StationSort;
+  label: string;
+  title: string;
+}> = [
+  {
+    value: "price",
+    label: "Preis (€/L)",
+    title: "Billigster frischer Preis zuerst",
+  },
+  {
+    value: "distance",
+    label: "Distanz",
+    title: "Nächste Station zum Anker der Stadt zuerst",
+  },
+  {
+    value: "fill",
+    label: "Netto-€ (Füllung)",
+    title: "Preis × Tankmenge — was eine Füllung dort kostet",
+  },
+];
+
+/**
+ * Pinnen/Umpinnen als reine Funktion: Dedupliziert, kappt bei
+ * {@link PINNED_MAX} (wer mehr probiert, bekommt die Meldung „maximal N“).
+ */
+export function togglePinnedStation(
+  ids: string[],
+  stationId: string,
+): { ids: string[]; note: string | null } {
+  if (ids.includes(stationId)) {
+    return { ids: ids.filter((id) => id !== stationId), note: null };
+  }
+  if (ids.length >= PINNED_MAX) {
+    return {
+      ids,
+      note: `Maximal ${PINNED_MAX} Stamm-Stationen — erst eine lösen.`,
+    };
+  }
+  return { ids: [...ids, stationId], note: null };
+}
+
+/** Suche über Name/Marke (Groß-/Kleinschreibung egal, Teilstring). */
+export function stationMatchesQuery(
+  row: Pick<Station, "name" | "brand">,
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    row.name.toLowerCase().includes(needle) ||
+    row.brand.toLowerCase().includes(needle)
+  );
+}
+
+/** Markenfilter: nur Zeilen der gewählten Marke („Alle“ = leerer String). */
+export function stationMatchesBrand(
+  row: Pick<Station, "brand">,
+  brand: string,
+): boolean {
+  return !brand || row.brand === brand;
+}
+
+/** Sortierung der Stationsliste; „fill“ = Preis × Tankmenge (Netto-€). */
+export function compareStations(
+  a: Station,
+  b: Station,
+  sort: StationSort,
+  priceOf: (row: Station) => number | null,
+): number {
+  if (sort === "distance") {
+    const da = a.dist_km ?? Number.POSITIVE_INFINITY;
+    const db = b.dist_km ?? Number.POSITIVE_INFINITY;
+    return da - db;
+  }
+  if (sort === "fill") {
+    const fa = priceOf(a);
+    const fb = priceOf(b);
+    const ca = fa == null ? Number.POSITIVE_INFINITY : fa;
+    const cb = fb == null ? Number.POSITIVE_INFINITY : fb;
+    if (ca !== cb) return ca - cb;
+  }
+  // Default „price“ (und Fallback für gleichwertige Zeilen): Preis, dann Name.
+  const pa = priceOf(a);
+  const pb = priceOf(b);
+  const va = pa == null ? Number.POSITIVE_INFINITY : pa;
+  const vb = pb == null ? Number.POSITIVE_INFINITY : pb;
+  if (va !== vb) return va - vb;
+  return a.name.localeCompare(b.name, "de");
+}
+
+/**
+ * Die fertige Liste: Stamm-Stationen zuerst (in Pin-Reihenfolge), dann der
+ * Rest nach gewählter Sortierung. Ohne Pin bleibt alles beim alten Verhalten.
+ */
+export function orderedStationList(
+  rows: Station[],
+  pinnedIds: string[],
+  sort: StationSort,
+  priceOf: (row: Station) => number | null,
+  query = "",
+  brand = "",
+): Station[] {
+  const filtered = rows.filter(
+    (row) => stationMatchesQuery(row, query) && stationMatchesBrand(row, brand),
+  );
+  const pinned = pinnedIds
+    .map((id) => filtered.find((row) => row.station_id === id))
+    .filter((row): row is Station => row !== undefined);
+  const rest = filtered.filter((row) => !pinnedIds.includes(row.station_id));
+  rest.sort((a, b) => compareStations(a, b, sort, priceOf));
+  return [...pinned, ...rest];
+}
+
+/** A4: Monats-Schlüssel „2026-09“ als deutsches Label („September 2026“). */
+export function monthBalanceLabel(key: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!match) return key;
+  const months = [
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+  ];
+  const idx = Number(match[2]) - 1;
+  if (idx < 0 || idx > 11) return key;
+  return `${months[idx]} ${match[1]}`;
+}
+
+/** A4: Jahres-Schlüssel „2026“ bleibt Jahr (mit „Gesamt“-Angabe im Panel). */
+export function yearBalanceLabel(key: string): string {
+  return `Gesamtjahr ${key}`;
 }

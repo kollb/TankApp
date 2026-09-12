@@ -33,6 +33,18 @@ from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
 
 FUELS = {"e10", "e5", "diesel"}
 
+# A2 (F3 „Tank bei ¼ — kann ich warten?“): Reserve als Literzahl, nicht als
+# feste km-Zahl — dieselbe Restmenge ist beim Benziner (6 l/100 km) deutlich
+# mehr Reichweite als im SUV (10 l/100 km). Faustwert: ~5 l Reserve entspricht
+# der typischen Reserveanzeige; daraus wird mit dem persönlichen Verbrauch die
+# Reserve-Reichweite. „empty“ = Rest ≤ Reserve → Warten wird blockiert,
+# „low“ = Rest ≤ 2 × Reserve → ehrlicher Hinweis, Fenster bleibt machbar.
+TANK_RESERVE_LITERS = 5.0
+TANK_CAPACITY_DEFAULT_L = 50.0
+TANK_PERCENT_MIN, TANK_PERCENT_MAX = 0.0, 100.0
+TANK_CAPACITY_MIN, TANK_CAPACITY_MAX = 20.0, 120.0
+RANGE_KM_MAX = 1500.0
+
 try:
     from zoneinfo import ZoneInfo
 
@@ -231,6 +243,78 @@ def _coords(station: dict[str, Any]) -> tuple[float, float] | None:
     ):
         return (float(lat), float(lon))
     return None
+
+
+def _de_km(km: float) -> str:
+    """Kilometer deutsch formatiert (ganzzahlig, Punkt als Tausendertrennzeichen)."""
+    return f"{km:,.0f}".replace(",", ".")
+
+
+def tank_context(
+    tank_percent: float | None,
+    tank_capacity_l: float | None,
+    range_km_input: float | None,
+    consumption: float,
+) -> dict[str, Any] | None:
+    """A2: Restreichweite und Warte-Risiko aus der Tankstand-Eingabe (F3).
+
+    Eingabe ist entweder ``range_km`` (Rest-km direkt, z. B. aus dem
+    Bordcomputer) oder ``tank_percent`` (Füllstand, der über Tankgröße und
+    Verbrauch in Reichweite übersetzt wird). Ohne eine der beiden Angaben
+    liefert die Funktion ``None`` — die App sagt dann nichts über den
+    Tankstand statt etwas zu raten.
+
+    ``state``:
+    - ``empty``: Rest ≤ Reserve-Reichweite → Warten wird als riskant benannt
+      und blockiert die Warte-Empfehlung („Reserve reicht ~X km“).
+    - ``low``: Rest ≤ 2 × Reserve → Hinweis, Fenster bleibt machbar.
+    - ``ok``: kein Tankstand-Hinweis.
+    """
+    if range_km_input is not None:
+        range_km = float(range_km_input)
+        source = "input"
+    elif tank_percent is not None:
+        capacity = (
+            tank_capacity_l if tank_capacity_l is not None else TANK_CAPACITY_DEFAULT_L
+        )
+        range_km = (
+            capacity * (float(tank_percent) / 100.0) / max(0.1, consumption) * 100.0
+        )
+        source = "computed"
+    else:
+        return None
+
+    reserve_km = TANK_RESERVE_LITERS / max(0.1, consumption) * 100.0
+    if range_km <= reserve_km:
+        state = "empty"
+    elif range_km <= 2.0 * reserve_km:
+        state = "low"
+    else:
+        state = "ok"
+
+    message = None
+    if state == "empty":
+        message = (
+            f"Warten riskant: Der Tankrest reicht für etwa {_de_km(range_km)} km — "
+            f"das ist Reservebereich (unter ~{_de_km(reserve_km)} km bei "
+            f"{_de_km(consumption)} l/100 km). Tank jetzt, nicht auf das Fenster warten."
+        )
+    elif state == "low":
+        message = (
+            f"Tankstand knapp: Der Rest reicht für etwa {_de_km(range_km)} km. "
+            "Das Fenster ist machbar, solange du bis dahin nicht deutlich mehr fährst."
+        )
+
+    return {
+        "input": source,
+        "tank_percent": tank_percent,
+        "tank_capacity_l": tank_capacity_l,
+        "range_km": round(range_km, 1),
+        "reserve_range_km": round(reserve_km, 1),
+        "state": state,
+        "blocks_wait": state == "empty",
+        "message": message,
+    }
 
 
 def _detour_km(
@@ -556,6 +640,23 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if latest_by is not None and latest_by.tzinfo is None:
         latest_by = latest_by.replace(tzinfo=BERLIN_TZ)
 
+    # A2: Tankstand für F3 — Füllstand in Prozent (mit Tankgröße) oder
+    # Rest-km direkt. Fehlt beides, bleibt tank None (keine Tankstand-Aussage).
+    tank_percent = _parse_float(params.get("tank_percent"), None)
+    if tank_percent is not None and not (
+        TANK_PERCENT_MIN <= tank_percent <= TANK_PERCENT_MAX
+    ):
+        raise ValueError("invalid_tank")
+    tank_capacity = _parse_float(params.get("tank_capacity_l"), None)
+    if tank_capacity is not None and not (
+        TANK_CAPACITY_MIN <= tank_capacity <= TANK_CAPACITY_MAX
+    ):
+        raise ValueError("invalid_tank")
+    range_km_input = _parse_float(params.get("range_km"), None)
+    if range_km_input is not None and not (0.0 <= range_km_input <= RANGE_KM_MAX):
+        raise ValueError("invalid_tank")
+    tank = tank_context(tank_percent, tank_capacity, range_km_input, consumption)
+
     city = params.get("city")
     station_id = params.get("station_id")
 
@@ -717,13 +818,25 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         no_window_reason,
         quality_gate,
     )
+    # A2: Physik vor Fenster. Sagt die Tabelle „warten“, der Tank ist aber im
+    # Reservebereich, gewinnt der Tankstand — „bestes Fenster morgen“ wäre
+    # hier eine gefährliche Antwort. Die Tabelle selbst bleibt unangetastet
+    # (Güte-Gate, Shadow-Messung); nur die angezeigte Aktion kippt, und der
+    # Ledger bekommt die Aktion, die wirklich angezeigt wurde — sonst würde
+    # ein befolgtes „jetzt tanken (Reserve)“ später als „ignoriert“ zählen.
+    if tank is not None and tank["blocks_wait"] and table_action == "wait":
+        action_base = "refuel_now"
+        badge = "high"  # Physik, keine Modellobschätzung
+        reason = tank["message"]
+    else:
+        action_base = table_action
     # Die P, die zum Settlement-Ereignis passt (§5.2): wait → P(min ≤ p−θ),
     # refuel_now → 1 − P(min ≤ p−θ), refuel_elsewhere → P(Alt-Fenster ≤ p−θ).
-    if table_action == "wait":
+    if action_base == "wait":
         p_decision = p_better_own
-    elif table_action == "refuel_now":
+    elif action_base == "refuel_now":
         p_decision = None if p_better_own is None else round(1.0 - p_better_own, 4)
-    elif table_action == "refuel_elsewhere":
+    elif action_base == "refuel_elsewhere":
         p_decision = p_better_alt
     else:
         p_decision = None
@@ -731,9 +844,10 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # M7-Gate (§0.4): Vor der Kalibrierung keine Handlungsempfehlung und
     # kein P_besser anzeigen — der Ledger misst die Tabelle trotzdem (Shadow).
     # F2-P_lohnt und F3-Fenster-P sind Informationswerte aus der Verteilung
-    # (§4.2/§4.3) und hängen nicht am Kalibrierungs-Gate.
+    # (§4.2/§4.3) und hängen nicht am Kalibrierungs-Gate. Die Tankstand-
+    # Warnung (A2) ist Physik und erscheint unabhängig davon als eigener Block.
     if is_calibrated:
-        action = table_action
+        action = action_base
         p_correct = p_decision
         confidence_badge = badge
         reason_short = reason
@@ -758,7 +872,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # dieselbe Zahl, die nach dem M7-Gate im UI erscheint.
     snapshot_input = {
         "clock_hour": hour,
-        "action": table_action,
+        "action": action_base,
         "city": station_city,
         "station_id": station_id,
         "station_name": station_name,
@@ -782,6 +896,10 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "fuel": fuel,
         "trip_mode": mode,
         "latest_by": latest_by.isoformat() if latest_by is not None else None,
+        # A2: Tankstand-Zustand zum Entscheidungszeitpunkt — nur
+        # Informationsträger (Auswertung „Deadline-Druck × Reserve“),
+        # die Kollabierung hängt weiter nur an Aktion/Station/Fenster.
+        "tank_state": tank.get("state") if tank else None,
     }
 
     _, ep = record_snapshot(live_data.settings, snapshot_input, clock=live_data.clock)
@@ -837,6 +955,10 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             "intent": ep.get("intent"),
             "opened_at": ep.get("opened_at"),
         },
+        # A2: Tankstand-Bewertung als eigener Block — die GUI zeigt ihn
+        # unabhängig von der Ampel (Physik, kein Modellwert). ``None``,
+        # wenn keine Tankstand-Eingabe vorliegt.
+        "tank": tank,
         "personal_stats": {
             "advice": {
                 "last_30d_hits": advice_stats.get("wins", 0),
