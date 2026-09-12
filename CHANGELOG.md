@@ -4,6 +4,58 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.12.0] – 2026-09-12
+
+Nutzer-Feedback-Runde (11 Punkte): Alltag und Werkstatt neu geordnet, Anker
+12:00 konfigurierbar, Archiv-Lückenfüllung, belastbare Heatmaps, Rate-Limit
+entfernt.
+
+### Hinzugefügt
+
+- **„Tanken erfassen“** im Alltag (Sektion 2): Beleg jederzeit buchen (Station,
+  Liter, Preis) — daneben die Tank-Bilanz; zusätzlich zur Due-Prompt- und
+  Verlaufs-Erfassung.
+- **Archiv-Lückenfüllung** (`app/gapfill.py`, Job-Phase „gapfill“): geschlossene
+  Polling-Lücken vergangener Tage (z. B. gestern 12–13 Uhr) werden automatisch
+  mit echten Tankerkönig-Archiv-Ereignissen geschlossen — nur Lückenfenster,
+  nur Vergangenheit, Live behält per Engine-Dedup immer Vorrang; Ergebnis als
+  `gapfill_quality` in der Publikation. Details:
+  [docs/BETRIEB.md](docs/BETRIEB.md#polling-lücken-werden-automatisch-aus-dem-archiv-geschlossen).
+- **`TANKAPP_DECISION_HOUR`** (Default 12, Engine-CLI `--decision-hour`):
+  Der Schicht-A-Anker ist konfigurierbar und fließt in Backtest-Report
+  (`decisionHour`), Werkstatt-Texte und Labor-Diagramm ein.
+- **Advice-Ledger zählt ehrlich**: `snapshots_total`, `n_pending`
+  (noch laufende Empfehlungen), `n_void_all`; M7-Kachel mit Warten/Jetzt/
+  Woanders-Erklärung „pro Empfehlung, nicht pro Tag“.
+- **Heatmap-Stichprobe**: Antwort liefert `counts` (7×24) je Zelle.
+
+### Geändert
+
+- **Alltag neu geordnet** (7 nummerierte Sektionen): 1 Empfehlung (+ schmale
+  Vertrauens-Zeile statt Doppel-Karten), 2 Tanken, 3 Kosten, 4 Heute,
+  5 Stationen, 6 Umweg, 7 Belege.
+- **Werkstatt in 3 Fragegruppen**: A „Taugt das Modell?“ (Scoreboard,
+  Kalibrierung), B „Warum empfiehlt es das?“ (Regel-Slider, Historie, Labor),
+  C „Was zeigen die Daten?“ (Heatmaps, Ranking) — alle Funktionen bleiben.
+- **Schicht-A-Anker 08:00 → 12:00**: Anhebungen gibt es nur mittags
+  (12-Uhr-Regel) — erst um 12 Uhr weiß der hypothetische Entscheid, ob es
+  heute teurer wurde.
+- **Vergleichsstation** ist Default die nächste frische Station (statt der
+  billigsten); ist die Auswahl selbst die billigste, zeigt die Differenz die
+  Spanne zur teuersten („Teuerste statt billigste“ statt 0,00 €).
+- **Heatmaps belastbar**: Zellen unter 8 Preisen (·) und Tages-Zeilen unter
+  3 belastbaren Zellen bleiben leer — kein 100-%-Artefakt aus Nacht-Preisen.
+- **Kalibrierungs- und Übergangs-Texte neu gefasst** („Stimmen die
+  Prozentzahlen?“, „Freigabe 1/2 von 2“), Diagrammachsen ohne Jargon.
+- **`nas-up` räumt auf**: `docker image prune -f` nach `compose up`.
+
+### Entfernt
+
+- **App-weites Rate-Limit ersatzlos gestrichen** (LAN-only): `app/ratelimit.py`
+  gelöscht, `TANKAPP_API_KEYS`/`TANKAPP_RATE_*`, `X-RateLimit-*`-Header und
+  `429` + `rate_limited` entfernt. Unberührt: Tankerkönig-429-Backoff des
+  Collectors und `TANKAPP_WEBHOOK_TOKEN`.
+
 ## [0.11.0] – 2026-09-12
 
 > Quick-Wins 0.11 komplett umgesetzt (7 von 7): ehrliche Beleg-Eingabe,

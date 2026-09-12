@@ -28,6 +28,7 @@ def refresh(settings: Settings, now=None, progress=None):
     from engine.selection import SelectionConfig, compute_all as compute_selection
     from engine.storage import write_json
     from polling_plan import collector_lock
+    from .gapfill import fill_gaps
     from .history import prepare_archive
     from .model_jobs import HORIZON_COLUMNS, resolve_workers, run_tasks
 
@@ -38,7 +39,11 @@ def refresh(settings: Settings, now=None, progress=None):
         return {"state": "waiting", "error_code": error or "influx_not_configured"}
     # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
     # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
-    cfg = Config(city_subdivs=dict(getattr(settings, "city_subdivs", {})))
+    # Schicht-A-Anker (Konzept §5.5): TANKAPP_DECISION_HOUR, Default 12.
+    cfg = Config(
+        city_subdivs=dict(getattr(settings, "city_subdivs", {})),
+        decision_hour=getattr(settings, "decision_hour", 12),
+    )
     origin = (
         (pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC"))
         .tz_convert("UTC")
@@ -99,8 +104,13 @@ def refresh(settings: Settings, now=None, progress=None):
             progress.phase("coverage", message="Live-Abdeckung (90-Tage-Regel)")
         print("models: prüfe Live-Abdeckung (90-Tage-Regel) ...", flush=True)
         all_live = True
+        # Einmal geladen, zweimal genutzt: Die Live-Frames prüfen hier die
+        # Abdeckung und liefern danach die Lückenfenster für die
+        # Archiv-Füllung (kein doppelter Export-Parse).
+        live_by_fuel = {}
         for fuel in settings.model_fuels:
             live, _ = load_observations(live_paths, cfg, fuel, ids)
+            live_by_fuel[fuel] = live
             _, policy = bootstrap(live, cfg, origin, expected_poll_minutes=cadence)
             all_live &= ids == set(live.station_id) and all(
                 item["mode"] == "live_only" for item in policy["stations"]
@@ -136,6 +146,33 @@ def refresh(settings: Settings, now=None, progress=None):
                     f"Archiv: {archive_quality.get('events', '?')} Ereignisse, "
                     f"{archive_quality.get('missing_days', '?')} fehlende Tage"
                 )
+        # Polling-Lücken (z. B. gestern 12–13 Uhr) automatisch aus dem
+        # Tankerkönig-Archiv schließen — echte Ereignisse, nur vergangene
+        # Tage, nur Lückenfenster; Live behält immer Vorrang. Läuft auch bei
+        # all_live: Eine Stundenlücke bricht die 90-Tage-Regel nicht, soll
+        # aber trotzdem nicht als Loch ins Training.
+        gapfill_paths, gapfill_quality = [], {}
+        if progress:
+            progress.phase("gapfill", message="Polling-Lücken aus Archiv schließen")
+        print("models: suche Polling-Lücken für Archiv-Füllung ...", flush=True)
+        try:
+            gapfill_paths, gapfill_quality = fill_gaps(
+                settings,
+                cfg,
+                metas,
+                list(settings.model_fuels),
+                live_by_fuel,
+                origin,
+                cadence,
+                progress=progress,
+            )
+        except Exception as exc:
+            # Die Füllung ist Kür: Scheitert sie, läuft das Training mit den
+            # Lücken weiter statt ganz auszufallen — ehrlich vermerkt.
+            print(f"models: Lückenfüllung übersprungen ({exc})", flush=True)
+            gapfill_quality = {"skipped": True, "reason": str(exc)[:200]}
+            if progress:
+                progress.note("Lückenfüllung übersprungen — Training mit Lücken")
         forecasts, models, policies, failures = [], [], [], []
         selections = {}
         # Der Fit-Block ist der lange Teil: je Station laufen vier Aufgaben
@@ -156,7 +193,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 flush=True,
             )
             observations, _ = load_observations(
-                history_paths + live_paths, cfg, fuel, ids
+                history_paths + gapfill_paths + live_paths, cfg, fuel, ids
             )
             data, policy = bootstrap(
                 observations, cfg, origin, expected_poll_minutes=cadence
@@ -332,7 +369,7 @@ def refresh(settings: Settings, now=None, progress=None):
                             for row in report.get("decision_rows", [])
                             if (row.get("city"), row.get("station_id")) == identity
                         ],
-                        "decision_hour": report.get("decision_hour", 8),
+                        "decision_hour": report.get("decision_hour", 12),
                         "operational_replay": False,
                         "data_policy": policy_by_identity.get(identity),
                         "calibrated": False,
@@ -389,6 +426,7 @@ def refresh(settings: Settings, now=None, progress=None):
                     "at": origin.isoformat(),
                     "failures": failures,
                     "archive_quality": archive_quality,
+                    "gapfill_quality": gapfill_quality,
                 },
             )
             if progress:
@@ -438,6 +476,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 "failures": failures,
                 "policies": policies,
                 "archive_quality": archive_quality,
+                "gapfill_quality": gapfill_quality,
                 "model_file": model_name,
                 "calibrated": False,
                 "decision_ready": False,

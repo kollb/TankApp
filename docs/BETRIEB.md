@@ -28,7 +28,7 @@
   - [Portwechsel](#portwechsel)
   - [Was automatisch läuft](#was-automatisch-läuft)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
-  - [Wann erscheinen die 08:00-Zeilen im Scoreboard?](#wann-erscheinen-die-0800-zeilen-im-scoreboard)
+  - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
   - [Fehlgeschlagener Lauf: Ursache statt Raten](#fehlgeschlagener-lauf-ursache-statt-raten)
   - [Modell-Lauf beschleunigen](#modell-lauf-beschleunigen)
@@ -343,7 +343,7 @@ curl -s "http://<nas>:1355/api/v1/jobs/models/log?lines=200" | jq -r '.lines[]'
 Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
 rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
 
-### Wann erscheinen die 08:00-Zeilen im Scoreboard?
+### Wann erscheinen die Anker-Zeilen im Scoreboard?
 
 Das Scoreboard („Entscheidungs-Scoreboard · Out-of-Sample“) und die
 Regel-Ergebnis-Kachel füllen sich erst, wenn zwei Dinge zusammenkommen:
@@ -351,7 +351,8 @@ Regel-Ergebnis-Kachel füllen sich erst, wenn zwei Dinge zusammenkommen:
 1. **Der Modell-Job ist einmal erfolgreich durchgelaufen** (siehe oben:
    Phase „Modelle fitten + Backtest“).
 2. **Es liegt genug echte Preishistorie vor.** Der Backtest bewertet tägliche
-   08:00-Entscheidungen rollierend über die letzten 7 Tage je Station. Ist
+   Anker-Entscheidungen (Tages-Anker, Standard 12:00, `TANKAPP_DECISION_HOUR`)
+   rollierend über die letzten 7 Tage je Station. Ist
    eine Station erst seit wenigen Tagen im Polling-Set, liefert sie noch keine
    auswertbaren Entscheidungszeilen — das ist Ehrlichkeit (§14), kein Fehler.
 
@@ -603,8 +604,28 @@ python3 tankapp.py history-sync --archive-dir /pfad/zum/archiv --since 2026-09-1
 ```
 
 Der nächste Modell-Lauf nutzt die nachgeladene Historie für Training und
-Backtest (08:00-Entscheidungszeilen im Scoreboard). Das Nachladen schreibt
+Backtest (Anker-Entscheidungszeilen im Scoreboard). Das Nachladen schreibt
 **nicht** in InfluxDB — die Live-Kurve bleibt unverändert.
+
+### Polling-Lücken werden automatisch aus dem Archiv geschlossen
+
+Der Modell-Job erkennt geschlossene Lücken im Live-Export (Soll-Takt × 3,
+mindestens 15 Minuten — z. B. gestern 12–13 Uhr) und füllt sie mit echten
+Archiv-Ereignissen (`app/gapfill.py`, Phase „gapfill“ im Job-Log):
+
+- Nur **geschlossene** Lücken (beide Ränder beobachtet), nur **vergangene
+  Tage**, nur innerhalb des Polling-Fensters (die Nacht ist Sammelpause,
+  keine Lücke). Die offene Flanke am Datenrand und Lücken von heute bleiben
+  Live-Sache.
+- Archiv-Zeilen tragen `source=history` und verlieren im Engine-Dedup gegen
+  jeden Live-Poll desselben Zeitpunkts — Live hat immer Vorrang.
+- Ergebnis steht in der Publikation als `gapfill_quality`
+  (`gaps_detected`/`gaps_filled`/`gap_events`/`gap_days`/`missing_days`).
+- Scheitert die Füllung, läuft das Training mit den Lücken weiter (ehrlich
+  als `{"skipped": true}` vermerkt) statt ganz auszufallen.
+
+Voraussetzung ist ein gefülltes Archiv (stündlicher `archive`-Job). Fehlt
+ein Archivtag, zählt er als `missing_days` — es wird nichts interpoliert.
 
 ### Legacy-Punkte ohne `station_id` (Namens-Zwillinge)
 

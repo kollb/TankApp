@@ -31,7 +31,7 @@
 |---|---|---|
 | „Läuft …“ beim Modell-Job | nur Zustand, kein Fortschritt | Phasen, Schritt x/y, Balken, Restschätzung in GUI, Statusdatei und Log |
 | Rechenzeit Modell-Lauf | ~3 min je Station, ein Kern | ~14 s je Station, mehrere Kerne |
-| API-Schutz | nur im Reverse Proxy gedacht | Rate-Limit + `X-Api-Key` in der App (§11) |
+| API-Schutz | nur im Reverse Proxy gedacht | Rate-Limit + `X-Api-Key` in der App (§11, später ersatzlos entfernt — LAN-only) |
 | Alte Alltags-Routen | ohne Hinweis | `Deprecation`/`Sunset`/`Link` (§11.3, M5) |
 | `latest_by` („bis wann muss ich tanken?“) | Parameter dokumentiert, nicht implementiert | schneidet Fenster und F1-Entscheidung |
 | Fahrtmodus `dedicated` | nur in der Selektion | auch in `/v1/decide` (§10) |
@@ -60,6 +60,7 @@
 3. **Rate-Limit + API-Key** (`app/ratelimit.py`, Konzept §11) — 60/min
    anonym, 300/min mit Schlüssel, Tageskontingente, `X-RateLimit-*`-Header,
    `429` + `Retry-After` + `error_code: rate_limited`.
+   (Stand 0.11.0; später ersatzlos entfernt — LAN-only.)
 4. **Deprecation-Header** (§11.3, M5) auf `stations`, `day` und
    `route/evaluate` mit `Link` auf `/api/v1/decide`. Werkstatt-Routen bleiben
    unmarkiert.
@@ -213,7 +214,7 @@ einzige Quelle von Strecke und Schwellen), siehe
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
 | 12 P2 | Push, Belege |offen (siehe unten) |
 | 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig; M3 ohne Echt-Daten-Abnahme |
-| 13 M5 | TankPuls-API |fertig (B4 + B5: Rate-Limit, Deprecation); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen") |
+| 13 M5 | TankPuls-API |fertig (B4 + B5: Deprecation; Rate-Limit entfernt — LAN-only); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen") |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
 | 13 M7 | Kalibrierungs-Loop |Vorschlag und Regler fertig (B5); Anziehen der Schwellen erst mit echten Live-Daten sinnvoll |
 

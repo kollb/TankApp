@@ -68,6 +68,8 @@ import {
   livePhaseHint,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
+  MIN_HEATMAP_CELLS_PER_DAY,
+  MIN_HEATMAP_POINTS,
   m7GateLine,
   problem,
   segments,
@@ -689,9 +691,21 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
         : "Gesamtmedian"
     : "Median";
 
-  const allVals = matrix
-    .flatMap((r) => r)
-    .filter((v): v is number => v !== null && Number.isFinite(v));
+  // Zellen mit zu kleiner Stichprobe (n < 8) zählen nicht — weder für
+  // Farben/Median noch für die „günstigste Stunde“. Ohne Zähler im Payload
+  // (alte API) bleibt alles wie bisher.
+  const cellCount = (dIdx: number, h: number): number | null => {
+    const row = heatmap.counts?.[dIdx];
+    return row?.[h] ?? null;
+  };
+  const cellOk = (v: number | null, dIdx: number, h: number): v is number => {
+    if (v === null || !Number.isFinite(v)) return false;
+    const n = cellCount(dIdx, h);
+    return n === null || n >= MIN_HEATMAP_POINTS;
+  };
+  const allVals = matrix.flatMap((r, dIdx) =>
+    r.filter((v, h): v is number => cellOk(v, dIdx, hours[h] ?? h)),
+  );
   const minVal = allVals.length ? Math.min(...allVals) : 0;
   const maxVal = allVals.length ? Math.max(...allVals) : 1;
 
@@ -737,19 +751,22 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   const summaries = days
     .map((dayName, dIdx) => {
       const row = matrix[dIdx] ?? [];
-      const vals = row.filter(
-        (v): v is number => v !== null && Number.isFinite(v),
+      const vals = row.filter((v, h): v is number =>
+        cellOk(v, dIdx, hours[h] ?? h),
       );
-      if (!vals.length) return null;
+      // Unter 3 belastbaren Zellen bleibt die Zeile ehrlich leer — kein
+      // Median und keine „günstigste Stunde“ aus 1–2 Nacht-Zellen.
+      if (vals.length < MIN_HEATMAP_CELLS_PER_DAY) return null;
       const sorted = [...vals].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
       let bestHour = hours[0] ?? 0;
-      let bestValue = vals[0];
+      let bestValue = isProb ? -Infinity : Infinity;
       row.forEach((v, h) => {
-        if (v === null || !Number.isFinite(v)) return;
+        const hour = hours[h] ?? h;
+        if (!cellOk(v, dIdx, hour)) return;
         if (isProb ? v > bestValue : v < bestValue) {
           bestValue = v;
-          bestHour = h;
+          bestHour = hour;
         }
       });
       return { day: dayName, median, bestHour, bestValue, index: dIdx };
@@ -824,13 +841,20 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                   </td>
                   {hours.map((h) => {
                     const val = matrix[dIdx]?.[h] ?? null;
+                    const n = cellCount(dIdx, h);
+                    const ok = cellOk(val, dIdx, h);
+                    const shown = ok ? val : null;
+                    const thin =
+                      val !== null && !ok && n !== null
+                        ? `zu wenig Daten (n=${n}, min. ${MIN_HEATMAP_POINTS})`
+                        : null;
                     return (
                       <td
                         key={h}
-                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${isProb ? (val !== null ? `${val.toFixed(1)} % Chance günstiger als ${referenceLabel}` : "keine Daten") : (val !== null ? `${val.toFixed(3)} €/L Median` : "keine Daten")}`}
-                        className={`p-1 transition-colors ${colorFor(val)}`}
+                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${thin ?? (isProb ? (shown !== null ? `${shown.toFixed(1)} % Chance günstiger als ${referenceLabel}` : "keine Daten") : (shown !== null ? `${shown.toFixed(3)} €/L Median` : "keine Daten"))}`}
+                        className={`p-1 transition-colors ${colorFor(shown)}`}
                       >
-                        {fmtVal(val)}
+                        {thin ? "·" : fmtVal(shown)}
                       </td>
                     );
                   })}
@@ -862,6 +886,9 @@ function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
         Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
         (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.
+        Zellen mit weniger als {MIN_HEATMAP_POINTS} Preisen (·) zählen nicht —
+        sonst würde ein einzelner Nacht-Preis die „günstigste Stunde“
+        bestimmen.
       </p>
     </div>
   );
@@ -962,6 +989,12 @@ export function Dashboard() {
 
   // B4 Due-Prompt UI state
   const [dueDismissed, setDueDismissed] = useState(false);
+  // Schnell-Erfassung „Tanken erfassen“: immer sichtbar, nicht nur im
+  // Due-Prompt — eigener Formular-State, damit beide Dialoge sich nicht
+  // gegenseitig die Eingaben überschreiben.
+  const [quickStationId, setQuickStationId] = useState("");
+  const [quickLitersStr, setQuickLitersStr] = useState("40");
+  const [quickPriceStr, setQuickPriceStr] = useState("");
   const [customFillOpen, setCustomFillOpen] = useState(false);
   // E2: Werte als String halten — deutsche Mobil-Tastaturen liefern „1,689“,
   // Number("1,689") wäre NaN. Normalisierung erfolgt beim Parsen (data.ts).
@@ -1032,8 +1065,16 @@ export function Dashboard() {
     .filter((row) => price(row) !== null)
     .sort((a, b) => price(a)! - price(b)!);
   const best = fresh[0];
+  // Vergleichsstation per Default: die nächste mit frischem Preis — nicht die
+  // billigste. Die billigste als Default machte „Unterschied zur
+  // Vergleichsstation“ zu einer 0,00-€-Kachel ohne Aussage; die nächste Station
+  // ist dagegen die, an der man normalerweise vorbeikommt.
+  const nearestFresh = [...fresh].sort(
+    (a, b) => (a.dist_km ?? 1e9) - (b.dist_km ?? 1e9),
+  )[0];
   const selected =
     stations.find((row) => row.station_id === selectedId) ||
+    nearestFresh ||
     best ||
     stations[0];
   const bestPrice = best ? price(best) : null;
@@ -1046,12 +1087,47 @@ export function Dashboard() {
       setCustomPriceStr(bestPrice.toFixed(3));
     }
   }, [bestPrice, customPriceStr]);
+  // Schnell-Erfassung: Station per Default = Vergleichsstation, Preis =
+  // deren frischer Preis (sonst billigster). Nur solange das Feld leer ist —
+  // eine eigene Eingabe wird nie überschrieben.
+  const quickStation =
+    stations.find((row) => row.station_id === quickStationId) || selected;
+  const quickSuggested =
+    (quickStation ? price(quickStation) : null) ?? bestPrice;
+  useEffect(() => {
+    if (!quickStationId && selected) setQuickStationId(selected.station_id);
+  }, [quickStationId, selected]);
+  useEffect(() => {
+    if (
+      quickPriceStr === "" &&
+      quickSuggested !== null &&
+      Number.isFinite(quickSuggested)
+    ) {
+      setQuickPriceStr(quickSuggested.toFixed(3));
+    }
+  }, [quickPriceStr, quickSuggested]);
+  const quickDraft = checkFillDraft({
+    liters: quickLitersStr,
+    price: quickPriceStr,
+    stationId: quickStation?.station_id,
+  });
   const autoZ = autoTimeValue();
   const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
   const difference =
     bestPrice !== null && selectedPrice !== null
       ? (selectedPrice - bestPrice) * liters
       : null;
+  // Teuerste frische Station: Ist die Vergleichsstation selbst die billigste,
+  // zeigt die Kachel statt „0,00 €“ die Spanne zur teuersten — eine Zahl mit
+  // Aussage statt einer Null ohne.
+  const worst = fresh.length ? fresh[fresh.length - 1] : undefined;
+  const worstPrice = worst ? price(worst) : null;
+  const span =
+    bestPrice !== null && worstPrice !== null
+      ? (worstPrice - bestPrice) * liters
+      : null;
+  const selectedIsCheapest =
+    difference !== null && Math.abs(difference) < 0.005;
   // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
   // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
   const identity = selected
@@ -1361,6 +1437,10 @@ export function Dashboard() {
 
   // --- B4 Workshop Dynamic Calculations ---
   const labData = statsSummaryRes.data?.backtest;
+  // Schicht-A-Anker aus dem Backtest-Report (TANKAPP_DECISION_HOUR, Default
+  // 12) — alle Werkstatt-Texte folgen dem echten Wert, nie einem Hardcode.
+  const anchorHour = labData?.decisionHour ?? 12;
+  const anchorLabel = `${String(anchorHour).padStart(2, "0")}:00`;
   const labScores = useMemo(() => {
     if (!labData?.evalRows) return [];
     return Object.entries(labData.evalRows).map(([sid, rows]) => ({
@@ -1529,6 +1609,39 @@ export function Dashboard() {
     setTimeout(() => setActionFeedback(null), 4000);
   };
 
+  const handleQuickFill = async () => {
+    // Schnell-Erfassung ohne Episode (Quelle „tanke gerade / habe getankt“):
+    // dieselben Grenzen wie der Server, Prüfung vor dem Roundtrip.
+    const litersVal = germanDecimalToNumber(quickLitersStr);
+    const priceVal = germanDecimalToNumber(quickPriceStr);
+    const stationId = quickStation?.station_id;
+    if (!quickDraft.ok || litersVal === null || priceVal === null || !stationId) {
+      setActionFeedback(
+        quickDraft.stationMissing
+          ? "! Ohne Station kein Beleg — bitte zuerst eine Station wählen."
+          : `! ${quickDraft.litersError ?? quickDraft.priceError ?? "Eingabe prüfen."}`,
+      );
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
+    const res = await postFill({
+      station_id: stationId,
+      station_name: quickStation?.name || "Station",
+      liters: litersVal,
+      price_paid: priceVal,
+      fuel,
+      source: "manual",
+    });
+    if (res?.error_code) {
+      setActionFeedback(`! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`);
+      setTimeout(() => setActionFeedback(null), 5000);
+      return;
+    }
+    setActionFeedback("✓ Beleg in deiner Tank-Bilanz verbucht!");
+    setRefresh((r) => r + 1);
+    setTimeout(() => setActionFeedback(null), 4000);
+  };
+
   const handleVoidFill = async (fillId: string) => {
     setVoidNote(null);
     const res = await voidFill(fillId);
@@ -1560,7 +1673,7 @@ export function Dashboard() {
     if (epId) {
       const res = await postIntent(epId, intent);
       if (res?.error_code) {
-        setActionFeedback(`! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – Offline? 429?`);
+        setActionFeedback(`! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – App-Server erreichbar?`);
         setTimeout(() => setActionFeedback(null), 5000);
         return;
       }
@@ -1976,7 +2089,7 @@ export function Dashboard() {
               </section>
             )}
 
-            <div className="mb-6">
+            <div className="mb-4">
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-emerald-500">
                 Alltag / {activeCity || "Dein Standort"}
               </p>
@@ -1984,10 +2097,13 @@ export function Dashboard() {
                 Ein guter Stopp beginnt hier.
               </h2>
               <p className="mt-2 text-sm text-slate-400">
-                Aktuelle Preise deiner Stationen. Die richtige Entscheidung ohne
-                Datenchaos.
+                Von oben nach unten: Empfehlung → Tanken → Kosten → Heute →
+                Stationen → Umweg → Belege.
               </p>
             </div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              1 · Empfehlung
+            </p>
 
             <section
               className={`${panel} relative overflow-hidden p-5 shadow-2xl sm:p-7`}
@@ -2310,82 +2426,6 @@ export function Dashboard() {
                 );
               })()}
 
-              {/* B4 Dual-Ledger Karten */}
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Scale size={14} className="text-emerald-400" />
-                      Modell-Trefferquote
-                    </span>
-                    <Badge warning={!statsSummaryRes.data?.live_advice.calibrated}>
-                      {statsSummaryRes.data?.live_advice.gate_status || (statsSummaryRes.data?.live_advice.calibrated ? "Kalibriert" : "Vor-Kalibrierung")}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-slate-400 font-mono">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block uppercase">Warten-Treffer</span>
-                      <span className="text-sm font-bold text-slate-200">
-                        {statsSummaryRes.data?.live_advice.wait_hits ?? 0}/{statsSummaryRes.data?.live_advice.wait_n ?? 0}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block uppercase">Jetzt-Treffer</span>
-                      <span className="text-sm font-bold text-slate-200">
-                        {statsSummaryRes.data?.live_advice.now_hits ?? 0}/{statsSummaryRes.data?.live_advice.now_n ?? 0}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Wie oft lag die Empfehlung „warten“ / „jetzt tanken“ rückblickend richtig.
-                    Brier-Score 30d:{" "}
-                    <span className="font-mono text-slate-400">
-                      {statsSummaryRes.data?.live_advice.brier_30d ?? "—"}
-                    </span>
-                  </p>
-                  {m7Line && (
-                    <p className="mt-1 text-[10px] text-slate-500 leading-snug">
-                      {m7Line}
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                      <FuelIcon size={14} className="text-sky-400" />
-                      Deine Tank-Bilanz
-                    </span>
-                    <span className="font-mono text-[11px] text-emerald-400 font-bold">
-                      +{euro(statsSummaryRes.data?.wallet.saved_eur ?? 0)} €
-                    </span>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-slate-400 font-mono">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block uppercase">Füllungen</span>
-                      <span className="text-sm font-bold text-slate-200">
-                        {statsSummaryRes.data?.wallet.n_fills ?? 0}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block uppercase">Befolgt</span>
-                      <span className="text-sm font-bold text-slate-200">
-                        {statsSummaryRes.data?.wallet.followed ?? 0}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-[10px] text-slate-500 leading-snug">
-                    Dein Geld: gespart gegenüber „immer sofort tanken“ — gerechnet
-                    nur aus deinen echten Tankbelegen.
-                    {(statsSummaryRes.data?.wallet.n_fills ?? 0) === 0 && (
-                      <span className="block mt-1 text-slate-400">
-                        So geht's: nach dem Tanken oben „Ja, wie empfohlen“ oder „✎ Anders“ tippen.
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
               <div className="relative mt-5 flex items-start gap-2.5 text-xs leading-relaxed text-slate-400">
                 <ShieldCheck
                   size={17}
@@ -2402,7 +2442,200 @@ export function Dashboard() {
               </div>
             </section>
 
-            <div className="my-6 grid gap-4 sm:grid-cols-3">
+            {/* 1b · Vertrauen auf einen Blick — die ausführliche Kalibrierung
+                mit Diagramm lebt in der Werkstatt. */}
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-3 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5 font-semibold text-slate-300">
+                <Scale size={14} className="text-emerald-400" />
+                Modell-Trefferquote
+              </span>
+              <span className="font-mono">
+                Warten{" "}
+                <strong className="text-slate-200">
+                  {liveAdvice?.wait_hits ?? 0}/{liveAdvice?.wait_n ?? 0}
+                </strong>
+              </span>
+              <span className="font-mono">
+                Jetzt{" "}
+                <strong className="text-slate-200">
+                  {liveAdvice?.now_hits ?? 0}/{liveAdvice?.now_n ?? 0}
+                </strong>
+              </span>
+              <span className="font-mono">
+                Woanders{" "}
+                <strong className="text-slate-200">
+                  {liveAdvice?.elsewhere_hits ?? 0}/{liveAdvice?.elsewhere_n ?? 0}
+                </strong>
+              </span>
+              <span className="font-mono">
+                Brier 30d:{" "}
+                <strong className="text-slate-200">
+                  {liveAdvice?.brier_30d != null
+                    ? deNumber(liveAdvice.brier_30d)
+                    : "—"}
+                </strong>
+              </span>
+              <span className="text-[11px] text-slate-500">{gateStatus}</span>
+            </div>
+            {m7Line && (
+              <p className="mt-1.5 px-1 text-[11px] leading-snug text-slate-500">
+                {m7Line} Gezählt wird pro ausgespielter Empfehlung — meist eine
+                pro Tag.
+                {(liveAdvice?.n_pending ?? 0) > 0 && (
+                  <span className="text-amber-300/90">
+                    {" "}{liveAdvice?.n_pending} Empfehlung{(liveAdvice?.n_pending ?? 0) > 1 ? "en" : ""} läuft
+                    noch und fehlt oben deshalb noch.
+                  </span>
+                )}
+              </p>
+            )}
+
+            {/* 2 · Tanken: Erfassen und Bilanz in einer Karte — man sieht
+                sofort, wo ein Beleg hinkommt und was er gebracht hat. */}
+            <p className="mb-2 mt-6 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              2 · Tanken
+            </p>
+            <section
+              className={`${panel} mb-6 p-5 sm:p-6`}
+              aria-labelledby="quickfill-heading"
+            >
+              <div className="grid gap-6 lg:grid-cols-5">
+                <div className="lg:col-span-3">
+                  <h3
+                    id="quickfill-heading"
+                    className="flex items-center gap-2 text-sm font-semibold text-white"
+                  >
+                    <FuelIcon size={16} className="text-emerald-400" />
+                    Tanken erfassen
+                  </h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    Gerade getankt? Station, Liter, Preis — fertig. Der Beleg
+                    landet in deiner Tank-Bilanz (rechts) und unten im Verlauf.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs text-slate-400 sm:col-span-2">
+                      Station
+                      <select
+                        aria-label="Station des Tankbelegs"
+                        value={quickStation?.station_id || ""}
+                        onChange={(e) => setQuickStationId(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                      >
+                        {stations.length ? (
+                          stations.map((row) => (
+                            <option key={row.station_id} value={row.station_id}>
+                              {row.name}
+                              {price(row) !== null
+                                ? ` — ${euro(price(row), 3)} €/L`
+                                : " — Preis unbekannt"}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">Keine Station im Set</option>
+                        )}
+                      </select>
+                    </label>
+                    <label className="text-xs text-slate-400">
+                      Liter
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={quickLitersStr}
+                        onChange={(e) => setQuickLitersStr(commaToDot(e.target.value))}
+                        aria-invalid={quickDraft.litersError != null}
+                        title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                      />
+                      <span className="mt-1 block text-[10px] text-slate-500">
+                        {fillLimitHint("liters")} · z. B. 45,5.
+                      </span>
+                      {quickDraft.litersError && (
+                        <span className="mt-1 block text-[10px] leading-snug text-rose-300">
+                          {quickDraft.litersError}
+                        </span>
+                      )}
+                    </label>
+                    <label className="text-xs text-slate-400">
+                      Gezahlter Preis (€/L)
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={quickPriceStr}
+                        onChange={(e) => setQuickPriceStr(commaToDot(e.target.value))}
+                        aria-invalid={quickDraft.priceError != null}
+                        title={`${fillLimitHint("price")} — wie an der Säule`}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                      />
+                      <span className="mt-1 block text-[10px] text-slate-500">
+                        {fillLimitHint("price")} · Vorschlag: frischer Preis
+                        der Station.
+                      </span>
+                      {quickDraft.priceError && (
+                        <span className="mt-1 block text-[10px] leading-snug text-rose-300">
+                          {quickDraft.priceError}
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickFill()}
+                    disabled={!quickDraft.ok}
+                    title={
+                      quickDraft.stationMissing
+                        ? "Erst Station wählen"
+                        : quickDraft.litersError || quickDraft.priceError
+                          ? "Eingabe korrigieren"
+                          : `Beleg für ${quickStation?.name || "die gewählte Station"} buchen`
+                    }
+                    className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
+                  >
+                    Beleg buchen
+                  </button>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-5 lg:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-200">
+                      <FuelIcon size={15} className="text-sky-400" />
+                      Deine Tank-Bilanz
+                    </span>
+                    <span className="font-mono text-lg font-bold text-emerald-400">
+                      +{euro(statsSummaryRes.data?.wallet.saved_eur ?? 0)} €
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 font-mono text-slate-400">
+                    <div>
+                      <span className="block text-[10px] uppercase text-slate-500">
+                        Füllungen
+                      </span>
+                      <span className="text-xl font-bold text-slate-200">
+                        {statsSummaryRes.data?.wallet.n_fills ?? 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase text-slate-500">
+                        Befolgt
+                      </span>
+                      <span className="text-xl font-bold text-slate-200">
+                        {statsSummaryRes.data?.wallet.followed ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                    Dein Geld: gespart gegenüber „immer sofort tanken“ —
+                    gerechnet nur aus deinen echten Tankbelegen. Jeder Beleg
+                    erscheint zusätzlich unten im Verlauf.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <p className="mb-2 mt-6 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              3 · Was kostet die Füllung
+            </p>
+            <div className="mb-6 grid gap-4 sm:grid-cols-3">
               <Metric
                 label={`Füllung mit ${liters} Litern`}
                 value={
@@ -2416,16 +2649,32 @@ export function Dashboard() {
                 detail="Zum günstigsten aktuell gemeldeten Literpreis."
               />
               <Metric
-                label="Unterschied zur Vergleichsstation"
+                label={
+                  selectedIsCheapest
+                    ? "Teuerste statt billigste Station"
+                    : "Unterschied zur Vergleichsstation"
+                }
                 value={
-                  <span className={difference != null && difference > 0.01 ? "text-rose-300" : difference != null && difference < -0.01 ? "text-emerald-300" : "text-slate-200"}>
-                    {euro(difference)}{" "}
+                  <span
+                    className={
+                      selectedIsCheapest
+                        ? "text-amber-300"
+                        : difference != null && difference > 0.01
+                          ? "text-rose-300"
+                          : "text-slate-200"
+                    }
+                  >
+                    {euro(selectedIsCheapest ? span : difference)}{" "}
                     <span className="text-sm font-normal text-slate-500">
                       €
                     </span>
                   </span>
                 }
-                detail="Reiner Preisunterschied pro Füllung — grün günstiger, dezent rot teurer. Sprit- und Zeitkosten des Umwegs rechnet weiter unten „Rechnet sich der Umweg?“."
+                detail={
+                  selectedIsCheapest
+                    ? `Deine Vergleichsstation (${selected?.name || "—"}) ist gerade die billigste — so viel teurer wäre die teuerste pro Füllung. Umwegkosten rechnet „Rechnet sich der Umweg?“.`
+                    : `So viel teurer ist deine Vergleichsstation (${selected?.name || "—"}) pro Füllung als die billigste. Umwegkosten rechnet „Rechnet sich der Umweg?“.`
+                }
               />
               <div className={`${panel} p-5`}>
                 {/* E6: 1-L-Schritte am Slider, exakte Menge im Begleitfeld. */}
@@ -2451,6 +2700,9 @@ export function Dashboard() {
             </div>
 
             {/* Tagesstreifen (06–24 Uhr) */}
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              4 · Heute
+            </p>
             <section
               className={`${panel} mb-6 p-5 sm:p-6`}
               aria-labelledby="daystrip-heading"
@@ -2534,7 +2786,157 @@ export function Dashboard() {
               )}
             </section>
 
+            {/* Stations List */}
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              5 · Stationen
+            </p>
+            <section
+              className={`${panel} mb-6 overflow-hidden`}
+              aria-labelledby="stations-heading"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+                <div>
+                  <h3 id="stations-heading" className="text-sm font-semibold">
+                    Deine Stationen
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Station antippen, um sie als Vergleich zu wählen.
+                  </p>
+                </div>
+                <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-400">
+                  {stations.length} im Set
+                </span>
+              </div>
+              {stations.length ? (
+                <div className="divide-y divide-slate-800/80">
+                  {stations.map((row) => {
+                    const value = price(row);
+                    const age =
+                      row.age_minutes === null
+                        ? null
+                        : Math.max(0, row.age_minutes + elapsed);
+                    const label = !row.observed_at
+                      ? "Keine Meldung"
+                      : !online || age! > 30
+                        ? "Stand veraltet"
+                        : row.status === "closed"
+                          ? "Geschlossen"
+                          : value === null
+                            ? "Kein Kraftstoffpreis"
+                            : "Offen";
+                    return (
+                      <div
+                        key={row.station_id}
+                        className={`flex w-full items-center justify-between gap-2 px-5 py-4 transition-colors hover:bg-slate-800/40 ${selected?.station_id === row.station_id ? "bg-emerald-500/[.04]" : ""}`}
+                      >
+                        <button
+                          onClick={() => setSelectedId(row.station_id)}
+                          aria-pressed={selected?.station_id === row.station_id}
+                          aria-label={`${row.name} als Vergleich wählen`}
+                          className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${row.station_id === best?.station_id ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-700 bg-slate-800 text-slate-500"}`}
+                            >
+                              <FuelIcon size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-200">
+                                {row.name}
+                              </p>
+                              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+                                <span
+                                  className={
+                                    value !== null
+                                      ? "text-emerald-400"
+                                      : "text-amber-400"
+                                  }
+                                >
+                                  {label}
+                                </span>
+                                <span>{row.brand || "Freie Station"}</span>
+                                {row.dist_km != null && (
+                                  <span
+                                    title={
+                                      row.dist_mode === "road"
+                                        ? "Fahrstrecke mit dem Auto vom Anker dieser Stadt"
+                                        : "Luftlinie zum Anker — Straßenroute gerade nicht verfügbar"
+                                    }
+                                    className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+                                  >
+                                    {row.dist_km.toLocaleString("de-DE", {
+                                      maximumFractionDigits: 1,
+                                    })}{" "}
+                                    km{" "}
+                                    {row.dist_mode === "road" ? "Fahrt" : "Luftlinie"}
+                                  </span>
+                                )}
+                                <span>
+                                  {age === null
+                                    ? "Noch keine Daten"
+                                    : `vor ${Math.floor(age)} Min.`}
+                                </span>
+                                {selected?.station_id === row.station_id && (
+                                  <span className="text-sky-400">
+                                    Vergleichsstation
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <div className="text-right">
+                              <div
+                                className={`font-mono text-lg font-bold tabular-nums ${row.station_id === best?.station_id ? "text-emerald-400" : "text-slate-200"}`}
+                              >
+                                {euro(value, 3)}{" "}
+                                <span className="text-[10px] font-normal text-slate-500">
+                                  €/L
+                                </span>
+                              </div>
+                              {value === null && row.last_price !== null && (
+                                <div className="text-[10px] text-slate-500">
+                                  Letzte Meldung: {euro(row.last_price, 3)} €
+                                </div>
+                              )}
+                            </div>
+                            <ChevronRight
+                              size={15}
+                              className="text-slate-600"
+                            />
+                          </div>
+                        </button>
+                        {row.maps_url ? (
+                          <a
+                            href={row.maps_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Route zu ${row.name} öffnen`}
+                            title="Route öffnen"
+                            className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
+                          >
+                            <ArrowUpRight size={15} />
+                          </a>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-5">
+                  <Empty>
+                    Hier erscheinen die Stationen aus deinem gemeinsamen
+                    Polling-Set.
+                  </Empty>
+                </div>
+              )}
+            </section>
+
             {/* Detour Section — H1/B6: Server ist einzige Quelle für Strecke + Verdict */}
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              6 · Umweg
+            </p>
             <section
               className={`${panel} mb-6 p-5 sm:p-6`}
               aria-labelledby="detour-heading"
@@ -2845,151 +3247,10 @@ export function Dashboard() {
               </p>
             </section>
 
-            {/* Stations List */}
-            <section
-              className={`${panel} overflow-hidden`}
-              aria-labelledby="stations-heading"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-                <div>
-                  <h3 id="stations-heading" className="text-sm font-semibold">
-                    Deine Stationen
-                  </h3>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Station antippen, um sie als Vergleich zu wählen.
-                  </p>
-                </div>
-                <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-400">
-                  {stations.length} im Set
-                </span>
-              </div>
-              {stations.length ? (
-                <div className="divide-y divide-slate-800/80">
-                  {stations.map((row) => {
-                    const value = price(row);
-                    const age =
-                      row.age_minutes === null
-                        ? null
-                        : Math.max(0, row.age_minutes + elapsed);
-                    const label = !row.observed_at
-                      ? "Keine Meldung"
-                      : !online || age! > 30
-                        ? "Stand veraltet"
-                        : row.status === "closed"
-                          ? "Geschlossen"
-                          : value === null
-                            ? "Kein Kraftstoffpreis"
-                            : "Offen";
-                    return (
-                      <div
-                        key={row.station_id}
-                        className={`flex w-full items-center justify-between gap-2 px-5 py-4 transition-colors hover:bg-slate-800/40 ${selected?.station_id === row.station_id ? "bg-emerald-500/[.04]" : ""}`}
-                      >
-                        <button
-                          onClick={() => setSelectedId(row.station_id)}
-                          aria-pressed={selected?.station_id === row.station_id}
-                          aria-label={`${row.name} als Vergleich wählen`}
-                          className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${row.station_id === best?.station_id ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-700 bg-slate-800 text-slate-500"}`}
-                            >
-                              <FuelIcon size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-200">
-                                {row.name}
-                              </p>
-                              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
-                                <span
-                                  className={
-                                    value !== null
-                                      ? "text-emerald-400"
-                                      : "text-amber-400"
-                                  }
-                                >
-                                  {label}
-                                </span>
-                                <span>{row.brand || "Freie Station"}</span>
-                                {row.dist_km != null && (
-                                  <span
-                                    title={
-                                      row.dist_mode === "road"
-                                        ? "Fahrstrecke mit dem Auto vom Anker dieser Stadt"
-                                        : "Luftlinie zum Anker — Straßenroute gerade nicht verfügbar"
-                                    }
-                                    className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
-                                  >
-                                    {row.dist_km.toLocaleString("de-DE", {
-                                      maximumFractionDigits: 1,
-                                    })}{" "}
-                                    km{" "}
-                                    {row.dist_mode === "road" ? "Fahrt" : "Luftlinie"}
-                                  </span>
-                                )}
-                                <span>
-                                  {age === null
-                                    ? "Noch keine Daten"
-                                    : `vor ${Math.floor(age)} Min.`}
-                                </span>
-                                {selected?.station_id === row.station_id && (
-                                  <span className="text-sky-400">
-                                    Vergleichsstation
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <div className="text-right">
-                              <div
-                                className={`font-mono text-lg font-bold tabular-nums ${row.station_id === best?.station_id ? "text-emerald-400" : "text-slate-200"}`}
-                              >
-                                {euro(value, 3)}{" "}
-                                <span className="text-[10px] font-normal text-slate-500">
-                                  €/L
-                                </span>
-                              </div>
-                              {value === null && row.last_price !== null && (
-                                <div className="text-[10px] text-slate-500">
-                                  Letzte Meldung: {euro(row.last_price, 3)} €
-                                </div>
-                              )}
-                            </div>
-                            <ChevronRight
-                              size={15}
-                              className="text-slate-600"
-                            />
-                          </div>
-                        </button>
-                        {row.maps_url ? (
-                          <a
-                            href={row.maps_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`Route zu ${row.name} öffnen`}
-                            title="Route öffnen"
-                            className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
-                          >
-                            <ArrowUpRight size={15} />
-                          </a>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-5">
-                  <Empty>
-                    Hier erscheinen die Stationen aus deinem gemeinsamen
-                    Polling-Set.
-                  </Empty>
-                </div>
-              )}
-            </section>
-
             {/* A3: Tankbelege-Verlauf mit Storno (void statt löschen). */}
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              7 · Belege
+            </p>
             <section
               className={`${panel} mb-6 p-5 sm:p-6`}
               aria-labelledby="fills-heading"
@@ -3088,7 +3349,7 @@ export function Dashboard() {
                 <Empty>
                   {fillsRes.pending
                     ? "Tankbelege werden geladen …"
-                    : "Noch keine Tankbelege. Nach dem Tanken „Ja, wie empfohlen“ oder „✎ Anders“ tippen — dann erscheint der Beleg hier."}
+                    : "Noch keine Tankbelege. Oben unter „2 · Tanken“ erfassen — dann erscheint der Beleg hier."}
                 </Empty>
               )}
             </section>
@@ -3109,7 +3370,9 @@ export function Dashboard() {
                   Nachvollziehen statt blind vertrauen.
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
-                  Beobachtungen, Modellstand und Güte — keine Beispielzahlen.
+                  Drei Fragen, von oben nach unten: Taugt das Modell? Warum
+                  empfiehlt es das? Was zeigen die Daten? — keine
+                  Beispielzahlen.
                 </p>
                 <div className="mt-3">
                   <Badge warning>Unkalibriert · keine Handlungsempfehlung</Badge>
@@ -3175,82 +3438,10 @@ export function Dashboard() {
               />
             </div>
 
-            {/* Sektion 1: Die Entscheidungs-Regel & ε-Slider */}
-            <section className={`${panel} mb-8 p-6`}>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Scale size={18} className="text-emerald-400" />
-                    <h3 className="text-lg font-semibold text-white">Die Entscheidungs-Regel & ε-Steuerung</h3>
-                  </div>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-400">
-                    Jeden Morgen um <span className="text-slate-200">08:00</span> entscheidet die Station aus ihrem Training:{" "}
-                    <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
-                    <strong className="text-slate-200">jetzt tanken</strong>.
-                    <span className="text-slate-500 block mt-1">
-                      08:00 ist der feste Tages-Anker: Ausgangslage ist der letzte
-                      gemeldete Preis vor 08:00, verglichen mit der billigsten
-                      Stunde des restlichen Tages. So ist jeder Tag im Prüfstand
-                      gleich bewertbar — nicht abhängig davon, wann man zufällig
-                      nachschaut.
-                    </span>
-                    <span className="text-slate-500 block mt-1">
-                      Die Produktion entscheidet weiterhin mit der kalibrierten Entscheidungstabelle; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
-                    </span>
-                  </p>
-                </div>
-                <div className="w-full max-w-xs shrink-0 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                  <label className="text-xs font-medium uppercase tracking-wider text-slate-400 flex justify-between">
-                    <span>Handlungsschwelle ε</span>
-                    <span className="font-mono text-emerald-400 font-bold">{eps.toFixed(2)} ct/L</span>
-                  </label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={4}
-                    step={0.05}
-                    value={eps}
-                    aria-valuetext={`${eps.toFixed(2).replace(".", ",")} Cent pro Liter`}
-                    onChange={(e) => setEps(Number(e.target.value))}
-                    className="mt-2 w-full accent-emerald-400"
-                  />
-                  <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                    Warten nur, wenn die Trainings-Ersparnis diese Schwelle verspricht.
-                  </p>
-                </div>
-              </div>
-              {labTotals.n === 0 ? (
-                <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-xs leading-relaxed text-slate-400">
-                  {problem((labData as any)?.error_code || statsSummaryRes.errorCode) ||
-                    "Noch keine Tages-Entscheidungen. Sie erscheinen, sobald der Modell-Lauf genug echte Preishistorie ausgewertet hat (mind. 7 vollständige Tage je Station)."}
-                </div>
-              ) : (
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Regel-Ergebnis ({labData?.daysEval ?? "–"} d out-of-sample)</p>
-                  <p className="mt-1 text-xl font-bold text-emerald-300 font-mono">{euro(labTotals.smart)} €</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Perfekte Sicht (Orakel)</p>
-                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.best)} €</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Baseline „immer warten“</p>
-                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.always)} €</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Geholtes Potenzial</p>
-                  <p className="mt-1 text-xl font-bold text-amber-300 font-mono">{labTotals.best > 0 ? `${Math.round(labTotals.potShare * 100)} %` : "—"}</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-                  <p className="text-[11px] text-slate-500">Ø Entscheidungsverlust</p>
-                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.regretEur)} €</p>
-                </div>
-              </div>
-              )}
-            </section>
-
-            {/* Sektion 2: Entscheidungs-Scoreboard */}
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              A · Taugt das Modell? — Bewährung an echten Tagen
+            </p>
+            {/* Gruppe A1: Entscheidungs-Scoreboard */}
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
@@ -3336,15 +3527,22 @@ export function Dashboard() {
               </div>
             </section>
 
-            {/* Sektion 3: Kalibrierung */}
+            {/* Gruppe A2: Kalibrierung */}
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                  Kalibrierung der Entscheidungs-Wahrscheinlichkeit
+                  Stimmen die Prozentzahlen?
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-white">
-                  Stimmt „mit x % ist der Abend billiger“ mit der Realität überein?
+                  Wenn das Modell 70 % verspricht, trifft es dann auch in 7 von 10 Fällen?
                 </h3>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+                  Jeder Punkt fasst vergangene Empfehlungen mit ähnlicher Wette
+                  zusammen — waagerecht das Versprechen, senkrecht das
+                  Eingetroffene. Auf der gestrichelten Diagonalen stimmt beides
+                  überein; darunter war das Modell zu siegessicher, darüber zu
+                  bescheiden. Größere Punkte stehen für mehr Empfehlungen.
+                </p>
               </div>
               <div className="grid gap-4 lg:grid-cols-3">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
@@ -3352,16 +3550,20 @@ export function Dashboard() {
                 </div>
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-                    <p className="text-slate-400">Mittlere Kalibrier-Abweichung</p>
+                    <p className="text-slate-400">Versprechen vs. Wirklichkeit</p>
                     <p className="mt-1 text-2xl font-bold text-white">
                       {Number.isFinite(calibErr) ? `${(calibErr * 100).toFixed(1)} pp` : "—"}
+                    </p>
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                      Mittlerer Abstand der Punkte von der Diagonalen — je
+                      kleiner, desto ehrlicher die Prozentzahlen.
                     </p>
                   </div>
                   {/* Freigabe 1 — M7-Gate (§0.4): Zähl-Gate über abgeschlossene
                       Empfehlungen. Kein Tages-Nenner: 90 Übergangs-Tage sind
                       keine 100 Empfehlungen. */}
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-                    <p className="text-slate-400">Kalibrierungs-Freigabe</p>
+                    <p className="text-slate-400">Freigabe 1 von 2 · Genug Beweise gesammelt?</p>
                     <p className="mt-1 text-base font-bold text-amber-300">{gateStatus}</p>
                     {m7Line && (
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
@@ -3374,18 +3576,18 @@ export function Dashboard() {
                       Fortschritt; sie schaltet keine Prozentanzeige frei. */}
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">
-                      Datenumstellung (Archiv → Live)
+                      Freigabe 2 von 2 · Nur eigene Live-Tage?
                     </p>
                     <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
                       {transitionLine}
                     </p>
                     {stationPhase && (
                       <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
-                        Ausgewählte Station: {stationPhase.good_complete_live_days}/
-                        {stationPhase.required_complete_live_days} vollständige Live-Tage
+                        Ausgewählte Station: {stationPhase.good_complete_live_days} von{" "}
+                        {stationPhase.required_complete_live_days} nötigen Live-Tagen erreicht —{" "}
                         {stationPhase.mode === "live_only"
-                          ? " (nur Live-Daten)"
-                          : " (Archiv noch beteiligt)"}
+                          ? "rechnet nur mit eigenen Beobachtungen."
+                          : "Archiv noch im Training."}
                       </p>
                     )}
                   </div>
@@ -3393,7 +3595,84 @@ export function Dashboard() {
               </div>
             </section>
 
-            {/* Beobachtete Historie & Modell-Ausblick */}
+            {/* Gruppe B1: Die Entscheidungs-Regel & ε-Slider */}
+            <section className={`${panel} mb-8 p-6`}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Scale size={18} className="text-emerald-400" />
+                    <h3 className="text-lg font-semibold text-white">Die Entscheidungs-Regel & ε-Steuerung</h3>
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-400">
+                    Jeden Tag um <span className="text-slate-200">{anchorLabel}</span> entscheidet die Station aus ihrem Training:{" "}
+                    <strong className="text-slate-200">Warten</strong> bis zur vorhergesagten billigsten Stunde (μ ≥ ε) — sonst{" "}
+                    <strong className="text-slate-200">jetzt tanken</strong>.
+                    <span className="text-slate-500 block mt-1">
+                      {anchorLabel} ist der Tages-Anker: Ausgangslage ist der letzte
+                      gemeldete Preis vor {anchorLabel}, verglichen mit der billigsten
+                      Stunde des restlichen Tages. Standard ist 12:00 — Anhebungen
+                      gibt es nur mittags, und erst um 12 Uhr weiß der
+                      hypothetische Entscheid, ob es heute teurer wurde. So ist
+                      jeder Tag im Prüfstand gleich bewertbar — nicht abhängig
+                      davon, wann man zufällig nachschaut.
+                    </span>
+                    <span className="text-slate-500 block mt-1">
+                      Die Produktion entscheidet weiterhin mit der kalibrierten Entscheidungstabelle; dieser interaktive Slider dient zur Was-wäre-wenn-Analyse.
+                    </span>
+                  </p>
+                </div>
+                <div className="w-full max-w-xs shrink-0 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <label className="text-xs font-medium uppercase tracking-wider text-slate-400 flex justify-between">
+                    <span>Handlungsschwelle ε</span>
+                    <span className="font-mono text-emerald-400 font-bold">{eps.toFixed(2)} ct/L</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={4}
+                    step={0.05}
+                    value={eps}
+                    aria-valuetext={`${eps.toFixed(2).replace(".", ",")} Cent pro Liter`}
+                    onChange={(e) => setEps(Number(e.target.value))}
+                    className="mt-2 w-full accent-emerald-400"
+                  />
+                  <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                    Warten nur, wenn die Trainings-Ersparnis diese Schwelle verspricht.
+                  </p>
+                </div>
+              </div>
+              {labTotals.n === 0 ? (
+                <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-xs leading-relaxed text-slate-400">
+                  {problem((labData as any)?.error_code || statsSummaryRes.errorCode) ||
+                    "Noch keine Tages-Entscheidungen. Sie erscheinen, sobald der Modell-Lauf genug echte Preishistorie ausgewertet hat (mind. 7 vollständige Tage je Station)."}
+                </div>
+              ) : (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+                  <p className="text-[11px] text-slate-500">Regel-Ergebnis ({labData?.daysEval ?? "–"} d out-of-sample)</p>
+                  <p className="mt-1 text-xl font-bold text-emerald-300 font-mono">{euro(labTotals.smart)} €</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+                  <p className="text-[11px] text-slate-500">Perfekte Sicht (Orakel)</p>
+                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.best)} €</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+                  <p className="text-[11px] text-slate-500">Baseline „immer warten“</p>
+                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.always)} €</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+                  <p className="text-[11px] text-slate-500">Geholtes Potenzial</p>
+                  <p className="mt-1 text-xl font-bold text-amber-300 font-mono">{labTotals.best > 0 ? `${Math.round(labTotals.potShare * 100)} %` : "—"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+                  <p className="text-[11px] text-slate-500">Ø Entscheidungsverlust</p>
+                  <p className="mt-1 text-xl font-bold text-slate-100 font-mono">{euro(labTotals.regretEur)} €</p>
+                </div>
+              </div>
+              )}
+            </section>
+
+            {/* Gruppe B2a: Beobachtete Historie & Modell-Ausblick */}
             <section className={`${panel} mb-6 p-5 sm:p-6`}>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">
@@ -3521,7 +3800,10 @@ export function Dashboard() {
               )}
             </section>
 
-            {/* Sektion 4: Stations-Labor Detail-Analyse */}
+            <p className="mb-2 mt-10 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              B · Warum empfiehlt es das? — Regel ausprobieren, Station sezieren
+            </p>
+            {/* Gruppe B2b: Stations-Labor Detail-Analyse */}
             <section className={`${panel} mb-8 p-6`}>
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -3606,13 +3888,13 @@ export function Dashboard() {
                         height={220}
                         series={[
                           {
-                            name: "Erwartung vs. 08:00",
+                            name: `Erwartung vs. ${anchorLabel}`,
                             color: "#e2e8f0",
                             pts: dayPts,
                           },
                         ]}
                         marks={[
-                          { x: 8, color: "#38bdf8", label: "08:00" },
+                          { x: anchorHour, color: "#38bdf8", label: anchorLabel },
                           ...(rowPredHour != null
                             ? [
                                 {
@@ -3662,7 +3944,10 @@ export function Dashboard() {
               </div>
             </section>
 
-            {/* Sektion 5: Heatmaps */}
+            <p className="mb-2 mt-10 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+              C · Was zeigen die Daten? — Muster und Stationsvergleich
+            </p>
+            {/* Gruppe C1: Heatmaps */}
             <section className={`${panel} mb-8 p-5 sm:p-6`}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -3736,7 +4021,7 @@ export function Dashboard() {
               )}
             </section>
 
-            {/* Sektion 6: Meine Stationen Ranking */}
+            {/* Gruppe C2: Meine Stationen Ranking */}
             <section className={`${panel} mb-8 p-5 sm:p-6`}>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">

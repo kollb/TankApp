@@ -37,17 +37,11 @@
 
 ## Auth & Limits
 
-- Anonym: 60/min, 10 000/Tag
-- Header `X-Api-Key`: 300/min, 50 000/Tag
-
-Der Zähler läuft **in der App** (Konzept §11): jede Antwort trägt
-`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` und
-`X-RateLimit-Policy` (`anon` | `keyed`). Bei Überschreitung: `429` mit
-`Retry-After` und `{"error_code": "rate_limited"}`. Grenzen je Deployment
-konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
-`TANKAPP_RATE_KEY_PER_MIN` (300), `TANKAPP_RATE_ANON_PER_DAY` (10 000),
-`TANKAPP_RATE_KEY_PER_DAY` (50 000). Schlüssel kommen ausschließlich aus
-`TANKAPP_API_KEYS` (kommagetrennt) — nie ins Image, nie ins Repo.
+Kein App-weites Rate-Limit: Die App läuft im Heimnetz (LAN-only) — keine
+`X-RateLimit-*`-Header, kein `429`, keine API-Keys (`TANKAPP_API_KEYS` und
+`TANKAPP_RATE_*` sind ersatzlos entfernt, `app/ratelimit.py` gelöscht).
+Einzige Auth bleibt der Uploader-Webhook (`POST /api/v1/jobs/trigger`, nur
+mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN` per `Authorization: Bearer`).
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
@@ -263,8 +257,8 @@ Download-Link im System-Tab. Der Export ist dieselbe Datenbasis wie
 `GET /api/v1/stats/summary?city=Frankfurt&fuel=e10` (auch als `/v1/stats/summary` erreichbar)
 
 Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
-1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten 08:00-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ 08:00, Wahrheit = realisierte offene Preise). Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
-2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen). Das M7-Gate ist ein **Zähl-Gate** (§0.4): `calibrated` gilt ab `min_recommendations` (= 100, `app.feedback.M7_MIN_RECOMMENDATIONS`) abgeschlossenen Empfehlungen und `brier_30d` < `brier_threshold` (= 0,25, `M7_BRIER_THRESHOLD`); beide Schwellen werden mitgeliefert, damit die GUI keinen eigenen Nenner erfindet. `gate_status` unterscheidet „steht aus (n < 100)“, „nicht messbar“ (n reicht, aber kein Snapshot trägt eine P-Schätzung), „nicht erreicht“ (Brier ≥ Schwelle) und „kalibriert“. Die 90-Tage-Übergangsregel (Punkt 6) ist **kein** Bestandteil dieses Gates.
+1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten Anker-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ Tages-Anker, Wahrheit = realisierte offene Preise). Der Tages-Anker ist `TANKAPP_DECISION_HOUR` (Default 12, `decisionHour` im Report; Engine-CLI: `--decision-hour`) — 12:00, weil Anhebungen nur mittags stattfinden und der hypothetische Entscheid erst dann weiß, ob es heute teurer wurde. Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
+2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt/Woanders, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen); noch laufende Empfehlungen zählen erst nach der Abrechnung (`n_pending`, `snapshots_total`, `n_void_all`). Das M7-Gate ist ein **Zähl-Gate** (§0.4): `calibrated` gilt ab `min_recommendations` (= 100, `app.feedback.M7_MIN_RECOMMENDATIONS`) abgeschlossenen Empfehlungen und `brier_30d` < `brier_threshold` (= 0,25, `M7_BRIER_THRESHOLD`); beide Schwellen werden mitgeliefert, damit die GUI keinen eigenen Nenner erfindet. `gate_status` unterscheidet „steht aus (n < 100)“, „nicht messbar“ (n reicht, aber kein Snapshot trägt eine P-Schätzung), „nicht erreicht“ (Brier ≥ Schwelle) und „kalibriert“. Die 90-Tage-Übergangsregel (Punkt 6) ist **kein** Bestandteil dieses Gates.
 3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
@@ -474,6 +468,10 @@ Antwort:
     [null, null, ..., 45.2, 78.1],
     ...
   ],
+  "counts": [
+    [0, 0, ..., 71, 68],
+    ...
+  ],
   "points": 12345,
   "stations": 10,
   "error_code": null
@@ -483,6 +481,7 @@ Antwort:
 - Matrix 7×24, Zeilen Mo–So, Spalten 0–23 Uhr (Europe/Berlin)
 - level: Werte €/L (z. B. 1.689) oder null
 - probability: Werte 0–100 % (z. B. 73.5) oder null
+- `counts`: Stichprobe je Zelle (7×24) — die GUI blendet Zellen unter 8 Preisen aus (sonst kürt ein einzelner Nacht-Preis die „günstigste Stunde“) und lässt Tages-Zeilen unter 3 belastbaren Zellen leer
 - `points`: Anzahl berücksichtigter offener Preise
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
@@ -674,7 +673,6 @@ curl -s -X POST http://nas:1355/api/v1/jobs/models/run -H 'Content-Type: applica
   für den er gedacht ist: nach einer Korrektur den Fehlschlag sofort nachholen.
   Zwei Grenzen bleiben: nie zwei Läufe desselben Jobs gleichzeitig, und
   mindestens 60 s Abstand (Schutz gegen Dauergeklicke).
-- Rate-Limit gilt auch hier (60/min anonym, 300/min mit Key) → `429 rate_limited`
 
 ## Job-Log (GET, B6)
 
@@ -788,8 +786,8 @@ nicht Alltag.
 
 ## Fehlercodes
 
-Zusätzlich zu den bekannten Codes: `rate_limited` (429, Konzept §11),
-`invalid_latest_by`, `invalid_mode`, `invalid_home` (400, `/api/v1/decide`).
+Zusätzlich zu den bekannten Codes: `invalid_latest_by`, `invalid_mode`,
+`invalid_home` (400, `/api/v1/decide`).
 
 Siehe `web/src/data.ts` messages:
 

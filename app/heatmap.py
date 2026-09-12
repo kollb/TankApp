@@ -103,8 +103,12 @@ def build_heatmap(
     # Stadtmedian je Zelle (für station-spezifische probability)
     cell_median = {key: _median(lst) for key, lst in cell_prices_all.items()}
 
-    # Matrix aufbauen 7×24
+    # Matrix aufbauen 7×24 — plus Zähler je Zelle: Die GUI blendet Zellen
+    # mit zu wenigen Preisen aus (sonst kürt ein einzelner Nacht-Preis die
+    # „günstigste Stunde“). Die Werte bleiben ehrlich im Payload, die
+    # Deutung („belastbar oder nicht“) trifft die Anzeige.
     matrix = [[None for _ in range(24)] for _ in range(7)]
+    counts = [[0 for _ in range(24)] for _ in range(7)]
     for dow in range(7):
         for hour in range(24):
             key = (dow, hour)
@@ -114,6 +118,7 @@ def build_heatmap(
                     if cell_prices_station
                     else cell_prices_all[key]
                 )
+                counts[dow][hour] = len(lst)
                 median = _median(lst)
                 matrix[dow][hour] = None if median is None else round(median, 3)
             else:  # probability
@@ -129,6 +134,7 @@ def build_heatmap(
                     # P(Preis ≤ Gesamtmedian) je Zelle
                     reference = overall_median
                     lst = cell_prices_all.get(key, [])
+                counts[dow][hour] = len(lst)
                 if not lst or reference is None:
                     matrix[dow][hour] = None
                 else:
@@ -147,6 +153,7 @@ def build_heatmap(
         "days": DAYS,
         "hours": HOURS,
         "matrix": matrix,
+        "counts": counts,
         "points": station_points if station_id else total_points,
         "stations": stations_involved,
         "basis": basis,

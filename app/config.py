@@ -27,12 +27,14 @@ class Settings:
     # Default aus: die Tabelle rechnet mit den Startwerten (§4.1/§4.2), der
     # Vorschlag wird in /api/v1/stats/summary nur ausgewiesen.
     m7_auto_apply: bool = False
-    # API-Schutz (Konzept §11): anonym 60/min, mit Key 300/min.
-    api_keys: tuple[str, ...] = ()
-    rate_limit_anon_per_min: int = 60
-    rate_limit_key_per_min: int = 300
-    rate_limit_anon_per_day: int = 10_000
-    rate_limit_key_per_day: int = 50_000
+    # Hinweis: Ein API-Rate-Limit (früher 60/min anonym, TANKAPP_API_KEYS /
+    # TANKAPP_RATE_*) ist seit 0.12.0 entfernt — die App läuft ausschließlich
+    # im eigenen LAN, und das Limit traf den Normalbetrieb (mehrere Geräte).
+    # Schicht-A-Anker (Konzept §5.5): Tagesstunde des hypothetischen
+    # Backtest-Entscheids. Default 12: Nach der 12-Uhr-Regel (Anhebungen nur
+    # mittags) weiß man um 12 Uhr, ob es heute teurer wurde — morgens fehlt
+    # dem hypothetischen Entscheid genau diese Information.
+    decision_hour: int = 12
     # Modell-Lauf: 0 = automatisch (CPU-Kerne, maximal 8), 1 = seriell.
     model_workers: int = 0
     # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
@@ -79,24 +81,8 @@ class Settings:
             not in {"0", "false", "off", "no"},
             m7_auto_apply=os.environ.get("TANKAPP_M7_AUTO_APPLY", "0").strip()
             in {"1", "true", "on", "yes"},
-            api_keys=tuple(
-                key.strip()
-                for key in os.environ.get("TANKAPP_API_KEYS", "").split(",")
-                if key.strip()
-            ),
-            rate_limit_anon_per_min=_env_int(
-                "TANKAPP_RATE_ANON_PER_MIN", 60, low=1, high=100_000
-            ),
-            rate_limit_key_per_min=_env_int(
-                "TANKAPP_RATE_KEY_PER_MIN", 300, low=1, high=100_000
-            ),
-            rate_limit_anon_per_day=_env_int(
-                "TANKAPP_RATE_ANON_PER_DAY", 10_000, low=1, high=10_000_000
-            ),
-            rate_limit_key_per_day=_env_int(
-                "TANKAPP_RATE_KEY_PER_DAY", 50_000, low=1, high=10_000_000
-            ),
             model_workers=_env_int("TANKAPP_MODEL_WORKERS", 0, low=0, high=64),
+            decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             city_subdivs=_city_subdivs_from_env(),
         )
 

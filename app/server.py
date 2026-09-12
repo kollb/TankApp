@@ -16,7 +16,6 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from polling_plan import collector_lock
 from .config import ROOT
 from .data import LiveData, read_json
-from .ratelimit import RateLimiter
 from .worker import INTERVALS
 
 # Konzept §11.3 / M5: Alte Alltags-Routen werden markiert, sobald
@@ -270,37 +269,19 @@ class Scheduler:
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, data, **kwargs):
         self.data = data
-        self._rate_info = None
         self._successor = None
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
         pass
 
-    def _rate_limit(self):
-        """Konzept §11: 60/min anonym, 300/min mit X-Api-Key.
-
-        Ohne Limiter am Datenobjekt (z. B. ältere Aufrufer) greift kein
-        Limit — der Schutz ist ein Auftrag der API, keine stillere Falle.
-        """
-        limiter = getattr(self.data, "rate_limiter", None)
-        if limiter is None:
-            return True
-        allowed, info = limiter.check(
-            self.headers.get("X-Api-Key"), self.client_address[0]
-        )
-        self._rate_info = info
-        if allowed:
-            return True
-        self.send_response(429)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Retry-After", str(info["retry_after"]))
-        content = json.dumps({"error_code": "rate_limited"}).encode()
-        self.send_header("Content-Length", str(len(content)))
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(content)
-        return False
+    # Hinweis: Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
+    # Browser, Konzept §12 P1 „keine öffentliche API“). Ein API-Rate-Limit
+    # (früher 60/min anonym, 429 + X-RateLimit-*) ist seit 0.12.0 entfernt:
+    # Das normale GUI-Polling mehrerer Haushaltsgeräte lag bereits über dem
+    # Tagesbudget und erzeugte 429er im Normalbetrieb — das Limit schützte
+    # vor niemandem, sondern störte nur. Missbrauchsschutz bleibt der
+    # Festschreibung „nur Heimnetz/VPN, keine Portfreigabe“ überlassen.
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -316,12 +297,6 @@ class Handler(SimpleHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
         )
-        info = getattr(self, "_rate_info", None)
-        if info:
-            self.send_header("X-RateLimit-Limit", str(info["limit"]))
-            self.send_header("X-RateLimit-Remaining", str(info["remaining"]))
-            self.send_header("X-RateLimit-Reset", str(info["reset"]))
-            self.send_header("X-RateLimit-Policy", "keyed" if info["keyed"] else "anon")
         successor = getattr(self, "_successor", None)
         if successor:
             # RFC 8594 (Deprecation) + RFC 8594-kompatibler Sunset.
@@ -454,8 +429,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_get(self):
         url = urlsplit(self.path)
-        if not self._rate_limit():
-            return
         # A6: CSV-Export der eigenen Tankbelege — eigene Antwortform, deshalb
         # vor dem generischen JSON-Pfad behandelt.
         if url.path == "/api/v1/fills.csv":
@@ -526,8 +499,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_post(self):
         url = urlsplit(self.path)
-        if not self._rate_limit():
-            return
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
 
         try:
@@ -699,8 +670,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     def serve_delete(self):
         url = urlsplit(self.path)
-        if not self._rate_limit():
-            return
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
         # A3: Beleg-Storno — DELETE /api/v1/fills/{id} setzt voided statt zu löschen.
         if norm_path.startswith("/api/v1/fills/"):
@@ -733,8 +702,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 def make_server(settings, host="0.0.0.0", port=1355, data=None):
     data = data or LiveData(settings)
-    if not hasattr(data, "rate_limiter"):
-        data.rate_limiter = RateLimiter.from_settings(settings)
     return ThreadingHTTPServer((host, port), functools.partial(Handler, data=data))
 
 

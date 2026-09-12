@@ -72,6 +72,7 @@ def load_raw_input(args):
         min_train_days=args.min_train_days,
         poll_start=args.poll_start,
         poll_end=args.poll_end,
+        decision_hour=getattr(args, "decision_hour", 12),
         city_subdivs=parse_city_subdivs(getattr(args, "city_subdivs", None)),
         bootstrap_ew_half_life_days=(
             None if half_life is not None and half_life <= 0 else half_life
@@ -138,6 +139,13 @@ def parser() -> argparse.ArgumentParser:
         )
         command.add_argument("--poll-start", type=int, default=6)
         command.add_argument("--poll-end", type=int, default=24)
+        command.add_argument(
+            "--decision-hour",
+            type=int,
+            default=12,
+            help="Schicht-A-Anker (Konzept §5.5): Tagesstunde des "
+            "hypothetischen Backtest-Entscheids, Default 12.",
+        )
         command.add_argument(
             "--city-subdivs",
             help="Gepoolter Feiertags-Dummy (Konzept §3.2), z. B. "

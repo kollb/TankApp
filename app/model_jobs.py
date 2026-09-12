@@ -125,7 +125,7 @@ def _run(task: tuple) -> dict[str, Any]:
                 ok=True,
                 metrics=report.get("metrics"),
                 decision_rows=list(report.get("decision", {}).get("rows", [])),
-                decision_hour=report.get("decision", {}).get("decision_hour", 8),
+                decision_hour=report.get("decision", {}).get("decision_hour", 12),
                 rolling_picp_7d=rolling[0] if rolling else None,
                 horizons=report.get("horizons") or {},
                 model=model,

@@ -29,8 +29,9 @@ services:
       TANKAPP_MODEL_WORKERS: "${TANKAPP_MODEL_WORKERS:-0}"
       # B5: 1 = vorgeschlagene Schwellen aus dem Advice-Ledger anwenden (M7).
       TANKAPP_M7_AUTO_APPLY: "${TANKAPP_M7_AUTO_APPLY:-0}"
-      # B5: kommagetrennte API-Schlüssel für 300/min (Konzept §11); leer = nur anonym.
-      TANKAPP_API_KEYS: "${TANKAPP_API_KEYS:-}"
+      # Schicht-A-Anker des Backtests (Konzept §5.5): Tagesstunde des
+      # hypothetischen Entscheids. Default 12 (nach der 12-Uhr-Anhebung).
+      TANKAPP_DECISION_HOUR: "${TANKAPP_DECISION_HOUR:-12}"
       TANKAPP_BUILD_COMMIT: "${TANKAPP_BUILD_COMMIT:-}"
       TZ: Europe/Berlin
     volumes:

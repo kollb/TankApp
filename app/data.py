@@ -742,6 +742,7 @@ class LiveData:
             "days": result["days"],
             "hours": result["hours"],
             "matrix": result["matrix"],
+            "counts": result["counts"],
             "points": result["points"],
             "stations": result["stations"],
             "error_code": None,

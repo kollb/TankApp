@@ -381,7 +381,6 @@ describe("job start button (Startknopf ohne Passwort)", () => {
     expect(jobRunMessage({ error_code: "not_found" }).text).toContain(
       "nicht freigegeben",
     );
-    expect(jobRunMessage({ error_code: "rate_limited" }).tone).toBe("warn");
     expect(jobRunMessage({ error_code: "request_failed" }).text).toContain(
       "nicht erreichbar",
     );
@@ -406,7 +405,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     // eine Frontend-Erfindung, die zwei Tage nach Live-Schaltung nicht sinkt.
     expect(livePhaseCountdown(null)).toBeNull();
     expect(livePhaseCountdown(undefined)).toBeNull();
-    expect(livePhaseHint(null)).toContain("keine Live-Abdeckungsdaten");
+    expect(livePhaseHint(null)).toContain("Noch keine Zählung");
     expect(livePhaseHint(null)).not.toMatch(/\d+ von \d+/);
   });
 
@@ -422,7 +421,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
   it("stays silent once the live phase is reached", () => {
     const done = { ...phase, days_missing: 0, good_complete_days: 90, complete: true };
     expect(livePhaseCountdown(done)).toBeNull();
-    expect(livePhaseHint(done)).toContain("Live-Phase erreicht");
+    expect(livePhaseHint(done)).toContain("nur noch mit eigenen Live-Beobachtungen");
   });
 
   it("derives the ETA from the engine data date in Berlin days", () => {
@@ -468,7 +467,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(line).toContain("Datenumstellung Archiv → Live-Polling");
     expect(line).toContain("Noch 88 von 90 bewerteten Live-Tagen");
     // Ohne Veröffentlichung bleibt es bei der Aussage, nicht bei einer Zahl.
-    expect(transitionRuleLine(null)).toContain("noch keine Engine-Daten");
+    expect(transitionRuleLine(null)).toContain("Noch keine Zählung");
     expect(transitionRuleLine(null)).not.toMatch(/\d+ von \d+/);
     expect(transitionRuleLine({ ...phase, days_missing: 0, good_complete_days: 90, complete: true })).toContain(
       "erfüllt",

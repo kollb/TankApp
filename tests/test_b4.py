@@ -1151,6 +1151,34 @@ def test_wallet_stats_uses_real_30d_window():
     assert wallet["saved_eur"] == 2.0
 
 
+def test_advice_stats_reports_pending_recommendations():
+    """Offene Empfehlungen sind sichtbar: n=4 am 5. Tag ist kein Datenloch.
+
+    Vier abgerechnete + eine noch laufende Empfehlung: snapshots_total=5,
+    n_all=4, n_pending=1. no_advice-Snapshots sind keine Empfehlungen und
+    zählen weder zu n noch zu pending.
+    """
+    from app.feedback import compute_advice_stats
+
+    store = {
+        "episodes": [
+            {
+                "id": "ep",
+                "snapshots": [
+                    {"id": f"s{i}", "action": "wait", "p_correct": 0.9}
+                    for i in range(5)
+                ]
+                + [{"id": "svoid", "action": "no_advice"}],
+            }
+        ],
+        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(4)],
+    }
+    advice = compute_advice_stats(store)
+    assert advice["snapshots_total"] == 5
+    assert advice["n_all"] == 4
+    assert advice["n_pending"] == 1
+
+
 def test_gate_requires_p_population_not_total_n():
     """n=100 ohne P-Schätzung öffnet das Gate nicht (gleiche Grundgesamtheit).
 

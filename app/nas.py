@@ -164,7 +164,7 @@ def up(args):
         # Keine Geheimnisse — Werte kommen aus der Umgebung des Aufrufs.
         "TANKAPP_MODEL_WORKERS": os.environ.get("TANKAPP_MODEL_WORKERS", "0"),
         "TANKAPP_M7_AUTO_APPLY": os.environ.get("TANKAPP_M7_AUTO_APPLY", "0"),
-        "TANKAPP_API_KEYS": os.environ.get("TANKAPP_API_KEYS", ""),
+        "TANKAPP_DECISION_HOUR": os.environ.get("TANKAPP_DECISION_HOUR", "12"),
         "TANKAPP_BUILD_COMMIT": build_commit,
     }
     command = [
@@ -188,6 +188,29 @@ def up(args):
         cwd=ROOT,
         check=True,
     )
+    # Jeder --build-Lauf hängt das alte App-Image als dangling ab — auf dem
+    # NAS läuft die Platte sonst mit jedem Update voller. Nur dangling
+    # Images (kein -a): benutzte Images (z. B. InfluxDB) bleiben unangetastet.
+    # Best effort: schlägt prune fehl, läuft die App trotzdem.
+    try:
+        pruned = subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if pruned.returncode == 0:
+            print("Alte dangling Images aufgeräumt (docker image prune -f).")
+        else:
+            print(
+                "Hinweis: docker image prune meldete einen Fehler — "
+                "App läuft trotzdem, bei Bedarf manuell aufräumen."
+            )
+    except (OSError, subprocess.SubprocessError):
+        print(
+            "Hinweis: docker image prune nicht möglich — App läuft "
+            "trotzdem, bei Bedarf manuell aufräumen."
+        )
     atomic_json(
         state_path,
         {
