@@ -51,7 +51,7 @@ def _empty_backtest() -> dict[str, Any]:
     return {
         "daysTrain": None,
         "daysEval": None,
-        "decisionHour": 8,
+        "decisionHour": 12,
         "defaultEps": 1.0,
         "defaultLiters": 40.0,
         "days": [],
@@ -173,7 +173,7 @@ def _build_backtest_from_publication(
 
     backtest_days = rows[0].get("backtest_days", 7) or 7
     train_days = rows[0].get("train_days") or 42
-    decision_hour = rows[0].get("decision_hour", 8) or 8
+    decision_hour = rows[0].get("decision_hour", 12) or 12
     default_eps = 1.0
     default_liters = 40.0
     all_eval: list[dict[str, Any]] = []
@@ -200,7 +200,7 @@ def _build_backtest_from_publication(
             }
         )
 
-        # Echte 08:00-Entscheidungszeilen der Engine (Schicht A).
+        # Echte Entscheidungszeilen der Engine zum Tages-Anker (Schicht A).
         station_rows = [
             {
                 "day": r.get("day"),

@@ -95,6 +95,10 @@ def test_heatmap_level_and_probability(b3_settings):
     # Monday is index 0, hour 18 should have median 1.65
     monday_row = hm["matrix"][0]
     assert monday_row[18] == 1.65
+    # Jede Zelle meldet ihre Stichprobe: Die GUI blendet Zellen mit zu
+    # wenigen Preisen aus (kein 100-%-Artefakt aus 1–2 Nacht-Preisen).
+    assert hm["counts"][0][18] == 2
+    assert hm["counts"][0][17] == 0
 
     # Probability for single station UID (cheaper)
     hm_prob = live.heatmap("Frankfurt", "e10", "probability", weeks=2, station_id=UID)

@@ -180,6 +180,17 @@ def test_archive_without_credentials_never_starts_downloader(tmp_path, monkeypat
     )
 
 
+def compose_up_call(calls):
+    """Der `compose up`-Aufruf — nach `nas-up` läuft noch `image prune`."""
+    ups = [
+        call
+        for call in calls
+        if call[0][-4:] == ["up", "-d", "--build", "--force-recreate"]
+    ]
+    assert len(ups) == 1
+    return ups[0]
+
+
 def test_nas_up_reuses_influx_and_mounts_secrets_read_only(
     model_setup, monkeypatch, tmp_path
 ):
@@ -202,8 +213,9 @@ def test_nas_up_reuses_influx_and_mounts_secrets_read_only(
         runtime_dir=model_setup.runtime,
     )
     assert nas.up(args) == 0
-    assert calls[-1][0][-4:] == ["up", "-d", "--build", "--force-recreate"]
-    env = calls[-1][1]["env"]
+    up = compose_up_call(calls)
+    env = up[1]["env"]
+    assert calls[-1][0] == ["docker", "image", "prune", "-f"]
     assert env["TANKAPP_INFLUX_ENV"] == str(model_setup.influx_env)
     assert env["TANKAPP_CITY_SUBDIVS"] == "Frankfurt:HE;Gütersloh:NW"
     assert "TANKAPP_INFLUX_TOKEN" not in env
@@ -236,7 +248,7 @@ def test_nas_up_applies_and_remembers_explicit_container_uid_gid(
         gid=100,
     )
     assert nas.up(args) == 0
-    env = calls[-1][1]["env"]
+    env = compose_up_call(calls)[1]["env"]
     assert env["TANKAPP_UID"] == "99" and env["TANKAPP_GID"] == "100"
     stored = json.loads((tmp_path / "data/nas-settings.json").read_text())
     assert stored["uid"] == 99 and stored["gid"] == 100
@@ -253,7 +265,7 @@ def test_nas_up_applies_and_remembers_explicit_container_uid_gid(
         )
         == 0
     )
-    env = calls[-1][1]["env"]
+    env = compose_up_call(calls)[1]["env"]
     assert env["TANKAPP_UID"] == "99" and env["TANKAPP_GID"] == "100"
 
 
@@ -284,7 +296,7 @@ def test_nas_up_defaults_to_executing_user_without_flags(
         )
         == 0
     )
-    env = calls[-1][1]["env"]
+    env = compose_up_call(calls)[1]["env"]
     assert env["TANKAPP_UID"] == str(os.getuid())
     assert env["TANKAPP_GID"] == str(os.getgid())
 

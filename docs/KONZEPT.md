@@ -8,7 +8,8 @@
 > Collector/Uploader befüllen die InfluxDB; M2 gilt als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](ENGINE.md).
 > `web/` und `app/` implementieren Live-GUI (Alltag/Werkstatt/System),
-> Nur-Lese-API mit Rate-Limit und automatische NAS-Archiv-/Modelljobs inkl.
+> Nur-Lese-API (LAN-only, ohne Rate-Limit) und automatische
+> NAS-Archiv-/Modelljobs inkl.
 > **B3** (Heatmaps, Meine Stationen δ̂, Collector-Herzschlag, Route-Evaluate),
 > **B4/B5** (Decision Layer, `latest_by`, Fahrtmodus, Deprecation-Header,
 > M7-Schwellen-Nachzug, Job-Fortschritt) und **0.10.0** (Beleg-Storno,
@@ -695,8 +696,12 @@ Werkstatt-Zahlen werden: §5.5.
 ### 5.5 Wie Feedback in die Statistik eingeht (drei Schichten, nicht eine)
 
 Die Werkstatt-GUI (`sample/good statistic gui`) rechnet heute einen
-**Markt-Backtest**: 14 Tage Preise, jeden Morgen 08:00 hypothetisch
-WARTEN/JETZT, Regret gegen Orakel. Dafür braucht sie **keine Fills**.
+**Markt-Backtest**: 14 Tage Preise, jeden Tag zum Tages-Anker (Standard
+12:00, `TANKAPP_DECISION_HOUR`) hypothetisch WARTEN/JETZT, Regret gegen
+Orakel. Dafür braucht sie **keine Fills**. Anker 12:00, weil Anhebungen
+nur mittags stattfinden (12-Uhr-Regel): Um 12 Uhr weiß der hypothetische
+Entscheid, ob es heute teurer wurde — um 8 Uhr fehlt ihm genau diese
+Information.
 Live-Folgen und Tankbelege sind zwei *weitere* Schichten. Die drei dürfen
 im Scoreboard nie in eine Spalte fallen.
 
@@ -716,12 +721,12 @@ Preishistorie (Influx)                Episodes/Snapshots                 Fills
 
 #### Schicht A — Markt-Labor (unverändert, ohne Nutzer)
 
-Input: Preisreihe je Station. Pro Eval-Tag: S = p(08:00) − p(Fenster),
+Input: Preisreihe je Station. Pro Eval-Tag: S = p(Anker) − p(Fenster),
 Regel `μ ≥ ε`, Regret gegen Tagesminimum. Output: die Tabelle, die der
 Statistik-Prototyp schon zeigt. Das beantwortet „ist die Regel auf dem
 Markt überhaupt geldwert?“, nicht „hat *du* getankt“. Läuft weiter als
 täglicher NAS-Job (Rolling-Origin, §3.4) → `GET /v1/stats/summary`
-Feld `backtest`.
+Feld `backtest` (mit `decisionHour` aus `TANKAPP_DECISION_HOUR`).
 
 #### Schicht B — Live-Advice (automatisch, sobald M5 sendet)
 
@@ -736,7 +741,7 @@ Verarbeitung (NAS, nach Settlement-Job):
    Trefferrate, Brier, 10 Bins Reliability.
 3. Dieselben Kennzahlen, die der Statistik-Prototyp am Backtest zeigt —
    nur diesmal über **ausgespielte** Empfehlungen, nicht über
-   hypothetische 08:00-Tage. Werkstatt: zweite Scoreboard-Zeile
+   hypothetische Anker-Tage. Werkstatt: zweite Scoreboard-Zeile
    „Live · n Snapshots“, Kalibrierungs-Plot bekommt Live-Punkte
    (andere Farbe) sobald n ≥ 20.
 4. **M7:** wenn n ≥ 100 und Brier < 0,25 → P_besser-Anzeige an;
@@ -1107,9 +1112,10 @@ Prognose-Input.**
 
 ## 11. TankPuls-API
 
-Auth: anonym (**60/min, 10 000/Tag**) oder Header `X-Api-Key`
-(**300/min, 50 000/Tag**). JSON/UTF-8, Zeiten Europe/Berlin (Speicherung
-UTC), `Cache-Control` an `/v1/health`. Zielimplementierung: API auf dem NAS.
+Kein App-weites Rate-Limit: Die App läuft im Heimnetz (LAN-only) — keine
+`X-RateLimit-*`-Header, kein `429`, keine API-Keys. JSON/UTF-8, Zeiten
+Europe/Berlin (Speicherung UTC), `Cache-Control` an `/v1/health`.
+Zielimplementierung: API auf dem NAS.
 
 ### 11.1 Primär: `GET /v1/decide` — der eine Endpunkt fürs Frontend
 
@@ -1296,7 +1302,7 @@ Die M4-Homepage basiert ausdrücklich auf **beiden vorhandenen GUIs**.
 | M2 | Selektion mit echten Historien der 3 Kampagnen (HE/BY/NW; Anker + Subdivs aus lokaler Config, nie im Repo) | Top-10 quotiert (6/2/2), q < 0.05, Report archiviert |
 | M3 | Engine M1–M3 + ACI + Backtest (Fits und Inference auf NAS) | MASE(24 h) < 0,95 gesamt und < 0,80 sprungfrei; Pinball (τ=0,5 und asym τ=0,75) < Naive; PICP(95 %) ∈ [90, 98] % |
 | **M4** | **PWA mit Decision-Layer-UI: Alltags-Modus (Startkarte + 3 aufklappbare Zeilen) + Werkstatt-Modus; Fan/Heatmaps nur noch in der Werkstatt; Service-Worker-Cache** | **Startbildschirm hat ≤ 3 primäre Zahlen**; Lighthouse > 90; installierbar; letzte `/v1/decide`-Antwort offline abrufbar |
-| **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys** | OpenAPI (noch offen — bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung) + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
+| **M5** | **TankPuls: `/v1/decide` primär (liefert `episode`); `/v1/episodes/{id}/intent`, `POST /v1/fills`, Due-Prompt; automatisches Snapshot-Settlement nach Fensterende; alte `/outcome`-Route als Alias; deprecated-Header; Rate-Limits/Keys (später entfernt — LAN-only)** | OpenAPI (noch offen — bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung) + Tests grün; Snapshots kollabiert (nicht 1:1 HTTP); jede Folge hat Auto-Settlement unabhängig vom Fill; Wallet-€ nur aus Fills |
 | M6 *(optional)* | Quantile-Boosting M4-Q auf 3–5 Top-Stationen (wöchentliches Refit, 3 Quantile, NAS) | nur wenn 21-Tage-Backtest ≥ 0,3 ct Verbesserung; sonst verworfen |
 | **M7** | **Kalibrierungs-Loop nach 4 Wochen Live-Betrieb: Brier-Score + Reliability-Diagramm messen (Werkstatt/Debug), Entscheidungsschwellen §4.1/§4.2 an Trefferquoten anziehen, Kalibrierungs-Gate (§0.4) schalten** | Brier < 0,25 bei ≥ 100 Empfehlungen → P_besser-Anzeige freigeschaltet; Produkt-KPIs (§6) im Ziel oder Schwellen-Nachzug terminiert. **Erst nach M7 gilt das Produkt als „fertig kalibriert“.** |
 
@@ -1381,7 +1387,7 @@ Beigesteuert zum Produkt:
   out-of-sample, kleine Stichproben) → Ton für die Werkstatt.
 
 Was der Prototyp noch nicht hat: Multi-Kampagnen-Alltag (eine Station,
-Navigation), F3-Fenster über Tage (nur 08:00-Entscheidung), PWA/Offline,
+Navigation), F3-Fenster über Tage (nur Anker-Entscheidung), PWA/Offline,
 Anbindung an echte Historie.
 
 ### UI.3 Verschmelzungs-Regeln

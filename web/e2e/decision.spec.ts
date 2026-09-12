@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 // D2: Entscheidungs-Fluss „decide → intent → fill → due“ mit Mocks.
 // Schützt die V3-Fixes: Erfolgsmeldung nur bei Erfolg, Due-Prompt nach
-// „Ich warte“, Fill verbucht den Beleg, 429/Fehler erzeugt keine Erfolgsmeldung.
+// „Ich warte“, Fill verbucht den Beleg, Serverfehler erzeugt keine Erfolgsmeldung.
 
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 
@@ -179,7 +179,7 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
   expect(fillsPosted[0].liters).toBe(40);
 });
 
-test("429 beim Buchen zeigt keinen Erfolg", async ({ page }) => {
+test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
   await stubBase(page);
   await page.route("**/api/v1/episodes?status=due", async (route) => {
     await route.fulfill({
@@ -202,9 +202,9 @@ test("429 beim Buchen zeigt keinen Erfolg", async ({ page }) => {
   await page.route("**/api/v1/fills", async (route) => {
     if (route.request().method() === "POST") {
       await route.fulfill({
-        status: 429,
+        status: 503,
         contentType: "application/json",
-        body: JSON.stringify({ error_code: "rate_limited" }),
+        body: JSON.stringify({ error_code: "record_fill_failed" }),
       });
       return;
     }

@@ -63,7 +63,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 
 | Dokument | Inhalt |
 |---|---|
-| [API.md](API.md) | Alle `/api/v1/*`-Endpunkte mit Parametern, Antworten, Fehlercodes, Rate-Limit, Deprecation, Beispielen |
+| [API.md](API.md) | Alle `/api/v1/*`-Endpunkte mit Parametern, Antworten, Fehlercodes, Deprecation, Beispielen |
 | [ENGINE.md](ENGINE.md) | Modellwerkstatt: 12-Uhr-Regel, Datenqualität, Backtest-Rezepte, InfluxDB-Diagnose, Preis-Zwillinge, offene M3-Punkte |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |

@@ -992,6 +992,25 @@ def compute_advice_stats(
         for s in store.get("settlements", [])
         if s.get("outcome") not in ("win", "loss", "tie") and in_window(s)
     )
+    # Offene Empfehlungen: ausgespielt (wait/refuel_now/refuel_elsewhere),
+    # aber noch ohne Settlement — Fenster läuft noch oder Lag läuft noch.
+    # Sie zählen erst nach der Abrechnung zu n (sonst würde „n=4 am 5. Tag“
+    # wie ein verlorener Tag aussehen, obwohl die 5. Empfehlung noch läuft).
+    settled_ids = {s.get("snapshot_id") for s in store.get("settlements", [])}
+    snapshots_total = 0
+    n_pending = 0
+    for ep in episodes:
+        for snap in ep.get("snapshots", []) or []:
+            if snap.get("action") not in ("wait", "refuel_now", "refuel_elsewhere"):
+                continue
+            snapshots_total += 1
+            if snap.get("id") not in settled_ids:
+                n_pending += 1
+    n_void_all = sum(
+        1
+        for s in store.get("settlements", [])
+        if s.get("outcome") not in ("win", "loss", "tie")
+    )
 
     n = len(settlements)
     wins = sum(1 for s in settlements if s.get("outcome") == "win")
@@ -1127,10 +1146,14 @@ def compute_advice_stats(
     return {
         "n": n,
         "n_void": n_void,
+        "n_void_all": n_void_all,
         "n_brier": n_brier,
         "n_all": n_all,
         "n_brier_all": n_brier_all,
         "brier_all": brier_all,
+        # Zähl-Ehrlichkeit: ausgespielt vs. abgeschlossen vs. noch offen.
+        "snapshots_total": snapshots_total,
+        "n_pending": n_pending,
         "wins": wins,
         "losses": losses,
         "ties": ties,

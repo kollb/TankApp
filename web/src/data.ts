@@ -207,6 +207,8 @@ export type Heatmap = {
   days: string[];
   hours: number[];
   matrix: (number | null)[][];
+  /** Stichprobe je Zelle — Zellen unter MIN_HEATMAP_POINTS zählen nicht. */
+  counts?: number[][];
   points?: number;
   stations?: number;
   error_code?: string | null;
@@ -554,16 +556,22 @@ export type StatsSummary = {
     n: number;
     n_void?: number;
     n_brier?: number;
+    /** Ausgespielte vs. noch offene Empfehlungen (Zähl-Ehrlichkeit). */
+    snapshots_total?: number;
+    n_pending?: number;
     wins: number;
     losses: number;
     ties: number;
     hit_rate: number | null;
     hit_wait: number | null;
     hit_now: number | null;
+    hit_elsewhere?: number | null;
     wait_n: number;
     wait_hits: number;
     now_n: number;
     now_hits: number;
+    elsewhere_n?: number;
+    elsewhere_hits?: number;
     brier_30d: number | null;
     calibrated: boolean;
     gate_status: string;
@@ -719,11 +727,6 @@ export function jobRunMessage(result: JobRunResult | null): JobRunNote {
     return {
       tone: "error",
       text: "Start ist hier nicht freigegeben (Hintergrundjobs aus oder abgeschaltet).",
-    };
-  if (result.error_code === "rate_limited")
-    return {
-      tone: "warn",
-      text: "Zu viele Anfragen — kurz warten und erneut versuchen.",
     };
   if (result.error_code === "request_failed")
     return { tone: "error", text: "App-Server nicht erreichbar." };
@@ -918,6 +921,16 @@ export function isHeatmapWeeks(value: unknown): boolean {
  * heraus, damit die Wochentage untereinander vergleichbar sind.
  * `overall` = Gesamtmedian des Zeitfensters (wie vor B12).
  */
+/**
+ * Mindest-Stichprobe je Heatmap-Zelle: Bei 6 Wochen und 5-Minuten-Takt hat
+ * eine normale Zelle Dutzende Preise — alles unter 8 ist ein Artefakt
+ * (z. B. 1–2 Nacht-Preise mit 100 % Cheap-Probability) und wird
+ * ausgeblendet statt zur „günstigsten Stunde“ gekürt.
+ */
+export const MIN_HEATMAP_POINTS = 8;
+/** Mindest-Zellen je Wochentag, sonst bleibt die Tages-Zeile leer. */
+export const MIN_HEATMAP_CELLS_PER_DAY = 3;
+
 export type HeatmapBasis = "overall" | "hour";
 export const HEATMAP_BASES: HeatmapBasis[] = ["hour", "overall"];
 export const HEATMAP_DEFAULT_BASIS: HeatmapBasis = "hour";
@@ -1028,8 +1041,8 @@ export function useResource<T>(
           cache: "no-store",
         });
         if (!response.ok) {
-          // Fehlerantworten tragen ein error_code (z. B. "rate_limited" bei
-          // 429). Wir heben es hoch, damit die GUI eine verständliche
+          // Fehlerantworten tragen ein error_code (z. B. "unknown_station"
+          // bei 404). Wir heben es hoch, damit die GUI eine verständliche
           // Meldung zeigen kann statt des nackten Codes.
           let errorCode: string | null = null;
           try {
@@ -1420,9 +1433,7 @@ export const messages: Record<string, string> = {
   settlement_failed: "Settlement-Lauf ist fehlgeschlagen.",
   stats_summary_failed: "Statistik konnte nicht berechnet werden.",
   backtest_not_available:
-    "Noch kein Prüfstand-Ergebnis veröffentlicht. Sobald der tägliche Modell-Lauf genug echte Preishistorie auswerten konnte, erscheinen hier die echten Tages-Entscheidungen (Anker 08:00 Uhr).",
-  rate_limited:
-    "Zu viele Anfragen in kurzer Zeit. Bitte einen Moment warten — die Anzeige lädt automatisch neu.",
+    "Noch kein Prüfstand-Ergebnis veröffentlicht. Sobald der tägliche Modell-Lauf genug echte Preishistorie auswerten konnte, erscheinen hier die echten Tages-Entscheidungen (Tages-Anker, Standard 12:00 Uhr).",
   payload_too_large: "Anfrage zu groß (max. 100 KB).",
   invalid_json: "Anfrage ist kein gültiges JSON.",
   invalid_request: "Ungültige Anfrage.",
@@ -1554,7 +1565,7 @@ export function utcDayLabel(ms: number): string {
 }
 
 // Countdown-Zeile für die Kalibrierungs-Freigabe. null = nichts anmerken
-// (keine Daten oder Live-Phase erreicht) — nie „0 von N“ erfinden.
+// (keine Daten oder Freigabe erfüllt) — nie „0 von N“ erfinden.
 export function livePhaseCountdown(phase?: LivePhase | null): string | null {
   if (!phase || phase.complete) return null;
   const eta = dayAfterLabel(phase.days_missing, phase.as_of);
@@ -1585,17 +1596,17 @@ export function dayLabel(stamp?: string | null): string {
 // eine Kalenderzahl vorzugeben, die niemand gemessen hat.
 export function livePhaseHint(phase?: LivePhase | null): string {
   if (!phase) {
-    return "Noch keine Live-Abdeckungsdaten: Die Zählung vollständiger Live-Tage beginnt mit dem ersten Modell-Lauf der Engine.";
+    return "Noch keine Zählung: Sie beginnt mit dem ersten Modell-Lauf — erst dann ist bekannt, welche Tage vollständig live beobachtet wurden.";
   }
   if (phase.complete) {
-    return "Live-Phase erreicht — Werte erscheinen mit den ersten empfohlenen Tankzeitpunkten.";
+    return "Erfüllt: Alle Stationen rechnen nur noch mit eigenen Live-Beobachtungen — das Archiv ist aus dem Training raus.";
   }
   const eta = dayAfterLabel(phase.days_missing, phase.as_of);
   return (
-    `Wert erscheint, sobald jede Station ${phase.required_complete_days} vollständige ` +
-    `Live-Tage erreicht hat (noch ${phase.days_missing}${
-      eta ? ` · voraussichtlich ab ${eta}` : ""
-    }).`
+    `Noch ${phase.days_missing} vollständige Live-Tage, bis jede Station ` +
+    `${phase.required_complete_days} erreicht hat${
+      eta ? ` (voraussichtlich ab ${eta})` : ""
+    }.`
   );
 }
 
@@ -1614,6 +1625,8 @@ export type M7Advice = {
   brier_30d?: number | null;
   min_recommendations?: number | null;
   brier_threshold?: number | null;
+  /** Noch laufende Empfehlungen (Fenster nicht vorbei, zählen erst nach Abrechnung). */
+  n_pending?: number | null;
 };
 
 // Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
@@ -1644,21 +1657,26 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
   const n = advice.n ?? 0;
   const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
   const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+  const pending = advice.n_pending ?? 0;
+  const pendingNote =
+    pending > 0
+      ? ` ${pending} Empfehlung${pending > 1 ? "en" : ""} läuft${pending > 1 ? "en" : ""} noch und zählt erst nach der Abrechnung.`
+      : "";
   if (n < need) {
     return (
       `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
-      `(Brier-Schwelle < ${limit}).`
+      `(Brier-Schwelle < ${limit}).${pendingNote}`
     );
   }
   if (advice.brier_30d == null) {
     return (
       `Freigabe erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
-      `(keine P-Schätzung im Ledger).`
+      `(keine P-Schätzung im Ledger).${pendingNote}`
     );
   }
   return (
     `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
-    `(Schwelle < ${limit}).`
+    `(Schwelle < ${limit}).${pendingNote}`
   );
 }
 
@@ -1670,12 +1688,12 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
 export function transitionRuleLine(phase?: LivePhase | null): string {
   const head = "Datenumstellung Archiv → Live-Polling";
   if (!phase) {
-    return `${head}: noch keine Engine-Daten, die Tageszählung beginnt mit dem ersten Modell-Lauf.`;
+    return `${head}: Noch keine Zählung — sie beginnt mit dem ersten Modell-Lauf. Erst dann ist bekannt, welche Tage vollständig live beobachtet wurden.`;
   }
   if (phase.complete) {
     return (
-      `${head}: erfüllt, ${phase.live_only_stations} von ${phase.stations} ` +
-      `Stationen laufen nur auf Live-Polling.`
+      `${head}: erfüllt — ${phase.live_only_stations} von ${phase.stations} ` +
+      `Stationen rechnen nur noch mit eigenen Live-Beobachtungen.`
     );
   }
   return `${head}: ${livePhaseCountdown(phase) ?? livePhaseHint(phase)}`;

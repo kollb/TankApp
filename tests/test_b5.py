@@ -5,14 +5,13 @@ Getestet werden die Bausteine, die das Konzept ausdrücklich nennt:
 - ``latest_by``: Horizont [jetzt, T_max] für F1/F3 (§4.1, §4.3, §11.1)
 - Fahrtmodus ``onroute``/``dedicated`` mit Heimatkoordinate (§10, §11.1)
 - M7-Schwellen-Nachzug aus dem Advice-Ledger (§5.5, §13 M7)
-- Rate-Limit + API-Key der TankPuls-API (§11)
+- Kein API-Rate-Limit mehr (LAN-only, seit 0.12.0 — früher §11)
 - Deprecation/Sunset-Header auf den alten Alltags-Routen (§11.3, M5)
 """
 
 import datetime as dt
 import json
 import threading
-import urllib.error
 import urllib.request
 
 import pytest
@@ -80,9 +79,6 @@ def settings_with_prices(tmp_path):
         influx_env=env,
         netrc=tmp_path / "netrc",
         static=static,
-        rate_limit_anon_per_min=3,
-        rate_limit_key_per_min=10,
-        api_keys=("test-key",),
     )
 
 
@@ -289,7 +285,7 @@ def test_stats_summary_exposes_tuning(settings_with_prices):
     assert payload["thresholds"] == DEFAULT_THRESHOLDS
 
 
-# --- Rate-Limit & API-Key (§11) ------------------------------------------
+# --- Kein API-Rate-Limit (LAN-only, seit 0.12.0) ---------------------------
 
 
 def _serve(settings, live):
@@ -299,42 +295,27 @@ def _serve(settings, live):
     return server, thread, f"http://127.0.0.1:{server.server_port}"
 
 
-def test_rate_limit_headers_and_429(settings_with_prices):
+def test_no_rate_limit_headers_and_no_429(settings_with_prices):
+    """Vielverkehr im Haushalt wird nie mit 429 abgewiesen (0.12.0).
+
+    Früher 60/min anonym: Das normale GUI-Polling mehrerer Geräte lag über
+    dem Budget. LAN-only braucht kein Limit — also gibt es keines mehr, auch
+    keine X-RateLimit-*-Header und keinen X-Api-Key.
+    """
     live = LiveData(settings_with_prices, query=query, clock=lambda: NOW)
     server, thread, base = _serve(settings_with_prices, live)
     try:
-        status, _, headers = _get(base + "/api/v1/health")
-        assert status == 200
-        assert headers.get("X-RateLimit-Limit") == "3"
-        assert headers.get("X-RateLimit-Policy") == "anon"
-        assert headers.get("X-RateLimit-Remaining") == "2"
-        for _ in range(2):
-            _get(base + "/api/v1/health")
-        with pytest.raises(urllib.error.HTTPError) as error:
-            _get(base + "/api/v1/health")
-        assert error.value.code == 429
-        assert error.value.headers.get("Retry-After")
-        body = json.loads(error.value.read())
-        assert body["error_code"] == "rate_limited"
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
-
-
-def test_api_key_gets_higher_limit(settings_with_prices):
-    live = LiveData(settings_with_prices, query=query, clock=lambda: NOW)
-    server, thread, base = _serve(settings_with_prices, live)
-    try:
+        for _ in range(10):
+            status, _, headers = _get(base + "/api/v1/health")
+            assert status == 200
+            assert "X-RateLimit-Limit" not in headers
+            assert "X-RateLimit-Policy" not in headers
+        # Ein (wirkungsloser) Key-Header ändert nichts — kein 429, kein keyed.
         status, _, headers = _get(
             base + "/api/v1/health", headers={"X-Api-Key": "test-key"}
         )
         assert status == 200
-        assert headers.get("X-RateLimit-Limit") == "10"
-        assert headers.get("X-RateLimit-Policy") == "keyed"
-        # Falscher Key zählt als anonym (kein Privileg ohne gültiges Geheimnis).
-        _, _, wrong = _get(base + "/api/v1/health", headers={"X-Api-Key": "nope"})
-        assert wrong.get("X-RateLimit-Policy") == "anon"
+        assert "X-RateLimit-Policy" not in headers
     finally:
         server.shutdown()
         server.server_close()
@@ -361,35 +342,7 @@ def test_legacy_daily_routes_are_marked_deprecated(settings_with_prices):
         thread.join(timeout=2)
 
 
-# --- Rate-Limit-Fixes (Prüfstand §3.3) -------------------------------------
-
-
-def test_rate_limit_day_quota_retry_after_is_day_based():
-    """Erschöpft das Tageskontingent, zeigt Retry-After bis zum Tages-Reset.
-
-    Vorher antwortete Retry-After minutes-based, als könne der Client in 60 s
-    weitermachen, obwohl der Tageszähler bis zu 24 h sperrt.
-    """
-    from app.ratelimit import RateLimiter
-
-    limiter = RateLimiter(anon_per_min=1000, anon_per_day=3)
-    allowed, _ = limiter.check(None, "10.0.0.1", now=0.0)
-    assert allowed
-    allowed, _ = limiter.check(None, "10.0.0.1", now=1.0)
-    assert allowed
-    allowed, _ = limiter.check(None, "10.0.0.1", now=2.0)
-    assert allowed
-    allowed, info = limiter.check(None, "10.0.0.1", now=3.0)
-    assert not allowed
-    # Tagesgrenze ist der Flaschenhals → Retry-After ≈ Rest des Tages.
-    assert info["retry_after"] > 60
-
-
-def test_rate_limiter_evicts_old_buckets():
-    """Die Bucket-Map wächst nicht unbegrenzt (LRU-Eviction)."""
-    from app.ratelimit import MAX_BUCKETS, RateLimiter
-
-    limiter = RateLimiter(anon_per_min=1000, anon_per_day=10_000_000)
-    for i in range(MAX_BUCKETS + 50):
-        limiter.check(None, f"10.0.{i // 256}.{i % 256}", now=float(i))
-    assert len(limiter._buckets) <= MAX_BUCKETS
+# --- Ehemalige Rate-Limit-Fixes (entfernt in 0.12.0) -------------------------
+# Prüfstand §3.3 (Tages-Retry-After, LRU-Eviction) ist gegenstandslos: Es gibt
+# kein Limit mehr, also auch keine Buckets und kein Retry-After. Ersetzt durch
+# test_no_rate_limit_headers_and_no_429 oben.

@@ -33,6 +33,12 @@ class Config:
     bootstrap_ew_half_life_days: float | None = 14.0
     poll_start: int = 6
     poll_end: int = 24
+    # Schicht-A-Anker (Konzept §5.5): Tagesstunde des hypothetischen
+    # Backtest-Entscheids („warten oder jetzt?“). Default 12: Anhebungen gibt
+    # es nur mittags (12-Uhr-Regel) — um 12 Uhr weiß der hypothetische
+    # Entscheid, ob es heute teurer wurde; um 8 Uhr fehlt ihm genau diese
+    # Information. Über TANKAPP_DECISION_HOUR / --decision-hour verstellbar.
+    decision_hour: int = 12
     # Seit diesem lokalen Zeitpunkt dürfen Tankstellen in Deutschland den
     # Preis nur noch um 12:00 Uhr erhöhen (Senkungen jederzeit).
     price_law_local: str = "2026-04-01T12:00"
@@ -56,6 +62,7 @@ class Config:
                 self.bootstrap_ew_half_life_days,
                 self.poll_start,
                 self.poll_end,
+                self.decision_hour,
                 self.price_law_local,
             )
         )
@@ -98,6 +105,8 @@ class Config:
             )
         if not 0 <= self.poll_start < self.poll_end <= 24:
             raise ValueError("Polling-Fenster muss innerhalb 00–24 Uhr liegen.")
+        if not 0 <= self.decision_hour <= 23:
+            raise ValueError("decision_hour muss eine Tagesstunde 0–23 sein.")
 
     def to_dict(self):
         return asdict(self)

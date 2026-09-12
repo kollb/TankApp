@@ -303,10 +303,10 @@ export function CalibChart({
         </g>
       ))}
       <text x={padL} y={H - 22} fontSize={10.5} fill="#64748b">
-        behauptet P(S&gt;0)
+        versprochen: Wette in %
       </text>
       <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10.5} fill="#64748b">
-        real beobachtet
+        eingetroffen: Treffer in %
       </text>
 
       {/* Backtest Punkte */}
@@ -341,7 +341,7 @@ export function CalibChart({
           <>
             <circle cx={216} cy={0} r={4} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />
             <text x={224} y={4} fontSize={11} fill="#f59e0b">
-              Live (Schicht B)
+              Echte Live-Empfehlungen
             </text>
           </>
         )}
