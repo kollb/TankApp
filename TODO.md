@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.2)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -132,7 +132,7 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ## Quick Wins (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
 
-> Status: **14 von 14 umgesetzt** (Version 0.10.1 → 0.10.2). **B6/H1**
+> Status: **14 von 14 umgesetzt** (Version 0.10.0). **B6/H1**
 > (Umweg: Server als einzige Quelle von Strecke und Schwellen) ist jetzt drin:
 > Server liefert `detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen,
 > GUI rechnet nicht selbst (kein `haversineKm*CIRCUITY`, keine 1,50/0,50-Konstanten).
@@ -141,7 +141,7 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 2. ✅ **A6** CSV-Export `GET /api/v1/fills.csv` + Download-Link im System-Tab.
 3. ✅ **B1** Eine Zeile Backup-Skript für `runtime/` + Restore-Absatz in BETRIEB.md.
 4. ✅ **B4** `alarms[]`-Array in `/health` (nur Aggregation vorhandener Prüfungen) + roter Punkt im Header.
-5. ✅ **B6/H1** Umweg: Server liefert `detour_km_est` **und** `verdict`/Schwellen; GUI-Eigenrechnung raus (0.10.2).
+5. ✅ **B6/H1** Umweg: Server liefert `detour_km_est` **und** `verdict`/Schwellen; GUI-Eigenrechnung raus (0.10.0).
 6. ✅ **B9** Version/Commit in `/health` + Footer-Anzeige.
 7. ✅ **C1** Einrichtungs-Checkliste als Daten-getriebene Karte (Status kommt aus vorhandenen Endpunkten).
 8. ✅ **C5** Zwei schnelle A11y-Fixes: Ampel-Chip mit Symbol (▲/▼/●) statt nur Farbe, Slider-`aria-valuetext` in €.
@@ -154,6 +154,20 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ---
 
+## Quick Wins 0.11 – Kandidaten (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
+
+> Diese Liste sind die nächsten kleinen Ehrlichkeits-/Bedienbarkeits-Fixes, die nach 0.10.0 sofort lohnen. Alle ohne Architektur-Umbau, alle testbar.
+
+1. ⬜ **B13** Build-Commit im Docker-Image: `tankapp.py nas-up` setzt `TANKAPP_BUILD_COMMIT=$(git rev-parse --short=12 HEAD)` als Build-Arg + Env, `compose.yml` + `Dockerfile` übernehmen es, `/health` liefert `commit` nicht mehr null.
+2. ⬜ **E3/E4** Beleg-Eingabe ehrlich: `customLiters`/`customPrice` mit `min`/`max`/`step` (5–100 L / 0,40–5,00 €/L), clientseitige Prüfung vor Server-Roundtrip, Button „Beleg buchen“ deaktiviert wenn keine Station gewählt + Hinweis „Station wählen“ (statt `unknown_station` erst vom Server).
+3. ⬜ **E5** `heatmapWeeks` wählbar: Wochen-Select 4/6/12 neben „Heatmap Art“, `setHeatmapWeeks` verdrahtet, Default 6 Wochen, URL-Param bleibt.
+4. ⬜ **E6** Slider-Präzision: Verbrauch `step=0.5` (6,3 L/100 wählbar), Liter `step=1` + Begleit-Zahlenfeld, Zeitwert `step=0.5`, `aria-valuetext` in €/h bleibt, beeinflusst Umweg-Ökonomie sofort.
+5. ⬜ **B12** Cheap-Prob ohne Station: Basis gegen Median derselben Stunde (Spalten-Basis) statt Gesamtmedian, damit Wochentags-Effekt sichtbar wird; Umschalter/Modus + Notiz in `docs/ANALYSE.md`.
+6. ⬜ **G2** Journal-Wachstum rp2: `SystemMaxUse=50M` in ANLEITUNG/RP2.md + Drop-in-Beispiel `journald.conf.d/`, `journalctl --vacuum-size` als Wartungsschritt.
+7. ⬜ **E7** API-Explorer „day (Beispiel)“: Label dynamisch nur wenn Station gewählt, sonst grau + Hinweis „erst Station wählen“.
+
+---
+
 ## Erledigt — hier gestrichen, im CHANGELOG nachvollziehbar
 
 IDs bleiben stabil, damit Commits, Tests und Code-Kommentare weiterhin lesbar
@@ -161,9 +175,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
-| 0.10.0 (11.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md) |
-| 0.10.1 (12.09.2026) | Doku-Umbau: ein Ordner `docs/` mit Index, Historisches in `docs/archiv/`, Modul-READMEs eingezogen, Dokumente auf Stand 0.10.x gebracht, Link-Test auf alle Dokumente erweitert |
-| 0.10.2 (12.09.2026) | **B6/H1** Umweg: Server liefert `detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen (`thresholds.active.elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar); GUI zeigt ausschließlich Server-Werte, `data.ts`-Konstanten und `haversineKm*CIRCUITY`-Eigenrechnung entfernt |
+| 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
 Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **A6**
 (Share-URL offen), **B4** (ntfy-Zustellung offen), **C5** (Rest der
@@ -182,7 +194,7 @@ A11y-Runde offen).
    P0-Punkt: schützt die persönliche Bilanz, bevor echte Daten anwachsen.
    Storno (A3), Backup (B1) und Komma-Eingabe (E2) sind seit 0.10.0 drin.
 2. **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
-   Anonym-Budget) — seit **B6/H1** (0.10.2) ist die Umweg-Ökonomie
+   Anonym-Budget) — seit **B6/H1** (0.10.0) ist die Umweg-Ökonomie
    server-einheitlich (`detour_km_est` + `verdict`/Schwellen vom Server).
 3. **B5** (Schreib-Endpunkte gegen Flut härten) und **B12** (Cheap-Prob-Basis
    ohne Station) — beide klein, beide ehrlichkeitsrelevant.

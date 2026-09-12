@@ -126,6 +126,27 @@ def up(args):
         netrc.parent.mkdir(parents=True, exist_ok=True)
         if not netrc.exists():
             netrc.touch(mode=0o600)
+    # B13: Commit-Hash für /health → commit nicht null im Docker-Image (app/version.py liest Env).
+    def _git_commit_short() -> str:
+        env = os.environ.get("TANKAPP_BUILD_COMMIT", "").strip()
+        if env:
+            return env[:12]
+        try:
+            proc = subprocess.run(
+                ["git", "rev-parse", "--short=12", "HEAD"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if proc.returncode == 0:
+                return proc.stdout.strip()[:12]
+        except Exception:
+            pass
+        return ""
+
+    build_commit = _git_commit_short()
+
     values = {
         "TANKAPP_ARCHIVE_DIR": str(paths["archive_dir"]),
         "TANKAPP_RUNTIME_DIR": str(paths["runtime_dir"]),
@@ -143,6 +164,7 @@ def up(args):
         "TANKAPP_MODEL_WORKERS": os.environ.get("TANKAPP_MODEL_WORKERS", "0"),
         "TANKAPP_M7_AUTO_APPLY": os.environ.get("TANKAPP_M7_AUTO_APPLY", "0"),
         "TANKAPP_API_KEYS": os.environ.get("TANKAPP_API_KEYS", ""),
+        "TANKAPP_BUILD_COMMIT": build_commit,
     }
     command = [
         "docker",
