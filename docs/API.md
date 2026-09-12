@@ -493,6 +493,12 @@ Antwort:
     [0, 0, ..., 71, 68],
     ...
   ],
+  "reference_counts": [
+    [0, 0, ..., 312, 298],
+    ...
+  ],
+  "range_from": "2026-08-01T04:05:00+00:00",
+  "range_to": "2026-09-12T05:55:00+00:00",
   "points": 12345,
   "stations": 10,
   "error_code": null
@@ -503,7 +509,10 @@ Antwort:
 - level: Werte €/L (z. B. 1.689) oder null
 - probability: Werte 0–100 % (z. B. 73.5) oder null
 - `counts`: Stichprobe je Zelle (7×24) — die GUI blendet Zellen unter 8 Preisen aus (sonst kürt ein einzelner Nacht-Preis die „günstigste Stunde“) und lässt Tages-Zeilen unter 3 belastbaren Zellen leer
-- `points`: Anzahl berücksichtigter offener Preise
+- `reference_counts` (0.14.0, P0): Stichprobe der **Vergleichs-Basis** je Zelle (7×24), nur bei `kind=probability`, sonst `null`. Mit `station_id` = Zahl der Preise aller Stationen derselben Zelle (Stadtmedian), bei `basis=hour` = Zahl der Preise derselben Stunde über alle Wochentage (in jeder Zeile gleich), bei `basis=overall` = Gesamtzahl der Preise (überall gleich). Eine Zelle kann 8+ eigene Preise haben und trotzdem ein Artefakt zeigen — die GUI kennzeichnet Stunden, deren Basis unter 30 Preisen liegt, als „dünn“ und kürt daraus keine „typisch günstigste Stunde“
+- `range_from`/`range_to` (0.14.0, P0): echte Reichweite der verwendeten Preise (ISO-8601, UTC) oder `null` bei leerem Bestand. Das angefragte Fenster (`weeks`) ist gerade in der Anlaufphase größer als der Bestand; die GUI nennt Reichweite und Bestand und erklärt leere Wochentags-Zeilen als fehlende Tage statt als Datenverlust
+- `points`: Anzahl **verwendeter** offener Preise (geschlossene Meldungen und Preise `null` zählen nicht, 0.14.0); mit `station_id` nur die Preise dieser Station
+- `stations`: Zahl der Stationen, deren Preise verwendet wurden
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:

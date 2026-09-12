@@ -743,6 +743,13 @@ class LiveData:
             "hours": result["hours"],
             "matrix": result["matrix"],
             "counts": result["counts"],
+            # P0: Ehrlichkeits-Angaben — Reichweite der verwendeten Preise und
+            # Stichprobe der Vergleichs-Basis. Die GUI sagt damit, warum eine
+            # Zeile leer ist (Bestand jünger als das Fenster) und wann „100 %
+            # günstig“ Mechanik einer dünnen Basis statt einer Aussage ist.
+            "reference_counts": result["reference_counts"],
+            "range_from": result["range_from"],
+            "range_to": result["range_to"],
             "points": result["points"],
             "stations": result["stations"],
             "error_code": None,

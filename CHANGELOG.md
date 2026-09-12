@@ -4,6 +4,100 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.14.0] – 2026-09-12
+
+Heatmap-Ehrlichkeit — der erste P0 aus echtem Tracking-Betrieb. Gemeldet war
+„Typisch am günstigsten: Di 06–08 Uhr — 100 % Chance günstig. Wie kann es sein?
+06–08 taucht da gar nicht auf“ plus die Frage „Zahlen verlorengegangen? Seit
+Dienstag wird getrackt“. Beides gegen den Code geprüft: Die Zahlen waren nicht
+weg (das Fenster ist 6 Wochen, der Bestand 4 Tage), aber die Heatmap hat es
+nicht gesagt — und die „günstigste Stunde“ war tatsächlich nicht
+wiederzufinden. Drei Ursachen, drei Korrekturen: Label-Semantik, Gleichstand,
+Stichprobe der Vergleichs-Basis.
+
+### Behoben
+
+- **P0 — „günstigste Stunde“ im Raster nicht wiederfindbar**: Eine
+  Heatmap-Spalte ist genau **eine** Stunde (06 = 06:00–06:59 Uhr), das Label
+  nannte aber ein Zweistundenfenster (`blockLabel` → „06–08 Uhr“). Gesucht
+  wurden die Spalten 06/07/08, gemeint war Spalte 06; im Niveau-Modus
+  („17–19 Uhr“) lag die dritte Stunde sogar auf „·“ (zu wenig Daten), das
+  genannte Fenster existierte also stellenweise gar nicht. Neu: `hourBucketLabel`
+  nennt den Kasten „06–07 Uhr“, die Erklärzeile sagt zusätzlich, dass eine
+  Spalte eine Stunde ist.
+- **P0 — Gleichstand wurde verschwiegen**: Lagen zwölf Zellen gleichauf
+  (Di 06–17 Uhr je 100 %), nannte der Fazit-Satz die Stunde, die die Schleife
+  zufällig zuerst als besser sah — „06–08 Uhr“ war damit willkürlich. Neu
+  werden alle gleichauf liegenden Stunden gesammelt, zu Bereichen gebündelt
+  (`hourRunsOf`/`hourRunsLabel`) und genannt: „Di 06–18 Uhr — 100 % der Preise
+  unter dem Median derselben Stunde, 12 Stunden gleichauf“. Lange Aufzählungen
+  kürzen für die schmale Tabellenspalte („06–07 und 12–13 Uhr (+2 weitere)“),
+  die volle Liste steht im `title`. Gleichstand ist der Normalfall, nicht die
+  Ausnahme: Gerundet wird serverseitig auf 0,1 % bzw. 0,001 €/L, die
+  Toleranz (`HEATMAP_TIE_EPS`) folgt dem.
+- **P0 — „100 % günstig“ aus dünner Vergleichs-Basis**: Vier Tage Bestand
+  reichten für 100 % über zwölf Stunden, weil der Stunden-Median selbst nur 16
+  Preise trug (Di 8 günstige, Mi–Sa je 2 teurere) — jeder Dienstagspreis lag
+  unter einer Referenz, die kaum Daten hatte. Die Zelle war formal belastbar
+  (n = 9 ≥ 8), die **Referenz** war es nicht. `build_heatmap` liefert deshalb
+  `reference_counts` (Stichprobe der Vergleichs-Basis je Zelle: mit Station der
+  Stadtmedian derselben Zelle, bei `basis=hour` der Spalten-Median, bei
+  `basis=overall` der Gesamtmedian; `null` für `kind=level`, das keine Basis
+  hat). Die GUI kennzeichnet solche Stunden als „dünn“ und nimmt die Empfehlung
+  zurück: statt „Typisch am günstigsten“ steht „Noch keine belastbare
+  ‚günstigste Stunde‘ … Vergleichs-Basis n=16, Mindestmaß 30 — Mechanik, keine
+  Empfehlung“. Der Zellwert bleibt unverändert sichtbar, nur die Deutung wird
+  ehrlich. Schwelle `MIN_HEATMAP_REFERENCE = 30` — im Dauerbetrieb (6 Wochen ×
+  5-Minuten-Takt × 18 Stationen) mühelos erfüllt, sie beißt nur in der
+  Anlaufphase. Fehlt das Feld (alte API, `kind=level`), gilt die Basis als
+  unbekannt, nicht als dünn.
+- **`points`/`stations` zählten zu viel**: Beide nannten alle gelieferten
+  Punkte, auch geschlossene Meldungen und Preise `null`/`NaN`, die in keine
+  Zelle flossen. Gezählt werden jetzt nur die Preise, die wirklich verwendet
+  wurden — dieselbe Zahl, die auch `range_from`/`range_to` begrenzen.
+
+### Hinzugefügt
+
+- **Datenreichweite im Heatmap-Panel** (P0, Teil von C6 „Reichweite der Daten
+  je Panel“): `range_from`/`range_to` im Payload (ISO-8601 UTC, echte Grenzen
+  der verwendeten Preise) und darunter die Zeile „Datenreichweite: 12.345
+  Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“. Ist das
+  Fenster größer als der Bestand, folgt amber der Grund für leere Zeilen:
+  „Fenster 42 Tage (6 Wochen), Bestand aber nur 5 Tage — Di 08.09. 05:10 –
+  Sa 12.09. 07:55 Uhr. Wochentage, die in dieser Zeit nicht vorkamen, bleiben
+  leer: Das sind fehlende Tage, kein Datenverlust.“ Ohne `range_*` (alte API)
+  bleibt die Zeile weg, statt ein Datum zu raten.
+- **C9-Teil — Formatter-Satz in `web/src/data.ts`** mit vitest-Schutz:
+  `euroPerLiter` (€/L, 3 Stellen), `centPerLiter` (ct/L, 1 Stelle),
+  `euroToCentPerLiter`, `percentLabel`, `countLabel` (Tausenderpunkt),
+  `hourRangeLabel` („18–20 Uhr“) und die Heatmap-Helfer `hourBucketLabel`,
+  `hourRunsOf`, `hourRunsLabel`. Die Heatmap ist als erstes Panel umgestellt:
+  „2,219 €/L“ statt „2.219“ (der Punkt las sich als Tausender-Trennzeichen) und
+  „100 %“ statt „100%“. Die übrigen Panels folgen panelweise (C9-Rest).
+- **Heatmap-Logik als reine Funktionen** (D1-Muster): `heatmapDaySummaries`,
+  `heatmapBestDay`, `heatmapCellOk`, `heatmapCellCount`, `heatmapReferenceCount`,
+  `heatmapCoverage`, `heatmapCoverageNote`, `heatmapRangeLabel`,
+  `heatmapSampleLabel` liegen in `data.ts`, `HeatmapGrid.tsx` rendert nur noch.
+- **Render-Tests der Heatmap** (`web/src/components/HeatmapGrid.test.tsx`,
+  `react-dom/server`): Der gemeldete Befund ist als Fixture nachgebaut (Di
+  06–17 Uhr 100 %, dünne Basis, Bestand seit Dienstag) und prüft das echte
+  Markup — „06–08 Uhr“ darf nicht mehr vorkommen, „06–18 Uhr“,
+  „12 Stunden gleichauf“, „n=16“, „dünn“ und „kein Datenverlust“ müssen. Dazu
+  `tests/test_b3.py::test_heatmap_reports_reach_and_reference_sample` für
+  Reichweite, Referenz-Zähler und die drei Basen (inkl. HTTP-Pfad).
+
+### Geändert
+
+- **Fazit-Satz trennt Stundenwert und Tagesmedian**: Vorher stand beim Niveau
+  „Di 17–19 Uhr — Median 2.219 €/L“ direkt unter einer Zeile, deren
+  Median-Spalte 2.239 zeigte — zwei „Mediane“ ohne Unterschied. Neu: „Di
+  17–18 Uhr — 2,219 €/L in dieser Stunde (Tagesmedian 2,239 €/L)“.
+- **Tabellen-`title` erklären statt raten lassen**: Stundenkopf („06–07 Uhr“),
+  Median-Spalte (was hier der Median von was ist), Tagesname (n belastbare von
+  24 Stunden) und die günstigste Stunde (Gleichstand, kleinste
+  Zellen-Stichprobe, Vergleichs-Basis) haben Tooltips; die Zellen-Tooltips
+  nutzen dieselben Formatter wie der sichtbare Text.
+
 ## [0.13.0] – 2026-09-12
 
 Kalibrierte Quick-Wins-Runde: der letzte P0 (Feedback-Store-Versionierung),

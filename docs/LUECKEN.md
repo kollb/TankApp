@@ -20,6 +20,7 @@
   - [11.09.2026 — Engine-Ausbau, Güte-Gate, Umweg-Konvention (Prüfstand §1.3/§1.5, §3.1–3.4)](#11092026--engine-ausbau-güte-gate-umweg-konvention-prüfstand-1315-3134)
   - [12.09.2026 — Version 0.10.0/0.10.1: Betrieb, GUI, Sprache](#12092026--version-01000101-betrieb-gui-sprache)
   - [12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal](#12092026--version-0110-ehrliche-eingaben-heatmap-basis-rp2-journal)
+  - [12.09.2026 — Version 0.14.0: Heatmap-Ehrlichkeit](#12092026--version-0140-heatmap-ehrlichkeit)
 - [Konzept-Abdeckung im Einzelnen](#konzept-abdeckung-im-einzelnen)
 - [Bewusst offen (Backlog mit Grund)](#bewusst-offen-backlog-mit-grund)
 - [Nicht umgesetzt und warum nicht](#nicht-umgesetzt-und-warum-nicht)
@@ -182,6 +183,23 @@ einzige Quelle von Strecke und Schwellen), siehe
 | Cheap-Prob-Basis | `basis=hour`: Vergleich gegen den Median **derselben Stunde** (Spalten-Basis), GUI-Default ohne Station; API-Default bleibt `overall` | B12, [ANALYSE.md](ANALYSE.md#cheap-probability) |
 | API-Explorer | „day (Beispiel)“ nur mit gewählter Station, sonst grau + Hinweis | E7 |
 | RP2-Journal | Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`), `journalctl --vacuum-size=50M` als Wartungsschritt | G2, [RP2.md](RP2.md#journal-größe-begrenzen-sd-karte-schonen) |
+
+### 12.09.2026 — Version 0.14.0: Heatmap-Ehrlichkeit
+
+Erster P0 aus echtem Betrieb (Tracking seit Dienstag): „Typisch am günstigsten:
+Di 06–08 Uhr — 100 % Chance günstig“ war im Raster nicht wiederzufinden, und
+die leere Mo-Zeile las sich wie Datenverlust. Beides war eine Anzeige-Lücke,
+kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Günstigste Stunde wiederfindbar | Eine Spalte = **eine** Stunde: Label „06–07 Uhr“ (`hourBucketLabel`) statt Zweistundenfenster „06–08 Uhr“, plus Erklärzeile im Panel | P0 12.09., C10 |
+| Gleichstand ausgeschrieben | Alle gleichauf liegenden Stunden zu Bereichen gebündelt („06–18 Uhr — 12 Stunden gleichauf“) statt erstbeste Nennung der Schleife | P0 12.09. |
+| Dünne Vergleichs-Basis | `reference_counts` je Zelle im Payload, `MIN_HEATMAP_REFERENCE = 30`, Kennzeichen „dünn“ + Rücknahme der Empfehlung („Mechanik, keine Empfehlung“); Zellwert bleibt sichtbar | P0 12.09., B12 |
+| „Zahlen verloren?“ | `range_from`/`range_to` + Zeile „Datenreichweite: 12.345 Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“ + amber Hinweis „fehlende Tage, kein Datenverlust“ | P0 12.09., C6-Teil |
+| Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
+| Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
+| Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
 ## Konzept-Abdeckung im Einzelnen
 

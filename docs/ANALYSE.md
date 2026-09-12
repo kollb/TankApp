@@ -17,6 +17,7 @@
 - [Heatmaps DoW×Stunde B3.9](#heatmaps-dowstunde-b39)
   - [Niveau](#niveau)
   - [Cheap-Probability](#cheap-probability)
+  - [Günstigste Stunde, Gleichstand und Reichweite](#günstigste-stunde-gleichstand-und-reichweite)
 - [Zeitreihen-Engine](#zeitreihen-engine)
   - [Aufbereitung](#aufbereitung)
   - [Strukturmodell + AR2](#strukturmodell--ar2)
@@ -164,8 +165,49 @@ Dropdown. Seit 0.10.0 (C10) zusätzlich unter der 7×24-Matrix:
 
 - **Tages-Zusammenfassung** je Wochentag (Median + günstigste Stunde),
 - **hervorgehobene heutige Zeile**,
-- ein **Fazit-Satz** („Typisch am günstigsten: Di 18–20 Uhr — Median 1,653 €/L“)
-  und eine Erklärzeile, was „Niveau“ und „Cheap-Prob“ bedeuten.
+- ein **Fazit-Satz** („Typisch am günstigsten: Di 17–18 Uhr — 2,219 €/L in
+  dieser Stunde (Tagesmedian 2,239 €/L)“) und eine Erklärzeile, was „Niveau“
+  und „Cheap-Prob“ bedeuten,
+- seit 0.14.0 die **Datenreichweite** (Bestand + Zeitraum) und die
+  Ehrlichkeits-Regeln unten.
+
+Die Tages-Zusammenfassung rechnet auf der **angezeigten Größe**: Im Niveau ist
+der Tages-Median der Median der Stunden-Mediane in €/L, in der
+Cheap-Probability der Median der Zellen-Prozente — beide aus denselben
+belastbaren Zellen (früher stand hier „immer auf dem Niveau“, das war seit
+0.10.0 nicht mehr wahr).
+
+### Günstigste Stunde, Gleichstand und Reichweite
+
+Die „günstigste Stunde“ ist die einzige Empfehlung, die die Heatmap überhaupt
+ausspricht — seit 0.14.0 (P0) gilt dafür ein Regelwerk, weil der erste echte
+Tracking-Bestand drei Fehldeutungen gleichzeitig sichtbar machte:
+
+| Regel | Schwelle | Warum |
+|---|---|---|
+| Eine Spalte = **eine** Stunde; Label „06–07 Uhr“ | — | „06–08 Uhr“ las sich wie ein Zweistundenfenster, das es im Raster nicht gab — die Aussage war nicht wiederzufinden |
+| Zelle belastbar | `counts` ≥ 8 (`MIN_HEATMAP_POINTS`) | sonst bestimmt ein einzelner Nacht-Preis die Stunde |
+| Zeile belastbar | ≥ 3 Zellen (`MIN_HEATMAP_CELLS_PER_DAY`) | kein Tages-Median aus ein, zwei Zellen |
+| Gleichstand wird **ausgeschrieben** | ±0,05 % / ±0,0005 €/L | lagen zwölf Stunden gleichauf, war die erstbeste Nennung willkürlich |
+| Vergleichs-Basis belastbar | `reference_counts` ≥ 30 (`MIN_HEATMAP_REFERENCE`) | 100 % „günstig“ aus einem Stunden-Median über 16 Preise ist Mechanik, keine Empfehlung |
+| Reichweite sichtbar | `range_from`/`range_to` | Fenster (6 Wochen) ≠ Bestand (4 Tage): leere Wochentage sind fehlende Tage, kein Datenverlust |
+
+Der nachgestellte Befund: Tracking-Start Dienstag, 8 günstige Dienstagspreise
+je Stunde und je 2 teurere Preise der übrigen Tage → Stunden-Median über 16
+Preise, jeder Dienstagspreis darunter, `100 %` für 06–17 Uhr. Die Zelle war
+formal belastbar (n = 9), die **Referenz** nicht (n = 16). Anzeige seit 0.14.0:
+Stunde „dünn“ markiert, statt „Typisch am günstigsten“ steht „Noch keine
+belastbare ‚günstigste Stunde‘ … Vergleichs-Basis n=16, Mindestmaß 30“. Der
+Zellwert bleibt stehen — die Heatmap ist eine Analyse-Ansicht, sie versteckt
+nichts, sie empfiehlt nur nichts aus zu wenig Daten. `kind=level` hat keine
+Vergleichs-Basis (`reference_counts: null`) und kann deshalb nie „dünn“ sein.
+
+Rechnung und Beschriftung liegen als reine Funktionen in
+`web/src/data.ts` (`heatmapDaySummaries`, `heatmapBestDay`, `hourRunsOf`,
+`hourRunsLabel`, `heatmapCoverage`, `heatmapCoverageNote`), getestet in
+`web/src/data.test.ts` und gegen echtes Markup in
+`web/src/components/HeatmapGrid.test.tsx`; die Payload-Felder prüft
+`tests/test_b3.py::test_heatmap_reports_reach_and_reference_sample`.
 
 Die frühere Grenze (TODO B12: ohne Station überstrahlt der Tagesgang den
 Wochentag) ist seit 0.11.0 als **Modus** gelöst, nicht als stiller
@@ -173,9 +215,6 @@ Verhaltenswechsel: `basis=overall` rechnet weiter wie früher, `basis=hour`
 gegen die Spalten-Basis. Der API-Default bleibt `overall`, damit bestehende
 Aufrufe (und die Doku dazu) gültig bleiben; die GUI schickt ohne Station
 bewusst `hour` und erklärt die Wahl in der Erklärzeile unter der Matrix.
-
-Die Tages-Zusammenfassung (Median je Wochentag) ist von beiden Modi unabhängig
-— sie rechnet auf dem Niveau, nicht auf der Cheap-Probability.
 
 ## Zeitreihen-Engine
 

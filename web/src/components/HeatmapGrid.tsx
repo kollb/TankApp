@@ -1,11 +1,33 @@
 // D1: Ausgelagerter Baustein aus Dashboard.tsx — die Wochentags×Stunden-Heatmap
 // inklusive Tages-Zusammenfassungen (E5 Zeiträume, B12 Vergleichs-Basis,
 // belastbare Zellen ab MIN_HEATMAP_POINTS).
+//
+// P0 12.09.2026: Die „günstigste Stunde“ war nicht wiederzufinden — das Label
+// „06–08 Uhr“ nannte ein Zweistundenfenster, das es im Raster nicht gibt (eine
+// Spalte = eine Stunde), und bei zwölf gleichauf grünen Zellen entschied der
+// Zufall der Sortierung, welche Stunde genannt wurde. Dazu kam eine dünne
+// Vergleichs-Basis: Vier Tage Bestand reichten für „100 % Chance günstig“, was
+// Mechanik war, keine Aussage. Rechenlogik liegt als reine Funktionen in
+// `data.ts` (heatmapDaySummaries, hourRunsLabel, heatmapCoverageNote …).
 
 import {
-  MIN_HEATMAP_CELLS_PER_DAY,
+  countLabel,
+  euro,
+  euroPerLiter,
+  heatmapBestDay,
+  heatmapCellCount,
+  heatmapCoverage,
+  heatmapCoverageNote,
+  heatmapDaySummaries,
+  heatmapRangeLabel,
+  heatmapSampleLabel,
+  hourBucketLabel,
+  hourRunsLabel,
   MIN_HEATMAP_POINTS,
+  MIN_HEATMAP_REFERENCE,
+  percentLabel,
   type Heatmap,
+  type HeatmapBest,
 } from "../data";
 
 export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
@@ -26,10 +48,8 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   // Zellen mit zu kleiner Stichprobe (n < 8) zählen nicht — weder für
   // Farben/Median noch für die „günstigste Stunde“. Ohne Zähler im Payload
   // (alte API) bleibt alles wie bisher.
-  const cellCount = (dIdx: number, h: number): number | null => {
-    const row = heatmap.counts?.[dIdx];
-    return row?.[h] ?? null;
-  };
+  const cellCount = (dIdx: number, h: number): number | null =>
+    heatmapCellCount(heatmap, dIdx, h);
   const cellOk = (v: number | null, dIdx: number, h: number): v is number => {
     if (v === null || !Number.isFinite(v)) return false;
     const n = cellCount(dIdx, h);
@@ -59,13 +79,15 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
     return "bg-rose-500/35 text-rose-200 font-semibold";
   };
 
+  // C9: de-DE durchgängig — „2,219 €/L“ statt „2.219“ (Punkt las sich als
+  // Tausender-Trennzeichen) und „100 %“ statt „100%“.
   const fmtVal = (v: number | null) => {
     if (v === null || !Number.isFinite(v)) return "—";
-    if (isProb) return `${Math.round(v)}%`;
-    return v.toFixed(3);
+    return isProb ? percentLabel(v) : euro(v, 3);
   };
 
-  // C10: Tages-Zusammenfassung je Wochentag — Median + günstigste Stunde.
+  // C10: Tages-Zusammenfassung je Wochentag — Median + günstigste Stunde,
+  // inklusive Gleichstand und Stichprobe der Vergleichs-Basis (P0).
   const todayIdx = (() => {
     try {
       const short = new Intl.DateTimeFormat("en-US", {
@@ -80,45 +102,38 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
     }
   })();
 
-  const summaries = days
-    .map((dayName, dIdx) => {
-      const row = matrix[dIdx] ?? [];
-      const vals = row.filter((v, h): v is number =>
-        cellOk(v, dIdx, hours[h] ?? h),
-      );
-      // Unter 3 belastbaren Zellen bleibt die Zeile ehrlich leer — kein
-      // Median und keine „günstigste Stunde“ aus 1–2 Nacht-Zellen.
-      if (vals.length < MIN_HEATMAP_CELLS_PER_DAY) return null;
-      const sorted = [...vals].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      let bestHour = hours[0] ?? 0;
-      let bestValue = isProb ? -Infinity : Infinity;
-      row.forEach((v, h) => {
-        const hour = hours[h] ?? h;
-        if (!cellOk(v, dIdx, hour)) return;
-        if (isProb ? v > bestValue : v < bestValue) {
-          bestValue = v;
-          bestHour = hour;
-        }
-      });
-      return { day: dayName, median, bestHour, bestValue, index: dIdx };
-    })
-    .filter((s): s is NonNullable<typeof s> => s !== null);
+  const summaries = heatmapDaySummaries(heatmap);
+  const bestDay = heatmapBestDay(summaries, kind);
+  // Ein Label für den Bestwert, damit Niveau und Probability denselben Satz
+  // benutzen (C9: €/L mit drei, Prozent ohne Nachkommastelle).
+  const bestValueLabel = bestDay?.best
+    ? isProb
+      ? percentLabel(bestDay.best.value)
+      : euroPerLiter(bestDay.best.value)
+    : "—";
+  const coverage = heatmapCoverage(heatmap);
+  const coverageNote = heatmapCoverageNote(heatmap);
+  const sampleLabel = heatmapSampleLabel(heatmap);
+  const rangeLabel = heatmapRangeLabel(heatmap);
 
-  const bestDay = summaries.length
-    ? summaries.reduce((acc, s) =>
-        isProb
-          ? s.median > acc.median
-            ? s
-            : acc
-          : s.median < acc.median
-            ? s
-            : acc,
-      )
-    : null;
-
-  const blockLabel = (h: number) =>
-    `${String(h).padStart(2, "0")}–${String((h + 2) % 24).padStart(2, "0")}`;
+  const bestTitle = (day: string, best: HeatmapBest) =>
+    [
+      `${day}: günstigste Stunde(n) ${hourRunsLabel(best.runs, 24)} — ${
+        best.hours.length
+      } ${best.hours.length === 1 ? "Stunde" : "Stunden"}${
+        best.tied ? " gleichauf" : ""
+      }`,
+      best.minCount === null
+        ? null
+        : `kleinste Zellen-Stichprobe n=${countLabel(best.minCount)}`,
+      best.minReference === null
+        ? null
+        : `Vergleichs-Basis (${referenceLabel}) n=${countLabel(
+            best.minReference,
+          )}${best.thinReference ? ` — dünn, Mindestmaß ${MIN_HEATMAP_REFERENCE}` : ""}`,
+    ]
+      .filter(Boolean)
+      .join("; ");
 
   return (
     <div>
@@ -127,14 +142,24 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           <thead>
             <tr className="text-slate-500">
               <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
-              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
+              <th
+                className="p-1 text-left font-sans text-[10px] font-normal text-slate-600"
+                title={
+                  isProb
+                    ? "Median der belastbaren Cheap-Probability-Werte dieser Zeile"
+                    : "Median der belastbaren Stunden-Mediane dieser Zeile (€/L)"
+                }
+              >
                 Median
               </th>
-              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
+              <th
+                className="p-1 text-left font-sans text-[10px] font-normal text-slate-600"
+                title="Eine Spalte = eine Stunde: „06–07 Uhr“ ist der Kasten 06:00–06:59. „dünn“ = die Vergleichs-Basis dieser Stunde trägt zu wenige Preise für eine Empfehlung."
+              >
                 Günstigste Std.
               </th>
               {hours.map((h) => (
-                <th key={h} className="p-1 font-normal">
+                <th key={h} className="p-1 font-normal" title={hourBucketLabel(h)}>
                   {String(h).padStart(2, "0")}
                 </th>
               ))}
@@ -153,6 +178,11 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                     className={`p-1 text-left font-sans text-xs font-medium ${
                       isToday ? "text-sky-300" : "text-slate-300"
                     }`}
+                    title={
+                      summary
+                        ? `${summary.cells} von ${hours.length} Stunden belastbar (n ≥ ${MIN_HEATMAP_POINTS})`
+                        : `keine belastbare Zeile — weniger als 3 Stunden mit n ≥ ${MIN_HEATMAP_POINTS}`
+                    }
                   >
                     {dayName}
                     {isToday ? (
@@ -164,12 +194,23 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                   <td className="p-1 text-left font-sans text-[10px] text-slate-400">
                     {summary
                       ? isProb
-                        ? `${Math.round(summary.median)} %`
-                        : `${summary.median.toFixed(3)}`
+                        ? percentLabel(summary.median)
+                        : euro(summary.median, 3)
                       : "—"}
                   </td>
                   <td className="p-1 text-left font-sans text-[10px] text-slate-400">
-                    {summary ? blockLabel(summary.bestHour) : "—"}
+                    {summary?.best ? (
+                      <span title={bestTitle(dayName, summary.best)}>
+                        {hourRunsLabel(summary.best.runs)}
+                        {summary.best.thinReference ? (
+                          <span className="ml-1 text-[9px] font-semibold text-amber-400">
+                            dünn
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   {hours.map((h) => {
                     const val = matrix[dIdx]?.[h] ?? null;
@@ -183,7 +224,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                     return (
                       <td
                         key={h}
-                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${thin ?? (isProb ? (shown !== null ? `${shown.toFixed(1)} % Chance günstiger als ${referenceLabel}` : "keine Daten") : (shown !== null ? `${shown.toFixed(3)} €/L Median` : "keine Daten"))}`}
+                        title={`${dayName} ${hourBucketLabel(h)}: ${thin ?? (isProb ? (shown !== null ? `${percentLabel(shown, 1)} Chance günstiger als ${referenceLabel}` : "keine Daten") : (shown !== null ? `${euroPerLiter(shown)} Median` : "keine Daten"))}`}
                         className={`p-1 transition-colors ${colorFor(shown)}`}
                       >
                         {thin ? "·" : fmtVal(shown)}
@@ -196,18 +237,55 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           </tbody>
         </table>
       </div>
-      {bestDay && (
-        <p className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-300">
-          <span className="font-semibold text-slate-200">
-            Typisch am günstigsten:
-          </span>{" "}
-          {bestDay.day} {blockLabel(bestDay.bestHour)} Uhr —{" "}
-          {isProb
-            ? `${Math.round(bestDay.bestValue)} % Chance günstig`
-            : `Median ${bestDay.bestValue.toFixed(3)} €/L`}
-          .
+      {bestDay?.best ? (
+        bestDay.best.thinReference ? (
+          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[.07] p-3 text-xs leading-relaxed text-amber-200">
+            <span className="font-semibold">
+              Noch keine belastbare „günstigste Stunde“:
+            </span>{" "}
+            {bestDay.day} {hourRunsLabel(bestDay.best.runs, 3)} liegt bei{" "}
+            {bestValueLabel}
+            {bestDay.best.tied
+              ? ` — ${bestDay.best.hours.length} Stunden gleichauf`
+              : ""}
+            . Aber die Vergleichs-Basis ({referenceLabel}) dieser Stunden trägt
+            nur{" "}
+            <span className="font-semibold">
+              n={countLabel(bestDay.best.minReference)}
+            </span>{" "}
+            Preise, Mindestmaß {MIN_HEATMAP_REFERENCE}. Bei so wenigen
+            Vergleichspreisen heißt der Wert lediglich: alle Preise dieser Zelle
+            lagen unter einer Referenz, die selbst kaum Daten hat — Mechanik,
+            keine Empfehlung.
+          </p>
+        ) : (
+          <p className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-300">
+            <span className="font-semibold text-slate-200">
+              Typisch am günstigsten:
+            </span>{" "}
+            {bestDay.day} {hourRunsLabel(bestDay.best.runs, 3)} —{" "}
+            {isProb
+              ? `${percentLabel(bestDay.best.value)} der Preise unter dem ${referenceLabel}`
+              : `${euroPerLiter(bestDay.best.value)} in dieser Stunde (Tagesmedian ${euroPerLiter(bestDay.median)})`}
+            {bestDay.best.tied
+              ? `, ${bestDay.best.hours.length} Stunden gleichauf`
+              : ""}
+            .
+          </p>
+        )
+      ) : null}
+      {sampleLabel || rangeLabel || coverageNote ? (
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+          <span className="font-semibold text-slate-300">Datenreichweite:</span>{" "}
+          {[sampleLabel, rangeLabel].filter(Boolean).join(" · ") || "—"}
+          {coverage && coverage.complete
+            ? ` · Fenster ${heatmap.weeks} Wochen abgedeckt`
+            : null}
+          {coverageNote ? (
+            <span className="mt-1 block text-amber-300/90">{coverageNote}</span>
+          ) : null}
         </p>
-      )}
+      ) : null}
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
         {isProb
           ? byHour
@@ -218,9 +296,16 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
         Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
         (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.
-        Zellen mit weniger als {MIN_HEATMAP_POINTS} Preisen (·) zählen nicht —
-        sonst würde ein einzelner Nacht-Preis die „günstigste Stunde“
-        bestimmen.
+        Eine Spalte ist genau <span className="text-slate-400">eine</span> Stunde
+        (06 = 06:00–06:59 Uhr), deshalb steht die günstigste Stunde als Bereich
+        „06–07 Uhr“ da — so ist sie im Raster wiederzufinden. Zellen mit
+        weniger als{" "}
+        {MIN_HEATMAP_POINTS} Preisen (·) zählen nicht — sonst würde ein
+        einzelner Nacht-Preis die „günstigste Stunde“ bestimmen. Gleichauf
+        liegende Stunden werden zusammen genannt („06–18 Uhr, 12 Stunden
+        gleichauf“), statt willkürlich eine davon herauszugreifen; „dünn“
+        markiert Stunden, deren Vergleichs-Basis unter{" "}
+        {MIN_HEATMAP_REFERENCE} Preisen bleibt.
       </p>
     </div>
   );
