@@ -177,10 +177,26 @@ abgebrochen, B24) und `tail -n 60 data/runtime/jobs/models.log`.
 28,3 s → 5,2 s je Station, also 9,4 min → 1,7 min CPU für 20 Stationen
 (**5,4×**); der Backtest-Anteil fällt von 86 % auf 62 %. Mit B17 (Tages-Cache)
 bleiben in einem untertägigen Lauf noch 37 s CPU statt 80 s, und mit B18 läuft
-der teure Lauf einmal am Tag statt 24×. Reihenfolge: erst B15+B16 (bitgleich,
-kein Architektur-Eingriff, sofort messbar), dann B18 (kleinste Änderung mit
-größter Betriebswirkung), dann B17 (Cache-Schlüssel und Ehrlichkeits-Ausweis
-brauchen einen Entwurf), dann B19/B20/B21.
+der teure Lauf einmal am Tag statt 24×.
+
+**Abarbeitungsreihenfolge für dieses Bündel (Vorschlag vom 12.09.2026 — in
+Batchen, je Batch eine Version; Aufwand grob inklusive Prüfaufwand):**
+
+| Batch | Inhalt | Aufwand | Wirkung auf der Zielhardware | Warum an dieser Stelle |
+|---|---|---|---|---|
+| **0 — ohne Code** | B11-Messung während Phase B (`docker top`, `docker stats --no-stream`), B21-Ursache klären („e10: 0 Stationen“: Eingabedaten, `min_coverage=0.85` oder stiller Fehler), `nas-up` nie während eines Laufs | ~1 h | keine, aber Entscheidungsgrundlage | B21 kann ein echter Fehler hinter „Meine Stationen“ sein und würde dann vor Batch 3 gezogen. B11 braucht nur zwei Befehle im richtigen Moment |
+| **1 — bitgleich** | **B15**, danach **B16** (nur die bitgleichen Teile a–e) | ~2 Tage | 10,3 min → **~2,3 min** (hochgerechnet: Phase B 9,4 → ~1,8 min) | Größter Hebel bei null Zahlenrisiko, beide Prototypen bitgleich geprüft. Die B16-Normalgleichungen (Δ ≤ 3,4e-12) bleiben **aus**, bis sie ausdrücklich freigegeben sind |
+| **2 — Betrieb** | **B18** + **B24** | ~1–1,5 Tage | 24 Läufe/Tag → **1**; Abbrüche werden `aborted` statt ewig `running` | Beide fassen dieselben Dateien an (`app/worker.py`, Job-Zustand, `tests/test_app_jobs.py`) und sind klein. Nach Batch 1 wiegt der Stundentakt weniger — die NAS-Last (heute ~4 h CPU/Tag) bleibt aber der Grund |
+| **3 — Architektur** | **B17** (Tages-Cache), zuerst Entwurf für Schlüssel, Fingerabdruck und Ausweis | ~2–3 Tage | untertägig **~1 min** (nur `wide72`/`wide168` bleiben) | Eigener Entwurf nötig, weil ein unvollständiger Fingerabdruck **falsche publizierte Zahlen** bedeutet (P0-Risiko). Erst nach Batch 1; B20 Punkte (1) und (3) — toter `fit` im backtest-Task, drei identische Fits — erledigen sich mit B17 von selbst und wären vorher verschwendete Arbeit |
+| **4 — Feinschliff** | **B19** + **B20** (Punkte 2, 4, 5, 6, 7) + **B23** + B11-Dokuwerte | ~1,5–2 Tage | ~28 s je Lauf, ehrlicher Fortschritt, robuste Worker-Zahl | Lohnt erst, wenn die großen Anteile weg sind; die B19-`initargs` hängen an derselben Datenstruktur wie B17 |
+| **5 — Entscheidung** | **B22** (`bootstrap_samples`, Nacht-Raster) | Entscheidung + ~1 Tag | — | Ändert publizierte Kennzahlen und damit ein Gate (§4.4). Nach Batch 1–3 vermutlich überflüssig; ausdrücklich **nicht** als Laufzeit-Hebel einplanen |
+
+Zwei Regeln für alle Batche: (1) je Batch eine Version mit `app/version.py` und
+CHANGELOG-Eintrag **inklusive der auf dem NAS gemessenen Laufdauer** vorher/nachher
+— aus der `beendet: … Dauer X min`-Zeile des Job-Logs, nicht nur Sandkasten-Zahlen;
+(2) B15/B16/B17 bekommen je einen Test, der Bitgleichheit bzw. Cache-Treue gegen
+die aktuelle Implementierung prüft; die Messprotokolle in diesem Abschnitt sind
+die Referenz dafür.
 
 ---
 
@@ -369,20 +385,11 @@ Footer-Zeilen offen).
    `FEEDBACK_SCHEMA_VERSION`.
 4. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
    stehen begründet in [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
-5. **Laufzeit-Bündel — Reihenfolge nach den Zielhardware-Messungen vom
-   12.09.2026** (NAS: **4** Kerne J5040, kein Pinning/Quota/Limit, `forkserver`,
-   kein OOM; echter Lauf 10,3 min mit **92 %** in Phase B; `nproc` = 1 war eine
-   Messfalle über `OMP_NUM_THREADS`, siehe B23): zuerst **B15/B16** — bitgleich,
-   kein Architektur-Eingriff, gemessen 5,4× weniger CPU-Zeit je Station; auf
-   4 Kernen hochgerechnet Phase B 9,4 min → ~1,8 min, Gesamtlauf ~2,3 min
-   (Skalierung aus dem Sandkasten, auf dem NAS noch zu messen). **B18** und
-   **B24** daneben als kleinste Betriebsänderungen: der Lauf fällt von 24×/Tag
-   auf 1×/Tag, und ein hart abgebrochener Lauf wird als `aborted` sichtbar statt
-   als ewiges `running` (zwei reale Vorfälle am 12.09.). Danach **B17**
-   (Tages-Cache, braucht einen Entwurf für Schlüssel und Ehrlichkeits-Ausweis;
-   hochgerechnet Phase B untertägig ~1 min), dann **B19–B21** (Feinschliff: ein
-   Pool statt zwei — gemessen ~28 s Overhead je Lauf —, explizite Startmethode,
-   schlanke initargs, verschenkte Arbeit, doppelte Selektion, ehrlicher
-   Fortschritt) und **B23** (Robustheit der Worker-Zahl gegen Pinning/Quota).
-   B22 bleibt eine Produktentscheidung. Befund und Messwerte stehen im Abschnitt
+5. **Laufzeit-Bündel in sechs Batchen** — B15/B16 (bitgleich, 10,3 min →
+   hochgerechnet ~2,3 min), dann B18+B24 (Betrieb: 1 Lauf/Tag statt 24,
+   Abbrüche sichtbar), dann B17 (Tages-Cache, erst mit Entwurf: ein
+   unvollständiger Fingerabdruck riskiert falsche publizierte Zahlen), dann
+   B19/B20/B23 (Feinschliff), B22 nur als Produktentscheidung. Vorab ohne Code:
+   B11-Messung während Phase B und B21-Ursache klären. Plan mit Aufwand,
+   Wirkung und Begründung je Batch steht im Abschnitt
    [B — Laufzeit des Modell-Laufs](#laufzeit-des-modell-laufs--befund-und-messwerte-vom-12092026-b15b24-nichts-davon-umgesetzt).
