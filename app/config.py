@@ -48,6 +48,9 @@ class Settings:
     decision_hour: int = 12
     # Modell-Lauf: 0 = automatisch (CPU-Kerne, maximal 8), 1 = seriell.
     model_workers: int = 0
+    # B17: 21-Tage-Backtest je lokalem Endtag cachen (runtime/engine/
+    # backtest-cache/). TANKAPP_BACKTEST_CACHE=0 rechnet jeden Lauf neu.
+    backtest_cache: bool = True
     # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
@@ -94,6 +97,8 @@ class Settings:
             m7_auto_apply=os.environ.get("TANKAPP_M7_AUTO_APPLY", "0").strip()
             in {"1", "true", "on", "yes"},
             model_workers=_env_int("TANKAPP_MODEL_WORKERS", 0, low=0, high=64),
+            backtest_cache=os.environ.get("TANKAPP_BACKTEST_CACHE", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             city_subdivs=_city_subdivs_from_env(),
         )

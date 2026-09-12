@@ -439,6 +439,7 @@ Zwei Stellschrauben, beide ohne Änderung der Ergebnisse:
 |---|---|
 | `TANKAPP_MODEL_WORKERS` | Prozesse für Fit/Prognose/Backtest. `0` (Default) = automatisch, maximal 8 (bzw. CPU-Kerne); `1` = seriell. Stationen und Horizonte sind unabhängig — der Lauf ist „peinlich parallel“. Ohne nutzbaren Prozess-Pool rechnet die App automatisch seriell weiter. |
 | `TANKAPP_CITY_SUBDIVS` | Bundesländer für den gepoolten Feiertags-Dummy, z. B. `Frankfurt:HE;Gütersloh:NW`. Ohne Wert bleibt der Dummy bewusst null. `nas-up` reicht den Wert über Compose in den App-Container durch. |
+| Tages-Cache des Backtests (B17, 0.22.0) | Der 21-Tage-Backtest hängt nur vom lokalen Endtag und den Daten davor ab; `runtime/engine/backtest-cache/` hält je Station eine JSON-Datei mit Fingerabdruck (Config + Inhalts-Hash der ganzen Reihe bis Endtag + Bibliotheksversionen). Zweiter Lauf am selben Tag: Backtest aus dem Cache, Log „Backtest: n aus Tages-Cache, m neu gerechnet“; jede Änderung in der Vergangenheit (Archiv, Lückenfüllung) rechnet neu. Jede Prognose trägt `backtest_cached` und `backtest_computed_at`. `TANKAPP_BACKTEST_CACHE=0` schaltet ihn aus; das Verzeichnis darf jederzeit gelöscht werden (nächster Lauf rechnet). |
 | Engine-Fix der 12-Uhr-Projektion | Vor B5 baute die Projektion je Rasterpunkt ein `pd.Timestamp` (≈8 Mio. Boxing-Operationen pro 7-Tage-Prognose). Jetzt vektorisiert: 24-h-Prognose 12,4 s → 0,8 s, 7-Tage 82 s → 4,9 s, Backtest 44 s → 6,4 s — **bitgleich** zu vorher (geprüft gegen die alte Implementierung). |
 
 ```bash

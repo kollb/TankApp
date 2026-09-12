@@ -11,6 +11,8 @@ from app.refresh import refresh
 from app.worker import run
 from engine.models import SCHEMA_VERSION
 
+from engine.backtest import run_backtest as REAL_RUN_BACKTEST
+
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
 NOW = dt.datetime(2026, 9, 8, 10, tzinfo=dt.timezone.utc)
@@ -1362,3 +1364,60 @@ def test_nas_up_warns_while_model_job_is_running(tmp_path, monkeypatch, capsys):
     )
     nas._warn_if_model_job_active(runtime)
     assert "läuft noch" not in capsys.readouterr().out
+
+
+def test_refresh_publishes_backtest_provenance_and_reuses_daily_cache(
+    model_setup, monkeypatch, capsys
+):
+    """B17: zweiter Lauf am selben Tag nimmt den Backtest aus dem Tages-Cache."""
+    # Echter Backtest statt Fixture-Stub, aber kurz (7 statt 21 Tage).
+    monkeypatch.setattr("app.refresh.BACKTEST_DAYS", 7)
+    real = REAL_RUN_BACKTEST
+    calls = []
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("engine.backtest.run_backtest", counting)
+    cutoff = dt.datetime(2026, 8, 5, 12, tzinfo=dt.timezone.utc)
+    refresh(model_setup, now=cutoff)
+    first_calls = len(calls)
+    assert first_calls >= 1
+    publication = json.loads(
+        (model_setup.runtime / "engine/current.json").read_text(encoding="utf-8")
+    )
+    row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
+    assert row["backtest_cached"] is False
+    assert row["backtest_computed_at"]
+    assert row["metrics"]["points"] > 0
+    assert (model_setup.runtime / "engine/backtest-cache").is_dir()
+
+    # Zweiter Lauf zwei Stunden später am selben lokalen Tag: kein Backtest.
+    refresh(model_setup, now=cutoff + dt.timedelta(hours=2))
+    assert len(calls) == first_calls
+    again = json.loads(
+        (model_setup.runtime / "engine/current.json").read_text(encoding="utf-8")
+    )
+    row2 = next(r for r in again["forecasts"] if r["station_id"] == UID)
+    assert row2["backtest_cached"] is True
+    assert row2["backtest_computed_at"] == row["backtest_computed_at"]
+    assert row2["metrics"] == row["metrics"]
+    assert row2["rolling_picp_7d"] == row["rolling_picp_7d"]
+    assert "aus Tages-Cache" in capsys.readouterr().out
+
+
+def test_refresh_backtest_cache_can_be_disabled(model_setup, monkeypatch):
+    monkeypatch.setattr("app.refresh.BACKTEST_DAYS", 7)
+    monkeypatch.setattr("engine.backtest.run_backtest", REAL_RUN_BACKTEST)
+    from dataclasses import replace
+
+    settings = replace(model_setup, backtest_cache=False)
+    cutoff = dt.datetime(2026, 8, 5, 12, tzinfo=dt.timezone.utc)
+    refresh(settings, now=cutoff)
+    assert not (settings.runtime / "engine/backtest-cache").exists()
+    publication = json.loads(
+        (settings.runtime / "engine/current.json").read_text(encoding="utf-8")
+    )
+    row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
+    assert row["backtest_cached"] is False and row["backtest_computed_at"] is None

@@ -12,7 +12,10 @@ Aufteilung (je Station ein Bündel unabhängiger Aufgaben):
 - ``wide``: +3 d und +7 d Ausblick für die Werkstatt
 - ``backtest``: 21-Tage-Rolling-Origin-Backtest (Prüfstand §1.3: nur so
   kann das 21-Tage-Gate aus dem automatischen Lauf erfüllt werden; liefert
-  zusätzlich Rolling-PICP 7 d je Station und die Mehrtage-Horizonte +3 d/+7 d)
+  zusätzlich Rolling-PICP 7 d je Station und die Mehrtage-Horizonte +3 d/+7 d).
+  B17: Das Ergebnis hängt nur vom lokalen Endtag und den Daten davor ab —
+  bei gleichem Fingerabdruck kommt es aus ``runtime/engine/backtest-cache/``
+  statt aus 21 Folds × (1 Fit + 3 Prognosen) (app/backtest_cache.py).
 
 Die Aufgaben laufen in einem ``ProcessPoolExecutor``. Fällt der Pool aus
 (eingeschränktes /dev/shm, keine Prozesse erlaubt), rechnet derselbe Code
@@ -51,11 +54,63 @@ def resolve_workers(requested: int | None = None) -> int:
     return max(1, min(MAX_AUTO_WORKERS, cpus))
 
 
-def _init(series_map: dict, cfg, origin) -> None:
+def _init(series_map: dict, cfg, origin, cache_dir=None) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task)."""
     _STATE["series"] = series_map
     _STATE["cfg"] = cfg
     _STATE["origin"] = origin
+    _STATE["cache_dir"] = cache_dir
+
+
+def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
+    """Backtest-Kennzahlen einer Station — aus dem Tages-Cache oder frisch.
+
+    Rückgabe: die Payload-Felder (siehe app/backtest_cache.py::PAYLOAD_KEYS)
+    plus ``backtest_cached`` und ``backtest_computed_at``. Ohne ``cache_dir``
+    wird immer gerechnet (CLI, Tests).
+    """
+    from engine.backtest import last_complete_day, run_backtest, truncate_series
+    from . import backtest_cache
+
+    end_local = last_complete_day([item], cfg)
+    cut = truncate_series(item, end_local.tz_convert("UTC"))
+    key = None
+    if cache_dir is not None:
+        key = backtest_cache.fingerprint(cut, cfg, end_local, days)
+        hit = backtest_cache.load(cache_dir, cut, key)
+        if hit is not None:
+            return {
+                **hit["payload"],
+                "backtest_cached": True,
+                "backtest_computed_at": hit["computed_at"],
+            }
+    report, _ = run_backtest([cut], cfg, days=days, until=end_local, strict_end=True)
+    # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag — das
+    # Güte-Gate in /v1/decide braucht die aktuelle Zahl der ausgewählten
+    # Station, nicht die aller anderen.
+    rolling = report.get("rolling_picp_7d") or []
+    payload = {
+        "metrics": report.get("metrics"),
+        "decision_rows": list(report.get("decision", {}).get("rows", [])),
+        "decision_hour": report.get("decision", {}).get("decision_hour", 12),
+        "rolling_picp_7d": rolling[0] if rolling else None,
+        "horizons": report.get("horizons") or {},
+    }
+    computed_at = None
+    if cache_dir is not None and key is not None:
+        try:
+            computed_at = backtest_cache.store(
+                cache_dir, cut, key, end_local, days, payload
+            )
+        except OSError:
+            # Cache ist Beschleunigung, keine Voraussetzung: Schreibfehler
+            # (voller/readonly Datenträger) dürfen den Lauf nicht kippen.
+            computed_at = None
+    return {
+        **payload,
+        "backtest_cached": False,
+        "backtest_computed_at": computed_at,
+    }
 
 
 def _records(frame) -> list[dict[str, Any]]:
@@ -110,27 +165,15 @@ def _run(task: tuple) -> dict[str, Any]:
     origin = _STATE["origin"]
     out: dict[str, Any] = {"kind": kind, "key": key, "hours": hours, "ok": False}
     # Schwere Importe erst im Worker (Parent bleibt schlank).
-    from engine.backtest import run_backtest
     from engine.models import fit, predict
 
     try:
-        model = fit(item, origin, cfg)
         if kind == "backtest":
-            report, _ = run_backtest([item], cfg, days=hours)
-            # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag —
-            # das Güte-Gate in /v1/decide braucht die aktuelle Zahl der
-            # ausgewählten Station, nicht die aller anderen.
-            rolling = report.get("rolling_picp_7d") or []
-            out.update(
-                ok=True,
-                metrics=report.get("metrics"),
-                decision_rows=list(report.get("decision", {}).get("rows", [])),
-                decision_hour=report.get("decision", {}).get("decision_hour", 12),
-                rolling_picp_7d=rolling[0] if rolling else None,
-                horizons=report.get("horizons") or {},
-                model=model,
-            )
+            # Kein eigener Fit am Cutoff: Der Backtest fittet je Fold selbst,
+            # das Modell kommt aus der Phase-A-Aufgabe (B20 Punkt 1).
+            out.update(ok=True, **_backtest(item, cfg, hours, _STATE.get("cache_dir")))
             return out
+        model = fit(item, origin, cfg)
         frame, paths = predict(model, hours=hours, return_paths=True)
         out.update(
             ok=True,
@@ -155,15 +198,17 @@ def run_tasks(
     origin,
     workers: int = 1,
     on_done: Callable[[dict[str, Any]], None] | None = None,
+    cache_dir=None,
 ) -> list[dict[str, Any]]:
     """Führt Aufgaben aus (parallel, mit seriellem Fallback).
 
-    Rückgabe in der Reihenfolge von ``tasks``.
+    Rückgabe in der Reihenfolge von ``tasks``. ``cache_dir`` aktiviert den
+    Tages-Cache des Backtests (B17); None = immer rechnen.
     """
     if not tasks:
         return []
     if workers <= 1:
-        _init(series_map, cfg, origin)
+        _init(series_map, cfg, origin, cache_dir)
         results = [_run(task) for task in tasks]
         for result in results:
             if on_done:
@@ -174,7 +219,7 @@ def run_tasks(
         with ProcessPoolExecutor(
             max_workers=min(workers, len(tasks)),
             initializer=_init,
-            initargs=(series_map, cfg, origin),
+            initargs=(series_map, cfg, origin, cache_dir),
         ) as pool:
             futures = [(task, pool.submit(_run, task)) for task in tasks]
             results = []
@@ -186,7 +231,7 @@ def run_tasks(
     except (OSError, ImportError, RuntimeError, ValueError):
         # Kein Prozess-Pool verfügbar (z. B. eingeschränktes /dev/shm):
         # seriell weiterrechnen statt den Modell-Lauf abzubrechen.
-        _init(series_map, cfg, origin)
+        _init(series_map, cfg, origin, cache_dir)
         results = [_run(task) for task in tasks]
         for result in results:
             if on_done:

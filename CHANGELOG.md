@@ -4,6 +4,69 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.22.0] – 2026-09-12
+
+**B17** (Batch 3 des Laufzeit-Bündels): der 21-Tage-Backtest wird je lokalem
+Endtag gecacht statt je Lauf gerechnet. Untertägige Läufe überspringen damit
+21 Folds × (1 Fit + 3 Prognosen) je Station — im Sandkasten 86 % der CPU-Zeit
+eines Laufs.
+
+### Hinzugefügt
+
+- **B17 — Tages-Cache des Backtests** (`app/backtest_cache.py`). Schlüssel:
+  Stations-Identität, lokaler Endtag (exklusiv), Testtage. Fingerabdruck:
+  vollständige Engine-Config (`Config.to_dict()`), Inhalts-Hash der
+  **gesamten** Preisreihe bis zum Endtag (alle Spalten + Index über
+  `pd.util.hash_pandas_object`), Schema-Versionen von Engine und Cache sowie
+  numpy/pandas-Version. Jede Änderung in der Vergangenheit — Archiv-Nachholung,
+  Lückenfüllung, Hampel-Ergebnis, Status-Korrektur — kippt den Fingerabdruck
+  und rechnet neu; neue Stundendaten am selben Tag treffen. Eine JSON-Datei
+  je Station unter `runtime/engine/backtest-cache/`, atomar geschrieben,
+  Schreibfehler kippen den Lauf nicht. `TANKAPP_BACKTEST_CACHE=0` schaltet
+  den Cache aus (Gegenprobe).
+- **Ehrlicher Ausweis:** jede Prognose in `current.json` trägt
+  `backtest_cached` (bool) und `backtest_computed_at` (UTC, ISO) — das Alter
+  des Berichts wird genannt, nicht verschwiegen. Job-Log und Fortschritt
+  melden je Kraftstoff „Backtest: n aus Tages-Cache, m neu gerechnet“.
+- **Tests** (`tests/test_backtest_cache.py`, `tests/test_app_jobs.py`):
+  „gleicher Tag, +4 h/+10 h Stundendaten → byteidentischer Bericht“,
+  „0,1 ct-Änderung zehn Tage zurück → neuer Fingerabdruck“, „Archiv-
+  Nachholung → neuer Bericht, danach wieder Treffer“, „Treffer = dieselben
+  Zahlen wie die Rechnung“, „zweiter `refresh` am selben Tag ruft
+  `run_backtest` nicht“, kaputte Cache-Datei wird ignoriert, Abschaltung.
+
+### Geändert
+
+- **`engine/backtest.py::run_backtest` schneidet hart am Testende ab**
+  (`strict_end`, Default an, wenn das Ende aus den Daten bestimmt wird).
+  Befund bei der Vorbereitung: die Kernaussage aus der To-Do („eine Stunde
+  mehr Live-Daten ändert den Bericht nicht“) galt für Kennzahlen,
+  Vergleichszeilen und Fold-Origine — **nicht** für die Mehrtage-Horizonte:
+  die +3-d/+7-d-Fenster der letzten Folds wurden gegen den *laufenden*,
+  angebrochenen Tag bewertet (`horizons.72h.metrics.points` 912 um 10 Uhr,
+  1032 um 20 Uhr), obwohl `test_end_exclusive` Mitternacht nannte. Jetzt
+  wird die Reihe vor dem Backtest auf `< end` zugeschnitten, Fenster hinter
+  dem Ende zählen als neues Feld `days_beyond_test_end` (Bericht, Markdown)
+  statt bewertet zu werden. Die 24-h-Kennzahlen, Entscheidungszeilen und
+  Rolling-PICP sind davon nicht betroffen (bitgleich). Mit explizitem
+  `--until` (CLI, bekannte Zukunft) bleibt das alte Verhalten
+  (`strict_end=False`).
+- **Backtest-Task ohne toten Fit** (B20 Punkt 1): `app/model_jobs.py::_run`
+  fittete vor jedem Backtest zusätzlich das Cutoff-Modell, das dann verworfen
+  wurde. Das Modell kommt aus der Phase-A-Aufgabe.
+- `Settings.backtest_cache` (Env `TANKAPP_BACKTEST_CACHE`, Default an);
+  `run_tasks(..., cache_dir=None)` — ohne Verzeichnis wird immer gerechnet.
+
+### Gemessen
+
+Sandkasten, eine Station, 7 Testtage, `bootstrap_samples=100`: Backtest-Task
+frisch 2,3 s, aus dem Cache < 10 ms (Fingerabdruck über 120 Tage Raster
+≈ 5 ms). Auf dem NAS entfällt untertägig der Anteil `backtest21` von
+Phase B; die NAS-Laufdauer vorher/nachher aus der `beendet: … Dauer`-Zeile
+des Job-Logs steht — wie für 0.20.0 — noch aus. Erwartung laut To-Do:
+Phase B untertägig ~1 min (nur `wide72`/`wide168`), der erste Lauf nach
+Mitternacht rechnet wie bisher.
+
 ## [0.21.0] – 2026-09-12
 
 **B18 + B24** (Batch 2 des Laufzeit-Bündels): Betrieb statt Rechnen — der NAS
