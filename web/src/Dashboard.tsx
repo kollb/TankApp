@@ -27,6 +27,7 @@ import {
   HelpCircle,
   Route,
   Terminal,
+  Share2,
   CalendarDays,
   Scale,
   Activity,
@@ -36,6 +37,11 @@ import {
   ScrollText,
   Play,
 } from "lucide-react";
+// D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
+// jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
+import { ApiExplorer } from "./components/ApiExplorer";
+import { HeatmapGrid } from "./components/HeatmapGrid";
+import { PrecisionSlider } from "./components/PrecisionSlider";
 import { LineChart } from "./components/LineChart";
 import {
   LabLineChart,
@@ -65,11 +71,11 @@ import {
   HEATMAP_WEEKS,
   isHeatmapBasis,
   isHeatmapWeeks,
+  readShareParams,
+  shareQuery,
   livePhaseHint,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
-  MIN_HEATMAP_CELLS_PER_DAY,
-  MIN_HEATMAP_POINTS,
   m7GateLine,
   problem,
   segments,
@@ -160,7 +166,7 @@ function Metric({
             tabIndex={0}
             role="button"
             aria-label={`Erklärung zu ${label}`}
-            className="cursor-help text-slate-500 hover:text-slate-300 focus:text-slate-200 focus:outline-none"
+            className="cursor-help text-slate-500 hover:text-slate-300 focus:text-slate-200"
             title={tip}
           >
             <HelpCircle size={14} aria-hidden="true" />
@@ -380,532 +386,27 @@ function JobCard({
   );
 }
 
-function ApiExplorer({
-  fuel,
-  identity,
-  activeCity,
-  heatmapWeeks,
-}: {
-  fuel: Fuel;
-  identity: string;
-  activeCity: string;
-  heatmapWeeks: number;
-}) {
-  const [path, setPath] = useState("/api/v1/health");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  // E7: „day“ braucht eine Station. Ohne Auswahl wäre der Knopf nur ein
-  // Aufruf ins Leere (leerer station_id → Fehleranzeige), deshalb grau.
-  const stationId = identity
-    ? new URLSearchParams(identity).get("station_id") || ""
-    : "";
-  const today = new Date().toISOString().slice(0, 10);
-  // Identität und Heatmap-Pfad teilen sich mit den Tabs dieselbe Bauanleitung
-  // (heatmapPath) — der Explorer zeigt damit exakt die Anfrage, die die GUI stellt.
-  const dynamic = identity
-    ? [
-        {
-          label: "Preisverlauf (24 h)",
-          path: `/api/v1/series?${identity}`,
-        },
-        {
-          label: "Modell-Ausblick",
-          path: `/api/v1/forecast?${identity}`,
-        },
-        {
-          label: `Heatmap Niveau (${heatmapWeeks} Wochen)`,
-          path: heatmapPath({
-            city: activeCity,
-            fuel,
-            kind: "level",
-            weeks: heatmapWeeks,
-            stationId,
-          }),
-        },
-        {
-          label: `Heatmap Cheap-Prob (${heatmapWeeks} Wochen)`,
-          path: heatmapPath({
-            city: activeCity,
-            fuel,
-            kind: "probability",
-            weeks: heatmapWeeks,
-            stationId,
-          }),
-        },
-        {
-          label: "day (Beispiel)",
-          path: `/api/v1/day?station_id=${encodeURIComponent(stationId)}&day=${today}`,
-        },
-      ]
-    : [];
-  const endpoints = [
-    { label: "health", path: "/api/v1/health", note: "" },
-    {
-      label: "decide",
-      path: `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=40`,
-      note: "",
-    },
-    {
-      label: "stats/summary",
-      path: `/api/v1/stats/summary?city=${encodeURIComponent(activeCity)}&fuel=${fuel}`,
-      note: "",
-    },
-    { label: "episodes?due", path: "/api/v1/episodes?status=due", note: "" },
-    {
-      label: `stations ${fuel}`,
-      path: `/api/v1/stations?fuel=${fuel}`,
-      note: "",
-    },
-    {
-      label: `selection ${fuel}`,
-      path: `/api/v1/selection?fuel=${fuel}`,
-      note: "",
-    },
-    {
-      label: "collector/status",
-      path: "/api/v1/collector/status",
-      note: "",
-    },
-    {
-      label: "jobs/models/log",
-      path: "/api/v1/jobs/models/log?lines=50",
-      note: "",
-    },
-    { label: "last_forecasts", path: "/api/v1/last_forecasts", note: "" },
-    {
-      label: "day (Beispiel)",
-      path: "",
-      note: "erst Station wählen",
-    },
-    {
-      label: "route/evaluate (deprecated)",
-      path: `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&detour_km=3&liters=40`,
-      note: "",
-    },
-    ...dynamic.map((entry) => ({ ...entry, note: "" })),
-  ].filter((entry) => entry.label !== "day (Beispiel)" || !identity);
-  const run = async (target: string) => {
-    setPath(target);
-    setLoading(true);
-    setAnswer(null);
-    try {
-      const response = await fetch(target, { cache: "no-store" });
-      const data: unknown = await response.json();
-      const text = JSON.stringify(data, null, 2);
-      setAnswer(text.length > 5000 ? `${text.slice(0, 5000)}\n… gekürzt` : text);
-    } catch {
-      setAnswer('{\n  "error_code": "request_failed"\n}');
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap gap-2">
-        {endpoints.map((entry) => {
-          const blocked = entry.path === "";
-          return (
-            <button
-              key={entry.label}
-              onClick={() => (blocked ? undefined : void run(entry.path))}
-              disabled={blocked}
-              aria-disabled={blocked}
-              title={
-                blocked
-                  ? entry.note
-                  : `GET ${entry.path}${entry.note ? ` — ${entry.note}` : ""}`
-              }
-              aria-pressed={path === entry.path && answer !== null}
-              className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-                blocked
-                  ? "cursor-not-allowed border-slate-800 bg-slate-950/50 text-slate-600"
-                  : path === entry.path && answer !== null
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
-              }`}
-            >
-              GET {entry.label}
-              {blocked && entry.note ? (
-                <span className="ml-1 text-[10px] text-slate-500">
-                  · {entry.note}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-      {!identity && (
-        <p className="mb-3 text-[11px] text-slate-500">
-          Verlauf, Ausblick, Heatmaps und die Tageszeile („day“) erscheinen hier,
-          sobald eine Station mit Stadt gewählt ist — die GUI fragt sie dann live
-          ab, genau wie die Tabs.
-        </p>
-      )}
-      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
-        {loading
-          ? "// Rufe Endpunkt auf …"
-          : answer || "// Oben einen Endpunkt wählen — nur lesend, kein Poll."}
-      </pre>
-    </div>
-  );
-}
-
-/**
- * E6: Slider mit Begleit-Zahlenfeld.
- *
- * Der Slider gibt die grobe Rasterung vor (Verbrauch in 0,5er-Schritten,
- * Tankmenge in Litern), das Feld daneben erlaubt den exakten Wert — 6,3
- * L/100 km ist mit einem 0,5er-Slider nicht erreichbar, beeinflusst aber
- * jede Umweg-Rechnung. Komma und Punkt werden akzeptiert (E2), außerhalb
- * des Bereichs wird geklemmt und offen gesagt.
- */
-function PrecisionSlider({
-  id,
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  step,
-  unit,
-  valueText,
-  valueSpeech,
-  hint,
-  icon,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  onChange: (next: number) => void;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  valueText?: string;
-  valueSpeech?: string;
-  hint?: ReactNode;
-  icon?: ReactNode;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [clampedNote, setClampedNote] = useState<string | null>(null);
-  const shown = draft ?? deTrimmed(value);
-  // Kein Zahl-Wert, kein Fortschritt: das Feld behält den bisherigen Wert,
-  // statt ihn zu löschen oder zu raten.
-  const noNumber = draft !== null && draft.trim() !== "" && sliderCommit(draft, { min, max }) === null;
-
-  const commit = (raw: string) => {
-    const next = sliderCommit(raw, { min, max });
-    if (next === null) return;
-    const parsed = germanDecimalToNumber(raw);
-    setClampedNote(
-      parsed !== null && parsed !== next
-        ? `außerhalb ${deTrimmed(min)}–${deTrimmed(max)} — auf ${deTrimmed(next)} geklemmt`
-        : null,
-    );
-    onChange(next);
-  };
-
-  return (
-    <div className="text-xs text-slate-400">
-      <label
-        htmlFor={id}
-        className="flex items-center justify-between gap-2 text-xs text-slate-400"
-      >
-        <span className="flex items-center gap-2">
-          {icon}
-          {label}
-        </span>
-        <span className="font-mono font-semibold text-emerald-400">
-          {valueText ?? `${deTrimmed(value)} ${unit}`}
-        </span>
-      </label>
-      <div className="mt-3 flex items-center gap-3">
-        <input
-          id={id}
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          aria-valuetext={valueSpeech ?? `${deTrimmed(value)} ${unit}`}
-          onChange={(e) => {
-            setClampedNote(null);
-            onChange(Number(e.target.value));
-          }}
-          className="w-full"
-        />
-        <span className="flex items-center gap-1">
-          <input
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            aria-label={`${label} direkt eingeben (${unit}, ${deTrimmed(min)}–${deTrimmed(max)})`}
-            aria-invalid={noNumber}
-            value={shown}
-            title={`${deTrimmed(min)}–${deTrimmed(max)} ${unit} — Komma oder Punkt, Enter übernimmt`}
-            onChange={(e) => {
-              const raw = commaToDot(e.target.value);
-              setDraft(raw);
-              commit(raw);
-            }}
-            onBlur={() => {
-              setDraft(null);
-              setClampedNote(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-            className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-white outline-none focus:border-emerald-500"
-          />
-          <span className="text-[10px] text-slate-500">{unit}</span>
-        </span>
-      </div>
-      {clampedNote ? (
-        <p className="mt-1 text-[10px] leading-snug text-amber-300">
-          {clampedNote}
-        </p>
-      ) : noNumber ? (
-        <p className="mt-1 text-[10px] leading-snug text-rose-300">
-          Zahl erwartet (Komma oder Punkt) — {deTrimmed(min)}–{deTrimmed(max)}{" "}
-          {unit}.
-        </p>
-      ) : (
-        hint
-      )}
-    </div>
-  );
-}
-
-function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
-  const { days, hours, matrix, kind } = heatmap;
-  const isProb = kind === "probability";
-  // B12: Spalten-Basis (Median derselben Stunde) — der Server liefert sie im
-  // Payload zurück; ohne Station und bei Cheap-Probability ist sie wirksam.
-  const byHour =
-    isProb && !heatmap.station_id && (heatmap.basis ?? "overall") === "hour";
-  const referenceLabel = isProb
-    ? byHour
-      ? "Median derselben Stunde"
-      : heatmap.station_id
-        ? "Stadtmedian dieser Zelle"
-        : "Gesamtmedian"
-    : "Median";
-
-  // Zellen mit zu kleiner Stichprobe (n < 8) zählen nicht — weder für
-  // Farben/Median noch für die „günstigste Stunde“. Ohne Zähler im Payload
-  // (alte API) bleibt alles wie bisher.
-  const cellCount = (dIdx: number, h: number): number | null => {
-    const row = heatmap.counts?.[dIdx];
-    return row?.[h] ?? null;
-  };
-  const cellOk = (v: number | null, dIdx: number, h: number): v is number => {
-    if (v === null || !Number.isFinite(v)) return false;
-    const n = cellCount(dIdx, h);
-    return n === null || n >= MIN_HEATMAP_POINTS;
-  };
-  const allVals = matrix.flatMap((r, dIdx) =>
-    r.filter((v, h): v is number => cellOk(v, dIdx, hours[h] ?? h)),
-  );
-  const minVal = allVals.length ? Math.min(...allVals) : 0;
-  const maxVal = allVals.length ? Math.max(...allVals) : 1;
-
-  const colorFor = (v: number | null) => {
-    if (v === null || !Number.isFinite(v)) return "bg-slate-950 text-slate-700";
-    if (isProb) {
-      if (v >= 75) return "bg-emerald-500/40 text-emerald-200 font-semibold";
-      if (v >= 55) return "bg-emerald-500/20 text-emerald-300";
-      if (v >= 40) return "bg-amber-500/15 text-amber-300";
-      if (v >= 25) return "bg-rose-500/20 text-rose-300";
-      return "bg-rose-500/35 text-rose-200 font-semibold";
-    }
-    const span = maxVal - minVal || 0.01;
-    const norm = (v - minVal) / span;
-    if (norm <= 0.25) return "bg-emerald-500/40 text-emerald-200 font-semibold";
-    if (norm <= 0.45) return "bg-emerald-500/20 text-emerald-300";
-    if (norm <= 0.65) return "bg-amber-500/15 text-amber-300";
-    if (norm <= 0.85) return "bg-rose-500/20 text-rose-300";
-    return "bg-rose-500/35 text-rose-200 font-semibold";
-  };
-
-  const fmtVal = (v: number | null) => {
-    if (v === null || !Number.isFinite(v)) return "—";
-    if (isProb) return `${Math.round(v)}%`;
-    return v.toFixed(3);
-  };
-
-  // C10: Tages-Zusammenfassung je Wochentag — Median + günstigste Stunde.
-  const todayIdx = (() => {
-    try {
-      const short = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Europe/Berlin",
-        weekday: "short",
-      }).format(new Date());
-      const order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const idx = order.indexOf(short);
-      return idx >= 0 ? idx : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  const summaries = days
-    .map((dayName, dIdx) => {
-      const row = matrix[dIdx] ?? [];
-      const vals = row.filter((v, h): v is number =>
-        cellOk(v, dIdx, hours[h] ?? h),
-      );
-      // Unter 3 belastbaren Zellen bleibt die Zeile ehrlich leer — kein
-      // Median und keine „günstigste Stunde“ aus 1–2 Nacht-Zellen.
-      if (vals.length < MIN_HEATMAP_CELLS_PER_DAY) return null;
-      const sorted = [...vals].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      let bestHour = hours[0] ?? 0;
-      let bestValue = isProb ? -Infinity : Infinity;
-      row.forEach((v, h) => {
-        const hour = hours[h] ?? h;
-        if (!cellOk(v, dIdx, hour)) return;
-        if (isProb ? v > bestValue : v < bestValue) {
-          bestValue = v;
-          bestHour = hour;
-        }
-      });
-      return { day: dayName, median, bestHour, bestValue, index: dIdx };
-    })
-    .filter((s): s is NonNullable<typeof s> => s !== null);
-
-  const bestDay = summaries.length
-    ? summaries.reduce((acc, s) =>
-        isProb
-          ? s.median > acc.median
-            ? s
-            : acc
-          : s.median < acc.median
-            ? s
-            : acc,
-      )
-    : null;
-
-  const blockLabel = (h: number) =>
-    `${String(h).padStart(2, "0")}–${String((h + 2) % 24).padStart(2, "0")}`;
-
-  return (
-    <div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-center text-[10px] font-mono">
-          <thead>
-            <tr className="text-slate-500">
-              <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
-              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
-                Median
-              </th>
-              <th className="p-1 text-left font-sans text-[10px] font-normal text-slate-600">
-                Günstigste Std.
-              </th>
-              {hours.map((h) => (
-                <th key={h} className="p-1 font-normal">
-                  {String(h).padStart(2, "0")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/40">
-            {days.map((dayName, dIdx) => {
-              const summary = summaries.find((s) => s.index === dIdx) ?? null;
-              const isToday = todayIdx === dIdx;
-              return (
-                <tr
-                  key={dayName}
-                  className={isToday ? "bg-sky-500/[.07]" : undefined}
-                >
-                  <td
-                    className={`p-1 text-left font-sans text-xs font-medium ${
-                      isToday ? "text-sky-300" : "text-slate-300"
-                    }`}
-                  >
-                    {dayName}
-                    {isToday ? (
-                      <span className="ml-1 text-[9px] font-bold uppercase text-sky-400">
-                        heute
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
-                    {summary
-                      ? isProb
-                        ? `${Math.round(summary.median)} %`
-                        : `${summary.median.toFixed(3)}`
-                      : "—"}
-                  </td>
-                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
-                    {summary ? blockLabel(summary.bestHour) : "—"}
-                  </td>
-                  {hours.map((h) => {
-                    const val = matrix[dIdx]?.[h] ?? null;
-                    const n = cellCount(dIdx, h);
-                    const ok = cellOk(val, dIdx, h);
-                    const shown = ok ? val : null;
-                    const thin =
-                      val !== null && !ok && n !== null
-                        ? `zu wenig Daten (n=${n}, min. ${MIN_HEATMAP_POINTS})`
-                        : null;
-                    return (
-                      <td
-                        key={h}
-                        title={`${dayName} ${String(h).padStart(2, "0")}:00 Uhr: ${thin ?? (isProb ? (shown !== null ? `${shown.toFixed(1)} % Chance günstiger als ${referenceLabel}` : "keine Daten") : (shown !== null ? `${shown.toFixed(3)} €/L Median` : "keine Daten"))}`}
-                        className={`p-1 transition-colors ${colorFor(shown)}`}
-                      >
-                        {thin ? "·" : fmtVal(shown)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {bestDay && (
-        <p className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-300">
-          <span className="font-semibold text-slate-200">
-            Typisch am günstigsten:
-          </span>{" "}
-          {bestDay.day} {blockLabel(bestDay.bestHour)} Uhr —{" "}
-          {isProb
-            ? `${Math.round(bestDay.bestValue)} % Chance günstig`
-            : `Median ${bestDay.bestValue.toFixed(3)} €/L`}
-          .
-        </p>
-      )}
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-        {isProb
-          ? byHour
-            ? "Cheap-Probability: Anteil der Preise, die günstiger waren als der Median derselben Stunde über alle Wochentage. "
-            : heatmap.station_id
-              ? "Cheap-Probability: Anteil der Preise dieser Station, die unter dem Median aller Stationen derselben Zelle lagen. "
-              : "Cheap-Probability: Anteil der Preise, die günstiger als der Gesamtmedian des Zeitraums waren — dabei dominiert der Tagesgang die Farben, Wochentage sind dann nur bedingt vergleichbar. "
-          : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
-        Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
-        (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.
-        Zellen mit weniger als {MIN_HEATMAP_POINTS} Preisen (·) zählen nicht —
-        sonst würde ein einzelner Nacht-Preis die „günstigste Stunde“
-        bestimmen.
-      </p>
-    </div>
-  );
-}
-
 export function Dashboard() {
+  // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
+  // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
+  // überschreibt damit den localStorage des empfangenden Geräts; ohne das
+  // würde sie falsch wiederhergestellt, seit heatmapWeeks/heatmapBasis echte
+  // Preferences sind. Ungültige Parameter werden in readShareParams
+  // weggelassen, die GUI fällt auf ihre Defaults zurück.
+  const share = useMemo(() => readShareParams(window.location.search), []);
   const [fuel, setFuel] = usePreference<Fuel>(
     "fuel",
     "e10",
     (value) => value === "e10" || value === "e5" || value === "diesel",
+    share.fuel,
   );
   const [city, setCity] = usePreference(
     "city",
     "",
     (value) => typeof value === "string",
+    share.city,
   );
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(share.stationId ?? "");
   const [tab, setTab] = useState<"daily" | "statistics" | "system">("daily");
   const [liters, setLiters] = usePreference(
     "liters",
@@ -915,6 +416,7 @@ export function Dashboard() {
       Number.isFinite(value) &&
       value >= 10 &&
       value <= 80,
+    share.liters,
   );
   const [consumption, setConsumption] = usePreference(
     "consumption",
@@ -970,6 +472,7 @@ export function Dashboard() {
     "heatmapWeeks",
     HEATMAP_DEFAULT_WEEKS,
     isHeatmapWeeks,
+    share.heatmapWeeks,
   );
   // B12: Vergleichs-Basis der Cheap-Probability ohne Station. Default
   // „hour“ (Spalten-Basis) — nur die macht die Wochentage vergleichbar.
@@ -977,6 +480,7 @@ export function Dashboard() {
     "heatmapBasis",
     HEATMAP_DEFAULT_BASIS,
     isHeatmapBasis,
+    share.heatmapBasis,
   );
 
   // B4 Workshop State: ε Handlungsschwelle Slider
@@ -1007,6 +511,9 @@ export function Dashboard() {
   const [voidNote, setVoidNote] = useState<string | null>(null);
 
   const [routeAltId, setRouteAltId] = useState("");
+  // A6: Rückmeldung des „Ansicht teilen“-Knopfs (Kopfzeile).
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  const shareNoteTimer = useRef<number | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(performance.now());
   const [browserOnline, setBrowserOnline] = useState(
@@ -1128,6 +635,45 @@ export function Dashboard() {
       : null;
   const selectedIsCheapest =
     difference !== null && Math.abs(difference) < 0.005;
+  // A6: aktuelle Sicht als Share-URL — in die Adresszeile (bookmarkbar) und,
+  // wenn der Browser es erlaubt (LAN-HTTP ohne Secure Context tut es oft
+  // nicht), zusätzlich in die Zwischenablage.
+  const copyShareLink = () => {
+    const query = shareQuery({
+      city: activeCity,
+      fuel,
+      stationId: selected?.station_id ?? null,
+      liters,
+      heatmapWeeks,
+      heatmapBasis,
+    });
+    const url = `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ""}`;
+    try {
+      window.history.replaceState(null, "", url);
+    } catch {
+      /* History darf scheitern (z. B. Sandbox) — der Hinweistext bleibt korrekt. */
+    }
+    const note = (text: string) => {
+      setShareNote(text);
+      if (shareNoteTimer.current) window.clearTimeout(shareNoteTimer.current);
+      shareNoteTimer.current = window.setTimeout(() => setShareNote(null), 5000);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() =>
+          note(
+            "Link kopiert — teilt diese Sicht (Stadt, Kraftstoff, Station, Tankmenge, Heatmap-Einstellungen).",
+          ),
+        )
+        .catch(() =>
+          note("URL steht jetzt in der Adresszeile — zum Teilen kopieren."),
+        );
+    } else {
+      note("URL steht jetzt in der Adresszeile — zum Teilen kopieren.");
+    }
+  };
+
   // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
   // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
   const identity = selected
@@ -1781,6 +1327,28 @@ export function Dashboard() {
                     : "OK"}
               </span>
             )}
+            {/* A6: aktuelle Sicht als Link teilen (Haushalt/Bookmark). */}
+            <span className="relative inline-flex">
+              <button
+                aria-label="Ansicht als Link teilen"
+                title="Setzt Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
+                onClick={copyShareLink}
+                className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+              >
+                <Share2 size={16} aria-hidden="true" />
+              </button>
+              <span role="status" aria-live="polite" className="sr-only">
+                {shareNote ?? ""}
+              </span>
+              {shareNote && (
+                <span
+                  role="status"
+                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-[11px] leading-snug text-slate-200 shadow-xl"
+                >
+                  {shareNote}
+                </span>
+              )}
+            </span>
             <button
               aria-label="Daten aktualisieren"
               title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
@@ -2019,7 +1587,7 @@ export function Dashboard() {
                           aria-invalid={litersError != null}
                           aria-describedby={`custom-liters-hint${litersError ? " custom-liters-error" : ""}`}
                           title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
-                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                         />
                         <span
                           id="custom-liters-hint"
@@ -2044,7 +1612,7 @@ export function Dashboard() {
                           aria-invalid={priceError != null}
                           aria-describedby={`custom-price-hint${priceError ? " custom-price-error" : ""}`}
                           title={`${fillLimitHint("price")} — wie an der Säule`}
-                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                         />
                         {priceError && (
                           <p id="custom-price-error" className="mt-1 text-[10px] leading-snug text-rose-300">
@@ -2519,7 +2087,7 @@ export function Dashboard() {
                         aria-label="Station des Tankbelegs"
                         value={quickStation?.station_id || ""}
                         onChange={(e) => setQuickStationId(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                       >
                         {stations.length ? (
                           stations.map((row) => (
@@ -2545,7 +2113,7 @@ export function Dashboard() {
                         onChange={(e) => setQuickLitersStr(commaToDot(e.target.value))}
                         aria-invalid={quickDraft.litersError != null}
                         title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                       />
                       <span className="mt-1 block text-[10px] text-slate-500">
                         {fillLimitHint("liters")} · z. B. 45,5.
@@ -2566,7 +2134,7 @@ export function Dashboard() {
                         onChange={(e) => setQuickPriceStr(commaToDot(e.target.value))}
                         aria-invalid={quickDraft.priceError != null}
                         title={`${fillLimitHint("price")} — wie an der Säule`}
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-500"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                       />
                       <span className="mt-1 block text-[10px] text-slate-500">
                         {fillLimitHint("price")} · Vorschlag: frischer Preis
@@ -3546,7 +3114,11 @@ export function Dashboard() {
               </div>
               <div className="grid gap-4 lg:grid-cols-3">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
-                  <CalibChart points={calibPoints} livePoints={livePointsForChart} />
+                  <CalibChart
+                    points={calibPoints}
+                    livePoints={livePointsForChart}
+                    ariaDescription="Kalibrierungsdiagramm: die Prozentzahl der Empfehlung (waagerecht) gegen das eingetretene Ergebnis (senkrecht); auf der Diagonalen stimmt Versprechen und Wirklichkeit überein."
+                  />
                 </div>
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
@@ -3708,6 +3280,7 @@ export function Dashboard() {
                   xDomain={obsWindow}
                   xTicks={autoTimeTicks(obsWindow[0], obsWindow[1])}
                   yFmt={(v) => euro(v, 3)}
+                  ariaDescription={`Preisverlauf der gewählten Station über die letzten ${spanHours === 24 ? "24 Stunden" : spanHours === 72 ? "3 Tage" : "7 Tage"} in €/L.`}
                 />
               ) : (
                 <Empty>
@@ -3774,6 +3347,7 @@ export function Dashboard() {
                     xDomain={forecastWindow}
                     xTicks={autoTimeTicks(forecastWindow[0], forecastWindow[1])}
                     yFmt={(v) => euro(v, 3)}
+                    ariaDescription="Modell-Ausblick: prognostizierter Preisverlauf mit 80-%- und 95-%-Unsicherheitsband in €/L; Markierungen zeigen Fensterenden und den 12-Uhr-Anker."
                   />
                   {modelWindows.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2 text-xs">
@@ -3914,6 +3488,7 @@ export function Dashboard() {
                           { x: 21, label: "21" },
                         ]}
                         yFmt={(v) => `${v.toFixed(1)} ct`}
+                        ariaDescription="Tageskurve des gewählten Tags: erwartete Preisdifferenz in Cent je Stunde, mit Markierung für den Anker und die prognostizierte günstigste Stunde."
                       />
                     ) : (
                       <div className="flex h-[220px] items-center justify-center px-6 text-center text-xs leading-relaxed text-slate-500">
@@ -3934,6 +3509,7 @@ export function Dashboard() {
                         { x: labMu, color: "#38bdf8", label: `μ ${labMu.toFixed(1)}` },
                       ]}
                       height={220}
+                      ariaDescription="Histogramm der Trainings-Verteilung S: wie häufig eine Ersparnis in Cent je Liter vorkam, mit Markern für die Schwelle ε und den Durchschnitt μ."
                     />
                   ) : (
                     <div className="flex h-[220px] items-center justify-center px-6 text-center text-xs leading-relaxed text-slate-500">

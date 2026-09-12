@@ -19,6 +19,21 @@ from engine.config import Config
 from engine.data import normalize_observations, prepare_series
 
 
+@pytest.fixture(autouse=True)
+def _fresh_write_budget():
+    """B5: Schreib-Budget je Test zurücksetzen — Tests laufen aus einer IP.
+
+    Ohne Reset würde das 20-Schreibungen-Minuten-Budget aus ``app.server``
+    beim ersten POST/DELETE-Lasttest der Suite die nachfolgenden Tests mit
+    429 anstecken; produktiv gilt das Budget bewusst pro Client weiter.
+    """
+    import app.server as server_module
+
+    server_module._WRITE_HITS.clear()
+    yield
+    server_module._WRITE_HITS.clear()
+
+
 @pytest.fixture
 def cfg():
     return Config(

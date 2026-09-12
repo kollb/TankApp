@@ -2,6 +2,7 @@
 
 import datetime as dt
 import functools
+import gzip
 import hmac
 import json
 import os
@@ -49,10 +50,51 @@ _FILL_STATUS = {
     "invalid_liters": 400,
     "invalid_price": 400,
     "invalid_fuel": 400,
+    "invalid_tanked_at": 400,
     "price_not_available": 400,
     "unknown_station": 404,
     "store_too_large": 503,
 }
+
+# B5: Kleines Schreib-Budget — ausschließlich für die Ledger-Endpunkte
+# (POST fills/intent/outcome, DELETE fills/{id}). Bewusst KEIN GET-Limit
+# mehr (0.12.0): Das GUI-Polling mehrerer Geräte war zu Recht uneingeschränkt.
+# Aber ein defekter Client, der Belege in Dauerschleife bucht, kann Wallet
+# und Ledger sonst allein durch Volumen kippen. 20 Buchungen pro Minute sind
+# für Menschen großzügig, für eine Flut ist es eine Grenze. Job-Knopf (hat
+# eigenen Debounce), Heartbeat (Maschine) und Webhook (HMAC) bleiben außen
+# vor — das Budget schützt Fehlbedienung ab, nicht Angreifer (LAN-only).
+WRITE_BUDGET_PER_MINUTE = 20
+_WRITE_RETRY_AFTER = 60
+_WRITE_LOCK = threading.Lock()
+_WRITE_HITS: dict[str, list[float]] = {}
+
+
+def _write_budget_left(client: str) -> bool:
+    """Rollendes 60-s-Fenster je Client; True = Schreiben erlaubt."""
+    now = time.monotonic()
+    with _WRITE_LOCK:
+        window = [t for t in _WRITE_HITS.get(client, ()) if now - t < 60.0]
+        allowed = len(window) < WRITE_BUDGET_PER_MINUTE
+        if allowed:
+            window.append(now)
+        # Fenster weiterführen, damit Zähler und Retry-After stabil bleiben.
+        _WRITE_HITS[client] = window
+        return allowed
+
+
+# B7: JSON-Antworten komprimieren, wenn der Client es versteht. Unterhalb
+# des Schwellwerts schrumpft gzip kaum — Overhead lohnt nicht.
+GZIP_MIN_BYTES = 512
+
+
+def _gzip_if_accepted(accept_encoding: str | None, content: bytes) -> bytes:
+    """Liefert gzip-gepackte Bytes — oder das Original, wenn nicht lohnend."""
+    if not accept_encoding or "gzip" not in accept_encoding.lower():
+        return content
+    if len(content) < GZIP_MIN_BYTES:
+        return content
+    return gzip.compress(content, compresslevel=6)
 
 
 def _fill_status(res) -> int:
@@ -270,6 +312,8 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, data, **kwargs):
         self.data = data
         self._successor = None
+        # B7: pro Antwort setzbare Cache-Politik (None = klassische Regeln).
+        self._cache_policy: str | None = None
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
@@ -289,7 +333,11 @@ class Handler(SimpleHTTPRequestHandler):
         # API und Dokumente bleiben no-store; content-hashierte Vite-Assets
         # dürfen (und sollen) cachen — sonst bremst no-store das
         # Lighthouse-Ziel aus §13 M4 (Prüfstand §3.8).
-        if self.path.startswith("/assets/"):
+        cache_policy = getattr(self, "_cache_policy", None)
+        if cache_policy is not None:
+            # B7: pro Antwort gesetzte Politik (semi-statische Endpunkte).
+            self.send_header("Cache-Control", cache_policy)
+        elif self.path.startswith("/assets/"):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         else:
             self.send_header("Cache-Control", "no-store")
@@ -311,12 +359,28 @@ class Handler(SimpleHTTPRequestHandler):
 
     def json(self, payload, status=200):
         content = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
+        headers = getattr(self, "headers", None)
+        body = _gzip_if_accepted(
+            headers.get("Accept-Encoding") if headers else None, content
+        )
+        if status == 200 and self.path.startswith(
+            ("/api/v1/heatmap", "/api/v1/last_forecasts")
+        ):
+            # B7: semi-statisch — beide Antworten ändern sich nur mit dem
+            # Modelllauf (30-min-/Stunden-Takt), nicht je Anfrage. 15 min
+            # max-age liegen bewusst unter dem kleinsten Job-Intervall; alles
+            # andere (live Preise, Wallet, Health) bleibt no-store.
+            self._cache_policy = "public, max-age=900"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Content-Length", str(len(body)))
+        if body is not content:
+            self.send_header("Content-Encoding", "gzip")
+        # Cache-Trennzeichen: Proxies dürfen gzip/unzip nicht verwechseln.
+        self.send_header("Vary", "Accept-Encoding")
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(content)
+            self.wfile.write(body)
 
     def csv(self, content: str, filename: str, status=200):
         body = content.encode("utf-8")
@@ -497,6 +561,25 @@ class Handler(SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionError):
             pass
 
+    def _gate_write(self) -> bool:
+        """B5: Schreib-Budget für Ledger-Endpunkte; antwortet 429 bei Überschreitung.
+
+        Zählt je Client-IP und rollender Minute. Antwort ohne Body-Lektüre:
+        Der Handler spricht HTTP/1.0 (Verbindung schließt je Antwort), ein
+        ungelesener Request-Body stört also nicht.
+        """
+        if _write_budget_left(self.client_address[0]):
+            return True
+        content = json.dumps({"error_code": "write_rate_limited"}).encode()
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Retry-After", str(_WRITE_RETRY_AFTER))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(content)
+        return False
+
     def serve_post(self):
         url = urlsplit(self.path)
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
@@ -611,6 +694,8 @@ class Handler(SimpleHTTPRequestHandler):
             parts = norm_path.split("/")
             # /api/v1/episodes/<id>/intent => parts = ['', 'api', 'v1', 'episodes', '<id>', 'intent']
             if len(parts) == 6:
+                if not self._gate_write():
+                    return
                 episode_id = parts[4]
                 intent = payload.get("intent")
                 if not intent or intent not in (
@@ -637,6 +722,8 @@ class Handler(SimpleHTTPRequestHandler):
 
         # --- B4 Fills Endpoint: POST /api/v1/fills ---
         if norm_path == "/api/v1/fills":
+            if not self._gate_write():
+                return
             try:
                 res = self.data.record_fill(payload)
                 self.json(res, _fill_status(res))
@@ -648,6 +735,8 @@ class Handler(SimpleHTTPRequestHandler):
         if norm_path.startswith("/api/v1/recommendations/") and norm_path.endswith(
             "/outcome"
         ):
+            if not self._gate_write():
+                return
             try:
                 res = self.data.record_fill(payload)
                 self.json(res, _fill_status(res))
@@ -676,6 +765,8 @@ class Handler(SimpleHTTPRequestHandler):
             fill_id = norm_path[len("/api/v1/fills/") :].strip("/")
             if not fill_id or "/" in fill_id:
                 self.json({"error_code": "invalid_query"}, 400)
+                return
+            if not self._gate_write():
                 return
             try:
                 res = self.data.void_fill(fill_id)

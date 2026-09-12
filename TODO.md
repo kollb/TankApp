@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.11.0)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.13.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -33,7 +33,6 @@
 | A1 | P1 | **Fahrzeug-/Haushaltsprofile ohne Login** | Verbrauch, Zeitwert, Tankmenge, Kraftstoffart liegen heute im `localStorage` pro Browser → Handy ≠ PC, zweites Fahrzeug (Diesel vs. Benziner) unmöglich. Ziel: Profil-Umschalter im Header, serverseitig gespeichert (pro Haushalt, kein Account), GUI-Felder lesen daraus. |
 | A2 | P1 | **Tankstand / Restreichweite als Eingabe für F3** | Konzept-F3 („Tank bei ¼, kann ich warten?") hat keinen Tankstand-Input. Ziel: Fuellstand-Angabe (≈ Füllstand oder Rest-km), App sagt ehrlich „Warten riskant, Reserve reicht ~40 km" statt nur „bestes Fenster morgen". |
 | A4 | P1 | **Jahres-/Monatsbilanz in der Werkstatt** | Konzept §12 P2: „Wallet-Ledger im Alltag, **Jahresbilanz in der Werkstatt**". Heute nur Summen-Kacheln im Alltag. Ziel: Verlaufsliste der Fills, Monats-/Jahressumme, Ø €/Tankung, Vergleich gegen „immer sofort getankt"-Baseline (Regret-Ratio ist vorhanden, nur nicht persönlich aufbereitet). |
-| A6 | P2 | **Share-URL für die eigene Sicht** *(CSV-Export ist fertig, 0.10.0)* | `GET /api/v1/fills.csv` + Download im System-Tab sind da. Offen: URL-Parameter (`?city=…&fuel=…&station_id=…&liters=…`), die die GUI beim Öffnen übernimmt — zum Bookmarken und im Haushalt weitergeben. Kein JSON-Export der Preisverläufe nötig (liest ohnehin niemand). |
 | A8 | D | **Markenrabatte/Karten** (`--brand-rebate`) | 2–4 ct können das F2-Ranking umdrehen. Erst sinnvoll, sobald echte Rabattdaten vorliegen; bis dahin soll die GUI im Ranking anzeigen „rechnet ohne Rabattprogramme" (Transparenz-Hinweis). |
 | A9 | D | **w(h)-Rückkopplung anschließen** | Persönliches Zeitprofil (`wallet.wh_hours`) wird berechnet, fließt aber nicht in „billigste Stunde"/F3 ein (Konzept §5.5). Ab ≥8 Füllungen aktivieren, vorher Default — mit UI-Hinweis ab wann personalisiert. |
 | A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** | Hampel-Filter, Feiertags-/Sprung-Features, Mehrtage- und 21-Tage-Backtest sowie Rolling-PICP sind seit PR #69 implementiert und testgedeckt. Offen bleiben das unabhängige Zweitmodell mit inverse-MASE-Ensemble und die Abnahme aller M3-Kriterien auf echten Live-Daten. |
@@ -47,10 +46,8 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| B2 | P0 | **Schema-Version & Migration des Feedback-Stores** | `store.json` hat kein `schema_version`; die nächste Feldänderung bricht alte Stores still. Ziel: Versionsfeld + Migrations-Funktionen je Versionssprung, Test „alter Store → neue Version". |
 | B4 | P2 | **Alarm-Zustellung** *(Aggregation ist fertig, 0.10.0)* | `alarms[]` in `/api/v1/health` + roter/gelber Punkt im Header sind da ([docs/BETRIEB.md](docs/BETRIEB.md#system-alarme-lesen)). Offen: jemand **schaut** nur hin, wenn die GUI offen ist. Ziel: optionaler ntfy-Versand bei `severity: error` (ein Webhook, kein Auth-Ausbau), konfigurierbar per `TANKAPP_NTFY_URL`, aus Datenschutzgründen ohne Preis-/Stationsdetails im Text. |
-| B5 | P1 | **POST-/Schreib-Endpunkte gegen Flut härten** | Kein App-weites Rate-Limit mehr (0.12.0, LAN-only): `POST /fills`/`/intent` können von einem defekten Client das Ledger fluten. Plausibilitätsgrenzen serverseitig: `tanked_at` nur plausibles Fenster (nicht 1970/2100), Liter/Preis Obergrenzen, Stringlängen. |
-| B7 | P1 | **HTTP-Effizienz: gzip, getrenntes Caching, Poll-Bündelung** | `no-store` auf allem, keine Kompression, GUI pollt 8+ Ressourcen (~14.700 Req/Tag, Zählerstand aus V2-Analyse — ungedrosselt seit 0.12.0, aber strukturell ineffizient). Ziel: `Content-Encoding: gzip`; Hash-Assets `immutable`; semi-statische Endpunkte (heatmap, last_forecasts) 15–120 min cachebar; ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls. |
+| B7 | P1 | **HTTP-Effizienz: Poll-Bündelung** *(gzip + Cache-Schichten sind drin, 0.13.0)* | Erledigt: `Content-Encoding: gzip` für JSON (ab 512 B), `heatmap`/`last_forecasts` mit `public, max-age=900` (Hash-Assets waren schon `immutable`). Offen ist der teure Rest: GUI pollt 8+ Ressourcen (~14.700 Req/Tag, Zählerstand aus V2-Analyse) — Ziel: ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls; separat entscheiden, ob sich Poll-Bündelung lohnt. |
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?"-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online"-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
@@ -65,7 +62,7 @@
 | C2 | P1 | **Stamm-Stationen pinnen + Suche/Filter/Sortierung** | „Meine Stationen" lebt nur in der Werkstatt; im Alltag will der Nutzer seine 2–3 Stammstationen oben sehen. Liste bei 20+ Stationen (Frankfurt-Radius) ohne Suche/Markenfilter/Sortierung (Preis, Distanz, Netto-€). Lokal speicherbar, kein Account nötig. |
 | C3 | P2 | **Karten-/Umgebungsansicht für F2** | „Hier oder woanders?" als Karte mit Netto-€-Pins. OSM-Tiles brauchen Internet (im LAN okay, wenn NAS/Handy online); Alternativen: statische Tile-Region oder reduzierte Luftlinien-Übersicht. |
 | C4 | P2 | **Einstellungen-Tab zentral** | Verbrauch, Zeitwert (manuell/auto), Liter-Default, Kraftstoff, Stadt liegen verteilt in Panels. Ziel: ein Tab „Einstellungen": alle Defaults inkl. aktiver Schwellen-Tabelle (read-only aus `/api/v1/stats/summary → thresholds`), Dark/Light-Umschaltung (Fallback-GUI kann dunkel, NAS-GUI nur dunkles Slate). |
-| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(zwei Fixes sind drin, 0.10.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→), Slider mit `aria-valuetext`. Offen: Charts `role="img"` **mit** `aria-describedby` (heute nur `aria-label`), sichtbarer Fokus-Ring durchgängig, komplette Bedienung per Tastatur (Beleg buchen ohne Maus), `prefers-reduced-motion`, Touch-Targets ≥ 44 px, Kontraste AA prüfen. |
+| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Fokus-Ring + Charts-Textfassungen sind drin, 0.13.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→) und Slider mit `aria-valuetext` (0.10.0); Fokus-Ring durchgängig (die `outline-none`-Überschreibungen an den 0.11-Eingabefeldern sind entfernt) und alle Charts `role="img"` **mit** `aria-describedby`-Textfassung (0.13.0), `prefers-reduced-motion` war schon in `styles.css`. Offen: Touch-Targets ≥ 44 px, Kontraste AA prüfen, komplette Bedienung per Tastatur (Beleg buchen ohne Maus). |
 | C6 | P2 | **Einheitliche Leer-/Lade-/Fehler-Zustände** | Panels unterscheiden sich (Spinner vs. Text vs. nichts). Ziel: Skeletons, `Retry`-Button mit `error_code`-Text (Problem-Mapping existiert in `data.ts`), „Datenstand älter als X"-Banner konsistent, Anzeige „Reichweite der Daten" (z. B. Heatmap: 6 Wochen) je Panel. |
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?"-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
 | C8 | P2 | **Mobile-Feinschliff & PWA** | Sticky-Aktions-Chip im Alltag („Jetzt tanken / Warten bis …" beim Scrollen sichtbar), Install-/„Zum Homescreen"-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
@@ -77,7 +74,7 @@
 
 | # | Prio | Fehlt | Details |
 |---|---|---|---|
-| D1 | P1 | **`Dashboard.tsx` zerlegen (3 415 Zeilen in einer Datei)** | Tab-weise Module (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`) + geteilte UI-Bausteine (Panel, Metric, Badge, EmptyState). Sonst kollidiert jede C-Arbeit mit Merge- und Review-Kosten. |
+| D1 | P1 | **`Dashboard.tsx` zerlegen — zweiter Schnitt** *(Bausteine sind raus, 0.13.0)* | Erledigt: `PrecisionSlider`, `HeatmapGrid` und `ApiExplorer` leben in `web/src/components/` — `Dashboard.tsx` ist damit von 4 508 auf ~4 080 Zeilen geschrumpft (die 3 415 aus der Tiefenanalyse V3 waren überholt, 0.11.0/0.12.0 haben viel draufgelegt). Offen: Tab-weise Module (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`) + geteilte UI-Bausteine (Panel, Metric, Badge, EmptyState). Sonst kollidiert jede C-Arbeit mit Merge- und Review-Kosten. |
 | D3 | P2 | **Property-Tests Umweg-Ökonomie** | `K = d·(c/100)·p + (d/v)·z`: Monotonie in Litern, Grenzfälle `z=0`, `d=0`, `liters→∞` mit fast-check abstecken (Schwellen-`worth_it`-Logik inklusive). |
 | D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90" nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
 
@@ -164,16 +161,19 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 6. ✅ **G2** Journal-Wachstum rp2: Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt, Anleitung in `docs/RP2.md` (0.11).
 7. ✅ **E7** API-Explorer „day (Beispiel)“: erscheint nur bei gewählter Station, sonst grauer, deaktivierter Knopf mit Hinweis „erst Station wählen“ (0.11).
 
-**Nächste Kandidaten (0.12) — ≤ ½ Tag, aus offenen Punkten herausgeschält,
-keine neuen Baustellen:**
+**Kandidaten 0.13 — Ergebnis der Kalibrierung (Befunde gegen den Code geprüft),
+umgesetzt in 0.13.0; der Rest der Liste bleibt stehen:**
 
-1. ⬜ **A6 (Rest)** Share-URL: `?city=…&fuel=…&station_id=…&liters=…` beim Start
-   in die Preferences übernehmen (ein Lese-Schritt beim Init, kein Schreiben in
-   die Adresszeile). Macht die Ansicht bookmarkbar — und zieht die neue
-   Wochenwahl (E5) gleich mit, weil sie schon in der Anfrage-URL steht.
-2. ⬜ **C5 (kleinster Rest)** Ein CSS-Block in `web/src/styles.css`: sichtbarer
-   Fokus-Ring durchgängig + `prefers-reduced-motion` — zwei Zeilen, die den
-   behindertenrelevanten Teil der Liste erledigen, ohne Komponenten anzufassen.
+1. ✅ **A6 (Rest)** Share-URL: `?city=…&fuel=…&station_id=…&liters=…` wird beim
+   Start in die Preferences übernommen; zusätzlich setzt der Teilen-Knopf die
+   aktuelle Sicht in die Adresszeile und kopiert sie. Seit 0.11 zwingend auch
+   für `heatmapWeeks`/`heatmapBasis` — beides ist inzwischen echte Preference,
+   ohne Übernahme würde eine geteilte Ansicht falsch wiederhergestellt (0.13).
+2. ⚠️→✅ **C5** — der 0.11-Kandidat „zwei CSS-Zeilen" war **falsch**: Fokus-Ring
+   (`:focus-visible`) und `prefers-reduced-motion` standen schon in
+   `styles.css`; der echte Rest war, dass `outline-none`-Klassen den Ring an
+   genau den Feldern überschrieben, die 0.11 angefasst hat — plus Charts mit
+   `aria-describedby`-Textfassung (0.13). Übrig bleiben 44 px/AA/Tastatur.
 3. ⬜ **F2 (kleinster Schnitt)** Deutsche Primär-Labels für die
    Jargon-Stellen in der Werkstatt: „Wahrscheinlichkeit für günstig“ statt
    „Cheap-Probability P(p ≤ Median)“, „Ampel-Stärke“ statt „AV-Score“,
@@ -198,12 +198,13 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.13.0 (12.09.2026) | **B2** Schema-Version + Migration des Feedback-Stores (Versionsfeld, Migration je Sprung, Test „alter 0.10-Store → neuer Code“, Doku in BETRIEB.md), **B5** Schreib-Härtung: `tanked_at`-Plausibilitätsfenster (sonst 1970/2100 im Ledger), Freitext-Caps für `station_name`/`source`, getrenntes Schreib-Budget (20/min je Client, nur Ledger-Endpunkte — GET bleibt frei), **A6** Share-URL beim Start lesen + Teilen-Knopf, **B7** (Teil) gzip für JSON + `max-age=900` für `heatmap`/`last_forecasts`, **C5** (Teil) Fokus-Ring ohne `outline-none`-Überschreibung + Charts `aria-describedby`, **D1** (Teil) `PrecisionSlider`/`HeatmapGrid`/`ApiExplorer` nach `components/` ausgelagert |
 | 0.11.0 (12.09.2026) | **B12** Heatmap-Basis umschaltbar (`basis=hour` = Median derselben Stunde; API-Default `overall`), **B13** Build-Commit im Image (Doku nachgezogen), **E3** Beleg-Grenzen vor dem Roundtrip, **E4** Buchung nur mit gewählter Station, **E5** Wochen-Select 4/6/12, **E6** Slider 0,5/1 L/0,5 + Begleitfeld, **E7** API-Explorer „day“ nur mit Station, **G2** RP2-Journal-Cap (Drop-in + `--vacuum-size`) |
 | 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
-Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **A6**
-(Share-URL offen), **B4** (ntfy-Zustellung offen), **C5** (Rest der
-A11y-Runde offen).
+Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **B7**
+(Overview-Endpunkt + Poll-Bündelung offen), **B4** (ntfy-Zustellung offen),
+**C5** (44 px, AA, Tastatur offen), **D1** (Views noch in einer Datei).
 
 ## Bewusst NICHT in dieser Liste
 
@@ -214,16 +215,15 @@ A11y-Runde offen).
 
 ## Reihenfolge-Empfehlung
 
-1. **B2 (Schema-Version + Migration des Feedback-Stores)** — letzter offener
-   P0-Punkt: schützt die persönliche Bilanz, bevor echte Daten anwachsen.
-   Storno (A3), Backup (B1) und Komma-Eingabe (E2) sind seit 0.10.0 drin.
-2. **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
-   Anonym-Budget) — seit **B6/H1** (0.10.0) ist die Umweg-Ökonomie
-   server-einheitlich (`detour_km_est` + `verdict`/Schwellen vom Server).
-3. **B5** (Schreib-Endpunkte gegen Flut härten) — klein und
-   ehrlichkeitsrelevant; **B12** (Cheap-Prob-Basis ohne Station) ist seit
-   0.11.0 als umschaltbare Basis gelöst.
-4. **D1 direkt vor dem ersten größeren C-Feature** (`Dashboard.tsx` zerlegen) —
-   sonst verdoppelt sich der Aufwand.
-5. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
+1. **D1 fertigstellen, bevor ein größeres C-Feature anfängt** (C2/C4/C6) —
+   die Bausteine sind seit 0.13.0 in `components/`; der Views-Schnitt
+   (`views/Daily.tsx` …) ist der, der Merge- und Review-Kosten wirklich senkt.
+2. **B7-Rest separat entscheiden** (`/api/v1/overview` + Poll-Bündelung) —
+   der messbare Teil (gzip, Cache-Schichten) ist mit 0.13.0 drin; der Rest
+   ist Architektur-Aufwand und lohnt erst mit einer Messung der echten Last.
+3. **Kein P0 mehr offen** — B2 (Schema-Version) ist seit 0.13.0 geschlossen;
+   der nächste Store-Feldsprung braucht nur eine Migrationsfunktion nach
+   `app/feedback.py::_STORE_MIGRATIONS` und ein Anheben von
+   `FEEDBACK_SCHEMA_VERSION`.
+4. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
    stehen begründet in [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).

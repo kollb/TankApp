@@ -37,6 +37,24 @@ MAX_PRICE_PAID = 5.00
 # verhindert, dass der Store überhaupt dort ankommt.
 FEEDBACK_MAX_BYTES = 10_000_000
 FEEDBACK_RETENTION_DAYS = 90
+# B5: Plausibilitätsfenster für ``tanked_at`` — eine Beleg-Zeit darf wenige
+# Minuten in der Zukunft liegen (Uhrversatz), aber nie weiter zurück als die
+# Retention (älter wäre beim nächsten Retention-Lauf sofort archiviert).
+TANKED_AT_FUTURE_GRACE_MINUTES = 15
+# B5: Freitext-Caps. ``station_name``/``source`` sind Anzeige-Metadaten, keine
+# Fachdaten — ein defekter Client darf das Ledger nicht mit Riesen-Zeilen
+# füllen (das 100-kB-Body-Cap schützt nicht gegen viele mittelgroße Strings).
+MAX_STATION_NAME_CHARS = 120
+MAX_SOURCE_CHARS = 40
+
+# B2: Schema-Version des Feedback-Stores. Ohne Versionsfeld bricht die nächste
+# Feldänderung Altbestände **still** (alte store.json, neuer Code — fehlende
+# Schlüssel führen zu leeren Bilanzen statt zu einem Fehler). Regel ab jetzt:
+#   1 = Ursprungsfassung (0.10–0.12, Datei ohne ``schema_version``)
+#   2 = A3-Felder als feste Sammlungen (``audit``, ``voided`` je Beleg)
+# Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
+# Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
+FEEDBACK_SCHEMA_VERSION = 2
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -72,6 +90,71 @@ class StoreTooLarge(RuntimeError):
     weiterzurechnen — sonst wären Advice-Historie, Brier-Grundlage und
     Wallet ohne Warnung weg.
     """
+
+
+class StoreSchemaTooNew(RuntimeError):
+    """Store wurde von einer **neueren** App-Version geschrieben (B2).
+
+    Wird bewusst nicht als leerer Store behandelt — sonst würde der nächste
+    Schreibvorgang den neueren Bestand wegpeitschen. Der Fehler fällt als
+    503 auf („Server kann den Store nicht lesen“), nicht als Datenverlust;
+    Abhilfe ist das App-Update, nicht ein Überschreiben.
+    """
+
+
+def _migrate_store_v1_to_v2(store: dict[str, Any]) -> dict[str, Any]:
+    """1 → 2 (0.10–0.12 → neu): A3-Felder als feste Sammlungen sichern.
+
+    Altbestände kennen ``audit`` nicht und tragen ``voided`` je Beleg nur
+    lückenhaft. Die Migration ergänzt die Schlüssel mit Neutralwerten;
+    Einzelfelder, die in alten Belegen fehlen (``tanked_at``,
+    ``price_source``), bleiben weg — der Lese-Code arbeitet dort ohnehin
+    mit ``.get()``-Defaults, und Werte zu erfinden wäre schlimmer als
+    „feld fehlt“.
+    """
+    store.setdefault("audit", [])
+    for fill in store.get("fills", []) or []:
+        if isinstance(fill, dict):
+            fill.setdefault("voided", False)
+    return store
+
+
+# Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
+# Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
+_STORE_MIGRATIONS = {
+    1: _migrate_store_v1_to_v2,
+}
+
+
+def migrate_store(raw: dict[str, Any]) -> dict[str, Any]:
+    """Bringt einen geladenen Store auf ``FEEDBACK_SCHEMA_VERSION`` (B2).
+
+    Rein im Speicher: gesichert wird beim nächsten Schreibvorgang über
+    ``locked_store`` (Digest-Vergleich) — reine Lese-Pfade ändern die Datei
+    nie. Ein Store ohne ``schema_version`` gilt als Version 1; kaputtes
+    Versionsfeld ebenso (Migrationen sind idempotent). Ein Store aus einer
+    *neueren* Version ist ein harter Fehler (``StoreSchemaTooNew``).
+    """
+    try:
+        version = int(raw.get("schema_version", 1))
+    except (TypeError, ValueError):
+        version = 1
+    version = max(1, version)
+    if version > FEEDBACK_SCHEMA_VERSION:
+        raise StoreSchemaTooNew(
+            f"Feedback-Store hat Schema-Version {version}, der Code kennt nur "
+            f"{FEEDBACK_SCHEMA_VERSION}. Erst die App aktualisieren — der "
+            "Store wird nicht überschrieben."
+        )
+    store = dict(raw)
+    while version < FEEDBACK_SCHEMA_VERSION:
+        step = _STORE_MIGRATIONS.get(version)
+        if step is None:  # defensiv: Lücke in der Migrationstabelle
+            break
+        store = step(store)
+        version += 1
+    store["schema_version"] = FEEDBACK_SCHEMA_VERSION
+    return store
 
 
 @contextmanager
@@ -188,15 +271,20 @@ def load_store(settings) -> dict[str, Any]:
     except (OSError, ValueError):
         raw = None
     if isinstance(raw, dict) and "episodes" in raw:
+        # B2: erst auf die aktuelle Schema-Version bringen — ein Altbestand
+        # ohne ``schema_version`` wird dadurch nie mehr still falsch gelesen.
+        store = migrate_store(raw)
         return {
-            "episodes": raw.get("episodes") or [],
-            "fills": raw.get("fills") or [],
-            "settlements": raw.get("settlements") or [],
+            "schema_version": store["schema_version"],
+            "episodes": store.get("episodes") or [],
+            "fills": store.get("fills") or [],
+            "settlements": store.get("settlements") or [],
             # A3: Audit-Spur (Storno-Vermerke) bleibt beim Laden erhalten —
             # sonst ginge die Nachvollziehbarkeit eines Stornos still verloren.
-            "audit": raw.get("audit") or [],
+            "audit": store.get("audit") or [],
         }
     return {
+        "schema_version": FEEDBACK_SCHEMA_VERSION,
         "episodes": [],
         "fills": [],
         "settlements": [],
@@ -557,6 +645,37 @@ def _closes_episode(compliance: str, ep: dict[str, Any], station_id: str) -> boo
     return False
 
 
+def _capped_text(value: Any, limit: int) -> str:
+    """B5: Freitext-Felder hart kappen — Anzeige-Metadaten, keine Fachdaten."""
+    if value is None:
+        return ""
+    return str(value)[:limit]
+
+
+def _validated_tanked_at(value: Any, clock=None) -> str | None:
+    """B5: Beleg-Zeit nur im Plausibilitätsfenster — kein 1970/2100 im Ledger.
+
+    Bisher wurde ``tanked_at`` ungeprüft gespeichert; ein defekter Client
+    konnte Bilanz und w(h)-Profil mit Müllzeiten kippen. Ohne Angabe gilt
+    „jetzt“ (Rückgabe None, der Aufrufer setzt den Zeitstempel). Eine
+    angegebene Zeit muss ISO-parsebar sein, darf höchstens
+    ``FEEDBACK_RETENTION_DAYS`` zurückliegen (älter wäre beim nächsten
+    Retention-Lauf sofort archiviert) und wenige Minuten in der Zukunft
+    (Uhrversatz, nicht Tippfehler 2100). Sonst ``invalid_tanked_at`` (400).
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    stamp = _parse_ts(value)
+    if stamp is None:
+        raise ValueError("invalid_tanked_at")
+    now = clock() if clock else dt.datetime.now(UTC)
+    if stamp > now + dt.timedelta(minutes=TANKED_AT_FUTURE_GRACE_MINUTES):
+        raise ValueError("invalid_tanked_at")
+    if stamp < now - dt.timedelta(days=FEEDBACK_RETENTION_DAYS):
+        raise ValueError("invalid_tanked_at")
+    return stamp.isoformat()
+
+
 def record_fill(
     settings, fill_data: dict[str, Any], live_data=None, clock=None
 ) -> dict[str, Any]:
@@ -618,11 +737,18 @@ def record_fill(
             ep = _open_episode(store)
 
         clock_hour = fill_data.get("clock_hour", 12.0)
-        station_name = fill_data.get("station_name", "")
-        source = fill_data.get("source", "manual")
+        # B5: Freitext hart kappen — siehe _capped_text.
+        station_name = _capped_text(
+            fill_data.get("station_name"), MAX_STATION_NAME_CHARS
+        )
+        source = _capped_text(fill_data.get("source"), MAX_SOURCE_CHARS) or "manual"
+
+        # B5: tanked_at nur im Plausibilitätsfenster — vorher wurde jede
+        # Angabe ungeprüft gespeichert (1970/2100 inklusive).
+        tanked_at = _validated_tanked_at(fill_data.get("tanked_at"), clock)
 
         compliance = classify_compliance(
-            ep, clock_hour, station_id, tanked_at=fill_data.get("tanked_at")
+            ep, clock_hour, station_id, tanked_at=tanked_at
         )
 
         # Counterfactual = price_now des ersten Snapshots der Folge (oder price_paid wenn keine Folge)
@@ -637,7 +763,7 @@ def record_fill(
             "episode_id": ep.get("id") if ep else None,
             "station_id": station_id,
             "station_name": station_name,
-            "tanked_at": fill_data.get("tanked_at") or now_str,
+            "tanked_at": tanked_at or now_str,
             "clock_hour": clock_hour,
             "liters": liters,
             "price_paid": price_paid,

@@ -48,6 +48,7 @@ export function LineChart({
   gapMinutes = 0,
   gapLabel = "keine Daten",
   maxGapMinutes = 45,
+  ariaDescription,
 }: {
   series: SeriesPts[];
   bands?: BandPts[];
@@ -61,9 +62,22 @@ export function LineChart({
   gapMinutes?: number;
   gapLabel?: string;
   maxGapMinutes?: number;
+  ariaDescription?: string;
 }) {
   const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
   const hatchId = useId().replace(/:/g, "");
+  // C5: role="img" bekommt eine beschreibende Textfassung (aria-describedby),
+  // nicht nur „Diagramm“ — Reihennamen und Einheit als kurze Ersatzbeschreibung.
+  const descId = useId().replace(/:/g, "");
+  const legendNames = [
+    ...series.map((s) => s.name),
+    ...bands.map((b) => b.name),
+  ].filter((name): name is string => !!name);
+  const desc =
+    ariaDescription ??
+    (legendNames.length
+      ? `Liniendiagramm: ${legendNames.join(", ")}. Werte in ${ySuffix.trim() || "Skaleneinheiten"}.`
+      : "Liniendiagramm.");
   const W = 720;
   const H = height;
   const padL = 46;
@@ -204,8 +218,10 @@ export function LineChart({
       className="w-full"
       role="img"
       aria-label="Diagramm"
+      aria-describedby={descId}
       onMouseLeave={() => setHover(null)}
     >
+      <desc id={descId}>{desc}</desc>
       <defs>
         <pattern
           id={hatchId}
