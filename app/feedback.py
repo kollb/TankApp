@@ -440,6 +440,10 @@ def record_snapshot(
             # Auswertungen (Dedicated? Deadline-Druck?) unmöglich.
             "trip_mode": snapshot_data.get("trip_mode"),
             "latest_by": snapshot_data.get("latest_by"),
+            # A2: Tankstand-Zustand („empty“/„low“/„ok“/None) — rein
+            # informativ für spätere Auswertungen; die Snapshot-
+            # Kollabierung hängt weiter nur an Aktion/Station/Fenster.
+            "tank_state": snapshot_data.get("tank_state"),
         }
 
         if not ep:
@@ -1370,4 +1374,91 @@ def compute_wallet_stats(
         "saved_eur": saved_eur,
         "wh_hours": wh_hours,
         "last_fill": fills_active[0] if fills_active else None,
+    }
+
+
+try:
+    from zoneinfo import ZoneInfo
+
+    BERLIN_TZ = ZoneInfo("Europe/Berlin")
+except Exception:  # pragma: no cover
+    BERLIN_TZ = dt.timezone.utc
+
+
+def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
+    """Eine Monats- oder Jahreszeile der Bilanz aus den zugehörigen Fills."""
+    liters = sum(float(f.get("liters") or 0.0) for f in fills)
+    total_eur = sum(
+        float(f.get("liters") or 0.0) * float(f.get("price_paid") or 0.0) for f in fills
+    )
+    saved_eur = sum(float(f.get("saved_vs_always_now_eur") or 0.0) for f in fills)
+    # „Immer sofort getankt“-Baseline: pro Beleg Referenzpreis × Liter —
+    # rechnerisch total_eur + saved_eur (deshalb darf saved_eur auch negativ
+    # sein: wer teurer als der Referenzpreis tankt, hat gegen die Baseline
+    # verloren). Belege ohne saved-Feld (Altbestand) tragen 0 — kein Reim.
+    baseline_eur = total_eur + saved_eur
+    return {
+        "key": key,
+        "fills": len(fills),
+        "liters": round(liters, 1),
+        "total_eur": round(total_eur, 2),
+        "avg_eur_per_fill": round(total_eur / len(fills), 2) if fills else None,
+        "avg_eur_per_liter": round(total_eur / liters, 3) if liters > 0 else None,
+        "saved_eur": round(saved_eur, 2),
+        "baseline_eur": round(baseline_eur, 2),
+    }
+
+
+def compute_wallet_balance(
+    store: dict[str, Any], now: dt.datetime | None = None
+) -> dict[str, Any]:
+    """A4: Monats-/Jahresbilanz des Wallet-Ledgers (Konzept §12).
+
+    „Wallet-Ledger im Alltag, Jahresbilanz in der Werkstatt“: Gruppiert die
+    aktiven (nicht stornierten) Belege je Kalendermonat und -jahr in
+    Europe/Berlin (die App zeigt Uhrzeiten lokal, die Bilanz folgt dem
+    Kalender des Nutzers — nicht UTC).
+
+    Felder je Zeile: Füllungen, Liter, € gesamt, Ø €/Tankung, Ø €/l,
+    Ersparnis und die „immer sofort getankt“-Baseline. Belege ohne
+    interpretierbaren ``tanked_at`` fließen in ``overall`` ein, aber in keine
+    Monats-/Jahreszeile — die Differenz wird als ``n_without_date`` genannt,
+    nicht still verschwiegen.
+    """
+    now = now or dt.datetime.now(UTC)
+    months: dict[str, list[dict[str, Any]]] = {}
+    years: dict[str, list[dict[str, Any]]] = {}
+    n_without_date = 0
+
+    fills_active = [f for f in store.get("fills", []) if not f.get("voided")]
+    n_total = len(fills_active)
+    for fill in fills_active:
+        stamp = _parse_ts(fill.get("tanked_at"))
+        if stamp is None:
+            n_without_date += 1
+            continue
+        local = stamp.astimezone(BERLIN_TZ)
+        months.setdefault(local.strftime("%Y-%m"), []).append(fill)
+        years.setdefault(local.strftime("%Y"), []).append(fill)
+
+    month_rows = [
+        _balance_row(key, group) for key, group in sorted(months.items(), reverse=True)
+    ]
+    year_rows = [
+        _balance_row(key, group) for key, group in sorted(years.items(), reverse=True)
+    ]
+    overall = _balance_row("overall", fills_active)
+    overall.pop("key", None)
+    overall["n_without_date"] = n_without_date
+    baseline = overall.get("baseline_eur") or 0.0
+    overall["saved_pct"] = (
+        round(100.0 * overall["saved_eur"] / baseline, 1) if baseline > 0 else None
+    )
+
+    return {
+        "generated_at": now.isoformat(),
+        "n_fills_total": n_total,
+        "months": month_rows,
+        "years": year_rows,
+        "overall": overall,
     }

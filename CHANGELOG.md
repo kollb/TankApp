@@ -4,6 +4,89 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.23.0] – 2026-09-12
+
+**A1, A2, A4, C2** — die vier offenen P1-Punkte der Fach- und GUI-Listen:
+Fahrzeug-/Haushaltsprofile ohne Login (serverseitig), Tankstand als
+F3-Eingabe, Monats-/Jahresbilanz in der Werkstatt und Stamm-Stationen mit
+Suche/Filter/Sortierung im Alltag.
+
+### Hinzugefügt
+
+- **A1 — Fahrzeug-/Haushaltsprofile** (`app/profiles.py`, neu). Verbrauch,
+  Zeitwert, Tankmenge, Kraftstoffart, Stadt-/Pendel-Tempo und Tankgröße
+  liegen statt nur im Geräte-localStorage jetzt serverseitig für den
+  Haushalt — ohne Login, bewusst LAN-only. Endpunkte: `GET /api/v1/profiles`,
+  `POST /api/v1/profiles`, `PUT /api/v1/profiles/{id}` (partiell),
+  `POST /api/v1/profiles/{id}/activate`,
+  `POST /api/v1/profiles/activate` mit `{"active": null}` (Deaktivieren) und
+  `DELETE /api/v1/profiles/{id}`; höchstens 8 Profile, dieselben Grenzen wie
+  die GUI-Slider, Schreib-Budget (B5) gilt mit. Profil-Store unter
+  `runtime/profiles/profiles.json` mit `schema_version` (B2-Muster:
+  Migrationstabelle statt stiller Feldsprünge), Digest-Vergleich schreibt nur
+  bei echter Änderung, Prozess-Lock wie Feedback-Store. GUI: Profil-Umschalter
+  im Header, Verwaltungs-Dialog (`components/ProfileManager.tsx`) für
+  Anlegen/Umbenennen/Löschen/Aktivieren; Sync in beide Richtungen — Server →
+  GUI bei Profilwechsel oder Fernänderung (120-s-Poll), GUI → Server
+  entprellt (800 ms) für jedes geänderte Profil-Feld. Fällt der Server aus,
+  gilt weiter der letzte localStorage-Stand (offen gesagt im Dialog). Stadt
+  und Vergleichsstation bleiben bewusst Gerätesache. Tests
+  `tests/test_profiles.py` (Statuscodes, Persistenz, Limit, 404-Fälle).
+- **A2 — Tankstand / Restreichweite als F3-Eingabe** (`app/decide.py`).
+  `decide` nimmt `tank_percent` (mit `tank_capacity_l`, Default 50 l) oder
+  `range_km` (Bordcomputer) und antwortet mit einem `tank`-Block:
+  Restreichweite, Reserve-Reichweite (5 l ÷ Verbrauch × 100 — Reichweite aus
+  Menge und Verbrauch, nicht als feste km-Zahl), Zustand `empty`/`low`/`ok`
+  und Klartext. `empty` (Rest ≤ Reserve) blockiert eine Warte-Empfehlung: Die
+  angezeigte Aktion kippt von `wait` zu `refuel_now` mit „Warten riskant …
+  Tank jetzt, nicht auf das Fenster warten“ — Physik statt Modell, der Block
+  erscheint deshalb unabhängig vom M7-Gate. Der Ledger bekommt die wirklich
+  angezeigte Aktion plus `tank_state` (sonst würde ein befolgtes „jetzt tanken
+  (Reserve)“ später als „ignoriert“ zählen); die Tabellen-Aktion selbst bleibt
+  unangetastet (Güte-Gate, Shadow-Messung). GUI: Tankstand-Karte in „1 ·
+  Empfehlung“ (Füllstands-Slider mit Live-Restreichweite, Tankgrößen-Slider,
+  Server-Bewertung als roter/amber Block bzw. ruhige Zeile). Ungültige Werte
+  → `400 invalid_tank`. Tests `tests/test_decide_tank.py` (Grenzen, Override,
+  Ledger, `invalid_tank`).
+- **A4 — Monats-/Jahresbilanz in der Werkstatt** (`app/feedback.py::
+  compute_wallet_balance`, Endpunkt `GET /api/v1/fills/summary`). Gruppiert
+  aktive Belege je Kalendermonat/-jahr in Europe/Berlin (der Kalender des
+  Nutzers, nicht UTC — ein Beleg am 1.1. 00:30 Berlin zählt zum Januar),
+  je Zeile Füllungen, Liter, € gesamt, Ø €/Tankung, Ø €/l, Ersparnis und die
+  „immer sofort getankt“-Baseline (`total + saved`, darf negativ sein);
+  `overall` mit `saved_pct` und ehrlichem `n_without_date` für Belege ohne
+  lesbares Datum. Stornierte Belege zählen nicht. GUI: Panel „Monats- &
+  Jahresbilanz“ am Ende der Werkstatt — vier Kacheln (Tankungen, Ø pro
+  Tankung, Gesamtsumme, Ersparnis gegen Baseline) plus umschaltbare Monats-/
+  Jahrestabelle. Tests `tests/test_wallet_balance.py`.
+- **C2 — Stamm-Stationen pinnen + Suche/Filter/Sortierung** (Alltag „5 ·
+  Stationen“). Stern je Zeile pinnt die 2–3 Stammstationen nach oben
+  (Pin-Reihenfolge, höchstens 8, localStorage — kein Account nötig), Suche
+  über Name/Marke, Markenfilter aus dem aktuellen Set, Sortierung nach Preis
+  (€/L), Distanz und „Netto-€ (Füllung)“ = Preis × Tankmenge mit
+  Füllungs-Preis-Anzeige je Zeile. Die Beleg-Erfassung listet gepinnte
+  Stationen zuerst. Bewusst **keine** client-seitige Netto-€-Rechnung mit
+  Umweg: Die Ökonomie bleibt server-only (B6/H1) — die Sortierung „Netto-€“
+  ist Preis × Tankmenge, Umweg-Fälle bleiben dem Decide/Route-Pfad
+  vorbehalten. Reine Funktionen (`orderedStationList`,
+  `togglePinnedStation`, …) mit Tests in `web/src/features.test.ts`.
+
+### Geändert
+
+- `POST /api/v1/profiles/activate` (Body `{"active": null}`) ist vor dem
+  `POST /api/v1/profiles/{id}/activate`-Muster ausgewertet — sonst würde
+  „activate“ als Profil-ID gelesen (404 statt Deaktivierung).
+- Ratchet-Listen erweitert: `components/ProfileManager.tsx` steht jetzt in
+  `microcopy.test.ts` (Anführungszeichen) und `format-convention.test.ts`
+  (keine `toFixed`-Anzeigen).
+
+### Tests
+
+Backend: 19 neue Tests (`test_profiles.py`, `test_decide_tank.py`,
+`test_wallet_balance.py`), Suite 652 grün. Frontend: `features.test.ts` mit
+11 Fällen zu Tankstand-Rechnung, Pin-Liste, Stationsordnung, Bilanz-Labels
+und Profil-Sync (228 Tests gesamt); bestehende Ratchets mitgezogen.
+
 ## [0.22.0] – 2026-09-12
 
 **B17** (Batch 3 des Laufzeit-Bündels): der 21-Tage-Backtest wird je lokalem

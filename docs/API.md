@@ -66,7 +66,8 @@ frei (GUI-Polling).
   - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
   - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3)
-- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf) und `GET /api/v1/fills.csv` (Export, A6)
+  - `POST /api/v1/profiles`, `PUT /api/v1/profiles/{id}`, `POST /api/v1/profiles/{id}/activate`, `POST /api/v1/profiles/activate`, `DELETE /api/v1/profiles/{id}` (Fahrzeug-/Haushaltsprofile ohne Login, A1)
+- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4) und `GET /api/v1/profiles` (Profil-Liste, A1)
 - Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht
@@ -80,6 +81,8 @@ frei (GUI-Polling).
 | `GET /api/v1/fills` | **A3/A6** | Beleg-Verlauf (auch stornierte, mit `voided`-Flag) |
 | `DELETE /api/v1/fills/{id}` | **A3** | Beleg stornieren — Flag + Audit-Zeile, kein Löschen |
 | `GET /api/v1/fills.csv` | **A6** | Eigene Tankbelege als CSV (`;`, deutsche Dezimalkommas) |
+| `GET /api/v1/fills/summary` | **A4** | Monats-/Jahresbilanz des Wallet-Ledgers („Jahresbilanz in der Werkstatt“) |
+| `GET /api/v1/profiles` | **A1** | Fahrzeug-/Haushaltsprofile (ohne Login, serverseitig) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, **`version`/`commit` (B9)**, **`alarms[]` (B4)**, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
 | `GET /api/v1/stations?fuel=e10&city=...` |  | Aktuelle Preise, frisch ≤30 Min |
@@ -107,6 +110,20 @@ Parameter (Ergänzung zu B4, Konzept §11.1):
 | `mode` | `onroute` (Default, nur Mehrweg gegenüber der Vergleichsstation) oder `dedicated` (Extrafahrt ab Zuhause: Hin + Rück, §10) |
 | `home_lat`, `home_lon` | Heimatkoordinate für `mode=dedicated`; ohne Angabe nutzt die App die Ankerdistanz aus dem Polling-Set. Ungültig → `400 invalid_home`. |
 | `value_of_time`, `consumption`, `speed` | wie B4; der verwendete Zeitwert steht in `context` |
+| `tank_percent` | **A2**: Füllstand 0–100 (F3 „Tank bei ¼ — kann ich warten?“). Übersetzt über `tank_capacity_l` und Verbrauch in Restreichweite. Außerhalb 0–100 → `400 invalid_tank`. |
+| `tank_capacity_l` | **A2**: Tankgröße 20–120 l (Default 50), nur zusammen mit `tank_percent` wirksam. Außerhalb → `400 invalid_tank`. |
+| `range_km` | **A2**: Restreichweite direkt (z. B. Bordcomputer), 0–1500 km; schlägt `tank_percent` vor. Außerhalb → `400 invalid_tank`. |
+
+**Tankstand (A2):** Mit `tank_percent`/`range_km` antwortet `decide` zusätzlich
+mit einem `tank`-Block: `range_km` (Restreichweite), `reserve_range_km`
+(Reserve = 5 l ÷ Verbrauch × 100), `state` (`empty` ≤ Reserve, `low` ≤ 2 ×
+Reserve, `ok`), `blocks_wait` und `message` (Klartext). `state: "empty"`
+blockiert eine Warte-Empfehlung: Die angezeigte Aktion kippt von `wait` zu
+`refuel_now` mit dem Tank-Begründungstext („Warten riskant, Reserve reicht
+~X km“), und der Snapshot im Ledger erhält genau diese angezeigte Aktion plus
+`tank_state` — die Tabelle selbst bleibt unangetastet (Güte-Gate, Shadow).
+Der Block ist Physik und erscheint unabhängig vom M7-Gate; ohne Tankstand-
+Eingabe ist `tank` `null`.
 
 Antwort (Ergänzung): `context` enthält `trip_mode`, `home_used`, `latest_by`,
 `horizon_cut`, `liters`, `consumption_l_100km`, `speed_kmh`,
@@ -272,6 +289,83 @@ id;getankt_am;station_id;station;liter;preis_eur_l;kraftstoff;quelle;compliance;
 
 Download-Link im System-Tab. Der Export ist dieselbe Datenbasis wie
 `GET /api/v1/fills` — keine zusätzliche Aggregation, keine erfundenen Spalten.
+
+### Monats-/Jahresbilanz (GET, A4)
+
+`GET /api/v1/fills/summary`
+
+Gruppiert die **aktiven** (nicht stornierten) Belege je Kalendermonat und
+-jahr in Europe/Berlin — die „Jahresbilanz in der Werkstatt“ (Konzept §12).
+Belege ohne interpretierbares `tanked_at` fließen in `overall`, aber in keine
+Zeile; die Differenz steht in `overall.n_without_date`.
+
+```json
+{
+  "generated_at": "2026-09-12T12:00:00+00:00",
+  "n_fills_total": 14,
+  "months": [
+    {
+      "key": "2026-09",
+      "fills": 2,
+      "liters": 75.0,
+      "total_eur": 126.55,
+      "avg_eur_per_fill": 63.28,
+      "avg_eur_per_liter": 1.687,
+      "saved_eur": 2.0,
+      "baseline_eur": 128.55
+    }
+  ],
+  "years": [ { "key": "2026", "fills": 14, "…": "…" } ],
+  "overall": {
+    "fills": 14, "liters": 610.5, "total_eur": 1024.9,
+    "avg_eur_per_fill": 73.21, "avg_eur_per_liter": 1.679,
+    "saved_eur": 18.4, "baseline_eur": 1043.3,
+    "n_without_date": 0, "saved_pct": 1.8
+  },
+  "error_code": null
+}
+```
+
+`baseline_eur` ist die „immer sofort getankt“-Referenz: pro Beleg
+Referenzpreis (`price_now` des ersten Snapshots der Folge, sonst `price_paid`)
+× Liter — rechnerisch `total_eur + saved_eur`. `saved_eur` kann negativ sein
+(wer teurer als die Referenz tankt, hat gegen die Baseline verloren);
+`saved_pct` bleibt `null`, solange die Baseline nicht positiv ist. Zeilen sind
+absteigend sortiert (jüngste zuerst), nur Monate/Jahre mit Belegen — keine
+erfundenen Leerzeilen.
+
+## Profiles (A1 — Fahrzeug-/Haushaltsprofile, ohne Login)
+
+Verbrauch, Zeitwert, Tankmenge, Kraftstoffart, Tempo und Tankgröße liegen
+serverseitig unter `runtime/profiles/profiles.json` — ein Haushalt, kein
+Account (LAN-only per Vorgabe). Die GUI liest daraus und schreibt Änderungen
+zurück; `city`/`station` bleiben Gerätesache (localStorage).
+
+| Endpunkt | Aufgabe |
+|---|---|
+| `GET /api/v1/profiles` | `{"profiles": [...], "active": "prof_…" \|\| null}` |
+| `POST /api/v1/profiles` | Profil anlegen. Body: `name` (Pflicht, ≤ 40 Zeichen) + optional `fuel`, `liters`, `consumption`, `time_value_eur_h` (0 = Automatik), `speed_kmh`, `detour_mode`, `tank_capacity_l`; Fehlendes bekommt die GUI-Defaults. Das erste Profil wird automatisch aktiv. |
+| `PUT /api/v1/profiles/{id}` | Felder partiell aktualisieren (nur gesetzte Schlüssel). |
+| `POST /api/v1/profiles/{id}/activate` | Profil aktiv setzen (dieses Gerät folgt ihm). |
+| `POST /api/v1/profiles/activate` mit `{"active": null}` | Kein Profil aktiv — Einstellungen gelten nur noch gerätelokal. |
+| `DELETE /api/v1/profiles/{id}` | Profil löschen; war es aktiv, ist danach keins aktiv. |
+
+Grenzen wie die GUI-Slider (gleiche Prüfung serverseitig): `liters` 10–80,
+`consumption` 4–15, `time_value_eur_h` 0–30, `speed_kmh` 25–80,
+`tank_capacity_l` 20–120, `fuel` ∈ {e10, e5, diesel}, `detour_mode` ∈
+{onroute, dedicated}. Höchstens **8** Profile.
+
+| Antwort | Bedeutung |
+|---|---|
+| `200` | Erfolg (angelegtes/aktualisiertes Profil bzw. `{"active": …}` / `{"deleted": …}`) |
+| `400` | `invalid_profile_name`, `invalid_fuel`, `invalid_liters`, `invalid_consumption`, `invalid_time_value_eur_h`, `invalid_speed_kmh`, `invalid_tank_capacity_l`, `invalid_mode`, `invalid_query`, `invalid_json` |
+| `404 {"error_code": "profile_not_found"}` | Profil-ID unbekannt |
+| `409 {"error_code": "profile_limit"}` | mehr als 8 Profile |
+| `429` / `503` | Schreib-Budget (B5) bzw. Store nicht lesbar/schreibbar (`profile_write_failed`, `profiles_read_failed`) |
+
+Alle schreibenden Profil-Endpunkte teilen sich das B5-Schreib-Budget der
+Ledger-Endpunkte. Der Store trägt eine `schema_version` (Startwert 1) — ein
+Sprung braucht eine Migrationsfunktion, kein stiller Reset (B2-Muster).
 
 ## Stats Summary (B4 3 Schichten)
 
@@ -875,6 +969,8 @@ Siehe `web/src/data.ts` messages:
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
 - store_too_large (503), not_implemented (501)
 - fill_not_found (404, `DELETE /api/v1/fills/{id}`), void_fill_failed (503), fills_read_failed
+- invalid_tank (400, `/api/v1/decide` — Tankstand außerhalb 0–100 % bzw. 20–120 l bzw. 0–1500 km)
+- profile_not_found (404), profile_limit (409), invalid_profile_name, invalid_time_value_eur_h, invalid_speed_kmh, invalid_tank_capacity_l (400, Profil-Endpunkte), profile_write_failed / profiles_read_failed / fills_summary_failed (503)
 - unauthorized (403, nur `POST /api/v1/jobs/trigger` ohne oder mit falschem Bearer-Token)
 - payload_too_large (413), invalid_json, invalid_request, server_error
 
