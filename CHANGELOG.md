@@ -4,6 +4,57 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.20.0] – 2026-09-12
+
+**B15 + B16** (Batch 1 des Laufzeit-Bündels aus der To-Do): die beiden
+**bitgleichen** Hebel sind umgesetzt. Die 12-Uhr-Projektion dedupliziert
+Bootstrap-Pfade je Segment (B15), und `fit()` ist von String-, Aggregator-
+und Schleifen-Overhead befreit (B16 a–e). Publizierte Zahlen bleiben exakt
+identisch — je ein Bitgleichheits-Test hält das fest. Die
+Huber-Normalgleichungen aus B16 (nicht bitgleich, Δ ≤ 3,4e-12) bleiben
+weiterhin **aus**.
+
+### Hinzugefügt
+
+- **B15 — Bootstrap-Pfade vor der 12-Uhr-Projektion dedupliziert.**
+  `engine/models.py::project_paths` ersetzt die skalare Projektion jedes
+  einzelnen Pfads. Innerhalb eines Segments [12:00, nächste 12:00) hängt der
+  projizierte Pfad nur von den gezogenen Tagesblöcken ab — bei `n` Blöcken
+  gibt es je Segment höchstens `n²` verschiedene Zeilen (bei
+  Mitternachts-Origin genau `n`) statt `bootstrap_samples` Vollpfaden.
+  Eindeutige Zeilen werden über `np.unique(…, axis=0, return_inverse=True)`
+  einmal projiziert und per `inverse` zurückgeschrieben. NaN wird dabei als
+  Stellvertreter kodiert, damit Zeilen mit identischem NaN-Muster (gleiche
+  Ziehung) tatsächlich zusammenfallen — `NaN != NaN` würde die
+  Deduplizierung sonst für Segmente mit Nacht-/Schließzeiten ins Leere
+  laufen lassen.
+- **B16 — `fit()` von String- und Aggregator-Overhead befreit (a–e, bitgleich).**
+  (a)+(c) Residuen-Tagesblöcke als direkte (Tag, Slot)-Index-Zuweisung
+  (`_residual_blocks`) statt `pivot_table(aggfunc="median")`, Tagesschlüssel
+  über `pd.factorize` statt `strftime`; (b) Feiertagsmaske über sortierte
+  int64-Tageswerte + `searchsorted` statt Timestamp-Iteration
+  (`engine/holidays.py`); (d) Naiv-Profil über stabilen Sortierindex +
+  `searchsorted` statt `groupby(…).agg(lambda g: g.iloc[-1])`
+  (`_naive_profile`); (e) Zähler `law_rise_outside_noon` vektorisiert.
+- **Bitgleichheits-Tests** in `tests/test_models.py`: `project_paths` gegen
+  die skalare Referenz-Projektion, `_residual_blocks` gegen `pivot_table`,
+  `_naive_profile` gegen `groupby`, `holiday_flags` gegen Set-Mitgliedschaft.
+
+### Gemessen
+
+Sandkasten-Gegenmessung (eine synthetische Station, Default-Config, ein Kern):
+`predict` 24 h **0,13 s** / 72 h **1,03 s** / 168 h **2,81 s**, `fit`
+**53 ms**, `run_backtest(21 d)` **6,7 s**. Zum Vergleich die Befund-Werte
+*vor* B15/B16 (anderer Messaufbau): `predict` 24 h 0,41 s / 72 h 0,98 s /
+168 h 2,18 s, `fit` 219 ms, `run_backtest(21 d)` 24,3 s. Absolute Zeiten
+sind zwischen den Maschinen nicht übertragbar, Verhältnisse schon.
+
+> **NAS-Messung steht noch aus.** Die Batch-Regel verlangt die
+> vorher/nachher-Laufdauer aus der `beendet: … Dauer X min`-Zeile des
+> Job-Logs auf der Zielhardware — die kann erst nach dem Deploy ergänzt
+> werden. Erwartung aus dem Befund: Phase B 9,4 min → ~1,8 min, Gesamtlauf
+> 10,3 min → ~2,3 min.
+
 ## [0.19.0] – 2026-09-12
 
 B7 und D1: Der **Refresh ist nicht mehr tot** — der Alltagstabs holt seine
