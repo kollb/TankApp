@@ -1528,6 +1528,14 @@ export function useResource<T>(
   const loadRef = useRef<() => void>(() => {});
   const busyRef = useRef(false);
   const queuedReloadRef = useRef(false);
+  // B7-Revalidierung: letztes ETag pro URL (Datenstand + Parameter). Beim
+  // nächsten Laden als If-None-Match mitschicken; antwortet der Server mit
+  // 304, hat sich der Datenstand nicht geändert — die Anzeige bleibt, der
+  // Refresh kostet Millisekunden statt einer 5–10-s-Neuberechnung.
+  const etagRef = useRef<{ key: string | null; etag: string | null }>({
+    key: null,
+    etag: null,
+  });
   useEffect(() => {
     if (!url) {
       queuedReloadRef.current = false;
@@ -1535,14 +1543,15 @@ export function useResource<T>(
       setState((prev) => (prev.pending ? { ...prev, pending: false } : prev));
       return;
     }
-    // Neue URL: altes Datenmaterial und alte Fehlerzählung sind nichtig —
-    // das Panel lädt wieder, und der erste Fehlversuch ist sofort sichtbar
-    // (für diese URL ist noch nichts anzuzeigen).
+    // Neue URL: altes Datenmaterial, alte Fehlerzählung und das alte ETag
+    // sind nichtig — das Panel lädt wieder, und der erste Fehlversuch ist
+    // sofort sichtbar (für diese URL ist noch nichts anzuzeigen).
     setState((prev) =>
       prev.key === null
         ? prev
         : { ...prev, key: null, data: null, errorCode: null, failStreak: 0 },
     );
+    etagRef.current = { key: null, etag: null };
     let active = true,
       busy = false;
     let controller: AbortController | null = null;
@@ -1554,10 +1563,32 @@ export function useResource<T>(
       const timeout = window.setTimeout(() => controller?.abort(), 20000);
       setState((prev) => ({ ...prev, pending: true }));
       try {
+        // B7-Revalidierung: letztes ETag mitgeben, damit der Server auf
+        // unveränderten Datenstand mit 304 antworten kann (kein Body, keine
+        // Neuberechnung). Nur, wenn es zur aktuellen URL gehört.
+        const etag = etagRef.current.key === url ? etagRef.current.etag : null;
+        const headers: Record<string, string> = {};
+        if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,
           cache: "no-store",
+          headers,
         });
+        if (response.status === 304) {
+          // Datenstand unverändert: die Anzeige bleibt stehen, der Tausch
+          // bestätigt Frische — kein Fehler, kein neuer Body.
+          etagRef.current = { key: url, etag };
+          if (active)
+            setState((prev) => ({
+              ...prev,
+              key: url,
+              errorCode: null,
+              pending: false,
+              receivedAt: performance.now(),
+              failStreak: 0,
+            }));
+          return;
+        }
         if (!response.ok) {
           // Fehlerantworten tragen ein error_code (z. B. "unknown_station"
           // bei 404). Wir heben es hoch, damit die GUI eine verständliche
@@ -1581,7 +1612,8 @@ export function useResource<T>(
           return;
         }
         const data: T = await response.json();
-        if (active)
+        if (active) {
+          etagRef.current = { key: url, etag: response.headers.get("ETag") };
           setState({
             key: url,
             data,
@@ -1590,6 +1622,7 @@ export function useResource<T>(
             receivedAt: performance.now(),
             failStreak: 0,
           });
+        }
       } catch {
         if (active)
           setState((prev) => ({

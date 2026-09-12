@@ -7,10 +7,11 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 ## [0.19.0] – 2026-09-12
 
 B7 und D1: Der **Refresh ist nicht mehr tot** — der Alltagstabs holt seine
-Daten jetzt in **einer** Anfrage aus `/api/v1/overview`, und die Ansicht bleibt
-während des Ladens bedienbar, statt 5–10 s starr zu stehen. Daneben: D1
-(zweiter `Dashboard`-Schnitt in Views), C9 (Formatierungs-Rest) und der
-Fehlerbanner ohne Fehlalarm.
+Daten jetzt in **einer** Anfrage aus `/api/v1/overview`, die Ansicht bleibt
+während des Ladens bedienbar, und ein Refresh mit unverändertem Datenstand
+revalidiert per ETag (304) statt die Antwort 5–10 s neu zu berechnen.
+Daneben: D1 (zweiter `Dashboard`-Schnitt in Views), C9 (Formatierungs-Rest)
+und der Fehlerbanner ohne Fehlalarm.
 
 ### Hinzugefügt
 
@@ -45,6 +46,25 @@ Fehlerbanner ohne Fehlalarm.
   Fehler. Ohne anzeigbare Daten bleibt der erste Fehlversuch sichtbar (sonst
   gäbe es gar nichts zu sehen). Damit verschwindet der Banner zwischen
   einzelnen lahmen Polls wieder — das war der Ursprung des „Nervig“-Berichts.
+- **B7 — Refresh revalidiert statt neu zu laden (ETag/304).** Der
+  Token-Bucket lässt maximal 1 Preis-Poll pro 300 s zu — die meisten
+  Refreshes rechnen also dieselbe Antwort aus denselben Daten neu. Deshalb:
+  - `data_version()` in `app/data.py`: billiges Datenstands-Signal aus
+    reinen Datei-Stats (Collector-Heartbeat, Engine-/Selektions-Artefakte,
+    Feedback-Store, Polling-Set) — keine InfluxDB-Queries. Dazu ein
+    60-s-Uhrzeit-Fenster, weil das „due“-Status der Episoden und
+    Fenster-/Stundenlogik in `decide` von der Uhr abhängen (uhrzeitabhängiger
+    Inhalt ist damit höchstens 60 s alt — die Fenster-Slacks laufen in
+    Minuten).
+  - `GET /api/v1/overview` antwortet mit `ETag` und `304 Not Modified`
+    (kein Body, kein Compute) auf `If-None-Match` bei unverändertem
+    Datenstand; zusätzlich ein Antwort-Cache je (Datenstand, Parameter) für
+    Anfragen ohne If-None-Match (zweites Gerät, Page-Reload).
+  - `useResource` schickt das letzte ETag mit und behält bei 304 die
+    Anzeige (Fehlerzähler zurückgesetzt, Stand als frisch bestätigt).
+  - Effekt: Ein Refresh kostet fast immer Millisekunden; die eine teure
+    Neuberechnung nach einer echten Datenänderung spürt man dank
+    No-Abort/Alt-Daten sichtbar nicht mehr als Freeze.
 - **D1 — Views-Schnitt (zweiter `Dashboard`-Schnitt).** Die drei Tabs werden
   aus `Dashboard.tsx` in eigene Dateien ausgelagert:
   `web/src/views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`. Der
@@ -73,15 +93,22 @@ Fehlerbanner ohne Fehlalarm.
 
 ### Tests
 
-- Backend: vier Fälle in `tests/test_app.py` (`overview` bündelt wie die
-  Einzelpfade, unbekannte Station entlädt nur `day`, ungültiger Kraftstoff →
-  `invalid_fuel` wie die Einzelrouten, HTTP-Status wie die Einzelroute).
+- Backend: acht Fälle in `tests/test_app.py` (vier zum Bundling: `overview`
+  bündelt wie die Einzelpfade, unbekannte Station entlädt nur `day`,
+  ungültiger Kraftstoff → `invalid_fuel` wie die Einzelrouten, HTTP-Status
+  wie die Einzelroute; vier zur Revalidierung: ETag + 304 ohne Body bei
+  gleichem Datenstand, Neuberechnung bei geänderter Datenversion
+  (Heartbeat), Antwort-Cache spart die zweite Rechnung, ETag hängt an den
+  Parametern + If-None-Match-Parser).
 - Frontend: `web/src/data-resource.test.tsx` prüft die neue
   `failStreak`/`resourceErrorVisible`-Logik (einzelner Poll-Fehler bleibt
-  unsichtbar, zweiter zeigt; ohne Daten zeigt der erste) und dass ein
-  URL-Wechsel den Fehlerzustand zurücksetzt. Die Ratchet-Dateilisten
-  (`format-convention.test.ts`, `microcopy.test.ts`) umfassen jetzt
-  `views/*` und `components/JobCard.tsx`.
+  unsichtbar, zweiter zeigt; ohne Daten zeigt der erste), dass ein
+  URL-Wechsel den Fehlerzustand zurücksetzt, und das ETag/304-Protokoll
+  end-zu-end (If-None-Match mitgeben, Daten bei 304 behalten, neuen ETag
+  annehmen). Die Ratchet-Dateilisten (`format-convention.test.ts`,
+  `microcopy.test.ts`) umfassen jetzt `views/*` und `components/JobCard.tsx`.
+- Neue Test-Abhängigkeit: `happy-dom` (dev-only, für den Effekt-Test des
+  304-Protokolls — Vitest läuft sonst in der Node-Umgebung ohne DOM).
 
 ## [0.18.0] – 2026-09-12
 

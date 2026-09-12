@@ -12,7 +12,7 @@ import pytest
 from app.config import Settings
 from app.data import LiveData, metadata
 from app.history import convert_day, open_csv, prepare_archive
-from app.server import Handler, make_server
+from app.server import Handler, _etag_matches, make_server
 
 UID = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
@@ -563,6 +563,130 @@ def test_http_overview_is_one_get_with_the_single_route_status(app_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def _start_server(app_settings, data):
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{server.server_port}"
+
+
+def _stop_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
+
+
+def test_overview_etag_and_304_when_data_unchanged(app_settings):
+    # B7-Revalidierung: gleicher Datenstand + gleiche Parameter → 304 ohne
+    # Body statt 5–10-s-Neuberechnung.
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server, thread, base = _start_server(app_settings, data)
+    try:
+        path = "/api/v1/overview?fuel=e10&city=Frankfurt&station_id=" + UID
+        # Warm-up: der erste Request legt den Feedback-Store an (Episode) —
+        # eine legitime, einmalige Datenstands-Änderung. Ab dem zweiten
+        # Request ist der Zustand stationär.
+        urllib.request.urlopen(base + path).read()
+        with urllib.request.urlopen(base + path) as response:
+            payload = json.load(response)
+            assert response.status == 200
+            etag = response.headers.get("ETag")
+            assert etag
+            assert "decide" in payload and "fills" in payload
+        # Dritter Request mit If-None-Match: 304, kein Body.
+        request = urllib.request.Request(base + path, headers={"If-None-Match": etag})
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request)
+        assert error.value.code == 304
+        assert error.value.headers.get("ETag") == etag
+        assert error.value.read() == b""
+        # Ohne If-None-Match bleibt es ein 200 mit identischem ETag
+        # (Antwort-Cache, keine Neuberechnung).
+        with urllib.request.urlopen(base + path) as response:
+            assert response.status == 200
+            assert response.headers.get("ETag") == etag
+    finally:
+        _stop_server(server, thread)
+
+
+def test_overview_recomputes_when_data_version_changes(app_settings):
+    # B7: ein neuer Collector-Poll (Heartbeat) ändert die Datenversion —
+    # das alte ETag darf dann keine 304 mehr erzeugen.
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server, thread, base = _start_server(app_settings, data)
+    try:
+        path = "/api/v1/overview?fuel=e10&city=Frankfurt&station_id=" + UID
+        # Warm-up (Store/Episode-Anlage) — dann stationärer Zustand.
+        urllib.request.urlopen(base + path).read()
+        with urllib.request.urlopen(base + path) as response:
+            etag_old = response.headers.get("ETag")
+        heartbeat = app_settings.runtime / "collector" / "heartbeat.json"
+        heartbeat.parent.mkdir(parents=True)
+        heartbeat.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-09-08T10:05:00+00:00",
+                    "city": "Frankfurt",
+                    "open_count": 1,
+                    "total_count": 1,
+                }
+            )
+        )
+        request = urllib.request.Request(
+            base + path, headers={"If-None-Match": etag_old}
+        )
+        with urllib.request.urlopen(request) as response:
+            assert response.status == 200
+            etag_new = response.headers.get("ETag")
+            assert etag_new and etag_new != etag_old
+    finally:
+        _stop_server(server, thread)
+
+
+def test_overview_cache_avoids_second_computation(app_settings):
+    # B7: dasselbe ETag (Datenstand + Parameter) wird aus dem Antwort-Cache
+    # bedient — decide & Co. laufen nur einmal.
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    params = {"fuel": "e10", "city": "Frankfurt", "station_id": UID}
+    calls = []
+    original_decide = data.decide
+
+    def counting_decide(p):
+        calls.append(1)
+        return original_decide(p)
+
+    data.decide = counting_decide
+    etag = data.overview_etag(params)
+    assert etag
+    first = data.overview(params, etag)
+    second = data.overview(params, etag)
+    assert first == second
+    assert calls == [1]
+    # Ohne ETag (Revalidierung unbrauchbar) bleibt jeder Call eine Rechnung.
+    data.decide = counting_decide
+    calls.clear()
+    data.overview(params)
+    data.overview(params)
+    assert len(calls) == 2
+
+
+def test_overview_etag_depends_on_params(app_settings):
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    base_params = {"fuel": "e10", "city": "Frankfurt", "station_id": UID}
+    etag = data.overview_etag(base_params)
+    assert etag
+    assert data.overview_etag({**base_params, "liters": "55"}) != etag
+    assert data.overview_etag({"fuel": "diesel", "city": "Frankfurt"}) != etag
+    # If-None-Match-Parser: mehrere Tokens, Anführungszeichen und W- werden
+    # verstanden — alles außer dem echten ETag verfehlt.
+    assert _etag_matches(etag, etag)
+    assert _etag_matches(f'W/"{etag}"', etag)
+    assert _etag_matches(f'"{etag}"', etag)
+    assert _etag_matches(f"abc, {etag}, def", etag)
+    assert not _etag_matches("abc", etag)
+    assert not _etag_matches(f"abc, {etag[: len(etag) - 1]}x", etag)
 
 
 def test_health_prefers_nas_worker_archive_state_with_legacy_fallback(app_settings):
