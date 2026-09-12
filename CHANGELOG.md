@@ -4,6 +4,92 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.21.0] – 2026-09-12
+
+**B18 + B24** (Batch 2 des Laufzeit-Bündels): Betrieb statt Rechnen — der NAS
+wiederholt strukturell aussichtslose Läufe nicht mehr stündlich, und hart
+beendete Läufe bleiben nicht mehr als „Läuft …“ hängen.
+
+### Hinzugefügt
+
+- **B18 — dauerhafte von flüchtigen Fehlern getrennt.** Strukturelle
+  Fehlercodes (`some_models_unavailable`, `insufficient_history`,
+  `archive_not_configured`, `influx_not_configured`, `selection_not_available`)
+  setzen den nächsten Versuch jetzt auf das reguläre Intervall des Jobs
+  (`models`: 1×/Tag statt stündlich) — `app/worker.py::is_transient_error`
+  entscheidet, `Scheduler.next_delay` und der Retry in `finish()` folgen
+  derselben Regel. Flüchtige Fehler behalten den schnellen
+  Wiederholungsversuch (3600 s). Eigener Fehlercode je Station verhindert,
+  dass eine unfitbare Station 24 erfolglose Läufe pro Tag auslöst.
+- **B24 — Abbruch statt ewigem `running`.** Ein SIGTERM-Handler im
+  Job-Prozess schreibt den Zustand als `state: aborted` samt `aborted_at`,
+  `aborted_phase` (letzte protokollierte Phase) und `error_code: aborted`;
+  ein liegengebliebener `running`-Vorgänger (Container-Recreate, SIGKILL)
+  wird beim nächsten Start als abgebrochen verbucht
+  (`_mark_prior_aborted`). `nas-up` warnt, solange ein Modell-Lauf aktiv ist,
+  bevor `docker compose config`/Recreate den Job kippen.
+- **Sichtbarkeit:** `public_job` exportiert `aborted_at`/`aborted_phase`;
+  die Job-Karte zeigt „Abgebrochen“ mit Zeit und Phase; neue Warn-Alarme
+  `job_partial` (bei `partial`) und `job_aborted` (bei `aborted`) in
+  `/health`; Klartext `messages["aborted"]` im GUI.
+
+### Gemessen
+
+Keine Rechenzeit-Relevanz — B18/B24 ändern nur die Wiederholungs- und
+Abbruch-Semantik der Job-Verwaltung, nicht die Modellrechnung. Die
+NAS-Laufdauer vorher/nachher für 0.20.0 steht weiterhin aus (siehe dort).
+
+## [0.20.0] – 2026-09-12
+
+**B15 + B16** (Batch 1 des Laufzeit-Bündels aus der To-Do): die beiden
+**bitgleichen** Hebel sind umgesetzt. Die 12-Uhr-Projektion dedupliziert
+Bootstrap-Pfade je Segment (B15), und `fit()` ist von String-, Aggregator-
+und Schleifen-Overhead befreit (B16 a–e). Publizierte Zahlen bleiben exakt
+identisch — je ein Bitgleichheits-Test hält das fest. Die
+Huber-Normalgleichungen aus B16 (nicht bitgleich, Δ ≤ 3,4e-12) bleiben
+weiterhin **aus**.
+
+### Hinzugefügt
+
+- **B15 — Bootstrap-Pfade vor der 12-Uhr-Projektion dedupliziert.**
+  `engine/models.py::project_paths` ersetzt die skalare Projektion jedes
+  einzelnen Pfads. Innerhalb eines Segments [12:00, nächste 12:00) hängt der
+  projizierte Pfad nur von den gezogenen Tagesblöcken ab — bei `n` Blöcken
+  gibt es je Segment höchstens `n²` verschiedene Zeilen (bei
+  Mitternachts-Origin genau `n`) statt `bootstrap_samples` Vollpfaden.
+  Eindeutige Zeilen werden über `np.unique(…, axis=0, return_inverse=True)`
+  einmal projiziert und per `inverse` zurückgeschrieben. NaN wird dabei als
+  Stellvertreter kodiert, damit Zeilen mit identischem NaN-Muster (gleiche
+  Ziehung) tatsächlich zusammenfallen — `NaN != NaN` würde die
+  Deduplizierung sonst für Segmente mit Nacht-/Schließzeiten ins Leere
+  laufen lassen.
+- **B16 — `fit()` von String- und Aggregator-Overhead befreit (a–e, bitgleich).**
+  (a)+(c) Residuen-Tagesblöcke als direkte (Tag, Slot)-Index-Zuweisung
+  (`_residual_blocks`) statt `pivot_table(aggfunc="median")`, Tagesschlüssel
+  über `pd.factorize` statt `strftime`; (b) Feiertagsmaske über sortierte
+  int64-Tageswerte + `searchsorted` statt Timestamp-Iteration
+  (`engine/holidays.py`); (d) Naiv-Profil über stabilen Sortierindex +
+  `searchsorted` statt `groupby(…).agg(lambda g: g.iloc[-1])`
+  (`_naive_profile`); (e) Zähler `law_rise_outside_noon` vektorisiert.
+- **Bitgleichheits-Tests** in `tests/test_models.py`: `project_paths` gegen
+  die skalare Referenz-Projektion, `_residual_blocks` gegen `pivot_table`,
+  `_naive_profile` gegen `groupby`, `holiday_flags` gegen Set-Mitgliedschaft.
+
+### Gemessen
+
+Sandkasten-Gegenmessung (eine synthetische Station, Default-Config, ein Kern):
+`predict` 24 h **0,13 s** / 72 h **1,03 s** / 168 h **2,81 s**, `fit`
+**53 ms**, `run_backtest(21 d)` **6,7 s**. Zum Vergleich die Befund-Werte
+*vor* B15/B16 (anderer Messaufbau): `predict` 24 h 0,41 s / 72 h 0,98 s /
+168 h 2,18 s, `fit` 219 ms, `run_backtest(21 d)` 24,3 s. Absolute Zeiten
+sind zwischen den Maschinen nicht übertragbar, Verhältnisse schon.
+
+> **NAS-Messung steht noch aus.** Die Batch-Regel verlangt die
+> vorher/nachher-Laufdauer aus der `beendet: … Dauer X min`-Zeile des
+> Job-Logs auf der Zielhardware — die kann erst nach dem Deploy ergänzt
+> werden. Erwartung aus dem Befund: Phase B 9,4 min → ~1,8 min, Gesamtlauf
+> 10,3 min → ~2,3 min.
+
 ## [0.19.0] – 2026-09-12
 
 B7 und D1: Der **Refresh ist nicht mehr tot** — der Alltagstabs holt seine

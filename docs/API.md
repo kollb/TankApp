@@ -349,6 +349,8 @@ grün ohne Alarm.
 | `collector_no_heartbeat` | error | noch kein Herzschlag des Pi auf dem NAS |
 | `collector_stale` | warn | Herzschlag älter als 15 min |
 | `job_failed` (+ `job`) | error | Job `archive`, `models`, `selection` oder `settlement` fehlgeschlagen |
+| `job_partial` (+ `job`) | warn | Lauf unvollständig (mindestens eine Station ohne neues Modell); nächster Versuch im regulären Intervall, nicht stündlich |
+| `job_aborted` (+ `job`) | warn | Lauf hart beendet (z. B. Container-Neustart); letzte Ergebnisse bleiben erhalten |
 | `store_too_large` | error | Feedback-Store über `FEEDBACK_MAX_BYTES` — Belege werden abgelehnt |
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
 

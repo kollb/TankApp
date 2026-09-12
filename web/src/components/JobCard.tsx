@@ -57,9 +57,11 @@ export function JobCard({
           ? "Wartet auf Konfiguration"
           : job?.state === "partial"
             ? "Unvollständig"
-            : job?.state === "failed"
-              ? "Fehlgeschlagen"
-              : "Noch kein Lauf";
+            : job?.state === "aborted"
+              ? "Abgebrochen"
+              : job?.state === "failed"
+                ? "Fehlgeschlagen"
+                : "Noch kein Lauf";
   const stateColor = !enabled
     ? "text-slate-500"
     : job?.state === "success"
@@ -70,9 +72,11 @@ export function JobCard({
           ? "text-amber-400"
           : job?.state === "partial"
             ? "text-amber-400"
-            : job?.state === "failed"
+            : job?.state === "aborted"
               ? "text-rose-400"
-              : "text-slate-400";
+              : job?.state === "failed"
+                ? "text-rose-400"
+                : "text-slate-400";
   return (
     <div className={`${panel} p-5`}>
       <div className="flex items-center justify-between">
@@ -139,6 +143,16 @@ export function JobCard({
                 const skip = triggerSkipLabel(job?.last_trigger_skip);
                 return skip ? ` · letzter Skip: ${skip}` : "";
               })()}
+            </span>
+          </div>
+        )}
+        {/* B24: Abbruchzeitpunkt und -phase eines hart beendeten Laufs. */}
+        {job?.state === "aborted" && job.aborted_at && (
+          <div className="flex justify-between">
+            <span>Abgebrochen</span>
+            <span className="font-mono text-slate-200">
+              {timeLabel(job.aborted_at)}
+              {job.aborted_phase ? ` · Phase ${job.aborted_phase}` : ""}
             </span>
           </div>
         )}

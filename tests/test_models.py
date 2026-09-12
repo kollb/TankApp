@@ -7,7 +7,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from engine.data import normalize_observations, prepare_series
-from engine.holidays import holiday_flags
+from engine.holidays import _holiday_days, holiday_flags
 from engine.selection import (
     cusum_break,
     daily_median_series,
@@ -15,6 +15,8 @@ from engine.selection import (
     weighted_median,
 )
 from engine.models import (
+    _naive_profile,
+    _residual_blocks,
     features,
     fit,
     fit_ar2,
@@ -22,7 +24,9 @@ from engine.models import (
     jump_age_hours,
     noon_law_projection,
     predict,
+    project_paths,
     seasonal_scale,
+    slots,
     utc_time,
     validate_model,
 )
@@ -435,3 +439,103 @@ def test_ew_median_reacts_faster_than_classic_after_21_days():
     assert abs(ew - (-5.0)) < abs(classic - (-5.0))
     assert ew < -3.5
     assert cusum_break(day_meds)[0] is True
+
+
+# --- B15/B16: Laufzeit-Optimierungen (bitgleich gegen die frühere Implementierung)
+
+
+def test_project_paths_dedup_is_bitwise_identical(cfg):
+    """B15: Deduplizierte 12-Uhr-Projektion == skalare Projektion je Pfad.
+
+    Referenz ist die frühere Implementierung (Projektion jedes einzelnen
+    Pfads). Die deduplizierte Fassung muss exakt identisch sein — auch mit
+    NaN-Lücken als Barriere, ganzen NaN-Zeilen und Zeilen, die sich je
+    Segment wiederholen (dort greift die Deduplizierung).
+    """
+    for index in (
+        # Mitternachts-Origin (Backtest-Folds): zwei volle 12-Uhr-Segmente.
+        pd.date_range("2026-08-01T00:00:00+02:00", periods=2 * 288, freq="5min"),
+        # Tages-Origin 14:45 (Live): ein angefangenes plus ein weiteres Segment.
+        pd.date_range("2026-08-01T14:45:00+02:00", periods=288, freq="5min"),
+    ):
+        rng = np.random.default_rng(7)
+        templates = []
+        for shift in (0.0, 0.01, 0.02):
+            row = 1.70 + shift - 0.001 * np.arange(len(index))
+            row[140:150] += 0.02  # unerlaubter Nachmittagsanstieg → PAVA arbeitet
+            row[60:70] = np.nan  # Lücke als Barriere
+            templates.append(row)
+        rows = np.stack([templates[rng.integers(0, 3)] for _ in range(120)])
+        rows[::6] = np.nan  # ganze NaN-Zeilen: NaN != NaN in np.unique
+        reference = np.stack(
+            [noon_law_projection(rows[s], index, cfg) for s in range(len(rows))]
+        )
+        np.testing.assert_array_equal(project_paths(rows, index, cfg), reference)
+
+
+def test_residual_blocks_match_pivot_reference(cfg):
+    """B16(a+c): factorize/Index-Zuweisung == pivot_table(aggfunc="median")."""
+    index = pd.date_range(
+        "2026-07-18", "2026-08-01", freq="5min", inclusive="left", tz="UTC"
+    )
+    rng = np.random.default_rng(3)
+    residual = rng.normal(0, 0.01, len(index))
+    residual[::37] = np.nan
+    blocks = _residual_blocks(index, residual, cfg)
+    reference = (
+        pd.DataFrame(
+            {
+                "day": index.tz_convert(cfg.timezone).strftime("%Y-%m-%d"),
+                "slot": slots(index, cfg),
+                "error": residual,
+            }
+        )
+        .pivot_table(index="day", columns="slot", values="error", aggfunc="median")
+        .reindex(columns=range(288))
+        .to_numpy()
+    )
+    np.testing.assert_array_equal(blocks, reference)
+
+
+def test_naive_profile_matches_groupby_reference(cfg):
+    """B16(d): searchsorted-letzter-Wert == groupby(…).agg(lambda g: g.iloc[-1])."""
+    # Vortag plus Anbruch des Folgetags: Slots kommen teils doppelt vor.
+    index = pd.date_range(
+        "2026-08-01T00:00:00+02:00",
+        "2026-08-02T14:45:00+02:00",
+        freq="5min",
+        inclusive="left",
+    )
+    rng = np.random.default_rng(5)
+    values = rng.normal(1.7, 0.01, len(index))
+    values[::13] = np.nan
+    recent = pd.Series(values, index=index)
+    naive = _naive_profile(recent, cfg)
+    reference = (
+        pd.Series(recent.to_numpy(), index=slots(recent.index, cfg))
+        .groupby(level=0)
+        .agg(lambda group: group.iloc[-1])
+        .reindex(range(288))
+        .to_numpy()
+    )
+    np.testing.assert_array_equal(naive, reference)
+
+
+def test_holiday_flags_searchsorted_matches_set_membership(cfg):
+    """B16(b): searchsorted-Feiertagsmaske == Set-Mitgliedschaft je Tag."""
+    for subdiv, start in (
+        ("HE", "2026-09-20"),
+        ("BY", "2025-12-20"),
+        ("NW", "2026-04-25"),
+    ):
+        index = pd.date_range(start, periods=40 * 288, freq="5min", tz=cfg.timezone)
+        flags, source = holiday_flags(index, subdiv, cfg.timezone)
+        local = index.tz_convert(cfg.timezone).tz_localize(None)
+        years = (int(local.year.min()), int(local.year.max()))
+        days = _holiday_days(subdiv, *years)
+        if days is None:
+            assert source == "none"
+            continue
+        reference = np.asarray([d in days for d in local.normalize()], dtype=float)
+        np.testing.assert_array_equal(flags, reference)
+        assert source == f"holidays:{subdiv}"

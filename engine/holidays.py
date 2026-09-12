@@ -65,5 +65,17 @@ def holiday_flags(
     days = _holiday_days(subdiv, *years)
     if days is None:
         return zeros, "none"
-    flags = np.asarray([day in days for day in local.normalize()], dtype=float)
+    # B16(b): Feiertagszugehörigkeit über sortierte int64-Tageswerte und
+    # ``searchsorted`` statt Timestamp-Iteration je Rasterpunkt — dieselbe
+    # 0/1-Maske, bitgleich.
+    if days:
+        day_values = np.sort(
+            np.asarray([day.to_datetime64() for day in days], dtype="datetime64[ns]")
+        ).astype("int64")
+        local_values = local.normalize().as_unit("ns").asi8
+        found = np.searchsorted(day_values, local_values)
+        found = np.minimum(found, len(day_values) - 1)
+        flags = np.asarray(day_values[found] == local_values, dtype=float)
+    else:
+        flags = zeros.copy()
     return flags, f"holidays:{subdiv}"

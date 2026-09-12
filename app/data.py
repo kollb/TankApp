@@ -241,6 +241,11 @@ def public_job(settings, name):
             "finished_at",
             "last_success_at",
             "next_run_at",
+            # B24: Abbruchzeitpunkt und -phase eines hart beendeten Laufs —
+            # damit „Läuft …“-Geister durch einen ehrlichen `aborted`-Zustand
+            # ersetzt werden und die GUI die Abbruchphase zeigen kann.
+            "aborted_at",
+            "aborted_phase",
             # Issue 50: Datenstand des letzten erfolgreichen
             # Webhook-Triggerlaufs (Epochensekunden) — Idempotenz-Anker.
             "data_watermark",

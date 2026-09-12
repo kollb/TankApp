@@ -51,6 +51,9 @@ export type Job = {
   finished_at: string | null;
   last_success_at: string | null;
   next_run_at: string | null;
+  /** B24: Abbruchzeitpunkt/-phase eines hart beendeten Laufs (state=aborted). */
+  aborted_at?: string | null;
+  aborted_phase?: string | null;
   /** Nur während eines Laufs gesetzt: Phase, Schritt x/y, Restschätzung. */
   progress?: JobProgress | null;
   /** Issue 50: Datenstand (Epochensekunden) des letzten erfolgreichen Webhook-Triggerlaufs. */
@@ -1977,6 +1980,8 @@ export const messages: Record<string, string> = {
     "Der NAS-Job konnte nicht ausgeführt werden. Schreibrechte des Datenverzeichnisses und App-Dienst prüfen; erneuter Versuch folgt.",
   job_failed:
     "Der Lauf ist fehlgeschlagen. Letzte Ergebnisse bleiben erhalten; erneuter Versuch folgt.",
+  aborted:
+    "Der Lauf wurde abgebrochen (z. B. durch einen Container-Neustart). Letzte Ergebnisse bleiben erhalten.",
   selection_not_available:
     "Noch keine Selektions-Artefakte vorhanden. Nach dem Modell-Lauf erscheint hier das Ranking nach Preis-Abstand (δ̂).",
   selection_failed:

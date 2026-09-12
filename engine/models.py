@@ -275,6 +275,49 @@ def noon_law_projection(
     return result
 
 
+def project_paths(
+    paths: np.ndarray,
+    index: pd.DatetimeIndex,
+    cfg: Config,
+    segments: list[tuple[int, int, pd.Timestamp]] | None = None,
+) -> np.ndarray:
+    """12-Uhr-Projektion aller Bootstrap-Pfade, dedupliziert je Segment (B15).
+
+    Innerhalb eines Segments [12:00 Uhr, nächste 12:00 Uhr) hängt der
+    projizierte Pfad nur von den gezogenen Tagesblöcken dieses Segments ab:
+    bei ``n`` Tagesblöcken gibt es je Segment höchstens ``n²`` verschiedene
+    Zeilen (bei Mitternachts-Origin genau ``n``) statt ``bootstrap_samples``
+    projizierter Vollpfade. Eindeutige Zeilen werden einmal projiziert und
+    über ``inverse`` auf alle Pfade zurückgeschrieben — bitgleich zur
+    skalaren Projektion jedes einzelnen Pfads.
+    """
+    paths = np.asarray(paths, dtype=float)
+    law = law_since_utc(cfg).tz_convert(cfg.timezone)
+    if segments is None:
+        segments = _segment_bounds(index.tz_convert(cfg.timezone))
+    for start, stop, boundary in segments:
+        if boundary < law:
+            continue
+        chunk = paths[:, start:stop]
+        # NaN als endlichen Stellvertreter kodieren: ``np.unique`` vergleicht
+        # NaN != NaN und würde Zeilen mit identischem NaN-Muster (gleiche
+        # Ziehung) nie zusammenführen — die Deduplizierung liefe sonst für
+        # Segmente mit Nacht-/Schließzeiten ins Leere. Der Stellvertreter
+        # kommt in echten Preisen/Residuen nicht vor und wird vor der
+        # Projektion wieder zu NaN.
+        dedup_input = np.where(np.isnan(chunk), np.inf, chunk)
+        unique, inverse = np.unique(dedup_input, axis=0, return_inverse=True)
+        sub_index = index[start:stop]
+        sub_segments = [(0, stop - start, boundary)]
+        for row in range(len(unique)):
+            row_values = np.where(unique[row] == np.inf, np.nan, unique[row])
+            unique[row] = noon_law_projection(
+                row_values, sub_index, cfg, segments=sub_segments
+            )
+        paths[:, start:stop] = unique[inverse]
+    return paths
+
+
 def huber_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     beta = np.linalg.lstsq(x, y, rcond=None)[0]
     for _ in range(30):
@@ -330,6 +373,42 @@ def seasonal_scale(price: pd.Series, cfg: Config) -> float | None:
     error = error[np.isfinite(error)]
     scale = float(error.mean()) if len(error) else 0
     return scale if scale > 1e-8 else None
+
+
+def _residual_blocks(
+    index: pd.DatetimeIndex, residual: np.ndarray, cfg: Config
+) -> np.ndarray:
+    """Residuen-Tagesblöcke als (Tag, Slot)-Matrix (B16 a+c, bitgleich).
+
+    (Tag, Slot) ist je Gitterpunkt eindeutig; die frühere
+    ``pivot_table(aggfunc="median")`` reduzierte deshalb genau einen Wert
+    je Zelle und verwarf NaN. Tagesschlüssel über ``factorize`` — die
+    Auftretensreihenfolge ist chronologisch, weil das Raster sortiert ist
+    (dieselbe Ziehreihenfolge wie die frühere ``strftime``-Sortierung).
+    """
+    day_codes = pd.factorize(index.tz_convert(cfg.timezone).normalize())[0]
+    slot_index = slots(index, cfg)
+    blocks = np.full((int(day_codes.max()) + 1, 288), np.nan)
+    blocks[day_codes, slot_index] = residual
+    return blocks
+
+
+def _naive_profile(recent: pd.Series, cfg: Config) -> np.ndarray:
+    """Letzter Wert je Slot des Vortags-Profils (B16 d, bitgleich).
+
+    Stabiler Sortierindex + ``searchsorted`` statt
+    ``groupby(…).agg(lambda g: g.iloc[-1])``: der letzte Gitterpunkt eines
+    Slots ist sein zeitlich jüngster Wert.
+    """
+    recent_slots = slots(recent.index, cfg)
+    order = np.argsort(recent_slots, kind="stable")
+    sorted_slots = recent_slots[order]
+    starts = np.searchsorted(sorted_slots, np.arange(288))
+    ends = np.searchsorted(sorted_slots, np.arange(288), side="right")
+    naive = np.full(288, np.nan)
+    present = starts < ends
+    naive[present] = recent.to_numpy()[order[ends[present] - 1]]
+    return naive
 
 
 def fit(series: PriceSeries, origin, cfg: Config) -> dict:
@@ -394,24 +473,15 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     phi = fit_ar2(residual)
     # [epsilon(t-1), epsilon(t-2)] at the forecast origin. No stale carryover.
     state = residual[-2:][::-1] if np.isfinite(residual[-2:]).all() else np.zeros(2)
-    local_days = index.tz_convert(cfg.timezone).strftime("%Y-%m-%d")
-    blocks = pd.DataFrame(
-        {"day": local_days, "slot": slots(index, cfg), "error": residual}
-    )
-    blocks = blocks.pivot_table(
-        index="day", columns="slot", values="error", aggfunc="median"
-    )
-    blocks = blocks.reindex(columns=range(288)).to_numpy()
+    # B16(a)+(c): Residuen-Tagesblöcke als direkte (Tag, Slot)-Index-Zuweisung
+    # statt pivot_table(aggfunc="median") — bitgleich, siehe _residual_blocks.
+    blocks = _residual_blocks(index, residual, cfg)
     # Previous local day's observed profile, repeated for multi-day outlooks.
     # Missing night hours remain missing; no fallback disguised as a naive.
+    # B16(d): letzter Wert je Slot statt groupby(…).agg(lambda g: g.iloc[-1]).
     last_day = calendar_before(origin, 1, cfg)
     recent = price.loc[price.index >= last_day]
-    naive = (
-        pd.Series(recent.to_numpy(), index=slots(recent.index, cfg))
-        .groupby(level=0)
-        .agg(lambda group: group.iloc[-1])
-    )
-    naive = naive.reindex(range(288)).to_numpy()
+    naive = _naive_profile(recent, cfg)
     # 12-Uhr-Regel als Datenqualitäts-Signal: beobachtete Anstiege von
     # mindestens 1 ct, deren 5-Minuten-Intervall keinen erlaubten
     # Erhöhungspunkt (12:00 Uhr, ab Gesetzesbeginn) enthalten. Das sind
@@ -421,21 +491,19 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     finite = np.isfinite(price_values)
     local_index = index.tz_convert(cfg.timezone)
     law = law_since_utc(cfg).tz_convert(index.tz)
-    irregular_rises = 0
-    for position in range(1, len(index)):
-        if not (finite[position] and finite[position - 1]):
-            continue
-        # Zählschwelle 1 ct/L (0,01 €): Kleinere Bewegungen sind
-        # Rundungs-/Meldungsrauschen, keine Preiserhöhungen im Sinn der Regel.
-        if price_values[position] <= price_values[position - 1] + 0.01:
-            continue
-        # Der erlaubte Erhöhungspunkt ist die lokale 12:00 Uhr des Rasterpunkts.
-        noon = (local_index[position].normalize() + pd.Timedelta(hours=12)).tz_convert(
+    # B16(e): Zähler vektorisiert — dieselbe Bedingung wie die frühere
+    # Positionsschleife, nur als Masken-Operation (bitgleich).
+    if len(index) > 1:
+        both_finite = finite[1:] & finite[:-1]
+        risen = price_values[1:] > price_values[:-1] + 0.01
+        noon = (local_index[1:].normalize() + pd.Timedelta(hours=12)).tz_convert(
             index.tz
         )
-        if noon < law or index[position - 1] < noon <= index[position]:
-            continue
-        irregular_rises += 1
+        after_law = noon >= law
+        spans_noon = (index[:-1] < noon) & (noon <= index[1:])
+        irregular_rises = int((both_finite & risen & after_law & ~spans_noon).sum())
+    else:
+        irregular_rises = 0
     last_observation = frame.observed_at.dropna()
     ew_half_life = getattr(cfg, "bootstrap_ew_half_life_days", None)
     interval_method = (
@@ -637,10 +705,9 @@ def predict(
             draws = rng.choice(len(block), size=cfg.bootstrap_samples, p=block_weights)
         paths[:, positions] = point[positions] + block[draws[:, None], slot[positions]]
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
-    for sample in range(cfg.bootstrap_samples):
-        paths[sample] = noon_law_projection(
-            paths[sample], index, cfg, segments=segments
-        )
+    # B15: Pfade je Segment deduplizieren statt jeden Vollpfad einzeln zu
+    # projizieren — bitgleich, aber deutlich weniger Projektionsarbeit.
+    paths = project_paths(paths, index, cfg, segments=segments)
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="All-NaN slice encountered", category=RuntimeWarning
