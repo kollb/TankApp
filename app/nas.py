@@ -126,6 +126,7 @@ def up(args):
         netrc.parent.mkdir(parents=True, exist_ok=True)
         if not netrc.exists():
             netrc.touch(mode=0o600)
+
     # B13: Commit-Hash für /health → commit nicht null im Docker-Image (app/version.py liest Env).
     def _git_commit_short() -> str:
         env = os.environ.get("TANKAPP_BUILD_COMMIT", "").strip()

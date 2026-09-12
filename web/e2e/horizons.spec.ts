@@ -103,6 +103,116 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
       },
     });
   });
+  // B6/H1: Server liefert detour_km_est + verdict/Schwellen — e2e muss decide mocken,
+  // sonst zeigt die GUI keine Umweg-Sektion (und #timeValue fehlt).
+  await page.route("**/api/v1/decide?*", async (route) => {
+    const url = new URL(route.request().url());
+    const selectedId = url.searchParams.get("station_id") || "b";
+    // Zwei Stationen: a=1.759, b=1.689 → b günstiger. Wenn Vergleich a gewählt,
+    // liefert Server b als Alternative mit Strecke.
+    await route.fulfill({
+      json: {
+        generated_at: new Date().toISOString(),
+        primary: {
+          action: "refuel_now",
+          station: { id: selectedId, name: selectedId === "a" ? "F-Station" : "B-Station", brand: "Test", price_now: selectedId === "a" ? 1.759 : 1.689, maps_url: null },
+          expected_saving_eur: 0,
+          p_correct: 0.9,
+          confidence_badge: "high",
+          reason_short: "Günstigste frische Station.",
+        },
+        alternatives_nearby: [
+          {
+            station_id: "b",
+            name: "B-Station",
+            price: 1.689,
+            detour_km: 1.2,
+            detour_km_est: 1.2,
+            dist_mode: "haversine",
+            detour_mode: "haversine",
+            trip_mode: "onroute",
+            gross_eur: 2.8,
+            fuel_cost_eur: 0.2,
+            time_cost_eur: 0.3,
+            detour_cost_eur: 0.5,
+            net_eur: 2.3,
+            critical_delta_ct: 1.2,
+            worth_it: true,
+            verdict: "worth",
+            p_lohnt: 0.8,
+          },
+          {
+            station_id: "a",
+            name: "F-Station",
+            price: 1.759,
+            detour_km: 0.8,
+            detour_km_est: 0.8,
+            dist_mode: "haversine",
+            detour_mode: "haversine",
+            trip_mode: "onroute",
+            gross_eur: -2.8,
+            fuel_cost_eur: 0.15,
+            time_cost_eur: 0.2,
+            detour_cost_eur: 0.35,
+            net_eur: -3.15,
+            critical_delta_ct: 0.8,
+            worth_it: false,
+            verdict: "not_worth",
+            p_lohnt: 0.1,
+          },
+        ],
+        windows_today: [],
+        windows_week: [],
+        episode: { id: "ep-1", status: "open", intent: "none", opened_at: new Date().toISOString() },
+        thresholds: {
+          active: { elsewhere_net_eur: 1.5, elsewhere_borderline_eur: 0.5 },
+          auto_apply: false,
+          tuning: null,
+        },
+        quality: { rolling_picp_7d_pct: 95, rolling_picp_7d_badge: "green" },
+        personal_stats: { advice: { last_30d_hits: 0, last_30d_total: 0, hit_rate: null, brier_30d: null }, wallet: { fills_30d: 0, followed: 0, saved_eur_30d: 0 } },
+        calibrated: true,
+        decision_ready: true,
+        error_code: null,
+      },
+    });
+  });
+  // Health + stats minimal für Werkstatt-Tab
+  await page.route("**/api/v1/health", async (route) => {
+    await route.fulfill({
+      json: {
+        app: "online",
+        generated_at: new Date().toISOString(),
+        version: "test",
+        commit: "abc123",
+        polling_error: null,
+        station_count: 2,
+        influx_configured: true,
+        archive_configured: true,
+        jobs_enabled: false,
+        alarms: [],
+        archive: {},
+        jobs: {},
+        models: { published_at: new Date().toISOString(), count: 1, calibrated: true, decision_ready: true },
+        selection: { published_at: new Date().toISOString(), count: 2, error_code: null },
+        collector: { available: true, fresh: true },
+      },
+    });
+  });
+  await page.route("**/api/v1/stats/summary?*", async (route) => {
+    await route.fulfill({
+      json: {
+        generated_at: new Date().toISOString(),
+        fuel: "e10",
+        city: "Frankfurt",
+        quality_metrics: { top3_hit_rate: 0.8, mase_sprungfrei: 0.6, picp_95: 95, cusum_drift: { status: "normal", max_cusum: 0.5 } },
+        live_advice: { n: 10, calibrated: true, gate_status: "Kalibriert", brier_30d: 0.18, wait_hits: 5, wait_n: 6, now_hits: 4, now_n: 5, reliability: [], min_recommendations: 100, brier_threshold: 0.25 },
+        wallet: { n_fills: 2, followed: 1, saved_eur: 3.5, wh_hours: [], last_fill: null },
+        live_phase: null,
+        backtest: { daysEval: 7, evalRows: {}, models: {}, stations: [{ id: "a", name: "F-Station", city: "Frankfurt" }], calibration: [] },
+      },
+    });
+  });
   return seenHours;
 }
 
