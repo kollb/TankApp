@@ -215,7 +215,7 @@ Fußzeile der App. Token-Bucket 1 R/300 s **hart verdrahtet**, dazu
 ## 2. Schritt 1: Mathematische Stations-Selektion (fertig implementiert)
 
 Pipeline: `analysis/station_selection.py` · Schema: [Werkzeugreferenz](DATENWERKZEUGE.md#datenformate).
-Der echte Bericht wird lokal als `docs/analysis/report_top10.md` erzeugt
+Der echte Bericht wird lokal als `data/analysis/report_top10.md` erzeugt
 und archiviert; synthetische Berichte sind kein Abnahmenachweis und wurden entfernt.
 
 | # | Komponente | Verfahren | Funktion im Score |

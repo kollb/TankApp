@@ -28,7 +28,10 @@ data/apikey.txt
 ops/nas/influxdb/.env
 
 # Lokale Selektionsberichte und Stations-Metadaten (inkl. privatem Polling-Set)
+# Neuer Ort ist data/analysis/ (bereits über data/ ignoriert); der alte Pfad
+# bleibt ignoriert, solange Installationen ihn noch verwenden (B14).
 /docs/analysis/
+/data/analysis/
 # Test-/Lint-Ausgaben
 .pytest_cache/
 .ruff_cache/

@@ -15,7 +15,7 @@ schätzen. Für jede Station werden verglichen:
                    Größe für "wann tanken") innerhalb des Fensters liegt
                    (robust: Min des stündlichen Medianprofils des Tages)
 
-Ausgabe: docs/analysis/report_window.md + figures/window_minhours.png
+Ausgabe: data/analysis/report_window.md + figures/window_minhours.png
 """
 
 from __future__ import annotations
@@ -193,8 +193,8 @@ def main() -> None:
     ap.add_argument("--data", nargs="+", type=Path, required=True)
     ap.add_argument("--fuel", default="E10")
     ap.add_argument("--min-coverage", type=float, default=0.85)
-    ap.add_argument("--report", type=Path, default=Path("docs/analysis/report_window.md"))
-    ap.add_argument("--figdir", type=Path, default=Path("docs/analysis/figures"))
+    ap.add_argument("--report", type=Path, default=Path("data/analysis/report_window.md"))
+    ap.add_argument("--figdir", type=Path, default=Path("data/analysis/figures"))
     args = ap.parse_args()
 
     df = load_prices(args.data, args.fuel)

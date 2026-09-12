@@ -117,7 +117,7 @@ RP2-Anleitungen und die HTML-Mockups von 2026-09-08 sind im
 - RP2 läuft 24/7
 - Collector + Uploader aktiv (`tankapp-collector`, `tankapp-uploader`)
 - `/dev/shm/tankapp` als tmpfs gemountet
-- `polling.json` unter `~/TankApp/docs/analysis/stations/polling.json` — ohne fehlen Namen/Marken/Navigation (UUID wird angezeigt)
+- `polling.json` unter `~/TankApp/data/analysis/stations/polling.json` — ohne fehlen Namen/Marken/Navigation (UUID wird angezeigt)
 - Neu B3: `meta/heartbeat.json` wird automatisch vom Collector gepflegt
 
 ## Schritt 1: NAS aktualisieren
@@ -128,7 +128,7 @@ API-Endpunkte `/api/v1/last_forecasts`, `/api/v1/heatmap`, `/api/v1/selection`, 
 
 | Datei auf NAS | Pflicht? | Woher |
 |---|---|---|
-| `docs/analysis/stations/polling.json` | ja | vom Pi (aktives Set nach activate-polling) |
+| `data/analysis/stations/polling.json` | ja | vom Pi (aktives Set nach activate-polling) |
 | `data/influx.env` | ja | selbst anlegen: InfluxDB-Nur-Lese-Zugang |
 | `data/_netrc` | für Prognosen | vorhandener Tankerkönig-Archivzugang |
 
@@ -372,8 +372,8 @@ liefert ausschließlich das NAS; dort bleibt die Bezeichnung unverändert.
 polling.json Suche (erste Treffer):
 
 1. `STATION_META` Env
-2. `~/TankApp/docs/analysis/stations/polling.json`
-3. `<Repo>/docs/analysis/stations/polling.json`
+2. `~/TankApp/data/analysis/stations/polling.json`
+3. `<Repo>/data/analysis/stations/polling.json`
 
 Ohne polling.json fehlen Namen/Marken/Navigation — UUID wird angezeigt. Datei liegt beim Collector bereits auf Pi.
 
@@ -405,7 +405,7 @@ Ursachen: Collector läuft nicht, Polling-Set leer, nachts (00–06) pollt Colle
 ### UUIDs statt Namen
 
 ```bash
-ls -la ~/TankApp/docs/analysis/stations/polling.json
+ls -la ~/TankApp/data/analysis/stations/polling.json
 ```
 
 Ursache: polling.json fehlt/korrupt. JSONL enthält nur UUID+Preis, Namen/Marken/Koordinaten liefert polling.json. Neu kopieren, dann `sudo systemctl restart tankapp-fallback-gui`.

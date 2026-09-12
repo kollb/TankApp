@@ -64,7 +64,7 @@ Entwicklerbeispiel (kein täglicher Bedienablauf):
 
 ```powershell
 py -3 -m pip install -r engine/requirements.txt
-py -3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling docs/analysis/stations/polling.json
+py -3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling data/analysis/stations/polling.json
 ```
 
 Zielsystem ist das **Linux-NAS** (und jedes Linux/PC-Entwicklungssystem):
@@ -72,7 +72,7 @@ dort lauten dieselben Befehle `python3` mit Schrägstrichen —
 
 ```bash
 python3 -m pip install -r engine/requirements.txt
-python3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling docs/analysis/stations/polling.json
+python3 -m engine bootstrap --data "data/ready/*_hist.csv*" data/engine/influx_e10.csv.gz --polling data/analysis/stations/polling.json
 ```
 
 Die weiteren `py -3`-Befehle dieses Dokuments sind Windows-PC-Schreibweise
@@ -91,7 +91,7 @@ erhöhen; Senkungen sind jederzeit möglich (`price_law_local` in der
 `Config`). Die Engine überträgt das auf drei Ebenen:
 
 1. **Strukturmodell:** Neben den Harmonischen und Wochentags-Dummies trägt ein
-   Mittags-Schritt („nach 12:00 Uhr, ab Gesetzesbeginn") das eigene
+   Mittags-Schritt („nach 12:00 Uhr, ab Gesetzesbeginn“) das eigene
    Nachmittag-Niveau direkt ab. Die Harmonischen müssen den täglichen
    Sprung dadurch nicht mehr als glatte Kurve nachzeichnen — eine Prognose
    zeigt deshalb keinen unrechtmäßigen intraday-Anstieg mehr.
@@ -196,7 +196,7 @@ originale UUID-getrennte Historien, nicht Stationsnamen oder einzelne aktuelle P
 Mit vorhandenen Engine-Paketen beispielsweise:
 
 ```powershell
-py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling docs/analysis/stations/polling.json --poll-city Frankfurt --brand ARAL
+py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling data/analysis/stations/polling.json --poll-city Frankfurt --brand ARAL
 ```
 
 Ausgabe: `results/engine/price_twins/report.md` und `report.json`. Zu kurze oder
@@ -262,7 +262,7 @@ Für die folgenden Auswertungen brauchst du das **aktive Polling-Set aus M2**
 auf dem PC. Es wird nicht mit Git heruntergeladen, weil es private Daten enthält:
 
 ```powershell
-Test-Path .\docs\analysis\stations\polling.json
+Test-Path .\data\analysis\stations\polling.json
 ```
 
 Erwartet: `True`. Falls es fehlt, deine vorhandene Originaldatei an diesen Ort
@@ -536,13 +536,13 @@ der passenden `$Daten = @(...)`-Zeilen ausführen.
 
 ```powershell
 # Funktioniert auch mit wenigen Live-Tagen
-py -3 -m engine inspect --data @Daten --polling .\docs\analysis\stations\polling.json
+py -3 -m engine inspect --data @Daten --polling .\data\analysis\stations\polling.json
 
 # Qualitätsbericht ansehen
 Get-Content .\results\engine\quality.json -Encoding UTF8
 
 # Anschließend täglich rollierend prüfen, nicht zufällig Training/Test mischen
-py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21
 
 # Direkt nach dem Backtest: 0 = berechnet, 1 = Eingabefehler, 2 = keine Vergleichspunkte
 $LASTEXITCODE
@@ -604,11 +604,11 @@ nicht pauschal verdoppelt. Zum Vergleich drei Backtests mit denselben Daten:
 
 ```powershell
 # 42 Tage, exponentiell gewichtet (Default, empfohlen)
-py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --out .\results\engine\backtest-42d-ew
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21 --out .\results\engine\backtest-42d-ew
 # 42 Tage, uniform (Vergleich)
-py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-42d-uniform
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-42d-uniform
 # 84 Tage, uniform (Trägheits-Vergleich; braucht 105+ Tage Historie)
-py -3 -m engine backtest --data @Daten --polling .\docs\analysis\stations\polling.json --days 21 --train-days 84 --min-train-days 28 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-84d-uniform
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21 --train-days 84 --min-train-days 28 --bootstrap-ew-half-life 0 --out .\results\engine\backtest-84d-uniform
 ```
 
 Vergleiche `pinball_asym_ct` und `mase` je Variante: 42d-EW sollte nach
@@ -626,9 +626,9 @@ exportierten Daten — zwei Backtests, dieselben Tage:
 
 ```powershell
 # Status quo: 42-Tage-Fenster (entspricht live_only_days = 90)
-py -3 -m engine backtest --data @LiveOnly --polling .\docs\analysis\stations\polling.json --days 21 --train-days 42 --min-train-days 28 --out .\results\engine\handover-42d
+py -3 -m engine backtest --data @LiveOnly --polling .\data\analysis\stations\polling.json --days 21 --train-days 42 --min-train-days 28 --out .\results\engine\handover-42d
 # Untergrenze: 28-Tage-Fenster (entspricht einer Handover-Schwelle von 28)
-py -3 -m engine backtest --data @LiveOnly --polling .\docs\analysis\stations\polling.json --days 21 --train-days 28 --min-train-days 28 --out .\results\engine\handover-28d
+py -3 -m engine backtest --data @LiveOnly --polling .\data\analysis\stations\polling.json --days 21 --train-days 28 --min-train-days 28 --out .\results\engine\handover-28d
 ```
 
 **Entscheidungsregel:** Nur wenn die 28-Tage-Variante in `report.json` weiterhin
@@ -646,7 +646,7 @@ Abdeckungssicherheit: 28 Tage × ≥ 95 % Tagesabdeckung sind dünner belegt als
 Nach ausreichender Datenprüfung, weiterhin mit derselben Dateiliste:
 
 ```powershell
-py -3 -m engine fit --data @Daten --polling .\docs\analysis\stations\polling.json --out .\data\models\forecast.json
+py -3 -m engine fit --data @Daten --polling .\data\analysis\stations\polling.json --out .\data\models\forecast.json
 
 # Nur nach erfolgreichem Fit: Inference aus dem gespeicherten Modell, ohne Netzwerk / Refit
 py -3 -m engine forecast --model .\data\models\forecast.json --hours 24
@@ -718,7 +718,7 @@ Für die normalen M3-Schritte oben bleibt der Pi unverändert in Betrieb.
 
 ```powershell
 Test-Path .\data\apikey.txt
-Test-Path .\docs\analysis\stations\polling.json
+Test-Path .\data\analysis\stations\polling.json
 
 # Nur in dieser PC-Sitzung: eine eventuell gesetzte Variable würde die Datei übersteuern
 Remove-Item Env:\TANKERKOENIG_API_KEY -ErrorAction SilentlyContinue

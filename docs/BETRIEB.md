@@ -76,7 +76,7 @@ sudo chown pi:pi /dev/shm/tankapp
 Repo kommt von GitHub, zwei Dateien sind gitignored und müssen manuell per scp:
 
 ```powershell
-scp "docs\analysis\stations\polling.json" pi@<pi-ip>:~/TankApp/docs/analysis/stations/
+scp "data\analysis\stations\polling.json" pi@<pi-ip>:~/TankApp/data/analysis/stations/
 scp "data\apikey.txt" pi@<pi-ip>:~/TankApp/data/
 ```
 
@@ -236,7 +236,7 @@ python3 tankapp.py nas-up
 
 Benötigt:
 
-1. Aktives `docs/analysis/stations/polling.json` vom Pi nach Aktivierung
+1. Aktives `data/analysis/stations/polling.json` vom Pi nach Aktivierung
 2. `data/influx.env` mit Lesezugang (Nur-Lese-Token, URL = NAS-LAN-Adresse:8086, nicht localhost)
 3. Archivzugang privat als `data/_netrc` oder `~/.netrc` (nicht Collector-Key). Ohne ihn startet Live-GUI trotzdem, aber keine Modelle.
 
@@ -450,7 +450,7 @@ Code liegt auf GitHub, aber gitignored Dateien existieren nur auf Pi, müssen in
 | Was | Pfad | Inhalt |
 |---|---|---|
 | API-Key | `~/TankApp/data/apikey.txt` | Tankerkönig-Key chmod 600 |
-| Polling-Set | `~/TankApp/docs/analysis/stations/polling.json` | 10 UUIDs + private Koordinaten |
+| Polling-Set | `~/TankApp/data/analysis/stations/polling.json` | 10 UUIDs + private Koordinaten |
 | systemd-Unit | `/etc/systemd/system/tankapp-collector.service` | Custom Unit |
 | systemd-Unit | `/etc/systemd/system/tankapp-uploader.service` | Uploader |
 | InfluxDB-Zugang | `/etc/tankapp/env` | URL/Org/Bucket/Token chmod 600 |
@@ -464,7 +464,7 @@ Minimal-Snippet:
 ```bash
 mkdir -p "$TARGET/tankapp"
 cp ~/TankApp/data/apikey.txt "$TARGET/tankapp/apikey.txt"
-cp ~/TankApp/docs/analysis/stations/polling.json "$TARGET/tankapp/polling.json"
+cp ~/TankApp/data/analysis/stations/polling.json "$TARGET/tankapp/polling.json"
 cp /etc/systemd/system/tankapp-collector.service "$TARGET/tankapp/" 2>/dev/null
 cp /etc/systemd/system/tankapp-uploader.service "$TARGET/tankapp/" 2>/dev/null
 cp /etc/tankapp/env "$TARGET/tankapp/env" 2>/dev/null && chmod 600 "$TARGET/tankapp/env"
@@ -545,7 +545,7 @@ Klartext.
 
 | `code` | Schwere | Bedeutung | Erste Aktion |
 |---|---|---|---|
-| `polling_missing` | error | gemeinsames Polling-Set fehlt | `docs/analysis/stations/polling.json` vom Pi bereitstellen → [INSTALL.md](INSTALL.md#private-dateien) |
+| `polling_missing` | error | gemeinsames Polling-Set fehlt | `data/analysis/stations/polling.json` vom Pi bereitstellen → [INSTALL.md](INSTALL.md#private-dateien) |
 | `polling_invalid` | error | Polling-Set ungültig (Format, leere/doppelte Sets) | Set prüfen und neu aufbauen → [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | `collector_no_heartbeat` | error | noch kein Herzschlag des Pi auf dem NAS | Uploader + Heartbeat prüfen → [Heartbeat B3.11](#heartbeat-b311) |
 | `collector_stale` | warn | Herzschlag älter als 15 min — Preise können eingefroren sein | `systemctl status tankapp-collector tankapp-uploader` auf dem Pi |
@@ -611,8 +611,15 @@ curl -s -X POST -d "Test-Nachricht vom NAS" "$TANKAPP_NTFY_URL"      # Handy mus
 Ohne `TANKAPP_NTFY_URL` läuft alles wie vorher: Alarme stehen in `/health` und
 im Header-Punkt, es wird nichts verschickt.
 
-Noch offen (siehe [TODO B4](../TODO.md)): die Zustellung im System-Tab der GUI
-sichtbar machen (heute nur per `/health`) und Webhook-Retry Pi → NAS —
+**Im System-Tab sichtbar (0.16.0):** Die Kachel „Alarm-Zustellung · Push aufs
+Handy“ (zwischen Collector-Status und API-Explorer) zeigt, ob ein Endpunkt
+konfiguriert ist, welche Error-Codes als gemeldet gelten sowie „Zuletzt
+gemeldet“ und „Zuletzt Entwarnung“ in Berliner Zeit. Die Webhook-URL erscheint
+dort bewusst nicht — sie ist der einzige Geheimnisträger. Ohne
+`TANKAPP_NTFY_URL` steht dort die Tatsache („Alarme stehen nur hier in der
+GUI“), kein Fehler.
+
+Noch offen (siehe [TODO B8](../TODO.md)): Webhook-Retry Pi → NAS —
 `POST /api/v1/jobs/trigger` ist weiterhin Fire-and-Forget.
 
 ### Version und Build-Hash prüfen
@@ -655,12 +662,12 @@ Version: [CHANGELOG](../CHANGELOG.md).
 
 Es gibt zwei getrennte Datenwege, und nur einer lässt sich nachträglich auffüllen:
 
-**Live-Ansicht („Heute im Überblick")** liest direkt aus InfluxDB — also nur die
+**Live-Ansicht („Heute im Überblick“)** liest direkt aus InfluxDB — also nur die
 echten Polls des Pi. Ein wegen eines Ausfalls verpasster Poll lässt sich dort
 **nicht** nachträglich einspielen; die Lücke bleibt in der Live-Kurve, bis das
 Polling wieder normal läuft. Wichtig ist allein, das Polling-Set zu reparieren
 (polling.json neu aus der geprüften Vorlage aufbauen und mit
-`python3 -m json.tool docs/analysis/stations/polling.json` prüfen), damit die
+`python3 -m json.tool data/analysis/stations/polling.json` prüfen), damit die
 nächsten Polls wieder ankommen.
 
 **Archiv & Modell** sind ein zweiter Weg mit denselben Marktdaten: Das
@@ -757,7 +764,7 @@ API antwortet `ok=false` mit `parameter error` nur wenn ids oder apikey leer/feh
 ```bash
 python3 - <<'PY'
 import json
-p = json.load(open("/home/pi/TankApp/docs/analysis/stations/polling.json"))
+p = json.load(open("/home/pi/TankApp/data/analysis/stations/polling.json"))
 s = next(iter(p["sets"].values()))
 print("label:", s.get("label"))
 print("batch:", s.get("batch"))

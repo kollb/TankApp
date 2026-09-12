@@ -39,6 +39,15 @@ npm --prefix web test && npm --prefix web run build
 - Ehrlichkeits-Regel gilt auch für Doku: kein „fertig“ ohne Abnahme, offene
   Punkte mit Grund (`docs/LUECKEN.md`) statt Lücke.
 
+## Texte in der App
+
+Jede Zeile, die ein Nutzer sieht (GUI, Fallback-GUI, Fehlertexte), folgt
+[docs/MICROCOPY.md](docs/MICROCOPY.md): Tonfall „ehrlich, knapp,
+handlungsleitend“, `„…“` als Anführungszeichen, Zahlen und Einheiten
+ausschließlich über die Formatter in `web/src/data.ts` (€/L für Niveaus,
+ct/L für Differenzen, Uhrzeiten Europe/Berlin). Neue Muster gehören in das
+Regelwerk, nicht nur in das Panel.
+
 ## GUI-Basis bewahren
 
 `sample/good gui` und `sample/good statistic gui` sind ausdrücklich die gestalterische und technische Basis der neuen Homepage. Nicht beim Aufräumen von Demo-Daten löschen. Die Übernahmeregeln stehen in `docs/GUI-VORLAGEN.md`.

@@ -32,9 +32,14 @@ ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "data-tools"
 sys.path.insert(0, str(TOOLS))
 
-from polling_plan import atomic_json, collector_lock, validate_sets  # noqa: E402
+from polling_plan import (  # noqa: E402
+    active_polling,
+    atomic_json,
+    collector_lock,
+    validate_sets,
+)
 
-ACTIVE = ROOT / "docs/analysis/stations/polling.json"
+ACTIVE = active_polling(ROOT)  # B14: data/analysis/, alter docs/analysis-Pfad geduldet
 LOCAL = ROOT / "analysis/config.local.json"
 
 

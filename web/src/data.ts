@@ -142,6 +142,17 @@ export type Health = {
   commit?: string | null;
   /** B4: aggregierte Alarme (Heartbeat, Jobs, Store, Polling). */
   alarms?: Alarm[];
+  /**
+   * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
+   * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
+   * als gemeldet gelten und wann zuletzt etwas rausging.
+   */
+  notify?: {
+    configured: boolean;
+    open_errors: string[];
+    last_ok_at?: string | null;
+    last_sent_at?: string | null;
+  };
   archive: {
     status: string | null;
     archive_since: string | null;
@@ -1901,6 +1912,48 @@ export function hourRangeLabel(
   const to = ((Math.floor(toHour) % 24) + 24) % 24;
   return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
 }
+/**
+ * B4 (GUI): Ein Satz zum Zustand der Alarm-Zustellung für den System-Tab.
+ *
+ * Reine Funktion über `/api/v1/health` → `notify`, damit der Text testbar
+ * bleibt und die Panels nicht jeweils eigene Formulierungen erfinden. Der
+ * Ton folgt der Ehrlichkeits-Regel: „nicht eingerichtet“ ist kein Fehler,
+ * sondern eine Tatsache — und „keine offenen Fehler“ heißt nicht „getestet“.
+ */
+export type NotifyState = NonNullable<Health["notify"]>;
+
+export function notifyTone(
+  notify?: NotifyState | null,
+): "off" | "ok" | "alert" {
+  if (!notify?.configured) return "off";
+  return (notify.open_errors?.length ?? 0) > 0 ? "alert" : "ok";
+}
+
+export function notifyStatusLine(notify?: NotifyState | null) {
+  const tone = notifyTone(notify);
+  if (tone === "off") {
+    return "Keine Push-Zustellung eingerichtet — Alarme stehen nur hier in der GUI.";
+  }
+  const open = notify?.open_errors?.length ?? 0;
+  if (open > 0) {
+    return open === 1
+      ? "1 Alarm ist als gemeldet vermerkt — er gilt weiter als offen."
+      : `${open} Alarme sind als gemeldet vermerkt — sie gelten weiter als offen.`;
+  }
+  return "Zustellung eingerichtet, gerade ist kein Fehler offen.";
+}
+
+export function notifyLastLine(notify?: NotifyState | null) {
+  if (!notify?.configured) return null;
+  if (notify.last_sent_at) {
+    return `Zuletzt gemeldet: ${timeLabel(notify.last_sent_at)}`;
+  }
+  if (notify.last_ok_at) {
+    return `Zuletzt „wieder betriebsbereit“: ${timeLabel(notify.last_ok_at)}`;
+  }
+  return "Seit dem Start wurde noch nichts verschickt.";
+}
+
 export function timeLabel(stamp?: string | null) {
   return stamp
     ? new Date(stamp).toLocaleString("de-DE", {

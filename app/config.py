@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from polling_plan import active_polling
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -11,7 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 class Settings:
     data: Path = ROOT / "data"
     archive: Path = ROOT / "data/raw"
-    polling: Path = ROOT / "docs/analysis/stations/polling.json"
+    # B14: Ausgabeverzeichnis der Selektion (privat, gitignored) ist
+    # ``data/analysis/``. Der alte Ort ``docs/analysis/`` — ein
+    # Datenverzeichnis mitten in der Doku — wird weiter benutzt, solange er
+    # existiert und der neue fehlt; ``active_polling`` schreibt dann einen
+    # Hinweis auf stderr. Kein stiller Umzug privater Daten.
+    polling: Path = active_polling(ROOT)
     influx_env: Path = ROOT / "data/influx.env"
     netrc: Path = ROOT / "data/_netrc"
     static: Path = ROOT / "web/dist"

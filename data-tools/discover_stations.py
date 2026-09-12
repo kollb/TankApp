@@ -29,7 +29,7 @@ Nur Standardbibliothek. Läuft unter Windows (py -3), auf dem Pi und auf dem NAS
   # A) nur Stationsliste (Windows: Datei liegt in Downloads)
   py -3 data-tools/discover_stations.py --stations "$env:USERPROFILE\\Downloads\\2026-09-05-stations.csv" \
       --anchor "Frankfurt:50.110,8.682" --radius 25 --check-history data/raw/prices \
-      --out docs/analysis/stations
+      --out data/analysis/stations
 
   # B) aus Konfig (Heimat-Anker) + zwei Kampagnenstädten
   py -3 data-tools/discover_stations.py --config analysis/config.local.json \
@@ -411,7 +411,7 @@ def main() -> int:
                            "(Tage/Sorte) nicht erfüllen. Default bei --check-history: "
                            "nein — das Set bleibt dann ggf. kürzer als --poll-size")
     out = ap.add_argument_group("Ausgabe")
-    out.add_argument("--out", type=Path, default=Path("docs/analysis/stations"),
+    out.add_argument("--out", type=Path, default=Path("data/analysis/stations"),
                      help="Zielverzeichnis für CSVs/Report")
     out.add_argument("--report", type=Path, default=None, help="Report (md), Default: <out>/report.md")
     out.add_argument("--write-pool", action="store_true",

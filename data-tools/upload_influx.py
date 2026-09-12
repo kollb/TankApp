@@ -22,8 +22,10 @@ import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from polling_plan import active_polling
+
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
+DEFAULT_POLL_JSON = active_polling(ROOT)
 DEFAULT_POLL_DIR = Path(os.environ.get("TANKAPP_POLL_DIR", ROOT / "data" / "poll"))
 FUELS = ("e5", "e10", "diesel")
 PING_EVERY_S = 60
@@ -836,7 +838,7 @@ def main() -> int:
         "--poll-json",
         type=Path,
         default=DEFAULT_POLL_JSON,
-        help="polling.json für Stationsnamen (Default: docs/analysis/stations/)",
+        help="polling.json für Stationsnamen (Default: data/analysis/stations/)",
     )
     ap.add_argument(
         "--once",

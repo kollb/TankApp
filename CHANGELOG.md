@@ -4,6 +4,60 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.16.0] – 2026-09-12
+
+Aufräum-Runde aus der ToDo-Liste: die drei Punkte, die **ohne Live-Daten, ohne
+Zielhardware und ohne Produktentscheidung** wirklich abschließbar waren —
+Zustellung im System-Tab sichtbar (B4-Rest), Selektions-Daten raus aus dem
+Doku-Ordner (B14), Microcopy-Regelwerk als eine Seite mit Ratchet-Test
+(F3-Rest). Keine Logikänderung an bestehenden Rechnungen, kein neuer Endpunkt.
+
+### Hinzugefügt
+
+- **B4 (Rest) — Alarm-Zustellung im System-Tab sichtbar.** Die Daten lagen seit
+  0.15.0 in `/api/v1/health` → `notify`, waren aber nur per API-Abruf lesbar.
+  Neu: eine Kachel „Alarm-Zustellung · Push aufs Handy“ zwischen
+  Collector-Status und API-Explorer mit Badge („Nicht eingerichtet“ /
+  „Eingerichtet“ / „Fehler gemeldet“), Klartextsatz, den offenen Error-Codes
+  als Chips (Tooltip = `problem(code)`) sowie „Zuletzt gemeldet“ und „Zuletzt
+  Entwarnung“ in Berliner Zeit. Ohne konfigurierten Webhook steht dort die
+  Tatsache, nicht ein Fehler: „Keine Push-Zustellung eingerichtet — Alarme
+  stehen nur hier in der GUI“ plus Einrichtungshinweis auf
+  `TANKAPP_NTFY_URL`/[docs/BETRIEB.md](docs/BETRIEB.md). Die Texte sind reine
+  Funktionen in `web/src/data.ts` (`notifyTone`, `notifyStatusLine`,
+  `notifyLastLine`) und in `web/src/notify.test.ts` getestet, damit kein Panel
+  eine eigene Formulierung erfindet. Serverseitig kam dafür genau ein Feld
+  dazu: `notify.last_sent_at` (jüngster Zeitstempel einer zugestellten
+  Fehlermeldung) — die Webhook-URL bleibt wie bisher außen vor.
+- **F3 (Rest) — Microcopy-Regelwerk** [docs/MICROCOPY.md](docs/MICROCOPY.md),
+  eine Seite, verlinkt aus [docs/README.md](docs/README.md), der Repo-`README`
+  und [AGENTS.md](AGENTS.md): Tonfall („ehrlich, knapp, handlungsleitend“, mit
+  Ja/Nein-Tabelle), Anführungszeichen und Sonderzeichen (`„…“`, `—` vs. `–`,
+  `·`, `…`), Zahlen/Einheiten (**Regel: Niveaus in €/L, Differenzen in ct/L**,
+  Uhrzeiten immer Europe/Berlin, Formatter statt `toFixed`), Benennungen
+  (Station, Beleg, Modell-Update, Alltag/Werkstatt/System), Muster für Leer-,
+  Lade- und Fehlerzustände sowie die Liste dessen, was nie im Text steht
+  (erfundene Zahlen, Pfade, Tokens, Koordinaten). Dazu ein Ratchet-Test
+  `web/src/microcopy.test.ts`: paarige `„…“` je Datei, kein verirrtes `”`,
+  keine HTML-Entities für Anführungszeichen — und die Doku-Verlinkung selbst.
+
+### Geändert
+
+- **B14 — `docs/analysis/` → `data/analysis/`.** Das gitignored
+  Ausgabeverzeichnis der Selektion (aktives `polling.json`, Berichte,
+  Abbildungen) lag als Datenverzeichnis mitten in der Dokumentation. Neuer
+  Default ist `data/analysis/` — für `app/config.py`, `tankapp.py`, alle
+  CLI-Defaults in `data-tools/` (`collect_prices`, `upload_influx`,
+  `export_influx`, `swap_stations`, `discover_stations`, `run_pipeline`),
+  `analysis/*`, `ops/nas/preflight.sh`, die Meta-Suchpfade der RP2-Fallback-GUI
+  und die gesamte Doku. **Kein stiller Umzug privater Daten:** Die neuen
+  Helfer `analysis_dir`/`analysis_path`/`active_polling` in
+  `data-tools/polling_plan.py` benutzen weiter den alten Pfad, solange nur
+  dieser existiert, und melden das einmal je Prozess auf stderr („neuer Ort ist
+  …, von Hand verschieben“); `preflight.sh` gibt dieselbe Warnung aus. Ein
+  bestehender Pi läuft nach dem Update unverändert weiter. `.gitignore`
+  ignoriert beide Pfade. Test: `tests/test_analysis_path.py`.
+
 ## [0.15.0] – 2026-09-12
 
 Backlog-Runde direkt nach dem Heatmap-P0 — alles, was **ohne Live-Daten und
@@ -77,24 +131,24 @@ bestehenden Rechnungen.
 
 - **F2 — deutsche Primär-Labels in der Werkstatt**: Die Jargon-Stellen heißen
   jetzt deutsch, Formel und Fachwort stehen im `title`/Tooltip (der Glossar-Layer
-  C7 bleibt offen): „Wahrscheinlichkeit für günstig" statt „Cheap-Probability
-  P(p ≤ Median)" (Heatmap-Umschalter), „Ranking nach Preis-Abstand" statt
-  „δ̂ Ranking", „Preis-Abstand ct/L" statt „δ̂ ct/L", „Ampel-Stärke" statt
-  „AV-Score", „Prüfzeitraum" statt „Out-of-Sample" (Entscheidungs-Scoreboard),
-  „Ø Mehrkosten" statt „Ø Regret", „Billigste Stunde" statt „Billigste Std",
-  „q-Wert" statt „q", „95-%-KI" statt „95%-KI", „Sprungfreie Tage · MASE" statt
-  „MASE sprungfrei", „95-%-Band-Trefferquote · PICP" statt „95-%-Band PICP",
-  „Drift-Status · CUSUM" statt „CUSUM Drift-Status"; der `aria-label`
-  „Due-Prompt" heißt für Screenreader „Rückmeldung nach Fensterende" (derselbe
+  C7 bleibt offen): „Wahrscheinlichkeit für günstig“ statt „Cheap-Probability
+  P(p ≤ Median)“ (Heatmap-Umschalter), „Ranking nach Preis-Abstand“ statt
+  „δ̂ Ranking“, „Preis-Abstand ct/L“ statt „δ̂ ct/L“, „Ampel-Stärke“ statt
+  „AV-Score“, „Prüfzeitraum“ statt „Out-of-Sample“ (Entscheidungs-Scoreboard),
+  „Ø Mehrkosten“ statt „Ø Regret“, „Billigste Stunde“ statt „Billigste Std“,
+  „q-Wert“ statt „q“, „95-%-KI“ statt „95%-KI“, „Sprungfreie Tage · MASE“ statt
+  „MASE sprungfrei“, „95-%-Band-Trefferquote · PICP“ statt „95-%-Band PICP“,
+  „Drift-Status · CUSUM“ statt „CUSUM Drift-Status“; der `aria-label`
+  „Due-Prompt“ heißt für Screenreader „Rückmeldung nach Fensterende“ (derselbe
   Text wie die sichtbare Augenbraue der Box). Neu erklärt zusätzlich:
-  „P behauptet", „S>0 real", „„Warten“"/„„Jetzt“", „Regel-€"/„Orakel-€" —
+  „P behauptet“, „S>0 real“, „Warten“/„Jetzt“, „Regel-€“/„Orakel-€“ —
   Spalten, die bisher nur mit Vorwissen lesbar waren. Reine Textarbeit, keine
   Logik geändert; die e2e-Specs hängen an keinem der alten Labels.
 - **C9-Rest — Anzeige formatiert jetzt überall de-DE**: Die 21 `toFixed`-Stellen
   in `Dashboard.tsx` sind auf den Formatter-Satz umgestellt (`euro`,
-  `percentLabel`, `centPerLiter`): „Intervallqualität (7 Tage): 87,5 %" statt
-  „87.5 %", `δ̂`/Bootstrap-KI/`q`-Wert/Ampel-Stärke im Ranking mit Komma
-  („+1,23 ct", „[-2,10, 0,40]", „0,0547"), Kalibrierfehler in Prozentpunkten,
+  `percentLabel`, `centPerLiter`): „Intervallqualität (7 Tage): 87,5 %“ statt
+  „87.5 %“, `δ̂`/Bootstrap-KI/`q`-Wert/Ampel-Stärke im Ranking mit Komma
+  („+1,23 ct“, „[-2,10, 0,40]“, „0,0547“), Kalibrierfehler in Prozentpunkten,
   MASE/PICP/CUSUM-Kacheln, tmpfs in MiB, `aria-valuetext` der ε-Schwelle (das
   `.replace(".", ",")` von Hand ist damit überflüssig) sowie die
   Standard-Achsen- und Tooltip-Formatierer in `LineChart`/`LabCharts`.
@@ -105,9 +159,9 @@ bestehenden Rechnungen.
   Ratchet: `toFixed`-Stellen werden je Datei gezählt, eine neue Anzeige-Stelle
   fällt mit einem Hinweis auf den Formatter-Satz auf — die ESLint-Regel aus dem
   TODO ist damit ersetzt.
-- **F3-Teil — Tageszahlen ausgeschrieben**: „Brier (30 Tage)" statt „Brier 30d",
-  „Intervallqualität (7 Tage)" statt „(7 d)", „Top-3-Trefferquote (30 Tage)"
-  statt „(30 d)". Das Microcopy-Regelwerk und die ct/L-€/L-Einheitlichkeit
+- **F3-Teil — Tageszahlen ausgeschrieben**: „Brier (30 Tage)“ statt „Brier 30d“,
+  „Intervallqualität (7 Tage)“ statt „(7 d)“, „Top-3-Trefferquote (30 Tage)“
+  statt „(30 d)“. Das Microcopy-Regelwerk und die ct/L-€/L-Einheitlichkeit
   bleiben offen (F3/C9-Rest).
 
 ### Umgebaut
@@ -224,7 +278,7 @@ Stichprobe der Vergleichs-Basis.
 Kalibrierte Quick-Wins-Runde: der letzte P0 (Feedback-Store-Versionierung),
 die Schreib-Härtung, der messbare Teil der HTTP-Effizienz, der echte
 A11y-Rest und der erste Dashboard-Schnitt. Alle Befunde vorher gegen den
-Code geprüft — der 0.11-Kandidat „Fokus-Ring: zwei CSS-Zeilen" stellte sich
+Code geprüft — der 0.11-Kandidat „Fokus-Ring: zwei CSS-Zeilen“ stellte sich
 als erledigt heraus; die echte Lücke war die `outline-none`-Überschreibung.
 
 ### Hinzugefügt
@@ -390,7 +444,7 @@ entfernt.
 - **B3.11** Collector-Herzschlag lesbar: `GET /api/v1/collector/status` las das
   Measurement `collector_status` mit dem Preis-Schema (`station`/`status` als
   Pflichtspalten) und verwarf die `_field`/`_value`-Antwort deshalb als
-  „Unerwartetes InfluxDB-CSV-Format" — `influx_read_failed`/`ExportError`, obwohl
+  „Unerwartetes InfluxDB-CSV-Format“ — `influx_read_failed`/`ExportError`, obwohl
   der Pi-Uploader den Herzschlag korrekt liefert. Ein generischer Leseweg
   (`export_influx.query_raw`, nur `_time` als Pflichtspalte) liest solche
   Messungen jetzt als rohe Zeilen; die credential-freie `ExportError`-Meldung

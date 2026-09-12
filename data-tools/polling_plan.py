@@ -148,3 +148,63 @@ def collector_lock(directory, label="Collector"):
             handle.close()
 
     return locked()
+
+
+# --- B14: Datenverzeichnis der Selektion -------------------------------------
+# Historisch lag das gitignored Ausgabeverzeichnis der Selektion unter
+# ``docs/analysis/`` — ein Datenverzeichnis mitten in der Dokumentation. Es
+# gehört nach ``data/analysis/`` (privat, gitignored wie der Rest von ``data/``).
+# Der Umzug passiert **nicht** still: Solange nur der alte Pfad existiert, wird
+# er weiter benutzt und einmal je Prozess ein Hinweis auf stderr geschrieben.
+ANALYSIS_RELATIVE = Path("data") / "analysis"
+LEGACY_ANALYSIS_RELATIVE = Path("docs") / "analysis"
+_LEGACY_HINTED = set()
+
+
+def _hint_legacy(old: Path, new: Path) -> None:
+    """Einmal je Prozess und Pfad: klarer Hinweis, kein automatischer Umzug."""
+    import sys
+
+    key = str(old)
+    if key in _LEGACY_HINTED:
+        return
+    _LEGACY_HINTED.add(key)
+    print(
+        f"Hinweis: Selektions-Daten liegen noch unter {old} — neuer Ort ist "
+        f"{new}. Verschieben Sie den Ordner bei Gelegenheit von Hand "
+        "(z. B. `mv docs/analysis data/analysis`); bis dahin wird der alte "
+        "Pfad weiter gelesen und geschrieben.",
+        file=sys.stderr,
+    )
+
+
+def analysis_dir(root: Path) -> Path:
+    """Ausgabeverzeichnis der Selektion: neu ``data/analysis``, alt geduldet."""
+    root = Path(root)
+    new = root / ANALYSIS_RELATIVE
+    old = root / LEGACY_ANALYSIS_RELATIVE
+    if not new.exists() and old.exists():
+        _hint_legacy(old, new)
+        return old
+    return new
+
+
+def analysis_path(root: Path, *parts: str) -> Path:
+    """Datei/Unterordner unterhalb des Selektions-Datenverzeichnisses.
+
+    Existiert die Datei nur am alten Ort, wird der alte Pfad zurückgegeben
+    (mit Hinweis) — sonst würde ein bestehender Pi nach dem Update plötzlich
+    ohne Polling-Set dastehen.
+    """
+    root = Path(root)
+    new = root.joinpath(ANALYSIS_RELATIVE, *parts)
+    old = root.joinpath(LEGACY_ANALYSIS_RELATIVE, *parts)
+    if not new.exists() and old.exists():
+        _hint_legacy(old, new)
+        return old
+    return new
+
+
+def active_polling(root: Path) -> Path:
+    """Aktives gemeinsames Polling-Set (``<analysis>/stations/polling.json``)."""
+    return analysis_path(root, "stations", "polling.json")

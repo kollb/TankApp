@@ -503,7 +503,12 @@ class LiveData:
 
             notify = notify_status(self.settings)
         except Exception:
-            notify = {"configured": False, "open_errors": [], "last_ok_at": None}
+            notify = {
+                "configured": False,
+                "open_errors": [],
+                "last_ok_at": None,
+                "last_sent_at": None,
+            }
 
         # B9: Version + Build-Hash (einmalig beim Import bestimmt).
         try:

@@ -368,6 +368,7 @@ def test_health_shows_whether_delivery_is_configured(settings, bare):
         "configured": False,
         "open_errors": [],
         "last_ok_at": None,
+        "last_sent_at": None,
     }
 
 
@@ -377,3 +378,6 @@ def test_notify_status_reports_open_errors(settings):
     assert status["configured"] is True
     assert status["open_errors"] == ["collector_no_heartbeat", "job_failed"]
     assert status["last_ok_at"] is None
+    # B4-GUI: Der System-Tab zeigt „zuletzt gemeldet“ — dafür braucht er einen
+    # Zeitstempel der tatsächlich zugestellten Meldung, nicht nur die Codes.
+    assert status["last_sent_at"] == NOW.isoformat()

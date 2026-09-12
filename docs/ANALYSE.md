@@ -39,7 +39,7 @@ Alle Schichten liefern JSON-Artefakte nach `data/runtime/`, die die GUI via Nur-
 
 ## Stations-Selektion — Meine Stationen mit δ̂
 
-Pipeline: `analysis/station_selection.py` — Schema siehe [DATENWERKZEUGE.md](DATENWERKZEUGE.md#datenformate). Echter Bericht lokal als `docs/analysis/report_top10.md`, synthetische Berichte sind kein Abnahmenachweis.
+Pipeline: `analysis/station_selection.py` — Schema siehe [DATENWERKZEUGE.md](DATENWERKZEUGE.md#datenformate). Echter Bericht lokal als `data/analysis/report_top10.md`, synthetische Berichte sind kein Abnahmenachweis.
 
 | # | Komponente | Verfahren | Funktion |
 |---|---|---|---|

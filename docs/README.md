@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 12.09.2026 · App-Version **0.11.0**
+> Stand: 12.09.2026 · App-Version **0.16.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -24,6 +24,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | Modelle selbst fitten und prüfen (Werkstatt-Lauf am PC) | [ENGINE.md](ENGINE.md) |
 | die Einzelprogramme in `data-tools/` verstehen | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) |
 | die GUI-Vorlagen in `sample/` als Design-Basis nutzen | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) |
+| eine Zeile Nutzertext schreiben (Tonfall, Einheiten, Zitate, Fehlertexte) | [MICROCOPY.md](MICROCOPY.md) |
 | eine frühere Prüfung oder ein altes Konzept nachlesen | [archiv/README.md](archiv/README.md) |
 
 ## Lesereihenfolge
@@ -67,6 +68,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | [ENGINE.md](ENGINE.md) | Modellwerkstatt: 12-Uhr-Regel, Datenqualität, Backtest-Rezepte, InfluxDB-Diagnose, Preis-Zwillinge, offene M3-Punkte |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
+| [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
 
 ### Projektstand (Repo-Wurzel, nicht in `docs/`)
 
@@ -155,10 +157,16 @@ Vollständig mit Parametern, Antworten und Fehlercodes: [API.md](API.md).
 
 ## Hinweise, die Verwirrung sparen
 
-- **`docs/analysis/` ist kein Doku-Ordner.** Das ist das gitignored
-  Ausgabeverzeichnis der Selektion (`stations/polling.json`, Berichte,
-  Abbildungen). Es existiert nur lokal auf Pi/NAS/PC und gehört nie ins Repo —
-  `app/config.py` und `data-tools/*` lesen/schreiben dorthin.
+- **`data/analysis/` ist das Ausgabeverzeichnis der Selektion** (gitignored:
+  `stations/polling.json`, Berichte, Abbildungen). Es existiert nur lokal auf
+  Pi/NAS/PC und gehört nie ins Repo — `app/config.py` und `data-tools/*`
+  lesen/schreiben dorthin. **Bis 0.15.0 lag dieser Ordner unter
+  `docs/analysis/`** (ein Datenverzeichnis mitten in der Doku). Bestehende
+  Installationen laufen unverändert weiter: Solange nur der alte Pfad
+  existiert, wird er weiter gelesen und geschrieben, und jeder Prozess meldet
+  einmal einen Hinweis auf stderr. Verschieben passiert **von Hand**
+  (`mv docs/analysis data/analysis`) — private Daten werden nicht still
+  umgezogen.
 - **`sample/` bleibt.** Beide GUI-Prototypen sind die gestalterische Basis der
   Homepage ([GUI-VORLAGEN.md](GUI-VORLAGEN.md), Regel in [../AGENTS.md](../AGENTS.md)).
 - **Private Daten gehören nicht ins Repo:** `config.local.json`, `polling.json`,

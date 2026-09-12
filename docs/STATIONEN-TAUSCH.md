@@ -31,13 +31,13 @@ Verwandt, aber anders gelagert: [Preis-Zwillinge](ENGINE.md#preis-zwillinge)
 python3 data-tools/discover_stations.py --stations data/raw/stations \
   --anchor "<Stadt>:<lat>,<lon>" --radius 5 \
   --check-history data/raw/prices --min-days 28 --fuel e10 \
-  --out docs/analysis/stations-vorschlag-<Stadt> --write-pool
+  --out data/analysis/stations-vorschlag-<Stadt> --write-pool
 # NAS … Vorschlag bauen (entfernt die Modell-Fehler-UUIDs dieser Stadt):
 python3 data-tools/swap_stations.py --city <Stadt> \
-  --kandidaten docs/analysis/stations-vorschlag-<Stadt> --stations data/raw/stations
+  --kandidaten data/analysis/stations-vorschlag-<Stadt> --stations data/raw/stations
 # PI — Vorschlag nach data/setup/ übertragen, dann:
 sudo systemctl stop tankapp-collector \
-  && cp -p data/setup/polling.json docs/analysis/stations/polling.json \
+  && cp -p data/setup/polling.json data/analysis/stations/polling.json \
   && sudo systemctl restart tankapp-collector tankapp-uploader
 # NAS — Kopie vom Pi holen und App neu starten:
 python3 tankapp.py nas-up
@@ -65,7 +65,7 @@ Details, Prüfschritte und Rollback: unten.
    schließt sie je Station aus), aber jede neu aufgenommene Station startet
    wieder bei niedriger Coverage.
 5. **`polling.json` ist privat und zweifach nötig:** aktiv auf dem Pi
-   (`~/TankApp/docs/analysis/stations/polling.json`), Kopie im NAS-Checkout.
+   (`~/TankApp/data/analysis/stations/polling.json`), Kopie im NAS-Checkout.
    Nach jeder Änderung: Pi → NAS kopieren und `python3 tankapp.py nas-up`
    wiederholen (private Dateien sind read-only in den Container gemountet).
 6. Fairness gegenüber der API: keine eigenen Poll-Schleifen bauen; einzelne
@@ -148,14 +148,14 @@ ls -t data/raw/stations/*/*/*-stations.csv.gz | head -3
 python3 data-tools/fetch_history.py --stations-latest --outdir data/raw --netrc data/_netrc
 
 # 2) Anker aus dem aktiven Set übernehmen (Label + Koordinaten):
-jq '.sets | to_entries[] | {set:.key, label:.value.label, anchor:(.value.anchor // [.value.lat,.value.lon])}' docs/analysis/stations/polling.json
+jq '.sets | to_entries[] | {set:.key, label:.value.label, anchor:(.value.anchor // [.value.lat,.value.lon])}' data/analysis/stations/polling.json
 
 # 3) Kandidaten suchen — tote/falsche-Sorte-Stationen fallen raus:
 python3 data-tools/discover_stations.py \
   --stations data/raw/stations \
   --anchor "<Stadt>:<lat>,<lon>" --radius 5 \
   --check-history data/raw/prices --min-days 28 --fuel e10 \
-  --out docs/analysis/stations-vorschlag-<Stadt> --write-pool
+  --out data/analysis/stations-vorschlag-<Stadt> --write-pool
 ```
 
 * `--min-days 28` entspricht der Modell-Schwelle: Stationen mit weniger Tagen
@@ -186,7 +186,7 @@ python3 data-tools/discover_stations.py \
   Station für einen sofortigen Tausch unbrauchbar; eine brandneue Station
   sammelt erst ab jetzt die nötigen 28 Tage.
 * Ausgaben landen im **separaten** Ordner (`*_kandidaten.csv`, `report.md`,
-  `polling.json`) — nie direkt in `docs/analysis/stations/`, das aktive Set
+  `polling.json`) — nie direkt in `data/analysis/stations/`, das aktive Set
   bleibt unberührt.
 
 ### Live-Gegenprobe der Wunsch-Kandidaten (Pi, ein Request)
@@ -214,7 +214,7 @@ sauber abgebrochen.
 ```bash
 cd /mnt/user/appdata/TankApp
 python3 data-tools/swap_stations.py --city Gütersloh \
-  --kandidaten docs/analysis/stations-vorschlag-gt \
+  --kandidaten data/analysis/stations-vorschlag-gt \
   --stations data/raw/stations
 ```
 
@@ -249,12 +249,12 @@ print("Vorschlag gültig.")
 PY
 
 # 2) Backup — Rollback-Anker:
-cp -p docs/analysis/stations/polling.json \
+cp -p data/analysis/stations/polling.json \
       "data/setup/polling-backup-$(date -u +%Y%m%dT%H%M%SZ).json"
 
 # 3) Einsetzen und neu starten (Reihenfolge wie activate-polling):
 sudo systemctl stop tankapp-collector
-cp -p data/setup/polling.json docs/analysis/stations/polling.json
+cp -p data/setup/polling.json data/analysis/stations/polling.json
 sudo systemctl restart tankapp-collector tankapp-uploader
 systemctl is-active tankapp-collector tankapp-uploader
 
@@ -271,8 +271,8 @@ Ack-Reset, keine Datenlöschung.
 ## E) NAS-Kopie aktualisieren
 
 ```bash
-scp pi@<pi-ip>:~/TankApp/docs/analysis/stations/polling.json \
-    /mnt/user/appdata/TankApp/docs/analysis/stations/polling.json
+scp pi@<pi-ip>:~/TankApp/data/analysis/stations/polling.json \
+    /mnt/user/appdata/TankApp/data/analysis/stations/polling.json
 cd /mnt/user/appdata/TankApp
 python3 tankapp.py nas-up
 ```
@@ -307,7 +307,7 @@ curl -s "http://localhost:1355/api/v1/selection?fuel=e10" | head -c 300
 ```bash
 cd ~/TankApp
 sudo systemctl stop tankapp-collector
-cp -p data/setup/polling-backup-<Zeitstempel>.json docs/analysis/stations/polling.json
+cp -p data/setup/polling-backup-<Zeitstempel>.json data/analysis/stations/polling.json
 sudo systemctl restart tankapp-collector tankapp-uploader
 ```
 

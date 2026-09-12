@@ -35,6 +35,7 @@ import {
   CheckCircle2,
   ScrollText,
   Play,
+  BellRing,
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
@@ -81,6 +82,9 @@ import {
   M7_MIN_RECOMMENDATIONS,
   m7GateLine,
   percentLabel,
+  notifyLastLine,
+  notifyStatusLine,
+  notifyTone,
   problem,
   segments,
   sliderCommit,
@@ -4054,6 +4058,59 @@ export function Dashboard() {
                   retryLabel="Status neu laden"
                 />
               )}
+            </section>
+
+            {/* B4 (Rest): Zustellung sichtbar machen. Die Daten liegen in
+                /api/v1/health → notify; ohne diese Kachel war nur per
+                API-Abruf erkennbar, ob Alarme überhaupt jemanden erreichen. */}
+            <section className={`${panel} mb-6 p-5 sm:p-6`} aria-labelledby="notify-heading">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 id="notify-heading" className="flex items-center gap-2 text-sm font-semibold">
+                  <BellRing size={17} className="text-emerald-400" />
+                  Alarm-Zustellung · Push aufs Handy
+                </h3>
+                <Badge warning={notifyTone(h?.notify) !== "ok"}>
+                  {notifyTone(h?.notify) === "off"
+                    ? "Nicht eingerichtet"
+                    : notifyTone(h?.notify) === "alert"
+                      ? "Fehler gemeldet"
+                      : "Eingerichtet"}
+                </Badge>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-300">
+                {notifyStatusLine(h?.notify)}
+              </p>
+              <dl className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Zuletzt gemeldet</dt>
+                  <dd className="font-mono text-slate-200">
+                    {h?.notify?.last_sent_at ? timeLabel(h.notify.last_sent_at) : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Zuletzt Entwarnung</dt>
+                  <dd className="font-mono text-slate-200">
+                    {h?.notify?.last_ok_at ? timeLabel(h.notify.last_ok_at) : "—"}
+                  </dd>
+                </div>
+              </dl>
+              {(h?.notify?.open_errors?.length ?? 0) > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {h?.notify?.open_errors?.map((code) => (
+                    <li
+                      key={code}
+                      title={problem(code) ?? code}
+                      className="rounded-md bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-300"
+                    >
+                      {code}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                {notifyLastLine(h?.notify) ??
+                  "Einrichtung: TANKAPP_NTFY_URL setzen (docs/BETRIEB.md, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
+              </p>
             </section>
 
             <section className={`${panel} mb-6 p-5 sm:p-6`}>

@@ -94,7 +94,7 @@ Details: [BETRIEB.md](BETRIEB.md) Abschnitt Pi.
 
 Einmalig bereitstellen, auf NAS im aktuellen Checkout:
 
-1. Aktives gemeinsame `docs/analysis/stations/polling.json` vom Pi nach Aktivierung — nicht alten Frankfurt-Stand. Bei späteren Änderungen erneut bereitstellen und `nas-up` wiederholen.
+1. Aktives gemeinsame `data/analysis/stations/polling.json` vom Pi nach Aktivierung — nicht alten Frankfurt-Stand. Bei späteren Änderungen erneut bereitstellen und `nas-up` wiederholen.
 2. `data/influx.env` mit vorhandenem InfluxDB-Lesezugang. Format: `TANKAPP_INFLUX_URL`, `TANKAPP_INFLUX_ORG`, `TANKAPP_INFLUX_BUCKET`, `TANKAPP_INFLUX_TOKEN`. Möglichst eigenen Nur-Lese-Token für selben Bucket nutzen; Pi-Schreibzugang nicht ändern. URL muss aus Container erreichbar sein, z. B. NAS-LAN-Adresse mit Port 8086 — **nicht localhost**.
 3. Vorhandenen Tankerkönig-Archivzugang privat als `data/_netrc` oder `~/.netrc` für ausführenden NAS-Benutzer. Das ist nicht Collector-API-Key. Keine Zugangsdaten in Git, Befehlszeilen oder Chat. Ohne Archivzugang kann Live-GUI trotzdem starten.
 

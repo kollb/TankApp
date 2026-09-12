@@ -38,7 +38,7 @@
 | `latest_by` („bis wann muss ich tanken?“) | Parameter dokumentiert, nicht implementiert | schneidet Fenster und F1-Entscheidung |
 | Fahrtmodus `dedicated` | nur in der Selektion | auch in `/v1/decide` (§10) |
 | M7-Schwellen-Nachzug | Ankündigung | Vorschlag aus dem Advice-Ledger, abschaltbar (§13); Fortschritt als Kachel im System-Tab |
-| Systemzustand | über sieben Endpunkte verteilt | `alarms[]` in `/health` + Punkt im GUI-Header (B4), `severity: error` zusätzlich als ntfy-Push aufs Handy (0.15.0) |
+| Systemzustand | über sieben Endpunkte verteilt | `alarms[]` in `/health` + Punkt im GUI-Header (B4), `severity: error` zusätzlich als ntfy-Push aufs Handy (0.15.0), Zustellzustand als Kachel im System-Tab (0.16.0) |
 | Persönliche Bilanz | Beleg buchen, keine Korrektur | Storno mit Audit-Spur (A3), CSV-Export (A6), `runtime/`-Backup (B1) |
 | „Was läuft hier?“ | unsichtbar | `version` + `commit` in `/health` und Footer, `CHANGELOG.md` (B9) |
 | Dokumentation | verteilt über Root, `docs/`, `engine/`, `data-tools/`, `rp2/`, `sample/` | ein Ordner `docs/` mit Index, Historisches in `docs/archiv/` (0.10.1) |
@@ -202,6 +202,17 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 12.09.2026 — Version 0.16.0: Zustellung sichtbar, Daten raus aus `docs/`
+
+Drei Punkte, die ohne Live-Daten, Zielhardware oder Produktentscheidung
+abschließbar waren. Keine bestehende Rechnung geändert, kein neuer Endpunkt.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Zustellung im System-Tab | Kachel „Alarm-Zustellung · Push aufs Handy“: Badge (nicht eingerichtet / eingerichtet / Fehler gemeldet), Klartextsatz, offene Error-Codes als Chips mit `problem(code)`-Tooltip, „Zuletzt gemeldet“/„Zuletzt Entwarnung“ in Berliner Zeit; Texte als reine Funktionen (`notifyTone`, `notifyStatusLine`, `notifyLastLine`), serverseitig ein neues Feld `notify.last_sent_at`, die Webhook-URL bleibt unsichtbar | B4-Rest, `web/src/notify.test.ts` |
+| Selektions-Daten am richtigen Ort | `docs/analysis/` → `data/analysis/` in `app/config.py`, `tankapp.py`, allen `data-tools/`-CLIs, `analysis/*`, `ops/nas/preflight.sh`, RP2-Suchpfaden und der Doku. Der alte Pfad bleibt gültig, solange nur er existiert, und meldet sich einmal je Prozess auf stderr — kein stiller Umzug privater Daten | B14, `tests/test_analysis_path.py` |
+| Microcopy-Regelwerk | [MICROCOPY.md](MICROCOPY.md): Tonfall, `„…“`-Zitate und Sonderzeichen, Zahlen/Einheiten (Niveaus €/L, Differenzen ct/L, Uhrzeiten Europe/Berlin), Benennungen, Leer-/Lade-/Fehlermuster, „was nie im Text steht“; verlinkt aus `docs/README.md`, Repo-`README`, `AGENTS.md` | F3-Rest, `web/src/microcopy.test.ts` |
+
 ### 12.09.2026 — Version 0.15.0: Alarme aufs Handy, Werkstatt-Sprache
 
 Backlog-Runde ohne Live-Daten und ohne Produktentscheidung: Zustellung,
@@ -248,7 +259,7 @@ Rechnung geändert.
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
 | 12 P2 | Push, Belege |offen (siehe unten) |
 | 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig; M3 ohne Echt-Daten-Abnahme |
-| 13 M5 | TankPuls-API |fertig (B4 + B5: Deprecation; Rate-Limit entfernt — LAN-only); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen") |
+| 13 M5 | TankPuls-API |fertig (B4 + B5: Deprecation; Rate-Limit entfernt — LAN-only); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen“) |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
 | 13 M7 | Kalibrierungs-Loop |Vorschlag und Regler fertig (B5); Anziehen der Schwellen erst mit echten Live-Daten sinnvoll |
 
@@ -265,7 +276,7 @@ Rechnung geändert.
 | **Standortwahl per `lat`/`lon` (§11.1)** | Die App arbeitet mit dem kuratierten Polling-Set ( Kontingent 1 R/5 min). Freie Umkreissuche bräuchte eigene Requests und ein Kontingent-Modell. |
 | **Offline-Queue für Fill/Intent (§5.4)** | Der Service-Worker hält die letzte Antwort vor; eine IndexedDB-Warteschlange ist sinnvoll, aber erst nötig, wenn Füllungen im echten Betrieb häufig offline erfasst werden. |
 | **E5↔E10-Äquivalenz im Ranking (§10)** | 1,015-Faktor ist eine Näherung; ohne gemessenen Mehrverbrauch des Fahrzeugs wäre das Ranking damit weniger ehrlich, nicht mehr. |
-| **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün" als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
+| **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün“ als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
 | **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
