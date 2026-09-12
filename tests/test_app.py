@@ -597,3 +597,72 @@ def test_501_is_json_not_html(app_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def _serve_live(settings):
+    data = LiveData(settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{server.server_port}"
+
+
+def test_json_answers_are_gzipped_when_accepted(app_settings):
+    """B7: große JSON-Antworten kommen gezippt, kleine unkomprimiert.
+
+    Der LAN-Link zur Werkstatt transportiert sonst bei jedem Poll dieselben
+    Kilobyte. Entscheidend: ``Vary: Accept-Encoding`` (Cache-Trennzeichen)
+    und ein korrektes ``Content-Length`` des gepackten Körpers.
+    """
+    server, thread, base = _serve_live(app_settings)
+    try:
+        url = base + "/api/v1/stations?city=Frankfurt&fuel=e10"
+        plain_req = urllib.request.Request(url)
+        with urllib.request.urlopen(plain_req) as response:
+            plain = response.read()
+            assert "Content-Encoding" not in response.headers
+            assert response.headers.get("Vary") == "Accept-Encoding"
+        gz_req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(gz_req) as response:
+            body = response.read()
+            if len(plain) >= 512:
+                assert response.headers["Content-Encoding"] == "gzip"
+                assert gzip.decompress(body) == plain
+                assert response.headers["Content-Length"] == str(len(body))
+            else:
+                # Unterhalb des Schwellwerts bleibt die Antwort unkomprimiert.
+                assert "Content-Encoding" not in response.headers
+                assert body == plain
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_semi_static_endpoints_are_short_term_cacheable(app_settings):
+    """B7: heatmap/last_forecasts ändern sich nur mit dem Modelllauf.
+
+    15 min ``max-age`` (unter dem kleinsten Job-Intervall); Fehler und alles
+    Live-Pollbare bleiben ``no-store`` — sonst würde ein 503 oder ein alter
+    Preisstand 15 Minuten festkleben.
+    """
+    server, thread, base = _serve_live(app_settings)
+    try:
+        with urllib.request.urlopen(base + "/api/v1/last_forecasts") as response:
+            assert response.status == 200
+            assert response.headers["Cache-Control"] == "public, max-age=900"
+        with urllib.request.urlopen(
+            base + "/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=level&weeks=6"
+        ) as response:
+            assert response.headers["Cache-Control"] == "public, max-age=900"
+        # Fehlerantwort derselben Route: no-store, nicht cachebar.
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + "/api/v1/heatmap?fuel=e10&kind=level&weeks=6")
+        assert error.value.code == 400
+        assert error.value.headers["Cache-Control"] == "no-store"
+        with urllib.request.urlopen(base + "/api/v1/health") as response:
+            assert response.headers["Cache-Control"] == "no-store"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

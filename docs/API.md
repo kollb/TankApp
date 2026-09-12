@@ -38,11 +38,28 @@
 ## Auth & Limits
 
 Kein App-weites Rate-Limit: Die App läuft im Heimnetz (LAN-only) — keine
-`X-RateLimit-*`-Header, kein `429`, keine API-Keys (`TANKAPP_API_KEYS` und
-`TANKAPP_RATE_*` sind ersatzlos entfernt, `app/ratelimit.py` gelöscht).
-Einzige Auth bleibt der Uploader-Webhook (`POST /api/v1/jobs/trigger`, nur
-mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN` per `Authorization: Bearer`).
-- JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert, `Cache-Control: no-store`
+`X-RateLimit-*`-Header, kein `429` auf Lesen, keine API-Keys
+(`TANKAPP_API_KEYS` und `TANKAPP_RATE_*` sind ersatzlos entfernt,
+`app/ratelimit.py` gelöscht). Einzige Auth bleibt der Uploader-Webhook
+(`POST /api/v1/jobs/trigger`, nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`
+per `Authorization: Bearer`).
+
+**Schreib-Budget (B5):** Die Ledger-Endpunkte `POST /api/v1/fills`,
+`POST /api/v1/episodes/{id}/intent` (+ `outcome`-Alias) und
+`DELETE /api/v1/fills/{id}` teilen sich ein Budget von **20 Schreibungen
+je Client-IP und Minute** (rollendes 60-s-Fenster). Darüber hinaus: `429`
+mit `{"error_code": "write_rate_limited"}` und `Retry-After: 60`. Das
+Budget schützt das Ledger vor einem defekten Client, nicht vor Angreifern;
+Heartbeat, Job-Knopf und Webhook zählen nicht mit, und Lesen bleibt immer
+frei (GUI-Polling).
+
+- JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert; `Cache-Control: no-store`
+  überall außer: content-hashierte Assets (`/assets/…`, `immutable`) und die
+  semi-statischen Antworten `heatmap`/`last_forecasts`
+  (`public, max-age=900` — sie ändern sich nur mit dem Modelllauf, B7).
+- JSON-Antworten werden ab 512 Byte als `Content-Encoding: gzip` ausgeliefert,
+  wenn der Client `Accept-Encoding: gzip` schickt (B7); `Vary: Accept-Encoding`
+  ist immer gesetzt.
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
@@ -166,8 +183,12 @@ Der Endpunkt **validiert** (§11.2): `liters` 5–100, `price_paid` 0,40–5,00 
 `fuel` ∈ {e10, e5, diesel}, `station_id` ∈ Polling-Set. Fehlt `price_paid`,
 wird der Nowcast-Preis der Station zur Tankzeit gesucht; ohne bestimmbaren
 Preis antwortet der Server `400 price_not_available` — es wird **kein**
-erfundener Default-Preis verbucht. Fehler kommen als 4xx/503
-(`invalid_liters`/`invalid_price`/`invalid_fuel`/`price_not_available` → 400,
+erfundener Default-Preis verbucht. `tanked_at` (optional, ISO-8601) muss im
+plausiblen Fenster liegen — höchstens 90 Tage (Retention) zurück, höchstens
+15 Minuten in der Zukunft —, sonst `400 invalid_tanked_at` (B5); ohne Angabe
+gilt „jetzt“. Freitext-Felder werden gekappt: `station_name` auf 120, `source`
+auf 40 Zeichen (B5). Fehler kommen als 4xx/503
+(`invalid_liters`/`invalid_price`/`invalid_fuel`/`invalid_tanked_at`/`price_not_available` → 400,
 `unknown_station` → 404, `store_too_large` → 503), nicht mehr als
 `200 {"error_code": …}`.
 
@@ -799,7 +820,8 @@ Siehe `web/src/data.ts` messages:
 - selection_not_available, selection_failed
 - collector_no_heartbeat, collector_check_failed
 - too_many_points, invalid_query, not_found
-- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_price, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
+- unknown_station (404), unknown_city (404), invalid_fuel, invalid_liters, invalid_price, invalid_tanked_at, invalid_consumption, invalid_speed, invalid_when, invalid_value_of_time, invalid_mode, invalid_detour (400)
+- write_rate_limited (429, Schreib-Budget der Ledger-Endpunkte mit `Retry-After: 60`, B5)
 - price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
 - store_too_large (503), not_implemented (501)

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -23,13 +23,26 @@ export function LabLineChart({
   height = 220,
   yFmt = (v: number) => v.toFixed(1),
   xTicks = [],
+  ariaDescription,
 }: {
   series: SeriesPts[];
   marks?: Mark[];
   height?: number;
   yFmt?: (v: number) => string;
   xTicks?: { x: number; label: string }[];
+  ariaDescription?: string;
 }) {
+  // C5: role="img" trägt eine beschreibende Textfassung (aria-describedby),
+  // nicht nur ein Label — Screenreader bekommen sagen, was das Diagramm zeigt.
+  const descId = useId();
+  const seriesNames = series
+    .map((s) => s.name)
+    .filter((name): name is string => !!name);
+  const desc =
+    ariaDescription ??
+    (seriesNames.length
+      ? `Liniendiagramm: ${seriesNames.join(", ")}.`
+      : "Liniendiagramm.");
   const W = 720;
   const H = height;
   const padL = 46;
@@ -76,7 +89,14 @@ export function LabLineChart({
   const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => yMin + f * (yMax - yMin));
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Diagramm">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      role="img"
+      aria-label="Diagramm"
+      aria-describedby={descId}
+    >
+      <desc id={descId}>{desc}</desc>
       {gridYs.map((gy, i) => (
         <g key={i}>
           <line x1={padL} x2={W - padR} y1={Y(gy)} y2={Y(gy)} stroke={AXIS} strokeWidth={0.6} strokeDasharray="3 4" />
@@ -124,13 +144,24 @@ export function HistogramBars({
   thresholds = [],
   height = 190,
   fmt = (v: number) => v.toFixed(1) + " ct",
+  ariaDescription,
 }: {
   values: number[];
   color?: string;
   thresholds?: { x: number; color: string; label: string }[];
   height?: number;
   fmt?: (v: number) => string;
+  ariaDescription?: string;
 }) {
+  // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  const descId = useId();
+  const desc =
+    ariaDescription ??
+    `Histogramm der Verteilung über ${values.length} Werten${
+      thresholds.length
+        ? `; Schwellen-Marker: ${thresholds.map((t) => t.label).join(", ")}`
+        : ""
+    }.`;
   const W = 720;
   const H = height;
   const padL = 40;
@@ -160,7 +191,14 @@ export function HistogramBars({
   const bw = iw / bins;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Verteilung">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      role="img"
+      aria-label="Verteilung"
+      aria-describedby={descId}
+    >
+      <desc id={descId}>{desc}</desc>
       {[0, 0.5, 1].map((f, i) => (
         <g key={i}>
           <line x1={padL} x2={W - padR} y1={Y(cMax * f)} y2={Y(cMax * f)} stroke={AXIS} strokeWidth={0.6} strokeDasharray="3 4" />
@@ -205,12 +243,19 @@ export function DeltaBars({
   labels,
   height = 170,
   fmt = (v: number) => v.toFixed(2) + " €",
+  ariaDescription,
 }: {
   values: number[];
   labels?: string[];
   height?: number;
   fmt?: (v: number) => string;
+  ariaDescription?: string;
 }) {
+  // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  const descId = useId();
+  const desc =
+    ariaDescription ??
+    `Balkendiagramm um die Nulllinie: ${values.length} Werte; grün = positiv, rot = negativ.`;
   const W = 720;
   const H = height;
   const padL = 46;
@@ -227,7 +272,14 @@ export function DeltaBars({
   const step = iw / n;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Tagesergebnisse">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      role="img"
+      aria-label="Tagesergebnisse"
+      aria-describedby={descId}
+    >
+      <desc id={descId}>{desc}</desc>
       <line x1={padL} x2={W - padR} y1={padT + ih / 2} y2={padT + ih / 2} stroke="#475569" strokeWidth={1} />
       {values.map((v, i) => {
         const x = padL + i * step + (step - bw) / 2;
@@ -261,10 +313,17 @@ export function DeltaBars({
 export function CalibChart({
   points,
   livePoints = [],
+  ariaDescription,
 }: {
   points: { p: number; hit: number; n: number; cls: number }[];
   livePoints?: { p: number; hit: number; n: number }[];
+  ariaDescription?: string;
 }) {
+  // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  const descId = useId();
+  const desc =
+    ariaDescription ??
+    "Kalibrierungsdiagramm: vorhergesagte Wahrscheinlichkeit (X-Achse) gegen beobachtete Trefferquote (Y-Achse); ein Punkt je Wahrscheinlichkeits-Bin, die Diagonale ist die perfekte Kalibrierung.";
   if (points.length === 0 && livePoints.length === 0) {
     return (
       <div className="rounded-lg bg-slate-900/60 p-4 text-xs leading-relaxed text-slate-500">
@@ -287,7 +346,14 @@ export function CalibChart({
   const maxN = Math.max(...points.map((p) => p.n), 1);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Kalibrierung">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      role="img"
+      aria-label="Kalibrierung"
+      aria-describedby={descId}
+    >
+      <desc id={descId}>{desc}</desc>
       {/* Diagonale */}
       <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(1)} stroke="#475569" strokeWidth={1.4} strokeDasharray="6 4" />
       {[0, 0.25, 0.5, 0.75, 1].map((f) => (

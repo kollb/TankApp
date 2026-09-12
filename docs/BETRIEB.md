@@ -516,6 +516,18 @@ Danach einmal `GET /api/v1/health` prüfen: `app` = `online`, kein Alarm
 `store_too_large`. Preise kommen aus InfluxDB (separates Backup) und bleiben
 vom runtime-Restore unberührt.
 
+### Schema-Version des Feedback-Stores (B2)
+
+Der Feedback-Store (`runtime/feedback/store.json`) trägt ein
+`schema_version`-Feld. Beim Laden wird ein Altbestand automatisch auf die
+aktuelle Version migriert (je Versionssprung eine eigene Funktion in
+`app/feedback.py`), der nächste Schreibvorgang sichert die migrierte Fassung —
+Ältere Stores **brechen nicht mehr still**. Ein Store aus einer *neueren*
+App-Version wird bewusst mit Fehler abgelehnt (503, `StoreSchemaTooNew`),
+nie still als leer behandelt: Erst das App-Update, kein Überschreiben. Beim
+Restore alter Backups ist deshalb kein Handanlegen nötig — einbinden und die
+App migrieren lassen.
+
 ## System-Alarme lesen
 
 `GET /api/v1/health` fasst die vorhandenen Zustandsprüfungen zu einem

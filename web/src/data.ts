@@ -908,7 +908,7 @@ export function checkFillDraft(input: {
 export const HEATMAP_WEEKS = [4, 6, 12] as const;
 export type HeatmapWeeks = (typeof HEATMAP_WEEKS)[number];
 export const HEATMAP_DEFAULT_WEEKS: HeatmapWeeks = 6;
-export function isHeatmapWeeks(value: unknown): boolean {
+export function isHeatmapWeeks(value: unknown): value is HeatmapWeeks {
   return (
     typeof value === "number" &&
     (HEATMAP_WEEKS as readonly number[]).includes(value)
@@ -934,7 +934,7 @@ export const MIN_HEATMAP_CELLS_PER_DAY = 3;
 export type HeatmapBasis = "overall" | "hour";
 export const HEATMAP_BASES: HeatmapBasis[] = ["hour", "overall"];
 export const HEATMAP_DEFAULT_BASIS: HeatmapBasis = "hour";
-export function isHeatmapBasis(value: unknown): boolean {
+export function isHeatmapBasis(value: unknown): value is HeatmapBasis {
   return (
     typeof value === "string" && (HEATMAP_BASES as string[]).includes(value)
   );
@@ -965,6 +965,86 @@ export function heatmapPath(input: {
 }
 
 /**
+ * A6: Share-URL für die eigene Sicht — reine Funktionen, damit Lesen und
+ * Bauen testbar sind (dasselbe Muster wie heatmapPath).
+ *
+ * Beim Start gelesen (`readShareParams`) übernimmt die GUI Stadt, Kraftstoff,
+ * Station, Tankmenge — und seit 0.11 auch heatmapWeeks/heatmapBasis, denn
+ * beides ist inzwischen eine echte Preference: Ohne Übernahme würde eine
+ * geteilte Ansicht auf dem fremden Gerät mit dessen localStorage-Werten
+ * falsch wiederhergestellt. Ungültige/feindliche Parameter werden still
+ * weggelassen (die GUI fällt auf ihre Defaults zurück), nie als Fehler.
+ */
+
+/** Parameter, die eine geteilte Ansicht belegen darf. */
+export type ShareConfig = {
+  city?: string;
+  fuel?: Fuel;
+  stationId?: string;
+  liters?: number;
+  heatmapWeeks?: HeatmapWeeks;
+  heatmapBasis?: HeatmapBasis;
+};
+
+/** Aktuelle Sicht als Share-Parameter — kommt aus readShareParams heraus. */
+export type ShareView = {
+  city: string;
+  fuel: Fuel;
+  stationId: string | null;
+  liters: number;
+  heatmapWeeks: number;
+  heatmapBasis: HeatmapBasis;
+};
+
+/** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
+const SHARE_LITERS_MIN = 10;
+const SHARE_LITERS_MAX = 80;
+
+export function readShareParams(search: string): ShareConfig {
+  const params = new URLSearchParams(search);
+  const out: ShareConfig = {};
+  const city = params.get("city")?.trim();
+  if (city && city.length <= 60) out.city = city;
+  const fuel = params.get("fuel");
+  if (fuel === "e10" || fuel === "e5" || fuel === "diesel") out.fuel = fuel;
+  const stationId = params.get("station_id")?.trim();
+  if (stationId && stationId.length <= 64) out.stationId = stationId;
+  const litersRaw = params.get("liters");
+  if (litersRaw !== null) {
+    const liters = germanDecimalToNumber(litersRaw);
+    if (
+      liters !== null &&
+      Number.isFinite(liters) &&
+      liters >= SHARE_LITERS_MIN &&
+      liters <= SHARE_LITERS_MAX
+    ) {
+      out.liters = liters;
+    }
+  }
+  const weeks = Number(params.get("weeks"));
+  if (isHeatmapWeeks(weeks)) out.heatmapWeeks = weeks;
+  const basis = params.get("basis");
+  if (isHeatmapBasis(basis)) out.heatmapBasis = basis;
+  return out;
+}
+
+/** Baut die Query einer geteilten Ansicht; Defaults bleiben außen vor. */
+export function shareQuery(view: ShareView): string {
+  const params = new URLSearchParams();
+  if (view.city) params.set("city", view.city);
+  params.set("fuel", view.fuel);
+  if (view.stationId) params.set("station_id", view.stationId);
+  if (view.liters !== 40) params.set("liters", String(view.liters));
+  if (isHeatmapWeeks(view.heatmapWeeks) && view.heatmapWeeks !== HEATMAP_DEFAULT_WEEKS) {
+    params.set("weeks", String(view.heatmapWeeks));
+  }
+  if (isHeatmapBasis(view.heatmapBasis) && view.heatmapBasis !== HEATMAP_DEFAULT_BASIS) {
+    params.set("basis", view.heatmapBasis);
+  }
+  return params.toString();
+}
+
+/**
  * E6: Wert aus einem Begleit-Zahlenfeld — deutsche Dezimaleingabe, in den
  * Bereich des zugehörigen Sliders geklemmt. `null`, wenn noch keine Zahl
  * drinsteht (das Feld behält dann seinen alten Wert, statt ihn zu erfinden).
@@ -979,12 +1059,17 @@ export function sliderCommit(
 }
 
 // Browser-only convenience; no credentials, fill records or server writes.
+// A6: `initial` setzt eine geteilte Ansicht (Share-URL) **vor** den
+// localStorage-Wert — sonst würde die geteilte Sicht vom gespeicherten Stand
+// des fremden Geräts überschrieben. Danach gilt sie wie jede Preference.
 export function usePreference<T>(
   key: string,
   fallback: T,
   valid: (value: unknown) => boolean,
+  initial?: T,
 ) {
   const [value, setValue] = useState<T>(() => {
+    if (initial !== undefined && valid(initial)) return initial;
     try {
       const saved: unknown = JSON.parse(
         localStorage.getItem(`tankapp.${key}`) || "null",

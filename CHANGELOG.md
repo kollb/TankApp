@@ -4,6 +4,65 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.13.0] – 2026-09-12
+
+Kalibrierte Quick-Wins-Runde: der letzte P0 (Feedback-Store-Versionierung),
+die Schreib-Härtung, der messbare Teil der HTTP-Effizienz, der echte
+A11y-Rest und der erste Dashboard-Schnitt. Alle Befunde vorher gegen den
+Code geprüft — der 0.11-Kandidat „Fokus-Ring: zwei CSS-Zeilen" stellte sich
+als erledigt heraus; die echte Lücke war die `outline-none`-Überschreibung.
+
+### Hinzugefügt
+
+- **B2 — Schema-Version & Migration des Feedback-Stores** (P0):
+  `runtime/feedback/store.json` trägt `schema_version`; Altbestände ohne
+  Feld gelten als Version 1 und werden beim Laden migriert (je Sprung eine
+  Funktion in `app/feedback.py::_STORE_MIGRATIONS`), gespeichert wird die
+  migrierte Fassung beim nächsten Schreibvorgang. Damit brechen künftige
+  Feldsprunge (Storno, `tanked_at`, `price_source` …) Altbestände nicht mehr
+  still. Ein Store aus einer *neueren* Version wird mit
+  `StoreSchemaTooNew` (503-Familie) abgelehnt, statt ihn still zu
+  überschreiben. Tests inkl. „alter 0.10-Store → neuer Code“;
+  Doku-Absatz in [docs/BETRIEB.md](docs/BETRIEB.md#schema-version-des-feedback-stores-b2).
+- **A6 — Share-URL**: `?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…`
+  wird beim Start in die Ansicht übernommen (einmalig, vor den
+  localStorage-Preferences) — nötig spätestens seit `heatmapWeeks`/
+  `heatmapBasis` echte Preferences sind, sonst restoren geteilte Ansichten
+  falsch. Neu: Teilen-Knopf im Header — schreibt die aktuelle Sicht per
+  `replaceState` in die Adresszeile und kopiert den Link (mit Fallback-Hinweis,
+  wenn der Browser keine Zwischenablage erlaubt). Parameter-Reader und
+  Builder sind reine Funktionen (`readShareParams`/`shareQuery`), ungetestete
+  oder feindliche Parameter fallen still auf die Defaults zurück.
+- **B5 — Schreib-Härtung**: `tanked_at` (optional, ISO-8601) wird jetzt auf
+  ein Plausibilitätsfenster geprüft (≤ 90 Tage zurück = Retention, ≤ 15 min
+  Zukunft = Uhrversatz), sonst `400 invalid_tanked_at` — vorher wurde jede
+  Angabe ungeprüft gespeichert (1970/2100 inklusive). Freitext-Caps:
+  `station_name` 120, `source` 40 Zeichen. Dazu ein **getrenntes
+  Schreib-Budget** (20/min je Client-IP, rollende Minute) ausschließlich für
+  die Ledger-Endpunkte (`POST /fills`, `POST …/intent` + `outcome`-Alias,
+  `DELETE /fills/{id}`) mit `429 write_rate_limited` + `Retry-After: 60`;
+  Lesen bleibt uneingeschränkt (0.12.0-Beschluss), Heartbeat/Knopf/Webhook
+  zählen nicht mit.
+- **B7 (Teil) — HTTP-Effizienz**: JSON-Antworten ab 512 Byte werden mit
+  `Content-Encoding: gzip` ausgeliefert (immer `Vary: Accept-Encoding`); die
+  semi-statischen Endpunkte `heatmap` und `last_forecasts` antworten mit
+  `Cache-Control: public, max-age=900` — Fehler und alles Live-Pollbare
+  bleiben `no-store`. Overview-Endpunkt und Poll-Bündelung bleiben offen
+  (B7-Rest).
+
+### Geändert
+
+- **C5 (Rest)** — die A11y-Lüge aus 0.11 geschlossen: Die
+  `outline-none`-Klassen (die den globalen `:focus-visible`-Ring an genau
+  den Feldern überschrieben, die 0.11 angefasst hat) sind entfernt — der
+  Ring gilt jetzt durchgängig. Alle Diagramme (`LineChart`, `LabLineChart`,
+  `HistogramBars`, `DeltaBars`, `CalibChart`) sind `role="img"` **mit**
+  `aria-describedby`-Textfassung (`<desc>` + optionales
+  `ariaDescription`-Prop mit echten Inhaltsbeschreibungen je Einsatzort).
+- **D1 (erster Schnitt)** — `PrecisionSlider`, `HeatmapGrid` und
+  `ApiExplorer` sind aus `Dashboard.tsx` nach `web/src/components/`
+  ausgelagert (−~420 Zeilen); der View-Schnitt bleibt offen (TODO D1).
+
 ## [0.12.0] – 2026-09-12
 
 Nutzer-Feedback-Runde (11 Punkte): Alltag und Werkstatt neu geordnet, Anker

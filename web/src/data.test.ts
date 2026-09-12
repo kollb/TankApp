@@ -28,6 +28,8 @@ import {
   jobRunMessage,
   livePhaseCountdown,
   livePhaseHint,
+  readShareParams,
+  shareQuery,
   m7GateLine,
   rowOutcome,
   scoreRows,
@@ -619,5 +621,68 @@ describe("Slider mit Begleitfeld (E6)", () => {
     expect(deTrimmed(6.3)).toBe("6,3");
     expect(deTrimmed(12)).toBe("12");
     expect(deTrimmed(Number.NaN)).toBe("—");
+  });
+});
+
+describe("Share-URL (A6)", () => {
+  it("liest gültige Parameter und lässt ungültige still wegfallen", () => {
+    const full = readShareParams(
+      "?city=Frankfurt&fuel=diesel&station_id=abc-123&liters=45,5&weeks=12&basis=overall",
+    );
+    expect(full).toEqual({
+      city: "Frankfurt",
+      fuel: "diesel",
+      stationId: "abc-123",
+      liters: 45.5,
+      heatmapWeeks: 12,
+      heatmapBasis: "overall",
+    });
+    // Kaputte Werte: nichts davon landet in der Ansicht (GUI nutzt Defaults).
+    expect(
+      readShareParams("?fuel=sonstwas&liters=999&weeks=7&basis=median"),
+    ).toEqual({});
+    expect(readShareParams("")).toEqual({});
+    // Leere/überlange Texte werden nicht übernommen.
+    expect(readShareParams("?city=%20%20")).toEqual({});
+    expect(readShareParams(`?city=${"x".repeat(200)}`)).toEqual({});
+  });
+
+  it("baut die Query ohne Defaults und runderneuert sie", () => {
+    expect(
+      shareQuery({
+        city: "Frankfurt",
+        fuel: "e10",
+        stationId: null,
+        liters: 40,
+        heatmapWeeks: 6,
+        heatmapBasis: "hour",
+      }),
+    ).toBe("city=Frankfurt&fuel=e10");
+    expect(
+      shareQuery({
+        city: "Frankfurt",
+        fuel: "diesel",
+        stationId: "abc",
+        liters: 55,
+        heatmapWeeks: 4,
+        heatmapBasis: "overall",
+      }),
+    ).toBe("city=Frankfurt&fuel=diesel&station_id=abc&liters=55&weeks=4&basis=overall");
+    // Rundtrip in kanonischer Form: Komma → Punkt, Defaults (basis=hour)
+    // bleiben außen vor — geteilte Links sind lesbar, nicht echo.
+    const view = readShareParams(
+      "?city=G%C3%BCtersloh&fuel=e5&station_id=s1&liters=42,5&weeks=12&basis=hour",
+    );
+    const rebuilt = shareQuery({
+      city: view.city ?? "",
+      fuel: view.fuel ?? "e10",
+      stationId: view.stationId ?? null,
+      liters: view.liters ?? 40,
+      heatmapWeeks: view.heatmapWeeks ?? 6,
+      heatmapBasis: view.heatmapBasis ?? "hour",
+    });
+    expect(rebuilt).toBe(
+      "city=G%C3%BCtersloh&fuel=e5&station_id=s1&liters=42.5&weeks=12",
+    );
   });
 });
