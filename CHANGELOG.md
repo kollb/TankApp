@@ -110,6 +110,21 @@ bestehenden Rechnungen.
   statt „(30 d)". Das Microcopy-Regelwerk und die ct/L-€/L-Einheitlichkeit
   bleiben offen (F3/C9-Rest).
 
+### Umgebaut
+
+- **D1-Teil — geteilte UI-Bausteine** (`web/src/components/ui.tsx`, neu):
+  `panel` (die Karten-Grundklasse), `Empty` (Leer-/Hinweis-Zustand), `Badge`
+  (Ampel-Kapsel) und `Metric` (Kennzahlen-Karte mit Pflicht-Erklärzeile,
+  Tooltip am i-Symbol — per `tabindex`/`role` auch mit der Tastatur erreichbar —
+  und Zusatz-Hinweis) waren lokale Funktionen in `Dashboard.tsx` und sind jetzt
+  ein eigenes Modul mit Render-Test (`ui.test.tsx`, 6 Fälle). Damit haben die
+  künftigen Views (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`)
+  eine gemeinsame Basis, statt dass jede View eigene Karten baut; `Dashboard.tsx` sinkt
+  auf 4 098 Zeilen. Verhalten unverändert — reine Umlagerung plus Test. Der
+  Views-Schnitt selbst bleibt offen: Die drei Tabs teilen sich ~100
+  `useState`/`useResource`-Aufrufe in einer Komponente, vorher ist zu
+  entscheiden, ob gemeinsamer Zustand per Props oder Context wandert.
+
 ## [0.14.0] – 2026-09-12
 
 Heatmap-Ehrlichkeit — der erste P0 aus echtem Tracking-Betrieb. Gemeldet war
