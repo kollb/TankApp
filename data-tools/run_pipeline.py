@@ -202,7 +202,7 @@ def step_select(args: argparse.Namespace) -> None:
         cmd += ["--subdiv", ";".join(subdiv_parts)]
     run_script(ROOT / "analysis" / "station_selection.py", cmd[1:])
     log(f"[select] fertig → results/station_scores_{args.fuel.lower()}.csv "
-        f"(alle Städte) + docs/analysis/report_top10.md")
+        f"(alle Städte) + data/analysis/report_top10.md")
 
 
 # ------------------------------------------------------- Polling-Set (5+5)
@@ -449,7 +449,7 @@ def warn_if_scores_stale(args: argparse.Namespace, cfg: dict, label: str,
 
 def validate_proposal_target(args: argparse.Namespace) -> None:
     if getattr(args, "exclude_uuid", None) and args.out_stations.resolve() == DEFAULT_OUT_STATIONS.resolve():
-        raise SystemExit("Ausschlüsse zunächst nur als Vorschlag speichern: --out-stations docs/analysis/stations-vorschlag. Aktives Polling-Set bleibt unverändert.")
+        raise SystemExit("Ausschlüsse zunächst nur als Vorschlag speichern: --out-stations data/analysis/stations-vorschlag. Aktives Polling-Set bleibt unverändert.")
 
 
 def validate_polling_target(args: argparse.Namespace) -> None:
@@ -471,7 +471,7 @@ def validate_polling_target(args: argparse.Namespace) -> None:
         raise SystemExit(
             f"{target} enthält andere Städte ({', '.join(sorted(others))}). "
             "Ein Stadtlauf darf diese nicht ersetzen. Separates --out-stations "
-            "verwenden, z. B. docs/analysis/stations-guetersloh."
+            "verwenden, z. B. data/analysis/stations-guetersloh."
         )
 
 
@@ -690,7 +690,7 @@ def main() -> int:
     step_select(args)
     step_poll(args)
     log(f"\n✅ Fertig in {(time.time() - t0) / 60:.1f} min. "
-        f"Ausgaben: {READY}/ (Historie), results/, docs/analysis/report_top10.md, "
+        f"Ausgaben: {READY}/ (Historie), results/, data/analysis/report_top10.md, "
         f"{args.out_stations}/polling.json")
     return 0
 

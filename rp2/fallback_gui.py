@@ -1016,16 +1016,14 @@ def default_meta_candidates() -> list[str]:
     repo = Path(__file__).resolve().parent.parent
     return [
         p
+        # B14: neuer Ort data/analysis/, alter docs/analysis/ bleibt als
+        # Fallback in der Liste — ein Pi mit altem Stand darf die
+        # Stationsnamen nicht verlieren.
         for p in (
             os.environ.get("STATION_META", ""),
-            str(
-                Path.home()
-                / "TankApp"
-                / "docs"
-                / "analysis"
-                / "stations"
-                / "polling.json"
-            ),
+            str(Path.home() / "TankApp" / "data" / "analysis" / "stations" / "polling.json"),
+            str(repo / "data" / "analysis" / "stations" / "polling.json"),
+            str(Path.home() / "TankApp" / "docs" / "analysis" / "stations" / "polling.json"),
             str(repo / "docs" / "analysis" / "stations" / "polling.json"),
         )
         if p

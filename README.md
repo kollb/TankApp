@@ -4,7 +4,7 @@
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
 Preise.
 
-> Stand: 12.09.2026 · Version **0.11.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> Stand: 12.09.2026 · Version **0.18.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
 ## Dokumentation: ein Ordner, ein Index
@@ -20,6 +20,7 @@ Dokumentation („Ich will … → Dokument“). Alles liegt in `docs/`, Histori
 | Endpunkte, Fehlercodes, Beispiele | [docs/API.md](docs/API.md) |
 | Wie Selektion, Modelle und Heatmaps rechnen | [docs/ANALYSE.md](docs/ANALYSE.md) |
 | Warum Pi/NAS/Browser/RP2 so zusammenspielen | [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) |
+| Regeln für Nutzertexte (Tonfall, Einheiten, Zitate) | [docs/MICROCOPY.md](docs/MICROCOPY.md) |
 | Fachliches Zielbild (drei Fragen, Decision Layer) | [docs/KONZEPT.md](docs/KONZEPT.md) |
 | Konzept ↔ Stand: was offen ist und warum | [docs/LUECKEN.md](docs/LUECKEN.md) |
 
@@ -80,7 +81,7 @@ sample/       beide GUI-Prototypen — gestalterische Basis, bleiben unveränder
 ops/nas/      Docker-Compose, Dockerfile, preflight.sh, backup.sh, InfluxDB-Setup
 tests/        Pytest für app/, engine/, data-tools/, rp2/, Betrieb
 docs/         gesamte Dokumentation (Index: docs/README.md), docs/archiv/ = historisch
-docs/analysis/  gitignored: lokale Ausgaben der Selektion inkl. aktivem polling.json
+data/analysis/  gitignored: lokale Ausgaben der Selektion inkl. aktivem polling.json
 ```
 
 ## Entwicklung & Tests
@@ -117,7 +118,7 @@ Preisdaten: MTS-K via tankerkoenig.de (**CC BY 4.0**). Polling-Fenster 06–24 U
 Token-Bucket 1 Request/300 s.
 
 Private Konfiguration, Rohdaten, Berichte und Modelle bleiben **außerhalb von
-Git**: `config.local.json`, `docs/analysis/` (inkl. `polling.json`),
+Git**: `config.local.json`, `data/analysis/` (inkl. `polling.json`),
 `data/influx.env`, `data/_netrc`, `data/apikey.txt`, `runtime/`. Die
 Verzeichnisse `sample/good gui` und `sample/good statistic gui` bleiben
 erhalten ([docs/GUI-VORLAGEN.md](docs/GUI-VORLAGEN.md)).

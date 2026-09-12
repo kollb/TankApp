@@ -22,7 +22,7 @@ genauen Befehle am Ende aus. Hintergrund: docs/STATIONEN-TAUSCH.md.
 Nur Standardbibliothek; läuft auf NAS, Pi und PC. Beispiel:
 
     python3 data-tools/swap_stations.py --city Gütersloh \
-        --kandidaten docs/analysis/stations-vorschlag-gt \
+        --kandidaten data/analysis/stations-vorschlag-gt \
         --stations data/raw/stations
 """
 
@@ -45,10 +45,10 @@ from discover_stations import (  # noqa: E402
     open_text,
     repair_text,
 )
-from polling_plan import atomic_json, validate_sets  # noqa: E402
+from polling_plan import active_polling, atomic_json, validate_sets  # noqa: E402
 
 FAILURES_DEFAULT = ROOT / "data/runtime/engine/current.json"
-ACTIVE_DEFAULT = ROOT / "docs/analysis/stations/polling.json"
+ACTIVE_DEFAULT = active_polling(ROOT)
 OUT_DEFAULT = ROOT / "data/setup/polling.json"
 
 
@@ -343,10 +343,10 @@ def main(argv=None) -> int:
         f"     curl -s 'https://creativecommons.tankerkoenig.de/json/prices.php"
         f"?ids={check_ids}&apikey=$KEY' | jq '.prices'\n"
         f"  2. Vorschlag auf den Pi nach data/setup/ übertragen\n"
-        f"  3. Pi: cp -p docs/analysis/stations/polling.json "
+        f"  3. Pi: cp -p data/analysis/stations/polling.json "
         f"data/setup/polling-backup-$(date -u +%Y%m%dT%H%M%SZ).json\n"
         f"     sudo systemctl stop tankapp-collector\n"
-        f"     cp -p {args.out} docs/analysis/stations/polling.json\n"
+        f"     cp -p {args.out} data/analysis/stations/polling.json\n"
         f"     sudo systemctl restart tankapp-collector tankapp-uploader\n"
         f"  4. Zurück aufs NAS kopieren + python3 tankapp.py nas-up"
     )

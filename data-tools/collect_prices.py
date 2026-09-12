@@ -36,7 +36,7 @@ Beispiele:
   python3 data-tools/collect_prices.py --once            # ein Poll, Tabelle zeigen
   python3 data-tools/collect_prices.py                   # Dauerbetrieb 06-24 Uhr
   python3 data-tools/collect_prices.py --demo --once     # ohne Key/Netz testen
-  python3 data-tools/collect_prices.py --poll-json docs/analysis/stations/polling.json
+  python3 data-tools/collect_prices.py --poll-json data/analysis/stations/polling.json
 """
 
 from __future__ import annotations
@@ -55,10 +55,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from polling_plan import RequestSchedule, collector_lock, load_plan
+from polling_plan import RequestSchedule, active_polling, collector_lock, load_plan
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_POLL_JSON = ROOT / "docs" / "analysis" / "stations" / "polling.json"
+DEFAULT_POLL_JSON = active_polling(ROOT)
 DEFAULT_OUT = Path(os.environ.get("TANKAPP_POLL_DIR", ROOT / "data" / "poll"))
 API_URL = "https://creativecommons.tankerkoenig.de/json/prices.php"
 FUELS = ("e5", "e10", "diesel")

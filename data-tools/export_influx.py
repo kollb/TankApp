@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from polling_plan import active_polling
+
 ROOT = Path(__file__).resolve().parent.parent
 COLUMNS = [
     "timestamp",
@@ -818,9 +820,7 @@ def main(argv=None) -> int:
         "--until", help="Exklusives Ende; ohne Offset Europe/Berlin (Default: jetzt)"
     )
     parser.add_argument("--fuel", choices=["e5", "e10", "diesel"], default="e10")
-    parser.add_argument(
-        "--polling", type=Path, default=ROOT / "docs/analysis/stations/polling.json"
-    )
+    parser.add_argument("--polling", type=Path, default=active_polling(ROOT))
     parser.add_argument("--poll-city")
     parser.add_argument(
         "--uuid-only",

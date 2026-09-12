@@ -39,8 +39,8 @@ Methodik ist bewusst "hart" gerechnet:
 
 Ausgaben:
   results/station_scores_<fuel>.csv   vollständige Kennzahlen je Station
-  docs/analysis/figures/*.png         Zykluskurven, Heatmaps, Top-10
-  docs/analysis/report_top10.md       fertiger Auswahlbericht
+  data/analysis/figures/*.png         Zykluskurven, Heatmaps, Top-10
+  data/analysis/report_top10.md       fertiger Auswahlbericht
 """
 
 from __future__ import annotations
@@ -1122,8 +1122,8 @@ def main() -> None:
                     default=Path("results") / "road_route_cache.json",
                     help="Cache-Datei für OSRM-Routen (wiederholte Läufe offline)")
     ap.add_argument("--results", type=Path, default=Path("results"))
-    ap.add_argument("--report", type=Path, default=Path("docs/analysis/report_top10.md"))
-    ap.add_argument("--figdir", type=Path, default=Path("docs/analysis/figures"))
+    ap.add_argument("--report", type=Path, default=Path("data/analysis/report_top10.md"))
+    ap.add_argument("--figdir", type=Path, default=Path("data/analysis/figures"))
     args = ap.parse_args()
 
     cfg = Config(fuel=args.fuel.upper(), top=args.top, tank_volume=args.tank_volume,

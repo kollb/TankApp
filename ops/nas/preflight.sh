@@ -22,7 +22,12 @@ echo
 echo "PFLICHT - ohne diese bricht nas-up ab:"
 
 # 1) polling.json (gitignored, kommt vom Pi)
-POLL="docs/analysis/stations/polling.json"
+POLL="data/analysis/stations/polling.json"
+# B14: alter Ort bleibt gueltig, solange er existiert (kein stiller Umzug).
+if [ ! -f "$POLL" ] && [ -f "docs/analysis/stations/polling.json" ]; then
+  POLL="docs/analysis/stations/polling.json"
+  say_warn "Polling-Set liegt noch unter docs/analysis/ - neuer Ort ist data/analysis/ (von Hand verschieben)"
+fi
 if [ -f "$POLL" ]; then
   if python3 -c "import json,sys; json.load(open('$POLL',encoding='utf-8-sig'))" 2>/dev/null; then
     n=$(python3 -c "

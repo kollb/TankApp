@@ -65,7 +65,7 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
   nicht durch beliebig lange Fortschreibung als Qualitätsnachweis ersetzen.
 - `analysis/window_analysis.py --help`: Polling-Fenster auf vorhandenen Daten prüfen.
 - Ausgaben bleiben lokal: `results/station_scores_<fuel>.csv`,
-  `docs/analysis/report_top10.md` und `docs/analysis/figures/`.
+  `data/analysis/report_top10.md` und `data/analysis/figures/`.
 - Preis-Zwillinge und explizite Ersatzvorschläge: [Engine-Referenz](ENGINE.md#preis-zwillinge).
   Ein Vorschlag ändert nicht das aktive Set und repariert keine Namenskollisionen.
 

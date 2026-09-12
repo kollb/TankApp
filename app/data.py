@@ -337,7 +337,13 @@ class LiveData:
         if (city, uid) not in metas:
             raise ValueError("unknown_station")
         if problem or not self.settings.influx_env.is_file():
-            return {"points": [], "error_code": problem or "influx_not_configured"}
+            return {
+                "points": [],
+                "n_points": 0,
+                "range_from": None,
+                "range_to": None,
+                "error_code": problem or "influx_not_configured",
+            }
         now = self.clock()
         try:
             cfg = influx.load_config(self.settings.influx_env, timeout=10)
@@ -368,12 +374,28 @@ class LiveData:
                 )
                 if len(points) > 20_000:
                     raise ValueError("Too many points")
+            ordered = sorted(points, key=lambda p: p["timestamp"])
+            # C11: echte Reichweite des Bestands — das angefragte Fenster
+            # (``hours``) ist oft größer als das, was wirklich vorliegt. Ohne
+            # diese Angabe sieht eine kurze Kurve aus wie ein Datenverlust.
+            # Gezählt werden nur Punkte mit Preis; geschlossene Meldungen sind
+            # echte Beobachtungen, aber kein Preis-Bestand.
+            priced = [p for p in ordered if p["price"] is not None]
             return {
-                "points": sorted(points, key=lambda p: p["timestamp"]),
+                "points": ordered,
+                "n_points": len(priced),
+                "range_from": priced[0]["timestamp"] if priced else None,
+                "range_to": priced[-1]["timestamp"] if priced else None,
                 "error_code": None,
             }
         except (ValueError, OSError, KeyError, TypeError):
-            return {"points": [], "error_code": "influx_read_failed"}
+            return {
+                "points": [],
+                "n_points": 0,
+                "range_from": None,
+                "range_to": None,
+                "error_code": "influx_read_failed",
+            }
 
     def job_log(self, name: str, lines: int = 200):
         """Letzte Zeilen von ``runtime/jobs/<name>.log`` (bereinigt, begrenzt).
@@ -503,7 +525,12 @@ class LiveData:
 
             notify = notify_status(self.settings)
         except Exception:
-            notify = {"configured": False, "open_errors": [], "last_ok_at": None}
+            notify = {
+                "configured": False,
+                "open_errors": [],
+                "last_ok_at": None,
+                "last_sent_at": None,
+            }
 
         # B9: Version + Build-Hash (einmalig beim Import bestimmt).
         try:
@@ -590,6 +617,13 @@ class LiveData:
                 "stale": age < 0 or age > 24,
                 "model_age_hours": max(0, age),
                 "published_at": bundle.get("published_at"),
+                # C11: Datenreichweite des Fits. ``**row`` bringt die Felder
+                # aus neuen Bundles schon mit; die explizite Zeile setzt sie
+                # bei älteren Publikationen auf None statt sie fehlen zu lassen.
+                "range_from": row.get("range_from"),
+                "range_to": row.get("range_to"),
+                "n_points": row.get("n_points"),
+                "n_days": row.get("n_days"),
                 "calibrated": False,
                 "decision_ready": False,
             }
@@ -601,6 +635,10 @@ class LiveData:
         return {
             "points": [],
             "error_code": "model_not_available",
+            "range_from": None,
+            "range_to": None,
+            "n_points": None,
+            "n_days": None,
             "calibrated": False,
             "decision_ready": False,
         }
@@ -772,7 +810,15 @@ class LiveData:
             raise ValueError("invalid_fuel")
         metas, problem = metadata(self.settings)
         if problem:
-            return {"error_code": problem, "stations": [], "count": 0}
+            return {
+                "error_code": problem,
+                "stations": [],
+                "count": 0,
+                "range_from": None,
+                "range_to": None,
+                "n_points": None,
+                "n_days": None,
+            }
         cities = list(dict.fromkeys(c for c, _ in metas))
         if city and city not in cities:
             raise ValueError("unknown_city")
@@ -782,7 +828,15 @@ class LiveData:
 
             data = read_selection(self.settings)
         except Exception:
-            return {"error_code": "selection_read_failed", "stations": [], "count": 0}
+            return {
+                "error_code": "selection_read_failed",
+                "stations": [],
+                "count": 0,
+                "range_from": None,
+                "range_to": None,
+                "n_points": None,
+                "n_days": None,
+            }
 
         # data kann entweder by_fuel Struktur oder flache Liste sein
         if "by_fuel" in data:
@@ -815,6 +869,13 @@ class LiveData:
                 "total_count": len(stations),
                 "stations": stations,
                 "top_global": fuel_data.get("top_global", [])[:10],
+                # C11: Datenreichweite des Rankings, aus dem Artefakt
+                # durchgereicht (engine/selection.py). Bei Altbeständen ohne
+                # die Felder bleibt es None — die GUI zeigt dann nichts an.
+                "range_from": fuel_data.get("range_from"),
+                "range_to": fuel_data.get("range_to"),
+                "n_points": fuel_data.get("n_points"),
+                "n_days": fuel_data.get("n_days"),
                 "error_code": None,
                 "calibrated": False,
                 "decision_ready": False,
@@ -836,6 +897,10 @@ class LiveData:
                 "count": len(filtered),
                 "total_count": data.get("count", 0),
                 "stations": sorted(filtered, key=lambda x: x.get("rank", 999)),
+                "range_from": data.get("range_from"),
+                "range_to": data.get("range_to"),
+                "n_points": data.get("n_points"),
+                "n_days": data.get("n_days"),
                 "error_code": data.get("error_code"),
                 "calibrated": False,
                 "decision_ready": False,

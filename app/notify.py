@@ -334,11 +334,21 @@ class Notifier:
 
 
 def notify_status(settings) -> dict:
-    """Sichtbarkeit für /api/v1/health: konfiguriert, zuletzt, letzter Fehler."""
+    """Sichtbarkeit für /api/v1/health: konfiguriert, offen, zuletzt gemeldet.
+
+    Liest ausschließlich die lokale Zustandsdatei — kein Netz, damit das
+    Healthcheck-Budget (3–5 s) bleibt. ``last_sent_at`` ist der jüngste
+    Zeitstempel einer tatsächlich zugestellten Fehlermeldung, ``last_ok_at``
+    der letzten „wieder betriebsbereit“-Meldung. Die Webhook-URL ist der
+    einzige Geheimnisträger und erscheint hier bewusst **nicht**.
+    """
     configured = bool(getattr(settings, "notify_url", ""))
     state = load_state(settings)
+    sent = state.get("sent") or {}
+    stamps = sorted(value for value in sent.values() if isinstance(value, str))
     return {
         "configured": configured,
-        "open_errors": sorted(state.get("sent") or {}),
+        "open_errors": sorted(sent),
         "last_ok_at": state.get("last_ok_at"),
+        "last_sent_at": stamps[-1] if stamps else None,
     }

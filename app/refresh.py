@@ -356,6 +356,15 @@ def refresh(settings: Settings, now=None, progress=None):
                         "metrics": report.get("metrics"),
                         "backtest_days": BACKTEST_DAYS,
                         "train_days": cfg.train_days,
+                        # C11: Datenreichweite des Fits — worauf diese
+                        # Prognose beruht. Der Fit kennt die Werte längst
+                        # (engine/models.py), sie standen bisher nur im
+                        # Modell-Artefakt, nicht in der Publikation; ohne sie
+                        # kann die GUI nicht sagen, wie breit die Grundlage ist.
+                        "range_from": model.get("training_start"),
+                        "range_to": model.get("last_observation"),
+                        "n_points": model.get("training_points"),
+                        "n_days": model.get("training_days"),
                         # Rolling-PICP 7 d je Station (Konzept §3.3.3):
                         # Konfidenz-Badge + letzte 7 Testtage; „current“ ist
                         # die Zahl fürs Güte-Gate (§4.4) in /v1/decide.

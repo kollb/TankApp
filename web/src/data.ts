@@ -142,6 +142,17 @@ export type Health = {
   commit?: string | null;
   /** B4: aggregierte Alarme (Heartbeat, Jobs, Store, Polling). */
   alarms?: Alarm[];
+  /**
+   * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
+   * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
+   * als gemeldet gelten und wann zuletzt etwas rausging.
+   */
+  notify?: {
+    configured: boolean;
+    open_errors: string[];
+    last_ok_at?: string | null;
+    last_sent_at?: string | null;
+  };
   archive: {
     status: string | null;
     archive_since: string | null;
@@ -172,7 +183,7 @@ export type ForecastPoint = {
   q025: number | null;
   q975: number | null;
 };
-export type Forecast = {
+export type Forecast = DataReach & {
   points: ForecastPoint[];
   points_3d?: ForecastPoint[];
   points_7d?: ForecastPoint[];
@@ -251,7 +262,7 @@ export type SelectionStation = {
   rank?: number;
 };
 
-export type Selection = {
+export type Selection = DataReach & {
   generated_at?: string;
   fuel: string;
   city?: string | null;
@@ -302,10 +313,7 @@ export type RouteEvaluate = {
 // --- B4 M5/M7 Typen: /v1/decide, Episodes, Intent, Fills, Stats Summary ---
 
 export type AdviceAction =
-  | "refuel_now"
-  | "wait"
-  | "refuel_elsewhere"
-  | "no_advice";
+  "refuel_now" | "wait" | "refuel_elsewhere" | "no_advice";
 export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
@@ -750,7 +758,10 @@ export function jobRunMessage(result: JobRunResult | null): JobRunNote {
     case "queued":
       return { tone: "ok", text: "Gestartet — der Lauf beginnt sofort." };
     case "running":
-      return { tone: "ok", text: "Läuft bereits; Fortschritt steht in dieser Karte." };
+      return {
+        tone: "ok",
+        text: "Läuft bereits; Fortschritt steht in dieser Karte.",
+      };
     case "debounced":
       return {
         tone: "warn",
@@ -871,10 +882,7 @@ export function fillLimitHint(field: FillField): string {
  * genügen würde. Leeres Feld ist ein Hinweis, kein Fehler im Sinne von
  * „abgelehnt“ — deshalb hier ebenfalls eine Meldung (der Dialog bleibt zu).
  */
-export function fillFieldError(
-  field: FillField,
-  raw: string,
-): string | null {
+export function fillFieldError(field: FillField, raw: string): string | null {
   const limit = FILL_LIMITS[field];
   if (raw.trim() === "") return `Bitte ${limit.label} eingeben.`;
   const value = germanDecimalToNumber(raw);
@@ -1177,7 +1185,8 @@ export function heatmapCoverage(heatmap: Heatmap): HeatmapCoverage | null {
   const days =
     from && to
       ? Math.round(
-          (Date.UTC(to[0], to[1] - 1, to[2]) - Date.UTC(from[0], from[1] - 1, from[2])) /
+          (Date.UTC(to[0], to[1] - 1, to[2]) -
+            Date.UTC(from[0], from[1] - 1, from[2])) /
             86_400_000,
         ) + 1
       : null;
@@ -1227,6 +1236,42 @@ export function heatmapSampleLabel(heatmap: Heatmap): string | null {
   return `${countLabel(points)} Preise${stations}`;
 }
 
+export type DataReach = {
+  range_from?: string | null;
+  range_to?: string | null;
+  n_points?: number | null;
+  n_days?: number | null;
+};
+
+/**
+ * C11: Dieselbe Frage wie bei der Heatmap, nur für Preisverlauf, Modell-Ausblick
+ * und Ranking — worauf beruht das hier eigentlich? Eine Kurve über 24 Stunden
+ * aus vier Punkten und „Rang 1“ aus zehn Tagen sehen sonst genauso solide aus
+ * wie ihre gut belegten Gegenstücke. Gibt der Payload nichts her (Altbestand,
+ * leeres Ergebnis), liefert die Funktion null und die GUI zeigt keine Zeile —
+ * lieber schweigen als eine Reichweite behaupten.
+ */
+export function dataReachLabel(
+  reach: DataReach,
+  noun = "Preise",
+): string | null {
+  const parts: string[] = [];
+  const points = reach.n_points;
+  if (points != null && Number.isFinite(points)) {
+    parts.push(`${countLabel(points)} ${noun}`);
+  }
+  const days = reach.n_days;
+  if (days != null && Number.isFinite(days) && days > 0) {
+    parts.push(`${countLabel(days)} ${days === 1 ? "Tag" : "Tage"}`);
+  }
+  const fromMs = Date.parse(reach.range_from ?? "");
+  const toMs = Date.parse(reach.range_to ?? "");
+  if (Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs >= fromMs) {
+    parts.push(`${berlinStamp(fromMs)} – ${berlinStamp(toMs)} Uhr`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /**
  * Erklärt leere Zeilen, bevor der Nutzer Datenverlust vermutet: nur wenn das
  * Fenster größer ist als der Bestand.
@@ -1241,7 +1286,6 @@ export function heatmapCoverageNote(heatmap: Heatmap): string | null {
     "Wochentage, die in dieser Zeit nicht vorkamen, bleiben leer: Das sind fehlende Tage, kein Datenverlust."
   );
 }
-
 
 /**
  * B12: Vergleichs-Basis der Cheap-Probability ohne Station.
@@ -1353,10 +1397,16 @@ export function shareQuery(view: ShareView): string {
   params.set("fuel", view.fuel);
   if (view.stationId) params.set("station_id", view.stationId);
   if (view.liters !== 40) params.set("liters", String(view.liters));
-  if (isHeatmapWeeks(view.heatmapWeeks) && view.heatmapWeeks !== HEATMAP_DEFAULT_WEEKS) {
+  if (
+    isHeatmapWeeks(view.heatmapWeeks) &&
+    view.heatmapWeeks !== HEATMAP_DEFAULT_WEEKS
+  ) {
     params.set("weeks", String(view.heatmapWeeks));
   }
-  if (isHeatmapBasis(view.heatmapBasis) && view.heatmapBasis !== HEATMAP_DEFAULT_BASIS) {
+  if (
+    isHeatmapBasis(view.heatmapBasis) &&
+    view.heatmapBasis !== HEATMAP_DEFAULT_BASIS
+  ) {
     params.set("basis", view.heatmapBasis);
   }
   return params.toString();
@@ -1600,7 +1650,10 @@ export function compressedAxis(
     else merged.push({ from, to });
   }
   const cut = (gap: GapBand) => Math.max(0, gap.to - gap.from - maxGapMs);
-  const total = Math.max(1, xMax - xMin - merged.reduce((s, g) => s + cut(g), 0));
+  const total = Math.max(
+    1,
+    xMax - xMin - merged.reduce((s, g) => s + cut(g), 0),
+  );
   const map = (x: number) => {
     if (x <= xMin) return 0;
     if (x >= xMax) return total;
@@ -1633,7 +1686,8 @@ export function gapBands(
   const min = minMinutes * 60000;
   const bands: { from: number; to: number }[] = [];
   if (window && times.length) {
-    if (times[0] - window[0] > min) bands.push({ from: window[0], to: times[0] });
+    if (times[0] - window[0] > min)
+      bands.push({ from: window[0], to: times[0] });
     const last = times[times.length - 1];
     if (window[1] - last > min) bands.push({ from: last, to: window[1] });
   }
@@ -1803,8 +1857,7 @@ export const messages: Record<string, string> = {
     "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
   collector_no_heartbeat:
     "Noch kein Collector-Herzschlag in InfluxDB. Pi-Uploader muss heartbeat.json liefern.",
-  collector_check_failed:
-    "Collector-Status konnte nicht geprüft werden.",
+  collector_check_failed: "Collector-Status konnte nicht geprüft werden.",
   too_many_points:
     "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",
   invalid_query: "Ungültige Anfrageparameter.",
@@ -1864,11 +1917,15 @@ export function euro(value: number | null | undefined, decimals = 2) {
  * vitest-Fälle in `data.test.ts` halten die Konvention fest.
  */
 export function euroPerLiter(value: number | null | undefined, decimals = 3) {
-  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} €/L`;
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : `${euro(value, decimals)} €/L`;
 }
 
 export function centPerLiter(value: number | null | undefined, decimals = 1) {
-  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} ct/L`;
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : `${euro(value, decimals)} ct/L`;
 }
 
 /** €/L → ct/L (Vorzeichen behalten, Rundung erst beim Formatieren). */
@@ -1877,7 +1934,9 @@ export function euroToCentPerLiter(value: number | null | undefined) {
 }
 
 export function percentLabel(value: number | null | undefined, decimals = 0) {
-  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} %`;
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : `${euro(value, decimals)} %`;
 }
 
 /** Tausender-Trennung de-DE („12.345“) — Zählerstände, nie Preise. */
@@ -1901,6 +1960,48 @@ export function hourRangeLabel(
   const to = ((Math.floor(toHour) % 24) + 24) % 24;
   return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
 }
+/**
+ * B4 (GUI): Ein Satz zum Zustand der Alarm-Zustellung für den System-Tab.
+ *
+ * Reine Funktion über `/api/v1/health` → `notify`, damit der Text testbar
+ * bleibt und die Panels nicht jeweils eigene Formulierungen erfinden. Der
+ * Ton folgt der Ehrlichkeits-Regel: „nicht eingerichtet“ ist kein Fehler,
+ * sondern eine Tatsache — und „keine offenen Fehler“ heißt nicht „getestet“.
+ */
+export type NotifyState = NonNullable<Health["notify"]>;
+
+export function notifyTone(
+  notify?: NotifyState | null,
+): "off" | "ok" | "alert" {
+  if (!notify?.configured) return "off";
+  return (notify.open_errors?.length ?? 0) > 0 ? "alert" : "ok";
+}
+
+export function notifyStatusLine(notify?: NotifyState | null) {
+  const tone = notifyTone(notify);
+  if (tone === "off") {
+    return "Keine Push-Zustellung eingerichtet — Alarme stehen nur hier in der GUI.";
+  }
+  const open = notify?.open_errors?.length ?? 0;
+  if (open > 0) {
+    return open === 1
+      ? "1 Alarm ist als gemeldet vermerkt — er gilt weiter als offen."
+      : `${open} Alarme sind als gemeldet vermerkt — sie gelten weiter als offen.`;
+  }
+  return "Zustellung eingerichtet, gerade ist kein Fehler offen.";
+}
+
+export function notifyLastLine(notify?: NotifyState | null) {
+  if (!notify?.configured) return null;
+  if (notify.last_sent_at) {
+    return `Zuletzt gemeldet: ${timeLabel(notify.last_sent_at)}`;
+  }
+  if (notify.last_ok_at) {
+    return `Zuletzt „wieder betriebsbereit“: ${timeLabel(notify.last_ok_at)}`;
+  }
+  return "Seit dem Start wurde noch nichts verschickt.";
+}
+
 export function timeLabel(stamp?: string | null) {
   return stamp
     ? new Date(stamp).toLocaleString("de-DE", {
@@ -1954,6 +2055,101 @@ export function autoTimeValue(when: Date = new Date()) {
   return { z: isPeak ? 16 : 10, isPeak };
 }
 
+/**
+ * C6 (Rest): „Datenstand älter als X“ — eine Regel für alle Panels.
+ *
+ * Bis jetzt entschied jedes Panel selbst, ob ein Stand noch frisch ist (oder
+ * sagte gar nichts). Das ist genau die Stelle, an der die App unehrlich wird:
+ * Eine Zahl von gestern sieht aus wie eine Zahl von jetzt. Die Schwellen
+ * hängen an der Natur der Daten, nicht am Panel — deshalb stehen sie hier.
+ *
+ * `stale` = älter als der Erwartungswert, aber noch brauchbar (gelb).
+ * `old` = so alt, dass die Aussage nicht mehr trägt (rot, doppelte Schwelle).
+ */
+export type Freshness = "fresh" | "stale" | "old" | "unknown";
+
+/** Minuten, ab denen ein Datenstand als veraltet gilt — je Datenart. */
+export const STALE_AFTER_MINUTES = {
+  /** Preise: der Collector pollt alle 5 min, ab 30 min stimmt etwas nicht. */
+  prices: 30,
+  /** Prognosen/Heatmaps: Modell-Lauf im 30-min-/Stunden-Takt. */
+  model: 180,
+  /** Selektion: läuft täglich, ein Tag Verzug ist normal. */
+  selection: 36 * 60,
+} as const;
+
+export type DataKind = keyof typeof STALE_AFTER_MINUTES;
+
+/** Alter eines Zeitstempels in Minuten (null = nicht bestimmbar). */
+export function ageMinutes(stamp?: string | null, now: number = Date.now()) {
+  if (!stamp) return null;
+  const ms = Date.parse(stamp);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, (now - ms) / 60000);
+}
+
+export function freshness(
+  stamp: string | null | undefined,
+  kind: DataKind,
+  now: number = Date.now(),
+): Freshness {
+  const age = ageMinutes(stamp, now);
+  if (age == null) return "unknown";
+  const limit = STALE_AFTER_MINUTES[kind];
+  if (age >= limit * 2) return "old";
+  if (age >= limit) return "stale";
+  return "fresh";
+}
+
+/** Alter in Worten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */
+export function ageLabel(stamp?: string | null, now: number = Date.now()) {
+  const age = ageMinutes(stamp, now);
+  if (age == null) return "—";
+  const minutes = Math.round(age);
+  if (minutes < 1) return "gerade eben";
+  if (minutes === 1) return "vor 1 Minute";
+  if (minutes < 60) return `vor ${minutes} Minuten`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return "vor 1 Stunde";
+  if (hours < 24) return `vor ${hours} Stunden`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "vor 1 Tag" : `vor ${days} Tagen`;
+}
+
+/**
+ * Der Banner-Satz — oder `null`, wenn der Stand frisch genug ist.
+ *
+ * Bewusst ohne Schuldzuweisung und ohne Handlungsbefehl: Der Satz nennt das
+ * Alter und die Folge. Was zu tun ist, steht im System-Tab, nicht über jedem
+ * Panel.
+ */
+export function dataAgeNote(
+  stamp: string | null | undefined,
+  kind: DataKind,
+  now: number = Date.now(),
+): { tone: "warn" | "error"; text: string } | null {
+  const state = freshness(stamp, kind, now);
+  if (state === "fresh" || state === "unknown") return null;
+  const when = ageLabel(stamp, now);
+  const at = timeLabel(stamp);
+  if (kind === "prices") {
+    return {
+      tone: state === "old" ? "error" : "warn",
+      text: `Datenstand ${when} (${at} Uhr) — der Collector hat länger nichts geliefert, die Preise können eingefroren sein.`,
+    };
+  }
+  if (kind === "model") {
+    return {
+      tone: state === "old" ? "error" : "warn",
+      text: `Datenstand ${when} (${at} Uhr) — seitdem lief kein Modell-Update, die Prognose kann veraltet sein.`,
+    };
+  }
+  return {
+    tone: state === "old" ? "error" : "warn",
+    text: `Datenstand ${when} (${at} Uhr) — das Ranking stammt aus einem älteren Selektions-Lauf.`,
+  };
+}
+
 export function clockLabel(stamp?: string | null) {
   if (!stamp) return "—";
   const ms = Date.parse(stamp);
@@ -1986,14 +2182,15 @@ export function berlinDay(ms: number): [number, number, number] | null {
   const get = (type: string) =>
     Number(parts.find((p) => p.type === type)?.value ?? NaN);
   const day = [get("year"), get("month"), get("day")];
-  return day.every(Number.isFinite)
-    ? [day[0], day[1], day[2]]
-    : null;
+  return day.every(Number.isFinite) ? [day[0], day[1], day[2]] : null;
 }
 
 // „Datum des Datenstands + n Tage“ als dd.MM.yyyy. Ohne Datenstand (as_of fehlt)
 // gibt es kein Datum — die UI verspricht dann kein Datum, statt eines zu raten.
-export function dayAfterLabel(days: number, stamp?: string | null): string | null {
+export function dayAfterLabel(
+  days: number,
+  stamp?: string | null,
+): string | null {
   if (!stamp || !Number.isFinite(days) || days < 0) return null;
   const day = berlinDay(Date.parse(stamp));
   if (!day) return null;
@@ -2038,7 +2235,6 @@ export function dayLabel(stamp?: string | null): string {
   if (!day) return "—";
   return utcDayLabel(Date.UTC(day[0], day[1] - 1, day[2]));
 }
-
 
 // Hinweis unter Kacheln, die noch keinen Wert zeigen: erklärt den Grund, ohne
 // eine Kalenderzahl vorzugeben, die niemand gemessen hat.
