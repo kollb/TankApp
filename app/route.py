@@ -41,12 +41,22 @@ FUELS = {"e10", "e5", "diesel"}
 CIRCUITY = 1.3
 
 
-def _active_elsewhere_net_eur(live_data) -> float:
-    """Netto-Schwelle aus derselben Config wie /api/v1/decide (Konzept §4.5).
+def _active_elsewhere_thresholds(live_data) -> dict[str, float]:
+    """WOANDERS-Schwellen aus derselben Config wie /api/v1/decide (Konzept §4.5).
 
-    Nur eine Stelle darf die WOANDERS-Schwelle bestimmen — sonst divergieren
+    Nur eine Stelle darf die Schwellen bestimmen — sonst divergieren
     ``/api/v1/route/evaluate`` und ``/api/v1/decide``, sobald M7 nachzieht.
+    Liefert ``elsewhere_net_eur`` und ``elsewhere_borderline_eur``.
     """
+
+    def _defaults() -> dict[str, float]:
+        return {
+            "elsewhere_net_eur": float(DEFAULT_THRESHOLDS["elsewhere_net_eur"]),
+            "elsewhere_borderline_eur": float(
+                DEFAULT_THRESHOLDS.get("elsewhere_borderline_eur", 0.5)
+            ),
+        }
+
     try:
         from .feedback import compute_advice_stats, load_store
 
@@ -54,11 +64,26 @@ def _active_elsewhere_net_eur(live_data) -> float:
         store = load_store(live_data.settings)
         advice_stats = compute_advice_stats(store)
         thresholds, _ = active_thresholds(advice_stats, auto_apply=auto_apply)
-        return float(
-            thresholds.get("elsewhere_net_eur", DEFAULT_THRESHOLDS["elsewhere_net_eur"])
-        )
+        return {
+            "elsewhere_net_eur": float(
+                thresholds.get(
+                    "elsewhere_net_eur", DEFAULT_THRESHOLDS["elsewhere_net_eur"]
+                )
+            ),
+            "elsewhere_borderline_eur": float(
+                thresholds.get(
+                    "elsewhere_borderline_eur",
+                    DEFAULT_THRESHOLDS.get("elsewhere_borderline_eur", 0.5),
+                )
+            ),
+        }
     except Exception:
-        return float(DEFAULT_THRESHOLDS["elsewhere_net_eur"])
+        return _defaults()
+
+
+def _active_elsewhere_net_eur(live_data) -> float:
+    """Kompatibilitätswrapper — liefert nur die Netto-Schwelle."""
+    return _active_elsewhere_thresholds(live_data)["elsewhere_net_eur"]
 
 
 def _coords(meta: dict | None) -> tuple | None:
@@ -358,11 +383,14 @@ def evaluate_route(live_data, params: dict):
     critical_ct = (detour_cost / liters * 100) if liters else 0.0
     delta_ct = (ref_price - target_price) * 100
 
-    # Schwelle aus derselben Config wie /api/v1/decide (Konzept §4.5: „alle
-    # Schwellen in einer Config"). Vorher hart 1,50 € — das divergierte,
-    # sobald M7 nachzieht (Prüfstand §1.5/§3).
-    worth_it = net_eur >= _active_elsewhere_net_eur(live_data)
-    borderline = 0.5 <= net_eur < _active_elsewhere_net_eur(live_data)
+    # Schwellen aus derselben Config wie /api/v1/decide (Konzept §4.5: „alle
+    # Schwellen in einer Config"). Vorher hart 1,50/0,50 € — das divergierte,
+    # sobald M7 nachzieht (Prüfstand §1.5/§3, H1/B6).
+    th = _active_elsewhere_thresholds(live_data)
+    worth_th = th["elsewhere_net_eur"]
+    borderline_th = th["elsewhere_borderline_eur"]
+    worth_it = net_eur >= worth_th
+    borderline = borderline_th <= net_eur < worth_th
 
     verdict = "worth" if worth_it else "borderline" if borderline else "not_worth"
 
@@ -400,5 +428,13 @@ def evaluate_route(live_data, params: dict):
         "critical_delta_ct": round(critical_ct, 2),
         "worth_it": worth_it,
         "verdict": verdict,
+        "thresholds": {
+            "active": {
+                "elsewhere_net_eur": worth_th,
+                "elsewhere_borderline_eur": borderline_th,
+            }
+        },
+        "worth_threshold_eur": worth_th,
+        "borderline_threshold_eur": borderline_th,
         "error_code": None,
     }

@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.1)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.10.2)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -50,7 +50,6 @@
 | B2 | P0 | **Schema-Version & Migration des Feedback-Stores** | `store.json` hat kein `schema_version`; die nächste Feldänderung bricht alte Stores still. Ziel: Versionsfeld + Migrations-Funktionen je Versionssprung, Test „alter Store → neue Version". |
 | B4 | P2 | **Alarm-Zustellung** *(Aggregation ist fertig, 0.10.0)* | `alarms[]` in `/api/v1/health` + roter/gelber Punkt im Header sind da ([docs/BETRIEB.md](docs/BETRIEB.md#system-alarme-lesen)). Offen: jemand **schaut** nur hin, wenn die GUI offen ist. Ziel: optionaler ntfy-Versand bei `severity: error` (ein Webhook, kein Auth-Ausbau), konfigurierbar per `TANKAPP_NTFY_URL`, aus Datenschutzgründen ohne Preis-/Stationsdetails im Text. |
 | B5 | P1 | **POST-/Schreib-Endpunkte gegen Flut härten** | Rate-Limit deckt GET gut ab, aber `POST /fills`/`/intent` können von einem defekten Client das Ledger fluten. Zusätzlich Plausibilitätsgrenzen serverseitig: `tanked_at` nur plausibles Fenster (nicht 1970/2100), Liter/Preis Obergrenzen, Stringlängen. Kein Auth — einfache IP-/Minuten-Drossel reicht. |
-| B6 | P1 | **Server als einzige Quelle der Umweg-Strecke** | GUI und Server verwenden seit PR #69 beide Luftlinie × 1,3; der frühere Faktor-Widerspruch ist behoben. Die Schätzung bleibt aber doppelt implementiert. Ziel: Server liefert `detour_km_est` + `dist_mode` pro Alternative; die GUI zeigt exakt diese Zahl und berechnet die Strecke nicht selbst. |
 | B7 | P1 | **HTTP-Effizienz: gzip, getrenntes Caching, Poll-Bündelung** | `no-store` auf allem, keine Kompression, GUI pollt 8+ Ressourcen (~14.700 Req/Tag > 10.000er Anonym-Budget, Zählerstand aus V2-Analyse vor den B5-Fixes — jetzt mit LRU gemildert, aber strukturell ungelöst). Ziel: `Content-Encoding: gzip`; Hash-Assets `immutable`; semi-statische Endpunkte (heatmap, last_forecasts) 15–120 min cachebar; ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls. |
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?"-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online"-Zustand. |
@@ -125,7 +124,6 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| H1 | **P1** | **Umweg-Schwellen sind doppelt gepflegt:** GUI `detourEconomics` kodiert hart `netEur ≥ 1,5 / ≥ 0,5`; Server nutzt `active_thresholds()["elsewhere_net_eur"]` (verändert sich mit M7-Tuning). Trotz des seit PR #69 einheitlichen Streckenfaktors kann „Server prüfen" deshalb noch das Gegenteil der GUI-Ampel sagen. | Server liefert `verdict`/`worth_it` + Schwellen in der Antwort; GUI zeigt ausschließlich das; `data.ts`-Konstanten entfernen. (Mit B6 zusammenführen.) |
 | H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn \|Δ\| > Rauschband) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten". |
 | H4 | D | **Weiterhin offen (bereits gelistet, hier qualifiziert):** M3-Zweitmodell/Ensemble, gemeinsame Bootstrap-Ziehung über Stationen (§4.2) und w(h)-Rückkopplung ab ≥8 Füllungen. | Bleiben A9–A11 mit Datenbedarf; Reihenfolge nach M7-Fortschritt (A7). |
 | H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in docs/ENGINE.md, statt stillem `None`. |
@@ -134,16 +132,16 @@ Kurzantwort: **kein Rechenfehler gefunden** — Formeln (Umweg-`K`, Netto-€, `
 
 ## Quick Wins (jeweils ≤ ½ Tag, ohne Architektur-Abhängigkeit)
 
-> Status: **13 von 14 umgesetzt** (Version 0.10.0). Offen bleibt nur **B6/H1**
-> (Umweg: Server als einzige Quelle von Strecke und Schwellen) — ein größerer
-> Umbau der Detour-Sektion, der zusammen mit der H1-Schwellen-Konsolidierung
-> angegangen werden sollte.
+> Status: **14 von 14 umgesetzt** (Version 0.10.1 → 0.10.2). **B6/H1**
+> (Umweg: Server als einzige Quelle von Strecke und Schwellen) ist jetzt drin:
+> Server liefert `detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen,
+> GUI rechnet nicht selbst (kein `haversineKm*CIRCUITY`, keine 1,50/0,50-Konstanten).
 
 1. ✅ **A3** Storno-Flag für Fills (`DELETE /fills/{id}` → `voided`, Audit-Zeile) + Button im Wallet.
 2. ✅ **A6** CSV-Export `GET /api/v1/fills.csv` + Download-Link im System-Tab.
 3. ✅ **B1** Eine Zeile Backup-Skript für `runtime/` + Restore-Absatz in BETRIEB.md.
 4. ✅ **B4** `alarms[]`-Array in `/health` (nur Aggregation vorhandener Prüfungen) + roter Punkt im Header.
-5. ⬜ **B6/H1** Umweg: Server liefert `detour_km_est` **und** `verdict`/Schwellen; GUI-Eigenrechnung raus.
+5. ✅ **B6/H1** Umweg: Server liefert `detour_km_est` **und** `verdict`/Schwellen; GUI-Eigenrechnung raus (0.10.2).
 6. ✅ **B9** Version/Commit in `/health` + Footer-Anzeige.
 7. ✅ **C1** Einrichtungs-Checkliste als Daten-getriebene Karte (Status kommt aus vorhandenen Endpunkten).
 8. ✅ **C5** Zwei schnelle A11y-Fixes: Ampel-Chip mit Symbol (▲/▼/●) statt nur Farbe, Slider-`aria-valuetext` in €.
@@ -165,6 +163,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 |---|---|
 | 0.10.0 (11.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md) |
 | 0.10.1 (12.09.2026) | Doku-Umbau: ein Ordner `docs/` mit Index, Historisches in `docs/archiv/`, Modul-READMEs eingezogen, Dokumente auf Stand 0.10.x gebracht, Link-Test auf alle Dokumente erweitert |
+| 0.10.2 (12.09.2026) | **B6/H1** Umweg: Server liefert `detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen (`thresholds.active.elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar); GUI zeigt ausschließlich Server-Werte, `data.ts`-Konstanten und `haversineKm*CIRCUITY`-Eigenrechnung entfernt |
 
 Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **A6**
 (Share-URL offen), **B4** (ntfy-Zustellung offen), **C5** (Rest der
@@ -182,10 +181,9 @@ A11y-Runde offen).
 1. **B2 (Schema-Version + Migration des Feedback-Stores)** — letzter offener
    P0-Punkt: schützt die persönliche Bilanz, bevor echte Daten anwachsen.
    Storno (A3), Backup (B1) und Komma-Eingabe (E2) sind seit 0.10.0 drin.
-2. **Dann B6/H1** (Entscheidungs-Zahlen intern widerspruchsfrei: Server liefert
-   `detour_km_est`, `verdict` und die Schwellen, GUI rechnet nicht selbst) und
-   **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
-   Anonym-Budget).
+2. **B7** (gzip, getrenntes Caching, Poll-Bündelung → API-Last unter das
+   Anonym-Budget) — seit **B6/H1** (0.10.2) ist die Umweg-Ökonomie
+   server-einheitlich (`detour_km_est` + `verdict`/Schwellen vom Server).
 3. **B5** (Schreib-Endpunkte gegen Flut härten) und **B12** (Cheap-Prob-Basis
    ohne Station) — beide klein, beide ehrlichkeitsrelevant.
 4. **D1 direkt vor dem ersten größeren C-Feature** (`Dashboard.tsx` zerlegen) —

@@ -8,6 +8,7 @@ import {
   currentPrice,
   dayAfterLabel,
   detourEconomics,
+  detourVerdict,
   epochLabel,
   gapBands,
   germanDecimalToNumber,
@@ -238,7 +239,7 @@ describe("detour economics", () => {
     expect(r.fuelEur).toBeCloseTo(2.856, 10);
     expect(r.timeEur).toBeCloseTo(16 / 3, 9);
     expect(r.netEur).toBeCloseTo(3.2 - 2.856 - 16 / 3, 9);
-    expect(r.verdict).toBe("not_worth");
+    // H1/B6: Verdict kommt ausschließlich vom Server — hier nur Ökonomie, kein verdict-Feld.
     // Preisvorteil müsste 20,47 ct/L betragen, um den Umweg zu refinanzieren.
     expect(r.criticalCtPerL).toBeCloseTo(20.47, 1);
   });
@@ -249,31 +250,14 @@ describe("detour economics", () => {
     expect(dedicated.timeEur).toBeCloseTo(onroute.timeEur * 2, 10);
     expect(dedicated.km).toBe(onroute.km);
   });
-  it("flags clearly profitable detours and borderline ones", () => {
-    expect(
-      detourEconomics({
-        refPrice: 2.12,
-        altPrice: 2.0,
-        liters: 50,
-        km: 5,
-        mode: "onroute",
-        consumption: 7,
-        speedKmh: 45,
-        timeValueEurH: 12,
-      }).verdict,
-    ).toBe("worth");
-    expect(
-      detourEconomics({
-        refPrice: 2.12,
-        altPrice: 2.06,
-        liters: 40,
-        km: 8,
-        mode: "onroute",
-        consumption: 5,
-        speedKmh: 45,
-        timeValueEurH: 5,
-      }).verdict,
-    ).toBe("borderline");
+  it("maps server thresholds to verdict without hard-coded constants", () => {
+    // Server liefert Schwellen, GUI mappt nur — keine 1,5/0,5-Konstanten in data.ts.
+    expect(detourVerdict(2.0, 1.5, 0.5)).toBe("worth");
+    expect(detourVerdict(0.6, 1.5, 0.5)).toBe("borderline");
+    expect(detourVerdict(0.2, 1.5, 0.5)).toBe("not_worth");
+    // Mit M7-tunebaren Schwellen
+    expect(detourVerdict(1.0, 2.0, 0.8)).toBe("borderline");
+    expect(detourVerdict(2.5, 2.0, 0.8)).toBe("worth");
   });
 });
 

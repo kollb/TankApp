@@ -50,14 +50,12 @@ import {
   clockLabel,
   commaToDot,
   currentPrice,
-  CIRCUITY,
   deNumber,
-  detourEconomics,
+  detourVerdict,
   epochLabel,
   euro,
   formatHour,
   germanDecimalToNumber,
-  haversineKm,
   livePhaseHint,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
@@ -825,46 +823,8 @@ export function Dashboard() {
     bestPrice !== null && selectedPrice !== null
       ? (selectedPrice - bestPrice) * liters
       : null;
-  const selectedLat = selected?.lat;
-  const selectedLon = selected?.lon;
-  const detourOptions =
-    selected &&
-    selectedPrice !== null &&
-    typeof selectedLat === "number" &&
-    typeof selectedLon === "number"
-      ? fresh
-          .flatMap((row) => {
-            if (row.station_id === selected.station_id) return [];
-            const altPrice = price(row);
-            if (altPrice === null || !(altPrice < selectedPrice - 1e-9))
-              return [];
-            if (typeof row.lat !== "number" || typeof row.lon !== "number")
-              return [];
-            // Umweg-Konvention (Prüfstand §1.5): Luftlinie × 1,3 — dieselbe
-            // Größe, die der Server (route.py/decide.py) ableitet und mit der
-            // die lokale Rechnung arbeitet.
-            const km =
-              haversineKm(selectedLat, selectedLon, row.lat, row.lon) * CIRCUITY;
-            return [
-              {
-                row,
-                altPrice,
-                km,
-                economics: detourEconomics({
-                  refPrice: selectedPrice,
-                  altPrice,
-                  liters,
-                  km,
-                  mode: detourMode,
-                  consumption,
-                  speedKmh: speed,
-                  timeValueEurH: timeValueUsed,
-                }),
-              },
-            ];
-          })
-          .sort((a, b) => b.economics.netEur - a.economics.netEur)
-      : [];
+  // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
+  // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
   const identity = selected
     ? new URLSearchParams({
         city: activeCity,
@@ -874,9 +834,10 @@ export function Dashboard() {
     : "";
 
   // --- B4 Resources ---
+  // H1/B6: alle What-if-Parameter an den Server — Strecke und Verdict kommen ausschließlich vom Server.
   const decideRes = useResource<DecideResult>(
     activeCity
-      ? `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}`
+      ? `/api/v1/decide?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}`
       : null,
     30000,
     refresh,
@@ -950,8 +911,10 @@ export function Dashboard() {
     logReload,
   );
   const routeEval = useResource<RouteEvaluate>(
-    tab === "daily" && activeCity && (routeAltId || detourOptions[0]?.row.station_id)
-      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || detourOptions[0]?.row.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&detour_km=${encodeURIComponent(String(detourOptions.find((o) => o.row.station_id === (routeAltId || detourOptions[0]?.row.station_id))?.km || 3))}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
+    tab === "daily" &&
+      activeCity &&
+      (routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id)
+      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
       : null,
     30000,
     refresh,
@@ -2304,7 +2267,7 @@ export function Dashboard() {
               )}
             </section>
 
-            {/* Detour Section */}
+            {/* Detour Section — H1/B6: Server ist einzige Quelle für Strecke + Verdict */}
             <section
               className={`${panel} mb-6 p-5 sm:p-6`}
               aria-labelledby="detour-heading"
@@ -2318,241 +2281,303 @@ export function Dashboard() {
                   Rechnet sich der Umweg?
                 </h3>
                 <span className="font-mono text-[11px] text-slate-500">
-                  K = d · (c/100) · p + (d/v) · z
+                  K = d · (c/100) · p + (d/v) · z · Quelle: Server (decide)
                 </span>
               </div>
-              {detourOptions.length ? (
-                <>
-                  <p className="mb-4 text-xs leading-relaxed text-slate-400">
-                    Gegenüber deiner Vergleichsstation (
-                    <span className="font-medium text-slate-200">
-                      {selected?.name}
-                    </span>
-                    ): günstigere frische Stationen in {activeCity}. Umweg als
-                    Luftlinie × 1,3 — geschätzte Straßenstrecke, dieselbe
-                    Konvention wie die serverseitige Prüfung. Der echte Weg
-                    kann länger sein, dann rechnet sich der Umweg eher noch
-                    weniger.
-                  </p>
-                  {detourMode === "dedicated" && (
-                    <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-200">
-                      <span className="font-semibold">Extrafahrt:</span> Bei
-                      12 €/h Zeitwert ist eine Extrafahrt von zuhause praktisch
-                      nie wirtschaftlich — fahr nur hin, wenn du ohnehin an der
-                      Station vorbeikommst.
-                    </p>
-                  )}
-                  <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <label
-                      htmlFor="consumption"
-                      className="text-xs text-slate-400"
-                    >
-                      Verbrauch{" "}
-                      <span className="font-mono font-semibold text-emerald-400">
-                        {consumption} L/100 km
-                      </span>
-                      <input
-                        id="consumption"
-                        type="range"
-                        min={4}
-                        max={15}
-                        step={1}
-                        value={consumption}
-                        aria-valuetext={`${consumption} Liter pro 100 Kilometer`}
-                        onChange={(e) => setConsumption(Number(e.target.value))}
-                        className="mt-3 w-full"
-                      />
-                    </label>
-                    <label htmlFor="speed" className="text-xs text-slate-400">
-                      Stadt-/Pendel-Tempo{" "}
-                      <span className="font-mono font-semibold text-emerald-400">
-                        {speed} km/h
-                      </span>
-                      <input
-                        id="speed"
-                        type="range"
-                        min={25}
-                        max={80}
-                        step={5}
-                        value={speed}
-                        aria-valuetext={`${speed} Kilometer pro Stunde`}
-                        onChange={(e) => setSpeed(Number(e.target.value))}
-                        className="mt-3 w-full"
-                      />
-                    </label>
-                    <label
-                      htmlFor="timeValue"
-                      className="text-xs text-slate-400"
-                    >
-                      Zeitwert{" "}
-                      <span className="font-mono font-semibold text-emerald-400">
-                        {timeValue > 0
-                          ? `${timeValue} €/h`
-                          : `Auto (${timeValueUsed} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
-                      </span>
-                      <input
-                        id="timeValue"
-                        type="range"
-                        min={0}
-                        max={30}
-                        step={1}
-                        value={timeValue}
-                        aria-valuetext={
-                          timeValue > 0
-                            ? `${timeValue} Euro pro Stunde`
-                            : `Automatik ${timeValueUsed} Euro pro Stunde`
-                        }
-                        onChange={(e) => setTimeValue(Number(e.target.value))}
-                        className="mt-3 w-full"
-                      />
-                      <span className="mt-1 block text-[10px] text-slate-500">
-                        0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
-                      </span>
-                    </label>
-                    <label
-                      htmlFor="detourMode"
-                      className="text-xs text-slate-400"
-                    >
-                      Fahrtcharakter
-                      <select
-                        id="detourMode"
-                        aria-label="Fahrtcharakter"
-                        value={detourMode}
-                        onChange={(e) =>
-                          setDetourMode(
-                            e.target.value as DetourMode,
-                          )
-                        }
-                        className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
-                      >
-                        <option value="onroute">
-                          Auf dem Weg (nur Mehrweg)
-                        </option>
-                        <option value="dedicated">
-                          Extrafahrt (Hin & Rück)
-                        </option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
-                    {detourOptions.map((option) => {
-                      const worth =
-                        option.economics.verdict === "worth";
-                      const borderline =
-                        option.economics.verdict === "borderline";
-                      return (
-                        <div
-                          key={option.row.station_id}
-                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-200">
-                              {option.row.name}{" "}
-                              <span className="font-mono text-emerald-400">
-                                {euro(option.altPrice, 3)} €/L
-                              </span>
-                            </p>
-                            <p className="mt-0.5 text-[11px] text-slate-500">
-                              {option.km.toLocaleString("de-DE", {
-                                maximumFractionDigits: 1,
-                              })}{" "}
-                              km Umweg (Luftlinie × 1,3) · Ersparnis{" "}
-                              {euro(option.economics.grossEur)} · Sprit{" "}
-                              {euro(option.economics.fuelEur)} · Zeit{" "}
-                              {euro(option.economics.timeEur)} · erst ab{" "}
-                              {option.economics.criticalCtPerL.toLocaleString(
-                                "de-DE",
-                                { maximumFractionDigits: 1 },
-                              )}{" "}
-                              ct/L günstiger
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <span
-                              className={`font-mono text-lg font-bold tabular-nums ${worth ? "text-emerald-400" : borderline ? "text-amber-300" : "text-slate-400"}`}
-                            >
-                              {euro(option.economics.netEur)} € netto
-                            </span>
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                                worth
-                                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                                  : borderline
-                                    ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
-                                    : "border-rose-500/25 bg-rose-500/10 text-rose-300"
-                              }`}
-                            >
-                              {worth
-                                ? "lohnenswert"
-                                : borderline
-                                  ? "grenzwertig"
-                                  : "lohnt sich nicht"}
-                            </span>
-                            <button
-                              onClick={() => setRouteAltId(option.row.station_id)}
-                              className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === option.row.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
-                            >
-                              Server prüfen
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {routeEval.data && !routeEval.error && (
-                    <div className="mt-5 rounded-xl border border-sky-500/25 bg-sky-950/30 p-4">
-                      <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">
-                        <Cpu size={14} /> Serverseitige Prüfung: /v1/route/evaluate
-                      </h4>
-                      <div className="grid gap-3 text-xs sm:grid-cols-3">
-                        <div>
-                          <p className="text-slate-500">Referenz → Ziel</p>
-                          <p className="font-mono text-slate-200">
-                            {euro(routeEval.data.ref_price, 3)} → {euro(routeEval.data.alt_price, 3)} €/L
-                          </p>
-                          <p className="text-slate-400">Δ {routeEval.data.delta_ct} ct/L</p>
-                        </div>
-                        <div>
-                          <p className="text-slate-500">Kosten</p>
-                          <p className="text-slate-200">
-                            Brutto {euro(routeEval.data.gross_eur)} € · Umweg {euro(routeEval.data.detour_cost_eur)} €
-                          </p>
-                          <p className="text-slate-400">
-                            Sprit {euro(routeEval.data.fuel_cost_eur)} · Zeit {euro(routeEval.data.time_cost_eur)} · z={routeEval.data.z_used} €/h {routeEval.data.z_auto ? "(auto)" : ""} {routeEval.data.is_peak ? "Peak" : "Offpeak"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-slate-500">Netto</p>
-                          <p className={`font-mono text-lg font-bold ${routeEval.data.worth_it ? "text-emerald-400" : "text-amber-300"}`}>
-                            {euro(routeEval.data.net_eur)} € {routeEval.data.verdict}
-                          </p>
-                          <p className="text-slate-400">Kritisch ab {routeEval.data.critical_delta_ct} ct/L</p>
-                        </div>
-                      </div>
-                      <p className="mt-2 text-[11px] text-slate-500">
-                        Modus {routeEval.data.mode} · {routeEval.data.detour_km_oneway} km einfach, {routeEval.data.detour_km_total} km gesamt · Liter {routeEval.data.liters} · Stadt {routeEval.data.city || "—"}
-                      </p>
+              {(() => {
+                const rec = decideRes.data;
+                const serverAlts = rec?.alternatives_nearby ?? [];
+                const worthTh = rec?.thresholds?.active?.elsewhere_net_eur;
+                const borderlineTh =
+                  rec?.thresholds?.active?.elsewhere_borderline_eur;
+                const hasThresholds =
+                  typeof worthTh === "number" &&
+                  typeof borderlineTh === "number";
+                if (decideRes.pending && !rec) {
+                  return (
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs text-slate-500">
+                      Umweg-Ökonomie wird berechnet …
                     </div>
-                  )}
-                  {routeEval.error && (
-                    <p className="mt-3 text-xs text-amber-300">
-                      Server-Evaluierung fehlgeschlagen — lokale Rechnung bleibt gültig.
+                  );
+                }
+                if (!serverAlts.length) {
+                  return (
+                    <Empty>
+                      Kein günstigerer frischer Preis in {activeCity} — dann
+                      rechnet sich aktuell kein Umweg. Die Rechnung erscheint
+                      automatisch, sobald der Server (decide) Alternativen mit
+                      Strecke liefert.
+                    </Empty>
+                  );
+                }
+                return (
+                  <>
+                    <p className="mb-4 text-xs leading-relaxed text-slate-400">
+                      Gegenüber deiner Vergleichsstation (
+                      <span className="font-medium text-slate-200">
+                        {selected?.name}
+                      </span>
+                      ): Server liefert{" "}
+                      <span className="font-mono text-slate-300">
+                        detour_km_est
+                      </span>{" "}
+                      (Luftlinie × 1,3 → Straße, Quelle:{" "}
+                      <span className="font-mono text-slate-300">dist_mode</span>) und{" "}
+                      <span className="font-mono text-slate-300">verdict</span>. GUI
+                      rechnet die Strecke nicht selbst (B6/H1). Der echte Weg
+                      kann länger sein, dann rechnet sich der Umweg eher noch
+                      weniger.
                     </p>
-                  )}
-                </>
-              ) : (
-                <Empty>
-                  Kein günstigerer frischer Preis in {activeCity} — dann
-                  rechnet sich aktuell kein Umweg. Die Rechnung erscheint
-                  automatisch, sobald eine ausgewählte Stadt mehrere frische
-                  Preise mit Entfernungen meldet.
-                </Empty>
-              )}
+                    {detourMode === "dedicated" && (
+                      <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-200">
+                        <span className="font-semibold">Extrafahrt:</span> Bei
+                        12 €/h Zeitwert ist eine Extrafahrt von zuhause praktisch
+                        nie wirtschaftlich — fahr nur hin, wenn du ohnehin an der
+                        Station vorbeikommst.
+                      </p>
+                    )}
+                    <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <label
+                        htmlFor="consumption"
+                        className="text-xs text-slate-400"
+                      >
+                        Verbrauch{" "}
+                        <span className="font-mono font-semibold text-emerald-400">
+                          {consumption} L/100 km
+                        </span>
+                        <input
+                          id="consumption"
+                          type="range"
+                          min={4}
+                          max={15}
+                          step={1}
+                          value={consumption}
+                          aria-valuetext={`${consumption} Liter pro 100 Kilometer`}
+                          onChange={(e) => setConsumption(Number(e.target.value))}
+                          className="mt-3 w-full"
+                        />
+                      </label>
+                      <label htmlFor="speed" className="text-xs text-slate-400">
+                        Stadt-/Pendel-Tempo{" "}
+                        <span className="font-mono font-semibold text-emerald-400">
+                          {speed} km/h
+                        </span>
+                        <input
+                          id="speed"
+                          type="range"
+                          min={25}
+                          max={80}
+                          step={5}
+                          value={speed}
+                          aria-valuetext={`${speed} Kilometer pro Stunde`}
+                          onChange={(e) => setSpeed(Number(e.target.value))}
+                          className="mt-3 w-full"
+                        />
+                      </label>
+                      <label
+                        htmlFor="timeValue"
+                        className="text-xs text-slate-400"
+                      >
+                        Zeitwert{" "}
+                        <span className="font-mono font-semibold text-emerald-400">
+                          {timeValue > 0
+                            ? `${timeValue} €/h`
+                            : `Auto (${timeValueUsed} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
+                        </span>
+                        <input
+                          id="timeValue"
+                          type="range"
+                          min={0}
+                          max={30}
+                          step={1}
+                          value={timeValue}
+                          aria-valuetext={
+                            timeValue > 0
+                              ? `${timeValue} Euro pro Stunde`
+                              : `Automatik ${timeValueUsed} Euro pro Stunde`
+                          }
+                          onChange={(e) => setTimeValue(Number(e.target.value))}
+                          className="mt-3 w-full"
+                        />
+                        <span className="mt-1 block text-[10px] text-slate-500">
+                          0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
+                        </span>
+                      </label>
+                      <label
+                        htmlFor="detourMode"
+                        className="text-xs text-slate-400"
+                      >
+                        Fahrtcharakter
+                        <select
+                          id="detourMode"
+                          aria-label="Fahrtcharakter"
+                          value={detourMode}
+                          onChange={(e) =>
+                            setDetourMode(
+                              e.target.value as DetourMode,
+                            )
+                          }
+                          className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
+                        >
+                          <option value="onroute">
+                            Auf dem Weg (nur Mehrweg)
+                          </option>
+                          <option value="dedicated">
+                            Extrafahrt (Hin & Rück)
+                          </option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
+                      {serverAlts.map((alt) => {
+                        // Server ist Quelle — wenn Thresholds noch nicht da, kein Verdict-Label erfinden.
+                        const v = hasThresholds
+                          ? detourVerdict(alt.net_eur, worthTh!, borderlineTh!)
+                          : (alt.verdict as
+                              | "worth"
+                              | "borderline"
+                              | "not_worth");
+                        const worth = v === "worth";
+                        const borderline = v === "borderline";
+                        const km = alt.detour_km_est ?? alt.detour_km;
+                        const distMode = alt.dist_mode ?? alt.detour_mode;
+                        return (
+                          <div
+                            key={alt.station_id}
+                            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-200">
+                                {alt.name}{" "}
+                                <span className="font-mono text-emerald-400">
+                                  {euro(alt.price, 3)} €/L
+                                </span>
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-slate-500">
+                                {km.toLocaleString("de-DE", {
+                                  maximumFractionDigits: 1,
+                                })}{" "}
+                                km Umweg ({distMode ?? "—"}) · Ersparnis{" "}
+                                {alt.gross_eur != null
+                                  ? euro(alt.gross_eur)
+                                  : "—"}{" "}
+                                · Sprit{" "}
+                                {alt.fuel_cost_eur != null
+                                  ? euro(alt.fuel_cost_eur)
+                                  : "—"}{" "}
+                                · Zeit{" "}
+                                {alt.time_cost_eur != null
+                                  ? euro(alt.time_cost_eur)
+                                  : "—"}{" "}
+                                · erst ab{" "}
+                                {alt.critical_delta_ct != null
+                                  ? alt.critical_delta_ct.toLocaleString(
+                                      "de-DE",
+                                      { maximumFractionDigits: 1 },
+                                    )
+                                  : "—"}{" "}
+                                ct/L günstiger
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-3">
+                              <span
+                                className={`font-mono text-lg font-bold tabular-nums ${worth ? "text-emerald-400" : borderline ? "text-amber-300" : "text-slate-400"}`}
+                              >
+                                {euro(alt.net_eur)} € netto
+                              </span>
+                              {hasThresholds || alt.verdict ? (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                    worth
+                                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                                      : borderline
+                                        ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                                        : "border-slate-600 bg-slate-800/60 text-slate-400"
+                                  }`}
+                                >
+                                  {worth
+                                    ? "lohnenswert"
+                                    : borderline
+                                      ? "grenzwertig"
+                                      : "lohnt sich nicht"}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                                  netto {euro(alt.net_eur)} €
+                                </span>
+                              )}
+                              <button
+                                onClick={() => setRouteAltId(alt.station_id)}
+                                className={`rounded-lg border px-2 py-1 text-[11px] ${routeAltId === alt.station_id ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-400 hover:text-white"}`}
+                              >
+                                Server prüfen
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {routeEval.data && !routeEval.error && (
+                      <div className="mt-5 rounded-xl border border-sky-500/25 bg-sky-950/30 p-4">
+                        <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">
+                          <Cpu size={14} /> Serverseitige Prüfung: /v1/route/evaluate
+                        </h4>
+                        <div className="grid gap-3 text-xs sm:grid-cols-3">
+                          <div>
+                            <p className="text-slate-500">Referenz → Ziel</p>
+                            <p className="font-mono text-slate-200">
+                              {euro(routeEval.data.ref_price, 3)} → {euro(routeEval.data.alt_price, 3)} €/L
+                            </p>
+                            <p className="text-slate-400">Δ {routeEval.data.delta_ct} ct/L</p>
+                          </div>
+                          <div>
+                            <p className="text-slate-500">Kosten</p>
+                            <p className="text-slate-200">
+                              Brutto {euro(routeEval.data.gross_eur)} € · Umweg {euro(routeEval.data.detour_cost_eur)} €
+                            </p>
+                            <p className="text-slate-400">
+                              Sprit {euro(routeEval.data.fuel_cost_eur)} · Zeit {euro(routeEval.data.time_cost_eur)} · z={routeEval.data.z_used} €/h {routeEval.data.z_auto ? "(auto)" : ""} {routeEval.data.is_peak ? "Peak" : "Offpeak"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-slate-500">Netto</p>
+                            <p className={`font-mono text-lg font-bold ${routeEval.data.worth_it ? "text-emerald-400" : "text-amber-300"}`}>
+                              {euro(routeEval.data.net_eur)} € {routeEval.data.verdict}
+                            </p>
+                            <p className="text-slate-400">Kritisch ab {routeEval.data.critical_delta_ct} ct/L</p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500">
+                          Modus {routeEval.data.mode} · {routeEval.data.detour_km_oneway} km einfach, {routeEval.data.detour_km_total} km gesamt · Quelle {routeEval.data.detour_km_source ?? "—"} · Liter {routeEval.data.liters} · Stadt {routeEval.data.city || "—"}
+                        </p>
+                      </div>
+                    )}
+                    {routeEval.error && (
+                      <p className="mt-3 text-xs text-amber-300">
+                        Server-Evaluierung fehlgeschlagen — lokale Rechnung bleibt gültig (Server ist Quelle).
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
               <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
                 Netto-Ersparnis = (Dein Preis − günstigerer Preis) × Tankmenge
-                − Kraftstoff des Umwegs − Zeitwert der Umwegzeit. „Lohnenswert“
-                ab 1,50 €, „grenzwertig“ ab 0,50 €. Reine Rechenhilfe über
-                deine Angaben — keine Buchung, keine garantierte Ersparnis.
+                − Kraftstoff des Umwegs − Zeitwert der Umwegzeit.{" "}
+                {(() => {
+                  const rec = decideRes.data;
+                  const worthTh = rec?.thresholds?.active?.elsewhere_net_eur;
+                  const borderlineTh =
+                    rec?.thresholds?.active?.elsewhere_borderline_eur;
+                  if (
+                    typeof worthTh === "number" &&
+                    typeof borderlineTh === "number"
+                  ) {
+                    return `„Lohnenswert“ ab ${euro(worthTh)} €, „grenzwertig“ ab ${euro(borderlineTh)} € (Schwellen vom Server, M7-tunebar).`;
+                  }
+                  return "Schwellen kommen vom Server (decide → thresholds.active), keine feste Zahl in der GUI.";
+                })()}{" "}
+                Reine Rechenhilfe über deine Angaben — keine Buchung, keine
+                garantierte Ersparnis.
               </p>
             </section>
 
