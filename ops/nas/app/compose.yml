@@ -25,6 +25,8 @@ services:
       # Konzept §3.2: Stadt:Bundesland-Paare für den Feiertags-Dummy.
       TANKAPP_CITY_SUBDIVS: "${TANKAPP_CITY_SUBDIVS:-}"
       TANKAPP_WEBHOOK_TOKEN: "${TANKAPP_WEBHOOK_TOKEN:-}"
+      # B4: Alarm-Zustellung über ntfy (URL inklusive Topic). Leer = aus.
+      TANKAPP_NTFY_URL: "${TANKAPP_NTFY_URL:-}"
       # B5: 0 = automatisch (CPU-Kerne, max. 8), 1 = seriell.
       TANKAPP_MODEL_WORKERS: "${TANKAPP_MODEL_WORKERS:-0}"
       # B5: 1 = vorgeschlagene Schwellen aus dem Advice-Ledger anwenden (M7).

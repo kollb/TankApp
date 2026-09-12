@@ -20,6 +20,10 @@ class Settings:
     model_fuels: tuple[str, ...] = ("e10",)
     # Issue 50: gemeinsames Secret für den Uploader-Webhook (leer = Endpoint aus).
     webhook_token: str = ""
+    # B4: Alarm-Zustellung über ntfy. Leer = aus. Die URL (inklusive Topic) ist
+    # der einzige Geheimnisträger; sie wird in Logs/Meldungen bereinigt und
+    # niemals im Payload oder im GUI angezeigt.
+    notify_url: str = ""
     # Startknopf im GUI (POST /api/v1/jobs/{job}/run). Ohne Passwort, dafür
     # nur bei laufendem Job-Betrieb; wer ihn abschalten will: =0.
     gui_job_start: bool = True
@@ -77,6 +81,7 @@ class Settings:
             history_days=days,
             model_fuels=fuels,
             webhook_token=os.environ.get("TANKAPP_WEBHOOK_TOKEN", "").strip(),
+            notify_url=os.environ.get("TANKAPP_NTFY_URL", "").strip(),
             gui_job_start=os.environ.get("TANKAPP_GUI_JOB_START", "1").strip().lower()
             not in {"0", "false", "off", "no"},
             m7_auto_apply=os.environ.get("TANKAPP_M7_AUTO_APPLY", "0").strip()

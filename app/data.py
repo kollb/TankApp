@@ -495,6 +495,16 @@ class LiveData:
         except Exception:
             alarms = []
 
+        # B4: Zustellung sichtbar machen — ist der Webhook konfiguriert, und
+        # welche Errors gelten als gemeldet? Liest nur die lokale
+        # Zustandsdatei (kein Netz), damit das Healthcheck-Budget bleibt.
+        try:
+            from .notify import notify_status
+
+            notify = notify_status(self.settings)
+        except Exception:
+            notify = {"configured": False, "open_errors": [], "last_ok_at": None}
+
         # B9: Version + Build-Hash (einmalig beim Import bestimmt).
         try:
             from .version import build_info
@@ -532,6 +542,7 @@ class LiveData:
             and self.settings.netrc.stat().st_size > 0,
             "jobs_enabled": self.jobs_enabled,
             "alarms": alarms,
+            "notify": notify,
             "archive": {
                 key: archive.get(key)
                 for key in (
@@ -743,6 +754,13 @@ class LiveData:
             "hours": result["hours"],
             "matrix": result["matrix"],
             "counts": result["counts"],
+            # P0: Ehrlichkeits-Angaben — Reichweite der verwendeten Preise und
+            # Stichprobe der Vergleichs-Basis. Die GUI sagt damit, warum eine
+            # Zeile leer ist (Bestand jünger als das Fenster) und wann „100 %
+            # günstig“ Mechanik einer dünnen Basis statt einer Aussage ist.
+            "reference_counts": result["reference_counts"],
+            "range_from": result["range_from"],
+            "range_to": result["range_to"],
             "points": result["points"],
             "stations": result["stations"],
             "error_code": None,

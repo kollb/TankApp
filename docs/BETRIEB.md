@@ -37,6 +37,7 @@
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
 - [System-Alarme lesen](#system-alarme-lesen)
+  - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
   - [Version und Build-Hash prüfen](#version-und-build-hash-prüfen)
 - [Fehlersuche](#fehlersuche)
   - [Collector Störungsfälle](#collector-störungsfälle)
@@ -245,6 +246,10 @@ baut/aktualisiert; denselben Wert auf dem Pi als `TANKAPP_NAS_WEBHOOK_TOKEN`
 hinterlegen. Ohne Token bleibt der Trigger-Endpoint deaktiviert und die Jobs
 laufen rein intervallbasiert weiter.
 
+Optional, für Alarme auf dem Handy (B4): `TANKAPP_NTFY_URL=<URL inklusive Topic>`
+exportieren — siehe [Alarm-Zustellung über ntfy](#alarm-zustellung-über-ntfy-b4).
+Ohne die Variable werden keine Nachrichten verschickt.
+
 Mit anderen Pfaden:
 
 ```bash
@@ -299,6 +304,7 @@ Nur `--archive-dir`, kein `--runtime-dir`: Runtime bleibt auf SSD, HDD nur Rohar
 | Modelle | Bei Start, danach täglich, bei Fehler stündlich, unabhängig vom Archiv |
 | Selektion | Bei Start, danach täglich, nach Modell best-effort, publiziert nach `runtime/selection/current.json` |
 | Settlement | Bei Start, danach alle 30 min: rechnet Advice-Snapshots nach Fensterende + 30 min Lag gegen *beobachtete* Preise ab (`runtime/feedback/store.json`), setzt fällige Episoden auf `due` |
+| Alarm-Zustellung (B4) | Alle 5 min `severity: error`-Alarme prüfen, nur Zustandswechsel senden — nur mit `TANKAPP_NTFY_URL` → [ntfy](#alarm-zustellung-über-ntfy-b4) |
 | Veröffentlichung | Erst nach fertiger Berechnung atomar ersetzen, alte Ergebnisse bei Fehlern behalten |
 | Neustart | Docker restart unless-stopped, startet mit Docker, holt nach |
 
@@ -552,8 +558,62 @@ steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,
 `/api/v1/jobs/<job>/log`, `/api/v1/stats/summary`). Wer nur einen einzigen Check
 im Haushalt laufen lassen will, pollt `/health` und schaut auf `alarms`.
 
-Offen (siehe [TODO B4/B8](../TODO.md)): optionale Benachrichtigung per ntfy und
-Webhook-Retry Pi → NAS — heute ist `POST /api/v1/jobs/trigger` Fire-and-Forget.
+### Alarm-Zustellung über ntfy (B4)
+
+Wer die GUI nicht offen hat, bekommt Alarme mit `severity: "error"` auf das
+Handy: `app/notify.py` prüft im eigenen Takt (5 min) die Alarm-Lage und schickt
+**Zustandswechsel** an einen einzigen ntfy-Endpunkt. `severity: "warn"` wird
+bewusst nicht gepusht — Warnungen bleiben im Header-Punkt, sonst ist das Handy
+nach einem Tag nur noch laut.
+
+Einrichten (ein Wert, sonst nichts):
+
+```bash
+# Auf dem NAS, bevor `nas-up` das Compose-Projekt aktualisiert:
+export TANKAPP_NTFY_URL="https://ntfy.sh/tankapp-<zufälliger-name>"
+python3 tankapp.py nas-up
+# Handy: ntfy-App installieren, dasselbe Topic abonnieren.
+```
+
+Gesendet wird **nur**, was auch im GUI-Tooltip steht, plus App-Version —
+stabile Codes und ihre deutschen Klartexte, keine Preise, keine Tankstellen,
+keine Koordinaten, keine Pfade, keine Zugangsdaten:
+
+```json
+{"title": "TankApp: 2 Alarme",
+ "message": "collector_no_heartbeat — Noch kein Collector-Herzschlag des Pi auf dem NAS.\npolling_missing — Das gemeinsame Polling-Set ist ungültig oder fehlt — keine Stationen verfügbar.\n(TankApp 0.15.0)",
+ "priority": 4, "tags": ["warning"]}
+```
+
+Das Topic steht in der URL, nicht im Payload; `priority: 4` = Ton/Vibration.
+`ntfy.sh`-Topics sind öffentlich lesbar, sobald jemand den Namen kennt —
+deshalb ein zufälliger Topic-Name oder ein eigener ntfy-Server im LAN.
+
+| Situation | Nachricht |
+|---|---|
+| ein Fehler-Code kommt neu dazu | eine Meldung mit allen dann offenen Codes |
+| ein Code hält seit 6 h an | **eine** Erinnerung, danach Ruhe |
+| alle Fehler sind weg | einmal „wieder betriebsbereit“ (`priority: 2`) |
+| einzelne Codes verschwinden, andere bleiben | nichts — der Zustand wird still nachgezogen |
+| eine Warnung kommt oder geht | nichts |
+
+Zustellung fehlgeschlagen? Dann steht eine bereinigte Zeile (ohne URL, ohne
+Secret) im App-Log, der Zustand bleibt unverändert, der nächste Tick versucht
+es erneut:
+
+```bash
+cat data/runtime/notify/state.json                                  # was ist gemeldet
+docker compose -f ops/nas/app/compose.yml logs --tail 50 app | grep ntfy
+curl -s http://nas:1355/api/v1/health | jq '.alarms, .notify'        # konfiguriert? offene Codes?
+curl -s -X POST -d "Test-Nachricht vom NAS" "$TANKAPP_NTFY_URL"      # Handy muss klingeln
+```
+
+Ohne `TANKAPP_NTFY_URL` läuft alles wie vorher: Alarme stehen in `/health` und
+im Header-Punkt, es wird nichts verschickt.
+
+Noch offen (siehe [TODO B4](../TODO.md)): die Zustellung im System-Tab der GUI
+sichtbar machen (heute nur per `/health`) und Webhook-Retry Pi → NAS —
+`POST /api/v1/jobs/trigger` ist weiterhin Fire-and-Forget.
 
 ### Version und Build-Hash prüfen
 

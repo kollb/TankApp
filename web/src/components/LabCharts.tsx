@@ -1,4 +1,6 @@
 import React, { useId } from "react";
+// C9: Zahlenformate kommen aus einem Satz — Achsen/Tooltips sind keine Ausnahme.
+import { euro } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -21,7 +23,7 @@ export function LabLineChart({
   series,
   marks = [],
   height = 220,
-  yFmt = (v: number) => v.toFixed(1),
+  yFmt = (v: number) => euro(v, 1),
   xTicks = [],
   ariaDescription,
 }: {
@@ -143,7 +145,7 @@ export function HistogramBars({
   color = "#34d399",
   thresholds = [],
   height = 190,
-  fmt = (v: number) => v.toFixed(1) + " ct",
+  fmt = (v: number) => `${euro(v, 1)} ct`,
   ariaDescription,
 }: {
   values: number[];
@@ -242,7 +244,7 @@ export function DeltaBars({
   values,
   labels,
   height = 170,
-  fmt = (v: number) => v.toFixed(2) + " €",
+  fmt = (v: number) => `${euro(v, 2)} €`,
   ariaDescription,
 }: {
   values: number[];
@@ -381,7 +383,7 @@ export function CalibChart({
         return (
           <g key={i}>
             <circle cx={X(p.p)} cy={Y(p.hit)} r={3.5 + (p.n / maxN) * 5} fill={color} opacity={0.85} />
-            <title>{`P=${(p.p * 100).toFixed(0)}% real=${(p.hit * 100).toFixed(0)}% n=${p.n} ${p.cls === 0 ? "Werktag" : "WE/Feiertag"}`}</title>
+            <title>{`P = ${(p.p * 100).toFixed(0)} % · realisiert ${(p.hit * 100).toFixed(0)} % · n = ${p.n} · ${p.cls === 0 ? "Werktag" : "WE/Feiertag"}`}</title>
           </g>
         );
       })}
@@ -390,7 +392,7 @@ export function CalibChart({
       {livePoints.map((p, i) => (
         <g key={`live-${i}`}>
           <circle cx={X(p.p)} cy={Y(p.hit)} r={5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} opacity={0.95} />
-          <title>{`Live · P=${(p.p * 100).toFixed(0)}% real=${(p.hit * 100).toFixed(0)}% n=${p.n}`}</title>
+          <title>{`Live · P = ${(p.p * 100).toFixed(0)} % · realisiert ${(p.hit * 100).toFixed(0)} % · n = ${p.n}`}</title>
         </g>
       ))}
 

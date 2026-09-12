@@ -20,6 +20,8 @@
   - [11.09.2026 — Engine-Ausbau, Güte-Gate, Umweg-Konvention (Prüfstand §1.3/§1.5, §3.1–3.4)](#11092026--engine-ausbau-güte-gate-umweg-konvention-prüfstand-1315-3134)
   - [12.09.2026 — Version 0.10.0/0.10.1: Betrieb, GUI, Sprache](#12092026--version-01000101-betrieb-gui-sprache)
   - [12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal](#12092026--version-0110-ehrliche-eingaben-heatmap-basis-rp2-journal)
+  - [12.09.2026 — Version 0.14.0: Heatmap-Ehrlichkeit](#12092026--version-0140-heatmap-ehrlichkeit)
+  - [12.09.2026 — Version 0.15.0: Alarme aufs Handy, Werkstatt-Sprache](#12092026--version-0150-alarme-aufs-handy-werkstatt-sprache)
 - [Konzept-Abdeckung im Einzelnen](#konzept-abdeckung-im-einzelnen)
 - [Bewusst offen (Backlog mit Grund)](#bewusst-offen-backlog-mit-grund)
 - [Nicht umgesetzt und warum nicht](#nicht-umgesetzt-und-warum-nicht)
@@ -36,7 +38,7 @@
 | `latest_by` („bis wann muss ich tanken?“) | Parameter dokumentiert, nicht implementiert | schneidet Fenster und F1-Entscheidung |
 | Fahrtmodus `dedicated` | nur in der Selektion | auch in `/v1/decide` (§10) |
 | M7-Schwellen-Nachzug | Ankündigung | Vorschlag aus dem Advice-Ledger, abschaltbar (§13); Fortschritt als Kachel im System-Tab |
-| Systemzustand | über sieben Endpunkte verteilt | `alarms[]` in `/health` + Punkt im GUI-Header (B4) |
+| Systemzustand | über sieben Endpunkte verteilt | `alarms[]` in `/health` + Punkt im GUI-Header (B4), `severity: error` zusätzlich als ntfy-Push aufs Handy (0.15.0) |
 | Persönliche Bilanz | Beleg buchen, keine Korrektur | Storno mit Audit-Spur (A3), CSV-Export (A6), `runtime/`-Backup (B1) |
 | „Was läuft hier?“ | unsichtbar | `version` + `commit` in `/health` und Footer, `CHANGELOG.md` (B9) |
 | Dokumentation | verteilt über Root, `docs/`, `engine/`, `data-tools/`, `rp2/`, `sample/` | ein Ordner `docs/` mit Index, Historisches in `docs/archiv/` (0.10.1) |
@@ -183,6 +185,38 @@ einzige Quelle von Strecke und Schwellen), siehe
 | API-Explorer | „day (Beispiel)“ nur mit gewählter Station, sonst grau + Hinweis | E7 |
 | RP2-Journal | Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`), `journalctl --vacuum-size=50M` als Wartungsschritt | G2, [RP2.md](RP2.md#journal-größe-begrenzen-sd-karte-schonen) |
 
+### 12.09.2026 — Version 0.14.0: Heatmap-Ehrlichkeit
+
+Erster P0 aus echtem Betrieb (Tracking seit Dienstag): „Typisch am günstigsten:
+Di 06–08 Uhr — 100 % Chance günstig“ war im Raster nicht wiederzufinden, und
+die leere Mo-Zeile las sich wie Datenverlust. Beides war eine Anzeige-Lücke,
+kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Günstigste Stunde wiederfindbar | Eine Spalte = **eine** Stunde: Label „06–07 Uhr“ (`hourBucketLabel`) statt Zweistundenfenster „06–08 Uhr“, plus Erklärzeile im Panel | P0 12.09., C10 |
+| Gleichstand ausgeschrieben | Alle gleichauf liegenden Stunden zu Bereichen gebündelt („06–18 Uhr — 12 Stunden gleichauf“) statt erstbeste Nennung der Schleife | P0 12.09. |
+| Dünne Vergleichs-Basis | `reference_counts` je Zelle im Payload, `MIN_HEATMAP_REFERENCE = 30`, Kennzeichen „dünn“ + Rücknahme der Empfehlung („Mechanik, keine Empfehlung“); Zellwert bleibt sichtbar | P0 12.09., B12 |
+| „Zahlen verloren?“ | `range_from`/`range_to` + Zeile „Datenreichweite: 12.345 Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“ + amber Hinweis „fehlende Tage, kein Datenverlust“ | P0 12.09., C6-Teil |
+| Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
+| Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
+| Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 12.09.2026 — Version 0.15.0: Alarme aufs Handy, Werkstatt-Sprache
+
+Backlog-Runde ohne Live-Daten und ohne Produktentscheidung: Zustellung,
+Testschutz, Sprache und ein gemeinsamer Fehler-Zustand. Keine bestehende
+Rechnung geändert.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Alarme aufs Handy | `app/notify.py`: `severity: error` → **ein** ntfy-Webhook (`TANKAPP_NTFY_URL`), 5-min-Tick, Zustandswechsel + eine Erinnerung nach 6 h, „wieder betriebsbereit“ beim Abräumen; Text nur Codes + Klartext + Version (keine Preise/Stationen/Pfade/Secrets), Fehler bereinigt auf stderr, Zustand atomar in `runtime/notify/state.json`, `/health` → `notify`; ohne Variable passiert nichts | B4, [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4) |
+| Umweg-Rechnung abgesichert | Property-Tests mit fast-check (`web/src/data.property.test.ts`, 300 Läufe je Eigenschaft, fester Seed): Identität, Monotonie, exakter Break-even `criticalCtPerL`, Grenzfälle (`z=0`, `d=0`, `liter→∞`, `v≤0`), `worth_it`-Schwellen inkl. Kanten — reiner Testzuwachs | D3 |
+| Werkstatt-Sprache | Deutsche Primär-Labels statt Jargon („Wahrscheinlichkeit für günstig“, „Ampel-Stärke“, „Preis-Abstand“, „Prüfzeitraum“, „Ø Mehrkosten“, „Billigste Stunde“), Formel und Fachwort im Tooltip; Tageszahlen ausgeschrieben („Brier (30 Tage)“ statt „Brier 30d“) | F2, F3-Teil |
+| Bausteine geteilt | `web/src/components/ui.tsx`: `panel`, `Empty`, `Badge`, `Metric` (Tooltip auch per Tastatur) aus `Dashboard.tsx` ausgelagert, Render-Test daneben — gemeinsame Basis für den Views-Schnitt; `Dashboard.tsx` 4 098 Zeilen | D1-Teil |
+| Zahlen de-DE | Alle Anzeigen nutzen den Formatter-Satz: 21 `toFixed`-Stellen in `Dashboard.tsx` (PICP, δ̂, KI, q, Ampel-Stärke, MASE, CUSUM, tmpfs, ε) plus Achsen/Tooltips in `LineChart`/`LabCharts`; `format-convention.test.ts` zählt die erlaubten Reste (SVG-Koordinaten, Preis-Eingabefelder) und meldet neue | C9-Rest |
+| Fehler-Zustände einheitlich | `web/src/components/LoadError.tsx`: Klartext aus `problem(error_code)`, Rohcode darunter, **ein** `Erneut laden`-Knopf über den gemeinsamen Refresh-Zähler, `role="alert"`, kompakte Variante für Inline-Boxen; in sechs Panels verdrahtet, Render-Test daneben | C6-Teil |
+
 ## Konzept-Abdeckung im Einzelnen
 
 | § | Anforderung | Stand |
@@ -224,7 +258,7 @@ einzige Quelle von Strecke und Schwellen), siehe
 |---|---|
 | **ACI (§3.3)** | Konzept verlangt 4 Wochen Live-Betrieb vor der Aktivierung; ohne echte Scores wäre α eine erfundene Zahl. Bootstrap-Intervalle bleiben als unkalibriert gekennzeichnet. |
 | **M3-Zweitmodell/Ensemble (§3.2)** | Setzt die Abnahme-Kriterien (MASE, Pinball) voraus — die sind ohne echten Datenbestand nicht prüfbar. |
-| **Push-Benachrichtigung (§12 P2)** | Braucht ntfy/Telegram und eine Entscheidung über Netzzugänge; Trigger aus dem Decision Layer sind vorbereitet, aber ungetestet. |
+| **Preis-Push (§12 P2)** | Der **Alarm**-Push ist seit 0.15.0 drin (ntfy, `severity: error` → [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)). Offen bleibt die Meldung „Jetzt 4 ct unter Tagesmedian“: Trigger aus dem Decision Layer sind vorbereitet, aber ungetestet, und der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt (kein Dauerfeuer). |
 | **Top-3-Fenster-Trefferquote (§6)** | Die Engine veröffentlicht je Tag eine Prognosestunde; drei Kandidatenfenster wären geraten. Erst mit Fensterstruktur im Backtest. |
 | **w(h)-Rückkopplung in Selektion/F3 (§5.5)** | Profil ist berechnet (`wallet.wh_hours`), aber erst ab ≥ 8 Füllungen belastbar — vorher wäre der Default die ehrlichere Wahl. |
 | **Markenrabatte (§12 P1)** | `--brand-rebate` ist ein Eingriff in δ̂ und Score; ohne echte Rabattdaten nicht kalibrierbar. |

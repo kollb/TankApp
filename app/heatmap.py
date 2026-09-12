@@ -21,6 +21,18 @@ Für city (kein station_id):
 Die Vergleichs-Basis wirkt nur auf ``probability`` ohne ``station_id``; mit
 Station vergleicht die Heatmap ohnehin gegen den Zellen-Median, mit
 ``kind=level`` ist sie wirkungslos.
+
+Neben den Werten liefert das Ergebnis zwei Ehrlichkeits-Angaben, die die GUI
+braucht, um nicht zu übertreiben (P0 12.09.2026 — „günstigste Stunde 06–08
+Uhr, 100 % Chance“, obwohl der Tracking-Bestand erst vier Tage alt war):
+
+- ``range_from`` / ``range_to``: echte Reichweite der verwendeten Preise.
+  Das angefragte Fenster (``weeks``) ist oft deutlich größer als der Bestand,
+  sonst wirken leere Wochentags-Zeilen wie Datenverlust.
+- ``reference_counts``: Stichprobe der **Vergleichs-Basis** je Zelle (nur
+  ``probability``). Eine Zelle kann 8+ eigene Preise haben und trotzdem ein
+  Artefakt sein — wenn der Stunden-Median selbst aus 16 Preisen besteht, sind
+  „100 % günstig“ Mechanik, keine Aussage.
 """
 
 import datetime as dt
@@ -47,6 +59,11 @@ def _berlin_dow_hour(ts: dt.datetime):
     except Exception:
         b = ts
     return b.weekday(), b.hour
+
+
+def _as_utc(ts: dt.datetime) -> dt.datetime:
+    """Naive Zeitstempel als UTC lesen — sonst wirft min()/max() TypeError."""
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=dt.timezone.utc)
 
 
 def _median(values: list[float]):
@@ -79,15 +96,20 @@ def build_heatmap(
         list
     )  # (dow, hour) -> list prices gefilterte Station
     hour_prices = defaultdict(list)  # hour -> list prices aller Wochentage
+    used_stamps: list[dt.datetime] = []  # echte Reichweite der verwendeten Preise
+    used_stations: set = set()  # nur Stationen, deren Preise wirklich zählen
 
     for p in points:
         ts = p["timestamp"]
         if not isinstance(ts, dt.datetime):
             continue
-        dow, hour = _berlin_dow_hour(ts)
         price = p.get("price")
         if price is None or not math.isfinite(price):
             continue
+        dow, hour = _berlin_dow_hour(ts)
+        used_stamps.append(_as_utc(ts))
+        if p.get("station_id") is not None:
+            used_stations.add(p["station_id"])
         cell_prices_all[(dow, hour)].append(price)
         hour_prices[hour].append(price)
         if station_id is None or p.get("station_id") == station_id:
@@ -109,9 +131,22 @@ def build_heatmap(
     # Deutung („belastbar oder nicht“) trifft die Anzeige.
     matrix = [[None for _ in range(24)] for _ in range(7)]
     counts = [[0 for _ in range(24)] for _ in range(7)]
+    # Stichprobe der Vergleichs-Basis je Zelle (nur probability): mit Station
+    # der Stadtmedian derselben Zelle, bei basis=hour der Spalten-Median,
+    # bei basis=overall der Gesamtmedian des Fensters (dann überall gleich).
+    # Für level gibt es keine Vergleichs-Basis → None statt erfundener Zahlen.
+    reference_counts = None if kind == "level" else [[0] * 24 for _ in range(7)]
+    overall_count = len(all_prices_flat)
     for dow in range(7):
         for hour in range(24):
             key = (dow, hour)
+            if reference_counts is not None:
+                if station_id:
+                    reference_counts[dow][hour] = len(cell_prices_all.get(key, ()))
+                elif basis == "hour":
+                    reference_counts[dow][hour] = len(hour_prices.get(hour, ()))
+                else:
+                    reference_counts[dow][hour] = overall_count
             if kind == "level":
                 lst = (
                     cell_prices_station[key]
@@ -141,20 +176,25 @@ def build_heatmap(
                     cnt = sum(1 for price in lst if price <= reference + 1e-9)
                     matrix[dow][hour] = round(cnt / len(lst) * 100, 1)
 
-    total_points = len(points)
+    total_points = len(used_stamps)
     station_points = (
         sum(len(v) for v in cell_prices_station.values())
         if station_id
         else total_points
     )
-    stations_involved = len(set(p.get("station_id") for p in points))
+    stations_involved = len(used_stations)
 
     return {
         "days": DAYS,
         "hours": HOURS,
         "matrix": matrix,
         "counts": counts,
+        "reference_counts": reference_counts,
         "points": station_points if station_id else total_points,
         "stations": stations_involved,
         "basis": basis,
+        # Echte Reichweite der verwendeten Preise (UTC, ISO-8601) — das
+        # angefragte Fenster ist oft größer als der Bestand.
+        "range_from": min(used_stamps).isoformat() if used_stamps else None,
+        "range_to": max(used_stamps).isoformat() if used_stamps else None,
     }

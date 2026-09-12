@@ -184,6 +184,93 @@ def test_heatmap_probability_column_basis_shows_weekday_effect(b3_settings):
     assert with_station_hour["matrix"][0][18] == 100.0  # 1,70 ≤ Zellenmedian 1,71
 
 
+def test_heatmap_reports_reach_and_reference_sample(b3_settings):
+    """P0 12.09.2026: Reichweite des Bestands + Stichprobe der Vergleichs-Basis.
+
+    Nachgestellt ist der gemeldete Befund („Di 06–08 Uhr — 100 % Chance
+    günstig“, obwohl das Tracking erst am Dienstag begann): Dienstag hat je
+    Stunde acht günstige Preise, die übrigen Tage je zwei teure. Die Zelle ist
+    damit „belastbar“ (n = 8), ihr 100-%-Wert entsteht aber rein mechanisch aus
+    einem Stunden-Median über 16 Preise. Ohne `reference_counts` und ohne
+    `range_from`/`range_to` kann die GUI weder das eine noch das andere sagen.
+    """
+    utc = dt.timezone.utc
+    rows = []
+    # Di 08.09. 06:00 Berlin = 04:00 UTC — acht Preise, alle günstig.
+    for i in range(8):
+        rows.append(
+            (dt.datetime(2026, 9, 8, 4, i * 5, tzinfo=utc), UID, 1.70 + 0.01 * i)
+        )
+    # Mi/Do/Fr/Sa dieselbe Stunde: je zwei teurere Preise einer anderen Station.
+    for day in (9, 10, 4, 5):
+        for i in range(2):
+            rows.append(
+                (
+                    dt.datetime(2026, 9, day, 4, i * 5, tzinfo=utc),
+                    OTHER,
+                    1.90 + 0.01 * i,
+                )
+            )
+
+    def query(cfg, flux):
+        yield from (raw_price(ts, uid, "Frankfurt", price) for ts, uid, price in rows)
+        # Zählt nicht: geschlossene Meldung und Preis null. Reichweite und
+        # `points` dürfen nur echte, offene Preise nennen.
+        yield raw_price(
+            dt.datetime(2026, 9, 1, 4, 0, tzinfo=utc), UID, "Frankfurt", 1.50, "closed"
+        )
+        yield raw_price(
+            dt.datetime(2026, 9, 2, 4, 0, tzinfo=utc), UID, "Frankfurt", 0.0
+        )
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+
+    hm = live.heatmap("Frankfurt", "e10", "probability", weeks=2, basis="hour")
+    assert hm["error_code"] is None
+    # Artefakt: Di 06 Uhr hat n = 8 eigene Preise und steht auf 100 %.
+    assert hm["counts"][1][6] == 8
+    assert hm["matrix"][1][6] == 100.0
+    # … beruht aber auf einem Stunden-Median aus nur 16 Preisen.
+    assert hm["reference_counts"][1][6] == 16
+    # Spalten-Basis: dieselbe Referenz für jeden Wochentag dieser Stunde.
+    assert hm["reference_counts"][2][6] == 16
+    assert hm["reference_counts"][0][3] == 0
+
+    # Reichweite = verwendete Preise, nicht das angefragte 2-Wochen-Fenster.
+    assert hm["range_from"] == "2026-09-04T04:00:00+00:00"
+    assert hm["range_to"] == "2026-09-10T04:05:00+00:00"
+    assert hm["points"] == len(rows)
+    assert hm["stations"] == 2
+
+    # Gesamtmedian als Basis: eine Referenz für alle Zellen.
+    overall = live.heatmap("Frankfurt", "e10", "probability", weeks=2, basis="overall")
+    assert overall["reference_counts"][1][6] == len(rows)
+    assert overall["reference_counts"][4][6] == len(rows)
+
+    # Mit Station ist die Referenz der Stadtmedian derselben Zelle.
+    station = live.heatmap("Frankfurt", "e10", "probability", weeks=2, station_id=UID)
+    assert station["counts"][1][6] == 8  # nur die eigene Station
+    # Referenz ist hier der Stadtmedian derselben Zelle: Di 06 Uhr trägt in
+    # diesem Bestand nur die acht Preise der eigenen Station.
+    assert station["reference_counts"][1][6] == 8
+    assert station["reference_counts"][2][6] == 2  # Mi 06 Uhr: nur Station Two
+    assert station["points"] == 8
+
+    # Niveau hat keine Vergleichs-Basis — null statt erfundener Zähler.
+    level = live.heatmap("Frankfurt", "e10", "level", weeks=2)
+    assert level["reference_counts"] is None
+    assert level["range_from"] == hm["range_from"]
+    assert level["range_to"] == hm["range_to"]
+
+    # Leerer Bestand: keine Reichweite erfinden.
+    empty = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW).heatmap(
+        "Frankfurt", "e10", "probability", weeks=2
+    )
+    assert empty["range_from"] is None
+    assert empty["range_to"] is None
+    assert empty["points"] == 0
+
+
 def test_heatmap_rejects_unknown_basis(b3_settings):
     live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
     with pytest.raises(ValueError, match="invalid_basis"):
@@ -211,6 +298,10 @@ def test_heatmap_endpoint_accepts_basis_param(b3_settings):
             data = json.load(r)
         assert data["basis"] == "hour"
         assert data["error_code"] is None
+        # P0: Ehrlichkeits-Felder kommen auch über den API-Pfad an.
+        assert data["range_from"] and data["range_to"]
+        assert len(data["reference_counts"]) == 7
+        assert all(len(row) == 24 for row in data["reference_counts"])
         try:
             urllib.request.urlopen(
                 base

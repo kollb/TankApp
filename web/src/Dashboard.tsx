@@ -24,7 +24,6 @@ import {
   Wifi,
   WifiOff,
   SlidersHorizontal,
-  HelpCircle,
   Route,
   Terminal,
   Share2,
@@ -41,6 +40,9 @@ import {
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
 import { ApiExplorer } from "./components/ApiExplorer";
 import { HeatmapGrid } from "./components/HeatmapGrid";
+import { LoadError } from "./components/LoadError";
+// D1: geteilte UI-Bausteine (Panel-Klasse, Empty, Badge, Metric).
+import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
 import { LineChart } from "./components/LineChart";
 import {
@@ -53,6 +55,7 @@ import {
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
+  centPerLiter,
   checkFillDraft,
   clockLabel,
   commaToDot,
@@ -77,6 +80,7 @@ import {
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
   m7GateLine,
+  percentLabel,
   problem,
   segments,
   sliderCommit,
@@ -113,78 +117,6 @@ import {
   type JobRunNote,
   JOB_LABELS,
 } from "./data";
-
-const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
-
-function Empty({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-7 text-sm leading-relaxed text-slate-400">
-      {children}
-    </div>
-  );
-}
-
-function Badge({
-  children,
-  warning = false,
-}: {
-  children: ReactNode;
-  warning?: boolean;
-}) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-        warning
-          ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
-          : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  detail,
-  tip,
-  hint,
-}: {
-  label: string;
-  value: ReactNode;
-  detail: string;
-  tip?: string;
-  hint?: ReactNode;
-}) {
-  return (
-    <div className={`${panel} p-5`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-xs text-slate-400">{label}</div>
-        {tip && (
-          <span
-            tabIndex={0}
-            role="button"
-            aria-label={`Erklärung zu ${label}`}
-            className="cursor-help text-slate-500 hover:text-slate-300 focus:text-slate-200"
-            title={tip}
-          >
-            <HelpCircle size={14} aria-hidden="true" />
-          </span>
-        )}
-      </div>
-      <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
-        {value}
-      </div>
-      <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
-      {hint && (
-        <div className="mt-2 text-[10px] leading-relaxed text-slate-500">
-          {hint}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function JobCard({
   title,
@@ -589,6 +521,8 @@ export function Dashboard() {
 
   // Wenn bester Live-Preis bekannt wird und noch kein Custom-Preis eingegeben
   // wurde, vorbelegen (kein erfundener Fallback, nur echter bekannter Preis).
+  // C9: hier bewusst Punkt statt Komma — das Eingabefeld normalisiert jede
+  // Eingabe mit `commaToDot`, Vorbelegung und Getipptes müssen gleich aussehen.
   useEffect(() => {
     if (bestPrice !== null && Number.isFinite(bestPrice) && customPriceStr === "") {
       setCustomPriceStr(bestPrice.toFixed(3));
@@ -1514,7 +1448,7 @@ export function Dashboard() {
             {/* B4: Due-Prompt Banner */}
             {dueEpisode && !dueDismissed && (
               <section
-                aria-label="Due-Prompt"
+                aria-label="Rückmeldung nach Fensterende"
                 className="mb-6 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 p-5 shadow-xl"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1759,9 +1693,13 @@ export function Dashboard() {
                 }
                 if (decideRes.error || rec?.error_code) {
                   return (
-                    <div className="mt-5 rounded-xl border border-rose-500/25 bg-rose-950/20 p-4 text-xs text-rose-300">
-                      {problem(rec?.error_code) || "Empfehlung derzeit nicht erreichbar."}
-                    </div>
+                    <LoadError
+                      className="mt-5 rounded-xl border border-rose-500/25 bg-rose-950/20 p-4 text-xs leading-relaxed text-rose-200"
+                      errorCode={rec?.error_code || decideRes.errorCode}
+                      fallback="Empfehlung derzeit nicht erreichbar."
+                      onRetry={refreshNow}
+                      compact
+                    />
                   );
                 }
                 if (!rec) return null;
@@ -1833,7 +1771,7 @@ export function Dashboard() {
                               : "text-rose-300"
                         }`}
                       >
-                        Intervallqualität (7 d): {rec.quality.rolling_picp_7d_pct.toFixed(1)} %
+                        Intervallqualität (7 Tage): {percentLabel(rec.quality.rolling_picp_7d_pct, 1)}
                         {rec.quality.rolling_picp_7d_badge === "green"
                           ? " — im Zielbereich"
                           : rec.quality.rolling_picp_7d_badge === "yellow"
@@ -2036,7 +1974,9 @@ export function Dashboard() {
                 </strong>
               </span>
               <span className="font-mono">
-                Brier 30d:{" "}
+                <span title="Brier-Score der letzten 30 Tage: mittlere quadratische Abweichung der behaupteten Wahrscheinlichkeit vom Ergebnis — kleiner ist besser, Ziel < 0,25.">
+                  Brier (30 Tage):{" "}
+                </span>
                 <strong className="text-slate-200">
                   {liveAdvice?.brier_30d != null
                     ? deNumber(liveAdvice.brier_30d)
@@ -2288,10 +2228,12 @@ export function Dashboard() {
                 </span>
               </div>
               {dayStrip.error || dayStrip.data?.error_code ? (
-                <Empty>
-                  {problem(dayStrip.data?.error_code || dayStrip.errorCode) ||
-                    "Der Tagesverlauf konnte nicht geladen werden."}
-                </Empty>
+                <LoadError
+                  errorCode={dayStrip.data?.error_code || dayStrip.errorCode}
+                  fallback="Der Tagesverlauf konnte nicht geladen werden."
+                  onRetry={refreshNow}
+                  retryLabel="Tagesverlauf neu laden"
+                />
               ) : stripCells.some((c) => c.value !== null) ? (
                 <>
                   <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">
@@ -2846,10 +2788,12 @@ export function Dashboard() {
                 </p>
               )}
               {fillsRes.error ? (
-                <Empty>
-                  {problem(fillsRes.data?.error_code || fillsRes.errorCode) ||
-                    "Tankbelege konnten nicht geladen werden."}
-                </Empty>
+                <LoadError
+                  errorCode={fillsRes.data?.error_code || fillsRes.errorCode}
+                  fallback="Tankbelege konnten nicht geladen werden."
+                  onRetry={refreshNow}
+                  retryLabel="Belege neu laden"
+                />
               ) : fillList.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] text-left text-xs">
@@ -3013,7 +2957,9 @@ export function Dashboard() {
             <section className="mb-8">
               <div className="mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-                  Entscheidungs-Scoreboard · Out-of-Sample ({labData?.daysEval ?? "–"} Tage)
+                  <span title="Out-of-Sample: nur Tage, die das Modell beim Training nicht gesehen hat — keine Eigenbewertung.">
+                    Entscheidungs-Scoreboard · Prüfzeitraum ({labData?.daysEval ?? "–"} Tage)
+                  </span>
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-white">
                   Wurde die Empfehlung real belohnt?
@@ -3024,12 +2970,42 @@ export function Dashboard() {
                   <thead className="bg-slate-900 text-[11px] uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Station (Stadt)</th>
-                      <th className="px-3 py-3">δ̂ vs. Stadt</th>
-                      <th className="px-3 py-3 text-right hidden sm:table-cell">P behauptet</th>
-                      <th className="px-3 py-3 text-right hidden sm:table-cell">S&gt;0 real</th>
-                      <th className="px-3 py-3 text-right hidden md:table-cell">„Warten“</th>
-                      <th className="px-3 py-3 text-right hidden md:table-cell">„Jetzt“</th>
-                      <th className="px-3 py-3 text-right hidden lg:table-cell">Ø Regret</th>
+                      <th
+                        className="px-3 py-3"
+                        title="δ̂ (relative Preislage) aus der Selektion: Median der Differenz zum Median der anderen Stationen der Stadt, in ct/L — negativ = günstiger."
+                      >
+                        Preis-Abstand
+                      </th>
+                      <th
+                        className="px-3 py-3 text-right hidden sm:table-cell"
+                        title="Durchschnittlich behauptete Wahrscheinlichkeit P, dass Warten günstiger ist."
+                      >
+                        P behauptet
+                      </th>
+                      <th
+                        className="px-3 py-3 text-right hidden sm:table-cell"
+                        title="Beobachtete Trefferquote: wie oft Warten wirklich einen Vorteil brachte (Ersparnis S > 0)."
+                      >
+                        S&gt;0 real
+                      </th>
+                      <th
+                        className="px-3 py-3 text-right hidden md:table-cell"
+                        title="Empfehlungen „Warten“: Anzahl und Anteil, bei dem Warten tatsächlich günstiger war."
+                      >
+                        „Warten“
+                      </th>
+                      <th
+                        className="px-3 py-3 text-right hidden md:table-cell"
+                        title="Empfehlungen „Jetzt tanken“: Anzahl und Anteil, bei dem sofort tanken tatsächlich günstiger war."
+                      >
+                        „Jetzt“
+                      </th>
+                      <th
+                        className="px-3 py-3 text-right hidden lg:table-cell"
+                        title="Regret: durchschnittliche Mehrkosten der Regel gegenüber dem besten Zeitpunkt im Fenster (Orakel)."
+                      >
+                        Ø Mehrkosten
+                      </th>
                       <th className="px-3 py-3 text-right">Regel-€</th>
                       <th className="px-3 py-3 text-right hidden sm:table-cell">Orakel-€</th>
                     </tr>
@@ -3060,7 +3036,7 @@ export function Dashboard() {
                           <td className="px-3 py-2.5 font-mono">
                             {selDelta != null ? (
                               <span className={selDelta <= 0 ? "text-emerald-300 font-semibold" : "text-rose-300 font-semibold"}>
-                                {selDelta > 0 ? "+" : ""}{selDelta.toFixed(1)} ct
+                                {selDelta > 0 ? "+" : ""}{euro(selDelta, 1)} ct
                               </span>
                             ) : (
                               <span className="text-slate-500">—</span>
@@ -3124,7 +3100,7 @@ export function Dashboard() {
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
                     <p className="text-slate-400">Versprechen vs. Wirklichkeit</p>
                     <p className="mt-1 text-2xl font-bold text-white">
-                      {Number.isFinite(calibErr) ? `${(calibErr * 100).toFixed(1)} pp` : "—"}
+                      {Number.isFinite(calibErr) ? `${euro(calibErr * 100, 1)} pp` : "—"}
                     </p>
                     <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
                       Mittlerer Abstand der Punkte von der Diagonalen — je
@@ -3196,7 +3172,7 @@ export function Dashboard() {
                 <div className="w-full max-w-xs shrink-0 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                   <label className="text-xs font-medium uppercase tracking-wider text-slate-400 flex justify-between">
                     <span>Handlungsschwelle ε</span>
-                    <span className="font-mono text-emerald-400 font-bold">{eps.toFixed(2)} ct/L</span>
+                    <span className="font-mono text-emerald-400 font-bold">{centPerLiter(eps, 2)}</span>
                   </label>
                   <input
                     type="range"
@@ -3204,7 +3180,7 @@ export function Dashboard() {
                     max={4}
                     step={0.05}
                     value={eps}
-                    aria-valuetext={`${eps.toFixed(2).replace(".", ",")} Cent pro Liter`}
+                    aria-valuetext={`${euro(eps, 2)} Cent pro Liter`}
                     onChange={(e) => setEps(Number(e.target.value))}
                     className="mt-2 w-full accent-emerald-400"
                   />
@@ -3270,10 +3246,12 @@ export function Dashboard() {
                 </div>
               </div>
               {history.error || history.data?.error_code ? (
-                <Empty>
-                  {problem(history.data?.error_code || history.errorCode) ||
-                    "Der Preisverlauf konnte nicht geladen werden."}
-                </Empty>
+                <LoadError
+                  errorCode={history.data?.error_code || history.errorCode}
+                  fallback="Der Preisverlauf konnte nicht geladen werden."
+                  onRetry={refreshNow}
+                  retryLabel="Verlauf neu laden"
+                />
               ) : series.length ? (
                 <LineChart
                   series={series}
@@ -3334,10 +3312,12 @@ export function Dashboard() {
                 </div>
               </div>
               {forecast.error || forecast.data?.error_code ? (
-                <Empty>
-                  {problem(forecast.data?.error_code || forecast.errorCode) ||
-                    "Der Modell-Ausblick konnte nicht geladen werden."}
-                </Empty>
+                <LoadError
+                  errorCode={forecast.data?.error_code || forecast.errorCode}
+                  fallback="Der Modell-Ausblick konnte nicht geladen werden."
+                  onRetry={refreshNow}
+                  retryLabel="Ausblick neu laden"
+                />
               ) : forecastWindow && modelSeries.length ? (
                 <>
                   <LineChart
@@ -3424,8 +3404,8 @@ export function Dashboard() {
                   <div className="sm:col-span-2">
                     <p className="text-xs uppercase tracking-wider text-slate-500">Regel am Morgen ({activeLabDayRow.cls === 0 ? "Werktag" : "WE/Feiertag"})</p>
                     <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                      Training: <strong className="text-white">μ = {activeLabDayRow.mu.toFixed(1)} ct</strong>,{" "}
-                      <strong className="text-white">P(S&gt;0) = {activeLabDayRow.p != null ? `${Math.round(activeLabDayRow.p * 100)} %` : "—"}</strong>. Regel (ε = {eps.toFixed(1)} ct):{" "}
+                      Training: <strong className="text-white">μ = {euro(activeLabDayRow.mu, 1)} ct</strong>,{" "}
+                      <strong className="text-white">P(S&gt;0) = {activeLabDayRow.p != null ? `${Math.round(activeLabDayRow.p * 100)} %` : "—"}</strong>. Regel (ε = {euro(eps, 1)} ct):{" "}
                       <strong className={activeLabOutcome.wait ? "text-emerald-300" : "text-sky-300"}>
                         {activeLabOutcome.wait ? `WARTEN bis ~${String(activeLabDayRow.predHour).padStart(2, "0")}:00` : "JETZT tanken"}
                       </strong>
@@ -3434,7 +3414,7 @@ export function Dashboard() {
                   <div className="rounded-xl bg-slate-900/80 p-3">
                     <p className="text-xs text-slate-500">Realisierte Ersparnis S</p>
                     <p className={`text-2xl font-bold font-mono ${activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                      {activeLabDayRow.s > 0 ? "+" : ""}{activeLabDayRow.s.toFixed(1)} ct
+                      {activeLabDayRow.s > 0 ? "+" : ""}{euro(activeLabDayRow.s, 1)} ct
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-900/80 p-3">
@@ -3487,7 +3467,7 @@ export function Dashboard() {
                           { x: 18, label: "18" },
                           { x: 21, label: "21" },
                         ]}
-                        yFmt={(v) => `${v.toFixed(1)} ct`}
+                        yFmt={(v) => `${euro(v, 1)} ct`}
                         ariaDescription="Tageskurve des gewählten Tags: erwartete Preisdifferenz in Cent je Stunde, mit Markierung für den Anker und die prognostizierte günstigste Stunde."
                       />
                     ) : (
@@ -3505,8 +3485,8 @@ export function Dashboard() {
                     <HistogramBars
                       values={labSaves}
                       thresholds={[
-                        { x: eps, color: "#fbbf24", label: `ε ${eps.toFixed(1)}` },
-                        { x: labMu, color: "#38bdf8", label: `μ ${labMu.toFixed(1)}` },
+                        { x: eps, color: "#fbbf24", label: `ε ${euro(eps, 1)}` },
+                        { x: labMu, color: "#38bdf8", label: `μ ${euro(labMu, 1)}` },
                       ]}
                       height={220}
                       ariaDescription="Histogramm der Trainings-Verteilung S: wie häufig eine Ersparnis in Cent je Liter vorkam, mit Markern für die Schwelle ε und den Durchschnitt μ."
@@ -3537,7 +3517,12 @@ export function Dashboard() {
                     onChange={(e) => setHeatmapKind(e.target.value as "level" | "probability")}
                     className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
                   >
-                    <option value="probability">Cheap-Probability P(p ≤ Median)</option>
+                    <option
+                      value="probability"
+                      title="Cheap-Probability P(p ≤ Median): Anteil der Preise dieser Stunde, die unter dem Vergleichs-Median lagen — hoch heißt typischerweise günstig."
+                    >
+                      Wahrscheinlichkeit für günstig
+                    </option>
                     <option value="level">Preisniveau (Median €/L)</option>
                   </select>
                   {/* E5: Zeitraum war bisher fest verdrahtet — jetzt wählbar. */}
@@ -3602,7 +3587,9 @@ export function Dashboard() {
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <Activity size={16} className="text-emerald-400" />
-                  Meine Stationen · δ̂ Ranking
+                  <span title="δ̂ Ranking: sortiert nach relativer Preislage — Median der Differenz zu den anderen Stationen.">
+                    Meine Stationen · Ranking nach Preis-Abstand
+                  </span>
                 </h3>
               </div>
               {selection.data && selection.data.stations.length ? (
@@ -3612,11 +3599,36 @@ export function Dashboard() {
                       <tr className="border-b border-slate-800 text-slate-500">
                         <th className="py-2 pr-2">#</th>
                         <th className="py-2 pr-3">Station</th>
-                        <th className="py-2 pr-3">δ̂ ct/L</th>
-                        <th className="py-2 pr-3 hidden sm:table-cell">95%-KI</th>
-                        <th className="py-2 pr-3 hidden md:table-cell">q</th>
-                        <th className="py-2 pr-3 hidden md:table-cell">AV-Score</th>
-                        <th className="py-2 pr-3">Billigste Std</th>
+                        <th
+                          className="py-2 pr-3"
+                          title="δ̂ (relative Preislage): Median der Differenz zum Median der anderen Stationen, in ct/L — negativ = günstiger als die Umgebung."
+                        >
+                          Preis-Abstand ct/L
+                        </th>
+                        <th
+                          className="py-2 pr-3 hidden sm:table-cell"
+                          title="95-%-Konfidenzintervall aus dem Tages-Block-Bootstrap (2,5-/97,5-Perzentil) für den Preis-Abstand."
+                        >
+                          95-%-KI
+                        </th>
+                        <th
+                          className="py-2 pr-3 hidden md:table-cell"
+                          title="q-Wert (Benjamini-Hochberg-Korrektur über alle Stationen): signifikant günstiger bei q < 0,05."
+                        >
+                          q-Wert
+                        </th>
+                        <th
+                          className="py-2 pr-3 hidden md:table-cell"
+                          title="AV-Score (Verfügbarkeit): gewichtete Wahrscheinlichkeit, dass die Station in dieser Stunde zu den drei günstigsten der Stadt gehört — Gewicht ist dein Tankzeitprofil."
+                        >
+                          Ampel-Stärke
+                        </th>
+                        <th
+                          className="py-2 pr-3"
+                          title="Stunde mit dem tiefsten Punkt der Tageskurve (robuste harmonische Regression)."
+                        >
+                          Billigste Stunde
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
@@ -3625,13 +3637,13 @@ export function Dashboard() {
                           <td className="py-2 pr-2 font-mono">{s.rank}</td>
                           <td className="py-2 pr-3 font-semibold text-slate-200 truncate max-w-[180px]">{s.name}</td>
                           <td className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}>
-                            {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${s.delta_ct.toFixed(2)}` : "—"}
+                            {s.delta_ct != null ? `${s.delta_ct > 0 ? "+" : ""}${euro(s.delta_ct, 2)}` : "—"}
                           </td>
                           <td className="py-2 pr-3 font-mono text-slate-400 hidden sm:table-cell">
-                            {s.ci_lo != null && s.ci_hi != null ? `[${s.ci_lo.toFixed(2)}, ${s.ci_hi.toFixed(2)}]` : "—"}
+                            {s.ci_lo != null && s.ci_hi != null ? `[${euro(s.ci_lo, 2)}, ${euro(s.ci_hi, 2)}]` : "—"}
                           </td>
-                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.q_value != null ? s.q_value.toFixed(4) : "—"}</td>
-                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.avail != null ? s.avail.toFixed(2) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.q_value != null ? euro(s.q_value, 4) : "—"}</td>
+                          <td className="py-2 pr-3 font-mono hidden md:table-cell">{s.avail != null ? euro(s.avail, 2) : "—"}</td>
                           <td className="py-2 pr-3 font-mono">{formatHour(s.best_hour)}</td>
                         </tr>
                       ))}
@@ -3772,7 +3784,7 @@ export function Dashboard() {
             {/* Güte-Kacheln */}
             <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
               <Metric
-                label="Top-3-Trefferquote (30 d)"
+                label="Top-3-Trefferquote (30 Tage)"
                 value={
                   statsSummaryRes.data?.quality_metrics.top3_hit_rate != null ? (
                     <span className="text-emerald-300 font-mono">{`${Math.round(statsSummaryRes.data.quality_metrics.top3_hit_rate * 100)} %`}</span>
@@ -3788,10 +3800,10 @@ export function Dashboard() {
                 }
               />
               <Metric
-                label="MASE sprungfrei"
+                label="Sprungfreie Tage · MASE"
                 value={
                   statsSummaryRes.data?.quality_metrics.mase_sprungfrei != null ? (
-                    <span className="text-sky-300 font-mono">{statsSummaryRes.data.quality_metrics.mase_sprungfrei.toFixed(2)}</span>
+                    <span className="text-sky-300 font-mono">{euro(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 2)}</span>
                   ) : (
                     <span className="text-slate-500 font-mono">—</span>
                   )
@@ -3804,10 +3816,10 @@ export function Dashboard() {
                 }
               />
               <Metric
-                label="95-%-Band PICP"
+                label="95-%-Band-Trefferquote · PICP"
                 value={
                   statsSummaryRes.data?.quality_metrics.picp_95 != null ? (
-                    <span className="text-slate-100 font-mono">{statsSummaryRes.data.quality_metrics.picp_95.toFixed(1)} %</span>
+                    <span className="text-slate-100 font-mono">{percentLabel(statsSummaryRes.data.quality_metrics.picp_95, 1)}</span>
                   ) : (
                     <span className="text-slate-500 font-mono">—</span>
                   )
@@ -3820,7 +3832,7 @@ export function Dashboard() {
                 }
               />
               <Metric
-                label="CUSUM Drift-Status"
+                label="Drift-Status · CUSUM"
                 value={
                   statsSummaryRes.data?.quality_metrics.cusum_drift ? (
                     <span
@@ -3831,7 +3843,7 @@ export function Dashboard() {
                       }
                     >
                       {statsSummaryRes.data.quality_metrics.cusum_drift.status === "normal"
-                        ? `STABIL${statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum != null ? ` (${statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum.toFixed(2)}σ)` : ""}`
+                        ? `STABIL${statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum != null ? ` (${euro(statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum, 2)}σ)` : ""}`
                         : statsSummaryRes.data.quality_metrics.cusum_drift.status.toUpperCase()}
                     </span>
                   ) : (
@@ -4024,7 +4036,7 @@ export function Dashboard() {
                       <span className="text-slate-500">tmpfs belegt</span>
                       <span className="font-mono">
                         {collector.tmpfs_used_bytes !== null && collector.tmpfs_used_bytes !== undefined
-                          ? `${(Number(collector.tmpfs_used_bytes) / 1024 / 1024).toFixed(2)} MiB`
+                          ? `${euro(Number(collector.tmpfs_used_bytes) / 1024 / 1024, 2)} MiB`
                           : "—"}
                       </span>
                     </div>
@@ -4035,10 +4047,12 @@ export function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <Empty>
-                  {problem(collector?.error_code || collector?.influx?.error_code) ||
-                    "Noch kein Collector-Herzschlag auf dem NAS."}
-                </Empty>
+                <LoadError
+                  errorCode={collector?.error_code || collector?.influx?.error_code || health.errorCode}
+                  fallback="Noch kein Collector-Herzschlag auf dem NAS."
+                  onRetry={refreshNow}
+                  retryLabel="Status neu laden"
+                />
               )}
             </section>
 

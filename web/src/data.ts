@@ -209,6 +209,17 @@ export type Heatmap = {
   matrix: (number | null)[][];
   /** Stichprobe je Zelle — Zellen unter MIN_HEATMAP_POINTS zählen nicht. */
   counts?: number[][];
+  /**
+   * P0: Stichprobe der **Vergleichs-Basis** je Zelle (nur `probability`,
+   * sonst `null`). Eine Zelle kann genug eigene Preise haben und trotzdem
+   * ein Artefakt sein — liegt der Stunden-Median selbst auf 16 Preisen, sind
+   * „100 % günstig“ Mechanik, keine Aussage. Fehlt das Feld (alte API), gilt
+   * die Basis als unbekannt, nicht als dünn.
+   */
+  reference_counts?: (number | null)[][] | null;
+  /** P0: echte Reichweite der verwendeten Preise (ISO-8601, UTC). */
+  range_from?: string | null;
+  range_to?: string | null;
   points?: number;
   stations?: number;
   error_code?: string | null;
@@ -916,12 +927,6 @@ export function isHeatmapWeeks(value: unknown): value is HeatmapWeeks {
 }
 
 /**
- * B12: Vergleichs-Basis der Cheap-Probability ohne Station.
- * `hour` = Median **derselben Stunde** (Spalten-Basis) — rechnet den Tagesgang
- * heraus, damit die Wochentage untereinander vergleichbar sind.
- * `overall` = Gesamtmedian des Zeitfensters (wie vor B12).
- */
-/**
  * Mindest-Stichprobe je Heatmap-Zelle: Bei 6 Wochen und 5-Minuten-Takt hat
  * eine normale Zelle Dutzende Preise — alles unter 8 ist ein Artefakt
  * (z. B. 1–2 Nacht-Preise mit 100 % Cheap-Probability) und wird
@@ -930,7 +935,320 @@ export function isHeatmapWeeks(value: unknown): value is HeatmapWeeks {
 export const MIN_HEATMAP_POINTS = 8;
 /** Mindest-Zellen je Wochentag, sonst bleibt die Tages-Zeile leer. */
 export const MIN_HEATMAP_CELLS_PER_DAY = 3;
+/**
+ * P0 (12.09.2026): Mindest-Stichprobe der **Vergleichs-Basis**. Eine Zelle mit
+ * 8 eigenen Preisen kann trotzdem ein Artefakt zeigen: Lag der Tracking-Start
+ * vier Tage zurück, bestand der Stunden-Median aus 16 Preisen und jeder
+ * Dienstagswert darunter → „100 % Chance günstig“ für zwölf Stunden am Stück.
+ * Der Wert bleibt im Payload ehrlich stehen, aber die GUI kürt daraus keine
+ * „typisch günstigste Stunde“ mehr, sondern sagt, warum die Basis dünn ist.
+ * Im Dauerbetrieb (6 Wochen × 5-Minuten-Takt) ist die Schwelle leicht erfüllt.
+ */
+export const MIN_HEATMAP_REFERENCE = 30;
 
+/**
+ * C9/P0: Eine Heatmap-Spalte ist ein **1-Stunden-Kasten** (06:00–06:59).
+ * „06–08 Uhr“ las sich wie ein Zweistundenfenster, das es im Raster nicht gab
+ * — der Nutzer suchte die Spalten 06, 07, 08 und fand die Aussage nicht wieder.
+ */
+export function hourBucketLabel(hour: number | null | undefined): string {
+  if (hour == null || !Number.isFinite(hour)) return "—";
+  const h = ((Math.floor(hour) % 24) + 24) % 24;
+  return hourRunsLabel([{ start: h, end: h + 1 }]);
+}
+
+/** Zusammenhängender Stundenbereich; `end` ist exklusiv (06–07 Uhr = 6→7). */
+export type HourRun = { start: number; end: number };
+
+/**
+ * Stundenliste zu Bereichen bündeln. Ein Sprung über Mitternacht trennt
+ * (23, 0 → zwei Bereiche) — lieber ehrlich zwei Fenster als „23–01“ raten.
+ */
+export function hourRunsOf(hours: number[]): HourRun[] {
+  const sorted = [...hours]
+    .filter((h) => Number.isFinite(h))
+    .map((h) => ((Math.floor(h) % 24) + 24) % 24)
+    .sort((a, b) => a - b);
+  const unique = [...new Set(sorted)];
+  const runs: HourRun[] = [];
+  for (const hour of unique) {
+    const last = runs[runs.length - 1];
+    if (last && last.end === hour) last.end = hour + 1;
+    else runs.push({ start: hour, end: hour + 1 });
+  }
+  return runs;
+}
+
+/**
+ * Bereiche als Uhrzeit-Label: „06–07 Uhr“, „06–18 Uhr“, „06–07 und 12–13 Uhr“.
+ * Das Ende bleibt ohne Modulo („22–24 Uhr“, nicht „22–00 Uhr“), damit ein
+ * Bereich nie rückwärts läuft; `maxRuns` kürzt Aufzählungen für schmale
+ * Tabellenspalten — die volle Liste steht dann im `title`.
+ */
+export function hourRunsLabel(runs: HourRun[], maxRuns = 2): string {
+  if (!runs.length) return "—";
+  const parts = runs.map((run) => `${pad2(run.start)}–${pad2(run.end)}`);
+  if (parts.length <= maxRuns) return `${joinGerman(parts)} Uhr`;
+  const rest = parts.length - maxRuns;
+  return `${joinGerman(parts.slice(0, maxRuns))} Uhr (+${rest} weitere)`;
+}
+
+function pad2(value: number): string {
+  return String(Math.trunc(value)).padStart(2, "0");
+}
+
+/** Kleinster bekannter Wert; null, wenn alles unbekannt (nie Infinity zeigen). */
+function minOrNull(values: (number | null | undefined)[]): number | null {
+  const known = values.filter(
+    (v): v is number => v !== null && v !== undefined && Number.isFinite(v),
+  );
+  return known.length ? Math.min(...known) : null;
+}
+
+/** Deutsche Aufzählung: „a“, „a und b“, „a, b und c“. */
+function joinGerman(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} und ${parts[parts.length - 1]}`;
+}
+
+/** Gleiche Werte erkennen: Der Server rundet (Level 3, Probability 1 Stelle). */
+const HEATMAP_TIE_EPS = { level: 0.0005, probability: 0.05 } as const;
+
+export type HeatmapBest = {
+  /** Bester Wert der Zeile (Probability in %, Level in €/L). */
+  value: number;
+  /** Alle belastbaren Stunden, die gleichauf am besten sind — nicht nur eine. */
+  hours: number[];
+  runs: HourRun[];
+  /** Mehr als eine Stunde teilt sich den Bestwert. */
+  tied: boolean;
+  /** Kleinste eigene Stichprobe unter den besten Zellen. */
+  minCount: number | null;
+  /** Kleinste Stichprobe der Vergleichs-Basis unter den besten Zellen. */
+  minReference: number | null;
+  /** Vergleichs-Basis unter MIN_HEATMAP_REFERENCE → Aussage ist Mechanik. */
+  thinReference: boolean;
+};
+
+export type HeatmapDaySummary = {
+  day: string;
+  index: number;
+  /** Belastbare Zellen der Zeile (n ≥ MIN_HEATMAP_POINTS). */
+  cells: number;
+  median: number;
+  best: HeatmapBest | null;
+};
+
+/** Stichprobe der Zelle; null = Payload ohne Zähler (alte API) → unbekannt. */
+export function heatmapCellCount(
+  heatmap: Heatmap,
+  dayIndex: number,
+  hour: number,
+): number | null {
+  return heatmap.counts?.[dayIndex]?.[hour] ?? null;
+}
+
+/** Stichprobe der Vergleichs-Basis; null = unbekannt (alte API, kind=level). */
+export function heatmapReferenceCount(
+  heatmap: Heatmap,
+  dayIndex: number,
+  hour: number,
+): number | null {
+  return heatmap.reference_counts?.[dayIndex]?.[hour] ?? null;
+}
+
+/**
+ * Belastbar heißt: Wert vorhanden **und** eigene Stichprobe groß genug.
+ * Ohne Zähler im Payload (alte API) zählt der Wert wie bisher.
+ */
+export function heatmapCellOk(
+  heatmap: Heatmap,
+  value: number | null | undefined,
+  dayIndex: number,
+  hour: number,
+): value is number {
+  if (value == null || !Number.isFinite(value)) return false;
+  const n = heatmapCellCount(heatmap, dayIndex, hour);
+  return n === null || n >= MIN_HEATMAP_POINTS;
+}
+
+/**
+ * Tages-Zusammenfassungen (C10) — als reine Funktion, damit Gleichstand,
+ * dünne Zellen und dünne Vergleichs-Basis testbar sind statt nur klickbar.
+ */
+export function heatmapDaySummaries(heatmap: Heatmap): HeatmapDaySummary[] {
+  const isProb = heatmap.kind === "probability";
+  const eps = HEATMAP_TIE_EPS[isProb ? "probability" : "level"];
+  const hours = heatmap.hours?.length ? heatmap.hours : [...Array(24).keys()];
+  const out: HeatmapDaySummary[] = [];
+  (heatmap.days ?? []).forEach((day, dayIndex) => {
+    const row = heatmap.matrix?.[dayIndex] ?? [];
+    const solid: {
+      hour: number;
+      value: number;
+      n: number | null;
+      ref: number | null;
+    }[] = [];
+    row.forEach((value, col) => {
+      const hour = hours[col] ?? col;
+      if (!heatmapCellOk(heatmap, value, dayIndex, hour)) return;
+      solid.push({
+        hour,
+        value,
+        n: heatmapCellCount(heatmap, dayIndex, hour),
+        ref: heatmapReferenceCount(heatmap, dayIndex, hour),
+      });
+    });
+    // Unter drei belastbaren Zellen bleibt die Zeile ehrlich leer — kein Median
+    // und keine „günstigste Stunde“ aus ein, zwei Nacht-Zellen.
+    if (solid.length < MIN_HEATMAP_CELLS_PER_DAY) return;
+    const sorted = solid.map((c) => c.value).sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const bestValue = sorted.reduce((acc, v) =>
+      isProb ? Math.max(acc, v) : Math.min(acc, v),
+    );
+    const best = solid.filter((c) => Math.abs(c.value - bestValue) <= eps);
+    const refs = best.map((c) => c.ref).filter((v): v is number => v !== null);
+    const minReference = refs.length ? Math.min(...refs) : null;
+    out.push({
+      day,
+      index: dayIndex,
+      cells: solid.length,
+      median,
+      best: {
+        value: bestValue,
+        hours: best.map((c) => c.hour),
+        runs: hourRunsOf(best.map((c) => c.hour)),
+        tied: best.length > 1,
+        minCount: minOrNull(best.map((c) => c.n)),
+        minReference,
+        thinReference:
+          minReference !== null && minReference < MIN_HEATMAP_REFERENCE,
+      },
+    });
+  });
+  return out;
+}
+
+/**
+ * „Typisch am günstigsten“: Probability → höchster Tages-Median, Level →
+ * niedrigster. Zeilen ohne belastbare Zellen treten nicht an.
+ */
+export function heatmapBestDay(
+  summaries: HeatmapDaySummary[],
+  kind: Heatmap["kind"],
+): HeatmapDaySummary | null {
+  if (!summaries.length) return null;
+  return summaries.reduce((acc, s) =>
+    kind === "probability"
+      ? s.median > acc.median
+        ? s
+        : acc
+      : s.median < acc.median
+        ? s
+        : acc,
+  );
+}
+
+export type HeatmapCoverage = {
+  fromMs: number;
+  toMs: number;
+  /** Kalendertage (Europe/Berlin), die der Bestand abdeckt. */
+  days: number;
+  /** Tage des angefragten Fensters (weeks × 7). */
+  windowDays: number;
+  /** Bestand deckt das Fenster ab — keine „wo sind die Zahlen?“-Frage offen. */
+  complete: boolean;
+};
+
+/**
+ * P0: Fenster ≠ Bestand. Seit dem Tracking-Start am Dienstag bleibt die
+ * Mo-Zeile leer, weil es schlicht keinen Montag im Bestand gibt — das darf
+ * nicht wie Datenverlust aussehen.
+ */
+export function heatmapCoverage(heatmap: Heatmap): HeatmapCoverage | null {
+  const fromMs = Date.parse(heatmap.range_from ?? "");
+  const toMs = Date.parse(heatmap.range_to ?? "");
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
+    return null;
+  }
+  const from = berlinDay(fromMs);
+  const to = berlinDay(toMs);
+  const days =
+    from && to
+      ? Math.round(
+          (Date.UTC(to[0], to[1] - 1, to[2]) - Date.UTC(from[0], from[1] - 1, from[2])) /
+            86_400_000,
+        ) + 1
+      : null;
+  const weeks = Number.isFinite(heatmap.weeks) ? heatmap.weeks : 0;
+  const windowDays = Math.max(0, Math.round(weeks * 7));
+  return {
+    fromMs,
+    toMs,
+    days: days ?? Math.ceil((toMs - fromMs) / 86_400_000) + 1,
+    windowDays,
+    complete: days === null ? false : days >= windowDays,
+  };
+}
+
+/** „Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“ — Berliner Zeit, wie der Nutzer. */
+export function heatmapRangeLabel(heatmap: Heatmap): string | null {
+  const coverage = heatmapCoverage(heatmap);
+  if (!coverage) return null;
+  return `${berlinStamp(coverage.fromMs)} – ${berlinStamp(coverage.toMs)} Uhr`;
+}
+
+function berlinStamp(ms: number): string {
+  const parts = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ms));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  // de-DE hängt ans Kürzel einen Punkt („Di.“) — im Fließtext ohne lesbarer.
+  const weekday = get("weekday").replace(/\.$/, "");
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${weekday} ${get("day")}.${get("month")}. ${hour}:${get("minute")}`;
+}
+
+/** Bestand + Reichweite in einem Satz; null, wenn der Payload nichts hergibt. */
+export function heatmapSampleLabel(heatmap: Heatmap): string | null {
+  const points = heatmap.points;
+  if (points == null || !Number.isFinite(points)) return null;
+  const stations =
+    heatmap.stations != null && Number.isFinite(heatmap.stations)
+      ? ` von ${countLabel(heatmap.stations)} Stationen`
+      : "";
+  return `${countLabel(points)} Preise${stations}`;
+}
+
+/**
+ * Erklärt leere Zeilen, bevor der Nutzer Datenverlust vermutet: nur wenn das
+ * Fenster größer ist als der Bestand.
+ */
+export function heatmapCoverageNote(heatmap: Heatmap): string | null {
+  const coverage = heatmapCoverage(heatmap);
+  if (!coverage || coverage.complete || coverage.windowDays <= 0) return null;
+  const label = heatmapRangeLabel(heatmap);
+  return (
+    `Fenster ${coverage.windowDays} Tage (${heatmap.weeks} Wochen), Bestand aber nur ` +
+    `${coverage.days} ${coverage.days === 1 ? "Tag" : "Tage"}${label ? ` — ${label}` : ""}. ` +
+    "Wochentage, die in dieser Zeit nicht vorkamen, bleiben leer: Das sind fehlende Tage, kein Datenverlust."
+  );
+}
+
+
+/**
+ * B12: Vergleichs-Basis der Cheap-Probability ohne Station.
+ * `hour` = Median **derselben Stunde** (Spalten-Basis) — rechnet den Tagesgang
+ * heraus, damit die Wochentage untereinander vergleichbar sind.
+ * `overall` = Gesamtmedian des Zeitfensters (wie vor B12).
+ */
 export type HeatmapBasis = "overall" | "hour";
 export const HEATMAP_BASES: HeatmapBasis[] = ["hour", "overall"];
 export const HEATMAP_DEFAULT_BASIS: HeatmapBasis = "hour";
@@ -1480,7 +1798,7 @@ export const messages: Record<string, string> = {
   job_failed:
     "Der Lauf ist fehlgeschlagen. Letzte Ergebnisse bleiben erhalten; erneuter Versuch folgt.",
   selection_not_available:
-    "Noch keine Selektions-Artefakte vorhanden. Nach Modell-Job erscheint hier das Ranking mit δ̂.",
+    "Noch keine Selektions-Artefakte vorhanden. Nach dem Modell-Lauf erscheint hier das Ranking nach Preis-Abstand (δ̂).",
   selection_failed:
     "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
   collector_no_heartbeat:
@@ -1537,6 +1855,51 @@ export function euro(value: number | null | undefined, decimals = 2) {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
       });
+}
+
+/**
+ * C9: Formatierungs-Konventionen als reine Funktionen — überall de-DE,
+ * €/L mit drei Nachkommastellen, ct/L mit einer, Prozent ohne Dezimalstelle
+ * (eine, wo der Server eine liefert). Panels sollen runden, nicht raten; die
+ * vitest-Fälle in `data.test.ts` halten die Konvention fest.
+ */
+export function euroPerLiter(value: number | null | undefined, decimals = 3) {
+  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} €/L`;
+}
+
+export function centPerLiter(value: number | null | undefined, decimals = 1) {
+  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} ct/L`;
+}
+
+/** €/L → ct/L (Vorzeichen behalten, Rundung erst beim Formatieren). */
+export function euroToCentPerLiter(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? null : value * 100;
+}
+
+export function percentLabel(value: number | null | undefined, decimals = 0) {
+  return value == null || !Number.isFinite(value) ? "—" : `${euro(value, decimals)} %`;
+}
+
+/** Tausender-Trennung de-DE („12.345“) — Zählerstände, nie Preise. */
+export function countLabel(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : Math.round(value).toLocaleString("de-DE");
+}
+
+/**
+ * Uhrzeit-**Bereich** über ganze Stunden: „18–20 Uhr“ (Konzept-Sprechweise der
+ * Entscheidung). Einzelne Rasterzellen heißen dagegen `hourBucketLabel`.
+ */
+export function hourRangeLabel(
+  fromHour: number | null | undefined,
+  toHour: number | null | undefined,
+) {
+  if (fromHour == null || toHour == null) return "—";
+  if (!Number.isFinite(fromHour) || !Number.isFinite(toHour)) return "—";
+  const from = ((Math.floor(fromHour) % 24) + 24) % 24;
+  const to = ((Math.floor(toHour) % 24) + 24) % 24;
+  return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
 }
 export function timeLabel(stamp?: string | null) {
   return stamp

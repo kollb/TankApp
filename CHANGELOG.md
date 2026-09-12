@@ -4,6 +4,221 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.15.0] – 2026-09-12
+
+Backlog-Runde direkt nach dem Heatmap-P0 — alles, was **ohne Live-Daten und
+ohne Produktentscheidung** fertig werden konnte: Alarme kommen aufs Handy (B4),
+die Umweg-Ökonomie ist property-getestet (D3), die Werkstatt spricht im
+Primärtext Deutsch (F2), und alle Panels teilen sich einen Fehler-Zustand mit
+einem Knopf (C6-Teil). Kein P0, keine neue Datenquelle, keine Logikänderung an
+bestehenden Rechnungen.
+
+### Hinzugefügt
+
+- **B4 — Alarm-Zustellung über ntfy** (`app/notify.py`, neu): Wer die GUI nicht
+  offen hat, bekommt Alarme mit `severity: "error"` aufs Handy — ein Webhook,
+  konfiguriert über `TANKAPP_NTFY_URL` (URL inklusive Topic), ohne
+  `TANKAPP_NTFY_URL` bleibt alles wie bisher. Der Notifier läuft als
+  Daemon-Thread in `serve()` und prüft alle 5 min (`NOTIFY_INTERVAL_S`) die
+  bereits vorhandene Aggregation aus `app/alarms.py` — keine neue Prüfung, kein
+  zusätzlicher InfluxDB- oder Netz-Zugriff. Gesendet werden **Zustandswechsel**,
+  keine Dauerschleife: neuer Error-Code → eine Meldung mit allen offenen Codes
+  (`priority: 4`, Ton/Vibration), derselbe Code nach `NOTIFY_REPEAT_S` = 6 h
+  immer noch offen → **eine** Erinnerung, alle Errors weg → einmal „wieder
+  betriebsbereit“ (`priority: 2`). Verschwinden einzelne Codes, während andere
+  bleiben, wird der Zustand still nachgezogen; `severity: "warn"` wird bewusst
+  nie gepusht (Warnungen bleiben im Header-Punkt). Datenschutz: Im Text stehen
+  nur die stabilen Codes, ihre deutschen Klartexte aus `app/alarms.py` und die
+  App-Version — keine Preise, keine Stationen, keine Koordinaten, keine Pfade,
+  keine Zugangsdaten; Fehlermeldungen werden über `app/errors.redact`/
+  `public_detail` bereinigt, bevor sie auf stderr landen. Zustellung
+  fehlgeschlagen → bereinigte Zeile, Zustand unverändert, der nächste Tick
+  versucht es erneut; eine Ausnahme im Tick erreicht die Server-Schleife nicht.
+  Der gemeldete Zustand liegt atomar geschrieben in
+  `runtime/notify/state.json` (kaputte Datei = leer = Neustart), und
+  `/api/v1/health` zeigt `notify` (`configured`, `open_errors`, `last_ok_at`).
+  `ops/nas/app/compose.yml` reicht die Variable durch, Einrichtung und
+  Verhalten stehen in
+  [docs/BETRIEB.md](docs/BETRIEB.md#alarm-zustellung-über-ntfy-b4). Offen
+  bleibt die Anzeige im System-Tab der GUI (TODO B4).
+- **D3 — Property-Tests der Umweg-Ökonomie**
+  (`web/src/data.property.test.ts`, neu; `fast-check` als devDependency): Die
+  Umweg-Rechnung ist seit 0.10.0 server-only (`app/route.py::evaluate_route`),
+  die GUI rechnet über `detourEconomics`/`detourVerdict` in `data.ts` nach —
+  beide Seiten hatten bisher nur Beispielwerte. Jetzt gelten Eigenschaften über
+  300 Zufallsfälle je Eigenschaft (fester Seed, über `TANKAPP_FC_SEED`
+  umstellbar; gegen mehrere Seeds geprüft): Identität
+  `netto = brutto − sprit − zeit`, gezielter Umweg = 2× Wegkosten, Monotonie in
+  Litern/km/Verbrauch/Geschwindigkeit/Zeitwert, `criticalCtPerL` als **exakter**
+  Break-even (dort ist `netto = 0`), Grenzfälle `zeitwert = 0`, `km = 0`,
+  `liter → ∞` (kritischer Preisabstand → 0), `liter = 0` und `v ≤ 0` (Boden bei
+  1 km/h, keine Division durch null) sowie die `worth_it`-Schwellenlogik in
+  Server-Form: monoton, exakte `≥`-Kanten, bei gleichen Schwellen nur
+  `worth_it`/`not_worth_it`. Die Eingabebereiche sind auf die Produktgrenzen
+  genagelt (0,40–5,00 €/L, 5–100 L, 0–100 km, 4–15 L/100 km, 0–50 €/h), damit
+  die Tests reale Fälle und keine Zahlenfriedhöfe abdecken. Reiner Testzuwachs,
+  kein Produktcode geändert.
+- **C6-Teil — ein gemeinsamer Fehler-Zustand** (`web/src/components/LoadError.tsx`,
+  neu): Bisher unterschieden sich die Panels im Fehlerfall — Spinner, nackter
+  Text, nichts — und keiner bot einen Weg zurück. Jetzt gilt für alle dieselbe
+  Karte: Klartext aus dem bestehenden Problem-Mapping (`problem(error_code)` in
+  `data.ts`), darunter der Rohcode (`Code: influx_read_failed`) für eine
+  eindeutige Meldung an den Betrieb, daneben **ein** `Erneut laden`-Knopf
+  (er nutzt den vorhandenen gemeinsamen Refresh-Zähler `refreshNow()`, den alle
+  `useResource`-Aufrufe als Abhängigkeit haben), `role="alert"` und eine schmale
+  Variante für Inline-Boxen. Verdrahtet in sechs Panels: Empfehlung im Alltag,
+  Tagesverlauf, Tankbelege, Preisverlauf, Modell-Ausblick, Collector-Status.
+  Ohne Handler erscheint kein toter Knopf. Render-Test daneben
+  (`LoadError.test.tsx`, 7 Fälle: bekannter/unbekannter Code, Transport-Fehler
+  ohne Code, genau ein Knopf, eigenes Knopf-Label, kompakte Variante,
+  Zusatz-Hinweis).
+
+### Geändert
+
+- **F2 — deutsche Primär-Labels in der Werkstatt**: Die Jargon-Stellen heißen
+  jetzt deutsch, Formel und Fachwort stehen im `title`/Tooltip (der Glossar-Layer
+  C7 bleibt offen): „Wahrscheinlichkeit für günstig" statt „Cheap-Probability
+  P(p ≤ Median)" (Heatmap-Umschalter), „Ranking nach Preis-Abstand" statt
+  „δ̂ Ranking", „Preis-Abstand ct/L" statt „δ̂ ct/L", „Ampel-Stärke" statt
+  „AV-Score", „Prüfzeitraum" statt „Out-of-Sample" (Entscheidungs-Scoreboard),
+  „Ø Mehrkosten" statt „Ø Regret", „Billigste Stunde" statt „Billigste Std",
+  „q-Wert" statt „q", „95-%-KI" statt „95%-KI", „Sprungfreie Tage · MASE" statt
+  „MASE sprungfrei", „95-%-Band-Trefferquote · PICP" statt „95-%-Band PICP",
+  „Drift-Status · CUSUM" statt „CUSUM Drift-Status"; der `aria-label`
+  „Due-Prompt" heißt für Screenreader „Rückmeldung nach Fensterende" (derselbe
+  Text wie die sichtbare Augenbraue der Box). Neu erklärt zusätzlich:
+  „P behauptet", „S>0 real", „„Warten“"/„„Jetzt“", „Regel-€"/„Orakel-€" —
+  Spalten, die bisher nur mit Vorwissen lesbar waren. Reine Textarbeit, keine
+  Logik geändert; die e2e-Specs hängen an keinem der alten Labels.
+- **C9-Rest — Anzeige formatiert jetzt überall de-DE**: Die 21 `toFixed`-Stellen
+  in `Dashboard.tsx` sind auf den Formatter-Satz umgestellt (`euro`,
+  `percentLabel`, `centPerLiter`): „Intervallqualität (7 Tage): 87,5 %" statt
+  „87.5 %", `δ̂`/Bootstrap-KI/`q`-Wert/Ampel-Stärke im Ranking mit Komma
+  („+1,23 ct", „[-2,10, 0,40]", „0,0547"), Kalibrierfehler in Prozentpunkten,
+  MASE/PICP/CUSUM-Kacheln, tmpfs in MiB, `aria-valuetext` der ε-Schwelle (das
+  `.replace(".", ",")` von Hand ist damit überflüssig) sowie die
+  Standard-Achsen- und Tooltip-Formatierer in `LineChart`/`LabCharts`.
+  SVG-Pfad-Koordinaten bleiben `toFixed` (keine Anzeige), ebenso die
+  Vorbelegung der beiden Preis-Eingabefelder — die normalisieren jede Eingabe
+  mit `commaToDot`, Vorbelegung und Getipptes müssen gleich aussehen (Kommentar
+  im Code). Neu schützt `web/src/format-convention.test.ts` die Konvention als
+  Ratchet: `toFixed`-Stellen werden je Datei gezählt, eine neue Anzeige-Stelle
+  fällt mit einem Hinweis auf den Formatter-Satz auf — die ESLint-Regel aus dem
+  TODO ist damit ersetzt.
+- **F3-Teil — Tageszahlen ausgeschrieben**: „Brier (30 Tage)" statt „Brier 30d",
+  „Intervallqualität (7 Tage)" statt „(7 d)", „Top-3-Trefferquote (30 Tage)"
+  statt „(30 d)". Das Microcopy-Regelwerk und die ct/L-€/L-Einheitlichkeit
+  bleiben offen (F3/C9-Rest).
+
+### Umgebaut
+
+- **D1-Teil — geteilte UI-Bausteine** (`web/src/components/ui.tsx`, neu):
+  `panel` (die Karten-Grundklasse), `Empty` (Leer-/Hinweis-Zustand), `Badge`
+  (Ampel-Kapsel) und `Metric` (Kennzahlen-Karte mit Pflicht-Erklärzeile,
+  Tooltip am i-Symbol — per `tabindex`/`role` auch mit der Tastatur erreichbar —
+  und Zusatz-Hinweis) waren lokale Funktionen in `Dashboard.tsx` und sind jetzt
+  ein eigenes Modul mit Render-Test (`ui.test.tsx`, 6 Fälle). Damit haben die
+  künftigen Views (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`)
+  eine gemeinsame Basis, statt dass jede View eigene Karten baut; `Dashboard.tsx` sinkt
+  auf 4 098 Zeilen. Verhalten unverändert — reine Umlagerung plus Test. Der
+  Views-Schnitt selbst bleibt offen: Die drei Tabs teilen sich ~100
+  `useState`/`useResource`-Aufrufe in einer Komponente, vorher ist zu
+  entscheiden, ob gemeinsamer Zustand per Props oder Context wandert.
+
+## [0.14.0] – 2026-09-12
+
+Heatmap-Ehrlichkeit — der erste P0 aus echtem Tracking-Betrieb. Gemeldet war
+„Typisch am günstigsten: Di 06–08 Uhr — 100 % Chance günstig. Wie kann es sein?
+06–08 taucht da gar nicht auf“ plus die Frage „Zahlen verlorengegangen? Seit
+Dienstag wird getrackt“. Beides gegen den Code geprüft: Die Zahlen waren nicht
+weg (das Fenster ist 6 Wochen, der Bestand 4 Tage), aber die Heatmap hat es
+nicht gesagt — und die „günstigste Stunde“ war tatsächlich nicht
+wiederzufinden. Drei Ursachen, drei Korrekturen: Label-Semantik, Gleichstand,
+Stichprobe der Vergleichs-Basis.
+
+### Behoben
+
+- **P0 — „günstigste Stunde“ im Raster nicht wiederfindbar**: Eine
+  Heatmap-Spalte ist genau **eine** Stunde (06 = 06:00–06:59 Uhr), das Label
+  nannte aber ein Zweistundenfenster (`blockLabel` → „06–08 Uhr“). Gesucht
+  wurden die Spalten 06/07/08, gemeint war Spalte 06; im Niveau-Modus
+  („17–19 Uhr“) lag die dritte Stunde sogar auf „·“ (zu wenig Daten), das
+  genannte Fenster existierte also stellenweise gar nicht. Neu: `hourBucketLabel`
+  nennt den Kasten „06–07 Uhr“, die Erklärzeile sagt zusätzlich, dass eine
+  Spalte eine Stunde ist.
+- **P0 — Gleichstand wurde verschwiegen**: Lagen zwölf Zellen gleichauf
+  (Di 06–17 Uhr je 100 %), nannte der Fazit-Satz die Stunde, die die Schleife
+  zufällig zuerst als besser sah — „06–08 Uhr“ war damit willkürlich. Neu
+  werden alle gleichauf liegenden Stunden gesammelt, zu Bereichen gebündelt
+  (`hourRunsOf`/`hourRunsLabel`) und genannt: „Di 06–18 Uhr — 100 % der Preise
+  unter dem Median derselben Stunde, 12 Stunden gleichauf“. Lange Aufzählungen
+  kürzen für die schmale Tabellenspalte („06–07 und 12–13 Uhr (+2 weitere)“),
+  die volle Liste steht im `title`. Gleichstand ist der Normalfall, nicht die
+  Ausnahme: Gerundet wird serverseitig auf 0,1 % bzw. 0,001 €/L, die
+  Toleranz (`HEATMAP_TIE_EPS`) folgt dem.
+- **P0 — „100 % günstig“ aus dünner Vergleichs-Basis**: Vier Tage Bestand
+  reichten für 100 % über zwölf Stunden, weil der Stunden-Median selbst nur 16
+  Preise trug (Di 8 günstige, Mi–Sa je 2 teurere) — jeder Dienstagspreis lag
+  unter einer Referenz, die kaum Daten hatte. Die Zelle war formal belastbar
+  (n = 9 ≥ 8), die **Referenz** war es nicht. `build_heatmap` liefert deshalb
+  `reference_counts` (Stichprobe der Vergleichs-Basis je Zelle: mit Station der
+  Stadtmedian derselben Zelle, bei `basis=hour` der Spalten-Median, bei
+  `basis=overall` der Gesamtmedian; `null` für `kind=level`, das keine Basis
+  hat). Die GUI kennzeichnet solche Stunden als „dünn“ und nimmt die Empfehlung
+  zurück: statt „Typisch am günstigsten“ steht „Noch keine belastbare
+  ‚günstigste Stunde‘ … Vergleichs-Basis n=16, Mindestmaß 30 — Mechanik, keine
+  Empfehlung“. Der Zellwert bleibt unverändert sichtbar, nur die Deutung wird
+  ehrlich. Schwelle `MIN_HEATMAP_REFERENCE = 30` — im Dauerbetrieb (6 Wochen ×
+  5-Minuten-Takt × 18 Stationen) mühelos erfüllt, sie beißt nur in der
+  Anlaufphase. Fehlt das Feld (alte API, `kind=level`), gilt die Basis als
+  unbekannt, nicht als dünn.
+- **`points`/`stations` zählten zu viel**: Beide nannten alle gelieferten
+  Punkte, auch geschlossene Meldungen und Preise `null`/`NaN`, die in keine
+  Zelle flossen. Gezählt werden jetzt nur die Preise, die wirklich verwendet
+  wurden — dieselbe Zahl, die auch `range_from`/`range_to` begrenzen.
+
+### Hinzugefügt
+
+- **Datenreichweite im Heatmap-Panel** (P0, Teil von C6 „Reichweite der Daten
+  je Panel“): `range_from`/`range_to` im Payload (ISO-8601 UTC, echte Grenzen
+  der verwendeten Preise) und darunter die Zeile „Datenreichweite: 12.345
+  Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“. Ist das
+  Fenster größer als der Bestand, folgt amber der Grund für leere Zeilen:
+  „Fenster 42 Tage (6 Wochen), Bestand aber nur 5 Tage — Di 08.09. 05:10 –
+  Sa 12.09. 07:55 Uhr. Wochentage, die in dieser Zeit nicht vorkamen, bleiben
+  leer: Das sind fehlende Tage, kein Datenverlust.“ Ohne `range_*` (alte API)
+  bleibt die Zeile weg, statt ein Datum zu raten.
+- **C9-Teil — Formatter-Satz in `web/src/data.ts`** mit vitest-Schutz:
+  `euroPerLiter` (€/L, 3 Stellen), `centPerLiter` (ct/L, 1 Stelle),
+  `euroToCentPerLiter`, `percentLabel`, `countLabel` (Tausenderpunkt),
+  `hourRangeLabel` („18–20 Uhr“) und die Heatmap-Helfer `hourBucketLabel`,
+  `hourRunsOf`, `hourRunsLabel`. Die Heatmap ist als erstes Panel umgestellt:
+  „2,219 €/L“ statt „2.219“ (der Punkt las sich als Tausender-Trennzeichen) und
+  „100 %“ statt „100%“. Die übrigen Panels folgen panelweise (C9-Rest).
+- **Heatmap-Logik als reine Funktionen** (D1-Muster): `heatmapDaySummaries`,
+  `heatmapBestDay`, `heatmapCellOk`, `heatmapCellCount`, `heatmapReferenceCount`,
+  `heatmapCoverage`, `heatmapCoverageNote`, `heatmapRangeLabel`,
+  `heatmapSampleLabel` liegen in `data.ts`, `HeatmapGrid.tsx` rendert nur noch.
+- **Render-Tests der Heatmap** (`web/src/components/HeatmapGrid.test.tsx`,
+  `react-dom/server`): Der gemeldete Befund ist als Fixture nachgebaut (Di
+  06–17 Uhr 100 %, dünne Basis, Bestand seit Dienstag) und prüft das echte
+  Markup — „06–08 Uhr“ darf nicht mehr vorkommen, „06–18 Uhr“,
+  „12 Stunden gleichauf“, „n=16“, „dünn“ und „kein Datenverlust“ müssen. Dazu
+  `tests/test_b3.py::test_heatmap_reports_reach_and_reference_sample` für
+  Reichweite, Referenz-Zähler und die drei Basen (inkl. HTTP-Pfad).
+
+### Geändert
+
+- **Fazit-Satz trennt Stundenwert und Tagesmedian**: Vorher stand beim Niveau
+  „Di 17–19 Uhr — Median 2.219 €/L“ direkt unter einer Zeile, deren
+  Median-Spalte 2.239 zeigte — zwei „Mediane“ ohne Unterschied. Neu: „Di
+  17–18 Uhr — 2,219 €/L in dieser Stunde (Tagesmedian 2,239 €/L)“.
+- **Tabellen-`title` erklären statt raten lassen**: Stundenkopf („06–07 Uhr“),
+  Median-Spalte (was hier der Median von was ist), Tagesname (n belastbare von
+  24 Stunden) und die günstigste Stunde (Gleichstand, kleinste
+  Zellen-Stichprobe, Vergleichs-Basis) haben Tooltips; die Zellen-Tooltips
+  nutzen dieselben Formatter wie der sichtbare Text.
+
 ## [0.13.0] – 2026-09-12
 
 Kalibrierte Quick-Wins-Runde: der letzte P0 (Feedback-Store-Versionierung),

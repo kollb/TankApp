@@ -807,6 +807,18 @@ def serve(settings, host="0.0.0.0", port=1355, jobs=False):
     live.job_errors = scheduler.errors
     live.scheduler = scheduler
     server = make_server(settings, host, port, live)
+    # B4: Alarm-Zustellung läuft nebenher — nur wenn TANKAPP_NTFY_URL gesetzt
+    # ist, ohne Effekt auf Anfragen, Jobs oder den Shutdown.
+    notifier = None
+    if settings.notify_url:
+        from .notify import Notifier
+        from .version import VERSION
+
+        notifier = Notifier(
+            settings,
+            lambda: live.health().get("alarms") or [],
+            version=VERSION,
+        )
     context = (
         collector_lock(settings.runtime / "scheduler", label="NAS-Jobs")
         if jobs
@@ -817,6 +829,8 @@ def serve(settings, host="0.0.0.0", port=1355, jobs=False):
     try:
         if jobs:
             scheduler.start()
+        if notifier is not None:
+            notifier.start()
         print(
             f"TankApp GUI/API auf {host}:{server.server_port}; Hintergrundjobs {'an' if jobs else 'aus'}.",
             flush=True,
@@ -830,6 +844,8 @@ def serve(settings, host="0.0.0.0", port=1355, jobs=False):
             signal.signal(signal.SIGINT, stop)
         server.serve_forever(poll_interval=0.2)
     finally:
+        if notifier is not None:
+            notifier.stop()
         scheduler.stop()
         server.server_close()
         if context:

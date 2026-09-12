@@ -17,14 +17,32 @@ import {
   fillLimitHint,
   gapBands,
   germanDecimalToNumber,
+  centPerLiter,
+  countLabel,
+  euroPerLiter,
+  euroToCentPerLiter,
   haversineKm,
+  heatmapBestDay,
+  heatmapCoverage,
+  heatmapCoverageNote,
+  heatmapDaySummaries,
   heatmapPath,
+  heatmapRangeLabel,
+  heatmapSampleLabel,
   HEATMAP_BASES,
   HEATMAP_DEFAULT_BASIS,
   HEATMAP_DEFAULT_WEEKS,
   HEATMAP_WEEKS,
+  hourBucketLabel,
+  hourRangeLabel,
+  hourRunsLabel,
+  hourRunsOf,
   isHeatmapBasis,
   isHeatmapWeeks,
+  MIN_HEATMAP_CELLS_PER_DAY,
+  MIN_HEATMAP_POINTS,
+  MIN_HEATMAP_REFERENCE,
+  percentLabel,
   jobRunMessage,
   livePhaseCountdown,
   livePhaseHint,
@@ -38,6 +56,7 @@ import {
   splitOnGap,
   transitionRuleLine,
   triggerSkipLabel,
+  type Heatmap,
   type Station,
 } from "./data";
 
@@ -684,5 +703,274 @@ describe("Share-URL (A6)", () => {
     expect(rebuilt).toBe(
       "city=G%C3%BCtersloh&fuel=e5&station_id=s1&liters=42.5&weeks=12",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P0 12.09.2026 — Heatmap lesen: „günstigste Stunde“, Gleichstand, dünne
+// Vergleichs-Basis und die Reichweite des Bestands. Die Fälle bilden den
+// gemeldeten Befund nach: „Typisch am günstigsten: Di 06–08 Uhr — 100 %
+// Chance günstig“, obwohl (a) eine Spalte genau eine Stunde ist, (b) zwölf
+// Stunden gleichauf lagen und (c) der Bestand erst vier Tage alt war.
+// ---------------------------------------------------------------------------
+
+const HEAT_DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const HEAT_HOURS = Array.from({ length: 24 }, (_, h) => h);
+
+function heat(overrides: Partial<Heatmap> = {}): Heatmap {
+  return {
+    generated_at: "2026-09-12T06:00:00+00:00",
+    city: "Frankfurt",
+    fuel: "e10",
+    kind: "probability",
+    weeks: 6,
+    station_id: null,
+    basis: "hour",
+    days: HEAT_DAYS,
+    hours: HEAT_HOURS,
+    matrix: HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null)),
+    counts: HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0)),
+    reference_counts: HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0)),
+    points: 0,
+    stations: 0,
+    error_code: null,
+    ...overrides,
+  };
+}
+
+describe("Heatmap-Uhrzeiten (P0, C9)", () => {
+  it("nennt eine Spalte als das, was sie ist: ein Einstunden-Kasten", () => {
+    expect(hourBucketLabel(6)).toBe("06–07 Uhr");
+    expect(hourBucketLabel(17)).toBe("17–18 Uhr");
+    expect(hourBucketLabel(23)).toBe("23–24 Uhr");
+    expect(hourBucketLabel(null)).toBe("—");
+    expect(hourBucketLabel(Number.NaN)).toBe("—");
+  });
+
+  it("bündelt gleichauf liegende Stunden zu Bereichen", () => {
+    expect(hourRunsOf([6, 7, 8, 12])).toEqual([
+      { start: 6, end: 9 },
+      { start: 12, end: 13 },
+    ]);
+    // Mitternacht wird getrennt statt zu „23–02 Uhr“ verschmolzen.
+    expect(hourRunsOf([23, 0, 1])).toEqual([
+      { start: 0, end: 2 },
+      { start: 23, end: 24 },
+    ]);
+    expect(hourRunsOf([6, 6, 7])).toEqual([{ start: 6, end: 8 }]);
+    expect(hourRunsOf([])).toEqual([]);
+  });
+
+  it("schreibt Bereiche aus und kürzt für schmale Spalten", () => {
+    expect(hourRunsLabel([])).toBe("—");
+    expect(hourRunsLabel(hourRunsOf([6]))).toBe("06–07 Uhr");
+    expect(hourRunsLabel(hourRunsOf([6, 7]))).toBe("06–08 Uhr");
+    expect(hourRunsLabel(hourRunsOf([6, 7, 8, 9, 10, 11]))).toBe("06–12 Uhr");
+    expect(hourRunsLabel(hourRunsOf([6, 12]))).toBe("06–07 und 12–13 Uhr");
+    expect(hourRunsLabel(hourRunsOf(HEAT_HOURS))).toBe("00–24 Uhr");
+    expect(hourRunsLabel(hourRunsOf([1, 5, 9, 13]), 2)).toBe(
+      "01–02 und 05–06 Uhr (+2 weitere)",
+    );
+  });
+});
+
+describe("Heatmap-Tageszusammenfassung (P0)", () => {
+  const reported = () => {
+    // Dienstag 06–17 Uhr durchgehend 100 % — eigener n=9 je Zelle, aber die
+    // Vergleichs-Basis (Stunden-Median) trägt nur 16 Preise.
+    const matrix = HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null));
+    const counts = HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0));
+    const refs = HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0));
+    for (let h = 6; h <= 17; h += 1) {
+      matrix[1][h] = 100;
+      counts[1][h] = 9;
+      refs[1][h] = 16;
+    }
+    // Montag: eine einzige grüne Nacht-Zelle — zu wenig für eine Zeile.
+    matrix[0][23] = 100;
+    counts[0][23] = 9;
+    refs[0][23] = 9;
+    // Mittwoch: Wert vorhanden, aber nur 3 Preise → zählt nicht.
+    matrix[2][8] = 100;
+    counts[2][8] = 3;
+    refs[2][8] = 16;
+    return heat({
+      matrix,
+      counts,
+      reference_counts: refs,
+      points: 111,
+      stations: 2,
+      range_from: "2026-09-08T03:10:00+00:00",
+      range_to: "2026-09-12T05:55:00+00:00",
+    });
+  };
+
+  it("kürt keinen einzelnen Nacht-Wert und keine dünne Zelle", () => {
+    const summaries = heatmapDaySummaries(reported());
+    expect(summaries.map((s) => s.day)).toEqual(["Di"]);
+    expect(MIN_HEATMAP_CELLS_PER_DAY).toBe(3);
+  });
+
+  it("nennt alle gleichauf liegenden Stunden statt einer willkürlichen", () => {
+    const di = heatmapDaySummaries(reported())[0];
+    expect(di.cells).toBe(12);
+    expect(di.median).toBe(100);
+    expect(di.best?.hours).toEqual([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(di.best?.tied).toBe(true);
+    expect(di.best?.runs).toEqual([{ start: 6, end: 18 }]);
+    // Der gemeldete Befund: „06–08 Uhr“ kam im Raster nicht vor, weil die
+    // Nachbarstunden ganz andere Werte hatten. Jetzt steht der ganze Bereich.
+    expect(hourRunsLabel(di.best!.runs)).toBe("06–18 Uhr");
+  });
+
+  it("merkt, wenn die Vergleichs-Basis zu dünn für eine Empfehlung ist", () => {
+    const di = heatmapDaySummaries(reported())[0];
+    expect(di.best?.minCount).toBe(9);
+    expect(di.best?.minReference).toBe(16);
+    expect(di.best?.thinReference).toBe(true);
+    expect(MIN_HEATMAP_REFERENCE).toBeGreaterThan(MIN_HEATMAP_POINTS);
+
+    // Gleiche Zelle mit voller Basis (Dauerbetrieb) → belastbar.
+    const solid = reported();
+    solid.reference_counts = solid.reference_counts!.map((row) =>
+      row.map((n) => ((n ?? 0) > 0 ? MIN_HEATMAP_REFERENCE : n)),
+    );
+    const diSolid = heatmapDaySummaries(solid)[0];
+    expect(diSolid.best?.thinReference).toBe(false);
+    expect(diSolid.best?.minReference).toBe(MIN_HEATMAP_REFERENCE);
+  });
+
+  it("rechnet beim Niveau mit dem niedrigsten Median und €/L-Zellen", () => {
+    const matrix = HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null));
+    const counts = HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0));
+    // Befund 12.09.: Di 06–11 = 2,239 · 12 = 2,389 · 13 = 2,309 · 14 = 2,269 ·
+    // 15/16 = 2,239 · 17 = 2,219 — günstigste Stunde 17, nicht „17–19“.
+    const levels = [2.239, 2.239, 2.239, 2.239, 2.239, 2.239, 2.389, 2.309, 2.269, 2.239, 2.239, 2.219];
+    levels.forEach((value, i) => {
+      matrix[1][6 + i] = value;
+      counts[1][6 + i] = 40;
+    });
+    const summaries = heatmapDaySummaries(
+      heat({ kind: "level", basis: "overall", matrix, counts, reference_counts: null }),
+    );
+    const di = summaries[0];
+    expect(di.best?.hours).toEqual([17]);
+    expect(di.best?.value).toBeCloseTo(2.219, 3);
+    expect(hourRunsLabel(di.best!.runs)).toBe("17–18 Uhr");
+    // Ohne reference_counts (kind=level / alte API) ist die Basis unbekannt,
+    // nicht dünn — sonst wäre jede Niveau-Aussage warnend.
+    expect(di.best?.minReference).toBeNull();
+    expect(di.best?.thinReference).toBe(false);
+    expect(heatmapBestDay(summaries, "level")).toBe(di);
+  });
+
+  it("nimmt bei Gleichstand im Niveau beide Stunden", () => {
+    const matrix = HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null));
+    const counts = HEAT_DAYS.map(() => HEAT_HOURS.map(() => 12));
+    matrix[3][16] = 2.209;
+    matrix[3][17] = 2.209;
+    matrix[3][18] = 2.229;
+    const do_ = heatmapDaySummaries(
+      heat({ kind: "level", reference_counts: null, matrix, counts }),
+    ).find((s) => s.day === "Do");
+    expect(do_?.best?.hours).toEqual([16, 17]);
+    expect(hourRunsLabel(do_!.best!.runs)).toBe("16–18 Uhr");
+  });
+
+  it("bleibt ohne belastbare Zellen ganz still", () => {
+    expect(heatmapDaySummaries(heat())).toEqual([]);
+    expect(heatmapBestDay([], "probability")).toBeNull();
+  });
+
+  it("lässt sich von einem Payload ohne Zähler nicht aus der Ruhe bringen", () => {
+    const matrix = HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null));
+    matrix[4][10] = 80;
+    matrix[4][11] = 60;
+    matrix[4][12] = 70;
+    const fr = heatmapDaySummaries(
+      heat({ matrix, counts: undefined, reference_counts: undefined }),
+    )[0];
+    expect(fr.day).toBe("Fr");
+    expect(fr.best?.hours).toEqual([10]);
+    expect(fr.best?.minCount).toBeNull();
+    expect(fr.best?.thinReference).toBe(false);
+  });
+});
+
+describe("Heatmap-Reichweite (P0: „Zahlen verloren?“)", () => {
+  const startup = () =>
+    heat({
+      weeks: 6,
+      points: 12345,
+      stations: 18,
+      range_from: "2026-09-08T03:10:00+00:00",
+      range_to: "2026-09-12T05:55:00+00:00",
+    });
+
+  it("zählt die Berliner Kalendertage des Bestands, nicht des Fensters", () => {
+    const coverage = heatmapCoverage(startup())!;
+    expect(coverage.days).toBe(5);
+    expect(coverage.windowDays).toBe(42);
+    expect(coverage.complete).toBe(false);
+  });
+
+  it("sagt, dass leere Wochentage fehlende Tage sind", () => {
+    const note = heatmapCoverageNote(startup())!;
+    expect(note).toContain("Fenster 42 Tage (6 Wochen)");
+    expect(note).toContain("nur 5 Tage");
+    expect(note).toContain("kein Datenverlust");
+    expect(note).toContain("Di 08.09. 05:10");
+  });
+
+  it("schweigt, wenn das Fenster gedeckt ist oder die Reichweite fehlt", () => {
+    const full = heat({
+      weeks: 1,
+      range_from: "2026-09-01T00:00:00+00:00",
+      range_to: "2026-09-12T00:00:00+00:00",
+    });
+    expect(heatmapCoverage(full)!.complete).toBe(true);
+    expect(heatmapCoverageNote(full)).toBeNull();
+    // Alte API ohne range_*: nichts erfinden.
+    expect(heatmapCoverage(heat())).toBeNull();
+    expect(heatmapCoverageNote(heat())).toBeNull();
+    expect(heatmapRangeLabel(heat())).toBeNull();
+  });
+
+  it("zeigt Reichweite und Bestand in Berliner Zeit und de-DE-Zählung", () => {
+    expect(heatmapRangeLabel(startup())).toBe("Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr");
+    expect(heatmapSampleLabel(startup())).toBe("12.345 Preise von 18 Stationen");
+    expect(heatmapSampleLabel(heat({ points: 7, stations: undefined }))).toBe(
+      "7 Preise",
+    );
+    expect(heatmapSampleLabel(heat({ points: undefined }))).toBeNull();
+  });
+});
+
+describe("Formatierer (C9)", () => {
+  it("trennt €/L und ct/L und rundet einheitlich", () => {
+    expect(euroPerLiter(2.219)).toBe("2,219 €/L");
+    expect(euroPerLiter(2.2)).toBe("2,200 €/L");
+    expect(euroPerLiter(null)).toBe("—");
+    expect(centPerLiter(3.456)).toBe("3,5 ct/L");
+    expect(centPerLiter(3)).toBe("3,0 ct/L");
+    expect(centPerLiter(Number.NaN)).toBe("—");
+    expect(euroToCentPerLiter(0.035)).toBeCloseTo(3.5, 9);
+    expect(euroToCentPerLiter(null)).toBeNull();
+  });
+
+  it("schreibt Prozent und Zählerstände de-DE", () => {
+    expect(percentLabel(100)).toBe("100 %");
+    expect(percentLabel(73.46, 1)).toBe("73,5 %");
+    expect(percentLabel(73.44, 1)).toBe("73,4 %");
+    expect(percentLabel(null)).toBe("—");
+    expect(countLabel(12345)).toBe("12.345");
+    expect(countLabel(0.4)).toBe("0");
+    expect(countLabel(undefined)).toBe("—");
+  });
+
+  it("nennt Uhrzeit-Bereiche überall gleich", () => {
+    expect(hourRangeLabel(18, 20)).toBe("18–20 Uhr");
+    expect(hourRangeLabel(22, 2)).toBe("22–02 Uhr");
+    expect(hourRangeLabel(8, null)).toBe("—");
   });
 });
