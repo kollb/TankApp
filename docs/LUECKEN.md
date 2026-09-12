@@ -202,6 +202,19 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 12.09.2026 — Version 0.17.0: eine Sprache für alle Panel-Zustände
+
+C6 abgeschlossen (bis auf die Datenreichweite, die eine Serveränderung braucht
+und als C11 offen steht). Reine GUI-Arbeit, keine Änderung an Endpunkten oder
+Rechnungen.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Ladezustand hält den Platz | `components/Skeleton.tsx` (`SkeletonPanel`, `SkeletonChart`, `SkeletonRows`, `SkeletonLine`) in acht Panels — Empfehlung, Tagesverlauf, Umweg, Preisverlauf, Modell-Ausblick, Heatmap, Ranking, Scoreboard. Nur beim **ersten** Laden: Ein Poll über vorhandenen Daten nimmt die Zahlen nicht weg. `role="status"` + `aria-busy` + Satz für Screenreader | C6-Rest, `components/states.test.tsx` |
+| Datenstand sichtbar | `components/DataAge.tsx` + `STALE_AFTER_MINUTES`/`freshness`/`ageLabel`/`dataAgeNote` in `data.ts`: Schwellen je Datenart (Preise 30 min, Modell 180 min, Selektion 36 h), doppelte Schwelle = roter Ton, Satz nennt Alter, Uhrzeit und Folge. Banner über dem Tab-Inhalt sowie an Modell-Ausblick, Heatmap und Ranking; **kein** Banner bei frischem oder unbekanntem Stand | C6-Rest, `data-age.test.ts` |
+| Fehler auch in Tabellen | `components/CellError.tsx`: dieselbe Sprache wie `LoadError`, aber als Tabellenzeile (Klartext, Rohcode, „Erneut laden“), mit sauberer Trennung „noch nichts da“ vs. „Abruf fehlgeschlagen“; ersetzt die letzten selbstgebauten Texte in Scoreboard und Tages-Entscheidungen | C6-Rest, `components/states.test.tsx` |
+| Ehrlich geblieben | Unbekannter Zeitstempel erzeugt keine Aussage, ein Stand „aus der Zukunft“ (Uhren-Versatz) kein negatives Alter; die Datenreichweite der übrigen Panels wurde **nicht** behauptet, sondern als C11 mit Begründung eingetragen | §0.4 |
+
 ### 12.09.2026 — Version 0.16.0: Zustellung sichtbar, Daten raus aus `docs/`
 
 Drei Punkte, die ohne Live-Daten, Zielhardware oder Produktentscheidung

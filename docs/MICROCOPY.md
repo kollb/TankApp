@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 12.09.2026 · App-Version **0.16.0** · gilt für `web/src/**`,
+> Stand: 12.09.2026 · App-Version **0.17.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -94,13 +94,16 @@ vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 
 ## 5. Zustände: leer, lädt, Fehler
 
-| Zustand | Muster | Beispiel |
+| Zustand | Baustein | Regel |
 |---|---|---|
-| lädt | „<Sache> wird geladen …“ / „… wird berechnet …“ | „Prognose wird berechnet …“ |
-| leer, weil noch nichts da | „Noch kein/e <Sache>.“ + was fehlt | „Noch kein Modell-Lauf — Job „Modell-Update“ starten.“ |
-| leer, weil bewusst nichts | Grund nennen, nicht entschuldigen | „Fehlende Tage, kein Datenverlust.“ |
-| Fehler | `components/LoadError.tsx` mit `problem(error_code)`, Rohcode darunter, Knopf „Erneut laden“ | — |
-| keine Zahl bestimmbar | `—` (Geviertstrich), nie `0`, nie leer | — |
+| lädt (erstes Mal) | `components/Skeleton.tsx` — `SkeletonPanel`, `SkeletonChart`, `SkeletonRows` | Hält den Platz des künftigen Inhalts. `role="status"` + `aria-busy`, Label „<Sache> wird geladen/berechnet“ nur für Screenreader |
+| lädt (Aktualisierung) | **nichts** | Vorhandene Zahlen bleiben stehen. Ein Poll darf die Ansicht nicht leeren — sonst flackert sie im Takt |
+| Datenstand veraltet | `components/DataAge.tsx` (`dataAgeNote`) | Nur wenn der Stand die Schwelle reißt (Preise 30 min, Modell 180 min, Selektion 36 h; doppelt = roter Ton). Bei unbekanntem Stand: **kein** Banner |
+| leer, weil noch nichts da | `Empty` | „Noch kein/e <Sache>.“ + was fehlt. Kein Alarm-Ton, kein „Erneut laden“ |
+| leer, weil bewusst nichts | `Empty` | Grund nennen, nicht entschuldigen: „Fehlende Tage, kein Datenverlust.“ |
+| Fehler (Panel) | `components/LoadError.tsx` | `problem(error_code)` als Klartext, Rohcode darunter, Knopf „Erneut laden“ |
+| Fehler (Tabelle) | `components/CellError.tsx` | Gleiche Sprache als Tabellenzeile über die volle Breite; `empty` trennt „nichts da“ von „fehlgeschlagen“ |
+| keine Zahl bestimmbar | `—` (Geviertstrich) | Nie `0`, nie leer |
 
 Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 `messages` in `web/src/data.ts`, je `error_code` genau einer.
@@ -119,8 +122,12 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
-  neue `toFixed`-Anzeigen) und `microcopy.test.ts` (paarige `„…“`, keine
-  HTML-Entities für Anführungszeichen in Nutzertexten).
+  neue `toFixed`-Anzeigen), `microcopy.test.ts` (paarige `„…“`, keine
+  HTML-Entities für Anführungszeichen in Nutzertexten), `data-age.test.ts`
+  (Schwellen und Wortform der Datenstand-Sätze) sowie
+  `components/states.test.tsx` (Skeleton, Banner, Tabellen-Fehler gegen echtes
+  Markup). **Neue Komponente mit Nutzertext? In die Dateilisten der beiden
+  Ratchets eintragen**, sonst prüft sie niemand.
 - `python -m pytest -q tests/test_operations.py` — prüft unter anderem, dass
   jeder lokale Doku-Link (also auch die Verweise auf diese Seite) existiert.
 

@@ -2007,6 +2007,101 @@ export function autoTimeValue(when: Date = new Date()) {
   return { z: isPeak ? 16 : 10, isPeak };
 }
 
+/**
+ * C6 (Rest): „Datenstand älter als X“ — eine Regel für alle Panels.
+ *
+ * Bis jetzt entschied jedes Panel selbst, ob ein Stand noch frisch ist (oder
+ * sagte gar nichts). Das ist genau die Stelle, an der die App unehrlich wird:
+ * Eine Zahl von gestern sieht aus wie eine Zahl von jetzt. Die Schwellen
+ * hängen an der Natur der Daten, nicht am Panel — deshalb stehen sie hier.
+ *
+ * `stale` = älter als der Erwartungswert, aber noch brauchbar (gelb).
+ * `old` = so alt, dass die Aussage nicht mehr trägt (rot, doppelte Schwelle).
+ */
+export type Freshness = "fresh" | "stale" | "old" | "unknown";
+
+/** Minuten, ab denen ein Datenstand als veraltet gilt — je Datenart. */
+export const STALE_AFTER_MINUTES = {
+  /** Preise: der Collector pollt alle 5 min, ab 30 min stimmt etwas nicht. */
+  prices: 30,
+  /** Prognosen/Heatmaps: Modell-Lauf im 30-min-/Stunden-Takt. */
+  model: 180,
+  /** Selektion: läuft täglich, ein Tag Verzug ist normal. */
+  selection: 36 * 60,
+} as const;
+
+export type DataKind = keyof typeof STALE_AFTER_MINUTES;
+
+/** Alter eines Zeitstempels in Minuten (null = nicht bestimmbar). */
+export function ageMinutes(stamp?: string | null, now: number = Date.now()) {
+  if (!stamp) return null;
+  const ms = Date.parse(stamp);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, (now - ms) / 60000);
+}
+
+export function freshness(
+  stamp: string | null | undefined,
+  kind: DataKind,
+  now: number = Date.now(),
+): Freshness {
+  const age = ageMinutes(stamp, now);
+  if (age == null) return "unknown";
+  const limit = STALE_AFTER_MINUTES[kind];
+  if (age >= limit * 2) return "old";
+  if (age >= limit) return "stale";
+  return "fresh";
+}
+
+/** Alter in Worten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */
+export function ageLabel(stamp?: string | null, now: number = Date.now()) {
+  const age = ageMinutes(stamp, now);
+  if (age == null) return "—";
+  const minutes = Math.round(age);
+  if (minutes < 1) return "gerade eben";
+  if (minutes === 1) return "vor 1 Minute";
+  if (minutes < 60) return `vor ${minutes} Minuten`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return "vor 1 Stunde";
+  if (hours < 24) return `vor ${hours} Stunden`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "vor 1 Tag" : `vor ${days} Tagen`;
+}
+
+/**
+ * Der Banner-Satz — oder `null`, wenn der Stand frisch genug ist.
+ *
+ * Bewusst ohne Schuldzuweisung und ohne Handlungsbefehl: Der Satz nennt das
+ * Alter und die Folge. Was zu tun ist, steht im System-Tab, nicht über jedem
+ * Panel.
+ */
+export function dataAgeNote(
+  stamp: string | null | undefined,
+  kind: DataKind,
+  now: number = Date.now(),
+): { tone: "warn" | "error"; text: string } | null {
+  const state = freshness(stamp, kind, now);
+  if (state === "fresh" || state === "unknown") return null;
+  const when = ageLabel(stamp, now);
+  const at = timeLabel(stamp);
+  if (kind === "prices") {
+    return {
+      tone: state === "old" ? "error" : "warn",
+      text: `Datenstand ${when} (${at} Uhr) — der Collector hat länger nichts geliefert, die Preise können eingefroren sein.`,
+    };
+  }
+  if (kind === "model") {
+    return {
+      tone: state === "old" ? "error" : "warn",
+      text: `Datenstand ${when} (${at} Uhr) — seitdem lief kein Modell-Update, die Prognose kann veraltet sein.`,
+    };
+  }
+  return {
+    tone: state === "old" ? "error" : "warn",
+    text: `Datenstand ${when} (${at} Uhr) — das Ranking stammt aus einem älteren Selektions-Lauf.`,
+  };
+}
+
 export function clockLabel(stamp?: string | null) {
   if (!stamp) return "—";
   const ms = Date.parse(stamp);

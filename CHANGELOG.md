@@ -4,6 +4,54 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.17.0] – 2026-09-12
+
+C6 zu Ende gebracht: Die Panels haben jetzt **eine** Sprache für alle vier
+Zustände — lädt, leer, veraltet, kaputt. Reine GUI-Arbeit, keine Änderung an
+Endpunkten oder Rechnungen.
+
+### Hinzugefügt
+
+- **C6 (Rest) — Skeletons statt Spinner/Text-Mix** (`web/src/components/Skeleton.tsx`):
+  `SkeletonPanel`, `SkeletonChart`, `SkeletonRows` und `SkeletonLine` halten
+  beim **ersten** Laden den Platz, den der Inhalt gleich braucht — vorher wuchs
+  die Seite unter dem Finger weg. Verdrahtet in Empfehlung, Tagesverlauf,
+  Umweg-Ökonomie, Preisverlauf, Modell-Ausblick, Heatmap, Ranking und im
+  Entscheidungs-Scoreboard. Bewusst **nur** beim ersten Laden: Ein
+  Aktualisierungs-Poll über vorhandenen Daten nimmt die Zahlen nicht weg, sonst
+  flackert die Ansicht im Takt. Jedes Skelett meldet sich als
+  `role="status"` + `aria-busy` mit einem Satz für Screenreader; die
+  `animate-pulse`-Animation entschärft `prefers-reduced-motion` bereits global.
+- **C6 (Rest) — „Datenstand älter als X“-Banner** (`web/src/components/DataAge.tsx`,
+  Logik in `data.ts`): `STALE_AFTER_MINUTES` legt die Schwellen je Datenart
+  fest (Preise 30 min, Modell 180 min, Selektion 36 h), `freshness` stuft
+  frisch/veraltet/alt (alt = doppelte Schwelle), `ageLabel` schreibt das Alter
+  aus („vor 45 Minuten“, „vor 2 Tagen“), `dataAgeNote` liefert den fertigen
+  Satz mit Folge statt Schuldzuweisung. Der Banner steht über dem Tab-Inhalt
+  (Preise) sowie an Modell-Ausblick, Heatmap und Ranking — und erscheint
+  **nur**, wenn der Stand wirklich kippt: kein „alles in Ordnung“-Lärm, und
+  bei unbekanntem Stand wird nichts behauptet (Ehrlichkeits-Regel §0.4).
+- **C6 (Rest) — Fehler-Zustände in Tabellen** (`web/src/components/CellError.tsx`):
+  `LoadError` ist eine Karte und in einer Tabellenzelle falsch; genau dort
+  standen die letzten selbstgebauten Texte. `CellError` bringt dieselbe Sprache
+  als Tabellenzeile über die volle Breite — Klartext aus `problem(error_code)`,
+  Rohcode darunter, derselbe „Erneut laden“-Knopf — und trennt sauber
+  „noch nichts da“ (kein Alarm-Ton, kein Knopf) von „Abruf fehlgeschlagen“.
+  Verdrahtet im Entscheidungs-Scoreboard und bei den Tages-Entscheidungen.
+
+### Tests
+
+- `web/src/data-age.test.ts`: Schwellen je Datenart, Rundung der Wortform,
+  Uhren-Versatz (Stand „aus der Zukunft“ ergibt kein negatives Alter),
+  kaputte/fehlende Zeitstempel führen zu **keinem** Banner.
+- `web/src/components/states.test.tsx`: Render-Tests gegen echtes Markup —
+  `aria-busy`, Zeilen-/Spaltenzahl der Skelette, Schweigen des Banners bei
+  frischen Daten, Ton-Wechsel bei doppelter Schwelle, Leerstand vs. Fehler
+  in `CellError`.
+- Die neuen Dateien sind in die beiden Ratchets aufgenommen
+  (`format-convention.test.ts`: toFixed-frei; `microcopy.test.ts`: paarige
+  Anführungszeichen).
+
 ## [0.16.0] – 2026-09-12
 
 Aufräum-Runde aus der ToDo-Liste: die drei Punkte, die **ohne Live-Daten, ohne

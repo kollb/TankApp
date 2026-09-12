@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.16.0)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.17.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -61,7 +61,7 @@
 | C3 | P2 | **Karten-/Umgebungsansicht für F2** | „Hier oder woanders?“ als Karte mit Netto-€-Pins. OSM-Tiles brauchen Internet (im LAN okay, wenn NAS/Handy online); Alternativen: statische Tile-Region oder reduzierte Luftlinien-Übersicht. |
 | C4 | P2 | **Einstellungen-Tab zentral** | Verbrauch, Zeitwert (manuell/auto), Liter-Default, Kraftstoff, Stadt liegen verteilt in Panels. Ziel: ein Tab „Einstellungen“: alle Defaults inkl. aktiver Schwellen-Tabelle (read-only aus `/api/v1/stats/summary → thresholds`), Dark/Light-Umschaltung (Fallback-GUI kann dunkel, NAS-GUI nur dunkles Slate). |
 | C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Fokus-Ring + Charts-Textfassungen sind drin, 0.13.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→) und Slider mit `aria-valuetext` (0.10.0); Fokus-Ring durchgängig (die `outline-none`-Überschreibungen an den 0.11-Eingabefeldern sind entfernt) und alle Charts `role="img"` **mit** `aria-describedby`-Textfassung (0.13.0), `prefers-reduced-motion` war schon in `styles.css`. Offen: Touch-Targets ≥ 44 px, Kontraste AA prüfen, komplette Bedienung per Tastatur (Beleg buchen ohne Maus). |
-| C6 | P2 | **Einheitliche Leer-/Lade-/Fehler-Zustände** *(Heatmap-Reichweite 0.14.0, gemeinsamer Fehler-Zustand 0.15.0)* | Erledigt: Das Heatmap-Panel nennt Bestand und Reichweite (`range_from`/`range_to` → „12.345 Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“) und erklärt, wenn das Fenster größer ist als der Bestand („fehlende Tage, kein Datenverlust“). Seit 0.15.0 gibt es außerdem **einen** gemeinsamen Fehler-Zustand: `components/LoadError.tsx` (Klartext aus `problem(error_code)`, Rohcode darunter, `Erneut laden`-Knopf, `role="alert"`, schmale Variante für Inline-Boxen) ist in sechs Panels verdrahtet — Empfehlung im Alltag, Tagesverlauf, Tankbelege, Preisverlauf, Modell-Ausblick, Collector-Status. Offen: Skeletons statt Spinner/Text-Mix, „Datenstand älter als X“-Banner konsistent, Reichweiten-Zeile für die übrigen Panels, und die Fehler-Zustände in den Tabellen-Zellen (Entscheidungs-Scoreboard, Tages-Entscheidungen) nutzen noch eigene Texte. |
+| C11 | P2 | **Datenreichweite für die übrigen Panels** *(Rest aus C6)* | Die Heatmap nennt Bestand und Zeitraum („12.345 Preise von 18 Stationen · Di 08.09. 05:10 – Sa 12.09. 07:55 Uhr“), weil `/api/v1/heatmap` `range_from`/`range_to` liefert. Preisverlauf, Modell-Ausblick und Ranking können das nicht — die Endpunkte geben keinen Bestandsumfang zurück. Ziel: `range_from`/`range_to`/`n_points` auch in `series`, `forecast` und `selection`, dann dieselbe Zeile in den drei Panels. **Serveränderung nötig, deshalb eigener Punkt** statt stillschweigend als „erledigt“ unter C6. Der Datenstand selbst (Alter des Laufs) ist seit 0.17.0 über `DataAgeBanner` überall sichtbar. |
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?“-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
 | C8 | P2 | **Mobile-Feinschliff & PWA** | Sticky-Aktions-Chip im Alltag („Jetzt tanken / Warten bis …“ beim Scrollen sichtbar), Install-/„Zum Homescreen“-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
 | C9 | P2 | **Formatierungs-Konventionen** *(Formatter-Satz + alle Anzeigen umgestellt, 0.14.0/0.15.0)* | Erledigt: `euroPerLiter` (3 Stellen), `centPerLiter` (1 Stelle), `euroToCentPerLiter`, `percentLabel`, `countLabel`, `hourRangeLabel` plus `hourBucketLabel`/`hourRunsLabel` in `web/src/data.ts`, vitest-geschützt; die Heatmap nutzt sie durchgängig („2,219 €/L“ statt „2.219“, „100 %“ statt „100%“). Seit 0.15.0 sind auch die übrigen Anzeigen umgestellt: alle 21 `toFixed`-Stellen in `Dashboard.tsx` (PICP, δ̂, Bootstrap-KI, q-Wert, Ampel-Stärke, MASE, CUSUM, tmpfs, ε-`aria-valuetext`) plus die Standard-Formatierer in `LineChart`/`LabCharts` nutzen `euro`/`percentLabel`/`centPerLiter`; `format-convention.test.ts` zählt die verbleibenden Stellen je Datei (SVG-Koordinaten und die beiden Preis-Eingabefelder, die mit `commaToDot` normalisieren) und meldet jede neue. Offen: ct/L und €/L **inhaltlich** gemischt (mal Cent, mal Euro für dieselbe Größe — Entscheidung je Panel), Uhrzeiten überall auf Europe/Berlin prüfen, Anführungszeichen vereinheitlichen (F3). |
@@ -183,11 +183,11 @@ umgesetzt in 0.13.0; der Rest der Liste bleibt stehen:**
    (Dashboard, LineChart, LabCharts) nutzen sie, `format-convention.test.ts`
    hält neue `toFixed`-Anzeigen auf (0.15). Übrig: ct/L-€/L-Wahl je Panel und
    Uhrzeiten-Check (F3).
-5. ✅ **C6 (kleinster Schnitt)** Gemeinsamer Fehler-Zustand pro Panel:
-   `components/LoadError.tsx` mit `problem(error_code)`-Klartext, Rohcode und
-   `Erneut laden`-Knopf (ein gemeinsamer Refresh-Zähler), verdrahtet in sechs
-   Panels, Render-Test daneben (0.15). Übrig: Skeletons, Datenstand-Banner,
-   Reichweiten-Zeile.
+5. ✅ **C6** Gemeinsame Zustände pro Panel: Fehler (`components/LoadError.tsx`,
+   0.15), dann Skeletons, Datenstand-Banner und Tabellen-Fehler
+   (`Skeleton.tsx`/`DataAge.tsx`/`CellError.tsx`, 0.17). Übrig ist nur die
+   Datenreichweite der übrigen Panels — sie braucht `range_*` in `series`/
+   `forecast`/`selection` und steht deshalb als **C11** in der Tabelle.
 6. ✅ **D3** Property-Tests für die Umweg-Ökonomie (`K = d·(c/100)·p +
    (d/v)·z`): `web/src/data.property.test.ts` (fast-check, 300 Läufe je
    Eigenschaft, fester Seed) prüft Identität Netto = Brutto − Sprit − Zeit,
@@ -205,6 +205,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.17.0 (12.09.2026) | **C6** (Rest) einheitliche Zustände: Skeletons (`components/Skeleton.tsx` — `SkeletonPanel`/`SkeletonChart`/`SkeletonRows`, nur beim ersten Laden, `role="status"`+`aria-busy`) in acht Panels, „Datenstand älter als X“-Banner (`components/DataAge.tsx` + `STALE_AFTER_MINUTES`/`freshness`/`ageLabel`/`dataAgeNote` in `data.ts`: Preise 30 min, Modell 180 min, Selektion 36 h, doppelte Schwelle = roter Ton, kein Banner ohne bekannten Stand) über Tab-Inhalt, Modell-Ausblick, Heatmap und Ranking, Fehler in Tabellenzellen (`components/CellError.tsx`, Leerstand vs. Fehler getrennt) im Scoreboard und bei den Tages-Entscheidungen; Tests `data-age.test.ts` + `components/states.test.tsx`, beide Ratchets erweitert |
 | 0.16.0 (12.09.2026) | **B4** (Rest) Alarm-Zustellung im System-Tab sichtbar (Kachel „Alarm-Zustellung · Push aufs Handy“: Badge, Klartextsatz, offene Codes als Chips, „Zuletzt gemeldet“/„Zuletzt Entwarnung“; Texte als reine Funktionen `notifyTone`/`notifyStatusLine`/`notifyLastLine` in `web/src/data.ts` mit `notify.test.ts`; serverseitig nur ein neues Feld `notify.last_sent_at`), **B14** `docs/analysis/` → `data/analysis/` (Default in `app/config.py`, `tankapp.py`, allen `data-tools/`-CLIs, `analysis/*`, `ops/nas/preflight.sh`, RP2-Suchpfaden und der Doku; alter Pfad bleibt gültig, solange nur er existiert, mit Hinweis je Prozess — kein stiller Umzug; `tests/test_analysis_path.py`), **F3** (Rest) Microcopy-Regelwerk `docs/MICROCOPY.md` + Ratchet `microcopy.test.ts` + Zitate vereinheitlicht |
 | 0.15.0 (12.09.2026) | **F2** Deutsche Primär-Labels in der Werkstatt („Wahrscheinlichkeit für günstig“, „Ampel-Stärke“, „Preis-Abstand“, „Prüfzeitraum“, „Ø Mehrkosten“, „q-Wert“, „95-%-KI“, „Billigste Stunde“, „Sprungfreie Tage · MASE“, „Drift-Status · CUSUM“, `aria-label` „Rückmeldung nach Fensterende“), Fachwort/Formel jeweils im Tooltip; **D3** Property-Tests Umweg-Ökonomie (fast-check gegen `detourEconomics`/`detourVerdict` in `web/src/data.ts`: Identität Netto = Brutto − Sprit − Zeit, Monotonie in Litern/km/Verbrauch/Geschwindigkeit/Zeitwert, Break-even `criticalCtPerL` exakt, Grenzfälle `z=0`/`d=0`/`liters→∞`/`v≤0`, `worth_it`-Schwellen inkl. exakter Kanten), **B4** ntfy-Zustellung für `severity: error` (`app/notify.py`, ein Webhook `TANKAPP_NTFY_URL`, Zustandswechsel statt Dauerschleife, `/health` → `notify`) — GUI-Anzeige bleibt offen, **C6** (Teil) gemeinsamer Fehler-Zustand `LoadError` in sechs Panels, **C9** (Rest) alle Anzeigen auf den Formatter-Satz umgestellt + `format-convention.test.ts` als Ratchet, **F3** (Teil) Tageszahlen ausgeschrieben, **D1** (Teil) geteilte UI-Bausteine (`components/ui.tsx`: `panel`/`Empty`/`Badge`/`Metric` + Render-Test) |
 | 0.13.0 (12.09.2026) | **B2** Schema-Version + Migration des Feedback-Stores (Versionsfeld, Migration je Sprung, Test „alter 0.10-Store → neuer Code“, Doku in BETRIEB.md), **B5** Schreib-Härtung: `tanked_at`-Plausibilitätsfenster (sonst 1970/2100 im Ledger), Freitext-Caps für `station_name`/`source`, getrenntes Schreib-Budget (20/min je Client, nur Ledger-Endpunkte — GET bleibt frei), **A6** Share-URL beim Start lesen + Teilen-Knopf, **B7** (Teil) gzip für JSON + `max-age=900` für `heatmap`/`last_forecasts`, **C5** (Teil) Fokus-Ring ohne `outline-none`-Überschreibung + Charts `aria-describedby`, **D1** (Teil) `PrecisionSlider`/`HeatmapGrid`/`ApiExplorer` nach `components/` ausgelagert |
@@ -213,9 +214,8 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **B7**
 (Overview-Endpunkt + Poll-Bündelung offen), **C5** (44 px, AA, Tastatur offen),
-**C6** (Rest: Skeletons, Datenstand-Banner, Reichweiten-Zeile), **C9** (Rest:
-ct/L-€/L-Wahl je Panel), **D1** (Views noch in einer Datei), **F3** (Rest:
-Regelwerk steht, Anwendung auf Footer/Panels offen).
+**C9** (Rest: ct/L-€/L-Wahl je Panel), **D1** (Views noch in einer Datei),
+**F3** (Rest: Regelwerk steht, Anwendung auf Footer/Panels offen).
 
 ## Bewusst NICHT in dieser Liste
 
@@ -226,7 +226,7 @@ Regelwerk steht, Anwendung auf Footer/Panels offen).
 
 ## Reihenfolge-Empfehlung
 
-1. **D1 fertigstellen, bevor ein größeres C-Feature anfängt** (C2/C4/C6) —
+1. **D1 fertigstellen, bevor ein größeres C-Feature anfängt** (C2/C4) —
    die Bausteine sind seit 0.13.0 in `components/`; der Views-Schnitt
    (`views/Daily.tsx` …) ist der, der Merge- und Review-Kosten wirklich senkt.
 2. **B7-Rest separat entscheiden** (`/api/v1/overview` + Poll-Bündelung) —

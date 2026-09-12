@@ -42,6 +42,14 @@ import {
 import { ApiExplorer } from "./components/ApiExplorer";
 import { HeatmapGrid } from "./components/HeatmapGrid";
 import { LoadError } from "./components/LoadError";
+// C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
+import { CellError } from "./components/CellError";
+import { DataAgeBanner } from "./components/DataAge";
+import {
+  SkeletonChart,
+  SkeletonPanel,
+  SkeletonRows,
+} from "./components/Skeleton";
 // D1: geteilte UI-Bausteine (Panel-Klasse, Empty, Badge, Metric).
 import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
@@ -1357,6 +1365,10 @@ export function Dashboard() {
           </div>
         )}
 
+        {/* C6: Preis-Datenstand — gilt für alle drei Tabs, deshalb über den
+            Tab-Inhalt und nicht in jedes Panel einzeln. */}
+        <DataAgeBanner stamp={data?.generated_at} kind="prices" />
+
         {!browserOnline && (
           <div
             role="alert"
@@ -1690,8 +1702,8 @@ export function Dashboard() {
                 const rec = decideRes.data;
                 if (decideRes.pending && !rec) {
                   return (
-                    <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs text-slate-500">
-                      Empfehlung wird berechnet …
+                    <div className="mt-5">
+                      <SkeletonPanel lines={3} label="Empfehlung wird berechnet" />
                     </div>
                   );
                 }
@@ -2292,11 +2304,14 @@ export function Dashboard() {
                   </p>
                 </>
               ) : (
-                <Empty>
-                  {dayStrip.pending
-                    ? "Tagesverlauf wird geladen …"
-                    : "Noch keine offenen Stundenmeldungen für diese Station — leere Stunden werden nicht erfunden."}
-                </Empty>
+                dayStrip.pending && !dayStrip.data ? (
+                  <SkeletonPanel lines={2} title={false} label="Tagesverlauf wird geladen" />
+                ) : (
+                  <Empty>
+                    Noch keine offenen Stundenmeldungen für diese Station — leere
+                    Stunden werden nicht erfunden.
+                  </Empty>
+                )
               )}
             </section>
 
@@ -2478,9 +2493,7 @@ export function Dashboard() {
                   typeof borderlineTh === "number";
                 if (decideRes.pending && !rec) {
                   return (
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs text-slate-500">
-                      Umweg-Ökonomie wird berechnet …
-                    </div>
+                    <SkeletonPanel lines={3} title={false} label="Umweg-Ökonomie wird berechnet" />
                   );
                 }
                 if (!serverAlts.length) {
@@ -3015,13 +3028,20 @@ export function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
-                    {labScores.length === 0 && (
-                      <tr>
-                        <td colSpan={9} className="px-4 py-6 text-center text-xs text-slate-500">
-                          {problem((labData as any)?.error_code || statsSummaryRes.errorCode) || "Noch keine Entscheidungszeilen — sie kommen aus dem täglichen Modell-Lauf, sobald genug Preishistorie vorliegt."}
-                        </td>
-                      </tr>
-                    )}
+                    {/* C6: erstes Laden = Skelett (Höhe bleibt), Fehler und
+                        Leerstand = derselbe Tabellen-Baustein wie überall. */}
+                    {labScores.length === 0 &&
+                      (statsSummaryRes.pending && !statsSummaryRes.data ? (
+                        <SkeletonRows rows={3} cols={9} label="Entscheidungs-Scoreboard wird geladen" />
+                      ) : (
+                        <CellError
+                          colSpan={9}
+                          errorCode={(labData as any)?.error_code || statsSummaryRes.errorCode}
+                          empty={!((labData as any)?.error_code || statsSummaryRes.errorCode)}
+                          fallback="Noch keine Entscheidungszeilen — sie kommen aus dem täglichen Modell-Lauf, sobald genug Preishistorie vorliegt."
+                          onRetry={refreshNow}
+                        />
+                      ))}
                     {labScores.map(({ station_id: sid, score: sc }) => {
                       const stMeta = labData?.stations.find((s) => s.id === sid);
                       const active = sid === selected?.station_id;
@@ -3194,10 +3214,20 @@ export function Dashboard() {
                 </div>
               </div>
               {labTotals.n === 0 ? (
-                <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-xs leading-relaxed text-slate-400">
-                  {problem((labData as any)?.error_code || statsSummaryRes.errorCode) ||
-                    "Noch keine Tages-Entscheidungen. Sie erscheinen, sobald der Modell-Lauf genug echte Preishistorie ausgewertet hat (mind. 7 vollständige Tage je Station)."}
-                </div>
+                statsSummaryRes.pending && !statsSummaryRes.data ? (
+                  <div className="mt-5">
+                    <SkeletonPanel lines={2} title={false} label="Tages-Entscheidungen werden geladen" />
+                  </div>
+                ) : (
+                  <div className="mt-5">
+                    <LoadError
+                      errorCode={(labData as any)?.error_code || statsSummaryRes.errorCode}
+                      fallback="Noch keine Tages-Entscheidungen. Sie erscheinen, sobald der Modell-Lauf genug echte Preishistorie ausgewertet hat (mind. 7 vollständige Tage je Station)."
+                      onRetry={refreshNow}
+                      compact
+                    />
+                  </div>
+                )
               ) : (
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
@@ -3265,11 +3295,14 @@ export function Dashboard() {
                   ariaDescription={`Preisverlauf der gewählten Station über die letzten ${spanHours === 24 ? "24 Stunden" : spanHours === 72 ? "3 Tage" : "7 Tage"} in €/L.`}
                 />
               ) : (
-                <Empty>
-                  {history.pending
-                    ? "Historie wird geladen …"
-                    : "Noch keine Beobachtungen für diese Station — leere Stunden werden nicht erfunden."}
-                </Empty>
+                history.pending && !history.data ? (
+                  <SkeletonChart height="h-56" label="Preisverlauf wird geladen" />
+                ) : (
+                  <Empty>
+                    Noch keine Beobachtungen für diese Station — leere Stunden
+                    werden nicht erfunden.
+                  </Empty>
+                )
               )}
             </section>
 
@@ -3315,6 +3348,7 @@ export function Dashboard() {
                   </div>
                 </div>
               </div>
+              <DataAgeBanner stamp={forecast.data?.origin} kind="model" />
               {forecast.error || forecast.data?.error_code ? (
                 <LoadError
                   errorCode={forecast.data?.error_code || forecast.errorCode}
@@ -3350,11 +3384,11 @@ export function Dashboard() {
                   )}
                 </>
               ) : (
-                <Empty>
-                  {forecast.pending
-                    ? "Modell-Ausblick wird berechnet …"
-                    : "Noch kein veröffentlichter Modell-Ausblick."}
-                </Empty>
+                forecast.pending && !forecast.data ? (
+                  <SkeletonChart height="h-56" label="Modell-Ausblick wird berechnet" />
+                ) : (
+                  <Empty>Noch kein veröffentlichter Modell-Ausblick.</Empty>
+                )
               )}
             </section>
 
@@ -3577,12 +3611,16 @@ export function Dashboard() {
                   Der Basis-Umschalter ist hier deaktiviert, weil er nichts ändert.
                 </p>
               )}
+              {/* C6: Datenstand-Banner — erscheint nur, wenn der Stand wirklich alt ist. */}
+              <DataAgeBanner stamp={heatmap.data?.generated_at} kind="model" />
               {heatmap.data && heatmap.data.matrix.length ? (
                 <HeatmapGrid heatmap={heatmap.data} />
               ) : (
-                <Empty>
-                  {heatmap.pending ? "Heatmap wird berechnet …" : "Noch keine Daten für Heatmap."}
-                </Empty>
+                heatmap.pending && !heatmap.data ? (
+                  <SkeletonChart height="h-64" label="Heatmap wird berechnet" />
+                ) : (
+                  <Empty>Noch keine Daten für Heatmap.</Empty>
+                )
               )}
             </section>
 
@@ -3596,6 +3634,7 @@ export function Dashboard() {
                   </span>
                 </h3>
               </div>
+              <DataAgeBanner stamp={selection.data?.generated_at} kind="selection" />
               {selection.data && selection.data.stations.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] text-left text-xs">
@@ -3655,9 +3694,11 @@ export function Dashboard() {
                   </table>
                 </div>
               ) : (
-                <Empty>
-                  {selection.pending ? "Ranking wird geladen …" : "Noch keine Stationen im Ranking."}
-                </Empty>
+                selection.pending && !selection.data ? (
+                  <SkeletonPanel lines={4} title={false} label="Ranking wird geladen" />
+                ) : (
+                  <Empty>Noch keine Stationen im Ranking.</Empty>
+                )
               )}
             </section>
           </>

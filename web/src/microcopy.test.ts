@@ -20,11 +20,14 @@ const FILES = [
   "Dashboard.tsx",
   "data.ts",
   "components/ApiExplorer.tsx",
+  "components/CellError.tsx",
+  "components/DataAge.tsx",
   "components/HeatmapGrid.tsx",
   "components/LabCharts.tsx",
   "components/LineChart.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",
+  "components/Skeleton.tsx",
   "components/ui.tsx",
 ];
 

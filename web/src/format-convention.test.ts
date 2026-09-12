@@ -34,10 +34,13 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 
 /** Dateien, die sichtbar formatieren und deshalb sauber sein müssen. */
 const CLEAN = [
+  "components/CellError.tsx",
+  "components/DataAge.tsx",
   "components/HeatmapGrid.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",
   "components/ApiExplorer.tsx",
+  "components/Skeleton.tsx",
   "main.tsx",
 ];
 
