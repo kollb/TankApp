@@ -4,8 +4,6 @@ import { test, expect, type Page } from "@playwright/test";
 // Schützt die V3-Fixes: Erfolgsmeldung nur bei Erfolg, Due-Prompt nach
 // „Ich warte“, Fill verbucht den Beleg, Serverfehler erzeugt keine Erfolgsmeldung.
 
-const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
-
 function stationRow() {
   return {
     station_id: "a",
@@ -22,6 +20,58 @@ function stationRow() {
     maps_url: null,
   };
 }
+
+// B7: Der Alltagstabs holt decide + fills + stats/summary + due-Episoden +
+// Tageskurve als EINE Anfrage aus /api/v1/overview — die Tests mocken deshalb
+// zusätzlich den Overview-Payload, zusammengesetzt aus denselben Fixtures,
+// die auch die (weiterhin gemockten) Einzelpfade bedienen.
+const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+
+const DECIDE_FIXTURE = {
+  primary: {
+    action: "wait",
+    station: { id: "a", name: "F-Station", brand: "Test", price_now: 1.759, maps_url: null },
+    recommended_window: { start: iso(3600_000), end: iso(3 * 3600_000), expected_price: 1.719 },
+    expected_saving_eur: 1.6,
+    p_correct: 0.82,
+    confidence_badge: "high",
+    reason_short: "Warten lohnt sich voraussichtlich bis zum Abend.",
+  },
+  alternatives_nearby: [],
+  windows_today: [],
+  windows_week: [],
+  episode: { id: "ep-1", status: "open", intent: "none", opened_at: iso(0) },
+  personal_stats: {
+    advice: { last_30d_hits: 0, last_30d_total: 0, hit_rate: null, brier_30d: null },
+    wallet: { fills_30d: 0, followed: 0, saved_eur_30d: 0 },
+  },
+  calibrated: false,
+  decision_ready: false,
+  error_code: null,
+};
+
+const STATS_FIXTURE = {
+  generated_at: iso(0),
+  fuel: "e10",
+  city: null,
+  live_advice: {
+    n: 0,
+    calibrated: false,
+    gate_status: "Kalibrierung steht aus",
+    brier_30d: null,
+    wait_hits: 0,
+    wait_n: 0,
+    now_hits: 0,
+    now_n: 0,
+    reliability: [],
+    min_recommendations: 100,
+    brier_threshold: 0.25,
+  },
+  wallet: { n_fills: 0, followed: 0, saved_eur: 0, wh_hours: [], last_fill: null },
+  live_phase: null,
+  calibrated: false,
+  decision_ready: false,
+};
 
 async function stubBase(page: Page) {
   await page.route("**/api/v1/stations?*", async (route) => {
@@ -61,56 +111,10 @@ async function stubBase(page: Page) {
     await route.fulfill({ json: { points: [], error_code: null } });
   });
   await page.route("**/api/v1/stats/summary?*", async (route) => {
-    await route.fulfill({
-      json: {
-        generated_at: iso(0),
-        fuel: "e10",
-        city: null,
-        live_advice: {
-          n: 0,
-          calibrated: false,
-          gate_status: "Kalibrierung steht aus",
-          brier_30d: null,
-          wait_hits: 0,
-          wait_n: 0,
-          now_hits: 0,
-          now_n: 0,
-          reliability: [],
-          min_recommendations: 100,
-          brier_threshold: 0.25,
-        },
-        wallet: { n_fills: 0, followed: 0, saved_eur: 0, wh_hours: [], last_fill: null },
-        live_phase: null,
-        calibrated: false,
-        decision_ready: false,
-      },
-    });
+    await route.fulfill({ json: STATS_FIXTURE });
   });
   await page.route("**/api/v1/decide?*", async (route) => {
-    await route.fulfill({
-      json: {
-        primary: {
-          action: "wait",
-          station: { id: "a", name: "F-Station", brand: "Test", price_now: 1.759, maps_url: null },
-          recommended_window: { start: iso(3600_000), end: iso(3 * 3600_000), expected_price: 1.719 },
-          expected_saving_eur: 1.6,
-          p_correct: 0.82,
-          confidence_badge: "high",
-          reason_short: "Warten lohnt sich voraussichtlich bis zum Abend.",
-        },
-        alternatives_nearby: [],
-        windows_today: [],
-        windows_week: [],
-        episode: { id: "ep-1", status: "open", intent: "none", opened_at: iso(0) },
-        personal_stats: {
-          advice: { last_30d_hits: 0, last_30d_total: 0, hit_rate: null, brier_30d: null },
-          wallet: { fills_30d: 0, followed: 0, saved_eur_30d: 0 },
-        },
-        calibrated: false,
-        decision_ready: false,
-        error_code: null,
-      },
-    });
+    await route.fulfill({ json: DECIDE_FIXTURE });
   });
 }
 
@@ -155,6 +159,33 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
       return;
     }
     await route.fulfill({ json: { count: fillsPosted.length, fills: fillsPosted, error_code: null } });
+  });
+  // B7: der Alltagstabs liest aus /overview statt den Einzelpfaden —
+  // derselbe Inhalt, eine Antwort; die Closure folgt `due`/`fillsPosted`.
+  await page.route("**/api/v1/overview?*", async (route) => {
+    await route.fulfill({
+      json: {
+        generated_at: iso(0),
+        decide: DECIDE_FIXTURE,
+        fills: { count: fillsPosted.length, fills: fillsPosted, error_code: null },
+        stats_summary: STATS_FIXTURE,
+        episodes: due
+          ? {
+              count: 1,
+              episodes: [
+                {
+                  id: "ep-1",
+                  status: "due",
+                  intent: "wait",
+                  last_snapshot: { station_id: "a", station_name: "F-Station", expected_price: 1.719 },
+                },
+              ],
+            }
+          : { count: 0, episodes: [] },
+        day: { points: [], error_code: null },
+        error_code: null,
+      },
+    });
   });
 
   await page.goto("/");
@@ -209,6 +240,30 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
       return;
     }
     await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
+  });
+  // B7: Overview-Antwort für den Alltagstabs (due-Episode von Anfang an).
+  await page.route("**/api/v1/overview?*", async (route) => {
+    await route.fulfill({
+      json: {
+        generated_at: iso(0),
+        decide: DECIDE_FIXTURE,
+        fills: { count: 0, fills: [], error_code: null },
+        stats_summary: STATS_FIXTURE,
+        episodes: {
+          count: 1,
+          episodes: [
+            {
+              id: "ep-1",
+              status: "due",
+              intent: "wait",
+              last_snapshot: { station_id: "a", station_name: "F-Station", expected_price: 1.719 },
+            },
+          ],
+        },
+        day: { points: [], error_code: null },
+        error_code: null,
+      },
+    });
   });
 
   await page.goto("/");

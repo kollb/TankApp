@@ -30,6 +30,25 @@ DEPRECATED_ROUTES = {
 }
 SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 
+# B7-Revalidierung: /overview antwortet mit 304 Not Modified, wenn der
+# Datenstand (ETag = Datenversion + Parameter) unverändert ist — kein Body,
+# keine Neuberechnung. Ein manueller Refresh kostet damit Millisekunden
+# statt 5–10 s, solange sich die zugrunde liegenden Daten nicht geändert
+# haben (höchstens alle 300 s möglich, Token-Bucket).
+_ALREADY_ANSWERED = object()
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """If-None-Match darf mehrere ETags tragen, mit optionalen Anführungszeichen/W-."""
+    if if_none_match.strip() == "*":
+        return True
+    candidates = [
+        token.strip().lstrip("W/").strip().strip('"')
+        for token in if_none_match.split(",")
+    ]
+    return etag in candidates
+
+
 # Issue 50: Der Uploader-Webhook darf ausschließlich diese Inferenz-Jobs
 # anstoßen. Separation of Concerns: Der Webhook meldet nur „neue Daten liegen
 # sicher in der InfluxDB“, ob/wann der Job läuft, entscheidet allein der
@@ -314,6 +333,8 @@ class Handler(SimpleHTTPRequestHandler):
         self._successor = None
         # B7: pro Antwort setzbare Cache-Politik (None = klassische Regeln).
         self._cache_policy: str | None = None
+        # B7: ETag der laufenden Antwort (nur /overview) — von json() mitgeliefert.
+        self._overview_etag: str | None = None
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
@@ -357,6 +378,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(404)
         return None
 
+    def _not_modified(self, etag: str):
+        """304 Not Modified — ohne Body. Der Client behält seine Anzeige:
+        Der Datenstand (ETag) hat sich nicht geändert, es muss nichts
+        neu berechnet werden (B7-Revalidierung)."""
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        self.end_headers()
+
     def json(self, payload, status=200):
         content = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
         headers = getattr(self, "headers", None)
@@ -373,6 +402,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._cache_policy = "public, max-age=900"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if status == 200 and self._overview_etag:
+            # B7: ETag mitliefern — der Client revalidiert damit den
+            # nächsten Refresh (If-None-Match) statt neu zu laden.
+            self.send_header("ETag", self._overview_etag)
         self.send_header("Content-Length", str(len(body)))
         if body is not content:
             self.send_header("Content-Encoding", "gzip")
@@ -459,6 +492,21 @@ class Handler(SimpleHTTPRequestHandler):
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
             return self.data.route_evaluate(params)
 
+        # --- B7: Alltags-Aggregat — eine Anfrage statt sechs Parallel-Polls ---
+        if norm_path == "/api/v1/overview":
+            params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
+            etag = self.data.overview_etag(params)
+            if etag:
+                match = self.headers.get("If-None-Match") if self.headers else None
+                if match and _etag_matches(match, etag):
+                    # Datenstand unverändert → 304 ohne Body, ohne Compute.
+                    self._not_modified(etag)
+                    return _ALREADY_ANSWERED
+            payload = self.data.overview(params, etag)
+            if etag:
+                self._overview_etag = etag
+            return payload
+
         # --- B4 M5/M7 neue Endpunkte ---
         if norm_path == "/api/v1/decide":
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
@@ -504,6 +552,10 @@ class Handler(SimpleHTTPRequestHandler):
                     url.path,
                     parse_qs(url.query, keep_blank_values=True, max_num_fields=15),
                 )
+                if payload is _ALREADY_ANSWERED:
+                    # api() hat bereits geantwortet (304 Not Modified) —
+                    # kein zweiter Body.
+                    return
                 self.json(
                     payload if payload is not None else {"error_code": "not_found"},
                     200 if payload is not None else 404,

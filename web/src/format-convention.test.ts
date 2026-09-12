@@ -35,6 +35,8 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 /** Dateien, die sichtbar formatieren und deshalb sauber sein müssen. */
 const CLEAN = [
   "components/CellError.tsx",
+  "components/JobCard.tsx",
+  "data-resource.test.tsx",
   "components/DataAge.tsx",
   "components/DataReach.tsx",
   "components/HeatmapGrid.tsx",
@@ -43,6 +45,9 @@ const CLEAN = [
   "components/ApiExplorer.tsx",
   "components/Skeleton.tsx",
   "main.tsx",
+  "views/Daily.tsx",
+  "views/Statistics.tsx",
+  "views/System.tsx",
 ];
 
 function toFixedCount(relativePath: string): number {

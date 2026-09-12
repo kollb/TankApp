@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type Fuel = "e10" | "e5" | "diesel";
 export type Station = {
@@ -449,6 +449,22 @@ export type DecideResult = {
     forecast_url: string;
     fitted_at?: string | null;
   };
+  error_code?: string | null;
+};
+
+/**
+ * B7: Alltags-Aggregat — /api/v1/overview. Eine Antwort statt der sechs
+ * Parallel-Polls (decide, fills, stats/summary, due-Episoden, Tageskurve):
+ * weniger Last auf der NAS (File-Locks, HDD) und ein Refresh, der nicht
+ * 5–10 s dauert, während die Ansicht tot wirkt.
+ */
+export type Overview = {
+  generated_at: string;
+  decide: DecideResult;
+  fills: Fills;
+  stats_summary: StatsSummary;
+  episodes: { count: number; episodes: any[] };
+  day: { points: Point[]; error_code: string | null } | null;
   error_code?: string | null;
 };
 
@@ -1457,6 +1473,33 @@ export function usePreference<T>(
   return [value, setValue] as const;
 }
 
+/**
+ * Die Form eines useResource-Ergebnisses, die Views über Props brauchen —
+ * data plus Zustände, ohne interne Felder (key, failStreak). Strukturell
+ * vereinbar mit dem vollständigen Hook-Rückgabewert.
+ */
+export type ResourceState<T> = {
+  data: T | null;
+  error: boolean;
+  errorCode: string | null;
+  pending: boolean;
+  receivedAt: number;
+};
+
+/**
+ * B7: Wann ein fehlgeschlagener Poll sichtbar wird.
+ *
+ * Ohne anzeigbare Daten ist der erste Fehlversuch schon ein Fehler (es gäbe
+ * sonst gar nichts zu sehen). Solange Daten angezeigt werden, ist ein
+ * einzelner fehlgeschlagener Poll eine kurze Unterbrechung zwischen zwei
+ * Polls — kein Ausfall: Die Zahlen bleiben stehen (MICROCOPY §5: „lädt
+ * (Aktualisierung): nichts“), erst der zweite aufeinanderfolgende
+ * Fehlversuch macht den Fehler sichtbar.
+ */
+export function resourceErrorVisible(failStreak: number, hasData: boolean) {
+  return failStreak >= (hasData ? 2 : 1);
+}
+
 export function useResource<T>(
   url: string | null,
   interval: number,
@@ -1465,34 +1508,87 @@ export function useResource<T>(
   const [state, setState] = useState<{
     key: string | null;
     data: T | null;
-    error: boolean;
     errorCode: string | null;
     pending: boolean;
     receivedAt: number;
+    failStreak: number;
   }>({
     key: null,
     data: null,
-    error: false,
     errorCode: null,
     pending: false,
     receivedAt: 0,
+    failStreak: 0,
+  });
+  // B7: „Refresh“ bricht ein laufendes Laden nie ab. Auf der NAS dauerte ein
+  // Refresh 5–10 s; jeder Klick dazwischen würde die Requests sonst
+  // abbrechen und neu starten — die Ansicht würde nie fertig werden.
+  // Stattdessen: ein Reload wird hinter das laufende Ladereignis eingereiht
+  // (z. B. um gerade gebuchte Belege sofort zu zeigen).
+  const loadRef = useRef<() => void>(() => {});
+  const busyRef = useRef(false);
+  const queuedReloadRef = useRef(false);
+  // B7-Revalidierung: letztes ETag pro URL (Datenstand + Parameter). Beim
+  // nächsten Laden als If-None-Match mitschicken; antwortet der Server mit
+  // 304, hat sich der Datenstand nicht geändert — die Anzeige bleibt, der
+  // Refresh kostet Millisekunden statt einer 5–10-s-Neuberechnung.
+  const etagRef = useRef<{ key: string | null; etag: string | null }>({
+    key: null,
+    etag: null,
   });
   useEffect(() => {
-    if (!url) return;
+    if (!url) {
+      queuedReloadRef.current = false;
+      // Inaktiv (Tab-Wechsel): kein „lädt …“ zurücklassen.
+      setState((prev) => (prev.pending ? { ...prev, pending: false } : prev));
+      return;
+    }
+    // Neue URL: altes Datenmaterial, alte Fehlerzählung und das alte ETag
+    // sind nichtig — das Panel lädt wieder, und der erste Fehlversuch ist
+    // sofort sichtbar (für diese URL ist noch nichts anzuzeigen).
+    setState((prev) =>
+      prev.key === null
+        ? prev
+        : { ...prev, key: null, data: null, errorCode: null, failStreak: 0 },
+    );
+    etagRef.current = { key: null, etag: null };
     let active = true,
       busy = false;
     let controller: AbortController | null = null;
     async function load() {
       if (!active || busy) return;
       busy = true;
+      busyRef.current = true;
       controller = new AbortController();
       const timeout = window.setTimeout(() => controller?.abort(), 20000);
       setState((prev) => ({ ...prev, pending: true }));
       try {
+        // B7-Revalidierung: letztes ETag mitgeben, damit der Server auf
+        // unveränderten Datenstand mit 304 antworten kann (kein Body, keine
+        // Neuberechnung). Nur, wenn es zur aktuellen URL gehört.
+        const etag = etagRef.current.key === url ? etagRef.current.etag : null;
+        const headers: Record<string, string> = {};
+        if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,
           cache: "no-store",
+          headers,
         });
+        if (response.status === 304) {
+          // Datenstand unverändert: die Anzeige bleibt stehen, der Tausch
+          // bestätigt Frische — kein Fehler, kein neuer Body.
+          etagRef.current = { key: url, etag };
+          if (active)
+            setState((prev) => ({
+              ...prev,
+              key: url,
+              errorCode: null,
+              pending: false,
+              receivedAt: performance.now(),
+              failStreak: 0,
+            }));
+          return;
+        }
         if (!response.ok) {
           // Fehlerantworten tragen ein error_code (z. B. "unknown_station"
           // bei 404). Wir heben es hoch, damit die GUI eine verständliche
@@ -1509,44 +1605,74 @@ export function useResource<T>(
           if (active)
             setState((prev) => ({
               ...prev,
-              error: true,
               errorCode,
               pending: false,
+              failStreak: prev.failStreak + 1,
             }));
           return;
         }
         const data: T = await response.json();
-        if (active)
+        if (active) {
+          etagRef.current = { key: url, etag: response.headers.get("ETag") };
           setState({
             key: url,
             data,
-            error: false,
             errorCode: null,
             pending: false,
             receivedAt: performance.now(),
+            failStreak: 0,
           });
+        }
       } catch {
         if (active)
           setState((prev) => ({
             ...prev,
-            error: true,
             errorCode: null,
             pending: false,
+            failStreak: prev.failStreak + 1,
           }));
       } finally {
         clearTimeout(timeout);
         busy = false;
+        busyRef.current = false;
+        if (active && queuedReloadRef.current) {
+          queuedReloadRef.current = false;
+          void load();
+        }
       }
     }
+    loadRef.current = load;
     void load();
     const timer = setInterval(() => void load(), interval);
     return () => {
       active = false;
+      busyRef.current = false;
+      queuedReloadRef.current = false;
+      loadRef.current = () => {};
       clearInterval(timer);
       controller?.abort();
     };
-  }, [url, interval, refresh]);
-  return { ...state, data: state.key === url ? state.data : null };
+  }, [url, interval]);
+  // B7: Refresh-Zähler — bei laufendem Laden einreihen (siehe oben),
+  // sonst sofort laden. Nicht auf URL-Wechsel reagieren, nur auf den Zähler.
+  const lastRefresh = useRef(refresh);
+  useEffect(() => {
+    if (lastRefresh.current === refresh) return;
+    lastRefresh.current = refresh;
+    if (!url) return;
+    if (busyRef.current) queuedReloadRef.current = true;
+    else loadRef.current();
+  }, [refresh, url]);
+  const hasData = state.key !== null && state.key === url && state.data != null;
+  // Ein einzelner fehlgeschlagener Poll ist noch kein Alarm: Solange Daten
+  // angezeigt werden, bleiben sie stehen — eine kurze Unterbrechung zwischen
+  // zwei Polls ist kein Ausfall. Zwei aufeinanderfolgende Fehlversuche (oder
+  // gar keine anzeigbaren Daten) machen den Fehler erst sichtbar.
+  return {
+    ...state,
+    data: state.key === url ? state.data : null,
+    error: resourceErrorVisible(state.failStreak, hasData),
+  };
 }
 
 // Elapsed freshness uses a monotonic browser clock, not its wall-clock timezone/settings.

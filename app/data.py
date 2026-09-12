@@ -1,11 +1,13 @@
 """Read-only live data and public projections. No price API calls, no demo fallback."""
 
 import datetime as dt
+import hashlib
 import json
 import math
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import export_influx as influx
@@ -23,6 +25,78 @@ except Exception:  # pragma: no cover
 
 
 _ROUTE_LOCK = threading.Lock()
+
+# B7-Revalidierung: /overview wird nur neu berechnet, wenn sich die
+# zugrunde liegenden Daten geändert haben ODER die Uhr die
+# Revalidierungsgrenze überschritten hat. Das „due“-Status der Episoden und
+# die Fenster-/Stundenlogik in decide hängen von der Uhr ab (Minuten-
+# Granularität), deshalb trägt die Datenversion ein grobes Uhrzeit-Fenster —
+# uhrzeitabhängiger Inhalt ist höchstens OVERVIEW_REVALIDATE_SECONDS alt.
+# Dafür wird ein Refresh mit gleichem Datenstand zu einem 304 (oder Cache-
+# Treffer) statt einer 5–10-s-Neuberechnung.
+OVERVIEW_REVALIDATE_SECONDS = 60
+
+
+def _file_stamp(path) -> str:
+    """mtime:Größe als Versions-Anteil — „absent“ ohne Datei, kein Fehler."""
+    try:
+        stamp = path.stat()
+        return f"{int(stamp.st_mtime)}:{stamp.st_size}"
+    except (OSError, ValueError):
+        return "absent"
+
+
+def data_version(settings, clock) -> str:
+    """Billiges Datenstands-Signal für die /overview-Revalidierung.
+
+    Nur Datei-Stats, keine InfluxDB-Queries — der Revalidierungspfad muss
+    nicht teurer sein als ein Cache-Treffer. Die Overview-Antwort kann sich
+    nur ändern, wenn sich eine ihrer Quellen geändert hat:
+      - Collector-Heartbeat: letzter Tankerkönig-Poll (Token-Bucket:
+        höchstens 1×/300 s) → neue Preise in InfluxDB
+      - Engine-/Selektions-Artefakte: neuer Modelllauf
+      - Feedback-Store: neue Belege
+      - Polling-Set: geänderter Stations-Mix
+    plus das Uhrzeit-Fenster (siehe OVERVIEW_REVALIDATE_SECONDS).
+    """
+    from . import collector_status
+
+    heartbeat = collector_status.nas_heartbeat(settings)
+    hb_ts = str(heartbeat.get("timestamp") or "none") if heartbeat else "none"
+    local_ts = "none"
+    poll_dir_env = os.environ.get("TANKAPP_POLL_DIR")
+    candidates = (
+        [Path(poll_dir_env)]
+        if poll_dir_env
+        else [
+            settings.data / "poll",
+            settings.runtime / "poll",
+            Path("/dev/shm/tankapp"),
+        ]
+    )
+    for candidate in candidates:
+        try:
+            if not candidate.is_dir():
+                continue
+        except OSError:
+            continue
+        local = collector_status.local_heartbeat(candidate)
+        if local and local.get("timestamp"):
+            local_ts = str(local["timestamp"])
+            break
+    tick = int(clock().timestamp() // OVERVIEW_REVALIDATE_SECONDS)
+    raw = "|".join(
+        (
+            f"hb:{hb_ts}:{_file_stamp(settings.runtime / 'collector' / 'heartbeat.json')}",
+            f"local:{local_ts}",
+            f"engine:{_file_stamp(settings.runtime / 'engine' / 'current.json')}",
+            f"selection:{_file_stamp(settings.runtime / 'selection' / 'current.json')}",
+            f"feedback:{_file_stamp(settings.runtime / 'feedback' / 'store.json')}",
+            f"polling:{_file_stamp(settings.polling)}",
+            f"tick:{tick}",
+        )
+    )
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -211,6 +285,10 @@ class LiveData:
         self.clock = clock or (lambda: dt.datetime.now(UTC))
         self.lock = threading.Lock()
         self.cache = {}
+        # B7-Revalidierung: /overview-Antwort-Cache, key = ETag
+        # (Datenstand + Parameter). Verwaiste ETags tauchen nie wieder auf;
+        # die Obergrenze hält das Dict klein (Einträge sind kleine JSONs).
+        self.overview_cache = {}
         self.jobs_enabled = False
         self.job_errors = {}
         # stats_summary liest die Engine-Veröffentlichung über diesen Provider,
@@ -1085,6 +1163,84 @@ class LiveData:
             return {"error_code": "store_too_large"}
         except Exception:
             return {"error_code": "stats_summary_failed"}
+
+    def overview_etag(self, params: dict) -> str | None:
+        """ETag für /overview — Datenstand + Parameter, billig berechenbar.
+
+        Revalidierung ist nur möglich, wenn ``data_version()`` läuft;
+        sonst None (ehrlicher Fallback: kein 304, Antwort wird immer
+        berechnet).
+        """
+        try:
+            version = data_version(self.settings, self.clock)
+        except Exception:
+            return None
+        canonical = json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha1(f"{version}|{canonical}".encode("utf-8")).hexdigest()
+
+    def overview(self, params: dict, etag: str | None = None) -> dict:
+        """B7: Der Alltag in einer Anfrage — statt sechs parallelen GUI-Polls.
+
+        Das GUI holte für den Alltagstab decide, fills, stats/summary,
+        due-Episoden und die Tageskurve je eigenen Poll; auf der NAS-HDD
+        hängen die Threads an den File-Locks, und ein manueller Refresh
+        feuerte alle parallel (5–10 s, UI scheinbar blockiert). Hier laufen
+        dieselben Bausteine in einem Handler: eine Anfrage, ein Read pro
+        Quelle, dieselben Antworten wie die Einzelpfade (keine neue
+        Semantik, nur gebündelt).
+
+        Mit ``etag`` (vom Server-Handler via ``overview_etag``) wird das
+        Ergebnis je Datenstand + Parameter gecacht: Die eine teure
+        Berechnung pro Datenstand dient danach aus dem Speicher — auch
+        für Geräte/Anfragen ohne If-None-Match.
+        """
+        fuel = str(params.get("fuel") or "e10").lower()
+        if fuel not in FUELS:
+            raise ValueError("invalid_fuel")
+        if etag:
+            with self.lock:
+                cached = self.overview_cache.get(etag)
+            if cached is not None:
+                return cached
+        city = params.get("city")
+        station_id = params.get("station_id")
+
+        decide_params = dict(params)
+        day_res = None
+        if station_id:
+            metas, problem = metadata(self.settings)
+            known = problem is None and any(uid == station_id for (_c, uid) in metas)
+            if not known:
+                # Station veraltet (z. B. nach Stations-Tausch): decide wählt
+                # selbst eine Station, die Tageskurve entfällt — der Rest des
+                # Alltags bleibt voll funktionsfähig.
+                decide_params.pop("station_id", None)
+            elif city:
+                day_res = self.series(station_id, city, fuel, 24)
+
+        decide_res = self.decide(decide_params)
+        fills_res = self.fills()
+        summary_params = {"fuel": fuel}
+        if city:
+            summary_params["city"] = city
+        summary_res = self.stats_summary(summary_params)
+        episodes_res = self.episodes("due")
+
+        result = {
+            "generated_at": self.clock().isoformat(),
+            "decide": decide_res,
+            "fills": fills_res,
+            "stats_summary": summary_res,
+            "episodes": episodes_res,
+            "day": day_res,
+            "error_code": None,
+        }
+        if etag:
+            with self.lock:
+                if len(self.overview_cache) >= 64:
+                    self.overview_cache.clear()
+                self.overview_cache[etag] = result
+        return result
 
     def day_series(self, station_id: str, day: str):
         """Tageskurve für das Stations-Labor im Statistik-Bereich.
