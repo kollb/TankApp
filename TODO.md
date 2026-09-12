@@ -48,7 +48,64 @@
 |---|---|---|---|
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?“-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online“-Zustand. |
-| B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
+| B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. Teilmessung vom 12.09.2026 (Synthetik-Datenstand, nicht Zielhardware): Privat-Speicher je Worker 105 MB (fork) bzw. 150 MB (forkserver), 8 Worker ≈ 0,8–1,2 GB — Details und Folgen in B19. |
+
+### Laufzeit des Modell-Laufs — Befund und Messwerte vom 12.09.2026 (B15–B22, nichts davon umgesetzt)
+
+Auslöser sind zwei `models`-Läufe im Job-Log vom 12.09.2026: 80 Tasks
+(20 Stationen × fit24/wide72/wide168/backtest21), Dauer **8,3 min** bzw.
+**11,2 min**, davon ~95 % in der Phase „Modelle fitten + Backtest“.
+
+Messaufbau für alle Zahlen unten (bewusst außerhalb des Repos, nur Messung):
+nachgebauter Datenstand aus demselben Log — 20 Stationen, 120 Tage Archiv
+(28 152 Ereignisse) plus ~2 Tage Live-Polling (10 760 Zeilen), 5-Minuten-Raster,
+`Config`-Defaults (`bootstrap_samples=2000`, `train_days=42`,
+`holiday_pool_days=365`), Original-Engine-Code, Python 3.11, numpy 2.4.6,
+pandas 3.0.5, ein Kern. „Bitgleich“ heißt jeweils: gegen die aktuelle
+Implementierung auf vier Stationen geprüft (Modellfelder, Kennzahlen,
+Vergleichszeilen, Rolling-PICP) — nicht geschätzt.
+
+**Wo die Zeit hingeht (gemessen, eine Station):**
+
+| Anteil | Messung |
+|---|---|
+| Task `backtest21` | 24,3 s = **86 %** der CPU-Zeit einer Station (21 Folds × 1 `fit` + 3 `predict`); fit24 0,6 s, wide72 1,2 s, wide168 2,2 s |
+| `predict()` → 12-Uhr-Projektion | **91 %** von `predict`: 2000 Bootstrap-Pfade einzeln in Python, darin 1,04 Mio. Aufrufe `isotonic_decreasing`, 126 Tsd. `noon_law_projection`, allein 3,4 s für 126 Tsd. Aufrufe von `law_since_utc` (nur von `cfg` abhängig) |
+| `fit()` (219 ms) | 90 ms `strftime` für die Tagesschlüssel der Residuen-Blöcke, 46 ms Feiertagsmaske als List-Comprehension über Timestamps, 65 ms `pivot_table(aggfunc="median")` über ~2 900 (Tag, Slot)-Zellen mit je **genau einem** Gitterpunkt, 18 ms Huber-IRLS |
+| Summe 20 Stationen | 557 s CPU seriell (9,4 min) — deckt sich mit der Beobachtung, dass das NAS für den Fit-Block ~8 min braucht, also ungefähr einen Kern an effektivem Durchsatz trotz 8 Workern |
+
+| # | Prio | Fehlt | Warum es zählt / Definition of Done |
+|---|---|---|---|
+| B15 | P1 | **Bootstrap-Pfade vor der 12-Uhr-Projektion deduplizieren** | Ein Pfad hängt innerhalb eines Segments [12:00, nächste 12:00) nur von den gezogenen Tagesblöcken ab: bei 43 Blöcken gibt es je Segment höchstens 43² Kombinationen, bei Mitternachts-Origin — also in **allen** Backtest-Folds — genau 43. Gemessen: 86 von 4 000 Pfaden sind projektionspflichtig (46× weniger Arbeit), beim Tages-Origin 14:45 noch 1 065 von 4 000 (3,8×). Prototyp: Ziehungen je Segment über `np.unique(…, axis=0, return_inverse=True)` deduplizieren, eindeutige Zeilen projizieren, per `inverse` zurückschreiben — **bitgleich** (MAE, MASE, PICP, MPIW, Pinball, Vergleichszeilen und Rolling-PICP identisch). Wirkung allein: `predict` 24 h 0,41→0,16 s, 72 h 0,98→0,52 s, 168 h 2,18→1,21 s, `run_backtest(21 d)` 24,3→5,5 s. Ziel: Umsetzung in `engine/models.py::predict` mit Test „Dedup liefert bitgleiche Quantile/Pfade“ und Gegenmessung im Lauf. **Negatives Messergebnis, damit es niemand wiederholt:** ein PAVA, der über die Pfad-Achse vektorisiert (alle Zeilen gleichzeitig, Merge-Runden als Masken-Operation), war je Zeile ~7× **langsamer** als die bestehende skalare Fassung — die Zahl der Runden pro Position skaliert mit der tiefsten Merge-Kaskade über alle Zeilen (aus 1,3 µs/Pfad-Zeile wurden 9,6 µs). Der wirksame Hebel ist die Deduplizierung, nicht die Vektorisierung. Optionaler Nachsatz: `np.nanquantile` ist danach noch ~5 % von `predict` und ließe sich aus den deduplizierten Pfaden mit ihren Häufigkeiten rechnen. |
+| B16 | P1 | **`fit()` von String- und Aggregator-Overhead befreien** | 22 Fits je Station und Lauf. Prototyp **bitgleich** (219→79 ms): (a) Tagesschlüssel über `pd.factorize(index.tz_convert(tz).normalize())` statt `strftime("%Y-%m-%d")` (14,4→0,24 ms je 2016 Punkte; Auftretensreihenfolge = chronologisch, weil das Raster sortiert ist — dieselbe Ziehreihenfolge wie heute), (b) Feiertagsmaske über `searchsorted` auf Feiertags-Int64 statt List-Comprehension mit Timestamp-Iterierung (28,7→2,3 ms), (c) Residuen-Tagesblöcke als Index-Zuweisung `blocks[tag, slot] = residual` statt `pivot_table(aggfunc="median")` — (Tag, Slot) ist je Gitterpunkt eindeutig, der Median reduziert also genau einen Wert und verwirft NaN, (d) Naiv-Profil über stabilen Sortierindex + `searchsorted` statt `groupby(…).agg(lambda g: g.iloc[-1])`, (e) Zähler `law_rise_outside_noon` vektorisiert. Zusätzlich möglich, aber **nicht bitgleich**: Huber-IRLS über gewichtete Normalgleichungen (13 Spalten, `XᵀWX` bilden und lösen) statt `lstsq` — 79→56 ms, größte Abweichung in `beta` 3,2e-12, in den Residuen-Blöcken 3,4e-12. Nur mit ausdrücklichem Okay und dann als eigene, geprüfte Änderung. |
+| B17 | P1 | **21-Tage-Backtest je Tag cachen statt je Lauf** | Gemessen: eine zusätzliche Stunde Live-Daten am selben Tag ändert den Backtestbericht **nicht** (Kennzahlen, Vergleichszeilen und die 21 Fold-Origine identisch). Grund: alle Folds enden vor der heutigen lokalen Mitternacht, ihre Trainingsfenster und Wahrheiten liegen vollständig in der Vergangenheit; die +3-d/+7-d-Fenster der letzten Folds sind Zukunft. Der Bericht hängt also nur am lokalen Endtag und an den **vergangenen** Eingabedaten (Archiv-Nachholung, Lückenfüllung). Ziel: Cache je (Station, Kraftstoff, Endtag, Fingerabdruck der Eingabedaten bis Endtag) unter `runtime/engine/`; Treffer überspringt 21 Folds × (1 Fit + 3 Prognosen) = 86 % der CPU-Zeit eines Laufs, Fingerabdruck-Wechsel rechnet neu. Ehrlich ausweisen (`backtest_computed_at`/`backtest_cached`) statt Alter verschweigen; Test „gleicher Tag, neue Stundendaten → gleicher Bericht“ und „gapfill in der Vergangenheit → neuer Bericht“. |
+| B18 | P1 | **Dauerhaftes `partial` löst stündlichen Voll-Lauf aus** | `Scheduler.next_delay` und `worker.finish` setzen 3600 s, sobald der Zustand nicht `success` ist. Eine dauerhaft unfitbare Station (im Log jeden Lauf „Gütersloh – GTB-Tankstelle, Isselhorster Str. 10-12 · fit24 – Fehler“, Grund `insufficient_or_invalid_training_data`) hält den Zustand auf `partial` → der 8–11-minütige Lauf wiederholt sich **24×/Tag** (Log: Ende 13:48:01 → Start 14:48:03, exakt 3600 s). Ziel: dauerhafte von flüchtigen Ursachen trennen — „Station hat strukturell zu wenig Historie“ darf keinen Stundentakt auslösen (Backoff auf `INTERVALS`, eigener Fehlercode je Station, Alarm/Checkliste statt Wiederholung); gehört zu A12 (Station-Lebenszyklus: tote Stationen fallen aus Polling-Set und Ranking). `tests/test_app_jobs.py` erwartet heute `partial` und 3600 s — mitziehen, nicht umbiegen. |
+| B19 | P2 | **Prozess-Pool: eine Phase, explizite Startmethode, schlankere initargs** | Das Image baut auf `python:3.14-slim-bookworm`; seit 3.14 ist `forkserver` die Default-Startmethode (gh-84559), `app/model_jobs.py` legt keine fest. Messung mit denselben Daten und 8 Workern: Pool-Start inklusive initargs **0,03 s (fork) gegen 1,3–1,8 s (forkserver)**, und `app/refresh.py` baut **zwei** Pools je Kraftstoff (Phase A fit, Phase B wide/backtest) — im NAS-Log sichtbar als 17 s bis zum ersten Task-Ergebnis von Phase A. Privat-Speicher (PSS) je Worker 105 MB (fork) gegen 150 MB (forkserver), weil `series_map` (30,6 MB gepickelt, alle 20 Stationen, obwohl ein Task genau eine braucht) je Worker privat entpackt wird: 8 Worker ≈ 0,8–1,2 GB, dazu 32 MB Pfade plus `nanquantile`-Temporäres je wide168-Task. Ziel: ein Pool für beide Phasen; Startmethode explizit wählen (der Job-Prozess `python -m app.worker` ist single-threaded, `fork` ist dort sicher — sonst forkserver mit Datentransfer als `.npy` in `/dev/shm` + `mmap_mode="r"`); initargs auf die wirklich gebrauchten Spalten reduzieren; Pfade ggf. `float32`; Worker-Zahl an `nproc` der Zielhardware ausrichten und die gemessenen Werte in [docs/BETRIEB.md](docs/BETRIEB.md#modell-lauf-beschleunigen) belegen. Ergänzt B11. |
+| B20 | P2 | **Verschenkte Arbeit in den Tasks** | Vier Punkte, alle ohne Änderung der Ergebnisse: (1) `app/model_jobs.py::_run` fittet auch für `kind="backtest"`, obwohl `app/refresh.py` das Modell ausschließlich aus Phase A liest (`fitted[identity]["model"]`) — Fit und zurückgeschicktes Artefakt (101 kB je Task) sind tot, ebenso `model` in `wide`-Ergebnissen. (2) `engine/backtest.py::run_backtest` ruft `predict` für das +3-d/+7-d-Fenster auf, **bevor** es prüft, ob dort Beobachtungen liegen — 8 von 63 Aufrufen je Station (13 %) enden sicher in `no_common_observations`; eine Vorab-Prüfung `h_observed.any()` ist bitgleich. (3) fit24/wide72/wide168 fitten dreimal dieselbe Station zum selben Cutoff — Fit plus beide Horizonte in einem Task spart zwei Fits je Station (Load-Balance beachten: `backtest` bleibt eigener Task). (4) `_records` baut je Zeile ein dict plus `isoformat()` über `index.map(lambda …)`; für die Publikation genügen die vorhandenen `HORIZON_COLUMNS`. (5) `run_tasks` holt Ergebnisse strikt in Einreichreihenfolge ab (`for _task, future in futures: future.result()`), der Fortschritt meldet also Fertigstellung in Task-Reihenfolge und nicht in Wahrheits-Reihenfolge — im Log sieht das aus wie ein Hänger (Task 21/22 kommen, dann 72 s Stille bis `backtest21`), und die `eta_s`-Schätzung erbt denselben Fehler. `as_completed` für `on_done` plus Ergebnisliste weiter in Task-Reihenfolge macht die Anzeige ehrlich, ohne die Publikation zu ändern. |
+| B21 | P2 | **Selektion läuft doppelt und überschreibt das Artefakt** | `refresh()` rechnet δ̂ je Kraftstoff und schreibt `runtime/selection/{fuel}.json` plus `current.json`; `worker.execute("models")` ruft danach `build_selection()` erneut auf und überschreibt `current.json` mit einer anders aufgebauten Datei. Im Log: erste Selektion 0,13 s (Ergebnis nur im stdout-Log, nicht im Fortschritt), zweite 0,7 s mit „e10: **0 Stationen**“ und Fortschritt „2/1“ bei `total=1`. Zu klären: warum `top_global` leer ist (Eingabedaten, `min_coverage=0.85`, oder stiller Fehler im ersten Aufruf), welche der beiden Rechnungen die publizierte sein soll, ob die zweite entfallen kann, und ob „Meine Stationen“ in der GUI heute aus `by_fuel` oder aus `stations` liest. Fortschrittszähler darf nicht über `total` laufen. |
+| B22 | D | **Zahlen-ändernde Hebel: `bootstrap_samples` und Nacht-Raster — Entscheidung, kein Gratishebel** | Nach B15/B16 nicht mehr nötig; falls trotzdem gewollt: 2000→500 Ziehungen halbiert die Backtest-Zeit (24,3→9,6 s), verschiebt aber die publizierten Kennzahlen (Messung, eine Station: MASE 2,1059→2,0939, PICP 55,82→54,63 %, MPIW 1,866→1,830 ct, MAE 1,3590→1,3509 ct). Also Produktentscheidung mit eigener Konfiguration (`bootstrap_samples_backtest`) und Ausweis im Bericht — keine stille Änderung an einer Zahl, die ein Gate (§4.4) prüft. Zweiter Hebel derselben Klasse: `predict(hours=72/168)` rechnet das **volle** 5-Minuten-Raster inklusive Nachtstunden, obwohl der Collector nur 06–24 Uhr pollt und die Nachtzellen mangels Residuen-Unterstützung überwiegend NaN sind — mit `scheduled()`-Filter wären das 25 % weniger Punkte (168 h: 2016→1512). Ändert die publizierten `points_3d`/`points_7d` und damit den Fan-Chart, also erst entscheiden, ob die GUI die Nachtstunden braucht. |
+
+**Offene Diagnose aus demselben Log (kein eigener Punkt, gehört zu B19):**
+um 14:48:03 startete ein Lauf und brach nach Task 20/80 (14:48:59) ohne
+`beendet`-Zeile ab; um 14:49:22 startete ein zweiter, der 11,2 min lief. Zwei
+überlappende Modell-Läufe verdoppeln die Last. `Scheduler.run_once` wartet auf
+das Ende des Kindprozesses, der zweite Lauf kann also nur von einem Neustart des
+App-Prozesses kommen (der Scheduler startet den ersten Job sofort) oder von einer
+zweiten App-Instanz. Der Abbruch liegt zeitlich genau auf dem Pool-Wechsel zu
+Phase B, wo 8 neue Worker je ~150 MB Privat-Speicher anfordern — ein OOM-Kill ist
+die naheliegendste, aber **nicht belegte** Erklärung. Zu prüfen:
+`docker inspect tankapp-app --format '{{.State.StartedAt}} {{.RestartCount}} {{.State.OOMKilled}}'`,
+`dmesg | grep -i oom`, `ps aux | grep app.worker`, sowie `nproc` auf dem NAS
+(Worker-Zahl gegen echte Kerne).
+
+**Erwartete Wirkung, wenn B15+B16 zusammen umgesetzt sind (gemessen, ein Kern):**
+28,3 s → 5,2 s je Station, also 9,4 min → 1,7 min CPU für 20 Stationen
+(**5,4×**); der Backtest-Anteil fällt von 86 % auf 62 %. Mit B17 (Tages-Cache)
+bleiben in einem untertägigen Lauf noch 37 s CPU statt 80 s, und mit B18 läuft
+der teure Lauf einmal am Tag statt 24×. Reihenfolge: erst B15+B16 (bitgleich,
+kein Architektur-Eingriff, sofort messbar), dann B18 (kleinste Änderung mit
+größter Betriebswirkung), dann B17 (Cache-Schlüssel und Ehrlichkeits-Ausweis
+brauchen einen Entwurf), dann B19/B20/B21.
 
 ---
 
@@ -237,3 +294,9 @@ Footer-Zeilen offen).
    `FEEDBACK_SCHEMA_VERSION`.
 4. **D-Items erst nach Live-Daten** (M7-Termin, Rabatte, Engine-Ausbau) — sie
    stehen begründet in [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+5. **Laufzeit-Bündel B15/B16 zuerst** (bitgleich, kein Architektur-Eingriff,
+   sofort messbar), dann B18 (kleinste Änderung, größte Betriebswirkung: der
+   8–11-minütige Lauf fällt von 24×/Tag auf 1×/Tag), dann B17 (Tages-Cache,
+   braucht einen Entwurf für Schlüssel und Ehrlichkeits-Ausweis), dann
+   B19–B21. Befund und Messwerte stehen im Abschnitt
+   [B — Laufzeit des Modell-Laufs](#laufzeit-des-modell-laufs--befund-und-messwerte-vom-12092026-b15b22-nichts-davon-umgesetzt).
