@@ -145,11 +145,17 @@ def collector_status_from_influx(settings, query_func, clock):
         }
 
     except Exception as e:
-        return {
+        result = {
             "error_code": "influx_read_failed",
             "available": False,
             "detail": type(e).__name__,
         }
+        # ExportError trägt eine bewusst credential-freie Meldung (HTTP-Status,
+        # CSV-Format, Netz-Ursache). Andere, unerwartete Fehler geben nur den
+        # Typnamen weiter — nie eine Rohmeldung, die Zugangsdaten enthalten könnte.
+        if isinstance(e, influx.ExportError):
+            result["message"] = str(e)
+        return result
 
 
 def nas_heartbeat(settings):

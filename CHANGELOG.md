@@ -8,7 +8,8 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 > Quick-Wins 0.11 komplett umgesetzt (7 von 7): ehrliche Beleg-Eingabe,
 > wählbarer Heatmap-Zeitraum, präzise Slider, faire Cheap-Prob-Basis,
-> begrenztes RP2-Journal.
+> begrenztes RP2-Journal. Baut auf **0.10.1** auf (Collector-Herzschlag lesbar,
+> `export_influx.query_raw`).
 
 ### Hinzugefügt
 
@@ -55,6 +56,19 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **D1-Vorbereitung, Testbarkeit:** Heatmap-URL-Bau (`heatmapPath`),
   Beleg-Vorprüfung (`checkFillDraft`) und Slider-Commit (`sliderCommit`) liegen
   als reine Funktionen in `web/src/data.ts` und sind dort von vitest abgedeckt.
+
+## [0.10.1] – 2026-09-12
+
+### Behoben
+
+- **B3.11** Collector-Herzschlag lesbar: `GET /api/v1/collector/status` las das
+  Measurement `collector_status` mit dem Preis-Schema (`station`/`status` als
+  Pflichtspalten) und verwarf die `_field`/`_value`-Antwort deshalb als
+  „Unerwartetes InfluxDB-CSV-Format" — `influx_read_failed`/`ExportError`, obwohl
+  der Pi-Uploader den Herzschlag korrekt liefert. Ein generischer Leseweg
+  (`export_influx.query_raw`, nur `_time` als Pflichtspalte) liest solche
+  Messungen jetzt als rohe Zeilen; die credential-freie `ExportError`-Meldung
+  steht zusätzlich in `message` des Status-Endpunkts.
 
 ## [0.10.0] – 2026-09-12
 
