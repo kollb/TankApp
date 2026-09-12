@@ -1,6 +1,6 @@
 # Engine-Referenz — optionale Modellwerkstatt
 
-> Stand: 12.09.2026 · App-Version 0.10.1. Werkstatt-Referenz für `engine/` —
+> Stand: 12.09.2026 · App-Version 0.11.0. Werkstatt-Referenz für `engine/` —
 > **keine Installations-Checkliste**. Einrichtung: [INSTALL.md](INSTALL.md),
 > Betrieb: [BETRIEB.md](BETRIEB.md), Methodik im Überblick:
 > [ANALYSE.md](ANALYSE.md). Früher lag diese Datei als `engine/README.md` neben

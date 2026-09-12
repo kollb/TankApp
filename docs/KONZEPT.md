@@ -1,6 +1,6 @@
 # TankApp — Produkt- und Architekturkonzept
 
-> Stand: 12.09.2026 · App-Version 0.10.1. Dieses Dokument beschreibt das
+> Stand: 12.09.2026 · App-Version 0.11.0. Dieses Dokument beschreibt das
 > **Zielbild**, nicht ausschließlich bereits laufende Funktionen. Der Abgleich
 > Zielbild ↔ Code — § für §, mit Grund für jeden offenen Punkt — steht in
 > [LUECKEN.md](LUECKEN.md); die priorisierte Arbeitsliste in

@@ -4,7 +4,7 @@
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
 Preise.
 
-> Stand: 12.09.2026 · Version **0.10.1** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> Stand: 12.09.2026 · Version **0.11.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
 ## Dokumentation: ein Ordner, ein Index
@@ -55,9 +55,10 @@ Kalibrierung. Bis M7 erreicht ist, bleiben `calibrated=false` und
 **Implementiert und softwaregetestet:** Mehrstadt-Polling, Live-GUI mit
 Alltag/Werkstatt/System, Nur-Lese-API mit Rate-Limit, gebündelter NAS-Dienst
 (`nas-up`) mit Archiv-Nachholung, Modell-Läufen (prozessparallel), Selektion,
-Heatmaps, Collector-Status, Decision Layer (`/api/v1/decide` inkl. `latest_by`
-und Fahrtmodus), Job-Fortschritt, Advice-/Wallet-Ledger mit Beleg-Storno und
-CSV-Export, Alarm-Block, Backup-Skript, Versionsanzeige, RP2-Proxy/Fallback.
+Heatmaps (Zeitraum und Vergleichs-Basis wählbar), Collector-Status, Decision
+Layer (`/api/v1/decide` inkl. `latest_by` und Fahrtmodus), Job-Fortschritt,
+Advice-/Wallet-Ledger mit Beleg-Storno und CSV-Export, Alarm-Block,
+Backup-Skript, Versionsanzeige, RP2-Proxy/Fallback.
 
 **Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf den
 eigenen Geräten noch nicht abgenommen. Prognosen sind unkalibriert und nicht

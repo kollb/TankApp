@@ -109,6 +109,119 @@ def test_heatmap_level_and_probability(b3_settings):
     assert hm_prob2["matrix"][0][18] == 0.0
 
 
+def test_heatmap_probability_column_basis_shows_weekday_effect(b3_settings):
+    """B12: ohne Station gegen den Median *derselben Stunde* rechnen.
+
+    Montag ist durchgehend 6 ct günstiger als Freitag; zur selben Stunde bleibt
+    der Abstand aber unter dem Gesamtmedian — den zeigt nur die Spalten-Basis.
+    """
+    # Montag 2026-09-07 und Freitag 2026-09-04, 18 und 12 Uhr Berlin (UTC+2).
+    rows = [
+        (dt.datetime(2026, 9, 7, 16, 0, tzinfo=dt.timezone.utc), UID, 1.70),
+        (dt.datetime(2026, 9, 7, 16, 0, tzinfo=dt.timezone.utc), OTHER, 1.72),
+        (dt.datetime(2026, 9, 7, 10, 0, tzinfo=dt.timezone.utc), UID, 1.78),
+        (dt.datetime(2026, 9, 7, 10, 0, tzinfo=dt.timezone.utc), OTHER, 1.80),
+        (dt.datetime(2026, 9, 4, 16, 0, tzinfo=dt.timezone.utc), UID, 1.76),
+        (dt.datetime(2026, 9, 4, 16, 0, tzinfo=dt.timezone.utc), OTHER, 1.78),
+        (dt.datetime(2026, 9, 4, 10, 0, tzinfo=dt.timezone.utc), UID, 1.84),
+        (dt.datetime(2026, 9, 4, 10, 0, tzinfo=dt.timezone.utc), OTHER, 1.86),
+    ]
+
+    def query(cfg, flux):
+        yield from (
+            {
+                "_time": ts.isoformat(),
+                "city": "Frankfurt",
+                "station_id": uid,
+                "station": "Station",
+                "status": "open",
+                "e10": str(price),
+            }
+            for ts, uid, price in rows
+        )
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+
+    # Gesamtmedian (1,78): Montag und Freitag sind um 18 Uhr beide „grün“ —
+    # der Wochentags-Abstand ist aus der Ansicht nicht abzulesen.
+    overall = live.heatmap("Frankfurt", "e10", "probability", weeks=2, basis="overall")
+    assert overall["error_code"] is None
+    assert overall["basis"] == "overall"
+    assert overall["matrix"][0][18] == 100.0  # Mo 18 Uhr
+    assert overall["matrix"][4][18] == 100.0  # Fr 18 Uhr (1,78 ≤ 1,78 zählt)
+    assert overall["matrix"][0][12] == 50.0  # Mo 12 Uhr
+
+    # Spalten-Basis: Median derselben Stunde → Mo bleibt grün, Fr wird rot.
+    hour = live.heatmap("Frankfurt", "e10", "probability", weeks=2, basis="hour")
+    assert hour["error_code"] is None
+    assert hour["basis"] == "hour"
+    assert hour["matrix"][0][18] == 100.0  # Mo 18 Uhr unter 1,74
+    assert hour["matrix"][4][18] == 0.0  # Fr 18 Uhr über 1,74
+    assert hour["matrix"][0][12] == 100.0  # Mo 12 Uhr unter 1,82
+    assert hour["matrix"][4][12] == 0.0  # Fr 12 Uhr über 1,82
+
+    # Das Niveau (kind=level) ist von der Basis unabhängig.
+    level_overall = live.heatmap(
+        "Frankfurt", "e10", "level", weeks=2, station_id=None, basis="overall"
+    )
+    level_hour = live.heatmap(
+        "Frankfurt", "e10", "level", weeks=2, station_id=None, basis="hour"
+    )
+    assert level_hour["matrix"] == level_overall["matrix"]
+
+    # Mit Station vergleicht die Heatmap ohnehin je Zelle — Basis wirkt nicht.
+    with_station_overall = live.heatmap(
+        "Frankfurt", "e10", "probability", weeks=2, station_id=UID, basis="overall"
+    )
+    with_station_hour = live.heatmap(
+        "Frankfurt", "e10", "probability", weeks=2, station_id=UID, basis="hour"
+    )
+    assert with_station_hour["matrix"] == with_station_overall["matrix"]
+    assert with_station_hour["matrix"][0][18] == 100.0  # 1,70 ≤ Zellenmedian 1,71
+
+
+def test_heatmap_rejects_unknown_basis(b3_settings):
+    live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)
+    with pytest.raises(ValueError, match="invalid_basis"):
+        live.heatmap("Frankfurt", "e10", "probability", weeks=2, basis="gesamt")
+
+
+def test_heatmap_endpoint_accepts_basis_param(b3_settings):
+    """Der API-Pfad reicht `basis` durch — die GUI schaltet ihn um (B12)."""
+    seen = {}
+
+    def query(cfg, flux):
+        seen["called"] = True
+        yield raw_price(NOW - dt.timedelta(days=1, hours=2), UID, "Frankfurt", 1.60)
+
+    live = LiveData(b3_settings, query=query, clock=lambda: NOW)
+    server = make_server(b3_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(
+            base
+            + "/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=2&basis=hour"
+        ) as r:
+            data = json.load(r)
+        assert data["basis"] == "hour"
+        assert data["error_code"] is None
+        try:
+            urllib.request.urlopen(
+                base
+                + "/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=2&basis=quatsch"
+            )
+            assert False, "sollte 400 sein"
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            assert json.load(e)["error_code"] == "invalid_basis"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_selection_not_available_returns_explicit(b3_settings):
     # No training data -> selection_not_available
     live = LiveData(b3_settings, query=lambda *_: [], clock=lambda: NOW)

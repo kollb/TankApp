@@ -1,6 +1,6 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 12.09.2026 · App-Version 0.10.1 — B3-Aggregate, P-Seite aus der
+> Stand: 12.09.2026 · App-Version 0.11.0 — B3-Aggregate, P-Seite aus der
 > Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
 > enthalten. Methodik-Nachschlagewerk, keine Checkliste: Einrichten
 > [INSTALL.md](INSTALL.md), rechnen lassen [BETRIEB.md](BETRIEB.md),
@@ -125,15 +125,41 @@ Datei `results/station_scores_<fuel>.csv` bleibt lokal für vertiefte Analyse, n
 
 - `kind=probability`: Cheap-Probability in % je Zelle (DoW × Stunde, Berlin):
   - **mit `station_id`**: Stadtmedian pro Zelle = Median aller Stationen im selben (DoW, Stunde); je Zelle der Anteil der Preise der Station, die ≤ diesem Zellen-Median sind
-  - **ohne `station_id`**: Gesamtmedian = Median aller offenen Preise des Zeitfensters; je Zelle der Anteil der Preise ≤ Gesamtmedian (durchschnittliche Chance, dass ein zufälliger Preis günstiger als der Schnitt ist)
+  - **ohne `station_id`, `basis=hour` (Default der GUI, seit 0.11.0)**: je Zelle der Anteil der Preise ≤ **Median derselben Stunde** (Spalten-Basis: alle Wochentage dieser Stunde, alle Stationen des Fensters)
+  - **ohne `station_id`, `basis=overall`**: Gesamtmedian = Median aller offenen Preise des Zeitfensters; je Zelle der Anteil der Preise ≤ Gesamtmedian (durchschnittliche Chance, dass ein zufälliger Preis günstiger als der Schnitt ist)
 - Nur offene Preise, InfluxDB letzte N Wochen
 - Grün = hohe Chance (≥80%), Rot = niedrige
+
+**Warum zwei Basen? (B12)** Der Tagesgang (nachts/abends günstig, mittags
+teuer) ist um ein Vielfaches größer als der Wochentags-Effekt. Gegen den
+Gesamtmedian gerechnet werden Abendzellen deshalb fast immer grün und
+Mittagszellen fast immer rot — egal welcher Wochentag. Die Frage „an welchem
+*Wochentag* ist es günstig?“ ist in dieser Ansicht nicht ablesbar. Mit
+Spalten-Basis wird jede Zelle gegen den Median **ihrer eigenen Stunde**
+geteilt: Der Tagesgang ist herausgerechnet, die Zeilen (Wochentage) sind
+untereinander vergleichbar. Beide Sichten sind richtig, sie beantworten
+verschiedene Fragen:
+
+| Basis | Beantwortet | Liefert |
+|---|---|---|
+| `hour` | „Welcher Wochentag ist zur selben Uhrzeit günstiger?“ | Zeilenvergleich, Tagesgang neutralisiert |
+| `overall` | „Wie günstig ist diese Stunde insgesamt im Zeitraum?“ | absolute Einordnung, Tagesgang sichtbar |
+
+Vergleichs-Basis und Zellen-Median sind nicht dasselbe: Die Spalten-Basis teilt
+gegen alle Preise *dieser Stunde* (unabhängig von der Zahl der Stationen je
+Zelle), der Zellen-Median gegen alle Preise *dieser Zelle*. Mit gewählter
+Station bleibt es beim Zellen-Median — die GUI deaktiviert den Umschalter in
+diesem Fall, weil er dort nichts ändert. Die Zellen selbst (und damit die
+Spalten-Basis) enthalten die eigene Stichprobe; bei dünner Datenlage wandert
+der Vergleichswert mit — die Heatmap bleibt eine Analyse-, keine
+Entscheidungsansicht.
 
 Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der
 Werkstatt (Tab **Werkstatt**), nicht im Alltags-Startbildschirm. Sie zeigen die
 **Vergangenheit** (letzte N Wochen), keine Prognose für die kommende Woche.
 
-Frontend: Umschalter Level/Probability, Wochen-Wahl 2/4/6/8, Station aus
+Frontend: Umschalter Level/Probability, Wochen-Wahl 4/6/12 (E5, Default 6),
+Basis-Umschalter für die Cheap-Probability ohne Station (B12), Station aus
 Dropdown. Seit 0.10.0 (C10) zusätzlich unter der 7×24-Matrix:
 
 - **Tages-Zusammenfassung** je Wochentag (Median + günstigste Stunde),
@@ -141,17 +167,15 @@ Dropdown. Seit 0.10.0 (C10) zusätzlich unter der 7×24-Matrix:
 - ein **Fazit-Satz** („Typisch am günstigsten: Di 18–20 Uhr — Median 1,653 €/L“)
   und eine Erklärzeile, was „Niveau“ und „Cheap-Prob“ bedeuten.
 
-**Bekannte Grenze (TODO B12):** `kind=probability` **ohne** `station_id`
-vergleicht jede Zelle mit dem Gesamtmedian aller Zellen. Weil der Tagesgang
-(nachts/abends günstig, mittags teuer) größer ist als der Wochentags-Effekt,
-werden Abendzellen fast immer grün und Mittagszellen fast immer rot — die Frage
-„an welchem *Wochentag* ist es günstig?“ ist aus dieser Ansicht ohne
-`station_id` nur eingeschränkt ablesbar. Mit `station_id` ist der Vergleich fair
-(Station gegen Stadt im selben Slot). Geplant: optional Spalten-Basis (Median
-derselben Stunde), damit der Tagesgang herausgerechnet ist.
+Die frühere Grenze (TODO B12: ohne Station überstrahlt der Tagesgang den
+Wochentag) ist seit 0.11.0 als **Modus** gelöst, nicht als stiller
+Verhaltenswechsel: `basis=overall` rechnet weiter wie früher, `basis=hour`
+gegen die Spalten-Basis. Der API-Default bleibt `overall`, damit bestehende
+Aufrufe (und die Doku dazu) gültig bleiben; die GUI schickt ohne Station
+bewusst `hour` und erklärt die Wahl in der Erklärzeile unter der Matrix.
 
-Die Tages-Zusammenfassung (Median je Wochentag) ist von dieser Grenze **nicht**
-betroffen — sie rechnet auf dem Niveau, nicht auf der Cheap-Probability.
+Die Tages-Zusammenfassung (Median je Wochentag) ist von beiden Modi unabhängig
+— sie rechnet auf dem Niveau, nicht auf der Cheap-Probability.
 
 ## Zeitreihen-Engine
 
@@ -252,6 +276,6 @@ Antwort: delta_ct, gross_eur, fuel_cost_eur, time_cost_eur, detour_cost_eur, net
 - [Betrieb](BETRIEB.md)
 - [Konzept](KONZEPT.md) — vollständiges Zielbild
 - [Lücken-Check](LUECKEN.md) — Konzept ↔ Stand, bewusst offene Punkte mit Grund
-- [TODO](../TODO.md) — priorisierte Arbeitsliste (u. a. B12 Cheap-Prob-Basis, A11 gemeinsame Ziehung)
+- [TODO](../TODO.md) — priorisierte Arbeitsliste (u. a. A11 gemeinsame Ziehung)
 - [Engine-Referenz](ENGINE.md) — Backtest-Rezepte, Datenqualität, 12-Uhr-Regel
 - [Werkzeuge](DATENWERKZEUGE.md)

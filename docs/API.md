@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 12.09.2026 · App-Version **0.10.1** — B3/B4/B5, Ereignis-Pipeline
+> Stand: 12.09.2026 · App-Version **0.11.0** — B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
 > Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
 > (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
@@ -75,7 +75,7 @@ konfigurierbar über `TANKAPP_RATE_ANON_PER_MIN` (Default 60),
 | `GET /api/v1/series?city=...&station_id=...&fuel=...&hours=24` |  | Verlauf 1–168h |
 | `GET /api/v1/forecast?city=...&station_id=...&fuel=...` |  | Modell-Ausblick 24h + 3d/7d |
 | `GET /api/v1/last_forecasts` |  | Für RP2-Cache, nur 24h Horizonte |
-| `GET /api/v1/heatmap?city=...&fuel=...&kind=...&weeks=6&station_id=...` | **B3.9** | DoW×Stunde Niveau + Cheap-Prob |
+| `GET /api/v1/heatmap?city=...&fuel=...&kind=...&weeks=6&basis=…&station_id=...` | **B3.9** | DoW×Stunde Niveau + Cheap-Prob, Vergleichs-Basis wählbar (B12) |
 | `GET /api/v1/selection?fuel=...&city=...` | **B3.10** | Meine Stationen mit δ̂ |
 | `GET /api/v1/collector/status` | **B3.11** | Pi/tmpfs Livestatus (Influx → NAS-File → lokal) |
 | `POST /api/v1/collector/heartbeat` | **B3.11** | Collector-Herzschlag ans NAS (ohne InfluxDB) |
@@ -281,7 +281,7 @@ Antwort:
 {
   "app": "online",
   "generated_at": "2026-09-10T14:00:00+02:00",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "commit": "35c737234d9d",
   "polling_error": null,
   "station_count": 20,
@@ -443,7 +443,7 @@ Für RP2 Fallback-GUI Cache, nur 24h Horizonte (ohne 3d/7d):
 
 ## Heatmap (B3.9)
 
-`GET /api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=6&station_id=uuid`
+`GET /api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=6&basis=hour&station_id=uuid`
 
 - `city`: Pflicht
 - `fuel`: e10|e5|diesel, Default e10
@@ -451,8 +451,10 @@ Für RP2 Fallback-GUI Cache, nur 24h Horizonte (ohne 3d/7d):
   - `level`: Median €/L je (Wochentag, Stunde)
   - `probability`: Cheap-Probability in % je Zelle:
     - mit `station_id`: P(Station ≤ Stadtmedian **der Zelle**) — teilt den Preis der Station mit dem Median aller Stationen des gleichen (DoW, Stunde)
-    - ohne `station_id`: P(Preis ≤ **Gesamtmedian des Zeitfensters**) — Anteil der offenen Preise der Stadt, die unter dem Gesamtmedian liegen
-- `weeks`: 1–12, Default 6
+    - ohne `station_id`, `basis=overall` (Default): P(Preis ≤ **Gesamtmedian des Zeitfensters**) — Anteil der offenen Preise der Stadt, die unter dem Gesamtmedian liegen
+    - ohne `station_id`, `basis=hour` (**B12**): P(Preis ≤ **Median derselben Stunde**) — Spalten-Basis, rechnet den Tagesgang heraus und macht die Wochentage vergleichbar; die GUI nutzt ohne Station diesen Modus
+- `weeks`: 1–12, Default 6 (GUI-Wahl: 4/6/12)
+- `basis`: overall|hour, Default overall — wirkt nur bei `kind=probability` **ohne** `station_id`, sonst ignoriert (Antwort liefert den wirksamen Wert)
 - `station_id`: optional, wenn gesetzt nur diese Station, sonst Stadt
 
 Antwort:
@@ -465,6 +467,7 @@ Antwort:
   "kind": "probability",
   "weeks": 6,
   "station_id": "uuid",
+  "basis": "hour",
   "days": ["Mo","Di","Mi","Do","Fr","Sa","So"],
   "hours": [0,1,2,...,23],
   "matrix": [
@@ -485,9 +488,10 @@ Antwort:
 
 Fehler:
 
-- `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `polling_invalid`, `invalid_query` (u. a. bei unbekannter Stadt/Station, ungültigem fuel/kind/weeks)
+- `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `polling_invalid`, `invalid_basis` (400, bei `basis` außer `overall`/`hour`), `invalid_query` (u. a. bei unbekannter Stadt/Station, ungültigem fuel/kind/weeks)
 
-Frontend: Tab Werkstatt → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl.
+Frontend: Tab Werkstatt → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl
+4/6/12 (E5), Basis-Umschalter für die Cheap-Probability ohne Station (B12).
 
 ## Selection / Meine Stationen (B3.10)
 
@@ -812,7 +816,7 @@ Alle Endpunkte liefern `error_code` statt Exception-Text, nie Tokens. Unbekannte
 ```bash
 curl -s http://nas:1355/api/v1/health | jq
 curl -s "http://nas:1355/api/v1/stations?fuel=e10&city=Frankfurt" | jq
-curl -s "http://nas:1355/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=6" | jq
+curl -s "http://nas:1355/api/v1/heatmap?city=Frankfurt&fuel=e10&kind=probability&weeks=12&basis=hour" | jq
 curl -s "http://nas:1355/api/v1/selection?fuel=e10&city=Frankfurt" | jq
 curl -s http://nas:1355/api/v1/collector/status | jq
 curl -s "http://nas:1355/api/v1/route/evaluate?city=Frankfurt&fuel=e10&detour_km=3&liters=40" | jq

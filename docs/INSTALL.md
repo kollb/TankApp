@@ -1,6 +1,6 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 12.09.2026 · App-Version 0.10.1.  
+**Das ist der einzige Installationseinstieg.** Stand: 12.09.2026 · App-Version 0.11.0.  
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
 Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
 [BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](API.md).  
@@ -196,13 +196,18 @@ alte Name des Werkstatt-Tabs und steht nur noch in Archiv-Dokumenten.)
   aktuell gemeldeter offener Preis, Datenalter, Tankmenge, Umweg-Vergleich mit
   Button „Server prüfen“ (B3.12). Stadt, Kraftstoff und Tankmenge merkt sich der
   Browser. Neu (0.10.0): Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und
-  Dezimaleingabe mit Komma (E2). Keine Tankbuchung ohne Station, keine als netto
-  ausgegebene Umweg-Ersparnis.
+  Dezimaleingabe mit Komma (E2). Neu (0.11.0): Der Beleg-Dialog prüft Liter und
+  Preis gegen dieselben Grenzen wie der Server (5–100 L, 0,40–5,00 €/L) und bucht
+  erst nach gewählter Station (E3/E4); Verbrauch, Tankmenge und Zeitwert haben
+  feinere Stufen plus Begleit-Zahlenfeld (E6). Keine Tankbuchung ohne Station,
+  keine als netto ausgegebene Umweg-Ersparnis.
 - **Werkstatt:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
   Backtestwerte samt Datenbasis; fehlende/alte Modelle sichtbar markiert.
   Heatmaps DoW×Stunde (B3.9) **mit Tages-Zusammenfassung, hervorgehobener
-  heutiger Zeile und Fazit-Satz** (C10), Meine Stationen mit δ̂-Ranking,
-  Bootstrap-KI, AV-Score und billigster Stunde (B3.10).
+  heutiger Zeile und Fazit-Satz** (C10), seit 0.11.0 mit wählbarem Zeitraum
+  (4/6/12 Wochen, E5) und umschaltbarer Vergleichs-Basis der Cheap-Probability
+  ohne Station (Stunden-Median statt Gesamtmedian, B12). Meine Stationen mit
+  δ̂-Ranking, Bootstrap-KI, AV-Score und billigster Stunde (B3.10).
 - **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
   Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
   Trigger-Statistik (Issue 50). Neu (0.10.0): geführte
@@ -216,7 +221,7 @@ alte Name des Werkstatt-Tabs und steht nur noch in Archiv-Dokumenten.)
 
 Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte Preise. Unter System müssen Lesezugang und nach erstem Abruf Archiv-/Job-Stände passen. Laufender Container allein bestätigt das nicht. NAS-Auszeiten und Pi-Puffergrenze stehen bei Rollen oben.
 
-Stand dieser Lieferung (0.10.1): GUI, API, App-Start, Archiv-Zeitplanung,
+Stand dieser Lieferung (0.11.0): GUI, API, App-Start, Archiv-Zeitplanung,
 Modellveröffentlichung, Selektion, Heatmaps, Collector-Status, Route-Evaluate,
 Job-Fortschritt, Rate-Limit, Alarm-Block, Beleg-Storno/CSV-Export,
 `runtime/`-Backup und Versionsanzeige sind implementiert und softwaregetestet.
@@ -234,7 +239,7 @@ Analyse: [ANALYSE.md](ANALYSE.md)
 
 ## B3 Neue Features
 
-- **B3.9 Heatmaps DoW×Stunde:** `GET /api/v1/heatmap?city=...&fuel=...&kind=level|probability&weeks=6&station_id=...` — Niveau Median + Cheap-Probability P(p ≤ Stadtmedian), Berlin Zeit, echte InfluxDB Punkte letzte N Wochen. GUI Tab Werkstatt → Heatmaps.
+- **B3.9 Heatmaps DoW×Stunde:** `GET /api/v1/heatmap?city=...&fuel=...&kind=level|probability&weeks=6&basis=hour&station_id=...` — Niveau Median + Cheap-Probability, Berlin Zeit, echte InfluxDB Punkte letzte N Wochen; `basis` bestimmt die Vergleichsgröße ohne Station (B12). GUI Tab Werkstatt → Heatmaps mit Wochenwahl 4/6/12 (E5) und Basis-Umschalter.
 - **B3.10 Meine Stationen mit δ̂:** `GET /api/v1/selection?fuel=...&city=...` — Ranking, Bootstrap-KI, AV-Score, billigste Stunde, Volatilität, Coverage, Signifikanz q<0.05. Artefakt `runtime/selection/current.json`, Job `selection` täglich. GUI Tab Werkstatt → Meine Stationen, System → Artefakte.
 - **B3.11 Pi/tmpfs Livestatus:** Collector schreibt `meta/heartbeat.json` (tmpfs Nutzung, älteste Datei, poll_count), Uploader schreibt `collector_status` Measurement nach InfluxDB alle 60s. `GET /api/v1/collector/status` und `/api/v1/health` (Feld collector). GUI Tab System → Pi/tmpfs Livestatus.
 - **B3.12 Route Evaluate serverseitig:** `GET /api/v1/route/evaluate?city=...&fuel=...&station_id=...&ref_station_id=...&liters=40&detour_km=3&consumption=7&speed=45&value_of_time=12&when=...&mode=onroute` — K = d·(c/100)·p + (d/v)·z, brutto/netto, kritisch Δp*, worth_it, z_used peak/offpeak Auto. UI rechnet lokal, kann optional Server validieren (Button „Server prüfen“).
