@@ -317,6 +317,50 @@ def test_real_http_response_stream_and_early_eof(exporter, monkeypatch, truncate
         assert list(exporter.query_rows(config(exporter), "query"))[0]["e10"] == "1.709"
 
 
+def test_query_raw_reads_non_price_measurement(exporter, monkeypatch):
+    """Regression B3.11: collector_status hat kein Preis-Schema.
+
+    query_rows mit dem Standard-Schema verlangt ``station``/``status``; die
+    collector_status-Antwort besteht aus ``_field``/``_value``-Zeilen und würde
+    als „Unerwartetes InfluxDB-CSV-Format" verworfen. query_raw liest dieselbe
+    Antwort als rohe Zeilen (nur ``_time`` als Pflichtspalte).
+    """
+    import http.client
+
+    payload = (
+        "#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,string,string,string\n"
+        "#group,false,false,true,true,false,true,true,true,false,false\n"
+        "#default,_result,,,,,,,,,\n"
+        ",result,table,_start,_stop,_time,_measurement,host,city,_field,_value\n"
+        ",,0,2026-09-05T00:00:00Z,2026-09-12T00:00:00Z,2026-09-12T08:05:02+02:00,collector_status,pi,Frankfurt,last_poll_at,2026-09-12T08:05:02+02:00\n"
+        ",,0,2026-09-05T00:00:00Z,2026-09-12T00:00:00Z,2026-09-12T08:05:02+02:00,collector_status,pi,Frankfurt,open_count,10\n"
+    ).encode()
+
+    class Socket:
+        def makefile(self, *args):
+            return io.BytesIO(
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/csv; charset=utf-8\r\n"
+                + f"Content-Length: {len(payload)}\r\n".encode()
+                + b"\r\n"
+                + payload
+            )
+
+    class Opener:
+        def open(self, request, timeout):
+            response = http.client.HTTPResponse(Socket())
+            response.begin()
+            return response
+
+    monkeypatch.setattr(exporter.urllib.request, "build_opener", lambda *args: Opener())
+
+    rows = list(exporter.query_raw(config(exporter), 'from(bucket: "tankapp")'))
+    assert [r["_field"] for r in rows] == ["last_poll_at", "open_count"]
+    assert all(r["_measurement"] == "collector_status" for r in rows)
+    assert rows[0]["city"] == "Frankfurt"
+    assert rows[0]["_value"] == "2026-09-12T08:05:02+02:00"
+
+
 def test_export_cannot_overwrite_a_polling_json(exporter, polling):
     with pytest.raises(ValueError, match="Exportziel"):
         exporter.export_prices(

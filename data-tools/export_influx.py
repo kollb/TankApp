@@ -530,6 +530,19 @@ def query_rows(cfg: InfluxConfig, query: str, required_columns=PRICE_COLUMNS):
         raise network_error(exc, "Flux-Query", phase, status) from None
 
 
+def query_raw(cfg: InfluxConfig, query: str):
+    """Generische Flux-Zeilen ohne Preis-Schema-Prüfung.
+
+    ``query_rows`` erzwingt standardmäßig das Preis-Schema (``_time``, ``city``,
+    ``station``, ``status``) — richtig für Export und Live-Preise, falsch für
+    Messungen wie ``collector_status``: deren Antwort besteht aus langen
+    ``_field``/``_value``-Zeilen ohne ``station``/``status``-Paar und würde dort
+    als „unerwartetes CSV-Format" verworfen. Solche Messungen lesen hierüber als
+    rohe Zeilen (nur ``_time`` wird als Spalte verlangt).
+    """
+    yield from query_rows(cfg, query, required_columns=PROBE_COLUMNS)
+
+
 def parse_flux_csv(handle, required_columns=PRICE_COLUMNS):
     header = None
     defaults = []

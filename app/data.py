@@ -204,6 +204,10 @@ class LiveData:
     def __init__(self, settings, query=None, clock=None):
         self.settings = settings
         self.query = query or influx.query_rows
+        # collector_status liest ein Nicht-Preis-Measurement: rohe Zeilen statt
+        # Preis-Schema (siehe export_influx.query_raw). Ein injiziertes ``query``
+        # (Tests) dient unverändert für beide Lesewege.
+        self.query_any = query or influx.query_raw
         self.clock = clock or (lambda: dt.datetime.now(UTC))
         self.lock = threading.Lock()
         self.cache = {}
@@ -806,7 +810,7 @@ class LiveData:
         try:
             from .collector_status import build_collector_status
 
-            return build_collector_status(self.settings, self.query, self.clock)
+            return build_collector_status(self.settings, self.query_any, self.clock)
         except Exception:
             return {"available": False, "error_code": "collector_check_failed"}
 
