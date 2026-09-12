@@ -1,5 +1,7 @@
 """Rolling origins, strictly past-only fits, real open observations as truth."""
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 
@@ -78,6 +80,19 @@ def metrics(rows: pd.DataFrame) -> dict:
         * float(((rows.actual >= rows.q025) & (rows.actual <= rows.q975)).mean()),
         "mpiw95_ct": 100 * float((rows.q975 - rows.q025).mean()),
     }
+
+
+def truncate_series(item: PriceSeries, end_utc: pd.Timestamp) -> PriceSeries:
+    """Kopie der Reihe mit Raster strikt vor ``end_utc`` (exklusives Ende).
+
+    Alles, was ein Backtest mit Ende ``end`` lesen darf. Kein Umbau der
+    Daten — nur ein Zuschnitt; ``hampel_removed`` bleibt der Wert der
+    vollen Reihe (Diagnostik, fließt nicht in den Bericht).
+    """
+    frame = item.frame
+    if len(frame) and frame.index[-1] >= end_utc:
+        frame = frame.loc[frame.index < end_utc]
+    return replace(item, frame=frame)
 
 
 def last_complete_day(series: list[PriceSeries], cfg: Config) -> pd.Timestamp:
@@ -246,8 +261,20 @@ def rolling_picp_7d(
 
 
 def run_backtest(
-    series: list[PriceSeries], cfg: Config, days: int = 21, until=None
+    series: list[PriceSeries],
+    cfg: Config,
+    days: int = 21,
+    until=None,
+    strict_end: bool | None = None,
 ) -> tuple[dict, pd.DataFrame]:
+    """Rolling-Origin-Backtest über ``days`` lokale Tage bis ``until`` (exklusiv).
+
+    ``strict_end`` (B17): Reihe und Mehrtage-Fenster hart am Ende abschneiden,
+    damit der Bericht eine reine Funktion der Daten **vor** dem Ende ist.
+    Default: an, wenn das Ende automatisch aus den Daten bestimmt wird (der
+    letzte Tag ist dann angebrochen und darf nicht als Wahrheit dienen);
+    aus bei explizitem ``until`` (CLI-Auswertung mit bekannter Zukunft).
+    """
     if not 1 <= days <= 90:
         raise ValueError("Backtest-Zeitraum muss 1 bis 90 Tage betragen.")
     end = (
@@ -262,6 +289,18 @@ def run_backtest(
     origins = pd.date_range(
         end - pd.DateOffset(days=days), end, freq="D", inclusive="left"
     )
+    # B17: Der Bericht endet exklusiv an ``end`` — auch die Mehrtage-Fenster.
+    # Vorher wurden +3-d/+7-d-Fenster der letzten Folds gegen den *laufenden*
+    # (unvollständigen) Tag bewertet, obwohl ``test_end_exclusive`` Mitternacht
+    # nannte; damit hing der Bericht untertägig von jeder neuen Stunde ab.
+    # Mit dem Zuschnitt ist er eine reine Funktion der Daten vor ``end`` —
+    # Voraussetzung für den Tages-Cache (app/backtest_cache.py) und ehrlicher:
+    # bewertet wird nur, was innerhalb des Testzeitraums liegt.
+    if strict_end is None:
+        strict_end = until is None
+    end_utc = end.tz_convert("UTC")
+    if strict_end:
+        series = [truncate_series(item, end_utc) for item in series]
     folds, predictions = [], []
     decision_rows: list[dict] = []
     decision_skipped = 0
@@ -272,7 +311,8 @@ def run_backtest(
     # als Fan-Chart zeigt, bekommt damit ihre eigene Messzahl.
     horizon_predictions: dict[int, list[pd.DataFrame]] = {h: [] for h in HORIZON_HOURS}
     horizon_folds: dict[int, dict[str, int]] = {
-        h: {"evaluated": 0, "no_common_observations": 0} for h in HORIZON_HOURS
+        h: {"evaluated": 0, "no_common_observations": 0, "beyond_test_end": 0}
+        for h in HORIZON_HOURS
     }
     for item in series:
         for local_origin in origins:
@@ -355,6 +395,12 @@ def run_backtest(
             # und die AR-Fortsetzung laufen über dasselbe Raster wie live.
             for horizon_hours in HORIZON_HOURS:
                 h_start = origin + pd.Timedelta(hours=horizon_hours)
+                if strict_end and h_start >= end_utc:
+                    # Fenster liegt ganz außerhalb des Testzeitraums (Zukunft
+                    # aus Sicht des Berichts) — zählen, nicht als „keine
+                    # gemeinsame Beobachtung“ tarnen.
+                    horizon_folds[horizon_hours]["beyond_test_end"] += 1
+                    continue
                 h_target = pd.date_range(
                     h_start,
                     h_start + pd.Timedelta(days=1),
@@ -395,6 +441,7 @@ def run_backtest(
             "days_no_common_observations": horizon_folds[horizon_hours][
                 "no_common_observations"
             ],
+            "days_beyond_test_end": horizon_folds[horizon_hours]["beyond_test_end"],
             "metrics": metrics(h_rows_all),
         }
     # Evidence needs >=21 days for EACH requested station, enough actual polls,
@@ -568,7 +615,8 @@ def markdown_report(report: dict) -> str:
             hm = horizon["metrics"]
             lines.append(
                 f"| {label} | {horizon['days_evaluated']} "
-                f"({horizon['days_no_common_observations']} ohne gemeinsame Beobachtung) "
+                f"({horizon['days_no_common_observations']} ohne gemeinsame Beobachtung, "
+                f"{horizon.get('days_beyond_test_end', 0)} außerhalb des Testzeitraums) "
                 f"| {number(hm['mae_ct'])} | {number(hm['mase'])} | {number(hm['picp95_pct'])} |"
             )
     rolling = report.get("rolling_picp_7d") or []

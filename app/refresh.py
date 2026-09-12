@@ -57,6 +57,11 @@ def refresh(settings: Settings, now=None, progress=None):
     cadence = len(payload["sets"]) * payload.get("request_interval_seconds", 300) / 60
     output = settings.runtime / "engine"
     output.mkdir(parents=True, exist_ok=True)
+    # B17: Tages-Cache des 21-Tage-Backtests (app/backtest_cache.py).
+    # TANKAPP_BACKTEST_CACHE=0 rechnet jeden Lauf neu (Gegenprobe).
+    backtest_cache_dir = (
+        output / "backtest-cache" if getattr(settings, "backtest_cache", True) else None
+    )
     ids = {uid for _, uid in metas}
     if progress:
         progress.phase(
@@ -297,8 +302,30 @@ def refresh(settings: Settings, now=None, progress=None):
                     ]
                 )
             second = run_tasks(
-                following, series_map, cfg, origin, workers, on_done=note
+                following,
+                series_map,
+                cfg,
+                origin,
+                workers,
+                on_done=note,
+                cache_dir=backtest_cache_dir,
             )
+            cached_hits = sum(
+                1
+                for result in second
+                if result.get("kind") == "backtest" and result.get("backtest_cached")
+            )
+            if backtest_cache_dir is not None:
+                print(
+                    f"models: Backtest {fuel}: {cached_hits} aus Tages-Cache, "
+                    f"{len(fitted) - cached_hits} neu gerechnet",
+                    flush=True,
+                )
+                if progress:
+                    progress.note(
+                        f"Backtest: {cached_hits} aus Tages-Cache, "
+                        f"{len(fitted) - cached_hits} neu gerechnet"
+                    )
             horizons_by_station: dict[tuple, dict[int, list]] = {}
             draws_by_station: dict[tuple, dict[int, dict]] = {}
             backtests: dict[tuple, dict] = {}
@@ -355,6 +382,11 @@ def refresh(settings: Settings, now=None, progress=None):
                         "draws_7d": draws_wide.get(168) or {},
                         "metrics": report.get("metrics"),
                         "backtest_days": BACKTEST_DAYS,
+                        # B17: Herkunft und Alter des Backtests ehrlich
+                        # ausweisen — der Bericht gilt für den lokalen
+                        # Endtag, nicht für den Zeitpunkt dieses Laufs.
+                        "backtest_cached": bool(report.get("backtest_cached", False)),
+                        "backtest_computed_at": report.get("backtest_computed_at"),
                         "train_days": cfg.train_days,
                         # C11: Datenreichweite des Fits — worauf diese
                         # Prognose beruht. Der Fit kennt die Werte längst
