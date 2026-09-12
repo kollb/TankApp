@@ -202,6 +202,24 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 12.09.2026 — Version 0.19.0: Refresh ohne Totstehen, Dashboard zerlegt
+
+B7 (Poll-Bündelung), D1 (Views-Schnitt) und der C9-Rest — plus der
+Fehlerbanner, der zwischen einzelnen lahmen Polls nicht mehr blinkte
+(Ursache des „Nervig“-Berichts).
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Alltag in einer Anfrage | `GET /api/v1/overview` → `DataApi.overview()`: `decide`, `fills`, `stats/summary`, due-Episoden und die 24-h-Tageskurve in **einer** Antwort — dieselben Bausteine wie die Einzelrouten, exakt deren Einzel-Formen. Unbekannte Station entlädt nur die Tageskurve, `decide` wählt selbst. `route/evaluate` bleibt bewusst ein eigener Poll (Follow-up) | B7-Rest, `tests/test_app.py` (4 Fälle) |
+| Refresh bricht nie ab | `useResource`: neuer Trigger reih ein Reload ein (`queuedReloadRef`, max. eins), statt laufende Requests abzubrechen und neu zu starten — auf der NAS (Refresh 5–10 s) kam die Ansicht sonst nie an; URL-Wechsel setzt Daten + `failStreak` der Ressource zurück | B7, `web/src/data-resource.test.tsx` |
+| Fehlerbanner ohne Fehlalarm | `resourceErrorVisible(failStreak, hasData)`: mit angezeigten Daten zeigt erst der **zweite** aufeinanderfolgende Fehlversuch den Fehler (einzelner Poll = kurze Unterbrechung, Zahlen bleiben stehen), ohne Daten der erste; Banner nennt den letzten guten Stand und die Selbstheilung | B7/C6-Teil, `web/src/data-resource.test.tsx` |
+| Views-Schnitt | `views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx` mit typisierten `*ViewProps`; ~100 `useState`/`useResource` bleiben in `Dashboard` (Props statt Context — geschlossener Zustandsraum, greifbarer Datenfluss), `JobCard` nach `components/`; `Dashboard.tsx` ~4 700 → ~1 600 Zeilen | D1-Rest, beide Ratchets um die neuen Dateien erweitert |
+| Format-Konsistenz je Panel | ct/L-€/L-Wahl inhaltlich durchgezogen, alle Uhrzeiten auf Europe/Berlin geprüft, Zitate über den F3-Ratchet (`„…“`, UTF-8, keine Entities) | C9-Rest, `format-convention.test.ts` + `microcopy.test.ts` |
+
+Ehrlich geblieben: Die Einzelrouten sind unverändert (Bündeln ersetzt
+nichts), und der bewusst offene Rest (`route/evaluate`, Messung der echten
+Last) steht im [Todo](../TODO.md#reihenfolge-empfehlung).
+
 ### 12.09.2026 — Version 0.18.0: worauf beruht das, was hier steht?
 
 C11 geschlossen und damit C6 vollständig. Die Heatmap beantwortete die Frage

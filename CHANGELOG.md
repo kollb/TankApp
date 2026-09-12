@@ -4,6 +4,85 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.19.0] – 2026-09-12
+
+B7 und D1: Der **Refresh ist nicht mehr tot** — der Alltagstabs holt seine
+Daten jetzt in **einer** Anfrage aus `/api/v1/overview`, und die Ansicht bleibt
+während des Ladens bedienbar, statt 5–10 s starr zu stehen. Daneben: D1
+(zweiter `Dashboard`-Schnitt in Views), C9 (Formatierungs-Rest) und der
+Fehlerbanner ohne Fehlalarm.
+
+### Hinzugefügt
+
+- **B7 — `GET /api/v1/overview` (Poll-Bündelung für den Alltag).**
+  `DataApi.overview()` (app/data.py) liefert das, was die GUI für den
+  Alltagstab sonst in sechs Parallel-Polls holte — `decide`, `fills`,
+  `stats/summary`, die due-Episoden und die Tageskurve — in **einer** Antwort.
+  Die Bausteine sind dieselben wie die Einzelpfade; die Antworten behalten
+  exakt ihre Einzel-Form (keine neue Semantik, nur gebündelt), deshalb müssen
+  die Panels keinen zweiten Datenpfad lernen.
+  - `DataApi.overview()` ruft `decide`, `fills`, `stats_summary` und
+    `episodes("due")` direkt auf und hängt die 24-h-Tageskurve
+    (`series`) an, wenn die gewählte `station_id` in `metadata()` bekannt
+    ist. Eine **unbekannte** Station (z. B. nach Stations-Tausch) entlädt nur
+    die Tageskurve — `decide` wählt selbst, der Rest des Alltags bleibt
+    funktionsfähig (keine `404` für den ganzen Tab).
+  - `GET /api/v1/overview` (app/server.py): derselbe Status-Vertrag wie die
+    Einzelrouten (inkl. `400 invalid_fuel`); `?city=&fuel=&station_id=&…`
+    werden wie bei `decide` weitergereicht.
+- **B7 — GUI bleibt während des Refresh bedienbar.** `useResource` bricht ein
+  laufendes Laden **nie** ab: ein neuer Trigger (Refresh-Knopf, Tab-Wechsel,
+  Buchungs-Aktion) **reih ein Reload ein** (`queuedReloadRef`), das nach dem
+  laufenden läuft. Auf der NAS, wo ein Refresh 5–10 s dauert, würde das alte
+  Abbrechen-jeden-Klick-Verhalten jede Anfrage umwerfen — die Ansicht kam nie
+  an. Ein URL-Wechsel setzt Daten und Fehlerzählung der Ressource zurück
+  (`failStreak`, `receivedAt`), damit ein Tab-Wechsel nicht den Fehlerzustand
+  der alten URL mitnimmt.
+- **B7 — Fehlerbanner ohne Fehlalarm** (`resourceErrorVisible`, C6-Teil).
+  Ein **einzelner** fehlgeschlagener Poll, während bereits Daten angezeigt
+  werden, ist eine kurze Unterbrechung — kein Ausfall: Die Zahlen bleiben
+  stehen, erst der **zweite aufeinanderfolgende** Fehlversuch zeigt den
+  Fehler. Ohne anzeigbare Daten bleibt der erste Fehlversuch sichtbar (sonst
+  gäbe es gar nichts zu sehen). Damit verschwindet der Banner zwischen
+  einzelnen lahmen Polls wieder — das war der Ursprung des „Nervig“-Berichts.
+- **D1 — Views-Schnitt (zweiter `Dashboard`-Schnitt).** Die drei Tabs werden
+  aus `Dashboard.tsx` in eigene Dateien ausgelagert:
+  `web/src/views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`. Der
+  gemeinsame Zustand (`~100` `useState`/`useResource`) **bleibt** in
+  `Dashboard` und wandert per **typisierten Props** in die Views (die
+  D1-Entscheidung: Props statt Context — greifbarer Datenfluss, keine zweite
+  Quelle). `Dashboard.tsx` schrumpft von ~4 700 auf ~1 600 Zeilen.
+- **D1 — `JobCard` ausgelagert** (`web/src/components/JobCard.tsx`): die
+  Job-Karte des System-Tabs (Startknopf + Status + Job-Log-Zeilen) ist jetzt
+  ein eigener Baustein mit eigenen Imports; der System-Tab rendert sie.
+- **C9 — Formatierungs-Rest (ct/L vs. €/L inhaltlich).** Die übrigen
+  ct/L- und €/L-Anzeigen sind inhaltlich konsistent je Panel (Cent dort, wo
+  Cent die richtige Größe ist, € sonst), alle Uhrzeiten sind auf
+  Europe/Berlin geprüft und die Anführungszeichen laufen über den F3-Ratchet
+  (`microcopy.test.ts`) — `„…“`, UTF-8, keine HTML-Entities.
+
+### Geblieben wie vorher
+
+- Die **Einzelpfade** (`/decide`, `/fills`, `/stats/summary`, `/episodes`,
+  `/series`) sind unverändert; `/overview` bündelt nur, es ersetzt nichts.
+  Die übrigen Tabs (Werkstatt, System) und die C11-Reichweiten-Felder sind
+  von der Bündelung nicht betroffen.
+- `route/evaluate` bleibt ein eigener Poll (nur im Alltag, nur bei
+  Alternativ-Station) — ob sich auch er bündeln lohnt, ist der als „bewusst
+  offen“ markierte Rest von B7.
+
+### Tests
+
+- Backend: vier Fälle in `tests/test_app.py` (`overview` bündelt wie die
+  Einzelpfade, unbekannte Station entlädt nur `day`, ungültiger Kraftstoff →
+  `invalid_fuel` wie die Einzelrouten, HTTP-Status wie die Einzelroute).
+- Frontend: `web/src/data-resource.test.tsx` prüft die neue
+  `failStreak`/`resourceErrorVisible`-Logik (einzelner Poll-Fehler bleibt
+  unsichtbar, zweiter zeigt; ohne Daten zeigt der erste) und dass ein
+  URL-Wechsel den Fehlerzustand zurücksetzt. Die Ratchet-Dateilisten
+  (`format-convention.test.ts`, `microcopy.test.ts`) umfassen jetzt
+  `views/*` und `components/JobCard.tsx`.
+
 ## [0.18.0] – 2026-09-12
 
 C11 und damit C6 komplett: Die drei verbliebenen Panels sagen jetzt ebenfalls,

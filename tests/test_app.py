@@ -497,6 +497,74 @@ def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
         thread.join(timeout=2)
 
 
+def test_overview_bundles_the_daily_payload_in_one_call(app_settings):
+    # B7: Eine Anfrage statt sechs Parallel-Polls — jeder Teil muss dieselbe
+    # Antwort liefern wie der jeweilige Einzelpfad (keine neue Semantik).
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    params = {"fuel": "e10", "city": "Frankfurt", "station_id": UID}
+    overview = data.overview(params)
+    assert set(overview) == {
+        "generated_at",
+        "decide",
+        "fills",
+        "stats_summary",
+        "episodes",
+        "day",
+        "error_code",
+    }
+    assert overview["error_code"] is None
+    assert overview["decide"] == data.decide(params)
+    assert overview["fills"] == data.fills()
+    assert overview["stats_summary"] == data.stats_summary(
+        {"fuel": "e10", "city": "Frankfurt"}
+    )
+    assert overview["episodes"] == data.episodes("due")
+    assert overview["day"] == data.series(UID, "Frankfurt", "e10", 24)
+
+
+def test_overview_unknown_station_keeps_the_rest_and_drops_only_the_day(
+    app_settings,
+):
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    overview = data.overview(
+        {"fuel": "e10", "city": "Frankfurt", "station_id": "keine-station"}
+    )
+    assert overview["day"] is None
+    # decide bleibt rechenfähig (wählt die günstigste frische Station selbst).
+    assert overview["decide"].get("error_code") is None
+    assert overview["fills"]["fills"] == []
+
+
+def test_overview_rejects_invalid_fuel_like_the_single_routes(app_settings):
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    with pytest.raises(ValueError) as error:
+        data.overview({"fuel": "benzin"})
+    assert str(error.value) == "invalid_fuel"
+
+
+def test_http_overview_is_one_get_with_the_single_route_status(app_settings):
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(
+            base + "/api/v1/overview?fuel=e10&city=Frankfurt&station_id=" + UID
+        ) as response:
+            payload = json.load(response)
+            assert response.status == 200
+            assert "decide" in payload and "fills" in payload
+            assert payload["day"]["n_points"] == 1
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + "/api/v1/overview?fuel=invalid")
+        assert error.value.code == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_health_prefers_nas_worker_archive_state_with_legacy_fallback(app_settings):
     worker_state = app_settings.runtime / "jobs" / "archive-sync" / "state.json"
     worker_state.parent.mkdir(parents=True)

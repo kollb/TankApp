@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 12.09.2026, App-Version 0.18.0)
+# TankApp — ToDo (Stand 12.09.2026, App-Version 0.19.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -46,7 +46,6 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| B7 | P1 | **HTTP-Effizienz: Poll-Bündelung** *(gzip + Cache-Schichten sind drin, 0.13.0)* | Erledigt: `Content-Encoding: gzip` für JSON (ab 512 B), `heatmap`/`last_forecasts` mit `public, max-age=900` (Hash-Assets waren schon `immutable`). Offen ist der teure Rest: GUI pollt 8+ Ressourcen (~14.700 Req/Tag, Zählerstand aus V2-Analyse) — Ziel: ein Aggregat-Endpunkt `/api/v1/overview` für den Alltag statt Einzelpolls; separat entscheiden, ob sich Poll-Bündelung lohnt. |
 | B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
 | B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?“-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online“-Zustand. |
 | B11 | P2 | **Ressourcen-Abgleich Modell-Worker** | `TANKAPP_MODEL_WORKERS` bis 8 Prozesse × pandas vs. `shm_size: 256m` in [ops/nas/app/compose.yml](ops/nas/app/compose.yml) — nicht getestet; bei NAS-HDD werden außerdem File-Locks (`locked_store`, 50×0,05 s) knapp. Ziel: Lauf mit Max-Workern auf Zielhardware + Doku-Werte, Lock-Timeout erhöhen bzw. klare 503-Meldung. |
@@ -63,7 +62,6 @@
 | C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Fokus-Ring + Charts-Textfassungen sind drin, 0.13.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→) und Slider mit `aria-valuetext` (0.10.0); Fokus-Ring durchgängig (die `outline-none`-Überschreibungen an den 0.11-Eingabefeldern sind entfernt) und alle Charts `role="img"` **mit** `aria-describedby`-Textfassung (0.13.0), `prefers-reduced-motion` war schon in `styles.css`. Offen: Touch-Targets ≥ 44 px, Kontraste AA prüfen, komplette Bedienung per Tastatur (Beleg buchen ohne Maus). |
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?“-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
 | C8 | P2 | **Mobile-Feinschliff & PWA** | Sticky-Aktions-Chip im Alltag („Jetzt tanken / Warten bis …“ beim Scrollen sichtbar), Install-/„Zum Homescreen“-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
-| C9 | P2 | **Formatierungs-Konventionen** *(Formatter-Satz + alle Anzeigen umgestellt, 0.14.0/0.15.0)* | Erledigt: `euroPerLiter` (3 Stellen), `centPerLiter` (1 Stelle), `euroToCentPerLiter`, `percentLabel`, `countLabel`, `hourRangeLabel` plus `hourBucketLabel`/`hourRunsLabel` in `web/src/data.ts`, vitest-geschützt; die Heatmap nutzt sie durchgängig („2,219 €/L“ statt „2.219“, „100 %“ statt „100%“). Seit 0.15.0 sind auch die übrigen Anzeigen umgestellt: alle 21 `toFixed`-Stellen in `Dashboard.tsx` (PICP, δ̂, Bootstrap-KI, q-Wert, Ampel-Stärke, MASE, CUSUM, tmpfs, ε-`aria-valuetext`) plus die Standard-Formatierer in `LineChart`/`LabCharts` nutzen `euro`/`percentLabel`/`centPerLiter`; `format-convention.test.ts` zählt die verbleibenden Stellen je Datei (SVG-Koordinaten und die beiden Preis-Eingabefelder, die mit `commaToDot` normalisieren) und meldet jede neue. Offen: ct/L und €/L **inhaltlich** gemischt (mal Cent, mal Euro für dieselbe Größe — Entscheidung je Panel), Uhrzeiten überall auf Europe/Berlin prüfen, Anführungszeichen vereinheitlichen (F3). |
 
 ---
 
@@ -71,7 +69,6 @@
 
 | # | Prio | Fehlt | Details |
 |---|---|---|---|
-| D1 | P1 | **`Dashboard.tsx` zerlegen — zweiter Schnitt** *(Bausteine + UI-Grundlagen sind raus, 0.13.0/0.15.0)* | Erledigt: `PrecisionSlider`, `HeatmapGrid`, `ApiExplorer` (0.13.0), dazu `LoadError` (C6, 0.15.0) und seit 0.15.0 **die geteilten UI-Bausteine** in `web/src/components/ui.tsx` — `panel` (Karten-Klasse), `Empty`, `Badge`, `Metric` inkl. Render-Test (`ui.test.tsx`); `Dashboard.tsx` steht damit bei 4 098 Zeilen. `HeatmapGrid` zeigt seit 0.14.0 den Zielzuschnitt: Rechnung als reine Funktionen in `data.ts`, Komponente rendert nur, Render-Test daneben. Offen: der eigentliche Views-Schnitt (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`) — die drei Tabs teilen sich heute ~100 `useState`/`useResource`-Aufrufe in **einer** Komponente, der Schnitt braucht also erst eine Entscheidung, ob der gemeinsame Zustand per Props oder per Context wandert; außerdem `JobCard` (~200 Zeilen) auslagern. Sonst kollidiert jede C-Arbeit mit Merge- und Review-Kosten. |
 | D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90“ nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
 
 ---
@@ -96,7 +93,7 @@ demselben Muster melden: Befund, Grenze, Definition of Done.
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| F3 | P2 | **Typografie** *(Regelwerk + Zitate erledigt, 0.16.0)* | Erledigt: [docs/MICROCOPY.md](docs/MICROCOPY.md) — eine Seite, verlinkt aus `docs/README.md`, Repo-`README` und `AGENTS.md`: Tonfall, `„…“`-Zitate, Sonderzeichen, **Regel Niveaus in €/L, Differenzen in ct/L**, Uhrzeiten Europe/Berlin, Benennungen, Leer-/Lade-/Fehlermuster, „was nie im Text steht“; Ratchet `web/src/microcopy.test.ts` (paarige `„…“`, kein `”`, keine HTML-Entities) plus einmalige Bereinigung der gemischten Zitate in Doku und CHANGELOG. Offen: die **inhaltliche** ct/L-€/L-Wahl je Panel tatsächlich durchziehen (C9-Rest) und die Fachlabel-vs.-Hook-Zeilen im Footer an das Regelwerk angleichen. |
+| F3 | P2 | **Typografie** *(Regelwerk + Zitate erledigt, 0.16.0)* | Erledigt: [docs/MICROCOPY.md](docs/MICROCOPY.md) — eine Seite, verlinkt aus `docs/README.md`, Repo-`README` und `AGENTS.md`: Tonfall, `„…“`-Zitate, Sonderzeichen, **Regel Niveaus in €/L, Differenzen in ct/L**, Uhrzeiten Europe/Berlin, Benennungen, Leer-/Lade-/Fehlermuster, „was nie im Text steht“; Ratchet `web/src/microcopy.test.ts` (paarige `„…“`, kein `”`, keine HTML-Entities) plus einmalige Bereinigung der gemischten Zitate in Doku und CHANGELOG. Die **inhaltliche** ct/L-€/L-Wahl je Panel ist mit 0.19.0 durchgezogen (C9-Rest). Offen: die Fachlabel-vs.-Hook-Zeilen im Footer an das Regelwerk angleichen. |
 | F4 | P2 | **Intent-Leiste zeigt immer alle 4 CTAs** („Ich warte / Navigieren / Jetzt tanken / Verwerfen“) — bei Aktion `refuel_now` ist „Ich warte“ als gleichrangiger CTA irritierend; bei `wait` ist „Jetzt tanken“ irritierend. | Empfohlene Aktion als primären Button, kompatible Intents sekundär, widersprechende Intent mit Erklär-Tooltip (Logik ändert nichts, nur Sichtbarkeit/Gewichtung). |
 | F5 | P2 | **Sonst sauber geprüft:** Fehlertexte in `web/src/data.ts` (`messages`) durchgehend sachlich-deutsch ohne erfundene Inhalte ✓; Fallback-GUI-Texte konsistent ✓; keine Demo-/Lorem-Reste ✓; Ladezustände einheitlich formuliert („… wird geladen/berechnet“). | Kein Task — als Referenz in das F3-Regelwerk übernehmen. |
 
@@ -205,6 +202,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.19.0 (12.09.2026) | **B7** (Rest) Alltags-Aggregat `GET /api/v1/overview` (`DataApi.overview()`: `decide` + `fills` + `stats/summary` + due-Episoden + 24-h-Tageskurve in einer Antwort, Einzelrouten bleiben unverändert; unbekannte Station entlädt nur `day`) — der Alltagstabs läuft damit auf einer Anfrage statt sechs Parallel-Polls; dazu `useResource` ohne Abbruch (Refresh reih ein Reload ein statt laufende Requests umzuwerfen) und Fehlerbanner erst nach zwei aufeinanderfolgenden Fehlversuchen, solange Daten angezeigt werden (`resourceErrorVisible`); **D1** (Rest) Views-Schnitt: `views/Daily.tsx` / `views/Statistics.tsx` / `views/System.tsx` mit typisierten Props (Zustand bleibt in `Dashboard`, ~4 700 → ~1 600 Zeilen) + `components/JobCard.tsx`; **C9** (Rest) ct/L-€/L-Wahl je Panel durchgezogen, Uhrzeiten auf Europe/Berlin geprüft, Anführungszeichen über den F3-Ratchet. Bewusst offen: `route/evaluate` bleibt ein eigener Poll (Ausklinken ist Follow-up) |
 | 0.18.0 (12.09.2026) | **C11** Datenreichweite in den übrigen Panels: `/api/v1/series` liefert `range_from`/`range_to`/`n_points` (nur Punkte **mit** Preis — geschlossene Meldungen sind Beobachtungen, kein Bestand), `/api/v1/forecast` reicht die Fit-Reichweite aus dem Modell durch (`training_start`/`last_observation`/`training_points`/`training_days`, neu in `app/refresh.py` publiziert), `/api/v1/selection` die Ranking-Reichweite je Kraftstoff (neu in `engine/selection.py` berechnet, je Stadt und aggregiert). Frontend: `dataReachLabel` in `data.ts` + `components/DataReach.tsx` — dieselbe Zeile und Beschriftung wie in der Heatmap, kein Rendern ohne Angaben. Tests: drei in `test_app.py`, einer in `test_b3.py`, vier in `components/states.test.tsx` |
 | 0.17.0 (12.09.2026) | **C6** (Rest) einheitliche Zustände: Skeletons (`components/Skeleton.tsx` — `SkeletonPanel`/`SkeletonChart`/`SkeletonRows`, nur beim ersten Laden, `role="status"`+`aria-busy`) in acht Panels, „Datenstand älter als X“-Banner (`components/DataAge.tsx` + `STALE_AFTER_MINUTES`/`freshness`/`ageLabel`/`dataAgeNote` in `data.ts`: Preise 30 min, Modell 180 min, Selektion 36 h, doppelte Schwelle = roter Ton, kein Banner ohne bekannten Stand) über Tab-Inhalt, Modell-Ausblick, Heatmap und Ranking, Fehler in Tabellenzellen (`components/CellError.tsx`, Leerstand vs. Fehler getrennt) im Scoreboard und bei den Tages-Entscheidungen; Tests `data-age.test.ts` + `components/states.test.tsx`, beide Ratchets erweitert |
 | 0.16.0 (12.09.2026) | **B4** (Rest) Alarm-Zustellung im System-Tab sichtbar (Kachel „Alarm-Zustellung · Push aufs Handy“: Badge, Klartextsatz, offene Codes als Chips, „Zuletzt gemeldet“/„Zuletzt Entwarnung“; Texte als reine Funktionen `notifyTone`/`notifyStatusLine`/`notifyLastLine` in `web/src/data.ts` mit `notify.test.ts`; serverseitig nur ein neues Feld `notify.last_sent_at`), **B14** `docs/analysis/` → `data/analysis/` (Default in `app/config.py`, `tankapp.py`, allen `data-tools/`-CLIs, `analysis/*`, `ops/nas/preflight.sh`, RP2-Suchpfaden und der Doku; alter Pfad bleibt gültig, solange nur er existiert, mit Hinweis je Prozess — kein stiller Umzug; `tests/test_analysis_path.py`), **F3** (Rest) Microcopy-Regelwerk `docs/MICROCOPY.md` + Ratchet `microcopy.test.ts` + Zitate vereinheitlicht |
@@ -213,10 +211,9 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 | 0.11.0 (12.09.2026) | **B12** Heatmap-Basis umschaltbar (`basis=hour` = Median derselben Stunde; API-Default `overall`), **B13** Build-Commit im Image (Doku nachgezogen), **E3** Beleg-Grenzen vor dem Roundtrip, **E4** Buchung nur mit gewählter Station, **E5** Wochen-Select 4/6/12, **E6** Slider 0,5/1 L/0,5 + Begleitfeld, **E7** API-Explorer „day“ nur mit Station, **G2** RP2-Journal-Cap (Drop-in + `--vacuum-size`) |
 | 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
-Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **B7**
-(Overview-Endpunkt + Poll-Bündelung offen), **C5** (44 px, AA, Tastatur offen),
-**C9** (Rest: ct/L-€/L-Wahl je Panel), **D1** (Views noch in einer Datei),
-**F3** (Rest: Regelwerk steht, Anwendung auf Footer/Panels offen).
+Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **C5**
+(44 px, AA, Tastatur offen), **F3** (Rest: Regelwerk steht, Anwendung auf
+Footer-Zeilen offen).
 
 ## Bewusst NICHT in dieser Liste
 
@@ -227,12 +224,12 @@ Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **B7**
 
 ## Reihenfolge-Empfehlung
 
-1. **D1 fertigstellen, bevor ein größeres C-Feature anfängt** (C2/C4) —
-   die Bausteine sind seit 0.13.0 in `components/`; der Views-Schnitt
-   (`views/Daily.tsx` …) ist der, der Merge- und Review-Kosten wirklich senkt.
-2. **B7-Rest separat entscheiden** (`/api/v1/overview` + Poll-Bündelung) —
-   der messbare Teil (gzip, Cache-Schichten) ist mit 0.13.0 drin; der Rest
-   ist Architektur-Aufwand und lohnt erst mit einer Messung der echten Last.
+1. **Größere C-Features (C2/C4) können jetzt anfangen** — D1 ist mit 0.19.0
+   erledigt (Views-Schnitt + `JobCard`), neue Panels/Features landen in
+   `views/`/`components/` statt in `Dashboard.tsx`.
+2. **B7-Follow-up separat entscheiden**: `route/evaluate` (eigener Poll im
+   Alltag, nur bei Alternativ-Station) ausklinken bzw. in `/overview`
+   aufnehmen — erst nach einer Messung der echten Last (siehe D4).
 3. **Kein P0 mehr offen** — der Heatmap-P0 vom 12.09. ist mit 0.14.0
    geschlossen, B2 (Schema-Version) seit 0.13.0;
    der nächste Store-Feldsprung braucht nur eine Migrationsfunktion nach

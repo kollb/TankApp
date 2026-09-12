@@ -18,7 +18,9 @@ import { describe, expect, it } from "vitest";
 /** Alles, was Nutzertexte enthält. Tests selbst bleiben außen vor. */
 const FILES = [
   "Dashboard.tsx",
+  "data-resource.test.tsx",
   "data.ts",
+  "components/JobCard.tsx",
   "components/ApiExplorer.tsx",
   "components/CellError.tsx",
   "components/DataAge.tsx",
@@ -30,6 +32,9 @@ const FILES = [
   "components/PrecisionSlider.tsx",
   "components/Skeleton.tsx",
   "components/ui.tsx",
+  "views/Daily.tsx",
+  "views/Statistics.tsx",
+  "views/System.tsx",
 ];
 
 function read(relativePath: string): string {

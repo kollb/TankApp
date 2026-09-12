@@ -1086,6 +1086,54 @@ class LiveData:
         except Exception:
             return {"error_code": "stats_summary_failed"}
 
+    def overview(self, params: dict) -> dict:
+        """B7: Der Alltag in einer Anfrage — statt sechs parallelen GUI-Polls.
+
+        Das GUI holte für den Alltagstab decide, fills, stats/summary,
+        due-Episoden und die Tageskurve je eigenen Poll; auf der NAS-HDD
+        hängen die Threads an den File-Locks, und ein manueller Refresh
+        feuerte alle parallel (5–10 s, UI scheinbar blockiert). Hier laufen
+        dieselben Bausteine in einem Handler: eine Anfrage, ein Read pro
+        Quelle, dieselben Antworten wie die Einzelpfade (keine neue
+        Semantik, nur gebündelt).
+        """
+        fuel = str(params.get("fuel") or "e10").lower()
+        if fuel not in FUELS:
+            raise ValueError("invalid_fuel")
+        city = params.get("city")
+        station_id = params.get("station_id")
+
+        decide_params = dict(params)
+        day_res = None
+        if station_id:
+            metas, problem = metadata(self.settings)
+            known = problem is None and any(uid == station_id for (_c, uid) in metas)
+            if not known:
+                # Station veraltet (z. B. nach Stations-Tausch): decide wählt
+                # selbst eine Station, die Tageskurve entfällt — der Rest des
+                # Alltags bleibt voll funktionsfähig.
+                decide_params.pop("station_id", None)
+            elif city:
+                day_res = self.series(station_id, city, fuel, 24)
+
+        decide_res = self.decide(decide_params)
+        fills_res = self.fills()
+        summary_params = {"fuel": fuel}
+        if city:
+            summary_params["city"] = city
+        summary_res = self.stats_summary(summary_params)
+        episodes_res = self.episodes("due")
+
+        return {
+            "generated_at": self.clock().isoformat(),
+            "decide": decide_res,
+            "fills": fills_res,
+            "stats_summary": summary_res,
+            "episodes": episodes_res,
+            "day": day_res,
+            "error_code": None,
+        }
+
     def day_series(self, station_id: str, day: str):
         """Tageskurve für das Stations-Labor im Statistik-Bereich.
 

@@ -459,6 +459,11 @@ class Handler(SimpleHTTPRequestHandler):
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
             return self.data.route_evaluate(params)
 
+        # --- B7: Alltags-Aggregat — eine Anfrage statt sechs Parallel-Polls ---
+        if norm_path == "/api/v1/overview":
+            params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
+            return self.data.overview(params)
+
         # --- B4 M5/M7 neue Endpunkte ---
         if norm_path == "/api/v1/decide":
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
