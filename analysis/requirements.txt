@@ -2,4 +2,4 @@ numpy>=1.26
 pandas>=3.0.5
 matplotlib>=3.8
 # Bundeslandspezifische Feiertage (--subdiv in station_selection.py, KONZEPT.md §2/§3.2)
-holidays>=0.57
+holidays>=0.104
