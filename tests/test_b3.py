@@ -205,6 +205,56 @@ def test_collector_status_from_influx(b3_settings):
     assert status["influx"]["available"] is True
 
 
+def test_collector_status_reads_influx_without_price_schema(b3_settings, monkeypatch):
+    """Regression B3.11: Der Produktions-Leseweg verlangt kein Preis-Schema.
+
+    Ohne injizierte query-Funktion liest collector_status über query_any
+    (PROBE_COLUMNS) — die echte Influx-Antwort besteht aus _field/_value-Zeilen
+    ohne station/status und würde über das Preis-Schema als „Unerwartetes
+    InfluxDB-CSV-Format" scheitern (influx_read_failed/ExportError), obwohl der
+    Pi fleißig liefert.
+    """
+    import http.client
+    import io
+
+    import export_influx as influx
+
+    payload = (
+        "#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,string,string,string\n"
+        "#group,false,false,true,true,false,true,true,true,false,false\n"
+        "#default,_result,,,,,,,,,\n"
+        ",result,table,_start,_stop,_time,_measurement,host,city,_field,_value\n"
+        f",,0,2026-09-05T00:00:00Z,2026-09-12T00:00:00Z,{(NOW - dt.timedelta(minutes=1)).isoformat()},collector_status,pi,Frankfurt,last_poll_at,{NOW.isoformat()}\n"
+    ).encode()
+
+    class Socket:
+        def makefile(self, *args):
+            return io.BytesIO(
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/csv; charset=utf-8\r\n"
+                + f"Content-Length: {len(payload)}\r\n".encode()
+                + b"\r\n"
+                + payload
+            )
+
+    class Opener:
+        def open(self, request, timeout):
+            response = http.client.HTTPResponse(Socket())
+            response.begin()
+            return response
+
+    # app.data nutzt dasselbe export_influx-Modul → der Produktionspfad
+    # query_any → query_raw → query_rows(PROBE_COLUMNS) läuft gegen diese Antwort.
+    monkeypatch.setattr(influx.urllib.request, "build_opener", lambda *args: Opener())
+
+    live = LiveData(b3_settings, clock=lambda: NOW)
+    status = live.collector_status()
+    assert status["available"] is True
+    assert status["source"] == "influx"
+    assert status["fresh"] is True
+    assert status["last_poll_at"] == NOW.isoformat()
+
+
 def test_route_evaluate_server_side(b3_settings):
     def query(cfg, flux):
         # For stations() it needs prices query, return fresh prices
