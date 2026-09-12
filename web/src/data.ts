@@ -1798,7 +1798,7 @@ export const messages: Record<string, string> = {
   job_failed:
     "Der Lauf ist fehlgeschlagen. Letzte Ergebnisse bleiben erhalten; erneuter Versuch folgt.",
   selection_not_available:
-    "Noch keine Selektions-Artefakte vorhanden. Nach Modell-Job erscheint hier das Ranking mit δ̂.",
+    "Noch keine Selektions-Artefakte vorhanden. Nach dem Modell-Lauf erscheint hier das Ranking nach Preis-Abstand (δ̂).",
   selection_failed:
     "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
   collector_no_heartbeat:

@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 import pytest
 
 import tankapp
+from app.config import Settings
 from polling_plan import RequestSchedule, collector_lock, load_plan, validate_sets
 
 
@@ -359,6 +360,23 @@ def test_nas_compose_forwards_city_subdivisions_to_engine():
         Path(__file__).resolve().parents[1] / "ops" / "nas" / "app" / "compose.yml"
     ).read_text(encoding="utf-8")
     assert 'TANKAPP_CITY_SUBDIVS: "${TANKAPP_CITY_SUBDIVS:-}"' in compose
+
+
+def test_nas_compose_forwards_ntfy_webhook_to_the_app():
+    """B4: Ohne die Variable im Container bleibt die Zustellung stumm."""
+    compose = (
+        Path(__file__).resolve().parents[1] / "ops" / "nas" / "app" / "compose.yml"
+    ).read_text(encoding="utf-8")
+    assert 'TANKAPP_NTFY_URL: "${TANKAPP_NTFY_URL:-}"' in compose
+
+
+def test_ntfy_url_comes_from_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TANKAPP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("TANKAPP_NTFY_URL", "  https://ntfy.example/tankapp  ")
+    assert Settings.from_env().notify_url == "https://ntfy.example/tankapp"
+
+    monkeypatch.delenv("TANKAPP_NTFY_URL")
+    assert Settings.from_env().notify_url == ""
 
 
 def test_nas_download_reuses_existing_uncompressed_day(tmp_path, monkeypatch):

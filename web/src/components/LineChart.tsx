@@ -1,7 +1,7 @@
 // Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
 
 import React, { useId, useState } from "react";
-import { compressedAxis, gapBands } from "../data";
+import { compressedAxis, euro, gapBands } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -41,7 +41,7 @@ export function LineChart({
   marks = [],
   xDomain,
   height = 220,
-  yFmt = (v: number) => v.toFixed(1),
+  yFmt = (v: number) => euro(v, 1),
   xFmt = defaultXFmt,
   ySuffix = " €/L",
   xTicks = [],

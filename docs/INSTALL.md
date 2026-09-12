@@ -205,9 +205,12 @@ alte Name des Werkstatt-Tabs und steht nur noch in Archiv-Dokumenten.)
   Backtestwerte samt Datenbasis; fehlende/alte Modelle sichtbar markiert.
   Heatmaps DoW×Stunde (B3.9) **mit Tages-Zusammenfassung, hervorgehobener
   heutiger Zeile und Fazit-Satz** (C10), seit 0.11.0 mit wählbarem Zeitraum
-  (4/6/12 Wochen, E5) und umschaltbarer Vergleichs-Basis der Cheap-Probability
-  ohne Station (Stunden-Median statt Gesamtmedian, B12). Meine Stationen mit
-  δ̂-Ranking, Bootstrap-KI, AV-Score und billigster Stunde (B3.10).
+  (4/6/12 Wochen, E5) und umschaltbarer Vergleichs-Basis der „Wahrscheinlichkeit
+  für günstig“ (Cheap-Probability) ohne Station (Stunden-Median statt
+  Gesamtmedian, B12). Meine Stationen mit Ranking nach Preis-Abstand (δ̂),
+  Bootstrap-KI, Ampel-Stärke (AV-Score) und billigster Stunde (B3.10). Seit
+  0.15.0 heißen die Werkstatt-Begriffe im Primärtext deutsch, das Fachwort steht
+  im Tooltip (F2).
 - **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
   Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
   Trigger-Statistik (Issue 50). Neu (0.10.0): geführte

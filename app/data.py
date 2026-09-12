@@ -495,6 +495,16 @@ class LiveData:
         except Exception:
             alarms = []
 
+        # B4: Zustellung sichtbar machen — ist der Webhook konfiguriert, und
+        # welche Errors gelten als gemeldet? Liest nur die lokale
+        # Zustandsdatei (kein Netz), damit das Healthcheck-Budget bleibt.
+        try:
+            from .notify import notify_status
+
+            notify = notify_status(self.settings)
+        except Exception:
+            notify = {"configured": False, "open_errors": [], "last_ok_at": None}
+
         # B9: Version + Build-Hash (einmalig beim Import bestimmt).
         try:
             from .version import build_info
@@ -532,6 +542,7 @@ class LiveData:
             and self.settings.netrc.stat().st_size > 0,
             "jobs_enabled": self.jobs_enabled,
             "alarms": alarms,
+            "notify": notify,
             "archive": {
                 key: archive.get(key)
                 for key in (

@@ -296,7 +296,7 @@ Antwort:
 {
   "app": "online",
   "generated_at": "2026-09-10T14:00:00+02:00",
-  "version": "0.11.0",
+  "version": "0.15.0",
   "commit": "35c737234d9d",
   "polling_error": null,
   "station_count": 20,
@@ -307,6 +307,8 @@ Antwort:
     {"code": "collector_stale", "severity": "warn",
      "message": "Collector-Herzschlag ist veraltet (Preise können eingefroren sein)."}
   ],
+  "notify": {"configured": true, "open_errors": ["collector_no_heartbeat"],
+             "last_ok_at": "2026-09-11T08:05:00+00:00"},
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
     "archive": {"state": "success", "last_success_at": "...", "next_run_at": "..."},
@@ -351,6 +353,14 @@ grün ohne Alarm.
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
 
 Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+
+**`notify`** (B4): Sichtbarkeit der ntfy-Zustellung, die `severity: "error"`
+an `TANKAPP_NTFY_URL` schickt — `configured` (Variable gesetzt?),
+`open_errors` (welche Codes sind als gemeldet gespeichert), `last_ok_at`
+(Stempel der letzten „wieder betriebsbereit“-Meldung, `null` wenn nie).
+Der Block liest nur die Zustandsdatei `data/runtime/notify/state.json`, kein
+Netz. Einrichten und Verhalten:
+[BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
