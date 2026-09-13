@@ -98,9 +98,25 @@ export function SystemView(props: SystemViewProps) {
     (data?.connection_error === "polling_missing" ||
       !h?.jobs_enabled) && (
       <div className="mb-6">
-        <Empty>
-          Das gemeinsame Polling-Set fehlt auf diesem Server.
-        </Empty>
+        <Empty>Das gemeinsame Polling-Set fehlt auf diesem Server.</Empty>
+        {data?.connection_error === "polling_missing" && (
+          <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-200/80 break-words">
+            Keine Stadt eingerichtet. Collector-Herzschlag{" "}
+            {collector?.available ? "ok" : "fehlt"} und InfluxDB-Lesezugang{" "}
+            {h?.influx_configured ? "ok" : "fehlt"} nuetzen ohne Polling-Set
+            nichts. Auf dem Pi{" "}
+            <code className="break-all">data/analysis/stations/polling.json</code>{" "}
+            erzeugen (docs/INSTALL.md Abschnitt Polling-Set, danach
+            activate-polling), auf dem NAS{" "}
+            <code className="break-all">TANKAPP_POLLING_FILE</code> pruefen
+            (compose.yml -&gt; /config/polling.json RO) und{" "}
+            <code className="break-all">ops/nas/preflight.sh</code> ausfuehren.
+            Pfad:{" "}
+            <code className="break-all">{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>
+            . Auswahl 0 Stationen im Modell-Log kommt daher, dass ohne
+            Polling-Set keine Metadaten vorhanden sind.
+          </div>
+        )}
       </div>
     )}
 

@@ -10,9 +10,9 @@ import { AlertTriangle, RotateCw } from "lucide-react";
 import { problem } from "../data";
 
 const BOX =
-  "rounded-xl border border-dashed border-slate-700 bg-slate-950/40 text-sm leading-relaxed text-slate-400";
+  "rounded-xl border border-dashed border-slate-700 bg-slate-950/40 text-sm leading-relaxed text-slate-400 break-words";
 const BOX_COMPACT =
-  "rounded-xl border border-rose-500/25 bg-rose-950/20 text-xs leading-relaxed text-rose-200";
+  "rounded-xl border border-rose-500/25 bg-rose-950/20 text-xs leading-relaxed text-rose-200 break-words";
 const BUTTON =
   "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400";
 

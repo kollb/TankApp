@@ -78,11 +78,15 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
 
     ``progress`` ist das optionale Fortschritts-Protokoll (app/progress.py),
     damit der System-Status der GUI zeigt, welcher Kraftstoff gerade läuft.
+
+    B21: total war vorher len(fuels) bei 2 Schritten je Fuel (laden + ranking)
+    → Fortschritt 2/1. Jetzt len(fuels)*2, damit „0/2, 1/2, 2/2“ statt „2/1“.
     """
     if fuels is None:
         fuels = ["e10"]
     if progress:
-        progress.phase("selection", total=len(fuels), message="δ̂-Ranking")
+        # 2 Schritte je Fuel: Trainingsdaten laden + δ̂-Ranking
+        progress.phase("selection", total=max(1, len(fuels) * 2), message="δ̂-Ranking")
 
     try:
         from engine.data import load_observations
@@ -127,15 +131,30 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                     continue
                 sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=n_boot)
                 result = compute_all(obs, sel_cfg, metas_by_city)
+                # B21-Diagnose: Warum 0 Stationen? Coverage, <4 Stationen je Stadt, etc.
+                top_n = len(result.get("top_global", []))
+                city_n = sum(
+                    len(c.get("stations", [])) for c in result.get("cities", [])
+                )
+                if top_n == 0 and city_n == 0:
+                    # Kein belastbares Ranking — mögliche Gründe in result
+                    # (excluded_count, station_count) sind im Artefakt enthalten.
+                    pass
                 by_fuel[fuel] = result
                 all_flat.extend(result.get("top_global", []))
                 if progress:
-                    progress.step(
-                        label=f"{fuel}: {len(result.get('top_global', []))} Stationen"
-                    )
-            except Exception:
+                    progress.step(label=f"{fuel}: {top_n} Stationen")
+            except Exception as exc:
                 if progress:
-                    progress.step(label=f"{fuel}: Fehler")
+                    # Kurz die Ursache zeigen (ohne Pfade), damit „Fehler“
+                    # im Log nicht das Ende der Diagnose ist.
+                    try:
+                        from .errors import public_detail
+
+                        detail = public_detail(exc, max_len=120)
+                    except Exception:
+                        detail = type(exc).__name__
+                    progress.step(label=f"{fuel}: Fehler — {detail}")
                 continue
 
         return {

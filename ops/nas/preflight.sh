@@ -22,11 +22,30 @@ echo
 echo "PFLICHT - ohne diese bricht nas-up ab:"
 
 # 1) polling.json (gitignored, kommt vom Pi)
-POLL="data/analysis/stations/polling.json"
+# B21: Auf dem NAS ist polling.json via TANKAPP_POLLING_FILE → /config/polling.json RO
+# gemountet (ops/nas/app/compose.yml). Ohne diesen Mount zeigt die GUI
+# „Keine Stadt eingerichtet“ + „Noch kein frischer Preis“ trotz Collector-✓ und
+# Influx-✓, und die Selektion endet mit „0 Stationen“ (Trainingsdaten vorhanden,
+# aber Metadaten fehlen). Deshalb prüfen wir hier sowohl den lokalen Pfad als
+# auch den env-var TANKAPP_POLLING_FILE.
+POLL_CANDIDATES=()
+if [ -n "${TANKAPP_POLLING_FILE:-}" ]; then
+  POLL_CANDIDATES+=("$TANKAPP_POLLING_FILE")
+fi
+POLL_CANDIDATES+=("data/analysis/stations/polling.json" "docs/analysis/stations/polling.json")
 # B14: alter Ort bleibt gueltig, solange er existiert (kein stiller Umzug).
-if [ ! -f "$POLL" ] && [ -f "docs/analysis/stations/polling.json" ]; then
-  POLL="docs/analysis/stations/polling.json"
-  say_warn "Polling-Set liegt noch unter docs/analysis/ - neuer Ort ist data/analysis/ (von Hand verschieben)"
+POLL=""
+for cand in "${POLL_CANDIDATES[@]}"; do
+  if [ -f "$cand" ]; then
+    POLL="$cand"
+    if [ "$cand" = "docs/analysis/stations/polling.json" ]; then
+      say_warn "Polling-Set liegt noch unter docs/analysis/ - neuer Ort ist data/analysis/ (von Hand verschieben)"
+    fi
+    break
+  fi
+done
+if [ -z "$POLL" ]; then
+  POLL="data/analysis/stations/polling.json"
 fi
 if [ -f "$POLL" ]; then
   if python3 -c "import json,sys; json.load(open('$POLL',encoding='utf-8-sig'))" 2>/dev/null; then
@@ -49,7 +68,7 @@ else:
     say_fail "$POLL  ist kein gueltiges JSON"
   fi
 else
-  say_fail "$POLL  -> vom Pi kopieren (aktives Set nach activate-polling!)"
+  say_fail "$POLL  -> vom Pi kopieren (aktives Set nach activate-polling!) - TANKAPP_POLLING_FILE=${TANKAPP_POLLING_FILE:-unset} - danach nas-up; GUI zeigt sonst 'Keine Stadt eingerichtet' trotz Collector-✓"
 fi
 
 # 2) influx.env (gitignored, Lese-Token)
@@ -62,7 +81,7 @@ if [ -f "$ENVF" ]; then
   if [ -n "$missing" ]; then
     say_fail "$ENVF  -> fehlende Schluessel:$missing"
   else
-    url=$(grep '^TANKAPP_INFLUX_URL=' "$ENVF" | cut -d= -f2-)
+    url=$(grep '^TANKAPP_INFLUX_URL=' "$ENVF" | cut -d= -f2- | tr -d '\r')
     case "$url" in
       *localhost*|*127.0.0.1*|*::1*)
         say_fail "$ENVF  -> URL ist '$url'; aus dem Container nicht erreichbar. NAS-LAN-IP:8086 verwenden." ;;

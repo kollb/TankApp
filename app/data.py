@@ -159,6 +159,12 @@ def read_json(path, default=None):
 
 
 def metadata(settings):
+    # B21: polling.json ist Host-Datei via TANKAPP_POLLING_FILE → /config/polling.json RO.
+    # Fehlt sie, ist das der Grund für „Keine Stadt eingerichtet“ + „Noch kein
+    # frischer Preis“ trotz Collector-✓ und Influx-✓. Fehlercode bleibt
+    # polling_missing für die GUI (System.tsx), aber zusätzlich wird der
+    # erwartete Pfad im Log sichtbar, damit preflight.sh bzw. die NAS-Mounts
+    # direkt geprüft werden können.
     payload = read_json(settings.polling)
     if payload is None:
         return {}, "polling_missing"
@@ -646,6 +652,8 @@ class LiveData:
             "version": version.get("version"),
             "commit": version.get("commit"),
             "polling_error": problem,
+            # B21: Pfad für „Polling-Set fehlt“-Diagnose im GUI (System.tsx)
+            "polling_path": str(self.settings.polling),
             "station_count": len(metas),
             "influx_configured": self.settings.influx_env.is_file(),
             "archive_configured": self.settings.netrc.is_file()

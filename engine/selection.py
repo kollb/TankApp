@@ -330,19 +330,54 @@ def analyse_city_light(
     rng: np.random.Generator,
     metas: dict,
 ) -> dict | None:
-    """Berechnet Selektions-Kennzahlen für eine Stadt, ohne Plots."""
+    """Berechnet Selektions-Kennzahlen für eine Stadt, ohne Plots.
+
+    B21: Liefert auch bei zu wenig Stationen ein diagnostisches Dict statt
+    None, damit „0 Stationen“ im Log erklärbar ist (Coverage, <4 Stationen).
+    Nur bei völlig leerer Matrix bleibt None — dann hat die Stadt schlicht
+    keine Daten für diesen Fuel.
+    """
     mat = _to_matrix(df, city, cfg.step_min, cfg.ffill_minutes)
-    if mat.empty or mat.shape[1] < 2:
+    if mat.empty:
         return None
+    if mat.shape[1] < 2:
+        # Zu wenig Stationen für LOO — Diagnose statt stilles None.
+        return {
+            "city": city,
+            "fuel": cfg.fuel,
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "range_from": None,
+            "range_to": None,
+            "n_points": 0,
+            "n_days": 0,
+            "station_count": 0,
+            "excluded_count": int(mat.shape[1]),
+            "excluded": list(mat.columns[:20]),
+            "stations": [],
+            "reason": f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
+        }
     coverage = mat.notna().mean(axis=0)
     keep = coverage[coverage >= cfg.min_coverage].index
     excluded = [sid for sid in coverage.index if sid not in set(keep)]
     mat = mat[keep]
     # Die LOO-Baseline verlangt ≥ 3 Vergleichsstationen je Zeitpunkt (m ≥ 3).
     # Mit weniger als 4 Stationen wäre δ̂ überall NaN — ehrlich abbrechen,
-    # statt eine NaN-Tabelle zu publizieren.
+    # statt eine NaN-Tabelle zu publizieren. B21: Diagnose zurückgeben.
     if mat.shape[1] < 4:
-        return None
+        return {
+            "city": city,
+            "fuel": cfg.fuel,
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "range_from": mat.index.min().isoformat() if len(mat.index) else None,
+            "range_to": mat.index.max().isoformat() if len(mat.index) else None,
+            "n_points": int(mat.notna().to_numpy().sum()) if not mat.empty else 0,
+            "n_days": int(len(mat.index.normalize().unique())) if not mat.empty else 0,
+            "station_count": 0,
+            "excluded_count": len(excluded),
+            "excluded": excluded[:20],
+            "stations": [],
+            "reason": f"nach Coverage ≥{cfg.min_coverage:.0%} nur {mat.shape[1]} Station(en) übrig — LOO braucht ≥4",
+        }
 
     base = _loo_baseline(mat)
     delta = (mat - base) * 100.0  # ct/L relativ
@@ -523,34 +558,48 @@ def analyse_city_light(
 
 
 def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> dict:
-    """Berechnet Selektion für alle Städte im DataFrame."""
+    """Berechnet Selektion für alle Städte im DataFrame.
+
+    B21: Auch Städte mit 0 Stationen (z. B. Coverage <85% oder <4 Stationen)
+    bleiben als Diagnose-Eintrag erhalten, damit „0 Stationen“ erklärbar ist.
+    Nur völlig leere Städte (keine Daten) entfallen.
+    """
     rng = np.random.default_rng(cfg.seed)
     cities = sorted(df.city.unique()) if not df.empty else []
     results = []
+    diagnostics = []
     for city in cities:
         city_metas = metas_by_city.get(city, {})
         res = analyse_city_light(df, city, cfg, rng, city_metas)
-        if res:
+        if res is None:
+            continue
+        # Städte mit 0 Stationen sind Diagnose, nicht Erfolg — trotzdem behalten
+        if res.get("station_count", 1) == 0 and not res.get("stations"):
+            diagnostics.append(res)
+        else:
             results.append(res)
-    # Globales Ranking
+    # Für das globale Ranking zählen nur echte Rankings; Diagnosen kommen extra
+    all_results = results + diagnostics
+    # Globales Ranking — nur echte Rankings, Diagnosen haben keine stations
     all_stations = []
     for res in results:
-        all_stations.extend(res["stations"])
+        all_stations.extend(res.get("stations", []))
     all_stations_sorted = sorted(
         all_stations, key=lambda x: x.get("score", 0), reverse=True
     )
-    # Reichweite über alle Städte: frühester Anfang, spätestes Ende, Summe
-    # der Beobachtungen. Fehlt sie für eine Stadt, bleibt das Feld None —
-    # lieber keine Angabe als eine erfundene.
-    froms = [r["range_from"] for r in results if r.get("range_from")]
-    tos = [r["range_to"] for r in results if r.get("range_to")]
+    # Reichweite über alle Städte (inkl. Diagnosen, damit Fenster sichtbar bleibt)
+    froms = [r["range_from"] for r in all_results if r.get("range_from")]
+    tos = [r["range_to"] for r in all_results if r.get("range_to")]
     return {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "fuel": cfg.fuel,
-        "cities": results,
+        "cities": all_results,
         "top_global": all_stations_sorted[:10],
         "range_from": min(froms) if froms else None,
         "range_to": max(tos) if tos else None,
-        "n_points": sum(int(r.get("n_points") or 0) for r in results) or None,
-        "n_days": max((int(r.get("n_days") or 0) for r in results), default=0) or None,
+        "n_points": sum(int(r.get("n_points") or 0) for r in all_results) or None,
+        "n_days": max((int(r.get("n_days") or 0) for r in all_results), default=0)
+        or None,
+        # B21: Diagnose, warum Städte ohne Ranking blieben
+        "diagnostics": diagnostics,
     }
