@@ -1381,6 +1381,11 @@ class LiveData:
             return res
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except ValueError as exc:
+            # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
+            if str(exc) == "store_locked":
+                return {"error_code": "store_locked"}
+            return {"error_code": "set_intent_failed"}
         except Exception:
             return {"error_code": "set_intent_failed"}
 
@@ -1427,6 +1432,11 @@ class LiveData:
             return void_fill(self.settings, fill_id, clock=self.clock)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except ValueError as exc:
+            # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
+            if str(exc) == "store_locked":
+                return {"error_code": "store_locked"}
+            return {"error_code": "void_fill_failed"}
         except Exception:
             return {"error_code": "void_fill_failed"}
 

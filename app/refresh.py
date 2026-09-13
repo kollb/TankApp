@@ -439,7 +439,16 @@ def refresh(settings: Settings, now=None, progress=None):
                     metas_by_city.setdefault(city, {})[uid] = meta
                 # n_boot=2000 fest (Davison/Hinkley): bei m=11 Stationen
                 # ist B=200 mathematisch unter α=0,05 nach BH unmöglich.
-                sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=2000)
+                # B21: Das Coverage-Gate misst nur im Polling-Fenster — das
+                # Fenster kommt aus derselben Config wie der Rest des Laufs,
+                # sonst zählt die Selektion Nachtzellen als fehlende Daten.
+                sel_cfg = SelectionConfig(
+                    fuel=fuel.upper(),
+                    n_boot=2000,
+                    poll_start=cfg.poll_start,
+                    poll_end=cfg.poll_end,
+                    timezone=cfg.timezone,
+                )
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
                 # B21: „0 Stationen“ ohne Grund ist nicht debuggbar — Diagnose loggen

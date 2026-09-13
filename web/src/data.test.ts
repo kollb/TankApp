@@ -52,6 +52,7 @@ import {
   rowOutcome,
   scoreRows,
   segments,
+  messages,
   sliderCommit,
   splitOnGap,
   transitionRuleLine,
@@ -972,5 +973,16 @@ describe("Formatierer (C9)", () => {
     expect(hourRangeLabel(18, 20)).toBe("18–20 Uhr");
     expect(hourRangeLabel(22, 2)).toBe("22–02 Uhr");
     expect(hourRangeLabel(8, null)).toBe("—");
+  });
+});
+
+describe("B11: Fehlercode für belegten Feedback-Store", () => {
+  it("nennt store_locked wiederholbar statt „ungültige Anfrage“", () => {
+    // Der Server antwortet 503, wenn der Store 5 s belegt war (app/feedback.py).
+    // Vorher lief der Rohtext der Sperre als invalid_query (400) durch — klingt
+    // nach falscher Eingabe, war aber belegter Speicher.
+    expect(messages.store_locked).toBeTruthy();
+    expect(messages.store_locked).toContain("erneut versuchen");
+    expect(messages.store_locked).not.toBe(messages.invalid_query);
   });
 });

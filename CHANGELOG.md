@@ -4,6 +4,162 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.25.0] – 2026-09-13
+
+**Batch 0 des Laufzeit-Bündels** (TODO.md §B, „0 — ohne Code“): Ursachen
+klären statt rechnen. Der Hauptbefund ist kein Laufzeit-Thema, aber ein
+echter Fehler: „e10: **0 Stationen**“ im Modell-Lauf war weder ein
+Eingabedaten-Problem noch ein stiller Fehler, sondern ein Coverage-Gate, das
+gegen einen Nenner misst, den dieser Betrieb nie erreichen kann. „Meine
+Stationen“ war damit dauerhaft leer.
+
+### Behoben
+
+- **B21 — die Selektion lieferte immer null Stationen**
+  (`engine/selection.py::analyse_city_light`): Das Datenqualitäts-Gate
+  (Konzept §2 Zeile 6, „Coverage ≥ 85 % je Station“) maß die Abdeckung gegen
+  das **volle** 5-Minuten-Raster über die gesamte Datenreichweite. Zwei
+  strukturelle Gründe machen 85 % dort unerreichbar — unabhängig davon, wie
+  vollständig die Daten sind (Nachbau mit Produktions-Kadenz, 8 Stationen,
+  40 Tage lückenlos, gemessen in dieser Version):
+  1. **Nachtzellen.** Der Collector pollt 06–24 Uhr
+     (`Config.poll_start`/`poll_end`); die übrigen 25 % des Rasters sind nie
+     besetzt, und das 30-Minuten-ffill reicht nicht über die Lücke.
+     Maximalwert bei lückenlosem 5-Minuten-Polling: **77,5 %**.
+  2. **Archiv-/Bootstrap-Betrieb.** Das Tankerkönig-Archiv liefert
+     Preis-*Ereignisse*, keine Rasterpunkte. Zusammen mit der dichten
+     Live-Phase fällt der Median-Gap auf 5 min und damit das ffill auf
+     30 min — ein Archiv-Ereignis deckt 30 von 216 Tageszellen ab. Gemessen
+     **4,8 %** (30 Tage Archiv + 2 Tage Live) bzw. **1,3 %** (120 + 2 Tage).
+
+  Beides zusammen heißt: `coverage >= 0.85` war für **jede** Station falsch,
+  `mat.shape[1] < 4` griff, `top_global` blieb leer, `current.json` hatte kein
+  Ranking, und das Job-Log sagte nur „e10: 0 Stationen“. Jetzt misst
+  `scheduled_mask` die Abdeckung nur über die Zellen des Polling-Fensters
+  (Fenster und Zeitzone kommen aus derselben `Config` wie der Rest des Laufs —
+  `app/refresh.py` und `app/selection.py` reichen sie durch), und
+  `coverage_gate` legt die Schwelle **relativ zum Bestwert der Stadt**
+  (`min_coverage` × Referenz). Ausgeschlossen wird damit, wer deutlich
+  seltener liefert als die Vergleichsstationen — genau die Datenqualität, die
+  das Gate schützen soll — und nicht, wer eine andere Datenquelle hat.
+  Gegenprobe im Test: Eine Station, die nach Tag 5 aufhört zu liefern, fällt
+  weiter raus (`excluded: ["tot"]`), die anderen fünf bleiben im Ranking.
+- **B21 — eine Stadt ohne Ranking verschwand kommentarlos**: Fand
+  `analyse_city_light` keine einzige Zeile, kam `None` zurück und
+  `compute_all` ließ die Stadt ganz fallen — derselbe blinde Fleck wie „0
+  Stationen“, nur eine Ebene tiefer. Jetzt gibt es einen Diagnose-Eintrag mit
+  Grund („n Station(en) ohne verwertbares δ̂ — zu wenig gleichzeitige Werte“),
+  Reichweite und Punktzahl; `compute_all` führt ihn unter `diagnostics`.
+- **B21 — NaN-Zeilen im Ranking**: Eine Station ohne einzigen verwertbaren
+  Zeitpunkt (LOO braucht ≥ 4 Stationen mit Wert zur selben Zeit) hat kein
+  δ̂ und wurde trotzdem als Zeile mit `delta_ct: NaN` publiziert. Solche
+  Stationen fallen jetzt raus und stehen als `no_delta`/`no_delta_count` im
+  Artefakt.
+- **B11 — belegter Feedback-Store meldete „Ungültige Anfrageparameter“**
+  (`app/feedback.py`, `app/data.py`, `app/server.py`): `locked_store` reichte
+  nach 50 × 0,05 s den Rohtext der Sperre („Feedback-Store: in diesem
+  Verzeichnis läuft bereits ein Prozess.“) als `ValueError` weiter,
+  `record_fill` machte daraus den Fehlercode und die API daraus **400
+  `invalid_query`** — klingt nach falscher Eingabe, war aber belegter
+  Speicher auf der NAS-Platte. Jetzt: Wartezeit als benanntes Budget
+  (`LOCK_ATTEMPTS` × `LOCK_RETRY_SECONDS` = 100 × 0,05 s = **5 s**, vorher
+  2,5 s — B11: „bei NAS-HDD werden die File-Locks knapp“) und beim Aufgeben
+  `ValueError("store_locked")` → **503** (wiederholbar) mit eigenem Text in
+  der GUI: „Speicher ist gerade belegt — in ein paar Sekunden erneut
+  versuchen.“ Gilt für alle drei Schreibpfade (`fills`, `fills/{id}`-Storno,
+  Intent).
+
+### Geändert
+
+- **Ausweis des Coverage-Gates im Selektions-Artefakt**
+  (`runtime/selection/{fuel}.json` je Stadt): `coverage_window`
+  (z. B. `06-24`), `coverage_reference` (Bestwert der Stadt),
+  `coverage_threshold` (wirksame Schwelle), `coverage_min`/`coverage_max` in
+  Diagnose-Einträgen sowie `no_delta`/`no_delta_count`. Ohne diese Zahlen ist
+  „warum ist Station X nicht dabei?“ nicht beantwortbar — der Grund für die
+  B21-Suche.
+- **Diagnose-Texte nennen Zahlen**: „nach Coverage-Gate (≥85 % vom
+  Stadt-Bestwert 98 % im Fenster 06–24 Uhr) nur 2 Station(en) übrig — LOO
+  braucht ≥4“ statt „nach Coverage ≥85% nur 2 Station(en) übrig“.
+- `docs/ANALYSE.md`: Coverage-Gate (Zeile 6 der Selektions-Tabelle) mit der
+  neuen Definition und dem Unterschied zur Offline-Pipeline
+  `analysis/station_selection.py` (dort bleibt das absolute Gate mit
+  `--min-coverage`, weil dort ein Operator auf die Fehlermeldung reagieren
+  kann).
+- `docs/BETRIEB.md`: Messprotokoll „Ressourcen während Phase B messen (B11)“
+  — die ausstehende NAS-Messung als Copy-Paste-Block statt als Erinnerungsnotiz.
+
+### Gemessen
+
+Nachbau der Produktions-Kadenz im Sandkasten (8 Stationen, 5-Minuten-Raster
+06–24 Uhr, `SelectionConfig`-Defaults, B = 200):
+
+| Datenstand | Coverage gegen Vollraster | Ranking vorher | Ranking nachher |
+|---|---|---|---|
+| 40 Tage lückenlos live | 77,5 % | 0 Stationen | 8 Stationen |
+| 30 Tage Archiv + 2 Tage live | 4,8 % | 0 Stationen | 8 Stationen |
+| 120 Tage Archiv + 2 Tage live | 1,3 % | 0 Stationen | 8 Stationen |
+| 20 Tage live, eine Station ab Tag 5 tot | 77,5 % / 19 % | 0 Stationen | 5 Stationen, `excluded: ["tot"]` |
+
+**Bitgleichheit, wo das Gate nicht bindet** (42 Tage dichte Stundenwerte,
+24 h — Coverage alt wie neu 100 %): dieselben Stationen, dieselbe
+Reihenfolge, alle Stationsfelder (`delta_ct`, `delta_ew_ct`, `ci_lo`, `ci_hi`,
+`score`, `coverage`) unverändert; geprüft gegen die Implementierung vor dieser
+Änderung und als Invarianz-Test hinterlegt (Fenster 06–24 gegen 00–24).
+Wo das Gate bisher alles ausgeschlossen hat, gibt es keine „alten“ Zahlen, die
+sich verschieben könnten — das Ranking erscheint dort zum ersten Mal.
+
+**Beleg von der Zielhardware (Job-Log 13.09.2026, Stand 0.24.1 — dieser Fix
+war dort noch nicht deployed):** drei Läufe, in jedem dauert die Phase
+„Selektion (δ̂)“ **0,13–0,15 s** (07:52:38.343→.491, 10:15:44.663→.793,
+10:50:14.125→.257). Ein δ̂-Ranking für 20 Stationen mit B = 2000 rechnet nicht
+in einer Zehntelsekunde — das ist der Bail-out des Gates, und der Nachbau am
+denselben Datenstand (20 Stationen, 2 Städte, 25 051 Archiv-Ereignisse,
+10 748 Live-Zeilen) liefert mit dem Stand vor diesem Fix **0 Stationen in
+0,05 s** samt Grund „nach Coverage ≥85% nur 0 Station(en) übrig“.
+
+**Was der Fix kostet:** dieselbe Selektion mit echtem Ranking (20 Stationen,
+2 Städte, B = 2000) dauert **1,5 s** statt 0,05 s — gemessen am NAS-Datenstand.
+Gegen die 1,4–1,7 min Laufzeit des Modell-Laufs ist das vernachlässigbar, aber
+es ist nicht null, und es steht hier, weil dies ein Laufzeit-Bündel ist.
+
+> **Batch 0 hat planmäßig keine Laufzeitwirkung** („keine, aber
+> Entscheidungsgrundlage“) — die einzige messbare Folge ist die eine
+> tatsächlich gerechnete Selektion (+1,5 s). Aus demselben Job-Log lässt sich
+> aber die bisher ausstehende Gegenmessung für **B15/B16 (0.20.0)** und
+> **B17 (0.22.0)** ablesen: **1,4–1,7 min** je Lauf (07:52: 1,7 min,
+> 10:15: 1,5 min, 10:50: 1,4 min) statt 10,3 min am 12.09.2026 — Backtest
+> komplett aus dem Tages-Cache („19 aus Tages-Cache, 0 neu gerechnet“),
+> Phase B nur noch ~50 s. Ein Kaltstart des Caches (erster Lauf des Tages)
+> ist in diesem Log nicht enthalten. Nachgetragen in TODO.md, Batch 1 und 3.
+>
+> **Weiter offen: B11 auf der Zielhardware** — `docker top tankapp-web-app-1`
+> und `docker stats --no-stream` **während Phase B** (nicht im Leerlauf),
+> Protokoll in
+> [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11).
+> Erwartet wird keine Beschleunigung, sondern der Beleg, ob 4 Worker ×
+> pandas in `shm_size: 256m` und 4,2 Gi verfügbarem Host-Speicher passen.
+
+### Tests
+
+- `tests/test_selection.py` (6 neu): lückenloses 06–24-Polling ergibt ein
+  Ranking und nennt `coverage_reference`/`coverage_window`/`coverage_threshold`;
+  Archiv-Präfix + Live bleibt rankbar (mit Beleg, dass ein absolutes Gate
+  ausgeschlossen hätte); tote Station wird weiterhin ausgeschlossen; Stadt
+  ohne Überlappung liefert Diagnose statt `None` (`compute_all` →
+  `diagnostics`, `top_global` leer); Fenster ändert keine Zahl, wenn nachts
+  Daten liegen; beide NAS-Aufrufe reichen das Polling-Fenster durch
+  (Quellenprüfung wie beim B = 2000-Test).
+- `tests/test_b4.py` (2 neu): belegter Store liefert `store_locked` auf allen
+  drei Schreibpfaden und 503 aus `_fill_status`, danach schreibt derselbe Pfad
+  wieder; das Wartezeit-Budget ist benannt (100 × 0,05 s = 5 s).
+- `web/src/data.test.ts` (1 neu): `messages.store_locked` existiert, nennt die
+  Handlung („erneut versuchen“) und ist nicht der `invalid_query`-Text.
+- Geprüft auf dem Stand **nach** PR 94 (0.24.1, Stations-Labor-Fix):
+  `python -m pytest -q` **670 grün** (davon 8 neu), `npm --prefix web test`
+  **244 grün** (davon 1 neu), `npm --prefix web run build` grün,
+  `ruff check` + `ruff format --check` grün.
+
 ## [0.24.1] – 2026-09-13
 
 **Regressionsfix Stations-Labor** — der Preisverlauf im Werkstatt-Tab
