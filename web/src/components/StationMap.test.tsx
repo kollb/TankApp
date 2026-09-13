@@ -1,8 +1,29 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
-import { StationMap } from "./StationMap";
+import { StationMap, RadarView } from "./StationMap";
 import { Station, DecideResult } from "../data";
+
+type RadarInfo = Parameters<typeof RadarView>[0]["stationInfos"][number];
+
+function radarInfo(
+  station: Station,
+  extra: Partial<RadarInfo> = {},
+): RadarInfo {
+  const isCurrentSelected = station.station_id === "s1";
+  return {
+    station,
+    isCurrentSelected,
+    netEur: isCurrentSelected ? 0 : null,
+    verdict: isCurrentSelected ? "selected" : "none",
+    worthIt: false,
+    detourKm: station.dist_km ?? null,
+    distMode: station.dist_mode ?? null,
+    mapsUrl: station.maps_url ?? null,
+    price: station.price ?? station.last_price ?? null,
+    ...extra,
+  };
+}
 
 const mockStations: Station[] = [
   {
@@ -124,6 +145,93 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
     expect(html).toContain("Keine Kartendaten verfügbar");
     expect(html).toContain(
       "Für die gewählte Stadt sind keine Geokoordinaten der Stationen hinterlegt.",
+    );
+  });
+
+  it("erklärt den Vergleichs-Pin und die 0-€-Frage", () => {
+    const html = renderToStaticMarkup(
+      <StationMap
+        stations={mockStations}
+        selectedId="s1"
+        setSelectedId={() => {}}
+        alternatives={mockAlternatives}
+      />,
+    );
+
+    // Der Pin der Vergleichsstation zeigt ihre Rolle, keinen 0-€-Preis.
+    expect(html).toContain("Vergleich");
+    expect(html).toContain("0 € Unterschied, nicht auf 0 € Spritpreis");
+  });
+
+  it("zeigt den Anker als Startpunkt, wenn seine Koordinate vorliegt", () => {
+    const html = renderToStaticMarkup(
+      <StationMap
+        stations={mockStations}
+        selectedId="s1"
+        setSelectedId={() => {}}
+        alternatives={mockAlternatives}
+        anchor={{ lat: 50.11, lon: 8.68 }}
+      />,
+    );
+
+    expect(html).toContain("Anker");
+    expect(html).toContain("Startpunkt der Stadt");
+    // Koordinaten selbst bleiben im Nutzertext unsichtbar (MICROCOPY §6).
+    expect(html).not.toContain("50.11");
+    expect(html).not.toContain("8.68");
+  });
+
+  it("Radar zentriert mit Anker auf ihm und zeichnet die Stationen relativ dazu", () => {
+    const infos = mockStations.map((s) => radarInfo(s));
+    const html = renderToStaticMarkup(
+      <RadarView
+        stationInfos={infos}
+        selectedStation={mockStations[0]}
+        anchor={{ lat: 50.0, lon: 8.5 }}
+        anchorActive={false}
+        activeStationId={null}
+        setActiveStationId={() => {}}
+        setAnchorActive={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Mitte: Anker");
+    expect(html).toContain("Ringe = km Luftlinie ab Anker");
+    // Die Vergleichsstation ist ein normaler Pin mit Rollen-Label, kein 0 €.
+    expect(html).toContain(">Vergleich<");
+    expect(html).not.toContain(">0,00 €<");
+  });
+
+  it("Radar ohne Anker zentriert auf der Vergleichsstation und sagt das", () => {
+    const infos = mockStations.map((s) => radarInfo(s));
+    const html = renderToStaticMarkup(
+      <RadarView
+        stationInfos={infos}
+        selectedStation={mockStations[0]}
+        anchor={null}
+        anchorActive={false}
+        activeStationId={null}
+        setActiveStationId={() => {}}
+        setAnchorActive={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Mitte: Vergleichsstation");
+    expect(html).toContain("Ringe = km Luftlinie ab ihr");
+  });
+
+  it("erwähnt den fehlenden Anker-Pin ehrlich ohne Koordinate", () => {
+    const html = renderToStaticMarkup(
+      <StationMap
+        stations={mockStations}
+        selectedId="s1"
+        setSelectedId={() => {}}
+        alternatives={mockAlternatives}
+      />,
+    );
+
+    expect(html).toContain(
+      "ohne seine Koordinate im Polling-Set erscheint kein Anker-Pin",
     );
   });
 });

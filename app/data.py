@@ -347,30 +347,61 @@ def metadata(settings):
     :func:`driving_km` — der Request-Pfad macht kein Netzwerk.
     """
     cache_file = _road_cache_file(settings)
+    bundle = _metadata_bundle(settings, cache_file)
+    stations = bundle[0]
+    problem = bundle[2]
+    return ({key: dict(meta) for key, meta in stations.items()}, problem)
+
+
+def anchors_by_city(settings) -> dict[str, tuple[float, float]]:
+    """Anker-Koordinate (Heimat-Startpunkt) je Stadt, wie im Polling-Set
+    konfiguriert (``anchor`` bzw. ``lat``/``lon`` auf Set-Ebene).
+
+    Anders als die Stations-Metadaten sind diese Koordinaten bewusst nur über
+    diese separate Funktion erreichbar: Die Karte zeichnet den Anker als
+    Startpunkt (Radar-Zentrum, Entfernungsursprung), andere Payloads tragen
+    ihn nicht.
+    """
+    cache_file = _road_cache_file(settings)
+    bundle = _metadata_bundle(settings, cache_file)
+    return {city: (float(lat), float(lon)) for city, (lat, lon) in bundle[1].items()}
+
+
+def _metadata_bundle(settings, cache_file) -> tuple[dict, dict, str | None]:
+    """Memoisierter Bau von (stations, anchors, problem)."""
     stamp = _metadata_stamp(settings, cache_file)
     now = time.monotonic()
     with _META_LOCK:
         memo = _META_MEMO
         if memo["key"] == stamp and now - memo["at"] < META_TTL_S:
-            stations, problem = memo["value"]
-            return ({key: dict(meta) for key, meta in stations.items()}, problem)
-    stations, problem = _build_station_metadata(settings, cache_file)
+            stations, anchors, problem = memo["value"]
+            return (
+                {key: dict(meta) for key, meta in stations.items()},
+                dict(anchors),
+                problem,
+            )
+    stations, anchors, problem = _build_station_metadata(settings, cache_file)
     with _META_LOCK:
         _META_MEMO["key"] = stamp
-        _META_MEMO["value"] = (stations, problem)
+        _META_MEMO["value"] = (stations, anchors, problem)
         _META_MEMO["at"] = now
-    return ({key: dict(meta) for key, meta in stations.items()}, problem)
+    return (
+        {key: dict(meta) for key, meta in stations.items()},
+        dict(anchors),
+        problem,
+    )
 
 
 def _build_station_metadata(settings, cache_file):
     payload = read_json(settings.polling)
     if payload is None:
-        return {}, "polling_missing"
+        return {}, {}, "polling_missing"
     try:
         groups = validate_sets(payload)
     except (ValueError, TypeError, KeyError):
-        return {}, "polling_invalid"
+        return {}, {}, "polling_invalid"
     stations = {}
+    anchors = {}
     pending = []
     for key, group in groups.items():
         city = group.get("label") or key
@@ -392,6 +423,8 @@ def _build_station_metadata(settings, cache_file):
             and 47 <= anchor[0] <= 56
             and 5 <= anchor[1] <= 16
         )
+        if anchor_ok:
+            anchors[city] = (float(anchor[0]), float(anchor[1]))
         details = {item["uuid"]: item for item in group.get("stations", [])}
         for uid in group.get("batch") or list(details):
             item = details.get(uid, {})
@@ -428,7 +461,7 @@ def _build_station_metadata(settings, cache_file):
         for (identity, _), (km, kind) in zip(items, distances):
             stations[identity]["dist_km"] = km
             stations[identity]["dist_mode"] = kind
-    return stations, None
+    return stations, anchors, None
 
 
 def public_job(settings, name):
@@ -695,6 +728,11 @@ class LiveData:
         cities = list(dict.fromkeys(city_name for city_name, _ in metas))
         if city and city not in cities:
             raise ValueError("unknown_city")
+        # Anker nur für die abgefragte Stadt ausliefern — die Karte zeichnet
+        # ihn als Startpunkt, andere Antworten tragen die Koordinate nicht.
+        anchor_map = anchors_by_city(self.settings)
+        if city:
+            anchor_map = {city: anchor_map[city]} if city in anchor_map else {}
         rows, error = ({}, problem) if problem else self._load(fuel, metas)
         now = self.clock()
         result = []
@@ -733,6 +771,9 @@ class LiveData:
             "source": "influxdb",
             "connection_error": error,
             "stations": result,
+            "anchors": {
+                c: {"lat": lat, "lon": lon} for c, (lat, lon) in anchor_map.items()
+            },
             "fresh_prices": sum(row["price"] is not None for row in result),
             "decision_ready": False,
             "calibrated": False,

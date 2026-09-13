@@ -82,7 +82,7 @@ Im Collector-/Uploader-Log bzw. InfluxDB prüfen, dass beide Stadtlabels ankomme
 
 Falls Vorbereitung lieber am PC oder mit NAS-Stationsliste:
 
-Windows: `py -3 tankapp.py add-city`; keine venv. `--stations <Datei.csv.gz>` erlaubt vorhandene Stationsliste auf NAS-Freigabe. Alternativ `--archive-dir <Verzeichnis>` auf NAS-Archiv. Wenn kein Archivzugang auf Pi, ist das Weg ohne zusätzlichen Zugang auf Pi. Danach nur `data/setup/polling.json` auf Pi an selben relativen Ort übertragen und dort Aktivierungsbefehl ausführen. Für Preis-GUI genügen Stationsmetadaten im gemeinsamen Polling-Set; private Anker werden nicht an Browser übertragen.
+Windows: `py -3 tankapp.py add-city`; keine venv. `--stations <Datei.csv.gz>` erlaubt vorhandene Stationsliste auf NAS-Freigabe. Alternativ `--archive-dir <Verzeichnis>` auf NAS-Archiv. Wenn kein Archivzugang auf Pi, ist das Weg ohne zusätzlichen Zugang auf Pi. Danach nur `data/setup/polling.json` auf Pi an selben relativen Ort übertragen und dort Aktivierungsbefehl ausführen. Für Preis-GUI genügen Stationsmetadaten im gemeinsamen Polling-Set. Der Anker (Heimat-Startpunkt) geht nur über das `anchors`-Feld von `/api/v1/stations` an die GUI, damit die Karte ihn als Startpunkt zeichnet (stadtweise gefiltert); die App bleibt LAN-only, eine Portfreigabe ist weiterhin nicht vorgesehen.
 
 Andere Stadt: `--city Name`; Radius/Anzahl nur bei Bedarf mit `--radius`/`--size`. Standard-Aktivierung erwartet `tankapp-collector` und `tankapp-uploader` als laufende systemd-Dienste. Bei Sonderkonfiguration sicher abbrechen statt Dienste/Dateipfade zu erraten. Vorschlag ist kein Deployment des Codes.
 

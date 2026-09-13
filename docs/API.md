@@ -509,6 +509,9 @@ Antwort sortiert nach Preis (frisch zuerst):
       "price": 1.729
     }
   ],
+  "anchors": {
+    "Frankfurt": {"lat": 50.11, "lon": 8.68}
+  },
   "fresh_prices": 8,
   "decision_ready": false,
   "calibrated": false
@@ -516,6 +519,13 @@ Antwort sortiert nach Preis (frisch zuerst):
 ```
 
 `price` nur wenn fresh (≤30 Min) und open, sonst null. `last_price` immer letzte Meldung.
+
+`anchors` (0.22.0): der Anker (Heimat-Startpunkt) je Stadt aus dem Polling-Set
+(`anchor` bzw. `lat`/`lon` auf Set-Ebene). Bei `city`-Filter ist nur die
+abgefragte Stadt enthalten, ohne Filter alle. Die Kartenansicht zeichnet ihn
+als Startpunkt (Radar-Zentrum, Ursprung der `dist_km`-Angaben); die
+Stations-Records selbst tragen die Koordinate weiterhin nicht. Ohne
+konfigurierten oder bei ungültigem Anker entfällt der Eintrag.
 
 ## Series
 

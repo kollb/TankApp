@@ -34,6 +34,7 @@ const FILES = [
   "components/PrecisionSlider.tsx",
   "components/ProfileManager.tsx",
   "components/Skeleton.tsx",
+  "components/StationMap.tsx",
   "components/ui.tsx",
   "views/Daily.tsx",
   "views/Statistics.tsx",
