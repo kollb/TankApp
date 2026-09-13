@@ -155,9 +155,10 @@ es ist nicht null, und es steht hier, weil dies ein Laufzeit-Bündel ist.
   wieder; das Wartezeit-Budget ist benannt (100 × 0,05 s = 5 s).
 - `web/src/data.test.ts` (1 neu): `messages.store_locked` existiert, nennt die
   Handlung („erneut versuchen“) und ist nicht der `invalid_query`-Text.
-- `python -m pytest -q`: **670 grün** (vorher 662); `npm --prefix web test`:
-  **241 grün**; `npm --prefix web run build`: grün; `ruff check` +
-  `ruff format --check`: grün.
+- Geprüft auf dem Stand **nach** PR 94 (0.24.1, Stations-Labor-Fix):
+  `python -m pytest -q` **670 grün** (davon 8 neu), `npm --prefix web test`
+  **244 grün** (davon 1 neu), `npm --prefix web run build` grün,
+  `ruff check` + `ruff format --check` grün.
 
 ## [0.24.1] – 2026-09-13
 
