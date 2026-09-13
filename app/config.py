@@ -51,6 +51,11 @@ class Settings:
     # B17: 21-Tage-Backtest je lokalem Endtag cachen (runtime/engine/
     # backtest-cache/). TANKAPP_BACKTEST_CACHE=0 rechnet jeden Lauf neu.
     backtest_cache: bool = True
+    # A11: Gemeinsame Bootstrap-Ziehung über alle Stationen eines Laufs
+    # (Konzept §4.2 — der Marktgleichlauf darf für P_lohnt nicht
+    # wegkorreliert werden). TANKAPP_SHARED_DRAWS=0 stellt die unabhängige
+    # Ziehung wieder her (Gegenprobe, Stand vor 0.31.0).
+    shared_draws: bool = True
     # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
@@ -101,6 +106,8 @@ class Settings:
             in {"1", "true", "on", "yes"},
             model_workers=_env_int("TANKAPP_MODEL_WORKERS", 0, low=0, high=64),
             backtest_cache=os.environ.get("TANKAPP_BACKTEST_CACHE", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
+            shared_draws=os.environ.get("TANKAPP_SHARED_DRAWS", "1").strip().lower()
             not in {"0", "false", "off", "no"},
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             city_subdivs=_city_subdivs_from_env(),

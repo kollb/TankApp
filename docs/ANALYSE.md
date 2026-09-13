@@ -330,14 +330,27 @@ Fallback: Sind keine Draws veröffentlicht (Altbestand, kein Modell), greift die
 Laplace-geglättete Ledger-Quote `(hits + 10·0,5)/(n + 10)` — gekennzeichnet,
 nicht vermischt.
 
-**Dokumentierte Abweichung (§4.2):** die Draws je Station sind **unabhängig**;
-eine gemeinsame Bootstrap-Ziehung über Stationen (gleicher Tagesblock je Ziehung,
-damit der Marktgleichlauf nicht wegkorreliert wird) ist nicht umgesetzt. Richtung
-der Abweichung: konservativ — Marktgleichlauf würde die Unsicherheit von
-`p_lohnt` verringern. Begründung und Folgen:
-[LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund). Das M7-Gate (§0.4)
-bleibt hart: `primary.p_correct` erscheint erst nach der Kalibrierung
-(n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
+**Gemeinsame Ziehung (§4.2, seit 0.31.0):** alle Stationen eines Laufs ziehen
+ihre Tagesblöcke aus **denselben** Zufallszahlen je (Horizont, Tagesposition)
+(`engine/models.py::shared_day_uniforms`); jede Station bildet die Zahl über
+ihre eigene Blockverteilung ab (comonotone Kopplung). Damit steckt der
+Marktgleichlauf in `p_lohnt`, statt herauszufallen. Ausgewiesen ist das je
+Horizont im Artefakt: `draws_24h.shared` / `draws_7d.shared`. Gegenprobe mit
+`TANKAPP_SHARED_DRAWS=0` (alte, unabhängige Ziehung).
+
+| Messung (Demo-Stack, sechs Stationen mit gemeinsamem Tages-Marktfaktor) | unabhängig | gemeinsam |
+|---|---|---|
+| Korrelation der Nowcast-Draws, **ein Lauf, eine Config** | 0,995 | 0,992 |
+| Korrelation der Nowcast-Draws, **unterschiedliche Trainingsfenster** (z. B. erhaltene Prognose aus einem früheren Lauf) | 0,545 | 0,588 |
+| Streuung der Nowcast-Differenz, unterschiedliche Fenster | 1,40 ct/L | 1,13 ct/L (−19 %) |
+
+Ehrlicher Befund: Bei **einem** Lauf mit gleicher Config koppelte die alte
+Ziehung schon zufällig richtig — gleicher Samen und gleiche Blockzahl ergaben
+dieselbe Indexfolge, also denselben Kalendertag. A11 schreibt das fest und
+verbessert genau den Fall, in dem die alte Ziehung ohne Hinweis entkoppelte:
+unterschiedlich viele Tagesblöcke (erhaltene Prognosen, `retained_previous`).
+Das M7-Gate (§0.4) bleibt hart: `primary.p_correct` erscheint erst nach der
+Kalibrierung (n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
 
 ## Umweg-Ökonomie B3.12
 

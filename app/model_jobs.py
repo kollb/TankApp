@@ -211,13 +211,22 @@ def _process_context():
     return mp.get_context("fork" if "fork" in methods else "spawn")
 
 
-def _init(series_map: dict, cfg, origin, cache_dir=None) -> None:
-    """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task)."""
+def _init(
+    series_map: dict, cfg, origin, cache_dir=None, shared_draws: bool = True
+) -> None:
+    """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task).
+
+    ``shared_draws`` (A11): alle Stationen desselben Laufs ziehen ihre
+    Tagesblöcke aus denselben Zufallszahlen. Der Schalter steckt im
+    Worker-Zustand, damit auch der serielle Pfad nach einem Pool-Ausfall
+    dieselbe Ziehung benutzt.
+    """
     _STATE.clear()
     _STATE["series"] = series_map
     _STATE["cfg"] = cfg
     _STATE["origin"] = origin
     _STATE["cache_dir"] = cache_dir
+    _STATE["shared_draws"] = bool(shared_draws)
 
 
 def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
@@ -283,13 +292,16 @@ def _records(frame) -> list[dict[str, Any]]:
     ]
 
 
-def _draws(index, paths, cfg) -> dict[str, Any]:
+def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
     """Kompakte Draw-Veröffentlichung für den Decision Layer (Konzept §4).
 
     Die vollen Pfade bleiben im Worker; veröffentlicht werden nur die
     Fenster-Minima je Draw (2-h-Blöcke) und die Nowcast-Draws — daraus
     rechnet der Live-API-Pfad ``P_besser``/``P_lohnt``/F3-Fenster-P ohne
     Numerik-Abhängigkeit (app/pside.py).
+
+    ``shared`` sagt, ob die Tagesblöcke stationsübergreifend gemeinsam
+    gezogen wurden (A11) — die GUI und die Doku weisen das aus.
     """
     from engine.probabilities import (
         BLOCK_MINUTES,
@@ -318,6 +330,10 @@ def _draws(index, paths, cfg) -> dict[str, Any]:
         "blocks": blocks,
         "minima": minima.tolist(),
         "nowcast": nowcast_draws(paths[:n]).tolist(),
+        # A11: gemeinsame Ziehung über Stationen (Konzept §4.2). False =
+        # unabhängige Ziehung (Stand vor 0.31.0) — dann ist P_lohnt zu
+        # selbstsicher, weil der Marktgleichlauf herausfällt.
+        "shared": bool(shared),
     }
 
 
@@ -338,11 +354,14 @@ def _run(task: tuple) -> dict[str, Any]:
             out.update(ok=True, **_backtest(item, cfg, hours, _STATE.get("cache_dir")))
             return out
         model = fit(item, origin, cfg)
-        frame, paths = predict(model, hours=hours, return_paths=True)
+        shared = bool(_STATE.get("shared_draws", True))
+        frame, paths = predict(
+            model, hours=hours, return_paths=True, shared_draws=shared
+        )
         out.update(
             ok=True,
             points=_records(frame),
-            draws=_draws(frame.index, paths, cfg),
+            draws=_draws(frame.index, paths, cfg, shared=shared),
         )
         # Nur der 24-h-Fit wird publiziert. Wide-Aufgaben brauchen ihr Modell
         # lokal für predict(), der ~100-kB-Rücktransfer war aber tote Arbeit.
@@ -368,12 +387,19 @@ class ModelTaskPool:
     """
 
     def __init__(
-        self, series_map: dict, cfg, origin, workers: int = 1, cache_dir=None
+        self,
+        series_map: dict,
+        cfg,
+        origin,
+        workers: int = 1,
+        cache_dir=None,
+        shared_draws: bool = True,
     ) -> None:
         self.series_map = _slim_series_map(series_map)
         self.cfg = cfg
         self.origin = origin
         self.cache_dir = cache_dir
+        self.shared_draws = bool(shared_draws)
         # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
         # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
         # trotzdem pandas importieren und Speicher belegen.
@@ -386,14 +412,26 @@ class ModelTaskPool:
     def __enter__(self):
         self._entered = True
         # Parent-State ist zugleich der serielle Pfad nach einem Pool-Ausfall.
-        _init(self.series_map, self.cfg, self.origin, self.cache_dir)
+        _init(
+            self.series_map,
+            self.cfg,
+            self.origin,
+            self.cache_dir,
+            self.shared_draws,
+        )
         if not self._serial:
             try:
                 self.pool = ProcessPoolExecutor(
                     max_workers=self.workers,
                     mp_context=_process_context(),
                     initializer=_init,
-                    initargs=(self.series_map, self.cfg, self.origin, self.cache_dir),
+                    initargs=(
+                        self.series_map,
+                        self.cfg,
+                        self.origin,
+                        self.cache_dir,
+                        self.shared_draws,
+                    ),
                 )
             except _POOL_FAILURES:
                 self._serial = True
@@ -495,6 +533,7 @@ def run_tasks(
     workers: int = 1,
     on_done: Callable[[dict[str, Any]], None] | None = None,
     cache_dir=None,
+    shared_draws: bool = True,
 ) -> list[dict[str, Any]]:
     """Kompatibler Ein-Wellen-Aufruf; Refresh nutzt einen Pool für zwei Wellen.
 
@@ -506,5 +545,7 @@ def run_tasks(
     # Der Kompatibilitätsaufruf kennt nur diese eine Welle und kann enger
     # deckeln; Refresh hält dagegen Kapazität für die größere Folgewelle frei.
     effective_workers = min(max(1, int(workers)), len(tasks))
-    with ModelTaskPool(series_map, cfg, origin, effective_workers, cache_dir) as pool:
+    with ModelTaskPool(
+        series_map, cfg, origin, effective_workers, cache_dir, shared_draws
+    ) as pool:
         return pool.run(tasks, on_done=on_done)

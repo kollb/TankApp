@@ -646,12 +646,59 @@ def validate_model(model: dict) -> Config:
     return cfg
 
 
+def shared_day_uniforms(
+    cfg: Config,
+    hours: int,
+    day_position: int,
+    samples: int | None = None,
+) -> np.ndarray:
+    """Gemeinsame Ziehungs-Zufallszahlen eines Tagesblocks (A11).
+
+    Konzept §4.2: Der Marktgleichlauf darf nicht wegkorreliert werden.
+    ``P_lohnt`` (F2) vergleicht zwei Stationen — zieht jede Station ihre
+    Tagesblöcke unabhängig, fällt der gemeinsame Markt aus der Differenz
+    heraus und die Wahrscheinlichkeit wird zu selbstsicher.
+
+    Statt eines gemeinsamen Zustands (der im Prozess-Pool nicht überlebt)
+    steht hier eine **ableitbare** Zahlenfolge: gleicher Samen, gleicher
+    Horizont, gleiche Tagesposition → identische Zufallszahlen in jedem
+    Prozess. Jede Station bildet sie über ihre **eigene** Verteilung ab
+    (comonotone Kopplung): ein „teurer Tag“ der gezogenen Zahl trifft alle
+    Stationen gleichzeitig.
+    """
+    samples = int(samples or cfg.bootstrap_samples)
+    seed = np.random.SeedSequence([int(cfg.seed), int(hours), int(day_position), 0xA11])
+    return np.random.default_rng(seed).random(samples)
+
+
+def blocks_from_uniform(
+    uniform: np.ndarray, n_blocks: int, weights: np.ndarray | None = None
+) -> np.ndarray:
+    """Tagesblock-Indizes aus gemeinsamen Zufallszahlen (A11).
+
+    Gleichverteilte Ziehung ohne Gewichte, sonst Inversion der
+    kumulierten Gewichte (Issue-46-Halbwertszeit). Das Ergebnis liegt
+    immer in ``[0, n_blocks)``.
+    """
+    if n_blocks <= 0:
+        raise ValueError("Keine Tagesblöcke zum Ziehen vorhanden.")
+    if weights is None:
+        indexes = np.floor(np.asarray(uniform, dtype=float) * n_blocks).astype(int)
+    else:
+        cumulative = np.cumsum(np.asarray(weights, dtype=float))
+        indexes = np.searchsorted(
+            cumulative, np.asarray(uniform, dtype=float), side="right"
+        )
+    return np.clip(indexes, 0, n_blocks - 1)
+
+
 def predict(
     model: dict,
     hours: int = 24,
     *,
     index: pd.DatetimeIndex | None = None,
     return_paths: bool = False,
+    shared_draws: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
     """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
     5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
@@ -664,6 +711,11 @@ def predict(
     Layers (Konzept §4.1–4.3): P_besser/P_lohnt/F3-Fenster-P werden aus der
     Verteilung gerechnet, nicht aus einer Ledger-Trefferquote. NaN bedeutet
     „Punkt nicht gestützt“ (wie bei den Quantilen).
+
+    ``shared_draws=True`` zieht die Tagesblöcke **gemeinsam** über alle
+    Stationen eines Laufs (A11, Konzept §4.2): gleiche Zufallszahlen je
+    (Horizont, Tagesposition), je Station über die eigene Blockverteilung
+    abgebildet. Ohne das Flag bleibt die Ziehung unabhängig wie vor 0.31.0.
     """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
@@ -737,9 +789,15 @@ def predict(
     block_weights = exp_block_weights(
         len(block), getattr(cfg, "bootstrap_ew_half_life_days", None)
     )
-    for day in np.unique(local_dates):
+    for day_position, day in enumerate(np.unique(local_dates)):
         positions = np.flatnonzero(local_dates == day)
-        if block_weights is None:
+        if shared_draws:
+            # A11: dieselben Zufallszahlen für dieses (Horizont, Tagesposition)
+            # in allen Stationen — die Abbildung auf die Blöcke bleibt je
+            # Station eigen (comonotone Kopplung, Konzept §4.2).
+            uniform = shared_day_uniforms(cfg, hours, day_position)
+            draws = blocks_from_uniform(uniform, len(block), block_weights)
+        elif block_weights is None:
             draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
         else:
             draws = rng.choice(len(block), size=cfg.bootstrap_samples, p=block_weights)

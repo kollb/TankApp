@@ -290,6 +290,9 @@ def refresh(settings: Settings, now=None, progress=None):
                 origin,
                 workers,
                 cache_dir=backtest_cache_dir,
+                # A11: gemeinsame Ziehung (§4.2); TANKAPP_SHARED_DRAWS=0
+                # schaltet für Gegenmessungen zurück auf unabhängig.
+                shared_draws=getattr(settings, "shared_draws", True),
             ) as task_pool:
                 # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
                 first = task_pool.run(
