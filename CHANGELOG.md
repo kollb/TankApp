@@ -57,6 +57,57 @@ am RP2 schon hatte und die NAS-GUI (dunkles Slate) nicht.
   read-only-Werte mit Link in den Einstellungen-Tab (C4).
 - `docs/TODO.md`: C4 aus der offenen Liste gestrichen;
   Reihenfolge-Empfehlung angepasst.
+- **Straßen-Distanzen ohne Request-Blockade** (`app/data.py`): Der
+  Request-Pfad (alle Endpunkte, inkl. `/health`) liest für
+  `dist_km`/`dist_mode` jetzt **nur den lokalen Routen-Cache**
+  (`runtime/road_route_cache.json`); unbekannte Anker→Station-Paare
+  bekommen sofort die Luftlinie (`dist_mode: "air"`, nie erfunden).
+  Fehlende Routen holt ein Hintergrund-Thread (Debounce je Anker, hartes
+  Wanduhr-Budget 20 s, 5-min-Cooldown bei Fehlschlag); der nächste
+  Request nutzt die neuen Einträge über die Datei-mtime (invalidiert das
+  Metadata-Memo). Vorher lief je Request je Anker eine Live-OSRM-Anfrage
+  — bei wackeligem Internet/DNS am NAS blockierte das die komplette API
+  (gemessen: `/health` 54 s, `/stations` 67 s).
+- **Metadata-Memo** (`app/data.py`): `metadata()` ist auf die
+  Datei-Stats von `polling.json` + Routen-Cache geschlüsselt (30-s
+  Backstop): Wiederholte Requests zahlen eine Dict-Kopie statt
+  Re-Parse/Re-Ableitung aller Distanzen.
+- **OSRM-Server konfigurierbar**: `TANKAPP_OSRM_URL` (eigener
+  OSRM, z. B. NAS-Docker — LAN-only statt Drittanbieter-Demo-Server),
+  `TANKAPP_OSRM` (`0` = kein Netz, nur Luftlinie). Beide laufen über
+  `tankapp.py nas-up` in die Compose-Umgebung (`ops/nas/app/compose.yml`).
+- **Stations-Preise: Stale-While-Revalidate** (`app/data.py`): Sobald
+  ein Cache-Eintrag existiert, antwortet `/api/v1/stations` (und damit
+  alles, was darauf aufbaut: `decide`, `route/evaluate`, …) sofort mit
+  dem letzten bekannten Stand; der InfluxDB-Read (2-Tage-Fenster,
+  mehrere Sekunden auf der NAS) läuft im Hintergrund (Single-Flight je
+  Kraftstoff, Daemon). 30-s-Intervall und Fehler-Semantik unverändert
+  (fehlerhafter Read behält den bekannten Stand und meldet
+  `influx_read_failed`, sobald der Hintergrund-Read gescheitert ist).
+  Die Erst-Ladung je Stations-Menge bleibt synchron — der Server warmt
+  alle drei Kraftstoffe beim Start im Hintergrund vor
+  (`LiveData.prewarm()` in `app/server.py`), sodass der erste
+  GUI-Request danach in der Praxis nie wartet.
+- `docs/BETRIEB.md`: Abschnitt „GUI-Responsivität“ mit
+  OSRM-Empfehlung (eigener Server) und Verhalten bei Internet-Ausfall.
+
+### Behoben
+
+- **API-Antwortzeiten bei OSRM-Ausfall** (Produktiv-Meldung: `/health`
+  54 s, `/stations` 67 s): Die Straßen-Distanz-Ableitung stand auf jedem
+  Request (auch `/health`, dessen Docker-Healthcheck-Budget 3–5 s ist)
+  und machte Live-OSRM-Calls mit 4-s-Socket-Timeout — dem Timeout
+  unterliegt die DNS-Auflösung nicht (hängt bei wackeligem DNS beliebig
+  lange), und Fallback-Ergebnisse wurden nicht gecacht,
+  also versuchte jeder Request das Netz erneut. Jetzt: Request-Pfad
+  cache-only (Millisekunden), Fetch nur im Hintergrund, Healthcheck
+  wieder im Budget; Details unter „Geändert“.
+- **Rest-Latenz von `/stations` (InfluxDB-Read)**: Nach dem OSRM-Fix
+  blieb der 2-Tage-InfluxDB-Read im Request-Pfad (mehrere Sekunden je
+  30-s-Cache-Zyklus auf der NAS). Jetzt Stale-While-Revalidate +
+  Start-Prewarm: im Steady-State antwortet `/stations` aus dem Cache,
+  der Read läuft im Hintergrund — Antwortzeit komplett entkoppelt von
+  InfluxDB-Latenz (Einzelheiten unter „Geändert“).
 
 ### Tests
 
@@ -72,6 +123,14 @@ am RP2 schon hatte und die NAS-GUI (dunkles Slate) nicht.
   Tankmenge-Eingabe läuft jetzt über den Einstellungen-Tab;
   `horizons.spec.ts` — Zeitwert-Automatik wird im Tab gesetzt, der
   Alltag zeigt „Auto (… €/h Peak/offpeak)“ read-only.
+- `tests/test_app.py` (Server-Latenz, 0.24.0): Metadata-Memo
+  (bis zur Datei-Änderung stabil, Mutation-sicher), Request-Pfad wartet
+  nie auf OSRM (Hintergrund-Fetch füllt die Cache-Datei, genau ein
+  Netz-Call), Refresh-Debounce bei Internet-Ausfall, `TANKAPP_OSRM_URL`
+  wird respektiert, `/health` ohne Router-Warten; dazu Stations-Preise:
+  Stale-While-Revalidate wartet nie auf InfluxDB, Single-Flight bei
+  parallelen Requests, Fehlschlag behält den bekannten Stand, Prewarm
+  erwärmt e10/e5/diesel.
 
 ## [0.23.0] – 2026-09-12
 

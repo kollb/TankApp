@@ -2,7 +2,9 @@ import csv
 import datetime as dt
 import gzip
 import json
+import os
 import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import replace
@@ -137,7 +139,16 @@ def test_cache_rechecks_age_and_failure_does_not_publish_partial_result(
     )  # cached payload is not automatically fresh
     clock[0] = NOW
     monotonic[0] += 31
-    data = live.stations()
+    # Stale-While-Revalidate: Der Request antwortet sofort mit dem
+    # bekannten Stand; der Fehler wird sichtbar, sobald der Hintergrund-
+    # Re-Read gescheitert ist (hier Millisekunden, echter Zeitmesser —
+    # time.monotonic ist gepatcht).
+    deadline = time.time() + 5
+    while True:
+        data = live.stations()
+        if data["connection_error"] == "influx_read_failed" or time.time() > deadline:
+            break
+        time.sleep(0.02)
     assert data["connection_error"] == "influx_read_failed"
     assert data["fresh_prices"] == 0
     assert data["stations"][0]["last_price"] == 1.729
@@ -311,6 +322,329 @@ def test_invalid_anchor_is_ignored_instead_of_guessing(tmp_path):
     )
     metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
     assert error is None and metas[("Frankfurt", UID)]["dist_km"] is None
+
+
+# --- 0.24.0: Straßen-Distanzen ohne Request-Blockade -------------------------
+# Vorher: jeder Request (inkl. /health) holte fehlende OSRM-Routen live —
+# auf einem NAS mit wackeligem Internet/DNS 54–67 s Antwortzeit. Jetzt:
+# Request-Pfad nur lokaler Cache, Fetch im Hintergrund.
+
+
+def _write_anchored_polling(tmp_path, anchor=(50.11, 8.68)):
+    """Ein Stadtset mit Anker + Koordinaten → der Routing-Pfad wird aktiv."""
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "anchor": list(anchor),
+                        "batch": [UID],
+                        "stations": [
+                            {"uuid": UID, "name": "Nah", "lat": 50.12, "lon": 8.69}
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    return polling
+
+
+def test_metadata_is_memoized_until_inputs_change(tmp_path, monkeypatch):
+    polling = _write_anchored_polling(tmp_path)
+    settings = Settings(data=tmp_path / "data", polling=polling)
+    calls = []
+
+    def fake_driving(anchor, targets, cache_path):
+        calls.append(tuple(targets))
+        return [(3.4, "road") for _ in targets]
+
+    monkeypatch.setattr("app.data.driving_km", fake_driving)
+    first, error = metadata(settings)
+    second, _ = metadata(settings)
+    third, _ = metadata(settings)
+    assert error is None
+    assert len(calls) == 1  # Memo: Ableitung nur beim ersten Zugriff
+    assert first == second == third
+    # Unabhängige Kopien: Mutation des Aufrufers vergiftet nicht das Memo.
+    first[("Frankfurt", UID)]["name"] = "mutiert"
+    again, _ = metadata(settings)
+    assert again[("Frankfurt", UID)]["name"] == "Nah"
+    assert len(calls) == 1
+    # polling.json geändert (frische mtime) → Neuberechnung.
+    stamp = polling.stat()
+    os.utime(polling, (stamp.st_atime + 2, stamp.st_mtime + 2))
+    metadata(settings)
+    assert len(calls) == 2
+
+
+def test_request_path_never_waits_for_osrm_and_background_fills_cache(
+    tmp_path, monkeypatch
+):
+    import road_route
+
+    monkeypatch.setenv("TANKAPP_OSRM", "1")
+    monkeypatch.delenv("TANKAPP_OSRM_URL", raising=False)
+    polling = _write_anchored_polling(tmp_path)
+    settings = Settings(data=tmp_path / "data", polling=polling)
+    cache_file = settings.runtime / "road_route_cache.json"
+
+    state = {"batches": 0}
+
+    def slow_batch(self, src, targets, want_duration):
+        state["batches"] += 1
+        time.sleep(3.0)  # simuliert einen empfindlich langsamen OSRM-Server
+        return [
+            {
+                "dist_km": road_route.haversine_km(src[0], src[1], t[0], t[1]) * 1.3,
+                "dur_min": None,
+            }
+            for t in targets
+        ]
+
+    monkeypatch.setattr(road_route.RoadRouter, "_table_batch", slow_batch)
+    monkeypatch.setattr(
+        road_route.RoadRouter, "check_anchor_snap", lambda self, *a, **k: None
+    )
+
+    start = time.monotonic()
+    metas, error = metadata(settings)
+    elapsed = time.monotonic() - start
+    assert error is None
+    # Der Request wird beantwortet, obwohl der Router „hängt“.
+    assert elapsed < 2.0
+    entry = metas[("Frankfurt", UID)]
+    assert entry["dist_mode"] == "air"  # ehrlicher Fallback, nie erfunden
+    assert entry["dist_km"] is not None
+
+    # Der Hintergrund-Fetch (3 s) schreibt die Cache-Datei nach.
+    deadline = time.monotonic() + 15
+    while not cache_file.is_file() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert cache_file.is_file()
+
+    # Neue mtime → nächstes metadata() nutzt die Straßen-Distanz,
+    # ohne einen neuen Netz-Call.
+    metas2, _ = metadata(settings)
+    assert metas2[("Frankfurt", UID)]["dist_mode"] == "road"
+    assert state["batches"] == 1  # Route wurde genau einmal geholt
+
+
+def test_route_refresh_is_debounced_while_failing(tmp_path, monkeypatch):
+    import road_route
+
+    monkeypatch.setenv("TANKAPP_OSRM", "1")
+    polling = _write_anchored_polling(tmp_path)
+    settings = Settings(data=tmp_path / "data", polling=polling)
+
+    state = {"batches": 0}
+
+    def failing_batch(self, src, targets, want_duration):
+        state["batches"] += 1
+        raise TimeoutError("simulierter Internet-Ausfall")
+
+    monkeypatch.setattr(road_route.RoadRouter, "_table_batch", failing_batch)
+    monkeypatch.setattr(
+        road_route.RoadRouter, "check_anchor_snap", lambda self, *a, **k: None
+    )
+
+    metadata(settings)  # Versuch 1
+    time.sleep(0.3)  # Versuch 1 läuft zu Ende (Fail ist schnell)
+    stamp = polling.stat()  # Neuberechnung erzwingen → würde neu kicken
+    os.utime(polling, (stamp.st_atime + 2, stamp.st_mtime + 2))
+    metadata(settings)  # Versuch 2 muss vom Cooldown unterdrückt werden
+    time.sleep(0.3)
+    assert state["batches"] == 1  # kein Anstapeln beim Internet-Ausfall
+
+
+def test_osrm_url_env_is_honored(tmp_path, monkeypatch):
+    import road_route
+
+    monkeypatch.setenv("TANKAPP_OSRM", "1")
+    monkeypatch.setenv("TANKAPP_OSRM_URL", "http://192.168.178.10:5000")
+    polling = _write_anchored_polling(tmp_path)
+    settings = Settings(data=tmp_path / "data", polling=polling)
+
+    seen = []
+
+    class SpyRouter(road_route.RoadRouter):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            seen.append(self.base_url)
+
+        def _table_batch(self, src, targets, want_duration):
+            return [{"dist_km": 1.0, "dur_min": None} for _ in targets]
+
+        def check_anchor_snap(self, *args, **kwargs):
+            return None  # Test: kein echtes HTTP
+
+    monkeypatch.setattr(road_route, "RoadRouter", SpyRouter)
+    metas, error = metadata(settings)
+    assert error is None
+    assert seen, "Router wurde gar nicht instanziiert"
+    assert all(url == "http://192.168.178.10:5000" for url in seen)
+    assert metas[("Frankfurt", UID)]["dist_mode"] == "air"  # vor dem Refresh
+
+    cache_file = settings.runtime / "road_route_cache.json"
+    deadline = time.monotonic() + 10
+    while not cache_file.is_file() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert cache_file.is_file()
+    metas2, _ = metadata(settings)
+    assert metas2[("Frankfurt", UID)]["dist_mode"] == "road"
+    assert metas2[("Frankfurt", UID)]["dist_km"] == 1.0
+
+
+def test_health_does_not_wait_for_router(tmp_path, monkeypatch):
+    import road_route
+
+    monkeypatch.setenv("TANKAPP_OSRM", "1")
+    polling = _write_anchored_polling(tmp_path)
+    settings = Settings(data=tmp_path / "data", polling=polling)
+
+    def slow_batch(self, src, targets, want_duration):
+        time.sleep(5.0)
+        return [{"dist_km": 1.0, "dur_min": None} for _ in targets]
+
+    monkeypatch.setattr(road_route.RoadRouter, "_table_batch", slow_batch)
+    monkeypatch.setattr(
+        road_route.RoadRouter, "check_anchor_snap", lambda self, *a, **k: None
+    )
+
+    live = LiveData(settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    start = time.monotonic()
+    health = live.health()
+    assert time.monotonic() - start < 2.0  # Healthcheck-Budget: 3–5 s
+    assert health["app"] == "online"
+    assert health["station_count"] == 1
+
+
+# --- 0.24.0: Stations-Preise, Stale-While-Revalidate ------------------------
+# Steady-State: veralteter Cache → sofortiger Antwort mit bekanntem Stand,
+# InfluxDB-Read im Hintergrund (Single-Flight). Erst-Ladung bleibt synchron.
+
+
+def _stale_cache_entry(live, key=None):
+    """Cache-Eintrag künstlich veralten (Zeitstempel in die Vergangenheit)."""
+    if key is None:
+        key = next(iter(live.cache))
+    mono, rows, error, loading = live.cache[key]
+    live.cache[key] = (0.0, rows, error, False)
+    return key
+
+
+def test_stations_never_wait_for_influx_on_stale_cache(app_settings):
+    phase = {"slow": False}
+    state = {"queries": 0}
+
+    def query(cfg, text):
+        state["queries"] += 1
+        if phase["slow"]:
+            time.sleep(2.0)  # langsamer NAS-InfluxDB-Scan
+        return [raw()]
+
+    live = LiveData(app_settings, query=query, clock=lambda: NOW)
+    first = live.stations()  # Erst-Ladung: synchron (wie bisher)
+    assert first["fresh_prices"] == 1
+
+    # Cache veraltern + Read verlangsamen: der Request darf nicht warten.
+    key = _stale_cache_entry(live)
+    phase["slow"] = True
+    before = state["queries"]
+
+    start = time.monotonic()
+    stale = live.stations()
+    assert time.monotonic() - start < 1.0  # bekannter Stand, kein 2-s-Warten
+    assert stale["fresh_prices"] == 1  # bekannter Preis bleibt stehen
+    assert stale["connection_error"] is None  # während des Refresh: kein Fehler
+
+    # Hintergrund-Revalidation läuft ein: Eintrag frisch, genau ein Read.
+    wait_until = time.monotonic() + 10
+    while time.monotonic() < wait_until:
+        entry = live.cache[key]
+        if not entry[3] and time.monotonic() - entry[0] < LiveData.STALE_AFTER_S:
+            break
+        time.sleep(0.05)
+    assert state["queries"] == before + 1  # Single-Flight
+
+
+def test_stations_influx_refresh_is_single_flight(app_settings):
+    state = {"queries": 0}
+
+    def slow_query(cfg, text):
+        state["queries"] += 1
+        time.sleep(1.5)
+        return [raw()]
+
+    live = LiveData(app_settings, query=slow_query, clock=lambda: NOW)
+    live.stations()  # Erst-Ladung (synchron)
+    key = _stale_cache_entry(live)
+    before = state["queries"]
+
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(live.stations()))
+        for _ in range(3)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert len(results) == 3  # alle Requests sofort beantwortet
+
+    deadline = time.monotonic() + 10
+    while live.cache[key][3] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert state["queries"] == before + 1  # 3 parallele Requests, 1 Read
+
+
+def test_stations_influx_failure_keeps_known_rows(app_settings):
+    phase = {"fail": False}
+
+    def query(cfg, text):
+        if phase["fail"]:
+            raise OSError("InfluxDB unerreichbar (simuliert)")
+        return [raw()]
+
+    live = LiveData(app_settings, query=query, clock=lambda: NOW)
+    assert live.stations()["fresh_prices"] == 1  # Erst-Ladung ok
+
+    # Cache veraltern, Read brechen lassen: bekannter Stand bleibt,
+    # Fehler erscheint, sobald der Hintergrund-Read gescheitert ist.
+    _stale_cache_entry(live)
+    phase["fail"] = True
+    deadline = time.monotonic() + 5
+    while True:
+        data = live.stations()
+        if data["connection_error"] == "influx_read_failed" or time.monotonic() > deadline:
+            break
+        time.sleep(0.05)
+    assert data["connection_error"] == "influx_read_failed"
+    assert data["fresh_prices"] == 0  # Fehler → nichts „frisch“
+    assert data["stations"][0]["last_price"] == 1.729  # bekannter Preis bleibt
+
+
+def test_prewarm_warms_all_fuels(app_settings):
+    calls = []
+
+    def slow_query(cfg, text):
+        calls.append(1)
+        time.sleep(0.2)
+        return [raw()]
+
+    live = LiveData(app_settings, query=slow_query, clock=lambda: NOW)
+    live.prewarm()  # e10/e5/diesel im Hintergrund
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if len(calls) >= 3 and {
+            key[0] for key in live.cache
+        } == {"e10", "e5", "diesel"}:
+            break
+        time.sleep(0.05)
+    assert len(calls) == 3  # alle drei Kraftstoffe, kein Mehrfach-Start
+    assert {key[0] for key in live.cache} == {"e10", "e5", "diesel"}
 
 
 def test_series_does_not_forward_fill_closed_or_missing_fuel(app_settings):
