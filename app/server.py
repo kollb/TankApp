@@ -399,9 +399,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         else:
             self.send_header("Cache-Control", "no-store")
+        # OSM-Kacheln lädt die Karte (web/src/components/StationMap.tsx) als
+        # <img> von a/b/c.tile.openstreetmap.org — ohne den Host in img-src
+        # blockiert der Browser jede Kachel (nur der Radar bleibt nutzbar).
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
         )
         successor = getattr(self, "_successor", None)
         if successor:

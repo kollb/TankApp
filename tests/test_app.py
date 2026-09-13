@@ -12,7 +12,7 @@ from dataclasses import replace
 import pytest
 
 from app.config import Settings
-from app.data import LiveData, metadata
+from app.data import LiveData, anchors_by_city, metadata
 from app.history import convert_day, open_csv, prepare_archive
 from app.server import Handler, _etag_matches, make_server
 
@@ -96,7 +96,10 @@ def test_live_uses_uuid_status_and_only_selected_stations(app_settings):
     assert data["decision_ready"] is False
     assert "exists r.station_id" in queries[0] and "tail(n: 1)" in queries[0]
     assert "never-expose-me" not in json.dumps(data)
-    assert "anchor" not in json.dumps(data)
+    # Der Anker wandert nie in die Stations-Records; ohne konfigurierten
+    # Anker ist auch das explizite Karten-Feld leer.
+    assert "anchor" not in json.dumps(data["stations"])
+    assert data["anchors"] == {}
 
 
 @pytest.mark.parametrize(
@@ -187,7 +190,7 @@ def test_missing_setup_is_explicit_and_does_not_call_network(app_settings):
     assert live.stations()["connection_error"] == "influx_not_configured"
 
 
-def test_anchor_distance_is_derived_but_never_exposed(tmp_path):
+def test_anchor_distance_derived_metas_clean_anchor_exposed_separately(tmp_path):
     polling = tmp_path / "polling.json"
     polling.write_text(
         json.dumps(
@@ -222,8 +225,16 @@ def test_anchor_distance_is_derived_but_never_exposed(tmp_path):
     # No coordinates or no anchor: no distance, never an invented one.
     assert metas[("Frankfurt", OTHER)]["dist_km"] is None
     assert metas[("Gütersloh", THIRD)]["dist_km"] is None
-    # The private anchor coordinates themselves never enter a public payload.
+    # Die Stations-Metadaten selbst tragen den Anker weiterhin nicht — nur
+    # die explizite, Karten-spezifische anchors_by_city-Funktion liefert ihn.
     assert "anchor" not in json.dumps(list(metas.values()))
+    anchors = anchors_by_city(settings)
+    assert anchors == {"Frankfurt": (50.11, 8.68)}
+    # Der /stations-Payload trägt den Anker nur für die abgefragte Stadt.
+    live = LiveData(settings, query=lambda *_: [], clock=lambda: NOW)
+    frankfurt = live.stations(city="Frankfurt")
+    assert frankfurt["anchors"] == {"Frankfurt": {"lat": 50.11, "lon": 8.68}}
+    assert live.stations(city="Gütersloh")["anchors"] == {}
 
 
 def test_discover_format_anchor_lat_lon_also_derives_distances(tmp_path):
@@ -260,13 +271,18 @@ def test_discover_format_anchor_lat_lon_also_derives_distances(tmp_path):
             }
         )
     )
-    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+    settings = Settings(data=tmp_path / "data", polling=polling)
+    metas, error = metadata(settings)
     assert error is None
     assert 0.5 < metas[("Gütersloh", UID)]["dist_km"] < 2.0
     assert 0.5 < metas[("Frankfurt", OTHER)]["dist_km"] < 2.0
-    # Der Referenzpunkt selbst bleibt privat, auch im discover-Format.
+    # In den Metadaten bleibt der Referenzpunkt unsichtbar …
     payload = json.dumps(list(metas.values()))
     assert "50.11" not in payload and "8.68" not in payload
+    # … anchors_by_city kennt beide Anker-Schreibweisen (anchor vs. lat/lon).
+    anchors = anchors_by_city(settings)
+    assert anchors["Gütersloh"] == (51.9, 8.4)
+    assert anchors["Frankfurt"] == (50.11, 8.68)
 
 
 def test_driving_distance_uses_osrm_not_air(tmp_path, monkeypatch):
@@ -320,8 +336,11 @@ def test_invalid_anchor_is_ignored_instead_of_guessing(tmp_path):
             }
         )
     )
-    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+    settings = Settings(data=tmp_path / "data", polling=polling)
+    metas, error = metadata(settings)
     assert error is None and metas[("Frankfurt", UID)]["dist_km"] is None
+    # Ein ungültiger Anker taucht auch nicht als Karten-Pin auf.
+    assert anchors_by_city(settings) == {}
 
 
 # --- 0.24.0: Straßen-Distanzen ohne Request-Blockade -------------------------
@@ -804,6 +823,11 @@ def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
         with urllib.request.urlopen(base + "/") as response:
             assert b"TankApp test shell" in response.read()
             assert response.headers["Cache-Control"] == "no-store"
+            # CSP muss die OSM-Kacheln der Karte erlauben, sonst blockiert
+            # der Browser jedes <img> von *.tile.openstreetmap.org.
+            csp = response.headers["Content-Security-Policy"]
+            assert "https://*.tile.openstreetmap.org" in csp
+            assert "img-src" in csp
         with urllib.request.urlopen(base + "/api/v1/stations?fuel=e10") as response:
             assert json.load(response)["fresh_prices"] == 1
         for path in [

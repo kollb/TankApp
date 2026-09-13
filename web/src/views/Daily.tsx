@@ -844,6 +844,8 @@ export function DailyView(props: DailyViewProps) {
               setSelectedId={setSelectedId}
               alternatives={rec.alternatives_nearby}
               primaryStation={p.station}
+              anchor={data?.anchors?.[activeCity] ?? null}
+              tripMode={detourMode}
               onNavigate={(url) => handleIntent("navigate", url)}
             />
           </div>

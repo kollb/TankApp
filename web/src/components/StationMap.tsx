@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   MapPin,
+  Home,
   Navigation,
   Route,
   WifiOff,
@@ -10,8 +11,13 @@ import {
   AlertCircle,
   XCircle,
 } from "lucide-react";
-import { Station, DecideResult, euro } from "../data";
+import { Station, DecideResult, DetourMode, euro } from "../data";
 import { usePtrOff } from "../usePtrOff";
+
+export interface MapAnchor {
+  lat: number;
+  lon: number;
+}
 
 export interface StationMapProps {
   stations: Station[];
@@ -19,6 +25,9 @@ export interface StationMapProps {
   setSelectedId: (id: string) => void;
   alternatives?: DecideResult["alternatives_nearby"];
   primaryStation?: DecideResult["primary"]["station"];
+  /** Anker = Heimat-Startpunkt der Stadt (aus /api/v1/stations anchors). */
+  anchor?: MapAnchor | null;
+  tripMode?: DetourMode | string;
   onNavigate?: (mapsUrl: string) => void;
   title?: string;
   className?: string;
@@ -39,10 +48,18 @@ interface StationMapInfo {
 }
 
 function formatNetBadge(info: StationMapInfo): string {
-  if (info.isCurrentSelected) return "0,00 €";
+  // Die Vergleichsstation ist der Nullpunkt der Netto-Rechnung — ein Pin
+  // „0,00 €“ wäre als Spritpreis misslesbar, deshalb zeigt der Pin ihre
+  // Rolle. Die 0 € Differenz stehen in der Detail-Karte und im Hinweistext.
+  if (info.isCurrentSelected) return "Vergleich";
   if (info.netEur === null) return "-- €";
   const sign = info.netEur >= 0 ? "+" : "−";
   return `${sign}${euro(Math.abs(info.netEur))} €`;
+}
+
+/** Marker-HTML für den Anker (Heimat-Startpunkt), OSM- und Radar-Marker. */
+function anchorPinHtml(): string {
+  return `<div role="img" aria-label="Anker, Startpunkt der Stadt" class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-900 shadow-md cursor-pointer whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Anker</div>`;
 }
 
 function getVerdictBadgeStyle(verdict: StationMapInfo["verdict"]): {
@@ -91,6 +108,8 @@ export function StationMap({
   setSelectedId,
   alternatives = [],
   primaryStation,
+  anchor = null,
+  tripMode = "onroute",
   onNavigate,
   title = "Karte: Hier oder woanders?",
   className = "",
@@ -100,6 +119,18 @@ export function StationMap({
   const [mapMode, setMapMode] = useState<MapMode>("osm");
   const [tileError, setTileError] = useState(false);
   const [activeStationId, setActiveStationId] = useState<string | null>(null);
+  const [anchorActive, setAnchorActive] = useState(false);
+
+  const validAnchor =
+    anchor &&
+    Number.isFinite(anchor.lat) &&
+    Number.isFinite(anchor.lon) &&
+    anchor.lat >= -90 &&
+    anchor.lat <= 90 &&
+    anchor.lon >= -180 &&
+    anchor.lon <= 180
+      ? anchor
+      : null;
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -226,6 +257,33 @@ export function StationMap({
 
           const bounds = L.latLngBounds([]);
 
+          // Anker (Heimat-Startpunkt) als eigener Pin — die Karte „geht von
+          // ihm aus“, wie die Stations-km-Angaben.
+          if (validAnchor) {
+            const anchorCoords: [number, number] = [
+              validAnchor.lat,
+              validAnchor.lon,
+            ];
+            bounds.extend(anchorCoords);
+            const anchorIcon = L.divIcon({
+              className: "custom-anchor-pin",
+              html: anchorPinHtml(),
+              iconSize: [70, 26],
+              iconAnchor: [35, 13],
+            });
+            const anchorMarker = L.marker(anchorCoords, {
+              icon: anchorIcon,
+              keyboard: true,
+              title: "Anker — Startpunkt der Stadt",
+              alt: "Anker, Startpunkt der Stadt",
+              zIndexOffset: 200,
+            }).addTo(map);
+            anchorMarker.on("click", () => {
+              setActiveStationId(null);
+              setAnchorActive(true);
+            });
+          }
+
           stationInfos.forEach((info) => {
             const { station } = info;
             if (
@@ -258,12 +316,17 @@ export function StationMap({
             }).addTo(map);
 
             marker.on("click", () => {
+              setAnchorActive(false);
               setActiveStationId(station.station_id);
             });
           });
 
-          if (validStations.length > 1) {
-            map.fitBounds(bounds, { padding: [30, 30] });
+          // Bei ≥ 2 Punkten (Stationen plus Anker) auf alle einpassen.
+          if (
+            bounds.isValid() &&
+            !bounds.getNorthEast().equals(bounds.getSouthWest())
+          ) {
+            map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
           }
         } catch (e) {
           console.warn("Leaflet map init fallback to radar:", e);
@@ -288,6 +351,8 @@ export function StationMap({
     mapMode,
     validStations.length,
     selectedId,
+    validAnchor?.lat,
+    validAnchor?.lon,
     JSON.stringify(alternatives),
   ]);
 
@@ -371,14 +436,28 @@ export function StationMap({
         <RadarView
           stationInfos={stationInfos}
           selectedStation={selectedStationObj}
+          anchor={validAnchor}
+          anchorActive={anchorActive}
           activeStationId={activeStationId}
-          setActiveStationId={setActiveStationId}
+          setActiveStationId={(id) => {
+            setAnchorActive(false);
+            setActiveStationId(id);
+          }}
+          setAnchorActive={setAnchorActive}
         />
       )}
 
       {/* Legend & Explanations */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[11px] text-slate-400">
         <div className="flex flex-wrap items-center gap-3">
+          {validAnchor && (
+            <span className="flex items-center gap-1 font-mono">
+              <span className="flex h-2.5 w-2.5 items-center justify-center rounded-full bg-slate-100 ring-2 ring-slate-300/50">
+                <Home size={8} className="text-slate-900" />
+              </span>
+              Anker
+            </span>
+          )}
           <span className="flex items-center gap-1 font-mono">
             <span className="h-2.5 w-2.5 rounded-full bg-sky-400 ring-2 ring-sky-400/40" />
             Vergleich
@@ -401,6 +480,56 @@ export function StationMap({
           Server-Netto-€ (decide) · d = detour_km_est
         </span>
       </div>
+
+      {/* Was die Karte bedeutet — die 0-€-Frage: der „Vergleich“-Pin ist die
+          Vergleichsstation (0 € Unterschied), nicht ein Spritpreis von 0 €. */}
+      <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-[11px] leading-snug text-slate-400">
+        <p className="flex items-start gap-1.5">
+          <Info size={12} className="mt-0.5 shrink-0 text-slate-500" />
+          <span>
+            Die €-Pins nennen die Netto-Ersparnis gegenüber der
+            Vergleichsstation; deren eigener Pin heißt „Vergleich“ und steht
+            auf 0 € Unterschied, nicht auf 0 € Spritpreis.
+            {validAnchor
+              ? tripMode === "dedicated"
+                ? " Der Anker ist der Startpunkt der Stadt: Die Stationsentfernungen und der ganze Hin- und Rückweg der Extrafahrt gehen von ihm aus."
+                : " Der Anker ist der Startpunkt der Stadt, von ihm aus messen die Stationsentfernungen; der Fahrtcharakter „Auf dem Weg“ zählt nur den Mehrweg gegenüber der Vergleichsstation."
+              : " Die Stationsentfernungen (km Fahrt/Luftlinie) gehen vom Anker der Stadt aus; ohne seine Koordinate im Polling-Set erscheint kein Anker-Pin."}
+          </span>
+        </p>
+      </div>
+
+      {/* Anker-Detailkarte bei Klick/Tap auf den Anker-Pin */}
+      {anchorActive && validAnchor && (
+        <div className="mt-3 rounded-xl border border-slate-300/40 bg-slate-950/80 p-3.5 shadow-lg">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-300/50 bg-slate-100 text-slate-900">
+                <Home size={15} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-slate-100">
+                  Anker · Startpunkt dieser Stadt
+                </p>
+                <p className="mt-1 max-w-prose text-[11px] leading-snug text-slate-400">
+                  Die Entfernungsangaben der Stationen (Fahrt oder Luftlinie)
+                  und die Umweg-Rechnung im Fahrtcharakter „Extrafahrt“ gehen
+                  von diesem Punkt aus. Die €-Pins vergleichen trotzdem gegen
+                  die Vergleichsstation — der Anker ist selbst keine
+                  Tankstelle.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setAnchorActive(false)}
+              aria-label="Anker-Erklärung schließen"
+              className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+            >
+              <XCircle size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Selected/Clicked Station Details Card */}
       {activeInfo && (
@@ -439,7 +568,7 @@ export function StationMap({
                 className={`text-sm font-bold ${getVerdictBadgeStyle(activeInfo.verdict).textClass}`}
               >
                 {activeInfo.isCurrentSelected
-                  ? "0,00 € (Vergleich)"
+                  ? "0,00 € Unterschied"
                   : activeInfo.netEur !== null
                     ? `${activeInfo.netEur >= 0 ? "+" : "−"}${euro(Math.abs(activeInfo.netEur))} € Netto`
                     : "-- € (Leerstand)"}
@@ -484,25 +613,36 @@ export function StationMap({
   );
 }
 
-// Offline Vector Radar View Component
-interface RadarViewProps {
+// Offline Vector Radar View Component (exported for Komponenten-Tests)
+export interface RadarViewProps {
   stationInfos: StationMapInfo[];
   selectedStation?: Station;
+  anchor?: MapAnchor | null;
+  anchorActive: boolean;
   activeStationId: string | null;
   setActiveStationId: (id: string | null) => void;
+  setAnchorActive: (v: boolean) => void;
 }
 
-function RadarView({
+export function RadarView({
   stationInfos,
   selectedStation,
+  anchor,
+  anchorActive,
   activeStationId,
   setActiveStationId,
+  setAnchorActive,
 }: RadarViewProps) {
+  // Das Radar geht vom Anker aus (Heimat-Startpunkt, „müsste es nicht vom
+  // Anker aus losgehen?“). Ohne Anker-Koordinate bleibt die Vergleichsstation
+  // das Zentrum — der Rahmen wird dann explizit beschriftet.
   const centerLat =
+    anchor?.lat ??
     selectedStation?.lat ??
     stationInfos.reduce((sum, s) => sum + (s.station.lat as number), 0) /
       (stationInfos.length || 1);
   const centerLon =
+    anchor?.lon ??
     selectedStation?.lon ??
     stationInfos.reduce((sum, s) => sum + (s.station.lon as number), 0) /
       (stationInfos.length || 1);
@@ -533,6 +673,11 @@ function RadarView({
 
   return (
     <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-2">
+      <span className="absolute left-2 top-2 z-10 rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
+        {anchor
+          ? "Mitte: Anker · Ringe = km Luftlinie ab Anker"
+          : "Mitte: Vergleichsstation · Ringe = km Luftlinie ab ihr"}
+      </span>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="h-full w-full max-w-[400px]"
@@ -540,7 +685,9 @@ function RadarView({
         {/* Distance Rings */}
         {[0.33, 0.66, 1.0].map((frac, idx) => {
           const r = radius * frac;
-          const kmVal = (maxDist * frac).toFixed(1);
+          const kmVal = (maxDist * frac).toLocaleString("de-DE", {
+            maximumFractionDigits: 1,
+          });
           return (
             <g key={idx}>
               <circle
@@ -625,15 +772,76 @@ function RadarView({
           W
         </text>
 
-        {/* Center Station (Comparison) */}
-        <circle
-          cx={width / 2}
-          cy={height / 2}
-          r={6}
-          fill="#38bdf8"
-          stroke="#0284c7"
-          strokeWidth="2"
-        />
+        {/* Zentrum: Anker (Heimat-Startpunkt) oder Vergleichsstation */}
+        {anchor ? (
+          <g
+            className="cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+            role="button"
+            tabIndex={0}
+            aria-label="Anker, Startpunkt der Stadt"
+            aria-pressed={anchorActive}
+            onClick={() => {
+              setActiveStationId(null);
+              setAnchorActive(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setActiveStationId(null);
+                setAnchorActive(true);
+              }
+            }}
+          >
+            <circle cx={width / 2} cy={height / 2} r={22} fill="transparent" />
+            <circle
+              cx={width / 2}
+              cy={height / 2}
+              r={8}
+              fill="#f1f5f9"
+              stroke="#cbd5e1"
+              strokeWidth="2"
+            />
+            <g
+              transform={`translate(${width / 2 - 6.6},${height / 2 - 7}) scale(0.55)`}
+            >
+              <path
+                d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <polyline
+                points="9 22 9 12 15 12 15 22"
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+            <text
+              x={width / 2}
+              y={height / 2 + 22}
+              textAnchor="middle"
+              fill="#cbd5e1"
+              fontSize="9"
+              fontWeight="bold"
+            >
+              Anker
+            </text>
+          </g>
+        ) : (
+          <circle
+            cx={width / 2}
+            cy={height / 2}
+            r={6}
+            fill="#38bdf8"
+            stroke="#0284c7"
+            strokeWidth="2"
+          />
+        )}
 
         {/* Plot Stations */}
         {points.map(({ info, dx, dy }) => {
@@ -644,6 +852,8 @@ function RadarView({
           const badgeText = formatNetBadge(info);
           const style = getVerdictBadgeStyle(info.verdict);
           const isActive = info.station.station_id === activeStationId;
+          // Breite nach Textlänge — „Vergleich“ ist länger als „+0,85 €“.
+          const badgeW = Math.max(34, badgeText.length * 5.4 + 8);
 
           let colorFill = "#64748b"; // slate
           if (info.verdict === "selected") colorFill = "#38bdf8";
@@ -690,9 +900,9 @@ function RadarView({
 
               {/* Station Label Badge */}
               <rect
-                x={cx - 22}
+                x={cx - badgeW / 2}
                 y={cy - 18}
-                width={44}
+                width={badgeW}
                 height={13}
                 rx={6}
                 fill="#0f172a"

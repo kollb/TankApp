@@ -45,6 +45,7 @@ const CLEAN = [
   "components/ProfileManager.tsx",
   "components/ApiExplorer.tsx",
   "components/Skeleton.tsx",
+  "components/StationMap.tsx",
   "main.tsx",
   "views/Daily.tsx",
   "views/Statistics.tsx",

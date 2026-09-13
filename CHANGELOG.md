@@ -4,6 +4,44 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.30.0] – 2026-09-13
+
+**Die Karte lädt wieder und beginnt am Anker.** Die OSM-Kacheln wurden von
+der Content-Security-Policy blockiert (leere Karte, nur Pins), und die
+0-€-Markierung war als Spritpreis missverständlich.
+
+### Hinzugefügt
+
+- **Anker-Pin auf der Karte:** `/api/v1/stations` liefert das neue, stadtweise
+  gefilterte Feld `anchors` (`app/data.py::anchors_by_city`, Koordinate aus
+  `anchor` bzw. `lat`/`lon` des Polling-Sets). Die Kartenansicht zeichnet den
+  Anker als eigenen Pin (Haus-Symbol, „Anker“), das Luftlinien-Radar
+  zentriert auf ihn und seine Ringe zeigen km ab Anker; Tipp/Klick öffnet eine
+  Erklärung, was am Anker beginnt (Stationsentfernungen, Extrafahrt Hin &
+  Rück). Die Stations-Records tragen die Koordinate weiterhin nicht.
+- **Erklärtext unter der Karte:** die €-Pins nennen die Netto-Ersparnis
+  gegenüber der Vergleichsstation; deren Pin heißt jetzt „Vergleich“ (0 €
+  Unterschied, nicht 0 € Spritpreis), und der Text erklärt Anker sowie die
+  Fahrtcharaktere „Auf dem Weg“ und „Extrafahrt“. Das Radar beschriftet sein
+  Zentrum und was die Ringe messen.
+
+### Geändert
+
+- **CSP gibt die OSM-Kacheln frei:** `img-src` in `app/server.py` erlaubt
+  zusätzlich `https://*.tile.openstreetmap.org`; vorher blockierte der Browser
+  jede Kachel (`a/b/c.tile.openstreetmap.org`) und die Karte blieb leer.
+- **Detailkarte der Vergleichsstation:** aus „0,00 € (Vergleich)“ wird
+  „0,00 € Unterschied“ — die Rolle steht daneben.
+
+### Tests
+
+- `tests/test_app.py`: `anchors`-Feld stadtweise gefiltert, Anker auch im
+  discover-Format (`lat`/`lon`), ungültiger Anker erscheint nicht; CSP-Header
+  enthält den OSM-Kachel-Host; Stations-Records bleiben ankerfrei.
+- `web/src/components/StationMap.test.tsx`: Anker-Legende/-Erklärung,
+  Vergleichs-Pin ohne 0-€-Preis, keine Koordinaten im Nutzertext;
+  `StationMap.tsx` in die Microcopy-/Format-Ratchets aufgenommen.
+
 ## [0.29.0] – 2026-09-13
 
 **Batch 6 (Bedienung) und Batch 7 (Kanten) in einem PR.** Keine neuen

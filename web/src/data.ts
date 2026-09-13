@@ -24,6 +24,8 @@ export type Stations = {
   cities: string[];
   fuel: Fuel;
   stations: Station[];
+  /** Anker (Heimat-Startpunkt) je Stadt — nur die abgefragte Stadt ist enthalten. */
+  anchors?: Record<string, { lat: number; lon: number }>;
   connection_error: string | null;
   fresh_prices: number;
 };
