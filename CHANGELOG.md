@@ -4,6 +4,40 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.25.2] – 2026-09-13
+
+**B11 abgeschlossen** — strenger Kaltlauf-Beleg auf der Zielhardware
+(`ops/nas/b11-cold-run.sh`, 25 Stichproben à 5 s, 17:36:21–17:39:16 local).
+Kein Code an der Engine, nur Doku-Werte plus ein Zähl-Fix im Sammler.
+
+### Gemessen
+
+Kaltlauf bestätigt: Job-Log „Backtest: 0 aus Tages-Cache, 19 neu gerechnet“,
+Cache vorher gelöscht und verifiziert (Mount
+`/mnt/user/appdata/TankApp/data/runtime`). 20 Stationen, e10, Endzustand
+`partial (some_models_unavailable)`, Dauer **2,6 min**.
+
+| Größe | Wert | Folge |
+|---|---|---|
+| Python-Prozesse | max **2** gezählt (`cmdline` `python*`) | Gegenprobe CPUS **381 %** ≈ 4 Worker; Forkserver-Kinder starten als `/usr/local/bin/python…` und fielen durch das Muster |
+| Container-Speicher | max **1031 MiB (1,0 GiB)**, MEM % 6,6 | Peak am Ende von Phase B; Leerlauf ~110 MiB. 4 × ~150 MB passen |
+| Host verfügbar | min **4212 MiB (4,1 GiB)**, Swap 0 | Weit über der Marke ~500 MiB |
+| CPUS | max **381 %** (Phase B 248–381 %) | Pool mit ~4 Workern |
+| `/dev/shm` | max **1 MiB** / 256 MiB | `shm_size: 256m` bleibt, keine Änderung in `compose.yml` |
+
+Damit ist auch die ausstehende Kaltstart-Gegenmessung für **B15/B16 (0.20.0)**
+da: 10,3 min (12.09., vor den Hebeln) → **2,6 min** kalt / 1,4–1,7 min warm
+(13.09., Cache-Treffer). Erwartung war ~2,3 min kalt.
+
+### Betrieb
+
+- Sammler `ops/nas/measure-phase-b.sh`: Python-Prozesse über `cmdline` **und**
+  `/proc/pid/comm` zählen — `python*` allein verfehlt Forkserver-Kinder, deren
+  argv mit `/usr/local/bin/python` beginnt (Befund dieses Laufs).
+- [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11):
+  B11-Abschnitt mit den fünf Zahlen; Kaltlauf-Fenster nach B15/B16 **~2,6 min**
+  statt der 9,4 min vom 12.09.
+
 ## [0.25.1] – 2026-09-13
 
 **Begleitpunkte des Laufzeit-Bündels — ausdrücklich ohne Batch 4**

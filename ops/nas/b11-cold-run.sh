@@ -20,10 +20,11 @@
 #      Verifikation, Stichproben, Auswertung, Job-Log-Ende, Worker-stdout,
 #      models.json und der Kaltlauf-Prüfung (muss „0 aus Tages-Cache“ sagen)
 #
-# Dauer ~15–25 min (Recreate-Lauf + Kaltlauf ~9 min) — Terminal offen
-# lassen. Nicht mittig Strg-C: der Lauf läuft im Container weiter (gut
-# für den Lauf, der Report bleibt unvollständig). Danach report.txt
-# nachgeben; Ergebnis in TODO.md bei B11 eintragen.
+# Dauer ~10–20 min (Recreate-Lauf + Kaltlauf ~3 min, gemessen 2,6 min
+# am 13.09.2026) — Terminal offen lassen. Nicht mittig Strg-C: der Lauf
+# läuft im Container weiter (gut für den Lauf, der Report bleibt
+# unvollständig). B11 ist mit 0.25.2 erledigt; das Skript bleibt die
+# Wiederholungsmessung.
 
 set -u
 
@@ -175,7 +176,7 @@ if ! kill -0 "$WORKER_PID" 2>/dev/null; then
 fi
 
 # -- 5) auf Ende warten -------------------------------------------------------
-say "5) Warten auf „beendet:“ (Kaltlauf ~9 min) — Live-Zeilen aus $JOB_LOG:"
+say "5) Warten auf „beendet:“ (Kaltlauf ~3 min) — Live-Zeilen aus $JOB_LOG:"
 last=""
 while kill -0 "$WORKER_PID" 2>/dev/null; do
   line=$(tail -n 1 "$JOB_LOG" 2>/dev/null)
