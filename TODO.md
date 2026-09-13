@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 13.09.2026, App-Version 0.31.0)
+# TankApp — ToDo (Stand 13.09.2026, App-Version 0.32.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -36,8 +36,8 @@
 | A9 | D | **w(h)-Rückkopplung anschließen** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): ab **8 Belegen** (`app/feedback.py::WH_MIN_FILLS`) gewichtet `app/decide.py::_wh_weight()` die F3-Fenster — günstige Fenster zu Stunden, die du nie tankst, rutschen nach hinten; darunter bleibt die preisliche Reihenfolge und die Tagesansicht sagt warum („Noch nach Preis sortiert (5 Belege von 8) — es fehlen 3“). "Echt-Daten-Abnahme" offen: die Reihenfolge ist erst mit echten Belegen im Betrieb bewertbar (§5.5). |
 | A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** *(Ensemble erledigt in 0.31.0)* | Erledigt (0.31.0): Zweitmodell **profile_ar2** (Tagesprofil je 5-Minuten-Slot als Median statt Sinusform) und inverse-MASE-Ensemble (Konzept §3.2 M3) in `engine/models.py`, Schalter `TANKAPP_MODEL_KIND`. Messung (Demo-Daten, 6 Stationen, 72-h-Holdout): MAE **2,53 → 1,93 ct/L** (−24 %), 6/6 Stationen besser. **Offen bleibt die Echt-Daten-Abnahme** aller M3-Kriterien auf Live-Daten (§3.2) und die Gewichte aus dem Rolling-Origin-Backtest statt aus dem Validierungsfenster ([LUECKEN.md](docs/LUECKEN.md) — das One-Step-Fenster trennt die Modelle nur schwach: 0,51/0,49). |
 | A11 | D | **Gemeinsame Bootstrap-Ziehung für `p_lohnt`** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): alle Stationen eines Laufs ziehen aus **denselben** Zufallszahlen je (Horizont, Tagesposition) — `engine/models.py::shared_day_uniforms`, je Station über die eigene Blockverteilung abgebildet (`blocks_from_uniform`, comonotone Kopplung); ausgewiesen als `draws_24h.shared`/`draws_7d.shared`, Gegenprobe `TANKAPP_SHARED_DRAWS=0`. Messung: bei **einem** Lauf mit gleicher Config koppelte die alte Ziehung schon zufällig (Korrelation 0,995 vs. 0,992); bei ungleichen Trainingsfenstern (erhaltene Prognosen) steigt sie 0,545 → 0,588, Streuung der Nowcast-Differenz 1,40 → 1,13 ct/L. Details: [ANALYSE.md](docs/ANALYSE.md#wahrscheinlichkeiten-aus-der-prognoseverteilung-p-seite). |
-| A12 | P2 | **Station-Lebenszyklus & Zustandsehrlichkeit** | „führt E10 nicht“ vs. „temporär geschlossen“ vs. „keine Daten seit n Tagen“ wird in der GUI nicht unterschieden. Tote Stationen (`no prices` > 7 Kalendertage) sollen automatisch aus Ranking/Polling-Set fallen (konfigurierbar), nicht dauerhaft Kontingent kosten. |
-| A13 | P2 | **Preis-Zwillinge: automatische Warnung** | Identische Preisverläufe zweier Stationen (Doppel-Source/Franchise) werden nur manuell per `compare-stations` gefunden. Ziel: Warnung im Selektions-Artefakt + System-Tab. |
+| A12 | P2 | **Station-Lebenszyklus & Zustandsehrlichkeit** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): vier Zustände je (Station, Kraftstoff), tote fallen vor dem Coverage-Gate aus dem Ranking (auch ohne einzige Rasterzelle), Schwelle `TANKAPP_DEAD_AFTER_DAYS` (Default 7, 0 = aus), Alarme `stations_dead`/`stations_lifecycle`, GUI unterscheidet alle Zustände. Polling-Set bleibt bewusst stabil (Tausch nur mit Bestätigung, [ANALYSE.md](docs/ANALYSE.md#lebenszyklus-der-stationen)); die Kontingent-Behauptung war falsch und ist korrigiert. |
+| A13 | P2 | **Preis-Zwillinge: automatische Warnung** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): `_detect_price_twins` mit den `compare-stations`-Schwellen (28 Tage × ≥12 Punkte, ≥90 % Überlappung, ≥99 % ≤0,1 ct/L), Warnung im Artefakt (`price_twins`, `auto_apply: false`), Alarm `price_twins` und Tabelle im System-Tab. Nie automatische Entfernung. |
 
 ---
 
@@ -57,7 +57,7 @@
 |---|---|---|---|
 | C3 | P2 | **Karten-/Umgebungsansicht für F2** *(Erledigt in 0.28.0)* | Erledigt (0.28.0): OSM-Live-Kartenansicht mit Server-Netto-€-Pins (`verdict`/`detour_km_est`) & Vektor-Luftlinien-Radar-Fallback bei fehlendem Netz oder Kachelfehlern. |
 | C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Touch-Ziele ≥ 44 px nur bei grober Zeigerart (`pointer: coarse`, auch Karten-Zoom und Pins), Kontraste der gedämpften Töne auf AA angehoben (`slate-500`/`slate-600`, dunkel `#8598b0`/`#8295ad`, hell `#55677c`, nachgerechnet in `web/src/a11y.test.ts`), Beleg ohne Maus (Schnellerfassung als Formular mit Enter, Anpassen-Panel mit Fokus/Escape, Radar-Pins per Tab/Enter). Früher: Ampel-Chip mit Symbol, Slider-`aria-valuetext` (0.10.0), Fokus-Ring + Charts-Textfassungen (0.13.0). |
-| C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?“-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
+| C7 | P2 | **Hilfe/Glossar-Layer** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): „Was heißt das?“-Tab mit 10 Begriffen (δ̂, MASE, PICP, Brier, ε, Regret, q, AV, Lebenszyklus, Zwillinge), i-Tooltips in Werkstatt/System, jeder Eintrag mit gültigem `docs/ANALYSE.md`-Anker (eigene Abschnitte + Konsistenztests in `tests/test_glossary.py`). |
 | C8 | P2 | **Mobile-Feinschliff & PWA (Rest)** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Install-/„Zum Homescreen“-Hinweis (`components/InstallHint.tsx`: `beforeinstallprompt` bzw. iOS-Handgriff, „Nicht jetzt“ = 30 Tage still, Manifest `orientation: any`), Querformat-Layout (Tagline/Einleitung aus, flachere Abstände, Tageskurve als zwei Neuner-Reihen), Pull-to-Refresh nur während Karten-/Slider-Berührung gesperrt (`ptr-off`). Früher: Sticky-Aktions-Chip (0.27.0). |
 
 ---
@@ -74,7 +74,7 @@
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| F3 | P2 | **Typografie** *(Regelwerk + Zitate erledigt, 0.16.0)* | Erledigt: [docs/MICROCOPY.md](docs/MICROCOPY.md) und Ratchet `web/src/microcopy.test.ts`. Die **inhaltliche** ct/L-€/L-Wahl je Panel ist mit 0.19.0 durchgezogen (C9-Rest). Offen: die Fachlabel-vs.-Hook-Zeilen im Footer an das Regelwerk angleichen. |
+| F3 | P2 | **Typografie** *(Erledigt in 0.32.0)* | Erledigt: [docs/MICROCOPY.md](docs/MICROCOPY.md) und Ratchet `web/src/microcopy.test.ts` (0.16.0), ct/L-€/L-Wahl je Panel (0.19.0), Footer-Vokabular („Abfrage höchstens alle 5 Minuten“, „Polling-Fenster“ statt Jargon, 0.32.0). |
 
 ---
 
@@ -92,7 +92,7 @@ Kurzantwort: **kein Rechenfehler gefunden**. Die offenen mathematischen Punkte s
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn der Betrag von Δ über dem Rauschband liegt) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten“. |
+| H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert** *(Erledigt in 0.31.0, TODO-Abgleich in 0.32.0)* | Erledigt (0.31.0): Methodik-Notiz + 2-σ-Rauschband + Totband in `app/thresholds.py`, Begründung auch fürs Nicht-Ändern, Tests in `tests/test_b5.py` (Rauschband, Totband, stabile Schwellen). Das TODO lag einen Release zurück. |
 | H5 | P2 | **DST-Kante `seasonal_scale`** *(erledigt in 0.29.0)* | Erledigt (0.29.0): DST-Tage werden **ausgewiesen statt ausgeschlossen** — `local_day_hours`/`dst_transition_days` (engine/data.py), je Fold `dst_day`/`local_day_hours`, `report.json`-Block `dst` (Tage, Stunden, Folds, `anchors_missing_nat`, `anchors_outside_series`, `mase_none_reasons`), `report.md`-Abschnitt „Zeitumstellung (DST)“, Randnotiz in [docs/ENGINE.md](docs/ENGINE.md), `mase_none_reason` statt stillem `None`, Anzeige in der Werkstatt (`dstLabel()`). |
 
 ---
@@ -104,6 +104,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.32.0 (13.09.2026) | **A12/A13/C7 abgenommen und geschlossen:** Lebenszyklus (vier Zustände, Ranking-Ausschluss inkl. nie gelieferter Stationen, `TANKAPP_DEAD_AFTER_DAYS`, Alarme) mit korrigierter Kontingent-Wahrheit (weiter gepollt bis zum bestätigten Tausch); Preis-Zwillinge (Schwellen wie `compare-stations`, Artefakt + Alarm + System-Tabelle, nie auto-apply); Glossar-Tab mit 10 Begriffen und gültigen Doku-Ankern (neue ANALYSE-Abschnitte MASE/PICP/Brier/ε/Regret/Lebenszyklus/Zwillinge). Dazu **F3-Rest** (Footer-Vokabular) und **H3-Abgleich** (war 0.31.0). Tests: `tests/test_lifecycle_twins.py` (16), `tests/test_glossary.py` (3), `web/src/glossary.test.ts` (8). |
 | 0.30.0 (13.09.2026) | **Karte repariert + Anker sichtbar:** CSP `img-src` gibt `https://*.tile.openstreetmap.org` frei (Kacheln wurden komplett blockiert, Karte blieb leer); `/api/v1/stations` liefert stadtweise gefiltert `anchors` (`anchors_by_city`, Stations-Records bleiben ankerfrei), die Karte zeichnet den Anker als Pin und das Radar zentriert auf ihn (Ringe = km ab Anker); Vergleichsstation-Pin heißt „Vergleich“ statt „0,00 €“ plus Erklärtext unter der Karte und Anker-Detailkarte. Tests: `test_app.py` (Ankers/Felder/CSP), `StationMap.test.tsx`, Microcopy-/Format-Ratchets. |
 | 0.29.0 (13.09.2026) | **Batch 6 — Bedienung:** C5 (Touch-Ziele ≥ 44 px bei grober Zeigerart, Kontrast AA für die gedämpften Töne, Beleg ohne Maus via Formular/Enter und Fokus/Escape im Anpassen-Panel, Karten-Pins per Tastatur) und C8-Rest (Install-/„Zum Homescreen“-Hinweis inkl. iOS-Handgriff und 30-Tage-Snooze, Manifest `orientation: any`, Querformat-Layout, Pull-to-Refresh nur während Karten-/Slider-Gesten). **Batch 7 — Kanten:** G4 entschieden (Cache bleibt bewusst flüchtig, `boot_state_note()` + `CACHE_REBOOT_HINT`, Doku), H5 (DST-Tage im Backtest ausgewiesen: `local_day_hours`/`dst_transition_days`, Fold-Felder, `dst`-Block, Markdown-Abschnitt, `mase_none_reason`, `dstLabel()` in der Werkstatt). Tests: `web/src/a11y.test.ts` (17), `data.test.ts` (3), `test_data.py`, `test_models.py`, `test_backtest.py`, `test_rp2_cache.py`, `test_rp2_fallback.py` |
 | 0.27.0 (13.09.2026) | **Batch 1 — Alltag: eine Handlung:** F4 Intent-Leiste gewichtet die Empfehlung primär, kompatible Intents sekundär und widersprechende Handlung zurückgenommen mit Erklär-Tooltip; C8-Teil Sticky-Aktions-Chip („Jetzt tanken“ / „Warten bis …“ / empfohlene Navigation) ohne neue Fläche oder API. Install-Prompt, Landscape und Pull-to-Refresh bleiben offen. |
@@ -125,8 +126,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 | 0.11.0 (12.09.2026) | **B12** Heatmap-Basis umschaltbar (`basis=hour` = Median derselben Stunde; API-Default `overall`), **B13** Build-Commit im Image (Doku nachgezogen), **E3** Beleg-Grenzen vor dem Roundtrip, **E4** Buchung nur mit gewählter Station, **E5** Wochen-Select 4/6/12, **E6** Slider 0,5/1 L/0,5 + Begleitfeld, **E7** API-Explorer „day“ nur mit Station, **G2** RP2-Journal-Cap (Drop-in + `--vacuum-size`) |
 | 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
-Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **F3**
-(Rest: Regelwerk steht, Anwendung auf Footer-Zeilen offen).
+Alle ehemals teilweise offenen Punkte (F3-Rest) sind mit 0.32.0 geschlossen.
 
 ## E. Funktional & Eingabe — verifiziert, kein offener Task
 
@@ -191,9 +191,10 @@ und bleibt **nicht geplant**.
 
 ## Reihenfolge-Empfehlung
 
-1. **C2 ist mit 0.23.0, C4 (Einstellungen-Tab) mit 0.24.0 erledigt** —
-   als nächstes C-Feature bleibt C3 (Kartenansicht), C7 (Hilfe/Glossar)
-   oder C8 (Mobile-Feinschliff/PWA). D1 ist mit 0.19.0 erledigt
+1. **Alle C-Punkte sind geschlossen** (C3 Karte 0.28.0, C5/C8 Bedienung
+   0.29.0, C7 Glossar 0.32.0) — als nächstes bleiben B8 (Webhook-Retry
+   Pi → NAS) oder B10 (Service-Worker-Update + Offline-Queue). D1 ist
+   mit 0.19.0 erledigt
    (Views-Schnitt + `JobCard`), neue Panels und die Profil-Verwaltung
    landen in `views/`/`components/` statt in `Dashboard.tsx`.
 2. **B7-Follow-up entschieden (0.31.0)**: `route/evaluate` **bleibt** ein

@@ -16,6 +16,8 @@
   - [Bootstrap-KI & FDR](#bootstrap-ki--fdr)
   - [AV-Score & billigste Stunde](#av-score--billigste-stunde)
   - [NAS Artefakte B3.10](#nas-artefakte-b310)
+  - [Lebenszyklus der Stationen](#lebenszyklus-der-stationen)
+  - [Preis-Zwillinge](#preis-zwillinge)
 - [Heatmaps DoW×Stunde B3.9](#heatmaps-dowstunde-b39)
   - [Niveau](#niveau)
   - [Cheap-Probability](#cheap-probability)
@@ -106,7 +108,7 @@ diesen Operator im Moment des Laufs nicht und muss selbst entscheiden.
 
 ### Relative Preislage δ̂
 
-δ̂ᵢ = Median über Zeit von (pᵢ(t) − Median_{j≠i} pⱼ(t))
+Der Preis-Abstand δ̂ᵢ = Median über Zeit von (pᵢ(t) − Median_{j≠i} pⱼ(t))
 
 - LOO-Median vermeidet mechanische Verzerrung (eigener Preis nicht in Baseline)
 - Median statt Mittelwert → resistent gegen Preissprung-Artefakte
@@ -128,13 +130,14 @@ Beispiel: „langfristig 3,80 ct/L günstiger als Umgebung“ erscheint nur im S
 - 95%-KI = 2,5% und 97,5% Quantile
 - p-Wert = (1 + Anzahl(Bootstrap ≥0)) / (B+1), einseitig H0: δ≥0
 - Benjamini-Hochberg über alle Stationen → q-Wert, signifikant bei q<0.05 (FDR kontrolliert)
+- Der q-Wert ist der falscher-Alarm-korrigierte p-Wert: Unter allen als signifikant markierten Stationen sind höchstens q Fehlalarme erwartet
 
 NAS-Job (B3.10): B=2000 fest (nicht sequenziell erhöhen). B=200 wäre ein Signifikanzblocker: p_min=1/(B+1) ergibt mit BH und m=11 Stationen q≥0,0547>0,05. Artefakt `runtime/selection/current.json`.
 
 ### AV-Score & billigste Stunde
 
 - P_i(h) = P(Station ∈ Top-3 der Stadt | Stunde h) empirisch über alle Tage
-- AV_i = Σ_h w_h·P_i(h), w = Tankzeitprofil (Default Pendlerfenster)
+- AV_i = Σ_h w_h·P_i(h), w = Tankzeitprofil (Default Pendlerfenster) — in der App die Ampel-Stärke: die gewichtete Verfügbarkeit bei 3 günstigsten
 - Tagesform: robuste harmonische Regression der Halbstunden-Medianprofile Δ_i(h) = a1 cos(ωh)+b1 sin(ωh)+a2 cos(2ωh)+b2 sin(2ωh), ω=2π/24, Huber-IRLS
   - Amplitude A_i, Phase → billigste Stunde h*_i = argmin Fit-Kurve, gewichtetes R² als Vorhersagbarkeit
 - Risiko: σ_i = 1.4826·MAD(Δ_i) und Rangstabilität
@@ -158,6 +161,63 @@ NAS-Job (B3.10): B=2000 fest (nicht sequenziell erhöhen). B=200 wäre ein Signi
 Falls kein Trainingsbestand vorhanden: `error_code: selection_not_available` → GUI zeigt ehrlichen Hinweis, keine erfundenen Rankings.
 
 Datei `results/station_scores_<fuel>.csv` bleibt lokal für vertiefte Analyse, nicht im NAS-Image.
+
+### Lebenszyklus der Stationen
+
+Seit 0.32.0 (A12) unterscheidet die Selektion, **warum** kein Preis da ist —
+vorher las sich „keine Daten“ in der GUI immer gleich, egal ob die Station
+geschlossen war, die Sorte nicht führt oder seit Tagen schweigt. Der
+Lebenszyklus beschreibt den Zustand der Station für diesen Kraftstoff. Die
+Klassifikation läuft in `engine/selection.py::_station_lifecycle`, je
+(Station, Kraftstoff), über die letzten `dead_after_days` **Kalendertage**
+(Europe/Berlin, inkl. End-Tag, Default 7):
+
+| Zustand | Bedeutung | Regel |
+|---|---|---|
+| `active` | Preis vorhanden | ≥ 1 verwertbarer Preis im Fenster |
+| `dead` (tot) | kein Signal seit Tagen | kein Preis und nur Status „no prices“ (oder gar keine Zeilen) |
+| `closed` | temporär geschlossen | kein Preis, Status durchgehend (oder zu > 80 %) „closed“ |
+| `no_fuel` | führt die Sorte nicht | kein Preis, aber Status „open“ — die Sorte kommt als `false` |
+
+Tote Stationen fallen **vor** dem Coverage-Gate aus der Preis-Matrix und
+damit aus dem Ranking — sie belegen keinen Vergleichsplatz mehr. Geschlossene
+und sortenlose Stationen bleiben benannt, aber vergleichslos: Sie laufen noch
+durchs Gate (ohne Preise schließt es sie dort aus) und stehen in
+`closed_stations`/`nofuel_stations`. Jede Ranking-Zeile trägt ihren Zustand
+(`lifecycle`), je Stadt stehen `lifecycle_counts` und die drei Listen im
+Artefakt, aggregiert `lifecycle_totals`; `dead_after_days` ist ausgewiesen.
+`dead_after_days: 0`/`None` schaltet die Tot-Erkennung ab (Umgebung:
+`TANKAPP_DEAD_AFTER_DAYS`, 0–365). Alarme: `stations_dead`,
+`stations_lifecycle` (beide `warn`, [BETRIEB.md](BETRIEB.md)).
+
+Bewusst **nicht** automatisch: der Umbau des Polling-Sets. Tote Stationen
+werden weiter gepollt, bis sie per [Tausch-Anleitung](STATIONEN-TAUSCH.md)
+ersetzt sind — wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden
+(eine Selbst-Tot-Schleife), und ein Request holt bis zu 10 Stationen
+(`prices.php`-Batch), sodass eine tote Station höchstens ein Zehntel Request
+je Poll kostet. Der Pfad ist Alarm → System-Tab → Tausch mit Bestätigung,
+nie ein stiller Umbau. Begründung: [LUECKEN.md](LUECKEN.md).
+
+### Preis-Zwillinge
+
+Preis-Zwillinge sind Stationen mit identischem Preisverlauf. Seit 0.32.0
+(A13) warnt die Selektion vor ihnen — typisch Doppel-Source oder
+Franchise-Überlappung, die das Ranking mit Schein-Vergleichen füllt.
+Die Erkennung läuft in
+`engine/selection.py::_detect_price_twins` mit denselben Schwellen wie der
+manuelle Vergleich (`engine/station_comparison.py`, CLI `compare-stations`):
+
+- ≥ **28 Tage** mit je ≥ **12 gemeinsamen** Zeitpunkten,
+- ≥ **90 %** Beobachtungsüberlappung,
+- ≥ **99 %** der gemeinsamen Preise innerhalb **0,1 ct/L**.
+
+Jeder Treffer steht mit Paar, Punkten, Überlappung, Übereinstimmung und
+Abweichungs-Kennzahlen (`mean`/`p95`/`max` des absoluten Abstands) als
+`classification: possible_price_twins` im Artefakt (`price_twins`,
+`price_twin_count`), als Warnung `price_twins` in `/health` und als Tabelle
+im System-Tab. `auto_apply` ist immer `false`: Zwillinge werden **nie**
+automatisch aus dem Polling-Set entfernt — prüfen, bestätigen, dann erst per
+[Tausch-Anleitung](STATIONEN-TAUSCH.md) bereinigen.
 
 ## Heatmaps DoW×Stunde B3.9
 
@@ -203,6 +263,8 @@ Zelle), der Zellen-Median gegen alle Preise *dieser Zelle*. Mit gewählter
 Station bleibt es beim Zellen-Median — die GUI deaktiviert den Umschalter in
 diesem Fall, weil er dort nichts ändert. Die Zellen selbst (und damit die
 Spalten-Basis) enthalten die eigene Stichprobe; bei dünner Datenlage wandert
+der Vergleichswert mit — die Heatmap bleibt eine Analyse-, keine
+lten die eigene Stichprobe; bei dünner Datenlage wandert
 der Vergleichswert mit — die Heatmap bleibt eine Analyse-, keine
 Entscheidungsansicht.
 
@@ -313,6 +375,30 @@ exponentiell gewichteter Tagesblock-Bootstrap, HWZ 14d). MAE, RMSE, MASE, sMAPE,
 (τ=0,5 und asym τ=0,75), PICP, MPIW werden gemessen. Erster Backtest bewertet folgenden Tag
 im Poll-Fenster. Vergleich 42d-EW vs. 42d-uniform vs. 84d siehe Engine-Referenz §4.
 
+### MASE (Fehler gegen die Naive)
+
+Die MASE misst den Fehler als Vergleich zur saisonalen Naive:
+Backtest-MAE des Modells geteilt durch den MAE der Vor-Tages-Preise zur
+selben Stunde. Die Kennzahl kommt aus dem Rolling-Origin-Backtest
+(`engine/backtest.py`); wo die Naive undefinierbar ist (keine bewertbaren
+Punkte, konstante Reihe), steht der Grund in `mase_none_reason` statt einer
+stillen Lücke. **Unter 1,0 heißt besser als die einfache
+Vergleichsmethode** — MASE 0,7 sind 30 % weniger Fehler als „nimm den
+gestrigen Preis“. Die Ensemble-Gewichte (A10) sind ∝ 1/MASE je Modellkern,
+gemessen auf den letzten 14 Trainingstagen.
+
+### PICP (Band-Trefferquote)
+
+Die PICP ist die Trefferquote des 95-%-Bandes: der Anteil der **echten**
+Preise, die im vorhergesagten Band lagen (Prediction Interval Coverage
+Probability). Gezählt wird nur an Zeitpunkten mit echtem Preis —
+geschlossene Meldungen sind keine Bandverfehlung. Bei perfekter
+Kalibrierung liegt der Wert bei etwa 95 %; darunter ist das Band zu schmal
+(zu siegessicher), darüber zu breit (zu vorsichtig). Die Werkstatt zeigt
+den 7-Tage-Rolling-Wert je Station als Badge (grün ≥ 93 %, gelb ≥ 90 %,
+rot < 90 %, unter 72 Punkten keine Aussage) — rot löst das Güte-Gate aus
+(`no_advice` vor F2/F1, siehe Tabelle oben).
+
 ## Wahrscheinlichkeiten aus der Prognoseverteilung (P-Seite)
 
 Seit 11.09.2026 reduziert der Worker die Bootstrap-Pfade auf **2-h-Fenster-Minima
@@ -351,6 +437,43 @@ verbessert genau den Fall, in dem die alte Ziehung ohne Hinweis entkoppelte:
 unterschiedlich viele Tagesblöcke (erhaltene Prognosen, `retained_previous`).
 Das M7-Gate (§0.4) bleibt hart: `primary.p_correct` erscheint erst nach der
 Kalibrierung (n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
+
+## Empfehlungs-Bilanz (Brier, Epsilon, Regret)
+
+Die Werkstatt bilanziert zwei Dinge: ob die **Prozentzahlen** stimmten
+(Brier, aus dem Advice-Ledger) und ob die **Regel** das günstige Fenster
+traf (ε und Regret, aus dem Labor-Vergleich gegen das Orakel). Alle drei
+Begriffe stehen im Glossar der App („Was heißt das?“).
+
+### Brier-Score (Treffergenauigkeit der Prozentzahlen)
+
+Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl `p_besser`
+(„Warten lohnt“) mit dem tatsächlich eingetretenen Ergebnis (Ja = 1, Nein =
+0): mittlerer quadratischer Abstand über alle abgeschlossenen Empfehlungen
+(`app/feedback.py`, Advice-Ledger). **0 wäre perfekt, 0,25 entspricht
+Raten.** Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei
+mindestens 100 abgeschlossenen Empfehlungen (Konzept §0.4, M7) — darunter
+zählen nur aktuelle Preise, keine Prozent-Behauptung.
+
+### Epsilon-Schwelle des Labor-Vergleichs
+
+Die Labor-Regel des Prüfstands empfiehlt „Warten“ nur, wenn die im Training
+geschätzte erwartete Ersparnis μ mindestens **ε** erreicht
+(`views/Statistics.tsx`, Gruppe B1: „Die Entscheidungs-Regel & ε-Steuerung“).
+ε ist die Handlungsschwelle des Labors: ε = 1,0 ct/L heißt, erwarte ich
+weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. ε ist ein **Was-wäre-wenn-Schalter** für den Labor-Vergleich —
+die Produktion rechnet mit der kalibrierten Entscheidungstabelle (§4.1/§4.2),
+nicht mit dem Slider.
+
+### Regret (Mehrkosten zur perfekten Sicht)
+
+Regret = (Preis der Regel − Preis des **Orakels**) je Entscheidung,
+gemittelt (`web/src/data.ts`, `avg_regret_ct`). Das Orakel kennt den ganzen
+Tagesverlauf vorher und tankt immer im günstigsten Fenster — es ist die
+unerreichbare Referenz. Daneben stehen Regel-€ (smart, was die Regel zahlte),
+Orakel-€ (best) und „immer warten“-€ (always): Geholtes Potenzial = Regel-€
+/ Orakel-€. Regret misst also nicht, ob die Regel gut ist, sondern was sie
+gegen die perfekte Sicht liegen ließ.
 
 ## Ensemble aus zwei Modellkernen (A10, Konzept §3.2 M3)
 
@@ -418,5 +541,8 @@ Antwort: delta_ct, gross_eur, fuel_cost_eur, time_cost_eur, detour_cost_eur, net
 - [Konzept](KONZEPT.md) — vollständiges Zielbild
 - [Lücken-Check](LUECKEN.md) — Konzept ↔ Stand, bewusst offene Punkte mit Grund
 - [TODO](../TODO.md) — priorisierte Arbeitsliste (u. a. A11 gemeinsame Ziehung)
+- [Engine-Referenz](ENGINE.md) — Backtest-Rezepte, Datenqualität, 12-Uhr-Regel
+- [Werkzeuge](DATENWERKZEUGE.md)
+ Ziehung)
 - [Engine-Referenz](ENGINE.md) — Backtest-Rezepte, Datenqualität, 12-Uhr-Regel
 - [Werkzeuge](DATENWERKZEUGE.md)
