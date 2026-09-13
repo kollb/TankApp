@@ -374,9 +374,11 @@ Vier Stellen, an denen derselbe Fortschritt steht (B5/B6):
    alle 15 s statt 60 s gepollt.
 2. **Statusdatei** (Maschine): `data/runtime/jobs/models.progress.json` —
    Phase, Schritt, Prozent, `eta_s`. Sie existiert nur während eines Laufs.
-3. **Log**: `docker logs -f tankapp-app` bzw. `journalctl -u tankapp -f`
-   **und** zusätzlich als Datei `data/runtime/jobs/models.log`
-   (letzte 500 Zeilen, auch ohne Docker-Zugriff lesbar).
+3. **Log**: als Dateien unter `data/runtime/` — `jobs/models.log`
+   (Fortschritt, letzte 500 Zeilen, auch ohne Docker-Zugriff lesbar) und
+   `logs/models.log` (voller Worker-stdout). `docker logs` zeigt **keine**
+   Job-Fortschrittzeilen: der Worker läuft als Subprozess, dessen stdout
+   nach `runtime/logs/<job>.log` geht (Befund 13.09.2026).
 4. **Log im GUI/per API** (B6): System-Tab → „Job-Log“ (Umschalter
    Archiv-Sync / Modell-Update / Selektion / Beleg-Verarbeitung, 100–500
    Zeilen, alle 15 s neu, solange ein Job läuft) bzw.
@@ -385,9 +387,9 @@ Vier Stellen, an denen derselbe Fortschritt steht (B5/B6):
 
 ```bash
 # Fortschritt live
-docker logs -f tankapp-app | grep models
-# oder ohne Docker
 tail -f data/runtime/jobs/models.log
+# voller Worker-Output (Tracebacks, Zwischenergebnisse)
+tail -f data/runtime/logs/models.log
 # Status auf einen Blick
 cat data/runtime/jobs/models.progress.json
 # Log per API (ohne Terminal auf dem NAS)
@@ -508,8 +510,16 @@ setzt und der Host 4,2 Gi verfügbar hat — **ungetestet**. Die Leerlaufwerte a
 Prozess-Pool überhaupt steht.
 
 Gemessen wird **während Phase B** — der Phase „Modelle fitten + Backtest“, im
-Job-Log an den Zeilen `Modelle fitten + Backtest n/m` zu erkennen. `ps` fehlt
-im Image (`python:3.14-slim`); die Prozessliste kommt über `docker top`.
+Job-Log an den Zeilen `Modelle fitten + Backtest n/m` zu erkennen. Zwei
+Stellen, an denen dieses Protokoll beim ersten Messlauf (13.09.2026)
+scheiterte und jetzt korrigiert ist: `ps` fehlt im Image
+(`python:3.14-slim`), und ohne `ps` liefert auch `docker top` keine
+Ausgabe — die Prozessliste kommt über einen `/proc`-Scan per `docker exec`
+(macht der Sammler seit dem ersten Lauf selbst). Und Fortschrittszeilen
+stehen **nie** auf Container-stdout: der Scheduler startet den Worker als
+Subprozess, dessen stdout nach `runtime/logs/models.log` geht, der Progress
+schreibt nach `runtime/jobs/models.log` — die Phase also immer aus dem
+Job-Log auf dem Host ablesen (`docker logs` zeigt beides nicht).
 
 **Welches Fenster? Warm und kalt sind seit B17 (0.22.0) zweierlei.** Der
 Tages-Cache des Backtests gilt für den ganzen lokalen Tag: sein Fingerabdruck
@@ -549,8 +559,9 @@ ops/nas/measure-phase-b.sh tankapp-web-app-1 5 0
 Wer es doch von Hand macht (Kaltlauf, ~9 min Fenster — ein Durchgang genügt):
 
 ```bash
-docker logs --tail 5 tankapp-web-app-1             # Phase B läuft?
-docker top tankapp-web-app-1                       # Python-Prozesse
+tail -n 5 data/runtime/jobs/models.log             # Phase B läuft? (nur dort)
+docker exec tankapp-web-app-1 sh -c 'n=0; for d in /proc/[0-9]*; do \
+  c=$(tr "\0" " " < "$d/cmdline" 2>/dev/null); case "$c" in python*) n=$((n+1));; esac; done; echo $n'  # Python-Prozesse (kein ps im Image)
 docker stats --no-stream tankapp-web-app-1         # MEM USAGE / MEM % / CPUS
 docker exec tankapp-web-app-1 df -h /dev/shm       # shm_size: 256m — wie voll?
 free -h                                            # Host verfügbar
@@ -560,7 +571,7 @@ Notieren (fünf Zahlen, mehr braucht die Entscheidung nicht):
 
 | Größe | Woher | Entscheidet |
 |---|---|---|
-| Anzahl Python-Prozesse | `docker top` | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23); bei `forkserver` kommen Forkserver + Resource-Tracker dazu |
+| Anzahl Python-Prozesse | `/proc`-Scan per `docker exec` (kein `ps` im Image, `docker top` liefert nichts) | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23); bei `forkserver` kommen Forkserver + Resource-Tracker dazu |
 | `MEM USAGE` des Containers | `docker stats` | ob 4 × pandas in 4,2 Gi verfügbarem Host-Speicher passen |
 | `MEM %` + `free -h` verfügbar | `docker stats`, `free -h` | ob Swap/OOM droht (Swap ist 0) |
 | `CPUS` | `docker stats` | ob 4 Worker ~400 % erreichen oder sich behindern |
@@ -570,6 +581,23 @@ Ergebnis in [TODO.md](../TODO.md) bei **B11** eintragen und, falls `shm_size`
 erhöht werden muss, in `ops/nas/app/compose.yml` ändern. Erwartet wird **keine**
 Beschleunigung — B11 ist ein Abgleich, kein Hebel: Durchsatz kommt aus B15/B16
 (0.20.0) und B17 (0.22.0).
+
+**Erster Messlauf (13.09.2026, Sammler, 33 Stichproben):** Container-Peak
+1,0 GiB, Host min 4,1 GiB verfügbar, `/dev/shm` 1 MiB, CPUS max 370 % — der
+Abgleich spricht gegen ein Speicher-/shm-Problem. Zwei Einschränkungen: der
+Lauf war kein Kaltlauf („Backtest: 9 aus Tages-Cache, 10 neu gerechnet“,
+2,1 min, trotz Cache-Löschung — auf dem NAS zu klären) und die Spalten
+`python_prozesse`/`phase` lieferten nichts (beides oben gefixt). Beleg,
+Lücken und die offene strenge Kaltlauf-Gegenprobe: [TODO B11](../TODO.md).
+
+**Strenge Kaltlauf-Gegenprobe in einem Schritt:**
+`ops/nas/b11-cold-run.sh` (nach `python3 tankapp.py nas-up` ausführen):
+wartet auf den sofortigen Recreate-Lauf, löscht den Cache und **verifiziert**
+die Löschung (inkl. Mount-Quellen-Prüfung von `/data/runtime`), sampelt mit
+dem Sammler, triggert den Lauf per `docker exec … python -m app.worker
+models` (umgeht Debounce) und schreibt alles — Stichproben, Auswertung,
+Job-Log-Ende, `models.json` und die Kaltlauf-Prüfung — in eine Datei
+`b11-cold-<stempel>/report.txt`.
 
 **Achtung Messfalle (12.09.2026):** `nproc` meldet im Container `1`, weil das
 Image `OMP_NUM_THREADS=1` setzt. Kerne immer über die Affinität bestimmen:

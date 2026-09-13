@@ -5,7 +5,7 @@
 # 0.22.0) dauert Phase B im Warm-Lauf nur noch ~40 s und im Kaltlauf ~9 min
 # (21-Tage-Backtest je Station). Von Hand getippt erwischt man entweder das
 # falsche Fenster oder gar keins. Der Sammler schreibt alle 5 s eine Zeile
-# und rechnet am Ende die vier Zahlen aus, die B11 entscheidet.
+# und rechnet am Ende die fünf Zahlen aus, die B11 entscheidet.
 #
 # Verwendung (auf dem NAS-Host, nicht im Container):
 #
@@ -20,6 +20,13 @@
 # Ergebnis in TODO.md bei B11 eintragen. Erwartet wird keine Beschleunigung,
 # sondern der Beleg, ob 4 Worker × pandas in shm_size: 256m und 4,2 Gi
 # verfügbarem Host-Speicher passen.
+#
+# Stand 13.09.2026 (erster Messlauf): zwei Proben lieferten nichts und sind
+# gefixt — (1) `docker top` zeigt ohne `ps` im Image (python:3.14-slim) gar
+# keine Prozesse, die Python-Zählung läuft jetzt per /proc-Scan über
+# `docker exec`; (2) Fortschrittszeilen stehen nie auf Container-stdout
+# (Worker-Subprozess: stdout → runtime/logs/<job>.log), die Phase kommt jetzt
+# aus dem Job-Log auf dem Host ($RUNTIME/jobs/models.log).
 
 set -u
 
@@ -37,6 +44,22 @@ if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -Fxq "$CONTAINER"; then
   exit 1
 fi
 
+# Job-Log des Modell-Laufs auf dem Host. Fortschrittszeilen stehen dort,
+# nicht auf Container-stdout: der Scheduler startet den Worker als
+# Subprozess mit stdout → runtime/logs/<job>.log, der Progress schreibt
+# nach runtime/jobs/<job>.log (app/server.py::Scheduler.run_once).
+REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+RUNTIME_DIR=$(python3 -c \
+  "import json; print(json.load(open('${REPO_ROOT}/data/nas-settings.json'))['runtime_dir'])" \
+  2>/dev/null || true)
+JOB_LOG=""
+for cand in "${RUNTIME_DIR:-}/jobs/models.log" "$REPO_ROOT/data/runtime/jobs/models.log"; do
+  if [ -n "$cand" ] && [ -f "$cand" ]; then
+    JOB_LOG="$cand"
+    break
+  fi
+done
+
 mkdir -p "$OUTDIR" || exit 1
 RAW="$OUTDIR/samples.tsv"
 TAB=$'\t'
@@ -52,11 +75,34 @@ to_mib() { # "312.5MiB" / "1.203GiB" -> MiB (ganzzahlig)
   }'
 }
 
-current_phase() { # letzte Job-Log-Zeile des Containers -> Phase (oder "-")
-  docker logs --tail 5 "$CONTAINER" 2>/dev/null |
+current_phase() { # letzte Job-Log-Zeile -> Phase (oder "-")
+  if [ -z "$JOB_LOG" ]; then
+    printf -- "-"
+    return
+  fi
+  local phase
+  phase=$(tail -n 20 "$JOB_LOG" 2>/dev/null |
     grep -oE 'InfluxDB-Export|Live-Abdeckung|Archiv aufbereiten|Bootstrap & Trainingsdaten|Modelle fitten|Selektion \(|\(δ̂\)|Veröffentlichen|beendet:' |
     tail -n 1 |
-    sed -e 's/Selektion (/Selektion/' -e 's/(δ̂)/δ/' -e 's/beendet:/fertig/' || true
+    sed -e 's/Selektion (/Selektion/' -e 's/(δ̂)/δ/' -e 's/beendet:/fertig/')
+  printf '%s' "${phase:--}"
+}
+
+count_python_procs() { # Python-Prozesse im Container, ohne ps im Image
+  # `docker top` braucht `ps` im Container — python:3.14-slim hat es nicht,
+  # `docker top` liefert also keine Ausgabe (Befund 13.09.2026). /proc ist
+  # für den Container-User lesbar (alle Prozesse laufen als derselbe User).
+  # Erwartet in Phase B: 1 Master + 4 Worker + Forkserver + Resource-Tracker,
+  # zusätzlich bis zu 1 Healthcheck-`python -c` (alle 30 s).
+  docker exec "$CONTAINER" sh -c '
+      n=0
+      for d in /proc/[0-9]*; do
+          c=$(tr "\0" " " < "$d/cmdline" 2>/dev/null)
+          case "$c" in
+              python*) n=$((n+1)) ;;
+          esac
+      done
+      echo "$n"' 2>/dev/null
 }
 
 finished=0
@@ -103,6 +149,11 @@ trap on_signal INT TERM
 trap summarise EXIT
 
 echo "B11-Sammler: Container $CONTAINER, alle ${INTERVAL}s, Ausgabe $RAW"
+if [ -n "$JOB_LOG" ]; then
+  echo "Phase aus: $JOB_LOG"
+else
+  echo "Achtung: Job-Log nicht gefunden — Phasenspalte bleibt „-“ (Pfad in data/nas-settings.json prüfen)."
+fi
 echo "Modell-Lauf jetzt auslösen; nach „beendet:“ Strg-C drücken."
 start=$(date +%s)
 while :; do
@@ -119,8 +170,7 @@ while :; do
     mem_perc=${rest%%|*}
     cpu_perc=${rest##*|}
     mem_mib=$(to_mib "$mem_used")
-    # ps fehlt im Image (python:3.14-slim) — die Prozessliste kommt über docker top.
-    procs=$(docker top "$CONTAINER" -eo args 2>/dev/null | grep -c '[p]ython')
+    procs=$(count_python_procs)
     avail=$(free -m 2>/dev/null | awk '/^Mem:/{print ($7 != "" ? $7 : $4)}')
     # shm_size: 256m (compose.yml) — Speicher des Containers allein beantwortet
     # die shm-Frage nicht; Python legt dort u. a. Semaphoren an.
