@@ -127,6 +127,29 @@ def test_missing_days_are_reported_not_backfilled(series, cfg):
     assert not report["criteria"]["at_least_21_complete_test_days_per_station"]
 
 
+def test_empty_multi_day_windows_skip_predict(observations, cfg, monkeypatch):
+    """B20/2: Ohne Wahrheit kein teures +3-d/+7-d-predict rechnen."""
+    import engine.backtest as backtest
+
+    # Daten enden exakt am Backtest-Ende: Der 24-h-Fold ist vollständig, beide
+    # Mehrtage-Fenster liegen aber hinter der letzten Beobachtung.
+    normalized, _ = normalize_observations(observations(days=31), cfg)
+    item = prepare_series(normalized, cfg)[0]
+    actual_predict = backtest.predict
+    calls = []
+
+    def tracking_predict(model, *args, **kwargs):
+        calls.append(kwargs.get("index"))
+        return actual_predict(model, *args, **kwargs)
+
+    monkeypatch.setattr(backtest, "predict", tracking_predict)
+    report, rows = run_backtest([item], cfg, days=1, until="2026-08-01")
+    assert not rows.empty
+    assert len(calls) == 1  # nur der normale 24-h-Fold, nicht +72/+168 h
+    assert report["horizons"]["72h"]["days_no_common_observations"] == 1
+    assert report["horizons"]["168h"]["days_no_common_observations"] == 1
+
+
 def test_short_training_records_skip_reason(observations, cfg):
     normalized, _ = normalize_observations(observations(days=3), cfg)
     report, rows = run_backtest(

@@ -711,6 +711,49 @@ def test_progress_note_can_be_non_sticky_and_total_can_be_corrected(model_setup)
     assert "nur 3 nutzbare Tage mit 12 offenen Preisen" in log
 
 
+def test_progress_percent_is_monotonic_and_fit_uses_the_long_range(model_setup):
+    """B20/6: kein 35→0-Rücksprung und kein 9-min-Stillstand bei 85 %."""
+    from app.progress import JobProgress
+
+    progress = JobProgress(model_setup, "models", verbose=False)
+    values = []
+
+    def remember():
+        values.append(progress.payload()["pct"])
+
+    progress.phase("archive")
+    remember()
+    progress.phase("gapfill")
+    remember()
+    progress.phase("bootstrap")
+    remember()
+    progress.phase("fit", total=8)
+    remember()
+    for step in range(1, 5):
+        progress.step(step)
+        remember()
+    # Zweiter Kraftstoff: die Zwischenphase liegt kanonisch früher, darf den
+    # erreichten Wert aber nicht zurücksetzen; completed übernimmt den Zähler.
+    progress.phase("bootstrap")
+    remember()
+    progress.phase("fit", total=8, completed=4)
+    remember()
+    for step in range(5, 9):
+        progress.step(step)
+        remember()
+    progress.phase("selection")
+    remember()
+    progress.phase("publish")
+    remember()
+    progress.finish("success")
+    remember()
+
+    assert values == sorted(values)
+    assert values[:4] == [15.0, 25.0, 30.0, 35.0]
+    assert values[4:8] == [42.5, 50.0, 57.5, 65.0]
+    assert values[-3:] == [95.0, 99.0, 100.0]
+
+
 def test_progress_log_rotates_instead_of_growing_forever(model_setup):
     from app.progress import append_log
 

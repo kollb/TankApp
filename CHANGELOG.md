@@ -4,6 +4,91 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.26.0] – 2026-09-13
+
+**Batch 4 des Laufzeit-Bündels — Feinschliff ohne Änderung der fachlichen
+Modellzahlen.** B19 räumt den Prozess-Pool auf, B20 entfernt tote Arbeit und
+macht den Fortschritt wahrheitsgetreu, B23 begrenzt die automatische
+Worker-Zahl auf die CPUs, die der Container wirklich nutzen darf. Die bereits
+gemessenen B11-Ressourcenwerte sind in der Betriebsanleitung eingeordnet.
+
+### Geändert
+
+- **B19 — ein Pool je Kraftstoff statt zwei** (`app/model_jobs.py::ModelTaskPool`,
+  `app/refresh.py`): Fit/24 h (Phase A) und 72 h/168 h/Backtest (Phase B)
+  laufen in denselben Worker-Prozessen. Der eigenständige Job-Prozess ist
+  single-threaded; auf POSIX wird deshalb explizit `fork` gewählt statt des
+  Python-3.14-Defaults `forkserver` (Fallback `spawn`, wenn `fork` nicht
+  verfügbar ist). Fällt die Pool-Infrastruktur aus, werden nur noch offene
+  Aufgaben seriell nachgerechnet; bereits gemeldete Ergebnisse und ihre
+  Fortschrittszeilen bleiben erhalten.
+- **B19 — schlanke Worker-Eingabe:** Von neun Rasterspalten gehen nur die sechs
+  tatsächlich von Fit und Backtest gelesenen Spalten in die `initargs`
+  (`price`, Beobachtungs-/Antwortmasken, Status-Herkunft, Quelle,
+  Beobachtungszeit). Der B17-Fingerabdruck ist auf genau dieselben fachlichen
+  Eingaben normalisiert. Cache-Schema **2** verwirft Schema-1-Dateien beim
+  ersten Lauf einmalig; danach bleibt die Tages-Cache-Semantik unverändert.
+- **B20/2 — keine Prognose ohne Testwahrheit:** Leere +3-d/+7-d-Fenster werden
+  vor `predict()` als `no_common_observations` gezählt. Im gemessenen
+  Produktionsmuster entfallen damit 8 von 63 Mehrtage-Aufrufen je Station
+  (13 %), ohne eine Kennzahl zu ändern.
+- **B20/4 — nur Publikationsfelder über die Prozessgrenze:** `_records` baut
+  direkt `timestamp` + fünf Quantile, ohne Vollkopie, `index.map(lambda …)`
+  und interne Diagnosefelder. Wide-Aufgaben schicken außerdem ihr nur lokal
+  benötigtes Modellartefakt nicht mehr zum Parent zurück.
+- **B20/5+7 — Fertigstellung heißt Fertigstellung:** Parallel ruft
+  `as_completed` den Callback in echter Abschlussreihenfolge auf; die
+  Ergebnisliste bleibt für eine deterministische Publikation in
+  Einreichreihenfolge. Seriell folgt `on_done` unmittelbar auf jede Aufgabe
+  statt erst nach der gesamten Phase — kein 22-Minuten-Fenster ohne
+  Lebenszeichen mehr.
+- **B20/6 — monotoner Fortschritt:** `gapfill` hat eine benannte Phase und ein
+  Gewicht; der lange Fit-Block belegt jetzt 35–95 % statt 85–95 %. Eine
+  monotone Untergrenze verhindert Rücksprünge bei optionalen Phasen und
+  mehreren Kraftstoffen, `completed` übernimmt dabei den globalen
+  Aufgabenzähler. Abschlusszustände enden bei 100 %.
+- **B23 — Worker nach Prozesssicht und Container-Quota:** Automatik nutzt
+  `os.process_cpu_count()` ab Python 3.13, auf 3.11/3.12 die CPU-Affinität,
+  und zusätzlich cgroup v2 `cpu.max` bzw. v1
+  `cpu.cfs_{quota,period}_us`. Docker `--cpus`/`NanoCpus` ist darin bereits
+  abgebildet. Beispieltest: acht Host-Kerne, aber Affinität oder Quota für zwei
+  CPUs ergeben zwei Worker. Ein positiver, expliziter
+  `TANKAPP_MODEL_WORKERS`-Wert bleibt eine bewusste Betreiber-Vorgabe.
+- **Doku-Integrität:** Der Merge vor diesem Batch hatte `TODO.md` mitten in der
+  0.25.1-Zeile abgeschnitten (einschließlich Reihenfolge-Abschnitt); der
+  verlorene, unveränderte Historienteil ist wiederhergestellt. Damit zeigt der
+  bestehende Link aus `docs/LUECKEN.md` wieder auf einen vorhandenen Anker.
+
+### Gemessen
+
+- **Sandkasten, 20 synthetische Stationen × 35 Tage:** Worker-Frame
+  31,24 → **17,69 MiB** (−43 %), Pickle der `initargs` 10,50 → **7,32 MiB**
+  (−30 %, 89 → 35 ms). Eine 168-h-Punktliste trägt 6 statt 11 Felder:
+  Pickle 283,6 → **175,3 KiB** (−38 %), Serialisierung 7,9 → 6,7 ms. Das ist
+  eine Struktur-/Transfermessung, keine übertragbare NAS-Laufzeit.
+- **NAS vorher (13.09.2026, Stand bis 0.25.1):** warme Läufe mit komplettem
+  Tages-Cache **1,4–1,7 min**, Phase B rund 50 s. Der erste B11-Messlauf mit
+  9 Cache-Treffern/10 Neuberechnungen dauerte **2,1 min**; Peak 1,0 GiB
+  Container, Host mindestens 4,1 GiB verfügbar, `/dev/shm` 1 MiB von
+  256 MiB, CPU max. 370 %. Damit bleiben vier Worker und `shm_size: 256m`.
+- **NAS nach 0.26.0 steht noch aus.** Die Batch-Regel verlangt die Dauer aus
+  der Job-Log-Zeile `beendet: … Dauer …`; sie kann erst nach dem Deploy
+  ergänzt werden. Durch Cache-Schema 2 ist der erste Lauf automatisch ein
+  strenger Kaltlauf (0 Treffer erwartet). `ops/nas/b11-cold-run.sh` sammelt
+  Laufzeit, Prozesszahl und Ressourcen in einem Report; bis dieser Beleg
+  vorliegt, wird weder „~28 s“ noch ein neuer Speicher-Peak als Messwert
+  behauptet.
+
+### Tests
+
+- Prozess-/Seriell-Fingerprints bleiben gleich; ein Fake-Pool beweist eine
+  Instanz für zwei Aufgabenwellen, schlanke `initargs`, explizite Startmethode,
+  echte Callback-Reihenfolge bei stabiler Ergebnisreihenfolge und genau einen
+  Shutdown.
+- Regressionen für sofortigen seriellen Callback, Affinität + cgroup-v1/v2-
+  Quota, reine Publikationsspalten/kein Wide-Modell, leere Mehrtage-Fenster,
+  Cache-Fingerabdruck und die monotone 15→25→30→35…95→99→100-Abbildung.
+
 ## [0.25.1] – 2026-09-13
 
 **Begleitpunkte des Laufzeit-Bündels — ausdrücklich ohne Batch 4**

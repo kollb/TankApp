@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 12.09.2026 · App-Version **0.11.0** — B3/B4/B5, Ereignis-Pipeline
+> Stand: 13.09.2026 · App-Version **0.26.0** — B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
 > Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
 > (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
@@ -550,7 +550,7 @@ Liefert letzten publizierten Ausblick:
   "city": "Frankfurt",
   "fuel": "e10",
   "origin": "2026-09-10T00:00:00Z",
-  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8, "supported": true}, ...],
+  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8}, ...],
   "points_3d": [...],
   "points_7d": [...],
   "metrics": {"points": 1234, "mae_ct": 1.2, "mase": 0.85, "picp95_pct": 94.5},
@@ -564,6 +564,11 @@ Liefert letzten publizierten Ausblick:
 }
 ```
 
+- `points`, `points_3d` und `points_7d` enthalten seit 0.26.0 ausschließlich
+  `timestamp` und die fünf Quantile `q025`/`q10`/`q50`/`q90`/`q975`. Interne
+  Modell-Diagnosespalten wurden von keinem API-Abnehmer genutzt und gehen nicht
+  mehr über die Prozess- oder JSON-Grenze; fehlende Unterstützung ist an
+  `null`-Quantilen erkennbar.
 - `range_from`/`range_to`/`n_points`/`n_days` (0.18.0, C11): Datenreichweite des
   **Fits** — Trainingsfenster, letzte verwendete Beobachtung, Zahl der offenen
   5-Minuten-Preise und nutzbaren Tage. Die Werte stammen unverändert aus dem

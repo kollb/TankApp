@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 12.09.2026 · App-Version 0.23.0. Abgleich von
+> Stand: 13.09.2026 · App-Version 0.26.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -59,7 +59,10 @@
    Implementierung (direkter Vergleich über 24 h/72 h/168 h und 200
    Zufallsverläufe). Neu `app/model_jobs.py`: Fit, Horizonte und Backtests
    laufen prozessparallel (`TANKAPP_MODEL_WORKERS`, Default automatisch),
-   mit seriellem Rückfall, wenn kein Prozess-Pool verfügbar ist.
+   mit seriellem Rückfall, wenn kein Prozess-Pool verfügbar ist. Seit 0.26.0
+   bleibt je Kraftstoff ein expliziter `fork`-Pool für beide Aufgabenwellen
+   stehen; automatische Worker beachten Affinität und cgroup-Quota, Callbacks
+   folgen echten Abschlüssen bei stabiler Ergebnisreihenfolge.
 3. **Rate-Limit + API-Key** (`app/ratelimit.py`, Konzept §11) — 60/min
    anonym, 300/min mit Schlüssel, Tageskontingente, `X-RateLimit-*`-Header,
    `429` + `Retry-After` + `error_code: rate_limited`.
