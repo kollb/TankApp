@@ -542,15 +542,21 @@ export function Dashboard() {
   }, []);
 
   const data = prices.data;
+  const isStaleFuel = !!data && data.fuel !== fuel;
   const activeCity = data?.cities.includes(city) ? city : data?.cities[0] || "";
   const stations =
     data?.stations.filter((row) => row.city === activeCity) || [];
-  const online = !prices.error && !!data && !data.connection_error;
+  // Während Fuel-Switch E10→Diesel bleibt data stale (fuel mismatch) und
+  // pending true — online darf dann nicht als „frisch“ gelten, sonst zeigt
+  // der Header alte Counts statt „lädt …“.
+  const online = !prices.error && !!data && !data.connection_error && !isStaleFuel;
   const elapsed = Math.max(0, now - prices.receivedAt) / 60000;
   const price = (row: Station) => currentPrice(row, online, elapsed);
-  const fresh = stations
-    .filter((row) => price(row) !== null)
-    .sort((a, b) => price(a)! - price(b)!);
+  const fresh = isStaleFuel
+    ? []
+    : stations
+        .filter((row) => price(row) !== null)
+        .sort((a, b) => price(a)! - price(b)!);
   const best = fresh[0];
   // Vergleichsstation per Default: die nächste mit frischem Preis — nicht die
   // billigste. Die billigste als Default machte „Unterschied zur
@@ -1547,7 +1553,7 @@ export function Dashboard() {
             <span>
               {online && fresh.length
                 ? `${fresh.length} frische Preise · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
-                : prices.pending && !data
+                : prices.pending
                   ? "Daten werden geladen …"
                   : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
             </span>
@@ -1742,6 +1748,8 @@ export function Dashboard() {
             pinnedIds={pinnedIds}
             togglePin={togglePin}
             pinNote={pinNote}
+            isStaleFuel={isStaleFuel}
+            pricesPending={prices.pending}
           />
         )}
 

@@ -84,6 +84,9 @@ export interface DailyViewProps {
   pinnedIds: string[];
   togglePin: (stationId: string) => void;
   pinNote: string | null;
+  // Fuel-Switch: data.fuel !== fuel && pending → Skeleton statt Empty
+  isStaleFuel?: boolean;
+  pricesPending?: boolean;
   setLiters: (v: number) => void;
   setConsumption: (v: number) => void;
   setSpeed: (v: number) => void;
@@ -155,7 +158,7 @@ export interface DailyViewProps {
   setShowVoidedFills: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 export function DailyView(props: DailyViewProps) {
-  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, setConsumption, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setDetourMode, setLiters, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, setSpeed, setTimeValue, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, setTankCapacity, pinnedIds, togglePin, pinNote, } = props;
+  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, setConsumption, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setDetourMode, setLiters, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, setSpeed, setTimeValue, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, setTankCapacity, pinnedIds, togglePin, pinNote, isStaleFuel, pricesPending, } = props;
   // C2: Suche/Markenfilter/Sortierung sind Ansichts-Zustand dieses Panels —
   // sie beschreiben, wonach gerade geschaut wird, nicht den Haushalt.
   const [stationQuery, setStationQuery] = useState("");
@@ -385,6 +388,9 @@ export function DailyView(props: DailyViewProps) {
           : "Keine simulierten Preise"}
       </span>
     </div>
+    {(isStaleFuel || pricesPending) && !best ? (
+      <SkeletonPanel lines={2} label={`Lade ${fuel.toUpperCase()} Preise …`} />
+    ) : (
     <div
       className={`relative rounded-xl border p-5 sm:p-6 ${best ? "border-emerald-500/30 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900 glow-emerald" : "border-amber-500/20 bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900"}`}
     >
@@ -441,6 +447,7 @@ export function DailyView(props: DailyViewProps) {
         </div>
       </div>
     </div>
+    )}
 
     {/* F1/F2/F3 Empfehlung aus /v1/decide (Ampel + Fenster + Alternativen) */}
     {(() => {

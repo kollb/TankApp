@@ -51,7 +51,7 @@ Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsa
 | Collector (1 Req/5min, Städte Round-Robin, 06–24) | **Pi** | 24/7 Bereitschaft |
 | Kurzzeit-Puffer | **Pi: tmpfs** `/dev/shm/tankapp` | RAM statt SD → SD-Schonung |
 | Heartbeat | **Pi: tmpfs** `meta/heartbeat.json` → InfluxDB `collector_status` | **B3.11** Livestatus ans NAS |
-| Langzeit-Speicher | **NAS: InfluxDB (Docker)** | Plattenplatz, Retention 5 Jahre |
+| Langzeit-Speicher | **NAS: InfluxDB (Docker)** | Plattenplatz, Retention 1–5 Jahre (Default 5 Jahre, SSD-Tipp 1 Jahr, siehe SPEICHER.md) |
 | Hosting API + Web-GUI | **NAS** | Gemeinsamer Daten-/App-Server |
 | Archiv für Engine | **NAS: komprimierte Tagesdateien, ≥1 Jahr** | Automatischer Sync stündlich |
 | Engine-Fits, Backtests, ACI, Decision-Kalibrierung, Selektion | **NAS (oder PC per WOL)** | Pi bleibt Collector/Uploader |
@@ -59,7 +59,7 @@ Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsa
 | 24/7-Zugang + Ausfall-GUI | **RP2/Pi: Port 8000** | proxyt das NAS, zeigt sonst Live-Preise + gecachte Prognosen → [RP2.md](RP2.md) |
 | Alarm-Aggregation | **NAS: `/api/v1/health`** | ein `alarms[]`-Block statt sieben Endpunkte, ohne zusätzliche Netz-/Influx-Zugriffe |
 
-Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage; Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
+Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage (aber seit 13.09.2026: Dateien vollständig vor `meta/synced_until` werden nach Ack und 1 Tag Puffer gelöscht, RAM sinkt auf ~1–2 Tage — siehe [SPEICHER.md](SPEICHER.md) 4.1). Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
 
 **Datenverlust-Fenster (explizit, TODO G3):** Der Ringpuffer behält
 `RING_DAYS = 7` Tage. Ist das NAS **länger** offline, verwirft `ring_prune`
@@ -218,7 +218,7 @@ Watermark bleibt gemerkt).
 
 ### InfluxDB
 
-- Bucket `tankapp`, Retention 5 Jahre (43800h)
+- Bucket `tankapp`, Retention 5 Jahre (43800h) beim ersten Start, danach per `influx bucket update --retention 8760h` kürzbar — SSD-Tipp 1 Jahr, Details in [SPEICHER.md](SPEICHER.md)
 - Least-Privilege Token: read+write nur für diesen Bucket
 - URL aus Container erreichbar: NAS-LAN-Adresse, nicht localhost
 
