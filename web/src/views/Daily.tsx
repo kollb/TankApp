@@ -355,22 +355,15 @@ export function DailyView(props: DailyViewProps) {
 
   {/* B21: Polling-Set fehlt — Hauptgrund für „Ehrlich statt geschätzt / Noch kein frischer Preis“ */}
   {data?.connection_error === "polling_missing" && (
-    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-950/40 p-4">
+    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-950/40 p-4 break-words">
       <p className="text-xs font-semibold text-amber-200">
         Polling-Set fehlt — keine Stadt eingerichtet
       </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80 break-words">
-        Auf dem Pi{" "}
-        <code className="break-all">data/analysis/stations/polling.json</code>{" "}
-        erzeugen (docs/INSTALL.md Abschnitt Polling-Set, danach
-        activate-polling), auf dem NAS{" "}
-        <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen
-        (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
-        <code className="break-all">ops/nas/preflight.sh</code> ausführen.
-        Collector-Herzschlag {h?.collector?.available ? "✓" : "fehlt"} und
-        InfluxDB-Lesezugang {h?.influx_configured ? "✓" : "fehlt"} nützen ohne
-        Polling-Set nichts. Pfad:{" "}
-        <code className="break-all">{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
+      <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+        Auf dem Pi polling.json erzeugen (docs/INSTALL.md Abschnitt
+        Polling-Set), auf dem NAS TANKAPP_POLLING_FILE pruefen und
+        preflight.sh ausfuehren. Collector und Influx nuetzen ohne
+        Polling-Set nichts.
       </p>
     </div>
   )}
