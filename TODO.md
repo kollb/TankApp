@@ -66,7 +66,7 @@
 
 | # | Prio | Fehlt | Details |
 |---|---|---|---|
-| D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90“ nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
+| D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): eigener Workflow `.github/workflows/quality.yml` (auf Abruf, sonntags, bei PRs an `web/`/`app/`/`engine/`), Lighthouse-CI mit Budgets gegen zwei GUI-Zustände und ein abhängigkeitsfreier Lastpfad (`web/load/overview.mjs`) gegen das B7-Aggregat inkl. ETag-Revalidierung; beide laufen gegen den neuen Demo-Stack `ops/quality/` (echte App, injizierte Preisabfrage, echte Engine-Publikation). Messwerte, Budgets und die B7-Rest-Entscheidung stehen in [docs/QUALITAET.md](docs/QUALITAET.md). Offen: Lighthouse-Erstdurchlauf (Performance-Ebene deshalb warnend). |
 
 ---
 
@@ -196,9 +196,12 @@ und bleibt **nicht geplant**.
    oder C8 (Mobile-Feinschliff/PWA). D1 ist mit 0.19.0 erledigt
    (Views-Schnitt + `JobCard`), neue Panels und die Profil-Verwaltung
    landen in `views/`/`components/` statt in `Dashboard.tsx`.
-2. **B7-Follow-up separat entscheiden**: `route/evaluate` (eigener Poll im
-   Alltag, nur bei Alternativ-Station) ausklinken bzw. in `/overview`
-   aufnehmen — erst nach einer Messung der echten Last (siehe D4).
+2. **B7-Follow-up entschieden (0.31.0)**: `route/evaluate` **bleibt** ein
+   eigener Abruf. Messung mit D4: 1,5 ms gegenüber ~230 ms für einen kalten
+   `/overview` (0,6 %) — bündeln würde die Routen-Parameter in den
+   ETag-Schlüssel des Overviews ziehen und den Antwort-Cache aller Geräte
+   entwerten, für weniger als eine Bildschirmaktualisierung Ersparnis.
+   Zahlen und Gegenprobe in [docs/QUALITAET.md](docs/QUALITAET.md#b7-rest-routeevaluate-bleibt-ein-eigener-abruf).
 3. **Kein P0 mehr offen** — der Heatmap-P0 vom 12.09. ist mit 0.14.0
    geschlossen, B2 (Schema-Version) seit 0.13.0;
    der nächste Store-Feldsprung braucht nur eine Migrationsfunktion nach
