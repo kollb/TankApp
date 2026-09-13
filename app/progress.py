@@ -124,9 +124,29 @@ class JobProgress:
             self.label = label
         self._emit(None)
 
-    def note(self, message: str) -> None:
-        """Freitext (z. B. Zwischenergebnisse, Trefferzahlen)."""
-        self.message = message
+    def retotal(self, total: int) -> None:
+        """Gesamtzahl der Schritte nachziehen, ohne den Zähler zurückzusetzen.
+
+        Fällt eine Station in Phase A aus, entfallen ihre Folgeaufgaben (+3 d,
+        +7 d, Backtest). Bliebe die Gesamtzahl bei der Vorschätzung, endet der
+        Lauf bei „77/80“ und sieht aus, als habe der Zähler drei Aufgaben
+        verschluckt. Der Zähler darf dabei nie kleiner werden als der schon
+        erreichte Stand — der Balken soll nicht zurückspringen.
+        """
+        self.total = max(int(total), self.step_index)
+        self._emit(f"Gesamtzahl auf {self.total} Schritte korrigiert")
+
+    def note(self, message: str, *, sticky: bool = True) -> None:
+        """Freitext (z. B. Zwischenergebnisse, Trefferzahlen).
+
+        ``sticky=True`` (Default) setzt die Meldung als bleibenden Status —
+        sinnvoll für Zwischensummen, die bis zur nächsten Phase gelten.
+        ``sticky=False`` schreibt **nur eine Log-Zeile**: für die Ursache
+        eines einzelnen Fehlers, die nicht an jedem folgenden Schritt hängen
+        soll (0.25.1).
+        """
+        if sticky:
+            self.message = message
         self._emit(message)
 
     def finish(self, state: str = "success", message: str = "") -> None:

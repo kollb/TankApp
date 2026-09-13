@@ -685,6 +685,32 @@ def test_progress_file_tracks_phases_and_steps(model_setup):
     assert "fertig" in log
 
 
+def test_progress_note_can_be_non_sticky_and_total_can_be_corrected(model_setup):
+    """0.25.1: Fehlerursache ins Log schreiben, ohne als Status kleben zu
+    bleiben — und die Gesamtzahl nachziehen, wenn Aufgaben entfallen."""
+    from app.progress import JobProgress, read_progress
+
+    progress = JobProgress(model_setup, "models", verbose=False)
+    progress.phase("fit", total=4, message="Fit + Backtest")
+    progress.step(1, label="Frankfurt – One")
+    progress.note("nur 3 nutzbare Tage mit 12 offenen Preisen", sticky=False)
+    raw = read_progress(model_setup, "models")
+    # Nicht kleben geblieben: die Ursache einer Station steht nicht an jedem
+    # folgenden Schritt, ist aber im Log zu finden.
+    assert raw["message"] == "Fit + Backtest"
+    progress.retotal(2)  # drei Folgetasks dieser Station entfallen
+    raw = read_progress(model_setup, "models")
+    assert (raw["step"], raw["total"]) == (1, 2)
+    # Der Balken springt nicht zurück: nie weniger als schon erreicht.
+    progress.retotal(1)
+    assert read_progress(model_setup, "models")["total"] == 1
+    # Klebende Notiz bleibt der Status (Zwischensummen, wie bisher).
+    progress.note("Backtest: 19 aus Tages-Cache, 0 neu gerechnet")
+    assert read_progress(model_setup, "models")["message"].startswith("Backtest:")
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "nur 3 nutzbare Tage mit 12 offenen Preisen" in log
+
+
 def test_progress_log_rotates_instead_of_growing_forever(model_setup):
     from app.progress import append_log
 
@@ -713,6 +739,47 @@ def test_refresh_reports_every_phase(model_setup, capsys):
     assert "Veröffentlichen" in log
     # Stationen erscheinen mit Namen — „läuft seit 20 min“ wird erklärbar.
     assert "Frankfurt – One" in log
+
+
+def test_refresh_names_failure_reason_and_keeps_counter_complete(model_setup):
+    """0.25.1: „1 Fehler“ ohne Ursache hilft niemandem, und „77/80“ sieht
+    nach verschluckten Aufgaben aus. beides ist jetzt belegbar."""
+    import re
+
+    from app.progress import JobProgress
+
+    cutoff = dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc)
+    progress = JobProgress(model_setup, "models", verbose=False)
+    refresh(model_setup, now=cutoff, progress=progress)
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    # Gütersloh – Two hat keine Historie: der Grund steht im Job-Log, nicht
+    # nur auf Container-stdout (dort sucht ihn niemand).
+    assert "Gütersloh – Two: keine Historie" in log
+    assert "3 Folgetasks entfallen" in log
+    # Kein „5/8“ am Ende: die drei entfallenen Folgetasks sind abgezogen.
+    steps = re.findall(r"Modelle fitten \+ Backtest (\d+)/(\d+)", log)
+    assert steps and steps[-1] == ("5", "5")
+    # Die Korrektur springt nicht zurück: nach der ersten „5“ kommt keine „8“.
+    totals = [total for _step, total in steps]
+    assert "8" not in totals[totals.index("5") :]
+
+
+def test_fit_failure_reason_lands_in_job_log(model_setup, monkeypatch):
+    """Der Regelfall auf dem NAS: Eine Station ist nicht fitbar — die Ursache
+    entscheidet, ob sie je fitbar wird (A12) oder tot ist."""
+    from app.progress import JobProgress
+
+    def fail(*a):
+        raise ValueError("nur 3 nutzbare Tage mit 12 offenen 5-Minuten-Preisen")
+
+    monkeypatch.setattr("engine.models.fit", fail)
+    progress = JobProgress(model_setup, "models", verbose=False)
+    refresh(
+        model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc), progress=progress
+    )
+    log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
+    assert "nur 3 nutzbare Tage mit 12 offenen 5-Minuten-Preisen" in log
+    assert "2 Stationen ohne Modell — 6 Folgetasks entfallen" in log
 
 
 def test_health_shows_progress_only_while_running(model_setup):

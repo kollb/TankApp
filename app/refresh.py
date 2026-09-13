@@ -189,7 +189,7 @@ def refresh(settings: Settings, now=None, progress=None):
         workers = resolve_workers(getattr(settings, "model_workers", 0) or None)
         if workers > 1:
             print(f"models: {workers} Prozesse für Fit/Prognose/Backtest", flush=True)
-        for fuel in settings.model_fuels:
+        for fuel_index, fuel in enumerate(settings.model_fuels):
             if progress:
                 progress.phase("bootstrap", message=f"Bootstrap {fuel}")
             print(
@@ -220,7 +220,14 @@ def refresh(settings: Settings, now=None, progress=None):
                 for item in prepare_series(normalized, cfg)
             }
             if progress:
-                progress.phase("fit", total=fit_total, message=f"Fit + Backtest {fuel}")
+                # Der Zähler läuft über alle Kraftstoffe hinweg; ``total``
+                # deshalb nur beim ersten setzen (``phase`` fängt sonst bei 0
+                # an), die Phasenmeldung aber je Kraftstoff erneuern.
+                progress.phase(
+                    "fit",
+                    total=fit_total if fuel_index == 0 else None,
+                    message=f"Fit + Backtest {fuel}",
+                )
             # --- Fit, Horizonte und Backtest (prozessparallel, §9.4) ---
             # Je Station sind 24 h, +3 d, +7 d und der 7-Tage-Backtest
             # voneinander unabhängig; seriell bliebe ein Kern ungenutzt.
@@ -252,6 +259,14 @@ def refresh(settings: Settings, now=None, progress=None):
                     "fuel": fuel,
                     "reason": "missing_history",
                 }
+                if progress:
+                    # 0.25.1: Der Grund stand bisher nur auf Container-stdout,
+                    # nicht im Job-Log — dort sucht man ihn aber zuerst.
+                    progress.note(
+                        f"{labels[identity]}: keine Historie — kein Fit, "
+                        f"{TASKS_PER_STATION - 1} Folgetasks entfallen",
+                        sticky=False,
+                    )
 
             def note(result):
                 """Fortschritt je fertiger Teilaufgabe (auch im Fehlerfall)."""
@@ -290,6 +305,36 @@ def refresh(settings: Settings, now=None, progress=None):
                     "reason": "insufficient_or_invalid_training_data",
                     "detail": detail,
                 }
+                if progress:
+                    # 0.25.1: Dieselbe Ursache ins Job-Log — ohne sie bleibt
+                    # offen, ob die Station je fitbar wird oder dauerhaft tot
+                    # ist (A12). Nicht klebend: sie gilt nur für diese Station.
+                    progress.note(
+                        f"{labels[result['key']]} · fit24 – FEHLER: "
+                        f"{(detail or 'unbekannte Ursache')[:200]}",
+                        sticky=False,
+                    )
+
+            # 0.25.1: Jede Station ohne Modell kostet ihre drei Folgeaufgaben
+            # (+3 d, +7 d, Backtest). Die Gesamtzahl wird nachgezogen, sonst
+            # endet der Lauf bei „77/80“ — das sieht aus wie verschluckte
+            # Aufgaben. Noch folgende Kraftstoffe bleiben geschätzt.
+            if progress:
+                dropped = len(metas) - len(fitted)
+                if dropped:
+                    progress.note(
+                        f"{dropped} Station"
+                        f"{'en' if dropped != 1 else ''} ohne Modell — "
+                        f"{dropped * (TASKS_PER_STATION - 1)} Folgetasks entfallen",
+                        sticky=False,
+                    )
+                    progress.retotal(
+                        fit_done
+                        + (TASKS_PER_STATION - 1) * len(fitted)
+                        + (len(settings.model_fuels) - fuel_index - 1)
+                        * len(metas)
+                        * TASKS_PER_STATION
+                    )
 
             # Phase B: erweiterte Horizonte + Backtest je Station.
             following = []
@@ -339,6 +384,15 @@ def refresh(settings: Settings, now=None, progress=None):
                         "reason": "horizon_or_backtest_failed",
                         "detail": result.get("detail", ""),
                     }
+                    if progress:
+                        # 0.25.1: Ursache auch hier ins Job-Log (bisher nur
+                        # im Artefakt unter ``failures``).
+                        progress.note(
+                            f"{labels[identity]} · {result['kind']}"
+                            f"{result.get('hours') or ''} – FEHLER: "
+                            f"{(result.get('detail') or 'unbekannte Ursache')[:200]}",
+                            sticky=False,
+                        )
                     continue
                 if result["kind"] == "wide":
                     # Nur Quantile + Zeitstempel: Diagnostikspalten blieben Ballast.

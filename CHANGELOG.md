@@ -4,6 +4,64 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.25.1] – 2026-09-13
+
+**Begleitpunkte des Laufzeit-Bündels — ausdrücklich ohne Batch 4**
+(B19/B20-Rest/B23 bleiben liegen). Auslöser war ein Job-Log vom 13.09.2026 mit
+„1 Fehler“ und der Endzeile `77/80`: beides war nicht zuordnenbar, weil die
+Ursache nur auf Container-stdout stand und der Zähler Aufgaben mitzählte, die
+gar nicht mehr eingereicht werden.
+
+### Behoben
+
+- **Fehlerursache im Job-Log** (`app/refresh.py`, `app/progress.py::note`):
+  Fällt der Fit einer Station aus (`insufficient_or_invalid_training_data`),
+  fehlt ihre Historie (`missing_history`) oder scheitert ein Horizont/Backtest
+  (`horizon_or_backtest_failed`), steht der Grund jetzt mit Stationsname und
+  Engine-Text in `runtime/jobs/models.log` — z. B. „nur 12 nutzbare Tage mit
+  344 offenen 5-Minuten-Preisen in 42 Tagen; mindestens 28 Tage mit 672
+  Punkten erforderlich“. Bisher stand die Zeile nur in `docker logs`, zwischen
+  hunderten anderen. Neu dafür: `note(…, sticky=False)` — eine Log-Zeile, die
+  **nicht** als Status an jedem folgenden Schritt kleben bleibt. Erst mit der
+  Zahl im Log ist entscheidbar, ob die Station je fitbar wird oder dauerhaft
+  tot ist (A12).
+- **Ehrlicher Fortschrittszähler** (`app/progress.py::retotal`): Die
+  Gesamtzahl ist vorab als `Stationen × Kraftstoffe × 4 Aufgaben` geschätzt
+  (heute 80). Fällt eine Station in Phase A aus, entfallen ihre drei
+  Folgeaufgaben (+3 d, +7 d, Backtest) — die Zahl wird nachgezogen
+  (Log-Zeilen „1 Station ohne Modell — 3 Folgetasks entfallen“ und
+  „Gesamtzahl auf 77 Schritte korrigiert“), statt mit „77/80“ zu enden. Der
+  Balken springt dabei nicht zurück (nie weniger als schon erreicht), und bei
+  mehreren Kraftstoffen zählt er über alle hinweg — vorher begann jeder
+  Kraftstoff wieder bei 0.
+
+### Betrieb
+
+- **B11-Messprotokoll auf den Kaltlauf umgestellt**
+  ([docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11)):
+  Der Tages-Cache des Backtests (B17) gilt für den ganzen lokalen Tag — sein
+  Fingerabdruck enthält `end_local`, den letzten vollständigen Tag. Weil
+  `models` nach B18 nur 1×/Tag läuft, ist **jeder Planlauf ein Kaltlauf**
+  (~9 min Phase B, zugleich der Speicher-Worst-Case); warm (~40 s) sind nur
+  zusätzliche Läufe am selben Tag, etwa nach einem Container-Recreate. Gemessen
+  wird deshalb im Kaltlauf; kalt erzwingen geht per `TANKAPP_BACKTEST_CACHE=0`
+  oder durch Löschen von `runtime/engine/backtest-cache/`.
+- **Sammler statt Hand-Tippen**: `ops/nas/measure-phase-b.sh` schreibt alle 5 s
+  eine Zeile (Speicher, `MEM %`, CPU, Python-Prozesse, Host verfügbar,
+  `/dev/shm` — je mit der Phase aus dem Job-Log) und rechnet am Ende die
+  Maxima/Minima zusammen. Die vier von Hand getippten Befehle treffen das
+  40-s-Fenster eines Warm-Laufs nicht mehr.
+- **Die Messung selbst steht weiterhin aus** — B11 bleibt offen, bis die fünf
+  Zahlen in [TODO.md](TODO.md) eingetragen sind.
+
+### Tests
+
+- `tests/test_app_jobs.py`: nicht-klebende Notiz bleibt aus dem Status, aber
+  steht im Log; `retotal` korrigiert die Gesamtzahl ohne Rücksprung; ein
+  Refresh mit unfitbarer Station nennt den Grund im Job-Log und endet bei
+  `5/5` statt `5/8`; ein harter Fit-Fehler (`engine.models.fit` wirft) landet
+  mit seiner Meldung im Log.
+
 ## [0.25.0] – 2026-09-13
 
 **Batch 0 des Laufzeit-Bündels** (TODO.md §B, „0 — ohne Code“): Ursachen
