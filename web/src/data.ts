@@ -135,6 +135,8 @@ export type Alarm = {
 export type Health = {
   app: string;
   polling_error: string | null;
+  // B21: erwarteter Pfad des Polling-Sets für die GUI-Diagnose
+  polling_path?: string | null;
   influx_configured: boolean;
   archive_configured: boolean;
   jobs_enabled: boolean;
@@ -2160,7 +2162,7 @@ export function detourVerdict(
 }
 
 export const messages: Record<string, string> = {
-  polling_missing: "Das gemeinsame Polling-Set fehlt auf diesem Server.",
+  polling_missing: "Polling-Set fehlt — keine Stadt eingerichtet. Auf dem Pi data/analysis/stations/polling.json erzeugen (docs/INSTALL.md Abschnitt Polling-Set), auf dem NAS TANKAPP_POLLING_FILE prüfen (ops/nas/app/compose.yml → /config/polling.json RO) und ops/nas/preflight.sh ausführen.",
   polling_invalid: "Das Polling-Set ist ungültig. Es wurde nichts ersetzt.",
   influx_not_configured:
     "Der vorhandene InfluxDB-Lesezugang ist noch nicht eingebunden.",

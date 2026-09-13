@@ -40,16 +40,37 @@ def build_alarms(
     alarms: list[dict[str, Any]] = []
 
     if polling_error:
-        alarms.append(
-            {
-                "code": polling_error,
-                "severity": "error",
-                "message": (
-                    "Das gemeinsame Polling-Set ist ungültig oder fehlt — "
-                    "keine Stationen verfügbar."
-                ),
-            }
-        )
+        # B21: Polling-Set fehlt → Hauptgrund für „Keine Stadt eingerichtet“
+        # + „Ehrlich statt geschätzt / Noch kein frischer Preis“ trotz
+        # Collector-✓ und Influx-✓. Actionable Copy: Wo liegt die Datei und
+        # wie wird sie repariert (Pi → data/analysis/stations/polling.json,
+        # NAS → TANKAPP_POLLING_FILE).
+        if polling_error == "polling_missing":
+            polling_path = str(getattr(settings, "polling", "data/analysis/stations/polling.json"))
+            alarms.append(
+                {
+                    "code": polling_error,
+                    "severity": "error",
+                    "message": (
+                        f"Polling-Set fehlt ({polling_path}) — keine Stadt eingerichtet. "
+                        "Auf dem Pi data/analysis/stations/polling.json erzeugen "
+                        "(docs/INSTALL.md Abschnitt Polling-Set), auf dem NAS "
+                        "TANKAPP_POLLING_FILE prüfen und ops/nas/preflight.sh ausführen. "
+                        "Collector-Herzschlag ✓ und InfluxDB ✓ nützen ohne Polling-Set nichts."
+                    ),
+                }
+            )
+        else:
+            alarms.append(
+                {
+                    "code": polling_error,
+                    "severity": "error",
+                    "message": (
+                        "Das gemeinsame Polling-Set ist ungültig oder fehlt — "
+                        "keine Stationen verfügbar."
+                    ),
+                }
+            )
 
     collector = collector or {}
     if not collector.get("available"):

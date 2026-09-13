@@ -353,6 +353,24 @@ export function DailyView(props: DailyViewProps) {
     </section>
   )}
 
+  {/* B21: Polling-Set fehlt — Hauptgrund für „Ehrlich statt geschätzt / Noch kein frischer Preis“ */}
+  {data?.connection_error === "polling_missing" && (
+    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-950/40 p-4">
+      <p className="text-xs font-semibold text-amber-200">
+        Polling-Set fehlt — keine Stadt eingerichtet
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+        Auf dem Pi <code>data/analysis/stations/polling.json</code> erzeugen
+        (docs/INSTALL.md Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
+        <code>TANKAPP_POLLING_FILE</code> prüfen (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
+        <code>ops/nas/preflight.sh</code> ausführen. Collector-Herzschlag{" "}
+        {h?.collector?.available ? "✓" : "fehlt"} und InfluxDB-Lesezugang{" "}
+        {h?.influx_configured ? "✓" : "fehlt"} nützen ohne Polling-Set nichts. Pfad:{" "}
+        <code>{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
+      </p>
+    </div>
+  )}
+
   <div className="mb-4">
     <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-emerald-500">
       Alltag / {activeCity || "Dein Standort"}
@@ -416,7 +434,9 @@ export function DailyView(props: DailyViewProps) {
             <p className="mt-2 max-w-lg text-xs leading-relaxed text-slate-400">
               {best
                 ? `Unter deinen ausgewählten Stationen in ${activeCity}. Das ist ein Preisvergleich, noch keine Empfehlung für eine Extra-Fahrt.`
-                : "Sobald der Pi Preise hochlädt und der NAS-Lesezugang eingerichtet ist, erscheinen sie hier automatisch."}
+                : data?.connection_error === "polling_missing"
+                  ? `Kein Polling-Set — keine Stadt eingerichtet. Deshalb „Ehrlich statt geschätzt / Noch kein frischer Preis“ trotz Collector-✓ und Influx-✓. Auf dem Pi polling.json erzeugen (docs/INSTALL.md), auf dem NAS TANKAPP_POLLING_FILE prüfen.`
+                  : "Sobald der Pi Preise hochlädt und der NAS-Lesezugang eingerichtet ist, erscheinen sie hier automatisch."}
             </p>
           </div>
         </div>

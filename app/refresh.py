@@ -442,11 +442,22 @@ def refresh(settings: Settings, now=None, progress=None):
                 sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=2000)
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
-                print(
-                    f"models: Selektion {fuel}: {len(sel_result.get('top_global', []))} Top-Stationen, "
-                    f"{len(sel_result.get('cities', []))} Städte",
-                    flush=True,
-                )
+                # B21: „0 Stationen“ ohne Grund ist nicht debuggbar — Diagnose loggen
+                top_n = len(sel_result.get('top_global', []))
+                city_n = len(sel_result.get('cities', []))
+                diag = sel_result.get('diagnostics', [])
+                if top_n == 0 and diag:
+                    reasons = "; ".join(d.get('reason', '') for d in diag[:3])
+                    print(
+                        f"models: Selektion {fuel}: 0 Stationen — Diagnose: {reasons} — "
+                        f"{city_n} Städte (alle ohne Ranking)",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"models: Selektion {fuel}: {top_n} Top-Stationen, {city_n} Städte",
+                        flush=True,
+                    )
             except Exception as exc:
                 print(
                     f"models: Selektion {fuel} übersprungen ({type(exc).__name__}: {exc})",

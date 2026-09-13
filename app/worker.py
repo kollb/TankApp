@@ -128,24 +128,13 @@ def execute(name, settings, progress=None):
 
     from .refresh import refresh
 
-    outcome = refresh(settings, progress=progress)
-    # After successful model refresh, also try to update selection (best effort)
-    if outcome.get("state") in ("success", "partial"):
-        try:
-            from .selection import build_selection
-            from engine.storage import write_json
-
-            sel = build_selection(
-                settings,
-                fuels=list(settings.model_fuels),
-                n_boot=2000,
-                progress=progress,
-            )
-            write_json(settings.runtime / "selection" / "current.json", sel)
-        except Exception:
-            # Selection failure must not fail model job
-            pass
-    return outcome
+    # B21: Selektion läuft bereits in refresh() (je Kraftstoff) und publiziert
+    # nach runtime/selection/current.json. Ein zweiter Aufruf hier überschrieb
+    # das Artefakt mit abweichender Struktur und „0 Stationen“ (Fortschritt
+    # 2/1 bei total=1). Deshalb kein zweiter build_selection-Aufruf mehr —
+    # refresh() bleibt die einzige Quelle; der eigenständige Job „selection“
+    # rechnet täglich separat.
+    return refresh(settings, progress=progress)
 
 
 def run(name, settings):
