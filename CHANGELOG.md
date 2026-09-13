@@ -53,6 +53,12 @@ Fenster-Reihenfolge lernt aus deinen Tankzeiten.
   einen identifizierbaren `User-Agent` — ohne diese Kennung blockt die OSM
   Tile Usage Policy mit HTTP 403 („Access blocked“).
 - Version 0.31.0, ToDo-Stand aktualisiert (A9/A10/A11 erledigt).
+- **D4-Folge (CI):** das Lighthouse-Gate startet den Demo-Stack jetzt selbst
+  (eigener Schritt mit Bereitschaftsschleife auf `/api/v1/health`) und
+  Chrome läuft mit `--no-sandbox`. Vorher startete Lighthouse-CI den Server
+  und wartete auf „bereit auf“ — auf dem CI-Läufer dauerte der Demo-Aufbau
+  länger als diese Wartezeit, der Lauf brach **ohne Bericht** ab: ein rotes
+  Gate ohne Befund. Begründung in [QUALITAET.md](docs/QUALITAET.md).
 
 ### Dokumentation
 
