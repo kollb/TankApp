@@ -212,7 +212,12 @@ def _process_context():
 
 
 def _init(
-    series_map: dict, cfg, origin, cache_dir=None, shared_draws: bool = True
+    series_map: dict,
+    cfg,
+    origin,
+    cache_dir=None,
+    shared_draws: bool = True,
+    model_kind: str = "ensemble",
 ) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task).
 
@@ -227,6 +232,9 @@ def _init(
     _STATE["origin"] = origin
     _STATE["cache_dir"] = cache_dir
     _STATE["shared_draws"] = bool(shared_draws)
+    # A10: „harmonic_ar2“ (alt), „profile_ar2“ (Zweitmodell) oder
+    # „ensemble“ (Default: inverse-MASE-gewichtete Mischung).
+    _STATE["model_kind"] = str(model_kind or "harmonic_ar2").strip().lower()
 
 
 def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
@@ -355,8 +363,10 @@ def _run(task: tuple) -> dict[str, Any]:
             return out
         model = fit(item, origin, cfg)
         shared = bool(_STATE.get("shared_draws", True))
+        # Achtung: nicht „kind“ heißen — das ist die Aufgabenart.
+        model_kind = str(_STATE.get("model_kind") or "harmonic_ar2")
         frame, paths = predict(
-            model, hours=hours, return_paths=True, shared_draws=shared
+            model, hours=hours, return_paths=True, shared_draws=shared, kind=model_kind
         )
         out.update(
             ok=True,
@@ -394,12 +404,14 @@ class ModelTaskPool:
         workers: int = 1,
         cache_dir=None,
         shared_draws: bool = True,
+        model_kind: str = "ensemble",
     ) -> None:
         self.series_map = _slim_series_map(series_map)
         self.cfg = cfg
         self.origin = origin
         self.cache_dir = cache_dir
         self.shared_draws = bool(shared_draws)
+        self.model_kind = str(model_kind or "harmonic_ar2").strip().lower()
         # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
         # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
         # trotzdem pandas importieren und Speicher belegen.
@@ -418,6 +430,7 @@ class ModelTaskPool:
             self.origin,
             self.cache_dir,
             self.shared_draws,
+            self.model_kind,
         )
         if not self._serial:
             try:
@@ -431,6 +444,7 @@ class ModelTaskPool:
                         self.origin,
                         self.cache_dir,
                         self.shared_draws,
+                        self.model_kind,
                     ),
                 )
             except _POOL_FAILURES:
@@ -534,6 +548,7 @@ def run_tasks(
     on_done: Callable[[dict[str, Any]], None] | None = None,
     cache_dir=None,
     shared_draws: bool = True,
+    model_kind: str = "ensemble",
 ) -> list[dict[str, Any]]:
     """Kompatibler Ein-Wellen-Aufruf; Refresh nutzt einen Pool für zwei Wellen.
 
@@ -546,6 +561,12 @@ def run_tasks(
     # deckeln; Refresh hält dagegen Kapazität für die größere Folgewelle frei.
     effective_workers = min(max(1, int(workers)), len(tasks))
     with ModelTaskPool(
-        series_map, cfg, origin, effective_workers, cache_dir, shared_draws
+        series_map,
+        cfg,
+        origin,
+        effective_workers,
+        cache_dir,
+        shared_draws,
+        model_kind,
     ) as pool:
         return pool.run(tasks, on_done=on_done)

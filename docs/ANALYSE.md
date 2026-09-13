@@ -352,6 +352,44 @@ unterschiedlich viele Tagesblöcke (erhaltene Prognosen, `retained_previous`).
 Das M7-Gate (§0.4) bleibt hart: `primary.p_correct` erscheint erst nach der
 Kalibrierung (n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
 
+## Ensemble aus zwei Modellkernen (A10, Konzept §3.2 M3)
+
+Seit 0.31.0 fittet die Engine **zwei** Modellkerne und mischt ihre
+Punktprognosen. Das Zweitmodell `profile_ar2` ist bewusst kein zweiter
+Sinus-Fit, sondern nicht-parametrisch: das Tagesprofil je 5-Minuten-Slot als
+**Median** über das Trainingsfenster (`engine/models.py::_profile_level`).
+Es teilt mit dem Hauptpfad alles andere — Holiday-Bereinigung, AR(2)-Nachlauf,
+Tagesblock-Bootstrap, 12-Uhr-Regel —, aber nicht die Formannahme. Genau
+darum trägt es bei: Tankstellenpreise haben oft zwei Spitzen (morgens,
+abends) und ein flaches Mittag, das eine harmonische Summe nur annähert.
+
+Gewichte ∝ **1/MASE** (`ensemble_detail`): verglichen wird die
+Eine-Schritt-Prognose beider Modelle auf den letzten 14 Trainingstagen,
+Nenner ist die saisonale Naive (derselbe Slot am Vortag). Veröffentlicht
+werden MAE, MASE, Stichprobengröße und Fenster — nicht nur die Gewichte,
+denn ein Gewicht ohne seine Grundlage ist eine Behauptung.
+
+| Messung (Demo-Daten, 6 Stationen, 72-h-Holdout, B = 200) | MAE |
+|---|---|
+| Hauptpfad `harmonic_ar2` (Stand vor 0.31.0) | 2,53 ct/L |
+| Zweitmodell `profile_ar2` | 1,86 ct/L |
+| **Ensemble** (Default) | **1,93 ct/L** (−24 % gegen den Hauptpfad, 6/6 Stationen besser) |
+
+Ehrlicher Befund: **das Ensemble ist schlechter als das Zweitmodell allein**
+(1,93 vs. 1,86), weil die Gewichte fast gleich ziehen (0,51 / 0,49) — das
+Eine-Schritt-Fenster trennt die Modelle kaum, beide stützen sich dort auf
+denselben AR(2)-Nachlauf. Der Sprung gegen den bisherigen Hauptpfad kommt
+also vom Zweitmodell, nicht von der Mischung. Die Gewichte stattdessen aus
+dem Rolling-Origin-Backtest (Mehrstufen-Fehler, wie er später tatsächlich
+gebraucht wird) zu ziehen, ist ein eigener Schritt und bewusst offen
+([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). Bis dahin gilt:
+das Ensemble ist nie schlechter als das **schlechtere** der beiden Modelle,
+und `TANKAPP_MODEL_KIND` stellt jeden Pfad einzeln her — die Zahl oben ist
+damit nachprüfbar, nicht geglaubt.
+
+Die Verteilungsform kommt in allen drei Fällen aus dem Tagesblock-Bootstrap
+des Hauptpfads; das Ensemble verschiebt sie auf den gewichteten Punktwert.
+
 ## Umweg-Ökonomie B3.12
 
 Formel Konzept §10: K = d·(c/100)·p + (d/v)·z

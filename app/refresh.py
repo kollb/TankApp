@@ -293,6 +293,9 @@ def refresh(settings: Settings, now=None, progress=None):
                 # A11: gemeinsame Ziehung (§4.2); TANKAPP_SHARED_DRAWS=0
                 # schaltet für Gegenmessungen zurück auf unabhängig.
                 shared_draws=getattr(settings, "shared_draws", True),
+                # A10: Ensemble aus Haupt- und Zweitmodell (§3.2 M3);
+                # TANKAPP_MODEL_KIND stellt auf ein Einzelmodell um.
+                model_kind=getattr(settings, "model_kind", "ensemble"),
             ) as task_pool:
                 # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
                 first = task_pool.run(
@@ -463,6 +466,11 @@ def refresh(settings: Settings, now=None, progress=None):
                         # Rolling-PICP 7 d je Station (Konzept §3.3.3):
                         # Konfidenz-Badge + letzte 7 Testtage; „current“ ist
                         # die Zahl fürs Güte-Gate (§4.4) in /v1/decide.
+                        # A10: Zweitmodell und Ensemble — Gewichte, MASE
+                        # und Bewertungsfenster kommen aus dem Fit, die GUI
+                        # zeigt sie in der Werkstatt nur an.
+                        "ensemble": model.get("ensemble"),
+                        "model_kind": getattr(settings, "model_kind", "ensemble"),
                         "rolling_picp_7d": report.get("rolling_picp_7d"),
                         # Mehrtage-Horizonte +3 d/+7 d (Konzept §3.4):
                         # MASE/PICP der Fan-Chart-Horizonte, ehrlich

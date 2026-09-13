@@ -15,6 +15,9 @@ from .holidays import holiday_flags
 
 QUANTILES = (0.025, 0.10, 0.50, 0.90, 0.975)
 Q_COLUMNS = ("q025", "q10", "q50", "q90", "q975")
+# A10 (0.31.0): Fenster am Ende des Trainings, auf dem die inversen
+# MASE-Gewichte des Ensembles bestimmt werden (Konzept §3.2 M3).
+VALIDATION_WINDOW_DAYS = 14
 # Schema 2 (Konzept §3.2): X trägt zusätzlich zum Kalender-Satz (12 Spalten)
 # den gepoolten Feiertags-Dummy und die Zeit seit dem letzten Preissprung.
 # beta wächst damit von 12 auf 13 Spalten (Feiertag läuft als eigener,
@@ -446,6 +449,111 @@ def _naive_profile(recent: pd.Series, cfg: Config) -> np.ndarray:
     return naive
 
 
+def _profile_level(values: np.ndarray, slot_index: np.ndarray) -> np.ndarray:
+    """Median je Tages-Slot (288) — das Zweitmodell (A10).
+
+    Nicht-parametrisch: statt einer Sinusform wird der beobachtete
+    Tagesverlauf je Slot genommen. Ein Slot ohne Beobachtung bleibt NaN —
+    kein Auffüllen aus Nachbarstunden, sonst wäre das „Profil“ erfunden.
+    """
+    level = np.full(288, np.nan)
+    for slot in range(288):
+        mask = slot_index == slot
+        if mask.any():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                level[slot] = np.nanmedian(values[mask])
+    return level
+
+
+def ensemble_detail(
+    adjusted: np.ndarray,
+    harmonic: np.ndarray,
+    profile: np.ndarray,
+    residual_h: np.ndarray,
+    residual_p: np.ndarray,
+    phi_h: np.ndarray,
+    phi_p: np.ndarray,
+    window_days: int = VALIDATION_WINDOW_DAYS,
+) -> dict:
+    """Gewichte ∝ 1/MASE aus einem Validierungsfenster (A10, Konzept §3.2 M3).
+
+    Verglichen wird die **Eine-Schritt-Prognose** (5 min im Voraus, AR(2)-
+    Zustand aus den beiden Vorpunkten) beider Modelle auf den letzten
+    ``window_days`` Trainingstagen; Nenner ist die saisonale Naive
+    (derselbe Slot am Vortag) — damit ist es ein echter MASE, nicht nur ein
+    MAE-Vergleich.
+
+    Ausgewiesen wird alles, was das Gewicht trägt: MAE, MASE, Stichprobe und
+    Fenster. Ist ein MASE nicht bestimmbar (zu wenig Daten, Naive konstant),
+    trägt das Modell nichts bei — der Hauptpfad bleibt dann allein.
+    """
+    n = len(adjusted)
+    empty = {
+        "weights": {"harmonic_ar2": 1.0, "profile_ar2": 0.0},
+        "mase": {"harmonic_ar2": None, "profile_ar2": None},
+        "mae": {"harmonic_ar2": None, "profile_ar2": None},
+        "n_eval": 0,
+        "window_days": int(window_days),
+        "method": "inverse_mase_one_step_validation",
+    }
+    if n <= 288 + 2:
+        return empty
+    start = max(288, n - int(window_days) * 288)
+    idx = np.arange(start, n)
+
+    def errors(structure: np.ndarray, residual: np.ndarray, phi: np.ndarray):
+        prediction = (
+            structure[idx] + phi[0] * residual[idx - 1] + phi[1] * residual[idx - 2]
+        )
+        return np.abs(adjusted[idx] - prediction)
+
+    naive = np.abs(adjusted[idx] - adjusted[idx - 288])
+    usable = np.isfinite(adjusted[idx]) & np.isfinite(naive)
+    if not usable.any():
+        return empty
+    scale = float(np.mean(naive[usable]))
+    if not np.isfinite(scale) or scale <= 0:
+        return empty
+    errs = {
+        "harmonic_ar2": errors(harmonic, residual_h, phi_h),
+        "profile_ar2": errors(profile, residual_p, phi_p),
+    }
+    mae: dict[str, float | None] = {}
+    mase: dict[str, float | None] = {}
+    for name, err in errs.items():
+        mask = usable & np.isfinite(err)
+        if not mask.any():
+            mae[name], mase[name] = None, None
+            continue
+        mae[name] = round(float(np.mean(err[mask])), 6)
+        mase[name] = round(mae[name] / scale, 4)
+    inverse = {
+        name: (1.0 / value if value and value > 0 else 0.0)
+        for name, value in mase.items()
+    }
+    total = sum(inverse.values())
+    weights = (
+        {name: round(value / total, 4) for name, value in inverse.items()}
+        if total > 0
+        else {"harmonic_ar2": 1.0, "profile_ar2": 0.0}
+    )
+    return {
+        "weights": weights,
+        "mase": mase,
+        "mae": mae,
+        "n_eval": int(mask_count(usable)),
+        "window_days": int(window_days),
+        "method": "inverse_mase_one_step_validation",
+        "naive_mae": round(scale, 6),
+    }
+
+
+def mask_count(mask: np.ndarray) -> int:
+    """Anzahl nutzbarer Vergleichspunkte (Hilfsfunktion, keine Fachlogik)."""
+    return int(np.count_nonzero(mask))
+
+
 def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     origin = utc_time(origin, cfg.timezone)
     if origin != origin.floor(f"{cfg.step_minutes}min"):
@@ -508,6 +616,30 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     phi = fit_ar2(residual)
     # [epsilon(t-1), epsilon(t-2)] at the forecast origin. No stale carryover.
     state = residual[-2:][::-1] if np.isfinite(residual[-2:]).all() else np.zeros(2)
+    # A10: Zweitmodell „profile_ar2“ — Tagesprofil je Slot (Median) statt
+    # Harmonischer, sonst dieselbe Kette (Holiday-Bereinigung, AR(2),
+    # Tagesblock-Bootstrap). Es ist bewusst **nicht** eine zweite Variante
+    # derselben Sinusform, sondern ein anderer Modellkern (Konzept §3.2 M3).
+    slot_train = slots(index, cfg)
+    profile_level = _profile_level(adjusted, slot_train)
+    profile_structure = profile_level[slot_train]
+    profile_residual = adjusted - profile_structure
+    profile_phi = fit_ar2(profile_residual)
+    profile_state = (
+        profile_residual[-2:][::-1]
+        if np.isfinite(profile_residual[-2:]).all()
+        else np.zeros(2)
+    )
+    profile_blocks = _residual_blocks(index, profile_residual, cfg)
+    ensemble = ensemble_detail(
+        adjusted,
+        x @ beta,
+        profile_structure,
+        residual,
+        profile_residual,
+        phi,
+        profile_phi,
+    )
     # B16(a)+(c): Residuen-Tagesblöcke als direkte (Tag, Slot)-Index-Zuweisung
     # statt pivot_table(aggfunc="median") — bitgleich, siehe _residual_blocks.
     blocks = _residual_blocks(index, residual, cfg)
@@ -578,6 +710,13 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "ar_phi": phi,
         "ar_state": state,
         "residual_blocks": blocks,
+        # A10: Zweitmodell samt Gewichten (Konzept §3.2 M3). Fehlen die
+        # Felder (Alt-Artefakt), rechnet predict allein mit dem Hauptpfad.
+        "profile_level": profile_level,
+        "profile_phi": profile_phi,
+        "profile_state": profile_state,
+        "profile_blocks": profile_blocks,
+        "ensemble": ensemble,
         "naive_profile": naive,
         "mase_scale": scale_detail["scale"],
         "mase_scale_detail": scale_detail,
@@ -699,6 +838,7 @@ def predict(
     index: pd.DatetimeIndex | None = None,
     return_paths: bool = False,
     shared_draws: bool = False,
+    kind: str = "harmonic_ar2",
 ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
     """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
     5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
@@ -716,6 +856,12 @@ def predict(
     Stationen eines Laufs (A11, Konzept §4.2): gleiche Zufallszahlen je
     (Horizont, Tagesposition), je Station über die eigene Blockverteilung
     abgebildet. Ohne das Flag bleibt die Ziehung unabhängig wie vor 0.31.0.
+
+    ``kind`` wählt das Punktmodell (A10, Konzept §3.2 M3): ``harmonic_ar2``
+    (Default, wie vor 0.31.0), ``profile_ar2`` (Zweitmodell) oder
+    ``ensemble`` (inverse-MASE-gewichtete Mischung beider Punktprognosen).
+    Die Verteilungsform kommt in allen drei Fällen aus dem Tagesblock-
+    Bootstrap; das Ensemble verschiebt sie auf den gewichteten Punktwert.
     """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
@@ -773,10 +919,66 @@ def predict(
     # 12-Uhr-Regel: Median und Struktur dürfen innerhalb der Segmente
     # [12:00 Uhr, nächste 12:00 Uhr) nicht steigen; der erlaubte Sprung liegt
     # an der Segmentgrenze. Segmente vor dem Gesetzesbeginn bleiben unverändert.
-    point = noon_law_projection(
+    point_harmonic = noon_law_projection(
         structure + correction[offsets], index, cfg, segments=segments
     )
+    # A10: Zweitmodell und Ensemble-Punkt. Ohne Profil im Artefakt (Altbestand
+    # oder Schema-1-Fit) bleibt der Hauptpfad allein — nie ein halbes Ensemble.
+    raw_profile = model.get("profile_level")
+    profile_level = np.asarray(
+        raw_profile if raw_profile is not None else [], dtype=float
+    )
+    ensemble = model.get("ensemble") or {}
+    weights = dict(ensemble.get("weights") or {})
+    w_harmonic = float(weights.get("harmonic_ar2", 1.0) or 0.0)
+    w_profile = float(weights.get("profile_ar2", 0.0) or 0.0)
+    kind = (kind or "harmonic_ar2").strip().lower()
+    point_profile = None
+    if profile_level.shape == (288,) and np.isfinite(profile_level).any():
+        profile_phi = np.asarray(
+            model["profile_phi"]
+            if model.get("profile_phi") is not None
+            else (0.0, 0.0),
+            dtype=float,
+        )
+        profile_state = list(
+            np.asarray(
+                model["profile_state"]
+                if model.get("profile_state") is not None
+                else (0.0, 0.0),
+                dtype=float,
+            )
+        )
+        profile_correction = np.zeros(int(offsets[-1]) + 1)
+        for i in range(len(profile_correction)):
+            following = (
+                profile_phi[0] * profile_state[0] + profile_phi[1] * profile_state[1]
+            )
+            profile_correction[i] = following
+            profile_state = [following, profile_state[0]]
+        point_profile = noon_law_projection(
+            profile_level[slots(index, cfg)] + profile_correction[offsets],
+            index,
+            cfg,
+            segments=segments,
+        )
+    if kind == "ensemble" and point_profile is not None:
+        total = w_harmonic + w_profile
+        share_h = w_harmonic / total if total > 0 else 1.0
+        share_p = w_profile / total if total > 0 else 0.0
+        point = share_h * point_harmonic + share_p * point_profile
+    elif kind == "profile_ar2" and point_profile is not None:
+        point = point_profile
+    else:
+        point = point_harmonic
     block = np.asarray(model["residual_blocks"], dtype=float)
+    if kind == "profile_ar2":
+        raw_blocks = model.get("profile_blocks")
+        profile_block = np.asarray(
+            raw_blocks if raw_blocks is not None else [], dtype=float
+        )
+        if profile_block.shape == block.shape:
+            block = profile_block
     slot = slots(index, cfg)
     counts = np.isfinite(block).sum(axis=0)
     supported = counts[slot] >= cfg.min_slot_days
@@ -816,7 +1018,13 @@ def predict(
     result = pd.DataFrame(quantiles, index=index, columns=Q_COLUMNS)
     result.index.name = "timestamp"
     result["structure"] = np.where(supported, structure, np.nan)
-    result["harmonic_ar2"] = np.where(supported, point, np.nan)
+    result["harmonic_ar2"] = np.where(supported, point_harmonic, np.nan)
+    result["profile_ar2"] = (
+        np.where(supported, point_profile, np.nan)
+        if point_profile is not None
+        else np.nan
+    )
+    result["ensemble"] = np.where(supported, point, np.nan)
     result["naive"] = np.asarray(model["naive_profile"], dtype=float)[slot]
     result["support_days"] = counts[slot]
     result["supported"] = supported

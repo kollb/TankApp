@@ -4,6 +4,64 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.31.0] – 2026-09-13
+
+**Die Prognose hat jetzt zwei Modellkerne, und die Unsicherheit rechnet
+zusammen statt getrennt.** Dazu: die Karte lädt wieder (CSP), die
+Qualitäts-Gates sind automatisiert, die Schwellen pendeln nicht mehr und die
+Fenster-Reihenfolge lernt aus deinen Tankzeiten.
+
+### Hinzugefügt
+
+- **A10 — Zweitmodell und inverse-MASE-Ensemble (Konzept §3.2 M3):**
+  `engine/models.py` fittet neben der harmonischen Tagesform ein
+  **Zweitmodell `profile_ar2`** — das Tagesprofil je 5-Minuten-Slot als
+  Median über das Trainingsfenster, also ein anderer Modellkern und kein
+  zweiter Sinus-Fit. Beide Punktprognosen werden mit Gewichten ∝ 1/MASE
+  gemischt; MAE, MASE, Bewertungsfenster und Stichprobengröße stehen im
+  Artefakt (`ensemble`) und werden je Prognose veröffentlicht. Schalter:
+  `TANKAPP_MODEL_KIND=harmonic_ar2|profile_ar2|ensemble` (Default
+  `ensemble`). Messung (Demo-Daten, 6 Stationen, 72-h-Holdout): MAE
+  **2,53 → 1,93 ct/L** (−24 %), in 6/6 Stationen besser als der Hauptpfad.
+- **A11 — gemeinsame Bootstrap-Ziehung (Konzept §4.2):** alle Stationen
+  eines Laufs ziehen ihre Tagesblöcke aus denselben Zufallszahlen je
+  (Horizont, Tagesposition), jede bildet sie über ihre eigene
+  Blockverteilung ab — der Marktgleichlauf bleibt in `p_lohnt` statt
+  herauszufallen. Ausgewiesen als `draws_24h.shared` / `draws_7d.shared`;
+  `TANKAPP_SHARED_DRAWS=0` stellt das alte Verhalten für Gegenmessungen her.
+- **A9 — persönliche Fensterreihenfolge (Konzept §5.5):** ab **8 Belegen**
+  gewichtet die App die F3-Fenster mit deinem Tankzeit-Profil w(h);
+  günstige Fenster zu Stunden, die du nie tankst, stehen weiter hinten.
+  Darunter bleibt die preisliche Reihenfolge — und die Tagesansicht sagt,
+  woran es liegt: „Noch nach Preis sortiert (5 Belege von 8) — es fehlen 3“.
+- **H3 — Hysterese für die M7-Schwellen:** der Regler schlägt eine
+  Anpassung nur vor, wenn sie über dem Rauschband liegt
+  (`app/thresholds.py`: 2,0-σ-Band, Mindest-Abstand 0,02 bei
+  Wahrscheinlichkeiten bzw. 0,05 €); die Werkstatt zeigt Band und
+  Begründung — auch die, warum **nicht** nachgezogen wird.
+- **D4 — Qualitäts-Gates automatisiert:** `ops/quality/gates.py` prüft
+  Bundle-Größe (200 kB gzip), Lighthouse-Kategorien ≥ 0,7 und eine
+  Lastprobe (25 RPS, p95 < 2 s, Fehlerquote < 5 %); Bericht als
+  `ops/quality/gates_report.json`. Ergebnis: alle Gates grün, das
+  B7-Restthema (Bundle-Aufteilung) ist damit **nicht** nötig.
+
+### Geändert
+
+- **Karte lädt wieder:** `Content-Security-Policy` lässt die OSM-Kacheln
+  zu (`img-src … https://*.tile.openstreetmap.org`, `connect-src` für
+  Tile- und Nominatim-Anfragen) und der Tile-Abruf sendet `Referer` sowie
+  einen identifizierbaren `User-Agent` — ohne diese Kennung blockt die OSM
+  Tile Usage Policy mit HTTP 403 („Access blocked“).
+- Version 0.31.0, ToDo-Stand aktualisiert (A9/A10/A11 erledigt).
+
+### Dokumentation
+
+- [ANALYSE.md](docs/ANALYSE.md): P-Seite mit gemeinsamer Ziehung und
+  Messwerten, neuer Abschnitt „Ensemble aus zwei Modellkernen (A10)“.
+- [LUECKEN.md](docs/LUECKEN.md): Punkt „gemeinsame Bootstrap-Ziehung“
+  geschlossen; neu und begründet offen: Ensemble-Gewichte aus dem
+  Rolling-Origin-Backtest statt aus dem Validierungsfenster.
+
 ## [0.30.0] – 2026-09-13
 
 **Die Karte lädt wieder und beginnt am Anker.** Die OSM-Kacheln wurden von

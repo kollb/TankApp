@@ -177,6 +177,17 @@ Poll-Bündelung), **B2** (Schema-Version des Feedback-Stores), **D1**
 einzige Quelle von Strecke und Schwellen), siehe
 [CHANGELOG](../CHANGELOG.md#0100--2026-09-12).
 
+### 13.09.2026 — Version 0.31.0: zwei Modellkerne, gemeinsame Unsicherheit, Ordnung in den Schwellen
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| A10 Zweitmodell | `profile_ar2`: Tagesprofil je 5-Minuten-Slot als Median statt Sinusform (`engine/models.py`) | §3.2 M3 |
+| A10 Ensemble | Gewichte ∝ 1/MASE aus 14 Validierungstagen, MAE/MASE/Fenster veröffentlicht, `TANKAPP_MODEL_KIND` | §3.2 M3 |
+| A11 Gemeinsame Ziehung | `shared_day_uniforms` + `blocks_from_uniform`, Ausweis `draws_*.shared`, `TANKAPP_SHARED_DRAWS=0` | §4.2 |
+| A9 Tankzeit-Profil | F3-Fenster ab 8 Belegen nach w(h) gewichtet, Hinweis in der Tagesansicht | §5.5 |
+| H3 Schwellen-Hysterese | 2-σ-Rauschband + Mindest-Abstand, Begründung auch fürs Nicht-Ändern | §0.4 |
+| D4 Qualitäts-Gates | `ops/quality/gates.py`: Bundle 200 kB gzip, Lighthouse ≥ 0,7, Lastprobe 25 RPS | Prüfstand §6 |
+
 ### 12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal
 
 | Punkt | Umsetzung | Prüfung |
@@ -340,6 +351,7 @@ Rechnung geändert.
 | **Standortwahl per `lat`/`lon` (§11.1)** | Die App arbeitet mit dem kuratierten Polling-Set ( Kontingent 1 R/5 min). Freie Umkreissuche bräuchte eigene Requests und ein Kontingent-Modell. |
 | **Offline-Queue für Fill/Intent (§5.4)** | Der Service-Worker hält die letzte Antwort vor; eine IndexedDB-Warteschlange ist sinnvoll, aber erst nötig, wenn Füllungen im echten Betrieb häufig offline erfasst werden. |
 | **E5↔E10-Äquivalenz im Ranking (§10)** | 1,015-Faktor ist eine Näherung; ohne gemessenen Mehrverbrauch des Fahrzeugs wäre das Ranking damit weniger ehrlich, nicht mehr. |
+| **Ensemble-Gewichte aus dem Validierungsfenster statt aus dem Backtest (A10)** | Die Gewichte ∝ 1/MASE entstehen aus der Eine-Schritt-Prognose (5 min) auf den letzten 14 Trainingstagen. Dort trennen sich die Modellkerne kaum: 0,51 / 0,49, obwohl der 72-Stunden-Fehler 2,53 vs. 1,86 ct/L sagt. Grund: auf 5 Minuten dominiert der AR(2)-Nachlauf, den beide Modelle gemeinsam haben; der Unterschied der Tagesform wirkt erst auf Stunden. Richtig wäre die Gewichtung aus dem Rolling-Origin-Backtest (Fehler über 24/72/168 h — genau die Horizonte, die die App ausgibt). Das ist mehr als ein Parameter: der Backtest müsste beide Kerne je Fold bewerten, und die Gewichte müssten je Horizont getrennt geführt werden. Bis dahin ist das Ensemble das, was die Messung oben zeigt: deutlich besser als der alte Hauptpfad, etwas schlechter als das Zweitmodell allein — und beides ist ausgewiesen statt behauptet. |
 | **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün“ als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
 | **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
