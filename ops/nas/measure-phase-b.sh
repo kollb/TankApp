@@ -2,10 +2,11 @@
 # B11: Ressourcen des Modell-Laufs während Phase B messen.
 #
 # Warum ein Skript und nicht vier Befehle von Hand: Seit B17 (Tages-Cache,
-# 0.22.0) dauert Phase B im Warm-Lauf nur noch ~40 s und im Kaltlauf ~9 min
-# (21-Tage-Backtest je Station). Von Hand getippt erwischt man entweder das
-# falsche Fenster oder gar keins. Der Sammler schreibt alle 5 s eine Zeile
-# und rechnet am Ende die fünf Zahlen aus, die B11 entscheidet.
+# 0.22.0) dauert Phase B im Warm-Lauf nur noch ~40 s und im Kaltlauf ~2,6 min
+# (gemessen 13.09.2026 nach B15/B16; vor den Hebeln 9,4 min am 12.09.).
+# Von Hand getippt erwischt man entweder das falsche Fenster oder gar keins.
+# Der Sammler schreibt alle 5 s eine Zeile und rechnet am Ende die fünf Zahlen
+# aus, die B11 entscheidet.
 #
 # Verwendung (auf dem NAS-Host, nicht im Container):
 #
@@ -17,9 +18,8 @@
 # nach „beendet: …“ im Job-Log Strg-C. Wärmstens empfohlen für den **Kaltlauf**
 # (erster Lauf des lokalen Tages) — das ist der Speicher-Worst-Case.
 #
-# Ergebnis in TODO.md bei B11 eintragen. Erwartet wird keine Beschleunigung,
-# sondern der Beleg, ob 4 Worker × pandas in shm_size: 256m und 4,2 Gi
-# verfügbarem Host-Speicher passen.
+# B11 ist mit 0.25.2 erledigt (Kaltlauf 13.09.2026: 1,0 GiB / 4,1 GiB /
+# shm 1 MiB / 381 %). Das Skript bleibt die Wiederholungsmessung.
 #
 # Stand 13.09.2026 (erster Messlauf): zwei Proben lieferten nichts und sind
 # gefixt — (1) `docker top` zeigt ohne `ps` im Image (python:3.14-slim) gar
@@ -94,12 +94,15 @@ count_python_procs() { # Python-Prozesse im Container, ohne ps im Image
   # für den Container-User lesbar (alle Prozesse laufen als derselbe User).
   # Erwartet in Phase B: 1 Master + 4 Worker + Forkserver + Resource-Tracker,
   # zusätzlich bis zu 1 Healthcheck-`python -c` (alle 30 s).
+  # cmdline *und* comm: `python*` allein verfehlt Forkserver-Kinder, deren
+  # argv mit `/usr/local/bin/python` beginnt (Kaltlauf 13.09.2026: max 2).
   docker exec "$CONTAINER" sh -c '
       n=0
       for d in /proc/[0-9]*; do
           c=$(tr "\0" " " < "$d/cmdline" 2>/dev/null)
-          case "$c" in
-              python*) n=$((n+1)) ;;
+          m=$(cat "$d/comm" 2>/dev/null)
+          case "$c $m" in
+              *python*) n=$((n+1)) ;;
           esac
       done
       echo "$n"' 2>/dev/null
@@ -136,7 +139,7 @@ summarise() {
   echo "Rohdaten: $RAW"
   echo "Einordnung: 4 Worker × ~150 MB Privat-Speicher ≈ 0,6 GB; der Host hat"
   echo "4,2 Gi verfügbar und Swap 0. Kritisch wird es unter ~500 MiB verfügbar."
-  echo "Ergebnis in TODO.md bei B11 eintragen."
+  echo "B11-Werte (0.25.2): Peak 1,0 GiB, Host min 4,1 GiB, shm 1 MiB, CPUS 381 %."
 }
 # Wichtig: ein Handler allein beendet das Skript nicht — ohne das ``exit``
 # liefe die Schleife nach Strg-C einfach weiter.

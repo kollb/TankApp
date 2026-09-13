@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 13.09.2026 · App-Version 0.26.0 — alles, was nach der Ersteinrichtung
+> Stand: 13.09.2026 · App-Version 0.26.1 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
 > GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
@@ -518,42 +518,64 @@ Archiv und Polling sind dieselben Marktdaten über zwei Bezugswege. Historie kan
 
 ### Ressourcen während Phase B messen (B11)
 
-Der erste Zielhardware-Lauf vom 13.09.2026 belegt bereits: vier Worker × pandas
-passen, `shm_size: 256m` bleibt (Peak 1,0 GiB Container, Host mindestens 4,1 GiB
-verfügbar, `/dev/shm` 1 MiB, CPU 370 %). Er war mit 9 Cache-Treffern und 10
-Neuberechnungen aber **kein strenger Kaltlauf**. Offen sind deshalb die
-vollständige Fünf-Zahlen-Gegenprobe nach 0.26.0 und die Nachher-Laufdauer. Die
-Leerlaufwerte aus `docker stats` (220–280 MiB, 7–10 PIDs) bleiben ungeeignet:
-Sie entstehen, bevor der Prozess-Pool überhaupt steht.
+**Erledigt in 0.26.1.** `TANKAPP_MODEL_WORKERS` startet 4 Worker × pandas,
+`ops/nas/app/compose.yml` setzt `shm_size: 256m`, der Host hat 4,2 Gi
+verfügbar — der Abgleich auf der Zielhardware (NAS `Tower`, Container
+`tankapp-web-app-1`) sagt: **passt, keine Änderung.**
+
+**Strenger Kaltlauf 13.09.2026** (Stand 0.25.1, vor Batch 4;
+`ops/nas/b11-cold-run.sh`, 25 Stichproben à 5 s, 17:36:21–17:39:16 local).
+Cache vorher gelöscht und verifiziert (Mount
+`/mnt/user/appdata/TankApp/data/runtime`). Job-Log: „Backtest: 0 aus
+Tages-Cache, 19 neu gerechnet“. 20 Stationen, e10, Dauer **2,6 min**,
+Endzustand `partial (some_models_unavailable)`.
+
+| Größe | Wert | Folge |
+|---|---|---|
+| Python-Prozesse | max **2** gezählt | Sammler matchte `cmdline` gegen `python*` — Forkserver-Kinder (`/usr/local/bin/python…`) fielen durch. Gegenprobe: CPUS 381 % ≈ 4 Worker. Der Sammler zählt seit 0.26.1 cmdline **und** `/proc/pid/comm`. Seit 0.26.0 ist die Startmethode `fork`, Forkserver entfällt. |
+| Container-Speicher | max **1031 MiB (1,0 GiB)**, MEM % 6,6 | Peak am Ende von Phase B; Leerlauf ~110 MiB |
+| Host verfügbar | min **4212 MiB (4,1 GiB)**, Swap 0 | Weit über ~500 MiB |
+| CPUS | max **381 %** (Phase B 248–381 %) | Pool mit ~4 Workern |
+| `/dev/shm` | max **1 MiB** / 256 MiB | `shm_size: 256m` bleibt |
+
+Ein früherer Lauf desselben Tags (14:26–14:29, 1029 MiB / 370 %) war **kein**
+Kaltlauf („9 aus Tages-Cache, 10 neu gerechnet“, 2,1 min) — am Peak ändert das
+nichts. Zahlen: [TODO.md](../TODO.md#b11-kaltlauf-13092026). Die
+**Nachher-Dauer von 0.26.0** (ein Pool, `fork`, Cache-Schema 2) ist eine
+eigene Messung nach dem Deploy — sie hält B11 nicht offen. Leerlaufwerte
+aus `docker stats` (220–280 MiB, 7–10 PIDs) bleiben ungeeignet: Sie entstehen,
+bevor der Prozess-Pool steht.
 
 Gemessen wird **während Phase B** — der Phase „Modelle fitten + Backtest“, im
 Job-Log an den Zeilen `Modelle fitten + Backtest n/m` zu erkennen. Zwei
-Stellen, an denen dieses Protokoll beim ersten Messlauf (13.09.2026)
+Stellen, an denen das Protokoll beim ersten Messlauf (13.09.2026)
 scheiterte und jetzt korrigiert ist: `ps` fehlt im Image
 (`python:3.14-slim`), und ohne `ps` liefert auch `docker top` keine
 Ausgabe — die Prozessliste kommt über einen `/proc`-Scan per `docker exec`
-(macht der Sammler seit dem ersten Lauf selbst). Und Fortschrittszeilen
-stehen **nie** auf Container-stdout: der Scheduler startet den Worker als
-Subprozess, dessen stdout nach `runtime/logs/models.log` geht, der Progress
-schreibt nach `runtime/jobs/models.log` — die Phase also immer aus dem
-Job-Log auf dem Host ablesen (`docker logs` zeigt beides nicht).
+(macht der Sammler selbst). Und Fortschrittszeilen stehen **nie** auf
+Container-stdout: der Scheduler startet den Worker als Subprozess, dessen
+stdout nach `runtime/logs/models.log` geht, der Progress schreibt nach
+`runtime/jobs/models.log` — die Phase also immer aus dem Job-Log auf dem
+Host ablesen (`docker logs` zeigt beides nicht).
 
 **Welches Fenster? Warm und kalt sind seit B17 (0.22.0) zweierlei.** Der
 Tages-Cache des Backtests gilt für den ganzen lokalen Tag: sein Fingerabdruck
 enthält den letzten vollständigen Tag (`end_local`, siehe
 `app/model_jobs.py::_backtest` und `app/backtest_cache.py::fingerprint`) — die
 Reihe wird dort hart abgeschnitten, untertägige Polls ändern ihn nicht.
+Seit 0.26.0 verwirft Cache-Schema 2 alte Schema-1-Dateien einmalig — der
+erste Lauf nach dem Update ist automatisch kalt.
 
 | Lauf | Backtest | Phase B | Wann |
 |---|---|---|---|
-| **Kalt** | 21-Tage-Backtest je Station neu | ~9 min (566 s am 12.09.2026) | erster Lauf des lokalen Tages |
-| **Warm** | „n aus Tages-Cache, m neu gerechnet“ | ~40 s (13.09.2026: 11:22:28 → 11:23:07) | jeder weitere Lauf am selben Tag |
+| **Kalt** | 21-Tage-Backtest je Station neu | **~2,6 min** Gesamt (13.09.2026 nach B15/B16, Stand 0.25.1; vor den Hebeln 9,4 min am 12.09.) | erster Lauf des lokalen Tages, oder erster Lauf nach Schema-Sprung |
+| **Warm** | „n aus Tages-Cache, m neu gerechnet“ | ~40 s (13.09.2026: 11:22:28 → 11:23:07; Warm-Gesamt 1,4–1,7 min) | jeder weitere Lauf am selben Tag |
 
 Weil `models` nach B18 (0.21.0) nur 1×/Tag läuft
 (`INTERVALS["models"] = 86400`), ist **jeder Planlauf ein Kaltlauf** — warm
 werden nur zusätzliche Läufe am selben Tag (ein Container-Recreate startet
-sofort, s. u.). Für B11 den **Kaltlauf** nehmen: längeres Fenster und zugleich
-der Speicher-Worst-Case. Kalt erzwingen — im Container liegt das
+sofort, s. u.). Wiederholungsmessung im **Kaltlauf**: längeres Fenster und
+zugleich der Speicher-Worst-Case. Kalt erzwingen — im Container liegt das
 Datenverzeichnis unter `/data`, auf dem Host dort, wohin `tankapp.py nas-up`
 es gemappt hat:
 
@@ -573,53 +595,41 @@ ops/nas/measure-phase-b.sh tankapp-web-app-1 5 0
 # Sammler starten → Modell-Lauf auslösen → nach „beendet:“ Strg-C
 ```
 
-Wer es doch von Hand macht (Kaltlauf, ~9 min Fenster — ein Durchgang genügt):
+Wer es doch von Hand macht (Kaltlauf, ~3 min Fenster — ein Durchgang genügt):
 
 ```bash
 tail -n 5 data/runtime/jobs/models.log             # Phase B läuft? (nur dort)
 docker exec tankapp-web-app-1 sh -c 'n=0; for d in /proc/[0-9]*; do \
-  c=$(tr "\0" " " < "$d/cmdline" 2>/dev/null); case "$c" in python*) n=$((n+1));; esac; done; echo $n'  # Python-Prozesse (kein ps im Image)
+  c=$(tr "\0" " " < "$d/cmdline" 2>/dev/null); m=$(cat "$d/comm" 2>/dev/null); \
+  case "$c $m" in *python*) n=$((n+1));; esac; done; echo $n'  # Python-Prozesse (kein ps im Image)
 docker stats --no-stream tankapp-web-app-1         # MEM USAGE / MEM % / CPUS
 docker exec tankapp-web-app-1 df -h /dev/shm       # shm_size: 256m — wie voll?
 free -h                                            # Host verfügbar
 ```
 
-Notieren (fünf Zahlen, mehr braucht die Entscheidung nicht):
+Fünf Zahlen, mehr braucht die Entscheidung nicht:
 
 | Größe | Woher | Entscheidet |
 |---|---|---|
-| Anzahl Python-Prozesse | `/proc`-Scan per `docker exec` (kein `ps` im Image, `docker top` liefert nichts) | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`); seit 0.26.0 explizites `fork`, also kein zusätzlicher Forkserver |
+| Anzahl Python-Prozesse | `/proc`-Scan per `docker exec` (cmdline **und** `comm`; kein `ps` im Image, `docker top` liefert nichts) | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23). Seit 0.26.0 explizites `fork`, also kein zusätzlicher Forkserver |
 | `MEM USAGE` des Containers | `docker stats` | ob 4 × pandas in 4,2 Gi verfügbarem Host-Speicher passen |
 | `MEM %` + `free -h` verfügbar | `docker stats`, `free -h` | ob Swap/OOM droht (Swap ist 0) |
 | `CPUS` | `docker stats` | ob 4 Worker ~400 % erreichen oder sich behindern |
 | `/dev/shm` belegt | `df -h /dev/shm` **im Container** | ob 256 MiB reichen — der Speicherwert des Containers beantwortet das nicht |
 
-Ergebnis in [TODO.md](../TODO.md) bei **B11** eintragen und, falls `shm_size`
-erhöht werden muss, in `ops/nas/app/compose.yml` ändern. Erwartet wird **keine**
-Beschleunigung — B11 ist ein Abgleich, kein Hebel: Durchsatz kommt aus B15/B16
-(0.20.0) und B17 (0.22.0).
+Erwartet wird **keine** Beschleunigung — B11 ist ein Abgleich, kein Hebel:
+Durchsatz kommt aus B15/B16 (0.20.0) und B17 (0.22.0). `shm_size` bleibt
+256m.
 
-**Erster Messlauf (13.09.2026, Sammler, 33 Stichproben, Stand 0.25.1):**
-Container-Peak 1,0 GiB, Host min 4,1 GiB verfügbar, `/dev/shm` 1 MiB, CPUS max
-370 % — der Abgleich spricht gegen ein Speicher-/shm-Problem; vier Worker und
-256 MiB shm bleiben. Zwei Einschränkungen: Der Lauf war kein Kaltlauf
-(„Backtest: 9 aus Tages-Cache, 10 neu gerechnet“, 2,1 min, trotz Cache-Löschung)
-und die Spalten `python_prozesse`/`phase` lieferten nichts (beides oben gefixt).
-Seit 0.26.0 entfallen der zweite Pool und `forkserver`-Kopien; ein neuer Peak
-wird trotzdem erst nach Messung behauptet. Beleg, Lücken und die offene strenge
-Kaltlauf-Gegenprobe: [TODO B11](../TODO.md).
-
-**Strenge Kaltlauf-Gegenprobe in einem Schritt:** Nach dem Update auf 0.26.0
-verfehlt Cache-Schema 2 die alten Dateien ohnehin einmal (im Log müssen 0
-Treffer stehen); das Skript löscht und verifiziert zusätzlich, damit der Beleg
-eindeutig bleibt. `ops/nas/b11-cold-run.sh` (nach `python3 tankapp.py nas-up`
-ausführen):
-wartet auf den sofortigen Recreate-Lauf, löscht den Cache und **verifiziert**
-die Löschung (inkl. Mount-Quellen-Prüfung von `/data/runtime`), sampelt mit
-dem Sammler, triggert den Lauf per `docker exec … python -m app.worker
-models` (umgeht Debounce) und schreibt alles — Stichproben, Auswertung,
-Job-Log-Ende, `models.json` und die Kaltlauf-Prüfung — in eine Datei
-`b11-cold-<stempel>/report.txt`.
+**Wiederholung in einem Schritt:** `ops/nas/b11-cold-run.sh` (nach
+`python3 tankapp.py nas-up` ausführen): wartet auf den sofortigen
+Recreate-Lauf, löscht den Cache und **verifiziert** die Löschung (inkl.
+Mount-Quellen-Prüfung von `/data/runtime`), sampelt mit dem Sammler,
+triggert den Lauf per `docker exec … python -m app.worker models` (umgeht
+Debounce) und schreibt alles — Stichproben, Auswertung, Job-Log-Ende,
+`models.json` und die Kaltlauf-Prüfung — in eine Datei
+`b11-cold-<stempel>/report.txt`. Nach 0.26.0 verfehlt Cache-Schema 2 alte
+Dateien ohnehin einmal (im Log müssen 0 Treffer stehen).
 
 **Achtung Messfalle (12.09.2026):** `nproc` meldet im Container `1`, weil das
 Image `OMP_NUM_THREADS=1` setzt. Kerne immer über die Affinität bestimmen:

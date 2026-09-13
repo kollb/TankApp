@@ -4,6 +4,39 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.26.1] – 2026-09-13
+
+**B11 abgeschlossen** — strenger Kaltlauf-Beleg auf der Zielhardware
+(Stand **0.25.1**, vor Batch 4). TODO aufgeräumt (offen oben, erledigt
+in der Mitte, Rest unten); A8 (Markenrabatte ohne Daten) gestrichen.
+
+### Gemessen
+
+Kaltlauf 13.09.2026 17:36:21–17:39:16 local (`ops/nas/b11-cold-run.sh`,
+25 Stichproben à 5 s). Cache vorher gelöscht und verifiziert. Job-Log:
+„Backtest: 0 aus Tages-Cache, 19 neu gerechnet“. 20 Stationen, e10,
+Endzustand `partial (some_models_unavailable)`, Dauer **2,6 min**.
+
+| Größe | Wert | Folge |
+|---|---|---|
+| Python-Prozesse | max **2** gezählt (`cmdline` `python*`) | Gegenprobe CPUS **381 %** ≈ 4 Worker; Forkserver-Kinder (`/usr/local/bin/python…`) fielen durch. Sammler zählt seitdem cmdline **und** `/proc/pid/comm`. Seit 0.26.0 ist die Startmethode `fork`, Forkserver entfällt. |
+| Container-Speicher | max **1031 MiB (1,0 GiB)**, MEM % 6,6 | Peak am Ende von Phase B; Leerlauf ~110 MiB. 4 × ~150 MB passen |
+| Host verfügbar | min **4212 MiB (4,1 GiB)**, Swap 0 | Weit über der Marke ~500 MiB |
+| CPUS | max **381 %** (Phase B 248–381 %) | Pool mit ~4 Workern |
+| `/dev/shm` | max **1 MiB** / 256 MiB | `shm_size: 256m` bleibt |
+
+Damit ist der Ressourcen-Abgleich erledigt und die Kaltstart-Zahl für
+B15/B16 da: 10,3 min (12.09.) → **2,6 min** kalt / 1,4–1,7 min warm.
+Die **Nachher-Dauer von 0.26.0** (ein Pool, `fork`, Cache-Schema 2) bleibt
+eine eigene Messung nach dem Deploy — sie hält B11 nicht offen.
+
+### Betrieb
+
+- Sammler `ops/nas/measure-phase-b.sh`: Python-Prozesse über `cmdline` **und**
+  `/proc/pid/comm`.
+- [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11):
+  B11 mit den fünf Zahlen; Kaltlauf nach B15/B16 **~2,6 min**.
+
 ## [0.26.0] – 2026-09-13
 
 **Batch 4 des Laufzeit-Bündels — Feinschliff ohne Änderung der fachlichen
@@ -88,7 +121,6 @@ gemessenen B11-Ressourcenwerte sind in der Betriebsanleitung eingeordnet.
 - Regressionen für sofortigen seriellen Callback, Affinität + cgroup-v1/v2-
   Quota, reine Publikationsspalten/kein Wide-Modell, leere Mehrtage-Fenster,
   Cache-Fingerabdruck und die monotone 15→25→30→35…95→99→100-Abbildung.
-
 ## [0.25.1] – 2026-09-13
 
 **Begleitpunkte des Laufzeit-Bündels — ausdrücklich ohne Batch 4**
