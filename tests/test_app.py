@@ -618,7 +618,10 @@ def test_stations_influx_failure_keeps_known_rows(app_settings):
     deadline = time.monotonic() + 5
     while True:
         data = live.stations()
-        if data["connection_error"] == "influx_read_failed" or time.monotonic() > deadline:
+        if (
+            data["connection_error"] == "influx_read_failed"
+            or time.monotonic() > deadline
+        ):
             break
         time.sleep(0.05)
     assert data["connection_error"] == "influx_read_failed"
@@ -638,9 +641,11 @@ def test_prewarm_warms_all_fuels(app_settings):
     live.prewarm()  # e10/e5/diesel im Hintergrund
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        if len(calls) >= 3 and {
-            key[0] for key in live.cache
-        } == {"e10", "e5", "diesel"}:
+        if len(calls) >= 3 and {key[0] for key in live.cache} == {
+            "e10",
+            "e5",
+            "diesel",
+        }:
             break
         time.sleep(0.05)
     assert len(calls) == 3  # alle drei Kraftstoffe, kein Mehrfach-Start

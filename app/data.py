@@ -169,6 +169,7 @@ def _run_route_refresh(anchor, missing_targets, cache_path, key):
             if worker.is_alive() or result["ok"] is False:
                 state["failed_at"] = time.monotonic()
 
+
 # B7-Revalidierung: /overview wird nur neu berechnet, wenn sich die
 # zugrunde liegenden Daten geändert haben ODER die Uhr die
 # Revalidierungsgrenze überschritten hat. Das „due“-Status der Episoden und
