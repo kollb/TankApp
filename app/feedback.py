@@ -80,6 +80,13 @@ M7_BRIER_THRESHOLD = 0.25
 
 _STORE_THREAD_LOCK = threading.Lock()
 
+# B11: Lock-Wartezeit des Feedback-Stores. Server (decide/fills/intent) und
+# Worker (settlement) teilen sich eine Datei; auf der NAS-Platte braucht ein
+# Lese-/Schreibzyklus länger als im Sandkasten. 100 × 0,05 s = 5 s Obergrenze,
+# danach ``store_locked`` (503, wiederholbar) statt eines irreführenden 400.
+LOCK_ATTEMPTS = 100
+LOCK_RETRY_SECONDS = 0.05
+
 
 class StoreTooLarge(RuntimeError):
     """Feedback-Store überschreitet die Größen-Grenze (Prüfstand §3.5).
@@ -171,11 +178,20 @@ def locked_store(settings):
     Rumpf (z. B. Fill-Validierung) wird dagegen unverändert durchgereicht —
     sonst würde die Validierung als „Lock belegt" verschluckt und endlos neu
     versucht.
+
+    B11: Wartezeit und Fehlerbild. Der Store liegt auf der NAS-Platte; Lesen,
+    Retention-Schnitt und Schreiben dauern dort länger als im Sandkasten, und
+    50 × 0,05 s reichten nicht. Jetzt ``LOCK_ATTEMPTS`` × ``LOCK_RETRY_SECONDS``
+    (5 s), und beim Aufgeben kommt ``ValueError("store_locked")`` — ein
+    maschinenlesbarer, wiederholbarer Code (HTTP 503 in ``app/server.py``,
+    Text in ``web/src/data.ts``) statt des Rohtexts „in diesem Verzeichnis
+    läuft bereits ein Prozess", den die API als ``invalid_query`` (400)
+    ausgegeben hat: klingt nach falscher Eingabe, war aber belegter Speicher.
     """
     with _STORE_THREAD_LOCK:
         lock = None
         last_error = None
-        for _ in range(50):
+        for _ in range(LOCK_ATTEMPTS):
             try:
                 lock = collector_lock(
                     feedback_path(settings).parent, label="Feedback-Store"
@@ -185,9 +201,9 @@ def locked_store(settings):
             except ValueError as exc:
                 last_error = exc
                 lock = None
-                time.sleep(0.05)
+                time.sleep(LOCK_RETRY_SECONDS)
         if lock is None:
-            raise last_error
+            raise ValueError("store_locked") from last_error
         try:
             store = load_store(settings)
             before = _store_digest(store)

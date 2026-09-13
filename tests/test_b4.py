@@ -1056,6 +1056,58 @@ def test_store_too_large_errors_instead_of_silent_reset(b4_settings, monkeypatch
     }
 
 
+def test_locked_store_reports_retryable_store_locked(b4_settings, monkeypatch):
+    """B11: Belegter Store meldet ``store_locked`` (503), nicht ``invalid_query``.
+
+    Vorher reichte ``locked_store`` den Rohtext der Sperre („… läuft bereits
+    ein Prozess.") als ``ValueError`` weiter; ``record_fill`` machte daraus den
+    Fehlercode und die API daraus 400 „Ungültige Anfrageparameter" — klingt
+    nach falscher Eingabe, war aber belegter Speicher. Der Code ist jetzt
+    maschinenlesbar und wiederholbar, und die Wartezeit ist benannt.
+    """
+    from polling_plan import collector_lock
+
+    from app import feedback
+    from app.feedback import feedback_path, locked_store
+    from app.server import _fill_status
+
+    monkeypatch.setattr(feedback, "LOCK_ATTEMPTS", 3)
+    monkeypatch.setattr(feedback, "LOCK_RETRY_SECONDS", 0)
+    feedback_path(b4_settings).parent.mkdir(parents=True, exist_ok=True)
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+
+    # Zweiter Prozess: dieselbe Datei ist gesperrt (unRAID/NAS-Fall).
+    with collector_lock(feedback_path(b4_settings).parent, label="Test"):
+        with pytest.raises(ValueError) as raised:
+            with locked_store(b4_settings):
+                pass
+        assert str(raised.value) == "store_locked"
+        # Alle drei Schreibpfade melden denselben wiederholbaren Code.
+        assert live.record_fill(
+            {"station_id": UID, "liters": 40, "price_paid": 1.6}
+        ) == {"error_code": "store_locked"}
+        assert live.set_intent("episode_unbekannt", "wait") == {
+            "error_code": "store_locked"
+        }
+        assert live.void_fill("fill_unbekannt") == {"error_code": "store_locked"}
+
+    # 503 (wiederholbar), nicht 400 (Eingabefehler).
+    assert _fill_status({"error_code": "store_locked"}) == 503
+    # Ohne Sperre schreibt derselbe Pfad wieder — die Meldung ist kein Dauerzustand.
+    assert live.set_intent("episode_unbekannt", "wait") == {
+        "error_code": "episode_not_found"
+    }
+
+
+def test_locked_store_wait_budget_is_bounded():
+    """Die Wartezeit ist ein benanntes Budget, kein Zufallswert im Code."""
+    from app import feedback
+
+    assert feedback.LOCK_ATTEMPTS == 100
+    assert feedback.LOCK_RETRY_SECONDS == 0.05
+    assert feedback.LOCK_ATTEMPTS * feedback.LOCK_RETRY_SECONDS == pytest.approx(5.0)
+
+
 def test_retention_prunes_and_archives(b4_settings):
     """Einträge älter als 90 Tage werden ausgelagert (Rotation statt 10-MB-Knall)."""
     from app.feedback import (

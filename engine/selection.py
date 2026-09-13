@@ -42,6 +42,14 @@ class SelectionConfig:
     # Betreiber-/Strategiewechsel nicht ~21 Tage im Median verschwindet.
     # Halbwertszeit in Tagen, None = klassischer Median.
     delta_ew_half_life_days: float | None = 7.0
+    # B21: Polling-Fenster, in dem der Collector überhaupt Daten holt
+    # (Default identisch zu ``engine.config.Config``: 06–24 Uhr
+    # Europe/Berlin). Coverage wird nur über diese Zellen gemessen — die
+    # Nachtzellen sind strukturell leer und machen ein absolutes 85-%-Gate
+    # gegen das volle 24-h-Raster unerreichbar (Maximalwert 77,5 %).
+    poll_start: int = 6
+    poll_end: int = 24
+    timezone: str = "Europe/Berlin"
 
 
 def _to_matrix(
@@ -78,6 +86,59 @@ def _to_matrix(
         )
     limit = max(1, round(ffill_min / step_min))
     return mat.ffill(limit=limit)
+
+
+def scheduled_mask(index: pd.DatetimeIndex, cfg: SelectionConfig) -> np.ndarray:
+    """True für Rasterzellen innerhalb des Polling-Fensters (B21).
+
+    Der Collector pollt ``poll_start``–``poll_end`` Uhr; die übrigen Zellen
+    sind strukturell leer, egal wie vollständig die Daten sind. Ein
+    Coverage-Nenner über das volle Raster bestraft deshalb den Betrieb statt
+    der Datenqualität (gemessen: 77,5 % Maximalwert bei lückenlosem
+    5-Minuten-Polling 06–24 Uhr — das Gate ``min_coverage=0.85`` kann nie
+    erreicht werden). Naive Indizes werden ohne Zeitumrechnung gelesen; ein
+    ungültiges Fenster bedeutet „alles zählt“.
+    """
+    if index.empty or not 0 <= cfg.poll_start < cfg.poll_end <= 24:
+        return np.ones(len(index), dtype=bool)
+    hours = (
+        index.hour.to_numpy()
+        if getattr(index, "tz", None) is None
+        else index.tz_convert(cfg.timezone).hour.to_numpy()
+    )
+    return (hours >= cfg.poll_start) & (hours < cfg.poll_end)
+
+
+def coverage_gate(
+    coverage: pd.Series, cfg: SelectionConfig
+) -> tuple[pd.Index, float, float]:
+    """B21: Wer bleibt nach dem Coverage-Gate im Ranking?
+
+    Liefert (behaltene Stationen, Referenz-Coverage der Stadt, wirksame
+    Schwelle). Die Schwelle ist **relativ zum Bestwert der Stadt**
+    (``min_coverage`` × Referenz), nicht absolut gegen das theoretische
+    Raster — zwei strukturelle Gründe, beide am 13.09.2026 gemessen:
+
+    1. Nachtzellen: Der Collector pollt 06–24 Uhr. Auch nach der
+       Fenster-Korrektur oben bleibt ein Rest, den keine Station erreichen
+       kann (Request-Budget, Round-Robin über Stadtsets).
+    2. Archiv-Modus: Das Tankerkönig-Archiv liefert Preis-*Ereignisse*, keine
+       5-Minuten-Punkte. Im Bootstrap-Betrieb (Archiv-Präfix + Live) bestimmt
+       die dichte Live-Phase den Median-Gap und damit das 30-Minuten-ffill;
+       ein Archiv-Ereignis deckt dann 30 von 216 Tageszellen ab — gemessen
+       4,8 % Coverage bei vollständigem Datenstand.
+
+    Ein absolutes Gate schließt in beiden Fällen **alle** Stationen aus
+    („e10: 0 Stationen“ im Job-Log vom 12.09.2026). Relativ zur Stadt
+    ausgeschlossen wird dagegen, wer deutlich seltener liefert als die
+    Vergleichsstationen — genau die Datenqualität, die das Gate schützen soll.
+    """
+    reference = float(coverage.max()) if len(coverage) else 0.0
+    if not np.isfinite(reference) or reference <= 0:
+        return coverage.index[:0], 0.0, 0.0
+    threshold = cfg.min_coverage * reference
+    keep = coverage[coverage >= threshold].index
+    return keep, reference, float(threshold)
 
 
 def _loo_baseline(mat: pd.DataFrame) -> pd.DataFrame:
@@ -323,6 +384,43 @@ def _harmonic_fit(hour_bins: np.ndarray, med: np.ndarray, w: np.ndarray):
     return r2, amp, best_hour, grid, curve
 
 
+def _diagnostic(
+    city: str,
+    cfg: SelectionConfig,
+    mat: pd.DataFrame,
+    excluded: list,
+    reason: str,
+    coverage: pd.Series | None = None,
+    **extra,
+) -> dict:
+    """Stadt-Eintrag ohne Ranking, aber mit Grund (B21).
+
+    „0 Stationen“ war im Job-Log nicht debuggbar; jeder Abbruch trägt deshalb
+    die Zahlen bei, die ihn erklären: Reichweite, Punktzahl, ausgeschlossene
+    Stationen und die Coverage-Schwelle samt Referenz.
+    """
+    entry = {
+        "city": city,
+        "fuel": cfg.fuel,
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "range_from": mat.index.min().isoformat() if len(mat.index) else None,
+        "range_to": mat.index.max().isoformat() if len(mat.index) else None,
+        "n_points": int(mat.notna().to_numpy().sum()) if not mat.empty else 0,
+        "n_days": int(len(mat.index.normalize().unique())) if not mat.empty else 0,
+        "station_count": 0,
+        "excluded_count": len(excluded),
+        "excluded": list(excluded[:20]),
+        "stations": [],
+        "reason": reason,
+        "coverage_window": f"{cfg.poll_start:02d}-{cfg.poll_end:02d}",
+    }
+    if coverage is not None and len(coverage):
+        entry["coverage_min"] = float(coverage.min())
+        entry["coverage_max"] = float(coverage.max())
+    entry.update(extra)
+    return entry
+
+
 def analyse_city_light(
     df: pd.DataFrame,
     city: str,
@@ -336,48 +434,52 @@ def analyse_city_light(
     None, damit „0 Stationen“ im Log erklärbar ist (Coverage, <4 Stationen).
     Nur bei völlig leerer Matrix bleibt None — dann hat die Stadt schlicht
     keine Daten für diesen Fuel.
+
+    Coverage (Datenqualitäts-Gate, Konzept §2 Zeile 6) wird über die Zellen
+    des Polling-Fensters gemessen und relativ zum Bestwert der Stadt
+    angewandt — siehe ``scheduled_mask`` und ``coverage_gate``.
     """
     mat = _to_matrix(df, city, cfg.step_min, cfg.ffill_minutes)
     if mat.empty:
         return None
     if mat.shape[1] < 2:
         # Zu wenig Stationen für LOO — Diagnose statt stilles None.
-        return {
-            "city": city,
-            "fuel": cfg.fuel,
-            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "range_from": None,
-            "range_to": None,
-            "n_points": 0,
-            "n_days": 0,
-            "station_count": 0,
-            "excluded_count": int(mat.shape[1]),
-            "excluded": list(mat.columns[:20]),
-            "stations": [],
-            "reason": f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
-        }
-    coverage = mat.notna().mean(axis=0)
-    keep = coverage[coverage >= cfg.min_coverage].index
+        return _diagnostic(
+            city,
+            cfg,
+            mat,
+            list(mat.columns),
+            f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
+        )
+    # B21: Coverage nur über die Zellen des Polling-Fensters (06–24 Uhr) —
+    # gegen das volle 24-h-Raster ist das Gate strukturell unerreichbar.
+    scheduled = scheduled_mask(mat.index, cfg)
+    if scheduled.any():
+        coverage = pd.Series(
+            mat.notna().to_numpy()[scheduled].mean(axis=0), index=mat.columns
+        )
+    else:
+        coverage = mat.notna().mean(axis=0)
+    keep, coverage_reference, coverage_threshold = coverage_gate(coverage, cfg)
     excluded = [sid for sid in coverage.index if sid not in set(keep)]
     mat = mat[keep]
     # Die LOO-Baseline verlangt ≥ 3 Vergleichsstationen je Zeitpunkt (m ≥ 3).
     # Mit weniger als 4 Stationen wäre δ̂ überall NaN — ehrlich abbrechen,
     # statt eine NaN-Tabelle zu publizieren. B21: Diagnose zurückgeben.
     if mat.shape[1] < 4:
-        return {
-            "city": city,
-            "fuel": cfg.fuel,
-            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "range_from": mat.index.min().isoformat() if len(mat.index) else None,
-            "range_to": mat.index.max().isoformat() if len(mat.index) else None,
-            "n_points": int(mat.notna().to_numpy().sum()) if not mat.empty else 0,
-            "n_days": int(len(mat.index.normalize().unique())) if not mat.empty else 0,
-            "station_count": 0,
-            "excluded_count": len(excluded),
-            "excluded": excluded[:20],
-            "stations": [],
-            "reason": f"nach Coverage ≥{cfg.min_coverage:.0%} nur {mat.shape[1]} Station(en) übrig — LOO braucht ≥4",
-        }
+        return _diagnostic(
+            city,
+            cfg,
+            mat,
+            excluded,
+            f"nach Coverage-Gate (≥{cfg.min_coverage:.0%} vom Stadt-Bestwert "
+            f"{coverage_reference:.0%} im Fenster "
+            f"{cfg.poll_start:02d}–{cfg.poll_end:02d} Uhr) nur {mat.shape[1]} "
+            f"Station(en) übrig — LOO braucht ≥4",
+            coverage=coverage,
+            coverage_reference=coverage_reference,
+            coverage_threshold=coverage_threshold,
+        )
 
     base = _loo_baseline(mat)
     delta = (mat - base) * 100.0  # ct/L relativ
@@ -405,9 +507,17 @@ def analyse_city_light(
 
     sids = list(mat.columns)
     rows = []
+    # B21: Stationen ohne einzigen verwertbaren Zeitpunkt (LOO braucht ≥4
+    # Stationen mit Wert zur selben Zeit) haben kein δ̂. Sie fallen aus dem
+    # Ranking, statt als NaN-Zeile publiziert zu werden — und der Grund steht
+    # im Artefakt.
+    no_delta = []
     for j, sid in enumerate(sids):
         d = delta[sid].to_numpy()
         d_hat = float(np.nanmedian(d))
+        if not np.isfinite(d_hat):
+            no_delta.append(sid)
+            continue
         boots, _ = _day_block_bootstrap(
             d, dnum, cfg.n_boot, rng, cfg.boot_ew_half_life_days
         )
@@ -493,7 +603,19 @@ def analyse_city_light(
         )
 
     if not rows:
-        return None
+        # B21: Auch das ist ein erklärbarer Abbruch, kein stilles None —
+        # sonst verschwindet die Stadt kommentarlos aus dem Artefakt.
+        return _diagnostic(
+            city,
+            cfg,
+            mat,
+            excluded + no_delta,
+            f"{len(no_delta)} Station(en) ohne verwertbares δ̂ — zu wenig "
+            f"gleichzeitige Werte (LOO braucht ≥4 Stationen je Zeitpunkt)",
+            coverage=coverage,
+            coverage_reference=coverage_reference,
+            coverage_threshold=coverage_threshold,
+        )
 
     tab = pd.DataFrame(rows)
     tab["q_value"] = _benjamini_hochberg(tab["p_value"].to_numpy())
@@ -551,6 +673,15 @@ def analyse_city_light(
         "station_count": len(tab),
         "excluded_count": len(excluded),
         "excluded": excluded[:20],
+        # B21: Ausweis des Coverage-Gates — woran gemessen wurde (Fenster,
+        # Bestwert der Stadt, wirksame Schwelle) und wer ohne δ̂ blieb.
+        # Ohne diese Zahlen ist „warum ist Station X nicht dabei?“ nicht
+        # beantwortbar.
+        "coverage_window": f"{cfg.poll_start:02d}-{cfg.poll_end:02d}",
+        "coverage_reference": coverage_reference,
+        "coverage_threshold": coverage_threshold,
+        "no_delta_count": len(no_delta),
+        "no_delta": no_delta[:20],
         "stability": stability,
         "stations": tab.to_dict(orient="records"),
     }

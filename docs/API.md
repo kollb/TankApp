@@ -206,8 +206,10 @@ plausiblen Fenster liegen — höchstens 90 Tage (Retention) zurück, höchstens
 gilt „jetzt“. Freitext-Felder werden gekappt: `station_name` auf 120, `source`
 auf 40 Zeichen (B5). Fehler kommen als 4xx/503
 (`invalid_liters`/`invalid_price`/`invalid_fuel`/`invalid_tanked_at`/`price_not_available` → 400,
-`unknown_station` → 404, `store_too_large` → 503), nicht mehr als
-`200 {"error_code": …}`.
+`unknown_station` → 404, `store_too_large`/`store_locked` → 503), nicht
+mehr als `200 {"error_code": …}`. `store_locked` heißt: Der
+Feedback-Store war während der Wartezeit von 5 s durchgehend belegt
+(B11) — derselbe Request darf wiederholt werden.
 
 Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
@@ -266,6 +268,7 @@ zweites Storno desselben Belegs ändert nichts und liefert denselben Beleg.
 | `404 {"error_code":"fill_not_found"}` | `id` nicht im Store |
 | `400 {"error_code":"invalid_query"}` | leere `id` oder Pfad mit weiterem `/` |
 | `503 {"error_code":"store_too_large"}` | Store über der Größen-Grenze |
+| `503 {"error_code":"store_locked"}` | Store 5 s belegt — wiederholen (B11) |
 | `503 {"error_code":"void_fill_failed"}` | Store nicht schreibbar o. ä. |
 
 GUI: Tankbelege-Verlauf im Alltag mit „Stornieren“-Knopf. Ein Storno ist kein
@@ -967,7 +970,7 @@ Siehe `web/src/data.ts` messages:
 - write_rate_limited (429, Schreib-Budget der Ledger-Endpunkte mit `Retry-After: 60`, B5)
 - price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
-- store_too_large (503), not_implemented (501)
+- store_too_large (503), store_locked (503, Feedback-Store 5 s belegt — wiederholbar, B11), not_implemented (501)
 - fill_not_found (404, `DELETE /api/v1/fills/{id}`), void_fill_failed (503), fills_read_failed
 - invalid_tank (400, `/api/v1/decide` — Tankstand außerhalb 0–100 % bzw. 20–120 l bzw. 0–1500 km)
 - profile_not_found (404), profile_limit (409), invalid_profile_name, invalid_time_value_eur_h, invalid_speed_kmh, invalid_tank_capacity_l (400, Profil-Endpunkte), profile_write_failed / profiles_read_failed / fills_summary_failed (503)

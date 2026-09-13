@@ -33,6 +33,7 @@
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
   - [Fehlgeschlagener Lauf: Ursache statt Raten](#fehlgeschlagener-lauf-ursache-statt-raten)
   - [Modell-Lauf beschleunigen](#modell-lauf-beschleunigen)
+  - [Ressourcen während Phase B messen (B11)](#ressourcen-während-phase-b-messen-b11)
 - [Backup & Wiederherstellung](#backup--wiederherstellung)
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
@@ -497,6 +498,58 @@ python3 tankapp.py nas-up
 ```
 
 Archiv und Polling sind dieselben Marktdaten über zwei Bezugswege. Historie kann Modellstart tragen, keine 3-Monats-Wartepflicht. Standardtraining letzte 42 Tage, Archiv nur vor Live-Beginn. Nach 90 vollständigen Live-Tagen mit 95% Abdeckung je UUID/Kraftstoff auf Polling-only umstellbar. NAS-Roharchiv bleibt bestehen.
+
+### Ressourcen während Phase B messen (B11)
+
+Offener Punkt aus dem Laufzeit-Bündel (Batch 0): `TANKAPP_MODEL_WORKERS` startet
+bis zu 4 Worker × pandas, während `ops/nas/app/compose.yml` `shm_size: 256m`
+setzt und der Host 4,2 Gi verfügbar hat — **ungetestet**. Die Leerlaufwerte aus
+`docker stats` (220–280 MiB, 7–10 PIDs) belegen nichts: Sie entstehen, bevor der
+Prozess-Pool überhaupt steht.
+
+Gemessen wird **während Phase B** — der Phase „Modelle fitten + Backtest“, im
+Job-Log an den `Task n/80`-Zeilen zu erkennen (zuletzt 9,4 min lang, also genug
+Zeit für beide Befehle). `ps` fehlt im Image (`python:3.14-slim`); die
+Prozessliste kommt über `docker top`.
+
+```bash
+# 0) Läuft gerade Phase B? Task-Zeilen im Minutentakt = ja
+docker logs --tail 5 tankapp-web-app-1
+
+# 1) Prozessliste: erwartet 1 Master + 4 Worker (TANKAPP_MODEL_WORKERS=0)
+docker top tankapp-web-app-1
+
+# 2) Speicher/CPU im selben Moment, zweimal im Abstand von ~60 s
+docker stats --no-stream tankapp-web-app-1
+free -h
+```
+
+Notieren (vier Zahlen, mehr braucht die Entscheidung nicht):
+
+| Größe | Woher | Entscheidet |
+|---|---|---|
+| Anzahl Python-Prozesse | `docker top` | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23) |
+| `MEM USAGE` des Containers | `docker stats` | ob 4 × pandas in 4,2 Gi verfügbarem Host-Speicher passen |
+| `MEM %` + `free -h` verfügbar | `docker stats`, `free -h` | ob Swap/OOM droht (Swap ist 0) |
+| `CPUS` | `docker stats` | ob 4 Worker ~400 % erreichen oder sich behindern |
+
+Ergebnis in [TODO.md](../TODO.md) bei **B11** eintragen und, falls `shm_size`
+erhöht werden muss, in `ops/nas/app/compose.yml` ändern. Erwartet wird **keine**
+Beschleunigung — B11 ist ein Abgleich, kein Hebel: Durchsatz kommt aus B15/B16
+(0.20.0) und B17 (0.22.0).
+
+**Achtung Messfalle (12.09.2026):** `nproc` meldet im Container `1`, weil das
+Image `OMP_NUM_THREADS=1` setzt. Kerne immer über die Affinität bestimmen:
+
+```bash
+docker exec tankapp-web-app-1 python -c \
+  "import os; print(os.cpu_count(), os.process_cpu_count(), len(os.sched_getaffinity(0)))"
+```
+
+Und: `nas-up` niemals während eines Laufs — es ruft `compose up -d --build
+--force-recreate` und tötet den Job (B24, zwei Vorfälle am 12.09.2026). Seit
+0.21.0 warnt `nas-up` vorher; die Messung ist trotzdem futsch, wenn der Lauf
+mitten in Phase B stirbt.
 
 ## Backup & Wiederherstellung
 

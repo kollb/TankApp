@@ -73,6 +73,9 @@ _FILL_STATUS = {
     "price_not_available": 400,
     "unknown_station": 404,
     "store_too_large": 503,
+    # B11: Belegter Feedback-Store — der Server kann gerade nicht schreiben,
+    # der Request war aber korrekt. 503 (wiederholbar), nicht 400.
+    "store_locked": 503,
 }
 
 # A1: Statuscodes der Profil-Endpunkte — Fach-Codes 4xx, Rest 503

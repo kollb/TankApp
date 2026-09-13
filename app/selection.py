@@ -129,7 +129,15 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                     if progress:
                         progress.step(label=f"{fuel}: keine Daten")
                     continue
-                sel_cfg = SelectionConfig(fuel=fuel.upper(), n_boot=n_boot)
+                # B21: Coverage-Gate nur im Polling-Fenster — dieselbe Config
+                # wie der Modell-Lauf, damit beide Rechnungen dasselbe messen.
+                sel_cfg = SelectionConfig(
+                    fuel=fuel.upper(),
+                    n_boot=n_boot,
+                    poll_start=cfg_engine.poll_start,
+                    poll_end=cfg_engine.poll_end,
+                    timezone=cfg_engine.timezone,
+                )
                 result = compute_all(obs, sel_cfg, metas_by_city)
                 # B21-Diagnose: Warum 0 Stationen? Coverage, <4 Stationen je Stadt, etc.
                 top_n = len(result.get("top_global", []))

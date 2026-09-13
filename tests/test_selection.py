@@ -11,6 +11,7 @@ from engine.selection import (
     SelectionConfig,
     _benjamini_hochberg,
     analyse_city_light,
+    compute_all,
 )
 
 
@@ -130,3 +131,230 @@ def test_analysis_module_mirrors_ew_helpers(monkeypatch):
         delta, days, 300, np.random.default_rng(1), 14.0
     )
     assert float(np.median(boots_ew)) < float(np.median(boots_uniform))
+
+
+# --- B21: Coverage-Gate — warum „e10: 0 Stationen“ passierte -----------------
+#
+# Befund (13.09.2026, reproduziert): Das Gate verglich die Abdeckung jeder
+# Station mit dem vollen 5-Minuten-Raster über die gesamte Datenreichweite.
+# Zwei strukturelle Gründe machen 85 % dort unerreichbar, egal wie vollständig
+# die Daten sind — im Live-Betrieb maximal 77,5 % (der Collector pollt 06–24
+# Uhr, die Nachtzellen sind nie besetzt), im Archiv-/Bootstrap-Betrieb ~4,8 %
+# (Preis-*Ereignisse* statt Rasterpunkte, 30-min-ffill). Folge: alle Stationen
+# ausgeschlossen, `top_global` leer, „Meine Stationen“ dauerhaft leer.
+
+
+def _polling_frame(
+    days, station_ids, start="2026-07-01", source="influxdb", step="5min"
+):
+    """Dichte Beobachtungen 06–24 Uhr (Polling-Kadenz des Collectors)."""
+    frames = []
+    rng = np.random.default_rng(21)
+    for position, sid in enumerate(station_ids):
+        stamps = []
+        for day in range(days):
+            date = pd.Timestamp(start, tz="Europe/Berlin") + pd.Timedelta(days=day)
+            stamps.append(
+                pd.date_range(date + pd.Timedelta(hours=6), periods=18 * 12, freq=step)
+            )
+        index = stamps[0].append(stamps[1:]) if len(stamps) > 1 else stamps[0]
+        frames.append(
+            pd.DataFrame(
+                {
+                    "timestamp": index,
+                    "station_id": sid,
+                    "city": "Teststadt",
+                    "fuel": "E10",
+                    "price": 1.70 + 0.01 * position + rng.normal(0, 0.002, len(index)),
+                    "status": "open",
+                    "source": source,
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_coverage_gate_ignores_unpolled_night_cells():
+    """Lückenloses 06–24-Polling ergibt ein Ranking — nicht „0 Stationen“.
+
+    Gegenprobe zum Befund: dieselben Daten lieferten vor der Korrektur
+    Coverage 77,5 % (Nachtzellen im Nenner) und damit null Stationen.
+    """
+    df = _polling_frame(20, ["a", "b", "c", "d", "e"])
+    result = analyse_city_light(
+        df, "Teststadt", SelectionConfig(n_boot=200), np.random.default_rng(42), {}
+    )
+    assert result["station_count"] == 5
+    assert sorted(row["station_id"] for row in result["stations"]) == list("abcde")
+    # Im Polling-Fenster ist der Bestand lückenlos; die Referenz ist der
+    # Bestwert der Stadt und liegt deutlich über der alten Vollraster-Marke.
+    assert result["coverage_reference"] == pytest.approx(1.0, abs=1e-9)
+    assert result["coverage_window"] == "06-24"
+    assert result["coverage_threshold"] == pytest.approx(0.85)
+
+
+def test_coverage_gate_survives_archive_prefix():
+    """Archiv-Präfix + Live (Bootstrap-Betrieb) bleibt rankbar.
+
+    Das Archiv liefert Preis-Ereignisse; die dichte Live-Phase drückt den
+    Median-Gap auf 5 min und damit das ffill auf 30 min — gemessen 4,8 %
+    Abdeckung gegen das Vollraster. Das Gate darf deshalb nicht absolut sein.
+    """
+    rng = np.random.default_rng(11)
+    frames = []
+    for day in range(30):
+        date = pd.Timestamp("2026-06-01", tz="Europe/Berlin") + pd.Timedelta(days=day)
+        hours = np.sort(rng.uniform(0, 24, 12))
+        stamps = pd.DatetimeIndex([date + pd.Timedelta(hours=float(h)) for h in hours])
+        for position, sid in enumerate(["a", "b", "c", "d", "e"]):
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "timestamp": stamps,
+                        "station_id": sid,
+                        "city": "Teststadt",
+                        "fuel": "E10",
+                        "price": 1.70 + 0.01 * position,
+                        "status": "open",
+                        "source": "history",
+                    }
+                )
+            )
+    live = _polling_frame(2, ["a", "b", "c", "d", "e"], start="2026-06-30")
+    result = analyse_city_light(
+        pd.concat(frames + [live], ignore_index=True),
+        "Teststadt",
+        SelectionConfig(n_boot=200),
+        np.random.default_rng(42),
+        {},
+    )
+    assert result["station_count"] == 5
+    # Beleg, dass ein absolutes 85-%-Gate hier ausgeschlossen hätte.
+    assert result["coverage_reference"] < 0.5
+
+
+def test_dead_station_is_excluded_by_relative_gate():
+    """Das Gate trennt weiter: wer aufhört zu liefern, fliegt raus."""
+    frames = []
+    for sid in ["a", "b", "c", "d", "e", "tot"]:
+        days = 5 if sid == "tot" else 20
+        frames.append(_polling_frame(days, [sid]).assign(station_id=sid))
+    df = pd.concat(frames, ignore_index=True)
+    result = analyse_city_light(
+        df, "Teststadt", SelectionConfig(n_boot=200), np.random.default_rng(42), {}
+    )
+    assert sorted(row["station_id"] for row in result["stations"]) == list("abcde")
+    assert result["excluded"] == ["tot"]
+    assert result["excluded_count"] == 1
+    assert result["coverage_threshold"] == pytest.approx(0.85)
+
+
+def test_city_without_overlap_reports_reason_instead_of_vanishing():
+    """Nie ≥4 Stationen gleichzeitig ⇒ Diagnose-Eintrag, kein stilles None."""
+    frames = []
+    for sid, hour_from, hour_to in [
+        ("a", 6, 12),
+        ("b", 6, 12),
+        ("c", 14, 20),
+        ("d", 14, 20),
+    ]:
+        day_frames = []
+        for day in range(8):
+            date = pd.Timestamp("2026-07-01", tz="Europe/Berlin") + pd.Timedelta(
+                days=day
+            )
+            index = pd.date_range(
+                date + pd.Timedelta(hours=hour_from),
+                periods=(hour_to - hour_from) * 12,
+                freq="5min",
+            )
+            day_frames.append(
+                pd.DataFrame(
+                    {
+                        "timestamp": index,
+                        "station_id": sid,
+                        "city": "Teststadt",
+                        "fuel": "E10",
+                        "price": 1.70,
+                        "status": "open",
+                        "source": "influxdb",
+                    }
+                )
+            )
+        frames.append(pd.concat(day_frames, ignore_index=True))
+    df = pd.concat(frames, ignore_index=True)
+    cfg = SelectionConfig(n_boot=200)
+    result = analyse_city_light(df, "Teststadt", cfg, np.random.default_rng(42), {})
+    assert result["station_count"] == 0
+    assert result["stations"] == []
+    assert "ohne verwertbares δ̂" in result["reason"]
+    # compute_all behält die Stadt als Diagnose und publiziert kein Ranking.
+    overall = compute_all(df, cfg, {"Teststadt": {}})
+    assert overall["top_global"] == []
+    assert len(overall["diagnostics"]) == 1
+    assert len(overall["cities"]) == 1
+
+
+def test_poll_window_changes_nothing_when_night_has_data():
+    """Invarianz: Das Fenster ist ein Nenner, kein Eingriff in die Zahlen.
+
+    Liegen nachts Beobachtungen (z. B. Archiv), sind 06–24 und 00–24 dieselbe
+    Rechnung — δ̂, KI, Score und Rang bleiben bitgleich.
+    """
+    index = pd.date_range("2026-06-01", periods=42 * 24, freq="h", tz="UTC")
+    rng = np.random.default_rng(5)
+    frames = []
+    for position, sid in enumerate(["a", "b", "c", "d", "e"]):
+        frames.append(
+            pd.DataFrame(
+                {
+                    "timestamp": index,
+                    "station_id": sid,
+                    "city": "Teststadt",
+                    "fuel": "E10",
+                    "price": 1.70 + 0.01 * position + rng.normal(0, 0.002, len(index)),
+                    "status": "open",
+                    "source": "influxdb",
+                }
+            )
+        )
+    df = pd.concat(frames, ignore_index=True)
+
+    def run(poll_start, poll_end):
+        cfg = SelectionConfig(
+            n_boot=200, poll_start=poll_start, poll_end=poll_end, step_min=60
+        )
+        return analyse_city_light(df, "Teststadt", cfg, np.random.default_rng(42), {})
+
+    day_only, full_day = run(6, 24), run(0, 24)
+    assert [row["rank"] for row in day_only["stations"]] == [
+        row["rank"] for row in full_day["stations"]
+    ]
+    for row_day, row_full in zip(
+        day_only["stations"], full_day["stations"], strict=True
+    ):
+        assert row_day["station_id"] == row_full["station_id"]
+        for key in ("delta_ct", "delta_ew_ct", "ci_lo", "ci_hi", "score", "coverage"):
+            left, right = row_day[key], row_full[key]
+            if left is None or right is None:
+                assert left == right, key
+            else:
+                assert float(left) == pytest.approx(float(right), abs=0.0, rel=0.0), key
+
+
+def test_nas_callers_pass_the_poll_window_to_selection():
+    """Beide NAS-Rechnungen müssen das Fenster der Engine-Config durchreichen.
+
+    Ohne das misst die Selektion Nachtzellen als fehlende Daten — genau der
+    B21-Befund. Quellenprüfung wie bei ``test_nas_jobs_fix_b_at_2000``.
+    """
+    import inspect
+
+    import app.refresh as refresh
+    import app.selection as selection
+
+    assert "poll_start=cfg.poll_start" in inspect.getsource(refresh.refresh)
+    assert "poll_end=cfg.poll_end" in inspect.getsource(refresh.refresh)
+    source = inspect.getsource(selection.build_selection)
+    assert "poll_start=cfg_engine.poll_start" in source
+    assert "poll_end=cfg_engine.poll_end" in source

@@ -2232,6 +2232,8 @@ export const messages: Record<string, string> = {
   invalid_price: "Preis außerhalb 0,40–5,00 €/L.",
   store_too_large:
     "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
+  store_locked:
+    "Speicher ist gerade belegt — in ein paar Sekunden erneut versuchen.",
   not_implemented: "Dieser Endpunkt ist (bewusst) nicht implementiert.",
   invalid_consumption: "Verbrauch außerhalb 3–20 L/100 km.",
   invalid_speed: "Tempo außerhalb 10–130 km/h.",

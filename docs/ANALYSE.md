@@ -1,8 +1,9 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 12.09.2026 · App-Version 0.11.0 — B3-Aggregate, P-Seite aus der
+> Stand: 13.09.2026 · App-Version 0.25.0 — B3-Aggregate, P-Seite aus der
 > Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
-> enthalten. Methodik-Nachschlagewerk, keine Checkliste: Einrichten
+> enthalten; seit 0.25.0 Coverage-Gate im Polling-Fenster und relativ zum
+> Stadt-Bestwert (B21). Methodik-Nachschlagewerk, keine Checkliste: Einrichten
 > [INSTALL.md](INSTALL.md), rechnen lassen [BETRIEB.md](BETRIEB.md),
 > offene Punkte [LUECKEN.md](LUECKEN.md) · [TODO.md](../TODO.md).
 
@@ -10,6 +11,7 @@
 
 - [Überblick](#überblick)
 - [Stations-Selektion — Meine Stationen mit δ̂](#stations-selektion--meine-stationen-mit-δ)
+  - [Coverage-Gate — woran gemessen wird (B21)](#coverage-gate--woran-gemessen-wird-b21)
   - [Relative Preislage δ̂](#relative-preislage-δ)
   - [Bootstrap-KI & FDR](#bootstrap-ki--fdr)
   - [AV-Score & billigste Stunde](#av-score--billigste-stunde)
@@ -48,13 +50,59 @@ Pipeline: `analysis/station_selection.py` — Schema siehe [DATENWERKZEUGE.md](D
 | 3 | Verfügbarkeit AVᵢ | Σₕ wₕ·P(Top-3\|h); w = Tankzeitprofil werktags 06–09/16–20 | Gewicht 0.25 |
 | 4 | Tagesform | robuste harmonische Regression (Huber-IRLS, 1.+2. Harmonische) → Amplitude, billigste Stunde, R² | Gewicht 0.15 |
 | 5 | Risiko | σᵢ = 1.4826·MAD(Δᵢ); Streuung Tages-Mittelränge | Gewicht 0.10+0.10 |
-| 6 | Datenqualität | Coverage-Gate ≥85% je Station | Ausschluss |
+| 6 | Datenqualität | Coverage-Gate ≥85 % je Station — gemessen im Polling-Fenster (06–24 Uhr) und relativ zum Bestwert der Stadt (B21, 0.25.0) | Ausschluss |
 
 Kampagnen-Setup: drei Kampagnen Hessen, Bayern, NRW; Heimat Frankfurt am Main. Frankfurt hat 100+ Stationen im 25km Radius → globale Top-10 wird quotiert (Empfehlung 6/2/2, konfigurierbar), sonst dominieren Heimatstadt-Stationen.
 
 Privatsphäre: Straße/Hausnummer nie im Repo; Heimkoordinaten nur in gitignorierter `analysis/config.local.json` (`--config`, Vorlage `config.local.example.json`); Feiertage je Bundesland via `--subdiv` (`HE`, `BY`, `NW`).
 
 Kraftstoff: primär E10 für Selektion/Prognose/Heatmaps. Diesel/E5 werden ohne Extra-Request mitgesammelt (Historie+Nowcast); E5↔E10 nur als Äquivalenzpreis vergleichen: E5 lohnt erst bei p_E5 ≤ ~1,015·p_E10.
+
+### Coverage-Gate — woran gemessen wird (B21)
+
+Zeile 6 der Tabelle schließt Stationen mit zu dünner Datenlage aus. **Woran**
+„zu dünn“ gemessen wird, war bis 0.25.0 falsch — und der Grund, warum die
+Selektion im Dauerbetrieb immer null Stationen lieferte („e10: 0 Stationen“ im
+Job-Log vom 12.09.2026). Das Gate verglich die Abdeckung je Station mit dem
+vollen 5-Minuten-Raster über die gesamte Datenreichweite. Dagegen kommt der
+Betrieb aus zwei strukturellen Gründen nicht an:
+
+| Grund | Messwert | Folge |
+|---|---|---|
+| Der Collector pollt 06–24 Uhr (`Config.poll_start`/`poll_end`) — 25 % des Rasters sind nie besetzt, das 30-Minuten-ffill reicht nicht über die Nacht | **77,5 %** Maximalwert bei lückenlosem 5-Minuten-Polling (40 Tage, 8 Stationen) | `coverage >= 0.85` für jede Station falsch |
+| Das Tankerkönig-Archiv liefert Preis-*Ereignisse*, keine Rasterpunkte; mit der dichten Live-Phase fällt der Median-Gap auf 5 min und das ffill auf 30 min, ein Ereignis deckt 30 von 216 Tageszellen | **4,8 %** (30 Tage Archiv + 2 Tage Live), **1,3 %** (120 + 2 Tage) | dito, im Bootstrap-Betrieb noch deutlicher |
+
+Seit 0.25.0 misst `engine/selection.py` deshalb in zwei Schritten
+(`scheduled_mask`, `coverage_gate`):
+
+1. **Nenner = Zellen des Polling-Fensters** (06–24 Uhr in `Config.timezone`,
+   durchgereicht aus derselben `Config` wie der Rest des Modell-Laufs). Wer
+   nachts nicht pollt, dem fehlen nachts keine Daten.
+2. **Schwelle relativ zum Bestwert der Stadt**: behalten wird
+   `coverage ≥ min_coverage × max(coverage der Stadt)` — bei 85 % also
+   „mindestens 85 % dessen, was die beste Station der Stadt liefert“.
+
+Damit entscheidet das Gate wieder das, wofür es da ist: Wer deutlich seltener
+liefert als die Vergleichsstationen, fliegt raus (Test: eine Station, die nach
+Tag 5 verstummt, landet in `excluded`), und wer nur eine andere Datenquelle
+oder ein 18-Stunden-Pollfenster hat, bleibt drin. Die Werte im Ranking ändern
+sich dadurch nicht — wo das Gate bisher alles ausschloss, gibt es keine alten
+Zahlen; wo es nicht bindet, ist die Rechnung bitgleich (Invarianz-Test:
+Fenster 06–24 gegen 00–24 bei dichten 24-h-Daten).
+
+**Ausweis im Artefakt** (`runtime/selection/{fuel}.json`, je Stadt):
+`coverage_window` (`06-24`), `coverage_reference` (Bestwert der Stadt),
+`coverage_threshold` (wirksame Schwelle), `excluded`/`excluded_count` und
+`no_delta`/`no_delta_count` (Stationen ohne einzigen verwertbaren Zeitpunkt —
+LOO braucht ≥ 4 Stationen mit Wert zur selben Zeit). Städte, für die kein
+Ranking zustande kommt, bleiben als Eintrag mit `reason` und Reichweite
+erhalten (`compute_all` → `diagnostics`), statt kommentarlos zu verschwinden.
+
+**Offline-Pipeline bleibt absolut:** `analysis/station_selection.py` behält das
+absolute Gate gegen das Vollraster mit `--min-coverage` (Default 0,85) — dort
+arbeitet ein Operator mit der Fehlermeldung („Größeren Zeitraum wählen, Städte
+zusammenlegen oder `--min-coverage` senken“) und kann reagieren. Der NAS-Job hat
+diesen Operator im Moment des Laufs nicht und muss selbst entscheiden.
 
 ### Relative Preislage δ̂
 
@@ -100,6 +148,9 @@ NAS-Job (B3.10): B=2000 fest (nicht sequenziell erhöhen). B=200 wäre ein Signi
 - Job `selection` täglich (Intervall 86400), nach Modell-Job best-effort
 - Liest `runtime/training/*.csv.gz` (aus InfluxDB + Archiv) — echter Trainingsbestand, keine Demo
 - Berechnet δ̂, KI, AV, billigste Stunde, Volatilität, Coverage, Score, Ranking
+- Weist das Coverage-Gate aus (`coverage_window`, `coverage_reference`,
+  `coverage_threshold`) und hält Städte ohne Ranking als Diagnose mit
+  `reason` — „0 Stationen“ ist damit erklärbar, statt nur im Log zu stehen
 - Publiziert nach `runtime/selection/current.json`
 - API `/api/v1/selection?fuel=e10&city=Frankfurt` liefert „Meine Stationen“
 - GUI Werkstatt zeigt Tabelle mit Ranking, Bootstrap-KI-Whiskern, AV-Score, billigster Stunde

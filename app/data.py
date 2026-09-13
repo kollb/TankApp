@@ -169,6 +169,7 @@ def _run_route_refresh(anchor, missing_targets, cache_path, key):
             if worker.is_alive() or result["ok"] is False:
                 state["failed_at"] = time.monotonic()
 
+
 # B7-Revalidierung: /overview wird nur neu berechnet, wenn sich die
 # zugrunde liegenden Daten geändert haben ODER die Uhr die
 # Revalidierungsgrenze überschritten hat. Das „due“-Status der Episoden und
@@ -1380,6 +1381,11 @@ class LiveData:
             return res
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except ValueError as exc:
+            # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
+            if str(exc) == "store_locked":
+                return {"error_code": "store_locked"}
+            return {"error_code": "set_intent_failed"}
         except Exception:
             return {"error_code": "set_intent_failed"}
 
@@ -1426,6 +1432,11 @@ class LiveData:
             return void_fill(self.settings, fill_id, clock=self.clock)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except ValueError as exc:
+            # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
+            if str(exc) == "store_locked":
+                return {"error_code": "store_locked"}
+            return {"error_code": "void_fill_failed"}
         except Exception:
             return {"error_code": "void_fill_failed"}
 
