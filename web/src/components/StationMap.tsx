@@ -35,6 +35,13 @@ export interface StationMapProps {
 
 export type MapMode = "osm" | "radar";
 
+/** Kachel-Quelle der Kartenansicht (OSM-Standardstil, nur über https). */
+export const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+/** Pflicht-Zuordnung der OSM-Tile-Usage-Policy — deutsch, weil die App
+ *  deutsch ist; der Link führt auf die Copyright-Seite der Mitwirkenden. */
+export const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende';
+
 interface StationMapInfo {
   station: Station;
   isCurrentSelected: boolean;
@@ -237,15 +244,23 @@ export function StationMap({
             center: [centerLat, centerLon],
             zoom: 13,
             zoomControl: true,
-            attributionControl: false,
+            // 0.31.0: Zuordnung bleibt sichtbar. Die OSM-Tile-Usage-Policy
+            // verlangt sie, ohne Zuordnung ist die Nutzung der Kachel-Server
+            // ein Verstoß (403 „not following the usage policy“).
+            attributionControl: true,
           });
 
           mapInstanceRef.current = map;
 
           const tileLayer = L.tileLayer(
-            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            OSM_TILE_URL,
             {
               maxZoom: 19,
+              attribution: OSM_ATTRIBUTION,
+              // 0.31.0: Die Kachel-Server identifizieren Anwendungen über den
+              // Referer; `strict-origin-when-cross-origin` sendet genau den
+              // Ursprung (kein Pfad). Ohne Referer → 403, Karte leer.
+              referrerPolicy: "strict-origin-when-cross-origin",
             },
           );
 

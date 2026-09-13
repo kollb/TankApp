@@ -15,22 +15,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>TankApp · Dein Tank-Kompass</title>
-    <script>
-      // C4: Theme vor dem ersten Paint anwenden (localStorage „tankapp.theme“,
-      // Default „dark“ = dunkles Slate, die Design-Basis). React übernimmt in
-      // Dashboard.tsx denselben Wert und hält meta/Classes synchron.
-      try {
-        var t = JSON.parse(localStorage.getItem("tankapp.theme") || '"dark"');
-        if (t === "light") {
-          document.documentElement.classList.remove("dark");
-          document.documentElement.classList.add("light");
-          var m = document.querySelector('meta[name="theme-color"]');
-          if (m) m.setAttribute("content", "#eef2f7");
-        }
-      } catch (e) {
-        /* Storage gesperrt → dunkler Default bleibt. */
-      }
-    </script>
+    <!-- C4/0.31.0: Theme-Bootstrap steht in /theme-boot.js — ein Inline-<script>
+         blockiert die CSP `script-src 'self'` (kein 'unsafe-inline'). -->
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

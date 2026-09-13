@@ -387,7 +387,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # 0.31.0: nicht mehr `no-referrer`. Die OSM-Kachel-Server verlangen
+        # für Browser-Anwendungen einen **Referer** (Tile Usage Policy,
+        # „Misidentification“); ohne ihn antworten sie mit 403
+        # „Access blocked — App is not following the Usage Policy“ und die
+        # Karte bleibt leer. `strict-origin-when-cross-origin` ist der
+        # Browser-Default und der kleinste mögliche Schritt: gleicher Ursprung
+        # → volle URL, fremder Ursprung → nur der Ursprung (kein Pfad, keine
+        # Query), Abstieg https → http → gar nichts. Es geht also keine
+        # Seitenadresse nach außen, sondern nur „diese App“.
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         # API und Dokumente bleiben no-store; content-hashierte Vite-Assets
         # dürfen (und sollen) cachen — sonst bremst no-store das
         # Lighthouse-Ziel aus §13 M4 (Prüfstand §3.8).
@@ -402,6 +411,9 @@ class Handler(SimpleHTTPRequestHandler):
         # OSM-Kacheln lädt die Karte (web/src/components/StationMap.tsx) als
         # <img> von a/b/c.tile.openstreetmap.org — ohne den Host in img-src
         # blockiert der Browser jede Kachel (nur der Radar bleibt nutzbar).
+        # `script-src 'self'` bleibt absichtlich ohne 'unsafe-inline': der
+        # Theme-Bootstrap vor dem ersten Paint liegt deshalb als eigene Datei
+        # in web/public/theme-boot.js (C4, 0.31.0) — inline wäre er gesperrt.
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",

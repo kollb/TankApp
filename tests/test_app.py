@@ -828,6 +828,16 @@ def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
             csp = response.headers["Content-Security-Policy"]
             assert "https://*.tile.openstreetmap.org" in csp
             assert "img-src" in csp
+            # Kein 'unsafe-inline': der Theme-Bootstrap liegt als eigene
+            # Datei in web/public/theme-boot.js (C4, 0.31.0).
+            assert "'unsafe-inline'" not in csp.split("style-src")[0]
+            # OSM-Tile-Usage-Policy: für Browser-Anwendungen ist ein Referer
+            # Pflicht. `no-referrer` (bis 0.30.0) lieferte 403 „Access
+            # blocked — App is not following the Usage Policy“.
+            assert (
+                response.headers["Referrer-Policy"]
+                == "strict-origin-when-cross-origin"
+            )
         with urllib.request.urlopen(base + "/api/v1/stations?fuel=e10") as response:
             assert json.load(response)["fresh_prices"] == 1
         for path in [
