@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Fuel as FuelIcon,
+  Car,
+  SquarePen,
   Compass,
   LineChart as ChartIcon,
   Server,
@@ -21,6 +23,8 @@ import {
 import { ApiExplorer } from "./components/ApiExplorer";
 import { HeatmapGrid } from "./components/HeatmapGrid";
 import { LoadError } from "./components/LoadError";
+// A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog + Umschalter im Header.
+import { ProfileManager } from "./components/ProfileManager";
 // C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
 import { CellError } from "./components/CellError";
 import { DataAgeBanner } from "./components/DataAge";
@@ -64,6 +68,11 @@ import {
   HEATMAP_WEEKS,
   isHeatmapBasis,
   isHeatmapWeeks,
+  PINNED_MAX,
+  profileFields,
+  profileFieldsDiffer,
+  profileErrorText,
+  profileRequest,
   readShareParams,
   shareQuery,
   livePhaseHint,
@@ -78,6 +87,7 @@ import {
   segments,
   sliderCommit,
   timeLabel,
+  togglePinnedStation,
   transitionRuleLine,
   triggerSkipLabel,
   useResource,
@@ -92,8 +102,11 @@ import {
   type DetourMode,
   type Fill,
   type Fills,
+  type FillsSummary,
   type Fuel,
   type HeatmapBasis,
+  type ProfileFields,
+  type Profiles,
   type Station,
   type Stations,
   type Health,
@@ -214,7 +227,6 @@ export function Dashboard() {
     isHeatmapBasis,
     share.heatmapBasis,
   );
-
   // B4 Workshop State: ε Handlungsschwelle Slider
   const [eps, setEps] = useState(1.0);
   const [labDayIdx, setLabDayIdx] = useState(13);
@@ -270,6 +282,234 @@ export function Dashboard() {
       window.removeEventListener("offline", off);
     };
   }, []);
+
+  // A1: Fahrzeug-/Haushaltsprofile. Aktives Profil + fahrzeugspezifische
+  // Felder kommen serverseitig aus /api/v1/profiles (Haushalt, kein Login);
+  // fällt der Server aus, gilt weiter der letzte localStorage-Stand. Stadt
+  // und Vergleichsstation bleiben bewusst Gerätesache.
+  const [activeProfileId, setActiveProfileId] = usePreference<string>(
+    "profileId",
+    "",
+    (value) => typeof value === "string",
+  );
+  const [tankCapacity, setTankCapacity] = usePreference<number>(
+    "tankCapacity",
+    50,
+    (value) =>
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 20 &&
+      value <= 120,
+  );
+  // A2: Füllstand in Prozent — Zustand, kein Profilwert (er ändert sich mit
+  // jeder Füllung). null = keine Angabe, dann sagt die App nichts zum Tank.
+  const [tankPercent, setTankPercent] = usePreference<number | null>(
+    "tankPercent",
+    null,
+    (value) =>
+      value === null ||
+      (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100),
+  );
+  // C2: Stamm-Stationen — bewusst lokal (localStorage), kein Account nötig.
+  const [pinnedIds, setPinnedIds] = usePreference<string[]>(
+    "pinnedStations",
+    [],
+    (value) =>
+      Array.isArray(value) &&
+      value.length <= PINNED_MAX &&
+      value.every((id) => typeof id === "string"),
+  );
+  const [pinNote, setPinNote] = useState<string | null>(null);
+  const pinNoteTimer = useRef<number | null>(null);
+  const togglePin = (stationId: string) => {
+    const result = togglePinnedStation(pinnedIds, stationId);
+    setPinnedIds(result.ids);
+    if (result.note) {
+      setPinNote(result.note);
+      if (pinNoteTimer.current) window.clearTimeout(pinNoteTimer.current);
+      pinNoteTimer.current = window.setTimeout(() => setPinNote(null), 5000);
+    } else {
+      setPinNote(null);
+    }
+  };
+
+  // A1: Profil-Liste holen (langsam pollen; nach jedem Schreibvorgang
+  // zählt `refresh` die Liste sofort neu).
+  const profilesRes = useResource<Profiles>("/api/v1/profiles", 120000, refresh);
+  const [profilesBusy, setProfilesBusy] = useState(false);
+  const [profileManagerOpen, setProfileManagerOpen] = useState(false);
+  const [profileNote, setProfileNote] = useState<string | null>(null);
+  const profileNoteTimer = useRef<number | null>(null);
+  const noteProfile = (text: string) => {
+    setProfileNote(text);
+    if (profileNoteTimer.current) window.clearTimeout(profileNoteTimer.current);
+    profileNoteTimer.current = window.setTimeout(() => setProfileNote(null), 6000);
+  };
+
+  const activeProfile = useMemo(
+    () =>
+      profilesRes.data?.profiles.find(
+        (profile) => profile.id === activeProfileId,
+      ) ?? null,
+    [profilesRes.data, activeProfileId],
+  );
+  // Aktueller Stand der Profil-Felder für Vergleiche ohne Effect-Ketten.
+  const prefsRef = useRef({
+    fuel,
+    liters,
+    consumption,
+    timeValue,
+    speed,
+    detourMode,
+    tankCapacity,
+  });
+  prefsRef.current = {
+    fuel,
+    liters,
+    consumption,
+    timeValue,
+    speed,
+    detourMode,
+    tankCapacity,
+  };
+  // Zuletzt angewandter Profilstand (id + updated_at) — verhindert, dass
+  // ein Poll dieselben Werte immer wieder in die Felder schreibt, während
+  // der Nutzer gerade tippt.
+  const lastAppliedRef = useRef<string | null>(null);
+
+  // A1 Sync, Richtung Server → GUI: neues/anderes Profil (oder ein Stand
+  // von einem anderen Gerät) überschreibt die Profil-Felder lokal.
+  useEffect(() => {
+    if (!activeProfile) return;
+    const stamp = `${activeProfile.id}:${activeProfile.updated_at ?? ""}`;
+    if (lastAppliedRef.current === stamp) return;
+    lastAppliedRef.current = stamp;
+    const fromProfile: ProfileFields = {
+      fuel: activeProfile.fuel,
+      liters: activeProfile.liters,
+      consumption: activeProfile.consumption,
+      time_value_eur_h: activeProfile.time_value_eur_h,
+      speed_kmh: activeProfile.speed_kmh,
+      detour_mode: activeProfile.detour_mode,
+      tank_capacity_l: activeProfile.tank_capacity_l,
+    };
+    if (!profileFieldsDiffer(profileFields(prefsRef.current), fromProfile)) return;
+    setFuel(activeProfile.fuel);
+    setLiters(activeProfile.liters);
+    setConsumption(activeProfile.consumption);
+    setTimeValue(activeProfile.time_value_eur_h);
+    setSpeed(activeProfile.speed_kmh);
+    setDetourMode(activeProfile.detour_mode);
+    setTankCapacity(activeProfile.tank_capacity_l);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProfile]);
+
+  // A1 Sync, Richtung GUI → Server: ändert der Nutzer ein Profil-Feld,
+  // schreibt es (entprellt) in das aktive Profil zurück — solange einer
+  // Profileinstellung folgt, gilt sie auf allen Geräten im Haushalt.
+  useEffect(() => {
+    if (!activeProfile) return;
+    const current = profileFields({ fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity });
+    const fromProfile: ProfileFields = {
+      fuel: activeProfile.fuel,
+      liters: activeProfile.liters,
+      consumption: activeProfile.consumption,
+      time_value_eur_h: activeProfile.time_value_eur_h,
+      speed_kmh: activeProfile.speed_kmh,
+      detour_mode: activeProfile.detour_mode,
+      tank_capacity_l: activeProfile.tank_capacity_l,
+    };
+    if (!profileFieldsDiffer(current, fromProfile)) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const res = await profileRequest(`/${activeProfile.id}`, "PUT", current);
+        if (!res.ok) {
+          noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+          return;
+        }
+        setRefresh((value) => value + 1);
+      })();
+    }, 800);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity, activeProfile]);
+
+  // A1 Handler der Verwaltung: anlegen, aktivieren, umbenennen, löschen.
+  const handleCreateProfile = async (name: string) => {
+    setProfilesBusy(true);
+    try {
+      const body = { name, ...profileFields(prefsRef.current) };
+      const res = await profileRequest("", "POST", body);
+      const created = res.data as { id?: string; error_code?: string } | null;
+      if (!res.ok || !created?.id) {
+        noteProfile(profileErrorText(created?.error_code));
+        return;
+      }
+      lastAppliedRef.current = null;
+      setActiveProfileId(created.id);
+      setProfileManagerOpen(false);
+      noteProfile(`Profil „${name}“ erstellt und auf diesem Gerät aktiviert.`);
+      setRefresh((value) => value + 1);
+    } finally {
+      setProfilesBusy(false);
+    }
+  };
+  const handleActivateProfile = async (id: string | null) => {
+    setProfilesBusy(true);
+    try {
+      const res = await profileRequest(
+        id === null ? "/activate" : `/${id}/activate`,
+        "POST",
+        { active: id },
+      );
+      if (!res.ok) {
+        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        return;
+      }
+      lastAppliedRef.current = null;
+      setActiveProfileId(id ?? "");
+      noteProfile(
+        id === null
+          ? "Kein Profil aktiv — Einstellungen gelten nur noch auf diesem Gerät."
+          : `Profil „${profilesRes.data?.profiles.find((p) => p.id === id)?.name ?? id}“ aktiv.`,
+      );
+      setRefresh((value) => value + 1);
+    } finally {
+      setProfilesBusy(false);
+    }
+  };
+  const handleRenameProfile = async (id: string, name: string) => {
+    setProfilesBusy(true);
+    try {
+      const res = await profileRequest(`/${id}`, "PUT", { name });
+      if (!res.ok) {
+        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        return;
+      }
+      noteProfile("Profilname gespeichert.");
+      setRefresh((value) => value + 1);
+    } finally {
+      setProfilesBusy(false);
+    }
+  };
+  const handleDeleteProfile = async (id: string) => {
+    setProfilesBusy(true);
+    try {
+      const res = await profileRequest(`/${id}`, "DELETE");
+      if (!res.ok) {
+        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        return;
+      }
+      if (activeProfileId === id) {
+        lastAppliedRef.current = null;
+        setActiveProfileId("");
+      }
+      noteProfile("Profil gelöscht. War es aktiv, ist jetzt keins aktiv.");
+      setRefresh((value) => value + 1);
+    } finally {
+      setProfilesBusy(false);
+    }
+  };
 
   const prices = useResource<Stations>(
     `/api/v1/stations?fuel=${fuel}`,
@@ -439,8 +679,14 @@ export function Dashboard() {
   // (decide + Wallet + Summary + Due-Episoden + Tageskurve) statt sechs
   // Parallel-Polls, die auf der NAS an File-Locks hängen und einen Refresh
   // auf 5–10 s blähen, während die Ansicht tot wirkt.
+  // A2: Tankstand an /decide mitgeben — nur mit Füllstand-Angabe; die
+  // Tankgröße kommt aus dem Profil (bzw. lokal, solange keins aktiv ist).
+  const tankQuery =
+    tankPercent !== null
+      ? `&tank_percent=${tankPercent}&tank_capacity_l=${tankCapacity}`
+      : "";
   const decideQuery = activeCity
-    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}`
+    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
     : null;
   const overview = useResource<Overview>(
     tab === "daily" && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
@@ -536,6 +782,13 @@ export function Dashboard() {
     tab === "statistics" || tab === "system"
       ? `/api/v1/selection?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
+    120000,
+    refresh,
+  );
+  // A4: Monats-/Jahresbilanz — nur im Werkstatt-Tab (der Alltag zeigt
+  // weiter die Summen-Kacheln aus stats_summary).
+  const fillsSummary = useResource<FillsSummary>(
+    tab === "statistics" ? "/api/v1/fills/summary" : null,
     120000,
     refresh,
   );
@@ -1147,6 +1400,42 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
+            {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
+                Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
+                Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
+            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+              <Car size={14} className="text-emerald-400" />
+              <span className="sr-only">Fahrzeug-Profil</span>
+              <select
+                aria-label="Fahrzeug-Profil"
+                value={activeProfileId}
+                onChange={(e) => {
+                  void handleActivateProfile(e.target.value || null);
+                }}
+                title={
+                  activeProfile
+                    ? `Aktives Profil „${activeProfile.name}“ — Felder gelten haushaltsweit`
+                    : "Kein Profil aktiv — Einstellungen gelten nur auf diesem Gerät"
+                }
+                className="max-w-40 bg-slate-950 pr-1 text-slate-100"
+              >
+                <option value="">Kein Profil (nur dieses Gerät)</option>
+                {(profilesRes.data?.profiles ?? []).map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              aria-label="Fahrzeug-Profile verwalten"
+              title="Profile anlegen, umbenennen, löschen (A1)"
+              onClick={() => setProfileManagerOpen(true)}
+              disabled={profilesBusy}
+              className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+            >
+              <SquarePen size={16} aria-hidden="true" />
+            </button>
             {/* B4: aggregierter System-Alarm als roter/gelber/grüner Punkt. */}
             {h && (
               <span
@@ -1446,6 +1735,13 @@ export function Dashboard() {
             voidNote={voidNote}
             visibleFills={visibleFills}
             voidedCount={voidedCount}
+            tankPercent={tankPercent}
+            setTankPercent={setTankPercent}
+            tankCapacity={tankCapacity}
+            setTankCapacity={setTankCapacity}
+            pinnedIds={pinnedIds}
+            togglePin={togglePin}
+            pinNote={pinNote}
           />
         )}
 
@@ -1516,6 +1812,7 @@ export function Dashboard() {
             stationPhase={f?.data_policy ?? null}
             stations={stations}
             statsSummaryRes={statsSummaryRes}
+            fillsSummary={fillsSummary}
             transitionLine={transitionLine}
           />
         )}
@@ -1580,6 +1877,18 @@ export function Dashboard() {
           </span>
         </footer>
       </main>
+      <ProfileManager
+        open={profileManagerOpen}
+        onClose={() => setProfileManagerOpen(false)}
+        profilesRes={profilesRes}
+        activeId={activeProfileId || null}
+        busy={profilesBusy}
+        note={profileNote}
+        onActivate={(id) => void handleActivateProfile(id)}
+        onCreate={(name) => void handleCreateProfile(name)}
+        onRename={(id, name) => void handleRenameProfile(id, name)}
+        onDelete={(id) => void handleDeleteProfile(id)}
+      />
     </div>
   );
 }

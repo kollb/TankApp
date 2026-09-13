@@ -30,6 +30,7 @@ const FILES = [
   "components/LineChart.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",
+  "components/ProfileManager.tsx",
   "components/Skeleton.tsx",
   "components/ui.tsx",
   "views/Daily.tsx",

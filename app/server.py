@@ -75,6 +75,33 @@ _FILL_STATUS = {
     "store_too_large": 503,
 }
 
+# A1: Statuscodes der Profil-Endpunkte — Fach-Codes 4xx, Rest 503
+# („Server kann gerade nicht schreiben“ statt stiller Erfolg).
+_PROFILE_STATUS = {
+    "invalid_query": 400,
+    "invalid_profile_name": 400,
+    "invalid_fuel": 400,
+    "invalid_liters": 400,
+    "invalid_consumption": 400,
+    "invalid_time_value_eur_h": 400,
+    "invalid_speed_kmh": 400,
+    "invalid_tank_capacity_l": 400,
+    "invalid_mode": 400,
+    "profile_limit": 409,
+    "profile_not_found": 404,
+    "profiles_read_failed": 503,
+    "profile_write_failed": 503,
+    "store_too_large": 503,
+}
+
+
+def _profile_status(res) -> int:
+    code = res.get("error_code") if isinstance(res, dict) else None
+    if not code:
+        return 200
+    return _PROFILE_STATUS.get(code, 503)
+
+
 # B5: Kleines Schreib-Budget — ausschließlich für die Ledger-Endpunkte
 # (POST fills/intent/outcome, DELETE fills/{id}). Bewusst KEIN GET-Limit
 # mehr (0.12.0): Das GUI-Polling mehrerer Geräte war zu Recht uneingeschränkt.
@@ -527,6 +554,14 @@ class Handler(SimpleHTTPRequestHandler):
             # A3/A6: Wallet-Verlauf (Liste) — JSON-Variante; CSV unter /fills.csv.
             return self.data.fills()
 
+        # --- A4: Monats-/Jahresbilanz des Wallet-Ledgers (Werkstatt) ---
+        if norm_path == "/api/v1/fills/summary":
+            return self.data.fills_summary()
+
+        # --- A1: Fahrzeug-/Haushaltsprofile (ohne Login, serverseitig) ---
+        if norm_path == "/api/v1/profiles":
+            return self.data.profiles()
+
         if norm_path == "/api/v1/stats/summary":
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
             return self.data.stats_summary(params)
@@ -587,6 +622,11 @@ class Handler(SimpleHTTPRequestHandler):
                     "invalid_latest_by",
                     "invalid_home",
                     "invalid_basis",
+                    "invalid_tank",
+                    "invalid_profile_name",
+                    "invalid_time_value_eur_h",
+                    "invalid_speed_kmh",
+                    "invalid_tank_capacity_l",
                 ):
                     self.json({"error_code": code}, 400)
                 else:
@@ -803,11 +843,95 @@ class Handler(SimpleHTTPRequestHandler):
                 self.json({"error_code": "server_error"}, 503)
             return
 
+        # --- A1: Profil anlegen / aktivieren ---
+        if norm_path == "/api/v1/profiles":
+            if not self._gate_write():
+                return
+            try:
+                res = self.data.create_profile(payload)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            self.json(res, _profile_status(res))
+            return
+
+        # A1: „Kein Profil mehr aktiv“ — Body {"active": null}; bewusst
+        # vor dem {id}/activate-Muster, sonst würde „activate“ als ID gelesen.
+        if norm_path == "/api/v1/profiles/activate":
+            if not self._gate_write():
+                return
+            try:
+                res = self.data.activate_profile(None)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            self.json(res, 200)
+            return
+
+        if norm_path.startswith("/api/v1/profiles/") and norm_path.endswith(
+            "/activate"
+        ):
+            if not self._gate_write():
+                return
+            profile_id = norm_path[len("/api/v1/profiles/") : -len("/activate")]
+            if not profile_id or "/" in profile_id:
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            try:
+                res = self.data.activate_profile(profile_id)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            self.json(res, _profile_status(res))
+            return
+
         # Unknown POST -> 501 to keep read-only contract. JSON statt HTML
         # (Prüfstand §1.5: „Alle Endpunkte liefern error_code“).
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_PUT(self):
+        try:
+            self.serve_put()
+        except (BrokenPipeError, ConnectionError):
+            pass
+
+    def serve_put(self):
+        url = urlsplit(self.path)
+        norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
+        # --- A1: Profil aktualisieren (partiell) ---
+        if norm_path.startswith("/api/v1/profiles/") and not norm_path.endswith(
+            "/activate"
+        ):
+            profile_id = norm_path[len("/api/v1/profiles/") :].strip("/")
+            if not profile_id or "/" in profile_id:
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            if not self._gate_write():
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+            except (TypeError, ValueError):
+                self.json({"error_code": "invalid_request"}, 400)
+                return
+            if length < 0 or length > 100_000:
+                self.json({"error_code": "payload_too_large"}, 413)
+                return
+            try:
+                body = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(body.decode("utf-8") or "{}")
+            except Exception:
+                self.json({"error_code": "invalid_json"}, 400)
+                return
+            if not isinstance(payload, dict):
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            try:
+                res = self.data.update_profile(profile_id, payload)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            self.json(res, _profile_status(res))
+            return
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_DELETE(self):
@@ -819,6 +943,24 @@ class Handler(SimpleHTTPRequestHandler):
     def serve_delete(self):
         url = urlsplit(self.path)
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
+        # A1: Profil löschen — war es aktiv, ist danach keins aktiv.
+        if norm_path.startswith("/api/v1/profiles/"):
+            profile_id = norm_path[len("/api/v1/profiles/") :].strip("/")
+            if not profile_id or "/" in profile_id:
+                self.json({"error_code": "invalid_query"}, 400)
+                return
+            if not self._gate_write():
+                return
+            try:
+                res = self.data.delete_profile(profile_id)
+            except Exception:
+                self.json({"error_code": "server_error"}, 503)
+                return
+            if not isinstance(res, dict):
+                self.json({"error_code": "server_error"}, 503)
+                return
+            self.json(res, _profile_status(res))
+            return
         # A3: Beleg-Storno — DELETE /api/v1/fills/{id} setzt voided statt zu löschen.
         if norm_path.startswith("/api/v1/fills/"):
             fill_id = norm_path[len("/api/v1/fills/") :].strip("/")

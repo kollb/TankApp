@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 12.09.2026 · App-Version 0.11.0. Abgleich von
+> Stand: 12.09.2026 · App-Version 0.23.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen](#12092026--version-0230-profile-tankstand-bilanz-stamm-stationen)
   - [11.09.2026 — P-Seite aus der Prognoseverteilung (§4.1–4.3)](#11092026--p-seite-aus-der-prognoseverteilung-4143)
   - [11.09.2026 — P1/P2/P3-Fixes (Prüfstand §3/§7)](#11092026--p1p2p3-fixes-prüfstand-37)
   - [11.09.2026 — Engine-Ausbau, Güte-Gate, Umweg-Konvention (Prüfstand §1.3/§1.5, §3.1–3.4)](#11092026--engine-ausbau-güte-gate-umweg-konvention-prüfstand-1315-3134)
@@ -201,6 +202,19 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen
+
+Die vier offenen P1-Punkte aus [TODO.md](../TODO.md) (A1, A2, A4, C2) —
+alles Alltag/Werkstatt-Funktionen ohne Auswirkung auf Modell oder
+Veröffentlichung.
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| Fahrzeug-/Haushaltsprofile ohne Login (A1) | `app/profiles.py`: serverseitiger Store („ein Haushalt, kein Account“, LAN-only per Vorgabe), Endpunkte unter `/api/v1/profiles` (GET/POST/PUT/DELETE/activate), dieselben Feldgrenzen wie die GUI-Slider, `schema_version` nach B2-Muster. GUI: Umschalter im Header + Verwaltungs-Dialog; Sync Server → GUI bei Wechsel/Fernänderung, GUI → Server entprellt. Offline gilt der letzte localStorage-Stand — offen gesagt, nicht still | `tests/test_profiles.py` |
+| Tankstand als F3-Eingabe (A2) | `decide` nimmt `tank_percent`/`tank_capacity_l`/`range_km` und antwortet mit `tank`-Block (Restreichweite, Reserve = 5 l ÷ Verbrauch, Zustand, Klartext). Reservebereich blockiert „warten“: angezeigte Aktion kippt zu `refuel_now`, Ledger erhält die angezeigte Aktion + `tank_state` — die Tabellen-Aktion bleibt unangetastet (Shadow/Güte-Gate). Konzept-F3 „Tank bei ¼, kann ich warten?“ hat damit eine ehrliche Antwort | `tests/test_decide_tank.py` |
+| Monats-/Jahresbilanz in der Werkstatt (A4, §12) | `GET /api/v1/fills/summary` (`compute_wallet_balance`): aktive Belege je Monat/Jahr in Europe/Berlin, Ø €/Tankung, Ø €/l, Ersparnis gegen die Baseline „immer sofort getankt“, `n_without_date` statt stiller Auslassung. Panel „Monats- & Jahresbilanz“ in der Werkstatt | `tests/test_wallet_balance.py` |
+| Stamm-Stationen pinnen + Suche/Filter/Sortierung (C2) | Alltag „5 · Stationen“: Stern (max. 8, Pin-Reihenfolge, localStorage — kein Account), Suche über Name/Marke, Markenfilter, Sortierung Preis/Distanz/Netto-€ (Preis × Tankmenge) mit Füllungs-Preis je Zeile; Beleg-Erfassung listet Pinned zuerst. Netto-€ mit Umweg bleibt bewusst server-only (B6/H1) | `web/src/features.test.ts` |
 
 ### 12.09.2026 — Version 0.19.0: Refresh ohne Totstehen, Dashboard zerlegt
 

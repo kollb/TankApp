@@ -1,6 +1,7 @@
 // D1: Views-Schnitt — Alltagstab. Der gemeinsame Zustand (~100 useState/
 // useResource) lebt in der Dashboard-Root und wandert per typisierten Props
 // in diese View; die View rendert, sie entscheidet nichts.
+import { useState } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -9,11 +10,14 @@ import {
   Compass,
   Cpu,
   Fuel as FuelIcon,
+  Gauge,
   Route,
   Scale,
+  Search,
   Server,
   ShieldCheck,
   SlidersHorizontal,
+  Star,
 } from "lucide-react";
 import { PrecisionSlider } from "../components/PrecisionSlider";
 import { LoadError } from "../components/LoadError";
@@ -29,7 +33,10 @@ import {
   euro,
   euroPerLiter,
   fillLimitHint,
+  orderedStationList,
   percentLabel,
+  STATION_SORTS,
+  tankPreviewLine,
   timeLabel,
   type DecideResult,
   type Fill,
@@ -42,6 +49,7 @@ import {
   type RouteEvaluate,
   type Station,
   type Stations,
+  type StationSort,
   type StatsSummary,
   type DetourMode,
 } from "../data";
@@ -65,6 +73,17 @@ export interface DailyViewProps {
   timeValueUsed: number;
   autoZ: { z: number; isPeak: boolean };
   detourMode: DetourMode;
+  // A2: Tankstand als F3-Eingabe (Füllstand in Prozent, Tankgröße des Fahrzeugs)
+  tankPercent: number | null;
+  setTankPercent: (v: number | null) => void;
+  tankCapacity: number;
+  setTankCapacity: (v: number) => void;
+  // C2: Stamm-Stationen (serverunabhängig, localStorage) — Reihenfolge und
+  // Stern-Status kommen aus der Dashboard-Root, damit auch die Beleg-Erfassung
+  // dieselben Pinned zuerst zeigt.
+  pinnedIds: string[];
+  togglePin: (stationId: string) => void;
+  pinNote: string | null;
   setLiters: (v: number) => void;
   setConsumption: (v: number) => void;
   setSpeed: (v: number) => void;
@@ -136,7 +155,30 @@ export interface DailyViewProps {
   setShowVoidedFills: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 export function DailyView(props: DailyViewProps) {
-  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, setConsumption, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setDetourMode, setLiters, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, setSpeed, setTimeValue, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, } = props;
+  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, setConsumption, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setDetourMode, setLiters, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, setSpeed, setTimeValue, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, setTankCapacity, pinnedIds, togglePin, pinNote, } = props;
+  // C2: Suche/Markenfilter/Sortierung sind Ansichts-Zustand dieses Panels —
+  // sie beschreiben, wonach gerade geschaut wird, nicht den Haushalt.
+  const [stationQuery, setStationQuery] = useState("");
+  const [stationBrand, setStationBrand] = useState("");
+  const [stationSort, setStationSort] = useState<StationSort>("price");
+  const stationBrands = Array.from(
+    new Set(stations.map((row) => row.brand).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, "de"));
+  const orderedStations = orderedStationList(
+    stations,
+    pinnedIds,
+    stationSort,
+    price,
+    stationQuery,
+    stationBrand,
+  );
+  const pinnedFirstStations = orderedStationList(
+    stations,
+    pinnedIds,
+    "price",
+    price,
+  );
+  const filteredCount = orderedStations.length;
   return (
 <>
   {/* B4: Due-Prompt Banner */}
@@ -723,6 +765,107 @@ export function DailyView(props: DailyViewProps) {
       );
     })()}
 
+    {/* A2: Tankstand — die Physik neben der Ampel. Ohne Eingabe steht hier
+        nichts (die App rät keinen Tankstand); mit Eingabe übermittelt der
+        Slider tank_percent + tank_capacity_l an /decide und bekommt die
+        Bewertung zurück: Reservebereich blockiert das Warten, knapp heißt
+        ehrlicher Hinweis. */}
+    <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          <Gauge size={11} aria-hidden="true" /> Tankstand
+        </span>
+        {tankPercent != null && (
+          <span className="font-mono text-[11px] text-slate-400">
+            {tankPreviewLine(tankPercent, tankCapacity, consumption)}
+          </span>
+        )}
+      </div>
+      {tankPercent == null ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Wie voll ist der Tank? Mit Angabe sagt die App ehrlich, ob
+            Warten bis zum Fenster riskant ist.
+          </p>
+          <button
+            onClick={() => setTankPercent(25)}
+            title="Füllstand auf ein Viertel setzen — weiterdrehen unten"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800"
+          >
+            Viertel gesetzt — bewerten
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <PrecisionSlider
+            id="tankPercent"
+            label="Füllstand"
+            icon={<Gauge size={14} />}
+            value={tankPercent}
+            onChange={setTankPercent}
+            min={0}
+            max={100}
+            step={5}
+            unit="%"
+            valueText={`${deTrimmed(tankPercent, 0)} % Füllstand`}
+            valueSpeech={`${deTrimmed(tankPercent, 0)} Prozent Füllstand`}
+            hint={
+              <button
+                onClick={() => setTankPercent(null)}
+                className="mt-1 text-[10px] text-slate-500 underline decoration-dotted hover:text-slate-300"
+              >
+                Keine Angabe — Tankstand-Hinweis ausblenden
+              </button>
+            }
+          />
+          <PrecisionSlider
+            id="tankCapacity"
+            label="Tankgröße"
+            value={tankCapacity}
+            onChange={setTankCapacity}
+            min={20}
+            max={120}
+            step={5}
+            unit="L"
+            valueText={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
+            valueSpeech={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
+            hint={
+              <span className="mt-1 block text-[10px] text-slate-500">
+                Fahrzeugangabe — gehört zum Profil, steht auf allen Geräten.
+              </span>
+            }
+          />
+        </div>
+      )}
+      {(() => {
+        const tank = decideRes.data?.tank;
+        if (!tank) return null;
+        if (tank.state === "empty") {
+          return (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-[11px] leading-snug text-rose-200"
+            >
+              {tank.message}
+            </p>
+          );
+        }
+        if (tank.state === "low") {
+          return (
+            <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-[11px] leading-snug text-amber-200">
+              {tank.message}
+            </p>
+          );
+        }
+        return (
+          <p className="mt-3 font-mono text-[11px] text-slate-500">
+            Tankstand ok — Restreichweite ≈{" "}
+            {deTrimmed(tank.range_km, 0)} km.
+          </p>
+        );
+      })()}
+    </div>
+
     <div className="relative mt-5 flex items-start gap-2.5 text-xs leading-relaxed text-slate-400">
       <ShieldCheck
         size={17}
@@ -822,8 +965,11 @@ export function DailyView(props: DailyViewProps) {
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
             >
               {stations.length ? (
-                stations.map((row) => (
+                /* C2: Stamm-Stationen zuerst — die eigene Säule ist der
+                   Normalfall beim Beleg. */
+                pinnedFirstStations.map((row) => (
                   <option key={row.station_id} value={row.station_id}>
+                    {pinnedIds.includes(row.station_id) ? "★ " : ""}
                     {row.name}
                     {price(row) !== null
                       ? ` — ${euro(price(row), 3)} €/L`
@@ -1113,6 +1259,7 @@ export function DailyView(props: DailyViewProps) {
           Deine Stationen
         </h3>
         <p className="mt-1 text-[11px] text-slate-500">
+          Stern = Stamm-Station (oben, auf diesem Gerät gespeichert).
           Station antippen, um sie als Vergleich zu wählen.
         </p>
       </div>
@@ -1120,9 +1267,73 @@ export function DailyView(props: DailyViewProps) {
         {stations.length} im Set
       </span>
     </div>
+    {/* C2: Suche, Markenfilter, Sortierung — bei 20+ Stationen im
+        Frankfurt-Radius sonst unbedienbar. */}
+    <div className="flex flex-col gap-2 border-b border-slate-800 px-5 py-3 sm:flex-row sm:items-center">
+      <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs">
+        <Search size={13} className="shrink-0 text-slate-500" aria-hidden="true" />
+        <span className="sr-only">Stationen durchsuchen</span>
+        <input
+          type="text"
+          value={stationQuery}
+          onChange={(e) => setStationQuery(e.target.value)}
+          placeholder="Suche nach Name oder Marke"
+          aria-label="Stationen nach Name oder Marke durchsuchen"
+          className="w-full bg-slate-900 text-slate-100 placeholder:text-slate-600 focus:outline-none"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-xs text-slate-400">
+        <span className="sr-only">Marke filtern</span>
+        <select
+          aria-label="Nach Marke filtern"
+          value={stationBrand}
+          onChange={(e) => setStationBrand(e.target.value)}
+          className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-slate-100"
+        >
+          <option value="">Alle Marken</option>
+          {stationBrands.map((brand) => (
+            <option key={brand} value={brand}>
+              {brand}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-xs text-slate-400">
+        <span className="sr-only">Sortieren</span>
+        <select
+          aria-label="Liste sortieren"
+          value={stationSort}
+          onChange={(e) => setStationSort(e.target.value as StationSort)}
+          className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-slate-100"
+        >
+          {STATION_SORTS.map((option) => (
+            <option key={option.value} value={option.value} title={option.title}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+    {pinNote && (
+      <p
+        role="status"
+        aria-live="polite"
+        className="border-b border-slate-800 px-5 py-2 text-[11px] leading-snug text-amber-300"
+      >
+        {pinNote}
+      </p>
+    )}
     {stations.length ? (
+      filteredCount === 0 ? (
+        <div className="p-5">
+          <Empty>
+            Keine Station passt zu Suche oder Markenfilter. Suche leeren
+            zeigt wieder alle {stations.length} Stationen.
+          </Empty>
+        </div>
+      ) : (
       <div className="divide-y divide-slate-800/80">
-        {stations.map((row) => {
+        {orderedStations.map((row) => {
           const value = price(row);
           const age =
             row.age_minutes === null
@@ -1137,6 +1348,7 @@ export function DailyView(props: DailyViewProps) {
                 : value === null
                   ? "Kein Kraftstoffpreis"
                   : "Offen";
+          const isPinned = pinnedIds.includes(row.station_id);
           return (
             <div
               key={row.station_id}
@@ -1215,12 +1427,44 @@ export function DailyView(props: DailyViewProps) {
                         Letzte Meldung: {euroPerLiter(row.last_price)}
                       </div>
                     )}
+                    {/* C2 „Netto-€“: was die Füllung mit der eingestellten
+                        Tankmenge hier kostet. Umwegkosten rechnet bewusst
+                        der Server (B6/H1) — deshalb keine client-seitige
+                        Netto-Rechnung in der Sortierung. */}
+                    {stationSort === "fill" && value !== null && (
+                      <div className="text-[10px] font-semibold text-slate-400">
+                        ≈ {euro(value * liters)} € für {deTrimmed(liters, 0)} L
+                      </div>
+                    )}
                   </div>
                   <ChevronRight
                     size={15}
                     className="text-slate-600"
                   />
                 </div>
+              </button>
+              {/* C2: Stamm-Station pinnen — der Stern sortiert die Zeile nach
+                  oben (Pin-Reihenfolge), gespeichert nur auf diesem Gerät. */}
+              <button
+                onClick={() => togglePin(row.station_id)}
+                aria-pressed={isPinned}
+                aria-label={
+                  isPinned
+                    ? `${row.name} aus Stamm-Stationen entfernen`
+                    : `${row.name} als Stamm-Station merken`
+                }
+                title={
+                  isPinned
+                    ? "Stamm-Station lösen"
+                    : "Als Stamm-Station merken — steht dann oben"
+                }
+                className={`shrink-0 rounded-lg border p-2 transition-colors ${
+                  isPinned
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                    : "border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-300"
+                }`}
+              >
+                <Star size={15} fill={isPinned ? "currentColor" : "none"} />
               </button>
               {row.maps_url ? (
                 <a
@@ -1238,6 +1482,7 @@ export function DailyView(props: DailyViewProps) {
           );
         })}
       </div>
+      )
     ) : (
       <div className="p-5">
         <Empty>

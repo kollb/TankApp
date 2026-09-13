@@ -1,7 +1,13 @@
 // D1: Views-Schnitt — Werkstatt-Tab. Gemeinsamer Zustand aus der
 // Dashboard-Root per typisierten Props; die View rendert, sie entscheidet
 // nichts.
-import { Activity, BarChart3, Scale } from "lucide-react";
+import { useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  CalendarRange,
+  Scale,
+} from "lucide-react";
 import { HeatmapGrid } from "../components/HeatmapGrid";
 import { LoadError } from "../components/LoadError";
 import { CellError } from "../components/CellError";
@@ -23,12 +29,16 @@ import {
   HEATMAP_WEEKS,
   autoTimeTicks,
   centPerLiter,
+  deTrimmed,
   euro,
   formatHour,
+  monthBalanceLabel,
+  percentLabel,
   rowOutcome,
   timeLabel,
   type DataReach,
   type Forecast,
+  type FillsSummary,
   type Health,
   type Heatmap,
   type HeatmapBasis,
@@ -69,6 +79,8 @@ export interface StatisticsViewProps {
   heatmap: ResourceState<Heatmap>;
   selection: ResourceState<Selection>;
   statsSummaryRes: ResourceState<StatsSummary>;
+  // A4: Monats-/Jahresbilanz des Wallet-Ledgers (nur Werkstatt-Tab)
+  fillsSummary: ResourceState<FillsSummary>;
   // Abgeleitete Werkstatt-Werte
   gateStatus: string;
   m7Line: string | null;
@@ -108,7 +120,15 @@ export interface StatisticsViewProps {
   refreshNow: () => void;
 }
 export function StatisticsView(props: StatisticsViewProps) {
-  const { activeCity, activeLabDayRow, activeLabOutcome, anchorHour, anchorLabel, best, calibErr, calibPoints, data, f, fanBand80, fanBand95, forecast, forecastMarks, forecastWindow, gateStatus, h, heatmap, heatmapBasis, heatmapBasisActive, heatmapKind, heatmapWeeks, history, horizon, horizonDays, labData, labDayClass, labDayIdx, labModel, labMu, labPredHour, labRows, labSaves, labScores, labTotals, livePointsForChart, liters, m7Line, metrics, modelSeries, modelWindows, obsWindow, observations, refreshNow, selection, selected, series, setEps, setHeatmapBasis, setHeatmapKind, setHeatmapWeeks, setHorizon, setLabDayIdx, setSelectedId, setSpanHours, span, spanHours, spanLabel, stationPhase, stations, statsSummaryRes, transitionLine, eps, } = props;
+  const { activeCity, activeLabDayRow, activeLabOutcome, anchorHour, anchorLabel, best, calibErr, calibPoints, data, f, fanBand80, fanBand95, fillsSummary, forecast, forecastMarks, forecastWindow, gateStatus, h, heatmap, heatmapBasis, heatmapBasisActive, heatmapKind, heatmapWeeks, history, horizon, horizonDays, labData, labDayClass, labDayIdx, labModel, labMu, labPredHour, labRows, labSaves, labScores, labTotals, livePointsForChart, liters, m7Line, metrics, modelSeries, modelWindows, obsWindow, observations, refreshNow, selection, selected, series, setEps, setHeatmapBasis, setHeatmapKind, setHeatmapWeeks, setHorizon, setLabDayIdx, setSelectedId, setSpanHours, span, spanHours, spanLabel, stationPhase, stations, statsSummaryRes, transitionLine, eps, } = props;
+  // A4: Tabelle umschaltbar Monats- ↔ Jahresbilanz; Daten kommen als eine
+  // Antwort vom Server, die Umschaltung ist reine Ansicht.
+  const [balanceMode, setBalanceMode] = useState<"months" | "years">("months");
+  const balanceRows = fillsSummary.data
+    ? balanceMode === "months"
+      ? fillsSummary.data.months
+      : fillsSummary.data.years
+    : [];
   return (
 <>
   <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -1090,6 +1110,185 @@ export function StatisticsView(props: StatisticsViewProps) {
         Monaten — die Reichweite gehört unter die Tabelle. */}
     <DataReachNote reach={selection.data} noun="Beobachtungen" />
   </section>
+
+  {/* Gruppe D: Jahres-/Monatsbilanz (A4, Konzept §12) — „Wallet-Ledger im
+      Alltag, Jahresbilanz in der Werkstatt“. Nur echte Belege, stornierte
+      zählen nicht; Baseline = „immer sofort getankt“. */}
+  <section className={`${panel} mb-8 p-5 sm:p-6`} aria-labelledby="balance-heading">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <h3 id="balance-heading" className="flex items-center gap-2 text-sm font-semibold">
+        <CalendarRange size={16} className="text-emerald-400" />
+        Monats- &amp; Jahresbilanz
+      </h3>
+      <div
+        role="group"
+        aria-label="Bilanz-Periode"
+        className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-[11px] font-bold"
+      >
+        {(
+          [
+            ["months", "Monate"],
+            ["years", "Jahre"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            aria-pressed={balanceMode === value}
+            onClick={() => setBalanceMode(value)}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              balanceMode === value
+                ? "bg-emerald-500 text-slate-950"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+    {fillsSummary.error || fillsSummary.data?.error_code ? (
+      <LoadError
+        errorCode={fillsSummary.data?.error_code || fillsSummary.errorCode}
+        fallback="Die Bilanz konnte nicht geladen werden."
+        onRetry={refreshNow}
+        retryLabel="Bilanz neu laden"
+      />
+    ) : fillsSummary.data && balanceRows.length ? (
+      <>
+        <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric
+            label="Tankungen gesamt"
+            value={countLabelDe(fillsSummary.data.overall.fills)}
+            detail={`Stornierte Belege zählen nicht — aktuell ${countLabelDe(fillsSummary.data.n_fills_total)} Belege im Ledger.`}
+          />
+          <Metric
+            label="Ø pro Tankung"
+            value={
+              <>
+                {euro(fillsSummary.data.overall.avg_eur_per_fill)}{" "}
+                <span className="text-sm font-normal text-slate-500">€</span>
+              </>
+            }
+            detail={`Ø ${euro(fillsSummary.data.overall.avg_eur_per_liter, 3)} €/L über alle Belege.`}
+          />
+          <Metric
+            label="Gesamtsumme"
+            value={
+              <>
+                {euro(fillsSummary.data.overall.total_eur)}{" "}
+                <span className="text-sm font-normal text-slate-500">€</span>
+              </>
+            }
+            detail={`${deTrimmed(fillsSummary.data.overall.liters, 0)} Liter getankt.`}
+          />
+          <Metric
+            label="Gegenüber „immer sofort tanken“"
+            value={
+              <span
+                className={
+                  (fillsSummary.data.overall.saved_eur ?? 0) >= 0
+                    ? "text-emerald-400"
+                    : "text-rose-300"
+                }
+              >
+                {(fillsSummary.data.overall.saved_eur ?? 0) >= 0 ? "+" : "−"}
+                {euro(Math.abs(fillsSummary.data.overall.saved_eur))}{" "}
+                <span className="text-sm font-normal text-slate-500">€</span>
+              </span>
+            }
+            detail={
+              fillsSummary.data.overall.saved_pct != null
+                ? `${percentLabel(fillsSummary.data.overall.saved_pct, 1)} der Baseline (${euro(fillsSummary.data.overall.baseline_eur)} €) — pro Beleg gegen den Preis zum Empfehlungszeitpunkt.`
+                : `Baseline ${euro(fillsSummary.data.overall.baseline_eur)} € — Ersparnis prozentual nicht aussagekräftig.`
+            }
+          />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-800 text-slate-500">
+                <th className="py-2 pr-3">
+                  {balanceMode === "months" ? "Monat" : "Jahr"}
+                </th>
+                <th className="py-2 pr-3" title="Anzahl gebuchter Belege (ohne Storno).">
+                  Tankungen
+                </th>
+                <th className="py-2 pr-3 hidden sm:table-cell">Liter</th>
+                <th className="py-2 pr-3" title="Summe der gezahlten Preise × Liter.">
+                  € gesamt
+                </th>
+                <th className="py-2 pr-3" title="Gesamtsumme geteilt durch Anzahl der Tankungen.">
+                  Ø €/Tankung
+                </th>
+                <th
+                  className="py-2 pr-3 hidden md:table-cell"
+                  title="Ersparnis gegen die Baseline „immer sofort getankt“: pro Beleg Referenzpreis zum Empfehlungszeitpunkt minus gezahlter Preis, mal Liter."
+                >
+                  Ersparnis
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {balanceRows.map((row) => (
+                <tr key={row.key}>
+                  <td className="py-2 pr-3 font-semibold text-slate-200">
+                    {balanceMode === "months"
+                      ? monthBalanceLabel(row.key)
+                      : row.key}
+                  </td>
+                  <td className="py-2 pr-3 font-mono">{row.fills}</td>
+                  <td className="py-2 pr-3 font-mono hidden sm:table-cell">
+                    {deTrimmed(row.liters, 1)}
+                  </td>
+                  <td className="py-2 pr-3 font-mono">{euro(row.total_eur)}</td>
+                  <td className="py-2 pr-3 font-mono">
+                    {row.avg_eur_per_fill != null ? euro(row.avg_eur_per_fill) : "—"}
+                  </td>
+                  <td
+                    className={`py-2 pr-3 font-mono hidden md:table-cell ${
+                      row.saved_eur >= 0 ? "text-emerald-400" : "text-rose-300"
+                    }`}
+                  >
+                    {row.saved_eur >= 0 ? "+" : "−"}
+                    {euro(Math.abs(row.saved_eur))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {fillsSummary.data.overall.n_without_date > 0 && (
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            {countLabelDe(fillsSummary.data.overall.n_without_date)}{" "}
+            Beleg{fillsSummary.data.overall.n_without_date > 1 ? "e" : ""} ohne
+            lesbares Datum zäh
+            {fillsSummary.data.overall.n_without_date > 1 ? "len" : "t"} in den
+            Gesamtzahlen, aber in keiner Zeile oben.
+          </p>
+        )}
+        {balanceMode === "months" && fillsSummary.data.months.length > 12 && (
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+            Alle {countLabelDe(fillsSummary.data.months.length)} Monate mit
+            Belegen — die Tabelle beginnt beim jüngsten.
+          </p>
+        )}
+      </>
+    ) : fillsSummary.pending && !fillsSummary.data ? (
+      <SkeletonPanel lines={4} title={false} label="Bilanz wird gerechnet" />
+    ) : (
+      <Empty>
+        Noch keine Belege für eine Bilanz. Unter „Alltag → 2 · Tanken“
+        erfasste Belege erscheinen hier automatisch.
+      </Empty>
+    )}
+  </section>
 </>
   );
+}
+
+/** Lokaler Zähler-Formatter (de-DE) — hält die Tabelle frei von toFixed. */
+function countLabelDe(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : Math.round(value).toLocaleString("de-DE");
 }

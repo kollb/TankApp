@@ -1103,6 +1103,74 @@ class LiveData:
         except Exception:
             return {"error_code": "void_fill_failed"}
 
+    def fills_summary(self):
+        """A4: Monats-/Jahresbilanz des Wallet-Ledgers (Werkstatt-Panel)."""
+        try:
+            from .feedback import StoreTooLarge, compute_wallet_balance, load_store
+
+            store = load_store(self.settings)
+            balance = compute_wallet_balance(store, now=self.clock())
+            balance["error_code"] = None
+            return balance
+        except StoreTooLarge:
+            return {"error_code": "store_too_large"}
+        except Exception:
+            return {"error_code": "fills_summary_failed"}
+
+    # --- A1: Fahrzeug-/Haushaltsprofile (ohne Login, serverseitig) ---
+
+    def profiles(self):
+        try:
+            from .profiles import load_store, public_profiles
+
+            return public_profiles(load_store(self.settings))
+        except Exception:
+            return {
+                "error_code": "profiles_read_failed",
+                "profiles": [],
+                "active": None,
+            }
+
+    def create_profile(self, payload: dict):
+        try:
+            from .profiles import ProfileError, create_profile
+
+            return create_profile(self.settings, payload, clock=self.clock)
+        except ProfileError as exc:
+            return {"error_code": str(exc) or "invalid_query"}
+        except Exception:
+            return {"error_code": "profile_write_failed"}
+
+    def update_profile(self, profile_id: str, payload: dict):
+        try:
+            from .profiles import ProfileError, update_profile
+
+            return update_profile(self.settings, profile_id, payload, clock=self.clock)
+        except ProfileError as exc:
+            return {"error_code": str(exc) or "invalid_query"}
+        except Exception:
+            return {"error_code": "profile_write_failed"}
+
+    def activate_profile(self, profile_id: str | None):
+        try:
+            from .profiles import ProfileError, activate_profile
+
+            return activate_profile(self.settings, profile_id)
+        except ProfileError as exc:
+            return {"error_code": str(exc) or "invalid_query"}
+        except Exception:
+            return {"error_code": "profile_write_failed"}
+
+    def delete_profile(self, profile_id: str):
+        try:
+            from .profiles import ProfileError, delete_profile
+
+            return delete_profile(self.settings, profile_id)
+        except ProfileError as exc:
+            return {"error_code": str(exc) or "invalid_query"}
+        except Exception:
+            return {"error_code": "profile_write_failed"}
+
     def fills_csv(self) -> str:
         """Tankbelege als CSV (A6) — ``;``-getrennt, deutsche Dezimalkommas.
 

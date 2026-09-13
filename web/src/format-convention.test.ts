@@ -42,6 +42,7 @@ const CLEAN = [
   "components/HeatmapGrid.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",
+  "components/ProfileManager.tsx",
   "components/ApiExplorer.tsx",
   "components/Skeleton.tsx",
   "main.tsx",
