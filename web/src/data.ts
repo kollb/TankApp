@@ -864,6 +864,19 @@ export type ThresholdTuning = {
   min_n: number;
   auto_apply?: boolean;
   applied?: boolean;
+  /** H3 (0.31.0): Oszillationsschutz des Nachzugs — Rauschband je Aktion
+   *  und Totband. Fehlt das Feld, läuft eine ältere Engine. */
+  hysteresis?: {
+    sigma?: number;
+    min_n?: number;
+    deadband_p?: number;
+    deadband_eur?: number;
+    noise_band?: {
+      wait?: number | null;
+      now?: number | null;
+      elsewhere?: number | null;
+    } | null;
+  } | null;
 };
 
 export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
@@ -3166,6 +3179,30 @@ export function thresholdSampleLine(
     `Stichprobe (Mindest je Aktion: ${min_n}): ` +
     `Warten n=${n_wait ?? "—"} · Jetzt n=${n_now ?? "—"} · ` +
     `Woanders n=${n_elsewhere ?? "—"}`
+  );
+}
+
+/**
+ * H3 (0.31.0): Rauschband-Zeile der Schwellen-Tabelle. Der M7-Nachzug zieht
+ * erst außerhalb der Zufallsschwankung der Trefferquote — sonst würde der
+ * Regler bei kleinen Stichproben pendeln. Die Zeile sagt, wie breit das Band
+ * gerade ist, damit „kein Nachzug“ nicht nach Defekt aussieht.
+ */
+export function thresholdHysteresisLine(
+  tuning: ThresholdTuning | null | undefined,
+): string | null {
+  const band = tuning?.hysteresis?.noise_band;
+  if (!band) return null;
+  const share = (value: number) => `${Math.round(value * 100)} pp`;
+  const parts = [
+    band.wait != null ? `Warten ±${share(band.wait)}` : null,
+    band.now != null ? `Jetzt ±${share(band.now)}` : null,
+    band.elsewhere != null ? `Woanders ±${share(band.elsewhere)}` : null,
+  ].filter((part): part is string => part !== null);
+  if (!parts.length) return null;
+  return (
+    `Rauschband (${parts.join(" · ")}) — kleinere Abweichungen vom Ziel ` +
+    `gelten als Zufall und ziehen die Schwellen nicht.`
   );
 }
 

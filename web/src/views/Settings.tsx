@@ -28,6 +28,7 @@ import {
   clockLabel,
   deTrimmed,
   THRESHOLD_ROWS,
+  thresholdHysteresisLine,
   thresholdSampleLine,
   thresholdStatusLine,
   thresholdValueLabel,
@@ -118,7 +119,10 @@ export function SettingsView(props: SettingsViewProps) {
   const thresholds = summary?.thresholds ?? null;
   const tuning = summary?.threshold_tuning ?? null;
   const sampleLine = thresholdSampleLine(tuning);
-  const tuningReasons = tuning?.changed ? tuning.reasons : [];
+  // H3: Das Rauschband erklärt, warum ein Nachzug ausbleibt — ohne diesen
+  // Satz wirkt „keine Abweichung“ wie ein Stillstand.
+  const hysteresisLine = thresholdHysteresisLine(tuning);
+  const tuningReasons = tuning?.reasons ?? [];
 
   return (
     <>
@@ -451,10 +455,15 @@ export function SettingsView(props: SettingsViewProps) {
             {sampleLine && (
               <p className="mt-3 text-[10px] text-slate-500">{sampleLine}</p>
             )}
+            {hysteresisLine && (
+              <p className="mt-1 text-[10px] text-slate-500">{hysteresisLine}</p>
+            )}
             {tuningReasons.length > 0 && (
               <div className="mt-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  Begründung des Nachzugs (Engine)
+                  {tuning?.changed
+                    ? "Begründung des Nachzugs (Engine)"
+                    : "Warum nicht nachgezogen wird (Engine)"}
                 </p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-relaxed text-slate-400">
                   {tuningReasons.map((reason) => (

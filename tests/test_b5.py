@@ -346,3 +346,70 @@ def test_legacy_daily_routes_are_marked_deprecated(settings_with_prices):
 # Prüfstand §3.3 (Tages-Retry-After, LRU-Eviction) ist gegenstandslos: Es gibt
 # kein Limit mehr, also auch keine Buckets und kein Retry-After. Ersetzt durch
 # test_no_rate_limit_headers_and_no_429 oben.
+
+
+# --- H3: Oszillationsschutz des M7-Reglers (0.31.0) ----------------------
+
+
+def test_noise_band_shrinks_with_sample_size_and_is_infinite_without_data():
+    from app.thresholds import noise_band
+
+    assert noise_band(40, 0.7) > noise_band(400, 0.7) > 0.0
+    # Ohne Stichprobe oder Quote ist jede Ziellücke Rauschen.
+    assert noise_band(None, 0.7) == float("inf")
+    assert noise_band(40, None) == float("inf")
+    assert noise_band(0, 0.7) == float("inf")
+
+
+def test_hit_rate_gap_inside_noise_band_is_not_a_rule_violation():
+    """30 Empfehlungen schwanken um ±17 pp — 2 pp Abstand sind kein Signal."""
+    proposal = suggest_thresholds(
+        {"wait_n": 40, "hit_wait": 0.68, "now_n": 40, "hit_now": 0.86}
+    )
+    assert proposal["changed"] is False
+    assert proposal["thresholds"] == DEFAULT_THRESHOLDS
+    assert any("Rauschband" in text for text in proposal["reasons"])
+    assert proposal["hysteresis"]["noise_band"]["wait"] > 0.1
+
+
+def test_thresholds_stay_stable_on_noisy_ledgers():
+    """H3-Kern: Zwölf Ledger-Stände rund ums Ziel — kein Vorschlag pendelt."""
+    proposals = [
+        suggest_thresholds(
+            {
+                "wait_n": 40,
+                "hit_wait": 0.68 if index % 2 == 0 else 0.72,
+                "now_n": 40,
+                "hit_now": 0.84 if index % 2 == 0 else 0.86,
+            }
+        )
+        for index in range(12)
+    ]
+    assert all(item["changed"] is False for item in proposals)
+    first = proposals[0]["thresholds"]
+    assert all(item["thresholds"] == first for item in proposals)
+
+
+def test_deadband_suppresses_tiny_steps():
+    """Große Stichprobe, winzige Lücke: Der Schritt bliebe unter dem Totband."""
+    from app.thresholds import MIN_P_DEADBAND, noise_band
+
+    stats = {"wait_n": 100_000, "hit_wait": 0.697, "now_n": 100_000, "hit_now": 0.85}
+    assert noise_band(100_000, 0.697) < 0.7 - 0.697  # echte, aber kleine Lücke
+    proposal = suggest_thresholds(stats)
+    assert proposal["hysteresis"]["deadband_p"] == MIN_P_DEADBAND
+    assert proposal["changed"] is False
+    assert proposal["thresholds"]["wait_p_high"] == DEFAULT_THRESHOLDS["wait_p_high"]
+    assert any("Rauschband" in text for text in proposal["reasons"]) or any(
+        "kein Nachzug" in text for text in proposal["reasons"]
+    )
+
+
+def test_clear_gap_still_moves_the_gates():
+    """Kein Schutz ist ein Freibrief: 400 Empfehlungen, 20 pp Lücke zieht."""
+    proposal = suggest_thresholds(
+        {"wait_n": 400, "hit_wait": 0.50, "now_n": 400, "hit_now": 0.9}
+    )
+    assert proposal["changed"] is True
+    assert proposal["thresholds"]["wait_p_high"] > DEFAULT_THRESHOLDS["wait_p_high"]
+    assert proposal["hysteresis"]["noise_band"]["wait"] < 0.2 - 0.05

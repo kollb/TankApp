@@ -17,6 +17,7 @@ import {
   applyAppTheme,
   isAppTheme,
   THRESHOLD_ROWS,
+  thresholdHysteresisLine,
   thresholdSampleLine,
   thresholdStatusLine,
   thresholdValueLabel,
@@ -235,6 +236,50 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
     expect(html).toContain("Begründung des Nachzugs (Engine)");
     expect(html).toContain("WARTEN 60 % richtig — Gates angehoben.");
     expect(html).toContain("weicht von den Startwerten ab");
+  });
+
+  // H3 (0.31.0): Ohne Rauschband-Ausweis wirkt „kein Nachzug“ wie Stillstand,
+  // dabei ist es der Oszillationsschutz des Reglers.
+  it("nennt das Rauschband des M7-Nachzugs (H3)", () => {
+    expect(thresholdHysteresisLine(null)).toBeNull();
+    expect(thresholdHysteresisLine(tuning())).toBeNull(); // alte Engine
+    const line = thresholdHysteresisLine(
+      tuning({
+        hysteresis: {
+          noise_band: { wait: 0.172, now: 0.09, elsewhere: null },
+          deadband_p: 0.02,
+          deadband_eur: 0.05,
+        },
+      }),
+    );
+    expect(line).toContain("Rauschband");
+    expect(line).toContain("Warten ±17 pp");
+    expect(line).toContain("Jetzt ±9 pp");
+    expect(line).not.toContain("Woanders");
+    expect(line).toContain("ziehen die Schwellen nicht");
+  });
+
+  it("erklärt auch ohne Änderung, warum nicht nachgezogen wird", () => {
+    const html = renderToStaticMarkup(
+      <SettingsView
+        {...viewProps({
+          statsSummaryRes: {
+            ...emptyResource,
+            data: summary({
+              threshold_tuning: tuning({
+                changed: false,
+                auto_apply: true,
+                reasons: ["WARTEN 68 % richtig — Lücke liegt im Rauschband."],
+                hysteresis: { noise_band: { wait: 0.17 } },
+              }),
+            }),
+          },
+        })}
+      />,
+    );
+    expect(html).toContain("Warum nicht nachgezogen wird (Engine)");
+    expect(html).toContain("Lücke liegt im Rauschband");
+    expect(html).toContain("Rauschband");
   });
 });
 
