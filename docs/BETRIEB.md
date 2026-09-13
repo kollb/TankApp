@@ -824,6 +824,20 @@ Ausdrücklich nicht versuchen: glibc von Hand aktualisieren/downgraden/neu bauen
 
 `bash ops/nas/preflight.sh` prüft Version und ob python3 Standardbibliothek laden kann, meldet diesen Fall eigenständig.
 
+## Speichermanagement (Pi shm + NAS SSD/HDD)
+
+Siehe ausführlich [SPEICHER.md](SPEICHER.md) — Kurzfassung:
+
+- **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. Seit 13.09.2026 löscht der Collector Dateien, die vollständig vor `meta/synced_until` liegen (vom Uploader bestätigt) und älter als gestern sind — RAM sinkt auf ~1–2 Tage. Bei NAS-Ausfall weiter bis 7 Tage (FIFO). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Ack, 1 Tag Rest bleibt.
+
+- **NAS persistent**: Nicht nur Influx. `runtime/` (Jobs, `engine/current.json`, `selection/current.json`, `feedback/store.json`, Training-Cache) auf SSD, Roharchiv auf HDD, private Configs (`polling.json`, `influx.env`, `netrc`) auf SSD read-only. Influx selbst: `prices` + `collector_status`.
+
+- **3,38 GB auf `/mnt/user/appdata` (SSD)**: Influx-Volume + Runtime. Auf HDD verschieben würde bedeuten: HDD wacht alle 30 s auf (Stations-Poll, Health, Overview-Tageskurve, Heatmap). Spindown wäre aus. Deshalb **Influx auf SSD lassen**, Archiv auf HDD (State liegt auf SSD, damit HDD nur bei Bedarf wacht).
+
+- **SSD sparen**: Retention von 5 Jahren (43800h) auf 1 Jahr (8760h) kürzen (`docker exec tankapp-influxdb influx bucket update --org gtwrlab --name tankapp --retention 8760h`), Backups (`ops/nas/backup.sh` + Influx-Tar) auf HDD legen, `runtime/backtest-cache/` darf jederzeit gelöscht werden, optional `data-tools/prune_influx.py --older-than-days 365` für Delete-API.
+
+Details, Befehle und HDD-Spindown-Checkliste: [SPEICHER.md](SPEICHER.md).
+
 ## M1 Abnahme 14 Tage
 
 M1 erfüllt, wenn Collector+Ringpuffer+Uploader 14 Tage durchgelaufen und:

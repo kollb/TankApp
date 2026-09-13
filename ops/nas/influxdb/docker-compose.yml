@@ -38,7 +38,7 @@ services:
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN}
       DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
-      DOCKER_INFLUXDB_INIT_RETENTION: "43800h"   # = 5 Jahre (5*365*24 h)
+      DOCKER_INFLUXDB_INIT_RETENTION: "43800h"   # = 5 Jahre (5*365*24 h) — nur beim ersten Start; danach via CLI kürzbar, SSD-Tipp 1 Jahr (8760h), siehe docs/SPEICHER.md
     volumes:
       - tankapp_influxdb_data:/var/lib/influxdb2
     healthcheck:

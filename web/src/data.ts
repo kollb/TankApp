@@ -1733,22 +1733,37 @@ export function useResource<T>(
     key: null,
     etag: null,
   });
+  // Stale-while-revalidate: URL-Wechsel erkennt nur dieser Ref, nicht der
+  // Interval. Damit flackert die System-Seite nicht, wenn healthInterval
+  // zwischen 60000↔15000 wechselt (Job läuft ↔ fertig).
+  const prevUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if (!url) {
       queuedReloadRef.current = false;
-      // Inaktiv (Tab-Wechsel): kein „lädt …“ zurücklassen.
+      if (prevUrlRef.current !== url) {
+        prevUrlRef.current = url;
+        etagRef.current = { key: null, etag: null };
+      }
+      // Inaktiv (Tab-Wechsel): kein „lädt …“ zurücklassen, aber Daten
+      // bewusst behalten — initial ist data ohnehin null (Test: false|null|false).
       setState((prev) => (prev.pending ? { ...prev, pending: false } : prev));
       return;
     }
-    // Neue URL: altes Datenmaterial, alte Fehlerzählung und das alte ETag
-    // sind nichtig — das Panel lädt wieder, und der erste Fehlversuch ist
-    // sofort sichtbar (für diese URL ist noch nichts anzuzeigen).
-    setState((prev) =>
-      prev.key === null
-        ? prev
-        : { ...prev, key: null, data: null, errorCode: null, failStreak: 0 },
-    );
-    etagRef.current = { key: null, etag: null };
+    const urlChanged = prevUrlRef.current !== url;
+    if (urlChanged) {
+      prevUrlRef.current = url;
+      etagRef.current = { key: null, etag: null };
+      // Fuel-Switch E10→Diesel: altes Material nicht nullen (verhindert
+      // „Ehrlich statt geschätzt / Noch kein frischer Preis.“), nur Fehlerzähler
+      // zurücksetzen und sofort pending zeigen, damit die GUI Skeleton statt
+      // Empty rendern kann (isStaleFuel = data.fuel!==fuel && pending).
+      setState((prev) => ({
+        ...prev,
+        errorCode: null,
+        failStreak: 0,
+        pending: true,
+      }));
+    }
     let active = true,
       busy = false;
     let controller: AbortController | null = null;
@@ -1760,9 +1775,6 @@ export function useResource<T>(
       const timeout = window.setTimeout(() => controller?.abort(), 20000);
       setState((prev) => ({ ...prev, pending: true }));
       try {
-        // B7-Revalidierung: letztes ETag mitgeben, damit der Server auf
-        // unveränderten Datenstand mit 304 antworten kann (kein Body, keine
-        // Neuberechnung). Nur, wenn es zur aktuellen URL gehört.
         const etag = etagRef.current.key === url ? etagRef.current.etag : null;
         const headers: Record<string, string> = {};
         if (etag) headers["If-None-Match"] = etag;
@@ -1772,8 +1784,6 @@ export function useResource<T>(
           headers,
         });
         if (response.status === 304) {
-          // Datenstand unverändert: die Anzeige bleibt stehen, der Tausch
-          // bestätigt Frische — kein Fehler, kein neuer Body.
           etagRef.current = { key: url, etag };
           if (active)
             setState((prev) => ({
@@ -1787,9 +1797,6 @@ export function useResource<T>(
           return;
         }
         if (!response.ok) {
-          // Fehlerantworten tragen ein error_code (z. B. "unknown_station"
-          // bei 404). Wir heben es hoch, damit die GUI eine verständliche
-          // Meldung zeigen kann statt des nackten Codes.
           let errorCode: string | null = null;
           try {
             const body = (await response.json()) as {
@@ -1839,7 +1846,12 @@ export function useResource<T>(
       }
     }
     loadRef.current = load;
-    void load();
+    // Nur bei URL-Wechsel (inkl. erstem Mount) sofort laden; reiner
+    // Interval-Wechsel (System-Tab: 60s↔15s) startet nur den Timer neu und
+    // löst kein zusätzliches pending aus — verhindert System-Flicker.
+    if (urlChanged) {
+      void load();
+    }
     const timer = setInterval(() => void load(), interval);
     return () => {
       active = false;
@@ -1860,14 +1872,10 @@ export function useResource<T>(
     if (busyRef.current) queuedReloadRef.current = true;
     else loadRef.current();
   }, [refresh, url]);
-  const hasData = state.key !== null && state.key === url && state.data != null;
-  // Ein einzelner fehlgeschlagener Poll ist noch kein Alarm: Solange Daten
-  // angezeigt werden, bleiben sie stehen — eine kurze Unterbrechung zwischen
-  // zwei Polls ist kein Ausfall. Zwei aufeinanderfolgende Fehlversuche (oder
-  // gar keine anzeigbaren Daten) machen den Fehler erst sichtbar.
+  const hasData = state.data != null;
   return {
     ...state,
-    data: state.key === url ? state.data : null,
+    data: state.data,
     error: resourceErrorVisible(state.failStreak, hasData),
   };
 }

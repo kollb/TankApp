@@ -259,18 +259,59 @@ def write_snapshot(out_dir: Path, snap: dict) -> Path:
     return path
 
 
+def _read_ack_ts(meta_dir: Path) -> dt.datetime | None:
+    """Liest meta/synced_until (vom Uploader) — None, wenn noch nichts gesynct."""
+    try:
+        s = (meta_dir / "synced_until").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not s:
+        return None
+    try:
+        ts = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
+        return ts
+    except ValueError:
+        return None
+
+
 def ring_prune(out_dir: Path, keep_days: int = RING_DAYS) -> list[str]:
-    """JSONL-Dateien löschen, die älter als die Puffertiefe sind (FIFO, §9.1)."""
+    """Ringpuffer + Synced-Pruning (Speichermanagement 4.1).
+
+    - Dateien älter als keep_days (Default 7) werden immer gelöscht (FIFO, §9.1).
+    - Zusätzlich: Ist eine Datei vollständig vor dem Ack (synced_until) —
+      d. h. ihr Datum < ack.date() — kann sie nach erfolgreichem Influx-Upload
+      gelöscht werden, um RAM auf /dev/shm zu sparen. Wir behalten trotzdem
+      mindestens gestern (1 Tag) für manuelle Kontrolle, selbst wenn gesynct.
+      Das beantwortet „Braucht es das? Wenn einmal auf Influx kann doch
+      gelöscht werden?“: Ja, nach Ack, aber 1 Tag Puffer bleibt.
+    """
     cutoff = dt.date.today() - dt.timedelta(days=keep_days - 1)
-    removed = []
+    ack = _read_ack_ts(out_dir / "meta")
+    ack_date = ack.date() if ack else None
+    removed: list[str] = []
+    today = dt.date.today()
     for p in out_dir.glob("*.jsonl"):
         try:
             d = dt.date.fromisoformat(p.stem)
         except ValueError:
             continue
+        # Vollständig gesynct → darf weg, aber gestern behalten
+        if ack_date is not None and d < ack_date:
+            if d < today - dt.timedelta(days=1):
+                try:
+                    p.unlink()
+                    removed.append(p.name)
+                except OSError:
+                    pass
+                continue
         if d < cutoff:
-            p.unlink()
-            removed.append(p.name)
+            try:
+                p.unlink()
+                removed.append(p.name)
+            except OSError:
+                pass
     return removed
 
 
