@@ -177,6 +177,43 @@ export function DailyView(props: DailyViewProps) {
     price,
   );
   const filteredCount = orderedStations.length;
+  const primaryAdvice = decideRes.data?.primary;
+  const recommendedIntent = primaryAdvice
+    ? primaryAdvice.action === "wait"
+      ? "wait"
+      : primaryAdvice.action === "refuel_elsewhere"
+        ? "navigate"
+        : primaryAdvice.action === "refuel_now"
+          ? "refuel_now"
+          : null
+    : null;
+  const waitUntil =
+    primaryAdvice?.action === "wait" && primaryAdvice.recommended_window
+      ? clockLabel(primaryAdvice.recommended_window.start)
+      : null;
+  const stickyActionLabel =
+    recommendedIntent === "wait"
+      ? waitUntil
+        ? `Warten bis ${waitUntil} Uhr`
+        : "Warten"
+      : recommendedIntent === "navigate"
+        ? "Zur empfohlenen Station"
+        : recommendedIntent === "refuel_now"
+          ? "Jetzt tanken"
+          : null;
+  const recommendedMapsUrl =
+    primaryAdvice?.action === "refuel_elsewhere"
+      ? [...(decideRes.data?.alternatives_nearby ?? [])]
+          .sort((a, b) => b.net_eur - a.net_eur)
+          .find((a) => a.worth_it)?.maps_url
+      : primaryAdvice?.station.maps_url;
+  const runRecommendedIntent = () => {
+    if (!recommendedIntent) return;
+    handleIntent(
+      recommendedIntent,
+      recommendedIntent === "navigate" ? recommendedMapsUrl : undefined,
+    );
+  };
   return (
 <>
   {/* B4: Due-Prompt Banner */}
@@ -360,6 +397,23 @@ export function DailyView(props: DailyViewProps) {
         preflight.sh ausfuehren. Collector und Influx nuetzen ohne
         Polling-Set nichts.
       </p>
+    </div>
+  )}
+
+  {/* C8 (Teil): Die eine aktuelle Handlung bleibt im Alltag beim Scrollen
+      erreichbar. Kein zweites Panel, sondern ein kompakter Ableger derselben
+      Empfehlungsfläche; bei fehlender Empfehlung wird nichts erfunden. */}
+  {stickyActionLabel && (
+    <div className="sticky top-3 z-30 mb-4 flex justify-end pointer-events-none">
+      <button
+        type="button"
+        onClick={runRecommendedIntent}
+        aria-label={`Empfohlene Aktion: ${stickyActionLabel}`}
+        className="pointer-events-auto inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-400/40 bg-slate-950/95 px-4 py-2 text-xs font-bold text-emerald-300 shadow-xl shadow-slate-950/40 backdrop-blur hover:bg-slate-900"
+      >
+        {recommendedIntent === "wait" ? <Clock size={15} /> : <FuelIcon size={15} />}
+        {stickyActionLabel}
+      </button>
     </div>
   )}
 
@@ -743,12 +797,20 @@ export function DailyView(props: DailyViewProps) {
             </div>
           )}
 
-          {/* Intent-CTAs */}
+          {/* F4: Eine klare Handlung. Die Empfehlung ist primär, neutrale
+              Intents bleiben sekundär. Ein bewusster Widerspruch bleibt
+              möglich, erklärt sich aber per Tooltip statt gleichrangig zu
+              konkurrieren. */}
           {p.action !== "no_advice" && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Aktion zur Empfehlung">
               <button
                 onClick={() => handleIntent("wait")}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"
+                title={p.action === "refuel_now" ? "Widerspricht der Empfehlung „Jetzt tanken“" : undefined}
+                className={p.action === "wait"
+                  ? "rounded-lg bg-amber-400 px-4 py-2 text-[11px] font-bold text-slate-950 shadow hover:bg-amber-300"
+                  : p.action === "refuel_now"
+                    ? "rounded-lg border border-slate-700 bg-transparent px-3 py-1.5 text-[11px] text-slate-500 decoration-dotted underline hover:text-slate-300"
+                    : "rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"}
               >
                 Ich warte
               </button>
@@ -756,19 +818,25 @@ export function DailyView(props: DailyViewProps) {
                 onClick={() =>
                   handleIntent(
                     "navigate",
-                    p.action === "refuel_elsewhere" &&
-                      bestAlt?.maps_url
+                    p.action === "refuel_elsewhere" && bestAlt?.maps_url
                       ? bestAlt.maps_url
                       : p.station.maps_url,
                   )
                 }
-                className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/20"
+                className={p.action === "refuel_elsewhere"
+                  ? "rounded-lg bg-sky-400 px-4 py-2 text-[11px] font-bold text-slate-950 shadow hover:bg-sky-300"
+                  : "rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/20"}
               >
                 Navigieren
               </button>
               <button
                 onClick={() => handleIntent("refuel_now")}
-                className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20"
+                title={p.action === "wait" ? `Widerspricht der Empfehlung „${waitUntil ? `Warten bis ${waitUntil} Uhr` : "Warten"}“` : undefined}
+                className={p.action === "refuel_now"
+                  ? "rounded-lg bg-emerald-400 px-4 py-2 text-[11px] font-bold text-slate-950 shadow hover:bg-emerald-300"
+                  : p.action === "wait"
+                    ? "rounded-lg border border-slate-700 bg-transparent px-3 py-1.5 text-[11px] text-slate-500 decoration-dotted underline hover:text-slate-300"
+                    : "rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20"}
               >
                 Jetzt tanken
               </button>

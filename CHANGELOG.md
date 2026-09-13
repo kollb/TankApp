@@ -4,6 +4,20 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.27.0] – 2026-09-13
+
+### Hinzugefügt
+
+- **F4 — klare Intent-Leiste:** Die empfohlene Handlung ist der einzige
+  Primärbutton. Neutrale Aktionen bleiben sekundär; „Ich warte“ bzw. „Jetzt
+  tanken“ werden bei einem Widerspruch bewusst zurückgenommen und erklären
+  den Widerspruch im Tooltip. Die Intent-API und Entscheidungslogik bleiben
+  unverändert.
+- **C8 (Teil) — Sticky-Aktions-Chip:** „Jetzt tanken“, „Warten bis …“ oder die
+  empfohlene Navigation bleibt im Alltag beim Scrollen erreichbar. Ohne
+  belastbare Empfehlung erscheint kein Chip. Install-Prompt, Landscape und
+  Pull-to-Refresh bleiben ausdrücklich außerhalb dieses Batches.
+
 ## [0.26.1] – 2026-09-13
 
 **B11 abgeschlossen** — strenger Kaltlauf-Beleg auf der Zielhardware
