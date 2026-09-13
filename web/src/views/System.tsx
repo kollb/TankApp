@@ -105,12 +105,15 @@ export function SystemView(props: SystemViewProps) {
               eingerichtet. Collector-Herzschlag{" "}
               {h?.collector?.available ? "✓" : "fehlt"} und InfluxDB-Lesezugang{" "}
               {h?.influx_configured ? "✓" : "fehlt"} nützen ohne Polling-Set
-              nichts. Auf dem Pi <code>data/analysis/stations/polling.json</code>{" "}
+              nichts. Auf dem Pi{" "}
+              <code className="break-all">data/analysis/stations/polling.json</code>{" "}
               erzeugen (docs/INSTALL.md Abschnitt Polling-Set, danach
-              activate-polling), auf dem NAS <code>TANKAPP_POLLING_FILE</code>{" "}
-              prüfen (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
-              <code>ops/nas/preflight.sh</code> ausführen. Erwarteter Pfad:{" "}
-              <code>{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
+              activate-polling), auf dem NAS{" "}
+              <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen
+              (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
+              <code className="break-all">ops/nas/preflight.sh</code> ausführen.
+              Erwarteter Pfad:{" "}
+              <code className="break-all">{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
               Auswahl „0 Stationen“ im Modell-Log (Trainingsdaten laden → 0
               Stationen) kommt daher, dass ohne Polling-Set keine Metadaten für
               δ̂ vorhanden sind.

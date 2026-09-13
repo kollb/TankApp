@@ -19,7 +19,7 @@ export const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
 /** Leerer Bereich / Hinweis: gestrichelter Rand, kein Alarm-Ton. */
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-7 text-sm leading-relaxed text-slate-400">
+    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-7 text-sm leading-relaxed text-slate-400 break-words">
       {children}
     </div>
   );

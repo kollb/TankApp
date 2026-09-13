@@ -359,14 +359,18 @@ export function DailyView(props: DailyViewProps) {
       <p className="text-xs font-semibold text-amber-200">
         Polling-Set fehlt — keine Stadt eingerichtet
       </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
-        Auf dem Pi <code>data/analysis/stations/polling.json</code> erzeugen
-        (docs/INSTALL.md Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
-        <code>TANKAPP_POLLING_FILE</code> prüfen (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
-        <code>ops/nas/preflight.sh</code> ausführen. Collector-Herzschlag{" "}
-        {h?.collector?.available ? "✓" : "fehlt"} und InfluxDB-Lesezugang{" "}
-        {h?.influx_configured ? "✓" : "fehlt"} nützen ohne Polling-Set nichts. Pfad:{" "}
-        <code>{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
+      <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80 break-words">
+        Auf dem Pi{" "}
+        <code className="break-all">data/analysis/stations/polling.json</code>{" "}
+        erzeugen (docs/INSTALL.md Abschnitt Polling-Set, danach
+        activate-polling), auf dem NAS{" "}
+        <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen
+        (ops/nas/app/compose.yml → /config/polling.json RO) und{" "}
+        <code className="break-all">ops/nas/preflight.sh</code> ausführen.
+        Collector-Herzschlag {h?.collector?.available ? "✓" : "fehlt"} und
+        InfluxDB-Lesezugang {h?.influx_configured ? "✓" : "fehlt"} nützen ohne
+        Polling-Set nichts. Pfad:{" "}
+        <code className="break-all">{(h as any)?.polling_path || "data/analysis/stations/polling.json"}</code>.
       </p>
     </div>
   )}
