@@ -159,7 +159,9 @@ def build_alarms(
     try:
         import json as _json
 
-        sel_path = Path(getattr(settings, "runtime", ".")) / "selection" / "current.json"
+        sel_path = (
+            Path(getattr(settings, "runtime", ".")) / "selection" / "current.json"
+        )
         sel_raw = None
         try:
             if sel_path.is_file() and sel_path.stat().st_size < 10_000_000:
@@ -174,7 +176,11 @@ def build_alarms(
             if "by_fuel" not in sel_raw or not sel_raw.get("by_fuel"):
                 by_fuel_tmp = {}
                 for _fuel in ("e10", "e5", "diesel"):
-                    _p = Path(getattr(settings, "runtime", ".")) / "selection" / f"{_fuel}.json"
+                    _p = (
+                        Path(getattr(settings, "runtime", "."))
+                        / "selection"
+                        / f"{_fuel}.json"
+                    )
                     try:
                         if _p.is_file() and _p.stat().st_size < 5_000_000:
                             _d = _json.loads(_p.read_text(encoding="utf-8-sig"))
@@ -231,11 +237,14 @@ def build_alarms(
                     {
                         "code": "stations_lifecycle",
                         "severity": "warn",
-                        "message": msg + " Sie bleiben unterscheidbar — nur tote fallen aus dem Ranking.",
+                        "message": msg
+                        + " Sie bleiben unterscheidbar — nur tote fallen aus dem Ranking.",
                     }
                 )
             if total_twins:
-                twin_hint = f" Beispiel: {', '.join(twin_details[:2])}." if twin_details else ""
+                twin_hint = (
+                    f" Beispiel: {', '.join(twin_details[:2])}." if twin_details else ""
+                )
                 alarms.append(
                     {
                         "code": "price_twins",

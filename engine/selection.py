@@ -207,13 +207,20 @@ def _station_lifecycle(
     # Fallback: numerische Prüfung (price kann string sein)
     if not has_price and "price" in window_rows:
         try:
-            has_price = pd.to_numeric(window_rows["price"], errors="coerce").notna().any()
+            has_price = (
+                pd.to_numeric(window_rows["price"], errors="coerce").notna().any()
+            )
         except Exception:
             pass
     if has_price:
         return "active"
     # Kein Preis — warum?
-    statuses = window_rows.get("status", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+    statuses = (
+        window_rows.get("status", pd.Series(dtype=str))
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
     if statuses.empty:
         return "dead"
     # Alle „no prices“ → tot (API liefert seit Tagen kein Signal)
@@ -264,7 +271,10 @@ def _detect_price_twins(
         ok = price_numeric.notna()
         if not ok.any():
             continue
-        s = pd.Series(price_numeric[ok].to_numpy(), index=pd.to_datetime(sub.loc[ok, "timestamp"], utc=True))
+        s = pd.Series(
+            price_numeric[ok].to_numpy(),
+            index=pd.to_datetime(sub.loc[ok, "timestamp"], utc=True),
+        )
         s = s.sort_index()
         # Doppelte Zeitstempel: letzter gewinnt (wie normalize)
         s = s[~s.index.duplicated(keep="last")]
@@ -294,13 +304,19 @@ def _detect_price_twins(
             if qualifying_days < min_days:
                 continue
             # Preisdifferenz in ct/L
-            delta_ct = (sa.loc[common_idx].to_numpy() - sb.loc[common_idx].to_numpy()) * 100.0
+            delta_ct = (
+                sa.loc[common_idx].to_numpy() - sb.loc[common_idx].to_numpy()
+            ) * 100.0
             delta_ct = np.abs(delta_ct)
             # Vereinzelte NaNs aus numerischen Fehlern ignorieren
             delta_ct = delta_ct[np.isfinite(delta_ct)]
             if len(delta_ct) == 0:
                 continue
-            agreement = float(100.0 * np.mean(delta_ct <= tol_ct + 1e-9)) if len(delta_ct) else 0.0
+            agreement = (
+                float(100.0 * np.mean(delta_ct <= tol_ct + 1e-9))
+                if len(delta_ct)
+                else 0.0
+            )
             if agreement < min_agreement:
                 continue
             twins.append(
@@ -313,9 +329,15 @@ def _detect_price_twins(
                     "overlap_pct": float(overlap),
                     "qualifying_days": int(qualifying_days),
                     "agreement_pct": float(agreement),
-                    "mean_abs_delta_ct": float(np.mean(delta_ct)) if len(delta_ct) else None,
-                    "p95_abs_delta_ct": float(np.quantile(delta_ct, 0.95)) if len(delta_ct) else None,
-                    "max_abs_delta_ct": float(np.max(delta_ct)) if len(delta_ct) else None,
+                    "mean_abs_delta_ct": float(np.mean(delta_ct))
+                    if len(delta_ct)
+                    else None,
+                    "p95_abs_delta_ct": float(np.quantile(delta_ct, 0.95))
+                    if len(delta_ct)
+                    else None,
+                    "max_abs_delta_ct": float(np.max(delta_ct))
+                    if len(delta_ct)
+                    else None,
                     "classification": "possible_price_twins",
                     "auto_apply": False,
                 }
@@ -690,7 +712,7 @@ def analyse_city_light(
             city,
             cfg,
             mat,
-            excluded,
+            dead_stations + excluded,
             f"nach Coverage-Gate (≥{cfg.min_coverage:.0%} vom Stadt-Bestwert "
             f"{coverage_reference:.0%} im Fenster "
             f"{cfg.poll_start:02d}–{cfg.poll_end:02d} Uhr) nur {mat.shape[1]} "
@@ -698,6 +720,13 @@ def analyse_city_light(
             coverage=coverage,
             coverage_reference=coverage_reference,
             coverage_threshold=coverage_threshold,
+            dead_stations=dead_stations,
+            dead_count=len(dead_stations),
+            closed_stations=closed_stations,
+            closed_count=len(closed_stations),
+            nofuel_stations=nofuel_stations,
+            nofuel_count=len(nofuel_stations),
+            lifecycles=lifecycles,
         )
 
     base = _loo_baseline(mat)
@@ -829,12 +858,19 @@ def analyse_city_light(
             city,
             cfg,
             mat,
-            excluded + no_delta,
+            dead_stations + excluded + no_delta,
             f"{len(no_delta)} Station(en) ohne verwertbares δ̂ — zu wenig "
             f"gleichzeitige Werte (LOO braucht ≥4 Stationen je Zeitpunkt)",
             coverage=coverage,
             coverage_reference=coverage_reference,
             coverage_threshold=coverage_threshold,
+            dead_stations=dead_stations,
+            dead_count=len(dead_stations),
+            closed_stations=closed_stations,
+            closed_count=len(closed_stations),
+            nofuel_stations=nofuel_stations,
+            nofuel_count=len(nofuel_stations),
+            lifecycles=lifecycles,
         )
 
     tab = pd.DataFrame(rows)
@@ -881,7 +917,9 @@ def analyse_city_light(
     # JSON-sicher machen
     # A13: Preis-Zwillinge erkennen (identische Verläufe) — Warnung, nie auto-apply
     try:
-        price_twins = _detect_price_twins(df, city, list(tab["station_id"]) if not tab.empty else [], cfg)
+        price_twins = _detect_price_twins(
+            df, city, list(tab["station_id"]) if not tab.empty else [], cfg
+        )
     except Exception:
         price_twins = []
     # A12: Lebenszyklus-Bilanz für die Stadt (für Artefakt + GUI)
@@ -905,8 +943,8 @@ def analyse_city_light(
         "n_points": int(mat.notna().to_numpy().sum()),
         "n_days": int(len(uniq_days)),
         "station_count": len(tab),
-        "excluded_count": len(excluded),
-        "excluded": excluded[:20],
+        "excluded_count": len(dead_stations) + len(excluded),
+        "excluded": (dead_stations + excluded)[:20],
         # B21: Ausweis des Coverage-Gates — woran gemessen wurde (Fenster,
         # Bestwert der Stadt, wirksame Schwelle) und wer ohne δ̂ blieb.
         # Ohne diese Zahlen ist „warum ist Station X nicht dabei?“ nicht
@@ -927,7 +965,14 @@ def analyse_city_light(
         "nofuel_stations": nofuel_stations[:20],
         "nofuel_count": len(nofuel_stations),
         "lifecycle_counts": lifecycle_counts,
-        "lifecycles": {k: v for k, v in lifecycles.items() if k in set(tab["station_id"]) or k in dead_stations or k in closed_stations or k in nofuel_stations},
+        "lifecycles": {
+            k: v
+            for k, v in lifecycles.items()
+            if k in set(tab["station_id"])
+            or k in dead_stations
+            or k in closed_stations
+            or k in nofuel_stations
+        },
         # A13: Preis-Zwillinge als Warnung (nie auto-apply, Dauer-partial)
         "price_twins": price_twins,
         "price_twin_count": len(price_twins),
