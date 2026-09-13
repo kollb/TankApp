@@ -36,6 +36,8 @@ const FILES = [
   "views/Daily.tsx",
   "views/Statistics.tsx",
   "views/System.tsx",
+  "views/Settings.tsx",
+  "views/Glossary.tsx",
 ];
 
 function read(relativePath: string): string {

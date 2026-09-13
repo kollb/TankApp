@@ -510,6 +510,7 @@ def refresh(settings: Settings, now=None, progress=None):
                     poll_start=cfg.poll_start,
                     poll_end=cfg.poll_end,
                     timezone=cfg.timezone,
+                    dead_after_days=getattr(settings, "dead_after_days", 7),
                 )
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result

@@ -241,6 +241,23 @@ export type Heatmap = {
   error_code?: string | null;
 };
 
+export type StationLifecycle = "active" | "dead" | "closed" | "no_fuel";
+export type PriceTwin = {
+  station_a: string;
+  station_b: string;
+  city: string;
+  fuel: string;
+  common_points: number;
+  overlap_pct: number;
+  qualifying_days: number;
+  agreement_pct: number;
+  mean_abs_delta_ct: number | null;
+  p95_abs_delta_ct: number | null;
+  max_abs_delta_ct: number | null;
+  classification: string;
+  auto_apply: boolean;
+};
+
 export type SelectionStation = {
   station_id: string;
   city: string;
@@ -250,6 +267,7 @@ export type SelectionStation = {
   lat?: number | null;
   lon?: number | null;
   coverage?: number;
+  lifecycle?: StationLifecycle;
   delta_ct?: number | null;
   ci_lo?: number | null;
   ci_hi?: number | null;
@@ -278,6 +296,21 @@ export type Selection = DataReach & {
   error_code?: string | null;
   calibrated?: boolean;
   decision_ready?: boolean;
+  // A12/A13: Lebenszyklus-Bilanz und Preis-Zwillinge (Warnung, nie auto-apply)
+  price_twins?: PriceTwin[];
+  price_twin_count?: number;
+  lifecycle_counts?: Record<StationLifecycle, number> | null;
+  dead_stations?: string[];
+  dead_count?: number;
+  closed_stations?: string[];
+  closed_count?: number;
+  nofuel_stations?: string[];
+  nofuel_count?: number;
+  dead_after_days?: number | null;
+  lifecycle_totals?: Record<StationLifecycle, number> | null;
+  coverage_window?: string | null;
+  coverage_reference?: number | null;
+  coverage_threshold?: number | null;
 };
 
 export type RouteEvaluate = {
@@ -3089,4 +3122,155 @@ export function thresholdSampleLine(
     `Warten n=${n_wait ?? "—"} · Jetzt n=${n_now ?? "—"} · ` +
     `Woanders n=${n_elsewhere ?? "—"}`
   );
+}
+
+// --- C7: Glossar & A12/A13: Lebenszyklus & Preis-Zwillinge ---------------
+
+/** A12: Deutscher Klartext je Lebenszyklus (Zustände benennen, nicht bewerten). */
+export function lifecycleLabel(lc: StationLifecycle | string | null | undefined): string {
+  switch (lc) {
+    case "active":
+      return "aktiv";
+    case "dead":
+      return "ohne Preis seit Tagen — tot";
+    case "closed":
+      return "temporär geschlossen";
+    case "no_fuel":
+      return "führt diesen Kraftstoff nicht";
+    default:
+      return "unbekannt";
+  }
+}
+
+/** Kurze Badge-Farbe je Lebenszyklus (nur Zusatz, Farbe trägt nie allein). */
+export function lifecycleTone(lc: StationLifecycle | string | null | undefined): "neutral" | "warn" | "error" {
+  switch (lc) {
+    case "dead":
+      return "error";
+    case "closed":
+    case "no_fuel":
+      return "warn";
+    default:
+      return "neutral";
+  }
+}
+
+/** Tooltip-Text je Lebenszyklus — eine Zeile, woran man den Zustand erkennt. */
+export function lifecycleTip(lc: StationLifecycle | string | null | undefined): string {
+  switch (lc) {
+    case "active":
+      return "In den letzten Tagen lag mindestens ein verwertbarer Preis vor.";
+    case "dead":
+      return "Seit Tagen kein verwertbarer Preis (Status „no prices“) — die Station fällt aus Ranking und Kontingent.";
+    case "closed":
+      return "Status „geschlossen“ — die Station ist vorübergehend geschlossen, der Preis fehlt deshalb.";
+    case "no_fuel":
+      return "Offen, aber dieser Kraftstoff wurde als „false“ gemeldet — die Sorte wird hier nicht geführt.";
+    default:
+      return "Lebenszyklus unbekannt.";
+  }
+}
+
+/** A13: Ein-Satz-Zusammenfassung eines Preis-Zwillings (für System-Tab). */
+export function priceTwinLabel(twin: PriceTwin): string {
+  const a = twin.station_a;
+  const b = twin.station_b;
+  const agree = Number.isFinite(twin.agreement_pct) ? `${euro(twin.agreement_pct, 1)} %` : "—";
+  return `${a} und ${b} — ${twin.qualifying_days} Tage, ${agree} der gemeinsamen Preise innerhalb 0,1 ct/L`;
+}
+
+/** C7: Glossar-Eintrag — deutscher Primärlabel, Fachwort im Tooltip, Kurz- und Langform. */
+export type GlossaryTerm = {
+  id: string;
+  term: string;
+  de: string;
+  short: string;
+  long: string;
+  anchor?: string;
+};
+
+/** C7: Werkstatt-Begriffe ohne Erklärung in der App — hier mit deutscher Primärzeile. */
+export const GLOSSARY: readonly GlossaryTerm[] = [
+  {
+    id: "delta",
+    term: "δ̂ (delta-hat)",
+    de: "Preis-Abstand",
+    short: "Median der Differenz einer Station zum Median der übrigen Stationen der Stadt — in ct/L, negativ heißt günstiger als die Umgebung.",
+    long: "Für jeden 5-Minuten-Zeitpunkt wird der Median der Vergleichsstationen (Leave-One-Out) abgezogen; über alle Zeitpunkte gemittelt ergibt das δ̂. Ein Wert von −4,2 ct/L bedeutet: Die Station lag im Mittel 4,2 ct/L unter dem Stadtmedian. Das Konfidenzintervall kommt aus dem Tages-Block-Bootstrap (B=2000, 95 %, Benjamini-Hochberg-korrigierter q-Wert).",
+    anchor: "engine-selection",
+  },
+  {
+    id: "mase",
+    term: "MASE",
+    de: "Vergleich zur saisonalen Naive",
+    short: "MASE = Backtest-MAE geteilt durch den MAE der saisonalen Naive. Unter 1,0 heißt besser als die einfache Vergleichsmethode.",
+    long: "Mean Absolute Scaled Error: Der Backtest-Fehler des Modells geteilt durch den Fehler der 24-Stunden-Naive (Vor-Tages-Preis zur selben Stunde). MASE 0,7 heißt 30 % besser als die Naive. Im Roll-Backtest letzte 7 abgeschlossene Prüftage, Daten aus echten Beobachtungen, keine Prognose.",
+    anchor: "mase",
+  },
+  {
+    id: "picp",
+    term: "PICP 95 %",
+    de: "Trefferquote des 95-%-Bandes",
+    short: "Anteil echter Preise, die im 95-%-Band des Backtests lagen. Zielbereich 90–98 %.",
+    long: "Prediction Interval Coverage Probability: Wie oft liegt der echte Preis im vorhergesagten 95-%-Band? Bei perfekter Kalibrierung etwa 95 % der Zeit. Darunter ist das Band zu schmal (zu siegessicher), darüber zu breit (zu vorsichtig). Gezählt werden nur Zeitpunkte mit echtem Preis, geschlossene Meldungen zählen nicht als Bandverfehlung.",
+    anchor: "picp",
+  },
+  {
+    id: "brier",
+    term: "Brier",
+    de: "Treffergenauigkeit der Prozentzahlen",
+    short: "Mittlerer quadratischer Abstand zwischen behaupteter Prozentzahl P und eingetretenem Ergebnis (0/1). Kleiner heißt ehrlicher.",
+    long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei mindestens 100 abgeschlossenen Empfehlungen (§0.4).",
+    anchor: "brier",
+  },
+  {
+    id: "eps",
+    term: "ε (epsilon)",
+    de: "Handlungsschwelle",
+    short: "Mindest-Ersparnis in ct/L, ab der die Regel „Warten“ empfiehlt statt „Jetzt tanken“. Schalter im Labor, Produktion rechnet mit kalibrierter Entscheidungstabelle.",
+    long: "Die Labor-Regel des Prüfstands: Warten nur, wenn die im Training geschätzte erwartete Ersparnis μ mindestens ε erreicht. ε = 1,0 ct/L heißt: Erwarte ich weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. Die Produktion nutzt die kalibrierte Entscheidungstabelle (§4.1/§4.2), der Slider dient nur der Was-wäre-wenn-Analyse.",
+    anchor: "epsilon",
+  },
+  {
+    id: "regret",
+    term: "Regret / Mehrkosten",
+    de: "Mehrkosten zur perfekten Sicht",
+    short: "Durchschnittlicher Abstand der Regel zum Orakel — wie viel Cent je Liter die Regel mehr kostet als der beste Zeitpunkt im Fenster.",
+    long: "Regret = (Preis der Regel − Preis des Orakels) je Entscheidung, gemittelt. Das Orakel kennt den ganzen Tagesverlauf vorher und tankt immer im günstigsten Fenster — es ist die unerreichbare Referenz. Die Regel-€ (smart), Orakel-€ (best) und „immer warten“-€ (always) stehen daneben: Geholtes Potenzial = Regel-€ / Orakel-€.",
+    anchor: "regret",
+  },
+  {
+    id: "qvalue",
+    term: "q-Wert",
+    de: "Falscher-Alarm-korrigiert",
+    short: "Benjamini-Hochberg-korrigierter p-Wert über alle Stationen der Stadt. Signifikant günstiger bei q < 0,05.",
+    long: "Der q-Wert korrigiert die vielen Einzeltests (jede Station gegen ihre Stadt) gegen falsche Entdeckungen. q = 0,03 heißt: Unter allen als signifikant markierten Stationen sind höchstens 3 % Fehlalarme erwartet. 95-%-KI und q-Wert kommen aus demselben Tages-Block-Bootstrap.",
+  },
+  {
+    id: "avscore",
+    term: "AV-Score / Ampel-Stärke",
+    de: "Gewichtete Verfügbarkeit bei 3 günstigsten",
+    short: "Gewichtete Wahrscheinlichkeit, dass die Station zu den drei günstigsten der Stadt gehört — gewichtet mit dem Tankzeitprofil.",
+    long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu deinen typischen Tankzeiten stehst du oft gut da.",
+  },
+  {
+    id: "lifecycle",
+    term: "Lebenszyklus",
+    de: "Zustand der Station für diesen Kraftstoff",
+    short: "aktiv, temporär geschlossen, führt den Kraftstoff nicht oder tot (seit Tagen kein Preis) — nur tote fallen aus Ranking und Kontingent.",
+    long: "Die API liefert je Station „open“, „closed“ oder „false“ (Sorte nicht geführt). Kein verwertbarer Preis in den letzten 7 Kalendertagen (Europe/Berlin, konfigurierbar) gilt als „tot“ und nimmt der Station den Vergleichsplatz und das Kontingent — anders als „geschlossen“ (vorübergehend) oder „führt nicht“ (offen, aber Sorte fehlt).",
+    anchor: "lifecycle",
+  },
+  {
+    id: "twins",
+    term: "Preis-Zwillinge",
+    de: "Stationen mit identischem Preisverlauf",
+    short: "Zwei Stationen, deren Preise über 28 Tage bei ≥ 90 % Überlappung zu ≥ 99 % innerhalb 0,1 ct/L übereinstimmen — Warnung, nie automatische Entfernung.",
+    long: "Kriterien: mind. 28 Tage mit je ≥ 12 gemeinsamen Zeitpunkten, ≥ 90 % Überlappung, ≥ 99 % Übereinstimmung innerhalb 0,1 ct/L. Solche Paare sind oft Doppel-Source oder Franchise-Überlappung. Die Warnung steht im Selektions-Artefakt und im System-Tab; das Polling-Set wird nie automatisch umgebaut — das braucht Bestätigung.",
+    anchor: "price-twins",
+  },
+] as const;
+
+export function glossaryById(id: string): GlossaryTerm | undefined {
+  return GLOSSARY.find((g) => g.id === id);
 }

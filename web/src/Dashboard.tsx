@@ -18,6 +18,7 @@ import {
   Share2,
   CheckCircle2,
   Settings2,
+  BookOpen,
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
@@ -138,6 +139,7 @@ import { StatisticsView } from "./views/Statistics";
 import { SystemView } from "./views/System";
 // C4: Einstellungen-Tab — alle Defaults an einer Stelle.
 import { SettingsView } from "./views/Settings";
+import { GlossaryView } from "./views/Glossary";
 export function Dashboard() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
   // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
@@ -160,7 +162,7 @@ export function Dashboard() {
   );
   const [selectedId, setSelectedId] = useState(share.stationId ?? "");
   const [tab, setTab] = useState<
-    "daily" | "statistics" | "system" | "settings"
+    "daily" | "statistics" | "system" | "settings" | "glossary"
   >("daily");
   const [liters, setLiters] = usePreference(
     "liters",
@@ -1561,6 +1563,11 @@ export function Dashboard() {
                   label: "Einstellungen",
                   icon: <Settings2 size={15} />,
                 },
+                {
+                  id: "glossary",
+                  label: "Glossar",
+                  icon: <BookOpen size={15} />,
+                },
               ] as const
             ).map((item) => (
               <button
@@ -1921,11 +1928,14 @@ export function Dashboard() {
           />
         )}
 
+        {/* ============================================================ */}
+        {/* TAB GLOSSAR — C7 „Was heißt das?“                             */}
+        {/* ============================================================ */}
+        {tab === "glossary" && <GlossaryView />}
+
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>
-            Daten: <strong>MTS-K via tankerkoenig.de (CC BY 4.0)</strong> ·
-            Token-Bucket 1 R / 300 s · Fenster 06–24 Uhr · Entscheidungs-API:
-            decide · episodes · fills · settlement · summary
+            Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage gedrosselt · Beobachtungsfenster 06–24 Uhr (Europe/Berlin)
             {h?.version ? (
               <>
                 {" "}
@@ -1934,7 +1944,14 @@ export function Dashboard() {
                   <span className="font-mono"> ({h.commit})</span>
                 ) : null}
               </>
-            ) : null}
+            ) : null}{" "}
+            ·{" "}
+            <button
+              onClick={() => setTab("glossary")}
+              className="underline underline-offset-2 hover:text-slate-400"
+            >
+              Glossar — was heißt das?
+            </button>
           </span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={12} />

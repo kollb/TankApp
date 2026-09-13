@@ -17,17 +17,21 @@ import {
 import { ApiExplorer } from "../components/ApiExplorer";
 import { JobCard } from "../components/JobCard";
 import { LoadError } from "../components/LoadError";
-import { Badge, Empty, Metric, panel } from "../components/ui";
+import { Badge, Empty, InfoTooltip, Metric, panel } from "../components/ui";
 import {
+  GLOSSARY,
   JOB_LABELS,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
   deNumber,
   euro,
+  lifecycleLabel,
+  lifecycleTip,
   notifyLastLine,
   notifyStatusLine,
   notifyTone,
   percentLabel,
+  priceTwinLabel,
   problem,
   timeLabel,
   type CollectorStatus,
@@ -326,6 +330,111 @@ export function SystemView(props: SystemViewProps) {
       hint={m7Line ?? calibrationHint}
     />
   </div>
+
+  {/* A12/A13: Station-Lebenszyklus & Preis-Zwillinge — Warnungen, nie auto-apply */}
+  <section className={`${panel} mb-6 p-5 sm:p-6`}>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Activity size={16} className="text-amber-400" />
+        Stationen: Zustände &amp; Preis-Zwillinge
+      </h3>
+      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+        Polling-Set bleibt unverändert — Hinweise brauchen Bestätigung.
+        <InfoTooltip label="Warum nur Hinweis?" text="Tote fallen automatisch aus Ranking und Kontingent — das Polling-Set dagegen wird nie ohne Bestätigung umgebaut." />
+      </span>
+    </div>
+    {selection.data ? (
+      <>
+        <div className="grid gap-3 text-xs sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Ohne Preis seit Tagen — tot{" "}
+              <InfoTooltip label="tot" text={lifecycleTip("dead")} />
+            </p>
+            <p className="mt-1 text-lg font-bold text-rose-300">
+              {selection.data.dead_count ?? 0}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              Fällt aus Ranking und verbraucht kein Kontingent mehr.
+              {selection.data.dead_stations && selection.data.dead_stations.length ? ` Beispiel: ${selection.data.dead_stations.slice(0, 2).join(", ")}` : ""}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Temporär geschlossen / führt nicht{" "}
+              <InfoTooltip label="Unterschieden" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
+            </p>
+            <p className="mt-1 text-lg font-bold text-amber-300">
+              {(selection.data.closed_count ?? 0) + (selection.data.nofuel_count ?? 0)}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              {selection.data.closed_count ?? 0} geschlossen · {selection.data.nofuel_count ?? 0} ohne diese Sorte. Bleiben unterscheidbar — nur „tot“ fällt raus.
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Preis-Zwillinge{" "}
+              <InfoTooltip label="Preis-Zwillinge" text="Identische Verläufe über 28 Tage bei 90 % Überlappung und 99 % Übereinstimmung — Warnung, nie automatische Entfernung." />
+            </p>
+            <p className="mt-1 text-lg font-bold text-amber-300">
+              {selection.data.price_twin_count ?? 0}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              {(selection.data.price_twin_count ?? 0) > 0
+                ? "Prüfen und bestätigen — dann ggf. Polling-Set bereinigen."
+                : "Keine identischen Verläufe erkannt."}
+            </p>
+          </div>
+        </div>
+        {(selection.data.price_twins?.length ?? 0) > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-500">
+                  <th className="py-2 pr-3">Paar</th>
+                  <th className="py-2 pr-3">Stadt</th>
+                  <th className="py-2 pr-3">Tage · Vergleichspunkte</th>
+                  <th className="py-2 pr-3">Übereinstimmung</th>
+                  <th className="py-2 pr-3">Ø Abweichung</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {selection.data.price_twins!.slice(0, 10).map((t) => (
+                  <tr key={`${t.station_a}-${t.station_b}`}>
+                    <td className="py-2 pr-3 font-mono text-slate-200">
+                      {t.station_a} · {t.station_b}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-300">{t.city}</td>
+                    <td className="py-2 pr-3 font-mono">
+                      {t.qualifying_days} · {t.common_points}
+                    </td>
+                    <td className="py-2 pr-3 font-mono">{euro(t.agreement_pct, 1)} %</td>
+                    <td className="py-2 pr-3 font-mono">
+                      {t.mean_abs_delta_ct != null ? `${euro(t.mean_abs_delta_ct, 2)} ct/L` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Schwellen: ≥ 28 Tage mit je ≥ 12 gemeinsamen Punkten · ≥ 90 % Überlappung · ≥ 99 % innerhalb 0,1 ct/L.
+              Mehr im Glossar — {GLOSSARY.find((g) => g.id === "twins")?.de ?? "Preis-Zwillinge"}.
+            </p>
+          </div>
+        )}
+        {selection.data.coverage_reference != null && (
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            Coverage-Gate: Fenster {selection.data.coverage_window ?? "—"} · Stadt-Bestwert {Math.round((selection.data.coverage_reference ?? 0) * 100)} % · Schwelle {Math.round((selection.data.coverage_threshold ?? 0) * 100)} % (relativ zum Bestwert).
+            <InfoTooltip label="Coverage" text="Anteil der 5-Minuten-Zellen im Polling-Fenster mit echtem Preis — Gate ist relativ zum Bestwert der Stadt, nicht absolut gegen das theoretische Raster." />
+          </p>
+        )}
+      </>
+    ) : selection.pending ? (
+      <p className="text-xs text-slate-500">Ranking wird geladen …</p>
+    ) : (
+      <p className="text-xs text-slate-500">Noch kein Ranking — Zwilling- und Zustandsprüfung folgen mit dem nächsten Selektionslauf.</p>
+    )}
+  </section>
 
   <div className="mb-6 grid gap-4 sm:grid-cols-4">
     <JobCard

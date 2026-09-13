@@ -131,12 +131,14 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                     continue
                 # B21: Coverage-Gate nur im Polling-Fenster — dieselbe Config
                 # wie der Modell-Lauf, damit beide Rechnungen dasselbe messen.
+                # A12: dead_after_days aus Settings (konfigurierbar, Default 7)
                 sel_cfg = SelectionConfig(
                     fuel=fuel.upper(),
                     n_boot=n_boot,
                     poll_start=cfg_engine.poll_start,
                     poll_end=cfg_engine.poll_end,
                     timezone=cfg_engine.timezone,
+                    dead_after_days=getattr(settings, "dead_after_days", 7),
                 )
                 result = compute_all(obs, sel_cfg, metas_by_city)
                 # B21-Diagnose: Warum 0 Stationen? Coverage, <4 Stationen je Stadt, etc.

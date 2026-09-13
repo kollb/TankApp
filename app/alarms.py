@@ -152,4 +152,101 @@ def build_alarms(
             }
         )
 
+    # A12/A13: Station-Lebenszyklus und Preis-Zwillinge aus dem Selektions-Artefakt.
+    # Keine neuen Netz-/Influx-Zugriffe — nur die lokale JSON lesen (Health-Budget).
+    # Tote Stationen und Zwillinge sind Warnungen (gelb), kein Fehler; Zwillinge
+    # werden nie automatisch aus dem Polling-Set entfernt (Dauer-partial braucht Bestätigung).
+    try:
+        import json as _json
+
+        sel_path = Path(getattr(settings, "runtime", ".")) / "selection" / "current.json"
+        sel_raw = None
+        try:
+            if sel_path.is_file() and sel_path.stat().st_size < 10_000_000:
+                sel_raw = _json.loads(sel_path.read_text(encoding="utf-8-sig"))
+            else:
+                sel_raw = None
+        except Exception:
+            sel_raw = None
+        # Fallback: einzelne Fuel-Dateien, falls current.json noch nicht da
+        if not isinstance(sel_raw, dict) or "by_fuel" not in sel_raw:
+            sel_raw = sel_raw if isinstance(sel_raw, dict) else {}
+            if "by_fuel" not in sel_raw or not sel_raw.get("by_fuel"):
+                by_fuel_tmp = {}
+                for _fuel in ("e10", "e5", "diesel"):
+                    _p = Path(getattr(settings, "runtime", ".")) / "selection" / f"{_fuel}.json"
+                    try:
+                        if _p.is_file() and _p.stat().st_size < 5_000_000:
+                            _d = _json.loads(_p.read_text(encoding="utf-8-sig"))
+                            if isinstance(_d, dict) and _d.get("cities"):
+                                by_fuel_tmp[_fuel] = _d
+                    except Exception:
+                        continue
+                if by_fuel_tmp:
+                    sel_raw = {"by_fuel": by_fuel_tmp}
+        if isinstance(sel_raw, dict) and "by_fuel" in sel_raw:
+            total_dead = 0
+            total_closed = 0
+            total_nofuel = 0
+            total_twins = 0
+            twin_details: list[str] = []
+            for _fuel, _fdata in (sel_raw.get("by_fuel") or {}).items():
+                if not isinstance(_fdata, dict):
+                    continue
+                totals = _fdata.get("lifecycle_totals") or {}
+                total_dead += int(totals.get("dead", 0) or 0)
+                total_closed += int(totals.get("closed", 0) or 0)
+                total_nofuel += int(totals.get("no_fuel", 0) or 0)
+                twins = _fdata.get("price_twins") or []
+                total_twins += len(twins)
+                for _t in twins[:2]:
+                    _a = _t.get("station_a") or _t.get("a")
+                    _b = _t.get("station_b") or _t.get("b")
+                    if _a and _b:
+                        twin_details.append(f"{_a} / {_b} ({_fuel})")
+                if not totals:
+                    for _c in _fdata.get("cities", []) or []:
+                        total_dead += len(_c.get("dead_stations", []) or [])
+                        total_closed += len(_c.get("closed_stations", []) or [])
+                        total_nofuel += len(_c.get("nofuel_stations", []) or [])
+            if total_dead:
+                alarms.append(
+                    {
+                        "code": "stations_dead",
+                        "severity": "warn",
+                        "message": (
+                            f"{total_dead} Station(en) ohne Preis seit Tagen — aus Ranking/Kontingent genommen. "
+                            "Sie zählen nicht mehr als Vergleich und verbrauchen kein Kontingent (tot)."
+                        ),
+                    }
+                )
+            if total_closed or total_nofuel:
+                if total_closed and total_nofuel:
+                    msg = f"{total_closed} temporär geschlossen, {total_nofuel} führt diesen Kraftstoff nicht."
+                elif total_closed:
+                    msg = f"{total_closed} Station(en) temporär geschlossen."
+                else:
+                    msg = f"{total_nofuel} Station(en) führt diesen Kraftstoff nicht."
+                alarms.append(
+                    {
+                        "code": "stations_lifecycle",
+                        "severity": "warn",
+                        "message": msg + " Sie bleiben unterscheidbar — nur tote fallen aus dem Ranking.",
+                    }
+                )
+            if total_twins:
+                twin_hint = f" Beispiel: {', '.join(twin_details[:2])}." if twin_details else ""
+                alarms.append(
+                    {
+                        "code": "price_twins",
+                        "severity": "warn",
+                        "message": (
+                            f"{total_twins} Preis-Zwilling(e) erkannt — identische Verläufe über 28 Tage."
+                            f"{twin_hint} Keine automatische Entfernung aus dem Polling-Set — im System-Tab prüfen und bestätigen."
+                        ),
+                    }
+                )
+    except Exception:
+        pass
+
     return alarms

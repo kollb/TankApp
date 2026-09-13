@@ -1262,6 +1262,7 @@ class LiveData:
                     stations = city_entry.get("stations", [])
                 else:
                     stations = []
+                    city_entry = None
             else:
                 # Alle Städte zusammen oder top_global
                 stations = []
@@ -1269,6 +1270,31 @@ class LiveData:
                     stations.extend(c.get("stations", []))
                 # Sortiere nach rank
                 stations = sorted(stations, key=lambda x: x.get("rank", 999))
+                city_entry = None
+            # A12/A13: Lebenszyklus + Preis-Zwillinge für System-Tab + Artefakt-Warnung
+            if city and city_entry is not None:
+                price_twins = city_entry.get("price_twins", []) or []
+                lifecycle_counts = city_entry.get("lifecycle_counts")
+                dead_stations = city_entry.get("dead_stations", []) or []
+                closed_stations = city_entry.get("closed_stations", []) or []
+                nofuel_stations = city_entry.get("nofuel_stations", []) or []
+                # Stadt-spezifische Coverage/Diagnose falls vorhanden
+                coverage_info = {
+                    "coverage_window": city_entry.get("coverage_window"),
+                    "coverage_reference": city_entry.get("coverage_reference"),
+                    "coverage_threshold": city_entry.get("coverage_threshold"),
+                }
+            else:
+                price_twins = fuel_data.get("price_twins", []) or []
+                lifecycle_counts = fuel_data.get("lifecycle_totals")
+                dead_stations = []
+                closed_stations = []
+                nofuel_stations = []
+                for c in fuel_data.get("cities", []) or []:
+                    dead_stations.extend(c.get("dead_stations", []) or [])
+                    closed_stations.extend(c.get("closed_stations", []) or [])
+                    nofuel_stations.extend(c.get("nofuel_stations", []) or [])
+                coverage_info = {}
             return {
                 "generated_at": data.get("generated_at")
                 or fuel_data.get("generated_at"),
@@ -1289,6 +1315,18 @@ class LiveData:
                 "error_code": None,
                 "calibrated": False,
                 "decision_ready": False,
+                # A12/A13: Warnungen als Daten (nie auto-apply)
+                "price_twins": price_twins,
+                "price_twin_count": len(price_twins),
+                "lifecycle_counts": lifecycle_counts,
+                "dead_stations": dead_stations[:20],
+                "dead_count": len(dead_stations),
+                "closed_stations": closed_stations[:20],
+                "closed_count": len(closed_stations),
+                "nofuel_stations": nofuel_stations[:20],
+                "nofuel_count": len(nofuel_stations),
+                "dead_after_days": fuel_data.get("dead_after_days"),
+                **coverage_info,
             }
         else:
             # Fallback altes Format

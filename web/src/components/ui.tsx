@@ -9,9 +9,11 @@
 // `Empty` der Leer-/Hinweis-Zustand, `Badge` die Ampel-Kapsel, `Metric` die
 // Kennzahlen-Karte mit Erklärung (`tip`) und Zusatz-Hinweis (`hint`).
 // Fehler-Zustände gehören nicht hierher, sondern zu `LoadError` (C6).
+// C7: `InfoTooltip` ist das einheitliche „i“ für Fachwörter — Tastatur- und
+// Screenreader-erreichbar, identisch in Alltag und Werkstatt.
 
-import type { ReactNode } from "react";
-import { HelpCircle } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { HelpCircle, Info } from "lucide-react";
 
 /** Karten-Grundklasse aller Panels — eine Stelle für Rand, Radius, Hintergrund. */
 export const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
@@ -42,6 +44,43 @@ export function Badge({
       }`}
     >
       {children}
+    </span>
+  );
+}
+
+/**
+ * C7: Einheitliches „i“ für Fachwörter — hover, focus und Tastatur erreichbar.
+ * Der Tooltip ist zugleich `title` (Hover) und `aria-describedby` (Screenreader).
+ * `label` ist die Kurzbeschreibung für `aria-label`, `text` der Tooltip-Text.
+ */
+export function InfoTooltip({ label, text }: { label: string; text: string }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        aria-describedby={id}
+        title={text}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-700 bg-slate-800/80 text-slate-400 hover:border-slate-600 hover:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+      >
+        <Info size={11} aria-hidden="true" />
+        <span className="sr-only">Info</span>
+      </button>
+      {open && (
+        <span
+          id={id}
+          role="tooltip"
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-left text-[11px] leading-relaxed text-slate-200 shadow-xl sm:w-72"
+        >
+          {text}
+        </span>
+      )}
     </span>
   );
 }
