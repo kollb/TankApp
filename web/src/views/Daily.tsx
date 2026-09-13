@@ -1,7 +1,7 @@
 // D1: Views-Schnitt — Alltagstab. Der gemeinsame Zustand (~100 useState/
 // useResource) lebt in der Dashboard-Root und wandert per typisierten Props
 // in diese View; die View rendert, sie entscheidet nichts.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -157,6 +157,18 @@ export function DailyView(props: DailyViewProps) {
   const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, onOpenSettings, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, pinnedIds, togglePin, pinNote, isStaleFuel, pricesPending, } = props;
   // C2: Suche/Markenfilter/Sortierung sind Ansichts-Zustand dieses Panels —
   // sie beschreiben, wonach gerade geschaut wird, nicht den Haushalt.
+  // C5: „Beleg buchen ohne Maus“ — das Nachbearbeiten öffnet sich mit Fokus
+  // im ersten Feld und schließt mit Escape zurück auf den Auslöser.
+  const customFillFormRef = useRef<HTMLFormElement | null>(null);
+  const customFillToggleRef = useRef<HTMLButtonElement | null>(null);
+  const customLitersRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (customFillOpen) customLitersRef.current?.focus();
+  }, [customFillOpen]);
+  const closeCustomFill = () => {
+    setCustomFillOpen(false);
+    customFillToggleRef.current?.focus();
+  };
   const [stationQuery, setStationQuery] = useState("");
   const [stationBrand, setStationBrand] = useState("");
   const [stationSort, setStationSort] = useState<StationSort>("price");
@@ -216,7 +228,9 @@ export function DailyView(props: DailyViewProps) {
     );
   };
   return (
-<>
+    // C8: äußerer Rahmen für die Querformat-Regeln (styles.css) — hochkant
+    // ohne Wirkung, quer bestimmte der Block den Abstand der Abschnitte.
+    <div className="daily-flow">
   {/* B4: Due-Prompt Banner */}
   {dueEpisode && !dueDismissed && (
     <section
@@ -259,6 +273,10 @@ export function DailyView(props: DailyViewProps) {
             )
           </button>
           <button
+            ref={customFillToggleRef}
+            type="button"
+            aria-expanded={customFillOpen}
+            aria-controls="custom-fill-form"
             onClick={() => setCustomFillOpen(!customFillOpen)}
             className="rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition"
           >
@@ -274,7 +292,22 @@ export function DailyView(props: DailyViewProps) {
       </div>
 
       {customFillOpen && (
-        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-3">
+        <form
+          ref={customFillFormRef}
+          id="custom-fill-form"
+          aria-label="Tankvorgang manuell anpassen"
+          className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCustomFill(dueEpisode);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              closeCustomFill();
+            }
+          }}
+        >
           <p className="text-xs font-semibold text-slate-300">
             Tankvorgang manuell anpassen:
           </p>
@@ -295,9 +328,11 @@ export function DailyView(props: DailyViewProps) {
             <label className="text-xs text-slate-400">
               Liter
               <input
+                ref={customLitersRef}
                 type="text"
                 inputMode="decimal"
                 autoComplete="off"
+                enterKeyHint="done"
                 value={customLitersStr}
                 onChange={(e) =>
                   setCustomLitersStr(commaToDot(e.target.value))
@@ -355,7 +390,7 @@ export function DailyView(props: DailyViewProps) {
             </label>
             <div className="flex flex-col items-stretch justify-end gap-1">
               <button
-                onClick={() => handleCustomFill(dueEpisode)}
+                type="submit"
                 disabled={!fillDraft.ok || fillSubmitting}
                 title={
                   fillSubmitting
@@ -381,7 +416,10 @@ export function DailyView(props: DailyViewProps) {
               )}
             </div>
           </div>
-        </div>
+          <p className="text-[10px] text-slate-500">
+            Enter bucht den Beleg, Escape schließt das Feld.
+          </p>
+        </form>
       )}
     </section>
   )}
@@ -405,7 +443,7 @@ export function DailyView(props: DailyViewProps) {
       erreichbar. Kein zweites Panel, sondern ein kompakter Ableger derselben
       Empfehlungsfläche; bei fehlender Empfehlung wird nichts erfunden. */}
   {stickyActionLabel && (
-    <div className="sticky top-3 z-30 mb-4 flex justify-end pointer-events-none">
+    <div className="daily-action-chip sticky top-3 z-30 mb-4 flex justify-end pointer-events-none">
       <button
         type="button"
         onClick={runRecommendedIntent}
@@ -418,7 +456,7 @@ export function DailyView(props: DailyViewProps) {
     </div>
   )}
 
-  <div className="mb-4">
+  <div className="daily-intro mb-4">
     <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-emerald-500">
       Alltag / {activeCity || "Dein Standort"}
     </p>
@@ -1049,7 +1087,16 @@ export function DailyView(props: DailyViewProps) {
           Gerade getankt? Station, Liter, Preis — fertig. Der Beleg
           landet in deiner Tank-Bilanz (rechts) und unten im Verlauf.
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            // C5: Enter in einem Feld bucht den Beleg — der Knopf bleibt der
+            // sichtbare Weg, die Tastatur braucht ihn nicht zu treffen.
+            event.preventDefault();
+            void handleQuickFill();
+          }}
+        >
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-slate-400 sm:col-span-2">
             Station
             <select
@@ -1124,8 +1171,7 @@ export function DailyView(props: DailyViewProps) {
           </label>
         </div>
         <button
-          type="button"
-          onClick={() => handleQuickFill()}
+          type="submit"
           disabled={!quickDraft.ok || fillSubmitting}
           title={
             fillSubmitting
@@ -1140,6 +1186,7 @@ export function DailyView(props: DailyViewProps) {
         >
           {fillSubmitting ? "Wird verbucht …" : "Beleg buchen"}
         </button>
+        </form>
       </div>
       <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-5 lg:col-span-2">
         <div className="flex items-center justify-between">
@@ -1271,7 +1318,7 @@ export function DailyView(props: DailyViewProps) {
       />
     ) : stripCells.some((c) => c.value !== null) ? (
       <>
-        <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">
+        <div className="daystrip-cells grid grid-cols-6 gap-1.5 sm:grid-cols-9">
           {stripCells.map((cell) => (
             <div
               key={cell.hour}
@@ -2010,6 +2057,6 @@ export function DailyView(props: DailyViewProps) {
       </Empty>
     )}
   </section>
-</>
+    </div>
   );
 }

@@ -72,6 +72,9 @@ PAYLOAD_KEYS = (
     "decision_hour",
     "rolling_picp_7d",
     "horizons",
+    # H5: DST-Ausweisung des Prüfzeitraums (Tage, Lücken, Grund) gehört zur
+    # Bewertung und muss den Cache überleben.
+    "dst",
 )
 
 

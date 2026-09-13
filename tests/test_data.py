@@ -200,3 +200,31 @@ def test_hampel_preserves_persistent_real_price_change(cfg):
 def test_invalid_configuration_rejected(kwargs):
     with pytest.raises(ValueError):
         Config(**kwargs)
+
+
+# H5: Wanduhr-Länge lokaler Tage und Auswahl der Umstellungstage.
+def test_local_day_hours_marks_dst_days():
+    from engine.data import dst_transition_days, local_day_hours
+
+    berlin = "Europe/Berlin"
+    assert local_day_hours(pd.Timestamp("2026-03-29", tz=berlin)) == 23.0
+    assert local_day_hours(pd.Timestamp("2026-10-25", tz=berlin)) == 25.0
+    assert local_day_hours(pd.Timestamp("2026-06-15", tz=berlin)) == 24.0
+
+    days = pd.date_range("2026-03-01", "2026-11-30", freq="D", tz=berlin)
+    assert dst_transition_days(days) == [
+        pd.Timestamp("2026-03-29", tz=berlin),
+        pd.Timestamp("2026-10-25", tz=berlin),
+    ]
+    # Duplikate/Reihenfolge: chronologisch, ohne Doppel.
+    assert dst_transition_days(
+        [
+            pd.Timestamp("2026-10-25", tz=berlin),
+            pd.Timestamp("2026-03-29", tz=berlin),
+            pd.Timestamp("2026-03-29", tz=berlin),
+        ]
+    ) == [
+        pd.Timestamp("2026-03-29", tz=berlin),
+        pd.Timestamp("2026-10-25", tz=berlin),
+    ]
+    assert dst_transition_days([pd.Timestamp("2026-06-15", tz=berlin)]) == []

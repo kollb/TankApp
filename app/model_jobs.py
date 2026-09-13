@@ -253,6 +253,9 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
         "decision_hour": report.get("decision", {}).get("decision_hour", 12),
         "rolling_picp_7d": rolling[0] if rolling else None,
         "horizons": report.get("horizons") or {},
+        # H5: Zeitumstellung im Prüfzeitraum — die GUI erklärt damit ein
+        # „nicht bestimmbar“ und zeigt die betroffenen Tage.
+        "dst": report.get("dst"),
     }
     computed_at = None
     if cache_dir is not None and key is not None:

@@ -602,3 +602,31 @@ def test_nas_config_from_env(monkeypatch):
     assert health.endswith("/api/v1/health")
     monkeypatch.delenv("NAS_IP")
     assert rp2.nas_config_from_env() == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# G4: leerer Cache nach dem Reboot wird erklärt, nicht nur gemeldet
+# ---------------------------------------------------------------------------
+
+
+def test_reboot_hint_is_rendered_into_the_fallback_page():
+    html = rp2.DEFAULT_INDEX_HTML
+    assert "const REBOOT_HINT = " in html
+    assert "Prognose-Puffer leer" in html
+    assert "__CACHE_REBOOT_HINT_JSON__" not in html
+
+
+def test_forecasts_error_names_the_volatile_tmp_cache(tmp_path):
+    server, _ = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), with_forecast=False
+    )
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            get_json(base, "/api/v1/forecasts?fuel=e10")
+        body = json.loads(exc.value.read().decode("utf-8"))
+        assert "Prognose-Puffer leer" in body["error"]
+        assert "SD-Karte" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()

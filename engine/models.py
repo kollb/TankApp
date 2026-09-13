@@ -360,19 +360,54 @@ def fit_ar2(residual: np.ndarray) -> np.ndarray:
     return np.zeros(2)
 
 
-def seasonal_scale(price: pd.Series, cfg: Config) -> float | None:
-    """Standard seasonal MASE denominator, estimated on training data only."""
+def seasonal_scale_detail(price: pd.Series, cfg: Config) -> dict:
+    """MASE-Nenner mit ausgewiesenen Gründen für fehlende Anker (H5).
+
+    Die saisonale Skala ist der mittlere absolute Abstand zum selben Slot des
+    Vortags. Der Vortages-Anker wird über lokale Wanduhr minus einen Tag
+    gebildet; an Zeitumstellungen existiert bzw. eindeutig ist diese Uhrzeit
+    nicht (02:00–02:59 fehlt im Frühjahr, ist im Herbst doppelt). Solche
+    Anker sind ``NaT`` und fallen aus dem Mittel — sichtbar ist bisher nur
+    ein kleinerer Stichprobenumfang.
+
+    Diese Funktion liefert deshalb neben der Skala die Zählung der fehlenden
+    Anker. ``anchors_nat`` sind die Wanduhr-Fälle (Zeitumstellung), getrennt
+    von ``anchors_outside`` (Anker liegt außerhalb der vorhandenen Reihe,
+    z. B. am Reihenanfang). ``scale`` ist ``None``, wenn die Skala undefiniert
+    ist — dann nennt ``reason`` den Grund, statt still ``None`` zu liefern.
+    """
     local = price.index.tz_convert(cfg.timezone).tz_localize(None)
     previous = (
         (local - pd.Timedelta(days=1))
         .tz_localize(cfg.timezone, ambiguous="NaT", nonexistent="NaT")
         .tz_convert("UTC")
     )
+    anchors_nat = int(previous.isna().sum())
     lagged = price.reindex(previous).to_numpy()
+    available = np.isfinite(lagged)
     error = np.abs(price.to_numpy() - lagged)
     error = error[np.isfinite(error)]
-    scale = float(error.mean()) if len(error) else 0
-    return scale if scale > 1e-8 else None
+    # ``reindex`` liefert auch für die NaT-Anker NaN — nicht doppelt zählen.
+    anchors_outside = int((~available).sum()) - anchors_nat
+    scale = float(error.mean()) if len(error) else 0.0
+    if len(error) == 0:
+        reason = "no_reference_points"
+    elif scale <= 1e-8:
+        reason = "constant_series"
+    else:
+        reason = None
+    return {
+        "scale": scale if reason is None else None,
+        "points": int(len(error)),
+        "anchors_nat": anchors_nat,
+        "anchors_outside": anchors_outside,
+        "reason": reason,
+    }
+
+
+def seasonal_scale(price: pd.Series, cfg: Config) -> float | None:
+    """Standard seasonal MASE denominator, estimated on training data only."""
+    return seasonal_scale_detail(price, cfg)["scale"]
 
 
 def _residual_blocks(
@@ -511,6 +546,10 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         if ew_half_life
         else "residual_day_bootstrap_uncalibrated"
     )
+    # H5: Die saisonale Skala weist ihre fehlenden Vortages-Anker aus. An
+    # Zeitumstellungen sind das Wanduhr-Fälle (``anchors_nat``) — sie bleiben
+    # aus dem Mittel, statt still die Stichprobe zu verkleinern.
+    scale_detail = seasonal_scale_detail(price, cfg)
     return {
         "schema_version": SCHEMA_VERSION,
         "model": "harmonic_ar2",
@@ -540,7 +579,8 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "ar_state": state,
         "residual_blocks": blocks,
         "naive_profile": naive,
-        "mase_scale": seasonal_scale(price, cfg),
+        "mase_scale": scale_detail["scale"],
+        "mase_scale_detail": scale_detail,
         "interval_method": interval_method,
         "calibrated": False,
         "decision_ready": False,

@@ -30,6 +30,7 @@ import { ProfileManager } from "./components/ProfileManager";
 // C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
 import { CellError } from "./components/CellError";
 import { DataAgeBanner } from "./components/DataAge";
+import { InstallHint } from "./components/InstallHint";
 import { DataReachNote } from "./components/DataReach";
 import {
   SkeletonChart,
@@ -1372,7 +1373,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
+      <header className="app-header sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <a
             href="/"
@@ -1389,7 +1390,7 @@ export function Dashboard() {
                   LIVE
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-500">
+              <p className="app-tagline text-[11px] text-slate-500">
                 Dein Tank-Kompass. Ohne Rätselraten.
               </p>
             </div>
@@ -1543,7 +1544,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <main className="app-main mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav
             aria-label="Ansichten"
@@ -1610,6 +1611,9 @@ export function Dashboard() {
         {/* C6: Preis-Datenstand — gilt für alle Tabs, deshalb über den
             Tab-Inhalt und nicht in jedes Panel einzeln. */}
         <DataAgeBanner stamp={data?.generated_at} kind="prices" />
+
+        {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
+        <InstallHint onNote={setActionFeedback} />
 
         {!browserOnline && (
           <div

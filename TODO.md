@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 13.09.2026, App-Version 0.26.1)
+# TankApp — ToDo (Stand 13.09.2026, App-Version 0.29.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -56,9 +56,9 @@
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
 | C3 | P2 | **Karten-/Umgebungsansicht für F2** *(Erledigt in 0.28.0)* | Erledigt (0.28.0): OSM-Live-Kartenansicht mit Server-Netto-€-Pins (`verdict`/`detour_km_est`) & Vektor-Luftlinien-Radar-Fallback bei fehlendem Netz oder Kachelfehlern. |
-| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Fokus-Ring + Charts-Textfassungen sind drin, 0.13.0)* | Erledigt: Ampel-Chip mit Symbol (▲/▼/●/→) und Slider mit `aria-valuetext` (0.10.0); Fokus-Ring durchgängig und alle Charts `role="img"` **mit** `aria-describedby`-Textfassung (0.13.0). Offen: Touch-Targets ≥ 44 px, Kontraste AA prüfen, komplette Bedienung per Tastatur (Beleg buchen ohne Maus). |
+| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Touch-Ziele ≥ 44 px nur bei grober Zeigerart (`pointer: coarse`, auch Karten-Zoom und Pins), Kontraste der gedämpften Töne auf AA angehoben (`slate-500`/`slate-600`, dunkel `#8598b0`/`#8295ad`, hell `#55677c`, nachgerechnet in `web/src/a11y.test.ts`), Beleg ohne Maus (Schnellerfassung als Formular mit Enter, Anpassen-Panel mit Fokus/Escape, Radar-Pins per Tab/Enter). Früher: Ampel-Chip mit Symbol, Slider-`aria-valuetext` (0.10.0), Fokus-Ring + Charts-Textfassungen (0.13.0). |
 | C7 | P2 | **Hilfe/Glossar-Layer** | δ̂, MASE, PICP, Brier, ε, Regret — Werkstatt-Begriffe ohne Erklärung in der App. Ziel: i-Tooltips + eine kurze „Was heißt das?“-Seite (kann auf docs/ANALYSE.md-Anker verweisen), Begriffe konsistent zur Doku. |
-| C8 | P2 | **Mobile-Feinschliff & PWA (Rest)** *(Sticky-Aktions-Chip erledigt, 0.27.0)* | Offen und bewusst nicht Teil von Batch 1: Install-/„Zum Homescreen“-Hinweis (manifest ist da, Prompt fehlt), Landscape-Layout der Tageskurve prüfen, Pull-to-Refresh dort unterdrücken, wo er mit Karten-/Slider-Gesten kollidiert. |
+| C8 | P2 | **Mobile-Feinschliff & PWA (Rest)** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Install-/„Zum Homescreen“-Hinweis (`components/InstallHint.tsx`: `beforeinstallprompt` bzw. iOS-Handgriff, „Nicht jetzt“ = 30 Tage still, Manifest `orientation: any`), Querformat-Layout (Tagline/Einleitung aus, flachere Abstände, Tageskurve als zwei Neuner-Reihen), Pull-to-Refresh nur während Karten-/Slider-Berührung gesperrt (`ptr-off`). Früher: Sticky-Aktions-Chip (0.27.0). |
 
 ---
 
@@ -82,7 +82,7 @@
 
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
-| G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** → Fallback-GUI zeigt nach Pi-Neustart bis zum ersten erfolgreichen Fetch „keine Prognose“. Ehrlich, aber unerwartet. | Wie geht man damit um? |
+| G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** *(entschieden in 0.29.0)* | Entscheidung (13.09.2026): Der Cache bleibt im flüchtigen `/tmp` — eine Spiegelung auf die SD-Karte würde bei jedem Abruf (alle 5 min) schreiben und mehr Verschleiß kosten, als ein leerer Puffer nach dem Reboot wert ist. Umsetzung: `boot_state_note()` schreibt den Zustand beim Start in `cache.log`/`systemctl status`, `CACHE_REBOOT_HINT` erklärt ihn in F1, im Prognose-Raster und in der API-Fehlermeldung; die Entscheidung steht in [docs/RP2.md](docs/RP2.md#wartung-logs-journal-sd-karte) und [docs/SPEICHER.md](docs/SPEICHER.md). |
 
 ---
 
@@ -93,7 +93,7 @@ Kurzantwort: **kein Rechenfehler gefunden**. Die offenen mathematischen Punkte s
 | # | Prio | Befund | ToDo |
 |---|---|---|---|
 | H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert:** Schwellen-Vorschlag begrenzt Schritte, aber Zusammenspiel von Schrittweite, Mindest-Abstand zwischen Anpassungen und n-Basis (n ≥ 25) ist nicht als Regel festgeschrieben — bei kleinen Stichproben können Schwellen pendeln. | Kurze Methodik-Notiz + Hysterese (nur ändern, wenn der Betrag von Δ über dem Rauschband liegt) in `app/thresholds.py` + Test „stabile Schwellen bei Rauschdaten“. |
-| H5 | P2 | **DST-Kante `seasonal_scale`:** bei Zeitumstellung kann der Vortages-Anker `NaT` liefern → MASE `None` an ~2 Tagen/Jahr (korrekt als None, kein falsches Ergebnis). | Backtest soll DST-Tage explizit behandeln (ausschließen oder 23/25-h-Tage normalisieren) + Randnotiz in docs/ENGINE.md, statt stillem `None`. |
+| H5 | P2 | **DST-Kante `seasonal_scale`** *(erledigt in 0.29.0)* | Erledigt (0.29.0): DST-Tage werden **ausgewiesen statt ausgeschlossen** — `local_day_hours`/`dst_transition_days` (engine/data.py), je Fold `dst_day`/`local_day_hours`, `report.json`-Block `dst` (Tage, Stunden, Folds, `anchors_missing_nat`, `anchors_outside_series`, `mase_none_reasons`), `report.md`-Abschnitt „Zeitumstellung (DST)“, Randnotiz in [docs/ENGINE.md](docs/ENGINE.md), `mase_none_reason` statt stillem `None`, Anzeige in der Werkstatt (`dstLabel()`). |
 
 ---
 
@@ -104,6 +104,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.29.0 (13.09.2026) | **Batch 6 — Bedienung:** C5 (Touch-Ziele ≥ 44 px bei grober Zeigerart, Kontrast AA für die gedämpften Töne, Beleg ohne Maus via Formular/Enter und Fokus/Escape im Anpassen-Panel, Karten-Pins per Tastatur) und C8-Rest (Install-/„Zum Homescreen“-Hinweis inkl. iOS-Handgriff und 30-Tage-Snooze, Manifest `orientation: any`, Querformat-Layout, Pull-to-Refresh nur während Karten-/Slider-Gesten). **Batch 7 — Kanten:** G4 entschieden (Cache bleibt bewusst flüchtig, `boot_state_note()` + `CACHE_REBOOT_HINT`, Doku), H5 (DST-Tage im Backtest ausgewiesen: `local_day_hours`/`dst_transition_days`, Fold-Felder, `dst`-Block, Markdown-Abschnitt, `mase_none_reason`, `dstLabel()` in der Werkstatt). Tests: `web/src/a11y.test.ts` (17), `data.test.ts` (3), `test_data.py`, `test_models.py`, `test_backtest.py`, `test_rp2_cache.py`, `test_rp2_fallback.py` |
 | 0.27.0 (13.09.2026) | **Batch 1 — Alltag: eine Handlung:** F4 Intent-Leiste gewichtet die Empfehlung primär, kompatible Intents sekundär und widersprechende Handlung zurückgenommen mit Erklär-Tooltip; C8-Teil Sticky-Aktions-Chip („Jetzt tanken“ / „Warten bis …“ / empfohlene Navigation) ohne neue Fläche oder API. Install-Prompt, Landscape und Pull-to-Refresh bleiben offen. |
 | 0.26.1 (13.09.2026) | **B11 abgeschlossen:** strenger Kaltlauf auf der Zielhardware (Stand 0.25.1, 17:36–17:39 local, 0/19 Cache, **2,6 min**, MEM **1031 MiB**, CPU **381 %**, Host min **4212 MiB**, shm **1 MiB**). Vier Worker und `shm_size: 256m` bleiben. Sammler zählt Python-Prozesse über `cmdline` und `/proc/pid/comm`. **A8** (Markenrabatte ohne Daten) aus der offenen Liste gestrichen. TODO umgebaut: oben offen, Mitte erledigt, unten der Rest. Die Nachher-Dauer von 0.26.0 bleibt eine eigene Messung nach dem Deploy — sie hält B11 nicht offen. |
 | 0.26.0 (13.09.2026) | **Laufzeit-Batch 4 (Code):** B19 ein Pool/`fork`/schlanke Initargs; B20 leere Horizonte, kompakte Payloads, echte Abschlussreihenfolge, sofortiger serieller Fortschritt und monotone Prozentabbildung; B23 Affinität + cgroup-Quota. **B11:** vorhandene Zielhardwarewerte in BETRIEB eingeordnet (1,0 GiB Container-Peak, Host min 4,1 GiB verfügbar, shm 1 MiB, CPU 370 % ⇒ 4 Worker und 256 MiB shm bleiben); strenger 0.26.0-Kaltlauf und Nachher-Dauer bleiben bis zum Deploy offen. |
@@ -123,9 +124,8 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 | 0.11.0 (12.09.2026) | **B12** Heatmap-Basis umschaltbar (`basis=hour` = Median derselben Stunde; API-Default `overall`), **B13** Build-Commit im Image (Doku nachgezogen), **E3** Beleg-Grenzen vor dem Roundtrip, **E4** Buchung nur mit gewählter Station, **E5** Wochen-Select 4/6/12, **E6** Slider 0,5/1 L/0,5 + Begleitfeld, **E7** API-Explorer „day“ nur mit Station, **G2** RP2-Journal-Cap (Drop-in + `--vacuum-size`) |
 | 0.10.0 (12.09.2026) | **A3** Beleg-Storno, **A6** CSV-Export, **A7** M7-Fortschritts-Kachel, **B1** `runtime/`-Backup, **B4** Alarm-Block + GUI-Punkt, **B6/H1** Umweg server-only (`detour_km_est`, `dist_mode`, `verdict`/`worth_it` + Schwellen `elsewhere_net_eur`/`elsewhere_borderline_eur` M7-tunebar; GUI ohne `haversineKm*CIRCUITY`/1,50-0,50-Konstanten), **B9** Version/Commit + CHANGELOG, **C1** Einrichtungs-Checkliste, **C5** (zwei A11y-Fixes), **C10** Heatmap-Tages-Zusammenfassung, **D2** e2e-Spec decide→intent→fill→due, **E2** Komma-Eingabe, **F1** Tab „Werkstatt“, **G1** `cache.log`-Cap, **G3** Datenverlust-Fenster benannt (docs/ARCHITEKTUR.md), Doku-Umbau `docs/` mit Index + Archiv (`docs/archiv/`) + Link-Test |
 
-Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **C5**
-(44 px, AA, Tastatur offen), **F3** (Rest: Regelwerk steht, Anwendung auf
-Footer-Zeilen offen).
+Teilweise erledigt und mit reduziertem Scope oben stehen geblieben: **F3**
+(Rest: Regelwerk steht, Anwendung auf Footer-Zeilen offen).
 
 ## E. Funktional & Eingabe — verifiziert, kein offener Task
 
