@@ -30,7 +30,8 @@ def refresh(settings: Settings, now=None, progress=None):
     from polling_plan import collector_lock
     from .gapfill import fill_gaps
     from .history import prepare_archive
-    from .model_jobs import HORIZON_COLUMNS, resolve_workers, run_tasks
+    from .model_jobs import ModelTaskPool, resolve_workers
+    from .progress import PHASE_WEIGHTS
 
     metas, error = metadata(settings)
     if error or not settings.influx_env.is_file():
@@ -220,12 +221,13 @@ def refresh(settings: Settings, now=None, progress=None):
                 for item in prepare_series(normalized, cfg)
             }
             if progress:
-                # Der Zähler läuft über alle Kraftstoffe hinweg; ``total``
-                # deshalb nur beim ersten setzen (``phase`` fängt sonst bei 0
-                # an), die Phasenmeldung aber je Kraftstoff erneuern.
+                # Zähler und Prozent laufen über alle Kraftstoffe hinweg. Beim
+                # nächsten Kraftstoff stellt ``completed`` den bisherigen Stand
+                # wieder her, statt bei 0 zu beginnen (B20.6).
                 progress.phase(
                     "fit",
-                    total=fit_total if fuel_index == 0 else None,
+                    total=fit_total,
+                    completed=fit_done,
                     message=f"Fit + Backtest {fuel}",
                 )
             # --- Fit, Horizonte und Backtest (prozessparallel, §9.4) ---
@@ -234,6 +236,9 @@ def refresh(settings: Settings, now=None, progress=None):
             series_map = {
                 identity: series[identity] for identity in metas if identity in series
             }
+            # Der Runner erzeugt gleich die schmale Worker-Fassung; die volle
+            # PriceSeries-Map wird danach nicht mehr gebraucht.
+            del series
             # Fehler je Station sammeln und in Stationsreihenfolge anhängen —
             # die Reihenfolge der Veröffentlichung soll stabil bleiben.
             station_failures: dict[tuple, dict] = {}
@@ -280,81 +285,83 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"{result.get('hours') or ''}{suffix}",
                     )
 
-            # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
-            first = run_tasks(
-                [("fit", identity, 24) for identity in series_map],
+            # B19: Ein Pool je Kraftstoff bleibt über Phase A und B offen.
+            # ``series_map`` wird im Runner zugleich auf die sechs von
+            # Fit/Backtest tatsächlich gelesenen Frame-Spalten gekürzt.
+            with ModelTaskPool(
                 series_map,
                 cfg,
                 origin,
                 workers,
-                on_done=note,
-            )
-            fitted = {}
-            for result in first:
-                if result.get("ok"):
-                    fitted[result["key"]] = result
-                    continue
-                detail = result.get("detail", "")
-                print(
-                    f"models: {labels[result['key']]} ({fuel}): FEHLER "
-                    f"unzureichende Trainingsdaten – {detail}",
-                    flush=True,
-                )
-                station_failures[result["key"]] = {
-                    **series_map[result["key"]].identity(),
-                    "reason": "insufficient_or_invalid_training_data",
-                    "detail": detail,
-                }
-                if progress:
-                    # 0.25.1: Dieselbe Ursache ins Job-Log — ohne sie bleibt
-                    # offen, ob die Station je fitbar wird oder dauerhaft tot
-                    # ist (A12). Nicht klebend: sie gilt nur für diese Station.
-                    progress.note(
-                        f"{labels[result['key']]} · fit24 – FEHLER: "
-                        f"{(detail or 'unbekannte Ursache')[:200]}",
-                        sticky=False,
-                    )
-
-            # 0.25.1: Jede Station ohne Modell kostet ihre drei Folgeaufgaben
-            # (+3 d, +7 d, Backtest). Die Gesamtzahl wird nachgezogen, sonst
-            # endet der Lauf bei „77/80“ — das sieht aus wie verschluckte
-            # Aufgaben. Noch folgende Kraftstoffe bleiben geschätzt.
-            if progress:
-                dropped = len(metas) - len(fitted)
-                if dropped:
-                    progress.note(
-                        f"{dropped} Station"
-                        f"{'en' if dropped != 1 else ''} ohne Modell — "
-                        f"{dropped * (TASKS_PER_STATION - 1)} Folgetasks entfallen",
-                        sticky=False,
-                    )
-                    progress.retotal(
-                        fit_done
-                        + (TASKS_PER_STATION - 1) * len(fitted)
-                        + (len(settings.model_fuels) - fuel_index - 1)
-                        * len(metas)
-                        * TASKS_PER_STATION
-                    )
-
-            # Phase B: erweiterte Horizonte + Backtest je Station.
-            following = []
-            for identity in fitted:
-                following.extend(
-                    [
-                        ("wide", identity, 72),
-                        ("wide", identity, 168),
-                        ("backtest", identity, BACKTEST_DAYS),
-                    ]
-                )
-            second = run_tasks(
-                following,
-                series_map,
-                cfg,
-                origin,
-                workers,
-                on_done=note,
                 cache_dir=backtest_cache_dir,
-            )
+            ) as task_pool:
+                series_map = task_pool.series_map
+
+                # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
+                first = task_pool.run(
+                    [("fit", identity, 24) for identity in series_map],
+                    on_done=note,
+                )
+                fitted = {}
+                for result in first:
+                    if result.get("ok"):
+                        fitted[result["key"]] = result
+                        continue
+                    detail = result.get("detail", "")
+                    print(
+                        f"models: {labels[result['key']]} ({fuel}): FEHLER "
+                        f"unzureichende Trainingsdaten – {detail}",
+                        flush=True,
+                    )
+                    station_failures[result["key"]] = {
+                        **series_map[result["key"]].identity(),
+                        "reason": "insufficient_or_invalid_training_data",
+                        "detail": detail,
+                    }
+                    if progress:
+                        # 0.25.1: Dieselbe Ursache ins Job-Log — ohne sie bleibt
+                        # offen, ob die Station je fitbar wird oder dauerhaft tot
+                        # ist (A12). Nicht klebend: sie gilt nur für diese Station.
+                        progress.note(
+                            f"{labels[result['key']]} · fit24 – FEHLER: "
+                            f"{(detail or 'unbekannte Ursache')[:200]}",
+                            sticky=False,
+                        )
+
+                # 0.25.1: Jede Station ohne Modell kostet ihre drei Folgeaufgaben
+                # (+3 d, +7 d, Backtest). Die Gesamtzahl wird nachgezogen, sonst
+                # endet der Lauf bei „77/80“ — das sieht aus wie verschluckte
+                # Aufgaben. Noch folgende Kraftstoffe bleiben geschätzt.
+                if progress:
+                    dropped = len(metas) - len(fitted)
+                    if dropped:
+                        progress.note(
+                            f"{dropped} Station"
+                            f"{'en' if dropped != 1 else ''} ohne Modell — "
+                            f"{dropped * (TASKS_PER_STATION - 1)} Folgetasks entfallen",
+                            sticky=False,
+                        )
+                        fit_total = (
+                            fit_done
+                            + (TASKS_PER_STATION - 1) * len(fitted)
+                            + (len(settings.model_fuels) - fuel_index - 1)
+                            * len(metas)
+                            * TASKS_PER_STATION
+                        )
+                        progress.retotal(fit_total)
+
+                # Phase B: erweiterte Horizonte + Backtest je Station.
+                following = []
+                for identity in fitted:
+                    following.extend(
+                        [
+                            ("wide", identity, 72),
+                            ("wide", identity, 168),
+                            ("backtest", identity, BACKTEST_DAYS),
+                        ]
+                    )
+                second = task_pool.run(following, on_done=note)
+
             cached_hits = sum(
                 1
                 for result in second
@@ -395,11 +402,11 @@ def refresh(settings: Settings, now=None, progress=None):
                         )
                     continue
                 if result["kind"] == "wide":
-                    # Nur Quantile + Zeitstempel: Diagnostikspalten blieben Ballast.
-                    horizons_by_station.setdefault(identity, {})[result["hours"]] = [
-                        {key: row[key] for key in HORIZON_COLUMNS}
-                        for row in result["points"]
-                    ]
+                    # B20.4: Der Worker liefert bereits ausschließlich
+                    # Zeitstempel + Quantile; kein zweiter Dict-Bau je Zeile.
+                    horizons_by_station.setdefault(identity, {})[result["hours"]] = (
+                        result["points"]
+                    )
                     draws_by_station.setdefault(identity, {})[result["hours"]] = (
                         result.get("draws") or {}
                     )
@@ -486,7 +493,18 @@ def refresh(settings: Settings, now=None, progress=None):
             # --- Selektion (δ̂, KI, AV, billigste Stunde) je Kraftstoff ---
             try:
                 if progress:
-                    progress.phase("selection", message=f"δ̂-Ranking {fuel}")
+                    # Bei mehreren Kraftstoffen liegt eine Selektion zwischen
+                    # zwei Fit-Blöcken. Ihr Startgewicht folgt deshalb dem
+                    # globalen Task-Anteil, statt sofort auf 95 % zu springen.
+                    fit_fraction = fit_done / max(1, fit_total)
+                    selection_weight = PHASE_WEIGHTS["fit"] + (
+                        PHASE_WEIGHTS["selection"] - PHASE_WEIGHTS["fit"]
+                    ) * min(1.0, fit_fraction)
+                    progress.phase(
+                        "selection",
+                        message=f"δ̂-Ranking {fuel}",
+                        weight=selection_weight,
+                    )
                 # metas gruppiert nach Stadt für die Selektion
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():

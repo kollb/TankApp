@@ -88,6 +88,19 @@ def test_fingerprint_stable_intraday_but_changes_on_past_edit(cfg):
     key_b = backtest_cache.fingerprint(cut_b, cfg, end, DAYS)
     assert key_a == key_b
 
+    # B19: Der volle Digest darf vor dem schmalen Worker-Frame entstehen,
+    # ohne bestehende Cache-Schlüssel zu invalidieren.
+    from dataclasses import replace
+
+    from app.model_jobs import MODEL_FRAME_COLUMNS
+
+    digest = backtest_cache.series_digest(cut_a.frame)
+    slim = replace(cut_a, frame=cut_a.frame.loc[:, list(MODEL_FRAME_COLUMNS)])
+    assert (
+        backtest_cache.fingerprint(slim, cfg, end, DAYS, series_digest_value=digest)
+        == key_a
+    )
+
     # Lückenfüllung in der Vergangenheit: ein Preis 10 Tage vor dem Ende
     # ändert sich um 0,1 ct — muss den Fingerabdruck kippen.
     edited = _frame(35 * 288 + 12 * 20)
@@ -99,8 +112,6 @@ def test_fingerprint_stable_intraday_but_changes_on_past_edit(cfg):
     assert backtest_cache.fingerprint(cut_c, cfg, end, DAYS) != key_a
 
     # Andere Config (Entscheidungsstunde) = anderer Bericht = anderer Schlüssel.
-    from dataclasses import replace
-
     other_cfg = replace(cfg, decision_hour=8)
     assert backtest_cache.fingerprint(cut_a, other_cfg, end, DAYS) != key_a
     # Anderer Testzeitraum ebenso.

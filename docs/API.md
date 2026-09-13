@@ -1,11 +1,8 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 12.09.2026 · App-Version **0.11.0** — B3/B4/B5, Ereignis-Pipeline
-> (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
-> Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
-> (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
-> `alarms[]` + `version`/`commit` in `/health` (B4/B9).
-> Alles serverseitig, keine Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4).
+> Stand: 13.09.2026 · App-Version **0.26.0**. Alles serverseitig, keine
+> Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4). Forecast-Punkte tragen
+> seit 0.26.0 ausschließlich Zeitstempel und fünf Quantile.
 
 ## Inhaltsverzeichnis
 
@@ -550,7 +547,7 @@ Liefert letzten publizierten Ausblick:
   "city": "Frankfurt",
   "fuel": "e10",
   "origin": "2026-09-10T00:00:00Z",
-  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8, "supported": true}, ...],
+  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8}, ...],
   "points_3d": [...],
   "points_7d": [...],
   "metrics": {"points": 1234, "mae_ct": 1.2, "mase": 0.85, "picp95_pct": 94.5},
@@ -564,6 +561,10 @@ Liefert letzten publizierten Ausblick:
 }
 ```
 
+- Jeder Eintrag in `points`, `points_3d` und `points_7d` hat genau
+  `timestamp`, `q025`, `q10`, `q50`, `q90`, `q975`. Nicht unterstützte
+  Rasterpunkte tragen `null`-Quantile; interne Diagnosespalten gehören nicht
+  zum API-Vertrag (B20.4, 0.26.0).
 - `range_from`/`range_to`/`n_points`/`n_days` (0.18.0, C11): Datenreichweite des
   **Fits** — Trainingsfenster, letzte verwendete Beobachtung, Zahl der offenen
   5-Minuten-Preise und nutzbaren Tage. Die Werte stammen unverändert aus dem

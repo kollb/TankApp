@@ -4,6 +4,76 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.26.0] – 2026-09-13
+
+**Batch 4 des Laufzeit-Bündels — Feinschliff ohne Änderung der Modellzahlen.**
+Die großen Hebel B15–B18 bleiben unverändert; dieser Batch entfernt den
+zweiten Poolstart, unnötige Worker-/JSON-Daten und sicher verworfene
+Prognosen. Gleichzeitig wird der lange Lauf im Job-Log ehrlich sichtbar.
+
+### Beschleunigt
+
+- **B19 — ein Prozess-Pool für beide Modellphasen** (`app/model_jobs.py`,
+  `app/refresh.py`): `ModelTaskPool` bleibt je Kraftstoff über Phase A
+  (Fit + 24 h) und Phase B (weite Horizonte + Backtest) offen. Das spart den
+  zweiten Worker-Bootstrap und den zweiten Transfer des Stationsbestands.
+  Der eigene Modell-Job ist single-threaded; auf dem Linux-NAS nutzt der Pool
+  deshalb explizit `fork` statt des Python-3.14-Defaults `forkserver`.
+- **Schmale Worker-Daten:** Von den neun `PriceSeries.frame`-Spalten gehen nur
+  die sechs tatsächlich von Fit/Backtest gelesenen Spalten in den Pool. Der
+  konservative B17-Fingerabdruck bleibt trotzdem über **alle** Spalten stabil:
+  Sein SHA-256 wird vor dem Kürzen berechnet und klein mitgegeben, sodass
+  vorhandene Tages-Cache-Dateien durch das Update nicht ungültig werden.
+- **B20.2 — keine Prognose ohne Wahrheit:** Mehrtage-Fenster ohne einen
+  beobachteten Preis werden vor `predict` als `no_common_observations`
+  gezählt. Im Laufzeitbefund waren das 8 von 63 teuren +3-d/+7-d-Aufrufen je
+  Station; Bericht und Zähler bleiben identisch.
+- **B20.1/.4 — kleine Worker-Antworten:** `wide` schickt sein ungenutztes
+  ~101-kB-Modellartefakt nicht mehr zum Parent. Worker serialisieren nur
+  Zeitstempel und `q025/q10/q50/q90/q975`; nur diese Felder gehören zum
+  genutzten Forecast-Vertrag. Nicht konsumierte Engine-Diagnosespalten und
+  der zweite Dict-Umbau in `refresh` entfallen.
+
+### Behoben
+
+- **B20.5 — echte Fertigstellungsreihenfolge:** `as_completed` meldet jeden
+  parallelen Task, sobald er fertig ist. Dadurch sieht ein früher beendeter
+  Worker nicht mehr wie ein Hänger hinter einem langsamen, früher
+  eingereichten Backtest aus. Die Rückgabeliste wird weiterhin nach
+  Einreichindex zusammengesetzt; Veröffentlichung und Modellzahlen bleiben
+  deterministisch.
+- **B20.6/.7 — monotoner, gewichteter Fortschritt:** `gapfill` hat jetzt eine
+  eigene Phase statt des Sprungs 35 → 0 %. Fit/Backtest belegt 30–95 % des
+  Balkens (vorher 85–95 % trotz 92 % Laufzeit), und über mehrere Kraftstoffe
+  kann der Prozentwert nie zurücklaufen. Im seriellen Fallback wird
+  `on_done` unmittelbar nach jedem Task geschrieben statt erst nach der
+  gesamten Phase.
+- **B23 — Worker-Automatik respektiert Containergrenzen:** `0`/automatisch
+  nutzt `os.process_cpu_count()` (Python ≥3.13), Prozess-Affinität und
+  cgroup-v2-`cpu.max` bzw. cgroup-v1-Quota. Damit ergeben 8 Host-Kerne bei
+  2 nutzbaren Container-CPUs genau 2 Worker. Ein positiver Betreiberwert
+  bleibt bewusst ein Override (maximal 64).
+
+### Betrieb und Abnahme
+
+- Die B11-Vorher-Werte der Zielhardware sind eingeordnet: 4 Worker, 1,0 GiB
+  Container-Peak, mindestens 4,1 GiB Host verfügbar, 1 MiB `/dev/shm`, maximal
+  370 % CPU. Die Änderungen dieses Batchs können den Bedarf nur senken.
+- **Noch nicht behauptet:** eine NAS-Nachher-Laufzeit. Der strenge Kaltlauf mit
+  `ops/nas/b11-cold-run.sh` kann erst nach Deployment erfolgen; TODO und
+  Betriebshandbuch weisen ihn ausdrücklich als offene Betriebsabnahme aus.
+  Letzter belastbarer Vorher-Stand: 1,4–1,7 min bei warmem Tages-Cache.
+
+### Tests
+
+- Seriell und parallel bleiben numerisch gleich; Ergebnisse bleiben trotz
+  umgekehrter Callback-Reihenfolge stabil sortiert.
+- Ein Fake-Executor belegt: zwei Batches erzeugen genau einen expliziten
+  Fork-Pool; Worker-Frames enthalten exakt sechs Spalten.
+- Neue Tests decken sofortige serielle Callbacks, monotone Prozentwerte,
+  den Skip leerer Horizontfenster, Affinität sowie cgroup-v1/v2-Quotas und
+  die Cache-Schlüssel-Kompatibilität ab.
+
 ## [0.25.1] – 2026-09-13
 
 **Begleitpunkte des Laufzeit-Bündels — ausdrücklich ohne Batch 4**

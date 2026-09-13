@@ -97,6 +97,10 @@ def test_refresh_warmstarts_without_months_of_polling_and_marks_retained_model(
     assert publication["calibrated"] is False and publication["decision_ready"] is False
     by_id = {row["station_id"]: row for row in publication["forecasts"]}
     assert by_id[UID]["points"] and by_id[UID]["retained_previous"] is False
+    expected_point_fields = {"timestamp", "q025", "q10", "q50", "q90", "q975"}
+    for horizon in ("points", "points_3d", "points_7d"):
+        assert by_id[UID][horizon]
+        assert all(set(row) == expected_point_fields for row in by_id[UID][horizon])
     assert by_id[OTHER]["origin"] == old["forecasts"][0]["origin"]
     assert by_id[OTHER]["retained_previous"] is True
     assert publication["policies"][0]["mode"] == "bootstrap"
@@ -709,6 +713,47 @@ def test_progress_note_can_be_non_sticky_and_total_can_be_corrected(model_setup)
     assert read_progress(model_setup, "models")["message"].startswith("Backtest:")
     log = (model_setup.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
     assert "nur 3 nutzbare Tage mit 12 offenen Preisen" in log
+
+
+def test_progress_percentage_is_monotonic_and_fit_gets_runtime_weight(model_setup):
+    """B20.6: gapfill/zweiter Kraftstoff setzen den Balken nie zurück."""
+    from app.progress import JobProgress, read_progress
+
+    progress = JobProgress(model_setup, "models", verbose=False)
+    percentages = []
+
+    def remember():
+        percentages.append(read_progress(model_setup, "models")["pct"])
+
+    progress.phase("export", total=1)
+    remember()
+    progress.step(1)
+    remember()
+    progress.phase("coverage")
+    remember()
+    progress.phase("archive")
+    remember()
+    progress.phase("gapfill")
+    remember()
+    progress.phase("bootstrap")
+    remember()
+    progress.phase("fit", total=8)
+    remember()
+    progress.step(4, label="erster Kraftstoff fertig")
+    remember()
+    # Zwischen-Selektion nach 4/8: exakt beim aktuellen globalen Fit-Anteil.
+    progress.phase("selection", weight=0.625)
+    remember()
+    progress.phase("bootstrap")  # statisch 25 %, darf nicht zurückspringen
+    remember()
+    progress.phase("fit", total=8, completed=4)
+    remember()
+    progress.step(8, label="zweiter Kraftstoff fertig")
+    remember()
+
+    assert percentages == sorted(percentages)
+    assert percentages[6] == 30.0  # Fit beginnt nicht mehr erst bei 85 %
+    assert percentages[-1] == 95.0
 
 
 def test_progress_log_rotates_instead_of_growing_forever(model_setup):

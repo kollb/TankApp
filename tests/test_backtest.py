@@ -127,6 +127,35 @@ def test_missing_days_are_reported_not_backfilled(series, cfg):
     assert not report["criteria"]["at_least_21_complete_test_days_per_station"]
 
 
+def test_empty_horizon_is_counted_without_predicting(series, cfg, monkeypatch):
+    """B20.2: +3/+7 d ohne Wahrheit überspringen den teuren Bootstrap."""
+    import engine.backtest as backtest
+
+    original_predict = backtest.predict
+    predicted_indexes = []
+
+    def counted_predict(*args, **kwargs):
+        predicted_indexes.append(kwargs.get("index"))
+        return original_predict(*args, **kwargs)
+
+    monkeypatch.setattr(backtest, "predict", counted_predict)
+    # Die Trainings-/Tagesserie bleibt intakt; in beiden Horizontfenstern gibt
+    # es absichtlich keine beobachtete Wahrheit.
+    series.frame.loc[
+        series.frame.index >= pd.Timestamp("2026-08-01", tz="UTC"), "observed"
+    ] = False
+    report, rows = run_backtest(
+        [series], cfg, days=1, until="2026-08-01", strict_end=False
+    )
+
+    assert not rows.empty
+    # Nur der Tages-Forecast wird gerechnet. Beide Mehrtagefenster liegen
+    # hinter dem Ende der Fixture-Reihe und haben keine Beobachtung.
+    assert len(predicted_indexes) == 1
+    assert report["horizons"]["72h"]["days_no_common_observations"] == 1
+    assert report["horizons"]["168h"]["days_no_common_observations"] == 1
+
+
 def test_short_training_records_skip_reason(observations, cfg):
     normalized, _ = normalize_observations(observations(days=3), cfg)
     report, rows = run_backtest(

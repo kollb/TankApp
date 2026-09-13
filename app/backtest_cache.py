@@ -19,7 +19,9 @@ bedeutet falsche publizierte Zahlen — deshalb lieber zu viel als zu wenig):
 - vollständige Engine-Config (`Config.to_dict()`, also auch Feiertags-
   Subdivs, Entscheidungsstunde, Seed, Bootstrap-Größe …),
 - Inhalt der **gesamten** Preisreihe bis zum Endtag — alle Spalten samt
-  Index, per `pd.util.hash_pandas_object`. Damit greift jede Änderung in
+  Index, per `pd.util.hash_pandas_object`. Seit B19 wird dieser Digest vor dem
+  Kürzen der Worker-Daten berechnet und nur als SHA-256 mitgegeben; dadurch
+  bleiben bestehende Cache-Schlüssel gültig. Damit greift jede Änderung in
   der Vergangenheit (Archiv-Nachholung, Lückenfüllung, Hampel-Ergebnis,
   Status-Korrektur), egal ob im Trainings- oder Wahrheitsfenster,
 - Schema-Versionen von Engine und Cache sowie die numpy/pandas-Versionen
@@ -81,12 +83,16 @@ def series_digest(frame) -> str:
     )
 
 
-def fingerprint(item, cfg, end_local, days: int) -> str:
+def fingerprint(
+    item, cfg, end_local, days: int, *, series_digest_value: str | None = None
+) -> str:
     """Fingerabdruck aller Eingaben, von denen der Bericht abhängt.
 
     ``item`` muss bereits auf ``end_local`` zugeschnitten sein
     (`engine.backtest.truncate_series`) — genau die Reihe, die
-    ``run_backtest`` liest.
+    ``run_backtest`` liest. B19 darf den vor dem Kürzen berechneten Digest
+    mitgeben; dadurch bleiben Cache-Schlüssel aus früheren Versionen gültig,
+    ohne reine Diagnose-Spalten in jeden Worker zu kopieren.
     """
     import numpy as np
     import pandas as pd
@@ -106,7 +112,7 @@ def fingerprint(item, cfg, end_local, days: int) -> str:
         json.dumps(header, sort_keys=True, ensure_ascii=False, default=str).encode(
             "utf-8"
         ),
-        series_digest(item.frame).encode("ascii"),
+        (series_digest_value or series_digest(item.frame)).encode("ascii"),
     )
 
 

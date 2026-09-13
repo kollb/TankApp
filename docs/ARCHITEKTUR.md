@@ -1,6 +1,6 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 12.09.2026 · App-Version 0.11.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
+> Stand: 13.09.2026 · App-Version 0.26.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
 > und [INSTALL.md](INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
 > benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](BETRIEB.md).
 
@@ -232,8 +232,8 @@ Watermark bleibt gemerkt).
 
 - Bei Start, danach täglich (Webhook-Triggern beschleunigt, siehe [Ereignis-Pipeline](#ereignis-pipeline-webhook-statt-reinem-polling)), bei Fehler stündlich
 - Liest InfluxDB, verarbeitet rohe Archiv-Änderungsereignisse mit exakten Zeitstempeln, erzeugt Trainingsbestand, fittet 24-h-Ausblick + 3d/7d Horizonte, **21-Tage-Rolling-Origin-Backtest** (seit 11.09.2026, davor 7 Tage) plus Mehrtage-Horizonte
-- Prozessparallel über `TANKAPP_MODEL_WORKERS` (Default automatisch, serieller Rückfall); Ergebnisse bitgleich zum seriellen Lauf
-- Fortschritt je Phase/Schritt in `runtime/jobs/<job>.progress.json` + `runtime/jobs/<job>.log` (500 Zeilen) → `/health` `progress` und System-Tab
+- Prozessparallel über `TANKAPP_MODEL_WORKERS` (Default automatisch aus Affinität + cgroup-Quota, serieller Rückfall). Ein expliziter Linux-`fork`-Pool bleibt über Fit- und Backtest-Phase offen; Worker tragen nur die sechs ergebnisrelevanten Frame-Spalten. Ergebnisse bleiben in Einreichreihenfolge und bitgleich zum seriellen Lauf.
+- Fortschritt je Phase/Schritt in `runtime/jobs/<job>.progress.json` + `runtime/jobs/<job>.log` (500 Zeilen) → `/health` `progress` und System-Tab. Task-Meldungen folgen der echten Fertigstellung; der Prozentwert wächst über alle Phasen monoton.
 - Veröffentlichung atomar nach `runtime/engine/current.json`, alte Ergebnisse bleiben bei Fehler erhalten
 - `calibrated=false`, `decision_ready=false` bis M7
 

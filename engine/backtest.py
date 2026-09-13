@@ -410,6 +410,13 @@ def run_backtest(
                 h_target = h_target[scheduled(h_target, cfg)]
                 h_truth = item.frame.reindex(h_target)
                 h_observed = h_truth.observed.eq(True)
+                # B20.2: Ohne eine einzige Beobachtung kann es per Definition
+                # keine gemeinsamen Vergleichspunkte geben. Die teure
+                # Bootstrap-Prognose würde sicher verworfen (im gemessenen
+                # 21-Tage-Lauf 8 von 63 Horizont-Aufrufen je Station).
+                if not h_observed.any():
+                    horizon_folds[horizon_hours]["no_common_observations"] += 1
+                    continue
                 h_forecast = predict(model, index=h_target)
                 h_valid = h_observed & h_forecast.q50.notna() & h_forecast.naive.notna()
                 h_rows = h_forecast.loc[h_valid].copy()

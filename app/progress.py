@@ -46,6 +46,7 @@ PHASE_LABELS = {
     "export": "InfluxDB-Export",
     "coverage": "Live-Abdeckung prüfen",
     "archive": "Archiv aufbereiten",
+    "gapfill": "Polling-Lücken schließen",
     "bootstrap": "Bootstrap & Trainingsdaten",
     "fit": "Modelle fitten + Backtest",
     "selection": "Selektion (δ̂)",
@@ -55,16 +56,19 @@ PHASE_LABELS = {
     "done": "Fertig",
 }
 
-# Fortschrittsgewicht je Phase des Modell-Jobs — grob, aber ehrlich
-# (der Fit-Block dominiert die Laufzeit). Nur für den Balken, nicht für
-# Aussagen über Restlaufzeiten.
+# Fortschrittsgewicht am Beginn jeder Phase. Der rechenintensive Fit-Block
+# belegt seit Batch 4 bewusst 65 Prozentpunkte statt nur 10: Im gemessenen
+# Kaltlauf waren dort 92 % der Wandzeit. ``gapfill`` hat einen eigenen Platz
+# statt auf 0 % zurückzufallen. JobProgress klemmt zusätzlich monoton, weil
+# Bootstrap/Fit/Selektion bei mehreren Kraftstoffen wiederholt werden.
 PHASE_WEIGHTS = {
     "start": 0.0,
-    "export": 0.10,
-    "coverage": 0.15,
-    "archive": 0.25,
-    "bootstrap": 0.35,
-    "fit": 0.85,
+    "export": 0.05,
+    "coverage": 0.10,
+    "archive": 0.15,
+    "gapfill": 0.20,
+    "bootstrap": 0.25,
+    "fit": 0.30,
     "selection": 0.95,
     "publish": 0.99,
     "done": 1.0,
@@ -101,14 +105,35 @@ class JobProgress:
         self.message = ""
         self.state = "running"
         self.done = False
+        self._weight_override: float | None = None
+        self._last_weight = 0.0
 
     # -- setzen -----------------------------------------------------------
-    def phase(self, phase: str, total: int | None = None, message: str = "") -> None:
-        """Neue Phase; ``total`` = erwartete Schritte dieser Phase."""
+    def phase(
+        self,
+        phase: str,
+        total: int | None = None,
+        message: str = "",
+        *,
+        completed: int = 0,
+        weight: float | None = None,
+    ) -> None:
+        """Neue Phase mit optionalem Schritt- und Gesamtfortschritt.
+
+        Ohne ``total`` verschwinden die Zähler der vorherigen Phase. Für den
+        über mehrere Kraftstoffe laufenden Fit kann ``completed`` den bereits
+        erledigten globalen Stand wieder aufnehmen. ``weight`` setzt nur den
+        Startpunkt dieser Phase (0..1), etwa für eine Selektion zwischen zwei
+        Kraftstoffen.
+        """
         self.phase_key = phase
         self.phase_label = PHASE_LABELS.get(phase, phase)
+        self._weight_override = weight
         if total is not None:
-            self.total = int(total)
+            self.total = max(0, int(total))
+            self.step_index = min(self.total, max(0, int(completed)))
+        else:
+            self.total = 0
             self.step_index = 0
         if message:
             self.message = message
@@ -160,13 +185,22 @@ class JobProgress:
     def payload(self) -> dict[str, Any]:
         now = _now()
         elapsed = (now - self.started).total_seconds()
-        base = PHASE_WEIGHTS.get(self.phase_key, 0.0)
+        base = (
+            self._weight_override
+            if self._weight_override is not None
+            else PHASE_WEIGHTS.get(self.phase_key, 0.0)
+        )
         nxt = PHASE_WEIGHTS.get(_next_phase(self.phase_key), base)
         if self.total > 0 and self.step_index > 0:
             frac = min(1.0, max(0.0, self.step_index / self.total))
             weight = base + (nxt - base) * frac
         else:
             weight = base
+        # B20.6: Phasen dürfen den sichtbaren Balken nie zurücksetzen. Das
+        # betrifft insbesondere gapfill (früher 35 -> 0 %) und den nächsten
+        # Kraftstoff nach einer Zwischen-Selektion.
+        weight = 1.0 if self.done else max(self._last_weight, weight)
+        self._last_weight = weight
         eta = None
         if self.total and 0 < self.step_index < self.total:
             per_step = elapsed / max(1, self._steps_done())
@@ -255,6 +289,7 @@ def _next_phase(phase: str) -> str:
         "export",
         "coverage",
         "archive",
+        "gapfill",
         "bootstrap",
         "fit",
         "selection",
