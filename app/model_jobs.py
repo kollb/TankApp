@@ -17,27 +17,171 @@ Aufteilung (je Station ein Bündel unabhängiger Aufgaben):
   bei gleichem Fingerabdruck kommt es aus ``runtime/engine/backtest-cache/``
   statt aus 21 Folds × (1 Fit + 3 Prognosen) (app/backtest_cache.py).
 
-Die Aufgaben laufen in einem ``ProcessPoolExecutor``. Fällt der Pool aus
-(eingeschränktes /dev/shm, keine Prozesse erlaubt), rechnet derselbe Code
+B19: Ein ``ModelTaskPool`` bleibt je Kraftstoff für Fit **und** Folgeaufgaben
+stehen. Der NAS-Worker ist ein eigener, single-threaded Prozess; deshalb wird
+auf POSIX explizit ``fork`` gewählt statt des Python-3.14-Defaults
+``forkserver``. Die Initialisierungsdaten enthalten nur die sechs Spalten,
+die Fit, Backtest und Cache-Fingerabdruck tatsächlich lesen. Fällt der Pool
+aus (eingeschränktes /dev/shm, keine Prozesse erlaubt), rechnet derselbe Code
 seriell weiter — Funktionsfähigkeit geht vor Geschwindigkeit.
 
 Determinismus: Alle Aufgaben erhalten dieselbe Config und denselben
 Cutoff, der Zufallsgenerator der Engine ist seed-basiert. Die Ergebnisse
 werden in Reihenfolge der Stationsliste zusammengesetzt, damit die
 Veröffentlichung unabhängig von der Anzahl der Prozesse identisch ist.
+``on_done`` läuft dagegen in echter Fertigstellungsreihenfolge — nur so sind
+Fortschritt und Restschätzung ehrlich (B20).
 """
 
 from __future__ import annotations
 
+import math
+import multiprocessing as mp
 import os
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import suppress
+from dataclasses import replace
+from pathlib import Path
 from typing import Any, Callable
+
+from .backtest_cache import BACKTEST_FRAME_COLUMNS
 
 _STATE: dict[str, Any] = {}
 MAX_AUTO_WORKERS = 8
+CGROUP_ROOT = Path("/sys/fs/cgroup")
+PROC_CGROUP = Path("/proc/self/cgroup")
 
-# Spalten der erweiterten Horizonte (+3 d/+7 d): Quantile + Zeitstempel.
+# Nur diese Spalten werden von engine.models.fit, engine.backtest und dem
+# Backtest-Fingerabdruck gelesen. ``status``, ``available`` und ``age_minutes``
+# sind bereits in price/observed/... aufgegangen und wären je Worker Ballast.
+WORKER_FRAME_COLUMNS = BACKTEST_FRAME_COLUMNS
+
+# Spalten der veröffentlichten Horizonte: Quantile + Zeitstempel. Interne
+# Diagnosewerte aus predict() gehören nicht ins JSON und nicht über die
+# Prozessgrenze (B20 Punkt 4).
 HORIZON_COLUMNS = ("timestamp", "q025", "q10", "q50", "q90", "q975")
+HORIZON_VALUE_COLUMNS = HORIZON_COLUMNS[1:]
+
+_POOL_FAILURES = (OSError, ImportError, RuntimeError, ValueError)
+_MISSING = object()
+
+
+def _quota_from_cpu_max(path: Path) -> int | None:
+    """cgroup-v2-Quota aus ``cpu.max`` als nutzbare Prozesszahl.
+
+    Eine Teil-CPU wird aufgerundet: zwei Worker können eine Quote von 1,5 CPUs
+    auslasten, acht Worker würden nur Speicher und Startaufwand vervielfachen.
+    ``max`` bzw. kaputte/fehlende Dateien bedeuten „hier kein Limit“.
+    """
+    try:
+        quota_text, period_text, *_ = path.read_text(encoding="ascii").split()
+        if quota_text == "max":
+            return None
+        quota, period = int(quota_text), int(period_text)
+    except (OSError, ValueError):
+        return None
+    if quota <= 0 or period <= 0:
+        return None
+    return max(1, math.ceil(quota / period))
+
+
+def _quota_from_cgroup_v1(directory: Path) -> int | None:
+    """cgroup-v1-Quota aus ``cpu.cfs_{quota,period}_us``."""
+    try:
+        quota = int((directory / "cpu.cfs_quota_us").read_text(encoding="ascii"))
+        period = int((directory / "cpu.cfs_period_us").read_text(encoding="ascii"))
+    except (OSError, ValueError):
+        return None
+    if quota <= 0 or period <= 0:  # -1 = unbegrenzt
+        return None
+    return max(1, math.ceil(quota / period))
+
+
+def _cgroup_directories(root: Path, proc_cgroup: Path) -> list[Path]:
+    """Mögliche aktuelle cgroup-Verzeichnisse (v2, v1 und Namespaces)."""
+    candidates = [root, root / "cpu", root / "cpu,cpuacct"]
+    try:
+        lines = proc_cgroup.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        controllers, relative = parts[1], parts[2]
+        relative_path = Path(relative.lstrip("/"))
+        if ".." in relative_path.parts:
+            continue
+        # v2: ``0::/pfad``; v1: Controller stehen im mittleren Feld.
+        if not controllers:
+            candidates.append(root / relative_path)
+        elif "cpu" in controllers.split(","):
+            for mount in (root, root / "cpu", root / "cpu,cpuacct"):
+                candidates.append(mount / relative_path)
+    # Elternlimits gelten ebenfalls. Das ist z. B. bei systemd-Slices wichtig.
+    expanded: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        current = candidate
+        while current == root or root in current.parents:
+            if current not in seen:
+                seen.add(current)
+                expanded.append(current)
+            if current == root:
+                break
+            current = current.parent
+    return expanded
+
+
+def _cgroup_cpu_limit(
+    root: Path | None = None, proc_cgroup: Path | None = None
+) -> int | None:
+    """Kleinste aktive CPU-Quota des aktuellen cgroup-Pfads.
+
+    Docker ``NanoCpus``/``--cpus`` wird vom Kernel als dieselbe cgroup-Quota
+    sichtbar. Ein Docker-Socket oder ``docker inspect`` ist daher nicht nötig.
+    """
+    root = Path(root or CGROUP_ROOT)
+    proc_cgroup = Path(proc_cgroup or PROC_CGROUP)
+    limits = []
+    for directory in _cgroup_directories(root, proc_cgroup):
+        v2 = _quota_from_cpu_max(directory / "cpu.max")
+        if v2 is not None:
+            limits.append(v2)
+        v1 = _quota_from_cgroup_v1(directory)
+        if v1 is not None:
+            limits.append(v1)
+    return min(limits) if limits else None
+
+
+def available_cpu_count() -> int:
+    """Für diesen Prozess nutzbare CPUs: Affinität **und** cgroup-Quota.
+
+    ``os.process_cpu_count`` (Python ≥3.13) respektiert die Prozesssicht. Für
+    die in CI noch unterstützten Python 3.11/3.12 folgt der Affinitäts-Fallback.
+    Eine cgroup-CPU-Quota ist eine zweite, unabhängige Obergrenze.
+    """
+    counts: list[int] = []
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if callable(process_cpu_count):
+        try:
+            value = process_cpu_count()
+        except OSError:
+            value = None
+        if value:
+            counts.append(int(value))
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            counts.append(len(os.sched_getaffinity(0)))
+        except OSError:
+            pass
+    host_count = os.cpu_count()
+    if host_count:
+        counts.append(int(host_count))
+    quota = _cgroup_cpu_limit()
+    if quota:
+        counts.append(quota)
+    return max(1, min(counts)) if counts else 1
 
 
 def resolve_workers(requested: int | None = None) -> int:
@@ -50,12 +194,26 @@ def resolve_workers(requested: int | None = None) -> int:
             requested = 0
     if requested and requested > 0:
         return max(1, min(64, int(requested)))
-    cpus = os.cpu_count() or 1
-    return max(1, min(MAX_AUTO_WORKERS, cpus))
+    return max(1, min(MAX_AUTO_WORKERS, available_cpu_count()))
+
+
+def _slim_series_map(series_map: dict) -> dict:
+    """Worker-Eingabe ohne abgeleitete, nie gelesene DataFrame-Spalten."""
+    return {
+        key: replace(item, frame=item.frame.loc[:, WORKER_FRAME_COLUMNS])
+        for key, item in series_map.items()
+    }
+
+
+def _process_context():
+    """Explizite Startmethode; auf dem single-threaded NAS-Worker ist fork sicher."""
+    methods = mp.get_all_start_methods()
+    return mp.get_context("fork" if "fork" in methods else "spawn")
 
 
 def _init(series_map: dict, cfg, origin, cache_dir=None) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task)."""
+    _STATE.clear()
     _STATE["series"] = series_map
     _STATE["cfg"] = cfg
     _STATE["origin"] = origin
@@ -114,9 +272,12 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
 
 
 def _records(frame) -> list[dict[str, Any]]:
-    frame = frame.copy()
-    frame["timestamp"] = frame.index.map(lambda stamp: stamp.isoformat())
-    return frame.to_dict(orient="records")
+    """Nur veröffentlichte Quantile serialisieren, ohne DataFrame-Vollkopie."""
+    values = frame.loc[:, HORIZON_VALUE_COLUMNS].itertuples(index=False, name=None)
+    return [
+        dict(zip(HORIZON_COLUMNS, (stamp.isoformat(), *row)))
+        for stamp, row in zip(frame.index, values)
+    ]
 
 
 def _draws(index, paths, cfg) -> dict[str, Any]:
@@ -177,10 +338,13 @@ def _run(task: tuple) -> dict[str, Any]:
         frame, paths = predict(model, hours=hours, return_paths=True)
         out.update(
             ok=True,
-            model=model,
             points=_records(frame),
             draws=_draws(frame.index, paths, cfg),
         )
+        # Nur der 24-h-Fit wird publiziert. Wide-Aufgaben brauchen ihr Modell
+        # lokal für predict(), der ~100-kB-Rücktransfer war aber tote Arbeit.
+        if kind == "fit":
+            out["model"] = model
         return out
     except ValueError as exc:
         # Gleiche Meldung wie im seriellen Pfad (Engine-Text, keine Interna).
@@ -189,6 +353,135 @@ def _run(task: tuple) -> dict[str, Any]:
     except Exception as exc:  # harte Fehler nicht verschlucken, aber benennen
         out["detail"] = f"{type(exc).__name__}: {exc}"
         return out
+
+
+class ModelTaskPool:
+    """Ein wiederverwendbarer Pool für beide Aufgabenwellen eines Kraftstoffs.
+
+    Ergebnisse bleiben in Einreichreihenfolge. Der Callback wird dagegen
+    unmittelbar beim echten Abschluss aufgerufen. Bei Infrastrukturfehlern
+    bleiben schon gemeldete Ergebnisse erhalten; nur offene Aufgaben werden
+    seriell nachgerechnet und alle weiteren Wellen laufen ebenfalls seriell.
+    """
+
+    def __init__(
+        self, series_map: dict, cfg, origin, workers: int = 1, cache_dir=None
+    ) -> None:
+        self.series_map = _slim_series_map(series_map)
+        self.cfg = cfg
+        self.origin = origin
+        self.cache_dir = cache_dir
+        # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
+        # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
+        # trotzdem pandas importieren und Speicher belegen.
+        useful_workers = max(1, 3 * len(self.series_map))
+        self.workers = min(max(1, int(workers)), useful_workers)
+        self.pool = None
+        self._entered = False
+        self._serial = self.workers <= 1
+
+    def __enter__(self):
+        self._entered = True
+        # Parent-State ist zugleich der serielle Pfad nach einem Pool-Ausfall.
+        _init(self.series_map, self.cfg, self.origin, self.cache_dir)
+        if not self._serial:
+            try:
+                self.pool = ProcessPoolExecutor(
+                    max_workers=self.workers,
+                    mp_context=_process_context(),
+                    initializer=_init,
+                    initargs=(self.series_map, self.cfg, self.origin, self.cache_dir),
+                )
+            except _POOL_FAILURES:
+                self._serial = True
+                self.pool = None
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def close(self) -> None:
+        pool, self.pool = self.pool, None
+        if pool is not None:
+            with suppress(Exception):
+                pool.shutdown(wait=True, cancel_futures=True)
+        self._entered = False
+
+    def run(
+        self,
+        tasks: list[tuple],
+        on_done: Callable[[dict[str, Any]], None] | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self._entered:
+            raise RuntimeError(
+                "ModelTaskPool muss als Context-Manager verwendet werden."
+            )
+        if not tasks:
+            return []
+        if self._serial or self.pool is None:
+            return self._run_serial(tasks, on_done)
+
+        results: list[Any] = [_MISSING] * len(tasks)
+        futures = {}
+        try:
+            for index, task in enumerate(tasks):
+                futures[self.pool.submit(_run, task)] = index
+        except _POOL_FAILURES:
+            self._switch_to_serial()
+            return self._run_serial(tasks, on_done)
+
+        iterator = as_completed(futures)
+        while True:
+            try:
+                future = next(iterator)
+            except StopIteration:
+                break
+            except _POOL_FAILURES:
+                self._switch_to_serial()
+                return self._complete_serial(tasks, results, on_done)
+            index = futures[future]
+            try:
+                result = future.result()
+            except _POOL_FAILURES:
+                self._switch_to_serial()
+                return self._complete_serial(tasks, results, on_done)
+            results[index] = result
+            if on_done:
+                # Bewusst außerhalb des Pool-Fehlerhandlers: Ein Fehler im
+                # Aufrufer darf Aufgaben nicht unbemerkt doppelt ausführen.
+                on_done(result)
+        return list(results)
+
+    @staticmethod
+    def _run_serial(tasks, on_done):
+        results = []
+        for task in tasks:
+            result = _run(task)
+            results.append(result)
+            # B20 Punkt 7: nicht erst die ganze (ggf. 38-minütige) Phase
+            # rechnen und danach alle Fortschrittszeilen auf einmal schreiben.
+            if on_done:
+                on_done(result)
+        return results
+
+    @staticmethod
+    def _complete_serial(tasks, results, on_done):
+        for index, task in enumerate(tasks):
+            if results[index] is not _MISSING:
+                continue
+            result = _run(task)
+            results[index] = result
+            if on_done:
+                on_done(result)
+        return list(results)
+
+    def _switch_to_serial(self) -> None:
+        pool, self.pool = self.pool, None
+        self._serial = True
+        if pool is not None:
+            with suppress(Exception):
+                pool.shutdown(wait=True, cancel_futures=True)
+        _init(self.series_map, self.cfg, self.origin, self.cache_dir)
 
 
 def run_tasks(
@@ -200,40 +493,15 @@ def run_tasks(
     on_done: Callable[[dict[str, Any]], None] | None = None,
     cache_dir=None,
 ) -> list[dict[str, Any]]:
-    """Führt Aufgaben aus (parallel, mit seriellem Fallback).
+    """Kompatibler Ein-Wellen-Aufruf; Refresh nutzt einen Pool für zwei Wellen.
 
     Rückgabe in der Reihenfolge von ``tasks``. ``cache_dir`` aktiviert den
     Tages-Cache des Backtests (B17); None = immer rechnen.
     """
     if not tasks:
         return []
-    if workers <= 1:
-        _init(series_map, cfg, origin, cache_dir)
-        results = [_run(task) for task in tasks]
-        for result in results:
-            if on_done:
-                on_done(result)
-        return results
-
-    try:
-        with ProcessPoolExecutor(
-            max_workers=min(workers, len(tasks)),
-            initializer=_init,
-            initargs=(series_map, cfg, origin, cache_dir),
-        ) as pool:
-            futures = [(task, pool.submit(_run, task)) for task in tasks]
-            results = []
-            for _task, future in futures:
-                results.append(future.result())
-                if on_done:
-                    on_done(results[-1])
-            return results
-    except (OSError, ImportError, RuntimeError, ValueError):
-        # Kein Prozess-Pool verfügbar (z. B. eingeschränktes /dev/shm):
-        # seriell weiterrechnen statt den Modell-Lauf abzubrechen.
-        _init(series_map, cfg, origin, cache_dir)
-        results = [_run(task) for task in tasks]
-        for result in results:
-            if on_done:
-                on_done(result)
-        return results
+    # Der Kompatibilitätsaufruf kennt nur diese eine Welle und kann enger
+    # deckeln; Refresh hält dagegen Kapazität für die größere Folgewelle frei.
+    effective_workers = min(max(1, int(workers)), len(tasks))
+    with ModelTaskPool(series_map, cfg, origin, effective_workers, cache_dir) as pool:
+        return pool.run(tasks, on_done=on_done)

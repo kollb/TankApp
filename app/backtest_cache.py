@@ -18,10 +18,13 @@ bedeutet falsche publizierte Zahlen — deshalb lieber zu viel als zu wenig):
 - lokaler Endtag (exklusiv) und Anzahl Testtage,
 - vollständige Engine-Config (`Config.to_dict()`, also auch Feiertags-
   Subdivs, Entscheidungsstunde, Seed, Bootstrap-Größe …),
-- Inhalt der **gesamten** Preisreihe bis zum Endtag — alle Spalten samt
-  Index, per `pd.util.hash_pandas_object`. Damit greift jede Änderung in
-  der Vergangenheit (Archiv-Nachholung, Lückenfüllung, Hampel-Ergebnis,
-  Status-Korrektur), egal ob im Trainings- oder Wahrheitsfenster,
+- Inhalt der **gesamten backtest-relevanten** Preisreihe bis zum Endtag —
+  Index plus Preis, Beobachtungs-/Antwortmasken, Status-Herkunft, Quelle und
+  Beobachtungszeit per `pd.util.hash_pandas_object`. Abgeleitete, von Fit und
+  Backtest nie gelesene Anzeigespalten (`status`, `available`, Alter) gehören
+  seit B19 nicht mehr zum Worker-Transfer oder Fingerabdruck. Jede fachlich
+  wirksame Änderung in der Vergangenheit (Archiv-Nachholung, Lückenfüllung,
+  Hampel-Ergebnis, Status-Korrektur) kippt ihn,
 - Schema-Versionen von Engine und Cache sowie die numpy/pandas-Versionen
   (eine Bibliotheksänderung darf keine alten Zahlen wiederverwenden).
 
@@ -45,7 +48,21 @@ from pathlib import Path
 from typing import Any
 
 # Bei jeder Änderung an Inhalt oder Form des gecachten Payloads anheben.
-CACHE_SCHEMA_VERSION = 1
+# Schema 2: Fingerabdruck auf die sechs tatsächlich gelesenen Frame-Spalten
+# normiert (B19); bestehende Schema-1-Dateien werden einmal sauber verfehlt.
+CACHE_SCHEMA_VERSION = 2
+
+# Dieselben Spalten gehen als schlanke initargs in den Modell-Pool. Sie sind
+# vollständig für fit() + run_backtest(); die übrigen PriceSeries-Spalten sind
+# daraus abgeleitete Anzeige-/Diagnosewerte und werden dort nie gelesen.
+BACKTEST_FRAME_COLUMNS = (
+    "price",
+    "observed",
+    "response_observed",
+    "status_known",
+    "source",
+    "observed_at",
+)
 
 # Felder aus dem Backtest-Bericht, die der Modell-Lauf je Station braucht
 # (siehe app/model_jobs.py::_run und app/refresh.py).
@@ -67,12 +84,13 @@ def _sha256(*parts: bytes) -> str:
 
 
 def series_digest(frame) -> str:
-    """Inhalts-Hash der Preisreihe (Index + alle Spalten, dtype-sensitiv)."""
+    """Hash der fachlich gelesenen Preisreihe (Index + Spalten, dtype-sensitiv)."""
     import pandas as pd
 
-    hashed = pd.util.hash_pandas_object(frame, index=True).to_numpy()
+    relevant = frame.loc[:, BACKTEST_FRAME_COLUMNS]
+    hashed = pd.util.hash_pandas_object(relevant, index=True).to_numpy()
     columns = json.dumps(
-        [(str(name), str(dtype)) for name, dtype in frame.dtypes.items()]
+        [(str(name), str(dtype)) for name, dtype in relevant.dtypes.items()]
     )
     return _sha256(
         columns.encode("utf-8"),
