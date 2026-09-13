@@ -68,6 +68,7 @@ import {
   HEATMAP_DEFAULT_BASIS,
   HEATMAP_DEFAULT_WEEKS,
   HEATMAP_WEEKS,
+  historyWindowMs,
   isAppTheme,
   isHeatmapBasis,
   isHeatmapWeeks,
@@ -886,7 +887,10 @@ export function Dashboard() {
   const metrics = f?.metrics;
 
   const obsPoints = history.data?.points || [];
-  const obsWindow: [number, number] = [now - spanHours * 3600000, now];
+  // Wandzeit, nicht Seitenlaufzeit: Die Punkte liegen in Epoch-Millisekunden,
+  // performance.now() wäre immer „davor“ und schneidete alles weg („keine
+  // Daten“ trotz 108 Preisen). `now` weiter für das Datenalter (elapsed).
+  const obsWindow: [number, number] = historyWindowMs(spanHours);
   const observations = segments(obsPoints);
   const series = observations.map((s) => ({
     ...s,
