@@ -185,7 +185,7 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
     });
   });
   // B6/H1: Server liefert detour_km_est + verdict/Schwellen — e2e muss decide mocken,
-  // sonst zeigt die GUI keine Umweg-Sektion (und #timeValue fehlt).
+  // sonst zeigt die GUI keine Umweg-Sektion (und damit keine aktiven Umweg-Werte).
   await page.route("**/api/v1/decide?*", async (route) => {
     const url = new URL(route.request().url());
     const selectedId = url.searchParams.get("station_id") || "b";
@@ -285,17 +285,21 @@ test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await stubApi(page, { horizons: true });
   await page.goto("/");
   // Der Kompass zeigt die günstigste Station (B); als Vergleich dient F,
-  // damit der Umweg-Rechner mit Zeitwert-Slider erscheint.
+  // damit der Umweg-Rechner die aktiven Werte zeigt.
   await expect(
     page.getByRole("heading", { name: "B-Station", exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "F-Station als Vergleich wählen" })
     .click();
+  // C4: Der Zeitwert-Slider steht im Einstellungen-Tab; der Alltag zeigt
+  // den aktiven Wert read-only.
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
-  await expect(page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/)).toBeVisible();
   await expect(
     page.getByText("0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h."),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+  await expect(page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/)).toBeVisible();
 });

@@ -103,6 +103,11 @@ Zwei Modi in der GUI:
 Dritter Tab: **System** — Konfiguration, Archiv, Jobs, Collector, Alarme,
 Einrichtungs-Checkliste, Tankbelege-Export.
 
+Vierter Tab (0.24.0, C4): **Einstellungen** — alle Defaults an einer Stelle
+(Stadt, Kraftstoff, Tankmenge, Verbrauch, Zeitwert, Tempo, Fahrtcharakter,
+Tankgröße), die aktiven Entscheidungsschwellen als read-only-Tabelle und die
+Dark/Light-Umschaltung.
+
 ```text
 Tankerkönig live ──→ Pi: Collector + RAM-Puffer (/dev/shm/tankapp) ──→ NAS: InfluxDB
 Tankerkönig-Archiv ───────────────────────────────────────────────→ NAS: Roharchiv + Cache
@@ -171,8 +176,9 @@ Vollständig mit Parametern, Antworten und Fehlercodes: [API.md](API.md).
   Homepage ([GUI-VORLAGEN.md](GUI-VORLAGEN.md), Regel in [../AGENTS.md](../AGENTS.md)).
 - **Private Daten gehören nicht ins Repo:** `config.local.json`, `polling.json`,
   `data/influx.env`, `data/_netrc`, `data/apikey.txt` (siehe `.gitignore`).
-- **Begriffe:** Alltag / Werkstatt / System. „Statistik“ und „Prüfstand“ sind
-  veraltete Bezeichnungen und stehen nur noch in Archiv-Dokumenten.
+- **Begriffe:** Alltag / Werkstatt / System / Einstellungen. „Statistik“ und
+  „Prüfstand“ sind veraltete Bezeichnungen und stehen nur noch in
+  Archiv-Dokumenten.
 
 ## Regeln für diese Dokumentation
 

@@ -90,7 +90,11 @@ test("city/fuel changes never mix prices, closures never win", async ({
     page.getByRole("heading", { name: "G-Station", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("F-Station", { exact: true })).toHaveCount(0);
+  // C4: Die Tankmenge ist ein Default — der Eingabeort ist jetzt der
+  // Einstellungen-Tab; der Alltag zeigt den Wert read-only.
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
   await page.locator("#liters").fill("55");
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
   await expect(page.getByText("Füllung mit 55 Litern")).toBeVisible();
   await page.getByRole("button", { name: "Diesel", exact: true }).click();
   await expect(
@@ -108,4 +112,55 @@ test("city/fuel changes never mix prices, closures never win", async ({
   await expect(
     page.getByRole("button", { name: "Diesel", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+});
+
+test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Alle Defaults an einer Stelle." }),
+  ).toBeVisible();
+
+  // C4: Alle Defaults an einem Ort — die Eingabeorte, die im Alltagstabs
+  // verteilt lagen (Tankmenge, Verbrauch, Zeitwert, Tempo, Fahrtcharakter)
+  // plus Stadt, Kraftstoff und Tankgröße.
+  await expect(page.locator("#liters")).toBeVisible();
+  await expect(page.locator("#consumption")).toBeVisible();
+  await expect(page.locator("#timeValue")).toBeVisible();
+  await expect(page.locator("#speed")).toBeVisible();
+  await expect(page.locator("#detourMode")).toBeVisible();
+  await expect(page.locator("#tankCapacity")).toBeVisible();
+  await expect(page.locator("#settings-city")).toBeVisible();
+
+  // C4: Aktive Schwellen-Tabelle aus /api/v1/stats/summary — read-only,
+  // Startwerte der Engine (ohne Daten keine Abweichung möglich).
+  await expect(
+    page.getByText("read-only · Quelle: /api/v1/stats/summary"),
+  ).toBeVisible();
+  const table = page.locator("table").filter({ hasText: "Mindest-Ersparnis" });
+  await expect(
+    table.locator("tr", { hasText: "Warten (grün)" }).first(),
+  ).toContainText("2,00 €");
+  await expect(
+    table.locator("tr", { hasText: "wenn P(Warten) unter" }),
+  ).toContainText("50 %");
+  // Read-only: kein einziges Eingabefeld in der Schwellen-Tabelle.
+  await expect(table.locator("input")).toHaveCount(0);
+
+  // C4: Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
+  // einen Reload (Bootstrap-Script in index.html, localStorage).
+  await page
+    .getByRole("button", { name: "Hell (Slate)", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  // Zurück auf den Default (dunkles Slate), damit andere Tests nicht
+  // von dieser Ansicht abhängen.
+  await page
+    .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
 });

@@ -1,6 +1,10 @@
 /* TankApp Service Worker: App-Shell offline, API-Antworten max. 30 Min. als
-   gekennzeichneter Notstand. Niemals Preise erfinden — nur cachen. */
-const SHELL = "tankapp-shell-v1";
+   gekennzeichneter Notstand. Niemals Preise erfinden — nur cachen.
+   SHELL-Version steigt bei jedem GUI-Update, das index.html ändert (C4,
+   0.24.0) — das Fetch-Match ist cache-first, ein fester Name würde
+   installierte PWAs auf der alten Shell hängen lassen (B10-Rest: Versions-
+   Anzeige fehlt weiter). */
+const SHELL = "tankapp-shell-v2";
 const API = "tankapp-api-v1";
 const API_MAX_AGE_MS = 30 * 60 * 1000;
 

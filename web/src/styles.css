@@ -10,6 +10,77 @@
   }
 }
 
+/*
+ * C4: „Hell (Slate)“ — helle Variante derselben Tailwind-Skala.
+ *
+ * Tailwind v4 kompiliert Farbklassen als Verweis auf CSS-Variablen
+ * (bg-slate-900 → var(--color-slate-900)). Unter `html.light` werden die
+ * Variablen deshalb nur umgebogen, jede Klasse im Code bleibt unverändert.
+ * Die Werte folgen der Light-Palette der Fallback-GUI (rp2/fallback_gui.py):
+ * dieselbe Skala, andere Helligkeit — Akzent-Texttöne (emerald/amber/rose/
+ * sky 200–400) werden dort dunkler, wo sie in Dunkel hell waren.
+ */
+html.light {
+  /* Slate-Skala: Rollen bleiben, Helligkeit kippt (Seite, Karten, Ränder,
+     Text — von hell nach dunkel gelesen wie oben im Dark-Stand). */
+  --color-slate-50: #ffffff;
+  --color-slate-100: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #64748b;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #eef2f7;
+  /* text-white ist im Dark-Stand heller Text; im Light-Stand wird daraus
+     der Haupttext. bg-white/border-white kommen im Code nicht vor. */
+  --color-white: #0f172a;
+  /* Akzent-Texttöne auf hellen Flächen: dunklere Abstufungen, damit die
+     Kontraste halten (Fallback-GUI-Light als Referenz). */
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #047857;
+  --color-emerald-500: #047857;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-amber-400: #b45309;
+  --color-rose-200: #991b1b;
+  --color-rose-300: #b91c1c;
+  --color-rose-400: #dc2626;
+  --color-sky-200: #0c4a6e;
+  --color-sky-300: #075985;
+  --color-sky-400: #0369a1;
+  /* Dunkle Tönungen (900/950) sind im Dark-Stand halbtransparente
+     Hintergrundtöne von Warn-Boxen und Verläufen; im Light-Stand werden
+     daraus helle Töne, damit dieselben Tinte auf weiß lesbar bleiben. */
+  --color-emerald-900: #a7f3d0;
+  --color-emerald-950: #d1fae5;
+  --color-amber-950: #fef3c7;
+  --color-rose-950: #fee2e2;
+  --color-sky-950: #e0f2fe;
+}
+html.light body {
+  background-color: #eef2f7;
+  color: #0f172a;
+}
+html.light ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+html.light :focus-visible {
+  outline-color: #047857;
+}
+html.light input[type="range"] {
+  accent-color: #047857;
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 8px;

@@ -7,8 +7,8 @@
 > [TODO.md](../TODO.md).
 > Collector/Uploader befüllen die InfluxDB; M2 gilt als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](ENGINE.md).
-> `web/` und `app/` implementieren Live-GUI (Alltag/Werkstatt/System),
-> Nur-Lese-API (LAN-only, ohne Rate-Limit) und automatische
+> `web/` und `app/` implementieren Live-GUI (Alltag/Werkstatt/System/
+> Einstellungen), Nur-Lese-API (LAN-only, ohne Rate-Limit) und automatische
 > NAS-Archiv-/Modelljobs inkl.
 > **B3** (Heatmaps, Meine Stationen δ̂, Collector-Herzschlag, Route-Evaluate),
 > **B4/B5** (Decision Layer, `latest_by`, Fahrtmodus, Deprecation-Header,

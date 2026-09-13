@@ -17,6 +17,7 @@ import {
   WifiOff,
   Share2,
   CheckCircle2,
+  Settings2,
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
@@ -45,6 +46,7 @@ import {
   CalibChart,
 } from "./components/LabCharts";
 import {
+  applyAppTheme,
   autoTimeTicks,
   autoTimeValue,
   berlinHour,
@@ -66,6 +68,7 @@ import {
   HEATMAP_DEFAULT_BASIS,
   HEATMAP_DEFAULT_WEEKS,
   HEATMAP_WEEKS,
+  isAppTheme,
   isHeatmapBasis,
   isHeatmapWeeks,
   PINNED_MAX,
@@ -99,6 +102,7 @@ import {
   voidFill,
   rowOutcome,
   scoreRows,
+  type AppTheme,
   type DetourMode,
   type Fill,
   type Fills,
@@ -125,12 +129,14 @@ import {
   type Overview,
   JOB_LABELS,
 } from "./data";
-// D1: Views-Schnitt — die drei Tabs sind eigene Dateien; der gemeinsame
+// D1: Views-Schnitt — die vier Tabs sind eigene Dateien; der gemeinsame
 // Zustand bleibt hier und wandert per typisierten Props in die Views.
 // (JobCard ist ein Baustein des System-Views, vgl. views/System.tsx)
 import { DailyView } from "./views/Daily";
 import { StatisticsView } from "./views/Statistics";
 import { SystemView } from "./views/System";
+// C4: Einstellungen-Tab — alle Defaults an einer Stelle.
+import { SettingsView } from "./views/Settings";
 export function Dashboard() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
   // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
@@ -152,7 +158,9 @@ export function Dashboard() {
     share.city,
   );
   const [selectedId, setSelectedId] = useState(share.stationId ?? "");
-  const [tab, setTab] = useState<"daily" | "statistics" | "system">("daily");
+  const [tab, setTab] = useState<
+    "daily" | "statistics" | "system" | "settings"
+  >("daily");
   const [liters, setLiters] = usePreference(
     "liters",
     40,
@@ -205,6 +213,18 @@ export function Dashboard() {
     0,
     (value) => value === 0 || value === 3 || value === 7,
   );
+  // C4: Dark/Light-Umschaltung (Einstellungen-Tab). Dunkel (Slate) ist der
+  // Default — die Design-Basis; die Wahl gilt gerätelokal. Der
+  // Bootstrap-Script in index.html wendet denselben Wert vor dem ersten
+  // Paint an, hier hält React meta und Klassen synchron.
+  const [theme, setTheme] = usePreference<AppTheme>(
+    "theme",
+    "dark",
+    isAppTheme,
+  );
+  useEffect(() => {
+    applyAppTheme(theme);
+  }, [theme]);
   const [heatmapKind, setHeatmapKind] = usePreference<"level" | "probability">(
     "heatmapKind",
     "probability",
@@ -721,9 +741,10 @@ export function Dashboard() {
       : emptyResource<DecideResult>();
 
   const statsSummaryPoll = useResource<StatsSummary>(
-    // Die Güte-Kacheln im System-Tab und das Labor in der Werkstatt lesen
-    // dieselbe Antwort — im Alltagstabs steckt sie im Overview-Payload.
-    tab === "statistics" || tab === "system"
+    // Die Güte-Kacheln im System-Tab, das Labor in der Werkstatt und die
+    // Schwellen-Tabelle in den Einstellungen lesen dieselbe Antwort — im
+    // Alltagstabs steckt sie im Overview-Payload.
+    tab === "statistics" || tab === "system" || tab === "settings"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -1520,7 +1541,7 @@ export function Dashboard() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav
             aria-label="Ansichten"
-            className="flex rounded-xl border border-slate-800 bg-slate-900/60 p-1"
+            className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900/60 p-1"
           >
             {(
               [
@@ -1531,6 +1552,11 @@ export function Dashboard() {
                   icon: <ChartIcon size={15} />,
                 },
                 { id: "system", label: "System", icon: <Server size={15} /> },
+                {
+                  id: "settings",
+                  label: "Einstellungen",
+                  icon: <Settings2 size={15} />,
+                },
               ] as const
             ).map((item) => (
               <button
@@ -1570,7 +1596,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* C6: Preis-Datenstand — gilt für alle drei Tabs, deshalb über den
+        {/* C6: Preis-Datenstand — gilt für alle Tabs, deshalb über den
             Tab-Inhalt und nicht in jedes Panel einzeln. */}
         <DataAgeBanner stamp={data?.generated_at} kind="prices" />
 
@@ -1714,20 +1740,16 @@ export function Dashboard() {
             selectedId={selectedId}
             routeAltId={routeAltId}
             selectedIsCheapest={selectedIsCheapest}
-            setConsumption={setConsumption}
+            onOpenSettings={() => setTab("settings")}
             setCustomFillOpen={setCustomFillOpen}
             setCustomLitersStr={setCustomLitersStr}
             setCustomPriceStr={setCustomPriceStr}
-            setDetourMode={setDetourMode}
-            setLiters={setLiters}
             setQuickLitersStr={setQuickLitersStr}
             setQuickPriceStr={setQuickPriceStr}
             setQuickStationId={setQuickStationId}
             setRouteAltId={setRouteAltId}
             setSelectedId={setSelectedId}
             setShowVoidedFills={setShowVoidedFills}
-            setSpeed={setSpeed}
-            setTimeValue={setTimeValue}
             showVoidedFills={showVoidedFills}
             span={span}
             stationMissing={stationMissing}
@@ -1744,7 +1766,6 @@ export function Dashboard() {
             tankPercent={tankPercent}
             setTankPercent={setTankPercent}
             tankCapacity={tankCapacity}
-            setTankCapacity={setTankCapacity}
             pinnedIds={pinnedIds}
             togglePin={togglePin}
             pinNote={pinNote}
@@ -1861,6 +1882,38 @@ export function Dashboard() {
             triggerCommand={triggerCommand}
             webhookCapable={webhookCapable}
             workerCommand={workerCommand}
+          />
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB EINSTELLUNGEN                                            */}
+        {/* ============================================================ */}
+        {tab === "settings" && (
+          <SettingsView
+            activeCity={activeCity}
+            activeProfileName={activeProfile?.name ?? null}
+            autoZ={autoZ}
+            consumption={consumption}
+            data={data}
+            detourMode={detourMode}
+            fuel={fuel}
+            liters={liters}
+            refreshNow={refreshNow}
+            setCity={setCity}
+            setConsumption={setConsumption}
+            setDetourMode={setDetourMode}
+            setFuel={setFuel}
+            setLiters={setLiters}
+            setSpeed={setSpeed}
+            setTankCapacity={setTankCapacity}
+            setTimeValue={setTimeValue}
+            setTheme={setTheme}
+            speed={speed}
+            statsSummaryRes={statsSummaryRes}
+            tankCapacity={tankCapacity}
+            theme={theme}
+            timeValue={timeValue}
+            timeValueUsed={timeValueUsed}
           />
         )}
 

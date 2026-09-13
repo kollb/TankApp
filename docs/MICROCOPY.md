@@ -80,7 +80,7 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 
 | Gemeint | Wort in der App |
 |---|---|
-| die drei Tabs | **Alltag**, **Werkstatt**, **System** (nicht „Statistik“, nicht „Prüfstand“) |
+| die vier Tabs | **Alltag**, **Werkstatt**, **System**, **Einstellungen** (nicht „Statistik“, nicht „Prüfstand“) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“) |
 | Prognoselauf auf dem NAS | **Modell-Update** |
