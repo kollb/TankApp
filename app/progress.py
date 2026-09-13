@@ -46,6 +46,7 @@ PHASE_LABELS = {
     "export": "InfluxDB-Export",
     "coverage": "Live-Abdeckung prüfen",
     "archive": "Archiv aufbereiten",
+    "gapfill": "Polling-Lücken schließen",
     "bootstrap": "Bootstrap & Trainingsdaten",
     "fit": "Modelle fitten + Backtest",
     "selection": "Selektion (δ̂)",
@@ -55,16 +56,19 @@ PHASE_LABELS = {
     "done": "Fertig",
 }
 
-# Fortschrittsgewicht je Phase des Modell-Jobs — grob, aber ehrlich
-# (der Fit-Block dominiert die Laufzeit). Nur für den Balken, nicht für
-# Aussagen über Restlaufzeiten.
+# Startgewicht je Phase des Modell-Jobs. Der lange Fit-Block bekommt 60 % des
+# Balkens (35–95 %) statt wie bisher nur 10 % (85–95 %). ``gapfill`` fehlte
+# vorher ganz und sprang deshalb von 35 % auf 0 %. Die zusätzliche monotone
+# Untergrenze in JobProgress schützt auch optionale/wiederholte Phasen.
+# Nur für den Balken, nicht für Aussagen über Restlaufzeiten.
 PHASE_WEIGHTS = {
     "start": 0.0,
-    "export": 0.10,
-    "coverage": 0.15,
-    "archive": 0.25,
-    "bootstrap": 0.35,
-    "fit": 0.85,
+    "export": 0.0,
+    "coverage": 0.10,
+    "archive": 0.15,
+    "gapfill": 0.25,
+    "bootstrap": 0.30,
+    "fit": 0.35,
     "selection": 0.95,
     "publish": 0.99,
     "done": 1.0,
@@ -101,15 +105,28 @@ class JobProgress:
         self.message = ""
         self.state = "running"
         self.done = False
+        self._weight_floor = 0.0
 
     # -- setzen -----------------------------------------------------------
-    def phase(self, phase: str, total: int | None = None, message: str = "") -> None:
-        """Neue Phase; ``total`` = erwartete Schritte dieser Phase."""
+    def phase(
+        self,
+        phase: str,
+        total: int | None = None,
+        message: str = "",
+        *,
+        completed: int = 0,
+    ) -> None:
+        """Neue Phase; ``total`` = erwartete Schritte dieser Phase.
+
+        ``completed`` übernimmt einen phasenübergreifenden Zähler beim
+        erneuten Eintritt (mehrere Kraftstoffe). Ohne Schrittzahl werden alte
+        Werte bewusst gelöscht — sonst erbte z. B. ``gapfill`` den Export-
+        Zähler und zeigte einen sachlich falschen Prozentwert.
+        """
         self.phase_key = phase
         self.phase_label = PHASE_LABELS.get(phase, phase)
-        if total is not None:
-            self.total = int(total)
-            self.step_index = 0
+        self.total = int(total) if total is not None else 0
+        self.step_index = max(0, int(completed)) if self.total else 0
         if message:
             self.message = message
         self._emit(f"Phase {self.phase_label}")
@@ -152,6 +169,8 @@ class JobProgress:
     def finish(self, state: str = "success", message: str = "") -> None:
         self.state = state
         self.done = True
+        self.phase_key = "done"
+        self.phase_label = PHASE_LABELS["done"]
         if message:
             self.message = message
         self._emit(f"beendet: {state}")
@@ -167,6 +186,9 @@ class JobProgress:
             weight = base + (nxt - base) * frac
         else:
             weight = base
+        # Optionale Phasen (Archiv) und mehrere Kraftstoffe dürfen den Balken
+        # nie zurücksetzen. Die Untergrenze wird nach jedem Emit fortgeschrieben.
+        weight = max(self._weight_floor, weight)
         eta = None
         if self.total and 0 < self.step_index < self.total:
             per_step = elapsed / max(1, self._steps_done())
@@ -196,6 +218,7 @@ class JobProgress:
 
     def _emit(self, text: str | None) -> None:
         payload = self.payload()
+        self._weight_floor = max(self._weight_floor, payload["pct"] / 100.0)
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             atomic_json(self.path, payload)
@@ -255,6 +278,7 @@ def _next_phase(phase: str) -> str:
         "export",
         "coverage",
         "archive",
+        "gapfill",
         "bootstrap",
         "fit",
         "selection",

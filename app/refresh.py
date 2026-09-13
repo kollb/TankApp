@@ -30,7 +30,7 @@ def refresh(settings: Settings, now=None, progress=None):
     from polling_plan import collector_lock
     from .gapfill import fill_gaps
     from .history import prepare_archive
-    from .model_jobs import HORIZON_COLUMNS, resolve_workers, run_tasks
+    from .model_jobs import ModelTaskPool, resolve_workers
 
     metas, error = metadata(settings)
     if error or not settings.influx_env.is_file():
@@ -220,13 +220,14 @@ def refresh(settings: Settings, now=None, progress=None):
                 for item in prepare_series(normalized, cfg)
             }
             if progress:
-                # Der Zähler läuft über alle Kraftstoffe hinweg; ``total``
-                # deshalb nur beim ersten setzen (``phase`` fängt sonst bei 0
-                # an), die Phasenmeldung aber je Kraftstoff erneuern.
+                # Der Zähler läuft über alle Kraftstoffe hinweg. Beim erneuten
+                # Eintritt übernimmt ``completed`` den erreichten Stand; so
+                # bleibt auch der Prozentwert monoton (B20/6).
                 progress.phase(
                     "fit",
-                    total=fit_total if fuel_index == 0 else None,
+                    total=fit_total,
                     message=f"Fit + Backtest {fuel}",
+                    completed=fit_done,
                 )
             # --- Fit, Horizonte und Backtest (prozessparallel, §9.4) ---
             # Je Station sind 24 h, +3 d, +7 d und der 7-Tage-Backtest
@@ -280,81 +281,83 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"{result.get('hours') or ''}{suffix}",
                     )
 
-            # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
-            first = run_tasks(
-                [("fit", identity, 24) for identity in series_map],
+            # B19: derselbe explizite fork-Pool bleibt für Phase A und B
+            # stehen; series_map wird genau einmal als schlanke Worker-Sicht
+            # initialisiert. Das spart den zweiten Pool-Start je Kraftstoff.
+            with ModelTaskPool(
                 series_map,
                 cfg,
                 origin,
                 workers,
-                on_done=note,
-            )
-            fitted = {}
-            for result in first:
-                if result.get("ok"):
-                    fitted[result["key"]] = result
-                    continue
-                detail = result.get("detail", "")
-                print(
-                    f"models: {labels[result['key']]} ({fuel}): FEHLER "
-                    f"unzureichende Trainingsdaten – {detail}",
-                    flush=True,
+                cache_dir=backtest_cache_dir,
+            ) as task_pool:
+                # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
+                first = task_pool.run(
+                    [("fit", identity, 24) for identity in series_map],
+                    on_done=note,
                 )
-                station_failures[result["key"]] = {
-                    **series_map[result["key"]].identity(),
-                    "reason": "insufficient_or_invalid_training_data",
-                    "detail": detail,
-                }
-                if progress:
-                    # 0.25.1: Dieselbe Ursache ins Job-Log — ohne sie bleibt
-                    # offen, ob die Station je fitbar wird oder dauerhaft tot
-                    # ist (A12). Nicht klebend: sie gilt nur für diese Station.
-                    progress.note(
-                        f"{labels[result['key']]} · fit24 – FEHLER: "
-                        f"{(detail or 'unbekannte Ursache')[:200]}",
-                        sticky=False,
+                fitted = {}
+                for result in first:
+                    if result.get("ok"):
+                        fitted[result["key"]] = result
+                        continue
+                    detail = result.get("detail", "")
+                    print(
+                        f"models: {labels[result['key']]} ({fuel}): FEHLER "
+                        f"unzureichende Trainingsdaten – {detail}",
+                        flush=True,
                     )
+                    station_failures[result["key"]] = {
+                        **series_map[result["key"]].identity(),
+                        "reason": "insufficient_or_invalid_training_data",
+                        "detail": detail,
+                    }
+                    if progress:
+                        # 0.25.1: Dieselbe Ursache ins Job-Log — ohne sie bleibt
+                        # offen, ob die Station je fitbar wird oder dauerhaft tot
+                        # ist (A12). Nicht klebend: sie gilt nur für diese Station.
+                        progress.note(
+                            f"{labels[result['key']]} · fit24 – FEHLER: "
+                            f"{(detail or 'unbekannte Ursache')[:200]}",
+                            sticky=False,
+                        )
 
-            # 0.25.1: Jede Station ohne Modell kostet ihre drei Folgeaufgaben
-            # (+3 d, +7 d, Backtest). Die Gesamtzahl wird nachgezogen, sonst
-            # endet der Lauf bei „77/80“ — das sieht aus wie verschluckte
-            # Aufgaben. Noch folgende Kraftstoffe bleiben geschätzt.
-            if progress:
+                # 0.25.1: Jede Station ohne Modell kostet ihre drei Folgeaufgaben
+                # (+3 d, +7 d, Backtest). Die Gesamtzahl wird nachgezogen, sonst
+                # endet der Lauf bei „77/80“ — das sieht aus wie verschluckte
+                # Aufgaben. Noch folgende Kraftstoffe bleiben geschätzt.
                 dropped = len(metas) - len(fitted)
                 if dropped:
-                    progress.note(
-                        f"{dropped} Station"
-                        f"{'en' if dropped != 1 else ''} ohne Modell — "
-                        f"{dropped * (TASKS_PER_STATION - 1)} Folgetasks entfallen",
-                        sticky=False,
-                    )
-                    progress.retotal(
+                    fit_total = (
                         fit_done
                         + (TASKS_PER_STATION - 1) * len(fitted)
                         + (len(settings.model_fuels) - fuel_index - 1)
                         * len(metas)
                         * TASKS_PER_STATION
                     )
+                    if progress:
+                        progress.note(
+                            f"{dropped} Station"
+                            f"{'en' if dropped != 1 else ''} ohne Modell — "
+                            f"{dropped * (TASKS_PER_STATION - 1)} Folgetasks entfallen",
+                            sticky=False,
+                        )
+                        progress.retotal(fit_total)
 
-            # Phase B: erweiterte Horizonte + Backtest je Station.
-            following = []
-            for identity in fitted:
-                following.extend(
-                    [
-                        ("wide", identity, 72),
-                        ("wide", identity, 168),
-                        ("backtest", identity, BACKTEST_DAYS),
-                    ]
+                # Phase B: erweiterte Horizonte + Backtest je Station.
+                following = []
+                for identity in fitted:
+                    following.extend(
+                        [
+                            ("wide", identity, 72),
+                            ("wide", identity, 168),
+                            ("backtest", identity, BACKTEST_DAYS),
+                        ]
+                    )
+                second = task_pool.run(
+                    following,
+                    on_done=note,
                 )
-            second = run_tasks(
-                following,
-                series_map,
-                cfg,
-                origin,
-                workers,
-                on_done=note,
-                cache_dir=backtest_cache_dir,
-            )
             cached_hits = sum(
                 1
                 for result in second
@@ -395,11 +398,11 @@ def refresh(settings: Settings, now=None, progress=None):
                         )
                     continue
                 if result["kind"] == "wide":
-                    # Nur Quantile + Zeitstempel: Diagnostikspalten blieben Ballast.
-                    horizons_by_station.setdefault(identity, {})[result["hours"]] = [
-                        {key: row[key] for key in HORIZON_COLUMNS}
-                        for row in result["points"]
-                    ]
+                    # B20/4: Der Worker schickt bereits ausschließlich die
+                    # veröffentlichten Quantile + Zeitstempel zurück.
+                    horizons_by_station.setdefault(identity, {})[result["hours"]] = (
+                        result["points"]
+                    )
                     draws_by_station.setdefault(identity, {})[result["hours"]] = (
                         result.get("draws") or {}
                     )
@@ -486,7 +489,12 @@ def refresh(settings: Settings, now=None, progress=None):
             # --- Selektion (δ̂, KI, AV, billigste Stunde) je Kraftstoff ---
             try:
                 if progress:
-                    progress.phase("selection", message=f"δ̂-Ranking {fuel}")
+                    if fuel_index == len(settings.model_fuels) - 1:
+                        progress.phase("selection", message=f"δ̂-Ranking {fuel}")
+                    else:
+                        # Selektion ist je Kraftstoff nötig, darf aber vor dem
+                        # nächsten Kraftstoff nicht vorzeitig auf 95 % springen.
+                        progress.note(f"δ̂-Ranking {fuel}", sticky=False)
                 # metas gruppiert nach Stadt für die Selektion
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():

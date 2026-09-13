@@ -107,6 +107,27 @@ def test_fingerprint_stable_intraday_but_changes_on_past_edit(cfg):
     assert backtest_cache.fingerprint(cut_a, cfg, end, DAYS + 1) != key_a
 
 
+def test_fingerprint_uses_all_and_only_backtest_inputs(cfg):
+    """B19: schlanke Worker-Sicht darf die Cache-Treue nicht schwächen."""
+    item = _series(_frame(35 * 288), cfg)
+    end = last_complete_day([item], cfg)
+    cut = truncate_series(item, end.tz_convert("UTC"))
+    baseline = backtest_cache.fingerprint(cut, cfg, end, DAYS)
+
+    # Reiner Anzeige-/Diagnosewert: weder Fit noch Backtest lesen ihn.
+    irrelevant = truncate_series(item, end.tz_convert("UTC"))
+    irrelevant.frame = irrelevant.frame.copy()
+    irrelevant.frame.iloc[0, irrelevant.frame.columns.get_loc("age_minutes")] += 1
+    assert backtest_cache.fingerprint(irrelevant, cfg, end, DAYS) == baseline
+
+    # Status-Herkunft ist Backtest-Wahrheit und muss weiterhin invalidieren.
+    relevant = truncate_series(item, end.tz_convert("UTC"))
+    relevant.frame = relevant.frame.copy()
+    column = relevant.frame.columns.get_loc("status_known")
+    relevant.frame.iloc[0, column] = not bool(relevant.frame.iloc[0, column])
+    assert backtest_cache.fingerprint(relevant, cfg, end, DAYS) != baseline
+
+
 def _strip(result):
     return {
         key: value

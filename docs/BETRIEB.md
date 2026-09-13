@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 12.09.2026 · App-Version 0.11.0 — alles, was nach der Ersteinrichtung
+> Stand: 13.09.2026 · App-Version 0.26.1 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
 > GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
@@ -487,10 +487,25 @@ Zwei Stellschrauben, beide ohne Änderung der Ergebnisse:
 
 | Hebel | Wirkung |
 |---|---|
-| `TANKAPP_MODEL_WORKERS` | Prozesse für Fit/Prognose/Backtest. `0` (Default) = automatisch, maximal 8 (bzw. CPU-Kerne); `1` = seriell. Stationen und Horizonte sind unabhängig — der Lauf ist „peinlich parallel“. Ohne nutzbaren Prozess-Pool rechnet die App automatisch seriell weiter. |
+| `TANKAPP_MODEL_WORKERS` | Prozesse für Fit/Prognose/Backtest. `0` (Default) = automatisch, maximal 8 und begrenzt durch Prozess-Affinität sowie Docker-/cgroup-CPU-Quota; `1` = seriell. Ein positiver Wert ist eine bewusste Betreiber-Vorgabe (max. 64). Stationen und Horizonte sind unabhängig. Ohne nutzbaren Prozess-Pool rechnet die App automatisch seriell weiter. |
 | `TANKAPP_CITY_SUBDIVS` | Bundesländer für den gepoolten Feiertags-Dummy, z. B. `Frankfurt:HE;Gütersloh:NW`. Ohne Wert bleibt der Dummy bewusst null. `nas-up` reicht den Wert über Compose in den App-Container durch. |
 | Tages-Cache des Backtests (B17, 0.22.0) | Der 21-Tage-Backtest hängt nur vom lokalen Endtag und den Daten davor ab; `runtime/engine/backtest-cache/` hält je Station eine JSON-Datei mit Fingerabdruck (Config + Inhalts-Hash der ganzen Reihe bis Endtag + Bibliotheksversionen). Zweiter Lauf am selben Tag: Backtest aus dem Cache, Log „Backtest: n aus Tages-Cache, m neu gerechnet“; jede Änderung in der Vergangenheit (Archiv, Lückenfüllung) rechnet neu. Jede Prognose trägt `backtest_cached` und `backtest_computed_at`. `TANKAPP_BACKTEST_CACHE=0` schaltet ihn aus; das Verzeichnis darf jederzeit gelöscht werden (nächster Lauf rechnet). |
 | Engine-Fix der 12-Uhr-Projektion | Vor B5 baute die Projektion je Rasterpunkt ein `pd.Timestamp` (≈8 Mio. Boxing-Operationen pro 7-Tage-Prognose). Jetzt vektorisiert: 24-h-Prognose 12,4 s → 0,8 s, 7-Tage 82 s → 4,9 s, Backtest 44 s → 6,4 s — **bitgleich** zu vorher (geprüft gegen die alte Implementierung). |
+
+**Seit 0.26.0 (Laufzeit-Batch 4):** Je Kraftstoff bleibt ein Prozess-Pool über
+24-h-Fit, Mehrtage-Horizonte und Backtest stehen; vorher wurden zwei Pools
+aufgebaut. Der eigenständige Modell-Worker ist single-threaded, deshalb nutzt
+der Pool auf dem Linux-NAS explizit `fork` statt des Python-3.14-Defaults
+`forkserver`. An die Worker gehen nur sechs fachlich gelesene Rasterspalten
+statt aller neun. Die Automatik bestimmt CPUs über `os.process_cpu_count()`
+(bzw. Affinität auf Python 3.11/3.12) und `cpu.max`/cgroup-v1-Quota — **nicht**
+über `nproc`, das wegen `OMP_NUM_THREADS=1` irreführend 1 meldet.
+
+Der Backtest-Cache hat deshalb Schema 2: Sein Fingerabdruck umfasst Index,
+Preis, Beobachtungs-/Antwortmasken, Status-Herkunft, Quelle und
+Beobachtungszeit, also genau alle von Fit und Backtest gelesenen Eingaben.
+Alte Schema-1-Dateien werden nach dem Update einmal verfehlt (erster Lauf
+kalt), danach greifen Treffer wie bisher.
 
 ```bash
 # NAS: vier Prozesse und die Bundesländer der Städte explizit setzen
@@ -503,20 +518,21 @@ Archiv und Polling sind dieselben Marktdaten über zwei Bezugswege. Historie kan
 
 ### Ressourcen während Phase B messen (B11)
 
-**Erledigt in 0.25.2.** `TANKAPP_MODEL_WORKERS` startet 4 Worker × pandas,
+**Erledigt in 0.26.1.** `TANKAPP_MODEL_WORKERS` startet 4 Worker × pandas,
 `ops/nas/app/compose.yml` setzt `shm_size: 256m`, der Host hat 4,2 Gi
 verfügbar — der Abgleich auf der Zielhardware (NAS `Tower`, Container
 `tankapp-web-app-1`) sagt: **passt, keine Änderung.**
 
-**Strenger Kaltlauf 13.09.2026** (`ops/nas/b11-cold-run.sh`, 25 Stichproben
-à 5 s, 17:36:21–17:39:16 local). Cache vorher gelöscht und verifiziert
-(Mount `/mnt/user/appdata/TankApp/data/runtime`). Job-Log: „Backtest: 0 aus
+**Strenger Kaltlauf 13.09.2026** (Stand 0.25.1, vor Batch 4;
+`ops/nas/b11-cold-run.sh`, 25 Stichproben à 5 s, 17:36:21–17:39:16 local).
+Cache vorher gelöscht und verifiziert (Mount
+`/mnt/user/appdata/TankApp/data/runtime`). Job-Log: „Backtest: 0 aus
 Tages-Cache, 19 neu gerechnet“. 20 Stationen, e10, Dauer **2,6 min**,
 Endzustand `partial (some_models_unavailable)`.
 
 | Größe | Wert | Folge |
 |---|---|---|
-| Python-Prozesse | max **2** gezählt | Sammler matchte `cmdline` gegen `python*` — Forkserver-Kinder (`/usr/local/bin/python…`) fielen durch. Gegenprobe: CPUS 381 % ≈ 4 Worker. Der Sammler zählt seit 0.25.2 cmdline **und** `/proc/pid/comm`. |
+| Python-Prozesse | max **2** gezählt | Sammler matchte `cmdline` gegen `python*` — Forkserver-Kinder (`/usr/local/bin/python…`) fielen durch. Gegenprobe: CPUS 381 % ≈ 4 Worker. Der Sammler zählt seit 0.26.1 cmdline **und** `/proc/pid/comm`. Seit 0.26.0 ist die Startmethode `fork`, Forkserver entfällt. |
 | Container-Speicher | max **1031 MiB (1,0 GiB)**, MEM % 6,6 | Peak am Ende von Phase B; Leerlauf ~110 MiB |
 | Host verfügbar | min **4212 MiB (4,1 GiB)**, Swap 0 | Weit über ~500 MiB |
 | CPUS | max **381 %** (Phase B 248–381 %) | Pool mit ~4 Workern |
@@ -524,7 +540,11 @@ Endzustand `partial (some_models_unavailable)`.
 
 Ein früherer Lauf desselben Tags (14:26–14:29, 1029 MiB / 370 %) war **kein**
 Kaltlauf („9 aus Tages-Cache, 10 neu gerechnet“, 2,1 min) — am Peak ändert das
-nichts. Zahlen und Einordnung: [TODO.md](../TODO.md) (B11, erledigt 0.25.2).
+nichts. Zahlen: [TODO.md](../TODO.md#b11-kaltlauf-13092026). Die
+**Nachher-Dauer von 0.26.0** (ein Pool, `fork`, Cache-Schema 2) ist eine
+eigene Messung nach dem Deploy — sie hält B11 nicht offen. Leerlaufwerte
+aus `docker stats` (220–280 MiB, 7–10 PIDs) bleiben ungeeignet: Sie entstehen,
+bevor der Prozess-Pool steht.
 
 Gemessen wird **während Phase B** — der Phase „Modelle fitten + Backtest“, im
 Job-Log an den Zeilen `Modelle fitten + Backtest n/m` zu erkennen. Zwei
@@ -543,10 +563,12 @@ Tages-Cache des Backtests gilt für den ganzen lokalen Tag: sein Fingerabdruck
 enthält den letzten vollständigen Tag (`end_local`, siehe
 `app/model_jobs.py::_backtest` und `app/backtest_cache.py::fingerprint`) — die
 Reihe wird dort hart abgeschnitten, untertägige Polls ändern ihn nicht.
+Seit 0.26.0 verwirft Cache-Schema 2 alte Schema-1-Dateien einmalig — der
+erste Lauf nach dem Update ist automatisch kalt.
 
 | Lauf | Backtest | Phase B | Wann |
 |---|---|---|---|
-| **Kalt** | 21-Tage-Backtest je Station neu | **~2,6 min** Gesamt (13.09.2026 nach B15/B16; vor den Hebeln 9,4 min am 12.09.) | erster Lauf des lokalen Tages |
+| **Kalt** | 21-Tage-Backtest je Station neu | **~2,6 min** Gesamt (13.09.2026 nach B15/B16, Stand 0.25.1; vor den Hebeln 9,4 min am 12.09.) | erster Lauf des lokalen Tages, oder erster Lauf nach Schema-Sprung |
 | **Warm** | „n aus Tages-Cache, m neu gerechnet“ | ~40 s (13.09.2026: 11:22:28 → 11:23:07; Warm-Gesamt 1,4–1,7 min) | jeder weitere Lauf am selben Tag |
 
 Weil `models` nach B18 (0.21.0) nur 1×/Tag läuft
@@ -589,7 +611,7 @@ Fünf Zahlen, mehr braucht die Entscheidung nicht:
 
 | Größe | Woher | Entscheidet |
 |---|---|---|
-| Anzahl Python-Prozesse | `/proc`-Scan per `docker exec` (cmdline **und** `comm`; kein `ps` im Image, `docker top` liefert nichts) | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23); bei `forkserver` kommen Forkserver + Resource-Tracker dazu |
+| Anzahl Python-Prozesse | `/proc`-Scan per `docker exec` (cmdline **und** `comm`; kein `ps` im Image, `docker top` liefert nichts) | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23). Seit 0.26.0 explizites `fork`, also kein zusätzlicher Forkserver |
 | `MEM USAGE` des Containers | `docker stats` | ob 4 × pandas in 4,2 Gi verfügbarem Host-Speicher passen |
 | `MEM %` + `free -h` verfügbar | `docker stats`, `free -h` | ob Swap/OOM droht (Swap ist 0) |
 | `CPUS` | `docker stats` | ob 4 Worker ~400 % erreichen oder sich behindern |
@@ -606,7 +628,8 @@ Mount-Quellen-Prüfung von `/data/runtime`), sampelt mit dem Sammler,
 triggert den Lauf per `docker exec … python -m app.worker models` (umgeht
 Debounce) und schreibt alles — Stichproben, Auswertung, Job-Log-Ende,
 `models.json` und die Kaltlauf-Prüfung — in eine Datei
-`b11-cold-<stempel>/report.txt`.
+`b11-cold-<stempel>/report.txt`. Nach 0.26.0 verfehlt Cache-Schema 2 alte
+Dateien ohnehin einmal (im Log müssen 0 Treffer stehen).
 
 **Achtung Messfalle (12.09.2026):** `nproc` meldet im Container `1`, weil das
 Image `OMP_NUM_THREADS=1` setzt. Kerne immer über die Affinität bestimmen:
