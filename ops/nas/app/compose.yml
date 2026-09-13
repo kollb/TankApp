@@ -34,6 +34,13 @@ services:
       # Schicht-A-Anker des Backtests (Konzept §5.5): Tagesstunde des
       # hypothetischen Entscheids. Default 12 (nach der 12-Uhr-Anhebung).
       TANKAPP_DECISION_HOUR: "${TANKAPP_DECISION_HOUR:-12}"
+      # Straßen-Distanzen der GUI (Anker → Stationen): 1 = OSRM (Default),
+      # 0 = nur Luftlinie (keinerlei Netz). Der Request-Pfad liest immer nur
+      # den lokalen Routen-Cache; fehlende Routen werden im Hintergrund geholt.
+      TANKAPP_OSRM: "${TANKAPP_OSRM:-1}"
+      # Eigener OSRM-Server (empfohlen: NAS-Docker, LAN-only, ohne
+      # Drittanbieter-Demo-Server). Leer = RoadRouter-Default.
+      TANKAPP_OSRM_URL: "${TANKAPP_OSRM_URL:-}"
       TANKAPP_BUILD_COMMIT: "${TANKAPP_BUILD_COMMIT:-}"
       TZ: Europe/Berlin
     volumes:

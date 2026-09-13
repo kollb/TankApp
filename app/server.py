@@ -1007,6 +1007,10 @@ def serve(settings, host="0.0.0.0", port=1355, jobs=False):
     live.jobs_enabled = jobs
     live.job_errors = scheduler.errors
     live.scheduler = scheduler
+    # Stations-Cache (e10/e5/diesel) im Hintergrund erwärmen: Der erste
+    # GUI-Request nach dem Neustart zahlt keinen InfluxDB-Read mehr
+    # (Stale-While-Revalidate, app/data.py).
+    live.prewarm()
     server = make_server(settings, host, port, live)
     # B4: Alarm-Zustellung läuft nebenher — nur wenn TANKAPP_NTFY_URL gesetzt
     # ist, ohne Effekt auf Anfragen, Jobs oder den Shutdown.

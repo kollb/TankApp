@@ -24,7 +24,150 @@ except Exception:  # pragma: no cover
     BERLIN_TZ = UTC
 
 
-_ROUTE_LOCK = threading.Lock()
+# --- Straßen-Distanzen: Request-Pfad ohne Netzwerk --------------------------
+#
+# Anker- und Stationskoordinaten ändern sich nur mit polling.json, und die
+# gerouteten Ergebnisse liegen persistent in runtime/road_route_cache.json.
+# Bis 0.24.0 hat JEDER Request (inklusive /health) die Distanzen neu
+# abgeleitet: frisches RoadRouter-Objekt je Anker und je unbekanntem Paar
+# eine Live-OSRM-Anfrage. Auf dem NAS, wo Internet/DNS wackelig sind, deckt
+# der Socket-Timeout (4 s) die DNS-Auflösung nicht ab — eine einzige
+# hängende Anfrage hat dann alle Requests hinter dem globalen Lock gekettet.
+# Gemessen: /health 54 s, /stations 67 s. Jetzt:
+#   * Request-Pfad: liest nur den lokalen Routen-Cache. Unbekannte Paare
+#     bekommen sofort die Luftlinie ('air', nie erfunden) — niemand wartet.
+#   * OSRM-Abholung: Daemon-Thread im Hintergrund mit hartem Wanduhr-Budget
+#     und Cooldown. Der nächste Request nutzt die neuen Einträge
+#     (Datei-mtime entwerten das Metadata-Memo) — ohne Warten.
+#   * TANKAPP_OSRM_URL: eigener OSRM-Server (empfohlen: NAS-Docker,
+#     LAN-only, ohne Drittanbieter-Demo). Leer = RoadRouter-Default
+#     (öffentlicher Demo-Server). TANKAPP_OSRM=0: kein Netz, nur Luftlinie.
+ROUTE_REFRESH_DEADLINE_S = 20.0  # Wanduhr-Budget je Hintergrund-Abholung
+ROUTE_REFRESH_COOLDOWN_S = 300.0  # Mindestabstand zwischen Hintergrund-Versuchen
+META_TTL_S = 30.0  # Backstop für das Metadata-Memo (grobes mtime, z. B. NAS)
+
+_META_LOCK = threading.Lock()
+_META_MEMO: dict[str, Any] = {"key": None, "value": None, "at": 0.0}
+# Nur der Kick-Zustand (kurz, keine IO unter dem Lock) — der Request-Pfad
+# darf nie auf einen langsamen Hintergrund-Fetch warten.
+_ROUTE_REFRESH_LOCK = threading.Lock()
+_ROUTE_REFRESH: dict[tuple[float, float], dict[str, Any]] = {}
+# Serialisiert die Routen-Cache-Datei-IO (laden → holen → ersetzen): zwei
+# Anker dürfen sich keine Einträge wegüberschreiben. Halten nur die
+# Hintergrund-Threads (Warten dort ist unkritisch, der Request-Pfad nicht).
+_ROAD_CACHE_LOCK = threading.Lock()
+
+
+def _osrm_enabled() -> bool:
+    """TANKAPP_OSRM: 1 (Default) = Straßen-Distanzen via OSRM; 0 = Luftlinie."""
+    return os.environ.get("TANKAPP_OSRM", "1") not in {"0", "off", "false"}
+
+
+def _osrm_base_url() -> str | None:
+    """TANKAPP_OSRM_URL, z. B. eigener OSRM auf dem NAS (http://nas:5000)."""
+    return (os.environ.get("TANKAPP_OSRM_URL") or "").strip() or None
+
+
+def _route_key(anchor, lat, lon) -> str:
+    """Derselbe Schlüssel wie road_route._key (Profil 'car', 5 Nachkommastellen)."""
+    return f"car|{anchor[0]:.5f},{anchor[1]:.5f}|{lat:.5f},{lon:.5f}"
+
+
+def _kick_route_refresh(anchor, missing_targets, cache_path):
+    """Debounce: höchstens ein laufender Fetch je Anker + Cooldown bei Fehler.
+
+    Der Thread ist Daemon mit hartem Wanduhr-Budget; der Aufrufer wartet nie
+    — auch nicht auf die Datei-Locks, die der Fetch hält. Schlägt die
+    Abholung fehl (kein Internet), wird nichts geschrieben und der Cooldown
+    greift — der nächste Request wird nicht langsamer. Ein erfolgreicher
+    Fetch setzt keinen Cooldown: Fehlen danach wieder Einträge (z. B.
+    überschrieben durch den Fetch eines anderen Ankers), darf sofort erneut
+    geholt werden.
+    """
+    key = (float(anchor[0]), float(anchor[1]))
+    now = time.monotonic()
+    with _ROUTE_REFRESH_LOCK:
+        state = _ROUTE_REFRESH.get(key)
+        if state is not None:
+            if state["thread"].is_alive():
+                return
+            failed_at = state["failed_at"]
+            if failed_at is not None and now - failed_at < ROUTE_REFRESH_COOLDOWN_S:
+                return
+        thread = threading.Thread(
+            target=_run_route_refresh,
+            args=(anchor, missing_targets, cache_path, key),
+            daemon=True,
+            name=f"tankapp-route-refresh-{key[0]:.4f},{key[1]:.4f}",
+        )
+        _ROUTE_REFRESH[key] = {"thread": thread, "started": now, "failed_at": None}
+    thread.start()
+
+
+def _run_route_refresh(anchor, missing_targets, cache_path, key):
+    """Holt fehlende Straßen-Routen im Hintergrund in die Cache-Datei.
+
+    Lohnt sich nur, weil der Request-Pfad nie darauf wartet: Der nächste
+    Request sieht die neue Datei-mtime, leitet die Metadaten neu ab und
+    liefert 'road' ohne weiteren Netz-Call. Hartes Wanduhr-Budget
+    (``ROUTE_REFRESH_DEADLINE_S``): Danach wird der Arbeitsthread verworfen
+    (Daemon — sein spätes Ergebnis landet trotzdem atomar in der Datei) und
+    der Anker geht in den Fehler-Cooldown.
+    """
+    try:
+        from road_route import RoadRouter
+    except ImportError:
+        return
+    todo = [tuple(coords) for coords in missing_targets]
+    result = {"ok": None}
+
+    def work():
+        with _ROAD_CACHE_LOCK:
+            try:
+                router = RoadRouter(
+                    mode="driving",
+                    base_url=_osrm_base_url(),
+                    cache_path=cache_path,
+                    timeout=4,
+                    quiet=True,
+                    circuity=1.0,
+                )
+                # Gegen die frische Datei-Cache verifizieren: Der Fetch eines
+                # anderen Ankers kann die Einträge inzwischen gefüllt haben.
+                pending = [
+                    coords
+                    for coords in todo
+                    if _route_key(anchor, *coords) not in router.cache
+                ]
+                if not pending:
+                    result["ok"] = True
+                    return
+                # Socket-Timeout je Call Richtung Budget verkürzen. Die
+                # DNS-Auflösung unterliegt ihm NICHT — die harte Wanduhr-
+                # Deadline unten ist darum der eigentliche Stopp.
+                router.timeout = max(
+                    1.0, min(router.timeout, ROUTE_REFRESH_DEADLINE_S / 2.0)
+                )
+                router.routes_from(anchor[0], anchor[1], pending, want_duration=False)
+                # Nur echte OSRM-Antworten landen in der Datei (misses);
+                # Fallback-Ziele fehlen weiter → nächster Versuch.
+                result["ok"] = router.misses > 0
+            except Exception:
+                # Kein Netz / kranke Antwort: nichts geschrieben; nächster
+                # Versuch erst nach dem Cooldown.
+                result["ok"] = False
+
+    self_thread = threading.current_thread()
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    worker.join(timeout=ROUTE_REFRESH_DEADLINE_S)
+    with _ROUTE_REFRESH_LOCK:
+        state = _ROUTE_REFRESH.get(key)
+        # Nur unseren eigenen Zustand annotieren — ein späterer Kick
+        # könnte den Eintrag inzwischen ersetzt haben.
+        if state is not None and state["thread"] is self_thread:
+            if worker.is_alive() or result["ok"] is False:
+                state["failed_at"] = time.monotonic()
 
 # B7-Revalidierung: /overview wird nur neu berechnet, wenn sich die
 # zugrunde liegenden Daten geändert haben ODER die Uhr die
@@ -112,41 +255,49 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def driving_km(anchor, targets, cache_path):
-    """Fahrstrecke Anker → Stationen (OSRM). Cache-Treffer ohne Netz.
+    """Fahrstrecke Anker → Stationen (OSRM). Request-Pfad: nur lokale Cache.
 
     targets: list[(lat, lon)]. Rückgabe: list[(km, 'road'|'air')].
-    'air' nur wenn der Router ausfällt — dann Luftlinie, nie erfunden.
-    Der Anker bleibt intern; nur abgeleitete Kilometer verlassen die Funktion.
+    'road' für alle Paare, die im Routen-Cache liegen (echte OSRM-Antworten);
+    'air' (Luftlinie, nie erfunden) für den Rest — ohne auf das Netz zu
+    warten. Fehlende Routen holt :func:`_kick_route_refresh` im Hintergrund,
+    damit kein Request — erst recht kein Docker-Healthcheck-/health — von
+    der Internet-Lage des NAS abhängt. Der Anker bleibt intern; nur
+    abgeleitete Kilometer verlassen die Funktion.
     """
     if not targets:
         return []
     air = [(round(haversine_km(*anchor, lat, lon), 1), "air") for lat, lon in targets]
-    if os.environ.get("TANKAPP_OSRM", "1") in {"0", "off", "false"}:
+    if not _osrm_enabled():
         return air
     try:
         from road_route import RoadRouter
     except ImportError:
         return air
-    with _ROUTE_LOCK:
+    try:
         router = RoadRouter(
             mode="driving",
+            base_url=_osrm_base_url(),
             cache_path=cache_path,
             timeout=4,
             quiet=True,
             circuity=1.0,
         )
-        routes = router.routes_from(
-            anchor[0], anchor[1], list(targets), want_duration=False
-        )
-        out = []
-        for i, (lat, lon) in enumerate(targets):
-            km, _ = routes[i]
-            key = f"car|{anchor[0]:.5f},{anchor[1]:.5f}|{lat:.5f},{lon:.5f}"
-            kind = "road" if key in router.cache else "air"
-            if kind == "air":
-                km = haversine_km(*anchor, lat, lon)
-            out.append((round(float(km), 1), kind))
-        return out
+    except Exception:
+        # Cache-Datei unreadable/ungeeignet: Luftlinie, kein Request-Abbruch.
+        return air
+    out = []
+    missing = []
+    for i, (lat, lon) in enumerate(targets):
+        hit = router.cache.get(_route_key(anchor, lat, lon))
+        if hit is not None:
+            out.append((round(float(hit["dist_km"]), 1), "road"))
+        else:
+            out.append(air[i])
+            missing.append((lat, lon))
+    if missing:
+        _kick_route_refresh(anchor, missing, cache_path)
+    return out
 
 
 def read_json(path, default=None):
@@ -158,13 +309,59 @@ def read_json(path, default=None):
         return default
 
 
+def _road_cache_file(settings):
+    cache_dir = getattr(settings, "runtime", None)
+    return (cache_dir / "road_route_cache.json") if cache_dir else None
+
+
+def _metadata_stamp(settings, cache_file) -> str:
+    """Billige Datenstands-Variante für das Memo: nur stat, kein Parse.
+
+    Polling-Datei (Stationen/Anker), Routen-Cache-Datei (neue 'road'
+    Einträge nach Hintergrund-Fetch) und OSRM-Schalter. Grobes mtime
+    (Netzwerkdateisysteme) deckt die ``META_TTL_S``-Backstop-Regel ab.
+    """
+    return "|".join(
+        (
+            f"polling:{_file_stamp(settings.polling)}",
+            f"roads:{_file_stamp(cache_file) if cache_file is not None else 'none'}",
+            f"osrm:{_osrm_enabled()}",
+        )
+    )
+
+
 def metadata(settings):
-    # B21: polling.json ist Host-Datei via TANKAPP_POLLING_FILE → /config/polling.json RO.
-    # Fehlt sie, ist das der Grund für „Keine Stadt eingerichtet“ + „Noch kein
-    # frischer Preis“ trotz Collector-✓ und Influx-✓. Fehlercode bleibt
-    # polling_missing für die GUI (System.tsx), aber zusätzlich wird der
-    # erwartete Pfad im Log sichtbar, damit preflight.sh bzw. die NAS-Mounts
-    # direkt geprüft werden können.
+    """Stationen-Metadaten mit Distanzen — memoisiert, Request-Pfad-sicher.
+
+    Rückgabe (stations, problem); problem ist ``polling_missing`` bzw.
+    ``polling_invalid`` (B21: polling.json ist Host-Datei via
+    TANKAPP_POLLING_FILE → /config/polling.json RO; fehlt sie, ist das der
+    Grund für „Keine Stadt eingerichtet“ + „Noch kein frischer Preis“
+    trotz Collector-✓ und Influx-✓ — der erwartete Pfad steht für
+    preflight.sh/NAS-Mounts im Log).
+
+    Das Memo ist auf die Datei-Stats (``_metadata_stamp``) geschlüsselt:
+    Wiederholte Requests zahlen eine Dict-Kopie statt Re-Parse und
+    Re-Ableitung aller Distanzen. Distanzen selbst kommen cache-only aus
+    :func:`driving_km` — der Request-Pfad macht kein Netzwerk.
+    """
+    cache_file = _road_cache_file(settings)
+    stamp = _metadata_stamp(settings, cache_file)
+    now = time.monotonic()
+    with _META_LOCK:
+        memo = _META_MEMO
+        if memo["key"] == stamp and now - memo["at"] < META_TTL_S:
+            stations, problem = memo["value"]
+            return ({key: dict(meta) for key, meta in stations.items()}, problem)
+    stations, problem = _build_station_metadata(settings, cache_file)
+    with _META_LOCK:
+        _META_MEMO["key"] = stamp
+        _META_MEMO["value"] = (stations, problem)
+        _META_MEMO["at"] = now
+    return ({key: dict(meta) for key, meta in stations.items()}, problem)
+
+
+def _build_station_metadata(settings, cache_file):
     payload = read_json(settings.polling)
     if payload is None:
         return {}, "polling_missing"
@@ -174,8 +371,6 @@ def metadata(settings):
         return {}, "polling_invalid"
     stations = {}
     pending = []
-    cache_path = getattr(settings, "runtime", None)
-    cache_file = (cache_path / "road_route_cache.json") if cache_path else None
     for key, group in groups.items():
         city = group.get("label") or key
         anchor = group.get("anchor")
@@ -311,63 +506,186 @@ class LiveData:
         except Exception:
             pass
 
+    # --- Stations-Preise: Steady-State wartet nie auf InfluxDB ------------
+    #
+    # Gleiche Muster-Wirkung wie bei den Straßen-Distanzen: Sobald ein
+    # Cache-Eintrag existiert, liefert der Request immer sofort den
+    # letzten bekannten Stand — frisch (≤ STALE_AFTER_S) direkt aus dem
+    # Cache, veraltet als Stale-While-Revalidate: bekannte Zeilen sofort
+    # antworten, ein einzelner Hintergrund-Refresh (Daemon, Single-Flight
+    # je Key) liest InfluxDB neu. Freshness-Semantik unangetastet:
+    # fresh/age_minutes hängen am Beobachtungszeitstempel und werden je
+    # Request neu bewertet — der Cache bestimmt nur, wie oft neu gelesen
+    # wird, nicht, wann ein Preis „abläuft“.
+    #
+    # Die ERST-Ladung je Stations-Menge bleibt synchron (bisheriges
+    # Verhalten): Sie passiert nur einmal, und der Server warmt alle
+    # Kraftstoffe beim Start im Hintergrund vor (prewarm()), sodass der
+    # erste GUI-Request danach in der Praxis nie auf InfluxDB wartet.
+    STALE_AFTER_S = 30.0  # Neulese-Intervall wie bisher (30 s)
+
     def _load(self, fuel, metas):
+        """Letzter bekannter Preis-Stand je Kraftstoff.
+
+        Cache-Eintrag ``(mono, rows, error, loading)`` je
+        ``(fuel, Stationen-Menge)``:
+          * frisch (≤ STALE_AFTER_S): wird wie gehabt ausgeliefert
+          * veraltet: bekannter Stand sofort (Stale-While-Revalidate);
+            falls noch kein Refresh läuft, wird einer gestartet
+            (Single-Flight, Daemon-Thread)
+          * kein Eintrag (Erst-Ladung): synchron wie bisher
+          * ``influx_not_configured``: synchroner Spezialfall
+        Fehler-Semantik unverändert: ein fehlgeschlagener Read behält den
+        bekannten Stand und meldet ``influx_read_failed`` — ab Stale-
+        While-Revalidate sichtbar, sobald der Hintergrund-Read gescheitert
+        ist, nicht erst beim wartenden Request.
+        """
         key = (fuel, tuple(sorted(metas)))
-        now = self.clock()
+        if not self.settings.influx_env.is_file():
+            return {}, "influx_not_configured"
         with self.lock:
-            cached = self.cache.get(key)
-            if cached and time.monotonic() - cached[0] < 30:
-                return cached[1:]
-            previous = cached[1] if cached else {}
-            rows, error = {}, None
-            if not self.settings.influx_env.is_file():
-                error = "influx_not_configured"
-            else:
-                try:
-                    cfg = influx.load_config(self.settings.influx_env, timeout=10)
-                    cfg.validate()
-                    lookup = influx.station_lookup(self.settings.polling)
-                    selected = influx.selected_uuid_sets(lookup)
-                    query = influx.flux_query(
-                        cfg.bucket,
-                        fuel,
-                        now - dt.timedelta(days=2),
-                        now,
-                        sorted(selected),
-                        selected,
-                    )
-                    query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
-                    seen, kept = 0, 0
-                    for raw in self.query(cfg, query):
-                        # Einzelne defekte Zeilen überspringen, statt alle
-                        # Stationen auf influx_read_failed zu setzen. Werden
-                        # aber ALLE gelieferten Zeilen verworfen, ist das kein
-                        # Teilerfolg, sondern ein expliziter Lesefehler (kein
-                        # stilles Leer-Ergebnis bei Totalausfall).
-                        seen += 1
-                        try:
-                            if not raw.get("station_id"):
-                                raise ValueError("UUID required")
-                            row = influx.normalized_row(raw, lookup, fuel)
-                            stamp = influx.instant(row["timestamp"])
-                            if not now - dt.timedelta(days=2) <= stamp <= now:
-                                raise ValueError("Timestamp outside query")
-                            identity = (row["city"], row["station_id"])
-                            if identity not in metas:
-                                raise ValueError("Unselected station")
-                            rows[identity] = row
-                            kept += 1
-                        except (ValueError, KeyError, TypeError):
-                            continue
-                    if seen and not kept:
-                        error = "influx_read_failed"
-                except (ValueError, OSError, KeyError, TypeError):
-                    error = "influx_read_failed"
+            entry = self.cache.get(key)
+            if entry is not None:
+                mono, rows, error, loading = entry
+                if time.monotonic() - mono < self.STALE_AFTER_S:
+                    return rows, error
+                if not loading:
+                    self.cache[key] = (mono, rows, error, True)
+                    threading.Thread(
+                        target=self._refresh_station_rows,
+                        args=(key, fuel, metas),
+                        daemon=True,
+                        name=f"tankapp-influx-{fuel}",
+                    ).start()
+                # bekannter Stand sofort — auch während des Refresh-Laufs
+                return rows, error
+
+        # Erst-Ladung für diese Stations-Menge: synchron (außerhalb des
+        # Locks, damit andere Kraftstoffe nicht blockiert werden).
+        try:
+            rows, error = self._fetch_station_rows(fuel, metas)
+        except Exception:
+            rows, error = {}, "influx_read_failed"
+        if error:
+            # Kein bekannter Stand vorhanden: Teilstand nicht publizieren
+            # (Semantik wie vor Stale-While-Revalidate).
+            rows = {}
+        with self.lock:
+            current = self.cache.get(key)
+            if (
+                current is not None
+                and not current[3]
+                and time.monotonic() - current[0] < self.STALE_AFTER_S
+            ):
+                # Ein konkurrierender Ladethread hat frischen Stand gelöst.
+                return current[1], current[2]
+            # Wie sonst: nur eine Stations-Mengen-Generation im Cache.
+            self.cache = {k: v for k, v in self.cache.items() if k[1] == key[1]}
+            self.cache[key] = (time.monotonic(), rows, error, False)
+        return rows, error
+
+    def _refresh_station_rows(self, key, fuel, metas):
+        """Hintergrund-Read von InfluxDB (Daemon-Thread, nie Request-blockend).
+
+        Schreibt das Ergebnis unter ``self.lock`` in denselben Cache, aus
+        dem der Request-Pfad liest: neue Zeitstempel → Eintrag wieder
+        frisch, ``loading`` geclert. Ein fehlgeschlagener Read behält den
+        bekannten Stand (Semantik unverändert) und meldet den Fehler; der
+        nächste veraltete Request startet den nächsten Versuch —
+        Single-Flight verhindert Anstapeln.
+        """
+        try:
+            rows, error = self._fetch_station_rows(fuel, metas)
+        except Exception:
+            rows, error = {}, "influx_read_failed"
+        with self.lock:
+            entry = self.cache.get(key)
+            previous = entry[1] if entry is not None else {}
+            # Wie bisher: fehlerhafter Read publiziert keinen Teilstand —
+            # der bekannte Stand bleibt, der Fehler wird gemeldet.
             if error:
                 rows = previous
+            # Nur eine Stations-Mengen-Generation im Cache.
             self.cache = {k: v for k, v in self.cache.items() if k[1] == key[1]}
-            self.cache[key] = (time.monotonic(), rows, error)
-            return rows, error
+            self.cache[key] = (time.monotonic(), rows, error, False)
+
+    def _fetch_station_rows(self, fuel, metas):
+        """Synchroner InfluxDB-Read (2-Tage-Fenster, letzte Zeile je Station).
+
+        Von :meth:`_load` (Erst-Ladung, synchron) und
+        :meth:`_refresh_station_rows` (Hintergrund) aufgerufen;
+        Zeilen-Validierung und Fehler-Einteilung unverändert.
+        """
+        now = self.clock()
+        rows, error = {}, None
+        try:
+            cfg = influx.load_config(self.settings.influx_env, timeout=10)
+            cfg.validate()
+            lookup = influx.station_lookup(self.settings.polling)
+            selected = influx.selected_uuid_sets(lookup)
+            query = influx.flux_query(
+                cfg.bucket,
+                fuel,
+                now - dt.timedelta(days=2),
+                now,
+                sorted(selected),
+                selected,
+            )
+            query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
+            seen, kept = 0, 0
+            for raw in self.query(cfg, query):
+                # Einzelne defekte Zeilen überspringen, statt alle
+                # Stationen auf influx_read_failed zu setzen. Werden
+                # aber ALLE gelieferten Zeilen verworfen, ist das kein
+                # Teilerfolg, sondern ein expliziter Lesefehler (kein
+                # stilles Leer-Ergebnis bei Totalausfall).
+                seen += 1
+                try:
+                    if not raw.get("station_id"):
+                        raise ValueError("UUID required")
+                    row = influx.normalized_row(raw, lookup, fuel)
+                    stamp = influx.instant(row["timestamp"])
+                    if not now - dt.timedelta(days=2) <= stamp <= now:
+                        raise ValueError("Timestamp outside query")
+                    identity = (row["city"], row["station_id"])
+                    if identity not in metas:
+                        raise ValueError("Unselected station")
+                    rows[identity] = row
+                    kept += 1
+                except (ValueError, KeyError, TypeError):
+                    continue
+            if seen and not kept:
+                error = "influx_read_failed"
+        except (ValueError, OSError, KeyError, TypeError):
+            error = "influx_read_failed"
+        return rows, error
+
+    def prewarm(self):
+        """Stations-Cache aller Kraftstoffe im Hintergrund erwärmen (Start).
+
+        Löst die (sonst synchronen) Erst-Ladungen in einem Daemon-Thread
+        aus, damit der Serverstart nicht auf InfluxDB wartet: Der erste
+        GUI-Request nach dem Neustart trifft dann in der Praxis schon auf
+        einen warmen Cache; ansonsten gelten die normalen Cache-Regeln.
+        Ohne InfluxDB-Konfiguration oder gültiges Polling-Set tut die
+        Methode nichts (keine sinnlosen Refresh-Läufe).
+        """
+        if not self.settings.influx_env.is_file():
+            return
+        try:
+            metas, problem = metadata(self.settings)
+        except Exception:
+            return
+        if problem:
+            return
+
+        def warm():
+            for fuel in FUELS:
+                self._load(fuel, metas)
+
+        threading.Thread(
+            target=warm, daemon=True, name="tankapp-influx-prewarm"
+        ).start()
 
     def stations(self, fuel="e10", city=None):
         if fuel not in FUELS:

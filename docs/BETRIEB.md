@@ -27,6 +27,7 @@
   - [Unraid Ablauf](#unraid-ablauf)
   - [Portwechsel](#portwechsel)
   - [Was automatisch läuft](#was-automatisch-läuft)
+  - [GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)](#gui-responsivität-straßen-distanzen-ohne-netz-blockade-seit-0240)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
   - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
@@ -313,6 +314,52 @@ Keinen zusätzlichen cron einrichten, gebündelter Dienst übernimmt Zeitplanung
 Archivumfang Standard 365 Tage, für 730: `--history-days 730`. Genug Speicher (nationale Tagesdateien). Modelle verwenden kleineren Ausschnitt (42 Tage Training, 120 Tage Export).
 
 Modellumfang: zunächst e10, bei Bedarf `--model-fuels e10,e5,diesel`.
+
+### GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)
+
+Die km-Angaben der Stationen (und die Umweg-Ökonomie in „Rechnet sich
+der Umweg?“) nutzen OSRM-Straßen-Routing. Seit 0.24.0 macht der
+Request-Pfad **kein** Netzwerk dafür: Der Server liest nur den lokalen
+Routen-Cache (`runtime/road_route_cache.json`); unbekannte
+Anker→Station-Paare zeigen vorübergehend die Luftlinie
+(`dist_mode: "air"`), und die fehlenden Routen holt ein
+Hintergrund-Thread (Debounce je Anker, hartes Wanduhr-Budget 20 s,
+5-min-Cooldown bei Fehlschlag). Der nächste Request nutzt die neuen
+Einträge automatisch (Datei-mtime entwerten das Metadata-Memo).
+
+Davor lief je Request je Anker eine Live-Anfrage an den OSRM-Server —
+bei wackeligem Internet/DNS am NAS hängen solche Calls (die
+DNS-Auflösung kennt keinen Socket-Timeout) und ketteten die gesamte API:
+gemessen `/health` 54 s, `/stations` 67 s. Jetzt antworten alle
+Endpunkte (auch der Docker-Healthcheck-`/health`) in Millisekunden,
+unabhängig von der Internetlage.
+
+Gleiches Muster für die **Preise**: Im Steady-State antwortet
+`/stations` sofort aus dem Cache, der InfluxDB-Read (2-Tage-Fenster)
+läuft im Hintergrund (Single-Flight je Kraftstoff, 30-s-Intervalt wie
+vorher); der Server warmt alle drei Kraftstoffe beim Start im
+Hintergrund vor. Die Antwortzeit hängt damit auch nicht mehr an der
+InfluxDB-Latenz der NAS-HDD.
+
+Knöpfe (beide via Aufrufumgebung an `python3 tankapp.py nas-up`):
+
+- `TANKAPP_OSRM=1` (Default): Straßen-Distanzen via OSRM. `0` =
+  keinerlei Netz, immer Luftlinie.
+- `TANKAPP_OSRM_URL`: eigener OSRM-Server. **Empfohlen**: NAS-Docker,
+  LAN-only, kein Drittanbieter-Demo-Server (der Default
+  `router.project-osrm.org` bekommt sonst die Anker-Koordinaten):
+
+  ```
+  docker run -d --name osrm --restart unless-stopped -p 5000:5000 \
+    -v /pfad/zu/germany-latest.osrm:/data/germany-latest.osrm \
+    osrm/osrm-backend osrm-routed --algorithm mld /data/germany-latest.osrm
+  # danach einmal:
+  TANKAPP_OSRM_URL=http://<NAS-Adresse>:5000 python3 tankapp.py nas-up
+  ```
+
+Nach dem ersten erfolgreichen Fetch sind die Distanzen „road“ und
+bleiben gecacht; bleibt das Netz aus, bleibt es ehrlich „air“ — nie
+erfundene Werte.
 
 ### Modell-Lauf beobachten
 

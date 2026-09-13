@@ -263,6 +263,20 @@ Watermark bleibt gemerkt).
 - `/api/v1/health` zeigt den Collector-Status **nur aus lokalen Quellen** (NAS-Heartbeat-File, lokales tmpfs) — keine InfluxDB-Query, damit der Docker-Healthcheck (3–5 s) nicht an Influx-Antwortzeiten scheitert
 - Volle Details inkl. Influx-Felder: `GET /api/v1/collector/status` (GUI-System-Tab)
 
+### Straßen-Distanzen in der API (seit 0.24.0)
+
+- Der Request-Pfad macht **kein** OSRM-Netzwerk: `dist_km`/`dist_mode` kommen nur aus dem lokalen Routen-Cache (`runtime/road_route_cache.json`); unbekannte Anker→Station-Paare liefern sofort Luftlinie (`"air"`, nie erfunden)
+- Fehlende Routen holt ein Daemon-Thread im Hintergrund: Debounce je Anker, hartes Wanduhr-Budget 20 s (Socket-Timeout begrenzt nicht die DNS-Auflösung — darum die Wanduhr), 5-min-Cooldown bei Fehlschlag, Datei-IO serialisiert. Der nächste Request nutzt die Einträge über die Datei-mtime
+- `metadata()` ist memoisiert (Datei-Stats von `polling.json` + Routen-Cache, 30-s-Backstop): Wiederholte Requests zahlen eine Dict-Kopie statt Re-Parse
+- Konfiguration: `TANKAPP_OSRM` (1 = Default, 0 = kein Netz) und `TANKAPP_OSRM_URL` (eigener OSRM-Server, empfohlen: NAS-Docker, LAN-only). Vorher: je Request je Anker Live-OSRM-Calls — bei Internet-/DNS-Problemen am NAS 54–67 s Antwortzeit auf **allen** Endpunkten inkl. `/health`
+
+### Stations-Preise: Stale-While-Revalidate (seit 0.24.0)
+
+- Im Steady-State antwortet `/api/v1/stations` (und alles darauf Basierende) **sofort** aus dem Cache; der InfluxDB-Read (2-Tage-Fenster, `tail(n: 1)` je Station) läuft im Hintergrund — Single-Flight je Kraftstoff (Daemon-Thread), 30-s-Intervall wie vorher
+- Freshness-Semantik unverändert: `fresh`/`age_minutes` hängen am Beobachtungszeitstempel (je Request neu bewertet), nicht am Cache-Alter; fehlerhafter Read behält den bekannten Stand + meldet `influx_read_failed` (sichtbar, sobald der Hintergrund-Read gescheitert ist)
+- Erst-Ladung je Stations-Menge bleibt synchron (einmalig); der Server warmt alle drei Kraftstoffe beim Start im Hintergrund vor (`LiveData.prewarm()`), damit der erste GUI-Request danach in der Praxis nie wartet
+- Wirkung: Antwortzeit von `/stations` ist von der InfluxDB-Latenz (NAS-HDD, mehrere Sekunden) entkoppelt
+
 ### Zustands-Bündelung: `alarms[]` und Version (B4/B9)
 
 - `alarms[]` fasst die vorhandenen Prüfungen zusammen (Polling-Set, Herzschlag,

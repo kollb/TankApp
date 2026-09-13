@@ -34,6 +34,23 @@ def _fresh_write_budget():
     server_module._WRITE_HITS.clear()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_metadata_memo():
+    """Prozess-globale Memo-/Refresh-Zustände von app.data je Test leeren.
+
+    Das Metadata-Memo ist auf Datei-Stats geschlüsselt (mtime mit
+    1-s-Granularität): Zwei Tests in derselben Sekunde mit identischen
+    Test-Dateien würden sonst denselben Memo-Eintrag teilen.
+    """
+    import app.data as data_module
+
+    data_module._META_MEMO.update({"key": None, "value": None, "at": 0.0})
+    data_module._ROUTE_REFRESH.clear()
+    yield
+    data_module._META_MEMO.update({"key": None, "value": None, "at": 0.0})
+    data_module._ROUTE_REFRESH.clear()
+
+
 @pytest.fixture
 def cfg():
     return Config(
