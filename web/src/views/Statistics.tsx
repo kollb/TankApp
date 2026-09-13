@@ -18,7 +18,7 @@ import {
   SkeletonPanel,
   SkeletonRows,
 } from "../components/Skeleton";
-import { Badge, Empty, Metric, panel } from "../components/ui";
+import { Badge, Empty, InfoTooltip, Metric, panel } from "../components/ui";
 import { LineChart } from "../components/LineChart";
 import {
   CalibChart,
@@ -32,8 +32,12 @@ import {
   deTrimmed,
   euro,
   formatHour,
+  lifecycleLabel,
+  lifecycleTip,
+  lifecycleTone,
   monthBalanceLabel,
   percentLabel,
+  priceTwinLabel,
   rowOutcome,
   timeLabel,
   type DataReach,
@@ -1016,8 +1020,12 @@ export function StatisticsView(props: StatisticsViewProps) {
     <div className="mb-4 flex items-center justify-between">
       <h3 className="flex items-center gap-2 text-sm font-semibold">
         <Activity size={16} className="text-emerald-400" />
-        <span title="δ̂ Ranking: sortiert nach relativer Preislage — Median der Differenz zu den anderen Stationen.">
+        <span className="flex items-center gap-2">
           Meine Stationen · Ranking nach Preis-Abstand
+          <InfoTooltip
+            label="Was heißt Preis-Abstand δ̂?"
+            text="δ̂ ist der mittlere Abstand einer Station zum Stadtmedian — negativ heißt günstiger als die Umgebung. Mehr im Glossar."
+          />
         </span>
       </h3>
     </div>
@@ -1025,6 +1033,38 @@ export function StatisticsView(props: StatisticsViewProps) {
       stamp={selection.data?.generated_at}
       kind="selection"
     />
+    {/* A12/A13: Lebenszyklus- und Zwilling-Warnungen — nur Text, nie Rechnung */}
+    {selection.data && (selection.data.dead_count || selection.data.closed_count || selection.data.nofuel_count) ? (
+      <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+        <p>
+          Zustände unterschieden — nur „tot“ fällt aus dem Ranking:{" "}
+          {selection.data.dead_count ? `${selection.data.dead_count} tot (ohne Preis seit ${selection.data.dead_after_days ?? 7} Tagen)` : null}
+          {selection.data.dead_count && (selection.data.closed_count || selection.data.nofuel_count) ? " · " : null}
+          {selection.data.closed_count ? `${selection.data.closed_count} temporär geschlossen` : null}
+          {selection.data.closed_count && selection.data.nofuel_count ? " · " : null}
+          {selection.data.nofuel_count ? `${selection.data.nofuel_count} führt diesen Kraftstoff nicht` : null}
+          . „Tot“ verbraucht kein Kontingent mehr.
+        </p>
+        <p className="mt-1 text-[11px] text-amber-300/80">
+          Was heißt das?{" "}
+          <InfoTooltip label="Lebenszyklus" text="aktiv = Preis vorhanden · geschlossen = vorübergehend zu · führt nicht = Sorte als „false“ gemeldet · tot = seit Tagen kein Preis (kein Vergleich mehr)" />{" "}
+          — mehr im Glossar.
+        </p>
+      </div>
+    ) : null}
+    {selection.data && (selection.data.price_twin_count ?? 0) > 0 && (
+      <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+        <p>
+          {selection.data.price_twin_count} Preis-Zwilling(e) erkannt — identische Verläufe über 28 Tage. Keine automatische Entfernung aus dem Polling-Set.
+        </p>
+        <ul className="mt-1 list-disc pl-4 text-[11px] text-amber-300/90">
+          {(selection.data.price_twins ?? []).slice(0, 3).map((t) => (
+            <li key={`${t.station_a}-${t.station_b}`}>{priceTwinLabel(t)}</li>
+          ))}
+        </ul>
+        <p className="mt-1 text-[11px] text-amber-300/80">Im System-Tab stehen alle Paare mit Einordnung.</p>
+      </div>
+    )}
     {selection.data && selection.data.stations.length ? (
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-xs">
@@ -1032,48 +1072,71 @@ export function StatisticsView(props: StatisticsViewProps) {
             <tr className="border-b border-slate-800 text-slate-500">
               <th className="py-2 pr-2">#</th>
               <th className="py-2 pr-3">Station</th>
-              <th
-                className="py-2 pr-3"
-                title="δ̂ (relative Preislage): Median der Differenz zum Median der anderen Stationen, in ct/L — negativ = günstiger als die Umgebung."
-              >
-                Preis-Abstand ct/L
+              <th className="py-2 pr-3">
+                <span className="inline-flex items-center gap-1">
+                  Zustand
+                  <InfoTooltip label="Zustand der Station" text="aktiv, geschlossen, führt nicht oder tot — nur tot fällt aus dem Ranking." />
+                </span>
               </th>
-              <th
-                className="py-2 pr-3 hidden sm:table-cell"
-                title="95-%-Konfidenzintervall aus dem Tages-Block-Bootstrap (2,5-/97,5-Perzentil) für den Preis-Abstand."
-              >
-                95-%-KI
+              <th className="py-2 pr-3">
+                <span className="inline-flex items-center gap-1">
+                  Preis-Abstand ct/L
+                  <InfoTooltip label="δ̂" text="δ̂ (delta-hat): mittlere Abweichung einer Station vom Median der Stadt in ct/L — negativ heißt günstiger." />
+                </span>
               </th>
-              <th
-                className="py-2 pr-3 hidden md:table-cell"
-                title="q-Wert (Benjamini-Hochberg-Korrektur über alle Stationen): signifikant günstiger bei q < 0,05."
-              >
-                q-Wert
+              <th className="py-2 pr-3 hidden sm:table-cell">
+                <span className="inline-flex items-center gap-1">
+                  95-%-KI
+                  <InfoTooltip label="Konfidenzintervall" text="95-%-Konfidenzintervall des Preis-Abstands aus dem Tages-Block-Bootstrap (2,5-% bis 97,5-%)." />
+                </span>
               </th>
-              <th
-                className="py-2 pr-3 hidden md:table-cell"
-                title="AV-Score (Verfügbarkeit): gewichtete Wahrscheinlichkeit, dass die Station in dieser Stunde zu den drei günstigsten der Stadt gehört — Gewicht ist dein Tankzeitprofil."
-              >
-                Ampel-Stärke
+              <th className="py-2 pr-3 hidden md:table-cell">
+                <span className="inline-flex items-center gap-1">
+                  q-Wert
+                  <InfoTooltip label="q-Wert" text="Falscher-Alarm-korrigiert (Benjamini-Hochberg) — signifikant günstiger bei q < 0,05." />
+                </span>
               </th>
-              <th
-                className="py-2 pr-3"
-                title="Stunde mit dem tiefsten Punkt der Tageskurve (robuste harmonische Regression)."
-              >
-                Billigste Stunde
+              <th className="py-2 pr-3 hidden md:table-cell">
+                <span className="inline-flex items-center gap-1">
+                  Ampel-Stärke
+                  <InfoTooltip label="Ampel-Stärke (AV-Score)" text="Gewichtete Wahrscheinlichkeit, zu den drei günstigsten zu gehören — gewichtet mit deinem Tankzeitprofil." />
+                </span>
+              </th>
+              <th className="py-2 pr-3">
+                <span className="inline-flex items-center gap-1">
+                  Billigste Stunde
+                  <InfoTooltip label="Billigste Stunde" text="Stunde mit dem tiefsten Punkt der Tageskurve — robuste harmonische Regression über den Tag." />
+                </span>
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {selection.data.stations.map((s) => (
-              <tr key={s.station_id}>
-                <td className="py-2 pr-2 font-mono">{s.rank}</td>
-                <td className="py-2 pr-3 font-semibold text-slate-200 truncate max-w-[180px]">
-                  {s.name}
-                </td>
-                <td
-                  className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}
-                >
+            {selection.data.stations.map((s) => {
+              const lc = (s.lifecycle as string) || "active";
+              const tone = lifecycleTone(lc);
+              return (
+                <tr key={s.station_id}>
+                  <td className="py-2 pr-2 font-mono">{s.rank}</td>
+                  <td className="py-2 pr-3 font-semibold text-slate-200 truncate max-w-[180px]">
+                    {s.name}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <span
+                      title={lifecycleTip(lc)}
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                        tone === "error"
+                          ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                          : tone === "warn"
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : "border-slate-700 bg-slate-800 text-slate-300"
+                      }`}
+                    >
+                      {lifecycleLabel(lc)}
+                    </span>
+                  </td>
+                  <td
+                    className={`py-2 pr-3 font-mono ${s.delta_ct != null && s.delta_ct < 0 ? "text-emerald-400" : "text-rose-300"}`}
+                  >
                   {s.delta_ct != null
                     ? `${s.delta_ct > 0 ? "+" : ""}${centPerLiter(s.delta_ct)}`
                     : "—"}
@@ -1093,7 +1156,8 @@ export function StatisticsView(props: StatisticsViewProps) {
                   {formatHour(s.best_hour)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

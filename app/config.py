@@ -55,6 +55,9 @@ class Settings:
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
     city_subdivs: dict[str, str] = field(default_factory=dict)
+    # A12: Tote Stationen nach N Kalendertagen ohne Preis aus Ranking/Kontingent
+    # (konfigurierbar, Default 7; 0 = nie tot).
+    dead_after_days: int = 7
 
     @property
     def runtime(self):
@@ -101,6 +104,7 @@ class Settings:
             not in {"0", "false", "off", "no"},
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             city_subdivs=_city_subdivs_from_env(),
+            dead_after_days=_env_int("TANKAPP_DEAD_AFTER_DAYS", 7, low=0, high=365),
         )
 
 

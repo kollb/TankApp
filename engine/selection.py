@@ -50,6 +50,10 @@ class SelectionConfig:
     poll_start: int = 6
     poll_end: int = 24
     timezone: str = "Europe/Berlin"
+    # A12: Station-Lebenszyklus — nach so vielen Kalendertagen ohne
+    # verwertbaren Preis gilt eine Station als „tot“ und fällt aus
+    # Ranking/Kontingent (konfigurierbar, Default 7; None/0 = aus).
+    dead_after_days: int | None = 7
 
 
 def _to_matrix(
@@ -139,6 +143,206 @@ def coverage_gate(
     threshold = cfg.min_coverage * reference
     keep = coverage[coverage >= threshold].index
     return keep, reference, float(threshold)
+
+
+# ---------------------------------------------------------------------------
+# A12: Station-Lebenszyklus — tot vs. geschlossen vs. führt Kraftstoff nicht
+# ---------------------------------------------------------------------------
+
+
+def _station_lifecycle(
+    df: pd.DataFrame, city: str, station_id: str, cfg: SelectionConfig, end_ts
+) -> str:
+    """Lebenszyklus einer Station für diesen Kraftstoff (A12).
+
+    Unterscheidet, warum kein Preis da ist — die GUI soll nicht drei
+    Zustände vermischen (MICROCOPY: Zustände benennen, nicht bewerten):
+
+    * ``active``    — mindestens ein verwertbarer Preis in den letzten
+                      ``dead_after_days`` Kalendertagen (Berlin)
+    * ``dead``      — keine Beobachtung / Status „no prices“ seit
+                      ``dead_after_days`` Tagen — „tote“ Station
+    * ``closed``    — „temporär geschlossen“ (Status geschlossen)
+    * ``no_fuel``   — „führt E10 nicht“ (offen, aber Sorte nie als
+                      Zahl gemeldet — ``false`` bei der API)
+
+    ``None``/0 bei ``dead_after_days`` schaltet die Tot-Erkennung ab
+    (konfigurierbar, TODO A12).
+    """
+    dead_days = getattr(cfg, "dead_after_days", 7)
+    try:
+        dead_days_int = int(dead_days) if dead_days is not None else 0
+    except (TypeError, ValueError):
+        dead_days_int = 0
+    if dead_days_int <= 0 or end_ts is None or pd.isna(end_ts):
+        return "active"
+    # Fenster: letzte dead_days Kalendertage (Berlin) inkl. End-Tag
+    try:
+        end = pd.Timestamp(end_ts)
+        if end.tzinfo is None:
+            end = end.tz_localize("UTC")
+        end_local = end.tz_convert(cfg.timezone)
+        window_start = (end_local - pd.Timedelta(days=dead_days_int - 1)).normalize()
+        window_start_utc = window_start.tz_convert("UTC")
+    except Exception:
+        return "active"
+    sub = df[
+        (df.city == city)
+        & (df.station_id == station_id)
+        & (df.fuel.str.upper() == cfg.fuel.upper())
+    ]
+    if sub.empty:
+        return "dead"
+    # Beobachtungen im Fenster (Kalendertage)
+    try:
+        ts = pd.to_datetime(sub["timestamp"], utc=True)
+    except Exception:
+        return "active"
+    in_window = ts >= window_start_utc
+    window_rows = sub.loc[in_window]
+    if window_rows.empty:
+        return "dead"
+    # Gibt es irgendeinen Preis im Fenster?
+    has_price = window_rows["price"].notna().any() if "price" in window_rows else False
+    # Fallback: numerische Prüfung (price kann string sein)
+    if not has_price and "price" in window_rows:
+        try:
+            has_price = (
+                pd.to_numeric(window_rows["price"], errors="coerce").notna().any()
+            )
+        except Exception:
+            pass
+    if has_price:
+        return "active"
+    # Kein Preis — warum?
+    statuses = (
+        window_rows.get("status", pd.Series(dtype=str))
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    if statuses.empty:
+        return "dead"
+    # Alle „no prices“ → tot (API liefert seit Tagen kein Signal)
+    if (statuses == "no prices").all():
+        return "dead"
+    # Überwiegend geschlossen → temporär geschlossen
+    if (statuses == "closed").all() or (statuses == "closed").mean() > 0.8:
+        return "closed"
+    # Offen aber Sorte fehlt → führt diesen Kraftstoff nicht
+    if (statuses == "open").any():
+        return "no_fuel"
+    return "dead"
+
+
+def _detect_price_twins(
+    df: pd.DataFrame, city: str, station_ids: list[str], cfg: SelectionConfig
+) -> list[dict]:
+    """Preis-Zwillinge (A13) — identische Verläufe zweier Stationen.
+
+    Nutzt dieselben Schwellen wie ``engine/station_comparison.py`` (read-only,
+    nie auto-apply): mind. 28 Tage mit je ≥12 gemeinsamen Punkten, ≥90 %
+    Überlappung, ≥99 % der gemeinsamen Punkte innerhalb 0,1 ct/L. Liefert
+    Warnungen für das Selektions-Artefakt + System-Tab, baut das Polling-Set
+    nie automatisch um (TODO: Raus Polling-Set Umbau ohne Bestätigung).
+
+    Implementiert leichtgewichtig auf dem DataFrame, ohne PriceSeries-Overhead.
+    """
+    # Kriterien aus station_comparison.Criteria
+    min_days = 28
+    min_common_per_day = 12
+    tol_ct = 0.1
+    min_agreement = 99.0
+    min_overlap = 90.0
+    if len(station_ids) < 2:
+        return []
+    # Nur dieser Kraftstoff/Stadt
+    city_df = df[(df.city == city) & (df.fuel.str.upper() == cfg.fuel.upper())]
+    if city_df.empty:
+        return []
+    # Je Station: Series der beobachteten Preise (nur price notna)
+    series_by_id: dict[str, pd.Series] = {}
+    for sid in station_ids:
+        sub = city_df[city_df.station_id == sid]
+        if sub.empty:
+            continue
+        # Nur echte Preise
+        price_numeric = pd.to_numeric(sub["price"], errors="coerce")
+        ok = price_numeric.notna()
+        if not ok.any():
+            continue
+        s = pd.Series(
+            price_numeric[ok].to_numpy(),
+            index=pd.to_datetime(sub.loc[ok, "timestamp"], utc=True),
+        )
+        s = s.sort_index()
+        # Doppelte Zeitstempel: letzter gewinnt (wie normalize)
+        s = s[~s.index.duplicated(keep="last")]
+        series_by_id[sid] = s
+    twins: list[dict] = []
+    ids = sorted(series_by_id)
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            a_id, b_id = ids[i], ids[j]
+            sa, sb = series_by_id[a_id], series_by_id[b_id]
+            # Gemeinsame Zeitstempel (exakt, da Polling-Batch je Stadt)
+            common_idx = sa.index.intersection(sb.index)
+            n_common = len(common_idx)
+            if n_common == 0:
+                continue
+            n_a, n_b = len(sa), len(sb)
+            overlap = 100.0 * n_common / max(n_a, n_b) if max(n_a, n_b) else 0.0
+            if overlap < min_overlap:
+                continue
+            # Pro Tag: Berlin-Datum
+            try:
+                dates = common_idx.tz_convert(cfg.timezone).normalize()
+            except Exception:
+                continue
+            per_day = pd.Series(1, index=dates).groupby(level=0).size()
+            qualifying_days = int((per_day >= min_common_per_day).sum())
+            if qualifying_days < min_days:
+                continue
+            # Preisdifferenz in ct/L
+            delta_ct = (
+                sa.loc[common_idx].to_numpy() - sb.loc[common_idx].to_numpy()
+            ) * 100.0
+            delta_ct = np.abs(delta_ct)
+            # Vereinzelte NaNs aus numerischen Fehlern ignorieren
+            delta_ct = delta_ct[np.isfinite(delta_ct)]
+            if len(delta_ct) == 0:
+                continue
+            agreement = (
+                float(100.0 * np.mean(delta_ct <= tol_ct + 1e-9))
+                if len(delta_ct)
+                else 0.0
+            )
+            if agreement < min_agreement:
+                continue
+            twins.append(
+                {
+                    "station_a": a_id,
+                    "station_b": b_id,
+                    "city": city,
+                    "fuel": cfg.fuel,
+                    "common_points": int(n_common),
+                    "overlap_pct": float(overlap),
+                    "qualifying_days": int(qualifying_days),
+                    "agreement_pct": float(agreement),
+                    "mean_abs_delta_ct": float(np.mean(delta_ct))
+                    if len(delta_ct)
+                    else None,
+                    "p95_abs_delta_ct": float(np.quantile(delta_ct, 0.95))
+                    if len(delta_ct)
+                    else None,
+                    "max_abs_delta_ct": float(np.max(delta_ct))
+                    if len(delta_ct)
+                    else None,
+                    "classification": "possible_price_twins",
+                    "auto_apply": False,
+                }
+            )
+    return twins
 
 
 def _loo_baseline(mat: pd.DataFrame) -> pd.DataFrame:
@@ -451,6 +655,43 @@ def analyse_city_light(
             list(mat.columns),
             f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
         )
+    # A12: Lebenszyklus — tote Stationen (kein Preis seit dead_after_days
+    # Kalendertagen) fallen vor dem Coverage-Gate aus dem Ranking und
+    # verbrauchen kein Kontingent mehr. Konfigurierbar, Default 7 Tage.
+    # Geschlossen / führt-nicht bleiben unterscheidbar, aber noch im Gate.
+    end_ts = df["timestamp"].max() if not df.empty and "timestamp" in df else None
+    lifecycles: dict[str, str] = {}
+    dead_stations: list[str] = []
+    closed_stations: list[str] = []
+    nofuel_stations: list[str] = []
+    for sid in list(mat.columns):
+        lc = _station_lifecycle(df, city, sid, cfg, end_ts)
+        lifecycles[sid] = lc
+        if lc == "dead":
+            dead_stations.append(sid)
+        elif lc == "closed":
+            closed_stations.append(sid)
+        elif lc == "no_fuel":
+            nofuel_stations.append(sid)
+    # Tote Stationen aussortieren — raus aus Ranking/Kontingent (A12)
+    if dead_stations:
+        mat = mat.drop(columns=[c for c in dead_stations if c in mat.columns])
+        if mat.empty or mat.shape[1] < 2:
+            return _diagnostic(
+                city,
+                cfg,
+                mat,
+                dead_stations,
+                f"nach Ausschluss toter Stationen (kein Preis seit {cfg.dead_after_days} Kalendertagen) nur {mat.shape[1]} Station(en) übrig — LOO braucht ≥2 (≥4 für δ̂)",
+                coverage=pd.Series(dtype=float),
+                coverage_reference=0.0,
+                coverage_threshold=0.0,
+                dead_stations=dead_stations,
+                dead_count=len(dead_stations),
+                lifecycles=lifecycles,
+                closed_stations=closed_stations,
+                nofuel_stations=nofuel_stations,
+            )
     # B21: Coverage nur über die Zellen des Polling-Fensters (06–24 Uhr) —
     # gegen das volle 24-h-Raster ist das Gate strukturell unerreichbar.
     scheduled = scheduled_mask(mat.index, cfg)
@@ -471,7 +712,7 @@ def analyse_city_light(
             city,
             cfg,
             mat,
-            excluded,
+            dead_stations + excluded,
             f"nach Coverage-Gate (≥{cfg.min_coverage:.0%} vom Stadt-Bestwert "
             f"{coverage_reference:.0%} im Fenster "
             f"{cfg.poll_start:02d}–{cfg.poll_end:02d} Uhr) nur {mat.shape[1]} "
@@ -479,6 +720,13 @@ def analyse_city_light(
             coverage=coverage,
             coverage_reference=coverage_reference,
             coverage_threshold=coverage_threshold,
+            dead_stations=dead_stations,
+            dead_count=len(dead_stations),
+            closed_stations=closed_stations,
+            closed_count=len(closed_stations),
+            nofuel_stations=nofuel_stations,
+            nofuel_count=len(nofuel_stations),
+            lifecycles=lifecycles,
         )
 
     base = _loo_baseline(mat)
@@ -584,6 +832,7 @@ def analyse_city_light(
                 dist_mode=meta.get("dist_mode"),
                 maps_url=meta.get("maps_url"),
                 coverage=float(coverage[sid]),
+                lifecycle=lifecycles.get(sid, "active"),
                 delta_ct=d_hat,
                 delta_ew_ct=float(d_ew),
                 delta_recent5_ct=float(d_recent5),
@@ -609,12 +858,19 @@ def analyse_city_light(
             city,
             cfg,
             mat,
-            excluded + no_delta,
+            dead_stations + excluded + no_delta,
             f"{len(no_delta)} Station(en) ohne verwertbares δ̂ — zu wenig "
             f"gleichzeitige Werte (LOO braucht ≥4 Stationen je Zeitpunkt)",
             coverage=coverage,
             coverage_reference=coverage_reference,
             coverage_threshold=coverage_threshold,
+            dead_stations=dead_stations,
+            dead_count=len(dead_stations),
+            closed_stations=closed_stations,
+            closed_count=len(closed_stations),
+            nofuel_stations=nofuel_stations,
+            nofuel_count=len(nofuel_stations),
+            lifecycles=lifecycles,
         )
 
     tab = pd.DataFrame(rows)
@@ -659,6 +915,22 @@ def analyse_city_light(
     tab.insert(0, "rank", tab.index + 1)
 
     # JSON-sicher machen
+    # A13: Preis-Zwillinge erkennen (identische Verläufe) — Warnung, nie auto-apply
+    try:
+        price_twins = _detect_price_twins(
+            df, city, list(tab["station_id"]) if not tab.empty else [], cfg
+        )
+    except Exception:
+        price_twins = []
+    # A12: Lebenszyklus-Bilanz für die Stadt (für Artefakt + GUI)
+    # lifecycles enthält nur die ursprünglich im mat vorhandenen Stationen;
+    # tote sind bereits vor dem Coverage-Gate entfernt, geschlossene/führt-nicht bleiben bis hier.
+    lifecycle_counts = {
+        "active": sum(1 for v in lifecycles.values() if v == "active"),
+        "dead": len(dead_stations),
+        "closed": len(closed_stations),
+        "no_fuel": len(nofuel_stations),
+    }
     result = {
         "city": city,
         "fuel": cfg.fuel,
@@ -671,8 +943,8 @@ def analyse_city_light(
         "n_points": int(mat.notna().to_numpy().sum()),
         "n_days": int(len(uniq_days)),
         "station_count": len(tab),
-        "excluded_count": len(excluded),
-        "excluded": excluded[:20],
+        "excluded_count": len(dead_stations) + len(excluded),
+        "excluded": (dead_stations + excluded)[:20],
         # B21: Ausweis des Coverage-Gates — woran gemessen wurde (Fenster,
         # Bestwert der Stadt, wirksame Schwelle) und wer ohne δ̂ blieb.
         # Ohne diese Zahlen ist „warum ist Station X nicht dabei?“ nicht
@@ -684,6 +956,26 @@ def analyse_city_light(
         "no_delta": no_delta[:20],
         "stability": stability,
         "stations": tab.to_dict(orient="records"),
+        # A12: Station-Lebenszyklus — tote raus aus Ranking/Kontingent,
+        # die drei Zustände bleiben unterscheidbar (GUI zeigt Badge).
+        "dead_stations": dead_stations[:20],
+        "dead_count": len(dead_stations),
+        "closed_stations": closed_stations[:20],
+        "closed_count": len(closed_stations),
+        "nofuel_stations": nofuel_stations[:20],
+        "nofuel_count": len(nofuel_stations),
+        "lifecycle_counts": lifecycle_counts,
+        "lifecycles": {
+            k: v
+            for k, v in lifecycles.items()
+            if k in set(tab["station_id"])
+            or k in dead_stations
+            or k in closed_stations
+            or k in nofuel_stations
+        },
+        # A13: Preis-Zwillinge als Warnung (nie auto-apply, Dauer-partial)
+        "price_twins": price_twins,
+        "price_twin_count": len(price_twins),
     }
     return result
 
@@ -721,6 +1013,14 @@ def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> 
     # Reichweite über alle Städte (inkl. Diagnosen, damit Fenster sichtbar bleibt)
     froms = [r["range_from"] for r in all_results if r.get("range_from")]
     tos = [r["range_to"] for r in all_results if r.get("range_to")]
+    # A12/A13: aggregierte Lebenszyklus- und Zwillingssummen
+    all_twins: list[dict] = []
+    lifecycle_totals = {"active": 0, "dead": 0, "closed": 0, "no_fuel": 0}
+    for r in all_results:
+        all_twins.extend(r.get("price_twins", []))
+        counts = r.get("lifecycle_counts") or {}
+        for k in lifecycle_totals:
+            lifecycle_totals[k] += int(counts.get(k, 0) or 0)
     return {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "fuel": cfg.fuel,
@@ -733,4 +1033,9 @@ def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> 
         or None,
         # B21: Diagnose, warum Städte ohne Ranking blieben
         "diagnostics": diagnostics,
+        # A12/A13: aggregiert für System-Tab / Artefakt-Warnungen
+        "price_twins": all_twins,
+        "price_twin_count": len(all_twins),
+        "lifecycle_totals": lifecycle_totals,
+        "dead_after_days": getattr(cfg, "dead_after_days", 7),
     }
