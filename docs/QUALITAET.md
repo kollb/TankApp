@@ -66,6 +66,14 @@ export CHROME_PATH="$(cd web && node -e "console.log(require('playwright').chrom
 npx --yes @lhci/cli@0.15.x autorun --config=web/lighthouserc.json
 ```
 
+Der Server läuft in Schritt 1 **außerhalb** von Lighthouse-CI (auch in der
+CI: eigener Workflow-Schritt mit Bereitschaftsschleife auf `/api/v1/health`).
+Früher startete LHCI ihn selbst und wartete auf „bereit auf“; auf dem
+CI-Läufer dauert der Demo-Aufbau länger als LHCI wartet, und der Lauf brach
+**ohne Bericht** ab — ein rotes Gate ohne jeden Befund, das Schlimmste aus
+beiden Welten. Chrome bekommt `--no-sandbox` (`collect.settings.chromeFlags`),
+sonst startet es als Dienst nicht.
+
 Der Lastpfad bricht mit Exit-Code 1 ab, wenn ein Budget verletzt ist, und
 schreibt seinen Bericht als JSON nach stdout.
 

@@ -2,15 +2,15 @@
   "$schema": "https://raw.githubusercontent.com/GoogleChrome/lighthouse-ci/main/docs/configuration.md",
   "ci": {
     "collect": {
-      "startServerCommand": "python ops/quality/demo_server.py --data-dir /tmp/tankapp-demo --static web/dist --port 1355 --host 127.0.0.1",
-      "startServerReadyPattern": "bereit auf",
+      "_server": "Der Demo-Server läuft außerhalb von LHCI (Workflow-Schritt mit Bereitschaftsschleife). Begründung: docs/QUALITAET.md, Abschnitt ‚Lokal ausführen‘.",
       "url": [
         "http://127.0.0.1:1355/?city=Demostadt&fuel=e10",
         "http://127.0.0.1:1355/?city=Demostadt&fuel=e10&tab=statistik"
       ],
       "numberOfRuns": 3,
-      "settings": {
-        "preset": "desktop",
+        "settings": {
+          "preset": "desktop",
+          "chromeFlags": "--no-sandbox",
         "onlyCategories": [
           "performance",
           "accessibility",

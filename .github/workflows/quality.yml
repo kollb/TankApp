@@ -51,6 +51,19 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           echo "path=$(node -e "console.log(require('playwright').chromium.executablePath())")" >> "$GITHUB_OUTPUT"
+      - name: Demo-Stack starten
+        # Eigener Schritt statt LHCI-Start: die Bereitschaft ist damit
+        # nachweisbar geprüft (Health-Antwort), und ein scheiternder
+        # Serverstart bricht den Lauf nicht „irgendwo in Lighthouse“ ab.
+        run: |
+          python ops/quality/demo_server.py \
+            --data-dir /tmp/tankapp-demo --static web/dist \
+            --port 1355 --host 127.0.0.1 &
+          for _ in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:1355/api/v1/health > /dev/null && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:1355/api/v1/health | head -c 400
       - name: Lighthouse CI mit Budget
         run: npx --yes @lhci/cli@0.15.x autorun --config=web/lighthouserc.json
         env:

@@ -40,11 +40,20 @@ def test_lighthouse_budgets_sind_hinterlegt():
     assert level == "error" and options["minScore"] >= 0.8
     level, options = assertions["categories:performance"]
     assert level == "warn" and options["minScore"] >= 0.8
-    # Ohne den Demo-Stack misst Lighthouse leere Panels.
+    # Ohne den Demo-Stack misst Lighthouse leere Panels. Der Server läuft
+    # bewusst **außerhalb** von LHCI (Workflow-Schritt mit Bereitschafts-
+    # schleife): LHCI wartet sonst zu kurz und bricht ohne Bericht ab.
     collect = config["ci"]["collect"]
-    assert "ops/quality/demo_server.py" in collect["startServerCommand"]
-    assert "bereit auf" in collect["startServerReadyPattern"]
+    assert "startServerCommand" not in collect
     assert len(collect["url"]) >= 2
+    assert all("127.0.0.1:1355" in url for url in collect["url"])
+    # Chrome braucht im Container --no-sandbox.
+    assert "--no-sandbox" in collect["settings"]["chromeFlags"]
+
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "ops/quality/demo_server.py" in text
+    # Bereitschaft nachweisbar prüfen, nicht auf gut Glück warten.
+    assert "/api/v1/health" in text
 
 
 def test_quality_workflow_nutzt_demo_stack_und_lastpfad():
