@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   autoTimeTicks,
+  personalizationNote,
   autoTimeValue,
   berlinHour,
   checkFillDraft,
@@ -1013,5 +1014,47 @@ describe("H5: DST-Ausweisung im Backtest", () => {
     expect(label).toContain("25.10.2026 (25 h)");
     expect(label).not.toContain("bleiben im Backtest");
     expect(label).not.toContain("Vortages-Anker");
+  });
+});
+
+describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
+  it("schweigt, wenn der Server nichts mitgibt", () => {
+    expect(personalizationNote(null)).toBeNull();
+    expect(personalizationNote(undefined)).toBeNull();
+  });
+
+  it("nennt die Belege, wenn das Profil wirkt", () => {
+    const note = personalizationNote({
+      active: true,
+      n_fills: 12,
+      min_fills: 8,
+      missing_fills: 0,
+    });
+    expect(note).toContain("12 Belege");
+    expect(note).toContain("Tankzeiten");
+    expect(note).not.toContain("fehlen");
+  });
+
+  it("nennt die fehlenden Belege, solange nach Preis sortiert wird", () => {
+    const note = personalizationNote({
+      active: false,
+      n_fills: 5,
+      min_fills: 8,
+      missing_fills: 3,
+    });
+    expect(note).toContain("5 Belege von 8");
+    expect(note).toContain("Noch nach Preis sortiert");
+    expect(note).toContain("es fehlen 3");
+  });
+
+  it("schreibt den Einzahl-Beleg nicht als ‚1 Belege‘", () => {
+    const note = personalizationNote({
+      active: false,
+      n_fills: 1,
+      min_fills: 8,
+      missing_fills: 7,
+    });
+    expect(note).toContain("1 Beleg von 8");
+    expect(note).not.toContain("1 Belege");
   });
 });

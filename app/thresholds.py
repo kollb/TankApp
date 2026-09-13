@@ -22,10 +22,30 @@ Der Nachzug ist **deterministisch aus dem Ledger** abgeleitet (kein zusätzliche
 Zustand) und wird nur wirksam, wenn ``auto_apply`` aktiv ist (Konzept §8.2 Nr. 1:
 die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, der
 Werkstatt-Slider zeigt nur Konsequenzen).
+
+**H3 — Oszillationsschutz (Methodik, 0.31.0).** Drei Zahlen greifen ineinander,
+damit der Regler bei kleinen Stichproben nicht pendelt:
+
+1. **Mindest-Stichprobe** ``MIN_N`` (25): darunter wird gar nichts vorgeschlagen.
+2. **Rauschband** ``noise_band(n, hit)``: die Ziellücke muss **größer als das
+   Band** sein (±2 Standardfehler der Trefferquote bei Stichprobe ``n``). Eine
+   Trefferquote aus 30 Empfehlungen schwankt statistisch um ±17 pp — als
+   Regelverstoß zu werten wäre Rauschen als Signal gelesen. Das Band schrumpft
+   mit ``1/√n``, ab n ≈ 400 ist eine 5-pp-Lücke echt.
+3. **Totband** ``MIN_P_DEADBAND`` / ``MIN_EUR_DEADBAND``: Schritte unter 2 pp
+   bzw. 0,05 € werden unterdrückt. Das ist der zustandsfreie Ersatz für einen
+   Mindest-Abstand zwischen zwei Anpassungen — der Vorschlag wird aus dem
+   Ledger bestimmt, es gibt bewusst keinen „wann war die letzte Änderung“
+   Zustand, der nach einem Neustart oder Import falsch wäre.
+
+Zusammen: erst ab ausreichender Stichprobe, erst außerhalb des Rauschbands,
+und dann nicht in Kleinstschritten. ``MAX_P_STEP``/``MAX_EUR_STEP`` begrenzen
+weiterhin jeden einzelnen Schritt.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 # Startwerte aus Konzept §4.1/§4.2.
@@ -67,10 +87,46 @@ BOUNDS: dict[str, tuple[float, float]] = {
 MAX_P_STEP = 0.10
 MAX_EUR_STEP = 1.50
 
+# H3: Oszillationsschutz. Breite des Rauschbands in Standardfehlern der
+# Trefferquote (±2 SE ≈ 95 % der Zufallsschwankung).
+NOISE_SIGMA = 2.0
+# H3: Totband — Kleinstschritte werden nicht vorgeschlagen (zustandsfreier
+# Ersatz für einen Mindest-Abstand zwischen zwei Anpassungen).
+MIN_P_DEADBAND = 0.02
+MIN_EUR_DEADBAND = 0.05
+
 
 def _clamp(name: str, value: float) -> float:
     low, high = BOUNDS.get(name, (0.0, 1e9))
     return round(min(high, max(low, value)), 4)
+
+
+def noise_band(n: Any, hit: Any, sigma: float = NOISE_SIGMA) -> float:
+    """Halbe Breite des Rauschbands einer Trefferquote (H3).
+
+    ``sigma`` Standardfehler der Binomialverteilung: ``sigma·√(p(1−p)/n)``.
+    Fehlt die Stichprobe oder die Quote, ist das Band unendlich — dann ist
+    jede Ziellücke Rauschen und es wird nichts nachgezogen.
+    """
+    try:
+        n_val = float(n) if n is not None else None
+        hit_val = float(hit) if hit is not None else None
+    except (TypeError, ValueError):
+        return float("inf")
+    if n_val is None or hit_val is None or not n_val > 0:
+        return float("inf")
+    hit_val = min(1.0, max(0.0, hit_val))
+    return sigma * math.sqrt(max(hit_val * (1.0 - hit_val), 0.0) / n_val)
+
+
+def _deadband(name: str, current: float, suggested: float) -> float:
+    """Unterdrückt Kleinstschritte — der Regler bewegt sich nicht im Rauschen."""
+    floor = (
+        MIN_EUR_DEADBAND
+        if name.startswith(("wait_eur", "now_eur", "elsewhere_net", "elsewhere_bo"))
+        else MIN_P_DEADBAND
+    )
+    return current if abs(float(suggested) - float(current)) < floor else suggested
 
 
 def _step_p(gap: float) -> float:
@@ -119,9 +175,13 @@ def suggest_thresholds(
     reasons: list[str] = []
     suggested = dict(current)
 
+    band_wait = noise_band(n_wait, hit_wait)
+    band_now = noise_band(n_now, hit_now)
+    band_else = noise_band(n_else, hit_else)
+
     if n_wait is not None and n_wait >= MIN_N and hit_wait is not None:
         gap = TARGETS["hit_wait"] - hit_wait
-        if gap > 0:
+        if gap > band_wait:
             step_p, step_eur = _step_p(gap), _step_eur(gap)
             suggested["wait_p_high"] = _clamp(
                 "wait_p_high", current["wait_p_high"] + step_p
@@ -137,10 +197,18 @@ def suggest_thresholds(
             )
             reasons.append(
                 f"WARTEN nur {hit_wait * 100:.0f} % richtig (Ziel "
-                f"{TARGETS['hit_wait'] * 100:.0f} %) — Gates angezogen "
+                f"{TARGETS['hit_wait'] * 100:.0f} %) — Lücke "
+                f"{gap * 100:.0f} pp liegt über dem Rauschband "
+                f"±{band_wait * 100:.0f} pp, Gates angezogen "
                 f"(+{step_p * 100:.0f} pp, +{step_eur:.2f} €)."
             )
-        elif hit_wait > TARGETS["hit_wait"] + 0.10:
+        elif gap <= band_wait and gap > 0:
+            reasons.append(
+                f"WARTEN {hit_wait * 100:.0f} % richtig — Lücke "
+                f"{gap * 100:.0f} pp liegt im Rauschband "
+                f"±{band_wait * 100:.0f} pp (n={n_wait:.0f}), kein Nachzug."
+            )
+        elif hit_wait > TARGETS["hit_wait"] + 0.10 + band_wait:
             step_p, step_eur = (
                 _step_p(hit_wait - TARGETS["hit_wait"] - 0.10),
                 _step_eur(hit_wait - TARGETS["hit_wait"] - 0.10),
@@ -167,14 +235,21 @@ def suggest_thresholds(
         )
 
     if n_now is not None and n_now >= MIN_N and hit_now is not None:
-        if hit_now < TARGETS["hit_now"]:
-            gap = TARGETS["hit_now"] - hit_now
-            step_eur = _step_eur(gap)
+        gap_now = TARGETS["hit_now"] - hit_now
+        if gap_now > band_now:
+            step_eur = _step_eur(gap_now)
             suggested["now_eur"] = _clamp("now_eur", current["now_eur"] - step_eur / 2)
             reasons.append(
                 f"JETZT nur {hit_now * 100:.0f} % richtig (Ziel "
-                f"{TARGETS['hit_now'] * 100:.0f} %) — €-Schwelle auf "
+                f"{TARGETS['hit_now'] * 100:.0f} %) — Lücke über dem Rauschband "
+                f"±{band_now * 100:.0f} pp, €-Schwelle auf "
                 f"{suggested['now_eur']:.2f} € gesenkt (mehr Warten-Fenster)."
+            )
+        elif gap_now > 0:
+            reasons.append(
+                f"JETZT {hit_now * 100:.0f} % richtig — Lücke "
+                f"{gap_now * 100:.0f} pp liegt im Rauschband "
+                f"±{band_now * 100:.0f} pp (n={n_now:.0f}), kein Nachzug."
             )
     else:
         reasons.append(
@@ -182,22 +257,36 @@ def suggest_thresholds(
         )
 
     if n_else is not None and n_else >= MIN_N and hit_else is not None:
-        if hit_else < TARGETS["hit_elsewhere"]:
-            gap = TARGETS["hit_elsewhere"] - hit_else
+        gap_else = TARGETS["hit_elsewhere"] - hit_else
+        if gap_else > band_else:
             suggested["elsewhere_net_eur"] = _clamp(
-                "elsewhere_net_eur", current["elsewhere_net_eur"] + _step_eur(gap) / 2
+                "elsewhere_net_eur",
+                current["elsewhere_net_eur"] + _step_eur(gap_else) / 2,
             )
             suggested["elsewhere_p"] = _clamp(
-                "elsewhere_p", current["elsewhere_p"] + _step_p(gap)
+                "elsewhere_p", current["elsewhere_p"] + _step_p(gap_else)
             )
             reasons.append(
-                f"WOANDERS nur {hit_else * 100:.0f} % richtig — Netto-Schwelle auf "
+                f"WOANDERS nur {hit_else * 100:.0f} % richtig — Lücke über dem "
+                f"Rauschband ±{band_else * 100:.0f} pp, Netto-Schwelle auf "
                 f"{suggested['elsewhere_net_eur']:.2f} € angehoben."
+            )
+        elif gap_else > 0:
+            reasons.append(
+                f"WOANDERS {hit_else * 100:.0f} % richtig — Lücke "
+                f"{gap_else * 100:.0f} pp liegt im Rauschband "
+                f"±{band_else * 100:.0f} pp (n={n_else:.0f}), kein Nachzug."
             )
     elif n_else is not None and n_else > 0:
         reasons.append(
             f"WOANDERS: Stichprobe zu klein für einen Nachzug (n={n_else} < {MIN_N})."
         )
+
+    # H3 Totband: Kleinstschritte zurücknehmen (der Vorschlag soll den Regler
+    # bewegen, nicht im Rauschen zappeln).
+    for key in DEFAULT_THRESHOLDS:
+        if key in current:
+            suggested[key] = _deadband(key, current[key], suggested[key])
 
     changed = any(
         abs(float(suggested[k]) - float(current[k])) > 1e-9
@@ -216,6 +305,19 @@ def suggest_thresholds(
             "hit_now": hit_now,
             "n_elsewhere": n_else,
             "hit_elsewhere": hit_else,
+        },
+        # H3: Oszillationsschutz ausgewiesen — die Werkstatt soll sehen, warum
+        # ein Vorschlag ausbleibt, nicht nur dass er ausbleibt.
+        "hysteresis": {
+            "sigma": NOISE_SIGMA,
+            "min_n": MIN_N,
+            "deadband_p": MIN_P_DEADBAND,
+            "deadband_eur": MIN_EUR_DEADBAND,
+            "noise_band": {
+                "wait": None if band_wait == float("inf") else round(band_wait, 4),
+                "now": None if band_now == float("inf") else round(band_now, 4),
+                "elsewhere": None if band_else == float("inf") else round(band_else, 4),
+            },
         },
         "reasons": reasons,
         "changed": changed,

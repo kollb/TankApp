@@ -588,6 +588,9 @@ export type DecideResult = {
     expected_price: number;
     expected_saving_eur: number | null;
     p: number | null;
+    /** A9: Anteil des persönlichen Tankzeit-Profils w(h) an diesem Fenster
+     *  (null = nicht personalisiert, Reihenfolge ist reine Preisreihenfolge). */
+    wh_weight?: number | null;
   }>;
   windows_week: Array<{
     start: string;
@@ -595,7 +598,15 @@ export type DecideResult = {
     expected_price: number;
     expected_saving_eur: number | null;
     p: number | null;
+    wh_weight?: number | null;
   }>;
+  /** A9: Wirkt das persönliche Tankzeit-Profil? (app/feedback.WH_MIN_FILLS) */
+  personalization?: {
+    active: boolean;
+    n_fills: number;
+    min_fills: number;
+    missing_fills: number;
+  } | null;
   episode: {
     id: string;
     status: EpisodeStatus;
@@ -864,6 +875,19 @@ export type ThresholdTuning = {
   min_n: number;
   auto_apply?: boolean;
   applied?: boolean;
+  /** H3 (0.31.0): Oszillationsschutz des Nachzugs — Rauschband je Aktion
+   *  und Totband. Fehlt das Feld, läuft eine ältere Engine. */
+  hysteresis?: {
+    sigma?: number;
+    min_n?: number;
+    deadband_p?: number;
+    deadband_eur?: number;
+    noise_band?: {
+      wait?: number | null;
+      now?: number | null;
+      elsewhere?: number | null;
+    } | null;
+  } | null;
 };
 
 export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
@@ -3166,6 +3190,56 @@ export function thresholdSampleLine(
     `Stichprobe (Mindest je Aktion: ${min_n}): ` +
     `Warten n=${n_wait ?? "—"} · Jetzt n=${n_now ?? "—"} · ` +
     `Woanders n=${n_elsewhere ?? "—"}`
+  );
+}
+
+/**
+ * A9 (0.31.0): Hinweis unter den F3-Fenstern, ob die Reihenfolge schon
+ * persönlich gewichtet ist — und wie viele Belege dazu fehlen. Das Profil
+ * selbst ist ein Langzeitprofil über alle Füllungen (Konzept §5.5 Schicht C);
+ * vor `min_fills` Belegen führt die App die reine Preisreihenfolge, weil ein
+ * Profil aus zwei Belegen erfunden wäre.
+ */
+export function personalizationNote(
+  personalization: DecideResult["personalization"],
+): string | null {
+  if (!personalization) return null;
+  const { active, n_fills, min_fills, missing_fills } = personalization;
+  if (active) {
+    return (
+      `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
+      `günstige Fenster zu Stunden, die du nie tankst, stehen weiter hinten.`
+    );
+  }
+  const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
+  return (
+    `Noch nach Preis sortiert (${fills} von ${min_fills}) — ` +
+    `ab ${min_fills} Belegen ordnet die App die Fenster nach deinen ` +
+    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.`
+  );
+}
+
+/**
+ * H3 (0.31.0): Rauschband-Zeile der Schwellen-Tabelle. Der M7-Nachzug zieht
+ * erst außerhalb der Zufallsschwankung der Trefferquote — sonst würde der
+ * Regler bei kleinen Stichproben pendeln. Die Zeile sagt, wie breit das Band
+ * gerade ist, damit „kein Nachzug“ nicht nach Defekt aussieht.
+ */
+export function thresholdHysteresisLine(
+  tuning: ThresholdTuning | null | undefined,
+): string | null {
+  const band = tuning?.hysteresis?.noise_band;
+  if (!band) return null;
+  const share = (value: number) => `${Math.round(value * 100)} pp`;
+  const parts = [
+    band.wait != null ? `Warten ±${share(band.wait)}` : null,
+    band.now != null ? `Jetzt ±${share(band.now)}` : null,
+    band.elsewhere != null ? `Woanders ±${share(band.elsewhere)}` : null,
+  ].filter((part): part is string => part !== null);
+  if (!parts.length) return null;
+  return (
+    `Rauschband (${parts.join(" · ")}) — kleinere Abweichungen vom Ziel ` +
+    `gelten als Zufall und ziehen die Schwellen nicht.`
   );
 }
 

@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 13.09.2026, App-Version 0.30.0)
+# TankApp — ToDo (Stand 13.09.2026, App-Version 0.31.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -33,9 +33,9 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| A9 | D | **w(h)-Rückkopplung anschließen** | Persönliches Zeitprofil (`wallet.wh_hours`) wird berechnet, fließt aber nicht in „billigste Stunde“/F3 ein (Konzept §5.5). Ab ≥8 Füllungen aktivieren, vorher Default — mit UI-Hinweis ab wann personalisiert. |
-| A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** | Hampel-Filter, Feiertags-/Sprung-Features, Mehrtage- und 21-Tage-Backtest sowie Rolling-PICP sind seit PR #69 implementiert und testgedeckt. Offen bleiben das unabhängige Zweitmodell mit inverse-MASE-Ensemble und die Abnahme aller M3-Kriterien auf echten Live-Daten. |
-| A11 | D | **Gemeinsame Bootstrap-Ziehung für `p_lohnt`** | Konzept §4.2: Marktgleichlauf darf nicht wegkorreliert werden. Braucht stationsübergreifenden Resampling-Schritt (gleicher Tagesblock je Ziehung) — eigener Arbeitsschritt, in LUECKEN begründet offen. |
+| A9 | D | **w(h)-Rückkopplung anschließen** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): ab **8 Belegen** (`app/feedback.py::WH_MIN_FILLS`) gewichtet `app/decide.py::_wh_weight()` die F3-Fenster — günstige Fenster zu Stunden, die du nie tankst, rutschen nach hinten; darunter bleibt die preisliche Reihenfolge und die Tagesansicht sagt warum („Noch nach Preis sortiert (5 Belege von 8) — es fehlen 3“). "Echt-Daten-Abnahme" offen: die Reihenfolge ist erst mit echten Belegen im Betrieb bewertbar (§5.5). |
+| A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** *(Ensemble erledigt in 0.31.0)* | Erledigt (0.31.0): Zweitmodell **profile_ar2** (Tagesprofil je 5-Minuten-Slot als Median statt Sinusform) und inverse-MASE-Ensemble (Konzept §3.2 M3) in `engine/models.py`, Schalter `TANKAPP_MODEL_KIND`. Messung (Demo-Daten, 6 Stationen, 72-h-Holdout): MAE **2,53 → 1,93 ct/L** (−24 %), 6/6 Stationen besser. **Offen bleibt die Echt-Daten-Abnahme** aller M3-Kriterien auf Live-Daten (§3.2) und die Gewichte aus dem Rolling-Origin-Backtest statt aus dem Validierungsfenster ([LUECKEN.md](docs/LUECKEN.md) — das One-Step-Fenster trennt die Modelle nur schwach: 0,51/0,49). |
+| A11 | D | **Gemeinsame Bootstrap-Ziehung für `p_lohnt`** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): alle Stationen eines Laufs ziehen aus **denselben** Zufallszahlen je (Horizont, Tagesposition) — `engine/models.py::shared_day_uniforms`, je Station über die eigene Blockverteilung abgebildet (`blocks_from_uniform`, comonotone Kopplung); ausgewiesen als `draws_24h.shared`/`draws_7d.shared`, Gegenprobe `TANKAPP_SHARED_DRAWS=0`. Messung: bei **einem** Lauf mit gleicher Config koppelte die alte Ziehung schon zufällig (Korrelation 0,995 vs. 0,992); bei ungleichen Trainingsfenstern (erhaltene Prognosen) steigt sie 0,545 → 0,588, Streuung der Nowcast-Differenz 1,40 → 1,13 ct/L. Details: [ANALYSE.md](docs/ANALYSE.md#wahrscheinlichkeiten-aus-der-prognoseverteilung-p-seite). |
 | A12 | P2 | **Station-Lebenszyklus & Zustandsehrlichkeit** | „führt E10 nicht“ vs. „temporär geschlossen“ vs. „keine Daten seit n Tagen“ wird in der GUI nicht unterschieden. Tote Stationen (`no prices` > 7 Kalendertage) sollen automatisch aus Ranking/Polling-Set fallen (konfigurierbar), nicht dauerhaft Kontingent kosten. |
 | A13 | P2 | **Preis-Zwillinge: automatische Warnung** | Identische Preisverläufe zweier Stationen (Doppel-Source/Franchise) werden nur manuell per `compare-stations` gefunden. Ziel: Warnung im Selektions-Artefakt + System-Tab. |
 
@@ -66,7 +66,7 @@
 
 | # | Prio | Fehlt | Details |
 |---|---|---|---|
-| D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** | M4-Kriterium „Lighthouse > 90“ nie gemessen; kein Last-Test, ob das GUI-Polling (B7) unter dem Rate-Limit bleibt. Ziel: Lighthouse-CI-Job mit Budget, kleiner K6-/Autocannon-Pfadtest gegen den Docker-Stack. |
+| D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): eigener Workflow `.github/workflows/quality.yml` (auf Abruf, sonntags, bei PRs an `web/`/`app/`/`engine/`), Lighthouse-CI mit Budgets gegen zwei GUI-Zustände und ein abhängigkeitsfreier Lastpfad (`web/load/overview.mjs`) gegen das B7-Aggregat inkl. ETag-Revalidierung; beide laufen gegen den neuen Demo-Stack `ops/quality/` (echte App, injizierte Preisabfrage, echte Engine-Publikation). Messwerte, Budgets und die B7-Rest-Entscheidung stehen in [docs/QUALITAET.md](docs/QUALITAET.md). Offen: Lighthouse-Erstdurchlauf (Performance-Ebene deshalb warnend). |
 
 ---
 
@@ -196,9 +196,12 @@ und bleibt **nicht geplant**.
    oder C8 (Mobile-Feinschliff/PWA). D1 ist mit 0.19.0 erledigt
    (Views-Schnitt + `JobCard`), neue Panels und die Profil-Verwaltung
    landen in `views/`/`components/` statt in `Dashboard.tsx`.
-2. **B7-Follow-up separat entscheiden**: `route/evaluate` (eigener Poll im
-   Alltag, nur bei Alternativ-Station) ausklinken bzw. in `/overview`
-   aufnehmen — erst nach einer Messung der echten Last (siehe D4).
+2. **B7-Follow-up entschieden (0.31.0)**: `route/evaluate` **bleibt** ein
+   eigener Abruf. Messung mit D4: 1,5 ms gegenüber ~230 ms für einen kalten
+   `/overview` (0,6 %) — bündeln würde die Routen-Parameter in den
+   ETag-Schlüssel des Overviews ziehen und den Antwort-Cache aller Geräte
+   entwerten, für weniger als eine Bildschirmaktualisierung Ersparnis.
+   Zahlen und Gegenprobe in [docs/QUALITAET.md](docs/QUALITAET.md#b7-rest-routeevaluate-bleibt-ein-eigener-abruf).
 3. **Kein P0 mehr offen** — der Heatmap-P0 vom 12.09. ist mit 0.14.0
    geschlossen, B2 (Schema-Version) seit 0.13.0;
    der nächste Store-Feldsprung braucht nur eine Migrationsfunktion nach

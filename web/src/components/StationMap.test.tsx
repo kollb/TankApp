@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
-import { StationMap, RadarView } from "./StationMap";
+import {
+  StationMap,
+  RadarView,
+  OSM_TILE_URL,
+  OSM_ATTRIBUTION,
+} from "./StationMap";
 import { Station, DecideResult } from "../data";
 
 type RadarInfo = Parameters<typeof RadarView>[0]["stationInfos"][number];
@@ -218,6 +223,15 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
 
     expect(html).toContain("Mitte: Vergleichsstation");
     expect(html).toContain("Ringe = km Luftlinie ab ihr");
+  });
+
+  it("nutzt OSM-Kacheln nur über https und mit Zuordnung (Tile-Policy)", () => {
+    // Ohne Zuordnung und ohne Referer antworten die OSM-Kachel-Server mit
+    // 403 „Access blocked — App is not following the Usage Policy“.
+    expect(OSM_TILE_URL.startsWith("https://")).toBe(true);
+    expect(OSM_TILE_URL).toContain("tile.openstreetmap.org");
+    expect(OSM_ATTRIBUTION).toContain("OpenStreetMap");
+    expect(OSM_ATTRIBUTION).toContain("openstreetmap.org/copyright");
   });
 
   it("erwähnt den fehlenden Anker-Pin ehrlich ohne Koordinate", () => {

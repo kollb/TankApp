@@ -25,6 +25,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | die Einzelprogramme in `data-tools/` verstehen | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) |
 | die GUI-Vorlagen in `sample/` als Design-Basis nutzen | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) |
 | eine Zeile Nutzertext schreiben (Tonfall, Einheiten, Zitate, Fehlertexte) | [MICROCOPY.md](MICROCOPY.md) |
+| Lighthouse/Last messen und die Budgets nachziehen | [QUALITAET.md](QUALITAET.md) |
 | eine frühere Prüfung oder ein altes Konzept nachlesen | [archiv/README.md](archiv/README.md) |
 
 ## Lesereihenfolge
@@ -69,6 +70,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
+| [QUALITAET.md](QUALITAET.md) | Qualitäts-Gates (D4): Lighthouse-Budgets, Lastpfad gegen `/api/v1/overview`, Demo-Stack, Messwerte und die B7-Rest-Entscheidung |
 
 ### Projektstand (Repo-Wurzel, nicht in `docs/`)
 

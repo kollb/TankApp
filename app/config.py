@@ -51,6 +51,15 @@ class Settings:
     # B17: 21-Tage-Backtest je lokalem Endtag cachen (runtime/engine/
     # backtest-cache/). TANKAPP_BACKTEST_CACHE=0 rechnet jeden Lauf neu.
     backtest_cache: bool = True
+    # A11: Gemeinsame Bootstrap-Ziehung über alle Stationen eines Laufs
+    # (Konzept §4.2 — der Marktgleichlauf darf für P_lohnt nicht
+    # wegkorreliert werden). TANKAPP_SHARED_DRAWS=0 stellt die unabhängige
+    # Ziehung wieder her (Gegenprobe, Stand vor 0.31.0).
+    shared_draws: bool = True
+    # A10: Punktmodell der Prognose — „ensemble“ (Default, inverse MASE
+    # gewichtet), „harmonic_ar2“ (Hauptpfad allein, Stand vor 0.31.0) oder
+    # „profile_ar2“ (Zweitmodell allein). Gegenmessung per Env.
+    model_kind: str = "ensemble"
     # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
@@ -102,10 +111,23 @@ class Settings:
             model_workers=_env_int("TANKAPP_MODEL_WORKERS", 0, low=0, high=64),
             backtest_cache=os.environ.get("TANKAPP_BACKTEST_CACHE", "1").strip().lower()
             not in {"0", "false", "off", "no"},
+            shared_draws=os.environ.get("TANKAPP_SHARED_DRAWS", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
+            model_kind=_env_choice(
+                "TANKAPP_MODEL_KIND",
+                "ensemble",
+                {"harmonic_ar2", "profile_ar2", "ensemble"},
+            ),
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             city_subdivs=_city_subdivs_from_env(),
             dead_after_days=_env_int("TANKAPP_DEAD_AFTER_DAYS", 7, low=0, high=365),
         )
+
+
+def _env_choice(name: str, default: str, allowed: set[str]) -> str:
+    """Umgebungsvariable mit erlaubten Werten; Unbekanntes fällt zurück."""
+    value = os.environ.get(name, "").strip().lower()
+    return value if value in allowed else default
 
 
 def _city_subdivs_from_env() -> dict[str, str]:

@@ -58,3 +58,10 @@ node_modules/
 # Private NAS read access, also when placed outside data/
 influx.env
 netrc
+
+# Qualitäts-Gates (D4): Lighthouse-Artefakte und Lastbericht
+/.lighthouseci/
+/load-report.json
+
+# Lokale virtuelle Umgebung
+.venv/

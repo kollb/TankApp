@@ -35,6 +35,7 @@ import {
   fillLimitHint,
   orderedStationList,
   percentLabel,
+  personalizationNote,
   STATION_SORTS,
   tankPreviewLine,
   timeLabel,
@@ -580,6 +581,8 @@ export function DailyView(props: DailyViewProps) {
       }
       if (!rec) return null;
       const p = rec.primary;
+      // A9: Wirkt das persönliche Tankzeit-Profil auf die Fensterreihenfolge?
+      const personalHint = personalizationNote(rec.personalization);
       // C5: Symbol zusätzlich zur Farbe — die Ampel ist für
       // Rot-Grün-Schwache nicht an der Farbe allein erkennbar.
       const meta = {
@@ -713,6 +716,11 @@ export function DailyView(props: DailyViewProps) {
           {(rec.windows_today.length > 0 ||
             rec.windows_week.length > 0) && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {personalHint && (
+                <p className="sm:col-span-2 text-[10px] leading-relaxed text-slate-500">
+                  {personalHint}
+                </p>
+              )}
               {rec.windows_today.length > 0 && (
                 <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
                   <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
