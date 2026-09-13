@@ -22,6 +22,7 @@ from typing import Any
 
 from .data import haversine_km, metadata, publication
 from .feedback import (
+    WH_MIN_FILLS,
     compute_advice_stats,
     compute_wallet_stats,
     load_store,
@@ -142,10 +143,87 @@ def _window_p_value(
     return window_p(minima, _block_for_window(draws, window_start))
 
 
+def _wh_weight(
+    wh_hours: list[float] | None,
+    start_hour: float | None,
+    end_hour: float | None,
+) -> float | None:
+    """Mittlere Tankwahrscheinlichkeit eines Fensters aus w(h) (A9).
+
+    ``w(h)`` ist das persönliche Tankzeit-Profil (24 Stunden, Summe ≈ 1,
+    Konzept §5.5 Schicht C). Ein 2-h-Fenster wird in Viertelstunden
+    abgetastet; Fenster über eine Stundengrenze (7–9 Uhr) zählen anteilig.
+    ``None``, wenn kein Profil vorliegt — dann bleibt die Preisreihenfolge
+    stehen (kein erfundenes Profil).
+    """
+    if not wh_hours or len(wh_hours) != 24:
+        return None
+    if start_hour is None or end_hour is None:
+        return None
+    start, end = float(start_hour), float(end_hour)
+    if end <= start:
+        end = start + 0.25
+    total, count = 0.0, 0
+    hour = start
+    while hour < end - 1e-9:
+        total += float(wh_hours[int(hour) % 24])
+        count += 1
+        hour += 0.25
+    if not count:
+        return None
+    return round(total / count, 6)
+
+
+def _rank_windows(
+    windows: list[dict[str, Any]],
+    wh_hours: list[float] | None = None,
+    anchor: float | None = None,
+) -> list[dict[str, Any]]:
+    """Reihenfolge der F3-Fenster: Preis — ab ≥ 8 Füllungen gewichtet (A9).
+
+    Ohne persönliches Profil bleibt es bei der reinen Preisreihenfolge
+    (bitgleich zur Version vor 0.31.0). Mit Profil zählt die **erwartet
+    realisierte** Ersparnis: ``w̄(Fenster) · (Referenz − erwarteter Preis)``.
+    Ein 3-Uhr-Fenster, in dem der Nutzer nie tankt, steht damit hinter einem
+    geringfügig teureren Feierabend-Fenster. Referenz ist der Ankerpreis,
+    fehlt er, das teuerste Fenster der Auswahl.
+    """
+    if not windows:
+        return windows
+    for window in windows:
+        window["wh_weight"] = _wh_weight(
+            wh_hours, window.get("start_hour"), window.get("end_hour")
+        )
+    if not wh_hours:
+        windows.sort(key=lambda w: (w["expected_price"], w["start"]))
+        return windows
+
+    reference = (
+        float(anchor)
+        if anchor is not None
+        else max(float(w["expected_price"]) for w in windows)
+    )
+
+    def score(window: dict[str, Any]) -> float:
+        weight = window.get("wh_weight") or 0.0
+        return weight * max(0.0, reference - float(window["expected_price"]))
+
+    windows.sort(
+        key=lambda w: (
+            -score(w),
+            float(w["expected_price"]),
+            str(w.get("start") or ""),
+        )
+    )
+    return windows
+
+
 def _today_windows(
     points: list[dict[str, Any]],
     clock_now: dt.datetime,
     latest_by: dt.datetime | None = None,
+    wh_hours: list[float] | None = None,
+    anchor: float | None = None,
 ) -> list[dict[str, Any]]:
     """2-h-Blöcke (Berlin) des Heute-Forecasts, billigste zuerst.
 
@@ -153,6 +231,9 @@ def _today_windows(
     Stunden. Nur Blöcke, die noch nicht vollständig vergangen sind — und mit
     ``latest_by`` nur Blöcke, die vollständig vor dem spätesten akzeptablen
     Tankzeitpunkt enden (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
+
+    ``wh_hours`` (persönliches Tankzeit-Profil, A9) gewichtet die Reihenfolge;
+    ohne Profil zählt allein der Preis.
     """
     blocks: dict[tuple, list[tuple[dt.datetime, float]]] = {}
     for point in points:
@@ -187,14 +268,15 @@ def _today_windows(
                 "end_hour": round(end_berlin.hour + end_berlin.minute / 60.0, 2),
             }
         )
-    windows.sort(key=lambda w: w["expected_price"])
-    return windows[:3]
+    return _rank_windows(windows, wh_hours=wh_hours, anchor=anchor)[:3]
 
 
 def _week_windows(
     points_7d: list[dict[str, Any]],
     clock_now: dt.datetime,
     latest_by: dt.datetime | None = None,
+    wh_hours: list[float] | None = None,
+    anchor: float | None = None,
 ) -> list[dict[str, Any]]:
     """2-h-Blöcke (Berlin) über den 7-Tage-Horizont, billigste zuerst.
 
@@ -222,15 +304,18 @@ def _week_windows(
         if latest_by is not None and end > latest_by:
             continue  # Block endet nach dem spätesten Tankzeitpunkt
         median = round(statistics.median(q for _, q in entries), 3)
+        start_berlin = start.astimezone(BERLIN_TZ)
+        end_berlin = end.astimezone(BERLIN_TZ)
         windows.append(
             {
                 "start": start.isoformat(),
                 "end": end.isoformat(),
                 "expected_price": median,
+                "start_hour": round(start_berlin.hour + start_berlin.minute / 60.0, 2),
+                "end_hour": round(end_berlin.hour + end_berlin.minute / 60.0, 2),
             }
         )
-    windows.sort(key=lambda w: w["expected_price"])
-    return windows[:3]
+    return _rank_windows(windows, wh_hours=wh_hours, anchor=anchor)[:3]
 
 
 def _coords(station: dict[str, Any]) -> tuple[float, float] | None:
@@ -722,10 +807,26 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if (row.get("draws_24h") or {}).get("nowcast")
     }
 
+    # A9: Persönliches Tankzeit-Profil w(h) (Konzept §5.5 Schicht C). Der
+    # Ledger wird deshalb vor den Fenstern gelesen: Erst ab WH_MIN_FILLS
+    # Füllungen gewichtet das Profil die Fensterreihenfolge, darunter bleibt
+    # die reine Preisreihenfolge die ehrlichere Wahl.
+    store = load_store(live_data.settings)
+    wallet_stats = compute_wallet_stats(store, now=clock_now)
+    wh_hours = wallet_stats.get("wh_hours") or None
+    wh_personalized = bool(wallet_stats.get("wh_personalized"))
+    wh_n = int(wallet_stats.get("wh_n") or 0)
+    wh_min_fills = int(wallet_stats.get("wh_min_fills") or WH_MIN_FILLS)
+    wh_profile = wh_hours if wh_personalized else None
+
     # Beste Fenster heute und über die Woche (echte 2-h-Blöcke).
     # latest_by schneidet den Horizont ab (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
-    windows_today = _today_windows(points, clock_now, latest_by)
-    windows_week = _week_windows(points_7d, clock_now, latest_by)
+    windows_today = _today_windows(
+        points, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+    )
+    windows_week = _week_windows(
+        points_7d, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+    )
     # „Es gäbe Prognosen, aber keins mehr vor deinem spätesten Zeitpunkt“ —
     # das ist eine andere Aussage als „keine Prognose vorhanden“.
     horizon_cut = bool(latest_by is not None and not windows_today and bool(points))
@@ -757,10 +858,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # nachgezogen (nur wenn der Betreiber auto-apply gesetzt hat).
     auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
 
-    # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion.
-    store = load_store(live_data.settings)
+    # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion
+    # (der Store und die Wallet-Kennzahlen stehen schon oben, A9).
     advice_stats = compute_advice_stats(store, now=clock_now)
-    wallet_stats = compute_wallet_stats(store, now=clock_now)
     is_calibrated = advice_stats.get("calibrated", False)
 
     thresholds, tuning = active_thresholds(advice_stats, auto_apply=auto_apply)
@@ -932,6 +1032,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 if anchor is not None
                 else None,
                 "p": _window_p_value(draws_24h, w["start"]),
+                # A9: Anteil des persönlichen Tankzeit-Profils an diesem
+                # Fenster (null = nicht personalisiert, Reihenfolge = Preis).
+                "wh_weight": w.get("wh_weight"),
             }
             for w in windows_today
         ],
@@ -946,6 +1049,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 if anchor is not None
                 else None,
                 "p": _window_p_value(draws_7d, w["start"]),
+                "wh_weight": w.get("wh_weight"),
             }
             for w in windows_week
         ],
@@ -971,6 +1075,15 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 "followed": wallet_stats.get("followed", 0),
                 "saved_eur_30d": wallet_stats.get("saved_eur", 0.0),
             },
+        },
+        # A9: Wirkt das persönliche Tankzeit-Profil w(h) auf die
+        # Fensterreihenfolge? Erst ab ``min_fills`` Füllungen — die GUI sagt
+        # daraus, wie viele Belege noch fehlen (Konzept §5.5 Schicht C).
+        "personalization": {
+            "active": wh_personalized,
+            "n_fills": wh_n,
+            "min_fills": wh_min_fills,
+            "missing_fills": max(0, wh_min_fills - wh_n),
         },
         "calibrated": is_calibrated,
         "decision_ready": False,

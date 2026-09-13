@@ -835,8 +835,7 @@ def test_http_serves_gui_and_read_only_api_but_never_secrets(app_settings):
             # Pflicht. `no-referrer` (bis 0.30.0) lieferte 403 „Access
             # blocked — App is not following the Usage Policy“.
             assert (
-                response.headers["Referrer-Policy"]
-                == "strict-origin-when-cross-origin"
+                response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
             )
         with urllib.request.urlopen(base + "/api/v1/stations?fuel=e10") as response:
             assert json.load(response)["fresh_prices"] == 1

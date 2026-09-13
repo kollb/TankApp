@@ -76,6 +76,10 @@ P_PRIOR_WEIGHT = 10
 # schaltbar sein (§13). Beide Schwellen gehen über ``stats_summary`` an die
 # GUI, damit dort keine zweite Wahrheit entsteht.
 M7_MIN_RECOMMENDATIONS = 100
+# A9 (0.31.0): Ab so vielen aktiven Füllungen ist das persönliche
+# Tankzeit-Profil w(h) belastbar (Konzept §5.5 Schicht C) — darunter
+# bleibt der Default die ehrlichere Wahl.
+WH_MIN_FILLS = 8
 M7_BRIER_THRESHOLD = 0.25
 
 _STORE_THREAD_LOCK = threading.Lock()
@@ -1367,7 +1371,7 @@ def compute_wallet_stats(
     w0 = [round(v / s0, 4) for v in w0]
 
     n_all = len(fills_active)
-    if n_all < 8:
+    if n_all < WH_MIN_FILLS:
         wh_hours = w0
     else:
         # Empirisches Histogramm über ALLE aktiven Füllungen (Langzeitprofil).
@@ -1376,9 +1380,10 @@ def compute_wallet_stats(
             h = int(f.get("clock_hour", 12.0)) % 24
             w_hat[h] += 1.0
         w_hat = [v / n_all for v in w_hat]
-        # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + 8*w0) / (n + 8)
+        # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + k*w0) / (n + k)
         wh_hours = [
-            round((n_all * w_hat[i] + 8 * w0[i]) / (n_all + 8), 4) for i in range(24)
+            round((n_all * w_hat[i] + WH_MIN_FILLS * w0[i]) / (n_all + WH_MIN_FILLS), 4)
+            for i in range(24)
         ]
 
     return {
@@ -1389,6 +1394,11 @@ def compute_wallet_stats(
         "unrelated": unrelated,
         "saved_eur": saved_eur,
         "wh_hours": wh_hours,
+        # A9: Wieviel hinter dem Profil steckt — die GUI sagt damit, ab wann
+        # die persönliche Fensterreihenfolge gilt (Konzept §5.5 Schicht C).
+        "wh_n": n_all,
+        "wh_personalized": n_all >= WH_MIN_FILLS,
+        "wh_min_fills": WH_MIN_FILLS,
         "last_fill": fills_active[0] if fills_active else None,
     }
 
