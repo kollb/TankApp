@@ -189,8 +189,13 @@ Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
 
 ## Was du in der GUI siehst
 
-Die GUI hat drei Tabs: **Alltag**, **Werkstatt**, **System**. („Statistik“ ist der
-alte Name des Werkstatt-Tabs und steht nur noch in Archiv-Dokumenten.)
+Die GUI hat vier Tabs: **Alltag**, **Werkstatt**, **System**, **Einstellungen**.
+(„Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur noch in
+Archiv-Dokumenten.) Neu (0.24.0, C4): **Einstellungen** bündelt alle Defaults
+an einer Stelle (Stadt, Kraftstoff, Tankmenge, Verbrauch, Zeitwert
+manuell/auto, Tempo, Fahrtcharakter, Tankgröße), zeigt die aktiven
+Entscheidungsschwellen als read-only-Tabelle und bietet die Dark/Light-
+Umschaltung; der Alltag zeigt dieselben Werte read-only.
 
 - **Alltag:** Ampel/Empfehlung aus `/api/v1/decide`, Stadt/Kraftstoff, günstigster
   aktuell gemeldeter offener Preis, Datenalter, Tankmenge, Umweg-Vergleich mit

@@ -4,6 +4,75 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.24.0] – 2026-09-13
+
+**C4** — Einstellungen-Tab zentral: alle Defaults an einer Stelle statt
+verteilt über die Panels, dazu die aktiven Entscheidungsschwellen als
+read-only-Tabelle und die Dark/Light-Umschaltung, die die Fallback-GUI
+am RP2 schon hatte und die NAS-GUI (dunkles Slate) nicht.
+
+### Hinzugefügt
+
+- **C4 — Einstellungen-Tab** (`web/src/views/Settings.tsx`, neu; vierte
+  Ansicht nach Alltag/Werkstatt/System). Verbrauch, Zeitwert
+  (manuell/auto), Liter-Default, Kraftstoff und Stadt lagen verteilt in
+  Panels (Alltag „3 · Was kostet die Füllung“ und „6 · Rechnet sich der
+  Umweg?“, Kopfzeile) — jetzt ist der Tab der einzige Eingabeort für die
+  Defaults: Kontext (Stadt, Kraftstoff), Fahrzeug & Füllung (Tankmenge,
+  Verbrauch, Tankgröße), Zeit & Fahrtcharakter (Zeitwert mit Automatik,
+  Tempo, Fahrtcharakter). Der Alltag zeigt die aktiven Werte read-only
+  (Tankmenge-Kachel, Wertezeile in der Umweg-Sektion, Tankgrößen-Hinweis
+  im Tankstand) mit Verlinkung „in ‚Einstellungen‘ ändern“ — dieselben
+  Werte, ein Speicher (localStorage/Profil), keine Duplikate. Die
+  Kopfzeile behält Stadt/Kraftstoff/Profil als Schnellwahl derselben
+  Werte. Tankgröße war vorher nur editierbar, wenn ein Füllstand gesetzt
+  war; jetzt immer.
+- **C4 — Schwellen-Tabelle (read-only)**: der Tab zeigt die aktiven
+  Entscheidungsschwellen aus `GET /api/v1/stats/summary` → `thresholds`
+  (die neun Werte, mit denen die Engine entscheidet: Warten grün/gelb,
+  Woanders tanken inkl. Grauzone, Jetzt tanken) plus den M7-Nachzug-
+  Status (`threshold_tuning`: aktiv/aus, Stichprobe je Aktion,
+  Begründung der Engine, wenn sich Werte ändern). Reine Anzeige — die
+  GUI rechnet mit den Schwellen, ändert sie aber nicht; ohne
+  Statistik-Lauf steht ein ehrlicher Leerstand. `StatsSummary`-Typ in
+  `data.ts` um `thresholds`/`threshold_tuning` ergänzt (Server lieferte
+  beides schon, die GUI wusste nicht darum).
+- **C4 — Dark/Light-Umschaltung** (Darstellung-Panel im Tab): „Dunkles
+  Slate (Standard)“ bleibt der Default (Design-Basis, docs/GUI-VORLAGEN);
+  „Hell (Slate)“ ist eine helle Variante derselben Tailwind-Skala —
+  Tailwind v4 kompiliert Farbklassen als CSS-Variablen-Verweis, deshalb
+  kippt `html.light` in `styles.css` nur die Token-Werte
+  (Slate-Skala umgedreht, Akzent-Texttöne dunkler, dunkle Box-Tönungen
+  hell), jede Klasse im Code bleibt unverändert; die Werte folgen der
+  Light-Palette der Fallback-GUI (rp2/fallback_gui.py), damit beide
+  Oberflächen beieinander liegen. Die Wahl gilt gerätelokal
+  (`tankapp.theme`), ein Bootstrap-Script in `index.html` wendet sie vor
+  dem ersten Paint an (kein Theme-Flash) und hält `theme-color`
+  synchron. Fallback-GUI: unverändert, hatte Dark/Light schon (v2.0).
+
+### Geändert
+
+- Alltagstabs: die Default-Regler (Tankmenge, Verbrauch, Tempo,
+  Zeitwert, Fahrtcharakter, Tankgröße) sind raus — ersetzt durch
+  read-only-Werte mit Link in den Einstellungen-Tab (C4).
+- `docs/TODO.md`: C4 aus der offenen Liste gestrichen;
+  Reihenfolge-Empfehlung angepasst.
+
+### Tests
+
+- `web/src/settings.test.tsx` (neu): die GUI kennt genau die neun
+  Server-Schwellen, Formattierung über die Formatter (€/L in €, P in %),
+  Status-/Stichprobe-Zeilen, Read-only-Tabelle ohne Eingabefelder,
+  ehrlicher Leerstand ohne Statistik, Begründungs-Anzeige bei Nachzug;
+  alle Default-Eingabeorte an einem Ort; Dark/Light (zwei Themen,
+  `<html>`-Klasse + theme-color-Meta, aria-pressed je Stand).
+- e2e: `app.spec.ts` — neuer Test „C4: Einstellungen-Tab“ (alle
+  Eingabeorte, Schwellen-Zeilen mit Server-Werten, keine Inputs in der
+  Tabelle, Theme-Wechsel übersteht den Reload) + die
+  Tankmenge-Eingabe läuft jetzt über den Einstellungen-Tab;
+  `horizons.spec.ts` — Zeitwert-Automatik wird im Tab gesetzt, der
+  Alltag zeigt „Auto (… €/h Peak/offpeak)“ read-only.
+
 ## [0.23.0] – 2026-09-12
 
 **A1, A2, A4, C2** — die vier offenen P1-Punkte der Fach- und GUI-Listen:

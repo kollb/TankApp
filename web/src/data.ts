@@ -780,9 +780,40 @@ export type StatsSummary = {
   };
   /** null = die Engine hat noch keine Policies publiziert (kein Modell-Lauf). */
   live_phase: LivePhase | null;
+  /**
+   * C4: aktive Entscheidungsschwellen (read-only) — dieselben Werte, mit
+   * denen die Engine entscheidet. Fehlt nur bei sehr alten Ständen.
+   */
+  thresholds?: Record<string, number>;
+  /** C4: M7-Nachzug (read-only) — Vorschlag, Ziele, Stichprobe, Status. */
+  threshold_tuning?: ThresholdTuning;
   calibrated: boolean;
   decision_ready: boolean;
   error_code?: string | null;
+};
+
+/**
+ * C4: Rückgabe von app/thresholds.py `active_thresholds`/`suggest_thresholds`
+ * — der Nachzug rechnet aus dem Advice-Ledger einen Vorschlag, der nur mit
+ * `auto_apply` wirksam wird. Die GUI zeigt alles nur an, sie ändert nichts.
+ */
+export type ThresholdTuning = {
+  thresholds: Record<string, number>;
+  base: Record<string, number>;
+  targets: Record<string, number>;
+  sample: {
+    n_wait: number | null;
+    hit_wait: number | null;
+    n_now: number | null;
+    hit_now: number | null;
+    n_elsewhere: number | null;
+    hit_elsewhere: number | null;
+  };
+  reasons: string[];
+  changed: boolean;
+  min_n: number;
+  auto_apply?: boolean;
+  applied?: boolean;
 };
 
 export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
@@ -2878,4 +2909,163 @@ export function monthBalanceLabel(key: string): string {
 /** A4: Jahres-Schlüssel „2026“ bleibt Jahr (mit „Gesamt“-Angabe im Panel). */
 export function yearBalanceLabel(key: string): string {
   return `Gesamtjahr ${key}`;
+}
+
+/**
+ * C4: Dark/Light-Umschaltung der NAS-GUI.
+ *
+ * Dunkel (Slate-950) ist die Design-Basis (docs/GUI-VORLAGEN.md) und bleibt
+ * der Default. „Hell (Slate)“ ist eine helle Variante derselben Skala:
+ * dieselben Tailwind-Klassen, andere Token-Werte unter `html.light` in
+ * styles.css — abgeleitet von der Light-Palette der Fallback-GUI
+ * (rp2/fallback_gui.py), damit beide Oberflächen beieinander liegen. Die
+ * Wahl gilt gerätelokal (localStorage), wie alle anderen Einstellungen.
+ */
+export type AppTheme = "dark" | "light";
+export const APP_THEMES = ["dark", "light"] as const;
+export function isAppTheme(value: unknown): value is AppTheme {
+  return value === "dark" || value === "light";
+}
+/** theme-color-Meta je Thema (Browser-UI/Adressleiste). */
+export const APP_THEME_META_COLOR: Record<AppTheme, string> = {
+  dark: "#020617",
+  light: "#eef2f7",
+};
+/**
+ * Wendet das Thema auf <html> an: Klasse `light` (dunkel ist die
+ * Default-Klasse `dark` in index.html) plus theme-color-Meta. Idempotent —
+ * der Bootstrap-Script in index.html macht vor dem ersten Paint dasselbe
+ * ohne React, damit kein Theme-Flash sichtbar wird.
+ */
+export function applyAppTheme(theme: AppTheme): void {
+  const root = document.documentElement;
+  root.classList.toggle("light", theme === "light");
+  root.classList.toggle("dark", theme === "dark");
+  const meta = document.querySelector<HTMLMetaElement>(
+    'meta[name="theme-color"]',
+  );
+  if (meta) meta.setAttribute("content", APP_THEME_META_COLOR[theme]);
+}
+
+/**
+ * C4: Zeilen der Schwellen-Tabelle im Einstellungen-Tab (read-only).
+ *
+ * Reihenfolge und Bedingungen folgen der Entscheidungstabelle (Konzept
+ * §4.1/§4.2) und den Startwert-Kommentaren in app/thresholds.py — keine
+ * erfundenen Bedeutungen. `kind` wählt den Formatter: €-Beträge über
+ * euro(), Wahrscheinlichkeiten über percentLabel() (MICROCOPY).
+ */
+export type ThresholdRowDef = {
+  key: string;
+  action: string;
+  condition: string;
+  kind: "eur" | "percent";
+};
+export const THRESHOLD_ROWS: readonly ThresholdRowDef[] = [
+  {
+    key: "wait_eur_high",
+    action: "Warten (grün)",
+    condition: "Mindest-Ersparnis",
+    kind: "eur",
+  },
+  {
+    key: "wait_p_high",
+    action: "Warten (grün)",
+    condition: "Mindest-Trefferquote",
+    kind: "percent",
+  },
+  {
+    key: "wait_eur_mid",
+    action: "Warten (gelb)",
+    condition: "Mindest-Ersparnis",
+    kind: "eur",
+  },
+  {
+    key: "wait_p_mid",
+    action: "Warten (gelb)",
+    condition: "Mindest-Trefferquote",
+    kind: "percent",
+  },
+  {
+    key: "elsewhere_net_eur",
+    action: "Woanders tanken",
+    condition: "Mindest-Nettoersparnis",
+    kind: "eur",
+  },
+  {
+    key: "elsewhere_p",
+    action: "Woanders tanken",
+    condition: "Mindest-Trefferquote",
+    kind: "percent",
+  },
+  {
+    key: "elsewhere_borderline_eur",
+    action: "Woanders tanken",
+    condition: "Grenze der Grauzone",
+    kind: "eur",
+  },
+  {
+    key: "now_eur",
+    action: "Jetzt tanken",
+    condition: "unterhalb dieser Ersparnis",
+    kind: "eur",
+  },
+  {
+    key: "now_p",
+    action: "Jetzt tanken",
+    condition: "wenn P(Warten) unter",
+    kind: "percent",
+  },
+];
+
+/**
+ * Ein Tabellenwert — ehrlich „—“, wenn der Server keinen Wert liefert.
+ * €-Beträge über euro() mit angehängtem „€“ (Formatter-Satz in data.ts);
+ * Wahrscheinlichkeiten liefert der Server als Anteil (0.7 = 70 %),
+ * percentLabel() erwartet die Prozentzahl.
+ */
+export function thresholdValueLabel(
+  kind: "eur" | "percent",
+  value: number | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return kind === "eur" ? `${euro(value)} €` : percentLabel(value * 100);
+}
+
+/**
+ * C4: Statuszeile der Schwellen-Tabelle aus dem M7-Nachzug (read-only).
+ * Sagt, womit die Engine rechnet: Startwerte (Nachzug aus) oder nachgezogene
+ * Werte (Nachzug aktiv, nur dann, wenn sich etwas geändert hat).
+ */
+export function thresholdStatusLine(
+  tuning: ThresholdTuning | null | undefined,
+): string {
+  if (!tuning) {
+    return "Nachzug-Status nicht geladen — es gelten die Startwerte der Engine.";
+  }
+  if (!tuning.auto_apply) {
+    return "M7-Nachzug aus — die Engine rechnet mit den Startwerten.";
+  }
+  return tuning.applied
+    ? "M7-Nachzug aktiv — die Tabelle weicht von den Startwerten ab."
+    : "M7-Nachzug aktiv — aktuell keine Abweichung von den Startwerten.";
+}
+
+/**
+ * C4: Stichprobe-Zeile — auf wie vielen abgeschlossenen Empfehlungen pro
+ * Aktion der Nachzug beruht (min_n = Mindest-Stichprobe je Aktion).
+ */
+export function thresholdSampleLine(
+  tuning: ThresholdTuning | null | undefined,
+): string | null {
+  if (!tuning?.sample) return null;
+  const { n_wait, n_now, n_elsewhere, min_n } = {
+    ...tuning.sample,
+    min_n: tuning.min_n,
+  };
+  return (
+    `Stichprobe (Mindest je Aktion: ${min_n}): ` +
+    `Warten n=${n_wait ?? "—"} · Jetzt n=${n_now ?? "—"} · ` +
+    `Woanders n=${n_elsewhere ?? "—"}`
+  );
 }

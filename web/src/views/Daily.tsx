@@ -16,7 +16,6 @@ import {
   Search,
   Server,
   ShieldCheck,
-  SlidersHorizontal,
   Star,
 } from "lucide-react";
 import { PrecisionSlider } from "../components/PrecisionSlider";
@@ -61,7 +60,8 @@ export type StripCell = {
 };
 
 export interface DailyViewProps {
-  // Präferenzen (Slider/Select lesen und schreiben)
+  // Präferenzen (C4: read-only — die Defaults werden im Einstellungen-Tab
+  // geändert; der Alltag zeigt die aktiven Werte und verlinkt dorthin)
   fuel: Fuel;
   activeCity: string;
   selectedId: string;
@@ -77,7 +77,6 @@ export interface DailyViewProps {
   tankPercent: number | null;
   setTankPercent: (v: number | null) => void;
   tankCapacity: number;
-  setTankCapacity: (v: number) => void;
   // C2: Stamm-Stationen (serverunabhängig, localStorage) — Reihenfolge und
   // Stern-Status kommen aus der Dashboard-Root, damit auch die Beleg-Erfassung
   // dieselben Pinned zuerst zeigt.
@@ -87,11 +86,7 @@ export interface DailyViewProps {
   // Fuel-Switch: data.fuel !== fuel && pending → Skeleton statt Empty
   isStaleFuel?: boolean;
   pricesPending?: boolean;
-  setLiters: (v: number) => void;
-  setConsumption: (v: number) => void;
-  setSpeed: (v: number) => void;
-  setTimeValue: (v: number) => void;
-  setDetourMode: (v: DetourMode) => void;
+  onOpenSettings: () => void;
   setSelectedId: (v: string) => void;
   setRouteAltId: (v: string) => void;
   // Stationen & Preise
@@ -158,7 +153,7 @@ export interface DailyViewProps {
   setShowVoidedFills: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 export function DailyView(props: DailyViewProps) {
-  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, setConsumption, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setDetourMode, setLiters, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, setSpeed, setTimeValue, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, setTankCapacity, pinnedIds, togglePin, pinNote, isStaleFuel, pricesPending, } = props;
+  const { activeCity, actionFeedback, autoZ, best, bestPrice, consumption, customFillOpen, customLitersStr, customPriceStr, data, dayStrip, decideRes, detourMode, difference, dueDismissed, dueEpisode, elapsed, fillDraft, fillList, fillSubmitting, fuel, gateStatus, h, handleConfirmRecommendedFill, handleCustomFill, handleDismissDue, handleIntent, handleQuickFill, handleVoidFill, liters, litersError, liveAdvice, m7Line, online, price, priceError, quickDraft, quickLitersStr, quickPriceStr, quickStation, quickStationId, refreshNow, routeAltId, routeEval, selected, selectedId, selectedIsCheapest, onOpenSettings, setCustomFillOpen, setCustomLitersStr, setCustomPriceStr, setQuickLitersStr, setQuickPriceStr, setQuickStationId, setRouteAltId, setSelectedId, setShowVoidedFills, showVoidedFills, span, speed, stationMissing, stations, statsSummaryRes, stripCells, timeValue, timeValueUsed, voidBusy, voidNote, visibleFills, voidedCount, fillsRes, tankPercent, setTankPercent, tankCapacity, pinnedIds, togglePin, pinNote, isStaleFuel, pricesPending, } = props;
   // C2: Suche/Markenfilter/Sortierung sind Ansichts-Zustand dieses Panels —
   // sie beschreiben, wonach gerade geschaut wird, nicht den Haushalt.
   const [stationQuery, setStationQuery] = useState("");
@@ -820,7 +815,7 @@ export function DailyView(props: DailyViewProps) {
           </button>
         </div>
       ) : (
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3">
           <PrecisionSlider
             id="tankPercent"
             label="Füllstand"
@@ -842,23 +837,17 @@ export function DailyView(props: DailyViewProps) {
               </button>
             }
           />
-          <PrecisionSlider
-            id="tankCapacity"
-            label="Tankgröße"
-            value={tankCapacity}
-            onChange={setTankCapacity}
-            min={20}
-            max={120}
-            step={5}
-            unit="L"
-            valueText={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
-            valueSpeech={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
-            hint={
-              <span className="mt-1 block text-[10px] text-slate-500">
-                Fahrzeugangabe — gehört zum Profil, steht auf allen Geräten.
-              </span>
-            }
-          />
+          {/* C4: Tankgröße ist ein Default — geändert wird sie im
+              Einstellungen-Tab; hier nur der aktive Wert. */}
+          <p className="mt-2 text-[10px] text-slate-500">
+            Tankgröße: {deTrimmed(tankCapacity, 0)} L —{" "}
+            <button
+              onClick={onOpenSettings}
+              className="font-semibold text-emerald-400 underline decoration-dotted underline-offset-4 hover:text-emerald-300"
+            >
+              in „Einstellungen“ ändern
+            </button>
+          </p>
         </div>
       )}
       {(() => {
@@ -1152,26 +1141,23 @@ export function DailyView(props: DailyViewProps) {
           : `So viel teurer ist deine Vergleichsstation (${selected?.name || "—"}) pro Füllung als die billigste. Umwegkosten rechnet „Rechnet sich der Umweg?“.`
       }
     />
+    {/* C4: Die Tankmenge ist ein Default — der Eingabeort ist der
+        Einstellungen-Tab; hier steht nur der aktive Wert (read-only). */}
     <div className={`${panel} p-5`}>
-      {/* E6: 1-L-Schritte am Slider, exakte Menge im Begleitfeld. */}
-      <PrecisionSlider
-        id="liters"
-        label="Deine Tankmenge"
-        icon={<SlidersHorizontal size={14} />}
-        value={liters}
-        onChange={setLiters}
-        min={10}
-        max={80}
-        step={1}
-        unit="L"
-        valueSpeech={`${liters} Liter`}
-        hint={
-          <p className="mt-2 text-[11px] text-slate-500">
-            Nur zur Berechnung. Keine Buchung, keine erfundene
-            Ersparnis.
-          </p>
-        }
-      />
+      <div className="text-xs text-slate-400">Deine Tankmenge</div>
+      <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
+        {deTrimmed(liters, 0)}{" "}
+        <span className="text-lg font-semibold text-slate-500">L</span>
+      </div>
+      <div className="text-[11px] leading-relaxed text-slate-400">
+        Nur zur Berechnung. Keine Buchung, keine erfundene Ersparnis.
+      </div>
+      <button
+        onClick={onOpenSettings}
+        className="mt-2 text-[11px] font-semibold text-emerald-400 underline decoration-dotted underline-offset-4 hover:text-emerald-300"
+      >
+        In „Einstellungen“ ändern
+      </button>
     </div>
   </div>
 
@@ -1594,94 +1580,57 @@ export function DailyView(props: DailyViewProps) {
               ohnehin an der Station vorbeikommst.
             </p>
           )}
-          <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* E6: 0,5er-Schritte am Slider, Feinwerte im Feld —
-                6,3 L/100 km war mit step=1 nicht wählbar und
-                beeinflusst jede Umweg-Rechnung. */}
-            <PrecisionSlider
-              id="consumption"
-              label="Verbrauch"
-              value={consumption}
-              onChange={setConsumption}
-              min={4}
-              max={15}
-              step={0.5}
-              unit="L/100 km"
-              valueSpeech={`${deTrimmed(consumption)} Liter pro 100 Kilometer`}
-              hint={
-                <span className="mt-1 block text-[10px] text-slate-500">
-                  4–15 L/100 km · Feld: 6,3 möglich
-                </span>
-              }
-            />
-            <label htmlFor="speed" className="text-xs text-slate-400">
-              Stadt-/Pendel-Tempo{" "}
-              <span className="font-mono font-semibold text-emerald-400">
+          {/* C4: Verbrauch, Tempo, Zeitwert und Fahrtcharakter sind
+              Defaults — der Eingabeort ist der Einstellungen-Tab. Hier
+              stehen nur die aktiven Werte, mit denen die Rechnung läuft. */}
+          <dl className="mb-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-xs text-slate-400 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+                Verbrauch
+              </dt>
+              <dd className="mt-0.5 font-mono font-semibold text-slate-200">
+                {deTrimmed(consumption)} L/100 km
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+                Tempo
+              </dt>
+              <dd className="mt-0.5 font-mono font-semibold text-slate-200">
                 {speed} km/h
-              </span>
-              <input
-                id="speed"
-                type="range"
-                min={25}
-                max={80}
-                step={5}
-                value={speed}
-                aria-valuetext={`${speed} Kilometer pro Stunde`}
-                onChange={(e) => setSpeed(Number(e.target.value))}
-                className="mt-3 w-full"
-              />
-            </label>
-            {/* E6: halbe Stufen + Feld (12,5 €/h war bisher
-                unerreichbar). 0 bleibt die Automatik. */}
-            <PrecisionSlider
-              id="timeValue"
-              label="Zeitwert"
-              value={timeValue}
-              onChange={setTimeValue}
-              min={0}
-              max={30}
-              step={0.5}
-              unit="€/h"
-              valueText={
-                timeValue > 0
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+                Zeitwert
+              </dt>
+              <dd className="mt-0.5 font-mono font-semibold text-slate-200">
+                {timeValue > 0
                   ? `${deTrimmed(timeValue)} €/h`
-                  : `Auto (${deTrimmed(timeValueUsed)} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`
-              }
-              valueSpeech={
-                timeValue > 0
-                  ? `${deTrimmed(timeValue)} Euro pro Stunde`
-                  : `Automatik ${deTrimmed(timeValueUsed)} Euro pro Stunde`
-              }
-              hint={
-                <span className="mt-1 block text-[10px] text-slate-500">
-                  0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10
-                  €/h.
-                </span>
-              }
-            />
-            <label
-              htmlFor="detourMode"
-              className="text-xs text-slate-400"
+                  : `Auto (${deTrimmed(timeValueUsed)} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+                Fahrtcharakter
+              </dt>
+              <dd className="mt-0.5 font-mono font-semibold text-slate-200">
+                {detourMode === "onroute"
+                  ? "Auf dem Weg"
+                  : "Extrafahrt (Hin & Rück)"}
+              </dd>
+            </div>
+          </dl>
+          <p className="mb-5 text-[10px] text-slate-500">
+            Alle Werte sind Defaults —{" "}
+            <button
+              onClick={onOpenSettings}
+              className="font-semibold text-emerald-400 underline decoration-dotted underline-offset-4 hover:text-emerald-300"
             >
-              Fahrtcharakter
-              <select
-                id="detourMode"
-                aria-label="Fahrtcharakter"
-                value={detourMode}
-                onChange={(e) =>
-                  setDetourMode(e.target.value as DetourMode)
-                }
-                className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
-              >
-                <option value="onroute">
-                  Auf dem Weg (nur Mehrweg)
-                </option>
-                <option value="dedicated">
-                  Extrafahrt (Hin & Rück)
-                </option>
-              </select>
-            </label>
-          </div>
+              in „Einstellungen“ ändern
+            </button>
+            .
+          </p>
           <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
             {serverAlts.map((alt) => {
               // Server ist Quelle — wenn Thresholds noch nicht da, kein Verdict-Label erfinden.
