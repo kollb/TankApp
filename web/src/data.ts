@@ -1930,6 +1930,25 @@ export function currentPrice(
     : null;
 }
 
+/**
+ * Stations-Labor: Fenster für den Preisverlauf — die letzten ``spanHours``
+ * Stunden in **Wandzeit**.
+ *
+ * Die x-Koordinaten der Punkte sind Epoch-Millisekunden (``Date.parse`` der
+ * Server-Zeitstempel). Das Fenster muss daher ebenfalls Epoch-Millisekunden
+ * sein (`Date.now()`), niemals Seitenlaufzeit (`performance.now()`): Letztere
+ * zählt Sekunden seit Seitenaufruf und läge mit ~10³ immer „in der
+ * Vergangenheit“ von echtem Datenbestand (~10¹²) — jeder Punkt wäre
+ * fensterfremd und das Labor renderte „keine Daten“, obwohl 108 Preise
+ * vorliegen (Regressionsfall 13.09.2026).
+ */
+export function historyWindowMs(
+  spanHours: number,
+  nowMs: number = Date.now(),
+): [number, number] {
+  return [nowMs - spanHours * 3600000, nowMs];
+}
+
 // Geschlossen/fehlend trennt die Linie. Offene Preise bleiben stehen
 // (Treppenstufe), bis die nächste Meldung kommt — Polling-Pausen sind
 // kein unbekannter Preis.

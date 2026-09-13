@@ -88,8 +88,6 @@ Stationen“ war damit dauerhaft leer.
   kann).
 - `docs/BETRIEB.md`: Messprotokoll „Ressourcen während Phase B messen (B11)“
   — die ausstehende NAS-Messung als Copy-Paste-Block statt als Erinnerungsnotiz.
-- `tests/test_app.py`: Format mit `ruff format` nachgezogen (0.16.7 bricht
-  zwei Bedingungen anders um; keine inhaltliche Änderung).
 
 ### Gemessen
 
@@ -111,12 +109,34 @@ Reihenfolge, alle Stationsfelder (`delta_ct`, `delta_ew_ct`, `ci_lo`, `ci_hi`,
 Wo das Gate bisher alles ausgeschlossen hat, gibt es keine „alten“ Zahlen, die
 sich verschieben könnten — das Ranking erscheint dort zum ersten Mal.
 
-> **NAS-Messung steht aus — hier bewusst.** Batch 0 hat laut Plan keine
-> Laufzeitwirkung („keine, aber Entscheidungsgrundlage“), deshalb gibt es für
-> diese Version keine vorher/nachher-Laufdauer aus dem Job-Log. Offen bleibt
-> **B11 auf der Zielhardware**: `docker top tankapp-web-app-1` und
-> `docker stats --no-stream` **während Phase B** (nicht im Leerlauf), Protokoll
-> in [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11).
+**Beleg von der Zielhardware (Job-Log 13.09.2026, Stand 0.24.1 — dieser Fix
+war dort noch nicht deployed):** drei Läufe, in jedem dauert die Phase
+„Selektion (δ̂)“ **0,13–0,15 s** (07:52:38.343→.491, 10:15:44.663→.793,
+10:50:14.125→.257). Ein δ̂-Ranking für 20 Stationen mit B = 2000 rechnet nicht
+in einer Zehntelsekunde — das ist der Bail-out des Gates, und der Nachbau am
+denselben Datenstand (20 Stationen, 2 Städte, 25 051 Archiv-Ereignisse,
+10 748 Live-Zeilen) liefert mit dem Stand vor diesem Fix **0 Stationen in
+0,05 s** samt Grund „nach Coverage ≥85% nur 0 Station(en) übrig“.
+
+**Was der Fix kostet:** dieselbe Selektion mit echtem Ranking (20 Stationen,
+2 Städte, B = 2000) dauert **1,5 s** statt 0,05 s — gemessen am NAS-Datenstand.
+Gegen die 1,4–1,7 min Laufzeit des Modell-Laufs ist das vernachlässigbar, aber
+es ist nicht null, und es steht hier, weil dies ein Laufzeit-Bündel ist.
+
+> **Batch 0 hat planmäßig keine Laufzeitwirkung** („keine, aber
+> Entscheidungsgrundlage“) — die einzige messbare Folge ist die eine
+> tatsächlich gerechnete Selektion (+1,5 s). Aus demselben Job-Log lässt sich
+> aber die bisher ausstehende Gegenmessung für **B15/B16 (0.20.0)** und
+> **B17 (0.22.0)** ablesen: **1,4–1,7 min** je Lauf (07:52: 1,7 min,
+> 10:15: 1,5 min, 10:50: 1,4 min) statt 10,3 min am 12.09.2026 — Backtest
+> komplett aus dem Tages-Cache („19 aus Tages-Cache, 0 neu gerechnet“),
+> Phase B nur noch ~50 s. Ein Kaltstart des Caches (erster Lauf des Tages)
+> ist in diesem Log nicht enthalten. Nachgetragen in TODO.md, Batch 1 und 3.
+>
+> **Weiter offen: B11 auf der Zielhardware** — `docker top tankapp-web-app-1`
+> und `docker stats --no-stream` **während Phase B** (nicht im Leerlauf),
+> Protokoll in
+> [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11).
 > Erwartet wird keine Beschleunigung, sondern der Beleg, ob 4 Worker ×
 > pandas in `shm_size: 256m` und 4,2 Gi verfügbarem Host-Speicher passen.
 
@@ -138,6 +158,29 @@ sich verschieben könnten — das Ranking erscheint dort zum ersten Mal.
 - `python -m pytest -q`: **670 grün** (vorher 662); `npm --prefix web test`:
   **241 grün**; `npm --prefix web run build`: grün; `ruff check` +
   `ruff format --check`: grün.
+
+## [0.24.1] – 2026-09-13
+
+**Regressionsfix Stations-Labor** — der Preisverlauf im Werkstatt-Tab
+zeigte trotz vorhandener Polling-Beobachtungen immer „keine Daten“.
+
+### Behoben
+
+- **Stations-Labor 24 h / 3 Tage / 7 Tage: „keine Daten“ trotz N Preisen.**
+  Der Verlaufs-Chart schnitt die Punkte gegen ein Fenster aus
+  `performance.now()` (Seitenlaufzeit, Sekunden, ~10³) — die
+  Punktkoordinaten sind aber Epoch-Millisekunden aus den
+  Server-Zeitstempeln (`Date.parse`, ~10¹²). Jeder echte Punkt lag damit
+  vor dem Fenster; der Chart renderte „keine Daten“, während die
+  Datenreichweite-Notiz (serverseitig gezählt) die Preise korrekt
+  auswies (im Regressionsfall: 108 Preise, Sa 12.09. 12:25 – So 13.09.
+  12:15 Uhr). Das Fenster kommt jetzt aus `historyWindowMs()`
+  (`web/src/data.ts`) — Wandzeit (`Date.now()`) bei der Länge des
+  gewählten Zeitraums. Der Seitenlaufzeit-`now`-State bleibt erhalten und
+  dient weiterhin nur dem Datenalter (elapsed).
+- Regressionstest `web/src/stations-lab-window.test.ts`: Fensterende in
+  Wandzeit (Epoch-Millisekunden), Beobachtungspunkte des letzten Tags im
+  24-h-Fenster, zwei Tage alte Punkte erst im 72-h-Fenster.
 
 ## [0.24.0] – 2026-09-13
 
