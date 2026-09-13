@@ -158,7 +158,9 @@ test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", 
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/light/);
   // Zurück auf den Default (dunkles Slate), damit andere Tests nicht
-  // von dieser Ansicht abhängen.
+  // von dieser Ansicht abhängen. Nach dem Reload startet die App im
+  // Alltagstabs — der Theme-Button liegt im Einstellungen-Tab.
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
   await page
     .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })
     .click();
