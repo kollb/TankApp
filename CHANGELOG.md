@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.28.0] – 2026-09-13
+
+### Hinzugefügt
+
+- **C3 — Karten-/Umgebungsansicht für F2 („Hier oder woanders?“):** Interaktive
+  OpenStreetMap-Kartenansicht (`StationMap`) mit Server-Netto-€-Pins (`verdict`,
+  `detour_km_est`) in F2 („Hier oder woanders?“). Pins zeigen die vom Server
+  berechnete Netto-Ersparnis/Nachteil sowie die Vergleichsstation.
+- **Ehrlicher Offline/Luftlinien-Radar-Fallback:** Bei fehlendem Netz, Tile-Ladefehlern
+  oder per Umschalter schaltet die Ansicht nahtlos auf ein leichtgewichtiges
+  Luftlinien-Radar um, ohne Anfragen zu blockieren oder Client-seitig Haversine-€
+  zu errechnen.
+
 ## [0.27.0] – 2026-09-13
 
 ### Hinzugefügt

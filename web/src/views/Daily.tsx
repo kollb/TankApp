@@ -21,6 +21,7 @@ import {
 import { PrecisionSlider } from "../components/PrecisionSlider";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
+import { StationMap } from "../components/StationMap";
 import { Badge, Empty, Metric, panel } from "../components/ui";
 import {
   centPerLiter,
@@ -796,6 +797,18 @@ export function DailyView(props: DailyViewProps) {
               ))}
             </div>
           )}
+
+          {/* C3: Karten-/Umgebungsansicht für F2 mit Server-Netto-€-Pins */}
+          <div className="mt-3">
+            <StationMap
+              stations={stations}
+              selectedId={selected?.station_id || selectedId}
+              setSelectedId={setSelectedId}
+              alternatives={rec.alternatives_nearby}
+              primaryStation={p.station}
+              onNavigate={(url) => handleIntent("navigate", url)}
+            />
+          </div>
 
           {/* F4: Eine klare Handlung. Die Empfehlung ist primär, neutrale
               Intents bleiben sekundär. Ein bewusster Widerspruch bleibt
