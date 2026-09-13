@@ -508,30 +508,63 @@ setzt und der Host 4,2 Gi verfügbar hat — **ungetestet**. Die Leerlaufwerte a
 Prozess-Pool überhaupt steht.
 
 Gemessen wird **während Phase B** — der Phase „Modelle fitten + Backtest“, im
-Job-Log an den `Task n/80`-Zeilen zu erkennen (zuletzt 9,4 min lang, also genug
-Zeit für beide Befehle). `ps` fehlt im Image (`python:3.14-slim`); die
-Prozessliste kommt über `docker top`.
+Job-Log an den Zeilen `Modelle fitten + Backtest n/m` zu erkennen. `ps` fehlt
+im Image (`python:3.14-slim`); die Prozessliste kommt über `docker top`.
+
+**Welches Fenster? Warm und kalt sind seit B17 (0.22.0) zweierlei.** Der
+Tages-Cache des Backtests gilt für den ganzen lokalen Tag: sein Fingerabdruck
+enthält den letzten vollständigen Tag (`end_local`, siehe
+`app/model_jobs.py::_backtest` und `app/backtest_cache.py::fingerprint`) — die
+Reihe wird dort hart abgeschnitten, untertägige Polls ändern ihn nicht.
+
+| Lauf | Backtest | Phase B | Wann |
+|---|---|---|---|
+| **Kalt** | 21-Tage-Backtest je Station neu | ~9 min (566 s am 12.09.2026) | erster Lauf des lokalen Tages |
+| **Warm** | „n aus Tages-Cache, m neu gerechnet“ | ~40 s (13.09.2026: 11:22:28 → 11:23:07) | jeder weitere Lauf am selben Tag |
+
+Weil `models` nach B18 (0.21.0) nur 1×/Tag läuft
+(`INTERVALS["models"] = 86400`), ist **jeder Planlauf ein Kaltlauf** — warm
+werden nur zusätzliche Läufe am selben Tag (ein Container-Recreate startet
+sofort, s. u.). Für B11 den **Kaltlauf** nehmen: längeres Fenster und zugleich
+der Speicher-Worst-Case. Kalt erzwingen — im Container liegt das
+Datenverzeichnis unter `/data`, auf dem Host dort, wohin `tankapp.py nas-up`
+es gemappt hat:
 
 ```bash
-# 0) Läuft gerade Phase B? Task-Zeilen im Minutentakt = ja
-docker logs --tail 5 tankapp-web-app-1
-
-# 1) Prozessliste: erwartet 1 Master + 4 Worker (TANKAPP_MODEL_WORKERS=0)
-docker top tankapp-web-app-1
-
-# 2) Speicher/CPU im selben Moment, zweimal im Abstand von ~60 s
-docker stats --no-stream tankapp-web-app-1
-free -h
+# einmalig: Cache leeren (darf jederzeit gelöscht werden)
+docker exec tankapp-web-app-1 sh -c 'rm -rf /data/runtime/engine/backtest-cache'
+# oder dauerhaft: TANKAPP_BACKTEST_CACHE=0 in ops/nas/app/compose.yml
 ```
 
-Notieren (vier Zahlen, mehr braucht die Entscheidung nicht):
+**Nicht von Hand tippen, sondern samplen.** Im Warm-Lauf dauert Phase B nur
+~40 s — da kommt der zweite Befehl zu spät. `ops/nas/measure-phase-b.sh`
+schreibt alle 5 s eine Zeile und rechnet am Ende selbst zusammen:
+
+```bash
+# Aufruf: Container, Intervall, Dauer in Sekunden (0 = bis Strg-C)
+ops/nas/measure-phase-b.sh tankapp-web-app-1 5 0
+# Sammler starten → Modell-Lauf auslösen → nach „beendet:“ Strg-C
+```
+
+Wer es doch von Hand macht (Kaltlauf, ~9 min Fenster — ein Durchgang genügt):
+
+```bash
+docker logs --tail 5 tankapp-web-app-1             # Phase B läuft?
+docker top tankapp-web-app-1                       # Python-Prozesse
+docker stats --no-stream tankapp-web-app-1         # MEM USAGE / MEM % / CPUS
+docker exec tankapp-web-app-1 df -h /dev/shm       # shm_size: 256m — wie voll?
+free -h                                            # Host verfügbar
+```
+
+Notieren (fünf Zahlen, mehr braucht die Entscheidung nicht):
 
 | Größe | Woher | Entscheidet |
 |---|---|---|
-| Anzahl Python-Prozesse | `docker top` | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23) |
+| Anzahl Python-Prozesse | `docker top` | ob der Pool wirklich mit 4 Workern läuft (Gegenprobe zu `TANKAPP_MODEL_WORKERS=1`, B23); bei `forkserver` kommen Forkserver + Resource-Tracker dazu |
 | `MEM USAGE` des Containers | `docker stats` | ob 4 × pandas in 4,2 Gi verfügbarem Host-Speicher passen |
 | `MEM %` + `free -h` verfügbar | `docker stats`, `free -h` | ob Swap/OOM droht (Swap ist 0) |
 | `CPUS` | `docker stats` | ob 4 Worker ~400 % erreichen oder sich behindern |
+| `/dev/shm` belegt | `df -h /dev/shm` **im Container** | ob 256 MiB reichen — der Speicherwert des Containers beantwortet das nicht |
 
 Ergebnis in [TODO.md](../TODO.md) bei **B11** eintragen und, falls `shm_size`
 erhöht werden muss, in `ops/nas/app/compose.yml` ändern. Erwartet wird **keine**
