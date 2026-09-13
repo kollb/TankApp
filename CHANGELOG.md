@@ -4,6 +4,29 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.24.1] – 2026-09-13
+
+**Regressionsfix Stations-Labor** — der Preisverlauf im Werkstatt-Tab
+zeigte trotz vorhandener Polling-Beobachtungen immer „keine Daten“.
+
+### Behoben
+
+- **Stations-Labor 24 h / 3 Tage / 7 Tage: „keine Daten“ trotz N Preisen.**
+  Der Verlaufs-Chart schnitt die Punkte gegen ein Fenster aus
+  `performance.now()` (Seitenlaufzeit, Sekunden, ~10³) — die
+  Punktkoordinaten sind aber Epoch-Millisekunden aus den
+  Server-Zeitstempeln (`Date.parse`, ~10¹²). Jeder echte Punkt lag damit
+  vor dem Fenster; der Chart renderte „keine Daten“, während die
+  Datenreichweite-Notiz (serverseitig gezählt) die Preise korrekt
+  auswies (im Regressionsfall: 108 Preise, Sa 12.09. 12:25 – So 13.09.
+  12:15 Uhr). Das Fenster kommt jetzt aus `historyWindowMs()`
+  (`web/src/data.ts`) — Wandzeit (`Date.now()`) bei der Länge des
+  gewählten Zeitraums. Der Seitenlaufzeit-`now`-State bleibt erhalten und
+  dient weiterhin nur dem Datenalter (elapsed).
+- Regressionstest `web/src/stations-lab-window.test.ts`: Fensterende in
+  Wandzeit (Epoch-Millisekunden), Beobachtungspunkte des letzten Tags im
+  24-h-Fenster, zwei Tage alte Punkte erst im 72-h-Fenster.
+
 ## [0.24.0] – 2026-09-13
 
 **C4** — Einstellungen-Tab zentral: alle Defaults an einer Stelle statt
