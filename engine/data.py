@@ -234,6 +234,38 @@ def scheduled(index: pd.DatetimeIndex, cfg: Config) -> np.ndarray:
     return np.asarray((hours >= cfg.poll_start) & (hours < cfg.poll_end))
 
 
+def local_day_hours(day: pd.Timestamp) -> float:
+    """Wanduhr-Länge eines lokalen Kalendertags in Stunden (23, 24 oder 25).
+
+    ``day`` ist ein zeitzonenbewusster, auf Mitternacht normalisierter
+    Zeitpunkt (wie ``index.tz_convert(tz).normalize()``). Die Länge entsteht
+    aus den beiden lokalen Mitternächten in UTC — an Zeitumstellungen 23 h
+    (Frühjahr, Stunde fehlt) bzw. 25 h (Herbst, Stunde doppelt). Genau diese
+    Tage bricht die Tagesblock-Logik (Vortages-Anker, 288 Slots je Tag), und
+    genau diese Tage weist der Backtest aus (H5).
+
+    Nicht definiert für Zeitzonen, deren Umstellung auf die lokale Mitternacht
+    fällt: dort existiert die normalisierte Mitternacht nicht. Die Engine
+    rechnet mit ``Europe/Berlin`` (Umstellung 02:00/03:00), dafür ist die
+    Funktion exakt.
+    """
+    start = day.tz_convert("UTC")
+    end = (day + pd.DateOffset(days=1)).tz_convert("UTC")
+    return float((end - start).total_seconds() / 3600.0)
+
+
+def dst_transition_days(days) -> list[pd.Timestamp]:
+    """Die Tage aus ``days``, die keine 24 h Wanduhr haben — sortiert und unique.
+
+    Rein auswählend: die Tage bleiben im Backtest enthalten und werden nur
+    gekennzeichnet (H5). Ohne Zeitumstellung ist die Liste leer.
+    """
+    found = {
+        day.normalize() for day in days if local_day_hours(day.normalize()) != 24.0
+    }
+    return sorted(found)
+
+
 def describe(series: PriceSeries, cfg: Config) -> dict:
     frame = series.frame
     active = frame.loc[scheduled(frame.index, cfg)]

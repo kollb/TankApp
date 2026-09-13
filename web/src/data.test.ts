@@ -10,6 +10,7 @@ import {
   dayAfterLabel,
   deTrimmed,
   detourEconomics,
+  dstLabel,
   detourVerdict,
   epochLabel,
   FILL_LIMITS,
@@ -984,5 +985,33 @@ describe("B11: Fehlercode für belegten Feedback-Store", () => {
     expect(messages.store_locked).toBeTruthy();
     expect(messages.store_locked).toContain("erneut versuchen");
     expect(messages.store_locked).not.toBe(messages.invalid_query);
+  });
+});
+
+
+describe("H5: DST-Ausweisung im Backtest", () => {
+  it("nennt Umstellungstage mit Wanduhr-Länge und Anker-Lücke", () => {
+    const label = dstLabel({
+      policy: "flagged_not_excluded",
+      days: ["2026-03-29"],
+      day_hours: { "2026-03-29": 23 },
+      anchors_missing_nat: 12,
+    });
+    expect(label).toContain("29.03.2026 (23 h)");
+    expect(label).toContain("12 Vortages-Anker ohne Wanduhr-Zeitpunkt");
+    expect(label).toContain("bleiben im Backtest");
+  });
+
+  it("schweigt ohne Bericht und ohne Umstellungstage", () => {
+    expect(dstLabel(null)).toBeNull();
+    expect(dstLabel(undefined)).toBeNull();
+    expect(dstLabel({ days: [] })).toBeNull();
+  });
+
+  it("behauptet nichts über die Behandlung, wenn die Politik unbekannt ist", () => {
+    const label = dstLabel({ days: ["2026-10-25"], day_hours: { "2026-10-25": 25 } });
+    expect(label).toContain("25.10.2026 (25 h)");
+    expect(label).not.toContain("bleiben im Backtest");
+    expect(label).not.toContain("Vortages-Anker");
   });
 });

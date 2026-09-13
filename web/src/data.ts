@@ -209,6 +209,21 @@ export type Forecast = DataReach & {
     mase: number | null;
     picp95_pct: number | null;
   };
+  /** H5: Zeitumstellung im Prüfzeitraum — ausgewiesen statt still. */
+  dst?: DstReport | null;
+};
+
+export type DstReport = {
+  timezone?: string;
+  policy?: string;
+  policy_note?: string;
+  days?: string[];
+  day_hours?: Record<string, number>;
+  folds?: number;
+  folds_scored?: number;
+  anchors_missing_nat?: number;
+  anchors_outside_series?: number;
+  mase_none_reasons?: string[];
 };
 
 export type Heatmap = {
@@ -2616,6 +2631,34 @@ export function dayAfterLabel(
   if (!day) return null;
   const ms = Date.UTC(day[0], day[1] - 1, day[2] + days);
   return utcDayLabel(ms);
+}
+
+// H5: Ein Satz zur Zeitumstellung im Backtest-Prüfzeitraum. null = nichts
+// anmerken (kein Bericht oder keine 23/25-h-Tage) — nie „keine DST-Tage“
+// behaupten, wenn der Bericht fehlt.
+export function dstLabel(dst?: DstReport | null): string | null {
+  const days = (dst?.days ?? []).filter((day) => typeof day === "string");
+  if (!dst || !days.length) return null;
+  const described = days
+    .map((day) => {
+      const hours = dst.day_hours?.[day];
+      const stamp = Date.parse(`${day}T00:00:00Z`);
+      const calendar = Number.isFinite(stamp) ? utcDayLabel(stamp) : day;
+      return hours === 23 || hours === 25
+        ? `${calendar} (${deTrimmed(hours, 0)} h)`
+        : calendar;
+    })
+    .join(", ");
+  const anchors = dst.anchors_missing_nat ?? 0;
+  const anchorNote =
+    anchors > 0
+      ? ` ${anchors} Vortages-Anker ohne Wanduhr-Zeitpunkt fallen aus der MASE-Skala.`
+      : "";
+  const policyNote =
+    dst.policy === "flagged_not_excluded"
+      ? " Die Tage bleiben im Backtest und sind je Tag gekennzeichnet."
+      : "";
+  return `Zeitumstellung im Prüfzeitraum: ${described}.${policyNote}${anchorNote}`;
 }
 
 // Kalenderblatt dd.MM.yyyy (hier bewusst UTC: der Wert kommt aus dayAfterLabel

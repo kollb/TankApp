@@ -300,3 +300,90 @@ def test_backtest_report_has_asym_criterion_and_threshold(series, cfg):
     text = markdown_report(report)
     assert "τ=0,75 asym" in text
     assert "pinball_asym_better_than_naive" in text
+
+
+# H5: DST-Tage werden ausgewiesen (gekennzeichnet), nicht ausgeschlossen und
+# nicht stillschweigend zu "nicht bestimmbar".
+def _dst_observations(observations):
+    """Reihe über die Frühjahrs-Umstellung 2026-03-29 (23-h-Tag)."""
+    raw = observations(days=35, start="2026-03-15")
+    return raw
+
+
+def test_backtest_flags_dst_day_without_changing_the_fold_count(observations, cfg):
+    raw = _dst_observations(observations)
+    data, _ = normalize_observations(raw, cfg)
+    report, _ = run_backtest(
+        prepare_series(data, cfg), cfg, days=21, until="2026-04-05"
+    )
+
+    dst = report["dst"]
+    assert dst["timezone"] == cfg.timezone
+    assert dst["policy"] == "flagged_not_excluded"
+    assert dst["days"] == ["2026-03-29"]
+    assert dst["day_hours"] == {"2026-03-29": 23.0}
+    assert dst["folds"] == 1
+    assert dst["folds_scored"] == 1
+    # Die betroffenen 02:xx-Slots des Folgetags haben keinen Wanduhr-Anker.
+    assert dst["anchors_missing_nat"] >= 12
+    # Die Umstellung macht die Skala nicht undefinierbar — MASE bleibt eine Zahl.
+    assert report["metrics"]["mase"] is not None
+    assert report["metrics"]["mase_none_reason"] is None
+    assert dst["mase_none_reasons"] == []
+
+    # Genau ein Fold trägt die Kennzeichnung, die übrigen bleiben 24-h-Tage.
+    flagged = [fold for fold in report["folds"] if fold["dst_day"]]
+    assert len(flagged) == 1
+    assert flagged[0]["local_day"] == "2026-03-29"
+    assert flagged[0]["local_day_hours"] == 23.0
+    assert all(
+        fold["local_day_hours"] == 24.0
+        for fold in report["folds"]
+        if not fold["dst_day"]
+    )
+
+    # Die fehlenden Anker liegen nicht am Umstellungstag selbst, sondern am
+    # Folgetag: der 02:xx-Slot des 30.03. zeigt auf den 29.03. zurück, an dem
+    # es diese Wanduhr-Zeit nicht gibt. Alle Fits mit diesem Fenster zählen mit.
+    per_fold = [fold.get("mase_scale_anchors_nat") or 0 for fold in report["folds"]]
+    assert sum(per_fold) == dst["anchors_missing_nat"] >= 12
+    assert any(count >= 12 for count in per_fold)
+    assert per_fold[0] == 0  # erster Fold: Fenster endet vor der Umstellung
+
+
+def test_backtest_reports_dst_section_in_markdown(observations, cfg):
+    raw = _dst_observations(observations)
+    data, _ = normalize_observations(raw, cfg)
+    report, _ = run_backtest(
+        prepare_series(data, cfg), cfg, days=21, until="2026-04-05"
+    )
+    text = markdown_report(report)
+    assert "## Zeitumstellung (DST)" in text
+    assert "2026-03-29" in text
+    assert "Vortages-Anker ohne Wanduhr-Zeitpunkt (DST)" in text
+
+
+def test_backtest_without_dst_in_window_says_so(series, cfg):
+    report, _ = run_backtest([series], cfg, days=2, until="2026-08-01")
+    assert report["dst"]["days"] == []
+    assert report["dst"]["folds"] == 0
+    assert report["dst"]["anchors_missing_nat"] == 0
+    assert all(fold["dst_day"] is False for fold in report["folds"])
+
+
+def test_mase_none_names_its_reason_instead_of_silent_none():
+    empty = metrics(pd.DataFrame())
+    assert empty["mase"] is None and empty["mase_none_reason"] == "no_scored_points"
+    rows = pd.DataFrame(
+        {
+            "actual": [1.70],
+            "q50": [1.72],
+            "naive": [1.70],
+            "q025": [1.60],
+            "q975": [1.80],
+            "mase_scale": [np.nan],
+        }
+    )
+    undefined = metrics(rows)
+    assert undefined["mase"] is None
+    assert undefined["mase_none_reason"] == "naive_scale_undefined"

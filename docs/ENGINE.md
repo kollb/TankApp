@@ -583,6 +583,21 @@ Konfidenz-Badge (grün ≥ 93 %, gelb ≥ 90 %, rot < 90 %, nominal 95 %;
 weniger als 72 Punkte im Fenster = keine Aussage) — Grundlage des Güte-Gates
 in der Entscheidung (Konzept §3.3.3/§3.4/§4.4).
 
+**Zeitumstellung im Prüfzeitraum (H5):** Ein Zeitraum kann 23-h- und 25-h-Tage
+enthalten (Frühjahr/Herbst). Sie bleiben im Backtest — ausgeschlossen oder auf
+24 h gerechnet wird nichts, damit Kennzahlen und Fold-Zahl vergleichbar
+bleiben. Stattdessen wird jeder solche Tag ausgewiesen: je Fold `dst_day` und
+`local_day_hours`, im `report.json` der Block `dst` (`days`, `day_hours`,
+`folds`, `folds_scored`, `anchors_missing_nat`, `anchors_outside_series`,
+`mase_none_reasons`), im `report.md` der Abschnitt „Zeitumstellung (DST)“. Die
+saisonale MASE-Skala verliert an diesen Tagen ihre 02:xx-Vortagesanker
+(lokal nicht existent bzw. doppeldeutig → `NaT`); die Zahl steht als
+`anchors_missing_nat` im Bericht, statt die Stichprobe still zu verkleinern.
+Weil das Poll-Fenster 06–24 Uhr die 02:xx-Stunden nicht enthält, ändert das die
+Kennzahlen im Regelfall nicht. Bleibt eine Skala trotzdem leer, ist
+`mase: null` mit `mase_none_reason` (`no_scored_points`, `naive_scale_undefined`)
+statt eines stillen Nullwerts ausgewiesen.
+
 **Feiertags-Dummy (§3.2):** Mit `--city-subdivs "Frankfurt:HE;Gütersloh:NW"`
 bekommt das Strukturmodell den gepoolten Feiertags-Dummy je Bundesland
 (Paket `holidays` aus `engine/requirements.txt`); ohne Angabe trägt der

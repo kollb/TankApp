@@ -365,7 +365,7 @@ liefert ausschließlich das NAS; dort bleibt die Bezeichnung unverändert.
 | `NAS_HEALTH_URL` | – | komplette Health-URL (überschreibt IP/Port) |
 | `FALLBACK_GUI_PORT` | `8000` | Port RP2-GUI |
 | `POLL_DIR` | `/dev/shm/tankapp` | Collector-Ringpuffer |
-| `CACHE_DIR` | `/tmp/tankapp_cache` | Prognose-Cache |
+| `CACHE_DIR` | `/tmp/tankapp_cache` | Prognose-Cache — bewusst flüchtig, wird **nicht** auf die SD-Karte gespiegelt (G4) |
 | `STATION_META` | – | Pfad zu polling.json (sonst Standardorte) |
 | `FORCE_FALLBACK` | – | `1` = Proxy deaktiviert, immer Fallback |
 
@@ -460,7 +460,15 @@ Der RP2 läuft auf einer SD-Karte; Schreibzugriffe sind deshalb begrenzt.
 | `/tmp/tankapp_cache/last_forecasts.json` | atomar überschrieben, feste Größe | keine |
 | `/dev/shm/tankapp/*.jsonl` | Ringpuffer im RAM, `RING_DAYS=7` | keine SD-Schreiblast; Inhalt liegt zusätzlich in InfluxDB |
 | journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | `SystemMaxUse=50M` + `SystemMaxFileSize=10M` durch das Drop-in [rp2/journald.conf.d/50-tankapp-journal.conf](../rp2/journald.conf.d/50-tankapp-journal.conf) | Einmal installieren (siehe [Journal-Größe begrenzen](#journal-größe-begrenzen-sd-karte-schonen)); Zwischendurch `journalctl --vacuum-size=50M` (Fix G2, Version 0.11.0) |
-| `/tmp/tankapp_cache` nach Reboot | `/tmp` ist flüchtig → bis zum ersten erfolgreichen Fetch zeigt der Fallback ehrlich „keine Prognose“ | offen (TODO G4); Preise aus `/dev/shm` sind nach tmpfs-Mount ebenfalls erst nach dem nächsten Poll da |
+| `/tmp/tankapp_cache` nach Reboot | `/tmp` ist flüchtig → bis zum ersten erfolgreichen Fetch zeigt der Fallback ehrlich „keine Prognose“ (`CACHE_REBOOT_HINT`) | **entschieden (G4, 0.29.0): bleibt so** — der häufigere SD-Schreibzugriff wäre teurer als ein in Minuten wieder gefüllter Puffer; die Startzeile von `cache_forecasts.py` (`boot_state_note()`) nennt den Zustand in `cache.log` und `systemctl status`. Preise aus `/dev/shm` sind nach tmpfs-Mount ebenfalls erst nach dem nächsten Poll da |
+
+**G4-Entscheidung (13.09.2026, Version 0.29.0):** Der Prognose-Cache bleibt im
+flüchtigen `/tmp`. Ein Persistieren auf die SD-Karte würde bei jedem Abruf (alle
+5 Minuten) schreiben — der Preis dafür ist höher als der Nutzen eines Puffers,
+der nach einem Neustart in wenigen Minuten wieder gefüllt ist. Statt zu
+spiegeln, erklärt die Oberfläche den Zustand: `CACHE_REBOOT_HINT` im
+F1-Bereich, im Prognose-Raster und in der API-Fehlermeldung, dazu
+`boot_state_note()` beim Start des Cachers.
 
 Datenverlust-Fenster: Der RAM-Puffer überbrückt **7 Tage** NAS-Ausfall
 (`RING_DAYS=7`); ist das NAS länger offline, verwirft `ring_prune` noch nicht

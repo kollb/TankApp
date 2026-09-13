@@ -33,6 +33,18 @@ Damit ist die Antwort: **Nein, alles muss nicht 7 Tage im RAM liegen.** Nach erf
 
 `ring_prune` verwirft auch **ungesyncte** Snapshots älter als 7 Tage — diese Polls sind dann dauerhaft weg (kein Nachholen aus RAM). Das Tankerkönig-Archiv (national, Tagesdateien) wird beim nächsten Archiv-Sync nachgeholt, enthält aber nicht die eigenen 5-Minuten-Polls. Für geplanten Langausfall: `size=` vergrößern und `RING_DAYS` erhöhen.
 
+### Und der Prognose-Cache des RP2?
+
+`/tmp/tankapp_cache` (Env `CACHE_DIR`) liegt bewusst **nicht** auf der SD-Karte
+und wird auch nicht dorthin gespiegelt: Der Cacher fragt alle 5 Minuten ab, ein
+Spiegel würde also laufend schreiben — mehr Verschleiß als Nutzen für einen
+Puffer, der nach einem Neustart in wenigen Minuten wieder gefüllt ist
+(Entscheidung G4, Version 0.29.0; Details in [RP2.md](RP2.md#wartung-logs-journal-sd-karte)).
+Nach einem Pi-Reboot ist der Cache leer, und die Fallback-GUI sagt das auch:
+`CACHE_REBOOT_HINT` („Nach einem Neustart ist der Prognose-Puffer leer …“) steht
+im F1-Bereich, im Prognose-Raster und in der API-Fehlermeldung; die Startzeile
+`boot_state_note()` protokolliert denselben Zustand in `cache.log`.
+
 ## 2) NAS: Was ist persistent und wo liegt es?
 
 Auf Unraid typisch:

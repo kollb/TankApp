@@ -4,6 +4,87 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.29.0] – 2026-09-13
+
+**Batch 6 (Bedienung) und Batch 7 (Kanten) in einem PR.** Keine neuen
+Fachzahlen, keine neue Fläche: die Oberfläche wird am Handy bedienbar (C5/C8),
+und zwei Randfälle bekommen eine dokumentierte Entscheidung statt einer
+offenen Frage (G4 Cache, H5 Zeitumstellung).
+
+### Hinzugefügt
+
+- **C8 — Install-/„Zum Homescreen“-Hinweis:** `components/InstallHint.tsx` +
+  `install.ts`. Wo der Browser es anbietet, erscheint ein echter
+  Installationsknopf (`beforeinstallprompt`, `appinstalled`); auf iOS-Safari,
+  das kein solches Ereignis kennt, der Handgriff „Teilen → Zum Home-Bildschirm“.
+  „Nicht jetzt“ schweigt 30 Tage (localStorage), in der installierten App und
+  ohne Installationsweg erscheint nichts. Das Manifest erlaubt jetzt beide
+  Ausrichtungen (`orientation: "any"`).
+- **C8 — Querformat am Handy:** eigener Media-Block
+  (`orientation: landscape and (max-height: 620px)`): Einleitung und Tagline
+  entfallen, Kopfzeile und Abschnittsabstände werden flacher, die Tageskurve
+  steht quer als zwei Neuner-Reihen über die volle Breite. Die Haken
+  (`app-header`, `app-tagline`, `app-main`, `daily-flow`, `daily-intro`,
+  `daystrip-cells`, `daily-action-chip`) sitzen im Markup.
+- **C5 — Kontrast AA:** `slate-500`/`slate-600` sind angehoben
+  (dunkel `#8598b0`/`#8295ad`, hell `#55677c`) — dieselben Klassen, dieselbe
+  Rollenskala, nur lesbar auf den tatsächlichen Flächen. `web/src/a11y.test.ts`
+  rechnet die Kontraste gegen Seite, Karte und Rand nach.
+- **C5 — Touch-Ziele ≥ 44 px:** eigene Regel nur bei grober Zeigerart
+  (`pointer: coarse`), damit die Maus-Ansicht kompakt bleibt; Karten-Zoomknöpfe
+  und Pins ziehen unsichtbar auf 44 px nach.
+- **C5 — Beleg ohne Maus:** die Schnellerfassung ist ein `<form>` (Enter bucht,
+  der Knopf bleibt sichtbar), das „Anpassen“-Panel setzt den Fokus ins
+  Literfeld, Escape schließt es und gibt den Fokus an den Auslöser zurück; die
+  Radar-Pins sind per Tab/Enter/Space erreichbar (`role="button"`, `tabIndex`,
+  Trefferfläche) wie die Leaflet-Marker (`keyboard: true`, `title`/`alt`).
+- **H5 — Zeitumstellung im Backtest ausgewiesen:** `engine/data.py` kennt die
+  Wanduhr-Länge eines lokalen Tages (`local_day_hours`, 23/24/25 h) und die
+  betroffenen Tage (`dst_transition_days`). Jeder Fold trägt `dst_day` und
+  `local_day_hours`, `report.json` den Block `dst` (Tage, Stunden, betroffene
+  und bewertete Folds, fehlende Vortages-Anker `anchors_missing_nat`,
+  `anchors_outside_series`, `mase_none_reasons`), `report.md` den Abschnitt
+  „Zeitumstellung (DST)“. Ausgeschlossen oder auf 24 h gerechnet wird nichts —
+  die Tage bleiben vergleichbar und sind nur gekennzeichnet.
+- **H5 — sichtbar in der Werkstatt:** `dstLabel()` in `web/src/data.ts` und die
+  Zeile über der Metrik-Kachel in der Werkstatt nennen die 23/25-h-Tage, die
+  Zahl der Anker ohne Wanduhr-Zeitpunkt und die Politik („bleiben im Backtest
+  und sind je Tag gekennzeichnet“).
+
+### Geändert
+
+- **H5 — kein stilles `None`:** `seasonal_scale_detail()` liefert Skala,
+  Stichprobengröße, fehlende Anker (`NaT`, außerhalb der Reihe) und einen
+  Grund (`no_reference_points`, `constant_series`); die Metriken ergänzen
+  `mase_none_reason` (`no_scored_points`, `naive_scale_undefined`). Bleibt
+  MASE undefinierbar, steht der Grund im selben Feld.
+- **G4 — der Prognose-Cache bleibt bewusst flüchtig:** keine Spiegelung auf die
+  SD-Karte (jeder Abruf alle 5 Minuten würde schreiben, der Puffer füllt sich
+  nach einem Neustart von selbst). Stattdessen sagt der Start
+  (`boot_state_note()`) den Zustand in `cache.log`/`systemctl status`, und die
+  Fallback-GUI erklärt ihn an drei Stellen (`CACHE_REBOOT_HINT`: F1-Erklärung,
+  Prognose-Raster, API-Fehlermeldung).
+- **C8 — Pull-to-Refresh weicht nur der Geste:** `ptr.ts`/`usePtrOff.ts`
+  sperren das Overscrollen an der Wurzel nur zwischen `pointerdown` und
+  `pointerup`; Slider und Karte sind zusätzlich als `.no-ptr` markiert, die
+  Leaflet-Fläche scrollt nie die Seite mit.
+- **Dokumentation:** [docs/ENGINE.md](docs/ENGINE.md) beschreibt die
+  DST-Ausweisung und die Gründe für `mase: null`;
+  [docs/RP2.md](docs/RP2.md) und [docs/SPEICHER.md](docs/SPEICHER.md) halten
+  die G4-Entscheidung fest (CACHE_DIR-Zeile, Reboot-Zeile, eigener Absatz).
+
+### Tests
+
+- `web/src/a11y.test.ts` (17 Fälle): Kontrast AA der gedämpften Töne auf allen
+  Flächen, 44-px-Regel, Tastatur-Haken der Karte, `ptr-off`-Sperre,
+  Querformat-Block samt Markup-Haken, Manifest-Ausrichtung und die
+  Installations-Entscheidung (inkl. iOS-Erkennung und Snooze).
+- `tests/test_data.py` (`local_day_hours`, `dst_transition_days`),
+  `tests/test_models.py` (`seasonal_scale_detail`),
+  `tests/test_backtest.py` (DST-Block, `dst_day`, Anker-Zählung),
+  `tests/test_rp2_cache.py`/`test_rp2_fallback.py` (G4-Sätze),
+  `web/src/data.test.ts` (`dstLabel`).
+
 ## [0.28.0] – 2026-09-13
 
 ### Hinzugefügt

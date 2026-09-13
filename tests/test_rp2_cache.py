@@ -48,3 +48,20 @@ def test_log_cap_is_noop_on_missing_file(tmp_path):
     # Fehlende Datei: kein Fehler, keine Datei.
     cache.cap_log_file(tmp_path / "nicht-da.log", max_bytes=1024)
     assert not (tmp_path / "nicht-da.log").exists()
+
+
+# G4: Der Cache bleibt in /tmp (bewusst, SD-Schonung). Statt ihn zu
+# persistieren, benennt der Service den Zustand beim Start.
+def test_boot_state_note_explains_missing_cache_after_reboot(tmp_path):
+    note = cache.boot_state_note(tmp_path / "last_forecasts.json")
+    assert "Kein Cache vorhanden" in note
+    assert "/tmp ist nach einem Reboot leer" in note
+    assert "SD-Karte" in note
+
+
+def test_boot_state_note_reports_existing_cache(tmp_path):
+    cache_file = tmp_path / "last_forecasts.json"
+    cache_file.write_text("{}", encoding="utf-8")
+    note = cache.boot_state_note(cache_file)
+    assert "Cache vorhanden" in note
+    assert str(cache_file) in note

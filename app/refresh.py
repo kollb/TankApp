@@ -438,6 +438,9 @@ def refresh(settings: Settings, now=None, progress=None):
                         "draws_24h": fitted[identity].get("draws") or {},
                         "draws_7d": draws_wide.get(168) or {},
                         "metrics": report.get("metrics"),
+                        # H5: DST-Tage des Prüfzeitraums (ausgewiesen, nicht
+                        # ausgeschlossen) — die Werkstatt nennt sie.
+                        "dst": report.get("dst"),
                         "backtest_days": BACKTEST_DAYS,
                         # B17: Herkunft und Alter des Backtests ehrlich
                         # ausweisen — der Bericht gilt für den lokalen

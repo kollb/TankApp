@@ -3,6 +3,7 @@
 // Litern), das Feld daneben erlaubt den exakten Wert.
 
 import { useState, type ReactNode } from "react";
+import { usePtrOff } from "../usePtrOff";
 import {
   commaToDot,
   deTrimmed,
@@ -46,6 +47,7 @@ export function PrecisionSlider({
   hint?: ReactNode;
   icon?: ReactNode;
 }) {
+  const ptrRef = usePtrOff<HTMLDivElement>();
   const [draft, setDraft] = useState<string | null>(null);
   const [clampedNote, setClampedNote] = useState<string | null>(null);
   const shown = draft ?? deTrimmed(value);
@@ -66,7 +68,9 @@ export function PrecisionSlider({
   };
 
   return (
-    <div className="text-xs text-slate-400">
+    // C8: Slider-Gesten dürfen kein Pull-to-Refresh der Seite auslösen
+    // (no-ptr + ptr-off nur während der Berührung).
+    <div ref={ptrRef} className="no-ptr text-xs text-slate-400">
       <label
         htmlFor={id}
         className="flex items-center justify-between gap-2 text-xs text-slate-400"
@@ -115,7 +119,7 @@ export function PrecisionSlider({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-white focus:border-emerald-500"
+            className="h-11 w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 text-right font-mono text-xs text-white focus:border-emerald-500"
           />
           <span className="text-[10px] text-slate-500">{unit}</span>
         </span>

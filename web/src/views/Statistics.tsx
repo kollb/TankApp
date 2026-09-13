@@ -30,6 +30,7 @@ import {
   autoTimeTicks,
   centPerLiter,
   deTrimmed,
+  dstLabel,
   euro,
   formatHour,
   lifecycleLabel,
@@ -206,6 +207,14 @@ export function StatisticsView(props: StatisticsViewProps) {
       detail="Anteil echter Preise im 95-%-Band des Backtests. Ziel: 90–98 %."
     />
   </div>
+
+  {/* H5: Zeitumstellung im Prüfzeitraum wird benannt, nicht verschwiegen —
+      die Tage bleiben im Backtest, ihre Vortages-Anker fehlen aber. */}
+  {dstLabel(forecast?.data?.dst) && (
+    <p className="mb-6 -mt-2 text-[11px] leading-relaxed text-slate-400">
+      {dstLabel(forecast?.data?.dst)}
+    </p>
+  )}
 
   <p className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
     A · Taugt das Modell? — Bewährung an echten Tagen

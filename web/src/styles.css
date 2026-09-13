@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/*
+ * C5 — Kontrast (AA), dunkler Standardstand.
+ *
+ * Tailwinds slate-500 (#64748b) erreicht auf den dunklen Flächen dieses
+ * Layouts (#0b0f19, #020617, #0f172a, #1e293b) nur 3,1:1, slate-600 nur
+ * 1,9:1 — beides unter der AA-Schwelle 4,5:1 für normalen Text. Deshalb sind
+ * die beiden gedämpften Töne hier angehoben, statt die Klasse an ~150
+ * Stellen zu tauschen: die Skala bleibt (400 heller als 500 heller als 600),
+ * die Rolle „gedämpft“ bleibt, nur die Helligkeit passt zum Hintergrund.
+ * Geprüft von src/a11y.test.ts gegen genau diese Flächen.
+ */
+:root {
+  --color-slate-500: #8598b0; /* 4,96:1 auf slate-800, 7,6:1 auf slate-950 */
+  --color-slate-600: #8295ad; /* 4,77:1 auf slate-800, 7,3:1 auf slate-950 */
+}
+
 @layer base {
   body {
     background-color: #0b0f19;
@@ -28,8 +44,10 @@ html.light {
   --color-slate-200: #1e293b;
   --color-slate-300: #334155;
   --color-slate-400: #475569;
-  --color-slate-500: #64748b;
-  --color-slate-600: #64748b;
+  /* C5: #64748b erreicht auf der hellen Seitenfläche (#eef2f7) nur 3,9:1 —
+     #55677c hält ≥ 4,7:1 auf Karte, Seite und slate-800. */
+  --color-slate-500: #55677c;
+  --color-slate-600: #55677c;
   --color-slate-700: #cbd5e1;
   --color-slate-800: #e2e8f0;
   --color-slate-900: #ffffff;
@@ -141,4 +159,108 @@ input[type="range"] {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* --------------------------------------------------------------------------
+ * C5 — Touch-Ziele ≥ 44 px (WCAG 2.5.5, Apple HIG).
+ *
+ * Die Regel greift nur bei grober Zeigerart: Handy, Tablet, Touchscreen. Am
+ * Schreibtisch mit Maus bleibt jedes Element exakt so kompakt wie bisher —
+ * dort wäre ein 44-px-Raster nur verschenkter Platz. Geprüft von
+ * src/a11y.test.ts (Regel vorhanden + Mindestwerte).
+ * -------------------------------------------------------------------------- */
+@media (pointer: coarse), (any-pointer: coarse) {
+  button,
+  [role="button"],
+  select,
+  input,
+  a.tap-44 {
+    min-height: 44px;
+  }
+  button,
+  [role="button"],
+  a.tap-44 {
+    min-width: 44px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * C8 — Pull-to-Refresh dort aus, wo er mit Karten-/Slider-Gesten kollidiert.
+ *
+ * `overscroll-behavior` greift nur an Scroll-Containern; ein einfaches Panel
+ * ist keiner. Der zuverlässige Weg ist deshalb die Wurzel — aber nur so lange,
+ * wie wirklich ein Slider oder die Karte gezogen wird (Klasse `ptr-off`, vom
+ * PtrGuard gesetzt). Überall sonst bleibt die gewohnte Browsergeste erhalten.
+ * Zusätzlich für Touch-Geräte: die Karte zieht nicht die Seite mit.
+ * -------------------------------------------------------------------------- */
+html.ptr-off,
+html.ptr-off body {
+  overscroll-behavior-y: none;
+}
+.no-ptr {
+  overscroll-behavior: contain;
+}
+.leaflet-container {
+  overscroll-behavior: none;
+}
+
+/* --------------------------------------------------------------------------
+ * C8 — Querformat am Handy (z. B. 844 × 390).
+ *
+ * Hochkant ist eine Spalte richtig; quer bleibt davon nur ein schmaler
+ * Streifen, durch den man endlos scrollt. Im Querformat stehen deshalb
+ * Empfehlung/Vertrauen/Tanken nebeneinander; alles, was breit sein muss
+ * (Tageskurve, Stationen, Umweg, Belege), läuft weiter über die volle Breite.
+ * Die Tageskurve zeigt quer alle 18 Stunden in zwei Neuner-Reihen.
+ * -------------------------------------------------------------------------- */
+@media (orientation: landscape) and (max-height: 620px) {
+  /* Kopfzeile und Einleitung fressen quer sonst die halbe Höhe. */
+  .app-header {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+  .app-tagline {
+    display: none;
+  }
+  .app-main {
+    padding-top: 0.75rem;
+  }
+  .daily-intro {
+    display: none;
+  }
+  /* Ruhigerer Rhythmus, damit die Tageskurve ohne langes Scrollen sichtbar ist. */
+  .daily-flow > * {
+    margin-bottom: 0.9rem;
+  }
+  /* Die Tageskurve: alle 18 Stunden in zwei Neuner-Reihen über die volle
+     Breite — dieselbe Reihenfolge wie hochkant, nur ohne dritte Reihe. */
+  .daystrip-cells {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+  .daystrip-cells > div {
+    padding: 0.35rem 0.25rem;
+  }
+  /* C8: Der Aktions-Chip bleibt erreichbar, sitzt quer aber höher. */
+  .daily-action-chip {
+    top: 0.25rem;
+  }
+}
+
+/* C5: Leaflet-Zoomknöpfe und Karten-Pins bekommen auf Touch-Geräten die
+   Mindesttrefferfläche, ohne dass sich die Darstellung verschiebt: der Pin
+   wächst nur unsichtbar über sein ::before. */
+@media (pointer: coarse), (any-pointer: coarse) {
+  .leaflet-touch .leaflet-bar a,
+  .leaflet-bar a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+    font-size: 18px;
+  }
+}
+.custom-net-pin::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
 }

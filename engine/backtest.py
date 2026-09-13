@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .config import Config
-from .data import PriceSeries, scheduled
+from .data import PriceSeries, dst_transition_days, local_day_hours, scheduled
 from .models import fit, predict, utc_time
 
 PENDING = [
@@ -52,6 +52,7 @@ def metrics(rows: pd.DataFrame) -> dict:
             "rmse_ct": None,
             "mase": None,
             "mase_points": 0,
+            "mase_none_reason": "no_scored_points",
             "smape_pct": None,
             "pinball50_ct": None,
             "naive_pinball50_ct": None,
@@ -62,12 +63,22 @@ def metrics(rows: pd.DataFrame) -> dict:
         }
     error = rows.actual - rows.q50
     scaled = error.abs() / rows.mase_scale
+    mase_points = int(scaled.notna().sum())
+    # H5: kein stilles „None“. Ist MASE nicht bestimmbar, steht der Grund im
+    # selben Feld wie die Zahl: keine bewerteten Punkte oder undefinierte
+    # saisonale Skala (konstante Trainingsreihe).
+    mase_none_reason = (
+        None
+        if mase_points
+        else ("no_scored_points" if rows.empty else "naive_scale_undefined")
+    )
     return {
         "points": len(rows),
         "mae_ct": 100 * float(error.abs().mean()),
         "rmse_ct": 100 * float(np.sqrt((error**2).mean())),
-        "mase": float(scaled.mean()) if scaled.notna().any() else None,
-        "mase_points": int(scaled.notna().sum()),
+        "mase": float(scaled.mean()) if mase_points else None,
+        "mase_points": mase_points,
+        "mase_none_reason": mase_none_reason,
         "smape_pct": float(
             (200 * error.abs() / (rows.actual.abs() + rows.q50.abs())).mean()
         ),
@@ -289,6 +300,19 @@ def run_backtest(
     origins = pd.date_range(
         end - pd.DateOffset(days=days), end, freq="D", inclusive="left"
     )
+    # H5 — DST-Kante: An Zeitumstellungen hat ein lokaler Kalendertag 23 h
+    # (Frühjahr) bzw. 25 h (Herbst). Der Testtag ist dann kein 288-Slot-Raster,
+    # und der Vortages-Anker der saisonalen Skala ist für die 02:xx-Slots
+    # nicht existent bzw. doppeldeutig (``NaT``). Der Backtest schließt diese
+    # Tage nicht aus — er weist sie aus: je Fold ``dst_day``/``local_day_hours``,
+    # im Bericht die Tagesliste und die Zahl der fehlenden Anker. So bleibt
+    # eine nicht bestimmbare MASE erklärbar statt still.
+    test_days = [
+        local_origin.tz_convert(cfg.timezone).normalize() for local_origin in origins
+    ]
+    test_day_hours = {day: local_day_hours(day) for day in test_days}
+    dst_days = dst_transition_days(test_days)
+    dst_day_set = set(dst_days)
     # B17: Der Bericht endet exklusiv an ``end`` — auch die Mehrtage-Fenster.
     # Vorher wurden +3-d/+7-d-Fenster der letzten Folds gegen den *laufenden*
     # (unvollständigen) Tag bewertet, obwohl ``test_end_exclusive`` Mitternacht
@@ -329,6 +353,10 @@ def run_backtest(
                 **item.identity(),
                 "origin": origin.isoformat(),
                 "training_end_exclusive": origin.isoformat(),
+                # H5: 23/25-h-Tage sind gekennzeichnet, nicht entfernt.
+                "local_day": local_origin.date().isoformat(),
+                "dst_day": local_origin.normalize() in dst_day_set,
+                "local_day_hours": test_day_hours[local_origin.normalize()],
                 "target_points": len(target),
                 "observed_prices": int(observed.sum()),
                 "response_coverage_pct": 100 * float(responses.mean()),
@@ -375,12 +403,17 @@ def run_backtest(
                 rows[key] = value
             rows["origin"] = origin.isoformat()
             rows["timestamp"] = rows.index.map(lambda time: time.isoformat())
+            scale_detail = model.get("mase_scale_detail") or {}
             folds.append(
                 {
                     **fold,
                     "status": "scored" if len(rows) else "no_common_observations",
                     "training_days": model["training_days"],
                     "mase_scale": model["mase_scale"],
+                    "mase_scale_points": scale_detail.get("points"),
+                    "mase_scale_anchors_nat": scale_detail.get("anchors_nat"),
+                    "mase_scale_anchors_outside": scale_detail.get("anchors_outside"),
+                    "mase_scale_none_reason": scale_detail.get("reason"),
                     "law_rise_outside_noon": model["law_rise_outside_noon"],
                     "training_status_known_fraction": model["status_known_fraction"],
                     "comparison_coverage_pct": 100 * len(rows) / int(observed.sum())
@@ -494,10 +527,37 @@ def run_backtest(
         per_station.append({**item.identity(), **metrics(subset)})
     # Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster über die
     # bewerteten Punkte; Basis des Güte-Gates (§4.4) und des Konfidenz-Badges.
-    test_days = [
-        local_origin.tz_convert(cfg.timezone).normalize() for local_origin in origins
-    ]
     rolling = rolling_picp_7d(rows, series, cfg.timezone, test_days)
+    # H5: DST-Ausweisung als eigener Block — Tagesliste, betroffene Folds und
+    # die Zahl der Vortages-Anker, die an der Zeitumstellung fehlen (``NaT``)
+    # oder außerhalb der Reihe liegen. Die Skala selbst bleibt unverändert.
+    scored_folds = [fold for fold in folds if fold["status"] == "scored"]
+    dst_report = {
+        "timezone": cfg.timezone,
+        "policy": "flagged_not_excluded",
+        "policy_note": (
+            "23/25-h-Tage bleiben im Backtest; sie sind gekennzeichnet "
+            "(dst_day/local_day_hours). Ausgeschlossen wird nichts, damit "
+            "Kennzahlen und Fold-Zahl vergleichbar bleiben."
+        ),
+        "days": [day.date().isoformat() for day in dst_days],
+        "day_hours": {day.date().isoformat(): test_day_hours[day] for day in dst_days},
+        "folds": sum(1 for fold in folds if fold.get("dst_day")),
+        "folds_scored": sum(1 for fold in scored_folds if fold.get("dst_day")),
+        "anchors_missing_nat": int(
+            sum(fold.get("mase_scale_anchors_nat") or 0 for fold in scored_folds)
+        ),
+        "anchors_outside_series": int(
+            sum(fold.get("mase_scale_anchors_outside") or 0 for fold in scored_folds)
+        ),
+        "mase_none_reasons": sorted(
+            {
+                fold["mase_none_reason"]
+                for fold in scored_folds
+                if fold.get("mase_none_reason")
+            }
+        ),
+    }
     report = {
         "schema_version": 1,
         "status": "preliminary",
@@ -517,6 +577,9 @@ def run_backtest(
         ),
         "requested_test_days": days,
         "test_sources": sorted(rows.source.unique().tolist()) if len(rows) else [],
+        # H5: Zeitumstellung — betroffene Tage und Anker-Lücken, ausgewiesen
+        # statt still (Details an jedem Fold, Liste hier).
+        "dst": dst_report,
         # 7-Tage-Rolling-PICP je Station (Konzept §3.3.3): Konfidenz-Badge
         # grün/gelb/rot; „current“ ist der zuletzt verlaufene Testtag und
         # die Größe, die das Güte-Gate (§4.4) in der Entscheidung prüft.
@@ -573,6 +636,9 @@ def markdown_report(report: dict) -> str:
         f"| RMSE [ct/L] | {number(m['rmse_ct'])} |",
         f"| MASE (Skala nur aus Training) | {number(m['mase'])} |",
         f"| MASE auswertbare Punkte | {m['mase_points']} |",
+        f"| MASE nicht bestimmbar, Grund | {m.get('mase_none_reason') or '—'} |",
+        f"| Vortages-Anker ohne Wanduhr-Zeitpunkt (DST) | "
+        f"{(report.get('dst') or {}).get('anchors_missing_nat', 0)} |",
         f"| sMAPE [%] | {number(m['smape_pct'])} |",
         f"| Pinball τ=0,5 [ct/L] | {number(m['pinball50_ct'])} |",
         f"| Naive Pinball τ=0,5 [ct/L] | {number(m['naive_pinball50_ct'])} |",
@@ -648,6 +714,27 @@ def markdown_report(report: dict) -> str:
                 f"| {current.get('points', 0)} "
                 f"| {'—' if badge is None else badge} |"
             )
+    dst = report.get("dst") or {}
+    if dst:
+        days = dst.get("days") or []
+        lines += [
+            "",
+            "## Zeitumstellung (DST)",
+            "",
+            f"Zeitzone: `{dst.get('timezone')}`. Tage im Prüfzeitraum mit 23 h "
+            f"(Frühjahr) bzw. 25 h (Herbst) Wanduhr: "
+            f"**{len(days)}** — {', '.join(days) if days else 'keine'}.",
+            "Diese Tage bleiben im Backtest und sind an jedem Fold als "
+            "`dst_day` mit `local_day_hours` gekennzeichnet "
+            f"({dst.get('folds_scored', 0)} bewertete Folds), "
+            "damit Fold-Zahl und Kennzahlen vergleichbar bleiben.",
+            f"Fehlende Vortages-Anker der saisonalen MASE-Skala in diesen Folds "
+            f"(02:xx-Slots an der Umstellung, lokal nicht existent bzw. "
+            f"doppeldeutig, daher `NaT`): **{dst.get('anchors_missing_nat', 0)}** "
+            f"Punkte. Sie fallen aus dem Skalen-Mittel, statt die Stichprobe "
+            f"still zu verkleinern; zusätzlich außerhalb der Reihe: "
+            f"{dst.get('anchors_outside_series', 0)}.",
+        ]
     lines += [
         "",
         "## Datenlücken und Grenzen",
@@ -663,7 +750,9 @@ def markdown_report(report: dict) -> str:
         "Bänder werden auf nicht-steigende [12:00, nächste 12:00)-Segmente projiziert.",
         "Fehlende Nacht-/Öffnungszeiten werden nicht erfunden. Geschlossene und veraltete Preise",
         "gehen nicht in den Fit ein; von der Engine ergänzte Forward-Fill-Zeilen nicht in die Testwahrheit.",
-        "MASE bei konstanter saisonaler Trainingsreihe ist undefiniert, nicht 0.",
+        "MASE bei konstanter saisonaler Trainingsreihe ist undefiniert, nicht 0; "
+        "`mase_none_reason` nennt den Grund (`no_scored_points`, "
+        "`naive_scale_undefined`) statt eines stillen Nullwerts.",
         "Alt-Historie kann bereits rekonstruierte Stand-Zeilen enthalten, nicht einzelne Polls.",
         "Das ersetzt keinen Live-Nachweis: siehe Datenquellen, QA und Statusanteile je Fold.",
         "Lücken, gemeinsame Vergleichsabdeckung und übersprungene Tage stehen vollständig in `report.json`.",

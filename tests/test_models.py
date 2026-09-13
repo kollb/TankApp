@@ -26,6 +26,7 @@ from engine.models import (
     predict,
     project_paths,
     seasonal_scale,
+    seasonal_scale_detail,
     slots,
     utc_time,
     validate_model,
@@ -156,6 +157,36 @@ def test_short_history_does_not_generate_a_dummy_forecast(observations, cfg):
 def test_constant_seasonal_scale_is_undefined(cfg):
     index = pd.date_range("2026-07-01", periods=5 * 288, freq="5min", tz="UTC")
     assert seasonal_scale(pd.Series(1.7, index=index), cfg) is None
+
+    # H5: undefiniert ist kein stilles None — der Grund steht daneben.
+    detail = seasonal_scale_detail(pd.Series(1.7, index=index), cfg)
+    assert detail["scale"] is None
+    assert detail["reason"] == "constant_series"
+    assert detail["points"] == 5 * 288 - 288  # ohne den ersten Tag (Anker außerhalb)
+    assert detail["anchors_nat"] == 0
+
+
+def test_seasonal_scale_counts_dst_anchor_holes(cfg):
+    """H5: der 02:xx-Slot am Tag nach der Umstellung hat keinen Vortages-Anker."""
+    index = pd.date_range("2026-03-25", "2026-04-05", freq="5min", tz="Europe/Berlin")
+    hour = np.asarray(index.hour + index.minute / 60)
+    days = np.arange(len(index)) / 288
+    # Tagesweise Variation: sonst ist der Vortages-Abstand exakt 0 und die
+    # Skala wäre (korrekt) als „constant_series“ undefiniert.
+    price = pd.Series(
+        1.70 + 0.04 * np.cos(hour * 2 * np.pi / 24) + 0.003 * np.sin(days), index=index
+    )
+
+    detail = seasonal_scale_detail(price, cfg)
+
+    # 12 Slots (02:00–02:55) des 30.03. zeigen auf den 29.03. zurück, an dem
+    # diese Wanduhr-Zeit fehlt.
+    assert detail["anchors_nat"] == 12
+    assert detail["reason"] is None
+    assert detail["scale"] is not None
+    assert detail["points"] == len(index) - 288 - 12
+    # Reine Außengrenze (erster Tag) zählt getrennt, nicht als DST-Fall.
+    assert detail["anchors_outside"] == 288
 
 
 def test_local_clock_features_survive_dst(cfg):

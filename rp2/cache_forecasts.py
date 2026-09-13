@@ -16,9 +16,7 @@ from pathlib import Path
 # Konfiguration ueber Umgebungsvariablen (systemd: Environment=NAS_IP=...)
 NAS_IP = os.environ.get("NAS_IP", "")
 NAS_PORT = os.environ.get("NAS_PORT", "1355")
-NAS_URL = os.environ.get(
-    "NAS_URL", f"http://{NAS_IP}:{NAS_PORT}/api/v1/last_forecasts"
-)
+NAS_URL = os.environ.get("NAS_URL", f"http://{NAS_IP}:{NAS_PORT}/api/v1/last_forecasts")
 POLL_SECONDS = int(os.environ.get("CACHE_INTERVAL_SECONDS", "300"))
 CACHE_DIR = Path("/tmp/tankapp_cache")
 CACHE_FILE = CACHE_DIR / "last_forecasts.json"
@@ -56,6 +54,23 @@ def cap_log_file(path: Path, max_bytes: int = LOG_MAX_BYTES) -> None:
     except OSError:
         # Nicht kaputt gehen, nur weil das Log nicht gekappt werden kann.
         pass
+
+
+def boot_state_note(cache_file: Path = CACHE_FILE) -> str:
+    """G4: Eine Zeile zum Cache-Zustand beim Start — ehrlich statt überrascht.
+
+    ``/tmp`` ist nach einem Reboot leer. Bleibt es dabei (Entscheidung vom
+    13.09.2026): Der häufigere Schreibzugriff auf die SD-Karte wäre teurer als
+    ein leerer Puffer, und die Oberfläche erklärt den Zustand. Diese Funktion
+    macht den Zustand in ``cache.log`` und im ``systemctl status`` sichtbar.
+    """
+    if cache_file.exists():
+        return f"Cache vorhanden: {cache_file} — wird beim ersten Abruf ersetzt."
+    return (
+        "Kein Cache vorhanden: /tmp ist nach einem Reboot leer (bewusst, "
+        "schont die SD-Karte). Bis zum ersten erfolgreichen Abruf zeigt die "
+        "Fallback-GUI keine Prognose."
+    )
 
 
 def log(message):
@@ -104,6 +119,8 @@ def cache_forecasts():
 
 def main():
     log("=== RP2 Forecast Cache gestartet ===")
+    # G4: Reboot-Zustand benennen, bevor der erste Abruf läuft.
+    log(boot_state_note())
 
     if not NAS_IP and "NAS_URL" not in os.environ:
         log(

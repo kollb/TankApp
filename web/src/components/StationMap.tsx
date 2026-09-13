@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Station, DecideResult, euro } from "../data";
+import { usePtrOff } from "../usePtrOff";
 
 export interface StationMapProps {
   stations: Station[];
@@ -94,6 +95,8 @@ export function StationMap({
   title = "Karte: Hier oder woanders?",
   className = "",
 }: StationMapProps) {
+  // C8: Ziehen an Karte/Radar darf kein Pull-to-Refresh der Seite auslösen.
+  const ptrRef = usePtrOff<HTMLElement>();
   const [mapMode, setMapMode] = useState<MapMode>("osm");
   const [tileError, setTileError] = useState(false);
   const [activeStationId, setActiveStationId] = useState<string | null>(null);
@@ -245,7 +248,14 @@ export function StationMap({
               iconAnchor: [30, 13],
             });
 
-            const marker = L.marker(coords, { icon: customIcon }).addTo(map);
+            const marker = L.marker(coords, {
+              icon: customIcon,
+              // C5: Pin ist per Tab erreichbar; Enter/Space wählt die Station
+              // (Leaflet setzt tabindex und löst bei Tastendruck click aus).
+              keyboard: true,
+              title: `${station.name} — ${badgeText}`,
+              alt: `${station.name}, ${badgeText}`,
+            }).addTo(map);
 
             marker.on("click", () => {
               setActiveStationId(station.station_id);
@@ -285,7 +295,8 @@ export function StationMap({
 
   return (
     <section
-      className={`rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 shadow-xl ${className}`}
+      ref={ptrRef}
+      className={`no-ptr rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 shadow-xl ${className}`}
       aria-label="Karten-/Umgebungsansicht"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -642,9 +653,20 @@ function RadarView({
           return (
             <g
               key={info.station.station_id}
-              className="cursor-pointer transition-transform hover:scale-110"
+              className="cursor-pointer transition-transform hover:scale-110 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+              role="button"
+              tabIndex={0}
+              aria-label={`${info.station.name} — ${badgeText}`}
               onClick={() => setActiveStationId(info.station.station_id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActiveStationId(info.station.station_id);
+                }
+              }}
             >
+              {/* C5: unsichtbare 44-px-Trefferfläche für Finger */}
+              <circle cx={cx} cy={cy} r={22} fill="transparent" />
               {/* Connection line to center */}
               <line
                 x1={width / 2}

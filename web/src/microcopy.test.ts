@@ -26,6 +26,8 @@ const FILES = [
   "components/DataAge.tsx",
   "components/DataReach.tsx",
   "components/HeatmapGrid.tsx",
+  "components/InstallHint.tsx",
+  "install.ts",
   "components/LabCharts.tsx",
   "components/LineChart.tsx",
   "components/LoadError.tsx",

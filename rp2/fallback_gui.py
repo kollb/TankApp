@@ -58,6 +58,15 @@ DEFAULT_LITERS = 40
 MIN_LITERS = 5
 MAX_LITERS = 100
 NAS_CHECK_TIMEOUT_S = 2.0
+# G4: Der Prognose-Cache liegt bewusst in /tmp (tmpfs) und ist damit nach
+# jedem Reboot leer — das schont die SD-Karte des Pi. Statt den Cache auf
+# Platte zu spiegeln, sagt die Oberfläche den Grund und wann es weitergeht.
+# Ein Satz, drei Stellen (F1-Erklärung, Prognose-Raster, API-Fehler).
+CACHE_REBOOT_HINT = (
+    "Nach einem Neustart ist der Prognose-Puffer leer — er liegt bewusst im "
+    "RAM (/tmp), damit die SD-Karte geschont wird. Der Cache füllt sich "
+    "automatisch mit dem nächsten Abruf (alle 5 Minuten)."
+)
 PROXY_TIMEOUT_S = 15.0
 HEALTH_TTL_ONLINE_S = 15.0  # wie schnell wird das NAS (nach Wiederkehr) bemerkt
 HEALTH_TTL_OFFLINE_S = 30.0  # wie oft wird nach einem Offline-Zustand neu geprüft
@@ -780,7 +789,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "count": 0,
                         "forecasts": [],
                         "error": "Kein Prognose-Cache vorhanden (NAS war nie erreichbar?)"
-                        " — cache_forecasts.py prüfen.",
+                        " — cache_forecasts.py prüfen. " + CACHE_REBOOT_HINT,
                     },
                     status=503,
                 )
@@ -1021,9 +1030,23 @@ def default_meta_candidates() -> list[str]:
         # Stationsnamen nicht verlieren.
         for p in (
             os.environ.get("STATION_META", ""),
-            str(Path.home() / "TankApp" / "data" / "analysis" / "stations" / "polling.json"),
+            str(
+                Path.home()
+                / "TankApp"
+                / "data"
+                / "analysis"
+                / "stations"
+                / "polling.json"
+            ),
             str(repo / "data" / "analysis" / "stations" / "polling.json"),
-            str(Path.home() / "TankApp" / "docs" / "analysis" / "stations" / "polling.json"),
+            str(
+                Path.home()
+                / "TankApp"
+                / "docs"
+                / "analysis"
+                / "stations"
+                / "polling.json"
+            ),
             str(repo / "docs" / "analysis" / "stations" / "polling.json"),
         )
         if p
@@ -1368,6 +1391,8 @@ svg text { fill: var(--muted); font-size: 10.5px; font-family: inherit; }
 
 <script>
 "use strict";
+// G4: wird beim Rendern aus CACHE_REBOOT_HINT eingesetzt (JSON-String).
+const REBOOT_HINT = __CACHE_REBOOT_HINT_JSON__;
 const $ = (s) => document.querySelector(s);
 const FUELS = ["e10", "e5", "diesel"];
 const FUEL_LABEL = { e10: "E10", e5: "E5", diesel: "Diesel" };
@@ -1576,7 +1601,8 @@ function renderDecision(decide, forecasts) {
     html += '<div class="rec now">Aktueller Preisvergleich</div>';
     html += '<div class="detail">Keine Prognose für die günstigste Station verfügbar' +
       (fc.generated_at ? " (Cache von " + esc(relDay(fc.generated_at)) + ")" : "") +
-      " — es gibt keine Grundlage, um zu warten. Nimm die günstigste frische Station.</div>";
+      " — es gibt keine Grundlage, um zu warten. Nimm die günstigste frische Station.</div>" +
+      '<div class="detail muted">' + esc(REBOOT_HINT) + "</div>";
   }
   const windows = decide.windows || [];
   if (windows.length) {
@@ -1707,7 +1733,8 @@ function renderForecasts(forecasts) {
   if (!forecasts || !forecasts.available || !(forecasts.forecasts || []).length) {
     grid.innerHTML = '<div class="muted">Keine gecachten Prognosen für ' + esc(FUEL_LABEL[state.fuel]) +
       " vorhanden. Sobald das NAS wieder läuft, füllt cache_forecasts.py den Cache " +
-      "(alle 5 min).<br>Doch: „Jetzt ist die günstigste Station?“ (F2) funktioniert trotzdem.</div>";
+      "(alle 5 min). " + esc(REBOOT_HINT) +
+      "<br>Doch: „Jetzt ist die günstigste Station?“ (F2) funktioniert trotzdem.</div>";
     return;
   }
   const entries = forecasts.forecasts;
@@ -1790,10 +1817,19 @@ window.addEventListener("beforeunload", () => clearInterval(refreshTimer));
 
 def _build_template() -> tuple[str, str]:
     """Template + Inhalts-Hash-Marker (ersetzt veraltete Template-Dateien)."""
-    body = _TEMPLATE_HEAD + _TEMPLATE_REST
+    # G4: Der Reboot-Satz steht einmal in Python und wird als JSON-String in
+    # das Template gesetzt (esc() beim Rendern bleibt Pflicht).
+    body = (_TEMPLATE_HEAD + _TEMPLATE_REST).replace(
+        "__CACHE_REBOOT_HINT_JSON__",
+        json.dumps(CACHE_REBOOT_HINT, ensure_ascii=False),
+    )
     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
     marker = f"<!-- tankapp-fallback-gui v{VERSION} sha:{digest} -->"
-    return _TEMPLATE_HEAD + marker + _TEMPLATE_REST, marker
+    rendered = _TEMPLATE_HEAD + marker + _TEMPLATE_REST
+    return rendered.replace(
+        "__CACHE_REBOOT_HINT_JSON__",
+        json.dumps(CACHE_REBOOT_HINT, ensure_ascii=False),
+    ), marker
 
 
 DEFAULT_INDEX_HTML, VERSION_MARKER = _build_template()
