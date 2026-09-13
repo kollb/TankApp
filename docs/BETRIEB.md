@@ -590,6 +590,15 @@ Lauf war kein Kaltlauf („Backtest: 9 aus Tages-Cache, 10 neu gerechnet“,
 `python_prozesse`/`phase` lieferten nichts (beides oben gefixt). Beleg,
 Lücken und die offene strenge Kaltlauf-Gegenprobe: [TODO B11](../TODO.md).
 
+**Strenge Kaltlauf-Gegenprobe in einem Schritt:**
+`ops/nas/b11-cold-run.sh` (nach `python3 tankapp.py nas-up` ausführen):
+wartet auf den sofortigen Recreate-Lauf, löscht den Cache und **verifiziert**
+die Löschung (inkl. Mount-Quellen-Prüfung von `/data/runtime`), sampelt mit
+dem Sammler, triggert den Lauf per `docker exec … python -m app.worker
+models` (umgeht Debounce) und schreibt alles — Stichproben, Auswertung,
+Job-Log-Ende, `models.json` und die Kaltlauf-Prüfung — in eine Datei
+`b11-cold-<stempel>/report.txt`.
+
 **Achtung Messfalle (12.09.2026):** `nproc` meldet im Container `1`, weil das
 Image `OMP_NUM_THREADS=1` setzt. Kerne immer über die Affinität bestimmen:
 
