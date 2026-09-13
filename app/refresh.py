@@ -443,11 +443,11 @@ def refresh(settings: Settings, now=None, progress=None):
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
                 # B21: „0 Stationen“ ohne Grund ist nicht debuggbar — Diagnose loggen
-                top_n = len(sel_result.get('top_global', []))
-                city_n = len(sel_result.get('cities', []))
-                diag = sel_result.get('diagnostics', [])
+                top_n = len(sel_result.get("top_global", []))
+                city_n = len(sel_result.get("cities", []))
+                diag = sel_result.get("diagnostics", [])
                 if top_n == 0 and diag:
-                    reasons = "; ".join(d.get('reason', '') for d in diag[:3])
+                    reasons = "; ".join(d.get("reason", "") for d in diag[:3])
                     print(
                         f"models: Selektion {fuel}: 0 Stationen — Diagnose: {reasons} — "
                         f"{city_n} Städte (alle ohne Ranking)",

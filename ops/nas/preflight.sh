@@ -81,7 +81,7 @@ if [ -f "$ENVF" ]; then
   if [ -n "$missing" ]; then
     say_fail "$ENVF  -> fehlende Schluessel:$missing"
   else
-    url=$(grep '^TANKAPP_INFLUX_URL=' "$ENVF" | cut -d= -f2-)
+    url=$(grep '^TANKAPP_INFLUX_URL=' "$ENVF" | cut -d= -f2- | tr -d '\r')
     case "$url" in
       *localhost*|*127.0.0.1*|*::1*)
         say_fail "$ENVF  -> URL ist '$url'; aus dem Container nicht erreichbar. NAS-LAN-IP:8086 verwenden." ;;

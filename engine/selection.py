@@ -598,7 +598,8 @@ def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> 
         "range_from": min(froms) if froms else None,
         "range_to": max(tos) if tos else None,
         "n_points": sum(int(r.get("n_points") or 0) for r in all_results) or None,
-        "n_days": max((int(r.get("n_days") or 0) for r in all_results), default=0) or None,
+        "n_days": max((int(r.get("n_days") or 0) for r in all_results), default=0)
+        or None,
         # B21: Diagnose, warum Städte ohne Ranking blieben
         "diagnostics": diagnostics,
     }

@@ -46,7 +46,9 @@ def build_alarms(
         # wie wird sie repariert (Pi → data/analysis/stations/polling.json,
         # NAS → TANKAPP_POLLING_FILE).
         if polling_error == "polling_missing":
-            polling_path = str(getattr(settings, "polling", "data/analysis/stations/polling.json"))
+            polling_path = str(
+                getattr(settings, "polling", "data/analysis/stations/polling.json")
+            )
             alarms.append(
                 {
                     "code": polling_error,

@@ -133,7 +133,9 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                 result = compute_all(obs, sel_cfg, metas_by_city)
                 # B21-Diagnose: Warum 0 Stationen? Coverage, <4 Stationen je Stadt, etc.
                 top_n = len(result.get("top_global", []))
-                city_n = sum(len(c.get("stations", [])) for c in result.get("cities", []))
+                city_n = sum(
+                    len(c.get("stations", [])) for c in result.get("cities", [])
+                )
                 if top_n == 0 and city_n == 0:
                     # Kein belastbares Ranking — mögliche Gründe in result
                     # (excluded_count, station_count) sind im Artefakt enthalten.
@@ -141,9 +143,7 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                 by_fuel[fuel] = result
                 all_flat.extend(result.get("top_global", []))
                 if progress:
-                    progress.step(
-                        label=f"{fuel}: {top_n} Stationen"
-                    )
+                    progress.step(label=f"{fuel}: {top_n} Stationen")
             except Exception as exc:
                 if progress:
                     # Kurz die Ursache zeigen (ohne Pfade), damit „Fehler“

@@ -101,7 +101,8 @@ export function SystemView(props: SystemViewProps) {
         <Empty>
           {data?.connection_error === "polling_missing" ? (
             <>
-              Polling-Set fehlt — keine Stadt eingerichtet. Collector-Herzschlag{" "}
+              Das gemeinsame Polling-Set fehlt auf diesem Server — keine Stadt
+              eingerichtet. Collector-Herzschlag{" "}
               {h?.collector?.available ? "✓" : "fehlt"} und InfluxDB-Lesezugang{" "}
               {h?.influx_configured ? "✓" : "fehlt"} nützen ohne Polling-Set
               nichts. Auf dem Pi <code>data/analysis/stations/polling.json</code>{" "}
