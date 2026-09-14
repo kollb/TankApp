@@ -1,6 +1,10 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
+  // In CI Fehler als GitHub-Annotation an den PR hängen (Testname, Datei,
+  // Zeile) — sonst stecken sie nur im Log-Archiv, das man erst herunterladen
+  // muss. Lokal bleibt die gewohnte Listenausgabe.
+  reporter: process.env.CI ? "github" : "list",
   webServer: process.env.TANKAPP_TEST_URL
     ? undefined
     : {

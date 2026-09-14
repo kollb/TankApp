@@ -202,8 +202,13 @@ function LabBlock({
           >
             {headline}
           </span>
+          {/* Die Abschnitts-Frage ist die Überschrift — auch für Vorleser
+              und `getByRole("heading")`: Der Knopf bleibt der Schalter, die
+              Frage trägt `role="heading"` (h2-Ebene unter der Seite). */}
           <span
             id={`labor-${id}-title`}
+            role="heading"
+            aria-level={2}
             className="mt-0.5 block text-base font-semibold text-white"
           >
             {question}

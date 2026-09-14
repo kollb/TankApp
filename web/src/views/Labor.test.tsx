@@ -143,6 +143,12 @@ describe("Labor: Aufbau (§6.2)", () => {
       expect(html).toContain(section.question);
       expect(html).toContain(`id="labor-${section.id}"`);
       expect(html).toContain(`aria-controls="labor-${section.id}-body"`);
+      // Die Frage ist eine Überschrift (h2-Ebene) — der Aufklapp-Knopf
+      // bleibt Schalter, `getByRole("heading")` findet den Abschnitt trotzdem
+      // (die Browser-Suite prüft genau das).
+      expect(html).toContain(
+        `<span id="labor-${section.id}-title" role="heading" aria-level="2"`,
+      );
     }
     // Sprungleiste: nummerierte Knöpfe, Spielplatz ohne Nummer.
     expect(html).toContain("1 · Was die App vorhersagt");
