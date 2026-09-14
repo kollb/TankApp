@@ -4,6 +4,42 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.33.1] – 2026-09-14
+
+**Der Kopf der Fallback-GUI passt jetzt zur Inhaltsspalte — und der Desktop
+nutzt seine Breite, statt sie zu verschenken.** Auslöser war die Sichtprüfung
+der Fallback-GUI v3 auf einem breiten Monitor: Schriftzug links am Fensterrand,
+Status-Pills rechts, dazwischen 1892 px Leiste über einer 1060 px breiten
+Inhaltsspalte.
+
+### Behoben
+
+- **Kopf- und Steuerleiste laufen in der Inhaltsspalte.** Hintergrund und
+  Rahmen bleiben vollflächig, der Inhalt teilt jetzt dieselbe Spalte wie
+  `<main class="wrap">` (`--content: 1060px`, `--gutter: 14px`). Bei 1920 px
+  stand der Leisteninhalt vorher 416 px neben den Karten.
+
+### Hinzugefügt (ab 1100 px, nur Desktop)
+
+- **Inhaltsspalte 1280 px** wie `max-w-7xl` der NAS-GUI statt 1060 px.
+- **Kopf- und Steuerleiste in einer Zeile:** rund 60 px statt ~185 px hoch; die
+  drei Kraftstoff-Tabs strecken sich nicht mehr über die volle Breite (Deckel
+  420 px). Bei wenig Platz bricht die Leiste um — dann immer noch flacher als
+  vorher. Mehr Inhaltshöhe, die Antwort-Karte bleibt länger sichtbar.
+- **Alltag zweispaltig (7/5):** links Antwort-Karte und Tagesverlauf, rechts
+  Stationen und Prognosen. Die DOM-Reihenfolge bleibt 1→4, die Kicker-Zahlen
+  („1 · Empfehlung“) entfallen ab 1100 px — sie sind eine Lesehilfe für die
+  einspaltige Handy-Ansicht.
+- **Werkstatt:** Prognose-Karten zweispaltig; Rohdaten-Tabelle bleibt über die
+  volle Breite.
+- **Sticky-Chip** sitzt am Rand der Inhaltsspalte statt am Fensterrand.
+
+Unterhalb von 1100 px ändert sich kein Pixel: Handy und Tablet behalten das
+bewährte Layout (Leisten untereinander, Inhalt einspaltig, Kicker mit Zahlen).
+Kein neuer Endpunkt, keine neue Abhängigkeit; das Template ersetzt sich über
+seinen Inhalts-Hash selbst (Sicherung `index.html.old`), die Fallback-API
+bleibt byte-identisch.
+
 ## [0.33.0] – 2026-09-14
 
 **Die Fallback-GUI auf dem Pi ist neu gebaut: Antwort zuerst, Karten statt

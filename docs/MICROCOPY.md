@@ -96,7 +96,7 @@ vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 ## 4a. Fallback-GUI v3: feste Muster (0.33.0)
 
 Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
-`tankapp-fallback-gui v3.0`) — nicht neu formulieren, nur wiederverwenden.
+`tankapp-fallback-gui v3.1`) — nicht neu formulieren, nur wiederverwenden.
 
 | Stelle | Muster |
 |---|---|
