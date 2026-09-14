@@ -4,6 +4,112 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.35.0] – 2026-09-14
+
+**Phasen 1+2 des GUI-Neuentwurfs stehen: „Stationen“, „Woche“ und „Ich“ —
+und die alten Tabs „Alltag“ und „Einstellungen“ sind ersetzt.** Der
+Preis-Atlas (Karte, Liste mit Referenz, 7-Tage-Verlauf, A-gegen-B-Vergleich),
+der Zeit-Planer (7-Tage-Fenster-Raster mit Sterne und Tank-Abgleich) und der
+Ich-Bereich (Fahrzeug, Belege, Bilanz, Einstellungen am Wirkungsort) lesen
+dieselben Server-Antworten wie der alte Alltag (`/api/v1/overview`, kein
+zweiter Poll). Ehrlich dazu: die manuelle Abnahme am echten Stand (S0/S1/
+Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
+(Checkliste §7); der CI-Spiegel läuft inklusive Browser-Suite grün.
+
+### Hinzugefügt
+
+- **Bereich „Stationen“** (`web/src/views/Stationen.tsx` + Logik in
+  `web/src/stations.ts`/`web/src/strip.ts`): der Preis-Atlas nach
+  UI-NEUENTWURF §5.2 in fester Reihenfolge — Karte mit Netto-€-Pins →
+  sortierte Liste (Netto-€ | Preis | Entfernung) mit sichtbarer Referenz
+  (gewählt → Stamm-Station → nächste frische) → Station-Detail (Preis,
+  Tagesrhythmus, Einordnung, 7-Tage-Verlauf der gewählten Station) →
+  A-gegen-B-Vergleich (Server-Netto wo vorhanden, sonst Preis × Tankmenge
+  mit „ohne Umweg“) → Frische-Fußzeile. Suche/⌘K springt in die Liste.
+  Ehrlichkeits-Grenzen: Server-Netto gilt nur gegen die aktuelle Referenz,
+  Ranglisten nur unter frischen Preisen, ohne Route keine
+  client-seitige Strecke. Bewusster Schnitt: die 24-h-Sparkline je Zeile
+  kommt erst mit der v2-Atlas-Antwort (Checkliste 1.10).
+- **Bereich „Woche“** (`web/src/views/Woche.tsx` + Logik in `web/src/week.ts`):
+  der Zeit-Planer nach §5.3 — Tank-Zeile (eigener Bereich, Schnellauswahl
+  „¼ / ½ / ¾ / voll“ + Slider), 7-Tage-Raster aus `decide.windows_week`
+  (je Tag das günstigste erwartete Fenster), Sterne nur aus Server-p
+  (ohne p: null Sterne), Tage 5–7 „noch unsicher“ (entsättigt), Auswahl-
+  Detail mit erwartetem Preis, Abstand zu jetzt, Sicherheit in Worten
+  (Prozent nur auf Stufe A) und Tank-Abgleich (`tankReach`: die Server-
+  Prüfung `blocks_wait` gilt nur für heute, kommende Tage zeigen ehrlich
+  Reichweite statt „reicht bis Do“). Leere Tage bleiben leer — die App rät
+  nicht.
+- **Bereich „Ich“** (`web/src/views/Ich.tsx`): vier Unterseiten als
+  ARIA-Tabs nach §5.4 — **Fahrzeug** (alle Default-Fields an einem Ort:
+  Tankmenge, Verbrauch, Tankgröße, Zeitwert, Tempo, Fahrtcharakter,
+  Profile), **Belege** (Schnellerfassung + Verlauf mit Storno; Einordnung
+  gegen den Median des Sets als Standard, die meistgenutzte Station als
+  zweiter Maßstab darunter — erst ab zwei Belegen an derselben Station),
+  **Bilanz** (Monat/Jahr aus `fills/summary`, Stadt-Median ehrlich als
+  „noch nicht messbar“) und **Einstellungen** (Stadt/Kraftstoff am
+  Wirkungsort, read-only-Schwellen aus `stats/summary`, Dark/Light, Über).
+- **Tankstand als Fakt in „Jetzt“**: Schnellauswahl „¼ / ½ / ¾ / voll“
+  unter der Entscheidung (`onTankQuick`); der Server bleibt die
+  Physik-Quelle (`tank`-Block der Decide-Antwort).
+- **Was-wäre-wenn in der „Jetzt“-Karte** (§5.1): Liter, spätester Zeitpunkt
+  und Zeitwert ändern sich direkt neben der Empfehlung (lokal, kein
+  Setting); `assumptionHint()` benennt die ausschlaggebende Annahme
+  („Kippt zu ‚Jetzt‘, wenn du vor HH:MM tanken musst …“).
+- **Entscheidung 2.4 (Alarme) in [BETRIEB.md](docs/BETRIEB.md)**:
+  §11 streicht Preis-Erinnerungen/Push (es wird dafür keine Komponente
+  gebaut); der System-Alarmweg (`app/alarms.py`, `app/notify.py`/ntfy B4,
+  bestehende Codes) bleibt unverändert aktiv; Störungen erscheinen in der
+  neuen GUI nur als Anzeige (Header-Punkt + System-Tab).
+
+### Geändert
+
+- **Tab-Struktur (§16, Tab-für-Tab):** `views/Daily.tsx` (−2 072 Zeilen)
+  und der alte Einstellungen-Tab sind entfernt; die Navigation führt
+  Jetzt → Stationen → Woche → Ich → Werkstatt → System → Glossar.
+  `handleNowNavigate` zielt auf die echten Bereiche. Die Werkstatt
+  bleibt (Phase 3 ersetzt sie), das Glossar bleibt.
+- **E2e-Suite auf die neue Tab-Struktur umgestellt** (`e2e/*.spec.ts`,
+  8 Tests × Desktop/Mobil = 16 Läufe): „honest setup state and all
+  views“ (frischer Server: „Jetzt“ S0 → „Stationen“-Set-Karte →
+  Werkstatt → System), „city/fuel changes never mix prices, closures
+  never win“ (Isolation über die neuen Bereiche), „Ich:
+  Fahrzeug-Defaults, Schwellen read-only, Dark/Light“ (Unterseiten als
+  ARIA-Tabs adressiert), Decide-Fluss decide → intent → fill → due
+  (inkl. „Serverfehler zeigt keinen Erfolg“) und die Horizons-/
+  Zeitwert-Automatik-Tests in `horizons.spec.ts`.
+- `app/version.py` 0.34.0 → 0.35.0; `docs/UMSETZUNG-GUI-NEUENTWURF.md`
+  (Phasen 1+2 abgearbeitet, Messwerte, F4-Liste) und `docs/MICROCOPY.md`
+  kennen die neuen Dateien/Bereiche.
+
+### Behoben
+
+- **Woche-Ansicht crashte zur Laufzeit** (`week.ts`): Der Tag-Anker
+  parste das de-DE-datierte Berlin-Format („14.09.2026“) mit
+  `Date.parse` — das liefert `NaN`, und `weekDays` warf
+  `RangeError: Invalid time value`. Der Anker kommt jetzt über das
+  ISO-Berlin-Datum (en-CA), dasselbe Muster wie `now.ts`; `week.test.ts`
+  deckt es (7 Tage, bestes Fenster je Tag, „noch unsicher“-Tage).
+- **Datenfolge ist kein Defekt (Stationen):** Ein decide-`error_code`
+  (z. B. `polling_missing` auf einem frischen Server) mit HTTP 200 war
+  früher ein roter Fehlerzustand in der Liste. Jetzt ist rot nur eine
+  tote Datenquelle (`data === null && error`); der fehlende Polling-Set-
+  Zustand zeigt die ehrliche Set-Karte „Erst ein Set, dann der Atlas“
+  (Regressionstest in `views/Stationen.test.tsx`).
+
+### Tests
+
+- 458 Web-Tests in 26 Dateien (vorher 352 in 20): Logik `strip.test.ts`
+  (7), `stations.test.ts` (30), `week.test.ts` (19); Rendering
+  `views/Stationen.test.tsx` (7), `views/Woche.test.tsx` (7),
+  `views/Ich.test.tsx` (9) — alle mit fester Uhr (2026-09-14 12:00
+  Berlin) und `renderToStaticMarkup`; dazu `mostUsedStation` (zweiter
+  Maßstab unter dem Median).
+- Microcopy- und Formatierungs-Ratchet kennen die neuen Dateien.
+- **Browser-Suite grün** (8 Tests × Desktop/Mobil = 16 Läufe): Setup-
+  Zustände auf dem frischen Server, Stadt-/Kraftstoff-Isolation,
+  Decide-Fluss, Werkstatt-Horizonte und Zeitwert-Automatik.
+
 ## [0.34.0] – 2026-09-14
 
 **Der erste Bereich des GUI-Neuentwurfs steht: „Jetzt“. Eine Entscheidung,

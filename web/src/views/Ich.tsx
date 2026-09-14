@@ -26,6 +26,7 @@ import { Empty, panel } from "../components/ui";
 import {
   centPerLiter,
   commaToDot,
+  countLabel,
   euro,
   fillLimitHint,
   monthBalanceLabel,
@@ -78,6 +79,33 @@ export function fillPositionNote(
   return deltaCt < 0
     ? `${centPerLiter(Math.abs(deltaCt))} unter dem Median deines Sets (heute).`
     : `${centPerLiter(Math.abs(deltaCt))} über dem Median deines Sets (heute) — nächste Füllung ist der bessere Vergleich.`;
+}
+
+/**
+ * Zweiter Maßstab (Konzept-Entscheidung 4: „Median als Standard,
+ * meistgenutzte Station darunter“): die Station mit den meisten
+ * (nicht stornierten) Belegen. Erst ab zwei Belegen an derselben
+ * Station ist „meistgenutzt“ mehr als eine Einzelbeobachtung —
+ * sonst steht nichts (keine Erfindung).
+ */
+export function mostUsedStation(
+  fills: Fill[],
+): { name: string; count: number } | null {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const fill of fills) {
+    if (fill.voided) continue;
+    const entry = counts.get(fill.station_id) ?? {
+      name: fill.station_name || fill.station_id,
+      count: 0,
+    };
+    entry.count += 1;
+    counts.set(fill.station_id, entry);
+  }
+  let best: { name: string; count: number } | null = null;
+  for (const entry of counts.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  return best !== null && best.count >= 2 ? best : null;
 }
 
 export interface IchViewProps {
@@ -202,6 +230,10 @@ function FillsSection(props: IchViewProps) {
     visibleFills,
     voidedCount,
   } = props;
+
+  // Zweiter Maßstab unter dem Median (Konzept-Entscheidung 4) — null,
+  // solange „meistgenutzt“ keine Mehrbeobachtung wäre.
+  const mostUsed = mostUsedStation(fillList);
 
   return (
     <div>
@@ -425,6 +457,13 @@ function FillsSection(props: IchViewProps) {
                 ))}
               </tbody>
             </table>
+            {mostUsed && (
+              <p className="mt-3 px-5 pb-1 text-[11px] leading-relaxed text-slate-500">
+                Maßstab: der Median deines Sets (Standard) · deine
+                meistgenutzte Station: {mostUsed.name} (
+                {countLabel(mostUsed.count)} Belege).
+              </p>
+            )}
           </div>
         ) : (
           <div className="px-5 pb-5">

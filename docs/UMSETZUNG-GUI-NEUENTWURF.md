@@ -1,6 +1,6 @@
 # UMSETZUNG-GUI-NEUENTWURF — Arbeits-Checkliste
 
-> Stand: 14.09.2026 · App-Version **0.34.0** · Konzept:
+> Stand: 14.09.2026 · App-Version **0.35.0** · Konzept:
 > [UI-NEUENTWURF.md](UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
 > §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](GUI-VORLAGEN.md) ·
 > Texte: [MICROCOPY.md](MICROCOPY.md) ·
@@ -13,15 +13,18 @@
 > weniger als ein halber mehr.*
 >
 > **Stand der Abarbeitung:** Phase 0 ist erledigt (Doku repariert, Baseline
-> gemessen, CI-Spiegel grün). Der erste Schnitt aus Phase 1 — der Bereich
-> **Jetzt** in `web/src/views/Jetzt.tsx` plus der Gleichschritt in der
-> Fallback-GUI — ist gebaut und getestet, aber **noch nicht abgenommen**
-> (Sichtprüfung auf Desktop und Smartphone steht aus, siehe §7).
+> gemessen, CI-Spiegel grün). Phase 1 (**Jetzt** + **Stationen**) und Phase 2
+> (**Woche** + **Ich**) sind gebaut und getestet: die Bereiche
+> `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/`Ich.tsx` stehen, die alten Tabs
+> „Alltag“ und „Einstellungen“ sind ersetzt (kein Nebeneinander, §16). Der
+> CI-Spiegel läuft inklusive Browser-Suite grün. **Offen bleibt** die manuelle
+> Abnahme am echten Stand (S0/S1/Stufe A/Fehler/Offline, §7.2), der
+> Pi-Fallback (7.3) und die Vorleser-Stichprobe (7.4).
 
 - [0. Basis, Regeln und Messwerte](#0-basis-regeln-und-messwerte)
 - [1. Phase 0 — Fundament](#1-phase-0--fundament)
 - [2. Phase 1 — Jetzt + Stationen](#2-phase-1--jetzt--stationen)
-- [3. Phase 2 — Woche + Ich](#3-phase-2--woche--ich)
+- [3. Phase 2 — Woche + Ich](#3-phase-2--woche--ich--gebaut)
 - [4. Phase 3 — Labor](#4-phase-3--labor)
 - [5. Phase 4 — System](#5-phase-4--system)
 - [6. Fallback-Gleichschritt (jede Phase)](#6-fallback-gleichschritt-jede-phase)
@@ -34,41 +37,44 @@
 Bereich liest dieselbe Server-Antwort wie der alte (heute `/api/v1/overview`),
 bis der alte Bereich fällt — kein zweiter Poll, keine zweite Wahrheit.
 
-**Definition of Done je Bereich** (gilt für jede Phase):
+**Definition of Done je Bereich** (gilt für jede Phase) — für die neuen
+Bereiche der Phasen 1–2 erfüllt:
 
-- [ ] Layout und Reihenfolge des Bereichs stehen wie in §5 beschrieben.
-- [ ] Alle vier Ehrlichkeits-Fälle sind gebaut: **Lädt** (Skelett im
+- [x] Layout und Reihenfolge des Bereichs stehen wie in §5 beschrieben.
+- [x] Alle vier Ehrlichkeits-Fälle sind gebaut: **Lädt** (Skelett im
       späteren Raster), **Leer** (Grund + was als Nächstes passiert),
       **Unsicher** (grau, erster Klasse), **Fehler** (Klartext + Rohcode +
       „Erneut laden“).
-- [ ] Erklär-Treppe mindestens **Ebene 1** an jeder Zahl mit Empfehlungs-
+- [x] Erklär-Treppe mindestens **Ebene 1** an jeder Zahl mit Empfehlungs-
       oder Bilanzcharakter (§7); „Warum?“ immer an derselben Stelle.
-- [ ] Frische-Fußzeile mit Alter in Worten (§10, dieselben Schwellen wie
+- [x] Frische-Fußzeile mit Alter in Worten (§10, dieselben Schwellen wie
       `dataAgeNote`).
-- [ ] Zahlen ausschließlich über die Formatter (`web/src/data.ts`);
+- [x] Zahlen ausschließlich über die Formatter (`web/src/data.ts`);
       Microcopy geprüft; `web/src/microcopy.test.ts` und
       `web/src/format-convention.test.ts` kennen die neuen Dateien.
-- [ ] Fallback-GUI im Gleichschritt (§6).
-- [ ] Tests: reine Logik in `.test.ts`, Rendering in `.test.tsx`
+- [x] Fallback-GUI im Gleichschritt (§6) — die neuen Bereiche sind
+      NAS-only (Pi-Einordnung in F4), die Pi-Antwort-Karte erzählt weiter
+      die drei Fakten von „Jetzt“.
+- [x] Tests: reine Logik in `.test.ts`, Rendering in `.test.tsx`
       (`renderToStaticMarkup`, feste Uhr), Volltext-Ratchet erweitert.
-- [ ] CI-Spiegel grün: ruff check, ruff format --check, `pytest -q`,
+- [x] CI-Spiegel grün: ruff check, ruff format --check, `pytest -q`,
       `npm --prefix web test`, `npm --prefix web run build`.
-- [ ] `app/version.py` angehoben, `CHANGELOG.md` ergänzt.
+- [x] `app/version.py` angehoben, `CHANGELOG.md` ergänzt.
 
 **Messwerte (Baseline 14.09.2026, Phase 0 vor dem Schnitt „Jetzt“).** Die
 Werte aus §15 sind ohne Nutzer nicht messbar; hier steht, was messbar ist —
 und was ehrlich offen bleibt:
 
-| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ |
-|---|---|---|
-| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** |
-| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) |
-| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) |
-| Testfälle „Jetzt“ | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 |
-| API-Aufrufe „Jetzt“ pro Refresh | — | 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) |
-| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische |
-| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) |
-| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung |
+| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ | Nach Phase 1+2 (Stationen · Woche · Ich) |
+|---|---|---|---|
+| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** |
+| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) |
+| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) |
+| Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) |
+| API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) |
+| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) |
+| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt |
+| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
 
 ## 1. Phase 0 — Fundament
 
@@ -113,36 +119,82 @@ und was ehrlich offen bleibt:
   Einstieg; der neue Bereich liest die Overview-Antwort des Alltags
   (`overviewTab`) — **kein zweiter Poll**. Der Alltagstab bleibt vorerst
   daneben stehen (siehe 1.6).
-- [ ] **1.6** **Alltag entlasten:** Entscheidungs- und Listenteil aus
+- [x] **1.6** **Alltag entlasten:** Entscheidungs- und Listenteil aus
   `views/Daily.tsx` entfernen, sobald „Stationen“ steht — sonst gibt es zwei
   Orte für dieselbe Empfehlung. Dabei die Übergangs-Ziele aus `handleNowNavigate`
   („Stationen“/„Woche“ → Alltagstab) auf die echten Bereiche umstellen.
-- [ ] **1.7** **Annahmen live in der Karte** (Was-wäre-wenn, §5.1):
+  *Erledigt mit dem Phase-2-Schnitt: `Daily.tsx` ist entfernt, „Alltag“ und
+  „Einstellungen“ stehen nicht mehr in der Navigation; `handleNowNavigate`
+  zielt auf die echten Bereiche („Stationen“ → `stations`, „Woche“/Tank →
+  `week`, „Ich“ → `ich`, „Werkstatt“ → `statistics`).*
+- [x] **1.7** **Annahmen live in der Karte** (Was-wäre-wenn, §5.1):
   Liter, spätester Zeitpunkt und Zeitwert direkt neben der Empfehlung ändern,
   mit Hinweis, welche Annahme den Ausschlag gibt („Kippt zu „Jetzt“, wenn …“).
-  Heute steht dort ein Verweis auf die Einstellungen.
-- [ ] **1.8** **Mini-Visual in Ebene 1** (§7): die Begründung bekommt das
+  *Erledigt: das Annahmen-Panel unter der Entscheidung (`Jetzt.tsx`) ändert
+  Liter/spätesten Zeitpunkt/Zeitwert ohne Tabwechsel; `assumptionHint()` in
+  `now.ts` benennt die ausschlaggebende Annahme („Kippt zu „Jetzt“, wenn …“),
+  aktive Annahmen werden als Chips sichtbar.*
+- [x] **1.8** **Mini-Visual in Ebene 1** (§7): die Begründung bekommt das
   Tagesprofil mit markiertem Fenster; heute trägt der Tagesstreifen der
-  Ansicht diese Rolle.
+  Ansicht diese Rolle. *Erledigt wie konzipiert: der Tagesstreifen der
+  Ansicht (06–24, markierte aktuelle Stunde) trägt die Mini-Visual-Rolle;
+  das Begründungs-Sheet verlinkt auf dieselben Zahlen.*
 
-### 2b. Bereich „Stationen“ (§5.2) — offen
+### 2b. Bereich „Stationen“ (§5.2) — gebaut
 
-- [ ] **1.9** Preis-Atlas bauen (Karte + Liste + Verlauf + Vergleich), inkl.
+- [x] **1.9** Preis-Atlas bauen (Karte + Liste + Verlauf + Vergleich), inkl.
   Netto-€-Rechnung und Referenzlinie; Suche/⌘K als Nebenweg vorbereiten.
-- [ ] **1.10** Erst mit 1.9 entscheiden, ob `/api/v2/stations/atlas` nötig
-  ist oder `stations` + `overview` reichen (§12).
+  *Erledigt: `views/Stationen.tsx` + reine Logik in `stations.ts`/`strip.ts`
+  (Karte mit Netto-€-Pins → sortierte Liste mit Referenz → Detail mit
+  7-Tage-Verlauf und Tagesrhythmus → A-gegen-B-Vergleich, ⌘K in die Suche).
+  Ehrlichkeits-Grenzen stehen als Tests in `stations.test.ts`: Server-Netto
+  nur gegen die aktuelle Referenz, ohne Route steht „ohne Umweg“, Rangliste
+  nur unter frischen Preisen. Bewusster Schnitt: die 24-h-Sparkline je Zeile
+  bleibt offen (pro Station eigener Series-Poll) — sie steht erst bei der
+  v2-Atlas-Antwort aus 1.10.*
+- [x] **1.10** Erst mit 1.9 entscheiden, ob `/api/v2/stations/atlas` nötig
+  ist oder `stations` + `overview` reichen (§12). *Entscheidung: für den
+  gebauten Atlas reichen `stations` + `overview` — Karte, Liste, Referenz,
+  Netto-€ (via `alternatives_nearby`), Frische und Vergleich brauchen keinen
+  neuen Endpunkt. `GET /api/v2/stations/atlas` wird erst nötig, wenn die
+  24-h-Verläufe je Zeile kommen (siehe 1.9); bis dahin bleibt der §12-Baum
+  Konzept.*
 
-## 3. Phase 2 — Woche + Ich
+## 3. Phase 2 — Woche + Ich — gebaut
 
-- [ ] **2.1** Fenster-Kalender (7 Tage) mit Tank-Abgleich.
-- [ ] **2.2** Tankstand als eigener Bereich und als Fakt in „Jetzt“
-  (Schnellauswahl „¼ / ½ / ¾ / voll“).
-- [ ] **2.3** Ich: Fahrzeug, Belege, Bilanz (Median als Standard,
+- [x] **2.1** Fenster-Kalender (7 Tage) mit Tank-Abgleich.
+  *Erledigt: `views/Woche.tsx` + Logik in `week.ts` — 7-Tage-Raster aus
+  `decide.windows_week` (lowest `expected_price` je Tag), Sterne nur aus
+  Server-p, Tage 5–7 „noch unsicher“, Auswahl-Detail mit erwartetem Preis,
+  Abstand zu jetzt, Sicherheit in Worten und Tank-Abgleich
+  (`tankReach`: Server-`blocks_wait` nur für heute, kommende Tage ehrlich
+  Reichweite statt „reicht bis Do“). Tage ohne Fenster bleiben leer.*
+- [x] **2.2** Tankstand als eigener Bereich und als Fakt in „Jetzt“
+  (Schnellauswahl „¼ / ½ / ¾ / voll“). *Erledigt: Tank-Zeile im Wochen-Kopf
+  (eigener Bereich, Pflege mit Schnellauswahl + Slider) und Tank als
+  Fakt Nr. 3 in „Jetzt“ mit der Schnellauswahl „¼ / ½ / ¾ / voll“
+  (`onTankQuick`). Der Server bleibt die einzige Physik-Quelle
+  (`tank` in der Decide-Antwort).*
+- [x] **2.3** Ich: Fahrzeug, Belege, Bilanz (Median als Standard,
   meistgenutzte Station darunter), Einstellungen am Wirkungsort.
-- [ ] **2.4** Erinnerungen/Alarme: §17.9 streicht Push ersatzlos. Vor dem
+  *Erledigt: `views/Ich.tsx` mit vier Unterseiten als ARIA-Tabs —
+  **Fahrzeug** (alle Default-Fields an einem Ort: Tankmenge, Verbrauch,
+  Zeitwert, Tempo, Fahrtcharakter, Tankgröße), **Belege** (Schnellerfassung
+  + Verlauf mit Storno, Einordnung gegen den Median des Sets — den
+  Standard-Maßstab; die meistgenutzte Station steht als zweiter Maßstab
+  darunter, erst ab zwei Belegen an derselben Station), **Bilanz**
+  (Monat/Jahr aus `fills/summary`) und **Einstellungen** (Stadt/Kraftstoff
+  am Wirkungsort, read-only-Schwellen, Dark/Light, Über). Der alte
+  Einstellungen-Tab ist damit ersetzt.*
+- [x] **2.4** Erinnerungen/Alarme: §17.9 streicht Push ersatzlos. Vor dem
   Umbau muss definiert sein, was mit `app/alarms.py`, `app/notify.py` und
   den bestehenden Alarm-Einträgen passiert (Betriebs-Entscheidung, gehört
-  in [BETRIEB.md](BETRIEB.md)).
+  in [BETRIEB.md](BETRIEB.md)). *Erledigt: die Betriebs-Entscheidung steht
+  in [BETRIEB.md → „System-Alarme und GUI-Neuentwurf“](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350) —
+  §11 streicht **Preis-Erinnerungen/Push** (es wird dafür keine Komponente
+  gebaut); der **System-Alarmweg** (`app/alarms.py`, `app/notify.py`/ntfy B4,
+  bestehende Codes) bleibt unverändert aktiv. Störungen erscheinen in der
+  neuen GUI nur als Anzeige (Header-Punkt + System-Tab), kein Push, kein Ton.*
 
 ## 4. Phase 3 — Labor
 
@@ -176,9 +228,18 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   das neue Template beim Start übernehmen (altes wird als `index.html.old`
   gesichert); Test `tests/test_rp2_fallback.py` prüft Fakten, Reihenfolge und
   Fußzeile.
-- [ ] **F4** Mit jedem weiteren Bereich prüfen: Was davon ist auf dem Pi
+- [x] **F4** Mit jedem weiteren Bereich prüfen: Was davon ist auf dem Pi
   ehrlich darstellbar? Was bleibt NAS-only? (Liste je Phase in §6 der
   jeweiligen Bereichs-Notiz ergänzen.)
+  *Liste Phase 1+2: „Jetzt“ ist der Pi-Bereich (F1–F3, drei Fakten,
+  Tankstand bewusst NAS-only). Die neuen Bereiche bleiben **NAS-only** —
+  auf dem Pi ehrlich darstellbar ist von ihnen nichts: „Stationen“ braucht
+  Karte/Atlas/Vergleich und Polling-Daten, „Woche“ die Modell-Fenster aus
+  der Engine, „Ich“ Profile/Belege/Bilanz (alle NAS-Daten). Die Fallback-
+  Antwort-Karte erzählt weiter die drei Fakten von „Jetzt“; das Template
+  bleibt bei Version 4.0 (nichts Neues hinzugefügt, nichts geändert).
+  Preis-Erinnerungen/Push gibt es auf keiner der drei Oberflächen (§11,
+  Betriebs-Entscheidung in [BETRIEB.md](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
 
 ## 7. Abnahme (manuell)
 
@@ -200,8 +261,9 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
 
 ## 8. Abschluss
 
-- [ ] **8.1** Nach der Abnahme: Phase 1b („Stationen“) beginnen; erst danach
-  fällt der Alltagstab (1.6).
+- [ ] **8.1** Nach der manuellen Abnahme (7.2–7.4): Phase 3 (Labor) und
+  danach Phase 4 (System) beginnen (§16) — erst dann fällt „Werkstatt“.
+  Phasen 1b („Stationen“) und der Alltagstab-Fall (1.6) stehen mit 0.35.0.
 - [ ] **8.2** Dieses Dokument bleibt lebend, bis Phase 4 steht — erst dann
   nach `docs/archiv/` mit Banner (Stand, Nachfolger) und Eintrag in
   [archiv/README.md](archiv/README.md).
