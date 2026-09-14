@@ -221,8 +221,9 @@ def build_alarms(
                         "code": "stations_dead",
                         "severity": "warn",
                         "message": (
-                            f"{total_dead} Station(en) ohne Preis seit Tagen — aus Ranking/Kontingent genommen. "
-                            "Sie zählen nicht mehr als Vergleich und verbrauchen kein Kontingent (tot)."
+                            f"{total_dead} Station(en) ohne Preis seit Tagen — aus dem Ranking genommen. "
+                            "Sie zählen nicht mehr als Vergleich; gepollt werden sie weiter, "
+                            "bis das Polling-Set per Tausch-Anleitung bereinigt ist."
                         ),
                     }
                 )

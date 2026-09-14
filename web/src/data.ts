@@ -3280,7 +3280,7 @@ export function lifecycleTip(lc: StationLifecycle | string | null | undefined): 
     case "active":
       return "In den letzten Tagen lag mindestens ein verwertbarer Preis vor.";
     case "dead":
-      return "Seit Tagen kein verwertbarer Preis (Status „no prices“) — die Station fällt aus Ranking und Kontingent.";
+      return "Seit Tagen kein verwertbarer Preis (Status „no prices“) — die Station fällt aus dem Ranking; das Polling-Set ändert sich erst nach Bestätigung.";
     case "closed":
       return "Status „geschlossen“ — die Station ist vorübergehend geschlossen, der Preis fehlt deshalb.";
     case "no_fuel":
@@ -3316,7 +3316,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Preis-Abstand",
     short: "Median der Differenz einer Station zum Median der übrigen Stationen der Stadt — in ct/L, negativ heißt günstiger als die Umgebung.",
     long: "Für jeden 5-Minuten-Zeitpunkt wird der Median der Vergleichsstationen (Leave-One-Out) abgezogen; über alle Zeitpunkte gemittelt ergibt das δ̂. Ein Wert von −4,2 ct/L bedeutet: Die Station lag im Mittel 4,2 ct/L unter dem Stadtmedian. Das Konfidenzintervall kommt aus dem Tages-Block-Bootstrap (B=2000, 95 %, Benjamini-Hochberg-korrigierter q-Wert).",
-    anchor: "engine-selection",
+    anchor: "relative-preislage-δ",
   },
   {
     id: "mase",
@@ -3324,7 +3324,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Vergleich zur saisonalen Naive",
     short: "MASE = Backtest-MAE geteilt durch den MAE der saisonalen Naive. Unter 1,0 heißt besser als die einfache Vergleichsmethode.",
     long: "Mean Absolute Scaled Error: Der Backtest-Fehler des Modells geteilt durch den Fehler der 24-Stunden-Naive (Vor-Tages-Preis zur selben Stunde). MASE 0,7 heißt 30 % besser als die Naive. Im Roll-Backtest letzte 7 abgeschlossene Prüftage, Daten aus echten Beobachtungen, keine Prognose.",
-    anchor: "mase",
+    anchor: "mase-fehler-gegen-die-naive",
   },
   {
     id: "picp",
@@ -3332,7 +3332,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Trefferquote des 95-%-Bandes",
     short: "Anteil echter Preise, die im 95-%-Band des Backtests lagen. Zielbereich 90–98 %.",
     long: "Prediction Interval Coverage Probability: Wie oft liegt der echte Preis im vorhergesagten 95-%-Band? Bei perfekter Kalibrierung etwa 95 % der Zeit. Darunter ist das Band zu schmal (zu siegessicher), darüber zu breit (zu vorsichtig). Gezählt werden nur Zeitpunkte mit echtem Preis, geschlossene Meldungen zählen nicht als Bandverfehlung.",
-    anchor: "picp",
+    anchor: "picp-band-trefferquote",
   },
   {
     id: "brier",
@@ -3340,7 +3340,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Treffergenauigkeit der Prozentzahlen",
     short: "Mittlerer quadratischer Abstand zwischen behaupteter Prozentzahl P und eingetretenem Ergebnis (0/1). Kleiner heißt ehrlicher.",
     long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei mindestens 100 abgeschlossenen Empfehlungen (§0.4).",
-    anchor: "brier",
+    anchor: "brier-score-treffergenauigkeit-der-prozentzahlen",
   },
   {
     id: "eps",
@@ -3348,7 +3348,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Handlungsschwelle",
     short: "Mindest-Ersparnis in ct/L, ab der die Regel „Warten“ empfiehlt statt „Jetzt tanken“. Schalter im Labor, Produktion rechnet mit kalibrierter Entscheidungstabelle.",
     long: "Die Labor-Regel des Prüfstands: Warten nur, wenn die im Training geschätzte erwartete Ersparnis μ mindestens ε erreicht. ε = 1,0 ct/L heißt: Erwarte ich weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. Die Produktion nutzt die kalibrierte Entscheidungstabelle (§4.1/§4.2), der Slider dient nur der Was-wäre-wenn-Analyse.",
-    anchor: "epsilon",
+    anchor: "epsilon-schwelle-des-labor-vergleichs",
   },
   {
     id: "regret",
@@ -3356,7 +3356,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Mehrkosten zur perfekten Sicht",
     short: "Durchschnittlicher Abstand der Regel zum Orakel — wie viel Cent je Liter die Regel mehr kostet als der beste Zeitpunkt im Fenster.",
     long: "Regret = (Preis der Regel − Preis des Orakels) je Entscheidung, gemittelt. Das Orakel kennt den ganzen Tagesverlauf vorher und tankt immer im günstigsten Fenster — es ist die unerreichbare Referenz. Die Regel-€ (smart), Orakel-€ (best) und „immer warten“-€ (always) stehen daneben: Geholtes Potenzial = Regel-€ / Orakel-€.",
-    anchor: "regret",
+    anchor: "regret-mehrkosten-zur-perfekten-sicht",
   },
   {
     id: "qvalue",
@@ -3364,6 +3364,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Falscher-Alarm-korrigiert",
     short: "Benjamini-Hochberg-korrigierter p-Wert über alle Stationen der Stadt. Signifikant günstiger bei q < 0,05.",
     long: "Der q-Wert korrigiert die vielen Einzeltests (jede Station gegen ihre Stadt) gegen falsche Entdeckungen. q = 0,03 heißt: Unter allen als signifikant markierten Stationen sind höchstens 3 % Fehlalarme erwartet. 95-%-KI und q-Wert kommen aus demselben Tages-Block-Bootstrap.",
+    anchor: "bootstrap-ki--fdr",
   },
   {
     id: "avscore",
@@ -3371,14 +3372,15 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Gewichtete Verfügbarkeit bei 3 günstigsten",
     short: "Gewichtete Wahrscheinlichkeit, dass die Station zu den drei günstigsten der Stadt gehört — gewichtet mit dem Tankzeitprofil.",
     long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu deinen typischen Tankzeiten stehst du oft gut da.",
+    anchor: "av-score--billigste-stunde",
   },
   {
     id: "lifecycle",
     term: "Lebenszyklus",
     de: "Zustand der Station für diesen Kraftstoff",
-    short: "aktiv, temporär geschlossen, führt den Kraftstoff nicht oder tot (seit Tagen kein Preis) — nur tote fallen aus Ranking und Kontingent.",
-    long: "Die API liefert je Station „open“, „closed“ oder „false“ (Sorte nicht geführt). Kein verwertbarer Preis in den letzten 7 Kalendertagen (Europe/Berlin, konfigurierbar) gilt als „tot“ und nimmt der Station den Vergleichsplatz und das Kontingent — anders als „geschlossen“ (vorübergehend) oder „führt nicht“ (offen, aber Sorte fehlt).",
-    anchor: "lifecycle",
+    short: "aktiv, temporär geschlossen, führt den Kraftstoff nicht oder tot (seit Tagen kein Preis) — nur tote verlieren den Vergleichsplatz.",
+    long: "Die API liefert je Station „open“, „closed“ oder „false“ (Sorte nicht geführt). Kein verwertbarer Preis in den letzten 7 Kalendertagen (Europe/Berlin, konfigurierbar) gilt als „tot“ und verliert den Vergleichsplatz im Ranking — anders als „geschlossen“ (vorübergehend) oder „führt nicht“ (offen, aber Sorte fehlt). Gepollt wird weiter, bis das Polling-Set per Tausch-Anleitung bereinigt ist.",
+    anchor: "lebenszyklus-der-stationen",
   },
   {
     id: "twins",
@@ -3386,7 +3388,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     de: "Stationen mit identischem Preisverlauf",
     short: "Zwei Stationen, deren Preise über 28 Tage bei ≥ 90 % Überlappung zu ≥ 99 % innerhalb 0,1 ct/L übereinstimmen — Warnung, nie automatische Entfernung.",
     long: "Kriterien: mind. 28 Tage mit je ≥ 12 gemeinsamen Zeitpunkten, ≥ 90 % Überlappung, ≥ 99 % Übereinstimmung innerhalb 0,1 ct/L. Solche Paare sind oft Doppel-Source oder Franchise-Überlappung. Die Warnung steht im Selektions-Artefakt und im System-Tab; das Polling-Set wird nie automatisch umgebaut — das braucht Bestätigung.",
-    anchor: "price-twins",
+    anchor: "preis-zwillinge",
   },
 ] as const;
 

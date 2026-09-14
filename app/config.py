@@ -64,8 +64,8 @@ class Settings:
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
     city_subdivs: dict[str, str] = field(default_factory=dict)
-    # A12: Tote Stationen nach N Kalendertagen ohne Preis aus Ranking/Kontingent
-    # (konfigurierbar, Default 7; 0 = nie tot).
+    # A12: Tote Stationen nach N Kalendertagen ohne Preis aus dem Ranking
+    # (konfigurierbar, Default 7; 0 = nie tot). Das Polling-Set bleibt stabil.
     dead_after_days: int = 7
 
     @property

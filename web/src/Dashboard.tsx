@@ -1939,7 +1939,7 @@ export function Dashboard() {
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>
-            Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage gedrosselt · Beobachtungsfenster 06–24 Uhr (Europe/Berlin)
+            Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten · Polling-Fenster 06–24 Uhr (Europe/Berlin)
             {h?.version ? (
               <>
                 {" "}

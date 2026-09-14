@@ -1052,7 +1052,7 @@ export function StatisticsView(props: StatisticsViewProps) {
           {selection.data.closed_count ? `${selection.data.closed_count} temporär geschlossen` : null}
           {selection.data.closed_count && selection.data.nofuel_count ? " · " : null}
           {selection.data.nofuel_count ? `${selection.data.nofuel_count} führt diesen Kraftstoff nicht` : null}
-          . „Tot“ verbraucht kein Kontingent mehr.
+          . „Tot“ verliert den Vergleichsplatz; das Polling-Set ändert sich erst nach Bestätigung.
         </p>
         <p className="mt-1 text-[11px] text-amber-300/80">
           Was heißt das?{" "}
