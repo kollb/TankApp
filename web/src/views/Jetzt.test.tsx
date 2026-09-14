@@ -165,10 +165,26 @@ describe("Jetzt: Aufbau", () => {
       ],
     });
     expect(html).toContain("Günstigste Stunde");
-    expect(html).toContain("06–06 Uhr".replace("06–06", "12–13"));
+    expect(html).toContain("12–13 Uhr");
     expect(html).toContain("Tagesmedian");
     expect(html).toContain("Spanne 5,0 ct/L");
     expect(html).toContain("3 von 3 Stunden mit offener Meldung");
+    expect(html).toContain("1,709");
+    expect(html).toContain("1,759");
+  });
+
+  it("Gleichstand über 06–12 nennt die Spanne, nicht nur 06–07", () => {
+    const html = render({
+      stripCells: [6, 7, 8, 9, 10, 11].map((hour) => ({
+        hour,
+        value: 2.289,
+        tone: "cheap" as const,
+        current: hour === 9,
+      })),
+    });
+    expect(html).toContain("06–12 Uhr");
+    expect(html).not.toContain(">06–07 Uhr<");
+    expect(html).toContain("2,289");
   });
 
   it("zeigt die Frische-Fußzeile mit Ort und Alter", () => {

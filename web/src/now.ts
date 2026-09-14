@@ -25,6 +25,8 @@ import {
   euroPerLiter,
   freshness,
   hourRangeLabel,
+  hourRunsLabel,
+  hourRunsOf,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type AdviceAction,
@@ -794,11 +796,31 @@ export type NowDayPanel = {
   nowVsMedianCt: number | null;
   openHours: number;
   totalHours: number;
+  /** Alle offenen Stunden, die gleichauf am günstigsten sind. */
+  bestHours: number[];
+  worstHours: number[];
+  /** „06–12 Uhr“ bei Gleichstand, sonst „06–07 Uhr“. */
+  bestLabel: string;
+  worstLabel: string;
+  /** Mehr als eine Stunde teilt sich den Bestwert. */
+  tied: boolean;
   /** Aussage-Zeile über dem Streifen. */
   headline: string;
-  /** Abdeckungs-Zeile unter dem Streifen („8 von 18 Stunden …“). */
+  /** Abdeckungs-Zeile unter dem Streifen („8 von 18 Stunden mit offener Meldung“). */
   coverage: string;
 };
+
+/** Gleichstand wie bei der Heatmap-Level-Karte — 0,05 ct/L. */
+const DAY_TIE_EPS = 0.0005;
+
+function hoursTiedTo(
+  open: Array<{ hour: number; value: number }>,
+  target: number,
+): number[] {
+  return open
+    .filter((cell) => Math.abs(cell.value - target) <= DAY_TIE_EPS)
+    .map((cell) => cell.hour);
+}
 
 export function nowDayPanel(cells: StripCell[]): NowDayPanel {
   const open = cells.filter(
@@ -825,11 +847,17 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
   const nowVsMedianCt =
     nowValue !== null && median !== null ? (nowValue - median) * 100 : null;
 
+  const bestHours = best ? hoursTiedTo(open, best.value) : [];
+  const worstHours = worst ? hoursTiedTo(open, worst.value) : [];
+  const bestLabel = hourRunsLabel(hourRunsOf(bestHours));
+  const worstLabel = hourRunsLabel(hourRunsOf(worstHours));
+  const tied = bestHours.length > 1;
+
   const headline = !best
     ? "Heute liegt noch keine offene Meldung vor."
     : worst
-      ? `Am günstigsten ist es um ${String(best.hour).padStart(2, "0")} Uhr (${euroPerLiter(best.value)}) — ${centPerLiter(spreadCt ?? 0)} unter der teuersten Stunde.`
-      : `Bisher nur eine offene Stunde: ${String(best.hour).padStart(2, "0")} Uhr (${euroPerLiter(best.value)}) — für einen Tagesverlauf fehlen Messwerte.`;
+      ? `Am günstigsten ist es ${bestLabel} (${euroPerLiter(best.value)}) — ${centPerLiter(spreadCt ?? 0)} unter der teuersten Stunde (${worstLabel}).`
+      : `Bisher nur eine offene Stunde: ${bestLabel} (${euroPerLiter(best.value)}) — für einen Tagesverlauf fehlen Messwerte.`;
 
   const coverage = open.length
     ? `${countLabel(open.length)} von ${countLabel(cells.length)} Stunden mit offener Meldung — leere Stunden werden nicht geschätzt.`
@@ -844,6 +872,11 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
     nowVsMedianCt,
     openHours: open.length,
     totalHours: cells.length,
+    bestHours,
+    worstHours,
+    bestLabel,
+    worstLabel,
+    tied,
     headline,
     coverage,
   };
