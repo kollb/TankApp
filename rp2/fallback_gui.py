@@ -51,7 +51,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "3.1"
+VERSION = "4.0"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -1543,6 +1543,23 @@ input[type="number"] { width: 72px; text-align: center; }
 .cell.none .v { color: var(--dim); }
 .cell.now { outline: 2px solid var(--accent); outline-offset: 1px; background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); }
 .cell.now .h { color: var(--accent); font-weight: 800; }
+/* Die drei Fakten der Antwort-Karte (1+3+N): Jetzt hier · Bestes Fenster
+   heute · Frische Preise. Immer dieselben drei, immer dieselbe Reihenfolge;
+   der Tankstand fehlt hier bewusst — er ist NAS-Sache (siehe RP2.md). */
+.answer .facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px; margin-top: 12px;
+}
+.fact {
+  border: 1px solid var(--line); border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  padding: 9px 11px; min-width: 0;
+}
+.fact .l { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.fact .v { font-size: 17px; font-weight: 800; margin-top: 3px; line-height: 1.2; }
+.fact .v small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.fact .d { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.fresh-footer { font-size: 11.5px; color: var(--muted); margin: 10px 2px 0; font-weight: 700; }
 .strip-note { font-size: 11.5px; color: var(--dim); margin: 10px 2px 0; }
 .strip-summary { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
 .strip-summary b { color: var(--text); }
@@ -1919,6 +1936,11 @@ function ageLabel(minutes) {
   const h = Math.floor(minutes / 60);
   return h + " h " + Math.round(minutes % 60) + " min";
 }
+/* Minuten seit einem Zeitstempel — null, wenn er fehlt oder unlesbar ist. */
+function minutesSince(iso) {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? Math.max(0, (Date.now() - ms) / 60000) : null;
+}
 function clockOf(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -2138,6 +2160,11 @@ function renderAnswer(decide, stations, health) {
     ? '<div class="actions"><a class="btn primary" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">' + ICONS.pin + "Route öffnen</a></div>"
     : "";
   const waitWindow = (decide.windows || [])[0];
+  /* Frische-Fußzeile: Alter der Preismeldung und des Modell-Laufs, in Worten —
+     dieselbe Aussage wie in der NAS-GUI („Preise 4 min alt · Prognose 35 min alt“). */
+  const priceAge = isNum(live.age_minutes) ? ageLabel(live.age_minutes) : "—";
+  const forecastAge = isNum(minutesSince(fc.generated_at)) ? ageLabel(minutesSince(fc.generated_at)) : "—";
+  const freshCount = rows.filter((row) => row.fresh).length;
   const waitChip = waitWindow
     ? '<span class="chip info">' + ICONS.window + '<span class="chip-txt">„Jetzt oder warten“: ' +
       esc(relDay(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " €/L · −" +
@@ -2165,6 +2192,18 @@ function renderAnswer(decide, stations, health) {
       " pro " + state.liters + ' L-Tank <span class="vs">' + vsLabel + "</span></div>" +
     route +
     '<div class="chips">' + waitChip + secondChip + "</div>" +
+    '<div class="facts">' +
+      '<div class="fact"><div class="l">Jetzt hier</div>' +
+        '<div class="v">' + eur(f2.price) + ' <small>€/L</small></div>' +
+        '<div class="d">' + esc(shortName(s.name)) + "</div></div>" +
+      '<div class="fact"><div class="l">Bestes Fenster heute</div>' +
+        '<div class="v">' + (waitWindow ? clockOf(waitWindow.at) : "—") + "</div>" +
+        '<div class="d">' + (waitWindow ? "~" + eur(waitWindow.q50) + " €/L" : "kein Fenster mit Vorsprung") + "</div></div>" +
+      '<div class="fact"><div class="l">Frische Preise</div>' +
+        '<div class="v">' + freshCount + "</div>" +
+        '<div class="d">von ' + rows.length + " Stationen im Set</div></div>" +
+    "</div>" +
+    '<p class="fresh-footer">Preise ' + priceAge + " alt · Prognose " + forecastAge + " alt</p>" +
     '<p class="strip-note">Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).</p>';
 }
 

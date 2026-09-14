@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 14.09.2026 · App-Version 0.33.1 · RP2-Fallback v3.1 — **die** Anleitung
+> Stand: 14.09.2026 · App-Version 0.34.0 · RP2-Fallback v4.0 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -295,7 +295,10 @@ http://<RP2-IP>:8000
   Ersparnis, Route), F1/F2 als Chips, **Tagesstreifen 06–24 Uhr** aus dem Puffer,
   **Stations-Karten** statt Tabelle (Name einzeilig mit Ellipsis, voller Name im
   `title`, Marke/Stadt/Fahrzeit in der Meta-Zeile, Δ-Chip, 44-px-Route-Button),
-  F3-Fensterliste. **Alltag/Werkstatt** umschaltbar: Werkstatt zeigt
+  F3-Fensterliste, **drei Fakten** unter der Empfehlung („Jetzt hier“ ·
+  „Bestes Fenster heute“ · „Frische Preise“) und die **Frische-Fußzeile**
+  („Preise … alt · Prognose … alt“) im Gleichschritt mit dem Bereich „Jetzt“
+  der NAS-GUI. **Alltag/Werkstatt** umschaltbar: Werkstatt zeigt
   Prognose-Sparklines, Rohdaten aller Treibstoffe und den Datenstatus
   (Puffer, Metadaten, Cache-Alter, NAS). Sticky-Status- und Steuerleiste,
   Sticky-Aktions-Chip beim Scrollen, Dark-Mode, E10/E5/Diesel, Ort-Filter,
@@ -550,6 +553,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 4.0 | 14.09.2026 | **Antwort-Karte im Gleichschritt mit „Jetzt“ (GUI-Neuentwurf §5.1).** Unter der Empfehlung stehen jetzt dieselben drei Fakten in derselben Reihenfolge wie in der NAS-GUI — „Jetzt hier“ (Preis + Stationsname), „Bestes Fenster heute“ (Fenster aus dem Cache) und „Frische Preise“ (Zahl frischer Stationen im Set; der Tankstand fehlt hier bewusst, er ist NAS-Sache). Darunter die Frische-Fußzeile `Preise … alt · Prognose … alt` aus Preismeldung und Modell-Lauf. Kein neuer Endpunkt, keine neue Abhängigkeit, kein neues Skript: nur Templatemarkup, CSS und ein JS-Helfer `minutesSince`. Test: `tests/test_rp2_fallback.py::test_answer_card_has_three_facts_and_freshness_footer`. |
 | 3.1 | 14.09.2026 | **Desktop-Layout der Fallback-GUI.** Kopf- und Steuerleiste liefen über die ganze Fensterbreite, Karten und Listen aber in einer 1060-px-Spalte mittig — bei 1920 px stand der Schriftzug 416 px neben dem Inhalt. Leisten und Inhalt teilen jetzt dieselbe Spalte (`--content`, `--gutter`); ab 1100 px wächst sie auf 1280 px, Kopf- und Steuerleiste rücken in eine Zeile, die Kraftstoff-Umschaltung streckt sich nicht mehr, der Alltag steht zweispaltig (7/5) und die Werkstatt-Sparklines zweispaltig. Die Kicker-Zahlen („1 · Empfehlung“) entfallen ab 1100 px; unterhalb bleibt kein Pixel anders. Reines CSS + zwei Wrapper-Divs: kein neuer Endpunkt, keine neue Abhängigkeit, Template-Wechsel per Hash (Sicherung `index.html.old`). |
 | 3.0 | 14.09.2026 | **Fallback-GUI v3** nach dem gebilligten Konzept (PR #112): Antwort-Karte zuerst, Stations-Karten statt Tabelle (kein horizontales Scrollen auf 390 px), Tagesstreifen 06–24 Uhr, Alltag/Werkstatt-Trennung, Sticky-Status-/Steuerleiste und Sticky-Aktions-Chip. Neu: `GET /api/v1/series` (Tagesverlauf aus dem Puffer) und ein 5-s-Snapshot-Cache — ein GUI-Zyklus liest den Puffer jetzt **einmal** statt viermal (Messung: 406 KiB Puffer, 216 Zeilen, 18 Stationen — Snapshot-Read 7,5 ms, `/series` 4,7 ms bei ~2,1 KiB Antwort, `/health` und `/decide` mit warmem Cache 0,8 ms statt 7–8 ms). Template wächst auf 59 KiB im Speicher; keine neuen Abhängigkeiten, keine Proxy-Änderung. |
 | 2.3 | 12.09.2026 | Wartung: Journal-Cap für die RP2-Dienste — Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt (TODO G2). GUI-Code unverändert. |

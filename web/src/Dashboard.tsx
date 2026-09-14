@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Fuel as FuelIcon,
   Car,
+  Gauge,
   SquarePen,
   Compass,
   LineChart as ChartIcon,
@@ -40,6 +41,8 @@ import {
 // D1: geteilte UI-Bausteine (Panel-Klasse, Empty, Badge, Metric).
 import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
+import { JetztView } from "./views/Jetzt";
+import type { NowTarget } from "./now";
 import { LineChart } from "./components/LineChart";
 import {
   LabLineChart,
@@ -162,9 +165,13 @@ export function Dashboard() {
     share.city,
   );
   const [selectedId, setSelectedId] = useState(share.stationId ?? "");
+  // GUI-Neuentwurf (Phase 1, erster Schnitt): „Jetzt“ ist der neue Einstieg.
+  // Der Alltagstab bleibt vorerst daneben stehen — seine Entscheidungs- und
+  // Listenteile übernehmen in Phase 1 „Jetzt“ und „Stationen“; bis dahin
+  // liest der neue Bereich dieselbe Overview-Antwort (kein zweiter Poll).
   const [tab, setTab] = useState<
-    "daily" | "statistics" | "system" | "settings" | "glossary"
-  >("daily");
+    "jetzt" | "daily" | "statistics" | "system" | "settings" | "glossary"
+  >("jetzt");
   const [liters, setLiters] = usePreference(
     "liters",
     40,
@@ -718,8 +725,9 @@ export function Dashboard() {
   const decideQuery = activeCity
     ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
     : null;
+  const overviewTab = tab === "daily" || tab === "jetzt";
   const overview = useResource<Overview>(
-    tab === "daily" && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
+    overviewTab && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
     30000,
     refresh,
   );
@@ -740,7 +748,7 @@ export function Dashboard() {
     receivedAt: 0,
   });
   const decideRes =
-    tab === "daily"
+    overviewTab
       ? overviewPart<DecideResult>(overview.data?.decide)
       : emptyResource<DecideResult>();
 
@@ -755,12 +763,12 @@ export function Dashboard() {
     refresh,
   );
   const statsSummaryRes =
-    tab === "daily"
+    overviewTab
       ? overviewPart<StatsSummary>(overview.data?.stats_summary)
       : statsSummaryPoll;
 
   const dueEpisodesRes =
-    tab === "daily"
+    overviewTab
       ? overviewPart<{ count: number; episodes: any[] }>(
           overview.data?.episodes,
         )
@@ -768,7 +776,7 @@ export function Dashboard() {
 
   // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
   const fillsRes =
-    tab === "daily"
+    overviewTab
       ? overviewPart<Fills>(overview.data?.fills)
       : emptyResource<Fills>();
 
@@ -782,7 +790,7 @@ export function Dashboard() {
     refresh,
   );
   const dayStrip =
-    tab === "daily"
+    overviewTab
       ? overviewPart<{ points: Point[]; error_code: string | null }>(
           overview.data?.day,
         )
@@ -837,7 +845,7 @@ export function Dashboard() {
     logReload,
   );
   const routeEval = useResource<RouteEvaluate>(
-    tab === "daily" &&
+    overviewTab &&
       activeCity &&
       (routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id)
       ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
@@ -1000,7 +1008,7 @@ export function Dashboard() {
 
   const stripCells = (() => {
     const points =
-      tab === "daily" && !dayStrip.error && !dayStrip.data?.error_code
+      overviewTab && !dayStrip.error && !dayStrip.data?.error_code
         ? dayStrip.data?.points || []
         : [];
     const byHour = new Map<number, number>();
@@ -1049,6 +1057,24 @@ export function Dashboard() {
   //      Browserdatum. Fehlen die Policies, sagt die UI das und erfindet
   //      keinen Countdown (§0.4 Ehrlichkeitsregel).
   const livePhase = statsSummaryRes.data?.live_phase ?? null;
+  // „Jetzt“ (GUI-Neuentwurf): Frische-Anker ist die jüngste Preismeldung,
+  // nicht der Zeitpunkt dieses Renderns — die Fußzeile nennt das Alter der
+  // Zahlen. Die Prognose datiert der Modell-Lauf (stats/summary), sonst die
+  // Entscheidungsantwort.
+  const nowPricesAt = useMemo(() => {
+    const stamps = fresh
+      .map((row) => (row.observed_at ? Date.parse(row.observed_at) : Number.NaN))
+      .filter((ms) => Number.isFinite(ms));
+    if (!stamps.length) return data?.generated_at ?? null;
+    return new Date(Math.max(...stamps)).toISOString();
+  }, [fresh, data?.generated_at]);
+  const nowForecastAt = statsSummaryRes.data?.generated_at ?? null;
+  // Die Ziele des Neuentwurfs gibt es als Bereiche noch nicht: „Stationen“,
+  // „Woche“ und der Tankstand leben bis Phase 1/2 im Alltagstab, „System“
+  // existiert schon. Diese Übersetzung fällt mit dem jeweiligen Bereich weg.
+  const handleNowNavigate = (target: NowTarget) => {
+    setTab(target === "system" ? "system" : "daily");
+  };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
     liveAdvice?.gate_status ||
@@ -1552,7 +1578,8 @@ export function Dashboard() {
           >
             {(
               [
-                { id: "daily", label: "Alltag", icon: <Compass size={15} /> },
+                { id: "jetzt", label: "Jetzt", icon: <Compass size={15} /> },
+                { id: "daily", label: "Alltag", icon: <Gauge size={15} /> },
                 {
                   id: "statistics",
                   label: "Werkstatt",
@@ -1700,6 +1727,26 @@ export function Dashboard() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB JETZT (GUI-Neuentwurf, Phase 1)                          */}
+        {/* ============================================================ */}
+        {tab === "jetzt" && (
+          <JetztView
+            activeCity={activeCity}
+            liters={liters}
+            decideRes={decideRes}
+            stations={stations}
+            selectedId={selectedId}
+            stripCells={stripCells}
+            pricesAt={nowPricesAt}
+            forecastAt={nowForecastAt}
+            onNavigate={handleNowNavigate}
+            onDeepen={() => setTab("statistics")}
+            onOpenSettings={() => setTab("settings")}
+            onRetry={refreshNow}
+          />
         )}
 
         {/* ============================================================ */}

@@ -693,6 +693,34 @@ def test_template_is_the_v3_gui_without_mock_data():
     assert "NOW_MIN" not in html  # keine Mock-Uhr
 
 
+def test_answer_card_has_three_facts_and_freshness_footer():
+    """GUI-Neuentwurf §5.1 im Gleichschritt: Die Antwort-Karte der Pi-GUI
+    trägt dieselben drei Fakten in derselben Reihenfolge wie „Jetzt“ in der
+    NAS-GUI — nur der Tankstand fehlt hier bewusst, er ist NAS-Sache
+    (UMSETZUNG-FALLBACK-GUI-V2 §0). Darunter steht die Frische-Fußzeile mit
+    dem Alter von Preisen und Prognose."""
+    html = rp2.DEFAULT_INDEX_HTML
+    # Fakten-Markup und Beschriftungen — Reihenfolge im Fakten-Block, nicht im
+    # ganzen Dokument (die Werkstatt nennt „Frische Preise“ ebenfalls).
+    assert 'class="facts"' in html
+    start = html.index('class="facts"')
+    labels = ("Jetzt hier", "Bestes Fenster heute", "Frische Preise")
+    positions = []
+    for label in labels:
+        at = html.index(label, start)
+        assert at > start, f"Fakt „{label}“ fehlt in der Antwort-Karte"
+        positions.append(at)
+    assert positions == sorted(positions)
+    # Frische-Fußzeile: Satzbau und Altersquellen
+    assert 'class="fresh-footer"' in html
+    assert '" alt · Prognose "' in html
+    assert "Preise ' + priceAge +" in html
+    assert "+ forecastAge +" in html
+    assert "function minutesSince(iso)" in html
+    # Der Tankstand darf hier nicht auftauchen (bewusste Grenze des Fallbacks).
+    assert "Tank reicht?" not in html
+
+
 # ---------------------------------------------------------------------------
 # Server: NAS-Proxy
 # ---------------------------------------------------------------------------

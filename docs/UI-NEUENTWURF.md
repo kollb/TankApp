@@ -870,7 +870,8 @@ GET /api/v2/ops/status                    4 Bausteine + Störungen +
                                           Checklisten
 GET /api/v2/ops/coverage                  Datenabdeckung + Lücken
 GET /api/v2/ops/runs?limit=               Läufe + Protokoll-Auszüge
-POST /api/v2/ops/runs/{job}/start         Startknopf (wie bisher, Version 2                Diagnose-Bündel (eine Datei)
+POST /api/v2/ops/runs/{job}/start         Startknopf (wie bisher, Version 2)
+GET  /api/v2/ops/diagnostics              Diagnose-Bündel (eine Datei)
 ```
 
 **Querschnitt:** Einheitliches Hüllformat (`data`, `freshness{as_of,next,
@@ -1007,21 +1008,10 @@ Entschieden am 14.9. (Mockup-Runde 1) — und was noch offen ist:
 
 **Verbleibend offen:** Feedback zur Mockup-Runde 2 (diese Version) —
 insbesondere: Ist die Labor-Seite als Aufklapp-Seite übersichtlich genug?
-Beantwortet 14.9.: Was ohne Modell geht (S0–S3, §10 + Demo-Schalter im Mockup). Offen bleibt: Fehlt in Woche ohne Erinnerung etwas? Danach: eine Ansicht als
-Produktions-Prototyp mit echten Daten (Nagelprobe für Raster, Bausteine
-und Erklär-Treppe).
-hren — als Nagelprobe für Raster,
-Bausteine und Erklär-Treppe.*
- der heutigen API) überführen — als Nagelprobe für Raster,
-Bausteine und Erklär-Treppe.*
-hren — als Nagelprobe für Raster,
-Bausteine und Erklär-Treppe.*
-nd Erklär-Treppe.*
-lprobe für Raster,
-Bausteine und Erklär-Treppe.*
-nd Erklär-Treppe.*
-reppe.*
-nd Erklär-Treppe.*
-er,
-Bausteine und Erklär-Treppe.*
-nd Erklär-Treppe.*
+Beantwortet 14.9.: Was ohne Modell geht (S0–S3, §10 + Demo-Schalter im
+Mockup). Offen bleibt: Fehlt in Woche ohne Erinnerung etwas? Danach: eine
+Ansicht als Produktions-Prototyp mit echten Daten (auf Basis der heutigen
+API) überführen — als Nagelprobe für Raster, Bausteine und Erklär-Treppe.
+Der erste Schnitt steht: Bereich „Jetzt“ in `web/src/views/Jetzt.tsx`
+plus Gleichschritt in der Fallback-GUI; die Arbeitsliste dazu ist
+[UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md).
