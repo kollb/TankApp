@@ -4,7 +4,7 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
-## [0.32.0] – 2026-09-14
+## [0.33.0] – 2026-09-14
 
 **Die Fallback-GUI auf dem Pi ist neu gebaut: Antwort zuerst, Karten statt
 Tabelle, Alltag und Werkstatt getrennt — und sie liest den Preis-Puffer nur
@@ -53,7 +53,7 @@ noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 
 ### Geändert
 
-- Version 0.32.0, `docs/RP2.md` (Stand-Zeile, Fallback-API-Tabelle,
+- Version 0.33.0, `docs/RP2.md` (Stand-Zeile, Fallback-API-Tabelle,
   Funktionsliste der GUI, Abschnitt zum Tagesstreifen, Changelog) und
   `docs/MICROCOPY.md` nachgezogen.
 - Dienst-Neustart installiert das neue Template automatisch; die alte Datei
@@ -70,6 +70,85 @@ noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
   nicht neu, `force=True` schon) und „ein Puffer-Read für fünf Endpunkte“
   sowie ein Marker-Test, dass Mock-Leiste und Beispieldaten aus dem Template
   verschwunden sind.
+
+## [0.32.0] – 2026-09-13
+
+**Abnahme-Release: A12, A13 und C7 waren implementiert, aber unbelegt —
+jetzt sind sie getestet, dokumentiert und geschlossen.** Dazu zwei echte
+Funde aus der Abnahme: Stationen ohne einzige Rasterzelle waren unsichtbar
+statt tot, und „verbraucht kein Kontingent“ war falsch (weiter gepollt wird).
+Der Footer spricht jetzt Doku-Vokabular (F3-Rest), H3 steht auch im TODO als
+erledigt.
+
+### Hinzugefügt
+
+- **A12 — Abnahme Station-Lebenszyklus:** vier Zustände (`active`/`dead`/
+  `closed`/`no_fuel` je Station und Kraftstoff, Fenster = letzte
+  `dead_after_days` Kalendertage Europe/Berlin), Ausschluss toter Stationen
+  vor dem Coverage-Gate, Schwelle `TANKAPP_DEAD_AFTER_DAYS` (Default 7,
+  0 = aus), Alarme `stations_dead`/`stations_lifecycle`, Artefakt-Felder
+  (`dead_stations`, `lifecycle_counts`, `lifecycles` je Zeile) und
+  Unterscheidung in Werkstatt- und System-Tab. Doku-Abschnitt
+  [ANALYSE.md](docs/ANALYSE.md#lebenszyklus-der-stationen).
+- **A13 — Abnahme Preis-Zwillinge:** `_detect_price_twins` mit denselben
+  Schwellen wie der manuelle Vergleich (≥ 28 Tage mit je ≥ 12 gemeinsamen
+  Punkten, ≥ 90 % Überlappung, ≥ 99 % innerhalb 0,1 ct/L), Warnung im
+  Artefakt (`price_twins`/`price_twin_count`, `auto_apply: false`), Alarm
+  `price_twins` und Paar-Tabelle im System-Tab.
+  [ANALYSE.md](docs/ANALYSE.md#preis-zwillinge).
+- **C7 — Abnahme Hilfe/Glossar:** „Was heißt das?“-Tab mit 10 Begriffen
+  (δ̂, MASE, PICP, Brier, ε, Regret, q-Wert, AV-Score, Lebenszyklus,
+  Preis-Zwillinge), i-Tooltips (`InfoTooltip`) in Werkstatt und System,
+  jeder Eintrag mit gültigem `docs/ANALYSE.md`-Anker — die Abschnitte
+  MASE/PICP/Brier/ε/Regret/Lebenszyklus/Zwillinge sind neu in der Doku,
+  q-Wert/AV-Score verweisen auf die bestehenden.
+- **F3 (Rest) — Footer ans Regelwerk:** „Abfrage gedrosselt“ → „Abfrage
+  höchstens alle 5 Minuten“ (konkret statt Jargon),
+  „Beobachtungsfenster“ → „Polling-Fenster“ (Doku-Vokabular, Konzept §7).
+  Die deutsche Kurzzeile („Keine Demo-Preise. …“) bleibt — eine pro
+  Auftritt, kein Englisch, keine Behauptung ([MICROCOPY.md](docs/MICROCOPY.md) §6).
+
+### Behoben
+
+- **A12 — unsichtbar statt tot:** Stationen ohne einzige Rasterzelle
+  (nie ein Preis im Fenster) fielen aus `pivot_table` und damit aus der
+  Lebenszyklus-Schleife — kein Ranking-Ausschluss im Artefakt, kein Alarm,
+  kein Tausch. Die Schleife läuft jetzt über Matrix-Spalten plus
+  df-Rest (`engine/selection.py`), das `mat.drop` war bereits
+  abgesichert. Reine Sichtbarkeits-Korrektur: Wer nie lieferte, stand
+  auch vorher in keinem Ranking.
+- **A12 — falsche Kontingent-Behauptung:** „verbraucht kein Kontingent
+  mehr“ stand im Alarm, im Glossar und an zwei GUI-Stellen — der Collector
+  pollt aber jede UUID im `batch`, tote Stationen kosten weiter (höchstens
+  ein Zehntel Request je Poll, `prices.php`-Batch zu 10). Alle Stellen
+  sagen jetzt die Wahrheit: Vergleichsplatz weg, Polling-Set stabil bis
+  zum bestätigten Tausch. Die Entscheidung (keine Selbst-Tot-Schleife,
+  Pfad = Alarm → [Tausch-Anleitung](docs/STATIONEN-TAUSCH.md)) steht in
+  [LUECKEN.md](docs/LUECKEN.md) begründet.
+
+### Dokumentation
+
+- [ANALYSE.md](docs/ANALYSE.md): neue Abschnitte „Lebenszyklus der
+  Stationen“, „Preis-Zwillinge“, „MASE (Fehler gegen die Naive)“,
+  „PICP (Band-Trefferquote)“ und „Empfehlungs-Bilanz (Brier, Epsilon,
+  Regret)“ mit Brier/ε/Regret-Unterabschnitten; Glossar-Wortlaut
+  wortgleich in der Doku.
+- [LUECKEN.md](docs/LUECKEN.md): 0.32.0-Abschnitt; Polling-Set-Entscheidung
+  als begründet-offen eingetragen.
+- [TODO.md](TODO.md): A12/A13/C7/F3 erledigt (0.32.0), H3 als 0.31.0
+  nachgetragen (Code, Tests und CHANGELOG waren da, das TODO lag).
+
+### Tests
+
+- `tests/test_lifecycle_twins.py` (16 Fälle): vier Zustände, Fenster-Regel,
+  Abschaltung (0/`None`), Env-Schalter, Ausschluss aus dem Ranking
+  (frischtot + nie geliefert), geschlossen/sortenlos unterscheidbar,
+  Totals, Zwillinge positiv/negativ/kurz/einzeln/im Artefakt, drei
+  Alarm-Codes plus Schweigen ohne Befund und Fuel-Datei-Fallback.
+- `tests/test_glossary.py` (3 Fälle): Pflichtbegriffe, Anker-Existenz je
+  Eintrag (derselbe Slugger wie der Doku-Link-Test), de-Wortlaut in der Doku.
+- `web/src/glossary.test.ts` (8 Fälle): Tabellen-Invarianten,
+  `glossaryById`, Lebenszyklus-Helfer, kein Kontingent-Versprechen.
 
 ## [0.31.0] – 2026-09-13
 

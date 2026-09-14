@@ -340,7 +340,7 @@ export function SystemView(props: SystemViewProps) {
       </h3>
       <span className="flex items-center gap-1 text-[11px] text-slate-500">
         Polling-Set bleibt unverändert — Hinweise brauchen Bestätigung.
-        <InfoTooltip label="Warum nur Hinweis?" text="Tote fallen automatisch aus Ranking und Kontingent — das Polling-Set dagegen wird nie ohne Bestätigung umgebaut." />
+        <InfoTooltip label="Warum nur Hinweis?" text="Tote fallen automatisch aus dem Ranking — das Polling-Set dagegen wird nie ohne Bestätigung umgebaut." />
       </span>
     </div>
     {selection.data ? (
@@ -355,7 +355,7 @@ export function SystemView(props: SystemViewProps) {
               {selection.data.dead_count ?? 0}
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-              Fällt aus Ranking und verbraucht kein Kontingent mehr.
+              Fällt aus dem Ranking — kein Vergleichsplatz mehr. Das Polling-Set ändert sich erst nach Bestätigung.
               {selection.data.dead_stations && selection.data.dead_stations.length ? ` Beispiel: ${selection.data.dead_stations.slice(0, 2).join(", ")}` : ""}
             </p>
           </div>

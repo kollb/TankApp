@@ -51,8 +51,9 @@ class SelectionConfig:
     poll_end: int = 24
     timezone: str = "Europe/Berlin"
     # A12: Station-Lebenszyklus — nach so vielen Kalendertagen ohne
-    # verwertbaren Preis gilt eine Station als „tot“ und fällt aus
-    # Ranking/Kontingent (konfigurierbar, Default 7; None/0 = aus).
+    # verwertbaren Preis gilt eine Station als „tot“ und fällt aus dem
+    # Ranking (konfigurierbar, Default 7; None/0 = aus). Das Polling-Set
+    # bleibt stabil — Tausch nur mit Bestätigung (docs/ANALYSE.md).
     dead_after_days: int | None = 7
 
 
@@ -656,15 +657,30 @@ def analyse_city_light(
             f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
         )
     # A12: Lebenszyklus — tote Stationen (kein Preis seit dead_after_days
-    # Kalendertagen) fallen vor dem Coverage-Gate aus dem Ranking und
-    # verbrauchen kein Kontingent mehr. Konfigurierbar, Default 7 Tage.
-    # Geschlossen / führt-nicht bleiben unterscheidbar, aber noch im Gate.
+    # Kalendertagen) fallen vor dem Coverage-Gate aus dem Ranking.
+    # Konfigurierbar, Default 7 Tage. Geschlossen / führt-nicht bleiben
+    # unterscheidbar, aber noch im Gate. Gepollt wird weiter — das Set
+    # ändert sich erst nach Bestätigung (keine Selbst-Tot-Schleife).
     end_ts = df["timestamp"].max() if not df.empty and "timestamp" in df else None
     lifecycles: dict[str, str] = {}
     dead_stations: list[str] = []
     closed_stations: list[str] = []
     nofuel_stations: list[str] = []
-    for sid in list(mat.columns):
+    # A12: Stationen ohne einzige Rasterzelle (nie ein Preis im Fenster)
+    # stehen nicht in mat — ohne diese Zeilen wären sie unsichtbar statt
+    # tot (kein Ranking-Ausschluss im Artefakt, kein Alarm, kein Tausch).
+    mat_ids = list(mat.columns)
+    try:
+        _fuel_match = df.fuel.str.upper() == cfg.fuel.upper()
+        _known = set(mat_ids)
+        df_only_ids = [
+            sid
+            for sid in df.loc[(df.city == city) & _fuel_match, "station_id"].unique()
+            if sid not in _known and not pd.isna(sid) and str(sid) != ""
+        ]
+    except Exception:
+        df_only_ids = []
+    for sid in mat_ids + df_only_ids:
         lc = _station_lifecycle(df, city, sid, cfg, end_ts)
         lifecycles[sid] = lc
         if lc == "dead":
@@ -673,7 +689,7 @@ def analyse_city_light(
             closed_stations.append(sid)
         elif lc == "no_fuel":
             nofuel_stations.append(sid)
-    # Tote Stationen aussortieren — raus aus Ranking/Kontingent (A12)
+    # Tote Stationen aussortieren — raus aus dem Ranking (A12)
     if dead_stations:
         mat = mat.drop(columns=[c for c in dead_stations if c in mat.columns])
         if mat.empty or mat.shape[1] < 2:
@@ -956,7 +972,7 @@ def analyse_city_light(
         "no_delta": no_delta[:20],
         "stability": stability,
         "stations": tab.to_dict(orient="records"),
-        # A12: Station-Lebenszyklus — tote raus aus Ranking/Kontingent,
+        # A12: Station-Lebenszyklus — tote raus aus dem Ranking,
         # die drei Zustände bleiben unterscheidbar (GUI zeigt Badge).
         "dead_stations": dead_stations[:20],
         "dead_count": len(dead_stations),

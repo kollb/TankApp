@@ -188,6 +188,16 @@ einzige Quelle von Strecke und Schwellen), siehe
 | H3 Schwellen-Hysterese | 2-σ-Rauschband + Mindest-Abstand, Begründung auch fürs Nicht-Ändern | §0.4 |
 | D4 Qualitäts-Gates | `ops/quality/gates.py`: Bundle 200 kB gzip, Lighthouse ≥ 0,7, Lastprobe 25 RPS | Prüfstand §6 |
 
+### 13.09.2026 — Version 0.32.0: Lebenszyklus, Zwillinge und Glossar abgenommen
+
+| Punkt | Umsetzung | Prüfung |
+|---|---|---|
+| A12 Lebenszyklus | Vier Zustände je (Station, Kraftstoff), Ranking-Ausschluss vor dem Gate (inkl. nie gelieferter Stationen), `TANKAPP_DEAD_AFTER_DAYS`, Alarme `stations_dead`/`stations_lifecycle`, GUI unterscheidet | `tests/test_lifecycle_twins.py` |
+| A12 Kontingent-Wahrheit | „Verbraucht kein Kontingent“ war falsch (Collector pollt weiter) — alle Stellen korrigiert, Polling-Set-Entscheidung begründet (siehe „Bewusst offen“) | Alarm-/GUI-Texte + Test |
+| A13 Preis-Zwillinge | `_detect_price_twins` mit `compare-stations`-Schwellen, Artefakt + Alarm + System-Tabelle, `auto_apply: false` | `tests/test_lifecycle_twins.py` |
+| C7 Glossar | „Was heißt das?“-Tab (10 Begriffe), i-Tooltips, gültige ANALYSE-Anker je Eintrag (neue Abschnitte MASE/PICP/Brier/ε/Regret/Lebenszyklus/Zwillinge) | `tests/test_glossary.py`, `web/src/glossary.test.ts` |
+| F3-Rest Footer | Doku-Vokabular statt Jargon („Abfrage höchstens alle 5 Minuten“, „Polling-Fenster“) | `microcopy.test.ts` (Dashboard) |
+
 ### 12.09.2026 — Version 0.11.0: ehrliche Eingaben, Heatmap-Basis, RP2-Journal
 
 | Punkt | Umsetzung | Prüfung |
@@ -357,6 +367,7 @@ Rechnung geändert.
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
 | **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). |
+| **Polling-Set-Umbau bei toten Stationen (A12)** | Tote Stationen fallen aus dem Ranking, das Polling-Set bleibt stabil — Tausch nur mit Bestätigung ([STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)). Drei Gründe: (1) Wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden — ein automatischer Ausschluss wäre eine Selbst-Tot-Schleife. (2) Die Batch-Ökonomie (`prices.php`: bis zu 10 UUIDs je Request) macht eine tote Station zu höchstens einem Zehntel Request je Poll — kein Kontingent-Problem, das Automatik rechtfertigt. (3) Der Pfad Alarm → System-Tab → Tausch ist dokumentiert und in der GUI verlinkt. |
 
 ## Nicht umgesetzt und warum nicht
 

@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 14.09.2026 · App-Version **0.32.0** · gilt für `web/src/**`,
+> Stand: 14.09.2026 · App-Version **0.33.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -12,7 +12,7 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
-- [4a. Fallback-GUI v3: feste Muster (0.32.0)](#4a-fallback-gui-v3-feste-muster-0320)
+- [4a. Fallback-GUI v3: feste Muster (0.33.0)](#4a-fallback-gui-v3-feste-muster-0330)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -93,7 +93,7 @@ Fachbegriffe (δ̂, MASE, PICP, Brier, ε, Regret) bleiben der Werkstatt
 vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 (F2, 0.15.0). Der Alltag kommt ohne sie aus.
 
-## 4a. Fallback-GUI v3: feste Muster (0.32.0)
+## 4a. Fallback-GUI v3: feste Muster (0.33.0)
 
 Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
 `tankapp-fallback-gui v3.0`) — nicht neu formulieren, nur wiederverwenden.

@@ -1,6 +1,6 @@
 # UMSETZUNG-FALLBACK-GUI-V2 — Arbeits-Checkliste
 
-> Stand: 14.09.2026 · **umgesetzt in App-Version 0.32.0** (Branch
+> Stand: 14.09.2026 · **umgesetzt in App-Version 0.33.0** (Branch
 > `arena/01a09ed1-tankapp`) · Konzept aus
 > [PR #112](https://github.com/kollb/TankApp/pull/112).
 > Diese Checkliste ist die Arbeitsunterlage für die Implementierung des
@@ -157,8 +157,9 @@ Alle Änderungen in `rp2/fallback_gui.py`.
 - [x] **4.2** `docs/MICROCOPY.md`: neue Textmuster aufnehmen (Verdict-Sätze,
   Tagesstreifen-Caption „Leere Stunden hatten keine offene Meldung",
   „&lt;Kraftstoff&gt; nicht geführt", Sortierungs-Labels, Sticky-Chip).
-- [x] **4.3** `app/version.py`: 0.31.0 → 0.32.0; `CHANGELOG.md` ergänzen
-  (neues Fallback-Template v3.0, `series`-Endpunkt, Snapshot-TTL-Cache,
+- [x] **4.3** `app/version.py`: 0.31.0 → **0.33.0** (0.32.0 war beim Merge
+  von PR #108 bereits belegt); `CHANGELOG.md` ergänzen (neues
+  Fallback-Template v3.0, `series`-Endpunkt, Snapshot-TTL-Cache,
   Messwerte aus Schritt 0).
 - [x] **4.4** `docs/README.md`: diese Checkliste im Index
   („Ich will … → Dokument") eintragen.
