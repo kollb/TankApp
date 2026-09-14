@@ -1,5 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
+// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Wo diese Spec den
+// Alltagstab braucht, wechselt sie ausdrücklich dorthin.
+async function gotoAlltag(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+}
+
 // B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Select, Horizont-Tabs,
 // Zeitwert-Automatik und Tief/Hoch-Marker. Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
@@ -283,7 +290,7 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
 
 test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await stubApi(page, { horizons: true });
-  await page.goto("/");
+  await gotoAlltag(page);
   // Der Kompass zeigt die günstigste Station (B); als Vergleich dient F,
   // damit der Umweg-Rechner die aktiven Werte zeigt.
   await expect(

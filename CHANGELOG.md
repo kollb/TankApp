@@ -4,6 +4,93 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.34.0] – 2026-09-14
+
+**Der erste Bereich des GUI-Neuentwurfs steht: „Jetzt“. Eine Entscheidung,
+drei Fakten, höchstens drei nächste Schritte, ein Tagesstreifen und die
+Frische-Fußzeile — in genau dieser Reihenfolge.** Dazu die Arbeitsliste
+(`docs/UMSETZUNG-GUI-NEUENTWURF.md`), die reparierte Entscheidungsvorlage
+(`docs/UI-NEUENTWURF.md`) und der Gleichschritt in der Pi-Fallback-GUI.
+Ehrlich dazu: **die Abnahme auf dem Pi steht noch aus** (Checkliste §7.3);
+die Sichtprüfung auf Desktop (1440 px) und Smartphone (390 px) ist mit
+Demo-Daten durchgeführt, die Browser-Suite läuft mit 16/16 grün.
+
+### Hinzugefügt
+
+- **Bereich „Jetzt“** (`web/src/views/Jetzt.tsx` + `web/src/now.ts`): die
+  Ampel-Karte 2.0 mit vier Ausgängen (`Jetzt tanken` · `Warten bis 18–20 Uhr` ·
+  `Woanders tanken` · `Keine klare Empfehlung`), drei Fakten in fester
+  Reihenfolge („Jetzt hier“ · „Bestes Fenster heute“ · „Tank reicht?“),
+  höchstens drei nächste Schritte, Tagesstreifen 06–24 Uhr und
+  Frische-Fußzeile. „Jetzt“ ist der neue Einstieg; der Alltagstab bleibt
+  vorerst daneben stehen (Phase 1 entlastet ihn, sobald „Stationen“ steht).
+  Kein zweiter Poll: derselbe `/api/v1/overview` versorgt beide.
+- **Erklär-Treppe Ebene 1** (`web/src/components/Level1Sheet.tsx`): „Warum?“
+  öffnet ein Sheet mit höchstens drei Sätzen, der Herkunft der Zahlen und
+  genau einem Weg in die Tiefe (bis Phase 3: die Werkstatt).
+- **Ehrlichkeits-Stufen sichtbar gemacht** (§10): Prozent nur auf Stufe A
+  (≥ 100 abgeschlossene Empfehlungen, Brier < 0,25). Stufe B nennt Worte plus
+  Fortschritt („Noch 34 abgeschlossene Empfehlungen bis zur Prozent-Anzeige.“),
+  Stufe C bleibt grau mit Begründung („Das Modell lernt noch — 12 von 100 …“)
+  und zeigt darunter die aktuellen Preise, statt den Nutzer ohne Zahlen zu
+  lassen.
+- **Fallback-GUI v4.0** (`rp2/fallback_gui.py`) im Gleichschritt: dieselben
+  drei Fakten in derselben Reihenfolge (dritter Fakt „Frische Preise“, weil
+  der Tankstand NAS-Sache bleibt) und die Frische-Fußzeile
+  „Preise … alt · Prognose … alt“. Template-Wechsel per Versionsmarker,
+  altes Template wird als `index.html.old` gesichert.
+- **Arbeits-Checkliste** `docs/UMSETZUNG-GUI-NEUENTWURF.md`: die vier Phasen
+  aus §16 als abhakbare Schritte mit Definition of Done je Bereich, Baseline
+  der Messwerte und Fallback-Gleichschritt.
+
+### Behoben
+
+- **Absturz auf der leeren Anlage (leere Seite).** `/api/v1/overview` antwortet
+  auch dann mit HTTP 200, wenn die Empfehlung nicht berechnet werden konnte —
+  im `decide`-Feld steht dann ein Fehlerobjekt **ohne** `primary`
+  (`{"error_code": "polling_missing"}`). `web/src/now.ts` griff ungeprüft auf
+  `decide.primary.action` zu; die Ausnahme riss die ganze React-Wurzel mit, die
+  Seite blieb weiß. Jetzt durchgehend optional (`nowVerdict`, `nowStage`,
+  `nowFacts`, `nowSteps`, `nowExplanation`, `learningNote`) und die Ansicht
+  zeigt einen benannten Fehler mit Rohcode statt einer weißen Fläche; ohne
+  Stationen bleibt der Einrichtungs-Zustand (der Fehler gewinnt nur, wenn die
+  Anlage unerreichbar ist). Drei Regressionstests in `now.test.ts` und
+  `views/Jetzt.test.tsx`.
+- **Frische-Fußzeile datierte die Prognose falsch.** Dort stand
+  `stats_summary.generated_at` — der Zeitpunkt der Antwortberechnung, also bei
+  jedem Refresh „gerade eben“. Der Modell-Lauf datiert aus der
+  Engine-Publikation (`quality.rolling_picp_7d_as_of`) bzw. dem Fit
+  (`debug.fitted_at`); neue reine Funktion `forecastStamp` mit Test. Fehlt
+  beides, sagt die Fußzeile ehrlich „Prognose kein Stand“.
+- **`docs/UI-NEUENTWURF.md` repariert:** In §12 waren zwei API-Zeilen
+  verschmolzen (`ops/runs/{job}/start` + `ops/diagnostics`), §18 endete mit
+  ~15 Fragment-Wiederholungen. Die Entscheidungsvorlage ist wieder lesbar.
+
+### Geändert
+
+- `docs/MICROCOPY.md`: neue feste Muster für „Jetzt“ (§4b) und die
+  Fallback-Fakten/Fußzeile (§4a, Markerversion 4.0); die Tabs-Zeile nennt
+  jetzt „Jetzt“ als Einstieg.
+- `docs/RP2.md`: Fallback-Version 4.0, Antwort-Karte beschrieben.
+- `docs/README.md`: Index um `UI-NEUENTWURF.md` und
+  `UMSETZUNG-GUI-NEUENTWURF.md` ergänzt.
+
+### Tests
+
+- 352 Web-Tests in 20 Dateien (vorher 306 in 18): `web/src/now.test.ts`
+  (25 Fälle — vier Ausgänge, drei Fakten, Schritte, Frische, Ebene-1-Sätze,
+  Wort/Prozent-Widerspruch)
+  und `web/src/views/Jetzt.test.tsx` (9 Fälle — feste Reihenfolge, S0/S1,
+  Fehler, Laden, Sheet).
+- Microcopy- und Formatierungs-Ratchet kennen die neuen Dateien;
+  `tests/test_rp2_fallback.py` prüft die drei Fakten samt Reihenfolge und die
+  Frische-Fußzeile der Fallback-GUI.
+- **Browser-Suite (`npm --prefix web run test:e2e`, 16 Tests in Desktop und
+  Mobil) repariert:** Die Specs gingen vom Alltagstab als Startansicht aus; seit
+  „Jetzt“ der Einstieg ist, wechseln sie ausdrücklich dorthin (`gotoAlltag`).
+  Der Setup-Test prüft zusätzlich den neuen Einstieg (S0-Karte „Einrichten in
+  drei Schritten“). `AGENTS.md` nennt den e2e-Schritt jetzt im Prüf-Spiegel.
+
 ## [0.33.1] – 2026-09-14
 
 **Der Kopf der Fallback-GUI passt jetzt zur Inhaltsspalte — und der Desktop

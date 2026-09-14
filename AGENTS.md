@@ -9,7 +9,16 @@ python -m ruff check app tankapp.py data-tools/polling_plan.py data-tools/collec
 python -m ruff format --check app tankapp.py data-tools/polling_plan.py engine data-tools/export_influx.py tests
 python -m pytest -q
 npm --prefix web test && npm --prefix web run build
+npm --prefix web run test:e2e
 ```
+
+**Die Browser-Suite gehört dazu.** `web`-Job der CI führt `npm --prefix web
+run test:e2e` aus (Playwright, Desktop 1440 px + Mobil 390 px); wer sie lokal
+auslässt, pusht rote Läufe. Einmalig `npx --prefix web playwright install
+chromium`, dann startet die Suite ihren Server (`tankapp.py serve`) selbst.
+Sie prüft die GUI im echten Browser — genau dort fallen Navigations- und
+Absturzfehler auf, die Unit-Tests nicht sehen (z. B. eine leere Seite wegen
+eines fehlenden Feldes in einer Server-Antwort).
 
 `ruff format --check` läuft in CI **vor** pytest; eine reine Formatabweichung (z. B. zu lange Signatur) fällt daher schon nach Sekunden durch, bevor Tests überhaupt starten. Gefundene Abweichungen mit `ruff format <datei>` fixen, nicht per Hand umbrechen.
 

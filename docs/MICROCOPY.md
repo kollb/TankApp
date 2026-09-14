@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 14.09.2026 · App-Version **0.33.0** · gilt für `web/src/**`,
+> Stand: 14.09.2026 · App-Version **0.34.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -12,7 +12,8 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
-- [4a. Fallback-GUI v3: feste Muster (0.33.0)](#4a-fallback-gui-v3-feste-muster-0330)
+- [4a. Fallback-GUI: feste Muster (0.34.0)](#4a-fallback-gui-feste-muster-0340)
+- [4b. Bereich „Jetzt“: feste Muster (0.34.0)](#4b-bereich-jetzt-feste-muster-0340)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -81,7 +82,8 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 
 | Gemeint | Wort in der App |
 |---|---|
-| die vier Tabs | **Alltag**, **Werkstatt**, **System**, **Einstellungen** (nicht „Statistik“, nicht „Prüfstand“) |
+| die Tabs | **Jetzt** (Einstieg seit 0.34.0), **Alltag** (bleibt bis Phase 1 des Neuentwurfs), **Werkstatt**, **System**, **Einstellungen**, **Glossar** (nicht „Statistik“, nicht „Prüfstand“) |
+| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4 |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“) |
 | Prognoselauf auf dem NAS | **Modell-Update** |
@@ -93,10 +95,10 @@ Fachbegriffe (δ̂, MASE, PICP, Brier, ε, Regret) bleiben der Werkstatt
 vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 (F2, 0.15.0). Der Alltag kommt ohne sie aus.
 
-## 4a. Fallback-GUI v3: feste Muster (0.33.0)
+## 4a. Fallback-GUI: feste Muster (0.34.0)
 
 Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
-`tankapp-fallback-gui v3.1`) — nicht neu formulieren, nur wiederverwenden.
+`tankapp-fallback-gui v4.0`) — nicht neu formulieren, nur wiederverwenden.
 
 | Stelle | Muster |
 |---|---|
@@ -117,6 +119,29 @@ Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
 | Ehrlichkeits-Zeile | `Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).` |
 | NAS-Prüfung | Klick auf die NAS-Pill: `NAS ist wieder online — die Seite lädt jetzt die vollwertige NAS-GUI.` bzw. `NAS ist nach wie vor nicht erreichbar … — der Fallback bleibt aktiv und prüft selbst weiter.` |
 | Ladefehler | `Daten konnten nicht geladen werden (<HTTP-Code>) — die Anzeige bleibt stehen, der nächste Versuch läuft automatisch.` |
+| Drei Fakten der Antwort-Karte (v4.0) | `Jetzt hier` · `Bestes Fenster heute` · `Frische Preise` — immer dieselben drei, immer diese Reihenfolge. Der Tankstand fehlt hier **bewusst** (NAS-Sache), dafür nennt der dritte Fakt `von <n> Stationen im Set` |
+| Frische-Fußzeile (v4.0) | `Preise <4 min> alt · Prognose <35 min> alt` — Alter von Preismeldung und Modell-Lauf, `—` statt „gerade eben“, wenn ein Stand fehlt |
+| Fakt ohne Fenster | `—` mit Grund `kein Fenster mit Vorsprung` (nie ein geschätztes Fenster) |
+
+## 4b. Bereich „Jetzt“: feste Muster (0.34.0)
+
+Der Einstieg aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §5.1. Die Reihenfolge
+der Sätze ist Teil des Entwurfs: erst die Handlung, dann Menge/Sicherheit,
+dann der Grund.
+
+| Stelle | Muster |
+|---|---|
+| Ausgänge der Ampel-Karte 2.0 | `Jetzt tanken` (grün) · `Warten bis 18–20 Uhr` (grün, mit Uhr) · `Woanders tanken · <Station>` (blau) · `Keine klare Empfehlung` (grau) |
+| Ersparniszeile | `Erwartet <4,0> ct/L günstiger ≈ <1,60> €` — ct/L für Unterschiede, € für Beträge |
+| Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` — auf Stufe A kommt das **Wort aus dem Prozentwert** (Schwellen 75 / 55). Der Server-Badge beschreibt die Streuung der Lage; beide zusammen ergäben Sätze wie „unsicher (99 %)“ |
+| Stufe B (Worte ohne Prozent) | derselbe Satz ohne Klammer, dazu `Noch <n> abgeschlossene Empfehlungen bis zur Prozent-Anzeige.` |
+| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind live.` |
+| Drei Fakten | `Jetzt hier` · `Bestes Fenster heute` · `Tank reicht?` — immer dieselben drei, immer diese Reihenfolge |
+| Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht gepflegt` |
+| Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |
+| Nächste Schritte | `Günstigste Alternative: <Station>, <Preis> — netto <0,80> € nach <2,4> km Umweg` · `<Morgen> 19–21 Uhr wäre noch besser (<2,10> € weniger)` · `Tank reicht nicht bis zum Fenster — jetzt tanken oder Tankstand prüfen` |
+| Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `In der Werkstatt vertiefen` (bis Phase 3; danach der Labor-Abschnitt) |
+| S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
 
 ## 5. Zustände: leer, lädt, Fehler
 
