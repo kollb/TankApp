@@ -655,8 +655,19 @@ def _extract_inline_js() -> str:
 
 _JS_REGEX_OK_PREV = set("(,=:[!&|?{};+-*%^~<>\n")
 _JS_KEYWORDS = {
-    "return", "typeof", "instanceof", "in", "of", "new",
-    "delete", "void", "do", "else", "case", "yield", "await",
+    "return",
+    "typeof",
+    "instanceof",
+    "in",
+    "of",
+    "new",
+    "delete",
+    "void",
+    "do",
+    "else",
+    "case",
+    "yield",
+    "await",
 }
 
 
@@ -692,8 +703,11 @@ def _scan_js_string_literals(js: str) -> list:
             line += js[i:j].count("\n")
             i = j + 2
             continue
-        if c == "/" and (last_char is None or last_char in _JS_REGEX_OK_PREV
-                         or last_word in _JS_KEYWORDS):
+        if c == "/" and (
+            last_char is None
+            or last_char in _JS_REGEX_OK_PREV
+            or last_word in _JS_KEYWORDS
+        ):
             # Regex-Literal: bis zum nächsten unescapekten / außerhalb von []
             j = i + 1
             in_cls = False
@@ -736,8 +750,9 @@ def _scan_js_string_literals(js: str) -> list:
             while k < n and js[k] in " \t":
                 k += 1
             if k < n and (js[k].isalpha() or js[k] in "_$"):
-                return ["identifier directly after %s-string at line %d"
-                        % (quote, line)]
+                return [
+                    "identifier directly after %s-string at line %d" % (quote, line)
+                ]
             i = j + 1
             last_char = quote
             last_word = ""
