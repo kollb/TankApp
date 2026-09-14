@@ -76,7 +76,17 @@ export function weekDays(
       month: "2-digit",
       day: "2-digit",
     }).format(new Date(value));
-  const startOfToday = day(now);
+  // Berlin-Kalendartag als ISO (en-CA: YYYY-MM-DD) — die einzige Form, die
+  // Date.parse zuverlässig versteht. Das de-DE-Format „14.09.2026“ würde NaN
+  // liefern und die Woche komplett crashen.
+  const berlinDate = (value: number) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(value));
+  const startOfToday = berlinDate(now);
   const parsed = (windows ?? [])
     .map((window) => ({
       window,

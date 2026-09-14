@@ -151,7 +151,8 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Darstellung und Daten unter „Ich → Einstellungen“.
   await page.goto("/");
   await page.getByRole("button", { name: "Ich", exact: true }).click();
-  await page.getByRole("button", { name: "Fahrzeug", exact: true }).click();
+  // Unterseiten-Segment-Steuerung: ARIA-Tabs (kein Button-Rollenspiel).
+  await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
 
   // Alle Defaults an einem Ort — die Eingabeorte, die im alten
   // Einstellungen-Tab verteilt lagen (Tankmenge, Verbrauch, Zeitwert,
@@ -164,7 +165,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   await expect(page.locator("#tankCapacity")).toBeVisible();
 
   await page
-    .getByRole("button", { name: "Einstellungen", exact: true })
+    .getByRole("tab", { name: "Einstellungen", exact: true })
     .click();
   // Kontext: Stadt und Kraftstoff am Wirkungsort.
   await expect(page.locator("#settings-city")).toBeVisible();
@@ -197,7 +198,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
   await page.getByRole("button", { name: "Ich", exact: true }).click();
   await page
-    .getByRole("button", { name: "Einstellungen", exact: true })
+    .getByRole("tab", { name: "Einstellungen", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })
