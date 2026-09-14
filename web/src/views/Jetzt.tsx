@@ -31,6 +31,7 @@ import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
 import { panel } from "../components/ui";
 import {
+  centPerLiter,
   deTrimmed,
   euro,
   euroPerLiter,
@@ -40,6 +41,9 @@ import {
 } from "../data";
 import {
   assumptionHint,
+  learningNote,
+  nowBestNow,
+  nowDayPanel,
   nowExplanation,
   nowFacts,
   nowFreshness,
@@ -50,6 +54,7 @@ import {
   windowMarks,
   type NowTarget,
 } from "../now";
+import type { LabSectionId } from "../lab";
 import type { StripCell } from "../strip";
 
 /** Was-wäre-wenn-Zustand der Karte (local, kein Setting). */
@@ -85,8 +90,8 @@ export interface JetztViewProps {
   forecastAt: string | null;
   /** Ziele des Neuentwurfs — jetzt echte Bereiche. */
   onNavigate: (target: NowTarget) => void;
-  /** Ebene 2 ansteuern (bis Phase 3: die Werkstatt). */
-  onDeepen: () => void;
+  /** Ebene 2 ansteuern: der Labor-Abschnitt, der diese Zahl beweist (§7). */
+  onDeepen: (section: LabSectionId) => void;
   onRetry: () => void;
   /** Was-wäre-wenn: gültiger Override + aktive Werte. */
   assumptions: NowAssumptions;
@@ -128,7 +133,10 @@ const CHIP_TEXT = {
   refuel_now: "● Jetzt tanken",
   wait: "▼ Warten",
   refuel_elsewhere: "→ Woanders tanken",
-  no_advice: "– Keine Empfehlung",
+  // Stufe C/S1: grau ist ein erster Klasse-Zustand. Der Chip benennt den
+  // Zustand („keine klare Empfehlung“), die Überschrift darunter die
+  // Tatsache, die auch ohne Modell gilt: der günstigste offene Preis.
+  no_advice: "– Keine klare Empfehlung",
 } as const;
 
 const FRESHNESS_TONE = {
@@ -255,6 +263,10 @@ export function JetztView(props: JetztViewProps) {
   const verdict = nowVerdict(input);
   const facts = nowFacts(input);
   const steps = nowSteps(input);
+  // „Was ist gerade am besten?“ — die Antwort ohne Modell (S0/S1/C).
+  const bestNow = nowBestNow(input);
+  const learning = learningNote(decide);
+  const dayPanel = nowDayPanel(stripCells);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
   const explanation = nowExplanation({ ...input, pricesAt });
   const hint = assumptionHint(input);
@@ -410,7 +422,7 @@ export function JetztView(props: JetztViewProps) {
               <ArrowRight size={15} aria-hidden="true" />
             </button>
           </div>
-        ) : verdict ? (
+        ) : verdict && verdict.action !== "no_advice" ? (
           <div
             className={`${panel} p-5 sm:p-7 ${CARD_TONE[verdict.tone]}`}
             aria-labelledby="jetzt-headline"
@@ -465,24 +477,6 @@ export function JetztView(props: JetztViewProps) {
                 </a>
               )}
             </div>
-            {/* Grauer Zustand ist erstklassig: die Aktualpreise stehen
-                darunter, statt den Nutzer ohne Zahlen zu lassen. */}
-            {verdict.action === "no_advice" && stations.length > 0 && (
-              <ul className="mt-4 grid gap-1 font-mono text-[11px] text-slate-300">
-                {[...stations]
-                  .filter((s) => s.price != null)
-                  .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
-                  .slice(0, 3)
-                  .map((s) => (
-                    <li key={s.station_id} className="flex justify-between gap-3">
-                      <span className="truncate" title={s.name}>
-                        {s.name}
-                      </span>
-                      <span className="shrink-0">{euroPerLiter(s.price)}</span>
-                    </li>
-                  ))}
-              </ul>
-            )}
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}
             <details
@@ -610,18 +604,126 @@ export function JetztView(props: JetztViewProps) {
               </div>
             )}
           </div>
-        ) : problemCode ? (
-          <LoadError
-            errorCode={problemCode}
-            fallback="Empfehlung derzeit nicht erreichbar."
-            onRetry={onRetry}
-            compact
-          />
-        ) : (
+        ) : bestNow.station === null && !learning && !problemCode ? (
           <div className={`${panel} p-5 sm:p-7`}>
             <p className="text-sm leading-relaxed text-slate-300">
               Noch keine Empfehlung — die Preise werden geladen.
             </p>
+          </div>
+        ) : (
+          /* Ohne Prognose bleibt die Tatsache: der Preisvergleich jetzt.
+             Bis 0.35.0 stand hier die graue Karte mit einer Nebenliste —
+             der günstigste offene Preis ist aber die Antwort, die man
+             sucht (Nutzer-Feedback 14.09.2026). */
+          <div className={`${panel} p-5 sm:p-7 ${CARD_TONE.gray}`}>
+            {/* Der Fehler steht über der Tatsache: erst sagen, dass die
+                Prognose fehlt, dann den Preisvergleich zeigen — statt den
+                Nutzer ohne Zahlen stehen zu lassen. */}
+            {problemCode && (
+              <div className="mb-3">
+                <LoadError
+                  errorCode={problemCode}
+                  fallback="Empfehlung derzeit nicht erreichbar."
+                  onRetry={onRetry}
+                  compact
+                />
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${CHIP.gray}`}
+              >
+                {verdict?.action === "no_advice"
+                  ? CHIP_TEXT.no_advice
+                  : "● Preisvergleich"}
+              </span>
+              {bestNow.spreadEur !== null && (
+                <span className="text-[11px] text-slate-400">
+                  Spanne im Set: {centPerLiter(bestNow.spreadCt ?? 0)} ·
+                  {" "}
+                  {euro(bestNow.spreadEur)} € bei {deTrimmed(liters, 0)} L
+                </span>
+              )}
+            </div>
+            <h2
+              id="jetzt-headline"
+              className="mt-3 text-xl font-bold text-white sm:text-2xl"
+            >
+              {bestNow.station
+                ? `Jetzt am günstigsten: ${bestNow.station.name}`
+                : "Keine klare Empfehlung"}
+            </h2>
+            {bestNow.price !== null && (
+              <p className="mt-2 text-2xl font-black tracking-tight text-white tabular-nums sm:text-3xl">
+                {euroPerLiter(bestNow.price)}
+              </p>
+            )}
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
+              {bestNow.sentence}
+            </p>
+            {verdict?.detail && verdict.action === "no_advice" && (
+              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
+                {verdict.detail}
+              </p>
+            )}
+            {learning && (
+              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
+                {learning}
+              </p>
+            )}
+            {bestNow.ranking.length > 1 && (
+              <ol className="mt-4 grid gap-1.5">
+                {bestNow.ranking.map((entry, index) => (
+                  <li
+                    key={entry.station.station_id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-[11px]"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="w-4 shrink-0 font-mono text-slate-500">
+                        {index + 1}.
+                      </span>
+                      <span className="truncate text-slate-200">
+                        {entry.station.name}
+                      </span>
+                      {entry.station.brand && (
+                        <span className="shrink-0 text-slate-500">
+                          {entry.station.brand}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="font-mono font-bold text-slate-100 tabular-nums">
+                        {euroPerLiter(entry.price)}
+                      </span>
+                      {bestNow.price !== null && index > 0 && (
+                        <span className="ml-2 font-mono text-slate-500 tabular-nums">
+                          +{centPerLiter((entry.price - bestNow.price) * 100)}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {bestNow.mapsUrl && (
+                <a
+                  href={bestNow.mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                >
+                  Route zur günstigsten
+                  <ArrowRight size={15} aria-hidden="true" />
+                </a>
+              )}
+              <button
+                onClick={() => onNavigate("stations")}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Alle {bestNow.freshCount} Preise vergleichen
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -705,7 +807,10 @@ export function JetztView(props: JetztViewProps) {
         </>
       )}
 
-      {/* ④ Heute im Blick */}
+      {/* ④ Heute im Blick — seit 0.36.0 mit Zahlen statt nur Farben
+          (Nutzer-Feedback 14.09.2026: „zu wenig Infos“). Alles aus den
+          Zellen selbst: günstigste/teuerste offene Stunde, Tagesmedian,
+          Abstand „jetzt“ zum Median und die Abdeckung. */}
       {stripCells.length > 0 && (
         <>
           <h2 className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-200">
@@ -713,34 +818,117 @@ export function JetztView(props: JetztViewProps) {
             Heute im Blick
           </h2>
           <div className={`${panel} mt-2 p-4`}>
-            <div className="daystrip-cells grid grid-cols-6 gap-1.5 sm:grid-cols-12">
-              {stripCells.map((cell) => (
-                <div
-                  key={cell.hour}
-                  title={
-                    cell.value === null
-                      ? `${String(cell.hour).padStart(2, "0")}:00 — keine offene Meldung`
-                      : `${String(cell.hour).padStart(2, "0")}:00 — ${euro(cell.value, 3)} €/L`
-                  }
-                  className={`rounded-lg border py-1 text-center font-mono text-[10px] ${
-                    cell.current
-                      ? "border-emerald-400 bg-emerald-950/80 text-emerald-200"
-                      : cell.tone === "cheap"
-                        ? "border-emerald-500/30 bg-emerald-900/30 text-emerald-200/90"
-                        : cell.tone === "pricey"
-                          ? "border-rose-500/30 bg-rose-950/30 text-rose-200/90"
-                          : cell.tone === "mid"
-                            ? "border-slate-700/40 bg-slate-800/40 text-slate-300"
-                            : "border-slate-800 bg-slate-950/40 text-slate-500"
-                  }`}
-                >
-                  {String(cell.hour).padStart(2, "0")}
-                </div>
-              ))}
+            <p className="text-xs leading-relaxed text-slate-300">
+              {dayPanel.headline}
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Günstigste Stunde
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-bold text-emerald-300 tabular-nums">
+                  {dayPanel.best
+                    ? `${String(dayPanel.best.hour).padStart(2, "0")}–${String((dayPanel.best.hour + 1) % 24).padStart(2, "0")} Uhr`
+                    : "—"}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {dayPanel.best
+                    ? euroPerLiter(dayPanel.best.value)
+                    : "keine offene Meldung"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Tagesmedian
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-bold text-slate-100 tabular-nums">
+                  {dayPanel.median !== null ? euroPerLiter(dayPanel.median) : "—"}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {dayPanel.spreadCt !== null
+                    ? `Spanne ${centPerLiter(dayPanel.spreadCt)} zwischen bester und teuerster Stunde`
+                    : "noch kein Verlauf"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Jetzt
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-bold text-slate-100 tabular-nums">
+                  {dayPanel.nowValue !== null
+                    ? euroPerLiter(dayPanel.nowValue)
+                    : "—"}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {dayPanel.nowVsMedianCt === null
+                    ? "keine offene Meldung in dieser Stunde"
+                    : dayPanel.nowVsMedianCt > 0.05
+                      ? `${centPerLiter(dayPanel.nowVsMedianCt)} über dem Tagesmedian`
+                      : dayPanel.nowVsMedianCt < -0.05
+                        ? `${centPerLiter(Math.abs(dayPanel.nowVsMedianCt))} unter dem Tagesmedian`
+                        : "auf Höhe des Tagesmedians"}
+                </p>
+              </div>
+            </div>
+            <div className="daystrip-cells mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+              {stripCells.map((cell) => {
+                // Balkenhöhe = Preis innerhalb der Tagesspanne. So liest man
+                // das Profil, ohne 18 Zahlen zu vergleichen.
+                const span =
+                  dayPanel.worst && dayPanel.best
+                    ? dayPanel.worst.value - dayPanel.best.value
+                    : 0;
+                const ratio =
+                  cell.value !== null && span > 0
+                    ? (cell.value - (dayPanel.best?.value ?? cell.value)) / span
+                    : 0;
+                return (
+                  <div
+                    key={cell.hour}
+                    title={
+                      cell.value === null
+                        ? `${String(cell.hour).padStart(2, "0")}:00 — keine offene Meldung`
+                        : `${String(cell.hour).padStart(2, "0")}:00 — ${euroPerLiter(cell.value)}`
+                    }
+                    className={`flex flex-col items-center gap-0.5 rounded-lg border px-0.5 pb-0.5 pt-1 ${
+                      cell.current
+                        ? "border-emerald-400 bg-emerald-950/80"
+                        : cell.tone === "cheap"
+                          ? "border-emerald-500/30 bg-emerald-900/30"
+                          : cell.tone === "pricey"
+                            ? "border-rose-500/30 bg-rose-950/30"
+                            : cell.tone === "mid"
+                              ? "border-slate-700/40 bg-slate-800/40"
+                              : "border-slate-800 bg-slate-950/40"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`w-full rounded-sm ${
+                        cell.value === null
+                          ? "h-0.5 bg-slate-700/50"
+                          : cell.tone === "cheap"
+                            ? "bg-emerald-400/80"
+                            : cell.tone === "pricey"
+                              ? "bg-rose-400/80"
+                              : "bg-slate-400/60"
+                      }`}
+                      style={{ height: `${2 + Math.round(ratio * 10)}px` }}
+                    />
+                    <span
+                      className={`font-mono text-[9px] ${
+                        cell.current ? "text-emerald-200" : "text-slate-500"
+                      }`}
+                    >
+                      {String(cell.hour).padStart(2, "0")}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-              Farbig = eher günstig · rot = eher teuer · leer = keine offene
-              Meldung · Rahmen = jetzt
+              {dayPanel.coverage} Balken = Höhe des Preises im Tagesverlauf ·
+              grün = unteres Drittel · rot = oberes Drittel · Rahmen = jetzt.
             </p>
           </div>
         </>
@@ -771,9 +959,9 @@ export function JetztView(props: JetztViewProps) {
               ? "Mini-Visual: das Tagesprofil mit markiertem Fenster (Messwerte, keine Prognose)."
               : undefined
           }
-          onDeepen={() => {
+          onDeepen={(section) => {
             setSheetOpen(false);
-            onDeepen();
+            onDeepen(section);
           }}
           onClose={() => setSheetOpen(false)}
         />

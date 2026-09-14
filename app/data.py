@@ -1451,6 +1451,78 @@ class LiveData:
         except Exception:
             return {"error_code": "episodes_read_failed", "episodes": [], "count": 0}
 
+    def diary(self, limit: int = 50, outcome: str | None = None):
+        """Prognose-Tagebuch (GUI-Neuentwurf §6.2 Abschnitt 4, Konzept §12).
+
+        Liest die **echten** Settlements aus dem Advice-Ledger
+        (`app/feedback.py`) und verbindet jeden Eintrag mit dem Snapshot, der
+        ihn ausgelöst hat: Aktion, Station, Fenster, Versprechen (p) und
+        Ergebnis (win/loss/tie/void + Begründung). Kein Demo-Eintrag, keine
+        erfundene Zeile — solange nichts abgerechnet ist, bleibt die Liste
+        leer und das Feld `reason` erklärt, woran es liegt.
+
+        `limit` kappt die Liste (neueste zuerst), `outcome` filtert
+        ("win", "loss", "tie", "void").
+        """
+        try:
+            if limit < 1 or limit > 500:
+                raise ValueError("invalid_query")
+            from .feedback import StoreTooLarge, load_store
+
+            store = load_store(self.settings)
+            snapshots = {
+                s.get("id"): s
+                for ep in store.get("episodes", [])
+                for s in ep.get("snapshots", []) or []
+            }
+            rows = []
+            for settlement in store.get("settlements", []) or []:
+                snap = snapshots.get(settlement.get("snapshot_id")) or {}
+                if outcome and settlement.get("outcome") != outcome:
+                    continue
+                rows.append(
+                    {
+                        "snapshot_id": settlement.get("snapshot_id"),
+                        "episode_id": settlement.get("episode_id"),
+                        "settled_at": settlement.get("settled_at"),
+                        "emitted_at": snap.get("emitted_at"),
+                        "action": snap.get("action"),
+                        "station_id": snap.get("alt_station_id")
+                        or snap.get("station_id"),
+                        "city": snap.get("city"),
+                        "fuel": snap.get("fuel"),
+                        "window_start": snap.get("window_start"),
+                        "window_end": snap.get("window_end"),
+                        "price_then": settlement.get("p_emit"),
+                        "price_window": settlement.get("p_realized"),
+                        "outcome": settlement.get("outcome"),
+                        "void_reason": settlement.get("void_reason"),
+                        "regret_eur": settlement.get("regret_eur"),
+                        "p_correct": snap.get("p_correct"),
+                        "p_besser": snap.get("p_besser"),
+                        "liters": snap.get("liters_assumed"),
+                        "intent": snap.get("intent"),
+                    }
+                )
+            rows.sort(key=lambda row: row.get("settled_at") or "", reverse=True)
+            pending = snapshots and not rows
+            return {
+                "generated_at": self.clock().isoformat(),
+                "count": len(rows),
+                "entries": rows[:limit],
+                "settled_total": len(store.get("settlements", []) or []),
+                "reason": None
+                if rows
+                else ("no_settlements" if pending else "no_advice_history"),
+                "error_code": None,
+            }
+        except ValueError:
+            return {"error_code": "invalid_query", "entries": [], "count": 0}
+        except StoreTooLarge:
+            return {"error_code": "store_too_large", "entries": [], "count": 0}
+        except Exception:
+            return {"error_code": "diary_read_failed", "entries": [], "count": 0}
+
     def set_intent(self, episode_id: str, intent: str):
         """Setzt den Intent einer Episode (wait, navigate, refuel_now, dismiss)."""
         try:

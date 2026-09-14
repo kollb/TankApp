@@ -19,7 +19,7 @@ export function GlossaryView() {
           Was heißt das?
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-          Die Werkstatt spricht deutsch zuerst — das Fachwort steht in Klammern
+          Das Labor spricht deutsch zuerst — das Fachwort steht in Klammern
           und im Tooltip. Keine Rechnung, nur Sprache: Was bedeutet die Zahl,
           woran erkennt man den Zustand, was folgt daraus?
         </p>
@@ -90,7 +90,7 @@ export function GlossaryView() {
           .
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-          Sprache vor Rechnung: Jeder i-Punkt in der Werkstatt verweist hierher
+          Sprache vor Rechnung: Jeder i-Punkt im Labor verweist hierher
           — ein Tap zeigt die Kurzerklärung, diese Seite die Einordnung.
         </p>
       </section>

@@ -8,7 +8,7 @@ import {
   Gauge,
   SquarePen,
   Compass,
-  LineChart as ChartIcon,
+  FlaskConical,
   Server,
   RefreshCw,
   ShieldCheck,
@@ -132,6 +132,7 @@ import {
   type JobRunNote,
   type Overview,
   JOB_LABELS,
+  type AdviceDiary,
 } from "./data";
 // D1: Views-Schnitt — die vier Tabs sind eigene Dateien; der gemeinsame
 // Zustand bleibt hier und wandert per typisierten Props in die Views.
@@ -144,10 +145,15 @@ import { JetztView, type NowAssumptions } from "./views/Jetzt";
 import { StationenView } from "./views/Stationen";
 import { WocheView } from "./views/Woche";
 import { IchView, fillPositionNote } from "./views/Ich";
-import { StatisticsView } from "./views/Statistics";
+import { LaborView } from "./views/Labor";
 import { SystemView } from "./views/System";
 import { GlossaryView } from "./views/Glossary";
 import { buildStripCells } from "./strip";
+import { type LabOrigin, type LabSectionId } from "./lab";
+
+/** Die Hauptbereiche der GUI (UI-NEUENTWURF §4.1). */
+type TabId = "jetzt" | "stations" | "week" | "ich" | "labor" | "system" | "glossary";
+
 export function Dashboard() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
   // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
@@ -169,12 +175,18 @@ export function Dashboard() {
     share.city,
   );
   const [selectedId, setSelectedId] = useState(share.stationId ?? "");
-  // GUI-Neuentwurf (Phase 1+2 abgeschlossen): die sechs Aufgaben-Bereiche.
-  // „Jetzt“ ist der Einstieg; „Werkstatt“ (→ Labor in Phase 3) und
-  // „Glossar“ bleiben Nebenwege, „System“ bleibt Haupttab.
-  const [tab, setTab] = useState<
-    "jetzt" | "stations" | "week" | "ich" | "statistics" | "system" | "glossary"
-  >("jetzt");
+  // GUI-Neuentwurf (Phase 3): die sechs Aufgaben-Bereiche.
+  // „Jetzt“ ist der Einstieg; „Labor“ (eigene Welt, violett) und „Glossar“
+  // bleiben Nebenwege, „System“ bleibt Haupttab. Die alte Werkstatt ist
+  // ersetzt, nicht umbenannt: siehe views/Labor.tsx.
+  const [tab, setTab] = useState<TabId>("jetzt");
+  // Erklär-Treppe Ebene 1 → 2 (§7): Sprung ins Labor merkt sich Abschnitt
+  // und Herkunft. Die Herkunft hält die Root, weil nur sie die Ansicht
+  // kennt, aus der gesprungen wurde („Zurück zu: …“).
+  const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(null);
+  const [laborReturn, setLaborReturn] = useState<
+    (LabOrigin & { tab: TabId }) | null
+  >(null);
   // Einstieg in „Ich“, wenn ein anderer Bereich dort hinverweist (z. B.
   // „Beleg manuell buchen“ im Due-Prompt → Belege). Sonst „Fahrzeug“.
   const [ichSection, setIchSection] = useState<
@@ -240,6 +252,14 @@ export function Dashboard() {
   const [spanHours, setSpanHours] = usePreference(
     "spanHours",
     24,
+    (value) => value === 24 || value === 72 || value === 168,
+  );
+  // Verlauf-Umschalter der Stationen-Ansicht (Vorbild: Stations-Labor).
+  // Eigene Präferenz, damit ein Zeitraum im Atlas den Labor-Zeitraum nicht
+  // umstellt — beide sind „letzte X“, aber verschiedene Fragen.
+  const [stationsSpanHours, setStationsSpanHours] = usePreference(
+    "stationsSpanHours",
+    168,
     (value) => value === 24 || value === 72 || value === 168,
   );
   const [horizon, setHorizon] = usePreference(
@@ -792,10 +812,10 @@ export function Dashboard() {
       : emptyResource<DecideResult>();
 
   const statsSummaryPoll = useResource<StatsSummary>(
-    // Die Güte-Kacheln im System-Tab, das Labor in der Werkstatt und die
-    // Schwellen-Tabelle in „Ich → Einstellungen“ lesen dieselbe Antwort —
-    // in „Jetzt“/„Woche“ steckt sie im Overview-Payload.
-    tab === "statistics" || tab === "system" || tab === "ich"
+    // Die Güte-Kacheln im System-Tab, das Labor und die Schwellen-Tabelle
+    // in „Ich → Einstellungen“ lesen dieselbe Antwort — in
+    // „Jetzt“/„Woche“ steckt sie im Overview-Payload.
+    tab === "labor" || tab === "system" || tab === "ich"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -822,19 +842,20 @@ export function Dashboard() {
   const history = useResource<
     { points: Point[]; error_code: string | null } & DataReach
   >(
-    tab === "statistics" && identity
+    tab === "labor" && identity
       ? `/api/v1/series?${identity}&hours=${spanHours}`
       : null,
     60000,
     refresh,
   );
-  // GUI-Neuentwurf §5.2: 7-Tage-Verlauf der Stationen-View (eigener Poll
-  // nur für die gewählte Station — „Verlauf schlägt Moment“).
+  // GUI-Neuentwurf §5.2: Verlauf der Stationen-View (eigener Poll nur für
+  // die gewählte Station — „Verlauf schlägt Moment“). Der Zeitraum ist
+  // derselbe Umschalter wie im Stations-Labor (24 h / 3 Tage / 7 Tage).
   const series7d = useResource<
     { points: Point[]; error_code: string | null } | null
   >(
     tab === "stations" && identity
-      ? `/api/v1/series?${identity}&hours=168`
+      ? `/api/v1/series?${identity}&hours=${stationsSpanHours}`
       : null,
     60000,
     refresh,
@@ -846,7 +867,7 @@ export function Dashboard() {
         )
       : emptyResource<{ points: Point[]; error_code: string | null }>();
   const forecast = useResource<Forecast>(
-    tab === "statistics" && identity ? `/api/v1/forecast?${identity}` : null,
+    tab === "labor" && identity ? `/api/v1/forecast?${identity}` : null,
     300000,
     refresh,
   );
@@ -854,7 +875,7 @@ export function Dashboard() {
   // beides nur dort, wo es wirkt (basis gilt ausschließlich Cheap-Prob ohne Station).
   const heatmapBasisActive = heatmapKind === "probability" && !selected;
   const heatmap = useResource<Heatmap>(
-    tab === "statistics" && activeCity
+    tab === "labor" && activeCity
       ? heatmapPath({
           city: activeCity,
           fuel,
@@ -868,19 +889,25 @@ export function Dashboard() {
     refresh,
   );
   const selection = useResource<Selection>(
-    tab === "statistics" || tab === "system"
+    tab === "labor" || tab === "system"
       ? `/api/v1/selection?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     120000,
     refresh,
   );
-  // A4: Monats-/Jahresbilanz — nur im Werkstatt-Tab (der Alltag zeigt
-  // weiter die Summen-Kacheln aus stats_summary).
-  // GUI-Neuentwurf: die Bilanz (S5a) ist jetzt Teil von „Ich“; die
-  // Werkstatt nutzt dieselbe Antwort weiterhin für ihre Monats-/Jahrs-
-  // Bilanz.
+  // A4: Monats-/Jahresbilanz — die Summen-Kacheln stehen im Alltag, die
+  // volle Monats-/Jahres-Sicht in „Ich → Bilanz“. Seit Phase 3 liest nur
+  // noch „Ich“ diese Antwort; die alte Werkstatt-Kachel ist entfallen.
   const fillsSummary = useResource<FillsSummary>(
-    tab === "ich" || tab === "statistics" ? "/api/v1/fills/summary" : null,
+    tab === "ich" ? "/api/v1/fills/summary" : null,
+    120000,
+    refresh,
+  );
+  // Labor §6.2 Abschnitt 4: Prognose-Tagebuch — echte Settlements des
+  // Advice-Ledgers (`GET /api/v1/advice/diary`), kein Demo, keine Zeile
+  // ohne Abrechnung. Nur im Labor gepollt; andere Tabs zahlen nicht.
+  const diary = useResource<AdviceDiary>(
+    tab === "labor" ? "/api/v1/advice/diary?limit=50" : null,
     120000,
     refresh,
   );
@@ -1082,15 +1109,27 @@ export function Dashboard() {
   // Fit-Zeitpunkt — nicht aus der Berechnungszeit dieser Antwort (`now.ts`).
   const nowForecastAt = forecastStamp(decideRes.data);
   // GUI-Neuentwurf: die Ziele des Neuentwurfs sind echte Bereiche —
-  // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“ und „System“.
-  // „Werkstatt“ ist bis Phase 3 der Weg zur Ebene 2 (das Labor folgt dort).
+  // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“, „Labor“ und
+  // „System“. „werkstatt“ bleibt als Alt-Ziel erhalten und landet im Labor.
   const handleNowNavigate = (target: NowTarget | "jetzt" | "werkstatt") => {
     if (target === "jetzt") setTab("jetzt");
     else if (target === "stations") setTab("stations");
     else if (target === "week" || target === "tank") setTab("week");
     else if (target === "ich") setTab("ich");
-    else if (target === "werkstatt") setTab("statistics");
+    else if (target === "werkstatt") setTab("labor");
     else setTab("system");
+  };
+  // Erklär-Treppe Ebene 1 → 2 (§7): Der Sprung öffnet den passenden
+  // Abschnitt und merkt sich die Herkunft („Zurück zu: …“). Die Herkunft
+  // hält die Root, weil nur sie weiß, aus welcher Ansicht gesprungen wurde.
+  const openLabor = (
+    section: LabSectionId,
+    label: string,
+    from: TabId,
+  ) => {
+    setLaborFocus(section);
+    setLaborReturn({ section, label, tab: from });
+    setTab("labor");
   };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
@@ -1548,9 +1587,9 @@ export function Dashboard() {
                 { id: "week", label: "Woche", icon: <Gauge size={15} /> },
                 { id: "ich", label: "Ich", icon: <User size={15} /> },
                 {
-                  id: "statistics",
-                  label: "Werkstatt",
-                  icon: <ChartIcon size={15} />,
+                  id: "labor",
+                  label: "Labor",
+                  icon: <FlaskConical size={15} />,
                 },
                 { id: "system", label: "System", icon: <Server size={15} /> },
                 {
@@ -1564,7 +1603,15 @@ export function Dashboard() {
                 key={item.id}
                 onClick={() => setTab(item.id)}
                 aria-current={tab === item.id ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${tab === item.id ? "bg-slate-800 text-emerald-400 shadow" : "text-slate-500 hover:text-slate-200"}`}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${
+                  tab === item.id
+                    ? item.id === "labor"
+                      ? "bg-slate-800 text-violet-300 shadow"
+                      : "bg-slate-800 text-emerald-400 shadow"
+                    : item.id === "labor"
+                      ? "text-slate-500 hover:text-violet-300"
+                      : "text-slate-500 hover:text-slate-200"
+                }`}
               >
                 {item.icon}
                 {item.label}
@@ -1708,7 +1755,9 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             forecastAt={nowForecastAt}
             onNavigate={handleNowNavigate}
-            onDeepen={() => setTab("statistics")}
+            onDeepen={(section) =>
+              openLabor(section, "Jetzt · Warum?", "jetzt")
+            }
             onRetry={refreshNow}
             assumptions={assumptions}
             defaultLiters={liters}
@@ -1753,6 +1802,8 @@ export function Dashboard() {
             decideRes={decideRes}
             stripCells={stripCells}
             series7d={series7d}
+            seriesSpan={stationsSpanHours}
+            onSeriesSpan={setStationsSpanHours}
             liters={effLiters}
             timeValue={effTimeValue}
             timeValueUsed={timeValueUsed}
@@ -1763,7 +1814,13 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             onRetry={refreshNow}
             onNavigate={handleNowNavigate}
-            onDeepen={() => setTab("statistics")}
+            onDeepen={(section) =>
+              openLabor(
+                section,
+                selected ? `Stationen · ${selected.name}` : "Stationen",
+                "stations",
+              )
+            }
             searchFocusSignal={searchFocusSignal}
           />
         )}
@@ -1785,7 +1842,7 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             onRetry={refreshNow}
             onNavigate={handleNowNavigate}
-            onDeepen={() => setTab("statistics")}
+            onDeepen={(section) => openLabor(section, "Woche · Fenster", "week")}
           />
         )}
 
@@ -1863,8 +1920,8 @@ export function Dashboard() {
         {/* ============================================================ */}
         {/* TAB STATISTIK / WERKSTATT                                    */}
         {/* ============================================================ */}
-        {tab === "statistics" && (
-          <StatisticsView
+        {tab === "labor" && (
+          <LaborView
             activeCity={activeCity}
             activeLabDayRow={activeLabDayRow}
             activeLabOutcome={activeLabOutcome}
@@ -1873,11 +1930,12 @@ export function Dashboard() {
             best={best}
             calibErr={calibErr}
             calibPoints={calibPoints}
-            data={data}
+            diary={diary}
             eps={eps}
             f={f}
             fanBand80={fanBand80}
             fanBand95={fanBand95}
+            focusSection={laborFocus}
             forecast={forecast}
             forecastMarks={forecastMarks}
             forecastWindow={forecastWindow}
@@ -1897,22 +1955,25 @@ export function Dashboard() {
             labModel={labModel}
             labMu={labMu}
             labPredHour={labPredHour}
-            liters={liters}
             labRows={labRows}
             labSaves={labSaves}
-            labScores={labScores}
             labTotals={labTotals}
+            liters={liters}
             livePointsForChart={livePointsForChart}
             m7Line={m7Line}
             metrics={metrics}
             modelSeries={modelSeries}
-            modelWindows={modelWindows}
-            obsWindow={obsWindow}
             observations={observations}
+            onBack={() => {
+              setTab(laborReturn?.tab ?? "jetzt");
+              setLaborFocus(null);
+            }}
+            onFocusHandled={() => setLaborFocus(null)}
+            onNavigate={handleNowNavigate}
+            origin={laborReturn}
             refreshNow={refreshNow}
-            selection={selection}
-            series={series}
             selected={selected}
+            selection={selection}
             setEps={setEps}
             setHeatmapBasis={setHeatmapBasis}
             setHeatmapKind={setHeatmapKind}
@@ -1921,13 +1982,11 @@ export function Dashboard() {
             setLabDayIdx={setLabDayIdx}
             setSelectedId={setSelectedId}
             setSpanHours={setSpanHours}
-            span={span}
             spanHours={spanHours}
             spanLabel={spanLabel}
-            stationPhase={f?.data_policy ?? null}
             stations={stations}
             statsSummaryRes={statsSummaryRes}
-            fillsSummary={fillsSummary}
+            stationPhase={stationPhase}
             transitionLine={transitionLine}
           />
         )}

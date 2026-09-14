@@ -76,12 +76,13 @@ frei (GUI-Polling).
 |---|---|---|
 | `GET /api/v1/decide?city=...&fuel=...&liters=40` | **B4** | Handlungsempfehlung + 3-Wege-Vergleich + Snapshot-Emission |
 | `GET /api/v1/episodes?status=due` | **B4** | Offene / fällige Episoden für Due-Prompts |
+| `GET /api/v1/advice/diary?limit=50&outcome=` | **GUI 3** | Prognose-Tagebuch: echte Settlements des Advice-Ledgers (Fenster, Preis, Ergebnis) |
 | `POST /api/v1/episodes/{episode_id}/intent` | **B4** | Nutzer-Intent setzen (`wait`, `navigate`, `dismiss`) |
 | `POST /api/v1/fills` | **B4** | Echten Tankbeleg erfassen (Wallet-Ledger) |
 | `GET /api/v1/fills` | **A3/A6** | Beleg-Verlauf (auch stornierte, mit `voided`-Flag) |
 | `DELETE /api/v1/fills/{id}` | **A3** | Beleg stornieren — Flag + Audit-Zeile, kein Löschen |
 | `GET /api/v1/fills.csv` | **A6** | Eigene Tankbelege als CSV (`;`, deutsche Dezimalkommas) |
-| `GET /api/v1/fills/summary` | **A4** | Monats-/Jahresbilanz des Wallet-Ledgers („Jahresbilanz in der Werkstatt“) |
+| `GET /api/v1/fills/summary` | **A4** | Monats-/Jahresbilanz des Wallet-Ledgers (Tab „Ich“ → Bilanz) |
 | `GET /api/v1/profiles` | **A1** | Fahrzeug-/Haushaltsprofile (ohne Login, serverseitig) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, **`version`/`commit` (B9)**, **`alarms[]` (B4)**, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
@@ -178,6 +179,79 @@ Setzt die Nutzer-Absicht (`wait` | `navigate` | `refuel_now` | `dismiss`):
 ```
 
 Unbekannte Episoden-IDs liefern strikt `404 episode_not_found` (kein stilles Umschreiben einer anderen Episode).
+
+## Advice-Tagebuch (GET, GUI Phase 3)
+
+`GET /api/v1/advice/diary?limit=50&outcome=win` (Tab „Labor“, Abschnitt 4
+„Wie lernt die App aus Fehlern?“)
+
+Prognose-Tagebuch: je **abgerechneter** Empfehlung (Worker-Job
+`settlement`, siehe Stats Summary Schicht B) eine Zeile mit dem, was
+versprochen war und was eingetroffen ist. Quelle ist das **Settlement
+selbst** (`app/feedback.py`, `settlements[]`), verbunden mit dem Snapshot,
+der es ausgelöst hat (`snapshots[]` desselben Episoden-Eintrags) — kein
+zweiter Zähler, keine Demo-Zeile.
+
+Parameter:
+
+- `limit` (Default 50, 1–500): neueste zuerst (nach `settled_at`).
+- `outcome` (optional): `win`, `loss`, `tie` oder `void`.
+
+```json
+{
+  "generated_at": "2026-09-14T12:04:11+00:00",
+  "count": 12,
+  "entries": [
+    {
+      "snapshot_id": "snap_1a2b",
+      "episode_id": "ep_1a2b",
+      "settled_at": "2026-09-13T17:35:00+00:00",
+      "emitted_at": "2026-09-13T14:00:00+00:00",
+      "action": "wait",
+      "station_id": "uuid",
+      "city": "Frankfurt",
+      "fuel": "e10",
+      "window_start": "2026-09-13T16:00:00+00:00",
+      "window_end": "2026-09-13T18:00:00+00:00",
+      "price_then": 1.789,
+      "price_window": 1.749,
+      "outcome": "win",
+      "void_reason": null,
+      "regret_eur": null,
+      "p_correct": null,
+      "p_besser": 0.62,
+      "liters": 40,
+      "intent": "wait"
+    }
+  ],
+  "settled_total": 12,
+  "reason": null,
+  "error_code": null
+}
+```
+
+Ehrlichkeits-Regeln:
+
+- `price_then` ist der Preis beim Aussprechen (`p_emit` des Settlements),
+  `price_window` der **realisierte** Fensterpreis (`p_realized`); bei
+  `outcome: "void"` ist `price_window` null und `void_reason` nennt den Grund
+  (`no_advice`, `no_emit_price`, `legacy_no_window`, `beyond_series_range`,
+  `no_alt_station`, `no_station`, `no_city`, `no_realized_price`).
+- `p_correct` bleibt null, solange das M7-Gate aussteht (§0.4);
+  `p_besser` ist die Verteilungs-P des Snapshots und unabhängig davon.
+- Leere Liste **mit Grund** statt einer stillen Leere: `reason`
+  `no_settlements` (Snapshots da, noch nichts abgerechnet) oder
+  `no_advice_history` (noch keine Empfehlung abgegeben).
+- `liters` ist die angenommene Tankmenge des Snapshots, nicht der echte Beleg.
+
+Fehler:
+
+- `invalid_query` (400, `limit` außerhalb 1–500)
+- `store_too_large`, `diary_read_failed` (500)
+
+Frontend: Tab „Labor“ → Abschnitt 4, Filter „Alle/Warten/Jetzt tanken/
+Woanders tanken“ (Filter läuft client-seitig über `action`, der Serverfilter
+`outcome` bleibt für gezielte Auswertungen).
 
 ## Fills (B4 Belege)
 
@@ -298,7 +372,7 @@ Download-Link im System-Tab. Der Export ist dieselbe Datenbasis wie
 `GET /api/v1/fills/summary`
 
 Gruppiert die **aktiven** (nicht stornierten) Belege je Kalendermonat und
--jahr in Europe/Berlin — die „Jahresbilanz in der Werkstatt“ (Konzept §12).
+-jahr in Europe/Berlin — die „Jahresbilanz“ in „Ich“ → Bilanz (Konzept §12).
 Belege ohne interpretierbares `tanked_at` fließen in `overall`, aber in keine
 Zeile; die Differenz steht in `overall.n_without_date`.
 
@@ -661,8 +735,9 @@ Fehler:
 
 - `influx_not_configured`, `influx_read_failed`, `too_many_points` (>200k), `polling_missing`, `polling_invalid`, `invalid_basis` (400, bei `basis` außer `overall`/`hour`), `invalid_query` (u. a. bei unbekannter Stadt/Station, ungültigem fuel/kind/weeks)
 
-Frontend: Tab Werkstatt → Heatmaps, Umschalter Niveau/Probability, Wochen-Wahl
-4/6/12 (E5), Basis-Umschalter für die Cheap-Probability ohne Station (B12).
+Frontend: Tab Labor → Abschnitt 3 „Warum ist eine Station „meist günstig“?“,
+Heatmaps mit Umschalter Niveau/Probability, Wochen-Wahl 4/6/12 (E5),
+Basis-Umschalter für die Cheap-Probability ohne Station (B12).
 
 ## Selection / Meine Stationen (B3.10)
 
@@ -962,7 +1037,7 @@ alten Alltags-Routen mit RFC-8594-Headern:
 | `GET /api/v1/day` | dto. | `/api/v1/decide` (Fenster „Heute später“) |
 | `GET /api/v1/route/evaluate` | dto. | `/api/v1/decide` (`alternatives_nearby`) |
 
-Werkstatt-Routen (`series`, `forecast`, `heatmap`, `selection`,
+Analyse-Routen (`series`, `forecast`, `heatmap`, `selection`,
 `collector/status`, `health`) bleiben bewusst unmarkiert — sie sind Analyse,
 nicht Alltag.
 

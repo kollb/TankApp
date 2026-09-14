@@ -156,6 +156,21 @@ describe("Jetzt: Aufbau", () => {
     }
   });
 
+  it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
+    const html = render({
+      stripCells: [
+        { hour: 6, value: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, tone: "cheap", current: true },
+        { hour: 18, value: 1.729, tone: "mid", current: false },
+      ],
+    });
+    expect(html).toContain("Günstigste Stunde");
+    expect(html).toContain("06–06 Uhr".replace("06–06", "12–13"));
+    expect(html).toContain("Tagesmedian");
+    expect(html).toContain("Spanne 5,0 ct/L");
+    expect(html).toContain("3 von 3 Stunden mit offener Meldung");
+  });
+
   it("zeigt die Frische-Fußzeile mit Ort und Alter", () => {
     const html = render({
       decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
@@ -185,6 +200,42 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Keine klare Empfehlung");
     expect(html).toContain("Das Modell lernt noch");
     expect(html).not.toContain("% sicher");
+  });
+
+  it("S1 ohne Modell nennt trotzdem den günstigsten offenen Preis", () => {
+    // Nutzer-Feedback 14.09.2026: Solange kein Modell bzw. keine Auswahl
+    // steht, muss die Karte die Tatsache liefern, die auch ohne Prognose
+    // gilt — der günstigste offene Preis, nicht nur „keine Empfehlung“.
+    const learning = decide("no_advice", false);
+    learning.personal_stats.advice.last_30d_total = 12;
+    const html = render({
+      decideRes: { data: learning, error: false, errorCode: null, pending: false, receivedAt: 0 },
+      stations: [
+        station("aral", { price: 1.759 }),
+        station("shell", { price: 1.709, name: "Shell Nord" }),
+        station("esso", { price: 1.729, name: "Esso West" }),
+      ],
+    });
+    expect(html).toContain("Keine klare Empfehlung");
+    expect(html).toContain("Jetzt am günstigsten: Shell Nord");
+    expect(html).toContain("1,709 €/L");
+    // Der Abstand ist ein Set-Abstand, nie eine „Ersparnis“.
+    expect(html).toContain("unter dem teuersten Preis im Set");
+    expect(html).toContain("Das Modell lernt noch");
+  });
+
+  it("ohne jede Prognose steht der Preisvergleich statt einer leeren Karte", () => {
+    const broken = { error_code: "polling_missing" } as unknown as DecideResult;
+    const html = render({
+      decideRes: { data: broken, error: false, errorCode: null, pending: false, receivedAt: 0 },
+      stations: [
+        station("aral", { price: 1.759 }),
+        station("shell", { price: 1.709, name: "Shell Nord" }),
+      ],
+    });
+    expect(html).toContain("Preisvergleich");
+    expect(html).toContain("Jetzt am günstigsten: Shell Nord");
+    expect(html).toContain('role="alert"');
   });
 
   it("Fehler: Klartext-Karte mit erneutem Versuch", () => {
@@ -261,7 +312,7 @@ describe("Ebene 1: Begründungs-Sheet", () => {
         title="Warum?"
         sentences={["eins"]}
         source="Quelle"
-        labHint="Weiter"
+        labHint={{ section: "sicherheit", label: "Weiter" }}
         onDeepen={() => {}}
         onClose={() => {}}
       />,
@@ -276,7 +327,7 @@ describe("Ebene 1: Begründungs-Sheet", () => {
         title="Warum diese Empfehlung?"
         sentences={["eins", "zwei", "drei", "vier"]}
         source="Grundlage: die geladenen Preismeldungen."
-        labHint="In der Werkstatt vertiefen"
+        labHint={{ section: "prognose", label: "Im Labor vertiefen: Was die App vorhersagt" }}
         onDeepen={() => {}}
         onClose={() => {}}
       />,
@@ -288,6 +339,6 @@ describe("Ebene 1: Begründungs-Sheet", () => {
     expect(html).toContain("drei");
     expect(html).not.toContain("vier");
     expect(html).toContain("Grundlage: die geladenen Preismeldungen.");
-    expect(html).toContain("In der Werkstatt vertiefen");
+    expect(html).toContain("Im Labor vertiefen: Was die App vorhersagt");
   });
 });

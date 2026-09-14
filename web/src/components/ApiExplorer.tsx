@@ -1,6 +1,6 @@
 // D1: Ausgelagerter Baustein aus Dashboard.tsx — der API-Explorer im
 // System-Tab. Zeigt exakt die Anfragen, die die Tabs selbst stellen
-// (heatmapPath teilt sich die Bauanleitung mit der Werkstatt).
+// (heatmapPath teilt sich die Bauanleitung mit dem Labor).
 
 import { useState } from "react";
 import { heatmapPath, type Fuel } from "../data";

@@ -82,8 +82,8 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 
 | Gemeint | Wort in der App |
 |---|---|
-| die Tabs | **Jetzt** (Einstieg seit 0.34.0), **Alltag** (bleibt bis Phase 1 des Neuentwurfs), **Werkstatt**, **System**, **Einstellungen**, **Glossar** (nicht „Statistik“, nicht „Prüfstand“) |
-| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4 |
+| die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
+| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md)) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“) |
 | Prognoselauf auf dem NAS | **Modell-Update** |
@@ -140,8 +140,31 @@ dann der Grund.
 | Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht gepflegt` |
 | Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |
 | Nächste Schritte | `Günstigste Alternative: <Station>, <Preis> — netto <0,80> € nach <2,4> km Umweg` · `<Morgen> 19–21 Uhr wäre noch besser (<2,10> € weniger)` · `Tank reicht nicht bis zum Fenster — jetzt tanken oder Tankstand prüfen` |
-| Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `In der Werkstatt vertiefen` (bis Phase 3; danach der Labor-Abschnitt) |
+| Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `Im Labor vertiefen: <Abschnitt>` (seit Phase 3) |
 | S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
+
+## 4c. Bereich „Labor“: feste Muster (0.36.0)
+
+Der Beweis-Ort (UI-NEUENTWURF §6/§7). Regel: Das Labor erklärt **mehr**, es
+spricht aber nicht anders — dieselben Wörter wie „Jetzt“, dazu das Fachwort.
+Die Überschriften der fünf Abschnitte und der Sprungleisten-Text stehen in
+`web/src/lab.ts` (`LAB_SECTIONS`), die Sprache des Tagebuchs in denselben
+Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
+
+| Stelle | Muster |
+|---|---|
+| Abschnitts-Überschriften | die Alltagsfrage, nicht das Fachwort: `Was sagt die App eigentlich vorher?` · `Was heißt „ziemlich sicher“?` · `Warum ist eine Station „meist günstig“?` · `Wie lernt die App aus Fehlern?` · `Alle Begriffe von A–Z (Glossar)` · `Spielplatz: Was wäre gewesen, wenn …?` |
+| Sprungleiste | `<Nummer> · <Kurzform>` (z. B. `3 · Warum eine Station meist günstig ist`), der Spielplatz ohne Nummer |
+| Herkunft des Sprungs | `Zurück zu: <Bereich> · <Anlass>` (z. B. `Zurück zu: Jetzt · Warum?`) + Knopf `Zurück`; ohne Herkunft keine Zeile |
+| Weg in die Tiefe (Ebene 2) | `Im Labor vertiefen: <Kurzform>` — das Ziel ist der Abschnitt, der die Zahl beweist |
+| Ergebnis-Worte des Tagebuchs | `richtig` · `daneben` · `unentschieden` · `nicht bewertbar` — nie „Treffer“, nie „Fehler“ |
+| Void-Grund | `Kein Vergleichspreis — Grund: <Klartext>.` (Codes aus `app/feedback.py`, z. B. `keine offene Meldung im Fenster`) |
+| Leeres Tagebuch | `no_settlements`: „Noch kein Eintrag abgerechnet: … Worker „settlement““ · `no_advice_history`: „Noch keine Empfehlung abgegeben — das Tagebuch beginnt mit der ersten Empfehlung aus „Jetzt“.“ |
+| Trefferquote | `Versprochen waren die genannten Sicherheiten — eingetroffen sind <x> % davon.`; ohne Fälle der Satz mit `Noch keine abgeschlossene Empfehlung …` |
+| Drift-Spalte | `unauffällig` · `noch nicht messbar` (nicht `unknown`, nicht „stabil“) |
+| Maßzahl ohne Messwerte | `noch keine Vergleichspunkte — der Roll-Backtest füllt sie.` |
+| Prinzip-Skizze ohne eigene Daten | `Prinzip-Skizze — nicht deine Daten.` — dieselbe Zeile wie in „Jetzt“ |
+| Spielplatz | `Perfektes Timing (Orakel)` · `Eine Station sezieren` · Rohpreise `24 Stunden`/`3 Tage`/`7 Tage` — der Spielplatz sagt in jedem Fall, dass er mit **deinen** Daten rechnet, nicht mit einer Simulation |
 
 ## 5. Zustände: leer, lädt, Fehler
 

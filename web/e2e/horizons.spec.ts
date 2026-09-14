@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Select, Horizont-Tabs,
-// Zeitwert-Automatik und Tief/Hoch-Marker. Alle API-Antworten sind
+// B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Umschalter, Horizont-Tabs,
+// Zeitwert-Automatik — seit Phase 3 im Labor (Abschnitt 1 „Prognose“ und
+// Spielplatz). Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
 
 function stationsFixture(fuel: string) {
@@ -193,7 +194,7 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
     // liefert Server b als Alternative mit Strecke.
     await route.fulfill({ json: decideFixture(selectedId) });
   });
-  // Health + stats minimal für Werkstatt-Tab
+  // Health + stats minimal für den Labor-Tab
   await page.route("**/api/v1/health", async (route) => {
     await route.fulfill({
       json: {
@@ -238,24 +239,15 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
   return seenHours;
 }
 
-test("Stations-Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
+test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
   const seenHours = await stubApi(page, { horizons: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
+  await page.getByRole("button", { name: "Labor", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Stations-Labor · letzte 24 Stunden" }),
+    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
   ).toBeVisible();
 
-  await page.getByLabel("Zeitraum des Stations-Labors").selectOption("72");
-  await expect(
-    page.getByRole("heading", { name: "Stations-Labor · letzte 3 Tage" }),
-  ).toBeVisible();
-  await expect.poll(() => seenHours.includes(72), { timeout: 5000 }).toBeTruthy();
-
-  // Modell-Ausblick: 12-Uhr-Regel, Tief/Hoch-Marker, Horizont-Tabs.
-  await expect(page.getByText("12-Uhr-Regel", { exact: false })).toBeVisible();
-  await expect(page.getByText("Tief", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("Hoch", { exact: false }).first()).toBeVisible();
+  // Modell-Ausblick (Abschnitt 1, offen): Horizont-Tabs aus der Engine.
   const tab3 = page.getByRole("button", { name: "+3 Tage", exact: true });
   const tab7 = page.getByRole("button", { name: "+7 Tage", exact: true });
   await expect(tab3).toBeEnabled();
@@ -264,14 +256,26 @@ test("Stations-Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page
   await expect(tab3).toHaveAttribute("aria-pressed", "true");
   await tab7.click();
   await expect(tab7).toHaveAttribute("aria-pressed", "true");
+
+  // Zeitraum der echten Preise (Spielplatz): 24 Stunden → 3 Tage. Der
+  // Umschalter steuert die Abfrage — dieselbe Regel wie im Stationen-Verlauf.
+  await page.getByRole("button", { name: "Spielplatz", exact: true }).click();
+  const spielplatz = page.locator("#labor-spielplatz");
+  await expect(
+    spielplatz.getByRole("button", { name: "24 Stunden", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await spielplatz
+    .getByRole("button", { name: "3 Tage", exact: true })
+    .click();
+  await expect.poll(() => seenHours.includes(72), { timeout: 5000 }).toBeTruthy();
 });
 
 test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page }) => {
   await stubApi(page, { horizons: false });
   await page.goto("/");
-  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
+  await page.getByRole("button", { name: "Labor", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Stations-Labor · letzte 24 Stunden" }),
+    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "+3 Tage", exact: true }),

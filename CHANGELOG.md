@@ -4,6 +4,117 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.36.0] – 2026-09-14
+
+**Phase 3 des GUI-Neuentwurfs steht: „Labor“ ersetzt die Werkstatt — eine
+Aufklapp-Seite mit fünf Abschnitten, Tagebuch, Spielplatz und Glossar; die
+Erklär-Treppe geht jetzt bis Ebene 2 („Zurück zu: …“).** Die alte
+Werkstatt-Ansicht ist gelöscht, kein Nebeneinander, und sie liest dieselbe
+Server-Antwort wie vorher (`/api/v1/stats/summary`, kein zweiter Poll).
+Dazu sechs Korrekturen aus der Nutzung: „Referenz“ statt „Vergleich“ auf der
+Karte, Haus-Symbol statt „Anker“, ein anklickbarer 7-Tage-Verlauf in jeder
+Atlas-Zeile, „A gegen B“ mit Vorauswahl, eine graue Preisvergleich-Karte in
+„Jetzt“ (das Beste ist auch ohne Modell sichtbar) und „Heute im Blick“ mit
+Zahlen statt nur Kästchen. Ehrlich dazu: die manuelle Abnahme am echten
+Stand (S0/S1/Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe,
+§7.2–7.4) steht weiter aus; die Browser-Suite ist auf „Labor“ umgestellt und
+läuft im CI 16/16 grün (Desktop 1440 px + Mobil 390 px) — im Sandbox fehlt
+der Playwright-Browser, der Beleg kommt aus dem CI-Lauf.
+
+### Hinzugefügt
+
+- **Bereich „Labor“** (`web/src/views/Labor.tsx`, Adressraum in
+  `web/src/lab.ts`) nach UI-NEUENTWURF §6: Kopf mit Herkunftszeile und
+  „Zurück“, Vertrauens-Konto mit dem echten Kalibrierungs-Stand, dann fünf
+  Aufklapp-Abschnitte in fester Reihenfolge — **1** Was sagt die App
+  eigentlich vorher? (Horizont-Tabs 24 h/3 Tage/7 Tage, Fan-Schritte,
+  ehrliche Prinzip-Skizze ohne eigenes Modell), **2** Was heißt „ziemlich
+  sicher“? (PICP, MASE, Top-3-Treffer, CUSUM-Drift in Worten, MAE aus dem
+  Roll-Backtest), **3** Warum ist eine Station „meist günstig“? (δ̂-Balken,
+  DoW×Stunden-Heatmap, Weg in den „A gegen B“-Vergleich), **4** Wie lernt die
+  App aus Fehlern? (Tagebuch, Bilanz, ε-Regler), **5** Glossar von A–Z —
+  dazu der **Spielplatz** („Was wäre gewesen, wenn …?“ mit Orakel, ε-Scan,
+  „Eine Station sezieren“, Rohpreisen 24/72/168 h und CSV/SVG-Export).
+- **Tagebuch aus echten Settlements** (`app/data.py` `diary()`,
+  `GET /api/v1/advice/diary?limit=&outcome=`): je Empfehlung Aktion,
+  Fenster, Preis beim Aussprechen, realisierter Fensterpreis, `p_correct`,
+  `regret_eur` und das Ergebnis (`win`/`loss`/`tie`/`void`) — aus dem
+  Persistent Store, nicht aus einer zweiten Wahrheit. Leer mit Grund
+  (`no_settlements`/`no_advice_history`), `void`-Gründe im Klartext.
+  Zwei Tests in `tests/test_b4.py`.
+- **Erklär-Treppe Ebene 2** (§7): `nowExplanation().labHint` zeigt nicht mehr
+  „In der Werkstatt vertiefen“, sondern den Abschnitt, der die Zahl beweist.
+  Der Sprung klappt genau diesen Abschnitt auf, scrollt ihn in die Sicht und
+  merkt die Herkunft als „Zurück zu: <Bereich> · <Anlass>“; der Zurück-Knopf
+  führt an den Ausgangsort (`Dashboard.tsx` `openLabor`/`laborReturn`).
+- **„Jetzt“ ohne Modell** (`nowBestNow` in `web/src/now.ts`): Die graue Karte
+  nennt die günstigste Station mit offenem Preis, ihren Abstand zum teuersten
+  Preis im Set in ct/L **und** €, bis zu drei Plätze und den Kartenlink —
+  ohne zweite Station steht ein Satz statt einer Zahl („für einen Vergleich
+  fehlt eine zweite Station“). Kein „Erwartet“, kein Modell.
+- **„Heute im Blick“ 2.0** (`nowDayPanel`): Headline (günstigste und
+  teuerste offene Stunde mit Abstand), Kacheln (günstigste, teuerste,
+  Tagesmedian, jetzt gegenüber dem Median, Spanne in ct/L und €), der
+  Tagesstreifen und eine Abdeckungs-Zeile („x von 18 Stunden mit offener
+  Meldung — leere Stunden werden nicht geschätzt“).
+- **Verlauf je Atlas-Zeile** (`views/Stationen.tsx`): Jede Zeile hat einen
+  eigenen „Verlauf“-Knopf — er wählt die Station und scrollt zum Diagramm,
+  damit der Verlauf auch bei zehn Stationen erreichbar ist. Das Diagramm ist
+  derselbe Baustein wie im Stations-Labor (`LineChart` mit Achsen und
+  Skala) mit Umschalter **24 h / 3 Tage / 7 Tage** und eigenem
+  `series`-Poll (60 s) nur für die gewählte Station.
+- **„A gegen B“ mit Vorauswahl**: Der Vergleich startet mit Top 1 gegen
+  Top 2 der aktuellen Sortierung, benennt das im Badge („Vorauswahl: Top 1
+  gegen Top 2“) und bietet „Vorauswahl wiederherstellen“ an.
+
+### Geändert
+
+- **„Referenz“ statt „Vergleich“ auf der Karte** (`components/StationMap.tsx`):
+  Der Pin der gewählten Station trug ein Wort, das eine Handlung beschreibt —
+  er benennt jetzt eine Rolle. Badge, Legende, Radar, Kartenknöpfe
+  („Als Referenz wählen“) und Erklärtext sprechen dieselbe Sprache wie Liste
+  und Detailkarte; die Haus-Erklärung trennt „Zuhause“ und „Referenzstation“.
+- **Haus-Symbol statt „Anker“**: Der eigene Startpunkt ist ein Pin ohne Wort
+  (aria/title „Zuhause, Startpunkt der Stadt“), und die Einordnungs-Zeilen
+  heißen „1,2 km ab Zuhause“ statt „zum Anker“ — „Anker“ ist Polling-Set-
+  Fachsprache, nicht Alltag.
+- **Drift und MAE sagen, was sie wissen**: `cusum_drift.status: "unknown"`
+  heißt im Labor „noch nicht messbar“ (nicht „unauffällig“), und MASE/MAE
+  ohne Messwerte nennen den Grund — „noch keine Vergleichspunkte — der
+  Roll-Backtest füllt sie“ — statt einer leeren Zahl.
+- **ProfileManager-Text**: „Stadt und gewählte Station bleiben Gerätesache“
+  (vorher stand dort „Vergleichsstation … Gerätetzung“).
+- **Abschnitts-Fragen sind Überschriften**: Der Titel im Aufklapp-Knopf trägt
+  jetzt `role="heading" aria-level={2}` — der Knopf bleibt der Schalter, aber
+  Vorleser (und die Browser-Suite) finden den Abschnitt als Überschrift unter
+  dem Seitenkopf. Die Zusage steckt in `views/Labor.test.tsx`.
+- **Ratchets**: `microcopy.test.ts` und `format-convention.test.ts` prüfen
+  `lab.ts` und `views/Labor.tsx` mit; `playwright.config.ts` hängt CI-Fehler
+  als GitHub-Annotation an den PR (statt nur ins Log-Archiv).
+
+### Entfernt
+
+- **`web/src/views/Statistics.tsx`** (1.367 Zeilen) ist gelöscht — die
+  Werkstatt existiert nicht mehr, auch nicht als Nebeneinander (Checkliste
+  3.3). Ihre Inhalte leben im Labor weiter (Heatmaps, δ̂-Ranking, Fan-Chart,
+  Kalibrierung, Rohpreise/Export), die System-Teile bleiben in „System“.
+
+### Tests
+
+- 492 Web-Tests in 28 Dateien (vor Phase 3: 462 in 26): neu `lab.test.ts`
+  (16 Tests — Abschnitts-Reihenfolge, Sprung, Tagebuch-Sprache, Void-Gründe,
+  Trefferquote) und `views/Labor.test.tsx` (7 Tests — fünf Abschnitte,
+  Spielplatz, Tagebuch-Grund, Sprung mit Herkunft).
+- 758 Python-Tests (vorher 756): zwei Tagebuch-Tests in `tests/test_b4.py`.
+- Bundle: index 507,83 kB / 152,19 kB gzip (vorher 493,80/146,58).
+- **Browser-Suite 16/16 grün im CI** (8 Tests × Desktop 1440 px/Mobil
+  390 px): `web/e2e/app.spec.ts` und `horizons.spec.ts` sind auf „Labor“
+  umgeschrieben (Heading „Verstehen, warum die App das sagt“, Horizont-Tabs
+  und Zeitraum-Umschalter im Labor). Lokal war das nicht prüfbar (der
+  Browser-Download scheitert im Sandbox, ECONNRESET); die erste CI-Runde
+  deckte dabei genau den Fehler auf, den der Sichtprüfer sonst gefunden
+  hätte — die Abschnitts-Fragen waren (noch) keine Überschriften.
+
 ## [0.35.0] – 2026-09-14
 
 **Phasen 1+2 des GUI-Neuentwurfs stehen: „Stationen“, „Woche“ und „Ich“ —

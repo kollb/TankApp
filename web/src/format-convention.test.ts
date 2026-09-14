@@ -56,7 +56,8 @@ const CLEAN = [
   "views/Stationen.tsx",
   "views/Woche.tsx",
   "views/Ich.tsx",
-  "views/Statistics.tsx",
+  "lab.ts",
+  "views/Labor.tsx",
   "views/System.tsx",
 ];
 

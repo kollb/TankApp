@@ -189,33 +189,51 @@ Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
 
 ## Was du in der GUI siehst
 
-Die GUI hat vier Tabs: **Alltag**, **Werkstatt**, **System**, **Einstellungen**.
-(„Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur noch in
-Archiv-Dokumenten.) Neu (0.24.0, C4): **Einstellungen** bündelt alle Defaults
-an einer Stelle (Stadt, Kraftstoff, Tankmenge, Verbrauch, Zeitwert
-manuell/auto, Tempo, Fahrtcharakter, Tankgröße), zeigt die aktiven
-Entscheidungsschwellen als read-only-Tabelle und bietet die Dark/Light-
-Umschaltung; der Alltag zeigt dieselben Werte read-only.
+Die GUI hat sechs Bereiche (GUI-Neuentwurf, Phase 3 seit 0.36.0): **Jetzt**,
+**Stationen**, **Woche**, **Ich**, **Labor**, **System**. Die früheren Tabs
+**Alltag**, **Werkstatt** und **Einstellungen** sind ersetzt — kein
+Nebeneinander; „Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur
+noch in Archiv-Dokumenten.
 
-- **Alltag:** Ampel/Empfehlung aus `/api/v1/decide`, Stadt/Kraftstoff, günstigster
-  aktuell gemeldeter offener Preis, Datenalter, Tankmenge, Umweg-Vergleich mit
-  Button „Server prüfen“ (B3.12). Stadt, Kraftstoff und Tankmenge merkt sich der
-  Browser. Neu (0.10.0): Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und
-  Dezimaleingabe mit Komma (E2). Neu (0.11.0): Der Beleg-Dialog prüft Liter und
-  Preis gegen dieselben Grenzen wie der Server (5–100 L, 0,40–5,00 €/L) und bucht
-  erst nach gewählter Station (E3/E4); Verbrauch, Tankmenge und Zeitwert haben
-  feinere Stufen plus Begleit-Zahlenfeld (E6). Keine Tankbuchung ohne Station,
-  keine als netto ausgegebene Umweg-Ersparnis.
-- **Werkstatt:** tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
-  Backtestwerte samt Datenbasis; fehlende/alte Modelle sichtbar markiert.
+- **Jetzt:** Empfehlung aus `/api/v1/decide` — eine Handlung, drei Fakten,
+  nächste Schritte, dazu Stadt/Kraftstoff, Tankmenge, Datenalter und der
+  Tagesstreifen „Heute im Blick“ (günstigste und teuerste offene Stunde,
+  Tagesmedian, Abdeckung). Ohne Modell (S0/S1/Stufe C) steht dort die graue
+  Preisvergleich-Karte mit der günstigsten offenen Meldung. Ebene 1 ist der
+  Knopf „Warum?“ (Sheet); von dort führt der Weg in den passenden
+  Labor-Abschnitt. Stadt, Kraftstoff und Tankmenge merkt sich der Browser.
+  Aus dem alten Alltag: Umweg-Vergleich mit Button „Server prüfen“ (B3.12),
+  Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und Dezimaleingabe mit Komma
+  (E2); der Beleg-Dialog prüft Liter und Preis gegen dieselben Grenzen wie der
+  Server (5–100 L, 0,40–5,00 €/L) und bucht erst nach gewählter Station
+  (E3/E4). Keine Tankbuchung ohne Station, keine als netto ausgegebene
+  Umweg-Ersparnis.
+- **Stationen:** Preis-Atlas — Karte mit Netto-€-Pins (die Referenzstation ist
+  beschriftet, Zuhause trägt das Haus-Symbol), sortierte Liste, Verlauf der
+  gewählten Station (24 h/3 Tage/7 Tage mit Achsen) und „A gegen B“ mit der
+  Vorauswahl Top 1 gegen Top 2.
+- **Woche:** 7-Tage-Fenster-Raster aus `windows_week` mit Sterne-Sicherheit
+  (Prozent nur auf Stufe A) und Tank-Abgleich.
+- **Ich:** Fahrzeug (alle Defaults an einer Stelle: Stadt, Kraftstoff,
+  Tankmenge, Verbrauch, Zeitwert manuell/auto, Tempo, Fahrtcharakter,
+  Tankgröße, Profile), Belege (Verlauf mit Storno und Schnellerfassung),
+  Bilanz (Monats-/Jahresbilanz, A4) und Einstellungen am Wirkungsort — dazu
+  die aktiven Entscheidungsschwellen read-only und die Dark/Light-Umschaltung
+  (0.24.0, C4).
+- **Labor:** fünf Aufklapp-Abschnitte (1 Prognose, 2 Sicherheit, 3 Stationen,
+  4 Lernen, 5 Glossar), der Spielplatz (Orakel, ε-Scan, „Eine Station
+  sezieren“, Rohpreise 24/72/168 h, CSV/SVG-Export) und das Prognose-Tagebuch,
+  das jede Empfehlung nach Fensterende gegen die echten Preise zeigt. Hier
+  wohnen jetzt tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
+  Backtestwerte samt Datenbasis (fehlende/alte Modelle sichtbar markiert),
   Heatmaps DoW×Stunde (B3.9) **mit Tages-Zusammenfassung, hervorgehobener
   heutiger Zeile und Fazit-Satz** (C10), seit 0.11.0 mit wählbarem Zeitraum
   (4/6/12 Wochen, E5) und umschaltbarer Vergleichs-Basis der „Wahrscheinlichkeit
   für günstig“ (Cheap-Probability) ohne Station (Stunden-Median statt
-  Gesamtmedian, B12). Meine Stationen mit Ranking nach Preis-Abstand (δ̂),
+  Gesamtmedian, B12) sowie Meine Stationen mit Ranking nach Preis-Abstand (δ̂),
   Bootstrap-KI, Ampel-Stärke (AV-Score) und billigster Stunde (B3.10). Seit
-  0.15.0 heißen die Werkstatt-Begriffe im Primärtext deutsch, das Fachwort steht
-  im Tooltip (F2).
+  0.15.0 stehen die Begriffe im Primärtext deutsch, das Fachwort im Tooltip
+  (F2) — ab 0.36.0 je Aufklapp-Abschnitt statt in einem Panel-Stapel.
 - **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
   Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
   Trigger-Statistik (Issue 50). Neu (0.10.0): geführte
@@ -223,7 +241,7 @@ Umschaltung; der Alltag zeigt dieselben Werte read-only.
   Empfehlungen, Brier …“ (A7) und **CSV-Export der eigenen Tankbelege** (A6).
   Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine
   Demo-Preise.
-- **Über allen Tabs:** Alarm-Punkt im Header (rot/gelb/grün) aus `alarms[]` in
+- **Über allen Bereichen:** Alarm-Punkt im Header (rot/gelb/grün) aus `alarms[]` in
   `/api/v1/health` (B4) und App-Version + Commit-Hash im Footer (B9) — was die
   Punkte bedeuten: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 

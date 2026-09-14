@@ -1376,3 +1376,97 @@ def test_fills_csv_export(b4_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_advice_diary_lists_real_settlements(b4_settings):
+    """Labor §6.2/4: /api/v1/advice/diary verbindet Settlement und Snapshot.
+
+    Geprüft wird die Ehrlichkeits-Zusage: Das Tagebuch erfindet keine Zeile.
+    Es zeigt die echten Ledger-Einträge (Aktion, Fenster, Versprechen,
+    Ergebnis) und leere Listen tragen einen Grund im Feld `reason`.
+    """
+    from app.feedback import locked_store
+
+    with locked_store(b4_settings) as store:
+        store["episodes"].append(
+            {
+                "id": "ep_diary",
+                "opened_at": "2026-09-10T12:00:00+00:00",
+                "status": "resolved",
+                "intent": "wait",
+                "snapshots": [
+                    {
+                        "id": "s_diary",
+                        "emitted_at": "2026-09-10T12:00:00+00:00",
+                        "action": "wait",
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "window_start": "2026-09-10T16:00:00+00:00",
+                        "window_end": "2026-09-10T18:00:00+00:00",
+                        "price_now": 1.729,
+                        "p_correct": 0.78,
+                        "liters_assumed": 40,
+                    }
+                ],
+            }
+        )
+        store["settlements"].append(
+            {
+                "snapshot_id": "s_diary",
+                "episode_id": "ep_diary",
+                "settled_at": "2026-09-10T18:05:00+00:00",
+                "p_emit": 1.729,
+                "p_realized": 1.679,
+                "outcome": "win",
+                "regret_eur": 0.0,
+            }
+        )
+
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, body = _get_json(base + "/api/v1/advice/diary")
+        assert status == 200
+        assert body["error_code"] is None
+        assert body["count"] == 1
+        entry = body["entries"][0]
+        assert entry["action"] == "wait"
+        assert entry["station_id"] == UID
+        assert entry["price_then"] == 1.729
+        assert entry["price_window"] == 1.679
+        assert entry["outcome"] == "win"
+        assert entry["p_correct"] == 0.78
+        assert entry["window_end"] == "2026-09-10T18:00:00+00:00"
+        assert body["reason"] is None
+
+        # Filter und Limit sind ehrlich: ein unbekanntes Ergebnis liefert leer.
+        _status, filtered = _get_json(base + "/api/v1/advice/diary?outcome=loss")
+        assert filtered["count"] == 0
+        assert filtered["reason"] == "no_settlements"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_advice_diary_without_history_is_empty_and_explains(b4_settings):
+    """Ohne Ledger-Einträge bleibt das Tagebuch leer — mit Grund, ohne Demo."""
+    live = LiveData(b4_settings, query=lambda *_: [], clock=lambda: NOW)
+    server = make_server(b4_settings, "127.0.0.1", 0, live)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, body = _get_json(base + "/api/v1/advice/diary?limit=10")
+        assert status == 200
+        assert body["count"] == 0
+        assert body["entries"] == []
+        assert body["reason"] == "no_advice_history"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

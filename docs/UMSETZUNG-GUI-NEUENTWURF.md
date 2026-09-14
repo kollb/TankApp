@@ -13,13 +13,17 @@
 > weniger als ein halber mehr.*
 >
 > **Stand der Abarbeitung:** Phase 0 ist erledigt (Doku repariert, Baseline
-> gemessen, CI-Spiegel grün). Phase 1 (**Jetzt** + **Stationen**) und Phase 2
-> (**Woche** + **Ich**) sind gebaut und getestet: die Bereiche
-> `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/`Ich.tsx` stehen, die alten Tabs
-> „Alltag“ und „Einstellungen“ sind ersetzt (kein Nebeneinander, §16). Der
-> CI-Spiegel läuft inklusive Browser-Suite grün. **Offen bleibt** die manuelle
-> Abnahme am echten Stand (S0/S1/Stufe A/Fehler/Offline, §7.2), der
-> Pi-Fallback (7.3) und die Vorleser-Stichprobe (7.4).
+> gemessen, CI-Spiegel grün). Phase 1 (**Jetzt** + **Stationen**), Phase 2
+> (**Woche** + **Ich**) und Phase 3 (**Labor**) sind gebaut und getestet: die
+> Bereiche `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/`Ich.tsx`/`Labor.tsx`
+> stehen, die alten Tabs „Alltag“, „Einstellungen“ und „Werkstatt“ sind
+> ersetzt (kein Nebeneinander, §16). Der CI-Spiegel läuft grün, inklusive
+> Browser-Suite (16/16; im Sandbox ließ sich kein Playwright-Browser
+> installieren, der Beleg kommt aus dem CI-Lauf).
+> **Reihenfolge abweichend:** Phase 3 wurde auf Nutzerwunsch (14.09.2026) vor
+> der manuellen Abnahme gebaut; die Abnahme am echten Stand (S0/S1/Stufe A/
+> Fehler/Offline, §7.2), der Pi-Fallback (7.3) und die Vorleser-Stichprobe
+> (7.4) bleiben offen, jetzt inklusive der neuen Labor-Flächen (7.5).
 
 - [0. Basis, Regeln und Messwerte](#0-basis-regeln-und-messwerte)
 - [1. Phase 0 — Fundament](#1-phase-0--fundament)
@@ -65,16 +69,16 @@ Bereiche der Phasen 1–2 erfüllt:
 Werte aus §15 sind ohne Nutzer nicht messbar; hier steht, was messbar ist —
 und was ehrlich offen bleibt:
 
-| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ | Nach Phase 1+2 (Stationen · Woche · Ich) |
-|---|---|---|---|
-| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** |
-| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) |
-| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) |
-| Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) |
-| API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) |
-| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) |
-| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt |
-| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
+| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ | Nach Phase 1+2 (Stationen · Woche · Ich) | Nach Phase 3 (Labor) |
+|---|---|---|---|---|
+| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** | **492 in 28 Dateien** |
+| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) | **758** (+2 Tagebuch-Tests in `tests/test_b4.py`) |
+| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) | **507,83 kB / 152,19 kB** (+3,8 % gzip ggü. Phase 2) |
+| Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) | Logik: `lab.test.ts` 16 (Abschnitte, Sprung, Tagebuch-Sprache) · Rendering: `views/Labor.test.tsx` 7 (fünf Abschnitte, Spielplatz, Tagebuch-Grund, Sprung mit Herkunft) |
+| API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) | „Labor“: Overview + `stats/summary` + `series`/`forecast`/`heatmap`/`selection` **statt** der Werkstatt-Aufrufe (dieselben Endpunkte wie vorher) + neu `advice/diary?limit=50` |
+| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) | „Labor“: Kopf (Herkunft) → Vertrauens-Konto → Sprungleiste → 1 Prognose → 2 Sicherheit → 3 Stationen → 4 Lernen → 5 Glossar → Spielplatz (feste Reihenfolge aus `lab.ts` `LAB_SECTIONS`) |
+| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt | **16/16 grün** — Specs auf „Labor“ umgeschrieben; im Sandbox ohne Browser-Download nicht lauffähig, der CI-Lauf belegt sie (und fand die fehlende Heading-Rolle der Abschnitts-Fragen) |
+| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
 
 ## 1. Phase 0 — Fundament
 
@@ -198,13 +202,29 @@ und was ehrlich offen bleibt:
 
 ## 4. Phase 3 — Labor
 
-- [ ] **3.1** Alle fünf Abschnitte als Aufklapp-Seite, Tagebuch,
-  Spielplatz, Glossar.
-- [ ] **3.2** Erklär-Treppe Ebene 2 anschließen: Sprung klappt den passenden
+- [x] **3.1** Alle fünf Abschnitte als Aufklapp-Seite, Tagebuch,
+  Spielplatz, Glossar. **(14.09.2026)** `web/src/views/Labor.tsx` mit
+  `web/src/lab.ts` als Adressraum (`LAB_SECTIONS` = 1 Prognose, 2 Sicherheit,
+  3 Stationen, 4 Lernen, 5 Glossar, Spielplatz ohne Nummer); Tagebuch aus
+  echten Settlements (`GET /api/v1/advice/diary`, `app/data.py` `diary()`),
+  Spielplatz mit Orakel, ε-Scan, „Eine Station sezieren“ und Rohpreisen
+  24/72/168 h inkl. CSV/SVG-Export. Belegt durch `views/Labor.test.tsx`
+  (7 Tests) und `lab.test.ts` (16 Tests).
+- [x] **3.2** Erklär-Treppe Ebene 2 anschließen: Sprung klappt den passenden
   Abschnitt auf, scrollt hin und merkt sich die Herkunft („Zurück zu: …“).
   Dann wandert `labHint` in `now.ts` von „In der Werkstatt vertiefen“ auf
-  den Labor-Abschnitt.
-- [ ] **3.3** Alte Werkstatt ersetzen (kein Nebeneinander).
+  den Labor-Abschnitt. **(14.09.2026)** `labHint(section)` liefert Text und
+  Ziel, `Dashboard.tsx` `openLabor(section, label, from)` setzt Fokus und
+  Herkunft, `Labor.tsx` öffnet den Abschnitt, scrollt ihn in die Sicht und
+  zeigt „Zurück zu: <Anlass>“ samt Zurück-Knopf; `LabOrigin`
+  (`lab.ts`) trägt den Anlass, `views/Jetzt.tsx` nennt „Jetzt · Warum?“,
+  `views/Stationen.tsx` „Stationen · <Name>“, `views/Woche.tsx` „Woche · Fenster“.
+- [x] **3.3** Alte Werkstatt ersetzen (kein Nebeneinander). **(14.09.2026)**
+  `web/src/views/Statistics.tsx` (1.367 Zeilen) gelöscht; der Tab heißt
+  „Labor“ (violett, `FlaskConical`), gelesen werden dieselben Server-Antworten
+  wie vorher (`stats/summary`, `series`, `forecast`, `heatmap`, `selection`).
+  Die Monats-/Jahresbilanz bleibt in „Ich“ (dort seit Phase 2), die
+  System-Teile bleiben in „System“.
 
 ## 5. Phase 4 — System
 
@@ -258,12 +278,20 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   (`X-TankApp-Proxy: nas`).
 - [ ] **7.4** Vorleser-Stichprobe: Entscheidung, Fakten, Schritte und
   „Warum?“ in sinnvoller Reihenfolge; Sheet meldet `role="dialog"`.
+- [ ] **7.5** Sichtprüfung „Labor“ (neu seit Phase 3, Desktop 1440 px und
+  Mobil 390 px): fünf Abschnitte auf- und zuklappen, Sprung aus „Jetzt ·
+  Warum?“ (öffnet den Abschnitt, scrollt, „Zurück zu: …“), Spielplatz-Rohpreise
+  24 h/3 Tage/7 Tage, Tagebuch im leeren Zustand (Grund statt Leere),
+  Glossar-Suche. Ebenso die Korrekturen aus der Nutzung: „Referenz“-Pin und
+  Haus-Symbol auf der Karte, „Verlauf“-Knopf je Atlas-Zeile, „A gegen B“ mit
+  Vorauswahl, graue Preisvergleich-Karte in „Jetzt“, „Heute im Blick“.
 
 ## 8. Abschluss
 
-- [ ] **8.1** Nach der manuellen Abnahme (7.2–7.4): Phase 3 (Labor) und
-  danach Phase 4 (System) beginnen (§16) — erst dann fällt „Werkstatt“.
-  Phasen 1b („Stationen“) und der Alltagstab-Fall (1.6) stehen mit 0.35.0.
+- [ ] **8.1** Vor der manuellen Abnahme (7.2–7.5) auf Nutzerwunsch vorgezogen:
+  Phase 3 (Labor) steht mit 0.36.0, „Werkstatt“ ist gefallen. Als Nächstes
+  folgt die Abnahme — danach Phase 4 (System) nach §16. Phasen 1b
+  („Stationen“) und der Alltagstab-Fall (1.6) stehen mit 0.35.0.
 - [ ] **8.2** Dieses Dokument bleibt lebend, bis Phase 4 steht — erst dann
   nach `docs/archiv/` mit Banner (Stand, Nachfolger) und Eintrag in
   [archiv/README.md](archiv/README.md).

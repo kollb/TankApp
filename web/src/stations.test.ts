@@ -255,7 +255,8 @@ describe("stationContextLines", () => {
     const linesA = stationContextLines(a, refB);
     expect(linesA[0]).toContain("2.-günstigste");
     expect(linesA[1]).toContain("7,0 ct/L über der Referenz (B-Station)");
-    expect(linesA[2]).toContain("2,5 km zum Anker");
+    // Wortregel 0.36.0: Im Alltag heißt der Heimat-Startpunkt „Zuhause“.
+    expect(linesA[2]).toContain("2,5 km ab Zuhause");
   });
 
   it("Server-Umweg schlägt die Distanz zum Anker", () => {

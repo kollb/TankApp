@@ -854,6 +854,48 @@ export type StatsSummary = {
 };
 
 /**
+ * Prognose-Tagebuch (GUI-Neuentwurf §6.2 Abschnitt 4, Konzept §12):
+ * `GET /api/v1/advice/diary` — echte Settlements des Advice-Ledgers,
+ * verbunden mit dem Snapshot, der sie ausgelöst hat.
+ *
+ * Ehrlichkeits-Zusage: Es gibt keine Demo-Einträge. Ist die Liste leer,
+ * nennt `reason` den Grund (`no_settlements` = es wurde noch nichts
+ * abgerechnet, `no_advice_history` = es gibt keine Episoden).
+ */
+export type AdviceDiaryEntry = {
+  snapshot_id: string | null;
+  episode_id: string | null;
+  settled_at: string | null;
+  emitted_at: string | null;
+  action: string | null;
+  station_id: string | null;
+  city: string | null;
+  fuel: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  /** Preis beim Aussprechen der Empfehlung (€/L). */
+  price_then: number | null;
+  /** Realisierter Fensterpreis (€/L); null bei `void`. */
+  price_window: number | null;
+  outcome: string | null;
+  void_reason: string | null;
+  regret_eur: number | null;
+  p_correct: number | null;
+  p_besser: number | null;
+  liters: number | null;
+  intent: string | null;
+};
+
+export type AdviceDiary = {
+  generated_at: string;
+  count: number;
+  entries: AdviceDiaryEntry[];
+  settled_total?: number;
+  reason?: "no_settlements" | "no_advice_history" | null;
+  error_code?: string | null;
+};
+
+/**
  * C4: Rückgabe von app/thresholds.py `active_thresholds`/`suggest_thresholds`
  * — der Nachzug rechnet aus dem Advice-Ledger einen Vorschlag, der nur mit
  * `auto_apply` wirksam wird. Die GUI zeigt alles nur an, sie ändert nichts.
@@ -2342,6 +2384,8 @@ export const messages: Record<string, string> = {
   decide_failed: "Empfehlung konnte nicht berechnet werden.",
   episode_not_found: "Episode unbekannt oder abgelaufen.",
   episodes_read_failed: "Episoden konnten nicht gelesen werden.",
+  diary_read_failed:
+    "Das Prognose-Tagebuch konnte nicht gelesen werden (Ledger im Feedback-Store).",
   set_intent_failed: "Intent konnte nicht gespeichert werden.",
   record_fill_failed: "Tankbeleg konnte nicht gespeichert werden.",
   fills_read_failed: "Tankbelege konnten nicht gelesen werden.",
@@ -3308,7 +3352,7 @@ export type GlossaryTerm = {
   anchor?: string;
 };
 
-/** C7: Werkstatt-Begriffe ohne Erklärung in der App — hier mit deutscher Primärzeile. */
+/** C7: Fachbegriffe ohne Erklärung in der App — hier mit deutscher Primärzeile. */
 export const GLOSSARY: readonly GlossaryTerm[] = [
   {
     id: "delta",

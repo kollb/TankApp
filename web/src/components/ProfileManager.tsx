@@ -275,7 +275,7 @@ export function ProfileManager({
           Höchstens 8 Profile. Änderungen an Verbrauch, Zeitwert, Tankmenge,
           Kraftstoff, Tempo oder Tankgröße schreiben in das aktive Profil
           zurück — solange einer Profileinstellung folgt, gilt sie auf allen
-          Geräten im Haushalt. Stadt und Vergleichsstation bleiben Gerätetzung.
+          Geräten im Haushalt. Stadt und gewählte Station bleiben Gerätesache.
         </p>
       </div>
     </div>

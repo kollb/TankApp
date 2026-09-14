@@ -8,6 +8,16 @@
 //   ⑤ Vergleich (A gegen B) — eigener Modus, kein Rechnen im Kopf
 //   — darunter die Frische-Fußzeile (fester Platz, jede Ansicht)
 //
+// Seit 0.36.0 (Nutzer-Feedback 14.09.2026):
+//   * Jede Zeile hat einen eigenen „Verlauf“-Knopf — der Verlauf war
+//     vorher nur über die (nicht offensichtliche) Zeilenauswahl zu
+//     erreichen und lag bei zehn Stationen weit unter dem Falz.
+//   * Der Verlauf ist derselbe Diagramm-Baustein wie im Stations-Labor
+//     (`LineChart` mit Achsen, 24 h / 3 Tage / 7 Tage umschaltbar) statt
+//     einer gequetschten Mini-Grafik.
+//   * „A gegen B“ startet mit der Vorauswahl Top 1 gegen Top 2 der
+//     aktuellen Sortierung, änderbar über beide Auswahlfelder.
+//
 // Die View rendert, sie entscheidet nichts (D1): Referenz, Netto-€-
 // Zeilen, Einordnung und Vergleich kommen aus `stations.ts` und sind
 // dort getestet. Der Server bleibt Quelle für Strecke und Netto (B6/H1)
@@ -24,22 +34,26 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
+  LineChart as LineChartIcon,
   MapPin,
   Search,
   Scale,
   Star,
   X,
 } from "lucide-react";
+import { LineChart } from "../components/LineChart";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
 import { StationMap } from "../components/StationMap";
 import { Empty, panel } from "../components/ui";
 import {
+  autoTimeTicks,
   centPerLiter,
   euro,
   euroPerLiter,
   deTrimmed,
+  timeLabel,
   type DecideResult,
   type Point,
   type ResourceState,
@@ -52,6 +66,7 @@ import {
   atlasRows,
   atlasExplanation,
   compareStationsPair,
+  dayMedianPoints,
   dayRhythmLine,
   referenceStation,
   sortAtlasRows,
@@ -60,6 +75,7 @@ import {
   type AtlasRow,
   type AtlasSort,
 } from "../stations";
+import { labSectionButtonLabel, type LabSectionId } from "../lab";
 import type { StripCell } from "../strip";
 
 export interface StationenViewProps {
@@ -78,8 +94,15 @@ export interface StationenViewProps {
   decideRes: ResourceState<DecideResult>;
   /** Tagesstreifen der ausgewählten Station (Overview → day). */
   stripCells: StripCell[];
-  /** 7-Tage-Verlauf der ausgewählten Station (eigener Poll, 60 s). */
+  /** Verlauf der ausgewählten Station (eigener Poll, 60 s). */
   series7d: ResourceState<{ points: Point[]; error_code: string | null } | null>;
+  /**
+   * Zeitraum des Verlaufs in Stunden (24 / 72 / 168) — derselbe Umschalter
+   * wie im Stations-Labor. Die Ansicht wählt nur aus; geladen wird in der
+   * Dashboard-Root (ein Poll, eine Wahrheit).
+   */
+  seriesSpan: number;
+  onSeriesSpan: (hours: number) => void;
   liters: number;
   timeValue: number;
   timeValueUsed: number;
@@ -90,12 +113,23 @@ export interface StationenViewProps {
   onRetry: () => void;
   /** In die Jetzt- oder Ich-Ansicht springen (Schritte/Verweise). */
   onNavigate: (target: "jetzt" | "ich" | "system") => void;
-  /** Ebene 2 ansteuern (bis Phase 3: die Werkstatt). */
-  onDeepen?: () => void;
+  /** Ebene 2 ansteuern: der Labor-Abschnitt, der diese Zahl beweist (§7). */
+  onDeepen?: (section: LabSectionId) => void;
   /** ⌘K-Signal aus der Dashboard-Root: > 0 = Fokus in die Suche. */
   searchFocusSignal: number;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
+}
+
+/** Zeitraum-Umschalter des Verlaufs — Wortlaut wie im Stations-Labor. */
+const SPANS: Array<{ hours: number; label: string }> = [
+  { hours: 24, label: "24 Stunden" },
+  { hours: 72, label: "3 Tage" },
+  { hours: 168, label: "7 Tage" },
+];
+
+function spanLabel(hours: number): string {
+  return SPANS.find((span) => span.hours === hours)?.label ?? `${hours} Stunden`;
 }
 
 /** Mini-Verlauf (24 h) einer Zeile: 18 Punkte aus dem Tagesstreifen. */
@@ -154,6 +188,8 @@ export function StationenView(props: StationenViewProps) {
     searchFocusSignal,
     selectedId,
     series7d,
+    seriesSpan,
+    onSeriesSpan,
     setSelectedId,
     stations,
     stripCells,
@@ -168,9 +204,13 @@ export function StationenView(props: StationenViewProps) {
   const [brand, setBrand] = useState("");
   const [sort, setSort] = useState<AtlasSort>("net");
   // Vergleichs-Modus: B-Station (A = die gewählte Station).
+  // A gegen B: "" heißt „Vorauswahl Top 1 gegen Top 2 der Sortierung“.
+  const [compareA, setCompareA] = useState<string>("");
   const [compareB, setCompareB] = useState<string>("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const detailRef = useRef<HTMLDivElement | null>(null);
+  const compareRef = useRef<HTMLDivElement | null>(null);
 
   // ⌘K: die Root erhöht das Signal, hier landet der Fokus in der Suche.
   useEffect(() => {
@@ -225,15 +265,25 @@ export function StationenView(props: StationenViewProps) {
   const contextLines = selected
     ? stationContextLines(selected, referenceRow)
     : [];
-  const compareRowB = byId.get(compareB) ?? null;
+  // Vorauswahl „Top 1 gegen Top 2“: die ersten zwei Zeilen der aktuellen
+  // Sortierung mit frischem Preis. Beide Felder sind änderbar; ein Klick in
+  // der Liste setzt A.
+  const topRows = sorted.filter((row) => row.price !== null);
+  const defaultA = topRows[0] ?? null;
+  const compareRowA = byId.get(compareA) ?? defaultA ?? selected;
+  const defaultB =
+    topRows.find(
+      (row) => row.station.station_id !== compareRowA?.station.station_id,
+    ) ?? null;
+  const compareRowB = byId.get(compareB) ?? defaultB;
   const comparePair =
-    selected &&
+    compareRowA &&
     compareRowB &&
-    compareRowB.station.station_id !== selected.station.station_id
+    compareRowB.station.station_id !== compareRowA.station.station_id
       ? compareStationsPair(
-          selected.station,
+          compareRowA.station,
           compareRowB.station,
-          price(selected.station),
+          price(compareRowA.station),
           price(compareRowB.station),
           liters,
           decide?.alternatives_nearby.find(
@@ -241,6 +291,27 @@ export function StationenView(props: StationenViewProps) {
           ) ?? null,
         )
       : null;
+  const compareIsDefault =
+    compareA === "" &&
+    compareB === "" &&
+    compareRowA !== null &&
+    compareRowA.station.station_id === defaultA?.station.station_id;
+
+  /** Zeile wählen — und A des Vergleichs auf dieselbe Station ziehen. */
+  const openStation = (row: AtlasRow) => {
+    setSelectedId(row.station.station_id);
+    setCompareA(row.station.station_id);
+  };
+
+  /** „Verlauf“ einer Zeile: wählen und zum Diagramm scrollen. */
+  const openHistory = (row: AtlasRow) => {
+    openStation(row);
+    // Ohne Scrollen liegt der Verlauf bei zehn Stationen unter dem Falz —
+    // genau das war der Vorwurf „nicht anklickbar“ (14.09.2026).
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const freshCount = rows.filter((row) => row.price !== null).length;
   const freshness = stationsFreshness(pricesAt, now);
@@ -478,7 +549,7 @@ export function StationenView(props: StationenViewProps) {
                       className={`flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-slate-800/40 ${isSel ? "bg-emerald-500/[.04]" : ""}`}
                     >
                       <button
-                        onClick={() => setSelectedId(row.station.station_id)}
+                        onClick={() => openStation(row)}
                         aria-pressed={isSel}
                         aria-label={`${row.station.name} als Referenz und Detail wählen`}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
@@ -540,6 +611,14 @@ export function StationenView(props: StationenViewProps) {
                           )}
                         </span>
                         <button
+                          onClick={() => openHistory(row)}
+                          aria-label={`Verlauf von ${row.station.name} ansehen`}
+                          title={`Verlauf · ${spanLabel(seriesSpan)} öffnen`}
+                          className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 transition-colors hover:border-sky-500/40 hover:text-sky-300"
+                        >
+                          <LineChartIcon size={14} aria-hidden="true" />
+                        </button>
+                        <button
                           onClick={() => props.togglePin(row.station.station_id)}
                           aria-pressed={row.isPinned}
                           aria-label={
@@ -582,7 +661,7 @@ export function StationenView(props: StationenViewProps) {
 
           {/* ④ Station-Detail */}
           {selected && (
-            <div className={`${panel} mt-4 overflow-hidden`}>
+            <div ref={detailRef} className={`${panel} mt-4 overflow-hidden`}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                   <MapPin size={15} className="text-emerald-400" aria-hidden="true" />
@@ -604,10 +683,17 @@ export function StationenView(props: StationenViewProps) {
                     </a>
                   )}
                   <button
-                    onClick={() => setCompareB("")}
+                    onClick={() => {
+                      setCompareA(selected.station.station_id);
+                      setCompareB("");
+                      compareRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
                     className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 font-semibold text-sky-300 hover:bg-sky-500/20"
                   >
-                    Vergleichen
+                    A gegen B
                   </button>
                 </div>
               </div>
@@ -645,15 +731,39 @@ export function StationenView(props: StationenViewProps) {
                   </ul>
                 </div>
               </div>
-              {/* Verlauf 7 Tage (eigener Poll, nur für die gewählte Station) */}
+              {/* Verlauf (eigener Poll, nur für die gewählte Station) —
+                  seit 0.36.0 derselbe Chart-Baustein wie im Stations-Labor
+                  (Achsen, Zeitraum-Umschalter) statt einer Mini-Grafik. */}
               <div className="border-t border-slate-800 p-4">
-                <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">
-                  Verlauf (7 Tage)
-                </p>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                    Verlauf · letzte {spanLabel(seriesSpan)}
+                  </p>
+                  <div
+                    role="group"
+                    aria-label="Zeitraum des Verlaufs"
+                    className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-[11px] font-semibold"
+                  >
+                    {SPANS.map((span) => (
+                      <button
+                        key={span.hours}
+                        aria-pressed={seriesSpan === span.hours}
+                        onClick={() => onSeriesSpan(span.hours)}
+                        className={`rounded px-2 py-1 transition-colors ${
+                          seriesSpan === span.hours
+                            ? "bg-slate-800 text-sky-400"
+                            : "text-slate-500 hover:text-slate-200"
+                        }`}
+                      >
+                        {span.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {series7d.error ? (
                   <LoadError
                     errorCode={series7d.data?.error_code || series7d.errorCode}
-                    fallback="Der 7-Tage-Verlauf konnte nicht geladen werden."
+                    fallback={`Der Verlauf der letzten ${spanLabel(seriesSpan)} konnte nicht geladen werden.`}
                     onRetry={onRetry}
                     retryLabel="Verlauf neu laden"
                     compact
@@ -662,60 +772,102 @@ export function StationenView(props: StationenViewProps) {
                   <SkeletonPanel lines={2} title={false} label="Verlauf wird geladen" />
                 ) : (series7d.data?.points ?? []).length === 0 ? (
                   <Empty>
-                    Noch keine 7-Tage-Historie für diese Station — der
-                    Verlauf füllt sich mit den nächsten Collector-Läufen.
+                    Noch keine Historie für diese Station — der Verlauf füllt
+                    sich mit den nächsten Collector-Läufen.
                   </Empty>
                 ) : (
-                  <SeriesChart points={series7d.data?.points ?? []} />
+                  <SeriesChart
+                    points={series7d.data?.points ?? []}
+                    spanHours={seriesSpan}
+                  />
                 )}
               </div>
             </div>
           )}
 
-          {/* ⑤ Vergleich */}
+          {/* ⑤ A gegen B — mit Vorauswahl Top 1 gegen Top 2 */}
           {selected && (
-            <div className={`${panel} mt-4 overflow-hidden`}>
+            <div ref={compareRef} className={`${panel} mt-4 overflow-hidden`}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                   <Scale size={15} className="text-sky-400" aria-hidden="true" />
                   A gegen B
                 </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                  {compareIsDefault && (
+                    <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5">
+                      Vorauswahl: Top 1 gegen Top 2
+                    </span>
+                  )}
+                  {(compareA !== "" || compareB !== "") && (
+                    <button
+                      onClick={() => {
+                        setCompareA("");
+                        setCompareB("");
+                      }}
+                      className="font-semibold text-sky-300 underline underline-offset-4 hover:text-sky-200"
+                    >
+                      Vorauswahl wiederherstellen
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-2 border-b border-slate-800 p-4 sm:grid-cols-2">
                 <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="font-bold text-sky-300">A</span>
+                  <span className="sr-only">Station A wählen</span>
+                  <select
+                    aria-label="Station A für den Vergleich wählen"
+                    value={compareA}
+                    onChange={(e) => setCompareA(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
+                  >
+                    <option value="">
+                      {defaultA
+                        ? `Vorauswahl: ${defaultA.station.name}`
+                        : "Vorauswahl: keine Station mit Preis"}
+                    </option>
+                    {sorted.map((row) => (
+                      <option key={row.station.station_id} value={row.station.station_id}>
+                        {row.station.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="font-bold text-slate-300">B</span>
                   <span className="sr-only">Station B wählen</span>
                   <select
                     aria-label="Station B für den Vergleich wählen"
                     value={compareB}
                     onChange={(e) => setCompareB(e.target.value)}
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
                   >
-                    <option value="">Station B wählen …</option>
-                    {stations
+                    <option value="">
+                      {defaultB
+                        ? `Vorauswahl: ${defaultB.station.name}`
+                        : "Vorauswahl: keine zweite Station"}
+                    </option>
+                    {sorted
                       .filter(
-                        (row) => row.station_id !== selected.station.station_id,
+                        (row) =>
+                          row.station.station_id !==
+                          compareRowA?.station.station_id,
                       )
                       .map((row) => (
-                        <option key={row.station_id} value={row.station_id}>
-                          {row.name}
+                        <option key={row.station.station_id} value={row.station.station_id}>
+                          {row.station.name}
                         </option>
                       ))}
                   </select>
                 </label>
               </div>
-              {!compareB ? (
-                <div className="p-5">
-                  <Empty>
-                    Zwei Stationen wählen — A ist die gewählte Station
-                    (oben), B wählst du rechts. Der Vergleich zeigt Preis,
-                    Umweg und Netto-€; die tiefere Statistik verlinkt in
-                    die Werkstatt.
-                  </Empty>
-                </div>
-              ) : comparePair ? (
+              {comparePair && compareRowA && compareRowB ? (
                 <div className="p-4">
                   <div className="grid gap-3 sm:grid-cols-2">
                     {[
-                      { row: selected, label: "A (Referenz)" },
-                      { row: compareRowB!, label: "B" },
+                      { row: compareRowA, label: "A" },
+                      { row: compareRowB, label: "B" },
                     ].map(({ row, label }) => (
                       <div
                         key={row.station.station_id}
@@ -723,6 +875,7 @@ export function StationenView(props: StationenViewProps) {
                       >
                         <p className="text-[10px] uppercase tracking-wider text-slate-500">
                           {label}
+                          {row.isReference ? " · Referenz" : ""}
                         </p>
                         <p className="mt-1 truncate text-sm font-semibold text-slate-200">
                           {row.station.name}
@@ -754,6 +907,13 @@ export function StationenView(props: StationenViewProps) {
                       inkl. Umweg)
                     </p>
                   )}
+                  {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                      Achtung beim Lesen: „günstiger“ vergleicht nur die
+                      Literpreise an der Säule. Umweg und Zeit stehen in der
+                      Netto-Zeile darüber.
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px]">
                     <button
                       onClick={() => onNavigate("jetzt")}
@@ -765,17 +925,26 @@ export function StationenView(props: StationenViewProps) {
                       onClick={() => onNavigate("ich")}
                       className="font-semibold text-sky-300 underline underline-offset-4 hover:text-sky-200"
                     >
-                      Beleg für {selected.station.name} buchen
+                      Beleg für {compareRowA.station.name} buchen
                     </button>
                     <button
-                      onClick={() => props.onDeepen?.()}
-                      className="font-semibold text-slate-400 underline underline-offset-4 hover:text-slate-300"
+                      onClick={() => props.onDeepen?.("stationen")}
+                      className="font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
                     >
-                      Tiefer: sind die beiden wirklich verschieden? → Werkstatt
+                      {labSectionButtonLabel("stationen")} · sind die beiden
+                      wirklich verschieden?
                     </button>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="p-5">
+                  <Empty>
+                    Für einen Vergleich fehlen zwei Stationen mit frischem
+                    Preis. Sobald der Collector meldet, steht hier die
+                    Gegenüberstellung — mit Vorauswahl der zwei günstigsten.
+                  </Empty>
+                </div>
+              )}
             </div>
           )}
 
@@ -806,9 +975,9 @@ export function StationenView(props: StationenViewProps) {
         sentences={explanation.sentences}
         source={explanation.source}
         labHint={explanation.labHint}
-        onDeepen={() => {
+        onDeepen={(section) => {
           setSheetOpen(false);
-          props.onDeepen?.();
+          props.onDeepen?.(section);
         }}
         onClose={() => setSheetOpen(false)}
       />
@@ -817,72 +986,61 @@ export function StationenView(props: StationenViewProps) {
 }
 
 /**
- * Kleiner Verlaufs-Chart (7 Tage, offene Meldungen): Linie plus
- * Tagesmedian-Punkte („üblich“ statt Moment). Bewusst klein und ohne
- * Chart-Bibliothek — das Labor hat die großen Charts, hier gilt
- * „Verlauf schlägt Moment“.
+ * Verlauf der gewählten Station — derselbe Baustein wie im Stations-Labor
+ * (`LineChart`): Achsen, beschriftete Zeitmarken und der Tagesmedian als
+ * gestrichelte „üblich“-Linie. Vorher stand hier eine gequetschte Minigrafik
+ * ohne Achsen (Nutzer-Feedback 14.09.2026).
  */
-function SeriesChart({ points }: { points: Point[] }) {
+function SeriesChart({
+  points,
+  spanHours,
+}: {
+  points: Point[];
+  spanHours: number;
+}) {
   const known = points
     .filter((p) => p.price !== null && Number.isFinite(Date.parse(p.timestamp)))
     .map((p) => ({ x: Date.parse(p.timestamp), y: p.price as number }));
-  if (known.length < 2) return null;
+  if (known.length < 2) {
+    return (
+      <Empty>
+        Zu wenige offene Meldungen im gewählten Zeitraum — der Verlauf
+        entsteht aus den Collector-Läufen, geschätzt wird nichts.
+      </Empty>
+    );
+  }
   const xs = known.map((p) => p.x);
   const ys = known.map((p) => p.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 0.01;
-  const w = 640;
-  const h = 140;
-  const px = (x: number) => ((x - minX) / spanX) * (w - 16) + 8;
-  const py = (y: number) => h - 14 - ((y - minY) / spanY) * (h - 28);
-  const line = known
-    .map((p, i) => `${i === 0 ? "M" : "L"}${px(p.x)},${py(p.y)}`)
-    .join(" ");
-  // Tagesmediane: je Kalender-Tag (Berlin) der Median der offenen
-  // Meldungen, plotted an der ersten Messzeit des Tages.
-  const byDay = new Map<string, { firstX: number; values: number[] }>();
-  for (const p of known) {
-    const key = new Date(p.x).toLocaleDateString("de-DE", {
-      timeZone: "Europe/Berlin",
-    });
-    const entry = byDay.get(key);
-    if (entry) {
-      entry.values.push(p.y);
-      if (p.x < entry.firstX) entry.firstX = p.x;
-    } else {
-      byDay.set(key, { firstX: p.x, values: [p.y] });
-    }
-  }
-  const dayMedians = [...byDay.values()]
-    .map((entry) => {
-      const sorted = [...entry.values].sort((a, b) => a - b);
-      return {
-        x: entry.firstX,
-        y: sorted[Math.floor(sorted.length / 2)],
-      };
-    })
-    .sort((a, b) => a.x - b.x);
-  const band = dayMedians
-    .map((p, i) => `${i === 0 ? "M" : "L"}${px(p.x)},${py(p.y)}`)
-    .join(" ");
+  const band = dayMedianPoints(points);
+  const last = known[known.length - 1];
   return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      role="img"
-      aria-label={`Preisverlauf der letzten 7 Tage: ${deTrimmed(minY, 3)} bis ${deTrimmed(maxY, 3)} Euro pro Liter, Linie = offene Meldungen, Punkte = Tagesmediane`}
-      className="h-40 w-full text-slate-300"
-    >
-      {band && (
-        <path d={band} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="3 3" />
-      )}
-      <path d={line} fill="none" stroke="#38bdf8" strokeWidth="1.75" />
-      {dayMedians.map((p, i) => (
-        <circle key={i} cx={px(p.x)} cy={py(p.y)} r="2.5" fill="#38bdf8" />
-      ))}
-    </svg>
+    <div>
+      <LineChart
+        series={[
+          { name: "Offene Meldungen (€/L)", color: "#38bdf8", pts: known },
+          {
+            name: "Tagesmedian (üblich)",
+            color: "#94a3b8",
+            dash: "4 3",
+            pts: band,
+          },
+        ]}
+        marks={[{ x: last.x, color: "#34d399", label: "jetzt" }]}
+        xDomain={[minX, maxX]}
+        xTicks={autoTimeTicks(minX, maxX)}
+        yFmt={(value) => euro(value, 3)}
+        ariaDescription={`Preisverlauf der letzten ${spanLabel(spanHours)} in €/L: Linie = offene Meldungen (${known.length} Punkte), gestrichelte Linie = Tagesmedian, grüne Marke = jüngste Meldung (${euroPerLiter(last.y)}), Spanne ${euroPerLiter(minY)} bis ${euroPerLiter(maxY)}.`}
+      />
+      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+        Durchgezogen = offene Meldungen · gestrichelt = Tagesmedian
+        („üblich“) · grüne Marke = jüngste Meldung{" "}
+        {timeLabel(new Date(last.x).toISOString())}. Leere Stunden bleiben
+        leer — nichts wird interpoliert.
+      </p>
+    </div>
   );
 }

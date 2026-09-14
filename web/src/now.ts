@@ -20,6 +20,7 @@ import {
   berlinHour,
   centPerLiter,
   countLabel,
+  deTrimmed,
   euro,
   euroPerLiter,
   freshness,
@@ -30,6 +31,8 @@ import {
   type DecideResult,
   type Station,
 } from "./data";
+import { labHint, type LabHint } from "./lab";
+import type { StripCell } from "./strip";
 
 /** Wohin ein nächster Schritt führt — Ziele, nicht Tabs (Phase 1–4). */
 export type NowTarget = "stations" | "week" | "tank" | "system" | "ich";
@@ -550,8 +553,8 @@ export type NowExplanation = {
   sentences: string[];
   /** Herkunft der Zahlen — eine Zeile, keine Formel. */
   source: string;
-  /** Weg in die Tiefe; im Labor-Zeitalter zeigt er auf den Abschnitt. */
-  labHint: string;
+  /** Weg in die Tiefe: der Labor-Abschnitt, der diese Zahl beweist (§7). */
+  labHint: LabHint;
 };
 
 /**
@@ -622,7 +625,7 @@ export function nowExplanation(
     source: input.pricesAt
       ? `Grundlage: die geladenen Preismeldungen dieser Station, jüngste ${ageLabel(input.pricesAt, input.now)}.`
       : "Grundlage: die geladenen Preismeldungen dieser Station.",
-    labHint: "In der Werkstatt vertiefen",
+    labHint: labHint("sicherheit"),
   };
 }
 
@@ -703,4 +706,145 @@ export function assumptionHint(input: NowInput): string | null {
 
   // 6. Grau: die Karte selbst erklärt den Zustand; der Hinweis bleibt aus.
   return null;
+}
+
+/**
+ * „Was ist gerade am besten?“ — die Antwort, die auch ohne Modell trägt.
+ *
+ * Warum das eigener Code ist (Nutzer-Feedback 14.09.2026): In S0/S1 und in
+ * jeder Stufe C stand „Jetzt“ bis dahin grau da, während die einzige sichere
+ * Aussage des Tages — *welcher offene Preis gerade der günstigste ist* — nur
+ * als Nebenliste im grauen Zustand auftauchte. Der Vergleich aktueller
+ * Preise braucht kein Modell; er ist eine Tatsache aus dem Set.
+ *
+ * Ehrlichkeits-Grenzen:
+ *   * Nur Stationen mit wirklich gemeldetem Preis (`price != null`).
+ *   * „ct/L unter dem teuersten“ ist ein Abstand im Set, keine Prognose —
+ *     deshalb heißt er auch so und wird nie „Ersparnis“ genannt.
+ *   * Ohne zweiten Preis gibt es keinen Vergleich (Satz statt Zahl).
+ */
+export type NowBestNow = {
+  /** Günstigste Station mit offenem Preis — `null` ohne frische Meldung. */
+  station: Station | null;
+  price: number | null;
+  /** Bis zu drei Stationen, günstigste zuerst (Gleichstand bleibt stabil). */
+  ranking: Array<{ station: Station; price: number }>;
+  /** Teuerster − günstigster Preis im Set, in ct/L. */
+  spreadCt: number | null;
+  /** Was die Preisspanne auf die Tankmenge bedeutet (€). */
+  spreadEur: number | null;
+  /** Anzahl Stationen mit offenem Preis. */
+  freshCount: number;
+  /** Ein Satz, der ohne Modell gilt — nie „Ersparnis“, nie „Erwartet“. */
+  sentence: string;
+  mapsUrl: string | null;
+};
+
+export function nowBestNow(input: NowInput): NowBestNow {
+  const fresh = input.stations
+    .filter(
+      (station) => station.price != null && Number.isFinite(station.price),
+    )
+    .map((station) => ({ station, price: station.price as number }))
+    .sort((a, b) => a.price - b.price);
+  const ranking = fresh.slice(0, 3);
+  const best = fresh[0] ?? null;
+  const worst = fresh.length > 1 ? fresh[fresh.length - 1] : null;
+  const spreadCt =
+    best && worst ? (worst.price - best.price) * 100 : null;
+  const spreadEur =
+    spreadCt !== null ? (spreadCt / 100) * input.liters : null;
+
+  const sentence = !best
+    ? "Kein offener Preis in der Sicht — mit der nächsten Preismeldung füllt sich der Vergleich."
+    : !worst
+      ? `Nur ${best.station.name} meldet gerade einen Preis (${euroPerLiter(best.price)}) — für einen Vergleich fehlt eine zweite Station.`
+      : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(spreadCt ?? 0)} unter dem teuersten Preis im Set, das sind ${euro(spreadEur ?? 0)} € bei ${deTrimmed(input.liters, 0)} L.`;
+
+  return {
+    station: best?.station ?? null,
+    price: best?.price ?? null,
+    ranking,
+    spreadCt,
+    spreadEur,
+    freshCount: fresh.length,
+    sentence,
+    mapsUrl: best?.station.maps_url ?? null,
+  };
+}
+
+/**
+ * „Heute im Blick“ 2.0 (Nutzer-Feedback 14.09.2026: „zu wenig Infos“).
+ *
+ * Der Tagesstreifen bleibt das Bild, bekommt aber die Zahlen, die man sonst
+ * im Kopf aus 18 Kästchen liest: günstigste und teuerste offene Stunde, den
+ * Tagesmedian, die Spanne und die Abdeckung („x von 18 Stunden mit offener
+ * Meldung“). Alles aus den Zellen selbst — keine Prognose, keine Lücke
+ * geschätzt.
+ */
+export type NowDayPanel = {
+  /** Günstigste offene Stunde (niedrigster letzter Preis des Tages). */
+  best: { hour: number; value: number } | null;
+  worst: { hour: number; value: number } | null;
+  median: number | null;
+  spreadCt: number | null;
+  /** Wert der aktuellen Stunde, sonst `null`. */
+  nowValue: number | null;
+  /** Jetzt gegenüber dem Tagesmedian (ct/L, positiv = teurer). */
+  nowVsMedianCt: number | null;
+  openHours: number;
+  totalHours: number;
+  /** Aussage-Zeile über dem Streifen. */
+  headline: string;
+  /** Abdeckungs-Zeile unter dem Streifen („8 von 18 Stunden …“). */
+  coverage: string;
+};
+
+export function nowDayPanel(cells: StripCell[]): NowDayPanel {
+  const open = cells.filter(
+    (cell): cell is StripCell & { value: number } => cell.value !== null,
+  );
+  const sorted = [...open].sort((a, b) => a.value - b.value);
+  const best = sorted[0]
+    ? { hour: sorted[0].hour, value: sorted[0].value }
+    : null;
+  const worst = sorted.length > 1
+    ? {
+        hour: sorted[sorted.length - 1].hour,
+        value: sorted[sorted.length - 1].value,
+      }
+    : null;
+  const median = open.length
+    ? [...open.map((cell) => cell.value)].sort((a, b) => a - b)[
+        Math.floor(open.length / 2)
+      ]
+    : null;
+  const nowCell = cells.find((cell) => cell.current && cell.value !== null);
+  const nowValue = nowCell?.value ?? null;
+  const spreadCt = best && worst ? (worst.value - best.value) * 100 : null;
+  const nowVsMedianCt =
+    nowValue !== null && median !== null ? (nowValue - median) * 100 : null;
+
+  const headline = !best
+    ? "Heute liegt noch keine offene Meldung vor."
+    : worst
+      ? `Am günstigsten ist es um ${String(best.hour).padStart(2, "0")} Uhr (${euroPerLiter(best.value)}) — ${centPerLiter(spreadCt ?? 0)} unter der teuersten Stunde.`
+      : `Bisher nur eine offene Stunde: ${String(best.hour).padStart(2, "0")} Uhr (${euroPerLiter(best.value)}) — für einen Tagesverlauf fehlen Messwerte.`;
+
+  const coverage = open.length
+    ? `${countLabel(open.length)} von ${countLabel(cells.length)} Stunden mit offener Meldung — leere Stunden werden nicht geschätzt.`
+    : "Keine offene Meldung in 06–24 Uhr — das Polling-Fenster läuft von 06 bis 24 Uhr.";
+
+  return {
+    best,
+    worst,
+    median,
+    spreadCt,
+    nowValue,
+    nowVsMedianCt,
+    openHours: open.length,
+    totalHours: cells.length,
+    headline,
+    coverage,
+  };
 }

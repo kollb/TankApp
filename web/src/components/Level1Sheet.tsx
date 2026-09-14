@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { ArrowRight, X } from "lucide-react";
+import type { LabHint, LabSectionId } from "../lab";
 
 export function Level1Sheet({
   open,
@@ -32,8 +33,12 @@ export function Level1Sheet({
   sentences: string[];
   /** Woher die Zahlen kommen (Frische), eine Zeile. */
   source: string;
-  /** Beschriftung des Wegs in die Tiefe. */
-  labHint: string;
+  /**
+   * Weg in die Tiefe (Ebene 2): Abschnitt des Labors plus Beschriftung.
+   * `null` = diese Zahl hat noch keinen Beweis — dann steht hier kein Knopf,
+   * statt ins Leere zu führen (Ehrlichkeits-Regel §7).
+   */
+  labHint: LabHint | null;
   /**
    * Mini-Visual (Ebene-1-Regel: max. 1 Visual, UI-NEUENTWURF §7) —
    * z. B. das Tagesprofil mit markiertem Fenster. `null` = ehrlich
@@ -42,7 +47,7 @@ export function Level1Sheet({
   visual?: ReactNode | null;
   /** Eine Zeile darunter: was das Visual zeigt. */
   visualLabel?: string;
-  onDeepen: () => void;
+  onDeepen: (section: LabSectionId) => void;
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -104,13 +109,15 @@ export function Level1Sheet({
         <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
           {source}
         </p>
-        <button
-          onClick={onDeepen}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-xs font-semibold text-sky-200 hover:border-sky-400/50"
-        >
-          {labHint}
-          <ArrowRight size={14} aria-hidden="true" />
-        </button>
+        {labHint && (
+          <button
+            onClick={() => onDeepen(labHint.section)}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-xs font-semibold text-violet-200 hover:border-violet-400/60"
+          >
+            {labHint.label}
+            <ArrowRight size={14} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );
