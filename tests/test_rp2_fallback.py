@@ -255,6 +255,22 @@ def test_meta_loads_names_from_polling_json(tmp_path):
     assert loaded[UID_B]["city"] == "Frankfurt"
 
 
+def test_meta_preserves_city_key_for_short_filters(tmp_path):
+    payload = {
+        "sets": {
+            "GT": {"label": "Gütersloh", "stations": [{"uuid": UID_A, "name": "A"}]},
+            "FRA": {"label": "Frankfurt", "stations": [{"uuid": UID_B, "name": "B"}]},
+        }
+    }
+    meta_path = tmp_path / "p.json"
+    meta_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    loaded = rp2.StationMeta([meta_path]).load()
+    assert loaded[UID_A]["city_key"] == "GT"
+    assert loaded[UID_A]["city_label"] == "Gütersloh"
+    assert loaded[UID_B]["city_key"] == "FRA"
+    assert loaded[UID_B]["city_label"] == "Frankfurt"
+
+
 def test_meta_missing_falls_back_to_uuid_and_reports_error(tmp_path):
     ctx = make_ctx(
         tmp_path, with_meta=False, poll_lines=default_poll_lines(), with_forecast=False
@@ -367,6 +383,10 @@ def test_fallback_api_endpoints(tmp_path):
         assert health["prices"]["stations_with_name"] == 3
         assert health["forecasts"]["available"] is True
         assert health["nas"]["configured"] is False
+        assert health["city_options"] == [
+            {"value": "Frankfurt", "label": "Frankfurt"},
+            {"value": "Gütersloh", "label": "Gütersloh"},
+        ]
 
         stations = get_json(base, "/api/v1/stations?fuel=e10")
         names = [s["name"] for s in stations["stations"]]
@@ -408,6 +428,79 @@ def test_fallback_index_served_and_forced(tmp_path):
         with urllib.request.urlopen(base + "/", timeout=5) as resp:
             body = resp.read().decode("utf-8")
         assert rp2.VERSION_MARKER in body
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_city_filter_accepts_short_polling_keys(tmp_path):
+    poll_dir = tmp_path / "poll"
+    cache_dir = tmp_path / "cache"
+    meta_path = tmp_path / "polling.json"
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir(parents=True, exist_ok=True)
+    (template_dir / "index.html").write_text(
+        "MARKER: " + rp2.VERSION_MARKER, encoding="utf-8"
+    )
+    meta_path.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "GT": {
+                        "label": "Gütersloh",
+                        "stations": [{"uuid": UID_A, "name": "GT A"}],
+                    },
+                    "FRA": {
+                        "label": "Frankfurt",
+                        "stations": [{"uuid": UID_B, "name": "FRA B"}],
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    write_poll_file(
+        poll_dir,
+        [
+            {
+                "fetched_at": now_iso(1),
+                "city": "Gütersloh",
+                "prices": {UID_A: {"status": "open", "e10": 1.699}},
+            },
+            {
+                "fetched_at": now_iso(1),
+                "city": "Frankfurt",
+                "prices": {UID_B: {"status": "open", "e10": 1.759}},
+            },
+        ],
+    )
+    ctx = rp2.Context(
+        poll_dir=poll_dir,
+        cache_file=cache_dir / "last_forecasts.json",
+        meta_candidates=[meta_path],
+        template_dir=template_dir,
+        nas_state=rp2.NasState(None),
+    )
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        health = get_json(base, "/api/v1/health")
+        assert health["cities"] == ["FRA", "GT"]
+        assert health["city_options"] == [
+            {"value": "FRA", "label": "Frankfurt"},
+            {"value": "GT", "label": "Gütersloh"},
+        ]
+        gt = get_json(base, "/api/v1/stations?fuel=e10&city=GT")
+        assert [row["station_id"] for row in gt["stations"]] == [UID_A]
+        fra = get_json(base, "/api/v1/decide?fuel=e10&city=FRA&liters=40")
+        assert fra["f2"]["station"]["station_id"] == UID_B
+        # Der ausgeschriebene Name bleibt aus Kompatibilität ebenfalls gültig.
+        assert (
+            get_json(base, "/api/v1/stations?fuel=e10&city=Frankfurt")["fresh_prices"]
+            == 1
+        )
     finally:
         server.shutdown()
         server.server_close()
@@ -691,6 +784,13 @@ def test_template_is_the_v3_gui_without_mock_data():
     assert "const STATIONS = [" not in html  # keine Beispiel-Stationen
     assert "const DAYSTRIP = {" not in html  # kein Mock-Tagesstreifen
     assert "NOW_MIN" not in html  # keine Mock-Uhr
+
+
+def test_template_uses_city_options_for_short_city_filters():
+    html = rp2.DEFAULT_INDEX_HTML
+    assert "h.city_options" in html
+    assert "entry.value" in html
+    assert 'entry.value + " · " + entry.label' in html
 
 
 def test_answer_card_has_three_facts_and_freshness_footer():

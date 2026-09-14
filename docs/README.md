@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 14.09.2026 · App-Version **0.34.0**
+> Stand: 14.09.2026 · App-Version **0.37.1**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -17,7 +17,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
 | das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
-| den GUI-Neuentwurf umsetzen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md) |
+| den abgeschlossenen GUI-Neuentwurf nachvollziehen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) |
 | eine tote oder sortenlose Station im Polling-Set tauschen | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | verstehen, wie Pi ↔ NAS ↔ Browser zusammenspielen | [ARCHITEKTUR.md](ARCHITEKTUR.md) |
 | einen API-Endpunkt nachschlagen | [API.md](API.md) |
@@ -72,7 +72,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | [ENGINE.md](ENGINE.md) | Modellwerkstatt: 12-Uhr-Regel, Datenqualität, Backtest-Rezepte, InfluxDB-Diagnose, Preis-Zwillinge, offene M3-Punkte |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
-| [UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md) | Arbeits-Checkliste zum Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte-Baseline, Fallback-Gleichschritt, Abnahme |
+| [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
 | [QUALITAET.md](QUALITAET.md) | Qualitäts-Gates (D4): Lighthouse-Budgets, Lastpfad gegen `/api/v1/overview`, Demo-Stack, Messwerte und die B7-Rest-Entscheidung |
@@ -102,18 +102,17 @@ TankApp beantwortet an der Säule in ≤ 5 Sekunden drei Fragen:
 - **F2 — Hier oder woanders?** Netto-€ nach Umweg (Sprit + Zeit)
 - **F3 — Heute oder später?** Top-3-Fenster
 
-Zwei Modi in der GUI:
+Die GUI ist seit 0.37.x in Aufgabenbereiche geteilt:
 
-- **Alltag** — Entscheidungs-Kompass, ≤ 3 primäre Zahlen
-- **Werkstatt** — Scoreboard, Fan-Chart, Heatmaps, Meine Stationen, System-Status
+- **Jetzt** — Entscheidung, drei Fakten, nächste Schritte, Tagesstreifen.
+- **Stationen** — Preis-Atlas mit Referenz, Karte, Verlauf und A-gegen-B.
+- **Woche** — Zeitfenster und Tank-Abgleich.
+- **Ich** — Fahrzeug, Belege, Bilanz und Einstellungen am Wirkungsort.
+- **Labor** — Warum-Ebene: Prognose, Sicherheit, Stationen, Lernen, Glossar und Spielplatz.
+- **System** — Anlage, Daten, Läufe, Störungen und Diagnose-Export.
 
-Dritter Tab: **System** — Konfiguration, Archiv, Jobs, Collector, Alarme,
-Einrichtungs-Checkliste, Tankbelege-Export.
-
-Vierter Tab (0.24.0, C4): **Einstellungen** — alle Defaults an einer Stelle
-(Stadt, Kraftstoff, Tankmenge, Verbrauch, Zeitwert, Tempo, Fahrtcharakter,
-Tankgröße), die aktiven Entscheidungsschwellen als read-only-Tabelle und die
-Dark/Light-Umschaltung.
+Die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind historisch;
+entsprechende Inhalte leben in den Bereichen oben weiter.
 
 ```text
 Tankerkönig live ──→ Pi: Collector + RAM-Puffer (/dev/shm/tankapp) ──→ NAS: InfluxDB

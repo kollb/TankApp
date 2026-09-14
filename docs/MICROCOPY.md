@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 14.09.2026 · App-Version **0.37.0** · gilt für `web/src/**`,
+> Stand: 14.09.2026 · App-Version **0.37.1** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -85,7 +85,7 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 | Gemeint | Wort in der App |
 |---|---|
 | die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
-| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md)) |
+| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“) |
 | Prognoselauf auf dem NAS | **Modell-Update** |

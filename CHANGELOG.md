@@ -4,6 +4,36 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.37.1] – 2026-09-14
+
+**Abnahme-Fix nach der echten NAS/Pi-Prüfung:** Die NAS-GUI ist abgenommen;
+in der Pi-Fallback-GUI war der Ortsfilter kaputt, wenn das Polling-Set mit
+kurzen Stadt-Keys wie `FRA`/`GT` arbeitet. Zusätzlich ist der GUI-/Fallback-
+Sanity-Check als archivierter Prüfbericht dokumentiert.
+
+### Behoben
+
+- **Fallback-Ortsfilter FRA/GT:** `rp2/fallback_gui.py` bewahrt jetzt neben dem
+  sichtbaren Stadtlabel auch den stabilen Set-Key aus `polling.json`
+  (`city_key`/`city_label`) und liefert `city_options` an das Template. Die
+  Auswahl oben zeigt dadurch z. B. `FRA · Frankfurt` und `GT · Gütersloh`;
+  die Fallback-API akzeptiert sowohl den Key als auch das ausgeschriebene
+  Label. Der Fehlerzustand „20 Stationen gelistet, aber oben keine FRA/GT-
+  Auswahl“ ist damit abgedeckt.
+
+### Dokumentation
+
+- Sanity-Check GUI/Fallback als Stichtagsbericht
+  `docs/archiv/GUI-FALLBACK-SANITY-2026-09-14.md`.
+- Die abgeschlossene Umsetzungs-Checkliste des GUI-Neuentwurfs wurde nach
+  `docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md` verschoben.
+
+### Tests
+
+- `tests/test_rp2_fallback.py`: Regressionen für kurze Stadt-Keys, neue
+  `city_options`, Filter per `city=GT`/`city=FRA` und weiter gültige
+  ausgeschriebene Labels.
+
 ## [0.37.0] – 2026-09-14
 
 **Phase 4 des GUI-Neuentwurfs steht: „System“ in den §5.5-Bausteinen —
@@ -245,7 +275,7 @@ Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
   ARIA-Tabs adressiert), Decide-Fluss decide → intent → fill → due
   (inkl. „Serverfehler zeigt keinen Erfolg“) und die Horizons-/
   Zeitwert-Automatik-Tests in `horizons.spec.ts`.
-- `app/version.py` 0.34.0 → 0.35.0; `docs/UMSETZUNG-GUI-NEUENTWURF.md`
+- `app/version.py` 0.34.0 → 0.35.0; `docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md`
   (Phasen 1+2 abgearbeitet, Messwerte, F4-Liste) und `docs/MICROCOPY.md`
   kennen die neuen Dateien/Bereiche.
 
@@ -282,7 +312,7 @@ Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
 **Der erste Bereich des GUI-Neuentwurfs steht: „Jetzt“. Eine Entscheidung,
 drei Fakten, höchstens drei nächste Schritte, ein Tagesstreifen und die
 Frische-Fußzeile — in genau dieser Reihenfolge.** Dazu die Arbeitsliste
-(`docs/UMSETZUNG-GUI-NEUENTWURF.md`), die reparierte Entscheidungsvorlage
+(`docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md`), die reparierte Entscheidungsvorlage
 (`docs/UI-NEUENTWURF.md`) und der Gleichschritt in der Pi-Fallback-GUI.
 Ehrlich dazu: **die Abnahme auf dem Pi steht noch aus** (Checkliste §7.3);
 die Sichtprüfung auf Desktop (1440 px) und Smartphone (390 px) ist mit
@@ -312,7 +342,7 @@ Demo-Daten durchgeführt, die Browser-Suite läuft mit 16/16 grün.
   der Tankstand NAS-Sache bleibt) und die Frische-Fußzeile
   „Preise … alt · Prognose … alt“. Template-Wechsel per Versionsmarker,
   altes Template wird als `index.html.old` gesichert.
-- **Arbeits-Checkliste** `docs/UMSETZUNG-GUI-NEUENTWURF.md`: die vier Phasen
+- **Arbeits-Checkliste** `docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md`: die vier Phasen
   aus §16 als abhakbare Schritte mit Definition of Done je Bereich, Baseline
   der Messwerte und Fallback-Gleichschritt.
 

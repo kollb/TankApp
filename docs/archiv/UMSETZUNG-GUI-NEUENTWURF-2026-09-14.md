@@ -1,10 +1,12 @@
 # UMSETZUNG-GUI-NEUENTWURF — Arbeits-Checkliste
 
-> Stand: 14.09.2026 · App-Version **0.37.0** · Konzept:
-> [UI-NEUENTWURF.md](UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
-> §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](GUI-VORLAGEN.md) ·
-> Texte: [MICROCOPY.md](MICROCOPY.md) ·
-> Vorlage für diese Liste: [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md).
+> **Archiviert am 14.09.2026 · App-Version 0.37.1.** Diese Arbeits-Checkliste ist abgeschlossen. Nachfolger für neue Befunde: [LUECKEN.md](../LUECKEN.md) und konkrete Prüfberichte in [docs/archiv/](README.md).
+>
+> Stand: 14.09.2026 · App-Version **0.37.1** · Konzept:
+> [UI-NEUENTWURF.md](../UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
+> §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](../GUI-VORLAGEN.md) ·
+> Texte: [MICROCOPY.md](../MICROCOPY.md) ·
+> Vorlage für diese Liste: [UMSETZUNG-FALLBACK-GUI-V2.md](../UMSETZUNG-FALLBACK-GUI-V2.md).
 >
 > **Diese Datei ist die Arbeitsunterlage.** Sie führt die Phasen aus §16 als
 > abhakbare Schritte, mit Definition of Done je Schritt. Regel aus §16:
@@ -21,10 +23,11 @@
 > die einzige API; UX-KPIs aus §15 sind ohne Realnutzung unmessbar; der
 > Service-Worker existiert, B10 bleibt offen.
 > **Reihenfolge abweichend:** Phase 3 und 4 wurden auf Nutzerwunsch
-> (14.09.2026) vor der manuellen Abnahme gebaut; die Abnahme am echten Stand
-> (S0/S1/Stufe A/Fehler/Offline, §7.2), der Pi-Fallback (7.3) und die
-> Vorleser-Stichprobe (7.4) bleiben offen, jetzt inklusive Labor- und
-> System-Flächen (7.5).
+> (14.09.2026) vor der manuellen Abnahme gebaut. Die Abnahme am echten Stand
+> (S0/S1/Stufe A/Fehler/Offline, §7.2), der Pi-Fallback (7.3), die
+> Vorleser-Stichprobe (7.4) sowie Labor-/System-Flächen (7.5) sind laut
+> Rückmeldung vom 14.09.2026 durchgeführt; der Nachbefund
+> Fallback-Ortsfilter FRA/GT ist in 0.37.1 behoben.
 
 - [0. Basis, Regeln und Messwerte](#0-basis-regeln-und-messwerte)
 - [1. Phase 0 — Fundament](#1-phase-0--fundament)
@@ -194,8 +197,8 @@ und was ehrlich offen bleibt:
 - [x] **2.4** Erinnerungen/Alarme: §17.9 streicht Push ersatzlos. Vor dem
   Umbau muss definiert sein, was mit `app/alarms.py`, `app/notify.py` und
   den bestehenden Alarm-Einträgen passiert (Betriebs-Entscheidung, gehört
-  in [BETRIEB.md](BETRIEB.md)). *Erledigt: die Betriebs-Entscheidung steht
-  in [BETRIEB.md → „System-Alarme und GUI-Neuentwurf“](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350) —
+  in [BETRIEB.md](../BETRIEB.md)). *Erledigt: die Betriebs-Entscheidung steht
+  in [BETRIEB.md → „System-Alarme und GUI-Neuentwurf“](../BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350) —
   §11 streicht **Preis-Erinnerungen/Push** (es wird dafür keine Komponente
   gebaut); der **System-Alarmweg** (`app/alarms.py`, `app/notify.py`/ntfy B4,
   bestehende Codes) bleibt unverändert aktiv. Störungen erscheinen in der
@@ -246,7 +249,7 @@ und was ehrlich offen bleibt:
 
 ## 6. Fallback-Gleichschritt (jede Phase)
 
-Die Pi-Fallback-GUI ([RP2.md](RP2.md)) ist eine **zweite Oberfläche
+Die Pi-Fallback-GUI ([RP2.md](../RP2.md)) ist eine **zweite Oberfläche
 desselben Produkts**. Sie darf schlanker sein (Standardbibliothek, kein
 Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
 
@@ -271,7 +274,7 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Antwort-Karte erzählt weiter die drei Fakten von „Jetzt“; das Template
   bleibt bei Version 4.0 (nichts Neues hinzugefügt, nichts geändert).
   Preis-Erinnerungen/Push gibt es auf keiner der drei Oberflächen (§11,
-  Betriebs-Entscheidung in [BETRIEB.md](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
+  Betriebs-Entscheidung in [BETRIEB.md](../BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
   *Liste Phase 4: „System“ bleibt NAS-only — Collector-Status, Job-Start,
   Diagnose-Export und ntfy leben auf dem NAS. Der Pi zeigt weiter die drei
   Fakten von „Jetzt“; das Template bleibt bei Version 4.0.*
@@ -283,17 +286,20 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Reihenfolge erkennbar, Faktenreihe bricht um, kein horizontales Scrollen auf
   beiden Breiten, Frische-Fußzeile steht unter dem Tagesstreifen. Die
   Sichtprüfung deckte zwei Fehler auf, beide behoben (Absturz auf der leeren
-  Anlage, falsch datierte Prognose in der Fußzeile). **Offen bleibt** die
-  Prüfung auf dem Pi-Gerät (7.3) und Dark/Light am echten Gerät.
-- [ ] **7.2** Zustände am echten Stand durchspielen: S0 (keine Stationen),
+  Anlage, falsch datierte Prognose in der Fußzeile). Pi-Gerät und Dark/Light
+  sind durch die spätere echte Abnahme nach §7.3–7.5 abgedeckt.
+- [x] **7.2** Zustände am echten Stand durchspielen: S0 (keine Stationen),
   S1 (Preise ohne Modell), Stufe A (kalibriert), Fehler
-  (`influx_read_failed`), Offline (Banner + Cache-Stand).
-- [ ] **7.3** Fallback auf dem Pi: neues Template aktiv, `index.html.old`
+  (`influx_read_failed`), Offline (Banner + Cache-Stand). **Abgenommen
+  am echten NAS/Pi laut Rückmeldung vom 14.09.2026.**
+- [x] **7.3** Fallback auf dem Pi: neues Template aktiv, `index.html.old`
   vorhanden, NAS online → transparente Weiterleitung unverändert
-  (`X-TankApp-Proxy: nas`).
-- [ ] **7.4** Vorleser-Stichprobe: Entscheidung, Fakten, Schritte und
+  (`X-TankApp-Proxy: nas`). **Abgenommen; Nachbefund Ortsfilter FRA/GT
+  in 0.37.1 behoben.**
+- [x] **7.4** Vorleser-Stichprobe: Entscheidung, Fakten, Schritte und
   „Warum?“ in sinnvoller Reihenfolge; Sheet meldet `role="dialog"`.
-- [ ] **7.5** Sichtprüfung „Labor“ (neu seit Phase 3, Desktop 1440 px und
+  **Abgenommen laut Rückmeldung vom 14.09.2026.**
+- [x] **7.5** Sichtprüfung „Labor“ (neu seit Phase 3, Desktop 1440 px und
   Mobil 390 px): fünf Abschnitte auf- und zuklappen, Sprung aus „Jetzt ·
   Warum?“ (öffnet den Abschnitt, scrollt, „Zurück zu: …“), Spielplatz-Rohpreise
   24 h/3 Tage/7 Tage, Tagebuch im leeren Zustand (Grund statt Leere),
@@ -302,14 +308,16 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Vorauswahl, graue Preisvergleich-Karte in „Jetzt“, „Heute im Blick“.
   **Seit 0.37.0 auch „System“:** vier Bausteine, Diagnose-Export, Zellpreise
   im Tagesstreifen, Gleichstand als Spanne, Referenz geometrisch in der
-  Kartenmitte.
+  Kartenmitte. **Abgenommen laut Rückmeldung vom 14.09.2026.**
 
 ## 8. Abschluss
 
-- [ ] **8.1** Vor der manuellen Abnahme (7.2–7.5) auf Nutzerwunsch vorgezogen:
-  Phase 3 (Labor) steht mit 0.36.0, „Werkstatt“ ist gefallen. Als Nächstes
-  folgt die Abnahme — danach Phase 4 (System) nach §16. Phasen 1b
-  („Stationen“) und der Alltagstab-Fall (1.6) stehen mit 0.35.0.
-- [ ] **8.2** Dieses Dokument bleibt lebend, bis Phase 4 steht — erst dann
-  nach `docs/archiv/` mit Banner (Stand, Nachfolger) und Eintrag in
-  [archiv/README.md](archiv/README.md).
+- [x] **8.1** Phase 4 steht mit 0.37.0; die echte Abnahme 7.2–7.5 ist laut
+  Rückmeldung vom 14.09.2026 durchgeführt. Ein Nachbefund aus der Abnahme
+  (Fallback-Ortsfilter FRA/GT) ist in 0.37.1 behoben und im Sanity-Bericht
+  [GUI-FALLBACK-SANITY-2026-09-14.md](GUI-FALLBACK-SANITY-2026-09-14.md)
+  dokumentiert.
+- [x] **8.2** Dieses Dokument ist abgeschlossen und liegt im Archiv. Gültige
+  Betriebs-Aussagen bleiben in [../BETRIEB.md](../BETRIEB.md), Zielbild in
+  [../UI-NEUENTWURF.md](../UI-NEUENTWURF.md), offene/neu gefundene Punkte in
+  [../LUECKEN.md](../LUECKEN.md).

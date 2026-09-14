@@ -1014,4 +1014,4 @@ Ansicht als Produktions-Prototyp mit echten Daten (auf Basis der heutigen
 API) überführen — als Nagelprobe für Raster, Bausteine und Erklär-Treppe.
 Der erste Schnitt steht: Bereich „Jetzt“ in `web/src/views/Jetzt.tsx`
 plus Gleichschritt in der Fallback-GUI; die Arbeitsliste dazu ist
-[UMSETZUNG-GUI-NEUENTWURF.md](UMSETZUNG-GUI-NEUENTWURF.md).
+[UMSETZUNG-GUI-NEUENTWURF.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md).
