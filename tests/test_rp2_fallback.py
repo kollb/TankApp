@@ -1050,3 +1050,45 @@ def test_fallback_template_js_parses_with_node():
     finally:
         Path(path).unlink(missing_ok=True)
     assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+
+
+# ---------------------------------------------------------------------------
+# Regression: Kopf-/Steuerleiste teilen die Inhaltsspalte mit <main>.
+#
+# Auf breiten Desktops liefen Schriftzug und Status-Pills über die ganze
+# Fensterbreite, während Karten und Listen in einer 1060-px-Spalte mittig
+# saßen — der Kopf wirkte „viel zu breit“ (bei 1920 px 416 px Versatz je
+# Seite). Ab 1100 px nutzt die Oberfläche die Breite zusätzlich: 1280 px
+# Spalte, Leiste in einer Zeile, Alltag zweispaltig.
+# ---------------------------------------------------------------------------
+
+
+def _css_rule(html: str, selector: str) -> str:
+    match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", html)
+    assert match, f"CSS-Regel fehlt: {selector}"
+    return match.group(1)
+
+
+def test_bars_and_main_share_one_content_column():
+    html = rp2.DEFAULT_INDEX_HTML
+    assert re.search(r"--content:\s*\d+px", _css_rule(html, ":root"))
+    for selector in (".topbar", ".controls", ".wrap"):
+        assert "var(--content)" in _css_rule(html, selector), selector
+
+
+def test_desktop_uses_the_width_instead_of_wasting_it():
+    html = rp2.DEFAULT_INDEX_HTML
+    assert html.count("@media (min-width: 1100px)") >= 3
+    assert "--content: 1280px" in html  # Schritt 1: Spalte wie max-w-7xl
+    assert "grid-template-columns: minmax(0, 7fr) minmax(0, 5fr)" in html  # Schritt 3
+    assert "flex-wrap: wrap" in html  # Leiste bricht um, statt zu quetschen
+    assert "#spark-grid .spark-card { margin-top: 0; }" in html
+
+
+def test_alltag_sections_are_grouped_in_two_columns():
+    html = rp2.DEFAULT_INDEX_HTML
+    assert '<div class="cols">' in html
+    assert '<div class="col col-a">' in html
+    assert '<div class="col col-b">' in html
+    # Nur die vier Alltag-Kicker tragen die (auf dem Desktop versteckte) Zahl.
+    assert html.count('<span class="idx">') == 4

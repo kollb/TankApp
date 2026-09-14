@@ -51,7 +51,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "3.0"
+VERSION = "3.1"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -1296,6 +1296,12 @@ _TEMPLATE_REST = """
   --info: #38bdf8;
   --warn: #fbbf24;
   --bad: #fb7185;
+  /* Inhaltsspalte: Kopf- und Steuerleiste laufen vollflächig (Hintergrund und
+     Rahmen über die ganze Fensterbreite), ihr Inhalt bleibt aber in derselben
+     Spalte wie <main class="wrap">. Sonst klebt auf breiten Desktops der
+     Schriftzug links am Rand und die Pills rechts — weit weg vom Inhalt. */
+  --content: 1060px;
+  --gutter: 14px;
   --glow-emerald: rgba(16, 185, 129, 0.10);
   --glow-sky: rgba(56, 189, 248, 0.08);
 }
@@ -1344,7 +1350,8 @@ a:hover { text-decoration: underline; }
 }
 .topbar {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
+  padding: 10px var(--gutter);
+  padding-inline: max(var(--gutter), calc((100% - var(--content)) / 2));
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 800; font-size: 16px; letter-spacing: 0.2px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -1385,14 +1392,18 @@ button.pill { font-weight: 700; }
 }
 .controls {
   display: flex; flex-direction: column; gap: 8px;
-  padding: 10px 14px 12px;
+  padding: 10px var(--gutter) 12px;
+  padding-inline: max(var(--gutter), calc((100% - var(--content)) / 2));
 }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .seg {
   display: inline-flex; background: var(--panel-2);
   border: 1px solid var(--border); border-radius: 12px; padding: 3px; gap: 2px;
 }
-.seg.grow { flex: 1 1 auto; }
+/* Auf dem Handy füllt die Kraftstoff-Umschaltung die Breite; auf dem Desktop
+   deckelt sie sich, sonst werden aus drei kurzen Tabs eine sehr breite Leiste
+   mit viel Leerraum. */
+.seg.grow { flex: 1 1 auto; max-width: 420px; }
 .seg button {
   flex: 1 1 0; min-height: 40px;
   border: 0; border-radius: 9px; background: transparent;
@@ -1411,7 +1422,7 @@ select { min-width: 0; }
 input[type="number"] { width: 72px; text-align: center; }
 
 /* ---------- Layout ------------------------------------------------------ */
-.wrap { padding: 14px 14px 40px; width: min(100%, 1060px); margin: 0 auto; }
+.wrap { padding: 14px var(--gutter) 40px; width: min(100%, var(--content)); margin: 0 auto; }
 .section-kicker {
   font-size: 10.5px; font-weight: 800; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--dim);
@@ -1658,6 +1669,41 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 .sticky-chip svg { width: 15px; height: 15px; flex: none; }
 .foot { margin-top: 26px; font-size: 12px; color: var(--dim); text-align: center; line-height: 1.6; }
 .foot b { color: var(--muted); }
+/* ---------- Desktop: Breite nutzen statt verschenken --------------------- */
+/* Unterhalb 1100 px bleibt alles wie auf dem Handy (Leisten untereinander,
+   Inhalt einspaltig). Ab 1100 px wird die Inhaltsspalte so breit wie in der
+   NAS-GUI (max-w-7xl), Kopf- und Steuerleiste rücken in EINE Zeile (~60 px
+   statt ~185 px) und der Alltag steht zweispaltig: links Antwort und
+   Tagesverlauf, rechts Stationen und Prognosen. Die DOM-Reihenfolge bleibt
+   1→4, die Kicker-Zahlen entfallen — sie sind eine Lesehilfe für die
+   einspaltige Handy-Ansicht. */
+@media (min-width: 1100px) {
+  :root { --content: 1280px; }
+}
+@media (min-width: 1100px) {
+  .stickies {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 8px max(var(--gutter), calc((100% - var(--content)) / 2));
+  }
+  .topbar, .controls { padding: 0; border-bottom: 0; }
+  .topbar { flex: 0 0 auto; }
+  .controls { flex: 1 1 340px; flex-direction: row; align-items: center; gap: 10px; }
+  .seg.grow { flex: 0 0 auto; }
+  .row { flex: 1 1 auto; }
+}
+@media (min-width: 1100px) {
+  .cols {
+    display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 14px; align-items: start;
+  }
+  .col { min-width: 0; }
+  .col > .section-kicker:first-child { margin-top: 0; }
+  .section-kicker .idx { display: none; }
+  .st-grid { grid-template-columns: 1fr; }
+  .sticky-chip { right: max(var(--gutter), calc((100% - var(--content)) / 2)); }
+  #spark-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #spark-grid .spark-card { margin-top: 0; }
+}
 .empty {
   border: 1px dashed var(--border); border-radius: 14px;
   padding: 18px 14px; color: var(--muted); font-size: 13px; text-align: center; margin-top: 12px;
@@ -1718,13 +1764,15 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 
   <!-- ============================== ALLTAG ============================== -->
   <div id="view-alltag">
+    <div class="cols">
+    <div class="col col-a">
 
-    <p class="section-kicker">1 · Empfehlung</p>
+    <p class="section-kicker"><span class="idx">1 · </span>Empfehlung</p>
     <section class="card answer" id="answer-card" aria-labelledby="answer-title">
       <div class="muted"><span class="spinner"></span> Lade …</div>
     </section>
 
-    <p class="section-kicker">2 · Heute im Überblick</p>
+    <p class="section-kicker"><span class="idx">2 · </span>Heute im Überblick</p>
     <section class="card" aria-labelledby="daystrip-title">
       <h2 id="daystrip-title">Tagesverlauf <span class="sub" id="daystrip-sub"></span></h2>
       <div class="daystrip" id="daystrip"></div>
@@ -1732,7 +1780,10 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
       <p class="strip-note">Grün = unteres Preisdrittel dieses Tages an dieser Station, rot = oberes Drittel. Leere Stunden hatten keine offene Meldung — nichts wird erfunden.</p>
     </section>
 
-    <p class="section-kicker">3 · Stationen</p>
+    </div>
+    <div class="col col-b">
+
+    <p class="section-kicker"><span class="idx">3 · </span>Stationen</p>
     <section class="card" aria-labelledby="stations-title">
       <div class="row">
         <h2 id="stations-title">Stationen <span class="sub" id="stations-sub"></span></h2>
@@ -1748,11 +1799,13 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
       <div class="st-grid" id="st-grid"><div class="muted"><span class="spinner"></span> Lade …</div></div>
     </section>
 
-    <p class="section-kicker">4 · Nächste 24 h</p>
+    <p class="section-kicker"><span class="idx">4 · </span>Nächste 24 h</p>
     <section class="card" aria-labelledby="forecast-title">
       <h2 id="forecast-title">Prognosen <span class="sub" id="forecast-sub"></span></h2>
       <div id="forecast-body"><div class="muted"><span class="spinner"></span> Lade …</div></div>
     </section>
+    </div>
+    </div>
   </div>
 
   <!-- ============================= WERKSTATT ============================= -->
