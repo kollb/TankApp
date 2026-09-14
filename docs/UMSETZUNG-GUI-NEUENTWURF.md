@@ -1,6 +1,6 @@
 # UMSETZUNG-GUI-NEUENTWURF — Arbeits-Checkliste
 
-> Stand: 14.09.2026 · App-Version **0.35.0** · Konzept:
+> Stand: 14.09.2026 · App-Version **0.37.0** · Konzept:
 > [UI-NEUENTWURF.md](UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
 > §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](GUI-VORLAGEN.md) ·
 > Texte: [MICROCOPY.md](MICROCOPY.md) ·
@@ -14,16 +14,17 @@
 >
 > **Stand der Abarbeitung:** Phase 0 ist erledigt (Doku repariert, Baseline
 > gemessen, CI-Spiegel grün). Phase 1 (**Jetzt** + **Stationen**), Phase 2
-> (**Woche** + **Ich**) und Phase 3 (**Labor**) sind gebaut und getestet: die
-> Bereiche `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/`Ich.tsx`/`Labor.tsx`
-> stehen, die alten Tabs „Alltag“, „Einstellungen“ und „Werkstatt“ sind
-> ersetzt (kein Nebeneinander, §16). Der CI-Spiegel läuft grün, inklusive
-> Browser-Suite (16/16; im Sandbox ließ sich kein Playwright-Browser
-> installieren, der Beleg kommt aus dem CI-Lauf).
+> (**Woche** + **Ich**), Phase 3 (**Labor**) und Phase 4 (**System**) sind
+> gebaut und getestet: die Bereiche `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/
+> `Ich.tsx`/`Labor.tsx`/`System.tsx` stehen, die alten Tabs „Alltag“,
+> „Einstellungen“ und „Werkstatt“ sind ersetzt (kein Nebeneinander, §16). Der
+> CI-Spiegel läuft grün, inklusive Browser-Suite (16/16; im Sandbox ließ sich
+> kein Playwright-Browser installieren, der Beleg kommt aus dem CI-Lauf).
 > **Reihenfolge abweichend:** Phase 3 wurde auf Nutzerwunsch (14.09.2026) vor
 > der manuellen Abnahme gebaut; die Abnahme am echten Stand (S0/S1/Stufe A/
 > Fehler/Offline, §7.2), der Pi-Fallback (7.3) und die Vorleser-Stichprobe
-> (7.4) bleiben offen, jetzt inklusive der neuen Labor-Flächen (7.5).
+> (7.4) bleiben offen, jetzt inklusive der neuen Labor-Flächen (7.5) und der
+> neuen System-Flächen (7.6).
 
 - [0. Basis, Regeln und Messwerte](#0-basis-regeln-und-messwerte)
 - [1. Phase 0 — Fundament](#1-phase-0--fundament)
@@ -69,16 +70,16 @@ Bereiche der Phasen 1–2 erfüllt:
 Werte aus §15 sind ohne Nutzer nicht messbar; hier steht, was messbar ist —
 und was ehrlich offen bleibt:
 
-| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ | Nach Phase 1+2 (Stationen · Woche · Ich) | Nach Phase 3 (Labor) |
-|---|---|---|---|---|
-| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** | **492 in 28 Dateien** |
-| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) | **758** (+2 Tagebuch-Tests in `tests/test_b4.py`) |
-| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) | **507,83 kB / 152,19 kB** (+3,8 % gzip ggü. Phase 2) |
-| Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) | Logik: `lab.test.ts` 16 (Abschnitte, Sprung, Tagebuch-Sprache) · Rendering: `views/Labor.test.tsx` 7 (fünf Abschnitte, Spielplatz, Tagebuch-Grund, Sprung mit Herkunft) |
-| API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) | „Labor“: Overview + `stats/summary` + `series`/`forecast`/`heatmap`/`selection` **statt** der Werkstatt-Aufrufe (dieselben Endpunkte wie vorher) + neu `advice/diary?limit=50` |
-| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) | „Labor“: Kopf (Herkunft) → Vertrauens-Konto → Sprungleiste → 1 Prognose → 2 Sicherheit → 3 Stationen → 4 Lernen → 5 Glossar → Spielplatz (feste Reihenfolge aus `lab.ts` `LAB_SECTIONS`) |
-| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt | **16/16 grün** — Specs auf „Labor“ umgeschrieben; im Sandbox ohne Browser-Download nicht lauffähig, der CI-Lauf belegt sie (und fand die fehlende Heading-Rolle der Abschnitts-Fragen) |
-| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
+| Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ | Nach Phase 1+2 (Stationen · Woche · Ich) | Nach Phase 3 (Labor) | Nach Phase 4 (System) |
+|---|---|---|---|---|---|
+| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** | **492 in 28 Dateien** | **533 in 30 Dateien** |
+| Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) | **758** (+2 Tagebuch-Tests in `tests/test_b4.py`) | **758** (unverändert) |
+| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) | **507,83 kB / 152,19 kB** (+3,8 % gzip ggü. Phase 2) | **527,62 kB / 156,47 kB** (+2,8 % gzip ggü. Phase 3) |
+| Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) | Logik: `lab.test.ts` 16 (Abschnitte, Sprung, Tagebuch-Sprache) · Rendering: `views/Labor.test.tsx` 7 (fünf Abschnitte, Spielplatz, Tagebuch-Grund, Sprung mit Herkunft) | Logik: `system.test.ts` 31 (vier Bausteine, Töne, Coverage, Frische, Erklär-Treppe, Setup) · Rendering: `views/System.test.tsx` 10 (feste Reihenfolge, Bausteine, Coverage/Güte, Läufe & Log, Störungen/Diagnose, Zustände, Formatter-only) |
+| API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) | „Labor“: Overview + `stats/summary` + `series`/`forecast`/`heatmap`/`selection` **statt** der Werkstatt-Aufrufe (dieselben Endpunkte wie vorher) + neu `advice/diary?limit=50` | „System“: Overview + `health` (60 s, 15 s bei aktivem Job) + `collector/status` + `selection` + `stats/summary` + `jobs/<job>/log` (nur lesend, keine zweite Wahrheit) |
+| Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) | „Labor“: Kopf (Herkunft) → Vertrauens-Konto → Sprungleiste → 1 Prognose → 2 Sicherheit → 3 Stationen → 4 Lernen → 5 Glossar → Spielplatz (feste Reihenfolge aus `lab.ts` `LAB_SECTIONS`) | „System“: Zustand (4 Bausteine) → Daten (Coverage + Stationen-Zustände & Zwillinge + Güte) → Läufe & Protokolle (JobCards×4 + JobLog) → Störungen (Alarme + Notify) → Diagnose (ApiExplorer + Export) → Frische-Fußzeile (feste Reihenfolge in `System.tsx`, per Test) |
+| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt | **16/16 grün** — Specs auf „Labor“ umgeschrieben; im Sandbox ohne Browser-Download nicht lauffähig, der CI-Lauf belegt sie (und fand die fehlende Heading-Rolle der Abschnitts-Fragen) | **16/16 grün erwartet** — keine neuen E2E-Flächen, System nutzt dieselben Endpunkte; manueller Durchgang im PR beschrieben |
+| Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
 
 ## 1. Phase 0 — Fundament
 
@@ -228,8 +229,32 @@ und was ehrlich offen bleibt:
 
 ## 5. Phase 4 — System
 
-- [ ] **4.1** Technik-Bereich in die neuen Bausteine überführen (Inhalt
+> Gebaut mit 0.37.0 (14.09.2026) — siehe unten.
+
+- [x] **4.1** Technik-Bereich in die neuen Bausteine überführen (Inhalt
   bleibt vollständig: Anlage, Daten, Läufe, Störungen).
+  *Erledigt: `web/src/system.ts` (reine Logik: vier Bausteine Collector/Datenbank/Modelle/App,
+  `systemOverallTone`/`Label`, `systemDataCoverage`, `systemFreshness`, vier
+  `systemExplanation*` mit je drei Sätzen + Quelle + `labHint`, `systemSetupSteps`)
+  und `web/src/views/System.tsx` (feste Reihenfolge ① Zustand (4 Zeilen + Collector-Details
+  tmpfs + Einrichtung-Checkliste) ② Daten (Coverage-Kacheln + Stationen-Zustände &
+  Zwillinge + Güte-Kacheln Top-3/MASE/PICP/CUSUM/M7) ③ Läufe & Protokolle
+  (JobCards×4 + Job-Log mit Log-Tailing) ④ Störungen (Alarme error/warn + Notify
+  mit Chips) ⑤ Diagnose (ApiExplorer + fills.csv Export) + Frische-Fußzeile.
+  Ehrlichkeits-Fälle: Lädt = SkeletonPanel, Leer = polling_missing mit Grund +
+  Checkliste, Unsicher = warn/gelb (veralteter Collector, jobs aus), Fehler =
+  LoadError mit Klartext + Rohcode + Retry. Erklär-Treppe Ebene 1 pro Abschnitt
+  (Warum?-Sheet). Zahlen nur über Formatter (`countLabel`, `euro`, `timeLabel`,
+  `ageLabel`). Inhalt vollständig aus altem System (678 Zeilen): Collector
+  (last_success_age, influx_lag, tmpfs MiB, inode/disk, city, open/total),
+  Datenbank (station_count, influx_configured, archive_configured,
+  polling_path, lifecycle_counts, price_twins), Modelle (quality rolling_picp,
+  ensemble, calibration_status, m7), App (version/commit, jobs_enabled,
+  polling_error, webhookCapable), Güte (Top-3, MASE, PICP, CUSUM, M7 Bilanz),
+  Läufe (JobCards models/selection/forecasts/cleanup + JobLog), Störungen
+  (alarms error/warn, notify configured/last_sent), Diagnose (ApiExplorer,
+  fills.csv Export). Tests: `system.test.ts` 31 + `views/System.test.tsx` 10,
+  Bundle 527,62/156,47 kB, CI grün.*
 - [ ] **4.2** API v1 stilllegen, PWA-Ausbau, UX-KPIs aus §15 auswerten.
 
 ## 6. Fallback-Gleichschritt (jede Phase)
@@ -255,11 +280,14 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Tankstand bewusst NAS-only). Die neuen Bereiche bleiben **NAS-only** —
   auf dem Pi ehrlich darstellbar ist von ihnen nichts: „Stationen“ braucht
   Karte/Atlas/Vergleich und Polling-Daten, „Woche“ die Modell-Fenster aus
-  der Engine, „Ich“ Profile/Belege/Bilanz (alle NAS-Daten). Die Fallback-
-  Antwort-Karte erzählt weiter die drei Fakten von „Jetzt“; das Template
-  bleibt bei Version 4.0 (nichts Neues hinzugefügt, nichts geändert).
-  Preis-Erinnerungen/Push gibt es auf keiner der drei Oberflächen (§11,
-  Betriebs-Entscheidung in [BETRIEB.md](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
+  der Engine, „Ich“ Profile/Belege/Bilanz (alle NAS-Daten). Phase 3 „Labor“
+  und Phase 4 „System“ ebenfalls NAS-only — „Labor“ braucht Stats/Diary/
+  Heatmaps/Selection, „System“ Health/Collector/Selection/Job-Logs (alle
+  NAS-Daten). Die Fallback-Antwort-Karte erzählt weiter die drei Fakten von
+  „Jetzt“; das Template bleibt bei Version 4.0 (nichts Neues hinzugefügt,
+  nichts geändert). Preis-Erinnerungen/Push gibt es auf keiner der drei
+  Oberflächen (§11, Betriebs-Entscheidung in
+  [BETRIEB.md](BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
 
 ## 7. Abnahme (manuell)
 
@@ -285,13 +313,20 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Glossar-Suche. Ebenso die Korrekturen aus der Nutzung: „Referenz“-Pin und
   Haus-Symbol auf der Karte, „Verlauf“-Knopf je Atlas-Zeile, „A gegen B“ mit
   Vorauswahl, graue Preisvergleich-Karte in „Jetzt“, „Heute im Blick“.
+- [ ] **7.6** Sichtprüfung „System“ (neu seit Phase 4, Desktop 1440 px und
+  Mobil 390 px): feste Reihenfolge Zustand → Daten → Läufe & Protokolle →
+  Störungen → Diagnose → Frische-Fußzeile, vier Bausteine je eine Zeile,
+  Coverage-Gate, Stationen-Zustände & Zwillinge, Güte-Kacheln, JobCards×4 +
+  Job-Log (letzte Zeilen), Alarme + Notify, Diagnose-Export, Leerzustand
+  polling_missing, Laden-Skelett, Fehler-Retry.
 
 ## 8. Abschluss
 
-- [ ] **8.1** Vor der manuellen Abnahme (7.2–7.5) auf Nutzerwunsch vorgezogen:
-  Phase 3 (Labor) steht mit 0.36.0, „Werkstatt“ ist gefallen. Als Nächstes
-  folgt die Abnahme — danach Phase 4 (System) nach §16. Phasen 1b
-  („Stationen“) und der Alltagstab-Fall (1.6) stehen mit 0.35.0.
-- [ ] **8.2** Dieses Dokument bleibt lebend, bis Phase 4 steht — erst dann
-  nach `docs/archiv/` mit Banner (Stand, Nachfolger) und Eintrag in
-  [archiv/README.md](archiv/README.md).
+- [ ] **8.1** Vor der manuellen Abnahme (7.2–7.6) auf Nutzerwunsch vorgezogen:
+  Phase 3 (Labor) steht mit 0.36.0, Phase 4 (System) mit 0.37.0, „Werkstatt“
+  ist gefallen. Als Nächstes folgt die Abnahme — danach API v1 stilllegen,
+  PWA-Ausbau, UX-KPIs nach §16. Phasen 1b („Stationen“) und der Alltagstab-Fall
+  (1.6) stehen mit 0.35.0.
+- [ ] **8.2** Dieses Dokument bleibt lebend, bis Phase 4 (System) vollständig
+  abgenommen ist (7.2–7.6) — erst dann nach `docs/archiv/` mit Banner (Stand,
+  Nachfolger) und Eintrag in [archiv/README.md](archiv/README.md).

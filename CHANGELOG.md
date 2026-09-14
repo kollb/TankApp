@@ -4,6 +4,26 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.37.0] – 2026-09-14
+
+**Phase 4 des GUI-Neuentwurfs steht: „System“ in neuer Architektur — vier Bausteine, Daten-Abdeckung, Läufe & Protokolle, Störungen, Diagnose in fester Reihenfolge, mit Erklär-Treppe, Frische-Fußzeile und Ehrlichkeits-Fällen.** Die alte System-Ansicht (678 Zeilen) ist ersetzt, kein Nebeneinander, und sie liest dieselben Server-Antworten wie vorher (`/api/v1/health`, `/api/v1/collector/status`, `/api/v1/selection`, Job-Logs). Der Inhalt bleibt vollständig: Collector-Details (tmpfs, älteste Datei), Datenbank (station_count, influx_configured, archive_configured, polling_path), Modelle (count, published_at, Job-State), App (Version, Commit, jobs_enabled, polling_error), Stationen-Zustände (tot/geschlossen/führt nicht), Preis-Zwillinge (Tabelle mit Schwellen), Güte-Kacheln (Top-3, MASE, PICP, CUSUM, M7), Läufe (JobCards×4 + Job-Log mit Log-Tailing), Störungen (Alarme error/warn, Notify-Zustellung) und Diagnose (API-Explorer, fills.csv Export).
+
+### Hinzugefügt
+
+- **Reine Logik `web/src/system.ts`** nach UI-NEUENTWURF §5.5: `systemStatusRows` (vier Bausteine Collector/Datenbank/Modelle/App mit ok/warn/error/unknown), `systemOverallTone`/`Label`, `systemDataCoverage` (Abdeckung je Stadt/Kraftstoff, frische Preise, Lebenszyklus-Bilanz, Coverage-Gate), `systemFreshness` (Frische-Fußzeile mit Alter in Worten, dieselben Schwellen wie `dataAgeNote`), `systemExplanationZustand/Daten/Laeufe/Stoerungen` (Ebene-1-Begründungen, je drei Sätze, Quelle und `labHint`), `systemSetupSteps` (Einrichtung-Checkliste Polling-Set/Collector/Influx/Modell/Empfehlung). Formatter-only über `data.ts`.
+- **Neue System-Ansicht `web/src/views/System.tsx`** in fester Reihenfolge ① Zustand (vier Zeilen + Collector-Details tmpfs + Einrichtung-Checkliste) ② Daten (Coverage-Kacheln + Stationen-Zustände & Zwillinge + Güte-Kacheln Top-3/MASE/PICP/CUSUM/M7) ③ Läufe & Protokolle (JobCards×4 + Job-Log mit letzten 500 Zeilen) ④ Störungen (Alarme error/warn + Notify-Zustellung mit Chips) ⑤ Diagnose (API-Explorer + Export) mit SkeletonPanel/LoadError/Empty, Level1Sheet Ebene-1 pro Abschnitt, Frische-Fußzeile, `JobCard`-Weiterverwendung.
+
+### Geändert
+
+- **System-Tab neu gebaut:** Statt langer Checklisten- und Tabellen-Wand jetzt gestaffelt nach §5.5 — vier Sätze auf einen Blick, Details eine Ebene tiefer (Collector-Details, Zwilling-Tabelle, Job-Log, ApiExplorer). Der Status-Punkt in der Kopfzeile nutzt denselben `systemOverallTone`.
+- `app/version.py` 0.36.0 → 0.37.0; `docs/UMSETZUNG-GUI-NEUENTWURF.md` Phase 4 abgehakt, Messwerte aktualisiert.
+
+### Tests
+
+- 533 Web-Tests in 30 Dateien (vorher 492 in 28): neu `system.test.ts` (31 Tests — vier Bausteine, Töne, Coverage, Frische, Erklär-Treppe, Setup-Schritte) und `views/System.test.tsx` (10 Tests — feste Reihenfolge, vier Bausteine, Coverage/Güte, Läufe & Log, Störungen/Diagnose, Zustände Laden/Leer/Fehler/Unsicher, Formatter-only).
+- Bundle: index 527,62 kB / 156,47 kB gzip (vorher 507,83/152,19) — +3,9 % gzip durch System-Neubau, unvermeidbar bei vollständiger Inhaltserhaltung.
+- CI grün: `npm --prefix web test`, `npm --prefix web run build`, `tsc --noEmit`.
+
 ## [0.36.0] – 2026-09-14
 
 **Phase 3 des GUI-Neuentwurfs steht: „Labor“ ersetzt die Werkstatt — eine
