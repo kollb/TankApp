@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 12.09.2026 · App-Version **0.21.0** · gilt für `web/src/**`,
+> Stand: 14.09.2026 · App-Version **0.33.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -12,6 +12,7 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
+- [4a. Fallback-GUI v3: feste Muster (0.33.0)](#4a-fallback-gui-v3-feste-muster-0330)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -91,6 +92,31 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 Fachbegriffe (δ̂, MASE, PICP, Brier, ε, Regret) bleiben der Werkstatt
 vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 (F2, 0.15.0). Der Alltag kommt ohne sie aus.
+
+## 4a. Fallback-GUI v3: feste Muster (0.33.0)
+
+Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
+`tankapp-fallback-gui v3.0`) — nicht neu formulieren, nur wiederverwenden.
+
+| Stelle | Muster |
+|---|---|
+| Verdict (F1) | `Jetzt tanken` · `Bis <Zeitpunkt> Uhr warten lohnt sich` (Zeitpunkt mit „heute“/„morgen“-Präfix, immer mit „Uhr“) |
+| Verdict ohne Prognose | `Aktueller Preisvergleich` + „ohne sie gibt es keinen belastbaren Grund zu warten“ |
+| Antwort-Karte leer | `Noch kein frischer Preis.` + „Der Status oben zeigt, wo es hängt“ |
+| Kicker der Antwort-Karte | `<KRAFTSTOFF> · <ORT | ALLE ORTE> · STAND <HH:MM> UHR` |
+| F1-Chip | `„Jetzt oder warten“: <Zeitpunkt> · ~<Preis> €/L · −<Betrag>` |
+| F2-Chip | `„Hier oder woanders“: 2. = <Station> · <Preis> €/L` |
+| Tagesstreifen-Caption | `Grün = unteres Preisdrittel dieses Tages an dieser Station, rot = oberes Drittel. Leere Stunden hatten keine offene Meldung — nichts wird erfunden.` |
+| Tagesstreifen leer | `Heute liegt noch keine offene Meldung für <Kraftstoff> an dieser Station vor — das Polling-Fenster ist 06–24 Uhr.` |
+| Kraftstoff fehlt an der Station | `<Kraftstoff> nicht geführt` (grau, kursiv; nicht „nicht verfügbar“) |
+| Station ohne offene Meldung | `geschlossen` bzw. `keine Preise` — der API-Code (z. B. „no prices“) steht nur im `title` der Werkstatt-Zeile |
+| Abstand zur günstigsten | Delta-Chip `beste` / `+<x> ct` (ct/L für Unterschiede, €/L für Niveaus) |
+| Sortierung | Knöpfe `Preis` · `Nähe` · `Aktuell`, darunter `Sortierung wirkt auf die Liste, nicht auf die Empfehlung.` |
+| Ansicht | `Alltag` · `Werkstatt`; Datenstatus-Karte `Woher die Daten kommen` |
+| Sticky-Chip | `Günstigste <Preis> €/L · <erste drei Wörter des Namens> …` |
+| Ehrlichkeits-Zeile | `Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).` |
+| NAS-Prüfung | Klick auf die NAS-Pill: `NAS ist wieder online — die Seite lädt jetzt die vollwertige NAS-GUI.` bzw. `NAS ist nach wie vor nicht erreichbar … — der Fallback bleibt aktiv und prüft selbst weiter.` |
+| Ladefehler | `Daten konnten nicht geladen werden (<HTTP-Code>) — die Anzeige bleibt stehen, der nächste Versuch läuft automatisch.` |
 
 ## 5. Zustände: leer, lädt, Fehler
 

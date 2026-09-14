@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 12.09.2026 · App-Version 0.11.0 · RP2-Fallback v2.3 — **die** Anleitung
+> Stand: 14.09.2026 · App-Version 0.33.0 · RP2-Fallback v3.0 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -290,7 +290,16 @@ http://<RP2-IP>:8000
 ```
 
 - NAS online: vollwertige NAS-GUI (React, Live-Charts, System-Panel, Heatmaps, Meine Stationen, Collector-Status, Route-Evaluate) — RP2 proxyst transparent
-- NAS offline: Fallback-GUI (Markierung „FALLBACK · RP2“) mit Status-Pills, E10/E5/Diesel, Tankgröße, günstigste Station, F1/F3 aus Cache, Stationentabelle, Prognose-Sparklines, Dark-Mode, Heartbeat
+- NAS offline: Fallback-GUI v3 (Markierung „FALLBACK · RP2“) — **Antwort-Karte zuerst**
+  (Verdict „Jetzt tanken“ / „Bis <Zeit> Uhr warten lohnt sich“, günstigste Station,
+  Ersparnis, Route), F1/F2 als Chips, **Tagesstreifen 06–24 Uhr** aus dem Puffer,
+  **Stations-Karten** statt Tabelle (Name einzeilig mit Ellipsis, voller Name im
+  `title`, Marke/Stadt/Fahrzeit in der Meta-Zeile, Δ-Chip, 44-px-Route-Button),
+  F3-Fensterliste. **Alltag/Werkstatt** umschaltbar: Werkstatt zeigt
+  Prognose-Sparklines, Rohdaten aller Treibstoffe und den Datenstatus
+  (Puffer, Metadaten, Cache-Alter, NAS). Sticky-Status- und Steuerleiste,
+  Sticky-Aktions-Chip beim Scrollen, Dark-Mode, E10/E5/Diesel, Ort-Filter,
+  Tankgröße, Auto-Refresh alle 60 s, NAS-Pill als Sofort-Prüfung
 
 ### NAS offline testen
 
@@ -320,6 +329,7 @@ Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
 | `/api/v1/stations?fuel=e10` | alle Stationen mit Preisen und echtem Datenalter |
 | `/api/v1/forecasts?fuel=e10` | gecachte Prognosen + 24-h-Zusammenfassung |
 | `/api/v1/decide?fuel=e10&liters=40` | F1/F2/F3-Entscheidung aus dem Cache |
+| `/api/v1/series?station=<uuid>&fuel=e10` | Tagesverlauf 06–24 Uhr einer Station aus dem Puffer (je Stunde die letzte offene Meldung, `null` ohne Meldung; dazu `min`/`max`/`now`) |
 | `/api/v1/nas-check` | NAS sofort neu prüfen (auch im Proxy-Modus) |
 
 Umschaltverhalten:
@@ -355,6 +365,14 @@ Gleichverteilungs-Annahme, Formfehler bis ~8,4 Prozentpunkte) und erwartete
 Ersparnis geschätzt. Der Fallback nennt das bewusst **nicht**
 „Wahrscheinlichkeit“ — die kalibrierte Posterior-Wahrscheinlichkeit (M7)
 liefert ausschließlich das NAS; dort bleibt die Bezeichnung unverändert.
+
+Der **Tagesstreifen** kommt aus dem Collector-Puffer selbst: je Stunde die
+letzte **offene** Meldung für den gewählten Kraftstoff, Ortszeit. Stunden ohne
+Meldung bleiben leer („Leere Stunden hatten keine offene Meldung — nichts wird
+erfunden“). Die Zelle „24“ ist die Mitternachtsstunde (00:00–00:59 des
+Folgetags); der Collector pollt bis 24 Uhr, sie ist im Normalbetrieb leer.
+Grün/rot markieren unteres bzw. oberes Preisdrittel des Tages an dieser
+Station — keine Aussage über morgen.
 
 ## Konfiguration
 
@@ -528,6 +546,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 3.0 | 14.09.2026 | **Fallback-GUI v3** nach dem gebilligten Konzept (PR #112): Antwort-Karte zuerst, Stations-Karten statt Tabelle (kein horizontales Scrollen auf 390 px), Tagesstreifen 06–24 Uhr, Alltag/Werkstatt-Trennung, Sticky-Status-/Steuerleiste und Sticky-Aktions-Chip. Neu: `GET /api/v1/series` (Tagesverlauf aus dem Puffer) und ein 5-s-Snapshot-Cache — ein GUI-Zyklus liest den Puffer jetzt **einmal** statt viermal (Messung: 406 KiB Puffer, 216 Zeilen, 18 Stationen — Snapshot-Read 7,5 ms, `/series` 4,7 ms bei ~2,1 KiB Antwort, `/health` und `/decide` mit warmem Cache 0,8 ms statt 7–8 ms). Template wächst auf 59 KiB im Speicher; keine neuen Abhängigkeiten, keine Proxy-Änderung. |
 | 2.3 | 12.09.2026 | Wartung: Journal-Cap für die RP2-Dienste — Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt (TODO G2). GUI-Code unverändert. |
 | 2.2 | 12.09.2026 | `cache.log` mit 1-MB-Ring-Cap (`CACHE_LOG_MAX_BYTES`) — kein unbegrenztes Wachstum/SD-Verschleiß mehr (TODO G1). Doku: alte RP2-Dateien ins Archiv, Inhalte hier konsolidiert (Dateistruktur, Fallback-API, Umschaltzeiten, Template-Updates, Wartung). |
 | 2.1 | 09.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
