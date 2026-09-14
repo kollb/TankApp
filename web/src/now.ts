@@ -56,6 +56,20 @@ export function confidenceWord(
   return null;
 }
 
+/**
+ * Dasselbe Wort, abgeleitet aus der gemessenen Wahrscheinlichkeit.
+ *
+ * Auf Stufe A zählt die Zahl: Der Server-Badge beschreibt die Streuung der
+ * Empfehlungslage, nicht die Trefferwahrscheinlichkeit — beides zusammen
+ * ergäbe Sätze wie „unsicher (99 %)“. Auf Stufe A kommt das Wort deshalb aus
+ * dem Prozentwert, auf Stufe B (ohne Prozent) weiter aus dem Badge.
+ */
+export function wordFromPercent(percent: number): string {
+  if (percent >= 75) return "ziemlich sicher";
+  if (percent >= 55) return "eher sicher";
+  return "unsicher";
+}
+
 /** Fortschritt bis zur Prozent-Anzeige (nur Stufe B, nie ein Countdown). */
 export function stageProgressNote(decide: DecideResult | null): string | null {
   if (nowStage(decide) !== "B" || !decide) return null;
@@ -123,11 +137,12 @@ function confidenceDetail(
 ): { detail: string; percent: number | null; word: string | null } {
   const stage = nowStage(decide);
   const badge = decide.primary.confidence_badge;
-  const word = confidenceWord(badge);
   const percent =
     stage === "A" && decide.primary.p_correct != null
       ? decide.primary.p_correct * 100
       : null;
+  const word =
+    percent != null ? wordFromPercent(percent) : confidenceWord(badge);
   const parts = [`bei ${liters} L`];
   const security =
     percent != null

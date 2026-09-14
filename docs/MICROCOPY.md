@@ -133,7 +133,7 @@ dann der Grund.
 |---|---|
 | Ausgänge der Ampel-Karte 2.0 | `Jetzt tanken` (grün) · `Warten bis 18–20 Uhr` (grün, mit Uhr) · `Woanders tanken · <Station>` (blau) · `Keine klare Empfehlung` (grau) |
 | Ersparniszeile | `Erwartet <4,0> ct/L günstiger ≈ <1,60> €` — ct/L für Unterschiede, € für Beträge |
-| Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` |
+| Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` — auf Stufe A kommt das **Wort aus dem Prozentwert** (Schwellen 75 / 55). Der Server-Badge beschreibt die Streuung der Lage; beide zusammen ergäben Sätze wie „unsicher (99 %)“ |
 | Stufe B (Worte ohne Prozent) | derselbe Satz ohne Klammer, dazu `Noch <n> abgeschlossene Empfehlungen bis zur Prozent-Anzeige.` |
 | Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind live.` |
 | Drei Fakten | `Jetzt hier` · `Bestes Fenster heute` · `Tank reicht?` — immer dieselben drei, immer diese Reihenfolge |

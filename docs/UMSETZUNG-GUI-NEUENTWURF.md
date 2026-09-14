@@ -61,9 +61,10 @@ und was ehrlich offen bleibt:
 
 | Größe | Vor dem Schnitt | Nach dem Schnitt „Jetzt“ |
 |---|---|---|
-| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **350 in 20 Dateien** |
+| Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** |
 | Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) |
 | Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) |
+| Testfälle „Jetzt“ | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 |
 | API-Aufrufe „Jetzt“ pro Refresh | — | 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) |
 | Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische |
 | Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung |
@@ -103,8 +104,9 @@ und was ehrlich offen bleibt:
 - [x] **1.3** „Warum?“ öffnet das Begründungs-Sheet (Ebene 1) — immer an
   derselben Stelle, Escape/Backdrop schließen, Klick auf den Hintergrund
   schließt, Fokus auf dem Schließen-Knopf.
-- [x] **1.4** Tests: `web/src/now.test.ts` (23 Fälle: Stufen, vier Ausgänge,
-  drei Fakten, Schritte, Frische, Ebene-1-Sätze) und
+- [x] **1.4** Tests: `web/src/now.test.ts` (25 Fälle: Stufen, vier Ausgänge,
+  drei Fakten, Schritte, Frische, Ebene-1-Sätze, kein Widerspruch zwischen
+  Wort und Prozent) und
   `web/src/views/Jetzt.test.tsx` (9 Fälle: Reihenfolge, Zustände, Sheet).
 - [x] **1.5** Verdrahtung in `Dashboard.tsx`: neuer Haupttab **„Jetzt“** als
   Einstieg; der neue Bereich liest die Overview-Antwort des Alltags

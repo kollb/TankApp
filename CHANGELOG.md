@@ -59,8 +59,9 @@ auf Desktop und Smartphone steht aus (Checkliste §7).
 
 ### Tests
 
-- 350 Web-Tests in 20 Dateien (vorher 306 in 18): `web/src/now.test.ts`
-  (23 Fälle — vier Ausgänge, drei Fakten, Schritte, Frische, Ebene-1-Sätze)
+- 352 Web-Tests in 20 Dateien (vorher 306 in 18): `web/src/now.test.ts`
+  (25 Fälle — vier Ausgänge, drei Fakten, Schritte, Frische, Ebene-1-Sätze,
+  Wort/Prozent-Widerspruch)
   und `web/src/views/Jetzt.test.tsx` (9 Fälle — feste Reihenfolge, S0/S1,
   Fehler, Laden, Sheet).
 - Microcopy- und Formatierungs-Ratchet kennen die neuen Dateien;

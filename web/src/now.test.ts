@@ -20,6 +20,7 @@ import {
   nowVerdict,
   savingPerLiterCt,
   stageProgressNote,
+  wordFromPercent,
 } from "./now";
 
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
@@ -140,6 +141,28 @@ describe("Stufen der Sicherheit (§10)", () => {
     const verdict = nowVerdict(input({ decide: learning }));
     expect(verdict?.detail).toContain("Das Modell lernt noch");
     expect(verdict?.percent).toBeNull();
+  });
+});
+
+describe("Wort und Zahl widersprechen sich nicht", () => {
+  it("auf Stufe A kommt das Wort aus dem gemessenen Prozentwert", () => {
+    // Der Server-Badge beschreibt die Lage, nicht die Trefferwahrscheinlichkeit:
+    // badge „low“ bei 99 % ergäbe sonst „unsicher (99 %)“.
+    const sicher = decide("refuel_now", {}, { p_correct: 0.9948, confidence_badge: "low" });
+    const verdict = nowVerdict(input({ decide: sicher }));
+    expect(verdict?.percent).toBe(99);
+    expect(verdict?.word).toBe("ziemlich sicher");
+    expect(verdict?.detail).toContain("ziemlich sicher (99 %)");
+
+    const unsicher = decide("refuel_now", {}, { p_correct: 0.41 });
+    expect(nowVerdict(input({ decide: unsicher }))?.word).toBe("unsicher");
+  });
+
+  it("übersetzt die Schwellen sauber", () => {
+    expect(wordFromPercent(75)).toBe("ziemlich sicher");
+    expect(wordFromPercent(74.9)).toBe("eher sicher");
+    expect(wordFromPercent(55)).toBe("eher sicher");
+    expect(wordFromPercent(54.9)).toBe("unsicher");
   });
 });
 
