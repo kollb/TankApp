@@ -44,6 +44,7 @@ const DIARY = [
 
 /* ---------------- Zustand ---------------- */
 const S = {
+  mockState: "voll", // voll | s1 | s0 — nur Mockup-Schalter, im Produkt automatisch
   liters: 40, latestBy: "egal", timeValue: 12,
   tankQ: 1, selDay: 1, sort: "netto", cmpA: "shell", cmpB: "aral",
   observed: new Set(["shell", "aral"]),
@@ -138,6 +139,11 @@ function compareChart() {
 }
 
 /* ---------------- Geteilte Bausteine ---------------- */
+const readinessBanner = () => S.mockState === "s1"
+  ? `<div class="banner warn">Demo-Stand S1: Preise sind live, das Modell lernt noch — Empfehlungen folgen automatisch.</div>`
+  : S.mockState === "s0"
+  ? `<div class="banner">Demo-Stand S0: Noch keine Daten — zuerst einrichten.</div>`
+  : "";
 const fresh = (p = "Preise 4 Min alt", m = "Prognose 35 Min alt") =>
   `<div class="foot"><span>${p}</span><span>${m}</span><span>Nächste Preise ca. 08:10</span></div>`;
 
@@ -165,6 +171,11 @@ function navHTML(active) {
 
 /* ---------------- Sheet (Ebene 1) ---------------- */
 const WHY = {
+  noModel: {
+    title: "Warum noch keine Empfehlung?",
+    pts: ["Empfehlungen brauchen ein geprüftes Modell — und das braucht etwa 30 Tage Preisdaten.", "Heute ist Tag 12: Die Preise sind live, das Muster ist noch zu dünn.", "Sobald das Modell steht, erscheint hier die erste Empfehlung — automatisch."],
+    visual: null, lab: "#/labor/k4", labLabel: "Abschnitt 4: Wie lernt die App?",
+  },
   entscheidung: {
     title: "Warum „Warten bis 18–20 Uhr“?",
     pts: ["Um 18–20 Uhr ist es an deiner Station meist am billigsten (Muster der letzten 6 Wochen).", "Der aktuelle Preis liegt 3 ct über dem Üblichen — fallen ist wahrscheinlicher als steigen.", "Ähnliche Fälle trafen in 82 von 100 ein (ziemlich sicher)."],
@@ -206,6 +217,40 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet
 
 /* ================= ANSICHTEN ================= */
 function vJetzt() {
+  if (S.mockState === "s0") return `<h1>Jetzt</h1><p class="sub">Willkommen — richten wir die App in 3 Schritten ein.</p>
+  <div class="card decide gray">
+    <p class="action">◉ Noch keine Daten</p>
+    <p class="amount">Schritt 1: Stadt + Kraftstoff · Schritt 2: Stationen wählen · Schritt 3: Collector prüfen.</p>
+    <p class="secure">Danach: Preise in ~5 Minuten, erste Empfehlung in ~30 Tagen.</p>
+    <div class="btnrow"><button class="btn primary" onclick="go('#/system')">Einrichtung starten</button></div>
+  </div>
+  <div class="facts">
+    <div class="fact"><div class="v">—</div><div class="l">Jetzt hier</div></div>
+    <div class="fact"><div class="v">—</div><div class="l">Bestes Fenster</div></div>
+    <div class="fact"><div class="v">—</div><div class="l">Tank reicht?</div></div>
+  </div>
+  ${fresh("Noch keine Daten", "Einrichtung steht aus")}`;
+  if (S.mockState === "s1") return `<h1>Jetzt</h1><p class="sub">Eine Entscheidung, drei Fakten, nächste Schritte.</p>
+  <div class="card decide gray">
+    <p class="action">◉ Noch keine Empfehlung</p>
+    <p class="amount">Das Modell lernt noch — Tag 12 von etwa 30.</p>
+    <p class="secure">Empfehlungen gibt es erst mit geprüftem Modell. Die Preise unten sind live.</p>
+    <div class="btnrow"><button class="btn" onclick="openWhy('noModel')">Warum?</button>
+    <button class="btn primary" onclick="go('#/station/shell')">Günstigste jetzt: Shell</button></div>
+  </div>
+  <div class="facts">
+    <div class="fact"><div class="v num">1,749 €/L</div><div class="l">Jetzt hier (Aral)</div></div>
+    <div class="fact"><div class="v">—</div><div class="l">Bestes Fenster</div></div>
+    <div class="fact"><div class="v">Ja, bis Do</div><div class="l">Tank reicht?</div></div>
+  </div>
+  <h2>Nächste Schritte</h2>
+  <div class="steps">
+    <button class="step" onclick="go('#/stationen')"><span class="arr">→</span><span>Preise vergleichen: Shell jetzt 1,709 €/L</span></button>
+    <button class="step" onclick="go('#/system')"><span class="arr">→</span><span>Was fehlt? Datenstand im System-Tab ansehen</span></button>
+  </div>
+  <h2>Heute im Blick</h2>
+  <div class="card">${stripChart()}<p class="legend">Bisheriges Muster (12 Tage) — noch keine Prognose</p></div>
+  ${fresh("Preise 4 Min alt", "Noch kein Modell — ca. Tag 12 von 30")}`;
   const blocked = S.latestBy === "17:00";
   const save = (4.0 * S.liters) / 100;
   const decide = blocked ? `
@@ -272,6 +317,10 @@ function mapSVG() {
   </svg>`;
 }
 function vStationen() {
+  if (S.mockState === "s0") return `<h1>Stationen</h1><p class="sub">Preis-Atlas: Karte, Liste, Verlauf.</p>
+  <div class="card"><p><b>Noch keine Preise.</b> Lege zuerst Stadt und Stationen fest — dann füllt sich diese Ansicht von selbst.</p>
+  <div class="btnrow"><button class="btn primary" onclick="go('#/system')">Einrichtung starten</button></div></div>
+  ${fresh("Noch keine Daten", "Einrichtung steht aus")}`;
   const by = (a, b) => S.sort === "preis" ? a.price - b.price : S.sort === "entf" ? a.dist - b.dist : a.net - b.net;
   const list = [...STATIONS].sort((a, b) => ((S.observed.has(b.id) ? 1 : 0) - (S.observed.has(a.id) ? 1 : 0)) || by(a, b));
   const rows = list.map((s) => {
@@ -340,6 +389,19 @@ function togglePin(id) {
 
 function tankReach() { return ["—", "Do", "So", "Mi+"][S.tankQ] || "Do"; }
 function vWoche() {
+  if (S.mockState === "s0") return `<h1>Woche</h1><p class="sub">Zeit-Planer: beste Fenster, Tank-Reichweite.</p>
+  <div class="card"><p><b>Noch keine Woche.</b> Ohne Preise und Modell gibt es hier nichts zu planen.</p>
+  <div class="btnrow"><button class="btn primary" onclick="go('#/system')">Einrichtung starten</button></div></div>
+  ${fresh("Noch keine Daten", "Einrichtung steht aus")}`;
+  if (S.mockState === "s1") return `<h1>Woche</h1><p class="sub">Zeit-Planer: beste Fenster, Tank-Reichweite — zum Nachschlagen.</p>
+  <div class="card tight"><b>Tank: ${"▰".repeat(S.tankQ)}${"▱".repeat(4 - S.tankQ)} ${["", "¼", "½", "¾", "voll"][S.tankQ]}</b>
+    <span class="meta"> · Reichtums-Schätzung folgt mit dem Modell.</span>
+    <div class="chips" style="margin:8px 0 0">${[1, 2, 3, 4].map((q) => `<button class="chip${q === S.tankQ ? " on" : ""}" onclick="S.tankQ=${q};render()">${["", "¼", "½", "¾", "voll"][q]}</button>`).join("")}</div></div>
+  <h2>Beste Fenster</h2>
+  <div class="card"><p><b>Noch keine Fenster.</b> Das Modell lernt noch (Tag 12 von etwa 30). Abends war es bisher meist am billigsten — das ist ein Muster, noch keine Prognose.</p>
+  <div class="btnrow"><button class="btn" onclick="openWhy('noModel')">Warum?</button></div></div>
+  <h2>Wochenlinie</h2><div class="card"><p class="legend">Die Wochenlinie erscheint mit dem ersten Modell.</p></div>
+  ${fresh("Preise 4 Min alt", "Noch kein Modell — ca. Tag 12 von 30")}`;
   const day = DAYS[S.selDay];
   const km = [0, 120, 300, 480][S.tankQ];
   const reachOK = S.selDay <= 3;
@@ -387,7 +449,8 @@ function vIch() {
       <h2>Verlauf</h2><div class="diary">${rows}</div>
       <div class="btnrow" style="margin-top:10px"><button class="btn" onclick="toast('CSV exportiert (Entwurf).')">Export (CSV)</button></div>`;
   }
-  if (t === "bilanz") body = `<div class="seg"><button class="${S.bilanz === "monat" ? "on" : ""}" onclick="S.bilanz='monat';render()">Monat</button><button class="${S.bilanz === "jahr" ? "on" : ""}" onclick="S.bilanz='jahr';render()">Jahr</button></div>
+  if (t === "bilanz" && S.mockState === "s0") body = `<div class="card"><p><b>Noch keine Bilanz.</b> Buche den ersten Beleg — oder warte auf Preise für den Vergleich.</p></div>`;
+  if (t === "bilanz" && S.mockState !== "s0") body = `<div class="seg"><button class="${S.bilanz === "monat" ? "on" : ""}" onclick="S.bilanz='monat';render()">Monat</button><button class="${S.bilanz === "jahr" ? "on" : ""}" onclick="S.bilanz='jahr';render()">Jahr</button></div>
     <div class="facts"><div class="fact"><div class="v num">245,60 €</div><div class="l">Getankt (Sep)</div></div>
     <div class="fact"><div class="v num">1,729 €/L</div><div class="l">Ø-Preis</div></div>
     <div class="fact"><div class="v num" style="color:var(--accent)">−8,40 €</div><div class="l">ggü. Stadt-Median</div></div></div>
@@ -420,19 +483,38 @@ function storno(id) { const b = S.belege.find((x) => x.id === id); if (b) { b.vo
 function toggleTheme() { document.body.classList.toggle("light"); render(); }
 
 /* ---------------- System (Haupttab) ---------------- */
-function vSystem() {
-  return `<h1>System</h1><p class="sub">Anlage & Daten: Zustand, Läufe, Störungen. <span class="zdot g" style="display:inline-block"></span> Alles ok</p>
-  <div class="card"><h2 style="margin-top:0">Zustand</h2>
+function sysReadiness() {
+  if (S.mockState === "s0") return `<div class="card"><h2 style="margin-top:0">Bereitschaft: S0 von S3</h2><p>Noch keine Daten. <b>Nächster Schritt:</b> Stadt, Stationen und Collector einrichten — dann kommen Preise in ~5 Minuten.</p><div class="btnrow"><button class="btn primary" onclick="toast('Einrichtung (Entwurf).')">Einrichtung starten</button></div></div>`;
+  if (S.mockState === "s1") return `<div class="card"><h2 style="margin-top:0">Bereitschaft: S1 von S3</h2><p>Preise sind live, das Modell lernt (Tag 12 von ~30). Erste Empfehlung <b>voraussichtlich in ~18 Tagen</b> — automatisch, ohne dass du etwas tun musst.</p></div>`;
+  return "";
+}
+function sysZustand() {
+  if (S.mockState === "s0") return `
+    <div class="zrow"><span class="zdot r"></span><span><b>Collector (Pi)</b><br><small class="meta">noch nicht eingerichtet</small></span><span></span></div>
+    <div class="zrow"><span class="zdot r"></span><span><b>Datenbank (NAS)</b><br><small class="meta">leer</small></span><span></span></div>
+    <div class="zrow"><span class="zdot r"></span><span><b>Modelle</b><br><small class="meta">noch kein Modell</small></span><span></span></div>
+    <div class="zrow"><span class="zdot g"></span><span><b>App</b><br><small class="meta">Version 0.31.0 (Entwurf)</small></span><span></span></div>`;
+  const model = S.mockState === "s1"
+    ? `<div class="zrow"><span class="zdot y"></span><span><b>Modelle</b><br><small class="meta">lernt noch — Tag 12 von ~30</small></span><span></span></div>`
+    : `<div class="zrow"><span class="zdot g"></span><span><b>Modelle</b><br><small class="meta">Lauf heute 06:12, ok</small></span><span></span></div>`;
+  return `
     <div class="zrow"><span class="zdot g"></span><span><b>Collector (Pi)</b><br><small class="meta">Preise 4 Min alt</small></span><span class="meta">08:05</span></div>
     <div class="zrow"><span class="zdot g"></span><span><b>Datenbank (NAS)</b><br><small class="meta">12.345 Preise · 6 Stationen</small></span><span></span></div>
-    <div class="zrow"><span class="zdot g"></span><span><b>Modelle</b><br><small class="meta">Lauf heute 06:12, ok</small></span><span></span></div>
-    <div class="zrow"><span class="zdot g"></span><span><b>App</b><br><small class="meta">Version 0.31.0 (Entwurf)</small></span><span></span></div></div>
+    ${model}
+    <div class="zrow"><span class="zdot g"></span><span><b>App</b><br><small class="meta">Version 0.31.0 (Entwurf)</small></span><span></span></div>`;
+}
+function vSystem() {
+  return `<h1>System</h1><p class="sub">Anlage & Daten: Zustand, Läufe, Störungen.</p>${sysReadiness()}
+  <div class="card"><h2 style="margin-top:0">Zustand</h2>
+    ${sysZustand()}</div>
   <div class="card"><h2 style="margin-top:0">Daten-Abdeckung</h2>
-    <div><b>Gütersloh · E10</b><div class="cover"><i style="width:98%"></i></div><small class="meta">98 % · Lücke: 2.9.</small></div></div>
+    ${S.mockState === "voll" ? `<div><b>Gütersloh · E10</b><div class="cover"><i style="width:98%"></i></div><small class="meta">98 % · Lücke: 2.9.</small></div>` : S.mockState === "s1" ? `<div><b>Gütersloh · E10</b><div class="cover"><i style="width:34%"></i></div><small class="meta">34 % · wächst täglich</small></div>` : `<div><b>Gütersloh · E10</b><div class="cover"><i style="width:0%"></i></div><small class="meta">0 % · noch nichts da</small></div>`}</div>
   <div class="card"><h2 style="margin-top:0">Läufe</h2>
-    <div class="zrow"><span class="zdot g"></span><span><b>Modell-Update</b><br><small class="meta">heute 06:12 · 4 Min · ok</small></span><button class="btn small" onclick="toast('Protokoll (Entwurf).')">Protokoll</button></div>
-    <div class="zrow"><span class="zdot g"></span><span><b>Archiv-Sync</b><br><small class="meta">gestern · ok</small></span><button class="btn small" onclick="toast('Job gestartet (Entwurf).')">Jetzt starten</button></div></div>
-  <div class="card"><h2 style="margin-top:0">Störungen</h2><p>Keine aktiven Störungen.</p>
+    ${S.mockState === "voll" ? `<div class="zrow"><span class="zdot g"></span><span><b>Modell-Update</b><br><small class="meta">heute 06:12 · 4 Min · ok</small></span><button class="btn small" onclick="toast('Protokoll (Entwurf).')">Protokoll</button></div>
+    <div class="zrow"><span class="zdot g"></span><span><b>Archiv-Sync</b><br><small class="meta">gestern · ok</small></span><button class="btn small" onclick="toast('Job gestartet (Entwurf).')">Jetzt starten</button></div>` : S.mockState === "s1" ? `<div class="zrow"><span class="zdot y"></span><span><b>Modell-Update</b><br><small class="meta">noch kein Lauf — erster Lauf nach ~30 Tagen Daten</small></span><span></span></div>
+    <div class="zrow"><span class="zdot g"></span><span><b>Archiv-Sync</b><br><small class="meta">läuft — 34 %, wächst täglich</small></span><span></span></div>` : `<div class="zrow"><span class="zdot r"></span><span><b>Modell-Update</b><br><small class="meta">steht aus — zuerst einrichten</small></span><span></span></div>
+    <div class="zrow"><span class="zdot r"></span><span><b>Archiv-Sync</b><br><small class="meta">steht aus</small></span><span></span></div>`}</div>
+  ${S.mockState === "s0" ? `<div class="card"><h2 style="margin-top:0">Störungen</h2><p>Einrichtung offen — kein Fehler, nur noch nichts da.</p>` : `<div class="card"><h2 style="margin-top:0">Störungen</h2><p>Keine aktiven Störungen.</p>`}
   <div class="btnrow"><button class="btn" onclick="toast('Diagnose-Bündel erstellt (Entwurf).')">Diagnose-Export</button></div></div>${fresh()}`;
 }
 
@@ -457,7 +539,7 @@ function openLab(sec) {
 function labK1() {
   return `<p class="sub">„Woher weiß sie, was Benzin morgen kostet?“</p>
     <div class="card"><p><b>In drei Sätzen:</b> Die App kennt das Muster deiner Stadt (morgens teuer, abends billig, Sonntag anders). Sie schaut, wo der Preis gerade steht. Und sie sagt ehrlich dazu, wie breit die Unsicherheit ist — als Band, nicht als Punkt.</p></div>
-    <div class="card">${fanChart(S.ch1step)}<div class="read">${CH1_TEXT[S.ch1step]}</div>
+    <div class="card">${S.mockState === "voll" ? "" : '<p class="legend" style="margin-top:0">Prinzip-Skizze — nicht deine Daten.</p>'}${fanChart(S.ch1step)}<div class="read">${CH1_TEXT[S.ch1step]}</div>
       <div class="btnrow" style="margin-top:10px">${[1, 2, 3, 4].map((i) => `<button class="chip${S.ch1step === i ? " on" : ""}" onclick="S.ch1step=${i};render()">Schritt ${i}</button>`).join("")}</div></div>
     <details class="neugier"><summary>Für Neugierige: die Methode</summary>
       <p>Je Station schätzt ein Strukturmodell (Tages-/Wochenform) plus AR(2)-Rest die Verteilung der nächsten Stunden. Zwei Modellfamilien werden als Ensemble gemittelt; die Bänder sind Quantile der Bootstrap-Verteilung.</p>
@@ -469,7 +551,7 @@ function labK1() {
 function labK2() {
   return `<p class="sub">„Warum 82 % — und stimmt das?“</p>
     <div class="card"><p><b>In drei Sätzen:</b> Das Prozent heißt: In so vielen von 100 ähnlichen Fällen traf es bisher ein. Die App zählt das an echten Ergebnissen nach — das ist die Trefferquote. Worte sind nur Stufen davon: „ziemlich sicher“ heißt 75–85 von 100.</p></div>
-    <div class="card">${calibChart()}
+    <div class="card">${S.mockState === "voll" ? "" : '<p class="legend" style="margin-top:0">Prinzip-Skizze — nicht deine Daten.</p>'}${calibChart()}
       <div class="read"><b>So liest du das:</b> Waagerecht das Versprechen, senkrecht das Eingetroffene. Punkte auf der Diagonalen = ehrlich versprochen. Der <b style="color:var(--warn)">gelbe Punkt</b>: Bei „82-%-Fällen“ trafen 83 von 100 ein — fast ideal.</div></div>
     <details class="neugier"><summary>Für Neugierige: Brier & M7</summary>
       <p>Der Brier-Score ist der mittlere quadratische Fehler der Wahrscheinlichkeit — 0 ist perfekt. Prozente zeigt die App erst ab Stufe A (≥ 100 gezählte Fälle, Score &lt; 0,25); darunter heißt sie „lernend“ und zeigt nur Worte und Sterne.</p>
@@ -484,8 +566,8 @@ function labK3() {
   const heat = [["So", 3, 4, 3, 2, 1, 2], ["Mo", 3, 3, 2, 2, 0, 1], ["Di", 3, 3, 2, 2, 1, 1], ["Mi", 3, 3, 2, 2, 0, 1], ["Do", 3, 3, 3, 2, 1, 1], ["Fr", 4, 3, 3, 2, 1, 2], ["Sa", 3, 3, 3, 3, 2, 2]];
   return `<p class="sub">„Zufall oder System?“</p>
     <div class="card"><p><b>In drei Sätzen:</b> Jede Station wird mit dem Stadt-Üblichen verglichen (dem Median). Der Abstand wird über 6 Wochen gemittelt — Zufall mittelt sich heraus. Was übrig bleibt, ist der Hauspreis-Abstand der Station.</p></div>
-    <h2>Hauspreis-Vergleich · ${CITY}</h2><div class="card">${bars}<p class="chart-cap">Balken links = meist unter dem Üblichen (grün) · rechts = darüber · Strich = Stadt-Median</p></div>
-    <h2>Wochenrhythmus · Shell</h2><div class="card"><table class="heatmap"><tr><th></th><th>6–9</th><th>9–12</th><th>12–15</th><th>15–18</th><th>18–21</th><th>21–24</th></tr>
+    <h2>Hauspreis-Vergleich · ${CITY}</h2><div class="card">${S.mockState === "voll" ? "" : '<p class="legend" style="margin-top:0">Prinzip-Skizze — nicht deine Daten.</p>'}${bars}<p class="chart-cap">Balken links = meist unter dem Üblichen (grün) · rechts = darüber · Strich = Stadt-Median</p></div>
+    <h2>Wochenrhythmus · Shell</h2><div class="card">${S.mockState === "voll" ? "" : '<p class="legend" style="margin-top:0">Prinzip-Skizze — nicht deine Daten.</p>'}<table class="heatmap"><tr><th></th><th>6–9</th><th>9–12</th><th>12–15</th><th>15–18</th><th>18–21</th><th>21–24</th></tr>
       ${heat.map((r) => `<tr><th>${r[0]}</th>${r.slice(1).map((g) => `<td class="g${g}"></td>`).join("")}</tr>`).join("")}</table>
       <p class="chart-cap">Grün = oft billig · rot = oft teuer · Lies wie einen Stundenplan: 18–21 Uhr fast immer grün.</p></div>
     <details class="neugier"><summary>Für Neugierige: δ̂ und ε</summary>
@@ -498,7 +580,7 @@ function labK3() {
 function labK4() {
   const eps = S.eps;
   const hits = Math.round(78 - (eps - 1.0) * 22), count = Math.round(100 - (eps - 1.0) * 30);
-  const list = DIARY.filter((d) => S.diaryFilter === "alle" || (S.diaryFilter === "treffer") === d.ok).map(dEntry).join("") || "<p>Keine Einträge.</p>";
+  const list = S.mockState === "voll" ? (DIARY.filter((d) => S.diaryFilter === "alle" || (S.diaryFilter === "treffer") === d.ok).map(dEntry).join("") || "<p>Keine Einträge.</p>") : "<p><b>Noch keine Einträge.</b> Das Tagebuch beginnt mit der ersten Empfehlung.</p>";
   return `<p class="sub">„Was passiert, wenn sie danebenlag?“</p>
     <div class="card"><p><b>In drei Sätzen:</b> Jede Empfehlung wird aufgeschrieben — mit oder ohne deine Tankung. Nach Fensterende vergleicht die App Vorhersage mit Realität. Aus allen Vergleichen entstehen Trefferquote und Schwellen: Die App eicht sich an sich selbst.</p></div>
     <h2>Prognose-Tagebuch</h2>
@@ -508,8 +590,8 @@ function labK4() {
     <div class="diary">${list}</div>
     <h2>Vorsicht-Regler: Was wäre gewesen, wenn …?</h2><div class="card">
       <label for="eps"><b>ε = ${eps.toFixed(1)} ct/L</b> — ab diesem Unterschied wird eine Empfehlung ausgesprochen.</label>
-      <input id="eps" type="range" min="0.5" max="2" step="0.1" value="${eps}" oninput="S.eps=+this.value;render()" aria-label="Vorsicht-Schwelle">
-      <p>Bei ε = ${eps.toFixed(1)}: <b class="num">${hits} von ${count}</b> Empfehlungen hätten getroffen.</p>
+      <input id="eps" type="range" min="0.5" max="2" step="0.1" value="${eps}" oninput="S.eps=+this.value;render()" aria-label="Vorsicht-Schwelle"${S.mockState === "voll" ? "" : " disabled"}>
+      ${S.mockState === "voll" ? `<p>Bei ε = ${eps.toFixed(1)}: <b class="num">${hits} von ${count}</b> Empfehlungen hätten getroffen.</p>` : `<p class="legend">Der Regler rechnet, sobald gezählte Empfehlungen vorliegen.</p>`}
       <p class="legend">Mutig (kleines ε) = mehr Ratschläge, mehr Fehler · vorsichtig (großes ε) = weniger, aber sicherere.</p></div>
     <details class="neugier"><summary>Für Neugierige: zwei Ledgers</summary>
       <p>Das <b>Advice-Ledger</b> zählt Ratschläge gegen Realität (braucht keine Tankung). Das <b>Wallet-Ledger</b> zählt deine Euro gegen den Median (braucht Belege). Beide zusammen: Können der App und Nutzen für dich — getrennt ehrlich.</p></details>`;
@@ -530,7 +612,7 @@ function labK5() {
 function labSpiel() {
   return `<p class="sub">Freies Prüfen: Was hätte welche Strategie im letzten Quartal gebracht?</p>
   <div class="card"><div class="field"><label>Strategie</label><select id="sp-s"><option>App-Empfehlung folgen</option><option>Immer billigste Station heute</option><option>Immer Aral nebenan</option><option>Immer Sonntag tanken</option></select></div>
-  <button class="btn primary" onclick="toast('Nachgerechnet: App-Strategie −24,10 € ggü. Median (Entwurf).')">Nachrechnen</button>
+  ${S.mockState === "voll" ? `<button class="btn primary" onclick="toast(\'Nachgerechnet: App-Strategie −24,10 € ggü. Median (Entwurf).\')">Nachrechnen</button>` : `<p class="legend">Nachrechnen braucht Preisdaten — in S0/S1 noch nicht möglich.</p>`}
   <p class="legend">Rechnet auf echten Vergangenheits-Preisen, nicht auf Prognosen — deshalb ehrlich vergleichbar.</p></div>
   <div class="card"><h2 style="margin-top:0">Export</h2><div class="btnrow"><button class="btn" onclick="toast('CSV exportiert (Entwurf).')">Tagebuch (CSV)</button><button class="btn" onclick="toast('PNG exportiert (Entwurf).')">Diagramm (PNG)</button></div></div>`;
 }
@@ -541,14 +623,18 @@ function vLabor() {
   return `<div style="margin-bottom:8px"><button class="backlink" onclick="go(S.labReturn||'#/jetzt')">← Zurück zum Alltag</button></div>
   <h1><span style="color:var(--labor)">◈</span> Labor</h1>
   <p class="sub">Verstehen, prüfen, spielen — in deinem Tempo. Nichts hier muss man wissen, um zu tanken. Einfach aufklappen, was interessiert.</p>
-  <div class="card"><h2 style="margin-top:0">Vertrauens-Konto · ${CITY}, ${FUEL}</h2>
+  ${S.mockState === "voll" ? `<div class="card"><h2 style="margin-top:0">Vertrauens-Konto · ${CITY}, ${FUEL}</h2>
     <p class="sub">Trefferquote der Empfehlungen (6 Wochen)</p>
     <div class="konto-bar"><i style="width:78%"></i></div>
     <p><b class="num">78 von 100 ✓</b><br>Versprochen waren bei „ziemlich sicher“ ≈ 75–85 von 100 — passt.</p>
-    <div class="btnrow"><button class="btn" onclick="openLab('k2')">Wie wird das gezählt?</button></div></div>
+    <div class="btnrow"><button class="btn" onclick="openLab('k2')">Wie wird das gezählt?</button></div></div>` : `<div class="card"><h2 style="margin-top:0">Vertrauens-Konto · ${CITY}, ${FUEL}</h2>
+    <p class="sub">Trefferquote der Empfehlungen</p>
+    <div class="konto-bar"><i style="width:2%"></i></div>
+    <p><b class="num">Noch nichts zu zählen — 0 von 100.</b><br>Das Konto füllt sich mit der ersten Empfehlung, sobald das Modell steht.</p>
+    <div class="btnrow"><button class="btn" onclick="openLab('k2')">Wie wird gezählt?</button></div></div>`}
   <div class="chips">${jump}</div>
-  <h2>Zuletzt im Tagebuch</h2><div class="diary">${teaser}</div>
-  <div class="btnrow" style="margin-top:10px"><button class="btn" onclick="openLab('k4')">Im Abschnitt 4 ansehen</button></div>
+  ${S.mockState === "voll" ? `<h2>Zuletzt im Tagebuch</h2><div class="diary">${teaser}</div>
+  <div class="btnrow" style="margin-top:10px"><button class="btn" onclick="openLab('k4')">Im Abschnitt 4 ansehen</button></div>` : ``}
   <h2>Abschnitte</h2>
   ${labSection("k1", "1", "Was sagt die App eigentlich vorher?", labK1())}
   ${labSection("k2", "2", "Was heißt „ziemlich sicher“?", labK2())}
@@ -563,9 +649,19 @@ function vLabor() {
 function headerHTML(isLabor) {
   if (isLabor) return `<div class="topbar"><div class="topbar-inner"><span class="brand"><span class="flask">◈</span> Labor</span>
     <span class="mockbadge">Entwurf · Beispielzahlen</span>
+    <select class="mocksel" onchange="S.mockState=this.value;render()" aria-label="Datenstand simulieren" title="Datenstand simulieren (nur Entwurf)">
+      <option value="voll"${S.mockState === "voll" ? " selected" : ""}>Modell aktiv</option>
+      <option value="s1"${S.mockState === "s1" ? " selected" : ""}>S1: ohne Modell</option>
+      <option value="s0"${S.mockState === "s0" ? " selected" : ""}>S0: leer</option>
+    </select>
     <button class="statusdot" onclick="go('#/system')"><span class="dot"></span>System ok</button></div></div>`;
   return `<div class="topbar"><div class="topbar-inner"><span class="brand">TankApp <small>· ${CITY} · ${FUEL}</small></span>
     <span class="mockbadge">Entwurf · Beispielzahlen</span>
+    <select class="mocksel" onchange="S.mockState=this.value;render()" aria-label="Datenstand simulieren" title="Datenstand simulieren (nur Entwurf)">
+      <option value="voll"${S.mockState === "voll" ? " selected" : ""}>Modell aktiv</option>
+      <option value="s1"${S.mockState === "s1" ? " selected" : ""}>S1: ohne Modell</option>
+      <option value="s0"${S.mockState === "s0" ? " selected" : ""}>S0: leer</option>
+    </select>
     <button class="statusdot" onclick="go('#/system')"><span class="dot"></span><span>ok</span></button></div></div>`;
 }
 function render() {
@@ -588,6 +684,7 @@ function render() {
   else if (h === "#/system" || h === "#/anlage") { active = "system"; html = vSystem(); }
   else { active = "jetzt"; html = vJetzt(); }
   document.body.classList.toggle("labor", isLabor);
+  if (S.mockState !== "voll") html = readinessBanner() + html;
   $("#app").innerHTML = `${headerHTML(isLabor)}<main class="wrap" id="main">${html}</main>${navHTML(active)}`;
   if (S.labScroll && !h.startsWith("#/labor/")) { /* Sprung aus openLab nach Hashwechsel */ }
   if (S.labScroll) {

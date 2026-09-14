@@ -756,6 +756,31 @@ jede Ansicht kennt alle Zustände, jeder Zustand hat ein festes Gesicht:
 | Offline | Banner + lesbarer Cache-Stand + Warteschlange für Belege | „Offline — Stand 07:55. Belege werden zwischengespeichert.“ |
 | Neu/Geändert | „Neu“-Punkt max. 1×, Update-Banner mit „Was ist neu?“ | nach App-Update |
 
+**Bereitschaft: Was geht wann (S0–S3).** Kein Modell ist kein Fehler,
+sondern der Normalzustand am Anfang. Die App kennt vier Stufen — global
+berechnet, im System-Tab erklärt, auf betroffenen Ansichten als Hinweis
+sichtbar:
+
+| Stufe | Lage | Das geht | Das geht noch nicht |
+|---|---|---|---|
+| **S0 „Einrichten“** | Keine Stationen, keine Preise | Einrichtungs-Assistent (Stadt → Stationen → Collector), Belege von Hand, Labor lesen | Alles mit Live-Daten |
+| **S1 „Preise, kein Modell“** | Preise live, < ~30 Tage Daten | Stationen voll (Preise, Karte, Verlauf), Belege, Bilanz, historisches Muster als „Bisher“ | Empfehlung, Fenster, Sterne, Prozente, Tagebuch |
+| **S2 „Lernend“** (= Stufe B) | Modell da, < 100 gezählte Empfehlungen | Alles aus S1 + Empfehlung in Worten/Sternen, Tagebuch füllt sich | Prozente |
+| **S3 „Kalibriert“** (= Stufe A) | ≥ 100 Empfehlungen, Brier < 0,25 | Alles, inkl. Prozente | — |
+
+**Regeln für S0/S1:**
+- Grau statt Grün: Was fehlt, steht als graue Karte mit **Grund + Fortschritt
+  + nächstem Schritt** da („Noch keine Empfehlung — Tag 12 von ~30 → Was
+  fehlt?“). Nie leer, nie erfunden.
+- „Bisher“ ≠ „Erwartet“: Historische Muster sind beschriftet („Bisheriges
+  Muster, 12 Tage“), nie als Prognose verkleidet.
+- Das Labor bleibt lesbar: Methode und Glossar funktionieren ohne Daten;
+  alle Beispiel-Grafiken tragen „Prinzip-Skizze — nicht deine Daten“.
+- Countdowns sind Schätzungen („voraussichtlich in ~18 Tagen“) und stehen
+  nur im System-Tab — nicht als Versprechen in Jetzt.
+- Ersteinrichtung (S0): Eine geführte Ansicht ersetzt die Tabs, bis Stadt,
+  Stationen und Collector stehen — abbrechbar, dann S0-Leerzustände.
+
 **Neu: drei Ehrlichkeits-Stufen für Sicherheit** (ersetzen das binäre Gate):
 
 - **Stufe A „Nachgewiesen“** (≥ 100 abgeschlossene Empfehlungen, Brier <
@@ -982,7 +1007,7 @@ Entschieden am 14.9. (Mockup-Runde 1) — und was noch offen ist:
 
 **Verbleibend offen:** Feedback zur Mockup-Runde 2 (diese Version) —
 insbesondere: Ist die Labor-Seite als Aufklapp-Seite übersichtlich genug?
-Fehlt in Woche ohne Erinnerung etwas? Danach: eine Ansicht als
+Beantwortet 14.9.: Was ohne Modell geht (S0–S3, §10 + Demo-Schalter im Mockup). Offen bleibt: Fehlt in Woche ohne Erinnerung etwas? Danach: eine Ansicht als
 Produktions-Prototyp mit echten Daten (Nagelprobe für Raster, Bausteine
 und Erklär-Treppe).
 hren — als Nagelprobe für Raster,
