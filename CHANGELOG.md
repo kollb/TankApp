@@ -17,8 +17,9 @@ Atlas-Zeile, „A gegen B“ mit Vorauswahl, eine graue Preisvergleich-Karte in
 „Jetzt“ (das Beste ist auch ohne Modell sichtbar) und „Heute im Blick“ mit
 Zahlen statt nur Kästchen. Ehrlich dazu: die manuelle Abnahme am echten
 Stand (S0/S1/Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe,
-§7.2–7.4) steht weiter aus; die Browser-Suite ist auf „Labor“ umgestellt,
-ihre Bestätigung liefert der CI-Lauf (im Sandbox fehlt der Browser).
+§7.2–7.4) steht weiter aus; die Browser-Suite ist auf „Labor“ umgestellt und
+läuft im CI 16/16 grün (Desktop 1440 px + Mobil 390 px) — im Sandbox fehlt
+der Playwright-Browser, der Beleg kommt aus dem CI-Lauf.
 
 ### Hinzugefügt
 
@@ -83,8 +84,13 @@ ihre Bestätigung liefert der CI-Lauf (im Sandbox fehlt der Browser).
   Roll-Backtest füllt sie“ — statt einer leeren Zahl.
 - **ProfileManager-Text**: „Stadt und gewählte Station bleiben Gerätesache“
   (vorher stand dort „Vergleichsstation … Gerätetzung“).
+- **Abschnitts-Fragen sind Überschriften**: Der Titel im Aufklapp-Knopf trägt
+  jetzt `role="heading" aria-level={2}` — der Knopf bleibt der Schalter, aber
+  Vorleser (und die Browser-Suite) finden den Abschnitt als Überschrift unter
+  dem Seitenkopf. Die Zusage steckt in `views/Labor.test.tsx`.
 - **Ratchets**: `microcopy.test.ts` und `format-convention.test.ts` prüfen
-  `lab.ts` und `views/Labor.tsx` mit.
+  `lab.ts` und `views/Labor.tsx` mit; `playwright.config.ts` hängt CI-Fehler
+  als GitHub-Annotation an den PR (statt nur ins Log-Archiv).
 
 ### Entfernt
 
@@ -100,12 +106,14 @@ ihre Bestätigung liefert der CI-Lauf (im Sandbox fehlt der Browser).
   Trefferquote) und `views/Labor.test.tsx` (7 Tests — fünf Abschnitte,
   Spielplatz, Tagebuch-Grund, Sprung mit Herkunft).
 - 758 Python-Tests (vorher 756): zwei Tagebuch-Tests in `tests/test_b4.py`.
-- Bundle: index 507,80 kB / 152,18 kB gzip (vorher 493,80/146,58).
-- **Browser-Suite**: `web/e2e/app.spec.ts` und `horizons.spec.ts` sind auf
-  „Labor“ umgeschrieben (Heading „Verstehen, warum die App das sagt“,
-  Horizont-Tabs und Zeitraum-Umschalter im Labor). Im Sandbox fehlt der
-  Browser-Download, deshalb entscheidet der CI-Lauf — die Spezifikationen
-  sind geschrieben, aber lokal unbestätigt.
+- Bundle: index 507,83 kB / 152,19 kB gzip (vorher 493,80/146,58).
+- **Browser-Suite 16/16 grün im CI** (8 Tests × Desktop 1440 px/Mobil
+  390 px): `web/e2e/app.spec.ts` und `horizons.spec.ts` sind auf „Labor“
+  umgeschrieben (Heading „Verstehen, warum die App das sagt“, Horizont-Tabs
+  und Zeitraum-Umschalter im Labor). Lokal war das nicht prüfbar (der
+  Browser-Download scheitert im Sandbox, ECONNRESET); die erste CI-Runde
+  deckte dabei genau den Fehler auf, den der Sichtprüfer sonst gefunden
+  hätte — die Abschnitts-Fragen waren (noch) keine Überschriften.
 
 ## [0.35.0] – 2026-09-14
 

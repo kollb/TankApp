@@ -17,9 +17,9 @@
 > (**Woche** + **Ich**) und Phase 3 (**Labor**) sind gebaut und getestet: die
 > Bereiche `Jetzt.tsx`/`Stationen.tsx`/`Woche.tsx`/`Ich.tsx`/`Labor.tsx`
 > stehen, die alten Tabs „Alltag“, „Einstellungen“ und „Werkstatt“ sind
-> ersetzt (kein Nebeneinander, §16). Der CI-Spiegel läuft grün; die
-> Browser-Suite ist auf „Labor“ umgestellt, ihr Beleg kommt aus dem CI-Lauf
-> (im Sandbox ließ sich kein Playwright-Browser installieren).
+> ersetzt (kein Nebeneinander, §16). Der CI-Spiegel läuft grün, inklusive
+> Browser-Suite (16/16; im Sandbox ließ sich kein Playwright-Browser
+> installieren, der Beleg kommt aus dem CI-Lauf).
 > **Reihenfolge abweichend:** Phase 3 wurde auf Nutzerwunsch (14.09.2026) vor
 > der manuellen Abnahme gebaut; die Abnahme am echten Stand (S0/S1/Stufe A/
 > Fehler/Offline, §7.2), der Pi-Fallback (7.3) und die Vorleser-Stichprobe
@@ -73,11 +73,11 @@ und was ehrlich offen bleibt:
 |---|---|---|---|---|
 | Unit-Tests Web (`vitest`, `src/`) | 306 in 18 Dateien | **352 in 20 Dateien** | **462 in 26 Dateien** | **492 in 28 Dateien** |
 | Python-Tests (`pytest -q`) | 754 | **756** (+1 Fallback-Test, +1 Dokument im Link-Test) | **756** (unverändert) | **758** (+2 Tagebuch-Tests in `tests/test_b4.py`) |
-| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) | **507,80 kB / 152,18 kB** (+3,8 % gzip ggü. Phase 2) |
+| Bundle (index JS, gzip) | 463,05 kB / 137,59 kB | **479,65 kB / 141,99 kB** (+3,2 % gzip) | **493,80 kB / 146,58 kB** (+3,2 % gzip ggü. „Jetzt“) | **507,83 kB / 152,19 kB** (+3,8 % gzip ggü. Phase 2) |
 | Testfälle der neuen Bereiche | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 | Logik: `strip.test.ts` 7 + `stations.test.ts` 30 + `week.test.ts` 19 · Rendering: `views/Stationen.test.tsx` 7 + `views/Woche.test.tsx` 7 + `views/Ich.test.tsx` 9 (inkl. `mostUsedStation`) | Logik: `lab.test.ts` 16 (Abschnitte, Sprung, Tagebuch-Sprache) · Rendering: `views/Labor.test.tsx` 7 (fünf Abschnitte, Spielplatz, Tagebuch-Grund, Sprung mit Herkunft) |
 | API-Aufrufe pro Refresh | — | „Jetzt“: 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) | „Jetzt“/„Woche“/„Ich“: je 1× `/api/v1/overview`; „Stationen“: Overview + 1× `/api/v1/series` (nur für die gewählte Station, 7 Tage) | „Labor“: Overview + `stats/summary` + `series`/`forecast`/`heatmap`/`selection` **statt** der Werkstatt-Aufrufe (dieselben Endpunkte wie vorher) + neu `advice/diary?limit=50` |
 | Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische | „Stationen“: Karte → Liste → Detail → Vergleich → Frische-Fußzeile (feste Reihenfolge in `Stationen.tsx`) | „Labor“: Kopf (Herkunft) → Vertrauens-Konto → Sprungleiste → 1 Prognose → 2 Sicherheit → 3 Stationen → 4 Lernen → 5 Glossar → Spielplatz (feste Reihenfolge aus `lab.ts` `LAB_SECTIONS`) |
-| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt | **offen** — Specs auf „Labor“ umgeschrieben, aber im Sandbox ohne Browser-Download nicht lauffähig; Beleg kommt aus dem CI-Lauf |
+| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) | **16/16 grün** — 8 Tests × 2 Viewports, Specs auf die neue Tab-Struktur umgestellt | **16/16 grün** — Specs auf „Labor“ umgeschrieben; im Sandbox ohne Browser-Download nicht lauffähig, der CI-Lauf belegt sie (und fand die fehlende Heading-Rolle der Abschnitts-Fragen) |
 | Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung | **offen** — braucht echte Nutzung |
 
 ## 1. Phase 0 — Fundament
