@@ -1,11 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Dieser Fluss lebt noch im
-// Alltagstab (Phase 1 verschiebt ihn) — deshalb ausdrücklich dorthin wechseln.
-async function gotoAlltag(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
-}
+// GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“ — der komplette
+// Entscheidungs-Fluss „decide → intent → fill → due“ lebt dort.
 
 // D2: Entscheidungs-Fluss „decide → intent → fill → due“ mit Mocks.
 // Schützt die V3-Fixes: Erfolgsmeldung nur bei Erfolg, Due-Prompt nach
@@ -28,10 +24,10 @@ function stationRow() {
   };
 }
 
-// B7: Der Alltagstabs holt decide + fills + stats/summary + due-Episoden +
-// Tageskurve als EINE Anfrage aus /api/v1/overview — die Tests mocken deshalb
-// zusätzlich den Overview-Payload, zusammengesetzt aus denselben Fixtures,
-// die auch die (weiterhin gemockten) Einzelpfade bedienen.
+// B7: „Jetzt“ und „Woche“ holen decide + fills + stats/summary + due-Episoden
+// + Tageskurve als EINE Anfrage aus /api/v1/overview — die Tests mocken
+// deshalb zusätzlich den Overview-Payload, zusammengesetzt aus denselben
+// Fixtures, die auch die (weiterhin gemockten) Einzelpfade bedienen.
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 
 const DECIDE_FIXTURE = {
@@ -55,6 +51,7 @@ const DECIDE_FIXTURE = {
   calibrated: false,
   decision_ready: false,
   error_code: null,
+  tank: null,
 };
 
 const STATS_FIXTURE = {
@@ -167,7 +164,7 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
     }
     await route.fulfill({ json: { count: fillsPosted.length, fills: fillsPosted, error_code: null } });
   });
-  // B7: der Alltagstabs liest aus /overview statt den Einzelpfaden —
+  // B7: „Jetzt“ liest aus /overview statt den Einzelpfaden —
   // derselbe Inhalt, eine Antwort; die Closure folgt `due`/`fillsPosted`.
   await page.route("**/api/v1/overview?*", async (route) => {
     await route.fulfill({
@@ -195,15 +192,17 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
     });
   });
 
-  await gotoAlltag(page);
-  await expect(page.getByText("WARTEN").first()).toBeVisible();
+  await page.goto("/");
+  // Der Einstieg ist „Jetzt“: die Warten-Karte mit dem sekundären Intent-
+  // Knopfen (die Feedback-Schleife M7 bleibt, klein und unter der Primäraktion).
+  await expect(page.getByText("▼ Warten")).toBeVisible();
 
   // 1) Intent „Ich warte“ setzen.
   await page.getByRole("button", { name: "Ich warte", exact: true }).click();
   await expect(page.getByText("Auswahl gespeichert!")).toBeVisible();
   expect(intents).toContain("wait");
 
-  // 2) Fenster vorbei → Due-Prompt erscheint nach dem nächsten Reload.
+  // 2) Fenster vorbei → Due-Prompt erscheint nach dem nächsten Refresh.
   due = true;
   await page.getByRole("button", { name: "Daten aktualisieren" }).click();
   await expect(
@@ -228,7 +227,11 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
             id: "ep-1",
             status: "due",
             intent: "wait",
-            last_snapshot: { station_id: "a", station_name: "F-Station", expected_price: 1.719 },
+            last_snapshot: {
+              station_id: "a",
+              station_name: "F-Station",
+              expected_price: 1.719,
+            },
           },
         ],
       },
@@ -248,7 +251,7 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
     }
     await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
   });
-  // B7: Overview-Antwort für den Alltagstabs (due-Episode von Anfang an).
+  // B7: Overview-Antwort für „Jetzt“ (due-Episode von Anfang an).
   await page.route("**/api/v1/overview?*", async (route) => {
     await route.fulfill({
       json: {
@@ -273,7 +276,7 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
     });
   });
 
-  await gotoAlltag(page);
+  await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Hast du getankt?" }),
   ).toBeVisible();

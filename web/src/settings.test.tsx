@@ -1,16 +1,23 @@
 // @vitest-environment happy-dom
-// C4: Einstellungen-Tab — Schwellen-Tabelle (read-only aus
-// /api/v1/stats/summary → thresholds) und Dark/Light-Umschaltung.
+// C4 (weitergezogen, Phase 2): „Einstellungen verschwindet als eigener Tab“
+// (UI-NEUENTWURF §4.2) — die Fahrzeug-Felder wohnen in „Ich → Fahrzeug“
+// (VehiclePanel), Kontext/Schwellen/Darstellung/Daten in „Ich →
+// Einstellungen“ (SettingsPanel).
 //
-// Die Tabelle zeigt ausschließlich Server-Werte: die Tests prüfen, dass
-// alle neun Schwellen der Engine (app/thresholds.py DEFAULT_THRESHOLDS)
-// genau ein Mal vorkommen, dass Werte nur über die Formatter formatiert
-// werden (€ mit euro(), Wahrscheinlichkeit mit percentLabel()) und dass
+// Die Schwellen-Tabelle zeigt ausschließlich Server-Werte: die Tests
+// prüfen, dass alle neun Schwellen der Engine (app/thresholds.py
+// DEFAULT_THRESHOLDS) genau ein Mal vorkommen, dass Werte nur über die
+// Formatter formatiert werden (€ mit euro()/deTrimmed, P in %) und dass
 // der Status ehrlich sagt, womit die Engine rechnet.
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SettingsView, type SettingsViewProps } from "./views/Settings";
+import {
+  SettingsPanel,
+  VehiclePanel,
+  type SettingsPanelProps,
+  type VehiclePanelProps,
+} from "./views/Settings";
 import {
   APP_THEME_META_COLOR,
   APP_THEMES,
@@ -21,7 +28,11 @@ import {
   thresholdSampleLine,
   thresholdStatusLine,
   thresholdValueLabel,
+  type Profiles,
+  type ResourceState,
   type StatsSummary,
+  type Station,
+  type Stations,
   type ThresholdTuning,
 } from "./data";
 
@@ -62,9 +73,7 @@ function tuning(overrides: Partial<ThresholdTuning> = {}): ThresholdTuning {
   };
 }
 
-function summary(
-  overrides: Partial<StatsSummary> = {},
-): StatsSummary {
+function summary(overrides: Partial<StatsSummary> = {}): StatsSummary {
   return {
     generated_at: "2026-09-13T08:00:00+02:00",
     fuel: "e10",
@@ -92,7 +101,7 @@ function summary(
   };
 }
 
-const emptyResource = {
+const emptyResource: ResourceState<never> = {
   data: null,
   error: false,
   errorCode: null,
@@ -100,22 +109,38 @@ const emptyResource = {
   receivedAt: 0,
 };
 
-function viewProps(
-  overrides: Partial<SettingsViewProps> = {},
-): SettingsViewProps {
+const station = (id: string, name: string): Station => ({
+  station_id: id,
+  city: "Frankfurt",
+  name,
+  brand: "Shell",
+  fuel: "e10",
+  maps_url: null,
+  dist_km: 1.2,
+  dist_mode: "road",
+  lat: null,
+  lon: null,
+  price: 1.699,
+  last_price: 1.689,
+  status: "open",
+  fresh: true,
+  observed_at: "2026-09-14T07:55:00+02:00",
+  age_minutes: 5,
+});
+
+const cities: Stations = {
+  generated_at: "2026-09-13T08:00:00+02:00",
+  fuel: "e10",
+  cities: ["Frankfurt", "Gütersloh"],
+  stations: [station("st-1", "Shell Hauptstraße")],
+  connection_error: null,
+  fresh_prices: 1,
+};
+
+function vehicleProps(
+  overrides: Partial<VehiclePanelProps> = {},
+): VehiclePanelProps {
   return {
-    data: {
-      generated_at: "2026-09-13T08:00:00+02:00",
-      fuel: "e10",
-      cities: ["Frankfurt", "Gütersloh"],
-      stations: [],
-      connection_error: null,
-      fresh_prices: 0,
-    },
-    activeCity: "Frankfurt",
-    setCity: () => {},
-    fuel: "e10",
-    setFuel: () => {},
     liters: 40,
     setLiters: () => {},
     consumption: 7,
@@ -131,22 +156,127 @@ function viewProps(
     autoZ: { z: 10, isPeak: false },
     detourMode: "onroute",
     setDetourMode: () => {},
-    statsSummaryRes: { ...emptyResource, data: summary() },
-    refreshNow: () => {},
-    theme: "dark",
-    setTheme: () => {},
+    profilesRes: {
+      ...emptyResource,
+      data: { profiles: [], active: null } as Profiles,
+    } as ResourceState<Profiles>,
+    activeProfileId: "",
+    onActivateProfile: () => {},
+    profilesBusy: false,
+    onOpenProfileManager: () => {},
     ...overrides,
   };
 }
 
-describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
+function settingsProps(
+  overrides: Partial<SettingsPanelProps> = {},
+): SettingsPanelProps {
+  return {
+    data: cities,
+    activeCity: "Frankfurt",
+    setCity: () => {},
+    fuel: "e10",
+    setFuel: () => {},
+    statsSummaryRes: {
+      ...emptyResource,
+      data: summary(),
+    } as ResourceState<StatsSummary>,
+    refreshNow: () => {},
+    theme: "dark",
+    setTheme: () => {},
+    pinnedStations: [{ station: station("st-1", "Shell Hauptstraße") }],
+    togglePin: () => {},
+    version: "0.35.0",
+    onOpenGlossary: () => {},
+    ...overrides,
+  };
+}
+
+describe("Ich → Fahrzeug (VehiclePanel)", () => {
+  it("bietet Tankmenge, Verbrauch, Tankgröße, Zeitwert, Tempo, Fahrtcharakter", () => {
+    const html = renderToStaticMarkup(<VehiclePanel {...vehicleProps()} />);
+    // Eingabeorte mit den Ids, die der alte Einstellungen-Tab hatte.
+    expect(html).toContain('id="liters"');
+    expect(html).toContain('id="consumption"');
+    expect(html).toContain('id="tankCapacity"');
+    expect(html).toContain('id="timeValue"');
+    expect(html).toContain('id="speed"');
+    expect(html).toContain('id="detourMode"');
+    // Aktiver Zeitwert (manuell) und die Auto-Erklärung (verbatim).
+    expect(html).toContain("12 €/h");
+    expect(html).toContain(
+      "0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.",
+    );
+    // Zeitwert 0 = Automatik zeigt den auto-berechneten Wert.
+    const auto = renderToStaticMarkup(
+      <VehiclePanel {...vehicleProps({ timeValue: 0, timeValueUsed: 16 })} />,
+    );
+    expect(auto).toContain("Auto (16 €/h offpeak)");
+  });
+
+  it("bietet Profile als Segment-Steuerung (+ Neu / verwalten)", () => {
+    const html = renderToStaticMarkup(
+      <VehiclePanel
+        {...vehicleProps({
+          profilesRes: {
+            ...emptyResource,
+            data: {
+              profiles: [
+                {
+                  id: "p1",
+                  name: "Mein Auto",
+                  fuel: "e10",
+                  liters: 40,
+                  consumption: 7,
+                  time_value_eur_h: 12,
+                  speed_kmh: 45,
+                  detour_mode: "onroute",
+                  tank_capacity_l: 50,
+                },
+              ],
+              active: "p1",
+            } as Profiles,
+          } as ResourceState<Profiles>,
+          activeProfileId: "p1",
+        })}
+      />,
+    );
+    expect(html).toContain("Mein Auto");
+    expect(html).toContain("+ Neu / verwalten");
+    expect(html).toContain('role="group"');
+  });
+
+  it("kennzeichnet Profil-Werte als haushaltsweit, sonst gerätelokal", () => {
+    const withProfile = renderToStaticMarkup(
+      <VehiclePanel {...vehicleProps({ activeProfileName: "Mein Auto" })} />,
+    );
+    expect(withProfile).toContain("Profil „Mein Auto“ — gilt haushaltsweit");
+    const without = renderToStaticMarkup(
+      <VehiclePanel {...vehicleProps()} />,
+    );
+    expect(without).toContain("nur dieses Gerät");
+  });
+});
+
+describe("Ich → Einstellungen (SettingsPanel)", () => {
+  it("bietet Stadt und Kraftstoff (Kontext — gilt für alle Ansichten)", () => {
+    const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
+    expect(html).toContain('id="settings-city"');
+    // Stadt-Optionen aus den Daten.
+    expect(html).toContain("Gütersloh");
+    // Kraftstoff-Schnellwahl mit den drei Werten.
+    expect(html).toContain("E10");
+    expect(html).toContain("E5");
+    expect(html).toContain("Diesel");
+  });
+
   it("kennt genau die neun Server-Schwellen, keine mehr und keine weniger", () => {
     const keys = THRESHOLD_ROWS.map((row) => row.key);
     expect([...keys].sort()).toEqual([...SERVER_THRESHOLD_KEYS].sort());
     expect(new Set(keys).size).toBe(SERVER_THRESHOLD_KEYS.length);
   });
 
-  it("formatiert Werte über die Formatter (€/L-Ebene in €, P in %)", () => {
+  it("formatiert Schwellen-Werte über die Formatter (€ in €, P in %)", () => {
     expect(thresholdValueLabel("eur", 1.5)).toBe("1,50 €");
     expect(thresholdValueLabel("eur", 0.5)).toBe("0,50 €");
     expect(thresholdValueLabel("percent", 0.7)).toBe("70 %");
@@ -178,7 +308,7 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
   });
 
   it("rendert alle neun Zeilen mit Server-Werten und read-only-Quelle", () => {
-    const html = renderToStaticMarkup(<SettingsView {...viewProps()} />);
+    const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
     for (const key of SERVER_THRESHOLD_KEYS) {
       const row = THRESHOLD_ROWS.find((r) => r.key === key);
       expect(row, `Zeile für ${key} fehlt`).toBeDefined();
@@ -196,7 +326,7 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
     expect(html).toContain(
       "M7-Nachzug aus — die Engine rechnet mit den Startwerten.",
     );
-    // Kein einzles Eingabefeld in der Tabelle.
+    // Kein einzelnes Eingabefeld in der Tabelle.
     const tableStart = html.indexOf("Entscheidungsschwellen (aktiv)");
     const tableEnd = html.indexOf("Darstellung");
     const tablePart = html.slice(tableStart, tableEnd);
@@ -205,9 +335,12 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
 
   it("zeigt bei fehlender Statistik einen ehrlichen Leerstand statt Nullen", () => {
     const html = renderToStaticMarkup(
-      <SettingsView
-        {...viewProps({
-          statsSummaryRes: { ...emptyResource, data: null },
+      <SettingsPanel
+        {...settingsProps({
+          statsSummaryRes: {
+            ...emptyResource,
+            data: null,
+          } as ResourceState<StatsSummary>,
         })}
       />,
     );
@@ -217,8 +350,8 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
 
   it("zeigt die Begründung des Nachzugs, wenn sich Werte ändern", () => {
     const html = renderToStaticMarkup(
-      <SettingsView
-        {...viewProps({
+      <SettingsPanel
+        {...settingsProps({
           statsSummaryRes: {
             ...emptyResource,
             data: summary({
@@ -229,7 +362,7 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
                 reasons: ["WARTEN 60 % richtig — Gates angehoben."],
               }),
             }),
-          },
+          } as ResourceState<StatsSummary>,
         })}
       />,
     );
@@ -238,8 +371,6 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
     expect(html).toContain("weicht von den Startwerten ab");
   });
 
-  // H3 (0.31.0): Ohne Rauschband-Ausweis wirkt „kein Nachzug“ wie Stillstand,
-  // dabei ist es der Oszillationsschutz des Reglers.
   it("nennt das Rauschband des M7-Nachzugs (H3)", () => {
     expect(thresholdHysteresisLine(null)).toBeNull();
     expect(thresholdHysteresisLine(tuning())).toBeNull(); // alte Engine
@@ -261,8 +392,8 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
 
   it("erklärt auch ohne Änderung, warum nicht nachgezogen wird", () => {
     const html = renderToStaticMarkup(
-      <SettingsView
-        {...viewProps({
+      <SettingsPanel
+        {...settingsProps({
           statsSummaryRes: {
             ...emptyResource,
             data: summary({
@@ -273,7 +404,7 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
                 hysteresis: { noise_band: { wait: 0.17 } },
               }),
             }),
-          },
+          } as ResourceState<StatsSummary>,
         })}
       />,
     );
@@ -281,44 +412,43 @@ describe("C4: Schwellen-Tabelle (read-only aus /api/v1/stats/summary)", () => {
     expect(html).toContain("Lücke liegt im Rauschband");
     expect(html).toContain("Rauschband");
   });
-});
 
-describe("C4: alle Defaults an einem Ort", () => {
-  it("bietet Kraftstoff, Stadt, Liter, Verbrauch, Zeitwert, Tempo, Tankgröße", () => {
-    const html = renderToStaticMarkup(<SettingsView {...viewProps()} />);
-    // Eingabeorte mit den Ids, die der Alltag bisher hatte (plus Stadt).
-    expect(html).toContain('id="liters"');
-    expect(html).toContain('id="consumption"');
-    expect(html).toContain('id="tankCapacity"');
-    expect(html).toContain('id="timeValue"');
-    expect(html).toContain('id="speed"');
-    expect(html).toContain('id="detourMode"');
-    expect(html).toContain('id="settings-city"');
-    // Stadt-Optionen aus den Daten.
-    expect(html).toContain("Gütersloh");
-    // Aktiver Zeitwert (manuell) und die Auto-Erklärung.
-    expect(html).toContain("12 €/h");
-    expect(html).toContain(
-      "0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.",
+  it("bietet beide Themen mit aria-pressed", () => {
+    const dark = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
+    expect(dark).toContain("Dunkles Slate (Standard)");
+    expect(dark).toContain("Hell (Slate)");
+    // Im Theme-Block trägt der dunkle Button das aria-pressed.
+    const darkGroup = dark.slice(
+      dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
     );
-    // Zeitwert 0 = Automatik zeigt den auto-berechneten Wert.
-    const auto = renderToStaticMarkup(
-      <SettingsView {...viewProps({ timeValue: 0, timeValueUsed: 16 })} />,
+    expect(
+      darkGroup.indexOf('aria-pressed="true"') <
+        darkGroup.indexOf("Dunkles Slate"),
+    ).toBe(true);
+
+    const light = renderToStaticMarkup(
+      <SettingsPanel {...settingsProps({ theme: "light" })} />,
     );
-    expect(auto).toContain("Auto (16 €/h offpeak)");
+    const lightGroup = light.slice(
+      light.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
+    );
+    expect(
+      lightGroup.indexOf('aria-pressed="true"') >
+        lightGroup.indexOf("Dunkles Slate"),
+    ).toBe(true);
   });
 
-  it("kennzeichnet Profil-Werte als haushaltsweit, wenn ein Profil aktiv ist", () => {
-    const withProfile = renderToStaticMarkup(
-      <SettingsView {...viewProps({ activeProfileName: "Mein Auto" })} />,
-    );
-    expect(withProfile).toContain("Profil „Mein Auto“ — gilt haushaltsweit");
-    const without = renderToStaticMarkup(<SettingsView {...viewProps()} />);
-    expect(without).toContain("gelten nur auf diesem Gerät");
+  it("listet angepinnte Stationen mit lösen-Button und zeigt die Version", () => {
+    const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
+    expect(html).toContain("Shell Hauptstraße");
+    expect(html).toContain("lösen");
+    expect(html).toContain("0.35.0");
+    // Beleg-Export.
+    expect(html).toContain("/api/v1/fills.csv laden");
   });
 });
 
-describe("C4: Dark/Light-Umschaltung", () => {
+describe("Theme-Logik (data.ts)", () => {
   it("kennt genau zwei Themen und lehnt alles andere ab", () => {
     expect([...APP_THEMES]).toEqual(["dark", "light"]);
     expect(isAppTheme("dark")).toBe(true);
@@ -330,8 +460,7 @@ describe("C4: Dark/Light-Umschaltung", () => {
 
   it("wendet das Thema auf <html> und das theme-color-Meta an", () => {
     // happy-dom liefert ein leeres Dokument — Meta-Element anlegen.
-    document.head.innerHTML =
-      '<meta name="theme-color" content="#020617" />';
+    document.head.innerHTML = '<meta name="theme-color" content="#020617" />';
     document.documentElement.className = "dark";
 
     applyAppTheme("light");
@@ -351,41 +480,5 @@ describe("C4: Dark/Light-Umschaltung", () => {
         .querySelector('meta[name="theme-color"]')
         ?.getAttribute("content"),
     ).toBe(APP_THEME_META_COLOR.dark);
-  });
-
-  it("bietet beide Themen im Tab mit aria-pressed an", () => {
-    const dark = renderToStaticMarkup(<SettingsView {...viewProps()} />);
-    expect(dark).toContain("Dunkles Slate (Standard)");
-    expect(dark).toContain("Hell (Slate)");
-    // Genau zwei Buttons sind aktiv: Kraftstoff e10 + Theme dark.
-    expect(dark.match(/aria-pressed="true"/g)?.length).toBe(2);
-    // Im Theme-Block trägt der dunkle Button das aria-pressed.
-    const darkGroup = dark.slice(
-      dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
-    );
-    expect(
-      darkGroup.indexOf('aria-pressed="true"') <
-        darkGroup.indexOf("Dunkles Slate"),
-    ).toBe(true);
-    expect(
-      darkGroup.indexOf('aria-pressed="true"') >
-        darkGroup.indexOf("Hell (Slate)"),
-    ).toBe(false);
-
-    const light = renderToStaticMarkup(
-      <SettingsView {...viewProps({ theme: "light" })} />,
-    );
-    // Im Light-Stand trägt der helle Button das aria-pressed.
-    const lightGroup = light.slice(
-      light.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
-    );
-    expect(
-      lightGroup.indexOf('aria-pressed="true"') >
-        lightGroup.indexOf("Dunkles Slate"),
-    ).toBe(true);
-    expect(
-      lightGroup.indexOf('aria-pressed="false"') <
-        lightGroup.indexOf("Dunkles Slate"),
-    ).toBe(true);
   });
 });

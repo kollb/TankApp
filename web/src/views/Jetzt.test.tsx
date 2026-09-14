@@ -10,7 +10,11 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Level1Sheet } from "../components/Level1Sheet";
 import type { DecideResult, Station } from "../data";
-import { JetztView, type JetztViewProps } from "./Jetzt";
+import {
+  EMPTY_ASSUMPTIONS,
+  JetztView,
+  type JetztViewProps,
+} from "./Jetzt";
 
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
 const minutesAgo = (m: number) => new Date(NOW - m * 60000).toISOString();
@@ -90,18 +94,34 @@ const baseProps: JetztViewProps = {
     receivedAt: 0,
   },
   liters: 40,
+  timeValue: 12,
+  timeValueUsed: 12,
+  autoZ: { z: 10, isPeak: false },
   selectedId: "aral",
   stations: [station("aral")],
   stripCells: [
-    { hour: 6, value: null, tone: "none", current: false },
+    { hour: 6, value: null, tone: "empty", current: false },
     { hour: 12, value: 1.749, tone: "cheap", current: true },
   ],
   pricesAt: minutesAgo(4),
   forecastAt: minutesAgo(35),
   onNavigate: () => {},
   onDeepen: () => {},
-  onOpenSettings: () => {},
   onRetry: () => {},
+  assumptions: EMPTY_ASSUMPTIONS,
+  defaultLiters: 40,
+  defaultTimeValue: 12,
+  onAssumptions: () => {},
+  onAssumptionsReset: () => {},
+  tankPercent: null,
+  onTankQuick: () => {},
+  dueEpisode: null,
+  dueDismissed: false,
+  bestPrice: 1.749,
+  onConfirmRecommended: () => {},
+  onDismissDue: () => {},
+  onOpenFills: () => {},
+  onIntent: () => {},
   now: NOW,
 };
 

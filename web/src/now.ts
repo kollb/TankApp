@@ -32,7 +32,89 @@ import {
 } from "./data";
 
 /** Wohin ein nächster Schritt führt — Ziele, nicht Tabs (Phase 1–4). */
-export type NowTarget = "stations" | "week" | "tank" | "system";
+export type NowTarget = "stations" | "week" | "tank" | "system" | "ich";
+
+/**
+ * Schnellauswahl „¼ / ½ / ¾ / voll“ (UI-NEUENTWURF §5.1): Tankstand ist kein
+ * Formular, sondern ein Fakt — die vier üblichen Stände in einem Tap.
+ * „voll“ = 100 % Füllstand, nicht „Tank vollgefahren“.
+ */
+export const TANK_QUICK: Array<{ label: string; percent: number }> = [
+  { label: "¼", percent: 25 },
+  { label: "½", percent: 50 },
+  { label: "¾", percent: 75 },
+  { label: "voll", percent: 100 },
+];
+
+/** Umgekehrte Karte: Füllstand → Kürzel (nur exakte Schnellauswahl-Werte). */
+export function tankQuickLabel(percent: number | null): string | null {
+  if (percent == null) return null;
+  return TANK_QUICK.find((item) => item.percent === percent)?.label ?? null;
+}
+
+/**
+ * „HH:MM“ aus `<input type="time">` → ISO-Zeitstempel heute in
+ * Europe/Berlin (für den Decide-Parameter `latest_by`).
+ *
+ * `null` heißt: ungültige Eingabe. Ein Zeitpunkt, der in Berlin bereits
+ * vergangen ist, bleibt ein gültiger Stempel — der Server schneidet dann
+ * ehrlich alle Fenster ab („Kein Fenster mehr vor deinem spätesten
+ * Tankzeitpunkt“), die GUI rät nichts um.
+ */
+export function timeInputToBerlinIso(
+  hhmm: string,
+  now = Date.now(),
+): string | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const part = (type: string) =>
+    formatter
+      .formatToParts(new Date(now))
+      .find((item) => item.type === type)?.value ?? "";
+  const anchorUtc = Date.parse(`${part("year")}-${part("month")}-${part("day")}T00:00:00Z`);
+  if (!Number.isFinite(anchorUtc)) return null;
+  // UTC-Zeit, die dem Berliner Kalenderdatum + Uhrzeit *als UTC* entspricht —
+  // daraus folgt das Berlin-Offset an diesem Tag (Sommertime-sicher).
+  const wallAsUtc =
+    anchorUtc + hour * 3600000 + minute * 60000;
+  const probe = formatter.formatToParts(new Date(wallAsUtc));
+  const probePart = (type: string) =>
+    probe.find((item) => item.type === type)?.value ?? "0";
+  const berlinHour =
+    probePart("hour") === "24" ? 0 : Number(probePart("hour"));
+  const berlinMinute = Number(probePart("minute"));
+  const offsetMs =
+    (berlinHour * 60 + berlinMinute - (hour * 60 + minute)) * 60000;
+  return new Date(wallAsUtc + offsetMs).toISOString();
+}
+
+/**
+ * Markierung des Tagesprofils im Begründungs-Sheet (Ebene 1, §7):
+ * das Fenster als Stundenbereich — `null` ohne Fenster (dann fehlt auch
+ * ehrlich das Mini-Visual).
+ */
+export function windowMarks(window: {
+  start: string;
+  end: string;
+} | null | undefined): { fromHour: number; toHour: number } | null {
+  if (!window) return null;
+  const from = berlinHour(new Date(window.start));
+  const to = berlinHour(new Date(window.end));
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  return { fromHour: Math.floor(from), toHour: Math.floor(to) };
+}
 
 /**
  * Sicherheits-Stufe der Aussage (UI-NEUENTWURF §10):
@@ -109,6 +191,10 @@ export type NowInput = {
   selectedId?: string;
   liters: number;
   now?: number;
+  /** Was-wäre-wenn (§5.1): gültiger `latest_by` aus der Annahmen-Karte. */
+  latestBy?: string | null;
+  /** Zeitwert in €/h (0 = Auto) — wirkt nur auf den Umweg-Vergleich. */
+  timeValue?: number;
 };
 
 export type NowVerdict = {
@@ -538,4 +624,83 @@ export function nowExplanation(
       : "Grundlage: die geladenen Preismeldungen dieser Station.",
     labHint: "In der Werkstatt vertiefen",
   };
+}
+
+/** „18:00 Uhr“ — eine einzelne Stunde aus einem Zeitstempel (Berlin). */
+function hourOnlyLabel(stamp: string): string {
+  const hour = Math.floor(berlinHour(new Date(stamp)));
+  return `${String(hour).padStart(2, "0")}:00 Uhr`;
+}
+
+/**
+ * Der Annahmen-Hinweis der Was-wäre-wenn-Karte (§5.1): welcher Parameter
+ * gibt gerade den Ausschlag, und wann kippt die Empfehlung.
+ *
+ * Ehrlichkeits-Grenze: Der Hinweis liest nur Server-Werte (Fenster,
+ * Tank-Bewertung, Umweg-Zahlen) und benennt, was in der Antwort
+ * entscheidend war — er rechnet keine eigene Physik. `null` heißt:
+ * gerade gibt es nichts zu sagen (grauer Zustand ohne Empfehlung wird
+ * von der Karte selbst erklärt).
+ */
+export function assumptionHint(input: NowInput): string | null {
+  const decide = input.decide;
+  const p = decide?.primary;
+  if (!decide || !p) return null;
+
+  // 1. Tankstand blockiert das Warten (A2: Physik vor Fenster) — die
+  //    Server-Nachricht trägt den Grund, der Hinweis nur den Zeigefinger.
+  if (decide.tank?.blocks_wait) {
+    return (
+      "Entscheidend ist der Tankstand: " +
+      (decide.tank.message ?? "die Reserve blockiert das Warten.")
+    );
+  }
+
+  // 2. Spätester Zeitpunkt gesetzt, aber kein Fenster mehr übrig — der
+  //    Server hat den Horizont abgeschnitten (Konzept §4.3).
+  if (input.latestBy && p.action !== "wait") {
+    return (
+      "Entscheidend ist der späteste Zeitpunkt — vor ihm endet kein " +
+      "Fenster mehr. Später einstellen oder jetzt nach Bedarf tanken."
+    );
+  }
+
+  if (p.action === "wait" && p.recommended_window) {
+    // 3. Warten: der Kipp-Punkt ist der Zeitpunkt, bis zu dem man tanken
+    //    MUSS — der Server zählt ein Fenster nur, wenn es vor latest_by
+    //    ENDET.
+    return (
+      `Kippt zu „Jetzt“, wenn du vor ${hourOnlyLabel(
+        p.recommended_window.end,
+      )} tanken musst.`
+    );
+  }
+
+  if (p.action === "refuel_now") {
+    // 4. Jetzt: entweder kein günstigeres Fenster heute oder das Fenster
+    //    hat keinen klaren Vorsprung — beides steht in der Antwort.
+    return p.recommended_window
+      ? "Entscheidend ist der Preis: das Fenster hat gegenüber dem aktuellen Preis keinen klaren Vorsprung."
+      : "Entscheidend ist der Preis: heute ist kein günstigeres Fenster dabei.";
+  }
+
+  if (p.action === "refuel_elsewhere") {
+    // 5. Woanders: die Umweg-Ökonomie (Server-Zahlen: Strecke, Zeitwert).
+    const alt = [...(decide.alternatives_nearby ?? [])]
+      .filter((a) => a.worth_it)
+      .sort((a, b) => b.net_eur - a.net_eur)[0];
+    if (alt) {
+      const z =
+        input.timeValue != null && input.timeValue > 0
+          ? `${euro(input.timeValue, input.timeValue % 1 ? 1 : 0)} €/h`
+          : "Automatik-Zeitwert";
+      return (
+        `Entscheidend ist der Umweg: ${euro(alt.detour_km, 1)} km extra, ` +
+        `Zeitwert ${z} — berechnet vom Server.`
+      );
+    }
+  }
+
+  // 6. Grau: die Karte selbst erklärt den Zustand; der Hinweis bleibt aus.
+  return null;
 }

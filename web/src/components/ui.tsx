@@ -1,8 +1,8 @@
 // D1 (zweiter Schnitt): die geteilten UI-Bausteine. `Dashboard.tsx` war eine
 // Datei mit über 4 000 Zeilen; bevor sie tab-weise zerlegt wird
-// (`views/Daily.tsx`, `views/Statistics.tsx`, `views/System.tsx`), brauchen die
-// künftigen Module eine gemeinsame Basis — sonst baut jede View ihre eigenen
-// Karten und die App sieht an drei Stellen anders aus.
+// (die heutigen `views/*`), brauchen die künftigen Module eine gemeinsame
+// Basis — sonst baut jede View ihre eigenen Karten und die App sieht an
+// mehreren Stellen anders aus.
 //
 // Hier stehen bewusst nur Bausteine ohne Fachwissen: keine Datenhaltung, keine
 // Requests, keine Entscheidungslogik. `panel` ist die Karten-Grundklasse,
