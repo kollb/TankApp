@@ -14,6 +14,7 @@
 //     wo nicht, steht der Preisunterschied × Tankmenge mit dem Label
 //     „ohne Umweg“ — nie eine client-seitige Strecke (B6/H1).
 
+import { labHint, type LabHint } from "./lab";
 import {
   centPerLiter,
   deTrimmed,
@@ -22,6 +23,7 @@ import {
   ageLabel,
   freshness,
   type DecideResult,
+  type Point,
   type Station,
 } from "./data";
 
@@ -219,9 +221,9 @@ export function atlasEur(
  * Station-Detail) — Alltagssprache, nur Server-/Set-Zahlen:
  *   1. Rang heute im eigenen Set (nicht Stadt-Median — den gibt es
  *      hier nicht; der historische Stadt-Vergleich steht in der
- *      Werkstatt).
+ *      Labor).
  *   2. Abstand zur Referenz (ct/L).
- *   3. Umweg (Server) oder Distanz zum Anker (Luftlinie/Fahrt).
+ *   3. Umweg (Server) oder Distanz zu Zuhause (Luftlinie/Fahrt).
  */
 export function stationContextLines(
   row: AtlasRow,
@@ -249,7 +251,8 @@ export function stationContextLines(
     lines.push(`Umweg zur Referenz: +${euro(row.detourKm, 1)} km (Server-Route).`);
   } else if (row.distKm !== null) {
     lines.push(
-      `${euro(row.distKm, 1)} km zum Anker der Stadt ${
+      `${euro(row.distKm, 1)} km ab Zuhause ${
+        
         row.station.dist_mode === "road" ? "(Fahrtstrecke)" : "(Luftlinie)"
       } — eine Umweg-Rechnung dazu liegt nicht vor.`,
     );
@@ -355,7 +358,7 @@ export function atlasExplanation(input: {
   timeValueLabel: string;
   pricesAt: string | null;
   now?: number;
-}): { sentences: string[]; source: string; labHint: string } {
+}): { sentences: string[]; source: string; labHint: LabHint | null } {
   const reasonText =
     input.reason === "pinned"
       ? "deiner Stamm-Station"
@@ -384,7 +387,7 @@ export function atlasExplanation(input: {
     source: input.pricesAt
       ? `Grundlage: die geladenen Preismeldungen, jüngste ${ageLabel(input.pricesAt, input.now ?? Date.now())}.`
       : "Grundlage: die geladenen Preismeldungen.",
-    labHint: "In der Werkstatt vertiefen",
+    labHint: labHint("stationen"),
   };
 }
 
@@ -443,4 +446,41 @@ export function dayRhythmLine(cells: Array<{ hour: number; value: number | null 
   }
   const best = extremum(known, "min");
   return `Günstigste offene Stunde heute: ca. ${hourLabel(best.hour)}.`;
+}
+
+/**
+ * Tagesmediane eines Verlaufs („üblich“ statt Moment, §5.2): je Berliner
+ * Kalendertag der Median der offenen Meldungen, gesetzt auf den ersten
+ * Messzeitpunkt des Tages.
+ *
+ * Geteilt zwischen dem Stations-Detail und dem Labor-Verlauf — beide zeigen
+ * dieselbe Linie, und beide dürfen sie nicht unterschiedlich rechnen.
+ */
+export function dayMedianPoints(points: Point[]): Array<{ x: number; y: number }> {
+  const active = points.filter(
+    (point) =>
+      point.price !== null &&
+      Number.isFinite(point.price) &&
+      Number.isFinite(Date.parse(point.timestamp)),
+  );
+  const byDay = new Map<string, { firstX: number; values: number[] }>();
+  for (const point of active) {
+    const ms = Date.parse(point.timestamp);
+    const key = new Date(ms).toLocaleDateString("de-DE", {
+      timeZone: "Europe/Berlin",
+    });
+    const entry = byDay.get(key);
+    if (entry) {
+      entry.values.push(point.price as number);
+      if (ms < entry.firstX) entry.firstX = ms;
+    } else {
+      byDay.set(key, { firstX: ms, values: [point.price as number] });
+    }
+  }
+  return [...byDay.values()]
+    .map((entry) => {
+      const sorted = [...entry.values].sort((a, b) => a - b);
+      return { x: entry.firstX, y: sorted[Math.floor(sorted.length / 2)] };
+    })
+    .sort((a, b) => a.x - b.x);
 }

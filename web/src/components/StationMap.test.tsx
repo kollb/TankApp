@@ -131,7 +131,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
       />,
     );
 
-    expect(html).toContain("Vergleich");
+    expect(html).toContain("Referenz");
     expect(html).toContain("Lohnt sich");
     expect(html).toContain("Grenzwertig");
     expect(html).toContain("Server-Netto-€ (decide)");
@@ -153,7 +153,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
     );
   });
 
-  it("erklärt den Vergleichs-Pin und die 0-€-Frage", () => {
+  it("erklärt den Referenz-Pin und die 0-€-Frage", () => {
     const html = renderToStaticMarkup(
       <StationMap
         stations={mockStations}
@@ -163,12 +163,15 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
       />,
     );
 
-    // Der Pin der Vergleichsstation zeigt ihre Rolle, keinen 0-€-Preis.
-    expect(html).toContain("Vergleich");
+    // Der Pin der Referenzstation zeigt ihre Rolle, keinen 0-€-Preis.
+    // Wortwahl: „Referenz“ statt „Vergleich“ — der Pin benennt eine Rolle,
+    // keine Handlung (0.36.0).
+    expect(html).toContain("Referenz");
+    expect(html).not.toContain(">Vergleich<");
     expect(html).toContain("0 € Unterschied, nicht auf 0 € Spritpreis");
   });
 
-  it("zeigt den Anker als Startpunkt, wenn seine Koordinate vorliegt", () => {
+  it("zeigt Zuhause als Haus-Symbol, wenn die Koordinate vorliegt", () => {
     const html = renderToStaticMarkup(
       <StationMap
         stations={mockStations}
@@ -179,14 +182,16 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
       />,
     );
 
-    expect(html).toContain("Anker");
+    // Der Pin trägt das Haus-Symbol, kein Wort „Anker“ mehr.
+    expect(html).toContain("Zuhause");
+    expect(html).not.toContain(">Anker<");
     expect(html).toContain("Startpunkt der Stadt");
     // Koordinaten selbst bleiben im Nutzertext unsichtbar (MICROCOPY §6).
     expect(html).not.toContain("50.11");
     expect(html).not.toContain("8.68");
   });
 
-  it("Radar zentriert mit Anker auf ihm und zeichnet die Stationen relativ dazu", () => {
+  it("Radar zentriert auf Zuhause und zeichnet die Stationen relativ dazu", () => {
     const infos = mockStations.map((s) => radarInfo(s));
     const html = renderToStaticMarkup(
       <RadarView
@@ -200,14 +205,14 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
       />,
     );
 
-    expect(html).toContain("Mitte: Anker");
-    expect(html).toContain("Ringe = km Luftlinie ab Anker");
-    // Die Vergleichsstation ist ein normaler Pin mit Rollen-Label, kein 0 €.
-    expect(html).toContain(">Vergleich<");
+    expect(html).toContain("Mitte: Zuhause");
+    expect(html).toContain("Ringe = km Luftlinie ab Zuhause");
+    // Die Referenzstation ist ein normaler Pin mit Rollen-Label, kein 0 €.
+    expect(html).toContain(">Referenz<");
     expect(html).not.toContain(">0,00 €<");
   });
 
-  it("Radar ohne Anker zentriert auf der Vergleichsstation und sagt das", () => {
+  it("Radar ohne Zuhause-Koordinate zentriert auf der Referenz und sagt das", () => {
     const infos = mockStations.map((s) => radarInfo(s));
     const html = renderToStaticMarkup(
       <RadarView
@@ -221,7 +226,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
       />,
     );
 
-    expect(html).toContain("Mitte: Vergleichsstation");
+    expect(html).toContain("Mitte: Referenz");
     expect(html).toContain("Ringe = km Luftlinie ab ihr");
   });
 
@@ -234,7 +239,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
     expect(OSM_ATTRIBUTION).toContain("openstreetmap.org/copyright");
   });
 
-  it("erwähnt den fehlenden Anker-Pin ehrlich ohne Koordinate", () => {
+  it("erwähnt das fehlende Haus-Symbol ehrlich ohne Koordinate", () => {
     const html = renderToStaticMarkup(
       <StationMap
         stations={mockStations}
@@ -245,7 +250,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
     );
 
     expect(html).toContain(
-      "ohne seine Koordinate im Polling-Set erscheint kein Anker-Pin",
+      "ohne diese Koordinate im Polling-Set erscheint kein Haus-Symbol",
     );
   });
 });

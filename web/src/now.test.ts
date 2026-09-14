@@ -378,7 +378,12 @@ describe("Ebene 1: höchstens drei Sätze", () => {
     expect(explain?.sentences[1]).toContain("4,0 ct/L über");
     expect(explain?.sentences[2]).toContain("Von 120");
     expect(explain?.source).toContain("vor 4 Minuten");
-    expect(explain?.labHint).toBe("In der Werkstatt vertiefen");
+    // 3.2: Der Weg in die Tiefe zeigt auf den Labor-Abschnitt, nicht mehr
+    // auf die alte Werkstatt.
+    expect(explain?.labHint).toEqual({
+      section: "sicherheit",
+      label: "Im Labor vertiefen: Was „ziemlich sicher“ heißt",
+    });
   });
 
   it("schneidet bei mehr Material auf drei Sätze", () => {

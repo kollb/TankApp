@@ -32,6 +32,7 @@ import {
   type DecideResult,
   type ResourceState,
 } from "../data";
+import { type LabSectionId } from "../lab";
 import { learningNote, nowFreshness, TANK_QUICK } from "../now";
 import {
   weekDays,
@@ -58,7 +59,7 @@ export interface WocheViewProps {
   pricesAt: string | null;
   onRetry: () => void;
   onNavigate: (target: "stations" | "ich" | "system") => void;
-  onDeepen?: () => void;
+  onDeepen?: (section: LabSectionId) => void;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
 }
@@ -377,7 +378,7 @@ export function WocheView(props: WocheViewProps) {
             </div>
             <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
               ★ = Sicherheit des Fensters (Prozent im Detail, Schwellen in
-              der Werkstatt). Leere Tage: kein Fenster mit Vorsprung — keine
+              des Labors). Leere Tage: kein Fenster mit Vorsprung — keine
               Erfindung. Tage 5–7 sind „noch unsicher“ (entsättigt).
             </p>
           </>
@@ -499,9 +500,9 @@ export function WocheView(props: WocheViewProps) {
           sentences={explanation.sentences}
           source={explanation.source}
           labHint={explanation.labHint}
-          onDeepen={() => {
+          onDeepen={(section) => {
             setSheetOpen(false);
-            onDeepen?.();
+            onDeepen?.(section);
           }}
           onClose={() => setSheetOpen(false)}
         />

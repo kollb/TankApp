@@ -103,6 +103,8 @@ const baseProps: StationenViewProps = {
     pending: false,
     receivedAt: 0,
   },
+  seriesSpan: 168,
+  onSeriesSpan: noop,
   liters: 40,
   timeValue: 0,
   timeValueUsed: 10,

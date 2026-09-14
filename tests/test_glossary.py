@@ -38,7 +38,7 @@ def _analyse_anchors():
     }
 
 
-def test_glossary_covers_the_workshop_terms():
+def test_glossary_covers_the_lab_terms():
     entries = _glossary_entries()
     by_id = {entry["id"]: entry for entry in entries}
     # Eindeutige IDs, kein Eintrag doppelt:

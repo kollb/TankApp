@@ -19,6 +19,7 @@ import {
   type DecideResult,
   type TankInfo,
 } from "./data";
+import { labHint, type LabHint } from "./lab";
 import {
   dayLabel,
   nowStage,
@@ -288,7 +289,7 @@ export function weekExplanation(
   decide: DecideResult | null,
   priceNow: number | null,
   now = Date.now(),
-): { sentences: string[]; source: string; labHint: string } | null {
+): { sentences: string[]; source: string; labHint: LabHint | null } | null {
   const window = day.window;
   if (!window) return null;
   const stage = nowStage(decide);
@@ -332,7 +333,7 @@ export function weekExplanation(
   return {
     sentences: sentences.slice(0, 3),
     source: "Grundlage: der Modell-Lauf der Engine (Fenster und Erwartungs-Preise).",
-    labHint: "In der Werkstatt vertiefen",
+    labHint: labHint("prognose"),
   };
 }
 

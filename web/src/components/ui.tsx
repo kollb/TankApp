@@ -10,7 +10,7 @@
 // Kennzahlen-Karte mit Erklärung (`tip`) und Zusatz-Hinweis (`hint`).
 // Fehler-Zustände gehören nicht hierher, sondern zu `LoadError` (C6).
 // C7: `InfoTooltip` ist das einheitliche „i“ für Fachwörter — Tastatur- und
-// Screenreader-erreichbar, identisch in Alltag und Werkstatt.
+// Screenreader-erreichbar, in jedem Bereich identisch.
 
 import { useId, useState, type ReactNode } from "react";
 import { HelpCircle, Info } from "lucide-react";

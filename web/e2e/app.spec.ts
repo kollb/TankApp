@@ -25,14 +25,18 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Erst ein Set, dann der Atlas" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
+  // „Labor“ (der ehemalige Werkstatt-Tab) ist die getrennte Welt für die
+  // Mathematik: eine Seite, fünf Aufklapp-Abschnitte. Ohne Statistik-Lauf
+  // bleibt sie ehrlich bei „kein Statistik-Lauf“ und nennt den Grund.
+  await page.getByRole("button", { name: "Labor", exact: true }).click();
   await expect(
-    page.getByRole("heading", {
-      name: "Nachvollziehen statt blind vertrauen.",
-    }),
+    page.getByRole("heading", { name: "Verstehen, warum die App das sagt" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Unkalibriert · keine Handlungsempfehlung"),
+    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Kalibrierung steht aus", { exact: false }).first(),
   ).toBeVisible();
   await page.getByRole("button", { name: "System", exact: true }).click();
   await expect(

@@ -568,11 +568,19 @@ class Handler(SimpleHTTPRequestHandler):
             status = value("status")
             return self.data.episodes(status)
 
+        # --- Labor: Prognose-Tagebuch (echte Settlements des Advice-Ledgers) ---
+        if norm_path == "/api/v1/advice/diary":
+            try:
+                limit = int(value("limit") or 50)
+            except ValueError:
+                limit = 50
+            return self.data.diary(limit=limit, outcome=value("outcome"))
+
         if norm_path == "/api/v1/fills":
             # A3/A6: Wallet-Verlauf (Liste) — JSON-Variante; CSV unter /fills.csv.
             return self.data.fills()
 
-        # --- A4: Monats-/Jahresbilanz des Wallet-Ledgers (Werkstatt) ---
+        # --- A4: Monats-/Jahresbilanz des Wallet-Ledgers (Bereich „Ich“) ---
         if norm_path == "/api/v1/fills/summary":
             return self.data.fills_summary()
 

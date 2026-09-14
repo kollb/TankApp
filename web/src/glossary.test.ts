@@ -15,7 +15,7 @@ import {
 } from "./data";
 
 describe("C7: Glossar-Tabelle ist vollständig", () => {
-  it("enthält die Werkstatt-Pflichtbegriffe", () => {
+  it("enthält die Pflichtbegriffe des Labors", () => {
     const ids = new Set(GLOSSARY.map((g) => g.id));
     for (const id of [
       "delta",
