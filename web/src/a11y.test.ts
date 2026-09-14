@@ -27,7 +27,6 @@ function read(relativePath: string): string {
 
 const STYLES = read("styles.css");
 const DASHBOARD = read("Dashboard.tsx");
-const DAILY = read("views/Daily.tsx");
 const SLIDER = read("components/PrecisionSlider.tsx");
 const MAP = read("components/StationMap.tsx");
 const MANIFEST = JSON.parse(read("../public/manifest.json")) as {
@@ -172,29 +171,13 @@ describe("C8: Querformat", () => {
     expect(landscape).toBeGreaterThanOrEqual(0);
     const rule = STYLES.slice(
       landscape,
-      STYLES.indexOf("\n}\n", STYLES.indexOf(".daily-action-chip", landscape)),
+      STYLES.indexOf("\n}\n", STYLES.indexOf(".daystrip-cells", landscape)),
     );
-    for (const hook of [
-      ".app-header",
-      ".app-tagline",
-      ".app-main",
-      ".daily-intro",
-      ".daily-flow",
-      ".daystrip-cells",
-      ".daily-action-chip",
-    ]) {
+    for (const hook of [".app-header", ".app-tagline", ".app-main", ".daystrip-cells"]) {
       expect(rule, `${hook} fehlt im Querformat-Block`).toContain(hook);
     }
     for (const hook of ["app-header", "app-tagline", "app-main"]) {
       expect(DASHBOARD, `${hook} fehlt in Dashboard.tsx`).toContain(hook);
-    }
-    for (const hook of [
-      "daily-flow",
-      "daily-intro",
-      "daystrip-cells",
-      "daily-action-chip",
-    ]) {
-      expect(DAILY, `${hook} fehlt in Daily.tsx`).toContain(hook);
     }
   });
 

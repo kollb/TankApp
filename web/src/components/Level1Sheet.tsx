@@ -11,7 +11,7 @@
 // unten am Rand (Daumen), ab `sm` in der Mitte — dieselbe Fläche, dieselbe
 // Reihenfolge, nur anders verankert.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { ArrowRight, X } from "lucide-react";
 
 export function Level1Sheet({
@@ -20,6 +20,8 @@ export function Level1Sheet({
   sentences,
   source,
   labHint,
+  visual,
+  visualLabel,
   onDeepen,
   onClose,
 }: {
@@ -32,6 +34,14 @@ export function Level1Sheet({
   source: string;
   /** Beschriftung des Wegs in die Tiefe. */
   labHint: string;
+  /**
+   * Mini-Visual (Ebene-1-Regel: max. 1 Visual, UI-NEUENTWURF §7) —
+   * z. B. das Tagesprofil mit markiertem Fenster. `null` = ehrlich
+   * keines, statt einer flachen Grafik.
+   */
+  visual?: ReactNode | null;
+  /** Eine Zeile darunter: was das Visual zeigt. */
+  visualLabel?: string;
   onDeepen: () => void;
   onClose: () => void;
 }) {
@@ -81,6 +91,16 @@ export function Level1Sheet({
             </li>
           ))}
         </ol>
+        {visual && (
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            {visual}
+            {visualLabel && (
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                {visualLabel}
+              </p>
+            )}
+          </div>
+        )}
         <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
           {source}
         </p>

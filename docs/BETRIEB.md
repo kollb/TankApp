@@ -40,6 +40,7 @@
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
 - [System-Alarme lesen](#system-alarme-lesen)
   - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
+  - [System-Alarme und GUI-Neuentwurf (seit 0.35.0)](#system-alarme-und-gui-neuentwurf-seit-0350)
   - [Version und Build-Hash prüfen](#version-und-build-hash-prüfen)
 - [Fehlersuche](#fehlersuche)
   - [Collector Störungsfälle](#collector-störungsfälle)
@@ -826,6 +827,31 @@ GUI“), kein Fehler.
 
 Noch offen (siehe [TODO B8](../TODO.md)): Webhook-Retry Pi → NAS —
 `POST /api/v1/jobs/trigger` ist weiterhin Fire-and-Forget.
+
+### System-Alarme und GUI-Neuentwurf (seit 0.35.0)
+
+Betriebs-Entscheidung zu Checkliste [2.4](UMSETZUNG-GUI-NEUENTWURF.md): Das
+GUI-Neuentwurf-Konzept ([UI-NEUENTWURF.md](UI-NEUENTWURF.md) §11,
+Entscheidung 14.9.) streicht **Preis-Erinnerungen, Preis-Alarme und Push
+ersatzlos**. Damit ist gemeint, dass die App keine Preis-Mitteilungen mehr
+versendet — **der System-Alarmweg bleibt davon unberührt** und unverändert
+aktiv. Die zwei Welten bleiben getrennt:
+
+| Pfad | Komponenten | Was sie melden | Stand seit 0.35.0 |
+|---|---|---|---|
+| System-Alarme (Betrieb) | `app/alarms.py`, `app/notify.py` (B4) | Collector, Läufe, Store, Heartbeat — der Zustand der Maschine | **Unverändert**: `alarms[]` in `/health`, Header-Punkt, Kachel im System-Tab, ntfy-Zustandswechsel bei `severity: "error"` (dieses Kapitel) |
+| Preis-Erinnerungen / Push | — | hätte auf Preis-Chancen hingewiesen | **existiert nicht** — §11 streicht sie ersatzlos; es wird dafür keine Server-Komponente gebaut |
+
+Folgen für den Betrieb:
+
+- `TANKAPP_NTFY_URL` bedeutet weiterhin **nur System-Alarme**. Preis-Nachrichten
+  kommen nicht — und werden auch nicht kommen, es sei denn, Mitteilungen
+  kommen nach §11 als eigener, explizit einzuschaltender Baustein zurück.
+- Störungen erscheinen in der neuen GUI **nur als Anzeige**: Header-Punkt plus
+  Klartext im System-Tab mit Erster Aktion — kein Push, kein Ton (§11).
+- Die bestehenden Alarm-Einträge (Tabelle oben) gelten **unverändert**; es wird
+  nichts migriert, umbenannt oder stillgelegt. `app/alarms.py` und
+  `app/notify.py` bleiben wie gehabt Teil des Betriebs.
 
 ### Version und Build-Hash prüfen
 

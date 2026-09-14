@@ -1,12 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Wo diese Spec den
-// Alltagstab braucht, wechselt sie ausdrücklich dorthin.
-async function gotoAlltag(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
-}
-
 // B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Select, Horizont-Tabs,
 // Zeitwert-Automatik und Tief/Hoch-Marker. Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
@@ -290,23 +283,23 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
 
 test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await stubApi(page, { horizons: true });
-  await gotoAlltag(page);
-  // Der Kompass zeigt die günstigste Station (B); als Vergleich dient F,
-  // damit der Umweg-Rechner die aktiven Werte zeigt.
-  await expect(
-    page.getByRole("heading", { name: "B-Station", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "F-Station als Vergleich wählen" })
-    .click();
-  // C4: Der Zeitwert-Slider steht im Einstellungen-Tab; der Alltag zeigt
-  // den aktiven Wert read-only.
-  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  await page.goto("/");
+  // Phase 2: der Zeitwert-Slider steht unter „Ich → Fahrzeug“; die
+  // Stationsauswahl geht per Zeilen-Klick in „Stationen“.
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  const bRow = page.getByRole("button", {
+    name: "B-Station als Referenz und Detail wählen",
+  });
+  await bRow.click();
+  await expect(bRow).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Ich", exact: true }).click();
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   await expect(
     page.getByText("0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
-  await expect(page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/)).toBeVisible();
+  // Aktiver Wert: Auto (16 €/h Peak) bzw. Auto (10 €/h offpeak).
+  await expect(
+    page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/),
+  ).toBeVisible();
 });

@@ -3,7 +3,7 @@
 // `hourRangeLabel`) ist die einzige erlaubte Art, Zahlen in der GUI zu
 // schreiben — de-DE, also mit Komma. `toFixed` liefert einen Punkt („87.5 %“)
 // und gehört nur dorthin, wo keine Anzeige entsteht: SVG-Koordinaten und die
-// beiden Preis-Eingabefelder (die normalisieren jede Eingabe mit `commaToDot`,
+// Preis-Eingabefelder (die normalisieren jede Eingabe mit `commaToDot`,
 // Vorbelegung und Getipptes müssen gleich aussehen).
 //
 // Der Test zählt die Stellen je Datei. Wer eine neue `toFixed`-Anzeige baut,
@@ -18,9 +18,9 @@ import { describe, expect, it } from "vitest";
 /** Erlaubte `toFixed`-Stellen je Datei (Stand 0.15.0) — mit Grund. */
 const ALLOWED: Record<string, { count: number; reason: string }> = {
   "Dashboard.tsx": {
-    count: 2,
+    count: 1,
     reason:
-      "Vorbelegung der Preis-Eingabefelder: Punkt wie beim Tippen (commaToDot)",
+      "Vorbelegung des Beleg-Preises (Ich → Belege): Punkt wie beim Tippen (commaToDot)",
   },
   "components/LabCharts.tsx": {
     count: 6,
@@ -49,8 +49,13 @@ const CLEAN = [
   "components/Level1Sheet.tsx",
   "main.tsx",
   "now.ts",
-  "views/Daily.tsx",
+  "strip.ts",
+  "stations.ts",
+  "week.ts",
   "views/Jetzt.tsx",
+  "views/Stationen.tsx",
+  "views/Woche.tsx",
+  "views/Ich.tsx",
   "views/Statistics.tsx",
   "views/System.tsx",
 ];

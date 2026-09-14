@@ -1,15 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Diese Specs prüfen den
-// Alltagstab — sie wechseln deshalb ausdrücklich dorthin, statt sich auf den
-// Starttab zu verlassen. Nach jedem `reload()` ist der Einstieg wieder „Jetzt".
-async function gotoAlltag(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
-}
+// GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“. Die alten Tabs
+// „Alltag“ und „Einstellungen“ sind ersetzt — Stationen, Woche und Ich
+// führen die jeweiligen Bereiche weiter.
 
-test("honest setup state and all three views", async ({ page }) => {
-  // Auf einem frischen Server ohne Polling-Set zeigt der Einstieg „Jetzt" den
+test("honest setup state and all views", async ({ page }) => {
+  // Auf einem frischen Server ohne Polling-Set zeigt der Einstieg „Jetzt“ den
   // grauen S0-Zustand: Grund plus nächster Schritt — kein erfundener Preis,
   // keine leere Fläche.
   await page.goto("/");
@@ -22,11 +18,12 @@ test("honest setup state and all three views", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Einrichtung starten" }),
   ).toBeVisible();
-  // Der Alltagstab bleibt vorerst daneben stehen (Checkliste 1.6) und zeigt
-  // weiterhin seinen ehrlichen Leerzustand.
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+  // „Stationen“ (der ehemalige Alltag) zeigt auf dem frischen Server die
+  // ehrliche Set-Karte — kein roter Fehler, obwohl /decide ohne Set einen
+  // error_code zurückliefert (Konsequenz fehlender Daten, kein Defekt).
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Noch kein frischer Preis." }),
+    page.getByRole("heading", { name: "Erst ein Set, dann der Atlas" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
   await expect(
@@ -103,64 +100,77 @@ test("city/fuel changes never mix prices, closures never win", async ({
       },
     });
   });
-  await gotoAlltag(page);
-  await expect(
-    page.getByRole("heading", { name: "F-Station", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Geschlossen", { exact: true })).toBeVisible();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  // Die offene F-Station ist die Referenz; die geschlossene Station verliert
+  // nie die Auswahl.
+  const fRow = page.getByRole("button", {
+    name: "F-Station als Referenz und Detail wählen",
+  });
+  await expect(fRow).toBeVisible();
+  await expect(fRow).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Stadt", { exact: true }).selectOption("Gütersloh");
-  await expect(
-    page.getByRole("heading", { name: "G-Station", exact: true }),
-  ).toBeVisible();
+  const gRow = page.getByRole("button", {
+    name: "G-Station als Referenz und Detail wählen",
+  });
+  await expect(gRow).toBeVisible();
   await expect(page.getByText("F-Station", { exact: true })).toHaveCount(0);
-  // C4: Die Tankmenge ist ein Default — der Eingabeort ist jetzt der
-  // Einstellungen-Tab; der Alltag zeigt den Wert read-only.
-  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  // C4 (weitergezogen): Die Tankmenge ist ein Default — der Eingabeort ist
+  // jetzt „Ich → Fahrzeug“; die App rechnet haushaltsweit damit weiter.
+  await page.getByRole("button", { name: "Ich", exact: true }).click();
   await page.locator("#liters").fill("55");
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
-  await expect(page.getByText("Füllung mit 55 Litern")).toBeVisible();
+  await expect(page.locator("#liters")).toHaveAttribute(
+    "aria-valuetext",
+    "55 Liter",
+  );
   await page.getByRole("button", { name: "Diesel", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Noch kein frischer Preis." }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
   await expect(page.getByText("1,689", { exact: false })).toHaveCount(0);
   await page.reload();
-  // Nach dem Reload startet die App wieder in „Jetzt" — für die Alltags-Namen
-  // und die Tankmengen-Zeile deshalb erneut dorthin wechseln.
-  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+  // Nach dem Reload startet die App wieder in „Jetzt“ — für die Stationen-
+  // Namen erneut dorthin wechseln.
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(page.getByLabel("Stadt", { exact: true })).toHaveValue(
     "Gütersloh",
   );
-  await expect(page.getByText("Füllung mit 55 Litern")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Noch kein frischer Preis." }),
-  ).toBeVisible();
+  await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Diesel", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  // Die Tankmenge übersteht den Reload (geräte-lokal gespeichert).
+  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await expect(page.locator("#liters")).toHaveValue("55");
 });
 
-test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", async ({
+test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   page,
 }) => {
+  // Phase 2: „Einstellungen verschwindet als Tab“ (UI-NEUENTWURF §4.2) —
+  // die Fahrzeug-Felder wohnen unter „Ich → Fahrzeug“, Kontext, Schwellen,
+  // Darstellung und Daten unter „Ich → Einstellungen“.
   await page.goto("/");
-  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Alle Defaults an einer Stelle." }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  // Unterseiten-Segment-Steuerung: ARIA-Tabs (kein Button-Rollenspiel).
+  await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
 
-  // C4: Alle Defaults an einem Ort — die Eingabeorte, die im Alltagstabs
-  // verteilt lagen (Tankmenge, Verbrauch, Zeitwert, Tempo, Fahrtcharakter)
-  // plus Stadt, Kraftstoff und Tankgröße.
+  // Alle Defaults an einem Ort — die Eingabeorte, die im alten
+  // Einstellungen-Tab verteilt lagen (Tankmenge, Verbrauch, Zeitwert,
+  // Tempo, Fahrtcharakter) plus Tankgröße.
   await expect(page.locator("#liters")).toBeVisible();
   await expect(page.locator("#consumption")).toBeVisible();
   await expect(page.locator("#timeValue")).toBeVisible();
   await expect(page.locator("#speed")).toBeVisible();
   await expect(page.locator("#detourMode")).toBeVisible();
   await expect(page.locator("#tankCapacity")).toBeVisible();
+
+  await page
+    .getByRole("tab", { name: "Einstellungen", exact: true })
+    .click();
+  // Kontext: Stadt und Kraftstoff am Wirkungsort.
   await expect(page.locator("#settings-city")).toBeVisible();
 
-  // C4: Aktive Schwellen-Tabelle aus /api/v1/stats/summary — read-only,
+  // Aktive Schwellen-Tabelle aus /api/v1/stats/summary — read-only,
   // Startwerte der Engine (ohne Daten keine Abweichung möglich).
   await expect(
     page.getByText("read-only · Quelle: /api/v1/stats/summary"),
@@ -175,7 +185,7 @@ test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", 
   // Read-only: kein einziges Eingabefeld in der Schwellen-Tabelle.
   await expect(table.locator("input")).toHaveCount(0);
 
-  // C4: Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
+  // Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
   // einen Reload (Bootstrap-Script in index.html, localStorage).
   await page
     .getByRole("button", { name: "Hell (Slate)", exact: true })
@@ -184,10 +194,12 @@ test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", 
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/light/);
   // Zurück auf den Default (dunkles Slate), damit andere Tests nicht
-  // von dieser Ansicht abhängen. Nach dem Reload startet die App in „Jetzt"
-  // — der Theme-Knopf liegt im Einstellungen-Tab, der von jedem Tab
-  // erreichbar ist.
-  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  // von dieser Ansicht abhängen. Nach dem Reload startet die App in
+  // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
+  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await page
+    .getByRole("tab", { name: "Einstellungen", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })
     .click();

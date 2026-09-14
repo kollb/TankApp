@@ -18,7 +18,7 @@ import {
   WifiOff,
   Share2,
   CheckCircle2,
-  Settings2,
+  User,
   BookOpen,
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
@@ -41,7 +41,6 @@ import {
 // D1: geteilte UI-Bausteine (Panel-Klasse, Empty, Badge, Metric).
 import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
-import { JetztView } from "./views/Jetzt";
 import { forecastStamp, type NowTarget } from "./now";
 import { LineChart } from "./components/LineChart";
 import {
@@ -126,7 +125,6 @@ import {
   type Heatmap,
   type Selection,
   type DataReach,
-  type RouteEvaluate,
   type CollectorStatus,
   type DecideResult,
   type StatsSummary,
@@ -138,12 +136,18 @@ import {
 // D1: Views-Schnitt — die vier Tabs sind eigene Dateien; der gemeinsame
 // Zustand bleibt hier und wandert per typisierten Props in die Views.
 // (JobCard ist ein Baustein des System-Views, vgl. views/System.tsx)
-import { DailyView } from "./views/Daily";
+// GUI-Neuentwurf (Phase 1+2): die Aufgaben-Bereiche sind eigene Views.
+// „Jetzt“ (S1), „Stationen“ (S2), „Woche“ (S3), „Ich“ (S5a) — der alte
+// Alltagstab und der Einstellungen-Tab sind ersetzt, ihre Reste (Tanken,
+// Belege, Defaults) wohnen jetzt dort, wo sie wirken.
+import { JetztView, type NowAssumptions } from "./views/Jetzt";
+import { StationenView } from "./views/Stationen";
+import { WocheView } from "./views/Woche";
+import { IchView, fillPositionNote } from "./views/Ich";
 import { StatisticsView } from "./views/Statistics";
 import { SystemView } from "./views/System";
-// C4: Einstellungen-Tab — alle Defaults an einer Stelle.
-import { SettingsView } from "./views/Settings";
 import { GlossaryView } from "./views/Glossary";
+import { buildStripCells } from "./strip";
 export function Dashboard() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
   // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
@@ -165,13 +169,32 @@ export function Dashboard() {
     share.city,
   );
   const [selectedId, setSelectedId] = useState(share.stationId ?? "");
-  // GUI-Neuentwurf (Phase 1, erster Schnitt): „Jetzt“ ist der neue Einstieg.
-  // Der Alltagstab bleibt vorerst daneben stehen — seine Entscheidungs- und
-  // Listenteile übernehmen in Phase 1 „Jetzt“ und „Stationen“; bis dahin
-  // liest der neue Bereich dieselbe Overview-Antwort (kein zweiter Poll).
+  // GUI-Neuentwurf (Phase 1+2 abgeschlossen): die sechs Aufgaben-Bereiche.
+  // „Jetzt“ ist der Einstieg; „Werkstatt“ (→ Labor in Phase 3) und
+  // „Glossar“ bleiben Nebenwege, „System“ bleibt Haupttab.
   const [tab, setTab] = useState<
-    "jetzt" | "daily" | "statistics" | "system" | "settings" | "glossary"
+    "jetzt" | "stations" | "week" | "ich" | "statistics" | "system" | "glossary"
   >("jetzt");
+  // Einstieg in „Ich“, wenn ein anderer Bereich dort hinverweist (z. B.
+  // „Beleg manuell buchen“ im Due-Prompt → Belege). Sonst „Fahrzeug“.
+  const [ichSection, setIchSection] = useState<
+    "vehicle" | "fills" | "balance" | "settings"
+  >("vehicle");
+  // GUI-Neuentwurf §5.1/§5.2: Was-wäre-wenn ist Ansichtszustand, kein
+  // Setting — die Karte ändert die Annahmen live (dieselbe Anfrage, andere
+  // Parameter), das Profil bleibt unangetastet. null = Profilwert.
+  const [assumptions, setAssumptions] = useState<NowAssumptions>({
+    liters: null,
+    latestBy: null,
+    timeValue: null,
+  });
+  // GUI-Neuentwurf §5.2: „Suche stations-/ortsübergreifend aus jeder
+  // Ansicht (⌘K)“ — die Root nimmt den Tastenabdruck, die Stationen-View
+  // bekommt den Fokus per Signal.
+  const [searchFocusSignal, setSearchFocusSignal] = useState(0);
+  // A-gegen-B (Stationen): B-Station als Root-Zustand, weil der
+  // Server-Check (route/evaluate) daraus seinen Poll ableitet.
+  const [compareStationId, setCompareStationId] = useState("");
   const [liters, setLiters] = usePreference(
     "liters",
     40,
@@ -274,7 +297,6 @@ export function Dashboard() {
   const [quickStationId, setQuickStationId] = useState("");
   const [quickLitersStr, setQuickLitersStr] = useState("40");
   const [quickPriceStr, setQuickPriceStr] = useState("");
-  const [customFillOpen, setCustomFillOpen] = useState(false);
   // Eine langsame NAS machte die Buchungs-Buttons mehrere Sekunden
   // unresponsiv — wiederholtes Klicken buchte doppelte Belege. Solange eine
   // Anfrage läuft: Buttons gesperrt, Label „Wird verbucht …“.
@@ -283,17 +305,10 @@ export function Dashboard() {
   // Stornierte Belege bleiben im Ledger (CSV, Audit), sind in der Tabelle
   // aber standardmäßig ausgeblendet — der Doppelklick-Ursprung.
   const [showVoidedFills, setShowVoidedFills] = useState(false);
-  // E2: Werte als String halten — deutsche Mobil-Tastaturen liefern „1,689“,
-  // Number("1,689") wäre NaN. Normalisierung erfolgt beim Parsen (data.ts).
-  const [customLitersStr, setCustomLitersStr] = useState("40");
-  // Fix: kein erfundener Default-Preis (vorher 1.689) – leer bedeutet "bitte
-  // eingeben", wird mit bestPrice vorbefüllt, sobald der bekannt ist.
-  const [customPriceStr, setCustomPriceStr] = useState("");
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   // A3: Rückmeldung beim Stornieren eines Belegs (lokal im Verlauf).
   const [voidNote, setVoidNote] = useState<string | null>(null);
 
-  const [routeAltId, setRouteAltId] = useState("");
   // A6: Rückmeldung des „Ansicht teilen“-Knopfs (Kopfzeile).
   const [shareNote, setShareNote] = useState<string | null>(null);
   const shareNoteTimer = useRef<number | null>(null);
@@ -312,6 +327,21 @@ export function Dashboard() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
+  }, []);
+
+  // GUI-Neuentwurf §4.1: Suche als Nebenweg aus jeder Ansicht (⌘K / Strg+K).
+  // Der Handler springt nach „Stationen“ und setzt das Fokus-Signal —
+  // die View fokussiert ihre Suchzeile, wenn das Signal steigt.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setTab("stations");
+        setSearchFocusSignal((value) => value + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // A1: Fahrzeug-/Haushaltsprofile. Aktives Profil + fahrzeugspezifische
@@ -604,19 +634,6 @@ export function Dashboard() {
   const bestPrice = best ? price(best) : null;
   const selectedPrice = selected ? price(selected) : null;
 
-  // Wenn bester Live-Preis bekannt wird und noch kein Custom-Preis eingegeben
-  // wurde, vorbelegen (kein erfundener Fallback, nur echter bekannter Preis).
-  // C9: hier bewusst Punkt statt Komma — das Eingabefeld normalisiert jede
-  // Eingabe mit `commaToDot`, Vorbelegung und Getipptes müssen gleich aussehen.
-  useEffect(() => {
-    if (
-      bestPrice !== null &&
-      Number.isFinite(bestPrice) &&
-      customPriceStr === ""
-    ) {
-      setCustomPriceStr(bestPrice.toFixed(3));
-    }
-  }, [bestPrice, customPriceStr]);
   // Schnell-Erfassung: Station per Default = Vergleichsstation, Preis =
   // deren frischer Preis (sonst billigster). Nur solange das Feld leer ist —
   // eine eigene Eingabe wird nie überschrieben.
@@ -658,6 +675,18 @@ export function Dashboard() {
       : null;
   const selectedIsCheapest =
     difference !== null && Math.abs(difference) < 0.005;
+  // GUI-Neuentwurf: frische Set-Preise (für die Einordnung nach dem Buchen
+  // und für „Ich → Belege“) + gewählte Stations zuerst in der Beleg-Auswahl
+  // (gepinnte Stationen rücken nach vorn — dieselbe Reihenfolge wie Karte).
+  const freshPrices = fresh.map((row) => price(row)!).filter(
+    (value) => value !== null,
+  );
+  const pinnedFirstStations = [...stations].sort((a, b) => {
+    const aPin = pinnedIds.includes(a.station_id) ? 0 : 1;
+    const bPin = pinnedIds.includes(b.station_id) ? 0 : 1;
+    if (aPin !== bPin) return aPin - bPin;
+    return (a.dist_km ?? 1e9) - (b.dist_km ?? 1e9);
+  });
   // A6: aktuelle Sicht als Share-URL — in die Adresszeile (bookmarkbar) und,
   // wenn der Browser es erlaubt (LAN-HTTP ohne Secure Context tut es oft
   // nicht), zusätzlich in die Zwischenablage.
@@ -712,20 +741,30 @@ export function Dashboard() {
 
   // --- B4 Resources ---
   // H1/B6: alle What-if-Parameter an den Server — Strecke und Verdict kommen ausschließlich vom Server.
-  // B7: Der Alltagstab kommt als EINE Anfrage aus /api/v1/overview
+  // B7: „Jetzt“ und „Woche“ kommen als EINE Anfrage aus /api/v1/overview
   // (decide + Wallet + Summary + Due-Episoden + Tageskurve) statt sechs
   // Parallel-Polls, die auf der NAS an File-Locks hängen und einen Refresh
   // auf 5–10 s blähen, während die Ansicht tot wirkt.
   // A2: Tankstand an /decide mitgeben — nur mit Füllstand-Angabe; die
   // Tankgröße kommt aus dem Profil (bzw. lokal, solange keins aktiv ist).
+  // GUI-Neuentwurf §5.1: die Was-wäre-wenn-Overrides (Liter, latest_by,
+  // Zeitwert) gelten nur für die Ansicht — dieselbe Anfrage, andere
+  // Parameter; der Server bleibt die einzige Quelle.
+  const effLiters = assumptions.liters ?? liters;
+  const effTimeValue = assumptions.timeValue ?? timeValue;
   const tankQuery =
     tankPercent !== null
       ? `&tank_percent=${tankPercent}&tank_capacity_l=${tankCapacity}`
       : "";
+  const latestByQuery = assumptions.latestBy
+    ? `&latest_by=${encodeURIComponent(assumptions.latestBy)}`
+    : "";
   const decideQuery = activeCity
-    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${liters}&value_of_time=${timeValue}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
+    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${effLiters}&value_of_time=${effTimeValue}${latestByQuery}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
     : null;
-  const overviewTab = tab === "daily" || tab === "jetzt";
+  // „Jetzt“, „Stationen“ und „Woche“ teilen denselben Overview-Poll
+  // (decide + Tageskurve + Wallet) — eine Antwort, drei Ansichten.
+  const overviewTab = tab === "jetzt" || tab === "stations" || tab === "week";
   const overview = useResource<Overview>(
     overviewTab && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
     30000,
@@ -754,9 +793,9 @@ export function Dashboard() {
 
   const statsSummaryPoll = useResource<StatsSummary>(
     // Die Güte-Kacheln im System-Tab, das Labor in der Werkstatt und die
-    // Schwellen-Tabelle in den Einstellungen lesen dieselbe Antwort — im
-    // Alltagstabs steckt sie im Overview-Payload.
-    tab === "statistics" || tab === "system" || tab === "settings"
+    // Schwellen-Tabelle in „Ich → Einstellungen“ lesen dieselbe Antwort —
+    // in „Jetzt“/„Woche“ steckt sie im Overview-Payload.
+    tab === "statistics" || tab === "system" || tab === "ich"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -785,6 +824,17 @@ export function Dashboard() {
   >(
     tab === "statistics" && identity
       ? `/api/v1/series?${identity}&hours=${spanHours}`
+      : null,
+    60000,
+    refresh,
+  );
+  // GUI-Neuentwurf §5.2: 7-Tage-Verlauf der Stationen-View (eigener Poll
+  // nur für die gewählte Station — „Verlauf schlägt Moment“).
+  const series7d = useResource<
+    { points: Point[]; error_code: string | null } | null
+  >(
+    tab === "stations" && identity
+      ? `/api/v1/series?${identity}&hours=168`
       : null,
     60000,
     refresh,
@@ -826,8 +876,11 @@ export function Dashboard() {
   );
   // A4: Monats-/Jahresbilanz — nur im Werkstatt-Tab (der Alltag zeigt
   // weiter die Summen-Kacheln aus stats_summary).
+  // GUI-Neuentwurf: die Bilanz (S5a) ist jetzt Teil von „Ich“; die
+  // Werkstatt nutzt dieselbe Antwort weiterhin für ihre Monats-/Jahrs-
+  // Bilanz.
   const fillsSummary = useResource<FillsSummary>(
-    tab === "statistics" ? "/api/v1/fills/summary" : null,
+    tab === "ich" || tab === "statistics" ? "/api/v1/fills/summary" : null,
     120000,
     refresh,
   );
@@ -844,15 +897,9 @@ export function Dashboard() {
     runningJob ? 15000 : 120000,
     logReload,
   );
-  const routeEval = useResource<RouteEvaluate>(
-    overviewTab &&
-      activeCity &&
-      (routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id)
-      ? `/api/v1/route/evaluate?city=${encodeURIComponent(activeCity)}&fuel=${fuel}&station_id=${encodeURIComponent(routeAltId || decideRes.data?.alternatives_nearby?.[0]?.station_id || "")}&ref_station_id=${encodeURIComponent(selected?.station_id || "")}&liters=${liters}&consumption=${consumption}&speed=${speed}&value_of_time=${timeValue}&when=${encodeURIComponent(new Date().toISOString())}&mode=${detourMode}`
-      : null,
-    30000,
-    refresh,
-  );
+  // GUI-Neuentwurf: der A-gegen-B-Vergleich in „Stationen“ nutzt die
+  // decide-Alternativen (inkl. Server-Netto-€) aus dem Overview-Payload —
+  // kein eigener route/evaluate-Poll mehr („kein zweiter Poll“).
 
   // C6: Server-Verbindung. Ein einzelner fehlgeschlagener Poll löst hier
   // nichts mehr aus (useResource debounced) — der Satz benennt den letzten
@@ -1006,47 +1053,10 @@ export function Dashboard() {
       .slice(0, 3);
   })();
 
-  const stripCells = (() => {
-    const points =
-      overviewTab && !dayStrip.error && !dayStrip.data?.error_code
-        ? dayStrip.data?.points || []
-        : [];
-    const byHour = new Map<number, number>();
-    for (const p of points) {
-      const ms = Date.parse(p.timestamp);
-      if (
-        p.status !== "open" ||
-        p.price === null ||
-        !Number.isFinite(p.price) ||
-        !Number.isFinite(ms)
-      )
-        continue;
-      const hour = Math.floor(berlinHour(new Date(ms)));
-      if (hour >= 6 && hour <= 24) byHour.set(hour, p.price);
-    }
-    const values = [...byHour.values()];
-    const min = values.length ? Math.min(...values) : 0;
-    const max = values.length ? Math.max(...values) : 0;
-    const span = max - min || 1;
-    const nowHour = Math.floor(berlinHour());
-    return Array.from({ length: 18 }, (_, i) => {
-      const hour = 6 + i;
-      const value = byHour.get(hour);
-      return {
-        hour,
-        value: value ?? null,
-        tone:
-          value === undefined
-            ? "empty"
-            : value <= min + span / 3
-              ? "cheap"
-              : value >= max - span / 3
-                ? "pricey"
-                : "mid",
-        current: hour === nowHour,
-      };
-    });
-  })();
+  // GUI-Neuentwurf: der Tagesstreifen ist jetzt „Heute im Blick“ (Jetzt)
+  // und „Der Set-Ton“ (Stationen) — dieselbe pure Funktion (strip.ts),
+  // dieselbe Overview-Antwort.
+  const stripCells = buildStripCells(dayStrip.data?.points ?? []);
 
   // Zwei Freigaben, zwei Zeilen — sie haben verschiedene Nenner:
   //   1. M7-Gate (§0.4): Zähl-Gate über abgeschlossene Empfehlungen
@@ -1071,11 +1081,16 @@ export function Dashboard() {
   // Die Frische der Prognose kommt aus der Engine-Publikation bzw. dem
   // Fit-Zeitpunkt — nicht aus der Berechnungszeit dieser Antwort (`now.ts`).
   const nowForecastAt = forecastStamp(decideRes.data);
-  // Die Ziele des Neuentwurfs gibt es als Bereiche noch nicht: „Stationen“,
-  // „Woche“ und der Tankstand leben bis Phase 1/2 im Alltagstab, „System“
-  // existiert schon. Diese Übersetzung fällt mit dem jeweiligen Bereich weg.
-  const handleNowNavigate = (target: NowTarget) => {
-    setTab(target === "system" ? "system" : "daily");
+  // GUI-Neuentwurf: die Ziele des Neuentwurfs sind echte Bereiche —
+  // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“ und „System“.
+  // „Werkstatt“ ist bis Phase 3 der Weg zur Ebene 2 (das Labor folgt dort).
+  const handleNowNavigate = (target: NowTarget | "jetzt" | "werkstatt") => {
+    if (target === "jetzt") setTab("jetzt");
+    else if (target === "stations") setTab("stations");
+    else if (target === "week" || target === "tank") setTab("week");
+    else if (target === "ich") setTab("ich");
+    else if (target === "werkstatt") setTab("statistics");
+    else setTab("system");
   };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
@@ -1190,18 +1205,8 @@ export function Dashboard() {
     dueEpisodesRes.data?.episodes?.[0] ||
     (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
-  // E2/E3: Sofort-Validierung des Beleg-Dialogs — dieselben Grenzen wie der
-  // Server (app/feedback.py), Komma normalisiert, Prüfung vor dem Roundtrip.
-  // E4: ohne gewählte Station ist der Beleg nicht buchbar (der Server würde
-  // mit unknown_station ablehnen, ohne dass der Nutzer selbst helfen kann).
-  const fillDraft = checkFillDraft({
-    liters: customLitersStr,
-    price: customPriceStr,
-    stationId: selected?.station_id,
-  });
-  const litersError = fillDraft.litersError;
-  const priceError = fillDraft.priceError;
-  const stationMissing = fillDraft.stationMissing;
+  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Ich → Belege“
+  // (quickDraft), dieselben Grenzen wie der Server (app/feedback.py).
 
   // B4: Alarme aus /health für den roten/grünen Punkt im Header.
   const alarms = h?.alarms ?? [];
@@ -1255,56 +1260,6 @@ export function Dashboard() {
     setTimeout(() => setActionFeedback(null), 4000);
   };
 
-  const handleCustomFill = async (ep: any) => {
-    if (fillSubmitting) return;
-    // E3: Vorprüfung mit denselben Grenzen wie der Server — 101 L oder 9,99 €/L
-    // brächten dem Nutzer nur eine Fehlermeldung nach dem Roundtrip.
-    // E4: ohne gewählte Station wird nicht gebucht; kein „custom“-Platzhalter,
-    // den der Server erst mit unknown_station ablehnen müsste.
-    const litersVal = germanDecimalToNumber(customLitersStr);
-    const priceVal = germanDecimalToNumber(customPriceStr);
-    const stationId = selected?.station_id;
-    if (
-      !fillDraft.ok ||
-      litersVal === null ||
-      priceVal === null ||
-      !stationId
-    ) {
-      setActionFeedback(
-        fillDraft.stationMissing
-          ? "! Ohne Station kein Beleg — bitte zuerst eine Station wählen."
-          : `! ${litersError ?? priceError ?? "Eingabe prüfen."}`,
-      );
-      setTimeout(() => setActionFeedback(null), 5000);
-      return;
-    }
-    setFillSubmitting(true);
-    const res = await postFill({
-      station_id: stationId,
-      station_name: selected?.name || "Station",
-      liters: litersVal,
-      price_paid: priceVal,
-      fuel,
-      source: "prompt",
-      episode_id: ep?.id,
-    });
-    setFillSubmitting(false);
-    if (res?.error_code) {
-      setActionFeedback(
-        `! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`,
-      );
-      setTimeout(() => setActionFeedback(null), 5000);
-      return;
-    }
-    setActionFeedback(
-      "✓ Angepasste Füllung in deiner Tank-Bilanz gespeichert!",
-    );
-    setCustomFillOpen(false);
-    setDueDismissed(true);
-    setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
-  };
-
   const handleQuickFill = async () => {
     if (fillSubmitting) return;
     // Schnell-Erfassung ohne Episode (Quelle „tanke gerade / habe getankt“):
@@ -1343,9 +1298,17 @@ export function Dashboard() {
       setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
-    setActionFeedback("✓ Beleg in deiner Tank-Bilanz verbucht!");
+    // GUI-Neuentwurf: Einordnung des gerade gebuchten Preises gegen den
+    // frischen Set-Median (pure Funktion in Ich.tsx) — ehrlich, nur wenn
+    // mindestens zwei frische Messungen vorliegen, sonst nur der Satz.
+    const positionNote = fillPositionNote(priceVal, freshPrices);
+    setActionFeedback(
+      positionNote
+        ? `✓ Beleg in deiner Tank-Bilanz verbucht! ${positionNote}`
+        : "✓ Beleg in deiner Tank-Bilanz verbucht!",
+    );
     setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
+    setTimeout(() => setActionFeedback(null), 6000);
   };
 
   const handleVoidFill = async (fillId: string) => {
@@ -1581,18 +1544,15 @@ export function Dashboard() {
             {(
               [
                 { id: "jetzt", label: "Jetzt", icon: <Compass size={15} /> },
-                { id: "daily", label: "Alltag", icon: <Gauge size={15} /> },
+                { id: "stations", label: "Stationen", icon: <MapPin size={15} /> },
+                { id: "week", label: "Woche", icon: <Gauge size={15} /> },
+                { id: "ich", label: "Ich", icon: <User size={15} /> },
                 {
                   id: "statistics",
                   label: "Werkstatt",
                   icon: <ChartIcon size={15} />,
                 },
                 { id: "system", label: "System", icon: <Server size={15} /> },
-                {
-                  id: "settings",
-                  label: "Einstellungen",
-                  icon: <Settings2 size={15} />,
-                },
                 {
                   id: "glossary",
                   label: "Glossar",
@@ -1732,12 +1692,15 @@ export function Dashboard() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB JETZT (GUI-Neuentwurf, Phase 1)                          */}
+        {/* TAB JETZT (GUI-Neuentwurf, Phase 1+2)                        */}
         {/* ============================================================ */}
         {tab === "jetzt" && (
           <JetztView
             activeCity={activeCity}
-            liters={liters}
+            liters={effLiters}
+            timeValue={effTimeValue}
+            timeValueUsed={timeValueUsed}
+            autoZ={autoZ}
             decideRes={decideRes}
             stations={stations}
             selectedId={selectedId}
@@ -1746,95 +1709,154 @@ export function Dashboard() {
             forecastAt={nowForecastAt}
             onNavigate={handleNowNavigate}
             onDeepen={() => setTab("statistics")}
-            onOpenSettings={() => setTab("settings")}
             onRetry={refreshNow}
+            assumptions={assumptions}
+            defaultLiters={liters}
+            defaultTimeValue={timeValue}
+            onAssumptions={(patch) =>
+              setAssumptions((current) => ({ ...current, ...patch }))
+            }
+            onAssumptionsReset={() =>
+              setAssumptions({ liters: null, latestBy: null, timeValue: null })
+            }
+            tankPercent={tankPercent}
+            onTankQuick={(percent) => setTankPercent(percent)}
+            dueEpisode={dueEpisode}
+            dueDismissed={dueDismissed}
+            bestPrice={bestPrice}
+            onConfirmRecommended={(ep) => handleConfirmRecommendedFill(ep)}
+            onDismissDue={(epId) => handleDismissDue(epId)}
+            onOpenFills={() => {
+              setIchSection("fills");
+              setTab("ich");
+            }}
+            onIntent={(intent, mapsUrl) => handleIntent(intent, mapsUrl)}
           />
         )}
 
         {/* ============================================================ */}
-        {/* TAB ALLTAG                                                   */}
+        {/* TAB STATIONEN (GUI-Neuentwurf, Phase 2)                      */}
         {/* ============================================================ */}
-        {tab === "daily" && (
-          <DailyView
+        {tab === "stations" && (
+          <StationenView
             activeCity={activeCity}
-            actionFeedback={actionFeedback}
-            best={best}
-            bestPrice={bestPrice}
-            consumption={consumption}
-            speed={speed}
-            customLitersStr={customLitersStr}
-            customFillOpen={customFillOpen}
-            customPriceStr={customPriceStr}
             data={data}
-            dayStrip={dayStrip}
-            decideRes={decideRes}
-            detourMode={detourMode}
-            difference={difference}
-            dueDismissed={dueDismissed}
-            dueEpisode={dueEpisode}
-            elapsed={elapsed}
-            fillDraft={fillDraft}
-            fillList={fillList}
-            fillSubmitting={fillSubmitting}
-            fillsRes={fillsRes}
-            fuel={fuel}
-            gateStatus={gateStatus}
-            h={h}
-            handleConfirmRecommendedFill={handleConfirmRecommendedFill}
-            handleCustomFill={handleCustomFill}
-            handleDismissDue={handleDismissDue}
-            handleIntent={handleIntent}
-            handleQuickFill={handleQuickFill}
-            handleVoidFill={handleVoidFill}
-            liters={liters}
-            litersError={litersError}
-            liveAdvice={liveAdvice}
-            m7Line={m7Line}
-            online={online}
-            price={price}
-            priceError={priceError}
-            quickDraft={quickDraft}
-            quickLitersStr={quickLitersStr}
-            quickPriceStr={quickPriceStr}
-            quickStation={quickStation}
-            quickStationId={quickStationId}
-            refreshNow={refreshNow}
-            routeEval={routeEval}
-            selected={selected}
-            selectedId={selectedId}
-            routeAltId={routeAltId}
-            selectedIsCheapest={selectedIsCheapest}
-            onOpenSettings={() => setTab("settings")}
-            setCustomFillOpen={setCustomFillOpen}
-            setCustomLitersStr={setCustomLitersStr}
-            setCustomPriceStr={setCustomPriceStr}
-            setQuickLitersStr={setQuickLitersStr}
-            setQuickPriceStr={setQuickPriceStr}
-            setQuickStationId={setQuickStationId}
-            setRouteAltId={setRouteAltId}
-            setSelectedId={setSelectedId}
-            setShowVoidedFills={setShowVoidedFills}
-            showVoidedFills={showVoidedFills}
-            span={span}
-            stationMissing={stationMissing}
             stations={stations}
-            statsSummaryRes={statsSummaryRes}
-            stripCells={stripCells}
-            timeValue={timeValue}
-            timeValueUsed={timeValueUsed}
-            autoZ={autoZ}
-            voidBusy={voidBusy}
-            voidNote={voidNote}
-            visibleFills={visibleFills}
-            voidedCount={voidedCount}
-            tankPercent={tankPercent}
-            setTankPercent={setTankPercent}
-            tankCapacity={tankCapacity}
+            price={price}
+            elapsed={elapsed}
+            online={online}
+            selectedId={selectedId}
+            setSelectedId={setSelectedId}
             pinnedIds={pinnedIds}
             togglePin={togglePin}
             pinNote={pinNote}
-            isStaleFuel={isStaleFuel}
-            pricesPending={prices.pending}
+            decideRes={decideRes}
+            stripCells={stripCells}
+            series7d={series7d}
+            liters={effLiters}
+            timeValue={effTimeValue}
+            timeValueUsed={timeValueUsed}
+            autoZ={autoZ}
+            onTimeValue={(value) =>
+              setAssumptions((current) => ({ ...current, timeValue: value }))
+            }
+            pricesAt={nowPricesAt}
+            onRetry={refreshNow}
+            onNavigate={handleNowNavigate}
+            onDeepen={() => setTab("statistics")}
+            searchFocusSignal={searchFocusSignal}
+          />
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB WOCHE (GUI-Neuentwurf, Phase 2)                          */}
+        {/* ============================================================ */}
+        {tab === "week" && (
+          <WocheView
+            activeCity={activeCity}
+            stationsCount={stations.length}
+            decideRes={decideRes}
+            priceNow={price(selected)}
+            tankPercent={tankPercent}
+            setTankPercent={setTankPercent}
+            tankCapacity={tankCapacity}
+            consumption={consumption}
+            forecastAt={nowForecastAt}
+            pricesAt={nowPricesAt}
+            onRetry={refreshNow}
+            onNavigate={handleNowNavigate}
+            onDeepen={() => setTab("statistics")}
+          />
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB ICH (GUI-Neuentwurf, Phase 2)                            */}
+        {/* ============================================================ */}
+        {tab === "ich" && (
+          <IchView
+            initialSection={ichSection}
+            vehicle={{
+              liters,
+              setLiters,
+              consumption,
+              setConsumption,
+              tankCapacity,
+              setTankCapacity,
+              activeProfileName: activeProfile?.name ?? null,
+              speed,
+              setSpeed,
+              timeValue,
+              setTimeValue,
+              timeValueUsed,
+              autoZ,
+              detourMode,
+              setDetourMode,
+              profilesRes,
+              activeProfileId,
+              onActivateProfile: handleActivateProfile,
+              profilesBusy,
+              onOpenProfileManager: () => setProfileManagerOpen(true),
+            }}
+            settings={{
+              data,
+              activeCity,
+              setCity,
+              fuel,
+              setFuel,
+              statsSummaryRes,
+              refreshNow,
+              theme,
+              setTheme,
+              pinnedStations: pinnedFirstStations
+                .filter((row) => pinnedIds.includes(row.station_id))
+                .map((station) => ({ station })),
+              togglePin,
+              version: h?.version ?? null,
+              onOpenGlossary: () => setTab("glossary"),
+            }}
+            pinnedFirstStations={pinnedFirstStations}
+            quickStationId={quickStationId}
+            setQuickStationId={setQuickStationId}
+            quickLitersStr={quickLitersStr}
+            setQuickLitersStr={setQuickLitersStr}
+            quickPriceStr={quickPriceStr}
+            setQuickPriceStr={setQuickPriceStr}
+            quickDraft={quickDraft}
+            priceOf={price}
+            freshPrices={freshPrices}
+            fillSubmitting={fillSubmitting}
+            onQuickFill={handleQuickFill}
+            actionFeedback={actionFeedback}
+            fillList={fillList}
+            visibleFills={visibleFills}
+            voidedCount={voidedCount}
+            showVoidedFills={showVoidedFills}
+            setShowVoidedFills={setShowVoidedFills}
+            voidNote={voidNote}
+            voidBusy={voidBusy}
+            onVoidFill={handleVoidFill}
+            fillsSummary={fillsSummary}
+            onRetry={refreshNow}
           />
         )}
 
@@ -1946,38 +1968,6 @@ export function Dashboard() {
             triggerCommand={triggerCommand}
             webhookCapable={webhookCapable}
             workerCommand={workerCommand}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB EINSTELLUNGEN                                            */}
-        {/* ============================================================ */}
-        {tab === "settings" && (
-          <SettingsView
-            activeCity={activeCity}
-            activeProfileName={activeProfile?.name ?? null}
-            autoZ={autoZ}
-            consumption={consumption}
-            data={data}
-            detourMode={detourMode}
-            fuel={fuel}
-            liters={liters}
-            refreshNow={refreshNow}
-            setCity={setCity}
-            setConsumption={setConsumption}
-            setDetourMode={setDetourMode}
-            setFuel={setFuel}
-            setLiters={setLiters}
-            setSpeed={setSpeed}
-            setTankCapacity={setTankCapacity}
-            setTimeValue={setTimeValue}
-            setTheme={setTheme}
-            speed={speed}
-            statsSummaryRes={statsSummaryRes}
-            tankCapacity={tankCapacity}
-            theme={theme}
-            timeValue={timeValue}
-            timeValueUsed={timeValueUsed}
           />
         )}
 

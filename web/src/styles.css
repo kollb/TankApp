@@ -225,25 +225,15 @@ html.ptr-off body {
   .app-main {
     padding-top: 0.75rem;
   }
-  .daily-intro {
-    display: none;
-  }
-  /* Ruhigerer Rhythmus, damit die Tageskurve ohne langes Scrollen sichtbar ist. */
-  .daily-flow > * {
-    margin-bottom: 0.9rem;
-  }
-  /* Die Tageskurve: alle 18 Stunden in zwei Neuner-Reihen über die volle
-     Breite — dieselbe Reihenfolge wie hochkant, nur ohne dritte Reihe. */
+  /* Die Tageskurve („Heute im Blick“ in Jetzt): alle 18 Stunden in zwei
+     Neuner-Reihen über die volle Breite — dieselbe Reihenfolge wie
+     hochkant, nur ohne dritte Reihe. */
   .daystrip-cells {
     grid-template-columns: repeat(9, minmax(0, 1fr));
     gap: 0.3rem;
   }
   .daystrip-cells > div {
     padding: 0.35rem 0.25rem;
-  }
-  /* C8: Der Aktions-Chip bleibt erreichbar, sitzt quer aber höher. */
-  .daily-action-chip {
-    top: 0.25rem;
   }
 }
 
