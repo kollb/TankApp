@@ -3,6 +3,8 @@
 Deckt ab:
   * Stationen-Metadaten aus polling.json (Namen statt UUIDs)
   * Live-Preise aus dem JSONL-Ringpuffer (neueste Zeile je Station, echtes Alter)
+  * Tagesverlauf 06–24 Uhr je Station (`read_series` + `/api/v1/series`)
+  * Snapshot-TTL-Cache (ein Puffer-Read je GUI-Zyklus statt vier)
   * F1/F2/F3-Entscheidung aus echten Quantil-Prognosen (q025/q975-Logik)
   * Proxy-Verhalten: NAS online -> transparente Weiterleitung,
     NAS offline -> Fallback-GUI, ?fallback=1 erzwingt Fallback
@@ -438,6 +440,257 @@ def test_forecasts_endpoint_503_without_cache(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ---------------------------------------------------------------------------
+# Tagesverlauf (`read_series` + /api/v1/series) + Snapshot-TTL-Cache
+# ---------------------------------------------------------------------------
+
+LOCAL_TZ = dt.datetime.now().astimezone().tzinfo
+
+
+def local_iso(day: dt.date, hour: int, minute: int = 5) -> str:
+    """UTC-Zeitstempel für eine Ortszeit-Stunde (der Collector schreibt UTC)."""
+    return (
+        dt.datetime.combine(day, dt.time(hour % 24, minute), tzinfo=LOCAL_TZ)
+        .astimezone(UTC)
+        .isoformat()
+    )
+
+
+def poll_line(
+    day: dt.date, hour: int, minute: int, rec: dict, uid: str = UID_A
+) -> dict:
+    return {
+        "fetched_at": local_iso(day, hour, minute),
+        "source": "test",
+        "city": "Gütersloh",
+        "prices": {uid: rec},
+    }
+
+
+def write_day_file(poll_dir: Path, day: dt.date, lines: list[dict]) -> Path:
+    """Tag-Datei mit frei wählbarem Datum (gestern, heute, morgen)."""
+    poll_dir.mkdir(parents=True, exist_ok=True)
+    path = poll_dir / f"{day.strftime('%Y-%m-%d')}.jsonl"
+    path.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
+    return path
+
+
+def series_history(poll_dir: Path) -> dict:
+    """Heutiger Verlauf: letzte Meldung je Stunde, geschlossene und fremde
+    Kraftstoffe bleiben leer, dazu gestern (zählt nicht) und morgen (Zelle 24)."""
+    today = dt.datetime.now(LOCAL_TZ).date()
+    write_day_file(
+        poll_dir,
+        today - dt.timedelta(days=1),
+        [
+            poll_line(
+                today - dt.timedelta(days=1), 9, 0, {"status": "open", "e10": 1.999}
+            ),
+        ],
+    )
+    write_day_file(
+        poll_dir,
+        today,
+        [
+            poll_line(today, 7, 5, {"status": "open", "e10": 1.700}),
+            poll_line(today, 7, 55, {"status": "open", "e10": 1.690}),
+            poll_line(today, 8, 30, {"status": "closed"}),
+            poll_line(today, 12, 10, {"status": "open", "e5": 1.800}),
+            poll_line(today, 18, 20, {"status": "open", "e10": 1.684}),
+            poll_line(today, 23, 55, {"status": "open", "e10": 1.672}),
+        ],
+    )
+    write_day_file(
+        poll_dir,
+        today + dt.timedelta(days=1),
+        [
+            poll_line(
+                today + dt.timedelta(days=1), 0, 15, {"status": "open", "e10": 1.666}
+            ),
+        ],
+    )
+    return {"today": today}
+
+
+def test_read_series_hour_buckets_and_extremes(tmp_path):
+    poll_dir = tmp_path / "poll"
+    info = series_history(poll_dir)
+    out = rp2.read_series(poll_dir, UID_A, "e10")
+    assert out["station_id"] == UID_A
+    assert out["fuel"] == "e10"
+    assert out["day"] == info["today"].isoformat()
+    assert [h["hour"] for h in out["hours"]] == [f"{h:02d}" for h in range(6, 25)]
+    by_hour = {h["hour"]: h for h in out["hours"]}
+    assert by_hour["06"]["value"] is None  # gestern zählt nicht
+    assert by_hour["07"]["value"] == 1.690  # letzte Meldung der Stunde gewinnt
+    assert by_hour["07"]["at"] == local_iso(info["today"], 7, 55)
+    assert by_hour["08"]["value"] is None  # geschlossen -> keine erfundene Zahl
+    assert by_hour["12"]["value"] is None  # E10 nicht geführt (nur E5 gemeldet)
+    assert by_hour["18"]["value"] == 1.684
+    assert by_hour["23"]["value"] == 1.672
+    assert by_hour["24"]["value"] == 1.666  # Mitternachtsstunde aus der Folgetags-Datei
+    assert by_hour["24"]["at"] == local_iso(info["today"] + dt.timedelta(days=1), 0, 15)
+    assert out["min"] == {"value": 1.666, "at": "00:15"}
+    assert out["max"] == {"value": 1.690, "at": "07:55"}
+    assert out["now"] == {"value": 1.666, "at": "00:15"}  # letzte Meldung
+    # Stunden ohne Meldung tragen keine Zahl (auch kein "at")
+    for hour in ("06", "08", "09", "12"):
+        assert by_hour[hour] == {"hour": hour, "value": None, "at": None}
+
+
+def test_read_series_filters_fuel(tmp_path):
+    poll_dir = tmp_path / "poll"
+    series_history(poll_dir)
+    e5 = rp2.read_series(poll_dir, UID_A, "e5")
+    by_hour = {h["hour"]: h for h in e5["hours"]}
+    assert by_hour["12"]["value"] == 1.800
+    assert by_hour["07"]["value"] is None  # die Stunde hatte nur E10
+    assert e5["min"] == {"value": 1.800, "at": "12:10"}
+    assert e5["now"] == {"value": 1.800, "at": "12:10"}
+
+
+def test_read_series_without_any_report_is_empty(tmp_path):
+    poll_dir = tmp_path / "poll"
+    poll_dir.mkdir(parents=True, exist_ok=True)
+    out = rp2.read_series(poll_dir, UID_A, "e10")
+    assert len(out["hours"]) == 19
+    assert all(h["value"] is None for h in out["hours"])
+    assert out["min"] is None and out["max"] is None and out["now"] is None
+
+
+def test_series_endpoint_returns_daily_strip(tmp_path):
+    today = dt.datetime.now(LOCAL_TZ).date()
+    lines = [
+        poll_line(today, 7, 5, {"status": "open", "e10": 1.700}),
+        poll_line(today, 7, 55, {"status": "open", "e10": 1.690}),
+        poll_line(today, 8, 30, {"status": "closed"}),
+    ]
+    server, _ = start_fallback_server(tmp_path, poll_lines=lines, with_forecast=False)
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        data = get_json(base, f"/api/v1/series?station={UID_A}&fuel=e10")
+        assert data["station_id"] == UID_A
+        assert len(data["hours"]) == 19
+        by_hour = {h["hour"]: h for h in data["hours"]}
+        assert by_hour["07"]["value"] == 1.690
+        assert by_hour["08"]["value"] is None
+        assert data["max"]["value"] == 1.690
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_series_endpoint_errors(tmp_path):
+    today = dt.datetime.now(LOCAL_TZ).date()
+    lines = [poll_line(today, 7, 5, {"status": "open", "e10": 1.700})]
+    server, _ = start_fallback_server(tmp_path, poll_lines=lines, with_forecast=False)
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def status_of(path: str) -> int:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            get_json(base, path)
+        return exc.value.code
+
+    try:
+        # unbekannte Station -> 404
+        assert status_of(f"/api/v1/series?station={'9' * 36}&fuel=e10") == 404
+        # ungültiges fuel -> 400 (kein stilles E10)
+        assert status_of(f"/api/v1/series?station={UID_A}&fuel=super") == 400
+        # fehlende Station -> 400
+        assert status_of("/api/v1/series?fuel=e10") == 400
+        assert status_of(f"/api/v1/series?station={UID_A}") == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_series_endpoint_503_on_empty_buffer(tmp_path):
+    server, _ = start_fallback_server(tmp_path, with_forecast=False)
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            get_json(base, f"/api/v1/series?station={UID_A}&fuel=e10")
+        assert exc.value.code == 503
+        body = json.loads(exc.value.read().decode("utf-8"))
+        assert "Preis-Puffer ist leer" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_snapshot_ttl_cache_keeps_state_short(tmp_path):
+    today = dt.datetime.now(LOCAL_TZ).date()
+    ctx = make_ctx(
+        tmp_path,
+        poll_lines=[poll_line(today, 7, 5, {"status": "open", "e10": 1.700})],
+        with_forecast=False,
+    )
+    first = ctx.snapshot()
+    assert first["stations"][0]["e10"] == 1.700
+    # Neue Zeile im Puffer: innerhalb der TTL bleibt der Stand stehen ...
+    write_day_file(
+        ctx.poll_dir,
+        today,
+        [poll_line(today, 7, 10, {"status": "open", "e10": 1.555})],
+    )
+    cached = ctx.snapshot()
+    assert cached is first
+    assert cached["stations"][0]["e10"] == 1.700
+    # ... erzwungen liest der Cache neu.
+    fresh = ctx.snapshot(force=True)
+    assert fresh["stations"][0]["e10"] == 1.555
+
+
+def test_snapshot_ttl_collapses_parallel_endpoints(tmp_path, monkeypatch):
+    """Ein GUI-Refresh fragt vier Endpunkte parallel ab — zusammen mit dem
+    Tagesstreifen darf der Puffer nur einmal gelesen werden (Checkliste 1.3)."""
+    calls = {"n": 0}
+    real = rp2.read_snapshots
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rp2, "read_snapshots", counting)
+    today = dt.datetime.now(LOCAL_TZ).date()
+    lines = [
+        poll_line(today, 7, 5, {"status": "open", "e10": 1.700}),
+        poll_line(today, 12, 5, {"status": "open", "e10": 1.690}),
+    ]
+    server, _ = start_fallback_server(tmp_path, poll_lines=lines)
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        get_json(base, "/api/v1/health")
+        get_json(base, "/api/v1/stations?fuel=e10")
+        get_json(base, "/api/v1/forecasts?fuel=e10")
+        get_json(base, "/api/v1/decide?fuel=e10&liters=40")
+        get_json(base, f"/api/v1/series?station={UID_A}&fuel=e10")
+        assert calls["n"] == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_template_is_the_v3_gui_without_mock_data():
+    """Checkliste 2.1: Mock-Leiste und Beispieldaten sind raus, die Bausteine
+    der neuen Oberfläche stehen im ausgelieferten Template."""
+    html = rp2.DEFAULT_INDEX_HTML
+    for marker in (
+        "answer-card",
+        "daystrip",
+        "st-grid",
+        "view-werkstatt",
+        "sticky-chip",
+        "sort-tabs",
+        "REBOOT_HINT",
+    ):
+        assert marker in html
+    assert "Mockup" not in html
+    assert "const STATIONS = [" not in html  # keine Beispiel-Stationen
+    assert "const DAYSTRIP = {" not in html  # kein Mock-Tagesstreifen
+    assert "NOW_MIN" not in html  # keine Mock-Uhr
 
 
 # ---------------------------------------------------------------------------

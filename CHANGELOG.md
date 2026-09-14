@@ -4,6 +4,73 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.32.0] – 2026-09-14
+
+**Die Fallback-GUI auf dem Pi ist neu gebaut: Antwort zuerst, Karten statt
+Tabelle, Alltag und Werkstatt getrennt — und sie liest den Preis-Puffer nur
+noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
+[PR #112](https://github.com/kollb/TankApp/pull/112) nach der Arbeits-Checkliste
+[docs/UMSETZUNG-FALLBACK-GUI-V2.md](docs/UMSETZUNG-FALLBACK-GUI-V2.md).
+
+### Hinzugefügt
+
+- **Fallback-GUI v3 (`rp2/fallback_gui.py`, VERSION 3.0):** Antwort-Karte
+  zuerst (Verdict „Jetzt tanken“ / „Bis <Zeit> Uhr warten lohnt sich“,
+  günstigste Station, Ersparnis, Route-Button), F1 als Fenster-Chip und F2 als
+  Zweitplatzierter-Chip, **Stations-Karten statt Tabelle** auf allen Breiten
+  (Name einzeilig mit Ellipsis, voller Name im `title`, Marke/Stadt/Fahrzeit in
+  der Meta-Zeile, Δ-Chip, 44-px-Route-Button, kein horizontales Scrollen),
+  **Tagesstreifen 06–24 Uhr** aus dem Puffer (grün/rot = unteres/oberes
+  Preisdrittel, Stunden ohne Meldung bleiben leer), **Alltag/Werkstatt-Trennung**
+  (Werkstatt: Prognose-Sparklines, Rohdaten aller Treibstoffe, Datenstatus mit
+  Cache-Alter), Sticky-Status- und Steuerleiste sowie Sticky-Aktions-Chip beim
+  Scrollen. Leer- und Fehlerzustände (kein Cache, leerer Puffer, 503,
+  `CACHE_REBOOT_HINT`) bleiben erhalten.
+- **`GET /api/v1/series?station=<uuid>&fuel=<fuel>`:** Tagesverlauf aus dem
+  JSONL-Puffer, je Stunde die letzte **offene** Meldung für den gewählten
+  Kraftstoff (Ortszeit, Zelle „24“ = Mitternachtsstunde), Stunden ohne Meldung
+  als `null`, dazu `min`/`max`/`now`. Fehler wie bei den übrigen Endpunkten:
+  unbekannte Station 404, leerer Puffer 503, ungültiges `fuel` 400 (kein
+  stilles E10). Namensgleichheit mit dem NAS-Endpunkt ist gewollt — antwortet
+  das NAS, kommt von dort die vollständige Serie.
+- **Snapshot-TTL-Cache (5 s, `SNAPSHOT_TTL_S`):** `Context.snapshot()` hält den
+  Puffer-Stand kurz und baut ihn unter einem Lock auf. Vorher lasen die vier
+  Endpunkte eines GUI-Refreshs denselben Puffer viermal neu.
+- **Microcopy §4a** ([docs/MICROCOPY.md](docs/MICROCOPY.md)): die festen
+  Muster der neuen Oberfläche (Verdict-Sätze, Tagesstreifen-Caption,
+  „<Kraftstoff> nicht geführt“, Sortierungs-Labels, Sticky-Chip, Ehrlichkeits-Zeile).
+
+### Messwerte (lokaler Lauf, 18 Stationen, 216 Polls/Tag, 406 KiB Puffer)
+
+| Größe | Wert |
+|---|---|
+| Snapshot-Read je GUI-Zyklus | **1** statt 4 (mit `series` zusammen 2 statt 4) |
+| Puffer-Read | 7,5 ms |
+| `/api/v1/series` | 4,7 ms, ~2,1 KiB Antwort |
+| `/api/v1/health`, `/api/v1/decide` | 0,8 ms (warmer Cache; vorher 7–8 ms je Anfrage) |
+| Template im Speicher | 59 KiB (vorher 32 KiB) |
+| Neue Abhängigkeiten | keine (RP2 bleibt Standardbibliothek) |
+
+### Geändert
+
+- Version 0.32.0, `docs/RP2.md` (Stand-Zeile, Fallback-API-Tabelle,
+  Funktionsliste der GUI, Abschnitt zum Tagesstreifen, Changelog) und
+  `docs/MICROCOPY.md` nachgezogen.
+- Dienst-Neustart installiert das neue Template automatisch; die alte Datei
+  wird weiterhin als `templates/index.html.old` gesichert
+  (Marker `<!-- tankapp-fallback-gui v3.0 sha:… -->`). Der Proxy-Pfad bleibt
+  unverändert: bei erreichbarem NAS wird weiterhin transparent weitergeleitet.
+
+### Tests
+
+- `tests/test_rp2_fallback.py` (9 neu): Stunden-Buckets inkl. „letzte Meldung
+  der Stunde“, `null` für geschlossene Meldungen und fremde Kraftstoffe,
+  `min`/`max`/`now`, Mitternachtszelle aus der Folgetags-Datei, `fuel`-Filter,
+  404/503/400 des Endpunkts, TTL-Cache (zweiter `snapshot()`-Aufruf liest
+  nicht neu, `force=True` schon) und „ein Puffer-Read für fünf Endpunkte“
+  sowie ein Marker-Test, dass Mock-Leiste und Beispieldaten aus dem Template
+  verschwunden sind.
+
 ## [0.31.0] – 2026-09-13
 
 **Die Prognose hat jetzt zwei Modellkerne, und die Unsicherheit rechnet
