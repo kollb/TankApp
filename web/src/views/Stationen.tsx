@@ -429,13 +429,26 @@ export function StationenView(props: StationenViewProps) {
               <div className="p-4">
                 <SkeletonPanel lines={4} label="Preise werden geladen" />
               </div>
-            ) : problemCode && freshCount === 0 ? (
+            ) : data === null && decideRes.error ? (
+              // Roter Zustand nur, wenn die Datenquelle selbst nicht
+              // antwortet. Ein decide-`error_code` (z. B. „polling_missing“
+              // auf einem frischen Server) ist eine *Konsequenz* fehlender
+              // Daten — die Liste zeigt dann den ehrlichen Leerzustand,
+              // keinen Fehler.
               <div className="p-4">
                 <LoadError
-                  errorCode={problemCode}
+                  errorCode={decideRes.errorCode}
                   fallback="Preise derzeit nicht erreichbar."
                   onRetry={onRetry}
                 />
+              </div>
+            ) : stations.length === 0 ? (
+              <div className="p-5">
+                <Empty>
+                  Noch keine Stationen — erst muss ein gemeinsames
+                  Polling-Set laufen (System), dann füllt sich die Liste
+                  automatisch.
+                </Empty>
               </div>
             ) : freshCount === 0 ? (
               <div className="p-5">

@@ -18,10 +18,13 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Einrichtung starten" }),
   ).toBeVisible();
-  // „Stationen“ (der ehemalige Alltag) zeigt weiterhin den ehrlichen
-  // Leerzustand.
+  // „Stationen“ (der ehemalige Alltag) zeigt auf dem frischen Server die
+  // ehrliche Set-Karte — kein roter Fehler, obwohl /decide ohne Set einen
+  // error_code zurückliefert (Konsequenz fehlender Daten, kein Defekt).
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Erst ein Set, dann der Atlas" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Werkstatt", exact: true }).click();
   await expect(
     page.getByRole("heading", {
