@@ -15,6 +15,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | TankApp auf Pi + NAS einrichten (erster Start) | [INSTALL.md](INSTALL.md) |
 | wissen, was im Dauerbetrieb zu tun ist (systemd, Backup, Alarme, Fehlersuche) | [BETRIEB.md](BETRIEB.md) |
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
+| das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
 | eine tote oder sortenlose Station im Polling-Set tauschen | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | verstehen, wie Pi ↔ NAS ↔ Browser zusammenspielen | [ARCHITEKTUR.md](ARCHITEKTUR.md) |
 | einen API-Endpunkt nachschlagen | [API.md](API.md) |
