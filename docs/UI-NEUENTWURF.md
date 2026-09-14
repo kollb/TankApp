@@ -1,6 +1,6 @@
 # TankApp GUI-Neuentwurf — Gesamtkonzept
 
-> Stand: 13.09.2026 · Status: **Entwurf, bewusst unabhängig vom Bestand**
+> Stand: 13.09.2026, aktualisiert 14.09.2026 · Status: **Entwurf, bewusst unabhängig vom Bestand** · Die Entscheidungen aus der Mockup-Runde 1 (14.9.) sind eingearbeitet (§18).
 > Dieses Dokument hinterfragt alles Bisherige (Tabs, Modi, Regeln, APIs) und
 > entwirft die GUI neu — mit einem Ziel: **informativ, strukturiert und für
 > Nicht-Mathematiker lernbar**, ohne die Mathematik zu verstecken oder zu
@@ -13,19 +13,19 @@
 - [1. Diagnose: Was an der heutigen GUI anstrengt](#1-diagnose-was-an-der-heutigen-gui-anstrengt)
 - [2. Leitideen: 7 Prinzipien des Neuentwurfs](#2-leitideen-7-prinzipien-des-neuentwurfs)
 - [3. Nutzer und Szenarien: 5 Jobs-to-be-done](#3-nutzer-und-szenarien-5-jobs-to-be-done)
-- [4. Informationsarchitektur: 4 + 1 statt 4 Tabs](#4-informationsarchitektur-4--1-statt-4-tabs)
+- [4. Informationsarchitektur: 6 Bereiche statt 4 Tabs](#4-informationsarchitektur-6-bereiche-statt-4-tabs)
 - [5. Die Bereiche im Detail](#5-die-bereiche-im-detail)
   - [5.1 Jetzt — der Tank-Kompass](#51-jetzt--der-tank-kompass)
   - [5.2 Stationen — der Preis-Atlas](#52-stationen--der-preis-atlas)
   - [5.3 Woche — der Zeit-Planer](#53-woche--der-zeit-planer)
   - [5.4 Ich — Fahrzeug, Belege, Bilanz](#54-ich--fahrzeug-belege-bilanz)
-  - [5.5 Anlage — der Technik-Keller (kein Haupttab mehr)](#55-anlage--der-technik-keller-kein-haupttab-mehr)
+  - [5.5 System — Anlage & Daten (bleibt Haupttab)](#55-system--anlage--daten-bleibt-haupttab)
 - [6. Das Labor — die getrennte Mathematik, die man lernt](#6-das-labor--die-getrennte-mathematik-die-man-lernt)
 - [7. Die Erklär-Treppe: Antwort → Begründung → Beweis](#7-die-erklär-treppe-antwort--begründung--beweis)
 - [8. Komponenten-Baukasten](#8-komponenten-baukasten)
 - [9. Visuelle Richtung](#9-visuelle-richtung)
 - [10. Zustände und Ehrlichkeit 2.0](#10-zustände-und-ehrlichkeit-20)
-- [11. Personalisierung, Erinnerungen, Mitteilungen](#11-personalisierung-erinnerungen-mitteilungen)
+- [11. Persönliche Sortierung statt Mitteilungen](#11-persönliche-sortierung-statt-mitteilungen)
 - [12. API-Vision: funktionalere Schnittstellen](#12-api-vision-funktionalere-schnittstellen)
 - [13. Mobil, Desktop, PWA](#13-mobil-desktop-pwa)
 - [14. Barrierefreiheit](#14-barrierefreiheit)
@@ -59,7 +59,7 @@ erkennbare Welt mit eigenem Lernweg** statt einer Ecke im zweiten Tab.
 
 1. **Eine Situation, ein Bildschirm, eine fertige Aufgabe.**
    Jeder Bereich beantwortet genau eine Nutzerfrage und endet mit genau einer
-   primären Handlung („Navigieren“, „Erinnern“, „Beleg buchen“). Was nicht zu
+   primären Handlung („Navigieren“, „Vergleichen“, „Beleg buchen“). Was nicht zu
    dieser Aufgabe gehört, steht woanders — verlinkt, nicht eingebettet.
 
 2. **Antwort zuerst, Begründung auf Nachfrage, Beweis im Labor.**
@@ -105,9 +105,9 @@ Einstieg, Zeitbudget und Erfolgskriterium:
 |---|---|---|---|---|
 | **S1** | „Ich fahre gleich los — jetzt tanken oder warten?“ | **Jetzt** | ≤ 10 s | … eine Handlung feststeht (jetzt / warten bis / woanders) inkl. €-Betrag. |
 | **S2** | „Welche Station auf meinem Weg ist wirklich günstig?“ | **Stationen** | ≤ 60 s | … Station + Preis + Umweg-Kosten verglichen und ggf. Navigation gestartet ist. |
-| **S3** | „Wann in den nächsten Tagen tanke ich am besten?“ | **Woche** | ≤ 2 min | … ein Fenster gewählt und ggf. eine Erinnerung gesetzt ist. |
+| **S3** | „Wann in den nächsten Tagen tanke ich am besten?“ | **Woche** | ≤ 2 min | … ein Fenster gewählt und eingeordnet ist. |
 | **S4** | „Stimmt das überhaupt, was die App behauptet?“ | **Labor** | 5–20 min | … ein konkreter Zweifel („Warum 82 %?“) an einem Beispiel geklärt ist. |
-| **S5** | „Was habe ich verfahren, was ist meine Anlage?“ | **Ich / Anlage** | ≤ 2 min | … Beleg gebucht, Bilanz gelesen oder Störung erkannt ist. |
+| **S5** | „Was habe ich verfahren, was ist meine Anlage?“ | **Ich / System** | ≤ 2 min | … Beleg gebucht, Bilanz gelesen oder Störung erkannt ist. |
 
 **Konsequenz:** S1–S3 und S5 sind Alltags-Welten (schnell, deutsch, ohne
 Formeln). S4 ist das Labor (langsam, neugierig, mit Formeln — aber geführt).
@@ -115,7 +115,7 @@ Die Navigation folgt exakt diesen fünf Situationen.
 
 ---
 
-## 4. Informationsarchitektur: 4 + 1 statt 4 Tabs
+## 4. Informationsarchitektur: 6 Bereiche statt 4 Tabs
 
 ### 4.1 Die neue Hauptstruktur
 
@@ -123,33 +123,30 @@ Die Navigation folgt exakt diesen fünf Situationen.
 Hauptnavigation (immer sichtbar: Bottom-Bar mobil, Seitenleiste Desktop)
 ├── 1. Jetzt        S1 · Tank-Kompass: Entscheidung + nächste Schritte
 ├── 2. Stationen    S2 · Preis-Atlas: Karte, Liste, Verlauf, Vergleich
-├── 3. Woche        S3 · Zeit-Planer: Fenster-Kalender, Tankstand, Erinnerung
-├── 4. Ich          S5 · Fahrzeug, Belege, Bilanz, Einstellungen
-└── 5. Labor  ◈     S4 · getrennte Welt: Verstehen, Prüfen, Spielen
-         (eigene Akzentfarbe + eigene Kopfzeile, siehe §6)
+├── 3. Woche        S3 · Zeit-Planer: Fenster-Kalender, Tankstand (eigener Bereich)
+├── 4. Ich          S5a · Fahrzeug, Belege, Bilanz, Einstellungen
+├── 5. Labor  ◈     S4 · getrennte Welt: eine Seite mit Aufklapp-Abschnitten
+└── 6. System       S5b · Anlage & Daten: Zustand, Läufe, Störungen (bleibt Haupttab)
 
 Nebenwege (keine Hauptnavigation):
-├── Anlage          Technik-Keller: Collector, Jobs, Archiv, Störungen
-│                   (Einstieg: Ich → „Anlage & Daten“ + Status-Punkt in der
-│                   Kopfzeile bei Störung)
 ├── Suche           stations-/ortsübergreifend, aus jeder Ansicht (⌘K / Lupe)
 └── Hilfe           kontextuell: jede Ansicht hat genau einen Hilfe-Einstieg
 ```
 
 ### 4.2 Warum so — die drei größten Umstellungen
 
-- **„System“ verschwindet aus der Hauptnavigation.** Der Alltag braucht
-  keinen Job-Log. Der Technik-Keller existiert weiter (vollständig, ehrlich),
-  aber er meldet sich nur, wenn etwas seine Aufmerksamkeit braucht
-  (Status-Punkt grün/gelb/rot in der Kopfzeile). Das ist die größte
-  Entlastung der Navigation.
+- **„System“ bleibt Haupttab** (Entscheidung 14.9.). Der Technik-Bereich
+  (Zustand, Daten, Läufe, Störungen) ist für den Admin-Blick prominent und
+  vollständig — der Status-Punkt in der Kopfzeile ist nur die Abkürzung
+  dorthin.
 - **„Einstellungen“ verschwindet als eigener Tab.** Einstellungen wohnen dort,
   wo sie wirken (Zeitwert beim Umweg-Vergleich, Tankgröße beim Tankstand,
-  Profile unter Ich). Was übrig bleibt (Darstellung, Mitteilungen, Daten),
+  Profile unter Ich). Was übrig bleibt (Darstellung, Verhalten, Daten),
   liegt unter Ich → Einstellungen. Kein Ort mehr, den man „verwalten“ muss.
 - **Das Labor ist kein Tab, sondern ein Modus.** Optisch und räumlich
-  getrennt (eigene Farbe, eigene Kopfzeile, eigener Startbildschirm mit
-  Lernpfad). Man „geht ins Labor“ und „kehrt zurück“ — dieser bewusste
+  getrennt (eigene Farbe, eigene Kopfzeile, ein Labor-Kopf mit
+  Vertrauens-Konto und Aufklapp-Abschnitten). Man „geht ins Labor“
+  und „kehrt zurück“ — dieser bewusste
   Übergang ist das Signal: *Hier beginnt die Mathematik, und das ist gut so.*
 
 ### 4.3 Sitemap (tief max. 3 Ebenen)
@@ -157,29 +154,29 @@ Nebenwege (keine Hauptnavigation):
 ```text
 Jetzt
 ├── Entscheidung (Ampel-Karte 2.0: Aktion, Fenster, €, Sicherheit)
-├── Nächste Schritte (Navigieren / Erinnern / Alternative wählen)
-└── Warum? (Bottom-Sheet → führt ins Labor-Kapitel)
+├── Nächste Schritte (Navigieren / Vergleichen / Beleg buchen)
+└── Warum? (Bottom-Sheet → führt in den Labor-Abschnitt)
 
 Stationen
 ├── Karte (Netto-€-Pins, Umkreis, Filter: Kraftstoff, Marke, offen)
 ├── Liste (sortierbar: Preis, Netto-€, Entfernung, Verlauf)
-├── Station (Detail: Preis, Verlauf 7 Tage, Tagesprofil, „Beobachten“)
+├── Station (Detail: Preis, Verlauf 7 Tage, Tagesprofil, „Anpinnen“)
 └── Vergleich (A gegen B: Preis, Umweg, Netto-€, Verlauf übereinander)
 
 Woche
 ├── Fenster-Kalender (7-Tage-Raster: beste Zeiten je Tag)
 ├── Fenster-Detail (warum dieses Fenster, Sicherheit, Alternativen)
-├── Tankstand (Reichweite, Reserve, „reicht bis Fenster?“)
-└── Erinnerungen (Fenster-Alarm, Preis-Alarm, verwalten)
+└── Tankstand (Reichweite, Reserve, „reicht bis Fenster?“)
+    (Erinnerungen bewusst gestrichen, siehe §11.)
 
 Ich
 ├── Fahrzeug & Profile (Tank, Verbrauch, Zeitwert, Haushaltsprofile)
 ├── Belege (buchen, Verlauf, stornieren, Export)
 ├── Bilanz (Monat/Jahr: Ausgaben, Ersparnis-Nachweis, Fahrtenbuch-light)
-└── Einstellungen (Darstellung, Mitteilungen, Daten & Privatsphäre)
+└── Einstellungen (Darstellung, Verhalten, Daten & Privatsphäre)
 
-Labor ◈  (eigene Welt, eigene Navigation)
-├── Start: Wie gut kennt die App deine Stadt? (Vertrauens-Konto, Lernpfad)
+Labor ◈  (eigene Welt, eine Seite mit Aufklapp-Abschnitten)
+├── Labor-Kopf: Vertrauens-Konto + Sprungleiste (immer sichtbar)
 ├── 1. Prognose verstehen (Fan-Chart geführt, Tagesprofil, Horizont)
 ├── 2. Sicherheit verstehen (Versprechen vs. Wirklichkeit, Band-Treffer)
 ├── 3. Stationen verstehen (Hauspreis-Vergleich, Paarvergleich, Rhythmus)
@@ -187,7 +184,7 @@ Labor ◈  (eigene Welt, eigene Navigation)
 ├── 5. Glossar & Methoden (jeder Begriff in 3 Stufen: Satz, Beispiel, Formel)
 └── Spielplatz (eigene Vergleiche, eigene Zeiträume, Export)
 
-Anlage (Technik-Keller)
+System (Haupttab, prominent wie bisher)
 ├── Zustand (Ampel je Baustein: Collector, Datenbank, Modelle, App)
 ├── Daten (Archiv-Abdeckung, Lücken, Stations-Set, Polling-Plan)
 ├── Läufe (Modell-Läufe, Protokolle, Startknopf)
@@ -206,7 +203,7 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ ☰?  TankApp · Gütersloh · E10        [●] [⌘K]  │  ● = Anlagen-Status
+│ ☰?  TankApp · Gütersloh · E10        [●] [⌘K]  │  ● = System-Status
 │                                                  │  (nur bei Gelb/Rot auffällig)
 └─────────────────────────────────────────────────┘
 ```
@@ -225,8 +222,8 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 │  ┌───────────────────────────────────────────┐  │
 │  │ ◉ WARTEN BIS 18–20 UHR                    │  │
 │  │   Erwartet 4 ct/L günstiger ≈ 1,60 €      │  │
-│  │   bei 40 L · ziemlich sicher              │  │
-│  │   [Warum?]              [Erinnern] [Route] │  │
+│  │   bei 40 L · ziemlich sicher (82 %)       │  │
+│  │   [Warum?]                          [Route] │  │
 │  └───────────────────────────────────────────┘  │
 │ ② DREI FAKTEN (immer dieselben drei, immer     │
 │    dieselbe Reihenfolge)                        │
@@ -253,10 +250,10 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
   Station) · `Keine klare Empfehlung` (grau — ehrlich, mit den 3
   Aktualpreisen darunter). Grau ist ein erstklassiger Zustand mit eigenem
   Design, kein Fehler.
-- **Sicherheit in Worten, Prozent auf Nachfrage.** Die Karte sagt „ziemlich
-  sicher“ / „eher sicher“ / „unsicher“ (Stufen mit festen Schwellen, im
-  Labor erklärt). Das Prozent steht im „Warum?“-Sheet — nicht weil es
-  geheim wäre, sondern weil Worte schneller sind als Zahlen.
+- **Sicherheit in Worten plus Prozent** (Entscheidung 14.9.). Die Karte sagt
+  „ziemlich sicher (82 %)“ / „eher sicher (64 %)“ / „unsicher“ (Stufen mit
+  festen Schwellen, im Labor erklärt). Worte zum Scannen, Prozent zum
+  Einordnen — beides auf den ersten Blick, solange Stufe A gilt (§10).
 - **„Warum?“ ist immer da und immer gleich.** Ein Tipp öffnet das
   Begründungs-Sheet (§7): 3 Sätze, 1 Mini-Visual, 1 Link ins Labor. Kein
   Scrollen zu einer weit entfernten Begründung.
@@ -279,7 +276,7 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 ┌─────────────────────────────────────────────────┐
 │ Suchfeld + Filter-Chips: [E10] [offen] [Marke]  │
 │ ┌───────────────────────────────────────────┐   │
-│ │                                           │   │
+│ │                                 │   │
 │ │            KARTE mit €-Pins               │   │
 │ │   (Pin = Netto-€ ggü. Referenz, Farbe =   │   │
 │ │    Urteil: günstig / mittel / teuer)      │   │
@@ -302,7 +299,7 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ ← Shell, Musterstraße · ★ Beobachten            │
+│ ← Shell, Musterstraße · ★ Anpinnen              │
 │ 1,709 €/L · vor 4 Min · geöffnet bis 22 Uhr     │
 │                                                 │
 │ VERLAUF (7 Tage, mit Tagesmedian-Band)          │
@@ -338,9 +335,9 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 - **Vergleich ist ein eigener Modus, kein Rechnen im Kopf.** Zwei Stationen
   wählen → Gegenüberstellung (Preis, Verlauf übereinander, Umweg, Netto-€,
   Urteil in einem Satz). Tiefere Statistik („sind die beiden überhaupt
-  verschieden?“) verlinkt ins Labor-Kapitel 3.
-- **Beobachten statt Suchen.** Stamm-Stationen („Beobachten“-Stern) erscheinen
-  oben, bekommen optional Preis-Alarme (§11) und bestimmen die Referenz.
+  verschieden?“) verlinkt in den Labor-Abschnitt 3.
+- **Anpinnen statt Suchen.** Stamm-Stationen (★) erscheinen dauerhaft oben
+  und bestimmen die Referenz. Kein Alarm, kein Push — nur Sortierung (§11).
 
 ---
 
@@ -366,8 +363,8 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 │                                                 │
 │ AUSGEWÄHLT: Montag 19–21 Uhr                    │
 │  Erwartet 1,689 €/L ≈ 2,10 € unter Jetzt        │
-│  Ziemlich sicher · Tank reicht bis dahin ✓      │
-│  [Erinnern: 30 Min vorher ▾] [Warum?]           │
+│  Ziemlich sicher (82 %) · Tank reicht ✓         │
+│  [Stationen ansehen] [Warum?]                   │
 │                                                 │
 │ WOCHENLINIE (7 Tage, Tagesbestwerte)            │
 │  ───╲╱───╲╱────  Punkte = Tagesbestwerte         │
@@ -391,9 +388,9 @@ Gemeinsame Kopfzeile (alle Alltags-Bereiche):
 - **Horizont-Ehrlichkeit.** Tage 5–7 tragen sichtbar den Hinweis „noch
   unsicher“ (entsättigte Farbe + Fußnote). Die App zeigt die ganze Woche,
   verspricht aber nur, was sie halten kann.
-- **Erinnerung ist die Primärhandlung.** Jedes Fenster: „Erinnern“
-  (Push/In-App zur Wahl: 30/60/120 Min vorher). Ohne Erinnerung ist ein
-  Wochenplan nur Deko.
+- **Keine Erinnerung nötig** (Entscheidung 14.9.). Die Woche ist ein
+  Nachschlagewerk, kein Wecker: Fenster ansehen, einordnen, bei Bedarf
+  „Stationen ansehen“. Erinnerungen und Push sind bewusst gestrichen (§11).
 
 ---
 
@@ -425,8 +422,8 @@ Vier Unterseiten (Segment-Steuerung oben, kein eigenes Menü):
 │                                                 │
 │ EINSTELLUNGEN:                                  │
 │  Darstellung (Hell/Dunkel/Auto, Dichte)         │
-│  Mitteilungen (Erinnerungen, Preis-Alarme,      │
-│    Störungen der Anlage)                        │
+│  Verhalten (Tankzeit-Sortierung, angepinnte     │
+│    Stationen, Störungs-Anzeige)                 │
 │  Daten (Export alles, Belege löschen,           │
 │    „Vergiss mein Tankverhalten“)                │
 │  Über (Version, Quelle CC BY 4.0, Hilfe)        │
@@ -435,10 +432,12 @@ Vier Unterseiten (Segment-Steuerung oben, kein eigenes Menü):
 
 **Entscheidungen im Detail:**
 
-- **Bilanz mit ehrlichem Vergleichsmaßstab.** „−8,40 € gegenüber
-  Stadt-Median“ ist nachprüfbar und bescheiden — kein „Du hast 120 €
-  gespart!“ gegen einen erfundenen Vollpreis. Der Vergleichsmaßstab steht
-  dabei und ist im Labor erklärt.
+- **Bilanz mit zwei ehrlichen Vergleichsmaßstäben** (Entscheidung 14.9.).
+  Standard ist der neutrale Stadt-Median („−8,40 €“), darunter steht der
+  persönliche Maßstab („−12,10 € gegenüber Aral, deiner meistgenutzten
+  Station“). Beide nachprüfbar, beide bescheiden — kein „Du hast 120 €
+  gespart!“ gegen einen erfundenen Vollpreis. Die Maßstäbe stehen dabei
+  und sind im Labor erklärt.
 - **Beleg buchen in ≤ 15 Sekunden.** Schnellerfassung (Station vorausgefüllt
   aus Empfehlung, Liter + Preis) oben auf der Beleg-Seite; Details
   (Kilometerstand, voll/teilweise) optional aufklappbar. Nach dem Buchen:
@@ -449,14 +448,14 @@ Vier Unterseiten (Segment-Steuerung oben, kein eigenes Menü):
 
 ---
 
-### 5.5 Anlage — der Technik-Keller (kein Haupttab mehr)
+### 5.5 System — Anlage & Daten (bleibt Haupttab)
 
 **Frage:** Läuft alles? Wenn nein: was genau? **Nutzer:** dieselbe Person in
 der Rolle „Haushalts-Admin“, plus Ferndiagnose.
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ ← Anlage & Daten                    ● Alles ok  │
+│ System · Anlage & Daten             ● Alles ok  │
 │                                                 │
 │ ZUSTAND (4 Bausteine, je eine Zeile)            │
 │  ● Collector (Pi)    Preise 4 Min alt            │
@@ -484,10 +483,10 @@ der Rolle „Haushalts-Admin“, plus Ferndiagnose.
   passt auf einen Blick — Details (Protokolle, Lücken, Polling-Plan) eine
   Ebene tiefer. Die heutige Informationsdichte bleibt erhalten, aber
   gestaffelt.
-- **Der Status-Punkt in der Kopfzeile ist der einzige Alarm.** Grün = ruhig
-  (klein, unauffällig), Gelb/Rot = auffällig + Tipp führt direkt zur
-  Störung mit Checkliste („Was du tun kannst“). Keine Alarm-Seite, die man
-  suchen muss.
+- **Der Status-Punkt in der Kopfzeile ist die Abkürzung.** Grün = ruhig,
+  Gelb/Rot = auffällig + Tipp führt direkt in den System-Tab zur Störung
+  mit Checkliste („Was du tun kannst“). Der volle Bereich bleibt einen
+  Tipp entfernt — prominent, nicht versteckt.
 - **Diagnose-Export für den Ernstfall.** Ein Knopf bündelt Version, Zustand,
   letzte Protokoll-Zeilen und Datenabdeckung als Datei — für Forum, Issue
   oder den eigenen Notizzettel.
@@ -501,36 +500,39 @@ der Rolle „Haushalts-Admin“, plus Ferndiagnose.
 | Aspekt | Alltag (Jetzt/Stationen/Woche/Ich) | Labor ◈ |
 |---|---|---|
 | Akzentfarbe | Smaragd (Handlung) | Violett (Wissen) — durchgehend, inkl. Kopfzeile |
-| Kopfzeile | „TankApp · Stadt · Kraftstoff“ | „◈ Labor · Kapitelname · [← Zurück zum Alltag]“ |
+| Kopfzeile | „TankApp · Stadt · Kraftstoff“ | „◈ Labor · [← Zurück zum Alltag]“ |
 | Sprache | Nur Deutsch, keine Symbole | Deutsch zuerst, Fachwort + Symbol direkt dahinter |
 | Zahlen | €, ct/L, %, Sterne, Uhrzeiten | zusätzlich Verteilungen, Bänder, Güte-Kennzahlen |
 | Tempo | Sekunden | Minuten — kein Zeitdruck, Lese-Layout (schmale Spalte) |
 | Ziel | Entscheiden | Verstehen, Prüfen, Spielen |
 
 **Der Übergang ist bewusst:** Wer aus dem Alltag ins Labor folgt („Warum?“ →
-„Im Labor vertiefen“), landet nicht auf einer Kennzahlen-Wand, sondern auf
-einer **Antwort-Seite zu genau seiner Frage** („Warum war Montag 19–21 Uhr
-ziemlich sicher?“). Umgekehrt führt jeder Labor-Inhalt mit „Zurück“ exakt
-dorthin, wo man herkam. Das Labor ist damit kein Ort, sondern eine
-**Antwort-Tiefe**.
+„Im Labor vertiefen“), landet nicht auf einer Kennzahlen-Wand — der passende
+Abschnitt wird **aufgeklappt und angescrollt** („Warum war Montag 19–21 Uhr
+ziemlich sicher?“). Umgekehrt führt „Zurück“ exakt dorthin, wo man herkam.
+Das Labor ist damit kein Ort, sondern eine **Antwort-Tiefe**.
 
-**Erster Besuch:** Einmalig ein Begrüßungsbildschirm (3 Sätze + „Rundgang (3
-Min)“ + „Direkt einsteigen“). Kein Zwang, kein Quiz — nur Orientierung.
+**Kein Onboarding nötig:** Das Labor ist eine einzige Seite: oben das
+Vertrauens-Konto, darunter die Abschnitte. Wer nichts aufklappt, hat trotzdem
+den Überblick — wer neugierig ist, klappt auf. Kein Rundgang, kein Quiz,
+kein „Kapitel 2 von 5“.
 
-### 6.2 Der Lernpfad: In 5 Kapiteln vom Vertrauen zum Verstehen
+### 6.2 Ein Labor, eine Seite: 5 Aufklapp-Abschnitte zum Verstehen
 
-Der Pfad ist die Herzidee für „Nicht-Mathematiker verstehen es irgendwann“.
-Jedes Kapitel folgt demselben Bauplan: **Alltagsfrage → Antwort in 3 Sätzen
-→ geführtes Visual (schrittweise aufbauend) → „Für Neugierige“
-(Aufklapp-Ebene mit Methode + Formel) → Selbst prüfen (kleine Aufgabe mit
-Auflösung).** Fortschritt wird lokal gespeichert („Kapitel 2 von 5 · 10
-Min“), nie benotet.
+Das Labor ist die Herzidee für „Nicht-Mathematiker verstehen es irgendwann“ —
+und es ist bewusst **kein Pfad mit Kapitelseiten** (Entscheidung 14.9.):
+Aufklappen reicht. Eine einzige scrollbare Seite; jeder Abschnitt folgt
+demselben Bauplan: **Alltagsfrage → Antwort in 3 Sätzen → geführtes Visual
+(schrittweise aufbauend) → „Für Neugierige“ (verschachtelte Aufklapp-Ebene
+mit Methode + Formel) → Selbst prüfen (kleine Aufgabe mit Auflösung).**
+Kein Fortschritt, keine Häkchen, keine Benotung — Nachschlagen statt Schule.
 
-**Startseite des Labors — „Wie gut kennt die App deine Stadt?“:**
+**Der Labor-Kopf — „Wie gut kennt die App deine Stadt?“** (immer sichtbar,
+nichts zum Aufklappen):
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ ◈ Labor · Start              [← Zurück: Jetzt]  │
+│ ◈ Labor                      [← Zurück: Jetzt]  │
 │                                                 │
 │ VERTRAUENS-KONTO (deine Stadt, E10)             │
 │  ┌───────────────────────────────────────────┐  │
@@ -538,29 +540,28 @@ Min“), nie benotet.
 │  │   ██████████████░░░░  78 von 100 ✓        │  │
 │  │   Versprochen waren „ziemlich sicher“     │  │
 │  │   ≈ 75–85 von 100 — passt.                │  │
-│  │   [Wie wird das gezählt? → Kap. 2]        │  │
+│  │   [Wie wird das gezählt? → Abschnitt 2]   │  │
 │  └───────────────────────────────────────────┘  │
 │                                                 │
-│ LERNPFAD (5 Kapitel, je ~5 Min)                 │
-│  1. Was sagt die App eigentlich vorher?    ✓    │
-│  2. Was heißt „ziemlich sicher“?           →    │
-│  3. Warum ist eine Station „meist günstig“?     │
-│  4. Wie lernt die App aus Fehlern?              │
-│  5. Alle Begriffe von A–Z (Glossar)             │
+│ SPRUNGLEISTE (klappt auf + scrollt hin):        │
+│  [1 Prognose] [2 Sicherheit] [3 Stationen]      │
+│  [4 Lernen] [5 Glossar] [Spielplatz]            │
 │                                                 │
-│ PROGNOSE-TAGEBUCH (neueste Einträge)            │
-│  Mo 19–21 Uhr: 1,689 vorhergesagt → 1,679 ✓     │
-│  So 18–20 Uhr: 1,719 vorhergesagt → 1,739 ✗     │
-│  [Alle Einträge → Kap. 4]                       │
+│ ▸ 1. Was sagt die App eigentlich vorher?        │
+│ ▸ 2. Was heißt „ziemlich sicher“?               │
+│ ▸ 3. Warum ist eine Station „meist günstig“?    │
+│ ▸ 4. Wie lernt die App aus Fehlern?             │
+│ ▸ 5. Alle Begriffe von A–Z (Glossar)            │
+│ ▸ Spielplatz: Was wäre gewesen, wenn …?         │
 └─────────────────────────────────────────────────┘
 ```
 
-**Die fünf Kapitel:**
+**Die fünf Abschnitte (alle auf einmal, Entscheidung 14.9.):**
 
 1. **Was sagt die App eigentlich vorher?**
    Frage: „Woher weiß sie, was Benzin morgen kostet?“
    - 3-Satz-Antwort: Muster aus der Vergangenheit (Tages-/Wochenrhythmus) +
-     aktuelle Lage + ehrliche Unsicherheit als Band.
+     aktuelle Lage + ehrliche Unsiciche Unsicherheit als Band.
    - Geführtes Visual: Fan-Chart, das sich **Schritt für Schritt aufbaut**
      (1. Linie „wahrscheinlichster Preis“ → 2. dunkles Band „meistens
      drin“ → 3. helles Band „fast immer drin“ → 4. echte Preise von
@@ -621,10 +622,10 @@ Min“), nie benotet.
    Jeder Glossar-Eintrag verlinkt zurück auf die Stellen, wo der Begriff
    in der App vorkommt („Wo du das siehst“).
 
-**Spielplatz (Bonus, kein Pflicht-Kapitel):** Freie Vergleiche (Stationen,
+**Spielplatz (eigener Abschnitt darunter):** Freie Vergleiche (Stationen,
 Zeiträume, Kraftstoffe), Export (CSV/PNG), „Was-wäre-gewesen“-Rechner
 („Was hätte Strategie X im letzten Quartal gebracht?“). Für alle, die nach
-Kapitel 4 noch Fragen haben.
+Abschnitt 4 noch Fragen haben.
 
 ### 6.3 Gestaltungsregeln des Labors (verbindlich)
 
@@ -656,10 +657,10 @@ EBENE 1 · BEGRÜNDUNG (Bottom-Sheet / Seitenpanel, 3 Sätze + Mini-Visual)
  2. „Der aktuelle Preis liegt 3 ct über dem Üblichen — fallen ist
      wahrscheinlicher als steigen.“
  3. „Ähnliche Fälle trafen in 78 von 100 ein.“
- [Mini-Visual: Tagesprofil mit Markierung]  [Im Labor vertiefen → Kap. 1+2]
+ [Mini-Visual: Tagesprofil mit Markierung]  [Im Labor vertiefen → Abschnitte 1+2]
         │  (führt zu genau dieser Frage im Labor, nicht zum Labor-Start)
         ▼
-EBENE 2 · BEWEIS (Labor, geführtes Kapitel + Rohdaten)
+EBENE 2 · BEWEIS (Labor-Abschnitt, aufgeklappt + angescrollt)
  Fan-Chart der Station, Kalibrierungs-Punkt dieser Empfehlung,
  Tagebuch-Einträge ähnlicher Fälle, Methode + Formel (Aufklapp-Ebene),
  Export (CSV/PNG).
@@ -673,8 +674,9 @@ EBENE 2 · BEWEIS (Labor, geführtes Kapitel + Rohdaten)
 - Ebene 1 ist **max. 3 Sätze + 1 Visual**, immer in Alltagssprache, immer
   mit Frische („Preise 4 Min alt“). Sie antwortet auf „Warum?“ — nicht auf
   „Wie rechnest du?“.
-- Der Sprung 1 → 2 merkt sich die Herkunft („Zurück zu: Montag 19–21 Uhr“).
-  Kein Verirren, kein Neu-Suchen.
+- Der Sprung 1 → 2 klappt den passenden Abschnitt auf, scrollt hin und merkt
+  sich die Herkunft („Zurück zu: Montag 19–21 Uhr“). Kein Verirren, kein
+  Neu-Suchen.
 
 ---
 
@@ -695,10 +697,10 @@ Wiederverwendbare Bausteine — jede Ansicht baut aus denselben Teilen
 | **Verlaufs-Chart** | Linie + Üblich-Band + echte Punkte | Station-Detail, Labor |
 | **Begründungs-Sheet** | 3 Sätze + Mini-Visual + Labor-Link | überall (Ebene 1) |
 | **Vertrauens-Konto** | Trefferquote als Balken + Soll/Ist-Satz | Labor-Start, Bilanz |
-| **Tagebuch-Eintrag** | Vorhersage → Realität → ✓/✗ + Notiz | Labor Kap. 4 |
+| **Tagebuch-Eintrag** | Vorhersage → Realität → ✓/✗ + Notiz | Labor, Abschnitt 4 |
 | **Lesehilfe** | Titel-als-Aussage + Achsen-Worte + Beispiel-Punkt | jedes Labor-Diagramm |
 | **Stufen-Text** | Satz → Beispiel → Formel (Aufklapp-Ebenen) | Glossar, Für-Neugierige |
-| **Zustands-Zeile** | Punkt + Baustein + Satz + Tiefe-Link | Anlage |
+| **Zustands-Zeile** | Punkt + Baustein + Satz + Tiefe-Link | System |
 | **Annahmen-Menü** | Liter/Zeit/Zeitwert live verstellbar | Jetzt, Vergleich |
 | **Frische-Fußzeile** | „Preise N Min · Prognose M Min · nächste …“ | jede Ansicht (fixer Platz) |
 
@@ -719,7 +721,7 @@ an der Säule angenehm), schärft aber System und Hierarchie:
   - Blau = Information/Vergleich („woanders“, Links, Zweitpreise)
   - Violett = Wissen/Labor (nur dort — der Farbwechsel signalisiert den
     Weltenwechsel)
-  - Amber = Vorsicht („eher sicher“, knapper Tank, gelbe Anlagen-Zustände)
+  - Amber = Vorsicht („eher sicher“, knapper Tank, gelbe System-Zustände)
   - Rot = Stopp/Problem (nur: „reicht nicht“, Fehler, rote Zustände)
   - Grau = keine Aussage („keine klare Empfehlung“, unbekannt) — **bewusst
     gestaltet, kein blasses Grün**
@@ -767,24 +769,23 @@ jede Ansicht kennt alle Zustände, jeder Zustand hat ein festes Gesicht:
 
 ---
 
-## 11. Personalisierung, Erinnerungen, Mitteilungen
+## 11. Persönliche Sortierung statt Mitteilungen
 
-Der Entwurf macht aus der reinen Anzeige-App einen **aufmerksamen Assistenten**
-— alles optional, alles abschaltbar, alles lokal erklärt:
+Entscheidung 14.9.: **Erinnerungen, Preis-Alarme und Push entfallen vorerst
+ganz.** Die App ist ein Nachschlagewerk, kein Wecker — nichts pingt, nichts
+nervt, keine Server-Komponente für Push. Was bleibt, ist stille
+Personalisierung (alles lokal erklärt, alles abschaltbar):
 
 | Funktion | Verhalten | Beispiel |
 |---|---|---|
-| **Fenster-Erinnerung** | Erinnerung X Min vor Fenster-Beginn (Push oder In-App) | „In 30 Min beginnt dein Fenster (Mo 19–21 Uhr, ≈ −2,10 €).“ |
-| **Preis-Alarm** | Station(en) beobachten: Alarm bei Unterschreiten einer Schwelle | „Shell Musterstr.: 1,699 €/L — unter deiner Marke 1,719.“ |
-| **Tank-Wächter** | Bei knappem Tank + gutem Fenster in der Nähe: Hinweis | „Tank ¼, Shell +0,5 km gerade günstig — mitnehmen?“ |
-| **Wochen-Briefing** | 1×/Woche (So Abend, opt-in): beste Fenster + Bilanz-Satz | „Deine Woche: Mo + Mi abends günstig. Letzte Woche −2,40 € ggü. Median.“ |
-| **Anlagen-Wächter** | Nur bei Gelb/Rot: Störung + was zu tun ist | „Collector meldet seit 2 Std nichts — Pi prüfen?“ |
-| **Lern-Gewohnheit** | Tankzeit-Profil (heute w(h)): Fenster, die man nie nutzt, rutschen nach hinten — mit sichtbarem Hinweis | „Nach Preis sortiert wäre Mi besser — du tankst aber nie mittags.“ |
+| **Lern-Gewohnheit** | Tankzeit-Profil: Fenster, die man nie nutzt, rutschen in der Sortierung nach hinten — mit sichtbarem Hinweis | „Nach Preis sortiert wäre Mi besser — du tankst aber nie mittags.“ |
+| **Angepinnte Stationen** | Stamm-Stationen (★) bleiben dauerhaft oben und bestimmen die Referenz | Shell und Aral oben, Rest darunter |
+| **Störungs-Anzeige** | Gelb/Rot nur als Anzeige im System-Tab + Status-Punkt in der Kopfzeile — kein Push, kein Ton | „Collector meldet seit 2 Std nichts — Pi prüfen?“ (Text im System-Tab) |
 
-**Grundsätze:** Keine Mitteilung ohne Handlung (jede hat Ziel + „Verwalten“);
-Ruhezeiten (nie 22–7 Uhr außer Tank-Wächter bei Fahrt — und auch der nur
-opt-in); alles unter Ich → Mitteilungen an einer Stelle; keine
-Marketing-Töne („Du hast … gespart!!“ bleibt verboten).
+**Grundsätze:** Keine Funktion ohne sichtbaren Nutzen an Ort und Stelle;
+alles unter Ich → Einstellungen an einer Stelle; keine Marketing-Töne.
+Falls Mitteilungen je zurückkommen, dann als eigener, explizit
+einzuschaltender Baustein — nicht als schleichende Erweiterung.
 
 ---
 
@@ -792,7 +793,7 @@ Marketing-Töne („Du hast … gespart!!“ bleibt verboten).
 
 Der Entwurf löst sich bewusst von den heutigen Endpunkten. Richtung:
 **weniger, größere, aufgabenbezogene Aggregate** (ein Aufruf pro Ansicht),
-plus Erklärung, Lerninhalte und Erinnerung als eigene Ressourcen. Lesen
+plus Erklärung und Lerninhalte als eigene Ressourcen. Lesen
 bleibt frei, Schreiben bleibt budgetiert.
 
 ```text
@@ -811,15 +812,13 @@ GET /api/v2/windows/week?city=&fuel=      7-Tage-Fenster: Zeiten, €, Sterne,
 Erklärung (die Erklär-Treppe als API)
 GET /api/v2/explain/decision/{id}         Ebene 1+2 zu einer Empfehlung:
                                           3 Sätze, Mini-Visual-Daten,
-                                          Labor-Tiefenlink (Kapitel+Anker)
+                                          Labor-Tiefenlink (Abschnitt+Anker)
 GET /api/v2/explain/window/{id}           dasselbe für ein Fenster
 GET /api/v2/explain/balance?month=        dasselbe für eine Bilanz-Zahl
 
 Labor & Lernen
-GET /api/v2/learn/path                    Lernpfad: Kapitel, Fortschritt,
-                                          Dauern, Status
-GET /api/v2/learn/chapter/{n}             Kapitel-Inhalt: Sätze, Visual-
-                                          Daten (schrittweise), Aufgaben
+GET /api/v2/learn                         Labor-Inhalt: alle Abschnitte
+                                          (Sätze, Visual-Daten, Aufgaben)
 GET /api/v2/learn/glossary                Glossar: Stufen-Texte + „Wo du
                                           das siehst“-Verweise
 GET /api/v2/diary?filter=&limit=          Prognose-Tagebuch: Vorhersage →
@@ -829,27 +828,24 @@ GET /api/v2/trust?city=&fuel=             Vertrauens-Konto: Trefferquoten,
 POST /api/v2/learn/simulate               Was-wäre-gewesen: Strategie ×
                                           Zeitraum → Ergebnis (Spielplatz)
 
-Ich & Erinnerungen
+Ich & Fahrzeug
 GET/PUT /api/v2/vehicle                   Fahrzeug + Profile (statt
                                           verstreuter Präferenzen)
-GET/POST /api/v2/reminders                Fenster-/Preis-Erinnerungen
-                                          (CRUD + „30 Min vorher“)
 GET /api/v2/balance?month=&year=          Bilanz + Vergleichsmaßstäbe +
                                           Erklär-Links
 
 Echtzeit (neu)
 SSE  /api/v2/stream/prices?city=&fuel=    Preis-Ticks (statt Polling),
                                           inkl. „Collector still seit …“
-SSE  /api/v2/stream/ops                   Anlagen-Ereignisse (Lauf fertig,
+SSE  /api/v2/stream/ops                   System-Ereignisse (Lauf fertig,
                                           Störung da/weg)
 
-Anlage (Technik-Keller)
+System (Technik-Bereich)
 GET /api/v2/ops/status                    4 Bausteine + Störungen +
                                           Checklisten
 GET /api/v2/ops/coverage                  Datenabdeckung + Lücken
 GET /api/v2/ops/runs?limit=               Läufe + Protokoll-Auszüge
-POST /api/v2/ops/runs/{job}/start         Startknopf (wie bisher, Version 2)
-GET /api/v2/ops/diagnose                  Diagnose-Bündel (eine Datei)
+POST /api/v2/ops/runs/{job}/start         Startknopf (wie bisher, Version 2                Diagnose-Bündel (eine Datei)
 ```
 
 **Querschnitt:** Einheitliches Hüllformat (`data`, `freshness{as_of,next,
@@ -861,20 +857,20 @@ neben Version 1, bis die neue GUI flächendeckend läuft.
 
 ## 13. Mobil, Desktop, PWA
 
-- **Mobil (Primärfall Säule):** Bottom-Navigation (5 Punkte, 44-px-Ziele),
+- **Mobil (Primärfall Säule):** Bottom-Navigation (6 Punkte, 44-px-Ziele),
   eine Spalte, Bottom-Sheets für Ebene 1, Sticky-Primärhandlung nur in
-  Jetzt („Navigieren“/„Erinnern“). Querformat: Tagesstreifen/Kalender werden
+  Jetzt („Navigieren“). Querformat: Tagesstreifen/Kalender werden
   zweizeilig, keine neue Seite.
-- **Desktop (Primärfall Labor + Woche):** Seitenleiste links (5 Bereiche +
+- **Desktop (Primärfall Labor + Woche):** Seitenleiste links (6 Bereiche +
   Labor farblich abgesetzt), Inhalt 2-spaltig (Kern + Einordnung daneben
   statt darunter), Ebene 1 als Seitenpanel rechts (statt Sheet). Labor als
-  ruhige Lese-Spalte mit fester Kapitel-Navigation links.
-- **PWA:** installierbar, Offline-Lesen des letzten Stands (alle 5 Bereiche
+  ruhige Lese-Spalte mit Sprungleiste oben.
+- **PWA:** installierbar, Offline-Lesen des letzten Stands (alle 6 Bereiche
   cachen ihren letzten `overview`/`atlas`/…), Offline-Warteschlange für
-  Belege + Erinnerungen („wird gesendet, sobald online“), Update-Banner
+  Belege („wird gesendet, sobald online“), Update-Banner
   („Neue Version — was ist neu?“ + Neu-laden).
 - **Geteilte Links:** Jede Ansicht ist eine URL (`/jetzt`, `/station/{id}`,
-  `/woche?fenster=…`, `/labor/kapitel/2#versprechen`), „Teilen“-Knopf
+  `/woche?fenster=…`, `/labor#sicherheit`), „Teilen“-Knopf
   kopiert Kurz-Link mit aktuellem Stand (read-only, LAN).
 
 ---
@@ -905,9 +901,9 @@ Keine Bauchgefühle — messbare Ziele (lokal, ohne Tracking-Anbieter):
 |---|---|---|
 | S1 in ≤ 10 s entscheidbar | Zeit bis erste Handlung in Jetzt (lokal, opt-in) | Median ≤ 10 s |
 | Begründung wird gefunden | Anteil „Warum?“-Öffnungen je Empfehlung | > 15 % |
-| Labor wird betreten und beendet | Pfad-Starts, Kapitel-Abschlüsse | > 25 % aller Nutzer starten, > 40 % davon beenden Kap. 1–2 |
+| Labor wird genutzt | Aufklapp-Rate je Abschnitt, „Verstanden“-Quote | > 25 % klappen je Monat mind. einen Abschnitt auf |
 | Vertrauen wächst | „Verstanden“-Rückmeldungen im Labor + Wiederkehr | trinär: verstanden / teilweise / nein — > 70 % verstanden |
-| Weniger Suchen | Wechsel in Anlage ohne Störung („Verlaufen“) | < 5 % der Sitzungen |
+| Weniger Suchen | Wechsel in System ohne Störung („Verlaufen“) | < 5 % der Sitzungen |
 | Ehrlichkeit wirkt | Anteil grauer Empfehlungen, die Nutzer als „hilfreich“ bewerten | > 60 % |
 | Barrierefreiheit | Lighthouse-A11y + Tastatur-Durchgang je Release | 100 / Durchgang ohne Maus möglich |
 
@@ -918,16 +914,17 @@ Server-Log-Aggregate, keine Drittanbieter, Opt-out unter Ich → Daten).
 
 ## 16. Migrationspfad: in 4 Phasen vom Alten zum Neuen
 
-Kein Big Bang — die alte GUI läuft weiter, bis die neue je Bereich
-gleichwertig ist:
+Mutig statt parallel (Entscheidung 14.9.): **Tab für Tab ersetzen, kein
+Feature-Schalter, keine doppelte Pflege.** Jeder Schritt ersetzt einen alten
+Bereich vollständig — alte Views werden sofort entfernt:
 
 | Phase | Inhalt | Ergebnis |
 |---|---|---|
-| **0. Fundament** | Baustein-Bibliothek (Ebene-1-Sheet, Karten, Frische-Fußzeile), API-v2-Hülle + `overview`, Labor-Farbwelt als Theme | Neue Teile sind baubar, alte GUI unverändert |
-| **1. Jetzt + Stationen** | Neue Bereiche Jetzt und Stationen (mit Karte, Detail, Vergleich) hinter Feature-Schalter; alte Tabs bleiben | S1 + S2 neu erlebbar, Rest alt |
-| **2. Woche + Ich** | Fenster-Kalender, Erinnerungen (Backend), Belege/Bilanz/Einstellungen neu; Anlage als Technik-Keller aus System extrahiert | Alltag vollständig neu |
-| **3. Labor** | Lernpfad Kap. 1–5, Tagebuch, Spielplatz, Glossar; Erklär-Treppe an alle Zahlen angeschlossen; alte Werkstatt abgeschaltet | Mathematik getrennt und lernbar |
-| **Danach** | API v1 stilllegen, alte Views entfernen, PWA-Ausbau (Push, Offline-Queue), UX-KPIs auswerten | Ein System, ein Stand |
+| **0. Fundament** | Baustein-Bibliothek (Ebene-1-Sheet, Karten, Frische-Fußzeile), API-v2-Hülle + `overview`, Labor-Farbwelt als Theme | Neue Teile sind baubar, alte GUI noch unverändert |
+| **1. Jetzt + Stationen** | Neue Bereiche ersetzen den Entscheidungs- und Listenteil des Alltags | S1 + S2 neu, alter Code entfernt |
+| **2. Woche + Ich** | Fenster-Kalender, Tankstand, Belege/Bilanz/Einstellungen neu; Rest des Alltags + Einstellungen ersetzt | Alltag vollständig neu |
+| **3. Labor** | Alle 5 Abschnitte + Tagebuch + Spielplatz + Glossar auf einmal; Erklär-Treppe an alle Zahlen angeschlossen; alte Werkstatt ersetzt | Mathematik getrennt und lernbar |
+| **4. System** | Technik-Bereich in neue Bausteine überführt (Inhalt bleibt vollständig); API v1 stilllegen, PWA-Ausbau, UX-KPIs auswerten | Ein System, ein Stand |
 
 **Regel je Phase:** Kein Bereich geht live, ohne dass seine Hilfe-Seite,
 seine Leer-/Fehler-Zustände und sein Labor-Anschluss (mind. Ebene 1) fertig
@@ -941,8 +938,8 @@ Damit die Diskussion ehrlich ist — diese bisherigen Festlegungen stellt der
 Entwurf infrage oder ersetzt sie:
 
 1. **Die 4 Tabs Alltag/Werkstatt/System/Einstellungen** → ersetzt durch
-   4 + 1 Aufgaben-Bereiche (§4). „System“ und „Einstellungen“ als Haupttabs
-   entfallen ersatzlos.
+   6 Aufgaben-Bereiche (§4). „Einstellungen“ als Haupttab entfällt
+   ersatzlos (wohnt unter Ich + am Wirkungsort); „System“ bleibt.
 2. **Die ≤-3-Zahlen-Regel** → ersetzt durch die 1+3+N-Regel (§2.7):
    1 Entscheidung, 3 Fakten, N nächste Schritte. Informativer, aber fester
    strukturiert.
@@ -950,8 +947,8 @@ Entwurf infrage oder ersetzt sie:
    Nachfrage (§5.1). Das Prozent bleibt — es drängelt sich nur nicht vor.
 4. **Das binäre Kalibrierungs-Gate** → drei Ehrlichkeits-Stufen A/B/C (§10):
    „Lernend“ mit Fortschritt statt Schweigen bis zum Stichtag.
-5. **Werkstatt als Kennzahlen-Sammlung** → Labor als Lernpfad (§6): geführte
-   Kapitel statt Panel-Stapel, Fehler als Ausstellungsstücke.
+5. **Werkstatt als Kennzahlen-Sammlung** → Labor als Aufklapp-Seite (§6):
+   geführte Abschnitte statt Panel-Stapel, Fehler als Ausstellungsstücke.
 6. **Modul-nahe API-Namen als GUI-Struktur** (`decide`, `stats/summary`,
    `health` als Seiten) → aufgabenbezogene Aggregate (§12). Die GUI folgt
    nicht mehr der Server-Dateiablage.
@@ -960,33 +957,46 @@ Entwurf infrage oder ersetzt sie:
 8. **Sample-GUIs als Homepage-Basis** → Die beiden Prototypen bleiben als
    Ideenspeicher erhalten, aber der Neuentwurf übernimmt nicht mehr ihr
    Seitenmodell — nur bewährte Bausteine (Karten-Ästhetik, SVG-Chart-Stil).
+9. **Erinnerungen, Alarme und Push** → ersatzlos gestrichen (§11). Die App
+   pingt nicht; Störungen stehen als Text im System-Tab.
 
 ---
 
 ## 18. Offene Entscheidungen
 
-Fragen an dich — die Antworten formen Phase 0:
+Entschieden am 14.9. (Mockup-Runde 1) — und was noch offen ist:
 
-1. **Struktur:** 4 + 1 wie vorgeschlagen — oder hättest du „Woche“ lieber
-   als Teil von „Jetzt“ (zweiter Reiter statt eigener Bereich)?
-2. **Labor-Farbe:** Violett als klare Weltentrennung — oder lieber in der
-   Smaragd-Welt bleiben und nur per Kopfzeile + Icon trennen?
-3. **Sicherheit:** Worte/Sterne zuerst, Prozent auf Nachfrage — oder soll
-   das Prozent in Jetzt sichtbar bleiben (Stufe A)?
-4. **Bilanz-Vergleich:** Stadt-Median als Standard-Maßstab — oder
-   „meine meistgenutzte Station“ (persönlicher, aber weniger neutral)?
-5. **Erinnerungen:** Push (braucht Server-Komponente + Opt-in) schon in
-   Phase 2 — oder erst In-App-Erinnerungen (einfacher, kein Push)?
-6. **Anlage:** Technik-Keller wie vorgeschlagen verstecken (nur Punkt bei
-   Störung) — oder weiterhin prominent für deinen Admin-Blick?
-7. **Migration:** Neue Bereiche hinter Schalter parallel aufbauen (sicher,
-   doppelte Pflege) — oder Tab für Tab ersetzen (schneller, mutiger)?
-8. **Umfang Labor:** Alle 5 Kapitel + Spielplatz als Ziel — oder bewusst
-   kleiner starten (Kap. 1–2 + Glossar) und Rest nach Bedarf?
+| # | Frage | Entscheidung |
+|---|---|---|
+| 1 | Woche eigener Bereich oder Teil von Jetzt? | **Eigener Bereich.** |
+| 2 | Labor-Farbe Violett oder Smaragd? | **Egal** — Violett bleibt (leicht änderbar). |
+| 3 | Prozent in Jetzt sichtbar? | **Ja** — Worte + Prozent ab Stufe A. |
+| 4 | Bilanz-Maßstab: Median oder meistgenutzte Station? | **Beide** — Median als Standard, meistgenutzte darunter. |
+| 5 | Erinnerungen/Push? | **Gestrichen** — vorerst ganz ohne (§11). |
+| 6 | System verstecken oder prominent? | **Prominent** — bleibt 6. Haupttab. |
+| 7 | Migration hinter Schalter oder direkt ersetzen? | **Direkt ersetzen**, Tab für Tab (§16). |
+| 8 | Labor-Umfang: alles oder kleiner Start? | **Alles auf einmal**, aber als Aufklapp-Seite statt Pfad (§6). |
+| — | Lernpfad vs. Aufklappen? | **Aufklappen reicht** — eine Labor-Seite, kein Fortschritt. |
 
 ---
 
-*Ende des Entwurfs. Nächster Schritt nach deiner Rückmeldung: eine der
-offenen Entscheidungen in einen klickbaren Prototyp (eine Ansicht, echte
-Daten aus der heutigen API) überführen — als Nagelprobe für Raster,
+**Verbleibend offen:** Feedback zur Mockup-Runde 2 (diese Version) —
+insbesondere: Ist die Labor-Seite als Aufklapp-Seite übersichtlich genug?
+Fehlt in Woche ohne Erinnerung etwas? Danach: eine Ansicht als
+Produktions-Prototyp mit echten Daten (Nagelprobe für Raster, Bausteine
+und Erklär-Treppe).
+hren — als Nagelprobe für Raster,
 Bausteine und Erklär-Treppe.*
+ der heutigen API) überführen — als Nagelprobe für Raster,
+Bausteine und Erklär-Treppe.*
+hren — als Nagelprobe für Raster,
+Bausteine und Erklär-Treppe.*
+nd Erklär-Treppe.*
+lprobe für Raster,
+Bausteine und Erklär-Treppe.*
+nd Erklär-Treppe.*
+reppe.*
+nd Erklär-Treppe.*
+er,
+Bausteine und Erklär-Treppe.*
+nd Erklär-Treppe.*
