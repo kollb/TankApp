@@ -20,6 +20,7 @@ Commits und Entscheidungen auf sie verweisen.
 | [TIEFENANALYSE-2026-09-11.md](TIEFENANALYSE-2026-09-11.md) | 11.09.2026 (Basis: Prüfstand + Live-Code-Review) | Abgleich Konzept §0–14, API, Engine, GUI; Fehler nach Wirkung | Quelle von [../../TODO.md](../../TODO.md) — erledigte Punkte stehen dort nicht mehr |
 | [TIEFENANALYSE-V2-2026-09-11.md](TIEFENANALYSE-V2-2026-09-11.md) | 11.09.2026 | „Ist das Beschriebene auch *richtig* umgesetzt?“ + was unabhängig vom Konzept fehlt (Security, Betrieb, Drift, UX, Performance, CI) | Quelle von [../../TODO.md](../../TODO.md), Prüfstrang 2 (Abschnitte E–H) |
 | [TIEFENANALYSE-V3-GUI-2026-09-11.md](TIEFENANALYSE-V3-GUI-2026-09-11.md) | 11.09.2026 | Grafische Inkonsistenzen und erfundene Defaults in Haupt- und Fallback-GUI | Alle V3-Fixes sind im Code; Absicherung durch `web/e2e/decision.spec.ts` |
+| [GUI-FALLBACK-SANITY-2026-09-14.md](GUI-FALLBACK-SANITY-2026-09-14.md) | 14.09.2026 (App 0.37.1) | Sanity-Check nach echter NAS/Pi-Abnahme: UX/UI, Implementierung, Defaults, Fallback-Filter FRA/GT | Filterfix ist in `rp2/fallback_gui.py`; offene Produktpunkte stehen in [../LUECKEN.md](../LUECKEN.md) |
 
 > **Zitate im Code:** Kommentare in `app/` und `data-tools/` nennen
 > „Prüfstand §3.1“, „§11.2“, „Konzept §5.5“ u. ä. als Herkunftsnachweis.
@@ -47,6 +48,7 @@ Commits und Entscheidungen auf sie verweisen.
 | Dokument | Stand | Was es war | Hinweis |
 |---|---|---|---|
 | [POLLING-MERGED-2026-09-11.md](POLLING-MERGED-2026-09-11.md) / [.json](POLLING-MERGED-2026-09-11.json) | 11.09.2026 | Bericht + Ergebnis des gemergten Polling-Sets (Frankfurt + Gütersloh), erzeugt von `data-tools/run_pipeline.py` | Nur ein Schnappschuss: das **aktive** Set liegt gitignored in `docs/analysis/stations/polling.json`. Änderungen am Set laufen über [../STATIONEN-TAUSCH.md](../STATIONEN-TAUSCH.md) oder `tankapp.py add-city`. Die Koordinaten darin sind Stadt-Anker, keine privaten Heimkoordinaten. |
+| [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | 14.09.2026 (App 0.37.1) | Abgeschlossene Phasen-Checkliste des GUI-Neuentwurfs inkl. manueller Abnahme 7.2–7.5 und Abschluss 8.1/8.2 | Gültiges Zielbild: [../UI-NEUENTWURF.md](../UI-NEUENTWURF.md); Betrieb: [../BETRIEB.md](../BETRIEB.md); neue offene Punkte: [../LUECKEN.md](../LUECKEN.md) |
 
 ## Regeln
 

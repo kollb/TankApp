@@ -830,7 +830,7 @@ Noch offen (siehe [TODO B8](../TODO.md)): Webhook-Retry Pi → NAS —
 
 ### System-Alarme und GUI-Neuentwurf (seit 0.35.0)
 
-Betriebs-Entscheidung zu Checkliste [2.4](UMSETZUNG-GUI-NEUENTWURF.md): Das
+Betriebs-Entscheidung zu Checkliste [2.4](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md): Das
 GUI-Neuentwurf-Konzept ([UI-NEUENTWURF.md](UI-NEUENTWURF.md) §11,
 Entscheidung 14.9.) streicht **Preis-Erinnerungen, Preis-Alarme und Push
 ersatzlos**. Damit ist gemeint, dass die App keine Preis-Mitteilungen mehr

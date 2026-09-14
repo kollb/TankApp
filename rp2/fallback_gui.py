@@ -133,8 +133,15 @@ class StationMeta:
                     return self._meta
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 meta: dict[str, dict] = {}
-                for stset in (payload.get("sets") or {}).values():
-                    city = stset.get("label") or ""
+                for city_key, stset in (payload.get("sets") or {}).items():
+                    # Der Pi arbeitet im Betrieb oft mit kurzen Set-Keys
+                    # (z. B. FRA/GT), während ältere Dateien als Label den
+                    # ausgeschriebenen Ort tragen. Beides ist eine gültige
+                    # Identität: der sichtbare Text darf „Frankfurt“ sein,
+                    # der Filter oben muss aber auch den stabilen Key
+                    # „FRA“ anbieten und akzeptieren.
+                    city_key = str(city_key).strip()
+                    city_label = str(stset.get("label") or city_key).strip()
                     for st in stset.get("stations") or []:
                         uid = st.get("uuid")
                         if not uid:
@@ -155,7 +162,9 @@ class StationMeta:
                             "dist_km": st.get("dist_km"),
                             "drive_min": st.get("drive_min"),
                             "maps": maps,
-                            "city": city,
+                            "city": city_label,
+                            "city_key": city_key or city_label,
+                            "city_label": city_label,
                         }
                 self._meta, self._mtime = meta, mtime
                 self.path_used = str(path)
@@ -349,7 +358,11 @@ def build_stations(
                 "name": m.get("name") or uid,
                 "brand": m.get("brand", ""),
                 "group": m.get("group", ""),
-                "city": rec.get("city") or m.get("city", ""),
+                "city": rec.get("city") or m.get("city_label") or m.get("city", ""),
+                "city_key": m.get("city_key") or rec.get("city") or m.get("city", ""),
+                "city_label": m.get("city_label")
+                or rec.get("city")
+                or m.get("city", ""),
                 "status": rec["status"],
                 "e5": rec["e5"],
                 "e10": rec["e10"],
@@ -818,7 +831,36 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 return rows
             wanted = city.casefold()
             return [
-                row for row in rows if str(row.get("city", "")).casefold() == wanted
+                row
+                for row in rows
+                if wanted
+                in {
+                    str(row.get("city", "")).casefold(),
+                    str(row.get("city_key", "")).casefold(),
+                    str(row.get("city_label", "")).casefold(),
+                }
+            ]
+
+        @staticmethod
+        def _city_options(rows: list[dict]) -> list[dict]:
+            """Filteroptionen: stabiler Set-Key als Wert, Label als Hilfe.
+
+            `cities` bleibt aus Kompatibilitätsgründen eine Stringliste. Das
+            neue Feld `city_options` gibt dem Template zusätzlich den Wert, den
+            die API sicher filtern kann (FRA/GT), auch wenn die Snapshots als
+            sichtbares Label „Frankfurt“/„Gütersloh“ tragen.
+            """
+            by_value: dict[str, str] = {}
+            for row in rows:
+                label = str(row.get("city_label") or row.get("city") or "").strip()
+                key = str(row.get("city_key") or row.get("city") or label).strip()
+                value = key or label
+                if not value:
+                    continue
+                by_value.setdefault(value, label or value)
+            return [
+                {"value": value, "label": label}
+                for value, label in sorted(by_value.items(), key=lambda item: item[0])
             ]
 
         @staticmethod
@@ -831,7 +873,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             snap = ctx.snapshot()
             stations = snap["stations"]
             forecasts = snap["forecasts"]
-            cities = sorted({s["city"] for s in stations if s.get("city")})
+            city_options = self._city_options(stations)
+            cities = [entry["value"] for entry in city_options]
             price_now = utcnow()
             newest = None
             for st in stations:
@@ -846,6 +889,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "status": "fallback",
                     "version": VERSION,
                     "cities": cities,
+                    "city_options": city_options,
                     "generated_at": price_now.isoformat(),
                     "nas": ctx.nas.info(),
                     "prices": {
@@ -2097,12 +2141,18 @@ function renderHeader(health) {
     pricePill.title = "Neueste Preismeldung " + ageLabel(age) + " alt · " + (p.open || 0) + " von " + (p.stations || 0) + " Stationen offen (alle 5 min neuer Poll).";
     $("#price-text").textContent = "Preise " + ageLabel(age) + " alt";
   }
-  const cities = Array.isArray(h.cities) ? h.cities : [];
-  if (!cities.includes(state.city)) state.city = "";
+  const cityOptions = Array.isArray(h.city_options) && h.city_options.length
+    ? h.city_options.map((entry) => ({
+        value: String(entry.value || entry.label || ""),
+        label: String(entry.label || entry.value || "")
+      })).filter((entry) => entry.value)
+    : (Array.isArray(h.cities) ? h.cities.map((city) => ({ value: String(city), label: String(city) })) : []);
+  if (!cityOptions.some((entry) => entry.value === state.city)) state.city = "";
   const citySelect = $("#city");
-  citySelect.innerHTML = '<option value="">Alle Orte</option>' + cities.map(
-    (city) => '<option value="' + esc(city) + '">' + esc(city) + "</option>"
-  ).join("");
+  citySelect.innerHTML = '<option value="">Alle Orte</option>' + cityOptions.map((entry) => {
+    const text = entry.label && entry.label !== entry.value ? entry.value + " · " + entry.label : entry.value;
+    return '<option value="' + esc(entry.value) + '">' + esc(text) + "</option>";
+  }).join("");
   citySelect.value = state.city;
 }
 
