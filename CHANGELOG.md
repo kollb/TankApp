@@ -11,8 +11,9 @@ drei Fakten, höchstens drei nächste Schritte, ein Tagesstreifen und die
 Frische-Fußzeile — in genau dieser Reihenfolge.** Dazu die Arbeitsliste
 (`docs/UMSETZUNG-GUI-NEUENTWURF.md`), die reparierte Entscheidungsvorlage
 (`docs/UI-NEUENTWURF.md`) und der Gleichschritt in der Pi-Fallback-GUI.
-Ehrlich dazu: **abgenommen ist der Schnitt noch nicht** — die Sichtprüfung
-auf Desktop und Smartphone steht aus (Checkliste §7).
+Ehrlich dazu: **die Abnahme auf dem Pi steht noch aus** (Checkliste §7.3);
+die Sichtprüfung auf Desktop (1440 px) und Smartphone (390 px) ist mit
+Demo-Daten durchgeführt, die Browser-Suite läuft mit 16/16 grün.
 
 ### Hinzugefügt
 
@@ -44,6 +45,23 @@ auf Desktop und Smartphone steht aus (Checkliste §7).
 
 ### Behoben
 
+- **Absturz auf der leeren Anlage (leere Seite).** `/api/v1/overview` antwortet
+  auch dann mit HTTP 200, wenn die Empfehlung nicht berechnet werden konnte —
+  im `decide`-Feld steht dann ein Fehlerobjekt **ohne** `primary`
+  (`{"error_code": "polling_missing"}`). `web/src/now.ts` griff ungeprüft auf
+  `decide.primary.action` zu; die Ausnahme riss die ganze React-Wurzel mit, die
+  Seite blieb weiß. Jetzt durchgehend optional (`nowVerdict`, `nowStage`,
+  `nowFacts`, `nowSteps`, `nowExplanation`, `learningNote`) und die Ansicht
+  zeigt einen benannten Fehler mit Rohcode statt einer weißen Fläche; ohne
+  Stationen bleibt der Einrichtungs-Zustand (der Fehler gewinnt nur, wenn die
+  Anlage unerreichbar ist). Drei Regressionstests in `now.test.ts` und
+  `views/Jetzt.test.tsx`.
+- **Frische-Fußzeile datierte die Prognose falsch.** Dort stand
+  `stats_summary.generated_at` — der Zeitpunkt der Antwortberechnung, also bei
+  jedem Refresh „gerade eben“. Der Modell-Lauf datiert aus der
+  Engine-Publikation (`quality.rolling_picp_7d_as_of`) bzw. dem Fit
+  (`debug.fitted_at`); neue reine Funktion `forecastStamp` mit Test. Fehlt
+  beides, sagt die Fußzeile ehrlich „Prognose kein Stand“.
 - **`docs/UI-NEUENTWURF.md` repariert:** In §12 waren zwei API-Zeilen
   verschmolzen (`ops/runs/{job}/start` + `ops/diagnostics`), §18 endete mit
   ~15 Fragment-Wiederholungen. Die Entscheidungsvorlage ist wieder lesbar.
@@ -67,6 +85,11 @@ auf Desktop und Smartphone steht aus (Checkliste §7).
 - Microcopy- und Formatierungs-Ratchet kennen die neuen Dateien;
   `tests/test_rp2_fallback.py` prüft die drei Fakten samt Reihenfolge und die
   Frische-Fußzeile der Fallback-GUI.
+- **Browser-Suite (`npm --prefix web run test:e2e`, 16 Tests in Desktop und
+  Mobil) repariert:** Die Specs gingen vom Alltagstab als Startansicht aus; seit
+  „Jetzt“ der Einstieg ist, wechseln sie ausdrücklich dorthin (`gotoAlltag`).
+  Der Setup-Test prüft zusätzlich den neuen Einstieg (S0-Karte „Einrichten in
+  drei Schritten“). `AGENTS.md` nennt den e2e-Schritt jetzt im Prüf-Spiegel.
 
 ## [0.33.1] – 2026-09-14
 

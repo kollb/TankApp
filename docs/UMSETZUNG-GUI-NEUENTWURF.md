@@ -67,6 +67,7 @@ und was ehrlich offen bleibt:
 | Testfälle „Jetzt“ | — | `now.test.ts` 25 + `views/Jetzt.test.tsx` 9 |
 | API-Aufrufe „Jetzt“ pro Refresh | — | 1× `/api/v1/overview` (wie „Alltag“, kein zweiter Poll) |
 | Antwort-Reihenfolge | keine Zusage | per Test: Entscheidung → 3 Fakten → Schritte → Tagesstreifen → Frische |
+| Browser-Suite (`test:e2e`) | 16 Tests, **rot** (Startansicht, Absturz) | **16/16 grün** (Desktop 1440 px + Mobil 390 px) |
 | Zeit bis zur Entscheidung (≤ 10 s, §15) | nicht messbar | **offen** — braucht echte Nutzung |
 
 ## 1. Phase 0 — Fundament
@@ -181,10 +182,13 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
 
 ## 7. Abnahme (manuell)
 
-- [ ] **7.1** Sichtprüfung „Jetzt“ auf Desktop (1920 px) und Smartphone
-  (390 px): Reihenfolge ohne Scrollen erkennbar, Faktenreihe bricht sauber
-  um, Tagesstreifen ohne horizontales Scrollen, Sheet bedienbar (Escape,
-  Backdrop, Fokus), Dark/Light.
+- [x] **7.1** Sichtprüfung „Jetzt“ auf Desktop (1440 px) und Smartphone
+  (390 px) — **durchgeführt** mit Demo-Daten (Chromium headless): feste
+  Reihenfolge erkennbar, Faktenreihe bricht um, kein horizontales Scrollen auf
+  beiden Breiten, Frische-Fußzeile steht unter dem Tagesstreifen. Die
+  Sichtprüfung deckte zwei Fehler auf, beide behoben (Absturz auf der leeren
+  Anlage, falsch datierte Prognose in der Fußzeile). **Offen bleibt** die
+  Prüfung auf dem Pi-Gerät (7.3) und Dark/Light am echten Gerät.
 - [ ] **7.2** Zustände am echten Stand durchspielen: S0 (keine Stationen),
   S1 (Preise ohne Modell), Stufe A (kalibriert), Fehler
   (`influx_read_failed`), Offline (Banner + Cache-Stand).

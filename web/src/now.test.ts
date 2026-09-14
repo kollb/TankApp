@@ -11,6 +11,7 @@ import { M7_MIN_RECOMMENDATIONS } from "./data";
 import {
   confidenceWord,
   dayLabel,
+  forecastStamp,
   learningNote,
   nowExplanation,
   nowFacts,
@@ -403,6 +404,67 @@ describe("Ebene 1: höchstens drei Sätze", () => {
       pricesAt: minutesAgo(4),
     });
     expect(stageB?.sentences[2]).toContain("12 von 100");
+  });
+});
+
+describe("Server-Fehlerpayload ohne primary (Regression)", () => {
+  // Das Overview-Aggregat antwortet mit HTTP 200, aber einem `decide`-Feld
+  // wie `{"error_code": "polling_missing"}`. Genau daran ist die Ansicht
+  // einmal abgestürzt (leere Seite) — diese Fälle halten die Härtung fest.
+  const broken = { error_code: "polling_missing" } as unknown as DecideResult;
+
+  it("liefert Stufe C statt eines Absturzes", () => {
+    expect(nowStage(broken)).toBe("C");
+  });
+
+  it("empfiehlt nichts und begründet nichts", () => {
+    expect(nowVerdict(input({ decide: broken }))).toBeNull();
+    expect(nowExplanation({ ...input({ decide: broken }), pricesAt: null })).toBeNull();
+    expect(learningNote(broken)).toBeNull();
+    expect(stageProgressNote(broken)).toBeNull();
+  });
+
+  it("liefert trotzdem die drei Fakten und keine Schritte", () => {
+    const facts = nowFacts(input({ decide: broken }));
+    expect(facts).toHaveLength(3);
+    expect(facts[1].value).toBe("—");
+    expect(facts[1].detail).toContain("Keine Prognose");
+    expect(nowSteps(input({ decide: broken }))).toEqual([]);
+  });
+});
+
+describe("Frische der Prognose (Regression)", () => {
+  // Vorher stand in der Fußzeile `stats_summary.generated_at` — das ist der
+  // Zeitpunkt der Antwortberechnung, also immer „gerade eben“. Der Modell-Lauf
+  // datiert aus der Engine-Publikation bzw. dem Fit.
+  it("nimmt die Engine-Publikation, sonst den Fit", () => {
+    const withPublishing = decide("wait");
+    withPublishing.quality = {
+      rolling_picp_7d_pct: 94.2,
+      rolling_picp_7d_points: 220,
+      rolling_picp_7d_badge: "green",
+      rolling_picp_7d_as_of: "2026-09-14T09:25:00+02:00",
+      rolling_picp_window_days: 7,
+      rolling_picp_nominal_pct: 95,
+      gate: null,
+    };
+    withPublishing.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-14T09:25:00+02:00" };
+    expect(forecastStamp(withPublishing)).toBe("2026-09-14T09:25:00+02:00");
+
+    const onlyFit = decide("wait");
+    onlyFit.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-13T23:00:00+02:00" };
+    expect(forecastStamp(onlyFit)).toBe("2026-09-13T23:00:00+02:00");
+  });
+
+  it("sagt ohne Lauf nichts, statt „gerade eben“ zu behaupten", () => {
+    expect(forecastStamp(decide("wait"))).toBeNull();
+    expect(forecastStamp(null)).toBeNull();
+    expect(
+      forecastStamp({ error_code: "polling_missing" } as unknown as DecideResult),
+    ).toBeNull();
+    expect(
+      nowFreshness({ pricesAt: minutesAgo(4), forecastAt: null, now: NOW }).text,
+    ).toBe("Preise vor 4 Minuten · Prognose kein Stand");
   });
 });
 

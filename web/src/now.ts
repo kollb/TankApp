@@ -42,7 +42,11 @@ export type NowTarget = "stations" | "week" | "tank" | "system";
 export type NowStage = "A" | "B" | "C";
 
 export function nowStage(decide: DecideResult | null): NowStage {
-  if (!decide || decide.primary.action === "no_advice") return "C";
+  // Achtung: Der Server liefert bei einem Fehler ein Objekt ohne `primary`
+  // (z. B. `{"error_code": "polling_missing"}`) — und zwar mit HTTP 200 im
+  // Overview-Aggregat. Ein ungeprüfter Zugriff hier hat die ganze App
+  // abstürzen lassen (leere Seite). Deshalb durchgehend optional.
+  if (!decide?.primary || decide.primary.action === "no_advice") return "C";
   return decide.calibrated ? "A" : "B";
 }
 
@@ -73,7 +77,7 @@ export function wordFromPercent(percent: number): string {
 /** Fortschritt bis zur Prozent-Anzeige (nur Stufe B, nie ein Countdown). */
 export function stageProgressNote(decide: DecideResult | null): string | null {
   if (nowStage(decide) !== "B" || !decide) return null;
-  const done = decide.personal_stats?.advice?.last_30d_total ?? 0;
+  const done = decide?.personal_stats?.advice?.last_30d_total ?? 0;
   const missing = Math.max(0, M7_MIN_RECOMMENDATIONS - done);
   if (missing === 0) return null;
   return (
@@ -87,8 +91,9 @@ export function stageProgressNote(decide: DecideResult | null): string | null {
  * (S1/S2 aus §10): Grund plus Zählstand — ohne Countdown-Versprechen.
  */
 export function learningNote(decide: DecideResult | null): string | null {
-  if (!decide || decide.calibrated) return null;
-  const done = decide.personal_stats?.advice?.last_30d_total ?? 0;
+  // Nur mit echter Antwort: Ein Fehlerpayload sagt nichts über den Lernstand.
+  if (!decide?.primary || decide.calibrated) return null;
+  const done = decide?.personal_stats?.advice?.last_30d_total ?? 0;
   if (done >= M7_MIN_RECOMMENDATIONS) return null;
   return (
     `Das Modell lernt noch — ${countLabel(done)} von ` +
@@ -136,9 +141,9 @@ function confidenceDetail(
   liters: number,
 ): { detail: string; percent: number | null; word: string | null } {
   const stage = nowStage(decide);
-  const badge = decide.primary.confidence_badge;
+  const badge = decide.primary?.confidence_badge;
   const percent =
-    stage === "A" && decide.primary.p_correct != null
+    stage === "A" && decide.primary?.p_correct != null
       ? decide.primary.p_correct * 100
       : null;
   const word =
@@ -163,8 +168,10 @@ function confidenceDetail(
  */
 export function nowVerdict(input: NowInput): NowVerdict | null {
   const decide = input.decide;
-  if (!decide) return null;
-  const p = decide.primary;
+  // Ohne `primary` (Fehlerpayload) gibt es nichts zu empfehlen; die Ansicht
+  // zeigt dann den Fehler- oder Einrichtungszustand.
+  const p = decide?.primary;
+  if (!decide || !p) return null;
   const { detail, percent, word } = confidenceDetail(decide, input.liters);
   const stageNote = stageProgressNote(decide);
   const reason = p.reason_short ? [p.reason_short, detail].join(" · ") : detail;
@@ -292,7 +299,7 @@ export function nowFacts(input: NowInput): NowFact[] {
       };
 
   // 2 · Bestes Fenster heute
-  const window = decide?.windows_today?.[0] ?? decide?.primary.recommended_window;
+  const window = decide?.windows_today?.[0] ?? decide?.primary?.recommended_window;
   const best: NowFact =
     stage === "C" || !window
       ? {
@@ -340,7 +347,7 @@ export function nowSteps(input: NowInput): NowStep[] {
   if (!decide) return [];
   const steps: NowStep[] = [];
 
-  const alt = [...decide.alternatives_nearby]
+  const alt = [...(decide.alternatives_nearby ?? [])]
     .filter((a) => a.worth_it)
     .sort((a, b) => b.net_eur - a.net_eur)[0];
   if (alt) {
@@ -354,7 +361,7 @@ export function nowSteps(input: NowInput): NowStep[] {
     });
   }
 
-  const later = decide.windows_week?.[0];
+  const later = decide.windows_week?.[0] ?? null;
   if (later && later.expected_saving_eur != null && later.expected_saving_eur > 0) {
     steps.push({
       id: "later-window",
@@ -398,6 +405,21 @@ export function dayLabel(stamp: string | null | undefined, now = Date.now()) {
     timeZone: "Europe/Berlin",
     weekday: "long",
   }).format(new Date(ms));
+}
+
+/**
+ * Wann der Modell-Lauf war — NICHT der Zeitpunkt dieser Antwort.
+ *
+ * `stats_summary.generated_at` ist die Berechnungszeit des Servers (also
+ * „gerade eben“ bei jedem Refresh) und taugt nicht als Frische-Aussage. Die
+ * Publikation der Engine (`rolling_picp_7d_as_of`) bzw. der Fit-Zeitpunkt
+ * (`debug.fitted_at`) datieren den Lauf wirklich.
+ */
+export function forecastStamp(decide: DecideResult | null): string | null {
+  if (!decide) return null;
+  return (
+    decide.quality?.rolling_picp_7d_as_of ?? decide.debug?.fitted_at ?? null
+  );
 }
 
 export type NowFreshness = { text: string; tone: "ok" | "warn" | "bad" };
@@ -454,7 +476,7 @@ export function nowExplanation(
   input: NowInput & { pricesAt?: string | null },
 ): NowExplanation | null {
   const decide = input.decide;
-  if (!decide) return null;
+  if (!decide?.primary) return null;
   const stage = nowStage(decide);
   const window = decide.windows_today?.[0] ?? decide.primary.recommended_window;
   const sentences: string[] = [];
@@ -473,7 +495,7 @@ export function nowExplanation(
   }
 
   const deltaCt = window
-    ? savingPerLiterCt(decide.primary.station.price_now, window.expected_price)
+    ? savingPerLiterCt(decide.primary.station?.price_now, window.expected_price)
     : null;
   if (deltaCt != null && deltaCt > 0) {
     sentences.push(

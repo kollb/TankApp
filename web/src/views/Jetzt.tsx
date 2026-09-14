@@ -107,7 +107,13 @@ export function JetztView(props: JetztViewProps) {
     stripCells,
   } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Der Server antwortet im Overview-Aggregat auch dann mit HTTP 200, wenn die
+  // Empfehlung nicht berechnet werden konnte — dann steht im `decide`-Feld ein
+  // Fehlerobjekt ohne `primary` (`{"error_code": "polling_missing"}`). Das ist
+  // kein Grund für eine leere Seite, sondern für einen benannten Fehler.
   const decide = decideRes.data ?? null;
+  const problemCode =
+    decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
   const input = { decide, stations, selectedId, liters, now };
   const verdict = nowVerdict(input);
   const facts = nowFacts(input);
@@ -115,9 +121,11 @@ export function JetztView(props: JetztViewProps) {
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
   const explanation = nowExplanation({ ...input, pricesAt });
 
-  // S0 „Einrichten“: noch keine Stationen, noch keine Preise — die Karte
-  // erklärt die drei Schritte, statt eine Empfehlung zu erfinden.
-  const setup = !decide && stations.length === 0;
+  // S0 „Einrichten“: noch keine Stationen, noch keine Empfehlung — die Karte
+  // erklärt die drei Schritte, statt eine Empfehlung zu erfinden. Sie hat
+  // Vorrang vor einem Server-Fehler („Polling-Set fehlt“ heißt: einrichten),
+  // nicht aber vor einer unerreichbaren Anlage — dann steht dort der Fehler.
+  const setup = !verdict && stations.length === 0 && !decideRes.error;
 
   return (
     <section aria-labelledby="jetzt-title">
@@ -132,13 +140,6 @@ export function JetztView(props: JetztViewProps) {
       <div className="mt-4">
         {decideRes.pending && !decide && !setup ? (
           <SkeletonPanel lines={3} label="Empfehlung wird berechnet" />
-        ) : decideRes.error && !decide ? (
-          <LoadError
-            errorCode={decideRes.errorCode}
-            fallback="Empfehlung derzeit nicht erreichbar."
-            onRetry={onRetry}
-            compact
-          />
         ) : setup ? (
           <div className={`${panel} p-5 sm:p-7`}>
             <span
@@ -251,6 +252,13 @@ export function JetztView(props: JetztViewProps) {
               </details>
             </div>
           </>
+        ) : problemCode ? (
+          <LoadError
+            errorCode={problemCode}
+            fallback="Empfehlung derzeit nicht erreichbar."
+            onRetry={onRetry}
+            compact
+          />
         ) : (
           <div className={`${panel} p-5 sm:p-7`}>
             <p className="text-sm leading-relaxed text-slate-300">

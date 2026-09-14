@@ -1,7 +1,30 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Diese Specs prüfen den
+// Alltagstab — sie wechseln deshalb ausdrücklich dorthin, statt sich auf den
+// Starttab zu verlassen. Nach jedem `reload()` ist der Einstieg wieder „Jetzt".
+async function gotoAlltag(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+}
 
 test("honest setup state and all three views", async ({ page }) => {
+  // Auf einem frischen Server ohne Polling-Set zeigt der Einstieg „Jetzt" den
+  // grauen S0-Zustand: Grund plus nächster Schritt — kein erfundener Preis,
+  // keine leere Fläche.
   await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Jetzt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Einrichten in drei Schritten" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Einrichtung starten" }),
+  ).toBeVisible();
+  // Der Alltagstab bleibt vorerst daneben stehen (Checkliste 1.6) und zeigt
+  // weiterhin seinen ehrlichen Leerzustand.
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Noch kein frischer Preis." }),
   ).toBeVisible();
@@ -80,7 +103,7 @@ test("city/fuel changes never mix prices, closures never win", async ({
       },
     });
   });
-  await page.goto("/");
+  await gotoAlltag(page);
   await expect(
     page.getByRole("heading", { name: "F-Station", exact: true }),
   ).toBeVisible();
@@ -102,6 +125,9 @@ test("city/fuel changes never mix prices, closures never win", async ({
   ).toBeVisible();
   await expect(page.getByText("1,689", { exact: false })).toHaveCount(0);
   await page.reload();
+  // Nach dem Reload startet die App wieder in „Jetzt" — für die Alltags-Namen
+  // und die Tankmengen-Zeile deshalb erneut dorthin wechseln.
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
   await expect(page.getByLabel("Stadt", { exact: true })).toHaveValue(
     "Gütersloh",
   );
@@ -158,8 +184,9 @@ test("C4: Einstellungen-Tab centralisiert Defaults, zeigt Schwellen read-only", 
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/light/);
   // Zurück auf den Default (dunkles Slate), damit andere Tests nicht
-  // von dieser Ansicht abhängen. Nach dem Reload startet die App im
-  // Alltagstabs — der Theme-Button liegt im Einstellungen-Tab.
+  // von dieser Ansicht abhängen. Nach dem Reload startet die App in „Jetzt"
+  // — der Theme-Knopf liegt im Einstellungen-Tab, der von jedem Tab
+  // erreichbar ist.
   await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
   await page
     .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })

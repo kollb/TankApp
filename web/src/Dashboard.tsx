@@ -42,7 +42,7 @@ import {
 import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
 import { JetztView } from "./views/Jetzt";
-import type { NowTarget } from "./now";
+import { forecastStamp, type NowTarget } from "./now";
 import { LineChart } from "./components/LineChart";
 import {
   LabLineChart,
@@ -1068,7 +1068,9 @@ export function Dashboard() {
     if (!stamps.length) return data?.generated_at ?? null;
     return new Date(Math.max(...stamps)).toISOString();
   }, [fresh, data?.generated_at]);
-  const nowForecastAt = statsSummaryRes.data?.generated_at ?? null;
+  // Die Frische der Prognose kommt aus der Engine-Publikation bzw. dem
+  // Fit-Zeitpunkt — nicht aus der Berechnungszeit dieser Antwort (`now.ts`).
+  const nowForecastAt = forecastStamp(decideRes.data);
   // Die Ziele des Neuentwurfs gibt es als Bereiche noch nicht: „Stationen“,
   // „Woche“ und der Tankstand leben bis Phase 1/2 im Alltagstab, „System“
   // existiert schon. Diese Übersetzung fällt mit dem jeweiligen Bereich weg.

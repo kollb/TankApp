@@ -189,6 +189,50 @@ describe("Jetzt: Zustände", () => {
   });
 });
 
+describe("Jetzt: Server-Fehlerpayload (Regression: keine leere Seite)", () => {
+  // Vorher stürzte die Ansicht hier ab (`decide.primary.action` ohne `primary`)
+  // und die App blieb weiß. Beide Wege müssen stehen: Einrichtung als
+  // nächster Schritt, wenn nichts da ist — und ein benannter Fehler, wenn es
+  // Stationen gibt, die Empfehlung aber nicht berechnet werden konnte.
+  const broken = { error_code: "polling_missing" } as unknown as DecideResult;
+  const brokenRes = {
+    data: broken,
+    error: false,
+    errorCode: null,
+    pending: false,
+    receivedAt: 0,
+  };
+
+  it("S0 gewinnt, wenn noch keine Stationen da sind", () => {
+    const html = render({ decideRes: brokenRes, stations: [], stripCells: [] });
+    expect(html).toContain("Einrichten in drei Schritten");
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it("unerreichbare Anlage ist ein Fehler, keine Einrichtungs-Aufforderung", () => {
+    const html = render({
+      decideRes: {
+        data: null,
+        error: true,
+        errorCode: "request_failed",
+        pending: false,
+        receivedAt: 0,
+      },
+      stations: [],
+      stripCells: [],
+    });
+    expect(html).toContain('role="alert"');
+    expect(html).not.toContain("Einrichten in drei Schritten");
+  });
+
+  it("mit Stationen steht der Grund im Klartext, mit Rohcode", () => {
+    const html = render({ decideRes: brokenRes });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Polling-Set fehlt");
+    expect(html).toContain("polling_missing");
+  });
+});
+
 describe("Ebene 1: Begründungs-Sheet", () => {
   it("ist geschlossen nicht im Dokument", () => {
     const html = renderToStaticMarkup(

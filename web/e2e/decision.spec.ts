@@ -1,5 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
+// GUI-Neuentwurf (0.34.0): Der Einstieg ist „Jetzt". Dieser Fluss lebt noch im
+// Alltagstab (Phase 1 verschiebt ihn) — deshalb ausdrücklich dorthin wechseln.
+async function gotoAlltag(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Alltag", exact: true }).click();
+}
+
 // D2: Entscheidungs-Fluss „decide → intent → fill → due“ mit Mocks.
 // Schützt die V3-Fixes: Erfolgsmeldung nur bei Erfolg, Due-Prompt nach
 // „Ich warte“, Fill verbucht den Beleg, Serverfehler erzeugt keine Erfolgsmeldung.
@@ -188,7 +195,7 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
     });
   });
 
-  await page.goto("/");
+  await gotoAlltag(page);
   await expect(page.getByText("WARTEN").first()).toBeVisible();
 
   // 1) Intent „Ich warte“ setzen.
@@ -266,7 +273,7 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
     });
   });
 
-  await page.goto("/");
+  await gotoAlltag(page);
   await expect(
     page.getByRole("heading", { name: "Hast du getankt?" }),
   ).toBeVisible();
