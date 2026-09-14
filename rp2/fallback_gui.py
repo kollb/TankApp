@@ -1570,7 +1570,7 @@ function renderHero(stations, decide) {
     "</div>" +
     '<div class="station-name">' + esc(s.name) + "</div>" +
     '<div class="price">' + eur(f2.price) + " <small>€/L</small></div>" +
-    '<div class="savings">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) + " pro " + state.liters + " L-Tank <span class=\"muted\" style=\"font-weight:400\">" + vsLabel + "</span></div>" +
+    '<div class="savings">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) + " pro " + state.liters + ' L-Tank <span class="muted" style="font-weight:400">' + vsLabel + "</span></div>" +
     (s.maps_url ? '<div style="margin-top:12px"><a class="btn primary" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">📍 Navigation</a></div>' : "");
 }
 
@@ -1651,7 +1651,7 @@ function renderStationsTable(stations) {
         : '<span class="stale">● ' + ageLabel(age) + " alt</span>";
     return '<tr class="' + cls + '">' +
       "<td>" + (hasPrice ? i : "·") + "</td>" +
-      "<td class=\"station-cell\"><b>" + esc(s.name) + "</b>" +
+      '<td class="station-cell"><b>' + esc(s.name) + "</b>" +
         (s.brand ? ' <span class="tag brand-tag">' + esc(s.brand) + "</span>" : "") +
         (s.city ? ' <span class="muted">(' + esc(s.city) + ")</span>" : "") +
         (!hasPrice && !closed ? ' <span class="muted">— ' + esc(FUEL_LABEL[state.fuel]) + " nicht geführt</span>" : "") +

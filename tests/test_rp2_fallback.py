@@ -11,7 +11,11 @@ Deckt ab:
 import datetime as dt
 import importlib.util
 import json
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -630,3 +634,151 @@ def test_forecasts_error_names_the_volatile_tmp_cache(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ---------------------------------------------------------------------------
+# Regression: Das Inline-JS des Templates muss syntaktisch gültig sein.
+#
+# Ein einziger unmaskiertes Anführungszeichen in einem JS-String (z. B.
+# "<td class=\"station-cell\">") bricht das komplette <script> ab — die
+# Fallback-GUI bleibt dann für immer bei „Lade …“ hängen, OHNE Fehlerbanner,
+# weil refresh() gar nie ausgeführt wird. Die API lieferte dabei einwandfrei
+# Daten; nur das Template war kaputt. (Aufgefallen im Sep 2026-Betrieb.)
+# ---------------------------------------------------------------------------
+
+
+def _extract_inline_js() -> str:
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", rp2.DEFAULT_INDEX_HTML)
+    assert len(scripts) == 1, "erwartet genau ein Inline-<script> im Template"
+    return scripts[0]
+
+
+_JS_REGEX_OK_PREV = set("(,=:[!&|?{};+-*%^~<>\n")
+_JS_KEYWORDS = {
+    "return", "typeof", "instanceof", "in", "of", "new",
+    "delete", "void", "do", "else", "case", "yield", "await",
+}
+
+
+def _scan_js_string_literals(js: str) -> list:
+    """Kleiner Token-Scanner für die JS-Bug-Klasse „Kaputter String".
+
+    Erkennt (a) Strings, die bis zum Zeilenende nicht mehr geschlossen werden,
+    und (b) String-Literale, hinter denen direkt ein Bezeichner/Nachkomma steht
+    (Zeichen, die dort nur landen können, wenn ein unmaskiertes Anführungs-
+    Zeichen den String früher beendet hat). Kommentare, Regex-Literale und
+    escapete Sequenzen werden korrekt übersprungen.
+    """
+    i, n, line = 0, len(js), 1
+    last_char, last_word = None, ""
+    while i < n:
+        c = js[i]
+        if c == "\n":
+            line += 1
+            i += 1
+            last_char = c
+            continue
+        if c in " \t\r":
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and js[i + 1] == "/":
+            j = js.find("\n", i)
+            i = n if j == -1 else j
+            continue
+        if c == "/" and i + 1 < n and js[i + 1] == "*":
+            j = js.find("*/", i + 2)
+            if j == -1:
+                return ["unterminated block comment at line %d" % line]
+            line += js[i:j].count("\n")
+            i = j + 2
+            continue
+        if c == "/" and (last_char is None or last_char in _JS_REGEX_OK_PREV
+                         or last_word in _JS_KEYWORDS):
+            # Regex-Literal: bis zum nächsten unescapekten / außerhalb von []
+            j = i + 1
+            in_cls = False
+            while j < n:
+                cj = js[j]
+                if cj == "\n":
+                    return ["unterminated regex at line %d" % line]
+                if cj == "\\":
+                    j += 2
+                    continue
+                if in_cls:
+                    if cj == "]":
+                        in_cls = False
+                elif cj == "[":
+                    in_cls = True
+                elif cj == "/":
+                    break
+                j += 1
+            if j >= n:
+                return ["unterminated regex at line %d" % line]
+            i = j + 1
+            last_char = "/"
+            last_word = ""
+            continue
+        if c in "\"'":
+            quote = c
+            j = i + 1
+            while j < n:
+                if js[j] == "\\":
+                    j += 2
+                    continue
+                if js[j] == "\n":
+                    break
+                if js[j] == quote:
+                    break
+                j += 1
+            if j >= n or js[j] != quote:
+                return ["unterminated %s-string at line %d" % (quote, line)]
+            k = j + 1
+            while k < n and js[k] in " \t":
+                k += 1
+            if k < n and (js[k].isalpha() or js[k] in "_$"):
+                return ["identifier directly after %s-string at line %d"
+                        % (quote, line)]
+            i = j + 1
+            last_char = quote
+            last_word = ""
+            continue
+        if c.isalpha() or c in "_$":
+            j = i
+            while j < n and (js[j].isalnum() or js[j] in "_$"):
+                j += 1
+            last_word = js[i:j]
+            last_char = js[j - 1]
+            i = j
+            continue
+        last_char = c
+        last_word = ""
+        i += 1
+    return []
+
+
+def test_fallback_template_js_string_literals_wellformed():
+    """Ohne externe Abhängigkeit: kein JS-String im Template darf durch ein
+    unmaskiertes Anführungszeichen frühzeitig beendet werden."""
+    problems = _scan_js_string_literals(_extract_inline_js())
+    assert problems == [], problems
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node nicht installiert")
+def test_fallback_template_js_parses_with_node():
+    """Härtester Check: der echte JS-Parser muss das komplette Inline-<script>
+    ohne Syntaxfehler akzeptieren."""
+    js = _extract_inline_js()
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".js", encoding="utf-8", delete=False
+    ) as f:
+        f.write(js)
+        path = f.name
+    try:
+        proc = subprocess.run(
+            [shutil.which("node"), "--check", path],
+            capture_output=True,
+            timeout=30,
+        )
+    finally:
+        Path(path).unlink(missing_ok=True)
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
