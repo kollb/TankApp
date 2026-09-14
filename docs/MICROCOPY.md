@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 14.09.2026 · App-Version **0.34.0** · gilt für `web/src/**`,
+> Stand: 14.09.2026 · App-Version **0.37.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -14,6 +14,8 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4. Benennungen](#4-benennungen)
 - [4a. Fallback-GUI: feste Muster (0.34.0)](#4a-fallback-gui-feste-muster-0340)
 - [4b. Bereich „Jetzt“: feste Muster (0.34.0)](#4b-bereich-jetzt-feste-muster-0340)
+- [4c. Bereich „Labor“: feste Muster (0.36.0)](#4c-bereich-labor-feste-muster-0360)
+- [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -165,6 +167,23 @@ Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
 | Maßzahl ohne Messwerte | `noch keine Vergleichspunkte — der Roll-Backtest füllt sie.` |
 | Prinzip-Skizze ohne eigene Daten | `Prinzip-Skizze — nicht deine Daten.` — dieselbe Zeile wie in „Jetzt“ |
 | Spielplatz | `Perfektes Timing (Orakel)` · `Eine Station sezieren` · Rohpreise `24 Stunden`/`3 Tage`/`7 Tage` — der Spielplatz sagt in jedem Fall, dass er mit **deinen** Daten rechnet, nicht mit einer Simulation |
+
+## 4d. Bereich „System“: feste Muster (0.37.0)
+
+Technik-Bereich nach [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §5.5. Reihenfolge ist
+Teil des Entwurfs: Zustand → Daten → Läufe → Störungen → Diagnose, darunter
+die Frische-Fußzeile. Logik in `web/src/system.ts`.
+
+| Stelle | Muster |
+|---|---|
+| Titel | `Einmal einrichten. Weiterlaufen lassen.` |
+| Vier Bausteine | `Collector (Pi)` · `Datenbank (NAS)` · `Modelle` · `App` — je eine Zeile, Ton grün/gelb/rot/grau |
+| Gesamtfarbe | `Alles ok` · `Hinweise` · `Störungen` · `Unbekannt` |
+| Coverage-Gate | Fenster wie geliefert (`06–24 Uhr`) — kein zweites „Uhr“; Bestwert und Schwelle über `percentLabel` |
+| Diagnose-Export | Knopf `Diagnose als Datei` — JSON mit Version, Zustand, Coverage, letzten Log-Zeilen, ohne Tokens |
+| PWA | `der Service-Worker liegt unter /sw.js` — Versionierung, Update-Banner und Offline-Queue (B10) sind weiter offen |
+| API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
+| Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
 
 ## 5. Zustände: leer, lädt, Fehler
 

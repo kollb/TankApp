@@ -827,9 +827,7 @@ export function JetztView(props: JetztViewProps) {
                   Günstigste Stunde
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-emerald-300 tabular-nums">
-                  {dayPanel.best
-                    ? `${String(dayPanel.best.hour).padStart(2, "0")}–${String((dayPanel.best.hour + 1) % 24).padStart(2, "0")} Uhr`
-                    : "—"}
+                  {dayPanel.best ? dayPanel.bestLabel : "—"}
                 </p>
                 <p className="text-[11px] text-slate-500">
                   {dayPanel.best
@@ -922,12 +920,27 @@ export function JetztView(props: JetztViewProps) {
                     >
                       {String(cell.hour).padStart(2, "0")}
                     </span>
+                    <span
+                      className={`font-mono text-[8px] leading-tight tabular-nums ${
+                        cell.value === null
+                          ? "text-slate-700"
+                          : cell.current
+                            ? "text-emerald-100"
+                            : cell.tone === "cheap"
+                              ? "text-emerald-300"
+                              : cell.tone === "pricey"
+                                ? "text-rose-300"
+                                : "text-slate-300"
+                      }`}
+                    >
+                      {cell.value === null ? "—" : euro(cell.value, 3)}
+                    </span>
                   </div>
                 );
               })}
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-              {dayPanel.coverage} Balken = Höhe des Preises im Tagesverlauf ·
+              {dayPanel.coverage} Zahl = €/L · Balken = Höhe im Tagesverlauf ·
               grün = unteres Drittel · rot = oberes Drittel · Rahmen = jetzt.
             </p>
           </div>

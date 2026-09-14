@@ -2027,6 +2027,9 @@ export function Dashboard() {
             triggerCommand={triggerCommand}
             webhookCapable={webhookCapable}
             workerCommand={workerCommand}
+            onDeepen={(section) =>
+              openLabor(section, "System · Warum?", "system")
+            }
           />
         )}
 

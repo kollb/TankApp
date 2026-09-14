@@ -47,6 +47,7 @@ const FILES = [
   "views/Ich.tsx",
   "lab.ts",
   "views/Labor.tsx",
+  "system.ts",
   "views/System.tsx",
   "views/Settings.tsx",
   "views/Glossary.tsx",

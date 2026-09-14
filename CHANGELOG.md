@@ -4,6 +4,62 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.37.0] – 2026-09-14
+
+**Phase 4 des GUI-Neuentwurfs steht: „System“ in den §5.5-Bausteinen —
+Zustand, Daten, Läufe, Störungen, Diagnose — plus drei Korrekturen aus der
+Nutzung.** Die Anlage bleibt vollständig (Collector, InfluxDB, Modelle, Jobs,
+Alarme, ntfy, API-Explorer, Belege-CSV), nur die Reihenfolge ist neu. Der
+Diagnose-Export bündelt Version, Zustand, Coverage und die letzten Log-Zeilen
+als JSON, ohne Tokens. `/api/v1` bleibt die einzige API (kein v2-Baum);
+UX-KPIs aus §15 sind ohne Realnutzung unmessbar; der Service-Worker existiert,
+B10 (Versionierung, Update-Banner, Offline-Queue) bleibt offen. Dazu drei
+Korrekturen: Zahlen wieder in den Streifen-Zellen von „Heute im Blick“,
+günstigste Stunde als Spanne bei Gleichstand (06–12, nicht nur 06–07), OSM-Karte
+mit der Referenz geometrisch in der Mitte. Ehrlich dazu: die manuelle Abnahme
+am echten Stand (S0/S1/Stufe A/Fehler/Offline, Pi-Fallback, Vorleser, §7.2–7.5)
+steht weiter aus.
+
+### Hinzugefügt
+
+- **Bereich „System“ 2.0** (`web/src/views/System.tsx` + Logik in
+  `web/src/system.ts`) nach UI-NEUENTWURF §5.5 in fester Reihenfolge:
+  **① Zustand** (vier Bausteine je eine Zeile: Collector, Datenbank, Modelle,
+  App), **② Daten** (Abdeckung, Lebenszyklus, Preis-Zwillinge, Güte),
+  **③ Läufe & Protokolle** (Job-Karten + Job-Log), **④ Störungen** (Alarme,
+  ntfy, Checkliste), **⑤ Diagnose** (CSV, Diagnose-JSON, API-Explorer) —
+  darunter die Frische-Fußzeile. Einrichtungsschritte, Collector-Details und
+  Güte-Kacheln bleiben. „Warum?“ öffnet Ebene 1 und springt ins Labor
+  (`onDeepen` → `openLabor`).
+- **Diagnose als Datei** (`systemDiagnosticExport`): JSON mit App-Version,
+  Commit, den vier Zustandszeilen, Coverage, Alarmen und den letzten
+  Log-Zeilen — ohne Tokens, ohne Pfade mit Zugangsdaten.
+- **Gleichstand im Tagesstreifen** (`nowDayPanel`): liegen mehrere Stunden
+  auf dem Bestpreis (Toleranz 0,05 ct/L), nennt die Kachel die Spanne
+  (`06–12 Uhr`), nicht die erste Stunde.
+
+### Geändert
+
+- **„Heute im Blick“**: jede offene Streifen-Zelle trägt den Preis
+  (`euro(value, 3)`), die Kachel „Günstigste Stunde“ liest `bestLabel`.
+- **Karte**: OSM zentriert auf der Referenzstation und `fitBounds` über eine
+  an der Referenz gespiegelte Bounding-Box (`boundsCenteredOn`) — Pins bleiben
+  Netto-€ gegenüber der Referenz; Radar bleibt Zuhause-zentriert (km-Ringe).
+- **Coverage-Gate**: Fenstertext wie geliefert (kein zweites „Uhr“), Bestwert
+  und Schwelle über `percentLabel`.
+
+### Tests
+
+- 544 Web-Tests in 30 Dateien (vorher 492 in 28): neu `system.test.ts`
+  (33 — vier Bausteine, Töne, Diagnose-Export, Frische, Einrichtung) und
+  `views/System.test.tsx` (10 — feste Reihenfolge, Lädt/Leer/Fehler,
+  Formatter-only). `now.test.ts` und `Jetzt.test.tsx` decken Gleichstand
+  06–12 und Zellpreise; `StationMap.test.tsx` die zentrierte Bounding-Box.
+- Python 758 (unverändert). Bundle: index 530,16 kB / 157,40 kB gzip
+  (vorher 507,83 / 152,19). Ratchets kennen `system.ts`. Version 0.36.0 →
+  0.37.0. Browser-Suite unverändert (kein neuer Spec); im Sandbox kein
+  Playwright-Browser, der Beleg kommt aus dem CI-Lauf.
+
 ## [0.36.0] – 2026-09-14
 
 **Phase 3 des GUI-Neuentwurfs steht: „Labor“ ersetzt die Werkstatt — eine

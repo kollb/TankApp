@@ -13,6 +13,7 @@ import {
   dayLabel,
   forecastStamp,
   learningNote,
+  nowDayPanel,
   nowExplanation,
   nowFacts,
   nowFreshness,
@@ -470,6 +471,38 @@ describe("Frische der Prognose (Regression)", () => {
     expect(
       nowFreshness({ pricesAt: minutesAgo(4), forecastAt: null, now: NOW }).text,
     ).toBe("Preise vor 4 Minuten · Prognose kein Stand");
+  });
+});
+
+describe("Heute im Blick: Gleichstand als Spanne", () => {
+  it("nennt 06–12 Uhr, wenn sechs Stunden denselben Bestpreis teilen", () => {
+    const cells = [
+      ...[6, 7, 8, 9, 10, 11].map((hour) => ({
+        hour,
+        value: 2.289,
+        tone: "cheap" as const,
+        current: hour === 9,
+      })),
+      { hour: 18, value: 2.349, tone: "pricey" as const, current: false },
+    ];
+    const panel = nowDayPanel(cells);
+    expect(panel.bestLabel).toBe("06–12 Uhr");
+    expect(panel.tied).toBe(true);
+    expect(panel.bestHours).toEqual([6, 7, 8, 9, 10, 11]);
+    expect(panel.headline).toContain("06–12 Uhr");
+    expect(panel.headline).not.toContain("06–07 Uhr");
+    expect(panel.headline).toContain("18–19 Uhr");
+  });
+
+  it("einzelne günstigste Stunde bleibt 12–13 Uhr", () => {
+    const panel = nowDayPanel([
+      { hour: 6, value: 1.759, tone: "pricey", current: false },
+      { hour: 12, value: 1.709, tone: "cheap", current: true },
+      { hour: 18, value: 1.729, tone: "mid", current: false },
+    ]);
+    expect(panel.bestLabel).toBe("12–13 Uhr");
+    expect(panel.tied).toBe(false);
+    expect(panel.headline).toContain("12–13 Uhr");
   });
 });
 

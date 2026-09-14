@@ -6,6 +6,7 @@ import {
   RadarView,
   OSM_TILE_URL,
   OSM_ATTRIBUTION,
+  boundsCenteredOn,
 } from "./StationMap";
 import { Station, DecideResult } from "../data";
 
@@ -228,6 +229,33 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
 
     expect(html).toContain("Mitte: Referenz");
     expect(html).toContain("Ringe = km Luftlinie ab ihr");
+  });
+
+  it("boundsCenteredOn hält die Referenz geometrisch in der Mitte", () => {
+    const center = { lat: 51.95, lon: 7.62 };
+    const bounds = boundsCenteredOn(center, [
+      { lat: 51.95, lon: 7.62 },
+      { lat: 51.98, lon: 7.63 },
+      { lat: 51.94, lon: 7.61 },
+    ]);
+    const midLat = (bounds[0][0] + bounds[1][0]) / 2;
+    const midLon = (bounds[0][1] + bounds[1][1]) / 2;
+    expect(midLat).toBeCloseTo(center.lat, 8);
+    expect(midLon).toBeCloseTo(center.lon, 8);
+    expect(bounds[0][0]).toBeLessThanOrEqual(51.94);
+    expect(bounds[1][0]).toBeGreaterThanOrEqual(51.98);
+  });
+
+  it("erklärt, dass die Karte die Referenz in der Mitte hält", () => {
+    const html = renderToStaticMarkup(
+      <StationMap
+        stations={mockStations}
+        selectedId="s1"
+        setSelectedId={() => {}}
+        alternatives={mockAlternatives}
+      />,
+    );
+    expect(html).toContain("Referenz in der Mitte");
   });
 
   it("nutzt OSM-Kacheln nur über https und mit Zuordnung (Tile-Policy)", () => {

@@ -58,6 +58,7 @@ const CLEAN = [
   "views/Ich.tsx",
   "lab.ts",
   "views/Labor.tsx",
+  "system.ts",
   "views/System.tsx",
 ];
 

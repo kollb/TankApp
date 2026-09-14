@@ -35,6 +35,35 @@ export interface StationMapProps {
 
 export type MapMode = "osm" | "radar";
 
+/**
+ * Bounding-Box, deren geometrische Mitte `center` ist — alle `points`
+ * bleiben sichtbar, die Referenz rutscht nicht an den Rand.
+ *
+ * `fitBounds` über den Stations-Centroid zentriert die Karte auf dem
+ * Mittelwert aller Pins; liegt die Referenz am Rand des Sets, sitzt sie
+ * nicht mittig. Diese Box spiegelt den weitesten Punkt an der Referenz.
+ */
+export function boundsCenteredOn(
+  center: { lat: number; lon: number },
+  points: Array<{ lat: number; lon: number }>,
+): [[number, number], [number, number]] {
+  let maxDlat = 0;
+  let maxDlon = 0;
+  for (const point of points) {
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) continue;
+    maxDlat = Math.max(maxDlat, Math.abs(point.lat - center.lat));
+    maxDlon = Math.max(maxDlon, Math.abs(point.lon - center.lon));
+  }
+  // Einzelner Punkt: ~1 km Spanne, sonst zoomt Leaflet auf Gebäudeebene.
+  const minHalf = 0.005;
+  maxDlat = Math.max(maxDlat, minHalf);
+  maxDlon = Math.max(maxDlon, minHalf);
+  return [
+    [center.lat - maxDlat, center.lon - maxDlon],
+    [center.lat + maxDlat, center.lon + maxDlon],
+  ];
+}
+
 /** Kachel-Quelle der Kartenansicht (OSM-Standardstil, nur über https). */
 export const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 /** Pflicht-Zuordnung der OSM-Tile-Usage-Policy — deutsch, weil die App
@@ -242,12 +271,13 @@ export function StationMap({
             mapInstanceRef.current = null;
           }
 
-          const centerLat =
-            validStations.reduce((sum, s) => sum + (s.lat as number), 0) /
-            validStations.length;
-          const centerLon =
-            validStations.reduce((sum, s) => sum + (s.lon as number), 0) /
-            validStations.length;
+          // Mitte = Referenzstation (Pins = Netto-€ gegenüber ihr), nicht
+          // der Centroid aller Stationen — sonst sitzt die Referenz am Rand.
+          const reference =
+            validStations.find((s) => s.station_id === selectedId) ??
+            validStations[0];
+          const centerLat = (reference?.lat as number) ?? 51.16;
+          const centerLon = (reference?.lon as number) ?? 10.45;
 
           const map = L.map(mapContainerRef.current, {
             center: [centerLat, centerLon],
@@ -279,7 +309,7 @@ export function StationMap({
 
           tileLayer.addTo(map);
 
-          const bounds = L.latLngBounds([]);
+          const fitPoints: { lat: number; lon: number }[] = [];
 
           // Zuhause (Heimat-Startpunkt) als eigener Pin — die Karte „geht von
           // ihm aus“, wie die Stations-km-Angaben.
@@ -288,7 +318,7 @@ export function StationMap({
               validAnchor.lat,
               validAnchor.lon,
             ];
-            bounds.extend(anchorCoords);
+            fitPoints.push({ lat: validAnchor.lat, lon: validAnchor.lon });
             const anchorIcon = L.divIcon({
               className: "custom-anchor-pin",
               html: anchorPinHtml(),
@@ -320,7 +350,7 @@ export function StationMap({
             }
 
             const coords: [number, number] = [station.lat, station.lon];
-            bounds.extend(coords);
+            fitPoints.push({ lat: station.lat, lon: station.lon });
 
             const badgeText = formatNetBadge(info);
             const style = getVerdictBadgeStyle(info.verdict);
@@ -347,12 +377,16 @@ export function StationMap({
             });
           });
 
-          // Bei ≥ 2 Punkten (Stationen plus Zuhause) auf alle einpassen.
-          if (
-            bounds.isValid() &&
-            !bounds.getNorthEast().equals(bounds.getSouthWest())
-          ) {
-            map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+          // Box um die Referenz: alle Pins bleiben sichtbar, die Mitte
+          // bleibt die Referenzstation — nicht der Stations-Centroid.
+          if (fitPoints.length) {
+            map.fitBounds(
+              boundsCenteredOn(
+                { lat: centerLat, lon: centerLon },
+                fitPoints,
+              ),
+              { padding: [30, 30], maxZoom: 15 },
+            );
           }
         } catch (e) {
           console.warn("Leaflet map init fallback to radar:", e);
@@ -515,7 +549,8 @@ export function StationMap({
           <span>
             Die €-Pins nennen die Netto-Ersparnis gegenüber der
             Referenzstation; deren eigener Pin heißt „Referenz“ und steht auf
-            0 € Unterschied, nicht auf 0 € Spritpreis.
+            0 € Unterschied, nicht auf 0 € Spritpreis. Die Karte hält die
+            Referenz in der Mitte.
             {validAnchor
               ? tripMode === "dedicated"
                 ? " Das Haus ist Zuhause — der Startpunkt der Stadt: Von dort gehen die Stationsentfernungen und der ganze Hin- und Rückweg der Extrafahrt aus."
@@ -954,3 +989,4 @@ export function RadarView({
     </div>
   );
 }
+
