@@ -388,7 +388,7 @@ export function JetztView(props: JetztViewProps) {
                 onClick={onOpenFills}
                 className="rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
               >
-                ✎ Anders buchen
+                Anders buchen
               </button>
               <button
                 onClick={() => onDismissDue(dueEpisode.id)}
