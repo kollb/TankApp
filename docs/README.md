@@ -52,6 +52,8 @@ nicht gegen 0.39.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
 | [QUALITAET.md](QUALITAET.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md) | 0.38.0 | Arbeitsdokument: Vermessung der GUI zum Stand 0.38.0 — Befunde U1–U8 sind noch nicht umgesetzt, der Befund bleibt eingefroren |
+| [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
 | [RP2.md](RP2.md) | 0.37.2 | Fallback-GUI und Pi-Proxy — von den Änderungen 0.38.0 nicht betroffen |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |

@@ -57,9 +57,10 @@ Lighthouse-Messung, die den Labor-Bereich nie sieht. Der Text-Befund
 [docs/TEXT-BEFUND.md](docs/TEXT-BEFUND.md) (T1–T13) hält zusätzlich, wo die
 Nutzertexte gegen das Regelwerk [docs/MICROCOPY.md](docs/MICROCOPY.md)
 abweichen (u. a. Wochenlinien-Legende, Fehler im Erfolgs-Banner,
-Namens-Drift). Die zwei P0-Zeilen dort (U2 mobil, U7 Gate) und die
-P0-Befunde T1–T4 hier werden zu C-Punkten, sobald sie angefasst werden —
-vorher stünde hier ein Befund ohne Owner.
+Namens-Drift). **T1–T13 sind in 0.39.0 umgesetzt** (Erledigt-Tabelle unten);
+offen ist der UX-Befund: Die zwei P0-Zeilen dort (U2 mobil, U7 Gate) werden zu
+C-Punkten, sobald sie angefasst werden — vorher stünde hier ein Befund ohne
+Owner.
 
 ---
 
