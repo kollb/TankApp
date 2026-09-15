@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { WebhookState } from "./system";
 
 export type Fuel = "e10" | "e5" | "diesel";
 export type Station = {
@@ -100,6 +101,10 @@ export type CollectorStatus = {
   total_count?: number | null;
   generated_at?: string;
   error_code?: string | null;
+  // B8: Trigger Pi → NAS — kommt mit dem Herzschlag-Punkt des Uploaders.
+  // ``null`` heißt „keine Angabe“, nicht „in Ordnung“.
+  webhook?: WebhookState | null;
+  webhook_source?: "influx" | null;
   influx?: {
     available: boolean;
     last_heartbeat_at?: string | null;

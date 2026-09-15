@@ -259,3 +259,32 @@ describe("System: Formatter-only", () => {
     expect(html).toContain("70 %");
   });
 });
+
+describe("System: Trigger Pi → NAS (B8)", () => {
+  it("zeigt die Quittierung des Uploaders im Collector-Block", () => {
+    const html = render({
+      collector: collector({
+        webhook: { pending: false, last_status: "queued", last_ok_age_s: 120 },
+        webhook_source: "influx",
+      }),
+    });
+    expect(html).toContain("Trigger Pi → NAS");
+    expect(html).toContain("vorgemerkt");
+  });
+
+  it("nennt einen offenen Trigger mit Versuchen statt „alles gut“", () => {
+    const html = render({
+      collector: collector({
+        webhook: { pending: true, attempts: 3, pending_age_s: 600 },
+        webhook_source: "influx",
+      }),
+    });
+    expect(html).toContain("Wartet auf Quittierung");
+    expect(html).toContain("3 Versuche");
+  });
+
+  it("sagt „keine Angabe“, wenn der Uploader nichts meldet", () => {
+    const html = render({ collector: collector({ webhook: null }) });
+    expect(html).toContain("Keine Angabe");
+  });
+});

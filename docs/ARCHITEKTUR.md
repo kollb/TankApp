@@ -191,9 +191,12 @@ waren, oder tagelang trotz Datenfluss nicht.
 **Ablauf (Issue 50):**
 
 1. Uploader schreibt Punkte in die InfluxDB und **erst danach** (nach Ack)
-   sendet er Fire-and-Forget `POST /api/v1/jobs/trigger` an die NAS-App:
+   sendet er `POST /api/v1/jobs/trigger` an die NAS-App:
    `{"job": "models", "watermark": <Epochensekunden des neuesten Snapshots>}`,
-   Auth via `Authorization: Bearer <TANKAPP_NAS_WEBHOOK_TOKEN>`.
+   Auth via `Authorization: Bearer <TANKAPP_NAS_WEBHOOK_TOKEN>`. Die Antwort
+   (B8) ist die Quittierung: kommt sie nicht, wiederholt der Uploader mit
+   Backoff (30 s … 15 min, höchstens 2 h) und meldet den Zustand mit dem
+   Herzschlag — der Intervaljob bleibt die Rückfallebene.
 2. Der NAS-Scheduler weckt die Job-Schleife (`models`/`selection`) sofort,
    entscheidet aber selbst per Debounce (Mindestabstand 15 min für `models`,
    1 h für `selection`) und **Idempotenz**: Die Watermark wird bei Erfolg im

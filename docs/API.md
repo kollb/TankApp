@@ -852,9 +852,22 @@ Antwort:
       "tmpfs_total_bytes": 33554432,
       "oldest_age_days": 6.2,
       "poll_count": 1234,
-      "city": "Frankfurt"
+      "city": "Frankfurt",
+      "webhook_pending": 0,
+      "webhook_attempts": 2,
+      "webhook_last_status": "queued",
+      "webhook_last_ok_age_s": 240
     }
   },
+  "webhook": {
+    "pending": false,
+    "attempts": 2,
+    "pending_age_s": null,
+    "last_status": "queued",
+    "last_ok_age_s": 240,
+    "gave_up": null
+  },
+  "webhook_source": "influx",
   "local": {
     "last_poll_at": "2026-09-10T14:12:03+02:00",
     "city": "Frankfurt",
@@ -867,6 +880,7 @@ Antwort:
 
 - `available`: true wenn Influx-Punkt, NAS-Heartbeat-File oder lokales heartbeat.json vorhanden
 - `fresh`: Herzschlag ≤15 Min
+- `webhook` (B8): Zustand des Triggers Pi → NAS, aus den `webhook_*`-Feldern des Uploader-Herzschlags herausgehoben — `pending` (wartet auf Quittierung), `attempts`, `pending_age_s`, `last_status` (`queued`/`debounced`/`duplicate`/`rejected`/`retry_wait`/`abandoned`/`http_4xx`/`http_5xx`), `last_ok_age_s`, `gave_up`. `null` heißt **keine Angabe** (kein Ziel eingerichtet, älterer Uploader oder Quelle `nas`/`local`) — nicht „in Ordnung“
 - tmpfs: belegte Bytes, gesamt, frei, älteste Datei Alter
 - `nas`: Herzschlag-File des NAS (siehe POST-Endpunkt unten), `local`: nur wenn NAS selbst Pi ist oder TANKAPP_POLL_DIR gesetzt (Tests)
 - Fehler: `influx_not_configured`, `collector_no_heartbeat`, `collector_check_failed`, `influx_read_failed`
@@ -887,7 +901,7 @@ Collector schreibt `meta/heartbeat.json` nach jedem Poll, Uploader schreibt `col
 
 ## Jobs Trigger (POST, Issue 50)
 
-`POST /api/v1/jobs/trigger` — Uploader-Webhook der Ereignis-Pipeline (Detaillierung: `ARCHITEKTUR.md`, Abschnitt „Ereignis-Pipeline: Webhook statt reinem Polling“). Der Uploader sendet ihn Fire-and-Forget **nach dem sicheren InfluxDB-Write**; der NAS-Scheduler entscheidet allein, ob ein Lauf startet (Separation of Concerns).
+`POST /api/v1/jobs/trigger` — Uploader-Webhook der Ereignis-Pipeline (Detaillierung: `ARCHITEKTUR.md`, Abschnitt „Ereignis-Pipeline: Webhook statt reinem Polling“). Der Uploader sendet ihn **nach dem sicheren InfluxDB-Write**; der NAS-Scheduler entscheidet allein, ob ein Lauf startet (Separation of Concerns). Die Antwort ist die **Quittierung** (B8): Bleibt sie aus, wiederholt der Uploader den Trigger mit Backoff (30 s … 15 min) und meldet den Zustand über den Herzschlag; nach 2 h gibt er ehrlich auf, dann übernimmt der Intervaljob.
 
 ```bash
 curl -s -X POST http://nas:1355/api/v1/jobs/trigger \

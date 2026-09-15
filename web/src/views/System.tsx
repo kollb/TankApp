@@ -68,6 +68,7 @@ import {
   systemExplanationZustand,
   systemFreshness,
   systemOverallLabel,
+  webhookLine,
   systemOverallTone,
   systemDiagnosticExport,
   systemDiagnosticFilename,
@@ -187,6 +188,8 @@ export function SystemView(props: SystemViewProps) {
   const [sheet, setSheet] = useState<"zustand" | "daten" | "laeufe" | "stoerungen" | null>(null);
 
   const statusRows = systemStatusRows({ health: h, collector: collector ?? h?.collector });
+  // B8: Zustand des Triggers Pi → NAS (kommt mit dem Herzschlag-Punkt).
+  const hook = webhookLine((collector ?? h?.collector)?.webhook ?? null);
   const overallTone = systemOverallTone(statusRows);
   const overallLabel = systemOverallLabel(overallTone);
   const coverage = systemDataCoverage({ data, stations, freshCount: fresh.length, selection: selection.data ?? null });
@@ -303,6 +306,18 @@ export function SystemView(props: SystemViewProps) {
                       {(collector ?? h?.collector)?.oldest_age_days != null ? `${(collector ?? h?.collector)?.oldest_age_days} Tage` : "—"}
                     </span>
                   </div>
+                  {/* B8: Trigger Pi → NAS. Der Uploader meldet mit jedem
+                      Herzschlag, ob eine Quittierung offen ist — vorher war
+                      ein verlorener Trigger unsichtbar (nur noch Intervall). */}
+                  <div className="flex items-start justify-between gap-3 text-xs">
+                    <span className="shrink-0 text-slate-500">Trigger Pi → NAS</span>
+                    <span className="flex items-start gap-1.5 text-right">
+                      <span className="mt-1">
+                        <StatusDot tone={hook.tone} />
+                      </span>
+                      <span className="text-slate-200">{hook.text}</span>
+                    </span>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Offene Preise im Set</p>
@@ -325,6 +340,9 @@ export function SystemView(props: SystemViewProps) {
                     </span>
                   </div>
                 </div>
+                <p className="text-[11px] leading-relaxed text-slate-500 sm:col-span-2">
+                  {hook.note}
+                </p>
               </div>
             )}
 

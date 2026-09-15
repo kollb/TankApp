@@ -39,11 +39,25 @@ HTTP_TIMEOUT_S = 30
 PING_TIMEOUT_S = 5
 DRYRUN_MAX_LINES = 40
 REPLAY_BATCH_POINTS = 1000
-# Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write. Der Trigger
-# ist Feuer-und-Vergessen: Scheitert er, läuft der intervallo-basierte Job
-# unverändert weiter (Graceful Degradation, keine neue Abhängigkeit).
+# Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write. Scheitert er,
+# läuft der intervallo-basierte Job unverändert weiter (Graceful Degradation,
+# keine neue Abhängigkeit).
+#
+# B8: „Feuer-und-Vergessen“ ist ergänzt um **Wiederholung mit Backoff und
+# Quittierung**. Ein verlorener Trigger kostete bisher den Wasserstand: Der
+# Job lief dann nur noch im Intervall, ohne dass es irgendwo sichtbar war.
+# Jetzt wird der Trigger vorgemerkt, wiederholt (30 s … 15 min) und der
+# Zustand über den Herzschlag gemeldet (`collector_status` → System-Bereich).
+# Nach WEBHOOK_MAX_AGE_S wird ehrlich aufgegeben — der Intervaljob übernimmt.
 WEBHOOK_TIMEOUT_S = 5
 WEBHOOK_MIN_GAP_S = 240
+WEBHOOK_RETRY_BASE_S = 30
+WEBHOOK_RETRY_MAX_S = 900
+WEBHOOK_MAX_AGE_S = 7200
+WEBHOOK_FAIL_LOG_EVERY_S = 300
+# 4xx außer diesen: dauerhafter Fehler (falsches Token, unbekannter Job) —
+# Wiederholen würde nur Log-Zeilen erzeugen.
+WEBHOOK_RETRY_HTTP = (408, 429)
 
 
 class Cfg:
@@ -79,6 +93,15 @@ class State:
         self.names_warned = False
         self.last_heartbeat = 0.0
         self.last_webhook = 0.0
+        # B8: offener Trigger (Wiederholung mit Backoff) und sein Zustand.
+        # ``pending`` ist ein Dict: job, watermark, attempts, first_at (epoch),
+        # next_at (monoton), last_note.
+        self.webhook_pending: dict | None = None
+        self.webhook_last_status: str | None = None
+        self.webhook_last_status_at: float | None = None
+        self.webhook_last_ok_at: float | None = None
+        self.webhook_last_fail_log = 0.0
+        self.webhook_gave_up = 0
 
 
 def log(msg: str) -> None:
@@ -230,7 +253,7 @@ def read_heartbeat_file(poll_dir: Path) -> dict | None:
         return None
 
 
-def heartbeat_to_line(heartbeat: dict) -> str | None:
+def heartbeat_to_line(heartbeat: dict, webhook: dict | None = None) -> str | None:
     if not heartbeat:
         return None
     last_poll = heartbeat.get("last_poll_at")
@@ -275,6 +298,16 @@ def heartbeat_to_line(heartbeat: dict) -> str | None:
     poll_count = heartbeat.get("poll_count")
     if isinstance(poll_count, (int, float)) and math.isfinite(poll_count):
         fields.append(f"poll_count={int(poll_count)}i")
+
+    # B8: Zustand des Webhook-Triggers mit dem Herzschlag melden — nur wenn ein
+    # Ziel eingerichtet ist (sonst „nicht eingerichtet“ statt einer Null).
+    for key, value in (webhook or {}).items():
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, str):
+            fields.append(f'{key}="{esc_str(value)}"')
+        elif isinstance(value, (int, float)) and math.isfinite(value):
+            fields.append(f"{key}={int(value)}i")
 
     if not fields:
         return None
@@ -357,25 +390,73 @@ def explain_write_error(e: Exception, cfg: Cfg) -> str:
     return str(e) or type(e).__name__
 
 
-def notify_nas(cfg: Cfg, state: State, watermark: dt.datetime) -> None:
-    """NAS-App nach sicherem InfluxDB-Write anstoßen (Issue 50).
+def webhook_status(state: State) -> dict:
+    """Zustand des Webhook-Triggers für Herzschlag und Log (B8).
 
-    Feuer-und-Vergessen: erzeugt nie einen Upload-Fehler und gibt niemals den
-    Token preis. Der NAS-Scheduler entscheidet selbst (Debounce + Idempotenz),
-    ob ein Inferenzlauf startet.
+    Enthält bewusst **keine** URL, keinen Token und keine Stationsdaten —
+    nur Zähler, Zeiten und den kurzen Statuscode der NAS-Antwort.
+    """
+    now = time.time()
+    pending = state.webhook_pending
+    out = {
+        "pending": pending is not None,
+        "attempts": int(pending.get("attempts", 0)) if pending else 0,
+        "pending_age_s": None,
+        "last_status": state.webhook_last_status,
+        "last_status_age_s": None,
+        "last_ok_age_s": None,
+        "gave_up": state.webhook_gave_up,
+    }
+    if pending:
+        out["pending_age_s"] = max(0, int(now - float(pending.get("first_at", now))))
+    if state.webhook_last_status_at:
+        out["last_status_age_s"] = max(0, int(now - state.webhook_last_status_at))
+    if state.webhook_last_ok_at:
+        out["last_ok_age_s"] = max(0, int(now - state.webhook_last_ok_at))
+    return out
+
+
+def webhook_influx_fields(cfg: Cfg, state: State) -> dict:
+    """Felder für den ``collector_status``-Punkt — nur bei eingerichtetem Ziel.
+
+    Ohne ``TANKAPP_NAS_WEBHOOK_URL`` gibt es nichts zu melden: Der System-Bereich
+    zeigt dann „nicht eingerichtet“ statt einer erfundenen Null.
     """
     if not cfg.nas_webhook_url:
-        return
-    now_mono = time.monotonic()
-    # ``0.0`` means "noch nie gesendet".  On a freshly booted Pi,
-    # ``monotonic()`` is itself smaller than the minimum gap; comparing it
-    # unconditionally with zero would therefore suppress the very first
-    # trigger for up to four minutes after boot.
-    if state.last_webhook and now_mono - state.last_webhook < WEBHOOK_MIN_GAP_S:
-        return
-    state.last_webhook = now_mono
+        return {}
+    status = webhook_status(state)
+    fields: dict = {
+        "webhook_pending": 1 if status["pending"] else 0,
+        "webhook_attempts": status["attempts"],
+    }
+    if status["pending_age_s"] is not None:
+        fields["webhook_pending_age_s"] = status["pending_age_s"]
+    if status["last_status"]:
+        fields["webhook_last_status"] = status["last_status"]
+    if status["last_ok_age_s"] is not None:
+        fields["webhook_last_ok_age_s"] = status["last_ok_age_s"]
+    if status["gave_up"]:
+        fields["webhook_gave_up"] = status["gave_up"]
+    return fields
+
+
+def _webhook_settle(state: State, status: str, note: str | None = None) -> None:
+    """Trigger abgeschlossen (quittiert oder dauerhaft abgelehnt)."""
+    state.webhook_pending = None
+    state.webhook_last_status = status
+    state.webhook_last_status_at = time.time()
+    if not status.startswith(("http_4", "rejected")):
+        state.webhook_last_ok_at = state.webhook_last_status_at
+    if note:
+        log(f"⇡ NAS-Webhook quittiert: {status} — {note}")
+    else:
+        log(f"⇡ NAS-Webhook quittiert: {status}")
+
+
+def _webhook_attempt(cfg: Cfg, state: State, pending: dict) -> None:
+    """Einen (weiteren) Versuch senden und das Ergebnis verbuchen."""
     body = json.dumps(
-        {"job": "models", "watermark": int(watermark.timestamp())}
+        {"job": pending["job"], "watermark": pending["watermark"]}
     ).encode()
     headers = {"Content-Type": "application/json"}
     if cfg.nas_webhook_token:
@@ -388,12 +469,107 @@ def notify_nas(cfg: Cfg, state: State, watermark: dt.datetime) -> None:
     )
     try:
         with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT_S) as response:
-            log(f"⇡ NAS-Webhook: Modelle-Trigger gemeldet (HTTP {response.status})")
+            raw = b""
+            try:
+                raw = response.read() or b""
+            except Exception:
+                raw = b""
+            answer = {}
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+                if isinstance(parsed, dict):
+                    answer = parsed
+            except (ValueError, UnicodeDecodeError):
+                answer = {}
+            status = str(answer.get("status") or f"http_{response.status}")
+            if status in ("rejected",) or answer.get("error_code") == "unauthorized":
+                # Dauerhaft: der NAS-Kennt den Job nicht oder will nicht.
+                _webhook_settle(state, status, str(answer.get("reason") or "abgelehnt"))
+                return
+            _webhook_settle(state, status)
+    except urllib.error.HTTPError as exc:
+        if 400 <= exc.code < 500 and exc.code not in WEBHOOK_RETRY_HTTP:
+            # Falsches Token, falscher Job: Wiederholen hilft nicht.
+            _webhook_settle(state, f"http_{exc.code}", "dauerhaft — nicht wiederholt")
+            return
+        _webhook_retry(state, pending, f"http_{exc.code}")
     except Exception as exc:
+        _webhook_retry(state, pending, type(exc).__name__)
+
+
+def _webhook_retry(state: State, pending: dict, reason: str) -> None:
+    """Versuch verbuchen und den nächsten Versuch mit Backoff vormerken."""
+    pending["attempts"] = int(pending.get("attempts", 0)) + 1
+    pending["last_note"] = reason
+    wait = min(
+        WEBHOOK_RETRY_BASE_S * 2 ** (pending["attempts"] - 1), WEBHOOK_RETRY_MAX_S
+    )
+    pending["next_at"] = time.monotonic() + wait
+    state.webhook_last_status = "retry_wait"
+    state.webhook_last_status_at = time.time()
+    now = time.time()
+    if now - state.webhook_last_fail_log >= WEBHOOK_FAIL_LOG_EVERY_S:
+        state.webhook_last_fail_log = now
         log(
-            f"⚠ NAS-Webhook nicht erreicht ({type(exc).__name__}) — "
-            "ignoriert, Intervaljob läuft unverändert weiter."
+            f"⚠ NAS-Webhook nicht quittiert ({reason}, Versuch "
+            f"{pending['attempts']}) — nächster Versuch in {wait} s, "
+            "Intervaljob läuft unverändert weiter."
         )
+
+
+def notify_nas(cfg: Cfg, state: State, watermark: dt.datetime) -> None:
+    """NAS-App nach sicherem InfluxDB-Write anstoßen (Issue 50, B8).
+
+    Merkt den Trigger vor und versucht ihn sofort; scheitert er, wiederholt
+    ``webhook_tick`` ihn mit Backoff. Erzeugt nie einen Upload-Fehler und gibt
+    niemals den Token preis. Der NAS-Scheduler entscheidet selbst (Debounce +
+    Idempotenz), ob ein Inferenzlauf startet — die Antwort ist die Quittierung.
+    """
+    if not cfg.nas_webhook_url:
+        return
+    now_mono = time.monotonic()
+    # ``0.0`` means "noch nie gesendet".  On a freshly booted Pi,
+    # ``monotonic()`` is itself smaller than the minimum gap; comparing it
+    # unconditionally with zero would therefore suppress the very first
+    # trigger for up to four minutes after boot.
+    if state.last_webhook and now_mono - state.last_webhook < WEBHOOK_MIN_GAP_S:
+        # Die Sperre gilt **neuen** Triggern; ein offener Wiederholungsversuch
+        # läuft weiter (er gehört zum selben Ereignis).
+        return
+    state.last_webhook = now_mono
+    state.webhook_pending = {
+        "job": "models",
+        "watermark": int(watermark.timestamp()),
+        "attempts": 0,
+        "first_at": time.time(),
+        "next_at": now_mono,
+        "last_note": None,
+    }
+    webhook_tick(cfg, state)
+
+
+def webhook_tick(cfg: Cfg, state: State) -> None:
+    """Fällige Webhook-Trigger senden — Erstversuch oder Wiederholung (B8).
+
+    Läuft in jedem Uploader-Zyklus (10 s), damit ein Wiederholungsversuch
+    nicht auf die nächste Preiszeile warten muss.
+    """
+    pending = state.webhook_pending
+    if pending is None or not cfg.nas_webhook_url:
+        return
+    if time.time() - float(pending.get("first_at", 0.0)) >= WEBHOOK_MAX_AGE_S:
+        state.webhook_pending = None
+        state.webhook_gave_up += 1
+        state.webhook_last_status = "abandoned"
+        state.webhook_last_status_at = time.time()
+        log(
+            "⚠ NAS-Webhook: Trigger nach 2 h nicht quittiert — aufgegeben, "
+            "der Intervaljob übernimmt (Wasserstand ist dann nur später da)."
+        )
+        return
+    if time.monotonic() < float(pending.get("next_at", 0.0)):
+        return
+    _webhook_attempt(cfg, state, pending)
 
 
 def sd_notify(state: str) -> None:
@@ -411,6 +587,10 @@ def sd_notify(state: str) -> None:
 
 
 def run_upload(cfg: Cfg, state: State) -> int:
+    # B8: Ein offener Trigger wird in **jedem** Zyklus erneut versucht — auch
+    # dann, wenn gerade keine neue Preiszeile zu senden ist.
+    webhook_tick(cfg, state)
+
     ack = read_ack(cfg.meta_dir)
     rows = read_unsynced(cfg.poll_dir, ack)
 
@@ -433,7 +613,9 @@ def run_upload(cfg: Cfg, state: State) -> int:
     if now_mono - state.last_heartbeat >= 60:
         hb = read_heartbeat_file(cfg.poll_dir)
         if hb:
-            heartbeat_line = heartbeat_to_line(hb)
+            heartbeat_line = heartbeat_to_line(
+                hb, webhook=webhook_influx_fields(cfg, state)
+            )
 
     if not rows and not heartbeat_line:
         return 0
@@ -543,6 +725,7 @@ def dry_run(args: argparse.Namespace) -> int:
     ack = read_ack(args.poll_dir / "meta")
     rows = read_unsynced(args.poll_dir, ack)
     hb = read_heartbeat_file(args.poll_dir)
+    # Ohne Cfg-Ziel zeigt dry-run keine Webhook-Felder (nichts eingerichtet).
     hb_line = heartbeat_to_line(hb) if hb else None
     if not rows and not hb_line:
         log(
