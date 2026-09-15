@@ -144,6 +144,9 @@ export interface LaborViewProps {
   origin: LabOrigin | null;
   onBack: () => void;
   onNavigate: (target: NowTarget | "jetzt" | "werkstatt") => void;
+  /** U3: Das Glossar ist kein Hauptbereich mehr — sein Eingang liegt im
+      Labor-Kopf (und im Fußzeilen-Link), nicht in der Bereichs-Navigation. */
+  onOpenGlossary: () => void;
 }
 
 const LAB_ACCENT = "text-violet-300";
@@ -364,6 +367,7 @@ export function LaborView(props: LaborViewProps) {
     origin,
     onBack,
     onNavigate,
+    onOpenGlossary,
   } = props;
 
   const [open, setOpen] = useState<Record<LabSectionId, boolean>>({
@@ -509,13 +513,24 @@ export function LaborView(props: LaborViewProps) {
             </p>
           )}
         </div>
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-500/40"
-        >
-          <ArrowLeft size={14} aria-hidden="true" />
-          Zurück
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* U3: Eingang zum Glossar — es ist kein Hauptbereich mehr,
+              sondern wohnt beim Labor (UI-NEUENTWURF §6.2). */}
+          <button
+            onClick={onOpenGlossary}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-500/40"
+          >
+            <BookOpen size={14} aria-hidden="true" />
+            Glossar
+          </button>
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-500/40"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            Zurück
+          </button>
+        </div>
       </div>
 
       {/* Vertrauens-Konto — immer sichtbar, nichts zum Aufklappen */}

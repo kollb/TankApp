@@ -13,11 +13,7 @@ import {
 import {
   Fuel as FuelIcon,
   Car,
-  Gauge,
   SquarePen,
-  Compass,
-  FlaskConical,
-  Server,
   RefreshCw,
   ShieldCheck,
   AlertCircle,
@@ -26,12 +22,13 @@ import {
   WifiOff,
   CloudOff,
   Share2,
-  User,
-  BookOpen,
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
 import { LoadError } from "./components/LoadError";
+// U3: Bereichs-Navigation als Geräte-Raster — mobil Bottom-Nav, desktop
+// Seitenleiste (UI-NEUENTWURF §13); das Glossar ist kein Hauptbereich mehr.
+import { AppNav } from "./components/AppNav";
 // A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog + Umschalter im Header.
 import { ProfileManager } from "./components/ProfileManager";
 // C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
@@ -1558,7 +1555,11 @@ export function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
       <header className="app-header sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        {/* U3: eine Zeile — die globalen Steuerungen (Stadt, Kraftstoff,
+            Profil, Alarm, Teilen, Aktualisieren) laufen nebeneinander und
+            scrollen auf schmalen Viewports, statt eine zweite Steuerzeile
+            über den Inhalt zu schieben. */}
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <a
             href="/"
             className="flex items-center gap-3"
@@ -1571,13 +1572,13 @@ export function Dashboard() {
               <h1 className="text-lg font-black tracking-tight text-white">
                 TankApp
               </h1>
-              <p className="app-tagline text-xs text-slate-500">
+              <p className="app-tagline hidden text-xs text-slate-500 sm:block">
                 Dein Tank-Kompass. Ohne Rätselraten.
               </p>
             </div>
           </a>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto sm:gap-3">
+            <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
               <MapPin size={14} className="text-emerald-400" />
               <span className="sr-only">Stadt</span>
               <select
@@ -1602,7 +1603,7 @@ export function Dashboard() {
             <div
               role="group"
               aria-label="Kraftstoff"
-              className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+              className="flex shrink-0 rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
             >
               {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
                 <button
@@ -1618,7 +1619,7 @@ export function Dashboard() {
             {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
                 Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
                 Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
-            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+            <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
               <Car size={14} className="text-emerald-400" />
               <span className="sr-only">Fahrzeug-Profil</span>
               <select
@@ -1725,50 +1726,12 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="app-main mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <nav
-            aria-label="Ansichten"
-            className="flex flex-wrap rounded-lg border border-slate-800 bg-slate-900/60 p-1"
-          >
-            {(
-              [
-                { id: "jetzt", label: "Jetzt", icon: <Compass size={15} /> },
-                { id: "stations", label: "Stationen", icon: <MapPin size={15} /> },
-                { id: "week", label: "Woche", icon: <Gauge size={15} /> },
-                { id: "ich", label: "Ich", icon: <User size={15} /> },
-                {
-                  id: "labor",
-                  label: "Labor",
-                  icon: <FlaskConical size={15} />,
-                },
-                { id: "system", label: "System", icon: <Server size={15} /> },
-                {
-                  id: "glossary",
-                  label: "Glossar",
-                  icon: <BookOpen size={15} />,
-                },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.id}
-                onClick={() => gotoTab(item.id)}
-                aria-current={tab === item.id ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${
-                  tab === item.id
-                    ? item.id === "labor"
-                      ? "bg-slate-800 text-violet-300 shadow"
-                      : "bg-slate-800 text-emerald-400 shadow"
-                    : item.id === "labor"
-                      ? "text-slate-500 hover:text-violet-300"
-                      : "text-slate-500 hover:text-slate-200"
-                }`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
-          </nav>
+      {/* U3 (§13): desktop die Seitenleiste links neben dem Inhalt, mobil
+          die Bottom-Navigation — dieselbe Liste, zwei Raster (AppNav). */}
+      <div className="mx-auto flex max-w-7xl items-start gap-6 px-4 sm:px-6 lg:px-8">
+        <AppNav tab={tab} onSelect={gotoTab} />
+        <main className="app-main min-w-0 flex-1 pt-6 pb-24 lg:pb-12">
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             {online && fresh.length ? (
               <Wifi size={13} className="text-emerald-400" />
@@ -2142,6 +2105,7 @@ export function Dashboard() {
             }}
             onFocusHandled={() => setLaborFocus(null)}
             onNavigate={handleNowNavigate}
+            onOpenGlossary={() => gotoTab("glossary")}
             origin={laborReturn}
             refreshNow={refreshNow}
             selected={selected}
@@ -2237,6 +2201,7 @@ export function Dashboard() {
           </span>
         </footer>
       </main>
+      </div>
       <ProfileManager
         open={profileManagerOpen}
         onClose={() => setProfileManagerOpen(false)}
