@@ -381,7 +381,7 @@ export function JetztView(props: JetztViewProps) {
                 }
                 className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                ✓ Ja, wie empfohlen (
+                Ja, wie empfohlen (
                 {bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
               </button>
               <button
@@ -394,7 +394,7 @@ export function JetztView(props: JetztViewProps) {
                 onClick={() => onDismissDue(dueEpisode.id)}
                 className="rounded-xl px-3 py-2.5 text-xs text-slate-400 transition hover:text-white"
               >
-                ✕ Noch nicht
+                Noch nicht
               </button>
             </div>
           </div>
