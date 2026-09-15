@@ -50,6 +50,16 @@ Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 *Keine offenen Punkte.* C3 (Karte), C5 (Barrierefreiheit), C7 (Glossar) und C8
 (Mobile/PWA) sind erledigt; C1/C2/C4/C6/C9–C11 waren davor geschlossen.
+**Aber:** Diese Liste prüft Konzept ↔ Code, nicht Bedienbarkeit. Der Befund
+[docs/GUI-UX-BEFUND.md](docs/GUI-UX-BEFUND.md) (U1–U8) hält, was dort nicht
+erfasst ist — Typografie, Geräte-Raster, Routing, Designsystem und eine
+Lighthouse-Messung, die den Labor-Bereich nie sieht. Der Text-Befund
+[docs/TEXT-BEFUND.md](docs/TEXT-BEFUND.md) (T1–T13) hält zusätzlich, wo die
+Nutzertexte gegen das Regelwerk [docs/MICROCOPY.md](docs/MICROCOPY.md)
+abweichen (u. a. Wochenlinien-Legende, Fehler im Erfolgs-Banner,
+Namens-Drift). Die zwei P0-Zeilen dort (U2 mobil, U7 Gate) und die
+P0-Befunde T1–T4 hier werden zu C-Punkten, sobald sie angefasst werden —
+vorher stünde hier ein Befund ohne Owner.
 
 ---
 
