@@ -63,6 +63,7 @@ describe("A2: Tankstand-Rechnung (Vorschau am Slider)", () => {
     expect(line).toContain("179 km");
     expect(line).toContain("71 km");
     expect(kilometersLabel(1234.4)).toBe("1.234 km");
+    expect(kilometersLabel(2.4, 1)).toBe("2,4 km");
     expect(kilometersLabel(null)).toBe("—");
   });
 });

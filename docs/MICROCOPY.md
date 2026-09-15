@@ -77,8 +77,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 |---|---|---|
 | Preis je Liter | `euroPerLiter` | `1,749 €/L` (3 Nachkommastellen) |
 | Preis**differenz** je Liter | `centPerLiter` | `4,2 ct/L` (1 Nachkommastelle) |
-| Geldbetrag gesamt | `euro` | `62,45` (2 Nachkommastellen) + „€“ im Label |
+| Geldbetrag gesamt | `euro` | `62,45` (2 Nachkommastellen) + „€“ im Label — **nur** für Euro, nie für km/%/ct |
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
+| Strecke | `kilometersLabel` | `2,4 km` (Nachkommastellen als 2. Argument; ganzzahlig default) |
 | Stückzahl | `countLabel` | `12.345` |
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |
@@ -263,7 +264,7 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
-  neue `toFixed`-Anzeigen), `microcopy.test.ts` (paarige `„…“`, keine
+  neue `toFixed`-Anzeigen **und** gegen `euro()` für km/%/ct), `microcopy.test.ts` (paarige `„…“`, keine
   HTML-Entities, **keine ausgemusterten Wörter und Synonyme** aus §4, die
   §4c-Ergebnis-Worte gegen `lab.ts`, keine Ausrufezeichen und keine
   `✓`/`!`-Präfixe), `components/FeedbackBanner.test.tsx` (Ton der

@@ -39,6 +39,7 @@ import {
   hourRangeLabel,
   hourRunsLabel,
   hourRunsOf,
+  kilometersLabel,
   isHeatmapBasis,
   isHeatmapWeeks,
   MIN_HEATMAP_CELLS_PER_DAY,
@@ -969,6 +970,9 @@ describe("Formatierer (C9)", () => {
     expect(countLabel(12345)).toBe("12.345");
     expect(countLabel(0.4)).toBe("0");
     expect(countLabel(undefined)).toBe("—");
+    expect(kilometersLabel(1234.4)).toBe("1.234 km");
+    expect(kilometersLabel(2.4, 1)).toBe("2,4 km");
+    expect(kilometersLabel(null)).toBe("—");
   });
 
   it("nennt Uhrzeit-Bereiche überall gleich", () => {

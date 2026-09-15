@@ -41,6 +41,7 @@ import {
   countLabel,
   deNumber,
   deTrimmed,
+  centPerLiter,
   euro,
   lifecycleTip,
   notifyLastLine,
@@ -502,8 +503,8 @@ export function SystemView(props: SystemViewProps) {
                           <td className="py-2 pr-3 font-mono">
                             {t.qualifying_days} · {t.common_points}
                           </td>
-                          <td className="py-2 pr-3 font-mono">{euro(t.agreement_pct, 1)} %</td>
-                          <td className="py-2 pr-3 font-mono">{t.mean_abs_delta_ct != null ? `${euro(t.mean_abs_delta_ct, 2)} ct/L` : "—"}</td>
+                          <td className="py-2 pr-3 font-mono">{percentLabel(t.agreement_pct, 1)}</td>
+                          <td className="py-2 pr-3 font-mono">{centPerLiter(t.mean_abs_delta_ct, 2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -551,7 +552,7 @@ export function SystemView(props: SystemViewProps) {
                   <span className="font-mono text-slate-500">—</span>
                 )
               }
-              detail="Skalierter Fehler an sprungfreien Tagen. Ziel < 0.80."
+              detail={`Skalierter Fehler an sprungfreien Tagen. Ziel < ${deNumber(0.8)}.`}
               hint={statsSummaryRes.data?.quality_metrics.mase_sprungfrei == null ? calibrationHint : null}
             />
             <Metric
@@ -589,7 +590,7 @@ export function SystemView(props: SystemViewProps) {
                   <span className="font-mono text-slate-500">—</span>
                 )
               }
-              detail="Schranke |CUSUM| ≤ 3σ über 14 d zur Erkennung von Stationsumbau."
+              detail="Schranke |CUSUM| ≤ 3σ über 14 Tagen zur Erkennung von Stationsumbau."
               hint={!statsSummaryRes.data?.quality_metrics.cusum_drift ? calibrationHint : null}
             />
             <Metric

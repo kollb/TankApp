@@ -11,7 +11,14 @@ import {
   AlertCircle,
   XCircle,
 } from "lucide-react";
-import { Station, DecideResult, DetourMode, euro } from "../data";
+import {
+  Station,
+  DecideResult,
+  DetourMode,
+  euro,
+  euroPerLiter,
+  kilometersLabel,
+} from "../data";
 import { usePtrOff } from "../usePtrOff";
 
 export interface MapAnchor {
@@ -610,13 +617,13 @@ export function StationMap({
                 Preis:{" "}
                 <span className="font-bold text-slate-200">
                   {activeInfo.price !== null
-                    ? `${euro(activeInfo.price, 3)} €/L`
+                    ? euroPerLiter(activeInfo.price)
                     : "Keine Preismeldung"}
                 </span>
                 {activeInfo.detourKm !== null && (
                   <span>
                     {" · "}
-                    +{euro(activeInfo.detourKm, 1)} km Umweg
+                    +{kilometersLabel(activeInfo.detourKm, 1)} Umweg
                     {activeInfo.distMode ? ` (${activeInfo.distMode === "air" ? "Luftlinie" : activeInfo.distMode === "road" ? "Straße" : activeInfo.distMode})` : ""}
                   </span>
                 )}

@@ -3001,11 +3001,17 @@ export function tankRangeKm(
   return (capacityL * (tankPercent / 100)) / consumption * 100;
 }
 
-/** Kilometer deutsch: „1.234 km“ (ganzzahlig, de-DE). */
-export function kilometersLabel(value: number | null | undefined): string {
+/**
+ * Kilometer deutsch: „1.234 km“ (ganzzahlig) bzw. „2,4 km“ mit Nachkommastellen.
+ * `euro()` bleibt dem Geldbetrag vorbehalten (TEXT-BEFUND T4 / GUI-TEXT T4).
+ */
+export function kilometersLabel(
+  value: number | null | undefined,
+  decimals = 0,
+): string {
   return value == null || !Number.isFinite(value)
     ? "—"
-    : `${Math.round(value).toLocaleString("de-DE")} km`;
+    : `${euro(value, decimals)} km`;
 }
 
 /** Live-Vorschau-Satz am Tankstand-Slider — die Bewertung selbst liefert /decide. */
@@ -3431,7 +3437,9 @@ export function lifecycleTip(lc: StationLifecycle | string | null | undefined): 
 export function priceTwinLabel(twin: PriceTwin): string {
   const a = twin.station_a;
   const b = twin.station_b;
-  const agree = Number.isFinite(twin.agreement_pct) ? `${euro(twin.agreement_pct, 1)} %` : "—";
+  const agree = Number.isFinite(twin.agreement_pct)
+    ? percentLabel(twin.agreement_pct, 1)
+    : "—";
   return `${a} und ${b} — ${twin.qualifying_days} Tage, ${agree} der gemeinsamen Preise innerhalb 0,1 ct/L`;
 }
 

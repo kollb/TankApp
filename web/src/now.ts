@@ -24,6 +24,7 @@ import {
   euro,
   euroPerLiter,
   freshness,
+  kilometersLabel,
   hourRangeLabel,
   hourRunsLabel,
   hourRunsOf,
@@ -467,7 +468,7 @@ export function nowSteps(input: NowInput): NowStep[] {
       text:
         `Günstigste Alternative: ${alt.name}, ` +
         `${euroPerLiter(alt.price)} — netto ${euro(alt.net_eur)} € nach ` +
-        `${euro(alt.detour_km, 1)} km Umweg`,
+        `${kilometersLabel(alt.detour_km, 1)} Umweg`,
       target: "stations",
     });
   }
@@ -720,7 +721,7 @@ export function assumptionHint(input: NowInput): string | null {
           ? `${euro(input.timeValue, input.timeValue % 1 ? 1 : 0)} €/h`
           : "Automatik-Zeitwert";
       return (
-        `Entscheidend ist der Umweg: ${euro(alt.detour_km, 1)} km extra, ` +
+        `Entscheidend ist der Umweg: ${kilometersLabel(alt.detour_km, 1)} extra, ` +
         `Zeitwert ${z} — berechnet vom Server.`
       );
     }
