@@ -403,10 +403,10 @@ export function SystemView(props: SystemViewProps) {
             {data?.connection_error === "polling_missing" && (
               <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-200/80 break-words">
                 Keine Stadt eingerichtet. Collector-Herzschlag {collector?.available ? "ok" : "fehlt"} und InfluxDB-Lesezugang {h?.influx_configured ? "ok" : "fehlt"} nutzen ohne Polling-Set nichts. Auf dem Pi{" "}
-                <code className="break-all">data/analysis/stations/polling.json</code> erzeugen (docs/INSTALL.md Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
-                <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen (compose.yml -&gt; /config/polling.json RO) und{" "}
-                <code className="break-all">ops/nas/preflight.sh</code> ausführen. Pfad:{" "}
-                <code className="break-all">{h?.polling_path || "data/analysis/stations/polling.json"}</code>.
+                <code className="break-all">{h?.polling_path || "data/analysis/stations/polling.json"}</code>{" "}
+                erzeugen (Anleitung: Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
+                <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen (compose.yml → /config/polling.json, nur lesend) und{" "}
+                <code className="break-all">ops/nas/preflight.sh</code> ausführen.
               </div>
             )}
           </div>
@@ -423,7 +423,7 @@ export function SystemView(props: SystemViewProps) {
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-[10px] uppercase tracking-wider text-slate-500">Frische Preise</p>
             <p className="mt-1 text-lg font-bold text-emerald-300">{countLabel(coverage.freshCount)}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Offen, Preis vorhanden, ≤ 30 Min. alt — zählt für „Jetzt“.</p>
+            <p className="mt-1 text-[11px] text-slate-500">Offen, Preis vorhanden, höchstens 30 Minuten alt — zählt für „Jetzt“.</p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-[10px] uppercase tracking-wider text-slate-500">Coverage-Gate</p>
@@ -457,7 +457,7 @@ export function SystemView(props: SystemViewProps) {
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Temporär geschlossen / führt nicht{" "}
-                    <InfoTooltip label="Unterschieden" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
+                    <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-300">
                     {countLabel((selection.data.closed_count ?? 0) + (selection.data.nofuel_count ?? 0))}

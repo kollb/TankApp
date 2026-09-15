@@ -174,11 +174,16 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Kontext: Stadt und Kraftstoff am Wirkungsort.
   await expect(page.locator("#settings-city")).toBeVisible();
 
-  // Aktive Schwellen-Tabelle aus /api/v1/stats/summary — read-only,
-  // Startwerte der Engine (ohne Daten keine Abweichung möglich).
-  await expect(
-    page.getByText("read-only · Quelle: /api/v1/stats/summary"),
-  ).toBeVisible();
+  // Aktive Schwellen-Tabelle aus /api/v1/stats/summary — schreibgeschützt,
+  // Startwerte der Engine (ohne Daten keine Abweichung möglich). Der
+  // Endpunkt steht im Tooltip, nicht im Fließtext (MICROCOPY §6).
+  // exact: dieselbe Wort steht auch im sr-only-Caption der Tabelle.
+  const source = page.getByText("schreibgeschützt", { exact: true });
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute(
+    "title",
+    "Quelle: /api/v1/stats/summary",
+  );
   const table = page.locator("table").filter({ hasText: "Mindest-Ersparnis" });
   await expect(
     table.locator("tr", { hasText: "Warten (grün)" }).first(),
@@ -192,12 +197,12 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
   // einen Reload (Bootstrap-Script in index.html, localStorage).
   await page
-    .getByRole("button", { name: "Hell (Slate)", exact: true })
+    .getByRole("button", { name: "Hell", exact: true })
     .click();
   await expect(page.locator("html")).toHaveClass(/light/);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/light/);
-  // Zurück auf den Default (dunkles Slate), damit andere Tests nicht
+  // Zurück auf den Default (dunkel), damit andere Tests nicht
   // von dieser Ansicht abhängen. Nach dem Reload startet die App in
   // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
   await page.getByRole("button", { name: "Ich", exact: true }).click();
@@ -205,7 +210,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
     .getByRole("tab", { name: "Einstellungen", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Dunkles Slate (Standard)", exact: true })
+    .getByRole("button", { name: "Dunkel (Standard)", exact: true })
     .click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });

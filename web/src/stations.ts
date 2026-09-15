@@ -234,7 +234,7 @@ export function stationContextLines(
     lines.push(
       row.rank === 1
         ? `Gerade die günstigste deiner ${deTrimmed(row.freshCount, 0)} Stationen.`
-        : `Gerade ${ordinals(row.rank)}-günstigste deiner ${deTrimmed(row.freshCount, 0)} Stationen.`,
+        : `Gerade ${ordinalWord(row.rank)} deiner ${deTrimmed(row.freshCount, 0)} Stationen.`,
     );
   } else {
     lines.push("Kein frischer Preis — die Einordnung steht erst mit der nächsten Meldung.");
@@ -260,9 +260,26 @@ export function stationContextLines(
   return lines;
 }
 
-/** „1.“ / „2.“ / „3.“ / „4.“ — nur für die Ränge, die es hier geben kann. */
-function ordinals(n: number): string {
-  return `${n}.`;
+/** Rang-Stämme als Wort — nur für die Ränge, die ein Set real haben kann. */
+const ORDINAL_WORDS: Record<number, string> = {
+  2: "Zweit",
+  3: "Dritt",
+  4: "Viert",
+  5: "Fünft",
+  6: "Sechst",
+  7: "Siebt",
+  8: "Acht",
+  9: "Neunt",
+  10: "Zehnt",
+};
+
+/**
+ * „die Zweitgünstigste“ — Rang als Wort mit Artikel (TEXT-BEFUND T13).
+ * Ab Rang 11 bleibt die Ziffer, dann mit Artikel.
+ */
+function ordinalWord(n: number): string {
+  const word = ORDINAL_WORDS[n];
+  return word ? `die ${word}günstigste` : `die ${n}.-günstigste`;
 }
 
 export type CompareResult = {
@@ -272,7 +289,7 @@ export type CompareResult = {
   priceB: number | null;
   /** ct/L: B minus A (negativ = B günstiger). */
   deltaCt: number | null;
-  /** € pro Füllung: B minus A (negativ = B günstiger). */
+  /** € pro Beleg: B minus A (negativ = B günstiger). */
   fillDeltaEur: number | null;
   /** Server-Umweg A→B (null = keine Route-Data). */
   detourKm: number | null;
@@ -308,9 +325,14 @@ export function compareStationsPair(
   const verdict = serverAlt?.station_id === b.station_id ? serverAlt.verdict : null;
 
   let sentence: string;
-  if (priceA === null || priceB === null) {
+  if (priceA === null && priceB === null) {
     sentence =
       "Noch kein frischer Preis auf beiden Seiten — der Vergleich steht mit der nächsten Meldung.";
+  } else if (priceA === null || priceB === null) {
+    // T4: Der Satz nennt nur die Seite, die wirklich leer ist — sonst liest
+    // sich „beide Seiten“ neben einem frischen Preis wie ein Fehler.
+    const missing = priceA === null ? a.name : b.name;
+    sentence = `${missing} hat keinen frischen Preis — der Vergleich steht mit der nächsten Meldung.`;
   } else {
     // Hier sind beide Preise vorhanden — der Abstand ist also eindeutig
     // (deltaCt wäre hier nie null; die lokale Zahl spart dem Compiler das
@@ -321,7 +343,7 @@ export function compareStationsPair(
       const borderline = verdict === "borderline";
       sentence = `${b.name} ist ${centPerLiter(Math.abs(delta))} ${delta > 0 ? "teurer" : "günstiger"}. ` +
         (detourKm !== null
-          ? `Bei ${euro(detourKm, 1)} km Umweg: ${euro(netEur)} € netto pro Füllung. `
+          ? `Bei ${euro(detourKm, 1)} km Umweg: ${euro(netEur)} € netto pro Beleg. `
           : "") +
         (worth
           ? "Der Umweg rechnet sich."
@@ -362,7 +384,13 @@ export function atlasExplanation(input: {
   timeValueLabel: string;
   pricesAt: string | null;
   now?: number;
-}): { sentences: string[]; source: string; labHint: LabHint | null } {
+}): {
+  /** Titel des Ebene-1-Sheets — derselbe Text wie auf dem Knopf (T12). */
+  title: string;
+  sentences: string[];
+  source: string;
+  labHint: LabHint | null;
+} {
   const reasonText =
     input.reason === "pinned"
       ? "deiner Stamm-Station"
@@ -387,6 +415,7 @@ export function atlasExplanation(input: {
     "Sortiert und gefärbt wird nach dieser €-Größe — der Literpreis ist die zweite Größe daneben.",
   );
   return {
+    title: "Warum diese Reihenfolge?",
     sentences: sentences.slice(0, 3),
     source: input.pricesAt
       ? `Grundlage: die geladenen Preismeldungen, jüngste ${ageLabel(input.pricesAt, input.now ?? Date.now())}.`

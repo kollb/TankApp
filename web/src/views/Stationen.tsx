@@ -48,6 +48,7 @@ import { SkeletonPanel } from "../components/Skeleton";
 import { StationMap } from "../components/StationMap";
 import { Empty, panel } from "../components/ui";
 import {
+  ageWord,
   autoTimeTicks,
   centPerLiter,
   euro,
@@ -338,6 +339,8 @@ export function StationenView(props: StationenViewProps) {
     now,
   });
 
+  // T11/T13: Alter in denselben Worten wie der Rest der App („vor 12
+  // Minuten“, nicht „vor 12 Min.“) — die Wortform kommt aus `data.ts`.
   const ageLabel = (row: AtlasRow): string => {
     if (row.station.observed_at === null) return "Noch keine Meldung";
     const age =
@@ -345,8 +348,8 @@ export function StationenView(props: StationenViewProps) {
         ? Math.max(0, Math.floor(row.ageMinutes + elapsed))
         : null;
     if (age === null) return "Stand unbekannt";
-    if (!online || age > 30) return "Stand veraltet";
-    return `vor ${age} Min.`;
+    if (!online || age > 30) return "veralteter Stand";
+    return ageWord(age);
   };
 
   return (
@@ -428,7 +431,8 @@ export function StationenView(props: StationenViewProps) {
               className="bg-slate-950 pr-1 text-slate-100"
             >
               <option value="0">
-                Auto ({deTrimmed(timeValueUsed)} €/h {autoZ.isPeak ? "Peak" : "offpeak"})
+                Auto ({deTrimmed(timeValueUsed)} €/h ·{" "}
+                {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})
               </option>
               {[5, 8, 10, 12, 15, 20, 25, 30].map((z) => (
                 <option key={z} value={z}>
@@ -920,9 +924,12 @@ export function StationenView(props: StationenViewProps) {
                     {comparePair.sentence}
                   </p>
                   {comparePair.netEur !== null && (
-                    <p className="mt-2 font-mono text-[11px] text-slate-500">
-                      Quelle: decide → alternatives_nearby (Server-Netto-€
-                      inkl. Umweg)
+                    <p
+                      className="mt-2 text-[11px] text-slate-500"
+                      title="Quelle: decide → alternatives_nearby (Server-Netto-€ inkl. Umweg)"
+                    >
+                      Quelle: die Umweg-Rechnung des Servers (Netto-€ inkl.
+                      Umweg)
                     </p>
                   )}
                   {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && (
@@ -973,7 +980,7 @@ export function StationenView(props: StationenViewProps) {
               aria-haspopup="dialog"
               className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
             >
-              Warum diese Reihenfolge?
+              {explanation.title}
             </button>
           </div>
         </>
@@ -989,7 +996,7 @@ export function StationenView(props: StationenViewProps) {
 
       <Level1Sheet
         open={sheetOpen}
-        title="Warum ist die Liste so sortiert?"
+        title={explanation.title}
         sentences={explanation.sentences}
         source={explanation.source}
         labHint={explanation.labHint}

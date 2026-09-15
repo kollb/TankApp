@@ -15,7 +15,7 @@
 // Advice-Ledgers, keine Demo-Zeilen.
 //
 // Ehrlichkeits-Regeln, die hier sichtbar werden:
-//   * Fehlt ein Prüfstand, steht der Grund da statt einer leeren Kachel.
+//   * Fehlt ein Backtest, steht der Grund da statt einer leeren Kachel.
 //   * Prinzip-Skizzen sind als solche beschriftet, nie als deine Daten.
 //   * Prozente nur nach dem M7-Gate; sonst Worte und gezählte Fälle.
 //   * Fehler sind Ausstellungsstücke: Das Tagebuch zeigt „daneben“ genauso
@@ -62,12 +62,14 @@ import {
 } from "../data";
 import { type NowTarget } from "../now";
 import {
+  DIARY_FILTERS,
   LAB_SECTIONS,
   diaryActionWord,
   diaryEmptyNote,
   diaryOutcome,
   labOriginLine,
   labSection,
+  type DiaryFilterId,
   type LabOrigin,
   type LabSectionId,
 } from "../lab";
@@ -374,9 +376,7 @@ export function LaborView(props: LaborViewProps) {
   });
   const blockRefs = useRef<Record<string, HTMLElement | null>>({});
   const [fanStep, setFanStep] = useState(0);
-  const [diaryFilter, setDiaryFilter] = useState<"all" | "win" | "loss" | "void">(
-    "all",
-  );
+  const [diaryFilter, setDiaryFilter] = useState<DiaryFilterId>("all");
 
   const toggle = (id: LabSectionId) =>
     setOpen((current) => ({ ...current, [id]: !current[id] }));
@@ -514,7 +514,7 @@ export function LaborView(props: LaborViewProps) {
           className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-500/40"
         >
           <ArrowLeft size={14} aria-hidden="true" />
-          {origin ? `Zurück zu: ${origin.label}` : "Zurück zum Alltag"}
+          Zurück
         </button>
       </div>
 
@@ -772,7 +772,7 @@ export function LaborView(props: LaborViewProps) {
                 </p>
                 <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-300">
                   <li>
-                    <strong className="text-slate-100">Band-Treffer (PICP 95):</strong>{" "}
+                    <strong className="text-slate-100">Band-Trefferquote (PICP 95):</strong>{" "}
                     {metrics?.picp95_pct != null
                       ? percentLabel(metrics.picp95_pct, 1)
                       : quality?.picp_95 != null
@@ -790,7 +790,7 @@ export function LaborView(props: LaborViewProps) {
                     — unter 1,0 heißt besser als die einfache Vergleichsmethode.
                   </li>
                   <li>
-                    <strong className="text-slate-100">Top-3-Treffer:</strong>{" "}
+                    <strong className="text-slate-100">Top-3-Trefferquote:</strong>{" "}
                     {quality?.top3_hit_rate != null
                       ? percentLabel(quality.top3_hit_rate * 100, 1)
                       : "—"}{" "}
@@ -857,12 +857,12 @@ export function LaborView(props: LaborViewProps) {
             sentences={[
               "Jede Station wird mit dem Stadt-Üblichen verglichen — dem Median derselben Stunde, nicht mit dem Durchschnitt.",
               "Der Abstand wird über Wochen gemittelt; Zufall mittelt sich heraus, ein System bleibt stehen.",
-              "Was übrig bleibt, ist der Hauspreis-Abstand: Meist N ct unter dem Üblichen heißt oft günstig — nicht immer.",
+              "Was übrig bleibt, ist der Preis-Abstand: Meist N ct unter dem Üblichen heißt oft günstig — nicht immer.",
             ]}
           />
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">
-              Hauspreis-Vergleich · {activeCity || "Stadt"}
+              Preis-Abstand je Station · {activeCity || "Stadt"}
             </p>
             {stationDeltas.length ? (
               <>
@@ -873,13 +873,13 @@ export function LaborView(props: LaborViewProps) {
                 />
                 <ReadingAid
                   headline="Balken links = meist unter dem Üblichen (grün) · rechts = darüber."
-                  text={`Werte aus dem Prüfstand über ${labData?.daysTrain ?? "—"} Trainings-Tage. Der Strich in der Mitte ist der Stadt-Median.`}
+                  text={`Werte aus dem Backtest über ${labData?.daysTrain ?? "—"} Trainings-Tage. Der Strich in der Mitte ist der Stadt-Median.`}
                 />
               </>
             ) : (
               <div className="mt-2">
                 <Empty>
-                  Noch kein Hauspreis-Abstand messbar — er entsteht aus
+                  Noch kein Preis-Abstand messbar — er entsteht aus
                   mindestens einer vollständigen Woche echter Preise je Station.
                 </Empty>
               </div>
@@ -986,7 +986,7 @@ export function LaborView(props: LaborViewProps) {
           </div>
           <ForTheCurious>
             <p>
-              δ̂ („Hauspreis-Abstand“) ist der Mittelwert der Differenzen
+              δ̂ („Preis-Abstand“) ist der Mittelwert der Differenzen
               zwischen Stationspreis und Stadt-Median derselben Stunde — nicht
               der Mittelwert der Preise. Nur so verschwindet der Tagesgang aus
               dem Vergleich.
@@ -1016,8 +1016,8 @@ export function LaborView(props: LaborViewProps) {
           <ThreeSentences
             sentences={[
               "Jede Empfehlung wird aufgeschrieben — mit oder ohne deine Tankung.",
-              "Nach dem Fensterende vergleicht die App die Vorhersage mit dem echten Preis und verbucht Richtig, Daneben oder Gleichstand.",
-              "Fehler bleiben stehen: Das Tagebuch zeigt sie genauso wie die Treffer, und aus ihnen eicht sich die App selbst.",
+              "Nach dem Fensterende vergleicht die App die Vorhersage mit dem echten Preis und verbucht richtig, daneben oder unentschieden.",
+              "Daneben liegende Empfehlungen bleiben stehen: Das Tagebuch zeigt sie genauso wie die richtigen, und aus ihnen eicht sich die App selbst.",
             ]}
           />
 
@@ -1025,14 +1025,7 @@ export function LaborView(props: LaborViewProps) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold text-slate-200">Prognose-Tagebuch</p>
               <div className="flex flex-wrap gap-1 text-[11px]">
-                {(
-                  [
-                    { id: "all", label: "Alle" },
-                    { id: "win", label: "Treffer" },
-                    { id: "loss", label: "Fehler" },
-                    { id: "void", label: "Nicht bewertbar" },
-                  ] as const
-                ).map((option) => (
+                {DIARY_FILTERS.map((option) => (
                   <button
                     key={option.id}
                     aria-pressed={diaryFilter === option.id}
@@ -1126,13 +1119,16 @@ export function LaborView(props: LaborViewProps) {
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-              <p className="text-xs font-semibold text-slate-200">
+              <p
+                className="text-xs font-semibold text-slate-200"
+                title="out-of-sample: ausgewertet an Tagen, die das Modell beim Training nicht gesehen hat"
+              >
                 Bilanz der Ratschläge (
-                {labData?.daysEval ?? "—"} Tage out-of-sample)
+                {labData?.daysEval ?? "—"} Tage außerhalb der Stichprobe)
               </p>
               {labTotals.n === 0 ? (
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-                  Ohne Prüfstand-Tage keine Bilanz: Die App rechnet sie erst,
+                  Ohne Backtest-Tage keine Bilanz: Die App rechnet sie erst,
                   wenn genug echte Preishistorie da ist (mind. 7 vollständige
                   Tage je Station) — geschätzt wird nichts.
                 </p>
@@ -1157,7 +1153,7 @@ export function LaborView(props: LaborViewProps) {
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                        Perfekte Sicht (Orakel)
+                        Perfektes Timing (Orakel)
                       </p>
                       <p className="font-mono text-lg font-bold text-slate-100">
                         {euro(labTotals.best)} €
@@ -1165,7 +1161,7 @@ export function LaborView(props: LaborViewProps) {
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                        Ø Entscheidungsverlust
+                        Ø Mehrkosten zum perfekten Timing
                       </p>
                       <p className="font-mono text-lg font-bold text-amber-300">
                         {euro(labTotals.regretEur)} €
@@ -1243,7 +1239,7 @@ export function LaborView(props: LaborViewProps) {
                 </ul>
               ) : (
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-                  Der Regler wirkt, sobald ein Prüfstand für diese Station
+                  Der Regler wirkt, sobald ein Backtest für diese Station
                   vorliegt — vorher gibt es nichts nachzurechnen.
                 </p>
               )}
@@ -1363,7 +1359,7 @@ export function LaborView(props: LaborViewProps) {
                 </div>
               ) : (
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                  Ohne Prüfstand keine Schleife über die Schwellen — der
+                  Ohne Backtest keine Schleife über die Schwellen — der
                   Modell-Lauf legt sie an, sobald genug Tage da sind.
                 </p>
               )}
@@ -1392,7 +1388,7 @@ export function LaborView(props: LaborViewProps) {
                 </label>
               ) : (
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                  Keine Station im Prüfstand — der Modell-Lauf füllt die Liste.
+                  Keine Station im Backtest — der Modell-Lauf füllt die Liste.
                 </p>
               )}
               {labRows.length ? (
@@ -1444,8 +1440,8 @@ export function LaborView(props: LaborViewProps) {
                               activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"
                             }
                           >
-                            {activeLabDayRow.s > 0 ? "+" : ""}
-                            {centPerLiter(activeLabDayRow.s)}
+                            {centPerLiter(Math.abs(activeLabDayRow.s))}{" "}
+                            {activeLabDayRow.s >= 0 ? "günstiger" : "teurer"}
                           </strong>{" "}
                           · Urteil:{" "}
                           <strong
@@ -1480,7 +1476,7 @@ export function LaborView(props: LaborViewProps) {
                             ]}
                             xTicks={autoTimeTicks(0, 24)}
                             yFmt={(value) => `${deTrimmed(value, 1)} ct`}
-                            ariaDescription="Tageskurve der Prüfstand-Zeile: erwartete Preisdifferenz in Cent je Stunde gegenüber dem Tagesanker, mit Markierungen für Anker und prognostizierte Tiefstphase."
+                            ariaDescription="Tageskurve der Backtest-Zeile: erwartete Preisdifferenz in Cent je Stunde gegenüber dem Tagesanker, mit Markierungen für Anker und prognostizierte Tiefstphase."
                           />
                         </div>
                       )}
@@ -1489,7 +1485,7 @@ export function LaborView(props: LaborViewProps) {
                 </>
               ) : (
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                  Für diese Station liegt noch kein Prüfstand-Tag vor. Der
+                  Für diese Station liegt noch kein Backtest-Tag vor. Der
                   tägliche Modell-Lauf füllt ihn — ohne Zutun.
                 </p>
               )}
@@ -1617,7 +1613,7 @@ export function LaborView(props: LaborViewProps) {
           <ForTheCurious>
             <p>
               Der Scan über ε ist eine reine Nachrechnung auf den
-              Prüfstand-Zeilen: Für jeden Tag wird die Regel mit der neuen
+              Backtest-Zeilen: Für jeden Tag wird die Regel mit der neuen
               Schwelle neu ausgewertet. Deshalb ist er sofort da — und deshalb
               ändert er nichts an dem, was die App dir rät.
             </p>
@@ -1634,7 +1630,7 @@ export function LaborView(props: LaborViewProps) {
         Labor-Stand:{" "}
         {statsSummaryRes.data?.generated_at
           ? timeLabel(statsSummaryRes.data.generated_at)
-          : "Statistik nicht geladen"}{" "}
+          : "Kennzahlen nicht geladen"}{" "}
         · {activeCity || "kein Ort gewählt"}
         {best ? ` · Vergleichsanker: ${best.name}` : ""}
       </p>

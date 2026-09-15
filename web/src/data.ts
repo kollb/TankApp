@@ -380,7 +380,7 @@ export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
-/** Ein Tankbeleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
+/** Ein Beleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
 export type Fill = {
   id: string;
   episode_id?: string | null;
@@ -2397,7 +2397,8 @@ export function detourVerdict(
 }
 
 export const messages: Record<string, string> = {
-  polling_missing: "Polling-Set fehlt — keine Stadt eingerichtet. Auf dem Pi data/analysis/stations/polling.json erzeugen (docs/INSTALL.md Abschnitt Polling-Set), auf dem NAS TANKAPP_POLLING_FILE prüfen (ops/nas/app/compose.yml → /config/polling.json RO) und ops/nas/preflight.sh ausführen.",
+  polling_missing:
+    "Polling-Set fehlt — keine Stadt eingerichtet. Die Schritte zum Einrichten stehen im Bereich „System“ unter „Daten“.",
   polling_invalid: "Das Polling-Set ist ungültig. Es wurde nichts ersetzt.",
   influx_not_configured:
     "Der vorhandene InfluxDB-Lesezugang ist noch nicht eingebunden.",
@@ -2432,7 +2433,7 @@ export const messages: Record<string, string> = {
     "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",
   invalid_query: "Ungültige Anfrageparameter.",
   invalid_fuel: "Unbekannter Kraftstoff (e10, e5 oder diesel erwartet).",
-  invalid_liters: "Tankmenge außerhalb 5–100 Liter.",
+  invalid_liters: "Getankte Liter außerhalb 5–100 L.",
   invalid_price: "Preis außerhalb 0,40–5,00 €/L.",
   store_too_large:
     "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
@@ -2456,14 +2457,14 @@ export const messages: Record<string, string> = {
   diary_read_failed:
     "Das Prognose-Tagebuch konnte nicht gelesen werden (Ledger im Feedback-Store).",
   set_intent_failed: "Intent konnte nicht gespeichert werden.",
-  record_fill_failed: "Tankbeleg konnte nicht gespeichert werden.",
-  fills_read_failed: "Tankbelege konnten nicht gelesen werden.",
+  record_fill_failed: "Beleg konnte nicht gespeichert werden.",
+  fills_read_failed: "Belege konnten nicht gelesen werden.",
   void_fill_failed: "Beleg konnte nicht storniert werden.",
   fill_not_found: "Beleg nicht gefunden (oder bereits abgelaufen).",
   settlement_failed: "Settlement-Lauf ist fehlgeschlagen.",
-  stats_summary_failed: "Statistik konnte nicht berechnet werden.",
+  stats_summary_failed: "Kennzahlen der Engine konnten nicht berechnet werden.",
   backtest_not_available:
-    "Noch kein Prüfstand-Ergebnis veröffentlicht. Sobald der tägliche Modell-Lauf genug echte Preishistorie auswerten konnte, erscheinen hier die echten Tages-Entscheidungen (Tages-Anker, Standard 12:00 Uhr).",
+    "Noch kein Backtest-Ergebnis veröffentlicht. Sobald der tägliche Modell-Lauf genug echte Preishistorie auswerten konnte, erscheinen hier die echten Tages-Entscheidungen (Tages-Anker, Standard 12:00 Uhr).",
   payload_too_large: "Anfrage zu groß (max. 100 KB).",
   invalid_json: "Anfrage ist kein gültiges JSON.",
   invalid_request: "Ungültige Anfrage.",
@@ -2688,10 +2689,13 @@ export function freshness(
   return "fresh";
 }
 
-/** Alter in Worten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */
-export function ageLabel(stamp?: string | null, now: number = Date.now()) {
-  const age = ageMinutes(stamp, now);
-  if (age == null) return "—";
+/**
+ * Alter in Worten aus Minuten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2
+ * Tagen“. Die **eine** Wortform der App (TEXT-BEFUND T11) — jede Ansicht,
+ * die ein Alter zeigt, geht durch diese Funktion, nicht durch ein eigenes
+ * „vor 12 Min.“.
+ */
+export function ageWord(age: number): string {
   const minutes = Math.round(age);
   if (minutes < 1) return "gerade eben";
   if (minutes === 1) return "vor 1 Minute";
@@ -2701,6 +2705,13 @@ export function ageLabel(stamp?: string | null, now: number = Date.now()) {
   if (hours < 24) return `vor ${hours} Stunden`;
   const days = Math.round(hours / 24);
   return days === 1 ? "vor 1 Tag" : `vor ${days} Tagen`;
+}
+
+/** Alter in Worten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */
+export function ageLabel(stamp?: string | null, now: number = Date.now()) {
+  const age = ageMinutes(stamp, now);
+  if (age == null) return "—";
+  return ageWord(age);
 }
 
 /**
@@ -3035,8 +3046,8 @@ export const STATION_SORTS: Array<{
   },
   {
     value: "fill",
-    label: "Netto-€ (Füllung)",
-    title: "Preis × Tankmenge — was eine Füllung dort kostet",
+    label: "Netto-€ (Beleg)",
+    title: "Preis × Tankmenge — was ein Beleg dort kostet",
   },
 ];
 
@@ -3322,7 +3333,7 @@ export function thresholdSampleLine(
 /**
  * A9 (0.31.0): Hinweis unter den F3-Fenstern, ob die Reihenfolge schon
  * persönlich gewichtet ist — und wie viele Belege dazu fehlen. Das Profil
- * selbst ist ein Langzeitprofil über alle Füllungen (Konzept §5.5 Schicht C);
+ * selbst ist ein Langzeitprofil über alle Belege (Konzept §5.5 Schicht C);
  * vor `min_fills` Belegen führt die App die reine Preisreihenfolge, weil ein
  * Profil aus zwei Belegen erfunden wäre.
  */
@@ -3473,16 +3484,16 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     term: "ε (epsilon)",
     de: "Handlungsschwelle",
     short: "Mindest-Ersparnis in ct/L, ab der die Regel „Warten“ empfiehlt statt „Jetzt tanken“. Schalter im Labor, Produktion rechnet mit kalibrierter Entscheidungstabelle.",
-    long: "Die Labor-Regel des Prüfstands: Warten nur, wenn die im Training geschätzte erwartete Ersparnis μ mindestens ε erreicht. ε = 1,0 ct/L heißt: Erwarte ich weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. Die Produktion nutzt die kalibrierte Entscheidungstabelle (§4.1/§4.2), der Slider dient nur der Was-wäre-wenn-Analyse.",
+    long: "Die Labor-Regel des Backtests: Warten nur, wenn die im Training geschätzte erwartete Ersparnis μ mindestens ε erreicht. ε = 1,0 ct/L heißt: Erwarte ich weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. Die Produktion nutzt die kalibrierte Entscheidungstabelle (§4.1/§4.2), der Slider dient nur der Was-wäre-wenn-Analyse.",
     anchor: "epsilon-schwelle-des-labor-vergleichs",
   },
   {
     id: "regret",
     term: "Regret / Mehrkosten",
-    de: "Mehrkosten zur perfekten Sicht",
+    de: "Mehrkosten zum perfekten Timing",
     short: "Durchschnittlicher Abstand der Regel zum Orakel — wie viel Cent je Liter die Regel mehr kostet als der beste Zeitpunkt im Fenster.",
     long: "Regret = (Preis der Regel − Preis des Orakels) je Entscheidung, gemittelt. Das Orakel kennt den ganzen Tagesverlauf vorher und tankt immer im günstigsten Fenster — es ist die unerreichbare Referenz. Die Regel-€ (smart), Orakel-€ (best) und „immer warten“-€ (always) stehen daneben: Geholtes Potenzial = Regel-€ / Orakel-€.",
-    anchor: "regret-mehrkosten-zur-perfekten-sicht",
+    anchor: "regret-mehrkosten-zum-perfekten-timing",
   },
   {
     id: "qvalue",

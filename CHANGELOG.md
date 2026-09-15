@@ -4,6 +4,82 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.39.0] – 2026-09-15
+
+**Text-Release: die dreizehn Befunde T1–T13 sind umgesetzt — die GUI sagt
+wieder, was sie zeigt.**
+
+Der Lektorats-Befund hatte zwei Stellen gefunden, an denen Nutzer:innen das
+Falsche lesen: Die Wochenlinie zeichnete den teuersten Tag als höchsten
+Balken, während die Legende „höher = günstiger“ versprach (T1), und der
+Aktions-Kanal zeigte „Speichern fehlgeschlagen“ grün mit Häkchen (T2). Beides
+ist repariert; dazu elf Punkte, in denen die GUI vom eigenen Regelwerk
+[MICROCOPY.md](docs/MICROCOPY.md) abwich — Benennungen, Anglizismen, Pfade im
+Fließtext, Anrede, Vorzeichen und Doppelungen.
+
+### Geändert
+
+- **T1 — Wochenlinie in einer Richtung.** Der höchste Balken ist jetzt der
+  günstigste Tag (`max − value` statt `value − min`); Legende, `aria-label`
+  und `title` nennen dieselbe Richtung, der günstigste Tag ist im `title`
+  benannt. Festgehalten in `views/Woche.test.tsx` (Balkenhöhe ↔ günstigster
+  Tag, Ersparnis ohne Vorzeichen).
+- **T2 — Fehler sehen nicht mehr aus wie Erfolge.** Neuer Baustein
+  `components/FeedbackBanner.tsx`: Jede Rückmeldung trägt ihren Ton — `ok`
+  (grün, Häkchen, `role="status"`), `warn` (amber, „lokal vorgemerkt“),
+  `error` (rose, Warnzeichen, `role="alert"`). Die `✓`/`!`-Präfixe und die
+  vier Ausrufezeichen entfallen, Einschübe schreiben sich durchgehend mit `—`.
+  Install-Hinweis und Queue-Notizen nutzen denselben Kanal.
+- **T3 — zwei Tankmengen, zwei Namen.** *Tankmenge* ist die Rechengröße
+  (10–80 L, ganze Liter), *getankte Liter* der gebuchte Vorgang (5–100 L).
+  Der Fehlertext behauptet kein Verbot mehr, das die Eingabe nicht kennt, und
+  das Feld zeigt den gerundeten Wert zurück statt still zu runden.
+- **T4 — „A gegen B“ nennt die Seite, die fehlt.** Ein fehlender Preis ergibt
+  „<Station> hat keinen frischen Preis …“; nur wenn beide fehlen, steht der
+  Satz über „beide Seiten“. Testfall mit gemischtem Set.
+- **T5 — Tagebuch in den §4c-Worten.** Filter-Chips kommen aus
+  `DIARY_FILTERS` (`lab.ts`): Richtig · Daneben · Unentschieden · Nicht
+  bewertbar; Einführungssatz ebenso, der Grau-Zustand heißt überall „Keine
+  klare Empfehlung“.
+- **T6 — ein Name je Größe.** δ̂ = „Preis-Abstand“ (statt „Hauspreis-Abstand“),
+  Regret = „Mehrkosten zum perfekten Timing“, Orakel = „Perfektes Timing
+  (Orakel)“, Heatmap-Modus = „Günstig-Chance“, Systemfarbe = „Alles ok“.
+- **T7 — ausgemusterte Wörter ersetzt.** „Prüfstand“ → „Backtest“,
+  „Statistik“ → „Kennzahlen/Schwellen der Engine“, „Zurück zum Alltag“ →
+  „Zurück“, „Buchung“/„Füllung“/„Tankbeleg“ → „Beleg“.
+- **T8 — Deutsch zuerst.** „Stoßzeit“/„Nebenzeit“ statt „Peak“/„offpeak“,
+  „außerhalb der Stichprobe“ statt „out-of-sample“, Caption „Günstig-Chance:
+  …“, das `LIVE`-Badge entfällt; das Fachwort steht im Tooltip.
+- **T9 — keine Pfade im Alltagstext.** §6 nennt die einzige Ausnahme
+  (Einrichtungs- und Diagnose-Texte im Bereich „System“); `polling_missing`
+  verweist dorthin statt den Vorgang ein zweites Mal zu beschreiben, `->` wird
+  `→`, JSON-Feld-Quellen und Doku-Pfade wandern in den Tooltip, Meta-Sätze
+  über die „alte System-Ansicht“ entfallen.
+- **T10 — Anrede geklärt.** §1 erlaubt den Possessiv, verbietet direkte
+  Anrede und Imperativ und lässt Fragen nur im Fällig-Prompt zu; die vier
+  betroffenen Stellen sind danach formuliert.
+- **T11 — Wort-Familien festgezogen.** Ein Wort für den gebuchten Vorgang,
+  „Ersparnis“ als Betrag ohne Vorzeichen mit Richtung im Wort („1,60 €
+  günstiger“), Alter überall über `ageWord`/`ageLabel` („vor 12 Minuten“),
+  Einheiten durchgehend „L“.
+- **T12 — Frage und Antwort aus einer Quelle.** Knopf und Sheet-Titel der
+  Sortier-Erklärung kommen aus `atlasExplanation().title`, der Labor-Kopf
+  zeigt die Herkunft einmal, der Coverage-Satz folgt dem §4a-Muster, die
+  Nachschlage-Seite heißt überall „Glossar“, der Tankstand wird überall mit
+  „Keine Angabe“ zurückgenommen.
+- **T13 — Kleinschliff.** „Schwellen im Labor“, „Kommastellen erlaubt
+  (z. B. 6,3)“, „Dunkel (Standard)“/„Hell“, `≈` und `×` statt `~` und `·` im
+  E5-Banner, Prozent im Diagramm-Tooltip über `percentLabel`, „Wochenende/
+  Feiertag“, kein Emoji im Fehlertext der Fallback-GUI, „— jetzt tanken
+  passt.“ statt „ist okay“.
+
+### Hinzugefügt
+
+- **Ratchets gegen das Wiederkommen** (`web/src/microcopy.test.ts`):
+  ausgemusterte Wörter und Synonym-Paare (§4), die §4c-Ergebnis-Worte gegen
+  `lab.ts`, keine Ausrufezeichen am Satzende, keine `✓`/`!`-Präfixe. Dazu
+  `components/FeedbackBanner.test.tsx` (Ton der Rückmeldung).
+
 ## [0.38.0] – 2026-09-15
 
 **Zwei stille Ausfälle bekommen eine Stimme: der Webhook Pi → NAS wird

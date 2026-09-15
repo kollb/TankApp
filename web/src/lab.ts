@@ -121,15 +121,47 @@ import { centPerLiter, euro, percentLabel, type AdviceDiaryEntry } from "./data"
 
 /**
  * Wort zur Aktion eines Tagebuch-Eintrags — dieselben Wörter wie in „Jetzt“,
- * damit das Tagebuch nicht in Fachsprache abrutscht.
+ * damit das Tagebuch nicht in Fachsprache abrutscht. Der Grau-Zustand heißt
+ * hier wie in der Ampel-Karte (`now.ts`) „Keine klare Empfehlung“ — ein Label
+ * für dieselbe Sache (TEXT-BEFUND T6).
  */
 export function diaryActionWord(action: string | null | undefined): string {
   if (action === "wait") return "Warten";
   if (action === "refuel_now") return "Jetzt tanken";
   if (action === "refuel_elsewhere") return "Woanders tanken";
-  if (action === "no_advice") return "Keine Empfehlung";
+  if (action === "no_advice") return "Keine klare Empfehlung";
   return "Unbekannte Aktion";
 }
+
+/**
+ * Die Ergebnis-Worte des Tagebuchs (MICROCOPY §4c) — die einzige erlaubte
+ * Liste: `richtig` · `daneben` · `unentschieden` · `nicht bewertbar`. Nie
+ * „Treffer“, nie „Fehler“, nie „Gleichstand“.
+ */
+export const DIARY_OUTCOME_WORDS = [
+  "richtig",
+  "daneben",
+  "unentschieden",
+  "nicht bewertbar",
+] as const;
+
+/** Filter-Kennung des Prognose-Tagebuchs. */
+export type DiaryFilterId = "all" | "win" | "loss" | "tie" | "void";
+
+/**
+ * Filter-Chips des Tagebuchs — dieselben Worte wie die Einträge darunter
+ * (TEXT-BEFUND T5), damit ein Panel sich nicht selbst widerspricht.
+ */
+export const DIARY_FILTERS: ReadonlyArray<{
+  id: DiaryFilterId;
+  label: string;
+}> = [
+  { id: "all", label: "Alle" },
+  { id: "win", label: "Richtig" },
+  { id: "loss", label: "Daneben" },
+  { id: "tie", label: "Unentschieden" },
+  { id: "void", label: "Nicht bewertbar" },
+];
 
 export type DiaryOutcome = {
   /** „richtig“ / „daneben“ / „unentschieden“ / „nicht bewertbar“. */
@@ -171,7 +203,7 @@ export function diaryOutcome(entry: AdviceDiaryEntry): DiaryOutcome {
     return {
       word: "unentschieden",
       tone: "neutral",
-      detail: "Der Unterschied lag innerhalb der Gleichstands-Schwelle (1 ct/L).",
+      detail: "Der Unterschied lag innerhalb der Schwelle für unentschieden (1 ct/L).",
     };
   }
   return {

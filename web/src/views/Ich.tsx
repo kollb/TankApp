@@ -3,7 +3,7 @@
 //
 // Vier Unterseiten, Segment-Steuerung oben, kein eigenes Menü. Die View
 // rendert, sie entscheidet nichts (D1): die Bilanz-Zahlen kommen vom
-// Server (fills/summary), die Buchungs-Prüfung läuft über `data.ts`
+// Server (fills/summary), die Beleg-Prüfung läuft über `data.ts`
 // (`checkFillDraft`, dieselben Grenzen wie app/feedback.py), die
 // Einordnung nach dem Buchen ist eine reine Median-Rechnung über die
 // geladenen Preise — nie eine erfundene Ersparnis.
@@ -15,11 +15,11 @@
 // messbar“ da, statt mit einer Zahl verkleidet.
 
 import { useState } from "react";
+import { Fuel as FuelIcon, Scale } from "lucide-react";
 import {
-  CheckCircle2,
-  Fuel as FuelIcon,
-  Scale,
-} from "lucide-react";
+  FeedbackBanner,
+  type ActionFeedback,
+} from "../components/FeedbackBanner";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
@@ -75,10 +75,10 @@ export function fillPositionNote(
       : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
   const deltaCt = (pricePaid - median) * 100;
   if (Math.abs(deltaCt) < 0.05)
-    return "Gleichauf mit dem Median deines Sets — fair.";
+    return "Gleichauf mit dem Median deines Sets.";
   return deltaCt < 0
     ? `${centPerLiter(Math.abs(deltaCt))} unter dem Median deines Sets (heute).`
-    : `${centPerLiter(Math.abs(deltaCt))} über dem Median deines Sets (heute) — nächste Füllung ist der bessere Vergleich.`;
+    : `${centPerLiter(Math.abs(deltaCt))} über dem Median deines Sets (heute) — der nächste Beleg ist der bessere Vergleich.`;
 }
 
 /**
@@ -126,7 +126,7 @@ export interface IchViewProps {
   freshPrices: number[];
   fillSubmitting: boolean;
   onQuickFill: () => void;
-  actionFeedback: string | null;
+  actionFeedback: ActionFeedback | null;
   // Belege: Verlauf mit Storno
   fillList: Fill[];
   visibleFills: Fill[];
@@ -237,15 +237,8 @@ function FillsSection(props: IchViewProps) {
 
   return (
     <div>
-      {props.actionFeedback && (
-        <div
-          role="status"
-          className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 p-4 text-sm font-semibold text-emerald-200 shadow-lg"
-        >
-          <CheckCircle2 size={18} className="shrink-0 text-emerald-400" />
-          <p>{actionFeedback}</p>
-        </div>
-      )}
+      {/* T2: derselbe Kanal wie im Kopf — Fehler in rose, nicht in grün. */}
+      <FeedbackBanner feedback={props.actionFeedback} className="mb-4" />
 
       {/* Schnellerfassung — Station vorausgefüllt, Details optional */}
       <section
@@ -260,7 +253,7 @@ function FillsSection(props: IchViewProps) {
           Tanken erfassen
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
-          Gerade getankt? Station, Liter, Preis — in unter 15 Sekunden in
+          Station, Liter, Preis — in unter 15 Sekunden steht der Beleg in
           deiner Bilanz.
         </p>
         <form
@@ -274,7 +267,7 @@ function FillsSection(props: IchViewProps) {
             <label className="text-xs text-slate-400 sm:col-span-1">
               Station
               <select
-                aria-label="Station des Tankbelegs"
+                aria-label="Station des Belegs"
                 value={quickStationId}
                 onChange={(e) => setQuickStationId(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
@@ -367,7 +360,7 @@ function FillsSection(props: IchViewProps) {
             className="flex items-center gap-2 text-sm font-semibold"
           >
             <FuelIcon size={16} className="text-emerald-400" />
-            Deine Tankbelege
+            Deine Belege
           </h3>
           {voidedCount > 0 && (
             <button
@@ -428,9 +421,19 @@ function FillsSection(props: IchViewProps) {
                     <td className="px-3 py-2 text-right font-mono text-slate-300">
                       {euro(fill.price_paid, 3)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-emerald-300">
+                    <td
+                      className={`px-3 py-2 text-right font-mono ${
+                        (fill.saved_vs_always_now_eur ?? 0) >= 0
+                          ? "text-emerald-300"
+                          : "text-rose-300"
+                      }`}
+                    >
                       {fill.saved_vs_always_now_eur != null
-                        ? `${fill.saved_vs_always_now_eur > 0 ? "+" : "−"}${euro(Math.abs(fill.saved_vs_always_now_eur))} €`
+                        ? `${euro(Math.abs(fill.saved_vs_always_now_eur))} € ${
+                            fill.saved_vs_always_now_eur >= 0
+                              ? "günstiger"
+                              : "teurer"
+                          }`
                         : "—"}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -468,7 +471,7 @@ function FillsSection(props: IchViewProps) {
         ) : (
           <div className="px-5 pb-5">
             <Empty>
-              Noch keine Tankbelege — oben erfassen, dann erscheint der Beleg
+              Noch keine Belege — oben erfassen, dann erscheint der Beleg
               hier und in der Bilanz.
             </Empty>
           </div>
@@ -537,8 +540,8 @@ function BalanceSection(props: IchViewProps) {
         <SkeletonPanel lines={4} label="Bilanz wird geladen" />
       ) : !latest ? (
         <Empty>
-          Noch keine Belege — die Bilanz füllt sich mit jeder Buchung unter
-          „Belege“.
+          Noch keine Belege — die Bilanz füllt sich mit jedem erfassten
+          Beleg.
         </Empty>
       ) : (
         <>
@@ -556,7 +559,7 @@ function BalanceSection(props: IchViewProps) {
                 {euro(latest.total_eur)} €
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                {latest.fills} Füllung{latest.fills === 1 ? "" : "en"} ·{" "}
+                {latest.fills} Beleg{latest.fills === 1 ? "" : "e"} ·{" "}
                 {latest.avg_eur_per_liter != null
                   ? `Ø ${euro(latest.avg_eur_per_liter, 3)} €/L`
                   : "Ø —"}
@@ -622,10 +625,10 @@ function BalanceSection(props: IchViewProps) {
               {data?.overall && (
                 <p className="mt-2 text-[11px] text-slate-500">
                   Gesamt: {euro(data.overall.total_eur)} € ·{" "}
-                  {data.overall.fills} Füllungen ·{" "}
-                  {data.overall.saved_eur >= 0 ? "+" : "−"}
-                  {euro(Math.abs(data.overall.saved_eur))} € gegenüber
-                  „immer sofort getankt“
+                  {data.overall.fills} Belege ·{" "}
+                  {euro(Math.abs(data.overall.saved_eur))} €{" "}
+                  {data.overall.saved_eur >= 0 ? "günstiger" : "teurer"}{" "}
+                  gegenüber „immer sofort getankt“
                   {data.overall.n_without_date > 0
                     ? ` · ${data.overall.n_without_date} ohne Datum (nicht im Verlauf)`
                     : ""}

@@ -374,7 +374,7 @@ export function systemExplanationZustand(): SystemExplanation {
       "Was fehlt, nennt die App mit Grund und nächstem Schritt, statt eine Zahl zu erfinden.",
     ],
     source:
-      "Grundlage: /api/v1/health und /api/v1/collector/status — dieselben Endpunkte wie die alte System-Ansicht.",
+      "Grundlage: /api/v1/health und /api/v1/collector/status.",
     labHint: labHint("lernen"),
   };
 }
@@ -424,7 +424,7 @@ export function systemExplanationLaeufe(
       "Das Job-Log zeigt die letzten Zeilen direkt vom NAS (data/runtime/jobs/<job>.log) — Pfade und Zugangsdaten werden beim Auslesen entfernt.",
     ],
     source:
-      "Grundlage: /api/v1/health → jobs und /api/v1/jobs/<job>/log — dieselben Zahlen wie im alten System-Tab.",
+      "Grundlage: /api/v1/health → jobs und /api/v1/jobs/<job>/log.",
     labHint: labHint("lernen"),
   };
 }

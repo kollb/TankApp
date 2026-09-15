@@ -199,19 +199,19 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
 
   // 1) Intent „Ich warte“ setzen.
   await page.getByRole("button", { name: "Ich warte", exact: true }).click();
-  await expect(page.getByText("Auswahl gespeichert!")).toBeVisible();
+  await expect(page.getByText("Auswahl gespeichert.")).toBeVisible();
   expect(intents).toContain("wait");
 
   // 2) Fenster vorbei → Due-Prompt erscheint nach dem nächsten Refresh.
   due = true;
   await page.getByRole("button", { name: "Daten aktualisieren" }).click();
   await expect(
-    page.getByRole("heading", { name: "Hast du getankt?" }),
+    page.getByRole("heading", { name: "Gerade getankt?" }),
   ).toBeVisible();
 
   // 3) Beleg verbuchen → Erfolgsmeldung.
   await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
-  await expect(page.getByText("Füllung in deiner Tank-Bilanz verbucht!")).toBeVisible();
+  await expect(page.getByText("Beleg in deiner Bilanz verbucht.")).toBeVisible();
   expect(fillsPosted.length).toBe(1);
   expect(fillsPosted[0].liters).toBe(40);
 });
@@ -284,11 +284,11 @@ test("NAS nicht erreichbar (503): Beleg wird vorgemerkt, kein Erfolg behauptet",
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Hast du getankt?" }),
+    page.getByRole("heading", { name: "Gerade getankt?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
-  await expect(page.getByText(/Füllung lokal vorgemerkt/)).toBeVisible();
-  await expect(page.getByText("Füllung in deiner Tank-Bilanz verbucht!")).toHaveCount(0);
+  await expect(page.getByText(/Beleg lokal vorgemerkt/)).toBeVisible();
+  await expect(page.getByText("Beleg in deiner Bilanz verbucht.")).toHaveCount(0);
   // Die Queue sagt selbst, dass etwas wartet (B10) — sichtbar, nicht still.
   await expect(
     page.getByText(/lokal vorgemerkt und gehen raus, sobald die Verbindung steht/),
@@ -358,7 +358,7 @@ test("Abgelehnter Beleg (400) bleibt ein Fehler", async ({ page }) => {
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Hast du getankt?" }),
+    page.getByRole("heading", { name: "Gerade getankt?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
   await expect(page.getByText(/Speichern fehlgeschlagen/)).toBeVisible();

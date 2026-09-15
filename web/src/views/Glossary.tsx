@@ -16,12 +16,12 @@ export function GlossaryView() {
           Hilfe · Nachschlagen
         </p>
         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Was heißt das?
+          Glossar
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-          Das Labor spricht deutsch zuerst — das Fachwort steht in Klammern
-          und im Tooltip. Keine Rechnung, nur Sprache: Was bedeutet die Zahl,
-          woran erkennt man den Zustand, was folgt daraus?
+          Was heißt das? Das Labor spricht deutsch zuerst — das Fachwort steht
+          in Klammern und im Tooltip. Keine Rechnung, nur Sprache: Was bedeutet
+          die Zahl, woran erkennt man den Zustand, was folgt daraus?
         </p>
       </div>
 
@@ -56,11 +56,11 @@ export function GlossaryView() {
               {entry.long}
             </p>
             {entry.anchor && (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Mehr in der Doku:{" "}
-                <code className="rounded bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300">
-                  docs/ANALYSE.md#{entry.anchor}
-                </code>
+              <p
+                className="mt-2 text-[11px] text-slate-500"
+                title={`docs/ANALYSE.md#${entry.anchor}`}
+              >
+                Mehr dazu steht in der Analyse (Doku).
               </p>
             )}
           </section>
@@ -74,20 +74,13 @@ export function GlossaryView() {
             Noch Fragen?
           </h3>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-slate-400">
-          Die vollständige Methodik steht in{" "}
-          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-300">
-            docs/ANALYSE.md
-          </code>{" "}
-          und{" "}
-          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-300">
-            docs/KONZEPT.md §4 · §5 · §8
-          </code>{" "}
-          — dort mit Formeln und Quellen. Das Regelwerk für alle Texte liegt in{" "}
-          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-300">
-            docs/MICROCOPY.md
-          </code>
-          .
+        <p
+          className="mt-2 text-sm leading-relaxed text-slate-400"
+          title="docs/ANALYSE.md · docs/KONZEPT.md §4 · §5 · §8 · docs/MICROCOPY.md"
+        >
+          Die vollständige Methodik steht in der Analyse und im Konzept — dort
+          mit Formeln und Quellen. Das Regelwerk für alle Texte liegt im
+          Microcopy-Dokument.
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
           Sprache vor Rechnung: Jeder i-Punkt im Labor verweist hierher

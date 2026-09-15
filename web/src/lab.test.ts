@@ -113,7 +113,7 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
     expect(diaryActionWord("wait")).toBe("Warten");
     expect(diaryActionWord("refuel_now")).toBe("Jetzt tanken");
     expect(diaryActionWord("refuel_elsewhere")).toBe("Woanders tanken");
-    expect(diaryActionWord("no_advice")).toBe("Keine Empfehlung");
+    expect(diaryActionWord("no_advice")).toBe("Keine klare Empfehlung");
     expect(diaryActionWord(null)).toBe("Unbekannte Aktion");
     expect(diaryActionWord("irgendwas")).toBe("Unbekannte Aktion");
   });

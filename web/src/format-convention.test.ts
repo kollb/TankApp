@@ -23,8 +23,9 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
       "Vorbelegung des Beleg-Preises (Ich → Belege): Punkt wie beim Tippen (commaToDot)",
   },
   "components/LabCharts.tsx": {
-    count: 6,
-    reason: "SVG-Pfad-Koordinaten + ganzzahlige Prozent in <title>",
+    count: 2,
+    reason:
+      "SVG-Pfad-Koordinaten (T13: die Prozent in <title> laufen über percentLabel)",
   },
   "components/LineChart.tsx": {
     count: 6,

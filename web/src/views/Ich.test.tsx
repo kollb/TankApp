@@ -142,14 +142,14 @@ describe("Ich: Aufbau", () => {
 describe("Ich: Leerzustände", () => {
   it("Belege: ohne Buchungen der ehrliche Hinweis statt leeren Fläche", () => {
     const html = render({ initialSection: "fills" });
-    expect(html).toContain("Noch keine Tankbelege");
+    expect(html).toContain("Noch keine Belege");
     expect(html).toContain("Keine Station im Set");
   });
 
   it("Bilanz: ohne Belege füllt sie sich mit der Buchung", () => {
     const html = render({ initialSection: "balance" });
     expect(html).toContain(
-      "Noch keine Belege — die Bilanz füllt sich mit jeder Buchung",
+      "Noch keine Belege — die Bilanz füllt sich mit jedem erfassten",
     );
   });
 });
@@ -158,8 +158,8 @@ describe("Ich: Einstellungen am Wirkungsort", () => {
   it("Stadt, Darstellung und Über — ohne Eingabefelder für die Schwellen", () => {
     const html = render({ initialSection: "settings" });
     expect(html).toContain('id="settings-city"');
-    expect(html).toContain("Hell (Slate)");
-    expect(html).toContain("Dunkles Slate (Standard)");
+    expect(html).toContain("Hell");
+    expect(html).toContain("Dunkel (Standard)");
   });
 });
 

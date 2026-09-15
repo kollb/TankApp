@@ -285,7 +285,7 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
   ).toBeDisabled();
 });
 
-test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
+test("Zeitwert-Automatik zeigt Stoßzeit oder Nebenzeit", async ({ page }) => {
   await stubApi(page, { horizons: true });
   await page.goto("/");
   // Phase 2: der Zeitwert-Slider steht unter „Ich → Fahrzeug“; die
@@ -300,10 +300,10 @@ test("Zeitwert-Automatik zeigt Peak oder Offpeak", async ({ page }) => {
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   await expect(
-    page.getByText("0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h."),
+    page.getByText(/0 = Auto: 1[06] €\/h — gerade (Stoßzeit|Nebenzeit)\./),
   ).toBeVisible();
-  // Aktiver Wert: Auto (16 €/h Peak) bzw. Auto (10 €/h offpeak).
+  // Aktiver Wert: Auto (16 €/h · Stoßzeit) bzw. Auto (10 €/h · Nebenzeit).
   await expect(
-    page.getByText(/Auto \(1[06] €\/h (Peak|offpeak)\)/),
+    page.getByText(/Auto \(1[06] €\/h · (Stoßzeit|Nebenzeit)\)/),
   ).toBeVisible();
 });

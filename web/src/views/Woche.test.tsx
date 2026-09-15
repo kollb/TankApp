@@ -145,6 +145,72 @@ describe("Woche: Aufbau", () => {
     // Auswahl-Detail: der günstigste Tag gewinnt.
     expect(html).toContain("Morgen");
   });
+
+  // T1: Bild und Legende müssen dieselbe Richtung haben — sonst hält man den
+  // teuersten Tag für den besten.
+  it("Wochenlinie: der günstigste Tag bekommt den höchsten Balken", () => {
+    const html = render({
+      decideRes: {
+        data: decide({
+          windows_week: [
+            {
+              start: "2026-09-14T19:00:00+02:00",
+              end: "2026-09-14T21:00:00+02:00",
+              expected_price: 1.799, // teuerster Tag der Woche
+              expected_saving_eur: null,
+              p: 0.8,
+            },
+            {
+              start: "2026-09-15T19:00:00+02:00",
+              end: "2026-09-15T21:00:00+02:00",
+              expected_price: 1.659, // günstigster Tag der Woche
+              expected_saving_eur: null,
+              p: 0.8,
+            },
+          ],
+        }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    const heights = [...html.matchAll(/style="height:(\d+(?:\.\d+)?)px"/g)].map(
+      (match) => Number(match[1]),
+    );
+    // Balken 1 = Montag (teuer), Balken 2 = Dienstag (günstig).
+    expect(heights.length).toBeGreaterThanOrEqual(2);
+    expect(heights[1]).toBeGreaterThan(heights[0]);
+    // Legende und aria-label nennen dieselbe Richtung.
+    expect(html).toContain("höher = günstiger");
+    expect(html).toContain("höherer Balken ist der günstigere Tag");
+    expect(html).toContain("günstigster Tag der Woche");
+  });
+
+  // T11: „Ersparnis“ ohne Vorzeichen — die Richtung steht im Wort.
+  it("Fensterliste nennt die Ersparnis als Betrag mit Richtung", () => {
+    const html = render({
+      decideRes: {
+        data: decide({
+          windows_week: [
+            {
+              start: "2026-09-15T19:00:00+02:00",
+              end: "2026-09-15T21:00:00+02:00",
+              expected_price: 1.659,
+              expected_saving_eur: 1.6,
+              p: 0.8,
+            },
+          ],
+        }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    expect(html).toContain("1,60 € günstiger");
+    expect(html).not.toContain("−1,60 €");
+  });
 });
 
 describe("Woche: Zustände", () => {
