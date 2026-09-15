@@ -216,7 +216,13 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
   expect(fillsPosted[0].liters).toBe(40);
 });
 
-test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
+// B10: Aus dem „Serverfehler“ wurden zwei Fälle. Ein 503 heißt „niemand
+// erreichbar“ — der Beleg wird vorgemerkt und nachgereicht, und die App
+// behauptet **keinen** Erfolg. Eine echte Ablehnung (400) bleibt ein Fehler
+// mit Klartext.
+test("NAS nicht erreichbar (503): Beleg wird vorgemerkt, kein Erfolg behauptet", async ({
+  page,
+}) => {
   await stubBase(page);
   await page.route("**/api/v1/episodes?status=due", async (route) => {
     await route.fulfill({
@@ -281,6 +287,52 @@ test("Serverfehler beim Buchen zeigt keinen Erfolg", async ({ page }) => {
     page.getByRole("heading", { name: "Hast du getankt?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
-  await expect(page.getByText(/Speichern fehlgeschlagen/)).toBeVisible();
+  await expect(page.getByText(/Füllung lokal vorgemerkt/)).toBeVisible();
   await expect(page.getByText("Füllung in deiner Tank-Bilanz verbucht!")).toHaveCount(0);
+  // Die Queue sagt selbst, dass etwas wartet (B10) — sichtbar, nicht still.
+  await expect(
+    page.getByText(/lokal vorgemerkt und gehen raus, sobald die Verbindung steht/),
+  ).toBeVisible();
+});
+
+test("Abgelehnter Beleg (400) bleibt ein Fehler", async ({ page }) => {
+  await stubBase(page);
+  await page.route("**/api/v1/episodes?status=due", async (route) => {
+    await route.fulfill({
+      json: {
+        count: 1,
+        episodes: [
+          {
+            id: "ep-1",
+            status: "due",
+            intent: "wait",
+            last_snapshot: {
+              station_id: "a",
+              station_name: "F-Station",
+              expected_price: 1.719,
+            },
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/v1/fills", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error_code: "invalid_liters" }),
+      });
+      return;
+    }
+    await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
+  });
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Hast du getankt?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
+  await expect(page.getByText(/Speichern fehlgeschlagen/)).toBeVisible();
+  await expect(page.getByText(/lokal vorgemerkt/)).toHaveCount(0);
 });
