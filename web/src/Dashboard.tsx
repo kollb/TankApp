@@ -18,7 +18,6 @@ import {
   WifiOff,
   CloudOff,
   Share2,
-  CheckCircle2,
   User,
   BookOpen,
 } from "lucide-react";
@@ -32,6 +31,11 @@ import { ProfileManager } from "./components/ProfileManager";
 // C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
 import { CellError } from "./components/CellError";
 import { DataAgeBanner } from "./components/DataAge";
+import {
+  FeedbackBanner,
+  type ActionFeedback,
+  type FeedbackTone,
+} from "./components/FeedbackBanner";
 import { InstallHint } from "./components/InstallHint";
 import { UpdateBanner } from "./components/UpdateBanner";
 import {
@@ -335,9 +339,20 @@ export function Dashboard() {
   // Stornierte Belege bleiben im Ledger (CSV, Audit), sind in der Tabelle
   // aber standardmäßig ausgeblendet — der Doppelklick-Ursprung.
   const [showVoidedFills, setShowVoidedFills] = useState(false);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  // T2: Jede Rückmeldung trägt ihren Ton — Fehler sehen nicht mehr aus wie
+  // Erfolge. Ein Timer, damit eine neue Meldung die alte sofort ablöst.
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(
+    null,
+  );
+  const feedbackTimer = useRef<number | null>(null);
   // A3: Rückmeldung beim Stornieren eines Belegs (lokal im Verlauf).
   const [voidNote, setVoidNote] = useState<string | null>(null);
+
+  const feedback = (tone: FeedbackTone, text: string, ms = 5000) => {
+    setActionFeedback({ tone, text });
+    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = window.setTimeout(() => setActionFeedback(null), ms);
+  };
 
   // A6: Rückmeldung des „Ansicht teilen“-Knopfs (Kopfzeile).
   const [shareNote, setShareNote] = useState<string | null>(null);
@@ -356,15 +371,16 @@ export function Dashboard() {
     setQueue(result.list);
     if (result.rejected.length > 0) {
       setQueueNote(
-        `! ${result.rejected.length === 1 ? "Ein vorgemerkter Eintrag wurde" : `${result.rejected.length} vorgemerkte Einträge wurden`} vom Server abgelehnt (${result.rejected[0].last_error ?? "abgelehnt"}) — bitte neu erfassen.`,
+        `${result.rejected.length === 1 ? "Ein vorgemerkter Eintrag wurde" : `${result.rejected.length} vorgemerkte Einträge wurden`} vom Server abgelehnt (${result.rejected[0].last_error ?? "abgelehnt"}) — bitte neu erfassen.`,
       );
       setTimeout(() => setQueueNote(null), 8000);
     }
     if (result.sent > 0) {
-      setActionFeedback(
-        `✓ ${result.sent === 1 ? "Ein vorgemerkter Eintrag ist" : `${result.sent} vorgemerkte Einträge sind`} übertragen.`,
+      feedback(
+        "ok",
+        `${result.sent === 1 ? "Ein vorgemerkter Eintrag ist" : `${result.sent} vorgemerkte Einträge sind`} übertragen.`,
+        6000,
       );
-      setTimeout(() => setActionFeedback(null), 6000);
       setRefresh((count) => count + 1);
     }
   };
@@ -423,7 +439,7 @@ export function Dashboard() {
       value <= 120,
   );
   // A2: Füllstand in Prozent — Zustand, kein Profilwert (er ändert sich mit
-  // jeder Füllung). null = keine Angabe, dann sagt die App nichts zum Tank.
+  // jedem Beleg). null = keine Angabe, dann sagt die App nichts zum Tank.
   const [tankPercent, setTankPercent] = usePreference<number | null>(
     "tankPercent",
     null,
@@ -986,7 +1002,7 @@ export function Dashboard() {
   const collector = collectorStatus.data || h?.collector;
   // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
   const logLines = jobLog.data?.lines ?? [];
-  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Tabs (Alltag/Statistik).
+  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Bereichen.
   const failedJobs = Object.entries(h?.jobs || {}).filter(
     ([, job]) => job?.state === "failed",
   );
@@ -1179,14 +1195,14 @@ export function Dashboard() {
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
     liveAdvice?.gate_status ||
-    (statsSummaryRes.data ? "Kalibrierung steht aus" : "kein Statistik-Lauf");
+    (statsSummaryRes.data ? "Kalibrierung steht aus" : "kein Engine-Lauf");
   const m7Line = statsSummaryRes.data ? m7GateLine(liveAdvice) : null;
   const transitionLine = transitionRuleLine(livePhase);
   // Hint für leere Güte-Kacheln im System-Tab: erklärt die fehlende
   // Live-Abdeckung, ohne eine Tageszahl zu erfinden.
   const calibrationHint = statsSummaryRes.data
     ? livePhaseHint(livePhase)
-    : "Statistik nicht geladen — zur Live-Phase liegen keine Daten vor.";
+    : "Kennzahlen nicht geladen — zur Live-Phase liegen keine Daten vor.";
   const stationPhase = f?.data_policy;
 
   // --- B4 Workshop Dynamic Calculations ---
@@ -1312,14 +1328,12 @@ export function Dashboard() {
     const targetPrice =
       snap?.expected_price ?? snap?.price_now ?? bestPrice ?? null;
     if (targetPrice == null || !Number.isFinite(targetPrice)) {
-      setActionFeedback("! Kein Preis bekannt — bitte manuell erfassen.");
-      setTimeout(() => setActionFeedback(null), 4000);
+      feedback("error", "Kein Preis bekannt — bitte manuell erfassen.", 4000);
       return;
     }
     const fillStationId = snap?.station_id || selected?.station_id || null;
     if (!fillStationId) {
-      setActionFeedback("! Keine Station bekannt — bitte manuell erfassen.");
-      setTimeout(() => setActionFeedback(null), 4000);
+      feedback("error", "Keine Station bekannt — bitte manuell erfassen.", 4000);
       return;
     }
     const res = await postFill({
@@ -1333,24 +1347,24 @@ export function Dashboard() {
     });
     if (res?.queued) {
       setQueue(readQueue());
-      setActionFeedback(
-        "✓ Füllung lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
+      feedback(
+        "warn",
+        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
+        6000,
       );
       setDueDismissed(true);
-      setTimeout(() => setActionFeedback(null), 6000);
       return;
     }
     if (res?.error_code) {
-      setActionFeedback(
-        `! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`,
+      feedback(
+        "error",
+        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
       );
-      setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
-    setActionFeedback("✓ Füllung in deiner Tank-Bilanz verbucht!");
+    feedback("ok", "Beleg in deiner Bilanz verbucht.", 4000);
     setDueDismissed(true);
     setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const handleQuickFill = async () => {
@@ -1366,12 +1380,12 @@ export function Dashboard() {
       priceVal === null ||
       !stationId
     ) {
-      setActionFeedback(
+      feedback(
+        "error",
         quickDraft.stationMissing
-          ? "! Ohne Station kein Beleg — bitte zuerst eine Station wählen."
-          : `! ${quickDraft.litersError ?? quickDraft.priceError ?? "Eingabe prüfen."}`,
+          ? "Ohne Station kein Beleg — bitte zuerst eine Station wählen."
+          : quickDraft.litersError ?? quickDraft.priceError ?? "Eingabe prüfen.",
       );
-      setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
     setFillSubmitting(true);
@@ -1386,30 +1400,32 @@ export function Dashboard() {
     setFillSubmitting(false);
     if (res?.queued) {
       setQueue(readQueue());
-      setActionFeedback(
-        "✓ Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
+      feedback(
+        "warn",
+        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
+        6000,
       );
-      setTimeout(() => setActionFeedback(null), 6000);
       return;
     }
     if (res?.error_code) {
-      setActionFeedback(
-        `! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`,
+      feedback(
+        "error",
+        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
       );
-      setTimeout(() => setActionFeedback(null), 5000);
       return;
     }
     // GUI-Neuentwurf: Einordnung des gerade gebuchten Preises gegen den
     // frischen Set-Median (pure Funktion in Ich.tsx) — ehrlich, nur wenn
     // mindestens zwei frische Messungen vorliegen, sonst nur der Satz.
     const positionNote = fillPositionNote(priceVal, freshPrices);
-    setActionFeedback(
+    feedback(
+      "ok",
       positionNote
-        ? `✓ Beleg in deiner Tank-Bilanz verbucht! ${positionNote}`
-        : "✓ Beleg in deiner Tank-Bilanz verbucht!",
+        ? `Beleg in deiner Bilanz verbucht. ${positionNote}`
+        : "Beleg in deiner Bilanz verbucht.",
+      6000,
     );
     setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 6000);
   };
 
   const handleVoidFill = async (fillId: string) => {
@@ -1434,10 +1450,10 @@ export function Dashboard() {
     if (epId) {
       const res = await postIntent(epId, "dismiss");
       if (res?.error_code) {
-        setActionFeedback(
-          `! Verwerfen fehlgeschlagen: ${problem(res.error_code) || res.error_code}`,
+        feedback(
+          "error",
+          `Verwerfen fehlgeschlagen: ${problem(res.error_code) || res.error_code}`,
         );
-        setTimeout(() => setActionFeedback(null), 5000);
         return;
       }
     }
@@ -1452,24 +1468,24 @@ export function Dashboard() {
       if (res?.queued) {
         setQueue(readQueue());
         if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
-        setActionFeedback(
-          "✓ Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
+        feedback(
+          "warn",
+          "Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
+          6000,
         );
-        setTimeout(() => setActionFeedback(null), 6000);
         return;
       }
       if (res?.error_code) {
-        setActionFeedback(
-          `! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – App-Server erreichbar?`,
+        feedback(
+          "error",
+          `Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — App-Server erreichbar?`,
         );
-        setTimeout(() => setActionFeedback(null), 5000);
         return;
       }
     }
     if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
-    setActionFeedback("✓ Auswahl gespeichert!");
+    feedback("ok", "Auswahl gespeichert.", 4000);
     setRefresh((r) => r + 1);
-    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   return (
@@ -1486,10 +1502,7 @@ export function Dashboard() {
             </div>
             <div>
               <h1 className="text-lg font-black tracking-tight text-white">
-                TankApp{" "}
-                <span className="ml-1 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-400">
-                  LIVE
-                </span>
+                TankApp
               </h1>
               <p className="app-tagline text-[11px] text-slate-500">
                 Dein Tank-Kompass. Ohne Rätselraten.
@@ -1578,7 +1591,7 @@ export function Dashboard() {
                 title={
                   alarms.length
                     ? alarms.map((a) => a.message).join(" · ")
-                    : "System in Ordnung — keine Alarme"
+                    : "Alles ok — keine Alarme"
                 }
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${
                   errorAlarms.length
@@ -1602,7 +1615,7 @@ export function Dashboard() {
                   ? `${errorAlarms.length} Alarm${errorAlarms.length > 1 ? "e" : ""}`
                   : warnAlarms.length
                     ? `${warnAlarms.length} Hinweis${warnAlarms.length > 1 ? "e" : ""}`
-                    : "OK"}
+                    : "Alles ok"}
               </span>
             )}
             {/* A6: aktuelle Sicht als Link teilen (Haushalt/Bookmark). */}
@@ -1705,22 +1718,14 @@ export function Dashboard() {
           </div>
         </div>
 
-        {actionFeedback && (
-          <div
-            role="status"
-            className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 p-4 text-sm font-semibold text-emerald-200 shadow-lg"
-          >
-            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-            <p>{actionFeedback}</p>
-          </div>
-        )}
+        <FeedbackBanner feedback={actionFeedback} />
 
         {/* C6: Preis-Datenstand — gilt für alle Tabs, deshalb über den
             Tab-Inhalt und nicht in jedes Panel einzeln. */}
         <DataAgeBanner stamp={data?.generated_at} kind="prices" />
 
         {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
-        <InstallHint onNote={setActionFeedback} />
+        <InstallHint onNote={(message) => feedback("ok", message)} />
 
         {/* B10: „Neue Version verfügbar“ — nur wenn ein Service Worker wartet. */}
         <UpdateBanner />
@@ -1760,9 +1765,10 @@ export function Dashboard() {
             <FuelIcon size={17} className="mt-0.5 shrink-0" />
             <p>
               <span className="font-semibold">E5↔E10-Äquivalenz:</span> E10
-              verbraucht ~1–2 % mehr Kraftstoff — E5 lohnt sich erst bei p_E5 ≤
-              ~1,015 · p_E10 (etwa 4–5 ct/L Differenz). Vergleiche E5-Preise nur
-              mit E5, nie mit E10.
+              verbraucht ≈ 1–2 % mehr Kraftstoff — E5 lohnt sich erst, wenn der
+              E5-Preis höchstens 1,015 × E10-Preis beträgt (etwa 4–5 ct/L
+              Differenz). E5-Preise gehören nur mit E5 verglichen, nie mit
+              E10.
             </p>
           </div>
         )}
@@ -1787,8 +1793,8 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Fehlgeschlagene NAS-Jobs: in Alltag und Statistik sichtbar, nicht
-            nur im System-Tab — sonst wirken veraltete Prognosen wie aktuelle. */}
+        {/* Fehlgeschlagene NAS-Jobs: in allen Bereichen sichtbar, nicht nur
+            in „System“ — sonst wirken veraltete Prognosen wie aktuelle. */}
         {failedJobs.length > 0 && (
           <div
             role="alert"
@@ -2145,7 +2151,7 @@ export function Dashboard() {
               onClick={() => setTab("glossary")}
               className="underline underline-offset-2 hover:text-slate-400"
             >
-              Glossar — was heißt das?
+              Glossar
             </button>
           </span>
           <span className="flex items-center gap-1.5">

@@ -289,11 +289,15 @@ export function JetztView(props: JetztViewProps) {
   const commitLiters = () => {
     const value = Number(litersStr.replace(",", "."));
     if (!Number.isFinite(value) || value < 10 || value > 80) {
-      setInputError("Tankmenge: ganze Zahl zwischen 10 und 80 L.");
+      setInputError("Tankmenge: Zahl zwischen 10 und 80 L.");
       return;
     }
     setInputError(null);
-    onAssumptions({ liters: Math.round(value) });
+    // Gerechnet wird in ganzen Litern — das Feld zeigt den gerundeten Wert
+    // zurück, statt still 12,5 zu 13 zu machen (TEXT-BEFUND T3).
+    const rounded = Math.round(value);
+    setLitersStr(String(rounded));
+    onAssumptions({ liters: rounded });
   };
   const commitTimeValue = () => {
     const raw = timeValueStr.trim();
@@ -359,7 +363,7 @@ export function JetztView(props: JetztViewProps) {
                   Fenster vorbei
                 </span>
                 <h2 className="mt-0.5 text-base font-bold text-white">
-                  Hast du getankt?
+                  Gerade getankt?
                 </h2>
                 <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
                   Ein kurzer Tap erfasst deinen Beleg in deiner Bilanz.
@@ -372,7 +376,7 @@ export function JetztView(props: JetztViewProps) {
                 disabled={bestPrice === null}
                 title={
                   bestPrice === null
-                    ? "Kein frischer Preis – bitte manuell erfassen"
+                    ? "Kein frischer Preis — bitte manuell erfassen"
                     : `Wie empfohlen ${euro(bestPrice, 3)} €/L`
                 }
                 className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -539,7 +543,8 @@ export function JetztView(props: JetztViewProps) {
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
                     <span className="mt-1 block text-[10px] text-slate-500">
-                      10–80 · Profil: {deTrimmed(defaultLiters, 0)} L
+                      10–80 L, ganze Liter · Profil:{" "}
+                      {deTrimmed(defaultLiters, 0)} L
                     </span>
                   </label>
                   <label className="text-slate-400">
@@ -566,9 +571,12 @@ export function JetztView(props: JetztViewProps) {
                       onKeyDown={(e) => e.key === "Enter" && commitTimeValue()}
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
-                    <span className="mt-1 block text-[10px] text-slate-500">
-                      0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h{" "}
-                      {autoZ.isPeak ? "Peak" : "offpeak"}) · wirkt auf den
+                    <span
+                      className="mt-1 block text-[10px] text-slate-500"
+                      title="Stoßzeit = Peak, Nebenzeit = offpeak"
+                    >
+                      0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h ·{" "}
+                      {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den
                       Umweg
                     </span>
                   </label>
@@ -771,7 +779,7 @@ export function JetztView(props: JetztViewProps) {
                       onClick={() => onTankQuick(null)}
                       className="rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] text-slate-500 hover:text-slate-300"
                     >
-                      ausblenden
+                      Keine Angabe
                     </button>
                   )}
                 </div>

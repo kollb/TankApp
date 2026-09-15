@@ -127,7 +127,7 @@ describe("Stationen: Aufbau", () => {
     const html = render();
     const map = html.indexOf("Karte — Pin = Netto-€");
     const list = html.indexOf("1 Stationen");
-    const fresh = html.indexOf("vor 4 Min.");
+    const fresh = html.indexOf("vor 4 Minuten");
     expect(map).toBeGreaterThanOrEqual(0);
     expect(list).toBeGreaterThan(map);
     expect(fresh).toBeGreaterThan(list);

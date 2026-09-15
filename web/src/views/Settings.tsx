@@ -48,7 +48,7 @@ import {
 } from "../data";
 
 export interface VehiclePanelProps {
-  // Fahrzeug & Füllung (Profil-Felder — gelten haushaltsweit, wenn ein
+  // Fahrzeug & Tankmenge (Profil-Felder — gelten haushaltsweit, wenn ein
   // Profil aktiv ist, sonst gerätelokal)
   liters: number;
   setLiters: (v: number) => void;
@@ -85,7 +85,7 @@ function timeValueShort(
 ): string {
   return timeValue > 0
     ? `${deTrimmed(timeValue)} €/h`
-    : `Auto (${deTrimmed(timeValueUsed)} €/h ${autoZ.isPeak ? "Peak" : "offpeak"})`;
+    : `Auto (${deTrimmed(timeValueUsed)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
 }
 
 /** Ich → Fahrzeug: was ist meins — und auf welchen Geräten gilt es. */
@@ -125,7 +125,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             className="flex items-center gap-2 text-sm font-semibold"
           >
             <Car size={16} className="text-emerald-400" />
-            Fahrzeug &amp; Füllung
+            Fahrzeug &amp; Tankmenge
           </h3>
           {activeProfileName ? (
             <span className="font-mono text-[11px] text-slate-500">
@@ -188,7 +188,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueSpeech={`${liters} Liter`}
             hint={
               <span className="mt-1 block text-[10px] text-slate-500">
-                Nur zur Berechnung. Keine Buchung, keine erfundene
+                Nur zur Berechnung. Kein Beleg, keine erfundene
                 Ersparnis.
               </span>
             }
@@ -205,7 +205,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueSpeech={`${deTrimmed(consumption)} Liter pro 100 Kilometer`}
             hint={
               <span className="mt-1 block text-[10px] text-slate-500">
-                4–15 L/100 km · Feld: 6,3 möglich
+                4–15 L/100 km · Kommastellen erlaubt (z. B. 6,3)
               </span>
             }
           />
@@ -223,7 +223,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueSpeech={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
             hint={
               <span className="mt-1 block text-[10px] text-slate-500">
-                Fahrzeugangabe für Restreichweite und Reserve (5 l).
+                Fahrzeugangabe für Restreichweite und Reserve (5 L).
               </span>
             }
           />
@@ -264,8 +264,12 @@ export function VehiclePanel(props: VehiclePanelProps) {
                 : `Automatik ${deTrimmed(timeValueUsed)} Euro pro Stunde`
             }
             hint={
-              <span className="mt-1 block text-[10px] text-slate-500">
-                0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.
+              <span
+                className="mt-1 block text-[10px] text-slate-500"
+                title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"
+              >
+                0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
+                {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}.
               </span>
             }
           />
@@ -303,9 +307,10 @@ export function VehiclePanel(props: VehiclePanelProps) {
             </select>
             {detourMode === "dedicated" && (
               <span className="mt-1 block text-[10px] leading-snug text-rose-300">
-                Bei 12 €/h Zeitwert ist eine Extrafahrt von zuhause praktisch
-                nie wirtschaftlich — fahr nur hin, wenn du ohnehin an der
-                Station vorbeikommst.
+                Bei {deTrimmed(timeValue > 0 ? timeValue : timeValueUsed, 1)} €/h
+                Zeitwert ist eine Extrafahrt von zuhause praktisch nie
+                wirtschaftlich — sie lohnt nur, wenn die Station ohnehin auf
+                dem Weg liegt.
               </span>
             )}
           </label>
@@ -462,17 +467,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <Scale size={16} className="text-emerald-400" />
             Entscheidungsschwellen (aktiv)
           </h3>
-          <span className="font-mono text-[11px] text-slate-500">
-            read-only · Quelle: /api/v1/stats/summary
+          <span
+            className="text-[11px] text-slate-500"
+            title="Quelle: /api/v1/stats/summary"
+          >
+            schreibgeschützt
           </span>
         </div>
 
         {statsSummaryRes.error ? (
           <LoadError
             errorCode={summary?.error_code || statsSummaryRes.errorCode}
-            fallback="Die Statistik mit den aktiven Schwellen konnte nicht geladen werden."
+            fallback="Die Schwellen der Engine konnten nicht geladen werden."
             onRetry={refreshNow}
-            retryLabel="Statistik neu laden"
+            retryLabel="Schwellen neu laden"
           />
         ) : statsSummaryRes.pending && !summary ? (
           <SkeletonPanel lines={5} title={false} label="Schwellen werden geladen" />
@@ -487,7 +495,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <div className="overflow-x-auto rounded-xl border border-slate-800">
               <table className="w-full min-w-[26rem] text-left text-xs">
                 <caption className="sr-only">
-                  Aktive Entscheidungsschwellen der Engine (read-only)
+                  Aktive Entscheidungsschwellen der Engine (schreibgeschützt)
                 </caption>
                 <thead>
                   <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-500">
@@ -550,8 +558,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </>
         ) : (
           <Empty>
-            Noch keine Statistik geladen — die Schwellen-Tabelle erscheint
-            mit dem nächsten Statistik-Lauf der Engine.
+            Noch kein Engine-Lauf ausgewertet — die Schwellen-Tabelle
+            erscheint mit dem nächsten Lauf der Engine.
           </Empty>
         )}
       </section>
@@ -593,14 +601,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
               ) : (
                 <Sun size={14} aria-hidden="true" />
               )}
-              {value === "dark" ? "Dunkles Slate (Standard)" : "Hell (Slate)"}
+              {value === "dark" ? "Dunkel (Standard)" : "Hell"}
             </button>
           ))}
         </div>
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-          Dunkles Slate ist die Design-Basis und der Default. Hell ist eine
-          helle Variante derselben Skala — dieselbe Farbwelt wie die
-          Fallback-GUI am RP2. Die Wahl gilt nur auf diesem Gerät.
+          Dunkel ist die Design-Basis und der Default. Hell ist eine helle
+          Variante derselben Skala — dieselbe Farbwelt wie die Fallback-GUI
+          am RP2. Die Wahl gilt nur auf diesem Gerät.
         </p>
       </section>
 
@@ -623,7 +631,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">
-              Tankbelege exportieren (CSV)
+              Belege exportieren (CSV)
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
               Alle Belege inklusive Storno — für die Steuer oder den
@@ -710,7 +718,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 onClick={onOpenGlossary}
                 className="font-semibold text-sky-300 underline underline-offset-4 hover:text-sky-200"
               >
-                Glossar — was heißt das?
+                Glossar
               </button>
             </dd>
           </div>

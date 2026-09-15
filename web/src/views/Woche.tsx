@@ -28,6 +28,7 @@ import { Empty, panel } from "../components/ui";
 import {
   berlinHour,
   deTrimmed,
+  euro,
   hourRangeLabel,
   type DecideResult,
   type ResourceState,
@@ -101,7 +102,13 @@ function Stars({ value, withWord = false }: { value: number; withWord?: boolean 
   );
 }
 
-/** Wochenlinie: Tagesbestwerte als Mini-Balken (null = kein Fenster). */
+/**
+ * Wochenlinie: Tagesbestwerte als Mini-Balken (null = kein Fenster).
+ *
+ * Richtung (TEXT-BEFUND T1): Der **höchste** Balken ist der **günstigste**
+ * Tag — Legende, `aria-label` und `title` sagen dieselbe Richtung. Die
+ * Balkenhöhe wächst also mit `max - value`, nicht mit dem Preis.
+ */
 function WeekLine({ days }: { days: WeekDay[] }) {
   const values = days
     .map((day) => day.window?.expected_price ?? null)
@@ -111,11 +118,15 @@ function WeekLine({ days }: { days: WeekDay[] }) {
   const max = Math.max(...values);
   const span = max - min || 1;
   return (
-    <div className="flex items-end gap-1.5" role="img" aria-label="Wochenlinie: beste erwartete Preise je Tag">
+    <div
+      className="flex items-end gap-1.5"
+      role="img"
+      aria-label="Wochenlinie: erwartete Tagesbestpreise — höherer Balken ist der günstigere Tag"
+    >
       {days.map((day) => {
         const value = day.window?.expected_price ?? null;
         const height =
-          value === null ? 4 : 10 + ((value - min) / span) * 34;
+          value === null ? 4 : 10 + ((max - value) / span) * 34;
         return (
           <div key={day.index} className="flex flex-1 flex-col items-center gap-1">
             <div
@@ -130,7 +141,9 @@ function WeekLine({ days }: { days: WeekDay[] }) {
               title={
                 value === null
                   ? `${day.shortDay} ${day.date} — kein Fenster`
-                  : `${day.shortDay} ${day.date} — erwartet ${deTrimmed(value, 3)} €/L`
+                  : `${day.shortDay} ${day.date} — erwartet ${deTrimmed(value, 3)} €/L${
+                      value === min ? " (günstigster Tag der Woche)" : ""
+                    }`
               }
             />
             <span className="text-[9px] font-semibold text-slate-500">
@@ -373,9 +386,9 @@ export function WocheView(props: WocheViewProps) {
               })}
             </div>
             <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-              ★ = Sicherheit des Fensters (Prozent im Detail, Schwellen in
-              des Labors). Leere Tage: kein Fenster mit Vorsprung — keine
-              Erfindung. Tage 5–7 sind „noch unsicher“ (entsättigt).
+              ★ = Sicherheit des Fensters (Prozent im Detail, Schwellen im
+              Labor). Leere Tage: kein Fenster mit Vorsprung — keine
+              Erfindung. Tage 5–7 sind „noch unsicher“.
             </p>
           </>
         )}
@@ -435,8 +448,8 @@ export function WocheView(props: WocheViewProps) {
             </p>
             <WeekLine days={days} />
             <p className="mt-2 text-[10px] text-slate-500">
-              Balken = günstigster erwarteter Preis des Tages (höher =
-              günstiger) · grau = kein Fenster.
+              Balken = günstigster erwarteter Preis des Tages: höher =
+              günstiger · grau = kein Fenster.
             </p>
           </div>
           <div className={`${panel} mt-4 overflow-hidden`}>
@@ -467,7 +480,7 @@ export function WocheView(props: WocheViewProps) {
                       }`}
                     >
                       {entry.savingEur != null && entry.savingEur > 0
-                        ? `−${deTrimmed(entry.savingEur)} €`
+                        ? `${euro(entry.savingEur)} € günstiger`
                         : "—"}
                     </span>
                   </span>

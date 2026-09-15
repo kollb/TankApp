@@ -1,6 +1,6 @@
 import React, { useId } from "react";
 // C9: Zahlenformate kommen aus einem Satz — Achsen/Tooltips sind keine Ausnahme.
-import { euro } from "../data";
+import { countLabel, euro, percentLabel } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -374,7 +374,7 @@ export function CalibChart({
         versprochen: Wette in %
       </text>
       <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10.5} fill="#64748b">
-        eingetroffen: Treffer in %
+        eingetroffen in %
       </text>
 
       {/* Backtest Punkte */}
@@ -383,7 +383,7 @@ export function CalibChart({
         return (
           <g key={i}>
             <circle cx={X(p.p)} cy={Y(p.hit)} r={3.5 + (p.n / maxN) * 5} fill={color} opacity={0.85} />
-            <title>{`P = ${(p.p * 100).toFixed(0)} % · realisiert ${(p.hit * 100).toFixed(0)} % · n = ${p.n} · ${p.cls === 0 ? "Werktag" : "WE/Feiertag"}`}</title>
+            <title>{`P = ${percentLabel(p.p * 100, 0)} · realisiert ${percentLabel(p.hit * 100, 0)} · n = ${countLabel(p.n)} · ${p.cls === 0 ? "Werktag" : "Wochenende/Feiertag"}`}</title>
           </g>
         );
       })}
@@ -392,7 +392,7 @@ export function CalibChart({
       {livePoints.map((p, i) => (
         <g key={`live-${i}`}>
           <circle cx={X(p.p)} cy={Y(p.hit)} r={5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} opacity={0.95} />
-          <title>{`Live · P = ${(p.p * 100).toFixed(0)} % · realisiert ${(p.hit * 100).toFixed(0)} % · n = ${p.n}`}</title>
+          <title>{`Live · P = ${percentLabel(p.p * 100, 0)} · realisiert ${percentLabel(p.hit * 100, 0)} · n = ${countLabel(p.n)}`}</title>
         </g>
       ))}
 

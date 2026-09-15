@@ -466,7 +466,7 @@ weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. ε ist ein **Was-wä
 die Produktion rechnet mit der kalibrierten Entscheidungstabelle (§4.1/§4.2),
 nicht mit dem Slider.
 
-### Regret (Mehrkosten zur perfekten Sicht)
+### Regret (Mehrkosten zum perfekten Timing)
 
 Regret = (Preis der Regel − Preis des **Orakels**) je Entscheidung,
 gemittelt (`web/src/data.ts`, `avg_regret_ct`). Das Orakel kennt den ganzen
@@ -474,7 +474,9 @@ Tagesverlauf vorher und tankt immer im günstigsten Fenster — es ist die
 unerreichbare Referenz. Daneben stehen Regel-€ (smart, was die Regel zahlte),
 Orakel-€ (best) und „immer warten“-€ (always): Geholtes Potenzial = Regel-€
 / Orakel-€. Regret misst also nicht, ob die Regel gut ist, sondern was sie
-gegen die perfekte Sicht liegen ließ.
+gegen das perfekte Timing liegen ließ. Die GUI nennt die Größe
+„Mehrkosten zum perfekten Timing“ (MICROCOPY §4) — ein Name, im Glossar wie
+im Labor.
 
 ## Ensemble aus zwei Modellkernen (A10, Konzept §3.2 M3)
 

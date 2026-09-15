@@ -204,14 +204,12 @@ describe("Ich → Fahrzeug (VehiclePanel)", () => {
     expect(html).toContain('id="detourMode"');
     // Aktiver Zeitwert (manuell) und die Auto-Erklärung (verbatim).
     expect(html).toContain("12 €/h");
-    expect(html).toContain(
-      "0 = Auto: 16 €/h im Peak (16:30–20:00), sonst 10 €/h.",
-    );
+    expect(html).toContain("0 = Auto: 10 €/h — gerade Nebenzeit.");
     // Zeitwert 0 = Automatik zeigt den auto-berechneten Wert.
     const auto = renderToStaticMarkup(
       <VehiclePanel {...vehicleProps({ timeValue: 0, timeValueUsed: 16 })} />,
     );
-    expect(auto).toContain("Auto (16 €/h offpeak)");
+    expect(auto).toContain("Auto (16 €/h · Nebenzeit)");
   });
 
   it("bietet Profile als Segment-Steuerung (+ Neu / verwalten)", () => {
@@ -322,7 +320,7 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
     expect(html).toContain("70 %");
     expect(html).toContain("0,50 €");
     // Read-only-Ausweis und Status.
-    expect(html).toContain("read-only · Quelle: /api/v1/stats/summary");
+    expect(html).toContain("schreibgeschützt");
     expect(html).toContain(
       "M7-Nachzug aus — die Engine rechnet mit den Startwerten.",
     );
@@ -344,7 +342,7 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
         })}
       />,
     );
-    expect(html).toContain("Noch keine Statistik geladen");
+    expect(html).toContain("Noch kein Engine-Lauf ausgewertet");
     expect(html).not.toContain("2,00 €");
   });
 
@@ -415,15 +413,15 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
 
   it("bietet beide Themen mit aria-pressed", () => {
     const dark = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
-    expect(dark).toContain("Dunkles Slate (Standard)");
-    expect(dark).toContain("Hell (Slate)");
+    expect(dark).toContain("Dunkel (Standard)");
+    expect(dark).toContain("Hell");
     // Im Theme-Block trägt der dunkle Button das aria-pressed.
     const darkGroup = dark.slice(
       dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
     );
     expect(
       darkGroup.indexOf('aria-pressed="true"') <
-        darkGroup.indexOf("Dunkles Slate"),
+        darkGroup.indexOf("Dunkel (Standard)"),
     ).toBe(true);
 
     const light = renderToStaticMarkup(

@@ -48,7 +48,7 @@ export function ApiExplorer({
           }),
         },
         {
-          label: `Heatmap Cheap-Prob (${heatmapWeeks} Wochen)`,
+          label: `Heatmap Günstig-Chance (${heatmapWeeks} Wochen)`,
           path: heatmapPath({
             city: activeCity,
             fuel,

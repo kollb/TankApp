@@ -719,7 +719,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         503,
                         "NAS offline — Schreibaktionen sind nur erreichbar,"
                         " wenn das NAS antwortet (der Fallback ist nur lesend)."
-                        " „🔄 NAS prüfen“ oben löst das direkt.",
+                        " Der Knopf „NAS prüfen“ oben löst das direkt.",
                     )
                 else:
                     self._error(405, "Methode wird hier nicht unterstützt.")
@@ -1265,7 +1265,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                                 f"~{saving_eur:.2f} € Ersparnis für {liters} L."
                                 if wait
                                 else "Kein deutlich günstigeres Fenster in den nächsten 24 h "
-                                "abzusehen — jetzt tanken ist okay."
+                                "abzusehen — jetzt tanken passt."
                             ),
                             "best_at": best["at"],
                             "expected_price": best["q50"],

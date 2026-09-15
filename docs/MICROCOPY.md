@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 15.09.2026 · App-Version **0.38.0** · gilt für `web/src/**`,
+> Stand: 15.09.2026 · App-Version **0.39.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -30,14 +30,25 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 |---|---|---|
 | Handlung zuerst, Begründung danach | „Jetzt tanken — 4 ct unter Tagesmedian.“ | „Der Tagesmedian liegt über dem aktuellen Preis, daher …“ |
 | Keine Sicherheit behaupten, die nicht gemessen ist | „Noch nicht kalibriert — bis dahin zählen nur aktuelle Preise.“ | „82 % sicher“ vor der Abnahme (Konzept §0.4) |
-| Kein Tadel an den Nutzer | „Tankmenge außerhalb 5–100 Liter.“ | „Ungültige Eingabe!“ |
-| Deutsch als Primärlabel, Fachwort im Tooltip | „Wahrscheinlichkeit für günstig“, `title="Cheap-Probability P(p ≤ Median)"` | „Cheap-Probability“ als sichtbares Label |
+| Kein Tadel an den Nutzer | „Getankte Liter außerhalb 5–100 L.“ | „Ungültige Eingabe!“ |
+| Deutsch als Primärlabel, Fachwort im Tooltip | „Günstig-Chance“, `title="Fachwort: Cheap-Probability"` | „Cheap-Probability“ als sichtbares Label |
 | Kein Ausrufezeichen, kein Emoji im Fließtext | „Collector meldet seit 2 Stunden nichts.“ | „Achtung!! ⚠️“ |
+| Kein `✓`/`!`-Präfix — der Ton steht im Icon und in der Farbe | Banner rose mit Warnzeichen: „Speichern fehlgeschlagen: …“ | grünes Häkchen vor „! Speichern fehlgeschlagen“ |
 | Zustände benennen, nicht bewerten | „Noch kein Lauf“ | „Leider noch nichts da“ |
-| Sie/Du wird vermieden — die App spricht über die Sache, nicht über den Nutzer | „Beleg gespeichert.“ | „Du hast deinen Beleg gespeichert.“ |
+| Possessiv ist erlaubt, direkte Anrede und Imperativ nicht | „Beleg in deiner Bilanz verbucht.“ · „Wer vor 18:00 Uhr tanken muss, …“ | „Du hast deinen Beleg gespeichert.“ · „Fahr nur hin, wenn …“ |
+| Fragen nur im Fällig-Prompt | „Gerade getankt?“ (Fenster vorbei) | „Hast du getankt?“ als Dauertext |
 
-Anrede in **Hinweistexten der Doku** darf „Sie“ verwenden; in der GUI bleibt es
-bei sachlichen Aussagesätzen.
+**Anrede (T10):** „Sie“/„Du“ als Anrede bleibt draußen, der Possessiv
+(„deine Bilanz“, „dein Profil“) ist die etablierte Form und bleibt. Fragen
+stehen nur dort, wo die App auf ein Ereignis antwortet (Fällig-Prompt „Fenster
+vorbei“, Erfassungs-Formular) — sonst Aussagesatz. Imperative („Vergleiche …“,
+„fahr nur hin …“) werden zu Aussagen über die Sache. Anrede in
+**Hinweistexten der Doku** darf „Sie“ verwenden.
+
+**Fehler sind keine Erfolge (T2):** Jede Rückmeldung einer Aktion trägt ihren
+Ton — `ok` (grün, Häkchen, `role="status"`), `warn` (amber, „lokal vorgemerkt“,
+`role="status"`), `error` (rose, Warnzeichen, `role="alert"`). Der Baustein ist
+`components/FeedbackBanner.tsx`; Einschübe schreibt die App durchgehend mit `—`.
 
 ## 2. Anführungszeichen und Sonderzeichen
 
@@ -47,7 +58,8 @@ bei sachlichen Aussagesätzen.
 | `'…'` | nie in Nutzertext (nur JS-Stringliterale im Code) | — |
 | `"…"` | nie in Nutzertext (nur JSX-Attributsyntax) | — |
 | `—` (Geviertstrich, mit Leerzeichen) | Einschub, Gegenüberstellung | „Warten — 3 ct Ersparnis erwartet“ |
-| `–` (Halbgeviertstrich) | Bereiche ohne Wortpaar | „18–20 Uhr“, „5–100 Liter“ |
+| `–` (Halbgeviertstrich) | Bereiche ohne Wortpaar | „18–20 Uhr“, „5–100 L“ |
+| `×` | Malzeichen | „1,015 × E10-Preis“ — `·` bleibt Trenner |
 | `…` (ein Zeichen) | Auslassung, Ladezustand | „Läuft …“ |
 | `·` | Trenner zwischen gleichrangigen Angaben | „12.345 Preise · 18 Stationen“ |
 | `≤ ≥ ≈ ±` | mit geschütztem Sinn, immer mit Leerzeichen | „≤ 5 Sekunden“ |
@@ -71,6 +83,13 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |
 
+**Zwei Größen, zwei Spannen (T3):** *Tankmenge* ist die Rechengröße aus
+Profil und „Jetzt“ — **10–80 L**, ganze Liter, Schritt 1. *Getankte Liter* ist
+der gebuchte Vorgang im Beleg — **5–100 L**, Schritt 0,5
+(`FILL_LIMITS.liters`, Server-Validierung). Beide tragen die Einheit `L`,
+niemals ausgeschrieben „Liter“ neben einer Zahl. Wird eine Eingabe gerundet,
+zeigt das Feld den gerundeten Wert zurück, statt still zu runden.
+
 **Regel ct/L vs. €/L (C9):** *Niveaus* stehen in €/L, *Unterschiede* in ct/L.
 Ein Panel mischt beides nur, wenn es Niveau **und** Differenz zeigt — dann
 steht das Niveau zuerst. Beispiel: „1,749 €/L · 4,2 ct/L unter Tagesmedian“.
@@ -89,7 +108,21 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 | die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
 | die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
 | eine Tankstelle | **Station** |
-| ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“) |
+| ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“, nicht „Füllung“, nicht „Tankbeleg“ — auch nicht als Überschrift) |
+| die Rechengröße für Tankvolumen | **Tankmenge** (10–80 L) — im Beleg heißt dieselbe Spalte **Liter** und meint die getankten Liter (5–100 L) |
+| der Preis-Vorteil | **Ersparnis** — Betrag **ohne** Vorzeichen, die Richtung steht im Wort: „1,60 € günstiger“, „0,80 € teurer“ |
+| das Alter eines Standes | über `ageLabel`/`ageWord`: „vor 12 Minuten“ — nie „vor 12 Min.“ |
+| δ̂ | **Preis-Abstand** (nicht „Hauspreis-Abstand“) |
+| Regret | **Mehrkosten zum perfekten Timing** (nicht „Entscheidungsverlust“) |
+| Orakel-Bestwert | **Perfektes Timing (Orakel)** (nicht „Perfekte Sicht“) |
+| Heatmap-Modus Anteil | **Günstig-Chance** (Fachwort „Cheap-Probability“ nur im Tooltip) |
+| Tageszeit des Zeitwerts | **Stoßzeit** / **Nebenzeit** (nicht „Peak“/„offpeak“) |
+| Gesamtfarbe des Systems | **Alles ok** · **Hinweise** · **Störungen** · **Unbekannt** — nicht „OK“, nicht „System in Ordnung“ |
+| Kennzahlen des Engine-Laufs | **Kennzahlen der Engine** / **Schwellen der Engine** — „Statistik“ ist ausgemustert |
+| der Nachrechnungs-Lauf | **Backtest** — „Prüfstand“ ist ausgemustert (der Name lebt nur noch als Zitat des Archiv-Dokuments weiter) |
+| Rückweg aus dem Labor | Knopf **Zurück**; die Herkunft steht in der Zeile `Zurück zu: <Bereich> · <Anlass>` — nie „Zurück zum Alltag“ |
+| Nachschlage-Seite | **Glossar** — ein Name in Navigation, Titel und Fußzeile |
+| Tankstand zurücknehmen | **Keine Angabe** — in „Jetzt“ wie in „Woche“ |
 | Prognoselauf auf dem NAS | **Modell-Update** |
 | Preisdaten-Abholung auf dem Pi | **Collector** |
 | Zeitfenster mit günstigem Preis | **Fenster** |
@@ -161,7 +194,8 @@ Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
 | Sprungleiste | `<Nummer> · <Kurzform>` (z. B. `3 · Warum eine Station meist günstig ist`), der Spielplatz ohne Nummer |
 | Herkunft des Sprungs | `Zurück zu: <Bereich> · <Anlass>` (z. B. `Zurück zu: Jetzt · Warum?`) + Knopf `Zurück`; ohne Herkunft keine Zeile |
 | Weg in die Tiefe (Ebene 2) | `Im Labor vertiefen: <Kurzform>` — das Ziel ist der Abschnitt, der die Zahl beweist |
-| Ergebnis-Worte des Tagebuchs | `richtig` · `daneben` · `unentschieden` · `nicht bewertbar` — nie „Treffer“, nie „Fehler“ |
+| Ergebnis-Worte des Tagebuchs | `richtig` · `daneben` · `unentschieden` · `nicht bewertbar` — nie „Treffer“, nie „Fehler“, nie „Gleichstand“. Die Filter-Chips des Tagebuchs kommen aus `DIARY_FILTERS` (`lab.ts`) und tragen dieselben Worte; „Trefferquote“ bleibt als Name der Maßzahl erlaubt |
+| Grau-Zustand der Ampel | `Keine klare Empfehlung` — ein Label, im Tagebuch wie in „Jetzt“ |
 | Void-Grund | `Kein Vergleichspreis — Grund: <Klartext>.` (Codes aus `app/feedback.py`, z. B. `keine offene Meldung im Fenster`) |
 | Leeres Tagebuch | `no_settlements`: „Noch kein Eintrag abgerechnet: … Worker „settlement““ · `no_advice_history`: „Noch keine Empfehlung abgegeben — das Tagebuch beginnt mit der ersten Empfehlung aus „Jetzt“.“ |
 | Trefferquote | `Versprochen waren die genannten Sicherheiten — eingetroffen sind <x> % davon.`; ohne Fälle der Satz mit `Noch keine abgeschlossene Empfehlung …` |
@@ -211,16 +245,29 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
   keine „ca.“-Werte ohne Rechnung dahinter (Ehrlichkeits-Regel, Konzept §0.4).
 - **Pfade, Tokens, URLs, Koordinaten.** Auch nicht in Alarm-Pushes: die
   ntfy-Nachricht trägt nur Alarm-Code, deutschen Klartext und App-Version.
+  **Einzige Ausnahme (T9):** der Bereich „System“ in seinen Einrichtungs- und
+  Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
+  (`polling.json`, `/api/v1/health`). Überall sonst gehören sie in einen
+  `title`-Tooltip oder bleiben weg. Ein Vorgang wird **einmal** beschrieben:
+  Der Volltext steht in „System“, `messages` verweist dorthin. Vergleiche mit
+  früheren GUI-Ständen („wie in der alten System-Ansicht“) gehören in die
+  Doku, nie in den Text.
 - **Interne Ausnahmen.** Serverfehler werden über `app/errors.py` bereinigt,
   bevor sie irgendwo erscheinen.
 - **Englische Hook-Zeilen** als Marketing. Eine deutsche Kurzzeile pro Tab
-  reicht („Nachvollziehen statt blind vertrauen.“).
+  reicht („Nachvollziehen statt blind vertrauen.“). Registriert sind:
+  „Dein Tank-Kompass. Ohne Rätselraten.“ (Kopfzeile) und „Keine Demo-Preise.
+  Keine erfundene Sicherheit.“ (Fußzeile). Ein englisches Wort ohne deutsche
+  Erklärung — etwa ein `LIVE`-Badge — steht nirgends.
 
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
   neue `toFixed`-Anzeigen), `microcopy.test.ts` (paarige `„…“`, keine
-  HTML-Entities für Anführungszeichen in Nutzertexten), `data-age.test.ts`
+  HTML-Entities, **keine ausgemusterten Wörter und Synonyme** aus §4, die
+  §4c-Ergebnis-Worte gegen `lab.ts`, keine Ausrufezeichen und keine
+  `✓`/`!`-Präfixe), `components/FeedbackBanner.test.tsx` (Ton der
+  Rückmeldung), `data-age.test.ts`
   (Schwellen und Wortform der Datenstand-Sätze) sowie
   `components/states.test.tsx` (Skeleton, Banner, Tabellen-Fehler gegen echtes
   Markup). **Neue Komponente mit Nutzertext? In die Dateilisten der beiden

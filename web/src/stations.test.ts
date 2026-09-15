@@ -253,7 +253,7 @@ describe("stationContextLines", () => {
     // Referenz selbst: kein Abstand zu sich selbst.
     expect(linesB.some((line) => line.includes("der Referenz"))).toBe(false);
     const linesA = stationContextLines(a, refB);
-    expect(linesA[0]).toContain("2.-günstigste");
+    expect(linesA[0]).toContain("die Zweitgünstigste");
     expect(linesA[1]).toContain("7,0 ct/L über der Referenz (B-Station)");
     // Wortregel 0.36.0: Im Alltag heißt der Heimat-Startpunkt „Zuhause“.
     expect(linesA[2]).toContain("2,5 km ab Zuhause");
@@ -288,14 +288,23 @@ describe("compareStationsPair", () => {
     const alt = serverAlt({ station_id: "b", name: "B-Station", price: 1.689 });
     const result = compareStationsPair(A, B, 1.759, 1.689, 40, alt);
     expect(result.netEur).toBe(2.3);
-    expect(result.sentence).toContain("2,30 € netto pro Füllung");
+    expect(result.sentence).toContain("2,30 € netto pro Beleg");
     expect(result.sentence).toContain("Der Umweg rechnet sich.");
   });
 
   it("fehlender Preis verhindert den Vergleich — ehrlich, nicht mit 0", () => {
     const result = compareStationsPair(A, C, 1.759, null, 40, null);
     expect(result.deltaCt).toBeNull();
-    expect(result.sentence).toContain("Noch kein frischer Preis");
+    // T4: Der Satz nennt die Seite, die wirklich leer ist — nicht „beide“.
+    expect(result.sentence).toContain(`${C.name} hat keinen frischen Preis`);
+    expect(result.sentence).not.toContain("auf beiden Seiten");
+  });
+
+  it("fehlen beide Preise, sagt der Satz das auch (T4)", () => {
+    const result = compareStationsPair(A, C, null, null, 40, null);
+    expect(result.sentence).toContain(
+      "Noch kein frischer Preis auf beiden Seiten",
+    );
   });
 
   it("aufeinanderliegende Preise sind Gleichauf", () => {

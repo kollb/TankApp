@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 15.09.2026 · App-Version **0.38.0**
+> Stand: 15.09.2026 · App-Version **0.39.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -36,12 +36,20 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.38.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.39.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
+| [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [API.md](API.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [BETRIEB.md](BETRIEB.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [QUALITAET.md](QUALITAET.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
+| [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 ist ein Text-Release (T1–T13, [MICROCOPY.md](MICROCOPY.md)) — Rechnungen, Endpunkte und Betrieb bleiben unberührt |
 | [RP2.md](RP2.md) | 0.37.2 | Fallback-GUI und Pi-Proxy — von den Änderungen 0.38.0 nicht betroffen |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |

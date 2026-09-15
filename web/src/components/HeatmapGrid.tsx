@@ -286,13 +286,16 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           ) : null}
         </p>
       ) : null}
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+      <p
+        className="mt-3 text-[11px] leading-relaxed text-slate-500"
+        title={isProb ? "Fachwort: Cheap-Probability" : undefined}
+      >
         {isProb
           ? byHour
-            ? "Cheap-Probability: Anteil der Preise, die günstiger waren als der Median derselben Stunde über alle Wochentage. "
+            ? "Günstig-Chance: Anteil der Preise, die günstiger waren als der Median derselben Stunde über alle Wochentage. "
             : heatmap.station_id
-              ? "Cheap-Probability: Anteil der Preise dieser Station, die unter dem Median aller Stationen derselben Zelle lagen. "
-              : "Cheap-Probability: Anteil der Preise, die günstiger als der Gesamtmedian des Zeitraums waren — dabei dominiert der Tagesgang die Farben, Wochentage sind dann nur bedingt vergleichbar. "
+              ? "Günstig-Chance: Anteil der Preise dieser Station, die unter dem Median aller Stationen derselben Zelle lagen. "
+              : "Günstig-Chance: Anteil der Preise, die günstiger als der Gesamtmedian des Zeitraums waren — dabei dominiert der Tagesgang die Farben, Wochentage sind dann nur bedingt vergleichbar. "
           : "Niveau: mittlerer Literpreis je Wochentag und Stunde. "}
         Die Heatmap zeigt die <span className="text-slate-400">Vergangenheit</span>{" "}
         (letzte {heatmap.weeks} Wochen), keine Prognose für die kommende Woche.

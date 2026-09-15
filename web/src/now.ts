@@ -560,12 +560,12 @@ export function nowFreshness(input: {
   parts.push(
     input.pricesAt
       ? `Preise ${ageLabel(input.pricesAt, now)}`
-      : "Preise kein Stand",
+      : "Preise — kein Stand",
   );
   parts.push(
     input.forecastAt
       ? `Prognose ${ageLabel(input.forecastAt, now)}`
-      : "Prognose kein Stand",
+      : "Prognose — kein Stand",
   );
   return { text: parts.join(" · "), tone };
 }
@@ -695,9 +695,9 @@ export function assumptionHint(input: NowInput): string | null {
     //    MUSS — der Server zählt ein Fenster nur, wenn es vor latest_by
     //    ENDET.
     return (
-      `Kippt zu „Jetzt“, wenn du vor ${hourOnlyLabel(
+      `Kippt zu „Jetzt“, wenn das Tanken vor ${hourOnlyLabel(
         p.recommended_window.end,
-      )} tanken musst.`
+      )} fällig wird.`
     );
   }
 
@@ -881,7 +881,7 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
 
   const coverage = open.length
     ? `${countLabel(open.length)} von ${countLabel(cells.length)} Stunden mit offener Meldung — leere Stunden werden nicht geschätzt.`
-    : "Keine offene Meldung in 06–24 Uhr — das Polling-Fenster läuft von 06 bis 24 Uhr.";
+    : "Keine offene Meldung — das Polling-Fenster ist 06–24 Uhr.";
 
   return {
     best,

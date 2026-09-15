@@ -208,10 +208,12 @@ describe("Labor: Erklär-Treppe Ebene 2 (§7)", () => {
     expect(host.querySelector("#labor-lernen-body")).toBeNull();
   });
 
-  it("bleibt ohne Sprung bei der Übersicht und bietet den Weg zurück in den Alltag", () => {
+  it("bleibt ohne Sprung bei der Übersicht und bietet den Weg zurück", () => {
     const host = mount();
     const text = host.textContent ?? "";
-    expect(text).toContain("Zurück zum Alltag");
+    expect(text).toContain("Zurück");
+    // T12: ohne Herkunft keine „Zurück zu:“-Zeile — der Knopf genügt.
+    expect(text).not.toContain("Zurück zu:");
     // Nur Abschnitt 1 ist voreingestellt offen — alle anderen sind zu.
     for (const id of ["sicherheit", "stationen", "lernen", "glossar", "spielplatz"]) {
       expect(host.querySelector(`#labor-${id}-body`)).toBeNull();
