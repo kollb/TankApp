@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:demo": "playwright test --config playwright.demo.config.ts"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.22",

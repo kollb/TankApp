@@ -145,6 +145,42 @@ def test_query_honoriert_stationsfilter_des_flux_texts(tmp_path):
     )
 
 
+def test_e2e_demo_suite_ist_keine_mock_suite():
+    """Die unmocked E2E-Suite bleibt unmocked und bleibt verdrahtet.
+
+    LUECKEN „Bewusst offen“: Die Alltagssuite mockt jeden API-Pfad und bewies
+    deshalb nur Rendering — B1/B3/der defekte Demo-Stack fielen erst im
+    Sanity-Check auf. Diese Zusage ist ein Ratchet: eigene Konfiguration
+    gegen den Demo-Stack, kein ``page.route`` in der Spec, eigener CI-Schritt
+    und ein Skript, das beides startet.
+    """
+    spec = (ROOT / "web/e2e/demo.spec.ts").read_text(encoding="utf-8")
+    # Nur der Aufruf zählt — der Kommentar *nennt* ``page.route`` als das, was
+    # hier bewusst fehlt.
+    assert "page.route(" not in spec, "die unmocked Suite darf keine Routen mocken"
+    assert "/api/v1/overview" in spec
+    assert "Heute im Blick" in spec, "die Zusage aus LUECKEN fehlt (overview → Zellen)"
+    assert "Europe/Berlin" in spec, "Ortszeit-Prüfung fehlt (B3-Klasse)"
+
+    config = (ROOT / "web/playwright.demo.config.ts").read_text(encoding="utf-8")
+    assert "ops/quality/demo_server.py" in config
+    assert "1357" in config, "eigener Port — sonst kollidiert sie mit der Alltagssuite"
+    assert "--rebuild" in config, "stale Demo-Daten würden die Zellen leeren"
+
+    base = (ROOT / "web/playwright.config.ts").read_text(encoding="utf-8")
+    assert "demo.spec.ts" in base and "testIgnore" in base, (
+        "die Alltagssuite (Port 1355, ohne Demo-Daten) darf die Spec nicht mitziehen"
+    )
+
+    package = json.loads((ROOT / "web/package.json").read_text(encoding="utf-8"))
+    assert package["scripts"]["test:e2e:demo"].endswith("playwright.demo.config.ts")
+
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+    assert "test:e2e:demo" in workflow, "die Suite läuft nicht im CI"
+    # Der Demo-Stack braucht die Engine-Abhängigkeiten (echter Fit).
+    assert "requirements-dev.txt" in workflow
+
+
 def test_lastpfad_skript_bennt_seine_budgets():
     script = (ROOT / "web/load/overview.mjs").read_text(encoding="utf-8")
     # Die Budgets stehen im Skript und sind per Umgebung überschreibbar — ein
