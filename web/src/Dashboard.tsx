@@ -1,163 +1,39 @@
 // Layout/visual foundation: sample/good gui/TankAppDashboard + DecisionCockpit.
 // Workshop composition and charts: sample/good statistic gui/DecisionLab.
 // No demo engine, seeds, simulated decisions or PostgreSQL are imported.
+//
+// U8: Die Root ist Zusammensetzung. Der geteilte Zustand (Preise, Polls,
+// Profile, Navigation, Offline-Queue, Feedback) lebt im OverviewContext
+// (state/overview.tsx); bereichsspezifischer Zustand in den Views (Labor:
+// Spielplatz + Modell, System: Log-Terminal). Diese Datei montiert Header,
+// Bereichs-Navigation, globale Banner und die Bereich-Umschaltung.
+import { lazy, Suspense } from "react";
 import {
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  Fuel as FuelIcon,
-  Car,
-  SquarePen,
-  RefreshCw,
-  ShieldCheck,
   AlertCircle,
-  MapPin,
+  CloudOff,
+  Fuel as FuelIcon,
+  ShieldCheck,
   Wifi,
   WifiOff,
-  CloudOff,
-  Share2,
 } from "lucide-react";
-// D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
-// jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
-import { LoadError } from "./components/LoadError";
-// U3: Bereichs-Navigation als Geräte-Raster — mobil Bottom-Nav, desktop
-// Seitenleiste (UI-NEUENTWURF §13); das Glossar ist kein Hauptbereich mehr.
 import { AppNav } from "./components/AppNav";
-// A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog + Umschalter im Header.
+import { AppHeader } from "./components/AppHeader";
+// A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog.
 import { ProfileManager } from "./components/ProfileManager";
-// C6 (Rest): Skeletons, Datenstand-Banner und Fehler in Tabellenzellen.
-import { CellError } from "./components/CellError";
+// C6 (Rest): Datenstand-Banner.
 import { DataAgeBanner } from "./components/DataAge";
-import {
-  FeedbackBanner,
-  type ActionFeedback,
-  type FeedbackTone,
-} from "./components/FeedbackBanner";
+import { FeedbackBanner } from "./components/FeedbackBanner";
 import { InstallHint } from "./components/InstallHint";
 import { UpdateBanner } from "./components/UpdateBanner";
-import {
-  flushQueue,
-  queueOldestAgeMs,
-  queueStatusText,
-  readQueue,
-  type QueuedWrite,
-} from "./offline-queue";
-import { DataReachNote } from "./components/DataReach";
-import {
-  SkeletonChart,
-  SkeletonPanel,
-  SkeletonRows,
-} from "./components/Skeleton";
-// D1: geteilte UI-Bausteine (Panel-Klasse, Empty, Badge, Metric).
-import { Badge, Empty, Metric, panel } from "./components/ui";
-import { PrecisionSlider } from "./components/PrecisionSlider";
-import { forecastStamp, type NowTarget } from "./now";
-import {
-  applyAppTheme,
-  autoTimeTicks,
-  autoTimeValue,
-  berlinHour,
-  centPerLiter,
-  checkFillDraft,
-  clockLabel,
-  commaToDot,
-  currentPrice,
-  deNumber,
-  deTrimmed,
-  detourVerdict,
-  epochLabel,
-  euro,
-  euroPerLiter,
-  fillLimitHint,
-  fillPositionNote,
-  formatHour,
-  germanDecimalToNumber,
-  heatmapPath,
-  HEATMAP_DEFAULT_BASIS,
-  HEATMAP_DEFAULT_WEEKS,
-  HEATMAP_WEEKS,
-  historyWindowMs,
-  isAppTheme,
-  isHeatmapBasis,
-  isHeatmapWeeks,
-  PINNED_MAX,
-  profileFields,
-  profileFieldsDiffer,
-  profileErrorText,
-  profileRequest,
-  readShareParams,
-  shareQuery,
-  livePhaseHint,
-  M7_BRIER_THRESHOLD,
-  M7_MIN_RECOMMENDATIONS,
-  m7GateLine,
-  percentLabel,
-  notifyLastLine,
-  notifyStatusLine,
-  notifyTone,
-  problem,
-  segments,
-  sliderCommit,
-  timeLabel,
-  togglePinnedStation,
-  transitionRuleLine,
-  triggerSkipLabel,
-  useResource,
-  usePreference,
-  postIntent,
-  postQueued,
-  postJobRun,
-  jobRunMessage,
-  postFill,
-  voidFill,
-  rowOutcome,
-  scoreRows,
-  type AppTheme,
-  type DetourMode,
-  type Fill,
-  type Fills,
-  type FillsSummary,
-  type Fuel,
-  type HeatmapBasis,
-  type ProfileFields,
-  type Profiles,
-  type Station,
-  type Stations,
-  type Health,
-  type Forecast,
-  type Point,
-  type Job,
-  type Heatmap,
-  type Selection,
-  type DataReach,
-  type CollectorStatus,
-  type DecideResult,
-  type StatsSummary,
-  type JobLog,
-  type JobRunNote,
-  type Overview,
-  JOB_LABELS,
-  type AdviceDiary,
-} from "./data";
-// D1: Views-Schnitt — die vier Tabs sind eigene Dateien; der gemeinsame
-// Zustand bleibt hier und wandert per typisierten Props in die Views.
-// (JobCard ist ein Baustein des System-Views, vgl. views/System.tsx)
-// GUI-Neuentwurf (Phase 1+2): die Aufgaben-Bereiche sind eigene Views.
-// „Jetzt“ (S1), „Stationen“ (S2), „Woche“ (S3), „Ich“ (S5a) — der alte
-// Alltagstab und der Einstellungen-Tab sind ersetzt, ihre Reste (Tanken,
-// Belege, Defaults) wohnen jetzt dort, wo sie wirken.
+import { SkeletonPanel } from "./components/Skeleton";
+import { clockLabel, JOB_LABELS, problem } from "./data";
+import { OverviewProvider, useOverview } from "./state/overview";
+
 // U7: Code-Splitting pro Bereich — jede View ist ein eigener Chunk und
 // lädt erst, wenn ihr Tab geöffnet wird. So zahlt der Einstieg („Jetzt“)
-// nicht mehr das komplette Labor (1 643 Zeilen, 15 Chart-Aufrufe), die
-// Karten-Bibliothek oder die System-Ansicht mit; der einzelne 540-kB-Chunk
-// wird in handliche Stücke zerlegt. `fillPositionNote` ist nach `data.ts`
-// gewandert, damit die Root es ohne statischen Ich-Import bekommt.
+// nicht mehr das komplette Labor, die Karten-Bibliothek oder die
+// System-Ansicht mit; der einzelne große Chunk wird in handliche Stücke
+// zerlegt.
 const JetztView = lazy(() =>
   import("./views/Jetzt").then((m) => ({ default: m.JetztView })),
 );
@@ -179,1550 +55,129 @@ const SystemView = lazy(() =>
 const GlossaryView = lazy(() =>
   import("./views/Glossary").then((m) => ({ default: m.GlossaryView })),
 );
-import type { NowAssumptions } from "./views/Jetzt";
-import { buildStripCells } from "./strip";
-import { type LabSectionId } from "./lab";
-import {
-  tabFromUrlId,
-  tabToUrlId,
-  sectionFromUrlId,
-  queryWithTab,
-  type TabId,
-} from "./routing";
 
 export function Dashboard() {
-  // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
-  // geteilte Ansicht (?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…)
-  // überschreibt damit den localStorage des empfangenden Geräts; ohne das
-  // würde sie falsch wiederhergestellt, seit heatmapWeeks/heatmapBasis echte
-  // Preferences sind. Ungültige Parameter werden in readShareParams
-  // weggelassen, die GUI fällt auf ihre Defaults zurück.
-  const share = useMemo(() => readShareParams(window.location.search), []);
-  const [fuel, setFuel] = usePreference<Fuel>(
-    "fuel",
-    "e10",
-    (value) => value === "e10" || value === "e5" || value === "diesel",
-    share.fuel,
+  return (
+    <OverviewProvider>
+      <DashboardShell />
+    </OverviewProvider>
   );
-  const [city, setCity] = usePreference(
-    "city",
-    "",
-    (value) => typeof value === "string",
-    share.city,
-  );
-  const [selectedId, setSelectedId] = useState(share.stationId ?? "");
-  // GUI-Neuentwurf (Phase 3): die sechs Aufgaben-Bereiche.
-  // „Jetzt“ ist der Einstieg; „Labor“ (eigene Welt, violett) und „Glossar“
-  // bleiben Nebenwege, „System“ bleibt Haupttab. Die alte Werkstatt ist
-  // ersetzt, nicht umbenannt: siehe views/Labor.tsx.
-  // U4: Der Bereich steht in der URL (`?tab=…`) — beim Start gelesen, beim
-  // Wechsel per pushState geschrieben, Browser-Zurück hört auf popstate.
-  const [tab, setTab] = useState<TabId>(() => tabFromUrlId(share.tab));
-  // Erklär-Treppe Ebene 1 → 2 (§7): Die Root merkt sich nur noch den
-  // Labor-Abschnitt, in den ein Ebene-2-Sprung führt. Eine „Zurück zu:“-
-  // Herkunft braucht es seit U5 nicht mehr — Ebene 1 öffnet ein Sheet am
-  // Ort, und der Rückweg ist das Browser-Zurück (U4-Routing).
-  const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(() =>
-    share.tab === "labor" ? sectionFromUrlId(share.section) : null,
-  );
-  // U4: Bereich wechseln heißt auch URL wechseln — pushState, damit der
-  // Browser-Zurück-Knopf die Ansichten in umgekehrter Reihenfolge abfährt.
-  // Die übrige Query (Stadt, Kraftstoff, Station …) bleibt erhalten.
-  const gotoTab = (next: TabId, section: LabSectionId | null = laborFocus) => {
-    setTab(next);
-    try {
-      const query = queryWithTab(window.location.search, next, section);
-      const current = window.location.search.replace(/^\?/, "");
-      if (query !== current) {
-        window.history.pushState(
-          null,
-          "",
-          `${window.location.pathname}${query ? `?${query}` : ""}`,
-        );
-      }
-    } catch {
-      /* History darf scheitern (Sandbox) — die Ansicht wechselt trotzdem. */
-    }
-  };
-  // Einstieg in „Ich“, wenn ein anderer Bereich dort hinverweist (z. B.
-  // „Beleg manuell buchen“ im Due-Prompt → Belege). Sonst „Fahrzeug“.
-  const [ichSection, setIchSection] = useState<
-    "vehicle" | "fills" | "balance" | "settings"
-  >("vehicle");
-  // GUI-Neuentwurf §5.1/§5.2: Was-wäre-wenn ist Ansichtszustand, kein
-  // Setting — die Karte ändert die Annahmen live (dieselbe Anfrage, andere
-  // Parameter), das Profil bleibt unangetastet. null = Profilwert.
-  const [assumptions, setAssumptions] = useState<NowAssumptions>({
-    liters: null,
-    latestBy: null,
-    timeValue: null,
-  });
-  // GUI-Neuentwurf §5.2: „Suche stations-/ortsübergreifend aus jeder
-  // Ansicht (⌘K)“ — die Root nimmt den Tastenabdruck, die Stationen-View
-  // bekommt den Fokus per Signal.
-  const [searchFocusSignal, setSearchFocusSignal] = useState(0);
-  // A-gegen-B (Stationen): B-Station als Root-Zustand, weil der
-  // Server-Check (route/evaluate) daraus seinen Poll ableitet.
-  const [compareStationId, setCompareStationId] = useState("");
-  const [liters, setLiters] = usePreference(
-    "liters",
-    40,
-    (value) =>
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 10 &&
-      value <= 80,
-    share.liters,
-  );
-  const [consumption, setConsumption] = usePreference(
-    "consumption",
-    7,
-    (value) =>
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 4 &&
-      value <= 15,
-  );
-  const [timeValue, setTimeValue] = usePreference(
-    "timeValue",
-    12,
-    (value) =>
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 0 &&
-      value <= 30,
-  );
-  const [detourMode, setDetourMode] = usePreference<DetourMode>(
-    "detourMode",
-    "onroute",
-    (value) => value === "onroute" || value === "dedicated",
-  );
-  const [speed, setSpeed] = usePreference(
-    "speed",
-    45,
-    (value) =>
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 25 &&
-      value <= 80,
-  );
-  const [spanHours, setSpanHours] = usePreference(
-    "spanHours",
-    24,
-    (value) => value === 24 || value === 72 || value === 168,
-  );
-  // Verlauf-Umschalter der Stationen-Ansicht (Vorbild: Stations-Labor).
-  // Eigene Präferenz, damit ein Zeitraum im Atlas den Labor-Zeitraum nicht
-  // umstellt — beide sind „letzte X“, aber verschiedene Fragen.
-  const [stationsSpanHours, setStationsSpanHours] = usePreference(
-    "stationsSpanHours",
-    168,
-    (value) => value === 24 || value === 72 || value === 168,
-  );
-  const [horizon, setHorizon] = usePreference(
-    "horizon",
-    0,
-    (value) => value === 0 || value === 3 || value === 7,
-  );
-  // C4: Dark/Light-Umschaltung (Einstellungen-Tab). Dunkel (Slate) ist der
-  // Default — die Design-Basis; die Wahl gilt gerätelokal. Der
-  // Bootstrap-Script in index.html wendet denselben Wert vor dem ersten
-  // Paint an, hier hält React meta und Klassen synchron.
-  const [theme, setTheme] = usePreference<AppTheme>(
-    "theme",
-    "dark",
-    isAppTheme,
-  );
-  useEffect(() => {
-    applyAppTheme(theme);
-  }, [theme]);
-  const [heatmapKind, setHeatmapKind] = usePreference<"level" | "probability">(
-    "heatmapKind",
-    "probability",
-    (v) => v === "level" || v === "probability",
-  );
-  // E5: Wochen sind wählbar (4/6/12); die Preference war bisher ein Sackgasse,
-  // weil kein Eingabeweg existierte. Saved Werte außerhalb der Auswahl (z. B.
-  // 2/8 aus früheren Ständen) fallen auf den Default zurück.
-  const [heatmapWeeks, setHeatmapWeeks] = usePreference<number>(
-    "heatmapWeeks",
-    HEATMAP_DEFAULT_WEEKS,
-    isHeatmapWeeks,
-    share.heatmapWeeks,
-  );
-  // B12: Vergleichs-Basis der Cheap-Probability ohne Station. Default
-  // „hour“ (Spalten-Basis) — nur die macht die Wochentage vergleichbar.
-  const [heatmapBasis, setHeatmapBasis] = usePreference<HeatmapBasis>(
-    "heatmapBasis",
-    HEATMAP_DEFAULT_BASIS,
-    isHeatmapBasis,
-    share.heatmapBasis,
-  );
-  // B4 Workshop State: ε Handlungsschwelle Slider
-  const [eps, setEps] = useState(1.0);
-  const [labDayIdx, setLabDayIdx] = useState(13);
+}
 
-  // Läuft ein NAS-Job, wird der Systemstatus dichter gepollt — ein
-  // 20-Minuten-Modelllauf soll seinen Fortschritt zeigen, nicht raten lassen.
-  const [healthInterval, setHealthInterval] = useState(60000);
-
-  // B4 Due-Prompt UI state
-  const [dueDismissed, setDueDismissed] = useState(false);
-  // Schnell-Erfassung „Tanken erfassen“: immer sichtbar, nicht nur im
-  // Due-Prompt — eigener Formular-State, damit beide Dialoge sich nicht
-  // gegenseitig die Eingaben überschreiben.
-  const [quickStationId, setQuickStationId] = useState("");
-  const [quickLitersStr, setQuickLitersStr] = useState("40");
-  const [quickPriceStr, setQuickPriceStr] = useState("");
-  // Eine langsame NAS machte die Buchungs-Buttons mehrere Sekunden
-  // unresponsiv — wiederholtes Klicken buchte doppelte Belege. Solange eine
-  // Anfrage läuft: Buttons gesperrt, Label „Wird verbucht …“.
-  const [fillSubmitting, setFillSubmitting] = useState(false);
-  const [voidBusy, setVoidBusy] = useState(false);
-  // Stornierte Belege bleiben im Ledger (CSV, Audit), sind in der Tabelle
-  // aber standardmäßig ausgeblendet — der Doppelklick-Ursprung.
-  const [showVoidedFills, setShowVoidedFills] = useState(false);
-  // T2: Jede Rückmeldung trägt ihren Ton — Fehler sehen nicht mehr aus wie
-  // Erfolge. Ein Timer, damit eine neue Meldung die alte sofort ablöst.
-  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(
-    null,
-  );
-  const feedbackTimer = useRef<number | null>(null);
-  // A3: Rückmeldung beim Stornieren eines Belegs (lokal im Verlauf).
-  const [voidNote, setVoidNote] = useState<string | null>(null);
-
-  const feedback = (tone: FeedbackTone, text: string, ms = 5000) => {
-    setActionFeedback({ tone, text });
-    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = window.setTimeout(() => setActionFeedback(null), ms);
-  };
-
-  // A6: Rückmeldung des „Ansicht teilen“-Knopfs (Kopfzeile).
-  const [shareNote, setShareNote] = useState<string | null>(null);
-  const shareNoteTimer = useRef<number | null>(null);
-  const [refresh, setRefresh] = useState(0);
-  const [now, setNow] = useState(performance.now());
-  const [browserOnline, setBrowserOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-  // B10: lokal vorgemerkte Belege/Vorsätze (§5.4) — sichtbar, nicht still.
-  const [queue, setQueue] = useState<QueuedWrite[]>(() => readQueue());
-  const [queueNote, setQueueNote] = useState<string | null>(null);
-
-  const flushPending = async () => {
-    const result = await flushQueue(postQueued);
-    setQueue(result.list);
-    if (result.rejected.length > 0) {
-      setQueueNote(
-        `${result.rejected.length === 1 ? "Ein vorgemerkter Eintrag wurde" : `${result.rejected.length} vorgemerkte Einträge wurden`} vom Server abgelehnt (${result.rejected[0].last_error ?? "abgelehnt"}) — bitte neu erfassen.`,
-      );
-      setTimeout(() => setQueueNote(null), 8000);
-    }
-    if (result.sent > 0) {
-      feedback(
-        "ok",
-        `${result.sent === 1 ? "Ein vorgemerkter Eintrag ist" : `${result.sent} vorgemerkte Einträge sind`} übertragen.`,
-        6000,
-      );
-      setRefresh((count) => count + 1);
-    }
-  };
-
-  useEffect(() => {
-    const on = () => setBrowserOnline(true);
-    const off = () => setBrowserOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-
-  // Beim Start und sobald das Netz zurück ist: Nachreichen, was liegen blieb.
-  useEffect(() => {
-    void flushPending();
-    const onOnline = () => void flushPending();
-    window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // GUI-Neuentwurf §4.1: Suche als Nebenweg aus jeder Ansicht (⌘K / Strg+K).
-  // Der Handler springt nach „Stationen“ und setzt das Fokus-Signal —
-  // die View fokussiert ihre Suchzeile, wenn das Signal steigt.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        gotoTab("stations");
-        setSearchFocusSignal((value) => value + 1);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // U4: Browser-Zurück/Vorwärts liest den Bereich aus der URL — die App
-  // bleibt eine Single-Shell, aber die Adresse ist die Wahrheit.
-  useEffect(() => {
-    const onPop = () => {
-      const params = new URLSearchParams(window.location.search);
-      const next = tabFromUrlId(params.get("tab"));
-      setTab(next);
-      setLaborFocus(
-        next === "labor" ? sectionFromUrlId(params.get("section")) : null,
-      );
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  // A1: Fahrzeug-/Haushaltsprofile. Aktives Profil + fahrzeugspezifische
-  // Felder kommen serverseitig aus /api/v1/profiles (Haushalt, kein Login);
-  // fällt der Server aus, gilt weiter der letzte localStorage-Stand. Stadt
-  // und Vergleichsstation bleiben bewusst Gerätesache.
-  const [activeProfileId, setActiveProfileId] = usePreference<string>(
-    "profileId",
-    "",
-    (value) => typeof value === "string",
-  );
-  const [tankCapacity, setTankCapacity] = usePreference<number>(
-    "tankCapacity",
-    50,
-    (value) =>
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 20 &&
-      value <= 120,
-  );
-  // A2: Füllstand in Prozent — Zustand, kein Profilwert (er ändert sich mit
-  // jedem Beleg). null = keine Angabe, dann sagt die App nichts zum Tank.
-  const [tankPercent, setTankPercent] = usePreference<number | null>(
-    "tankPercent",
-    null,
-    (value) =>
-      value === null ||
-      (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100),
-  );
-  // C2: Stamm-Stationen — bewusst lokal (localStorage), kein Account nötig.
-  const [pinnedIds, setPinnedIds] = usePreference<string[]>(
-    "pinnedStations",
-    [],
-    (value) =>
-      Array.isArray(value) &&
-      value.length <= PINNED_MAX &&
-      value.every((id) => typeof id === "string"),
-  );
-  const [pinNote, setPinNote] = useState<string | null>(null);
-  const pinNoteTimer = useRef<number | null>(null);
-  const togglePin = (stationId: string) => {
-    const result = togglePinnedStation(pinnedIds, stationId);
-    setPinnedIds(result.ids);
-    if (result.note) {
-      setPinNote(result.note);
-      if (pinNoteTimer.current) window.clearTimeout(pinNoteTimer.current);
-      pinNoteTimer.current = window.setTimeout(() => setPinNote(null), 5000);
-    } else {
-      setPinNote(null);
-    }
-  };
-
-  // A1: Profil-Liste holen (langsam pollen; nach jedem Schreibvorgang
-  // zählt `refresh` die Liste sofort neu).
-  const profilesRes = useResource<Profiles>("/api/v1/profiles", 120000, refresh);
-  const [profilesBusy, setProfilesBusy] = useState(false);
-  const [profileManagerOpen, setProfileManagerOpen] = useState(false);
-  const [profileNote, setProfileNote] = useState<string | null>(null);
-  const profileNoteTimer = useRef<number | null>(null);
-  const noteProfile = (text: string) => {
-    setProfileNote(text);
-    if (profileNoteTimer.current) window.clearTimeout(profileNoteTimer.current);
-    profileNoteTimer.current = window.setTimeout(() => setProfileNote(null), 6000);
-  };
-
-  const activeProfile = useMemo(
-    () =>
-      profilesRes.data?.profiles.find(
-        (profile) => profile.id === activeProfileId,
-      ) ?? null,
-    [profilesRes.data, activeProfileId],
-  );
-  // Aktueller Stand der Profil-Felder für Vergleiche ohne Effect-Ketten.
-  const prefsRef = useRef({
+function DashboardShell() {
+  const ov = useOverview();
+  const {
+    tab,
+    gotoTab,
+    laborFocus,
+    setLaborFocus,
+    openLabor,
+    handleNowNavigate,
+    ichSection,
+    setIchSection,
+    searchFocusSignal,
     fuel,
+    setFuel,
+    city,
+    setCity,
+    selectedId,
+    setSelectedId,
     liters,
+    setLiters,
     consumption,
+    setConsumption,
     timeValue,
-    speed,
+    setTimeValue,
     detourMode,
-    tankCapacity,
-  });
-  prefsRef.current = {
-    fuel,
-    liters,
-    consumption,
-    timeValue,
+    setDetourMode,
     speed,
-    detourMode,
+    setSpeed,
+    stationsSpanHours,
+    setStationsSpanHours,
+    theme,
+    setTheme,
     tankCapacity,
-  };
-  // Zuletzt angewandter Profilstand (id + updated_at) — verhindert, dass
-  // ein Poll dieselben Werte immer wieder in die Felder schreibt, während
-  // der Nutzer gerade tippt.
-  const lastAppliedRef = useRef<string | null>(null);
-
-  // A1 Sync, Richtung Server → GUI: neues/anderes Profil (oder ein Stand
-  // von einem anderen Gerät) überschreibt die Profil-Felder lokal.
-  useEffect(() => {
-    if (!activeProfile) return;
-    const stamp = `${activeProfile.id}:${activeProfile.updated_at ?? ""}`;
-    if (lastAppliedRef.current === stamp) return;
-    lastAppliedRef.current = stamp;
-    const fromProfile: ProfileFields = {
-      fuel: activeProfile.fuel,
-      liters: activeProfile.liters,
-      consumption: activeProfile.consumption,
-      time_value_eur_h: activeProfile.time_value_eur_h,
-      speed_kmh: activeProfile.speed_kmh,
-      detour_mode: activeProfile.detour_mode,
-      tank_capacity_l: activeProfile.tank_capacity_l,
-    };
-    if (!profileFieldsDiffer(profileFields(prefsRef.current), fromProfile)) return;
-    setFuel(activeProfile.fuel);
-    setLiters(activeProfile.liters);
-    setConsumption(activeProfile.consumption);
-    setTimeValue(activeProfile.time_value_eur_h);
-    setSpeed(activeProfile.speed_kmh);
-    setDetourMode(activeProfile.detour_mode);
-    setTankCapacity(activeProfile.tank_capacity_l);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile]);
-
-  // A1 Sync, Richtung GUI → Server: ändert der Nutzer ein Profil-Feld,
-  // schreibt es (entprellt) in das aktive Profil zurück — solange einer
-  // Profileinstellung folgt, gilt sie auf allen Geräten im Haushalt.
-  useEffect(() => {
-    if (!activeProfile) return;
-    const current = profileFields({ fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity });
-    const fromProfile: ProfileFields = {
-      fuel: activeProfile.fuel,
-      liters: activeProfile.liters,
-      consumption: activeProfile.consumption,
-      time_value_eur_h: activeProfile.time_value_eur_h,
-      speed_kmh: activeProfile.speed_kmh,
-      detour_mode: activeProfile.detour_mode,
-      tank_capacity_l: activeProfile.tank_capacity_l,
-    };
-    if (!profileFieldsDiffer(current, fromProfile)) return;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        const res = await profileRequest(`/${activeProfile.id}`, "PUT", current);
-        if (!res.ok) {
-          noteProfile(profileErrorText(res.data?.error_code as string | undefined));
-          return;
-        }
-        setRefresh((value) => value + 1);
-      })();
-    }, 800);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity, activeProfile]);
-
-  // A1 Handler der Verwaltung: anlegen, aktivieren, umbenennen, löschen.
-  const handleCreateProfile = async (name: string) => {
-    setProfilesBusy(true);
-    try {
-      const body = { name, ...profileFields(prefsRef.current) };
-      const res = await profileRequest("", "POST", body);
-      const created = res.data as { id?: string; error_code?: string } | null;
-      if (!res.ok || !created?.id) {
-        noteProfile(profileErrorText(created?.error_code));
-        return;
-      }
-      lastAppliedRef.current = null;
-      setActiveProfileId(created.id);
-      setProfileManagerOpen(false);
-      noteProfile(`Profil „${name}“ erstellt und auf diesem Gerät aktiviert.`);
-      setRefresh((value) => value + 1);
-    } finally {
-      setProfilesBusy(false);
-    }
-  };
-  const handleActivateProfile = async (id: string | null) => {
-    setProfilesBusy(true);
-    try {
-      const res = await profileRequest(
-        id === null ? "/activate" : `/${id}/activate`,
-        "POST",
-        { active: id },
-      );
-      if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
-        return;
-      }
-      lastAppliedRef.current = null;
-      setActiveProfileId(id ?? "");
-      noteProfile(
-        id === null
-          ? "Kein Profil aktiv — Einstellungen gelten nur noch auf diesem Gerät."
-          : `Profil „${profilesRes.data?.profiles.find((p) => p.id === id)?.name ?? id}“ aktiv.`,
-      );
-      setRefresh((value) => value + 1);
-    } finally {
-      setProfilesBusy(false);
-    }
-  };
-  const handleRenameProfile = async (id: string, name: string) => {
-    setProfilesBusy(true);
-    try {
-      const res = await profileRequest(`/${id}`, "PUT", { name });
-      if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
-        return;
-      }
-      noteProfile("Profilname gespeichert.");
-      setRefresh((value) => value + 1);
-    } finally {
-      setProfilesBusy(false);
-    }
-  };
-  const handleDeleteProfile = async (id: string) => {
-    setProfilesBusy(true);
-    try {
-      const res = await profileRequest(`/${id}`, "DELETE");
-      if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
-        return;
-      }
-      if (activeProfileId === id) {
-        lastAppliedRef.current = null;
-        setActiveProfileId("");
-      }
-      noteProfile("Profil gelöscht. War es aktiv, ist jetzt keins aktiv.");
-      setRefresh((value) => value + 1);
-    } finally {
-      setProfilesBusy(false);
-    }
-  };
-
-  const prices = useResource<Stations>(
-    `/api/v1/stations?fuel=${fuel}`,
-    30000,
-    refresh,
-  );
-  const health = useResource<Health>("/api/v1/health", healthInterval, refresh);
-
-  // Job-Log im System-Tab: welcher Job, wie viele Zeilen, wann neu laden.
-  const [logJob, setLogJob] = useState("models");
-  const [logLineCount, setLogLineCount] = useState(200);
-  const [logReload, setLogReload] = useState(0);
-  const logRef = useRef<HTMLElement | null>(null);
-  const logBodyRef = useRef<HTMLPreElement | null>(null);
-  const runningJob =
-    Object.entries(health.data?.jobs || {}).find(
-      ([, job]) => job?.state === "running",
-    )?.[0] ?? null;
-
-  useEffect(() => {
-    const running = Object.values(health.data?.jobs || {}).some(
-      (job) => job?.state === "running",
-    );
-    setHealthInterval(running ? 15000 : 60000);
-  }, [health.data?.jobs]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(performance.now()), 10000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const data = prices.data;
-  const isStaleFuel = !!data && data.fuel !== fuel;
-  const activeCity = data?.cities.includes(city) ? city : data?.cities[0] || "";
-  const stations =
-    data?.stations.filter((row) => row.city === activeCity) || [];
-  // Während Fuel-Switch E10→Diesel bleibt data stale (fuel mismatch) und
-  // pending true — online darf dann nicht als „frisch“ gelten, sonst zeigt
-  // der Header alte Counts statt „lädt …“.
-  const online = !prices.error && !!data && !data.connection_error && !isStaleFuel;
-  const elapsed = Math.max(0, now - prices.receivedAt) / 60000;
-  const price = (row: Station) => currentPrice(row, online, elapsed);
-  const fresh = isStaleFuel
-    ? []
-    : stations
-        .filter((row) => price(row) !== null)
-        .sort((a, b) => price(a)! - price(b)!);
-  const best = fresh[0];
-  // Vergleichsstation per Default: die nächste mit frischem Preis — nicht die
-  // billigste. Die billigste als Default machte „Unterschied zur
-  // Vergleichsstation“ zu einer 0,00-€-Kachel ohne Aussage; die nächste Station
-  // ist dagegen die, an der man normalerweise vorbeikommt.
-  const nearestFresh = [...fresh].sort(
-    (a, b) => (a.dist_km ?? 1e9) - (b.dist_km ?? 1e9),
-  )[0];
-  const selected =
-    stations.find((row) => row.station_id === selectedId) ||
-    nearestFresh ||
-    best ||
-    stations[0];
-  const bestPrice = best ? price(best) : null;
-  const selectedPrice = selected ? price(selected) : null;
-
-  // Schnell-Erfassung: Station per Default = Vergleichsstation, Preis =
-  // deren frischer Preis (sonst billigster). Nur solange das Feld leer ist —
-  // eine eigene Eingabe wird nie überschrieben.
-  const quickStation =
-    stations.find((row) => row.station_id === quickStationId) || selected;
-  const quickSuggested =
-    (quickStation ? price(quickStation) : null) ?? bestPrice;
-  useEffect(() => {
-    if (!quickStationId && selected) setQuickStationId(selected.station_id);
-  }, [quickStationId, selected]);
-  useEffect(() => {
-    if (
-      quickPriceStr === "" &&
-      quickSuggested !== null &&
-      Number.isFinite(quickSuggested)
-    ) {
-      setQuickPriceStr(quickSuggested.toFixed(3));
-    }
-  }, [quickPriceStr, quickSuggested]);
-  const quickDraft = checkFillDraft({
-    liters: quickLitersStr,
-    price: quickPriceStr,
-    stationId: quickStation?.station_id,
-  });
-  const autoZ = autoTimeValue();
-  const timeValueUsed = timeValue > 0 ? timeValue : autoZ.z;
-  const difference =
-    bestPrice !== null && selectedPrice !== null
-      ? (selectedPrice - bestPrice) * liters
-      : null;
-  // Teuerste frische Station: Ist die Vergleichsstation selbst die billigste,
-  // zeigt die Kachel statt „0,00 €“ die Spanne zur teuersten — eine Zahl mit
-  // Aussage statt einer Null ohne.
-  const worst = fresh.length ? fresh[fresh.length - 1] : undefined;
-  const worstPrice = worst ? price(worst) : null;
-  const span =
-    bestPrice !== null && worstPrice !== null
-      ? (worstPrice - bestPrice) * liters
-      : null;
-  const selectedIsCheapest =
-    difference !== null && Math.abs(difference) < 0.005;
-  // GUI-Neuentwurf: frische Set-Preise (für die Einordnung nach dem Buchen
-  // und für „Ich → Belege“) + gewählte Stations zuerst in der Beleg-Auswahl
-  // (gepinnte Stationen rücken nach vorn — dieselbe Reihenfolge wie Karte).
-  const freshPrices = fresh.map((row) => price(row)!).filter(
-    (value) => value !== null,
-  );
-  const pinnedFirstStations = [...stations].sort((a, b) => {
-    const aPin = pinnedIds.includes(a.station_id) ? 0 : 1;
-    const bPin = pinnedIds.includes(b.station_id) ? 0 : 1;
-    if (aPin !== bPin) return aPin - bPin;
-    return (a.dist_km ?? 1e9) - (b.dist_km ?? 1e9);
-  });
-  // A6: aktuelle Sicht als Share-URL — in die Adresszeile (bookmarkbar) und,
-  // wenn der Browser es erlaubt (LAN-HTTP ohne Secure Context tut es oft
-  // nicht), zusätzlich in die Zwischenablage.
-  const copyShareLink = () => {
-    const query = shareQuery({
-      city: activeCity,
-      fuel,
-      stationId: selected?.station_id ?? null,
-      liters,
-      heatmapWeeks,
-      heatmapBasis,
-      // U4: Der Link teilt die Antwort, nicht nur die Filter — Bereich und
-      // (im Labor) der Abschnitt reisen mit.
-      tab: tabToUrlId(tab),
-      section: tab === "labor" ? laborFocus : null,
-    });
-    const url = `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ""}`;
-    try {
-      window.history.replaceState(null, "", url);
-    } catch {
-      /* History darf scheitern (z. B. Sandbox) — der Hinweistext bleibt korrekt. */
-    }
-    const note = (text: string) => {
-      setShareNote(text);
-      if (shareNoteTimer.current) window.clearTimeout(shareNoteTimer.current);
-      shareNoteTimer.current = window.setTimeout(
-        () => setShareNote(null),
-        5000,
-      );
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(url)
-        .then(() =>
-          note(
-            "Link kopiert — teilt diese Sicht (Bereich, Stadt, Kraftstoff, Station, Tankmenge, Heatmap-Einstellungen).",
-          ),
-        )
-        .catch(() =>
-          note("URL steht jetzt in der Adresszeile — zum Teilen kopieren."),
-        );
-    } else {
-      note("URL steht jetzt in der Adresszeile — zum Teilen kopieren.");
-    }
-  };
-
-  // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
-  // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
-  const identity = selected
-    ? new URLSearchParams({
-        city: activeCity,
-        station_id: selected.station_id,
-        fuel,
-      }).toString()
-    : "";
-
-  // --- B4 Resources ---
-  // H1/B6: alle What-if-Parameter an den Server — Strecke und Verdict kommen ausschließlich vom Server.
-  // B7: „Jetzt“ und „Woche“ kommen als EINE Anfrage aus /api/v1/overview
-  // (decide + Wallet + Summary + Due-Episoden + Tageskurve) statt sechs
-  // Parallel-Polls, die auf der NAS an File-Locks hängen und einen Refresh
-  // auf 5–10 s blähen, während die Ansicht tot wirkt.
-  // A2: Tankstand an /decide mitgeben — nur mit Füllstand-Angabe; die
-  // Tankgröße kommt aus dem Profil (bzw. lokal, solange keins aktiv ist).
-  // GUI-Neuentwurf §5.1: die Was-wäre-wenn-Overrides (Liter, latest_by,
-  // Zeitwert) gelten nur für die Ansicht — dieselbe Anfrage, andere
-  // Parameter; der Server bleibt die einzige Quelle.
-  const effLiters = assumptions.liters ?? liters;
-  const effTimeValue = assumptions.timeValue ?? timeValue;
-  const tankQuery =
-    tankPercent !== null
-      ? `&tank_percent=${tankPercent}&tank_capacity_l=${tankCapacity}`
-      : "";
-  const latestByQuery = assumptions.latestBy
-    ? `&latest_by=${encodeURIComponent(assumptions.latestBy)}`
-    : "";
-  const decideQuery = activeCity
-    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${effLiters}&value_of_time=${effTimeValue}${latestByQuery}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
-    : null;
-  // „Jetzt“, „Stationen“ und „Woche“ teilen denselben Overview-Poll
-  // (decide + Tageskurve + Wallet) — eine Antwort, drei Ansichten.
-  const overviewTab = tab === "jetzt" || tab === "stations" || tab === "week";
-  const overview = useResource<Overview>(
-    overviewTab && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
-    30000,
-    refresh,
-  );
-  // Übersicht-Teil mit exakt der Form eines Einzelpolls (data/error/pending),
-  // damit die Panels unverändert bleiben können.
-  const overviewPart = <T,>(part: T | null | undefined) => ({
-    data: part ?? null,
-    error: overview.error,
-    errorCode: overview.errorCode,
-    pending: overview.pending,
-    receivedAt: overview.receivedAt,
-  });
-  const emptyResource = <T,>() => ({
-    data: null,
-    error: false,
-    errorCode: null,
-    pending: false,
-    receivedAt: 0,
-  });
-  const decideRes =
-    overviewTab
-      ? overviewPart<DecideResult>(overview.data?.decide)
-      : emptyResource<DecideResult>();
-
-  const statsSummaryPoll = useResource<StatsSummary>(
-    // Die Güte-Kacheln im System-Tab, das Labor und die Schwellen-Tabelle
-    // in „Ich → Einstellungen“ lesen dieselbe Antwort — in
-    // „Jetzt“/„Woche“ steckt sie im Overview-Payload.
-    tab === "labor" || tab === "system" || tab === "ich"
-      ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
-      : null,
-    60000,
-    refresh,
-  );
-  const statsSummaryRes =
-    overviewTab
-      ? overviewPart<StatsSummary>(overview.data?.stats_summary)
-      : statsSummaryPoll;
-
-  const dueEpisodesRes =
-    overviewTab
-      ? overviewPart<{ count: number; episodes: any[] }>(
-          overview.data?.episodes,
-        )
-      : emptyResource<{ count: number; episodes: any[] }>();
-
-  // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
-  const fillsRes =
-    overviewTab
-      ? overviewPart<Fills>(overview.data?.fills)
-      : emptyResource<Fills>();
-
-  const history = useResource<
-    { points: Point[]; error_code: string | null } & DataReach
-  >(
-    tab === "labor" && identity
-      ? `/api/v1/series?${identity}&hours=${spanHours}`
-      : null,
-    60000,
-    refresh,
-  );
-  // GUI-Neuentwurf §5.2: Verlauf der Stationen-View (eigener Poll nur für
-  // die gewählte Station — „Verlauf schlägt Moment“). Der Zeitraum ist
-  // derselbe Umschalter wie im Stations-Labor (24 h / 3 Tage / 7 Tage).
-  const series7d = useResource<
-    { points: Point[]; error_code: string | null } | null
-  >(
-    tab === "stations" && identity
-      ? `/api/v1/series?${identity}&hours=${stationsSpanHours}`
-      : null,
-    60000,
-    refresh,
-  );
-  const dayStrip =
-    overviewTab
-      ? overviewPart<{ points: Point[]; error_code: string | null }>(
-          overview.data?.day,
-        )
-      : emptyResource<{ points: Point[]; error_code: string | null }>();
-  const forecast = useResource<Forecast>(
-    tab === "labor" && identity ? `/api/v1/forecast?${identity}` : null,
-    300000,
-    refresh,
-  );
-  // E5: weeks kommt aus dem Wochen-Select, B12: basis aus dem Umschalter —
-  // beides nur dort, wo es wirkt (basis gilt ausschließlich Cheap-Prob ohne Station).
-  const heatmapBasisActive = heatmapKind === "probability" && !selected;
-  const heatmap = useResource<Heatmap>(
-    tab === "labor" && activeCity
-      ? heatmapPath({
-          city: activeCity,
-          fuel,
-          kind: heatmapKind,
-          weeks: heatmapWeeks,
-          basis: heatmapBasisActive ? heatmapBasis : undefined,
-          stationId: selected?.station_id,
-        })
-      : null,
-    120000,
-    refresh,
-  );
-  const selection = useResource<Selection>(
-    tab === "labor" || tab === "system"
-      ? `/api/v1/selection?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
-      : null,
-    120000,
-    refresh,
-  );
-  // A4: Monats-/Jahresbilanz — die Summen-Kacheln stehen im Alltag, die
-  // volle Monats-/Jahres-Sicht in „Ich → Bilanz“. Seit Phase 3 liest nur
-  // noch „Ich“ diese Antwort; die alte Werkstatt-Kachel ist entfallen.
-  const fillsSummary = useResource<FillsSummary>(
-    tab === "ich" ? "/api/v1/fills/summary" : null,
-    120000,
-    refresh,
-  );
-  // Labor §6.2 Abschnitt 4: Prognose-Tagebuch — echte Settlements des
-  // Advice-Ledgers (`GET /api/v1/advice/diary`), kein Demo, keine Zeile
-  // ohne Abrechnung. Nur im Labor gepollt; andere Tabs zahlen nicht.
-  const diary = useResource<AdviceDiary>(
-    tab === "labor" ? "/api/v1/advice/diary?limit=50" : null,
-    120000,
-    refresh,
-  );
-  const collectorStatus = useResource<CollectorStatus>(
-    tab === "system" ? "/api/v1/collector/status" : null,
-    60000,
-    refresh,
-  );
-  // Job-Log: nur im System-Tab, dichter gepollt, solange ein Job läuft.
-  const jobLog = useResource<JobLog>(
-    tab === "system"
-      ? `/api/v1/jobs/${logJob}/log?lines=${logLineCount}`
-      : null,
-    runningJob ? 15000 : 120000,
-    logReload,
-  );
-  // GUI-Neuentwurf: der A-gegen-B-Vergleich in „Stationen“ nutzt die
-  // decide-Alternativen (inkl. Server-Netto-€) aus dem Overview-Payload —
-  // kein eigener route/evaluate-Poll mehr („kein zweiter Poll“).
-
-  // C6: Server-Verbindung. Ein einzelner fehlgeschlagener Poll löst hier
-  // nichts mehr aus (useResource debounced) — der Satz benennt den letzten
-  // erfolgreichen Stand und die Selbstheilung, ohne Schuld oder Handlungs-
-  // befehl (MICROCOPY §5).
-  const connectionProblem = prices.error
-    ? data?.generated_at
-      ? `App-Server unterbrochen — angezeigt bleiben die letzten erfolgreich geladenen Preise vom ${timeLabel(data.generated_at)}. Die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist.`
-      : "App-Server nicht erreichbar — die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist."
-    : problem(data?.connection_error);
-  // B10: Statuszeile der Offline-Queue — nur wenn wirklich etwas wartet.
-  const queueBanner = queueStatusText(
-    queue.length,
-    queueOldestAgeMs(queue, Date.now()),
-  );
-  const h = health.error ? null : health.data;
-  const collector = collectorStatus.data || h?.collector;
-  // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
-  const logLines = jobLog.data?.lines ?? [];
-  // Fehlgeschlagene Jobs mit Ursache — Hinweis über allen Bereichen.
-  const failedJobs = Object.entries(h?.jobs || {}).filter(
-    ([, job]) => job?.state === "failed",
-  );
-  const webhookCapable = logJob === "models" || logJob === "selection";
-  const triggerCommand = `curl -X POST http://<nas>:1355/api/v1/jobs/trigger -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" -H 'Content-Type: application/json' -d '{"job":"${logJob}"}'`;
-  const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
-  // Nach einem Knopf-Start: Health sofort neu laden, nicht erst im Intervall.
-  const refreshNow = () => setRefresh((count) => count + 1);
-  const showJobLog = (name: string) => {
-    setLogJob(name);
-    setLogReload((count) => count + 1);
-    requestAnimationFrame(() =>
-      logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    );
-  };
-  useEffect(() => {
-    const box = logBodyRef.current;
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [logLines.length, logJob]);
-  const f = forecast.data;
-  const horizonDays = horizon;
-  const forecastPoints =
-    (horizonDays === 3
-      ? f?.points_3d
-      : horizonDays === 7
-        ? f?.points_7d
-        : f?.points) || [];
-  const metrics = f?.metrics;
-
-  const obsPoints = history.data?.points || [];
-  // Wandzeit, nicht Seitenlaufzeit: Die Punkte liegen in Epoch-Millisekunden,
-  // performance.now() wäre immer „davor“ und schneidete alles weg („keine
-  // Daten“ trotz 108 Preisen). `now` weiter für das Datenalter (elapsed).
-  const obsWindow: [number, number] = historyWindowMs(spanHours);
-  const observations = segments(obsPoints);
-  const series = observations.map((s) => ({
-    ...s,
-    pts: s.pts.filter((p) => p.x >= obsWindow[0] && p.x <= obsWindow[1]),
-  }));
-  const spanLabel =
-    spanHours === 24
-      ? "letzte 24 Stunden"
-      : spanHours === 72
-        ? "letzte 3 Tage"
-        : "letzte 7 Tage";
-
-  const modelPoints = forecastPoints.map((p) => ({
-    x: Date.parse(p.timestamp),
-    y: p.q50,
-  }));
-  const modelSeries = modelPoints.length
-    ? [
-        {
-          name: "Modell-Median (q50)",
-          color: "#38bdf8",
-          pts: modelPoints.filter(
-            (p): p is { x: number; y: number } =>
-              p.y !== null && Number.isFinite(p.y),
-          ),
-        },
-      ]
-    : [];
-  const fanBand95 = forecastPoints.length
-    ? [
-        {
-          name: "95-%-Band (q025–q975)",
-          color: "rgba(56, 189, 248, 0.12)",
-          pts: forecastPoints
-            .filter((p) => p.q025 !== null && p.q975 !== null)
-            .map((p) => ({
-              x: Date.parse(p.timestamp),
-              yLow: p.q025!,
-              yHigh: p.q975!,
-            })),
-        },
-      ]
-    : [];
-  const fanBand80 = forecastPoints.length
-    ? [
-        {
-          name: "80-%-Band (q10–q90)",
-          color: "rgba(56, 189, 248, 0.22)",
-          pts: forecastPoints
-            .filter(
-              (p) =>
-                p.q10 !== undefined &&
-                p.q10 !== null &&
-                p.q90 !== undefined &&
-                p.q90 !== null,
-            )
-            .map((p) => ({
-              x: Date.parse(p.timestamp),
-              yLow: p.q10!,
-              yHigh: p.q90!,
-            })),
-        },
-      ]
-    : [];
-
-  const forecastWindow: [number, number] | null = modelPoints.length
-    ? [modelPoints[0].x, modelPoints[modelPoints.length - 1].x]
-    : null;
-
-  const forecastMarks = modelPoints.length
-    ? [
-        {
-          x: modelPoints[0].x,
-          color: "#38bdf8",
-          label: "Fit-Zeitpunkt",
-        },
-      ]
-    : [];
-
-  const modelWindows = (() => {
-    if (!modelPoints.length) return [];
-    const blocks: { start: number; end: number; values: number[] }[] = [];
-    const twoHours = 2 * 3600000;
-    for (const m of modelPoints) {
-      if (m.y === null || !Number.isFinite(m.y)) continue;
-      const bucket = Math.floor(m.x / twoHours) * twoHours;
-      let block = blocks.find((b) => b.start === bucket);
-      if (!block) {
-        block = { start: bucket, end: bucket + twoHours, values: [] };
-        blocks.push(block);
-      }
-      block.values.push(m.y);
-    }
-    return blocks
-      .filter((b) => b.values.length >= 4)
-      .map((b) => ({
-        start: b.start,
-        end: b.end,
-        median: b.values.sort((a, c) => a - c)[Math.floor(b.values.length / 2)],
-      }))
-      .sort((a, b) => a.median - b.median)
-      .slice(0, 3);
-  })();
-
-  // GUI-Neuentwurf: der Tagesstreifen ist jetzt „Heute im Blick“ (Jetzt)
-  // und „Der Set-Ton“ (Stationen) — dieselbe pure Funktion (strip.ts),
-  // dieselbe Overview-Antwort.
-  const stripCells = buildStripCells(dayStrip.data?.points ?? []);
-
-  // Zwei Freigaben, zwei Zeilen — sie haben verschiedene Nenner:
-  //   1. M7-Gate (§0.4): Zähl-Gate über abgeschlossene Empfehlungen
-  //      (live_advice.min_recommendations, Default 100) plus Brier-Schwelle.
-  //   2. Übergangsregel Datenhygiene (Archiv → Live-Polling): bewertete
-  //      Live-Tage, Schwelle = live_only_days der Engine (Default 90), aus den
-  //      Bootstrap-Policies über stats_summary.live_phase — nicht aus dem
-  //      Browserdatum. Fehlen die Policies, sagt die UI das und erfindet
-  //      keinen Countdown (§0.4 Ehrlichkeitsregel).
-  const livePhase = statsSummaryRes.data?.live_phase ?? null;
-  // „Jetzt“ (GUI-Neuentwurf): Frische-Anker ist die jüngste Preismeldung,
-  // nicht der Zeitpunkt dieses Renderns — die Fußzeile nennt das Alter der
-  // Zahlen. Die Prognose datiert der Modell-Lauf (stats/summary), sonst die
-  // Entscheidungsantwort.
-  const nowPricesAt = useMemo(() => {
-    const stamps = fresh
-      .map((row) => (row.observed_at ? Date.parse(row.observed_at) : Number.NaN))
-      .filter((ms) => Number.isFinite(ms));
-    if (!stamps.length) return data?.generated_at ?? null;
-    return new Date(Math.max(...stamps)).toISOString();
-  }, [fresh, data?.generated_at]);
-  // Die Frische der Prognose kommt aus der Engine-Publikation bzw. dem
-  // Fit-Zeitpunkt — nicht aus der Berechnungszeit dieser Antwort (`now.ts`).
-  const nowForecastAt = forecastStamp(decideRes.data);
-  // GUI-Neuentwurf: die Ziele des Neuentwurfs sind echte Bereiche —
-  // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“, „Labor“ und
-  // „System“. „werkstatt“ bleibt als Alt-Ziel erhalten und landet im Labor.
-  const handleNowNavigate = (target: NowTarget | "jetzt" | "werkstatt") => {
-    if (target === "jetzt") gotoTab("jetzt");
-    else if (target === "stations") gotoTab("stations");
-    else if (target === "week" || target === "tank") gotoTab("week");
-    else if (target === "ich") gotoTab("ich");
-    else if (target === "werkstatt") gotoTab("labor");
-    else gotoTab("system");
-  };
-  // Erklär-Treppe Ebene 1 → 2 (§7): Der Sprung öffnet den passenden
-  // Abschnitt und merkt sich die Herkunft („Zurück zu: …“). Die Herkunft
-  // hält die Root, weil nur sie weiß, aus welcher Ansicht gesprungen wurde.
-  // Ebene 2 (Beweis): öffnet den Abschnitt im Labor — der Sprung ist jetzt
-  // ausdrücklich (das Sheet der Ebene 1 steht am Wirkungsort, U5), und der
-  // Rückweg ist das Browser-Zurück (U4).
-  const openLabor = (section: LabSectionId) => {
-    setLaborFocus(section);
-    gotoTab("labor", section);
-  };
-  const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
-  const gateStatus =
-    liveAdvice?.gate_status ||
-    (statsSummaryRes.data ? "Kalibrierung steht aus" : "kein Engine-Lauf");
-  const m7Line = statsSummaryRes.data ? m7GateLine(liveAdvice) : null;
-  const transitionLine = transitionRuleLine(livePhase);
-  // Hint für leere Güte-Kacheln im System-Tab: erklärt die fehlende
-  // Live-Abdeckung, ohne eine Tageszahl zu erfinden.
-  const calibrationHint = statsSummaryRes.data
-    ? livePhaseHint(livePhase)
-    : "Kennzahlen nicht geladen — zur Live-Phase liegen keine Daten vor.";
-  const stationPhase = f?.data_policy;
-
-  // --- B4 Workshop Dynamic Calculations ---
-  const labData = statsSummaryRes.data?.backtest;
-  // Schicht-A-Anker aus dem Backtest-Report (TANKAPP_DECISION_HOUR, Default
-  // 12) — alle Werkstatt-Texte folgen dem echten Wert, nie einem Hardcode.
-  const anchorHour = labData?.decisionHour ?? 12;
-  const anchorLabel = `${String(anchorHour).padStart(2, "0")}:00`;
-  const labScores = useMemo(() => {
-    if (!labData?.evalRows) return [];
-    return Object.entries(labData.evalRows).map(([sid, rows]) => ({
-      station_id: sid,
-      score: scoreRows(rows, eps, liters, sid),
-    }));
-  }, [labData, eps, liters]);
-
-  const labTotals = useMemo(() => {
-    let smart = 0,
-      commit = 0,
-      bestVal = 0,
-      always = 0,
-      regretEur = 0,
-      n = 0,
-      sPos = 0,
-      pSum = 0;
-    for (const { score: sc } of labScores) {
-      smart += sc.sum_smart_eur;
-      commit += sc.sum_commit_eur;
-      bestVal += sc.sum_best_eur;
-      always += sc.sum_always_eur;
-      regretEur += sc.avg_regret_eur * sc.n;
-      n += sc.n;
-      sPos += sc.n * sc.hit_freq;
-      pSum += sc.p_avg * sc.n;
-    }
-    return {
-      smart,
-      commit,
-      best: bestVal,
-      always,
-      regretEur: n ? regretEur / n : 0,
-      n,
-      hitFreq: n ? sPos / n : 0,
-      pAvg: n ? pSum / n : 0,
-      potShare: bestVal > 0 ? smart / bestVal : 0,
-    };
-  }, [labScores]);
-
-  const calibPoints = labData?.calibration || [];
-  const liveReliability = statsSummaryRes.data?.live_advice?.reliability || [];
-  const livePointsForChart = liveReliability
-    .filter((b) => b.empirical_hit_rate !== null && b.count > 0)
-    .map((b) => ({
-      p: b.mean_p,
-      hit: b.empirical_hit_rate!,
-      n: b.count,
-    }));
-
-  const calibErr = useMemo(() => {
-    if (!calibPoints.length) return NaN;
-    return (
-      calibPoints.reduce((a, c) => a + Math.abs(c.hit - c.p), 0) /
-      calibPoints.length
-    );
-  }, [calibPoints]);
-
-  const labStationId = selected?.station_id || labData?.stations[0]?.id || "";
-  const labRows = labData?.evalRows[labStationId] || [];
-  const labModel = labData?.models[labStationId];
-  const activeLabDayRow =
-    labRows[Math.min(Math.max(labDayIdx, 0), Math.max(0, labRows.length - 1))];
-  const activeLabOutcome = activeLabDayRow
-    ? rowOutcome(activeLabDayRow, eps, liters)
-    : null;
-
-  const labDayClass = activeLabDayRow?.cls ?? 0;
-  const labSaves = labModel
-    ? labDayClass === 0
-      ? labModel.savesWk
-      : labModel.savesWe
-    : [];
-  const labPredHour = labModel
-    ? labDayClass === 0
-      ? labModel.predWk
-      : labModel.predWe
-    : 19;
-  const labMu = labModel
-    ? labDayClass === 0
-      ? labModel.muWk
-      : labModel.muWe
-    : 1.5;
-
-  // Paarvergleich-Werkstattpanel (Konzept §8.2 Nr. 5): bewusst nicht gebaut —
-  // die Umweg-Ökonomie läuft im Alltags-Panel „Rechnet sich der Umweg?“ und
-  // serverseitig in /api/v1/route/evaluate (LUECKEN „bewusst offen“). Ein
-  // zweites Panel wäre Duplikat; der frühere Prototyp-Code mit erfundenen
-  // Preisen (1,70/1,66 €/L) ist entfernt.
-
-  const dueEpisode =
-    dueEpisodesRes.data?.episodes?.[0] ||
-    (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
-
-  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Ich → Belege“
-  // (quickDraft), dieselben Grenzen wie der Server (app/feedback.py).
-
-  // B4: Alarme aus /health für den roten/grünen Punkt im Header.
-  const alarms = h?.alarms ?? [];
-  const errorAlarms = alarms.filter((a) => a.severity === "error");
-  const warnAlarms = alarms.filter((a) => a.severity !== "error");
-
-  // A3: Wallet-Verlauf.
-  const fillList = fillsRes.data?.fills ?? [];
-  // Stornierte Belege (meist Doppelbuchungen bei langsamer NAS) sind standard-
-  // mäßig ausgeblendet; der Toggle macht den Audit-Trail wieder sichtbar.
-  const visibleFills = showVoidedFills
-    ? fillList
-    : fillList.filter((fill) => !fill.voided);
-  const voidedCount = fillList.length - visibleFills.length;
-
-  const handleConfirmRecommendedFill = async (ep: any) => {
-    if (!ep) return;
-    const snap = ep.last_snapshot || decideRes.data?.primary;
-    const targetPrice =
-      snap?.expected_price ?? snap?.price_now ?? bestPrice ?? null;
-    if (targetPrice == null || !Number.isFinite(targetPrice)) {
-      feedback("error", "Kein Preis bekannt — bitte manuell erfassen.", 4000);
-      return;
-    }
-    const fillStationId = snap?.station_id || selected?.station_id || null;
-    if (!fillStationId) {
-      feedback("error", "Keine Station bekannt — bitte manuell erfassen.", 4000);
-      return;
-    }
-    const res = await postFill({
-      station_id: fillStationId,
-      station_name: snap?.station_name || selected?.name || "Station",
-      liters,
-      price_paid: targetPrice,
-      fuel,
-      source: "prompt",
-      episode_id: ep.id,
-    });
-    if (res?.queued) {
-      setQueue(readQueue());
-      feedback(
-        "warn",
-        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
-        6000,
-      );
-      setDueDismissed(true);
-      return;
-    }
-    if (res?.error_code) {
-      feedback(
-        "error",
-        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
-      );
-      return;
-    }
-    feedback("ok", "Beleg in deiner Bilanz verbucht.", 4000);
-    setDueDismissed(true);
-    setRefresh((r) => r + 1);
-  };
-
-  const handleQuickFill = async () => {
-    if (fillSubmitting) return;
-    // Schnell-Erfassung ohne Episode (Quelle „tanke gerade / habe getankt“):
-    // dieselben Grenzen wie der Server, Prüfung vor dem Roundtrip.
-    const litersVal = germanDecimalToNumber(quickLitersStr);
-    const priceVal = germanDecimalToNumber(quickPriceStr);
-    const stationId = quickStation?.station_id;
-    if (
-      !quickDraft.ok ||
-      litersVal === null ||
-      priceVal === null ||
-      !stationId
-    ) {
-      feedback(
-        "error",
-        quickDraft.stationMissing
-          ? "Ohne Station kein Beleg — bitte zuerst eine Station wählen."
-          : quickDraft.litersError ?? quickDraft.priceError ?? "Eingabe prüfen.",
-      );
-      return;
-    }
-    setFillSubmitting(true);
-    const res = await postFill({
-      station_id: stationId,
-      station_name: quickStation?.name || "Station",
-      liters: litersVal,
-      price_paid: priceVal,
-      fuel,
-      source: "manual",
-    });
-    setFillSubmitting(false);
-    if (res?.queued) {
-      setQueue(readQueue());
-      feedback(
-        "warn",
-        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
-        6000,
-      );
-      return;
-    }
-    if (res?.error_code) {
-      feedback(
-        "error",
-        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
-      );
-      return;
-    }
-    // GUI-Neuentwurf: Einordnung des gerade gebuchten Preises gegen den
-    // frischen Set-Median (pure Funktion in Ich.tsx) — ehrlich, nur wenn
-    // mindestens zwei frische Messungen vorliegen, sonst nur der Satz.
-    const positionNote = fillPositionNote(priceVal, freshPrices);
-    feedback(
-      "ok",
-      positionNote
-        ? `Beleg in deiner Bilanz verbucht. ${positionNote}`
-        : "Beleg in deiner Bilanz verbucht.",
-      6000,
-    );
-    setRefresh((r) => r + 1);
-  };
-
-  const handleVoidFill = async (fillId: string) => {
-    if (voidBusy) return;
-    setVoidBusy(true);
-    setVoidNote(null);
-    const res = await voidFill(fillId);
-    setVoidBusy(false);
-    if (res?.error_code) {
-      setVoidNote(
-        `Storno fehlgeschlagen: ${problem(res.error_code) || res.error_code}`,
-      );
-      return;
-    }
-    setVoidNote(
-      `Beleg ${fillId} storniert — zählt nicht mehr in deiner Bilanz.`,
-    );
-    setRefresh((r) => r + 1);
-  };
-
-  const handleDismissDue = async (epId?: string) => {
-    if (epId) {
-      const res = await postIntent(epId, "dismiss");
-      if (res?.error_code) {
-        feedback(
-          "error",
-          `Verwerfen fehlgeschlagen: ${problem(res.error_code) || res.error_code}`,
-        );
-        return;
-      }
-    }
-    setDueDismissed(true);
-    setRefresh((r) => r + 1);
-  };
-
-  const handleIntent = async (intent: string, mapsUrl?: string | null) => {
-    const epId = decideRes.data?.episode?.id;
-    if (epId) {
-      const res = await postIntent(epId, intent);
-      if (res?.queued) {
-        setQueue(readQueue());
-        if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
-        feedback(
-          "warn",
-          "Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
-          6000,
-        );
-        return;
-      }
-      if (res?.error_code) {
-        feedback(
-          "error",
-          `Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — App-Server erreichbar?`,
-        );
-        return;
-      }
-    }
-    if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
-    feedback("ok", "Auswahl gespeichert.", 4000);
-    setRefresh((r) => r + 1);
-  };
+    setTankCapacity,
+    tankPercent,
+    setTankPercent,
+    pinnedIds,
+    togglePin,
+    pinNote,
+    assumptions,
+    setAssumptions,
+    dueDismissed,
+    prices,
+    data,
+    activeCity,
+    stations,
+    online,
+    elapsed,
+    price,
+    fresh,
+    selected,
+    bestPrice,
+    freshPrices,
+    pinnedFirstStations,
+    h,
+    failedJobs,
+    refreshNow,
+    browserOnline,
+    connectionProblem,
+    queueBanner,
+    queueNote,
+    actionFeedback,
+    feedback,
+    activeProfileId,
+    activeProfile,
+    profilesRes,
+    profilesBusy,
+    profileManagerOpen,
+    setProfileManagerOpen,
+    profileNote,
+    handleCreateProfile,
+    handleActivateProfile,
+    handleRenameProfile,
+    handleDeleteProfile,
+    decideRes,
+    statsSummaryRes,
+    fillsSummary,
+    series7d,
+    stripCells,
+    effLiters,
+    effTimeValue,
+    timeValueUsed,
+    autoZ,
+    nowPricesAt,
+    nowForecastAt,
+    quickStationId,
+    setQuickStationId,
+    quickLitersStr,
+    setQuickLitersStr,
+    quickPriceStr,
+    setQuickPriceStr,
+    quickDraft,
+    fillSubmitting,
+    showVoidedFills,
+    setShowVoidedFills,
+    voidNote,
+    voidBusy,
+    fillList,
+    visibleFills,
+    voidedCount,
+    dueEpisode,
+    handleConfirmRecommendedFill,
+    handleQuickFill,
+    handleVoidFill,
+    handleDismissDue,
+    handleIntent,
+    showJobLog,
+  } = ov;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
-      <header className="app-header sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
-        {/* U3: eine Zeile — die globalen Steuerungen (Stadt, Kraftstoff,
-            Profil, Alarm, Teilen, Aktualisieren) laufen nebeneinander und
-            scrollen auf schmalen Viewports, statt eine zweite Steuerzeile
-            über den Inhalt zu schieben. */}
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <a
-            href="/"
-            className="flex items-center gap-3"
-            aria-label="TankApp Startseite"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
-              <FuelIcon size={21} />
-            </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white">
-                TankApp
-              </h1>
-              <p className="app-tagline hidden text-xs text-slate-500 sm:block">
-                Dein Tank-Kompass. Ohne Rätselraten.
-              </p>
-            </div>
-          </a>
-          <div className="flex items-center gap-2 overflow-x-auto sm:gap-3">
-            <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
-              <MapPin size={14} className="text-emerald-400" />
-              <span className="sr-only">Stadt</span>
-              <select
-                aria-label="Stadt"
-                value={activeCity}
-                onChange={(e) => {
-                  setCity(e.target.value);
-                  setSelectedId("");
-                }}
-                disabled={!data?.cities.length}
-                className="max-w-40 bg-slate-950 pr-1 text-slate-100"
-              >
-                {data?.cities.length ? (
-                  data.cities.map((label) => (
-                    <option key={label}>{label}</option>
-                  ))
-                ) : (
-                  <option value="">Keine Stadt eingerichtet</option>
-                )}
-              </select>
-            </label>
-            <div
-              role="group"
-              aria-label="Kraftstoff"
-              className="flex shrink-0 rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
-            >
-              {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
-                <button
-                  key={value}
-                  aria-pressed={fuel === value}
-                  onClick={() => setFuel(value)}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${fuel === value ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
-                >
-                  {value === "diesel" ? "Diesel" : value.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
-                Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
-                Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
-            <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
-              <Car size={14} className="text-emerald-400" />
-              <span className="sr-only">Fahrzeug-Profil</span>
-              <select
-                aria-label="Fahrzeug-Profil"
-                value={activeProfileId}
-                onChange={(e) => {
-                  void handleActivateProfile(e.target.value || null);
-                }}
-                title={
-                  activeProfile
-                    ? `Aktives Profil „${activeProfile.name}“ — Felder gelten haushaltsweit`
-                    : "Kein Profil aktiv — Einstellungen gelten nur auf diesem Gerät"
-                }
-                className="max-w-40 bg-slate-950 pr-1 text-slate-100"
-              >
-                <option value="">Kein Profil (nur dieses Gerät)</option>
-                {(profilesRes.data?.profiles ?? []).map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              aria-label="Fahrzeug-Profile verwalten"
-              title="Profile anlegen, umbenennen, löschen (A1)"
-              onClick={() => setProfileManagerOpen(true)}
-              disabled={profilesBusy}
-              className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
-            >
-              <SquarePen size={16} aria-hidden="true" />
-            </button>
-            {/* B4: aggregierter System-Alarm als roter/gelber/grüner Punkt. */}
-            {h && (
-              <span
-                role="status"
-                title={
-                  alarms.length
-                    ? alarms.map((a) => a.message).join(" · ")
-                    : "Alles ok — keine Alarme"
-                }
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold ${
-                  errorAlarms.length
-                    ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                    : warnAlarms.length
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                }`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`h-2 w-2 rounded-full ${
-                    errorAlarms.length
-                      ? "bg-rose-400"
-                      : warnAlarms.length
-                        ? "bg-amber-400"
-                        : "bg-emerald-400"
-                  }`}
-                />
-                {errorAlarms.length
-                  ? `${errorAlarms.length} Alarm${errorAlarms.length > 1 ? "e" : ""}`
-                  : warnAlarms.length
-                    ? `${warnAlarms.length} Hinweis${warnAlarms.length > 1 ? "e" : ""}`
-                    : "Alles ok"}
-              </span>
-            )}
-            {/* A6: aktuelle Sicht als Link teilen (Haushalt/Bookmark). */}
-            <span className="relative inline-flex">
-              <button
-                aria-label="Ansicht als Link teilen"
-                title="Setzt Bereich, Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
-                onClick={copyShareLink}
-                className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
-              >
-                <Share2 size={16} aria-hidden="true" />
-              </button>
-              <span role="status" aria-live="polite" className="sr-only">
-                {shareNote ?? ""}
-              </span>
-              {shareNote && (
-                <span
-                  role="status"
-                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-xs leading-snug text-slate-200 shadow-xl"
-                >
-                  {shareNote}
-                </span>
-              )}
-            </span>
-            <button
-              aria-label="Daten aktualisieren"
-              title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
-              onClick={() => setRefresh((value) => value + 1)}
-              disabled={prices.pending}
-              className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
-            >
-              <RefreshCw
-                size={16}
-                className={
-                  prices.pending ? "animate-spin text-emerald-400" : ""
-                }
-              />
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader ov={ov} />
 
-      {/* U3 (§13): desktop die Seitenleiste links neben dem Inhalt, mobil
+      {/* U3 (§13): desktop die Seitenleiste links vor dem Inhalt, mobil
           die Bottom-Navigation — dieselbe Liste, zwei Raster (AppNav). */}
       <div className="mx-auto flex max-w-7xl items-start gap-6 px-4 sm:px-6 lg:px-8">
         <AppNav tab={tab} onSelect={gotoTab} />
@@ -2041,113 +496,22 @@ export function Dashboard() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB STATISTIK / WERKSTATT                                    */}
+        {/* TAB LABOR — holt sich Daten und Modell aus dem Context (U8)   */}
         {/* ============================================================ */}
         {tab === "labor" && (
           <LaborView
-            activeCity={activeCity}
-            activeLabDayRow={activeLabDayRow}
-            activeLabOutcome={activeLabOutcome}
-            anchorHour={anchorHour}
-            anchorLabel={anchorLabel}
-            best={best}
-            calibErr={calibErr}
-            calibPoints={calibPoints}
-            diary={diary}
-            eps={eps}
-            f={f}
-            fanBand80={fanBand80}
-            fanBand95={fanBand95}
             focusSection={laborFocus}
-            forecast={forecast}
-            forecastMarks={forecastMarks}
-            forecastWindow={forecastWindow}
-            gateStatus={gateStatus}
-            h={h}
-            heatmap={heatmap}
-            heatmapBasis={heatmapBasis}
-            heatmapBasisActive={heatmapBasisActive}
-            heatmapKind={heatmapKind}
-            heatmapWeeks={heatmapWeeks}
-            history={history}
-            horizon={horizon}
-            horizonDays={horizonDays}
-            labData={labData}
-            labDayClass={labDayClass}
-            labDayIdx={labDayIdx}
-            labModel={labModel}
-            labMu={labMu}
-            labPredHour={labPredHour}
-            labRows={labRows}
-            labSaves={labSaves}
-            labTotals={labTotals}
-            liters={liters}
-            livePointsForChart={livePointsForChart}
-            m7Line={m7Line}
-            metrics={metrics}
-            modelSeries={modelSeries}
-            observations={observations}
             onFocusHandled={() => setLaborFocus(null)}
             onNavigate={handleNowNavigate}
             onOpenGlossary={() => gotoTab("glossary")}
-            refreshNow={refreshNow}
-            selected={selected}
-            selection={selection}
-            setEps={setEps}
-            setHeatmapBasis={setHeatmapBasis}
-            setHeatmapKind={setHeatmapKind}
-            setHeatmapWeeks={setHeatmapWeeks}
-            setHorizon={setHorizon}
-            setLabDayIdx={setLabDayIdx}
-            setSelectedId={setSelectedId}
-            setSpanHours={setSpanHours}
-            spanHours={spanHours}
-            spanLabel={spanLabel}
-            stations={stations}
-            statsSummaryRes={statsSummaryRes}
-            stationPhase={stationPhase}
-            transitionLine={transitionLine}
           />
         )}
 
         {/* ============================================================ */}
-        {/* TAB SYSTEM                                                    */}
+        {/* TAB SYSTEM — Terminal-Zustand besitzt die View selbst (U8)   */}
         {/* ============================================================ */}
         {tab === "system" && (
-          <SystemView
-            activeCity={activeCity}
-            calibrationHint={calibrationHint}
-            collector={collector}
-            data={data}
-            decideRes={decideRes}
-            fresh={fresh}
-            h={h}
-            health={health}
-            identity={identity}
-            jobLog={jobLog}
-            liveAdvice={liveAdvice}
-            logBodyRef={logBodyRef}
-            logJob={logJob}
-            fuel={fuel}
-            heatmapWeeks={heatmapWeeks}
-            logLineCount={logLineCount}
-            logLines={logLines}
-            logRef={logRef}
-            m7Line={m7Line}
-            refreshNow={refreshNow}
-            selection={selection}
-            setLogJob={setLogJob}
-            setLogLineCount={setLogLineCount}
-            setLogReload={setLogReload}
-            showJobLog={showJobLog}
-            span={span}
-            stations={stations}
-            statsSummaryRes={statsSummaryRes}
-            triggerCommand={triggerCommand}
-            webhookCapable={webhookCapable}
-            workerCommand={workerCommand}
-            onDeepen={(section) => openLabor(section)}
-          />
+          <SystemView onDeepen={(section) => openLabor(section)} />
         )}
 
         {/* ============================================================ */}
@@ -2198,4 +562,3 @@ export function Dashboard() {
     </div>
   );
 }
-

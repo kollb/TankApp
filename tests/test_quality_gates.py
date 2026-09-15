@@ -45,8 +45,17 @@ def test_lighthouse_budgets_sind_hinterlegt():
     # schleife): LHCI wartet sonst zu kurz und bricht ohne Bericht ab.
     collect = config["ci"]["collect"]
     assert "startServerCommand" not in collect
-    assert len(collect["url"]) >= 2
-    assert all("127.0.0.1:1355" in url for url in collect["url"])
+    # U7: drei echte Zustände — der gefüllte Einstieg und der Labor-Bereich
+    # gegen den Demo-Stack (Port 1355), der Einrichtungszustand gegen den
+    # leeren Server (Port 1356). Mehr als diese beiden Hosts darf es nicht
+    # geben, sonst misst das Gate einen anderen Server als den Prüfstand.
+    assert len(collect["url"]) >= 3
+    assert all(
+        "127.0.0.1:1355" in url or "127.0.0.1:1356" in url
+        for url in collect["url"]
+    )
+    assert sum("127.0.0.1:1356" in url for url in collect["url"]) == 1
+    assert any("tab=labor" in url for url in collect["url"])
     # Chrome braucht im Container --no-sandbox.
     assert "--no-sandbox" in collect["settings"]["chromeFlags"]
 

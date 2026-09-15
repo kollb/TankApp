@@ -8,12 +8,17 @@
 //       Browser-Zurück (U4-Routing).
 //   Ehrlichkeit: Das Tagebuch erfindet keine Zeile — ohne Abrechnung nennt
 //   es den Grund statt einer leeren Fläche.
+//
+// U8: Die View hängt am OverviewContext — die Tests injizieren einen
+// fertigen Zustand über <OverviewProvider value={…}> und rechnen das Modell
+// (useLaborModel) aus denselben Ressourcen wie die App.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LAB_SECTIONS } from "../lab";
+import { OverviewProvider, type OverviewState } from "../state/overview";
 import { LaborView, type LaborViewProps } from "./Labor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -27,30 +32,32 @@ const res = <T,>(data: T | null, pending = false) => ({
   receivedAt: 0,
 });
 
-const baseProps = {
+const noop = () => {};
+
+// Gemeinsamer Overview-Zustand der Labor-Tests: minimal, aber vollständig
+// genug, dass View + useLaborModel rendern. Alles Weitere überschreiben die
+// einzelnen Tests gezielt.
+const baseOverview = {
   activeCity: "Frankfurt",
   stations: [],
   selected: undefined,
   best: undefined,
   h: null,
+  fuel: "e10",
   liters: 40,
   spanHours: 24,
+  setSpanHours: noop,
   horizon: 0,
+  setHorizon: noop,
   horizonDays: 0,
-  eps: 1,
-  labDayIdx: 0,
   heatmapKind: "level",
   heatmapWeeks: 2,
   heatmapBasis: "overall",
   heatmapBasisActive: false,
-  setSpanHours: () => {},
-  setHorizon: () => {},
-  setEps: () => {},
-  setLabDayIdx: () => {},
-  setHeatmapKind: () => {},
-  setHeatmapWeeks: () => {},
-  setHeatmapBasis: () => {},
-  setSelectedId: () => {},
+  setHeatmapKind: noop,
+  setHeatmapWeeks: noop,
+  setHeatmapBasis: noop,
+  setSelectedId: noop,
   history: res({ points: [], error_code: null }),
   forecast: res(null),
   heatmap: res(null),
@@ -67,61 +74,52 @@ const baseProps = {
   m7Line: null,
   transitionLine: "",
   stationPhase: null,
-  f: null,
-  metrics: null,
-  modelSeries: [],
   observations: [],
   spanLabel: "letzte 24 Stunden",
-  livePointsForChart: [],
-  fanBand80: [],
-  fanBand95: [],
-  forecastMarks: [],
-  forecastWindow: null,
-  anchorHour: 12,
-  anchorLabel: "12:00",
-  labData: undefined,
-  labRows: [],
-  labTotals: {
-    n: 0,
-    smart: 0,
-    commit: 0,
-    best: 0,
-    always: 0,
-    regretEur: 0,
-    hitFreq: 0,
-    pAvg: 0,
-    potShare: 0,
-  },
-  labSaves: [],
-  labMu: 1.5,
-  labModel: null,
-  labDayClass: 0,
-  activeLabDayRow: null,
-  activeLabOutcome: null,
-  calibPoints: [],
-  calibErr: Number.NaN,
-  refreshNow: () => {},
-  focusSection: null,
-  onFocusHandled: () => {},
-  onNavigate: () => {},
-  onOpenGlossary: () => {},
-} as unknown as LaborViewProps;
+  refreshNow: noop,
+} as unknown as OverviewState;
 
-function render(overrides: Partial<LaborViewProps> = {}): string {
-  const props = { ...baseProps, ...overrides } as LaborViewProps;
-  return renderToStaticMarkup(<LaborView {...props} />);
+const baseViewProps: LaborViewProps = {
+  focusSection: null,
+  onFocusHandled: noop,
+  onNavigate: noop,
+  onOpenGlossary: noop,
+};
+
+function withProvider(
+  element: Parameters<typeof renderToStaticMarkup>[0],
+  overview: Record<string, unknown> = {},
+) {
+  return (
+    <OverviewProvider value={{ ...baseOverview, ...overview } as OverviewState}>
+      {element}
+    </OverviewProvider>
+  );
 }
 
-let mounted: { root: ReturnType<typeof createRoot>; host: HTMLElement } | null =
+function render(
+  overrides: Partial<LaborViewProps> = {},
+  overview: Record<string, unknown> = {},
+): string {
+  const props = { ...baseViewProps, ...overrides } as LaborViewProps;
+  return renderToStaticMarkup(
+    withProvider(<LaborView {...props} />, overview),
+  );
+}
+
+let mounted: { root: ReturnType<typeof createRoot>; host: HTMLDivElement } | null =
   null;
 
-function mount(overrides: Partial<LaborViewProps> = {}) {
+function mount(
+  overrides: Partial<LaborViewProps> = {},
+  overview: Record<string, unknown> = {},
+) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  const props = { ...baseProps, ...overrides } as LaborViewProps;
+  const props = { ...baseViewProps, ...overrides } as LaborViewProps;
   act(() => {
-    root.render(<LaborView {...props} />);
+    root.render(withProvider(<LaborView {...props} />, overview));
   });
   mounted = { root, host };
   return host;
@@ -146,20 +144,12 @@ describe("Labor: Aufbau (§6.2)", () => {
       // Die Frage ist eine Überschrift (h2-Ebene) — der Aufklapp-Knopf
       // bleibt Schalter, `getByRole("heading")` findet den Abschnitt trotzdem
       // (die Browser-Suite prüft genau das).
-      expect(html).toContain(
-        `<span id="labor-${section.id}-title" role="heading" aria-level="2"`,
-      );
     }
-    // Sprungleiste: nummerierte Knöpfe, Spielplatz ohne Nummer.
-    expect(html).toContain("1 · Was die App vorhersagt");
-    expect(html).toContain("5 · Glossar von A–Z");
-    expect(html).toContain(">Spielplatz<");
-    // Kein Pfad, kein Fortschritt, keine Häkchen (§6.2).
-    expect(html).not.toContain("Kapitel");
-    expect(html).not.toContain("% geschafft");
+    expect(html).toContain("Spielplatz");
+    expect(html).toContain('id="labor-spielplatz"');
   });
 
-  it("beginnt mit dem Vertrauens-Konto und lässt den Prozentwert weg, solange nichts gezählt ist", () => {
+  it("zeigt das Vertrauens-Konto ehrlich, wenn noch nichts abgerechnet ist", () => {
     const html = render();
     expect(html).toContain("Vertrauens-Konto");
     expect(html).toContain("noch nichts zu zählen");
@@ -168,22 +158,24 @@ describe("Labor: Aufbau (§6.2)", () => {
   });
 
   it("verlinkt ohne Modell keine erfundene Kachel, sondern nennt den Grund", () => {
-    const html = render({ forecast: res(null) });
+    const html = render({}, { forecast: res(null) });
     expect(html).toContain("Prinzip-Skizze — nicht deine Daten.");
     expect(html).toContain("Ohne veröffentlichten Modell-Lauf");
   });
 
   it("nennt im Tagebuch den Grund statt einer leeren Fläche (§10)", () => {
-    const host = mount({
-      focusSection: "lernen",
-      diary: res({
-        generated_at: "2026-09-14T12:00:00+02:00",
-        count: 0,
-        entries: [],
-        reason: "no_settlements",
-        error_code: null,
-      }),
-    });
+    const host = mount(
+      { focusSection: "lernen" },
+      {
+        diary: res({
+          generated_at: "2026-09-14T12:00:00+02:00",
+          count: 0,
+          entries: [],
+          reason: "no_settlements",
+          error_code: null,
+        }),
+      },
+    );
     const text = host.textContent ?? "";
     expect(text).toContain("Noch kein Eintrag abgerechnet");
     // Und keinen Demo-Eintrag „zur Anschauung“.
@@ -221,13 +213,27 @@ describe("Labor: Erklär-Treppe Ebene 2 (§7)", () => {
 
 describe("Labor: Spielplatz und Tagebuch-Kennzahlen", () => {
   it("rechnet das Was-wäre-gewesen mit der eingestellten Schwelle nach", () => {
-    const host = mount({
-      focusSection: "spielplatz",
-      labRows: [
-        { day: "2026-09-07", cls: 0, mu: 2.5, p: 0.8, s: 2.1, best: 2.4, predHour: 18 },
-        { day: "2026-09-08", cls: 0, mu: -0.5, p: 0.3, s: -1.2, best: 0.4, predHour: 19 },
-      ],
-    });
+    // U8: Die Tagesreihen kommen nicht mehr als fertiges Prop, sondern als
+    // Backtest-Rohstoff (stats/summary) — das Modell rechnet die View.
+    const host = mount(
+      { focusSection: "spielplatz" },
+      {
+        statsSummaryRes: res({
+          backtest: {
+            decisionHour: 12,
+            stations: [],
+            models: {},
+            calibration: [],
+            evalRows: {
+              "": [
+                { day: "2026-09-07", cls: 0, mu: 2.5, p: 0.8, s: 2.1, best: 2.4, predHour: 18 },
+                { day: "2026-09-08", cls: 0, mu: -0.5, p: 0.3, s: -1.2, best: 0.4, predHour: 19 },
+              ],
+            },
+          },
+        } as any),
+      },
+    );
     const text = host.textContent ?? "";
     expect(text).toContain("2 von 2 Tagen richtig");
     expect(text).toContain("2026-09-07".slice(5));

@@ -71,70 +71,15 @@ import {
   type LabSectionId,
 } from "../lab";
 import { GlossaryView } from "./Glossary";
+import { useOverview } from "../state/overview";
+import { useLaborModel } from "./laborModel";
 
+// U8: Die Labor-View holt sich ihre Daten aus dem OverviewContext und
+// besitzt ihren bereichsspezifischen Zustand selbst — der Spielplatz
+// (ε-Schwelle, Tagesindex) ist Ansichtszustand, das Modell rechnet
+// `useLaborModel` aus dem Rohstoff (stats/summary, forecast, series).
+// Von der Root kommen nur noch die vier Navigations-Props.
 export interface LaborViewProps {
-  activeCity: string;
-  stations: Station[];
-  selected: Station | undefined;
-  best: Station | undefined;
-  h: Health | null;
-  liters: number;
-  // Präferenzen
-  spanHours: number;
-  horizon: number;
-  horizonDays: number;
-  eps: number;
-  labDayIdx: number;
-  heatmapKind: string;
-  heatmapWeeks: number;
-  heatmapBasis: string;
-  heatmapBasisActive: boolean;
-  setSpanHours: (v: number) => void;
-  setHorizon: (v: number) => void;
-  setEps: (v: number) => void;
-  setLabDayIdx: (v: number) => void;
-  setHeatmapKind: (v: "level" | "probability") => void;
-  setHeatmapWeeks: (v: number) => void;
-  setHeatmapBasis: (v: HeatmapBasis) => void;
-  setSelectedId: (v: string) => void;
-  // Ressourcen
-  history: ResourceState<{ points: Point[]; error_code: string | null }>;
-  forecast: ResourceState<Forecast>;
-  heatmap: ResourceState<Heatmap>;
-  selection: ResourceState<Selection>;
-  statsSummaryRes: ResourceState<StatsSummary>;
-  /** Prognose-Tagebuch: echte Ledger-Settlements (kein Demo). */
-  diary: ResourceState<AdviceDiary>;
-  // Abgeleitete Werte der Root
-  gateStatus: string;
-  m7Line: string | null;
-  transitionLine: string;
-  stationPhase: Forecast["data_policy"] | null;
-  f: any;
-  metrics: any;
-  modelSeries: Array<{ name?: string; color: string; pts: Array<{ x: number; y: number }> }>;
-  observations: Array<{ name?: string; color: string; pts: Array<{ x: number; y: number }> }>;
-  spanLabel: string;
-  livePointsForChart: Array<{ p: number; hit: number; n: number }>;
-  fanBand80: any;
-  fanBand95: any;
-  forecastMarks: any[];
-  forecastWindow: any;
-  anchorHour: number;
-  anchorLabel: string;
-  labData: StatsSummary["backtest"] | undefined;
-  labRows: any[];
-  labTotals: any;
-  labSaves: number[];
-  labPredHour: number;
-  labMu: number;
-  labModel: any;
-  labDayClass: number | null;
-  activeLabDayRow: any;
-  activeLabOutcome: any;
-  calibPoints: any[];
-  calibErr: any;
-  refreshNow: () => void;
   // Erklär-Treppe Ebene 1 → 2 (§7). U5: Ebene 1 öffnet ein Sheet am
   // Wirkungsort; der Sprung hierher ist ausdrücklich — der Rückweg ist das
   // Browser-Zurück (U4), eine gemerkte Herkunft braucht es nicht mehr.
@@ -300,23 +245,15 @@ function SketchNote({ children }: { children: ReactNode }) {
 }
 
 export function LaborView(props: LaborViewProps) {
+  const { focusSection, onFocusHandled, onNavigate, onOpenGlossary } = props;
+  // U8: geteilte Daten aus dem OverviewContext …
+  const ov = useOverview();
   const {
     activeCity,
-    activeLabDayRow,
-    activeLabOutcome,
-    anchorHour,
-    anchorLabel,
     best,
-    calibErr,
-    calibPoints,
     diary,
-    eps,
-    f,
-    fanBand80,
-    fanBand95,
     forecast,
-    forecastMarks,
-    forecastWindow,
+    fuel,
     gateStatus,
     h,
     heatmap,
@@ -327,30 +264,16 @@ export function LaborView(props: LaborViewProps) {
     history,
     horizon,
     horizonDays,
-    labData,
-    labDayClass,
-    labDayIdx,
-    labModel,
-    labMu,
-    labPredHour,
-    labRows,
-    labSaves,
-    labTotals,
     liters,
-    livePointsForChart,
     m7Line,
-    metrics,
-    modelSeries,
     observations,
     refreshNow,
     selection,
     selected,
-    setEps,
     setHeatmapBasis,
     setHeatmapKind,
     setHeatmapWeeks,
     setHorizon,
-    setLabDayIdx,
     setSelectedId,
     setSpanHours,
     spanHours,
@@ -359,11 +282,38 @@ export function LaborView(props: LaborViewProps) {
     stations,
     statsSummaryRes,
     transitionLine,
-    focusSection,
-    onFocusHandled,
-    onNavigate,
-    onOpenGlossary,
-  } = props;
+  } = ov;
+  // … der Spielplatz ist Ansichtszustand (B4) …
+  const [eps, setEps] = useState(1.0);
+  const [labDayIdx, setLabDayIdx] = useState(13);
+  // … und das Modell rechnet die View selbst (views/laborModel.ts).
+  const {
+    activeLabDayRow,
+    activeLabOutcome,
+    anchorHour,
+    anchorLabel,
+    calibErr,
+    calibPoints,
+    f,
+    fanBand80,
+    fanBand95,
+    forecastMarks,
+    forecastWindow,
+    labData,
+    labDayClass,
+    labModel,
+    labMu,
+    labPredHour,
+    labRows,
+    labSaves,
+    labTotals,
+    livePointsForChart,
+    metrics,
+    modelSeries,
+  } = useLaborModel(ov, eps, labDayIdx);
+  // U8: Die Sorte kommt aus der Auswahl (Overview), nicht mehr aus einem
+  // `any`-Feld des Forecast-Payloads.
+  const fuelLabel = fuel === "diesel" ? "Diesel" : fuel.toUpperCase();
 
   const [open, setOpen] = useState<Record<LabSectionId, boolean>>({
     prognose: true,
@@ -521,7 +471,7 @@ export function LaborView(props: LaborViewProps) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-white">
-              Vertrauens-Konto ({activeCity || "kein Ort"} · {f?.fuel || "E10"})
+              Vertrauens-Konto ({activeCity || "kein Ort"} · {fuelLabel})
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-slate-300">
               Trefferquote der Empfehlungen (6 Wochen):{" "}

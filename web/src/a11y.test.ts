@@ -35,6 +35,8 @@ function dirOf(relativePath: string): string {
 const SRC_ROOT = dirOf("styles.css");
 const UI_FILE = `${SRC_ROOT}/components/ui.tsx`;
 const DASHBOARD = read("Dashboard.tsx");
+// U8: Die Kopfzeile (app-header/app-tagline) wohnt in components/AppHeader.
+const APP_HEADER = read("components/AppHeader.tsx");
 const SLIDER = read("components/PrecisionSlider.tsx");
 const MAP = read("components/StationMap.tsx");
 const MANIFEST = JSON.parse(read("../public/manifest.json")) as {
@@ -270,9 +272,10 @@ describe("C8: Querformat", () => {
     for (const hook of [".app-header", ".app-tagline", ".app-main", ".daystrip-cells"]) {
       expect(rule, `${hook} fehlt im Querformat-Block`).toContain(hook);
     }
-    for (const hook of ["app-header", "app-tagline", "app-main"]) {
-      expect(DASHBOARD, `${hook} fehlt in Dashboard.tsx`).toContain(hook);
+    for (const hook of ["app-header", "app-tagline"]) {
+      expect(APP_HEADER, `${hook} fehlt in AppHeader.tsx`).toContain(hook);
     }
+    expect(DASHBOARD, "app-main fehlt in Dashboard.tsx").toContain("app-main");
   });
 
   it("die Installation darf drehen (Hoch- und Querformat)", () => {

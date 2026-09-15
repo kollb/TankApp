@@ -11,7 +11,7 @@
 // Die View rendert, sie entscheidet nichts (D1): Zustand, Abdeckung, Frische
 // und Begründungen kommen aus `system.ts` und sind dort getestet.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   BellRing,
@@ -77,39 +77,15 @@ import {
   type SystemStatusRow,
 } from "../system";
 import type { LabSectionId } from "../lab";
+import { useOverview } from "../state/overview";
 
+// U8: Die System-View holt sich ihre Daten aus dem OverviewContext. Von der
+// Root kommt nur noch der Ebene-2-Sprung (onDeepen). Das Log-Terminal ist
+// Bereichszustand: Die DOM-Referenzen, das Scrollverhalten und die
+// Start-Kommandos besitzt diese View; die Job-Auswahl (logJob/Zeilen/Reload)
+// bleibt im Context, weil der Hinweisblock fehlgeschlagener Jobs in der Root
+// „Log ansehen“ anbietet.
 export interface SystemViewProps {
-  activeCity: string;
-  fuel: Fuel;
-  heatmapWeeks: number;
-  data: Stations | null;
-  stations: Station[];
-  fresh: Station[];
-  h: Health | null;
-  health: ResourceState<Health>;
-  collector: CollectorStatus | undefined;
-  selection: ResourceState<Selection>;
-  statsSummaryRes: ResourceState<StatsSummary>;
-  decideRes: ResourceState<DecideResult>;
-  jobLog: ResourceState<JobLog>;
-  logJob: string;
-  logLineCount: number;
-  logLines: string[];
-  logBodyRef: React.RefObject<HTMLPreElement | null>;
-  logRef: React.RefObject<HTMLElement | null>;
-  setLogJob: (v: string) => void;
-  setLogLineCount: (v: number) => void;
-  setLogReload: (v: number | ((prev: number) => number)) => void;
-  showJobLog: (job: string) => void;
-  calibrationHint: string;
-  m7Line: string | null;
-  liveAdvice: StatsSummary["live_advice"] | null;
-  identity: string;
-  span: number | null;
-  webhookCapable: boolean;
-  triggerCommand: string;
-  workerCommand: string;
-  refreshNow: () => void;
   /** Ebene 2: der Labor-Abschnitt, der diese Zahl beweist (§7). */
   onDeepen: (section: LabSectionId) => void;
 }
@@ -151,6 +127,8 @@ function StatusRowCard({ row }: { row: SystemStatusRow }) {
 }
 
 export function SystemView(props: SystemViewProps) {
+  const { onDeepen } = props;
+  const ov = useOverview();
   const {
     activeCity,
     calibrationHint,
@@ -158,18 +136,16 @@ export function SystemView(props: SystemViewProps) {
     data,
     decideRes,
     fresh,
-    h,
     fuel,
-    heatmapWeeks,
+    h,
     health,
+    heatmapWeeks,
     identity,
     jobLog,
     liveAdvice,
-    logBodyRef,
     logJob,
     logLineCount,
     logLines,
-    logRef,
     m7Line,
     refreshNow,
     selection,
@@ -179,11 +155,31 @@ export function SystemView(props: SystemViewProps) {
     showJobLog,
     stations,
     statsSummaryRes,
-    triggerCommand,
-    webhookCapable,
-    workerCommand,
-    onDeepen,
-  } = props;
+  } = ov;
+
+  // U8: Das Terminal besitzt sein DOM selbst — neueste Zeile unten, beim
+  // Job-Wechsel automatisch ans Ende; ein explicit angezeigtes Log
+  // („Log ansehen“) scrollt zusätzlich in den Blick.
+  const logRef = useRef<HTMLElement | null>(null);
+  const logBodyRef = useRef<HTMLPreElement | null>(null);
+  const firstLogRender = useRef(true);
+  useEffect(() => {
+    const box = logBodyRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [logLines.length, logJob]);
+  useEffect(() => {
+    if (firstLogRender.current) {
+      firstLogRender.current = false;
+      return;
+    }
+    requestAnimationFrame(() =>
+      logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }, [logJob]);
+  // Start-Kommandos sind Ansichtssache (abhängig vom gewählten Job).
+  const webhookCapable = logJob === "models" || logJob === "selection";
+  const triggerCommand = `curl -X POST http://<nas>:1355/api/v1/jobs/trigger -H "Authorization: Bearer $TANKAPP_WEBHOOK_TOKEN" -H 'Content-Type: application/json' -d '{"job":"${logJob}"}'`;
+  const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
 
   const [sheet, setSheet] = useState<"zustand" | "daten" | "laeufe" | "stoerungen" | null>(null);
 
