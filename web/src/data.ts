@@ -2521,6 +2521,41 @@ export function countLabel(value: number | null | undefined) {
     : Math.round(value).toLocaleString("de-DE");
 }
 
+/** Einzahl/Mehrzahl für frische Preise (TEXT-BEFUND T8). */
+export function freshCountLabel(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return "—";
+  const n = Math.round(value);
+  if (n === 1) return "1 frischer Preis";
+  return `${countLabel(n)} frische Preise`;
+}
+
+/** Kraftstoff als sichtbares Label — nie `DIESEL` aus `toUpperCase()`. */
+export function fuelLabel(fuel: string | null | undefined): string {
+  if (!fuel) return "—";
+  if (fuel === "diesel") return "Diesel";
+  if (fuel === "e10") return "E10";
+  if (fuel === "e5") return "E5";
+  return fuel.toUpperCase();
+}
+
+/**
+ * CUSUM-Status der Güte-Kachel — deutsch, nicht `status.toUpperCase()`.
+ * Unbekannte Werte bleiben stehen, statt eine Bedeutung zu erfinden.
+ */
+export function cusumStatusLabel(
+  status: string | null | undefined,
+  maxCusum?: number | null,
+): string {
+  if (!status) return "—";
+  const sigma =
+    maxCusum != null && Number.isFinite(maxCusum)
+      ? ` (${euro(maxCusum, 2)}σ)`
+      : "";
+  if (status === "normal") return `Stabil${sigma}`;
+  if (status === "drift") return `Drift${sigma}`;
+  return status;
+}
+
 /**
  * Uhrzeit-**Bereich** über ganze Stunden: „18–20 Uhr“ (Konzept-Sprechweise der
  * Entscheidung). Einzelne Rasterzellen heißen dagegen `hourBucketLabel`.
@@ -2705,6 +2740,19 @@ export function ageWord(age: number): string {
   if (hours < 24) return `vor ${hours} Stunden`;
   const days = Math.round(hours / 24);
   return days === 1 ? "vor 1 Tag" : `vor ${days} Tagen`;
+}
+
+/** Dauer in Worten ohne „vor“ — Job-Lauf, Wartezeit, Collector-Alter. */
+export function durationWord(minutes: number): string {
+  const m = Math.round(minutes);
+  if (m < 1) return "unter 1 Minute";
+  if (m === 1) return "1 Minute";
+  if (m < 60) return `${m} Minuten`;
+  const hours = Math.round(m / 60);
+  if (hours === 1) return "1 Stunde";
+  if (hours < 24) return `${hours} Stunden`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "1 Tag" : `${days} Tage`;
 }
 
 /** Alter in Worten: „vor 4 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */
@@ -3427,7 +3475,7 @@ export function lifecycleTip(lc: StationLifecycle | string | null | undefined): 
     case "closed":
       return "Status „geschlossen“ — die Station ist vorübergehend geschlossen, der Preis fehlt deshalb.";
     case "no_fuel":
-      return "Offen, aber dieser Kraftstoff wurde als „false“ gemeldet — die Sorte wird hier nicht geführt.";
+      return "Offen, aber dieser Kraftstoff wird hier nicht geführt.";
     default:
       return "Lebenszyklus unbekannt.";
   }

@@ -81,6 +81,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
 | Strecke | `kilometersLabel` | `2,4 km` (Nachkommastellen als 2. Argument; ganzzahlig default) |
 | Stückzahl | `countLabel` | `12.345` |
+| Frische Preise | `freshCountLabel` | `1 frischer Preis` / `12 frische Preise` |
+| Kraftstoff | `fuelLabel` | `E10` · `E5` · `Diesel` — nie `DIESEL` |
+| Dauer ohne „vor“ | `durationWord` | `12 Minuten` — nie „12 Min.“ |
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |
 
@@ -218,6 +221,8 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 | Gesamtfarbe | `Alles ok` · `Hinweise` · `Störungen` · `Unbekannt` |
 | Coverage-Gate | Fenster wie geliefert (`06–24 Uhr`) — kein zweites „Uhr“; Bestwert und Schwelle über `percentLabel` |
 | Diagnose-Export | Knopf `Diagnose als Datei` — JSON mit Version, Zustand, Coverage, letzten Log-Zeilen, ohne Tokens |
+| CUSUM | `Stabil` · `Drift` über `cusumStatusLabel` — nie `status.toUpperCase()` |
+| Alarme | Klartext zuerst, Rohcode klein darunter |
 | PWA | `der Service-Worker liegt unter /sw.js` — die Shell trägt die App-Version, ein wartender Worker meldet sich als „Neue Version verfügbar“; Belege/Vorsätze warten offline in der Queue und gehen raus, sobald die Verbindung steht (B10) |
 | API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
 | Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
@@ -264,7 +269,10 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
-  neue `toFixed`-Anzeigen **und** gegen `euro()` für km/%/ct), `microcopy.test.ts` (paarige `„…“`, keine
+  neue `toFixed`-Anzeigen **und** gegen `euro()` für km/%/ct **sowie T6/T7**:
+  keine `docker logs`/`letzter Skip`/`Webhook-Trigger` in JobCard, kein
+  `/api/v1/fills.csv laden`, kein `status.toUpperCase` an der CUSUM-Kachel),
+  `microcopy.test.ts` (paarige `„…“`, keine
   HTML-Entities, **keine ausgemusterten Wörter und Synonyme** aus §4, die
   §4c-Ergebnis-Worte gegen `lab.ts`, keine Ausrufezeichen und keine
   `✓`/`!`-Präfixe), `components/FeedbackBanner.test.tsx` (Ton der

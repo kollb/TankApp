@@ -39,11 +39,14 @@ import {
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
   countLabel,
+  cusumStatusLabel,
   deNumber,
   deTrimmed,
+  durationWord,
   centPerLiter,
-  euro,
+  fuelLabel,
   lifecycleTip,
+  messages,
   notifyLastLine,
   notifyStatusLine,
   notifyTone,
@@ -290,7 +293,9 @@ export function SystemView(props: SystemViewProps) {
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Alter</span>
                     <span className="font-mono text-slate-200">
-                      {(collector ?? h?.collector)?.age_minutes != null ? `${deTrimmed((collector ?? h?.collector)?.age_minutes ?? 0, 0)} Min.` : "—"}
+                      {(collector ?? h?.collector)?.age_minutes != null
+                        ? durationWord((collector ?? h?.collector)?.age_minutes ?? 0)
+                        : "—"}
                     </span>
                   </div>
                   <div className="flex justify-between text-xs">
@@ -304,7 +309,9 @@ export function SystemView(props: SystemViewProps) {
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Älteste Datei</span>
                     <span className="font-mono text-slate-200">
-                      {(collector ?? h?.collector)?.oldest_age_days != null ? `${(collector ?? h?.collector)?.oldest_age_days} Tage` : "—"}
+                      {(collector ?? h?.collector)?.oldest_age_days != null
+                        ? durationWord(Number((collector ?? h?.collector)?.oldest_age_days) * 24 * 60)
+                        : "—"}
                     </span>
                   </div>
                   {/* B8: Trigger Pi → NAS. Der Uploader meldet mit jedem
@@ -403,11 +410,13 @@ export function SystemView(props: SystemViewProps) {
             <Empty>Das gemeinsame Polling-Set fehlt auf diesem Server.</Empty>
             {data?.connection_error === "polling_missing" && (
               <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-200/80 break-words">
-                Keine Stadt eingerichtet. Collector-Herzschlag {collector?.available ? "ok" : "fehlt"} und InfluxDB-Lesezugang {h?.influx_configured ? "ok" : "fehlt"} nutzen ohne Polling-Set nichts. Auf dem Pi{" "}
-                <code className="break-all">{h?.polling_path || "data/analysis/stations/polling.json"}</code>{" "}
-                erzeugen (Anleitung: Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
-                <code className="break-all">TANKAPP_POLLING_FILE</code> prüfen (compose.yml → /config/polling.json, nur lesend) und{" "}
-                <code className="break-all">ops/nas/preflight.sh</code> ausführen.
+                {messages.polling_missing} Collector-Herzschlag {collector?.available ? "ok" : "fehlt"}
+                {" "}und InfluxDB-Lesezugang {h?.influx_configured ? "ok" : "fehlt"} nutzen ohne Polling-Set nichts.
+                {h?.polling_path ? (
+                  <>
+                    {" "}Polling-Set: <code className="break-all">{h.polling_path}</code>.
+                  </>
+                ) : null}
               </div>
             )}
           </div>
@@ -418,7 +427,7 @@ export function SystemView(props: SystemViewProps) {
             <p className="text-[10px] uppercase tracking-wider text-slate-500">Stationen im Set</p>
             <p className="mt-1 text-lg font-bold text-white">{countLabel(coverage.stationCount)}</p>
             <p className="mt-1 text-[11px] text-slate-500">
-              {coverage.cities.length ? coverage.cities.join(" · ") : "Keine Stadt"} · {coverage.fuel.toUpperCase()}
+              {coverage.cities.length ? coverage.cities.join(" · ") : "Keine Stadt"} · {fuelLabel(coverage.fuel)}
             </p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
@@ -458,7 +467,7 @@ export function SystemView(props: SystemViewProps) {
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Temporär geschlossen / führt nicht{" "}
-                    <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
+                    <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte nicht geführt" />
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-300">
                     {countLabel((selection.data.closed_count ?? 0) + (selection.data.nofuel_count ?? 0))}
@@ -547,7 +556,7 @@ export function SystemView(props: SystemViewProps) {
               label="Sprungfreie Tage · MASE"
               value={
                 statsSummaryRes.data?.quality_metrics.mase_sprungfrei != null ? (
-                  <span className="font-mono text-sky-300">{euro(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 2)}</span>
+                  <span className="font-mono text-sky-300">{deNumber(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 2)}</span>
                 ) : (
                   <span className="font-mono text-slate-500">—</span>
                 )
@@ -578,13 +587,10 @@ export function SystemView(props: SystemViewProps) {
                         : "font-mono text-amber-400"
                     }
                   >
-                    {statsSummaryRes.data.quality_metrics.cusum_drift.status === "normal"
-                      ? `STABIL${
-                          statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum != null
-                            ? ` (${euro(statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum, 2)}σ)`
-                            : ""
-                        }`
-                      : statsSummaryRes.data.quality_metrics.cusum_drift.status.toUpperCase()}
+                    {cusumStatusLabel(
+                      statsSummaryRes.data.quality_metrics.cusum_drift.status,
+                      statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum,
+                    )}
                   </span>
                 ) : (
                   <span className="font-mono text-slate-500">—</span>
@@ -728,8 +734,7 @@ export function SystemView(props: SystemViewProps) {
           </div>
           <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-500">
             Starten: der Knopf <Play size={11} className="inline align-[-1px]" /> in der jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im NAS-Webauftritt,
-            nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="text-slate-400">{workerCommand}</code> — Details in{" "}
-            <span className="text-slate-400">docs/BETRIEB.md</span>.
+            nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="text-slate-400">{workerCommand}</code> — Details in der Betriebsanleitung.
           </p>
           {webhookCapable && (
             <p className="mt-2 break-words text-[11px] leading-relaxed text-slate-500">
@@ -779,11 +784,13 @@ export function SystemView(props: SystemViewProps) {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-100">
-                    {alarm.code}
+                    {alarm.message}
                     {alarm.job ? <span className="ml-2 font-mono text-[11px] font-normal text-slate-500">{JOB_LABELS[alarm.job] ?? alarm.job}</span> : null}
                   </p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-300">{alarm.message}</p>
-                  <p className="mt-1 font-mono text-[10px] text-slate-500">{problem(alarm.code) ?? alarm.code}</p>
+                  {problem(alarm.code) && problem(alarm.code) !== alarm.message ? (
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-300">{problem(alarm.code)}</p>
+                  ) : null}
+                  <p className="mt-1 font-mono text-[10px] text-slate-500">{alarm.code}</p>
                 </div>
               </div>
             ))}
@@ -814,15 +821,15 @@ export function SystemView(props: SystemViewProps) {
           {(h?.notify?.open_errors?.length ?? 0) > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {h?.notify?.open_errors?.map((code) => (
-                <li key={code} title={problem(code) ?? code} className="rounded-md bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-300">
-                  {code}
+                <li key={code} title={code} className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
+                  {problem(code) ?? code}
                 </li>
               ))}
             </ul>
           )}
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
             {notifyLastLine(h?.notify) ??
-              "Einrichtung: TANKAPP_NTFY_URL setzen (docs/BETRIEB.md, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
+              "Einrichtung: ntfy-Endpunkt setzen (Betriebsanleitung, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
           </p>
         </div>
       </div>
@@ -848,7 +855,7 @@ export function SystemView(props: SystemViewProps) {
                 href="/api/v1/fills.csv"
                 className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:border-slate-600"
               >
-                /api/v1/fills.csv
+                Belege als CSV
               </a>
               <button
                 type="button"

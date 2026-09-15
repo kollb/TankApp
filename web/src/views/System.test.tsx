@@ -231,7 +231,7 @@ describe("System: Zustände", () => {
       h: health({ station_count: 0 }),
     });
     expect(html).toContain("Das gemeinsame Polling-Set fehlt");
-    expect(html).toContain("Keine Stadt eingerichtet");
+    expect(html).toContain("keine Stadt eingerichtet");
   });
 
   it("Fehler: Health nicht erreichbar → LoadError mit Retry", () => {
@@ -248,7 +248,7 @@ describe("System: Zustände", () => {
       collector: collector({ fresh: false, age_minutes: 45 }),
     });
     expect(html).toContain("Collector (Pi)");
-    expect(html).toContain("45 Min.");
+    expect(html).toContain("45 Minuten");
   });
 });
 

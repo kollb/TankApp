@@ -13,8 +13,10 @@
 
 import {
   ageLabel,
+  ageWord,
   countLabel,
   deTrimmed,
+  durationWord,
   freshness,
   JOB_LABELS,
   percentLabel,
@@ -81,7 +83,7 @@ export function systemStatusRows(input: {
         ? `${deTrimmed(Number(c.tmpfs_used_bytes) / 1024 / 1024, 1)} MiB tmpfs`
         : null;
     if (c.fresh) {
-      const mins = age != null ? `${deTrimmed(age, 0)} Min. alt` : "frisch";
+      const mins = age != null ? `${durationWord(age)} alt` : "frisch";
       return {
         id: "collector",
         label: "Collector (Pi)",
@@ -95,8 +97,8 @@ export function systemStatusRows(input: {
       id: "collector",
       label: "Collector (Pi)",
       tone: "warn",
-      headline: age != null ? `Preise ${deTrimmed(age, 0)} Min. alt` : "Veraltet",
-      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Min., Collector prüfen.`,
+      headline: age != null ? `Preise ${durationWord(age)} alt` : "Veraltet",
+      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Minuten, Collector prüfen.`,
       meta: tmpfsMeta,
     };
   })();
@@ -118,7 +120,7 @@ export function systemStatusRows(input: {
         label: "Datenbank (NAS)",
         tone: "error",
         headline: "InfluxDB nicht eingebunden",
-        detail: "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        detail: "InfluxDB-Zugang fehlt — Anleitung, Abschnitt InfluxDB.",
         meta: h.polling_path ? `Polling-Pfad: ${h.polling_path}` : null,
       };
     }
@@ -128,7 +130,7 @@ export function systemStatusRows(input: {
         label: "Datenbank (NAS)",
         tone: "warn",
         headline: `${countLabel(h.station_count)} Stationen eingebunden`,
-        detail: "Polling-Set fehlt oder leer — docs/INSTALL.md, Abschnitt Polling-Set.",
+        detail: "Polling-Set fehlt oder leer — Anleitung, Abschnitt Polling-Set.",
         meta: h.polling_path ? `Pfad: ${h.polling_path}` : null,
       };
     }
@@ -437,8 +439,8 @@ export function systemExplanationStoerungen(
       alarmCount > 0
         ? `${countLabel(alarmCount)} Störung${alarmCount === 1 ? "" : "en"} aktiv — jede mit Code, Klartext und Checkliste, was zu tun ist.`
         : "Keine aktiven Störungen — die Anlage meldet keine Alarme.",
-      "Gelb und Rot erscheinen nur als Anzeige im System-Tab und als Punkt in der Kopfzeile — kein Push, kein Ton (Betriebs-Entscheidung seit 0.35.0, docs/BETRIEB.md).",
-      "Alarm-Zustellung über ntfy ist optional: Ist TANKAPP_NTFY_URL gesetzt, kommen Fehler-Alarme aufs Handy — sonst stehen sie nur hier.",
+      "Gelb und Rot erscheinen nur als Anzeige im System-Tab und als Punkt in der Kopfzeile — kein Push, kein Ton.",
+      "Alarm-Zustellung über ntfy ist optional: Ist ein Endpunkt eingerichtet, kommen Fehler-Alarme aufs Handy — sonst stehen sie nur hier.",
     ],
     source:
       "Grundlage: /api/v1/health → alarms und notify — dieselben Codes wie im Header-Punkt.",
@@ -465,7 +467,7 @@ export function systemSetupSteps(input: {
       done: (h?.station_count ?? 0) > 0,
       hint: h?.station_count
         ? `${countLabel(h.station_count)} Stationen eingebunden.`
-        : "Gemeinsames Polling-Set fehlt — docs/INSTALL.md, Abschnitt Polling-Set.",
+        : "Gemeinsames Polling-Set fehlt — Anleitung, Abschnitt Polling-Set.",
     },
     {
       label: "Collector-Herzschlag",
@@ -481,7 +483,7 @@ export function systemSetupSteps(input: {
       done: !!h?.influx_configured,
       hint: h?.influx_configured
         ? "Lesezugang eingebunden."
-        : "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        : "InfluxDB-Zugang fehlt — Anleitung, Abschnitt InfluxDB.",
     },
     {
       label: "Erster Modell-Lauf",
@@ -636,7 +638,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.pending_age_s;
     const since =
       age != null && Number.isFinite(age)
-        ? ` seit ${deTrimmed(age / 60, 0)} Min.`
+        ? ` seit ${durationWord(age / 60)}`
         : "";
     const tries = attempts === 0 ? "erster Versuch" : `${countLabel(attempts)} Versuche`;
     return {
@@ -650,7 +652,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.last_ok_age_s;
     const when =
       age != null && Number.isFinite(age)
-        ? ` Zuletzt quittiert vor ${deTrimmed(age / 60, 0)} Min.`
+        ? ` Zuletzt quittiert ${ageWord(age / 60)}`
         : "";
     const gaveUp = (webhook.gave_up ?? 0) > 0 ? ` Aufgegeben: ${countLabel(webhook.gave_up)}.` : "";
     return {

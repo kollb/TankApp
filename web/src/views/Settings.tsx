@@ -32,6 +32,7 @@ import {
   APP_THEMES,
   clockLabel,
   deTrimmed,
+  fuelLabel,
   THRESHOLD_ROWS,
   thresholdHysteresisLine,
   thresholdSampleLine,
@@ -260,8 +261,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueText={timeValueShort(timeValue, timeValueUsed, autoZ)}
             valueSpeech={
               timeValue > 0
-                ? `${deTrimmed(timeValue)} Euro pro Stunde`
-                : `Automatik ${deTrimmed(timeValueUsed)} Euro pro Stunde`
+                ? `${deTrimmed(timeValue)} €/h`
+                : `Automatik ${deTrimmed(timeValueUsed)} €/h`
             }
             hint={
               <span
@@ -285,7 +286,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
               max={80}
               step={5}
               value={speed}
-              aria-valuetext={`${speed} Kilometer pro Stunde`}
+              aria-valuetext={`${speed} km/h`}
               onChange={(e) => setSpeed(Number(e.target.value))}
               className="mt-3 w-full"
             />
@@ -441,7 +442,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    {value === "diesel" ? "Diesel" : value.toUpperCase()}
+                    {fuelLabel(value)}
                   </button>
                 ))}
               </div>
@@ -641,7 +642,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               href="/api/v1/fills.csv"
               className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:border-slate-600"
             >
-              /api/v1/fills.csv laden
+              Belege als CSV laden
             </a>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">

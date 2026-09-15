@@ -133,3 +133,24 @@ describe("T4: euro() nur für Euro, Prozent mit Leerzeichen", () => {
     expect(source).toContain("euroToCentPerLiter");
   });
 });
+
+describe("T6/T7: Pfade und Rohcodes nicht im Alltagstext", () => {
+  it("JobCard ohne docker logs und ohne „letzter Skip“", () => {
+    const source = read("components/JobCard.tsx");
+    expect(source).not.toContain("docker logs");
+    expect(source).not.toContain("letzter Skip");
+    expect(source).not.toContain("Webhook-Trigger");
+  });
+
+  it("Einstellungen-CSV-Knopf ohne API-Pfad als Label", () => {
+    const source = read("views/Settings.tsx");
+    expect(source).not.toContain("/api/v1/fills.csv laden");
+    expect(source).toContain("Belege als CSV laden");
+  });
+
+  it("CUSUM-Kachel ohne status.toUpperCase", () => {
+    const source = read("views/System.tsx");
+    expect(source).not.toContain("cusum_drift.status.toUpperCase");
+    expect(source).toContain("cusumStatusLabel");
+  });
+});

@@ -438,7 +438,7 @@ describe("B8: Trigger Pi → NAS", () => {
     });
     expect(line.tone).toBe("warn");
     expect(line.text).toContain("3 Versuche");
-    expect(line.text).toContain("10 Min.");
+    expect(line.text).toContain("10 Minuten");
   });
 
   it("übersetzt die Quittierung des NAS in Klartext", () => {

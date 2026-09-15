@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Car, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   deTrimmed,
+  fuelLabel,
   type Profiles,
   type ResourceState,
   type VehicleProfile,
@@ -20,7 +21,7 @@ const BUTTON_GHOST =
 
 /** Eine Zeile Profil-Zusammenfassung — dieselben Formatter wie die Panels. */
 export function profileSummaryLine(profile: VehicleProfile): string {
-  const fuel = profile.fuel === "diesel" ? "Diesel" : profile.fuel.toUpperCase();
+  const fuel = fuelLabel(profile.fuel);
   return `${fuel} · ${deTrimmed(profile.liters, 0)} L Tankmenge · ${deTrimmed(
     profile.consumption,
     1,

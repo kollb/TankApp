@@ -78,6 +78,8 @@ import {
   epochLabel,
   euro,
   euroPerLiter,
+  freshCountLabel,
+  fuelLabel,
   fillLimitHint,
   formatHour,
   germanDecimalToNumber,
@@ -1544,7 +1546,7 @@ export function Dashboard() {
                   onClick={() => setFuel(value)}
                   className={`rounded-lg px-3 py-1.5 transition-colors ${fuel === value ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
                 >
-                  {value === "diesel" ? "Diesel" : value.toUpperCase()}
+                  {fuelLabel(value)}
                 </button>
               ))}
             </div>
@@ -1710,7 +1712,7 @@ export function Dashboard() {
             )}
             <span>
               {online && fresh.length
-                ? `${fresh.length} frische Preise · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
+                ? `${freshCountLabel(fresh.length)} · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
                 : prices.pending
                   ? "Daten werden geladen …"
                   : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
@@ -2173,6 +2175,10 @@ export function Dashboard() {
         onDelete={(id) => void handleDeleteProfile(id)}
       />
     </div>
+  );
+}
+
+  </div>
   );
 }
 

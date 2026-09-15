@@ -21,7 +21,11 @@ import {
   germanDecimalToNumber,
   centPerLiter,
   countLabel,
+  cusumStatusLabel,
+  durationWord,
   euroPerLiter,
+  freshCountLabel,
+  fuelLabel,
   euroToCentPerLiter,
   haversineKm,
   heatmapBestDay,
@@ -1075,5 +1079,34 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
     });
     expect(note).toContain("1 Beleg von 8");
     expect(note).not.toContain("1 Belege");
+  });
+});
+
+describe("T6–T8: Labels ohne Rohcode und mit Einzahl", () => {
+  it("unterscheidet 1 frischen Preis von mehreren", () => {
+    expect(freshCountLabel(1)).toBe("1 frischer Preis");
+    expect(freshCountLabel(12)).toBe("12 frische Preise");
+    expect(freshCountLabel(0)).toBe("0 frische Preise");
+    expect(freshCountLabel(null)).toBe("—");
+  });
+
+  it("schreibt Kraftstoff deutsch, nie DIESEL", () => {
+    expect(fuelLabel("diesel")).toBe("Diesel");
+    expect(fuelLabel("e10")).toBe("E10");
+    expect(fuelLabel("e5")).toBe("E5");
+    expect(fuelLabel(null)).toBe("—");
+  });
+
+  it("übersetzt CUSUM ohne toUpperCase", () => {
+    expect(cusumStatusLabel("normal", 0.5)).toBe("Stabil (0,50σ)");
+    expect(cusumStatusLabel("drift")).toBe("Drift");
+    expect(cusumStatusLabel("unknown-code")).toBe("unknown-code");
+    expect(cusumStatusLabel(null)).toBe("—");
+  });
+
+  it("schreibt Dauer in Worten statt Min.", () => {
+    expect(durationWord(1)).toBe("1 Minute");
+    expect(durationWord(12)).toBe("12 Minuten");
+    expect(durationWord(90)).toBe("2 Stunden");
   });
 });

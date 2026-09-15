@@ -3,8 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Play, ScrollText } from "lucide-react";
 import {
+  durationWord,
   epochLabel,
   jobRunMessage,
+  percentLabel,
   postJobRun,
   problem,
   timeLabel,
@@ -125,7 +127,7 @@ export function JobCard({
           </span>
         </div>
         {/* Issue 50: Ereignis-Pipeline — Datenstand des letzten erfolgreichen
-            Webhook-Triggerlaufs (nur bei models/selection vorhanden). */}
+            Auslöser-Laufs (nur bei models/selection vorhanden). */}
         {job?.data_watermark != null && (
           <div className="flex justify-between">
             <span>Trigger-Datenstand</span>
@@ -136,12 +138,12 @@ export function JobCard({
         )}
         {job?.triggers != null && job.triggers > 0 && (
           <div className="flex justify-between">
-            <span>Webhook-Trigger</span>
+            <span>Auslöser</span>
             <span className="font-mono text-slate-200">
               {job.triggers}×
               {(() => {
                 const skip = triggerSkipLabel(job?.last_trigger_skip);
-                return skip ? ` · letzter Skip: ${skip}` : "";
+                return skip ? ` · zuletzt übersprungen: ${skip}` : "";
               })()}
             </span>
           </div>
@@ -190,7 +192,7 @@ export function JobCard({
             <span className="shrink-0 font-mono text-[11px] text-slate-400">
               {job.progress.total
                 ? `${job.progress.step}/${job.progress.total}`
-                : `${Math.round(job.progress.pct)} %`}
+                : percentLabel(job.progress.pct)}
             </span>
           </div>
           <div
@@ -210,9 +212,9 @@ export function JobCard({
             {job.progress.label || job.progress.message || "…"}
           </p>
           <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-            seit {Math.round(job.progress.elapsed_s / 60)} min
+            seit {durationWord(job.progress.elapsed_s / 60)}
             {job.progress.eta_s
-              ? ` · ca. ${Math.max(1, Math.round(job.progress.eta_s / 60))} min restlich`
+              ? ` · ca. ${durationWord(Math.max(1, job.progress.eta_s / 60))} restlich`
               : ""}
           </p>
         </div>
@@ -220,8 +222,8 @@ export function JobCard({
       {job?.state === "running" && !job.progress && (
         <p className="mt-3 text-[11px] text-slate-500">
           Kein Fortschrittssignal — der Job schreibt erst nach der
-          InfluxDB-/Archiv-Phase (Log:{" "}
-          <code className="text-slate-400">docker logs -f tankapp-app</code>).
+          InfluxDB-/Archiv-Phase. Die letzten Zeilen stehen im Job-Log
+          darunter.
         </p>
       )}
     </div>
