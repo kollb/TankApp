@@ -1,12 +1,14 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 14.09.2026 · App-Version **0.37.1** · gilt für `web/src/**`,
+> Stand: 15.09.2026 · App-Version **0.38.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
 Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
 Standardsätze für Leer-, Lade- und Fehlerzustände.
+
+## Inhaltsverzeichnis
 
 - [1. Tonfall](#1-tonfall)
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
@@ -181,7 +183,7 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 | Gesamtfarbe | `Alles ok` · `Hinweise` · `Störungen` · `Unbekannt` |
 | Coverage-Gate | Fenster wie geliefert (`06–24 Uhr`) — kein zweites „Uhr“; Bestwert und Schwelle über `percentLabel` |
 | Diagnose-Export | Knopf `Diagnose als Datei` — JSON mit Version, Zustand, Coverage, letzten Log-Zeilen, ohne Tokens |
-| PWA | `der Service-Worker liegt unter /sw.js` — Versionierung, Update-Banner und Offline-Queue (B10) sind weiter offen |
+| PWA | `der Service-Worker liegt unter /sw.js` — die Shell trägt die App-Version, ein wartender Worker meldet sich als „Neue Version verfügbar“; Belege/Vorsätze warten offline in der Queue und gehen raus, sobald die Verbindung steht (B10) |
 | API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
 | Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
 

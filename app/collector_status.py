@@ -185,6 +185,34 @@ def nas_heartbeat(settings):
     return out
 
 
+def _webhook_from_fields(fields: dict) -> dict | None:
+    """B8: Webhook-Zustand aus dem Herzschlag-Punkt des Uploaders.
+
+    Der Pi-Uploader meldet mit jedem Herzschlag, ob ein Trigger auf
+    Quittierung wartet und wie der letzte Versuch ausging. Ohne diese Felder
+    (kein Ziel eingerichtet, Altbestand) bleibt der Wert ``None`` — die GUI
+    sagt dann „keine Angabe“ statt „alles gut“.
+    """
+    if not isinstance(fields, dict) or "webhook_pending" not in fields:
+        return None
+
+    def number(key):
+        value = fields.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+        return None
+
+    status = fields.get("webhook_last_status")
+    return {
+        "pending": bool(number("webhook_pending")),
+        "attempts": number("webhook_attempts"),
+        "pending_age_s": number("webhook_pending_age_s"),
+        "last_status": status if isinstance(status, str) and status else None,
+        "last_ok_age_s": number("webhook_last_ok_age_s"),
+        "gave_up": number("webhook_gave_up"),
+    }
+
+
 def _age_minutes(ts_raw: str, clock) -> float | None:
     try:
         stamp = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
@@ -247,6 +275,9 @@ def build_collector_status(settings, query_func, clock, allow_influx=True):
             or (local is not None)
             or (nas is not None)
         ),
+        # B8: Der Webhook-Zustand kommt mit dem Herzschlag-Punkt des Uploaders.
+        # Nur dort ist er bekannt — NAS-Datei und lokaler Puffer kennen ihn nicht.
+        "webhook": _webhook_from_fields(influx_part.get("fields", {})),
     }
 
     if influx_part.get("available"):
@@ -266,6 +297,12 @@ def build_collector_status(settings, query_func, clock, allow_influx=True):
             "tmpfs_free_bytes"
         )
         result["oldest_age_days"] = influx_part.get("fields", {}).get("oldest_age_days")
+        if result["webhook"] is None:
+            # Ehrlich: der Uploader meldet den Webhook-Zustand nicht (kein Ziel
+            # eingerichtet oder Punkt älter als diese App-Version).
+            result["webhook_source"] = None
+        else:
+            result["webhook_source"] = "influx"
     elif nas:
         result["source"] = "nas"
         result["last_poll_at"] = nas["timestamp"]

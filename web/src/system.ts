@@ -568,3 +568,100 @@ export function systemDiagnosticFilename(stamp?: string | null): string {
     : "ohne-stand";
   return `tankapp-diagnose-${day}.json`;
 }
+
+// ---------------------------------------------------------------------------
+// B8: Webhook Pi → NAS. Der Uploader meldet mit dem Herzschlag, ob ein
+// Trigger auf Quittierung wartet und wie der letzte Versuch ausging
+// (`collector_status` → `/api/v1/collector/status`). Hier wird daraus ein
+// Satz — mit Grund statt Schuld und ohne Zahl, die niemand gemessen hat.
+// ---------------------------------------------------------------------------
+
+export type WebhookState = {
+  pending?: boolean | null;
+  attempts?: number | null;
+  pending_age_s?: number | null;
+  last_status?: string | null;
+  last_ok_age_s?: number | null;
+  gave_up?: number | null;
+};
+
+export type WebhookLine = { tone: SystemTone; text: string; note: string };
+
+/** Kurze, ehrliche Beschreibung des letzten Quittierungs-Ergebnisses. */
+function webhookStatusText(status: string): { tone: SystemTone; text: string } {
+  switch (status) {
+    case "queued":
+      return { tone: "ok", text: "Quittiert — der NAS-Job ist vorgemerkt." };
+    case "debounced":
+      return { tone: "ok", text: "Quittiert — gedrosselt, ein Lauf steht kurz bevor." };
+    case "duplicate":
+      return { tone: "ok", text: "Quittiert — nicht nötig, derselbe Datenstand war schon gelaufen." };
+    case "rejected":
+      return { tone: "error", text: "Abgelehnt — der NAS kennt diesen Job nicht." };
+    case "unauthorized":
+      return { tone: "error", text: "Abgelehnt — Token passt nicht zu NAS und Pi." };
+    case "abandoned":
+      return { tone: "warn", text: "Aufgegeben — nach 2 h nicht quittiert, der Intervalljob übernimmt." };
+    case "retry_wait":
+      return { tone: "warn", text: "Wartet auf den nächsten Versuch." };
+    default:
+      if (status.startsWith("http_4")) {
+        return { tone: "error", text: `Abgelehnt (${status}) — Wiederholen hilft nicht.` };
+      }
+      if (status.startsWith("http_")) {
+        return { tone: "warn", text: `Keine Quittierung (${status}) — wird erneut versucht.` };
+      }
+      return { tone: "ok", text: `Quittiert (${status}).` };
+  }
+}
+
+/**
+ * Eine Zeile für den Collector-Baustein: „Was macht der Trigger Pi → NAS?“
+ *
+ * ``null`` heißt „keine Angabe“ und nicht „in Ordnung“: Ohne eingerichtetes
+ * Ziel meldet der Uploader nichts, und der Intervalljob läuft unabhängig
+ * davon. Steht ein Versuch offen, sagt der Satz die Zahl der Versuche und
+ * das Alter des ältesten.
+ */
+export function webhookLine(webhook: WebhookState | null | undefined): WebhookLine {
+  if (!webhook) {
+    return {
+      tone: "unknown",
+      text: "Keine Angabe — kein Ziel eingerichtet oder älterer Uploader.",
+      note: "Der Intervalljob läuft unabhängig davon.",
+    };
+  }
+  if (webhook.pending) {
+    const attempts = webhook.attempts ?? 0;
+    const age = webhook.pending_age_s;
+    const since =
+      age != null && Number.isFinite(age)
+        ? ` seit ${deTrimmed(age / 60, 0)} Min.`
+        : "";
+    const tries = attempts === 0 ? "erster Versuch" : `${countLabel(attempts)} Versuche`;
+    return {
+      tone: "warn",
+      text: `Wartet auf Quittierung — ${tries}${since}.`,
+      note: "Ein kurzer NAS-Ausfall holt sich selbst auf; der Intervalljob läuft weiter.",
+    };
+  }
+  if (webhook.last_status) {
+    const { tone, text } = webhookStatusText(webhook.last_status);
+    const age = webhook.last_ok_age_s;
+    const when =
+      age != null && Number.isFinite(age)
+        ? ` Zuletzt quittiert vor ${deTrimmed(age / 60, 0)} Min.`
+        : "";
+    const gaveUp = (webhook.gave_up ?? 0) > 0 ? ` Aufgegeben: ${countLabel(webhook.gave_up)}.` : "";
+    return {
+      tone,
+      text: text + when,
+      note: `Der Intervalljob läuft unabhängig davon.${gaveUp}`,
+    };
+  }
+  return {
+    tone: "unknown",
+    text: "Noch kein Trigger gemeldet.",
+    note: "Der erste Trigger geht nach dem nächsten sicheren Preis-Write raus.",
+  };
+}

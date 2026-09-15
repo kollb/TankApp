@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 13.09.2026, App-Version 0.32.0)
+# TankApp — ToDo (Stand 15.09.2026, App-Version 0.38.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -31,13 +31,10 @@
 
 ## A. Fachlich (Produkt & Domäne)
 
-| # | Prio | Fehlt | Warum es zählt / Definition of Done |
-|---|---|---|---|
-| A9 | D | **w(h)-Rückkopplung anschließen** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): ab **8 Belegen** (`app/feedback.py::WH_MIN_FILLS`) gewichtet `app/decide.py::_wh_weight()` die F3-Fenster — günstige Fenster zu Stunden, die du nie tankst, rutschen nach hinten; darunter bleibt die preisliche Reihenfolge und die Tagesansicht sagt warum („Noch nach Preis sortiert (5 Belege von 8) — es fehlen 3“). "Echt-Daten-Abnahme" offen: die Reihenfolge ist erst mit echten Belegen im Betrieb bewertbar (§5.5). |
-| A10 | D | **M3-Zweitmodell/Ensemble + Echt-Daten-Abnahme** *(Ensemble erledigt in 0.31.0)* | Erledigt (0.31.0): Zweitmodell **profile_ar2** (Tagesprofil je 5-Minuten-Slot als Median statt Sinusform) und inverse-MASE-Ensemble (Konzept §3.2 M3) in `engine/models.py`, Schalter `TANKAPP_MODEL_KIND`. Messung (Demo-Daten, 6 Stationen, 72-h-Holdout): MAE **2,53 → 1,93 ct/L** (−24 %), 6/6 Stationen besser. **Offen bleibt die Echt-Daten-Abnahme** aller M3-Kriterien auf Live-Daten (§3.2) und die Gewichte aus dem Rolling-Origin-Backtest statt aus dem Validierungsfenster ([LUECKEN.md](docs/LUECKEN.md) — das One-Step-Fenster trennt die Modelle nur schwach: 0,51/0,49). |
-| A11 | D | **Gemeinsame Bootstrap-Ziehung für `p_lohnt`** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): alle Stationen eines Laufs ziehen aus **denselben** Zufallszahlen je (Horizont, Tagesposition) — `engine/models.py::shared_day_uniforms`, je Station über die eigene Blockverteilung abgebildet (`blocks_from_uniform`, comonotone Kopplung); ausgewiesen als `draws_24h.shared`/`draws_7d.shared`, Gegenprobe `TANKAPP_SHARED_DRAWS=0`. Messung: bei **einem** Lauf mit gleicher Config koppelte die alte Ziehung schon zufällig (Korrelation 0,995 vs. 0,992); bei ungleichen Trainingsfenstern (erhaltene Prognosen) steigt sie 0,545 → 0,588, Streuung der Nowcast-Differenz 1,40 → 1,13 ct/L. Details: [ANALYSE.md](docs/ANALYSE.md#wahrscheinlichkeiten-aus-der-prognoseverteilung-p-seite). |
-| A12 | P2 | **Station-Lebenszyklus & Zustandsehrlichkeit** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): vier Zustände je (Station, Kraftstoff), tote fallen vor dem Coverage-Gate aus dem Ranking (auch ohne einzige Rasterzelle), Schwelle `TANKAPP_DEAD_AFTER_DAYS` (Default 7, 0 = aus), Alarme `stations_dead`/`stations_lifecycle`, GUI unterscheidet alle Zustände. Polling-Set bleibt bewusst stabil (Tausch nur mit Bestätigung, [ANALYSE.md](docs/ANALYSE.md#lebenszyklus-der-stationen)); die Kontingent-Behauptung war falsch und ist korrigiert. |
-| A13 | P2 | **Preis-Zwillinge: automatische Warnung** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): `_detect_price_twins` mit den `compare-stations`-Schwellen (28 Tage × ≥12 Punkte, ≥90 % Überlappung, ≥99 % ≤0,1 ct/L), Warnung im Artefakt (`price_twins`, `auto_apply: false`), Alarm `price_twins` und Tabelle im System-Tab. Nie automatische Entfernung. |
+*Keine offenen Punkte.* A9 (w(h)-Rückkopplung), A10 (Zweitmodell/Ensemble),
+A11 (gemeinsame Bootstrap-Ziehung), A12 (Lebenszyklus) und A13
+(Preis-Zwillinge) sind abgenommen — die vollständigen Nachweise stehen in der
+Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -45,44 +42,37 @@
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
-| B8 | P2 | **Webhook-Retry Pi → NAS** | `POST /jobs/trigger` ist Fire-and-Forget: NAS kurz offline → Watermark verloren, läuft nur noch intervallbasiert, ohne Hinweis. Ziel: Retry mit Backoff + Quittierung, Status im Collector-Status sichtbar. |
-| B10 | P2 | **Service-Worker: Versionierung & Update-Anzeige** | Cache-Namen sind fix `…-v1`; ein GUI-Update signalisiert dem Nutzer nichts, und die Offline-Queue aus dem Konzept (§5.4, IndexedDB) fehlt. Ziel: SW-Version im Build bumsen, „Neue Version — neu laden?“-Banner, Offline-Queue für Fill/Intent mit sichtbarem „wird gesendet, sobald online“-Zustand. |
 | B22 | D | **Zahlen-ändernde Hebel: `bootstrap_samples` und Nacht-Raster** | Entscheidung, kein Gratishebel. 2000→500 Ziehungen halbiert die Backtest-Zeit, verschiebt aber Kennzahlen (MASE/PICP/MPIW/MAE). Zweiter Hebel: `predict(hours=72/168)` rechnet das volle 5-Minuten-Raster inkl. Nacht, obwohl der Collector nur 06–24 Uhr pollt. Ändert `points_3d`/`points_7d` — erst entscheiden, ob die GUI die Nachtstunden braucht. Nach B15–B17 vermutlich überflüssig; ausdrücklich **nicht** als Laufzeit-Hebel einplanen. |
 
 ---
 
 ## C. GUI / UX
 
-| # | Prio | Fehlt | Warum es zählt / Definition of Done |
-|---|---|---|---|
-| C3 | P2 | **Karten-/Umgebungsansicht für F2** *(Erledigt in 0.28.0)* | Erledigt (0.28.0): OSM-Live-Kartenansicht mit Server-Netto-€-Pins (`verdict`/`detour_km_est`) & Vektor-Luftlinien-Radar-Fallback bei fehlendem Netz oder Kachelfehlern. |
-| C5 | P2 | **Barrierefreiheit-Runde, Rest** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Touch-Ziele ≥ 44 px nur bei grober Zeigerart (`pointer: coarse`, auch Karten-Zoom und Pins), Kontraste der gedämpften Töne auf AA angehoben (`slate-500`/`slate-600`, dunkel `#8598b0`/`#8295ad`, hell `#55677c`, nachgerechnet in `web/src/a11y.test.ts`), Beleg ohne Maus (Schnellerfassung als Formular mit Enter, Anpassen-Panel mit Fokus/Escape, Radar-Pins per Tab/Enter). Früher: Ampel-Chip mit Symbol, Slider-`aria-valuetext` (0.10.0), Fokus-Ring + Charts-Textfassungen (0.13.0). |
-| C7 | P2 | **Hilfe/Glossar-Layer** *(Erledigt in 0.32.0)* | Erledigt (0.32.0): „Was heißt das?“-Tab mit 10 Begriffen (δ̂, MASE, PICP, Brier, ε, Regret, q, AV, Lebenszyklus, Zwillinge), i-Tooltips in Werkstatt/System, jeder Eintrag mit gültigem `docs/ANALYSE.md`-Anker (eigene Abschnitte + Konsistenztests in `tests/test_glossary.py`). |
-| C8 | P2 | **Mobile-Feinschliff & PWA (Rest)** *(Erledigt in 0.29.0)* | Erledigt (0.29.0): Install-/„Zum Homescreen“-Hinweis (`components/InstallHint.tsx`: `beforeinstallprompt` bzw. iOS-Handgriff, „Nicht jetzt“ = 30 Tage still, Manifest `orientation: any`), Querformat-Layout (Tagline/Einleitung aus, flachere Abstände, Tageskurve als zwei Neuner-Reihen), Pull-to-Refresh nur während Karten-/Slider-Berührung gesperrt (`ptr-off`). Früher: Sticky-Aktions-Chip (0.27.0). |
+*Keine offenen Punkte.* C3 (Karte), C5 (Barrierefreiheit), C7 (Glossar) und C8
+(Mobile/PWA) sind erledigt; C1/C2/C4/C6/C9–C11 waren davor geschlossen.
 
 ---
 
 ## D. Code-Wartbarkeit (Voraussetzung für C-Features)
 
-| # | Prio | Fehlt | Details |
-|---|---|---|---|
-| D4 | P2 | **Qualitäts-Gates in CI: Lighthouse + Last** *(Erledigt in 0.31.0)* | Erledigt (0.31.0): eigener Workflow `.github/workflows/quality.yml` (auf Abruf, sonntags, bei PRs an `web/`/`app/`/`engine/`), Lighthouse-CI mit Budgets gegen zwei GUI-Zustände und ein abhängigkeitsfreier Lastpfad (`web/load/overview.mjs`) gegen das B7-Aggregat inkl. ETag-Revalidierung; beide laufen gegen den neuen Demo-Stack `ops/quality/` (echte App, injizierte Preisabfrage, echte Engine-Publikation). Messwerte, Budgets und die B7-Rest-Entscheidung stehen in [docs/QUALITAET.md](docs/QUALITAET.md). Offen: Lighthouse-Erstdurchlauf (Performance-Ebene deshalb warnend). |
+*Keine offenen Punkte.* D1 (Views-Schnitt), D2/D3 (e2e + Property-Tests) und D4
+(Qualitäts-Gates) sind erledigt.
 
 ---
 
 ## F. App-Texte & UX-Sprache (Prüfstrang 2)
 
-| # | Prio | Befund | ToDo |
-|---|---|---|---|
-| F3 | P2 | **Typografie** *(Erledigt in 0.32.0)* | Erledigt: [docs/MICROCOPY.md](docs/MICROCOPY.md) und Ratchet `web/src/microcopy.test.ts` (0.16.0), ct/L-€/L-Wahl je Panel (0.19.0), Footer-Vokabular („Abfrage höchstens alle 5 Minuten“, „Polling-Fenster“ statt Jargon, 0.32.0). |
+*Keine offenen Punkte.* F3 (Typografie/Microcopy) ist mit
+[MICROCOPY.md](docs/MICROCOPY.md) und dem Ratchet `web/src/microcopy.test.ts`
+geschlossen.
 
 ---
 
 ## G. Storage-Management: rp2/Pi & NAS (Prüfstrang 2)
 
-| # | Prio | Befund | ToDo |
-|---|---|---|---|
-| G4 | P2 | **`/tmp/tankapp_cache` überlebt keinen Reboot** *(entschieden in 0.29.0)* | Entscheidung (13.09.2026): Der Cache bleibt im flüchtigen `/tmp` — eine Spiegelung auf die SD-Karte würde bei jedem Abruf (alle 5 min) schreiben und mehr Verschleiß kosten, als ein leerer Puffer nach dem Reboot wert ist. Umsetzung: `boot_state_note()` schreibt den Zustand beim Start in `cache.log`/`systemctl status`, `CACHE_REBOOT_HINT` erklärt ihn in F1, im Prognose-Raster und in der API-Fehlermeldung; die Entscheidung steht in [docs/RP2.md](docs/RP2.md#wartung-logs-journal-sd-karte) und [docs/SPEICHER.md](docs/SPEICHER.md). |
+*Keine offenen Punkte.* G4 ist eine **Entscheidung** (0.29.0): der Cache bleibt
+bewusst flüchtig, `boot_state_note()` erklärt es in der GUI, und die Doku nennt
+die Folge (erster Lauf nach einem Reboot ist kalt).
 
 ---
 
@@ -90,10 +80,8 @@
 
 Kurzantwort: **kein Rechenfehler gefunden**. Die offenen mathematischen Punkte sind **Konsistenz und dokumentierte Ausbauten**, keine Bugs. A9–A11 (w(h), M3-Ensemble, gemeinsame Bootstrap-Ziehung) bleiben die fachlichen D-Items.
 
-| # | Prio | Befund | ToDo |
-|---|---|---|---|
-| H3 | D | **M7-Tuning-Regler ohne Oszillationsschutz dokumentiert** *(Erledigt in 0.31.0, TODO-Abgleich in 0.32.0)* | Erledigt (0.31.0): Methodik-Notiz + 2-σ-Rauschband + Totband in `app/thresholds.py`, Begründung auch fürs Nicht-Ändern, Tests in `tests/test_b5.py` (Rauschband, Totband, stabile Schwellen). Das TODO lag einen Release zurück. |
-| H5 | P2 | **DST-Kante `seasonal_scale`** *(erledigt in 0.29.0)* | Erledigt (0.29.0): DST-Tage werden **ausgewiesen statt ausgeschlossen** — `local_day_hours`/`dst_transition_days` (engine/data.py), je Fold `dst_day`/`local_day_hours`, `report.json`-Block `dst` (Tage, Stunden, Folds, `anchors_missing_nat`, `anchors_outside_series`, `mase_none_reasons`), `report.md`-Abschnitt „Zeitumstellung (DST)“, Randnotiz in [docs/ENGINE.md](docs/ENGINE.md), `mase_none_reason` statt stillem `None`, Anzeige in der Werkstatt (`dstLabel()`). |
+*Keine offenen Punkte.* H3 (Schwellen-Hysterese, 0.31.0) und H5 (DST-Kante,
+0.29.0) sind erledigt; H1/H2/H4 waren davor geschlossen.
 
 ---
 
@@ -104,11 +92,14 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
-| 0.37.2 (15.09.2026) | **Sanity-Check-Fixes (Audit B1–B12 + M1/M8, keine TODO-IDs):** B1 NaN→null in `last_forecasts`/`forecast`/`day` (JSON-Sanitizer + `cache_forecasts`-Validierung + Integrationstest), B2 `timeInputToBerlinIso`-Vorzeichen (Sommer −4 h / Winter −2 h) + Mitternachts-Rollfall, B3 Fallback-F1-Fenster in Ortszeit, B4 Proxy-Write-Forwarding (`POST`/`PUT`/`DELETE`/`PATCH` → NAS, offline 503-JSON statt 501), B5 System-Frische je Datenart (`model` 24 h statt 180 min), B6 `hourRangeLabel` für Fenster < 1 h, B7 „Bestes Fenster“ benennt den echten Tag (Fallback + NAS), B8 Fallback-F2-Frischegate, B9 `freshCount` kraftstofffilternd, B10 `--line`→`--border`, B11 Mitternachtszelle (19 Zellen, NAS↔Pi-Parität), B12 Template-Kommentar v4, Zeitbombe `weekWindowSummary` (fester Referenzzeit), Demo-Stack `make_query`-Stations-Filter, Liter-Grenze auf 100 vereinheitlicht (Profil/Share ↔ Beleg/Pi), Fallback 4.1 (inkl. M8 `role="img"`+`aria-label` im Tagesstreifen). Offen begründet in [LUECKEN.md](docs/LUECKEN.md): E2E ohne Mocks (Playwright-Browser in der Sandbox nicht installierbar), PWA/Service-Worker (B10/C8 bleiben). |
+| 0.38.0 (15.09.2026) | **E2E ohne Mocks, Webhook-Quittierung (B8), App-Version + Offline-Queue (B10):** eigene Playwright-Suite `web/e2e/demo.spec.ts` + `web/playwright.demo.config.ts` gegen den echten Demo-Stack (Port 1357, `ops/quality/demo_server.py --rebuild`), ohne `page.route`, in der CI als eigener Schritt; der Server-Teil der Zusage läuft ohne Browser als `tests/test_e2e_demo.py` (Overview → Tageskurve, ETag→304, Health). Der Uploader quittiert den NAS-Trigger, wiederholt mit Backoff (30 s … 15 min, höchstens 2 h), gibt danach auf (Intervaljob bleibt Rückfallebene) und meldet den Zustand als `webhook_*` im Herzschlag → `/api/v1/collector/status → webhook` und GUI-Zeile „Trigger Pi → NAS“. Die App-Shell trägt die App-Version (Vite-Stempel, Platzhalter bricht den Build ab), ein wartender Service Worker macht das Update sichtbar; Offline-Queue für Belege/Vorsätze (`localStorage` statt IndexedDB, ausgewiesen; idempotent über die Beleg-`id`). Tests: `test_b8_webhook.py` (10), `test_e2e_demo.py` (3), `offline-queue.test.ts` (11), `service-worker.test.ts` (5), `UpdateBanner.test.tsx` (3). |
+| 0.37.2 (15.09.2026) | **Sanity-Check-Fixes (Audit B1–B12 + M1/M8, keine TODO-IDs):** B1 NaN→null in `last_forecasts`/`forecast`/`day` (JSON-Sanitizer + `cache_forecasts`-Validierung + Integrationstest), B2 `timeInputToBerlinIso`-Vorzeichen (Sommer −4 h / Winter −2 h) + Mitternachts-Rollfall, B3 Fallback-F1-Fenster in Ortszeit, B4 Proxy-Write-Forwarding (`POST`/`PUT`/`DELETE`/`PATCH` → NAS, offline 503-JSON statt 501), B5 System-Frische je Datenart (`model` 24 h statt 180 min), B6 `hourRangeLabel` für Fenster < 1 h, B7 „Bestes Fenster“ benennt den echten Tag (Fallback + NAS), B8 Fallback-F2-Frischegate, B9 `freshCount` kraftstofffilternd, B10 `--line`→`--border`, B11 Mitternachtszelle (19 Zellen, NAS↔Pi-Parität), B12 Template-Kommentar v4, Zeitbombe `weekWindowSummary` (fester Referenzzeit), Demo-Stack `make_query`-Stations-Filter, Liter-Grenze auf 100 vereinheitlicht (Profil/Share ↔ Beleg/Pi), Fallback 4.1 (inkl. M8 `role="img"`+`aria-label` im Tagesstreifen). Offen begründet in [LUECKEN.md](docs/LUECKEN.md): E2E ohne Mocks (Playwright-Browser in der Sandbox nicht installierbar), PWA/Service-Worker (B10/C8) — beide mit 0.38.0 nachgeholt. |
 | 0.32.0 (13.09.2026) | **A12/A13/C7 abgenommen und geschlossen:** Lebenszyklus (vier Zustände, Ranking-Ausschluss inkl. nie gelieferter Stationen, `TANKAPP_DEAD_AFTER_DAYS`, Alarme) mit korrigierter Kontingent-Wahrheit (weiter gepollt bis zum bestätigten Tausch); Preis-Zwillinge (Schwellen wie `compare-stations`, Artefakt + Alarm + System-Tabelle, nie auto-apply); Glossar-Tab mit 10 Begriffen und gültigen Doku-Ankern (neue ANALYSE-Abschnitte MASE/PICP/Brier/ε/Regret/Lebenszyklus/Zwillinge). Dazu **F3-Rest** (Footer-Vokabular) und **H3-Abgleich** (war 0.31.0). Tests: `tests/test_lifecycle_twins.py` (16), `tests/test_glossary.py` (3), `web/src/glossary.test.ts` (8). |
+| 0.31.0 (13.09.2026) | **A9/A10/A11 + D4 + H3:** w(h)-Rückkopplung ab 8 Belegen gewichtet die F3-Fenster; Zweitmodell `profile_ar2` + invers-MASE-Ensemble (`TANKAPP_MODEL_KIND`, Messung 2,53 → 1,93 ct/L MAE); gemeinsame Bootstrap-Ziehung über Stationen (`shared_day_uniforms`, `TANKAPP_SHARED_DRAWS=0` als Gegenprobe); Qualitäts-Gates als eigener Workflow `.github/workflows/quality.yml` (Lighthouse ≥ 0,7, Lastprobe 25 RPS, Budgets); Schwellen-Hysterese mit 2-σ-Rauschband und Mindestabstand (Begründung auch fürs Nicht-Ändern). Offen bleibt die Echt-Daten-Abnahme — begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund). |
 | 0.30.0 (13.09.2026) | **Karte repariert + Anker sichtbar:** CSP `img-src` gibt `https://*.tile.openstreetmap.org` frei (Kacheln wurden komplett blockiert, Karte blieb leer); `/api/v1/stations` liefert stadtweise gefiltert `anchors` (`anchors_by_city`, Stations-Records bleiben ankerfrei), die Karte zeichnet den Anker als Pin und das Radar zentriert auf ihn (Ringe = km ab Anker); Vergleichsstation-Pin heißt „Vergleich“ statt „0,00 €“ plus Erklärtext unter der Karte und Anker-Detailkarte. Tests: `test_app.py` (Ankers/Felder/CSP), `StationMap.test.tsx`, Microcopy-/Format-Ratchets. |
+| 0.28.0 (13.09.2026) | **C3 Karten-/Umgebungsansicht:** OSM-Live-Karte mit Server-Netto-€-Pins (`verdict`/`detour_km_est`) und Vektor-Luftlinien-Radar als Fallback ohne Netz oder bei Kachelfehlern. |
 | 0.29.0 (13.09.2026) | **Batch 6 — Bedienung:** C5 (Touch-Ziele ≥ 44 px bei grober Zeigerart, Kontrast AA für die gedämpften Töne, Beleg ohne Maus via Formular/Enter und Fokus/Escape im Anpassen-Panel, Karten-Pins per Tastatur) und C8-Rest (Install-/„Zum Homescreen“-Hinweis inkl. iOS-Handgriff und 30-Tage-Snooze, Manifest `orientation: any`, Querformat-Layout, Pull-to-Refresh nur während Karten-/Slider-Gesten). **Batch 7 — Kanten:** G4 entschieden (Cache bleibt bewusst flüchtig, `boot_state_note()` + `CACHE_REBOOT_HINT`, Doku), H5 (DST-Tage im Backtest ausgewiesen: `local_day_hours`/`dst_transition_days`, Fold-Felder, `dst`-Block, Markdown-Abschnitt, `mase_none_reason`, `dstLabel()` in der Werkstatt). Tests: `web/src/a11y.test.ts` (17), `data.test.ts` (3), `test_data.py`, `test_models.py`, `test_backtest.py`, `test_rp2_cache.py`, `test_rp2_fallback.py` |
-| 0.27.0 (13.09.2026) | **Batch 1 — Alltag: eine Handlung:** F4 Intent-Leiste gewichtet die Empfehlung primär, kompatible Intents sekundär und widersprechende Handlung zurückgenommen mit Erklär-Tooltip; C8-Teil Sticky-Aktions-Chip („Jetzt tanken“ / „Warten bis …“ / empfohlene Navigation) ohne neue Fläche oder API. Install-Prompt, Landscape und Pull-to-Refresh bleiben offen. |
+| 0.27.0 (13.09.2026) | **Batch 1 — Alltag: eine Handlung:** F4 Intent-Leiste gewichtet die Empfehlung primär, kompatible Intents sekundär und widersprechende Handlung zurückgenommen mit Erklär-Tooltip; C8-Teil Sticky-Aktions-Chip („Jetzt tanken“ / „Warten bis …“ / empfohlene Navigation) ohne neue Fläche oder API. Install-Prompt, Landscape und Pull-to-Refresh waren zu diesem Zeitpunkt offen (mit 0.29.0 nachgeholt). |
 | 0.26.1 (13.09.2026) | **B11 abgeschlossen:** strenger Kaltlauf auf der Zielhardware (Stand 0.25.1, 17:36–17:39 local, 0/19 Cache, **2,6 min**, MEM **1031 MiB**, CPU **381 %**, Host min **4212 MiB**, shm **1 MiB**). Vier Worker und `shm_size: 256m` bleiben. Sammler zählt Python-Prozesse über `cmdline` und `/proc/pid/comm`. **A8** (Markenrabatte ohne Daten) aus der offenen Liste gestrichen. TODO umgebaut: oben offen, Mitte erledigt, unten der Rest. Die Nachher-Dauer von 0.26.0 bleibt eine eigene Messung nach dem Deploy — sie hält B11 nicht offen. |
 | 0.26.0 (13.09.2026) | **Laufzeit-Batch 4 (Code):** B19 ein Pool/`fork`/schlanke Initargs; B20 leere Horizonte, kompakte Payloads, echte Abschlussreihenfolge, sofortiger serieller Fortschritt und monotone Prozentabbildung; B23 Affinität + cgroup-Quota. **B11:** vorhandene Zielhardwarewerte in BETRIEB eingeordnet (1,0 GiB Container-Peak, Host min 4,1 GiB verfügbar, shm 1 MiB, CPU 370 % ⇒ 4 Worker und 256 MiB shm bleiben); strenger 0.26.0-Kaltlauf und Nachher-Dauer bleiben bis zum Deploy offen. |
 | 0.25.1 (13.09.2026) | **Fehlerursache im Job-Log** (`app/progress.py::note(…, sticky=False)`, `app/refresh.py`): Grund eines Fit-Fehlers (`insufficient_or_invalid_training_data`, `missing_history`, `horizon_or_backtest_failed`) steht jetzt in `runtime/jobs/models.log` statt nur auf Container-stdout. **Ehrlicher Fortschrittszähler** (`app/progress.py::retotal`): entfallene Folgetasks einer ausgefallenen Station werden aus der Gesamtzahl herausgerechnet („77/80“ → korrigiert auf 77, mit Log-Zeilen „1 Station ohne Modell — 3 Folgetasks entfallen“), bei mehreren Kraftstoffen läuft der Zähler über alle hinweg. **B11** (Doku-Teil): Messprotokoll in [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11) auf den **Kaltlauf** umgestellt (`end_local` = letzter vollständiger Tag ⇒ jeder Planlauf ist kalt, ~9 min Phase B; warm nur bei Zusatzläufen am selben Tag, ~40 s) plus Sammler `ops/nas/measure-phase-b.sh` (5-s-Takt, fünf Zahlen inkl. `/dev/shm`). Kein Batch-4-Anteil (B19/B20-Rest/B23 unverändert offen). Tests in `tests/test_app_jobs.py` |
@@ -192,12 +183,12 @@ und bleibt **nicht geplant**.
 
 ## Reihenfolge-Empfehlung
 
-1. **Alle C-Punkte sind geschlossen** (C3 Karte 0.28.0, C5/C8 Bedienung
-   0.29.0, C7 Glossar 0.32.0) — als nächstes bleiben B8 (Webhook-Retry
-   Pi → NAS) oder B10 (Service-Worker-Update + Offline-Queue). D1 ist
-   mit 0.19.0 erledigt
-   (Views-Schnitt + `JobCard`), neue Panels und die Profil-Verwaltung
-   landen in `views/`/`components/` statt in `Dashboard.tsx`.
+1. **Die offenen Zeilen sind abgearbeitet** (C3 0.28.0, C5/C8/G4 0.29.0,
+   D4/H3 0.31.0, C7/A12/A13 0.32.0, E2E/B8/B10 0.38.0). In der Liste steht
+   damit nur noch **B22** als Produktentscheidung; alles andere braucht echte
+   Betriebsdaten und ist in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund)
+   mit Status geführt. Neue Panels und die Profil-Verwaltung landen weiter in
+   `views/`/`components/` statt in `Dashboard.tsx` (D1, 0.19.0).
 2. **B7-Follow-up entschieden (0.31.0)**: `route/evaluate` **bleibt** ein
    eigener Abruf. Messung mit D4: 1,5 ms gegenüber ~230 ms für einen kalten
    `/overview` (0,6 %) — bündeln würde die Routen-Parameter in den

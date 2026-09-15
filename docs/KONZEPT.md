@@ -7,14 +7,20 @@
 > [TODO.md](../TODO.md).
 > Collector/Uploader befüllen die InfluxDB; M2 gilt als erledigter Arbeitsstand.
 > M3 ist in Arbeit: [Implementierung und Kommandos](ENGINE.md).
-> `web/` und `app/` implementieren Live-GUI (Alltag/Werkstatt/System/
-> Einstellungen), Nur-Lese-API (LAN-only, ohne Rate-Limit) und automatische
+> `web/` und `app/` implementieren die Live-GUI in **sechs Bereichen** (Jetzt,
+> Woche, Stationen, Labor, Ich, System — [UI-NEUENTWURF.md](UI-NEUENTWURF.md)),
+> Nur-Lese-API (LAN-only, ohne Rate-Limit) und automatische
 > NAS-Archiv-/Modelljobs inkl.
 > **B3** (Heatmaps, Meine Stationen δ̂, Collector-Herzschlag, Route-Evaluate),
 > **B4/B5** (Decision Layer, `latest_by`, Fahrtmodus, Deprecation-Header,
 > M7-Schwellen-Nachzug, Job-Fortschritt) und **0.10.0** (Beleg-Storno,
 > CSV-Export, `runtime/`-Backup, `alarms[]`, Version/Commit, Checkliste) —
 > Endpunkte: [API.md](API.md).
+> **Zwei Lesehilfen:** Endpunkte stehen hier kurz als `/v1/…`, implementiert
+> sind sie unter `/api/v1/…`. Wo das Zielbild noch Modi nennt (Alltag,
+> Werkstatt, Einstellungen), sind daraus mit 0.33.0–0.37.2 die sechs Bereiche
+> geworden (Jetzt, Woche, Stationen, Labor, Ich, System) — Abgleich in
+> [LUECKEN.md](LUECKEN.md).
 > Die Wahrscheinlichkeitsseite von §4 ist seit 11.09.2026 aus den
 > Bootstrap-Draws gebaut (`p_besser`, `p_lohnt`, Fenster-P); **dokumentierte
 > Abweichung** bleibt die gemeinsame Ziehung über Stationen (§4.2) — Begründung
@@ -668,8 +674,11 @@ Formular. Deshalb:
 | Kein Intent, nur geschaut | nichts | Prompt |
 
 „Anders“ klappt Station/Zeit/Liter auf, alles vorbelegt. Ein Tap mehr.
-Offline: Fill und Intent landen in der PWA-Queue (IndexedDB), Sync
-gegen NAS sobald Netz da ist — Client-UUID, idempotent.
+Offline: Fill und Intent landen in der PWA-Queue, Sync
+gegen NAS sobald Netz da ist — Client-UUID, idempotent. Umgesetzt in 0.38.0
+(B10) mit `localStorage` statt IndexedDB: winzige JSON-Objekte ohne
+Binärinhalt, LAN-App ohne Transaktionsbedarf — Abweichung in
+[LUECKEN.md](LUECKEN.md) vermerkt.
 
 Prototyp im Alltags-GUI (`sample/good gui`, `lib/feedback.ts`): der
 Uhrzeit-Slider *ist* die asynchrone Struktur. Intent „Ich warte“,
@@ -1235,7 +1244,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 - `GET /v1/health` — Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand & Oldest-Age, Coverage, letzte Fehler — **implementiert, erweitert um collector + selection**
 - `GET /v1/selection` — Meine Stationen mit δ̂, Bootstrap-KI, AV-Score, billigste Stunde — **B3.10 implementiert, Artefakt runtime/selection/current.json**
 - `GET /v1/collector/status` — Pi/tmpfs Livestatus (Collector-Herzschlag) — **B3.11 implementiert**
-- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` / `live_advice` / `wallet` (§5.5, §8.2) — **noch offen**
+- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` / `live_advice` / `wallet` (§5.5, §8.2) — **implementiert als /api/v1/stats/summary**
 
 Details und Beispiele: [API.md](API.md)
 

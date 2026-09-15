@@ -63,5 +63,8 @@ netrc
 /.lighthouseci/
 /load-report.json
 
+# E2E ohne Mocks (web/e2e/demo.spec.ts): Demo-Datenbestand des Demo-Stacks
+/.demo-e2e-data/
+
 # Lokale virtuelle Umgebung
 .venv/

@@ -1,6 +1,6 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 13.09.2026 · App-Version 0.25.0 — B3-Aggregate, P-Seite aus der
+> Stand: 15.09.2026 · App-Version 0.38.0 — B3-Aggregate, P-Seite aus der
 > Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
 > enthalten; seit 0.25.0 Coverage-Gate im Polling-Fenster und relativ zum
 > Stadt-Bestwert (B21). Methodik-Nachschlagewerk, keine Checkliste: Einrichten
@@ -121,7 +121,7 @@ Der Preis-Abstand δ̂ᵢ = Median über Zeit von (pᵢ(t) − Median_{j≠i} p�
   Median über 42 Tage wäre bei Betreiber-/Strategiewechsel ~21 Tage blind (Mischung
   zweier Verteilungen); Ranking/Score nutzen deshalb den EW-Median (Fallback klassisch).
 
-Beispiel: „langfristig 3,80 ct/L günstiger als Umgebung“ erscheint nur im Stations-Detail der Werkstatt.
+Beispiel: „langfristig 3,80 ct/L günstiger als Umgebung“ erscheint nur im Stations-Detail des Labors.
 
 ### Bootstrap-KI & FDR
 
@@ -156,7 +156,7 @@ NAS-Job (B3.10): B=2000 fest (nicht sequenziell erhöhen). B=200 wäre ein Signi
   `reason` — „0 Stationen“ ist damit erklärbar, statt nur im Log zu stehen
 - Publiziert nach `runtime/selection/current.json`
 - API `/api/v1/selection?fuel=e10&city=Frankfurt` liefert „Meine Stationen“
-- GUI Werkstatt zeigt Tabelle mit Ranking, Bootstrap-KI-Whiskern, AV-Score, billigster Stunde
+- GUI-Bereich **Labor** (früher „Werkstatt“) zeigt die Tabelle mit Ranking, Bootstrap-KI-Whiskern, AV-Score, billigster Stunde
 
 Falls kein Trainingsbestand vorhanden: `error_code: selection_not_available` → GUI zeigt ehrlichen Hinweis, keine erfundenen Rankings.
 
@@ -269,7 +269,7 @@ der Vergleichswert mit — die Heatmap bleibt eine Analyse-, keine
 Entscheidungsansicht.
 
 Beide Heatmaps sind Analyse-, keine Entscheidungswerkzeuge — sie leben in der
-Werkstatt (Tab **Werkstatt**), nicht im Alltags-Startbildschirm. Sie zeigen die
+Labor (früher „Werkstatt“), nicht auf „Jetzt“. Sie zeigen die
 **Vergangenheit** (letzte N Wochen), keine Prognose für die kommende Woche.
 
 Frontend: Umschalter Level/Probability, Wochen-Wahl 4/6/12 (E5, Default 6),
@@ -394,7 +394,7 @@ Preise, die im vorhergesagten Band lagen (Prediction Interval Coverage
 Probability). Gezählt wird nur an Zeitpunkten mit echtem Preis —
 geschlossene Meldungen sind keine Bandverfehlung. Bei perfekter
 Kalibrierung liegt der Wert bei etwa 95 %; darunter ist das Band zu schmal
-(zu siegessicher), darüber zu breit (zu vorsichtig). Die Werkstatt zeigt
+(zu siegessicher), darüber zu breit (zu vorsichtig). Das Labor zeigt
 den 7-Tage-Rolling-Wert je Station als Badge (grün ≥ 93 %, gelb ≥ 90 %,
 rot < 90 %, unter 72 Punkten keine Aussage) — rot löst das Güte-Gate aus
 (`no_advice` vor F2/F1, siehe Tabelle oben).
@@ -440,7 +440,7 @@ Kalibrierung (n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
 
 ## Empfehlungs-Bilanz (Brier, Epsilon, Regret)
 
-Die Werkstatt bilanziert zwei Dinge: ob die **Prozentzahlen** stimmten
+Das Labor bilanziert zwei Dinge: ob die **Prozentzahlen** stimmten
 (Brier, aus dem Advice-Ledger) und ob die **Regel** das günstige Fenster
 traf (ε und Regret, aus dem Labor-Vergleich gegen das Orakel). Alle drei
 Begriffe stehen im Glossar der App („Was heißt das?“).
@@ -459,7 +459,8 @@ zählen nur aktuelle Preise, keine Prozent-Behauptung.
 
 Die Labor-Regel des Prüfstands empfiehlt „Warten“ nur, wenn die im Training
 geschätzte erwartete Ersparnis μ mindestens **ε** erreicht
-(`views/Statistics.tsx`, Gruppe B1: „Die Entscheidungs-Regel & ε-Steuerung“).
+(im Labor: Karte **„Vorsicht-Regler ε“** mit **„Was wäre gewesen, wenn …?“** —
+früher `views/Statistics.tsx`, Gruppe B1 „Die Entscheidungs-Regel“).
 ε ist die Handlungsschwelle des Labors: ε = 1,0 ct/L heißt, erwarte ich
 weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. ε ist ein **Was-wäre-wenn-Schalter** für den Labor-Vergleich —
 die Produktion rechnet mit der kalibrierten Entscheidungstabelle (§4.1/§4.2),

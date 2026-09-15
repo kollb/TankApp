@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 14.09.2026 · App-Version **0.37.1**
+> Stand: 15.09.2026 · App-Version **0.38.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -30,6 +30,27 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | eine Zeile Nutzertext schreiben (Tonfall, Einheiten, Zitate, Fehlertexte) | [MICROCOPY.md](MICROCOPY.md) |
 | Lighthouse/Last messen und die Budgets nachziehen | [QUALITAET.md](QUALITAET.md) |
 | eine frühere Prüfung oder ein altes Konzept nachlesen | [archiv/README.md](archiv/README.md) |
+
+### Nicht gegen die aktuelle Version geprüft
+
+Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
+der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
+älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
+nicht gegen 0.38.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+
+| Dokument | Stand | Warum nicht mitgezogen |
+|---|---|---|
+| [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
+| [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
+| [RP2.md](RP2.md) | 0.37.2 | Fallback-GUI und Pi-Proxy — von den Änderungen 0.38.0 nicht betroffen |
+| [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
+| [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
+| [GUI-VORLAGEN.md](GUI-VORLAGEN.md) · [SPEICHER.md](SPEICHER.md) | — | Betriebs- und Übernahmeregeln, keine Versionsaussagen |
+
+`tests/test_ledger_drift.py` prüft, dass jedes Dokument eine Stand-Zeile im
+Kopf hat, dass keine **neuere** Version behauptet wird als die App und dass
+diese Liste vollständig bleibt — beide Richtungen: kein alter Stand ohne
+Eintrag, kein Eintrag ohne Grund.
 
 ## Lesereihenfolge
 
@@ -59,7 +80,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 
 | Dokument | Inhalt |
 |---|---|
-| [ARCHITEKTUR.md](ARCHITEKTUR.md) | Zielbild, Rollen & Datenfluss, Pi (tmpfs, Heartbeat, systemd), Uploader, Ereignis-Pipeline, NAS (InfluxDB, Archiv, Modelle, Selektion), Ressourcen, Hardware-Bewertung |
+| [ARCHITEKTUR.md](ARCHITEKTUR.md) | Zielbild, Rollen & Datenfluss, Pi (tmpfs, Heartbeat, systemd), Uploader, Ereignis-Pipeline, NAS (InfluxDB, Archiv, Modelle, Selektion), Browser/PWA (Shell, Cache, Offline-Queue), Ressourcen, Hardware-Bewertung |
 | [ANALYSE.md](ANALYSE.md) | δ̂-Ranking, Bootstrap-KI & FDR, AV-Score, billigste Stunde, Heatmaps (Niveau/Cheap-Probability), Zeitreihen-Engine, Backtest, Umweg-Ökonomie |
 | [KONZEPT.md](KONZEPT.md) | Fachliches Zielbild: drei Fragen (F1/F2/F3), zwei Modi, Ehrlichkeits-Regel, Datenquelle, Selektion, Engine, Decision Layer, Feedback-Ledger, KPIs, UI, Architektur, Roadmap M1–M7 |
 | [LUECKEN.md](LUECKEN.md) | Konzept-Abdeckung § für §, geschlossene Punkte, bewusst offener Backlog **mit Grund**, Messwerte |
@@ -75,7 +96,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
-| [QUALITAET.md](QUALITAET.md) | Qualitäts-Gates (D4): Lighthouse-Budgets, Lastpfad gegen `/api/v1/overview`, Demo-Stack, Messwerte und die B7-Rest-Entscheidung |
+| [QUALITAET.md](QUALITAET.md) | Qualitäts-Gates (D4): Lighthouse-Budgets, Lastpfad gegen `/api/v1/overview`, Demo-Stack, E2E-Suite ohne Mocks, Messwerte und die B7-Rest-Entscheidung |
 
 ### Projektstand (Repo-Wurzel, nicht in `docs/`)
 
@@ -182,9 +203,12 @@ Vollständig mit Parametern, Antworten und Fehlercodes: [API.md](API.md).
   Homepage ([GUI-VORLAGEN.md](GUI-VORLAGEN.md), Regel in [../AGENTS.md](../AGENTS.md)).
 - **Private Daten gehören nicht ins Repo:** `config.local.json`, `polling.json`,
   `data/influx.env`, `data/_netrc`, `data/apikey.txt` (siehe `.gitignore`).
-- **Begriffe:** Alltag / Werkstatt / System / Einstellungen. „Statistik“ und
-  „Prüfstand“ sind veraltete Bezeichnungen und stehen nur noch in
-  Archiv-Dokumenten.
+- **Begriffe:** **Jetzt**, **Woche**, **Stationen**, **Labor**, **Ich**,
+  **System** — die sechs Bereiche der GUI. „Alltag“, „Werkstatt“,
+  „Einstellungen“, „Statistik“ und „Prüfstand“ sind veraltete Bezeichnungen und
+  stehen nur noch in Archiv-Dokumenten und bewusst in der RP2-Fallback-GUI
+  (dort heißen die zwei Ansichten weiter Alltag und Werkstatt, siehe
+  [RP2.md](RP2.md)).
 
 ## Regeln für diese Dokumentation
 

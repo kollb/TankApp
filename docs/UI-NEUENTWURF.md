@@ -891,10 +891,13 @@ neben Version 1, bis die neue GUI flächendeckend läuft.
   Labor farblich abgesetzt), Inhalt 2-spaltig (Kern + Einordnung daneben
   statt darunter), Ebene 1 als Seitenpanel rechts (statt Sheet). Labor als
   ruhige Lese-Spalte mit Sprungleiste oben.
-- **PWA:** installierbar, Offline-Lesen des letzten Stands (alle 6 Bereiche
-  cachen ihren letzten `overview`/`atlas`/…), Offline-Warteschlange für
-  Belege („wird gesendet, sobald online“), Update-Banner
-  („Neue Version — was ist neu?“ + Neu-laden).
+- **PWA (seit 0.38.0 umgesetzt, B10):** installierbar, Offline-Lesen des
+  letzten Stands (API-Antworten ≤ 30 Min aus dem Service-Worker-Cache),
+  Offline-Warteschlange für Belege und Vorsätze („wird gesendet, sobald
+  online“) und Update-Banner („Neue Version verfügbar“ + Neu-laden). Die
+  Ablage der Queue ist `localStorage` statt IndexedDB — Begründung in
+  [BETRIEB.md](BETRIEB.md#gui-update-und-offline-queue-b10-seit-0380), die
+  Abweichung im [Lücken-Check](LUECKEN.md).
 - **Geteilte Links:** Jede Ansicht ist eine URL (`/jetzt`, `/station/{id}`,
   `/woche?fenster=…`, `/labor#sicherheit`), „Teilen“-Knopf
   kopiert Kurz-Link mit aktuellem Stand (read-only, LAN).

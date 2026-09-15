@@ -1,20 +1,36 @@
 /* TankApp Service Worker: App-Shell offline, API-Antworten max. 30 Min. als
    gekennzeichneter Notstand. Niemals Preise erfinden — nur cachen.
-   SHELL-Version steigt bei jedem GUI-Update, das index.html ändert (C4,
-   0.24.0) — das Fetch-Match ist cache-first, ein fester Name würde
-   installierte PWAs auf der alten Shell hängen lassen (B10-Rest: Versions-
-   Anzeige fehlt weiter). */
-const SHELL = "tankapp-shell-v2";
+   Die Shell-Version ist die **App-Version** (beim Build gestempelt, B10): Ein
+   GUI-Update bekommt damit einen neuen Cache-Namen und meldet sich beim
+   wartenden Worker an die Ansicht („Neue Version verfügbar“) — statt eines
+   festen „…-v1“, das eine alte Shell unsichtbar weiterlaufen ließ. */
+const VERSION = "__APP_VERSION__";
+const SHELL = `tankapp-shell-${VERSION}`;
 const API = "tankapp-api-v1";
 const API_MAX_AGE_MS = 30 * 60 * 1000;
 
 self.addEventListener("install", (event) => {
+  // Kein automatisches skipWaiting (B10): Die neue Shell wartet, bis die
+  // Ansicht sie anfordert — sonst tauscht sie sich mitten im Betrieb unter
+  // der laufenden Seite aus, ohne dass jemand davon erfährt.
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((cache) => cache.addAll(["/", "/manifest.json", "/icon.svg"]))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll(["/", "/manifest.json", "/icon.svg"])),
   );
+});
+
+// B10: „Neu laden“ in der Ansicht fordert die Übernahme an; die Version
+// beantwortet die Frage, welcher Stand dort läuft.
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+    return;
+  }
+  if (data.type === "VERSION" && event.source) {
+    event.source.postMessage({ type: "VERSION", version: VERSION });
+  }
 });
 
 self.addEventListener("activate", (event) => {

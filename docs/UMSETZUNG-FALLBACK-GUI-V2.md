@@ -13,6 +13,8 @@
 > **5.2** (Abnahme auf dem Pi/RP2 — braucht die echte Hardware) und **6.2**
 > (Auslagern ins Archiv nach dem Merge).
 
+## Inhaltsverzeichnis
+
 - [0. Basis, Stand und Messwerte](#0-basis-stand-und-messwerte)
 - [1. Backend: series-Endpunkt + Snapshot-TTL-Cache](#1-backend-series-endpunkt--snapshot-ttl-cache)
 - [2. Neues Template in rp2/fallback_gui.py](#2-neues-template-in-rp2fallback_guipy)

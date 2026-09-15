@@ -1,6 +1,8 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-# Datenwerkzeuge — Referenz, keine Installationskette
+> Stand: 15.09.2026 · App-Version 0.38.0. Nachschlagewerk für `data-tools/`
+> und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
+> Dauerbetrieb in [BETRIEB.md](BETRIEB.md).
 
 ## Inhaltsverzeichnis
 
@@ -14,13 +16,15 @@
 |---|---|
 | `collect_prices.py` | Ein Collector für alle Stadtsets, Round-Robin, ein Request-Budget, persistenter Zeitplan, JSONL-Puffer. |
 | `polling_plan.py` | Gemeinsame Validierung, atomare JSON-Ausgaben, Prozesssperre und Request-Zeitplan. |
-| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. |
+| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
 | `fetch_history.py` | HTTP-Tagesdownload, gzip, Wiederholung und atomare `.part`-Übernahme. NAS-Zeitplanung bevorzugt über den Sync-Wrapper, nicht nur `--since yesterday`. |
 | `discover_stations.py` | Vorläufige Auswahl aus Stationsmetadaten, ohne lange Preishistorie. |
 | `ingest_history.py` | M2-Aufbereitung; gerasterte Daten sind nicht automatisch zeitgenaue Live-Beobachtungen. |
 | `run_pipeline.py` | Optionale vertiefte Historien-/Stationsanalyse, kein Installationsbeginn mehr. Schützt Sets anderer Städte vor Überschreiben. |
 | `export_influx.py` | Nur lesender Live-Export, bestehender Lesezugang über `--env-file`; keine InfluxDB-Einrichtung. |
 | `road_route.py` | Routing für die vertiefte Umweg-/Kostenbewertung. |
+| `swap_stations.py` | Tote oder ungeeignete Stationen 1:1 tauschen: liest die Modell-Fehler, sucht Ersatz aus der Kandidaten-CSV, validiert das ganze Set und schreibt **nur** den Vorschlag — Ablauf in [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md). |
+| `prune_influx.py` | InfluxDB verkleinern (Delete API per Zeitfenster oder Retention kürzen), damit die SSD nicht mit der 5-Jahre-Retention wächst — Hintergrund in [SPEICHER.md](SPEICHER.md). |
 
 Archiv und Polling kommen beide von Tankerkönig. Ein Modell kann die jüngsten
 Polling-Daten allein verwenden, während das NAS trotzdem ein langes Archiv für

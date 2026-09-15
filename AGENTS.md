@@ -10,6 +10,7 @@ python -m ruff format --check app tankapp.py data-tools/polling_plan.py engine d
 python -m pytest -q
 npm --prefix web test && npm --prefix web run build
 npm --prefix web run test:e2e
+npm --prefix web run test:e2e:demo   # braucht python -m pip install -r requirements-dev.txt
 ```
 
 **Die Browser-Suite gehört dazu.** `web`-Job der CI führt `npm --prefix web
@@ -18,7 +19,11 @@ auslässt, pusht rote Läufe. Einmalig `npx --prefix web playwright install
 chromium`, dann startet die Suite ihren Server (`tankapp.py serve`) selbst.
 Sie prüft die GUI im echten Browser — genau dort fallen Navigations- und
 Absturzfehler auf, die Unit-Tests nicht sehen (z. B. eine leere Seite wegen
-eines fehlenden Feldes in einer Server-Antwort).
+eines fehlenden Feldes in einer Server-Antwort). Danach läuft in der CI der
+Schritt „E2E ohne Mocks gegen den Demo-Stack“ (`npm --prefix web run
+test:e2e:demo`): dieselbe Oberfläche gegen echte Server-Antworten. Diese Suite
+gehört vor dem Push ebenfalls gefahren — ohne Chromium bleibt sie der CI
+vorbehalten, der Server-Teil liegt als `tests/test_e2e_demo.py` bei.
 
 `ruff format --check` läuft in CI **vor** pytest; eine reine Formatabweichung (z. B. zu lange Signatur) fällt daher schon nach Sekunden durch, bevor Tests überhaupt starten. Gefundene Abweichungen mit `ruff format <datei>` fixen, nicht per Hand umbrechen.
 

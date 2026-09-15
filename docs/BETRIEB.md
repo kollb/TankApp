@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 13.09.2026 · App-Version 0.26.1 — alles, was nach der Ersteinrichtung
+> Stand: 15.09.2026 · App-Version 0.38.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
 > GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
@@ -40,6 +40,7 @@
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
 - [System-Alarme lesen](#system-alarme-lesen)
   - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
+  - [Webhook Pi → NAS (B8, seit 0.38.0)](#webhook-pi--nas-b8-seit-0380)
   - [System-Alarme und GUI-Neuentwurf (seit 0.35.0)](#system-alarme-und-gui-neuentwurf-seit-0350)
   - [Version und Build-Hash prüfen](#version-und-build-hash-prüfen)
 - [Fehlersuche](#fehlersuche)
@@ -825,8 +826,28 @@ dort bewusst nicht — sie ist der einzige Geheimnisträger. Ohne
 `TANKAPP_NTFY_URL` steht dort die Tatsache („Alarme stehen nur hier in der
 GUI“), kein Fehler.
 
-Noch offen (siehe [TODO B8](../TODO.md)): Webhook-Retry Pi → NAS —
-`POST /api/v1/jobs/trigger` ist weiterhin Fire-and-Forget.
+### Webhook Pi → NAS (B8, seit 0.38.0)
+
+`POST /api/v1/jobs/trigger` wird
+quittiert und bei Bedarf wiederholt. Bleibt die Quittierung aus (NAS kurz
+offline, Neustart), merkt sich der Uploader den Trigger und versucht ihn
+erneut — 30 s, 60 s, … höchstens alle 15 Min. Nach 2 h gibt er auf; ab dann
+ist der Intervaljob wieder allein zuständig („aufgegeben“ statt endlosem
+Wiederholen). Sichtbar ist der Zustand im System-Bereich (Zeile „Trigger
+Pi → NAS“ in den Collector-Details) und in `GET /api/v1/collector/status`
+als Feld `webhook`:
+
+| Wert | Bedeutung |
+|---|---|
+| `queued` | Quittiert — der NAS-Job ist vorgemerkt |
+| `debounced` | Quittiert — gedrosselt, ein Lauf steht kurz bevor |
+| `duplicate` | Quittiert — derselbe Datenstand lief schon |
+| `retry_wait` | Antwort steht aus, nächster Versuch ist vorgemerkt |
+| `abandoned` | Nach 2 h ohne Quittierung aufgegeben |
+| `rejected` / `http_403` | Dauerhaft: unbekannter Job oder falsches Token — nicht wiederholt (`TANKAPP_NAS_WEBHOOK_TOKEN` auf Pi und NAS vergleichen) |
+
+Ohne eingerichtetes Ziel (`TANKAPP_NAS_WEBHOOK_URL`) meldet der Uploader
+keine Webhook-Felder — die GUI sagt dann „keine Angabe“ statt „in Ordnung“.
 
 ### System-Alarme und GUI-Neuentwurf (seit 0.35.0)
 
@@ -870,6 +891,39 @@ Bedarf `TANKAPP_BUILD_COMMIT=<hash>` als Umgebung für den Container setzen
 (`app/version.py` liest sie beim Import). Die RP2-Fallback-GUI trägt einen
 eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
 Version: [CHANGELOG](../CHANGELOG.md).
+
+### GUI-Update und Offline-Queue (B10, seit 0.38.0)
+
+Die installierte GUI ist eine PWA (`/sw.js`). Seit 0.38.0 trägt die App-Shell
+die **App-Version**: `web/vite.config.ts` liest `app/version.py` und stempelt
+sie in `web/dist/sw.js` (Cache-Name `tankapp-shell-<version>`). Bleibt der
+Platzhalter stehen, bricht der Build ab — eine ausgelieferte Shell ohne Version
+wäre genau die stille Lüge, die B10 beseitigt hat.
+
+- Ein neuer Service Worker **wartet** (`skipWaiting` erst auf Anforderung). Die
+  Ansicht zeigt dann „Neue Version verfügbar — diese Ansicht läuft noch auf X“
+  mit „Jetzt neu laden“ / „Später“ (still für die Sitzung, nicht für immer).
+- Die Version der laufenden Ansicht ist beim Build eingebrannt; der Footer
+  nennt weiterhin die Server-Version. Weichen sie ab, sagt es der Hinweis —
+  statt einer Zahl, die nur der Server kennt.
+- **Offline-Queue für Belege und Vorsätze:** Reißt die Verbindung ab oder
+  antwortet der Server mit 502/503/504, merkt die GUI den Schreibvorgang lokal
+  vor (`localStorage`, Schlüssel `tankapp.offline.queue.v1`) und reicht ihn beim
+  nächsten Kontakt nach — bei App-Start und beim `online`-Ereignis. Sichtbar
+  als Zeile über den Tabs („… sind lokal vorgemerkt und gehen raus, sobald die
+  Verbindung steht“). Ablage in `localStorage` statt IndexedDB: winzige
+  JSON-Objekte, kein Binärinhalt, keine Transaktionen nötig (Abweichung vom
+  Konzept §5.4, in [LUECKEN.md](LUECKEN.md) vermerkt).
+  - Ober­grenzen: 50 Einträge, älter als 7 Tage wird verworfen (die Ansicht
+    sagt das nicht als Fehler, sondern lässt die Zeile verschwinden).
+  - Beleg-`id` und `tanked_at` entstehen **beim Tanken**, nicht beim
+    Nachreichen; der Server ist über `id` idempotent — ein doppelt gesendeter
+    Beleg landet nicht zweimal im Ledger.
+  - Nur 4xx (Ablehnung: Liter außerhalb der Grenzen, fremde Station) wird
+    sofort gemeldet und **nicht** nachgereicht. 500 ist ein Programmfehler und
+    wird ebenfalls gemeldet, nicht wiederholt.
+  - Profile, Storno und Jobstart laufen nicht über die Queue — sie sind
+    Entscheidungen, keine Datenerfassung im Funkloch.
 
 ## Fehlersuche
 

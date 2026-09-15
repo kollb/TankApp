@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { CollectorStatus, Health, Selection, Stations, Station } from "./data";
 import {
   systemDataCoverage,
+  webhookLine,
   systemDiagnosticExport,
   systemDiagnosticFilename,
   systemExplanationDaten,
@@ -417,5 +418,65 @@ describe("systemDiagnosticExport", () => {
       "tankapp-diagnose-2026-09-14.json",
     );
     expect(systemDiagnosticFilename(null)).toBe("tankapp-diagnose-ohne-stand.json");
+  });
+});
+
+describe("B8: Trigger Pi → NAS", () => {
+  it("sagt „keine Angabe“ statt „in Ordnung“, wenn nichts gemeldet wird", () => {
+    const line = webhookLine(null);
+    expect(line.tone).toBe("unknown");
+    expect(line.text).toContain("Keine Angabe");
+    expect(line.note).toContain("Intervalljob");
+  });
+
+  it("benennt einen offenen Trigger mit Versuchen und Alter", () => {
+    const line = webhookLine({
+      pending: true,
+      attempts: 3,
+      pending_age_s: 600,
+      last_status: "retry_wait",
+    });
+    expect(line.tone).toBe("warn");
+    expect(line.text).toContain("3 Versuche");
+    expect(line.text).toContain("10 Min.");
+  });
+
+  it("übersetzt die Quittierung des NAS in Klartext", () => {
+    expect(webhookLine({ pending: false, last_status: "queued" }).tone).toBe("ok");
+    expect(webhookLine({ pending: false, last_status: "queued" }).text).toContain(
+      "vorgemerkt",
+    );
+    expect(webhookLine({ pending: false, last_status: "duplicate" }).text).toContain(
+      "Datenstand",
+    );
+    const throttled = webhookLine({ pending: false, last_status: "debounced" });
+    expect(throttled.tone).toBe("ok");
+    expect(throttled.text).toContain("gedrosselt");
+  });
+
+  it("meldet dauerhafte Fehler als Fehler, nicht als Warten", () => {
+    const rejected = webhookLine({ pending: false, last_status: "rejected" });
+    expect(rejected.tone).toBe("error");
+    expect(rejected.text).toContain("kennt diesen Job nicht");
+    const auth = webhookLine({ pending: false, last_status: "http_403" });
+    expect(auth.tone).toBe("error");
+    expect(webhookLine({ pending: false, last_status: "http_500" }).tone).toBe("warn");
+  });
+
+  it("nennt das Aufgeben als solches (Intervaljob übernimmt)", () => {
+    const line = webhookLine({
+      pending: false,
+      last_status: "abandoned",
+      gave_up: 2,
+    });
+    expect(line.tone).toBe("warn");
+    expect(line.text).toContain("Aufgegeben");
+    expect(line.note).toContain("2");
+  });
+
+  it("behält die Ehrlichkeits-Regel: keine Zahl ohne Messung", () => {
+    const line = webhookLine({ pending: false, last_status: "http_200" });
+    expect(line.text).not.toContain("0 Min.");
+    expect(line.text).not.toContain("undefined");
   });
 });

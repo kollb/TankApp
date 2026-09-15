@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import type { WebhookState } from "./system";
+import { enqueueWrite, isTransportError } from "./offline-queue";
 
 export type Fuel = "e10" | "e5" | "diesel";
 export type Station = {
@@ -100,6 +102,10 @@ export type CollectorStatus = {
   total_count?: number | null;
   generated_at?: string;
   error_code?: string | null;
+  // B8: Trigger Pi → NAS — kommt mit dem Herzschlag-Punkt des Uploaders.
+  // ``null`` heißt „keine Angabe“, nicht „in Ordnung“.
+  webhook?: WebhookState | null;
+  webhook_source?: "influx" | null;
   influx?: {
     available: boolean;
     last_heartbeat_at?: string | null;
@@ -1018,16 +1024,27 @@ export function scoreRows(
   };
 }
 
+/**
+ * B10: Vorsatz speichern. Ohne Verbindung wird er vorgemerkt und beim nächsten
+ * Kontakt nachgereicht — die Antwort trägt dann `queued` (kein Fehler).
+ */
 export async function postIntent(episodeId: string, intent: string) {
+  const path = `/api/v1/episodes/${episodeId}/intent`;
+  const body = JSON.stringify({ intent });
   try {
-    const res = await fetch(`/api/v1/episodes/${episodeId}/intent`, {
+    const res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intent }),
+      body,
     });
+    if (isTransportError(res.status)) {
+      const list = enqueueWrite({ kind: "intent", path, body });
+      return { queued: true, queue_length: list.length };
+    }
     return await res.json();
   } catch {
-    return { error_code: "request_failed" };
+    const list = enqueueWrite({ kind: "intent", path, body });
+    return { queued: true, queue_length: list.length };
   }
 }
 
@@ -1150,7 +1167,15 @@ export async function postJobRun(job: string): Promise<JobRunResult> {
   }
 }
 
+/**
+ * B10: Beleg speichern — mit Offline-Queue (§5.4).
+ *
+ * Der `id` wird hier erzeugt, damit ein nachgereichter Beleg nie doppelt im
+ * Ledger landet (der Server ist über `id` idempotent). Wird ohne Verbindung
+ * vorgemerkt, trägt die Antwort `queued: true` — die Ansicht sagt das dann.
+ */
 export async function postFill(payload: {
+  id?: string;
   station_id: string;
   station_name: string;
   tanked_at?: string;
@@ -1160,16 +1185,57 @@ export async function postFill(payload: {
   source: string;
   episode_id?: string | null;
 }) {
+  // Der Tankzeitpunkt ist der Zeitpunkt des Tankens, nicht der des Nachreichens.
+  const record = {
+    ...payload,
+    id: payload.id ?? newFillId(),
+    tanked_at: payload.tanked_at ?? new Date().toISOString(),
+  };
+  const body = JSON.stringify(record);
   try {
     const res = await fetch("/api/v1/fills", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body,
     });
+    if (isTransportError(res.status)) {
+      const list = enqueueWrite({ kind: "fill", path: "/api/v1/fills", body });
+      return { queued: true, queue_length: list.length };
+    }
     return await res.json();
   } catch {
-    return { error_code: "request_failed" };
+    const list = enqueueWrite({ kind: "fill", path: "/api/v1/fills", body });
+    return { queued: true, queue_length: list.length };
   }
+}
+
+/**
+ * B10: Versand eines vorgemerkten Eintrags. `permanent` unterscheidet die
+ * Ablehnung (4xx → nicht wiederholen, melden) vom Verbindungsproblem.
+ */
+export async function postQueued(entry: {
+  path: string;
+  body: string;
+}): Promise<{ ok: boolean; permanent?: boolean; error?: string | null }> {
+  try {
+    const res = await fetch(entry.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: entry.body,
+    });
+    if (res.ok) return { ok: true };
+    if (res.status >= 400 && res.status < 500) {
+      return { ok: false, permanent: true, error: `http_${res.status}` };
+    }
+    return { ok: false, error: `http_${res.status}` };
+  } catch {
+    return { ok: false, error: "offline" };
+  }
+}
+
+function newFillId(): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `fill_${Date.now().toString(36)}_${random}`;
 }
 
 /** A3: Beleg stornieren (DELETE /api/v1/fills/{id} → voided-Flag, kein Löschen). */

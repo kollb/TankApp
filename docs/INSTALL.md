@@ -1,6 +1,6 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 12.09.2026 · App-Version 0.11.0.  
+**Das ist der einzige Installationseinstieg.** Stand: 15.09.2026 · App-Version 0.38.0.  
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
 Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
 [BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](API.md).  
@@ -249,7 +249,7 @@ Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschte
 
 Stand dieser Lieferung (0.11.0): GUI, API, App-Start, Archiv-Zeitplanung,
 Modellveröffentlichung, Selektion, Heatmaps, Collector-Status, Route-Evaluate,
-Job-Fortschritt, Rate-Limit, Alarm-Block, Beleg-Storno/CSV-Export,
+Job-Fortschritt, Alarm-Block, Beleg-Storno/CSV-Export, Offline-Queue für Belege,
 `runtime/`-Backup und Versionsanzeige sind implementiert und softwaregetestet.
 GitHub CI hat Python-Tests, Frontend-Unit-Tests, Browsertests, GUI-Build und
 Docker-Image-Build bestanden. **Betrieb mit privaten Daten auf dem NAS ist

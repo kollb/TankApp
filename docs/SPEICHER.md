@@ -1,6 +1,20 @@
 # TankApp Speichermanagement — Pi shm und NAS SSD/HDD
 
-> Stand: 13.09.2026 — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“
+> Stand: 15.09.2026 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“
+
+## Inhaltsverzeichnis
+
+- [1) Pi: `/dev/shm/tankapp` (tmpfs)](#1-pi-devshmtankapp-tmpfs)
+  - [Was liegt dort?](#was-liegt-dort)
+  - [Braucht es das alles?](#braucht-es-das-alles)
+  - [Was passiert bei 7+ Tagen NAS-Ausfall?](#was-passiert-bei-7-tagen-nas-ausfall)
+  - [Und der Prognose-Cache des RP2?](#und-der-prognose-cache-des-rp2)
+- [2) NAS: Was ist persistent und wo liegt es?](#2-nas-was-ist-persistent-und-wo-liegt-es)
+  - [Warum Influx auf SSD bleiben sollte](#warum-influx-auf-ssd-bleiben-sollte)
+  - [Wenn Influx doch auf HDD soll](#wenn-influx-doch-auf-hdd-soll)
+- [3) Konkrete Änderungen im Code (13.09.2026)](#3-konkrete-änderungen-im-code-13092026)
+- [4) Checkliste für den Betreiber](#4-checkliste-für-den-betreiber)
+- [5) Offene Punkte](#5-offene-punkte)
 
 ## 1) Pi: `/dev/shm/tankapp` (tmpfs)
 
@@ -80,7 +94,7 @@ Wer SSD-Platz sparen muss:
 
 3. **Cache leeren**: `runtime/backtest-cache/` darf jederzeit gelöscht werden (nächster Lauf rechnet neu). `runtime/archive-cache/` ebenfalls.
 
-4. **Downsampling (optional)**: Ab 120 Tagen nur noch stündliche Mittelwerte in Influx behalten, Rohdaten löschen — Modell-Export nutzt nur letzte 120 Tage roh. Dazu ein kleines `prune_influx.py` (siehe unten).
+4. **Prune statt Downsampling**: `data-tools/prune_influx.py --older-than-days 365` löscht alte Punkte über die Influx-Delete-API (`--dry-run` zeigt vorher, was ginge; Default 365 Tage), ohne das Volume zu bewegen — die HDD bleibt schlafend, nur die SSD wird kleiner. Aufruf und Grenzen: [BETRIEB.md](BETRIEB.md#speichermanagement-pi-shm--nas-ssdhdd). Ein echtes Downsampling (stündliche Mittelwerte ab 120 Tagen) bleibt **nicht** gebaut: Der Modell-Export nutzt die letzten 120 Tage roh, ältere Daten gehen bei Bedarf aus dem Archiv nach.
 
 ### Wenn Influx doch auf HDD soll
 
@@ -97,7 +111,7 @@ Empfehlung: **Influx auf SSD lassen**, Retention auf 1 Jahr kürzen, Backups auf
 - `data-tools/collect_prices.py`: `_read_ack_ts()` + `ring_prune()` löscht gesyncte Dateien (älter als gestern) sofort nach Ack, nicht erst nach 7 Tagen. Log zeigt „Ringpuffer: X alte Tag(e) gelöscht“.
 - `web/src/data.ts`: `useResource` behält Daten stale (kein `data=null` bei URL-Wechsel), `prevUrlRef` erkennt nur URL-Wechsel, Interval-Wechsel (System-Tab 60 s↔15 s) startet nur Timer neu — kein Flackern mehr.
 - `web/src/Dashboard.tsx`: Header `isStaleFuel = data.fuel !== fuel`, `online` false bei Stale, `fresh=[]` bei Stale, Anzeige „Daten werden geladen …“ sobald `pending`, nicht nur bei `!data`.
-- `web/src/views/Daily.tsx`: Bei `isStaleFuel || pricesPending && !best` Skeleton statt „Ehrlich statt geschätzt / Noch kein frischer Preis.“
+- `web/src/views/Jetzt.tsx` und `Stationen.tsx`: Skeleton statt „Noch kein frischer Preis“ / „Kein frischer Preis – bitte manuell erfassen“, solange der Kraftstoffwechsel noch lädt (früher `views/Daily.tsx`, mit dem GUI-Neuentwurf umbenannt).
 
 ## 4) Checkliste für den Betreiber
 
@@ -109,5 +123,6 @@ Empfehlung: **Influx auf SSD lassen**, Retention auf 1 Jahr kürzen, Backups auf
 
 ## 5) Offene Punkte
 
-- `data-tools/prune_influx.py` — optionaler Prune-Job per Influx Delete API (älter als 365 Tage löschen), falls Retention nicht reicht.
-- Influx auf HDD mit SSD-Cache (bcache) — komplex, nur wenn SSD wirklich knapp.
+- **Erledigt:** `data-tools/prune_influx.py` liegt im Repo (Delete API, `--older-than-days`, `--dry-run`) — der Kurzaufruf steht in [BETRIEB.md](BETRIEB.md#speichermanagement-pi-shm--nas-ssdhdd).
+- Influx auf HDD mit SSD-Cache (bcache) — komplex, nur wenn die SSD wirklich knapp wird; entschieden ist „Influx bleibt auf SSD“ (siehe oben).
+- Downsampling alter Punkte (stündliche Mittelwerte) — bewusst nicht gebaut, siehe Punkt 4.
