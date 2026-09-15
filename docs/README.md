@@ -80,7 +80,7 @@ Eintrag, kein Eintrag ohne Grund.
 
 | Dokument | Inhalt |
 |---|---|
-| [ARCHITEKTUR.md](ARCHITEKTUR.md) | Zielbild, Rollen & Datenfluss, Pi (tmpfs, Heartbeat, systemd), Uploader, Ereignis-Pipeline, NAS (InfluxDB, Archiv, Modelle, Selektion), Ressourcen, Hardware-Bewertung |
+| [ARCHITEKTUR.md](ARCHITEKTUR.md) | Zielbild, Rollen & Datenfluss, Pi (tmpfs, Heartbeat, systemd), Uploader, Ereignis-Pipeline, NAS (InfluxDB, Archiv, Modelle, Selektion), Browser/PWA (Shell, Cache, Offline-Queue), Ressourcen, Hardware-Bewertung |
 | [ANALYSE.md](ANALYSE.md) | δ̂-Ranking, Bootstrap-KI & FDR, AV-Score, billigste Stunde, Heatmaps (Niveau/Cheap-Probability), Zeitreihen-Engine, Backtest, Umweg-Ökonomie |
 | [KONZEPT.md](KONZEPT.md) | Fachliches Zielbild: drei Fragen (F1/F2/F3), zwei Modi, Ehrlichkeits-Regel, Datenquelle, Selektion, Engine, Decision Layer, Feedback-Ledger, KPIs, UI, Architektur, Roadmap M1–M7 |
 | [LUECKEN.md](LUECKEN.md) | Konzept-Abdeckung § für §, geschlossene Punkte, bewusst offener Backlog **mit Grund**, Messwerte |

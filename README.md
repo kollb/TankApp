@@ -7,6 +7,16 @@ Preise.
 > Stand: 15.09.2026 · Version **0.38.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
+## Inhaltsverzeichnis
+
+- [Dokumentation: ein Ordner, ein Index](#dokumentation-ein-ordner-ein-index)
+- [Was die App beantwortet](#was-die-app-beantwortet)
+- [Geräte-Rollen](#geräte-rollen)
+- [Stand der Umsetzung](#stand-der-umsetzung)
+- [Repo-Struktur](#repo-struktur)
+- [Entwicklung & Tests](#entwicklung--tests)
+- [Daten, Privates, Lizenz](#daten-privates-lizenz)
+
 ## Dokumentation: ein Ordner, ein Index
 
 **→ [docs/README.md](docs/README.md)** ist das Inhaltsverzeichnis der gesamten

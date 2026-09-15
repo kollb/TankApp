@@ -11,6 +11,8 @@ denselben Demo-Stack, damit die Zahlen vergleichbar bleiben. Dazu kommt seit
 im echten Browser gegen die echte App (Abschnitt
 [E2E ohne Mocks](#e2e-ohne-mocks-seit-0380)).
 
+## Inhaltsverzeichnis
+
 - [Was gemessen wird](#was-gemessen-wird)
 - [Der Demo-Stack](#der-demo-stack)
 - [E2E ohne Mocks (seit 0.38.0)](#e2e-ohne-mocks-seit-0380)

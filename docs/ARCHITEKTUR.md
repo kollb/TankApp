@@ -24,6 +24,7 @@
   - [Route Evaluate (B3.12)](#route-evaluate-b312)
   - [Collector-Status in /health (B3.11)](#collector-status-in-health-b311)
   - [Zustands-Bündelung: `alarms[]` und Version (B4/B9)](#zustands-bündelung-alarms-und-version-b4b9)
+- [Browser: PWA-Shell, Cache und Offline-Queue (seit 0.38.0)](#browser-pwa-shell-cache-und-offline-queue-seit-0380)
 - [Ressourcen & SD-Härtung](#ressourcen--sd-härtung)
 - [Hardware-Bewertung](#hardware-bewertung)
 - [Verweise](#verweise)
@@ -290,6 +291,30 @@ Watermark bleibt gemerkt).
   `TANKAPP_BUILD_COMMIT`) beantworten bei drei Oberflächen — NAS-GUI,
   RP2-Proxy/Fallback, Collector auf dem Pi — die Frage „welcher Stand läuft wo?“.
   Im Docker-Image ist `commit` `null` (kein `.git` im Image).
+
+## Browser: PWA-Shell, Cache und Offline-Queue (seit 0.38.0)
+
+Das GUI ist eine PWA; der Service Worker (`web/public/sw.js`, im Build nach
+`web/dist/sw.js` gestempelt) sitzt zwischen Browser und NAS:
+
+- **Zwei Caches.** `tankapp-shell-<App-Version>` hält die Shell (`/`,
+  `manifest.json`, `icon.svg` beim Install) plus die statischen Assets, die beim
+  ersten Laden anfallen — Dokumente unter anderen Pfaden werden nicht abgelegt.
+  `tankapp-api-v1` hält GET-Antworten unter `/api/` mit einem
+  `x-tankapp-cached-at`-Stempel: ausgeliefert wird der letzte Stand höchstens
+  **30 Minuten** (stale-while-revalidate), danach entscheidet das Netz, und ohne
+  Netz bleibt nur der alte Stand — die GUI zeigt das Alter, sie erfindet keine
+  Preise.
+- **Update statt Austausch.** Die Shell trägt die App-Version; der neue Worker
+  ruft **kein** `skipWaiting()`, sondern wartet. Die Ansicht fragt die Version
+  ab und zeigt „Neue Version verfügbar“; „Jetzt neu laden“ fordert die Übernahme
+  an. Damit ist sichtbar, welcher Stand läuft.
+- **Schreiben.** Belege und Vorsätze landen ohne Verbindung in einer Queue
+  (`localStorage`, siehe [LUECKEN.md](LUECKEN.md) zur bewussten Abweichung von
+  IndexedDB) und gehen nach, sobald die Verbindung steht. Die Beleg-`id`
+  entsteht beim Tanken, der Server ist darüber idempotent; 4xx wird gemeldet,
+  nicht wiederholt. Betrieb und Fehlersuche:
+  [BETRIEB.md](BETRIEB.md#gui-update-und-offline-queue-b10-seit-0380).
 
 ## Ressourcen & SD-Härtung
 

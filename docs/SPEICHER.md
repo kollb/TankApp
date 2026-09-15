@@ -2,6 +2,20 @@
 
 > Stand: 15.09.2026 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“
 
+## Inhaltsverzeichnis
+
+- [1) Pi: `/dev/shm/tankapp` (tmpfs)](#1-pi-devshmtankapp-tmpfs)
+  - [Was liegt dort?](#was-liegt-dort)
+  - [Braucht es das alles?](#braucht-es-das-alles)
+  - [Was passiert bei 7+ Tagen NAS-Ausfall?](#was-passiert-bei-7-tagen-nas-ausfall)
+  - [Und der Prognose-Cache des RP2?](#und-der-prognose-cache-des-rp2)
+- [2) NAS: Was ist persistent und wo liegt es?](#2-nas-was-ist-persistent-und-wo-liegt-es)
+  - [Warum Influx auf SSD bleiben sollte](#warum-influx-auf-ssd-bleiben-sollte)
+  - [Wenn Influx doch auf HDD soll](#wenn-influx-doch-auf-hdd-soll)
+- [3) Konkrete Änderungen im Code (13.09.2026)](#3-konkrete-änderungen-im-code-13092026)
+- [4) Checkliste für den Betreiber](#4-checkliste-für-den-betreiber)
+- [5) Offene Punkte](#5-offene-punkte)
+
 ## 1) Pi: `/dev/shm/tankapp` (tmpfs)
 
 ### Was liegt dort?

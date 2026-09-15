@@ -149,6 +149,24 @@ def test_jedes_dokument_hat_eine_stand_zeile() -> None:
     assert not missing, f"Ohne Stand-Zeile im Kopf: {missing}"
 
 
+def test_jedes_dokument_hat_ein_inhaltsverzeichnis() -> None:
+    """AGENTS-Regel: klickbares Inhaltsverzeichnis oben.
+
+    `docs/README.md` ist der Index selbst — sein „Ich will … → Dokument“ ist
+    das Verzeichnis über alle Dokumente. Geprüft wird der Kopf bis Zeile 80:
+    ein Dokument darf vor dem Verzeichnis einen längeren Kopf haben
+    (Beispiel: KONZEPT.md mit Zielbild-Hinweisen), aber nicht seitenlang
+    Text ohne Einstieg.
+    """
+    missing = [
+        str(path.relative_to(ROOT))
+        for path in _documents()
+        if path != ROOT / "docs" / "README.md"
+        and "Inhaltsverzeichnis" not in "\n".join(_read(path).splitlines()[:80])
+    ]
+    assert not missing, f"Ohne Inhaltsverzeichnis im Kopf: {missing}"
+
+
 def test_veraltete_stand_zeilen_stehen_in_der_liste() -> None:
     """Ein Dokument darf zurückfallen — aber nicht unbemerkt.
 

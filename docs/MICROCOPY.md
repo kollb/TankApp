@@ -8,6 +8,8 @@ Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
 Standardsätze für Leer-, Lade- und Fehlerzustände.
 
+## Inhaltsverzeichnis
+
 - [1. Tonfall](#1-tonfall)
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
