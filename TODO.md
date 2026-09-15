@@ -56,6 +56,13 @@ erfasst ist — Typografie, Geräte-Raster, Routing, Designsystem und eine
 Lighthouse-Messung, die den Labor-Bereich nie sieht. Die zwei P0-Zeilen dort
 (U2 mobil, U7 Gate) werden zu C-Punkten, sobald sie angefasst werden — vorher
 stünde hier ein Befund ohne Owner.
+**Und:** Auch die Texte waren nie gegen das eigene Regelwerk geprüft.
+[docs/GUI-TEXT-BEFUND.md](docs/GUI-TEXT-BEFUND.md) (T1–T8, V1–V5) hält, was
+[MICROCOPY.md](docs/MICROCOPY.md) aufschreibt und was daneben steht — Du-Anrede
+in 41 Zeilen, drei Ausrufezeichen, verbotene Alt-Wörter, Pfade und
+Umgebungsvariablen im Nutzertext, Rohcodes im Tooltip, `read-only · Quelle:
+/api/v1/stats/summary`. Sein P0 ist der Ratchet: Die E2E-Suiten suchen die
+falschen Sätze heute wörtlich.
 
 ---
 
