@@ -1,15 +1,19 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 13.09.2026 · App-Version **0.31.0** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 15.09.2026 · App-Version **0.38.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
 „Lighthouse > 90“) und **ob das Polling unter Last trägt** (B7: ein Aggregat
 statt sechs Einzelabrufe). Beides wird seit D4 (0.31.0) gemessen — gegen
-denselben Demo-Stack, damit die Zahlen vergleichbar bleiben.
+denselben Demo-Stack, damit die Zahlen vergleichbar bleiben. Dazu kommt seit
+0.38.0 die **Suite ohne Mocks**: dieselbe Oberfläche, dieselben Antworten, aber
+im echten Browser gegen die echte App (Abschnitt
+[E2E ohne Mocks](#e2e-ohne-mocks-seit-0380)).
 
 - [Was gemessen wird](#was-gemessen-wird)
 - [Der Demo-Stack](#der-demo-stack)
+- [E2E ohne Mocks (seit 0.38.0)](#e2e-ohne-mocks-seit-0380)
 - [Lokal ausführen](#lokal-ausführen)
 - [Budgets](#budgets)
 - [Messwerte](#messwerte)
@@ -45,6 +49,33 @@ misst nur den Rahmen. Also gibt es `ops/quality/`:
 
 Die Preise teilen einen gemeinsamen Tages-Marktfaktor — ohne Gleichlauf wäre
 die gemeinsame Bootstrap-Ziehung (A11) im Lastpfad wirkungslos.
+
+---
+
+## E2E ohne Mocks (seit 0.38.0)
+
+Die Playwright-Suite in `web/e2e/` mockt jeden API-Pfad (`page.route`). Sie
+beweist, dass das GUI mit **erwarteten** Antworten richtig rendert — nicht, dass
+der Server diese Antworten liefert. Genau diese Lücke hat der Sanity-Check vom
+15.09. sichtbar gemacht: NaN brach `/last_forecasts` (B1), der Fallback zeigte
+UTC-Fenster (B3), der Demo-Stack lieferte keine Tageskurve. Kein gemockter Test
+konnte das sehen.
+
+Die zweite Suite tut dasselbe ohne Mocks, gegen den echten Demo-Stack:
+
+| | |
+|---|---|
+| Spec | `web/e2e/demo.spec.ts` (kein `page.route`) |
+| Config | `web/playwright.demo.config.ts` — eigenes `webServer`-Kommando mit `ops/quality/demo_server.py --rebuild`, Port **1357**, Desktop 1440 px + Mobil 390 px |
+| Aufruf | `npm --prefix web run test:e2e:demo` |
+| Läuft in | `.github/workflows/tests.yml` (web-Job) **nach** der gemockten Suite — nicht in `quality.yml`, weil sie Sekunden braucht und zum CI-Spiegel gehört |
+| Zusagen | overview → „Jetzt“ mit „Heute im Blick“ (19 Zellen, Berliner Zeit), Stationenliste, `If-None-Match` → 304 beim Aktualisieren, keine `role="alert"`; dazu Server-Vertrag ohne Browser in `tests/test_e2e_demo.py` |
+| Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` — prüft, dass die Suite mockfrei bleibt und Config, Skript und CI-Schritt zusammenpassen |
+
+Der Browser-Teil ist lokal nur lauffähig, wenn Chromium vorhanden ist
+(`npx --prefix web playwright install chromium`). In Sandboxen ohne
+Browser-Download bleibt die Suite der CI vorbehalten — deshalb liegt der
+Server-Teil der Zusage zusätzlich als Python-Test daneben, der überall läuft.
 
 ---
 
@@ -144,8 +175,9 @@ wenn sich die Rahmenbedingungen ändern.
    kein Chrome-Download möglich, deshalb ist die Performance-Ebene
    **warnend** gesetzt. Erste echte Zahlen liefert der Workflow-Lauf; danach
    werden die Budgets nachgezogen und hier eingetragen.
-2. **Nur zwei GUI-Zustände.** Gemessen werden Alltag und Statistik. Werkstatt,
-   Einstellungen und System folgen, sobald das M4-Ziel (> 0,90) steht.
+2. **Nur zwei GUI-Zustände.** Gemessen werden Jetzt und Labor. Die übrigen vier
+   Bereiche (Woche, Stationen, Ich, System) folgen, sobald das M4-Ziel
+   (> 0,90) steht.
 3. **Kein Docker-Stack.** Gegen `ops/nas/app/compose.yml` ist der Lastpfad
    noch nicht gelaufen — die Compose-Variante braucht eine InfluxDB mit
    Inhalt. Bis dahin gilt der Demo-Stack als Referenz.
