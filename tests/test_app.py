@@ -787,6 +787,88 @@ def test_forecast_passes_fit_reach_through_and_defaults_to_none(app_settings):
     assert old["range_from"] is None and old["n_points"] is None
 
 
+def test_nan_quantile_points_do_not_break_public_endpoints(app_settings):
+    """B1: Die Engine publiziert Quantil-Punkte mit NaN („Punkt nicht gestützt“).
+
+    Mit ``allow_nan=False`` brach ein einzelner NaN die ganze Antwort mit
+    400 ``invalid_query``: ``/last_forecasts`` (der RP2-Cache konnte sich nie
+    füllen), ``/forecast`` (Labor) und ``/day`` (Tageskurve). Jetzt kommen
+    ungestützte Punkte als ``null`` an, und die Tageskurve lässt sie aus.
+    """
+    nan = float("nan")
+    path = app_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True)
+    unsupported_ts = (NOW - dt.timedelta(hours=20)).isoformat()
+    supported_ts = (NOW - dt.timedelta(hours=19)).isoformat()
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": (NOW - dt.timedelta(hours=2)).isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E10",
+                        "origin": (NOW - dt.timedelta(hours=2)).isoformat(),
+                        "points": [
+                            {
+                                "timestamp": unsupported_ts,
+                                "q025": nan,
+                                "q10": nan,
+                                "q50": nan,
+                                "q90": nan,
+                                "q975": nan,
+                            },
+                            {
+                                "timestamp": supported_ts,
+                                "q025": 1.5,
+                                "q10": 1.52,
+                                "q50": 1.55,
+                                "q90": 1.59,
+                                "q975": 1.62,
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    data = LiveData(app_settings, query=lambda *_: [raw()], clock=lambda: NOW)
+    server = make_server(app_settings, "127.0.0.1", 0, data)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        # RP2-Cache-Quelle: 200 statt 400, der NaN-Punkt ist null.
+        with urllib.request.urlopen(base + "/api/v1/last_forecasts") as response:
+            assert response.status == 200
+            payload = json.loads(response.read())
+        points = payload["forecasts"][0]["points"]
+        assert points[0]["q50"] is None
+        assert points[1]["q50"] == 1.55
+
+        # Labor: 200 trotz ungestütztem Punkt.
+        with urllib.request.urlopen(
+            base + f"/api/v1/forecast?station_id={UID}&city=Frankfurt&fuel=e10"
+        ) as response:
+            assert response.status == 200
+            forecast = json.loads(response.read())
+        assert forecast["points"][0]["q025"] is None
+        assert forecast["points"][1]["q50"] == 1.55
+
+        # Tageskurve: der ungestützte Punkt ist kein Preis — er fehlt, der
+        # gestützte Punkt bleibt (Berlin 16 vs. 17 Uhr am 2026-09-07).
+        with urllib.request.urlopen(
+            base + f"/api/v1/day?station={UID}&day=2026-09-07"
+        ) as response:
+            assert response.status == 200
+            day = json.loads(response.read())
+        assert day["ok"] is True
+        assert day["points"] == [{"h": 17, "ct": 155.0, "open": True}]
+    finally:
+        server.shutdown()
+
+
 def test_http_client_disconnect_stays_silent(app_settings):
     # Browser-Reload mitten in der Antwort: erst ConnectionReset, dann
     # BrokenPipe bei der Fehlerantwort — beides ohne Traceback schlucken.

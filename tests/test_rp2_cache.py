@@ -5,6 +5,7 @@ Größen-Cap verwirft bei Überschreitung die ältere Hälfte.
 """
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -65,3 +66,62 @@ def test_boot_state_note_reports_existing_cache(tmp_path):
     note = cache.boot_state_note(cache_file)
     assert "Cache vorhanden" in note
     assert str(cache_file) in note
+
+
+# B1: Die Payload des NAS-Endpunkts wird validiert, bevor gecacht wird.
+# Ein Dict ohne „forecasts“-Liste (z. B. eine Fehler-Antwort) darf nicht als
+# Cache durchgehen — sonst zeigt die Fallback-GUI „Cache fehlt“, obwohl das
+# NAS geantwortet hat.
+
+
+class _FakeResponse:
+    def __init__(self, status=200, body=b"{}"):
+        self.status = status
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _run_cache(monkeypatch, tmp_path, response):
+    cache_file = tmp_path / "last_forecasts.json"
+    monkeypatch.setattr(cache, "CACHE_FILE", cache_file)
+    monkeypatch.setattr(cache, "LOG_FILE", tmp_path / "cache.log")
+    monkeypatch.setattr(cache.urllib.request, "urlopen", lambda *a, **k: response)
+    ok = cache.cache_forecasts()
+    return ok, cache_file
+
+
+def test_cache_forecasts_rejects_payload_without_forecasts_list(monkeypatch, tmp_path):
+    body = b'{"error_code": "invalid_query"}'
+    ok, cache_file = _run_cache(monkeypatch, tmp_path, _FakeResponse(200, body))
+    assert ok is False
+    assert not cache_file.exists()
+
+
+def test_cache_forecasts_rejects_non_dict_payload(monkeypatch, tmp_path):
+    ok, cache_file = _run_cache(monkeypatch, tmp_path, _FakeResponse(200, b"[1, 2, 3]"))
+    assert ok is False
+    assert not cache_file.exists()
+
+
+def test_cache_forecasts_writes_valid_payload(monkeypatch, tmp_path):
+    body = json.dumps(
+        {
+            "generated_at": "2026-09-14T06:00:00+00:00",
+            "forecasts": [{"station_id": "x", "points": []}],
+            "count": 1,
+        }
+    ).encode("utf-8")
+    ok, cache_file = _run_cache(monkeypatch, tmp_path, _FakeResponse(200, body))
+    assert ok is True
+    assert cache_file.exists()
+    saved = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert saved["_source"] == "NAS"
+    assert saved["forecasts"] == [{"station_id": "x", "points": []}]

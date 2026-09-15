@@ -228,7 +228,9 @@ describe("weekWindowSummary", () => {
   });
 
   it("Stufe A: Sicherheit in Worten mit Prozent", () => {
-    const summary = weekWindowSummary(day, decide(), 1.759);
+    // now = NOW (14.09.) explizit: „Morgen“ hängt am Referenzzeitpunkt,
+    // nicht an der realen Uhr im Moment des Tests.
+    const summary = weekWindowSummary(day, decide(), 1.759, NOW);
     // 15.09. bei „heute“ am 14.09. → dayLabel: „Morgen“.
     expect(summary?.headline).toContain("Morgen");
     expect(summary?.headline).toContain("19–21 Uhr");

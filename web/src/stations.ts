@@ -311,26 +311,30 @@ export function compareStationsPair(
   if (priceA === null || priceB === null) {
     sentence =
       "Noch kein frischer Preis auf beiden Seiten — der Vergleich steht mit der nächsten Meldung.";
-  } else if (deltaCt === null) {
-    sentence = "Keine Vergleichsbasis — Preise fehlen.";
-  } else if (netEur !== null) {
-    const worth = verdict === "worth";
-    const borderline = verdict === "borderline";
-    sentence = `${b.name} ist ${centPerLiter(Math.abs(deltaCt))} ${deltaCt > 0 ? "teurer" : "günstiger"}. ` +
-      (detourKm !== null
-        ? `Bei ${euro(detourKm, 1)} km Umweg: ${euro(netEur)} € netto pro Füllung. `
-        : "") +
-      (worth
-        ? "Der Umweg rechnet sich."
-        : borderline
-          ? "Der Umweg ist grenzwertig."
-          : "Der Umweg rechnet sich nicht.");
-  } else if (Math.abs(deltaCt) < 0.05) {
-    sentence = "Gleichauf — die Preise liegen aufeinander.";
   } else {
-    sentence = `${b.name} ist ${centPerLiter(Math.abs(deltaCt))} ${deltaCt > 0 ? "teurer" : "günstiger"}. ` +
-      `Pro ${deTrimmed(liters, 0)} L: ${fillDeltaEur !== null ? `${fillDeltaEur >= 0 ? "+" : "−"}${euro(Math.abs(fillDeltaEur))} €` : "—"} ` +
-      "(ohne Umweg — zu diesem Paar liegt keine Route vor).";
+    // Hier sind beide Preise vorhanden — der Abstand ist also eindeutig
+    // (deltaCt wäre hier nie null; die lokale Zahl spart dem Compiler das
+    // Nachweisen).
+    const delta = (priceB - priceA) * 100;
+    if (netEur !== null) {
+      const worth = verdict === "worth";
+      const borderline = verdict === "borderline";
+      sentence = `${b.name} ist ${centPerLiter(Math.abs(delta))} ${delta > 0 ? "teurer" : "günstiger"}. ` +
+        (detourKm !== null
+          ? `Bei ${euro(detourKm, 1)} km Umweg: ${euro(netEur)} € netto pro Füllung. `
+          : "") +
+        (worth
+          ? "Der Umweg rechnet sich."
+          : borderline
+            ? "Der Umweg ist grenzwertig."
+            : "Der Umweg rechnet sich nicht.");
+    } else if (Math.abs(delta) < 0.05) {
+      sentence = "Gleichauf — die Preise liegen aufeinander.";
+    } else {
+      sentence = `${b.name} ist ${centPerLiter(Math.abs(delta))} ${delta > 0 ? "teurer" : "günstiger"}. ` +
+        `Pro ${deTrimmed(liters, 0)} L: ${fillDeltaEur !== null ? `${fillDeltaEur >= 0 ? "+" : "−"}${euro(Math.abs(fillDeltaEur))} €` : "—"} ` +
+        "(ohne Umweg — zu diesem Paar liegt keine Route vor).";
+    }
   }
 
   return {

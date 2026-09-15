@@ -232,6 +232,7 @@ export function weekWindowSummary(
   day: WeekDay,
   decide: DecideResult | null,
   priceNow: number | null,
+  now: number = Date.now(),
 ): WeekSummary | null {
   const window = day.window;
   if (!window) return null;
@@ -273,7 +274,9 @@ export function weekWindowSummary(
         : word;
 
   return {
-    headline: `${dayLabel(window.start)} ${range}`,
+    // „Morgen“/„Heute“ hängt am Referenzzeitpunkt — nicht an der realen
+    // Uhr im Moment des Renderns (sonst kippt das Wort um Mitternacht).
+    headline: `${dayLabel(window.start, now)} ${range}`,
     savingLine,
     security,
     tank: tankReach(decide?.tank ?? null, day.index, window),

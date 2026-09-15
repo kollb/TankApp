@@ -45,7 +45,9 @@ MAX_NAME_CHARS = 40
 FUELS = {"e10", "e5", "diesel"}
 DETOUR_MODES = {"onroute", "dedicated"}
 FIELD_BOUNDS = {
-    "liters": (10.0, 80.0),
+    # max 100 = Beleg-Obergrenze (FILL_LIMITS) und Pi-Fallback (5–100 L):
+    # ein 100-L-Tank (Transporter/Diesel) muss im Profil darstellbar sein.
+    "liters": (10.0, 100.0),
     "consumption": (4.0, 15.0),
     "time_value_eur_h": (0.0, 30.0),
     "speed_kmh": (25.0, 80.0),

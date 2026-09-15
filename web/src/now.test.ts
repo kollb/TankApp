@@ -22,6 +22,7 @@ import {
   nowVerdict,
   savingPerLiterCt,
   stageProgressNote,
+  timeInputToBerlinIso,
   wordFromPercent,
 } from "./now";
 
@@ -518,5 +519,61 @@ describe("Hilfsfunktionen", () => {
     expect(dayLabel("2026-09-15T19:00:00+02:00", NOW)).toBe("Morgen");
     expect(dayLabel("2026-09-17T19:00:00+02:00", NOW)).toBe("Donnerstag");
     expect(dayLabel(null, NOW)).toBe("Später");
+  });
+});
+
+describe("B2: timeInputToBerlinIso (Spätestens-tanken → latest_by)", () => {
+  // Feste „jetzt“-Zeitpunkte, damit die Tests nicht von der Uhr abhängen.
+  const SUMMER = Date.parse("2026-09-14T12:00:00+02:00"); // CEST, UTC+2
+  const WINTER = Date.parse("2026-12-14T12:00:00+01:00"); // CET, UTC+1
+
+  it("wandelt Berlin-Wallclock in den korrekten UTC-Stempel um (Sommerzeit)", () => {
+    // 10:00 Berlin bei CEST (UTC+2) = 08:00 UTC. Mit dem alten
+    // „+ offsetMs“ wäre es 12:00 UTC (14:00 Berlin) gewesen.
+    expect(timeInputToBerlinIso("10:00", SUMMER)).toBe(
+      "2026-09-14T08:00:00.000Z",
+    );
+    expect(timeInputToBerlinIso("23:59", SUMMER)).toBe(
+      "2026-09-14T21:59:00.000Z",
+    );
+  });
+
+  it("benutzt das Winter-Offset (CET, UTC+1)", () => {
+    // 10:00 Berlin bei CET (UTC+1) = 09:00 UTC.
+    expect(timeInputToBerlinIso("10:00", WINTER)).toBe(
+      "2026-12-14T09:00:00.000Z",
+    );
+  });
+
+  it("Mitternacht rollt auf den Vorabend in UTC zurück", () => {
+    // 00:00 Berlin am 14.09. (CEST) = 22:00 UTC am 13.09.
+    expect(timeInputToBerlinIso("00:00", SUMMER)).toBe(
+      "2026-09-13T22:00:00.000Z",
+    );
+    // 00:00 Berlin am 14.12. (CET) = 23:00 UTC am 13.12.
+    expect(timeInputToBerlinIso("00:00", WINTER)).toBe(
+      "2026-12-13T23:00:00.000Z",
+    );
+  });
+
+  it("Rundtrip: der Stempel zeigt in Berlin wieder die eingegebene Zeit", () => {
+    const iso = timeInputToBerlinIso("17:30", SUMMER);
+    expect(iso).not.toBeNull();
+    const parts = new Intl.DateTimeFormat("de-DE", {
+      timeZone: "Europe/Berlin",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(iso!));
+    const hour = Number(parts.find((p) => p.type === "hour")?.value) % 24;
+    const minute = Number(parts.find((p) => p.type === "minute")?.value);
+    expect(hour).toBe(17);
+    expect(minute).toBe(30);
+  });
+
+  it("lehnt ungültige Eingaben ab", () => {
+    expect(timeInputToBerlinIso("25:00", SUMMER)).toBeNull();
+    expect(timeInputToBerlinIso("10:60", SUMMER)).toBeNull();
+    expect(timeInputToBerlinIso("kein-Format", SUMMER)).toBeNull();
   });
 });

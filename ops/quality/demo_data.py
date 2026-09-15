@@ -22,6 +22,7 @@ produktiven ``data/``.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -150,14 +151,24 @@ def latest_rows(now: pd.Timestamp, prices: dict[str, float]) -> list[dict]:
 
 
 def series_rows(
-    observations: pd.DataFrame, now: pd.Timestamp, hours: int = 24
+    observations: pd.DataFrame,
+    now: pd.Timestamp,
+    hours: int = 24,
+    station_ids: list[str] | None = None,
 ) -> list[dict]:
-    """InfluxDB-Resultat eines Zeitfensters (Tageskurve in /overview)."""
+    """InfluxDB-Resultat eines Zeitfensters (Tageskurve in /overview).
+
+    ``station_ids`` filtert wie der Flux-Filter der App — ohne ihn liefert
+    die „Abfrage“ alle Stationen und ``LiveData.series`` bricht mit
+    „Wrong identity“ (die Tageskurve bliebe im Demo-Stack immer leer).
+    """
     start = now - pd.Timedelta(hours=hours)
     window = observations.loc[
         observations.timestamp.between(start, now)
         & observations.timestamp.dt.minute.eq(0)
     ]
+    if station_ids:
+        window = window.loc[window.station_id.isin(station_ids)]
     rows = []
     for row in window.itertuples(index=False):
         price = row.price
@@ -183,29 +194,59 @@ def make_query(observations: pd.DataFrame, prices: dict[str, float]):
     Stationstabfrage (letzter Stand je Station), alles andere ein
     Zeitfenster (Tageskurve). Beides liefert dieselben Zeilenformen wie
     ``data-tools/export_influx.py``.
+
+    Wichtiger als der Zeitfenster-Default: der **Station-Filter** aus dem
+    Flux-Text wird gehonoriert. ``LiveData.series`` prüft Zeile für Zeile
+    die Identität und bricht bei fremden Stationen mit „Wrong identity“ —
+    ohne Filter lief die Tageskurve im Demo-Stack deshalb immer leer.
     """
 
-    # Der Verlauf wird einmal je Horizont gebaut und fünf Minuten
-    # wiederverwendet. Ohne diesen Cache würde die Demo-Abfrage pro Request
-    # über 100 k Zeilen filtern — das wäre Last des Messaufbaus, nicht der App.
-    cache: dict[tuple[int, pd.Timestamp], list[dict]] = {}
+    station_re = re.compile(r"contains\(value: r\.station_id, set: (\[[^\]]*\])")
+    range_re = re.compile(
+        r"range\(start: time\(v: \"([^\"]+)\"\), stop: time\(v: \"([^\"]+)\"\)"
+    )
+
+    # Der Verlauf wird einmal je (Horizont, Station, 5-Minuten-Takt) gebaut
+    # und wiederverwendet. Ohne diesen Cache würde die Demo-Abfrage pro
+    # Request über 100 k Zeilen filtern — das wäre Last des Messaufbaus,
+    # nicht der App.
+    cache: dict[tuple, list[dict]] = {}
 
     def query(_cfg, text: str):
         now = pd.Timestamp.now(tz="UTC").floor("5min")
         if "tail(n: 1)" in text:
             return latest_rows(now, prices)
+        station_ids: list[str] | None = None
+        match = station_re.search(text)
+        if match:
+            try:
+                loaded = json.loads(match.group(1))
+                if isinstance(loaded, list):
+                    station_ids = [str(item) for item in loaded]
+            except json.JSONDecodeError:
+                station_ids = None
+        stop: pd.Timestamp | None = None
+        match = range_re.search(text)
+        if match:
+            try:
+                stop = pd.Timestamp(match.group(2))
+            except ValueError:
+                stop = None
         hours = 24
-        if "start: -" in text:
+        if stop is None and "start: -" in text:
             try:
                 raw = text.split("start: -")[1].split("h")[0].split("d")[0]
                 hours = min(168, max(1, int("".join(filter(str.isdigit, raw)) or 24)))
             except (ValueError, IndexError):
                 hours = 24
-        key = (hours, now.floor("5min"))
+        key = (tuple(station_ids) if station_ids else None, hours, now)
         if key not in cache:
-            for stale in [k for k in cache if k[0] == hours]:
+            for stale in [k for k in cache if k[2] != now]:
                 cache.pop(stale, None)
-            cache[key] = series_rows(observations, now, hours)
+            if stop is not None:
+                cache[key] = series_rows(observations, stop, hours, station_ids)
+            else:
+                cache[key] = series_rows(observations, now, hours, station_ids)
         return cache[key]
 
     return query

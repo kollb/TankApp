@@ -439,7 +439,10 @@ export type VehicleProfile = {
 
 /** Dieselben Grenzen wie die Slider der GUI (app/profiles.py prüft dieselben). */
 export const PROFILE_BOUNDS = {
-  liters: { min: 10, max: 80 },
+  // max 100 = Beleg-Obergrenze (FILL_LIMITS) und Pi-Fallback (5–100 L):
+  // ein 100-L-Tank (Transporter/Diesel) muss im Profil darstellbar sein,
+  // sonst deckt der Was-wäre-wenn-Bereich den buchbaren nicht ab.
+  liters: { min: 10, max: 100 },
   consumption: { min: 4, max: 15 },
   timeValue: { min: 0, max: 30 },
   speed: { min: 25, max: 80 },
@@ -1722,7 +1725,7 @@ export type ShareView = {
 
 /** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
 const SHARE_LITERS_MIN = 10;
-const SHARE_LITERS_MAX = 80;
+const SHARE_LITERS_MAX = 100;
 
 export function readShareParams(search: string): ShareConfig {
   const params = new URLSearchParams(search);
@@ -2461,9 +2464,20 @@ export function hourRangeLabel(
 ) {
   if (fromHour == null || toHour == null) return "—";
   if (!Number.isFinite(fromHour) || !Number.isFinite(toHour)) return "—";
+  // B6: Engine-Fenster haben 5-Minuten-Granularität — ein Fenster 22:00–22:55
+  // floor-t beide Seiten auf 22 und renderte „22–22 Uhr“. Liegt eine End-
+  // zeit innerhalb der Stunde, wird sie mit Minuten angegeben (22–22:55 Uhr),
+  // ein entartetes Null-Fenster als Einzelschicht („22 Uhr“).
+  const frac = (hour: number) => Math.floor((hour - Math.floor(hour)) * 60);
   const from = ((Math.floor(fromHour) % 24) + 24) % 24;
   const to = ((Math.floor(toHour) % 24) + 24) % 24;
-  return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
+  if (frac(fromHour) === 0 && frac(toHour) === 0) {
+    if (from === to) return `${String(from).padStart(2, "0")} Uhr`;
+    return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
+  }
+  const full = (hour: number, base: number) =>
+    `${String(base).padStart(2, "0")}:${String(frac(hour)).padStart(2, "0")}`;
+  return `${full(fromHour, from)}–${full(toHour, to)} Uhr`;
 }
 /**
  * B4 (GUI): Ein Satz zum Zustand der Alarm-Zustellung für den System-Tab.
@@ -2577,8 +2591,10 @@ export type Freshness = "fresh" | "stale" | "old" | "unknown";
 export const STALE_AFTER_MINUTES = {
   /** Preise: der Collector pollt alle 5 min, ab 30 min stimmt etwas nicht. */
   prices: 30,
-  /** Prognosen/Heatmaps: Modell-Lauf im 30-min-/Stunden-Takt. */
-  model: 180,
+  /** Prognosen/Heatmaps: Modell-Lauf täglich (worker INTERVALS: 86 400 s).
+   *  B5: vorher 180 min — das markierte ein gesundes System stur „alt“
+   *  (Modell 3–24 h alt ist normal), die System-Fußzeile war fast immer rot. */
+  model: 24 * 60,
   /** Selektion: läuft täglich, ein Tag Verzug ist normal. */
   selection: 36 * 60,
 } as const;

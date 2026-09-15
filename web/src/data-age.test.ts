@@ -40,6 +40,11 @@ describe("C6: Datenstand-Alter", () => {
     expect(freshness(minutesAgo(120), "prices", NOW)).toBe("old");
     expect(freshness(minutesAgo(120), "model", NOW)).toBe("fresh");
     expect(freshness(minutesAgo(120), "selection", NOW)).toBe("fresh");
+    // B5: Modell läuft TÄGLICH (worker INTERVALS) — 20 h alt ist normal,
+    // 30 h ist erst „veraltet“, 49 h „alt“.
+    expect(freshness(minutesAgo(20 * 60), "model", NOW)).toBe("fresh");
+    expect(freshness(minutesAgo(30 * 60), "model", NOW)).toBe("stale");
+    expect(freshness(minutesAgo(49 * 60), "model", NOW)).toBe("old");
   });
 
   it("Alter in Worten, deutsch und gerundet", () => {
@@ -66,7 +71,7 @@ describe("C6: Datenstand-Alter", () => {
     expect(prices?.text).toMatch(/vor 45 Minuten/);
     expect(prices?.text).toMatch(/eingefroren/);
 
-    const model = dataAgeNote(minutesAgo(60 * 5), "model", NOW);
+    const model = dataAgeNote(minutesAgo(60 * 30), "model", NOW);
     expect(model?.tone).toBe("warn");
     expect(model?.text).toMatch(/kein Modell-Update/);
 

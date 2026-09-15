@@ -21,6 +21,7 @@ import {
   timeLabel,
   type Alarm,
   type CollectorStatus,
+  type DataKind,
   type Health,
   type Job,
   type Selection,
@@ -325,16 +326,23 @@ export function systemFreshness(input: {
   now?: number;
 }): SystemFreshness {
   const now = input.now ?? Date.now();
-  const stamps = [
-    input.healthAt,
-    input.collectorAt,
-    input.modelsAt,
-    input.selectionAt,
-  ].filter(Boolean) as string[];
+  // B5: Jeder Stempel wird mit der Schwellenart gewertet, die zu seiner
+  // Natur passt — Health/Collector hängen am Preis-Polling (30 min),
+  // Modelle und Selektion laufen täglich. Vorher wogen alle vier mit
+  // der Preis-Schwelle, und ein gesundes tägliches Modell machte die
+  // Fußzeile stur rot.
+  const stamps: Array<[string, DataKind]> = [
+    [input.healthAt, "prices"],
+    [input.collectorAt, "prices"],
+    [input.modelsAt, "model"],
+    [input.selectionAt, "selection"],
+  ].filter(
+    (s): s is [string, DataKind] => s[0] != null,
+  );
   if (!stamps.length) {
     return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
   }
-  const ages = stamps.map((s) => ({ s, age: freshness(s, "prices", now) }));
+  const ages = stamps.map(([s, kind]) => ({ s, age: freshness(s, kind, now) }));
   const worst = ages.reduce((acc, cur) => {
     const order = { fresh: 0, stale: 1, old: 2, unknown: 3 } as const;
     return order[cur.age] > order[acc.age] ? cur : acc;
@@ -348,7 +356,7 @@ export function systemFreshness(input: {
   if (input.healthAt) parts.push(`Status ${ageLabel(input.healthAt, now)}`);
   const text = parts.length
     ? parts.join(" · ")
-    : `Stand ${ageLabel(stamps[0], now)}`;
+    : `Stand ${ageLabel(stamps[0][0], now)}`;
   return { text, tone };
 }
 

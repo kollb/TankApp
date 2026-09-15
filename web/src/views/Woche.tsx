@@ -178,11 +178,7 @@ export function WocheView(props: WocheViewProps) {
     days[
       selectedIdx !== null && days[selectedIdx] ? selectedIdx : defaultIdx
     ] ?? days[0];
-  const summary = weekWindowSummary(
-    selected,
-    decide,
-    props.priceNow,
-  );
+  const summary = weekWindowSummary(selected, decide, props.priceNow, now);
   const list = weekWindowList(days);
   const line = weekLine(days);
   const tankLine = weekTankLine(decide?.tank ?? null, tankPercent, tankCapacity);
