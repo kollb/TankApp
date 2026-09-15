@@ -878,6 +878,9 @@ export type AdviceDiaryEntry = {
   emitted_at: string | null;
   action: string | null;
   station_id: string | null;
+  /** Stationsname aus dem Snapshot — der Rückfall, wenn die Station nicht
+   *  mehr im aktuellen Set liegt (vorher stand dort die rohe UUID). */
+  station_name: string | null;
   city: string | null;
   fuel: string | null;
   window_start: string | null;
@@ -888,6 +891,8 @@ export type AdviceDiaryEntry = {
   price_window: number | null;
   outcome: string | null;
   void_reason: string | null;
+  /** Grund der Tabelle, wenn die Empfehlung „keine“ war (sonst null). */
+  decline_reason: string | null;
   regret_eur: number | null;
   p_correct: number | null;
   p_besser: number | null;

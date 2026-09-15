@@ -540,6 +540,27 @@ def _alternatives(
     return alternatives[:3], best
 
 
+# §0.4 verbietet vor der Kalibrierung nicht nur die Empfehlung, sondern auch
+# jeden Prozentwert. Die Grauzone nennt ihre Zahl deshalb erst nach der
+# Freigabe — der Befund bleibt („unentschieden“), die Zahl kommt später.
+GRAY_ZONE_REASON_GATE_SAFE = (
+    "Preislage unentschieden — weder Warten noch Sofort-Tanken hat einen "
+    "Vorsprung. Die App rät nicht."
+)
+
+
+def _gate_safe_reason(reason_code: str | None, reason: str) -> str:
+    """Der Tabellengrund, wie er **vor** der M7-Freigabe gezeigt werden darf.
+
+    Nur der Grauzonen-Text trägt eine Zahl (``P ≈ 52 %``) und wird ersetzt;
+    alle anderen Ablehnungsgründe der Tabelle sind bereits ohne Zahl
+    formuliert und werden unverändert durchgereicht.
+    """
+    if reason_code == "gray_zone":
+        return GRAY_ZONE_REASON_GATE_SAFE
+    return reason
+
+
 def _table_action(
     anchor: float | None,
     expected_price_later: float | None,
@@ -549,12 +570,17 @@ def _table_action(
     th: dict[str, float] | None = None,
     no_window_reason: str | None = None,
     quality_gate: str | None = None,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str | None]:
     """€/P-Entscheidungstabelle (Konzept §4.1, §4.2, §4.4, Auswertung §4.5).
 
-    Gibt (action, confidence_badge, reason_short) zurück. Die Aktion wird
-    immer in den Advice-Ledger geschrieben (Shadow-Betrieb ab Tag 1);
-    angezeigt wird sie erst nach dem M7-Gate.
+    Gibt (action, confidence_badge, reason_short, reason_code) zurück. Die
+    Aktion wird immer in den Advice-Ledger geschrieben (Shadow-Betrieb ab
+    Tag 1); angezeigt wird sie erst nach dem M7-Gate. Der ``reason_code``
+    benennt die **Ablehnung** maschinenlesbar (``quality_gate``,
+    ``no_anchor``, ``no_forecast``, ``no_window``, ``gray_zone``) — die GUI
+    braucht ihn, um den Grund einer „keine Empfehlung“ auch nach dem
+    Grau-Zustand noch benennen zu können (Tagebuch); für Handlungs-
+    empfehlungen ist er ``None``.
 
     Auswertungsreihenfolge (§4.5): Schritt 1 ist das **Güte-Gate** —
     ``quality_gate`` ist gesetzt, wenn der Rolling-PICP der Station rot ist
@@ -580,12 +606,14 @@ def _table_action(
             "low",
             "Keine klare Empfehlung — Prognose derzeit unsicher "
             "(7-Tage-Intervallquote außerhalb Toleranz). Tank nach Bedarf.",
+            "quality_gate",
         )
     if anchor is None:
         return (
             "no_advice",
             "low",
             "Kein aktueller Preis für diese Station — ohne Anker keine Empfehlung.",
+            "no_anchor",
         )
     if expected_price_later is None:
         return (
@@ -593,6 +621,7 @@ def _table_action(
             "low",
             no_window_reason
             or "Keine Prognose verfügbar — Empfehlung erst mit Modelldaten.",
+            "no_window" if no_window_reason else "no_forecast",
         )
     # F2 zuerst (§4.5 Schritt 2): Alternative bei netto ≥ Schwelle und
     # P_lohnt ≥ Schwelle (ohne Draws entfällt nur das Prozent-Gate).
@@ -607,6 +636,7 @@ def _table_action(
             "refuel_elsewhere",
             badge,
             f"Fahre zu {best_alt['name']}: spart netto +{best_alt['net_eur']:.2f} € trotz Umweg.",
+            None,
         )
     # Grauzone (§4.4): P_besser in [40, 60] % → kein Advice. Kein Kaltstart-
     # Schutz nötig: die Verteilung liefert P_besser direkt, ohne Stichprobe.
@@ -619,6 +649,7 @@ def _table_action(
             "no_advice",
             "low",
             f"Warte-Signal zu unsicher (P ≈ {p_besser * 100:.0f} %) — kein Advice, Preise bleiben unverfälscht.",
+            "gray_zone",
         )
     # F1 (§4.1). Ohne Verteilungs-P kann die grüne Ampel („≥ 70 %“) nicht
     # belegt werden → dann höchstens „gelb“ (ehrlich statt geraten).
@@ -630,6 +661,7 @@ def _table_action(
             "wait",
             badge,
             f"Preis fällt im Fenster voraussichtlich — Warten spart ca. {expected_saving_eur:.2f} €.",
+            None,
         )
     if expected_saving_eur >= th["wait_eur_mid"] and (
         p_besser is None or p_besser >= th["wait_p_mid"]
@@ -638,24 +670,28 @@ def _table_action(
             "wait",
             "medium",
             f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+            None,
         )
     if p_besser is not None and p_besser < th["now_p"]:
         return (
             "refuel_now",
             "low",
             "Warte-Empfehlung zu unsicher (P < 50 %) — jetzt tanken.",
+            None,
         )
     if expected_saving_eur < th["now_eur"]:
         return (
             "refuel_now",
             "medium",
             f"Warten brächte < {th['now_eur']:.2f} € Ersparnis — jetzt tanken.",
+            None,
         )
     # Fallback (€-Gates ohne belastbares P): Ersparnis ≥ Schwelle → warten.
     return (
         "wait",
         "medium",
         f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+        None,
     )
 
 
@@ -908,7 +944,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     rolling = (forecast_data.get("rolling_picp_7d") or {}).get("current") or {}
     rolling_badge = rolling.get("badge")
     quality_gate = "picp" if rolling_badge == "red" else None
-    table_action, badge, reason = _table_action(
+    table_action, badge, reason, reason_code = _table_action(
         anchor,
         expected_price_later,
         expected_saving_eur,
@@ -955,17 +991,23 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         action = "no_advice"
         p_correct = None
         confidence_badge = "low"
-        # Das Güte-Gate ist Auswertungsschritt 1 (§4.5) und bleibt auch vor
-        # der M7-Freigabe die konkretere Warnung.  Sonst würde der allgemeine
-        # Kalibrierungstext den neuen roten PICP-Befund vollständig verdecken.
-        reason_short = (
-            reason
-            if quality_gate is not None
-            else (
+        # Zwei verschiedene Fälle, die vorher denselben Text trugen (§4.5,
+        # Konzept §4.4):
+        #   * Die **Tabelle** hat abgelehnt (kein Anker, kein Fenster, keine
+        #     Prognose, Grauzone, rotes Güte-Gate). Ihr Grund ist keine
+        #     Empfehlung, sondern eine Aussage über die Datenlage — er bleibt
+        #     sichtbar, sonst sagt die App nur noch „Kalibrierung steht aus“
+        #     und verschweigt, warum sie nichts vorschlägt.
+        #   * Die Tabelle hätte empfohlen, das **M7-Gate** verdeckt sie.
+        #     Dort bleibt der Kalibrierungs-Hinweis: Eine Empfehlung ohne
+        #     Freigabe als „Grund“ zu zeigen, wäre die Empfehlung selbst.
+        if action_base == "no_advice":
+            reason_short = _gate_safe_reason(reason_code, reason)
+        else:
+            reason_short = (
                 "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
                 "Empfehlungen aber noch nicht freigegeben."
             )
-        )
 
     # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
     # p_besser ist die Verteilungs-P, die Brier gegen das Settlement misst —
@@ -991,6 +1033,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if expected_price_later is not None
         else None,
         "expected_saving_eur": expected_saving_eur,
+        # Der Grund einer Ablehnung wandert mit ins Ledger: Das Tagebuch
+        # zeigt damit je Zeile, **warum** nichts empfohlen wurde, statt nur
+        # „keine Empfehlung“ zu wiederholen. Für Empfehlungen ist das Feld
+        # leer (dort zählt das Settlement).
+        "decline_reason": reason_short if action_base == "no_advice" else None,
         "p_besser": p_decision,
         "liters_assumed": liters,
         "fuel": fuel,

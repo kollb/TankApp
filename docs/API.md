@@ -1,10 +1,13 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 15.09.2026 · App-Version **0.38.0** — B3/B4/B5, Ereignis-Pipeline
+> Stand: 15.09.2026 · App-Version **0.40.0** — B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
 > Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
 > (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
-> `alarms[]` + `version`/`commit` in `/health` (B4/B9).
+> `alarms[]` + `version`/`commit` in `/health` (B4/B9). Seit 0.40.0 nennt das
+> Advice-Tagebuch den Grund einer Ablehnung (`decline_reason`) und den Namen der
+> Station (`station_name`); der Feedback-Store trägt `schema_version` 3
+> (Altbestände werden beim Laden migriert, siehe [BETRIEB.md](BETRIEB.md)).
 > Alles serverseitig, keine Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4).
 
 ## Inhaltsverzeichnis
@@ -209,6 +212,7 @@ Parameter:
       "emitted_at": "2026-09-13T14:00:00+00:00",
       "action": "wait",
       "station_id": "uuid",
+      "station_name": "Esso Frankfurt Ost",
       "city": "Frankfurt",
       "fuel": "e10",
       "window_start": "2026-09-13T16:00:00+00:00",
@@ -220,6 +224,7 @@ Parameter:
       "regret_eur": null,
       "p_correct": null,
       "p_besser": 0.62,
+      "decline_reason": null,
       "liters": 40,
       "intent": "wait"
     }
@@ -243,6 +248,20 @@ Ehrlichkeits-Regeln:
   `no_settlements` (Snapshots da, noch nichts abgerechnet) oder
   `no_advice_history` (noch keine Empfehlung abgegeben).
 - `liters` ist die angenommene Tankmenge des Snapshots, nicht der echte Beleg.
+- `station_name` kommt aus dem Snapshot und steht im Tagebuch **statt** der
+  rohen `station_id`, wenn die Station nicht mehr im aktuellen Set liegt
+  (Altbestände ohne Namen fallen auf die ID zurück).
+- `decline_reason` ist der Grund der Entscheidungstabelle, wenn die Empfehlung
+  „keine“ war (Güte-Gate, fehlender Anker, kein Fenster, Grauzone) — sonst
+  `null`.
+- Eine erneut bestätigte Entscheidung ist **keine neue Zeile** und schreibt
+  auch nichts in den Store (`_same_advice` in `app/feedback.py`): Ablehnungen
+  kollabieren ohne Zeitfenster, Handlungsempfehlungen innerhalb von 30
+  Minuten. `emitted_at` bleibt dabei der erste Emit-Zeitpunkt (daran hängen
+  Fenster, Ankerpreis und P-Schätzung), `settled_at` die Abrechnung. Ein
+  **gewechselter Grund** ist dagegen eine neue Aussage und ergibt eine eigene
+  Zeile. Der Schreibverzicht ist die Bedingung der ETag-Revalidierung von
+  `/overview` (`data_version()` liest den mtime-Wert des Stores, B7).
 
 Fehler:
 
@@ -251,7 +270,11 @@ Fehler:
 
 Frontend: Tab „Labor“ → Abschnitt 4, Filter „Alle/Warten/Jetzt tanken/
 Woanders tanken“ (Filter läuft client-seitig über `action`, der Serverfilter
-`outcome` bleibt für gezielte Auswertungen).
+`outcome` bleibt für gezielte Auswertungen). Gleiche, direkt
+aufeinanderfolgende Ablehnungen fasst die GUI zu **einer** Zeile zusammen
+(`groupDiaryEntries` in `web/src/lab.ts`, Anzahl „3×“ bzw. „mehrfach“ bei
+gekürzter Liste); die Zeitspanne nennt die erste Bestätigung (`emitted_at`
+der ältesten Zeile) und die Abrechnung (`diaryStamp` = `settled_at`).
 
 ## Fills (B4 Belege)
 

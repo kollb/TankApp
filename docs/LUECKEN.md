@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 15.09.2026 · App-Version 0.39.0. Abgleich von
+> Stand: 15.09.2026 · App-Version 0.40.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [15.09.2026 — Version 0.40.0: Ablehnungen im Tagebuch](#15092026--version-0400-ablehnungen-im-tagebuch)
   - [15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version](#15092026--versionen-03300380-gui-neuentwurf-e2e-ohne-mocks-webhook-quittierung-app-version)
   - [12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen](#12092026--version-0230-profile-tankstand-bilanz-stamm-stationen)
   - [11.09.2026 — P-Seite aus der Prognoseverteilung (§4.1–4.3)](#11092026--p-seite-aus-der-prognoseverteilung-4143)
@@ -231,6 +232,23 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 15.09.2026 — Version 0.40.0: Ablehnungen im Tagebuch
+
+Der Betriebsbefund (Labor → Tagebuch: 388 nicht bewertbare gegen 4 bewertete
+Settlements, alle mit dem Satz „Kein Vergleichspreis — Grund: die Empfehlung
+war selbst schon ‚keine‘“) hatte drei Ursachen, alle drei behoben: Ablehnungen
+wurden nur innerhalb von 30 Minuten kollabiert, der Grund der Tabelle
+verschwand hinter dem M7-Gate, und ohne Station im aktuellen Set stand die rohe
+UUID im Tagebuch. Die Voids selbst waren echt — sie stehen jetzt **einmal je
+Episode**.
+
+| Punkt | Umsetzung | Konzept |
+|---|---|---|
+| Kollabierung | `_same_advice` (`app/feedback.py`): Eine Bestätigung ändert nichts am Store — `no_advice` kollabiert zeitunabhängig (eine Zeile je Episode), die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo jeder Emit einen eigenen Ankerpreis trägt. Damit bleibt der mtime-Wert stabil, an dem die ETag-Revalidierung von `/overview` hängt (B7) | §5.4 |
+| Ablehnungsgrund | `_table_action` (`app/decide.py`) liefert `reason_code` (`quality_gate`/`no_anchor`/`no_forecast`/`no_window`/`gray_zone`), der Snapshot speichert `decline_reason`, die Grauzone nennt vor der M7-Freigabe keine Zahl (`GRAY_ZONE_REASON_GATE_SAFE`) | §4.4, §4.5, §0.4 |
+| Anzeige | `groupDiaryEntries`/`diaryCountLabel`/`diaryStamp` (`web/src/lab.ts`): gleiche Ablehnungen eine Zeile mit Anzahl („3×“/„mehrfach“) und Zeitspanne; Stationsname aus dem Snapshot statt UUID | §6, MICROCOPY.md §4c |
+| Ledger | Feedback-Store-Schema 3 mit Migration für `snapshots`, `first_snapshot` und `last_snapshot` (neues Feld `decline_reason: null`, sonst unverändert) — Altbestand bleibt lesbar, neuerer Store weiter 503 | §5.4, [BETRIEB.md](BETRIEB.md#schema-version-des-feedback-stores-b2) |
 
 ### 15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version
 

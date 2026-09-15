@@ -322,17 +322,33 @@ def test_table_action_gates_use_distribution_p(b4_settings):
 
     # Güte-Gate (§4.5 Schritt 1) hat Vorrang vor F1/F2 und unterdrückt
     # die Empfehlung bei rotem Rolling-PICP.
-    quality_action, quality_badge, quality_reason = _table_action(
+    quality_action, quality_badge, quality_reason, quality_code = _table_action(
         1.70, 1.64, 2.40, None, 0.9, quality_gate="picp"
     )
     assert quality_action == "no_advice"
     assert quality_badge == "low"
     assert "Intervallquote" in quality_reason
+    # Der Grund-Code macht die Ablehnung maschinenlesbar (0.40.0).
+    assert quality_code == "quality_gate"
 
     # Grauzone (§4.4): p_besser ∈ [40, 60] % → no_advice, ohne n-Hürde.
-    action, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
+    action, _, reason, code = _table_action(1.70, 1.64, 2.40, None, 0.5)
     assert action == "no_advice"
     assert "50 %" in reason
+    assert code == "gray_zone"
+
+    # Fehlender Anker, fehlende Prognose und abgeschnittenes Fenster sind
+    # eigene Gründe — die GUI nennt sie, statt sie hinter „Kalibrierung steht
+    # noch aus“ zu verstecken.
+    assert _table_action(None, 1.64, 2.40, None, 0.8)[3] == "no_anchor"
+    assert _table_action(1.70, None, 0.0, None, 0.8)[3] == "no_forecast"
+    assert (
+        _table_action(1.70, None, 0.0, None, 0.8, no_window_reason="Kein Fenster.")[3]
+        == "no_window"
+    )
+
+    # Handlungsempfehlungen tragen keinen Ablehnungs-Code.
+    assert _table_action(1.70, 1.64, 2.40, None, 0.8)[3] is None
 
     # F1: € ≥ 2,00 und p_besser ≥ 70 % → wait.
     assert _table_action(1.70, 1.64, 2.40, None, 0.8)[0] == "wait"
@@ -349,44 +365,250 @@ def test_table_action_gates_use_distribution_p(b4_settings):
     assert _table_action(1.70, 1.64, 2.40, alt_weak, 0.8)[0] == "wait"
 
 
-def test_snapshot_collapse_rule(b4_settings):
-    """Gleiche Advice + gleiche Station innerhalb 30 min aktualisiert denselben Snapshot."""
-    t0 = NOW
-    t1 = NOW + dt.timedelta(minutes=10)
-    t2 = NOW + dt.timedelta(minutes=45)
+def test_decline_reason_visible_before_m7_but_recommendation_muted(b4_settings):
+    """Vor der Freigabe bleibt der **Ablehnungsgrund** sichtbar (0.40.0).
 
+    Zwei Fälle trugen vorher denselben Text „Kalibrierung steht noch aus …“:
+
+    * Die Tabelle hat selbst abgelehnt (kein Anker, kein Fenster, keine
+      Prognose, Grauzone, rotes Güte-Gate). Ihr Grund ist keine Empfehlung,
+      sondern eine Aussage über die Datenlage — er bleibt sichtbar. Sonst
+      erfährt der Nutzer nie, *warum* nichts vorgeschlagen wird.
+    * Die Tabelle hätte empfohlen, das M7-Gate verdeckt sie. Dort bleibt der
+      Kalibrierungs-Hinweis: Eine Empfehlung ohne Freigabe als „Grund“ zu
+      zeigen, wäre die Empfehlung selbst.
+    """
+    from app.decide import evaluate_decide
+    from app.feedback import load_store
+
+    def query(cfg, flux):
+        yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
+        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.729)
+
+    # (a) Ohne Prognose lehnt die Tabelle ab → ihr Grund steht in der Antwort.
+    live = LiveData(b4_settings, query=query, clock=lambda: NOW)
+    body = evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
+    assert body["calibrated"] is False
+    assert body["primary"]["action"] == "no_advice"
+    assert "Kalibrierung" not in body["primary"]["reason_short"]
+    assert "Prognose" in body["primary"]["reason_short"]
+
+    # … und derselbe Grund steht am Snapshot (das Tagebuch zeigt ihn).
+    store = load_store(b4_settings)
+    snap = store["episodes"][0]["snapshots"][0]
+    assert snap["action"] == "no_advice"
+    assert snap["decline_reason"] == body["primary"]["reason_short"]
+
+    # (b) Mit Draws spricht die Tabelle „warten“; das Gate verdeckt sie und
+    #     der Ledger misst trotzdem (Shadow-Betrieb ab Tag 1).
+    path = b4_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "origin": NOW.isoformat(),
+                        "points": [
+                            {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
+                            {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},
+                            {"timestamp": "2026-09-10T18:00:00+02:00", "q50": 1.62},
+                            {"timestamp": "2026-09-10T19:00:00+02:00", "q50": 1.63},
+                            {"timestamp": "2026-09-10T20:00:00+02:00", "q50": 1.64},
+                        ],
+                        "draws_24h": {
+                            "n": 4,
+                            "block_minutes": 120,
+                            "blocks": [
+                                {
+                                    "start": "2026-09-10T14:00:00+00:00",
+                                    "end": "2026-09-10T16:00:00+00:00",
+                                },
+                                {
+                                    "start": "2026-09-10T16:00:00+00:00",
+                                    "end": "2026-09-10T18:00:00+00:00",
+                                },
+                                {
+                                    "start": "2026-09-10T18:00:00+00:00",
+                                    "end": "2026-09-10T20:00:00+00:00",
+                                },
+                            ],
+                            "minima": [
+                                [1.67, 1.70, 1.71],
+                                [1.60, 1.71, 1.72],
+                                [1.70, 1.68, 1.72],
+                                [1.66, 1.71, 1.72],
+                            ],
+                            "nowcast": [1.68, 1.69, 1.70, 1.71],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    body2 = evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
+    assert body2["calibrated"] is False
+    assert body2["primary"]["action"] == "no_advice"
+    assert "Kalibrierung" in body2["primary"]["reason_short"]
+    store = load_store(b4_settings)
+    snap2 = store["episodes"][0]["snapshots"][-1]
+    assert snap2["action"] == "wait"
+    assert snap2["decline_reason"] is None
+
+
+def test_snapshot_collapse_rule(b4_settings):
+    """Gleiche Empfehlung innerhalb 30 min aktualisiert denselben Snapshot.
+
+    Zwei Regeln, zwei Gründe (0.40.0):
+
+    * Eine **Handlungsempfehlung** wird nach 30 Minuten zu einem eigenen
+      Snapshot: Sie trägt einen Ankerpreis und damit eine eigene Messung.
+    * Eine **Ablehnung** („keine Empfehlung“) kollabiert ohne Zeitfenster.
+      Sie trägt keine Messung, ihr wiederholtes Bestätigen ist keine neue
+      Entscheidung. Vorher schrieb jede Abfrage eines offenen Fensters eine
+      eigene Zeile: Das Tagebuch stand voller „Kein Vergleichspreis“, und die
+      Fälle, die sich vergleichen ließen, fielen aus der Liste (388 zu 4 bei
+      einem 30-Minuten-Takt).
+
+    Beide Regeln enden im **Schreibverzicht**: Eine Bestätigung ändert nichts
+    am Store, also ändert sich auch sein Zeitstempel nicht. Genau daran hängt
+    die ETag-Revalidierung von /overview (``data_version`` liest den
+    mtime-Wert des Stores, B7) — schriebe jeder Aufruf, wäre das ETag der
+    Antwort schon beim Ausliefern veraltet.
+    """
+    from app.feedback import load_store
+
+    # ---- 1. Ablehnung: kein Fenster, keine Prognose → zeitunabhängig eine Zeile
+    t0 = NOW
     current_time = t0
 
     def query(cfg, flux):
         yield raw_price(current_time - dt.timedelta(minutes=5), UID, "Frankfurt", 1.65)
 
     live = LiveData(b4_settings, query=query, clock=lambda: current_time)
-
-    # 1. Call at t0 -> creates episode + snap 1
     d1 = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
     ep_id = d1["episode"]["id"]
-    from app.feedback import load_store
+    assert d1["primary"]["action"] == "no_advice"
 
     store = load_store(b4_settings)
     assert len(store["episodes"]) == 1
-    assert len(store["episodes"][0]["snapshots"]) == 1
-    snap1_id = store["episodes"][0]["snapshots"][0]["id"]
+    snap = store["episodes"][0]["snapshots"][0]
+    snap_id, emitted_at = snap["id"], snap["emitted_at"]
+    assert snap["decline_reason"]  # „warum keine Empfehlung“ steht am Snapshot
+    store_file = b4_settings.runtime / "feedback" / "store.json"
 
-    # 2. Call at t1 (10 min later, same advice) -> collapses into same snapshot
-    current_time = t1
-    live.clock = lambda: current_time
-    d2 = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
-    assert d2["episode"]["id"] == ep_id
+    for minutes in (10, 45, 300):
+        current_time = t0 + dt.timedelta(minutes=minutes)
+        live.clock = lambda: current_time
+        before = store_file.stat()
+        later = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
+        assert later["episode"]["id"] == ep_id
+        # Bestätigung = kein Schreiben: gleicher Inhalt, gleicher Zeitstempel.
+        after = store_file.stat()
+        assert (after.st_mtime_ns, after.st_size) == (
+            before.st_mtime_ns,
+            before.st_size,
+        )
+        store = load_store(b4_settings)
+        assert len(store["episodes"][0]["snapshots"]) == 1
+        snap = store["episodes"][0]["snapshots"][0]
+        assert snap["id"] == snap_id
+        assert snap["emitted_at"] == emitted_at
+
+    # Ein gewechselter Grund ist eine neue Aussage: eigener Snapshot.
+    from app.feedback import _same_advice
+
+    assert not _same_advice(
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+        {"action": "no_advice", "station_id": UID, "decline_reason": "Grauzone"},
+    )
+    assert _same_advice(
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+    )
+
+    # ---- 2. Empfehlung: nach 30 Minuten ein eigener Snapshot
+    (b4_settings.runtime / "engine").mkdir(parents=True, exist_ok=True)
+    (b4_settings.runtime / "engine/current.json").write_text(
+        json.dumps(
+            {
+                "published_at": NOW.isoformat(),
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "origin": NOW.isoformat(),
+                        "points": [
+                            {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
+                            {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},
+                            {"timestamp": "2026-09-10T18:00:00+02:00", "q50": 1.62},
+                            {"timestamp": "2026-09-10T19:00:00+02:00", "q50": 1.63},
+                            {"timestamp": "2026-09-10T20:00:00+02:00", "q50": 1.64},
+                        ],
+                        "draws_24h": {
+                            "n": 4,
+                            "block_minutes": 120,
+                            "blocks": [
+                                {
+                                    "start": "2026-09-10T14:00:00+00:00",
+                                    "end": "2026-09-10T16:00:00+00:00",
+                                },
+                                {
+                                    "start": "2026-09-10T16:00:00+00:00",
+                                    "end": "2026-09-10T18:00:00+00:00",
+                                },
+                                {
+                                    "start": "2026-09-10T18:00:00+00:00",
+                                    "end": "2026-09-10T20:00:00+00:00",
+                                },
+                            ],
+                            "minima": [
+                                [1.67, 1.70, 1.71],
+                                [1.60, 1.71, 1.72],
+                                [1.70, 1.68, 1.72],
+                                [1.66, 1.71, 1.72],
+                            ],
+                            "nowcast": [1.68, 1.69, 1.70, 1.71],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Mit Prognose und Draws entscheidet die Tabelle etwas — angezeigt wird
+    # es erst nach dem M7-Gate, der Ledger misst es trotzdem (Shadow-Betrieb).
+    t0 = NOW
+    current_time = t0
+    live = LiveData(b4_settings, query=query, clock=lambda: current_time)
+    first = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
+    assert first["primary"]["action"] == "no_advice"  # M7-Gate verdeckt sie
     store = load_store(b4_settings)
-    assert len(store["episodes"][0]["snapshots"]) == 1
-    assert store["episodes"][0]["snapshots"][0]["id"] == snap1_id
+    snapped = [s for ep in store["episodes"] for s in ep["snapshots"]]
+    assert snapped[-1]["action"] in ("wait", "refuel_now", "refuel_elsewhere")
+    assert snapped[-1]["decline_reason"] is None
+    count_before = len(snapped)
 
-    # 3. Call at t2 (45 min later) -> appends new snapshot
-    current_time = t2
+    current_time = t0 + dt.timedelta(minutes=10)
     live.clock = lambda: current_time
     live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
     store = load_store(b4_settings)
-    assert len(store["episodes"][0]["snapshots"]) == 2
+    assert len([s for ep in store["episodes"] for s in ep["snapshots"]]) == count_before
+
+    current_time = t0 + dt.timedelta(minutes=45)
+    live.clock = lambda: current_time
+    live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
+    store = load_store(b4_settings)
+    assert (
+        len([s for ep in store["episodes"] for s in ep["snapshots"]])
+        == count_before + 1
+    )
 
 
 def test_intent_and_due_prompt(b4_settings):
@@ -788,8 +1010,9 @@ def test_gray_zone_percent_is_times_100():
     """
     from app.decide import _table_action
 
-    _, _, reason = _table_action(1.70, 1.64, 2.40, None, 0.5)
+    _, _, reason, code = _table_action(1.70, 1.64, 2.40, None, 0.5)
     assert "50 %" in reason
+    assert code == "gray_zone"
     assert "P ≈ 0 %" not in reason
     assert "0.5 %" not in reason
 
@@ -1387,6 +1610,10 @@ def test_advice_diary_lists_real_settlements(b4_settings):
     """
     from app.feedback import locked_store
 
+    decline_reason = (
+        "Preislage unentschieden — weder Warten noch Sofort-Tanken hat einen "
+        "Vorsprung. Die App rät nicht."
+    )
     with locked_store(b4_settings) as store:
         store["episodes"].append(
             {
@@ -1396,10 +1623,21 @@ def test_advice_diary_lists_real_settlements(b4_settings):
                 "intent": "wait",
                 "snapshots": [
                     {
+                        "id": "s_decline",
+                        "emitted_at": "2026-09-10T10:00:00+00:00",
+                        "action": "no_advice",
+                        "station_id": UID,
+                        "station_name": "Station Alpha",
+                        "city": "Frankfurt",
+                        "fuel": "e10",
+                        "decline_reason": decline_reason,
+                    },
+                    {
                         "id": "s_diary",
                         "emitted_at": "2026-09-10T12:00:00+00:00",
                         "action": "wait",
                         "station_id": UID,
+                        "station_name": "Station Alpha",
                         "city": "Frankfurt",
                         "fuel": "e10",
                         "window_start": "2026-09-10T16:00:00+00:00",
@@ -1407,8 +1645,20 @@ def test_advice_diary_lists_real_settlements(b4_settings):
                         "price_now": 1.729,
                         "p_correct": 0.78,
                         "liters_assumed": 40,
-                    }
+                    },
                 ],
+            }
+        )
+        store["settlements"].append(
+            {
+                "snapshot_id": "s_decline",
+                "episode_id": "ep_diary",
+                "settled_at": "2026-09-10T10:05:00+00:00",
+                "p_emit": None,
+                "p_realized": None,
+                "outcome": "void",
+                "void_reason": "no_advice",
+                "regret_eur": 0.0,
             }
         )
         store["settlements"].append(
@@ -1432,16 +1682,32 @@ def test_advice_diary_lists_real_settlements(b4_settings):
         status, body = _get_json(base + "/api/v1/advice/diary")
         assert status == 200
         assert body["error_code"] is None
-        assert body["count"] == 1
+        assert body["count"] == 2
         entry = body["entries"][0]
         assert entry["action"] == "wait"
         assert entry["station_id"] == UID
+        # Der Stationsname kommt aus dem Snapshot — ohne ihn zeigte die Liste
+        # die rohe UUID, sobald die Station nicht mehr im Set lag.
+        assert entry["station_name"] == "Station Alpha"
         assert entry["price_then"] == 1.729
         assert entry["price_window"] == 1.679
         assert entry["outcome"] == "win"
         assert entry["p_correct"] == 0.78
         assert entry["window_end"] == "2026-09-10T18:00:00+00:00"
+        assert entry["decline_reason"] is None
         assert body["reason"] is None
+
+        # Die abgelehnte Zeile nennt den Grund der Tabelle („nicht bewertbar“
+        # ohne Begründung war eine Wand); die Zeitspanne der GUI entsteht aus
+        # dem ersten Emit (`emitted_at`) und der Abrechnung (`settled_at`).
+        decline = body["entries"][1]
+        assert decline["action"] == "no_advice"
+        assert decline["outcome"] == "void"
+        assert decline["void_reason"] == "no_advice"
+        assert decline["decline_reason"] == decline_reason
+        assert decline["emitted_at"] == "2026-09-10T10:00:00+00:00"
+        assert decline["settled_at"] == "2026-09-10T10:05:00+00:00"
+        assert decline["station_name"] == "Station Alpha"
 
         # Filter und Limit sind ehrlich: ein unbekanntes Ergebnis liefert leer.
         _status, filtered = _get_json(base + "/api/v1/advice/diary?outcome=loss")
