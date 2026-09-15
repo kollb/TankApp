@@ -97,9 +97,14 @@ Fällen, was Sache ist — statt es zu verschweigen.
   `docs/STATIONEN-TAUSCH.md` keine Stand-Zeile, `docs/QUALITAET.md` die Suite
   ohne Mocks nicht.
 - **Ratchet erweitert:** `tests/test_ledger_drift.py` verlangt zusätzlich eine
-  Stand-Zeile im Kopf jedes Dokuments und gleicht die Audit-Liste in
-  `docs/README.md` in **beiden** Richtungen gegen die tatsächlich
+  Stand-Zeile und ein Inhaltsverzeichnis im Kopf jedes Dokuments und gleicht die
+  Audit-Liste in `docs/README.md` in **beiden** Richtungen gegen die tatsächlich
   zurückgefallenen Dokumente ab.
+- **Browser-Rolle dokumentiert:** `docs/ARCHITEKTUR.md` beschreibt die PWA jetzt
+  als eigenen Abschnitt (zwei Caches mit Versions-Stempel und 30-Minuten-Grenze,
+  wartender Service Worker, Offline-Queue in `localStorage`); README, MICROCOPY,
+  QUALITAET, SPEICHER und die Fallback-Checkliste haben ein
+  Inhaltsverzeichnis im Kopf.
 
 ## [0.37.2] – 2026-09-15
 

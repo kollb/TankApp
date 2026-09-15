@@ -73,6 +73,7 @@ Die zweite Suite tut dasselbe ohne Mocks, gegen den echten Demo-Stack:
 | Läuft in | `.github/workflows/tests.yml` (web-Job) **nach** der gemockten Suite — nicht in `quality.yml`, weil sie Sekunden braucht und zum CI-Spiegel gehört |
 | Zusagen | overview → „Jetzt“ mit „Heute im Blick“ (19 Zellen, Berliner Zeit), Stationenliste, `If-None-Match` → 304 beim Aktualisieren, keine `role="alert"`; dazu Server-Vertrag ohne Browser in `tests/test_e2e_demo.py` |
 | Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` — prüft, dass die Suite mockfrei bleibt und Config, Skript und CI-Schritt zusammenpassen |
+| Laufzeit | 6 Tests (3 Fälle × Desktop/Mobil) in **13,3 s** im ersten grünen CI-Lauf (Demo-Aufbau inklusive) |
 
 Der Browser-Teil ist lokal nur lauffähig, wenn Chromium vorhanden ist
 (`npx --prefix web playwright install chromium`). In Sandboxen ohne
