@@ -184,13 +184,13 @@ function DayProfileVisual({
           );
         })}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[9px] text-slate-600">
+      <div className="mt-1 flex justify-between font-mono text-[0.625rem] text-slate-600">
         <span>06</span>
         <span>12</span>
         <span>18</span>
         <span>24</span>
       </div>
-      <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+      <p className="mt-1.5 text-[0.625rem] leading-relaxed text-slate-400">
         Tagesprofil (06–24 Uhr, letzte offene Meldung je Stunde)
         {marks
           ? ` — grün: das empfohlene Fenster ${String(marks.fromHour).padStart(2, "0")}–${String(marks.toHour).padStart(2, "0")}`
@@ -930,14 +930,17 @@ export function JetztView(props: JetztViewProps) {
                       style={{ height: `${2 + Math.round(ratio * 10)}px` }}
                     />
                     <span
-                      className={`font-mono text-[9px] ${
+                      className={`font-mono text-[0.625rem] ${
                         cell.current ? "text-emerald-200" : "text-slate-500"
                       }`}
                     >
                       {String(cell.hour).padStart(2, "0")}
                     </span>
+                    {/* U2: Wert in 0,625 rem (10 px) — die Mobil-Zelle ist
+                        ~34 px schmal; voller Preis steht zusätzlich im
+                        `title` und `aria-label` jeder Zelle. */}
                     <span
-                      className={`font-mono text-[8px] leading-tight tabular-nums ${
+                      className={`font-mono text-[0.625rem] leading-tight tabular-nums ${
                         cell.value === null
                           ? "text-slate-700"
                           : cell.current
