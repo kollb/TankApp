@@ -1769,6 +1769,25 @@ export function heatmapPath(input: {
  * weggelassen (die GUI fällt auf ihre Defaults zurück), nie als Fehler.
  */
 
+/** Bereiche, die eine eigene URL haben (GUI-UX-BEFUND U4). */
+export const SHARE_TABS = [
+  "jetzt",
+  "stationen",
+  "woche",
+  "ich",
+  "labor",
+  "system",
+  "glossar",
+] as const;
+export type ShareTab = (typeof SHARE_TABS)[number];
+
+/** Ausgemusterte Bereichsnamen landen bei ihrem Nachfolger. */
+const LEGACY_TABS: Record<string, ShareTab> = {
+  alltag: "jetzt",
+  werkstatt: "labor",
+  statistik: "labor",
+};
+
 /** Parameter, die eine geteilte Ansicht belegen darf. */
 export type ShareConfig = {
   city?: string;
@@ -1777,6 +1796,10 @@ export type ShareConfig = {
   liters?: number;
   heatmapWeeks?: HeatmapWeeks;
   heatmapBasis?: HeatmapBasis;
+  /** U4: der Bereich als Teil der URL (`?tab=woche`). */
+  tab?: ShareTab;
+  /** U4: Labor-Abschnitt als Anker der geteilten Antwort (`?section=…`). */
+  section?: string;
 };
 
 /** Aktuelle Sicht als Share-Parameter — kommt aus readShareParams heraus. */
@@ -1787,6 +1810,8 @@ export type ShareView = {
   liters: number;
   heatmapWeeks: number;
   heatmapBasis: HeatmapBasis;
+  tab?: ShareTab;
+  section?: string | null;
 };
 
 /** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
@@ -1818,6 +1843,16 @@ export function readShareParams(search: string): ShareConfig {
   if (isHeatmapWeeks(weeks)) out.heatmapWeeks = weeks;
   const basis = params.get("basis");
   if (isHeatmapBasis(basis)) out.heatmapBasis = basis;
+  // U4: der Bereich gehört in die URL — für Browser-Zurück, Lesezeichen und
+  // ehrliche Share-Links. Ungültige Werte fallen still auf den Einstieg.
+  const tab = params.get("tab");
+  if (tab && (SHARE_TABS as readonly string[]).includes(tab)) {
+    out.tab = tab as ShareTab;
+  } else if (tab && tab in LEGACY_TABS) {
+    out.tab = LEGACY_TABS[tab];
+  }
+  const section = params.get("section");
+  if (section && /^[a-z0-9_-]{1,32}$/.test(section)) out.section = section;
   return out;
 }
 
@@ -1840,6 +1875,11 @@ export function shareQuery(view: ShareView): string {
   ) {
     params.set("basis", view.heatmapBasis);
   }
+  // U4: Bereich und Labor-Abschnitt reisen mit — der Link teilt die
+  // Antwort, nicht nur die Filter. Der Einstieg („jetzt“) bleibt als
+  // Default außen vor.
+  if (view.tab && view.tab !== "jetzt") params.set("tab", view.tab);
+  if (view.section) params.set("section", view.section);
   return params.toString();
 }
 
@@ -2506,6 +2546,35 @@ export function centPerLiter(value: number | null | undefined, decimals = 1) {
 /** €/L → ct/L (Vorzeichen behalten, Rundung erst beim Formatieren). */
 export function euroToCentPerLiter(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? null : value * 100;
+}
+
+/**
+ * Einordnung nach dem Buchen (MICROCOPY: kurze Bestätigung mit
+ * Einordnung): der gezahlte Preis gegen den Median der frischen
+ * Set-Preise zu dem Moment — eine berechenbare, ehrliche Größe.
+ * `null` ohne genug Messwerte (keine Einordnung, kein Lob).
+ *
+ * U7: lebt hier (nicht in `views/Ich.tsx`), weil die Root den Wert für die
+ * Schnell-Erfassung braucht, ohne die Ich-View statisch zu importieren —
+ * die Views laden seit U7 als eigene Chunks (`React.lazy`).
+ */
+export function fillPositionNote(
+  pricePaid: number,
+  freshPrices: number[],
+): string | null {
+  const values = freshPrices.filter((value) => Number.isFinite(value));
+  if (values.length < 2) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median =
+    sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  const deltaCt = (pricePaid - median) * 100;
+  if (Math.abs(deltaCt) < 0.05)
+    return "Gleichauf mit dem Median deines Sets.";
+  return deltaCt < 0
+    ? `${centPerLiter(Math.abs(deltaCt))} unter dem Median deines Sets (heute).`
+    : `${centPerLiter(Math.abs(deltaCt))} über dem Median deines Sets (heute) — der nächste Beleg ist der bessere Vergleich.`;
 }
 
 export function percentLabel(value: number | null | undefined, decimals = 0) {

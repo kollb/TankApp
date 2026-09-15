@@ -30,7 +30,7 @@ export function DataReachNote({
   if (!label) return null;
   return (
     <p
-      className={`mt-3 text-[11px] leading-relaxed text-slate-400 ${className}`}
+      className={`mt-3 text-xs leading-relaxed text-slate-400 ${className}`}
     >
       <span className="font-semibold text-slate-300">Datenreichweite:</span>{" "}
       {label}

@@ -121,15 +121,15 @@ export function PrecisionSlider({
             }}
             className="h-11 w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 text-right font-mono text-xs text-white focus:border-emerald-500"
           />
-          <span className="text-[10px] text-slate-500">{unit}</span>
+          <span className="text-xs text-slate-500">{unit}</span>
         </span>
       </div>
       {clampedNote ? (
-        <p className="mt-1 text-[10px] leading-snug text-amber-300">
+        <p className="mt-1 text-xs leading-snug text-amber-300">
           {clampedNote}
         </p>
       ) : noNumber ? (
-        <p className="mt-1 text-[10px] leading-snug text-rose-300">
+        <p className="mt-1 text-xs leading-snug text-rose-300">
           Zahl erwartet (Komma oder Punkt) — {deTrimmed(min)}–{deTrimmed(max)}{" "}
           {unit}.
         </p>

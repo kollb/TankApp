@@ -363,7 +363,7 @@ export function StationenView(props: StationenViewProps) {
 
       {/* ① Suche + Filter */}
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+        <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
           <Search size={14} className="shrink-0 text-slate-500" aria-hidden="true" />
           <span className="sr-only">Station durchsuchen (Strg+K)</span>
           <input
@@ -390,7 +390,7 @@ export function StationenView(props: StationenViewProps) {
             type="button"
             onClick={() => setOpenOnly((value) => !value)}
             aria-pressed={openOnly}
-            className={`rounded-xl border px-2.5 py-2 text-xs transition-colors ${
+            className={`rounded-lg border px-2.5 py-2 text-xs transition-colors ${
               openOnly
                 ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
@@ -405,7 +405,7 @@ export function StationenView(props: StationenViewProps) {
               aria-label="Nach Marke filtern"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100"
+              className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100"
             >
               <option value="">Alle Marken</option>
               {brands.map((b) => (
@@ -416,7 +416,7 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
           <label
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
+            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
             title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"
           >
             <span className="sr-only">Zeitwert für die Umweg-Rechnung</span>
@@ -447,7 +447,7 @@ export function StationenView(props: StationenViewProps) {
       {/* ② Karte */}
       {setup ? (
         <div className={`${panel} mt-4 p-5 sm:p-7`}>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-[11px] font-bold text-slate-300">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs font-bold text-slate-300">
             <MapPin size={13} aria-hidden="true" />
             Noch keine Stationen
           </span>
@@ -488,11 +488,11 @@ export function StationenView(props: StationenViewProps) {
                 <span className="text-sm font-semibold text-slate-200">
                   {stations.length} Stationen
                 </span>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-xs text-slate-500">
                   {freshCount} mit frischem Preis
                 </span>
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1 text-[11px] font-bold">
+              <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold">
                 {ATLAS_SORTS.map((option) => (
                   <button
                     key={option.value}
@@ -513,7 +513,7 @@ export function StationenView(props: StationenViewProps) {
               <p
                 role="status"
                 aria-live="polite"
-                className="border-b border-slate-800 px-4 py-2 text-[11px] leading-snug text-amber-300"
+                className="border-b border-slate-800 px-4 py-2 text-xs leading-snug text-amber-300"
               >
                 {pinNote}
               </p>
@@ -577,7 +577,7 @@ export function StationenView(props: StationenViewProps) {
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
                         <span
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
                             row.isReference
                               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                               : "border-slate-700 bg-slate-800 text-slate-500"
@@ -589,12 +589,12 @@ export function StationenView(props: StationenViewProps) {
                           <span className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                             <span className="truncate">{row.station.name}</span>
                             {row.isReference && (
-                              <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+                              <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
                                 Referenz
                               </span>
                             )}
                           </span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
                             <span>{row.station.brand || "Freie Station"}</span>
                             {row.distKm != null && (
                               <span className="font-mono">
@@ -615,7 +615,7 @@ export function StationenView(props: StationenViewProps) {
                           </span>
                           {eur && (
                             <span
-                              className={`block text-[11px] font-semibold tabular-nums ${
+                              className={`block text-xs font-semibold tabular-nums ${
                                 eur.tone === "save"
                                   ? "text-emerald-400"
                                   : eur.tone === "cost"
@@ -688,11 +688,11 @@ export function StationenView(props: StationenViewProps) {
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
                   <MapPin size={15} className="text-emerald-400" aria-hidden="true" />
                   {selected.station.name}
-                  <span className="font-mono text-[11px] font-normal text-slate-500">
+                  <span className="font-mono text-xs font-normal text-slate-500">
                     {selected.station.brand || "Freie Station"}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 text-xs text-slate-400">
                   <span>{ageLabel(selected)}</span>
                   {selected.station.maps_url && (
                     <a
@@ -720,33 +720,33 @@ export function StationenView(props: StationenViewProps) {
                 </div>
               </div>
               <div className="grid gap-4 p-4 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
                     Preis
                   </p>
                   <p className="mt-1 font-mono text-lg font-bold text-slate-100 tabular-nums">
                     {euroPerLiter(selected.price)}
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500">
                     {selected.station.status === "closed"
                       ? "Geschlossen"
                       : "Aktuelle offene Meldung"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
                     Tagesrhythmus
                   </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-300">
                     {dayRhythmLine(stripCells) ??
                       "Zu wenige offene Messstunden für ein Muster — keine Erfindung."}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
                     Einordnung
                   </p>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-relaxed text-slate-300">
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-relaxed text-slate-300">
                     {contextLines.map((line) => (
                       <li key={line}>{line}</li>
                     ))}
@@ -758,13 +758,13 @@ export function StationenView(props: StationenViewProps) {
                   (Achsen, Zeitraum-Umschalter) statt einer Mini-Grafik. */}
               <div className="border-t border-slate-800 p-4">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
                     Verlauf · letzte {spanLabel(seriesSpan)}
                   </p>
                   <div
                     role="group"
                     aria-label="Zeitraum des Verlaufs"
-                    className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-[11px] font-semibold"
+                    className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-semibold"
                   >
                     {SPANS.map((span) => (
                       <button
@@ -815,7 +815,7 @@ export function StationenView(props: StationenViewProps) {
                   <Scale size={15} className="text-sky-400" aria-hidden="true" />
                   A gegen B
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                   {compareIsDefault && (
                     <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5">
                       Vorauswahl: Top 1 gegen Top 2
@@ -835,14 +835,14 @@ export function StationenView(props: StationenViewProps) {
                 </div>
               </div>
               <div className="grid gap-2 border-b border-slate-800 p-4 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                <label className="flex items-center gap-2 text-xs text-slate-400">
                   <span className="font-bold text-sky-300">A</span>
                   <span className="sr-only">Station A wählen</span>
                   <select
                     aria-label="Station A für den Vergleich wählen"
                     value={compareA}
                     onChange={(e) => setCompareA(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100"
                   >
                     <option value="">
                       {defaultA
@@ -856,14 +856,14 @@ export function StationenView(props: StationenViewProps) {
                     ))}
                   </select>
                 </label>
-                <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                <label className="flex items-center gap-2 text-xs text-slate-400">
                   <span className="font-bold text-slate-300">B</span>
                   <span className="sr-only">Station B wählen</span>
                   <select
                     aria-label="Station B für den Vergleich wählen"
                     value={compareB}
                     onChange={(e) => setCompareB(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100"
                   >
                     <option value="">
                       {defaultB
@@ -893,9 +893,9 @@ export function StationenView(props: StationenViewProps) {
                     ].map(({ row, label }) => (
                       <div
                         key={row.station.station_id}
-                        className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"
+                        className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
                       >
-                        <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                        <p className="text-xs uppercase tracking-wider text-slate-500">
                           {label}
                           {row.isReference ? " · Referenz" : ""}
                         </p>
@@ -905,14 +905,14 @@ export function StationenView(props: StationenViewProps) {
                         <p className="font-mono text-sm font-bold text-slate-100 tabular-nums">
                           {euroPerLiter(row.price)}
                         </p>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-xs text-slate-500">
                           {ageLabel(row)}
                         </p>
                       </div>
                     ))}
                   </div>
                   {comparePair.netEur !== null && (
-                    <p className="mt-3 font-mono text-[11px] text-slate-300">
+                    <p className="mt-3 font-mono text-xs text-slate-300">
                       {comparePair.deltaCt !== null &&
                         `${centPerLiter(Math.abs(comparePair.deltaCt))} ${comparePair.deltaCt > 0 ? "teurer" : "günstiger"} · `}
                       {comparePair.detourKm !== null &&
@@ -925,7 +925,7 @@ export function StationenView(props: StationenViewProps) {
                   </p>
                   {comparePair.netEur !== null && (
                     <p
-                      className="mt-2 text-[11px] text-slate-500"
+                      className="mt-2 text-xs text-slate-500"
                       title="Quelle: decide → alternatives_nearby (Server-Netto-€ inkl. Umweg)"
                     >
                       Quelle: die Umweg-Rechnung des Servers (Netto-€ inkl.
@@ -933,13 +933,13 @@ export function StationenView(props: StationenViewProps) {
                     </p>
                   )}
                   {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && (
-                    <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                    <p className="mt-2 text-xs leading-relaxed text-slate-400">
                       Achtung beim Lesen: „günstiger“ vergleicht nur die
                       Literpreise an der Säule. Umweg und Zeit stehen in der
                       Netto-Zeile darüber.
                     </p>
                   )}
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px]">
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                     <button
                       onClick={() => onNavigate("jetzt")}
                       className="font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
@@ -952,8 +952,11 @@ export function StationenView(props: StationenViewProps) {
                     >
                       Beleg für {compareRowA.station.name} buchen
                     </button>
+                    {/* U5: Ebene 1 öffnet das Begründungs-Sheet am Ort —
+                        der Labor-Sprung steht erst im Sheet (Ebene 2). */}
                     <button
-                      onClick={() => props.onDeepen?.("stationen")}
+                      onClick={() => setSheetOpen(true)}
+                      aria-haspopup="dialog"
                       className="font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
                     >
                       {labSectionButtonLabel("stationen")} · sind die beiden
@@ -989,7 +992,7 @@ export function StationenView(props: StationenViewProps) {
       {/* Frische-Fußzeile (fester Platz) */}
       <p
         role="status"
-        className={`mt-4 text-[11px] leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
+        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
       >
         {freshness.text} · {activeCity || "kein Ort gewählt"}
       </p>
@@ -1060,7 +1063,7 @@ function SeriesChart({
         yFmt={(value) => euro(value, 3)}
         ariaDescription={`Preisverlauf der letzten ${spanLabel(spanHours)} in €/L: Linie = offene Meldungen (${known.length} Punkte), gestrichelte Linie = Tagesmedian, grüne Marke = jüngste Meldung (${euroPerLiter(last.y)}), Spanne ${euroPerLiter(minY)} bis ${euroPerLiter(maxY)}.`}
       />
-      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
         Durchgezogen = offene Meldungen · gestrichelt = Tagesmedian
         („üblich“) · grüne Marke = jüngste Meldung{" "}
         {timeLabel(new Date(last.x).toISOString())}. Leere Stunden bleiben

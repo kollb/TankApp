@@ -141,7 +141,7 @@ export function ApiExplorer({
                   : `GET ${entry.path}${entry.note ? ` — ${entry.note}` : ""}`
               }
               aria-pressed={path === entry.path && answer !== null}
-              className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+              className={`rounded-lg border px-3 py-1.5 font-mono text-xs transition-colors ${
                 blocked
                   ? "cursor-not-allowed border-slate-800 bg-slate-950/50 text-slate-600"
                   : path === entry.path && answer !== null
@@ -151,7 +151,7 @@ export function ApiExplorer({
             >
               GET {entry.label}
               {blocked && entry.note ? (
-                <span className="ml-1 text-[10px] text-slate-500">
+                <span className="ml-1 text-xs text-slate-500">
                   · {entry.note}
                 </span>
               ) : null}
@@ -160,13 +160,13 @@ export function ApiExplorer({
         })}
       </div>
       {!identity && (
-        <p className="mb-3 text-[11px] text-slate-500">
+        <p className="mb-3 text-xs text-slate-500">
           Verlauf, Ausblick, Heatmaps und die Tageszeile („day“) erscheinen hier,
           sobald eine Station mit Stadt gewählt ist — die GUI fragt sie dann live
           ab, genau wie die Tabs.
         </p>
       )}
-      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-emerald-300/90">
+      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-emerald-300/90">
         {loading
           ? "// Rufe Endpunkt auf …"
           : answer || "// Oben einen Endpunkt wählen — nur lesend, kein Poll."}

@@ -103,6 +103,49 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
   }
 });
 
+// GUI-UX-BEFUND U2: Der Tagesstreifen darf auf dem Handy nicht brechen.
+// Mobil trägt das Raster zwei Zeilen zu je zehn Zellen
+// (styles.css `.daystrip-cells`); jede Zelle bleibt breit genug, um den
+// Stundenwert zu zeigen. Auf 390 px war der Streifen vorher ein starres
+// 19er-Raster mit ~15,7 px je Zelle — faktisch unlesbar.
+test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Heute im Blick" }),
+  ).toBeVisible();
+  const cells = page.locator(".daystrip-cells [role=img]");
+  await expect(cells).toHaveCount(19);
+
+  // DoD: Zellenbreite ≥ 26 px — darunter ist der Stundenwert nicht lesbar.
+  const boxes = await cells.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const element = node as HTMLElement;
+      const rect = element.getBoundingClientRect();
+      return {
+        width: rect.width,
+        label: element.getAttribute("aria-label") ?? "",
+        text: (element.textContent ?? "").trim(),
+      };
+    }),
+  );
+  for (const box of boxes) {
+    expect(
+      box.width,
+      `Zelle „${box.label}“ ist nur ${box.width.toFixed(1)} px breit`,
+    ).toBeGreaterThanOrEqual(26);
+  }
+
+  // DoD: sichtbarer Werttext. Die Demo-Daten haben mehrere offene Stunden —
+  // mindestens sechs Zellen zeigen einen Preis, und der Text ist echt
+  // gerendert (nicht leer, nicht abgeschnitten versteckt).
+  const withPrice = boxes.filter((box) => /\d,\d{3} €\/L$/.test(box.label));
+  expect(withPrice.length).toBeGreaterThanOrEqual(6);
+  for (const box of withPrice.slice(0, 3)) {
+    const cell = cells.filter({ hasText: box.text }).first();
+    await expect(cell).toBeVisible();
+  }
+});
+
 test("„Stationen“ zeigt die Stationen des Demo-Sets", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Stationen", exact: true }).click();

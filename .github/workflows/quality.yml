@@ -64,6 +64,20 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:1355/api/v1/health | head -c 400
+      - name: Leeren Einrichtungs-Server starten (U7)
+        # U7 will neben dem gefüllten Einstieg auch den Einrichtungszustand
+        # messen: derselbe Build, aber ohne Datenbestand — „Jetzt“ zeigt dann
+        # den ehrlichen S0-Zustand „Einrichten in drei Schritten“. Ein leeres
+        # Datenverzeichnis unter einem eigenen Port liefert genau das.
+        run: |
+          mkdir -p /tmp/tankapp-setup
+          TANKAPP_DATA_DIR=/tmp/tankapp-setup \
+            python tankapp.py serve --host 127.0.0.1 --port 1356 &
+          for _ in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:1356/api/v1/health > /dev/null && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:1356/api/v1/health | head -c 400
       - name: Lighthouse CI mit Budget
         run: npx --yes @lhci/cli@0.15.x autorun --config=web/lighthouserc.json
         env:
