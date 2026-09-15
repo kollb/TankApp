@@ -473,8 +473,13 @@ def test_snapshot_collapse_rule(b4_settings):
       Entscheidung. Vorher schrieb jede Abfrage eines offenen Fensters eine
       eigene Zeile: Das Tagebuch stand voller „Kein Vergleichspreis“, und die
       Fälle, die sich vergleichen ließen, fielen aus der Liste (388 zu 4 bei
-      einem 30-Minuten-Takt). ``emitted_at`` bleibt dabei der Emit-Zeitpunkt
-      (daran hängt die P-Schätzung), ``refreshed_at`` wandert mit.
+      einem 30-Minuten-Takt).
+
+    Beide Regeln enden im **Schreibverzicht**: Eine Bestätigung ändert nichts
+    am Store, also ändert sich auch sein Zeitstempel nicht. Genau daran hängt
+    die ETag-Revalidierung von /overview (``data_version`` liest den
+    mtime-Wert des Stores, B7) — schriebe jeder Aufruf, wäre das ETag der
+    Antwort schon beim Ausliefern veraltet.
     """
     from app.feedback import load_store
 
@@ -495,19 +500,37 @@ def test_snapshot_collapse_rule(b4_settings):
     snap = store["episodes"][0]["snapshots"][0]
     snap_id, emitted_at = snap["id"], snap["emitted_at"]
     assert snap["decline_reason"]  # „warum keine Empfehlung“ steht am Snapshot
-    assert snap["refreshed_at"] == emitted_at
+    store_file = b4_settings.runtime / "feedback" / "store.json"
 
     for minutes in (10, 45, 300):
         current_time = t0 + dt.timedelta(minutes=minutes)
         live.clock = lambda: current_time
+        before = store_file.stat()
         later = live.decide({"city": "Frankfurt", "fuel": "e10", "station_id": UID})
         assert later["episode"]["id"] == ep_id
+        # Bestätigung = kein Schreiben: gleicher Inhalt, gleicher Zeitstempel.
+        after = store_file.stat()
+        assert (after.st_mtime_ns, after.st_size) == (
+            before.st_mtime_ns,
+            before.st_size,
+        )
         store = load_store(b4_settings)
         assert len(store["episodes"][0]["snapshots"]) == 1
         snap = store["episodes"][0]["snapshots"][0]
         assert snap["id"] == snap_id
         assert snap["emitted_at"] == emitted_at
-        assert snap["refreshed_at"] > emitted_at
+
+    # Ein gewechselter Grund ist eine neue Aussage: eigener Snapshot.
+    from app.feedback import _same_advice
+
+    assert not _same_advice(
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+        {"action": "no_advice", "station_id": UID, "decline_reason": "Grauzone"},
+    )
+    assert _same_advice(
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+        {"action": "no_advice", "station_id": UID, "decline_reason": "keine Prognose"},
+    )
 
     # ---- 2. Empfehlung: nach 30 Minuten ein eigener Snapshot
     (b4_settings.runtime / "engine").mkdir(parents=True, exist_ok=True)
@@ -1602,7 +1625,6 @@ def test_advice_diary_lists_real_settlements(b4_settings):
                     {
                         "id": "s_decline",
                         "emitted_at": "2026-09-10T10:00:00+00:00",
-                        "refreshed_at": "2026-09-10T15:30:00+00:00",
                         "action": "no_advice",
                         "station_id": UID,
                         "station_name": "Station Alpha",
@@ -1613,7 +1635,6 @@ def test_advice_diary_lists_real_settlements(b4_settings):
                     {
                         "id": "s_diary",
                         "emitted_at": "2026-09-10T12:00:00+00:00",
-                        "refreshed_at": "2026-09-10T12:00:00+00:00",
                         "action": "wait",
                         "station_id": UID,
                         "station_name": "Station Alpha",
@@ -1674,17 +1695,18 @@ def test_advice_diary_lists_real_settlements(b4_settings):
         assert entry["p_correct"] == 0.78
         assert entry["window_end"] == "2026-09-10T18:00:00+00:00"
         assert entry["decline_reason"] is None
-        assert entry["refreshed_at"] == "2026-09-10T12:00:00+00:00"
         assert body["reason"] is None
 
-        # Die abgelehnte Zeile nennt den Grund der Tabelle und die letzte
-        # Bestätigung — „nicht bewertbar“ ohne Begründung war eine Wand.
+        # Die abgelehnte Zeile nennt den Grund der Tabelle („nicht bewertbar“
+        # ohne Begründung war eine Wand); die Zeitspanne der GUI entsteht aus
+        # dem ersten Emit (`emitted_at`) und der Abrechnung (`settled_at`).
         decline = body["entries"][1]
         assert decline["action"] == "no_advice"
         assert decline["outcome"] == "void"
         assert decline["void_reason"] == "no_advice"
         assert decline["decline_reason"] == decline_reason
-        assert decline["refreshed_at"] == "2026-09-10T15:30:00+00:00"
+        assert decline["emitted_at"] == "2026-09-10T10:00:00+00:00"
+        assert decline["settled_at"] == "2026-09-10T10:05:00+00:00"
         assert decline["station_name"] == "Station Alpha"
 
         # Filter und Limit sind ehrlich: ein unbekanntes Ergebnis liefert leer.

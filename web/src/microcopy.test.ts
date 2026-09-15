@@ -170,7 +170,6 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
       outcome,
       void_reason: null,
       decline_reason: null,
-      refreshed_at: "2026-09-14T20:05:00Z",
       regret_eur: 0,
       p_correct: 0.8,
       p_besser: 0.7,

@@ -1461,8 +1461,8 @@ class LiveData:
         Begründung). Kein Demo-Eintrag, keine erfundene Zeile — solange nichts
         abgerechnet ist, bleibt die Liste leer und das Feld `reason` erklärt,
         woran es liegt. ``decline_reason`` nennt bei „keine Empfehlung“ den
-        Grund der Tabelle, ``refreshed_at`` die letzte Bestätigung der
-        Entscheidung (Kollabierung, §5.4).
+        Grund der Tabelle; ``emitted_at`` ist die erste Bestätigung dieser
+        Entscheidung, ``settled_at`` ihre Abrechnung (Kollabierung, §5.4).
 
         `limit` kappt die Liste (neueste zuerst), `outcome` filtert
         ("win", "loss", "tie", "void").
@@ -1509,11 +1509,11 @@ class LiveData:
                         "regret_eur": settlement.get("regret_eur"),
                         "p_correct": snap.get("p_correct"),
                         "p_besser": snap.get("p_besser"),
-                        # Grund der Ablehnung (nur ``no_advice``) und der
-                        # Zeitpunkt der letzten Bestätigung: Eine kollabierte
-                        # Ablehnung gilt weiter, bis sie widerrufen wird.
+                        # Grund der Ablehnung (nur ``no_advice``): Eine
+                        # kollabierte Ablehnung gilt weiter, bis sie widerrufen
+                        # wird — die Zeitspanne zeigt die GUI aus
+                        # ``emitted_at`` (erste Bestätigung) und ``settled_at``.
                         "decline_reason": snap.get("decline_reason"),
-                        "refreshed_at": snap.get("refreshed_at"),
                         "liters": snap.get("liters_assumed"),
                         "intent": snap.get("intent"),
                     }

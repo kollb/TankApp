@@ -225,20 +225,25 @@ export function diaryOutcome(entry: AdviceDiaryEntry): DiaryOutcome {
  * Entscheidung „keine Empfehlung“ bei jeder Abfrage. Vor 0.40.0 wurde daraus
  * alle 30 Minuten ein eigener Ledger-Eintrag; alte Bestände tragen diese
  * Zeilen weiter, und im Tagebuch stand dann 50-mal derselbe Satz — die vier
- * echten Empfehlungen fielen aus der Liste. Gleiches bleibt jetzt **eine**
- * Zeile: Wort, Station, Zeitspanne, Anzahl.
+ * echten Empfehlungen fielen aus der Liste. Seit 0.40.0 schreibt eine
+ * Bestätigung nichts mehr in den Ledger (siehe `app/feedback.py`), und
+ * vorhandene Wiederholungen bleiben hier **eine** Zeile: Wort, Station,
+ * Zeitspanne, Anzahl.
  */
 export type DiaryRow = {
   entry: AdviceDiaryEntry;
   /** Wie viele Einträge der Liste zu dieser Zeile gehören (mindestens 1). */
   count: number;
-  /** Ältester Zeitpunkt der Gruppe (ISO) — nur bei `count > 1` gesetzt. */
+  /**
+   * Erste Bestätigung der Gruppe (ISO, `emitted_at`) — die linke Kante der
+   * Zeitspanne; bei `count === 1` ist sie der eigene Emit-Zeitpunkt.
+   */
   oldest: string | null;
 };
 
-/** Zeitstempel einer Zeile: die letzte Bestätigung, sonst die Abrechnung. */
+/** Zeitstempel einer Zeile: die Abrechnung des Falls. */
 export function diaryStamp(entry: AdviceDiaryEntry): string | null {
-  return entry.refreshed_at ?? entry.settled_at;
+  return entry.settled_at ?? entry.emitted_at;
 }
 
 /** Zwei Einträge sind dieselbe Aussage: gleiche Ablehnung, gleiche Station. */
@@ -260,6 +265,11 @@ function sameDiaryRow(a: AdviceDiaryEntry, b: AdviceDiaryEntry): boolean {
  * neueste zuerst). Die Gruppierung läuft **nur** über die geladenen
  * Einträge — deshalb nennt die Anzeige die Anzahl nur dann als Zahl, wenn
  * die Liste vollständig ist (`diaryCountLabel`).
+ *
+ * Die Zeitspanne wird aus den echten Zeitstempeln gebildet: `emitted_at` der
+ * ältesten Zeile (erste Bestätigung) bis `diaryStamp` der neuesten
+ * (Abrechnung). `emitted_at` bleibt beim Kollabieren der erste Emit — genau
+ * der Zeitpunkt, seit dem die App dasselbe sagt.
  */
 export function groupDiaryEntries(entries: AdviceDiaryEntry[]): DiaryRow[] {
   const rows: DiaryRow[] = [];
@@ -267,10 +277,10 @@ export function groupDiaryEntries(entries: AdviceDiaryEntry[]): DiaryRow[] {
     const previous = rows[rows.length - 1];
     if (previous && sameDiaryRow(previous.entry, entry)) {
       previous.count += 1;
-      previous.oldest = diaryStamp(entry) ?? previous.oldest;
+      previous.oldest = entry.emitted_at ?? previous.oldest;
       continue;
     }
-    rows.push({ entry, count: 1, oldest: diaryStamp(entry) });
+    rows.push({ entry, count: 1, oldest: entry.emitted_at ?? diaryStamp(entry) });
   }
   return rows;
 }

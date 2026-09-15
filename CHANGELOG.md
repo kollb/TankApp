@@ -32,10 +32,22 @@ Station.
 
 - **Eine Ablehnung ist eine Zeile, kein Takt.** `_same_advice`
   (`app/feedback.py`) kollabiert `no_advice` zeitunabhängig: Solange dieselbe
-  Ablehnung gilt, wird der vorhandene Snapshot bestätigt — `refreshed_at`
-  wandert mit, `emitted_at` bleibt der Emit-Zeitpunkt (daran hängt die
-  P-Schätzung). Die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen,
-  wo jeder Emit einen eigenen Ankerpreis und damit eine eigene Messung trägt.
+  Aussage gilt, ändert der Aufruf **nichts** am Store — kein Merge, kein
+  Schreiben. `emitted_at` bleibt der erste Emit-Zeitpunkt (daran hängen
+  Fenster, Ankerpreis und P-Schätzung), ein **gewechselter Grund** ist eine
+  neue Zeile. Die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo
+  jeder Emit einen eigenen Ankerpreis und damit eine eigene Messung trägt.
+- **Warum der Schreibverzicht dazugehört (B7).** Ein Bestätigungs-Aufruf darf
+  den Store nicht anfassen: `data_version()` liest dessen mtime-Wert, und
+  damit hinge das ETag der Antwort an der Antwort selbst. Ein Schreibvorgang
+  pro Aufruf entwertet also jedes ETag schon beim Ausliefern — jede
+  Aktualisierung liefe in ein 200 samt 5–10-s-Neuberechnung (genau das, was
+  B7 abstellen sollte) und auf der NAS-Platte fiele pro Seitenaufruf eine
+  Schreiblast an. Die Demo-Suiten beider Ebenen prüfen die Revalidierung
+  jetzt ausdrücklich (`tests/test_e2e_demo.py`,
+  `web/e2e/demo.spec.ts`; dort gegen den Stand der jeweils letzten Antwort),
+  und `tests/test_b4.py::test_snapshot_collapse_rule` hält fest, dass eine
+  Bestätigung den Zeitstempel der Store-Datei nicht ändert.
 - **Der Grund reist mit.** `_table_action` (`app/decide.py`) gibt den
   Ablehnungsgrund maschinenlesbar zurück (`quality_gate`, `no_anchor`,
   `no_forecast`, `no_window`, `gray_zone`, sonst `None`); der Snapshot
@@ -50,16 +62,17 @@ Station.
 - **Tagebuch gruppiert gleiche Zeilen.** `groupDiaryEntries`/`diaryCountLabel`
   (`web/src/lab.ts`) fassen aufeinanderfolgende gleiche Ablehnungen zusammen
   („3×“, bei gekürzter Liste „mehrfach“) und zeigen die Zeitspanne von der
-  ältesten zur letzten Bestätigung (`diaryStamp`).
+  ersten Bestätigung (`emitted_at` der ältesten Zeile) bis zur Abrechnung
+  (`diaryStamp` = `settled_at`) — auch für die Zeilen aus der Zeit vor dieser
+  Regel.
 
 ### Geändert
 
-- **Feedback-Store-Schema 3.** `decline_reason` (bei Ablehnungen) und
-  `refreshed_at` sind neue Pflichtfelder; `_migrate_store_v2_to_v3` zieht
-  `snapshots`, `first_snapshot` und `last_snapshot` mit — Altbestand erhält
-  `decline_reason: null` (der damalige Grund ist nicht rekonstruierbar) und
-  `refreshed_at: emitted_at`. Ein Store aus einer neueren Version wird
-  weiterhin mit 503 abgelehnt.
+- **Feedback-Store-Schema 3.** `decline_reason` (nur bei Ablehnungen) ist ein
+  neues Feld; `_migrate_store_v2_to_v3` zieht `snapshots`, `first_snapshot`
+  und `last_snapshot` mit — Altbestand erhält `decline_reason: null` (der
+  damalige Grund ist nicht rekonstruierbar), sonst wird nichts angefasst. Ein
+  Store aus einer neueren Version wird weiterhin mit 503 abgelehnt.
 - **Tagebuch-Satz bei Ablehnung.** Mit gespeichertem Grund heißt es „Kein
   Vergleichspreis — die App hatte hier keine Empfehlung: <Grund>.“; ohne
   Grund (Altbestand) bleibt der Void-Satz. Beide Muster stehen in
@@ -69,12 +82,18 @@ Station.
 
 - `tests/test_b4.py`: Tabellenaktion als 4-Tupel über alle
   Ablehnungs-Codes, Ablehnung vor M7 sichtbar/Empfehlung stumm, Kollaps über
-  10/45/300 Minuten (Ablehnung) gegen Append nach 45 Minuten (Empfehlung),
-  Tagebuch mit Grund und Bestätigungszeitpunkt.
+  10/45/300 Minuten (Ablehnung, **ohne** Schreiben) gegen Append nach 45
+  Minuten (Empfehlung), Grund-Wechsel als neue Zeile, Tagebuch mit Grund,
+  Stationsname und Zeitspanne.
 - `tests/test_feedback.py`: Migration 2 → 3 inklusive Idempotenz und
   `first_snapshot`/`last_snapshot`.
-- `web/src/lab.test.ts`: Gruppierung, Anzahl-Label, Zeitstempel, neuer
-  Ablehnungssatz; `microcopy.test.ts`-Fixture um die Pflichtfelder erweitert.
+- `web/src/lab.test.ts`: Gruppierung, Anzahl-Label, Zeitstempel aus
+  Emit/Abrechnung, neuer Ablehnungssatz; `microcopy.test.ts`-Fixture um die
+  Pflichtfelder erweitert.
+- `tests/test_e2e_demo.py` und `web/e2e/demo.spec.ts`: die Revalidierung
+  (304) wird nach einem Aufwärm-Aufruf geprüft bzw. gegen den Stand der
+  letzten Antwort — vorher hing sie an der Reihenfolge der Testfunktionen und
+  am 60-s-Fenster.
 
 ## [0.39.0] – 2026-09-15
 

@@ -245,10 +245,10 @@ Episode**.
 
 | Punkt | Umsetzung | Konzept |
 |---|---|---|
-| Kollabierung | `_same_advice` (`app/feedback.py`): `no_advice` wird zeitunabhängig bestätigt (`refreshed_at` = letzte Bestätigung, `emitted_at` bleibt Emit-Zeitpunkt); die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo jeder Emit einen eigenen Ankerpreis trägt | §5.4 |
+| Kollabierung | `_same_advice` (`app/feedback.py`): Eine Bestätigung ändert nichts am Store — `no_advice` kollabiert zeitunabhängig (eine Zeile je Episode), die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo jeder Emit einen eigenen Ankerpreis trägt. Damit bleibt der mtime-Wert stabil, an dem die ETag-Revalidierung von `/overview` hängt (B7) | §5.4 |
 | Ablehnungsgrund | `_table_action` (`app/decide.py`) liefert `reason_code` (`quality_gate`/`no_anchor`/`no_forecast`/`no_window`/`gray_zone`), der Snapshot speichert `decline_reason`, die Grauzone nennt vor der M7-Freigabe keine Zahl (`GRAY_ZONE_REASON_GATE_SAFE`) | §4.4, §4.5, §0.4 |
 | Anzeige | `groupDiaryEntries`/`diaryCountLabel`/`diaryStamp` (`web/src/lab.ts`): gleiche Ablehnungen eine Zeile mit Anzahl („3×“/„mehrfach“) und Zeitspanne; Stationsname aus dem Snapshot statt UUID | §6, MICROCOPY.md §4c |
-| Ledger | Feedback-Store-Schema 3 mit Migration für `snapshots`, `first_snapshot` und `last_snapshot` (`decline_reason: null`, `refreshed_at: emitted_at`) — Altbestand bleibt lesbar, neuerer Store weiter 503 | §5.4, [BETRIEB.md](BETRIEB.md#schema-version-des-feedback-stores-b2) |
+| Ledger | Feedback-Store-Schema 3 mit Migration für `snapshots`, `first_snapshot` und `last_snapshot` (neues Feld `decline_reason: null`, sonst unverändert) — Altbestand bleibt lesbar, neuerer Store weiter 503 | §5.4, [BETRIEB.md](BETRIEB.md#schema-version-des-feedback-stores-b2) |
 
 ### 15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version
 

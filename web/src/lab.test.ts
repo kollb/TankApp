@@ -47,7 +47,6 @@ function entry(overrides: Partial<AdviceDiaryEntry>): AdviceDiaryEntry {
     outcome: "win",
     void_reason: null,
     decline_reason: null,
-    refreshed_at: null,
     regret_eur: null,
     p_correct: 0.82,
     p_besser: null,
@@ -232,29 +231,31 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
 
   it("fasst gleiche Ablehnungen zu einer Zeile zusammen", () => {
     expect(timeLabel("2026-09-15T19:59:00Z")).toBe("15.09., 21:59");
-    const decline = (settled_at: string, refreshed_at: string) =>
+    const decline = (emitted_at: string, settled_at: string) =>
       entry({
         outcome: "void",
         action: "no_advice",
         void_reason: "no_advice",
         decline_reason: "Preislage unentschieden.",
+        emitted_at,
         settled_at,
-        refreshed_at,
       });
-    // Die Liste kommt neueste zuerst: drei gleiche Zeilen, dazwischen nichts.
+    // Die Liste kommt neueste zuerst: drei gleiche Zeilen (Altbestand aus der
+    // Zeit vor dem Schreibverzicht), dazwischen nichts.
     const entries = [
-      decline("2026-09-15T20:59:00Z", "2026-09-15T20:59:00Z"),
-      decline("2026-09-15T20:29:00Z", "2026-09-15T20:29:00Z"),
-      decline("2026-09-15T19:59:00Z", "2026-09-15T19:59:00Z"),
+      decline("2026-09-15T19:30:00Z", "2026-09-15T20:59:00Z"),
+      decline("2026-09-15T19:00:00Z", "2026-09-15T20:01:00Z"),
+      decline("2026-09-15T18:30:00Z", "2026-09-15T19:03:00Z"),
       entry({ outcome: "win", settled_at: "2026-09-14T20:05:00Z" }),
     ];
     const rows = groupDiaryEntries(entries);
     expect(rows.length).toBe(2);
     expect(rows[0].count).toBe(3);
-    expect(rows[0].oldest).toBe("2026-09-15T19:59:00Z");
-    expect(rows[0].entry.settled_at).toBe("2026-09-15T20:59:00Z");
+    // Linke Kante: der erste Emit der Gruppe; rechte: die Abrechnung oben.
+    expect(rows[0].oldest).toBe("2026-09-15T18:30:00Z");
+    expect(diaryStamp(rows[0].entry)).toBe("2026-09-15T20:59:00Z");
     expect(rows[1].count).toBe(1);
-    expect(rows[1].oldest).toBe("2026-09-14T20:05:00Z");
+    expect(rows[1].oldest).toBe("2026-09-13T16:00:00Z");
   });
 
   it("gruppiert nur Aufeinanderfolgendes und nur dieselbe Aussage", () => {
@@ -275,7 +276,7 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
       decline("2026-09-15T17:29:00Z", "Keine Prognose verfügbar."),
     ]);
     expect(rows.map((row) => row.count)).toEqual([2, 1, 1, 1]);
-    expect(rows[0].oldest).toBe("2026-09-15T20:29:00Z");
+    expect(rows[0].oldest).toBe("2026-09-13T16:00:00Z");
   });
 
   it("nennt die Anzahl nur, wenn die Liste sie hergibt", () => {
@@ -285,14 +286,11 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
     expect(diaryCountLabel(1, false)).toBeNull();
   });
 
-  it("nimmt für den Zeitstempel die letzte Bestätigung einer Entscheidung", () => {
-    expect(
-      diaryStamp(
-        entry({ settled_at: "2026-09-15T19:59:00Z", refreshed_at: "2026-09-15T20:59:00Z" }),
-      ),
-    ).toBe("2026-09-15T20:59:00Z");
-    expect(
-      diaryStamp(entry({ settled_at: "2026-09-15T19:59:00Z", refreshed_at: null })),
-    ).toBe("2026-09-15T19:59:00Z");
+  it("nimmt für den Zeitstempel einer Zeile die Abrechnung", () => {
+    expect(diaryStamp(entry({ settled_at: "2026-09-15T20:59:00Z" }))).toBe(
+      "2026-09-15T20:59:00Z",
+    );
+    // Altdaten ohne Abrechnungszeit: der eigene Emit-Zeitpunkt bleibt ehrlich.
+    expect(diaryStamp(entry({ settled_at: null }))).toBe("2026-09-13T16:00:00Z");
   });
 });

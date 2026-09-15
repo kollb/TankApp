@@ -893,8 +893,6 @@ export type AdviceDiaryEntry = {
   void_reason: string | null;
   /** Grund der Tabelle, wenn die Empfehlung „keine“ war (sonst null). */
   decline_reason: string | null;
-  /** Letzte Bestätigung der Entscheidung (Kollabierung, §5.4). */
-  refreshed_at: string | null;
   regret_eur: number | null;
   p_correct: number | null;
   p_besser: number | null;

@@ -225,7 +225,6 @@ Parameter:
       "p_correct": null,
       "p_besser": 0.62,
       "decline_reason": null,
-      "refreshed_at": "2026-09-13T16:30:00+00:00",
       "liters": 40,
       "intent": "wait"
     }
@@ -254,10 +253,15 @@ Ehrlichkeits-Regeln:
   (Altbestände ohne Namen fallen auf die ID zurück).
 - `decline_reason` ist der Grund der Entscheidungstabelle, wenn die Empfehlung
   „keine“ war (Güte-Gate, fehlender Anker, kein Fenster, Grauzone) — sonst
-  `null`. `refreshed_at` ist der Zeitpunkt der letzten Bestätigung dieser
-  Entscheidung: Eine erneut bestätigte Ablehnung bleibt **eine** Zeile je
-  Episode, `emitted_at` bleibt der Emit-Zeitpunkt (daran hängt die
-  P-Schätzung).
+  `null`.
+- Eine erneut bestätigte Entscheidung ist **keine neue Zeile** und schreibt
+  auch nichts in den Store (`_same_advice` in `app/feedback.py`): Ablehnungen
+  kollabieren ohne Zeitfenster, Handlungsempfehlungen innerhalb von 30
+  Minuten. `emitted_at` bleibt dabei der erste Emit-Zeitpunkt (daran hängen
+  Fenster, Ankerpreis und P-Schätzung), `settled_at` die Abrechnung. Ein
+  **gewechselter Grund** ist dagegen eine neue Aussage und ergibt eine eigene
+  Zeile. Der Schreibverzicht ist die Bedingung der ETag-Revalidierung von
+  `/overview` (`data_version()` liest den mtime-Wert des Stores, B7).
 
 Fehler:
 
@@ -269,8 +273,8 @@ Woanders tanken“ (Filter läuft client-seitig über `action`, der Serverfilter
 `outcome` bleibt für gezielte Auswertungen). Gleiche, direkt
 aufeinanderfolgende Ablehnungen fasst die GUI zu **einer** Zeile zusammen
 (`groupDiaryEntries` in `web/src/lab.ts`, Anzahl „3×“ bzw. „mehrfach“ bei
-gekürzter Liste); die Zeitspanne nennt älteste und letzte Bestätigung
-(`diaryStamp`).
+gekürzter Liste); die Zeitspanne nennt die erste Bestätigung (`emitted_at`
+der ältesten Zeile) und die Abrechnung (`diaryStamp` = `settled_at`).
 
 ## Fills (B4 Belege)
 
