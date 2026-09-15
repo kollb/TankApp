@@ -108,12 +108,18 @@ npm --prefix web ci
 npm --prefix web test
 npm --prefix web run build
 npx --prefix web playwright install chromium
-npm --prefix web run test:e2e
+npm --prefix web run test:e2e        # gemockte Suite (schnell, immer)
+npm --prefix web run test:e2e:demo   # ohne Mocks gegen den Demo-Stack
 ```
 
+`test:e2e:demo` startet den Demo-Stack selbst (`ops/quality/demo_server.py
+--rebuild`, Port 1357) und braucht deshalb die Python-Abhängigkeiten aus
+`requirements-dev.txt`; der Server-Teil derselben Zusage läuft ohne Browser als
+`tests/test_e2e_demo.py`. Details: [docs/QUALITAET.md](docs/QUALITAET.md).
+
 Vor jedem Commit den CI-Spiegel aus `.github/workflows/tests.yml` lokal fahren
-(ruff check, ruff format --check, pytest, web test/build) — Details und
-Reihenfolge in [AGENTS.md](AGENTS.md).
+(ruff check, ruff format --check, pytest, web test/build, beide
+Browser-Suiten) — Details und Reihenfolge in [AGENTS.md](AGENTS.md).
 
 Lokale Vorschau nach dem Build: `python tankapp.py serve` (Hintergrundaufgaben
 nur mit `--jobs`). Browsertests starten einen eigenen Server, sofern auf Port

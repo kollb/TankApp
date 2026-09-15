@@ -16,6 +16,11 @@
 > M7-Schwellen-Nachzug, Job-Fortschritt) und **0.10.0** (Beleg-Storno,
 > CSV-Export, `runtime/`-Backup, `alarms[]`, Version/Commit, Checkliste) —
 > Endpunkte: [API.md](API.md).
+> **Zwei Lesehilfen:** Endpunkte stehen hier kurz als `/v1/…`, implementiert
+> sind sie unter `/api/v1/…`. Wo das Zielbild noch Modi nennt (Alltag,
+> Werkstatt, Einstellungen), sind daraus mit 0.33.0–0.37.2 die sechs Bereiche
+> geworden (Jetzt, Woche, Stationen, Labor, Ich, System) — Abgleich in
+> [LUECKEN.md](LUECKEN.md).
 > Die Wahrscheinlichkeitsseite von §4 ist seit 11.09.2026 aus den
 > Bootstrap-Draws gebaut (`p_besser`, `p_lohnt`, Fenster-P); **dokumentierte
 > Abweichung** bleibt die gemeinsame Ziehung über Stationen (§4.2) — Begründung

@@ -191,7 +191,7 @@ einzige Quelle von Strecke und Schwellen), siehe
 | A11 Gemeinsame Ziehung | `shared_day_uniforms` + `blocks_from_uniform`, Ausweis `draws_*.shared`, `TANKAPP_SHARED_DRAWS=0` | §4.2 |
 | A9 Tankzeit-Profil | F3-Fenster ab 8 Belegen nach w(h) gewichtet, Hinweis in der Tagesansicht | §5.5 |
 | H3 Schwellen-Hysterese | 2-σ-Rauschband + Mindest-Abstand, Begründung auch fürs Nicht-Ändern | §0.4 |
-| D4 Qualitäts-Gates | `ops/quality/gates.py`: Bundle 200 kB gzip, Lighthouse ≥ 0,7, Lastprobe 25 RPS | Prüfstand §6 |
+| D4 Qualitäts-Gates | `ops/quality/gates.py` (später ersetzt: seit 0.31.0 `tests/test_quality_gates.py` + `web/load/`, siehe [QUALITAET.md](QUALITAET.md)): Bundle 200 kB gzip, Lighthouse ≥ 0,7, Lastprobe 25 RPS | Prüfstand §6 |
 
 ### 13.09.2026 — Version 0.32.0: Lebenszyklus, Zwillinge und Glossar abgenommen
 

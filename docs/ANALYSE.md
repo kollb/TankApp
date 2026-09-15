@@ -459,7 +459,8 @@ zählen nur aktuelle Preise, keine Prozent-Behauptung.
 
 Die Labor-Regel des Prüfstands empfiehlt „Warten“ nur, wenn die im Training
 geschätzte erwartete Ersparnis μ mindestens **ε** erreicht
-(`views/Statistics.tsx`, Gruppe B1: „Die Entscheidungs-Regel & ε-Steuerung“).
+(im Labor: Karte **„Vorsicht-Regler ε“** mit **„Was wäre gewesen, wenn …?“** —
+früher `views/Statistics.tsx`, Gruppe B1 „Die Entscheidungs-Regel“).
 ε ist die Handlungsschwelle des Labors: ε = 1,0 ct/L heißt, erwarte ich
 weniger als einen Cent Vorteil, bleibe ich bei „Jetzt“. ε ist ein **Was-wäre-wenn-Schalter** für den Labor-Vergleich —
 die Produktion rechnet mit der kalibrierten Entscheidungstabelle (§4.1/§4.2),

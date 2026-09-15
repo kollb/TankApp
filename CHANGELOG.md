@@ -80,6 +80,26 @@ Fällen, was Sache ist — statt es zu verschweigen.
   verbleibenden — jede Zeile mit Status (`Arbeit` / `wartet auf Betrieb` /
   `entschieden`), die Offline-Queue-Abweichung (`localStorage`) ausgewiesen.
   `tests/test_ledger_drift.py` hält die drei Regeln fest.
+- **Stand-Zeilen ehrlich gemacht und der Liste einen Ort gegeben:** Sieben
+  Dokumente trugen im Kopf noch 0.11.0 bis 0.37.1, obwohl ihr Inhalt seither
+  durchgesehen wurde (README, docs/README, ANALYSE, API, ARCHITEKTUR, BETRIEB,
+  INSTALL, MICROCOPY, QUALITAET) — jetzt 15.09.2026 · 0.38.0. `docs/README.md`
+  führt dafür die Liste „Nicht gegen die aktuelle Version geprüft“ (ENGINE,
+  KONZEPT, RP2, UMSETZUNG-FALLBACK-GUI-V2 und die versionlosen
+  UI-NEUENTWURF/GUI-VORLAGEN/SPEICHER); ein alter Stand ist damit eine
+  Entscheidung mit Ort statt einer stillen Lücke.
+- **Falsche Aussagen korrigiert:** README und KONZEPT beschrieben die GUI noch
+  als Alltag/Werkstatt/System/Einstellungen (jetzt sechs Bereiche: Jetzt, Woche,
+  Stationen, Labor, Ich, System), READMEs „Stand der Umsetzung“ nannte
+  Rate-Limiting (LAN-only entfernt) und führte Zweitmodell/Ensemble als offen
+  (seit 0.31.0 implementiert); `docs/DATENWERKZEUGE.md` hatte eine doppelte
+  Überschrift und die Programme `swap_stations.py`/`prune_influx.py` nicht,
+  `docs/STATIONEN-TAUSCH.md` keine Stand-Zeile, `docs/QUALITAET.md` die Suite
+  ohne Mocks nicht.
+- **Ratchet erweitert:** `tests/test_ledger_drift.py` verlangt zusätzlich eine
+  Stand-Zeile im Kopf jedes Dokuments und gleicht die Audit-Liste in
+  `docs/README.md` in **beiden** Richtungen gegen die tatsächlich
+  zurückgefallenen Dokumente ab.
 
 ## [0.37.2] – 2026-09-15
 

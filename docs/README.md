@@ -47,8 +47,10 @@ nicht gegen 0.38.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) · [SPEICHER.md](SPEICHER.md) | — | Betriebs- und Übernahmeregeln, keine Versionsaussagen |
 
-`tests/test_ledger_drift.py` prüft, dass kein Dokument eine **neuere** Version
-behauptet als die App und dass diese Liste vollständig bleibt.
+`tests/test_ledger_drift.py` prüft, dass jedes Dokument eine Stand-Zeile im
+Kopf hat, dass keine **neuere** Version behauptet wird als die App und dass
+diese Liste vollständig bleibt — beide Richtungen: kein alter Stand ohne
+Eintrag, kein Eintrag ohne Grund.
 
 ## Lesereihenfolge
 
