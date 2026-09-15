@@ -327,6 +327,34 @@ test("Abgelehnter Beleg (400) bleibt ein Fehler", async ({ page }) => {
     }
     await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
   });
+  // Seit dem Overview-Bündel (0.19.0) kommt die due-Episode aus `/overview`.
+  await page.route("**/api/v1/overview?*", async (route) => {
+    await route.fulfill({
+      json: {
+        generated_at: iso(0),
+        decide: DECIDE_FIXTURE,
+        fills: { count: 0, fills: [], error_code: null },
+        stats_summary: STATS_FIXTURE,
+        episodes: {
+          count: 1,
+          episodes: [
+            {
+              id: "ep-1",
+              status: "due",
+              intent: "wait",
+              last_snapshot: {
+                station_id: "a",
+                station_name: "F-Station",
+                expected_price: 1.719,
+              },
+            },
+          ],
+        },
+        day: { points: [], error_code: null },
+        error_code: null,
+      },
+    });
+  });
 
   await page.goto("/");
   await expect(
