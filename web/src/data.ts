@@ -1769,6 +1769,25 @@ export function heatmapPath(input: {
  * weggelassen (die GUI fällt auf ihre Defaults zurück), nie als Fehler.
  */
 
+/** Bereiche, die eine eigene URL haben (GUI-UX-BEFUND U4). */
+export const SHARE_TABS = [
+  "jetzt",
+  "stationen",
+  "woche",
+  "ich",
+  "labor",
+  "system",
+  "glossar",
+] as const;
+export type ShareTab = (typeof SHARE_TABS)[number];
+
+/** Ausgemusterte Bereichsnamen landen bei ihrem Nachfolger. */
+const LEGACY_TABS: Record<string, ShareTab> = {
+  alltag: "jetzt",
+  werkstatt: "labor",
+  statistik: "labor",
+};
+
 /** Parameter, die eine geteilte Ansicht belegen darf. */
 export type ShareConfig = {
   city?: string;
@@ -1777,6 +1796,10 @@ export type ShareConfig = {
   liters?: number;
   heatmapWeeks?: HeatmapWeeks;
   heatmapBasis?: HeatmapBasis;
+  /** U4: der Bereich als Teil der URL (`?tab=woche`). */
+  tab?: ShareTab;
+  /** U4: Labor-Abschnitt als Anker der geteilten Antwort (`?section=…`). */
+  section?: string;
 };
 
 /** Aktuelle Sicht als Share-Parameter — kommt aus readShareParams heraus. */
@@ -1787,6 +1810,8 @@ export type ShareView = {
   liters: number;
   heatmapWeeks: number;
   heatmapBasis: HeatmapBasis;
+  tab?: ShareTab;
+  section?: string | null;
 };
 
 /** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
@@ -1818,6 +1843,16 @@ export function readShareParams(search: string): ShareConfig {
   if (isHeatmapWeeks(weeks)) out.heatmapWeeks = weeks;
   const basis = params.get("basis");
   if (isHeatmapBasis(basis)) out.heatmapBasis = basis;
+  // U4: der Bereich gehört in die URL — für Browser-Zurück, Lesezeichen und
+  // ehrliche Share-Links. Ungültige Werte fallen still auf den Einstieg.
+  const tab = params.get("tab");
+  if (tab && (SHARE_TABS as readonly string[]).includes(tab)) {
+    out.tab = tab as ShareTab;
+  } else if (tab && tab in LEGACY_TABS) {
+    out.tab = LEGACY_TABS[tab];
+  }
+  const section = params.get("section");
+  if (section && /^[a-z0-9_-]{1,32}$/.test(section)) out.section = section;
   return out;
 }
 
@@ -1840,6 +1875,11 @@ export function shareQuery(view: ShareView): string {
   ) {
     params.set("basis", view.heatmapBasis);
   }
+  // U4: Bereich und Labor-Abschnitt reisen mit — der Link teilt die
+  // Antwort, nicht nur die Filter. Der Einstieg („jetzt“) bleibt als
+  // Default außen vor.
+  if (view.tab && view.tab !== "jetzt") params.set("tab", view.tab);
+  if (view.section) params.set("section", view.section);
   return params.toString();
 }
 

@@ -707,6 +707,61 @@ describe("Share-URL (A6)", () => {
       "city=G%C3%BCtersloh&fuel=e5&station_id=s1&liters=42.5&weeks=12",
     );
   });
+
+  // GUI-UX-BEFUND U4: Jede Ansicht ist eine URL.
+  it("liest den Bereich aus der Query und mappt Alt-Namen nach", () => {
+    expect(readShareParams("?tab=woche").tab).toBe("woche");
+    expect(readShareParams("?tab=labor&section=sicherheit").section).toBe(
+      "sicherheit",
+    );
+    // Ausgemusterte Bereichsnamen landen beim Nachfolger, nicht im Leeren.
+    expect(readShareParams("?tab=statistik").tab).toBe("labor");
+    expect(readShareParams("?tab=werkstatt").tab).toBe("labor");
+    expect(readShareParams("?tab=alltag").tab).toBe("jetzt");
+    // Ungültige Werte fallen still weg (Einstieg bleibt der Einstieg).
+    expect(readShareParams("?tab=unbekannt").tab).toBeUndefined();
+    expect(readShareParams("?section=<script>").section).toBeUndefined();
+  });
+
+  it("teilt die Antwort mit: Bereich und Abschnitt reisen im Link mit", () => {
+    expect(
+      shareQuery({
+        city: "",
+        fuel: "e10",
+        stationId: null,
+        liters: 40,
+        heatmapWeeks: 6,
+        heatmapBasis: "hour",
+        tab: "woche",
+        section: null,
+      }),
+    ).toBe("fuel=e10&tab=woche");
+    expect(
+      shareQuery({
+        city: "",
+        fuel: "e10",
+        stationId: null,
+        liters: 40,
+        heatmapWeeks: 6,
+        heatmapBasis: "hour",
+        tab: "labor",
+        section: "sicherheit",
+      }),
+    ).toBe("fuel=e10&tab=labor&section=sicherheit");
+    // Der Einstieg bleibt als Default außen vor.
+    expect(
+      shareQuery({
+        city: "",
+        fuel: "e10",
+        stationId: null,
+        liters: 40,
+        heatmapWeeks: 6,
+        heatmapBasis: "hour",
+        tab: "jetzt",
+        section: null,
+      }),
+    ).toBe("fuel=e10");
+  });
 });
 
 // ---------------------------------------------------------------------------

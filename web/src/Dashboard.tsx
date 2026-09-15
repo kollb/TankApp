@@ -164,9 +164,13 @@ import { SystemView } from "./views/System";
 import { GlossaryView } from "./views/Glossary";
 import { buildStripCells } from "./strip";
 import { type LabOrigin, type LabSectionId } from "./lab";
-
-/** Die Hauptbereiche der GUI (UI-NEUENTWURF §4.1). */
-type TabId = "jetzt" | "stations" | "week" | "ich" | "labor" | "system" | "glossary";
+import {
+  tabFromUrlId,
+  tabToUrlId,
+  sectionFromUrlId,
+  queryWithTab,
+  type TabId,
+} from "./routing";
 
 export function Dashboard() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
@@ -193,14 +197,37 @@ export function Dashboard() {
   // „Jetzt“ ist der Einstieg; „Labor“ (eigene Welt, violett) und „Glossar“
   // bleiben Nebenwege, „System“ bleibt Haupttab. Die alte Werkstatt ist
   // ersetzt, nicht umbenannt: siehe views/Labor.tsx.
-  const [tab, setTab] = useState<TabId>("jetzt");
+  // U4: Der Bereich steht in der URL (`?tab=…`) — beim Start gelesen, beim
+  // Wechsel per pushState geschrieben, Browser-Zurück hört auf popstate.
+  const [tab, setTab] = useState<TabId>(() => tabFromUrlId(share.tab));
   // Erklär-Treppe Ebene 1 → 2 (§7): Sprung ins Labor merkt sich Abschnitt
   // und Herkunft. Die Herkunft hält die Root, weil nur sie die Ansicht
   // kennt, aus der gesprungen wurde („Zurück zu: …“).
-  const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(null);
+  const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(() =>
+    share.tab === "labor" ? sectionFromUrlId(share.section) : null,
+  );
   const [laborReturn, setLaborReturn] = useState<
     (LabOrigin & { tab: TabId }) | null
   >(null);
+  // U4: Bereich wechseln heißt auch URL wechseln — pushState, damit der
+  // Browser-Zurück-Knopf die Ansichten in umgekehrter Reihenfolge abfährt.
+  // Die übrige Query (Stadt, Kraftstoff, Station …) bleibt erhalten.
+  const gotoTab = (next: TabId, section: LabSectionId | null = laborFocus) => {
+    setTab(next);
+    try {
+      const query = queryWithTab(window.location.search, next, section);
+      const current = window.location.search.replace(/^\?/, "");
+      if (query !== current) {
+        window.history.pushState(
+          null,
+          "",
+          `${window.location.pathname}${query ? `?${query}` : ""}`,
+        );
+      }
+    } catch {
+      /* History darf scheitern (Sandbox) — die Ansicht wechselt trotzdem. */
+    }
+  };
   // Einstieg in „Ich“, wenn ein anderer Bereich dort hinverweist (z. B.
   // „Beleg manuell buchen“ im Due-Prompt → Belege). Sonst „Fahrzeug“.
   const [ichSection, setIchSection] = useState<
@@ -412,12 +439,27 @@ export function Dashboard() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setTab("stations");
+        gotoTab("stations");
         setSearchFocusSignal((value) => value + 1);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // U4: Browser-Zurück/Vorwärts liest den Bereich aus der URL — die App
+  // bleibt eine Single-Shell, aber die Adresse ist die Wahrheit.
+  useEffect(() => {
+    const onPop = () => {
+      const params = new URLSearchParams(window.location.search);
+      const next = tabFromUrlId(params.get("tab"));
+      setTab(next);
+      setLaborFocus(
+        next === "labor" ? sectionFromUrlId(params.get("section")) : null,
+      );
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   // A1: Fahrzeug-/Haushaltsprofile. Aktives Profil + fahrzeugspezifische
@@ -774,6 +816,10 @@ export function Dashboard() {
       liters,
       heatmapWeeks,
       heatmapBasis,
+      // U4: Der Link teilt die Antwort, nicht nur die Filter — Bereich und
+      // (im Labor) der Abschnitt reisen mit.
+      tab: tabToUrlId(tab),
+      section: tab === "labor" ? laborFocus : null,
     });
     const url = `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ""}`;
     try {
@@ -794,7 +840,7 @@ export function Dashboard() {
         .writeText(url)
         .then(() =>
           note(
-            "Link kopiert — teilt diese Sicht (Stadt, Kraftstoff, Station, Tankmenge, Heatmap-Einstellungen).",
+            "Link kopiert — teilt diese Sicht (Bereich, Stadt, Kraftstoff, Station, Tankmenge, Heatmap-Einstellungen).",
           ),
         )
         .catch(() =>
@@ -1173,12 +1219,12 @@ export function Dashboard() {
   // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“, „Labor“ und
   // „System“. „werkstatt“ bleibt als Alt-Ziel erhalten und landet im Labor.
   const handleNowNavigate = (target: NowTarget | "jetzt" | "werkstatt") => {
-    if (target === "jetzt") setTab("jetzt");
-    else if (target === "stations") setTab("stations");
-    else if (target === "week" || target === "tank") setTab("week");
-    else if (target === "ich") setTab("ich");
-    else if (target === "werkstatt") setTab("labor");
-    else setTab("system");
+    if (target === "jetzt") gotoTab("jetzt");
+    else if (target === "stations") gotoTab("stations");
+    else if (target === "week" || target === "tank") gotoTab("week");
+    else if (target === "ich") gotoTab("ich");
+    else if (target === "werkstatt") gotoTab("labor");
+    else gotoTab("system");
   };
   // Erklär-Treppe Ebene 1 → 2 (§7): Der Sprung öffnet den passenden
   // Abschnitt und merkt sich die Herkunft („Zurück zu: …“). Die Herkunft
@@ -1190,7 +1236,7 @@ export function Dashboard() {
   ) => {
     setLaborFocus(section);
     setLaborReturn({ section, label, tab: from });
-    setTab("labor");
+    gotoTab("labor", section);
   };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
@@ -1622,7 +1668,7 @@ export function Dashboard() {
             <span className="relative inline-flex">
               <button
                 aria-label="Ansicht als Link teilen"
-                title="Setzt Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
+                title="Setzt Bereich, Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
                 onClick={copyShareLink}
                 className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
               >
@@ -1685,7 +1731,7 @@ export function Dashboard() {
             ).map((item) => (
               <button
                 key={item.id}
-                onClick={() => setTab(item.id)}
+                onClick={() => gotoTab(item.id)}
                 aria-current={tab === item.id ? "page" : undefined}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-5 ${
                   tab === item.id
@@ -1783,7 +1829,7 @@ export function Dashboard() {
               <p>{connectionProblem}</p>
               {!prices.error && (
                 <button
-                  onClick={() => setTab("system")}
+                  onClick={() => gotoTab("system")}
                   className="mt-1 text-xs underline underline-offset-4"
                 >
                   Einrichtung im Systembereich ansehen
@@ -1823,7 +1869,7 @@ export function Dashboard() {
               </p>
               <button
                 onClick={() => {
-                  setTab("system");
+                  gotoTab("system");
                   showJobLog(failedJobs[0][0]);
                 }}
                 className="mt-1 text-xs underline underline-offset-4"
@@ -1873,7 +1919,7 @@ export function Dashboard() {
             onDismissDue={(epId) => handleDismissDue(epId)}
             onOpenFills={() => {
               setIchSection("fills");
-              setTab("ich");
+              gotoTab("ich");
             }}
             onIntent={(intent, mapsUrl) => handleIntent(intent, mapsUrl)}
           />
@@ -1985,7 +2031,7 @@ export function Dashboard() {
                 .map((station) => ({ station })),
               togglePin,
               version: h?.version ?? null,
-              onOpenGlossary: () => setTab("glossary"),
+              onOpenGlossary: () => gotoTab("glossary"),
             }}
             pinnedFirstStations={pinnedFirstStations}
             quickStationId={quickStationId}
@@ -2061,7 +2107,7 @@ export function Dashboard() {
             modelSeries={modelSeries}
             observations={observations}
             onBack={() => {
-              setTab(laborReturn?.tab ?? "jetzt");
+              gotoTab(laborReturn?.tab ?? "jetzt");
               setLaborFocus(null);
             }}
             onFocusHandled={() => setLaborFocus(null)}
@@ -2148,7 +2194,7 @@ export function Dashboard() {
             ) : null}{" "}
             ·{" "}
             <button
-              onClick={() => setTab("glossary")}
+              onClick={() => gotoTab("glossary")}
               className="underline underline-offset-2 hover:text-slate-400"
             >
               Glossar

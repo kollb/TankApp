@@ -214,3 +214,69 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
     .click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
+
+// ---------------------------------------------------------------------------
+// GUI-UX-BEFUND U4: Jede Ansicht ist eine URL.
+//
+// Vorher kannte die Adresse keinen Bereich: Lesezeichen landeten immer auf
+// „Jetzt“, der Browser-Zurück-Knopf vergaß die Tabs, und der Teilen-Knopf
+// teilte Filter statt Antwort. Jetzt reist der Bereich als `?tab=…` mit —
+// ein Test pro Bereich: Link öffnen → richtiger Bereich.
+// ---------------------------------------------------------------------------
+const AREA_URLS: Array<{ url: string; heading: string }> = [
+  { url: "/", heading: "Jetzt" },
+  { url: "/?tab=stationen", heading: "Erst ein Set, dann der Atlas" },
+  { url: "/?tab=woche", heading: "Woche" },
+  { url: "/?tab=ich", heading: "Ich" },
+  { url: "/?tab=labor", heading: "Verstehen, warum die App das sagt" },
+  { url: "/?tab=system", heading: "Einmal einrichten. Weiterlaufen lassen." },
+  { url: "/?tab=glossar", heading: "Glossar" },
+];
+
+for (const area of AREA_URLS) {
+  test(`U4: ${area.url || "/"} öffnet den Bereich „${area.heading}“`, async ({
+    page,
+  }) => {
+    await page.goto(area.url);
+    await expect(
+      page.getByRole("heading", { name: area.heading, exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("U4: Labor-Link mit Abschnitt öffnet den Abschnitt", async ({ page }) => {
+  await page.goto("/?tab=labor&section=sicherheit");
+  await expect(
+    page.getByRole("heading", {
+      name: "Verstehen, warum die App das sagt",
+      exact: true,
+    }),
+  ).toBeVisible();
+  // Der Abschnitt ist aufgeklappt — ohne `section` wäre er zugefallen.
+  await expect(
+    page
+      .getByRole("button", { name: /ziemlich sicher/ })
+      .filter({ hasText: "Was heißt" })
+      .first(),
+  ).toHaveAttribute("aria-expanded", "true");
+});
+
+test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Jetzt", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Erst ein Set, dann der Atlas",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "Jetzt", exact: true }),
+  ).toBeVisible();
+});
