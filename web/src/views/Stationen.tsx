@@ -952,8 +952,11 @@ export function StationenView(props: StationenViewProps) {
                     >
                       Beleg für {compareRowA.station.name} buchen
                     </button>
+                    {/* U5: Ebene 1 öffnet das Begründungs-Sheet am Ort —
+                        der Labor-Sprung steht erst im Sheet (Ebene 2). */}
                     <button
-                      onClick={() => props.onDeepen?.("stationen")}
+                      onClick={() => setSheetOpen(true)}
+                      aria-haspopup="dialog"
                       className="font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
                     >
                       {labSectionButtonLabel("stationen")} · sind die beiden

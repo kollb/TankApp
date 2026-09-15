@@ -3,8 +3,9 @@
 //
 // Geprüft wird, was die Checkliste zusagt:
 //   3.1 Alle fünf Abschnitte plus Spielplatz existieren als Aufklapp-Blöcke.
-//   3.2 Der Sprung aus Ebene 1 öffnet den passenden Abschnitt, und die
-//       Herkunft steht im Kopf („Zurück zu: …“).
+//   3.2 Der Sprung aus Ebene 1 öffnet den passenden Abschnitt. Die gemerkte
+//       Herkunft ist seit U5 abgeschafft — der Rückweg ist das
+//       Browser-Zurück (U4-Routing).
 //   Ehrlichkeit: Das Tagebuch erfindet keine Zeile — ohne Abrechnung nennt
 //   es den Grund statt einer leeren Fläche.
 
@@ -102,9 +103,8 @@ const baseProps = {
   refreshNow: () => {},
   focusSection: null,
   onFocusHandled: () => {},
-  origin: null,
-  onBack: () => {},
   onNavigate: () => {},
+  onOpenGlossary: () => {},
 } as unknown as LaborViewProps;
 
 function render(overrides: Partial<LaborViewProps> = {}): string {
@@ -192,28 +192,26 @@ describe("Labor: Aufbau (§6.2)", () => {
 });
 
 describe("Labor: Erklär-Treppe Ebene 2 (§7)", () => {
-  it("klappt bei einem Sprung den passenden Abschnitt auf und meldet die Herkunft", () => {
+  it("klappt bei einem Sprung den passenden Abschnitt auf", () => {
     const onFocusHandled = vi.fn();
     const host = mount({
       focusSection: "sicherheit",
       onFocusHandled,
-      origin: { label: "Jetzt · Warum?", section: "sicherheit" },
     });
     expect(host.querySelector("#labor-sicherheit-body")).not.toBeNull();
-    const text = host.textContent ?? "";
-    expect(text).toContain("Zurück zu: Jetzt · Warum?");
     expect(onFocusHandled).toHaveBeenCalledTimes(1);
     // Ein nicht angesprungener Abschnitt bleibt zu (Abschnitt 1 ist die
     // voreingestellte Übersicht, Abschnitt 4 bleibt geschlossen).
     expect(host.querySelector("#labor-lernen-body")).toBeNull();
   });
 
-  it("bleibt ohne Sprung bei der Übersicht und bietet den Weg zurück", () => {
+  it("bleibt ohne Sprung bei der Übersicht und zeigt den Glossar-Eingang", () => {
     const host = mount();
     const text = host.textContent ?? "";
-    expect(text).toContain("Zurück");
-    // T12: ohne Herkunft keine „Zurück zu:“-Zeile — der Knopf genügt.
+    // U5: keine gemerkte Herkunft mehr — der Rückweg ist das Browser-Zurück.
     expect(text).not.toContain("Zurück zu:");
+    // U3: das Glossar hat seinen Eingang im Labor-Kopf.
+    expect(text).toContain("Glossar");
     // Nur Abschnitt 1 ist voreingestellt offen — alle anderen sind zu.
     for (const id of ["sicherheit", "stationen", "lernen", "glossar", "spielplatz"]) {
       expect(host.querySelector(`#labor-${id}-body`)).toBeNull();

@@ -23,7 +23,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeft,
   BookOpen,
   FlaskConical,
   Gauge,
@@ -67,10 +66,8 @@ import {
   diaryActionWord,
   diaryEmptyNote,
   diaryOutcome,
-  labOriginLine,
   labSection,
   type DiaryFilterId,
-  type LabOrigin,
   type LabSectionId,
 } from "../lab";
 import { GlossaryView } from "./Glossary";
@@ -138,11 +135,11 @@ export interface LaborViewProps {
   calibPoints: any[];
   calibErr: any;
   refreshNow: () => void;
-  // Erklär-Treppe Ebene 1 → 2 (§7)
+  // Erklär-Treppe Ebene 1 → 2 (§7). U5: Ebene 1 öffnet ein Sheet am
+  // Wirkungsort; der Sprung hierher ist ausdrücklich — der Rückweg ist das
+  // Browser-Zurück (U4), eine gemerkte Herkunft braucht es nicht mehr.
   focusSection: LabSectionId | null;
   onFocusHandled: () => void;
-  origin: LabOrigin | null;
-  onBack: () => void;
   onNavigate: (target: NowTarget | "jetzt" | "werkstatt") => void;
   /** U3: Das Glossar ist kein Hauptbereich mehr — sein Eingang liegt im
       Labor-Kopf (und im Fußzeilen-Link), nicht in der Bereichs-Navigation. */
@@ -364,8 +361,6 @@ export function LaborView(props: LaborViewProps) {
     transitionLine,
     focusSection,
     onFocusHandled,
-    origin,
-    onBack,
     onNavigate,
     onOpenGlossary,
   } = props;
@@ -507,11 +502,6 @@ export function LaborView(props: LaborViewProps) {
             wissen, um zu tanken: Einfach aufklappen, was interessiert. Kein
             Quiz, kein Fortschritt, keine Häkchen.
           </p>
-          {labOriginLine(origin) && (
-            <p className="mt-1 text-xs font-semibold text-violet-200">
-              {labOriginLine(origin)}
-            </p>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* U3: Eingang zum Glossar — es ist kein Hauptbereich mehr,
@@ -522,13 +512,6 @@ export function LaborView(props: LaborViewProps) {
           >
             <BookOpen size={14} aria-hidden="true" />
             Glossar
-          </button>
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-500/40"
-          >
-            <ArrowLeft size={14} aria-hidden="true" />
-            Zurück
           </button>
         </div>
       </div>

@@ -181,7 +181,7 @@ const GlossaryView = lazy(() =>
 );
 import type { NowAssumptions } from "./views/Jetzt";
 import { buildStripCells } from "./strip";
-import { type LabOrigin, type LabSectionId } from "./lab";
+import { type LabSectionId } from "./lab";
 import {
   tabFromUrlId,
   tabToUrlId,
@@ -218,15 +218,13 @@ export function Dashboard() {
   // U4: Der Bereich steht in der URL (`?tab=…`) — beim Start gelesen, beim
   // Wechsel per pushState geschrieben, Browser-Zurück hört auf popstate.
   const [tab, setTab] = useState<TabId>(() => tabFromUrlId(share.tab));
-  // Erklär-Treppe Ebene 1 → 2 (§7): Sprung ins Labor merkt sich Abschnitt
-  // und Herkunft. Die Herkunft hält die Root, weil nur sie die Ansicht
-  // kennt, aus der gesprungen wurde („Zurück zu: …“).
+  // Erklär-Treppe Ebene 1 → 2 (§7): Die Root merkt sich nur noch den
+  // Labor-Abschnitt, in den ein Ebene-2-Sprung führt. Eine „Zurück zu:“-
+  // Herkunft braucht es seit U5 nicht mehr — Ebene 1 öffnet ein Sheet am
+  // Ort, und der Rückweg ist das Browser-Zurück (U4-Routing).
   const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(() =>
     share.tab === "labor" ? sectionFromUrlId(share.section) : null,
   );
-  const [laborReturn, setLaborReturn] = useState<
-    (LabOrigin & { tab: TabId }) | null
-  >(null);
   // U4: Bereich wechseln heißt auch URL wechseln — pushState, damit der
   // Browser-Zurück-Knopf die Ansichten in umgekehrter Reihenfolge abfährt.
   // Die übrige Query (Stadt, Kraftstoff, Station …) bleibt erhalten.
@@ -1247,13 +1245,11 @@ export function Dashboard() {
   // Erklär-Treppe Ebene 1 → 2 (§7): Der Sprung öffnet den passenden
   // Abschnitt und merkt sich die Herkunft („Zurück zu: …“). Die Herkunft
   // hält die Root, weil nur sie weiß, aus welcher Ansicht gesprungen wurde.
-  const openLabor = (
-    section: LabSectionId,
-    label: string,
-    from: TabId,
-  ) => {
+  // Ebene 2 (Beweis): öffnet den Abschnitt im Labor — der Sprung ist jetzt
+  // ausdrücklich (das Sheet der Ebene 1 steht am Wirkungsort, U5), und der
+  // Rückweg ist das Browser-Zurück (U4).
+  const openLabor = (section: LabSectionId) => {
     setLaborFocus(section);
-    setLaborReturn({ section, label, tab: from });
     gotoTab("labor", section);
   };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
@@ -1890,9 +1886,7 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             forecastAt={nowForecastAt}
             onNavigate={handleNowNavigate}
-            onDeepen={(section) =>
-              openLabor(section, "Jetzt · Warum?", "jetzt")
-            }
+            onDeepen={(section) => openLabor(section)}
             onRetry={refreshNow}
             assumptions={assumptions}
             defaultLiters={liters}
@@ -1949,13 +1943,7 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             onRetry={refreshNow}
             onNavigate={handleNowNavigate}
-            onDeepen={(section) =>
-              openLabor(
-                section,
-                selected ? `Stationen · ${selected.name}` : "Stationen",
-                "stations",
-              )
-            }
+            onDeepen={(section) => openLabor(section)}
             searchFocusSignal={searchFocusSignal}
           />
         )}
@@ -1977,7 +1965,7 @@ export function Dashboard() {
             pricesAt={nowPricesAt}
             onRetry={refreshNow}
             onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section, "Woche · Fenster", "week")}
+            onDeepen={(section) => openLabor(section)}
           />
         )}
 
@@ -2099,14 +2087,9 @@ export function Dashboard() {
             metrics={metrics}
             modelSeries={modelSeries}
             observations={observations}
-            onBack={() => {
-              gotoTab(laborReturn?.tab ?? "jetzt");
-              setLaborFocus(null);
-            }}
             onFocusHandled={() => setLaborFocus(null)}
             onNavigate={handleNowNavigate}
             onOpenGlossary={() => gotoTab("glossary")}
-            origin={laborReturn}
             refreshNow={refreshNow}
             selected={selected}
             selection={selection}
@@ -2163,9 +2146,7 @@ export function Dashboard() {
             triggerCommand={triggerCommand}
             webhookCapable={webhookCapable}
             workerCommand={workerCommand}
-            onDeepen={(section) =>
-              openLabor(section, "System · Warum?", "system")
-            }
+            onDeepen={(section) => openLabor(section)}
           />
         )}
 
