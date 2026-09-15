@@ -363,7 +363,7 @@ export function StationenView(props: StationenViewProps) {
 
       {/* ① Suche + Filter */}
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+        <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
           <Search size={14} className="shrink-0 text-slate-500" aria-hidden="true" />
           <span className="sr-only">Station durchsuchen (Strg+K)</span>
           <input
@@ -390,7 +390,7 @@ export function StationenView(props: StationenViewProps) {
             type="button"
             onClick={() => setOpenOnly((value) => !value)}
             aria-pressed={openOnly}
-            className={`rounded-xl border px-2.5 py-2 text-xs transition-colors ${
+            className={`rounded-lg border px-2.5 py-2 text-xs transition-colors ${
               openOnly
                 ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
@@ -405,7 +405,7 @@ export function StationenView(props: StationenViewProps) {
               aria-label="Nach Marke filtern"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100"
+              className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100"
             >
               <option value="">Alle Marken</option>
               {brands.map((b) => (
@@ -416,7 +416,7 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
           <label
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
+            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
             title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"
           >
             <span className="sr-only">Zeitwert für die Umweg-Rechnung</span>
@@ -577,7 +577,7 @@ export function StationenView(props: StationenViewProps) {
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
                         <span
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
                             row.isReference
                               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                               : "border-slate-700 bg-slate-800 text-slate-500"
@@ -720,7 +720,7 @@ export function StationenView(props: StationenViewProps) {
                 </div>
               </div>
               <div className="grid gap-4 p-4 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                   <p className="text-xs uppercase tracking-wider text-slate-500">
                     Preis
                   </p>
@@ -733,7 +733,7 @@ export function StationenView(props: StationenViewProps) {
                       : "Aktuelle offene Meldung"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                   <p className="text-xs uppercase tracking-wider text-slate-500">
                     Tagesrhythmus
                   </p>
@@ -742,7 +742,7 @@ export function StationenView(props: StationenViewProps) {
                       "Zu wenige offene Messstunden für ein Muster — keine Erfindung."}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                   <p className="text-xs uppercase tracking-wider text-slate-500">
                     Einordnung
                   </p>
@@ -893,7 +893,7 @@ export function StationenView(props: StationenViewProps) {
                     ].map(({ row, label }) => (
                       <div
                         key={row.station.station_id}
-                        className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"
+                        className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
                       >
                         <p className="text-xs uppercase tracking-wider text-slate-500">
                           {label}

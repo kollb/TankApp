@@ -33,6 +33,7 @@ function dirOf(relativePath: string): string {
   return dirname(fileURLToPath(new URL(relativePath, import.meta.url)));
 }
 const SRC_ROOT = dirOf("styles.css");
+const UI_FILE = `${SRC_ROOT}/components/ui.tsx`;
 const DASHBOARD = read("Dashboard.tsx");
 const SLIDER = read("components/PrecisionSlider.tsx");
 const MAP = read("components/StationMap.tsx");
@@ -176,6 +177,42 @@ describe("U1: Typografie-Ratchet", () => {
       expect(content, `${file} nutzt text-[8px]`).not.toContain("text-[8px]");
       expect(content, `${file} nutzt text-[9px]`).not.toContain("text-[9px]");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U6 — Designsystem: Kartenradien kommen aus **einer** Stelle.
+//
+// Vorher stand an ~90 Panels je ein eigenes rounded-xl/-2xl; die Radien
+// unterschieden sich von Panel zu Panel („weiß nicht wieso“). Jetzt liefert
+// components/ui.tsx die Rampe (panel/dialog/radius), und außerhalb dieser
+// Datei sind große Kartenradien verboten — kleine (rounded-lg/-md/-full)
+// bleiben erlaubt, sie sind keine Kartenfrage.
+// ---------------------------------------------------------------------------
+describe("U6: Radius-Rampe", () => {
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const path = `${dir}/${entry}`;
+      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
+      else if (/\.tsx?$/.test(entry) && !entry.includes(".test."))
+        out.push(path);
+    }
+    return out;
+  }
+
+  it("rounded-xl/-2xl steht nur in components/ui.tsx", () => {
+    const files = sourceFiles(SRC_ROOT).filter((f) => f !== UI_FILE);
+    const banned = /rounded-(xl|2xl)\b/;
+    const offenders: string[] = [];
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      if (banned.test(content)) offenders.push(file);
+    }
+    expect(
+      offenders,
+      `Kartenradius außerhalb von components/ui.tsx gefunden:\n${offenders.join("\n")}`,
+    ).toEqual([]);
   });
 });
 

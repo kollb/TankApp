@@ -134,7 +134,7 @@ function StatusDot({ tone }: { tone: SystemStatusRow["tone"] }) {
 
 function StatusRowCard({ row }: { row: SystemStatusRow }) {
   return (
-    <div className={`flex items-start gap-3 rounded-xl border p-3 ${TONE_BORDER[row.tone] ?? "border-slate-800 bg-slate-900/40"}`}>
+    <div className={`flex items-start gap-3 rounded-lg border p-3 ${TONE_BORDER[row.tone] ?? "border-slate-800 bg-slate-900/40"}`}>
       <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-700/60 bg-slate-950/60">
         <StatusDot tone={row.tone} />
       </span>
@@ -277,7 +277,7 @@ export function SystemView(props: SystemViewProps) {
             </div>
 
             {(collector?.available || h?.collector?.available) && (
-              <div className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                     <Cpu size={12} aria-hidden="true" /> Collector-Details
@@ -351,7 +351,7 @@ export function SystemView(props: SystemViewProps) {
                 <ShieldCheck size={14} className="text-emerald-400" aria-hidden="true" />
                 Einrichtung &amp; eigene Daten
               </h3>
-              <ol className="divide-y divide-slate-800/60 rounded-xl border border-slate-800">
+              <ol className="divide-y divide-slate-800/60 rounded-lg border border-slate-800">
                 {setupSteps.map((step, i) => (
                   <li key={step.label} className="flex items-start gap-3 px-3 py-2.5 first:rounded-t-xl last:rounded-b-xl">
                     <span
@@ -401,7 +401,7 @@ export function SystemView(props: SystemViewProps) {
           <div className="mb-4">
             <Empty>Das gemeinsame Polling-Set fehlt auf diesem Server.</Empty>
             {data?.connection_error === "polling_missing" && (
-              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-200/80 break-words">
+              <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-950/20 p-4 text-xs leading-relaxed text-amber-200/80 break-words">
                 Keine Stadt eingerichtet. Collector-Herzschlag {collector?.available ? "ok" : "fehlt"} und InfluxDB-Lesezugang {h?.influx_configured ? "ok" : "fehlt"} nutzen ohne Polling-Set nichts. Auf dem Pi{" "}
                 <code className="break-all">{h?.polling_path || "data/analysis/stations/polling.json"}</code>{" "}
                 erzeugen (Anleitung: Abschnitt Polling-Set, danach activate-polling), auf dem NAS{" "}
@@ -413,19 +413,19 @@ export function SystemView(props: SystemViewProps) {
         )}
 
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs uppercase tracking-wider text-slate-500">Stationen im Set</p>
             <p className="mt-1 text-lg font-bold text-white">{countLabel(coverage.stationCount)}</p>
             <p className="mt-1 text-xs text-slate-500">
               {coverage.cities.length ? coverage.cities.join(" · ") : "Keine Stadt"} · {coverage.fuel.toUpperCase()}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs uppercase tracking-wider text-slate-500">Frische Preise</p>
             <p className="mt-1 text-lg font-bold text-emerald-300">{countLabel(coverage.freshCount)}</p>
             <p className="mt-1 text-xs text-slate-500">Offen, Preis vorhanden, höchstens 30 Minuten alt — zählt für „Jetzt“.</p>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs uppercase tracking-wider text-slate-500">Coverage-Gate</p>
             <p className="mt-1 font-mono text-sm font-bold text-slate-100">{coverage.coverageWindow ?? "—"}</p>
             <p className="mt-1 text-xs text-slate-500">
@@ -444,7 +444,7 @@ export function SystemView(props: SystemViewProps) {
           {selection.data ? (
             <>
               <div className="grid gap-3 text-xs sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Ohne Preis seit Tagen — tot <InfoTooltip label="tot" text={lifecycleTip("dead")} />
                   </p>
@@ -454,7 +454,7 @@ export function SystemView(props: SystemViewProps) {
                     {selection.data.dead_stations?.length ? ` Beispiel: ${selection.data.dead_stations.slice(0, 2).join(", ")}` : ""}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Temporär geschlossen / führt nicht{" "}
                     <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
@@ -466,7 +466,7 @@ export function SystemView(props: SystemViewProps) {
                     {selection.data.closed_count ?? 0} geschlossen · {selection.data.nofuel_count ?? 0} ohne diese Sorte. Bleiben unterscheidbar — nur „tot“ fällt raus.
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Preis-Zwillinge{" "}
                     <InfoTooltip
@@ -665,7 +665,7 @@ export function SystemView(props: SystemViewProps) {
           />
         </div>
 
-        <section ref={logRef} className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+        <section ref={logRef} className="mt-6 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
@@ -768,7 +768,7 @@ export function SystemView(props: SystemViewProps) {
             {alarms.map((alarm) => (
               <div
                 key={`${alarm.code}-${alarm.job ?? ""}`}
-                className={`flex items-start gap-3 rounded-xl border p-3 ${
+                className={`flex items-start gap-3 rounded-lg border p-3 ${
                   alarm.severity === "error" ? "border-rose-500/20 bg-rose-950/20" : "border-amber-500/20 bg-amber-950/20"
                 }`}
               >
@@ -789,7 +789,7 @@ export function SystemView(props: SystemViewProps) {
           </div>
         )}
 
-        <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+        <div className="mt-6 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
               <BellRing size={14} className="text-emerald-400" />
@@ -837,7 +837,7 @@ export function SystemView(props: SystemViewProps) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Belege, Version, Diagnose</p>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Alle Belege als CSV — für die Steuer oder den eigenen Notizzettel. Der Diagnose-Export bündelt Version, Zustand, Coverage und die letzten Log-Zeilen in einer Datei — ohne Tokens.
@@ -880,7 +880,7 @@ export function SystemView(props: SystemViewProps) {
               </span>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Jobs manuell starten</p>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Der Knopf <Play size={11} className="inline align-[-1px]" /> in jeder Job-Karte startet denselben Lauf wie auf der Kommandozeile:{" "}

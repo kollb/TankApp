@@ -1564,7 +1564,7 @@ export function Dashboard() {
             className="flex items-center gap-3"
             aria-label="TankApp Startseite"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
               <FuelIcon size={21} />
             </div>
             <div>
@@ -1577,7 +1577,7 @@ export function Dashboard() {
             </div>
           </a>
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
               <MapPin size={14} className="text-emerald-400" />
               <span className="sr-only">Stadt</span>
               <select
@@ -1602,7 +1602,7 @@ export function Dashboard() {
             <div
               role="group"
               aria-label="Kraftstoff"
-              className="flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+              className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
             >
               {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
                 <button
@@ -1618,7 +1618,7 @@ export function Dashboard() {
             {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
                 Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
                 Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
-            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
               <Car size={14} className="text-emerald-400" />
               <span className="sr-only">Fahrzeug-Profil</span>
               <select
@@ -1647,7 +1647,7 @@ export function Dashboard() {
               title="Profile anlegen, umbenennen, löschen (A1)"
               onClick={() => setProfileManagerOpen(true)}
               disabled={profilesBusy}
-              className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+              className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
             >
               <SquarePen size={16} aria-hidden="true" />
             </button>
@@ -1691,7 +1691,7 @@ export function Dashboard() {
                 aria-label="Ansicht als Link teilen"
                 title="Setzt Bereich, Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
                 onClick={copyShareLink}
-                className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+                className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
               >
                 <Share2 size={16} aria-hidden="true" />
               </button>
@@ -1712,7 +1712,7 @@ export function Dashboard() {
               title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
               onClick={() => setRefresh((value) => value + 1)}
               disabled={prices.pending}
-              className="rounded-xl border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+              className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
             >
               <RefreshCw
                 size={16}
@@ -1729,7 +1729,7 @@ export function Dashboard() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav
             aria-label="Ansichten"
-            className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900/60 p-1"
+            className="flex flex-wrap rounded-lg border border-slate-800 bg-slate-900/60 p-1"
           >
             {(
               [
@@ -1800,7 +1800,7 @@ export function Dashboard() {
         {queueBanner && (
           <div
             role="status"
-            className="mb-6 flex items-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-4 text-sm text-sky-200"
+            className="mb-6 flex items-start gap-3 rounded-lg border border-sky-500/25 bg-sky-500/10 p-4 text-sm text-sky-200"
           >
             <CloudOff size={18} className="mt-0.5 shrink-0" />
             <div>
@@ -1816,7 +1816,7 @@ export function Dashboard() {
         {!browserOnline && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
+            className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
           >
             <WifiOff size={18} className="mt-0.5 shrink-0" />
             <p>
@@ -1828,7 +1828,7 @@ export function Dashboard() {
         )}
 
         {fuel === "e5" && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-4 text-xs leading-relaxed text-sky-200">
+          <div className="mb-6 flex items-start gap-3 rounded-lg border border-sky-500/25 bg-sky-500/10 p-4 text-xs leading-relaxed text-sky-200">
             <FuelIcon size={17} className="mt-0.5 shrink-0" />
             <p>
               <span className="font-semibold">E5↔E10-Äquivalenz:</span> E10
@@ -1843,7 +1843,7 @@ export function Dashboard() {
         {connectionProblem && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
+            className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
           >
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <div>
@@ -1865,7 +1865,7 @@ export function Dashboard() {
         {failedJobs.length > 0 && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
+            className="mb-6 flex items-start gap-3 rounded-lg border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
           >
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <div>

@@ -242,7 +242,7 @@ export function WocheView(props: WocheViewProps) {
         </div>
         <p className="mt-1 text-xs text-slate-500">{tankLine.detail}</p>
         {tankOpen && (
-          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-400">
                 Schnellauswahl:
@@ -351,7 +351,7 @@ export function WocheView(props: WocheViewProps) {
                     aria-selected={isSelected}
                     onClick={() => setSelectedIdx(day.index)}
                     disabled={!hasWindow}
-                    className={`flex min-h-24 flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors ${
+                    className={`flex min-h-24 flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-colors ${
                       isSelected
                         ? "border-emerald-500/40 bg-emerald-500/10"
                         : hasWindow

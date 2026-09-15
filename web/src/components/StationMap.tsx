@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Station, DecideResult, DetourMode, euro } from "../data";
 import { usePtrOff } from "../usePtrOff";
+import { panel } from "./ui";
 
 export interface MapAnchor {
   lat: number;
@@ -421,7 +422,7 @@ export function StationMap({
   return (
     <section
       ref={ptrRef}
-      className={`no-ptr rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 shadow-xl ${className}`}
+      className={`no-ptr ${panel} p-4 sm:p-5 shadow-xl ${className}`}
       aria-label="Karten-/Umgebungsansicht"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -479,7 +480,7 @@ export function StationMap({
 
       {/* Empty State when no station coordinates */}
       {!validStations.length ? (
-        <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-6 text-center text-xs text-slate-400">
+        <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-6 text-center text-xs text-slate-400">
           <MapPin size={24} className="mb-2 text-slate-600" />
           <p className="font-medium text-slate-300">Keine Kartendaten verfügbar</p>
           <p className="mt-1 text-slate-500">
@@ -488,7 +489,7 @@ export function StationMap({
         </div>
       ) : mapMode === "osm" ? (
         /* OSM Map Container */
-        <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950 h-[320px] w-full">
+        <div className="relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950 h-[320px] w-full">
           <div ref={mapContainerRef} className="h-full w-full z-0" />
         </div>
       ) : (
@@ -562,7 +563,7 @@ export function StationMap({
 
       {/* Zuhause-Detailkarte bei Klick/Tap auf den Haus-Pin */}
       {anchorActive && validAnchor && (
-        <div className="mt-3 rounded-xl border border-slate-300/40 bg-slate-950/80 p-3.5 shadow-lg">
+        <div className="mt-3 rounded-lg border border-slate-300/40 bg-slate-950/80 p-3.5 shadow-lg">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-start gap-2">
               <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-300/50 bg-slate-100 text-slate-900">
@@ -593,7 +594,7 @@ export function StationMap({
 
       {/* Selected/Clicked Station Details Card */}
       {activeInfo && (
-        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/80 p-3.5 shadow-lg">
+        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/80 p-3.5 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-2">
@@ -733,7 +734,7 @@ export function RadarView({
   const radius = Math.min(width, height) / 2 - padding;
 
   return (
-    <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-2">
+    <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-2">
       <span className="absolute left-2 top-2 z-10 rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-xs text-slate-400">
         {anchor
           ? "Mitte: Zuhause · Ringe = km Luftlinie ab Zuhause"

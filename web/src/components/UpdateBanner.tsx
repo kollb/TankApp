@@ -33,7 +33,7 @@ export function UpdateBannerView({
   return (
     <div
       role="status"
-      className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100"
+      className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100"
     >
       <RefreshCw size={18} className="shrink-0 text-sky-300" aria-hidden="true" />
       <div className="min-w-0 flex-1">

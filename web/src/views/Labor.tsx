@@ -232,7 +232,7 @@ function LabBlock({
 /** „In drei Sätzen“ — der Kern jedes Abschnitts (§6.2). */
 function ThreeSentences({ sentences }: { sentences: string[] }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
+    <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3.5">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-slate-500">
         In drei Sätzen
       </p>
@@ -248,7 +248,7 @@ function ThreeSentences({ sentences }: { sentences: string[] }) {
 /** Verschachtelte Aufklapp-Ebene: Methode, Fachwort, Formel. */
 function ForTheCurious({ children }: { children: ReactNode }) {
   return (
-    <details className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40">
+    <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40">
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200">
         Für Neugierige: Methode, Fachwort, Formel
       </summary>
@@ -262,7 +262,7 @@ function ForTheCurious({ children }: { children: ReactNode }) {
 /** Kleine Aufgabe mit Auflösung — Nachschlagen statt Schule. */
 function SelfCheck({ question, answer }: { question: string; answer: string }) {
   return (
-    <details className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/5">
+    <details className="mt-3 rounded-lg border border-violet-500/20 bg-violet-500/5">
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-violet-200">
         Selbst prüfen: {question}
       </summary>
@@ -697,7 +697,7 @@ export function LaborView(props: LaborViewProps) {
               <SkeletonChart height="h-56" label="Modell-Ausblick wird berechnet" />
             </div>
           ) : (
-            <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <SketchNote>Prinzip-Skizze — nicht deine Daten.</SketchNote>
               <p className="text-xs leading-relaxed text-slate-300">
                 Ohne veröffentlichten Modell-Lauf gibt es keinen Ausblick zu
@@ -747,7 +747,7 @@ export function LaborView(props: LaborViewProps) {
             ]}
           />
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p className="text-xs font-semibold text-slate-200">
                 Versprochen gegen eingetroffen
               </p>
@@ -766,7 +766,7 @@ export function LaborView(props: LaborViewProps) {
               />
             </div>
             <div className="grid gap-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-xs font-semibold text-slate-200">
                   Was die App selbst prüft
                 </p>
@@ -812,7 +812,7 @@ export function LaborView(props: LaborViewProps) {
                 </ul>
               </div>
               {transitionLine && (
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                   <p className="text-xs font-semibold text-slate-200">
                     Übergang Archiv → Live-Polling
                   </p>
@@ -860,7 +860,7 @@ export function LaborView(props: LaborViewProps) {
               "Was übrig bleibt, ist der Preis-Abstand: Meist N ct unter dem Üblichen heißt oft günstig — nicht immer.",
             ]}
           />
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">
               Preis-Abstand je Station · {activeCity || "Stadt"}
             </p>
@@ -885,7 +885,7 @@ export function LaborView(props: LaborViewProps) {
               </div>
             )}
           </div>
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold text-slate-200">
                 Wochenrhythmus: Wann ist es wo billig?
@@ -1021,7 +1021,7 @@ export function LaborView(props: LaborViewProps) {
             ]}
           />
 
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold text-slate-200">Prognose-Tagebuch</p>
               <div className="flex flex-wrap gap-1 text-xs">
@@ -1118,7 +1118,7 @@ export function LaborView(props: LaborViewProps) {
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p
                 className="text-xs font-semibold text-slate-200"
                 title="out-of-sample: ausgewertet an Tagen, die das Modell beim Training nicht gesehen hat"
@@ -1175,7 +1175,7 @@ export function LaborView(props: LaborViewProps) {
                 </>
               )}
             </div>
-            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={14} className="text-violet-300" aria-hidden="true" />
                 <p className="text-xs font-semibold text-slate-100">Vorsicht-Regler ε</p>
@@ -1309,7 +1309,7 @@ export function LaborView(props: LaborViewProps) {
             gespeichert und nichts ändert dein Profil.
           </p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <div className="flex items-center gap-2">
                 <Target size={14} className="text-violet-300" aria-hidden="true" />
                 <p className="text-xs font-semibold text-slate-200">
@@ -1364,7 +1364,7 @@ export function LaborView(props: LaborViewProps) {
                 </p>
               )}
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p className="text-xs font-semibold text-slate-200">Eine Station sezieren</p>
               {labData?.stations?.length ? (
                 <label className="mt-2 block text-xs text-slate-400">
@@ -1491,7 +1491,7 @@ export function LaborView(props: LaborViewProps) {
               )}
             </div>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Echte Preise im Zeitraum</p>
             <div className="mt-2 flex flex-wrap gap-1 text-xs">
               {[

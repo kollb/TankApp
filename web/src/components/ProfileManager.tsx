@@ -12,6 +12,7 @@ import {
   type ResourceState,
   type VehicleProfile,
 } from "../data";
+import { dialog } from "./ui";
 
 const FIELD =
   "w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500";
@@ -88,7 +89,7 @@ export function ProfileManager({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
+      <div className={`${dialog} max-h-[85vh] w-full max-w-xl overflow-y-auto p-5`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2
@@ -148,7 +149,7 @@ export function ProfileManager({
             return (
               <li
                 key={profile.id}
-                className={`rounded-xl border p-3 ${
+                className={`rounded-lg border p-3 ${
                   isActive
                     ? "border-emerald-500/40 bg-emerald-500/[.06]"
                     : "border-slate-800 bg-slate-950/40"
@@ -237,7 +238,7 @@ export function ProfileManager({
             );
           })}
           {!profiles.length && !profilesRes.error && (
-            <li className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-4 text-xs leading-relaxed text-slate-400">
+            <li className="rounded-lg border border-dashed border-slate-700 bg-slate-950/40 p-4 text-xs leading-relaxed text-slate-400">
               Noch kein Profil angelegt. „Aus aktuellen Einstellungen erstellen“
               übernimmt Verbrauch, Zeitwert, Tankmenge und Kraftstoff genau so,
               wie sie gerade stehen.

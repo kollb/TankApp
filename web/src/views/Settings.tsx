@@ -428,7 +428,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <div
                 role="group"
                 aria-label="Kraftstoff wählen"
-                className="mt-3 flex rounded-xl border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+                className="mt-3 flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
               >
                 {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
                   <button
@@ -492,7 +492,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 ? `Stand ${clockLabel(summary.generated_at)}.`
                 : ""}
             </p>
-            <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <div className="overflow-x-auto rounded-lg border border-slate-800">
               <table className="w-full min-w-[26rem] text-left text-xs">
                 <caption className="sr-only">
                   Aktive Entscheidungsschwellen der Engine (schreibgeschützt)
@@ -590,7 +590,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               key={value}
               aria-pressed={theme === value}
               onClick={() => setTheme(value)}
-              className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition-colors ${
+              className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-bold transition-colors ${
                 theme === value
                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                   : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
@@ -629,7 +629,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">
               Belege exportieren (CSV)
             </p>
@@ -644,7 +644,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               /api/v1/fills.csv laden
             </a>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">
               Angepinnte Stationen
             </p>

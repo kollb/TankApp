@@ -139,7 +139,7 @@ export function IchView(props: IchViewProps) {
       <div
         role="tablist"
         aria-label="Ich — Unterseiten"
-        className="mt-4 flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-900/60 p-1"
+        className="mt-4 flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1"
       >
         {ICH_SECTIONS.map((item) => (
           <button
@@ -317,7 +317,7 @@ function FillsSection(props: IchViewProps) {
                     ? "Eingabe korrigieren"
                     : "Beleg buchen"
             }
-            className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
+            className="mt-4 w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
           >
             {fillSubmitting ? "Wird verbucht …" : "Beleg buchen"}
           </button>
@@ -526,7 +526,7 @@ function BalanceSection(props: IchViewProps) {
               : yearBalanceLabel(latest.key)}
           </p>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
                 Getankt
               </p>
@@ -540,7 +540,7 @@ function BalanceSection(props: IchViewProps) {
                   : "Ø —"}
               </p>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
                 Gegenüber „immer sofort getankt“
               </p>
@@ -557,7 +557,7 @@ function BalanceSection(props: IchViewProps) {
                 als du getankt hast (Server).
               </p>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
                 Gegenüber Stadt-Median
               </p>

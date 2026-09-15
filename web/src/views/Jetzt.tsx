@@ -29,7 +29,7 @@ import {
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
-import { panel } from "../components/ui";
+import { panel, radius } from "../components/ui";
 import {
   centPerLiter,
   deTrimmed,
@@ -351,11 +351,11 @@ export function JetztView(props: JetztViewProps) {
       {dueEpisode && !dueDismissed && (
         <section
           aria-label="Rückmeldung nach Fensterende"
-          className="mb-4 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 p-4 shadow-xl"
+          className={`mb-4 ${radius.card} border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 p-4 shadow-xl`}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-400">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-400">
                 <Clock size={20} aria-hidden="true" />
               </div>
               <div>
@@ -379,20 +379,20 @@ export function JetztView(props: JetztViewProps) {
                     ? "Kein frischer Preis — bitte manuell erfassen"
                     : `Wie empfohlen ${euro(bestPrice, 3)} €/L`
                 }
-                className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✓ Ja, wie empfohlen (
                 {bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
               </button>
               <button
                 onClick={onOpenFills}
-                className="rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
               >
                 ✎ Anders buchen
               </button>
               <button
                 onClick={() => onDismissDue(dueEpisode.id)}
-                className="rounded-xl px-3 py-2.5 text-xs text-slate-400 transition hover:text-white"
+                className="rounded-lg px-3 py-2.5 text-xs text-slate-400 transition hover:text-white"
               >
                 ✕ Noch nicht
               </button>
@@ -488,7 +488,7 @@ export function JetztView(props: JetztViewProps) {
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}
             <details
-              className={`mt-4 rounded-xl border text-xs ${
+              className={`mt-4 rounded-lg border text-xs ${
                 assumptionsActive
                   ? "border-emerald-500/30 bg-emerald-950/20"
                   : "border-slate-800 bg-slate-950/40"
@@ -834,7 +834,7 @@ export function JetztView(props: JetztViewProps) {
               {dayPanel.headline}
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
                   Günstigste Stunde
                 </p>
@@ -847,7 +847,7 @@ export function JetztView(props: JetztViewProps) {
                     : "keine offene Meldung"}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
                   Tagesmedian
                 </p>
@@ -860,7 +860,7 @@ export function JetztView(props: JetztViewProps) {
                     : "noch kein Verlauf"}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
                   Jetzt
                 </p>
