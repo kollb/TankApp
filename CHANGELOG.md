@@ -58,6 +58,11 @@ Fällen, was Sache ist — statt es zu verschweigen.
 - `web/src/offline-queue.test.ts`: Vormerken, Deckel, Altersgrenze, Nachreichen
   in Eingangsreihenfolge, dauerhafte Ablehnung und die Anbindung an `postFill`
   (ID + Tankzeit) und `postIntent` (Episodenpfad).
+- `tests/test_ledger_drift.py`: Stand-Zeilen (TODO/LUECKEN/CHANGELOG) nennen die
+  App-Version, kein Punkt ist offen **und** erledigt, offene Zeilen behaupten
+  nicht „erledigt“ zu sein, jede Zeile unter „Bewusst offen“ trägt eine
+  Statusmarke, und die drei seit 0.38.0 gebauten Themen sind dort nicht mehr
+  gelistet.
 
 ### Dokumentation
 
@@ -65,6 +70,16 @@ Fällen, was Sache ist — statt es zu verschweigen.
   `docs/BETRIEB.md` (Webhook-Zustandstabelle statt „weiterhin Fire-and-Forget“
   und ein Abschnitt „GUI-Update und Offline-Queue“), `docs/MICROCOPY.md`
   (PWA-Zeile), `docs/KONZEPT.md` (Queue-Ablage).
+- **Arbeitsliste gradegezogen:** [TODO.md](TODO.md) stand im Kopf auf 0.32.0,
+  während die App 0.37.2 war; erledigte Punkte hingen mit „*(Erledigt in …)*“
+  weiter in den offenen Tabellen. Jetzt gilt: oben steht, was offen ist (nur
+  noch B22), unten die Erledigt-Tabelle; jedem Punkt ist seine Version
+  zugeordnet. [docs/LUECKEN.md](docs/LUECKEN.md) ist auf 0.38.0 gezogen, hat den
+  fehlenden GUI-Neuentwurf-Abschnitt (0.33.0–0.38.0) bekommen, und die Tabelle
+  „Bewusst offen“ führt statt der drei erledigten Themen nur noch die
+  verbleibenden — jede Zeile mit Status (`Arbeit` / `wartet auf Betrieb` /
+  `entschieden`), die Offline-Queue-Abweichung (`localStorage`) ausgewiesen.
+  `tests/test_ledger_drift.py` hält die drei Regeln fest.
 
 ## [0.37.2] – 2026-09-15
 

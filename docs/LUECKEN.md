@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 13.09.2026 · App-Version 0.26.0. Abgleich von
+> Stand: 15.09.2026 · App-Version 0.38.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version](#15092026--versionen-03300380-gui-neuentwurf-e2e-ohne-mocks-webhook-quittierung-app-version)
   - [12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen](#12092026--version-0230-profile-tankstand-bilanz-stamm-stationen)
   - [11.09.2026 — P-Seite aus der Prognoseverteilung (§4.1–4.3)](#11092026--p-seite-aus-der-prognoseverteilung-4143)
   - [11.09.2026 — P1/P2/P3-Fixes (Prüfstand §3/§7)](#11092026--p1p2p3-fixes-prüfstand-37)
@@ -30,7 +31,7 @@
 
 ## Kurzfassung
 
-| Bereich | Vor B5 (10.09.) | Heute (0.11.0) |
+| Bereich | Vor B5 (10.09.) | Heute (0.38.0) |
 |---|---|---|
 | „Läuft …“ beim Modell-Job | nur Zustand, kein Fortschritt | Phasen, Schritt x/y, Balken, Restschätzung in GUI, Statusdatei und Log |
 | Rechenzeit Modell-Lauf | ~3 min je Station, ein Kern | ~14 s je Station, mehrere Kerne |
@@ -45,6 +46,10 @@
 | Dokumentation | verteilt über Root, `docs/`, `engine/`, `data-tools/`, `rp2/`, `sample/` | ein Ordner `docs/` mit Index, Historisches in `docs/archiv/` (0.10.1) |
 | Beleg-Eingabe | GUI prüft nur „> 0“, Station durfte fehlen | Felder mit den Server-Grenzen (5–100 L, 0,40–5,00 €/L), Buchung ohne Station deaktiviert (E3/E4) |
 | Cheap-Probability ohne Station | Gesamtmedian überstrahlt den Wochentag | umschaltbare Basis: Median derselben Stunde (Spalte) oder Gesamtmedian (B12) |
+| GUI-Aufbau | Alltag/Werkstatt-Doppelung, toter Prototypcode | sechs Bereiche (Jetzt, Woche, Stationen, Labor, Ich, System), Einstieg „Jetzt“, ein Vokabular — GUI-Neuentwurf 0.33.0–0.37.2 |
+| Server ↔ GUI im Test | Browser-Suite mockt jeden API-Pfad | eigene Suite ohne Mocks gegen den echten Demo-Stack (0.38.0) |
+| Webhook Pi → NAS | Fire-and-Forget | Quittierung + Backoff, Zustand in `/collector/status` und in der GUI (0.38.0, B8) |
+| PWA-Shell | Cache-Namen fix `…-v1`, Update unsichtbar | Shell trägt die App-Version, „Neue Version verfügbar“, Offline-Queue für Belege/Vorsätze (0.38.0, B10) |
 
 ## B5: in diesem Durchgang geschlossen
 
@@ -227,6 +232,23 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version
+
+Der GUI-Neuentwurf (Konzept „Entscheidungs-Cockpit“ + [UI-NEUENTWURF.md](UI-NEUENTWURF.md))
+lief in fünf Versionen, danach kamen die drei Lücken, die dieser Durchgang
+schließt. Die Zwischenstände stehen vollständig im [CHANGELOG](../CHANGELOG.md);
+hier der Abgleich mit dem Konzept:
+
+| Punkt | Umsetzung | Konzept/Prüfung |
+|---|---|---|
+| Bereiche statt Modi (0.33.0–0.35.0) | Feste Reihenfolge **Jetzt → Woche → Stationen → Labor → Ich → System**: Entscheidung zuerst, danach der Blick nach vorn, das Set, die Werkstatt, die eigene Bilanz und der Betrieb. „Alltag/Werkstatt“ als Moduswechsel entfällt; veralteter Doppelpfad-Code und die Prototyp-Panels mit erfundenen Zahlen sind entfernt | §0.2/§0.3, §8.1/§8.2, F1; `web/src/views/*`, `views.test.tsx` |
+| Eine Empfehlung, ein Panel (0.33.0) | Ampelkarte, Alternativen und „Rechnet sich der Umweg?“ liegen in „Jetzt“ zusammen; die Werkstatt erklärt (Kalibrierung, Ledger, Schwellen), sie entscheidet nicht | §4.4, §8.1, §8.2 Nr. 5 |
+| Sprache vereinheitlicht (0.34.0–0.36.0) | Bereichsnamen und Zustände in Nutzersprache („Unsicher“, „Keine Angabe“, „Nicht verfügbar“), Glossar-Anker je Fachwort, Zustandstexte als reine Funktionen prüfbar | F2/F3, [MICROCOPY.md](MICROCOPY.md); `microcopy.test.ts` |
+| E2E ohne Mocks (0.38.0) | Eigene Playwright-Suite `web/e2e/demo.spec.ts` + `web/playwright.demo.config.ts` gegen den echten Demo-Stack (Port 1357, `ops/quality/demo_server.py --rebuild`), ohne `page.route`; sie prüft overview → „Jetzt“ mit Zellen, die Tageskurve in Berliner Zeit, die Stationenliste und die ETag-Revalidierung. Der Server-Teil der Zusage liegt als `tests/test_e2e_demo.py` daneben, damit sie auch ohne Browser läuft. In der CI als eigener Schritt | §6 Prüfstand (Server↔GUI), D2/D4; [tests.yml](../.github/workflows/tests.yml) |
+| Webhook-Quittierung (0.38.0, B8) | Der Uploader merkt den Trigger vor und liest die Antwort als Quittierung; ohne sie wiederholt er mit Backoff (30 s … 15 min, höchstens 2 h) und gibt danach **auf** (der Intervaljob bleibt die Rückfallebene). Dauerhafte Fehler (`rejected`, 403) werden nicht wiederholt, sondern benannt. Der Zustand reist als `webhook_*`-Feld im Herzschlag und steht als `webhook` in `/api/v1/collector/status` und in der GUI-Zeile „Trigger Pi → NAS“ | Issue 50, [ARCHITEKTUR.md](ARCHITEKTUR.md#ereignis-pipeline-webhook-statt-reinem-polling); `tests/test_b8_webhook.py` |
+| App-Version + Offline-Queue (0.38.0, B10) | Die Shell trägt die App-Version (beim Build gestempelt; ein stehengebliebener Platzhalter bricht den Build ab), ein wartender Service Worker macht das Update sichtbar („Neue Version verfügbar“, still für die Sitzung). Belege und Vorsätze, die ohne Verbindung anfallen, warten lokal und werden nachgereicht — mit Statuszeile statt „Speichern fehlgeschlagen“ | §5.4, M7; [BETRIEB.md](BETRIEB.md#gui-update-und-offline-queue-b10-seit-0380) |
+| **Abweichung, ausgewiesen** | Die Offline-Queue nutzt `localStorage` statt der im Konzept genannten IndexedDB: winzige JSON-Objekte ohne Binärinhalt, LAN-App ohne Transaktionsbedarf. Grenzen: 50 Einträge, 7 Tage; Beleg-`id` und `tanked_at` entstehen beim Tanken (Server ist über `id` idempotent), 4xx wird gemeldet statt nachgereicht | §5.4, §14 |
+
 ### 12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen
 
 Die vier offenen P1-Punkte aus [TODO.md](../TODO.md) (A1, A2, A4, C2) —
@@ -317,7 +339,7 @@ Rechnung geändert.
 
 | § | Anforderung | Stand |
 |---|---|---|
-| 0.1–0.3 | Drei Fragen, zwei Modi, eine Zahl |fertig (Alltag/Werkstatt-Tabs, Ampelkarte) |
+| 0.1–0.3 | Drei Fragen, zwei Modi, eine Zahl |fertig (sechs Bereiche: **Jetzt/Woche/Stationen/Labor/Ich/System**; die Ampelkarte beantwortet Frage 1 direkt, die übrigen Bereiche folgen demselben Aufbau) |
 | 0.4 | Kalibrierungs-Gate (Brier < 0,25, n ≥ 100) |fertig als hartes Gate; offen bis echte Daten (M7) |
 | 1 | Tankerkönig-Collector, tmpfs, Upload |fertig (M1) |
 | 2 | Selektion δ̂, Bootstrap-KI, AV, Tagesform |fertig (B3.10); **dokumentierte Abweichung** (Stand 10.09.2026, Konzept §8.2 Nr. 7): die Werkstatt-Ansicht ist ein Analyse-Werkzeug und sortiert nach δ̂; Sortierung nach aktueller Empfehlungsstärke bleibt das Zielbild für die Alltags-Ansicht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)) |
@@ -328,11 +350,11 @@ Rechnung geändert.
 | 4.4 | „Keine klare Empfehlung“ |fertig (Grauzone P_besser ∈ [40, 60] % aus den Draws); **fertig**: Güte-Gate als Auswertungsschritt 1 (§4.5) — Rolling-PICP rot → „Keine klare Empfehlung“ ohne Ampel/Prozent (Update 11.09.2026 abends) |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig |
-| 5.4 | Drei Uhren, Episode, Slack-Matching, Due-Prompt |fertig; **Offline-Queue für Fill/Intent offen** (P2) |
+| 5.4 | Drei Uhren, Episode, Slack-Matching, Due-Prompt |fertig; Offline-Queue für Fill/Intent seit 0.38.0 (B10, `localStorage` statt IndexedDB — Abweichung oben ausgewiesen) |
 | 5.5 | Drei Schichten A/B/C |fertig; w(h)-Rückkopplung in Selektion/F3 offen (Datenbedarf ≥ 8 Füllungen) |
 | 6 | Produkt-KPIs | Brier, Trefferquoten, Regret-Ratio fertig; **Top-3-Fenster-Trefferquote offen** (Engine liefert je Tag nur eine Prognosestunde) |
 | 7 | Polling-Fenster 06–24 |fertig |
-| 8.1 | Alltag: Ampel, Alternativen, Tagesstreifen, What-If |fertig |
+| 8.1 | Alltag: Ampel, Alternativen, Tagesstreifen, What-If |fertig im Bereich **Jetzt** (Ampelkarte + „Heute im Blick“ + Umweg-Rechnung) |
 | 8.2 Nr. 1–4, 6–9 | Werkstatt: Regel/ε, Scoreboard, Kalibrierung, Stations-Labor, Fan-Chart/Heatmaps, Meine Stationen, System-Status, API-Explorer |fertig (System-Status jetzt mit Fortschritt) |
 | 8.2 Nr. 5 | Paarvergleich als Werkstatt-Werkzeug |bewusst kein zweites Panel: die Umweg-Rechnung liegt im Alltag („Rechnet sich der Umweg?“) und serverseitig in `/api/v1/route/evaluate`; ein zweites Panel wäre Duplikat. Der tote Prototypcode mit erfundenen Preisen (1,70/1,66 €/L) ist entfernt (Update 11.09.2026 abends) |
 | 9 | Pi ↔ NAS, Archiv, Jobs |fertig + Job-Fortschritt (B5) |
@@ -342,34 +364,38 @@ Rechnung geändert.
 | 11.3 | Detail-Endpunkte + Deprecation |fertig (B5) |
 | 12 P0 | Datenquellen, Erreichbarkeit, E10 |fertig |
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
-| 12 P2 | Push, Belege |offen (siehe unten) |
-| 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig; M3 ohne Echt-Daten-Abnahme |
+| 12 P2 | Push, Belege |Belege fertig (A3/A4/A6, Storno, Bilanz, CSV, Offline-Queue); **Preis-Push offen** (§12 P2, siehe „Bewusst offen“) |
+| 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig (PWA seit 0.38.0 mit Versionierung, Update-Hinweis und Offline-Queue); M3 ohne Echt-Daten-Abnahme |
 | 13 M5 | TankPuls-API |fertig (B4 + B5: Deprecation; Rate-Limit entfernt — LAN-only); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen“) |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
 | 13 M7 | Kalibrierungs-Loop |Vorschlag und Regler fertig (B5); Anziehen der Schwellen erst mit echten Live-Daten sinnvoll |
 
 ## Bewusst offen (Backlog mit Grund)
 
-| Thema | Grund, es jetzt *nicht* zu tun |
-|---|---|
-| **E2E ohne Mocks gegen den Demo-Server** | Die Browser-Suite mockt alle `/api/v1/*`-Pfade (`page.route`) und beweist Rendering-Logik, nicht Server↔GUI-Integration — genau deshalb fielen B1 (NaN brach `/last_forecasts`), B3 (UTC statt Ortszeit) und der defekte Demo-Stack in die 15.09.-Sanity-Check auf, nicht in die CI. Der Demo-Stack liefert seit 0.37.2 die Tageskurve (Stations-Filter in `make_query`), eine echte End-to-End-Prüfung `overview` → „Heute im Blick“ mit Zellen braucht einen Browser: in der Prüf-Sandbox ist der Playwright-Browser nicht installierbar (keine Chromium-Downloads). Dort gehört der Test in `web/e2e/` (eigene Suite, nicht die gemockte). |
-| **PWA/Service Worker für die NAS-GUI (M7)** | Kein Service Worker; als reine LAN-App vertretbar (keine 3G-Szenario, Cache liegt auf dem Server). Der Fallback-Gedanke (Ausfall → andere Oberfläche) gilt nur, wenn die Pi-Adresse bekannt ist: `InstallHint` existiert in der GUI, der Doku-Begriff „installierbar“ fehlt bewusst, solange es kein Offline-Bundle gibt. |
-| **ACI (§3.3)** | Konzept verlangt 4 Wochen Live-Betrieb vor der Aktivierung; ohne echte Scores wäre α eine erfundene Zahl. Bootstrap-Intervalle bleiben als unkalibriert gekennzeichnet. |
-| **M3-Zweitmodell/Ensemble (§3.2)** | Setzt die Abnahme-Kriterien (MASE, Pinball) voraus — die sind ohne echten Datenbestand nicht prüfbar. |
-| **Preis-Push (§12 P2)** | Der **Alarm**-Push ist seit 0.15.0 drin (ntfy, `severity: error` → [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)). Offen bleibt die Meldung „Jetzt 4 ct unter Tagesmedian“: Trigger aus dem Decision Layer sind vorbereitet, aber ungetestet, und der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt (kein Dauerfeuer). |
-| **Top-3-Fenster-Trefferquote (§6)** | Die Engine veröffentlicht je Tag eine Prognosestunde; drei Kandidatenfenster wären geraten. Erst mit Fensterstruktur im Backtest. |
-| **w(h)-Rückkopplung in Selektion/F3 (§5.5)** | Profil ist berechnet (`wallet.wh_hours`), aber erst ab ≥ 8 Füllungen belastbar — vorher wäre der Default die ehrlichere Wahl. |
-| **Markenrabatte (§12 P1)** | `--brand-rebate` ist ein Eingriff in δ̂ und Score; ohne echte Rabattdaten nicht kalibrierbar. |
-| **Standortwahl per `lat`/`lon` (§11.1)** | Die App arbeitet mit dem kuratierten Polling-Set ( Kontingent 1 R/5 min). Freie Umkreissuche bräuchte eigene Requests und ein Kontingent-Modell. |
-| **Offline-Queue für Fill/Intent (§5.4)** | Der Service-Worker hält die letzte Antwort vor; eine IndexedDB-Warteschlange ist sinnvoll, aber erst nötig, wenn Füllungen im echten Betrieb häufig offline erfasst werden. |
-| **E5↔E10-Äquivalenz im Ranking (§10)** | 1,015-Faktor ist eine Näherung; ohne gemessenen Mehrverbrauch des Fahrzeugs wäre das Ranking damit weniger ehrlich, nicht mehr. |
-| **Ensemble-Gewichte aus dem Validierungsfenster statt aus dem Backtest (A10)** | Die Gewichte ∝ 1/MASE entstehen aus der Eine-Schritt-Prognose (5 min) auf den letzten 14 Trainingstagen. Dort trennen sich die Modellkerne kaum: 0,51 / 0,49, obwohl der 72-Stunden-Fehler 2,53 vs. 1,86 ct/L sagt. Grund: auf 5 Minuten dominiert der AR(2)-Nachlauf, den beide Modelle gemeinsam haben; der Unterschied der Tagesform wirkt erst auf Stunden. Richtig wäre die Gewichtung aus dem Rolling-Origin-Backtest (Fehler über 24/72/168 h — genau die Horizonte, die die App ausgibt). Das ist mehr als ein Parameter: der Backtest müsste beide Kerne je Fold bewerten, und die Gewichte müssten je Horizont getrennt geführt werden. Bis dahin ist das Ensemble das, was die Messung oben zeigt: deutlich besser als der alte Hauptpfad, etwas schlechter als das Zweitmodell allein — und beides ist ausgewiesen statt behauptet. |
-| **OpenAPI-Spezifikation (M5)** | Konzept §13 nennt „OpenAPI + Tests grün“ als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
-| **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](archiv/PRUEFSTAND-2026-09-10.md)). |
-| **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
-| **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
-| **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). |
-| **Polling-Set-Umbau bei toten Stationen (A12)** | Tote Stationen fallen aus dem Ranking, das Polling-Set bleibt stabil — Tausch nur mit Bestätigung ([STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)). Drei Gründe: (1) Wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden — ein automatischer Ausschluss wäre eine Selbst-Tot-Schleife. (2) Die Batch-Ökonomie (`prices.php`: bis zu 10 UUIDs je Request) macht eine tote Station zu höchstens einem Zehntel Request je Poll — kein Kontingent-Problem, das Automatik rechtfertigt. (3) Der Pfad Alarm → System-Tab → Tausch ist dokumentiert und in der GUI verlinkt. |
+| Thema | Status | Grund, es jetzt *nicht* zu tun |
+|---|---|---|
+| **ACI (§3.3)** | wartet auf Betrieb | Konzept verlangt 4 Wochen Live-Betrieb vor der Aktivierung; ohne echte Scores wäre α eine erfundene Zahl. Bootstrap-Intervalle bleiben als unkalibriert gekennzeichnet. |
+| **M3-Zweitmodell/Ensemble (§3.2)** | wartet auf Betrieb | Setzt die Abnahme-Kriterien (MASE, Pinball) voraus — die sind ohne echten Datenbestand nicht prüfbar. |
+| **Preis-Push (§12 P2)** | Arbeit | Der **Alarm**-Push ist seit 0.15.0 drin (ntfy, `severity: error` → [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)). Offen bleibt die Meldung „Jetzt 4 ct unter Tagesmedian“: Trigger aus dem Decision Layer sind vorbereitet, aber ungetestet, und der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt (kein Dauerfeuer). |
+| **Top-3-Fenster-Trefferquote (§6)** | Arbeit | Die Engine veröffentlicht je Tag eine Prognosestunde; drei Kandidatenfenster wären geraten. Erst mit Fensterstruktur im Backtest. |
+| **w(h)-Rückkopplung in Selektion/F3 (§5.5)** | wartet auf Betrieb | Profil ist berechnet (`wallet.wh_hours`), aber erst ab ≥ 8 Füllungen belastbar — vorher wäre der Default die ehrlichere Wahl. |
+| **Markenrabatte (§12 P1)** | entschieden | `--brand-rebate` ist ein Eingriff in δ̂ und Score; ohne echte Rabattdaten nicht kalibrierbar. |
+| **Standortwahl per `lat`/`lon` (§11.1)** | entschieden | Die App arbeitet mit dem kuratierten Polling-Set ( Kontingent 1 R/5 min). Freie Umkreissuche bräuchte eigene Requests und ein Kontingent-Modell. |
+| **E5↔E10-Äquivalenz im Ranking (§10)** | entschieden | 1,015-Faktor ist eine Näherung; ohne gemessenen Mehrverbrauch des Fahrzeugs wäre das Ranking damit weniger ehrlich, nicht mehr. |
+| **Ensemble-Gewichte aus dem Validierungsfenster statt aus dem Backtest (A10)** | Arbeit | Die Gewichte ∝ 1/MASE entstehen aus der Eine-Schritt-Prognose (5 min) auf den letzten 14 Trainingstagen. Dort trennen sich die Modellkerne kaum: 0,51 / 0,49, obwohl der 72-Stunden-Fehler 2,53 vs. 1,86 ct/L sagt. Grund: auf 5 Minuten dominiert der AR(2)-Nachlauf, den beide Modelle gemeinsam haben; der Unterschied der Tagesform wirkt erst auf Stunden. Richtig wäre die Gewichtung aus dem Rolling-Origin-Backtest (Fehler über 24/72/168 h — genau die Horizonte, die die App ausgibt). Das ist mehr als ein Parameter: der Backtest müsste beide Kerne je Fold bewerten, und die Gewichte müssten je Horizont getrennt geführt werden. Bis dahin ist das Ensemble das, was die Messung oben zeigt: deutlich besser als der alte Hauptpfad, etwas schlechter als das Zweitmodell allein — und beides ist ausgewiesen statt behauptet. |
+| **OpenAPI-Spezifikation (M5)** | entschieden | Konzept §13 nennt „OpenAPI + Tests grün“ als Fertig-Kriterium; bis dahin ist [API.md](API.md) die verbindliche Endpunkt-Beschreibung. Eine aus `app/server.py` generierte OpenAPI-Datei wäre Werkzeugarbeit ohne neuen Inhalt — erst mit einer zweiten API-Verbraucherin lohnend. |
+| **Feedback-Ledger-Persistenz (JSON vs. relationale DB)** | wartet auf Betrieb | Gutachten-Empfehlung (ACID via SQLite/PostgreSQL). Der JSON-Store funktioniert im Ein-Nutzer-NAS-Betrieb; entschieden wird zusammen mit Retention/Rotation ([Prüfstand §3.5](archiv/PRUEFSTAND-2026-09-10.md)). |
+| **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | wartet auf Betrieb | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
+| **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | entschieden | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
+| **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Arbeit | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). |
+| **Polling-Set-Umbau bei toten Stationen (A12)** | entschieden | Tote Stationen fallen aus dem Ranking, das Polling-Set bleibt stabil — Tausch nur mit Bestätigung ([STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)). Drei Gründe: (1) Wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden — ein automatischer Ausschluss wäre eine Selbst-Tot-Schleife. (2) Die Batch-Ökonomie (`prices.php`: bis zu 10 UUIDs je Request) macht eine tote Station zu höchstens einem Zehntel Request je Poll — kein Kontingent-Problem, das Automatik rechtfertigt. (3) Der Pfad Alarm → System-Tab → Tausch ist dokumentiert und in der GUI verlinkt. |
+
+
+Status: **Arbeit** = offener Arbeitspunkt (in [TODO.md](../TODO.md)) ·
+**wartet auf Betrieb** = entschieden, aber erst mit echten Daten/Zeit prüfbar ·
+**entschieden** = bewusst so gelassen, kein Arbeitspunkt mehr. Erledigte Themen
+verlassen diese Tabelle — E2E ohne Mocks, PWA/Service Worker und die
+Offline-Queue sind seit 0.38.0 umgesetzt und oben dokumentiert.
 
 ## Nicht umgesetzt und warum nicht
 
