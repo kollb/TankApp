@@ -1,6 +1,6 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 13.09.2026 · App-Version 0.26.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
+> Stand: 15.09.2026 · App-Version 0.38.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
 > und [INSTALL.md](INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
 > benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](BETRIEB.md).
 

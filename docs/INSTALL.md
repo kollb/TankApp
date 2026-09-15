@@ -1,6 +1,6 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 12.09.2026 · App-Version 0.11.0.  
+**Das ist der einzige Installationseinstieg.** Stand: 15.09.2026 · App-Version 0.38.0.  
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
 Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
 [BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](API.md).  

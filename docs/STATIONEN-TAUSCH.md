@@ -1,5 +1,9 @@
 # Stationen im Polling-Set tauschen
 
+> Stand: 15.09.2026 · App-Version 0.38.0. Runbook für ein Set, das
+> `insufficient_or_invalid_training_data` meldet — Werkzeuge:
+> `data-tools/discover_stations.py`, `data-tools/swap_stations.py`.
+
 Eine beobachtete Station liefert dauerhaft keine verwertbaren Preise: geschlossen,
 führt den Kraftstoff nicht (z. B. `e10: false`), UUID tot. Dann zieht sie dem
 Modelllauf jede Stunde einen `insufficient_or_invalid_training_data`-Fehler und

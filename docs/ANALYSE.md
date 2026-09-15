@@ -1,6 +1,6 @@
 # TankApp Analyse — Selektion, Modelle, Heatmaps
 
-> Stand: 13.09.2026 · App-Version 0.25.0 — B3-Aggregate, P-Seite aus der
+> Stand: 15.09.2026 · App-Version 0.38.0 — B3-Aggregate, P-Seite aus der
 > Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
 > enthalten; seit 0.25.0 Coverage-Gate im Polling-Fenster und relativ zum
 > Stadt-Bestwert (B21). Methodik-Nachschlagewerk, keine Checkliste: Einrichten

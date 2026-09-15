@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 13.09.2026 · App-Version 0.26.1 — alles, was nach der Ersteinrichtung
+> Stand: 15.09.2026 · App-Version 0.38.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
 > GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
