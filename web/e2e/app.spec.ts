@@ -177,7 +177,8 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Aktive Schwellen-Tabelle aus /api/v1/stats/summary — schreibgeschützt,
   // Startwerte der Engine (ohne Daten keine Abweichung möglich). Der
   // Endpunkt steht im Tooltip, nicht im Fließtext (MICROCOPY §6).
-  const source = page.getByText("schreibgeschützt");
+  // exact: dieselbe Wort steht auch im sr-only-Caption der Tabelle.
+  const source = page.getByText("schreibgeschützt", { exact: true });
   await expect(source).toBeVisible();
   await expect(source).toHaveAttribute(
     "title",
