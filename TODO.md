@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 15.09.2026, App-Version 0.39.0)
+# TankApp — ToDo (Stand 15.09.2026, App-Version 0.40.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -48,19 +48,17 @@ Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 ## C. GUI / UX
 
-*Keine offenen Punkte.* C3 (Karte), C5 (Barrierefreiheit), C7 (Glossar) und C8
-(Mobile/PWA) sind erledigt; C1/C2/C4/C6/C9–C11 waren davor geschlossen.
-**Aber:** Diese Liste prüft Konzept ↔ Code, nicht Bedienbarkeit. Der Befund
-[docs/GUI-UX-BEFUND.md](docs/GUI-UX-BEFUND.md) (U1–U8) hält, was dort nicht
-erfasst ist — Typografie, Geräte-Raster, Routing, Designsystem und eine
-Lighthouse-Messung, die den Labor-Bereich nie sieht. Der Text-Befund
-[docs/TEXT-BEFUND.md](docs/TEXT-BEFUND.md) (T1–T13) hält zusätzlich, wo die
-Nutzertexte gegen das Regelwerk [docs/MICROCOPY.md](docs/MICROCOPY.md)
-abweichen (u. a. Wochenlinien-Legende, Fehler im Erfolgs-Banner,
-Namens-Drift). **T1–T13 sind in 0.39.0 umgesetzt** (Erledigt-Tabelle unten);
-offen ist der UX-Befund: Die zwei P0-Zeilen dort (U2 mobil, U7 Gate) werden zu
-C-Punkten, sobald sie angefasst werden — vorher stünde hier ein Befund ohne
-Owner.
+| # | Prio | Fehlt | Warum es zählt / Definition of Done |
+|---|---|---|---|
+| C12 | D | **Desktop: zweispaltiger Inhalt je Bereich** | U3 (0.40.0) hat das Geräte-Raster gebracht (Bottom-Nav mobil, Seitenleiste desktop), der Inhalt bleibt aber einspaltig; [UI-NEUENTWURF](docs/UI-NEUENTWURF.md) §13 sieht auf großen Viewports zwei Spalten vor (Hauptinhalt + Nebeninformationen). Sobald angefasst: je Bereich die zweite Spalte, geprüft ab ~1280 px. |
+
+C1–C11 sind geschlossen, der UX-Befund U1–U8 ist in **0.40.0** umgesetzt
+(Erledigt-Tabelle unten); das Protokoll liegt als
+[archiv/GUI-UX-BEFUND.md](docs/archiv/GUI-UX-BEFUND.md) mit Erledigt-Vermerk.
+Der Text-Befund
+[docs/TEXT-BEFUND.md](docs/TEXT-BEFUND.md) (T1–T13) war die Vorlage für 0.39.0.
+C12 ist der ehrliche Rest aus U3: nicht Teil der U-DoDs, die dort messbar
+waren, sondern die letzte offene Zusage des §13-Rasters.
 
 ---
 
@@ -103,6 +101,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.40.0 (15.09.2026) | **GUI-UX-Befund U1–U8 umgesetzt** (Vermessung gegen [UI-NEUENTWURF.md](docs/UI-NEUENTWURF.md), Protokoll: [archiv/GUI-UX-BEFUND.md](docs/archiv/GUI-UX-BEFUND.md)): **U2 (P0)** Tagesstreifen mobil lesbar (390-px-Test in `views/Jetzt.test.tsx`), **U7 (P0)** Lighthouse misst drei echte Zustände (Einstieg, `?tab=labor`, leerer Setup-Server Port 1356), Byte-/CLS-Budgets scharf, Code-Splitting pro Bereich (`views/*` als eigene Chunks), **U1 (P1)** Fließtext/Zahlen ≥ 12 px und rem statt px (Typografie-Ratchet in `a11y.test.ts`), **U6 (P1)** alle Flächen über `panel` + Radius-Rampe (`components/ui.tsx`, Ratchet gegen wilde `rounded-`-Klassen), **U3 (P1)** Geräte-Raster: Bottom-Nav mobil (6 Bereiche, ≥ 44 px) / Seitenleiste desktop (`components/AppNav.tsx`), Glossar aus der Hauptnavigation in den Labor-Kopf, Kopfzeile eine Zeile — offen bleibt C12 (zweispaltiger Inhalt desktop), **U4 (P2)** Bereichs-Routing in der URL (`?tab=…&section=…`, Browser-Zurück werkt, `routing.test.ts`), **U5 (P2)** Erklär-Treppe: Ebene 1 öffnet überall das Sheet am Wirkungsort, `labReturn`-Buchhaltung entfernt (Rückweg ist das Browser-Zurück), **U8 (P2)** Props-Drilling aufgelöst: `state/overview.tsx` (OverviewContext), Labor 41 → 4 Props, System 32 → 1 Prop, Dashboard 2 201 → 564 Zeilen, Labor-Modell und System-Terminal als Bereichszustand in den Views. Dazu archiviert: GUI-UX-BEFUND mit Erledigt-Vermerk. |
 | 0.39.0 (15.09.2026) | **Text-Befund T1–T13 umgesetzt** (Lektorats-Befund gegen [MICROCOPY.md](docs/MICROCOPY.md)): T1 Wochenlinie in einer Richtung (höchster Balken = günstigster Tag, Test in `views/Woche.test.tsx`), T2 Feedback-Kanal mit Ton (`components/FeedbackBanner.tsx`: ok/warn/error, keine `✓`/`!`-Präfixe, keine Ausrufezeichen), T3 zwei Tankmengen benannt (10–80 L Rechnung / 5–100 L Beleg) und Fehlertext an das Verhalten gekoppelt, T4 „A gegen B“ unterscheidet eine und beide Seiten, T5 Tagebuch-Filter auf die §4c-Worte (`DIARY_FILTERS`), T6 ein Name je Größe (Preis-Abstand, Mehrkosten zum perfekten Timing, Perfektes Timing (Orakel), Günstig-Chance, Alles ok), T7 ausgemusterte Wörter ersetzt (Backtest, Kennzahlen der Engine, Zurück, Beleg), T8 deutsche Primärlabel (Stoßzeit/Nebenzeit, außerhalb der Stichprobe, kein `LIVE`-Badge), T9 Pfade nur noch im System-Bereich (§6 präzisiert, `polling_missing` verweist statt zu doppeln), T10 Anrede-Regel in §1 geklärt und die vier Stellen formuliert, T11 Wort-Familien festgezogen (Beleg, Ersparnis ohne Vorzeichen, Alter über `ageWord`, Einheit „L“), T12 Frage/Antwort aus einer Quelle und Doppelungen aufgelöst, T13 Kleinschliff (16 Einzelfunde inkl. `percentLabel` im Diagramm-Tooltip und Emoji-freie Fallback-GUI). Ratchets erweitert: `microcopy.test.ts` (Wortliste, Synonyme, §4c-Worte, Ausrufezeichen), `format-convention.test.ts` (LabCharts-Tooltip), `components/FeedbackBanner.test.tsx` neu. |
 | 0.38.0 (15.09.2026) | **E2E ohne Mocks, Webhook-Quittierung (B8), App-Version + Offline-Queue (B10):** eigene Playwright-Suite `web/e2e/demo.spec.ts` + `web/playwright.demo.config.ts` gegen den echten Demo-Stack (Port 1357, `ops/quality/demo_server.py --rebuild`), ohne `page.route`, in der CI als eigener Schritt; der Server-Teil der Zusage läuft ohne Browser als `tests/test_e2e_demo.py` (Overview → Tageskurve, ETag→304, Health). Der Uploader quittiert den NAS-Trigger, wiederholt mit Backoff (30 s … 15 min, höchstens 2 h), gibt danach auf (Intervaljob bleibt Rückfallebene) und meldet den Zustand als `webhook_*` im Herzschlag → `/api/v1/collector/status → webhook` und GUI-Zeile „Trigger Pi → NAS“. Die App-Shell trägt die App-Version (Vite-Stempel, Platzhalter bricht den Build ab), ein wartender Service Worker macht das Update sichtbar; Offline-Queue für Belege/Vorsätze (`localStorage` statt IndexedDB, ausgewiesen; idempotent über die Beleg-`id`). Tests: `test_b8_webhook.py` (10), `test_e2e_demo.py` (3), `offline-queue.test.ts` (11), `service-worker.test.ts` (5), `UpdateBanner.test.tsx` (3). |
 | 0.37.2 (15.09.2026) | **Sanity-Check-Fixes (Audit B1–B12 + M1/M8, keine TODO-IDs):** B1 NaN→null in `last_forecasts`/`forecast`/`day` (JSON-Sanitizer + `cache_forecasts`-Validierung + Integrationstest), B2 `timeInputToBerlinIso`-Vorzeichen (Sommer −4 h / Winter −2 h) + Mitternachts-Rollfall, B3 Fallback-F1-Fenster in Ortszeit, B4 Proxy-Write-Forwarding (`POST`/`PUT`/`DELETE`/`PATCH` → NAS, offline 503-JSON statt 501), B5 System-Frische je Datenart (`model` 24 h statt 180 min), B6 `hourRangeLabel` für Fenster < 1 h, B7 „Bestes Fenster“ benennt den echten Tag (Fallback + NAS), B8 Fallback-F2-Frischegate, B9 `freshCount` kraftstofffilternd, B10 `--line`→`--border`, B11 Mitternachtszelle (19 Zellen, NAS↔Pi-Parität), B12 Template-Kommentar v4, Zeitbombe `weekWindowSummary` (fester Referenzzeit), Demo-Stack `make_query`-Stations-Filter, Liter-Grenze auf 100 vereinheitlicht (Profil/Share ↔ Beleg/Pi), Fallback 4.1 (inkl. M8 `role="img"`+`aria-label` im Tagesstreifen). Offen begründet in [LUECKEN.md](docs/LUECKEN.md): E2E ohne Mocks (Playwright-Browser in der Sandbox nicht installierbar), PWA/Service-Worker (B10/C8) — beide mit 0.38.0 nachgeholt. |

@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 15.09.2026 · App-Version 0.39.0. Abgleich von
+> Stand: 15.09.2026 · App-Version 0.40.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).

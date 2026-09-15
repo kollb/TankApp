@@ -1,6 +1,6 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 15.09.2026 · App-Version **0.38.0** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 15.09.2026 · App-Version **0.40.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
