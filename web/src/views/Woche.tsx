@@ -77,9 +77,9 @@ function Stars({ value, withWord = false }: { value: number; withWord?: boolean 
           : "noch nicht messbar";
   if (value === 0)
     return withWord ? (
-      <span className="text-[10px] text-slate-500">{word}</span>
+      <span className="text-xs text-slate-500">{word}</span>
     ) : (
-      <span className="text-[10px] text-slate-600" aria-label={word}>
+      <span className="text-xs text-slate-600" aria-label={word}>
         ···
       </span>
     );
@@ -97,7 +97,7 @@ function Stars({ value, withWord = false }: { value: number; withWord?: boolean 
           aria-hidden="true"
         />
       ))}
-      {withWord && <span className="ml-1 text-[10px] text-slate-400">{word}</span>}
+      {withWord && <span className="ml-1 text-xs text-slate-400">{word}</span>}
     </span>
   );
 }
@@ -146,7 +146,7 @@ function WeekLine({ days }: { days: WeekDay[] }) {
                     }`
               }
             />
-            <span className="text-[9px] font-semibold text-slate-500">
+            <span className="text-xs font-semibold text-slate-500">
               {day.shortDay}
             </span>
           </div>
@@ -235,16 +235,16 @@ export function WocheView(props: WocheViewProps) {
           <button
             onClick={() => setTankOpen((value) => !value)}
             aria-expanded={tankOpen}
-            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-slate-600"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
           >
             Ändern
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-slate-500">{tankLine.detail}</p>
+        <p className="mt-1 text-xs text-slate-500">{tankLine.detail}</p>
         {tankOpen && (
           <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400">
+              <span className="text-xs font-semibold text-slate-400">
                 Schnellauswahl:
               </span>
               {TANK_QUICK.map((item) => (
@@ -252,7 +252,7 @@ export function WocheView(props: WocheViewProps) {
                   key={item.percent}
                   onClick={() => setTankPercent(item.percent)}
                   aria-pressed={tankPercent === item.percent}
-                  className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
                     tankPercent === item.percent
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600"
@@ -264,7 +264,7 @@ export function WocheView(props: WocheViewProps) {
               {tankPercent !== null && (
                 <button
                   onClick={() => setTankPercent(null)}
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-500 hover:text-slate-300"
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300"
                 >
                   Keine Angabe
                 </button>
@@ -285,7 +285,7 @@ export function WocheView(props: WocheViewProps) {
                   valueText={`${deTrimmed(tankPercent, 0)} % Füllstand`}
                   valueSpeech={`${deTrimmed(tankPercent, 0)} Prozent Füllstand`}
                 />
-                <p className="mt-2 text-[10px] text-slate-500">
+                <p className="mt-2 text-xs text-slate-500">
                   Tankgröße {deTrimmed(tankCapacity, 0)} L · Verbrauch{" "}
                   {deTrimmed(consumption, 1)} L/100 km — geändert wird beides
                   unter „Ich“.
@@ -359,7 +359,7 @@ export function WocheView(props: WocheViewProps) {
                           : "cursor-default border-slate-800/60 bg-slate-950/40"
                     } ${day.uncertain && hasWindow ? "opacity-70" : ""}`}
                   >
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                       {day.shortDay}
                       {day.isToday ? " · heute" : ""}{" "}
                       <span className="font-normal normal-case text-slate-600">
@@ -368,24 +368,24 @@ export function WocheView(props: WocheViewProps) {
                     </span>
                     {hasWindow && day.window ? (
                       <>
-                        <span className="font-mono text-[11px] font-bold text-emerald-300">
+                        <span className="font-mono text-xs font-bold text-emerald-300">
                           {formatWindowRange(day.window)}
                         </span>
                         <Stars value={day.stars} />
                         {day.uncertain && (
-                          <span className="text-[9px] text-slate-500">
+                          <span className="text-xs text-slate-500">
                             noch unsicher
                           </span>
                         )}
                       </>
                     ) : (
-                      <span className="text-[11px] text-slate-600">—</span>
+                      <span className="text-xs text-slate-600">—</span>
                     )}
                   </button>
                 );
               })}
             </div>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
               ★ = Sicherheit des Fensters (Prozent im Detail, Schwellen im
               Labor). Leere Tage: kein Fenster mit Vorsprung — keine
               Erfindung. Tage 5–7 sind „noch unsicher“.
@@ -397,7 +397,7 @@ export function WocheView(props: WocheViewProps) {
       {/* ③ Ausgewählt */}
       {selected.window && summary && list.length > 0 && (
         <div className={`${panel} mt-4 p-4 sm:p-5`}>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+          <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">
             Ausgewählt
           </p>
           <h3 className="mt-1 text-lg font-bold text-white">{summary.headline}</h3>
@@ -443,17 +443,17 @@ export function WocheView(props: WocheViewProps) {
       {list.length > 0 && (
         <>
           <div className={`${panel} mt-4 p-4`}>
-            <p className="mb-3 text-[10px] uppercase tracking-wider text-slate-500">
+            <p className="mb-3 text-xs uppercase tracking-wider text-slate-500">
               Wochenlinie (Tagesbestwerte)
             </p>
             <WeekLine days={days} />
-            <p className="mt-2 text-[10px] text-slate-500">
+            <p className="mt-2 text-xs text-slate-500">
               Balken = günstigster erwarteter Preis des Tages: höher =
               günstiger · grau = kein Fenster.
             </p>
           </div>
           <div className={`${panel} mt-4 overflow-hidden`}>
-            <p className="border-b border-slate-800 px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500">
+            <p className="border-b border-slate-800 px-4 py-2.5 text-xs uppercase tracking-wider text-slate-500">
               Alle Fenster nach Ersparnis
             </p>
             <div className="divide-y divide-slate-800/80">
@@ -494,7 +494,7 @@ export function WocheView(props: WocheViewProps) {
       {/* Frische-Fußzeile */}
       <p
         role="status"
-        className={`mt-4 text-[11px] leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
+        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
       >
         {freshness.text} · {activeCity || "kein Ort gewählt"}
         {line.length > 0

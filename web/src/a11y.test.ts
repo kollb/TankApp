@@ -4,7 +4,8 @@
 // Querformat und Installationshinweis. Der Test liest die Quelle als Text:
 // Er prüft die Zusagen, nicht die Optik.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -26,6 +27,12 @@ function read(relativePath: string): string {
 }
 
 const STYLES = read("styles.css");
+// U1-Ratchet: alle Quelldateien einlesen. Wie `read` über einen variablen
+// Pfad, damit Vite den Ausdruck nicht als Asset-URL umschreibt.
+function dirOf(relativePath: string): string {
+  return dirname(fileURLToPath(new URL(relativePath, import.meta.url)));
+}
+const SRC_ROOT = dirOf("styles.css");
 const DASHBOARD = read("Dashboard.tsx");
 const SLIDER = read("components/PrecisionSlider.tsx");
 const MAP = read("components/StationMap.tsx");
@@ -118,6 +125,56 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
     };
     for (const [color, surface] of Object.entries(palette)) {
       expect(contrast(color, surface), `${color} auf ${surface}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U1 — Typografie: keine px-fixierte Kleinschrift.
+//
+// UI-NEUENTWURF §14: „System-Schriftgröße wird respektiert (keine
+// px-Fixierung der Fließtexte)“. Gemessen waren ~430 Stellen auf 8–11 px —
+// Lesegröße unter der Wahrnehmungsschwelle und am Browser-Einstellung vorbei.
+// Das Ratchet verbietet jede px-fixierte Textgröße unter 12 px; Ausnahmen in
+// rem (z. B. der Tagesstreifen, dessen Zellen schmal sind und dessen Werte
+// zusätzlich im `title`/`aria-label` stehen) bleiben möglich, weil sie mit
+// der Systemschrift skalieren.
+// ---------------------------------------------------------------------------
+describe("U1: Typografie-Ratchet", () => {
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const path = `${dir}/${entry}`;
+      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
+      else if (/\.tsx?$/.test(entry) && !entry.includes(".test."))
+        out.push(path);
+    }
+    return out;
+  }
+
+  const files = sourceFiles(SRC_ROOT);
+
+  it("keine Textgröße unter 12 px als px-Fixierung", () => {
+    const offenses: string[] = [];
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      for (const match of content.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)) {
+        if (Number(match[1]) < 12) {
+          offenses.push(`${file}: text-[${match[1]}px]`);
+        }
+      }
+    }
+    expect(
+      offenses,
+      `px-fixierte Kleinschrift gefunden:\n${offenses.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("die 8/9-px-Klassen des Erstbefunds sind ausdrücklich verboten", () => {
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      expect(content, `${file} nutzt text-[8px]`).not.toContain("text-[8px]");
+      expect(content, `${file} nutzt text-[9px]`).not.toContain("text-[9px]");
     }
   });
 });

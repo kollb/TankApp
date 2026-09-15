@@ -12,7 +12,7 @@ export function GlossaryView() {
   return (
     <>
       <div className="mb-6">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-sky-400">
+        <p className="mb-1 text-xs font-bold uppercase tracking-[.2em] text-sky-400">
           Hilfe · Nachschlagen
         </p>
         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
@@ -52,12 +52,12 @@ export function GlossaryView() {
                 <Info size={14} aria-hidden="true" />
               </span>
             </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-slate-400">
+            <p className="mt-3 text-sm leading-relaxed text-slate-400">
               {entry.long}
             </p>
             {entry.anchor && (
               <p
-                className="mt-2 text-[11px] text-slate-500"
+                className="mt-2 text-xs text-slate-500"
                 title={`docs/ANALYSE.md#${entry.anchor}`}
               >
                 Mehr dazu steht in der Analyse (Doku).
@@ -82,7 +82,7 @@ export function GlossaryView() {
           mit Formeln und Quellen. Das Regelwerk für alle Texte liegt im
           Microcopy-Dokument.
         </p>
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
           Sprache vor Rechnung: Jeder i-Punkt im Labor verweist hierher
           — ein Tap zeigt die Kurzerklärung, diese Seite die Einordnung.
         </p>

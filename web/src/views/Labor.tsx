@@ -200,7 +200,7 @@ function LabBlock({
         </span>
         <span className="min-w-0 flex-1">
           <span
-            className={`block text-[10px] font-bold uppercase tracking-[.2em] ${LAB_ACCENT}`}
+            className={`block text-xs font-bold uppercase tracking-[.2em] ${LAB_ACCENT}`}
           >
             {headline}
           </span>
@@ -233,7 +233,7 @@ function LabBlock({
 function ThreeSentences({ sentences }: { sentences: string[] }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3.5">
-      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
+      <p className="text-xs font-bold uppercase tracking-[.2em] text-slate-500">
         In drei Sätzen
       </p>
       <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-sm leading-relaxed text-slate-200">
@@ -249,10 +249,10 @@ function ThreeSentences({ sentences }: { sentences: string[] }) {
 function ForTheCurious({ children }: { children: ReactNode }) {
   return (
     <details className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40">
-      <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-slate-400 hover:text-slate-200">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200">
         Für Neugierige: Methode, Fachwort, Formel
       </summary>
-      <div className="space-y-2 border-t border-slate-800/70 px-3 py-3 text-[11px] leading-relaxed text-slate-400">
+      <div className="space-y-2 border-t border-slate-800/70 px-3 py-3 text-xs leading-relaxed text-slate-400">
         {children}
       </div>
     </details>
@@ -263,10 +263,10 @@ function ForTheCurious({ children }: { children: ReactNode }) {
 function SelfCheck({ question, answer }: { question: string; answer: string }) {
   return (
     <details className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/5">
-      <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-violet-200">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-violet-200">
         Selbst prüfen: {question}
       </summary>
-      <p className="border-t border-violet-500/20 px-3 py-3 text-[11px] leading-relaxed text-slate-300">
+      <p className="border-t border-violet-500/20 px-3 py-3 text-xs leading-relaxed text-slate-300">
         {answer}
       </p>
     </details>
@@ -278,7 +278,7 @@ function ReadingAid({ headline, text }: { headline: string; text: string }) {
   return (
     <div className="mt-2">
       <p className="text-xs font-semibold text-slate-200">{headline}</p>
-      <p className="text-[11px] leading-relaxed text-slate-500">{text}</p>
+      <p className="text-xs leading-relaxed text-slate-500">{text}</p>
     </div>
   );
 }
@@ -293,7 +293,7 @@ function driftWord(status: string | null | undefined): string {
 /** Prinzip-Skizze: ehrlich beschriftet, wenn eigene Daten fehlen (§10). */
 function SketchNote({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2 text-[11px] leading-relaxed text-amber-300/80">
+    <p className="mb-2 text-xs leading-relaxed text-amber-300/80">
       {children}
     </p>
   );
@@ -492,7 +492,7 @@ export function LaborView(props: LaborViewProps) {
       {/* Labor-Kopf (§6.1): eigener Kopf, eigene Farbe, ein Weg zurück */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className={`text-[10px] font-bold uppercase tracking-[.3em] ${LAB_ACCENT}`}>
+          <p className={`text-xs font-bold uppercase tracking-[.3em] ${LAB_ACCENT}`}>
             ◈ Labor
           </p>
           <h1 id="labor-title" className="mt-1 text-2xl font-bold tracking-tight text-white">
@@ -504,7 +504,7 @@ export function LaborView(props: LaborViewProps) {
             Quiz, kein Fortschritt, keine Häkchen.
           </p>
           {labOriginLine(origin) && (
-            <p className="mt-1 text-[11px] font-semibold text-violet-200">
+            <p className="mt-1 text-xs font-semibold text-violet-200">
               {labOriginLine(origin)}
             </p>
           )}
@@ -543,7 +543,7 @@ export function LaborView(props: LaborViewProps) {
             style={{ width: `${trustPercent === null ? 0 : Math.min(100, trustPercent)}%` }}
           />
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">
           {advice && settled > 0
             ? `Versprochen waren im Mittel ${promised === null ? "—" : percentLabel(promised, 0)} — eingetroffen sind ${percentLabel(trustPercent!, 0)}. ` +
               `(${wins} richtig · ${losses} daneben · ${ties} unentschieden` +
@@ -563,11 +563,11 @@ export function LaborView(props: LaborViewProps) {
           )}
         </p>
         {m7Line && (
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{m7Line}</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7Line}</p>
         )}
         <button
           onClick={() => jumpTo("sicherheit")}
-          className="mt-2 text-[11px] font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
+          className="mt-2 text-xs font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
         >
           Wie wird das gezählt?
         </button>
@@ -580,7 +580,7 @@ export function LaborView(props: LaborViewProps) {
             key={section.id}
             onClick={() => jumpTo(section.id)}
             aria-expanded={open[section.id]}
-            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
               open[section.id]
                 ? "border-violet-500/40 bg-violet-500/10 text-violet-200"
                 : "border-slate-700 bg-slate-900/60 text-slate-400 hover:text-slate-200"
@@ -610,7 +610,7 @@ export function LaborView(props: LaborViewProps) {
               "Je weiter der Blick nach vorn geht, desto breiter wird das Band — Tage 5 bis 7 sind sichtbar unsicher.",
             ]}
           />
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-500">Horizont:</span>
             {[
               { days: 0, label: "24 Stunden", enabled: true },
@@ -717,7 +717,7 @@ export function LaborView(props: LaborViewProps) {
               AR(2)-Rest die Verteilung der nächsten Stunden; die Bänder sind
               Quantile der Bootstrap-Verteilung.
             </p>
-            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-[10.5px] text-slate-300">
+            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-xs text-slate-300">
               q̂(τ, h) mit τ ∈ {"{"}.005, .025, .10, .50, .90, .975, .995{"}"} ·
               Band₈₀ = [q̂.₁₀, q̂.₉₀] · Band₉₅ = [q̂.₀₂₅, q̂.₉₇₅]
             </div>
@@ -770,7 +770,7 @@ export function LaborView(props: LaborViewProps) {
                 <p className="text-xs font-semibold text-slate-200">
                   Was die App selbst prüft
                 </p>
-                <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-300">
+                <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-300">
                   <li>
                     <strong className="text-slate-100">Band-Trefferquote (PICP 95):</strong>{" "}
                     {metrics?.picp95_pct != null
@@ -816,7 +816,7 @@ export function LaborView(props: LaborViewProps) {
                   <p className="text-xs font-semibold text-slate-200">
                     Übergang Archiv → Live-Polling
                   </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
                     {transitionLine}
                   </p>
                 </div>
@@ -830,7 +830,7 @@ export function LaborView(props: LaborViewProps) {
               Führerschein-Prüfung der App: erst ab 100 abgerechneten
               Empfehlungen und Brier &lt; 0,25 zeigt sie Prozente.
             </p>
-            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-[10.5px] text-slate-300">
+            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-xs text-slate-300">
               Brier = mean((p − o)²), o ∈ {"{"}0, 1{"}"} · Gate: n ≥{" "}
               {advice?.min_recommendations ?? 100} ∧ Brier &lt;{" "}
               {deTrimmed(advice?.brier_threshold ?? 0.25, 2)}
@@ -890,7 +890,7 @@ export function LaborView(props: LaborViewProps) {
               <p className="text-xs font-semibold text-slate-200">
                 Wochenrhythmus: Wann ist es wo billig?
               </p>
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <label className="flex items-center gap-1 text-slate-400">
                   Art
                   <select
@@ -968,7 +968,7 @@ export function LaborView(props: LaborViewProps) {
               </div>
             )}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px]">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
             <button
               onClick={() => onNavigate("stations")}
               className="font-semibold text-violet-300 underline underline-offset-4 hover:text-violet-200"
@@ -991,7 +991,7 @@ export function LaborView(props: LaborViewProps) {
               der Mittelwert der Preise. Nur so verschwindet der Tagesgang aus
               dem Vergleich.
             </p>
-            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-[10.5px] text-slate-300">
+            <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-xs text-slate-300">
               δ̂(s) = mean( p(s, t) − median(t) ) über 6 Wochen · ε = „ab wann
               ist uns ein Unterschied wichtig?“
             </div>
@@ -1024,7 +1024,7 @@ export function LaborView(props: LaborViewProps) {
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold text-slate-200">Prognose-Tagebuch</p>
-              <div className="flex flex-wrap gap-1 text-[11px]">
+              <div className="flex flex-wrap gap-1 text-xs">
                 {DIARY_FILTERS.map((option) => (
                   <button
                     key={option.id}
@@ -1097,7 +1097,7 @@ export function LaborView(props: LaborViewProps) {
                           </span>{" "}
                           {diaryActionWord(entry.action)} · {stationName}
                         </p>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
                           {entry.price_then !== null && entry.price_window !== null
                             ? `${euro(entry.price_then, 3)} €/L vorhergesagt → ${euro(entry.price_window, 3)} €/L wirklich · `
                             : ""}
@@ -1107,7 +1107,7 @@ export function LaborView(props: LaborViewProps) {
                           {verdict.detail}
                         </p>
                       </div>
-                      <p className="shrink-0 text-[10px] text-slate-500">
+                      <p className="shrink-0 text-xs text-slate-500">
                         {entry.settled_at ? timeLabel(entry.settled_at) : ""}
                       </p>
                     </li>
@@ -1127,7 +1127,7 @@ export function LaborView(props: LaborViewProps) {
                 {labData?.daysEval ?? "—"} Tage außerhalb der Stichprobe)
               </p>
               {labTotals.n === 0 ? (
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
                   Ohne Backtest-Tage keine Bilanz: Die App rechnet sie erst,
                   wenn genug echte Preishistorie da ist (mind. 7 vollständige
                   Tage je Station) — geschätzt wird nichts.
@@ -1136,7 +1136,7 @@ export function LaborView(props: LaborViewProps) {
                 <>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      <p className="text-xs uppercase tracking-wider text-slate-500">
                         Regel-Ergebnis
                       </p>
                       <p className="font-mono text-lg font-bold text-emerald-300">
@@ -1144,7 +1144,7 @@ export function LaborView(props: LaborViewProps) {
                       </p>
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      <p className="text-xs uppercase tracking-wider text-slate-500">
                         Immer sofort tanken
                       </p>
                       <p className="font-mono text-lg font-bold text-slate-100">
@@ -1152,7 +1152,7 @@ export function LaborView(props: LaborViewProps) {
                       </p>
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      <p className="text-xs uppercase tracking-wider text-slate-500">
                         Perfektes Timing (Orakel)
                       </p>
                       <p className="font-mono text-lg font-bold text-slate-100">
@@ -1160,7 +1160,7 @@ export function LaborView(props: LaborViewProps) {
                       </p>
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      <p className="text-xs uppercase tracking-wider text-slate-500">
                         Ø Mehrkosten zum perfekten Timing
                       </p>
                       <p className="font-mono text-lg font-bold text-amber-300">
@@ -1168,7 +1168,7 @@ export function LaborView(props: LaborViewProps) {
                       </p>
                     </div>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
                     Bewertet werden Ratschläge, nicht deine Tankungen. Tagesanker
                     ist {anchorLabel} — die Ausgangslage jeder Zeile.
                   </p>
@@ -1180,13 +1180,13 @@ export function LaborView(props: LaborViewProps) {
                 <SlidersHorizontal size={14} className="text-violet-300" aria-hidden="true" />
                 <p className="text-xs font-semibold text-slate-100">Vorsicht-Regler ε</p>
               </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">
                 „Ab wann ist uns ein Unterschied wichtig?“ — verschiebe die
                 Schwelle und sieh unten, wie viele Tage die Regel gewartet
                 hätte und wie oft das richtig war. Live nachgerechnet, nicht
                 gespeichert.
               </p>
-              <label className="mt-3 block text-[11px] text-slate-400" htmlFor="labor-eps">
+              <label className="mt-3 block text-xs text-slate-400" htmlFor="labor-eps">
                 Handlungsschwelle:{" "}
                 <span className="font-mono font-bold text-violet-200">
                   {centPerLiter(eps, 2)}
@@ -1204,7 +1204,7 @@ export function LaborView(props: LaborViewProps) {
                 className="mt-2 w-full accent-violet-400"
               />
               {scenario ? (
-                <ul className="mt-2 space-y-1 text-[11px] leading-relaxed text-slate-300">
+                <ul className="mt-2 space-y-1 text-xs leading-relaxed text-slate-300">
                   <li>
                     Station im Blick:{" "}
                     <strong className="text-slate-100">{selected?.name ?? "—"}</strong>
@@ -1238,7 +1238,7 @@ export function LaborView(props: LaborViewProps) {
                   )}
                 </ul>
               ) : (
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
                   Der Regler wirkt, sobald ein Backtest für diese Station
                   vorliegt — vorher gibt es nichts nachzurechnen.
                 </p>
@@ -1246,7 +1246,7 @@ export function LaborView(props: LaborViewProps) {
             </div>
           </div>
           {selection.data && (
-            <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
               Auswahl-Set: {selection.data.stations?.length ?? 0} Stationen ·{" "}
               {stationPhase
                 ? `Datenpolitik ${stationPhase}`
@@ -1316,7 +1316,7 @@ export function LaborView(props: LaborViewProps) {
                   Was wäre gewesen, wenn …?
                 </p>
               </div>
-              <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-300">
+              <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-300">
                 <li>
                   App-Regel (ε = {centPerLiter(eps, 2)}):{" "}
                   <strong className="text-slate-100">
@@ -1358,7 +1358,7 @@ export function LaborView(props: LaborViewProps) {
                   />
                 </div>
               ) : (
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
                   Ohne Backtest keine Schleife über die Schwellen — der
                   Modell-Lauf legt sie an, sobald genug Tage da sind.
                 </p>
@@ -1367,7 +1367,7 @@ export function LaborView(props: LaborViewProps) {
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
               <p className="text-xs font-semibold text-slate-200">Eine Station sezieren</p>
               {labData?.stations?.length ? (
-                <label className="mt-2 block text-[11px] text-slate-400">
+                <label className="mt-2 block text-xs text-slate-400">
                   Station
                   <select
                     aria-label="Station für die Detail-Analyse"
@@ -1377,7 +1377,7 @@ export function LaborView(props: LaborViewProps) {
                         : labData.stations[0].id
                     }
                     onChange={(event) => setSelectedId(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[11px] text-slate-100"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100"
                   >
                     {labData.stations.map((station) => (
                       <option key={station.id} value={station.id}>
@@ -1387,7 +1387,7 @@ export function LaborView(props: LaborViewProps) {
                   </select>
                 </label>
               ) : (
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
                   Keine Station im Backtest — der Modell-Lauf füllt die Liste.
                 </p>
               )}
@@ -1401,7 +1401,7 @@ export function LaborView(props: LaborViewProps) {
                           key={row.day}
                           aria-pressed={index === labDayIdx}
                           onClick={() => setLabDayIdx(index)}
-                          className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+                          className={`rounded-md px-2 py-1 text-xs font-semibold ${
                             index === labDayIdx
                               ? "bg-violet-400/20 text-violet-100"
                               : outcome.hit
@@ -1416,7 +1416,7 @@ export function LaborView(props: LaborViewProps) {
                   </div>
                   {activeLabDayRow && activeLabOutcome && (
                     <>
-                      <ul className="mt-3 space-y-1 text-[11px] leading-relaxed text-slate-300">
+                      <ul className="mt-3 space-y-1 text-xs leading-relaxed text-slate-300">
                         <li>
                           Erwartung μ ={" "}
                           <strong className="text-slate-100">
@@ -1484,7 +1484,7 @@ export function LaborView(props: LaborViewProps) {
                   )}
                 </>
               ) : (
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
                   Für diese Station liegt noch kein Backtest-Tag vor. Der
                   tägliche Modell-Lauf füllt ihn — ohne Zutun.
                 </p>
@@ -1493,7 +1493,7 @@ export function LaborView(props: LaborViewProps) {
           </div>
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Echte Preise im Zeitraum</p>
-            <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+            <div className="mt-2 flex flex-wrap gap-1 text-xs">
               {[
                 { hours: 24, label: "24 Stunden" },
                 { hours: 72, label: "3 Tage" },
@@ -1554,7 +1554,7 @@ export function LaborView(props: LaborViewProps) {
               </div>
             )}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px]">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
             <button
               onClick={() => {
                 const rows: string[] = [
@@ -1625,7 +1625,7 @@ export function LaborView(props: LaborViewProps) {
         </LabBlock>
       </div>
 
-      <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+      <p className="mt-4 text-xs leading-relaxed text-slate-500">
         {h?.version ? `TankApp ${h.version} · ` : ""}
         Labor-Stand:{" "}
         {statsSummaryRes.data?.generated_at

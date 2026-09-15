@@ -1571,7 +1571,7 @@ export function Dashboard() {
               <h1 className="text-lg font-black tracking-tight text-white">
                 TankApp
               </h1>
-              <p className="app-tagline text-[11px] text-slate-500">
+              <p className="app-tagline text-xs text-slate-500">
                 Dein Tank-Kompass. Ohne Rätselraten.
               </p>
             </div>
@@ -1660,7 +1660,7 @@ export function Dashboard() {
                     ? alarms.map((a) => a.message).join(" · ")
                     : "Alles ok — keine Alarme"
                 }
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold ${
                   errorAlarms.length
                     ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
                     : warnAlarms.length
@@ -1701,7 +1701,7 @@ export function Dashboard() {
               {shareNote && (
                 <span
                   role="status"
-                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-[11px] leading-snug text-slate-200 shadow-xl"
+                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-xs leading-snug text-slate-200 shadow-xl"
                 >
                   {shareNote}
                 </span>
@@ -1769,7 +1769,7 @@ export function Dashboard() {
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
             {online && fresh.length ? (
               <Wifi size={13} className="text-emerald-400" />
             ) : (
@@ -1805,7 +1805,7 @@ export function Dashboard() {
             <CloudOff size={18} className="mt-0.5 shrink-0" />
             <div>
               <p>{queueBanner.text}</p>
-              <p className="mt-0.5 text-[11px] text-sky-200/80">
+              <p className="mt-0.5 text-xs text-sky-200/80">
                 {queueBanner.note}
                 {queueNote ? ` ${queueNote}` : ""}
               </p>
@@ -2211,7 +2211,7 @@ export function Dashboard() {
         {tab === "glossary" && <GlossaryView />}
         </Suspense>
 
-        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
+        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-xs text-slate-600">
           <span>
             Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten · Polling-Fenster 06–24 Uhr (Europe/Berlin)
             {h?.version ? (

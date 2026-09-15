@@ -38,7 +38,7 @@ export function UpdateBannerView({
       <RefreshCw size={18} className="shrink-0 text-sky-300" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="font-semibold">{notice.text}</p>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-sky-200/80">
+        <p className="mt-0.5 text-xs leading-relaxed text-sky-200/80">
           {notice.note}
         </p>
       </div>

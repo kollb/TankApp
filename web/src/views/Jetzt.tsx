@@ -359,13 +359,13 @@ export function JetztView(props: JetztViewProps) {
                 <Clock size={20} aria-hidden="true" />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
+                <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
                   Fenster vorbei
                 </span>
                 <h2 className="mt-0.5 text-base font-bold text-white">
                   Gerade getankt?
                 </h2>
-                <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
                   Ein kurzer Tap erfasst deinen Beleg in deiner Bilanz.
                 </p>
               </div>
@@ -408,7 +408,7 @@ export function JetztView(props: JetztViewProps) {
         ) : setup ? (
           <div className={`${panel} p-5 sm:p-7`}>
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${CHIP.gray}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
             >
               <Compass size={13} aria-hidden="true" />
               Noch keine Daten
@@ -436,7 +436,7 @@ export function JetztView(props: JetztViewProps) {
             aria-labelledby="jetzt-headline"
           >
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${CHIP[verdict.tone]}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP[verdict.tone]}`}
             >
               {CHIP_TEXT[verdict.action]}
             </span>
@@ -455,12 +455,12 @@ export function JetztView(props: JetztViewProps) {
               {verdict.detail}
             </p>
             {verdict.stageNote && (
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">
                 {verdict.stageNote}
               </p>
             )}
             {hint && (
-              <p className="mt-2 max-w-xl text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
                 {hint}
               </p>
             )}
@@ -488,7 +488,7 @@ export function JetztView(props: JetztViewProps) {
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}
             <details
-              className={`mt-4 rounded-xl border text-[11px] ${
+              className={`mt-4 rounded-xl border text-xs ${
                 assumptionsActive
                   ? "border-emerald-500/30 bg-emerald-950/20"
                   : "border-slate-800 bg-slate-950/40"
@@ -542,7 +542,7 @@ export function JetztView(props: JetztViewProps) {
                       onKeyDown={(e) => e.key === "Enter" && commitLiters()}
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
-                    <span className="mt-1 block text-[10px] text-slate-500">
+                    <span className="mt-1 block text-xs text-slate-500">
                       10–80 L, ganze Liter · Profil:{" "}
                       {deTrimmed(defaultLiters, 0)} L
                     </span>
@@ -556,7 +556,7 @@ export function JetztView(props: JetztViewProps) {
                       onBlur={commitLatestBy}
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
-                    <span className="mt-1 block text-[10px] text-slate-500">
+                    <span className="mt-1 block text-xs text-slate-500">
                       leer = keine Grenze · Fenster danach fallen weg
                     </span>
                   </label>
@@ -572,7 +572,7 @@ export function JetztView(props: JetztViewProps) {
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
                     <span
-                      className="mt-1 block text-[10px] text-slate-500"
+                      className="mt-1 block text-xs text-slate-500"
                       title="Stoßzeit = Peak, Nebenzeit = offpeak"
                     >
                       0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h ·{" "}
@@ -582,7 +582,7 @@ export function JetztView(props: JetztViewProps) {
                   </label>
                 </div>
                 {inputError && (
-                  <p role="alert" className="mt-2 text-[10px] text-rose-300">
+                  <p role="alert" className="mt-2 text-xs text-rose-300">
                     {inputError}
                   </p>
                 )}
@@ -592,7 +592,7 @@ export function JetztView(props: JetztViewProps) {
                 unter der Primäraktion. */}
             {showIntents && (
               <div
-                className="mt-3 flex flex-wrap items-center gap-3 text-[11px]"
+                className="mt-3 flex flex-wrap items-center gap-3 text-xs"
                 aria-label="Rückmeldung zur Empfehlung"
               >
                 <button
@@ -643,14 +643,14 @@ export function JetztView(props: JetztViewProps) {
             )}
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${CHIP.gray}`}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
               >
                 {verdict?.action === "no_advice"
                   ? CHIP_TEXT.no_advice
                   : "● Preisvergleich"}
               </span>
               {bestNow.spreadEur !== null && (
-                <span className="text-[11px] text-slate-400">
+                <span className="text-xs text-slate-400">
                   Spanne im Set: {centPerLiter(bestNow.spreadCt ?? 0)} ·
                   {" "}
                   {euro(bestNow.spreadEur)} € bei {deTrimmed(liters, 0)} L
@@ -674,12 +674,12 @@ export function JetztView(props: JetztViewProps) {
               {bestNow.sentence}
             </p>
             {verdict?.detail && verdict.action === "no_advice" && (
-              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
                 {verdict.detail}
               </p>
             )}
             {learning && (
-              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
                 {learning}
               </p>
             )}
@@ -688,7 +688,7 @@ export function JetztView(props: JetztViewProps) {
                 {bestNow.ranking.map((entry, index) => (
                   <li
                     key={entry.station.station_id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-[11px]"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="w-4 shrink-0 font-mono text-slate-500">
@@ -744,13 +744,13 @@ export function JetztView(props: JetztViewProps) {
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {facts.map((fact, index) => (
           <div key={fact.label} className={`${panel} p-4`}>
-            <div className="text-[11px] uppercase tracking-widest text-slate-500">
+            <div className="text-xs uppercase tracking-widest text-slate-500">
               {fact.label}
             </div>
             <div className="mt-1 text-lg font-bold text-white tabular-nums">
               {fact.value}
             </div>
-            <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
+            <div className="mt-1 text-xs leading-relaxed text-slate-400">
               {fact.detail}
             </div>
             {/* Tankstand als Fakt: Schnellauswahl statt Formular (§5.1). */}
@@ -765,7 +765,7 @@ export function JetztView(props: JetztViewProps) {
                       }
                       aria-pressed={tankPercent === item.percent}
                       title={`${item.percent} % Füllstand setzen`}
-                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold ${
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${
                         tankPercent === item.percent
                           ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                           : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-200"
@@ -777,13 +777,13 @@ export function JetztView(props: JetztViewProps) {
                   {tankPercent !== null && (
                     <button
                       onClick={() => onTankQuick(null)}
-                      className="rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] text-slate-500 hover:text-slate-300"
+                      className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-300"
                     >
                       Keine Angabe
                     </button>
                   )}
                 </div>
-                <p className="mt-1.5 text-[10px] text-slate-500">
+                <p className="mt-1.5 text-xs text-slate-500">
                   {tankPercent !== null
                     ? `Füllstand ${deTrimmed(tankPercent, 0)} % — Pflege in „Woche“.`
                     : "Ein Tap, dann prüft die App, ob Warten riskant ist."}
@@ -835,33 +835,33 @@ export function JetztView(props: JetztViewProps) {
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-xs uppercase tracking-wider text-slate-500">
                   Günstigste Stunde
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-emerald-300 tabular-nums">
                   {dayPanel.best ? dayPanel.bestLabel : "—"}
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   {dayPanel.best
                     ? euroPerLiter(dayPanel.best.value)
                     : "keine offene Meldung"}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-xs uppercase tracking-wider text-slate-500">
                   Tagesmedian
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-slate-100 tabular-nums">
                   {dayPanel.median !== null ? euroPerLiter(dayPanel.median) : "—"}
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   {dayPanel.spreadCt !== null
                     ? `Spanne ${centPerLiter(dayPanel.spreadCt)} zwischen bester und teuerster Stunde`
                     : "noch kein Verlauf"}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-xs uppercase tracking-wider text-slate-500">
                   Jetzt
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-slate-100 tabular-nums">
@@ -869,7 +869,7 @@ export function JetztView(props: JetztViewProps) {
                     ? euroPerLiter(dayPanel.nowValue)
                     : "—"}
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   {dayPanel.nowVsMedianCt === null
                     ? "keine offene Meldung in dieser Stunde"
                     : dayPanel.nowVsMedianCt > 0.05
@@ -958,7 +958,7 @@ export function JetztView(props: JetztViewProps) {
                 );
               })}
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
               {dayPanel.coverage} Zahl = €/L · Balken = Höhe im Tagesverlauf ·
               grün = unteres Drittel · rot = oberes Drittel · Rahmen = jetzt.
             </p>
@@ -969,7 +969,7 @@ export function JetztView(props: JetztViewProps) {
       {/* Frische-Fußzeile */}
       <p
         role="status"
-        className={`mt-4 text-[11px] leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
+        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
       >
         {freshness.text} · {activeCity || "kein Ort gewählt"}
       </p>

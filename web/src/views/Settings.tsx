@@ -128,11 +128,11 @@ export function VehiclePanel(props: VehiclePanelProps) {
             Fahrzeug &amp; Tankmenge
           </h3>
           {activeProfileName ? (
-            <span className="font-mono text-[11px] text-slate-500">
+            <span className="font-mono text-xs text-slate-500">
               Profil „{activeProfileName}“ — gilt haushaltsweit
             </span>
           ) : (
-            <span className="font-mono text-[11px] text-slate-500">
+            <span className="font-mono text-xs text-slate-500">
               nur dieses Gerät
             </span>
           )}
@@ -143,7 +143,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             onClick={() => onActivateProfile(null)}
             disabled={profilesBusy}
             aria-pressed={activeProfileId === ""}
-            className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
               activeProfileId === ""
                 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
@@ -157,7 +157,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
               onClick={() => onActivateProfile(profile.id)}
               disabled={profilesBusy}
               aria-pressed={activeProfileId === profile.id}
-              className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 activeProfileId === profile.id
                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                   : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
@@ -169,7 +169,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
           <button
             onClick={onOpenProfileManager}
             disabled={profilesBusy}
-            className="rounded-lg border border-dashed border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:border-slate-600 hover:text-slate-300"
+            className="rounded-lg border border-dashed border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:border-slate-600 hover:text-slate-300"
           >
             + Neu / verwalten
           </button>
@@ -187,7 +187,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             unit="L"
             valueSpeech={`${liters} Liter`}
             hint={
-              <span className="mt-1 block text-[10px] text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500">
                 Nur zur Berechnung. Kein Beleg, keine erfundene
                 Ersparnis.
               </span>
@@ -204,7 +204,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             unit="L/100 km"
             valueSpeech={`${deTrimmed(consumption)} Liter pro 100 Kilometer`}
             hint={
-              <span className="mt-1 block text-[10px] text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500">
                 4–15 L/100 km · Kommastellen erlaubt (z. B. 6,3)
               </span>
             }
@@ -222,7 +222,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueText={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
             valueSpeech={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
             hint={
-              <span className="mt-1 block text-[10px] text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500">
                 Fahrzeugangabe für Restreichweite und Reserve (5 L).
               </span>
             }
@@ -242,7 +242,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             <Clock size={16} className="text-emerald-400" />
             Zeit &amp; Fahrtcharakter
           </h3>
-          <span className="font-mono text-[11px] text-slate-500">
+          <span className="font-mono text-xs text-slate-500">
             K = d · (c/100) · p + (d/v) · z
           </span>
         </div>
@@ -265,7 +265,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             }
             hint={
               <span
-                className="mt-1 block text-[10px] text-slate-500"
+                className="mt-1 block text-xs text-slate-500"
                 title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"
               >
                 0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
@@ -289,7 +289,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
               onChange={(e) => setSpeed(Number(e.target.value))}
               className="mt-3 w-full"
             />
-            <span className="mt-1 block text-[10px] text-slate-500">
+            <span className="mt-1 block text-xs text-slate-500">
               25–80 km/h · Tempo der Umwegfahrt, nicht der Höchstgeschwindigkeit
             </span>
           </label>
@@ -306,7 +306,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
               <option value="dedicated">Extrafahrt (Hin & Rück)</option>
             </select>
             {detourMode === "dedicated" && (
-              <span className="mt-1 block text-[10px] leading-snug text-rose-300">
+              <span className="mt-1 block text-xs leading-snug text-rose-300">
                 Bei {deTrimmed(timeValue > 0 ? timeValue : timeValueUsed, 1)} €/h
                 Zeitwert ist eine Extrafahrt von zuhause praktisch nie
                 wirtschaftlich — sie lohnt nur, wenn die Station ohnehin auf
@@ -316,7 +316,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
           </label>
         </div>
         {!activeProfileName && (
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
             Kein Fahrzeug-Profil aktiv — diese Werte gelten nur auf diesem
             Gerät. Mit aktivem Profil gelten sie auf allen Geräten des
             Haushalts.
@@ -394,7 +394,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <MapPin size={16} className="text-emerald-400" />
             Kontext — wo und was
           </h3>
-          <span className="font-mono text-[11px] text-slate-500">
+          <span className="font-mono text-xs text-slate-500">
             gilt für alle Ansichten
           </span>
         </div>
@@ -448,7 +448,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </span>
           </div>
         </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
           Diesel gilt nur für die Diesel-Preise, E5 nur gegen E5 — die
           Schnellwahl in der Kopfzeile bedient dieselben Werte, es gibt keine
           zweite Kopie.
@@ -468,7 +468,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             Entscheidungsschwellen (aktiv)
           </h3>
           <span
-            className="text-[11px] text-slate-500"
+            className="text-xs text-slate-500"
             title="Quelle: /api/v1/stats/summary"
           >
             schreibgeschützt
@@ -486,7 +486,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <SkeletonPanel lines={5} title={false} label="Schwellen werden geladen" />
         ) : thresholds ? (
           <>
-            <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
+            <p className="mb-3 text-xs leading-relaxed text-slate-400">
               {thresholdStatusLine(tuning)}{" "}
               {summary?.generated_at
                 ? `Stand ${clockLabel(summary.generated_at)}.`
@@ -498,7 +498,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   Aktive Entscheidungsschwellen der Engine (schreibgeschützt)
                 </caption>
                 <thead>
-                  <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
                     <th scope="col" className="px-4 py-2.5 font-semibold">
                       Aktion
                     </th>
@@ -531,26 +531,26 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </table>
             </div>
             {sampleLine && (
-              <p className="mt-3 text-[10px] text-slate-500">{sampleLine}</p>
+              <p className="mt-3 text-xs text-slate-500">{sampleLine}</p>
             )}
             {hysteresisLine && (
-              <p className="mt-1 text-[10px] text-slate-500">{hysteresisLine}</p>
+              <p className="mt-1 text-xs text-slate-500">{hysteresisLine}</p>
             )}
             {tuningReasons.length > 0 && (
               <div className="mt-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   {tuning?.changed
                     ? "Begründung des Nachzugs (Engine)"
                     : "Warum nicht nachgezogen wird (Engine)"}
                 </p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-relaxed text-slate-400">
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-relaxed text-slate-400">
                   {tuningReasons.map((reason) => (
                     <li key={reason}>{reason}</li>
                   ))}
                 </ul>
               </div>
             )}
-            <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
               Die Schwellen legt die Engine fest (Startwerte, Nachzug mit
               M7). Die App zeigt sie nur an und rechnet damit — ändern kann
               sie sie nicht.
@@ -576,7 +576,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <SlidersHorizontal size={16} className="text-emerald-400" />
             Darstellung
           </h3>
-          <span className="font-mono text-[11px] text-slate-500">
+          <span className="font-mono text-xs text-slate-500">
             gerätelokal
           </span>
         </div>
@@ -605,7 +605,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </button>
           ))}
         </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
           Dunkel ist die Design-Basis und der Default. Hell ist eine helle
           Variante derselben Skala — dieselbe Farbwelt wie die Fallback-GUI
           am RP2. Die Wahl gilt nur auf diesem Gerät.
@@ -624,7 +624,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <Info size={16} className="text-emerald-400" />
             Daten
           </h3>
-          <span className="font-mono text-[11px] text-slate-500">
+          <span className="font-mono text-xs text-slate-500">
             LAN-only · nichts verlässt die Anlage
           </span>
         </div>
@@ -633,13 +633,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <p className="text-xs font-semibold text-slate-200">
               Belege exportieren (CSV)
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Alle Belege inklusive Storno — für die Steuer oder den
               eigenen Notizzettel.
             </p>
             <a
               href="/api/v1/fills.csv"
-              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:border-slate-600"
+              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
             >
               /api/v1/fills.csv laden
             </a>
@@ -649,7 +649,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               Angepinnte Stationen
             </p>
             {pinnedStations.length === 0 ? (
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Keine Stamm-Stationen — der Stern in „Stationen“ merkt sich
                 deine Säulen (geräte-lokal, ohne Account).
               </p>
@@ -658,7 +658,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 {pinnedStations.map(({ station }) => (
                   <li
                     key={station.station_id}
-                    className="flex items-center justify-between gap-2 text-[11px] text-slate-300"
+                    className="flex items-center justify-between gap-2 text-xs text-slate-300"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <Star size={11} className="shrink-0 text-amber-300" aria-hidden="true" />
@@ -693,7 +693,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </div>
         <dl className="grid gap-3 text-xs text-slate-400 sm:grid-cols-3">
           <div>
-            <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+            <dt className="text-xs uppercase tracking-wider text-slate-500">
               Version
             </dt>
             <dd className="mt-0.5 font-mono font-semibold text-slate-200">
@@ -701,7 +701,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+            <dt className="text-xs uppercase tracking-wider text-slate-500">
               Datenquelle
             </dt>
             <dd className="mt-0.5 leading-relaxed">
@@ -710,7 +710,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-wider text-slate-500">
+            <dt className="text-xs uppercase tracking-wider text-slate-500">
               Hilfe
             </dt>
             <dd className="mt-0.5">

@@ -37,7 +37,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
         warning
           ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
           : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
@@ -76,7 +76,7 @@ export function InfoTooltip({ label, text }: { label: string; text: string }) {
         <span
           id={id}
           role="tooltip"
-          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-left text-[11px] leading-relaxed text-slate-200 shadow-xl sm:w-72"
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-left text-xs leading-relaxed text-slate-200 shadow-xl sm:w-72"
         >
           {text}
         </span>
@@ -122,9 +122,9 @@ export function Metric({
       <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
         {value}
       </div>
-      <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
+      <div className="text-xs leading-relaxed text-slate-400">{detail}</div>
       {hint && (
-        <div className="mt-2 text-[10px] leading-relaxed text-slate-500">
+        <div className="mt-2 text-xs leading-relaxed text-slate-500">
           {hint}
         </div>
       )}

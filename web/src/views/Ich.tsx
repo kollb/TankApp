@@ -172,7 +172,7 @@ function VehiclePanelSection({ vehicle, settings }: IchViewProps) {
   return (
     <div>
       <VehiclePanel {...vehicle} />
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
         Kraftstoff und Stadt liegen unter „Einstellungen“ — sie gelten für
         alle Ansichten, nicht nur für das Fahrzeug.
         {settings.version ? ` · TankApp ${settings.version}` : ""}
@@ -273,11 +273,11 @@ function FillsSection(props: IchViewProps) {
                 title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
               />
-              <span className="mt-1 block text-[10px] text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500">
                 {fillLimitHint("liters")} · z. B. 45,5.
               </span>
               {quickDraft.litersError && (
-                <span className="mt-1 block text-[10px] leading-snug text-rose-300">
+                <span className="mt-1 block text-xs leading-snug text-rose-300">
                   {quickDraft.litersError}
                 </span>
               )}
@@ -294,12 +294,12 @@ function FillsSection(props: IchViewProps) {
                 title={`${fillLimitHint("price")} — wie an der Säule`}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
               />
-              <span className="mt-1 block text-[10px] text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500">
                 {fillLimitHint("price")} · Vorschlag: frischer Preis der
                 Station.
               </span>
               {quickDraft.priceError && (
-                <span className="mt-1 block text-[10px] leading-snug text-rose-300">
+                <span className="mt-1 block text-xs leading-snug text-rose-300">
                   {quickDraft.priceError}
                 </span>
               )}
@@ -343,7 +343,7 @@ function FillsSection(props: IchViewProps) {
               onClick={() => setShowVoidedFills((value) => !value)}
               aria-pressed={showVoidedFills}
               title="Stornierte Belege zählen nicht in die Bilanz; der CSV-Export enthält sie immer."
-              className="rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
+              className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
             >
               {showVoidedFills
                 ? "Stornierte ausblenden"
@@ -351,7 +351,7 @@ function FillsSection(props: IchViewProps) {
             </button>
           )}
         </div>
-        <p className="mb-3 px-5 text-[11px] text-slate-500">
+        <p className="mb-3 px-5 text-xs text-slate-500">
           Ein falsch gebuchter Beleg lässt sich stornieren — er bleibt als
           Storno in der Spur, zählt aber nicht mehr in deine Bilanz.
         </p>
@@ -425,7 +425,7 @@ function FillsSection(props: IchViewProps) {
                           onClick={() => onVoidFill(fill.id)}
                           disabled={voidBusy}
                           title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
-                          className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {voidBusy ? "Storniere …" : "Stornieren"}
                         </button>
@@ -436,7 +436,7 @@ function FillsSection(props: IchViewProps) {
               </tbody>
             </table>
             {mostUsed && (
-              <p className="mt-3 px-5 pb-1 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-3 px-5 pb-1 text-xs leading-relaxed text-slate-500">
                 Maßstab: der Median deines Sets (Standard) · deine
                 meistgenutzte Station: {mostUsed.name} (
                 {countLabel(mostUsed.count)} Belege).
@@ -485,7 +485,7 @@ function BalanceSection(props: IchViewProps) {
         <div
           role="group"
           aria-label="Zeitraum der Bilanz"
-          className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-[11px] font-bold"
+          className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
         >
           {(["month", "year"] as const).map((value) => (
             <button
@@ -520,20 +520,20 @@ function BalanceSection(props: IchViewProps) {
         </Empty>
       ) : (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {period === "month"
               ? monthBalanceLabel(latest.key)
               : yearBalanceLabel(latest.key)}
           </p>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
                 Getankt
               </p>
               <p className="mt-1 text-xl font-bold text-white tabular-nums">
                 {euro(latest.total_eur)} €
               </p>
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-xs text-slate-500">
                 {latest.fills} Beleg{latest.fills === 1 ? "" : "e"} ·{" "}
                 {latest.avg_eur_per_liter != null
                   ? `Ø ${euro(latest.avg_eur_per_liter, 3)} €/L`
@@ -541,7 +541,7 @@ function BalanceSection(props: IchViewProps) {
               </p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
                 Gegenüber „immer sofort getankt“
               </p>
               <p
@@ -552,17 +552,17 @@ function BalanceSection(props: IchViewProps) {
                 {latest.saved_eur >= 0 ? "+" : "−"}
                 {euro(Math.abs(latest.saved_eur))} €
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Maßstab: die Liter zu dem Preis, der an deiner Station stand,
                 als du getankt hast (Server).
               </p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
                 Gegenüber Stadt-Median
               </p>
               <p className="mt-1 text-xl font-bold text-slate-500">—</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Noch nicht messbar: der Median deiner Stadt fehlt in den
                 heutigen Daten — die Zahl kommt, wenn die Engine ihn liefert.
               </p>
@@ -571,7 +571,7 @@ function BalanceSection(props: IchViewProps) {
 
           {bars.length > 0 && (
             <div className="mt-5">
-              <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="mb-2 text-xs uppercase tracking-wider text-slate-500">
                 Verlauf (Balken je Monat, 12)
               </p>
               <div
@@ -591,14 +591,14 @@ function BalanceSection(props: IchViewProps) {
                         height: `${maxTotal > 0 ? Math.max(4, (row.total_eur / maxTotal) * 80) : 4}px`,
                       }}
                     />
-                    <span className="text-[8px] font-semibold text-slate-600">
+                    <span className="text-xs font-semibold text-slate-600">
                       {row.key.slice(5)}
                     </span>
                   </div>
                 ))}
               </div>
               {data?.overall && (
-                <p className="mt-2 text-[11px] text-slate-500">
+                <p className="mt-2 text-xs text-slate-500">
                   Gesamt: {euro(data.overall.total_eur)} € ·{" "}
                   {data.overall.fills} Belege ·{" "}
                   {euro(Math.abs(data.overall.saved_eur))} €{" "}

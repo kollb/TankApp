@@ -143,8 +143,8 @@ function StatusRowCard({ row }: { row: SystemStatusRow }) {
           <span className="text-xs font-semibold text-slate-200">{row.label}</span>
           <span className="text-xs font-bold text-white">{row.headline}</span>
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{row.detail}</p>
-        {row.meta && <p className="mt-1 font-mono text-[10px] text-slate-500">{row.meta}</p>}
+        <p className="mt-1 text-xs leading-relaxed text-slate-400">{row.detail}</p>
+        {row.meta && <p className="mt-1 font-mono text-xs text-slate-500">{row.meta}</p>}
       </div>
     </div>
   );
@@ -219,7 +219,7 @@ export function SystemView(props: SystemViewProps) {
     <section aria-labelledby="system-title">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-emerald-500">System · Anlage &amp; Daten</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-[.2em] text-emerald-500">System · Anlage &amp; Daten</p>
           <h1 id="system-title" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Einmal einrichten. Weiterlaufen lassen.
           </h1>
@@ -228,7 +228,7 @@ export function SystemView(props: SystemViewProps) {
           </p>
         </div>
         <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-bold ${
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
             overallTone === "ok"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : overallTone === "warn"
@@ -253,7 +253,7 @@ export function SystemView(props: SystemViewProps) {
           <button
             onClick={() => setSheet("zustand")}
             aria-haspopup="dialog"
-            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:border-slate-600"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-600"
           >
             Warum?
           </button>
@@ -279,7 +279,7 @@ export function SystemView(props: SystemViewProps) {
             {(collector?.available || h?.collector?.available) && (
               <div className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                     <Cpu size={12} aria-hidden="true" /> Collector-Details
                   </p>
                   <div className="flex justify-between text-xs">
@@ -320,7 +320,7 @@ export function SystemView(props: SystemViewProps) {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Offene Preise im Set</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Offene Preise im Set</p>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Stadt</span>
                     <span className="font-mono text-slate-200">{(collector ?? h?.collector)?.city ?? activeCity ?? "—"}</span>
@@ -340,7 +340,7 @@ export function SystemView(props: SystemViewProps) {
                     </span>
                   </div>
                 </div>
-                <p className="text-[11px] leading-relaxed text-slate-500 sm:col-span-2">
+                <p className="text-xs leading-relaxed text-slate-500 sm:col-span-2">
                   {hook.note}
                 </p>
               </div>
@@ -356,7 +356,7 @@ export function SystemView(props: SystemViewProps) {
                   <li key={step.label} className="flex items-start gap-3 px-3 py-2.5 first:rounded-t-xl last:rounded-b-xl">
                     <span
                       aria-hidden="true"
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
                         step.done ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-500"
                       }`}
                     >
@@ -371,7 +371,7 @@ export function SystemView(props: SystemViewProps) {
               <div className="mt-2 flex flex-wrap gap-2">
                 <a
                   href="/api/v1/fills.csv"
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
+                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
                 >
                   Belege als CSV herunterladen
                 </a>
@@ -391,7 +391,7 @@ export function SystemView(props: SystemViewProps) {
           <button
             onClick={() => setSheet("daten")}
             aria-haspopup="dialog"
-            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:border-slate-600"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-600"
           >
             Warum?
           </button>
@@ -414,21 +414,21 @@ export function SystemView(props: SystemViewProps) {
 
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Stationen im Set</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Stationen im Set</p>
             <p className="mt-1 text-lg font-bold text-white">{countLabel(coverage.stationCount)}</p>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-xs text-slate-500">
               {coverage.cities.length ? coverage.cities.join(" · ") : "Keine Stadt"} · {coverage.fuel.toUpperCase()}
             </p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Frische Preise</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Frische Preise</p>
             <p className="mt-1 text-lg font-bold text-emerald-300">{countLabel(coverage.freshCount)}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Offen, Preis vorhanden, höchstens 30 Minuten alt — zählt für „Jetzt“.</p>
+            <p className="mt-1 text-xs text-slate-500">Offen, Preis vorhanden, höchstens 30 Minuten alt — zählt für „Jetzt“.</p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Coverage-Gate</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Coverage-Gate</p>
             <p className="mt-1 font-mono text-sm font-bold text-slate-100">{coverage.coverageWindow ?? "—"}</p>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-xs text-slate-500">
               {coverage.coverageReference != null
                 ? `Bestwert ${percentLabel(coverage.coverageReference * 100)} · Schwelle ${coverage.coverageThreshold != null ? percentLabel(coverage.coverageThreshold * 100) : "—"}`
                 : "Misst im Polling-Fenster relativ zum Stadt-Bestwert."}
@@ -445,29 +445,29 @@ export function SystemView(props: SystemViewProps) {
             <>
               <div className="grid gap-3 text-xs sm:grid-cols-3">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Ohne Preis seit Tagen — tot <InfoTooltip label="tot" text={lifecycleTip("dead")} />
                   </p>
                   <p className="mt-1 text-lg font-bold text-rose-300">{countLabel(selection.data.dead_count ?? 0)}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     Fällt aus dem Ranking — kein Vergleichsplatz mehr. Das Polling-Set ändert sich erst nach Bestätigung.
                     {selection.data.dead_stations?.length ? ` Beispiel: ${selection.data.dead_stations.slice(0, 2).join(", ")}` : ""}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Temporär geschlossen / führt nicht{" "}
                     <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-300">
                     {countLabel((selection.data.closed_count ?? 0) + (selection.data.nofuel_count ?? 0))}
                   </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     {selection.data.closed_count ?? 0} geschlossen · {selection.data.nofuel_count ?? 0} ohne diese Sorte. Bleiben unterscheidbar — nur „tot“ fällt raus.
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Preis-Zwillinge{" "}
                     <InfoTooltip
                       label="Preis-Zwillinge"
@@ -475,7 +475,7 @@ export function SystemView(props: SystemViewProps) {
                     />
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-300">{countLabel(selection.data.price_twin_count ?? 0)}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     {(selection.data.price_twin_count ?? 0) > 0 ? "Prüfen und bestätigen — dann ggf. Polling-Set bereinigen." : "Keine identischen Verläufe erkannt."}
                   </p>
                 </div>
@@ -508,7 +508,7 @@ export function SystemView(props: SystemViewProps) {
                       ))}
                     </tbody>
                   </table>
-                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
                     Schwellen: ≥ 28 Tage mit je ≥ 12 gemeinsamen Punkten · ≥ 90 % Überlappung · ≥ 99 % innerhalb 0,1 ct/L. Mehr im Glossar —{" "}
                     {GLOSSARY.find((g) => g.id === "twins")?.de ?? "Preis-Zwillinge"}.
                   </p>
@@ -620,7 +620,7 @@ export function SystemView(props: SystemViewProps) {
           <button
             onClick={() => setSheet("laeufe")}
             aria-haspopup="dialog"
-            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:border-slate-600"
+            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-600"
           >
             Warum?
           </button>
@@ -672,7 +672,7 @@ export function SystemView(props: SystemViewProps) {
                 <ScrollText size={14} className="text-emerald-400" />
                 Job-Log · letzte Zeilen direkt vom NAS
               </h3>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Dieselben Zeilen liegen als Datei unter <code className="text-slate-400">data/runtime/jobs/{logJob}.log</code> (die letzten 500). Beim Auslesen
                 werden Pfade und Zugangsdaten entfernt.
               </p>
@@ -680,7 +680,7 @@ export function SystemView(props: SystemViewProps) {
             <button
               type="button"
               onClick={() => setLogReload((n) => n + 1)}
-              className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
             >
               Aktualisieren
             </button>
@@ -692,7 +692,7 @@ export function SystemView(props: SystemViewProps) {
                 type="button"
                 onClick={() => setLogJob(name)}
                 aria-pressed={logJob === name}
-                className={`rounded-lg border px-3 py-1.5 text-[11px] transition-colors ${
+                className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
                   logJob === name
                     ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
                     : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
@@ -705,17 +705,17 @@ export function SystemView(props: SystemViewProps) {
               aria-label="Anzahl Logzeilen"
               value={logLineCount}
               onChange={(e) => setLogLineCount(Number(e.target.value))}
-              className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[11px] text-slate-200"
+              className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-xs text-slate-200"
             >
               <option value={100}>letzte 100</option>
               <option value={200}>letzte 200</option>
               <option value={500}>letzte 500</option>
             </select>
           </div>
-          <pre ref={logBodyRef} className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-relaxed text-slate-300">
+          <pre ref={logBodyRef} className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-300">
             {logLines.length ? logLines.join("\n") : jobLog.pending ? "Log wird geladen …" : "Noch keine Logzeilen für diesen Job."}
           </pre>
-          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-slate-500">
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-slate-500">
             <span>
               {jobLog.data?.available
                 ? `${jobLog.data.count} von ${jobLog.data.total} Zeilen im Log`
@@ -725,13 +725,13 @@ export function SystemView(props: SystemViewProps) {
             </span>
             {jobLog.data?.updated_at ? <span className="font-mono">Stand {timeLabel(jobLog.data.updated_at)}</span> : null}
           </div>
-          <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-500">
+          <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-xs leading-relaxed text-slate-500">
             Starten: der Knopf <Play size={11} className="inline align-[-1px]" /> in der jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im NAS-Webauftritt,
             nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="text-slate-400">{workerCommand}</code> — Details in{" "}
             <span className="text-slate-400">docs/BETRIEB.md</span>.
           </p>
           {webhookCapable && (
-            <p className="mt-2 break-words text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-2 break-words text-xs leading-relaxed text-slate-500">
               Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook: <code className="text-slate-400">{triggerCommand}</code>
             </p>
           )}
@@ -752,7 +752,7 @@ export function SystemView(props: SystemViewProps) {
             <button
               onClick={() => setSheet("stoerungen")}
               aria-haspopup="dialog"
-              className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:border-slate-600"
+              className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-slate-600"
             >
               Warum?
             </button>
@@ -779,10 +779,10 @@ export function SystemView(props: SystemViewProps) {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-100">
                     {alarm.code}
-                    {alarm.job ? <span className="ml-2 font-mono text-[11px] font-normal text-slate-500">{JOB_LABELS[alarm.job] ?? alarm.job}</span> : null}
+                    {alarm.job ? <span className="ml-2 font-mono text-xs font-normal text-slate-500">{JOB_LABELS[alarm.job] ?? alarm.job}</span> : null}
                   </p>
                   <p className="mt-0.5 text-xs leading-relaxed text-slate-300">{alarm.message}</p>
-                  <p className="mt-1 font-mono text-[10px] text-slate-500">{problem(alarm.code) ?? alarm.code}</p>
+                  <p className="mt-1 font-mono text-xs text-slate-500">{problem(alarm.code) ?? alarm.code}</p>
                 </div>
               </div>
             ))}
@@ -813,13 +813,13 @@ export function SystemView(props: SystemViewProps) {
           {(h?.notify?.open_errors?.length ?? 0) > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {h?.notify?.open_errors?.map((code) => (
-                <li key={code} title={problem(code) ?? code} className="rounded-md bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-300">
+                <li key={code} title={problem(code) ?? code} className="rounded-md bg-amber-500/10 px-2 py-1 font-mono text-xs text-amber-300">
                   {code}
                 </li>
               ))}
             </ul>
           )}
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
             {notifyLastLine(h?.notify) ??
               "Einrichtung: TANKAPP_NTFY_URL setzen (docs/BETRIEB.md, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
           </p>
@@ -833,19 +833,19 @@ export function SystemView(props: SystemViewProps) {
             <FileJson size={16} className="text-slate-400" aria-hidden="true" />
             Diagnose &amp; Export
           </h2>
-          <span className="font-mono text-[11px] text-slate-500">LAN-only · nichts verlässt die Anlage</span>
+          <span className="font-mono text-xs text-slate-500">LAN-only · nichts verlässt die Anlage</span>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Belege, Version, Diagnose</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Alle Belege als CSV — für die Steuer oder den eigenen Notizzettel. Der Diagnose-Export bündelt Version, Zustand, Coverage und die letzten Log-Zeilen in einer Datei — ohne Tokens.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <a
                 href="/api/v1/fills.csv"
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:border-slate-600"
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
               >
                 /api/v1/fills.csv
               </a>
@@ -871,18 +871,18 @@ export function SystemView(props: SystemViewProps) {
                   link.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-200 hover:border-emerald-400/60"
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:border-emerald-400/60"
               >
                 Diagnose als Datei
               </button>
-              <span className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-[11px] text-slate-400">
+              <span className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-400">
                 {h?.version ? `v${h.version}` : "—"} {h?.commit ? `(${h.commit})` : ""}
               </span>
             </div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Jobs manuell starten</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Der Knopf <Play size={11} className="inline align-[-1px]" /> in jeder Job-Karte startet denselben Lauf wie auf der Kommandozeile:{" "}
               <code className="text-slate-400">{workerCommand}</code>. Webhook: <code className="text-slate-400">{triggerCommand}</code>.
             </p>
@@ -894,10 +894,10 @@ export function SystemView(props: SystemViewProps) {
             <Terminal size={16} className="text-emerald-400" />
             API-Explorer · nur lesend
           </h3>
-          <p className="mb-3 text-[11px] text-slate-500">
+          <p className="mb-3 text-xs text-slate-500">
             Dieselben Endpunkte, die diese GUI nutzt — live abgerufen, ohne Poll auszulösen. Aktuelle Endpunkte: decide, episodes, fills, stats/summary. Die API bleibt <code className="text-slate-400">/api/v1</code> — ein v2-Baum wird nicht erfunden.
           </p>
-          <p className="mb-3 text-[11px] leading-relaxed text-slate-500">
+          <p className="mb-3 text-xs leading-relaxed text-slate-500">
             PWA: der Service-Worker liegt unter <code className="text-slate-400">/sw.js</code> und hält die Oberfläche offline. Die Shell trägt die App-Version; steht eine neue bereit, sagt die App es („Neue Version verfügbar“). Belege und Vorsätze, die ohne Verbindung anfallen, warten lokal und werden nachgereicht (B10).
           </p>
           <ApiExplorer fuel={fuel} identity={identity} activeCity={activeCity} heatmapWeeks={heatmapWeeks} />
@@ -905,7 +905,7 @@ export function SystemView(props: SystemViewProps) {
       </div>
 
       {/* Frische-Fußzeile — fester Platz, jede Ansicht */}
-      <p role="status" className={`mt-4 text-[11px] leading-relaxed ${FRESHNESS_TONE[freshnessInfo.tone]}`}>
+      <p role="status" className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshnessInfo.tone]}`}>
         {freshnessInfo.text} · {activeCity || "kein Ort gewählt"}
       </p>
 

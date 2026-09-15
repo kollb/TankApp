@@ -100,13 +100,13 @@ export function Level1Sheet({
           <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
             {visual}
             {visualLabel && (
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
                 {visualLabel}
               </p>
             )}
           </div>
         )}
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-3 text-xs leading-relaxed text-slate-400">
           {source}
         </p>
         {labHint && (

@@ -357,7 +357,7 @@ export function StationMap({
 
             const customIcon = L.divIcon({
               className: "custom-net-pin",
-              html: `<div class="px-2 py-1 rounded-full border text-[11px] font-mono whitespace-nowrap shadow-md cursor-pointer transition-transform hover:scale-105 ${style.pinBg}">${badgeText}</div>`,
+              html: `<div class="px-2 py-1 rounded-full border text-xs font-mono whitespace-nowrap shadow-md cursor-pointer transition-transform hover:scale-105 ${style.pinBg}">${badgeText}</div>`,
               iconSize: [60, 26],
               iconAnchor: [30, 13],
             });
@@ -470,7 +470,7 @@ export function StationMap({
           </span>
           <button
             onClick={() => setMapMode("radar")}
-            className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30"
+            className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/30"
           >
             Radar nutzen
           </button>
@@ -508,7 +508,7 @@ export function StationMap({
       )}
 
       {/* Legend & Explanations */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[11px] text-slate-400">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-slate-400">
         <div className="flex flex-wrap items-center gap-3">
           {validAnchor && (
             <span className="flex items-center gap-1 font-mono">
@@ -536,14 +536,14 @@ export function StationMap({
           </span>
         </div>
 
-        <span className="font-mono text-[10px] text-slate-500">
+        <span className="font-mono text-xs text-slate-500">
           Server-Netto-€ (decide) · d = detour_km_est
         </span>
       </div>
 
       {/* Was die Karte bedeutet — die 0-€-Frage: der „Referenz“-Pin ist die
           Vergleichsstation (0 € Unterschied), nicht ein Spritpreis von 0 €. */}
-      <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-[11px] leading-snug text-slate-400">
+      <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs leading-snug text-slate-400">
         <p className="flex items-start gap-1.5">
           <Info size={12} className="mt-0.5 shrink-0 text-slate-500" />
           <span>
@@ -572,7 +572,7 @@ export function StationMap({
                 <p className="text-sm font-semibold text-slate-100">
                   Zuhause · Startpunkt dieser Stadt
                 </p>
-                <p className="mt-1 max-w-prose text-[11px] leading-snug text-slate-400">
+                <p className="mt-1 max-w-prose text-xs leading-snug text-slate-400">
                   Die Entfernungsangaben der Stationen (Fahrt oder Luftlinie)
                   und die Umweg-Rechnung im Fahrtcharakter „Extrafahrt“ gehen
                   von diesem Punkt aus. Die €-Pins vergleichen trotzdem gegen
@@ -601,7 +601,7 @@ export function StationMap({
                   {activeInfo.station.name}
                 </span>
                 {activeInfo.station.brand && (
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs font-mono text-slate-400">
                     {activeInfo.station.brand}
                   </span>
                 )}
@@ -633,7 +633,7 @@ export function StationMap({
                     ? `${activeInfo.netEur >= 0 ? "+" : "−"}${euro(Math.abs(activeInfo.netEur))} € Netto`
                     : "-- € (Leerstand)"}
               </span>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-xs text-slate-500">
                 {getVerdictBadgeStyle(activeInfo.verdict).label}
               </p>
             </div>
@@ -734,7 +734,7 @@ export function RadarView({
 
   return (
     <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-2">
-      <span className="absolute left-2 top-2 z-10 rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
+      <span className="absolute left-2 top-2 z-10 rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-xs text-slate-400">
         {anchor
           ? "Mitte: Zuhause · Ringe = km Luftlinie ab Zuhause"
           : "Mitte: Referenz · Ringe = km Luftlinie ab ihr"}

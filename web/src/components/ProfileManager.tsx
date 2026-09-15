@@ -16,7 +16,7 @@ import {
 const FIELD =
   "w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500";
 const BUTTON_GHOST =
-  "rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50";
+  "rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50";
 
 /** Eine Zeile Profil-Zusammenfassung — dieselben Formatter wie die Panels. */
 export function profileSummaryLine(profile: VehicleProfile): string {
@@ -98,7 +98,7 @@ export function ProfileManager({
               <Car size={18} className="text-emerald-400" aria-hidden="true" />
               Fahrzeug-Profile
             </h2>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">
               Verbrauch, Zeitwert, Tankmenge, Kraftstoff und Tankgröße —
               serverseitig für den Haushalt gespeichert, für alle Geräte im
               LAN. Ohne Login.
@@ -116,7 +116,7 @@ export function ProfileManager({
         {profilesRes.error && (
           <p
             role="alert"
-            className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-[11px] leading-snug text-amber-200"
+            className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs leading-snug text-amber-200"
           >
             Profile sind gerade nicht erreichbar — Änderungen wirken nur auf
             diesem Gerät, bis der Server wieder antwortet.
@@ -125,7 +125,7 @@ export function ProfileManager({
         {profilesRes.errorCode === "profiles_read_failed" && (
           <p
             role="alert"
-            className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-[11px] leading-snug text-amber-200"
+            className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs leading-snug text-amber-200"
           >
             Der Profil-Speicher konnte nicht gelesen werden (Fehlercode
             „profiles_read_failed“).
@@ -135,7 +135,7 @@ export function ProfileManager({
           <p
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-[11px] leading-snug text-slate-300"
+            className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs leading-snug text-slate-300"
           >
             {note}
           </p>
@@ -159,17 +159,17 @@ export function ProfileManager({
                     <p className="truncate text-sm font-semibold text-slate-200">
                       {profile.name}
                       {isActive && (
-                        <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                        <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-bold text-emerald-300">
                           aktiv auf diesem Gerät
                         </span>
                       )}
                       {!isActive && serverMarked && (
-                        <span className="ml-2 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                        <span className="ml-2 rounded bg-slate-800 px-1.5 py-0.5 text-xs font-semibold text-slate-400">
                           aktiv auf einem anderen Gerät
                         </span>
                       )}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
+                    <p className="mt-0.5 text-xs text-slate-500">
                       {profileSummaryLine(profile)}
                     </p>
                   </div>
@@ -271,7 +271,7 @@ export function ProfileManager({
             Aus aktuellen Einstellungen erstellen
           </button>
         </form>
-        <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
           Höchstens 8 Profile. Änderungen an Verbrauch, Zeitwert, Tankmenge,
           Kraftstoff, Tempo oder Tankgröße schreiben in das aktive Profil
           zurück — solange einer Profileinstellung folgt, gilt sie auf allen
