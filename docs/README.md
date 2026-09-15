@@ -17,6 +17,8 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
 | das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
+| wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8) | [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md) |
+| wissen, wo Nutzertexte gegen das eigene Regelwerk laufen (Text-Befund T1–T13) | [TEXT-BEFUND.md](TEXT-BEFUND.md) |
 | den abgeschlossenen GUI-Neuentwurf nachvollziehen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) |
 | eine tote oder sortenlose Station im Polling-Set tauschen | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | verstehen, wie Pi ↔ NAS ↔ Browser zusammenspielen | [ARCHITEKTUR.md](ARCHITEKTUR.md) |
@@ -101,6 +103,8 @@ Eintrag, kein Eintrag ohne Grund.
 | [ENGINE.md](ENGINE.md) | Modellwerkstatt: 12-Uhr-Regel, Datenqualität, Backtest-Rezepte, InfluxDB-Diagnose, Preis-Zwillinge, offene M3-Punkte |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
+| [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md) | Vermessung der gebauten GUI gegen den Entwurf: Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Gate-Selbsttäuschung, Props-Drilling — Befunde U1–U8 mit DoD, noch ohne Abnahme |
+| [TEXT-BEFUND.md](TEXT-BEFUND.md) | Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmenge-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13 mit DoD, noch ohne Abnahme |
 | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
