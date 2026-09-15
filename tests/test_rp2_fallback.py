@@ -802,15 +802,19 @@ def test_answer_card_has_three_facts_and_freshness_footer():
     html = rp2.DEFAULT_INDEX_HTML
     # Fakten-Markup und Beschriftungen — Reihenfolge im Fakten-Block, nicht im
     # ganzen Dokument (die Werkstatt nennt „Frische Preise“ ebenfalls).
+    # B7: Der Fenster-Fakt trägt einen dynamischen Tag („heute“/„morgen“),
+    # deshalb wird hier nur der feste Bestandteil gefixt.
     assert 'class="facts"' in html
     start = html.index('class="facts"')
-    labels = ("Jetzt hier", "Bestes Fenster heute", "Frische Preise")
+    labels = ("Jetzt hier", "Bestes Fenster ", "Frische Preise")
     positions = []
     for label in labels:
         at = html.index(label, start)
         assert at > start, f"Fakt „{label}“ fehlt in der Antwort-Karte"
         positions.append(at)
     assert positions == sorted(positions)
+    # B7: Der Tag des Fensters kommt aus dayWord, Default „heute“.
+    assert "dayWord(waitWindow.at)" in html
     # Frische-Fußzeile: Satzbau und Altersquellen
     assert 'class="fresh-footer"' in html
     assert '" alt · Prognose "' in html
@@ -1220,3 +1224,284 @@ def test_alltag_sections_are_grouped_in_two_columns():
     assert '<div class="col col-b">' in html
     # Nur die vier Alltag-Kicker tragen die (auf dem Desktop versteckte) Zahl.
     assert html.count('<span class="idx">') == 4
+
+
+# ---------------------------------------------------------------------------
+# B3: Fenster-Zeiten in Ortszeit (nicht UTC)
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_forecast_reports_local_time_not_utc(monkeypatch):
+    """B3: Cache-Punkte sind UTC; „time“/„date“ im API-Contract sind für
+    Menschen → Europe/Berlin. Ein UTC-Stempel um 23:30 ist in Berlin
+    Mitternacht/00:30 am Folgetag — nicht „23:30“ am selben Tag."""
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(rp2, "local_tz", lambda: ZoneInfo("Europe/Berlin"))
+    # Winterzeit (CET, UTC+1): 15.01. 22:00 UTC = 15.01. 23:00 Berlin.
+    now = dt.datetime(2026, 1, 15, 22, 0, tzinfo=UTC)
+    # 23:30 UTC = 00:30 Berlin am 16.01. — Tagesgrenze überschritten.
+    points = [
+        {
+            "timestamp": "2026-01-15T23:30:00+00:00",
+            "q025": 1.50,
+            "q50": 1.52,
+            "q975": 1.60,
+        },
+        {
+            "timestamp": "2026-01-16T08:20:00+00:00",
+            "q025": 1.50,
+            "q50": 1.56,
+            "q975": 1.62,
+        },
+    ]
+    summary = rp2.summarize_forecast(points, now, current_price=1.70)
+    # best = erster Punkt (Ersparnis 0.15 > 0.14)
+    assert summary["best"]["time"] == "00:30"
+    assert summary["best"]["date"] == "2026-01-16"
+    # Der ISO-Stempel bleibt UTC — die GUI rendert ihn selbst in Berlin.
+    assert summary["best"]["at"] == "2026-01-15T23:30:00+00:00"
+    assert summary["windows"][1]["time"] == "09:20"
+    assert summary["windows"][1]["date"] == "2026-01-16"
+
+
+def test_summarize_forecast_local_time_in_summer(monkeypatch):
+    """Sommerzeit (CEST, UTC+2): 22:30 UTC = 00:30 Berlin am Folgetag."""
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(rp2, "local_tz", lambda: ZoneInfo("Europe/Berlin"))
+    now = dt.datetime(2026, 7, 15, 22, 0, tzinfo=UTC)
+    points = [
+        {
+            "timestamp": "2026-07-15T22:30:00+00:00",
+            "q025": 1.40,
+            "q50": 1.45,
+            "q975": 1.55,
+        }
+    ]
+    summary = rp2.summarize_forecast(points, now, current_price=1.70)
+    assert summary["best"]["time"] == "00:30"
+    assert summary["best"]["date"] == "2026-07-16"
+
+
+# ---------------------------------------------------------------------------
+# B4: Schreibaktionen (POST/PUT/DELETE/PATCH) über den Proxy
+# ---------------------------------------------------------------------------
+
+
+class EchoNasHandler(BaseHTTPRequestHandler):
+    """NAS-Doppel: beantwortet /api/v1/health und gibt Schreib-Requests echo."""
+
+    def log_message(self, *args):
+        pass
+
+    def _echo(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else b""
+        payload = json.dumps(
+            {
+                "method": self.command,
+                "path": self.path,
+                "body": body.decode("utf-8"),
+                "content_type": self.headers.get("Content-Type"),
+            }
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):
+        if self.path == "/api/v1/health":
+            body = json.dumps({"app": "online"}).encode()
+        else:
+            body = b"NAS-GUI-PROXIED"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        self._echo()
+
+    do_PUT = do_POST
+    do_DELETE = do_POST
+    do_PATCH = do_POST
+
+
+def _post_json(base: str, path: str, payload: dict, method: str = "POST") -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        base + path,
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def test_proxy_forwards_write_methods_when_nas_online(tmp_path):
+    """B4: Beleg/Intent/Profil über die Pi-Adresse — transparent zur NAS."""
+    nas = ThreadingHTTPServer(("127.0.0.1", 0), EchoNasHandler)
+    threading.Thread(target=nas.serve_forever, daemon=True).start()
+    nas_base = f"http://127.0.0.1:{nas.server_port}"
+    server, _ = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+    )
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        for method in ("POST", "PUT", "DELETE", "PATCH"):
+            result = _post_json(
+                base, "/api/v1/fills", {"liters": 40, "price": 1.699}, method=method
+            )
+            assert result["method"] == method
+            assert result["path"] == "/api/v1/fills"
+            assert result["body"] == json.dumps({"liters": 40, "price": 1.699})
+            assert result["content_type"] == "application/json"
+        # GET bleibt unverändert proxied.
+        with urllib.request.urlopen(base + "/", timeout=5) as resp:
+            assert resp.read() == b"NAS-GUI-PROXIED"
+    finally:
+        server.shutdown()
+        server.server_close()
+        nas.shutdown()
+        nas.server_close()
+
+
+def test_write_without_nas_gets_honest_503(tmp_path):
+    """B4: NAS offline → keine 501-Fehlerseite, sondern eine ehrliche
+    JSON-Antwort: der Fallback ist nur lesend."""
+    nas, nas_base = start_fake_nas()
+    server, _ = start_fallback_server(
+        tmp_path,
+        poll_lines=default_poll_lines(),
+        nas_base=nas_base,
+        ttl_online=5.0,
+        ttl_offline=0.2,
+    )
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        nas.shutdown()
+        nas.server_close()
+        request = urllib.request.Request(
+            base + "/api/v1/fills",
+            data=b'{"liters": 40}',
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            urllib.request.urlopen(request, timeout=5)
+        assert excinfo.value.code == 503
+        payload = json.loads(excinfo.value.read().decode("utf-8"))
+        assert "NAS offline" in payload["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+# ---------------------------------------------------------------------------
+# B7/B8/B9: Antwort-Karte (Fakt-Label, Freshness-Gate, Frische-Zähler)
+# ---------------------------------------------------------------------------
+
+
+def test_decide_marks_stale_set_as_snapshot(tmp_path):
+    """B8: Alle Preismeldungen veraltet → f2 meldet fresh_in_set=0; die
+    Antwort-Karte kippt auf „Momentaufnahme“ statt zu empfehlen."""
+    stale_lines = [
+        {
+            "fetched_at": now_iso(240),  # 4 Stunden alt
+            "source": "test",
+            "city": "Gütersloh",
+            "prices": {
+                UID_A: {"status": "open", "e10": 1.699},
+                UID_B: {"status": "open", "e10": 1.749},
+            },
+        }
+    ]
+    server, _ = start_fallback_server(tmp_path, poll_lines=stale_lines)
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        decide = get_json(base, "/api/v1/decide?fuel=e10")
+        assert decide["available"] is True
+        assert decide["f2"]["fresh_in_set"] == 0
+        assert decide["f2"]["fresh"] is False
+        assert decide["f2"]["oldest_age_minutes"] >= 240
+        assert decide["f2"]["station"]["station_id"] == UID_A
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_decide_reports_fresh_set(tmp_path):
+    """B8: Frische Meldungen → fresh_in_set zählt, fresh=True bei günstigster."""
+    server, _ = start_fallback_server(tmp_path, poll_lines=default_poll_lines())
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        decide = get_json(base, "/api/v1/decide?fuel=e10")
+        assert decide["available"] is True
+        assert decide["f2"]["fresh_in_set"] >= 1
+        assert decide["f2"]["fresh"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_answer_card_has_stale_snapshot_wording():
+    """B8: Das Template trägt die Abwärtsemotion für ein veraltetes Set."""
+    assert "Preis-Momentaufnahme" in rp2.DEFAULT_INDEX_HTML
+
+
+def test_fresh_price_fact_counts_fuel_price_not_just_report():
+    """B9: „Frische Preise“ zählt frische Meldungen MIT Preis für den
+    gewählten Kraftstoff — nicht alle frischen Meldungen."""
+    js = _extract_inline_js()
+    assert "row.fresh && isNum(row.price)" in js
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node nicht installiert")
+def test_day_word_labels_windows_by_actual_day():
+    """B7: „Bestes Fenster heute“ zeigt nie auf morgen — dayWord liefert
+    „heute“/„morgen“/Datum nach Europe/Berlin."""
+    js = _extract_inline_js()
+    sources = []
+    for name in ("dayKey", "clockOf", "dayWord"):
+        match = re.search(rf"function {name}\([\s\S]*?\n\}}", js)
+        assert match, name
+        sources.append(match.group(0))
+    script = (
+        "const TZ = 'Europe/Berlin';\n"
+        + "\n".join(sources)
+        + """
+function berlinIso(offsetDays, hh, mm) {
+  // Berliner Wall-Clock → UTC-ISO (Offset am Stichtag probeieren).
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
+  const t = Date.parse(today + 'T00:00:00Z') + offsetDays * 86400000
+    + hh * 3600000 + mm * 60000;
+  const f = new Intl.DateTimeFormat('de-DE', {
+    timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const parts = f.formatToParts(new Date(t));
+  const bh = Number(parts.find((p) => p.type === 'hour').value) % 24;
+  const bm = Number(parts.find((p) => p.type === 'minute').value);
+  const off = (bh * 60 + bm - (hh * 60 + mm)) * 60000;
+  return new Date(t - off).toISOString();
+}
+console.log(dayWord(berlinIso(0, 21, 25)));
+console.log(dayWord(berlinIso(1, 21, 25)));
+console.log(dayWord(berlinIso(2, 21, 25)));
+"""
+    )
+    proc = subprocess.run(
+        [shutil.which("node"), "-e", script],
+        capture_output=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+    out = proc.stdout.decode("utf-8", "replace").splitlines()
+    assert out[0] == "heute"
+    assert out[1] == "morgen"
+    # In zwei Tagen: Datum TT.MM. (z. B. "16.09.")
+    assert re.fullmatch(r"\d{2}\.\d{2}\.", out[2])

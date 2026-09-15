@@ -155,7 +155,11 @@ function DayProfileVisual({
 }) {
   return (
     <div>
-      <div className="grid grid-cols-9 gap-1">
+      <div
+        className="grid grid-cols-[repeat(19,minmax(0,1fr))] gap-1"
+        role="img"
+        aria-label="Tagesprofil 06–24 Uhr als Mini-Balken, grün markiert: empfohlenes Fenster"
+      >
         {cells.map((cell) => {
           const inWindow =
             marks && cell.hour >= marks.fromHour && cell.hour <= marks.toHour;
@@ -868,10 +872,10 @@ export function JetztView(props: JetztViewProps) {
                 </p>
               </div>
             </div>
-            <div className="daystrip-cells mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+            <div className="daystrip-cells mt-3 grid gap-1.5">
               {stripCells.map((cell) => {
                 // Balkenhöhe = Preis innerhalb der Tagesspanne. So liest man
-                // das Profil, ohne 18 Zahlen zu vergleichen.
+                // das Profil, ohne 19 Zahlen zu vergleichen.
                 const span =
                   dayPanel.worst && dayPanel.best
                     ? dayPanel.worst.value - dayPanel.best.value
@@ -880,14 +884,18 @@ export function JetztView(props: JetztViewProps) {
                   cell.value !== null && span > 0
                     ? (cell.value - (dayPanel.best?.value ?? cell.value)) / span
                     : 0;
+                const cellTitle =
+                  cell.value === null
+                    ? `${String(cell.hour).padStart(2, "0")}:00 — keine offene Meldung`
+                    : `${String(cell.hour).padStart(2, "0")}:00 — ${euroPerLiter(cell.value)}`;
                 return (
                   <div
                     key={cell.hour}
-                    title={
-                      cell.value === null
-                        ? `${String(cell.hour).padStart(2, "0")}:00 — keine offene Meldung`
-                        : `${String(cell.hour).padStart(2, "0")}:00 — ${euroPerLiter(cell.value)}`
-                    }
+                    title={cellTitle}
+                    // M8: Werte nicht nur per Hover — jede Zelle ist für
+                    // Screenreader/Tastatur ein beschriftetes Bild.
+                    role="img"
+                    aria-label={cellTitle}
                     className={`flex flex-col items-center gap-0.5 rounded-lg border px-0.5 pb-0.5 pt-1 ${
                       cell.current
                         ? "border-emerald-400 bg-emerald-950/80"

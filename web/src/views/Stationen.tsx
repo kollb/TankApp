@@ -132,7 +132,7 @@ function spanLabel(hours: number): string {
   return SPANS.find((span) => span.hours === hours)?.label ?? `${hours} Stunden`;
 }
 
-/** Mini-Verlauf (24 h) einer Zeile: 18 Punkte aus dem Tagesstreifen. */
+/** Mini-Verlauf (24 h) einer Zeile: 19 Punkte aus dem Tagesstreifen. */
 function Sparkline({ cells }: { cells: StripCell[] }) {
   const values = cells.map((cell) => cell.value);
   const known = values.filter((v): v is number => v !== null);
@@ -202,6 +202,10 @@ export function StationenView(props: StationenViewProps) {
   // C2 (übernommen): Suche/Markenfilter/Sortierung sind Ansichts-Zustand.
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState("");
+  // M1: Filter-Chip „offen“ aus dem Neuentwurf (§5.2): nur Stationen mit
+  // aktuellem Preis für den gewählten Kraftstoff — „—“-Zeilen bleiben
+  // andernfalls sichtbar und sortieren nach hinten.
+  const [openOnly, setOpenOnly] = useState(false);
   const [sort, setSort] = useState<AtlasSort>("net");
   // Vergleichs-Modus: B-Station (A = die gewählte Station).
   // A gegen B: "" heißt „Vorauswahl Top 1 gegen Top 2 der Sortierung“.
@@ -252,6 +256,7 @@ export function StationenView(props: StationenViewProps) {
     )
       return false;
     if (brand && row.station.brand !== brand) return false;
+    if (openOnly && row.price === null) return false;
     return true;
   });
   const sorted = sortAtlasRows(filtered, sort);
@@ -378,6 +383,19 @@ export function StationenView(props: StationenViewProps) {
           )}
         </label>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOpenOnly((value) => !value)}
+            aria-pressed={openOnly}
+            className={`rounded-xl border px-2.5 py-2 text-xs transition-colors ${
+              openOnly
+                ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
+                : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
+            }`}
+            title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"
+          >
+            {openOnly ? "offen ✓" : "offen"}
+          </button>
           <label className="flex items-center gap-2 text-xs text-slate-400">
             <span className="sr-only">Marke filtern</span>
             <select

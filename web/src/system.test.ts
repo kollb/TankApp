@@ -280,6 +280,48 @@ describe("systemFreshness", () => {
     const old = systemFreshness({ collectorAt: minutesAgo(120), now: NOW });
     expect(old.tone).toBe("bad");
   });
+
+  it("B5: ein gesundes Tages-System (Modell 20 h, Selektion 25 h alt) ist ok", () => {
+    // Vorher: beide mit der 30-min-Preisschwelle gewogen → „old“ → rot.
+    const f = systemFreshness({
+      healthAt: minutesAgo(1),
+      collectorAt: minutesAgo(4),
+      modelsAt: minutesAgo(20 * 60),
+      selectionAt: minutesAgo(25 * 60),
+      now: NOW,
+    });
+    expect(f.tone).toBe("ok");
+  });
+
+  it("B5: veraltetes Modell (30 h) warnt, altes Modell (50 h) wird rot", () => {
+    const warn = systemFreshness({
+      healthAt: minutesAgo(1),
+      modelsAt: minutesAgo(30 * 60),
+      now: NOW,
+    });
+    expect(warn.tone).toBe("warn");
+    const bad = systemFreshness({
+      healthAt: minutesAgo(1),
+      modelsAt: minutesAgo(50 * 60),
+      now: NOW,
+    });
+    expect(bad.tone).toBe("bad");
+  });
+
+  it("B5: veraltete Selektion (40 h) warnt, mit 80 h wird sie rot", () => {
+    const warn = systemFreshness({
+      healthAt: minutesAgo(1),
+      selectionAt: minutesAgo(40 * 60),
+      now: NOW,
+    });
+    expect(warn.tone).toBe("warn");
+    const bad = systemFreshness({
+      healthAt: minutesAgo(1),
+      selectionAt: minutesAgo(80 * 60),
+      now: NOW,
+    });
+    expect(bad.tone).toBe("bad");
+  });
 });
 
 describe("systemExplanation*", () => {

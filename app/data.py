@@ -1859,10 +1859,16 @@ class LiveData:
                     if local_date != target_date:
                         continue
                     q50 = fp.get("q50")
-                    if q50 is None:
+                    # NaN heißt „Punkt nicht gestützt“ (engine/models.py) —
+                    # kein Preis, also kein Punkt auf der Tageskurve.
+                    try:
+                        q50_value = float(q50)
+                    except (TypeError, ValueError):
+                        continue
+                    if not math.isfinite(q50_value):
                         continue
                     # €/L → ct/L
-                    ct_value = round(float(q50) * 100.0, 1)
+                    ct_value = round(q50_value * 100.0, 1)
                     points.append(
                         {
                             "h": ts.astimezone(BERLIN_TZ).hour

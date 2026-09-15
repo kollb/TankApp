@@ -89,6 +89,20 @@ def cache_forecasts():
             if response.status == 200:
                 data = json.loads(response.read().decode("utf-8"))
 
+                # Payload validieren, bevor gecacht wird: Ein Dict ohne die
+                # „forecasts“-Liste (z. B. ein Fehler- oder halbes Payload)
+                # würde andernfalls als Cache durchgehen und die Fallback-GUI
+                # mit „Prognose-Cache fehlt“ verärgern — ohne dass das NAS
+                # schuld ist.
+                if not isinstance(data, dict) or not isinstance(
+                    data.get("forecasts"), list
+                ):
+                    log(
+                        "⚠️  NAS-Antwort ohne 'forecasts'-Liste — "
+                        "nichts gecacht (NAS-Payload prüfen)."
+                    )
+                    return False
+
                 # Füge Metadaten hinzu
                 data["_cached_at"] = datetime.now(timezone.utc).isoformat()
                 data["_source"] = "NAS"
@@ -104,7 +118,10 @@ def cache_forecasts():
                     f"generiert: {data.get('generated_at')}"
                 )
                 return True
-            log(f"⚠️  NAS antwortete mit Status {response.status}")
+            log(
+                f"⚠️  NAS antwortete mit Status {response.status} — "
+                f"nichts gecacht (Endpunkt: {NAS_URL})"
+            )
             return False
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
         log(f"⚠️  NAS nicht erreichbar: {type(e).__name__}")

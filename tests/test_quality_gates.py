@@ -114,6 +114,37 @@ def test_query_trennt_stationsabruf_und_zeitfenster(tmp_path):
     assert {row["station_id"] for row in window} == set(built["prices"])
 
 
+def test_query_honoriert_stationsfilter_des_flux_texts(tmp_path):
+    """„Heute im Blick“: ``LiveData.series`` filtert im Flux-Text nach
+    Station und prüft die Identität Zeile für Zeile. Der Demo-Stack muss
+    denselben Filter honorieren — sonst bricht ``series()`` mit
+    „Wrong identity“ und die Tageskurve ist im Demo immer leer."""
+    sys.path.insert(0, str(ROOT / "ops/quality"))
+    try:
+        import demo_data
+    finally:
+        sys.path.remove(str(ROOT / "ops/quality"))
+
+    built = demo_data.build(tmp_path, days=45)
+    query = demo_data.make_query(built["observations"], built["prices"])
+    uid = demo_data.STATIONS[0][0]
+
+    flux_text = (
+        'from(bucket: "tankapp")\n'
+        '  |> range(start: time(v: "2026-09-14T10:00:00+00:00"), '
+        'stop: time(v: "2026-09-15T10:00:00+00:00"))\n'
+        '  |> filter(fn: (r) => r._measurement == "prices")\n'
+        "  |> filter(fn: (r) => contains(value: r.city, set: ["
+        f'"{demo_data.CITY}"]))\n'
+        f'  |> filter(fn: (r) => contains(value: r.station_id, set: ["{uid}"]))\n'
+    )
+    rows = query(None, flux_text)
+    assert rows, "Station-Abfrage liefert keine Punkte"
+    assert {row["station_id"] for row in rows} == {uid}, (
+        "Demo-Query ignoriert den Stations-Filter aus dem Flux-Text"
+    )
+
+
 def test_lastpfad_skript_bennt_seine_budgets():
     script = (ROOT / "web/load/overview.mjs").read_text(encoding="utf-8")
     # Die Budgets stehen im Skript und sind per Umgebung überschreibbar — ein

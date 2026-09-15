@@ -100,9 +100,19 @@ export function timeInputToBerlinIso(
   const berlinHour =
     probePart("hour") === "24" ? 0 : Number(probePart("hour"));
   const berlinMinute = Number(probePart("minute"));
-  const offsetMs =
+  // offsetMs = Berlin − UTC an diesem Tag (z. B. +2 h CEST). Berlin ist
+  // VORRAUS — die Wall-Clock-Zeit liegt offsetMs NACH dem UTC-Stempel,
+  // der UTC-Instanz „Berlin zeigt hh:mm“ ist also wallAsUtc − offsetMs.
+  // (Mit +offsetMs wäre das Ergebnis um 2× das Offset verschoben, B2.)
+  // Prüft die Probe über Mitternacht (Eingabe 23:59 → Probe 01:59),
+  // fällt die Tageszeit-Differenz auf −22 h statt +2 h — in den
+  // gültigen Offset-Bereich (±12 h) normalisieren.
+  let offsetMs =
     (berlinHour * 60 + berlinMinute - (hour * 60 + minute)) * 60000;
-  return new Date(wallAsUtc + offsetMs).toISOString();
+  const DAY_MS = 24 * 3600000;
+  if (offsetMs <= -DAY_MS / 2) offsetMs += DAY_MS;
+  if (offsetMs > DAY_MS / 2) offsetMs -= DAY_MS;
+  return new Date(wallAsUtc - offsetMs).toISOString();
 }
 
 /**
@@ -391,6 +401,15 @@ export function nowFacts(input: NowInput): NowFact[] {
 
   // 2 · Bestes Fenster heute
   const window = decide?.windows_today?.[0] ?? decide?.primary?.recommended_window;
+  // B7: primary.recommended_window kann auf morgen zeigen — dann heißt das
+  // Label nicht „heute“, der Tag steht stattdessen im Wert.
+  const windowDay = window ? dayLabel(window.start, input.now) : null;
+  const windowRange = window
+    ? hourRangeLabel(
+        berlinHour(new Date(window.start)),
+        berlinHour(new Date(window.end)),
+      )
+    : null;
   const best: NowFact =
     stage === "C" || !window
       ? {
@@ -402,11 +421,12 @@ export function nowFacts(input: NowInput): NowFact[] {
               : "Heute kein Fenster mit Vorsprung",
         }
       : {
-          label: "Bestes Fenster heute",
-          value: hourRangeLabel(
-            berlinHour(new Date(window.start)),
-            berlinHour(new Date(window.end)),
-          ),
+          label: windowDay === "Heute" ? "Bestes Fenster heute" : "Bestes Fenster",
+          // In diesem Ast existiert `window` — der Bereich ist also da.
+          value:
+            windowDay === "Heute"
+              ? windowRange!
+              : `${windowDay} · ${windowRange!}`,
           detail: `Erwartet ${euroPerLiter(window.expected_price)}`,
         };
 

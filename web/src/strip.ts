@@ -17,7 +17,9 @@ export type StripCell = {
 };
 
 /**
- * Baut die 18 Zellen (06–24 Uhr) aus der Tageskurve.
+ * Baut die 19 Zellen (06–24 Uhr) aus der Tageskurve — dieselbe Achse wie
+ * der Pi-Fallback (Parität, B11): Zelle „24“ trägt die Mitternachtsmeldung
+ * (00:00–00:59), Stunden 1–5 liegen außerhalb des 06–24-Fensters.
  *
  * Nur `status === "open"` mit finitem Preis zählt — leere Stunden
  * bleiben leer (keine erfundenen Werte). Die Tonlagen sind relative
@@ -38,14 +40,16 @@ export function buildStripCells(
     )
       continue;
     const hour = Math.floor(berlinHour(new Date(ms)));
-    if (hour >= 6 && hour <= 24) byHour.set(hour, p.price);
+    // Mitternacht ist die Tagesgrenze des Streifens — nicht verloren.
+    if (hour === 0) byHour.set(24, p.price);
+    else if (hour >= 6 && hour <= 23) byHour.set(hour, p.price);
   }
   const values = [...byHour.values()];
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
   const span = max - min || 1;
   const nowHour = Math.floor(berlinHour(new Date(now)));
-  return Array.from({ length: 18 }, (_, i) => {
+  return Array.from({ length: 19 }, (_, i) => {
     const hour = 6 + i;
     const value = byHour.get(hour);
     return {
@@ -66,7 +70,7 @@ export function buildStripCells(
 
 /**
  * Sparkline-Daten für die Stationsliste (UI-NEUENTWURF §5.2 „Verlauf
- * schlägt Moment“): die 18 Zellen als Werte-Reihe (null = keine
+ * schlägt Moment“): die 19 Zellen als Werte-Reihe (null = keine
  * Meldung). Ohne Daten `null` — die Zeile zeigt dann ehrlich kein
  * Mini-Verlauf, statt eine flache Linie zu erfinden.
  */

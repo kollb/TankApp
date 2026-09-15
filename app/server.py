@@ -5,6 +5,7 @@ import functools
 import gzip
 import hmac
 import json
+import math
 import os
 import signal
 import subprocess
@@ -36,6 +37,27 @@ SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 # statt 5–10 s, solange sich die zugrunde liegenden Daten nicht geändert
 # haben (höchstens alle 300 s möglich, Token-Bucket).
 _ALREADY_ANSWERED = object()
+
+
+def _sanitize_for_json(payload):
+    """Nicht-endliche Floats (NaN/±inf) zu ``None`` — zentral vor der Serialisierung.
+
+    Die Engine publiziert Quantil-Punkte bewusst mit NaN („Punkt nicht
+    gestützt“, ``engine/models.py``). JSON kennt NaN nicht und
+    ``allow_nan=False`` brach die ganze Antwort mit 400, sobald eine Station
+    einen ungestützten Punkt hatte — ``last_forecasts`` (RP2-Cache),
+    ``forecast`` (Labor) und ``day`` (Tageskurve) waren dann tot. ``null`` ist
+    die ehrliche Darstellung von „kein Wert“; die Konsumenten können ``None``
+    bereits (Fallback ``point_stats`` springt über NaN/None, die GUI-
+    Sparklines filtern ``Number.isFinite``).
+    """
+    if isinstance(payload, float):
+        return payload if math.isfinite(payload) else None
+    if isinstance(payload, dict):
+        return {key: _sanitize_for_json(value) for key, value in payload.items()}
+    if isinstance(payload, (list, tuple)):
+        return [_sanitize_for_json(value) for value in payload]
+    return payload
 
 
 def _etag_matches(if_none_match: str, etag: str) -> bool:
@@ -439,7 +461,9 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def json(self, payload, status=200):
-        content = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
+        content = json.dumps(
+            _sanitize_for_json(payload), ensure_ascii=False, allow_nan=False
+        ).encode()
         headers = getattr(self, "headers", None)
         body = _gzip_if_accepted(
             headers.get("Accept-Encoding") if headers else None, content

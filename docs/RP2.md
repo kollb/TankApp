@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 14.09.2026 · App-Version 0.37.1 · RP2-Fallback v4.0 — **die** Anleitung
+> Stand: 15.09.2026 · App-Version 0.37.2 · RP2-Fallback v4.1 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -49,7 +49,7 @@
 
 ## Ziel
 
-24/7 Verfügbarkeit über **eine Adresse** — den RP2 (Port 8000). NAS online → RP2 leitet transparent zur vollen NAS-GUI weiter. NAS offline → dieselbe Adresse zeigt Fallback-GUI (Live-Preise + gecachte Prognosen).
+24/7 Verfügbarkeit über **eine Adresse** — den RP2 (Port 8000). NAS online → RP2 leitet transparent zur vollen NAS-GUI weiter — **inklusive der Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`: Beleg buchen, Intent melden, Profil anlegen/ändern/löschen); Body und `Content-Type` werden durchgereicht. NAS offline → dieselbe Adresse zeigt Fallback-GUI (Live-Preise + gecachte Prognosen); dort gibt es keine Schreibendpunkte, eine Schreibaktion antwortet mit einer ehrlichen 503-JSON („NAS offline — …“), nicht mit einer 501-Fehlerseite.
 
 ```text
 Browser ──► http://<RP2-IP>:8000
@@ -346,6 +346,10 @@ Umschaltverhalten:
 - NAS kommt wieder → innerhalb von **15 s** (Online-TTL) oder sofort nach
   `/api/v1/nas-check` bzw. Klick auf „🔄 NAS prüfen“.
 - `FORCE_FALLBACK=1` deaktiviert den Proxy dauerhaft (Testfall).
+- **Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`) werden nur weitergeleitet,
+  wenn die NAS online ist; bei offline NAS antwortet der RP2 mit
+  `503 {"error": "NAS offline — …"}`. Der Fallback selbst ist nur lesend
+  (seine JSON-Endpunkte oben sind `GET`).
 
 Softwaretests (auf dem PC/NAS, nicht auf dem RP2 nötig):
 
@@ -554,6 +558,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 4.1 (0.37.2) | 15.09.2026 | **Sanity-Check-Fixes (Prüfbericht 15.09.):** (1) Fenster-Zeiten `time`/`date` in `summarize_forecast` und damit in `/decide` kommen jetzt in **Ortszeit** (Europe/Berlin), nicht UTC — der ISO-Stempel `at` bleibt UTC und wird von der GUI selbst umgerechnet. (2) **Schreibaktionen über die Pi-Adresse:** `POST`/`PUT`/`DELETE`/`PATCH` werden wie `GET` transparent zur NAS weitergeleitet (Body + Content-Type); NAS offline → ehrliche 503-JSON-Antwort statt 501-Fehlerseite (der Fallback bleibt nur lesend). (3) `f2` in `/decide` trägt `fresh`/`age_minutes`/`fresh_in_set`/`oldest_age_minutes`; ohne frische Meldung im Set kippt die Antwort-Karte auf „Preis-Momentaufnahme“ statt zu empfehlen (NAS-Parität: veraltete Preise tragen keine Empfehlung). (4) Fakt „Bestes Fenster“ benennt den echten Tag (`heute`/`morgen`/Datum) — das Fenster kommt aus den nächsten 24 h und darf nicht „heute“ heißen, wenn es morgen liegt. (5) „Frische Preise“ zählt nur Meldungen **mit Preis für den gewählten Kraftstoff**. (6) CSS-Fix (`--line` → `--border`, Fact-Boxen hatten in beiden Themes keine Umrandung), Tagesstreifen-Zellen mit `role="img"` + `aria-label` (Parität NAS-GUI), Health-Probe liest das vollständige Body statt der ersten 4096 Bytes. |
 | 4.0 (0.37.1) | 14.09.2026 | **Ortsfilter repariert:** Die Auswahl oben nutzt jetzt den stabilen Set-Key aus `polling.json` und zeigt bei Kurz-Keys z. B. `FRA · Frankfurt` bzw. `GT · Gütersloh`. Die API akzeptiert Key und Label, damit alte Links weiter funktionieren. Template-Wechsel per Inhalts-Hash, keine neue sichtbare Fallback-Version. |
 | 4.0 | 14.09.2026 | **Antwort-Karte im Gleichschritt mit „Jetzt“ (GUI-Neuentwurf §5.1).** Unter der Empfehlung stehen jetzt dieselben drei Fakten in derselben Reihenfolge wie in der NAS-GUI — „Jetzt hier“ (Preis + Stationsname), „Bestes Fenster heute“ (Fenster aus dem Cache) und „Frische Preise“ (Zahl frischer Stationen im Set; der Tankstand fehlt hier bewusst, er ist NAS-Sache). Darunter die Frische-Fußzeile `Preise … alt · Prognose … alt` aus Preismeldung und Modell-Lauf. Kein neuer Endpunkt, keine neue Abhängigkeit, kein neues Skript: nur Templatemarkup, CSS und ein JS-Helfer `minutesSince`. Test: `tests/test_rp2_fallback.py::test_answer_card_has_three_facts_and_freshness_footer`. |
 | 3.1 | 14.09.2026 | **Desktop-Layout der Fallback-GUI.** Kopf- und Steuerleiste liefen über die ganze Fensterbreite, Karten und Listen aber in einer 1060-px-Spalte mittig — bei 1920 px stand der Schriftzug 416 px neben dem Inhalt. Leisten und Inhalt teilen jetzt dieselbe Spalte (`--content`, `--gutter`); ab 1100 px wächst sie auf 1280 px, Kopf- und Steuerleiste rücken in eine Zeile, die Kraftstoff-Umschaltung streckt sich nicht mehr, der Alltag steht zweispaltig (7/5) und die Werkstatt-Sparklines zweispaltig. Die Kicker-Zahlen („1 · Empfehlung“) entfallen ab 1100 px; unterhalb bleibt kein Pixel anders. Reines CSS + zwei Wrapper-Divs: kein neuer Endpunkt, keine neue Abhängigkeit, Template-Wechsel per Hash (Sicherung `index.html.old`). |

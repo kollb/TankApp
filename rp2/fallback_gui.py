@@ -51,7 +51,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "4.0"
+VERSION = "4.1"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -445,10 +445,14 @@ def summarize_forecast(
     ranked = sorted(future, key=lambda t: t[2]["exp_saving_per_l"], reverse=True)
 
     def window(ts: datetime, p: dict, stats: dict) -> dict:
+        # Die Punkte sind UTC (Engine-Index); „time“/„date“ sind API-Vertrag
+        # für Menschen → Ortszeit (Europe/Berlin). Der ISO-Stempel „at“ bleibt
+        # UTC — die GUI rendert ihn selbst mit Europe/Berlin.
+        local = ts.astimezone(local_tz())
         return {
             "at": ts.isoformat(),
-            "time": ts.strftime("%H:%M"),
-            "date": ts.strftime("%Y-%m-%d"),
+            "time": local.strftime("%H:%M"),
+            "date": local.strftime("%Y-%m-%d"),
             "q50": p.get("q50"),
             "q025": p.get("q025"),
             "q975": p.get("q975"),
@@ -500,7 +504,18 @@ class NasState:
     def _probe(self) -> tuple[bool, str | None]:
         try:
             with urllib.request.urlopen(self.health_url, timeout=self.timeout) as resp:
-                body = resp.read(4096)
+                # Vollständiges Body lesen (bis zur Obergrenze), nicht die
+                # ersten 4096 Bytes: Das Health-Payload wächst (mehr
+                # Alarms, längere Fehler-Strings), und ein abgeschnittenes
+                # JSON ist per Definition nicht parsebar.
+                try:
+                    length = min(
+                        int(resp.headers.get("Content-Length") or 0),
+                        128 * 1024,
+                    )
+                    body = resp.read(length) if length else b""
+                except (ValueError, OSError):
+                    body = b""
                 try:
                     data = json.loads(body.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
@@ -655,6 +670,67 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
         def do_HEAD(self):
             self._handle()
 
+        # B4: Schreibaktionen (Beleg buchen, Intent, Profil, …) werden wie
+        # GET transparent zur NAS weitergeleitet — die Pi-Adresse ist kein
+        # read-only-Einstiegspunkt mehr. Der Fallback selbst hat keine
+        # Schreibendpunkte; bei offline NAS antwortet die GUI ehrlich.
+        def do_POST(self):
+            self._handle_write()
+
+        def do_PUT(self):
+            self._handle_write()
+
+        def do_DELETE(self):
+            self._handle_write()
+
+        def do_PATCH(self):
+            self._handle_write()
+
+        def _read_body(self) -> bytes | None:
+            """Request-Body nach Content-Length; ``None`` = Limit überschritten."""
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return None
+            if length > MAX_PROXY_BODY:
+                return None
+            return self.rfile.read(length) if length > 0 else b""
+
+        def _handle_write(self):
+            try:
+                url = urllib.parse.urlsplit(self.path)
+                # Body immer zuerst lesen: Keep-Alive-Verbindung bleibt
+                # sauber, egal ob weitergeleitet oder lokal geantwortet.
+                body = self._read_body()
+                if body is None:
+                    self._error(413, "Payload zu groß (Proxy-Limit 32 MiB).")
+                    return
+                query = urllib.parse.parse_qs(url.query)
+                force_fb = (
+                    ctx.force_fallback
+                    or "fallback" in query
+                    or self.headers.get("X-Force-Fallback") == "1"
+                )
+                if not force_fb and ctx.nas.base_url and ctx.nas.is_online():
+                    if self._proxy(body):
+                        return
+                if url.path.startswith("/api/"):
+                    self._error(
+                        503,
+                        "NAS offline — Schreibaktionen sind nur erreichbar,"
+                        " wenn das NAS antwortet (der Fallback ist nur lesend)."
+                        " „🔄 NAS prüfen“ oben löst das direkt.",
+                    )
+                else:
+                    self._error(405, "Methode wird hier nicht unterstützt.")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as exc:  # Server bleibt laufen
+                try:
+                    self._error(500, f"interner Fehler: {type(exc).__name__}")
+                except Exception:
+                    pass
+
         def _handle(self):
             try:
                 url = urllib.parse.urlsplit(self.path)
@@ -688,10 +764,23 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     pass
 
         # -- NAS-Proxy -------------------------------------------------------
-        def _proxy(self) -> bool:
+        def _proxy(self, body: bytes | None = None) -> bool:
+            """Request an die NAS weiterleiten.
+
+            ``body`` nur für Schreibmethoden (POST/PUT/DELETE/PATCH): wird
+            zusammen mit dem Content-Type der Anfrage durchgereicht.
+            """
             target = ctx.nas.base_url + self.path
             try:
-                req = urllib.request.Request(target, method=self.command)
+                headers = None
+                if body is not None:
+                    headers = {}
+                    content_type = self.headers.get("Content-Type")
+                    if content_type:
+                        headers["Content-Type"] = content_type
+                req = urllib.request.Request(
+                    target, method=self.command, data=body, headers=headers or {}
+                )
                 with urllib.request.urlopen(req, timeout=ctx.proxy_timeout) as resp:
                     self.send_response(resp.status)
                     has_length = bool(resp.headers.get("Content-Length"))
@@ -968,8 +1057,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "available": False,
                         "count": 0,
                         "forecasts": [],
-                        "error": "Kein Prognose-Cache vorhanden (NAS war nie erreichbar?)"
-                        " — cache_forecasts.py prüfen. " + CACHE_REBOOT_HINT,
+                        # Kein Cache hat drei mögliche Ursachen — statt die
+                        # Schuld dem NAS zuzuschieben, auf das Log verweisen:
+                        # NAS offline, fehlerhafte Antwort oder leerer /tmp
+                        # nach Reboot.
+                        "error": "Kein Prognose-Cache vorhanden — Ursache steht"
+                        " im Cache-Log (/tmp/tankapp_cache/cache.log): NAS"
+                        " offline, Fehler-Antwort oder Reboot. " + CACHE_REBOOT_HINT,
                     },
                     status=503,
                 )
@@ -1088,6 +1182,12 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             cheapest = open_stations[0]
             second = open_stations[1] if len(open_stations) > 1 else None
             priciest = open_stations[-1]
+            # B8: Die NAS-GUI nullt veraltete Preise, bevor sie die günstigste
+            # sucht; der Fallback zeigt die Zahlen weiter an, macht die
+            # Frische aber sichtbar — die Antwort-Karte kippt auf
+            # „Momentaufnahme“, wenn im Set keine frische Meldung liegt.
+            fresh_in_set = sum(1 for s in open_stations if s["fresh"])
+            oldest_age = max(s["age_minutes"] for s in open_stations)
             # Fix: spart vs zweitgünstigste statt vs teuerste (Top1 vs Top10 nicht sinnvoll)
             ref_for_saving = second if second else priciest
             f2 = {
@@ -1113,6 +1213,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if second
                 else round((priciest[fuel] - cheapest[fuel]) * liters, 2),
                 "saving_vs": "second" if second else "most_expensive",
+                "fresh": bool(cheapest["fresh"]),
+                "age_minutes": cheapest["age_minutes"],
+                "fresh_in_set": fresh_in_set,
+                "oldest_age_minutes": oldest_age,
             }
 
             # F1/F3 aus gecachten Prognosen (für die günstigste Station)
@@ -1321,7 +1425,7 @@ _TEMPLATE_HEAD = """<!doctype html>
 _TEMPLATE_REST = """
 <style>
 /* ==========================================================================
-   TankApp Fallback-GUI v3 — Alltag/Werkstatt, Antwort-Karte zuerst.
+   TankApp Fallback-GUI v4 — Alltag/Werkstatt, Antwort-Karte zuerst.
    Gestaltungs-Leitplanken aus docs/GUI-VORLAGEN.md: Slate-950-Basis,
    Slate-900-Karten, Slate-800-Rahmen, Emerald = positiv/aktiv,
    Sky = Details/Kurven, Amber = Warnung. Nur Standardbibliothek-Webserver:
@@ -1595,7 +1699,7 @@ input[type="number"] { width: 72px; text-align: center; }
   gap: 8px; margin-top: 12px;
 }
 .fact {
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1px solid var(--border); border-radius: 12px;
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   padding: 9px 11px; min-width: 0;
 }
@@ -2004,6 +2108,18 @@ function relDay(iso) {
   if (diff === 1) return "morgen " + clockOf(iso);
   return shortStamp(iso);
 }
+/* Nur der Tag, ohne Zeit: „heute“ / „morgen“ / „15.09.“ — für Labels, die
+   den Fenster-Zeitpunkt benennen sollen (B7: „Bestes Fenster heute“ darf
+   nicht auf morgen zeigen). */
+function dayWord(iso) {
+  const key = dayKey(iso);
+  if (!key) return "";
+  const today = dayKey(new Date().toISOString());
+  const diff = Math.round((Date.parse(key + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / 86400000);
+  if (diff === 0) return "heute";
+  if (diff === 1) return "morgen";
+  return key.slice(8, 10) + "." + key.slice(5, 7) + ".";
+}
 function shortStamp(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -2186,8 +2302,18 @@ function renderAnswer(decide, stations, health) {
   const f1 = decide.f1 || {};
   const fc = decide.forecast || {};
   const waiting = !!f1.available && f1.recommendation === "wait";
+  // B8: Ohne frische Meldung im Set ist der Preisvergleich nur eine
+  // Momentaufnahme — die Antwort kippt von „Empfehlung“ auf „Zustand“.
+  const staleSet = isNum(f2.fresh_in_set) && f2.fresh_in_set === 0;
   let verdict, reason, icon;
-  if (waiting) {
+  if (staleSet) {
+    icon = ICONS.clock;
+    verdict = "Preis-Momentaufnahme — kein frischer Report im Set";
+    reason = "Alle Preismeldungen im Set sind veraltet (älteste: " +
+      ageLabel(f2.oldest_age_minutes) + ") — bis der Collector wieder meldet" +
+      " ist das nur ein Preisvergleich, keine Empfehlung." +
+      (f1.reason ? " " + esc(f1.reason) : "");
+  } else if (waiting) {
     icon = ICONS.clock;
     verdict = "Bis " + esc(relDay(f1.best_at)) + " Uhr warten lohnt sich";
     reason = esc(f1.reason || "");
@@ -2214,7 +2340,10 @@ function renderAnswer(decide, stations, health) {
      dieselbe Aussage wie in der NAS-GUI („Preise 4 min alt · Prognose 35 min alt“). */
   const priceAge = isNum(live.age_minutes) ? ageLabel(live.age_minutes) : "—";
   const forecastAge = isNum(minutesSince(fc.generated_at)) ? ageLabel(minutesSince(fc.generated_at)) : "—";
-  const freshCount = rows.filter((row) => row.fresh).length;
+  // B9: „Frische Preise“ zählt nur Stationen, die auch einen Preis für den
+  // gewählten Kraftstoff melden — eine frische Meldung ohne Diesel-Preis
+  // zählt in der Diesel-Ansicht nicht mit.
+  const freshCount = rows.filter((row) => row.fresh && isNum(row.price)).length;
   const waitChip = waitWindow
     ? '<span class="chip info">' + ICONS.window + '<span class="chip-txt">„Jetzt oder warten“: ' +
       esc(relDay(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " €/L · −" +
@@ -2224,7 +2353,8 @@ function renderAnswer(decide, stations, health) {
     ? '<span class="chip">' + ICONS.swap + '<span class="chip-txt">„Hier oder woanders“: 2. = ' +
       esc(f2.second_name) + " · " + eur(f2.second_price) + " €/L</span></span>"
     : "";
-  el.className = "card answer" + (waiting ? " waiting" : "");
+  // B8: Ein veraltetes Set trägt nicht den „warten“-Look.
+  el.className = "card answer" + (staleSet ? "" : waiting ? " waiting" : "");
   el.innerHTML = kicker +
     '<div class="verdict"><span class="verdict-icon">' + icon + "</span>" +
     '<div style="min-width:0"><div class="verdict-text" id="answer-title">' +
@@ -2246,7 +2376,9 @@ function renderAnswer(decide, stations, health) {
       '<div class="fact"><div class="l">Jetzt hier</div>' +
         '<div class="v">' + eur(f2.price) + ' <small>€/L</small></div>' +
         '<div class="d">' + esc(shortName(s.name)) + "</div></div>" +
-      '<div class="fact"><div class="l">Bestes Fenster heute</div>' +
+      // B7: Das Fenster kommt aus den nächsten 24 h und kann morgen liegen —
+      // dann heißt das Label auch „morgen“ (oder Datum), nicht „heute“.
+      '<div class="fact"><div class="l">Bestes Fenster ' + (waitWindow ? dayWord(waitWindow.at) || "heute" : "heute") + "</div>" +
         '<div class="v">' + (waitWindow ? clockOf(waitWindow.at) : "—") + "</div>" +
         '<div class="d">' + (waitWindow ? "~" + eur(waitWindow.q50) + " €/L" : "kein Fenster mit Vorsprung") + "</div></div>" +
       '<div class="fact"><div class="l">Frische Preise</div>' +
@@ -2285,12 +2417,15 @@ function renderDaystrip(series, decide, health) {
   strip.innerHTML = hours.map((h) => {
     const label = h.hour + ":00";
     if (!isNum(h.value)) {
-      return '<div class="cell none" title="' + label + ' — keine offene Meldung"><div class="h">' + label + '</div><div class="v">–</div></div>';
+      // M8: Werte nicht nur per Hover — jede Zelle ist für Screenreader
+      // ein beschriftetes Bild (wie in der NAS-GUI).
+      const emptyTitle = label + " — keine offene Meldung";
+      return '<div class=\"cell none\" role=\"img\" aria-label=\"' + emptyTitle + '\" title=\"' + emptyTitle + '\"><div class=\"h\">' + label + '</div><div class=\"v\">–</div></div>';
     }
     const tone = h.value <= lo + third ? "cheap" : h.value >= hi - third ? "pricey" : "";
     const isNow = h.hour === nowHour;
     const title = label + " — " + eur(h.value) + " €/L" + (h.at ? " (Meldung " + clockOf(h.at) + " Uhr)" : "");
-    return '<div class="cell ' + tone + (isNow ? " now" : "") + '" title="' + title + '">' +
+    return '<div class=\"cell ' + tone + (isNow ? \" now\" : \"\") + '\" role=\"img\" aria-label=\"' + title + '\" title=\"' + title + '\">' +
       '<div class="h">' + label + (isNow ? " · jetzt" : "") + "</div>" +
       '<div class="v">' + eur(h.value) + "</div></div>";
   }).join("");

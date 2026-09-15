@@ -4,6 +4,151 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.37.2] – 2026-09-15
+
+**Sanity-Check-Fixes nach dem tiefen Audit von GUI und Fallback (B1–B12, M1/M8).**
+Vier funktionale Mängel waren reproduziert, aber von keinem bestehenden Test
+gefangen: NaN brach die Prognose-Endpunkte, „Spätestens tanken“ schickte
+`latest_by` 2–4 h versetzt, der Fallback nannte Fenster-Zeiten in UTC, und
+Schreibaktionen über die Pi-Adresse schlugen mit 501 fehl. Dazu die
+Parität/Lücken zwischen den Oberflächen und der defekte Demo-Stack.
+
+### Behoben
+
+- **B1 — NaN brach `/api/v1/last_forecasts`, `/api/v1/forecast` und `/api/v1/day`.**
+  Die Engine publiziert Quantil-Punkte bewusst mit NaN („Punkt nicht gestützt“);
+  mit `allow_nan=False` brach die gesamte Antwort mit `400 invalid_query` —
+  pro Station ~29 % der Punkte. Jetzt wandelt `_sanitize_for_json`
+  (`app/server.py`) nicht-endliche Floats zentral vor der Serialisierung nach
+  `null` (die Konsumenten können `None` bereits), und `day_series` lässt
+  ungestützte Punkte aus der Tageskurve aus (NaN ist kein Preis).
+  `cache_forecasts.py` validiert die Payload („forecasts“-Liste), bevor etwas
+  gecacht wird, und benennt die Ursache in der Fehlermeldung; die Fallback-
+  Meldung „NAS war nie erreichbar?“ wurde ersetzt — sie schob dem NAS die
+  Schuld zu, wenn das NAS gesund war. Integrationstest mit NaN-Publikation
+  über alle drei Endpunkte.
+- **B2 — `timeInputToBerlinIso()` hatte das falsche Vorzeichen (und einen
+  Mitternachts-Rollfall).** „Spätestens tanken“ schickte `latest_by` um
+  2× das UTC-Offset verschoben (Sommerzeit +4 h, Winterzeit +2 h) — der
+  Server schnitt Fenster an der falschen Grenze, und die Annahmen-Zeile
+  bestätigte die **falsche** Zeit. Fix: `− offsetMs` plus Normalisierung der
+  Offset-Messung, wenn die Probe über Mitternacht fällt (Eingabe 23:59 →
+  Probe 01:59). Fünf neue Tests (Sommer/Winter/Mitternacht/Rundtrip/
+  ungültig).
+- **B3 — Fallback-F1: Fenster-Zeiten in Ortszeit statt UTC.** `summarize_
+  forecast` baute `time`/`date` mit `strftime` aus den UTC-Punkten — die
+  Antwort-Karte zeigte „bis 19:25 Uhr“, während der Chip darunter denselben
+  Zeitpunkt korrekt als „Morgen · 21:25“ renderte. Jetzt `astimezone(
+  local_tz())` für `time`/`date`; der ISO-Stempel `at` bleibt UTC (die GUI
+  rendert ihn selbst mit `Europe/Berlin`).
+- **B4 — Proxy war nur GET/HEAD: Schreibaktionen über die Pi-Adresse → 501.**
+  Beleg buchen, Intent melden, Job starten, Profil pflegen — alles
+  „Unsupported method“ mit roher HTML-Fehlerseite. `do_POST/PUT/DELETE/
+  PATCH` leiten jetzt wie `do_GET` transparent zur NAS weiter (Body nach
+  `Content-Length`, Deckel 32 MiB → 413, `Content-Type` durchgereicht);
+  NAS offline → ehrliche `503`-JSON-Antwort statt 501 (der Fallback bleibt
+  nur lesend). Doku [RP2.md](docs/RP2.md) nachgezogen.
+- **B5 — System-Fußzeile war fast immer rot.** `systemFreshness` wertete
+  alle vier Zeitstempel mit der 30-min-Preisschwelle ab — Modelle und
+  Selektion laufen aber **täglich** (worker `INTERVALS`: 86 400 s), ein
+  gesundes 20-h-altes Modell zählte als „old“ → rot unter dem grünen
+  „Alles ok“-Badge. Jetzt je Stempel die passende Schwellenart
+  (Health/Collector → `prices`, Modelle → `model`, Selektion → `selection`)
+  und `STALE_AFTER_MINUTES.model` korrigiert von 180 min auf 24 h — der
+  180-min-Wert behauptete einen „30-min-/Stunden-Takt“, den es nie gab.
+  Damit ist die Frische-Fußzeile von „Jetzt“ (`nowFreshness`) konsistent:
+  ein 20-h-altes Modell ist frisch, 30 h veraltet, 48 h alt.
+- **B6 — Fenster unter einer Stunde renderte „22–22 Uhr“.** `hourRangeLabel`
+  floor-te beide Stunden; ein 5-Minuten-Fenster 22:00–22:55 wurde zur
+  Verdict-Headline „Warten bis 22–22 Uhr“. Liegt ein Ende innerhalb der
+  Stunde, werden beide mit Minuten angegeben („22:00–22:55 Uhr“), ein
+  entartetes Null-Fenster als Einzelschicht („22 Uhr“).
+- **B7 — „Bestes Fenster heute“ zeigte auf morgen.** Das Fenster kommt aus
+  den nächsten 24 h und kann morgen liegen — das Label behauptete trotzdem
+  „heute“ (Fallback-Fakt 2 **und** das NAS-Zwilling in `nowFacts`). Jetzt
+  benennt das Label den echten Tag: Fallback über `dayWord()` („heute“ /
+  „morgen“ / „15.09.“), NAS `„Bestes Fenster“ + Tag` im Wert.
+- **B8 — Fallback „günstigste Station“ ohne Freshness-Gate.** Die NAS nullt
+  veraltete Preise vor dem Ranking; der Fallback sortierte nach Preis, egal
+  wie alt die Meldungen waren (Puffer hält 2 Tage). `f2` in `/decide` trägt
+  jetzt `fresh`/`age_minutes`/`fresh_in_set`/`oldest_age_minutes`; ohne
+  frische Meldung im Set kippt die Antwort-Karte auf „Preis-Momentaufnahme“
+  (grau, ohne „warten“-Look) mit dem Satz, dass das nur ein Preisvergleich
+  sei — keine Empfehlung.
+- **B9 — Fakt „Frische Preise“ ignorierte den Kraftstoff-Filter.** Gezählt
+  wurden alle frischen Meldungen; in der Diesel-Ansicht zählt jetzt nur, wer
+  auch einen Diesel-Preis meldet (`row.fresh && isNum(row.price)`).
+- **B10 — `var(--line)` war nie definiert.** `.fact`-Boxen hatten in beiden
+  Themes keine Umrandung (Deklaration verworfen). Jetzt `var(--border)`.
+- **B11 — Mitternachtsmeldung fiel aus dem NAS-Streifen; 18 vs. 19 Zellen.**
+  `buildStripCells` hatte 18 Zellen (06–23) und eine Meldung um 00:10 fiel
+  durch den Filter — stiller Datenverlust. Jetzt 19 Zellen wie der Fallback:
+  Zelle „24“ = Mitternachtsmeldung (00:00–00:59), Stunden 1–5 bleiben
+  außerhalb des 06–24-Fensters. Layout (19er-Reihe ab 640 px, zwei Reihen
+  mobil, Querformat) und Sparkline-Zählung nachgezogen.
+- **B12 — Template-Kommentar sagte noch „v3“.** Jetzt v4.
+- **Zeitbombe in der Woche-Ansicht (latent, erst am 15.09. sichtbar):**
+  `weekWindowSummary` nannte den Tag über `dayLabel(window.start)` **ohne**
+  Referenzzeit — das Wort „Morgen“ kippte zur realen Uhrzeit im Moment des
+  Renderns (und ließ Tests um Mitternacht scheitern). Jetzt `now`-Parameter
+  aus der Ansicht (wie `weekDays` und `weekExplanation` schon hatten).
+
+### Hinzugefügt
+
+- **M1 — Filter-Chip „offen“ in „Stationen“** (UI-NEUENTWURF §5.2 versprach
+  `[E10] [offen] [Marke]`): nur Stationen mit aktuellem Preis für den
+  gewählten Kraftstoff; „—“-Zeilen bleiben sonst sichtbar und sortiert
+  nach hinten.
+- **M8 — Tagesstreifen-Zellen sind Screenreader-erreichbar:** jede Zelle in
+  NAS (`Jetzt`) und Fallback (Template) trägt `role="img"` + `aria-label`
+  (vorher nur `title` = Maus-Hover).
+- **Demo-Stack liefert wieder die Tageskurve** (`ops/quality/demo_data.py`):
+  `make_query` honoriert den Stations-Filter (und das Zeitfenster) aus dem
+  Flux-Text. Vorher lieferte sie alle Stationen, `LiveData.series` brach mit
+  „Wrong identity“ → `influx_read_failed` → „Heute im Blick“ war in jeder
+  Sicht-/Qualitätsprüfung des Demo-Stacks leer. Test: Flux-Text mit
+  Stations-Filter liefert nur diese Station.
+- **Grenzen einseitig vereinheitlicht:** Profil-Tankmenge jetzt 10–**100** L
+  (GUI `PROFILE_BOUNDS`, `app/profiles.py`, Share-Params) — ein 100-L-Tank
+  (Transporter/Diesel) war vorher nicht darstellbar, obwohl Beleg-Erfassung
+  (5–100 L) und Pi-Fallback (5–100 L) ihn kannten.
+
+### Geändert
+
+- **Health-Probe des RP2 liest das vollständige Body** (bis 128 KiB) statt
+  der ersten 4096 Bytes — bei Wachstum des Health-Payloads (mehr Alarms,
+  längere Fehler-Strings) brach die Truncation die JSON-Prüfung.
+- **`compareStationsPair`: toter Zweig entfernt** (un erreichbares
+  `else if (deltaCt === null)` hinter der Null-Preis-Prüfung; der Abstand
+  wird im Else-Zweig lokal neu berechnet, was dem Compiler das Nachweisen
+  erspart).
+- **Fallback-GUI 4.0 → 4.1**, App-Version 0.37.1 → 0.37.2.
+
+### Tests
+
+- 555 Web-Tests (vorher 544): `timeInputToBerlinIso` (B2), `systemFreshness`
+  mit Modelle-/Selektions-Stempeln (B5), `hourRangeLabel` mit
+  5-Minuten-Fenstern (B6), `buildStripCells` mit Mitternachtszelle (B11),
+  `weekWindowSummary` mit festem Referenzzeit (Zeitbombe).
+- 776 Python-Tests (vorher 758): NaN-Integration über `last_forecasts`/
+  `forecast`/`day` (B1), `summarize_forecast` in Winter-/Sommerzeit (B3),
+  Proxy-Write-Forwarding + ehrliche 503 ohne NAS (B4), `decide`-Frische-
+  Felder veraltet/frisch (B8), Template-Regressionen (B7/B9), Demo-Query mit
+  Stations-Filter (Demo-Stack), `cache_forecasts`-Payload-Validierung (B1).
+- **Strukturell weiter offen:** Die Browser-Suite mockt alle `/api/v1/*`-
+  Pfade und beweist Rendering, nicht Server↔GUI-Integration — genau deshalb
+  fielen B1/B3 und der Demo-Defekt hier auf, nicht in der CI. Eine echte
+  End-to-End-Prüfung gegen den (behebteten) Demo-Stack gehört in
+  `web/e2e/`, sobald ein Browser zur Verfügung steht (Playwright-Download in
+  der Sandbox blockiert). Begründet in [LUECKEN.md](docs/LUECKEN.md).
+
+### Dokumentation
+
+- [RP2.md](docs/RP2.md): Stand/Version, Changelog 4.1, Proxy-Schreib-
+  verhalten (inkl. 503 ohne NAS), `decide`-Frischekontext.
+- [LUECKEN.md](docs/LUECKEN.md): E2E-ohne-Mocks und PWA/Service-Worker als
+  begründet offen eingetragen.
+
 ## [0.37.1] – 2026-09-14
 
 **Abnahme-Fix nach der echten NAS/Pi-Prüfung:** Die NAS-GUI ist abgenommen;

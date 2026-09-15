@@ -36,12 +36,27 @@ const points: Point[] = [
 ];
 
 describe("buildStripCells", () => {
-  it("liefert immer 18 Zellen (06–24 Uhr)", () => {
+  it("liefert immer 19 Zellen (06–24 Uhr, „24“ = Mitternacht)", () => {
     const cells = buildStripCells(points, NOW);
-    expect(cells).toHaveLength(18);
+    expect(cells).toHaveLength(19);
     expect(cells[0].hour).toBe(6);
-    // Letzte Zelle = die 23-Uhr-Stunde (23:00 bis Mitternacht).
-    expect(cells[17].hour).toBe(23);
+    // Letzte Zelle = die Mitternachtsstunde (00:00–00:59), wie im Fallback.
+    expect(cells[18].hour).toBe(24);
+  });
+
+  it("B11: eine Mitternachtsmeldung (00:10) landet in Zelle 24, nicht verloren", () => {
+    // 00:10 Berlin am 14.09. = 22:10 UTC am 13.09. — innerhalb des
+    // 24-h-Fensters, das der Server liefert. Stunden 1–5 bleiben
+    // dagegen außerhalb des Fensters (01:00-Punkt in `points`).
+    const withMidnight = [...points, point(1.65, "2026-09-13T22:10:00Z")];
+    const cells = buildStripCells(withMidnight, NOW);
+    expect(cells[18].value).toBe(1.65);
+    expect(cells[18].tone).toBe("cheap"); // 1.65 = Minimum des Tages
+  });
+
+  it("B11: ohne Mitternachtsmeldung bleibt Zelle 24 leer", () => {
+    const cells = buildStripCells(points, NOW);
+    expect(cells[18].value).toBeNull();
   });
 
   it("ohne Meldungen bleibt alles empty — keine erfundenen Werte", () => {
@@ -94,7 +109,7 @@ describe("stripSparkline", () => {
     const cells = buildStripCells(points, NOW);
     const series = stripSparkline(cells);
     expect(series).not.toBeNull();
-    expect(series).toHaveLength(18);
+    expect(series).toHaveLength(19);
     expect(series?.[1]).toBe(1.7);
     expect(Number.isNaN(series?.[7]!)).toBe(true); // 13:00 leer
   });

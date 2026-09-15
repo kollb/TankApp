@@ -976,6 +976,21 @@ describe("Formatierer (C9)", () => {
     expect(hourRangeLabel(22, 2)).toBe("22–02 Uhr");
     expect(hourRangeLabel(8, null)).toBe("—");
   });
+
+  it("B6: Fenster unter einer Stunde rendert nicht „22–22 Uhr“", () => {
+    // 5-Minuten-Granularität der Engine-Fenster: 22:00–22:55 Berlin.
+    // Liegt ein Ende innerhalb der Stunde, werden beide mit Minuten
+    // angegeben (konsistente Form).
+    expect(hourRangeLabel(22, 22 + 55 / 60)).toBe("22:00–22:55 Uhr");
+    // Beide Enden mit Minuten: 22:30–22:55.
+    expect(hourRangeLabel(22.5, 22 + 55 / 60)).toBe("22:30–22:55 Uhr");
+    // Entartetes Null-Fenster (both exakt 22:00) = Einzelschicht.
+    expect(hourRangeLabel(22, 22)).toBe("22 Uhr");
+    // Ganze Stunden bleiben unverschont: 22:00–23:00 → 22–23 Uhr.
+    expect(hourRangeLabel(22, 23)).toBe("22–23 Uhr");
+    // Mitternachtsüberlauf mit Minuten: beide Enden mit Minuten.
+    expect(hourRangeLabel(22, 2 + 30 / 60)).toBe("22:00–02:30 Uhr");
+  });
 });
 
 describe("B11: Fehlercode für belegten Feedback-Store", () => {
