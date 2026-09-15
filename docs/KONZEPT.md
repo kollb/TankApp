@@ -1238,7 +1238,7 @@ deprecated markiert (Antwort-Header `Deprecation`/`Sunset`), sobald
 - `GET /v1/health` — Collector-Stand, NAS-Erreichbarkeit, tmpfs-Füllstand & Oldest-Age, Coverage, letzte Fehler — **implementiert, erweitert um collector + selection**
 - `GET /v1/selection` — Meine Stationen mit δ̂, Bootstrap-KI, AV-Score, billigste Stunde — **B3.10 implementiert, Artefakt runtime/selection/current.json**
 - `GET /v1/collector/status` — Pi/tmpfs Livestatus (Collector-Herzschlag) — **B3.11 implementiert**
-- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` / `live_advice` / `wallet` (§5.5, §8.2) — **noch offen**
+- Neu (Werkstatt): `GET /v1/stats/summary` — drei Blöcke `backtest` / `live_advice` / `wallet` (§5.5, §8.2) — **implementiert als /api/v1/stats/summary**
 
 Details und Beispiele: [API.md](API.md)
 

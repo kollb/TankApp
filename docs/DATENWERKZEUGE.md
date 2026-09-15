@@ -14,7 +14,7 @@
 |---|---|
 | `collect_prices.py` | Ein Collector für alle Stadtsets, Round-Robin, ein Request-Budget, persistenter Zeitplan, JSONL-Puffer. |
 | `polling_plan.py` | Gemeinsame Validierung, atomare JSON-Ausgaben, Prozesssperre und Request-Zeitplan. |
-| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. |
+| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
 | `fetch_history.py` | HTTP-Tagesdownload, gzip, Wiederholung und atomare `.part`-Übernahme. NAS-Zeitplanung bevorzugt über den Sync-Wrapper, nicht nur `--since yesterday`. |
 | `discover_stations.py` | Vorläufige Auswahl aus Stationsmetadaten, ohne lange Preishistorie. |
 | `ingest_history.py` | M2-Aufbereitung; gerasterte Daten sind nicht automatisch zeitgenaue Live-Beobachtungen. |

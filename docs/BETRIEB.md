@@ -40,6 +40,7 @@
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
 - [System-Alarme lesen](#system-alarme-lesen)
   - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
+  - [Webhook Pi → NAS (B8, seit 0.38.0)](#webhook-pi--nas-b8-seit-0380)
   - [System-Alarme und GUI-Neuentwurf (seit 0.35.0)](#system-alarme-und-gui-neuentwurf-seit-0350)
   - [Version und Build-Hash prüfen](#version-und-build-hash-prüfen)
 - [Fehlersuche](#fehlersuche)
@@ -825,7 +826,9 @@ dort bewusst nicht — sie ist der einzige Geheimnisträger. Ohne
 `TANKAPP_NTFY_URL` steht dort die Tatsache („Alarme stehen nur hier in der
 GUI“), kein Fehler.
 
-**Webhook Pi → NAS (B8, seit 0.38.0):** `POST /api/v1/jobs/trigger` wird
+### Webhook Pi → NAS (B8, seit 0.38.0)
+
+`POST /api/v1/jobs/trigger` wird
 quittiert und bei Bedarf wiederholt. Bleibt die Quittierung aus (NAS kurz
 offline, Neustart), merkt sich der Uploader den Trigger und versucht ihn
 erneut — 30 s, 60 s, … höchstens alle 15 Min. Nach 2 h gibt er auf; ab dann

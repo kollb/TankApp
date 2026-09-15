@@ -4,7 +4,7 @@
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
 Preise.
 
-> Stand: 12.09.2026 · Version **0.18.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> Stand: 15.09.2026 · Version **0.38.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
 ## Dokumentation: ein Ordner, ein Index
@@ -34,9 +34,12 @@ An der Säule, in ≤ 5 Sekunden, drei Fragen:
 | **F2 — Hier oder woanders?** | Netto-€ nach Umweg (Sprit + Zeit), Alternativen |
 | **F3 — Heute oder später?** | Top-3-Fenster der nächsten Tage |
 
-Drei Tabs: **Alltag** (Entscheidungs-Kompass, ≤ 3 primäre Zahlen),
-**Werkstatt** (Scoreboard, Fan-Chart, Heatmaps, Meine Stationen), **System**
-(Konfiguration, Archiv, Jobs, Collector, Alarme, Checkliste, Beleg-Export).
+Sechs Bereiche (GUI-Neuentwurf, seit 0.36.0): **Jetzt** (Empfehlung, „Heute im
+Blick“, Umweg-Rechnung), **Woche** (bestes Fenster der nächsten Tage),
+**Stationen** (Set, Karte, Vergleich), **Labor** (Kalibrierung, Scoreboard,
+Heatmaps — die frühere „Werkstatt“), **Ich** (Tankstand, Belege, Bilanz,
+Profile) und **System** (Konfiguration, Archiv, Jobs, Collector, Alarme,
+Beleg-Export).
 
 **Ehrlichkeits-Regel (Konzept §0.4):** Ohne echte Daten zeigt die App einen
 Einrichtungszustand — keine Demo-Preise, keine „82 % sicher“ vor der
@@ -53,20 +56,24 @@ Kalibrierung. Bis M7 erreicht ist, bleiben `calibrated=false` und
 
 ## Stand der Umsetzung
 
-**Implementiert und softwaregetestet:** Mehrstadt-Polling, Live-GUI mit
-Alltag/Werkstatt/System, Nur-Lese-API mit Rate-Limit, gebündelter NAS-Dienst
-(`nas-up`) mit Archiv-Nachholung, Modell-Läufen (prozessparallel), Selektion,
-Heatmaps (Zeitraum und Vergleichs-Basis wählbar), Collector-Status, Decision
-Layer (`/api/v1/decide` inkl. `latest_by` und Fahrtmodus), Job-Fortschritt,
-Advice-/Wallet-Ledger mit Beleg-Storno und CSV-Export, Alarm-Block,
-Backup-Skript, Versionsanzeige, RP2-Proxy/Fallback.
+**Implementiert und softwaregetestet:** Mehrstadt-Polling, GUI in sechs
+Bereichen (Jetzt, Woche, Stationen, Labor, Ich, System), Nur-Lese-API,
+gebündelter NAS-Dienst (`nas-up`) mit Archiv-Nachholung, Modell-Läufe
+(prozessparallel, Zweitmodell + Ensemble), Selektion, Heatmaps (Zeitraum und
+Vergleichs-Basis wählbar), Collector-Status, Decision Layer (`/api/v1/decide`
+inkl. `latest_by` und Fahrtmodus), Job-Fortschritt, Advice-/Wallet-Ledger mit
+Beleg-Storno, CSV-Export und Offline-Queue, Alarm-Block, Backup-Skript,
+Versionsanzeige (bis in die PWA-Shell), Webhook Pi → NAS mit Quittierung und
+Wiederholung, RP2-Proxy/Fallback. Tests: Unit-Tests, gemockte Browser-Suite und
+eine eigene Suite **ohne Mocks** gegen den Demo-Stack (CI, siehe
+[docs/QUALITAET.md](docs/QUALITAET.md)).
 
 **Nicht gleichbedeutend mit Deployment oder geprüfter Modellgüte:** Auf den
 eigenen Geräten noch nicht abgenommen. Prognosen sind unkalibriert und nicht
 entscheidungsbereit; echte aktuelle Preise sind davon unabhängig nutzbar. Offen
-sind u. a. Zweitmodell/Ensemble, gemeinsame Bootstrap-Ziehung über Stationen,
-Kalibrierungs-Loop M7, ACI — jeweils mit Grund in
-[docs/LUECKEN.md](docs/LUECKEN.md) und als Aufgabe in [TODO.md](TODO.md).
+sind u. a. der Kalibrierungs-Loop M7, ACI, die Echt-Daten-Abnahme von
+Zweitmodell/Ensemble, der Preis-Push und B22 (Zahlen-ändernde Hebel) — jeweils
+mit Grund in [docs/LUECKEN.md](docs/LUECKEN.md) und in [TODO.md](TODO.md).
 
 ## Repo-Struktur
 
