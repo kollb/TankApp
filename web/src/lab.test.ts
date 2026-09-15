@@ -10,12 +10,16 @@
 //     — nie Fachsprache, nie eine Zahl ohne Einheit.
 
 import { describe, expect, it } from "vitest";
+import { timeLabel } from "./data";
 import type { AdviceDiaryEntry } from "./data";
 import {
   LAB_SECTIONS,
   diaryActionWord,
+  diaryCountLabel,
   diaryEmptyNote,
   diaryOutcome,
+  diaryStamp,
+  groupDiaryEntries,
   labHint,
   labOriginLine,
   labSection,
@@ -33,6 +37,7 @@ function entry(overrides: Partial<AdviceDiaryEntry>): AdviceDiaryEntry {
     emitted_at: "2026-09-13T16:00:00Z",
     action: "wait",
     station_id: "st-1",
+    station_name: null,
     city: "Frankfurt",
     fuel: "e10",
     window_start: "2026-09-13T16:00:00Z",
@@ -41,6 +46,8 @@ function entry(overrides: Partial<AdviceDiaryEntry>): AdviceDiaryEntry {
     price_window: 1.749,
     outcome: "win",
     void_reason: null,
+    decline_reason: null,
+    refreshed_at: null,
     regret_eur: null,
     p_correct: 0.82,
     p_besser: null,
@@ -195,5 +202,97 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
       "Noch keine abgeschlossene Empfehlung",
     );
     expect(trustSentence({ promises: 3, hits: 2 })).toContain("67 % davon");
+  });
+
+  it("nennt bei einer Ablehnung den Grund der Tabelle (nicht nur „keine“)", () => {
+    const reason =
+      "Preislage unentschieden — weder Warten noch Sofort-Tanken hat einen " +
+      "Vorsprung. Die App rät nicht.";
+    const result = diaryOutcome(
+      entry({
+        outcome: "void",
+        action: "no_advice",
+        void_reason: "no_advice",
+        decline_reason: reason,
+      }),
+    );
+    expect(result.word).toBe("nicht bewertbar");
+    expect(result.detail).toBe(
+      `Kein Vergleichspreis — die App hatte hier keine Empfehlung: ${reason}`,
+    );
+    // Ohne gespeicherten Grund (Altbestand) bleibt der Void-Code im Klartext.
+    expect(
+      diaryOutcome(
+        entry({ outcome: "void", action: "no_advice", void_reason: "no_advice" }),
+      ).detail,
+    ).toBe(
+      "Kein Vergleichspreis — Grund: die Empfehlung war selbst schon „keine“.",
+    );
+  });
+
+  it("fasst gleiche Ablehnungen zu einer Zeile zusammen", () => {
+    expect(timeLabel("2026-09-15T19:59:00Z")).toBe("15.09., 21:59");
+    const decline = (settled_at: string, refreshed_at: string) =>
+      entry({
+        outcome: "void",
+        action: "no_advice",
+        void_reason: "no_advice",
+        decline_reason: "Preislage unentschieden.",
+        settled_at,
+        refreshed_at,
+      });
+    // Die Liste kommt neueste zuerst: drei gleiche Zeilen, dazwischen nichts.
+    const entries = [
+      decline("2026-09-15T20:59:00Z", "2026-09-15T20:59:00Z"),
+      decline("2026-09-15T20:29:00Z", "2026-09-15T20:29:00Z"),
+      decline("2026-09-15T19:59:00Z", "2026-09-15T19:59:00Z"),
+      entry({ outcome: "win", settled_at: "2026-09-14T20:05:00Z" }),
+    ];
+    const rows = groupDiaryEntries(entries);
+    expect(rows.length).toBe(2);
+    expect(rows[0].count).toBe(3);
+    expect(rows[0].oldest).toBe("2026-09-15T19:59:00Z");
+    expect(rows[0].entry.settled_at).toBe("2026-09-15T20:59:00Z");
+    expect(rows[1].count).toBe(1);
+    expect(rows[1].oldest).toBe("2026-09-14T20:05:00Z");
+  });
+
+  it("gruppiert nur Aufeinanderfolgendes und nur dieselbe Aussage", () => {
+    const decline = (settled_at: string, reason: string) =>
+      entry({
+        outcome: "void",
+        action: "no_advice",
+        void_reason: "no_advice",
+        decline_reason: reason,
+        settled_at,
+      });
+    // Ein Treffer dazwischen trennt die Gruppen; ein anderer Grund auch.
+    const rows = groupDiaryEntries([
+      decline("2026-09-15T20:59:00Z", "Preislage unentschieden."),
+      decline("2026-09-15T20:29:00Z", "Preislage unentschieden."),
+      entry({ outcome: "tie", settled_at: "2026-09-15T18:05:00Z" }),
+      decline("2026-09-15T17:59:00Z", "Preislage unentschieden."),
+      decline("2026-09-15T17:29:00Z", "Keine Prognose verfügbar."),
+    ]);
+    expect(rows.map((row) => row.count)).toEqual([2, 1, 1, 1]);
+    expect(rows[0].oldest).toBe("2026-09-15T20:29:00Z");
+  });
+
+  it("nennt die Anzahl nur, wenn die Liste sie hergibt", () => {
+    // Gekürzte Liste: Jede Zahl wäre zu klein — „mehrfach“ ist die Untergrenze.
+    expect(diaryCountLabel(49, true)).toBe("mehrfach");
+    expect(diaryCountLabel(386, false)).toBe("386×");
+    expect(diaryCountLabel(1, false)).toBeNull();
+  });
+
+  it("nimmt für den Zeitstempel die letzte Bestätigung einer Entscheidung", () => {
+    expect(
+      diaryStamp(
+        entry({ settled_at: "2026-09-15T19:59:00Z", refreshed_at: "2026-09-15T20:59:00Z" }),
+      ),
+    ).toBe("2026-09-15T20:59:00Z");
+    expect(
+      diaryStamp(entry({ settled_at: "2026-09-15T19:59:00Z", refreshed_at: null })),
+    ).toBe("2026-09-15T19:59:00Z");
   });
 });

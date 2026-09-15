@@ -65,8 +65,11 @@ import {
   DIARY_FILTERS,
   LAB_SECTIONS,
   diaryActionWord,
+  diaryCountLabel,
   diaryEmptyNote,
   diaryOutcome,
+  diaryStamp,
+  groupDiaryEntries,
   labOriginLine,
   labSection,
   type DiaryFilterId,
@@ -431,13 +434,23 @@ export function LaborView(props: LaborViewProps) {
   }, [labData]);
 
   const diaryEntries = diary.data?.entries ?? [];
-  const shownDiary = diaryEntries.filter((entry) =>
-    diaryFilter === "all"
-      ? true
-      : diaryFilter === "void"
-        ? entry.outcome !== "win" && entry.outcome !== "loss" && entry.outcome !== "tie"
-        : entry.outcome === diaryFilter,
+  // Gleiche, direkt aufeinanderfolgende Einträge stehen als **eine** Zeile in
+  // der Liste (vor 0.40.0 füllte eine offene Ablehnung sie im 30-Minuten-Takt
+  // mit identischen Zeilen und verdrängte die echten Empfehlungen).
+  const shownDiary = groupDiaryEntries(
+    diaryEntries.filter((entry) =>
+      diaryFilter === "all"
+        ? true
+        : diaryFilter === "void"
+          ? entry.outcome !== "win" && entry.outcome !== "loss" && entry.outcome !== "tie"
+          : entry.outcome === diaryFilter,
+    ),
   );
+  // Ist die Liste gekürzt (Server-Limit 50) oder der Gesamtstand unbekannt,
+  // ist jede Zahl aus der Liste eine Untergrenze — dann sagt die Zeile
+  // „mehrfach“ statt einer zu kleinen Zahl.
+  const diaryTotal = diary.data?.settled_total;
+  const diaryCapped = diaryTotal == null || diaryTotal > diaryEntries.length;
 
   const dayCurve: Array<{ x: number; y: number }> =
     activeLabDayRow?.curve && activeLabDayRow.curve.length
@@ -1065,14 +1078,18 @@ export function LaborView(props: LaborViewProps) {
               </div>
             ) : (
               <ul className="mt-3 divide-y divide-slate-800/80">
-                {shownDiary.map((entry) => {
+                {shownDiary.map((row) => {
+                  const entry = row.entry;
                   const verdict = diaryOutcome(entry);
                   const stationName =
                     stations.find(
                       (station) => station.station_id === entry.station_id,
                     )?.name ??
+                    entry.station_name ??
                     entry.station_id ??
                     "unbekannte Station";
+                  const rowCount = diaryCountLabel(row.count, diaryCapped);
+                  const stamp = diaryStamp(entry);
                   return (
                     <li
                       key={entry.snapshot_id ?? `${entry.settled_at}-${entry.action}`}
@@ -1096,6 +1113,7 @@ export function LaborView(props: LaborViewProps) {
                                 : "·"}
                           </span>{" "}
                           {diaryActionWord(entry.action)} · {stationName}
+                          {rowCount ? ` · ${rowCount}` : ""}
                         </p>
                         <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
                           {entry.price_then !== null && entry.price_window !== null
@@ -1108,7 +1126,11 @@ export function LaborView(props: LaborViewProps) {
                         </p>
                       </div>
                       <p className="shrink-0 text-[10px] text-slate-500">
-                        {entry.settled_at ? timeLabel(entry.settled_at) : ""}
+                        {row.count > 1 && row.oldest && stamp
+                          ? `${timeLabel(row.oldest)} – ${timeLabel(stamp)}`
+                          : stamp
+                            ? timeLabel(stamp)
+                            : ""}
                       </p>
                     </li>
                   );

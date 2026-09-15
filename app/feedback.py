@@ -52,9 +52,12 @@ MAX_SOURCE_CHARS = 40
 # Schlüssel führen zu leeren Bilanzen statt zu einem Fehler). Regel ab jetzt:
 #   1 = Ursprungsfassung (0.10–0.12, Datei ohne ``schema_version``)
 #   2 = A3-Felder als feste Sammlungen (``audit``, ``voided`` je Beleg)
+#   3 = Ablehnungsgrund am Snapshot (``decline_reason``) und ``refreshed_at``:
+#       Das Tagebuch nennt je „keine Empfehlung“ den Grund der Tabelle, und
+#       bestätigte Ablehnungen tragen den Zeitpunkt der letzten Bestätigung.
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 2
+FEEDBACK_SCHEMA_VERSION = 3
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -130,10 +133,39 @@ def _migrate_store_v1_to_v2(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v2_to_v3(store: dict[str, Any]) -> dict[str, Any]:
+    """2 → 3 (0.39 → 0.40): Ablehnungsgrund und letzte Bestätigung je Snapshot.
+
+    ``decline_reason`` bleibt bei Altbeständen ``None`` — der Grund einer
+    damaligen Ablehnung ist nicht rekonstruierbar, und ihn zu erfinden wäre
+    schlimmer als „feld fehlt“. ``refreshed_at`` wird auf ``emitted_at``
+    gesetzt: mehr als den Emit-Zeitpunkt wissen wir über alte Snapshots
+    nicht; die Kollabierung hält das Feld danach aktuell.
+    """
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        for snap in ep.get("snapshots", []) or []:
+            if not isinstance(snap, dict):
+                continue
+            snap.setdefault("decline_reason", None)
+            snap.setdefault("refreshed_at", snap.get("emitted_at"))
+        # ``first_snapshot``/``last_snapshot`` tragen dieselben Zeilen wie
+        # ``snapshots`` — sie werden mitgezogen, sonst driften die drei
+        # Sichten nach einer Migration auseinander.
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict):
+                snap.setdefault("decline_reason", None)
+                snap.setdefault("refreshed_at", snap.get("emitted_at"))
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
     1: _migrate_store_v1_to_v2,
+    2: _migrate_store_v2_to_v3,
 }
 
 
@@ -317,6 +349,13 @@ def save_store(settings, store: dict[str, Any]) -> None:
 
 
 def _same_advice(a: dict, b: dict) -> bool:
+    """Gehören zwei Entscheidungen zu **einer** Zeile im Ledger (§5.4)?
+
+    Gleiche Aktion, gleiche Station (und Ausweichstation), gleicher
+    Kraftstoff — und innerhalb von ``SNAPSHOT_COLLAPSE_MINUTES``. Ablehnungen
+    (``no_advice``) kennen dieses Zeitfenster nicht: Sie tragen keine
+    Messung, ihr wiederholtes Bestätigen ist kein neuer Eintrag.
+    """
     if not a or not b:
         return False
     action_match = a.get("action") == b.get("action")
@@ -329,13 +368,20 @@ def _same_advice(a: dict, b: dict) -> bool:
         delta_m = abs((t_b - t_a).total_seconds()) / 60.0
     except Exception:
         delta_m = 999.0
-    return (
-        action_match
-        and station_match
-        and alt_match
-        and fuel_match
-        and delta_m < SNAPSHOT_COLLAPSE_MINUTES
-    )
+    if not (action_match and station_match and alt_match and fuel_match):
+        return False
+    # Eine erneut bestätigte Ablehnung ist keine neue Entscheidung: Es gibt
+    # keinen Vergleichspreis, nichts zu messen. Sie wird ohne Zeitfenster
+    # kollabiert — sonst schriebe jede Abfrage eines offenen Fensters einen
+    # eigenen „keine Empfehlung“-Eintrag ins Ledger (bei 30 Minuten Abstand
+    # greift die 30-Minuten-Regel nicht mehr: ``delta_m < 30``), und das
+    # Tagebuch füllte sich mit Zeilen, die alle dasselbe sagen. Die
+    # 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo jeder
+    # Emit-Zeitpunkt einen eigenen Ankerpreis und damit eine eigene Messung
+    # trägt.
+    if a.get("action") == "no_advice":
+        return True
+    return delta_m < SNAPSHOT_COLLAPSE_MINUTES
 
 
 def _open_episode(store: dict[str, Any]) -> dict[str, Any] | None:
@@ -407,6 +453,13 @@ def record_snapshot(
     Gibt (store, episode) zurück. Die interne P-Schätzung (estimate_p) wird
     aus früheren Settlements gebildet und immer gespeichert — angezeigt wird
     sie erst nach dem M7-Gate.
+
+    Eine **Ablehnung** (``no_advice``) wird dagegen zeitunabhängig kollabiert
+    (``_same_advice``): Sie ist kein Vorschlag, sondern der Zustand
+    „diesmal nichts zu vergleichen“ — genau eine Zeile je Episode. Sonst
+    zeigt das Tagebuch für jede Abfrage eine eigene Zeile (alle 30 Minuten,
+    solange ein Fenster offen ist) und schreibt der „nicht bewertbar“-Zähler
+    Abfragen statt Entscheidungen.
     """
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
@@ -437,6 +490,10 @@ def record_snapshot(
         snap = {
             "id": snap_id,
             "emitted_at": now_str,
+            # Zeitpunkt der letzten Bestätigung dieser Entscheidung. Bei einer
+            # Kollabierung wandert er mit, ``emitted_at`` bleibt der
+            # Emit-Zeitpunkt (an ihm hängt die P-Schätzung).
+            "refreshed_at": now_str,
             "clock_hour": snapshot_data.get("clock_hour", 12.0),
             "action": action,
             "city": snapshot_data.get("city"),
@@ -451,6 +508,9 @@ def record_snapshot(
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
             "expected_saving_eur": snapshot_data.get("expected_saving_eur", 0.0),
+            # Grund der Ablehnung in Klartext (nur bei ``no_advice``): Das
+            # Tagebuch zeigt damit „warum“, nicht nur „keine Empfehlung“.
+            "decline_reason": snapshot_data.get("decline_reason"),
             "p_besser": snapshot_data.get("p_besser"),
             "p_correct": p_besser,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),

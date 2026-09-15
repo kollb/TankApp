@@ -209,6 +209,27 @@ def test_store_from_newer_version_is_rejected_not_wiped(settings_with_station):
     assert path.read_text(encoding="utf-8") == original
 
 
+def test_v2_store_gains_decline_reason_and_refreshed_at():
+    """2 → 3 (0.40.0): Alt-Snapshots bekommen Grund-Feld und ``refreshed_at``.
+
+    Der Ablehnungsgrund von damals ist nicht rekonstruierbar — er bleibt
+    ``None`` statt erfunden. ``refreshed_at`` ist der Emit-Zeitpunkt: mehr
+    wissen wir über alte Zeilen nicht.
+    """
+    store = migrate_store({**old_store(), "schema_version": 2})
+    snap = store["episodes"][0]["snapshots"][0]
+    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION
+    assert snap["decline_reason"] is None
+    assert snap["refreshed_at"] == "2026-08-01T12:00:00+00:00"
+    # first/last_snapshot tragen dieselbe Zeile — sie dürfen nicht driften.
+    episode = store["episodes"][0]
+    for key in ("first_snapshot", "last_snapshot"):
+        assert episode[key]["decline_reason"] is None
+        assert episode[key]["refreshed_at"] == "2026-08-01T12:00:00+00:00"
+    # Idempotent: ein zweiter Lauf ändert nichts.
+    assert migrate_store(dict(store)) == store
+
+
 def test_migrate_is_idempotent_and_tolerates_garbage_version():
     base = old_store()
     once = migrate_store(base)

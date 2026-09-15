@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 15.09.2026 · App-Version **0.39.0** · gilt für `web/src/**`,
+> Stand: 15.09.2026 · App-Version **0.40.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -196,7 +196,9 @@ Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
 | Weg in die Tiefe (Ebene 2) | `Im Labor vertiefen: <Kurzform>` — das Ziel ist der Abschnitt, der die Zahl beweist |
 | Ergebnis-Worte des Tagebuchs | `richtig` · `daneben` · `unentschieden` · `nicht bewertbar` — nie „Treffer“, nie „Fehler“, nie „Gleichstand“. Die Filter-Chips des Tagebuchs kommen aus `DIARY_FILTERS` (`lab.ts`) und tragen dieselben Worte; „Trefferquote“ bleibt als Name der Maßzahl erlaubt |
 | Grau-Zustand der Ampel | `Keine klare Empfehlung` — ein Label, im Tagebuch wie in „Jetzt“ |
-| Void-Grund | `Kein Vergleichspreis — Grund: <Klartext>.` (Codes aus `app/feedback.py`, z. B. `keine offene Meldung im Fenster`) |
+| Void-Grund | `Kein Vergleichspreis — Grund: <Klartext>.` (Codes aus `app/feedback.py`, z. B. `keine offene Meldung im Fenster`) — gilt weiter für Altbestände ohne gespeicherten Grund |
+| Ablehnung mit Grund (0.40.0) | `Kein Vergleichspreis — die App hatte hier keine Empfehlung: <Grund der Tabelle>.` — der Grund kommt aus dem Snapshot (`decline_reason`: Güte-Gate, fehlender Anker, kein Fenster, Grauzone); die Grauzone nennt vor der M7-Freigabe **keine Zahl** (`GRAY_ZONE_REASON_GATE_SAFE`) |
+| Mehrfach bestätigte Ablehnung (0.40.0) | dieselbe Aussage bleibt **eine** Zeile: Anzahl `3×` (bei gekürzter Liste `mehrfach`) und Zeitspanne `15.09., 19:59 – 15.09., 20:59` aus `diaryStamp`; kein zweiter Eintrag, kein zweiter Satz |
 | Leeres Tagebuch | `no_settlements`: „Noch kein Eintrag abgerechnet: … Worker „settlement““ · `no_advice_history`: „Noch keine Empfehlung abgegeben — das Tagebuch beginnt mit der ersten Empfehlung aus „Jetzt“.“ |
 | Trefferquote | `Versprochen waren die genannten Sicherheiten — eingetroffen sind <x> % davon.`; ohne Fälle der Satz mit `Noch keine abgeschlossene Empfehlung …` |
 | Drift-Spalte | `unauffällig` · `noch nicht messbar` (nicht `unknown`, nicht „stabil“) |

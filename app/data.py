@@ -1456,10 +1456,13 @@ class LiveData:
 
         Liest die **echten** Settlements aus dem Advice-Ledger
         (`app/feedback.py`) und verbindet jeden Eintrag mit dem Snapshot, der
-        ihn ausgelöst hat: Aktion, Station, Fenster, Versprechen (p) und
-        Ergebnis (win/loss/tie/void + Begründung). Kein Demo-Eintrag, keine
-        erfundene Zeile — solange nichts abgerechnet ist, bleibt die Liste
-        leer und das Feld `reason` erklärt, woran es liegt.
+        ihn ausgelöst hat: Aktion, Station (Name aus dem Snapshot, nicht nur
+        die ID), Fenster, Versprechen (p) und Ergebnis (win/loss/tie/void +
+        Begründung). Kein Demo-Eintrag, keine erfundene Zeile — solange nichts
+        abgerechnet ist, bleibt die Liste leer und das Feld `reason` erklärt,
+        woran es liegt. ``decline_reason`` nennt bei „keine Empfehlung“ den
+        Grund der Tabelle, ``refreshed_at`` die letzte Bestätigung der
+        Entscheidung (Kollabierung, §5.4).
 
         `limit` kappt die Liste (neueste zuerst), `outcome` filtert
         ("win", "loss", "tie", "void").
@@ -1489,6 +1492,12 @@ class LiveData:
                         "action": snap.get("action"),
                         "station_id": snap.get("alt_station_id")
                         or snap.get("station_id"),
+                        # Namen aus dem Snapshot: Ohne sie fiel die GUI auf
+                        # die rohe Stations-UUID zurück, wenn die Station nicht
+                        # mehr im aktuellen Set lag — im Tagebuch stand dann
+                        # „919e1134-…“ statt eines Namens.
+                        "station_name": snap.get("alt_station_name")
+                        or snap.get("station_name"),
                         "city": snap.get("city"),
                         "fuel": snap.get("fuel"),
                         "window_start": snap.get("window_start"),
@@ -1500,6 +1509,11 @@ class LiveData:
                         "regret_eur": settlement.get("regret_eur"),
                         "p_correct": snap.get("p_correct"),
                         "p_besser": snap.get("p_besser"),
+                        # Grund der Ablehnung (nur ``no_advice``) und der
+                        # Zeitpunkt der letzten Bestätigung: Eine kollabierte
+                        # Ablehnung gilt weiter, bis sie widerrufen wird.
+                        "decline_reason": snap.get("decline_reason"),
+                        "refreshed_at": snap.get("refreshed_at"),
                         "liters": snap.get("liters_assumed"),
                         "intent": snap.get("intent"),
                     }
