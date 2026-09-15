@@ -2548,6 +2548,35 @@ export function euroToCentPerLiter(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? null : value * 100;
 }
 
+/**
+ * Einordnung nach dem Buchen (MICROCOPY: kurze Bestätigung mit
+ * Einordnung): der gezahlte Preis gegen den Median der frischen
+ * Set-Preise zu dem Moment — eine berechenbare, ehrliche Größe.
+ * `null` ohne genug Messwerte (keine Einordnung, kein Lob).
+ *
+ * U7: lebt hier (nicht in `views/Ich.tsx`), weil die Root den Wert für die
+ * Schnell-Erfassung braucht, ohne die Ich-View statisch zu importieren —
+ * die Views laden seit U7 als eigene Chunks (`React.lazy`).
+ */
+export function fillPositionNote(
+  pricePaid: number,
+  freshPrices: number[],
+): string | null {
+  const values = freshPrices.filter((value) => Number.isFinite(value));
+  if (values.length < 2) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median =
+    sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  const deltaCt = (pricePaid - median) * 100;
+  if (Math.abs(deltaCt) < 0.05)
+    return "Gleichauf mit dem Median deines Sets.";
+  return deltaCt < 0
+    ? `${centPerLiter(Math.abs(deltaCt))} unter dem Median deines Sets (heute).`
+    : `${centPerLiter(Math.abs(deltaCt))} über dem Median deines Sets (heute) — der nächste Beleg ist der bessere Vergleich.`;
+}
+
 export function percentLabel(value: number | null | undefined, decimals = 0) {
   return value == null || !Number.isFinite(value)
     ? "—"

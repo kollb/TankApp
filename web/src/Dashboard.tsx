@@ -1,7 +1,15 @@
 // Layout/visual foundation: sample/good gui/TankAppDashboard + DecisionCockpit.
 // Workshop composition and charts: sample/good statistic gui/DecisionLab.
 // No demo engine, seeds, simulated decisions or PostgreSQL are imported.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Fuel as FuelIcon,
   Car,
@@ -23,8 +31,6 @@ import {
 } from "lucide-react";
 // D1: ausgelagerte Bausteine — Slider, Heatmap und API-Explorer leben
 // jetzt in components/; Dashboard bleibt die Zusammensetzung der Ansichten.
-import { ApiExplorer } from "./components/ApiExplorer";
-import { HeatmapGrid } from "./components/HeatmapGrid";
 import { LoadError } from "./components/LoadError";
 // A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog + Umschalter im Header.
 import { ProfileManager } from "./components/ProfileManager";
@@ -55,13 +61,6 @@ import {
 import { Badge, Empty, Metric, panel } from "./components/ui";
 import { PrecisionSlider } from "./components/PrecisionSlider";
 import { forecastStamp, type NowTarget } from "./now";
-import { LineChart } from "./components/LineChart";
-import {
-  LabLineChart,
-  HistogramBars,
-  DeltaBars,
-  CalibChart,
-} from "./components/LabCharts";
 import {
   applyAppTheme,
   autoTimeTicks,
@@ -79,6 +78,7 @@ import {
   euro,
   euroPerLiter,
   fillLimitHint,
+  fillPositionNote,
   formatHour,
   germanDecimalToNumber,
   heatmapPath,
@@ -155,13 +155,34 @@ import {
 // „Jetzt“ (S1), „Stationen“ (S2), „Woche“ (S3), „Ich“ (S5a) — der alte
 // Alltagstab und der Einstellungen-Tab sind ersetzt, ihre Reste (Tanken,
 // Belege, Defaults) wohnen jetzt dort, wo sie wirken.
-import { JetztView, type NowAssumptions } from "./views/Jetzt";
-import { StationenView } from "./views/Stationen";
-import { WocheView } from "./views/Woche";
-import { IchView, fillPositionNote } from "./views/Ich";
-import { LaborView } from "./views/Labor";
-import { SystemView } from "./views/System";
-import { GlossaryView } from "./views/Glossary";
+// U7: Code-Splitting pro Bereich — jede View ist ein eigener Chunk und
+// lädt erst, wenn ihr Tab geöffnet wird. So zahlt der Einstieg („Jetzt“)
+// nicht mehr das komplette Labor (1 643 Zeilen, 15 Chart-Aufrufe), die
+// Karten-Bibliothek oder die System-Ansicht mit; der einzelne 540-kB-Chunk
+// wird in handliche Stücke zerlegt. `fillPositionNote` ist nach `data.ts`
+// gewandert, damit die Root es ohne statischen Ich-Import bekommt.
+const JetztView = lazy(() =>
+  import("./views/Jetzt").then((m) => ({ default: m.JetztView })),
+);
+const StationenView = lazy(() =>
+  import("./views/Stationen").then((m) => ({ default: m.StationenView })),
+);
+const WocheView = lazy(() =>
+  import("./views/Woche").then((m) => ({ default: m.WocheView })),
+);
+const IchView = lazy(() =>
+  import("./views/Ich").then((m) => ({ default: m.IchView })),
+);
+const LaborView = lazy(() =>
+  import("./views/Labor").then((m) => ({ default: m.LaborView })),
+);
+const SystemView = lazy(() =>
+  import("./views/System").then((m) => ({ default: m.SystemView })),
+);
+const GlossaryView = lazy(() =>
+  import("./views/Glossary").then((m) => ({ default: m.GlossaryView })),
+);
+import type { NowAssumptions } from "./views/Jetzt";
 import { buildStripCells } from "./strip";
 import { type LabOrigin, type LabSectionId } from "./lab";
 import {
@@ -1881,8 +1902,17 @@ export function Dashboard() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB JETZT (GUI-Neuentwurf, Phase 1+2)                        */}
+        {/* Bereich-Inhalt (U7: die Views laden als eigene Chunks —       */}
+        {/* Suspense zeigt derweil ein Skeleton statt einer weißen Fläche) */}
         {/* ============================================================ */}
+        <Suspense
+          fallback={
+            <div className="space-y-6" aria-busy="true" aria-live="polite">
+              <SkeletonPanel />
+              <SkeletonPanel />
+            </div>
+          }
+        >
         {tab === "jetzt" && (
           <JetztView
             activeCity={activeCity}
@@ -2179,6 +2209,7 @@ export function Dashboard() {
         {/* TAB GLOSSAR — C7 „Was heißt das?“                             */}
         {/* ============================================================ */}
         {tab === "glossary" && <GlossaryView />}
+        </Suspense>
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-[10px] text-slate-600">
           <span>

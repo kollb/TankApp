@@ -28,7 +28,7 @@ im echten Browser gegen die echte App (Abschnitt
 
 | Gate | Werkzeug | Gegenstand | Wann |
 |---|---|---|---|
-| Lighthouse | `@lhci/cli` (Chrome aus dem Playwright-Cache) | Zwei GUI-Zustände: Alltag und Statistik, je 3 Läufe | eigener Workflow `quality.yml`: auf Abruf, sonntags 04:17 UTC, und bei PRs, die `web/`, `app/`, `engine/` oder `ops/quality/` anfassen |
+| Lighthouse | `@lhci/cli` (Chrome aus dem Playwright-Cache) | Drei GUI-Zustände: gefüllter Einstieg („Jetzt“), Labor (`?tab=labor`) und Einrichtungszustand (leerer Server), je 3 Läufe | eigener Workflow `quality.yml`: auf Abruf, sonntags 04:17 UTC, und bei PRs, die `web/`, `app/`, `engine/` oder `ops/quality/` anfassen |
 | Lastpfad | `node web/load/overview.mjs` (keine Abhängigkeit) | `GET /api/v1/overview` — 8 Clients, 30 s, gemischt aus Volllesen und `If-None-Match`-Revalidierung | derselbe Workflow |
 
 Warum ein **eigener** Workflow und nicht Teil von `tests.yml`: Der in
@@ -51,6 +51,15 @@ misst nur den Rahmen. Also gibt es `ops/quality/`:
 
 Die Preise teilen einen gemeinsamen Tages-Marktfaktor — ohne Gleichlauf wäre
 die gemeinsame Bootstrap-Ziehung (A11) im Lastpfad wirkungslos.
+
+Seit U7 (0.40.0) misst Lighthouse **drei** Zustände statt zweimal denselben
+Startschirm: den gefüllten Einstieg auf dem Demo-Stack, den Labor-Bereich
+über das Bereichs-Routing (`?tab=labor`, GUI-UX-BEFUND U4) und den
+Einrichtungszustand auf einem zweiten, leeren Server (Port 1356). Die alte
+zweite URL `?tab=statistik` zeigte nie einen eigenen Bereich — „Statistik“
+ist seit dem Neuentwurf abgeschafft, beide Läufe sahen denselben Bildschirm.
+Die Bereiche laden als eigene Chunks (`React.lazy` je View), damit der
+Einstieg das Labor und die Karte nicht mitschleppt.
 
 ---
 
@@ -125,8 +134,9 @@ schreibt seinen Bericht als JSON nach stdout.
 | Lighthouse Best Practices | ≥ 0,90 | Fehler | Konsolen-Fehler, CSP-Löcher, veraltete APIs. |
 | Lighthouse SEO | ≥ 0,80 | Fehler | LAN-App: Sichtbarkeit ist zweitrangig, kaputte Metadaten wären trotzdem ein Fehler. |
 | Lighthouse Performance | ≥ 0,80 | **Warnung** | M4 verlangt > 0,90. Solange keine einzige Messung vorliegt, wäre ein hartes Budget ein erfundenes Gate — die erste CI-Messung entscheidet über das Nachziehen (siehe [Offen](#offen)). |
-| Übertragungsvolumen | ≤ 1,5 MB | Warnung | Leaflet kommt erst beim Karten-Tab dazu. |
-| LCP / CLS | ≤ 2500 ms / ≤ 0,1 | Warnung | Auf CI-Maschinen streuend; dient dem Trend, nicht dem Bestehen. |
+| Übertragungsvolumen | ≤ 1,5 MB | **Fehler** | U7: scharf statt Warnung — seit dem Code-Splitting pro Bereich (0.40.0) lädt der Einstieg nur noch seinen eigenen Chunk; wer das Volumen treibt, fällt auf. |
+| LCP | ≤ 2500 ms | Warnung | Auf CI-Maschinen streuend; dient dem Trend, nicht dem Bestehen. |
+| CLS | ≤ 0,1 | **Fehler** | U7: Layout-Sprünge sind sichtbar und messbar stabil — ein Rückfall ist ein Fehler, kein Trend. |
 
 ---
 
@@ -178,9 +188,10 @@ wenn sich die Rahmenbedingungen ändern.
    kein Chrome-Download möglich, deshalb ist die Performance-Ebene
    **warnend** gesetzt. Erste echte Zahlen liefert der Workflow-Lauf; danach
    werden die Budgets nachgezogen und hier eingetragen.
-2. **Nur zwei GUI-Zustände.** Gemessen werden Jetzt und Labor. Die übrigen vier
-   Bereiche (Woche, Stationen, Ich, System) folgen, sobald das M4-Ziel
-   (> 0,90) steht.
+2. **Nicht alle Bereiche im Gate.** Gemessen werden der gefüllte Einstieg,
+   das Labor und der Einrichtungszustand (U7). Die übrigen Bereiche (Woche,
+   Stationen, Ich, System) folgen, sobald das M4-Ziel (> 0,90) steht — sie
+   laden als eigene Chunks, ein eigener Lauf je Bereich ist damit billig.
 3. **Kein Docker-Stack.** Gegen `ops/nas/app/compose.yml` ist der Lastpfad
    noch nicht gelaufen — die Compose-Variante braucht eine InfluxDB mit
    Inhalt. Bis dahin gilt der Demo-Stack als Referenz.
