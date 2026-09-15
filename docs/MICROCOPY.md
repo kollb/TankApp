@@ -181,7 +181,7 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 | Gesamtfarbe | `Alles ok` · `Hinweise` · `Störungen` · `Unbekannt` |
 | Coverage-Gate | Fenster wie geliefert (`06–24 Uhr`) — kein zweites „Uhr“; Bestwert und Schwelle über `percentLabel` |
 | Diagnose-Export | Knopf `Diagnose als Datei` — JSON mit Version, Zustand, Coverage, letzten Log-Zeilen, ohne Tokens |
-| PWA | `der Service-Worker liegt unter /sw.js` — Versionierung, Update-Banner und Offline-Queue (B10) sind weiter offen |
+| PWA | `der Service-Worker liegt unter /sw.js` — die Shell trägt die App-Version, ein wartender Worker meldet sich als „Neue Version verfügbar“; Belege/Vorsätze warten offline in der Queue und gehen raus, sobald die Verbindung steht (B10) |
 | API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
 | Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
 

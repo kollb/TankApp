@@ -889,6 +889,39 @@ Bedarf `TANKAPP_BUILD_COMMIT=<hash>` als Umgebung für den Container setzen
 eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
 Version: [CHANGELOG](../CHANGELOG.md).
 
+### GUI-Update und Offline-Queue (B10, seit 0.38.0)
+
+Die installierte GUI ist eine PWA (`/sw.js`). Seit 0.38.0 trägt die App-Shell
+die **App-Version**: `web/vite.config.ts` liest `app/version.py` und stempelt
+sie in `web/dist/sw.js` (Cache-Name `tankapp-shell-<version>`). Bleibt der
+Platzhalter stehen, bricht der Build ab — eine ausgelieferte Shell ohne Version
+wäre genau die stille Lüge, die B10 beseitigt hat.
+
+- Ein neuer Service Worker **wartet** (`skipWaiting` erst auf Anforderung). Die
+  Ansicht zeigt dann „Neue Version verfügbar — diese Ansicht läuft noch auf X“
+  mit „Jetzt neu laden“ / „Später“ (still für die Sitzung, nicht für immer).
+- Die Version der laufenden Ansicht ist beim Build eingebrannt; der Footer
+  nennt weiterhin die Server-Version. Weichen sie ab, sagt es der Hinweis —
+  statt einer Zahl, die nur der Server kennt.
+- **Offline-Queue für Belege und Vorsätze:** Reißt die Verbindung ab oder
+  antwortet der Server mit 502/503/504, merkt die GUI den Schreibvorgang lokal
+  vor (`localStorage`, Schlüssel `tankapp.offline.queue.v1`) und reicht ihn beim
+  nächsten Kontakt nach — bei App-Start und beim `online`-Ereignis. Sichtbar
+  als Zeile über den Tabs („… sind lokal vorgemerkt und gehen raus, sobald die
+  Verbindung steht“). Ablage in `localStorage` statt IndexedDB: winzige
+  JSON-Objekte, kein Binärinhalt, keine Transaktionen nötig (Abweichung vom
+  Konzept §5.4, in [LUECKEN.md](LUECKEN.md) vermerkt).
+  - Ober­grenzen: 50 Einträge, älter als 7 Tage wird verworfen (die Ansicht
+    sagt das nicht als Fehler, sondern lässt die Zeile verschwinden).
+  - Beleg-`id` und `tanked_at` entstehen **beim Tanken**, nicht beim
+    Nachreichen; der Server ist über `id` idempotent — ein doppelt gesendeter
+    Beleg landet nicht zweimal im Ledger.
+  - Nur 4xx (Ablehnung: Liter außerhalb der Grenzen, fremde Station) wird
+    sofort gemeldet und **nicht** nachgereicht. 500 ist ein Programmfehler und
+    wird ebenfalls gemeldet, nicht wiederholt.
+  - Profile, Storno und Jobstart laufen nicht über die Queue — sie sind
+    Entscheidungen, keine Datenerfassung im Funkloch.
+
 ## Fehlersuche
 
 ### Collector Störungsfälle

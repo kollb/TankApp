@@ -898,7 +898,7 @@ export function SystemView(props: SystemViewProps) {
             Dieselben Endpunkte, die diese GUI nutzt — live abgerufen, ohne Poll auszulösen. Aktuelle Endpunkte: decide, episodes, fills, stats/summary. Die API bleibt <code className="text-slate-400">/api/v1</code> — ein v2-Baum wird nicht erfunden.
           </p>
           <p className="mb-3 text-[11px] leading-relaxed text-slate-500">
-            PWA: der Service-Worker liegt unter <code className="text-slate-400">/sw.js</code> und hält die Oberfläche offline. Versionierung, Update-Banner und Offline-Queue (B10) sind weiter offen — die App behauptet sie nicht.
+            PWA: der Service-Worker liegt unter <code className="text-slate-400">/sw.js</code> und hält die Oberfläche offline. Die Shell trägt die App-Version; steht eine neue bereit, sagt die App es („Neue Version verfügbar“). Belege und Vorsätze, die ohne Verbindung anfallen, warten lokal und werden nachgereicht (B10).
           </p>
           <ApiExplorer fuel={fuel} identity={identity} activeCity={activeCity} heatmapWeeks={heatmapWeeks} />
         </div>

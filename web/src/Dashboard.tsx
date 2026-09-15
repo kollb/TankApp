@@ -16,6 +16,7 @@ import {
   MapPin,
   Wifi,
   WifiOff,
+  CloudOff,
   Share2,
   CheckCircle2,
   User,
@@ -32,6 +33,14 @@ import { ProfileManager } from "./components/ProfileManager";
 import { CellError } from "./components/CellError";
 import { DataAgeBanner } from "./components/DataAge";
 import { InstallHint } from "./components/InstallHint";
+import { UpdateBanner } from "./components/UpdateBanner";
+import {
+  flushQueue,
+  queueOldestAgeMs,
+  queueStatusText,
+  readQueue,
+  type QueuedWrite,
+} from "./offline-queue";
 import { DataReachNote } from "./components/DataReach";
 import {
   SkeletonChart,
@@ -101,6 +110,7 @@ import {
   useResource,
   usePreference,
   postIntent,
+  postQueued,
   postJobRun,
   jobRunMessage,
   postFill,
@@ -337,6 +347,27 @@ export function Dashboard() {
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
+  // B10: lokal vorgemerkte Belege/Vorsätze (§5.4) — sichtbar, nicht still.
+  const [queue, setQueue] = useState<QueuedWrite[]>(() => readQueue());
+  const [queueNote, setQueueNote] = useState<string | null>(null);
+
+  const flushPending = async () => {
+    const result = await flushQueue(postQueued);
+    setQueue(result.list);
+    if (result.rejected.length > 0) {
+      setQueueNote(
+        `! ${result.rejected.length === 1 ? "Ein vorgemerkter Eintrag wurde" : `${result.rejected.length} vorgemerkte Einträge wurden`} vom Server abgelehnt (${result.rejected[0].last_error ?? "abgelehnt"}) — bitte neu erfassen.`,
+      );
+      setTimeout(() => setQueueNote(null), 8000);
+    }
+    if (result.sent > 0) {
+      setActionFeedback(
+        `✓ ${result.sent === 1 ? "Ein vorgemerkter Eintrag ist" : `${result.sent} vorgemerkte Einträge sind`} übertragen.`,
+      );
+      setTimeout(() => setActionFeedback(null), 6000);
+      setRefresh((count) => count + 1);
+    }
+  };
 
   useEffect(() => {
     const on = () => setBrowserOnline(true);
@@ -347,6 +378,15 @@ export function Dashboard() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
+  }, []);
+
+  // Beim Start und sobald das Netz zurück ist: Nachreichen, was liegen blieb.
+  useEffect(() => {
+    void flushPending();
+    const onOnline = () => void flushPending();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // GUI-Neuentwurf §4.1: Suche als Nebenweg aus jeder Ansicht (⌘K / Strg+K).
@@ -937,6 +977,11 @@ export function Dashboard() {
       ? `App-Server unterbrochen — angezeigt bleiben die letzten erfolgreich geladenen Preise vom ${timeLabel(data.generated_at)}. Die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist.`
       : "App-Server nicht erreichbar — die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist."
     : problem(data?.connection_error);
+  // B10: Statuszeile der Offline-Queue — nur wenn wirklich etwas wartet.
+  const queueBanner = queueStatusText(
+    queue.length,
+    queueOldestAgeMs(queue, Date.now()),
+  );
   const h = health.error ? null : health.data;
   const collector = collectorStatus.data || h?.collector;
   // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
@@ -1286,6 +1331,15 @@ export function Dashboard() {
       source: "prompt",
       episode_id: ep.id,
     });
+    if (res?.queued) {
+      setQueue(readQueue());
+      setActionFeedback(
+        "✓ Füllung lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
+      );
+      setDueDismissed(true);
+      setTimeout(() => setActionFeedback(null), 6000);
+      return;
+    }
     if (res?.error_code) {
       setActionFeedback(
         `! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`,
@@ -1330,6 +1384,14 @@ export function Dashboard() {
       source: "manual",
     });
     setFillSubmitting(false);
+    if (res?.queued) {
+      setQueue(readQueue());
+      setActionFeedback(
+        "✓ Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
+      );
+      setTimeout(() => setActionFeedback(null), 6000);
+      return;
+    }
     if (res?.error_code) {
       setActionFeedback(
         `! Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – bitte erneut versuchen.`,
@@ -1387,6 +1449,15 @@ export function Dashboard() {
     const epId = decideRes.data?.episode?.id;
     if (epId) {
       const res = await postIntent(epId, intent);
+      if (res?.queued) {
+        setQueue(readQueue());
+        if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
+        setActionFeedback(
+          "✓ Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
+        );
+        setTimeout(() => setActionFeedback(null), 6000);
+        return;
+      }
       if (res?.error_code) {
         setActionFeedback(
           `! Auswahl speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} – App-Server erreichbar?`,
@@ -1650,6 +1721,25 @@ export function Dashboard() {
 
         {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
         <InstallHint onNote={setActionFeedback} />
+
+        {/* B10: „Neue Version verfügbar“ — nur wenn ein Service Worker wartet. */}
+        <UpdateBanner />
+
+        {queueBanner && (
+          <div
+            role="status"
+            className="mb-6 flex items-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 p-4 text-sm text-sky-200"
+          >
+            <CloudOff size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p>{queueBanner.text}</p>
+              <p className="mt-0.5 text-[11px] text-sky-200/80">
+                {queueBanner.note}
+                {queueNote ? ` ${queueNote}` : ""}
+              </p>
+            </div>
+          </div>
+        )}
 
         {!browserOnline && (
           <div

@@ -668,8 +668,11 @@ Formular. Deshalb:
 | Kein Intent, nur geschaut | nichts | Prompt |
 
 „Anders“ klappt Station/Zeit/Liter auf, alles vorbelegt. Ein Tap mehr.
-Offline: Fill und Intent landen in der PWA-Queue (IndexedDB), Sync
-gegen NAS sobald Netz da ist — Client-UUID, idempotent.
+Offline: Fill und Intent landen in der PWA-Queue, Sync
+gegen NAS sobald Netz da ist — Client-UUID, idempotent. Umgesetzt in 0.38.0
+(B10) mit `localStorage` statt IndexedDB: winzige JSON-Objekte ohne
+Binärinhalt, LAN-App ohne Transaktionsbedarf — Abweichung in
+[LUECKEN.md](LUECKEN.md) vermerkt.
 
 Prototyp im Alltags-GUI (`sample/good gui`, `lib/feedback.ts`): der
 Uhrzeit-Slider *ist* die asynchrone Struktur. Intent „Ich warte“,

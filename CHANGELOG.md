@@ -4,6 +4,68 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.38.0] – 2026-09-15
+
+**Zwei stille Ausfälle bekommen eine Stimme: der Webhook Pi → NAS wird
+quittiert und wiederholt (B8), und die App-Shell kennt ihre Version (B10).**
+
+Beide Punkte standen in der Lückenliste, weil sie im Betrieb nichts kaputt
+*aussehen* lassen: Ein verlorener Trigger kostet nur den Aktualitätsvorteil,
+eine alte PWA-Shell sieht aus wie die neue. Jetzt sagt die App in beiden
+Fällen, was Sache ist — statt es zu verschweigen.
+
+### Hinzugefügt
+
+- **B8 — Webhook Pi → NAS mit Quittierung und Wiederholung.** Der Uploader
+  sendet `POST /api/v1/jobs/trigger` weiterhin nach dem sicheren
+  InfluxDB-Write, merkt den Trigger aber vor und liest die Antwort als
+  Quittierung (`queued`/`debounced`/`duplicate`). Bleibt sie aus, wiederholt
+  er mit Backoff (30 s … 15 min, höchstens 2 h) und gibt danach ehrlich auf
+  („aufgegeben“) — der Intervaljob bleibt die Rückfallebene. Dauerhafte
+  Fehler (`rejected`, `403`) werden nicht wiederholt, sondern benannt
+  (Token-Vergleich). Der Zustand reist als `webhook_*`-Felder im
+  Uploader-Herzschlag mit (nie Token oder URL) und wird in
+  `GET /api/v1/collector/status` als `webhook` herausgehoben; die System-Ansicht
+  zeigt die Zeile „Trigger Pi → NAS“ mit Klartext je Status. Ohne Ziel heißt es
+  „keine Angabe“ — nicht „in Ordnung“.
+- **B10 — Service-Worker-Versionierung, Update-Anzeige und Offline-Queue.**
+  Die Cache-Namen waren fix (`…-v1`): Ein GUI-Update bemerkte niemand. Jetzt
+  trägt die Shell die App-Version (`app/version.py`, beim Vite-Build gestempelt;
+  bleibt ein Platzhalter stehen, bricht der Build ab), der neue Worker wartet
+  statt sich unter der laufenden Seite auszutauschen, und die Ansicht zeigt
+  „Neue Version verfügbar — diese Ansicht läuft noch auf X“ mit „Jetzt neu
+  laden“/„Später“ (pro Sitzung gemerkt).
+  Dazu die Offline-Queue aus §5.4: Belege und Vorsätze, die ohne Verbindung
+  anfallen (Fetch-Fehler oder 502/503/504), werden lokal vorgemerkt und beim
+  nächsten Kontakt nachgereicht — mit sichtbarer Zeile über den Tabs statt
+  „Speichern fehlgeschlagen“. Beleg-`id` und `tanked_at` entstehen beim Tanken
+  (der Server ist über `id` idempotent), 4xx wird gemeldet statt wiederholt,
+  Älteres als 7 Tage verworfen, mehr als 50 Einträge ehrlich abgelehnt.
+  Ablage in `localStorage` statt IndexedDB: winzige JSON-Objekte ohne
+  Binärinhalt, LAN-App ohne Transaktionsbedarf — die Abweichung vom Konzept
+  steht in `docs/LUECKEN.md`.
+
+### Tests
+
+- `tests/test_b8_webhook.py`: 10 Tests — Wiederholung mit Backoff, Kappe,
+  dauerhafter Fehler, Aufgabe nach 2 h, Herzschlagfelder, Collector-Status und
+  der komplette Weg gegen den echten NAS-Handler (inkl. falschem Token).
+- `web/src/views/System.test.tsx` und `web/src/system.test.ts`: die
+  Webhook-Zeile in Klartext, inklusive „3 Versuche“ und „keine Angabe“.
+- `web/src/service-worker.test.ts` und `web/src/components/UpdateBanner.test.tsx`:
+  Versionssatz, Zurückhaltung (kein Dauerbanner, „Später“ pro Sitzung) und die
+  reinen Entscheidungen ohne Browser.
+- `web/src/offline-queue.test.ts`: Vormerken, Deckel, Altersgrenze, Nachreichen
+  in Eingangsreihenfolge, dauerhafte Ablehnung und die Anbindung an `postFill`
+  (ID + Tankzeit) und `postIntent` (Episodenpfad).
+
+### Dokumentation
+
+- `docs/API.md` (`webhook`-Feld), `docs/ARCHITEKTUR.md` (Ablauf mit Quittierung),
+  `docs/BETRIEB.md` (Webhook-Zustandstabelle statt „weiterhin Fire-and-Forget“
+  und ein Abschnitt „GUI-Update und Offline-Queue“), `docs/MICROCOPY.md`
+  (PWA-Zeile), `docs/KONZEPT.md` (Queue-Ablage).
+
 ## [0.37.2] – 2026-09-15
 
 **Sanity-Check-Fixes nach dem tiefen Audit von GUI und Fallback (B1–B12, M1/M8).**
