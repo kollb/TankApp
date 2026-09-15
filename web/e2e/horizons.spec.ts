@@ -300,7 +300,7 @@ test("Zeitwert-Automatik zeigt Stoßzeit oder Nebenzeit", async ({ page }) => {
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   await expect(
-    page.getByText(/0 = Auto: 1[06] €/h — gerade (Stoßzeit|Nebenzeit)\./),
+    page.getByText(/0 = Auto: 1[06] €\/h — gerade (Stoßzeit|Nebenzeit)\./),
   ).toBeVisible();
   // Aktiver Wert: Auto (16 €/h · Stoßzeit) bzw. Auto (10 €/h · Nebenzeit).
   await expect(
