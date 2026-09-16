@@ -4,6 +4,57 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.42.0] – 2026-09-16
+
+**GUI-Text-Befund T1–T8 und V1–V2 umgesetzt (PR #125): Die Texte richten sich
+nach [MICROCOPY.md](docs/MICROCOPY.md) — und die Regeln stehen jetzt als
+Ratchet im Test, nicht nur im Regelwerk.**
+
+### Geändert
+
+- **T1/T2 (P0): Anrede raus, Ton in der Rückmeldung.** Die letzten fünf
+  Stellen mit direkter Anrede sind umformuliert (der Possessiv bleibt —
+  MICROCOPY §1); das `🔄` in der Fallback-GUI ist weg. Der Ratchet in
+  `microcopy.test.ts` prüft `du`/`dir`/`dich` und die Höflichkeitsformen,
+  `tests/test_rp2_fallback.py` dasselbe für die Pi-GUI.
+- **T6 (P0): Technik raus aus dem Nutzertext.** Datei-, Endpunkt- und
+  Umgebungs-Namen stehen nur noch im Bereich „System“ (MICROCOPY §6 mit
+  Ausnahme §4d); der Widerspruch zwischen §6 und §4d ist aufgelöst. Neuer
+  Ratchet gegen Pfade und Endpunkte im Text.
+- **T4 (P1): Zahlen über die Formatter.** Kilometer, Prozent, Cent und
+  Komma laufen durch `data.ts`; `format-convention.test.ts` verbietet neue
+  `toFixed`-Anzeigen und `€`/`€/L` im Quelltext.
+- **T5 (P3): Dubletten zusammengezogen.** Wiederholte Sätze liegen einmal in
+  `data.ts` (`NO_DATA_LINE`, `FILL_BOOKED_LINE`, `SHARE_URL_LINE`,
+  `queuedNote()`, `saveFailedNote()`); ein Ratchet meldet jeden Satz, der
+  zweimal eingetragen wird.
+- **T7 (P2): Klartext vor Rohcode.** Englische Zustände sind übersetzt,
+  Abkürzungen ausgeschrieben („Min.“, „ggü.“, „14 d“), Fehlercodes stehen
+  hinter ihrem Satz.
+- **T8 (P2): eine Frische-Zeile, ein Wortlaut je Zustand.** Neu
+  `components/FreshnessLine.tsx` — alle fünf Bereiche nutzen denselben
+  Baustein (vier lokale Ton-Tabellen gelöscht), „Preise ohne Stand“ statt
+  „kein Stand“, `freshCountLabel()` für „1 frischer Preis“/„12 frische
+  Preise“, zwei Retry-Formen („Erneut laden“ · „<Sache> neu laden“). Tabelle
+  in MICROCOPY §5a.
+- **V1 (P2): Diagramm- und Kartenfarben folgen dem Thema.** Neu
+  `chartTheme.ts` mit benannten Rollen und `DARK_CHART`/`LIGHT_CHART`;
+  64 feste Hexwerte in `LineChart`, `LabCharts`, `StationMap`, `Labor` und
+  `Stationen` sind ersetzt. Vorher war die Fläche dunkel verdrahtet —
+  Achsentext auf weißer Karte hatte 2,4:1 (AA verlangt 4,5:1). Der dunkle
+  Achsen-Tick ist von 2,4:1 auf 3,75:1 angehoben; `a11y.test.ts` prüft jetzt
+  **beide** Paletten gegen ihre Fläche.
+- **V2 (P2): Erklärungen raus aus dem Tooltip.** Acht `title=`-Attribute
+  trugen die einzige Erklärung einer Regel — auf dem Telefon und für
+  Screenreader-Nutzer:innen unsichtbar. Die Regeln stehen jetzt im Text, der
+  Tooltip bleibt kurz (MICROCOPY §4e, Ratchet: ≤ 80 Zeichen, ein Satz).
+
+### Offen aus dem Befund
+
+- **V3** (Mitteilungs-Register mit Rang), **V4** (Symboltabelle,
+  `aria-hidden`) und **V5** (Einheiten- und Zeitraumformen) sind dokumentiert,
+  aber noch nicht umgesetzt.
+
 ## [0.41.1] – 2026-09-16
 
 **CI-Folge aus PR #130: alle fünf roten Checks sind repariert — das

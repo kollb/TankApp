@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 15.09.2026 · App-Version **0.40.0** · gilt für `web/src/**`,
+> Stand: 16.09.2026 · App-Version **0.42.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -18,7 +18,9 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4b. Bereich „Jetzt“: feste Muster (0.34.0)](#4b-bereich-jetzt-feste-muster-0340)
 - [4c. Bereich „Labor“: feste Muster (0.36.0)](#4c-bereich-labor-feste-muster-0360)
 - [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
+- [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
+- [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
 
