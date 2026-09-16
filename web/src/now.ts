@@ -27,6 +27,7 @@ import {
   hourRangeLabel,
   hourRunsLabel,
   hourRunsOf,
+  kilometersLabel,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type AdviceAction,
@@ -444,7 +445,7 @@ export function nowFacts(input: NowInput): NowFact[] {
         detail:
           tank.state === "empty"
             ? "Tank leer — vor der Fahrt tanken"
-            : `${countLabel(tank.range_km)} km Reichweite inkl. Reserve`,
+            : `${kilometersLabel(tank.range_km)} Reichweite inkl. Reserve`,
       };
 
   return [here, best, reach];
@@ -467,7 +468,7 @@ export function nowSteps(input: NowInput): NowStep[] {
       text:
         `Günstigste Alternative: ${alt.name}, ` +
         `${euroPerLiter(alt.price)} — netto ${euro(alt.net_eur)} € nach ` +
-        `${euro(alt.detour_km, 1)} km Umweg`,
+        `${kilometersLabel(alt.detour_km, 1)} Umweg`,
       target: "stations",
     });
   }
@@ -720,7 +721,7 @@ export function assumptionHint(input: NowInput): string | null {
           ? `${euro(input.timeValue, input.timeValue % 1 ? 1 : 0)} €/h`
           : "Automatik-Zeitwert";
       return (
-        `Entscheidend ist der Umweg: ${euro(alt.detour_km, 1)} km extra, ` +
+        `Entscheidend ist der Umweg: ${kilometersLabel(alt.detour_km, 1)} extra, ` +
         `Zeitwert ${z} — berechnet vom Server.`
       );
     }

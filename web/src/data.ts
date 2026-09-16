@@ -2917,7 +2917,7 @@ export function livePhaseCountdown(phase?: LivePhase | null): string | null {
   const coverage =
     phase.min_daily_coverage == null
       ? ""
-      : ` · Tagesabdeckung ≥ ${Math.round(phase.min_daily_coverage * 100)} %`;
+      : ` · Tagesabdeckung ≥ ${percentLabel(phase.min_daily_coverage * 100)}`;
   const weakest =
     phase.stations > 1 ? `, schwächste von ${phase.stations} Stationen` : "";
   return (
@@ -2963,6 +2963,12 @@ export function livePhaseHint(phase?: LivePhase | null): string {
 // Empfehlungen, bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
 export const M7_MIN_RECOMMENDATIONS = 100;
 export const M7_BRIER_THRESHOLD = 0.25;
+
+/**
+ * Zielwert für MASE an sprungfreien Tagen (docs/ENGINE.md) — angezeigt über
+ * `deNumber`, damit im Text „0,80“ steht und nicht „0.80“ (GUI-TEXT-BEFUND T4).
+ */
+export const MASE_TARGET = 0.8;
 
 export type M7Advice = {
   n?: number | null;
@@ -3076,9 +3082,18 @@ export function tankRangeKm(
 }
 
 /** Kilometer deutsch: „1.234 km“ (ganzzahlig, de-DE). */
-export function kilometersLabel(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value)
-    ? "—"
+/**
+ * Strecke in km — der einzige Weg, Kilometer anzuzeigen (MICROCOPY §3).
+ * `decimals` nur, wo die Nachkommastelle trägt (Umweg „2,4 km“); Zählerstände
+ * bleiben ganzzahlig.
+ */
+export function kilometersLabel(
+  value: number | null | undefined,
+  decimals = 0,
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return decimals > 0
+    ? `${euro(value, decimals)} km`
     : `${Math.round(value).toLocaleString("de-DE")} km`;
 }
 
@@ -3505,7 +3520,7 @@ export function lifecycleTip(lc: StationLifecycle | string | null | undefined): 
 export function priceTwinLabel(twin: PriceTwin): string {
   const a = twin.station_a;
   const b = twin.station_b;
-  const agree = Number.isFinite(twin.agreement_pct) ? `${euro(twin.agreement_pct, 1)} %` : "—";
+  const agree = Number.isFinite(twin.agreement_pct) ? percentLabel(twin.agreement_pct, 1) : "—";
   return `${a} und ${b} — ${twin.qualifying_days} Tage, ${agree} der gemeinsamen Preise innerhalb 0,1 ct/L`;
 }
 

@@ -1,6 +1,6 @@
 import React, { useId } from "react";
 // C9: Zahlenformate kommen aus einem Satz — Achsen/Tooltips sind keine Ausnahme.
-import { countLabel, euro, percentLabel } from "../data";
+import { centPerLiter, countLabel, euro, percentLabel } from "../data";
 
 const AXIS = "#334155";
 const TXT = "#94a3b8";
@@ -145,7 +145,7 @@ export function HistogramBars({
   color = "#34d399",
   thresholds = [],
   height = 190,
-  fmt = (v: number) => `${euro(v, 1)} ct`,
+  fmt = (v: number) => centPerLiter(v),
   ariaDescription,
 }: {
   values: number[];
@@ -363,10 +363,10 @@ export function CalibChart({
           <line x1={X(0)} x2={X(1)} y1={Y(f)} y2={Y(f)} stroke="#1e293b" strokeWidth={0.6} />
           <line x1={X(f)} x2={X(f)} y1={Y(0)} y2={Y(1)} stroke="#1e293b" strokeWidth={0.6} />
           <text x={padL - 6} y={Y(f) + 4} textAnchor="end" fontSize={11} fill="#64748b">
-            {Math.round(f * 100)}%
+            {percentLabel(f * 100)}
           </text>
           <text x={X(f)} y={H - 36} textAnchor="middle" fontSize={11} fill="#64748b">
-            {Math.round(f * 100)}%
+            {percentLabel(f * 100)}
           </text>
         </g>
       ))}

@@ -11,7 +11,7 @@ import {
   AlertCircle,
   XCircle,
 } from "lucide-react";
-import { Station, DecideResult, DetourMode, euro } from "../data";
+import { Station, DecideResult, DetourMode, euro, kilometersLabel } from "../data";
 import { usePtrOff } from "../usePtrOff";
 import { panel } from "./ui";
 
@@ -617,7 +617,7 @@ export function StationMap({
                 {activeInfo.detourKm !== null && (
                   <span>
                     {" · "}
-                    +{euro(activeInfo.detourKm, 1)} km Umweg
+                    +{kilometersLabel(activeInfo.detourKm, 1)} Umweg
                     {activeInfo.distMode ? ` (${activeInfo.distMode === "air" ? "Luftlinie" : activeInfo.distMode === "road" ? "Straße" : activeInfo.distMode})` : ""}
                   </span>
                 )}

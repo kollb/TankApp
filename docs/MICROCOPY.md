@@ -82,6 +82,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Preis**differenz** je Liter | `centPerLiter` | `4,2 ct/L` (1 Nachkommastelle) |
 | Geldbetrag gesamt | `euro` | `62,45` (2 Nachkommastellen) + „€“ im Label |
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
+| Strecke | `kilometersLabel` | `12 km` · `2,4 km` (eine Nachkommastelle nur beim Umweg) |
+| Zeitwert | `deTrimmed` + `€/h` | `16 €/h` — Symbol, nie „Euro pro Stunde“ |
+| Schwelle/Maßzahl ohne Einheit | `deNumber` | `0,80` (Komma, nie `0.80`) |
 | Stückzahl | `countLabel` | `12.345` |
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |

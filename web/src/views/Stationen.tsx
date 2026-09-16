@@ -54,6 +54,7 @@ import {
   euro,
   euroPerLiter,
   deTrimmed,
+  kilometersLabel,
   timeLabel,
   type DecideResult,
   type Point,
@@ -598,7 +599,7 @@ export function StationenView(props: StationenViewProps) {
                             <span>{row.station.brand || "Freie Station"}</span>
                             {row.distKm != null && (
                               <span className="font-mono">
-                                {euro(row.distKm, 1)} km
+                                {kilometersLabel(row.distKm, 1)}
                               </span>
                             )}
                             <span>{ageLabel(row)}</span>
@@ -916,7 +917,7 @@ export function StationenView(props: StationenViewProps) {
                       {comparePair.deltaCt !== null &&
                         `${centPerLiter(Math.abs(comparePair.deltaCt))} ${comparePair.deltaCt > 0 ? "teurer" : "günstiger"} · `}
                       {comparePair.detourKm !== null &&
-                        `${euro(comparePair.detourKm, 1)} km Umweg · `}
+                        `${kilometersLabel(comparePair.detourKm, 1)} Umweg · `}
                       netto {euro(comparePair.netEur)} € pro {deTrimmed(liters, 0)} L
                     </p>
                   )}

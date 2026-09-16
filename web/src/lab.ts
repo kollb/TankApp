@@ -105,7 +105,13 @@ export function labHint(section: LabSectionId): LabHint {
   };
 }
 
-import { centPerLiter, euro, percentLabel, type AdviceDiaryEntry } from "./data";
+import {
+  centPerLiter,
+  euro,
+  euroToCentPerLiter,
+  percentLabel,
+  type AdviceDiaryEntry,
+} from "./data";
 
 /**
  * Wort zur Aktion eines Tagebuch-Eintrags — dieselben Wörter wie in „Jetzt“,
@@ -172,7 +178,7 @@ export function diaryOutcome(entry: AdviceDiaryEntry): DiaryOutcome {
       word: "richtig",
       tone: "good",
       detail: entry.price_window !== null && entry.price_then !== null
-        ? `Preis im Fenster ${euro(entry.price_window, 3)} €/L statt ${euro(entry.price_then, 3)} €/L — ${centPerLiter(Math.abs((entry.price_then - entry.price_window) * 100))} Unterschied.`
+        ? `Preis im Fenster ${euro(entry.price_window, 3)} €/L statt ${euro(entry.price_then, 3)} €/L — ${centPerLiter(Math.abs(euroToCentPerLiter(entry.price_then - entry.price_window) ?? 0))} Unterschied.`
         : "Die Empfehlung traf ein.",
     };
   }

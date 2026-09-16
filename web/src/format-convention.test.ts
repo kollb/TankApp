@@ -67,10 +67,42 @@ const CLEAN = [
   "views/System.tsx",
 ];
 
+function read(relativePath: string): string {
+  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+}
+
 function toFixedCount(relativePath: string): number {
-  const file = fileURLToPath(new URL(relativePath, import.meta.url));
-  const source = readFileSync(file, "utf8");
-  return (source.match(/\.toFixed\(/g) ?? []).length;
+  return (read(relativePath).match(/\.toFixed\(/g) ?? []).length;
+}
+
+/**
+ * GUI-TEXT-BEFUND T4: `euro()` formatiert **Geld** — Kilometer, Prozent und
+ * Cent haben eigene Formatter (`kilometersLabel`, `percentLabel`,
+ * `centPerLiter`). `${euro(km, 1)} km` sieht korrekt aus und ist es nicht:
+ * Der Geldformatter rundet auf zwei Stellen, die Einheit hängt am Wort.
+ *
+ * Erlaubt sind die beiden Stellen in `data.ts`, an denen die Formatter selbst
+ * stehen — jede weitere muss hier begründet werden.
+ */
+const EURO_WITH_UNIT = /euro\((?:[^()]|\([^()]*\))*\)\s*\}?\s*(?:km|ct\/L|ct(?!\/L)|%(?![-\w]))/g;
+const EURO_ALLOWED: Record<string, number> = {
+  "data.ts": 3, // centPerLiter, percentLabel und kilometersLabel — die Formatter selbst
+};
+
+/**
+ * Prozent trägt ein Leerzeichen vor dem Zeichen (§3): `93 %`. Geklebte
+ * Prozente in JSX-Text zählen; CSS (`style={{ width: … }}`) ist keine Anzeige.
+ */
+function gluedPercentCount(relativePath: string): number {
+  const source = read(relativePath)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(?<!:)\/\/[^\n]*/g, "")
+    .replace(/style=\{\{[^}]*\}\}/g, "");
+  let count = 0;
+  for (const run of source.matchAll(/>([^<>]*)</g)) {
+    count += (run[1].match(/[\w)}]%(?![\w/-])/g) ?? []).length;
+  }
+  return count;
 }
 
 describe("C9: Formatierungs-Konvention hält (keine neuen toFixed-Anzeigen)", () => {
@@ -89,5 +121,23 @@ describe("C9: Formatierungs-Konvention hält (keine neuen toFixed-Anzeigen)", ()
 
   it.each(CLEAN)("%s formatiert ohne toFixed", (relativePath) => {
     expect(toFixedCount(relativePath), `${relativePath}: toFixed gefunden`).toBe(0);
+  });
+
+  it.each(CLEAN)("%s nutzt euro() nur für Geld", (relativePath) => {
+    const hits = read(relativePath).match(EURO_WITH_UNIT) ?? [];
+    const allowed = EURO_ALLOWED[relativePath] ?? 0;
+    expect(
+      hits.length,
+      `${relativePath}: ${hits.length} statt ${allowed} × „euro() + fremde Einheit“ ` +
+        `(gefunden: ${hits.join(" · ") || "—"}). Kilometer → kilometersLabel, ` +
+        `Prozent → percentLabel, Cent → centPerLiter.`,
+    ).toBe(allowed);
+  });
+
+  it.each(CLEAN)("%s schreibt Prozent mit Leerzeichen", (relativePath) => {
+    expect(
+      gluedPercentCount(relativePath),
+      `${relativePath}: Prozent ohne Leerzeichen — §3 verlangt „93 %“ (percentLabel).`,
+    ).toBe(0);
   });
 });
