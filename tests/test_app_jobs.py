@@ -7,6 +7,7 @@ import subprocess
 import pytest
 
 from app.config import Settings
+from app.model_jobs import PUBLICATION_DECIMALS
 from app.refresh import refresh
 from app.worker import run
 from engine.models import SCHEMA_VERSION
@@ -138,15 +139,51 @@ def test_failed_publication_write_preserves_previous_version(model_setup, monkey
     before = path.read_bytes()
     real = engine.storage.write_json
 
-    def fail(target, payload):
+    def fail(target, payload, **kwargs):
         if target == path:
             raise OSError("disk unavailable")
-        return real(target, payload)
+        return real(target, payload, **kwargs)
 
     monkeypatch.setattr(engine.storage, "write_json", fail)
     with pytest.raises(OSError):
         refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
     assert path.read_bytes() == before
+
+
+def test_publication_is_written_compact_parseable_and_measured(model_setup, capsys):
+    """O22: Die Veröffentlichung ist kompakt, gültig und ihre Größe steht im Log.
+
+    Drei Zusagen an einem echten Lauf (``refresh``), nicht an einer Attrappe:
+
+    * kompakt geschrieben (``indent=None``) — eine Zeile, enge Separatoren.
+      Mit Einrückung lag dieselbe Datei bei elf Stationen über dem Leselimit
+      von ``app.data.read_json`` und die App fiel lautlos auf „keine Prognose“.
+    * gültiges JSON ohne ``NaN``-Token: ``jq -e .failures`` läuft durch
+      (docs/STATIONEN-TAUSCH.md empfiehlt genau diesen Befehl).
+    * die Größe steht im Job-Log — der Modell-Lauf meldet nicht mehr nur
+      Erfolg, während die Datei auf die Klippe zusteuert.
+    """
+    path = model_setup.runtime / "engine/current.json"
+    result = refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
+    assert result["state"] in ("success", "partial")
+
+    text = path.read_text(encoding="utf-8")
+    assert text.count("\n") == 1  # nur der Abschluss-Umbruch, keine Einrückung
+    assert '": ' not in text and '", ' not in text
+    assert "NaN" not in text and "Infinity" not in text
+    bundle = json.loads(text)
+    assert isinstance(bundle["failures"], list)
+    assert bundle["calibrated"] is False and bundle["decision_ready"] is False
+    # Gerundete Preise/Quantile (Maßnahme c) — sechs Stellen sind Ballast.
+    row = bundle["forecasts"][0]
+    for point in row["points"][:5]:
+        for key in ("q025", "q10", "q50", "q90", "q975"):
+            value = point[key]
+            if value is not None:
+                assert round(value, PUBLICATION_DECIMALS) == value
+
+    out = capsys.readouterr().out
+    assert "Veröffentlichung" in out and "MB" in out
 
 
 def test_worker_records_failure_without_secret_and_keeps_last_success(

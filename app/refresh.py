@@ -17,6 +17,46 @@ TASKS_PER_STATION = 4
 BACKTEST_DAYS = 21
 
 
+def _mb(size: int) -> str:
+    """Byte als MB in de-DE — die Zeile landet im Job-Log der GUI."""
+    return f"{size / 1_000_000:.1f} MB".replace(".", ",")
+
+
+def _report_publication_size(size: int, progress=None) -> str:
+    """O22: Die Größe der Veröffentlichung ins Job-Log — laut statt still.
+
+    Der Alarm selbst kommt aus ``/api/v1/health`` (``app/alarms.py``): Dort ist
+    er auch für eine Datei sichtbar, die ein älterer Lauf geschrieben hat, und
+    er erreicht die Zustellung (``app/notify.py``). Das Log nennt die Zahl
+    trotzdem — wer dem Lauf zuschaut, soll die Klippe kommen sehen, bevor
+    ``read_json`` die Datei nicht mehr liest.
+
+    Rückgabe ist die Log-Zeile (Tests prüfen sie, ohne ``capsys`` zu brauchen).
+    """
+    from .data import PUBLICATION_BUDGET_BYTES, READ_JSON_MAX_BYTES
+
+    if size > READ_JSON_MAX_BYTES:
+        text = (
+            f"Veröffentlichung {_mb(size)} — über dem Leselimit "
+            f"{_mb(READ_JSON_MAX_BYTES)}: Die App kann sie nicht lesen und "
+            "zeigt überall „keine Prognose“."
+        )
+        sticky = True
+    elif size > PUBLICATION_BUDGET_BYTES:
+        text = (
+            f"Veröffentlichung {_mb(size)} — über dem Budget "
+            f"{_mb(PUBLICATION_BUDGET_BYTES)}, Leselimit {_mb(READ_JSON_MAX_BYTES)}."
+        )
+        sticky = True
+    else:
+        text = f"Veröffentlichung {_mb(size)} (Budget {_mb(PUBLICATION_BUDGET_BYTES)})."
+        sticky = False
+    print(f"models: {text}", flush=True)
+    if progress:
+        progress.note(text, sticky=sticky)
+    return text
+
+
 def refresh(settings: Settings, now=None, progress=None):
     # Heavy numerical dependencies are confined to this worker, not the live API.
     import pandas as pd
@@ -605,7 +645,15 @@ def refresh(settings: Settings, now=None, progress=None):
             {"schema_version": SCHEMA_VERSION, "models": models},
         )
         # This is the sole publication point. Partial files or failed fits never replace it.
-        write_json(
+        # O22: kompakt (eine Zeile, enge Separatoren) statt ``indent=2``. Die
+        # Veröffentlichung ist ein Maschinen-Artefakt. Mit Einrückung lag sie bei
+        # elf Stationen gemessen über dem Leselimit von ``app.data.read_json``,
+        # und die App fiel lautlos in den „keine Prognose“-Zustand, während
+        # dieser Job Erfolg meldete. Die Größenkontrolle danach ist der zweite
+        # Teil: ``_report_publication_size`` nennt die Zahl im Job-Log, und
+        # ``/api/v1/health`` macht daraus ``publication_large`` bzw.
+        # ``publication_unreadable``.
+        publication_bytes = write_json(
             output / "current.json",
             {
                 "schema_version": 1,
@@ -619,7 +667,9 @@ def refresh(settings: Settings, now=None, progress=None):
                 "calibrated": False,
                 "decision_ready": False,
             },
+            indent=None,
         )
+        _report_publication_size(publication_bytes, progress)
         # Bounded model diagnostics; raw archive and current publication are not pruned.
         for old in sorted(
             output.glob("models-*.json"), key=lambda p: p.stat().st_mtime, reverse=True

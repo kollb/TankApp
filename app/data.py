@@ -46,6 +46,24 @@ ROUTE_REFRESH_DEADLINE_S = 20.0  # Wanduhr-Budget je Hintergrund-Abholung
 ROUTE_REFRESH_COOLDOWN_S = 300.0  # Mindestabstand zwischen Hintergrund-Versuchen
 META_TTL_S = 30.0  # Backstop für das Metadata-Memo (grobes mtime, z. B. NAS)
 
+# --- Größen-Grenzen der JSON-Artefakte (O22) --------------------------------
+#
+# Hauskonvention: Ein Artefakt über ``READ_JSON_MAX_BYTES`` wird nicht gelesen
+# (Speicherschutz). Vor 0.44.0 war das ein stilles ``default`` — für die
+# Veröffentlichung der Prognosen bedeutete es: ab rund fünf Stationen kippte die
+# ganze App lautlos in den „noch keine Daten“-Zustand, während der Modell-Job
+# weiter Erfolg meldete. Deshalb gibt es jetzt zusätzlich ein **Budget**:
+#
+#   PUBLICATION_BUDGET_BYTES  darüber wird es gelb (``publication_large``)
+#   READ_JSON_MAX_BYTES       darüber ist die Datei nicht mehr lesbar
+#                             (``publication_unreadable``, severity error)
+#
+# Das Budget liegt bewusst unter der Hälfte des Leselimits: Eine weitere
+# Station im Polling-Set oder ein zusätzlicher Kraftstoff soll angekündigt
+# sein, bevor die Klippe erreicht ist (docs/OPTIMIERUNGS-BEFUND.md O22).
+READ_JSON_MAX_BYTES = 10_000_000
+PUBLICATION_BUDGET_BYTES = 6_000_000
+
 _META_LOCK = threading.Lock()
 _META_MEMO: dict[str, Any] = {"key": None, "value": None, "at": 0.0}
 # Nur der Kick-Zustand (kurz, keine IO unter dem Lock) — der Request-Pfad
@@ -301,13 +319,31 @@ def driving_km(anchor, targets, cache_path):
     return out
 
 
-def read_json(path, default=None):
+def read_json_checked(path, max_bytes: int = READ_JSON_MAX_BYTES):
+    """Liest ein JSON-Artefakt und nennt den Grund, wenn es nicht geht (O22).
+
+    Rückgabe ``(data, reason)``; ``reason`` ist ``None`` bei Erfolg, sonst
+    ``"missing"`` (keine Datei — der normale Leerzustand vor dem ersten Lauf),
+    ``"too_large"`` (über ``max_bytes``, also nicht gelesen) oder ``"invalid"``
+    (nicht parsebar). Der Unterschied ist der ganze Punkt: „zu groß“ ist ein
+    Alarm, „nicht da“ ist ein Zustand.
+    """
     try:
-        if path.stat().st_size > 10_000_000:
-            return default
-        return json.loads(path.read_text(encoding="utf-8-sig"))
+        size = path.stat().st_size
     except (OSError, ValueError):
-        return default
+        return None, "missing"
+    if size > max_bytes:
+        return None, "too_large"
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig")), None
+    except (OSError, ValueError):
+        return None, "invalid"
+
+
+def read_json(path, default=None):
+    """Wie :func:`read_json_checked`, nur ohne Grund — für kleine Artefakte."""
+    data, reason = read_json_checked(path)
+    return default if reason is not None else data
 
 
 def _road_cache_file(settings):
@@ -502,9 +538,73 @@ def public_job(settings, name):
     return payload
 
 
+# Letzter Lesegrund der Veröffentlichung, geschlüsselt auf den Datei-Stempel:
+# ``publication_status`` braucht ihn (Parse-Fehler sind per ``stat`` unsichtbar),
+# darf dafür aber nicht selbst parsen — /health liegt im 3–5-s-Budget des
+# Docker-Healthchecks (O23 bleibt unbefriedigt, aber unvergrößert).
+_PUBLICATION_READ: dict[str, Any] = {"stamp": None, "reason": None}
+
+
+def publication_path(settings):
+    return Path(settings.runtime) / "engine" / "current.json"
+
+
 def publication(settings):
-    raw = read_json(settings.runtime / "engine/current.json", {})
-    return raw if isinstance(raw, dict) else {}
+    path = publication_path(settings)
+    raw, reason = read_json_checked(path)
+    stamp = _file_stamp(path)
+    if _PUBLICATION_READ.get("stamp") != stamp:
+        _PUBLICATION_READ["stamp"] = stamp
+        _PUBLICATION_READ["reason"] = reason
+    elif reason is not None:
+        _PUBLICATION_READ["reason"] = reason
+    if not isinstance(raw, dict):
+        return {}
+    return raw
+
+
+def publication_status(settings) -> dict[str, Any]:
+    """Größe und Lesbarkeit der Veröffentlichung — ohne Parse (O22).
+
+    Die Antwort nennt die Byte-Größe, das Budget, das Leselimit und den Grund,
+    wenn die Datei nicht nutzbar ist. ``/api/v1/health`` zeigt sie, und
+    ``app/alarms.py`` macht daraus ``publication_large`` (warn) bzw.
+    ``publication_unreadable`` (error).
+
+    Eine **fehlende** Datei ist kein Fehler: Vor dem ersten Modell-Lauf gibt es
+    keine Veröffentlichung, und die App sagt das an anderer Stelle
+    („noch keine Prognose“). ``reason`` ist dann ``"missing"``, ``error_code``
+    bleibt ``None``.
+    """
+    path = publication_path(settings)
+    status: dict[str, Any] = {
+        "bytes": None,
+        "budget_bytes": PUBLICATION_BUDGET_BYTES,
+        "max_bytes": READ_JSON_MAX_BYTES,
+        "over_budget": False,
+        "readable": False,
+        "error_code": None,
+        "reason": None,
+    }
+    try:
+        size = path.stat().st_size
+    except (OSError, ValueError):
+        status["reason"] = "missing"
+        return status
+    status["bytes"] = size
+    status["over_budget"] = size > PUBLICATION_BUDGET_BYTES
+    if size > READ_JSON_MAX_BYTES:
+        status["error_code"] = "publication_unreadable"
+        status["reason"] = "too_large"
+        return status
+    if _PUBLICATION_READ.get("reason") is not None and _PUBLICATION_READ.get(
+        "stamp"
+    ) == _file_stamp(path):
+        status["error_code"] = "publication_unreadable"
+        status["reason"] = _PUBLICATION_READ["reason"]
+        return status
+    status["readable"] = True
+    return status
 
 
 def selection_publication(settings):
@@ -1038,6 +1138,12 @@ class LiveData:
                 "calibrated": False,
                 "decision_ready": False,
             },
+            # O22: Größe und Lesbarkeit der Veröffentlichung. Die Klippe war
+            # vorher unsichtbar — eine Datei über dem Leselimit fällt als
+            # ``{}`` aus, also als „noch keine Daten“, während der Modell-Job
+            # Erfolg meldet. ``bytes``/``budget_bytes``/``max_bytes`` sagen,
+            # wie nah der Betrieb daran ist (``alarms[]`` schlägt an).
+            "publication": publication_status(self.settings),
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)

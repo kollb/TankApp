@@ -16,7 +16,15 @@ Jeder Alarm ist ein dict mit:
 from pathlib import Path
 from typing import Any
 
+from .data import publication_status
 from .feedback import FEEDBACK_MAX_BYTES
+
+
+def _mb(size: int | None) -> str:
+    """Byte als MB in de-DE — der Alarm nennt die Größe, nicht nur den Code."""
+    if size is None:
+        return "unbekannter Größe"
+    return f"{size / 1_000_000:.1f} MB".replace(".", ",")
 
 
 def _store_size_bytes(settings) -> int:
@@ -149,6 +157,59 @@ def build_alarms(
                 "code": "store_growing",
                 "severity": "warn",
                 "message": "Persönlicher Speicher nähert sich der Größen-Grenze.",
+            }
+        )
+
+    # O22: Veröffentlichung der Prognosen — Größe und Lesbarkeit. Vor 0.44.0
+    # fiel eine Datei über dem Leselimit still als ``{}`` aus, also als „noch
+    # keine Daten“: keine Prognosen, keine Fenster, keine Laborwerte — während
+    # ``/api/v1/jobs/models/log`` Erfolg meldete. Jetzt ist die Größe ein
+    # Zustand mit Budget (warn) und Klippe (error).
+    try:
+        publication = publication_status(settings)
+    except Exception:
+        publication = {}
+    if publication.get("error_code") == "publication_unreadable":
+        reason = publication.get("reason")
+        if reason == "too_large":
+            message = (
+                f"Die Veröffentlichung der Prognosen ist {_mb(publication.get('bytes'))} "
+                f"groß und passt nicht durch das Leselimit von "
+                f"{_mb(publication.get('max_bytes'))} — die App zeigt deshalb "
+                "überall „keine Prognose“. Der nächste Modell-Lauf schreibt "
+                "kompakt und gerundet; bleibt die Datei darüber, Stationszahl "
+                "oder Prognose-Horizonte prüfen."
+            )
+        else:
+            message = (
+                "Die Veröffentlichung der Prognosen ist nicht lesbar "
+                "(ungültiges JSON) — Prognosen, Fenster und Laborwerte fehlen, "
+                "bis der nächste Modell-Lauf sie neu schreibt."
+            )
+        alarms.append(
+            {
+                "code": "publication_unreadable",
+                "severity": "error",
+                "message": message,
+                "bytes": publication.get("bytes"),
+                "max_bytes": publication.get("max_bytes"),
+                "reason": reason,
+            }
+        )
+    elif publication.get("over_budget"):
+        alarms.append(
+            {
+                "code": "publication_large",
+                "severity": "warn",
+                "message": (
+                    f"Die Veröffentlichung der Prognosen ist {_mb(publication.get('bytes'))} "
+                    f"groß — über dem Budget von "
+                    f"{_mb(publication.get('budget_bytes'))}. Sie bleibt lesbar; "
+                    f"weitere Stationen oder Kraftstoffe kippen sie über das "
+                    f"Leselimit von {_mb(publication.get('max_bytes'))}."
+                ),
+                "bytes": publication.get("bytes"),
+                "budget_bytes": publication.get("budget_bytes"),
             }
         )
 

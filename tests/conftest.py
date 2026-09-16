@@ -46,9 +46,14 @@ def _fresh_metadata_memo():
 
     data_module._META_MEMO.update({"key": None, "value": None, "at": 0.0})
     data_module._ROUTE_REFRESH.clear()
+    # O22: Der letzte Lesegrund der Veröffentlichung ist auf den Datei-Stempel
+    # (mtime:Größe) geschlüsselt — zwei Tests in derselben Sekunde mit
+    # gleich großen Artefakten würden sich sonst den Eintrag teilen.
+    data_module._PUBLICATION_READ.update({"stamp": None, "reason": None})
     yield
     data_module._META_MEMO.update({"key": None, "value": None, "at": 0.0})
     data_module._ROUTE_REFRESH.clear()
+    data_module._PUBLICATION_READ.update({"stamp": None, "reason": None})
 
 
 @pytest.fixture

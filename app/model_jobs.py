@@ -62,6 +62,30 @@ WORKER_FRAME_COLUMNS = BACKTEST_FRAME_COLUMNS
 HORIZON_COLUMNS = ("timestamp", "q025", "q10", "q50", "q90", "q975")
 HORIZON_VALUE_COLUMNS = HORIZON_COLUMNS[1:]
 
+# O22: Nachkommastellen der veröffentlichten Preise und Quantile. 4 Stellen =
+# 0,0001 €/L = 0,01 ct/L — feiner als jede Anzeige (``euroPerLiter`` zeigt
+# drei, ``centPerLiter`` eine) und feiner als jede Schwelle der App
+# (``THETA_CT`` = 1,0 ct/L). Volle float-Präzision verdoppelt dagegen die
+# Veröffentlichung: Sie ist der Grund, warum elf Stationen nicht mehr durch
+# das Leselimit passen (docs/OPTIMIERUNGS-BEFUND.md O22).
+PUBLICATION_DECIMALS = 4
+
+
+def _published(value):
+    """Preis/Quantil in Veröffentlichungs-Präzision — NaN bleibt NaN.
+
+    Gerundet wird hier und nicht erst beim Schreiben, weil die Werte über die
+    Prozessgrenze des Worker-Pools gehen: Was nicht publiziert werden soll,
+    muss auch nicht übertragen werden (B20 Punkt 4).
+    """
+    if value is None:
+        return None
+    number = float(value)
+    if math.isnan(number):
+        return number
+    return round(number, PUBLICATION_DECIMALS)
+
+
 _POOL_FAILURES = (OSError, ImportError, RuntimeError, ValueError)
 _MISSING = object()
 
@@ -292,10 +316,15 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
 
 
 def _records(frame) -> list[dict[str, Any]]:
-    """Nur veröffentlichte Quantile serialisieren, ohne DataFrame-Vollkopie."""
+    """Nur veröffentlichte Quantile serialisieren, ohne DataFrame-Vollkopie.
+
+    Die Werte gehen durch :func:`_published` (O22): sechs Nachkommastellen
+    sind bei Preisen Ballast, und der Ballast entscheidet, ob elf Stationen
+    noch durch das Leselimit passen.
+    """
     values = frame.loc[:, HORIZON_VALUE_COLUMNS].itertuples(index=False, name=None)
     return [
-        dict(zip(HORIZON_COLUMNS, (stamp.isoformat(), *row)))
+        dict(zip(HORIZON_COLUMNS, (stamp.isoformat(), *(_published(v) for v in row))))
         for stamp, row in zip(frame.index, values)
     ]
 
@@ -332,12 +361,17 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
         }
         for stamp in starts
     ]
+    # O22: Auch die Draws sind Preise — dieselbe Veröffentlichungs-Präzision
+    # wie die Quantile. Die Fenster-Minima sind die größte einzelne Zahlengruppe
+    # der Veröffentlichung (500 Draws × 84 Blöcke je Station).
+    minima_rows = [[_published(v) for v in row] for row in minima.tolist()]
+    nowcast_row = [_published(v) for v in nowcast_draws(paths[:n]).tolist()]
     return {
         "n": n,
         "block_minutes": BLOCK_MINUTES,
         "blocks": blocks,
-        "minima": minima.tolist(),
-        "nowcast": nowcast_draws(paths[:n]).tolist(),
+        "minima": minima_rows,
+        "nowcast": nowcast_row,
         # A11: gemeinsame Ziehung über Stationen (Konzept §4.2). False =
         # unabhängige Ziehung (Stand vor 0.31.0) — dann ist P_lohnt zu
         # selbstsicher, weil der Marktgleichlauf herausfällt.

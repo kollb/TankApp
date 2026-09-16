@@ -89,6 +89,9 @@ def _write_fills(settings, hours: list[float]) -> None:
                 "station_name": "Station Alpha",
                 "tanked_at": (NOW - dt.timedelta(days=index + 1)).isoformat(),
                 "clock_hour": hour,
+                # O1 (0.44.0): ``record_fill`` schreibt die Herkunft der Stunde
+                # mit — der Stundenwert dieser Fixtur ist vom Beleg gedeckt.
+                "clock_hour_source": "beleg",
                 "liters": 40.0,
                 "price_paid": 1.70,
                 "price_source": "nowcast",
@@ -213,6 +216,9 @@ def test_ohne_füllungen_zählt_der_preis_nicht_die_uhrzeit(a9_settings):
         "n_fills": 0,
         "min_fills": WH_MIN_FILLS,
         "missing_fills": WH_MIN_FILLS,
+        # O1: ohne Beleg keine gemessene Tankzeit — und keine erfundene 12.
+        "measured_fills": 0,
+        "default_fills": 0,
     }
 
 

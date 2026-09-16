@@ -138,6 +138,30 @@ export type Alarm = {
   severity: "error" | "warn";
   message: string;
   job?: string | null;
+  /** O22: Größe der Veröffentlichung in Byte (nur `publication_*`). */
+  bytes?: number | null;
+  /** O22: Warn-Budget bzw. Leselimit in Byte (nur `publication_*`). */
+  budget_bytes?: number;
+  max_bytes?: number;
+  /** O22: Grund der Unlesbarkeit — `too_large` oder `invalid`. */
+  reason?: string | null;
+};
+
+/**
+ * O22 (0.44.0): Größe und Lesbarkeit der Veröffentlichung der Prognosen
+ * (`data/runtime/engine/current.json`). `bytes` über `budget_bytes` wird zu
+ * `publication_large` (warn), über `max_bytes` zu `publication_unreadable`
+ * (error) — vorher fiel eine zu große Datei still als „keine Prognose“ aus.
+ */
+export type PublicationStatus = {
+  bytes: number | null;
+  budget_bytes: number;
+  max_bytes: number;
+  over_budget: boolean;
+  readable: boolean;
+  error_code: string | null;
+  /** `missing` · `too_large` · `invalid` · null */
+  reason: string | null;
 };
 
 export type Health = {
@@ -155,6 +179,8 @@ export type Health = {
   commit?: string | null;
   /** B4: aggregierte Alarme (Heartbeat, Jobs, Store, Polling). */
   alarms?: Alarm[];
+  /** O22: Größe und Lesbarkeit der Prognose-Veröffentlichung. */
+  publication?: PublicationStatus | null;
   /**
    * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
    * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
