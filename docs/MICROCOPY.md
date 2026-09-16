@@ -228,6 +228,7 @@ Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
 | Drift-Spalte | `unauffällig` · `noch nicht messbar` (nicht `unknown`, nicht „stabil“) |
 | Maßzahl ohne Messwerte | `noch keine Vergleichspunkte — der Roll-Backtest füllt sie.` |
 | Prinzip-Skizze ohne eigene Daten | `Prinzip-Skizze — nicht deine Daten.` — dieselbe Zeile wie in „Jetzt“ |
+| Heatmap mobil (0.43.2) | `Die Matrix ist breit: seitlich schieben zeigt alle 24 Stunden. Farben und Zeilen erklärt die Lesehilfe darunter.` — nur unterhalb `sm`; die Matrix bleibt die eine bewusst schiebbare Fläche, `ReadingAid` darunter trägt die Erklärung wie bisher |
 | Spielplatz | `Perfektes Timing (Orakel)` · `Eine Station sezieren` · Rohpreise `24 Stunden`/`3 Tage`/`7 Tage` — der Spielplatz sagt in jedem Fall, dass er mit **deinen** Daten rechnet, nicht mit einer Simulation |
 
 ## 4d. Bereich „System“: feste Muster (0.37.0)
