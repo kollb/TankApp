@@ -52,9 +52,13 @@ MAX_SOURCE_CHARS = 40
 # Schlüssel führen zu leeren Bilanzen statt zu einem Fehler). Regel ab jetzt:
 #   1 = Ursprungsfassung (0.10–0.12, Datei ohne ``schema_version``)
 #   2 = A3-Felder als feste Sammlungen (``audit``, ``voided`` je Beleg)
+#   3 = Ablehnungsgrund am Snapshot (``decline_reason``): Das Tagebuch nennt je
+#       „keine Empfehlung“ den Grund der Tabelle; eine bestätigte Ablehnung
+#       bleibt eine Zeile. Eine Bestätigung schreibt den Store nicht neu — sie
+#       ist keine neue Entscheidung (siehe ``record_snapshot``).
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 2
+FEEDBACK_SCHEMA_VERSION = 3
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -130,10 +134,35 @@ def _migrate_store_v1_to_v2(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v2_to_v3(store: dict[str, Any]) -> dict[str, Any]:
+    """2 → 3 (0.39 → 0.40): Ablehnungsgrund je Snapshot.
+
+    ``decline_reason`` bleibt bei Altbeständen ``None`` — der Grund einer
+    damaligen Ablehnung ist nicht rekonstruierbar, und ihn zu erfinden wäre
+    schlimmer als „Feld fehlt“.
+    """
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        for snap in ep.get("snapshots", []) or []:
+            if not isinstance(snap, dict):
+                continue
+            snap.setdefault("decline_reason", None)
+        # ``first_snapshot``/``last_snapshot`` tragen dieselben Zeilen wie
+        # ``snapshots`` — sie werden mitgezogen, sonst driften die drei
+        # Sichten nach einer Migration auseinander.
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict):
+                snap.setdefault("decline_reason", None)
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
     1: _migrate_store_v1_to_v2,
+    2: _migrate_store_v2_to_v3,
 }
 
 
@@ -317,6 +346,14 @@ def save_store(settings, store: dict[str, Any]) -> None:
 
 
 def _same_advice(a: dict, b: dict) -> bool:
+    """Ist der neue Snapshot nur die **Bestätigung** der letzten Entscheidung?
+
+    Gleiche Aktion, gleiche Station (und Ausweichstation), gleicher
+    Kraftstoff, gleicher Ablehnungsgrund — und innerhalb von
+    ``SNAPSHOT_COLLAPSE_MINUTES``. Ablehnungen (``no_advice``) kennen dieses
+    Zeitfenster nicht: Sie tragen keine Messung, ihr wiederholtes Bestätigen
+    ist kein neuer Eintrag.
+    """
     if not a or not b:
         return False
     action_match = a.get("action") == b.get("action")
@@ -329,13 +366,25 @@ def _same_advice(a: dict, b: dict) -> bool:
         delta_m = abs((t_b - t_a).total_seconds()) / 60.0
     except Exception:
         delta_m = 999.0
-    return (
-        action_match
-        and station_match
-        and alt_match
-        and fuel_match
-        and delta_m < SNAPSHOT_COLLAPSE_MINUTES
-    )
+    if not (action_match and station_match and alt_match and fuel_match):
+        return False
+    # Der Grund gehört zur Aussage: Wechselt er (etwa von „keine Prognose“ auf
+    # „Preislage unentschieden“), ist das eine neue Zeile — in der alten stünde
+    # sonst der falsche Grund.
+    if a.get("decline_reason") != b.get("decline_reason"):
+        return False
+    # Eine erneut bestätigte Ablehnung ist keine neue Entscheidung: Es gibt
+    # keinen Vergleichspreis, nichts zu messen. Sie wird ohne Zeitfenster
+    # kollabiert — sonst schriebe jede Abfrage eines offenen Fensters einen
+    # eigenen „keine Empfehlung“-Eintrag ins Ledger (bei 30 Minuten Abstand
+    # greift die 30-Minuten-Regel nicht mehr: ``delta_m < 30``), und das
+    # Tagebuch füllte sich mit Zeilen, die alle dasselbe sagen. Die
+    # 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo jeder
+    # Emit-Zeitpunkt einen eigenen Ankerpreis und damit eine eigene Messung
+    # trägt.
+    if a.get("action") == "no_advice":
+        return True
+    return delta_m < SNAPSHOT_COLLAPSE_MINUTES
 
 
 def _open_episode(store: dict[str, Any]) -> dict[str, Any] | None:
@@ -407,6 +456,20 @@ def record_snapshot(
     Gibt (store, episode) zurück. Die interne P-Schätzung (estimate_p) wird
     aus früheren Settlements gebildet und immer gespeichert — angezeigt wird
     sie erst nach dem M7-Gate.
+
+    Bestätigt der Aufruf die letzte Entscheidung (``_same_advice``), ändert
+    das **nichts am Store**: kein Merge, kein Schreiben. Eine **Ablehnung**
+    (``no_advice``) wird dabei zeitunabhängig kollabiert — sie ist kein
+    Vorschlag, sondern der Zustand „diesmal nichts zu vergleichen“: genau
+    eine Zeile je Episode. (Sonst füllte jede Abfrage eines offenen Fensters
+    das Tagebuch mit identischen Zeilen, und der „nicht bewertbar“-Zähler
+    zählte Abfragen statt Entscheidungen.)
+
+    Der Schreibverzicht ist zugleich die Bedingung dafür, dass die
+    ETag-Revalidierung von ``/overview`` greift: ``data_version`` liest den
+    mtime-Wert dieses Stores — schriebe jeder Aufruf, wäre das ETag der
+    Antwort schon beim Ausliefern veraltet und jede Aktualisierung liefe in
+    ein 200 samt Neuberechnung (B7).
     """
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
@@ -451,6 +514,9 @@ def record_snapshot(
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
             "expected_saving_eur": snapshot_data.get("expected_saving_eur", 0.0),
+            # Grund der Ablehnung in Klartext (nur bei ``no_advice``): Das
+            # Tagebuch zeigt damit „warum“, nicht nur „keine Empfehlung“.
+            "decline_reason": snapshot_data.get("decline_reason"),
             "p_besser": snapshot_data.get("p_besser"),
             "p_correct": p_besser,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
@@ -483,25 +549,16 @@ def record_snapshot(
         else:
             last = ep.get("last_snapshot")
             if last and _same_advice(last, snap):
-                # Kollabieren: Vorhandenen Snapshot aktualisieren, aber die
-                # ursprüngliche P-Schätzung behalten (sie galt zum Emit-Zeitpunkt).
-                updated_snap = {
-                    **last,
-                    **snap,
-                    "id": last["id"],
-                    "emitted_at": last["emitted_at"],
-                    "p_correct": last.get("p_correct"),
-                    "p_besser": last.get("p_besser"),
-                }
-                ep["last_snapshot"] = updated_snap
-                ep["snapshots"] = [
-                    updated_snap if s["id"] == last["id"] else s
-                    for s in ep.get("snapshots", [])
-                ]
-            else:
-                # Advice gekippt oder > 30 min vergangen -> neuen Snapshot anhängen
-                ep["last_snapshot"] = snap
-                ep["snapshots"].append(snap)
+                # Bestätigung derselben Entscheidung — es bleibt beim
+                # vorhandenen Eintrag (Emit-Zeitpunkt, P-Schätzung, Fenster,
+                # Ablehnungsgrund). Ein Merge würde nur Werte desselben
+                # Vorschlags überschreiben und den Store neu schreiben; genau
+                # das verhindert diese Regel.
+                return store, ep
+            # Advice gekippt, Grund gewechselt oder > 30 min vergangen ->
+            # neuen Snapshot anhängen
+            ep["last_snapshot"] = snap
+            ep["snapshots"].append(snap)
 
         return store, ep
 

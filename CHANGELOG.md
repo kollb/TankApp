@@ -4,6 +4,97 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.40.0] – 2026-09-15
+
+**Das Prognose-Tagebuch erzählt dieselbe Ablehnung nicht mehr im
+Halbstundentakt: „keine Empfehlung“ ist eine Zeile mit Grund und Station.**
+
+Der Befund kam aus dem Betrieb (Labor → Vertrauens-Konto/Prognose-Tagebuch):
+Das Tagebuch füllte sich mit „nicht bewertbar“-Zeilen, alle mit dem Satz „Kein
+Vergleichspreis — Grund: die Empfehlung war selbst schon ‚keine‘.“ Drei
+Ursachen, alle drei behoben:
+
+1. Der Ledger kollabierte nur innerhalb von 30 Minuten. Solange ein Fenster
+   offen blieb, trug jede Abfrage eine eigene Zeile (bei 30 Minuten Abstand
+   greift `delta_m < 30` nicht mehr) — 388 nicht bewertbare Settlements gegen
+   4 bewertete.
+2. Der Grund der Ablehnung (Güte-Gate, fehlender Anker, kein Fenster,
+   Grauzone) wurde am M7-Gate verschluckt; übrig blieb der tautologische
+   Void-Code `no_advice`.
+3. Lag die Station nicht mehr im aktuellen Set, zeigte das Tagebuch ihre rohe
+   UUID.
+
+Die Zahlen werden nicht schöngerechnet — die Voids waren echt. Sie stehen
+jetzt **einmal je Episode**, mit dem Grund der Tabelle und dem Namen der
+Station.
+
+### Behoben
+
+- **Eine Ablehnung ist eine Zeile, kein Takt.** `_same_advice`
+  (`app/feedback.py`) kollabiert `no_advice` zeitunabhängig: Solange dieselbe
+  Aussage gilt, ändert der Aufruf **nichts** am Store — kein Merge, kein
+  Schreiben. `emitted_at` bleibt der erste Emit-Zeitpunkt (daran hängen
+  Fenster, Ankerpreis und P-Schätzung), ein **gewechselter Grund** ist eine
+  neue Zeile. Die 30-Minuten-Regel gilt weiter für Handlungsempfehlungen, wo
+  jeder Emit einen eigenen Ankerpreis und damit eine eigene Messung trägt.
+- **Warum der Schreibverzicht dazugehört (B7).** Ein Bestätigungs-Aufruf darf
+  den Store nicht anfassen: `data_version()` liest dessen mtime-Wert, und
+  damit hinge das ETag der Antwort an der Antwort selbst. Ein Schreibvorgang
+  pro Aufruf entwertet also jedes ETag schon beim Ausliefern — jede
+  Aktualisierung liefe in ein 200 samt 5–10-s-Neuberechnung (genau das, was
+  B7 abstellen sollte) und auf der NAS-Platte fiele pro Seitenaufruf eine
+  Schreiblast an. Die Demo-Suiten beider Ebenen prüfen die Revalidierung
+  jetzt ausdrücklich (`tests/test_e2e_demo.py`,
+  `web/e2e/demo.spec.ts`; dort gegen den Stand der jeweils letzten Antwort),
+  und `tests/test_b4.py::test_snapshot_collapse_rule` hält fest, dass eine
+  Bestätigung den Zeitstempel der Store-Datei nicht ändert.
+- **Der Grund reist mit.** `_table_action` (`app/decide.py`) gibt den
+  Ablehnungsgrund maschinenlesbar zurück (`quality_gate`, `no_anchor`,
+  `no_forecast`, `no_window`, `gray_zone`, sonst `None`); der Snapshot
+  speichert ihn als `decline_reason`, die Tagebuch-API liefert ihn mit. Vor
+  der M7-Freigabe erscheint die Grauzone ohne Zahl
+  (`GRAY_ZONE_REASON_GATE_SAFE`: „Preislage unentschieden …“) — die Antwort
+  auf „warum nichts empfohlen wird?“ bleibt sichtbar, auch wenn die Anzeige
+  der Empfehlung selbst noch aussteht.
+- **Station mit Namen.** Der Snapshot reicht `station_name`/
+  `alt_station_name` an das Tagebuch durch; der Renderer fällt nicht mehr auf
+  die rohe ID zurück.
+- **Tagebuch gruppiert gleiche Zeilen.** `groupDiaryEntries`/`diaryCountLabel`
+  (`web/src/lab.ts`) fassen aufeinanderfolgende gleiche Ablehnungen zusammen
+  („3×“, bei gekürzter Liste „mehrfach“) und zeigen die Zeitspanne von der
+  ersten Bestätigung (`emitted_at` der ältesten Zeile) bis zur Abrechnung
+  (`diaryStamp` = `settled_at`) — auch für die Zeilen aus der Zeit vor dieser
+  Regel.
+
+### Geändert
+
+- **Feedback-Store-Schema 3.** `decline_reason` (nur bei Ablehnungen) ist ein
+  neues Feld; `_migrate_store_v2_to_v3` zieht `snapshots`, `first_snapshot`
+  und `last_snapshot` mit — Altbestand erhält `decline_reason: null` (der
+  damalige Grund ist nicht rekonstruierbar), sonst wird nichts angefasst. Ein
+  Store aus einer neueren Version wird weiterhin mit 503 abgelehnt.
+- **Tagebuch-Satz bei Ablehnung.** Mit gespeichertem Grund heißt es „Kein
+  Vergleichspreis — die App hatte hier keine Empfehlung: <Grund>.“; ohne
+  Grund (Altbestand) bleibt der Void-Satz. Beide Muster stehen in
+  [MICROCOPY.md](docs/MICROCOPY.md) §4c.
+
+### Tests
+
+- `tests/test_b4.py`: Tabellenaktion als 4-Tupel über alle
+  Ablehnungs-Codes, Ablehnung vor M7 sichtbar/Empfehlung stumm, Kollaps über
+  10/45/300 Minuten (Ablehnung, **ohne** Schreiben) gegen Append nach 45
+  Minuten (Empfehlung), Grund-Wechsel als neue Zeile, Tagebuch mit Grund,
+  Stationsname und Zeitspanne.
+- `tests/test_feedback.py`: Migration 2 → 3 inklusive Idempotenz und
+  `first_snapshot`/`last_snapshot`.
+- `web/src/lab.test.ts`: Gruppierung, Anzahl-Label, Zeitstempel aus
+  Emit/Abrechnung, neuer Ablehnungssatz; `microcopy.test.ts`-Fixture um die
+  Pflichtfelder erweitert.
+- `tests/test_e2e_demo.py` und `web/e2e/demo.spec.ts`: die Revalidierung
+  (304) wird nach einem Aufwärm-Aufruf geprüft bzw. gegen den Stand der
+  letzten Antwort — vorher hing sie an der Reihenfolge der Testfunktionen und
+  am 60-s-Fenster.
+
 ## [0.39.0] – 2026-09-15
 
 **Text-Release: die dreizehn Befunde T1–T13 sind umgesetzt — die GUI sagt
