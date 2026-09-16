@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { DecideResult, Station } from "./data";
 import {
   atlasEur,
+  atlasMatchesFilter,
   atlasRows,
   compareStationsPair,
   dayRhythmLine,
@@ -221,6 +222,76 @@ describe("sortAtlasRows", () => {
       "b",
       "a",
     ]);
+  });
+});
+
+describe("atlasMatchesFilter", () => {
+  const visible = (
+    filter: { query: string; brand: string; openOnly: boolean },
+    all = rows(),
+  ) =>
+    all
+      .filter((row) => atlasMatchesFilter(row, filter))
+      .map((row) => row.station.station_id);
+
+  it("leerer Filter lässt alles stehen", () => {
+    expect(visible({ query: "", brand: "", openOnly: false })).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("M1: „nur offene“ versteckt Stationen ohne frischen Preis", () => {
+    // C hat keinen frischen Preis — die ehrliche „—“-Zeile, kein Fehler.
+    expect(visible({ query: "", brand: "", openOnly: true })).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("Suche trifft Name und Marke, unabhängig von Groß-/Kleinschreibung", () => {
+    expect(
+      visible({ query: "  b-station ", brand: "", openOnly: false }),
+    ).toEqual(["b"]);
+    expect(visible({ query: "TEST", brand: "", openOnly: false })).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("Marke filtert exakt, nicht ähnlich", () => {
+    const mitJet = rows({
+      stations: [
+        A,
+        station("d", { name: "D-Station", price: 1.699, brand: "Jet" }),
+      ],
+    });
+    expect(
+      visible({ query: "", brand: "Jet", openOnly: false }, mitJet),
+    ).toEqual(["d"]);
+    // „J“ als Marke trifft nichts — exakter Vergleich, kein Prefix.
+    expect(visible({ query: "", brand: "J", openOnly: false }, mitJet)).toEqual(
+      [],
+    );
+  });
+
+  it("die drei Regeln greifen zusammen", () => {
+    const mitJet = rows({
+      stations: [
+        A,
+        station("d", { name: "D-Station", price: 1.699, brand: "Jet" }),
+        C,
+      ],
+    });
+    expect(
+      visible({ query: "station", brand: "Jet", openOnly: true }, mitJet),
+    ).toEqual(["d"]);
+    // C fällt am fehlenden Preis durch, A an der Marke.
+    expect(
+      visible({ query: "D-Station", brand: "Test", openOnly: true }, mitJet),
+    ).toEqual([]);
   });
 });
 

@@ -133,6 +133,17 @@ describe("Stationen: Aufbau", () => {
     expect(fresh).toBeGreaterThan(list);
   });
 
+  it("M1: der Filter-Chip „nur offene“ steht bereit und nennt seine Regel", () => {
+    const html = render();
+    expect(html).toContain("alle Stationen");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("Filter: nur offene Stationen");
+    // V2: Die Regel steht im Text, nicht nur im Tooltip.
+    expect(html).toContain(
+      "„offen“ zeigt nur Stationen mit aktuellem Preis für den gewählten",
+    );
+  });
+
   it("markiert die Referenz als sichtbaren Bezugspunkt", () => {
     const html = render({
       stations: [station("aral", { price: 1.749 }), station("b", { price: 1.689 })],

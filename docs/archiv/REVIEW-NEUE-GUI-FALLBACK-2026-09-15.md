@@ -354,7 +354,7 @@ konsistent verwendet, **außer** `systemFreshness` (B5).
 Nachtrag der Umsetzung — die Abschnitte 0–8 oben bleiben im Wortlaut der Prüfung.
 Alle vier P1-Befunde, die P2/P3-Liste und die strukturelle Test-Lücke sind im
 Code; hier steht, wo. Verifiziert am 16.09.2026 (App 0.43.1) mit
-`ruff check`, `ruff format --check`, 806 pytest, 1047 Vitest und
+`ruff check`, `ruff format --check`, 806 pytest, 1053 Vitest und
 `npm --prefix web run build`. Die Browser-Suiten liefen hier nicht — der
 Chromium-Download ist in der Sandbox gesperrt (so auch in
 [../LUECKEN.md](../LUECKEN.md)); sie gehören zur CI
@@ -376,7 +376,7 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
 | B10 (`var(--line)`) | 0.37.2 | `.fact` → `var(--border)` | Template-Regression |
 | B11 (Mitternacht/18 vs. 19 Zellen) | 0.37.2 | 19 Zellen in beiden Oberflächen, Zelle „24“ trägt die Mitternachtsmeldung | `web/src/strip.test.ts`, Template-Test |
 | B12 (Kommentar „v3“) | 0.37.2 | Template-Kommentar „TankApp Fallback-GUI v4“ | Testname mitgezogen (0.43.1) |
-| M1 („offen“-Chip) | 0.37.2 | Filter „nur offene“ in `web/src/views/Stationen.tsx` | `web/src/views/Stationen.test.tsx` |
+| M1 („offen“-Chip) | 0.37.2 · Test 0.43.1 | Chip „nur offene“ in `web/src/views/Stationen.tsx`; die Sichtbarkeits-Regeln (Suche, Marke, „offen“) liegen seit 0.43.1 als `atlasMatchesFilter` in `web/src/stations.ts` — der erste Nachweis verwies auf eine Testdatei, die den Filter gar nicht prüfte | `web/src/stations.test.ts` (5 Fälle), `web/src/views/Stationen.test.tsx` (Chip im Markup) |
 | M8 (Streifen nur per Hover) | 0.37.2 | Streifenzellen mit `role="img"` + `aria-label` (NAS und Fallback) | `web/src/strip.test.ts`, `web/e2e/demo.spec.ts` |
 | §4.2 Demo-Stack ohne Tageskurve | 0.37.2 | `ops/quality/demo_data.py::make_query` honoriert Stations-Filter und Zeitfenster | `tests/test_e2e_demo.py`, `tests/test_data.py` |
 | §4.1 e2e mockte alles | 0.38.0 | `web/e2e/demo.spec.ts` + `playwright.demo.config.ts` (kein `page.route`), Server-Hälfte `tests/test_e2e_demo.py`, eigener CI-Schritt | `.github/workflows/tests.yml` |
@@ -413,3 +413,10 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
   aus dem Puffer statt Rohreihe 1–168 h).
 - Der Template-Test hieß noch `test_template_is_the_v3_gui_…` — auf v4
   nachgezogen (Nachtrag zu B12).
+- M1-Nachweis korrigiert: Der Chip war seit 0.37.2 gebaut, aber ungeprüft —
+  die Testnennung im Erledigt-Nachweis zeigte auf eine Datei ohne
+  Filter-Fall. Die Sichtbarkeits-Regeln stehen jetzt als
+  `atlasMatchesFilter` in `web/src/stations.ts` und sind in
+  `web/src/stations.test.ts` festgehalten (leer lässt alles stehen; „offen“
+  versteckt die „—“-Zeile; Suche trifft Name und Marke ohne
+  Groß-/Kleinschreibung; Marke exakt; die drei Regeln zusammen).

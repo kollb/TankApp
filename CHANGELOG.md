@@ -42,10 +42,17 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
   (B7); „🔄 NAS prüfen“ → „NAS prüfen“ (Emoji seit 0.42.0 entfernt).
 - **Testname:** `tests/test_rp2_fallback.py::test_template_is_the_v4_gui_without_mock_data`
   (vorher „v3“ — Nachtrag zu B12).
+- **M1-Nachweis ehrlich gemacht:** Der Filter-Chip „nur offene“ (0.37.2 gegen
+  M1 gebaut) war ungeprüft — der Erledigt-Nachweis nannte eine Testdatei ohne
+  Filter-Fall. Die Sichtbarkeits-Regeln (Suche, Marke, „offen“) liegen jetzt
+  als `atlasMatchesFilter` in `web/src/stations.ts` und sind in
+  `web/src/stations.test.ts` festgehalten (5 Fälle, inkl. „die drei Regeln
+  greifen zusammen“); `web/src/views/Stationen.test.tsx` hält zusätzlich Chip
+  und Regel-Text im Markup fest.
 
 ### Prüfungen
 
-- `ruff check` + `ruff format --check` ✓, **806 pytest** ✓, **1047 Vitest**
+- `ruff check` + `ruff format --check` ✓, **806 pytest** ✓, **1053 Vitest**
   (vorher 1044) ✓, `npm --prefix web run build` ✓ ohne Chunk-Warnhinweis.
 - `tests/test_ledger_drift.py` hält die Stand-Zeilen (TODO, LUECKEN, neueste
   CHANGELOG-Version = App-Version) und die Liste „nicht gegen die aktuelle
