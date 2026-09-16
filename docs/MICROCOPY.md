@@ -250,13 +250,18 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
   keine „ca.“-Werte ohne Rechnung dahinter (Ehrlichkeits-Regel, Konzept §0.4).
 - **Pfade, Tokens, URLs, Koordinaten.** Auch nicht in Alarm-Pushes: die
   ntfy-Nachricht trägt nur Alarm-Code, deutschen Klartext und App-Version.
-  **Einzige Ausnahme (T9):** der Bereich „System“ in seinen Einrichtungs- und
-  Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
-  (`polling.json`, `/api/v1/health`). Überall sonst gehören sie in einen
-  `title`-Tooltip oder bleiben weg. Ein Vorgang wird **einmal** beschrieben:
-  Der Volltext steht in „System“, `messages` verweist dorthin. Vergleiche mit
-  früheren GUI-Ständen („wie in der alten System-Ansicht“) gehören in die
-  Doku, nie in den Text.
+  **Einzige Ausnahme (T9/T6):** der Bereich „System“ in seinen Einrichtungs-
+  und Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
+  (`polling.json`, `/api/v1/health`, `TANKAPP_NTFY_URL`). §4d beschreibt
+  genau diese Fläche; die Muster dort (`/sw.js`, `/api/v1`) sind deshalb kein
+  Widerspruch zu dieser Regel, sondern die Ausnahme selbst. Überall sonst
+  gehören sie in einen `title`-Tooltip oder bleiben weg — ein Satz, der
+  verspricht, Pfade zu entfernen, enthält selbst keinen. Ein Vorgang wird
+  **einmal** beschrieben: Der Volltext steht in „System“, `messages` verweist
+  dorthin („Die Schritte stehen im Bereich „System“ unter „Daten“.“).
+  Vergleiche mit früheren GUI-Ständen („wie in der alten System-Ansicht“)
+  gehören in die Doku, nie in den Text. Geprüft von `microcopy.test.ts`
+  (Dateiliste minus System-Bereich).
 - **Interne Ausnahmen.** Serverfehler werden über `app/errors.py` bereinigt,
   bevor sie irgendwo erscheinen.
 - **Englische Hook-Zeilen** als Marketing. Eine deutsche Kurzzeile pro Tab

@@ -2472,7 +2472,7 @@ export const messages: Record<string, string> = {
   selection_failed:
     "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
   collector_no_heartbeat:
-    "Noch kein Collector-Herzschlag in InfluxDB. Pi-Uploader muss heartbeat.json liefern.",
+    "Noch kein Collector-Herzschlag — der Pi hat nichts gemeldet. Die Schritte zum Prüfen stehen im Bereich „System“ unter „Daten“.",
   collector_check_failed: "Collector-Status konnte nicht geprüft werden.",
   too_many_points:
     "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",

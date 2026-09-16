@@ -442,7 +442,7 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
     expect(html).toContain("lösen");
     expect(html).toContain("0.35.0");
     // Beleg-Export.
-    expect(html).toContain("/api/v1/fills.csv laden");
+    expect(html).toContain("Belege als Datei laden");
   });
 });
 

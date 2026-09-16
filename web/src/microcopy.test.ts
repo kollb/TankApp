@@ -232,7 +232,45 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     ).toEqual([]);
   });
 
-  // ── 6. Anrede: Possessiv ja, direkte Anrede nein (§1, GUI-TEXT-BEFUND T1) ──
+  // ── 6. Technik im Satz: Pfade, Dateien, Endpunkte (§6, GUI-TEXT-BEFUND T6) ──
+
+  /**
+   * §6 verbietet Pfade, Umgebungsvariablen und Endpunkte im Nutzertext; die
+   * Ausnahme T9 ist der System-Bereich (`TECH_TEXT_ALLOWED`). Geprüft werden
+   * Sätze, nicht Code: Ein Literal zählt als Satz, wenn es aus mindestens drei
+   * Wörtern besteht und nicht mit `/`, `?` oder `#` anfängt — damit fallen
+   * `fetch`-Pfade und CSS-Klassen heraus, aber „… (docs/INSTALL.md …)“ nicht.
+   */
+  const TECH_PATTERNS: ReadonlyArray<RegExp> = [
+    /\/api\/v\d/,
+    /\bTANKAPP_[A-Z_]+/,
+    /\b[\w./-]+\.(?:md|json|log|env|py|ya?ml|csv|sh)\b/,
+    /\b(?:data|ops|app|engine|docs|web|rp2)\/[\w./-]+/,
+    /<job>/,
+  ];
+
+  function sentences(source: string): string[] {
+    return [...userVisible(source).matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/gs)]
+      .map((match) => match[2])
+      .filter((value) => value.split(/\s+/).length >= 3 && !/^[/?#]/.test(value));
+  }
+
+  it.each(FILES)("%s: nennt keine Pfade, Dateien oder Umgebungsvariablen", (relativePath) => {
+    if (TECH_TEXT_ALLOWED.has(relativePath)) return;
+    const hits: string[] = [];
+    for (const sentence of sentences(read(relativePath))) {
+      for (const pattern of TECH_PATTERNS) {
+        const match = sentence.match(pattern);
+        if (match) hits.push(match[0]);
+      }
+    }
+    expect(
+      hits,
+      `${relativePath}: Technik gehört in den System-Bereich oder in einen title (§6), nicht in diesen Satz.`,
+    ).toEqual([]);
+  });
+
+  // ── 7. Anrede: Possessiv ja, direkte Anrede nein (§1, GUI-TEXT-BEFUND T1) ──
 
   /**
    * §1 (T10) lässt den Possessiv („deine Bilanz“) stehen und verbietet die

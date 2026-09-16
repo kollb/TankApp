@@ -421,7 +421,7 @@ export function systemExplanationLaeufe(
     sentences: [
       `Läufe: ${names} — jeder Job meldet Zustand (Erfolg, Läuft, Wartet, Unvollständig, Abgebrochen, Fehlgeschlagen) und Fortschritt je Phase.`,
       "Der Startknopf wirkt nur im NAS-Webauftritt und nie zweimal gleichzeitig — auf der Kommandozeile gilt der Worker-Befehl aus der Anleitung.",
-      "Das Job-Log zeigt die letzten Zeilen direkt vom NAS (data/runtime/jobs/<job>.log) — Pfade und Zugangsdaten werden beim Auslesen entfernt.",
+      "Das Job-Log zeigt die letzten Zeilen direkt vom NAS — Pfade und Zugangsdaten werden beim Auslesen entfernt.",
     ],
     source:
       "Grundlage: /api/v1/health → jobs und /api/v1/jobs/<job>/log.",
