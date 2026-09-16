@@ -16,7 +16,7 @@
 // Accessibility-Baum teil; strenge Test-Selektoren (`getByRole`) sehen pro
 // Viewport genau eine Schaltfläche je Bereich.
 //
-// CI-Fix 0.40.0: Die mobile Leiste wurde früher per matchMedia ausgewählt
+// CI-Fix 0.41.0: Die mobile Leiste wurde früher per matchMedia ausgewählt
 // und stand als flex-Kind **neben** `<main>`. Auf mobilen Viewports konnte
 // der Inhalt die Leiste überdecken und Klicks abfangen (e2e: „subtree
 // intercepts pointer events“). Jetzt wird `MobileNav` in Dashboard.tsx als

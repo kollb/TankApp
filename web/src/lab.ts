@@ -197,8 +197,90 @@ export function diaryOutcome(entry: AdviceDiaryEntry): DiaryOutcome {
   return {
     word: "nicht bewertbar",
     tone: "neutral",
-    detail: `Kein Vergleichspreis — Grund: ${voidReasonWord(entry.void_reason)}.`,
+    // Zwei Fälle, zwei Sätze: Bei einer Ablehnung nennt der Ledger seit
+    // 0.40.0 den Grund der Tabelle („warum nichts vorgeschlagen wurde“);
+    // Altbestände tragen nur den Void-Code.
+    detail: entry.decline_reason
+      ? `Kein Vergleichspreis — die App hatte hier keine Empfehlung: ${entry.decline_reason}`
+      : `Kein Vergleichspreis — Grund: ${voidReasonWord(entry.void_reason)}.`,
   };
+}
+
+/**
+ * Eine Zeile der Tagebuch-Liste: ein Eintrag — oder mehrere gleiche.
+ *
+ * Warum gruppiert wird: Solange ein Fenster offen ist, bestätigt die App die
+ * Entscheidung „keine Empfehlung“ bei jeder Abfrage. Vor 0.40.0 wurde daraus
+ * alle 30 Minuten ein eigener Ledger-Eintrag; alte Bestände tragen diese
+ * Zeilen weiter, und im Tagebuch stand dann 50-mal derselbe Satz — die vier
+ * echten Empfehlungen fielen aus der Liste. Seit 0.40.0 schreibt eine
+ * Bestätigung nichts mehr in den Ledger (siehe `app/feedback.py`), und
+ * vorhandene Wiederholungen bleiben hier **eine** Zeile: Wort, Station,
+ * Zeitspanne, Anzahl.
+ */
+export type DiaryRow = {
+  entry: AdviceDiaryEntry;
+  /** Wie viele Einträge der Liste zu dieser Zeile gehören (mindestens 1). */
+  count: number;
+  /**
+   * Erste Bestätigung der Gruppe (ISO, `emitted_at`) — die linke Kante der
+   * Zeitspanne; bei `count === 1` ist sie der eigene Emit-Zeitpunkt.
+   */
+  oldest: string | null;
+};
+
+/** Zeitstempel einer Zeile: die Abrechnung des Falls. */
+export function diaryStamp(entry: AdviceDiaryEntry): string | null {
+  return entry.settled_at ?? entry.emitted_at;
+}
+
+/** Zwei Einträge sind dieselbe Aussage: gleiche Ablehnung, gleiche Station. */
+function sameDiaryRow(a: AdviceDiaryEntry, b: AdviceDiaryEntry): boolean {
+  const decline = (entry: AdviceDiaryEntry) =>
+    entry.outcome !== "win" && entry.outcome !== "loss" && entry.outcome !== "tie";
+  return (
+    decline(a) &&
+    decline(b) &&
+    a.action === b.action &&
+    a.station_id === b.station_id &&
+    a.void_reason === b.void_reason &&
+    a.decline_reason === b.decline_reason
+  );
+}
+
+/**
+ * Fasst aufeinanderfolgende gleiche Einträge zusammen (die Liste kommt
+ * neueste zuerst). Die Gruppierung läuft **nur** über die geladenen
+ * Einträge — deshalb nennt die Anzeige die Anzahl nur dann als Zahl, wenn
+ * die Liste vollständig ist (`diaryCountLabel`).
+ *
+ * Die Zeitspanne wird aus den echten Zeitstempeln gebildet: `emitted_at` der
+ * ältesten Zeile (erste Bestätigung) bis `diaryStamp` der neuesten
+ * (Abrechnung). `emitted_at` bleibt beim Kollabieren der erste Emit — genau
+ * der Zeitpunkt, seit dem die App dasselbe sagt.
+ */
+export function groupDiaryEntries(entries: AdviceDiaryEntry[]): DiaryRow[] {
+  const rows: DiaryRow[] = [];
+  for (const entry of entries) {
+    const previous = rows[rows.length - 1];
+    if (previous && sameDiaryRow(previous.entry, entry)) {
+      previous.count += 1;
+      previous.oldest = entry.emitted_at ?? previous.oldest;
+      continue;
+    }
+    rows.push({ entry, count: 1, oldest: entry.emitted_at ?? diaryStamp(entry) });
+  }
+  return rows;
+}
+
+/**
+ * Anzahl-Spanne einer Zeile. `capped` heißt: Der Server hat die Liste
+ * gekürzt (mehr Settlements als geladene Einträge) — dann ist jede Zahl aus
+ * der Liste eine Untergrenze, und „mehrfach“ ist die ehrliche Aussage.
+ */
+export function diaryCountLabel(count: number, capped: boolean): string | null {
+  if (count <= 1) return null;
+  return capped ? "mehrfach" : `${count.toLocaleString("de-DE")}×`;
 }
 
 /** Void-Grund im Klartext (Codes aus app/feedback.py `_void_settlement`). */

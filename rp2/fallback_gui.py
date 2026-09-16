@@ -51,7 +51,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "4.1"
+VERSION = "4.2"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -1691,6 +1691,30 @@ input[type="number"] { width: 72px; text-align: center; }
 .cell.none .v { color: var(--dim); }
 .cell.now { outline: 2px solid var(--accent); outline-offset: 1px; background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); }
 .cell.now .h { color: var(--accent); font-weight: 800; }
+/* ---------- Variante A · Kompakt: 6 Blöcke statt 19 Zellen, integriertes Fenster ---------- */
+.daystrip-compact { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+@media (min-width: 560px) { .daystrip-compact { grid-template-columns: repeat(6, 1fr); } }
+.block { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); padding: 10px 8px; text-align: center; min-width: 0; }
+.block .h { font-size: 10px; color: var(--dim); font-weight: 700; letter-spacing: 0.06em; }
+.block .v { font-size: 15px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.block .sub { font-size: 11px; color: var(--muted); }
+.block.cheap { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 10%, var(--panel-2)); }
+.block.cheap .v { color: var(--accent); }
+.block.pricey { border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: color-mix(in srgb,var(--bad) 8%, var(--panel-2)); }
+.block.pricey .v { color: var(--bad); }
+.block.now { outline: 2px solid var(--accent); outline-offset: 1px; }
+.block.none .v { color: var(--dim); }
+.next-window-preview { margin-top: 14px; display: flex; align-items: center; gap: 10px; background: color-mix(in srgb, var(--panel-2) 92%, transparent); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.next-window-preview .label { font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+.next-window-preview .label svg { width: 14px; height: 14px; color: var(--info); flex: none; }
+.next-window-preview .mid { color: var(--muted); flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-window-preview .save { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
+.next-window-preview button { border: 0; background: transparent; color: var(--info); font-weight: 700; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.collapse-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; font-weight: 700; color: var(--info); cursor: pointer; border: 0; background: transparent; padding: 0; }
+.collapse-link svg { width: 14px; height: 14px; transition: transform 0.2s; flex: none; }
+.collapse-link.open svg { transform: rotate(180deg); }
+.forecast-detail { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+
 /* Die drei Fakten der Antwort-Karte (1+3+N): Jetzt hier · Bestes Fenster
    heute · Frische Preise. Immer dieselben drei, immer dieselbe Reihenfolge;
    der Tankstand fehlt hier bewusst — er ist NAS-Sache (siehe RP2.md). */
@@ -1845,6 +1869,17 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 @media (min-width: 1100px) {
   :root { --content: 1280px; }
 }
+@media (min-width: 900px) {
+  .stickies {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 8px max(var(--gutter), calc((100% - var(--content)) / 2));
+  }
+  .topbar, .controls { padding: 0; border-bottom: 0; }
+  .topbar { flex: 0 0 auto; }
+  .controls { flex: 1 1 340px; flex-direction: row; align-items: center; gap: 10px; }
+  .seg.grow { flex: 0 0 auto; }
+  .row { flex: 1 1 auto; }
+}
 @media (min-width: 1100px) {
   .stickies {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -1927,7 +1962,8 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 <main class="wrap">
   <section id="banner" class="banner warn hidden" role="status"></section>
 
-  <!-- ============================== ALLTAG ============================== -->
+  <!-- ============================== ALLTAG — Variante A · Kompakt ============================== -->
+  <!-- Antwort bleibt Hero. Tagesstreifen kompakt (6 Blöcke) mit Details aufklappbar. Stationen Top 3 + Alle zeigen. Prognosen als 1 Zeile in Antwort + Details — keine eigene Karte mehr. -->
   <div id="view-alltag">
     <div class="cols">
     <div class="col col-a">
@@ -1937,18 +1973,26 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
       <div class="muted"><span class="spinner"></span> Lade …</div>
     </section>
 
-    <p class="section-kicker"><span class="idx">2 · </span>Heute im Überblick</p>
+    <p class="section-kicker"><span class="idx">2 · </span>Heute im Überblick — kompakt</p>
     <section class="card" aria-labelledby="daystrip-title">
       <h2 id="daystrip-title">Tagesverlauf <span class="sub" id="daystrip-sub"></span></h2>
-      <div class="daystrip" id="daystrip"></div>
+      <div class="daystrip-compact" id="daystrip-compact"></div>
+      <button class="collapse-link" id="daystrip-toggle" type="button" aria-expanded="false" aria-controls="daystrip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        <span>Stunden-Details (06–24 Uhr)</span>
+      </button>
+      <div id="daystrip-detail" class="hidden">
+        <div class="daystrip" id="daystrip"></div>
+        <p class="strip-note">19 Zellen 06–24 Uhr · Grün = unteres Preisdrittel, rot = oberes Drittel. Leere Stunden hatten keine offene Meldung.</p>
+      </div>
       <div class="strip-summary" id="strip-summary"></div>
-      <p class="strip-note">Grün = unteres Preisdrittel dieses Tages an dieser Station, rot = oberes Drittel. Leere Stunden hatten keine offene Meldung — nichts wird erfunden.</p>
+      <p class="strip-note">Kompakt zeigt 6 Blöcke (Morgen/Mittag/Nachmittag/Abend/Spät/Nacht). Details klappen die 19 Stunden auf.</p>
     </section>
 
     </div>
     <div class="col col-b">
 
-    <p class="section-kicker"><span class="idx">3 · </span>Stationen</p>
+    <p class="section-kicker"><span class="idx">3 · </span>Stationen — die 3 günstigsten</p>
     <section class="card" aria-labelledby="stations-title">
       <div class="row">
         <h2 id="stations-title">Stationen <span class="sub" id="stations-sub"></span></h2>
@@ -1962,10 +2006,14 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
         <span class="muted" style="font-size:11.5px">Sortierung wirkt auf die Liste, nicht auf die Empfehlung.</span>
       </div>
       <div class="st-grid" id="st-grid"><div class="muted"><span class="spinner"></span> Lade …</div></div>
+      <button class="collapse-link hidden" id="stations-toggle" type="button" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        <span>Alle zeigen</span>
+      </button>
+      <p class="strip-note" id="stations-note">Top 3 sofort, Rest hinter „Alle zeigen“ — weniger gleichzeitige Karten, gleiche Info.</p>
     </section>
-
-    <p class="section-kicker"><span class="idx">4 · </span>Nächste 24 h</p>
-    <section class="card" aria-labelledby="forecast-title">
+    <p class="section-kicker hidden"><span class="idx">4 · </span>Nächste 24 h</p>
+    <section class="card hidden" aria-labelledby="forecast-title">
       <h2 id="forecast-title">Prognosen <span class="sub" id="forecast-sub"></span></h2>
       <div id="forecast-body"><div class="muted"><span class="spinner"></span> Lade …</div></div>
     </section>
@@ -2353,6 +2401,24 @@ function renderAnswer(decide, stations, health) {
     ? '<span class="chip">' + ICONS.swap + '<span class="chip-txt">„Hier oder woanders“: 2. = ' +
       esc(f2.second_name) + " · " + eur(f2.second_price) + " €/L</span></span>"
     : "";
+  // Variante A · Kompakt: Forecast als integrierte Zeile in Antwort, keine eigene Karte mehr.
+  // Bestes Fenster als 1-Zeilen-Preview + aufklappbare Details (alle Fenster).
+  const forecastPreview = (() => {
+    if (!waitWindow) {
+      if (!f1.available) return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">Prognose-Cache fehlt oder kein Vorteil — nimm die günstigste frische Station.</span></div>';
+      return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">' + esc(f1.reason || "kein Vorteil in 24 h") + '</span></div>';
+    }
+    const detailRows = (decide.windows || []).map((w) => 
+      '<div class="win" style="margin-top:0"><span class="when">' + esc(relDay(w.at)) + " Uhr<small>Score " + pct(w.price_score) + "</small></span>" +
+      '<span class="mid">~' + eur(w.q50) + ' €/L</span><span class="save">−' + eurTank((w.expected_saving_ct_per_l/100)*state.liters) + "</span></div>"
+    ).join("");
+    return '<div class="next-window-preview" role="region" aria-label="Bestes Fenster">' +
+      '<span class="label">' + ICONS.window + ' Bestes Fenster ' + esc(dayWord(waitWindow.at) || "heute") + '</span>' +
+      '<span class="mid">' + esc(clockOf(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " € · Score " + pct(waitWindow.price_score) + "</span>" +
+      '<span class="save">−' + eurTank((waitWindow.expected_saving_ct_per_l/100)*state.liters) + "</span>" +
+      '<button type="button" id="forecast-preview-toggle" aria-expanded="false" aria-controls="forecast-preview-detail">Details \u25be</button></div>' +
+      '<div id="forecast-preview-detail" class="forecast-detail hidden">' + detailRows + '<p class="strip-note">Ersparnis pro ' + state.liters + ' L. Preis-Score = historisches Quantil, keine M7.</p></div>';
+  })();
   // B8: Ein veraltetes Set trägt nicht den „warten“-Look.
   el.className = "card answer" + (staleSet ? "" : waiting ? " waiting" : "");
   el.innerHTML = kicker +
@@ -2371,6 +2437,7 @@ function renderAnswer(decide, stations, health) {
     '<div class="savings-line">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) +
       " pro " + state.liters + ' L-Tank <span class="vs">' + vsLabel + "</span></div>" +
     route +
+    forecastPreview +
     '<div class="chips">' + waitChip + secondChip + "</div>" +
     '<div class="facts">' +
       '<div class="fact"><div class="l">Jetzt hier</div>' +
@@ -2410,22 +2477,69 @@ function renderDaystrip(series, decide, health) {
     summary.innerHTML = "";
     return;
   }
+  // Variante A · Kompakt: 6 Blöcke + Detail. Blöcke: 06-10, 10-14, 14-18, 18-22, 22-24, 24
+  const compactEl = document.getElementById("daystrip-compact");
+  const detailWrap = document.getElementById("daystrip-detail");
+  const toggle = document.getElementById("daystrip-toggle");
   const lo = Math.min.apply(null, known.map((h) => h.value));
   const hi = Math.max.apply(null, known.map((h) => h.value));
   const third = (hi - lo) / 3;
   const nowHour = series.now && series.now.at ? series.now.at.slice(0, 2) : "";
+  // kompakte Blöcke berechnen (Durchschnitt der Stunden im Block)
+  if (compactEl) {
+    const blocks = [
+      { label: "06–10", hours: ["06","07","08","09"], sub: "morgens" },
+      { label: "10–14", hours: ["10","11","12","13"], sub: "mittag" },
+      { label: "14–18", hours: ["14","15","16","17"], sub: "nachmittag" },
+      { label: "18–22", hours: ["18","19","20","21"], sub: "abend" },
+      { label: "22–24", hours: ["22","23"], sub: "spät" },
+      { label: "24", hours: ["24"], sub: "Nacht" },
+    ];
+    const byHour = Object.fromEntries(hours.map((h) => [h.hour, h]));
+    const nowBlock = (() => {
+      if (!nowHour) return -1;
+      const n = parseInt(nowHour,10);
+      if (n>=6 && n<10) return 0;
+      if (n>=10 && n<14) return 1;
+      if (n>=14 && n<18) return 2;
+      if (n>=18 && n<22) return 3;
+      if (n>=22 && n<24) return 4;
+      if (n===24 || n===0) return 5;
+      return -1;
+    })();
+    compactEl.innerHTML = blocks.map((b, idx) => {
+      const vals = b.hours.map((h) => byHour[h]).filter((x) => x && isNum(x.value)).map((x)=>x.value);
+      if (!vals.length) return '<div class="block none"><div class="h">' + b.label + '</div><div class="v">—</div><div class="sub">' + b.sub + '</div></div>';
+      const avg = vals.reduce((a,c)=>a+c,0)/vals.length;
+      const tone = avg <= lo + third ? "cheap" : avg >= hi - third ? "pricey" : "";
+      const isNow = idx === nowBlock;
+      return '<div class="block ' + tone + (isNow ? " now" : "") + '"><div class="h">' + b.label + (isNow ? " · jetzt" : "") + '</div><div class="v">' + eur(avg) + '</div><div class="sub">' + b.sub + '</div></div>';
+    }).join("");
+    if (toggle && !toggle._bound) {
+      toggle._bound = true;
+      toggle.addEventListener("click", () => {
+        if (!detailWrap) return;
+        const open = detailWrap.classList.toggle("hidden");
+        // hidden means closed, so invert
+        const isOpen = !detailWrap.classList.contains("hidden");
+        toggle.classList.toggle("open", isOpen);
+        toggle.setAttribute("aria-expanded", String(isOpen));
+        toggle.querySelector("span").textContent = isOpen ? "Weniger" : "Stunden-Details (06–24 Uhr)";
+      });
+    }
+  }
   strip.innerHTML = hours.map((h) => {
     const label = h.hour + ":00";
     if (!isNum(h.value)) {
       // M8: Werte nicht nur per Hover — jede Zelle ist für Screenreader
       // ein beschriftetes Bild (wie in der NAS-GUI).
       const emptyTitle = label + " — keine offene Meldung";
-      return '<div class=\"cell none\" role=\"img\" aria-label=\"' + emptyTitle + '\" title=\"' + emptyTitle + '\"><div class=\"h\">' + label + '</div><div class=\"v\">–</div></div>';
+      return '<div class="cell none" role="img" aria-label="' + emptyTitle + '" title="' + emptyTitle + '"><div class="h">' + label + '</div><div class="v">–</div></div>';
     }
     const tone = h.value <= lo + third ? "cheap" : h.value >= hi - third ? "pricey" : "";
     const isNow = h.hour === nowHour;
     const title = label + " — " + eur(h.value) + " €/L" + (h.at ? " (Meldung " + clockOf(h.at) + " Uhr)" : "");
-    return '<div class=\"cell ' + tone + (isNow ? \" now\" : \"\") + '\" role=\"img\" aria-label=\"' + title + '\" title=\"' + title + '\">' +
+    return '<div class="cell ' + tone + (isNow ? " now" : "") + '" role="img" aria-label="' + title + '" title="' + title + '">' +
       '<div class="h">' + label + (isNow ? " · jetzt" : "") + "</div>" +
       '<div class="v">' + eur(h.value) + "</div></div>";
   }).join("");
@@ -2466,8 +2580,11 @@ function renderStations(stations, decide) {
   } else {
     rows.sort((a, b) => (num(a.age_minutes) - num(b.age_minutes)) || (num(a.price) - num(b.price)));
   }
+  // Variante A · Kompakt: nur Top 3 sofort, Rest hinter Toggle
+  const toggle = document.getElementById("stations-toggle");
+  const note = document.getElementById("stations-note");
   let rank = 0;
-  grid.innerHTML = rows.map((s) => {
+  const allHtml = rows.map((s) => {
     const hasPrice = s.status === "open" && isNum(s.price);
     if (hasPrice) rank += 1;
     const closed = s.status !== "open";
@@ -2494,11 +2611,86 @@ function renderStations(stations, decide) {
       '<div class="st-price"><div class="p">' + (hasPrice ? eur(s.price) + " <small>€/L</small>" : "—") + "</div>" + deltaHtml + "</div>" +
       nav + "</div>";
   }).join("");
+  const total = rows.length;
+  const pricedCount = rows.filter((s) => s.status === "open" && isNum(s.price)).length;
+  // split after 3 priced stations for compact view
+  // Find HTML split: count ranked items. We already have rank logic inside map, so split by parsing rank.
+  // Simpler: if more than 3 priced stations, show toggle.
+  if (toggle) {
+    // count how many have price (rank >0)
+    if (pricedCount > 3 && rows.length > 3) {
+      // Rebuild with limit: take first 3 priced + keep closed at end? For simplicity, slice rendered HTML by delimiter.
+      // Our allHtml already contains all rows in sorted order. Split into first 3 vs rest.
+      // We need to reconstruct: rows already sorted, so first 3 rendered are the top 3.
+      // Split by counting st entries with price.
+      const tmpDiv = document.createElement("div");
+      tmpDiv.innerHTML = allHtml;
+      const cards = Array.prototype.slice.call(tmpDiv.children);
+      const top = [];
+      const rest = [];
+      let pricedSeen = 0;
+      for (const c of cards) {
+        const isPriced = c.querySelector(".p") && c.querySelector(".p").textContent.trim() !== "—";
+        if (isPriced) pricedSeen++;
+        if (pricedSeen <= 3) top.push(c.outerHTML);
+        else rest.push(c.outerHTML);
+      }
+      if (rest.length) {
+        grid.innerHTML = top.join("");
+        let restWrap = document.getElementById("stations-rest");
+        if (!restWrap) {
+          restWrap = document.createElement("div");
+          restWrap.id = "stations-rest";
+          restWrap.style.display = "grid";
+          restWrap.style.gap = "10px";
+          restWrap.style.marginTop = "10px";
+          restWrap.className = "hidden";
+          grid.after(restWrap);
+        }
+        restWrap.innerHTML = rest.join("");
+        toggle.classList.remove("hidden");
+        toggle.querySelector("span").textContent = "Alle " + total + " zeigen (" + rest.length + " weitere)";
+        if (!toggle._bound) {
+          toggle._bound = true;
+          toggle.addEventListener("click", () => {
+            const open = restWrap.classList.toggle("hidden");
+            const isOpen = !restWrap.classList.contains("hidden");
+            toggle.classList.toggle("open", isOpen);
+            toggle.setAttribute("aria-expanded", String(isOpen));
+            toggle.querySelector("span").textContent = isOpen ? "Weniger zeigen" : "Alle " + total + " zeigen (" + rest.length + " weitere)";
+          });
+        }
+        if (note) note.classList.remove("hidden");
+      } else {
+        grid.innerHTML = allHtml;
+        toggle.classList.add("hidden");
+      }
+    } else {
+      grid.innerHTML = allHtml;
+      const restWrap = document.getElementById("stations-rest");
+      if (restWrap) restWrap.classList.add("hidden");
+      toggle.classList.add("hidden");
+    }
+  } else {
+    grid.innerHTML = allHtml;
+  }
+  return;
 }
 
 function renderForecast(decide, forecasts) {
+  // Variante A · Kompakt: separate Prognosen-Karte entfällt — Vorschau lebt in Antwort.
+  // Funktion bleibt für Rückwärtskompatibilität, versteckt aber die alte Karte sauber.
+  const oldCard = document.getElementById("forecast-body");
+  if (oldCard) {
+    const section = oldCard.closest("section");
+    const kicker = section ? section.previousElementSibling : null;
+    if (section) section.classList.add("hidden");
+    if (kicker && kicker.classList.contains("section-kicker")) kicker.classList.add("hidden");
+  }
   const sub = $("#forecast-sub");
   const body = $("#forecast-body");
+  // trotzdem noch Status für Werkstatt befüllen, aber Alltag-Karte bleibt versteckt
+  if (!body) return;
   const fc = (decide && decide.forecast) || {};
   const windows = decide && Array.isArray(decide.windows) ? decide.windows : [];
   const name = decide && decide.available ? decide.f2.station.name : "";
@@ -2710,6 +2902,17 @@ function applyView(view) {
   setActive("#view-tabs button", (b) => b.dataset.view === state.view);
   updateChip();
 }
+// Variante A: Forecast-Detail Toggle Delegation (Answer-integriert)
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#forecast-preview-toggle");
+  if (!btn) return;
+  const detail = document.getElementById("forecast-preview-detail");
+  if (!detail) return;
+  const open = detail.classList.toggle("hidden");
+  const isOpen = !detail.classList.contains("hidden");
+  btn.setAttribute("aria-expanded", String(isOpen));
+  btn.textContent = isOpen ? "Weniger \u25b2" : "Details \u25be";
+});
 $$("#fuel-tabs button").forEach((b) => b.addEventListener("click", () => {
   state.fuel = b.dataset.fuel;
   LS.set("fuel", state.fuel);

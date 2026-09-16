@@ -30,7 +30,7 @@ import { clockLabel, JOB_LABELS, problem } from "./data";
 import { OverviewProvider, useOverview } from "./state/overview";
 
 // U7: Code-Splitting pro Bereich — jede View bleibt ein eigener Chunk
-// (`import()` je `views/*`). Seit 0.40.1 werden die Importe außerdem
+// (`import()` je `views/*`). Seit 0.41.1 werden die Importe außerdem
 // sofort angestoßen: Sie laden parallel zum Erst-Paint-Gate (unten), der
 // auf die API-Antworten wartet. So steht beim ersten echten Paint sowohl
 // das View-Modul als auch der Inhalt bereit — der frühere Tausch
@@ -182,7 +182,7 @@ function DashboardShell() {
     showJobLog,
   } = ov;
 
-  /* Erst-Paint-Gate (0.40.1, Lighthouse-CLS): Die Ansicht rendert erst,
+  /* Erst-Paint-Gate (0.41.1, Lighthouse-CLS): Die Ansicht rendert erst,
      wenn die Shell-Daten (Preise, Gesundheit, Profile) und die primäre
      Antwort des aktiven Bereichs da sind. Dadurch steht beim ersten Paint
      sofort das fertige Layout — Header-Steuerungen, Banner und View-Inhalt
@@ -269,7 +269,7 @@ function DashboardShell() {
       {/* U3 (§13): desktop die Seitenleiste links vor dem Inhalt. Die
           mobile Bottom-Navigation (`MobileNav`) wird als letztes Element
           der App-Hülle montiert — so liegt sie in DOM- und Stapel-
-          Reihenfolge sicher über dem Inhalt (CI-Fix 0.40.0). */}
+          Reihenfolge sicher über dem Inhalt (CI-Fix 0.41.0). */}
       <div className="mx-auto flex max-w-7xl items-start gap-6 px-4 sm:px-6 lg:px-8">
         <SideNav tab={tab} onSelect={gotoTab} />
         <main className="app-main min-w-0 flex-1 pt-6 pb-24 lg:pb-12">

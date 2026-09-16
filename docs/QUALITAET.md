@@ -1,6 +1,6 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 16.09.2026 · App-Version **0.40.1** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 16.09.2026 · App-Version **0.41.1** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
@@ -52,7 +52,7 @@ misst nur den Rahmen. Also gibt es `ops/quality/`:
 Die Preise teilen einen gemeinsamen Tages-Marktfaktor — ohne Gleichlauf wäre
 die gemeinsame Bootstrap-Ziehung (A11) im Lastpfad wirkungslos.
 
-Seit U7 (0.40.0) misst Lighthouse **drei** Zustände statt zweimal denselben
+Seit U7 (0.41.0) misst Lighthouse **drei** Zustände statt zweimal denselben
 Startschirm: den gefüllten Einstieg auf dem Demo-Stack, den Labor-Bereich
 über das Bereichs-Routing (`?tab=labor`, GUI-UX-BEFUND U4) und den
 Einrichtungszustand auf einem zweiten, leeren Server (Port 1356). Die alte
@@ -134,7 +134,7 @@ schreibt seinen Bericht als JSON nach stdout.
 | Lighthouse Best Practices | ≥ 0,90 | Fehler | Konsolen-Fehler, CSP-Löcher, veraltete APIs. |
 | Lighthouse SEO | ≥ 0,80 | Fehler | LAN-App: Sichtbarkeit ist zweitrangig, kaputte Metadaten wären trotzdem ein Fehler. |
 | Lighthouse Performance | ≥ 0,80 | **Warnung** | M4 verlangt > 0,90. Solange keine einzige Messung vorliegt, wäre ein hartes Budget ein erfundenes Gate — die erste CI-Messung entscheidet über das Nachziehen (siehe [Offen](#offen)). |
-| Übertragungsvolumen | ≤ 1,5 MB | **Fehler** | U7: scharf statt Warnung — seit dem Code-Splitting pro Bereich (0.40.0) lädt der Einstieg nur noch seinen eigenen Chunk; wer das Volumen treibt, fällt auf. |
+| Übertragungsvolumen | ≤ 1,5 MB | **Fehler** | U7: scharf statt Warnung — seit dem Code-Splitting pro Bereich (0.41.0) lädt der Einstieg nur noch seinen eigenen Chunk; wer das Volumen treibt, fällt auf. |
 | LCP | ≤ 2500 ms | Warnung | Auf CI-Maschinen streuend; dient dem Trend, nicht dem Bestehen. |
 | CLS | ≤ 0,1 | **Fehler** | U7: Layout-Sprünge sind sichtbar und messbar stabil — ein Rückfall ist ein Fehler, kein Trend. |
 
@@ -157,7 +157,7 @@ Einordnung: Ein einzelnes GUI pollt im Minutentakt, ein Haushalt mit drei
 Geräten also ~0,05 Abrufe/s. Der Lastpfad fährt das Tausendfache — die
 Reserve ist groß, der Regler ist nicht die Last, sondern der 60-s-Takt.
 
-**Lighthouse** (0.40.1, Desktop-Preset, je 3 Läufe, lokaler Demo-Stack):
+**Lighthouse** (0.41.1, Desktop-Preset, je 3 Läufe, lokaler Demo-Stack):
 
 | Zustand | Performance | Barrierefreiheit | Best Practices | SEO | CLS | LCP |
 |---|---|---|---|---|---|---|
@@ -167,10 +167,10 @@ Reserve ist groß, der Regler ist nicht die Last, sondern der 60-s-Takt.
 
 Übertragungsvolumen je Seite ≤ 0,67 MB (Budget ≤ 1,5 MB). Dass CLS auf allen
 drei Zuständen bei ≈ 0 liegt, ist kein Zufall, sondern der Erst-Paint-Gate
-(0.40.1): Die Ansicht rendert erst, wenn Shell-Daten **und** das View-Modul
+(0.41.1): Die Ansicht rendert erst, wenn Shell-Daten **und** das View-Modul
 des Bereichs da sind — es gibt im Sichtbaren keinen Tausch „Skeleton →
 Inhalt“ mehr, und `scrollbar-gutter: stable` hält die Viewport-Breite über
-alle Zustände gleich (siehe CHANGELOG 0.40.1).
+alle Zustände gleich (siehe CHANGELOG 0.41.1).
 
 ---
 
@@ -197,7 +197,7 @@ wenn sich die Rahmenbedingungen ändern.
 
 ## Offen
 
-1. **Lighthouse-Erstdurchlauf — erledigt (0.40.1).** Die erste Messung liegt
+1. **Lighthouse-Erstdurchlauf — erledigt (0.41.1).** Die erste Messung liegt
    vor (Tabelle oben): Performance 0,97–0,98, das M4-Ziel (> 0,90) ist auf
    allen drei gemessenen Zuständen erreicht. Die Ebene bleibt dennoch
    **warnend**, bis der Workflow-Lauf auf dem CI-Runner dieselben Zahlen

@@ -152,10 +152,20 @@ def test_overview_revalidiert_mit_echtem_etag(demo_server):
     """B7 ohne Mock: Der echte Server antwortet auf ``If-None-Match`` mit 304.
 
     Der gemockte Browser-Test kann das nicht zeigen — dort kommt die Antwort
-    aus ``page.route``. Hier läuft die Revalidierung gegen ``data_version()``.
+    aus ``page.route``. Hier läuft die Revalidierung gegen ``data_version()``:
+    Der zweite Aufruf derselben Ansicht ist eine **Bestätigung** derselben
+    Entscheidung, schreibt den Ledger also nicht neu. Genau davon hängt die
+    Revalidierung ab — ``data_version`` liest den mtime-Wert des Stores; ein
+    Schreiben pro Aufruf würde jedes ETag schon beim Ausliefern entwerten.
     """
     url = f"{demo_server}/api/v1/overview?city={CITY}&fuel={FUEL}"
-    status, headers, body = _get(url)
+    # Der **erste** Aufruf legt die Entscheidung an — das ist eine echte
+    # Änderung. Danach ist der Datenstand stabil; deshalb erst warm werden,
+    # dann das ETag holen und revalidieren (nicht auf die Reihenfolge der
+    # Testfunktionen verlassen).
+    status, _headers, _body = _get(url)
+    assert status == 200
+    status, headers, _body = _get(url)
     assert status == 200
     etag = headers.get("ETag")
     assert etag, "kein ETag — Antwort-Cache und Revalidierung wären wirkungslos"

@@ -18,7 +18,7 @@ export function AppHeader({
   ready,
 }: {
   ov: OverviewState;
-  /** Erst-Paint-Gate (0.40.1): Die Steuerungen erscheinen gemeinsam mit dem
+  /** Erst-Paint-Gate (0.41.1): Die Steuerungen erscheinen gemeinsam mit dem
       fertigen Inhalt — vorher würden Stadt-/Profil-Auswahl und der Alarm-Punkt
       nachträglich in die Zeile springen und alles daneben verschieben
       (Lighthouse-Gate `cumulative-layout-shift`). */

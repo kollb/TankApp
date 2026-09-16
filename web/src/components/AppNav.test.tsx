@@ -3,7 +3,7 @@
 // Entwurfs (UI-NEUENTWURF §13) — sechs Aufgaben-Bereiche, mobil unten,
 // desktop links. Das Glossar ist kein Hauptbereich mehr.
 //
-// CI-Fix 0.40.0: `SideNav` und `MobileNav` sind zwei Bausteine über derselben
+// CI-Fix 0.41.0: `SideNav` und `MobileNav` sind zwei Bausteine über derselben
 // Liste; welche Variante sichtbar ist, entscheidet allein CSS (`hidden`/
 // `lg:`-Varianten). `MobileNav` wird in Dashboard.tsx als letztes Element
 // der App-Hülle montiert, damit der Inhalt ihre Klicks nie abfangen kann.

@@ -1,8 +1,8 @@
 # GUI-UX-Befund — warum sich die Oberfläche trotz grüner Listen noch nicht gut anfühlt
 
-> **Erledigt (0.40.0, 15.09.2026):** Alle Befunde U1–U8 sind umgesetzt und
+> **Erledigt (0.41.0, 16.09.2026):** Alle Befunde U1–U8 sind umgesetzt und
 > abgenommen — U2/U7 (P0), U1/U3/U6 (P1), U4/U5/U8 (P2). Die Nachweise stehen
-> im [CHANGELOG](../../CHANGELOG.md) (0.40.0) und in der Erledigt-Tabelle von
+> im [CHANGELOG](../../CHANGELOG.md) (0.41.0) und in der Erledigt-Tabelle von
 > [TODO.md](../../TODO.md); die Ratchets leben in `web/src/`
 > (`a11y.test.ts`, `AppNav.test.tsx`, `routing.test.ts`,
 > `format-convention.test.ts`). Bewusst offen geblieben ist nur der

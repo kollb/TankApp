@@ -196,14 +196,18 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   await page.goto("/");
   await expect(page.locator("#jetzt-headline")).toBeVisible();
   await expect.poll(() => responses.length, { timeout: 30_000 }).toBeGreaterThan(0);
-  const etag = responses[0].headers()["etag"];
-  expect(etag, "der Demo-Server liefert kein ETag").toBeTruthy();
+  expect(
+    responses[0].headers()["etag"],
+    "der Demo-Server liefert kein ETag",
+  ).toBeTruthy();
 
   // B7 ohne Mock: „Daten aktualisieren“ lädt dieselbe Ansicht neu — die GUI
   // schickt dabei das ETag mit (`If-None-Match`), der Server antwortet mit
-  // 304 ohne Body. Der Datenstand trägt ein 60-s-Uhrzeit-Fenster: fällt der
-  // Refresh genau auf dessen Grenze, antwortet der Server korrekt mit 200 —
-  // deshalb bis zu drei Versuche, aber die Zusage „304“ muss fallen.
+  // 304 ohne Body. Ein bestätigender Aufruf schreibt den Ledger nicht neu,
+  // das ETag der letzten Antwort bleibt also gültig. Nur das 60-s-Uhrzeit-
+  // Fenster kann dazwischenfunken: fällt der Refresh genau auf dessen Grenze,
+  // antwortet der Server korrekt mit 200 — deshalb bis zu drei Versuche, aber
+  // die Zusage „304“ muss fallen.
   const button = page.getByRole("button", { name: "Daten aktualisieren" });
   // Ein Layout ohne diesen Knopf (z. B. sehr schmale Ansicht) prüft die
   // Revalidierung in `tests/test_e2e_demo.py` statt hier.
@@ -216,12 +220,18 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   for (let attempt = 0; attempt < 3 && !revalidated; attempt += 1) {
     await expect(button).toBeEnabled();
     const before = responses.length;
+    // Der Stand, den die App hält: das ETag der letzten Antwort. Genau das
+    // muss die nächste Anfrage mitschicken — nach einem 304 bleibt es gleich.
+    const held = responses[before - 1].headers()["etag"];
     await button.click();
     await expect
       .poll(() => responses.length, { timeout: 30_000 })
       .toBeGreaterThan(before);
     const answer = responses[before];
-    expect(answer.request().headers()["if-none-match"] ?? answer.request().headers()["If-None-Match"]).toBe(etag);
+    expect(
+      answer.request().headers()["if-none-match"] ??
+        answer.request().headers()["If-None-Match"],
+    ).toBe(held);
     carriedEtag = true;
     revalidated = answer.status() === 304;
   }
