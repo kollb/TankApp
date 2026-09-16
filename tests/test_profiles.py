@@ -115,6 +115,26 @@ def test_create_rejects_out_of_bounds_fields(server):
     assert body["error_code"] == "invalid_fuel"
 
 
+def test_tankmenge_bis_100_liter_deckt_den_beleg_bereich_ab(server):
+    """Prüfbericht §5: Ein 100-L-Tank (Transporter/Diesel) muss darstellbar sein.
+
+    Der Beleg erlaubt 5–100 L getankte Liter; die Profil-Tankmenge prüft
+    dieselbe Obergrenze (10–100 L, ``FIELD_BOUNDS``) — vorher kappte die GUI
+    die Rechengröße bei 80 L.
+    """
+    status, body = request(
+        server, "/api/v1/profiles", "POST", {"name": "Transporter", "liters": 100}
+    )
+    assert status == 200
+    assert body["liters"] == 100.0
+
+    status, body = request(
+        server, "/api/v1/profiles", "POST", {"name": "Zu groß", "liters": 101}
+    )
+    assert status == 400
+    assert body["error_code"] == "invalid_liters"
+
+
 def test_update_activate_delete_flow(server):
     _, created = request(
         server,

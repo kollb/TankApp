@@ -253,6 +253,15 @@ Abgrenzung `/api/v1/series` (RP2, Ringpuffer) gegen das NAS-`/api/v1/series`
 (InfluxDB-Rohreihe) und drei veraltete Stellen in [RP2.md](RP2.md)
 („Fallback-GUI v3“ → v4, „Bestes Fenster“ mit Tag, „NAS prüfen“ ohne Emoji).
 
+**Nachtrag zum letzten §5-Punkt des Berichts (100-L-Tank):** Der Server erlaubt
+seit 0.37.2 Profil-Tankmengen bis 100 L, die GUI kappte sie aber weiter bei
+80 L — `PROFILE_BOUNDS` (10–100 L) war nie importiert. Jetzt nehmen die Slider
+in „Ich → Fahrzeug“ und die Was-wäre-wenn-Zeile in „Jetzt“ ihre Grenzen aus
+`PROFILE_BOUNDS` (eine Quelle mit `app/profiles.py`), Fehlertext und Doku
+(MICROCOPY, API) nennen 10–100 L; Tests in `web/src/settings.test.tsx`,
+`web/src/views/Jetzt.test.tsx` und `tests/test_profiles.py` (100 L → 200,
+101 L → 400). Damit deckt die Rechengröße den Beleg-Bereich (5–100 L) ab.
+
 ### 16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5
 
 Reines Frontend-Release auf dem Abgleich-Stand von 0.42.0: die letzten drei

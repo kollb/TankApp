@@ -42,11 +42,11 @@ nicht gegen 0.43.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
-| [MICROCOPY.md](MICROCOPY.md) | 0.43.0 | Text-Regelwerk (T1–T8, V1–V5); in 0.43.1 nicht berührt |
+| [MICROCOPY.md](MICROCOPY.md) | 0.43.0 | Text-Regelwerk (T1–T8, V1–V5); 0.43.1 hat nur die Tankmengen-Spanne auf 10–100 L nachgeführt |
 | [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0/0.43.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
-| [API.md](API.md) | 0.40.0 | 0.41.0/0.41.1 sind GUI-Releases, 0.42.0/0.43.0 Text-Releases — Endpunkte und Payloads bleiben unverändert |
+| [API.md](API.md) | 0.40.0 | 0.41.0/0.41.1 sind GUI-Releases, 0.42.0/0.43.0 Text-Releases — Endpunkte und Payloads bleiben unverändert; 0.43.1 hat nur die `liters`-Grenze des Profils auf 10–100 nachgeführt |
 | [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [BETRIEB.md](BETRIEB.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |

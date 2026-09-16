@@ -354,7 +354,7 @@ konsistent verwendet, **außer** `systemFreshness` (B5).
 Nachtrag der Umsetzung — die Abschnitte 0–8 oben bleiben im Wortlaut der Prüfung.
 Alle vier P1-Befunde, die P2/P3-Liste und die strukturelle Test-Lücke sind im
 Code; hier steht, wo. Verifiziert am 16.09.2026 (App 0.43.1) mit
-`ruff check`, `ruff format --check`, 805 pytest, 1045 Vitest und
+`ruff check`, `ruff format --check`, 806 pytest, 1047 Vitest und
 `npm --prefix web run build`. Die Browser-Suiten liefen hier nicht — der
 Chromium-Download ist in der Sandbox gesperrt (so auch in
 [../LUECKEN.md](../LUECKEN.md)); sie gehören zur CI
@@ -380,7 +380,7 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
 | M8 (Streifen nur per Hover) | 0.37.2 | Streifenzellen mit `role="img"` + `aria-label` (NAS und Fallback) | `web/src/strip.test.ts`, `web/e2e/demo.spec.ts` |
 | §4.2 Demo-Stack ohne Tageskurve | 0.37.2 | `ops/quality/demo_data.py::make_query` honoriert Stations-Filter und Zeitfenster | `tests/test_e2e_demo.py`, `tests/test_data.py` |
 | §4.1 e2e mockte alles | 0.38.0 | `web/e2e/demo.spec.ts` + `playwright.demo.config.ts` (kein `page.route`), Server-Hälfte `tests/test_e2e_demo.py`, eigener CI-Schritt | `.github/workflows/tests.yml` |
-| §5 Grenzen (100-L-Tank) | 0.37.2 | Profil-Tankmenge 10–100 L (Beleg und Pi kannten 5–100 L bereits) | `tests/test_profiles.py`, `web/src/settings.test.tsx` |
+| §5 Grenzen (100-L-Tank) | 0.37.2 (Server) · 0.43.1 (GUI) | Profil-Tankmenge 10–100 L (`app/profiles.py::FIELD_BOUNDS`; Beleg und Pi kannten 5–100 L bereits). Nachgezogen in 0.43.1: Die GUI-Slider und die Was-wäre-wenn-Zeile kappten weiter bei 80 L und `PROFILE_BOUNDS` war toter Code — jetzt ziehen beide Stellen ihre Grenzen daraus | `tests/test_profiles.py` (100 L → 200, 101 L → 400), `web/src/settings.test.tsx`, `web/src/views/Jetzt.test.tsx` |
 | §6 Health-Probe | 0.37.2 | RP2 liest das vollständige Body (bis 128 KiB) statt der ersten 4096 Byte | `tests/test_rp2_fallback.py` |
 | §6 toter Zweig | 0.37.2 | `compareStationsPair` ohne unerreichbaren `deltaCt === null`-Ast | `web/src/stations.test.ts` |
 | §6 Bundle-Warnung | 0.41.0 | Code-Splitting je Bereich (U7); der Build vom 16.09.2026 ist ohne Chunk-Warnhinweis — größter Chunk 251 kB / 81 kB gzip | `npm run build`, D4-Gate in `ops/quality/gates.py` |
@@ -397,8 +397,14 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
   Die Pi-Adresse als zweiter Einstieg bleibt Betriebsdoku
   ([../RP2.md](../RP2.md)) — die NAS-GUI kennt die RP2-Adresse nicht.
 
-### 9.3 Kleinigkeiten aus §6, geschlossen mit 0.43.1
+### 9.3 Kleinigkeiten aus §5/§6, geschlossen mit 0.43.1
 
+- §5 (100-L-Tank): Der Server erlaubte seit 0.37.2 Profil-Tankmengen bis
+  100 L, die GUI kappte sie aber weiter bei 80 L (`views/Settings.tsx`,
+  `views/Jetzt.tsx`), und `PROFILE_BOUNDS` war nie importiert. Beide Stellen
+  nehmen ihre Grenzen jetzt aus `PROFILE_BOUNDS`; MICROCOPY und API nennen
+  10–100 L. Tests: `web/src/settings.test.tsx`,
+  `web/src/views/Jetzt.test.tsx`, `tests/test_profiles.py`.
 - `windowStars`-Kommentar präzisiert: Die 35–55-%-Klasse hat keine eigene
   Wortstufe (sie unterscheidet sich von `wordFromPercent` nur dort) — jetzt
   im Code benannt und in `web/src/week.test.ts` festgehalten.

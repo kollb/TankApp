@@ -36,6 +36,7 @@ import {
   deTrimmed,
   euro,
   euroPerLiter,
+  PROFILE_BOUNDS,
   type DecideResult,
   type ResourceState,
   type Station,
@@ -287,8 +288,15 @@ export function JetztView(props: JetztViewProps) {
 
   const commitLiters = () => {
     const value = Number(litersStr.replace(",", "."));
-    if (!Number.isFinite(value) || value < 10 || value > 80) {
-      setInputError("Tankmenge: Zahl zwischen 10 und 80 L.");
+    // Dieselben Grenzen wie das Profil (PROFILE_BOUNDS ↔ app/profiles.py):
+    // Ein 100-L-Tank (Transporter/Diesel) muss auch hier rechenbar sein —
+    // sonst deckt die Was-wäre-wenn-Menge den Beleg-Bereich nicht ab
+    // (Prüfbericht §5).
+    const { min, max } = PROFILE_BOUNDS.liters;
+    if (!Number.isFinite(value) || value < min || value > max) {
+      setInputError(
+        `Tankmenge: Zahl zwischen ${deTrimmed(min, 0)} und ${deTrimmed(max, 0)} L.`,
+      );
       return;
     }
     setInputError(null);
@@ -542,8 +550,9 @@ export function JetztView(props: JetztViewProps) {
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
                     />
                     <span className="mt-1 block text-xs text-slate-500">
-                      10–80 L, ganze Liter · Profil:{" "}
-                      {deTrimmed(defaultLiters, 0)} L
+                      {deTrimmed(PROFILE_BOUNDS.liters.min, 0)}–
+                      {deTrimmed(PROFILE_BOUNDS.liters.max, 0)} L, ganze Liter ·
+                      Profil: {deTrimmed(defaultLiters, 0)} L
                     </span>
                   </label>
                   <label className="text-slate-400">

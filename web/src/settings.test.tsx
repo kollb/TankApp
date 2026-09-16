@@ -23,6 +23,7 @@ import {
   APP_THEMES,
   applyAppTheme,
   isAppTheme,
+  PROFILE_BOUNDS,
   THRESHOLD_ROWS,
   thresholdHysteresisLine,
   thresholdSampleLine,
@@ -210,6 +211,22 @@ describe("Ich → Fahrzeug (VehiclePanel)", () => {
       <VehiclePanel {...vehicleProps({ timeValue: 0, timeValueUsed: 16 })} />,
     );
     expect(auto).toContain("Auto (16 €/h · Nebenzeit)");
+  });
+
+  it("nimmt die Fahrzeug-Grenzen aus PROFILE_BOUNDS (100-L-Tank)", () => {
+    // Prüfbericht §5: Der Beleg erlaubt 5–100 L und `app/profiles.py`
+    // prüft 10–100 L — die Slider dürfen die Tankmenge nicht bei 80 L
+    // kappen. Eine Quelle für beide Seiten: PROFILE_BOUNDS.
+    const html = renderToStaticMarkup(<VehiclePanel {...vehicleProps()} />);
+    expect(html).toMatch(/id="liters"[^>]*max="100"/);
+    expect(html).toContain(
+      `Deine Tankmenge direkt eingeben (L, ${PROFILE_BOUNDS.liters.min}–${PROFILE_BOUNDS.liters.max})`,
+    );
+    // Die übrigen Felder tragen dieselben Zahlen wie das Profil.
+    expect(html).toMatch(/id="consumption"[^>]*max="15"/);
+    expect(html).toMatch(/id="tankCapacity"[^>]*max="120"/);
+    expect(html).toMatch(/id="timeValue"[^>]*max="30"/);
+    expect(html).toMatch(/id="speed"[^>]*max="80"/);
   });
 
   it("bietet Profile als Segment-Steuerung (+ Neu / verwalten)", () => {

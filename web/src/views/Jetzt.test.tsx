@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Level1Sheet } from "../components/Level1Sheet";
+import { PROFILE_BOUNDS } from "../data";
 import type { DecideResult, Station } from "../data";
 import {
   EMPTY_ASSUMPTIONS,
@@ -145,6 +146,17 @@ describe("Jetzt: Aufbau", () => {
     expect(steps === -1 || steps > facts).toBe(true);
     expect(day).toBeGreaterThan(facts);
     expect(fresh).toBeGreaterThan(day);
+  });
+
+  it("nennt für die Was-wäre-wenn-Tankmenge die Profil-Grenzen (10–100 L)", () => {
+    // Prüfbericht §5: Beleg-Erfassung (5–100 L) und Profil (10–100 L)
+    // reichen bis 100 L — die Annahmen-Zeile darf die Rechengröße nicht
+    // bei 80 L kappen, sonst ist ein 100-L-Tank (Transporter/Diesel) trotz
+    // buchbarer Belege nicht abbildbar.
+    const html = render();
+    expect(html).toContain(
+      `${PROFILE_BOUNDS.liters.min}–${PROFILE_BOUNDS.liters.max} L, ganze Liter`,
+    );
   });
 
   it("nennt genau drei Fakten in fester Reihenfolge", () => {

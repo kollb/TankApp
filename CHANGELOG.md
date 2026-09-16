@@ -25,6 +25,16 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
   trennt der 35-%-Schnitt **nur** die Sterne (unter 55 % heißt beides
   „unsicher“). Jetzt exakt benannt und in `web/src/week.test.ts` als Test
   festgehalten, damit Kommentar und Code nicht wieder driften.
+- **Tankmenge bis 100 L auch in der GUI (Rest aus §5 des Berichts):** Server
+  und Beleg kannten die Obergrenze seit 0.37.2 (`app/profiles.py` 10–100 L,
+  Beleg 5–100 L), die Slider in „Ich → Fahrzeug“ und die Was-wäre-wenn-Zeile
+  in „Jetzt“ kappten aber weiter bei **80 L** — `PROFILE_BOUNDS` war dabei
+  toter Code. Jetzt ziehen beide Stellen ihre Grenzen aus `PROFILE_BOUNDS`
+  (eine Quelle mit dem Server), der Fehlertext sagt „zwischen 10 und 100 L“,
+  und [MICROCOPY.md](docs/MICROCOPY.md)/[API.md](docs/API.md) nennen dieselbe
+  Spanne. Tests: `web/src/settings.test.tsx` (Slider-Grenzen),
+  `web/src/views/Jetzt.test.tsx` (Annahmen-Zeile),
+  `tests/test_profiles.py` (100 L → 200, 101 L → 400).
 - **[RP2.md](docs/RP2.md) an die Realität gezogen:** `/api/v1/series` ist
   gegen das NAS-`/api/v1/series` abgegrenzt (`station` statt `station_id`,
   Stundenraster 06–24 Uhr aus dem Ringpuffer statt Rohreihe 1–168 h);
@@ -35,7 +45,7 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
 
 ### Prüfungen
 
-- `ruff check` + `ruff format --check` ✓, **805 pytest** ✓, **1045 Vitest**
+- `ruff check` + `ruff format --check` ✓, **806 pytest** ✓, **1047 Vitest**
   (vorher 1044) ✓, `npm --prefix web run build` ✓ ohne Chunk-Warnhinweis.
 - `tests/test_ledger_drift.py` hält die Stand-Zeilen (TODO, LUECKEN, neueste
   CHANGELOG-Version = App-Version) und die Liste „nicht gegen die aktuelle
