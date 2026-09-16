@@ -247,6 +247,24 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 `messages` in `web/src/data.ts`, je `error_code` genau einer.
 
+### 5a. Wortlaut je Zustand (T8)
+
+Vier Verben für „lädt“ und acht Knopftexte für „nochmal“ waren der Befund —
+hier steht je Zustand **eine** Formulierung:
+
+| Zustand | Formulierung | Beispiel |
+|---|---|---|
+| lädt, Daten vom Server | `<Sache> wird geladen` | „Preise werden geladen“ |
+| lädt, App rechnet selbst | `<Sache> wird berechnet` | „Empfehlung wird berechnet“ |
+| Knopf während des Schreibens | `<Sache> wird <Partizip>` | „Beleg wird verbucht“ |
+| Wiederholen (allgemein) | `Erneut laden` | `LoadError`, `CellError` |
+| Wiederholen (Bereich nennt die Sache) | `<Sache> neu laden` | „Tagebuch neu laden“ |
+| Frische-Zeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` — Baustein `components/FreshnessLine.tsx`, Ort inklusive | ohne Ort: „kein Ort gewählt“ |
+| Stand fehlt | `<Sache> ohne Stand` | „Prognose ohne Stand“ |
+| Zählwort | über `freshCountLabel`/`countLabel` — der Plural steht in der Funktion | „1 frischer Preis“, „12 frische Preise“ |
+
+Geprüft von `microcopy.test.ts` (Ladetexte, Retry-Knöpfe, Frische-Baustein).
+
 ## 6. Was nie im Text steht
 
 - **Erfundene Zahlen.** Keine Demo-Preise, keine Platzhalter-Prozentwerte,

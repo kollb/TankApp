@@ -562,12 +562,12 @@ export function nowFreshness(input: {
   parts.push(
     input.pricesAt
       ? `Preise ${ageLabel(input.pricesAt, now)}`
-      : "Preise — kein Stand",
+      : "Preise ohne Stand",
   );
   parts.push(
     input.forecastAt
       ? `Prognose ${ageLabel(input.forecastAt, now)}`
-      : "Prognose — kein Stand",
+      : "Prognose ohne Stand",
   );
   return { text: parts.join(" · "), tone };
 }

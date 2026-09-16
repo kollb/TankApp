@@ -2616,6 +2616,15 @@ export function percentLabel(value: number | null | undefined, decimals = 0) {
     : `${euro(value, decimals)} %`;
 }
 
+/**
+ * T8: Zählwörter mit ihrer Zahl — „1 frischer Preis“, „12 frische Preise“.
+ * Der Plural steht hier, nicht in der Ansicht: „1 frische Preise“ war gebaut.
+ */
+export function freshCountLabel(count: number): string {
+  const n = countLabel(count);
+  return count === 1 ? "1 frischer Preis" : `${n} frische Preise`;
+}
+
 /** Tausender-Trennung de-DE („12.345“) — Zählerstände, nie Preise. */
 export function countLabel(value: number | null | undefined) {
   return value == null || !Number.isFinite(value)

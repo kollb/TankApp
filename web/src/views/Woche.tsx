@@ -20,6 +20,7 @@ import {
   Gauge,
   Star,
 } from "lucide-react";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { PrecisionSlider } from "../components/PrecisionSlider";
@@ -196,12 +197,6 @@ export function WocheView(props: WocheViewProps) {
   const line = weekLine(days);
   const tankLine = weekTankLine(decide?.tank ?? null, tankPercent, tankCapacity);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
-  const FRESHNESS_TONE = {
-    ok: "text-slate-500",
-    warn: "text-amber-300",
-    bad: "text-rose-300",
-  } as const;
-
   // Auswahl zurücksetzen, wenn sich die Fenster ändern und der gewählte
   // Tag kein Fenster (mehr) hat — sonst zeigt das Detail eine Leere.
   useEffect(() => {
@@ -491,16 +486,13 @@ export function WocheView(props: WocheViewProps) {
         </>
       )}
 
-      {/* Frische-Fußzeile */}
-      <p
-        role="status"
-        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
-      >
-        {freshness.text} · {activeCity || "kein Ort gewählt"}
-        {line.length > 0
-          ? " · ab Tag 5 wird die Prognose breiter"
-          : ""}
-      </p>
+      {/* Frische-Fußzeile (T8: ein Baustein) */}
+      <FreshnessLine
+        text={freshness.text}
+        tone={freshness.tone}
+        place={activeCity}
+        extra={line.length > 0 ? " · ab Tag 5 wird die Prognose breiter" : ""}
+      />
 
       {explanation && (
         <Level1Sheet

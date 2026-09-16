@@ -33,6 +33,7 @@ import {
   Target,
 } from "lucide-react";
 import { DataReachNote } from "../components/DataReach";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { HeatmapGrid } from "../components/HeatmapGrid";
 import { LineChart } from "../components/LineChart";
 import { LoadError } from "../components/LoadError";
@@ -1595,15 +1596,16 @@ export function LaborView(props: LaborViewProps) {
         </LabBlock>
       </div>
 
-      <p className="mt-4 text-xs leading-relaxed text-slate-500">
-        {h?.version ? `TankApp ${h.version} · ` : ""}
-        Labor-Stand:{" "}
-        {statsSummaryRes.data?.generated_at
-          ? timeLabel(statsSummaryRes.data.generated_at)
-          : "Kennzahlen nicht geladen"}{" "}
-        · {activeCity || "kein Ort gewählt"}
-        {best ? ` · Vergleichsanker: ${best.name}` : ""}
-      </p>
+      <FreshnessLine
+        text={`${h?.version ? `TankApp ${h.version} · ` : ""}Labor-Stand: ${
+          statsSummaryRes.data?.generated_at
+            ? timeLabel(statsSummaryRes.data.generated_at)
+            : "Kennzahlen nicht geladen"
+        }`}
+        tone="ok"
+        place={activeCity}
+        extra={best ? ` · Vergleichsanker: ${best.name}` : ""}
+      />
     </section>
   );
 }

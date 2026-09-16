@@ -26,7 +26,7 @@ import { FeedbackBanner } from "./components/FeedbackBanner";
 import { InstallHint } from "./components/InstallHint";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { SkeletonPanel } from "./components/Skeleton";
-import { clockLabel, JOB_LABELS, problem } from "./data";
+import { clockLabel, freshCountLabel, JOB_LABELS, problem } from "./data";
 import { OverviewProvider, useOverview } from "./state/overview";
 
 // U7: Code-Splitting pro Bereich — jede View bleibt ein eigener Chunk
@@ -284,7 +284,7 @@ function DashboardShell() {
             )}
             <span>
               {online && fresh.length
-                ? `${fresh.length} frische Preise · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
+                ? `${freshCountLabel(fresh.length)} · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
                 : prices.pending
                   ? "Daten werden geladen …"
                   : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
@@ -648,7 +648,7 @@ function DashboardShell() {
             aria-live="polite"
           >
             <SkeletonPanel lines={4} title label="Ansicht wird geladen" />
-            <SkeletonPanel lines={6} title label="Inhalt wird vorbereitet" />
+            <SkeletonPanel lines={6} title label="Inhalt wird geladen" />
           </div>
         )}
       </main>

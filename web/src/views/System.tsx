@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { ApiExplorer } from "../components/ApiExplorer";
 import { JobCard } from "../components/JobCard";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { Badge, Empty, InfoTooltip, Metric, panel } from "../components/ui";
@@ -208,12 +209,6 @@ export function SystemView(props: SystemViewProps) {
   const isLoadingHealth = health.pending && !h;
   const isErrorHealth = health.error && !h;
   const isEmptyData = !data?.stations.length && (data?.connection_error === "polling_missing" || !h?.jobs_enabled);
-
-  const FRESHNESS_TONE = {
-    ok: "text-slate-500",
-    warn: "text-amber-300",
-    bad: "text-rose-300",
-  } as const;
 
   return (
     <section aria-labelledby="system-title">
@@ -902,9 +897,11 @@ export function SystemView(props: SystemViewProps) {
       </div>
 
       {/* Frische-Fußzeile — fester Platz, jede Ansicht */}
-      <p role="status" className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshnessInfo.tone]}`}>
-        {freshnessInfo.text} · {activeCity || "kein Ort gewählt"}
-      </p>
+      <FreshnessLine
+        text={freshnessInfo.text}
+        tone={freshnessInfo.tone}
+        place={activeCity}
+      />
 
       <Level1Sheet
         open={sheet === "zustand"}

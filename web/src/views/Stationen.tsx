@@ -41,6 +41,7 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { LineChart } from "../components/LineChart";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -322,12 +323,6 @@ export function StationenView(props: StationenViewProps) {
 
   const freshCount = rows.filter((row) => row.price !== null).length;
   const freshness = stationsFreshness(pricesAt, now);
-  const FRESHNESS_TONE = {
-    ok: "text-slate-500",
-    warn: "text-amber-300",
-    bad: "text-rose-300",
-  } as const;
-
   // S0: noch keine Stationen — einrichten statt leere Fläche.
   const setup = stations.length === 0 && !decideRes.error;
   const explanation = atlasExplanation({
@@ -990,13 +985,8 @@ export function StationenView(props: StationenViewProps) {
         </>
       )}
 
-      {/* Frische-Fußzeile (fester Platz) */}
-      <p
-        role="status"
-        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
-      >
-        {freshness.text} · {activeCity || "kein Ort gewählt"}
-      </p>
+      {/* Frische-Fußzeile (fester Platz, T8: ein Baustein) */}
+      <FreshnessLine text={freshness.text} tone={freshness.tone} place={activeCity} />
 
       <Level1Sheet
         open={sheetOpen}

@@ -340,6 +340,52 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     ).toEqual([]);
   });
 
+  // ── 9. Zustände: eine Formulierung je Zustand (§5, GUI-TEXT-BEFUND T8) ──
+
+  /**
+   * §5 (T8): Lädt „<Sache> wird geladen/berechnet“, der Retry-Knopf heißt
+   * „Erneut laden“ oder „<Sache> neu laden“. Vier Verben und acht Knopftexte
+   * für denselben Vorgang waren der Befund — die beiden Muster stehen hier.
+   */
+  it("Ladetexte nutzen „wird/werden geladen|berechnet“", () => {
+    const allowed = /^[A-ZÄÖÜ][\wÄÖÜäöüß /-]*(wird|werden) (geladen|berechnet)$/;
+    const offenders: string[] = [];
+    for (const relativePath of FILES) {
+      for (const match of read(relativePath).matchAll(/label="([^"]{4,})"/g)) {
+        const label = match[1];
+        if (!/geladen|berechnet/.test(label)) continue;
+        if (!allowed.test(label)) {
+          offenders.push(`${relativePath}: „${label}“`);
+        }
+      }
+    }
+    expect(offenders, "§5: „<Sache> wird geladen“ (Daten) / „wird berechnet“ (Rechnung).").toEqual([]);
+  });
+
+  it("Retry-Knöpfe haben eine von zwei Formen", () => {
+    const allowed = /^(Erneut laden|[A-ZÄÖÜ][\wÄÖÜäöüß -]* neu laden)$/;
+    const offenders: string[] = [];
+    for (const relativePath of FILES) {
+      for (const match of read(relativePath).matchAll(/retryLabel="([^"]+)"/g)) {
+        if (!allowed.test(match[1])) offenders.push(`${relativePath}: „${match[1]}“`);
+      }
+    }
+    expect(offenders, "§5: „Erneut laden“ oder „<Sache> neu laden“ — nichts drittes.").toEqual([]);
+  });
+
+  it("die Frische-Zeile kommt aus einem Baustein", () => {
+    // T8: Fünf Ansichten bauten die Zeile selbst, jede mit eigener Ton-Tabelle
+    // und eigenem `· kein Ort gewählt`. Der Baustein ist `FreshnessLine`.
+    for (const relativePath of ["views/Jetzt.tsx", "views/Stationen.tsx", "views/Woche.tsx", "views/System.tsx", "views/Labor.tsx"]) {
+      const source = read(relativePath);
+      expect(source, `${relativePath}: Frische-Zeile ohne FreshnessLine.`).toContain("FreshnessLine");
+      expect(
+        source.includes('"kein Ort gewählt"'),
+        `${relativePath}: „kein Ort gewählt“ steht im Baustein, nicht in der Ansicht.`,
+      ).toBe(false);
+    }
+  });
+
   it("das Regelwerk selbst ist da und verlinkt", () => {
     const docs = readFileSync(
       fileURLToPath(new URL("../../docs/MICROCOPY.md", import.meta.url)),

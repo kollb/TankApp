@@ -26,6 +26,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
@@ -137,12 +138,6 @@ const CHIP_TEXT = {
   // Zustand („keine klare Empfehlung“), die Überschrift darunter die
   // Tatsache, die auch ohne Modell gilt: der günstigste offene Preis.
   no_advice: "– Keine klare Empfehlung",
-} as const;
-
-const FRESHNESS_TONE = {
-  ok: "text-slate-500",
-  warn: "text-amber-300",
-  bad: "text-rose-300",
 } as const;
 
 /** Mini-Visual der Ebene 1: Tagesprofil mit markiertem Fenster. */
@@ -966,13 +961,8 @@ export function JetztView(props: JetztViewProps) {
         </>
       )}
 
-      {/* Frische-Fußzeile */}
-      <p
-        role="status"
-        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
-      >
-        {freshness.text} · {activeCity || "kein Ort gewählt"}
-      </p>
+      {/* Frische-Fußzeile (T8: ein Baustein für alle Bereiche) */}
+      <FreshnessLine text={freshness.text} tone={freshness.tone} place={activeCity} />
 
       {explanation && (
         <Level1Sheet
