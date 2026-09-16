@@ -8,25 +8,26 @@
 // Spielplatz + Modell, System: Log-Terminal). Diese Datei montiert Header,
 // Bereichs-Navigation, globale Banner und die Bereich-Umschaltung.
 import { lazy, Suspense, useEffect, useState } from "react";
-import {
-  AlertCircle,
-  CloudOff,
-  Fuel as FuelIcon,
-  ShieldCheck,
-  Wifi,
-  WifiOff,
-} from "lucide-react";
+import { ShieldCheck, Wifi, WifiOff } from "lucide-react";
 import { MobileNav, SideNav } from "./components/AppNav";
 import { AppHeader } from "./components/AppHeader";
 // A1: Fahrzeug-/Haushaltsprofile — Verwaltungsdialog.
 import { ProfileManager } from "./components/ProfileManager";
-// C6 (Rest): Datenstand-Banner.
-import { DataAgeBanner } from "./components/DataAge";
-import { FeedbackBanner } from "./components/FeedbackBanner";
+// C6 (Rest): Datenstand-Banner — die Wurzel hängt die Datenstand-Note jetzt
+// ins V3-Register (reduceNotices), nicht mehr als eigenen Block.
+import { feedbackRank } from "./components/FeedbackBanner";
 import { InstallHint } from "./components/InstallHint";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { reduceNotices, type NoticeItem } from "./components/Notices";
+import { NoticesView } from "./components/NoticesView";
 import { SkeletonPanel } from "./components/Skeleton";
-import { clockLabel, freshCountLabel, JOB_LABELS, problem } from "./data";
+import {
+  clockLabel,
+  dataAgeNote,
+  freshCountLabel,
+  JOB_LABELS,
+  problem,
+} from "./data";
 import { OverviewProvider, useOverview } from "./state/overview";
 
 // U7: Code-Splitting pro Bereich — jede View bleibt ein eigener Chunk
@@ -182,6 +183,103 @@ function DashboardShell() {
     showJobLog,
   } = ov;
 
+  /* V3 (GUI-TEXT-BEFUND): ein Mitteilungs-Register mit Rang statt acht
+     gestapelten Blöcken (Rückmeldung, Datenstand, Installation, Update,
+     Offline-Queue, offline, E5-Hinweis, Verbindungsproblem). Hier entsteht
+     die **eine** Meldung je Quelle; `reduceNotices` behält davon den
+     höchsten Rang und reiht Gleichrangige aneinander — nie mehr als ein
+     Block. */
+  const dataAge = dataAgeNote(data?.generated_at, "prices");
+  const notices: NoticeItem[] = [
+    ...(failedJobs.length > 0
+      ? ([
+          {
+            id: "jobs",
+            rank: "error",
+            text:
+              failedJobs.length === 1
+                ? "Ein NAS-Job ist fehlgeschlagen:"
+                : `${failedJobs.length} NAS-Jobs sind fehlgeschlagen:` +
+                  ` ${failedJobs
+                    .map(
+                      ([name, job]) =>
+                        `${JOB_LABELS[name] ?? name} — ${
+                          job?.error_detail ??
+                          problem(job?.error_code) ??
+                          "unbekannte Ursache"
+                        }`,
+                    )
+                    .join(" · ")}`,
+            note: "Angezeigte Prognosen und Rankings können veraltet sein; die letzten guten Ergebnisse bleiben erhalten.",
+            actionLabel: "Log ansehen",
+            onAction: () => {
+              gotoTab("system");
+              showJobLog(failedJobs[0][0]);
+            },
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(connectionProblem
+      ? ([
+          {
+            id: "connection",
+            rank: "error",
+            text: connectionProblem,
+            actionLabel: prices.error ? null : "Einrichtung ansehen",
+            onAction: () => gotoTab("system"),
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(!browserOnline
+      ? ([
+          {
+            id: "offline",
+            rank: "warn",
+            text: "Browser ist offline — gezeigt wird der letzte abgerufene Stand, keine Live-Preise. Sobald das Netz zurück ist, lädt die Ansicht neu.",
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(queueBanner
+      ? ([
+          {
+            id: "queue",
+            rank: "warn",
+            text: queueBanner.text,
+            note: queueNote
+              ? `${queueBanner.note} ${queueNote}`
+              : queueBanner.note,
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(dataAge
+      ? ([
+          {
+            id: "stale",
+            rank: dataAge.tone,
+            text: dataAge.text,
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(fuel === "e5"
+      ? ([
+          {
+            id: "e5",
+            rank: "hint",
+            text: "E5↔E10-Äquivalenz: E10 verbraucht ≈ 1–2 % mehr Kraftstoff — E5 lohnt sich erst, wenn der E5-Preis höchstens 1,015 × E10-Preis beträgt (etwa 4–5 ct/L Differenz). E5-Preise gehören nur mit E5 verglichen, nie mit E10.",
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(actionFeedback
+      ? ([
+          {
+            id: "action",
+            rank: feedbackRank(actionFeedback.tone),
+            text: actionFeedback.text,
+          },
+        ] as NoticeItem[])
+      : []),
+  ];
+
   /* Erst-Paint-Gate (0.41.1, Lighthouse-CLS): Die Ansicht rendert erst,
      wenn die Shell-Daten (Preise, Gesundheit, Profile) und die primäre
      Antwort des aktiven Bereichs da sind. Dadurch steht beim ersten Paint
@@ -292,121 +390,20 @@ function DashboardShell() {
           </div>
         </div>
 
-        <FeedbackBanner feedback={actionFeedback} />
-
-        {/* C6: Preis-Datenstand — gilt für alle Tabs, deshalb über den
-            Tab-Inhalt und nicht in jedes Panel einzeln. */}
-        <DataAgeBanner stamp={data?.generated_at} kind="prices" />
+        {/* V3: Die gebündelte Meldung — genau ein Block. Auf „Ich“ zeigt die
+            View ihre eigene Rückmeldung (FeedbackBanner im Belege-Abschnitt),
+            deshalb fällt der Aktions-Kanal dort aus dem Register. */}
+        <NoticesView
+          result={reduceNotices(
+            notices.filter((item) => item.id !== "action" || tab !== "ich"),
+          )}
+        />
 
         {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
         <InstallHint onNote={(message) => feedback("ok", message)} />
 
         {/* B10: „Neue Version verfügbar“ — nur wenn ein Service Worker wartet. */}
         <UpdateBanner />
-
-        {queueBanner && (
-          <div
-            role="status"
-            className="mb-6 flex items-start gap-3 rounded-lg border border-sky-500/25 bg-sky-500/10 p-4 text-sm text-sky-200"
-          >
-            <CloudOff size={18} className="mt-0.5 shrink-0" />
-            <div>
-              <p>{queueBanner.text}</p>
-              <p className="mt-0.5 text-xs text-sky-200/80">
-                {queueBanner.note}
-                {queueNote ? ` ${queueNote}` : ""}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!browserOnline && (
-          <div
-            role="alert"
-            className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
-          >
-            <WifiOff size={18} className="mt-0.5 shrink-0" />
-            <p>
-              Browser ist offline — gezeigt wird der letzte abgerufene Stand,
-              keine Live-Preise. Sobald das Netz zurück ist, lädt die Ansicht
-              neu.
-            </p>
-          </div>
-        )}
-
-        {fuel === "e5" && (
-          <div className="mb-6 flex items-start gap-3 rounded-lg border border-sky-500/25 bg-sky-500/10 p-4 text-xs leading-relaxed text-sky-200">
-            <FuelIcon size={17} className="mt-0.5 shrink-0" />
-            <p>
-              <span className="font-semibold">E5↔E10-Äquivalenz:</span> E10
-              verbraucht ≈ 1–2 % mehr Kraftstoff — E5 lohnt sich erst, wenn der
-              E5-Preis höchstens 1,015 × E10-Preis beträgt (etwa 4–5 ct/L
-              Differenz). E5-Preise gehören nur mit E5 verglichen, nie mit
-              E10.
-            </p>
-          </div>
-        )}
-
-        {connectionProblem && (
-          <div
-            role="alert"
-            className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200"
-          >
-            <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <div>
-              <p>{connectionProblem}</p>
-              {!prices.error && (
-                <button
-                  onClick={() => gotoTab("system")}
-                  className="mt-1 text-xs underline underline-offset-4"
-                >
-                  Einrichtung im Systembereich ansehen
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Fehlgeschlagene NAS-Jobs: in allen Bereichen sichtbar, nicht nur
-            in „System“ — sonst wirken veraltete Prognosen wie aktuelle. */}
-        {failedJobs.length > 0 && (
-          <div
-            role="alert"
-            className="mb-6 flex items-start gap-3 rounded-lg border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200"
-          >
-            <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <div>
-              <p>
-                {failedJobs.length === 1
-                  ? "Ein NAS-Job ist fehlgeschlagen:"
-                  : `${failedJobs.length} NAS-Jobs sind fehlgeschlagen:`}{" "}
-                {failedJobs
-                  .map(
-                    ([name, job]) =>
-                      `${JOB_LABELS[name] ?? name} — ${
-                        job?.error_detail ??
-                        problem(job?.error_code) ??
-                        "unbekannte Ursache"
-                      }`,
-                  )
-                  .join(" · ")}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-rose-300/80">
-                Angezeigte Prognosen und Rankings können veraltet sein; die
-                letzten guten Ergebnisse bleiben erhalten.
-              </p>
-              <button
-                onClick={() => {
-                  gotoTab("system");
-                  showJobLog(failedJobs[0][0]);
-                }}
-                className="mt-1 text-xs underline underline-offset-4"
-              >
-                Log ansehen
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ============================================================ */}
         {/* Bereich-Inhalt (U7: die Views laden als eigene Chunks —       */}
