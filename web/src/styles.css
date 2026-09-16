@@ -24,6 +24,16 @@
       -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
       Arial, sans-serif;
   }
+  /* Lighthouse-CLS (0.40.1): Der Gutter für die vertikale Scrollbar wird von
+     Anfang an reserviert. Ohne ihn taucht die Scrollbar in dem Moment auf, in
+     dem der Inhalt länger als der Viewport wird — der Viewport wird schlag-
+     artig schmaler, die zentrierte Hülle und die Kopfzeile verschieben sich
+     horizontal, und genau das zählte das Lighthouse-Gate als Layout-Shift
+     (Score ~0,95). Mit stabilem Gutter bleibt die Breite über alle Zustände
+     gleich. Auf Mobilgeräten mit Overlay-Scrollbars ändert sich nichts. */
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 /*

@@ -14,6 +14,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { ArrowRight, X } from "lucide-react";
 import type { LabHint, LabSectionId } from "../lab";
+import { dialog } from "./ui";
 
 export function Level1Sheet({
   open,
@@ -67,7 +68,7 @@ export function Level1Sheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 p-4 sm:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/80 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="level1-title"
@@ -75,7 +76,7 @@ export function Level1Sheet({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
+      <div className={`${dialog} max-h-[85vh] w-full max-w-lg overflow-y-auto p-5`}>
         <div className="flex items-start justify-between gap-3">
           <h2 id="level1-title" className="text-base font-bold text-white">
             {title}
@@ -91,22 +92,22 @@ export function Level1Sheet({
         </div>
         <ol className="mt-4 space-y-2 text-sm leading-relaxed text-slate-200">
           {shown.map((sentence) => (
-            <li key={sentence} className="rounded-xl bg-slate-950/60 p-3">
+            <li key={sentence} className="rounded-lg bg-slate-950/60 p-3">
               {sentence}
             </li>
           ))}
         </ol>
         {visual && (
-          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
             {visual}
             {visualLabel && (
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
                 {visualLabel}
               </p>
             )}
           </div>
         )}
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-3 text-xs leading-relaxed text-slate-400">
           {source}
         </p>
         {labHint && (

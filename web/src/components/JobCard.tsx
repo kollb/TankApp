@@ -164,13 +164,13 @@ export function JobCard({
       )}
       {/* Bereinigte Ursache (app/errors.py): „fehlgeschlagen“ allein hilft nicht. */}
       {job?.error_detail && (
-        <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-500/10 p-2 text-[11px] leading-relaxed text-rose-300">
+        <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-500/10 p-2 text-xs leading-relaxed text-rose-300">
           <span className="font-semibold">Ursache:</span> {job.error_detail}
         </p>
       )}
       {note && (
         <p
-          className={`mt-2 rounded-lg p-2 text-[11px] leading-relaxed ${
+          className={`mt-2 rounded-lg p-2 text-xs leading-relaxed ${
             note.tone === "ok"
               ? "bg-emerald-500/10 text-emerald-300"
               : note.tone === "warn"
@@ -187,7 +187,7 @@ export function JobCard({
             <span className="truncate font-medium text-sky-300">
               {job.progress.phase_label || job.progress.phase || "Arbeitet …"}
             </span>
-            <span className="shrink-0 font-mono text-[11px] text-slate-400">
+            <span className="shrink-0 font-mono text-xs text-slate-400">
               {job.progress.total
                 ? `${job.progress.step}/${job.progress.total}`
                 : `${Math.round(job.progress.pct)} %`}
@@ -206,10 +206,10 @@ export function JobCard({
               style={{ width: `${Math.max(2, job.progress.pct)}%` }}
             />
           </div>
-          <p className="mt-1.5 truncate text-[11px] text-slate-500">
+          <p className="mt-1.5 truncate text-xs text-slate-500">
             {job.progress.label || job.progress.message || "…"}
           </p>
-          <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+          <p className="mt-0.5 font-mono text-xs text-slate-500">
             seit {Math.round(job.progress.elapsed_s / 60)} min
             {job.progress.eta_s
               ? ` · ca. ${Math.max(1, Math.round(job.progress.eta_s / 60))} min restlich`
@@ -218,7 +218,7 @@ export function JobCard({
         </div>
       )}
       {job?.state === "running" && !job.progress && (
-        <p className="mt-3 text-[11px] text-slate-500">
+        <p className="mt-3 text-xs text-slate-500">
           Kein Fortschrittssignal — der Job schreibt erst nach der
           InfluxDB-/Archiv-Phase (Log:{" "}
           <code className="text-slate-400">docker logs -f tankapp-app</code>).

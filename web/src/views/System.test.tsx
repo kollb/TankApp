@@ -5,10 +5,15 @@
 // Zustand → Daten → Läufe & Protokolle → Störungen → Diagnose → Frische-Fußzeile,
 // die vier Bausteine, die ehrlichen Zustände (Lädt, Leer, Fehler) und dass
 // Formatter-only gilt.
+//
+// U8: Die View hängt am OverviewContext — die Tests injizieren einen
+// fertigen Zustand über <OverviewProvider value={…}>. Von der Root kommt nur
+// noch onDeepen.
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SystemView, type SystemViewProps } from "./System";
+import { OverviewProvider, type OverviewState } from "../state/overview";
 import type { CollectorStatus, Health, Selection, Stations, Station } from "../data";
 
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
@@ -114,44 +119,44 @@ function stationsPayload(rows: Station[]): Stations {
 
 const noop = () => {};
 
-const baseProps: SystemViewProps = {
+const baseOverview = {
   activeCity: "Frankfurt",
-  fuel: "e10",
-  heatmapWeeks: 6,
+  calibrationHint: "",
+  collector: collector(),
   data: stationsPayload([station("a")]),
-  stations: [station("a")],
+  decideRes: { data: { decision_ready: true } as any, error: false, errorCode: null, pending: false, receivedAt: 0 },
   fresh: [station("a")],
+  fuel: "e10",
   h: health(),
   health: { data: health(), error: false, errorCode: null, pending: false, receivedAt: 0 },
-  collector: collector(),
-  selection: { data: selection(), error: false, errorCode: null, pending: false, receivedAt: 0 },
-  statsSummaryRes: { data: { quality_metrics: { top3_hit_rate: 0.7, mase_sprungfrei: 0.6, picp_95: 0.95, cusum_drift: { status: "normal", max_cusum: 0.5, threshold: 3 } }, live_advice: { n: 10, wins: 7, losses: 3, ties: 0, hit_rate: 0.7, wait_n: 5, wait_hits: 4, now_n: 5, now_hits: 3, brier_30d: 0.2, calibrated: false, gate_status: "open" }, wallet: { n_fills: 0, followed: 0, partial: 0, ignored: 0, unrelated: 0, saved_eur: 0, wh_hours: [] } } as any, error: false, errorCode: null, pending: false, receivedAt: 0 },
-  decideRes: { data: { decision_ready: true } as any, error: false, errorCode: null, pending: false, receivedAt: 0 },
+  heatmapWeeks: 6,
+  identity: "test",
   jobLog: { data: { job: "models", available: true, count: 10, total: 10, lines: ["2026-09-14 INFO ok"], updated_at: minutesAgo(35) }, error: false, errorCode: null, pending: false, receivedAt: 0 },
+  liveAdvice: null,
   logJob: "models",
   logLineCount: 100,
   logLines: ["2026-09-14 INFO ok"],
-  logBodyRef: { current: null },
-  logRef: { current: null },
+  m7Line: null,
+  refreshNow: noop,
+  selection: { data: selection(), error: false, errorCode: null, pending: false, receivedAt: 0 },
   setLogJob: noop,
   setLogLineCount: noop,
   setLogReload: noop,
   showJobLog: noop,
-  calibrationHint: "",
-  m7Line: null,
-  liveAdvice: null,
-  identity: "test",
-  span: 24,
-  webhookCapable: true,
-  triggerCommand: "curl -X POST ...",
-  workerCommand: "python -m app worker",
-  refreshNow: noop,
-  onDeepen: noop,
-};
+  stations: [station("a")],
+  statsSummaryRes: { data: { quality_metrics: { top3_hit_rate: 0.7, mase_sprungfrei: 0.6, picp_95: 0.95, cusum_drift: { status: "normal", max_cusum: 0.5, threshold: 3 } }, live_advice: { n: 10, wins: 7, losses: 3, ties: 0, hit_rate: 0.7, wait_n: 5, wait_hits: 4, now_n: 5, now_hits: 3, brier_30d: 0.2, calibrated: false, gate_status: "open" }, wallet: { n_fills: 0, followed: 0, partial: 0, ignored: 0, unrelated: 0, saved_eur: 0, wh_hours: [] } } as any, error: false, errorCode: null, pending: false, receivedAt: 0 },
+} as unknown as OverviewState;
 
-function render(overrides: Partial<SystemViewProps> = {}) {
-  const props = { ...baseProps, ...overrides } as SystemViewProps;
-  return renderToStaticMarkup(<SystemView {...props} />);
+const baseViewProps: SystemViewProps = { onDeepen: noop };
+
+function render(overviewOverrides: Record<string, unknown> = {}) {
+  return renderToStaticMarkup(
+    <OverviewProvider
+      value={{ ...baseOverview, ...overviewOverrides } as OverviewState}
+    >
+      <SystemView {...baseViewProps} />
+    </OverviewProvider>,
+  );
 }
 
 describe("System: Aufbau", () => {

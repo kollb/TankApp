@@ -21,6 +21,7 @@ Commits und Entscheidungen auf sie verweisen.
 | [TIEFENANALYSE-V2-2026-09-11.md](TIEFENANALYSE-V2-2026-09-11.md) | 11.09.2026 | „Ist das Beschriebene auch *richtig* umgesetzt?“ + was unabhängig vom Konzept fehlt (Security, Betrieb, Drift, UX, Performance, CI) | Quelle von [../../TODO.md](../../TODO.md), Prüfstrang 2 (Abschnitte E–H) |
 | [TIEFENANALYSE-V3-GUI-2026-09-11.md](TIEFENANALYSE-V3-GUI-2026-09-11.md) | 11.09.2026 | Grafische Inkonsistenzen und erfundene Defaults in Haupt- und Fallback-GUI | Alle V3-Fixes sind im Code; Absicherung durch `web/e2e/decision.spec.ts` |
 | [GUI-FALLBACK-SANITY-2026-09-14.md](GUI-FALLBACK-SANITY-2026-09-14.md) | 14.09.2026 (App 0.37.1) | Sanity-Check nach echter NAS/Pi-Abnahme: UX/UI, Implementierung, Defaults, Fallback-Filter FRA/GT | Filterfix ist in `rp2/fallback_gui.py`; offene Produktpunkte stehen in [../LUECKEN.md](../LUECKEN.md) |
+| [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md) | 15.09.2026 (App 0.38.0) | Vermessung der gebauten GUI gegen UI-NEUENTWURF: Befunde U1–U8 (Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Lighthouse-Gate, Props-Drilling) | **Erledigt in 0.41.0** — Nachweise im [../../CHANGELOG.md](../../CHANGELOG.md) und in [../../TODO.md](../../TODO.md); einzig offen: C12 (zweispaltiger Desktop-Inhalt) |
 
 > **Zitate im Code:** Kommentare in `app/` und `data-tools/` nennen
 > „Prüfstand §3.1“, „§11.2“, „Konzept §5.5“ u. ä. als Herkunftsnachweis.

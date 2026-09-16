@@ -4,6 +4,127 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.41.1] – 2026-09-16
+
+**CI-Folge aus PR #130: alle fünf roten Checks sind repariert — das
+Lighthouse-Gate misst jetzt CLS ≈ 0 auf allen drei Zuständen.**
+
+### Geändert
+
+- **Lighthouse-CLS grün (vorher 0,47 / 0,83 / 0,49, Budget ≤ 0,1).** Drei
+  Ursachen, drei Gegenmittel:
+  - *Erst-Paint-Gate:* Die Ansicht rendert erst, wenn die Shell-Daten
+    (Preise, Gesundheit, Profile), die primäre Antwort des aktiven Bereichs
+    **und** dessen View-Chunk da sind. Dadurch steht beim ersten echten Paint
+    sofort das fertige Layout — der frühere Tausch „Skeleton → Inhalt“ mitten
+    im Sichtbaren war die Hauptquelle der Verschiebungen. Das Gate öffnet
+    einmal und bleibt offen (Tab-Wechsel und Polls bleiben flüssig); eine
+    12-Sekunden-Leine schützt vor klemmenden Antworten. Ohne Stadt wird der
+    Overview gar nicht abgefragt — dann blockiert nichts, der
+    Einrichtungszustand rendert sofort.
+  - *`scrollbar-gutter: stable`:* Ohne den Gutter taucht die Scrollbar genau
+    in dem Frame auf, in dem der Inhalt länger als der Viewport wird; der
+    Viewport wird schlagartig schmaler und die zentrierte Hülle samt
+    Kopfzeile verschiebt sich horizontal (im Trace ein einzelner Shift mit
+    Score ≈ 0,95). Mit reserviertem Gutter bleibt die Breite konstant.
+  - *Chunk-Prefetch:* Die `import()`-Aufrufe der Bereichs-Views laufen seit
+    Modulstart parallel zum Daten-Gate (Code-Splitting pro Bereich bleibt —
+    U7). Gemessen: CLS 0,00 / 0,00 / 0,03, Performance 0,97–0,98,
+    Barrierefreiheit/Best Practices/SEO je 1,0; Messwerte in
+    [docs/QUALITAET.md](docs/QUALITAET.md).
+- **Mobile E2E-Emulation + Overflows.** Die CI-Mobile-Checks liefen mit
+  `isMobile: true`, das im Headless-Layout-Viewport auf 573 px aufweitet —
+  die Suites nutzen jetzt Viewport 390×844 + `hasTouch`. Dazu die echten
+  Überläufe dahinter: AppHeader-Steuerzeile (`relative min-w-0`, Logo
+  `shrink-0`), `flex-wrap` in „Stationen“, `[overflow-wrap:anywhere]` für
+  unbrechbare Mono-Tokens im System-Log, `z-[60]` für Level-1-Sheet und
+  Profil-Manager über der Bottom-Navigation, `isolate` für die Kartenansicht.
+  Lokal: 36/36 (Haupt-Suite) und 8/8 (Demo-Suite) grün.
+- **Demo-Suite: Nachtkante + Daten-Race.** Der Tagesstreifen-Check erwartete
+  zur Stunde 0 einen Marker, den die App konstruktionsbedingt nicht setzt
+  (06–24-Uhr-Fenster; „Heute im Blick“ markiert vor 06:00 nichts) — der Test
+  prüft jetzt die 0-Marker-Logik selbst. Der U2-Desktop-Check maß die Zellen,
+  bevor die Overview-Antwort da war (Rennen, kein leerer Zustand) und wartet
+  jetzt auf die Preise.
+- **Engine: `ruff format`** für `tests/test_quality_gates.py` (Format-Check
+  im CI rot).
+
+## [0.41.0] – 2026-09-16
+
+**GUI-Release: die acht Befunde U1–U8 aus PR 124 sind umgesetzt — die
+Oberfläche folgt dem eigenen Entwurf (Typografie, Geräte-Raster, Routing,
+Erklär-Treppe, Designsystem) und misst sich ehrlich.**
+
+Der [GUI-UX-Befund](docs/archiv/GUI-UX-BEFUND.md) (Stand 0.38.0) hatte der
+gebauten GUI eine „nicht umgesetzte Hälfte des Entwurfs“ bescheinigt: zu kleine
+Schrift, ein Navigations-Streifen statt der Geräte-Raster, Bereichszustand ohne
+URL, eine Erklär-Treppe mit Sprüngen statt Sheets am Ort, ein Lighthouse-Gate,
+das den Labor-Bereich nie sah, und Props-Drilling, das jede Änderung teuer
+macht. Alle acht Punkte sind abgenommen; das Protokoll wandert mit
+Erledigt-Vermerk ins Archiv.
+
+### Geändert
+
+- **U2 (P0) — Tagesstreifen mobil lesbar.** Die Zellen des Tagesstreifens
+  sind auf 390 px nicht mehr abgeschnitten; die 390-px-Semantik ist in
+  `views/Jetzt.test.tsx` festgehalten.
+- **U7 (P0) — ehrliche Qualitäts-Gates.** Lighthouse misst jetzt drei echte
+  Zustände statt zweimal denselben Startschirm: den gefüllten Einstieg, den
+  Labor-Bereich über das U4-Routing (`?tab=labor`) und den
+  Einrichtungszustand auf einem zweiten, leeren Server (Port 1356). Die
+  Budgets für Übertragungsvolumen (≤ 1,5 MB) und CLS (≤ 0,1) sind scharf
+  (Fehler statt Warnung); Code-Splitting pro Bereich (`views/*` laden als
+  eigene Chunks, `lazy()` + Suspense-Skeleton). Messwerte und Budgets in
+  [docs/QUALITAET.md](docs/QUALITAET.md), Ratchet in
+  `tests/test_quality_gates.py`.
+- **U1 (P1) — Typografie-Rampe.** Fließtext und Zahlen sind überall ≥ 12 px
+  und in `rem` statt `px`; 8/9-px-Klassen bleiben reine Dekoration. Ratchet
+  in `web/src/a11y.test.ts`.
+- **U6 (P1) — Designsystem-Radius.** Alle Karten laufen über `panel` und die
+  Radius-Rampe (`rounded-2xl`/`-lg`/`-md`) in `components/ui.tsx`; ein
+  Ratchet verbietet wilde `rounded-*`-Klassen außerhalb der Bausteine.
+- **U3 (P1) — Geräte-Raster für die Navigation.** Mobil Bottom-Navigation
+  (sechs Bereiche, ≥ 44 px Zielhöhe, Safe-Area), desktop Seitenleiste
+  (`components/AppNav.tsx`); die Kopfzeile bleibt eine Zeile, die globalen
+  Steuerungen scrollen seitwärts statt umzubrechen. Das Glossar ist kein
+  Hauptbereich mehr — sein Eingang liegt im Labor-Kopf. Bereichs-Ansichten
+  laden weiter als eigene Chunks. *Bewusst offen:* der zweispaltige
+  Desktop-Inhalt (§13) steht als C12 in [TODO.md](TODO.md).
+- **U4 (P2) — Bereichs-Routing.** Bereich und Labor-Abschnitt stehen in der
+  URL (`?tab=…&section=…`), `pushState`/`popstate` werken, Browser-Zurück
+  fährt die Ansichten in umgekehrter Reihenfolge ab; ein Test pro Bereich in
+  `web/src/routing.test.ts`.
+- **U5 (P2) — Erklär-Treppe bleibt am Ort.** Jeder „Warum?“-Zugang öffnet
+  das Ebene-1-Sheet am Wirkungsort (auch der A-gegen-B-Vergleich in
+  „Stationen“); der Labor-Sprung ist erst Ebene 2 und ausdrücklich. Die
+  `labReturn`-Buchhaltung (Zurück-Knopf, Herkunfts-Zeile) ist entfernt — der
+  Rückweg ist das Browser-Zurück aus U4.
+- **U8 (P2) — Props-Drilling aufgelöst.** Neuer `state/overview.tsx`:
+  Der OverviewContext hält die geteilten Daten (Preise, Overview-Poll,
+  Profile, Navigation, Offline-Queue, Feedback); Tests injizieren den
+  Zustand über `<OverviewProvider value={…}>`. Bereichszustand wohnt in den
+  Views: Das Labor besitzt Spielplatz (ε, Tagesindex) und Modell
+  (`views/laborModel.ts`), der System-Bereich sein Log-Terminal (Refs,
+  Scrollverhalten, Start-Kommandos). Ergebnis: LaborView 41 → 4 Props,
+  SystemView 32 → 1 Prop, `Dashboard.tsx` 2 201 → 564 Zeilen; die Kopfzeile
+  wandert nach `components/AppHeader.tsx`, totes Gewicht
+  (`modelWindows`, `selectedIsCheapest`, u. a.) entfällt.
+
+### Hinzugefügt
+
+- **Ratchets und Tests gegen das Wiederkommen:** Typografie- und
+  Radius-Ratchet in `web/src/a11y.test.ts`, `AppNav.test.tsx`
+  (Geräte-Raster), `state/overview.test.tsx` (Provider), umgestellte
+  View-Tests (`views/Labor.test.tsx`, `views/System.test.tsx`) auf den
+  injizierten Overview-Zustand; das Quality-Gate-Ratchet
+  (`tests/test_quality_gates.py`) prüft die drei Lighthouse-Zustände.
+
+### Dokumentation
+
+- GUI-UX-Befund mit Erledigt-Vermerk archiviert
+  ([docs/archiv/GUI-UX-BEFUND.md](docs/archiv/GUI-UX-BEFUND.md));
+  TODO.md führt die Abnahme unter „C. GUI / UX“ und als offene Zeile C12
+  (zweispaltiger Desktop-Inhalt).
 ## [0.40.0] – 2026-09-15
 
 **Das Prognose-Tagebuch erzählt dieselbe Ablehnung nicht mehr im

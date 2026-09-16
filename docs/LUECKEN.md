@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 15.09.2026 · App-Version 0.40.0. Abgleich von
+> Stand: 16.09.2026 · App-Version 0.41.1. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [16.09.2026 — Versionen 0.41.0/0.41.1: GUI-Befunde U1–U8, Lighthouse-CLS](#16092026--versionen-04100411-gui-befunde-u1u8-lighthouse-cls)
   - [15.09.2026 — Version 0.40.0: Ablehnungen im Tagebuch](#15092026--version-0400-ablehnungen-im-tagebuch)
   - [15.09.2026 — Versionen 0.33.0–0.38.0: GUI-Neuentwurf, E2E ohne Mocks, Webhook-Quittierung, App-Version](#15092026--versionen-03300380-gui-neuentwurf-e2e-ohne-mocks-webhook-quittierung-app-version)
   - [12.09.2026 — Version 0.23.0: Profile, Tankstand, Bilanz, Stamm-Stationen](#12092026--version-0230-profile-tankstand-bilanz-stamm-stationen)
@@ -232,6 +233,18 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 16.09.2026 — Versionen 0.41.0/0.41.1: GUI-Befunde U1–U8, Lighthouse-CLS
+
+Reine Frontend-Releases auf dem Abgleich-Stand von 0.40.0: 0.41.0 setzt die
+GUI/UX-Befunde U1–U8 aus
+[archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) um (Typografie ≥ 12 px,
+Einrichtungs-Assistent, Geräte-Raster, Erklär-Treppe, Designsystem-Tokens,
+ehrliche Gate-Selbstprüfung, Bereichs-Komposition ohne Props-Drilling),
+0.41.1 repariert die CI-Folge aus PR #130 (Lighthouse-CLS ≈ 0 auf allen drei
+Zuständen durch Erst-Paint-Gate, `scrollbar-gutter: stable` und
+Chunk-Prefetch; Mobile-E2E-Emulation 390×844). Keine neuen Endpunkte, keine
+Engine-Änderung, keine neuen Lücken — Konzept-Abdeckung unverändert.
 
 ### 15.09.2026 — Version 0.40.0: Ablehnungen im Tagebuch
 

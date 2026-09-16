@@ -90,7 +90,7 @@ export function SkeletonChart({
       role="status"
       aria-busy="true"
       aria-live="polite"
-      className={`animate-pulse rounded-xl border border-slate-800 bg-slate-900/60 ${height} ${className}`}
+      className={`animate-pulse rounded-lg border border-slate-800 bg-slate-900/60 ${height} ${className}`}
     >
       <span className="sr-only">{label} …</span>
     </div>

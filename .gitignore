@@ -55,16 +55,23 @@ node_modules/
 /web/test-results/
 /web/playwright-report/
 
+# Lokale E2E-Konfigurationen (Sandbox/SwiftShader-Rendering) — CI nutzt
+# playwright.config.ts / playwright.demo.config.ts.
+/web/playwright.local.config.ts
+/web/playwright.demo.local.config.ts
+
 # Private NAS read access, also when placed outside data/
 influx.env
 netrc
 
 # Qualitäts-Gates (D4): Lighthouse-Artefakte und Lastbericht
 /.lighthouseci/
+/web/.lighthouseci/
 /load-report.json
 
 # E2E ohne Mocks (web/e2e/demo.spec.ts): Demo-Datenbestand des Demo-Stacks
 /.demo-e2e-data/
+/.demo-preview-data/
 
 # Lokale virtuelle Umgebung
 .venv/

@@ -49,7 +49,10 @@ export default defineConfig({
     { name: "desktop", use: { viewport: { width: 1440, height: 1050 } } },
     {
       name: "mobile",
-      use: { viewport: { width: 390, height: 844 }, isMobile: true },
+      // Siehe playwright.config.ts: ohne `isMobile`, weil die Headless-
+      // Mobile-Emulation auf GPU-losen Läufern den Viewport verzerrt und
+      // damit fixe Bottom-Leisten unklickbar macht; Breite reicht fürs Raster.
+      use: { viewport: { width: 390, height: 844 }, hasTouch: true },
     },
   ],
 });

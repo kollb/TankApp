@@ -138,12 +138,12 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="w-full text-center text-[10px] font-mono">
+        <table className="w-full text-center text-xs font-mono">
           <thead>
             <tr className="text-slate-500">
               <th className="p-1 text-left font-sans text-xs font-normal">Tag</th>
               <th
-                className="p-1 text-left font-sans text-[10px] font-normal text-slate-600"
+                className="p-1 text-left font-sans text-xs font-normal text-slate-600"
                 title={
                   isProb
                     ? "Median der belastbaren Cheap-Probability-Werte dieser Zeile"
@@ -153,7 +153,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                 Median
               </th>
               <th
-                className="p-1 text-left font-sans text-[10px] font-normal text-slate-600"
+                className="p-1 text-left font-sans text-xs font-normal text-slate-600"
                 title="Eine Spalte = eine Stunde: „06–07 Uhr“ ist der Kasten 06:00–06:59. „dünn“ = die Vergleichs-Basis dieser Stunde trägt zu wenige Preise für eine Empfehlung."
               >
                 Günstigste Std.
@@ -186,24 +186,24 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                   >
                     {dayName}
                     {isToday ? (
-                      <span className="ml-1 text-[9px] font-bold uppercase text-sky-400">
+                      <span className="ml-1 text-xs font-bold uppercase text-sky-400">
                         heute
                       </span>
                     ) : null}
                   </td>
-                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
+                  <td className="p-1 text-left font-sans text-xs text-slate-400">
                     {summary
                       ? isProb
                         ? percentLabel(summary.median)
                         : euro(summary.median, 3)
                       : "—"}
                   </td>
-                  <td className="p-1 text-left font-sans text-[10px] text-slate-400">
+                  <td className="p-1 text-left font-sans text-xs text-slate-400">
                     {summary?.best ? (
                       <span title={bestTitle(dayName, summary.best)}>
                         {hourRunsLabel(summary.best.runs)}
                         {summary.best.thinReference ? (
-                          <span className="ml-1 text-[9px] font-semibold text-amber-400">
+                          <span className="ml-1 text-xs font-semibold text-amber-400">
                             dünn
                           </span>
                         ) : null}
@@ -275,7 +275,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
         )
       ) : null}
       {sampleLabel || rangeLabel || coverageNote ? (
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-3 text-xs leading-relaxed text-slate-400">
           <span className="font-semibold text-slate-300">Datenreichweite:</span>{" "}
           {[sampleLabel, rangeLabel].filter(Boolean).join(" · ") || "—"}
           {coverage && coverage.complete
@@ -287,7 +287,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
         </p>
       ) : null}
       <p
-        className="mt-3 text-[11px] leading-relaxed text-slate-500"
+        className="mt-3 text-xs leading-relaxed text-slate-500"
         title={isProb ? "Fachwort: Cheap-Probability" : undefined}
       >
         {isProb

@@ -55,7 +55,7 @@ export function FeedbackBanner({
   return (
     <div
       role={tone.role}
-      className={`${className} flex items-start gap-3 rounded-xl border p-4 text-sm font-semibold shadow-lg ${tone.box}`}
+      className={`${className} flex items-start gap-3 rounded-lg border p-4 text-sm font-semibold shadow-lg ${tone.box}`}
     >
       <Icon size={18} className={`mt-0.5 shrink-0 ${tone.icon}`} />
       <p>{feedback.text}</p>

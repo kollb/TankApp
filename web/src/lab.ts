@@ -105,18 +105,6 @@ export function labHint(section: LabSectionId): LabHint {
   };
 }
 
-/** „Zurück zu: …“ — gemerkte Herkunft des Sprungs (§6.1). */
-export type LabOrigin = { label: string; section: LabSectionId };
-
-/**
- * Herkunfts-Zeile des Labor-Kopfs. Zeigt auf den Abschnitt, aus dem man kam,
- * damit „Zurück“ exakt dorthin führt — nicht in den Alltag, nicht auf eine
- * Startseite.
- */
-export function labOriginLine(origin: LabOrigin | null): string | null {
-  return origin ? `Zurück zu: ${origin.label}` : null;
-}
-
 import { centPerLiter, euro, percentLabel, type AdviceDiaryEntry } from "./data";
 
 /**
