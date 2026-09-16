@@ -28,6 +28,7 @@ import {
   hourRunsLabel,
   hourRunsOf,
   kilometersLabel,
+  NO_DATA_LINE,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type AdviceAction,
@@ -547,7 +548,7 @@ export function nowFreshness(input: {
 }): NowFreshness {
   const now = input.now ?? Date.now();
   if (!input.pricesAt && !input.forecastAt) {
-    return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+    return { text: NO_DATA_LINE, tone: "warn" };
   }
   const prices = freshness(input.pricesAt, "prices", now);
   const model = freshness(input.forecastAt, "model", now);

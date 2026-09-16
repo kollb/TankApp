@@ -74,14 +74,8 @@ export function labSection(section: LabSectionId): LabSection {
   const found = LAB_SECTIONS.find((entry) => entry.id === section);
   // Kann nicht passieren (Id ist ein Typ) — der Fallback hält die Ansicht
   // aber auch dann bedienbar, wenn jemand eine Zeichenkette durchreicht.
-  return (
-    found ?? {
-      id: "glossar",
-      number: null,
-      question: "Alle Begriffe von A–Z (Glossar)",
-      short: "Glossar von A–Z",
-    }
-  );
+  // T5: Der Fallback ist der Glossar-Abschnitt selbst — kein zweiter Text.
+  return found ?? LAB_SECTIONS.find((entry) => entry.id === "glossar")!;
 }
 
 /** Knopftext der Sprungleiste: „1 · Prognose“ bzw. „Spielplatz“. */

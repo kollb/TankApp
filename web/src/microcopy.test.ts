@@ -304,6 +304,42 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     ).toEqual([]);
   });
 
+  // ── 8. Dubletten: ein Satz, eine Stelle (§5, GUI-TEXT-BEFUND T5) ──
+
+  /**
+   * Prosa, keine Klassenliste: lang genug, mit Großbuchstabe oder
+   * Satzzeichen, zwei Wörtern nebeneinander und ohne Markup. Was hier
+   * übrig bleibt, ist ein Satz — und ein Satz steht genau einmal im Code.
+   */
+  const CLASSISH = /^[\sA-Za-z0-9:\-\/[\](){}$.%]+$/;
+
+  function proseLiterals(source: string): string[] {
+    return [...userVisible(source).matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/gs)]
+      .map((match) => match[2].replace(/\s+/g, " ").trim())
+      .filter((value) => value.length >= 25)
+      .filter((value) => !/[<>]/.test(value))
+      .filter((value) => !CLASSISH.test(value))
+      .filter((value) => /[A-ZÄÖÜäöüß„“—]/.test(value))
+      .filter((value) => /[a-zäöüß]{3}\s[a-zäöüß]{3}/.test(value));
+  }
+
+  it("dieselbe Aussage steht nicht zweimal im Code", () => {
+    const seen = new Map<string, string[]>();
+    for (const relativePath of FILES) {
+      for (const literal of proseLiterals(read(relativePath))) {
+        seen.set(literal, [...(seen.get(literal) ?? []), relativePath]);
+      }
+    }
+    const duplicates = [...seen]
+      .filter(([, files]) => files.length > 1)
+      .map(([literal, files]) => `${files.join(" + ")}: „${literal.slice(0, 70)}“`);
+    expect(
+      duplicates,
+      "Dublette — beim nächsten Wortwechsel wird eine Stelle vergessen. " +
+        "Gemeinsame Konstante/Funktion in data.ts anlegen (T5).",
+    ).toEqual([]);
+  });
+
   it("das Regelwerk selbst ist da und verlinkt", () => {
     const docs = readFileSync(
       fileURLToPath(new URL("../../docs/MICROCOPY.md", import.meta.url)),

@@ -2516,6 +2516,34 @@ export const messages: Record<string, string> = {
   server_error: "Serverfehler. Erneuter Versuch folgt.",
   not_found: "Endpunkt nicht gefunden.",
 };
+/**
+ * T5 (GUI-TEXT-BEFUND): Dieselbe Aussage steht an **einer** Stelle. Dubletten
+ * sind kein Stilproblem — beim nächsten Wortwechsel wird eine der beiden
+ * Stellen vergessen, und genau so entstanden „.“ hier und kein Punkt dort.
+ */
+export const NO_DATA_LINE = "Kein Datenstand — noch nichts gemeldet";
+
+/** Rückmeldung nach dem Buchen; die Einordnung hängt `fillPositionNote` an. */
+export const FILL_BOOKED_LINE = "Beleg in deiner Bilanz verbucht.";
+
+/** Hinweis des „Ansicht teilen“-Knopfs, wenn die Zwischenablage fehlt. */
+export const SHARE_URL_LINE = "URL steht jetzt in der Adresszeile — zum Teilen kopieren.";
+
+/**
+ * Offline-Queue: Der Eintrag liegt lokal und geht raus, sobald die Verbindung
+ * steht — für Belege wie für Vorsätze, nur das Fürwort unterscheidet sich.
+ */
+export function queuedNote(subject: "Beleg" | "Auswahl"): string {
+  return subject === "Beleg"
+    ? "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht."
+    : "Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.";
+}
+
+/** Gescheitertes Speichern — derselbe Satz an jeder Schreibstelle. */
+export function saveFailedNote(detail: string | null | undefined): string {
+  return `Speichern fehlgeschlagen: ${detail || "unbekannter Grund"} — bitte erneut versuchen.`;
+}
+
 export function problem(code?: string | null) {
   return code
     ? messages[code] || "Daten konnten nicht vollständig geladen werden."

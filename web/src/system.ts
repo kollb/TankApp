@@ -17,6 +17,7 @@ import {
   deTrimmed,
   freshness,
   JOB_LABELS,
+  NO_DATA_LINE,
   percentLabel,
   timeLabel,
   type Alarm,
@@ -29,6 +30,9 @@ import {
   type Stations,
 } from "./data";
 import { labHint, type LabHint } from "./lab";
+
+/** T5: derselbe Hinweis an beiden Stellen (Daten-Karte und Einrichtungsliste). */
+const INFLUX_MISSING = "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.";
 
 export type SystemTone = "ok" | "warn" | "error" | "unknown";
 
@@ -118,7 +122,7 @@ export function systemStatusRows(input: {
         label: "Datenbank (NAS)",
         tone: "error",
         headline: "InfluxDB nicht eingebunden",
-        detail: "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        detail: INFLUX_MISSING,
         meta: h.polling_path ? `Polling-Pfad: ${h.polling_path}` : null,
       };
     }
@@ -340,7 +344,7 @@ export function systemFreshness(input: {
     (s): s is [string, DataKind] => s[0] != null,
   );
   if (!stamps.length) {
-    return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+    return { text: NO_DATA_LINE, tone: "warn" };
   }
   const ages = stamps.map(([s, kind]) => ({ s, age: freshness(s, kind, now) }));
   const worst = ages.reduce((acc, cur) => {
@@ -481,7 +485,7 @@ export function systemSetupSteps(input: {
       done: !!h?.influx_configured,
       hint: h?.influx_configured
         ? "Lesezugang eingebunden."
-        : "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        : INFLUX_MISSING,
     },
     {
       label: "Erster Modell-Lauf",

@@ -23,6 +23,7 @@ import {
   ageLabel,
   freshness,
   kilometersLabel,
+  NO_DATA_LINE,
   type DecideResult,
   type Point,
   type Station,
@@ -432,7 +433,7 @@ export function stationsFreshness(
   pricesAt: string | null,
   now = Date.now(),
 ): StationsFreshness {
-  if (!pricesAt) return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+  if (!pricesAt) return { text: NO_DATA_LINE, tone: "warn" };
   const state = freshness(pricesAt, "prices", now);
   const tone: StationsFreshness["tone"] =
     state === "old" ? "bad" : state === "stale" ? "warn" : "ok";

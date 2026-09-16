@@ -12,6 +12,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { Station, DecideResult, DetourMode, euro, kilometersLabel } from "../data";
+
+/** T5: Ein Label, eine Stelle — Marker, alt-Text und aria-label sagen dasselbe. */
+const HOME_LABEL = "Zuhause, Startpunkt der Stadt";
 import { usePtrOff } from "../usePtrOff";
 import { panel } from "./ui";
 
@@ -105,7 +108,7 @@ function formatNetBadge(info: StationMapInfo): string {
  * beiden Breiten gleich breit und bricht die Pin-Reihe nicht auf.
  */
 function anchorPinHtml(): string {
-  return `<div role="img" aria-label="Zuhause, Startpunkt der Stadt" class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-slate-900 shadow-md cursor-pointer whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`;
+  return `<div role="img" aria-label="${HOME_LABEL}" class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-slate-900 shadow-md cursor-pointer whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`;
 }
 
 function getVerdictBadgeStyle(verdict: StationMapInfo["verdict"]): {
@@ -332,7 +335,7 @@ export function StationMap({
               icon: anchorIcon,
               keyboard: true,
               title: "Zuhause — Startpunkt der Stadt",
-              alt: "Zuhause, Startpunkt der Stadt",
+              alt: HOME_LABEL,
               zIndexOffset: 200,
             }).addTo(map);
             anchorMarker.on("click", () => {
@@ -840,7 +843,7 @@ export function RadarView({
             className="cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
             role="button"
             tabIndex={0}
-            aria-label="Zuhause, Startpunkt der Stadt"
+            aria-label={HOME_LABEL}
             aria-pressed={anchorActive}
             onClick={() => {
               setActiveStationId(null);
