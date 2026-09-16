@@ -17,7 +17,9 @@ import { describe, expect, it } from "vitest";
 
 /** Erlaubte `toFixed`-Stellen je Datei (Stand 0.15.0) — mit Grund. */
 const ALLOWED: Record<string, { count: number; reason: string }> = {
-  "Dashboard.tsx": {
+  // U8: Die Vorbelegung ist mit dem Beleg-State in den OverviewContext
+  // gewandert (state/overview.tsx) — die Ausnahme wandert mit.
+  "state/overview.tsx": {
     count: 1,
     reason:
       "Vorbelegung des Beleg-Preises (Ich → Belege): Punkt wie beim Tippen (commaToDot)",
@@ -35,6 +37,8 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 
 /** Dateien, die sichtbar formatieren und deshalb sauber sein müssen. */
 const CLEAN = [
+  "Dashboard.tsx",
+  "components/AppHeader.tsx",
   "components/CellError.tsx",
   "components/JobCard.tsx",
   "data-resource.test.tsx",

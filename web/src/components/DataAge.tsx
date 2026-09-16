@@ -36,7 +36,7 @@ export function DataAgeBanner({
       // `status`, nicht `alert`: Die Information ist wichtig, soll aber den
       // Screenreader nicht mitten im Satz unterbrechen.
       role="status"
-      className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${tone} ${className}`}
+      className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed ${tone} ${className}`}
     >
       <Clock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
       <span>{note.text}</span>

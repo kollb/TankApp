@@ -15,13 +15,36 @@
 import { useId, useState, type ReactNode } from "react";
 import { HelpCircle, Info } from "lucide-react";
 
-/** Karten-Grundklasse aller Panels — eine Stelle für Rand, Radius, Hintergrund. */
-export const panel = "rounded-2xl border border-slate-800 bg-slate-900/80";
+/**
+ * U6 — Radius-Rampe: die **einzige** Stelle für Kartenradien. Vorher stand
+ * an ~90 Panels je ein eigenes `rounded-xl/-2xl`; das Ergebnis waren
+ * Kartenradien, die von Panel zu Panel unterschieden, ohne dass ein Element
+ * falsch war („weiß nicht wieso“). Jetzt gilt eine Rampe, und das Ratchet in
+ * `a11y.test.ts` verbietet `rounded-xl`/`rounded-2xl` außerhalb dieser Datei:
+ *
+ *   radius.card    — freie Karten, Modale, großflächige Callouts (16 px)
+ *   radius.chip    — Chips, Buttons, Inset-Boxen (8 px)
+ *   radius.control — Eingaben, kleine Schalter (6 px)
+ *   rounded-full   — Pills/Kreise bleiben, wo sie sind (keine Kartenfrage)
+ */
+export const radius = {
+  card: "rounded-2xl",
+  chip: "rounded-lg",
+  control: "rounded-md",
+} as const;
+
+/**
+ * Karten-Grundklasse aller Panels — eine Stelle für Rand, Radius, Hintergrund.
+ */
+export const panel = `${radius.card} border border-slate-800 bg-slate-900/80`;
+
+/** Modale Dialoge (Level-1-Sheet, Profil-Verwaltung) — Card-Optik, deckend. */
+export const dialog = `${radius.card} border border-slate-800 bg-slate-900 shadow-2xl`;
 
 /** Leerer Bereich / Hinweis: gestrichelter Rand, kein Alarm-Ton. */
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-7 text-sm leading-relaxed text-slate-400 break-words">
+    <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/40 p-7 text-sm leading-relaxed text-slate-400 break-words">
       {children}
     </div>
   );
@@ -37,7 +60,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
         warning
           ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
           : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
@@ -76,7 +99,7 @@ export function InfoTooltip({ label, text }: { label: string; text: string }) {
         <span
           id={id}
           role="tooltip"
-          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-left text-[11px] leading-relaxed text-slate-200 shadow-xl sm:w-72"
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-left text-xs leading-relaxed text-slate-200 shadow-xl sm:w-72"
         >
           {text}
         </span>
@@ -122,9 +145,9 @@ export function Metric({
       <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
         {value}
       </div>
-      <div className="text-[11px] leading-relaxed text-slate-400">{detail}</div>
+      <div className="text-xs leading-relaxed text-slate-400">{detail}</div>
       {hint && (
-        <div className="mt-2 text-[10px] leading-relaxed text-slate-500">
+        <div className="mt-2 text-xs leading-relaxed text-slate-500">
           {hint}
         </div>
       )}

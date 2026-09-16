@@ -4,8 +4,9 @@
 // Getestet werden die drei Zusagen, die die Checkliste 3.1/3.2 einklagt:
 //   * Fünf Abschnitte in fester Reihenfolge plus Spielplatz ohne Nummer —
 //     diese Liste ist der Adressraum der Sprungleiste.
-//   * Ebene 2 findet ihr Ziel: `labHint` nennt den Abschnitt, `labOriginLine`
-//     die gemerkte Herkunft („Zurück zu: …“).
+//   * Ebene 2 findet ihr Ziel: `labHint` nennt den Abschnitt. Eine gemerkte
+//     Herkunft gibt es seit U5 nicht mehr — der Rückweg ist das
+//     Browser-Zurück (U4-Routing).
 //   * Das Tagebuch spricht Alltag: Ergebnis-Wort, Grund und Formatter-Zahlen
 //     — nie Fachsprache, nie eine Zahl ohne Einheit.
 
@@ -17,7 +18,6 @@ import {
   diaryEmptyNote,
   diaryOutcome,
   labHint,
-  labOriginLine,
   labSection,
   labSectionButtonLabel,
   trustSentence,
@@ -100,12 +100,6 @@ describe("Labor: Abschnitte und Sprung (§6)", () => {
     expect(labHint("stationen").section).toBe("stationen");
   });
 
-  it("merkt die Herkunft als „Zurück zu: …“ — und schweigt ohne Herkunft", () => {
-    expect(labOriginLine(null)).toBeNull();
-    expect(
-      labOriginLine({ label: "Jetzt · Warum?", section: "sicherheit" }),
-    ).toBe("Zurück zu: Jetzt · Warum?");
-  });
 });
 
 describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
