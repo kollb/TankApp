@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 16.09.2026 · App-Version **0.42.0** · gilt für `web/src/**`,
+> Stand: 16.09.2026 · App-Version **0.43.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -21,6 +21,7 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
+- [5b. Meldungen: ein Register, ein Rang (V3)](#5b-meldungen-ein-register-ein-rang-v3)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
 
@@ -69,6 +70,16 @@ Ton — `ok` (grün, Häkchen, `role="status"`), `warn` (amber, „lokal vorgeme
 | `·` | Trenner zwischen gleichrangigen Angaben | „12.345 Preise · 18 Stationen“ |
 | `≤ ≥ ≈ ±` | mit geschütztem Sinn, immer mit Leerzeichen | „≤ 5 Sekunden“ |
 
+**Kein Zeichen als Textersatz (V4):** `✓`, `✗`, `✎`, `✕`, `★`, `▼`, `●`
+trugen früher je nach Stelle eine andere Bedeutung (Erfolg, „offen“, „noch
+nicht“, Chip-Richtung …) — ein Screenreader liest sie als „Häkchen“, „Stern“.
+Seit 0.43.0 steht das **Wort** im Text („richtig“, „daneben“, „unentschieden“,
+„Jetzt tanken“, „Warten“, „Woanders tanken“, „nur offene“); tragende
+Zeichen sind durch lucide-Icons ersetzt, die dekorativ bleiben
+(`aria-hidden`). Erlaubt bleiben die Formel- und Fließzeichen dieser Tabelle
+(`→` als Richtung „von → zu“, `·`, `—`, `–`, `×`, `…`). Geprüft von
+`microcopy.test.ts` (Regel 11).
+
 Typografische Zeichen stehen direkt im Quelltext (UTF-8), **keine**
 HTML-Entities (`&bdquo;`, `&quot;`) — die lesen sich im Diff nicht.
 
@@ -85,7 +96,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Geldbetrag gesamt | `euro` | `62,45` (2 Nachkommastellen) + „€“ im Label |
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
 | Strecke | `kilometersLabel` | `12 km` · `2,4 km` (eine Nachkommastelle nur beim Umweg) |
-| Zeitwert | `deTrimmed` + `€/h` | `16 €/h` — Symbol, nie „Euro pro Stunde“ |
+| Tempo | `kilometersPerHour` / `kilometersPerHourSpeech` | `50 km/h` — Symbol; die Langform „Kilometer pro Stunde“ nur als Screenreader-Text |
+| Zeitraum | `timeSpanLabel` | `24 Stunden` · `3 Tage` · `7 Tage` — Schalter-Label ohne „letzte“; im Satz „die letzten 3 Tage“ |
+| Zeitwert | `euroPerHour` | `16 €/h` — Symbol, die Langform „Euro pro Stunde“ gibt es nur noch als Screenreader-Text |
 | Schwelle/Maßzahl ohne Einheit | `deNumber` | `0,80` (Komma, nie `0.80`) |
 | Stückzahl | `countLabel` | `12.345` |
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
@@ -267,6 +280,25 @@ hier steht je Zustand **eine** Formulierung:
 
 Geprüft von `microcopy.test.ts` (Ladetexte, Retry-Knöpfe, Frische-Baustein).
 
+### 5b. Meldungen: ein Register, ein Rang (V3)
+
+Acht Blöcke über dem Inhalt waren der Befund — jede Meldung mit eigener Dauer
+und ohne Ordnung. Seit 0.43.0 gilt:
+
+| Rang | Bedeutung | Rolle |
+|---|---|---|
+| `error` | Störung — bleibt stehen, bis die Ursache weg ist | `role="alert"` |
+| `warn` | Zustand — eingeschränkt, aber nichts verloren | `role="status"` |
+| `hint` | Hinweis (Installation, Update, E5-Äquivalenz) | `role="status"` |
+| `success` | Bestätigung einer Aktion (Beleg verbucht, Link kopiert) | `role="status"` |
+
+Die Regeln dahinter: **höchste Rangstufe gewinnt**, gleichrangige Meldungen
+werden mit „ · “ aneinandergereiht (nie gestapelt), die gemeinsame Dauer ist
+**6 s** — nur `error` bleibt stehen. Der Regler ist
+`components/Notices.tsx` (`reduceNotices`) + `components/NoticesView.tsx`;
+Fehler- und Warn-Icons sind dekorativ (`aria-hidden`), der Text trägt die
+Information. Geprüft von `components/Notices.test.ts`.
+
 ## 6. Was nie im Text steht
 
 - **Erfundene Zahlen.** Keine Demo-Preise, keine Platzhalter-Prozentwerte,
@@ -318,7 +350,10 @@ Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
   `lab.ts`, keine Ausrufezeichen und keine `✓`/`!`-Präfixe, keine technischen
   Pfade außerhalb des System-Bereichs (§6/§4d), keine Abkürzungen ohne
   Langform (T7), kein doppelt eingetragener Satz (T5), ein Wortlaut je
-  Zustand (§5a, T8), keine Erklärung im Tooltip (§4e, V2)),
+  Zustand (§5a, T8), keine Erklärung im Tooltip (§4e, V2), **keine
+  Symbolsprache als Textersatz** (`✓ ✗ ✎ ✕ ★ ▼ ●`, V4), **keine
+  Einheiten-Langform und keine `ggü.`/`Min.` in Views** (V5)),
+  `components/Notices.test.ts` (Rang, eine Meldung, eine Dauer — V3/§5b),
   `a11y.test.ts` (Kontrast AA — auch für **beide** Diagrammpaletten, V1),
   `components/FeedbackBanner.test.tsx` (Ton der Rückmeldung), `data-age.test.ts`
   (Schwellen und Wortform der Datenstand-Sätze) sowie

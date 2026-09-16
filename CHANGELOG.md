@@ -4,6 +4,49 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.43.0] – 2026-09-16
+
+**GUI-Text-Befund V3–V5 umgesetzt (PR #125, Abschluss des Befunds): ein
+Mitteilungs-Register mit Rang, eine Symbol-Sprache mit Worten und eine
+Einheiten-/Zeitraum-Form je Größe — jede Regel wieder als Ratchet.**
+
+### Geändert
+
+- **V3 (P2): Meldungen geordnet statt gestapelt.** Die Root konnte acht
+  Blöcke über den Inhalt setzen (Rückmeldung, Datenstand, Installation,
+  Update, Offline-Queue, „Browser ist offline“, E5-Hinweis,
+  Verbindungsproblem), jede mit eigener Dauer. Jetzt entscheidet
+  `components/Notices.tsx` (`reduceNotices`) einen Rang
+  (Störung > Zustand > Hinweis > Erfolg), behält die höchste Stufe, reiht
+  Gleichrangige mit „ · “ aneinander und hängt den Handlungs-Knopf aus der
+  gewinnenden Meldung an. `components/NoticesView.tsx` rendert genau einen
+  Block (`role="alert"` nur bei `error`). Dauer: **6 s**, nur Störungen
+  bleiben stehen; die lokalen `voidNote`/`pinNote`-Zeilen bleiben am
+  Wirkungsort.
+- **V4 (P3): Worte statt Zeichen.** `✓ ✗ ✎ ✕ ★ ▼ ●` sind als
+  Textersatz entfernt: Ergebnis „richtig/daneben/unentschieden“ im
+  Tagebuch, „Jetzt tanken/Warten/Woanders tanken“ als Chips, „nur
+  offene/alle Stationen“ als Filter, „Ja, wie empfohlen/Anders
+  buchen/Noch nicht“ als Due-Knöpfe, ein lucide-Häkchen (aria-hidden) im
+  Einrichtungs-Assistenten, Sterne bleiben dekorativ mit Wort-`aria-label`.
+  `→`, `·`, `—`, `×`, `…` bleiben Fließ-/Formelzeichen.
+- **V5 (P3): eine Form je Größe.** `euroPerHour` (€/h),
+  `kilometersPerHour`/`kilometersPerHourSpeech` (km/h + Langform nur für
+  Screenreader) und `timeSpanLabel` (24 Stunden/3 Tage/7 Tage) entstehen in
+  `data.ts`; die Schreibweisen „Euro pro Stunde“, „Kilometer pro Stunde“,
+  „letzte 24 Stunden“ ↔ „24 Stunden“ und „+3 Tage“ ↔ „3 Tage“ sind
+  zusammengeführt. Das Queue-Alter läuft über `ageWord` („vor 3 Stunden“
+  statt „2 h“).
+
+### Prüfungen
+
+- `microcopy.test.ts` um Regel 11 (Symbol-Ratchet, V4) und Regel 12
+  (Einheiten/Abkürzungen, V5) erweitert; `components/Notices.test.ts` neu
+  (Rang, eine Meldung, Dauer); `data.test.ts` hält die neuen Formatter.
+- Lokal grün: **1044 Vitest**, `ruff check` + `ruff format --check`,
+  `python -m pytest -q`; Browser-Suite wie gehabt (Chromium-Download in der
+  Sandbox gesperrt, in CI grün).
+
 ## [0.42.0] – 2026-09-16
 
 **GUI-Text-Befund T1–T8 und V1–V2 umgesetzt (PR #125): Die Texte richten sich
