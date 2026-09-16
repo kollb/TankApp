@@ -25,6 +25,13 @@ from .data import metadata
 
 UTC = dt.timezone.utc
 
+try:
+    from zoneinfo import ZoneInfo
+
+    BERLIN_TZ = ZoneInfo("Europe/Berlin")
+except Exception:  # pragma: no cover
+    BERLIN_TZ = UTC
+
 FUELS = {"e10", "e5", "diesel"}
 # Füllungs-Validierung (§11.2, Prüfstand §3.1): ein Beleg außerhalb dieser
 # Grenzen ist kein Messwert, sondern Eingabemüll — 4xx statt still verbuchen.
@@ -56,9 +63,14 @@ MAX_SOURCE_CHARS = 40
 #       „keine Empfehlung“ den Grund der Tabelle; eine bestätigte Ablehnung
 #       bleibt eine Zeile. Eine Bestätigung schreibt den Store nicht neu — sie
 #       ist keine neue Entscheidung (siehe ``record_snapshot``).
+#   4 = O1: Tankuhrzeit je Beleg samt Herkunft (``clock_hour`` aus ``tanked_at``
+#       in Europe/Berlin, ``clock_hour_source``). Altbestände werden nicht
+#       still umgeschrieben: Die Migration rekonstruiert die Stunde aus dem
+#       gespeicherten Zeitstempel und kennzeichnet sie als ``abgeleitet``;
+#       Belege ohne Zeitstempel bleiben bei 12 Uhr und tragen ``default``.
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 3
+FEEDBACK_SCHEMA_VERSION = 4
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -84,6 +96,19 @@ M7_MIN_RECOMMENDATIONS = 100
 # Tankzeit-Profil w(h) belastbar (Konzept §5.5 Schicht C) — darunter
 # bleibt der Default die ehrlichere Wahl.
 WH_MIN_FILLS = 8
+# O1 (0.44.0): Tankuhrzeit eines Belegs. Vorher buk jeder Beleg ohne
+# explizite ``clock_hour``-Angabe auf 12 Uhr — die GUI sendet das Feld nie,
+# also lernte das w(h)-Histogramm ab dem achten Beleg aus einer erfundenen
+# Uhrzeit (zugleich die Projektionsregel der Engine,
+# ``engine/config.py:decision_hour``; der Ausreißer fiel deshalb nicht auf).
+# Jetzt wird die Stunde serverseitig aus ``tanked_at`` in Europe/Berlin
+# abgeleitet und die Herkunft je Beleg ausgewiesen.
+CLOCK_HOUR_DEFAULT = 12.0
+# Herkunft der Stunde: ``beleg`` = aus dem Beleg selbst (sein ``tanked_at``
+# oder eine explizite Angabe), ``abgeleitet`` = nachträglich aus dem
+# gespeicherten Zeitstempel rekonstruiert (Migration von Altbeständen),
+# ``default`` = kein Zeitstempel, also die erfundene 12-Uhr-Projektion.
+CLOCK_HOUR_SOURCES = ("beleg", "abgeleitet", "default")
 M7_BRIER_THRESHOLD = 0.25
 
 _STORE_THREAD_LOCK = threading.Lock()
@@ -115,6 +140,53 @@ class StoreSchemaTooNew(RuntimeError):
     503 auf („Server kann den Store nicht lesen“), nicht als Datenverlust;
     Abhilfe ist das App-Update, nicht ein Überschreiben.
     """
+
+
+def _hour_from_stamp(stamp: dt.datetime) -> float:
+    """Ganze Stunde eines Zeitstempels in Europe/Berlin — Bucket von w(h).
+
+    Die App denkt Tankzeiten lokal (Anzeige, Bilanz, Heatmap): Ein Beleg um
+    18:40 Uhr MESZ gehört in die 18-Uhr-Spalte, nicht in die 16-Uhr-Spalte
+    (UTC) und nicht in die erfundene 12-Uhr-Spalte der Projektionsregel.
+    """
+    return float(stamp.astimezone(BERLIN_TZ).hour)
+
+
+def _local_hour_fraction(stamp: dt.datetime) -> float:
+    """Stunde mit Minutenanteil (18:40 → 18,6667) für den Stunden-Fallback.
+
+    ``classify_compliance`` vergleicht im Fallback-Pfad (Altdaten ohne
+    ISO-Zeiten) Beleg-Stunde und Snapshot-Stunde mit einer 45-Minuten-Toleranz
+    — dafür ist die ganze Stunde zu grob. Gespeichert wird trotzdem die ganze
+    Stunde: ``clock_hour`` ist der Bucket des w(h)-Histogramms.
+    """
+    local = stamp.astimezone(BERLIN_TZ)
+    return round(local.hour + local.minute / 60 + local.second / 3600, 4)
+
+
+def clock_hour_from_fill(
+    fill_data: dict[str, Any], tanked_at: str | None
+) -> tuple[float, str]:
+    """(Tankuhrzeit, Herkunft) eines Belegs — O1: gemessen statt erfunden.
+
+    Reihenfolge: ``tanked_at`` (serverseitig validiert, Europe/Berlin) →
+    explizite ``clock_hour``-Angabe des Clients → Default 12 Uhr. Der
+    Zeitstempel gewinnt, weil Beleg-Zeit und Beleg-Stunde sonst zwei
+    Wahrheiten wären: Ein Client, der beides schickt, dürfte sich
+    widersprechen, und das Histogramm wüsste nicht, welcher Wert gilt.
+
+    Die Herkunft (``CLOCK_HOUR_SOURCES``) wird je Beleg gespeichert, damit
+    das w(h)-Histogramm sagt, worauf es steht — ein Beleg ohne Zeitstempel
+    bleibt die erfundene 12-Uhr-Projektion der Engine und ist als solche
+    gekennzeichnet, statt als Messung durchzugehen.
+    """
+    stamp = _parse_ts(tanked_at)
+    if stamp is not None:
+        return _hour_from_stamp(stamp), "beleg"
+    explicit = _to_float(fill_data.get("clock_hour"))
+    if explicit is not None:
+        return explicit % 24.0, "beleg"
+    return CLOCK_HOUR_DEFAULT, "default"
 
 
 def _migrate_store_v1_to_v2(store: dict[str, Any]) -> dict[str, Any]:
@@ -158,11 +230,49 @@ def _migrate_store_v2_to_v3(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v3_to_v4(store: dict[str, Any]) -> dict[str, Any]:
+    """3 → 4 (0.43 → 0.44): Tankuhrzeit je Beleg samt Herkunft (O1).
+
+    Vor 0.44.0 buk jeder Beleg ohne explizite ``clock_hour``-Angabe auf 12 Uhr
+    — die GUI sendet das Feld nie, also stand das persönliche Zeitprofil ab dem
+    achten Beleg auf einer Uhrzeit, die nie gemessen war. Altbestände werden
+    nicht still umgeschrieben, sondern **mit Kennzeichnung** rekonstruiert:
+
+    * Beleg mit ``tanked_at`` → Stunde in Europe/Berlin, Herkunft
+      ``"abgeleitet"`` (nachträglich aus dem gespeicherten Zeitstempel; ob das
+      damals die Tank- oder die Buchungszeit war, ist nicht mehr zu trennen).
+    * Beleg ohne Zeitstempel, aber mit einer Stunde, die nicht der Default ist
+      → Wert bleibt, Herkunft ``"beleg"`` (ein Client hat ihn angegeben).
+    * Beleg ohne Zeitstempel und ohne eigene Stunde → 12 Uhr, Herkunft
+      ``"default"``: ausdrücklich die erfundene Projektions-Uhrzeit.
+
+    Idempotent: Belege, die ``clock_hour_source`` schon tragen, bleiben
+    unverändert (ein zweiter Lauf schreibt nichts um).
+    """
+    for fill in store.get("fills", []) or []:
+        if not isinstance(fill, dict) or "clock_hour_source" in fill:
+            continue
+        stamp = _parse_ts(fill.get("tanked_at"))
+        if stamp is not None:
+            fill["clock_hour"] = _hour_from_stamp(stamp)
+            fill["clock_hour_source"] = "abgeleitet"
+            continue
+        explicit = _to_float(fill.get("clock_hour"))
+        if explicit is not None and explicit % 24.0 != CLOCK_HOUR_DEFAULT:
+            fill["clock_hour"] = explicit % 24.0
+            fill["clock_hour_source"] = "beleg"
+        else:
+            fill["clock_hour"] = CLOCK_HOUR_DEFAULT
+            fill["clock_hour_source"] = "default"
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
     1: _migrate_store_v1_to_v2,
     2: _migrate_store_v2_to_v3,
+    3: _migrate_store_v3_to_v4,
 }
 
 
@@ -496,11 +606,18 @@ def record_snapshot(
         if p_besser is None:
             p_besser = estimate_p(store, action)
 
+        # O1: Auch der Snapshot nennt keine erfundene Uhrzeit. ``decide``
+        # schickt die gemessene Stunde (Europe/Berlin, mit Minutenanteil);
+        # fehlt sie, ist der Emit-Zeitpunkt die Quelle — nicht 12 Uhr.
+        snap_hour = _to_float(snapshot_data.get("clock_hour"))
+        if snap_hour is None:
+            snap_hour = _local_hour_fraction(clock_now)
+
         snap_id = _uid("snap")
         snap = {
             "id": snap_id,
             "emitted_at": now_str,
-            "clock_hour": snapshot_data.get("clock_hour", 12.0),
+            "clock_hour": snap_hour,
             "action": action,
             "city": snapshot_data.get("city"),
             "station_id": snapshot_data.get("station_id"),
@@ -644,11 +761,11 @@ def classify_compliance(
         return "unrelated"
 
     # Fallback für Altdaten ohne ISO-Zeiten (stundenbasiert, tagblind).
-    snap_hour = snap.get("clock_hour", 12.0)
+    snap_hour = snap.get("clock_hour", CLOCK_HOUR_DEFAULT)
     try:
         snap_hour = float(snap_hour)
     except (TypeError, ValueError):
-        snap_hour = 12.0
+        snap_hour = CLOCK_HOUR_DEFAULT
     same_station = station_id == snap_station or station_id == alt_station
 
     if action == "refuel_now":
@@ -817,7 +934,6 @@ def record_fill(
         if not ep:
             ep = _open_episode(store)
 
-        clock_hour = fill_data.get("clock_hour", 12.0)
         # B5: Freitext hart kappen — siehe _capped_text.
         station_name = _capped_text(
             fill_data.get("station_name"), MAX_STATION_NAME_CHARS
@@ -828,9 +944,18 @@ def record_fill(
         # Angabe ungeprüft gespeichert (1970/2100 inklusive).
         tanked_at = _validated_tanked_at(fill_data.get("tanked_at"), clock)
 
-        compliance = classify_compliance(
-            ep, clock_hour, station_id, tanked_at=tanked_at
-        )
+        # O1: Tankuhrzeit aus dem Beleg statt aus der 12-Uhr-Projektion. Die
+        # GUI sendet ``tanked_at`` (Europe/Berlin-fähig, serverseitig
+        # validiert), also ist die Stunde eine Messung und keine Annahme; die
+        # Herkunft steht je Beleg dabei (``clock_hour_source``).
+        clock_hour, clock_hour_source = clock_hour_from_fill(fill_data, tanked_at)
+        stamp = _parse_ts(tanked_at)
+        # Stunden-Fallback von ``classify_compliance`` (Altdaten ohne ISO-Zeiten
+        # am Snapshot): mit Minutenanteil, die 45-Minuten-Toleranz ist sonst
+        # bis zu eine Stunde blind.
+        fill_hour = _local_hour_fraction(stamp) if stamp is not None else clock_hour
+
+        compliance = classify_compliance(ep, fill_hour, station_id, tanked_at=tanked_at)
 
         # Counterfactual = price_now des ersten Snapshots der Folge (oder price_paid wenn keine Folge)
         ref_price = ep.get("first_snapshot", {}).get("price_now") if ep else price_paid
@@ -846,6 +971,9 @@ def record_fill(
             "station_name": station_name,
             "tanked_at": tanked_at or now_str,
             "clock_hour": clock_hour,
+            # O1: Herkunft der Stunde — das w(h)-Histogramm sagt damit, ob es
+            # auf gemessenen Tankzeiten steht oder auf der 12-Uhr-Projektion.
+            "clock_hour_source": clock_hour_source,
             "liters": liters,
             "price_paid": price_paid,
             "price_source": price_source,
@@ -1432,9 +1560,12 @@ def compute_wallet_stats(
         wh_hours = w0
     else:
         # Empirisches Histogramm über ALLE aktiven Füllungen (Langzeitprofil).
+        # O1: Die Stunde je Beleg ist seit 0.44.0 eine gemessene Größe
+        # (``tanked_at`` in Europe/Berlin) und trägt ihre Herkunft; vorher war
+        # sie für jeden GUI-Beleg die erfundene 12.
         w_hat = [0.0] * 24
         for f in fills_active:
-            h = int(f.get("clock_hour", 12.0)) % 24
+            h = int(_to_float(f.get("clock_hour")) or CLOCK_HOUR_DEFAULT) % 24
             w_hat[h] += 1.0
         w_hat = [v / n_all for v in w_hat]
         # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + k*w0) / (n + k)
@@ -1442,6 +1573,15 @@ def compute_wallet_stats(
             round((n_all * w_hat[i] + WH_MIN_FILLS * w0[i]) / (n_all + WH_MIN_FILLS), 4)
             for i in range(24)
         ]
+
+    # O1: Herkunft der Tankuhrzeiten. Ein Beleg ohne Zeitstempel zählt weiter
+    # mit der 12-Uhr-Projektion — aber gezählt und benannt, statt als Messung
+    # durchzugehen. Altbestand ohne Kennzeichnung (vor Schema 4) gilt als
+    # Default: Gebucht wurde dort immer 12 Uhr, egal wann getankt wurde.
+    clock_sources = {key: 0 for key in CLOCK_HOUR_SOURCES}
+    for f in fills_active:
+        key = f.get("clock_hour_source")
+        clock_sources[key if key in clock_sources else "default"] += 1
 
     return {
         "n_fills": n_fills,
@@ -1456,16 +1596,13 @@ def compute_wallet_stats(
         "wh_n": n_all,
         "wh_personalized": n_all >= WH_MIN_FILLS,
         "wh_min_fills": WH_MIN_FILLS,
+        # O1: Worauf das Histogramm steht — Belege mit gemessener/rekonstruierter
+        # Tankzeit und Belege mit der erfundenen Default-Stunde.
+        "wh_clock_sources": clock_sources,
+        "wh_measured_n": clock_sources["beleg"] + clock_sources["abgeleitet"],
+        "wh_default_n": clock_sources["default"],
         "last_fill": fills_active[0] if fills_active else None,
     }
-
-
-try:
-    from zoneinfo import ZoneInfo
-
-    BERLIN_TZ = ZoneInfo("Europe/Berlin")
-except Exception:  # pragma: no cover
-    BERLIN_TZ = dt.timezone.utc
 
 
 def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:

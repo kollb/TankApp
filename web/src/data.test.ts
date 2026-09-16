@@ -1131,6 +1131,48 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
     expect(note).toContain("1 Beleg von 8");
     expect(note).not.toContain("1 Belege");
   });
+
+  // O1 (0.44.0): Belege ohne Zeitstempel tragen die erfundene 12-Uhr-Projektion
+  // der Engine ins Profil. Der Satz nennt sie, statt sie als Tankzeit
+  // durchgehen zu lassen.
+  it("nennt Belege ohne Zeitstempel als erfundene 12 Uhr", () => {
+    const note = personalizationNote({
+      active: true,
+      n_fills: 12,
+      min_fills: 8,
+      missing_fills: 0,
+      measured_fills: 9,
+      default_fills: 3,
+    });
+    expect(note).toContain("12 Belege");
+    expect(note).toContain("3 Belege ohne Zeitstempel zählen als 12 Uhr.");
+  });
+
+  it("schreibt einen Beleg ohne Zeitstempel in der Einzahl", () => {
+    const note = personalizationNote({
+      active: false,
+      n_fills: 5,
+      min_fills: 8,
+      missing_fills: 3,
+      measured_fills: 4,
+      default_fills: 1,
+    });
+    expect(note).toContain("1 Beleg ohne Zeitstempel zählt als 12 Uhr.");
+    expect(note).not.toContain("1 Belege ohne");
+  });
+
+  it("schweigt über die 12 Uhr, wenn jede Tankzeit gemessen ist", () => {
+    const note = personalizationNote({
+      active: true,
+      n_fills: 12,
+      min_fills: 8,
+      missing_fills: 0,
+      measured_fills: 12,
+      default_fills: 0,
+    });
+    expect(note).not.toContain("ohne Zeitstempel");
+    expect(note).not.toContain("12 Uhr");
+  });
 });
 
 describe("V5: Einheiten und Zeitraumformen aus einer Quelle", () => {

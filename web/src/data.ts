@@ -378,6 +378,8 @@ export type AdviceAction =
 export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
+/** O1: Herkunft der Tankuhrzeit eines Belegs (`app/feedback.py`). */
+export type ClockHourSource = "beleg" | "abgeleitet" | "default";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
 /** Ein Beleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
@@ -388,6 +390,9 @@ export type Fill = {
   station_name?: string;
   tanked_at?: string | null;
   clock_hour?: number | null;
+  /** O1 (0.44.0): Woher die Tankuhrzeit kommt — gemessen, rekonstruiert oder
+   *  die erfundene 12-Uhr-Projektion (Beleg ohne Zeitstempel). */
+  clock_hour_source?: ClockHourSource | null;
   liters: number;
   price_paid: number;
   price_source?: string;
@@ -615,6 +620,10 @@ export type DecideResult = {
     n_fills: number;
     min_fills: number;
     missing_fills: number;
+    /** O1: Belege mit gemessener oder rekonstruierter Tankzeit. */
+    measured_fills?: number;
+    /** O1: Belege ohne Zeitstempel — deren Stunde ist die erfundene 12. */
+    default_fills?: number;
   } | null;
   episode: {
     id: string;
@@ -3509,18 +3518,32 @@ export function personalizationNote(
   personalization: DecideResult["personalization"],
 ): string | null {
   if (!personalization) return null;
-  const { active, n_fills, min_fills, missing_fills } = personalization;
+  const { active, n_fills, min_fills, missing_fills, default_fills } =
+    personalization;
+  // O1: Belege ohne Zeitstempel zählen die 12-Uhr-Projektion der Engine ins
+  // Profil. Das Profil bleibt ehrlich, wenn der Satz sagt, wie viele Stunden
+  // erfunden sind — sonst wirkt eine Mittagsspitze wie eine eigene Tankzeit.
+  const invented =
+    default_fills && default_fills > 0
+      ? ` ${
+          default_fills === 1
+            ? "1 Beleg ohne Zeitstempel zählt"
+            : `${default_fills} Belege ohne Zeitstempel zählen`
+        } als 12 Uhr.`
+      : "";
   if (active) {
     return (
       `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
-      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.`
+      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` +
+      invented
     );
   }
   const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
   return (
     `Noch nach Preis sortiert (${fills} von ${min_fills}) — ` +
     `ab ${min_fills} Belegen ordnet die App die Fenster nach deinen ` +
-    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.`
+    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.` +
+    invented
   );
 }
 
