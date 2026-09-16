@@ -130,14 +130,18 @@ const CHIP = {
   gray: "border-slate-700 bg-slate-800/60 text-slate-300",
 } as const;
 
+// V4 (GUI-TEXT-BEFUND): kein Zeichen als Textersatz. „Jetzt tanken“,
+// „Warten“ und „Woanders tanken“ tragen dieselben Worte wie das Tagebuch
+// (`diaryActionWord`, §4c) — die Farbe des Chips sagt die Richtung, die
+// Icons daneben bleiben dekorativ (aria-hidden, V4) oder fallen ganz weg.
 const CHIP_TEXT = {
-  refuel_now: "● Jetzt tanken",
-  wait: "▼ Warten",
-  refuel_elsewhere: "→ Woanders tanken",
+  refuel_now: "Jetzt tanken",
+  wait: "Warten",
+  refuel_elsewhere: "Woanders tanken",
   // Stufe C/S1: grau ist ein erster Klasse-Zustand. Der Chip benennt den
   // Zustand („keine klare Empfehlung“), die Überschrift darunter die
   // Tatsache, die auch ohne Modell gilt: der günstigste offene Preis.
-  no_advice: "– Keine klare Empfehlung",
+  no_advice: "Keine klare Empfehlung",
 } as const;
 
 /** Mini-Visual der Ebene 1: Tagesprofil mit markiertem Fenster. */
@@ -376,20 +380,20 @@ export function JetztView(props: JetztViewProps) {
                 }
                 className="rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                ✓ Ja, wie empfohlen (
+                Ja, wie empfohlen (
                 {bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
               </button>
               <button
                 onClick={onOpenFills}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
               >
-                ✎ Anders buchen
+                Anders buchen
               </button>
               <button
                 onClick={() => onDismissDue(dueEpisode.id)}
                 className="rounded-lg px-3 py-2.5 text-xs text-slate-400 transition hover:text-white"
               >
-                ✕ Noch nicht
+                Noch nicht
               </button>
             </div>
           </div>
@@ -642,7 +646,7 @@ export function JetztView(props: JetztViewProps) {
               >
                 {verdict?.action === "no_advice"
                   ? CHIP_TEXT.no_advice
-                  : "● Preisvergleich"}
+                  : "Preisvergleich"}
               </span>
               {bestNow.spreadEur !== null && (
                 <span className="text-xs text-slate-400">

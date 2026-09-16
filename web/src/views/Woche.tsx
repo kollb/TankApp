@@ -381,9 +381,10 @@ export function WocheView(props: WocheViewProps) {
               })}
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              ★ = Sicherheit des Fensters (Prozent im Detail, Schwellen im
-              Labor). Leere Tage: kein Fenster mit Vorsprung — keine
-              Erfindung. Tage 5–7 sind „noch unsicher“.
+              Sicherheit zeigt die Sterne unter jedem Fenster (bis drei — die
+              Bedeutung im Detail, Schwellen im Labor). Leere Tage: kein
+              Fenster mit Vorsprung — keine Erfindung. Tage 5–7 sind „noch
+              unsicher“.
             </p>
           </>
         )}

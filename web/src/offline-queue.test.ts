@@ -69,7 +69,8 @@ describe("Offline-Queue: Entschieden", () => {
     expect(queueStatusText(3)?.text).toContain("3 Einträge sind");
     expect(queueStatusText(3)?.note).toContain("Nichts ist verloren");
     const aged = queueStatusText(1, 2.5 * 60 * 60 * 1000);
-    expect(aged?.note).toContain("2 h");
+    // V5: Alter über `ageWord` — „vor 3 Stunden“, nicht „seit 2 h“.
+    expect(aged?.note).toContain("vor 3 Stunden");
     expect(queueOldestAgeMs([entry({ created_at: NOW - 3600_000 })], NOW)).toBe(3600_000);
     expect(queueOldestAgeMs([], NOW)).toBeNull();
   });

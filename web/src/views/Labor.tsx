@@ -50,6 +50,7 @@ import {
   percentLabel,
   rowOutcome,
   timeLabel,
+  timeSpanLabel,
   type AdviceDiary,
   type Forecast,
   type Health,
@@ -578,8 +579,8 @@ export function LaborView(props: LaborViewProps) {
             <span className="text-slate-500">Horizont:</span>
             {[
               { days: 0, label: "24 Stunden", enabled: true },
-              { days: 3, label: "+3 Tage", enabled: !!f?.points_3d?.length },
-              { days: 7, label: "+7 Tage", enabled: !!f?.points_7d?.length },
+              { days: 3, label: "3 Tage", enabled: !!f?.points_3d?.length },
+              { days: 7, label: "7 Tage", enabled: !!f?.points_7d?.length },
             ].map((option) => (
               <button
                 key={option.days}
@@ -1057,11 +1058,7 @@ export function LaborView(props: LaborViewProps) {
                                   : "text-slate-400"
                             }
                           >
-                            {verdict.tone === "good"
-                              ? "✓"
-                              : verdict.tone === "bad"
-                                ? "✗"
-                                : "·"}
+                            {verdict.word}
                           </span>{" "}
                           {diaryActionWord(entry.action)} · {stationName}
                           {rowCount ? ` · ${rowCount}` : ""}
@@ -1468,9 +1465,9 @@ export function LaborView(props: LaborViewProps) {
             <p className="text-xs font-semibold text-slate-200">Echte Preise im Zeitraum</p>
             <div className="mt-2 flex flex-wrap gap-1 text-xs">
               {[
-                { hours: 24, label: "24 Stunden" },
-                { hours: 72, label: "3 Tage" },
-                { hours: 168, label: "7 Tage" },
+                { hours: 24, label: timeSpanLabel(24) },
+                { hours: 72, label: timeSpanLabel(72) },
+                { hours: 168, label: timeSpanLabel(168) },
               ].map((option) => (
                 <button
                   key={option.hours}

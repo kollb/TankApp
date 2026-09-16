@@ -2582,6 +2582,48 @@ export function euroToCentPerLiter(value: number | null | undefined) {
 }
 
 /**
+ * Zeitwert in Euro je Stunde — das Symbol „€/h“ ist die Kurzform, die
+ * Langform läuft über denselben Formatter statt „€/h“ und „Euro pro Stunde“
+ * an zwei Stellen zu schreiben (GUI-TEXT-BEFUND V5).
+ */
+export function euroPerHour(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${deTrimmed(value)} €/h`;
+}
+
+/**
+ * Tempo in Kilometern je Stunde — Symbol „km/h“ in der Zahl, Langform
+ * („<x> Kilometer pro Stunde“, deutsch, ausgeschrieben) für Screenreader.
+ * Eine Stelle statt der zwei Schreibweisen aus dem V5-Befund.
+ */
+export function kilometersPerHour(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${Number.isInteger(value) ? deTrimmed(value, 0) : deTrimmed(value, 1)} km/h`;
+}
+
+export function kilometersPerHourSpeech(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "keine Angabe";
+  const word = Number.isInteger(value) ? deTrimmed(value, 0) : deTrimmed(value, 1);
+  return `${word} Kilometer pro Stunde`;
+}
+
+export type SpanHours = 24 | 72 | 168;
+
+/**
+ * Zeitraum-Label für 24 h / 3 Tage / 7 Tage — eine Wortform für Schalter,
+ * Verlaufstitel und `aria-label` (GUI-TEXT-BEFUND V5: vorher wechselten
+ * „24 Stunden“, „letzte 24 Stunden“, „+3 Tage“ und „3 Tage“ je nach Stelle).
+ * In Sätzen gehört davor „(die) letzten“; die Schalter-Tabs sind reine Nomen
+ * ohne „letzte“, weil der Kontext „Verlauf der …“ die Richtung bereits nennt.
+ */
+export function timeSpanLabel(hours: SpanHours): string {
+  if (hours === 24) return "24 Stunden";
+  if (hours === 72) return "3 Tage";
+  if (hours === 168) return "7 Tage";
+  return `${hours} Stunden`;
+}
+
+/**
  * Einordnung nach dem Buchen (MICROCOPY: kurze Bestätigung mit
  * Einordnung): der gezahlte Preis gegen den Median der frischen
  * Set-Preise zu dem Moment — eine berechenbare, ehrliche Größe.
@@ -3658,3 +3700,28 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
 export function glossaryById(id: string): GlossaryTerm | undefined {
   return GLOSSARY.find((g) => g.id === id);
 }
+
+// --- V3: eine Meldung, ein Rang -------------------------------------------------
+
+/**
+ * Rang einer Meldung — je höher, desto wichtiger (0.43.0, GUI-TEXT-BEFUND V3).
+ * Solange mehrere Quellen gleichzeitig etwas melden, gewinnt der höchste Rang;
+ * gleichrangige Meldungen werden mit „·“ aneinandergereiht, sodass nie mehr
+ * als **ein** Block über dem Inhalt steht.
+ */
+export const NOTICE_RANK = {
+  error: 4, // app-weit nicht verarbeitet — role="alert"
+  warn: 3, // app-weit eingeschränkt (offline, Queue, Alt-Daten) — role="status"/"alert"
+  hint: 2, // app-weiter Hinweis (Installation, Update, E5-Hinweis)
+  success: 1, // reine Bestätigung einer Aktion (Beleg verbucht, Link kopiert, …)
+} as const;
+
+export type NoticeRank = keyof typeof NOTICE_RANK;
+
+/** Höher gewinnt. Die Meldung (als Block) gewinnt gegen den schlichten Rang. */
+export function noticeRankKey(rank: NoticeRank | number): number {
+  return typeof rank === "number" ? rank : NOTICE_RANK[rank];
+}
+
+/** Eine gemeinsame Anzeigedauer für Rückmeldungen (DoD V3: 6 s, Störungen bleiben). */
+export const NOTICE_NORMAL_MS = 6000;

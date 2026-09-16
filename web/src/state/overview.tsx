@@ -44,6 +44,8 @@ import {
   problem,
   segments,
   timeLabel,
+  timeSpanLabel,
+  type SpanHours,
   togglePinnedStation,
   transitionRuleLine,
   useResource,
@@ -975,12 +977,11 @@ function useOverviewState() {
   const horizonDays = horizon;
 
   const observations = segments(history.data?.points || []);
-  const spanLabel =
-    spanHours === 24
-      ? "letzte 24 Stunden"
-      : spanHours === 72
-        ? "letzte 3 Tage"
-        : "letzte 7 Tage";
+  // V5 (GUI-TEXT-BEFUND): eine Wortform für 24 h / 3 Tage / 7 Tage — Schalter
+  // und Verlaufssätze ziehen `timeSpanLabel` aus data.ts; „(die) letzten“ steht
+  // hier im Satz, nicht im Schalter-Label. Die Präferenz erzwingt die drei
+  // Werte (Validator oben), der Fallback deckt Altstände ehrlich ab.
+  const spanLabel = `letzte ${timeSpanLabel(spanHours as SpanHours)}`;
 
   // GUI-Neuentwurf: der Tagesstreifen ist jetzt „Heute im Blick“ (Jetzt)
   // und „Der Set-Ton“ (Stationen) — dieselbe pure Funktion (strip.ts),
