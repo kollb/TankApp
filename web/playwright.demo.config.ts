@@ -16,9 +16,11 @@ import { defineConfig } from "@playwright/test";
 // unter `.demo-e2e-data/` und sind nicht versioniert.
 export default defineConfig({
   testDir: "./e2e",
-  // Nur diese Datei — die gemockten Specs gehören zur Alltagssuite und
-  // erwarten deren Server auf 1355.
-  testMatch: /demo\.spec\.ts/,
+  // Nur diese Dateien — die gemockten Specs gehören zur Alltagssuite und
+  // erwarten deren Server auf 1355. `mobile.spec.ts` misst die Mobil-Zusagen
+  // (kein Querlauf, keine überlaufenden Zellen) und braucht dafür echte
+  // Server-Antworten; im `desktop`-Projekt überspringt es sich selbst.
+  testMatch: /(demo|mobile)\.spec\.ts/,
   reporter: process.env.CI ? "github" : "list",
   // Der Aufbau rechnet echte Engine-Fits (45 Tage Demo-Verlauf) — das dauert
   // Minutenfrist, nicht Sekunden.

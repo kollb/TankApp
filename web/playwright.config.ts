@@ -1,9 +1,10 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
-  // Die unmocked Suite (demo.spec.ts) läuft gegen den Demo-Stack und hat ihre
-  // eigene Konfiguration: playwright.demo.config.ts (Port 1357, echte Daten).
-  testIgnore: ["demo.spec.ts"],
+  // Zwei Suiten laufen gegen den Demo-Stack und haben ihre eigene
+  // Konfiguration: playwright.demo.config.ts (Port 1357, echte Daten) —
+  // `demo.spec.ts` (Integration) und `mobile.spec.ts` (schmaler Viewport).
+  testIgnore: ["demo.spec.ts", "mobile.spec.ts"],
   // In CI Fehler als GitHub-Annotation an den PR hängen (Testname, Datei,
   // Zeile) — sonst stecken sie nur im Log-Archiv, das man erst herunterladen
   // muss. Lokal bleibt die gewohnte Listenausgabe.
