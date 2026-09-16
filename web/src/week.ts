@@ -48,9 +48,12 @@ export type WeekDay = {
 
 /**
  * Sterne aus der Fenster-Sicherheit (UI-NEUENTWURF §5.3: „Sterne statt
- * Prozente“). Schwellen entsprechen den Wort-Stufen der Ampel-Karte
- * (wordFromPercent) — 3 = „ziemlich sicher“, 1 = „unsicher“, 0 = kein
- * messbares P. Ohne P steht ehrlich kein Stern, kein erfundener.
+ * Prozente“). Die Klassen liegen auf denselben Schwellen wie die Wort-Stufen
+ * der Ampel-Karte (`wordFromPercent`, 75/55) — nur die letzte Stufe ist
+ * feiner: Der 35-%-Schnitt trennt die beiden Fälle, die dort beide „unsicher“
+ * heißen (1 Stern = 35–55 %, 0 Sterne = darunter). Ohne messbares P steht
+ * ehrlich kein Stern, kein erfundener; festgehalten in `week.test.ts`
+ * („Stern- und Wortklassen“).
  */
 export function windowStars(p: number | null | undefined): number {
   if (p == null || !Number.isFinite(p)) return 0;
