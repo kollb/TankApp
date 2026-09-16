@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 16.09.2026 · App-Version 0.43.2. Abgleich von
+> Stand: 16.09.2026 · App-Version 0.44.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [16.09.2026 — Version 0.44.0: Batch 1 des Optimierungs-Befunds (O1 + O22)](#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)
   - [16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet](#16092026--version-0432-mobil-robustheit-gemessen-statt-behauptet)
   - [16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen](#16092026--version-0431-prüfbericht-pr-121-archiviert-restpunkte-geschlossen)
   - [16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5](#16092026--version-0430-gui-text-befund-v3v5)
@@ -237,6 +238,46 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 16.09.2026 — Version 0.44.0: Batch 1 des Optimierungs-Befunds (O1 + O22)
+
+Beide Befunde waren „stille Falschaussagen“: Der Code lief durch, die Zahl
+stimmte trotzdem nicht.
+
+**O1 — die erfundene Tankuhrzeit (Konzept §5.5 Schicht C).** `record_fill` las
+die Uhrzeit aus einem Feld, das die GUI nie sendet, und fiel auf 12 Uhr zurück.
+Damit stand das persönliche Tankzeit-Profil w(h) ab dem achten Beleg auf einer
+Uhrzeit, die nie gemessen wurde — und zwar auf der Mittagsspitze der
+Engine-Projektion, also genau dem Wert, der die Fensterreihenfolge am stärksten
+verschiebt. Konzept §5.5 verlangt das Profil aus **eigenen** Tankvorgängen;
+umgesetzt ist es seit 0.44.0 so: Die Stunde wird serverseitig aus `tanked_at`
+in Europe/Berlin abgeleitet, der Zeitstempel gewinnt gegen eine
+widersprechende Angabe, und je Beleg steht die Herkunft dabei
+(`clock_hour_source` ∈ `beleg` · `abgeleitet` · `default`). Altbestände werden
+**nicht** still umgeschrieben (Schema 3 → 4 mit Kennzeichnung), und die
+Statistik nennt die Zusammensetzung (`wh_clock_sources`, `wh_measured_n`,
+`wh_default_n`) bis in den Satz der GUI (`personalizationNote`). Der Default
+12 Uhr bleibt für Belege ohne Zeitstempel — als ausgewiesene Projektion, nicht
+als Messung.
+
+**O22 — die Veröffentlichung über dem Leselimit (Konzept §13, Betrieb).**
+`data/runtime/engine/current.json` wuchs mit `indent=2` und voller
+float-Präzision; `app.data.read_json` verweigert jede Datei über 10 MB und gab
+still `{}` zurück — denselben Wert wie „noch keine Daten“. Ab rund fünf
+Stationen zeigte die App überall „keine Prognose“, während der Modell-Lauf
+Erfolg meldete. Umgesetzt sind die Maßnahmen (a)–(c): kompakt schreiben,
+Preise/Quantile auf 4 Dezimalen runden (0,0001 €/L = 0,01 ct/L, feiner als
+jede Anzeige und jede Schwelle) und laut werden — benannte Grenzen
+(`PUBLICATION_BUDGET_BYTES` 6 MB, `READ_JSON_MAX_BYTES` 10 MB),
+`read_json_checked` unterscheidet `missing` · `too_large` · `invalid`,
+`/api/v1/health` trägt den `publication`-Block, `app/alarms.py` schlägt an
+(`publication_large` warn, `publication_unreadable` error mit Grund), und der
+Modell-Lauf nennt die Größe im Job-Log. Gemessen an elf Stationen mit
+Produktionsparametern: 22,40 MB → **7,28 MB** (unter dem 8-MB-Check des
+Befunds, über dem Warn-Budget — der Alarm ist real, nicht konstruiert).
+
+**Offen bleibt Maßnahme (d)** — das Aufteilen der Veröffentlichung je
+Kraftstoff/Station; Grund und Abwägung stehen in der Backlog-Tabelle unten.
 
 ### 16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet
 
@@ -519,6 +560,7 @@ Rechnung geändert.
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | wartet auf Betrieb | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | entschieden | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
 | **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Arbeit | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). |
+| **Veröffentlichung aufteilen je Kraftstoff/Station (O22 Maßnahme d)** | Arbeit | Die Veröffentlichung (`data/runtime/engine/current.json`) ist seit 0.44.0 kompakt und gerundet: elf Stationen mit Produktionsparametern ergeben 7,28 MB statt 22,40 MB, dazu die Alarme `publication_large` (über 6 MB) und `publication_unreadable` (über dem 10-MB-Leselimit oder nicht parsebar). Die Klippe ist damit benannt und gemessen, nicht gebannt: Weitere Stationen oder ein dritter Kraftstoff schieben die Datei wieder über das Leselimit, und dann hilft nur Aufteilen (z. B. eine Datei je Kraftstoff, Muster aus der Selektion). Das ändert die **Form des Artefakts** und damit jeden Leser — `/api/v1/forecast`, `/api/v1/stats/summary`, `/api/v1/decide` und `/api/v1/last_forecasts` (darüber auch der RP2-Cache, `rp2/cache_forecasts.py` holt per HTTP) lesen dieselbe Datei; ein Index-File plus Teildateien braucht atomares Schreiben über mehrere Pfade (heute: eine `write_json`-Transaktion, ein Fehlschlag lässt die vorige Fassung stehen). Erst tun, wenn der Alarm `publication_large` im echten Betrieb dauerhaft steht oder eine Stadt/Kraftstoff dazukommt. Zwischenhebel ohne Formänderung: `bootstrap_samples` senken (`nas_up.ini`) — kostet Genauigkeit der Intervalle, nicht nur Rechenzeit. |
 | **Polling-Set-Umbau bei toten Stationen (A12)** | entschieden | Tote Stationen fallen aus dem Ranking, das Polling-Set bleibt stabil — Tausch nur mit Bestätigung ([STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)). Drei Gründe: (1) Wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden — ein automatischer Ausschluss wäre eine Selbst-Tot-Schleife. (2) Die Batch-Ökonomie (`prices.php`: bis zu 10 UUIDs je Request) macht eine tote Station zu höchstens einem Zehntel Request je Poll — kein Kontingent-Problem, das Automatik rechtfertigt. (3) Der Pfad Alarm → System-Tab → Tausch ist dokumentiert und in der GUI verlinkt. |
 
 

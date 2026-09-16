@@ -1,13 +1,18 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 15.09.2026 · App-Version **0.40.0** — B3/B4/B5, Ereignis-Pipeline
+> Stand: 16.09.2026 · App-Version **0.44.0** — B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
 > Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
 > (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
 > `alarms[]` + `version`/`commit` in `/health` (B4/B9). Seit 0.40.0 nennt das
 > Advice-Tagebuch den Grund einer Ablehnung (`decline_reason`) und den Namen der
-> Station (`station_name`); der Feedback-Store trägt `schema_version` 3
-> (Altbestände werden beim Laden migriert, siehe [BETRIEB.md](BETRIEB.md)).
+> Station (`station_name`). Seit **0.44.0** (Batch 1 des
+> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check))
+> trägt jeder Beleg die Herkunft seiner Tankuhrzeit (`clock_hour_source`, O1),
+> der Feedback-Store hat `schema_version` **4** (Altbestände werden beim Laden
+> migriert, siehe [BETRIEB.md](BETRIEB.md)), und `/health` nennt Größe und
+> Lesbarkeit der Prognose-Veröffentlichung (`publication`, O22) samt der Alarme
+> `publication_large`/`publication_unreadable`.
 > Alles serverseitig, keine Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4).
 
 ## Inhaltsverzeichnis
@@ -136,6 +141,14 @@ Entscheidungsschwellen und den M7-Vorschlag (siehe
 [Stats Summary](#stats-summary-b4-3-schichten)). Liegt kein Fenster mehr vor
 `latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
 spätesten Tankzeitpunkt.
+
+`personalization` (A9/O1) sagt, ob die Fensterreihenfolge schon nach dem
+persönlichen Tankzeit-Profil w(h) gewichtet ist: `active`, `n_fills`,
+`min_fills` (= 8, `app.feedback.WH_MIN_FILLS`), `missing_fills` und seit 0.44.0
+`measured_fills`/`default_fills` — wie viele Belege eine gemessene oder
+rekonstruierte Tankzeit tragen und wie viele mangels Zeitstempel mit der
+erfundenen 12-Uhr-Projektion zählen (O1). Die GUI hängt den Satz an die
+Fensterliste (`personalizationNote` in `web/src/data.ts`).
 
 `quality` weist die Engine-Qualität der ausgewählten Station aus
 (Konzept §3.3.3): `rolling_picp_7d_pct` (Rolling-Intervallquote über die
@@ -308,6 +321,16 @@ mehr als `200 {"error_code": …}`. `store_locked` heißt: Der
 Feedback-Store war während der Wartezeit von 5 s durchgehend belegt
 (B11) — derselbe Request darf wiederholt werden.
 
+**Tankuhrzeit (O1, 0.44.0):** `clock_hour` wird serverseitig aus `tanked_at` in
+Europe/Berlin abgeleitet — die GUI sendet den Zeitstempel (UTC-ISO), nicht die
+Stunde. Der Zeitstempel gewinnt gegen eine widersprechende `clock_hour`-Angabe
+(eine Wahrheit je Beleg); ohne Zeitstempel darf ein Client die Stunde weiter
+selbst nennen. Ohne beides bleibt der Default 12 Uhr — die Projektionsregel der
+Engine (`decision_hour`) — und ist über `clock_hour_source` als erfunden
+gekennzeichnet. Vor 0.44.0 war 12 Uhr der Wert **jedes** GUI-Belegs, das
+w(h)-Profil lernte also ab dem achten Beleg aus einer Uhrzeit, die nie gemessen
+wurde.
+
 Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
 ### Beleg-Verlauf (GET)
@@ -326,6 +349,7 @@ Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `un
       "station_name": "Aral Hauptstr.",
       "tanked_at": "2026-09-12T07:58:00+02:00",
       "clock_hour": 7,
+      "clock_hour_source": "beleg",
       "liters": 41.2,
       "price_paid": 1.679,
       "price_source": "explicit",
@@ -345,7 +369,12 @@ fehlte); `saved_vs_always_now_eur` = realisierte Ersparnis gegen „immer
 sofort getankt“ (Referenz: `price_now` des ersten Snapshots der Folge, sonst
 `price_paid`). `compliance` ∈ `followed`, `partial`, `ignored`, `unrelated`
 (Zeitstempel-Matching, siehe [Fills](#fills-b4-belege)). Storno-Felder:
-`voided`, `voided_at`.
+`voided`, `voided_at`. `clock_hour` ist die ganze Stunde der Tankzeit in
+Europe/Berlin (Bucket des w(h)-Histogramms), `clock_hour_source` ∈ `beleg`
+(aus dem Beleg selbst: sein `tanked_at` oder eine explizite Angabe) ·
+`abgeleitet` (nachträglich aus dem gespeicherten Zeitstempel rekonstruiert —
+Migration auf Schema 4) · `default` (kein Zeitstempel, also die erfundene
+12-Uhr-Projektion).
 
 Stornierte Belege bleiben mit `voided: true` und `voided_at` in der Liste —
 gezählt wird sie in Wallet-Bilanz und w(h)-Profil **nicht** mehr. Fehler:
@@ -474,7 +503,7 @@ Sprung braucht eine Migrationsfunktion, kein stiller Reset (B2-Muster).
 Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten Anker-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ Tages-Anker, Wahrheit = realisierte offene Preise). Der Tages-Anker ist `TANKAPP_DECISION_HOUR` (Default 12, `decisionHour` im Report; Engine-CLI: `--decision-hour`) — 12:00, weil Anhebungen nur mittags stattfinden und der hypothetische Entscheid erst dann weiß, ob es heute teurer wurde. Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
 2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt/Woanders, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen); noch laufende Empfehlungen zählen erst nach der Abrechnung (`n_pending`, `snapshots_total`, `n_void_all`). Das M7-Gate ist ein **Zähl-Gate** (§0.4): `calibrated` gilt ab `min_recommendations` (= 100, `app.feedback.M7_MIN_RECOMMENDATIONS`) abgeschlossenen Empfehlungen und `brier_30d` < `brier_threshold` (= 0,25, `M7_BRIER_THRESHOLD`); beide Schwellen werden mitgeliefert, damit die GUI keinen eigenen Nenner erfindet. `gate_status` unterscheidet „steht aus (n < 100)“, „nicht messbar“ (n reicht, aber kein Snapshot trägt eine P-Schätzung), „nicht erreicht“ (Brier ≥ Schwelle) und „kalibriert“. Die 90-Tage-Übergangsregel (Punkt 6) ist **kein** Bestandteil dieses Gates.
-3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis.
+3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis. Das Tankzeit-Profil w(h) (`wallet.wh_hours`, 24 Werte, ab `wh_min_fills` = 8 aktiven Belegen gegen das Pendler-Profil geschrumpft) nennt seit 0.44.0 seine Herkunft mit: `wh_clock_sources` (`{"beleg": n, "abgeleitet": n, "default": n}`), `wh_measured_n` und `wh_default_n` (O1) — Belege ohne Zeitstempel zählen die erfundene 12-Uhr-Projektion ins Profil und sind als solche gezählt.
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 6. **`live_phase` (bewertete Live-Tage der Übergangsregel)**: gezählt aus den publizierten Bootstrap-Policies (`runtime/engine/current.json` → `policies`), nicht aus dem Browserdatum: `good_complete_days` (schwächste Station/Kraftstoff), `best_complete_days`, `required_complete_days` (Engine-Schwelle `live_only_days`, Default 90), `days_missing`, `min_daily_coverage`, `stations`, `live_only_stations`, `as_of` (Datenstand des Modell-Laufs), `complete`. Ohne Veröffentlichung oder bei uneinheitlichen Schwellen ist das Feld `null` — die GUI zeigt dann „noch keine Live-Abdeckungsdaten“ statt eines erfundenen Countdowns (§0.4). Achtung: Die Tageszahl ist die Übergangsregel (Archiv → Polling), **nicht** das M7-Gate; dieses bleibt „Brier < 0,25 bei ≥ 100 abgeschlossenen Empfehlungen“ (Punkt 2). Beide Freigaben haben deshalb in der GUI eigene Kacheln und eigene Nenner: `live_only_days` (Engine-Schwelle, `engine/cli.py --live-only-days`, Default 90) für die Datenhygiene, `min_recommendations` für M7 — bei ~1 Empfehlung/Tag wären 100 Settlements ~100 Tage, M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (Konzept §13). Das Stationsdetail `data_policy` je Prognose (`GET /api/v1/forecast`) bleibt unverändert.
@@ -510,6 +539,9 @@ Antwort:
     "selection": {"state": "success", ...}
   },
   "models": {"published_at": "...", "count": 20, "calibrated": false, "decision_ready": false},
+  "publication": {"bytes": 7280000, "budget_bytes": 6000000, "max_bytes": 10000000,
+                  "over_budget": true, "readable": true,
+                  "error_code": null, "reason": null},
   "selection": {"published_at": "...", "count": 20},
   "collector": {
     "available": true,
@@ -531,6 +563,17 @@ Antwort:
 kein `.git`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
 Oberflächen (NAS, RP2-Proxy/Fallback, Pi) die Frage „was läuft hier?“.
 
+**`publication`** (O22, 0.44.0): Größe und Lesbarkeit der Veröffentlichung der
+Prognosen (`data/runtime/engine/current.json`) — ohne Parse, nur `stat`, damit
+das Healthcheck-Budget bleibt. `bytes` (Dateigröße, `null` wenn keine Datei),
+`budget_bytes` (= 6 MB, `app.data.PUBLICATION_BUDGET_BYTES`), `max_bytes`
+(= 10 MB, `READ_JSON_MAX_BYTES` — darüber liest `read_json` die Datei nicht),
+`over_budget`, `readable`, `error_code` (`publication_unreadable` oder `null`)
+und `reason` (`missing` · `too_large` · `invalid`). Eine **fehlende** Datei ist
+kein Fehler: Vor dem ersten Modell-Lauf gibt es keine Veröffentlichung
+(`reason: "missing"`, `error_code: null`). Der Modell-Lauf nennt dieselbe Zahl
+im Job-Log (`models: Veröffentlichung 7,3 MB …`).
+
 **`alarms[]`** (B4): Aggregation der vorhandenen Prüfungen, **ohne** neue Netz-
 oder InfluxDB-Zugriffe (das 3–5-s-Budget des Docker-Healthchecks bleibt). Jeder
 Eintrag: `code`, `severity` (`error` | `warn`), `message` (deutscher Klartext),
@@ -547,6 +590,8 @@ grün ohne Alarm.
 | `job_aborted` (+ `job`) | warn | Lauf hart beendet (z. B. Container-Neustart); letzte Ergebnisse bleiben erhalten |
 | `store_too_large` | error | Feedback-Store über `FEEDBACK_MAX_BYTES` — Belege werden abgelehnt |
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
+| `publication_unreadable` | error | Veröffentlichung der Prognosen über `READ_JSON_MAX_BYTES` (`reason: "too_large"`) oder nicht parsebar (`reason: "invalid"`) — die App zeigt überall „keine Prognose“ (O22) |
+| `publication_large` | warn | Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — weitere Stationen oder Kraftstoffe kippen sie über das Leselimit (O22) |
 
 Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 

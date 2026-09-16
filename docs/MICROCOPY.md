@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 16.09.2026 · App-Version **0.43.2** · gilt für `web/src/**`,
+> Stand: 16.09.2026 · App-Version **0.44.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -118,6 +118,12 @@ zeigt das Feld den gerundeten Wert zurück, statt still zu runden.
 Ein Panel mischt beides nur, wenn es Niveau **und** Differenz zeigt — dann
 steht das Niveau zuerst. Beispiel: „1,749 €/L · 4,2 ct/L unter Tagesmedian“.
 
+**Herkunft einer Uhrzeit (O1, 0.44.0):** Die App nennt eine Uhrzeit nur, wenn
+sie einen Beleg dafür hat. Fehlt dem Beleg der Zeitstempel, ist seine Stunde die
+erfundene 12-Uhr-Projektion der Engine — und der Satz sagt das
+(`1 Beleg ohne Zeitstempel zählt als 12 Uhr.`). Nie stillschweigend als eigene
+Tankzeit ausgeben, nie „Standardzeit“ oder „Default“ schreiben.
+
 **Zeitzone:** Jede angezeigte Uhrzeit ist Europe/Berlin, auch wenn die API
 UTC liefert. Die Formatter setzen `timeZone: "Europe/Berlin"` — eigene
 `Date`-Ausgaben ohne Formatter sind ein Fehler.
@@ -201,6 +207,7 @@ dann der Grund.
 | Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht gepflegt` |
 | Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |
 | Nächste Schritte | `Günstigste Alternative: <Station>, <Preis> — netto <0,80> € nach <2,4> km Umweg` · `<Morgen> 19–21 Uhr wäre noch besser (<2,10> € weniger)` · `Tank reicht nicht bis zum Fenster — jetzt tanken oder Tankstand prüfen` |
+| Hinweis unter der Fensterliste (A9, seit 0.44.0 mit Herkunft) | aktiv: `Reihenfolge nach deinen Tankzeiten (<12> Belege) — günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` · darunter: `Noch nach Preis sortiert (<3> Belege von <8>) — ab <8> Belegen ordnet die App die Fenster nach deinen Tankzeiten, es fehlen <5>.` Belege ohne Zeitstempel hängen in **beiden** Fällen denselben Schlusssatz an: `<3> Belege ohne Zeitstempel zählen als 12 Uhr.` (Einzahl: `1 Beleg ohne Zeitstempel zählt als 12 Uhr.`); ohne solche Belege steht kein Schlusssatz (`personalizationNote` in `web/src/data.ts`, Zahlen aus `/v1/decide` → `personalization`) |
 | Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `Im Labor vertiefen: <Abschnitt>` (seit Phase 3) |
 | S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
 

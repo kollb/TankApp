@@ -1,10 +1,10 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 15.09.2026 · App-Version 0.38.0 — alles, was nach der Ersteinrichtung
+> Stand: 16.09.2026 · App-Version 0.44.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.10.0: aggregierter Alarm-Block in `/health` (roter/gelber Punkt im
-> GUI-Header), `runtime/`-Backup per `ops/nas/backup.sh`, Version + Commit-Hash
-> in `/health` und im GUI-Footer, Beleg-Storno und CSV-Export der Tankbelege.
+> Neu seit 0.44.0: Größen-Alarme für die Veröffentlichung der Prognosen
+> (`publication_large`/`publication_unreadable`), `publication`-Block im
+> `/health`-Payload, Beleg-Schema v4 (Uhrzeit aus dem Beleg abgeleitet, O1).
 > Mit klickbarem Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis
@@ -29,6 +29,7 @@
   - [Was automatisch läuft](#was-automatisch-läuft)
   - [GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)](#gui-responsivität-straßen-distanzen-ohne-netz-blockade-seit-0240)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
+  - [Größe der Veröffentlichung (O22, seit 0.44.0)](#größe-der-veröffentlichung-o22-seit-0440)
   - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
   - [Fehlgeschlagener Lauf: Ursache statt Raten](#fehlgeschlagener-lauf-ursache-statt-raten)
@@ -401,6 +402,45 @@ curl -s "http://<nas>:1355/api/v1/jobs/models/log?lines=200" | jq -r '.lines[]'
 Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
 rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
 
+### Größe der Veröffentlichung (O22, seit 0.44.0)
+
+`data/runtime/engine/current.json` ist die **einzige** Datei, die der Modell-Lauf
+für die GUI schreibt: die App liest Prognosen und Selektionen ausschließlich von
+dort, der Modell-Lauf selbst nutzt seine eigenen Objekte. Deshalb ist ihre Größe
+eine Betriebszahl, keine Kuriosität: `app/refresh.py` gibt sie kompakt (ohne
+`indent=2`) und auf 4 Dezimalen gerundet aus und meldet sie im Job-Log
+(`models: Veröffentlichung 7,3 MB (11 Stationen, 2 Kraftstoffe, …)`).
+
+Zwei Grenzen, beide in `app/data.py`:
+
+| Grenze | Wert | Wirkung |
+|---|---|---|
+| `PUBLICATION_BUDGET_BYTES` | 6 MB | Warnung `publication_large` — die Datei ist noch lesbar, aber der Puffer zum Leselimit schrumpft |
+| `READ_JSON_MAX_BYTES` | 10 MB | `read_json` **verweigert** das Lesen (Speicherschutz): die App zeigt überall „keine Prognose“, Fehler `publication_unreadable` mit `reason: "too_large"` |
+
+Größe wächst mit Stationen × Kraftstoffen (`bootstrap_samples` pro Prognose ≈
+2000 Ziehungen je Kraftstoff). Produktion (11 Stationen, Diesel + Super E5)
+landet seit 0.44.0 bei ~7,3 MB — davor bei ~22 MB `indent=2`, also über dem
+Leselimit, obwohl jeder Job „Erfolg“ meldete. Wer weitere Stationen aufnimmt
+oder einen dritten Kraftstoff ergänzt, prüft die Größe danach bewusst.
+
+```bash
+# Größe der Veröffentlichung (ohne Parse)
+du -h data/runtime/engine/current.json
+ls -l data/runtime/engine/current.json | awk '{print $5/1048576" MB"}'
+# Lesbarkeit + Kernfelder: muss parsebar sein und .failures enthalten
+jq -e .failures data/runtime/engine/current.json > /dev/null && echo ok
+# Größe + Alarm-Lage aus dem Betrieb heraus (ohne Terminal auf dem NAS)
+curl -s "http://<nas>:1355/api/v1/health" | jq '.publication, (.alarms[] | select(.code | startswith("publication")))'
+```
+
+Beim Aufräumen hilft die Reihenfolge: erst **weniger Kraftstoffe/Stationen** im
+Polling-Set (`data/analysis/stations/polling.json` →
+[STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)) oder **weniger `bootstrap_samples`**
+(`nas_up.ini`, Modell-Lauf wird dadurch langsamer und die Intervalle ungenauer).
+Die Grenzen selbst hochzusetzen ist **keine** Lösung: `READ_JSON_MAX_BYTES`
+schützt den Container-Speicher vor einer einzelnen JSON-Datei.
+
 ### Wann erscheinen die Anker-Zeilen im Scoreboard?
 
 Das Scoreboard („Entscheidungs-Scoreboard · Out-of-Sample“) und die
@@ -739,6 +779,18 @@ nie still als leer behandelt: Erst das App-Update, kein Überschreiben. Beim
 Restore alter Backups ist deshalb kein Handanlegen nötig — einbinden und die
 App migrieren lassen.
 
+Aktuelle Version: **4** (0.44.0, O1). Der Sprung 3 → 4 ergänzt je Beleg
+`clock_hour_source` — und ist eine **Auszeichnung, keine Umschrift**: Die
+Uhrzeit eines Belegs wird seit 0.44.0 serverseitig aus `tanked_at` in
+Europe/Berlin abgeleitet (`"beleg"` = GUI hat `clock_hour` selbst geschickt,
+`"abgeleitet"` = aus dem Zeitstempel, `"default"` = 12 Uhr, weil der Beleg
+keinen Zeitstempel trägt). Alte Belege werden **nicht** still umgeschrieben:
+Ein Bestand aus Version 3 behält seine 12-Uhr-Werte, trägt danach aber
+`"default"` als Herkunft, und die Statistik nennt die Anzahl
+(`wh_default_n` in `GET /api/v1/stats/summary`). Wer sein Tankzeit-Profil neu
+auf echte Uhrzeiten stellen will, löscht den Altbestand bewusst (Backup vorher:
+`GET /api/v1/fills.csv`) — ein Restore des Backups migriert danach auf Version 4.
+
 ## System-Alarme lesen
 
 `GET /api/v1/health` fasst die vorhandenen Zustandsprüfungen zu einem
@@ -759,11 +811,14 @@ Klartext.
 | `job_aborted` (mit `job`) | warn | Lauf hart beendet, z. B. Container-Neustart (`state: aborted`) | Nichts tun — letzte Ergebnisse bleiben erhalten; nächster Versuch folgt |
 | `store_too_large` | error | persönlicher Feedback-Store über der Größen-Grenze — neue Belege werden abgelehnt | Restore/Retention → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 | `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
+| `publication_unreadable` | error | Veröffentlichung der Prognosen über dem Leselimit oder nicht parsebar — GUI zeigt überall „keine Prognose“ | Größe und Lesbarkeit prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
+| `publication_large` | warn | Veröffentlichung über 6 MB, aber noch lesbar — Puffer zum Leselimit schrumpft | Stationen/Kraftstoffe oder `bootstrap_samples` prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 
 Ein Alarm ist eine **Zusammenfassung**, keine neue Prüfung: Dieselbe Information
 steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,
-`/api/v1/jobs/<job>/log`, `/api/v1/stats/summary`). Wer nur einen einzigen Check
-im Haushalt laufen lassen will, pollt `/health` und schaut auf `alarms`.
+`/api/v1/jobs/<job>/log`, `/api/v1/stats/summary`, `publication` im
+`/health`-Payload). Wer nur einen einzigen Check im Haushalt laufen lassen will,
+pollt `/health` und schaut auf `alarms`.
 
 ### Alarm-Zustellung über ntfy (B4)
 

@@ -15,6 +15,13 @@
 > Text-Befunde T1–T13 aus [TEXT-BEFUND.md](TEXT-BEFUND.md). Wo ein Befund an
 > eine bekannte offene Entscheidung rührt (B22 Nacht-Raster, C12 Desktop),
 > steht der Querverweis dabei, kein zweiter Befund.
+>
+> **Umsetzungsstand:** [Batch 1](#batch-1--p0--nicht-mehr-still-ausfallen)
+> (O1 + O22) ist mit **0.44.0** abgenommen — je Befund steht der Vermerk unter
+> dem DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2 stehen.
+> O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
+> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). Die
+> übrigen Batches sind unverändert offen.
 
 ## Inhaltsverzeichnis
 
@@ -157,6 +164,23 @@ Histogramm seine Herkunft zeigt. Bestehende Belege werden nicht
 stillschweigend umgeschrieben: entweder Migration mit Kennzeichnung oder
 Neustart des Histogramms mit Hinweistext. Ratchet-Test: ein GUI-Beleg mit
 `tanked_at` 18:40 erzeugt `clock_hour` 18, nicht 12.
+
+**Umgesetzt in 0.44.0** (Variante „Migration mit Kennzeichnung“):
+`clock_hour_from_fill()` in `app/feedback.py` leitet die Stunde aus `tanked_at`
+in Europe/Berlin ab, der Zeitstempel gewinnt gegen eine widersprechende
+`clock_hour`-Angabe, und je Beleg steht `clock_hour_source` ∈
+`beleg` · `abgeleitet` · `default`. Feedback-Store Schema 3 → 4
+(`_migrate_store_v3_to_v4`, idempotent) zeichnet Altbestände als `default` aus,
+statt sie umzuschreiben. Die Herkunft ist bis in die GUI sichtbar:
+`wh_clock_sources`/`wh_measured_n`/`wh_default_n` in
+`GET /api/v1/stats/summary`, `personalization.measured_fills`/`default_fills`
+in `/api/v1/decide`, Schlusssatz in `personalizationNote`
+([MICROCOPY.md §4b](MICROCOPY.md#4b-bereich-jetzt-feste-muster-0340)).
+Zusätzlich: Snapshots nennen keine erfundene Emit-Uhrzeit mehr, und der
+Stunden-Fallback von `classify_compliance` bekommt den Minutenanteil.
+Nachweis: `tests/test_o1_clock_hour.py` (15 Fälle, inkl. UTC→Berlin,
+Winterzeit, Widerspruch, Migration, Histogramm-Wirkung) und drei Fälle in
+`web/src/data.test.ts`.
 
 ### O2 — Zwei Personalisierungen, eine davon hartkodiert
 
@@ -743,6 +767,45 @@ weg und `/forecast` lädt nur, was die Ansicht braucht. Ein Test, der die
 Größe einer Veröffentlichung mit Produktionsparametern begrenzt (z. B. unter
 8 MB bei 11 Stationen), macht die Klippe zu einem roten Build statt zu einem
 stummen Nachmittag.
+
+**Umgesetzt in 0.44.0: (a), (b), (c) — (d) bewusst offen.**
+
+- **(a) Laut werden:** `READ_JSON_MAX_BYTES`/`PUBLICATION_BUDGET_BYTES`
+  (10/6 MB) als benannte Grenzen in `app/data.py`, `read_json_checked()`
+  unterscheidet `missing` · `too_large` · `invalid`, `publication_status()`
+  nennt Größe und Grund **ohne Parse** (nur `stat`), `/api/v1/health` trägt den
+  neuen `publication`-Block, und `app/alarms.py` schlägt an:
+  `publication_large` (warn) über dem Budget, `publication_unreadable` (error)
+  über dem Leselimit oder bei ungültigem JSON — mit Grund, ohne Pfad. Der
+  Modell-Lauf nennt die Größe zusätzlich im Job-Log.
+- **(b) Kompakt schreiben:** `engine/storage.write_json(…, indent=None)` mit
+  engen Separatoren, Rückgabe ist die Byte-Größe; `indent=2` bleibt Default für
+  kleine, menschenlesbare Dateien.
+- **(c) Runden:** `PUBLICATION_DECIMALS = 4` in `app/model_jobs.py`, angewandt
+  in `_records`/`_draws` — vor der Prozessgrenze des Worker-Pools.
+- **(d) Aufteilen:** nicht umgesetzt. Es ändert die Form des Artefakts und
+  damit jeden Leser (`/forecast`, `/stats/summary`, `/decide`,
+  `/last_forecasts` — darüber auch der RP2-Cache) und braucht atomares
+  Schreiben über mehrere Pfade. Die Klippe ist durch (a)–(c)
+  plus Alarm messbar und meldend; die Entscheidung steht begründet in
+  [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+
+**Nachmessung mit Produktionsparametern (11 Stationen, `bootstrap_samples=2000`,
+`train_days=42`, 24 h/72 h/168 h, 500 publizierte Draws):**
+
+| Fassung | Größe | Lesbar? |
+|---|---|---|
+| `indent=2`, volle Präzision (Stand des Befunds) | 22,40 MB | nein — über dem Limit, still `{}` |
+| `indent=2`, auf 4 Stellen gerundet | 17,71 MB | nein |
+| kompakt, gerundet (0.44.0) | **7,28 MB** | ja — über dem 6-MB-Budget, also `publication_large` |
+
+Der Check-Budget des Batches (8 MB bei 11 Stationen) ist damit gehalten; die
+Warnung steht, weil die Produktionskonfiguration wirklich über 6 MB liegt —
+der Alarm ist real, nicht konstruiert. Nachweis:
+`tests/test_o22_publication_size.py` (9 Fälle, über die Originalfunktionen
+`_records`/`_draws`/`write_json`, inkl. Health-Payload, künstlich zu großer
+Datei und Ratchets gegen Einrückung und sechs Nachkommastellen) plus ein
+Echtlauf-Test in `tests/test_app_jobs.py`.
 
 ### O23 — Der Healthcheck parst die Veröffentlichung alle 30 Sekunden
 
@@ -1398,6 +1461,24 @@ niemand sagt etwas.
 **Batch-Abnahme:** Die App kann nicht mehr lautlos in den „keine Daten“-Zustand
 kippen, und die Personalisierung lernt aus einer gemessenen Uhrzeit. Nachweis:
 beide Tests grün plus ein Health-Payload, der die Publikationsgröße nennt.
+
+**Abgenommen mit 0.44.0.** Beide Checks sind erfüllt und als Tests festgehalten
+(`tests/test_o1_clock_hour.py`, `tests/test_o22_publication_size.py`); die
+Checks im Einzelnen:
+
+| Check | Ergebnis |
+|---|---|
+| Beleg mit `tanked_at` 18:40 Europe/Berlin → `clock_hour == 18`, `clock_hour_source == "beleg"` | erfüllt (`test_evening_receipt_is_booked_at_18_not_12`); zusätzlich UTC→Berlin (`test_utc_timestamp_is_converted_to_berlin`) und Widerspruch (`test_timestamp_wins_over_contradicting_clock_hour`) |
+| Beleg ohne Zeitstempel → `12`, `"default"` | erfüllt (`test_receipt_without_timestamp_keeps_default_but_says_so`), und die Anzahl steht in `wh_default_n`/`personalization.default_fills` |
+| `GET /api/v1/fills` zeigt `tanked_at`, `clock_hour`, `clock_hour_source` | erfüllt (API-Test + [API.md](API.md#fills-b4-belege)) |
+| `w(h)`-Histogramm hat nach zwei Abendbelegen sein Gewicht bei 18 | erfüllt (`test_wh_histogram_moves_to_the_measured_evening_hour`, `test_wh_histogram_names_the_invented_hours`) |
+| 11 Stationen, `bootstrap_samples=2000` → unter 8 MB **und** `publication_large` in `/api/v1/health` | erfüllt: **7,28 MB**, Alarm warn (beide in einem Test) |
+| `jq -e .failures data/runtime/engine/current.json` läuft durch | erfüllt: Echtlauf-Test parst die geschriebene Datei und prüft `.failures` |
+| Künstlich zu große Datei → `publication_unreadable` mit Grund | erfüllt (`reason: "too_large"`); ungültiges JSON ist als `invalid` ein eigener Grund |
+| Health-Payload nennt die Publikationsgröße | erfüllt (`publication.bytes`/`budget_bytes`/`max_bytes`) |
+
+Offen aus diesem Batch: O22-Maßnahme (d), Aufteilen der Veröffentlichung —
+begründet in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
 
 ### Batch 2 — P1 · Die Zahlen, auf denen M7 steht
 

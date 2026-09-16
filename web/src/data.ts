@@ -138,6 +138,30 @@ export type Alarm = {
   severity: "error" | "warn";
   message: string;
   job?: string | null;
+  /** O22: Größe der Veröffentlichung in Byte (nur `publication_*`). */
+  bytes?: number | null;
+  /** O22: Warn-Budget bzw. Leselimit in Byte (nur `publication_*`). */
+  budget_bytes?: number;
+  max_bytes?: number;
+  /** O22: Grund der Unlesbarkeit — `too_large` oder `invalid`. */
+  reason?: string | null;
+};
+
+/**
+ * O22 (0.44.0): Größe und Lesbarkeit der Veröffentlichung der Prognosen
+ * (`data/runtime/engine/current.json`). `bytes` über `budget_bytes` wird zu
+ * `publication_large` (warn), über `max_bytes` zu `publication_unreadable`
+ * (error) — vorher fiel eine zu große Datei still als „keine Prognose“ aus.
+ */
+export type PublicationStatus = {
+  bytes: number | null;
+  budget_bytes: number;
+  max_bytes: number;
+  over_budget: boolean;
+  readable: boolean;
+  error_code: string | null;
+  /** `missing` · `too_large` · `invalid` · null */
+  reason: string | null;
 };
 
 export type Health = {
@@ -155,6 +179,8 @@ export type Health = {
   commit?: string | null;
   /** B4: aggregierte Alarme (Heartbeat, Jobs, Store, Polling). */
   alarms?: Alarm[];
+  /** O22: Größe und Lesbarkeit der Prognose-Veröffentlichung. */
+  publication?: PublicationStatus | null;
   /**
    * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
    * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
@@ -378,6 +404,8 @@ export type AdviceAction =
 export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
+/** O1: Herkunft der Tankuhrzeit eines Belegs (`app/feedback.py`). */
+export type ClockHourSource = "beleg" | "abgeleitet" | "default";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
 /** Ein Beleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
@@ -388,6 +416,9 @@ export type Fill = {
   station_name?: string;
   tanked_at?: string | null;
   clock_hour?: number | null;
+  /** O1 (0.44.0): Woher die Tankuhrzeit kommt — gemessen, rekonstruiert oder
+   *  die erfundene 12-Uhr-Projektion (Beleg ohne Zeitstempel). */
+  clock_hour_source?: ClockHourSource | null;
   liters: number;
   price_paid: number;
   price_source?: string;
@@ -615,6 +646,10 @@ export type DecideResult = {
     n_fills: number;
     min_fills: number;
     missing_fills: number;
+    /** O1: Belege mit gemessener oder rekonstruierter Tankzeit. */
+    measured_fills?: number;
+    /** O1: Belege ohne Zeitstempel — deren Stunde ist die erfundene 12. */
+    default_fills?: number;
   } | null;
   episode: {
     id: string;
@@ -3509,18 +3544,32 @@ export function personalizationNote(
   personalization: DecideResult["personalization"],
 ): string | null {
   if (!personalization) return null;
-  const { active, n_fills, min_fills, missing_fills } = personalization;
+  const { active, n_fills, min_fills, missing_fills, default_fills } =
+    personalization;
+  // O1: Belege ohne Zeitstempel zählen die 12-Uhr-Projektion der Engine ins
+  // Profil. Das Profil bleibt ehrlich, wenn der Satz sagt, wie viele Stunden
+  // erfunden sind — sonst wirkt eine Mittagsspitze wie eine eigene Tankzeit.
+  const invented =
+    default_fills && default_fills > 0
+      ? ` ${
+          default_fills === 1
+            ? "1 Beleg ohne Zeitstempel zählt"
+            : `${default_fills} Belege ohne Zeitstempel zählen`
+        } als 12 Uhr.`
+      : "";
   if (active) {
     return (
       `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
-      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.`
+      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` +
+      invented
     );
   }
   const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
   return (
     `Noch nach Preis sortiert (${fills} von ${min_fills}) — ` +
     `ab ${min_fills} Belegen ordnet die App die Fenster nach deinen ` +
-    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.`
+    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.` +
+    invented
   );
 }
 

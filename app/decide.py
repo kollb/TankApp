@@ -853,6 +853,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     wh_personalized = bool(wallet_stats.get("wh_personalized"))
     wh_n = int(wallet_stats.get("wh_n") or 0)
     wh_min_fills = int(wallet_stats.get("wh_min_fills") or WH_MIN_FILLS)
+    # O1: Herkunft der Tankuhrzeiten. ``default``-Belege (ohne Zeitstempel)
+    # zählen die erfundene 12-Uhr-Projektion der Engine ins Profil — die
+    # Antwort sagt das, statt es als Messung auszugeben.
+    wh_measured_n = int(wallet_stats.get("wh_measured_n") or 0)
+    wh_default_n = int(wallet_stats.get("wh_default_n") or 0)
     wh_profile = wh_hours if wh_personalized else None
 
     # Beste Fenster heute und über die Woche (echte 2-h-Blöcke).
@@ -1131,6 +1136,10 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             "n_fills": wh_n,
             "min_fills": wh_min_fills,
             "missing_fills": max(0, wh_min_fills - wh_n),
+            # O1: Belege mit gemessener/rekonstruierter Tankzeit und Belege,
+            # deren Stunde mangels Zeitstempel die erfundene 12 ist.
+            "measured_fills": wh_measured_n,
+            "default_fills": wh_default_n,
         },
         "calibrated": is_calibrated,
         "decision_ready": False,
