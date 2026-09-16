@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Mobil-Robustheit der sechs Bereiche (Nutzer-Feedback 16.09.2026: „TankApp an
-// sich ist nicht mobilrobust. Da sind verschiedene Dinge die scrollen müssen
-// oder aus dem Bild ragen“).
+// Mobil-Robustheit (Nutzer-Feedback 16.09.2026: „TankApp an sich ist nicht
+// mobilrobust. Da sind verschiedene Dinge die scrollen müssen oder aus dem
+// Bild ragen“).
 //
 // Diese Suite läuft gegen den Demo-Stack (`playwright.demo.config.ts`, echte
 // Server-Antworten) und nur im `mobile`-Projekt (390 × 844). Sie prüft drei
@@ -15,9 +15,14 @@ import { test, expect, type Page } from "@playwright/test";
 //      bei `overflow: visible`) — genau das ließ die Zahlenreihe „schief“
 //      aussehen, als „1,725“ breiter war als seine Zelle.
 //
-// Zusätzlich hält die letzte Prüfung die Liste der bewusst scrollbaren
-// Kästen fest (Kopfzeile, Heatmap-Matrix, JSON-/Log-Blöcke): Ein neuer
-// Querlauf kann nicht still dazukommen.
+// Gemessen wird nicht nur der Einstieg: alle sechs Bereiche, die vier
+// Ich-Unterseiten, die sechs Labor-Abschnitte und jeder Dialog
+// (`aria-haspopup="dialog"`) eines Bereichs. Die Belege werden vorher über die
+// echte API angelegt (kein `page.route`) — sonst bliebe genau die Liste
+// ungemessen, die auf dem Handy am längsten war.
+//
+// Die letzte Prüfung hält die Liste der bewusst scrollbaren Kästen fest:
+// Ein neuer Querlauf kann nicht still dazukommen.
 
 type Finding = { label: string; detail: string };
 
@@ -57,13 +62,11 @@ const MEASURE = () => {
     return false;
   };
 
-  const rect = (element: Element) => element.getBoundingClientRect();
   const viewport = window.innerWidth;
-
   const outside: Finding[] = [];
   const painted: Finding[] = [];
   for (const element of Array.from(document.body.querySelectorAll("*"))) {
-    const box = rect(element);
+    const box = element.getBoundingClientRect();
     // sr-only-Hilfen (1 × 1 px, geclippt) und Dekoration ohne Fläche.
     if (box.width < 3 || box.height < 3) continue;
     // SVG-Inhalt wird vom SVG-Viewport beschnitten; gemessen wird das SVG.
@@ -95,12 +98,9 @@ const MEASURE = () => {
   for (const element of Array.from(document.body.querySelectorAll("*"))) {
     if (!/(auto|scroll)/.test(overflowX(element))) continue;
     if (element.scrollWidth <= element.clientWidth + 1) continue;
-    const section = element.closest("section, main, nav, footer, header");
     scrollers.push({
       label: describe(element),
-      detail: `${element.scrollWidth} px in ${element.clientWidth} px${
-        section ? ` · ${section.getAttribute("aria-label") ?? section.tagName.toLowerCase()}` : ""
-      }`,
+      detail: `${element.scrollWidth} px in ${element.clientWidth} px`,
     });
   }
 
@@ -125,9 +125,61 @@ async function settled(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** Die Befunde als Text — im CI-Log lesbar, ohne DOM-Schnappschuss. */
-function report(name: string, result: Measurement) {
-  console.log(`[mobil] ${name}:`, JSON.stringify(result, null, 1));
+/** Ein Zustand der Oberfläche: Bereich plus optionaler Aufbau davor. */
+async function check(page: Page, state: string): Promise<Measurement> {
+  const result = await measure(page);
+  const line = (result: Measurement) =>
+    JSON.stringify(
+      {
+        docOverflow: result.docOverflow,
+        outside: result.outside.map((f) => `${f.label} — ${f.detail}`),
+        painted: result.painted.map((f) => `${f.label} — ${f.detail}`),
+        scrollers: result.scrollers.map((f) => `${f.label} — ${f.detail}`),
+      },
+      null,
+      1,
+    );
+  console.log(`[mobil] ${state}: ${line(result)}`);
+  expect(
+    result.docOverflow,
+    `Das Dokument scrollt seitlich (${state}):\n${line(result)}`,
+  ).toBeLessThanOrEqual(1);
+  expect(
+    result.outside,
+    `Ragt aus dem Bild (${state}):\n${line(result)}`,
+  ).toEqual([]);
+  expect(
+    result.painted,
+    `Malt über die eigene Box (${state}):\n${line(result)}`,
+  ).toEqual([]);
+  return result;
+}
+
+/**
+ * Zwei echte Belege über die API des Demo-Servers (dieselbe Route, die die
+ * „Beleg buchen“-Maske benutzt). Feste IDs machen den Aufbau idempotent —
+ * ein zweiter Lauf derselben Suite legt nichts doppelt an.
+ */
+async function seedReceipts(page: Page): Promise<void> {
+  const response = await page.request.get("/api/v1/stations");
+  const data = (await response.json()) as {
+    stations?: Array<{ station_id: string; name: string; fuel: string }>;
+  };
+  const stations = (data.stations ?? []).slice(0, 2);
+  for (const [index, station] of stations.entries()) {
+    await page.request.post("/api/v1/fills", {
+      data: {
+        id: `e2e-mobil-beleg-${index}`,
+        station_id: station.station_id,
+        station_name: station.name,
+        liters: 38.4 + index,
+        price_paid: 1.729,
+        fuel: "e10",
+        source: "e2e-mobil",
+        tanked_at: "2026-09-14T17:30:00+02:00",
+      },
+    });
+  }
 }
 
 const AREAS = [
@@ -139,7 +191,17 @@ const AREAS = [
   { id: "system", label: "System" },
 ] as const;
 
-test.describe("Mobil: kein Querlauf in den sechs Bereichen", () => {
+const ICH_TABS = ["Fahrzeug", "Belege", "Bilanz", "Einstellungen"];
+const LAB_SECTIONS = [
+  "prognose",
+  "sicherheit",
+  "stationen",
+  "lernen",
+  "spielplatz",
+  "glossar",
+];
+
+test.describe("Mobil: kein Querlauf", () => {
   test.beforeEach(async ({ viewport }) => {
     test.skip(
       (viewport?.width ?? 0) > 640,
@@ -153,50 +215,81 @@ test.describe("Mobil: kein Querlauf in den sechs Bereichen", () => {
     }) => {
       await page.goto(`/?tab=${area.id}`);
       await settled(page);
-      const result = await measure(page);
-      report(area.label, result);
-
-      expect(
-        result.docOverflow,
-        `Das Dokument scrollt seitlich (${area.label}):\n${result.outside
-          .map((finding) => ` · ${finding.label} — ${finding.detail}`)
-          .join("\n")}`,
-      ).toBeLessThanOrEqual(1);
-      expect(
-        result.outside,
-        `Ragt aus dem Bild (${area.label}):\n${JSON.stringify(result.outside, null, 1)}`,
-      ).toEqual([]);
-      expect(
-        result.painted,
-        `Malt über die eigene Box (${area.label}):\n${JSON.stringify(result.painted, null, 1)}`,
-      ).toEqual([]);
+      await check(page, area.label);
     });
   }
+
+  test("Ich: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
+    page,
+  }) => {
+    await seedReceipts(page);
+    await page.goto("/?tab=ich");
+    await settled(page);
+    for (const tab of ICH_TABS) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await settled(page);
+      // Die Belegliste ist der Prüfgegenstand — sie muss stehen.
+      if (tab === "Belege") {
+        await expect(page.getByText("Demo-Tank", { exact: false }).first()).toBeVisible();
+      }
+      await check(page, `Ich → ${tab}`);
+    }
+  });
+
+  test("Labor: alle sechs Abschnitte tragen ohne Querlauf", async ({ page }) => {
+    for (const section of LAB_SECTIONS) {
+      await page.goto(`/?tab=labor&section=${section}`);
+      await settled(page);
+      await check(page, `Labor → ${section}`);
+    }
+  });
+
+  test("Dialoge bleiben im Bild", async ({ page }) => {
+    for (const area of ["jetzt", "system"] as const) {
+      await page.goto(`/?tab=${area}`);
+      await settled(page);
+      const openers = page.locator('button[aria-haspopup="dialog"]');
+      const count = Math.min(await openers.count(), 6);
+      for (let index = 0; index < count; index += 1) {
+        const opener = openers.nth(index);
+        if (!(await opener.isVisible().catch(() => false))) continue;
+        await opener.click();
+        const dialog = page.getByRole("dialog");
+        await expect(dialog).toBeVisible();
+        await check(page, `${area} → Dialog ${index + 1}`);
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+      }
+    }
+  });
 
   test("bewusst scrollbare Kästen bleiben die kurze, benannte Ausnahme", async ({
     page,
   }) => {
     const seen = new Set<string>();
+    const collect = (state: string, result: Measurement) => {
+      for (const finding of result.scrollers) {
+        seen.add(`${state}: ${finding.label} (${finding.detail})`);
+      }
+    };
     for (const area of AREAS) {
       await page.goto(`/?tab=${area.id}`);
       await settled(page);
-      const result = await measure(page);
-      for (const finding of result.scrollers) {
-        seen.add(`${area.label}: ${finding.label} (${finding.detail})`);
-      }
+      collect(area.label, await measure(page));
+    }
+    for (const section of LAB_SECTIONS) {
+      await page.goto(`/?tab=labor&section=${section}`);
+      await settled(page);
+      collect(`Labor → ${section}`, await measure(page));
     }
     const list = [...seen].sort();
     console.log("[mobil] scrollbare Kästen:", JSON.stringify(list, null, 1));
 
-    // Erlaubt sind nur: die Bedienleiste der Kopfzeile (Stadt/Kraftstoff/
-    // Profil, eine Zeile, bewusst ziehbar), die Heatmap-Matrix im Labor
-    // (19–24 Spalten sind keine Kartenfrage) und JSON-/Log-Ausgaben, die
-    // zeilenweise nicht umbrechen dürfen. Alles andere wäre ein Querlauf.
-    const allowed = [
-      /relative flex min-w-0 items-center gap-2 overflow-x-auto/,
-      /Heatmap|heatmap/,
-      /ApiExplorer|log|json/i,
-    ];
+    // Erlaubt ist nur die Heatmap-Matrix (Wochentage × 24 Stunden — eine
+    // Matrix lässt sich nicht stapeln; sie trägt ihren Hinweis im Text).
+    // Alles andere wäre ein Querlauf: Kopfzeilen-Steuerung, Belegliste,
+    // Zwilling-Tabelle und JSON-/Log-Blöcke sind umgebaut bzw. umbrechend.
+    const allowed = [/TagMedian|Heatmap|heatmap/];
     const unexpected = list.filter(
       (entry) => !allowed.some((pattern) => pattern.test(entry)),
     );

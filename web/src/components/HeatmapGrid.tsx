@@ -137,6 +137,14 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
 
   return (
     <div>
+      {/* Die Matrix ist die eine Fläche, die seitlich schieben darf: 24
+          Stunden-Spalten × Wochentage lassen sich nicht stapeln. Mobil sagt
+          die App das vorher, statt den Nutzer vor eine abgeschnittene Tabelle
+          zu stellen. */}
+      <p className="mb-1 text-xs leading-relaxed text-slate-500 sm:hidden">
+        Die Matrix ist breit: seitlich schieben zeigt alle 24 Stunden — die
+        günstigsten Stunden stehen zusätzlich als Satz darunter.
+      </p>
       <div className="overflow-x-auto">
         <table className="w-full text-center text-xs font-mono">
           <thead>

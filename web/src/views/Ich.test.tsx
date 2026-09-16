@@ -211,4 +211,28 @@ describe("mostUsedStation (zweiter Maßstab unter dem Median)", () => {
     );
     expect(html).toContain("meistgenutzte Station: Station a");
   });
+
+  it("trägt die Belege mobil als Karte und ab sm als Tabelle", () => {
+    // Nutzer-Feedback 16.09.2026 („verschiedene Dinge die scrollen müssen“):
+    // Die Belegliste war eine Tabelle mit 560 px Mindestbreite und musste auf
+    // dem Handy seitlich geschoben werden. Mobil trägt sie jetzt eine Karte
+    // (zwei Zeilen, kein Querlauf), ab `sm` unverändert die Tabelle. Beide
+    // Fassungen lesen dieselben Werte aus `fillRows()`.
+    const fills = [
+      fill("a", { saved_vs_always_now_eur: 3.2 }),
+      fill("b", { voided: true }),
+    ];
+    const html = render({
+      initialSection: "fills",
+      fillList: fills,
+      visibleFills: fills,
+    });
+    expect(html).toContain('class="divide-y divide-slate-800/60 sm:hidden"');
+    expect(html).toContain('class="hidden overflow-x-auto sm:block"');
+    // Karte und Tabelle zeigen dieselben Werte — je zweimal im Markup.
+    expect(html.split("3,20 € günstiger").length - 1).toBe(2);
+    expect(html.split("Station a").length - 1).toBe(2);
+    // Der Storno-Knopf steht nur beim nicht stornierten Beleg.
+    expect(html.split(">Stornieren<").length - 1).toBe(2);
+  });
 });

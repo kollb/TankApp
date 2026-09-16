@@ -500,20 +500,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 ? `Stand ${clockLabel(summary.generated_at)}.`
                 : ""}
             </p>
+            {/* Kein `min-w` und weniger Innenabstand auf schmalen Viewports: Die
+                Tabelle ist nur drei Spalten breit und bricht den Bedingungstext um —
+                die 26-rem-Mindestbreite erzwang auf dem Handy einen Querlauf für
+                eine Tabelle, die auch ohne ihn lesbar ist. */}
             <div className="overflow-x-auto rounded-lg border border-slate-800">
-              <table className="w-full min-w-[26rem] text-left text-xs">
+              <table className="w-full text-left text-xs">
                 <caption className="sr-only">
                   Aktive Entscheidungsschwellen der Engine (schreibgeschützt)
                 </caption>
                 <thead>
                   <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
-                    <th scope="col" className="px-4 py-2.5 font-semibold">
+                    <th scope="col" className="px-2 py-2.5 font-semibold sm:px-4">
                       Aktion
                     </th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">
+                    <th scope="col" className="px-2 py-2.5 font-semibold sm:px-4">
                       Bedingung
                     </th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                    <th scope="col" className="px-2 py-2.5 text-right font-semibold sm:px-4">
                       Wert
                     </th>
                   </tr>
@@ -523,14 +527,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     <tr key={row.key}>
                       <th
                         scope="row"
-                        className="px-4 py-2.5 font-semibold text-slate-200"
+                        className="px-2 py-2.5 font-semibold text-slate-200 sm:px-4"
                       >
                         {row.action}
                       </th>
-                      <td className="px-4 py-2.5 text-slate-400">
+                      <td className="px-2 py-2.5 text-slate-400 sm:px-4">
                         {row.condition}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-emerald-400">
+                      <td className="px-2 py-2.5 text-right font-mono text-emerald-400 sm:px-4">
                         {thresholdValueLabel(row.kind, thresholds[row.key])}
                       </td>
                     </tr>
