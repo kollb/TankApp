@@ -262,6 +262,14 @@ in „Ich → Fahrzeug“ und die Was-wäre-wenn-Zeile in „Jetzt“ ihre Grenz
 `web/src/views/Jetzt.test.tsx` und `tests/test_profiles.py` (100 L → 200,
 101 L → 400). Damit deckt die Rechengröße den Beleg-Bereich (5–100 L) ab.
 
+**Und der M1-Nachweis war falsch, jetzt nicht mehr:** Der Filter-Chip „nur
+offene“ ist seit 0.37.2 gebaut, aber der Erledigt-Nachweis nannte
+`web/src/views/Stationen.test.tsx` — dort gab es keinen Filter-Fall. Die
+Sichtbarkeits-Regeln (Suche, Marke, „offen“) stehen jetzt als
+`atlasMatchesFilter` in `web/src/stations.ts` und sind in
+`web/src/stations.test.ts` in fünf Fällen festgehalten; das Markup von Chip
+und Regel-Satz prüft `web/src/views/Stationen.test.tsx`.
+
 ### 16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5
 
 Reines Frontend-Release auf dem Abgleich-Stand von 0.42.0: die letzten drei
