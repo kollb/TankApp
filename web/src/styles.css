@@ -214,12 +214,29 @@ html.ptr-off body {
   overscroll-behavior: none;
 }
 
-/* „Heute im Blick“: 19 Zellen (06–24, „24“ = Mitternacht). Mobil zwei
-   Reihen, ab 640 px eine Reihe über die volle Breite. */
+/* „Heute im Blick“: 19 Zellen (06–24, „24“ = Mitternacht), untereinander in
+   der Reihenfolge des Tages.
+
+   Die Spaltenzahl hängt an der Breite, die eine Zelle zum Lesen braucht:
+   Der Wert steht als „1,725“ in 0,625 rem Monospace — rund 30 px plus 6 px
+   Rand und Rahmen, also ~36 px je Zelle. Daraus ergeben sich drei Stufen:
+
+     < 640 px   5 Spalten  (4 Reihen) — Zelle ≥ 48 px, auch auf 320-px-Geräten
+     ≥ 640 px  10 Spalten  (2 Reihen) — Zelle ≥ 52 px
+     ≥ 1280 px 19 Spalten  (1 Reihe)  — Zelle ≥ 42 px
+
+   Die frühere Fassung lief ab 640 px mit 19 Spalten fest; dort war die Zelle
+   ~24 px schmal und die Zahlen liefen in die Nachbarzelle („Zahlenreihe ist
+   schief“). Zwischen 640 und 1280 px bleibt es deshalb bei zwei Reihen. */
 .daystrip-cells {
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 @media (min-width: 640px) {
+  .daystrip-cells {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
   .daystrip-cells {
     grid-template-columns: repeat(19, minmax(0, 1fr));
   }
@@ -246,14 +263,20 @@ html.ptr-off body {
   .app-main {
     padding-top: 0.75rem;
   }
-  /* Die Tageskurve („Heute im Blick“ in Jetzt): alle 19 Stunden in einer
-     Reihe über die volle Breite (Querformat hat die Breite dafür). */
+  /* Die Tageskurve („Heute im Blick“ in Jetzt): quer ist Höhe knapp, also
+     zwei Reihen à zehn Zellen — und nur dort, wo die Breite für 19 Zellen
+     reicht (Zelle ≥ 36 px), eine einzige Reihe. */
   .daystrip-cells {
-    grid-template-columns: repeat(19, minmax(0, 1fr));
+    grid-template-columns: repeat(10, minmax(0, 1fr));
     gap: 0.3rem;
   }
   .daystrip-cells > div {
     padding: 0.35rem 0.25rem;
+  }
+}
+@media (orientation: landscape) and (max-height: 620px) and (min-width: 880px) {
+  .daystrip-cells {
+    grid-template-columns: repeat(19, minmax(0, 1fr));
   }
 }
 
