@@ -168,6 +168,36 @@ describe("Jetzt: Aufbau", () => {
     }
   });
 
+  it("„Heute im Blick“: Balken in fester Spur — Zahlenreihe auf einer Linie", () => {
+    // Nutzer-Feedback 16.09.2026: „Heute im Blick Zahlenreihe ist schief“.
+    // Der Balken stand als Fluss-Element über Stunden- und Wertzeile: je
+    // höher der Balken, desto tiefer rutschten beide Zeilen, und die Reihe
+    // lief von Zelle zu Zelle auseinander. Jetzt wächst er in einer festen
+    // 12-px-Spur von unten (`items-end`), alle Zellen haben dieselbe
+    // Reihenfolge Balken → Stunde → Wert.
+    const html = render({
+      stripCells: [
+        { hour: 6, value: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, tone: "cheap", current: true },
+        { hour: 18, value: null, tone: "empty", current: false },
+      ],
+    });
+    const cells = html.split('role="img"').slice(1);
+    expect(cells).toHaveLength(3);
+    for (const cell of cells) {
+      expect(cell).toContain("h-3 w-full items-end");
+      // Kein zweizeiliger Preis: „1,725“ bleibt in einer Zeile.
+      expect(cell).toContain("whitespace-nowrap");
+    }
+    const first = cells[0].indexOf("h-3 w-full items-end");
+    const hour = cells[0].indexOf(">06<");
+    // Sichtbarer Text, nicht das `aria-label` („06:00 — 1,759 €/L“).
+    const value = cells[0].indexOf(">1,759<");
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(hour).toBeGreaterThan(first);
+    expect(value).toBeGreaterThan(hour);
+  });
+
   it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
     const html = render({
       stripCells: [
@@ -219,7 +249,7 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Einrichtung starten");
   });
 
-  it("S1: das lerndende Modell bekommt die graue Karte mit Zählstand", () => {
+  it("S1: das lernende Modell bekommt die graue Karte mit Zählstand — genau einmal", () => {
     const learning = decide("no_advice", false);
     learning.personal_stats.advice.last_30d_total = 12;
     const html = render({
@@ -228,6 +258,14 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Keine klare Empfehlung");
     expect(html).toContain("Das Modell lernt noch");
     expect(html).not.toContain("% sicher");
+    // Nutzer-Feedback 16.09.2026: „Das Modell lernt noch … ist doppelt“. Der
+    // Satz kam zweimal, weil `nowVerdict.detail` ihn schon trägt
+    // (`learning ?? reason_short`) und die Karte ihn darunter noch einmal
+    // rendert. Hier steht der Zählstand deshalb genau einmal.
+    expect(html.split("Das Modell lernt noch").length - 1).toBe(1);
+    expect(html.split("von 100 abgeschlossenen Empfehlungen").length - 1).toBe(
+      1,
+    );
   });
 
   it("S1 ohne Modell nennt trotzdem den günstigsten offenen Preis", () => {

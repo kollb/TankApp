@@ -4,6 +4,79 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.43.2] – 2026-09-16
+
+**Vier Befunde aus der Nutzersicht (Lernstand-Satz, Tagesstreifen, Karten-Anker,
+Mobil-Robustheit) sind behoben — die Mobil-Zusagen misst jetzt eine eigene
+Browser-Suite, statt sie zu behaupten.**
+
+### Geändert
+
+- **Lernstand-Satz einmal („Jetzt“):** `nowVerdict.detail` **ist** der
+  Lernstand (`learning ?? reason_short`); die Karte rendert ihn darunter ein
+  zweites Mal. Die zweite Zeile ist weg, `views/Jetzt.test.tsx` zählt das
+  Vorkommen (genau einmal).
+- **Tagesstreifen auf einer Linie („Heute im Blick“):** Der Balken wuchs als
+  Fluss-Element über Stunden- und Wertzeile, je höher er war, desto tiefer
+  rutschte die Zahl, und auf 390 px ragten die Preise aus der ~27-px-Zelle.
+  Jetzt wächst er in einer festen 12-px-Spur von unten, und die Spaltenzahl
+  folgt der Breite, die „1,725“ braucht (5 · 10 · 19 Spalten). Ratchet in
+  `a11y.test.ts`, Geometrie-Messung in `e2e/demo.spec.ts`.
+- **Karte hält den Anker in der Mitte („Stationen“):** OSM-Karte und Radar
+  zentrierten unterschiedlich (Referenzstation bzw. Zuhause). Beide nutzen
+  jetzt `mapCenter()` (Zuhause → Referenzstation → erste Station); die
+  €-Pins bleiben unverändert Netto-€ gegenüber der Referenz.
+- **Kopfzeile umbricht (alle Bereiche):** Die Steuerzeile war 748 px breit und
+  scrollte in 209 px Fenster — sichtbar waren kaum zwei Steuerungen. Sie
+  bricht jetzt um (`flex-wrap`), die Wortmarke entfällt mobil (Symbol bleibt),
+  und sie klebt erst ab `sm` (`sm:sticky`).
+- **Untere Navigation:** „Stationen“ war 2 px breiter als seine Zelle und
+  malte über den Nachbarn; jetzt enger gesetzt (`tracking-tighter`) mit
+  `truncate` als Rückfall.
+- **Belege mobil als Karte („Ich → Belege“):** Die Tabelle brauchte 560 px
+  Mindestbreite und musste seitlich geschoben werden. Mobil steht je Beleg
+  eine Karte (Zeit/Punkt, Station, Menge·Preis, Ersparnis, Storno), ab `sm`
+  unverändert die Tabelle — beide aus derselben Quelle `web/src/fills.ts`.
+- **Preis-Zwillinge (System) und Entscheidungsschwellen (Ich →
+  Einstellungen):** dieselbe Behandlung; `min-w-[26rem]` ist weg, die Zellen
+  polstern mobil kleiner, Stations-Kennungen brechen in der Karte um.
+- **JSON und Log umbrechen (System, Labor):** Beide `<pre>`-Blöcke waren
+  breiter als ihr Kasten; mobil brechen sie um
+  (`max-sm:whitespace-pre-wrap`), ab `sm` bleiben die Zeilen wie eingetippt.
+- **„/?tab=ich“ zeigt den Belegverlauf:** Der Verlauf kam als Teil der
+  Overview-Antwort, die nur Jetzt/Stationen/Woche holen — ein kalter Aufruf
+  von „Ich“ (geteilter Link, PWA-Start) zeigte „Noch keine Belege“, obwohl
+  der Ledger gefüllt war. Auf „Ich“ liest die Liste jetzt
+  `GET /api/v1/fills` selbst.
+- **Heatmap (Labor):** Die Matrix bleibt die eine bewusst schiebbare Fläche
+  (24 Stunden × Wochentage); mobil sagt der Text darüber das vorher
+  (MICROCOPY §4c, „Heatmap mobil“).
+- **Abhängigkeiten (Dependabot #110/#104/#75):** ruff 0.16.7,
+  react/react-dom 19.3.0, vite 8.3.0, lucide-react 1.45.0, @types/* —
+  übernommen statt einzeln gemergt. Die numpy-Untergrenze der Engine hängt
+  jetzt am Interpreter (`< 3.12` bleibt bei 2.4.x, darüber ≥ 2.5.3), weil
+  numpy 2.5 Requires-Python ≥ 3.12 hat und die CI-Matrix bei 3.11 beginnt.
+
+### Neu
+
+- **`web/e2e/mobile.spec.ts` misst die Mobil-Zusagen** statt sie zu behaupten:
+  an 390 px prüft sie je Zustand, dass das Dokument nicht seitlich scrollt,
+  nichts über das Bild hinausragt, keine Zelle über ihre eigene Box malt —
+  und hält die Liste der bewusst schiebbaren Kästen (nur die Heatmap-Matrix)
+  als Gegenprobe fest. Gemessen werden alle sechs Bereiche, die vier
+  Ich-Unterseiten (mit über die echte API angelegten Belegen), die sechs
+  Labor-Abschnitte und jeder Dialog eines Bereichs; die Fundstellen landen als
+  `[mobil] <Zustand>: {…}` im Log.
+
+### Prüfungen
+
+- Lokal grün: `ruff check` + `ruff format --check`, **806 pytest**, **1064
+  Vitest** (neu: `web/src/fills.test.ts`), `npm run build`.
+- Neu in der Alltagssuite: `e2e/app.spec.ts` öffnet `/?tab=ich` mit einer
+  Attrappe für `GET /api/v1/fills` und erwartet den Beleg in der Liste.
+- Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
+  Chromium ist in der Sandbox nicht installierbar.
+
 ## [0.43.1] – 2026-09-16
 
 **Der Prüfbericht „neue GUI + neuer Fallback“ (PR #121) ist dort archiviert,

@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 16.09.2026 · App-Version **0.43.1**
+> Stand: 16.09.2026 · App-Version **0.43.2**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -39,11 +39,12 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.43.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.43.2 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.43.2 ist ein GUI-Release (`web/`): Mobil-Robustheit und vier Nutzerbefunde,
+keine Endpunkte, Rechnungen oder Betriebsabläufe.
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
-| [MICROCOPY.md](MICROCOPY.md) | 0.43.0 | Text-Regelwerk (T1–T8, V1–V5); 0.43.1 hat nur die Tankmengen-Spanne auf 10–100 L nachgeführt |
 | [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0/0.43.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |

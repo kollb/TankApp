@@ -107,10 +107,11 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
 });
 
 // GUI-UX-BEFUND U2: Der Tagesstreifen darf auf dem Handy nicht brechen.
-// Mobil trägt das Raster zwei Zeilen zu je zehn Zellen
-// (styles.css `.daystrip-cells`); jede Zelle bleibt breit genug, um den
-// Stundenwert zu zeigen. Auf 390 px war der Streifen vorher ein starres
-// 19er-Raster mit ~15,7 px je Zelle — faktisch unlesbar.
+// Mobil trägt das Raster vier Zeilen zu je fünf Zellen (styles.css
+// `.daystrip-cells`) — fünf Zeichen „1,725“ brauchen ~36 px, darunter läuft
+// die Zahl in die Nachbarzelle. Ursprünglich war der Streifen ein starres
+// 19er-Raster mit ~15,7 px je Zelle (faktisch unlesbar), danach ein
+// 10er-Raster mit ~27 px — dort ragten die Preise weiter heraus.
 test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
   await page.goto("/");
   await expect(
@@ -164,6 +165,66 @@ test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
   for (const box of withPrice.slice(0, 3)) {
     const cell = cells.filter({ hasText: box.text }).first();
     await expect(cell).toBeVisible();
+  }
+
+  // Kein Inhalt ragt aus seiner Zelle: `scrollWidth > clientWidth` heißt,
+  // der Preis wird breiter gemalt als die Zelle und überschreibt die
+  // Nachbarzelle (genau der Befund „Zahlenreihe ist schief“).
+  const overflowing = await cells.evaluateAll((nodes) =>
+    nodes
+      .map((node) => {
+        const element = node as HTMLElement;
+        return {
+          label: element.getAttribute("aria-label") ?? "",
+          scroll: element.scrollWidth,
+          client: element.clientWidth,
+        };
+      })
+      .filter((row) => row.scroll > row.client + 1),
+  );
+  expect(
+    overflowing,
+    `Zellen mit überlaufendem Inhalt: ${JSON.stringify(overflowing)}`,
+  ).toEqual([]);
+
+  // Balkenspur, Stunde und Wert liegen in jeder Zeile auf derselben Höhe:
+  // der Balken wächst in einer festen 12-px-Spur von unten, statt Stunden-
+  // und Wertzeile je Zelle zu verschieben.
+  const geometry = await cells.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const element = node as HTMLElement;
+      const box = element.getBoundingClientRect();
+      // Direkte Kinder: [Balkenspur, Stunde, Wert] — der Balken selbst liegt
+      // als Enkel in der Spur.
+      const spans = Array.from(element.querySelectorAll(":scope > span"));
+      return {
+        row: Math.round(box.top),
+        height: box.height,
+        hourTop: spans[1]?.getBoundingClientRect().top ?? null,
+        barBottom: spans[0]?.getBoundingClientRect().bottom ?? null,
+      };
+    }),
+  );
+  const rows = [...new Set(geometry.map((cell) => cell.row))];
+  expect(rows.length).toBeGreaterThanOrEqual(1);
+  for (const row of rows) {
+    const inRow = geometry.filter((cell) => cell.row === row);
+    const spread = (values: Array<number | null>) => {
+      const numbers = values.filter((value): value is number => value !== null);
+      return Math.max(...numbers) - Math.min(...numbers);
+    };
+    expect(
+      spread(inRow.map((cell) => cell.height)),
+      `Zeile ${row}: Zellen unterschiedlich hoch`,
+    ).toBeLessThan(1);
+    expect(
+      spread(inRow.map((cell) => cell.hourTop)),
+      `Zeile ${row}: Stundenzeile steht nicht auf einer Linie`,
+    ).toBeLessThan(1);
+    expect(
+      spread(inRow.map((cell) => cell.barBottom)),
+      `Zeile ${row}: Balken sitzen nicht auf derselben Basis`,
+    ).toBeLessThan(1);
   }
 });
 

@@ -69,6 +69,32 @@ export function boundsCenteredOn(
   ];
 }
 
+/**
+ * Mitte der Kartenansicht: **Zuhause** (Anker, Heimat-Startpunkt), sonst die
+ * Referenzstation, sonst die erste Station mit Koordinate.
+ *
+ * Die Karte „geht von Zuhause aus“ — dort starten die Entfernungen und der
+ * Umweg. Vorher zentrierte die OSM-Ansicht die Referenzstation, während das
+ * Radar bereits Zuhause in die Mitte setzte: derselbe Sachverhalt, zwei
+ * Bilder. Die €-Pins bleiben unberührt — sie vergleichen weiter gegen die
+ * Referenzstation (deren Pin heißt „Referenz“), nur der Bildmittelpunkt
+ * wechselt. Ohne Anker-Koordinate und ohne Station bleibt der bisherige
+ * Deutschland-Standardwert.
+ */
+export function mapCenter(
+  stations: Station[],
+  selectedId: string,
+  anchor: MapAnchor | null,
+): { lat: number; lon: number } {
+  if (anchor) return { lat: anchor.lat, lon: anchor.lon };
+  const reference =
+    stations.find((s) => s.station_id === selectedId) ?? stations[0];
+  return {
+    lat: (reference?.lat as number) ?? 51.16,
+    lon: (reference?.lon as number) ?? 10.45,
+  };
+}
+
 /** Kachel-Quelle der Kartenansicht (OSM-Standardstil, nur über https). */
 export const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 /** Pflicht-Zuordnung der OSM-Tile-Usage-Policy — deutsch, weil die App
@@ -276,13 +302,13 @@ export function StationMap({
             mapInstanceRef.current = null;
           }
 
-          // Mitte = Referenzstation (Pins = Netto-€ gegenüber ihr), nicht
-          // der Centroid aller Stationen — sonst sitzt die Referenz am Rand.
-          const reference =
-            validStations.find((s) => s.station_id === selectedId) ??
-            validStations[0];
-          const centerLat = (reference?.lat as number) ?? 51.16;
-          const centerLon = (reference?.lon as number) ?? 10.45;
+          // Mitte = Zuhause (Startpunkt der Stadt) — dieselbe Regel wie im
+          // Radar. Ohne Anker-Koordinate bleibt die Referenzstation die Mitte
+          // (sie ist der Nullpunkt der €-Pins), nicht der Centroid aller
+          // Stationen: sonst sitzt der Bezugspunkt am Rand.
+          const center = mapCenter(validStations, selectedId, validAnchor);
+          const centerLat = center.lat;
+          const centerLon = center.lon;
 
           const map = L.map(mapContainerRef.current, {
             center: [centerLat, centerLon],
@@ -554,8 +580,10 @@ export function StationMap({
           <span>
             Die €-Pins nennen die Netto-Ersparnis gegenüber der
             Referenzstation; deren eigener Pin heißt „Referenz“ und steht auf
-            0 € Unterschied, nicht auf 0 € Spritpreis. Die Karte hält die
-            Referenz in der Mitte.
+            0 € Unterschied, nicht auf 0 € Spritpreis.{" "}
+            {validAnchor
+              ? "Die Karte hält Zuhause in der Mitte."
+              : "Die Karte hält die Referenzstation in der Mitte."}
             {validAnchor
               ? tripMode === "dedicated"
                 ? " Das Haus ist Zuhause — der Startpunkt der Stadt: Von dort gehen die Stationsentfernungen und der ganze Hin- und Rückweg der Extrafahrt aus."
@@ -702,17 +730,15 @@ export function RadarView({
   // Das Radar geht von Zuhause aus (Haus-Symbol, Heimat-Startpunkt,
   // „müsste es nicht von Zuhause aus losgehen?“). Ohne diese Koordinate
   // bleibt die Referenzstation das Zentrum — der Rahmen wird dann explizit
-  // beschriftet.
-  const centerLat =
-    anchor?.lat ??
-    selectedStation?.lat ??
-    stationInfos.reduce((sum, s) => sum + (s.station.lat as number), 0) /
-      (stationInfos.length || 1);
-  const centerLon =
-    anchor?.lon ??
-    selectedStation?.lon ??
-    stationInfos.reduce((sum, s) => sum + (s.station.lon as number), 0) /
-      (stationInfos.length || 1);
+  // beschriftet. Dieselbe Regel wie in der OSM-Ansicht (`mapCenter`): ein
+  // Bezugspunkt für beide Bilder, nicht zwei.
+  const center = mapCenter(
+    stationInfos.map((info) => info.station),
+    selectedStation?.station_id ?? "",
+    anchor ?? null,
+  );
+  const centerLat = center.lat;
+  const centerLon = center.lon;
 
   // Convert lat/lon offset to approximate km offsets
   // 1 deg lat ≈ 111 km, 1 deg lon ≈ 111 * cos(lat) km

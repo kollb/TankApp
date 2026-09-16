@@ -681,14 +681,15 @@ export function JetztView(props: JetztViewProps) {
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
               {bestNow.sentence}
             </p>
+            {/* Der Lernstand steht genau einmal auf der Karte: `detail` der
+                grauen Antwort **ist** `learning` (nowVerdict: `learning ??
+                reason_short`). Die frühere zusätzliche Zeile darunter zeigte
+                denselben Satz ein zweites Mal („Das Modell lernt noch — 4 von
+                100 …“ stand doppelt). `learning` bleibt nur für die
+                Leerzustands-Prüfung darüber stehen. */}
             {verdict?.detail && verdict.action === "no_advice" && (
               <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
                 {verdict.detail}
-              </p>
-            )}
-            {learning && (
-              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
-                {learning}
               </p>
             )}
             {bestNow.ranking.length > 1 && (
@@ -924,31 +925,43 @@ export function JetztView(props: JetztViewProps) {
                               : "border-slate-800 bg-slate-950/40"
                     }`}
                   >
+                    {/* Balken in fester Spur (12 px), am unteren Rand
+                        ausgerichtet: Jede Zelle beginnt ihre Stunden- und
+                        Wertzeile damit auf derselben Höhe. Vorher wuchs der
+                        Balken in den Fluss hinein, die Zahlenreihe stand
+                        dadurch von Zelle zu Zelle auf verschiedenen Linien
+                        („Zahlenreihe ist schief“). */}
                     <span
                       aria-hidden="true"
-                      className={`w-full rounded-sm ${
-                        cell.value === null
-                          ? "h-0.5 bg-slate-700/50"
-                          : cell.tone === "cheap"
-                            ? "bg-emerald-400/80"
-                            : cell.tone === "pricey"
-                              ? "bg-rose-400/80"
-                              : "bg-slate-400/60"
-                      }`}
-                      style={{ height: `${2 + Math.round(ratio * 10)}px` }}
-                    />
+                      className="flex h-3 w-full items-end justify-center"
+                    >
+                      <span
+                        className={`w-full rounded-sm ${
+                          cell.value === null
+                            ? "h-0.5 bg-slate-700/50"
+                            : cell.tone === "cheap"
+                              ? "bg-emerald-400/80"
+                              : cell.tone === "pricey"
+                                ? "bg-rose-400/80"
+                                : "bg-slate-400/60"
+                        }`}
+                        style={{ height: `${2 + Math.round(ratio * 10)}px` }}
+                      />
+                    </span>
                     <span
-                      className={`font-mono text-[0.625rem] ${
+                      className={`whitespace-nowrap font-mono text-[0.625rem] ${
                         cell.current ? "text-emerald-200" : "text-slate-500"
                       }`}
                     >
                       {String(cell.hour).padStart(2, "0")}
                     </span>
-                    {/* U2: Wert in 0,625 rem (10 px) — die Mobil-Zelle ist
-                        ~34 px schmal; voller Preis steht zusätzlich im
-                        `title` und `aria-label` jeder Zelle. */}
+                    {/* U2: Wert in 0,625 rem (10 px); voller Preis steht
+                        zusätzlich im `title` und `aria-label` jeder Zelle.
+                        `whitespace-nowrap` hält „1,725“ in einer Zeile — die
+                        Zellenzahl je Reihe in styles.css (5/10/19) sorgt dafür,
+                        dass die fünf Zeichen auch hineinpassen. */}
                     <span
-                      className={`font-mono text-[0.625rem] leading-tight tabular-nums ${
+                      className={`whitespace-nowrap font-mono text-[0.625rem] leading-tight tabular-nums ${
                         cell.value === null
                           ? "text-slate-700"
                           : cell.current
