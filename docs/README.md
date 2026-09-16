@@ -19,6 +19,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
 | wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8, in 0.41.0 umgesetzt) | [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) |
 | wissen, wo Nutzertexte gegen das eigene Regelwerk laufen (Text-Befund T1–T13) | [TEXT-BEFUND.md](TEXT-BEFUND.md) |
+| wissen, wo 0.43.1 noch Optimierungspotenzial hat (Rechnung, Anzeige, Betrieb, Alltag, Backup, Wirkung — Befund O1–O42) | [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) |
 | den abgeschlossenen GUI-Neuentwurf nachvollziehen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) |
 | eine tote oder sortenlose Station im Polling-Set tauschen | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | verstehen, wie Pi ↔ NAS ↔ Browser zusammenspielen | [ARCHITEKTUR.md](ARCHITEKTUR.md) |
@@ -106,6 +107,7 @@ Eintrag, kein Eintrag ohne Grund.
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
 | [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) | Vermessung der gebauten GUI gegen den Entwurf: Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Gate-Selbsttäuschung, Props-Drilling — Befunde U1–U8 mit DoD, umgesetzt in 0.41.0 (archiviert mit Erledigt-Vermerk) |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmenge-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13 mit DoD, noch ohne Abnahme |
+| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | Sichtung von 0.43.1 gegen sich selbst, ohne Auftrag und ohne Abnahme: Mathematik/Statistik (O1–O15), UX/UI (O16–O21), Technik/Betrieb (O22–O28), Kundensicht (O29–O32), dazu die Dimensionen Datenhaltbarkeit, Integrität, Konfiguration, Beobachtbarkeit, Wirkung, Zugriff, Datenschutz, Barrierefreiheit, Wartbarkeit (O33–O42) — je Befund Beleg mit Zeilenangabe, Wirkung und DoD; Messprotokoll, Abgrenzung zu bekannten Aufgaben und acht Batches mit Priorität, Aufwand und Check je Befund |
 | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
