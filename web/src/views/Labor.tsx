@@ -33,7 +33,9 @@ import {
   Target,
 } from "lucide-react";
 import { DataReachNote } from "../components/DataReach";
+import { FreshnessLine } from "../components/FreshnessLine";
 import { HeatmapGrid } from "../components/HeatmapGrid";
+import { useChartPalette } from "../chartTheme";
 import { LineChart } from "../components/LineChart";
 import { LoadError } from "../components/LoadError";
 import { SkeletonChart, SkeletonPanel } from "../components/Skeleton";
@@ -248,6 +250,7 @@ function SketchNote({ children }: { children: ReactNode }) {
 }
 
 export function LaborView(props: LaborViewProps) {
+  const c = useChartPalette();
   const { focusSection, onFocusHandled, onNavigate, onOpenGlossary } = props;
   // U8: geteilte Daten aus dem OverviewContext …
   const ov = useOverview();
@@ -437,7 +440,7 @@ export function LaborView(props: LaborViewProps) {
       ? [
           {
             name: "Echte Preise (beobachtet)",
-            color: "#e2e8f0",
+            color: c.marker,
             pts: observationPts.map((p) => ({
               x: Date.parse(p.timestamp),
               y: p.price,
@@ -1091,7 +1094,7 @@ export function LaborView(props: LaborViewProps) {
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p
                 className="text-xs font-semibold text-slate-200"
-                title="out-of-sample: ausgewertet an Tagen, die das Modell beim Training nicht gesehen hat"
+                title="Fachwort: out-of-sample"
               >
                 Bilanz der Ratschläge (
                 {labData?.daysEval ?? "—"} Tage außerhalb der Stichprobe)
@@ -1229,7 +1232,7 @@ export function LaborView(props: LaborViewProps) {
               zählt Ratschläge gegen die Realität — es braucht keine Tankung.
               Das <strong className="text-slate-300">Wallet-Ledger</strong>{" "}
               zählt deine Euro gegen den Median und braucht Belege. Beide
-              getrennt: Können der App und Nutzen für dich.
+              getrennt: Können der App und Nutzen im Geldbeutel.
             </p>
             <p>
               „Keine klare Empfehlung“ ist eine aktive Entscheidung: Sie kostet
@@ -1315,7 +1318,7 @@ export function LaborView(props: LaborViewProps) {
                     thresholds={[
                       {
                         x: 0,
-                        color: "#a78bfa",
+                        color: c.violet,
                         label: `Regel-Ergebnis bei ε = ${deTrimmed(labData.scan.eps[0], 2)} ct`,
                       },
                     ]}
@@ -1428,17 +1431,17 @@ export function LaborView(props: LaborViewProps) {
                             series={[
                               {
                                 name: `Erwartung vs. ${anchorLabel}`,
-                                color: "#e2e8f0",
+                                color: c.marker,
                                 pts: dayCurve,
                               },
                             ]}
                             marks={[
-                              { x: anchorHour, color: "#38bdf8", label: anchorLabel },
+                              { x: anchorHour, color: c.accent, label: anchorLabel },
                               ...(activeLabDayRow.predHour != null
                                 ? [
                                     {
                                       x: activeLabDayRow.predHour,
-                                      color: "#34d399",
+                                      color: c.positive,
                                       label: "prognostizierte Tiefstphase",
                                     },
                                   ]
@@ -1585,7 +1588,7 @@ export function LaborView(props: LaborViewProps) {
               Der Scan über ε ist eine reine Nachrechnung auf den
               Backtest-Zeilen: Für jeden Tag wird die Regel mit der neuen
               Schwelle neu ausgewertet. Deshalb ist er sofort da — und deshalb
-              ändert er nichts an dem, was die App dir rät.
+              ändert er nichts an der Empfehlung der App.
             </p>
           </ForTheCurious>
           <SelfCheck
@@ -1595,15 +1598,16 @@ export function LaborView(props: LaborViewProps) {
         </LabBlock>
       </div>
 
-      <p className="mt-4 text-xs leading-relaxed text-slate-500">
-        {h?.version ? `TankApp ${h.version} · ` : ""}
-        Labor-Stand:{" "}
-        {statsSummaryRes.data?.generated_at
-          ? timeLabel(statsSummaryRes.data.generated_at)
-          : "Kennzahlen nicht geladen"}{" "}
-        · {activeCity || "kein Ort gewählt"}
-        {best ? ` · Vergleichsanker: ${best.name}` : ""}
-      </p>
+      <FreshnessLine
+        text={`${h?.version ? `TankApp ${h.version} · ` : ""}Labor-Stand: ${
+          statsSummaryRes.data?.generated_at
+            ? timeLabel(statsSummaryRes.data.generated_at)
+            : "Kennzahlen nicht geladen"
+        }`}
+        tone="ok"
+        place={activeCity}
+        extra={best ? ` · Vergleichsanker: ${best.name}` : ""}
+      />
     </section>
   );
 }

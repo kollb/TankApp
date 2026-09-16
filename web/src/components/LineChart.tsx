@@ -2,9 +2,7 @@
 
 import React, { useId, useState } from "react";
 import { compressedAxis, euro, gapBands } from "../data";
-
-const AXIS = "#334155";
-const TXT = "#94a3b8";
+import { useChartPalette } from "../chartTheme";
 
 export interface SeriesPts {
   name?: string;
@@ -64,6 +62,8 @@ export function LineChart({
   maxGapMinutes?: number;
   ariaDescription?: string;
 }) {
+  // V1: Achsen und Texte folgen dem Thema (dunkel/hell).
+  const c = useChartPalette();
   const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
   const hatchId = useId().replace(/:/g, "");
   // C5: role="img" bekommt eine beschreibende Textfassung (aria-describedby),
@@ -230,7 +230,7 @@ export function LineChart({
           patternUnits="userSpaceOnUse"
           patternTransform="rotate(45)"
         >
-          <line x1="0" y1="0" x2="0" y2="6" stroke="#475569" strokeWidth="2" />
+          <line x1="0" y1="0" x2="0" y2="6" stroke={c.tick} strokeWidth="2" />
         </pattern>
       </defs>
       {gridYs.map((gy, i) => (
@@ -240,7 +240,7 @@ export function LineChart({
             x2={W - padR}
             y1={Y(gy)}
             y2={Y(gy)}
-            stroke={AXIS}
+            stroke={c.axis}
             strokeWidth={0.6}
             strokeDasharray="3 4"
           />
@@ -249,7 +249,7 @@ export function LineChart({
             y={Y(gy) + 3.5}
             textAnchor="end"
             fontSize={10.5}
-            fill={TXT}
+            fill={c.text}
           >
             {yFmt(gy)}
           </text>
@@ -271,7 +271,7 @@ export function LineChart({
             y={H - 7}
             textAnchor="middle"
             fontSize={10.5}
-            fill={TXT}
+            fill={c.text}
           >
             {t.label}
           </text>
@@ -293,7 +293,7 @@ export function LineChart({
               width={width}
               height={barH}
               rx={3}
-              fill="#1e293b"
+              fill={c.grid}
             />
             <rect
               x={x1}
@@ -305,7 +305,7 @@ export function LineChart({
               opacity={0.55}
             />
             {compress && (
-              <g stroke="#64748b" strokeWidth={1.2}>
+              <g stroke={c.muted} strokeWidth={1.2}>
                 <line
                   x1={x1 + 1}
                   y1={barY + barH + 1}
@@ -326,7 +326,7 @@ export function LineChart({
                 y={barY - 4}
                 textAnchor="middle"
                 fontSize={8}
-                fill="#64748b"
+                fill={c.muted}
               >
                 {label}
               </text>
@@ -427,7 +427,7 @@ export function LineChart({
             cy={Y(hovered.y)}
             r={4.5}
             fill={hovered.color}
-            stroke="#fff"
+            stroke={c.onSurface}
             strokeWidth={1.5}
           />
           <rect
@@ -436,8 +436,8 @@ export function LineChart({
             width={tipW}
             height={tipH}
             rx={6}
-            fill="#0f172a"
-            stroke="#334155"
+            fill={c.surface}
+            stroke={c.axis}
             strokeWidth={1}
           />
           {tipLines.map((line, i) => (
@@ -446,7 +446,7 @@ export function LineChart({
               x={tipX + 9}
               y={tipY + 16 + i * 15}
               fontSize={11}
-              fill={i === 0 ? TXT : "#f1f5f9"}
+              fill={i === 0 ? c.text : c.textStrong}
               fontWeight={i === 0 ? 400 : 700}
             >
               {line}
@@ -471,7 +471,7 @@ export function LineChart({
               ) : (
                 <circle cx={4} cy={4} r={4} fill={item.color} />
               )}
-              <text x={12} y={8} fontSize={10.5} fill={TXT}>
+              <text x={12} y={8} fontSize={10.5} fill={c.text}>
                 {item.name}
               </text>
             </g>

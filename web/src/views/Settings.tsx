@@ -266,7 +266,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             hint={
               <span
                 className="mt-1 block text-xs text-slate-500"
-                title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"
+                title="Fachwort: Peak"
               >
                 0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
                 {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}.
@@ -639,9 +639,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </p>
             <a
               href="/api/v1/fills.csv"
+              title="Quelle: /api/v1/fills.csv"
               className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
             >
-              /api/v1/fills.csv laden
+              Belege als Datei laden
             </a>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">

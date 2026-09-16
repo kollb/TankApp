@@ -1505,3 +1505,20 @@ console.log(dayWord(berlinIso(2, 21, 25)));
     assert out[1] == "morgen"
     # In zwei Tagen: Datum TT.MM. (z. B. "16.09.")
     assert re.fullmatch(r"\d{2}\.\d{2}\.", out[2])
+
+
+def test_template_microcopy_rules():
+    """MICROCOPY §1/§2 auch auf der Pi-GUI (GUI-TEXT-BEFUND T1/T2).
+
+    Die Fallback-GUI ist eine eigene Oberfläche ohne Vitest-Ratchet — die
+    Tonfall-Regeln (kein Emoji, kein Ausrufezeichen am Satzende, keine direkte
+    Anrede) werden deshalb hier gegen das ausgelieferte Template geprüft. Der
+    Possessiv bleibt erlaubt (§1, T10), Karten-Links sind keine Sätze.
+    """
+    text = re.sub(r"https?://\S+", " ", rp2.DEFAULT_INDEX_HTML)
+    emoji = re.search(r"[\U0001F000-\U0001FAFF\u2600-\u27BF]", text)
+    assert emoji is None, f"Emoji im Nutzertext: {emoji.group(0)!r}"
+    bang = re.search(r"[\wÄÖÜäöüß)\].]!\s*[\"'<]", text)
+    assert bang is None, f"Ausrufezeichen am Satzende: {bang.group(0)!r}"
+    address = re.search(r"\b(du|dir|dich)\b", text, flags=re.IGNORECASE)
+    assert address is None, f"direkte Anrede: {address.group(0)!r}"

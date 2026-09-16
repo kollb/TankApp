@@ -205,7 +205,7 @@ describe("tankReach", () => {
     expect(tankReach(tank({ state: "low" }), 3, null)?.tone).toBe("warn");
     const neutral = tankReach(tank(), 3, null);
     expect(neutral?.tone).toBe("neutral");
-    expect(neutral?.text).toContain("hängt von deiner Strecke ab");
+    expect(neutral?.text).toContain("hängt von der Strecke ab");
   });
 });
 

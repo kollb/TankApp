@@ -342,7 +342,7 @@ function FillsSection(props: IchViewProps) {
               type="button"
               onClick={() => setShowVoidedFills((value) => !value)}
               aria-pressed={showVoidedFills}
-              title="Stornierte Belege zählen nicht in die Bilanz; der CSV-Export enthält sie immer."
+              title="Stornierte Belege anzeigen"
               className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
             >
               {showVoidedFills
@@ -553,8 +553,8 @@ function BalanceSection(props: IchViewProps) {
                 {euro(Math.abs(latest.saved_eur))} €
               </p>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                Maßstab: die Liter zu dem Preis, der an deiner Station stand,
-                als du getankt hast (Server).
+                Maßstab: die Liter zu dem Preis, der an deiner Station zum
+                Zeitpunkt der Tankung stand (Server).
               </p>
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">

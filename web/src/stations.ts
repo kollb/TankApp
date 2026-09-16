@@ -22,6 +22,8 @@ import {
   euro,
   ageLabel,
   freshness,
+  kilometersLabel,
+  NO_DATA_LINE,
   type DecideResult,
   type Point,
   type Station,
@@ -248,10 +250,10 @@ export function stationContextLines(
     );
   }
   if (row.detourKm !== null) {
-    lines.push(`Umweg zur Referenz: +${euro(row.detourKm, 1)} km (Server-Route).`);
+    lines.push(`Umweg zur Referenz: +${kilometersLabel(row.detourKm, 1)} (Server-Route).`);
   } else if (row.distKm !== null) {
     lines.push(
-      `${euro(row.distKm, 1)} km ab Zuhause ${
+      `${kilometersLabel(row.distKm, 1)} ab Zuhause ${
         
         row.station.dist_mode === "road" ? "(Fahrtstrecke)" : "(Luftlinie)"
       } — eine Umweg-Rechnung dazu liegt nicht vor.`,
@@ -343,7 +345,7 @@ export function compareStationsPair(
       const borderline = verdict === "borderline";
       sentence = `${b.name} ist ${centPerLiter(Math.abs(delta))} ${delta > 0 ? "teurer" : "günstiger"}. ` +
         (detourKm !== null
-          ? `Bei ${euro(detourKm, 1)} km Umweg: ${euro(netEur)} € netto pro Beleg. `
+          ? `Bei ${kilometersLabel(detourKm, 1)} Umweg: ${euro(netEur)} € netto pro Beleg. `
           : "") +
         (worth
           ? "Der Umweg rechnet sich."
@@ -431,7 +433,7 @@ export function stationsFreshness(
   pricesAt: string | null,
   now = Date.now(),
 ): StationsFreshness {
-  if (!pricesAt) return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+  if (!pricesAt) return { text: NO_DATA_LINE, tone: "warn" };
   const state = freshness(pricesAt, "prices", now);
   const tone: StationsFreshness["tone"] =
     state === "old" ? "bad" : state === "stale" ? "warn" : "ok";

@@ -13,10 +13,13 @@
 
 import {
   ageLabel,
+  ageWord,
   countLabel,
+  deNumber,
   deTrimmed,
   freshness,
   JOB_LABELS,
+  NO_DATA_LINE,
   percentLabel,
   timeLabel,
   type Alarm,
@@ -29,6 +32,9 @@ import {
   type Stations,
 } from "./data";
 import { labHint, type LabHint } from "./lab";
+
+/** T5: derselbe Hinweis an beiden Stellen (Daten-Karte und Einrichtungsliste). */
+const INFLUX_MISSING = "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.";
 
 export type SystemTone = "ok" | "warn" | "error" | "unknown";
 
@@ -81,7 +87,7 @@ export function systemStatusRows(input: {
         ? `${deTrimmed(Number(c.tmpfs_used_bytes) / 1024 / 1024, 1)} MiB tmpfs`
         : null;
     if (c.fresh) {
-      const mins = age != null ? `${deTrimmed(age, 0)} Min. alt` : "frisch";
+      const mins = age != null ? `${ageWord(age)} gemeldet` : "frisch";
       return {
         id: "collector",
         label: "Collector (Pi)",
@@ -95,8 +101,8 @@ export function systemStatusRows(input: {
       id: "collector",
       label: "Collector (Pi)",
       tone: "warn",
-      headline: age != null ? `Preise ${deTrimmed(age, 0)} Min. alt` : "Veraltet",
-      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Min., Collector prüfen.`,
+      headline: age != null ? `Preise ${ageWord(age)}` : "Veraltet",
+      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Minuten, Collector prüfen.`,
       meta: tmpfsMeta,
     };
   })();
@@ -118,7 +124,7 @@ export function systemStatusRows(input: {
         label: "Datenbank (NAS)",
         tone: "error",
         headline: "InfluxDB nicht eingebunden",
-        detail: "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        detail: INFLUX_MISSING,
         meta: h.polling_path ? `Polling-Pfad: ${h.polling_path}` : null,
       };
     }
@@ -340,7 +346,7 @@ export function systemFreshness(input: {
     (s): s is [string, DataKind] => s[0] != null,
   );
   if (!stamps.length) {
-    return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+    return { text: NO_DATA_LINE, tone: "warn" };
   }
   const ages = stamps.map(([s, kind]) => ({ s, age: freshness(s, kind, now) }));
   const worst = ages.reduce((acc, cur) => {
@@ -421,7 +427,7 @@ export function systemExplanationLaeufe(
     sentences: [
       `Läufe: ${names} — jeder Job meldet Zustand (Erfolg, Läuft, Wartet, Unvollständig, Abgebrochen, Fehlgeschlagen) und Fortschritt je Phase.`,
       "Der Startknopf wirkt nur im NAS-Webauftritt und nie zweimal gleichzeitig — auf der Kommandozeile gilt der Worker-Befehl aus der Anleitung.",
-      "Das Job-Log zeigt die letzten Zeilen direkt vom NAS (data/runtime/jobs/<job>.log) — Pfade und Zugangsdaten werden beim Auslesen entfernt.",
+      "Das Job-Log zeigt die letzten Zeilen direkt vom NAS — Pfade und Zugangsdaten werden beim Auslesen entfernt.",
     ],
     source:
       "Grundlage: /api/v1/health → jobs und /api/v1/jobs/<job>/log.",
@@ -481,7 +487,7 @@ export function systemSetupSteps(input: {
       done: !!h?.influx_configured,
       hint: h?.influx_configured
         ? "Lesezugang eingebunden."
-        : "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.",
+        : INFLUX_MISSING,
     },
     {
       label: "Erster Modell-Lauf",
@@ -623,6 +629,25 @@ function webhookStatusText(status: string): { tone: SystemTone; text: string } {
  * davon. Steht ein Versuch offen, sagt der Satz die Zahl der Versuche und
  * das Alter des ältesten.
  */
+/**
+ * T7: Der Serverzustand kommt als englisches Enum — angezeigt wird das
+ * deutsche Wort, der Rohcode steht höchstens im title.
+ */
+export function driftStatusLine(drift: {
+  status: string;
+  max_cusum?: number | null;
+} | null | undefined): string {
+  if (!drift) return "—";
+  const value =
+    drift.max_cusum != null && Number.isFinite(drift.max_cusum)
+      ? ` (${deNumber(drift.max_cusum)}σ)`
+      : "";
+  if (drift.status === "normal") return `unauffällig${value}`;
+  if (drift.status === "drift") return `Drift erkannt${value}`;
+  if (drift.status === "unknown") return "noch nicht messbar";
+  return drift.status;
+}
+
 export function webhookLine(webhook: WebhookState | null | undefined): WebhookLine {
   if (!webhook) {
     return {
@@ -636,7 +661,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.pending_age_s;
     const since =
       age != null && Number.isFinite(age)
-        ? ` seit ${deTrimmed(age / 60, 0)} Min.`
+        ? ` seit ${ageWord(age / 60).replace(/^vor /, "")}`
         : "";
     const tries = attempts === 0 ? "erster Versuch" : `${countLabel(attempts)} Versuche`;
     return {
@@ -650,7 +675,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.last_ok_age_s;
     const when =
       age != null && Number.isFinite(age)
-        ? ` Zuletzt quittiert vor ${deTrimmed(age / 60, 0)} Min.`
+        ? ` Zuletzt quittiert ${ageWord(age / 60)}`
         : "";
     const gaveUp = (webhook.gave_up ?? 0) > 0 ? ` Aufgegeben: ${countLabel(webhook.gave_up)}.` : "";
     return {

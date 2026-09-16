@@ -74,14 +74,8 @@ export function labSection(section: LabSectionId): LabSection {
   const found = LAB_SECTIONS.find((entry) => entry.id === section);
   // Kann nicht passieren (Id ist ein Typ) — der Fallback hält die Ansicht
   // aber auch dann bedienbar, wenn jemand eine Zeichenkette durchreicht.
-  return (
-    found ?? {
-      id: "glossar",
-      number: null,
-      question: "Alle Begriffe von A–Z (Glossar)",
-      short: "Glossar von A–Z",
-    }
-  );
+  // T5: Der Fallback ist der Glossar-Abschnitt selbst — kein zweiter Text.
+  return found ?? LAB_SECTIONS.find((entry) => entry.id === "glossar")!;
 }
 
 /** Knopftext der Sprungleiste: „1 · Prognose“ bzw. „Spielplatz“. */
@@ -105,7 +99,13 @@ export function labHint(section: LabSectionId): LabHint {
   };
 }
 
-import { centPerLiter, euro, percentLabel, type AdviceDiaryEntry } from "./data";
+import {
+  centPerLiter,
+  euro,
+  euroToCentPerLiter,
+  percentLabel,
+  type AdviceDiaryEntry,
+} from "./data";
 
 /**
  * Wort zur Aktion eines Tagebuch-Eintrags — dieselben Wörter wie in „Jetzt“,
@@ -172,7 +172,7 @@ export function diaryOutcome(entry: AdviceDiaryEntry): DiaryOutcome {
       word: "richtig",
       tone: "good",
       detail: entry.price_window !== null && entry.price_then !== null
-        ? `Preis im Fenster ${euro(entry.price_window, 3)} €/L statt ${euro(entry.price_then, 3)} €/L — ${centPerLiter(Math.abs((entry.price_then - entry.price_window) * 100))} Unterschied.`
+        ? `Preis im Fenster ${euro(entry.price_window, 3)} €/L statt ${euro(entry.price_then, 3)} €/L — ${centPerLiter(Math.abs(euroToCentPerLiter(entry.price_then - entry.price_window) ?? 0))} Unterschied.`
         : "Die Empfehlung traf ein.",
     };
   }

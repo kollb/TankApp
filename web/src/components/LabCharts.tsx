@@ -1,9 +1,7 @@
 import React, { useId } from "react";
 // C9: Zahlenformate kommen aus einem Satz — Achsen/Tooltips sind keine Ausnahme.
-import { countLabel, euro, percentLabel } from "../data";
-
-const AXIS = "#334155";
-const TXT = "#94a3b8";
+import { centPerLiter, countLabel, euro, percentLabel } from "../data";
+import { useChartPalette } from "../chartTheme";
 
 export interface SeriesPts {
   name?: string;
@@ -34,6 +32,7 @@ export function LabLineChart({
   xTicks?: { x: number; label: string }[];
   ariaDescription?: string;
 }) {
+  const c = useChartPalette();
   // C5: role="img" trägt eine beschreibende Textfassung (aria-describedby),
   // nicht nur ein Label — Screenreader bekommen sagen, was das Diagramm zeigt.
   const descId = useId();
@@ -101,14 +100,14 @@ export function LabLineChart({
       <desc id={descId}>{desc}</desc>
       {gridYs.map((gy, i) => (
         <g key={i}>
-          <line x1={padL} x2={W - padR} y1={Y(gy)} y2={Y(gy)} stroke={AXIS} strokeWidth={0.6} strokeDasharray="3 4" />
-          <text x={padL - 6} y={Y(gy) + 3.5} textAnchor="end" fontSize={10.5} fill={TXT}>
+          <line x1={padL} x2={W - padR} y1={Y(gy)} y2={Y(gy)} stroke={c.axis} strokeWidth={0.6} strokeDasharray="3 4" />
+          <text x={padL - 6} y={Y(gy) + 3.5} textAnchor="end" fontSize={10.5} fill={c.text}>
             {yFmt(gy)}
           </text>
         </g>
       ))}
       {xTicks.map((t, i) => (
-        <text key={i} x={X(t.x)} y={H - 7} textAnchor="middle" fontSize={10.5} fill={TXT}>
+        <text key={i} x={X(t.x)} y={H - 7} textAnchor="middle" fontSize={10.5} fill={c.text}>
           {t.label}
         </text>
       ))}
@@ -128,7 +127,7 @@ export function LabLineChart({
           {series.map((s, i) => (
             <g key={i} transform={`translate(${padL + i * 110}, 6)`}>
               <circle cx={4} cy={4} r={4} fill={s.color} />
-              <text x={12} y={8} fontSize={10.5} fill={TXT}>
+              <text x={12} y={8} fontSize={10.5} fill={c.text}>
                 {s.name}
               </text>
             </g>
@@ -142,10 +141,10 @@ export function LabLineChart({
 /** Histogramm einer Verteilung mit Schwellen-Markern (S-Histogramm). */
 export function HistogramBars({
   values,
-  color = "#34d399",
+  color,
   thresholds = [],
   height = 190,
-  fmt = (v: number) => `${euro(v, 1)} ct`,
+  fmt = (v: number) => centPerLiter(v),
   ariaDescription,
 }: {
   values: number[];
@@ -155,6 +154,7 @@ export function HistogramBars({
   fmt?: (v: number) => string;
   ariaDescription?: string;
 }) {
+  const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
   const descId = useId();
   const desc =
@@ -203,8 +203,8 @@ export function HistogramBars({
       <desc id={descId}>{desc}</desc>
       {[0, 0.5, 1].map((f, i) => (
         <g key={i}>
-          <line x1={padL} x2={W - padR} y1={Y(cMax * f)} y2={Y(cMax * f)} stroke={AXIS} strokeWidth={0.6} strokeDasharray="3 4" />
-          <text x={padL - 6} y={Y(cMax * f) + 3.5} textAnchor="end" fontSize={10.5} fill={TXT}>
+          <line x1={padL} x2={W - padR} y1={Y(cMax * f)} y2={Y(cMax * f)} stroke={c.axis} strokeWidth={0.6} strokeDasharray="3 4" />
+          <text x={padL - 6} y={Y(cMax * f) + 3.5} textAnchor="end" fontSize={10.5} fill={c.text}>
             {f === 0 ? "0" : f === 0.5 ? Math.round(cMax / 2) : cMax}
           </text>
         </g>
@@ -216,7 +216,7 @@ export function HistogramBars({
           y={Y(c)}
           width={bw * 0.86}
           height={Math.max(Y(c) ? padT + ih - Y(c) : 0, 0)}
-          fill={color}
+          fill={color ?? c.positive}
           opacity={0.75}
           rx={1.5}
         />
@@ -229,10 +229,10 @@ export function HistogramBars({
           </text>
         </g>
       ))}
-      <text x={padL} y={H - 7} fontSize={10.5} fill={TXT}>
+      <text x={padL} y={H - 7} fontSize={10.5} fill={c.text}>
         {fmt(lo)}
       </text>
-      <text x={W - padR} y={H - 7} textAnchor="end" fontSize={10.5} fill={TXT}>
+      <text x={W - padR} y={H - 7} textAnchor="end" fontSize={10.5} fill={c.text}>
         {fmt(hi)}
       </text>
     </svg>
@@ -253,6 +253,7 @@ export function DeltaBars({
   fmt?: (v: number) => string;
   ariaDescription?: string;
 }) {
+  const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
   const descId = useId();
   const desc =
@@ -282,29 +283,29 @@ export function DeltaBars({
       aria-describedby={descId}
     >
       <desc id={descId}>{desc}</desc>
-      <line x1={padL} x2={W - padR} y1={padT + ih / 2} y2={padT + ih / 2} stroke="#475569" strokeWidth={1} />
+      <line x1={padL} x2={W - padR} y1={padT + ih / 2} y2={padT + ih / 2} stroke={c.tick} strokeWidth={1} />
       {values.map((v, i) => {
         const x = padL + i * step + (step - bw) / 2;
         const y = Math.min(Y(v), Y(0));
         const h = Math.abs(Y(v) - Y(0));
         return (
           <g key={i}>
-            <rect x={x} y={y} width={bw} height={Math.max(h, 0.5)} rx={2} fill={v >= 0 ? "#34d399" : "#fb7185"} opacity={0.85} />
+            <rect x={x} y={y} width={bw} height={Math.max(h, 0.5)} rx={2} fill={v >= 0 ? c.positive : c.negative} opacity={0.85} />
             {labels && labels[i] && (
-              <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize={9.5} fill={TXT}>
+              <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize={9.5} fill={c.text}>
                 {labels[i]}
               </text>
             )}
           </g>
         );
       })}
-      <text x={padL - 6} y={Y(vMax) + 3.5} textAnchor="end" fontSize={10.5} fill={TXT}>
+      <text x={padL - 6} y={Y(vMax) + 3.5} textAnchor="end" fontSize={10.5} fill={c.text}>
         {fmt(vMax)}
       </text>
-      <text x={padL - 6} y={Y(-vMax) + 3.5} textAnchor="end" fontSize={10.5} fill={TXT}>
+      <text x={padL - 6} y={Y(-vMax) + 3.5} textAnchor="end" fontSize={10.5} fill={c.text}>
         {fmt(-vMax)}
       </text>
-      <text x={padL - 6} y={Y(0) + 3.5} textAnchor="end" fontSize={10.5} fill={TXT}>
+      <text x={padL - 6} y={Y(0) + 3.5} textAnchor="end" fontSize={10.5} fill={c.text}>
         0
       </text>
     </svg>
@@ -321,6 +322,7 @@ export function CalibChart({
   livePoints?: { p: number; hit: number; n: number }[];
   ariaDescription?: string;
 }) {
+  const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
   const descId = useId();
   const desc =
@@ -357,29 +359,29 @@ export function CalibChart({
     >
       <desc id={descId}>{desc}</desc>
       {/* Diagonale */}
-      <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(1)} stroke="#475569" strokeWidth={1.4} strokeDasharray="6 4" />
+      <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(1)} stroke={c.tick} strokeWidth={1.4} strokeDasharray="6 4" />
       {[0, 0.25, 0.5, 0.75, 1].map((f) => (
         <g key={f}>
-          <line x1={X(0)} x2={X(1)} y1={Y(f)} y2={Y(f)} stroke="#1e293b" strokeWidth={0.6} />
-          <line x1={X(f)} x2={X(f)} y1={Y(0)} y2={Y(1)} stroke="#1e293b" strokeWidth={0.6} />
-          <text x={padL - 6} y={Y(f) + 4} textAnchor="end" fontSize={11} fill="#64748b">
-            {Math.round(f * 100)}%
+          <line x1={X(0)} x2={X(1)} y1={Y(f)} y2={Y(f)} stroke={c.grid} strokeWidth={0.6} />
+          <line x1={X(f)} x2={X(f)} y1={Y(0)} y2={Y(1)} stroke={c.grid} strokeWidth={0.6} />
+          <text x={padL - 6} y={Y(f) + 4} textAnchor="end" fontSize={11} fill={c.muted}>
+            {percentLabel(f * 100)}
           </text>
-          <text x={X(f)} y={H - 36} textAnchor="middle" fontSize={11} fill="#64748b">
-            {Math.round(f * 100)}%
+          <text x={X(f)} y={H - 36} textAnchor="middle" fontSize={11} fill={c.muted}>
+            {percentLabel(f * 100)}
           </text>
         </g>
       ))}
-      <text x={padL} y={H - 22} fontSize={10.5} fill="#64748b">
+      <text x={padL} y={H - 22} fontSize={10.5} fill={c.muted}>
         versprochen: Wette in %
       </text>
-      <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10.5} fill="#64748b">
+      <text x={W - padR} y={padT - 4} textAnchor="end" fontSize={10.5} fill={c.muted}>
         eingetroffen in %
       </text>
 
       {/* Backtest Punkte */}
       {points.map((p, i) => {
-        const color = p.cls === 0 ? "#34d399" : "#38bdf8";
+        const color = p.cls === 0 ? c.positive : c.accent;
         return (
           <g key={i}>
             <circle cx={X(p.p)} cy={Y(p.hit)} r={3.5 + (p.n / maxN) * 5} fill={color} opacity={0.85} />
@@ -391,24 +393,24 @@ export function CalibChart({
       {/* Live Punkte (Schicht B, bernsteinfarben / amber) */}
       {livePoints.map((p, i) => (
         <g key={`live-${i}`}>
-          <circle cx={X(p.p)} cy={Y(p.hit)} r={5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} opacity={0.95} />
+          <circle cx={X(p.p)} cy={Y(p.hit)} r={5} fill={c.warn} stroke={c.onSurface} strokeWidth={1.5} opacity={0.95} />
           <title>{`Live · P = ${percentLabel(p.p * 100, 0)} · realisiert ${percentLabel(p.hit * 100, 0)} · n = ${countLabel(p.n)}`}</title>
         </g>
       ))}
 
       <g transform={`translate(${padL}, ${H - 10})`}>
-        <circle cx={4} cy={0} r={4} fill="#34d399" />
-        <text x={12} y={4} fontSize={11} fill="#94a3b8">
+        <circle cx={4} cy={0} r={4} fill={c.positive} />
+        <text x={12} y={4} fontSize={11} fill={c.text}>
           Werktag
         </text>
-        <circle cx={96} cy={0} r={4} fill="#38bdf8" />
-        <text x={104} y={4} fontSize={11} fill="#94a3b8">
+        <circle cx={96} cy={0} r={4} fill={c.accent} />
+        <text x={104} y={4} fontSize={11} fill={c.text}>
           Wochenende
         </text>
         {livePoints.length > 0 && (
           <>
-            <circle cx={216} cy={0} r={4} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />
-            <text x={224} y={4} fontSize={11} fill="#f59e0b">
+            <circle cx={216} cy={0} r={4} fill={c.warn} stroke={c.onSurface} strokeWidth={1} />
+            <text x={224} y={4} fontSize={11} fill={c.warn}>
               Echte Live-Empfehlungen
             </text>
           </>

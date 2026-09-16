@@ -2472,7 +2472,7 @@ export const messages: Record<string, string> = {
   selection_failed:
     "Selektion konnte nicht berechnet werden. Trainingsdaten prüfen.",
   collector_no_heartbeat:
-    "Noch kein Collector-Herzschlag in InfluxDB. Pi-Uploader muss heartbeat.json liefern.",
+    "Noch kein Collector-Herzschlag — der Pi hat nichts gemeldet. Die Schritte zum Prüfen stehen im Bereich „System“ unter „Daten“.",
   collector_check_failed: "Collector-Status konnte nicht geprüft werden.",
   too_many_points:
     "Zu viele Punkte für die Heatmap. Kleineres Zeitfenster wählen.",
@@ -2516,6 +2516,34 @@ export const messages: Record<string, string> = {
   server_error: "Serverfehler. Erneuter Versuch folgt.",
   not_found: "Endpunkt nicht gefunden.",
 };
+/**
+ * T5 (GUI-TEXT-BEFUND): Dieselbe Aussage steht an **einer** Stelle. Dubletten
+ * sind kein Stilproblem — beim nächsten Wortwechsel wird eine der beiden
+ * Stellen vergessen, und genau so entstanden „.“ hier und kein Punkt dort.
+ */
+export const NO_DATA_LINE = "Kein Datenstand — noch nichts gemeldet";
+
+/** Rückmeldung nach dem Buchen; die Einordnung hängt `fillPositionNote` an. */
+export const FILL_BOOKED_LINE = "Beleg in deiner Bilanz verbucht.";
+
+/** Hinweis des „Ansicht teilen“-Knopfs, wenn die Zwischenablage fehlt. */
+export const SHARE_URL_LINE = "URL steht jetzt in der Adresszeile — zum Teilen kopieren.";
+
+/**
+ * Offline-Queue: Der Eintrag liegt lokal und geht raus, sobald die Verbindung
+ * steht — für Belege wie für Vorsätze, nur das Fürwort unterscheidet sich.
+ */
+export function queuedNote(subject: "Beleg" | "Auswahl"): string {
+  return subject === "Beleg"
+    ? "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht."
+    : "Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.";
+}
+
+/** Gescheitertes Speichern — derselbe Satz an jeder Schreibstelle. */
+export function saveFailedNote(detail: string | null | undefined): string {
+  return `Speichern fehlgeschlagen: ${detail || "unbekannter Grund"} — bitte erneut versuchen.`;
+}
+
 export function problem(code?: string | null) {
   return code
     ? messages[code] || "Daten konnten nicht vollständig geladen werden."
@@ -2586,6 +2614,15 @@ export function percentLabel(value: number | null | undefined, decimals = 0) {
   return value == null || !Number.isFinite(value)
     ? "—"
     : `${euro(value, decimals)} %`;
+}
+
+/**
+ * T8: Zählwörter mit ihrer Zahl — „1 frischer Preis“, „12 frische Preise“.
+ * Der Plural steht hier, nicht in der Ansicht: „1 frische Preise“ war gebaut.
+ */
+export function freshCountLabel(count: number): string {
+  const n = countLabel(count);
+  return count === 1 ? "1 frischer Preis" : `${n} frische Preise`;
 }
 
 /** Tausender-Trennung de-DE („12.345“) — Zählerstände, nie Preise. */
@@ -2917,7 +2954,7 @@ export function livePhaseCountdown(phase?: LivePhase | null): string | null {
   const coverage =
     phase.min_daily_coverage == null
       ? ""
-      : ` · Tagesabdeckung ≥ ${Math.round(phase.min_daily_coverage * 100)} %`;
+      : ` · Tagesabdeckung ≥ ${percentLabel(phase.min_daily_coverage * 100)}`;
   const weakest =
     phase.stations > 1 ? `, schwächste von ${phase.stations} Stationen` : "";
   return (
@@ -2963,6 +3000,12 @@ export function livePhaseHint(phase?: LivePhase | null): string {
 // Empfehlungen, bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
 export const M7_MIN_RECOMMENDATIONS = 100;
 export const M7_BRIER_THRESHOLD = 0.25;
+
+/**
+ * Zielwert für MASE an sprungfreien Tagen (docs/ENGINE.md) — angezeigt über
+ * `deNumber`, damit im Text „0,80“ steht und nicht „0.80“ (GUI-TEXT-BEFUND T4).
+ */
+export const MASE_TARGET = 0.8;
 
 export type M7Advice = {
   n?: number | null;
@@ -3076,9 +3119,18 @@ export function tankRangeKm(
 }
 
 /** Kilometer deutsch: „1.234 km“ (ganzzahlig, de-DE). */
-export function kilometersLabel(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value)
-    ? "—"
+/**
+ * Strecke in km — der einzige Weg, Kilometer anzuzeigen (MICROCOPY §3).
+ * `decimals` nur, wo die Nachkommastelle trägt (Umweg „2,4 km“); Zählerstände
+ * bleiben ganzzahlig.
+ */
+export function kilometersLabel(
+  value: number | null | undefined,
+  decimals = 0,
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return decimals > 0
+    ? `${euro(value, decimals)} km`
     : `${Math.round(value).toLocaleString("de-DE")} km`;
 }
 
@@ -3419,7 +3471,7 @@ export function personalizationNote(
   if (active) {
     return (
       `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
-      `günstige Fenster zu Stunden, die du nie tankst, stehen weiter hinten.`
+      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.`
     );
   }
   const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
@@ -3505,7 +3557,7 @@ export function lifecycleTip(lc: StationLifecycle | string | null | undefined): 
 export function priceTwinLabel(twin: PriceTwin): string {
   const a = twin.station_a;
   const b = twin.station_b;
-  const agree = Number.isFinite(twin.agreement_pct) ? `${euro(twin.agreement_pct, 1)} %` : "—";
+  const agree = Number.isFinite(twin.agreement_pct) ? percentLabel(twin.agreement_pct, 1) : "—";
   return `${a} und ${b} — ${twin.qualifying_days} Tage, ${agree} der gemeinsamen Preise innerhalb 0,1 ct/L`;
 }
 
@@ -3582,7 +3634,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     term: "AV-Score / Ampel-Stärke",
     de: "Gewichtete Verfügbarkeit bei 3 günstigsten",
     short: "Gewichtete Wahrscheinlichkeit, dass die Station zu den drei günstigsten der Stadt gehört — gewichtet mit dem Tankzeitprofil.",
-    long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu deinen typischen Tankzeiten stehst du oft gut da.",
+    long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu den typischen Tankzeiten liegt die Station oft unter den drei günstigsten.",
     anchor: "av-score--billigste-stunde",
   },
   {

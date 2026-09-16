@@ -189,7 +189,7 @@ export function AppHeader({
           <span className="relative inline-flex">
             <button
               aria-label="Ansicht als Link teilen"
-              title="Setzt Bereich, Stadt, Kraftstoff, Station, Tankmenge und Heatmap-Einstellungen in die URL und kopiert sie"
+              title="Ansicht als Link kopieren"
               onClick={copyShareLink}
               className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
             >
@@ -209,7 +209,7 @@ export function AppHeader({
           </span>
           <button
             aria-label="Daten aktualisieren"
-            title="Aktualisiert die NAS-Datenansicht, löst keinen Tankerkönig-Poll aus"
+            title="Datenansicht aktualisieren"
             onClick={() => setRefresh((value) => value + 1)}
             disabled={prices.pending}
             className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"

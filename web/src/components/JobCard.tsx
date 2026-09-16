@@ -136,12 +136,12 @@ export function JobCard({
         )}
         {job?.triggers != null && job.triggers > 0 && (
           <div className="flex justify-between">
-            <span>Webhook-Trigger</span>
+            <span>Auslösungen vom Pi</span>
             <span className="font-mono text-slate-200">
               {job.triggers}×
               {(() => {
                 const skip = triggerSkipLabel(job?.last_trigger_skip);
-                return skip ? ` · letzter Skip: ${skip}` : "";
+                return skip ? ` · zuletzt übersprungen: ${skip}` : "";
               })()}
             </span>
           </div>

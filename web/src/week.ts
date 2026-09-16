@@ -14,6 +14,7 @@ import {
   euro,
   euroPerLiter,
   hourRangeLabel,
+  kilometersLabel,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type DecideResult,
@@ -200,7 +201,7 @@ export function tankReach(
     }
     return {
       tone: "ok",
-      text: `Reicht bis zum Fenster — Restreichweite ≈ ${countLabel(tank.range_km)} km.`,
+      text: `Reicht bis zum Fenster — Restreichweite ≈ ${kilometersLabel(tank.range_km)}.`,
     };
   }
   if (tank.state === "low") {
@@ -211,7 +212,7 @@ export function tankReach(
   }
   return {
     tone: "neutral",
-    text: `Restreichweite ≈ ${countLabel(tank.range_km)} km — ob das bis dahin reicht, hängt von deiner Strecke ab.`,
+    text: `Restreichweite ≈ ${kilometersLabel(tank.range_km)} — ob das bis dahin reicht, hängt von der Strecke ab.`,
   };
 }
 
@@ -369,12 +370,12 @@ export function weekTankLine(
   const percentLabelPart =
     tankPercent !== null ? `${deTrimmed(tankPercent, 0)} %` : "—";
   const range = tank
-    ? `Restreichweite ≈ ${countLabel(tank.range_km)} km`
+    ? `Restreichweite ≈ ${kilometersLabel(tank.range_km)}`
     : `≈ ${deTrimmed(tankCapacity, 0)} L Tank`;
   return {
     text: `Tank: ${percentLabelPart} · ${range}`,
     detail: tank
-      ? `inkl. Reserve ≈ ${countLabel(tank.reserve_range_km)} km`
+      ? `inkl. Reserve ≈ ${kilometersLabel(tank.reserve_range_km)}`
       : "Bewertung folgt mit der nächsten Empfehlung-Antwort.",
   };
 }

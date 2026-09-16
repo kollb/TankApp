@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 15.09.2026 · App-Version **0.40.0** · gilt für `web/src/**`,
+> Stand: 16.09.2026 · App-Version **0.42.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -18,7 +18,9 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4b. Bereich „Jetzt“: feste Muster (0.34.0)](#4b-bereich-jetzt-feste-muster-0340)
 - [4c. Bereich „Labor“: feste Muster (0.36.0)](#4c-bereich-labor-feste-muster-0360)
 - [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
+- [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
+- [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
 
@@ -38,12 +40,15 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 | Possessiv ist erlaubt, direkte Anrede und Imperativ nicht | „Beleg in deiner Bilanz verbucht.“ · „Wer vor 18:00 Uhr tanken muss, …“ | „Du hast deinen Beleg gespeichert.“ · „Fahr nur hin, wenn …“ |
 | Fragen nur im Fällig-Prompt | „Gerade getankt?“ (Fenster vorbei) | „Hast du getankt?“ als Dauertext |
 
-**Anrede (T10):** „Sie“/„Du“ als Anrede bleibt draußen, der Possessiv
-(„deine Bilanz“, „dein Profil“) ist die etablierte Form und bleibt. Fragen
-stehen nur dort, wo die App auf ein Ereignis antwortet (Fällig-Prompt „Fenster
-vorbei“, Erfassungs-Formular) — sonst Aussagesatz. Imperative („Vergleiche …“,
-„fahr nur hin …“) werden zu Aussagen über die Sache. Anrede in
-**Hinweistexten der Doku** darf „Sie“ verwenden.
+**Anrede (T10/T1):** „Sie“/„Du“ als Anrede bleibt draußen, der Possessiv
+(„deine Bilanz“, „dein Profil“) ist die etablierte Form und bleibt. `du`,
+`dir`, `dich` und die Höflichkeitsformen stehen in keinem Nutzertext — der
+Ratchet `microcopy.test.ts` prüft sie, `tests/test_rp2_fallback.py` prüft
+dasselbe für die Fallback-GUI. Fragen stehen nur dort, wo die App auf ein
+Ereignis antwortet (Fällig-Prompt „Fenster vorbei“, Erfassungs-Formular) —
+sonst Aussagesatz. Imperative („Vergleiche …“, „fahr nur hin …“) werden zu
+Aussagen über die Sache. Anrede in **Hinweistexten der Doku** darf „Sie“
+verwenden.
 
 **Fehler sind keine Erfolge (T2):** Jede Rückmeldung einer Aktion trägt ihren
 Ton — `ok` (grün, Häkchen, `role="status"`), `warn` (amber, „lokal vorgemerkt“,
@@ -79,6 +84,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Preis**differenz** je Liter | `centPerLiter` | `4,2 ct/L` (1 Nachkommastelle) |
 | Geldbetrag gesamt | `euro` | `62,45` (2 Nachkommastellen) + „€“ im Label |
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
+| Strecke | `kilometersLabel` | `12 km` · `2,4 km` (eine Nachkommastelle nur beim Umweg) |
+| Zeitwert | `deTrimmed` + `€/h` | `16 €/h` — Symbol, nie „Euro pro Stunde“ |
+| Schwelle/Maßzahl ohne Einheit | `deNumber` | `0,80` (Komma, nie `0.80`) |
 | Stückzahl | `countLabel` | `12.345` |
 | Stundenbereich | `hourRangeLabel` | `18–20 Uhr` |
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |
@@ -241,19 +249,42 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 `messages` in `web/src/data.ts`, je `error_code` genau einer.
 
+### 5a. Wortlaut je Zustand (T8)
+
+Vier Verben für „lädt“ und acht Knopftexte für „nochmal“ waren der Befund —
+hier steht je Zustand **eine** Formulierung:
+
+| Zustand | Formulierung | Beispiel |
+|---|---|---|
+| lädt, Daten vom Server | `<Sache> wird geladen` | „Preise werden geladen“ |
+| lädt, App rechnet selbst | `<Sache> wird berechnet` | „Empfehlung wird berechnet“ |
+| Knopf während des Schreibens | `<Sache> wird <Partizip>` | „Beleg wird verbucht“ |
+| Wiederholen (allgemein) | `Erneut laden` | `LoadError`, `CellError` |
+| Wiederholen (Bereich nennt die Sache) | `<Sache> neu laden` | „Tagebuch neu laden“ |
+| Frische-Zeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` — Baustein `components/FreshnessLine.tsx`, Ort inklusive | ohne Ort: „kein Ort gewählt“ |
+| Stand fehlt | `<Sache> ohne Stand` | „Prognose ohne Stand“ |
+| Zählwort | über `freshCountLabel`/`countLabel` — der Plural steht in der Funktion | „1 frischer Preis“, „12 frische Preise“ |
+
+Geprüft von `microcopy.test.ts` (Ladetexte, Retry-Knöpfe, Frische-Baustein).
+
 ## 6. Was nie im Text steht
 
 - **Erfundene Zahlen.** Keine Demo-Preise, keine Platzhalter-Prozentwerte,
   keine „ca.“-Werte ohne Rechnung dahinter (Ehrlichkeits-Regel, Konzept §0.4).
 - **Pfade, Tokens, URLs, Koordinaten.** Auch nicht in Alarm-Pushes: die
   ntfy-Nachricht trägt nur Alarm-Code, deutschen Klartext und App-Version.
-  **Einzige Ausnahme (T9):** der Bereich „System“ in seinen Einrichtungs- und
-  Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
-  (`polling.json`, `/api/v1/health`). Überall sonst gehören sie in einen
-  `title`-Tooltip oder bleiben weg. Ein Vorgang wird **einmal** beschrieben:
-  Der Volltext steht in „System“, `messages` verweist dorthin. Vergleiche mit
-  früheren GUI-Ständen („wie in der alten System-Ansicht“) gehören in die
-  Doku, nie in den Text.
+  **Einzige Ausnahme (T9/T6):** der Bereich „System“ in seinen Einrichtungs-
+  und Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
+  (`polling.json`, `/api/v1/health`, `TANKAPP_NTFY_URL`). §4d beschreibt
+  genau diese Fläche; die Muster dort (`/sw.js`, `/api/v1`) sind deshalb kein
+  Widerspruch zu dieser Regel, sondern die Ausnahme selbst. Überall sonst
+  gehören sie in einen `title`-Tooltip oder bleiben weg — ein Satz, der
+  verspricht, Pfade zu entfernen, enthält selbst keinen. Ein Vorgang wird
+  **einmal** beschrieben: Der Volltext steht in „System“, `messages` verweist
+  dorthin („Die Schritte stehen im Bereich „System“ unter „Daten“.“).
+  Vergleiche mit früheren GUI-Ständen („wie in der alten System-Ansicht“)
+  gehören in die Doku, nie in den Text. Geprüft von `microcopy.test.ts`
+  (Dateiliste minus System-Bereich).
 - **Interne Ausnahmen.** Serverfehler werden über `app/errors.py` bereinigt,
   bevor sie irgendwo erscheinen.
 - **Englische Hook-Zeilen** als Marketing. Eine deutsche Kurzzeile pro Tab
@@ -262,14 +293,34 @@ Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
   Keine erfundene Sicherheit.“ (Fußzeile). Ein englisches Wort ohne deutsche
   Erklärung — etwa ein `LIVE`-Badge — steht nirgends.
 
+### 4e. Tooltips ergänzen, sie erklären nicht (V2)
+
+Ein `title=` erscheint nur mit Maus oder Tastaturfokus — auf dem Telefon und
+für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb:
+
+| Regel | Ja | Nein |
+|---|---|---|
+| Erklärung steht im sichtbaren Text | Hinweis unter der Filterleiste: „‚offen‘ zeigt nur Stationen mit aktuellem Preis …“ | `title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"` als einzige Quelle |
+| Tooltip bleibt kurz (≤ 80 Zeichen, ein Satz) | `title="Zeitwert für die Umweg-Rechnung"` | `title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"` |
+| Fachwort im Tooltip ist erlaubt (§1) | `title="Fachwort: Peak"` | `title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"` — die Definition gehört in den Text |
+| Herkunft darf im Tooltip stehen (§4d) | `title="Quelle: /api/v1/fills.csv"` | — |
+| Ein deaktivierter Knopf sagt sichtbar, warum | Text neben dem Knopf: „Verbindung läuft …“ | Erklärung nur im `title=` des deaktivierten Knopfs |
+
+Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
+`title=`.
+
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
-  neue `toFixed`-Anzeigen), `microcopy.test.ts` (paarige `„…“`, keine
-  HTML-Entities, **keine ausgemusterten Wörter und Synonyme** aus §4, die
-  §4c-Ergebnis-Worte gegen `lab.ts`, keine Ausrufezeichen und keine
-  `✓`/`!`-Präfixe), `components/FeedbackBanner.test.tsx` (Ton der
-  Rückmeldung), `data-age.test.ts`
+  neue `toFixed`-Anzeigen und gegen `€`/`€/L` im Quelltext, T4),
+  `microcopy.test.ts` (paarige `„…“`, keine HTML-Entities, **keine
+  ausgemusterten Wörter und Synonyme** aus §4, die §4c-Ergebnis-Worte gegen
+  `lab.ts`, keine Ausrufezeichen und keine `✓`/`!`-Präfixe, keine technischen
+  Pfade außerhalb des System-Bereichs (§6/§4d), keine Abkürzungen ohne
+  Langform (T7), kein doppelt eingetragener Satz (T5), ein Wortlaut je
+  Zustand (§5a, T8), keine Erklärung im Tooltip (§4e, V2)),
+  `a11y.test.ts` (Kontrast AA — auch für **beide** Diagrammpaletten, V1),
+  `components/FeedbackBanner.test.tsx` (Ton der Rückmeldung), `data-age.test.ts`
   (Schwellen und Wortform der Datenstand-Sätze) sowie
   `components/states.test.tsx` (Skeleton, Banner, Tabellen-Fehler gegen echtes
   Markup). **Neue Komponente mit Nutzertext? In die Dateilisten der beiden

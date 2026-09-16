@@ -50,6 +50,10 @@ import {
   usePreference,
   postIntent,
   postQueued,
+  queuedNote,
+  saveFailedNote,
+  FILL_BOOKED_LINE,
+  SHARE_URL_LINE,
   postFill,
   voidFill,
   rowOutcome,
@@ -754,10 +758,10 @@ function useOverviewState() {
           ),
         )
         .catch(() =>
-          note("URL steht jetzt in der Adresszeile — zum Teilen kopieren."),
+          note(SHARE_URL_LINE),
         );
     } else {
-      note("URL steht jetzt in der Adresszeile — zum Teilen kopieren.");
+      note(SHARE_URL_LINE);
     }
   };
 
@@ -1088,22 +1092,15 @@ function useOverviewState() {
     });
     if (res?.queued) {
       setQueue(readQueue());
-      feedback(
-        "warn",
-        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
-        6000,
-      );
+      feedback("warn", queuedNote("Beleg"), 6000);
       setDueDismissed(true);
       return;
     }
     if (res?.error_code) {
-      feedback(
-        "error",
-        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
-      );
+      feedback("error", saveFailedNote(problem(res.error_code) || res.error_code));
       return;
     }
-    feedback("ok", "Beleg in deiner Bilanz verbucht.", 4000);
+    feedback("ok", FILL_BOOKED_LINE, 4000);
     setDueDismissed(true);
     setRefresh((r) => r + 1);
   };
@@ -1141,18 +1138,11 @@ function useOverviewState() {
     setFillSubmitting(false);
     if (res?.queued) {
       setQueue(readQueue());
-      feedback(
-        "warn",
-        "Beleg lokal vorgemerkt — er geht raus, sobald die Verbindung steht.",
-        6000,
-      );
+      feedback("warn", queuedNote("Beleg"), 6000);
       return;
     }
     if (res?.error_code) {
-      feedback(
-        "error",
-        `Speichern fehlgeschlagen: ${problem(res.error_code) || res.error_code} — bitte erneut versuchen.`,
-      );
+      feedback("error", saveFailedNote(problem(res.error_code) || res.error_code));
       return;
     }
     // GUI-Neuentwurf: Einordnung des gerade gebuchten Preises gegen den
@@ -1161,9 +1151,7 @@ function useOverviewState() {
     const positionNote = fillPositionNote(priceVal, freshPrices);
     feedback(
       "ok",
-      positionNote
-        ? `Beleg in deiner Bilanz verbucht. ${positionNote}`
-        : "Beleg in deiner Bilanz verbucht.",
+      positionNote ? `${FILL_BOOKED_LINE} ${positionNote}` : FILL_BOOKED_LINE,
       6000,
     );
     setRefresh((r) => r + 1);
@@ -1209,11 +1197,7 @@ function useOverviewState() {
       if (res?.queued) {
         setQueue(readQueue());
         if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
-        feedback(
-          "warn",
-          "Auswahl lokal vorgemerkt — sie geht raus, sobald die Verbindung steht.",
-          6000,
-        );
+        feedback("warn", queuedNote("Auswahl"), 6000);
         return;
       }
       if (res?.error_code) {

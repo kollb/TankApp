@@ -41,6 +41,8 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { FreshnessLine } from "../components/FreshnessLine";
+import { useChartPalette } from "../chartTheme";
 import { LineChart } from "../components/LineChart";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -54,6 +56,7 @@ import {
   euro,
   euroPerLiter,
   deTrimmed,
+  kilometersLabel,
   timeLabel,
   type DecideResult,
   type Point,
@@ -321,12 +324,6 @@ export function StationenView(props: StationenViewProps) {
 
   const freshCount = rows.filter((row) => row.price !== null).length;
   const freshness = stationsFreshness(pricesAt, now);
-  const FRESHNESS_TONE = {
-    ok: "text-slate-500",
-    warn: "text-amber-300",
-    bad: "text-rose-300",
-  } as const;
-
   // S0: noch keine Stationen — einrichten statt leere Fläche.
   const setup = stations.length === 0 && !decideRes.error;
   const explanation = atlasExplanation({
@@ -395,7 +392,7 @@ export function StationenView(props: StationenViewProps) {
                 ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
             }`}
-            title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"
+            title="Filter: nur offene Stationen"
           >
             {openOnly ? "offen ✓" : "offen"}
           </button>
@@ -417,7 +414,7 @@ export function StationenView(props: StationenViewProps) {
           </label>
           <label
             className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
-            title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"
+            title="Zeitwert für die Umweg-Rechnung"
           >
             <span className="sr-only">Zeitwert für die Umweg-Rechnung</span>
             Zeit:{" "}
@@ -442,6 +439,13 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
         </div>
+        {/* V2: Die beiden Filter-Regeln standen nur im Tooltip (V1–V5, V2) —
+            ohne Maus oder Tastaturfokus waren sie unsichtbar. */}
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          „offen“ zeigt nur Stationen mit aktuellem Preis für den gewählten
+          Kraftstoff. Der Zeitwert wirkt auf die Umweg-Rechnung des Servers —
+          als Was-wäre-wenn, das Profil bleibt unverändert.
+        </p>
       </div>
 
       {/* ② Karte */}
@@ -477,7 +481,7 @@ export function StationenView(props: StationenViewProps) {
               onNavigate={(url) => {
                 window.open(url, "_blank", "noopener,noreferrer");
               }}
-              title="Karte — Pin = Netto-€ ggü. der Referenz"
+              title="Karte — Pin = Netto-€ gegenüber der Referenz"
             />
           </div>
 
@@ -598,7 +602,7 @@ export function StationenView(props: StationenViewProps) {
                             <span>{row.station.brand || "Freie Station"}</span>
                             {row.distKm != null && (
                               <span className="font-mono">
-                                {euro(row.distKm, 1)} km
+                                {kilometersLabel(row.distKm, 1)}
                               </span>
                             )}
                             <span>{ageLabel(row)}</span>
@@ -916,7 +920,7 @@ export function StationenView(props: StationenViewProps) {
                       {comparePair.deltaCt !== null &&
                         `${centPerLiter(Math.abs(comparePair.deltaCt))} ${comparePair.deltaCt > 0 ? "teurer" : "günstiger"} · `}
                       {comparePair.detourKm !== null &&
-                        `${euro(comparePair.detourKm, 1)} km Umweg · `}
+                        `${kilometersLabel(comparePair.detourKm, 1)} Umweg · `}
                       netto {euro(comparePair.netEur)} € pro {deTrimmed(liters, 0)} L
                     </p>
                   )}
@@ -989,13 +993,8 @@ export function StationenView(props: StationenViewProps) {
         </>
       )}
 
-      {/* Frische-Fußzeile (fester Platz) */}
-      <p
-        role="status"
-        className={`mt-4 text-xs leading-relaxed ${FRESHNESS_TONE[freshness.tone]}`}
-      >
-        {freshness.text} · {activeCity || "kein Ort gewählt"}
-      </p>
+      {/* Frische-Fußzeile (fester Platz, T8: ein Baustein) */}
+      <FreshnessLine text={freshness.text} tone={freshness.tone} place={activeCity} />
 
       <Level1Sheet
         open={sheetOpen}
@@ -1026,6 +1025,7 @@ function SeriesChart({
   points: Point[];
   spanHours: number;
 }) {
+  const c = useChartPalette();
   const known = points
     .filter((p) => p.price !== null && Number.isFinite(Date.parse(p.timestamp)))
     .map((p) => ({ x: Date.parse(p.timestamp), y: p.price as number }));
@@ -1049,15 +1049,15 @@ function SeriesChart({
     <div>
       <LineChart
         series={[
-          { name: "Offene Meldungen (€/L)", color: "#38bdf8", pts: known },
+          { name: "Offene Meldungen (€/L)", color: c.accent, pts: known },
           {
             name: "Tagesmedian (üblich)",
-            color: "#94a3b8",
+            color: c.text,
             dash: "4 3",
             pts: band,
           },
         ]}
-        marks={[{ x: last.x, color: "#34d399", label: "jetzt" }]}
+        marks={[{ x: last.x, color: c.positive, label: "jetzt" }]}
         xDomain={[minX, maxX]}
         xTicks={autoTimeTicks(minX, maxX)}
         yFmt={(value) => euro(value, 3)}

@@ -27,6 +27,8 @@ import {
   hourRangeLabel,
   hourRunsLabel,
   hourRunsOf,
+  kilometersLabel,
+  NO_DATA_LINE,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type AdviceAction,
@@ -444,7 +446,7 @@ export function nowFacts(input: NowInput): NowFact[] {
         detail:
           tank.state === "empty"
             ? "Tank leer — vor der Fahrt tanken"
-            : `${countLabel(tank.range_km)} km Reichweite inkl. Reserve`,
+            : `${kilometersLabel(tank.range_km)} Reichweite inkl. Reserve`,
       };
 
   return [here, best, reach];
@@ -467,7 +469,7 @@ export function nowSteps(input: NowInput): NowStep[] {
       text:
         `Günstigste Alternative: ${alt.name}, ` +
         `${euroPerLiter(alt.price)} — netto ${euro(alt.net_eur)} € nach ` +
-        `${euro(alt.detour_km, 1)} km Umweg`,
+        `${kilometersLabel(alt.detour_km, 1)} Umweg`,
       target: "stations",
     });
   }
@@ -546,7 +548,7 @@ export function nowFreshness(input: {
 }): NowFreshness {
   const now = input.now ?? Date.now();
   if (!input.pricesAt && !input.forecastAt) {
-    return { text: "Kein Datenstand — noch nichts gemeldet", tone: "warn" };
+    return { text: NO_DATA_LINE, tone: "warn" };
   }
   const prices = freshness(input.pricesAt, "prices", now);
   const model = freshness(input.forecastAt, "model", now);
@@ -560,12 +562,12 @@ export function nowFreshness(input: {
   parts.push(
     input.pricesAt
       ? `Preise ${ageLabel(input.pricesAt, now)}`
-      : "Preise — kein Stand",
+      : "Preise ohne Stand",
   );
   parts.push(
     input.forecastAt
       ? `Prognose ${ageLabel(input.forecastAt, now)}`
-      : "Prognose — kein Stand",
+      : "Prognose ohne Stand",
   );
   return { text: parts.join(" · "), tone };
 }
@@ -720,7 +722,7 @@ export function assumptionHint(input: NowInput): string | null {
           ? `${euro(input.timeValue, input.timeValue % 1 ? 1 : 0)} €/h`
           : "Automatik-Zeitwert";
       return (
-        `Entscheidend ist der Umweg: ${euro(alt.detour_km, 1)} km extra, ` +
+        `Entscheidend ist der Umweg: ${kilometersLabel(alt.detour_km, 1)} extra, ` +
         `Zeitwert ${z} — berechnet vom Server.`
       );
     }

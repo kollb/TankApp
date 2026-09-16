@@ -265,7 +265,7 @@ export function ProfileManager({
           <button
             type="submit"
             disabled={busy || !newName.trim()}
-            title="Erstellt ein Profil aus den aktuellen Einstellungen und aktiviert es"
+            title="Neues Profil aus den Einstellungen"
             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={14} aria-hidden="true" />

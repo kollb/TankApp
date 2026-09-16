@@ -471,7 +471,7 @@ describe("Frische der Prognose (Regression)", () => {
     ).toBeNull();
     expect(
       nowFreshness({ pricesAt: minutesAgo(4), forecastAt: null, now: NOW }).text,
-    ).toBe("Preise vor 4 Minuten · Prognose — kein Stand");
+    ).toBe("Preise vor 4 Minuten · Prognose ohne Stand");
   });
 });
 
