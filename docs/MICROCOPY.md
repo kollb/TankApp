@@ -38,12 +38,15 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 | Possessiv ist erlaubt, direkte Anrede und Imperativ nicht | „Beleg in deiner Bilanz verbucht.“ · „Wer vor 18:00 Uhr tanken muss, …“ | „Du hast deinen Beleg gespeichert.“ · „Fahr nur hin, wenn …“ |
 | Fragen nur im Fällig-Prompt | „Gerade getankt?“ (Fenster vorbei) | „Hast du getankt?“ als Dauertext |
 
-**Anrede (T10):** „Sie“/„Du“ als Anrede bleibt draußen, der Possessiv
-(„deine Bilanz“, „dein Profil“) ist die etablierte Form und bleibt. Fragen
-stehen nur dort, wo die App auf ein Ereignis antwortet (Fällig-Prompt „Fenster
-vorbei“, Erfassungs-Formular) — sonst Aussagesatz. Imperative („Vergleiche …“,
-„fahr nur hin …“) werden zu Aussagen über die Sache. Anrede in
-**Hinweistexten der Doku** darf „Sie“ verwenden.
+**Anrede (T10/T1):** „Sie“/„Du“ als Anrede bleibt draußen, der Possessiv
+(„deine Bilanz“, „dein Profil“) ist die etablierte Form und bleibt. `du`,
+`dir`, `dich` und die Höflichkeitsformen stehen in keinem Nutzertext — der
+Ratchet `microcopy.test.ts` prüft sie, `tests/test_rp2_fallback.py` prüft
+dasselbe für die Fallback-GUI. Fragen stehen nur dort, wo die App auf ein
+Ereignis antwortet (Fällig-Prompt „Fenster vorbei“, Erfassungs-Formular) —
+sonst Aussagesatz. Imperative („Vergleiche …“, „fahr nur hin …“) werden zu
+Aussagen über die Sache. Anrede in **Hinweistexten der Doku** darf „Sie“
+verwenden.
 
 **Fehler sind keine Erfolge (T2):** Jede Rückmeldung einer Aktion trägt ihren
 Ton — `ok` (grün, Häkchen, `role="status"`), `warn` (amber, „lokal vorgemerkt“,

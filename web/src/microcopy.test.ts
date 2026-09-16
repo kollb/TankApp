@@ -67,7 +67,28 @@ const FILES = [
   "views/System.tsx",
   "views/Settings.tsx",
   "views/Glossary.tsx",
+  // GUI-TEXT-BEFUND T1: Auch die Stellen, die außerhalb der Views Texte
+  // setzen, gehören in die Prüfung — Kopfzeile, Navigation, der Aktions-Kanal
+  // der Root und der Service Worker waren bis 0.41.1 ungeprüft.
+  "components/AppHeader.tsx",
+  "components/AppNav.tsx",
+  "components/UpdateBanner.tsx",
+  "service-worker.ts",
+  "state/overview.tsx",
 ];
+
+/**
+ * Der Bereich „System“ ist die einzige Fläche, auf der Datei- und
+ * Endpunkt-Namen stehen dürfen (MICROCOPY §6, Ausnahme T9) — ein Betreiber
+ * richtet dort ein und diagnostiziert dort. `ApiExplorer` ist per Auftrag
+ * technisch (er zeigt die API), `system.ts` liefert die Ebene-1-Texte des
+ * System-Bereichs.
+ */
+const TECH_TEXT_ALLOWED = new Set([
+  "system.ts",
+  "views/System.tsx",
+  "components/ApiExplorer.tsx",
+]);
 
 function read(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
@@ -208,6 +229,40 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     expect(
       hits,
       `${relativePath}: Ton gehört ins Icon (FeedbackBanner), nicht ins Wort.`,
+    ).toEqual([]);
+  });
+
+  // ── 6. Anrede: Possessiv ja, direkte Anrede nein (§1, GUI-TEXT-BEFUND T1) ──
+
+  /**
+   * §1 (T10) lässt den Possessiv („deine Bilanz“) stehen und verbietet die
+   * Anrede. Geprüft werden deshalb nur die Pronomen, die jemanden ansprechen:
+   * `du`/`dir`/`dich` und die Höflichkeitsformen. „Sie“ als Pronomen der Sache
+   * („Noch keine Zählung: Sie beginnt …“) ist erlaubt — es steht am Satzanfang,
+   * die Anrede mitten im Satz.
+   */
+  const ADDRESS_PRONOUNS = [/\bdu\b/gi, /\bdir\b/gi, /\bdich\b/gi, /\bIhnen\b/g, /\bIhre[smnr]?\b/g];
+  const SENTENCE_START = /[\s.:!?—–„„»({>["']*$/;
+
+  function politeAddress(text: string): string[] {
+    const hits: string[] = [];
+    for (const match of text.matchAll(/Sie\b/g)) {
+      const before = text.slice(Math.max(0, match.index - 60), match.index);
+      if (!SENTENCE_START.test(before)) hits.push(before.slice(-24) + "Sie");
+    }
+    return hits;
+  }
+
+  it.each(FILES)("%s: spricht über die Sache, nicht den Nutzer an", (relativePath) => {
+    const text = userVisible(read(relativePath));
+    const hits: string[] = [];
+    for (const pattern of ADDRESS_PRONOUNS) {
+      for (const match of text.matchAll(pattern)) hits.push(match[0]);
+    }
+    hits.push(...politeAddress(text));
+    expect(
+      hits,
+      `${relativePath}: direkte Anrede — §1 erlaubt den Possessiv, aber kein „du“/„Sie“.`,
     ).toEqual([]);
   });
 

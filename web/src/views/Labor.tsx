@@ -1229,7 +1229,7 @@ export function LaborView(props: LaborViewProps) {
               zählt Ratschläge gegen die Realität — es braucht keine Tankung.
               Das <strong className="text-slate-300">Wallet-Ledger</strong>{" "}
               zählt deine Euro gegen den Median und braucht Belege. Beide
-              getrennt: Können der App und Nutzen für dich.
+              getrennt: Können der App und Nutzen im Geldbeutel.
             </p>
             <p>
               „Keine klare Empfehlung“ ist eine aktive Entscheidung: Sie kostet
@@ -1585,7 +1585,7 @@ export function LaborView(props: LaborViewProps) {
               Der Scan über ε ist eine reine Nachrechnung auf den
               Backtest-Zeilen: Für jeden Tag wird die Regel mit der neuen
               Schwelle neu ausgewertet. Deshalb ist er sofort da — und deshalb
-              ändert er nichts an dem, was die App dir rät.
+              ändert er nichts an der Empfehlung der App.
             </p>
           </ForTheCurious>
           <SelfCheck

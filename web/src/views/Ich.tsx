@@ -553,8 +553,8 @@ function BalanceSection(props: IchViewProps) {
                 {euro(Math.abs(latest.saved_eur))} €
               </p>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                Maßstab: die Liter zu dem Preis, der an deiner Station stand,
-                als du getankt hast (Server).
+                Maßstab: die Liter zu dem Preis, der an deiner Station zum
+                Zeitpunkt der Tankung stand (Server).
               </p>
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">

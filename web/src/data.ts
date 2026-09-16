@@ -3419,7 +3419,7 @@ export function personalizationNote(
   if (active) {
     return (
       `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
-      `günstige Fenster zu Stunden, die du nie tankst, stehen weiter hinten.`
+      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.`
     );
   }
   const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
@@ -3582,7 +3582,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     term: "AV-Score / Ampel-Stärke",
     de: "Gewichtete Verfügbarkeit bei 3 günstigsten",
     short: "Gewichtete Wahrscheinlichkeit, dass die Station zu den drei günstigsten der Stadt gehört — gewichtet mit dem Tankzeitprofil.",
-    long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu deinen typischen Tankzeiten stehst du oft gut da.",
+    long: "Für jede Stunde wird gemessen, wie oft die Station unter den drei günstigsten Preisen lag; über die 24 Stunden gewichtet mit dem Tankzeitprofil w(h) (Default Pendlerprofil, ab 8 Belegen personalisiert). Eine hohe Ampel-Stärke sagt: Zu den typischen Tankzeiten liegt die Station oft unter den drei günstigsten.",
     anchor: "av-score--billigste-stunde",
   },
   {
