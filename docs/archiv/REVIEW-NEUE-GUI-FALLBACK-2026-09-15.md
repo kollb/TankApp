@@ -354,7 +354,7 @@ konsistent verwendet, **außer** `systemFreshness` (B5).
 Nachtrag der Umsetzung — die Abschnitte 0–8 oben bleiben im Wortlaut der Prüfung.
 Alle vier P1-Befunde, die P2/P3-Liste und die strukturelle Test-Lücke sind im
 Code; hier steht, wo. Verifiziert am 16.09.2026 (App 0.43.1) mit
-`ruff check`, `ruff format --check`, 804 pytest, 1045 Vitest und
+`ruff check`, `ruff format --check`, 805 pytest, 1045 Vitest und
 `npm --prefix web run build`. Die Browser-Suiten liefen hier nicht — der
 Chromium-Download ist in der Sandbox gesperrt (so auch in
 [../LUECKEN.md](../LUECKEN.md)); sie gehören zur CI
