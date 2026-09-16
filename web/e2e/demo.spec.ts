@@ -92,14 +92,78 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
   //    Eine in UTC geschnittene Kurve (B3-Klasse) steht hier zwei Stunden
   //    daneben. Zwischen 00:00 und 06:00 liegt die Stunde außerhalb des
   //    Streifens — dann gibt es keine markierte Zelle.
-  const expectedHour = berlinHour() === 0 ? 24 : berlinHour();
+  const expectedHour = berlinHour();
+  const current = page.locator(".daystrip-cells [role=img].border-emerald-400");
   if (expectedHour >= 6) {
-    const current = page.locator(".daystrip-cells [role=img].border-emerald-400");
     await expect(current).toHaveCount(1);
     await expect(current).toHaveAttribute(
       "aria-label",
       new RegExp(`^${String(expectedHour).padStart(2, "0")}:00 — `),
     );
+  } else {
+    // Nachtstunden: keine markierte Zelle (der Streifen beginnt erst 06:00).
+    await expect(current).toHaveCount(0);
+  }
+});
+
+// GUI-UX-BEFUND U2: Der Tagesstreifen darf auf dem Handy nicht brechen.
+// Mobil trägt das Raster zwei Zeilen zu je zehn Zellen
+// (styles.css `.daystrip-cells`); jede Zelle bleibt breit genug, um den
+// Stundenwert zu zeigen. Auf 390 px war der Streifen vorher ein starres
+// 19er-Raster mit ~15,7 px je Zelle — faktisch unlesbar.
+test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Heute im Blick" }),
+  ).toBeVisible();
+  const cells = page.locator(".daystrip-cells [role=img]");
+  await expect(cells).toHaveCount(19);
+
+  // Die 19 Zellen stehen sofort (leer) im DOM, die Preise kommen erst mit
+  // der Overview-Antwort — vor dem Vermessen auf echte Werte warten, sonst
+  // misst dieser Test den Ladezustand statt des Streifens.
+  await expect
+    .poll(
+      () =>
+        cells
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("aria-label") ?? ""),
+          )
+          .then(
+            (labels) =>
+              labels.filter((label) => /\d,\d{3} €\/L$/.test(label)).length,
+          ),
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThanOrEqual(6);
+
+  // DoD: Zellenbreite ≥ 26 px — darunter ist der Stundenwert nicht lesbar.
+  const boxes = await cells.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const element = node as HTMLElement;
+      const rect = element.getBoundingClientRect();
+      return {
+        width: rect.width,
+        label: element.getAttribute("aria-label") ?? "",
+        text: (element.textContent ?? "").trim(),
+      };
+    }),
+  );
+  for (const box of boxes) {
+    expect(
+      box.width,
+      `Zelle „${box.label}“ ist nur ${box.width.toFixed(1)} px breit`,
+    ).toBeGreaterThanOrEqual(26);
+  }
+
+  // DoD: sichtbarer Werttext. Die Demo-Daten haben mehrere offene Stunden —
+  // mindestens sechs Zellen zeigen einen Preis, und der Text ist echt
+  // gerendert (nicht leer, nicht abgeschnitten versteckt).
+  const withPrice = boxes.filter((box) => /\d,\d{3} €\/L$/.test(box.label));
+  expect(withPrice.length).toBeGreaterThanOrEqual(6);
+  for (const box of withPrice.slice(0, 3)) {
+    const cell = cells.filter({ hasText: box.text }).first();
+    await expect(cell).toBeVisible();
   }
 });
 

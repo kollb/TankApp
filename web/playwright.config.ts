@@ -39,7 +39,14 @@ export default defineConfig({
     { name: "desktop", use: { viewport: { width: 1440, height: 1050 } } },
     {
       name: "mobile",
-      use: { viewport: { width: 390, height: 844 }, isMobile: true },
+      // Bewusst ohne `isMobile: true`: Auf GPU-losen Headless-Läufern
+      // (GitHub-CI, lokale Sandbox) verzerrt die Mobile-Emulation den
+      // Layout-Viewport gegenüber dem sichtbaren Bereich — `fixed;bottom:0`-
+      // Leisten landen dann unterhalb der sichtbaren Fläche und Klicks
+      // werden vom Seiteninhalt abgefangen. Das Geräte-Raster der App ist
+      // rein breitenbasiert (`lg:` bei 1024 px), der schmale Viewport
+      // prüft dasselbe Layout; `hasTouch` bleibt für Touch-Realismus.
+      use: { viewport: { width: 390, height: 844 }, hasTouch: true },
     },
   ],
 });
