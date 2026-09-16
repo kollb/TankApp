@@ -38,21 +38,21 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.41.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.42.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
+| [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
-| [API.md](API.md) | 0.40.0 | 0.41.0/0.41.1 ist ein reines GUI-Release — Endpunkte und Payloads bleiben unverändert |
-| [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [BETRIEB.md](BETRIEB.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [API.md](API.md) | 0.40.0 | 0.41.0/0.41.1 sind GUI-Releases, 0.42.0 ein Text-Release — Endpunkte und Payloads bleiben unverändert |
+| [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [BETRIEB.md](BETRIEB.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0 ein Text-Release (T1–T8, V1–V2) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
-| [MICROCOPY.md](MICROCOPY.md) | 0.40.0 | 0.40.0 pflegt §4c (Tagebuch-Worte); 0.41.0/0.41.1 ist das GUI-Release (U1–U8) — das Regelwerk selbst bleibt unverändert, die Ratchets laufen weiter |
 | [RP2.md](RP2.md) | 0.37.2 | Fallback-GUI und Pi-Proxy — von den Änderungen 0.38.0 nicht betroffen |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
