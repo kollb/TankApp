@@ -1,7 +1,8 @@
-# OPTIMIERUNGS-BEFUND — wo 0.43.1 noch Luft hat
+# OPTIMIERUNGS-BEFUND — wo 0.43.2 noch Luft hat
 
-> Stand: 16.09.2026 · App-Version **0.43.1** · Arbeitsdokument (Sichtung,
-> keine Abnahme, kein Auftrag). Zweiter Durchgang am selben Tag: zwölf
+> Stand: 16.09.2026 · App-Version **0.43.2** · Arbeitsdokument (Sichtung,
+> keine Abnahme, kein Auftrag). Alle Zeilenangaben sind gegen 0.43.2
+> nachgeprüft. Zweiter Durchgang am selben Tag: zwölf
 > Dimensionen ergänzt, die in der Ausgangsfrage fehlten
 > ([7](#7-dimensionen-die-in-der-aufzählung-fehlten), Befunde O33–O42), und
 > alle 42 Befunde in Batches mit Priorität und Check gruppiert
@@ -53,6 +54,15 @@ Befunde; hier steht jeweils nur die Messung, die die Entscheidung erleichtert
 [LUECKEN.md](LUECKEN.md) bereits mit denselben Zahlen dokumentiert und wird
 hier nicht neu verkauft — es taucht nur als Querverweis in O6 auf, weil die
 Brier-Schwelle dieselbe Schwäche erbt.
+
+Seit dem ersten Durchgang ist **0.43.2** erschienen ([../CHANGELOG.md](../CHANGELOG.md)):
+vier Nutzerbefunde sind dort behoben (Lernstand-Satz doppelt, Geometrie des
+Tagesstreifens, Karten-Anker, Mobil-Robustheit mit eigener Browser-Suite).
+Keiner davon wird hier wiederholt. Berührt ist allein O20: 0.43.2 hat die
+**Geometrie** des Tagesstreifens gerichtet (feste 12-px-Spur, Spaltenzahl
+folgt der Breite), die **Farbskala** und die Stunden-Zuordnung in
+`web/src/strip.ts` sind unverändert — der Befund bleibt stehen, die Abgrenzung
+steht bei O20.
 
 **Kein Befund dieses Dokuments ist eine Aussage über Modellgüte.** Alles
 Untenstehende betrifft Mechanik: was gerechnet, gesendet, angezeigt,
@@ -116,7 +126,7 @@ greift (O22), und in beiden Fällen sagt niemand Bescheid.
 
 ## 3. Mathematik und Statistik
 
-Befunde O1–O15. Alle Zeilenangaben gegen 0.43.1.
+Befunde O1–O15. Alle Zeilenangaben gegen 0.43.2.
 
 ### O1 — Jeder GUI-Beleg tankt um 12 Uhr
 
@@ -125,7 +135,7 @@ Befunde O1–O15. Alle Zeilenangaben gegen 0.43.1.
 verwendet für das Zeitprofil in `:1437` (`h = int(f.get("clock_hour", 12.0))
 % 24`). Der Snapshot-Pfad macht dasselbe (`:503`, `:647`). Die GUI sendet das
 Feld nie: `web/src/data.ts:390` deklariert `clock_hour?: number | null`, und
-beide Beleg-POSTs (`web/src/state/overview.tsx:1085–1092` und `:1130–1137`)
+beide Beleg-POSTs (`web/src/state/overview.tsx:1099–1106` und `:1144–1151`)
 schicken `station_id`, `station_name`, `liters`, `price_paid`, `fuel`,
 `source`, `episode_id` — keine Uhrzeit. `decide.py:1016` liefert `clock_hour`
 zwar im Snapshot, aber nur für die Entscheidung, nicht für den Beleg.
@@ -237,7 +247,7 @@ ein Badge mit n=7 nicht wie eines mit n=700 wirkt.
 **Beleg.** `app/feedback.py:494–497` und `:521` bauen `p_correct` entweder
 aus der Verteilung oder aus `estimate_p`; `estimate_p` ist in `:437–441` eine
 Laplace-Basisrate derselben Aktion (`(wins+1)/(n+2)`). Ein Feld `p_source`
-existiert nicht. [LUECKEN.md](LUECKEN.md) Zeile 490 beschreibt das Gate so,
+existiert nicht. [LUECKEN.md](LUECKEN.md) Zeile 520 beschreibt das Gate so,
 als käme `p` ausschließlich aus der Verteilung.
 
 **Wirkung.** Zwei Probleme in einer Zahl. Erstens: Verteilungs-P und
@@ -252,7 +262,7 @@ als U-Befund für die GUI beschrieben hat, hier auf der Rechenseite.
 
 **DoD.** `p_source` je Ledger-Zeile (`"verteilung"|"basisrate"|"keine"`), der
 Brier-Score wird je Quelle getrennt ausgewiesen, und das M7-Gate darf nur auf
-Verteilungs-P stehen. `LUECKEN.md` Zeile 490 an den Code anpassen — oder den
+Verteilungs-P stehen. `LUECKEN.md` Zeile 520 an den Code anpassen — oder den
 Code an die Doku, je nachdem was gewollt ist; beides zusammen geht nicht.
 
 ### O6 — Die Brier-Schwelle ist ein Münzwurf ohne Intervall
@@ -274,7 +284,7 @@ Hysterese entscheidet eine Nachkommastelle über „kalibriert“.
 und Klimatologie (gleiche Stunde, gleicher Wochentag), (c) das Gate besteht
 erst, wenn die Obergrenze des Intervalls unter der Referenz liegt. Dieselbe
 Logik gilt für die Ensemble-Gewichtung, die in
-[LUECKEN.md](LUECKEN.md) Zeile 486 bereits als diskriminanzarm dokumentiert
+[LUECKEN.md](LUECKEN.md) Zeile 516 bereits als diskriminanzarm dokumentiert
 ist (0,51/0,49) — dort steht der Befund, hier nur der Querverweis.
 
 ### O7 — Drei Tie-Konventionen in einem Ledger
@@ -491,7 +501,7 @@ Server baut dieselbe Liste in `app/stats_summary.py:223–234` aus
 `delta_ct: number` als Pflichtfeld.
 
 Gleichzeitig liegt die echte Größe längst im Browser: Labor lädt
-`/api/v1/selection` (`web/src/state/overview.tsx:909–915`, nur für
+`/api/v1/selection` (`web/src/state/overview.tsx:923–929`, nur für
 `tab === "labor" || "system"`), und `SelectionStation`
 (`web/src/data.ts:284–308`) deklariert `delta_ct`, `ci_lo`, `ci_hi`,
 `p_value`, `q_value`, `significant`, `avail`, `best_hour`, `vol_ct`,
@@ -504,8 +514,8 @@ Gleichzeitig liegt die echte Größe längst im Browser: Labor lädt
 **Wirkung.** Der Balken, der den Hauspreis-Vergleich je Station zeigen soll,
 ist dauerhaft leer, und der Leer-Text schiebt es auf die Datenlage statt auf
 ein fehlendes Feld. [UI-NEUENTWURF.md](UI-NEUENTWURF.md) Zeilen 588–597
-spezifizieren den Hauspreis-Vergleich, [LUECKEN.md](LUECKEN.md) Zeilen 446
-und 459 führen den Abschnitt als fertig. Kein Test liefert `stationScores`
+spezifizieren den Hauspreis-Vergleich, [LUECKEN.md](LUECKEN.md) Zeilen 476
+und 489 führen δ̂-Auswahl und Stations-Labor als fertig. Kein Test liefert `stationScores`
 mit `delta_ct` (kein Fixture in `web/src/views/Labor.test.tsx`,
 `web/src/lab.test.ts`, `web/e2e/`), also ist die Suite grün über einem
 Diagramm, das nie zeichnet.
@@ -521,7 +531,7 @@ der die leere Liste ausschließt.
 
 ### O17 — Ein Tipp bucht den Prognosepreis als gezahlten Preis
 
-**Beleg.** `web/src/state/overview.tsx:1071–1092`
+**Beleg.** `web/src/state/overview.tsx:1085–1106`
 (`handleConfirmRecommendedFill`):
 `const targetPrice = snap?.expected_price ?? snap?.price_now ?? bestPrice ??
 null;` und dann `postFill({ ..., price_paid: targetPrice, source: "prompt" })`.
@@ -598,6 +608,14 @@ Ein Nutzer, der morgens gesehen hat „10 Uhr war dunkel = billig“, findet
 abends dieselbe Stunde heller vor. (b) Innerhalb einer Stunde zählt nur die
 letzte Meldung, nicht die beste — der Streifen zeigt also „Stand am Ende der
 Stunde“, während die Fenstersuche das Minimum der Stunde nutzt.
+
+**Abgrenzung zu 0.43.2.** Dort ist der Streifen als Layout-Befund behandelt
+(„Tagesstreifen auf einer Linie“: feste 12-px-Spur, Spaltenzahl nach Breite,
+Ratchet in `web/src/a11y.test.ts`, Geometrie-Messung in `e2e/demo.spec.ts`).
+Das ist erledigt und wird hier nicht wiederholt. Unverändert ist die
+Tonlagen-Berechnung selbst: `web/src/strip.ts` wurde in 0.43.2 nicht
+angefasst, also gilt der Befund zur relativen Skala und zum Überschreiben je
+Stunde weiter.
 
 **DoD.** Feste Farbskala über einen definierten Bezugszeitraum (z. B. die
 letzten 7 Tage oder das Profilband) statt Tages-Min/Max, damit Farben
@@ -890,7 +908,9 @@ sind deshalb aus der Perspektive „was fehlt mir im Alltag“ formuliert.
 Alarme genutzt (`app/alarms.py` baut die Meldungen, die GUI zeigt sie);
 die Fenstersuche kennt Beginn und Ende des empfohlenen Fensters
 (`app/decide.py:1088–1102`, `windows_today` mit `start`/`end`/`p`).
-[LUECKEN.md](LUECKEN.md) Zeile 480 führt Preis-Push als bewusst offen.
+[LUECKEN.md](LUECKEN.md) Zeile 510 führt Preis-Push als bewusst offen
+(„der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt“),
+Zeile 498 als offenen Punkt der Produkt-KPIs.
 
 **Wirkung.** Die App rechnet aus, wann es günstig wird — und sagt es niemandem.
 Der Nutzer muss selbst nachsehen, und zwar genau dann, wenn er Zeit hat: Das
@@ -950,7 +970,7 @@ Zahlen über Formatter laufen.
 ### O32 — Die Belegmaske zeigt den Live-Preis nicht
 
 **Beleg.** Die Belegmaske übernimmt einen Preis aus dem Snapshot
-(`web/src/state/overview.tsx:1075`, O17) und zeigt ihn im Feld; der aktuelle
+(`web/src/state/overview.tsx:1088–1089`, O17) und zeigt ihn im Feld; der aktuelle
 Preis derselben Station liegt in `/api/v1/stations` vor.
 
 **Wirkung.** Zwischen Empfehlung und Erfassung vergehen Minuten bis Stunden
@@ -983,7 +1003,7 @@ acht haben Befunde ergeben (O33–O42).
 | Datenschutz bei externen Kanälen | Befund [O42](#o42--der-push-grundsatz-kollidiert-mit-dem-preis-push): Der Grundsatz in `notify.py` ist stark, kollidiert aber mit dem Preis-Push aus O29 |
 | Barrierefreiheit | Befund [O40](#o40--die-diagramm-textalternative-nennt-keine-werte) als Rest: Grundlagen (Kontrast AA, Typografie-Ratchet, 44-px-Ziele, `role="img"` plus `<desc>`, `aria-live`, `prefers-reduced-motion`) sind gebaut und getestet |
 | Wartbarkeit und Struktur | Befund [O41](#o41--drei-normalisierungswege-für-ein-artefakt) plus O21: doppelte und dreifache Implementierungen, große Module (`app/data.py` 1911 Zeilen, `web/src/data.ts` 3727, `rp2/fallback_gui.py` 3000) |
-| Recht und Lizenz | **Kein Befund.** Die GUI nennt Quelle und Lizenz samt Abfrage-Regel (`web/src/Dashboard.tsx:615`: „Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten“), `web/src/views/Settings.tsx:718` ebenso; Privatdaten und Schlüssel sind gitignored (`.gitignore`: `data/`, `polling.json`, `*.netrc`, `config.local.json`) |
+| Recht und Lizenz | **Kein Befund.** Die GUI nennt Quelle und Lizenz samt Abfrage-Regel (`web/src/Dashboard.tsx:615`: „Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten“), `web/src/views/Settings.tsx:722` ebenso; Privatdaten und Schlüssel sind gitignored (`.gitignore`: `data/`, `polling.json`, `*.netrc`, `config.local.json`) |
 | Zeit, DST, Uhr | **Kein Befund.** `engine/data.py:237` (`local_day_hours`) und `:257` (`dst_transition_days`) behandeln Umstellungstage, der Backtest weist sie aus (H5), und `tanked_at` wird serverseitig validiert (`app/feedback.py:736–751`, `invalid_tanked_at` als 400) — O1 kann darauf aufbauen |
 | Sicherheit gegen Injection und Pfadzugriff | **Kein Befund.** Statische Auslieferung ist auf `settings.static` beschränkt und prüft `is_relative_to` (`app/server.py:695–696`), Schreib-Endpunkte haben ein Budget mit 429 (`:714–723`), Job-Log-Zeilen gehen durch `redact` (`app/data.py:883`), Fehlermeldungen durch `app/errors.public_detail` |
 | Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
@@ -1181,7 +1201,7 @@ Shared Secret für den persönlichen Datenbestand.
 aus den Reihennamen (`Liniendiagramm: A, B.`), `:96–101` setzt
 `role="img"`, `aria-label="Diagramm"` und `<desc>`;
 `web/src/components/LineChart.tsx:69`, `:219–221` ebenso. Die Karte trägt
-Label und Alt-Text (`web/src/components/StationMap.tsx:17`, `:430`, `:848`).
+Label und Alt-Text (`web/src/components/StationMap.tsx:17`, `:456`, `:874`).
 
 **Wirkung.** Der Rest der Barrierefreiheit ist gebaut und getestet
 (Kontrast AA, Typografie- und Radius-Ratchet, 44-px-Ziele, Tastaturzugang zu
@@ -1258,20 +1278,26 @@ Damit die Zahlen oben überprüfbar bleiben — und damit klar ist, welche
 Aussagen auf Messung und welche auf Code-Lektüre beruhen.
 
 **Umgebung.** Sandbox-Checkout von `TankApp`, Branch
-`arena/01a0aa28-tankapp`, Stand `cca0c2c`. Python-Venv im Repo
-(`.venv/bin/python`, numpy/pandas nachinstalliert, weil das System-pip per
-PEP 668 gesperrt ist). Keine echten Preisdaten: Alle Messungen laufen auf
-`ops/quality/demo_data.py` (synthetische 70 Tage, 6 Stationen) oder auf
-synthetischen Beobachtungen mit Produktionskonfiguration
-(`engine/config.py`: `bootstrap_samples=2000`, `train_days=42`,
-`min_slot_days=7`, `decision_hour=12`). `web/node_modules` fehlt, also kein
-Vitest- und kein Build-Lauf — die Frontend-Befunde (O16–O21) sind durch
-Code-Lektüre und Typ-Vergleich belegt, nicht durch Messung im Browser.
+`arena/01a0aa28-tankapp`. Die Messungen liefen auf dem Stand `cca0c2c`
+(0.43.1); danach ist `main` auf **0.43.2** weitergegangen und wurde in diesen
+Branch gemergt. Für die Messungen ist das ohne Belang: 0.43.2 ändert an
+`engine/`, `app/`, `ops/`, `data-tools/`, `rp2/` und `tests/` ausschließlich
+`app/version.py` (dazu zwei `requirements.txt`), alle zitierten und gemessenen
+Pfade sind bytegleich. Die Zitate aus `web/src/` und `docs/LUECKEN.md` sind
+gegen 0.43.2 nachgezogen. Python-Venv im Repo (`.venv/bin/python`). Keine
+echten Preisdaten: Alle Messungen laufen auf `ops/quality/demo_data.py`
+(synthetische 70 Tage, 6 Stationen) oder auf synthetischen Beobachtungen mit
+Produktionskonfiguration (`engine/config.py`: `bootstrap_samples=2000`,
+`train_days=42`, `min_slot_days=7`, `decision_hour=12`).
 
-**Suite-Stand.** `pytest` vollständig: **806 passed in 201 s**; die
-langsamsten Tests liegen bei 6–14 s (`tests/test_app_jobs.py`,
-`tests/test_model_jobs.py`). Kein Test ist rot, keiner der Befunde oben wird
-von der Suite gesehen — das ist Teil der Befunde (O16, O22).
+**Suite-Stand (gemergter Stand 0.43.2).** `pytest -q` mit
+`OPENBLAS_NUM_THREADS=1`: **807 passed**; `ruff check` und
+`ruff format --check` auf den CI-Pfaden grün (88 Dateien); `npm --prefix web
+test`: **1064 passed** in 39 Dateien; `npm --prefix web run build` grün.
+Die beiden Playwright-Suiten liefen lokal nicht — der Chromium-Download ist in
+der Sandbox nicht erreichbar; in der CI des Pull Requests sind beide Suites
+Teil des `web`-Jobs und dort grün. Kein Test ist rot, und keiner der Befunde
+oben wird von der Suite gesehen — das ist Teil der Befunde (O16, O22).
 
 **Messungen im Einzelnen.**
 
@@ -1283,7 +1309,7 @@ von der Suite gesehen — das ist Teil der Befunde (O16, O22).
 | F3-Wahrscheinlichkeit über alle Blöcke | Median 0,018, Mittel 0,285, Maximum 1,000; 85 Blöcke | `app/pside.py:window_p` auf Demo-Draws |
 | Sterne-Verteilung derselben Blöcke | 70 × 0 Sterne, 1 × 1, 14 × 3, 0 × 2 | `windowStars`-Schwellen aus `web/src/week.ts:58–65` |
 | Randeffekt der Nachbarschaft | Block 0: 3 Konkurrenten, Basisrate 0,25, p 0,307; Block 3: 6 Konkurrenten, Basisrate 0,14, p 0,349 | `app/pside.py:59–63` |
-| Ensemble-Gewichte | In-Sample-MASE ergibt rund 52/48 (0,173/0,185); echtes Out-of-Sample: Zweitmodell 1,64 ct gegen Hauptmodell 3,6 ct | `engine/models.py` auf synthetischen Daten — **bekannt**, in [LUECKEN.md](LUECKEN.md) Zeile 486 dokumentiert |
+| Ensemble-Gewichte | In-Sample-MASE ergibt rund 52/48 (0,173/0,185); echtes Out-of-Sample: Zweitmodell 1,64 ct gegen Hauptmodell 3,6 ct | `engine/models.py` auf synthetischen Daten — **bekannt**, in [LUECKEN.md](LUECKEN.md) Zeile 516 dokumentiert |
 | Parse-Zeit einer Veröffentlichung | rund 175 ms für 4,14 MB | `json.loads` auf der Demo-Datei |
 | gzip-Stufen | Stufe 6: rund 547 ms; Stufe 1: rund 122 ms | `gzip.compress` auf einer Antwort in Veröffentlichungsgröße |
 | NaN-Serialisierung der API | kein Problem: `server.py:43–47` saniert NaN zu `None`, `:464–466` schreibt mit `allow_nan=False` | Code-Lektüre plus Parse-Prüfung |
