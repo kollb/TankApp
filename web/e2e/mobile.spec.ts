@@ -160,7 +160,7 @@ async function check(page: Page, state: string): Promise<Measurement> {
  * „Beleg buchen“-Maske benutzt). Feste IDs machen den Aufbau idempotent —
  * ein zweiter Lauf derselben Suite legt nichts doppelt an.
  */
-async function seedReceipts(page: Page): Promise<void> {
+async function seedReceipts(page: Page): Promise<string> {
   const response = await page.request.get("/api/v1/stations");
   const data = (await response.json()) as {
     stations?: Array<{ station_id: string; name: string; fuel: string }>;
@@ -180,6 +180,9 @@ async function seedReceipts(page: Page): Promise<void> {
       },
     });
   }
+  // Der Name des zuerst angelegten Belegs: der Test sucht genau ihn in der
+  // Liste — kein Literal aus den Demo-Daten, der Aufbau liefert ihn selbst.
+  return stations[0]?.name ?? "";
 }
 
 const AREAS = [
@@ -222,7 +225,8 @@ test.describe("Mobil: kein Querlauf", () => {
   test("Ich: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
     page,
   }) => {
-    await seedReceipts(page);
+    const stationName = await seedReceipts(page);
+    expect(stationName, "Keine Station für die Belege geliefert.").not.toBe("");
     await page.goto("/?tab=ich");
     await settled(page);
     for (const tab of ICH_TABS) {
@@ -234,7 +238,7 @@ test.describe("Mobil: kein Querlauf", () => {
       if (tab === "Belege") {
         await expect(
           page
-            .getByText("Demo-Tank", { exact: false })
+            .getByText(stationName, { exact: false })
             .filter({ visible: true })
             .first(),
         ).toBeVisible();
