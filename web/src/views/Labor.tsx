@@ -1094,7 +1094,7 @@ export function LaborView(props: LaborViewProps) {
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p
                 className="text-xs font-semibold text-slate-200"
-                title="out-of-sample: ausgewertet an Tagen, die das Modell beim Training nicht gesehen hat"
+                title="Fachwort: out-of-sample"
               >
                 Bilanz der Ratschläge (
                 {labData?.daysEval ?? "—"} Tage außerhalb der Stichprobe)

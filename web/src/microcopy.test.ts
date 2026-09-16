@@ -386,6 +386,30 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     }
   });
 
+  // ── 10. Tooltips ergänzen, sie erklären nicht (§4, GUI-TEXT-BEFUND V2) ──
+
+  /**
+   * Ein `title=` ist nur mit Maus oder Tastaturfokus erreichbar — auf dem
+   * Telefon und für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb darf
+   * dort kein Satz stehen: kurz bleiben, die Erklärung gehört in den Text.
+   */
+  it.each(FILES.filter((f) => f.endsWith(".tsx")))("%s: kein Erklärtext im Tooltip", (relativePath) => {
+    const source = read(relativePath);
+    for (const match of source.matchAll(/title="([^"]{1,400})"/g)) {
+      const text = match[1];
+      expect(
+        text.length,
+        `${relativePath}: Tooltip „${text.slice(0, 50)}…“ ist ${text.length} Zeichen lang — Erklärung in den Text.`,
+      ).toBeLessThanOrEqual(80);
+      // Abkürzungen mit Punkt („inkl.“, „z. B.“) sind keine Satzgrenze.
+      const withoutAbbrev = text.replace(/\b(?:inkl|exkl|usw|bzw|vgl|ggf|ca|z\.\s?B|u\.\s?a)\.\s/gi, " ");
+      expect(
+        /\.\s/.test(withoutAbbrev),
+        `${relativePath}: Tooltip „${text.slice(0, 50)}…“ enthält zwei Sätze.`,
+      ).toBe(false);
+    }
+  });
+
   it("das Regelwerk selbst ist da und verlinkt", () => {
     const docs = readFileSync(
       fileURLToPath(new URL("../../docs/MICROCOPY.md", import.meta.url)),

@@ -291,14 +291,34 @@ Geprüft von `microcopy.test.ts` (Ladetexte, Retry-Knöpfe, Frische-Baustein).
   Keine erfundene Sicherheit.“ (Fußzeile). Ein englisches Wort ohne deutsche
   Erklärung — etwa ein `LIVE`-Badge — steht nirgends.
 
+### 4e. Tooltips ergänzen, sie erklären nicht (V2)
+
+Ein `title=` erscheint nur mit Maus oder Tastaturfokus — auf dem Telefon und
+für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb:
+
+| Regel | Ja | Nein |
+|---|---|---|
+| Erklärung steht im sichtbaren Text | Hinweis unter der Filterleiste: „‚offen‘ zeigt nur Stationen mit aktuellem Preis …“ | `title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"` als einzige Quelle |
+| Tooltip bleibt kurz (≤ 80 Zeichen, ein Satz) | `title="Zeitwert für die Umweg-Rechnung"` | `title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"` |
+| Fachwort im Tooltip ist erlaubt (§1) | `title="Fachwort: Peak"` | `title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"` — die Definition gehört in den Text |
+| Herkunft darf im Tooltip stehen (§4d) | `title="Quelle: /api/v1/fills.csv"` | — |
+| Ein deaktivierter Knopf sagt sichtbar, warum | Text neben dem Knopf: „Verbindung läuft …“ | Erklärung nur im `title=` des deaktivierten Knopfs |
+
+Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
+`title=`.
+
 ## 7. Prüfung
 
 - `npm --prefix web test` — enthält `format-convention.test.ts` (Ratchet gegen
-  neue `toFixed`-Anzeigen), `microcopy.test.ts` (paarige `„…“`, keine
-  HTML-Entities, **keine ausgemusterten Wörter und Synonyme** aus §4, die
-  §4c-Ergebnis-Worte gegen `lab.ts`, keine Ausrufezeichen und keine
-  `✓`/`!`-Präfixe), `components/FeedbackBanner.test.tsx` (Ton der
-  Rückmeldung), `data-age.test.ts`
+  neue `toFixed`-Anzeigen und gegen `€`/`€/L` im Quelltext, T4),
+  `microcopy.test.ts` (paarige `„…“`, keine HTML-Entities, **keine
+  ausgemusterten Wörter und Synonyme** aus §4, die §4c-Ergebnis-Worte gegen
+  `lab.ts`, keine Ausrufezeichen und keine `✓`/`!`-Präfixe, keine technischen
+  Pfade außerhalb des System-Bereichs (§6/§4d), keine Abkürzungen ohne
+  Langform (T7), kein doppelt eingetragener Satz (T5), ein Wortlaut je
+  Zustand (§5a, T8), keine Erklärung im Tooltip (§4e, V2)),
+  `a11y.test.ts` (Kontrast AA — auch für **beide** Diagrammpaletten, V1),
+  `components/FeedbackBanner.test.tsx` (Ton der Rückmeldung), `data-age.test.ts`
   (Schwellen und Wortform der Datenstand-Sätze) sowie
   `components/states.test.tsx` (Skeleton, Banner, Tabellen-Fehler gegen echtes
   Markup). **Neue Komponente mit Nutzertext? In die Dateilisten der beiden

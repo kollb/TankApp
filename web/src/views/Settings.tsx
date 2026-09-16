@@ -266,7 +266,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             hint={
               <span
                 className="mt-1 block text-xs text-slate-500"
-                title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"
+                title="Fachwort: Peak"
               >
                 0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
                 {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}.

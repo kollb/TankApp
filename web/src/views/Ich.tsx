@@ -342,7 +342,7 @@ function FillsSection(props: IchViewProps) {
               type="button"
               onClick={() => setShowVoidedFills((value) => !value)}
               aria-pressed={showVoidedFills}
-              title="Stornierte Belege zählen nicht in die Bilanz; der CSV-Export enthält sie immer."
+              title="Stornierte Belege anzeigen"
               className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
             >
               {showVoidedFills

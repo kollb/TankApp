@@ -392,7 +392,7 @@ export function StationenView(props: StationenViewProps) {
                 ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
             }`}
-            title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"
+            title="Filter: nur offene Stationen"
           >
             {openOnly ? "offen ✓" : "offen"}
           </button>
@@ -414,7 +414,7 @@ export function StationenView(props: StationenViewProps) {
           </label>
           <label
             className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
-            title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"
+            title="Zeitwert für die Umweg-Rechnung"
           >
             <span className="sr-only">Zeitwert für die Umweg-Rechnung</span>
             Zeit:{" "}
@@ -439,6 +439,13 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
         </div>
+        {/* V2: Die beiden Filter-Regeln standen nur im Tooltip (V1–V5, V2) —
+            ohne Maus oder Tastaturfokus waren sie unsichtbar. */}
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          „offen“ zeigt nur Stationen mit aktuellem Preis für den gewählten
+          Kraftstoff. Der Zeitwert wirkt auf die Umweg-Rechnung des Servers —
+          als Was-wäre-wenn, das Profil bleibt unverändert.
+        </p>
       </div>
 
       {/* ② Karte */}

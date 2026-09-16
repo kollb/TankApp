@@ -154,7 +154,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
               </th>
               <th
                 className="p-1 text-left font-sans text-xs font-normal text-slate-600"
-                title="Eine Spalte = eine Stunde: „06–07 Uhr“ ist der Kasten 06:00–06:59. „dünn“ = die Vergleichs-Basis dieser Stunde trägt zu wenige Preise für eine Empfehlung."
+                title="Spalten von links nach rechts"
               >
                 Günstigste Std.
               </th>

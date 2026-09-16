@@ -568,7 +568,7 @@ export function JetztView(props: JetztViewProps) {
                     />
                     <span
                       className="mt-1 block text-xs text-slate-500"
-                      title="Stoßzeit = Peak, Nebenzeit = offpeak"
+                      title="Fachwort: Peak und Off-Peak"
                     >
                       0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h ·{" "}
                       {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den
