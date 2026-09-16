@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 16.09.2026 · App-Version 0.43.0. Abgleich von
+> Stand: 16.09.2026 · App-Version 0.43.1. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen](#16092026--version-0431-prüfbericht-pr-121-archiviert-restpunkte-geschlossen)
   - [16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5](#16092026--version-0430-gui-text-befund-v3v5)
   - [16.09.2026 — Version 0.42.0: GUI-Text-Befund T1–T8, V1–V2](#16092026--version-0420-gui-text-befund-t1t8-v1v2)
   - [16.09.2026 — Versionen 0.41.0/0.41.1: GUI-Befunde U1–U8, Lighthouse-CLS](#16092026--versionen-04100411-gui-befunde-u1u8-lighthouse-cls)
@@ -35,7 +36,7 @@
 
 ## Kurzfassung
 
-| Bereich | Vor B5 (10.09.) | Heute (0.38.0) |
+| Bereich | Vor B5 (10.09.) | Heute (0.43.1) |
 |---|---|---|
 | „Läuft …“ beim Modell-Job | nur Zustand, kein Fortschritt | Phasen, Schritt x/y, Balken, Restschätzung in GUI, Statusdatei und Log |
 | Rechenzeit Modell-Lauf | ~3 min je Station, ein Kern | ~14 s je Station, mehrere Kerne |
@@ -235,6 +236,39 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen
+
+Die Tiefenanalyse „neue GUI + neuer Fallback“ (PR #121, Prüfstand 0.37.0) lag
+nur in der Wurzel des offenen PR — außerhalb der Doku-Regel. Sie steht jetzt
+unverändert in
+[archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md](archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md);
+§9 ist der Erledigt-Nachweis je Befund: B1–B12, M1/M8 und der Demo-Stack sind
+in 0.37.2 umgesetzt, die E2E ohne Mocks in 0.38.0, die Bundle-Aufteilung in
+0.41.0. **Kein Audit-Punkt bleibt offen**; die bewusst anderen Entscheidungen
+(B8-Frische, B11-Zellenzahl, M7-Pi-Adresse als Betriebsdoku) stehen in §9.2
+des Berichts. In demselben Durchgang geschlossen: der `windowStars`-Vertrag
+(der 35-%-Schnitt trennt nur die Sterne, Test in `web/src/week.test.ts`), die
+Abgrenzung `/api/v1/series` (RP2, Ringpuffer) gegen das NAS-`/api/v1/series`
+(InfluxDB-Rohreihe) und drei veraltete Stellen in [RP2.md](RP2.md)
+(„Fallback-GUI v3“ → v4, „Bestes Fenster“ mit Tag, „NAS prüfen“ ohne Emoji).
+
+**Nachtrag zum letzten §5-Punkt des Berichts (100-L-Tank):** Der Server erlaubt
+seit 0.37.2 Profil-Tankmengen bis 100 L, die GUI kappte sie aber weiter bei
+80 L — `PROFILE_BOUNDS` (10–100 L) war nie importiert. Jetzt nehmen die Slider
+in „Ich → Fahrzeug“ und die Was-wäre-wenn-Zeile in „Jetzt“ ihre Grenzen aus
+`PROFILE_BOUNDS` (eine Quelle mit `app/profiles.py`), Fehlertext und Doku
+(MICROCOPY, API) nennen 10–100 L; Tests in `web/src/settings.test.tsx`,
+`web/src/views/Jetzt.test.tsx` und `tests/test_profiles.py` (100 L → 200,
+101 L → 400). Damit deckt die Rechengröße den Beleg-Bereich (5–100 L) ab.
+
+**Und der M1-Nachweis war falsch, jetzt nicht mehr:** Der Filter-Chip „nur
+offene“ ist seit 0.37.2 gebaut, aber der Erledigt-Nachweis nannte
+`web/src/views/Stationen.test.tsx` — dort gab es keinen Filter-Fall. Die
+Sichtbarkeits-Regeln (Suche, Marke, „offen“) stehen jetzt als
+`atlasMatchesFilter` in `web/src/stations.ts` und sind in
+`web/src/stations.test.ts` in fünf Fällen festgehalten; das Markup von Chip
+und Regel-Satz prüft `web/src/views/Stationen.test.tsx`.
 
 ### 16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5
 

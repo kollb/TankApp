@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 16.09.2026 · App-Version 0.37.2 · RP2-Fallback v4.2 — **die** Anleitung
+> Stand: 16.09.2026 · App-Version 0.43.1 · RP2-Fallback v4.2 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -290,13 +290,13 @@ http://<RP2-IP>:8000
 ```
 
 - NAS online: vollwertige NAS-GUI (React, Live-Charts, System-Panel, Heatmaps, Meine Stationen, Collector-Status, Route-Evaluate) — RP2 proxyst transparent
-- NAS offline: Fallback-GUI v3 (Markierung „FALLBACK · RP2“) — **Antwort-Karte zuerst**
+- NAS offline: Fallback-GUI v4 (Markierung „FALLBACK · RP2“) — **Antwort-Karte zuerst**
   (Verdict „Jetzt tanken“ / „Bis <Zeit> Uhr warten lohnt sich“, günstigste Station,
   Ersparnis, Route), F1/F2 als Chips, **Tagesstreifen 06–24 Uhr** aus dem Puffer,
   **Stations-Karten** statt Tabelle (Name einzeilig mit Ellipsis, voller Name im
   `title`, Marke/Stadt/Fahrzeit in der Meta-Zeile, Δ-Chip, 44-px-Route-Button),
   F3-Fensterliste, **drei Fakten** unter der Empfehlung („Jetzt hier“ ·
-  „Bestes Fenster heute“ · „Frische Preise“) und die **Frische-Fußzeile**
+  „Bestes Fenster“ mit Tag · „Frische Preise“) und die **Frische-Fußzeile**
   („Preise … alt · Prognose … alt“) im Gleichschritt mit dem Bereich „Jetzt“
   der NAS-GUI. **Alltag/Werkstatt** umschaltbar: Werkstatt zeigt
   Prognose-Sparklines, Rohdaten aller Treibstoffe und den Datenstatus
@@ -322,7 +322,7 @@ docker stop tankapp
 
 ```bash
 docker start tankapp
-# → innerhalb ~15s oder nach Klick „🔄 NAS prüfen“ bzw. curl http://<RP2-IP>:8000/api/v1/nas-check wieder volle NAS-GUI
+# → innerhalb ~15s oder nach Klick „NAS prüfen“ bzw. curl http://<RP2-IP>:8000/api/v1/nas-check wieder volle NAS-GUI
 ```
 
 ### Fallback-API und Umschaltzeiten
@@ -340,11 +340,17 @@ Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
 | `/api/v1/series?station=<uuid>&fuel=e10` | Tagesverlauf 06–24 Uhr einer Station aus dem Puffer (je Stunde die letzte offene Meldung, `null` ohne Meldung; dazu `min`/`max`/`now`) |
 | `/api/v1/nas-check` | NAS sofort neu prüfen (auch im Proxy-Modus) |
 
+> **`/api/v1/series` ist nicht das NAS-`/api/v1/series`.** Der RP2 liest den
+> Tagesverlauf 06–24 Uhr aus seinem Ringpuffer (Parameter `station`, je Stunde
+> die letzte offene Meldung, dazu `min`/`max`/`now`); die NAS-GUI fragt die
+> Rohreihe aus der InfluxDB ab (`station_id`, `hours=1–168`). Gemeinsam ist die
+> Frage „Verlauf einer Station“, nicht der Payload.
+
 Umschaltverhalten:
 
 - NAS geht aus → **der nächste Request** fällt sofort in den Fallback zurück.
 - NAS kommt wieder → innerhalb von **15 s** (Online-TTL) oder sofort nach
-  `/api/v1/nas-check` bzw. Klick auf „🔄 NAS prüfen“.
+  `/api/v1/nas-check` bzw. Klick auf „NAS prüfen“.
 - `FORCE_FALLBACK=1` deaktiviert den Proxy dauerhaft (Testfall).
 - **Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`) werden nur weitergeleitet,
   wenn die NAS online ist; bei offline NAS antwortet der RP2 mit

@@ -34,6 +34,7 @@ import {
   deTrimmed,
   euroPerHour,
   kilometersPerHourSpeech,
+  PROFILE_BOUNDS,
   THRESHOLD_ROWS,
   thresholdHysteresisLine,
   thresholdSampleLine,
@@ -183,8 +184,13 @@ export function VehiclePanel(props: VehiclePanelProps) {
             icon={<FuelIcon size={14} />}
             value={liters}
             onChange={setLiters}
-            min={10}
-            max={80}
+            // Die Profil-Grenzen sind die eine Quelle: Der Server prüft
+            // dieselben Zahlen (app/profiles.py FIELD_BOUNDS), und ein
+            // 100-L-Tank (Transporter/Diesel) muss auch hier darstellbar
+            // sein — sonst deckt die Tankmenge den Beleg-Bereich nicht ab
+            // (Prüfbericht §5).
+            min={PROFILE_BOUNDS.liters.min}
+            max={PROFILE_BOUNDS.liters.max}
             step={1}
             unit="L"
             valueSpeech={`${liters} Liter`}
@@ -200,8 +206,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             label="Verbrauch"
             value={consumption}
             onChange={setConsumption}
-            min={4}
-            max={15}
+            min={PROFILE_BOUNDS.consumption.min}
+            max={PROFILE_BOUNDS.consumption.max}
             step={0.5}
             unit="L/100 km"
             valueSpeech={`${deTrimmed(consumption)} Liter pro 100 Kilometer`}
@@ -217,8 +223,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             icon={<Gauge size={14} />}
             value={tankCapacity}
             onChange={setTankCapacity}
-            min={20}
-            max={120}
+            min={PROFILE_BOUNDS.tankCapacity.min}
+            max={PROFILE_BOUNDS.tankCapacity.max}
             step={5}
             unit="L"
             valueText={`${deTrimmed(tankCapacity, 0)} Liter Tank`}
@@ -255,8 +261,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             icon={<Clock size={14} />}
             value={timeValue}
             onChange={setTimeValue}
-            min={0}
-            max={30}
+            min={PROFILE_BOUNDS.timeValue.min}
+            max={PROFILE_BOUNDS.timeValue.max}
             step={0.5}
             unit="€/h"
             valueText={timeValueShort(timeValue, timeValueUsed, autoZ)}
@@ -283,8 +289,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             <input
               id="speed"
               type="range"
-              min={25}
-              max={80}
+              min={PROFILE_BOUNDS.speed.min}
+              max={PROFILE_BOUNDS.speed.max}
               step={5}
               value={speed}
               aria-valuetext={kilometersPerHourSpeech(speed)}

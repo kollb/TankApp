@@ -450,7 +450,7 @@ zurück; `city`/`station` bleiben Gerätesache (localStorage).
 | `POST /api/v1/profiles/activate` mit `{"active": null}` | Kein Profil aktiv — Einstellungen gelten nur noch gerätelokal. |
 | `DELETE /api/v1/profiles/{id}` | Profil löschen; war es aktiv, ist danach keins aktiv. |
 
-Grenzen wie die GUI-Slider (gleiche Prüfung serverseitig): `liters` 10–80,
+Grenzen wie die GUI-Slider (gleiche Prüfung serverseitig): `liters` 10–100,
 `consumption` 4–15, `time_value_eur_h` 0–30, `speed_kmh` 25–80,
 `tank_capacity_l` 20–120, `fuel` ∈ {e10, e5, diesel}, `detour_mode` ∈
 {onroute, dedicated}. Höchstens **8** Profile.

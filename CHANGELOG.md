@@ -4,6 +4,63 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.43.1] – 2026-09-16
+
+**Der Prüfbericht „neue GUI + neuer Fallback“ (PR #121) ist dort archiviert,
+wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
+
+### Geändert
+
+- **Prüfbericht archiviert:**
+  [docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md](docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md)
+  enthält den Wortlaut der Tiefenanalyse aus
+  [PR #121](https://github.com/kollb/TankApp/pull/121) unverändert (Prüfstand
+  0.37.0); §9 ist der Erledigt-Nachweis je Befund — B1–B12, M1/M8 und der
+  Demo-Stack in 0.37.2, die E2E ohne Mocks in 0.38.0, die Bundle-Aufteilung in
+  0.41.0. `docs/archiv/README.md` führt ihn mit Nachfolger-Verweis auf
+  [LUECKEN.md](docs/LUECKEN.md). Vorher lag der Bericht nur in der Wurzel des
+  offenen PR — außerhalb der Doku-Regel („alle Dokumente in `docs/`“).
+- **`windowStars`-Vertrag:** Der Kommentar in `web/src/week.ts` behauptete,
+  die Stern-Schwellen entsprächen den Wort-Stufen der Ampel-Karte; tatsächlich
+  trennt der 35-%-Schnitt **nur** die Sterne (unter 55 % heißt beides
+  „unsicher“). Jetzt exakt benannt und in `web/src/week.test.ts` als Test
+  festgehalten, damit Kommentar und Code nicht wieder driften.
+- **Tankmenge bis 100 L auch in der GUI (Rest aus §5 des Berichts):** Server
+  und Beleg kannten die Obergrenze seit 0.37.2 (`app/profiles.py` 10–100 L,
+  Beleg 5–100 L), die Slider in „Ich → Fahrzeug“ und die Was-wäre-wenn-Zeile
+  in „Jetzt“ kappten aber weiter bei **80 L** — `PROFILE_BOUNDS` war dabei
+  toter Code. Jetzt ziehen beide Stellen ihre Grenzen aus `PROFILE_BOUNDS`
+  (eine Quelle mit dem Server), der Fehlertext sagt „zwischen 10 und 100 L“,
+  und [MICROCOPY.md](docs/MICROCOPY.md)/[API.md](docs/API.md) nennen dieselbe
+  Spanne. Tests: `web/src/settings.test.tsx` (Slider-Grenzen),
+  `web/src/views/Jetzt.test.tsx` (Annahmen-Zeile),
+  `tests/test_profiles.py` (100 L → 200, 101 L → 400).
+- **[RP2.md](docs/RP2.md) an die Realität gezogen:** `/api/v1/series` ist
+  gegen das NAS-`/api/v1/series` abgegrenzt (`station` statt `station_id`,
+  Stundenraster 06–24 Uhr aus dem Ringpuffer statt Rohreihe 1–168 h);
+  „Fallback-GUI v3“ → v4; „Bestes Fenster heute“ → „Bestes Fenster“ mit Tag
+  (B7); „🔄 NAS prüfen“ → „NAS prüfen“ (Emoji seit 0.42.0 entfernt).
+- **Testname:** `tests/test_rp2_fallback.py::test_template_is_the_v4_gui_without_mock_data`
+  (vorher „v3“ — Nachtrag zu B12).
+- **M1-Nachweis ehrlich gemacht:** Der Filter-Chip „nur offene“ (0.37.2 gegen
+  M1 gebaut) war ungeprüft — der Erledigt-Nachweis nannte eine Testdatei ohne
+  Filter-Fall. Die Sichtbarkeits-Regeln (Suche, Marke, „offen“) liegen jetzt
+  als `atlasMatchesFilter` in `web/src/stations.ts` und sind in
+  `web/src/stations.test.ts` festgehalten (5 Fälle, inkl. „die drei Regeln
+  greifen zusammen“); `web/src/views/Stationen.test.tsx` hält zusätzlich Chip
+  und Regel-Text im Markup fest.
+
+### Prüfungen
+
+- `ruff check` + `ruff format --check` ✓, **806 pytest** ✓, **1053 Vitest**
+  (vorher 1044) ✓, `npm --prefix web run build` ✓ ohne Chunk-Warnhinweis.
+- `tests/test_ledger_drift.py` hält die Stand-Zeilen (TODO, LUECKEN, neueste
+  CHANGELOG-Version = App-Version) und die Liste „nicht gegen die aktuelle
+  Version geprüft“ konsistent; `test_local_documentation_links_exist` prüft
+  den neuen Archiv-Eintrag.
+- Browser-Suiten wie gehabt der CI vorbehalten (Chromium-Download in der
+  Sandbox gesperrt).
+
 ## [0.43.0] – 2026-09-16
 
 **GUI-Text-Befund V3–V5 umgesetzt (PR #125, Abschluss des Befunds): ein

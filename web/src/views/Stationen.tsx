@@ -68,6 +68,7 @@ import {
 import {
   atlasEur,
   ATLAS_SORTS,
+  atlasMatchesFilter,
   atlasRows,
   atlasExplanation,
   compareStationsPair,
@@ -252,18 +253,9 @@ export function StationenView(props: StationenViewProps) {
     new Set(stations.map((row) => row.brand).filter(Boolean)),
   ).sort((a, b) => a.localeCompare(b, "de"));
 
-  const filtered = rows.filter((row) => {
-    const needle = query.trim().toLowerCase();
-    if (
-      needle &&
-      !row.station.name.toLowerCase().includes(needle) &&
-      !row.station.brand.toLowerCase().includes(needle)
-    )
-      return false;
-    if (brand && row.station.brand !== brand) return false;
-    if (openOnly && row.price === null) return false;
-    return true;
-  });
+  const filtered = rows.filter((row) =>
+    atlasMatchesFilter(row, { query, brand, openOnly }),
+  );
   const sorted = sortAtlasRows(filtered, sort);
 
   // Ohne explizite Auswahl (z. B. erste Ansicht) gilt dieselbe Referenz wie

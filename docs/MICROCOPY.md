@@ -106,7 +106,9 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Zeitpunkt | `timeLabel` / `epochLabel` | `12.09., 08:00` |
 
 **Zwei Größen, zwei Spannen (T3):** *Tankmenge* ist die Rechengröße aus
-Profil und „Jetzt“ — **10–80 L**, ganze Liter, Schritt 1. *Getankte Liter* ist
+Profil und „Jetzt“ — **10–100 L**, ganze Liter, Schritt 1 (dieselbe Obergrenze
+wie `FIELD_BOUNDS` in `app/profiles.py` und `PROFILE_BOUNDS` in `web/src/data.ts`;
+ein 100-L-Tank muss darstellbar sein, Prüfbericht §5). *Getankte Liter* ist
 der gebuchte Vorgang im Beleg — **5–100 L**, Schritt 0,5
 (`FILL_LIMITS.liters`, Server-Validierung). Beide tragen die Einheit `L`,
 niemals ausgeschrieben „Liter“ neben einer Zahl. Wird eine Eingabe gerundet,
@@ -131,7 +133,7 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 | die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“, nicht „Füllung“, nicht „Tankbeleg“ — auch nicht als Überschrift) |
-| die Rechengröße für Tankvolumen | **Tankmenge** (10–80 L) — im Beleg heißt dieselbe Spalte **Liter** und meint die getankten Liter (5–100 L) |
+| die Rechengröße für Tankvolumen | **Tankmenge** (10–100 L) — im Beleg heißt dieselbe Spalte **Liter** und meint die getankten Liter (5–100 L) |
 | der Preis-Vorteil | **Ersparnis** — Betrag **ohne** Vorzeichen, die Richtung steht im Wort: „1,60 € günstiger“, „0,80 € teurer“ |
 | das Alter eines Standes | über `ageLabel`/`ageWord`: „vor 12 Minuten“ — nie „vor 12 Min.“ |
 | δ̂ | **Preis-Abstand** (nicht „Hauspreis-Abstand“) |

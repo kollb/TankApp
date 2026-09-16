@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { DecideResult, TankInfo } from "./data";
+import { wordFromPercent } from "./now";
 import {
   tankReach,
   weekDays,
@@ -97,6 +98,21 @@ describe("windowStars", () => {
     expect(windowStars(null)).toBe(0);
     expect(windowStars(undefined)).toBe(0);
     expect(windowStars(Number.NaN)).toBe(0);
+  });
+
+  it("Stern- und Wortklassen unterscheiden sich nur unter 55 %", () => {
+    // Befund §6 des Prüfberichts (PR #121): Sterne (75/55/35) und Worte
+    // (75/55) sind absichtlich nicht deckungsgleich — unter 55 % heißt beides
+    // „unsicher“, und der 35-%-Schnitt trennt nur die Sterne. Der Test hält
+    // den Vertrag fest, damit der Kommentar in week.ts nicht wieder driftet.
+    expect(wordFromPercent(75)).toBe("ziemlich sicher");
+    expect(wordFromPercent(55)).toBe("eher sicher");
+    expect(wordFromPercent(50)).toBe("unsicher");
+    expect(wordFromPercent(34)).toBe("unsicher");
+    expect(windowStars(0.75)).toBe(3);
+    expect(windowStars(0.55)).toBe(2);
+    expect(windowStars(0.5)).toBe(1);
+    expect(windowStars(0.34)).toBe(0);
   });
 });
 

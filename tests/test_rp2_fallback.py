@@ -766,7 +766,7 @@ def test_snapshot_ttl_collapses_parallel_endpoints(tmp_path, monkeypatch):
         server.server_close()
 
 
-def test_template_is_the_v3_gui_without_mock_data():
+def test_template_is_the_v4_gui_without_mock_data():
     """Checkliste 2.1: Mock-Leiste und Beispieldaten sind raus, die Bausteine
     der neuen Oberfläche stehen im ausgelieferten Template."""
     html = rp2.DEFAULT_INDEX_HTML

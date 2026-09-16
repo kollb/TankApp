@@ -174,6 +174,30 @@ export function atlasRows(input: AtlasInput): AtlasRow[] {
 }
 
 /**
+ * Die Sichtbarkeits-Regeln der Atlas-Liste (UI-NEUENTWURF §5.2, M1):
+ * Suchtext, Marke und der Chip „nur offene“. Ausgelagert aus der Ansicht,
+ * weil die Regeln tragend sind — „offen“ muss die ehrliche „—“-Zeile
+ * (Station ohne frischen Preis) verstecken, und die Marke filtert exakt,
+ * nie „ähnlich“. Die Suche trifft Name und Marke, beides ohne Rücksicht
+ * auf Groß-/Kleinschreibung; ein leerer Suchtext filtert nichts.
+ */
+export function atlasMatchesFilter(
+  row: AtlasRow,
+  filter: { query: string; brand: string; openOnly: boolean },
+): boolean {
+  const needle = filter.query.trim().toLowerCase();
+  if (
+    needle &&
+    !row.station.name.toLowerCase().includes(needle) &&
+    !row.station.brand.toLowerCase().includes(needle)
+  )
+    return false;
+  if (filter.brand && row.station.brand !== filter.brand) return false;
+  if (filter.openOnly && row.price === null) return false;
+  return true;
+}
+
+/**
  * Sortierung der Atlas-Liste. Netto-€-Sortierung bevorzugt die
  * Server-Zahl und fällt auf Preisdiff × Tankmenge zurück — beides ist
  * eine €-Größe mit derselben Richtung (negativ = günstiger). Unbekannt
