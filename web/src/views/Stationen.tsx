@@ -42,6 +42,7 @@ import {
   X,
 } from "lucide-react";
 import { FreshnessLine } from "../components/FreshnessLine";
+import { useChartPalette } from "../chartTheme";
 import { LineChart } from "../components/LineChart";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -1017,6 +1018,7 @@ function SeriesChart({
   points: Point[];
   spanHours: number;
 }) {
+  const c = useChartPalette();
   const known = points
     .filter((p) => p.price !== null && Number.isFinite(Date.parse(p.timestamp)))
     .map((p) => ({ x: Date.parse(p.timestamp), y: p.price as number }));
@@ -1040,15 +1042,15 @@ function SeriesChart({
     <div>
       <LineChart
         series={[
-          { name: "Offene Meldungen (€/L)", color: "#38bdf8", pts: known },
+          { name: "Offene Meldungen (€/L)", color: c.accent, pts: known },
           {
             name: "Tagesmedian (üblich)",
-            color: "#94a3b8",
+            color: c.text,
             dash: "4 3",
             pts: band,
           },
         ]}
-        marks={[{ x: last.x, color: "#34d399", label: "jetzt" }]}
+        marks={[{ x: last.x, color: c.positive, label: "jetzt" }]}
         xDomain={[minX, maxX]}
         xTicks={autoTimeTicks(minX, maxX)}
         yFmt={(value) => euro(value, 3)}

@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Station, DecideResult, DetourMode, euro, kilometersLabel } from "../data";
+import { useChartPalette } from "../chartTheme";
 
 /** T5: Ein Label, eine Stelle — Marker, alt-Text und aria-label sagen dasselbe. */
 const HOME_LABEL = "Zuhause, Startpunkt der Stadt";
@@ -697,6 +698,7 @@ export function RadarView({
   setActiveStationId,
   setAnchorActive,
 }: RadarViewProps) {
+  const c = useChartPalette();
   // Das Radar geht von Zuhause aus (Haus-Symbol, Heimat-Startpunkt,
   // „müsste es nicht von Zuhause aus losgehen?“). Ohne diese Koordinate
   // bleibt die Referenzstation das Zentrum — der Rahmen wird dann explizit
@@ -760,14 +762,14 @@ export function RadarView({
                 cy={height / 2}
                 r={r}
                 fill="none"
-                stroke="#334155"
+                stroke={c.axis}
                 strokeDasharray="3 3"
                 strokeWidth="1"
               />
               <text
                 x={width / 2 + r - 12}
                 y={height / 2 - 4}
-                fill="#64748b"
+                fill={c.muted}
                 fontSize="8"
                 fontFamily="monospace"
               >
@@ -783,7 +785,7 @@ export function RadarView({
           y1={padding / 2}
           x2={width / 2}
           y2={height - padding / 2}
-          stroke="#1e293b"
+          stroke={c.grid}
           strokeWidth="1"
         />
         <line
@@ -791,7 +793,7 @@ export function RadarView({
           y1={height / 2}
           x2={width - padding / 2}
           y2={height / 2}
-          stroke="#1e293b"
+          stroke={c.grid}
           strokeWidth="1"
         />
 
@@ -800,7 +802,7 @@ export function RadarView({
           x={width / 2}
           y={14}
           textAnchor="middle"
-          fill="#475569"
+          fill={c.tick}
           fontSize="9"
           fontWeight="bold"
         >
@@ -810,7 +812,7 @@ export function RadarView({
           x={width / 2}
           y={height - 4}
           textAnchor="middle"
-          fill="#475569"
+          fill={c.tick}
           fontSize="9"
           fontWeight="bold"
         >
@@ -820,7 +822,7 @@ export function RadarView({
           x={width - 8}
           y={height / 2 + 3}
           textAnchor="end"
-          fill="#475569"
+          fill={c.tick}
           fontSize="9"
           fontWeight="bold"
         >
@@ -830,7 +832,7 @@ export function RadarView({
           x={8}
           y={height / 2 + 3}
           textAnchor="start"
-          fill="#475569"
+          fill={c.tick}
           fontSize="9"
           fontWeight="bold"
         >
@@ -862,8 +864,8 @@ export function RadarView({
               cx={width / 2}
               cy={height / 2}
               r={8}
-              fill="#f1f5f9"
-              stroke="#cbd5e1"
+              fill={c.textStrong}
+              stroke={c.border}
               strokeWidth="2"
             />
             <g
@@ -872,7 +874,7 @@ export function RadarView({
               <path
                 d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
                 fill="none"
-                stroke="#0f172a"
+                stroke={c.surface}
                 strokeWidth="2.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -880,7 +882,7 @@ export function RadarView({
               <polyline
                 points="9 22 9 12 15 12 15 22"
                 fill="none"
-                stroke="#0f172a"
+                stroke={c.surface}
                 strokeWidth="2.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -890,7 +892,7 @@ export function RadarView({
               x={width / 2}
               y={height / 2 + 22}
               textAnchor="middle"
-              fill="#cbd5e1"
+              fill={c.border}
               fontSize="9"
               fontWeight="bold"
             >
@@ -902,8 +904,8 @@ export function RadarView({
             cx={width / 2}
             cy={height / 2}
             r={6}
-            fill="#38bdf8"
-            stroke="#0284c7"
+            fill={c.accent}
+            stroke={c.accentEdge}
             strokeWidth="2"
           />
         )}
@@ -920,10 +922,10 @@ export function RadarView({
           // Breite nach Textlänge — „Referenz“ ist länger als „+0,85 €“.
           const badgeW = Math.max(34, badgeText.length * 5.4 + 8);
 
-          let colorFill = "#64748b"; // slate
-          if (info.verdict === "selected") colorFill = "#38bdf8";
-          else if (info.verdict === "worth") colorFill = "#34d399";
-          else if (info.verdict === "borderline") colorFill = "#fbbf24";
+          let colorFill = c.muted;
+          if (info.verdict === "selected") colorFill = c.accent;
+          else if (info.verdict === "worth") colorFill = c.positive;
+          else if (info.verdict === "borderline") colorFill = c.warnSoft;
 
           return (
             <g
@@ -959,7 +961,7 @@ export function RadarView({
                 cy={cy}
                 r={isActive ? 7 : 5}
                 fill={colorFill}
-                stroke="#0f172a"
+                stroke={c.surface}
                 strokeWidth="1.5"
               />
 
@@ -970,7 +972,7 @@ export function RadarView({
                 width={badgeW}
                 height={13}
                 rx={6}
-                fill="#0f172a"
+                fill={c.surface}
                 fillOpacity="0.9"
                 stroke={colorFill}
                 strokeWidth="1"

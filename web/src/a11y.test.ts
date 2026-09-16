@@ -6,6 +6,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { DARK_CHART, LIGHT_CHART } from "./chartTheme";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -111,6 +112,44 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
       }
     },
   );
+
+  // V1 (GUI-TEXT-BEFUND): Diagramme kennen beide Themen. Vorher waren 64 feste
+  // Hexwerte verdrahtet — Achsentext #94a3b8 auf weißer Karte ≈ 2,4:1.
+  it.each([
+    ["dunkel", DARK_CHART, "#0f172a"],
+    ["hell", LIGHT_CHART, "#ffffff"],
+  ] as const)("Diagrammpalette %s: Texttöne halten 4,5:1 auf der Diagrammfläche", (_name, palette, surface) => {
+    // Text im Diagramm: AA verlangt 4,5:1.
+    for (const role of ["text", "textStrong", "accent", "positive", "negative", "warn"] as const) {
+      expect(
+        contrast(palette[role], surface),
+        `${role} (${palette[role]}) auf ${surface} ist zu blass`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+    // Achsen-Ticks sind Striche, kein Text: 3:1 (WCAG 1.4.11) reichen.
+    expect(
+      contrast(palette.tick, surface),
+      `tick (${palette.tick}) auf ${surface} hebt sich zu wenig ab`,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keine Diagramm-Datei trägt mehr feste Hexfarben", () => {
+    const chartFiles = [
+      "components/LineChart.tsx",
+      "components/LabCharts.tsx",
+      "components/StationMap.tsx",
+      "views/Labor.tsx",
+      "views/Stationen.tsx",
+    ];
+    for (const file of chartFiles) {
+      const hexes = read(file).match(/#[0-9a-fA-F]{6}\b/g) ?? [];
+      expect(hexes, `${file} verdrahtet noch ${hexes.join(", ")}`).toEqual([]);
+    }
+  });
+
+  it("beide Diagrammpaletten bedienen dieselben Rollen", () => {
+    expect(Object.keys(LIGHT_CHART).sort()).toEqual(Object.keys(DARK_CHART).sort());
+  });
 
   it("die übrigen Texttöne der Skala bleiben lesbar", () => {
     const palette: Record<string, string> = {

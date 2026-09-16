@@ -35,6 +35,7 @@ import {
 import { DataReachNote } from "../components/DataReach";
 import { FreshnessLine } from "../components/FreshnessLine";
 import { HeatmapGrid } from "../components/HeatmapGrid";
+import { useChartPalette } from "../chartTheme";
 import { LineChart } from "../components/LineChart";
 import { LoadError } from "../components/LoadError";
 import { SkeletonChart, SkeletonPanel } from "../components/Skeleton";
@@ -249,6 +250,7 @@ function SketchNote({ children }: { children: ReactNode }) {
 }
 
 export function LaborView(props: LaborViewProps) {
+  const c = useChartPalette();
   const { focusSection, onFocusHandled, onNavigate, onOpenGlossary } = props;
   // U8: geteilte Daten aus dem OverviewContext …
   const ov = useOverview();
@@ -438,7 +440,7 @@ export function LaborView(props: LaborViewProps) {
       ? [
           {
             name: "Echte Preise (beobachtet)",
-            color: "#e2e8f0",
+            color: c.marker,
             pts: observationPts.map((p) => ({
               x: Date.parse(p.timestamp),
               y: p.price,
@@ -1316,7 +1318,7 @@ export function LaborView(props: LaborViewProps) {
                     thresholds={[
                       {
                         x: 0,
-                        color: "#a78bfa",
+                        color: c.violet,
                         label: `Regel-Ergebnis bei ε = ${deTrimmed(labData.scan.eps[0], 2)} ct`,
                       },
                     ]}
@@ -1429,17 +1431,17 @@ export function LaborView(props: LaborViewProps) {
                             series={[
                               {
                                 name: `Erwartung vs. ${anchorLabel}`,
-                                color: "#e2e8f0",
+                                color: c.marker,
                                 pts: dayCurve,
                               },
                             ]}
                             marks={[
-                              { x: anchorHour, color: "#38bdf8", label: anchorLabel },
+                              { x: anchorHour, color: c.accent, label: anchorLabel },
                               ...(activeLabDayRow.predHour != null
                                 ? [
                                     {
                                       x: activeLabDayRow.predHour,
-                                      color: "#34d399",
+                                      color: c.positive,
                                       label: "prognostizierte Tiefstphase",
                                     },
                                   ]
