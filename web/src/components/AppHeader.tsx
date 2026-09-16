@@ -47,11 +47,15 @@ export function AppHeader({
     setRefresh,
   } = ov;
   return (
-    <header className="app-header sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
-      {/* U3: eine Zeile — die globalen Steuerungen (Stadt, Kraftstoff,
-          Profil, Alarm, Teilen, Aktualisieren) laufen nebeneinander und
-          scrollen auf schmalen Viewports, statt eine zweite Steuerzeile
-          über den Inhalt zu schieben. */}
+    <header className="app-header z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sm:sticky sm:top-0">
+      {/* U3 (überarbeitet 16.09.2026): Auf schmalen Viewports **bricht** die
+          Steuerzeile um, statt seitlich zu scrollen. Der Streifen war 748 px
+          breit und zeigte in 209 px Fensterbreite kaum zwei Steuerungen — wer
+          das Profil wechseln wollte, musste erst schieben („verschiedene
+          Dinge die scrollen müssen“). Dafür entfällt auf dem Handy die
+          Wortmarke (das Symbol bleibt), und die Kopfzeile klebt erst ab `sm`
+          am oberen Rand: zwei Steuerzeilen dauerhaft über dem Inhalt wären
+          der nächste Platzverlust. */}
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <a
           href="/"
@@ -61,7 +65,7 @@ export function AppHeader({
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
             <FuelIcon size={21} />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="text-lg font-black tracking-tight text-white">
               TankApp
             </h1>
@@ -76,7 +80,7 @@ export function AppHeader({
             absolut positionierte Kinder (sr-only-Status) im Clip der
             Zeile, sonst erweitern sie die Dokument-Breite. */}
         {ready && (
-        <div className="relative flex min-w-0 items-center gap-2 overflow-x-auto sm:gap-3">
+        <div className="relative flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
             <MapPin size={14} className="text-emerald-400" />
             <span className="sr-only">Stadt</span>

@@ -22,6 +22,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # numpy 2.5+ verlangt Python >= 3.12, der Pi hat 3.11 — eine gehobene
+      # Untergrenze ließe die Engine-Jobs der CI auf 3.11 scheitern (PR #75).
+      # Die Untergrenze steht deshalb mit Interpreter-Marker in
+      # engine/requirements.txt und wird von Hand gepflegt; Patch-Updates
+      # (2.4.x) kommen weiter automatisch.
+      - dependency-name: "numpy"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
   # React-GUI (wird ins NAS-Image gebaut).
   - package-ecosystem: "npm"

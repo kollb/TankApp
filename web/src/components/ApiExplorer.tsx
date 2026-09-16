@@ -166,7 +166,10 @@ export function ApiExplorer({
           ab, genau wie die Tabs.
         </p>
       )}
-      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-emerald-300/90">
+      {/* Mobil umbrechen statt seitlich scrollen: Der Block war 413 px breit
+          bei 308 px Platz. Ab `sm` bleibt jede Zeile wie eingetippt
+          stehen (Antworten liest man dort zeilenweise). */}
+      <pre className="max-h-80 overflow-auto rounded-lg bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-emerald-300/90 max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]">
         {loading
           ? "// Rufe Endpunkt auf …"
           : answer || "// Oben einen Endpunkt wählen — nur lesend, kein Poll."}

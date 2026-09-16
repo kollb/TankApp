@@ -481,33 +481,61 @@ export function SystemView(props: SystemViewProps) {
                 </div>
               </div>
               {(selection.data.price_twins?.length ?? 0) > 0 && (
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[520px] text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-500">
-                        <th className="py-2 pr-3">Paar</th>
-                        <th className="py-2 pr-3">Stadt</th>
-                        <th className="py-2 pr-3">Tage · Punkte</th>
-                        <th className="py-2 pr-3">Übereinstimmung</th>
-                        <th className="py-2 pr-3">Ø Abweichung</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {selection.data.price_twins!.slice(0, 10).map((t) => (
-                        <tr key={`${t.station_a}-${t.station_b}`}>
-                          <td className="py-2 pr-3 font-mono text-slate-200">
-                            {t.station_a} · {t.station_b}
-                          </td>
-                          <td className="py-2 pr-3 text-slate-300">{t.city}</td>
-                          <td className="py-2 pr-3 font-mono">
-                            {t.qualifying_days} · {t.common_points}
-                          </td>
-                          <td className="py-2 pr-3 font-mono">{percentLabel(t.agreement_pct, 1)}</td>
-                          <td className="py-2 pr-3 font-mono">{centPerLiter(t.mean_abs_delta_ct, 2)}</td>
+                <div className="mt-4">
+                  {/* Mobil als Karte: „Paar“ trägt zwei Stations-Kennungen
+                      (UUID-Länge) — die Tabelle brauchte dafür 520 px
+                      Mindestbreite und musste geschoben werden. Die Kennungen
+                      brechen in der Karte um (`break-all`), die Zahlen stehen
+                      darunter. */}
+                  <ul className="divide-y divide-slate-800/60 sm:hidden">
+                    {selection.data.price_twins!.slice(0, 10).map((t) => (
+                      <li
+                        key={`${t.station_a}-${t.station_b}`}
+                        className="py-2.5 text-xs"
+                      >
+                        <p className="break-all font-mono text-slate-200">
+                          {t.station_a}
+                        </p>
+                        <p className="break-all font-mono text-slate-200">
+                          {t.station_b}
+                        </p>
+                        <p className="mt-1 text-slate-400">{t.city}</p>
+                        <p className="mt-1 font-mono text-slate-300">
+                          {t.qualifying_days} Tage · {t.common_points} Punkte ·{" "}
+                          {percentLabel(t.agreement_pct, 1)} Übereinstimmung · Ø{" "}
+                          {centPerLiter(t.mean_abs_delta_ct, 2)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="hidden overflow-x-auto sm:block">
+                    <table className="w-full min-w-[520px] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-500">
+                          <th className="py-2 pr-3">Paar</th>
+                          <th className="py-2 pr-3">Stadt</th>
+                          <th className="py-2 pr-3">Tage · Punkte</th>
+                          <th className="py-2 pr-3">Übereinstimmung</th>
+                          <th className="py-2 pr-3">Ø Abweichung</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {selection.data.price_twins!.slice(0, 10).map((t) => (
+                          <tr key={`${t.station_a}-${t.station_b}`}>
+                            <td className="py-2 pr-3 font-mono text-slate-200">
+                              {t.station_a} · {t.station_b}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-300">{t.city}</td>
+                            <td className="py-2 pr-3 font-mono">
+                              {t.qualifying_days} · {t.common_points}
+                            </td>
+                            <td className="py-2 pr-3 font-mono">{percentLabel(t.agreement_pct, 1)}</td>
+                            <td className="py-2 pr-3 font-mono">{centPerLiter(t.mean_abs_delta_ct, 2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   <p className="mt-2 text-xs leading-relaxed text-slate-500">
                     Schwellen: ≥ 28 Tage mit je ≥ 12 gemeinsamen Punkten · ≥ 90 % Überlappung · ≥ 99 % innerhalb 0,1 ct/L. Mehr im Glossar —{" "}
                     {GLOSSARY.find((g) => g.id === "twins")?.de ?? "Preis-Zwillinge"}.
@@ -706,7 +734,9 @@ export function SystemView(props: SystemViewProps) {
               <option value={500}>letzte 500</option>
             </select>
           </div>
-          <pre ref={logBodyRef} className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-300">
+          {/* Mobil umbrechen (siehe ApiExplorer): lange Log-Zeilen sollen nicht
+              aus dem Bild laufen. */}
+          <pre ref={logBodyRef} className="max-h-80 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-300 max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]">
             {logLines.length ? logLines.join("\n") : jobLog.pending ? "Log wird geladen …" : "Noch keine Logzeilen für diesen Job."}
           </pre>
           <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-slate-500">

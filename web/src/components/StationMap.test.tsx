@@ -7,6 +7,7 @@ import {
   OSM_TILE_URL,
   OSM_ATTRIBUTION,
   boundsCenteredOn,
+  mapCenter,
 } from "./StationMap";
 import { Station, DecideResult } from "../data";
 
@@ -246,8 +247,22 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
     expect(bounds[1][0]).toBeGreaterThanOrEqual(51.98);
   });
 
-  it("erklärt, dass die Karte die Referenz in der Mitte hält", () => {
-    const html = renderToStaticMarkup(
+  it("erklärt, dass die Karte Zuhause (sonst die Referenz) in der Mitte hält", () => {
+    const withAnchor = renderToStaticMarkup(
+      <StationMap
+        stations={mockStations}
+        selectedId="s1"
+        setSelectedId={() => {}}
+        alternatives={mockAlternatives}
+        anchor={{ lat: 51.96, lon: 7.62 }}
+      />,
+    );
+    expect(withAnchor).toContain("Die Karte hält Zuhause in der Mitte.");
+    expect(withAnchor).not.toContain("Die Karte hält die Referenzstation");
+
+    // Ohne Anker-Koordinate bleibt die Referenzstation der Bezugspunkt — der
+    // Satz sagt dann, was die Mitte ist, statt einen leeren Platz zu lassen.
+    const withoutAnchor = renderToStaticMarkup(
       <StationMap
         stations={mockStations}
         selectedId="s1"
@@ -255,7 +270,26 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         alternatives={mockAlternatives}
       />,
     );
-    expect(html).toContain("Referenz in der Mitte");
+    expect(withoutAnchor).toContain(
+      "Die Karte hält die Referenzstation in der Mitte.",
+    );
+  });
+
+  it("mapCenter: Zuhause vor Referenzstation, sonst erste Station", () => {
+    // Dieselbe Regel trägt OSM-Karte und Radar — vorher zentrierte die
+    // Kartenansicht die Referenzstation, das Radar aber Zuhause.
+    const anchor = { lat: 51.9607, lon: 7.6261 };
+    expect(mapCenter(mockStations, "s2", anchor)).toEqual(anchor);
+    expect(mapCenter(mockStations, "s2", null)).toEqual({
+      lat: 51.97,
+      lon: 7.61,
+    });
+    // Unbekannte Auswahl → erste Station; ganz ohne Station der Standardwert.
+    expect(mapCenter(mockStations, "gibts-nicht", null)).toEqual({
+      lat: 51.95,
+      lon: 7.62,
+    });
+    expect(mapCenter([], "s1", null)).toEqual({ lat: 51.16, lon: 10.45 });
   });
 
   it("nutzt OSM-Kacheln nur über https und mit Zuordnung (Tile-Policy)", () => {

@@ -852,10 +852,24 @@ function useOverviewState() {
       : emptyResource<{ count: number; episodes: any[] }>();
 
   // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
+  //
+  // Der Verlauf kommt normalerweise als Teil des Overview-Polls. Der läuft
+  // aber nur für Jetzt/Stationen/Woche: Ein kalter Aufruf von `/?tab=ich`
+  // (geteilter Link, PWA-Start, mobile.spec) hatte deshalb **nie** einen
+  // Beleg im Speicher und zeigte „Noch keine Belege“, obwohl der Ledger
+  // gefüllt war. Auf „Ich“ holt die Liste sich ihren Stand jetzt selbst —
+  // dieselbe Route `GET /api/v1/fills`, dieselbe Form (B7-Muster).
+  const walletFills = useResource<Fills>(
+    tab === "ich" ? "/api/v1/fills" : null,
+    120000,
+    refresh,
+  );
   const fillsRes =
-    overviewTab
-      ? overviewPart<Fills>(overview.data?.fills)
-      : emptyResource<Fills>();
+    tab === "ich"
+      ? walletFills
+      : overviewTab
+        ? overviewPart<Fills>(overview.data?.fills)
+        : emptyResource<Fills>();
 
   const history = useResource<
     { points: Point[]; error_code: string | null } & DataReach

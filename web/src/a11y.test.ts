@@ -298,6 +298,67 @@ describe("C8: Pull-to-Refresh", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// U2b — Tagesstreifen: die Spaltenzahl hängt an der Breite, die eine Zelle
+// zum Lesen braucht.
+//
+// Der Wert steht als „1,725“ in 0,625 rem Monospace (~30 px) plus Rand und
+// Rahmen — rund 36 px je Zelle. Der Ratchet hält die drei Stufen fest, damit
+// die Zahlenreihe nicht wieder in die Nachbarzelle läuft („Zahlenreihe ist
+// schief“, Nutzer-Feedback 16.09.2026).
+// ---------------------------------------------------------------------------
+describe("U2b: Tagesstreifen-Spalten", () => {
+  /**
+   * Alle `.daystrip-cells`-Regeln mit ihrer einschließenden Media-Bedingung.
+   * Die Bedingung wird rückwärts gesucht (Klammer-Zählung), damit auch
+   * Regeln mitten in einem größeren `@media`-Block ihre Bedingung behalten.
+   */
+  function daystripRules(): Array<{ query: string; columns: number }> {
+    const rules: Array<{ query: string; columns: number }> = [];
+    for (const match of STYLES.matchAll(/\.daystrip-cells\s*\{([^}]*)\}/g)) {
+      let depth = 0;
+      let query = "";
+      for (let i = (match.index ?? 0) - 1; i >= 0; i -= 1) {
+        if (STYLES[i] === "}") depth += 1;
+        else if (STYLES[i] === "{") {
+          if (depth > 0) {
+            depth -= 1;
+            continue;
+          }
+          const before = STYLES.slice(Math.max(0, i - 200), i);
+          const at = before.lastIndexOf("@media");
+          query = at >= 0 ? before.slice(at) : "";
+          break;
+        }
+      }
+      rules.push({
+        query: query.replace(/@media|[\s{]/g, ""),
+        columns: Number(match[1].match(/repeat\((\d+)/)?.[1] ?? 0),
+      });
+    }
+    return rules;
+  }
+
+  it("fünf Spalten als Grundraster, zehn ab 640 px, neunzehn ab 1280 px", () => {
+    const rules = daystripRules();
+    const byQuery = (needle: string) =>
+      rules.find((rule) => rule.query.includes(needle));
+    expect(rules.find((rule) => rule.query === "")?.columns).toBe(5);
+    expect(byQuery("min-width:640px")?.columns).toBe(10);
+    expect(byQuery("min-width:1280px")?.columns).toBe(19);
+  });
+
+  it("im Querformat zwei Reihen, eine Reihe erst ab 880 px Breite", () => {
+    const landscape = daystripRules().filter((rule) =>
+      rule.query.includes("orientation:landscape"),
+    );
+    expect(landscape).toHaveLength(2);
+    expect(landscape[0].columns).toBe(10);
+    expect(landscape[1].query).toContain("min-width:880px");
+    expect(landscape[1].columns).toBe(19);
+  });
+});
+
 describe("C8: Querformat", () => {
   it("die Layout-Haken stehen in CSS und Markup", () => {
     const landscape = STYLES.indexOf(

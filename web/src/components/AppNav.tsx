@@ -84,7 +84,17 @@ function NavButton({
       }
     >
       <Icon size={mobile ? 18 : 17} aria-hidden="true" />
-      {item.label}
+      {/* Mobil sechs gleich breite Zellen: „Stationen“ ist mit 10 px
+          Semibold ~2 px breiter als seine Zelle (66 px in 64 px) und malte
+          damit über den Nachbarn. Etwas enger gesetzt passt es; auf sehr
+          schmalen Geräten wird der Rest sauber abgeschnitten statt gemalt. */}
+      {mobile ? (
+        <span className="max-w-full truncate tracking-tighter">
+          {item.label}
+        </span>
+      ) : (
+        item.label
+      )}
     </button>
   );
 }

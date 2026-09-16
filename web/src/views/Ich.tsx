@@ -39,6 +39,7 @@ import {
   type FillsSummary,
   type Station,
 } from "../data";
+import { fillRows } from "../fills";
 import {
   SettingsPanel,
   VehiclePanel,
@@ -368,73 +369,136 @@ function FillsSection(props: IchViewProps) {
           </p>
         )}
         {visibleFills.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-500">
-                  <th className="px-5 py-2 pr-3">Getankt</th>
-                  <th className="px-3 py-2">Station</th>
-                  <th className="px-3 py-2 text-right">Liter</th>
-                  <th className="px-3 py-2 text-right">€/L</th>
-                  <th className="px-3 py-2 text-right">Ersparnis</th>
-                  <th className="px-3 py-2 text-right">Status</th>
-                  <th className="px-5 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {visibleFills.map((fill) => (
-                  <tr key={fill.id} className={fill.voided ? "opacity-60" : undefined}>
-                    <td className="px-5 py-2 pr-3 font-mono text-slate-300">
-                      {timeLabel(fill.tanked_at)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-200">
-                      {fill.station_name || fill.station_id}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-300">
-                      {euro(fill.liters, 1)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-300">
-                      {euro(fill.price_paid, 3)}
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${
-                        (fill.saved_vs_always_now_eur ?? 0) >= 0
+          <>
+            {/* Mobil: Beleg als Karte — die siebenspaltige Tabelle brauchte
+                560 px Mindestbreite und musste seitlich geschoben werden
+                („verschiedene Dinge die scrollen müssen“). Beide Fassungen
+                lesen dieselben Werte aus `fillRows()` (src/fills.ts). */}
+            <ul className="divide-y divide-slate-800/60 sm:hidden">
+              {fillRows(visibleFills).map((row) => (
+                <li
+                  key={row.id}
+                  className={`flex items-start justify-between gap-3 px-5 py-3 ${
+                    row.voided ? "opacity-60" : ""
+                  }`}
+                >
+                  <div className="min-w-0 text-xs">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-mono text-slate-300">
+                        {row.time}
+                      </span>
+                      <span
+                        className={
+                          row.voided
+                            ? "font-semibold text-rose-300"
+                            : "text-slate-400"
+                        }
+                      >
+                        {row.status}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 break-words text-slate-200">
+                      {row.station}
+                    </p>
+                    <p className="mt-1 font-mono text-slate-300">
+                      {row.volume}
+                    </p>
+                    <p
+                      className={`mt-0.5 font-mono ${
+                        row.savingsTone === "good"
                           ? "text-emerald-300"
-                          : "text-rose-300"
+                          : row.savingsTone === "bad"
+                            ? "text-rose-300"
+                            : "text-slate-500"
                       }`}
                     >
-                      {fill.saved_vs_always_now_eur != null
-                        ? `${euro(Math.abs(fill.saved_vs_always_now_eur))} € ${
-                            fill.saved_vs_always_now_eur >= 0
-                              ? "günstiger"
-                              : "teurer"
-                          }`
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {fill.voided ? (
-                        <span className="font-semibold text-rose-300">storniert</span>
-                      ) : (
-                        <span className="text-slate-400">gebucht</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-2 text-right">
-                      {!fill.voided && (
-                        <button
-                          type="button"
-                          onClick={() => onVoidFill(fill.id)}
-                          disabled={voidBusy}
-                          title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
-                          className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {voidBusy ? "Storniere …" : "Stornieren"}
-                        </button>
-                      )}
-                    </td>
+                      {row.savings}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {!row.voided && (
+                      <button
+                        type="button"
+                        onClick={() => onVoidFill(row.id)}
+                        disabled={voidBusy}
+                        title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
+                        className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {voidBusy ? "Storniere …" : "Stornieren"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* Ab `sm`: die Tabelle, unverändert in Spalten und Ausrichtung. */}
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-500">
+                    <th className="px-5 py-2 pr-3">Getankt</th>
+                    <th className="px-3 py-2">Station</th>
+                    <th className="px-3 py-2 text-right">Liter</th>
+                    <th className="px-3 py-2 text-right">€/L</th>
+                    <th className="px-3 py-2 text-right">Ersparnis</th>
+                    <th className="px-3 py-2 text-right">Status</th>
+                    <th className="px-5 py-2" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {fillRows(visibleFills).map((row) => (
+                    <tr key={row.id} className={row.voided ? "opacity-60" : undefined}>
+                      <td className="px-5 py-2 pr-3 font-mono text-slate-300">
+                        {row.time}
+                      </td>
+                      <td className="px-3 py-2 text-slate-200">
+                        {row.station}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-300">
+                        {row.liters}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-300">
+                        {row.pricePerLiter}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono ${
+                          row.savingsTone === "good"
+                            ? "text-emerald-300"
+                            : row.savingsTone === "bad"
+                              ? "text-rose-300"
+                              : "text-slate-500"
+                        }`}
+                      >
+                        {row.savings}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {row.voided ? (
+                          <span className="font-semibold text-rose-300">
+                            {row.status}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">{row.status}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-2 text-right">
+                        {!row.voided && (
+                          <button
+                            type="button"
+                            onClick={() => onVoidFill(row.id)}
+                            disabled={voidBusy}
+                            title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
+                            className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {voidBusy ? "Storniere …" : "Stornieren"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {mostUsed && (
               <p className="mt-3 px-5 pb-1 text-xs leading-relaxed text-slate-500">
                 Maßstab: der Median deines Sets (Standard) · deine
@@ -442,7 +506,7 @@ function FillsSection(props: IchViewProps) {
                 {countLabel(mostUsed.count)} Belege).
               </p>
             )}
-          </div>
+          </>
         ) : (
           <div className="px-5 pb-5">
             <Empty>

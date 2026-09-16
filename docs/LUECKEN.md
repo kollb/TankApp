@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 16.09.2026 · App-Version 0.43.1. Abgleich von
+> Stand: 16.09.2026 · App-Version 0.43.2. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet](#16092026--version-0432-mobil-robustheit-gemessen-statt-behauptet)
   - [16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen](#16092026--version-0431-prüfbericht-pr-121-archiviert-restpunkte-geschlossen)
   - [16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5](#16092026--version-0430-gui-text-befund-v3v5)
   - [16.09.2026 — Version 0.42.0: GUI-Text-Befund T1–T8, V1–V2](#16092026--version-0420-gui-text-befund-t1t8-v1v2)
@@ -36,7 +37,7 @@
 
 ## Kurzfassung
 
-| Bereich | Vor B5 (10.09.) | Heute (0.43.1) |
+| Bereich | Vor B5 (10.09.) | Heute (0.43.2) |
 |---|---|---|
 | „Läuft …“ beim Modell-Job | nur Zustand, kein Fortschritt | Phasen, Schritt x/y, Balken, Restschätzung in GUI, Statusdatei und Log |
 | Rechenzeit Modell-Lauf | ~3 min je Station, ein Kern | ~14 s je Station, mehrere Kerne |
@@ -236,6 +237,35 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Zähler ehrlich | `points`/`stations` zählen nur **verwendete** Preise (geschlossene Meldungen und `null`-Preise fielen vorher mit ins Gewicht) | P0 12.09. |
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
+
+### 16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet
+
+Der Befund war eine Nutzerwahrnehmung („verschiedene Dinge die scrollen müssen
+oder aus dem Bild ragen“) — also nichts, was ein Unit-Test sieht. Deshalb steht
+die Zusage jetzt als Messung in `web/e2e/mobile.spec.ts`: je Zustand werden
+`scrollWidth`/`clientWidth` des Dokuments, jedes Elements, das über den
+Viewport hinausragt, und jeder Kasten, der breiter malt als er ist, erhoben;
+die Fundstellen stehen als `[mobil] <Zustand>: {…}` im Log. Gemessen werden
+alle sechs Bereiche, die vier Ich-Unterseiten (die Belege legt der Test vorher
+über die echte API an — sonst bliebe die längste Liste ungeprüft), die sechs
+Labor-Abschnitte und jeder Dialog eines Bereichs. Eine letzte Prüfung hält die
+Liste der **bewusst** schiebbaren Kästen fest: heute genau die Heatmap-Matrix
+(24 Stunden × Wochentage lassen sich nicht stapeln; der Text darüber sagt es
+mobil an, MICROCOPY §4c). Drei Funde der ersten Messung sind behoben — die
+Steuerzeile der Kopfzeile (748 px in 209 px Fenster, jetzt `flex-wrap`,
+Wortmarke mobil aus, `sm:sticky`), „Stationen“ in der unteren Navigation (2 px
+über der Zelle, jetzt `tracking-tighter` + `truncate`) und die `<pre>`-Blöcke
+in System/Labor (413 px in 308 px, jetzt mobil umbrechend). Aus demselben
+Befund ebenfalls mobil entzerrt: die Belegliste (560 px Mindestbreite →
+Karten, ab `sm` die Tabelle, beide aus `web/src/fills.ts`), die
+Preis-Zwillings-Tabelle in System und die Entscheidungsschwellen in Ich.
+
+**Und ein echter Fehler, den erst die Beleg-Prüfung sichtbar machte:**
+`/?tab=ich` direkt geöffnet zeigte „Noch keine Belege“, auch wenn der Ledger
+gefüllt war — der Verlauf kam als Teil der Overview-Antwort, und die holt nur
+Jetzt/Stationen/Woche (der geteilte Link aus UI-NEUENTWURF §13 führte damit
+auf eine leere Liste). Auf „Ich“ liest die Liste jetzt selbst
+`GET /api/v1/fills`; `e2e/app.spec.ts` hält den Fall mit einer Attrappe fest.
 
 ### 16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen
 

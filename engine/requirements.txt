@@ -1,4 +1,9 @@
 # Offline fits/backtests on NAS or PC; the running collector needs neither package.
-numpy>=1.26,<3
+# numpy 2.5 verlangt Python >= 3.12 (Requires-Python). Der Pi läuft mit
+# Python 3.11, deshalb hängt die Untergrenze am Interpreter statt an einer
+# gemeinsamen Zahl: 3.11 zieht das neueste 2.4.x, 3.12+ das neueste 2.5.x.
+# Die CI fährt beide Zweige (Matrix 3.11 + 3.12).
+numpy>=1.26,<3; python_version < "3.12"
+numpy>=2.5.3,<3; python_version >= "3.12"
 holidays>=0.104
 pandas>=3.0.5,<4

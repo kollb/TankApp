@@ -280,3 +280,52 @@ test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
     page.getByRole("heading", { name: "Jetzt", exact: true }),
   ).toBeVisible();
 });
+
+test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", async ({
+  page,
+}) => {
+  // Befund aus der Mobil-Messung (mobile.spec): Der Verlauf kam als Teil der
+  // Overview-Antwort, die nur für Jetzt/Stationen/Woche geholt wird. Ein
+  // kalter Aufruf von „Ich“ zeigte deshalb „Noch keine Belege“, selbst wenn
+  // der Ledger gefüllt war — der geteilte Link (UI-NEUENTWURF §13) führte auf
+  // eine leere Liste. Der Verlauf holt seinen Stand jetzt selbst über
+  // `GET /api/v1/fills`; die Attrappe hält genau diese Route fest.
+  await page.route("**/api/v1/fills", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-09-16T09:00:00+00:00",
+        count: 1,
+        fills: [
+          {
+            id: "beleg-kaltstart",
+            episode_id: null,
+            station_id: "00000000-0000-0000-0000-0000000000d1",
+            station_name: "Kaltstart-Tank Nord",
+            tanked_at: "2026-09-15T18:30:00+02:00",
+            clock_hour: 18.5,
+            liters: 41.2,
+            price_paid: 1.729,
+            price_source: "explicit",
+            fuel: "e10",
+            source: "manual",
+            compliance: "unrelated",
+            saved_vs_always_now_eur: 0.8,
+          },
+        ],
+        error_code: null,
+      }),
+    });
+  });
+  await page.goto("/?tab=ich");
+  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  // Karte (mobil) und Tabelle (ab `sm`) tragen denselben Namen — die
+  // verdeckte Fassung darf den Treffer nicht bestimmen.
+  await expect(
+    page
+      .getByText("Kaltstart-Tank Nord", { exact: false })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+});
