@@ -38,6 +38,7 @@ import {
   JOB_LABELS,
   M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
+  ageWord,
   centPerLiter,
   countLabel,
   deNumber,
@@ -71,6 +72,7 @@ import {
   systemFreshness,
   systemOverallLabel,
   webhookLine,
+  driftStatusLine,
   systemOverallTone,
   systemDiagnosticExport,
   systemDiagnosticFilename,
@@ -287,7 +289,7 @@ export function SystemView(props: SystemViewProps) {
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Alter</span>
                     <span className="font-mono text-slate-200">
-                      {(collector ?? h?.collector)?.age_minutes != null ? `${deTrimmed((collector ?? h?.collector)?.age_minutes ?? 0, 0)} Min.` : "—"}
+                      {(collector ?? h?.collector)?.age_minutes != null ? ageWord((collector ?? h?.collector)?.age_minutes ?? 0) : "—"}
                     </span>
                   </div>
                   <div className="flex justify-between text-xs">
@@ -455,7 +457,7 @@ export function SystemView(props: SystemViewProps) {
                 <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Temporär geschlossen / führt nicht{" "}
-                    <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber Sorte als false gemeldet" />
+                    <InfoTooltip label="Unterschied" text="geschlossen = Status geschlossen · führt nicht = offen, aber die Sorte ist nicht gemeldet" />
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-300">
                     {countLabel((selection.data.closed_count ?? 0) + (selection.data.nofuel_count ?? 0))}
@@ -575,13 +577,7 @@ export function SystemView(props: SystemViewProps) {
                         : "font-mono text-amber-400"
                     }
                   >
-                    {statsSummaryRes.data.quality_metrics.cusum_drift.status === "normal"
-                      ? `STABIL${
-                          statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum != null
-                            ? ` (${euro(statsSummaryRes.data.quality_metrics.cusum_drift.max_cusum, 2)}σ)`
-                            : ""
-                        }`
-                      : statsSummaryRes.data.quality_metrics.cusum_drift.status.toUpperCase()}
+                    {driftStatusLine(statsSummaryRes.data.quality_metrics.cusum_drift)}
                   </span>
                 ) : (
                   <span className="font-mono text-slate-500">—</span>
@@ -775,12 +771,15 @@ export function SystemView(props: SystemViewProps) {
                   aria-hidden="true"
                 />
                 <div className="min-w-0 flex-1">
+                  {/* T7/§5: Klartext zuerst — der Rohcode steht klein darunter. */}
                   <p className="text-xs font-semibold text-slate-100">
-                    {alarm.code}
-                    {alarm.job ? <span className="ml-2 font-mono text-xs font-normal text-slate-500">{JOB_LABELS[alarm.job] ?? alarm.job}</span> : null}
+                    {problem(alarm.code) ?? alarm.message}
+                    {alarm.job ? <span className="ml-2 text-xs font-normal text-slate-500">{JOB_LABELS[alarm.job] ?? alarm.job}</span> : null}
                   </p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-300 [overflow-wrap:anywhere]">{alarm.message}</p>
-                  <p className="mt-1 font-mono text-xs text-slate-500 [overflow-wrap:anywhere]">{problem(alarm.code) ?? alarm.code}</p>
+                  {problem(alarm.code) ? (
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-300 [overflow-wrap:anywhere]">{alarm.message}</p>
+                  ) : null}
+                  <p className="mt-1 font-mono text-xs text-slate-500 [overflow-wrap:anywhere]">{alarm.code}</p>
                 </div>
               </div>
             ))}
@@ -811,8 +810,8 @@ export function SystemView(props: SystemViewProps) {
           {(h?.notify?.open_errors?.length ?? 0) > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {h?.notify?.open_errors?.map((code) => (
-                <li key={code} title={problem(code) ?? code} className="rounded-md bg-amber-500/10 px-2 py-1 font-mono text-xs text-amber-300">
-                  {code}
+                <li key={code} title={code} className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
+                  {problem(code) ?? code}
                 </li>
               ))}
             </ul>

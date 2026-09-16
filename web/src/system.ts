@@ -13,7 +13,9 @@
 
 import {
   ageLabel,
+  ageWord,
   countLabel,
+  deNumber,
   deTrimmed,
   freshness,
   JOB_LABELS,
@@ -85,7 +87,7 @@ export function systemStatusRows(input: {
         ? `${deTrimmed(Number(c.tmpfs_used_bytes) / 1024 / 1024, 1)} MiB tmpfs`
         : null;
     if (c.fresh) {
-      const mins = age != null ? `${deTrimmed(age, 0)} Min. alt` : "frisch";
+      const mins = age != null ? `${ageWord(age)} gemeldet` : "frisch";
       return {
         id: "collector",
         label: "Collector (Pi)",
@@ -99,8 +101,8 @@ export function systemStatusRows(input: {
       id: "collector",
       label: "Collector (Pi)",
       tone: "warn",
-      headline: age != null ? `Preise ${deTrimmed(age, 0)} Min. alt` : "Veraltet",
-      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Min., Collector prüfen.`,
+      headline: age != null ? `Preise ${ageWord(age)}` : "Veraltet",
+      detail: `Letzter Poll ${timeLabel(c.last_poll_at)} — älter als 30 Minuten, Collector prüfen.`,
       meta: tmpfsMeta,
     };
   })();
@@ -627,6 +629,25 @@ function webhookStatusText(status: string): { tone: SystemTone; text: string } {
  * davon. Steht ein Versuch offen, sagt der Satz die Zahl der Versuche und
  * das Alter des ältesten.
  */
+/**
+ * T7: Der Serverzustand kommt als englisches Enum — angezeigt wird das
+ * deutsche Wort, der Rohcode steht höchstens im title.
+ */
+export function driftStatusLine(drift: {
+  status: string;
+  max_cusum?: number | null;
+} | null | undefined): string {
+  if (!drift) return "—";
+  const value =
+    drift.max_cusum != null && Number.isFinite(drift.max_cusum)
+      ? ` (${deNumber(drift.max_cusum)}σ)`
+      : "";
+  if (drift.status === "normal") return `unauffällig${value}`;
+  if (drift.status === "drift") return `Drift erkannt${value}`;
+  if (drift.status === "unknown") return "noch nicht messbar";
+  return drift.status;
+}
+
 export function webhookLine(webhook: WebhookState | null | undefined): WebhookLine {
   if (!webhook) {
     return {
@@ -640,7 +661,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.pending_age_s;
     const since =
       age != null && Number.isFinite(age)
-        ? ` seit ${deTrimmed(age / 60, 0)} Min.`
+        ? ` seit ${ageWord(age / 60).replace(/^vor /, "")}`
         : "";
     const tries = attempts === 0 ? "erster Versuch" : `${countLabel(attempts)} Versuche`;
     return {
@@ -654,7 +675,7 @@ export function webhookLine(webhook: WebhookState | null | undefined): WebhookLi
     const age = webhook.last_ok_age_s;
     const when =
       age != null && Number.isFinite(age)
-        ? ` Zuletzt quittiert vor ${deTrimmed(age / 60, 0)} Min.`
+        ? ` Zuletzt quittiert ${ageWord(age / 60)}`
         : "";
     const gaveUp = (webhook.gave_up ?? 0) > 0 ? ` Aufgegeben: ${countLabel(webhook.gave_up)}.` : "";
     return {

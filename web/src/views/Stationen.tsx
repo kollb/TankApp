@@ -478,7 +478,7 @@ export function StationenView(props: StationenViewProps) {
               onNavigate={(url) => {
                 window.open(url, "_blank", "noopener,noreferrer");
               }}
-              title="Karte — Pin = Netto-€ ggü. der Referenz"
+              title="Karte — Pin = Netto-€ gegenüber der Referenz"
             />
           </div>
 

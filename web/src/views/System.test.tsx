@@ -253,7 +253,7 @@ describe("System: Zustände", () => {
       collector: collector({ fresh: false, age_minutes: 45 }),
     });
     expect(html).toContain("Collector (Pi)");
-    expect(html).toContain("45 Min.");
+    expect(html).toContain("vor 45 Minuten");
   });
 });
 
