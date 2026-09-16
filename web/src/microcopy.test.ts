@@ -73,6 +73,8 @@ const FILES = [
   "components/AppHeader.tsx",
   "components/AppNav.tsx",
   "components/UpdateBanner.tsx",
+  "components/Notices.tsx",
+  "components/NoticesView.tsx",
   "service-worker.ts",
   "state/overview.tsx",
 ];
@@ -393,6 +395,47 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
    * Telefon und für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb darf
    * dort kein Satz stehen: kurz bleiben, die Erklärung gehört in den Text.
    */
+  // ── 11. Symbole: kein Zeichen als Textersatz (§2, GUI-TEXT-BEFUND V4) ──
+
+  /**
+   * V4: `✓ ✗ ✎ ✕ ★ ▼ ●` trugen früher Bedeutungen (Erfolg, „offen“, „noch
+   * nicht“, Chip-Richtung …), ohne dass zwei Stellen dasselbe meinten. Seit
+   * 0.43.0 stehen die Worte im Text (`richtig`, `nur offene`, `Warten`) und
+   * ein Screenreader bekommt nie wieder „Häkchen Ja“ vorgelesen. `→`, `·`,
+   * `—`, `×`, `…` bleiben Formel- und Fließzeichen (§2).
+   */
+  it.each(FILES)("%s: keine tragenden Symfonybole als Textersatz", (relativePath) => {
+    const text = userVisible(read(relativePath));
+    const hits = text.match(/[✓✗✎✕★▼●]/g) ?? [];
+    expect(
+      hits,
+      `${relativePath}: ${hits.length}× Zeichen-Sprache — §2/V4 sagt: das Wort in den Text, Dekoration aria-hidden.`,
+    ).toEqual([]);
+  });
+
+  // ── 12. Einheiten: eine Form, eine Quelle (§3, GUI-TEXT-BEFUND V5) ──
+
+  /**
+   * V5: „€/h“ und „km/h“ sind die Kurzformen; die Langformen („Euro pro
+   * Stunde“, „Kilometer pro Stunde“) gehören nur noch in die Formatter in
+   * `data.ts` (Screenreader-Text), nie in eine View. „Min.“/„ggü.“ waren
+   * überraschende Abkürzungen ohne Langform — seit 0.43.0 schreibt die App
+   * „vor 12 Minuten“ (`ageWord`) und keinen „ggü.“-Satz mehr.
+   */
+  it.each(FILES.filter((f) => f !== "data.ts"))(
+    "%s: Einheiten-Langformen und Abkürzungen laufen über data.ts",
+    (relativePath) => {
+      const text = userVisible(read(relativePath));
+      const hits = [
+        ...text.matchAll(/Euro pro Stunde|Kilometer pro Stunde|\bggü\.|\bMin\./g),
+      ].map((match) => match[0]);
+      expect(
+        hits,
+        `${relativePath}: ${hits.length}× — §3/V5: €/h und km/h als Symbol, Alter über ageWord („vor 12 Minuten“).`,
+      ).toEqual([]);
+    },
+  );
+
   it.each(FILES.filter((f) => f.endsWith(".tsx")))("%s: kein Erklärtext im Tooltip", (relativePath) => {
     const source = read(relativePath);
     for (const match of source.matchAll(/title="([^"]{1,400})"/g)) {

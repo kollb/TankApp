@@ -195,7 +195,7 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
   await page.goto("/");
   // Der Einstieg ist „Jetzt“: die Warten-Karte mit dem sekundären Intent-
   // Knopfen (die Feedback-Schleife M7 bleibt, klein und unter der Primäraktion).
-  await expect(page.getByText("▼ Warten")).toBeVisible();
+  await expect(page.getByText("Warten", { exact: true })).toBeVisible();
 
   // 1) Intent „Ich warte“ setzen.
   await page.getByRole("button", { name: "Ich warte", exact: true }).click();

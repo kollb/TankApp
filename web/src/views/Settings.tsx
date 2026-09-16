@@ -32,6 +32,8 @@ import {
   APP_THEMES,
   clockLabel,
   deTrimmed,
+  euroPerHour,
+  kilometersPerHourSpeech,
   THRESHOLD_ROWS,
   thresholdHysteresisLine,
   thresholdSampleLine,
@@ -260,8 +262,8 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueText={timeValueShort(timeValue, timeValueUsed, autoZ)}
             valueSpeech={
               timeValue > 0
-                ? `${deTrimmed(timeValue)} Euro pro Stunde`
-                : `Automatik ${deTrimmed(timeValueUsed)} Euro pro Stunde`
+                ? euroPerHour(timeValue)
+                : `Automatik ${euroPerHour(timeValueUsed)}`
             }
             hint={
               <span
@@ -285,7 +287,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
               max={80}
               step={5}
               value={speed}
-              aria-valuetext={`${speed} Kilometer pro Stunde`}
+              aria-valuetext={kilometersPerHourSpeech(speed)}
               onChange={(e) => setSpeed(Number(e.target.value))}
               className="mt-3 w-full"
             />

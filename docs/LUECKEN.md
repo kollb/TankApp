@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 16.09.2026 · App-Version 0.42.0. Abgleich von
+> Stand: 16.09.2026 · App-Version 0.43.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5](#16092026--version-0430-gui-text-befund-v3v5)
   - [16.09.2026 — Version 0.42.0: GUI-Text-Befund T1–T8, V1–V2](#16092026--version-0420-gui-text-befund-t1t8-v1v2)
   - [16.09.2026 — Versionen 0.41.0/0.41.1: GUI-Befunde U1–U8, Lighthouse-CLS](#16092026--versionen-04100411-gui-befunde-u1u8-lighthouse-cls)
   - [15.09.2026 — Version 0.40.0: Ablehnungen im Tagebuch](#15092026--version-0400-ablehnungen-im-tagebuch)
@@ -235,6 +236,26 @@ kein Rechenfehler — die Werte stimmten, ihre Deutung nicht.
 | Format-Konvention | €/L mit Komma und drei Stellen („2,219 €/L“ statt „2.219“), Prozent mit Leerzeichen, Formatter-Satz in `web/src/data.ts` + vitest | C9-Teil |
 | Logik testbar | Heatmap-Rechnung als reine Funktionen in `data.ts`, Render-Tests gegen echtes Markup (`HeatmapGrid.test.tsx`), Payload-Test in `tests/test_b3.py` | D1-Muster |
 
+### 16.09.2026 — Version 0.43.0: GUI-Text-Befund V3–V5
+
+Reines Frontend-Release auf dem Abgleich-Stand von 0.42.0: die letzten drei
+Befunde aus PR #125 sind umgesetzt. **V3** ersetzt die acht gestapelten
+Banner der Root durch ein Mitteilungs-Register mit Rang
+(`components/Notices.tsx` `reduceNotices` + `components/NoticesView.tsx`):
+Störung > Zustand > Hinweis > Erfolg, höchste Stufe gewinnt, Gleichrangige
+werden aneinandergereiht, ein Block über dem Inhalt, Dauer 6 s (Störungen
+bleiben). **V4** ersetzt die Symbolsprache durch Worte — Tagebuch
+„richtig/daneben/unentschieden“, Chips „Jetzt tanken/Warten/Woanders
+tanken“, Filter „nur offene/alle Stationen“, Due-Knöpfe ohne `✓/✎/✕`, ein
+dekoratives lucide-Häkchen im Einrichtungs-Assistenten (`aria-hidden`).
+**V5** zieht die Einheiten-/Zeitraumformen in `data.ts` zusammen
+(`euroPerHour`, `kilometersPerHour(Speech)`, `timeSpanLabel`) und schreibt
+das Queue-Alter über `ageWord`. Ratchets: `microcopy.test.ts` Regel 11
+(Symbole) + 12 (Einheiten/Abkürzungen), `components/Notices.test.ts` neu,
+`data.test.ts` hält die Formatter. Keine neuen Endpunkte, keine
+Engine-Änderung, keine neuen Lücken — Konzept-Abdeckung unverändert.
+Damit ist der GUI-Text-Befund (PR #125) vollständig umgesetzt.
+
 ### 16.09.2026 — Version 0.42.0: GUI-Text-Befund T1–T8, V1–V2
 
 Reines Text- und Frontend-Release auf dem Abgleich-Stand von 0.41.1: die
@@ -247,9 +268,7 @@ Thema von 2,4:1 auf AA) und Erklärungen aus `title=` in den sichtbaren Text.
 Jede Regel steht zusätzlich als Ratchet in `microcopy.test.ts`,
 `format-convention.test.ts` oder `a11y.test.ts`; das Regelwerk ist
 [MICROCOPY.md](MICROCOPY.md) (§4e und §5a neu). Keine neuen Endpunkte, keine
-Engine-Änderung, keine neuen Lücken — Konzept-Abdeckung unverändert. Offen
-bleiben V3 (Mitteilungs-Register mit Rang), V4 (Symboltabelle, `aria-hidden`)
-und V5 (Einheiten- und Zeitraumformen).
+Engine-Änderung, keine neuen Lücken — Konzept-Abdeckung unverändert.
 
 ### 16.09.2026 — Versionen 0.41.0/0.41.1: GUI-Befunde U1–U8, Lighthouse-CLS
 

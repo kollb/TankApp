@@ -58,6 +58,7 @@ import {
   deTrimmed,
   kilometersLabel,
   timeLabel,
+  timeSpanLabel,
   type DecideResult,
   type Point,
   type ResourceState,
@@ -125,11 +126,11 @@ export interface StationenViewProps {
   now?: number;
 }
 
-/** Zeitraum-Umschalter des Verlaufs — Wortlaut wie im Stations-Labor. */
+/** Zeitraum-Umschalter des Verlaufs — Wortlaut aus einer Quelle (V5). */
 const SPANS: Array<{ hours: number; label: string }> = [
-  { hours: 24, label: "24 Stunden" },
-  { hours: 72, label: "3 Tage" },
-  { hours: 168, label: "7 Tage" },
+  { hours: 24, label: timeSpanLabel(24) },
+  { hours: 72, label: timeSpanLabel(72) },
+  { hours: 168, label: timeSpanLabel(168) },
 ];
 
 function spanLabel(hours: number): string {
@@ -394,7 +395,7 @@ export function StationenView(props: StationenViewProps) {
             }`}
             title="Filter: nur offene Stationen"
           >
-            {openOnly ? "offen ✓" : "offen"}
+            {openOnly ? "nur offene" : "alle Stationen"}
           </button>
           <label className="flex items-center gap-2 text-xs text-slate-400">
             <span className="sr-only">Marke filtern</span>

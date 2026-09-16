@@ -14,10 +14,13 @@ import {
   dstLabel,
   detourVerdict,
   epochLabel,
+  euroPerHour,
   FILL_LIMITS,
   fillFieldError,
   fillLimitHint,
   gapBands,
+  kilometersPerHour,
+  kilometersPerHourSpeech,
   germanDecimalToNumber,
   centPerLiter,
   countLabel,
@@ -37,6 +40,7 @@ import {
   HEATMAP_WEEKS,
   hourBucketLabel,
   hourRangeLabel,
+  timeSpanLabel,
   hourRunsLabel,
   hourRunsOf,
   isHeatmapBasis,
@@ -1126,5 +1130,23 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
     });
     expect(note).toContain("1 Beleg von 8");
     expect(note).not.toContain("1 Belege");
+  });
+});
+
+describe("V5: Einheiten und Zeitraumformen aus einer Quelle", () => {
+  it("Zeitwert immer €/h — die Langform spricht denselben Formatter", () => {
+    expect(euroPerHour(16)).toBe("16 €/h");
+    expect(euroPerHour(6.5)).toBe("6,5 €/h");
+    expect(euroPerHour(null)).toBe("—");
+    expect(kilometersPerHour(50)).toBe("50 km/h");
+    expect(kilometersPerHour(42.5)).toBe("42,5 km/h");
+    expect(kilometersPerHourSpeech(50)).toBe("50 Kilometer pro Stunde");
+    expect(kilometersPerHourSpeech(null)).toBe("keine Angabe");
+  });
+
+  it("Zeitraum: ein Wortlaut für Schalter und Sätze", () => {
+    expect(timeSpanLabel(24)).toBe("24 Stunden");
+    expect(timeSpanLabel(72)).toBe("3 Tage");
+    expect(timeSpanLabel(168)).toBe("7 Tage");
   });
 });

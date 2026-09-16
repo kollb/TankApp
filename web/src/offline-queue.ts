@@ -14,6 +14,8 @@
 // Nur Belege und Vorsätze landen hier. Profile, Storno und Jobstart bleiben
 // sofort-schreibend: Sie sind Entscheidungen, keine Datenerfassung im Funkloch.
 
+import { ageWord } from "./data";
+
 export const QUEUE_KEY = "tankapp.offline.queue.v1";
 /** Mehr als das ist kein Funkloch mehr — dann lieber ehrlich ablehnen. */
 export const QUEUE_MAX_ENTRIES = 50;
@@ -66,7 +68,7 @@ export function queueStatusText(
     count === 1 ? "Ein Eintrag ist" : `${count} Einträge sind`;
   const age =
     oldestAgeMs != null && oldestAgeMs >= 60 * 60 * 1000
-      ? ` Der älteste wartet seit ${Math.floor(oldestAgeMs / (60 * 60 * 1000))} h.`
+      ? ` Der älteste wartet seit ${ageWord(Math.floor(oldestAgeMs / 60000))}.`
       : "";
   return {
     tone: "warn",

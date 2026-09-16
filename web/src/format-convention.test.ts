@@ -46,6 +46,8 @@ const CLEAN = [
   "components/DataReach.tsx",
   "components/HeatmapGrid.tsx",
   "components/LoadError.tsx",
+  "components/Notices.tsx",
+  "components/NoticesView.tsx",
   "components/PrecisionSlider.tsx",
   "components/ProfileManager.tsx",
   "components/ApiExplorer.tsx",

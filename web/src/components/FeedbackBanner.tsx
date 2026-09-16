@@ -11,9 +11,19 @@
 // dreifache Kodierung derselben Aussage liest niemand (MICROCOPY §1).
 
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import type { NoticeRank } from "../data";
 
 /** Ton der Rückmeldung — entscheidet Farbe, Icon und ARIA-Rolle. */
 export type FeedbackTone = "ok" | "warn" | "error";
+
+/**
+ * V3: Jedem Rückmeldungs-Ton ein Register-Rang — Erfolg zählt zu den
+ * niedrigsten, ein Fehler ist eine Störung. Wer eine Rückmeldung zu
+ * `NoticeItem` macht, braucht dafür keine eigene Ordnung mehr.
+ */
+export function feedbackRank(tone: FeedbackTone): NoticeRank {
+  return tone === "error" ? "error" : tone === "warn" ? "warn" : "success";
+}
 
 export type ActionFeedback = {
   tone: FeedbackTone;

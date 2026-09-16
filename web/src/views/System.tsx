@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   BellRing,
+  Check,
   Cpu,
   Database,
   FileJson,
@@ -355,7 +356,11 @@ export function SystemView(props: SystemViewProps) {
                         step.done ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-900 text-slate-500"
                       }`}
                     >
-                      {step.done ? "✓" : i + 1}
+                      {step.done ? (
+                        <Check size={12} aria-hidden="true" />
+                      ) : (
+                        i + 1
+                      )}
                     </span>
                     <span className="text-xs leading-relaxed">
                       <span className={step.done ? "font-semibold text-slate-200" : "font-semibold text-slate-400"}>{step.label}</span> <span className="text-slate-500">{step.hint}</span>
