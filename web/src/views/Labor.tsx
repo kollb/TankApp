@@ -578,9 +578,12 @@ export function LaborView(props: LaborViewProps) {
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-500">Horizont:</span>
             {[
+              // V5: Blick nach vorn — das „+“ unterscheidet den Horizont vom
+              // Rückblick-Span („3 Tage“ = letzte 3 Tage). Deshalb behält der
+              // Prognose-Horizont seine „+N Tage“-Form.
               { days: 0, label: "24 Stunden", enabled: true },
-              { days: 3, label: "3 Tage", enabled: !!f?.points_3d?.length },
-              { days: 7, label: "7 Tage", enabled: !!f?.points_7d?.length },
+              { days: 3, label: "+3 Tage", enabled: !!f?.points_3d?.length },
+              { days: 7, label: "+7 Tage", enabled: !!f?.points_7d?.length },
             ].map((option) => (
               <button
                 key={option.days}

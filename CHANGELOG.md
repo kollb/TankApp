@@ -33,10 +33,10 @@ Einheiten-/Zeitraum-Form je Größe — jede Regel wieder als Ratchet.**
 - **V5 (P3): eine Form je Größe.** `euroPerHour` (€/h),
   `kilometersPerHour`/`kilometersPerHourSpeech` (km/h + Langform nur für
   Screenreader) und `timeSpanLabel` (24 Stunden/3 Tage/7 Tage) entstehen in
-  `data.ts`; die Schreibweisen „Euro pro Stunde“, „Kilometer pro Stunde“,
-  „letzte 24 Stunden“ ↔ „24 Stunden“ und „+3 Tage“ ↔ „3 Tage“ sind
-  zusammengeführt. Das Queue-Alter läuft über `ageWord` („vor 3 Stunden“
-  statt „2 h“).
+  `data.ts`; die Schreibweisen „Euro pro Stunde“, „Kilometer pro Stunde“ und
+  „letzte 24 Stunden“ ↔ „24 Stunden“ sind zusammengeführt (der Prognose-
+  Horizont behält bewusst sein „+N Tage“ — Blick nach vorn, kein Rückblick).
+  Das Queue-Alter läuft über `ageWord` („vor 3 Stunden“ statt „2 h“).
 
 ### Prüfungen
 

@@ -97,7 +97,8 @@ Formatiert wird **ausschließlich** über die Funktionen in `web/src/data.ts`;
 | Prozent | `percentLabel` | `93 %` (Leerzeichen vor „%“) |
 | Strecke | `kilometersLabel` | `12 km` · `2,4 km` (eine Nachkommastelle nur beim Umweg) |
 | Tempo | `kilometersPerHour` / `kilometersPerHourSpeech` | `50 km/h` — Symbol; die Langform „Kilometer pro Stunde“ nur als Screenreader-Text |
-| Zeitraum | `timeSpanLabel` | `24 Stunden` · `3 Tage` · `7 Tage` — Schalter-Label ohne „letzte“; im Satz „die letzten 3 Tage“ |
+| Zeitraum (Rückblick) | `timeSpanLabel` | `24 Stunden` · `3 Tage` · `7 Tage` — Schalter-Label ohne „letzte“; im Satz „die letzten 3 Tage“ |
+| Horizont (Blick nach vorn) | `+N Tage` | `+3 Tage` · `+7 Tage` — das „+“ unterscheidet die Prognose vom Rückblick-Span |
 | Zeitwert | `euroPerHour` | `16 €/h` — Symbol, die Langform „Euro pro Stunde“ gibt es nur noch als Screenreader-Text |
 | Schwelle/Maßzahl ohne Einheit | `deNumber` | `0,80` (Komma, nie `0.80`) |
 | Stückzahl | `countLabel` | `12.345` |
