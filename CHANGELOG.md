@@ -4,6 +4,111 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.44.0] – 2026-09-16
+
+**Batch 1 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+ist umgesetzt: zwei stille Falschaussagen. Die GUI-Buchung galt als 12-Uhr-Tankung
+(O1), und die Veröffentlichung der Prognosen war ab rund fünf Stationen nicht
+mehr lesbar — ohne Fehler, ohne Alarm (O22).**
+
+### Geändert
+
+- **Tankuhrzeit aus dem Beleg statt erfundener 12 Uhr (O1, P0):** `record_fill`
+  las die Uhrzeit aus einem Feld, das die GUI nie sendet (`clock_hour`), und
+  fiel auf 12 Uhr zurück. Damit landete jeder über die GUI erfasste Beleg im
+  w(h)-Histogramm bei 12 — und ab dem achten Beleg stand die Personalisierung
+  der Fensterreihenfolge auf der Mittagsspitze der Engine-Projektion, also auf
+  einer Uhrzeit, die nie gemessen wurde. Jetzt wird `clock_hour` **serverseitig**
+  aus `tanked_at` in Europe/Berlin abgeleitet (`clock_hour_from_fill` in
+  `app/feedback.py`): kein GUI-Auftrag, keine Pflicht für RP2 oder CSV-Import.
+  Der Zeitstempel gewinnt gegen eine widersprechende `clock_hour`-Angabe, damit
+  Beleg-Zeit und Beleg-Stunde eine Wahrheit bleiben.
+- **Herkunft je Beleg (O1):** Neues Feld `clock_hour_source` ∈ `beleg` (die GUI
+  hat die Stunde selbst geschickt) · `abgeleitet` (aus dem Zeitstempel
+  rekonstruiert) · `default` (kein Zeitstempel — die erfundene 12-Uhr-Projektion).
+  `GET /api/v1/fills` liefert es mit, `POST /api/v1/fills` braucht es nicht: Wer
+  nichts schickt, bekommt die abgeleitete Stunde.
+- **Altbestände werden nicht still umgeschrieben (O1):** Feedback-Store
+  Schema 3 → 4 (`_migrate_store_v4`): Belege aus Version 3 behalten ihre
+  12-Uhr-Werte und tragen danach `default` als Herkunft, der Lauf ist
+  idempotent. Die Zusammensetzung des Histogramms ist sichtbar:
+  `wh_clock_sources`, `wh_measured_n`, `wh_default_n` in
+  `GET /api/v1/stats/summary`, `personalization.measured_fills`/`default_fills`
+  in `/api/v1/decide` — und die GUI hängt den Satz an:
+  `3 Belege ohne Zeitstempel zählen als 12 Uhr.`
+  ([MICROCOPY §4b](docs/MICROCOPY.md#4b-bereich-jetzt-feste-muster-0340)).
+- **Snapshots nennen keine erfundene Emit-Uhrzeit mehr (O1):** Fehlt
+  `clock_hour` im Snapshot, ist der Emit-Zeitpunkt die Quelle; der
+  Stunden-Fallback von `classify_compliance` bekommt den Minutenanteil
+  (45-Minuten-Toleranz bleibt).
+- **Veröffentlichung kompakt statt `indent=2` (O22, P0):**
+  `data/runtime/engine/current.json` ist ein Maschinen-Artefakt und wuchs mit
+  Einrückung und voller float-Präzision. `engine/storage.py::write_json` schreibt
+  es jetzt kompakt (`indent=None`, enge Separatoren) und gibt die Byte-Größe
+  zurück; `indent=2` bleibt Default für kleine, menschenlesbare Dateien.
+- **Preise und Quantile gerundet (O22):** `PUBLICATION_DECIMALS = 4` in
+  `app/model_jobs.py`, angewandt in `_records`/`_draws` — also vor der
+  Prozessgrenze des Worker-Pools. 0,0001 €/L = 0,01 ct/L, feiner als jede
+  Anzeige und jede Schwelle; die Ratchet-Tests verbieten sechs
+  Nachkommastellen und Einrückung in der Veröffentlichung.
+- **`read_json` unterscheidet „zu groß“ von „fehlt“ (O22):** Bisher gab es über
+  dem 10-MB-Leselimit still `{}` zurück — denselben Wert wie „noch keine Daten“.
+  Jetzt nennt `read_json_checked()` den Grund (`missing` · `too_large` ·
+  `invalid`), `publication_status()` meldet Größe und Lesbarkeit **ohne Parse**
+  (nur `stat`, das Healthcheck-Budget bleibt), und `app/alarms.py` schlägt an:
+  `publication_large` (warn) über `PUBLICATION_BUDGET_BYTES` = 6 MB,
+  `publication_unreadable` (error) über `READ_JSON_MAX_BYTES` = 10 MB oder bei
+  ungültigem JSON — mit Grund in der Meldung und ohne Pfad (der Alarm geht auch
+  über ntfy raus). Der Modell-Lauf nennt die Größe zusätzlich im Job-Log
+  (`models: Veröffentlichung 7,3 MB (11 Stationen, 2 Kraftstoffe, …)`).
+
+### Neu
+
+- **`publication`-Block in `GET /api/v1/health`:** `bytes`, `budget_bytes`,
+  `max_bytes`, `over_budget`, `readable`, `error_code`, `reason`
+  ([API.md](docs/API.md#health)). Eine fehlende Datei ist kein Fehler — vor dem
+  ersten Modell-Lauf gibt es keine Veröffentlichung (`reason: "missing"`,
+  `error_code: null`). Betriebsanleitung mit `du -h`/`jq`-Checks:
+  [BETRIEB.md](docs/BETRIEB.md#größe-der-veröffentlichung-o22-seit-0440).
+- **`tests/test_o1_clock_hour.py`** (15 Fälle): UTC → Berlin, Winterzeit,
+  Widerspruch Beleg-Zeit gegen Beleg-Stunde, Migration 3 → 4 inkl. Idempotenz,
+  Wirkung auf das w(h)-Histogramm, `clock_hour_source` in der API-Antwort.
+- **`tests/test_o22_publication_size.py`** (9 Fälle): der Batch-Check —
+  elf Stationen mit Produktionsparametern (`bootstrap_samples=2000`,
+  `train_days=42`, 24 h/72 h/168 h, 500 publizierte Draws) über die
+  Originalfunktionen `_records`/`_draws`/`write_json`, unter 8 MB **und** über
+  dem Warn-Budget; Health-Payload nennt die Größe; künstlich zu große Datei →
+  `publication_unreadable` mit Grund; ungültiges JSON als eigener Grund;
+  fehlende Datei bleibt Zustand; Ratchets gegen Einrückung und gegen sechs
+  Nachkommastellen. Dazu ein Echtlauf-Test in `tests/test_app_jobs.py`
+  (kompakt, parsebar, `jq -e .failures`-fähig, Größe im Log).
+
+### Messung
+
+Elf Stationen, Produktionsparameter, dieselbe Veröffentlichung:
+
+| Format | Größe | Lesbar? |
+|---|---|---|
+| `indent=2`, volle Präzision (bis 0.43.2) | 22,40 MB | nein — über dem 10-MB-Limit, still `{}` |
+| `indent=2`, gerundet | 17,71 MB | nein |
+| kompakt, gerundet (ab 0.44.0) | **7,28 MB** | ja — über 6 MB, also `publication_large` |
+
+Eine einzelne Stations-Zeile: 2,04 MB → 0,66 MB.
+
+### Prüfungen
+
+- Lokal grün: `ruff check` + `ruff format --check`, **832 pytest**, **1067
+  Vitest**, `npm run build`.
+- Bewusst **nicht** umgesetzt: O22-Maßnahme (d), das Aufteilen der
+  Veröffentlichung je Kraftstoff/Station — es ändert die Form des Artefakts und
+  damit jeden Leser (`/forecast`, `/stats/summary`, `/decide`,
+  `/last_forecasts` — darüber auch der RP2-Cache). Die
+  Klippe ist durch (a)–(c) plus Alarm benannt und gemessen; der Rest steht als
+  offene Entscheidung in
+  [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+- Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
+  Chromium ist in der Sandbox nicht installierbar.
+
 ## [0.43.2] – 2026-09-16
 
 **Vier Befunde aus der Nutzersicht (Lernstand-Satz, Tagesstreifen, Karten-Anker,
