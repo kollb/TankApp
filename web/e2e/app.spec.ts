@@ -320,7 +320,12 @@ test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", 
   });
   await page.goto("/?tab=ich");
   await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  // Karte (mobil) und Tabelle (ab `sm`) tragen denselben Namen — die
+  // verdeckte Fassung darf den Treffer nicht bestimmen.
   await expect(
-    page.getByText("Kaltstart-Tank Nord", { exact: false }).first(),
+    page
+      .getByText("Kaltstart-Tank Nord", { exact: false })
+      .filter({ visible: true })
+      .first(),
   ).toBeVisible();
 });
