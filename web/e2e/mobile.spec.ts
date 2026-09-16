@@ -228,9 +228,16 @@ test.describe("Mobil: kein Querlauf", () => {
     for (const tab of ICH_TABS) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       await settled(page);
-      // Die Belegliste ist der Prüfgegenstand — sie muss stehen.
+      // Die Belegliste ist der Prüfgegenstand — sie muss stehen. Der
+      // Stationsname steckt auch in der (verdeckten) Auswahlliste des
+      // Fahrzeug-Reiters, deshalb ausdrücklich auf Sichtbares eingrenzen.
       if (tab === "Belege") {
-        await expect(page.getByText("Demo-Tank", { exact: false }).first()).toBeVisible();
+        await expect(
+          page
+            .getByText("Demo-Tank", { exact: false })
+            .filter({ visible: true })
+            .first(),
+        ).toBeVisible();
       }
       await check(page, `Ich → ${tab}`);
     }
