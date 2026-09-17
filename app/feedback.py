@@ -23,6 +23,9 @@ from typing import Any
 
 from polling_plan import atomic_json, collector_lock
 from .data import PRICE_PLAUSIBLE_MAX, PRICE_PLAUSIBLE_MIN, metadata
+from .outcomes import outcome_credit, symmetric_threshold_outcome, threshold_outcome
+from .route import net_economics
+from engine.personalization import hourly_profile, weekday_profile
 
 UTC = dt.timezone.utc
 
@@ -80,9 +83,13 @@ MAX_SOURCE_CHARS = 40
 #       ``verteilung``, Snapshots nur mit ``p_correct`` als ``basisrate``
 #       (der alte Fallback); Ein-Tipp-Belege (``source == "prompt"``) aus der
 #       Zeit des gebuchten Prognose-Medians gelten als ``prognose``.
+#   6 = O8/O9/O43: striktes Fenster vs. Kulanz je Beleg (``settled``),
+#       reproduzierbare Woanders-Nettoökonomie samt Distanz-Herkunft und eine
+#       serverzeitliche Uhrzeit (``clock_hour_source: server``), wenn kein
+#       Belegzeitstempel vorliegt.
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 5
+FEEDBACK_SCHEMA_VERSION = 6
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -120,7 +127,7 @@ CLOCK_HOUR_DEFAULT = 12.0
 # oder eine explizite Angabe), ``abgeleitet`` = nachträglich aus dem
 # gespeicherten Zeitstempel rekonstruiert (Migration von Altbeständen),
 # ``default`` = kein Zeitstempel, also die erfundene 12-Uhr-Projektion.
-CLOCK_HOUR_SOURCES = ("beleg", "abgeleitet", "default")
+CLOCK_HOUR_SOURCES = ("beleg", "server", "abgeleitet", "default")
 # O5 (0.45.0): Herkunft der P-Schätzung je Snapshot. Vorher buk
 # ``record_snapshot`` die Verteilungs-P und die selbstkalibrierte
 # Ledger-Quote (``estimate_p``) in eine Zahl (``p_correct``) — der Brier
@@ -206,7 +213,7 @@ def _local_hour_fraction(stamp: dt.datetime) -> float:
 
 
 def clock_hour_from_fill(
-    fill_data: dict[str, Any], tanked_at: str | None
+    fill_data: dict[str, Any], tanked_at: str | None, *, server_timestamp: bool = False
 ) -> tuple[float, str]:
     """(Tankuhrzeit, Herkunft) eines Belegs — O1: gemessen statt erfunden.
 
@@ -223,7 +230,7 @@ def clock_hour_from_fill(
     """
     stamp = _parse_ts(tanked_at)
     if stamp is not None:
-        return _hour_from_stamp(stamp), "beleg"
+        return _hour_from_stamp(stamp), "server" if server_timestamp else "beleg"
     explicit = _to_float(fill_data.get("clock_hour"))
     if explicit is not None:
         return explicit % 24.0, "beleg"
@@ -355,6 +362,33 @@ def _migrate_store_v4_to_v5(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v5_to_v6(store: dict[str, Any]) -> dict[str, Any]:
+    """5 → 6: explicit receipt/window and detour-economic provenance (O8/O9/O43)."""
+    for fill in store.get("fills", []) or []:
+        if not isinstance(fill, dict):
+            continue
+        fill.setdefault("settled", None)
+        fill.setdefault("elsewhere_net_eur", None)
+        fill.setdefault("elsewhere_net_provenance", None)
+        # Old fills without an origin retain the documented old default rather
+        # than being falsely promoted to a server-time measurement.
+        fill.setdefault("clock_hour_source", "default")
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        seen: list[dict[str, Any]] = []
+        for snap in ep.get("snapshots", []) or []:
+            if isinstance(snap, dict):
+                seen.append(snap)
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict) and all(snap is not prior for prior in seen):
+                seen.append(snap)
+        for snap in seen:
+            snap.setdefault("elsewhere_economics", None)
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
@@ -362,6 +396,7 @@ _STORE_MIGRATIONS = {
     2: _migrate_store_v2_to_v3,
     3: _migrate_store_v3_to_v4,
     4: _migrate_store_v4_to_v5,
+    5: _migrate_store_v5_to_v6,
 }
 
 
@@ -637,10 +672,7 @@ def action_track_record(store: dict[str, Any], action: str) -> dict[str, Any] | 
         if not snap or snap.get("action") != action:
             continue
         n += 1
-        if s.get("outcome") == "win":
-            hits += 1.0
-        elif s.get("outcome") == "tie":
-            hits += 0.5
+        hits += outcome_credit(s.get("outcome"))
     return {
         "p": round((hits + P_PRIOR_WEIGHT * 0.5) / (n + P_PRIOR_WEIGHT), 4),
         "n": n,
@@ -742,6 +774,9 @@ def record_snapshot(
             "station_name": snapshot_data.get("station_name"),
             "alt_station_id": snapshot_data.get("alt_station_id"),
             "alt_station_name": snapshot_data.get("alt_station_name"),
+            # O9: actual receipt economics must retain its original reference
+            # price and estimated route assumptions; old snapshots remain null.
+            "elsewhere_economics": snapshot_data.get("elsewhere_economics"),
             "price_now": snapshot_data.get("price_now"),
             "window_start": snapshot_data.get("window_start"),
             "window_end": snapshot_data.get("window_end"),
@@ -826,6 +861,35 @@ def set_intent(settings, episode_id: str, intent: str, clock=None) -> dict[str, 
         return {"error_code": "episode_not_found"}
 
 
+def window_settlement_kind(
+    ep: dict[str, Any] | None, station_id: str, tanked_at: Any
+) -> str | None:
+    """Classify a matching wait receipt as exact window or documented grace.
+
+    ``im_fenster`` is intentionally stricter than compliance slack. A receipt
+    in [start−30 min, end+60 min] remains visible as ``kulanz`` but cannot
+    increase the strict followed/quality count (O8).
+    """
+    if not ep:
+        return None
+    snap = ep.get("last_snapshot")
+    if not isinstance(snap, dict) or snap.get("action") != "wait":
+        return None
+    start = _parse_ts(snap.get("window_start"))
+    end = _parse_ts(snap.get("window_end"))
+    filled = _parse_ts(tanked_at)
+    same_station = station_id in {snap.get("station_id"), snap.get("alt_station_id")}
+    if not same_station or start is None or end is None or filled is None:
+        return None
+    if start <= filled <= end:
+        return "im_fenster"
+    grace_start = start - dt.timedelta(minutes=WAIT_SLACK_BEFORE_MINUTES)
+    grace_end = end + dt.timedelta(minutes=WAIT_SLACK_AFTER_MINUTES)
+    if grace_start <= filled <= grace_end:
+        return "kulanz"
+    return None
+
+
 def classify_compliance(
     ep: dict[str, Any] | None,
     fill_hour: float,
@@ -865,13 +929,13 @@ def classify_compliance(
                 return "partial"
             return "ignored"
         if action == "wait" and window_start is not None and window_end is not None:
-            lo = window_start - dt.timedelta(minutes=WAIT_SLACK_BEFORE_MINUTES)
-            hi = window_end + dt.timedelta(minutes=WAIT_SLACK_AFTER_MINUTES)
-            in_window = lo <= tanked <= hi
+            # O8: Slack matches a receipt to the episode, not to its strict
+            # quality signal. Only the published window itself is followed.
+            settled = window_settlement_kind(ep, station_id, tanked_at)
             same = at_emit_station or at_alt_station
-            if same and in_window:
+            if same and settled == "im_fenster":
                 return "followed"
-            if same or in_window:
+            if same or settled == "kulanz":
                 return "partial"
             return "ignored"
         if action == "refuel_elsewhere":
@@ -1080,21 +1144,24 @@ def record_fill(
         source = _capped_text(fill_data.get("source"), MAX_SOURCE_CHARS) or "manual"
 
         # B5: tanked_at nur im Plausibilitätsfenster — vorher wurde jede
-        # Angabe ungeprüft gespeichert (1970/2100 inklusive).
+        # Angabe ungeprüft gespeichert (1970/2100 inklusive). Ohne Belegzeit
+        # ist ``now_str`` die serverseitig dokumentierte Buchungszeit (O43),
+        # auch für die Uhrzeitlogik: nie mehr eine erfundene 12-Uhr-Zelle.
         tanked_at = _validated_tanked_at(fill_data.get("tanked_at"), clock)
-
-        # O1: Tankuhrzeit aus dem Beleg statt aus der 12-Uhr-Projektion. Die
-        # GUI sendet ``tanked_at`` (Europe/Berlin-fähig, serverseitig
-        # validiert), also ist die Stunde eine Messung und keine Annahme; die
-        # Herkunft steht je Beleg dabei (``clock_hour_source``).
-        clock_hour, clock_hour_source = clock_hour_from_fill(fill_data, tanked_at)
-        stamp = _parse_ts(tanked_at)
+        effective_tanked_at = tanked_at or now_str
+        clock_hour, clock_hour_source = clock_hour_from_fill(
+            fill_data, effective_tanked_at, server_timestamp=tanked_at is None
+        )
+        stamp = _parse_ts(effective_tanked_at)
         # Stunden-Fallback von ``classify_compliance`` (Altdaten ohne ISO-Zeiten
         # am Snapshot): mit Minutenanteil, die 45-Minuten-Toleranz ist sonst
         # bis zu eine Stunde blind.
         fill_hour = _local_hour_fraction(stamp) if stamp is not None else clock_hour
 
-        compliance = classify_compliance(ep, fill_hour, station_id, tanked_at=tanked_at)
+        compliance = classify_compliance(
+            ep, fill_hour, station_id, tanked_at=effective_tanked_at
+        )
+        settled = window_settlement_kind(ep, station_id, effective_tanked_at)
 
         # Counterfactual = price_now des ersten Snapshots der Folge (oder price_paid wenn keine Folge)
         ref_price = ep.get("first_snapshot", {}).get("price_now") if ep else price_paid
@@ -1102,6 +1169,64 @@ def record_fill(
             ref_price = price_paid
 
         saved_eur = round((ref_price - price_paid) * liters, 2)
+
+        # O9: A possible Woanders fill gets a receipt-based net result. The
+        # user may provide actual *total* detour km; otherwise the snapshot's
+        # estimate stays visibly an estimate. Do not invent driven kilometres.
+        elsewhere_net_eur = None
+        elsewhere_net_provenance = None
+        actual_detour_km = _to_float(
+            fill_data.get("actual_detour_km_total", fill_data.get("detour_km_total"))
+        )
+        if actual_detour_km is not None and not (0.0 <= actual_detour_km <= 200.0):
+            raise ValueError("invalid_detour")
+        snap = ep.get("last_snapshot") if ep else None
+        assumed = snap.get("elsewhere_economics") if isinstance(snap, dict) else None
+        if (
+            isinstance(assumed, dict)
+            and snap.get("action") == "refuel_elsewhere"
+            and station_id == snap.get("alt_station_id")
+        ):
+            detour_km_total = actual_detour_km
+            distance_source = (
+                "actual_receipt"
+                if detour_km_total is not None
+                else "estimated_snapshot"
+            )
+            if detour_km_total is None:
+                detour_km_total = _to_float(assumed.get("detour_km_total_est"))
+            reference_price = _to_float(assumed.get("reference_price"))
+            consumption = _to_float(assumed.get("consumption_l_100km"))
+            speed = _to_float(assumed.get("speed_kmh"))
+            time_value = _to_float(assumed.get("time_value_eur_h"))
+            if all(
+                v is not None
+                for v in (
+                    detour_km_total,
+                    reference_price,
+                    consumption,
+                    speed,
+                    time_value,
+                )
+            ):
+                economy = net_economics(
+                    reference_price,
+                    price_paid,
+                    liters,
+                    detour_km_total,
+                    consumption,
+                    speed,
+                    time_value,
+                )
+                elsewhere_net_eur = round(economy["net_eur"], 2)
+                elsewhere_net_provenance = {
+                    "distance_source": distance_source,
+                    "detour_km_total": round(detour_km_total, 3),
+                    "reference_price": round(reference_price, 4),
+                    "consumption_l_100km": consumption,
+                    "speed_kmh": speed,
+                    "time_value_eur_h": time_value,
+                }
 
         # O17: Der Ein-Tipp-Beleg („Ja, wie empfohlen“) steht und fällt mit
         # dem Live-Preis — frisch vom Client deklariert oder vom Server aus
@@ -1115,7 +1240,7 @@ def record_fill(
             "episode_id": ep.get("id") if ep else None,
             "station_id": station_id,
             "station_name": station_name,
-            "tanked_at": tanked_at or now_str,
+            "tanked_at": effective_tanked_at,
             "clock_hour": clock_hour,
             # O1: Herkunft der Stunde — das w(h)-Histogramm sagt damit, ob es
             # auf gemessenen Tankzeiten steht oder auf der 12-Uhr-Projektion.
@@ -1126,7 +1251,12 @@ def record_fill(
             "fuel": fuel,
             "source": source,
             "compliance": compliance,
+            # O8: only an exact window receipt is a followed quality signal;
+            # grace remains traceable but is partial, never a hidden hit.
+            "settled": settled,
             "saved_vs_always_now_eur": saved_eur,
+            "elsewhere_net_eur": elsewhere_net_eur,
+            "elsewhere_net_provenance": elsewhere_net_provenance,
         }
 
         store["fills"].insert(0, fill_event)
@@ -1325,24 +1455,14 @@ def _settle_one_snapshot(
     saving = p_emit - p_real  # > 0: Warten hat sich gelohnt
 
     if action == "wait":
-        if saving >= theta:
-            outcome = "win"
-        elif saving <= -theta:
-            outcome = "loss"
-        else:
-            outcome = "tie"
+        outcome = symmetric_threshold_outcome(saving, theta)
         regret = round(max(0.0, -saving) * liters, 2) if outcome == "loss" else 0.0
     elif action == "refuel_now":
-        # Richtig, wenn Warten keine signifikante Ersparnis gebracht hätte.
-        outcome = "win" if saving < theta else "loss"
+        # Correct if waiting would not clear the significant-saving threshold.
+        outcome = threshold_outcome(saving, theta, positive_is_win=False)
         regret = round(max(0.0, saving) * liters, 2) if outcome == "loss" else 0.0
     else:  # refuel_elsewhere, brutto (Umwegkosten stecken in der Empfehlung)
-        if saving >= theta:
-            outcome = "win"
-        elif saving <= -theta:
-            outcome = "loss"
-        else:
-            outcome = "tie"
+        outcome = symmetric_threshold_outcome(saving, theta)
         regret = round(max(0.0, -saving) * liters, 2) if outcome == "loss" else 0.0
 
     settlement = {
@@ -1641,12 +1761,12 @@ def compute_advice_stats(
     losses = sum(1 for s in settlements if s.get("outcome") == "loss")
     ties = sum(1 for s in settlements if s.get("outcome") == "tie")
 
-    wait_n, wait_hits = 0, 0
-    now_n, now_hits = 0, 0
-    elsewhere_n, elsewhere_hits = 0, 0
+    wait_n, wait_hits = 0, 0.0
+    now_n, now_hits = 0, 0.0
+    elsewhere_n, elsewhere_hits = 0, 0.0
 
-    # Brier-Score Berechnung: BS = 1/N * sum((p_pred - actual)^2)
-    # actual = 1 für win, 0 für loss/tie. O5: zusätzlich je P-Quelle
+    # Brier-Score Berechnung: BS = 1/N * sum((p_pred - actual)^2).
+    # O7: actual = 1 für win, 0,5 für tie, 0 für loss. O5: zusätzlich je P-Quelle
     # getrennt (``p_source``) plus Zeilenzähler je Quelle — der gemischte
     # Score bleibt als Fortschreibung daneben stehen.
     brier_sq_errors = []
@@ -1673,20 +1793,17 @@ def compute_advice_stats(
         outcome = s.get("outcome")
         source_counts[snapshot_p_source(snap)] += 1
 
-        is_win = 1.0 if outcome == "win" else 0.0
+        is_win = outcome_credit(outcome)
 
         if action == "wait":
             wait_n += 1
-            if outcome == "win":
-                wait_hits += 1
+            wait_hits += is_win
         elif action == "refuel_now":
             now_n += 1
-            if outcome == "win":
-                now_hits += 1
+            now_hits += is_win
         elif action == "refuel_elsewhere":
             elsewhere_n += 1
-            if outcome == "win":
-                elsewhere_hits += 1
+            elsewhere_hits += is_win
 
         # Brier nur über Snapshots mit gespeicherter interner P-Schätzung.
         # Snapshots ohne p (Altdaten) würden mit einem erfundenen Default den
@@ -1700,12 +1817,15 @@ def compute_advice_stats(
             bin_idx = min(9, max(0, int(p_val * 10)))
             bins[bin_idx]["count"] += 1
             bins[bin_idx]["p_sum"] += p_val
-            if is_win > 0:
-                bins[bin_idx]["hits"] += 1
+            bins[bin_idx]["hits"] += is_win
 
     n_brier = len(brier_sq_errors)
     brier_30d = round(sum(brier_sq_errors) / n_brier, 4) if n_brier > 0 else None
-    hit_rate = round((wins + 0.5 * ties) / n, 3) if n > 0 else None
+    hit_rate = (
+        round(sum(outcome_credit(s.get("outcome")) for s in settlements) / n, 3)
+        if n > 0
+        else None
+    )
     hit_wait = round(wait_hits / wait_n, 3) if wait_n > 0 else None
     hit_now = round(now_hits / now_n, 3) if now_n > 0 else None
     hit_elsewhere = round(elsewhere_hits / elsewhere_n, 3) if elsewhere_n > 0 else None
@@ -1743,7 +1863,7 @@ def compute_advice_stats(
         source_counts_all[source] += 1
         if p_correct is None or not math.isfinite(p_correct):
             continue
-        is_win = 1.0 if s.get("outcome") == "win" else 0.0
+        is_win = outcome_credit(s.get("outcome"))
         p_val = min(1.0, max(0.0, float(p_correct)))
         sq_error = (p_val - is_win) ** 2
         brier_all_sq.append(sq_error)
@@ -1936,6 +2056,10 @@ def compute_wallet_stats(
     partial = sum(1 for f in fills if f.get("compliance") == "partial")
     ignored = sum(1 for f in fills if f.get("compliance") == "ignored")
     unrelated = sum(1 for f in fills if f.get("compliance") == "unrelated")
+    # O8 reports strict receipt timing separately from slack. These values do
+    # not alter model settlement; they only make wallet compliance auditable.
+    settled_in_window = sum(1 for f in fills if f.get("settled") == "im_fenster")
+    settled_grace = sum(1 for f in fills if f.get("settled") == "kulanz")
 
     saved_eur = round(sum(f.get("saved_vs_always_now_eur", 0.0) for f in fills), 2)
 
@@ -1948,35 +2072,13 @@ def compute_wallet_stats(
         sum(f.get("saved_vs_always_now_eur", 0.0) for f in verified_fills), 2
     )
 
-    # w(h)-Histogramm der Tankzeiten: Default Pendlerprofil w0
-    # w0: Mo-Fr 06-09 und 16-20 gewichtet, sonst flach
-    w0 = [0.0] * 24
-    for h in range(6, 9):
-        w0[h] = 0.08
-    for h in range(16, 20):
-        w0[h] = 0.12
-    # Normalisieren
-    s0 = sum(w0)
-    w0 = [round(v / s0, 4) for v in w0]
-
-    n_all = len(fills_active)
-    if n_all < WH_MIN_FILLS:
-        wh_hours = w0
-    else:
-        # Empirisches Histogramm über ALLE aktiven Füllungen (Langzeitprofil).
-        # O1: Die Stunde je Beleg ist seit 0.44.0 eine gemessene Größe
-        # (``tanked_at`` in Europe/Berlin) und trägt ihre Herkunft; vorher war
-        # sie für jeden GUI-Beleg die erfundene 12.
-        w_hat = [0.0] * 24
-        for f in fills_active:
-            h = int(_to_float(f.get("clock_hour")) or CLOCK_HOUR_DEFAULT) % 24
-            w_hat[h] += 1.0
-        w_hat = [v / n_all for v in w_hat]
-        # Geschrumpft gegen Default (§5.5 Schicht C): w = (n*w_hat + k*w0) / (n + k)
-        wh_hours = [
-            round((n_all * w_hat[i] + WH_MIN_FILLS * w0[i]) / (n_all + WH_MIN_FILLS), 4)
-            for i in range(24)
-        ]
+    # O2/O3: One weekday-aware receipt profile shared with engine selection.
+    # A first receipt has a small, visible influence through the eight-fill
+    # prior; no 7/8 activation cliff remains.
+    time_profile = weekday_profile(fills_active, prior_strength=WH_MIN_FILLS)
+    wh_weekday = time_profile["weights"]
+    wh_hours = hourly_profile(wh_weekday)
+    wh_n = time_profile["n_fills"]
 
     # O1: Herkunft der Tankuhrzeiten. Ein Beleg ohne Zeitstempel zählt weiter
     # mit der 12-Uhr-Projektion — aber gezählt und benannt, statt als Messung
@@ -1993,6 +2095,8 @@ def compute_wallet_stats(
         "partial": partial,
         "ignored": ignored,
         "unrelated": unrelated,
+        "settled_in_window": settled_in_window,
+        "settled_grace": settled_grace,
         "saved_eur": saved_eur,
         # O17: Ersparnis ohne Prognosepreis-Belege plus deren Anzahl.
         "saved_verified_eur": saved_verified_eur,
@@ -2000,13 +2104,20 @@ def compute_wallet_stats(
         "wh_hours": wh_hours,
         # A9: Wieviel hinter dem Profil steckt — die GUI sagt damit, ab wann
         # die persönliche Fensterreihenfolge gilt (Konzept §5.5 Schicht C).
-        "wh_n": n_all,
-        "wh_personalized": n_all >= WH_MIN_FILLS,
+        "wh_n": wh_n,
+        "wh_personalized": time_profile["source"] == "shrunk_receipts",
         "wh_min_fills": WH_MIN_FILLS,
+        "wh_weekday": wh_weekday,
+        "wh_profile_source": time_profile["source"],
+        "wh_prior_strength": time_profile["prior_strength"],
         # O1: Worauf das Histogramm steht — Belege mit gemessener/rekonstruierter
         # Tankzeit und Belege mit der erfundenen Default-Stunde.
         "wh_clock_sources": clock_sources,
-        "wh_measured_n": clock_sources["beleg"] + clock_sources["abgeleitet"],
+        "wh_measured_n": (
+            clock_sources["beleg"]
+            + clock_sources["server"]
+            + clock_sources["abgeleitet"]
+        ),
         "wh_default_n": clock_sources["default"],
         "last_fill": fills_active[0] if fills_active else None,
     }

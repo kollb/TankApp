@@ -74,7 +74,6 @@ def _empty_backtest() -> dict[str, Any]:
             "smart": None,
             "commit": None,
             "best": None,
-            "always": None,
             "regretEur": None,
             "n": 0,
             "hitFreq": None,
@@ -100,7 +99,7 @@ def _score_rows(
     regret = best − smart. p ist null, solange die Engine kein P-Modell hat.
     """
     n_wait = hit_wait = n_now = hit_now = 0
-    sum_smart = sum_commit = sum_best = sum_always = sum_regret = 0.0
+    sum_smart = sum_commit = sum_best = sum_regret = 0.0
     sum_p = 0.0
     n_p = 0
     s_pos = 0
@@ -123,7 +122,6 @@ def _score_rows(
         sum_smart += smart_ct
         sum_commit += commit_ct
         sum_best += max(best, 0.0)
-        sum_always += max(s, 0.0)
         sum_regret += max(best - smart_ct, 0.0)
         p = r.get("p")
         if p is not None:
@@ -148,7 +146,6 @@ def _score_rows(
         "sum_smart_eur": to_eur(sum_smart),
         "sum_commit_eur": to_eur(sum_commit),
         "sum_best_eur": to_eur(sum_best),
-        "sum_always_eur": to_eur(sum_always),
         "avg_regret_ct": round(sum_regret / n, 3) if n else 0.0,
         "avg_regret_eur": round(to_eur(sum_regret) / n, 3) if n else 0.0,
         "p_avg": round(sum_p / n_p, 4) if n_p else None,
@@ -254,7 +251,6 @@ def _build_backtest_from_publication(
         "smart": total_score["sum_smart_eur"] if n_total else None,
         "commit": total_score["sum_commit_eur"] if n_total else None,
         "best": total_score["sum_best_eur"] if n_total else None,
-        "always": total_score["sum_always_eur"] if n_total else None,
         "regretEur": total_score["avg_regret_eur"] if n_total else None,
         "n": n_total,
         "hitFreq": total_score["hit_freq"] if n_total else None,

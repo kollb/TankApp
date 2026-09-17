@@ -109,6 +109,7 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
         )
         from .config import engine_config
         from .data import metadata
+        from .feedback import compute_wallet_stats, load_store
 
         cfg_engine = config if config is not None else engine_config(settings)
 
@@ -151,6 +152,14 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
                 overrides = {"fuel": fuel.upper()}
                 if n_boot is not None:
                     overrides["n_boot"] = int(n_boot)
+                # O2: Selection receives the very same 7×24 profile as
+                # decide. No receipts uses its named default, never a second
+                # commuter literal hidden in this job.
+                wallet = compute_wallet_stats(load_store(settings))
+                overrides["user_time_weights"] = wallet.get("wh_weekday")
+                overrides["time_profile_source"] = wallet.get(
+                    "wh_profile_source", "default"
+                )
                 sel_cfg = SelectionConfig.from_engine_config(
                     cfg_engine,
                     dead_after_days=getattr(settings, "dead_after_days", 7),

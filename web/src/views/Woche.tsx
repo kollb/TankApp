@@ -464,7 +464,15 @@ export function WocheView(props: WocheViewProps) {
                     {entry.day.uncertain ? " · noch unsicher" : ""}
                   </span>
                   <span className="flex items-center gap-3">
-                    <Stars value={windowStars(entry.window.p)} />
+                    <span
+                      title={
+                        entry.window.p_raw != null && entry.window.p_competitors != null
+                          ? `Sterne: gegen die Zufallsbasis von ${entry.window.p_competitors + 1} vergleichbaren Fenstern normalisiert (Rohwert ${Math.round(entry.window.p_raw * 100)} %).`
+                          : "Sterne: Sicherheit des Fensters"
+                      }
+                    >
+                      <Stars value={windowStars(entry.window.p)} />
+                    </span>
                     <span className="font-mono text-slate-400">
                       {deTrimmed(entry.window.expected_price, 3)} €/L
                     </span>

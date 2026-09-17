@@ -277,7 +277,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
                 title="Fachwort: Peak"
               >
                 0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
-                {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}.
+                {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}. Die feste Regel lautet 16 €/h von 16:30–20:00 Uhr, sonst 10 €/h.
               </span>
             }
           />

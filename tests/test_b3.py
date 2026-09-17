@@ -247,13 +247,13 @@ def test_heatmap_reports_reach_and_reference_sample(b3_settings):
     assert overall["reference_counts"][1][6] == len(rows)
     assert overall["reference_counts"][4][6] == len(rows)
 
-    # Mit Station ist die Referenz der Stadtmedian derselben Zelle.
+    # O11: With a station, the comparator is LOO and excludes all own prices.
     station = live.heatmap("Frankfurt", "e10", "probability", weeks=2, station_id=UID)
     assert station["counts"][1][6] == 8  # nur die eigene Station
-    # Referenz ist hier der Stadtmedian derselben Zelle: Di 06 Uhr trägt in
-    # diesem Bestand nur die acht Preise der eigenen Station.
-    assert station["reference_counts"][1][6] == 8
-    assert station["reference_counts"][2][6] == 2  # Mi 06 Uhr: nur Station Two
+    # No other station reported on Tuesday, so the local LOO comparator is
+    # unavailable. Wednesday contains only the other station and has two refs.
+    assert station["reference_counts"][1][6] == 0
+    assert station["reference_counts"][2][6] == 2
     assert station["points"] == 8
 
     # Niveau hat keine Vergleichs-Basis — null statt erfundener Zähler.
@@ -824,7 +824,7 @@ def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
             "mode": "onroute",
         }
     )
-    assert onroute["detour_km_source"] == "derived"
+    assert onroute["detour_km_source"] == "estimated_air_circuity"
     expected = haversine_km(50.12, 8.69, 50.13, 8.70) * 1.3
     assert abs(onroute["detour_km_oneway"] - expected) < 0.05
     assert onroute["ref_station_name"] == "Station One"
@@ -833,8 +833,8 @@ def test_route_derived_detour_from_dist_km(b3_settings, monkeypatch):
     dedicated = live.route_evaluate(
         {"city": "Frankfurt", "station_id": OTHER, "mode": "dedicated"}
     )
-    assert dedicated["detour_km_source"] == "derived"
-    assert abs(dedicated["detour_km_oneway"] - round(dist_other, 1)) < 0.05
+    assert dedicated["detour_km_source"] in {"road", "estimated_anchor_air_circuity"}
+    assert abs(dedicated["detour_km_oneway"] - round(dist_other * 1.3, 1)) < 0.05
     assert dedicated["detour_km_total"] == round(dedicated["detour_km_oneway"] * 2, 2)
 
 

@@ -20,6 +20,9 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from typing import Any
+
+from .personalization import default_weekday_profile, normalized_profile
 
 import numpy as np
 import pandas as pd
@@ -74,6 +77,10 @@ class SelectionConfig:
     # Ranking (konfigurierbar, Default 7; None/0 = aus). Das Polling-Set
     # bleibt stabil — Tausch nur mit Bestätigung (docs/ANALYSE.md).
     dead_after_days: int | None = 7
+    # O2: Weekly receipt availability mass, Monday=0 … Sunday=6. ``None``
+    # means the documented shared default; it is not a hidden hard-code.
+    user_time_weights: Any = None
+    time_profile_source: str = "default"
 
     @classmethod
     def from_engine_config(cls, cfg, **overrides) -> "SelectionConfig":
@@ -824,25 +831,30 @@ def analyse_city_light(
     delta = (mat - base) * 100.0  # ct/L relativ
 
     hours = mat.index.hour.to_numpy() + mat.index.minute.to_numpy() / 60.0
+    # O2: availability is P(Top-3 | weekday, hour), weighted by exactly the
+    # same receipt/default profile used for decision windows.
+    time_weights = (
+        normalized_profile(cfg.user_time_weights) or default_weekday_profile()
+    )
+    local_index = (
+        mat.index.tz_convert(cfg.timezone)
+        if getattr(mat.index, "tz", None) is not None
+        else mat.index
+    )
+    weekday_arr = local_index.dayofweek.to_numpy()
     days = mat.index.normalize()
     day_keys = {d: i for i, d in enumerate(days.unique())}
     dnum = np.array([day_keys[d] for d in days], dtype=float)
 
     rank = mat.rank(axis=1, method="min", na_option="keep")
     win = (rank <= 3).astype(float).where(mat.notna())
-    P = np.full((mat.shape[1], 24), np.nan)
+    P = np.full((mat.shape[1], 7, 24), np.nan)
     hour_arr = np.floor(hours).astype(int)
-    for hi in range(24):
-        sel = hour_arr == hi
-        if sel.any():
-            P[:, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
-
-    w = np.zeros(24)
-    w[[6, 7, 8, 16, 17, 18, 19]] = 1.0
-    wd_weight, we_weight = 5 / 7, 2 / 7
-    w_weekday = w / w.sum() * wd_weight if w.sum() else np.zeros(24)
-    w_weekend = np.full(24, 1 / 24) * we_weight
-    w_user = w_weekday + w_weekend
+    for weekday in range(7):
+        for hi in range(24):
+            sel = (weekday_arr == weekday) & (hour_arr == hi)
+            if sel.any():
+                P[:, weekday, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
 
     sids = list(mat.columns)
     rows = []
@@ -903,9 +915,9 @@ def analyse_city_light(
         # tragen 0 bei nansum bei und würden den Score sonst systematisch
         # drücken (fehlende Nachtstunden ≠ nie Top-3).
         _mask = np.isfinite(P[j])
-        _wsum = float(w_user[_mask].sum()) if _mask.any() else 0.0
+        _wsum = float(np.asarray(time_weights)[_mask].sum()) if _mask.any() else 0.0
         avail = (
-            float(np.sum(P[j][_mask] * w_user[_mask]) / _wsum)
+            float(np.sum(P[j][_mask] * np.asarray(time_weights)[_mask]) / _wsum)
             if _wsum > 0
             else float("nan")
         )
@@ -1034,6 +1046,10 @@ def analyse_city_light(
         "n_points": int(mat.notna().to_numpy().sum()),
         "n_days": int(len(uniq_days)),
         "station_count": len(tab),
+        "availability_profile": {
+            "source": cfg.time_profile_source,
+            "weekday_hour_weights": time_weights,
+        },
         "excluded_count": len(dead_stations) + len(excluded),
         "excluded": (dead_stations + excluded)[:20],
         # B21: Ausweis des Coverage-Gates — woran gemessen wurde (Fenster,

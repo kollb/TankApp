@@ -302,10 +302,15 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     assert body["primary"]["p_correct"] is None
     assert body["calibrated"] is False
 
-    # F3-Fenster-P (§4.3): Block 0 (1.605 €) schlägt das ±6-h-Umfeld in 3/4 Draws.
-    assert body["windows_today"][0]["p"] == 0.75
+    # O12: raw 3/4 remains auditable, display P is normalized against the
+    # three available comparison windows at this horizon edge.
+    assert body["windows_today"][0]["p_raw"] == 0.75
+    assert body["windows_today"][0]["p"] == 1.0
+    assert body["windows_today"][0]["p_competitors"] == 2
+    assert body["windows_today"][0]["p_baseline"] == pytest.approx(1 / 3, abs=1e-4)
     assert body["windows_today"][0]["expected_saving_eur"] == 3.36
-    assert body["windows_week"][0]["p"] == 0.75
+    assert body["windows_week"][0]["p_raw"] == 0.75
+    assert body["windows_week"][0]["p"] == 1.0
 
     # F2-P_lohnt (§4.2): die günstigere Alternative lohnt in jedem Draw.
     assert body["alternatives_nearby"][0]["p_lohnt"] == 1.0

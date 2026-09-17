@@ -330,12 +330,12 @@ describe("stationContextLines", () => {
     expect(linesA[2]).toContain("2,5 km ab Zuhause");
   });
 
-  it("Server-Umweg schlägt die Distanz zum Anker", () => {
-    const serverAlts = [serverAlt({})];
+  it("benennt eine als Straßenstrecke belegte Server-Distanz", () => {
+    const serverAlts = [serverAlt({ detour_km_source: "road" })];
     const rs = rows({ serverAlts, selectedId: "b" });
     const a = rs.find((row) => row.station.station_id === "a")!;
     const lines = stationContextLines(a, rs.find((row) => row.isReference)!);
-    expect(lines.at(-1)).toBe("Umweg zur Referenz: +1,2 km (Server-Route).");
+    expect(lines.at(-1)).toBe("Umweg zur Referenz: +1,2 km (Straßenstrecke).");
   });
 
   it("ohne frischen Preis steht der ehrliche Satz", () => {

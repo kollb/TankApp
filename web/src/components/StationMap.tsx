@@ -252,7 +252,7 @@ export function StationMap({
         verdict = alt.worth_it ? "worth" : "not_worth";
       }
       detourKm = alt.detour_km_est ?? alt.detour_km ?? station.dist_km ?? null;
-      distMode = alt.dist_mode ?? station.dist_mode ?? null;
+      distMode = alt.detour_km_source ?? station.dist_mode ?? null;
     }
 
     const price = station.price ?? station.last_price;
@@ -568,7 +568,7 @@ export function StationMap({
         </div>
 
         <span className="font-mono text-xs text-slate-500">
-          Server-Netto-€ (decide) · d = detour_km_est
+          Server-Netto-€ (decide) · d = geschätzter/angegebener Umweg
         </span>
       </div>
 
@@ -650,7 +650,7 @@ export function StationMap({
                   <span>
                     {" · "}
                     +{kilometersLabel(activeInfo.detourKm, 1)} Umweg
-                    {activeInfo.distMode ? ` (${activeInfo.distMode === "air" ? "Luftlinie" : activeInfo.distMode === "road" ? "Straße" : activeInfo.distMode})` : ""}
+                    {activeInfo.distMode ? ` (${activeInfo.distMode === "road" ? "Straßenstrecke" : activeInfo.distMode.startsWith("estimated") ? "geschätzt" : activeInfo.distMode === "declared" ? "angegeben" : activeInfo.distMode === "air" ? "Luftlinie" : "nicht ableitbar"})` : ""}
                   </span>
                 )}
               </p>

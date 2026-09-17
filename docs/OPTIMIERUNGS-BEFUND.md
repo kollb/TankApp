@@ -24,11 +24,12 @@
 > O38) mit **0.45.0** umgesetzt, [Batch 3](#batch-3--p1--anzeigen-die-leer-sind-oder-das-falsche-zeigen)
 > (O16, O35, O29, O42) mit **0.46.0** umgesetzt,
 > [Batch 4](#batch-4--p1--betrieb-kosten-haltbarkeit-kohärenz) (O23, O24,
-> O36, O33) mit **0.47.0** umgesetzt — je Befund steht der Vermerk unter dem
-> DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2 stehen.
-> O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
-> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)); O43 (Nachtrag
-> aus Batch 2) steht in Batch 5. Die übrigen Batches sind unverändert offen.
+> O36, O33) mit **0.47.0** und [Batch 5](#batch-5--p2--rechnung-und-statistik-im-einzelnen)
+> (O2, O3, O7–O15, O43) mit **0.48.0** umgesetzt — je Befund steht der Vermerk
+> unter dem DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2
+> stehen. O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
+> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)); die übrigen
+> Batches sind unverändert offen.
 
 ## Inhaltsverzeichnis
 
@@ -166,9 +167,10 @@ Zwölf-Uhr ist zugleich die Projektionsregel der Engine
 **DoD.** `clock_hour` wird aus `tanked_at` in Europe/Berlin abgeleitet —
 serverseitig in `record_fill`, nicht als neue GUI-Pflicht (die GUI kennt die
 Zeitzone nicht zuverlässig, und ein Beleg kann nachgetragen werden). Der
-Default 12.0 bleibt nur für Belege ohne Zeitstempel und wird als solcher
-ausgewiesen (`clock_hour_source: "beleg"|"abgeleitet"|"default"`), damit das
-Histogramm seine Herkunft zeigt. Bestehende Belege werden nicht
+Default 12.0 bleibt nur für nicht rekonstruierbare Altbelege ohne Zeitstempel
+und wird als solcher ausgewiesen (`clock_hour_source:
+"beleg"|"server"|"abgeleitet"|"default"`), damit das Histogramm seine Herkunft
+zeigt. Bestehende Belege werden nicht
 stillschweigend umgeschrieben: entweder Migration mit Kennzeichnung oder
 Neustart des Histogramms mit Hinweistext. Ratchet-Test: ein GUI-Beleg mit
 `tanked_at` 18:40 erzeugt `clock_hour` 18, nicht 12.
@@ -176,8 +178,9 @@ Neustart des Histogramms mit Hinweistext. Ratchet-Test: ein GUI-Beleg mit
 **Umgesetzt in 0.44.0** (Variante „Migration mit Kennzeichnung“):
 `clock_hour_from_fill()` in `app/feedback.py` leitet die Stunde aus `tanked_at`
 in Europe/Berlin ab, der Zeitstempel gewinnt gegen eine widersprechende
-`clock_hour`-Angabe, und je Beleg steht `clock_hour_source` ∈
-`beleg` · `abgeleitet` · `default`. Feedback-Store Schema 3 → 4
+`clock_hour`-Angabe, und je Beleg stand zunächst `clock_hour_source` ∈
+`beleg` · `abgeleitet` · `default`; Batch 5 ergänzt `server` für einen fehlenden
+Beleg-Zeitstempel (O43). Feedback-Store Schema 3 → 4
 (`_migrate_store_v3_to_v4`, idempotent) zeichnet Altbestände als `default` aus,
 statt sie umzuschreiben. Die Herkunft ist bis in die GUI sichtbar:
 `wh_clock_sources`/`wh_measured_n`/`wh_default_n` in
@@ -1596,11 +1599,16 @@ GUI ist nicht betroffen (sendet `tanked_at` immer, `postFill` in
 `web/src/data.ts`); nur rohe API-Clients ohne Stempel laufen in den Pfad.
 Folgenarm, aber inkonsistent — P2.
 
-**DoD.** `record_fill` leitet die Stunde aus dem gesetzten Stempel ab
-(Herkunft „abgeleitet“, nicht „beleg“ — der Nutzer hat die Zeit nicht
-genannt, der Server hat sie gesetzt); nur wenn auch das scheitert, bleibt
-12/„default“. Test: Beleg ohne `tanked_at` trägt die Stunde des
-Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`.
+**DoD.** `record_fill` leitet die Stunde aus dem gesetzten Stempel ab;
+die Herkunft ist ausdrücklich `server` (nicht `beleg`: der Nutzer hat die
+Zeit nicht genannt). Nur nicht rekonstruierbarer Altbestand bleibt
+12/`default`. Test: Beleg ohne `tanked_at` trägt die Stunde des
+Server-Stempels in Europe/Berlin und `clock_hour_source == "server"`.
+
+**Umgesetzt (Batch 5):** `effective_tanked_at` wird vor der Stundenableitung
+auf den dokumentierten Server-Buchungszeitstempel gesetzt. Damit fließt der
+Beleg in die richtige Wochentag×Stunden-Zelle, und `wh_clock_sources.server`
+macht die Herkunft prüfbar.
 
 ## 8. Gemessen statt behauptet
 
@@ -1723,7 +1731,7 @@ niemand sagt etwas.
 | Befund | Aufwand | Check |
 |---|---|---|
 | [O22](#o22--die-veröffentlichung-passt-nicht-mehr-durch-das-leselimit) Publikations-Klippe | M | `du -h data/runtime/engine/current.json` liegt unter dem Budget (8 MB); neuer Test publiziert 11 Stationen mit `bootstrap_samples=2000` und prüft Größe **und** den Alarm `publication_large` in `/api/v1/health`; `jq -e .failures data/runtime/engine/current.json` läuft durch; Test, der eine künstlich zu große Datei anlegt und `publication_unreadable` mit Grund erwartet |
-| [O1](#o1--jeder-gui-beleg-tankt-um-12-uhr) `clock_hour` fehlt | S | Test: Beleg mit `tanked_at` 18:40 Europe/Berlin ergibt `clock_hour == 18` und `clock_hour_source == "beleg"`; ein Beleg ohne Zeitstempel ergibt `12` und `"default"`; `curl -s localhost:1355/api/v1/fills \| jq '.fills[-1] \| {tanked_at, clock_hour, clock_hour_source}'` zeigt dasselbe; `w(h)`-Histogramm hat nach zwei Abendbelegen sein Gewicht bei 18, nicht bei 12 |
+| [O1](#o1--jeder-gui-beleg-tankt-um-12-uhr) `clock_hour` fehlt | S | Test: Beleg mit `tanked_at` 18:40 Europe/Berlin ergibt `clock_hour == 18` und `clock_hour_source == "beleg"`; ohne Belegzeit ergibt der Server-Stempel die Berliner Stunde mit `"server"` (O43); `curl -s localhost:1355/api/v1/fills \| jq '.fills[-1] \| {tanked_at, clock_hour, clock_hour_source}'` zeigt dasselbe; `w(h)` lernt die echte Zelle statt 12 Uhr |
 
 **Batch-Abnahme:** Die App kann nicht mehr lautlos in den „keine Daten“-Zustand
 kippen, und die Personalisierung lernt aus einer gemessenen Uhrzeit. Nachweis:
@@ -1736,7 +1744,7 @@ Checks im Einzelnen:
 | Check | Ergebnis |
 |---|---|
 | Beleg mit `tanked_at` 18:40 Europe/Berlin → `clock_hour == 18`, `clock_hour_source == "beleg"` | erfüllt (`test_evening_receipt_is_booked_at_18_not_12`); zusätzlich UTC→Berlin (`test_utc_timestamp_is_converted_to_berlin`) und Widerspruch (`test_timestamp_wins_over_contradicting_clock_hour`) |
-| Beleg ohne Zeitstempel → `12`, `"default"` | erfüllt (`test_receipt_without_timestamp_keeps_default_but_says_so`), und die Anzahl steht in `wh_default_n`/`personalization.default_fills` |
+| Beleg ohne `tanked_at` → Berliner Stunde aus Server-Stempel, `"server"` | erfüllt in Batch 5 (`test_receipt_without_timestamp_uses_server_time_and_says_so`); `default`/12 Uhr bleibt nur für nicht rekonstruierbaren Altbestand |
 | `GET /api/v1/fills` zeigt `tanked_at`, `clock_hour`, `clock_hour_source` | erfüllt (API-Test + [API.md](API.md#fills-b4-belege)) |
 | `w(h)`-Histogramm hat nach zwei Abendbelegen sein Gewicht bei 18 | erfüllt (`test_wh_histogram_moves_to_the_measured_evening_hour`, `test_wh_histogram_names_the_invented_hours`) |
 | 11 Stationen, `bootstrap_samples=2000` → unter 8 MB **und** `publication_large` in `/api/v1/health` | erfüllt: **7,28 MB**, Alarm warn (beide in einem Test) |
@@ -1835,10 +1843,37 @@ Ziel: Jede Größe beantwortet die Frage, für die sie angezeigt wird.
 | [O11](#o11--die-heatmap-bewertet-sich-mit-eigenen-preisen) kein LOO | M | Test: Skaliert man die Preise einer Station, ändert sich ihre eigene Cheap-Probability nicht mehr (LOO); Vergleichsrechnung gegen `_loo_baseline` aus `engine/selection.py` |
 | [O14](#o14--umwegkilometer-sind-drei-verschiedene-größen) `dist_km` gemischt | M | Test: `dist_mode` steht in der Antwort und wird angezeigt; die Umwegrechnung verwendet ausschließlich Straßenkilometer, sonst einen benannten Schätzwert mit Faktor |
 | [O15](#o15--der-zeitwert-kippt-um-halb-fünf) Stufe 16:30 | S | Test: 16:29 und 16:31 unterscheiden sich höchstens um den interpolationsschritt — oder die Stufe ist in der Antwort und in der GUI benannt |
-| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) Stunde bleibt 12 (Nachtrag aus Batch 2) | S | Test: Beleg ohne `tanked_at` trägt die Stunde des Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`; nur ohne ableitbaren Stempel bleibt 12/`"default"` |
+| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) Stunde bleibt 12 (Nachtrag aus Batch 2) | S | Test: Beleg ohne `tanked_at` trägt die Stunde des Server-Stempels (Europe/Berlin) und `clock_hour_source == "server"`; nur nicht rekonstruierbarer Altbestand bleibt 12/`"default"` |
 
 **Batch-Abnahme:** Keine Kennzahl mehr, die gegen sich selbst null ergibt,
 keine Schwelle ohne Basisrate, keine Einheit ohne Namen.
+
+**Umgesetzt (Batch 5, 17.09.2026).**
+
+- **O12/O7:** `window_p_details()` liefert Rohwert, Vergleichszahl und gegen
+  `1/(k+1)` normalisierten Sternwert; `app/outcomes.py` setzt für jede
+  exakte Schwelle die gemeinsame 0,5-Trefferregel durch P-Seite, Settlement,
+  Trefferquoten, Brier und Reliability-Bins.
+- **O8/O9:** Belege unterscheiden `im_fenster` von `kulanz` (Kulanz bleibt
+  `partial`); `net_economics()` ist die eine ungerundete Rechnung für
+  Route, Entscheidung, Draws und Beleg-Netto. Beleg-Kilometer sind entweder
+  `actual_receipt` oder sichtbar `estimated_snapshot`.
+- **O13/O14/O15:** Die doppelte „immer warten“-Kachel ist entfernt;
+  Kilometer-Provenienz benennt nur `road` als Straßenstrecke, alle Luft- und
+  Ankerwerte als Schätzung; die explizite 16:30-Zeitwertstufe steht in API und
+  Einstellung.
+- **O2/O3/O10/O11/O43:** `engine/personalization.py` besitzt das einzige
+  7×24-Standardprofil und glättet ab dem ersten Beleg; Selektion verwendet
+  es ebenfalls. Vorhersagen publizieren Support-Tage sowie 0,1-ct-Quantile
+  und die GUI markiert dünne Slots. Die Stations-Heatmap verwendet den
+  stationsexkludierten Zellenmedian. Fehlt `tanked_at`, liefert die
+  Server-Buchungszeit die lokale Stunde mit Herkunft `server`.
+
+Nachweis: `tests/test_batch5_ledger.py`,
+`tests/test_o2_o3_personalization.py`, O10-Modelltests und der statische
+Forecast-Marker-Test; vollständig geprüft mit `pytest -q` (**966 passed**),
+`ruff check .`, `npm run --prefix web test` (**1090 passed**) und
+`npm run --prefix web build`.
 
 ### Batch 6 — P2 · Anzeige und Alltag
 

@@ -419,6 +419,8 @@ function FillsSection(props: IchViewProps) {
                     >
                       {row.savings}
                     </p>
+                    {row.timing && <p className="mt-0.5 text-slate-400">{row.timing}</p>}
+                    {row.elsewhereNet && <p className="mt-0.5 font-mono text-sky-200">{row.elsewhereNet}</p>}
                   </div>
                   <div className="shrink-0 text-right">
                     {!row.voided && (
@@ -488,7 +490,11 @@ function FillsSection(props: IchViewProps) {
                             {row.status}
                           </span>
                         ) : (
-                          <span className="text-slate-400">{row.status}</span>
+                          <span className="text-slate-400">
+                            {row.status}
+                            {row.timing && <span className="block text-xs text-slate-500">{row.timing}</span>}
+                            {row.elsewhereNet && <span className="block font-mono text-xs text-sky-300">{row.elsewhereNet}</span>}
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-2 text-right">

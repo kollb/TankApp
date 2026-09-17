@@ -60,8 +60,10 @@ export type AtlasRow = {
   fillEur: number | null;
   /** Server-Urteil, nur mit netEur. */
   verdict: "worth" | "borderline" | "not_worth" | null;
-  /** Server-Umweg in km (nur mit netEur), sonst Distanz zum Anker. */
+  /** Server-Umweg in km (nur with netEur), otherwise distance to anchor. */
   detourKm: number | null;
+  /** O14: road vs. transparently named estimate for the detour. */
+  detourSource: string | null;
   distKm: number | null;
 };
 
@@ -168,6 +170,7 @@ export function atlasRows(input: AtlasInput): AtlasRow[] {
       fillEur,
       verdict,
       detourKm: netEur !== null ? (serverAlt?.detour_km_est ?? serverAlt?.detour_km ?? null) : null,
+      detourSource: netEur !== null ? (serverAlt?.detour_km_source ?? null) : null,
       distKm: station.dist_km ?? null,
     };
   });
@@ -274,7 +277,15 @@ export function stationContextLines(
     );
   }
   if (row.detourKm !== null) {
-    lines.push(`Umweg zur Referenz: +${kilometersLabel(row.detourKm, 1)} (Server-Route).`);
+    const routeKind =
+      row.detourSource === "road"
+        ? "Straßenstrecke"
+        : row.detourSource?.startsWith("estimated")
+          ? "geschätzt (Luftlinie × 1,3 / Anker-Näherung)"
+          : row.detourSource === "declared"
+            ? "angegebene Strecke"
+            : "Strecke nicht ableitbar";
+    lines.push(`Umweg zur Referenz: +${kilometersLabel(row.detourKm, 1)} (${routeKind}).`);
   } else if (row.distKm !== null) {
     lines.push(
       `${kilometersLabel(row.distKm, 1)} ab Zuhause ${

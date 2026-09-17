@@ -221,6 +221,10 @@ export type ForecastPoint = {
   q90?: number | null;
   q025: number | null;
   q975: number | null;
+  /** O10: local day count for this weekday/hour model slot. */
+  support_days?: number | null;
+  /** False/null means no forecast band; true with few days is visibly marked. */
+  supported?: boolean | null;
 };
 export type Forecast = DataReach & {
   points: ForecastPoint[];
@@ -390,6 +394,8 @@ export type RouteEvaluate = {
   z_used: number;
   z_auto?: boolean;
   is_peak?: boolean | null;
+  /** O15: named automatic time-value rule; manual profiles say so explicitly. */
+  time_value_rule?: string;
   consumption?: number;
   speed_kmh?: number;
   liters: number;
@@ -405,7 +411,9 @@ export type EpisodeStatus = "open" | "waiting" | "due" | "resolved" | "expired";
 export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
 /** O1: Herkunft der Tankuhrzeit eines Belegs (`app/feedback.py`). */
-export type ClockHourSource = "beleg" | "abgeleitet" | "default";
+export type ClockHourSource = "beleg" | "server" | "abgeleitet" | "default";
+/** O8: A receipt can be exact-window or only accepted under documented grace. */
+export type WindowSettlement = "im_fenster" | "kulanz";
 /**
  * O17: Herkunft des Belegpreises — live (frischer Poll zur Tipp-Zeit),
  * manuell (eingetragen), prognose (Altbestand, kein gezahlter Preis),
@@ -431,7 +439,19 @@ export type Fill = {
   fuel: Fuel;
   source?: string;
   compliance?: Compliance;
+  /** Strict window (`im_fenster`) vs. accepted matching grace (`kulanz`). */
+  settled?: WindowSettlement | null;
   saved_vs_always_now_eur?: number;
+  /** O9: actual/estimated net saving of a matched refuel-elsewhere receipt. */
+  elsewhere_net_eur?: number | null;
+  elsewhere_net_provenance?: {
+    distance_source: "actual_receipt" | "estimated_snapshot";
+    detour_km_total: number;
+    reference_price: number;
+    consumption_l_100km: number;
+    speed_kmh: number;
+    time_value_eur_h: number;
+  } | null;
   /** A3: storniert (voided) statt gelöscht — zählt nicht in die Bilanz. */
   voided?: boolean;
   voided_at?: string | null;
@@ -607,6 +627,8 @@ export type DecideResult = {
     delta_ct: number;
     detour_km: number;
     detour_km_est?: number;
+    /** O14: only `road` is a driven road distance; estimated_* names its basis. */
+    detour_km_source?: string | null;
     detour_mode?: string | null;
     dist_mode?: string | null;
     trip_mode?: string;
@@ -637,7 +659,11 @@ export type DecideResult = {
     end: string;
     expected_price: number;
     expected_saving_eur: number | null;
+    /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
+    /** Auditable raw P before edge/baseline normalization. */
+    p_raw?: number | null;
+    p_competitors?: number | null;
     /** A9: Anteil des persönlichen Tankzeit-Profils w(h) an diesem Fenster
      *  (null = nicht personalisiert, Reihenfolge ist reine Preisreihenfolge). */
     wh_weight?: number | null;
@@ -647,10 +673,15 @@ export type DecideResult = {
     end: string;
     expected_price: number;
     expected_saving_eur: number | null;
+    /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
+    p_raw?: number | null;
+    p_competitors?: number | null;
+    /** O12: random-choice chance among the available comparison windows. */
+    p_baseline?: number | null;
     wh_weight?: number | null;
   }>;
-  /** A9: Wirkt das persönliche Tankzeit-Profil? (app/feedback.WH_MIN_FILLS) */
+  /** O2/O3: cautiously shrunk receipt profile; min_fills is its prior strength. */
   personalization?: {
     active: boolean;
     n_fills: number;
@@ -658,7 +689,7 @@ export type DecideResult = {
     missing_fills: number;
     /** O1: Belege mit gemessener oder rekonstruierter Tankzeit. */
     measured_fills?: number;
-    /** O1: Belege ohne Zeitstempel — deren Stunde ist die erfundene 12. */
+    /** Legacy rows without a usable timestamp; new records use the server time. */
     default_fills?: number;
   } | null;
   episode: {
@@ -761,7 +792,6 @@ export type BacktestStationScore = {
   sum_smart_eur: number;
   sum_commit_eur: number;
   sum_best_eur: number;
-  sum_always_eur: number;
   avg_regret_ct: number;
   avg_regret_eur: number;
   p_avg: number;
@@ -824,7 +854,6 @@ export type StatsSummary = {
       smart: number | null;
       commit: number | null;
       best: number | null;
-      always: number | null;
       regretEur: number | null;
       n: number;
       hitFreq: number | null;
@@ -1054,7 +1083,6 @@ export function scoreRows(
     sumSmart = 0,
     sumCommit = 0,
     sumBest = 0,
-    sumAlways = 0,
     sumRegretCt = 0,
     sumP = 0,
     nP = 0,
@@ -1071,7 +1099,6 @@ export function scoreRows(
     sumSmart += o.smartCt;
     sumCommit += o.committedCt;
     sumBest += Math.max(r.best, 0);
-    sumAlways += Math.max(r.s, 0);
     sumRegretCt += o.regretCt;
     if (r.p != null && Number.isFinite(r.p)) {
       sumP += r.p;
@@ -1096,7 +1123,6 @@ export function scoreRows(
     sum_smart_eur: sumSmartEur,
     sum_commit_eur: toEur(sumCommit),
     sum_best_eur: toEur(sumBest),
-    sum_always_eur: toEur(sumAlways),
     avg_regret_ct: n ? sumRegretCt / n : 0,
     avg_regret_eur: n ? toEur(sumRegretCt) / n : 0,
     p_avg: nP ? sumP / nP : 0,
@@ -1268,6 +1294,8 @@ export async function postFill(payload: {
   fuel: string;
   source: string;
   episode_id?: string | null;
+  /** O9: observed complete detour in km; omission retains the snapshot estimate. */
+  actual_detour_km_total?: number;
 }) {
   // Der Tankzeitpunkt ist der Zeitpunkt des Tankens, nicht der des Nachreichens.
   const record = {
@@ -3720,33 +3748,19 @@ export function personalizationNote(
   personalization: DecideResult["personalization"],
 ): string | null {
   if (!personalization) return null;
-  const { active, n_fills, min_fills, missing_fills, default_fills } =
-    personalization;
-  // O1: Belege ohne Zeitstempel zählen die 12-Uhr-Projektion der Engine ins
-  // Profil. Das Profil bleibt ehrlich, wenn der Satz sagt, wie viele Stunden
-  // erfunden sind — sonst wirkt eine Mittagsspitze wie eine eigene Tankzeit.
-  const invented =
+  const { active, n_fills, min_fills, default_fills } = personalization;
+  const legacy =
     default_fills && default_fills > 0
-      ? ` ${
-          default_fills === 1
-            ? "1 Beleg ohne Zeitstempel zählt"
-            : `${default_fills} Belege ohne Zeitstempel zählen`
-        } als 12 Uhr.`
+      ? ` ${default_fills === 1 ? "1 älterer Beleg ohne Zeitstempel bleibt" : `${default_fills} ältere Belege ohne Zeitstempel bleiben`} als 12-Uhr-Projektion markiert.`
       : "";
   if (active) {
     return (
-      `Reihenfolge nach deinen Tankzeiten (${n_fills} Belege) — ` +
-      `günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` +
-      invented
+      `Reihenfolge berücksichtigt deine Tankzeiten vorsichtig (${n_fills} ${
+        n_fills === 1 ? "Beleg" : "Belege"
+      }) und ist weiter gegen das Standardprofil geglättet (Stärke ${min_fills}).` + legacy
     );
   }
-  const fills = n_fills === 1 ? "1 Beleg" : `${n_fills} Belege`;
-  return (
-    `Noch nach Preis sortiert (${fills} von ${min_fills}) — ` +
-    `ab ${min_fills} Belegen ordnet die App die Fenster nach deinen ` +
-    `Tankzeiten${missing_fills > 0 ? `, es fehlen ${missing_fills}` : ""}.` +
-    invented
-  );
+  return `Noch reine Preisreihenfolge — sobald der erste Beleg mit Zeit vorliegt, wirkt er vorsichtig gegen das Standardprofil geglättet.` + legacy;
 }
 
 /**

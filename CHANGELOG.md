@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.48.0] – 2026-09-17
+
+**Batch 5 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
+
+### Geändert
+
+- **Faire Wahrscheinlichkeiten und Gleichstände (O12/O7):** Fenstersterne sind gegen die jeweils verfügbare Vergleichsfenster-Basisrate normalisiert; `p_raw`, `p_competitors` und `p_baseline` bleiben im Decide-Payload prüfbar. Die neue gemeinsame 0,5-Trefferregel gilt für P-Seite, Settlement, Trefferquoten, Brier und Reliability.
+- **Beleg-Abrechnung ist nachvollziehbar (O8/O9/O43):** Ein Wartungsbeleg ist nun explizit `im_fenster` oder `kulanz`; Kulanz wird nicht als Qualitäts-Treffer gezählt. `net_economics()` rechnet Route, Entscheidung, Draws und tatsächlichen/geschätzten Beleg-Umweg identisch. Fehlt `tanked_at`, wird die Berliner Stunde aus dem Server-Buchungszeitstempel abgeleitet und als `server` markiert.
+- **Eine Personalisierung (O2/O3):** `engine/personalization.py` ist die gemeinsame, wochentagsspezifische 7×24-Quelle für Fenstersuche und Stationsverfügbarkeit. Sie glättet ab dem ersten gültig datierten Beleg gegen einen expliziten Acht-Beleg-Prior, statt an Beleg acht umzuschalten.
+- **Ehrliche Anzeige und Daten-Provenienz (O10/O11/O13/O14/O15):** Vorhersagen veröffentlichen Support-Tage und auf 0,1 ct/L gerundete Quantile; dünne 7-Tage-Slots tragen hohle Band-Marker. Die Stations-Heatmap verwendet den stationsexkludierten Zellenmedian. Nur `road` heißt Straßenstrecke, die Zeitwert-Stufe 16:30 ist sichtbar benannt, und die doppelte Labor-Referenz „immer warten“ ist entfernt.
+
+**Prüfung:** `pytest -q` (**966 passed**), `ruff check .`, `npm run --prefix web test` (**1090 passed**) und `npm run --prefix web build`.
+
 ## [0.47.0] – 2026-09-17
 
 **Batch 4 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)

@@ -32,6 +32,10 @@ export type FillRow = {
   savingsTone: "good" | "bad" | "none";
   /** „gebucht“ oder „storniert“ (A3: storniert statt gelöscht). */
   status: string;
+  /** O8: strict window timing remains distinct from matching grace. */
+  timing: string | null;
+  /** O9: receipt-based detour net result and whether its km were actual/estimated. */
+  elsewhereNet: string | null;
   voided: boolean;
 };
 
@@ -59,6 +63,18 @@ export function fillRow(fill: Fill): FillRow {
         : `${euro(Math.abs(saved))} € ${saved >= 0 ? "günstiger" : "teurer"}`,
     savingsTone: saved == null ? "none" : saved >= 0 ? "good" : "bad",
     status: fill.voided ? "storniert" : "gebucht",
+    timing:
+      fill.settled === "im_fenster"
+        ? "im empfohlenen Fenster"
+        : fill.settled === "kulanz"
+          ? "Kulanz: außerhalb des Fensters"
+          : null,
+    elsewhereNet:
+      fill.elsewhere_net_eur == null
+        ? null
+        : `${euro(Math.abs(fill.elsewhere_net_eur))} € netto ${
+            fill.elsewhere_net_eur >= 0 ? "günstiger" : "teurer"
+          } (${fill.elsewhere_net_provenance?.distance_source === "actual_receipt" ? "gefahrene Strecke" : "Streckenschätzung"})`,
     voided: Boolean(fill.voided),
   };
 }

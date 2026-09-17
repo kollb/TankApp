@@ -318,6 +318,7 @@ export function LaborView(props: LaborViewProps) {
     livePointsForChart,
     metrics,
     modelSeries,
+    thinSupportPoints,
   } = useLaborModel(ov, eps, labDayIdx);
   // U8: Die Sorte kommt aus der Auswahl (Overview), nicht mehr aus einem
   // `any`-Feld des Forecast-Payloads.
@@ -655,6 +656,12 @@ export function LaborView(props: LaborViewProps) {
                   Zeitraum — kein Modell, keine Schätzung.
                 </SketchNote>
               )}
+              {fanStep >= 1 && thinSupportPoints.length > 0 && (
+                <p className="mb-2 flex items-center gap-1.5 text-xs leading-relaxed text-amber-200">
+                  <span aria-hidden="true" className="inline-block size-2 rounded-full border border-amber-300" />
+                  Hohle Punkte im Band: dünn gestützte Zeit-Slots (mindestens einer hat nur {Math.min(...thinSupportPoints.map((p) => p.support_days ?? Infinity))} Tage). Das Band bleibt sichtbar, ist aber weniger belastbar.
+                </p>
+              )}
               <LineChart
                 series={forecastSeries}
                 bands={forecastBands}
@@ -662,7 +669,7 @@ export function LaborView(props: LaborViewProps) {
                 xDomain={forecastWindow}
                 xTicks={autoTimeTicks(forecastWindow[0], forecastWindow[1])}
                 yFmt={(value) => euro(value, 3)}
-                ariaDescription={`Geführter Aufbau, Schritt ${fanStep + 1} von 4: wahrscheinlichster Preis${fanStep >= 1 ? ", 80-%-Band" : ""}${fanStep >= 2 ? ", 95-%-Band" : ""}${fanStep >= 3 ? ", darüber die echten beobachteten Preise" : ""} in €/L.`}
+                ariaDescription={`Geführter Aufbau, Schritt ${fanStep + 1} von 4: wahrscheinlichster Preis${fanStep >= 1 ? ", 80-%-Band" : ""}${fanStep >= 2 ? ", 95-%-Band" : ""}${fanStep >= 1 && thinSupportPoints.length ? `, ${thinSupportPoints.length} hohle Markierungen für dünn gestützte Slots` : ""}${fanStep >= 3 ? ", darüber die echten beobachteten Preise" : ""} in €/L.`}
               />
               <ReadingAid
                 headline={
@@ -1142,14 +1149,6 @@ export function LaborView(props: LaborViewProps) {
                     </div>
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
                       <p className="text-xs uppercase tracking-wider text-slate-500">
-                        Immer sofort tanken
-                      </p>
-                      <p className="font-mono text-lg font-bold text-slate-100">
-                        {euro(labTotals.always)} €
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-slate-900/70 p-2.5">
-                      <p className="text-xs uppercase tracking-wider text-slate-500">
                         Perfektes Timing (Orakel)
                       </p>
                       <p className="font-mono text-lg font-bold text-slate-100">
@@ -1319,10 +1318,6 @@ export function LaborView(props: LaborViewProps) {
                   <strong className="text-slate-100">
                     {scenario ? `${scenario.hits} von ${scenario.days} Tagen richtig` : "—"}
                   </strong>
-                </li>
-                <li>
-                  Immer warten wäre gewesen:{" "}
-                  <strong className="text-slate-100">{euro(labTotals.always)} €</strong>
                 </li>
                 <li>
                   Immer sofort tanken wäre gewesen:{" "}
