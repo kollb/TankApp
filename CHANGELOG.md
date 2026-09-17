@@ -4,6 +4,96 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.45.0] – 2026-09-17
+
+**Batch 2 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+ist umgesetzt: Die Zahlen, auf denen M7 steht. Der Ledger misst jetzt, was er zu
+messen behauptet — P-Quellen getrennt (O5), kein erfundener Belegpreis (O17),
+Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
+(O4), verstrichene Fenster sichtbar (O38).**
+
+### Geändert
+
+- **P-Quelle je Ledger-Zeile (O5, P1):** `record_snapshot` speichert `p_source`
+  je Zeile — Verteilungs-P aus den Draws (`verteilung`), sonst die Ledger-Quote
+  (`basisrate`), sonst `keine`. `compute_advice_stats` weist den Brier je Quelle
+  getrennt aus (`brier_by_source`, `brier_all_by_source`, `p_source_counts…`),
+  und das Gate (`gate_n`/`gate_brier`) rechnet ausschließlich über Verteilungs-P:
+  Die Basisrate ist per Konstruktion selbstkalibriert und darf das Gate nicht
+  öffnen. Feedback-Store Schema 4 → 5 rekonstruiert die Quelle für Altbestände
+  mit Kennzeichnung (idempotent); `LUECKEN.md` sagt wieder dasselbe wie der Code.
+- **Ein-Tipp-Beleg bucht Live-Preis statt Median (O17, P1):** „Ja, wie empfohlen“
+  buchte den Prognose-Median als `price_paid` — die Wallet-Bilanz rechnete mit
+  einem Preis, den niemand gezahlt hat. Jetzt bucht der Tipp den frischen
+  Live-Preis mit Herkunft (`price_source`); ohne Live-Preis öffnet sich die
+  Maske und es wird **kein** Beleg angelegt. `expected_price` wird nie als
+  `price_paid` gesendet (Unit-Test). Dazu die verifizierte Ersparnis als zweite,
+  ausdrücklich so benannte Spalte (`saved_verified_eur`, ohne Belege mit
+  Prognosepreis, `n_prognosis_price` für den Altbestand).
+- **M7-Gate mit Intervall gegen zwei Referenzen (O6, P1):** Das Gate bestand bei
+  Punkt-Brier < 0,25 — dem Score einer konstanten 50-Prozent-Vorhersage. Jetzt
+  besteht es erst, wenn die Obergrenze des Block-Bootstrap-Intervalls
+  (Tagesblöcke in Europe/Berlin, 95 %, 1000 Ziehungen mit festem Samen) unter
+  beiden naiven Referenzen auf der Verteilungs-Grundgesamtheit liegt:
+  konstanter Basisrate und Leave-one-out-Klimatologie je (Stunde, Wochentag).
+  Unter 10 Tagesblöcken bleibt das Intervall `null` („nicht messbar“); die
+  Antwort nennt Intervall, Fenstergröße und beide Referenzen (`gate_brier_ci`,
+  `block_days`, `n_day_blocks`, `bootstrap_samples`, `gate_ref_base`,
+  `gate_ref_climate`). `brier_threshold` (0,25) ist nur noch das dokumentierte
+  Münz-Niveau. Die GUI zeigt Punkt, Intervall und Referenzen (`m7GateLine`,
+  System-Metrik), KONZEPT §0.4/§5.1 nennt die neue Regel.
+- **Rolling-PICP als Tagesmittel mit Hysterese (O4, P1):** `rolling_picp_7d`
+  poolte autokorrelierte 5-Minuten-Punkte und kippte das Badge ohne Hysterese.
+  Jetzt zählt jeder Tag genau eine Stimme (Mittel der Tagesquoten, Fallzahl =
+  Tage mit bewerteten Punkten, Minimum 3) und das Badge läuft als Kette über die
+  Tageshistorie: Wechsel erst 1,5 pp jenseits der Schwelle (halber
+  Grün/Gelb-Abstand). Bewusst kein `noise_band`-Muster — bei n = 7 Tagen wäre
+  2σ ≈ ±22 pp, größer als jeder Schwellenabstand; das Badge würde als Latch
+  kleben und Rot die §4.4-Empfehlung permanent blockieren. Die Fallzahl steht in
+  der Antwort (`current.n_days`, `quality.rolling_picp_7d_days`). Beispiel:
+  200 Punkte/100 % plus drei Tage/50 % ergeben 62,5 % statt gepoolter 93,5 %.
+- **Fensterbilanz statt unsichtbarer Wirkung (O38, P1):** `expired`-Episoden
+  wurden erfasst, aber nie gezählt — sichtbar waren nur abgerechnete Fälle.
+  `compute_advice_stats` zählt jetzt genutzte (`resolved`) gegen verstrichene
+  (`expired`) Fenster je 7/30 Tage (`episodes_used_7d`, `episodes_expired_7d`,
+  `episodes_used_30d`, `episodes_expired_30d`) plus laufende Folgen
+  (`episodes_open`) — nur Folgen mit echter Empfehlung, datiert nach `closed_at`.
+  Das Labor (Vertrauens-Konto) zeigt „x von y Fenstern genutzt“ mit abgerechneten
+  Empfehlungen gegen verstrichene Fenster: die Gegenprobe zur Trefferquote.
+
+### Neu
+
+- **`tests/test_o5_p_source.py`** (11 Fälle): `p_source` je Zeile, Brier je
+  Quelle, Gate nur über Verteilungs-P, Migration 4 → 5.
+- **`tests/test_o17_prompt_fill.py`** (10 Fälle): Tipp bucht Live-Preis mit
+  `price_source` (Server-Nowcast zählt als `live`), unbekannte Herkunft wird
+  abgewiesen, Tipp ohne Preis wird nicht gebucht, `prognose` nie an neue
+  Belege, verifizierte Ersparnis ohne Prognose-Belege (auch je Zeile). Dazu
+  der Playwright-Fall in `web/e2e/demo.spec.ts` (Tipp bucht Live-Preis, nie
+  Median).
+- **`tests/test_o6_gate_interval.py`** (13 Fälle): Gate erst bei Obergrenze
+  unter der Basisraten-Referenz (synthetische Fälle bekannter Güte), Blockzahl-
+  Untergrenze, Determinismus (fester Samen), Helper-Exaktheit.
+- **`tests/test_o4_picp_days.py`** (4 Fälle): Tagesstimme gegen Pooling,
+  Hysterese-Kette, Lückentage; dazu die Hysterese-Parametrisierung in
+  `tests/test_backtest.py` und der Fallzahl-Pin im B4-Güte-Test.
+- **`tests/test_o38_windows.py`** (6 Fälle): expired-Folge in Wochen- und
+  Monatszähler, `no_advice`-Ausschluss, offene Folgen, `closed_at`-Fallback.
+  GUI-Seite: `windowsUsedLine`-Fälle in `web/src/data.test.ts`, Render-Tests
+  in `web/src/views/Labor.test.tsx`; `format-convention.test.ts` bleibt grün.
+
+### Prüfungen
+
+- Lokal grün: `ruff check` + `ruff format --check`, **889 pytest**, **1086
+  Vitest**, `tsc --noEmit`, `npm run build`.
+- Bewusst **nicht** umgesetzt: O43 (Beleg ohne Zeitstempel lernt die Stunde
+  nicht aus dem Server-Stempel) — als Nebenbefund aus der O17-Umsetzung
+  dokumentiert und nach Batch 5 (P2, Rechnung und Statistik im Einzelnen)
+  verwiesen, statt Batch-2-Scope-Creep. Siehe
+  [OPTIMIERUNGS-BEFUND.md](docs/OPTIMIERUNGS-BEFUND.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
+- Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
+  Chromium ist in der Sandbox nicht installierbar.
+
 ## [0.44.0] – 2026-09-16
 
 **Batch 1 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)

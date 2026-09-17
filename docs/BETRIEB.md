@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 16.09.2026 · App-Version 0.44.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.45.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.44.0: Größen-Alarme für die Veröffentlichung der Prognosen
 > (`publication_large`/`publication_unreadable`), `publication`-Block im
