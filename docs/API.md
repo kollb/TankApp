@@ -65,9 +65,25 @@
 Kein App-weites Rate-Limit: Die App läuft im Heimnetz (LAN-only) — keine
 `X-RateLimit-*`-Header, kein `429` auf Lesen, keine API-Keys
 (`TANKAPP_API_KEYS` und `TANKAPP_RATE_*` sind ersatzlos entfernt,
-`app/ratelimit.py` gelöscht). Einzige Auth bleibt der Uploader-Webhook
-(`POST /api/v1/jobs/trigger`, nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`
-per `Authorization: Bearer`).
+`app/ratelimit.py` gelöscht). Auth gibt es an zwei Stellen, beide optional und
+beide dasselbe Schema (`Authorization: Bearer <Secret>`):
+
+- **Uploader-Webhook** (`POST /api/v1/jobs/trigger`, nur mit konfiguriertem
+  `TANKAPP_WEBHOOK_TOKEN`; ohne Secret existiert der Endpunkt nicht → `404`,
+  falsches Secret → `403`).
+- **Lese-Schutz für persönliche Daten (O39, seit 0.50.0):** Mit gesetztem
+  `TANKAPP_READ_TOKEN` antworten `GET /api/v1/fills`, `/api/v1/fills.csv`,
+  `/api/v1/fills/summary`, `/api/v1/advice/diary`, `/api/v1/profiles`
+  (+ `/api/v1/profiles/{id}`), `/api/v1/episodes` und `/api/v1/overview` nur
+  noch mit `Authorization: Bearer <Secret>`; sonst `401` mit
+  `{"error_code": "unauthorized"}` und `WWW-Authenticate: Bearer`. Ohne die
+  Variable bleiben sie unverändert offen — die Entscheidung (was im LAN lesbar
+  ist und für wen) steht in
+  [BETRIEB.md](BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500), der
+  Stand in `/api/v1/health` → `personal_data.read_protected`. Markt- und
+  Modelldaten (`health`, `stations`, `series`, `forecast`, `heatmap`,
+  `selection`, `stats/summary`, `collector/status`, `jobs/*/log`) sind nie
+  betroffen.
 
 **Schreib-Budget (B5):** Die Ledger-Endpunkte `POST /api/v1/fills`,
 `POST /api/v1/episodes/{id}/intent` (+ `outcome`-Alias) und
@@ -102,7 +118,7 @@ frei (GUI-Polling).
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
   - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3)
   - `POST /api/v1/profiles`, `PUT /api/v1/profiles/{id}`, `POST /api/v1/profiles/{id}/activate`, `POST /api/v1/profiles/activate`, `DELETE /api/v1/profiles/{id}` (Fahrzeug-/Haushaltsprofile ohne Login, A1)
-- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4) und `GET /api/v1/profiles` (Profil-Liste, A1)
+- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4), `GET /api/v1/profiles` (Profil-Liste, A1), `GET /api/v1/advice/diary`, `GET /api/v1/episodes` und `GET /api/v1/overview` — seit 0.50.0 mit `TANKAPP_READ_TOKEN` geschützt (O39, siehe oben)
 - Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht

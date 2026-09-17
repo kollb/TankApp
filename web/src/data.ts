@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WebhookState } from "./system";
 import { enqueueWrite, isTransportError } from "./offline-queue";
+import { authHeaders, onReadTokenChange } from "./readToken";
 
 export type Fuel = "e10" | "e5" | "diesel";
 export type Station = {
@@ -181,6 +182,12 @@ export type Health = {
   alarms?: Alarm[];
   /** O22: Größe und Lesbarkeit der Prognose-Veröffentlichung. */
   publication?: PublicationStatus | null;
+  /**
+   * O39: Ist der persönliche Datenbestand im LAN geschützt? `true` heißt:
+   * die persönlichen Routen antworten nur mit `TANKAPP_READ_TOKEN`; `false`
+   * = offen wie bisher (dokumentierte Entscheidung, docs/BETRIEB.md).
+   */
+  personal_data?: { read_protected?: boolean } | null;
   /**
    * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
    * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
@@ -2146,7 +2153,9 @@ export function useResource<T>(
       setState((prev) => ({ ...prev, pending: true }));
       try {
         const etag = etagRef.current.key === url ? etagRef.current.etag : null;
-        const headers: Record<string, string> = {};
+        // O39: Lese-Token für den persönlichen Datenbestand, wenn eines
+        // gesetzt ist (leer = offen, wie bisher).
+        const headers: Record<string, string> = { ...authHeaders() };
         if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,
@@ -2242,6 +2251,20 @@ export function useResource<T>(
     if (busyRef.current) queuedReloadRef.current = true;
     else loadRef.current();
   }, [refresh, url]);
+  // O39: Ein neu eingetragenes Lese-Token muss die persönlichen Ansichten
+  // sofort neu laden — sonst bleibt „Zugang gesperrt“ stehen, obwohl das
+  // Secret passt. Derselbe Weg wie der Refresh-Zähler (einreihen statt
+  // abbrechen); das ETag gilt für die alte Anfrage und wird verworfen.
+  useEffect(
+    () =>
+      onReadTokenChange(() => {
+        if (!url) return;
+        etagRef.current = { key: null, etag: null };
+        if (busyRef.current) queuedReloadRef.current = true;
+        else loadRef.current();
+      }),
+    [url],
+  );
   const hasData = state.data != null;
   return {
     ...state,
@@ -2591,6 +2614,8 @@ export const messages: Record<string, string> = {
     "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
   store_locked:
     "Speicher ist gerade belegt — in ein paar Sekunden erneut versuchen.",
+  unauthorized:
+    "Zugang gesperrt — der Server verlangt ein Lese-Token für persönliche Daten. Im Bereich „System“ unter „Persönliche Daten im Netz“ eintragen.",
   not_implemented: "Dieser Endpunkt ist (bewusst) nicht implementiert.",
   invalid_consumption: "Verbrauch außerhalb 3–20 L/100 km.",
   invalid_speed: "Tempo außerhalb 10–130 km/h.",

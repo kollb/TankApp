@@ -1602,6 +1602,15 @@ class LiveData:
             # heißt „nicht überwacht“ und ist bewusst kein Alarm — aber es
             # steht hier, statt unsichtbar zu bleiben.
             "backup": backup,
+            # O39: Wer im LAN die eigenen Belege lesen kann, ist eine
+            # Entscheidung (docs/BETRIEB.md), keine Nebenwirkung der
+            # Bind-Zeile. ``read_protected: true`` heißt: die persönlichen
+            # Routen (Belege, Bilanz, Tagebuch, Profile, Episoden, Overview)
+            # antworten nur mit ``TANKAPP_READ_TOKEN``; false = offen wie
+            # bisher. Markt- und Modelldaten sind nie betroffen.
+            "personal_data": {
+                "read_protected": bool(getattr(self.settings, "read_token", "")),
+            },
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)

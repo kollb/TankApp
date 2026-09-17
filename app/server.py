@@ -31,6 +31,35 @@ DEPRECATED_ROUTES = {
 }
 SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 
+# O39: Lesbare persönliche Daten. Der Server bindet 0.0.0.0 — jeder Rechner im
+# LAN konnte bisher die eigenen Tankvorgänge (Zeit, Ort, Preis, Menge), die
+# Monatsbilanz, das Prognose-Tagebuch und die Profile lesen. Das bleibt die
+# documented decision „LAN ohne Login“, ist aber seit 0.50.0 eine Entscheidung
+# (docs/BETRIEB.md) und nicht mehr eine Nebenwirkung der Bind-Zeile: Mit
+# ``TANKAPP_READ_TOKEN`` antworten genau diese Routen nur noch mit
+# ``Authorization: Bearer <Secret>``. Markt- und Modelldaten (health,
+# stations, forecast, heatmap, selection, stats/summary) bleiben offen — sie
+# enthalten nichts Persönliches.
+PERSONAL_READ_ROUTES = (
+    "/api/v1/fills",
+    "/api/v1/fills.csv",
+    "/api/v1/fills/summary",
+    "/api/v1/advice/diary",
+    "/api/v1/profiles",
+    "/api/v1/episodes",
+    # /overview bündelt Belege und Episoden — ohne es wäre der Schutz umgehbar.
+    "/api/v1/overview",
+)
+
+
+def _is_personal_read(norm_path: str) -> bool:
+    """Gehört die Route zum persönlichen Datenbestand (O39)?"""
+    if norm_path in PERSONAL_READ_ROUTES:
+        return True
+    # /api/v1/profiles/<id> und /api/v1/fills/<id> tragen dieselben Daten.
+    return norm_path.startswith(("/api/v1/profiles/", "/api/v1/fills/"))
+
+
 # B7-Revalidierung: /overview antwortet mit 304 Not Modified, wenn der
 # Datenstand (ETag = Datenversion + Parameter) unverändert ist — kein Body,
 # keine Neuberechnung. Ein manueller Refresh kostet damit Millisekunden
@@ -573,7 +602,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("ETag", etag)
         self.end_headers()
 
-    def json(self, payload, status=200):
+    def json(self, payload, status=200, extra_headers=None):
         if getattr(self, "_response_started", False):
             # O24: Bei Keep-Alive würde eine zweite Antwort denselben Strom
             # weiterschreiben — der Client läse Müll. Lieber keine Antwort
@@ -606,6 +635,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Encoding", "gzip")
         # Cache-Trennzeichen: Proxies dürfen gzip/unzip nicht verwechseln.
         self.send_header("Vary", "Accept-Encoding")
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -632,6 +663,10 @@ class Handler(SimpleHTTPRequestHandler):
         fuel, city = value("fuel", "e10"), value("city")
         norm_path = path if path.startswith("/api/") else f"/api{path}"
         self._successor = DEPRECATED_ROUTES.get(norm_path)
+
+        # O39: Persönliche Daten nur mit Secret, wenn eines gesetzt ist.
+        if not self._gate_read(norm_path):
+            return _ALREADY_ANSWERED
 
         if norm_path == "/api/v1/health":
             return self.data.health()
@@ -761,6 +796,10 @@ class Handler(SimpleHTTPRequestHandler):
         # A6: CSV-Export der eigenen Tankbelege — eigene Antwortform, deshalb
         # vor dem generischen JSON-Pfad behandelt.
         if url.path == "/api/v1/fills.csv":
+            # O39: Der CSV-Export trägt dieselben Belege wie /api/v1/fills —
+            # derselbe Lese-Schutz, sonst wäre er die offene Hintertür.
+            if not self._gate_read("/api/v1/fills.csv"):
+                return
             self.csv(self.data.fills_csv(), "tankapp-fills.csv")
             return
         if url.path.startswith("/api/") or url.path.startswith("/v1/"):
@@ -854,6 +893,30 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(content)
+        return False
+
+    def _gate_read(self, norm_path: str) -> bool:
+        """O39: Lese-Schutz für den persönlichen Datenbestand; 401 ohne Secret.
+
+        Ohne ``TANKAPP_READ_TOKEN`` passiert nichts — die App bleibt so offen
+        wie bisher (LAN ohne Login). Mit gesetztem Secret antworten die
+        Routen aus ``PERSONAL_READ_ROUTES`` nur noch mit
+        ``Authorization: Bearer <Secret>``; derselbe Vergleich wie beim
+        Uploader-Webhook (``hmac.compare_digest``, kein Timing-Seitenkanal).
+        401 (nicht 403) mit ``WWW-Authenticate``, damit ein Client weiß, dass
+        ein Secret fehlt und nicht etwa die Route.
+        """
+        expected = str(getattr(self.data.settings, "read_token", "") or "")
+        if not expected or not _is_personal_read(norm_path):
+            return True
+        auth = self.headers.get("Authorization", "") if self.headers else ""
+        if hmac.compare_digest(auth, "Bearer " + expected):
+            return True
+        self.json(
+            {"error_code": "unauthorized"},
+            401,
+            extra_headers={"WWW-Authenticate": 'Bearer realm="tankapp"'},
+        )
         return False
 
     def serve_post(self):
