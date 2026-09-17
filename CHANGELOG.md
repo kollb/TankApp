@@ -4,6 +4,61 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.0] – 2026-09-17
+
+**Zwei Produktionsbefunde aus dem Modell-Lauf vom 17.09.2026 (20 Stationen,
+zwei Städte) sind behoben:** Die Selektion lieferte „0 Stationen —
+Stadt-Bestwert 0 %“, obwohl dieselben Daten 20 Prognosen trugen; und die
+Veröffentlichung wuchs mit der zweiten Stadt auf 13,5 MB — über das
+10-MB-Leselimit, die App zeigte überall „keine Prognose“.
+
+### Geändert
+
+- **Selektion: Coverage zählt echte Zeitstempel (B21-Folgefehler):**
+  `_to_matrix` in `engine/selection.py` pivotierte auf den
+  **Roh**-Zeitstempeln und reindexte dann auf das 5-Minuten-Raster — der
+  Collector schreibt `fetched_at` aber mit echter Latenz
+  (Sekunden/Millisekunden), und Archiv-Ereignisse haben beliebige Uhrzeiten.
+  Ohne exakten Raster-Treffer zählte die Coverage fast nichts („Stadt-Bestwert
+  0 %“); das relative Gate behielt je Stadt 0–2 Stationen nach Zufall, und das
+  δ̂-Ranking fiel aus, während der Trainingspfad dieselben Daten problemlos
+  fittete (er snappt mit `ceil` aufs Raster — zwei Wahrheiten für dieselbe
+  Lücke, genau das Problem aus O36). Jetzt snappt die Selektion identisch zum
+  Trainingspfad (`ceil` + letzte Beobachtung je Bucket), gespiegelt in
+  `analysis/station_selection.py::to_matrix`. Die Diagnose zeigt kleine
+  Bestwerte mit einer Nachkommastelle („0,4 %“ statt gerundet „0 %“), damit
+  „sehr dünn“ nicht mehr wie „nichts“ aussieht. Regressionstests: dichtes
+  Polling mit Fetch-Latenz, Versatz-Invarianz (+2 s ⇒ dasselbe Ranking),
+  Archiv-Präfix + Live mit Latenz ≙ rastergenauen Daten.
+- **Veröffentlichung aufgeteilt (O22 Maßnahme d):** Das Polling-Set wuchs von
+  11 auf 20 Stationen; die kompakte, gerundete Monolith-Datei erreichte
+  13,5 MB und fiel über das Leselimit — `publication_unreadable`, „keine
+  Prognose“ überall, während der Job Erfolg meldete. Die Klippe ist eine
+  Eigenschaft der *einzelnen* Datei; deshalb schreibt der Modell-Lauf jetzt
+  **eine Datei je Station/Kraftstoff** unter `runtime/engine/forecasts/`, und
+  `runtime/engine/current.json` ist ein kleiner Index mit Zeigern
+  (`layout: "split-forecast-files"`). `app/data.py::publication()` fügt Index
+  und Stations-Dateien zur gewohnten Bundle-Form zusammen — die Leser
+  (`/forecast`, `/decide`, `/stats/summary`, `/last_forecasts` → RP2-Cache)
+  bleiben unverändert. Alt-Artefakte ohne `layout` bleiben lesbar (Demo-Stapel,
+  Übergang). Der Index ist der Commit-Zeiger: erst Stations-Dateien, dann der
+  Index; verwaiste Stations-Dateien werden best-effort abgeräumt.
+  `publication_status()` prüft jede Datei einzeln (`bytes` = Summe, neu
+  `index_bytes`/`file_count`/`largest_file_bytes`), das Budget gilt der
+  einzelnen Datei, und eine fehlende Stations-Datei ist der neue Grund
+  `incomplete` (eigener Alarm-Text) statt stiller Leere. Einziger Schreiber
+  des Layouts ist `app/data.py::write_split_publication` (aufgerufen von
+  `app/refresh.py`); die Größenzeile im Job-Log nennt Gesamtsumme, Dateianzahl
+  und größte Datei. Messung: 20 Stationen ≈ 13,5 MB gesamt, größte Datei
+  ≈ 0,7 MB — unter Budget und Limit.
+
+**Prüfung:** `pytest -q` (**973 passed**, davon neu: 3 Selektions-Regressionen
+gegen Fetch-Latenz/Versatz, 4 Split-Fälle in `test_o22_publication_size.py`,
+Job-Tests auf Index+Zeiger umgestellt), `ruff check .` und `ruff format
+--check` grün, `npm --prefix web test` (**1090 passed**) und `npm --prefix web
+run build`. E2E im Browser hier nicht lauffähig (Chromium in der Sandbox nicht
+installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
+
 ## [0.48.0] – 2026-09-17
 
 **Batch 5 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.

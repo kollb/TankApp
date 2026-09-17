@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 17.09.2026 · App-Version 0.48.0. Abgleich von
+> Stand: 17.09.2026 · App-Version 0.49.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -281,8 +281,16 @@ Modell-Lauf nennt die Größe im Job-Log. Gemessen an elf Stationen mit
 Produktionsparametern: 22,40 MB → **7,28 MB** (unter dem 8-MB-Check des
 Befunds, über dem Warn-Budget — der Alarm ist real, nicht konstruiert).
 
-**Offen bleibt Maßnahme (d)** — das Aufteilen der Veröffentlichung je
-Kraftstoff/Station; Grund und Abwägung stehen in der Backlog-Tabelle unten.
+**Maßnahme (d) — das Aufteilen der Veröffentlichung je Kraftstoff/Station —
+ist seit 0.49.0 umgesetzt.** Auslöser war der vereinbarte Trigger: Mit der
+zweiten Stadt wuchs das Polling-Set von 11 auf 20 Stationen und die kompakte,
+gerundete Monolith-Datei auf 13,5 MB — über das Leselimit, „keine Prognose“
+überall. Jetzt liegt jede Stations-Prognose in einer eigenen Datei unter
+`runtime/engine/forecasts/`, `current.json` ist ein kleiner Index mit Zeigern
+(`layout: "split-forecast-files"`), und `publication()` fügt beides zur
+gewohnten Bundle-Form zusammen, sodass die Leser unverändert bleiben. Die
+Abwägung von damals steht in der Backlog-Tabelle unten (dort jetzt als
+erledigt markiert).
 
 ### 16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet
 
@@ -565,7 +573,7 @@ Rechnung geändert.
 | **Kampagnen-Quote 6/2/2 auf dem NAS (§2)** | wartet auf Betrieb | Der NAS-Job rankt global Top-10 je Kraftstoff; die 6/2/2-Quotierung existiert nur in der Offline-Pipeline (`analysis/station_selection.py`). Erst relevant, sobald mehr als eine Kampagnenstadt live geht ([Prüfstand §1.2](archiv/PRUEFSTAND-2026-09-10.md)). |
 | **P-Schätzer im Advice-Ledger (Laplace vs. Beta-Binomial)** | entschieden | Implementiert ist Laplace-Glättung `(hits + 10·0,5)/(n + 10)`; das Gutachten schlägt Beta(5,5)-Binomial vor. Beide sind priorsauber — ein Wechsel vor M7 ist nicht messbar, deshalb kein Handlungsbedarf. Seit der P-Seite (§4.1–4.3) dient diese Ledger-Quote nur noch als **Fallback**, wenn keine Draws veröffentlicht sind (Altbestand, kein Modell); das F1/F2-Gate und der Brier-Input sind die Verteilungs-P. |
 | **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | Arbeit | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). |
-| **Veröffentlichung aufteilen je Kraftstoff/Station (O22 Maßnahme d)** | Arbeit | Die Veröffentlichung (`data/runtime/engine/current.json`) ist seit 0.44.0 kompakt und gerundet: elf Stationen mit Produktionsparametern ergeben 7,28 MB statt 22,40 MB, dazu die Alarme `publication_large` (über 6 MB) und `publication_unreadable` (über dem 10-MB-Leselimit oder nicht parsebar). Die Klippe ist damit benannt und gemessen, nicht gebannt: Weitere Stationen oder ein dritter Kraftstoff schieben die Datei wieder über das Leselimit, und dann hilft nur Aufteilen (z. B. eine Datei je Kraftstoff, Muster aus der Selektion). Das ändert die **Form des Artefakts** und damit jeden Leser — `/api/v1/forecast`, `/api/v1/stats/summary`, `/api/v1/decide` und `/api/v1/last_forecasts` (darüber auch der RP2-Cache, `rp2/cache_forecasts.py` holt per HTTP) lesen dieselbe Datei; ein Index-File plus Teildateien braucht atomares Schreiben über mehrere Pfade (heute: eine `write_json`-Transaktion, ein Fehlschlag lässt die vorige Fassung stehen). Erst tun, wenn der Alarm `publication_large` im echten Betrieb dauerhaft steht oder eine Stadt/Kraftstoff dazukommt. Zwischenhebel ohne Formänderung: `bootstrap_samples` senken (`nas_up.ini`) — kostet Genauigkeit der Intervalle, nicht nur Rechenzeit. |
+
 | **Zweites automatisches Backup-Ziel (O33-Rest, B25)** | Arbeit | Seit 0.47.0 meldet die App die Backup-Alterung selbst (`backup_stale` ab 36 h ohne neues `tankapp-runtime-*.tar.gz`, dazu `no_backup`/`directory_missing`), und `ops/nas/backup.sh` behält 14 Tages- plus 6 Monatsstände — ein langsam zerstörender Fehler hat damit einen Stand, zu dem man zurück kann. Offen bleibt Lage (c) des Befunds: Das Ziel liegt auf demselben Gerät wie die Daten, ein NAS-Ausfall nimmt Daten **und** Sicherung mit. Die unersetzbaren Bestände (Tank-Bilanz, Polling-Set mit den Anker-Koordinaten) haben eine **manuelle** Zweitkopie als Entscheidung ([BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup)), aber kein zweites automatisches Ziel. DoD in [TODO.md](../TODO.md): rsync/Cron auf ein zweites Gerät plus Alarm, wenn auch die Zweitkopie altert (Muster aus `app/backup.py`). |
 | **Polling-Set-Umbau bei toten Stationen (A12)** | entschieden | Tote Stationen fallen aus dem Ranking, das Polling-Set bleibt stabil — Tausch nur mit Bestätigung ([STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)). Drei Gründe: (1) Wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden — ein automatischer Ausschluss wäre eine Selbst-Tot-Schleife. (2) Die Batch-Ökonomie (`prices.php`: bis zu 10 UUIDs je Request) macht eine tote Station zu höchstens einem Zehntel Request je Poll — kein Kontingent-Problem, das Automatik rechtfertigt. (3) Der Pfad Alarm → System-Tab → Tausch ist dokumentiert und in der GUI verlinkt. |
 

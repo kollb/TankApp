@@ -142,7 +142,18 @@ def bootstrap_floor_note(engine_samples: int, n_boot: int) -> str | None:
 def _to_matrix(
     df: pd.DataFrame, city: str, step_min: int, ffill_min: float | None
 ) -> pd.DataFrame:
-    """Pivot auf regelmäßiges Raster, Lücken bis ffill_min vorwärts füllen."""
+    """Pivot auf regelmäßiges Raster, Lücken bis ffill_min vorwärts füllen.
+
+    Beobachtungen werden vorher auf das Raster gesnappt (``ceil``) — dieselbe
+    Verfügbarkeits-Semantik wie der Trainingspfad (``engine/data.py``:
+    ``prepare_series``, „Grid labels are availability times (ceiling)“).
+    Ohne den Snap zählt das anschließende ``reindex`` nur Beobachtungen, die
+    **exakt** auf einer Rasterzelle liegen; echte Fetch-Zeitstempel (Collector-
+    Latenz, Sekunden/Millisekunden) und Archiv-Ereignisse (beliebige
+    Uhrzeiten) fallen sonst fast alle heraus, und die Coverage kollabiert auf
+    Zufallstreffer (~0 % — „Stadt-Bestwert 0 %“ im Job-Log vom 17.09.2026,
+    obwohl dieselben Daten 20 Prognosen trugen).
+    """
     d = df[df.city == city]
     if d.empty:
         return pd.DataFrame()
@@ -150,6 +161,12 @@ def _to_matrix(
     if not pd.api.types.is_datetime64_any_dtype(d["timestamp"]):
         d = d.copy()
         d["timestamp"] = pd.to_datetime(d["timestamp"], utc=True)
+    d = d.assign(timestamp=d["timestamp"].dt.ceil(f"{step_min}min"))
+    # Zwei Beobachtungen derselben Station im selben Bucket: die letzte
+    # gewinnt — wie im Trainingspfad (``drop_duplicates(available_at)``).
+    d = d.sort_values("timestamp", kind="stable").drop_duplicates(
+        ["timestamp", "station_id"], keep="last"
+    )
     mat = d.pivot_table(
         index="timestamp", columns="station_id", values="price", aggfunc="mean"
     ).sort_index()
@@ -194,6 +211,19 @@ def scheduled_mask(index: pd.DatetimeIndex, cfg: SelectionConfig) -> np.ndarray:
         else index.tz_convert(cfg.timezone).hour.to_numpy()
     )
     return (hours >= cfg.poll_start) & (hours < cfg.poll_end)
+
+
+def _pct(value: float) -> str:
+    """Prozent-Anzeige, die auch kleine Werte nicht zu „0 %“ rundet.
+
+    ``{:.0%}`` macht aus 0,4 % eine „0 %“ — im Job-Log vom 17.09.2026 sah das
+    aus wie „keine Daten“, war aber nur sehr dünne Abdeckung. Unter 1 % wird
+    deshalb eine Nachkommastelle gezeigt (de-DE-Komma wie in den GUI-Texten).
+    """
+    if not np.isfinite(value):
+        return "–"
+    digits = 0 if abs(value) >= 0.0995 else 1
+    return f"{value:.{digits}%}".replace(".", ",")
 
 
 def coverage_gate(
@@ -812,7 +842,7 @@ def analyse_city_light(
             mat,
             dead_stations + excluded,
             f"nach Coverage-Gate (≥{cfg.min_coverage:.0%} vom Stadt-Bestwert "
-            f"{coverage_reference:.0%} im Fenster "
+            f"{_pct(coverage_reference)} im Fenster "
             f"{cfg.poll_start:02d}–{cfg.poll_end:02d} Uhr) nur {mat.shape[1]} "
             f"Station(en) übrig — LOO braucht ≥4",
             coverage=coverage,

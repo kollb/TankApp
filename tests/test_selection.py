@@ -245,6 +245,117 @@ def test_coverage_gate_survives_archive_prefix():
     assert result["coverage_reference"] < 0.5
 
 
+def test_coverage_gate_survives_real_fetch_latency():
+    """Echte Fetch-Zeitstempel dürfen die Selektion nicht kollabieren lassen.
+
+    Befund 17.09.2026 (Produktion, zwei Städte): „Selektion e10: 0
+    Stationen — Stadt-Bestwert 0 %“, während dieselben Daten 20 Prognosen
+    trugen. Ursache: ``_to_matrix`` pivotierte auf den **Roh**-Zeitstempeln
+    und reindexte dann auf das 5-Minuten-Raster — der Collector schreibt aber
+    ``fetched_at`` mit echter Latenz (Sekunden/Millisekunden), und Archiv-
+    Ereignisse haben beliebige Uhrzeiten. Ohne Snap auf das Raster (ceil,
+    dieselbe Verfügbarkeits-Semantik wie ``engine/data.py::prepare_series``)
+    zählte die Coverage nur zufällige Exakte-Raster-Treffer (~0 %); das
+    relative Gate behielt je Stadt 0–2 Stationen nach Zufall.
+    """
+    rng = np.random.default_rng(17)
+    df = _polling_frame(14, ["a", "b", "c", "d", "e"], start="2026-09-01")
+    # API-Latenz: jeder Poll landet 0,3–4 s nach der Rasterzeit.
+    df = df.assign(
+        timestamp=df["timestamp"]
+        + pd.to_timedelta(rng.uniform(0.3, 4.0, len(df)), unit="s")
+    )
+    result = analyse_city_light(
+        df, "Teststadt", SelectionConfig(n_boot=200), np.random.default_rng(42), {}
+    )
+    assert result["station_count"] == 5, result.get("reason")
+    assert sorted(row["station_id"] for row in result["stations"]) == list("abcde")
+    # Fast lückenlos im Polling-Fenster — nicht „Stadt-Bestwert 0 %“.
+    assert result["coverage_reference"] > 0.98
+
+
+def test_selection_is_invariant_sub_second_shift():
+    """Dieselben Daten mit +2 s Versatz ergeben dasselbe Ranking.
+
+    Gegenprobe zur Zufallsabhängigkeit des alten Pfads: Vor dem Snap
+    entschieden die Nachkommastellen der Zeitstempel darüber, welche
+    (wenigen) Zellen überhaupt gezählt wurden — und damit, welche 0–2
+    Stationen das Gate überstanden.
+    """
+    base = _polling_frame(10, ["a", "b", "c", "d", "e"], start="2026-09-01")
+    shifted = base.assign(timestamp=base["timestamp"] + pd.Timedelta(seconds=2))
+    results = [
+        analyse_city_light(
+            frame,
+            "Teststadt",
+            SelectionConfig(n_boot=200),
+            np.random.default_rng(42),
+            {},
+        )
+        for frame in (base, shifted)
+    ]
+    for result in results:
+        assert result["station_count"] == 5, result.get("reason")
+    ranking = [row["station_id"] for row in results[0]["stations"]]
+    assert [row["station_id"] for row in results[1]["stations"]] == ranking
+
+
+def test_archive_prefix_with_latency_matches_grid_exact_data():
+    """Bootstrap-Betrieb (Archiv + Live) wird durch Latenz nicht verzerrt.
+
+    Dieselbe Stadt einmal mit rastergenauen Zeitstempeln, einmal mit echter
+    Fetch-Latenz — Coverage und Ranking müssen zusammenfallen, sonst misst
+    das Gate die Uhr des Collectors statt die Datenqualität.
+    """
+    rng = np.random.default_rng(9)
+    frames = []
+    for day in range(30):
+        date = pd.Timestamp("2026-06-01", tz="Europe/Berlin") + pd.Timedelta(days=day)
+        hours = np.sort(rng.uniform(0, 24, 12))
+        stamps = pd.DatetimeIndex([date + pd.Timedelta(hours=float(h)) for h in hours])
+        for position, sid in enumerate(["a", "b", "c", "d", "e"]):
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "timestamp": stamps,
+                        "station_id": sid,
+                        "city": "Teststadt",
+                        "fuel": "E10",
+                        "price": 1.70 + 0.01 * position,
+                        "status": "open",
+                        "source": "history",
+                    }
+                )
+            )
+    archive = pd.concat(frames, ignore_index=True)
+    live = _polling_frame(2, ["a", "b", "c", "d", "e"], start="2026-07-01")
+    exact = analyse_city_light(
+        pd.concat([archive, live], ignore_index=True),
+        "Teststadt",
+        SelectionConfig(n_boot=200),
+        np.random.default_rng(42),
+        {},
+    )
+    jittered_live = live.assign(
+        timestamp=live["timestamp"]
+        + pd.to_timedelta(rng.uniform(0.3, 4.0, len(live)), unit="s")
+    )
+    jittered = analyse_city_light(
+        pd.concat([archive, jittered_live], ignore_index=True),
+        "Teststadt",
+        SelectionConfig(n_boot=200),
+        np.random.default_rng(42),
+        {},
+    )
+    assert exact["station_count"] == jittered["station_count"] == 5
+    assert jittered["coverage_reference"] == pytest.approx(
+        exact["coverage_reference"], abs=0.01
+    )
+    assert [row["station_id"] for row in jittered["stations"]] == [
+        row["station_id"] for row in exact["stations"]
+    ]
+
+
 def test_dead_station_is_excluded_by_relative_gate():
     """Das Gate trennt weiter: wer aufhört zu liefern, fliegt raus."""
     frames = []

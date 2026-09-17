@@ -188,9 +188,16 @@ def build_alarms(
                 f"Die Veröffentlichung der Prognosen ist {_mb(publication.get('bytes'))} "
                 f"groß und passt nicht durch das Leselimit von "
                 f"{_mb(publication.get('max_bytes'))} — die App zeigt deshalb "
-                "überall „keine Prognose“. Der nächste Modell-Lauf schreibt "
-                "kompakt und gerundet; bleibt die Datei darüber, Stationszahl "
+                "überall „keine Prognose“. Seit 0.49.0 schreibt der Modell-Lauf "
+                "eine Datei je Station; bleibt eine Datei darüber, Stationszahl "
                 "oder Prognose-Horizonte prüfen."
+            )
+        elif reason == "incomplete":
+            message = (
+                "Die Veröffentlichung der Prognosen ist unvollständig — "
+                "mindestens eine Stations-Datei fehlt oder ist nicht lesbar. "
+                "Die übrigen Prognosen bleiben verfügbar; der nächste "
+                "Modell-Lauf schreibt die Datei neu."
             )
         else:
             message = (

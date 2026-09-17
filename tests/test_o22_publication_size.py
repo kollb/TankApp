@@ -33,6 +33,8 @@ from app.data import (
     PUBLICATION_BUDGET_BYTES,
     READ_JSON_MAX_BYTES,
     LiveData,
+    clear_publication_cache,
+    forecast_file_name,
     publication,
     publication_status,
 )
@@ -367,3 +369,121 @@ def test_compact_write_has_no_indentation(settings, cfg):
     pretty = path.with_name("pretty.json")
     write_json(pretty, json.loads(text), indent=2)
     assert pretty.stat().st_size > path.stat().st_size * 1.2
+
+
+# --- Maßnahme (d): aufgeteilte Veröffentlichung (seit 0.49.0) ---------------
+#
+# Befund 17.09.2026: Das Polling-Set wuchs von 11 auf 20 Stationen (zweite
+# Stadt), die kompakte, gerundete Monolith-Datei erreichte 13,5 MB und fiel
+# über das Leselimit — „keine Prognose“ überall, während der Job Erfolg
+# meldete. Die Klippe ist eine Eigenschaft der einzelnen Datei; seit 0.49.0
+# liegt jede Stations-Prognose in einer eigenen Datei, ``current.json`` ist
+# ein kleiner Index mit Zeigern, und ``publication()`` fügt beides zur
+# gewohnten Bundle-Form zusammen.
+
+
+def _write_split(settings, rows):
+    """Schreibt die aufgeteilte Veröffentlichung über den Original-Schreiber."""
+    from app.data import write_split_publication
+
+    clear_publication_cache()
+    return write_split_publication(
+        settings.runtime / "engine",
+        ORIGIN.isoformat(),
+        rows,
+        index_extra={
+            "failures": [],
+            "policies": [{"mode": "bootstrap"}],
+            "archive_quality": {"events": 1},
+            "gapfill_quality": {"filled": 0},
+            "model_file": "models-test.json",
+            "calibrated": False,
+            "decision_ready": False,
+        },
+    )
+
+
+def test_twenty_stations_split_stay_readable(settings, cfg):
+    """20 Stationen (zwei Städte) über der Monolith-Klippe — lesbar dank Aufteilung.
+
+    Die Summe liegt deutlich über dem Leselimit; entscheiden darf aber nur die
+    einzelne Datei, und die bleibt weit darunter. Kein Alarm, volle 20 Zeilen
+    im Lese-Pfad.
+    """
+    rows = [_forecast_row(position, cfg) for position in range(20)]
+    sizes = _write_split(settings, rows)
+    assert sizes["file_count"] == 20
+    assert sizes["total_bytes"] > READ_JSON_MAX_BYTES  # Monolith wäre gekippt
+    assert sizes["largest_file_bytes"] < PUBLICATION_BUDGET_BYTES
+    assert sizes["index_bytes"] < 100_000  # der Index bleibt klein
+
+    status = publication_status(settings)
+    assert status["readable"] is True
+    assert status["error_code"] is None
+    assert status["bytes"] == sizes["total_bytes"]
+    assert status["over_budget"] is False  # Budget gilt der einzelnen Datei
+    assert status["file_count"] == 20
+
+    bundle = publication(settings)
+    assert len(bundle["forecasts"]) == 20
+    assert all(row.get("points") for row in bundle["forecasts"])
+    assert bundle["published_at"] == ORIGIN.isoformat()
+    assert not _alarms(settings, "publication_unreadable")
+    assert not _alarms(settings, "publication_large")
+
+
+def test_split_missing_station_file_is_incomplete_not_silent(settings, cfg):
+    """Fehlt eine Stations-Datei, ist das ein Alarm — nicht „keine Prognose“."""
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    _write_split(settings, rows)
+    victim = settings.runtime / "engine" / "forecasts" / forecast_file_name(rows[1])
+    victim.unlink()
+    clear_publication_cache()
+
+    status = publication_status(settings)
+    assert status["error_code"] == "publication_unreadable"
+    assert status["reason"] == "incomplete"
+
+    bundle = publication(settings)
+    assert len(bundle["forecasts"]) == 2  # die übrigen bleiben verfügbar
+    assert bundle["skipped_forecast_files"][0]["reason"] == "incomplete"
+
+    alarms = _alarms(settings, "publication_unreadable")
+    assert len(alarms) == 1
+    assert alarms[0]["reason"] == "incomplete"
+    assert "unvollständig" in alarms[0]["message"]
+
+
+def test_split_oversized_station_file_is_an_error(settings, cfg):
+    """Eine einzelne Stations-Datei über dem Limit — die Klippe gilt je Datei."""
+    rows = [_forecast_row(0, cfg)]
+    _write_split(settings, rows)
+    path = settings.runtime / "engine" / "forecasts" / forecast_file_name(rows[0])
+    padding = "x" * (READ_JSON_MAX_BYTES + 100_000)
+    write_json(path, {"forecast": rows[0], "padding": padding}, indent=None)
+    clear_publication_cache()
+
+    status = publication_status(settings)
+    assert status["error_code"] == "publication_unreadable"
+    assert status["reason"] == "too_large"
+    assert _alarms(settings, "publication_unreadable")
+
+
+def test_split_index_alone_carries_no_forecast_payload(settings, cfg):
+    """Der Index trägt Zeiger, keine Prognose-Masse — sonst wäre die Klippe zurück."""
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    _write_split(settings, rows)
+    index = json.loads(
+        (settings.runtime / "engine" / "current.json").read_text(encoding="utf-8")
+    )
+    assert index["layout"] == "split-forecast-files"
+    for entry in index["forecasts"]:
+        assert set(entry) == {
+            "city",
+            "station_id",
+            "fuel",
+            "origin",
+            "retained_previous",
+            "file",
+        }
+        assert (settings.runtime / "engine" / entry["file"]).is_file()

@@ -1,11 +1,15 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.48.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.49.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.47.0: Backup-Alterung wird überwacht (Alarm `backup_stale`,
-> `backup` im Health-Payload), `ops/nas/backup.sh` behält zusätzlich sechs
-> Monatsstände, und der Server antwortet mit HTTP/1.1 (O23, O24, O33 —
-> Batch 4 des [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md)).
+> Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
+> Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
+> gelten der einzelnen Datei, eine fehlende Stations-Datei meldet
+> `reason: "incomplete"`. Davor neu seit 0.47.0: Backup-Alterung wird
+> überwacht (Alarm `backup_stale`, `backup` im Health-Payload),
+> `ops/nas/backup.sh` behält zusätzlich sechs Monatsstände, und der Server
+> antwortet mit HTTP/1.1 (O23, O24, O33 — Batch 4 des
+> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md)).
 > Seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
 > dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
 > Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm
@@ -409,42 +413,51 @@ rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
 
 ### Größe der Veröffentlichung (O22, seit 0.44.0)
 
-`data/runtime/engine/current.json` ist die **einzige** Datei, die der Modell-Lauf
-für die GUI schreibt: die App liest Prognosen und Selektionen ausschließlich von
-dort, der Modell-Lauf selbst nutzt seine eigenen Objekte. Deshalb ist ihre Größe
-eine Betriebszahl, keine Kuriosität: `app/refresh.py` gibt sie kompakt (ohne
-`indent=2`) und auf 4 Dezimalen gerundet aus und meldet sie im Job-Log
-(`models: Veröffentlichung 7,3 MB (11 Stationen, 2 Kraftstoffe, …)`).
+Die Prognosen-Veröffentlichung unter `data/runtime/engine/` ist das, was der
+Modell-Lauf für die GUI schreibt; die App liest ausschließlich dort. Seit
+0.49.0 ist sie **aufgeteilt** (O22 Maßnahme d): `current.json` ist ein kleiner
+Index mit Zeigern (`layout: "split-forecast-files"`), und jede
+Stations-Prognose liegt in einer eigenen Datei unter `forecasts/`
+(`<uuid>.<kraftstoff>.json`). `app/data.py::publication()` fügt Index und
+Stations-Dateien zur gewohnten Form zusammen — die Endpunkte liefern dieselbe
+Struktur wie vorher. Der Grund für die Aufteilung: Mit der zweiten Stadt wuchs
+die Monolith-Datei auf 13,5 MB und fiel über das Leselimit, obwohl kompakt
+geschrieben und gerundet — die App zeigte „keine Prognose“, während der Job
+Erfolg meldete. Die Klippe ist eine Eigenschaft der *einzelnen* Datei; die
+Aufteilung entfernt sie. Der Index ist der Commit-Zeiger: Der Lauf schreibt
+erst die Stations-Dateien, dann den Index; verwaiste Stations-Dateien werden
+best-effort abgeräumt. Die Größe meldet der Lauf im Job-Log
+(`models: Veröffentlichung 13,5 MB gesamt: 20 Stations-Dateien plus Index,
+größte Datei 0,7 MB (Leselimit 10,0 MB je Datei).`).
 
-Zwei Grenzen, beide in `app/data.py`:
+Zwei Grenzen, beide in `app/data.py` — sie gelten seit der Aufteilung der
+**einzelnen Datei**, nicht der Summe:
 
 | Grenze | Wert | Wirkung |
 |---|---|---|
-| `PUBLICATION_BUDGET_BYTES` | 6 MB | Warnung `publication_large` — die Datei ist noch lesbar, aber der Puffer zum Leselimit schrumpft |
-| `READ_JSON_MAX_BYTES` | 10 MB | `read_json` **verweigert** das Lesen (Speicherschutz): die App zeigt überall „keine Prognose“, Fehler `publication_unreadable` mit `reason: "too_large"` |
-
-Größe wächst mit Stationen × Kraftstoffen (`bootstrap_samples` pro Prognose ≈
-2000 Ziehungen je Kraftstoff). Produktion (11 Stationen, Diesel + Super E5)
-landet seit 0.44.0 bei ~7,3 MB — davor bei ~22 MB `indent=2`, also über dem
-Leselimit, obwohl jeder Job „Erfolg“ meldete. Wer weitere Stationen aufnimmt
-oder einen dritten Kraftstoff ergänzt, prüft die Größe danach bewusst.
+| `PUBLICATION_BUDGET_BYTES` | 6 MB | Warnung `publication_large`, wenn eine Datei darüber liegt (heute praktisch unerreichbar: eine Stations-Datei ist ~0,7 MB) |
+| `READ_JSON_MAX_BYTES` | 10 MB | `read_json` **verweigert** das Lesen (Speicherschutz): Fehler `publication_unreadable` mit `reason: "too_large"`; eine fehlende Stations-Datei meldet `reason: "incomplete"` (die übrigen Prognosen bleiben verfügbar) |
 
 ```bash
-# Größe der Veröffentlichung (ohne Parse)
-du -h data/runtime/engine/current.json
-ls -l data/runtime/engine/current.json | awk '{print $5/1048576" MB"}'
-# Lesbarkeit + Kernfelder: muss parsebar sein und .failures enthalten
+# Größe der Veröffentlichung gesamt und je Datei (ohne Parse)
+du -sh data/runtime/engine/current.json data/runtime/engine/forecasts
+du -h data/runtime/engine/forecasts/*.json | sort -h | tail -3
+# Lesbarkeit + Kernfelder: der Index muss parsebar sein und .failures enthalten
 jq -e .failures data/runtime/engine/current.json > /dev/null && echo ok
+# Zeiger zählen und prüfen, dass jede Stations-Datei existiert
+jq -r '.forecasts[].file' data/runtime/engine/current.json | while read -r f; do test -f "data/runtime/engine/$f" || echo "fehlt: $f"; done
 # Größe + Alarm-Lage aus dem Betrieb heraus (ohne Terminal auf dem NAS)
 curl -s "http://<nas>:1355/api/v1/health" | jq '.publication, (.alarms[] | select(.code | startswith("publication")))'
 ```
 
-Beim Aufräumen hilft die Reihenfolge: erst **weniger Kraftstoffe/Stationen** im
-Polling-Set (`data/analysis/stations/polling.json` →
-[STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)) oder **weniger `bootstrap_samples`**
-(`nas_up.ini`, Modell-Lauf wird dadurch langsamer und die Intervalle ungenauer).
-Die Grenzen selbst hochzusetzen ist **keine** Lösung: `READ_JSON_MAX_BYTES`
-schützt den Container-Speicher vor einer einzelnen JSON-Datei.
+Größe wächst weiter mit Stationen × Kraftstoffen — jetzt aber als Summe
+vieler kleiner Dateien, ohne Klippe. Wer aufräumen will: **weniger
+Kraftstoffe/Stationen** im Polling-Set (`data/analysis/stations/polling.json`
+→ [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)) oder **weniger
+`bootstrap_samples`** (`nas_up.ini`, Modell-Lauf wird dadurch langsamer und
+die Intervalle ungenauer). Die Grenzen selbst hochzusetzen ist **keine**
+Lösung: `READ_JSON_MAX_BYTES` schützt den Container-Speicher vor einer
+einzelnen JSON-Datei.
 
 ### Wann erscheinen die Anker-Zeilen im Scoreboard?
 
