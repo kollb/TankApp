@@ -482,10 +482,11 @@ describe("Heute im Blick: Gleichstand als Spanne", () => {
       ...[6, 7, 8, 9, 10, 11].map((hour) => ({
         hour,
         value: 2.289,
+        latest: 2.289,
         tone: "cheap" as const,
         current: hour === 9,
       })),
-      { hour: 18, value: 2.349, tone: "pricey" as const, current: false },
+      { hour: 18, value: 2.349, latest: 2.349, tone: "pricey" as const, current: false },
     ];
     const panel = nowDayPanel(cells);
     expect(panel.bestLabel).toBe("06–12 Uhr");
@@ -498,9 +499,9 @@ describe("Heute im Blick: Gleichstand als Spanne", () => {
 
   it("einzelne günstigste Stunde bleibt 12–13 Uhr", () => {
     const panel = nowDayPanel([
-      { hour: 6, value: 1.759, tone: "pricey", current: false },
-      { hour: 12, value: 1.709, tone: "cheap", current: true },
-      { hour: 18, value: 1.729, tone: "mid", current: false },
+      { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+      { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+      { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
     ]);
     expect(panel.bestLabel).toBe("12–13 Uhr");
     expect(panel.tied).toBe(false);

@@ -812,7 +812,7 @@ export type NowDayPanel = {
   worst: { hour: number; value: number } | null;
   median: number | null;
   spreadCt: number | null;
-  /** Wert der aktuellen Stunde, sonst `null`. */
+  /** Letzter Preis der aktuellen Stunde (O20), sonst `null`. */
   nowValue: number | null;
   /** Jetzt gegenüber dem Tagesmedian (ct/L, positiv = teurer). */
   nowVsMedianCt: number | null;
@@ -863,8 +863,14 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
         Math.floor(open.length / 2)
       ]
     : null;
-  const nowCell = cells.find((cell) => cell.current && cell.value !== null);
-  const nowValue = nowCell?.value ?? null;
+  // O20: Die Zelle trägt das Stunden-Minimum (`value`) und den letzten Preis
+  // der Stunde (`latest`). „Jetzt“ ist ein Zeitpunkt, kein Minimum — die
+  // Jetzt-Kachel zeigt deshalb `latest` und fällt auf das Minimum zurück,
+  // wenn eine Alt-GUI nur `value` liefert.
+  const nowCell = cells.find(
+    (cell) => cell.current && (cell.latest !== null || cell.value !== null),
+  );
+  const nowValue = nowCell?.latest ?? nowCell?.value ?? null;
   const spreadCt = best && worst ? (worst.value - best.value) * 100 : null;
   const nowVsMedianCt =
     nowValue !== null && median !== null ? (nowValue - median) * 100 : null;

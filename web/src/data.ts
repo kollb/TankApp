@@ -749,13 +749,38 @@ export type DecideResult = {
  * weniger Last auf der NAS (File-Locks, HDD) und ein Refresh, der nicht
  * 5–10 s dauert, während die Ansicht tot wirkt.
  */
+/**
+ * O20: Tonlagen-Skala des Tagesstreifens — vom Server gerechnet
+ * (`app/data.py::price_band`), damit GUI und Fallback dieselbe Skala lesen
+ * und keine zweite Implementierung entsteht. `lo`/`hi` sind 25. und 75.
+ * Perzentil der Preise mit Meldung im Bezugszeitraum; `days` nennt, aus wie
+ * vielen Tagen die Skala wirklich stammt.
+ */
+export type StripBand = {
+  lo: number;
+  hi: number;
+  basis?: string;
+  hours?: number;
+  n_points?: number;
+  days?: number | null;
+};
+
 export type Overview = {
   generated_at: string;
   decide: DecideResult;
   fills: Fills;
   stats_summary: StatsSummary;
   episodes: { count: number; episodes: any[] };
-  day: { points: Point[]; error_code: string | null } | null;
+  day: {
+    points: Point[];
+    error_code: string | null;
+    /**
+     * O20: feste Tonlagen-Skala des Tagesstreifens (25./75. Perzentil der
+     * letzten 7 Tage, `app/data.py::price_band`). `null` = zu dünner
+     * Bestand — die GUI zeigt die Zahlen dann ohne Farburteil.
+     */
+    band?: StripBand | null;
+  } | null;
   error_code?: string | null;
 };
 

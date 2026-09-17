@@ -57,7 +57,7 @@ import {
   type NowTarget,
 } from "../now";
 import type { LabSectionId } from "../lab";
-import type { StripCell } from "../strip";
+import { stripBandNote, type StripBand, type StripCell } from "../strip";
 
 /** Was-wäre-wenn-Zustand der Karte (local, kein Setting). */
 export type NowAssumptions = {
@@ -87,6 +87,11 @@ export interface JetztViewProps {
   stations: Station[];
   selectedId: string;
   stripCells: StripCell[];
+  /**
+   * O20: Tonlagen-Skala des Streifens (Server-Band über 7 Tage). `null` =
+   * zu dünner Bestand — die Zellen zeigen Zahlen ohne Farburteil.
+   */
+  stripBand: StripBand | null;
   /** Jüngste Preismeldung — die Fußzeile nennt das Alter. */
   pricesAt: string | null;
   forecastAt: string | null;
@@ -233,6 +238,7 @@ export function JetztView(props: JetztViewProps) {
     pricesAt,
     selectedId,
     stations,
+    stripBand,
     stripCells,
     tankPercent,
     timeValue,
@@ -925,7 +931,7 @@ export function JetztView(props: JetztViewProps) {
                           ? "border-emerald-500/30 bg-emerald-900/30"
                           : cell.tone === "pricey"
                             ? "border-rose-500/30 bg-rose-950/30"
-                            : cell.tone === "mid"
+                            : cell.tone === "mid" || cell.tone === "unrated"
                               ? "border-slate-700/40 bg-slate-800/40"
                               : "border-slate-800 bg-slate-950/40"
                     }`}
@@ -985,8 +991,8 @@ export function JetztView(props: JetztViewProps) {
               })}
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              {dayPanel.coverage} Zahl = €/L · Balken = Höhe im Tagesverlauf ·
-              grün = unteres Drittel · rot = oberes Drittel · Rahmen = jetzt.
+              {dayPanel.coverage} Zahl = €/L (Stunden-Minimum) · Balken =
+              Höhe im Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
             </p>
           </div>
         </>

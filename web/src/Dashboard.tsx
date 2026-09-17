@@ -151,6 +151,7 @@ function DashboardShell() {
     statsSummaryRes,
     fillsSummary,
     series7d,
+    stripBand,
     stripCells,
     effLiters,
     effTimeValue,
@@ -427,6 +428,7 @@ function DashboardShell() {
             decideRes={decideRes}
             stations={stations}
             selectedId={selectedId}
+            stripBand={stripBand}
             stripCells={stripCells}
             pricesAt={nowPricesAt}
             forecastAt={nowForecastAt}
