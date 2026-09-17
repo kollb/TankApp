@@ -4,6 +4,27 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.2] – 2026-09-17
+
+**Lesbare Stations-Achse im Labor.** Nutzer-Feedback vom 17.09.2026: Bei
+„Preis-Abstand je Station · Frankfurt“ standen die Stationsnamen der X-Achse
+bei einem großen Stationsset übereinander — die Achse war nicht mehr lesbar.
+
+### Behoben
+
+- **`DeltaBars` kippt seine X-Beschriftung um 45°, sobald sie nicht mehr
+  nebeneinander passt** (`web/src/components/LabCharts.tsx`): Bisher zeichnete
+  das Diagramm jeden Stationsnamen waagrecht in die feste 720er-Skizze — bei
+  vielen Stationen (Breite je Spur ~20 px, Name ~140 px) lagen alle Texte
+  aufeinander. Gibt der längste Name nicht mehr Platz in einer Balkenspur,
+  kippt die Beschriftung um −45°, der Fußraum wächst mit (das SVG wird höher,
+  die Plotfläche bleibt gleich groß), zu lange Namen werden mit „…“ gekürzt
+  und bleiben vollständig per `<title>` (Hover/Focus) erreichbar. Mit wenigen,
+  kurzen Namen ändert sich nichts — die Achse bleibt waagrecht. Regression:
+  `web/src/components/LabCharts.test.tsx` (3 Fälle: waagrecht unverändert,
+  gekippt + gekürzt + vollständiger Name im `<title>`, Höhe wächst nur im
+  gekippten Fall).
+
 ## [0.49.1] – 2026-09-17
 
 **Zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 sind behoben — und
