@@ -1,7 +1,11 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.46.0** — seit 0.46.0: `notify.mode`
-> (Push-Modus, O42) und `price_implausible`-Zähler (O35) in `/health`,
+> Stand: 17.09.2026 · App-Version **0.47.0** — seit 0.47.0 (Batch 4 des
+> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
+> `backup` (Alter der Laufzeit-Backups, O33) in `/health`, und der Server
+> antwortet mit **HTTP/1.1** statt HTTP/1.0 — mehrere Anfragen teilen sich eine
+> Verbindung (O24). Seit 0.46.0: `notify.mode` (Push-Modus, O42),
+> `price_implausible`-Zähler (O35) in `/health`,
 > `implausible_price` je Station (O35), Fenster-Meldungen über den
 > ntfy-Kanal (O29). Davor: B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
@@ -64,6 +68,16 @@ Budget schützt das Ledger vor einem defekten Client, nicht vor Angreifern;
 Heartbeat, Job-Knopf und Webhook zählen nicht mit, und Lesen bleibt immer
 frei (GUI-Polling).
 
+- **Protokoll (O24, seit 0.47.0):** Der Server antwortet mit `HTTP/1.1` —
+  aufeinanderfolgende Anfragen teilen sich eine Verbindung (Keep-Alive),
+  jede Antwort trägt `Content-Length`. Antworten, die den Request-Body nicht
+  lesen (429 Schreib-Budget, 413 zu großer Body, chunked, unlesbare Länge),
+  beenden die Verbindung und sagen es mit `Connection: close`: Ein ungelesener
+  Body läge sonst vor dem nächsten Request derselben Verbindung. Eine
+  Keep-Alive-Verbindung ohne Anfrage endet nach 65 s
+  (`Handler.timeout`), damit ein vergessenes Tab keinen Thread hält.
+  Nachweis: `curl -sv --http1.1 …/api/v1/health …/api/v1/health` zeigt
+  „Re-using existing connection“.
 - JSON/UTF-8, Zeiten Europe/Berlin angezeigt, UTC gespeichert; `Cache-Control: no-store`
   überall außer: content-hashierte Assets (`/assets/…`, `immutable`) und die
   semi-statischen Antworten `heatmap`/`last_forecasts`
@@ -574,6 +588,9 @@ Antwort:
                   "over_budget": true, "readable": true,
                   "error_code": null, "reason": null},
   "price_implausible": {"count_24h": 0, "last_at": null},
+  "backup": {"configured": true, "count": 14, "monthly_count": 6,
+             "newest_at": "2026-09-17T01:30:04+00:00", "age_hours": 10.5,
+             "stale_hours": 36.0, "stale": false, "reason": null},
   "selection": {"published_at": "...", "count": 20},
   "collector": {
     "available": true,
@@ -624,6 +641,7 @@ grün ohne Alarm.
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
 | `publication_unreadable` | error | Veröffentlichung der Prognosen über `READ_JSON_MAX_BYTES` (`reason: "too_large"`) oder nicht parsebar (`reason: "invalid"`) — die App zeigt überall „keine Prognose“ (O22) |
 | `publication_large` | warn | Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — weitere Stationen oder Kraftstoffe kippen sie über das Leselimit (O22) |
+| `backup_stale` | warn | letztes Laufzeit-Backup älter als `BACKUP_STALE_HOURS` (36 h), Backup-Ziel leer oder nicht erreichbar (O33) |
 
 Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 
@@ -644,6 +662,22 @@ Netz. Einrichten und Verhalten:
 (siehe Stationen); ab dem ersten Wert schlägt Alarm `price_implausible`
 (warn) an. Der Zähler liest nur `data/runtime/quality/implausible_prices.json`
 (je Beobachtung einmal, Dedupe über Station + Zeitstempel).
+
+**`backup`** (O33, seit 0.47.0): Alter der Laufzeit-Backups, die
+`ops/nas/backup.sh` schreibt — nur `stat` über das Zielverzeichnis, kein Netz.
+`configured` ist `false`, wenn `TANKAPP_BACKUP_DIR` nicht gesetzt **oder** das
+Verzeichnis nicht erreichbar ist; `count` zählt die Tagesstände
+(`tankapp-runtime-<JJJJ-MM-TT>.tar.gz`), `monthly_count` die Monatsstände
+(`tankapp-runtime-monthly-<JJJJ-MM>.tar.gz`), `newest_at`/`age_hours` das Alter
+des jüngsten **Tagesstands** — Monatsstände zählen bewusst nicht als
+Herzschlag, sonst deckte ein bis zu 31 Tage alter Monatsstand einen toten Cron
+einen Monat lang zu. `stale` (und damit Alarm `backup_stale`, warn) gilt ab
+`stale_hours` = 36, bei leerem Ziel (`reason: "no_backup"`) und bei nicht
+erreichbarem Ziel (`reason: "directory_missing"`). Ohne konfiguriertes Ziel
+gibt es **keinen** Alarm (`reason: "not_configured"`) — die App weiß nicht, ob
+anderswo gesichert wird; unsichtbar ist der Zustand damit nicht.
+Einrichten und Aufbewahrungsregel:
+[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und

@@ -25,12 +25,31 @@ import numpy as np
 import pandas as pd
 
 
+# O36: Untergrenze für die Bootstrap-Ziehungen der Selektion. Die kleinste
+# erreichbare p-Wert-Stufe ist p_min = 1/(B+1); mit Benjamini-Hochberg über
+# m ≈ 11 Stationen ergibt das q_min ≈ m/(B+1). B = 200 liefert q ≥ 0,0547 —
+# selbst die stärkste Station wäre nie signifikant (docs/ANALYSE.md §B,
+# „B=200 wäre ein Signifikanzblocker“). 1000 lässt Luft für ein größeres
+# Stations-Set, ohne die Rechenzeit des Produktionswerts 2000 zu verlangen.
+SELECTION_MIN_BOOTSTRAP = 1000
+
+
 @dataclass(frozen=True)
 class SelectionConfig:
     fuel: str = "E10"
     min_coverage: float = 0.85
     n_boot: int = 2000
     step_min: int = 5
+    # O36: bewusst eine Zahl statt ``None``. ``None`` bedeutete „Kadenz aus
+    # den Beobachtungen raten“ (``_to_matrix``: max(30, 3 × medianer Abstand),
+    # bei grober Kadenz bis 180 Minuten) — die Selektion füllte damit Lücken,
+    # die der Trainingspfad ablehnt (``engine/data.py``: frisch ≤
+    # ``cfg.ffill_minutes`` = 30). Zwei Wahrheiten für dieselbe Lücke. Seit
+    # 0.47.0 übernimmt :meth:`from_engine_config` die 30 Minuten der Engine:
+    # Der Collector pollt höchstens alle 5 Minuten (MTS-K-Regel), 30 Minuten
+    # decken also sechs verpasste Polls; wer drei Stunden füllt, erfindet
+    # Preise, die das Modell nie sieht. Direkt konstruierte
+    # Konfigurationen (Tests, Werkzeuge) behalten ``None`` als Default.
     ffill_minutes: float | None = None
     tank_volume: float = 40.0
     seed: int = 42
@@ -55,6 +74,62 @@ class SelectionConfig:
     # Ranking (konfigurierbar, Default 7; None/0 = aus). Das Polling-Set
     # bleibt stabil — Tausch nur mit Bestätigung (docs/ANALYSE.md).
     dead_after_days: int | None = 7
+
+    @classmethod
+    def from_engine_config(cls, cfg, **overrides) -> "SelectionConfig":
+        """Selektions-Konfiguration aus der Engine-Konfiguration (O36).
+
+        **Eine Quelle für die gemeinsamen Knöpfe.** Vorher kopierte jeder
+        Aufrufer vier Felder von Hand (``app/selection.py``,
+        ``app/refresh.py``) und ``app/worker.py`` reichte die Ziehungen als
+        Literal (B = 2000) im Job-Dispatcher: Wer ``bootstrap_samples`` in
+        ``engine/config.py`` änderte (z. B. B22 „mehr Samples“), bekam mehr
+        Draws in den Modellen und unverändert 2000 in der Selektion — ohne
+        Fehlermeldung.
+
+        Übernommen werden ``bootstrap_samples`` → ``n_boot``,
+        ``bootstrap_ew_half_life_days``, ``seed``, ``step_minutes`` →
+        ``step_min``, ``ffill_minutes``, ``poll_start``/``poll_end`` und
+        ``timezone``. Nur die Selektion betreffende Felder (``fuel``,
+        ``min_coverage``, ``tank_volume``, ``delta_ew_half_life_days``,
+        ``dead_after_days``) bleiben Default bzw. Override.
+
+        ``n_boot`` bekommt die Signifikanz-Untergrenze
+        (:data:`SELECTION_MIN_BOOTSTRAP`): Ein bewusst kleiner Wert in der
+        Engine-Konfiguration (Demo, Versuch) darf nicht still dazu führen,
+        dass kein q-Wert mehr unter 0,05 kommen kann. Ein explizites
+        ``n_boot``-Override gilt unverändert — es ist die Entscheidung des
+        Aufrufers (Demo-Stapel: B = 400, damit er in Sekunden steht);
+        ``bootstrap_floor_note`` macht die Abweichung sichtbar.
+        """
+        shared = {
+            "n_boot": max(int(cfg.bootstrap_samples), SELECTION_MIN_BOOTSTRAP),
+            "boot_ew_half_life_days": cfg.bootstrap_ew_half_life_days,
+            "seed": int(cfg.seed),
+            "step_min": int(cfg.step_minutes),
+            "ffill_minutes": float(cfg.ffill_minutes),
+            "poll_start": int(cfg.poll_start),
+            "poll_end": int(cfg.poll_end),
+            "timezone": str(cfg.timezone),
+        }
+        shared.update(overrides)
+        return cls(**shared)
+
+
+def bootstrap_floor_note(engine_samples: int, n_boot: int) -> str | None:
+    """Klartext, wenn die Selektion mit mehr Ziehungen rechnet als die Engine.
+
+    ``None`` bei Übereinstimmung — der Normalfall. Gedacht für die Job-Logs
+    (``app/refresh.py``, ``app/selection.py``): Eine Abweichung zwischen zwei
+    Konfigurationsflächen darf nicht still bleiben (O36).
+    """
+    if int(n_boot) == int(engine_samples):
+        return None
+    return (
+        f"Selektion rechnet mit B={int(n_boot)} statt B={int(engine_samples)}: "
+        f"unter B={SELECTION_MIN_BOOTSTRAP} ist mit Benjamini-Hochberg über "
+        "das Stations-Set keine Signifikanz erreichbar (p_min = 1/(B+1))."
+    )
 
 
 def _to_matrix(

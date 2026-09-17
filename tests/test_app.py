@@ -1,5 +1,6 @@
 import csv
 import datetime as dt
+import email.message
 import gzip
 import json
 import os
@@ -890,6 +891,11 @@ def test_http_client_disconnect_stays_silent(app_settings):
     handler.requestline = "GET /api/v1/stations?fuel=e10 HTTP/1.1"
     handler.request_version = "HTTP/1.1"
     handler._headers_buffer = []
+    # O24: Seit HTTP/1.1 prüft serve_get den Request-Body (Keep-Alive darf
+    # keinen ungelesenen Body im Strom lassen) — der Fake-Handler braucht
+    # deshalb Header, im echten Request sind sie immer gesetzt.
+    handler.headers = email.message.Message()
+    handler.close_connection = False
     handler.data = data
     handler.wfile = Disconnecting()
     handler.do_GET()

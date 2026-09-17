@@ -17,11 +17,13 @@ import datetime as dt
 from pathlib import Path
 from typing import Any
 
+from .backup import backup_status, stale_message
 from .data import (
     PRICE_PLAUSIBLE_MAX,
     PRICE_PLAUSIBLE_MIN,
     implausible_price_status,
     publication_status,
+    selection_publication,
 )
 from .feedback import FEEDBACK_MAX_BYTES
 
@@ -52,6 +54,7 @@ def build_alarms(
     polling_error: str | None,
     station_count: int,
     clock=None,
+    backup: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Fasst die vorhandenen Zustandsprüfungen zu einem ``alarms[]``-Block zusammen."""
     alarms: list[dict[str, Any]] = []
@@ -249,6 +252,26 @@ def build_alarms(
             }
         )
 
+    # O33: Backup-Alterung. Stirbt der Cron (NAS-Update, Pfad umbenannt,
+    # Volume ausgehängt), meldete bisher nichts — der Verlust fiel erst beim
+    # Restore auf. Nur ``stat`` über das Backup-Ziel, kein Netz.
+    if backup is None:
+        try:
+            backup = backup_status(settings, clock=clock)
+        except Exception:
+            backup = {}
+    if backup.get("stale"):
+        alarms.append(
+            {
+                "code": "backup_stale",
+                "severity": "warn",
+                "message": stale_message(backup),
+                "reason": backup.get("reason"),
+                "age_hours": backup.get("age_hours"),
+                "newest_at": backup.get("newest_at"),
+            }
+        )
+
     # A12/A13: Station-Lebenszyklus und Preis-Zwillinge aus dem Selektions-Artefakt.
     # Keine neuen Netz-/Influx-Zugriffe — nur die lokale JSON lesen (Health-Budget).
     # Tote Stationen und Zwillinge sind Warnungen (gelb), kein Fehler; Zwillinge
@@ -256,38 +279,29 @@ def build_alarms(
     try:
         import json as _json
 
-        sel_path = (
-            Path(getattr(settings, "runtime", ".")) / "selection" / "current.json"
-        )
-        sel_raw = None
-        try:
-            if sel_path.is_file() and sel_path.stat().st_size < 10_000_000:
-                sel_raw = _json.loads(sel_path.read_text(encoding="utf-8-sig"))
-            else:
-                sel_raw = None
-        except Exception:
-            sel_raw = None
+        # O23: derselbe memoisierte Leser wie /api/v1/selection. Vorher parste
+        # dieser Healthcheck-Pfad die Selektions-Datei selbst — zusammen mit
+        # der Veröffentlichung also zwei komplette Parses je /health.
+        sel_raw = selection_publication(settings)
         # Fallback: einzelne Fuel-Dateien, falls current.json noch nicht da
-        if not isinstance(sel_raw, dict) or "by_fuel" not in sel_raw:
-            sel_raw = sel_raw if isinstance(sel_raw, dict) else {}
-            if "by_fuel" not in sel_raw or not sel_raw.get("by_fuel"):
-                by_fuel_tmp = {}
-                for _fuel in ("e10", "e5", "diesel"):
-                    _p = (
-                        Path(getattr(settings, "runtime", "."))
-                        / "selection"
-                        / f"{_fuel}.json"
-                    )
-                    try:
-                        if _p.is_file() and _p.stat().st_size < 5_000_000:
-                            _d = _json.loads(_p.read_text(encoding="utf-8-sig"))
-                            if isinstance(_d, dict) and _d.get("cities"):
-                                by_fuel_tmp[_fuel] = _d
-                    except Exception:
-                        continue
-                if by_fuel_tmp:
-                    sel_raw = {"by_fuel": by_fuel_tmp}
-        if isinstance(sel_raw, dict) and "by_fuel" in sel_raw:
+        if "by_fuel" not in sel_raw or not sel_raw.get("by_fuel"):
+            by_fuel_tmp = {}
+            for _fuel in ("e10", "e5", "diesel"):
+                _p = (
+                    Path(getattr(settings, "runtime", "."))
+                    / "selection"
+                    / f"{_fuel}.json"
+                )
+                try:
+                    if _p.is_file() and _p.stat().st_size < 5_000_000:
+                        _d = _json.loads(_p.read_text(encoding="utf-8-sig"))
+                        if isinstance(_d, dict) and _d.get("cities"):
+                            by_fuel_tmp[_fuel] = _d
+                except Exception:
+                    continue
+            if by_fuel_tmp:
+                sel_raw = {"by_fuel": by_fuel_tmp}
+        if "by_fuel" in sel_raw:
             total_dead = 0
             total_closed = 0
             total_nofuel = 0

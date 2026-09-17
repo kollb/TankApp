@@ -390,6 +390,43 @@ class Scheduler:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # O24: HTTP/1.1 statt des Defaults HTTP/1.0. Ohne Keep-Alive zahlt jede
+    # der vielen parallelen GUI-Anfragen (/overview, /decide, /stations,
+    # /heatmap, /health, /selection …) einen neuen TCP-Handshake; die
+    # Fallback-GUI auf dem Pi macht es seit jeher richtig
+    # (rp2/fallback_gui.py). Voraussetzung ist eine korrekte Länge auf jeder
+    # Antwort: ``json``/``csv`` setzen ``Content-Length``, ``send_error`` und
+    # der Static-Pfad tun es ebenfalls, ``_not_modified`` (304) trägt bewusst
+    # keinen Body. Wo eine Antwort den Request-Body ungelesen lässt, wird die
+    # Verbindung beendet (``_end_keep_alive``) — sonst verschieben die
+    # restlichen Bytes den nächsten Request derselben Verbindung.
+    protocol_version = "HTTP/1.1"
+    # Keep-Alive-Verbindungen dürfen nicht ewig offen bleiben: Jede Verbindung
+    # belegt einen Thread (ThreadingHTTPServer). 65 s liegen über dem längsten
+    # GUI-Poll (60 s im System-Tab), normale Polls halten die Verbindung also
+    # warm, ein vergessenes Tab endet nach gut einer Minute.
+    timeout = 65.0
+    # Obergrenze für Request-Bodies (Belege, Profile) — unverändert zu vorher,
+    # nur benannt: ``_payload`` und ``_discard_body`` teilen sie sich.
+    MAX_REQUEST_BODY = 100_000
+
+    def handle_one_request(self):
+        # Bei Keep-Alive lebt derselbe Handler über mehrere Requests; die
+        # Antwort-Zustände müssen je Request neu beginnen.
+        self._response_started = False
+        self._connection_header = False
+        super().handle_one_request()
+
+    def send_response_only(self, code, message=None):
+        # Merkt, dass dieser Request bereits eine Antwort angefangen hat.
+        self._response_started = True
+        super().send_response_only(code, message)
+
+    def send_header(self, keyword, value):
+        if keyword.lower() == "connection":
+            self._connection_header = True
+        super().send_header(keyword, value)
+
     def __init__(self, *args, data, **kwargs):
         self.data = data
         self._successor = None
@@ -402,6 +439,73 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def _end_keep_alive(self) -> None:
+        """Verbindung nach dieser Antwort beenden (O24).
+
+        Nötig, sobald der Request-Body nicht gelesen wird (zu groß, Länge
+        unbekannt/chunked, Antwort vor dem Lesen): Bei HTTP/1.1 lägen die
+        übrigen Bytes sonst vor dem nächsten Request derselben Verbindung.
+        """
+        self.close_connection = True
+
+    def _body_length(self) -> int | None:
+        """``Content-Length`` als int — ``None`` bei chunked/ungültig/unbekannt."""
+        if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+            return None
+        try:
+            return int(self.headers.get("Content-Length", "0") or "0")
+        except (TypeError, ValueError):
+            return None
+
+    def _discard_body(self) -> None:
+        """Request-Body lesen und verwerfen, damit Keep-Alive sauber bleibt.
+
+        Für Antworten, die den Body inhaltlich nicht brauchen (501, 429,
+        GET/HEAD mit unerwartetem Body). Über der Obergrenze oder ohne
+        bekannte Länge wird nicht gelesen, sondern die Verbindung beendet.
+        """
+        length = self._body_length()
+        if length is None or length < 0 or length > self.MAX_REQUEST_BODY:
+            self._end_keep_alive()
+            return
+        try:
+            if length:
+                self.rfile.read(length)
+        except (OSError, ValueError):
+            self._end_keep_alive()
+
+    def _payload(self) -> dict | None:
+        """Request-Body als JSON-Dict — oder ``None`` (Antwort ist gesendet).
+
+        Liest den Body **immer zuerst**, auch wenn der Request danach
+        abgelehnt wird: Bei Keep-Alive darf kein Byte im Strom bleiben
+        (dasselbe Muster wie ``rp2/fallback_gui.py::_handle_write``). Die
+        Fehlercodes sind unverändert zu HTTP/1.0-Zeiten: ``invalid_request``
+        (400) bei unlesbarer Länge, ``payload_too_large`` (413),
+        ``invalid_json`` (400), ``invalid_query`` (400) für Nicht-Objekte.
+        """
+        length = self._body_length()
+        if length is None:
+            # Chunked oder unlesbare Länge: nicht raten, Verbindung beenden.
+            self._end_keep_alive()
+            self.json({"error_code": "invalid_request"}, 400)
+            return None
+        if length < 0 or length > self.MAX_REQUEST_BODY:
+            self._end_keep_alive()
+            self.json({"error_code": "payload_too_large"}, 413)
+            return None
+        try:
+            body = self.rfile.read(length) if length else b"{}"
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except Exception:
+            # Der Body ist gelesen, die Verbindung bleibt nutzbar.
+            self.json({"error_code": "invalid_json"}, 400)
+            return None
+        if not isinstance(payload, dict):
+            self.json({"error_code": "invalid_query"}, 400)
+            return None
+        return payload
+
     # Hinweis: Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
     # Browser, Konzept §12 P1 „keine öffentliche API“). Ein API-Rate-Limit
     # (früher 60/min anonym, 429 + X-RateLimit-*) ist seit 0.12.0 entfernt:
@@ -411,6 +515,12 @@ class Handler(SimpleHTTPRequestHandler):
     # Festschreibung „nur Heimnetz/VPN, keine Portfreigabe“ überlassen.
 
     def end_headers(self):
+        # O24: Beendet diese Antwort die Verbindung, sagt der Server es —
+        # sonst schreibt der Client seinen nächsten Request in einen bereits
+        # geschlossenen Socket. ``send_error`` setzt den Header selbst, dann
+        # steht er nicht zweimal da.
+        if self.close_connection and not getattr(self, "_connection_header", False):
+            self.send_header("Connection", "close")
         self.send_header("X-Content-Type-Options", "nosniff")
         # 0.31.0: nicht mehr `no-referrer`. Die OSM-Kachel-Server verlangen
         # für Browser-Anwendungen einen **Referer** (Tile Usage Policy,
@@ -464,6 +574,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def json(self, payload, status=200):
+        if getattr(self, "_response_started", False):
+            # O24: Bei Keep-Alive würde eine zweite Antwort denselben Strom
+            # weiterschreiben — der Client läse Müll. Lieber keine Antwort
+            # als eine verdorbene Verbindung (Fehlerpfade, die nach einer
+            # Antwort auslösen, enden hier).
+            return
         content = json.dumps(
             _sanitize_for_json(payload), ensure_ascii=False, allow_nan=False
         ).encode()
@@ -495,6 +611,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
 
     def csv(self, content: str, filename: str, status=200):
+        if getattr(self, "_response_started", False):
+            return  # siehe json(): eine Antwort je Request (O24)
         body = content.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
@@ -635,6 +753,10 @@ class Handler(SimpleHTTPRequestHandler):
             pass
 
     def serve_get(self):
+        # O24: GET/HEAD haben normalerweise keinen Body — falls doch einer
+        # geschickt wird, muss er weg, sonst liegt er vor dem nächsten
+        # Request derselben Keep-Alive-Verbindung.
+        self._discard_body()
         url = urlsplit(self.path)
         # A6: CSV-Export der eigenen Tankbelege — eigene Antwortform, deshalb
         # vor dem generischen JSON-Pfad behandelt.
@@ -717,11 +839,13 @@ class Handler(SimpleHTTPRequestHandler):
         """B5: Schreib-Budget für Ledger-Endpunkte; antwortet 429 bei Überschreitung.
 
         Zählt je Client-IP und rollender Minute. Antwort ohne Body-Lektüre:
-        Der Handler spricht HTTP/1.0 (Verbindung schließt je Antwort), ein
-        ungelesener Request-Body stört also nicht.
+        Seit O24 spricht der Handler HTTP/1.1 — deshalb wird die Verbindung
+        nach der 429 beendet, sonst läge der ungelesene Request-Body vor dem
+        nächsten Request derselben Verbindung.
         """
         if _write_budget_left(self.client_address[0]):
             return True
+        self._end_keep_alive()
         content = json.dumps({"error_code": "write_rate_limited"}).encode()
         self.send_response(429)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -736,26 +860,10 @@ class Handler(SimpleHTTPRequestHandler):
         url = urlsplit(self.path)
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
 
-        try:
-            length = int(self.headers.get("Content-Length", "0") or "0")
-        except (TypeError, ValueError):
-            # Malformed header: answer 400 instead of dropping the connection.
-            self.json({"error_code": "invalid_request"}, 400)
-            return
-
-        if length < 0 or length > 100_000:
-            self.json({"error_code": "payload_too_large"}, 413)
-            return
-
-        try:
-            body = self.rfile.read(length) if length else b"{}"
-            payload = json.loads(body.decode("utf-8") or "{}")
-        except Exception:
-            self.json({"error_code": "invalid_json"}, 400)
-            return
-
-        if not isinstance(payload, dict):
-            self.json({"error_code": "invalid_query"}, 400)
+        # O24: ein Leser für alle POST-Pfade — liest den Body immer, damit die
+        # Keep-Alive-Verbindung sauber bleibt (Fehlercodes unverändert).
+        payload = self._payload()
+        if payload is None:
             return
 
         # --- Startknopf im GUI: POST /api/v1/jobs/{job}/run (B6) ---
@@ -961,22 +1069,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if not self._gate_write():
                 return
-            try:
-                length = int(self.headers.get("Content-Length", "0") or "0")
-            except (TypeError, ValueError):
-                self.json({"error_code": "invalid_request"}, 400)
-                return
-            if length < 0 or length > 100_000:
-                self.json({"error_code": "payload_too_large"}, 413)
-                return
-            try:
-                body = self.rfile.read(length) if length else b"{}"
-                payload = json.loads(body.decode("utf-8") or "{}")
-            except Exception:
-                self.json({"error_code": "invalid_json"}, 400)
-                return
-            if not isinstance(payload, dict):
-                self.json({"error_code": "invalid_query"}, 400)
+            payload = self._payload()
+            if payload is None:
                 return
             try:
                 res = self.data.update_profile(profile_id, payload)
@@ -985,6 +1079,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.json(res, _profile_status(res))
             return
+        self._discard_body()  # O24: 501 antwortet, ohne den Body zu brauchen
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_DELETE(self):
@@ -994,6 +1089,8 @@ class Handler(SimpleHTTPRequestHandler):
             pass
 
     def serve_delete(self):
+        # O24: DELETE trägt selten einen Body — wenn doch, verwerfen.
+        self._discard_body()
         url = urlsplit(self.path)
         norm_path = url.path if url.path.startswith("/api/") else f"/api{url.path}"
         # A1: Profil löschen — war es aktiv, ist danach keins aktiv.
@@ -1042,7 +1139,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.json({"error_code": "not_implemented"}, 501)
 
     def do_PATCH(self):
-        self.json({"error_code": "not_implemented"}, 501)
+        # O24: PATCH ist nicht implementiert, der Body wird trotzdem
+        # gelesen/verworfen — sonst bleibt er in der Verbindung stehen.
+        try:
+            self._discard_body()
+            self.json({"error_code": "not_implemented"}, 501)
+        except (BrokenPipeError, ConnectionError):
+            pass
 
 
 def make_server(settings, host="0.0.0.0", port=1355, data=None):

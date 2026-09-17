@@ -75,6 +75,13 @@ class Settings:
     # A12: Tote Stationen nach N Kalendertagen ohne Preis aus dem Ranking
     # (konfigurierbar, Default 7; 0 = nie tot). Das Polling-Set bleibt stabil.
     dead_after_days: int = 7
+    # O33: Ziel der Laufzeit-Backups (``ops/nas/backup.sh`` schreibt dorthin
+    # ``tankapp-runtime-<datum>.tar.gz``). Die App liest es **nur** per stat,
+    # um die Backup-Alterung zu melden (Alarm ``backup_stale``). None = keine
+    # Überwachung eingerichtet; das steht dann sichtbar in
+    # ``/api/v1/health`` → ``backup.configured``, statt still wegzufallen.
+    # Im Container muss das Ziel gemountet sein (ops/nas/app/compose.yml).
+    backup_dir: Path | None = None
 
     @property
     def runtime(self):
@@ -128,9 +135,34 @@ class Settings:
                 {"harmonic_ar2", "profile_ar2", "ensemble"},
             ),
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
+            backup_dir=_env_path("TANKAPP_BACKUP_DIR"),
             city_subdivs=_city_subdivs_from_env(),
             dead_after_days=_env_int("TANKAPP_DEAD_AFTER_DAYS", 7, low=0, high=365),
         )
+
+
+def engine_config(settings):
+    """Die Engine-Konfiguration zu diesen Settings — **eine** Quelle (O36).
+
+    Vorher baute jeder Job seine eigene: ``app/refresh.py`` nahm
+    ``city_subdivs`` und ``decision_hour`` aus den Settings, der standalone
+    Selektions-Job (``app/selection.py``) rief ``Config()`` ohne beide — zwei
+    Wahrheiten für dieselbe Engine. Jetzt kommt die Konfiguration hier her,
+    und die Selektion leitet ihre Werte über
+    ``SelectionConfig.from_engine_config`` daraus ab.
+
+    Der Import bleibt in der Funktion: ``engine.config`` zieht pandas, und
+    ``app/config.py`` wird von jedem CLI- und API-Pfad geladen.
+    """
+    from engine.config import Config
+
+    return Config(
+        # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
+        # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
+        city_subdivs=dict(getattr(settings, "city_subdivs", {})),
+        # Schicht-A-Anker (Konzept §5.5): TANKAPP_DECISION_HOUR, Default 12.
+        decision_hour=getattr(settings, "decision_hour", 12),
+    )
 
 
 def _env_choice(name: str, default: str, allowed: set[str]) -> str:
@@ -158,6 +190,12 @@ def _city_subdivs_from_env() -> dict[str, str]:
         if len(sub) == 2 and name.strip():
             out[name.strip()] = sub
     return out
+
+
+def _env_path(name: str) -> Path | None:
+    """Pfad aus der Umgebung; leer oder nur Leerzeichen bedeutet „nicht gesetzt“."""
+    raw = os.environ.get(name, "").strip()
+    return Path(raw) if raw else None
 
 
 def _env_int(name: str, default: int, low: int, high: int) -> int:

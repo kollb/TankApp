@@ -73,8 +73,20 @@ def read_selection(settings):
     }
 
 
-def build_selection(settings, fuels=None, n_boot=2000, progress=None):
+def build_selection(settings, fuels=None, config=None, n_boot=None, progress=None):
     """Baut Selektions-Artefakt aus Trainingsbestand (standalone Job).
+
+    ``config`` ist die Engine-Konfiguration (``engine.config.Config``); ohne
+    Angabe wird sie aus den Settings gebaut (``app.config.engine_config``).
+    Alle gemeinsamen Knöpfe — Ziehungen, Raster, Lückenfüllung, Polling-
+    Fenster, Zeitzone — übernimmt ``SelectionConfig.from_engine_config``
+    (O36): Früher stand hier ``Config()`` und der Aufrufer reichte die
+    Ziehungen als Zahl (B = 2000), eine Änderung von ``bootstrap_samples``
+    wirkte deshalb nur in den Modellen, nicht in der Selektion.
+
+    ``n_boot`` ist ein bewusstes Override für Werkzeuge (Demo-Stapel:
+    B = 400, damit er in Sekunden steht) und gilt unverändert; die Abweichung
+    wird im Fortschritts-Protokoll benannt.
 
     ``progress`` ist das optionale Fortschritts-Protokoll (app/progress.py),
     damit der System-Status der GUI zeigt, welcher Kraftstoff gerade läuft.
@@ -90,8 +102,15 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
 
     try:
         from engine.data import load_observations
-        from engine.selection import SelectionConfig, compute_all
+        from engine.selection import (
+            SelectionConfig,
+            bootstrap_floor_note,
+            compute_all,
+        )
+        from .config import engine_config
         from .data import metadata
+
+        cfg_engine = config if config is not None else engine_config(settings)
 
         metas, problem = metadata(settings)
         if problem:
@@ -119,9 +138,6 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                 continue
 
             try:
-                from engine.config import Config
-
-                cfg_engine = Config()
                 if progress:
                     progress.step(label=f"{fuel}: Trainingsdaten laden")
                 obs, _ = load_observations([train_path], cfg_engine, fuel, ids)
@@ -129,17 +145,25 @@ def build_selection(settings, fuels=None, n_boot=2000, progress=None):
                     if progress:
                         progress.step(label=f"{fuel}: keine Daten")
                     continue
-                # B21: Coverage-Gate nur im Polling-Fenster — dieselbe Config
-                # wie der Modell-Lauf, damit beide Rechnungen dasselbe messen.
-                # A12: dead_after_days aus Settings (konfigurierbar, Default 7)
-                sel_cfg = SelectionConfig(
-                    fuel=fuel.upper(),
-                    n_boot=n_boot,
-                    poll_start=cfg_engine.poll_start,
-                    poll_end=cfg_engine.poll_end,
-                    timezone=cfg_engine.timezone,
+                # O36: eine Quelle — B21 (Coverage-Gate im Polling-Fenster)
+                # und A12 (dead_after_days) sind als Override dabei, alles
+                # Gemeinsame kommt aus der Engine-Konfiguration.
+                overrides = {"fuel": fuel.upper()}
+                if n_boot is not None:
+                    overrides["n_boot"] = int(n_boot)
+                sel_cfg = SelectionConfig.from_engine_config(
+                    cfg_engine,
                     dead_after_days=getattr(settings, "dead_after_days", 7),
+                    **overrides,
                 )
+                note = bootstrap_floor_note(
+                    cfg_engine.bootstrap_samples, sel_cfg.n_boot
+                )
+                if note:
+                    if progress:
+                        progress.step(label=note)
+                    else:
+                        print(f"selection: {note}", flush=True)
                 result = compute_all(obs, sel_cfg, metas_by_city)
                 # B21-Diagnose: Warum 0 Stationen? Coverage, <4 Stationen je Stadt, etc.
                 top_n = len(result.get("top_global", []))

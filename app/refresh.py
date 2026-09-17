@@ -4,7 +4,7 @@ import datetime as dt
 import json
 import uuid
 
-from .config import Settings
+from .config import Settings, engine_config
 from .data import metadata, publication
 
 
@@ -62,10 +62,13 @@ def refresh(settings: Settings, now=None, progress=None):
     import pandas as pd
     import export_influx as influx
     from engine.bootstrap import bootstrap, write_csv
-    from engine.config import Config
     from engine.data import load_observations, prepare_series
     from engine.models import SCHEMA_VERSION
-    from engine.selection import SelectionConfig, compute_all as compute_selection
+    from engine.selection import (
+        SelectionConfig,
+        bootstrap_floor_note,
+        compute_all as compute_selection,
+    )
     from engine.storage import write_json
     from polling_plan import collector_lock
     from .gapfill import fill_gaps
@@ -77,13 +80,9 @@ def refresh(settings: Settings, now=None, progress=None):
         if progress:
             progress.finish("waiting", error or "influx_not_configured")
         return {"state": "waiting", "error_code": error or "influx_not_configured"}
-    # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
-    # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
-    # Schicht-A-Anker (Konzept §5.5): TANKAPP_DECISION_HOUR, Default 12.
-    cfg = Config(
-        city_subdivs=dict(getattr(settings, "city_subdivs", {})),
-        decision_hour=getattr(settings, "decision_hour", 12),
-    )
+    # O36: eine Quelle — dieselbe Factory nutzt der standalone Selektions-Job
+    # (Konzept §3.2 Feiertags-Dummy, §5.5 Schicht-A-Anker aus den Settings).
+    cfg = engine_config(settings)
     origin = (
         (pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC"))
         .tz_convert("UTC")
@@ -553,19 +552,20 @@ def refresh(settings: Settings, now=None, progress=None):
                 metas_by_city: dict[str, dict[str, dict]] = {}
                 for (city, uid), meta in metas.items():
                     metas_by_city.setdefault(city, {})[uid] = meta
-                # n_boot=2000 fest (Davison/Hinkley): bei m=11 Stationen
-                # ist B=200 mathematisch unter α=0,05 nach BH unmöglich.
-                # B21: Das Coverage-Gate misst nur im Polling-Fenster — das
-                # Fenster kommt aus derselben Config wie der Rest des Laufs,
-                # sonst zählt die Selektion Nachtzellen als fehlende Daten.
-                sel_cfg = SelectionConfig(
+                # O36: Die gemeinsamen Knöpfe (Ziehungen, Raster,
+                # Lückenfüllung, Polling-Fenster, Zeitzone) kommen aus der
+                # Engine-Konfiguration — kein zweites Literal. B21: Das
+                # Coverage-Gate misst damit im selben Fenster wie der Rest des
+                # Laufs, sonst zählt die Selektion Nachtzellen als fehlende
+                # Daten. A12: dead_after_days bleibt eine App-Einstellung.
+                sel_cfg = SelectionConfig.from_engine_config(
+                    cfg,
                     fuel=fuel.upper(),
-                    n_boot=2000,
-                    poll_start=cfg.poll_start,
-                    poll_end=cfg.poll_end,
-                    timezone=cfg.timezone,
                     dead_after_days=getattr(settings, "dead_after_days", 7),
                 )
+                note = bootstrap_floor_note(cfg.bootstrap_samples, sel_cfg.n_boot)
+                if note:
+                    print(f"models: {note}", flush=True)
                 sel_result = compute_selection(normalized, sel_cfg, metas_by_city)
                 selections[fuel] = sel_result
                 # B21: „0 Stationen“ ohne Grund ist nicht debuggbar — Diagnose loggen

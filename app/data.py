@@ -668,29 +668,89 @@ def public_job(settings, name):
     return payload
 
 
-# Letzter Lesegrund der Veröffentlichung, geschlüsselt auf den Datei-Stempel:
-# ``publication_status`` braucht ihn (Parse-Fehler sind per ``stat`` unsichtbar),
-# darf dafür aber nicht selbst parsen — /health liegt im 3–5-s-Budget des
-# Docker-Healthchecks (O23 bleibt unbefriedigt, aber unvergrößert).
-_PUBLICATION_READ: dict[str, Any] = {"stamp": None, "reason": None}
+# O23: Veröffentlichung und Selektion werden **je Datenstand** geparst, nicht
+# je Anfrage. Vorher parste jede Anfrage die komplette Datei neu: /health
+# (Docker-Healthcheck alle 30 s + GUI-Poll) einmal, /stats/summary dreimal
+# (Backtest, Güte, Live-Phase) — gemessen 21,7 ms je Health-Aufruf und 90,3 ms
+# je Stats-Aufruf auf einer 2,52-MB-Veröffentlichung, davon 88 % ``json.loads``.
+#
+# Muster: dasselbe wie ``metadata``/``_metadata_stamp`` (Datei-Stempel statt
+# TTL) — nur mit ``st_mtime_ns``, damit zwei Läufe innerhalb derselben Sekunde
+# (Test-Suite, schnelle Job-Folge) nicht denselben Schlüssel ergeben. Der Pfad
+# ist Teil des Schlüssels: Das Memo ist process-global, die App kennt aber
+# mehrere Datenverzeichnisse (Tests, Demo-Stapel).
+#
+# Kosten: Das Memo hält **eine** geparste Veröffentlichung im Speicher —
+# gemessen 3,8× die Dateigröße (2,52 MB Datei → 9,6 MB Python-Objekte). Dafür
+# fällt der Parse aus jedem Lesepfad; ohne Memo zahlt dieselbe Anfrage ihn
+# mehrfach und der Healthcheck dauerhaft.
+_PUBLICATION_MEMO: dict[str, Any] = {"key": None, "value": None, "reason": None}
+_SELECTION_MEMO: dict[str, Any] = {"key": None, "value": None}
+_PUBLICATION_LOCK = threading.Lock()
+_SELECTION_LOCK = threading.Lock()
+
+
+def _memo_stamp(path) -> str:
+    """mtime (ns) + Größe + Inode als Memo-Schlüssel — „absent“ ohne Datei.
+
+    Drei Anteile, weil jeder allein eine Lücke hat: Die ``mtime`` kann auf
+    manchen Dateisystemen grob auflösen (gemessen: zwei Schreibvorgänge im
+    Abstand von Mikrosekunden mit identischem ``st_mtime_ns``), die Größe
+    bleibt bei einem gleich langen Artefakt gleich — und die **Inode** ändert
+    sich bei jedem Schreiber der App, denn ``engine/storage.write_json``
+    ersetzt atomar über Temp-Datei und ``os.replace``. Zusammen gilt: Jeder
+    neue Stand wird erkannt; ein veralteter Eintrag kann nur entstehen, wenn
+    dieselbe Inode bei gleicher Größe und gleicher (grober) mtime neu
+    geschrieben würde — das tut kein Schreiber dieses Projekts.
+    """
+    try:
+        stamp = path.stat()
+        return f"{stamp.st_mtime_ns}:{stamp.st_size}:{stamp.st_ino}"
+    except (OSError, ValueError):
+        return "absent"
 
 
 def publication_path(settings):
     return Path(settings.runtime) / "engine" / "current.json"
 
 
+def selection_publication_path(settings):
+    return Path(settings.runtime) / "selection" / "current.json"
+
+
 def publication(settings):
+    """Veröffentlichung der Prognosen — memoisiert über ``(Pfad, mtime, Größe)``.
+
+    Die Rückgabe ist **gemeinsam genutzt**: Aufrufer lesen sie, sie darf nicht
+    verändert werden (``tests/test_o23_parse_budget.py`` hält das fest). Ein
+    geänderter Datenstand ersetzt den Eintrag vollständig; ein Parse-Fehler
+    liefert ``{}`` und merkt sich den Grund für ``publication_status``.
+    """
     path = publication_path(settings)
+    key = (str(path), _memo_stamp(path))
+    with _PUBLICATION_LOCK:
+        if _PUBLICATION_MEMO["key"] == key and _PUBLICATION_MEMO["value"] is not None:
+            return _PUBLICATION_MEMO["value"]
     raw, reason = read_json_checked(path)
-    stamp = _file_stamp(path)
-    if _PUBLICATION_READ.get("stamp") != stamp:
-        _PUBLICATION_READ["stamp"] = stamp
-        _PUBLICATION_READ["reason"] = reason
-    elif reason is not None:
-        _PUBLICATION_READ["reason"] = reason
-    if not isinstance(raw, dict):
-        return {}
-    return raw
+    value = raw if isinstance(raw, dict) else {}
+    with _PUBLICATION_LOCK:
+        _PUBLICATION_MEMO["key"] = key
+        _PUBLICATION_MEMO["value"] = value
+        _PUBLICATION_MEMO["reason"] = reason
+    return value
+
+
+def clear_publication_cache() -> None:
+    """Verwirft beide Lese-Memos (O23).
+
+    Nur für Tests und für Werkzeuge, die die Dateien selbst schreiben und
+    sofort den neuen Stand lesen wollen. Im Request-Pfad unnötig: Der
+    Datei-Stempel erkennt jede Änderung.
+    """
+    with _PUBLICATION_LOCK:
+        _PUBLICATION_MEMO.update({"key": None, "value": None, "reason": None})
+    with _SELECTION_LOCK:
+        _SELECTION_MEMO.update({"key": None, "value": None})
 
 
 def publication_status(settings) -> dict[str, Any]:
@@ -727,19 +787,37 @@ def publication_status(settings) -> dict[str, Any]:
         status["error_code"] = "publication_unreadable"
         status["reason"] = "too_large"
         return status
-    if _PUBLICATION_READ.get("reason") is not None and _PUBLICATION_READ.get(
-        "stamp"
-    ) == _file_stamp(path):
+    with _PUBLICATION_LOCK:
+        memo_key = _PUBLICATION_MEMO["key"]
+        memo_reason = _PUBLICATION_MEMO["reason"]
+    if memo_reason is not None and memo_key == (str(path), _memo_stamp(path)):
+        # Ein Parse-Fehler ist per ``stat`` unsichtbar — das Lese-Memo (O23)
+        # nennt den Grund, ohne dass diese Prüfung selbst parst.
         status["error_code"] = "publication_unreadable"
-        status["reason"] = _PUBLICATION_READ["reason"]
+        status["reason"] = memo_reason
         return status
     status["readable"] = True
     return status
 
 
 def selection_publication(settings):
-    raw = read_json(settings.runtime / "selection/current.json", {})
-    return raw if isinstance(raw, dict) else {}
+    """Selektions-Artefakt — memoisiert wie :func:`publication` (O23).
+
+    Dieselbe Regel: einmal je Datenstand parsen. ``/api/v1/health`` liest es
+    für die Lebenszyklus- und Preis-Zwilling-Alarme, ``/api/v1/selection`` für
+    die Antwort; vorher parste jeder der beiden Pfade die Datei selbst.
+    """
+    path = selection_publication_path(settings)
+    key = (str(path), _memo_stamp(path))
+    with _SELECTION_LOCK:
+        if _SELECTION_MEMO["key"] == key and _SELECTION_MEMO["value"] is not None:
+            return _SELECTION_MEMO["value"]
+    raw, _reason = read_json_checked(path)
+    value = raw if isinstance(raw, dict) else {}
+    with _SELECTION_LOCK:
+        _SELECTION_MEMO["key"] = key
+        _SELECTION_MEMO["value"] = value
+    return value
 
 
 class LiveData:
@@ -1209,6 +1287,15 @@ class LiveData:
             for name in ("archive", "models", "selection", "settlement")
         }
 
+        # O33: Backup-Alterung — einmal lesen, derselbe Stand dient dem
+        # Alarm-Block und dem Health-Payload (kein zweiter Scan).
+        try:
+            from .backup import backup_status
+
+            backup = backup_status(self.settings, clock=self.clock)
+        except Exception:
+            backup = {"configured": False, "stale": False, "reason": None}
+
         # B4: aggregierter Alarm-Block — nur Aggregation der obigen Prüfungen,
         # keine neuen Netz-/Influx-Zugriffe (Healthcheck-Budget 3–5 s).
         try:
@@ -1222,6 +1309,7 @@ class LiveData:
                 polling_error=problem,
                 station_count=len(metas),
                 clock=self.clock,
+                backup=backup,
             )
         except Exception:
             alarms = []
@@ -1310,6 +1398,10 @@ class LiveData:
             "price_implausible": implausible_price_status(
                 self.settings, clock=self.clock
             ),
+            # O33: Alter des letzten Laufzeit-Backups. ``configured: false``
+            # heißt „nicht überwacht“ und ist bewusst kein Alarm — aber es
+            # steht hier, statt unsichtbar zu bleiben.
+            "backup": backup,
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)

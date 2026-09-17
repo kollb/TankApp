@@ -22,11 +22,13 @@
 > (O1 + O22) ist mit **0.44.0** abgenommen,
 > [Batch 2](#batch-2--p1--die-zahlen-auf-denen-m7-steht) (O17, O5, O6, O4,
 > O38) mit **0.45.0** umgesetzt, [Batch 3](#batch-3--p1--anzeigen-die-leer-sind-oder-das-falsche-zeigen)
-> (O16, O35, O29, O42) mit **0.46.0** umgesetzt — je Befund steht der
-> Vermerk unter dem DoD, Zeilenangaben und Messwerte bleiben als Befund
-> gegen 0.43.2 stehen. O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist
-> bewusst offen ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)).
-> Die übrigen Batches sind unverändert offen.
+> (O16, O35, O29, O42) mit **0.46.0** umgesetzt,
+> [Batch 4](#batch-4--p1--betrieb-kosten-haltbarkeit-kohärenz) (O23, O24,
+> O36, O33) mit **0.47.0** umgesetzt — je Befund steht der Vermerk unter dem
+> DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2 stehen.
+> O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
+> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)); O43 (Nachtrag
+> aus Batch 2) steht in Batch 5. Die übrigen Batches sind unverändert offen.
 
 ## Inhaltsverzeichnis
 
@@ -937,6 +939,21 @@ drei Baufunktionen durchreichen (der Provider-Mechanismus erlaubt das, ohne
 einen circular import einzuführen). Ein Test, der die Parse-Anzahl je
 Anfrage zählt, hält den Gewinn fest.
 
+**Umgesetzt in 0.47.0.** Memo-Schlüssel ist `(Pfad, mtime_ns, Größe, Inode)`
+statt `(mtime, size)`: Gemessen auf diesem Dateisystem änderte sich
+`st_mtime_ns` zwischen zwei Schreibvorgängen im Mikrosekunden-Abstand **nicht**,
+und bei gleich langem Artefakt bliebe auch die Größe gleich — die Inode
+ändert sich dagegen bei jedem Schreiber, denn `engine/storage.write_json`
+ersetzt atomar über Temp-Datei und `os.replace`. `app/alarms.py` liest die
+Selektion über denselben memoisierten Leser (vorher eigener Parse im
+Healthcheck), `evaluate_stats_summary` liest einmal und reicht das Bundle an
+Backtest, Güte-Kacheln und Live-Phase durch. Gemessen (Demo-Stapel, 2,52 MB,
+bester von 5 Läufen, dieselbe Maschine): `/health` **17,0 ms → 0,2 ms**
+(0 Parses), `/stats/summary` **53,0 ms → 0,1 ms** (0 Parses) bzw. 17,2 ms mit
+einem Parse nach einem Datenstandswechsel — Batch-Check „unter 20 ms“
+erfüllt. Kosten: eine geparste Veröffentlichung im Speicher, gemessen 3,8×
+die Dateigröße. Nachweis: `tests/test_o23_parse_budget.py` (8 Fälle).
+
 ### O24 — Der Server spricht HTTP/1.0
 
 **Beleg.** `app/server.py` setzt kein `protocol_version`; damit gilt der
@@ -957,6 +974,21 @@ sauberes Chunking bei großen Antworten (O22, O25).
 `Content-Length` auf allen Pfaden prüfen (Keep-Alive verlangt korrekte
 Längen oder `Connection: close` bei Fehlern). Ein Test, der eine zweite
 Anfrage auf derselben Verbindung stellt, sichert das Verhalten.
+
+**Umgesetzt in 0.47.0.** `protocol_version = "HTTP/1.1"` plus
+`timeout = 65 s` (Keep-Alive belegt je Verbindung einen Thread im
+`ThreadingHTTPServer`; 65 s liegen über dem längsten GUI-Poll von 60 s). Die
+`Content-Length`-Prüfung fand drei Pfade, die antworten, **ohne** den
+Request-Body zu lesen — unter HTTP/1.0 harmlos, unter Keep-Alive verschieben
+die restlichen Bytes den nächsten Request: 429 Schreib-Budget, 413 zu großer
+Body, chunked/unlesbare Länge. Sie beenden jetzt die Verbindung
+(`_end_keep_alive`) und sagen es mit `Connection: close`; `_payload()` liest
+den Body immer zuerst (ein Leser für POST und PUT, Fehlercodes unverändert),
+`_discard_body()` räumt ihn bei GET/PATCH/501 ab, und `json()`/`csv()`
+schicken keine zweite Antwort mehr auf denselben Request. Nachweis:
+`tests/test_o24_http11.py` (10 Fälle) gegen einen echten Server plus die
+curl-Prüfung des Batch-Checks („Re-using existing connection #0“, zwei
+`HTTP/1.1 200` mit `Content-Length`).
 
 ### O25 — Kompression und Revalidierung sind zu teuer und zu selten
 
@@ -1214,6 +1246,27 @@ täglich plus 6 Monatsstände), und in `BETRIEB.md` ein zweites Ziel auf einem
 anderen Gerät oder Datenträger — ausdrücklich als Entscheidung, wenn es beim
 einen Gerät bleiben soll.
 
+**Umgesetzt in 0.47.0.** `app/backup.py` prüft per `stat` das Backup-Ziel
+(`TANKAPP_BACKUP_DIR`, im Container read-only gemountet über
+`ops/nas/app/compose.backup.yml`; `tankapp.py nas-up` hängt die Erweiterung
+bei gesetzter Variable selbst an), `/api/v1/health` → `backup` nennt Alter,
+Anzahl Tages- und Monatsstände, und Alarm `backup_stale` (warn) schlägt ab
+36 Stunden an — plus bei leerem Ziel (`no_backup`) und bei nicht
+erreichbarem Ziel (`directory_missing`), denn genau dann wäre ein Backup
+still verschwunden. Gezählt werden die **Tages**stände: Ein Monatsstand ist
+bis zu 31 Tage alt, ohne dass etwas fehlt, und deckte einen toten Cron sonst
+einen Monat lang zu. Ohne konfiguriertes Ziel gibt es keinen Alarm (die App
+weiß nicht, ob anderswo gesichert wird), aber `configured: false` steht im
+Health-Payload — unsichtbar ist es damit nicht. Aufbewahrung:
+`ops/nas/backup.sh` behält 14 Tagesstände plus 6 Monatsstände
+(`TANKAPP_BACKUP_KEEP_MONTHLY`), die Tages-Rotation nimmt die Monatsstände
+aus. Lage (c) — zweites Ziel — steht als ausdrückliche Entscheidung in
+[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf dem
+NAS plus eine Kopie der unersetzbaren Bestände (Bilanz als `fills.csv`,
+Polling-Set) außerhalb des Geräts; ein zweites **automatisches** Ziel bleibt
+offen und steht im [Todo](../TODO.md). Nachweis:
+`tests/test_o33_backup_stale.py` (9 Fälle).
+
 ### O34 — Historie und Archiv haben keine Aufbewahrungsregel
 
 **Beleg.** Der InfluxDB-Cron in `docs/BETRIEB.md:684–688` schreibt
@@ -1315,6 +1368,30 @@ Dazu ein Test, der `bootstrap_samples=4000` setzt und assertet, dass die
 Selektion mit 4000 rechnet — und ein Ratchet, das Literale wie `n_boot=2000`
 im Worker-Pfad verbietet. `ffill_minutes` bekommt einen bewussten Wert mit
 Begründung, nicht `None` neben `30`.
+
+**Umgesetzt in 0.47.0.** `SelectionConfig.from_engine_config(cfg,
+**overrides)` übernimmt `bootstrap_samples` → `n_boot`,
+`bootstrap_ew_half_life_days`, `seed`, `step_minutes` → `step_min`,
+`ffill_minutes`, `poll_start`/`poll_end` und `timezone`;
+`app/config.py::engine_config(settings)` ist zusätzlich die **eine** Stelle,
+an der die Engine-Konfiguration aus den Settings entsteht — der
+Selektions-Job baute vorher `Config()` ohne `city_subdivs`/`decision_hour`,
+die der Modell-Lauf übernahm (eine vierte Fläche, die im Befund nur als
+`analysis/station_selection.py` gezählt war). `app/worker.py` und
+`app/refresh.py` reichen die Konfiguration durch, `grep -n "n_boot=2000"
+app/worker.py` findet nichts mehr. Der abgeleitete Wert bekommt
+`SELECTION_MIN_BOOTSTRAP = 1000` (`p_min = 1/(B+1)`, `q_min ≈ m/(B+1)` mit
+BH über m ≈ 11): Wer `bootstrap_samples` senkt — etwa als Zwischenhebel gegen
+O22 —, bekommt einen benannten Hinweis statt einer still unwirksamen
+Selektion (`bootstrap_floor_note()` im Job-Log); ein explizites Override
+(Demo: B = 400) gilt unverändert. `ffill_minutes` = 30 in beiden Flächen mit
+Begründung am Feld (Collector pollt höchstens alle 5 Minuten, MTS-K);
+gemessen auf dem Demo-Bestand sind δ̂, KI und q-Werte bitgleich zum alten
+Kadenz-Raten, weil die alte Formel dort `max(30, 3×5) = 30` ergab — die
+Drift verschwindet ohne Zahlenänderung. Nachweis:
+`tests/test_o36_config_source.py` (8 Fälle); die beiden Quellen-Ratchets in
+`tests/test_selection.py` prüften vorher genau die Literale und prüfen jetzt
+die Wirkung.
 
 ### O37 — Der Server misst sich selbst nicht
 
@@ -1717,6 +1794,29 @@ Ziel: Der Dauerbetrieb kostet messbar weniger und verliert nichts.
 **Batch-Abnahme:** Der Healthcheck kostet nichts mehr, Anfragen teilen sich
 eine Verbindung, Backup-Alterung wird gelb, und eine Konfigurationsänderung
 wirkt in der ganzen App.
+
+**Umgesetzt mit 0.47.0.** Alle vier Checks sind erfüllt und als Tests
+festgehalten (`tests/test_o23_parse_budget.py`, `tests/test_o24_http11.py`,
+`tests/test_o36_config_source.py`, `tests/test_o33_backup_stale.py`); die
+Checks im Einzelnen:
+
+| Check | Ergebnis |
+|---|---|
+| `/api/v1/stats/summary` → genau **ein** Parse | erfüllt (`test_stats_summary_parst_die_veroeffentlichung_genau_einmal`) — und alle drei Bereiche zeigen weiterhin ihre Werte |
+| `/api/v1/health` bei unverändertem `(mtime, size)` → **kein** Parse | erfüllt (`test_health_parst_bei_unveraendertem_datenstand_nicht`); Gegenprobe: geänderter Stand wird gelesen |
+| Zwei aufeinanderfolgende Health-Antworten unter 20 ms | erfüllt: **0,2 ms** (vorher 17,0 ms), gemessen auf dem Demo-Stapel, bester von 5 Läufen |
+| `protocol_version == "HTTP/1.1"` und jede Antwort trägt `Content-Length` | erfüllt (`test_handler_spricht_http11_und_hat_ein_idle_timeout`, `test_alle_antworten_tragen_content_length` — inkl. HEAD, 404 und Static) |
+| `curl -sv --http1.1 … /api/v1/health /api/v1/health` zeigt **eine** Verbindung | erfüllt: „Re-using existing connection #0“, zwei `HTTP/1.1 200` mit `Content-Length: 2446` |
+| `bootstrap_samples=4000` → `n_boot == 4000` in der Selektion | erfüllt (`test_build_selection_rechnet_mit_den_ziehungen_der_engine`, durch `build_selection` hindurch) |
+| `grep -n "n_boot=2000" app/worker.py` findet nichts mehr | erfüllt — leer; Ratchet über den ganzen Job-Pfad (`test_kein_ziehungs_literal_im_job_pfad`) |
+| `ffill_minutes` in beiden Flächen derselbe Wert mit Begründung | erfüllt: 30 Minuten, Begründung an der Definition; δ̂/KI/q auf dem Demo-Bestand bitgleich zum alten Kadenz-Raten |
+| 40 Stunden altes Tar → `backup_stale` (warn), frisches Tar → kein Alarm | erfüllt (`test_altes_backup_wird_gelb`, `test_frisches_backup_bleibt_still`), dazu leeres und nicht erreichbares Ziel |
+| Zweites Backup-Ziel und Aufbewahrungsregel in `BETRIEB.md` | erfüllt: 14 Tages- + 6 Monatsstände im Skript, zweites Ziel als ausdrückliche Entscheidung in der Doku (Ratchet `test_aufbewahrungsregel_steht_im_skript_und_in_der_doku`) |
+
+Offen aus diesem Batch: ein zweites **automatisches** Backup-Ziel (rsync auf
+ein anderes Gerät) — als Entscheidung und offener Punkt in
+[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup) und im
+[Todo](../TODO.md) benannt, nicht still gelassen.
 
 ### Batch 5 — P2 · Rechnung und Statistik im Einzelnen
 
