@@ -64,6 +64,102 @@ META_TTL_S = 30.0  # Backstop für das Metadata-Memo (grobes mtime, z. B. NAS)
 READ_JSON_MAX_BYTES = 10_000_000
 PUBLICATION_BUDGET_BYTES = 6_000_000
 
+# O22 Maßnahme (d): Die Veröffentlichung ist **aufgeteilt** — ein kleiner
+# Index (``engine/current.json``) plus eine Datei je Station/Kraftstoff unter
+# ``engine/forecasts/``. Hintergrund: Die Klippe ist eine Eigenschaft der
+# *einzelnen* Datei; mit 20 Stationen wuchs das Monolith-Artefakt auf 13,5 MB
+# (über dem Leselimit), obwohl kompakt geschrieben und gerundet wurde. Jede
+# Stations-Datei bleibt weit unter dem Limit, der Index zeigt auf sie.
+# ``publication()`` fügt beides zur gewohnten Bundle-Form zusammen — die
+# Leser (``/forecast``, ``/decide``, ``/stats/summary``, RP2-Cache) sehen
+# dieselbe Struktur wie vor der Aufteilung. Alt-Artefakte ohne ``layout``
+# bleiben lesbar (ein Monolith übergangsweise, Demo-Stapel, Test-Fixtures).
+PUBLICATION_LAYOUT_SPLIT = "split-forecast-files"
+PUBLICATION_FORECASTS_DIRNAME = "forecasts"
+
+
+def publication_forecasts_dir(settings):
+    """Verzeichnis der Stations-Dateien der aufgeteilten Veröffentlichung."""
+    return publication_path(settings).parent / PUBLICATION_FORECASTS_DIRNAME
+
+
+def forecast_file_name(row) -> str:
+    """Dateiname einer Stations-Prognose in der aufgeteilten Veröffentlichung.
+
+    UUID plus Kraftstoff (mehrere Kraftstoffe je Station sind möglich); der
+    Name ist stabil, damit ein behaltener Vormodell-Lauf (``retained_previous``)
+    seine Datei weiternutzt und nicht doppelt ablegt.
+    """
+    fuel = str(row.get("fuel") or "").strip().lower() or "fuel"
+    return f"{row.get('station_id')}.{fuel}.json"
+
+
+def write_split_publication(engine_dir, published_at, forecasts, index_extra=None):
+    """O22(d): Aufgeteilte Veröffentlichung schreiben — Index + Stations-Dateien.
+
+    Einziger Schreiber dieses Layouts (``app/refresh.py`` ruft die Funktion;
+    Tests schreiben darüber dasselbe Format). Reihenfolge: erst die
+    Stations-Dateien, dann der Index — der Index ist der Commit-Zeiger;
+    schlägt sein Schreiben fehl, bleibt der vorige Stand gültig. Verwaiste
+    Stations-Dateien (Station aus dem Polling-Set entfernt) werden nach dem
+    Index best-effort abgeräumt.
+
+    Rückgabe: ``total_bytes`` (Summe aller Dateien), ``index_bytes``,
+    ``largest_file_bytes`` (die Klippe gilt der einzelnen Datei) und
+    ``file_count`` (Stations-Dateien ohne Index).
+    """
+    from engine.storage import write_json
+
+    engine_dir = Path(engine_dir)
+    forecasts_dir = engine_dir / PUBLICATION_FORECASTS_DIRNAME
+    forecasts_dir.mkdir(parents=True, exist_ok=True)
+    index_rows = []
+    total_bytes = 0
+    largest_bytes = 0
+    for row in forecasts:
+        name = forecast_file_name(row)
+        part_bytes = write_json(
+            forecasts_dir / name,
+            {"schema_version": 1, "published_at": published_at, "forecast": row},
+            indent=None,
+        )
+        total_bytes += part_bytes
+        largest_bytes = max(largest_bytes, part_bytes)
+        index_rows.append(
+            {
+                "city": row.get("city"),
+                "station_id": row.get("station_id"),
+                "fuel": row.get("fuel"),
+                "origin": row.get("origin"),
+                "retained_previous": bool(row.get("retained_previous")),
+                "file": f"{PUBLICATION_FORECASTS_DIRNAME}/{name}",
+            }
+        )
+    index = {
+        "schema_version": 1,
+        "layout": PUBLICATION_LAYOUT_SPLIT,
+        "published_at": published_at,
+        "forecasts": index_rows,
+    }
+    index.update(index_extra or {})
+    index_bytes = write_json(engine_dir / "current.json", index, indent=None)
+    total_bytes += index_bytes
+    largest_bytes = max(largest_bytes, index_bytes)
+    referenced = {entry["file"] for entry in index_rows}
+    for old in sorted(forecasts_dir.glob("*.json")):
+        if f"{PUBLICATION_FORECASTS_DIRNAME}/{old.name}" not in referenced:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+    return {
+        "total_bytes": total_bytes,
+        "index_bytes": index_bytes,
+        "largest_file_bytes": largest_bytes,
+        "file_count": len(index_rows),
+    }
+
+
 # --- Preis-Plausibilität (O35) ----------------------------------------------
 #
 # Ein Paar Grenzen für alle Pfade — eine „zweite Wahrheit“ wäre hier genau
@@ -718,6 +814,45 @@ def selection_publication_path(settings):
     return Path(settings.runtime) / "selection" / "current.json"
 
 
+def _merge_split_publication(raw: dict, base_dir) -> tuple[dict, str | None]:
+    """O22(d): Index + Stations-Dateien zur gewohnten Bundle-Form fügen.
+
+    Der Index trägt je Prognose einen Zeiger (``file``); die Zeile selbst
+    liegt in der Stations-Datei. Rückgabe ist ``(Bundle, Grund)`` — der Grund
+    ist ``None``, wenn alle Dateien lesbar waren, sonst der erste Fehlergrund
+    (für ``publication_status``: fehlende/kaputte Stations-Dateien sind
+    ``incomplete`` bzw. ``too_large``/``invalid``, nie das „missing“ des
+    Erstlauf-Zustands). Unlesbare Zeilen fehlen im Bundle und stehen in
+    ``skipped_forecast_files`` — laut statt still.
+    """
+    rows: list[Any] = []
+    skipped: list[dict] = []
+    reason: str | None = None
+    for entry in raw.get("forecasts") or []:
+        if not isinstance(entry, dict):
+            continue
+        rel = entry.get("file")
+        if not rel or not isinstance(rel, str):
+            rows.append(entry)  # defensive: Inline-Zeile im Index
+            continue
+        part, part_reason = read_json_checked(base_dir / rel)
+        row = part.get("forecast") if isinstance(part, dict) else None
+        if part_reason is None and isinstance(row, dict):
+            rows.append({**row, "file": rel})
+        else:
+            mapped = {
+                "missing": "incomplete",
+                "too_large": "too_large",
+                "invalid": "invalid",
+            }.get(part_reason or "invalid", "invalid")
+            skipped.append({"file": rel, "reason": mapped})
+            reason = reason or mapped
+    merged = {**raw, "forecasts": rows}
+    if skipped:
+        merged["skipped_forecast_files"] = skipped
+    return merged, reason
+
+
 def publication(settings):
     """Veröffentlichung der Prognosen — memoisiert über ``(Pfad, mtime, Größe)``.
 
@@ -725,6 +860,10 @@ def publication(settings):
     verändert werden (``tests/test_o23_parse_budget.py`` hält das fest). Ein
     geänderter Datenstand ersetzt den Eintrag vollständig; ein Parse-Fehler
     liefert ``{}`` und merkt sich den Grund für ``publication_status``.
+
+    Seit O22(d) liegt die Veröffentlichung aufgeteilt (ein Index plus eine
+    Datei je Station); die Funktion fügt sie zur gewohnten Form zusammen.
+    Alt-Artefakte ohne ``layout``-Kennzeichnung werden unverändert gelesen.
     """
     path = publication_path(settings)
     key = (str(path), _memo_stamp(path))
@@ -733,6 +872,10 @@ def publication(settings):
             return _PUBLICATION_MEMO["value"]
     raw, reason = read_json_checked(path)
     value = raw if isinstance(raw, dict) else {}
+    if reason is None and isinstance(raw, dict):
+        if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
+            value, split_reason = _merge_split_publication(raw, path.parent)
+            reason = reason or split_reason
     with _PUBLICATION_LOCK:
         _PUBLICATION_MEMO["key"] = key
         _PUBLICATION_MEMO["value"] = value
@@ -790,11 +933,68 @@ def publication_status(settings) -> dict[str, Any]:
     with _PUBLICATION_LOCK:
         memo_key = _PUBLICATION_MEMO["key"]
         memo_reason = _PUBLICATION_MEMO["reason"]
-    if memo_reason is not None and memo_key == (str(path), _memo_stamp(path)):
+    stamp = _memo_stamp(path)
+    if memo_reason is not None and memo_key == (str(path), stamp):
         # Ein Parse-Fehler ist per ``stat`` unsichtbar — das Lese-Memo (O23)
         # nennt den Grund, ohne dass diese Prüfung selbst parst.
         status["error_code"] = "publication_unreadable"
         status["reason"] = memo_reason
+        return status
+    # O22(d): Bei aufgeteilter Veröffentlichung entscheidet jede Stations-
+    # Datei einzeln über die Lesbarkeit. Die Zeiger stehen im Index; das
+    # Memo hat ihn bereits geparst, sonst holt die Prüfung das nach (der
+    # Index ist klein — die Stations-Dateien bleiben bei reinem ``stat``).
+    bundle = None
+    if memo_key == (str(path), stamp):
+        with _PUBLICATION_LOCK:
+            bundle = _PUBLICATION_MEMO["value"]
+    if not isinstance(bundle, dict) or bundle.get("layout") != PUBLICATION_LAYOUT_SPLIT:
+        if isinstance(bundle, dict):
+            status["readable"] = True
+            return status
+        parsed, parse_reason = read_json_checked(path)
+        if parse_reason in ("invalid", "too_large"):
+            # Kaputter Index: Die Prüfung hat den Grund gerade selbst gesehen —
+            # ehrlich melden statt „lesbar“ (das Memo ergänzt ihn sonst erst,
+            # nachdem ein anderer Leser geparst hat).
+            status["error_code"] = "publication_unreadable"
+            status["reason"] = parse_reason
+            return status
+        if (
+            not isinstance(parsed, dict)
+            or parsed.get("layout") != PUBLICATION_LAYOUT_SPLIT
+        ):
+            status["readable"] = True
+            return status
+        bundle = parsed
+    total = size
+    largest = size
+    count = 0
+    worst_reason = None
+    for entry in bundle.get("forecasts") or []:
+        rel = entry.get("file") if isinstance(entry, dict) else None
+        if not rel or not isinstance(rel, str):
+            continue
+        count += 1
+        try:
+            part_size = (path.parent / rel).stat().st_size
+        except (OSError, ValueError):
+            worst_reason = worst_reason or "incomplete"
+            continue
+        total += part_size
+        largest = max(largest, part_size)
+        if part_size > READ_JSON_MAX_BYTES:
+            worst_reason = worst_reason or "too_large"
+    status["bytes"] = total
+    status["index_bytes"] = size
+    status["file_count"] = count
+    status["largest_file_bytes"] = largest
+    # Das Budget gilt der einzelnen Datei (der Klippe), nicht der Summe: Die
+    # Aufteilung entfernt die Klippe, Gesamtwachstum ist kein Alarm mehr.
+    status["over_budget"] = largest > PUBLICATION_BUDGET_BYTES
+    if worst_reason is not None:
+        status["error_code"] = "publication_unreadable"
+        status["reason"] = worst_reason
         return status
     status["readable"] = True
     return status

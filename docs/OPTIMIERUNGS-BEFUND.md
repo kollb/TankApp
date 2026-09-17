@@ -866,7 +866,11 @@ Größe einer Veröffentlichung mit Produktionsparametern begrenzt (z. B. unter
 8 MB bei 11 Stationen), macht die Klippe zu einem roten Build statt zu einem
 stummen Nachmittag.
 
-**Umgesetzt in 0.44.0: (a), (b), (c) — (d) bewusst offen.**
+**Umgesetzt in 0.44.0: (a), (b), (c) — (d) bewusst offen. Maßnahme (d) ist seit
+0.49.0 umgesetzt**, nachdem der vereinbarte Auslöser eintrat (zweite Stadt,
+20 Stationen, 13,5 MB > Leselimit): eine Datei je Station unter
+`runtime/engine/forecasts/`, `current.json` als Index mit Zeigern,
+`publication()` fügt zur gewohnten Form zusammen (Leser unverändert).
 
 - **(a) Laut werden:** `READ_JSON_MAX_BYTES`/`PUBLICATION_BUDGET_BYTES`
   (10/6 MB) als benannte Grenzen in `app/data.py`, `read_json_checked()`

@@ -1,6 +1,11 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.48.0** — neu seit 0.48.0 (Batch 5 des
+> Stand: 17.09.2026 · App-Version **0.49.0** — neu seit 0.49.0: die
+> Prognose-Veröffentlichung ist aufgeteilt (eine Datei je Station, Index mit
+> Zeigern, O22 Maßnahme d); der `publication`-Block im Health-Payload nennt
+> zusätzlich `index_bytes`/`file_count`/`largest_file_bytes` und den Grund
+> `incomplete`, die Endpunkte liefern dieselbe Struktur wie vorher.
+> Davor neu seit 0.48.0 (Batch 5 des
 > [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
 > normierte Fenstersterne mit Rohwert/Basisrate (O12), 0,5-Gleichstände (O7),
 > strikte Belegfenster und Netto-Umweg-Provenienz (O8/O9), 7×24-
@@ -613,8 +618,10 @@ Antwort:
     "selection": {"state": "success", ...}
   },
   "models": {"published_at": "...", "count": 20, "calibrated": false, "decision_ready": false},
-  "publication": {"bytes": 7280000, "budget_bytes": 6000000, "max_bytes": 10000000,
-                  "over_budget": true, "readable": true,
+  "publication": {"bytes": 13500000, "index_bytes": 4200, "file_count": 20,
+                  "largest_file_bytes": 720000,
+                  "budget_bytes": 6000000, "max_bytes": 10000000,
+                  "over_budget": false, "readable": true,
                   "error_code": null, "reason": null},
   "price_implausible": {"count_24h": 0, "last_at": null},
   "backup": {"configured": true, "count": 14, "monthly_count": 6,
@@ -641,16 +648,25 @@ Antwort:
 kein `.git`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
 Oberflächen (NAS, RP2-Proxy/Fallback, Pi) die Frage „was läuft hier?“.
 
-**`publication`** (O22, 0.44.0): Größe und Lesbarkeit der Veröffentlichung der
-Prognosen (`data/runtime/engine/current.json`) — ohne Parse, nur `stat`, damit
-das Healthcheck-Budget bleibt. `bytes` (Dateigröße, `null` wenn keine Datei),
-`budget_bytes` (= 6 MB, `app.data.PUBLICATION_BUDGET_BYTES`), `max_bytes`
-(= 10 MB, `READ_JSON_MAX_BYTES` — darüber liest `read_json` die Datei nicht),
-`over_budget`, `readable`, `error_code` (`publication_unreadable` oder `null`)
-und `reason` (`missing` · `too_large` · `invalid`). Eine **fehlende** Datei ist
-kein Fehler: Vor dem ersten Modell-Lauf gibt es keine Veröffentlichung
-(`reason: "missing"`, `error_code: null`). Der Modell-Lauf nennt dieselbe Zahl
-im Job-Log (`models: Veröffentlichung 7,3 MB …`).
+**`publication`** (O22, 0.44.0; aufgeteilt seit 0.49.0): Größe und Lesbarkeit
+der Veröffentlichung der Prognosen (`data/runtime/engine/`) — die Stations-
+Dateien bleiben bei reinem `stat`, damit das Healthcheck-Budget bleibt. Seit
+0.49.0 ist die Veröffentlichung aufgeteilt: `current.json` ist ein kleiner
+Index mit Zeigern, jede Stations-Prognose liegt unter `forecasts/` (O22
+Maßnahme d); die Klippe gilt der **einzelnen** Datei. `bytes` (Summe aller
+Dateien, `null` wenn kein Index), `budget_bytes` (= 6 MB,
+`app.data.PUBLICATION_BUDGET_BYTES`), `max_bytes` (= 10 MB,
+`READ_JSON_MAX_BYTES` — darüber liest `read_json` eine Datei nicht),
+`over_budget` (seit der Aufteilung: die größte Datei über dem Budget),
+`readable`, `error_code` (`publication_unreadable` oder `null`) und `reason`
+(`missing` · `too_large` · `invalid` · `incomplete` — Letzteres heißt: eine
+Stations-Datei fehlt, die übrigen Prognosen bleiben verfügbar). Bei
+aufgeteilter Veröffentlichung zusätzlich `index_bytes`, `file_count` und
+`largest_file_bytes`. Ein **fehlender** Index ist kein Fehler: Vor dem ersten
+Modell-Lauf gibt es keine Veröffentlichung (`reason: "missing"`,
+`error_code: null`). Der Modell-Lauf nennt dieselben Zahlen im Job-Log
+(`models: Veröffentlichung 13,5 MB gesamt: 20 Stations-Dateien plus Index,
+größte Datei 0,7 MB …`).
 
 **`alarms[]`** (B4): Aggregation der vorhandenen Prüfungen, **ohne** neue Netz-
 oder InfluxDB-Zugriffe (das 3–5-s-Budget des Docker-Healthchecks bleibt). Jeder
@@ -668,8 +684,8 @@ grün ohne Alarm.
 | `job_aborted` (+ `job`) | warn | Lauf hart beendet (z. B. Container-Neustart); letzte Ergebnisse bleiben erhalten |
 | `store_too_large` | error | Feedback-Store über `FEEDBACK_MAX_BYTES` — Belege werden abgelehnt |
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
-| `publication_unreadable` | error | Veröffentlichung der Prognosen über `READ_JSON_MAX_BYTES` (`reason: "too_large"`) oder nicht parsebar (`reason: "invalid"`) — die App zeigt überall „keine Prognose“ (O22) |
-| `publication_large` | warn | Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — weitere Stationen oder Kraftstoffe kippen sie über das Leselimit (O22) |
+| `publication_unreadable` | error | Eine Datei der Prognose-Veröffentlichung über `READ_JSON_MAX_BYTES` (`reason: "too_large"`), nicht parsebar (`reason: "invalid"`) oder eine Stations-Datei fehlt (`reason: "incomplete"`, die übrigen Prognosen bleiben verfügbar) — seit 0.49.0 gilt die Klippe der einzelnen Datei (O22) |
+| `publication_large` | warn | Eine Datei der Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — seit der Aufteilung (0.49.0) praktisch unerreichbar, eine Stations-Datei ist ~0,7 MB (O22) |
 | `backup_stale` | warn | letztes Laufzeit-Backup älter als `BACKUP_STALE_HOURS` (36 h), Backup-Ziel leer oder nicht erreichbar (O33) |
 
 Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).

@@ -5,7 +5,7 @@ import json
 import uuid
 
 from .config import Settings, engine_config
-from .data import metadata, publication
+from .data import metadata, publication, write_split_publication
 
 
 # Aufgaben je Station: Fit+24 h, +3 d, +7 d, Backtest (siehe app/model_jobs.py).
@@ -22,7 +22,13 @@ def _mb(size: int) -> str:
     return f"{size / 1_000_000:.1f} MB".replace(".", ",")
 
 
-def _report_publication_size(size: int, progress=None) -> str:
+def _report_publication_size(
+    size: int,
+    progress=None,
+    *,
+    largest_file_bytes: int | None = None,
+    file_count: int | None = None,
+) -> str:
     """O22: Die Größe der Veröffentlichung ins Job-Log — laut statt still.
 
     Der Alarm selbst kommt aus ``/api/v1/health`` (``app/alarms.py``): Dort ist
@@ -31,11 +37,32 @@ def _report_publication_size(size: int, progress=None) -> str:
     trotzdem — wer dem Lauf zuschaut, soll die Klippe kommen sehen, bevor
     ``read_json`` die Datei nicht mehr liest.
 
+    Seit O22(d) ist die Veröffentlichung aufgeteilt (Index + eine Datei je
+    Station); ``largest_file_bytes`` kennzeichnet diesen Modus, und die Klippe
+    gilt der **einzelnen** Datei, nicht der Summe.
+
     Rückgabe ist die Log-Zeile (Tests prüfen sie, ohne ``capsys`` zu brauchen).
     """
     from .data import PUBLICATION_BUDGET_BYTES, READ_JSON_MAX_BYTES
 
-    if size > READ_JSON_MAX_BYTES:
+    if largest_file_bytes is not None:
+        if largest_file_bytes > READ_JSON_MAX_BYTES:
+            text = (
+                f"Veröffentlichung {_mb(size)} in {file_count} Stations-Dateien "
+                f"plus Index — die größte Datei ({_mb(largest_file_bytes)}) liegt "
+                f"über dem Leselimit {_mb(READ_JSON_MAX_BYTES)}: Die App kann "
+                "sie nicht lesen und zeigt für diese Station „keine Prognose“."
+            )
+            sticky = True
+        else:
+            text = (
+                f"Veröffentlichung {_mb(size)} gesamt: {file_count} "
+                f"Stations-Dateien plus Index, größte Datei "
+                f"{_mb(largest_file_bytes)} (Leselimit "
+                f"{_mb(READ_JSON_MAX_BYTES)} je Datei)."
+            )
+            sticky = False
+    elif size > READ_JSON_MAX_BYTES:
         text = (
             f"Veröffentlichung {_mb(size)} — über dem Leselimit "
             f"{_mb(READ_JSON_MAX_BYTES)}: Die App kann sie nicht lesen und "
@@ -628,7 +655,11 @@ def refresh(settings: Settings, now=None, progress=None):
                 and key[2] in settings.model_fuels
                 and key not in fresh_keys
             ):
-                forecasts.append({**prior, "retained_previous": True})
+                # O22(d): Der Lese-Pfad bringt je Zeile den Dateizeiger der
+                # aufgeteilten Veröffentlichung mit — er gehört nicht in die
+                # neu geschriebene Stations-Datei.
+                retained = {k: v for k, v in prior.items() if k != "file"}
+                forecasts.append({**retained, "retained_previous": True})
         if progress:
             progress.phase(
                 "publish",
@@ -649,16 +680,26 @@ def refresh(settings: Settings, now=None, progress=None):
         # Veröffentlichung ist ein Maschinen-Artefakt. Mit Einrückung lag sie bei
         # elf Stationen gemessen über dem Leselimit von ``app.data.read_json``,
         # und die App fiel lautlos in den „keine Prognose“-Zustand, während
-        # dieser Job Erfolg meldete. Die Größenkontrolle danach ist der zweite
-        # Teil: ``_report_publication_size`` nennt die Zahl im Job-Log, und
-        # ``/api/v1/health`` macht daraus ``publication_large`` bzw.
-        # ``publication_unreadable``.
-        publication_bytes = write_json(
-            output / "current.json",
-            {
-                "schema_version": 1,
-                "published_at": origin.isoformat(),
-                "forecasts": forecasts,
+        # dieser Job Erfolg meldete.
+        #
+        # O22 Maßnahme (d): **Aufgeteilte Veröffentlichung.** Mit 20 Stationen
+        # wuchs selbst die kompakte, gerundete Monolith-Datei auf 13,5 MB und
+        # damit über das 10-MB-Leselimit (17.09.2026) — die App zeigte überall
+        # „keine Prognose“, während dieser Job Erfolg meldete. Die Klippe ist
+        # eine Eigenschaft der *einzelnen* Datei; deshalb liegt jetzt jede
+        # Stations-Prognose in einer eigenen Datei unter ``forecasts/``, und
+        # ``current.json`` ist ein kleiner Index mit Zeigern. ``publication()``
+        # (app/data.py) fügt Index + Stations-Dateien zur gewohnten Bundle-Form
+        # zusammen, sodass die Leser (``/forecast``, ``/decide``,
+        # ``/stats/summary``, ``/last_forecasts`` → RP2-Cache) unverändert
+        # bleiben. Reihenfolge: erst die Stations-Dateien, dann der Index —
+        # der Index ist der Commit-Zeiger; schlägt sein Schreiben fehl, bleibt
+        # der vorige Stand gültig (``test_failed_publication_write_...``).
+        sizes = write_split_publication(
+            output,
+            origin.isoformat(),
+            forecasts,
+            index_extra={
                 "failures": failures,
                 "policies": policies,
                 "archive_quality": archive_quality,
@@ -667,9 +708,13 @@ def refresh(settings: Settings, now=None, progress=None):
                 "calibrated": False,
                 "decision_ready": False,
             },
-            indent=None,
         )
-        _report_publication_size(publication_bytes, progress)
+        _report_publication_size(
+            sizes["total_bytes"],
+            progress,
+            largest_file_bytes=sizes["largest_file_bytes"],
+            file_count=sizes["file_count"],
+        )
         # Bounded model diagnostics; raw archive and current publication are not pruned.
         for old in sorted(
             output.glob("models-*.json"), key=lambda p: p.stat().st_mtime, reverse=True

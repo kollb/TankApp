@@ -39,12 +39,13 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.48.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
-0.48.0 ist Batch 5 des Optimierungs-Befunds: konsistente Rechnung und Statistik
-(O2/O3, O7–O15, O43), inklusive Beleg-Provenienz, Forecast-Support und
-stationsexkludierter Heatmap. Mitgezogen sind [API.md](API.md),
-[BETRIEB.md](BETRIEB.md), [LUECKEN.md](LUECKEN.md),
-[OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md), [../TODO.md](../TODO.md) und
+nicht gegen 0.49.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.49.0 behebt zwei Produktionsbefunde vom 17.09.2026: die Selektion snappt
+Beobachtungs-Zeitstempel wie der Trainingspfad aufs Raster (Coverage zählte
+sonst nur exakte Raster-Treffer), und die Prognose-Veröffentlichung ist
+aufgeteilt (eine Datei je Station, Index mit Zeigern, O22 Maßnahme d).
+Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
+[LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
 [../CHANGELOG.md](../CHANGELOG.md).
 
 | Dokument | Stand | Warum nicht mitgezogen |

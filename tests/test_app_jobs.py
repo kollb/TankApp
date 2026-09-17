@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import app.data as app_data
 from app.config import Settings
 from app.model_jobs import PUBLICATION_DECIMALS
 from app.refresh import refresh
@@ -94,12 +95,24 @@ def test_refresh_warmstarts_without_months_of_polling_and_marks_retained_model(
     output.write_text(json.dumps(old))
     result = refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
     assert result["state"] == "partial"
-    publication = json.loads(output.read_text())
-    assert publication["calibrated"] is False and publication["decision_ready"] is False
+    # O22(d): aufgeteilte Veröffentlichung — der Index ist klein und trägt
+    # Zeiger; die vollen Zeilen liegen je Station unter ``forecasts/`` und
+    # kommen über ``publication()`` als gewohntes Bundle zurück.
+    index = json.loads(output.read_text())
+    assert index["layout"] == "split-forecast-files"
+    assert index["calibrated"] is False and index["decision_ready"] is False
+    assert all("file" in entry for entry in index["forecasts"])
+    publication = app_data.publication(model_setup)
     by_id = {row["station_id"]: row for row in publication["forecasts"]}
     assert by_id[UID]["points"] and by_id[UID]["retained_previous"] is False
     assert by_id[OTHER]["origin"] == old["forecasts"][0]["origin"]
     assert by_id[OTHER]["retained_previous"] is True
+    assert (
+        "file"
+        not in json.loads((output.parent / index["forecasts"][0]["file"]).read_text())[
+            "forecast"
+        ]
+    )
     assert publication["policies"][0]["mode"] == "bootstrap"
     model_path = output.parent / publication["model_file"]
     assert model_path.exists()
@@ -167,20 +180,33 @@ def test_publication_is_written_compact_parseable_and_measured(model_setup, caps
     result = refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
     assert result["state"] in ("success", "partial")
 
+    # O22(d): Der Index ist klein und kompakt; die Prognosen-Masse liegt in
+    # den Stations-Dateien, die ebenfalls kompakt und gerundet sein müssen.
     text = path.read_text(encoding="utf-8")
     assert text.count("\n") == 1  # nur der Abschluss-Umbruch, keine Einrückung
     assert '": ' not in text and '", ' not in text
     assert "NaN" not in text and "Infinity" not in text
-    bundle = json.loads(text)
-    assert isinstance(bundle["failures"], list)
-    assert bundle["calibrated"] is False and bundle["decision_ready"] is False
+    index = json.loads(text)
+    assert index["layout"] == "split-forecast-files"
+    assert isinstance(index["failures"], list)
+    assert index["calibrated"] is False and index["decision_ready"] is False
+    assert index["forecasts"], "ohne Stations-Zeiger ist der Index leer"
+    part_path = path.parent / index["forecasts"][0]["file"]
+    part_text = part_path.read_text(encoding="utf-8")
+    assert part_text.count("\n") == 1
+    assert '": ' not in part_text and '", ' not in part_text
+    assert "NaN" not in part_text and "Infinity" not in part_text
     # Gerundete Preise/Quantile (Maßnahme c) — sechs Stellen sind Ballast.
-    row = bundle["forecasts"][0]
+    row = json.loads(part_text)["forecast"]
     for point in row["points"][:5]:
         for key in ("q025", "q10", "q50", "q90", "q975"):
             value = point[key]
             if value is not None:
                 assert round(value, PUBLICATION_DECIMALS) == value
+    # Der Lese-Pfad fügt Index + Stations-Dateien zur gewohnten Form.
+    bundle = app_data.publication(model_setup)
+    assert len(bundle["forecasts"]) == len(index["forecasts"])
+    assert bundle["forecasts"][0]["points"]
 
     out = capsys.readouterr().out
     assert "Veröffentlichung" in out and "MB" in out
@@ -1531,9 +1557,7 @@ def test_refresh_publishes_backtest_provenance_and_reuses_daily_cache(
     refresh(model_setup, now=cutoff)
     first_calls = len(calls)
     assert first_calls >= 1
-    publication = json.loads(
-        (model_setup.runtime / "engine/current.json").read_text(encoding="utf-8")
-    )
+    publication = app_data.publication(model_setup)
     row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
     assert row["backtest_cached"] is False
     assert row["backtest_computed_at"]
@@ -1543,9 +1567,7 @@ def test_refresh_publishes_backtest_provenance_and_reuses_daily_cache(
     # Zweiter Lauf zwei Stunden später am selben lokalen Tag: kein Backtest.
     refresh(model_setup, now=cutoff + dt.timedelta(hours=2))
     assert len(calls) == first_calls
-    again = json.loads(
-        (model_setup.runtime / "engine/current.json").read_text(encoding="utf-8")
-    )
+    again = app_data.publication(model_setup)
     row2 = next(r for r in again["forecasts"] if r["station_id"] == UID)
     assert row2["backtest_cached"] is True
     assert row2["backtest_computed_at"] == row["backtest_computed_at"]
@@ -1563,8 +1585,6 @@ def test_refresh_backtest_cache_can_be_disabled(model_setup, monkeypatch):
     cutoff = dt.datetime(2026, 8, 5, 12, tzinfo=dt.timezone.utc)
     refresh(settings, now=cutoff)
     assert not (settings.runtime / "engine/backtest-cache").exists()
-    publication = json.loads(
-        (settings.runtime / "engine/current.json").read_text(encoding="utf-8")
-    )
+    publication = app_data.publication(settings)
     row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
     assert row["backtest_cached"] is False and row["backtest_computed_at"] is None

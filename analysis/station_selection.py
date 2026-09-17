@@ -177,9 +177,24 @@ def to_matrix(df: pd.DataFrame, city: str, step_min: int,
     NaN bleibt, wo der Preis wirklich unbekannt ist (Staleness, s. KONZEPT.md §3.1).
     """
     d = df[df.city == city]
+    # Snap auf das Raster (ceil) wie der Trainingspfad (engine/data.py:
+    # prepare_series): Roh-Zeitstempel mit Sekunden/Millisekunden (echte
+    # Fetch-Zeiten, Archiv-Ereignisse) fallen sonst beim reindex fast alle
+    # heraus und die Coverage kollabiert auf Zufallstreffer (~0 %), obwohl
+    # dieselben Daten die Modelle tragen (Befund 17.09.2026). Zwei
+    # Beobachtungen derselben Station im selben Bucket: die letzte gewinnt.
+    if len(d):
+        if not pd.api.types.is_datetime64_any_dtype(d["timestamp"]):
+            d = d.copy()
+            d["timestamp"] = pd.to_datetime(d["timestamp"], utc=True)
+        d = d.assign(timestamp=d["timestamp"].dt.ceil(f"{step_min}min"))
+        d = d.sort_values("timestamp", kind="stable").drop_duplicates(
+            ["timestamp", "station_id"], keep="last")
     mat = (d.pivot_table(index="timestamp", columns="station_id",
                          values="price", aggfunc="mean")
              .sort_index())
+    if mat.empty:
+        return mat
     grid = pd.date_range(mat.index.min().floor(f"{step_min}min"),
                          mat.index.max().ceil(f"{step_min}min"),
                          freq=f"{step_min}min")
