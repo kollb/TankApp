@@ -51,7 +51,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "4.2"
+VERSION = "4.3"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -1031,18 +1031,42 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         **s,
                         "fuel": fuel,
                         "price": s.get(fuel) if s["status"] == "open" else None,
+                        # O44: Die gebaute App (``web/dist``) liest je Zeile
+                        # ``observed_at`` für Alter und Frische-Fußzeile; der
+                        # Puffer führt den Poll-Zeitstempel als ``fetched_at``.
+                        # Dieselbe Beobachtungszeit, zweiter Feldname — ohne
+                        # sie stünde in der Oberfläche „Stand unbekannt“.
+                        "observed_at": s.get("fetched_at"),
                     }
                 )
+            # O44: ``cities`` gehört in die Antwort, weil die gebaute App
+            # daraus die aktive Stadt wählt und ihre Zeilen dann über
+            # ``row.city`` filtert. Genannt werden deshalb die **Labels**,
+            # die in den Zeilen stehen (das eigene Template nutzt weiter
+            # ``city_options`` mit dem Set-Key als Wert).
+            cities = list(
+                dict.fromkeys(
+                    str(s.get("city") or "").strip()
+                    for s in snap["stations"]
+                    if str(s.get("city") or "").strip()
+                )
+            )
             self._json(
                 {
                     "generated_at": utcnow().isoformat(),
                     "fuel": fuel,
+                    "cities": cities,
                     "fresh_minutes": FRESH_MINUTES,
                     "stations": out,
                     "fresh_prices": sum(
                         1 for s in out if s["fresh"] and s["price"] is not None
                     ),
                     "nas_status": "offline" if not ctx.nas.online else "online",
+                    # Ehrlichkeit in der App-Form: Der Fallback kennt weder
+                    # Kalibrierung noch Modell-Prognosen (die kommen aus dem
+                    # RP2-Cache, nicht aus der Engine-Veröffentlichung).
+                    "calibrated": False,
+                    "decision_ready": False,
                 }
             )
 
@@ -1134,7 +1158,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             if fuel not in FUELS:
                 self._error(400, f"fuel muss einer von {', '.join(FUELS)} sein")
                 return
-            station = (query.get("station", [""])[0] or "").strip()
+            # O44: Die gebaute App fragt ``station_id`` (NAS-Schreibweise), das
+            # eigene Template ``station``. Beide meinen dieselbe UUID — ohne
+            # diesen Alias antwortete der Fallback der App mit 400 und der
+            # Verlauf blieb leer, obwohl der Puffer die Reihe hat.
+            station = (
+                query.get("station", query.get("station_id", [""]))[0] or ""
+            ).strip()
             if not station:
                 self._error(400, "station fehlt (Station-UUID)")
                 return

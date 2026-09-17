@@ -8,6 +8,7 @@ import {
   commaToDot,
   compressedAxis,
   currentPrice,
+  usableStations,
   dayAfterLabel,
   deTrimmed,
   detourEconomics,
@@ -1326,5 +1327,66 @@ describe("V5: Einheiten und Zeitraumformen aus einer Quelle", () => {
     expect(timeSpanLabel(24)).toBe("24 Stunden");
     expect(timeSpanLabel(72)).toBe("3 Tage");
     expect(timeSpanLabel(168)).toBe("7 Tage");
+  });
+});
+
+
+describe("O44: Fremde Stations-Payloads sind kein Stations-Payload", () => {
+  // Befund 17.09.2026: Der Pi-Fallback (rp2/fallback_gui.py, Port 8000)
+  // antwortete der gebauten App mit `{fuel, stations, fresh_prices}` — ohne
+  // `cities`. Die Ansicht las `data?.cities.includes(city)` und die App blieb
+  // weiß (`Cannot read properties of undefined (reading 'includes')`).
+  const row = {
+    station_id: "a",
+    city: "Frankfurt",
+    name: "Station A",
+    brand: "ARAL",
+    fuel: "e10",
+    maps_url: null,
+    dist_km: 1,
+    dist_mode: "road",
+    price: 1.7,
+    last_price: 1.7,
+    status: "open",
+    fresh: true,
+    observed_at: null,
+    age_minutes: 1,
+  } as const;
+
+  it("nimmt das echte Stations-Payload unverändert", () => {
+    const payload = {
+      generated_at: "2026-09-17T20:00:00+02:00",
+      cities: ["Frankfurt"],
+      fuel: "e10" as const,
+      stations: [row as never],
+      connection_error: null,
+      fresh_prices: 1,
+    };
+    expect(usableStations(payload)).toBe(payload);
+  });
+
+  it("weist eine Antwort ohne `cities`/`stations` als „kein Payload“ aus", () => {
+    // Fallback-Form ohne cities, Fehlerobjekt, HTML-Rest — alles kein Payload.
+    expect(
+      usableStations({
+        fuel: "e10",
+        stations: [row],
+        fresh_prices: 1,
+      } as never),
+    ).toBeNull();
+    expect(usableStations({ error_code: "decide_failed" } as never)).toBeNull();
+    expect(usableStations(null)).toBeNull();
+    expect(usableStations(undefined)).toBeNull();
+    // Ein leeres, aber vollständiges Payload bleibt gültig („noch keine
+    // Stationen“) — leer ist ein Zustand, fehlend ist ein Defekt.
+    const empty = {
+      generated_at: "2026-09-17T20:00:00+02:00",
+      cities: [],
+      fuel: "e10" as const,
+      stations: [],
+      connection_error: null,
+      fresh_prices: 0,
+    };
+    expect(usableStations(empty)).toBe(empty);
   });
 });

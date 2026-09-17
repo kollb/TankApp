@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.49.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.49.1 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
@@ -1050,6 +1050,39 @@ Bedarf `TANKAPP_BUILD_COMMIT=<hash>` als Umgebung für den Container setzen
 (`app/version.py` liest sie beim Import). Die RP2-Fallback-GUI trägt einen
 eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
 Version: [CHANGELOG](../CHANGELOG.md).
+
+### 404-Wand und Absturz auf `<RP2-IP>:8000` (Fallback-Modus, seit 0.49.1)
+
+Symptom aus dem Betrieb vom 17.09.2026: Am Pi füllt sich die Browser-Konsole
+mit `404` (`stats/summary`, `fills`, `fills/summary`, `selection`, `heatmap`,
+`forecast`, `advice/diary`, `collector/status`, `jobs/models`, `log`) und
+`400` (`series` mit `hours=24`/`168`), dazu
+`Uncaught TypeError … (reading 'includes')` und eine weiße Seite.
+
+Das ist kein Serverfehler, sondern die Grenze der beiden Antwortflächen: Die
+RP2-Fallback-GUI beantwortet genau sieben Pfade (`health`, `stations`,
+`forecasts`, `decide`, `series`, `nas-check` und die Oberfläche selbst) und
+liefert für alles andere bewusst `404` — sie hat nur den Live-Puffer des Pi.
+`/api/v1/series` ist zudem eine andere Reihe als die NAS-Ausführung (Parameter
+`station` statt `station_id`/`hours`, Tagesverlauf 06–24 Uhr aus dem Puffer,
+siehe [RP2.md](RP2.md#fallback-api-und-umschaltzeiten)).
+
+Zu prüfen ist nur, welche Oberfläche dort ausgeliefert wird:
+
+```bash
+curl -s http://<RP2-IP>:8000/ | head -3          # v4-Vorlage („FALLBACK · RP2“) oder SPA?
+curl -s http://<RP2-IP>:8000/api/v1/health | python3 -m json.tool | head -20
+grep -o 'tankapp-fallback-gui [^>]*' rp2/templates/index.html   # Template-Marker
+```
+
+- **Eigene v4-Vorlage:** Nur der Fallback-Teil der Konsole ist erwartbar; die
+  SPA-404s dürfen nicht auftreten.
+- **Gebaute NAS-GUI (`TEMPLATE_DIR` auf `web/dist`):** Die 404s und der
+  `series`-Fehler sind erwartbar. Seit **0.49.1** trägt die
+  Stations-Antwort des Fallbacks `cities` und je Zeile `observed_at`
+  (RP2 v4.3), und die App behandelt Antworten ohne `cities`/`stations` als
+  „kein Payload“ statt abzustürzen — mit einem Update auf beiden Seiten ist
+  die weiße Seite weg (Empfehlungen, Heatmaps und Belege bleiben NAS-Sache).
 
 ### GUI-Update und Offline-Queue (B10, seit 0.38.0)
 

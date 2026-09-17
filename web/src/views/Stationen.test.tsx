@@ -215,4 +215,35 @@ describe("Stationen: Datenfolge ist kein Defekt (Regression)", () => {
     expect(html).toContain("Erst ein Set, dann der Atlas");
     expect(html).not.toContain('role="alert"');
   });
+
+  // O44 (Befund 17.09.2026): Mit Stationen rendert der Vergleich — und der
+  // las `decide.alternatives_nearby.find(...)` ohne Klammer-Zusatz. Ein
+  // Fehlerpayload (`{error_code, detail}`) hat keine Alternativen: Die
+  // Ansicht stürzte komplett ab („Cannot read properties of undefined“),
+  // obwohl sie laut Entwurf nur den Vergleich ohne Server-Netto zeigen soll.
+  it("stürzt mit Stationen nicht am Fehlerpayload ab und vergleicht ohne Server-Netto", () => {
+    const broken = {
+      error_code: "decide_failed",
+      detail: "TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'",
+    } as unknown as DecideResult;
+    const rows = [station("aral", { price: 1.749 }), station("b", { price: 1.689 })];
+    const html = render({
+      stations: rows,
+      data: stationsPayload(rows),
+      decideRes: {
+        data: broken,
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    // Der Preisseiten-Vergleich steht weiter da — ohne Quelle-Zeile, weil der
+    // Server nichts gerechnet hat (kein Server-Netto, ehrlich „ohne Umweg“).
+    expect(html).toContain("A gegen B");
+    expect(html).toContain("ohne Umweg");
+    expect(html).not.toContain("Quelle: die Umweg-Rechnung des Servers");
+    // Der Grund bleibt der Datenfolge-Zustand der Liste, kein roter Fehler.
+    expect(html).not.toContain('role="alert"');
+  });
 });

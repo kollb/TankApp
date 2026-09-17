@@ -8,7 +8,11 @@
 > alle 42 Befunde in Batches mit Priorität und Check gruppiert
 > ([10](#10-batches-priorität-und-check)). Nachtrag 17.09.2026: Befund O43
 > kam bei der Umsetzung von O17 (Batch 2, 0.45.0) hinzu und steht in
-> Batch 5. Geprüft wurde der Bestand gegen sich selbst:
+> Batch 5. Zweiter Nachtrag am Abend desselben Tages: Befund **O44** kam aus
+> dem Produktionsbetrieb (zwei Abstürze, `.includes`/`.find` auf fremden
+> Payloads) und steht in [7](#7-dimensionen-die-in-der-aufzählung-fehlten) —
+> umgesetzt mit 0.49.1, außerhalb der Batches.
+> Geprüft wurde der Bestand gegen sich selbst:
 > `engine/`, `app/`, `web/src/`, `rp2/`, `ops/` und `data-tools/`, dazu
 > Messungen am Demo-Stapel und an synthetischen 70-Tage-Daten — Protokoll und
 > Grenzen in [8](#8-gemessen-statt-behauptet). Bewusst **nicht** wiederholt
@@ -27,9 +31,12 @@
 > O36, O33) mit **0.47.0** und [Batch 5](#batch-5--p2--rechnung-und-statistik-im-einzelnen)
 > (O2, O3, O7–O15, O43) mit **0.48.0** umgesetzt — je Befund steht der Vermerk
 > unter dem DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2
-> stehen. O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
-> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)); die übrigen
-> Batches sind unverändert offen.
+> stehen. **O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist mit 0.49.0
+> umgesetzt** ([LUECKEN.md](LUECKEN.md#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)):
+> Die zweite Stadt hob das Polling-Set auf 20 Stationen und die Monolith-Datei
+> auf 13,5 MB — der vereinbarte Auslöser trat ein, jede Stations-Prognose liegt
+> jetzt in einer eigenen Datei, `current.json` ist ein Index mit Zeigern. Die
+> übrigen Batches (6–8) sind unverändert offen.
 
 ## Inhaltsverzeichnis
 
@@ -1205,7 +1212,10 @@ demselben Maßstab: Beleg am Code, kein Verdacht. Vier davon sind im
 Wesentlichen erledigt und stehen deshalb in [9](#9-was-schon-richtig-ist),
 acht haben Befunde ergeben (O33–O42). Ein neunter (O43) kam am 17.09.2026
 bei der Umsetzung von O17 hinzu — Nachtrag in der Dimensions-Tabelle und in
-Batch 5.
+Batch 5. Ein zehnter (O44) kam am Abend desselben Tages aus dem
+Produktionsbetrieb hinzu: zwei Abstürze, beide an einer Antwort, die nicht die
+erwartete Form hatte (fehlende Empfehlung, Pi-Fallback) — Nachtrag unten,
+umgesetzt mit 0.49.1.
 
 | Dimension | Ergebnis der Prüfung |
 |---|---|
@@ -1221,6 +1231,7 @@ Batch 5.
 | Recht und Lizenz | **Kein Befund.** Die GUI nennt Quelle und Lizenz samt Abfrage-Regel (`web/src/Dashboard.tsx:615`: „Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten“), `web/src/views/Settings.tsx:722` ebenso; Privatdaten und Schlüssel sind gitignored (`.gitignore`: `data/`, `polling.json`, `*.netrc`, `config.local.json`) |
 | Zeit, DST, Uhr | **Kein Befund.** `engine/data.py:237` (`local_day_hours`) und `:257` (`dst_transition_days`) behandeln Umstellungstage, der Backtest weist sie aus (H5), und `tanked_at` wird serverseitig validiert (`app/feedback.py:736–751`, `invalid_tanked_at` als 400) — O1 kann darauf aufbauen |
 | O1-Vollständigkeit (Nachtrag 17.09.2026 aus der O17-Umsetzung) | Befund [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel): Die Validierung greift, aber der Pfad ohne Angabe leitet nichts ab — Stempel echt, Stunde erfunden |
+| Robustheit gegen fremde Antwortformen (Nachtrag 17.09.2026 abends aus dem Betrieb) | Befund [O44](#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite): `null` in den Draws ließ `decide` an einem `TypeError` scheitern (nur der Code `decide_failed` war sichtbar), und zwei Stellen lasen Felder ungeprüft (`alternatives_nearby.find`, `cities.includes`) — die zweite traf den Pi-Fallback, der kein `cities` lieferte |
 | Sicherheit gegen Injection und Pfadzugriff | **Kein Befund.** Statische Auslieferung ist auf `settings.static` beschränkt und prüft `is_relative_to` (`app/server.py:695–696`), Schreib-Endpunkte haben ein Budget mit 429 (`:714–723`), Job-Log-Zeilen gehen durch `redact` (`app/data.py:883`), Fehlermeldungen durch `app/errors.public_detail` |
 | Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
 | Skalierbarkeit | Läuft auf [O22](#o22--die-veröffentlichung-passt-nicht-mehr-durch-das-leselimit) hinaus: Die Grenze ist nicht die Rechenzeit, sondern die Publikationsgröße |
@@ -1613,6 +1624,69 @@ Server-Stempels in Europe/Berlin und `clock_hour_source == "server"`.
 auf den dokumentierten Server-Buchungszeitstempel gesetzt. Damit fließt der
 Beleg in die richtige Wochentag×Stunden-Zelle, und `wh_clock_sources.server`
 macht die Herkunft prüfbar.
+
+### O44 — Zwei Abstürze aus dem Produktionsbetrieb: fremde Antwortformen brechen die Seite
+
+**Beleg (Betrieb 17.09.2026, 18:24 UTC bzw. 20:25 Uhr Ortszeit).** Der
+Modell-Lauf war erfolgreich (20 Prognosen, 0 Fehler), trotzdem standen zwei
+Abstürze im Browserprotokoll:
+
+1. `Uncaught TypeError: Cannot read properties of undefined (reading 'find')`
+   im Stations-Chunk, dazu in „Jetzt“ nur „Empfehlung konnte nicht berechnet
+   werden. Code: `decide_failed`“. Ursache auf der Rechenseite:
+   `app/pside.py::_supported` prüfte `value != value` und damit nur `NaN` —
+   `None` (aus `null` in `runtime/engine/forecasts/*.json`, wo die Engine ein
+   Fenster ohne Beobachtung mit `NaN` füllt) galt als Messwert. Die erste
+   Sortierung im Fenster warf `TypeError: '<' not supported between instances
+   of 'float' and 'NoneType'`; `app/data.py` fiel in den
+   `decide_failed`-Sammelzweig und nannte keinen Grund. Ursache auf der
+   Anzeigeseite: `web/src/views/Stationen.tsx:291` las
+   `decide.alternatives_nearby.find(…)`, und ein Fehlerpayload hat dieses Feld
+   nicht — der Bereich stürzte beim Rendern ab, zusätzlich zur fehlenden
+   Empfehlung.
+2. `Uncaught TypeError: Cannot read properties of undefined (reading
+   'includes')` im Entry-Chunk, weiße Seite, während `<RP2-IP>:8000`
+   antwortete. Ursache: Die Pi-Fallback-GUI beantwortet genau sieben Pfade,
+   alles andere mit `404` — ihre `/api/v1/stations`-Antwort trug aber kein
+   `cities` (`rp2/fallback_gui.py::_api_stations` lieferte `{generated_at,
+   fuel, fresh_minutes, stations, fresh_prices, nas_status}`), während die
+   gebaute App `data?.cities.includes(city)` zur Ortswahl liest und
+   `city_options` der Vorlage daraus baut. `_api_series` kannte zudem nur
+   `station` und beantwortete die NAS-Schreibweise `station_id` mit `400`.
+
+**Wirkung.** Beide Male war die Seite nicht mehr bedienbar — der eine Fall
+kostete den Bereich „Stationen“ und die Empfehlung (die Ursache war im
+Browser nicht sichtbar, nur der Code), der andere die ganze App. Beide Fehler
+sind ehrlichkeits-relevant: `decide` scheiterte stumm, und die Anzeige
+behauptete „keine Daten“ über eine Antwort, die sie nur nicht verstand. Der
+zweite Fall trifft den Dauerbetrieb: Sobald das NAS für den Pi wegfällt,
+liefert der Fallback aus — genau dann muss die Oberfläche zeigen, was der Pi
+weiß, statt weiß zu bleiben.
+
+**DoD.** (a) `None` zählt wie `NaN` als „keine Aussage“ (nicht als 0,0 €/L);
+`decide` scheitert nie stumm — jede unerwartete Ursache steht bereinigt als
+`detail` in der Antwort und im Log. (b) Kein Leser greift ungeprüft auf
+Felder einer Antwort zu: Der Stations-Vergleich behandelt eine fehlende
+Alternativenliste als leer, und die Stations-Antwort gilt nur dann als
+Stations-Antwort, wenn sie `cities` **und** `stations` als Listen trägt. (c)
+Die Fallback-Antwort spricht die Form der gebauten App: `cities`, je Zeile
+`observed_at`, ausdrücklich `calibrated`/`decision_ready: false`, und
+`/api/v1/series` akzeptiert `station_id`. (d) Antwortet der Fallback
+(`nas_status: "offline"`), sagt die App es im Mitteilungs-Register. (e) Die
+404-Wand im Fallback-Modus ist als Absicht dokumentiert (RP2.md, BETRIEB.md).
+
+**Umgesetzt (0.49.1).** `_supported`/`_finite` lesen `None` wie `NaN`;
+`app/data.py` fängt unerwartete Fehler im Decide-Pfad und legt
+`errors.public_detail` als `detail` in die Antwort (die GUI zeigt „Ursache:“);
+`Stationen.tsx` liest `(decide?.alternatives_nearby ?? [])`; die
+Fallback-Antwort trägt `cities`, `observed_at`, `calibrated`/`decision_ready`
+und den `station_id`-Alias; `web/src/data.ts::usableStations()` filtert
+fremde Payloads zu `null` (Leerzustand statt Absturz) und `overview.tsx`
+meldet die Fallback-Herkunft. Tests: `tests/test_o44_null_draws.py` (6,
+Gegenprobe ohne den `pside`-Fix: fünf rot),
+`tests/test_rp2_fallback.py` (+3, zusammen 52),
+`web/src/state/pi-fallback.test.tsx` (3 gegen die echte Fallback-Antwort),
+`web/src/data.test.ts` (+2) und die Regression in `Stationen.test.tsx`.
 
 ## 8. Gemessen statt behauptet
 
