@@ -211,6 +211,59 @@ describe("Labor: Erklär-Treppe Ebene 2 (§7)", () => {
   });
 });
 
+describe("Labor: Fensterbilanz (O38)", () => {
+  it("zeigt „x von y Fenstern genutzt“ im Vertrauens-Konto", () => {
+    const host = mount(
+      {},
+      {
+        statsSummaryRes: res({
+          live_advice: {
+            n: 12,
+            wins: 8,
+            losses: 3,
+            ties: 1,
+            hit_rate: 0.7,
+            reliability: [],
+            brier_30d: null,
+            calibrated: false,
+            gate_status: "offen",
+            episodes_used_7d: 1,
+            episodes_expired_7d: 1,
+            episodes_used_30d: 3,
+            episodes_expired_30d: 2,
+          },
+        } as any),
+      },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("3 von 5 Fenstern genutzt");
+    expect(text).toContain("12 Empfehlungen abgerechnet");
+    expect(text).toContain("2 Fenster verstrichen");
+  });
+
+  it("erfindet ohne O38-Zähler keine Bilanz", () => {
+    const host = mount(
+      {},
+      {
+        statsSummaryRes: res({
+          live_advice: {
+            n: 12,
+            wins: 8,
+            losses: 3,
+            ties: 1,
+            hit_rate: 0.7,
+            reliability: [],
+            brier_30d: null,
+            calibrated: false,
+            gate_status: "offen",
+          },
+        } as any),
+      },
+    );
+    expect(host.textContent ?? "").not.toContain("Fensterbilanz");
+  });
+});
+
 describe("Labor: Spielplatz und Tagebuch-Kennzahlen", () => {
   it("rechnet das Was-wäre-gewesen mit der eingestellten Schwelle nach", () => {
     // U8: Die Tagesreihen kommen nicht mehr als fertiges Prop, sondern als

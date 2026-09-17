@@ -22,9 +22,19 @@ HORIZON_HOURS = (72, 168)
 
 # Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster, nominal 95 %.
 # Grün ≥ nominal − 2 pp, gelb ≥ nominal − 5 pp, rot darunter → §4.4-Modus.
+# O4 (0.45.0): Die Fallzahl sind Tage mit bewerteten Punkten, nicht
+# 5-Minuten-Punkte — 3 volle Tage minimum, wie der Kommentar der alten
+# Punktschwelle (72) es meinte.
 ROLLING_PICP_WINDOW_DAYS = 7
 ROLLING_PICP_NOMINAL_PCT = 95.0
-ROLLING_PICP_MIN_POINTS = 72  # 3 volle Tage — darunter keine Aussage
+ROLLING_PICP_MIN_DAYS = 3
+# O4: Halbe Hysterese-Breite des Badge-Wechsels in Prozentpunkten — halber
+# Schwellenabstand (Grün/Gelb liegen 3 pp auseinander). Der Wechsel über eine
+# Schwelle braucht 1,5 pp Abstand jenseits der Schwelle; Rauschen allein kippt
+# das Badge nicht. Bewusst kein noise_band-Muster (app/thresholds.py): Bei
+# n = 7 Tagen wäre 2σ ≈ ±22 pp — größer als jeder Schwellenabstand, das Badge
+# würde als Latch kleben (insbesondere Rot → permanente §4.4-Blockade).
+ROLLING_PICP_HYSTERESIS_PP = 1.5
 
 # Issue 47: asymmetrischer Pinball-Loss. Warten in eine Preiserhöhung
 # (tatsächlich teurer als prognostiziert) kostet Vertrauen; 2 ct zu früh
@@ -187,16 +197,45 @@ def decision_row(
     }
 
 
-def picp_badge(picp_pct: float | None, points: int) -> str | None:
+def picp_badge(
+    picp_pct: float | None, n_days: int, prev_badge: str | None = None
+) -> str | None:
     """Konfidenz-Badge (Konzept §3.3.3) aus einer Rolling-PICP-Zahl.
 
-    ``None`` bei zu wenig Punkten (keine Aussage, kein geratenes Grün).
+    ``None`` bei zu wenig Tagen (keine Aussage, kein geratenes Grün). Mit
+    Vorgänger-Badge gilt Hysterese (O4): Der Wechsel über eine Schwelle
+    braucht 1,5 pp Abstand jenseits der Schwelle
+    (``ROLLING_PICP_HYSTERESIS_PP``) — Rauschen allein kippt das Badge
+    nicht. Ohne Vorgänger (erster Tag) gilt die rohe Schwelle: grün ≥
+    nominal − 2 pp, gelb ≥ nominal − 5 pp, rot darunter.
     """
-    if picp_pct is None or points < ROLLING_PICP_MIN_POINTS:
+    if picp_pct is None or n_days < ROLLING_PICP_MIN_DAYS:
         return None
-    if picp_pct >= ROLLING_PICP_NOMINAL_PCT - 2.0:
+    green_at = ROLLING_PICP_NOMINAL_PCT - 2.0
+    yellow_at = ROLLING_PICP_NOMINAL_PCT - 5.0
+    band = ROLLING_PICP_HYSTERESIS_PP
+    if prev_badge not in ("green", "yellow", "red"):
+        if picp_pct >= green_at:
+            return "green"
+        if picp_pct >= yellow_at:
+            return "yellow"
+        return "red"
+    if prev_badge == "green":
+        if picp_pct < yellow_at - band:
+            return "red"
+        if picp_pct < green_at - band:
+            return "yellow"
         return "green"
-    if picp_pct >= ROLLING_PICP_NOMINAL_PCT - 5.0:
+    if prev_badge == "yellow":
+        if picp_pct >= green_at + band:
+            return "green"
+        if picp_pct < yellow_at - band:
+            return "red"
+        return "yellow"
+    # prev_badge == "red" (oben auf die drei Farben begrenzt).
+    if picp_pct >= green_at + band:
+        return "green"
+    if picp_pct >= yellow_at + band:
         return "yellow"
     return "red"
 
@@ -209,11 +248,13 @@ def rolling_picp_7d(
 ) -> list[dict]:
     """7-Tage-Rolling-PICP je Station (Konzept §3.3.3).
 
-    Für jeden Testtag ``d`` werden die Vergleichspunkte der letzten 7 Tage
-    (inklusive ``d``) gepoolt; ausgedehnte Tage ohne bewertete Punkte
-    (übersprungene Folds) steuern ehrlich null Punkte bei. ``current`` ist
-    der zuletzt verlaufene Testtag — die Zahl, die das Güte-Gate (§4.4)
-    in der Entscheidung nutzt.
+    O4 (0.45.0): Für jeden Testtag ``d`` zählt jeder der letzten 7 Tage
+    (inklusive ``d``) genau eine Stimme — Tagesquoten statt gepoolter
+    Punkte; die Fallzahl sind Tage mit bewerteten Punkten. Tage ohne
+    Punkte steuern ehrlich null Stimmen bei und aktualisieren die
+    Hysterese-Kette nicht. ``current`` ist der zuletzt verlaufene
+    Testtag — die Zahl, die das Güte-Gate (§4.4) in der Entscheidung
+    nutzt.
     """
     if not len(rows):
         return [
@@ -240,6 +281,7 @@ def rolling_picp_7d(
             & (work.fuel == item.fuel)
         ]
         day_entries = []
+        prev_badge: str | None = None
         for day in test_days:
             pool = sub[
                 (
@@ -249,13 +291,26 @@ def rolling_picp_7d(
                 & (sub.origin_day <= day)
             ]
             points = int(len(pool))
-            picp = 100.0 * float(covered[pool.index].mean()) if points else None
+            # O4: Ein Tag, eine Stimme — Mittel der Tagesquoten im Fenster;
+            # Fallzahl = Tage mit bewerteten Punkten, nicht Punkte.
+            day_pcts = []
+            for back in range(ROLLING_PICP_WINDOW_DAYS):
+                slot_day = day - pd.DateOffset(days=back)
+                slot = pool[pool.origin_day == slot_day]
+                if len(slot):
+                    day_pcts.append(100.0 * float(covered[slot.index].mean()))
+            n_days = len(day_pcts)
+            picp = sum(day_pcts) / n_days if n_days else None
+            rounded = round(picp, 2) if picp is not None else None
+            if n_days >= ROLLING_PICP_MIN_DAYS:
+                prev_badge = picp_badge(rounded, n_days, prev_badge)
             day_entries.append(
                 {
                     "day": day.tz_convert(timezone).strftime("%Y-%m-%d"),
-                    "picp_pct": round(picp, 2) if picp is not None else None,
+                    "picp_pct": rounded,
                     "points": points,
-                    "badge": picp_badge(picp, points),
+                    "n_days": n_days,
+                    "badge": prev_badge if n_days >= ROLLING_PICP_MIN_DAYS else None,
                 }
             )
         current = day_entries[-1] if day_entries else None
@@ -525,8 +580,9 @@ def run_backtest(
             else rows
         )
         per_station.append({**item.identity(), **metrics(subset)})
-    # Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster über die
-    # bewerteten Punkte; Basis des Güte-Gates (§4.4) und des Konfidenz-Badges.
+    # Rolling-PICP je Station (Konzept §3.3.3): 7-Tage-Fenster als Mittel der
+    # Tagesquoten (O4: ein Tag, eine Stimme, Fallzahl = Tage); Basis des
+    # Güte-Gates (§4.4) und des Konfidenz-Badges.
     rolling = rolling_picp_7d(rows, series, cfg.timezone, test_days)
     # H5: DST-Ausweisung als eigener Block — Tagesliste, betroffene Folds und
     # die Zahl der Vortages-Anker, die an der Zeitumstellung fehlen (``NaT``)
@@ -697,12 +753,14 @@ def markdown_report(report: dict) -> str:
             "",
             "## Rolling-PICP 7 Tage je Station (Konzept §3.3.3)",
             "",
-            "Badge: grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %); "
-            "weniger als 72 Punkte im Fenster = keine Aussage. Rot löst den "
+            "Badge: grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %), mit "
+            "Hysterese (Wechsel erst 1,5 pp jenseits der Schwelle, O4); Fallzahl "
+            "sind Tage mit bewerteten Punkten, weniger als 3 Tage im Fenster "
+            "= keine Aussage. Rot löst den "
             "§4.4-Modus („Keine klare Empfehlung“) aus.",
             "",
-            "| Stadt | Station | Letzter Testtag | PICP 7 d [%] | Punkte | Badge |",
-            "|---|---|---|---:|---:|---|",
+            "| Stadt | Station | Letzter Testtag | PICP 7 d [%] | Tage | Punkte | Badge |",
+            "|---|---|---|---:|---:|---:|---:|",
         ]
         for entry in rolling:
             current = entry.get("current") or {}
@@ -711,6 +769,7 @@ def markdown_report(report: dict) -> str:
                 f"| {cell(entry['city'])} | {cell(entry['station_name'])} "
                 f"| {current.get('day', '—')} "
                 f"| {number(current.get('picp_pct'))} "
+                f"| {current.get('n_days', 0)} "
                 f"| {current.get('points', 0)} "
                 f"| {'—' if badge is None else badge} |"
             )

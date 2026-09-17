@@ -1,4 +1,12 @@
-import { test, expect, type Response } from "@playwright/test";
+import { test, expect, type Page, type Response } from "@playwright/test";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // E2E **ohne Mocks** gegen den Demo-Stack (`ops/quality/demo_server.py`).
 //
@@ -267,8 +275,9 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   // 304 ohne Body. Ein bestätigender Aufruf schreibt den Ledger nicht neu,
   // das ETag der letzten Antwort bleibt also gültig. Nur das 60-s-Uhrzeit-
   // Fenster kann dazwischenfunken: fällt der Refresh genau auf dessen Grenze,
-  // antwortet der Server korrekt mit 200 — deshalb bis zu drei Versuche, aber
-  // die Zusage „304“ muss fallen.
+  // antwortet der Server korrekt mit 200 — deshalb bis zu fünf Versuche, aber
+  // die Zusage „304“ muss fallen. (Fünf statt drei: Auf langsamen Läufern
+  // dauert ein Versuch länger, die Trefferfläche der Fenstergrenze wächst.)
   const button = page.getByRole("button", { name: "Daten aktualisieren" });
   // Ein Layout ohne diesen Knopf (z. B. sehr schmale Ansicht) prüft die
   // Revalidierung in `tests/test_e2e_demo.py` statt hier.
@@ -278,7 +287,7 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   );
   let revalidated = false;
   let carriedEtag = false;
-  for (let attempt = 0; attempt < 3 && !revalidated; attempt += 1) {
+  for (let attempt = 0; attempt < 5 && !revalidated; attempt += 1) {
     await expect(button).toBeEnabled();
     const before = responses.length;
     // Der Stand, den die App hält: das ETag der letzten Antwort. Genau das
@@ -297,8 +306,203 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
     revalidated = answer.status() === 304;
   }
   expect(carriedEtag).toBe(true);
-  expect(revalidated, "kein 304 nach drei Aktualisierungen").toBe(true);
+  expect(revalidated, "kein 304 nach fünf Aktualisierungen").toBe(true);
   // Ein 304 ersetzt die Anzeige nicht durch einen Leerzustand.
   await expect(page.locator("#jetzt-headline")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+// O17: Der Ein-Tipp-Beleg („Ja, wie empfohlen“) bucht den frischen
+// Live-Preis, nie den Prognose-Median — und ohne Live-Preis fragt die
+// Maske nach, statt zu buchen. Der Seed liegt direkt im Feedback-Store des
+// Demo-Servers (Datei, kein Mock): eine fällige Episode mit einem
+// `expected_price`-Köder, der in keinem Request und keinem Beleg auftauchen
+// darf. `record_snapshot` (jeder Decide-Aufruf) schreibt nur an die ERSTE
+// offene Episode — deshalb steht eine Guard-Episode davor und der Seed
+// dahinter bleibt unberührt. Der Demo-Seed ist bewusst dieselbe Episode für
+// beide Projekte (update-or-append): Die Zusagen gelten je Anzeige,
+// unabhängig davon, welches Projekt den Seed geschrieben hat.
+const O17_STORE = fileURLToPath(
+  new URL("../../.demo-e2e-data/runtime/feedback/store.json", import.meta.url),
+);
+const O17_EPISODE_ID = "ep_o17_demo_prompt";
+const O17_GUARD_ID = "ep_o17_demo_guard";
+const O17_DECOY_PRICE = 1.559;
+const O17_KNOWN_STATION = "00000000-0000-0000-0000-0000000000d5";
+const O17_KNOWN_NAME = "Demo-Tank Mitte";
+const O17_UNKNOWN_STATION = "00000000-0000-0000-0000-00000000cafe";
+
+function o17Snapshot(stationId: string, stationName: string) {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  return {
+    id: "snap_o17_demo",
+    emitted_at: iso(now - 3 * 3600_000),
+    clock_hour: berlinHour(new Date(now - 3 * 3600_000)),
+    action: "wait",
+    city: "Demostadt",
+    station_id: stationId,
+    station_name: stationName,
+    alt_station_id: null,
+    alt_station_name: null,
+    price_now: 1.749,
+    window_start: iso(now - 2 * 3600_000),
+    window_end: iso(now - 3600_000),
+    window_start_hour: berlinHour(new Date(now - 2 * 3600_000)),
+    window_end_hour: berlinHour(new Date(now - 3600_000)),
+    expected_price: O17_DECOY_PRICE,
+    expected_saving_eur: 2.4,
+    decline_reason: null,
+    p_besser: null,
+    p_correct: 0.5,
+    p_source: "basisrate",
+    liters_assumed: 40,
+    fuel: "e10",
+    trip_mode: null,
+    latest_by: null,
+    tank_state: null,
+  };
+}
+
+function o17SeedStore(stationId: string, stationName: string) {
+  mkdirSync(dirname(O17_STORE), { recursive: true });
+  let store: any = {
+    schema_version: 5,
+    episodes: [],
+    fills: [],
+    settlements: [],
+  };
+  if (existsSync(O17_STORE)) {
+    try {
+      store = JSON.parse(readFileSync(O17_STORE, "utf8"));
+    } catch {
+      return; // Der Server schreibt gerade — der Aufrufer wiederholt.
+    }
+  }
+  if (!Array.isArray(store.episodes)) store.episodes = [];
+  const snap = o17Snapshot(stationId, stationName);
+  const due = {
+    id: O17_EPISODE_ID,
+    opened_at: snap.emitted_at,
+    closed_at: null,
+    status: "due",
+    intent: "none",
+    first_snapshot: { ...snap, id: "snap_o17_demo_first" },
+    last_snapshot: snap,
+    snapshots: [snap],
+  };
+  const guard = {
+    id: O17_GUARD_ID,
+    opened_at: new Date().toISOString(),
+    closed_at: null,
+    status: "open",
+    intent: "none",
+    first_snapshot: { ...snap, id: "snap_o17_demo_guard" },
+    last_snapshot: { ...snap, id: "snap_o17_demo_guard" },
+    snapshots: [{ ...snap, id: "snap_o17_demo_guard" }],
+  };
+  // Guard immer an den Anfang (fängt die Decide-Snapshots), die fällige
+  // Episode dahinter — update-or-append, damit parallele Projekte auf
+  // denselben zwei Einträgen landen statt auf Duplikaten.
+  const rest = store.episodes.filter(
+    (entry: any) => entry.id !== O17_GUARD_ID && entry.id !== O17_EPISODE_ID,
+  );
+  store.episodes = [guard, ...rest, due];
+  writeFileSync(O17_STORE, JSON.stringify(store));
+}
+
+async function o17SeedDue(page: Page, stationId: string, stationName: string) {
+  // Seed + Verifizierung über die echte API: Ein paralleler
+  // Snapshot-Schreibvorgang kann den Seed überholen (Lesen–Schreiben
+  // außerhalb der Store-Sperre) — dann läuft der Seed erneut.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    o17SeedStore(stationId, stationName);
+    const res = await page.request.get("/api/v1/episodes?status=due");
+    if (res.ok()) {
+      const body = await res.json();
+      const mine = (body.episodes ?? []).find(
+        (entry: any) => entry.id === O17_EPISODE_ID,
+      );
+      if (mine?.last_snapshot?.station_id === stationId) return mine;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error("O17-Seed wurde nicht sichtbar");
+}
+
+test("O17: „Ja, wie empfohlen“ bucht den Live-Preis, nie den Median", async ({
+  page,
+}) => {
+  await o17SeedDue(page, O17_KNOWN_STATION, O17_KNOWN_NAME);
+  await page.goto("/");
+  await expect(page.getByText("Fenster vorbei")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const button = page.getByRole("button", { name: /Ja, wie empfohlen/ });
+  await expect(button).toBeEnabled();
+  const label = (await button.textContent()) ?? "";
+  const match = label.match(/(\d+,\d+)\s*€\/L/);
+  expect(match, `Knopf nennt den Live-Preis (Label: ${label})`).not.toBeNull();
+  const liveShown = Number(match![1].replace(",", "."));
+  expect(liveShown).not.toBe(O17_DECOY_PRICE);
+
+  // Auf die ANTWORT warten, nicht auf den Versand: `waitForRequest` löst beim
+  // Abschicken aus — das folgende `GET /api/v1/fills` überholte dann den
+  // noch laufenden POST-Handler und der Beleg „fehlte im Ledger“ (Flake).
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) =>
+        res.url().includes("/api/v1/fills") &&
+        res.request().method() === "POST",
+    ),
+    button.click(),
+  ]);
+  expect(response.ok(), "POST /api/v1/fills wird angenommen").toBe(true);
+  const body = response.request().postDataJSON();
+  expect(body.source).toBe("prompt");
+  expect(body.station_id).toBe(O17_KNOWN_STATION);
+  expect(body.price_source).toBe("live");
+  expect(body.price_paid).toBeCloseTo(liveShown, 3);
+  expect(body.price_paid).not.toBe(O17_DECOY_PRICE);
+
+  // Der gespeicherte Beleg trägt den Live-Preis mit Herkunft.
+  const fills = await page.request.get("/api/v1/fills");
+  expect(fills.ok()).toBe(true);
+  const stored = (await fills.json()).fills ?? [];
+  const mine = stored.find(
+    (fill: any) =>
+      fill.episode_id === O17_EPISODE_ID &&
+      fill.source === "prompt" &&
+      !fill.voided,
+  );
+  expect(mine, "gebuchter Beleg steht im Ledger").toBeTruthy();
+  expect(mine.price_paid).toBeCloseTo(liveShown, 3);
+  expect(mine.price_source).toBe("live");
+});
+
+test("O17: ohne Live-Preis fragt die Maske, statt zu buchen", async ({
+  page,
+}) => {
+  await o17SeedDue(page, O17_UNKNOWN_STATION, "Ehemalige Station");
+  const posts: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes("/api/v1/fills") && req.method() === "POST") {
+      posts.push(req.url());
+    }
+  });
+  await page.goto("/");
+  await expect(page.getByText("Fenster vorbei")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const button = page.getByRole("button", { name: /Ja, wie empfohlen/ });
+  await expect(button).toBeDisabled();
+  await expect(button).toContainText("Preis unbekannt");
+
+  await page.getByRole("button", { name: "Anders buchen" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Tanken erfassen" }),
+  ).toBeVisible();
+  expect(posts, "kein Beleg ohne Live-Preis").toHaveLength(0);
 });

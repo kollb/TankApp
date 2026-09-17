@@ -1576,7 +1576,7 @@ class LiveData:
         try:
             if limit < 1 or limit > 500:
                 raise ValueError("invalid_query")
-            from .feedback import StoreTooLarge, load_store
+            from .feedback import StoreTooLarge, load_store, snapshot_p_source
 
             store = load_store(self.settings)
             snapshots = {
@@ -1615,6 +1615,9 @@ class LiveData:
                         "regret_eur": settlement.get("regret_eur"),
                         "p_correct": snap.get("p_correct"),
                         "p_besser": snap.get("p_besser"),
+                        # O5: Herkunft der versprochenen P — dieselbe Quelle,
+                        # über die der Brier getrennt ausgewiesen wird.
+                        "p_source": snapshot_p_source(snap),
                         # Grund der Ablehnung (nur ``no_advice``): Eine
                         # kollabierte Ablehnung gilt weiter, bis sie widerrufen
                         # wird — die Zeitspanne zeigt die GUI aus

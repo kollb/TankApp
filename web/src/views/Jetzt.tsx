@@ -107,7 +107,12 @@ export interface JetztViewProps {
   /** Due-Prompt nach Fensterende (übernommen aus dem Alltagstab). */
   dueEpisode: any;
   dueDismissed: boolean;
-  bestPrice: number | null;
+  /**
+   * O17: frischer Live-Preis der empfohlenen Station — genau der Preis, den
+   * „Ja, wie empfohlen“ bucht. `null` ohne Live-Preis: Dann ist der Knopf
+   * aus und die Maske fragt nach (nie der Prognose-Median).
+   */
+  dueFillPrice: number | null;
   onConfirmRecommended: (ep: any) => void;
   onDismissDue: (epId?: string) => void;
   /** Beleg manuell buchen → Ich → Belege (Station vorgemerkkt). */
@@ -206,7 +211,7 @@ export function JetztView(props: JetztViewProps) {
     activeCity,
     assumptions,
     autoZ,
-    bestPrice,
+    dueFillPrice,
     decideRes,
     defaultLiters,
     defaultTimeValue,
@@ -380,16 +385,16 @@ export function JetztView(props: JetztViewProps) {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => onConfirmRecommended(dueEpisode)}
-                disabled={bestPrice === null}
+                disabled={dueFillPrice === null}
                 title={
-                  bestPrice === null
+                  dueFillPrice === null
                     ? "Kein frischer Preis — bitte manuell erfassen"
-                    : `Wie empfohlen ${euro(bestPrice, 3)} €/L`
+                    : `Wie empfohlen ${euro(dueFillPrice, 3)} €/L`
                 }
                 className="rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Ja, wie empfohlen (
-                {bestPrice !== null ? `${euro(bestPrice, 3)} €/L` : "Preis unbekannt"})
+                {dueFillPrice !== null ? `${euro(dueFillPrice, 3)} €/L` : "Preis unbekannt"})
               </button>
               <button
                 onClick={onOpenFills}

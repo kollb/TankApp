@@ -41,6 +41,9 @@ def test_rolling_backtest_uses_only_actual_common_prices(series, cfg):
     assert len(rolling[0]["days"]) == 2
     assert rolling[0]["current"] == rolling[0]["days"][-1]
     assert rolling[0]["current"]["points"] == 2 * 216
+    # O4: Fallzahl sind Tage — 2 Tage im Fenster heißt keine Aussage.
+    assert rolling[0]["current"]["n_days"] == 2
+    assert rolling[0]["current"]["badge"] is None
     text = markdown_report(report)
     assert "nicht abgenommen" in text
     assert "Mehrtage-Horizonte" in text
@@ -48,19 +51,50 @@ def test_rolling_backtest_uses_only_actual_common_prices(series, cfg):
 
 
 @pytest.mark.parametrize(
-    "picp,points,expected",
+    "picp,n_days,expected",
     [
-        (95.0, 72, "green"),
-        (93.0, 72, "green"),
-        (92.99, 72, "yellow"),
-        (90.0, 72, "yellow"),
-        (89.99, 72, "red"),
-        (100.0, 71, None),
-        (None, 999, None),
+        (95.0, 3, "green"),
+        (93.0, 7, "green"),
+        (92.99, 7, "yellow"),
+        (90.0, 3, "yellow"),
+        (89.99, 7, "red"),
+        # O4: Fallzahl sind Tage — unter 3 Tagen keine Aussage, egal wie
+        # viele 5-Minuten-Punkte dahinterstehen.
+        (100.0, 2, None),
+        (None, 7, None),
     ],
 )
-def test_rolling_picp_badge_thresholds(picp, points, expected):
-    assert picp_badge(picp, points) == expected
+def test_rolling_picp_badge_thresholds(picp, n_days, expected):
+    assert picp_badge(picp, n_days) == expected
+
+
+@pytest.mark.parametrize(
+    "prev,picp,expected",
+    [
+        # O4-Hysterese: 1,5 pp jenseits der Schwelle. Grün hält 92,9
+        # (roh gelb) ebenso wie 90,0 (roh gelb); erst unter 91,5 kippt es.
+        ("green", 92.9, "green"),
+        ("green", 91.5, "green"),
+        ("green", 91.49, "yellow"),
+        # ... und Rot braucht den Sprung unter 88,5 (90 − 1,5).
+        ("green", 88.5, "yellow"),
+        ("green", 88.49, "red"),
+        # Gelb klebt in beide Richtungen: hoch erst ab 94,5, runter erst
+        # unter 88,5.
+        ("yellow", 94.5, "green"),
+        ("yellow", 94.49, "yellow"),
+        ("yellow", 88.5, "yellow"),
+        ("yellow", 88.49, "red"),
+        # Rot erholt sich erst ab 91,5 (gelb) bzw. 94,5 (grün) — erreichbar,
+        # kein Latch: keine permanente §4.4-Blockade durch eine alte Zahl.
+        ("red", 91.5, "yellow"),
+        ("red", 91.49, "red"),
+        ("red", 94.5, "green"),
+        ("red", 94.49, "yellow"),
+    ],
+)
+def test_rolling_picp_badge_hysteresis(prev, picp, expected):
+    assert picp_badge(picp, 7, prev) == expected
 
 
 def test_filled_prices_are_not_test_truth(series, cfg):

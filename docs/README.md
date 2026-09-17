@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 16.09.2026 · App-Version **0.44.0**
+> Stand: 17.09.2026 · App-Version **0.45.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 

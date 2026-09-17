@@ -366,7 +366,7 @@ Seit 2026-04-01 dürfen Tankstellen Preis nur um 12:00 Uhr erhöhen; Senkungen j
 |---|---|
 | Heute / 24 h | Prognose + täglicher Rolling-Origin-Backtest implementiert; **kein** Echt-Daten-Gütenachweis (M3-Abnahme offen) |
 | +3 d / +7 d | Ausblick ab Cutoff **und** Mehrtage-Backtests gegen beobachtete Preise (`horizons` im Report, seit 11.09.2026); ehrlich als Zusatz ausgewiesen, kein M3-Abnahmekriterium |
-| Rolling-PICP 7 d | Je Station im Backtest; Badge grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %, < 72 Punkte = keine Aussage). Publiziert als `rolling_picp_7d`, in `/v1/decide` als `quality` |
+| Rolling-PICP 7 d | Je Station im Backtest; Tagesmittel mit Hysterese (O4, seit 0.45.0): Badge grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %, Wechsel erst 1,5 pp jenseits der Schwelle, < 3 Tage = keine Aussage). Publiziert als `rolling_picp_7d`, in `/v1/decide` als `quality` (inkl. Fallzahl `rolling_picp_7d_days`) |
 | Backtest-Fenster des NAS-Jobs | **21 Tage** statt 7 (`app/refresh.py`), damit das Gate `at_least_21_complete_test_days_per_station` aus dem automatischen Lauf erfüllbar ist |
 | Güte-Gate | Rolling-PICP **rot** → `no_advice` („Keine klare Empfehlung — Prognose derzeit unsicher …“) als Auswertungsschritt 1, *vor* F2/F1 (§4.5) |
 

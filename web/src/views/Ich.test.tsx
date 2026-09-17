@@ -9,7 +9,13 @@
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Fill, FillDraftCheck, Fuel } from "../data";
+import type {
+  BalanceRow,
+  Fill,
+  FillDraftCheck,
+  FillsSummary,
+  Fuel,
+} from "../data";
 import {
   ICH_SECTIONS,
   IchView,
@@ -234,5 +240,99 @@ describe("mostUsedStation (zweiter Maßstab unter dem Median)", () => {
     expect(html.split("Station a").length - 1).toBe(2);
     // Der Storno-Knopf steht nur beim nicht stornierten Beleg.
     expect(html.split(">Stornieren<").length - 1).toBe(2);
+  });
+});
+
+describe("Ich: Prognosepreis (O17)", () => {
+  const fill = (id: string, overrides: Partial<Fill> = {}): Fill => ({
+    id: `f-${id}`,
+    station_id: id,
+    station_name: `Station ${id}`,
+    liters: 40,
+    price_paid: 1.7,
+    fuel: "e10",
+    ...overrides,
+  });
+
+  it("kennzeichnet Prognosepreis-Belege in Karte und Tabelle", () => {
+    const fills = [
+      fill("a", { price_source: "prognose" }),
+      fill("b", { price_source: "live" }),
+    ];
+    const html = render({
+      initialSection: "fills",
+      fillList: fills,
+      visibleFills: fills,
+    });
+    // Karte und Tabelle zeigen denselben Hinweis — je einmal im Markup.
+    expect(html.split("Prognosepreis — kein gezahlter Preis").length - 1).toBe(2);
+  });
+
+  it("zeigt die verifizierte Ersparnis als zweite, benannte Spalte", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 2,
+      liters: 80,
+      total_eur: 136,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 8,
+      saved_verified_eur: 2,
+      n_prognosis_price: 1,
+      baseline_eur: 144,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 2,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 5.5 },
+    };
+    const html = render({
+      initialSection: "balance",
+      fillsSummary: {
+        data: summary,
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 1,
+      },
+    });
+    expect(html).toContain("Ohne Prognosepreis:");
+    expect(html).toContain("+2,00 €");
+    expect(html).toContain("1 Beleg zählt nicht mit");
+    expect(html).toContain("verifiziert +2,00 € (ohne Prognosepreis-Belege)");
+  });
+
+  it("schweigt ohne Prognosepreis-Belege (keine zweite Spalte)", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 1,
+      liters: 40,
+      total_eur: 68,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 2,
+      saved_verified_eur: 2,
+      n_prognosis_price: 0,
+      baseline_eur: 70,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 1,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 2.8 },
+    };
+    const html = render({
+      initialSection: "balance",
+      fillsSummary: {
+        data: summary,
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 1,
+      },
+    });
+    expect(html).not.toContain("Ohne Prognosepreis:");
+    expect(html).not.toContain("ohne Prognosepreis-Belege");
   });
 });

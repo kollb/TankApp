@@ -55,6 +55,7 @@ import {
   queuedNote,
   saveFailedNote,
   FILL_BOOKED_LINE,
+  NO_LIVE_PRICE_LINE,
   SHARE_URL_LINE,
   postFill,
   voidFill,
@@ -91,6 +92,7 @@ import {
   type QueuedWrite,
 } from "../offline-queue";
 import { forecastStamp, type NowTarget } from "../now";
+import { promptFillPrice } from "../fills";
 import { buildStripCells } from "../strip";
 import { type LabSectionId } from "../lab";
 import {
@@ -1065,6 +1067,13 @@ function useOverviewState() {
     dueEpisodesRes.data?.episodes?.[0] ||
     (decideRes.data?.episode?.status === "due" ? decideRes.data.episode : null);
 
+  // O17: Der Ein-Tipp-Beleg bucht genau diesen Preis — den frischen
+  // Live-Preis der empfohlenen Station. Ohne ihn ist der Knopf aus und die
+  // Maske fragt nach (nie der Prognose-Median, nie ein fremder Preis).
+  const dueFillStationId =
+    dueEpisode?.last_snapshot?.station_id || selected?.station_id || null;
+  const dueFillPrice = promptFillPrice(dueFillStationId, stations, price);
+
   // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Ich → Belege“
   // (quickDraft), dieselben Grenzen wie der Server (app/feedback.py).
 
@@ -1085,22 +1094,26 @@ function useOverviewState() {
   const handleConfirmRecommendedFill = async (ep: any) => {
     if (!ep) return;
     const snap = ep.last_snapshot || decideRes.data?.primary;
-    const targetPrice =
-      snap?.expected_price ?? snap?.price_now ?? bestPrice ?? null;
-    if (targetPrice == null || !Number.isFinite(targetPrice)) {
-      feedback("error", "Kein Preis bekannt — bitte manuell erfassen.", 4000);
-      return;
-    }
     const fillStationId = snap?.station_id || selected?.station_id || null;
-    if (!fillStationId) {
-      feedback("error", "Keine Station bekannt — bitte manuell erfassen.", 4000);
+    // O17: Gebucht wird ausschließlich der frische Live-Preis der Station —
+    // expected_price ist eine Prognose und kein gezahlter Preis. Ohne
+    // Live-Preis öffnet sich die Erfassungs-Maske (Station vorausgefüllt),
+    // statt still den Median zu buchen.
+    const livePrice = promptFillPrice(fillStationId, stations, price);
+    if (livePrice === null || !fillStationId) {
+      if (fillStationId) setQuickStationId(fillStationId);
+      setQuickPriceStr("");
+      setIchSection("fills");
+      gotoTab("ich");
+      feedback("warn", NO_LIVE_PRICE_LINE, 6000);
       return;
     }
     const res = await postFill({
       station_id: fillStationId,
       station_name: snap?.station_name || selected?.name || "Station",
       liters,
-      price_paid: targetPrice,
+      price_paid: livePrice,
+      price_source: "live",
       fuel,
       source: "prompt",
       episode_id: ep.id,
@@ -1147,6 +1160,8 @@ function useOverviewState() {
       station_name: quickStation?.name || "Station",
       liters: litersVal,
       price_paid: priceVal,
+      // O17: aus der Maske kommt ein eingetragener Preis — nie live.
+      price_source: "manuell",
       fuel,
       source: "manual",
     });
@@ -1385,6 +1400,7 @@ function useOverviewState() {
     visibleFills,
     voidedCount,
     dueEpisode,
+    dueFillPrice,
     handleConfirmRecommendedFill,
     handleQuickFill,
     handleVoidFill,

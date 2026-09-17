@@ -7,7 +7,7 @@
 // und die beiden Fassungen wären auseinandergelaufen (D1: die View rendert,
 // sie entscheidet nichts).
 
-import { euro, timeLabel, type Fill } from "./data";
+import { euro, timeLabel, type Fill, type Station } from "./data";
 
 export type FillRow = {
   id: string;
@@ -21,6 +21,11 @@ export type FillRow = {
   liters: string;
   /** Gezahlter Preis allein („1,725 €/L“) — für die €/L-Spalte. */
   pricePerLiter: string;
+  /**
+   * Herkunftshinweis zum Preis — nur bei Prognosepreis gesetzt (O17, kein
+   * gezahlter Preis): „Prognosepreis — kein gezahlter Preis“. Sonst null.
+   */
+  priceNote: string | null;
   /** „3,20 € günstiger“ / „1,10 € teurer“ / „—“ ohne Vergleichswert. */
   savings: string;
   /** Tonlage zur Ersparnis: positiv, negativ oder kein Vergleichswert. */
@@ -44,6 +49,10 @@ export function fillRow(fill: Fill): FillRow {
     volume: `${euro(fill.liters, 1)} L · ${euro(fill.price_paid, 3)} €/L`,
     liters: euro(fill.liters, 1),
     pricePerLiter: `${euro(fill.price_paid, 3)} €/L`,
+    priceNote:
+      fill.price_source === "prognose"
+        ? "Prognosepreis — kein gezahlter Preis"
+        : null,
     savings:
       saved == null
         ? "—"
@@ -56,4 +65,22 @@ export function fillRow(fill: Fill): FillRow {
 
 export function fillRows(fills: Fill[]): FillRow[] {
   return fills.map(fillRow);
+}
+
+/**
+ * O17: Preis für den Ein-Tipp-Beleg („Ja, wie empfohlen“) — ausschließlich
+ * der frische Live-Preis der Beleg-Station, nie der Prognose-Median.
+ * `null` ohne frischen Preis: Dann fragt die Erfassungs-Maske nach, statt
+ * zu buchen. `priceOf` ist derselbe Helfer wie in der Stationsliste.
+ */
+export function promptFillPrice(
+  stationId: string | null | undefined,
+  stations: Station[],
+  priceOf: (row: Station) => number | null,
+): number | null {
+  if (!stationId) return null;
+  const row = stations.find((entry) => entry.station_id === stationId);
+  if (!row) return null;
+  const live = priceOf(row);
+  return live !== null && Number.isFinite(live) ? live : null;
 }

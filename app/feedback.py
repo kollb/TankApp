@@ -13,6 +13,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import random
 import threading
 import time
 import uuid
@@ -68,9 +69,17 @@ MAX_SOURCE_CHARS = 40
 #       still umgeschrieben: Die Migration rekonstruiert die Stunde aus dem
 #       gespeicherten Zeitstempel und kennzeichnet sie als ``abgeleitet``;
 #       Belege ohne Zeitstempel bleiben bei 12 Uhr und tragen ``default``.
+#   5 = O5/O17: Herkunft der P-Schätzung je Snapshot (``p_source``:
+#       ``verteilung``|``basisrate``|``keine``) und Herkunft des Belegpreises
+#       (``price_source``: ``live``|``manuell``|``prognose``|``nowcast``).
+#       Altbestände werden rekonstruiert und gekennzeichnet, nicht
+#       umgeschrieben: Snapshots mit gespeicherter Verteilungs-P gelten als
+#       ``verteilung``, Snapshots nur mit ``p_correct`` als ``basisrate``
+#       (der alte Fallback); Ein-Tipp-Belege (``source == "prompt"``) aus der
+#       Zeit des gebuchten Prognose-Medians gelten als ``prognose``.
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 4
+FEEDBACK_SCHEMA_VERSION = 5
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -109,7 +118,36 @@ CLOCK_HOUR_DEFAULT = 12.0
 # gespeicherten Zeitstempel rekonstruiert (Migration von Altbeständen),
 # ``default`` = kein Zeitstempel, also die erfundene 12-Uhr-Projektion.
 CLOCK_HOUR_SOURCES = ("beleg", "abgeleitet", "default")
+# O5 (0.45.0): Herkunft der P-Schätzung je Snapshot. Vorher buk
+# ``record_snapshot`` die Verteilungs-P und die selbstkalibrierte
+# Ledger-Quote (``estimate_p``) in eine Zahl (``p_correct``) — der Brier
+# mischte zwei Quellen und das M7-Gate konnte sich selbst erfüllen.
+# Jetzt trägt jede Zeile ihre Quelle: ``verteilung`` (P aus den
+# Prognose-Draws, Konzept §4.1/§4.2), ``basisrate`` (Ledger-Quote als
+# Fallback, wenn keine Draws veröffentlicht sind) oder ``keine``
+# (keine Schätzung — fällt aus Zähler und Nenner). Das M7-Gate rechnet
+# ausschließlich über ``verteilung``.
+P_SOURCES = ("verteilung", "basisrate", "keine")
+# O17 (0.45.0): Herkunft des Belegpreises. ``live`` = Ein-Tipp-Beleg mit
+# frischem Live-Preis; ``manuell`` = eingetragen, nicht live-verifiziert;
+# ``prognose`` = Altbestand aus der Zeit, als der Prognose-Median gebucht
+# wurde (nur via Migration, nie für neue Belege); ``nowcast`` = der Server
+# hat den Preis aus dem frischen Poll ergänzt (live-äquivalent,
+# historischer Name aus record_fill).
+PRICE_SOURCES = ("live", "manuell", "prognose", "nowcast")
 M7_BRIER_THRESHOLD = 0.25
+# O6 (0.45.0): Das M7-Gate vergleicht kein Punkt-Brier mehr gegen 0,25
+# (Münz-Niveau — das Feld bleibt als dokumentierte Referenz in der Antwort),
+# sondern die Obergrenze eines Block-Bootstrap-Intervalls über Tagesblöcke
+# gegen zwei Referenzen (konstante Basisrate, Klimatologie). 1000 Ziehungen
+# mit festem Samen: Das Intervall ist über Läufe stabil und damit
+# testbar; die Blöcke sind Kalendertage in Europe/Berlin. Unter 10 Blöcken
+# ist das Intervall degeneriert (ein Block hätte Varianz null) und bleibt
+# None — das Gate meldet dann „nicht messbar“ statt „kalibriert“.
+GATE_BOOTSTRAP_SAMPLES = 1000
+GATE_BOOTSTRAP_SEED = 20260917
+GATE_MIN_DAY_BLOCKS = 10
+GATE_BLOCK_DAYS = 1
 
 _STORE_THREAD_LOCK = threading.Lock()
 
@@ -267,12 +305,60 @@ def _migrate_store_v3_to_v4(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v4_to_v5(store: dict[str, Any]) -> dict[str, Any]:
+    """4 → 5 (0.44 → 0.45): Herkunft je Ledger-Zeile (O5, O17).
+
+    Snapshots bekommen ``p_source``: Wer eine gespeicherte Verteilungs-P
+    (``p_besser``) trägt, gilt als ``verteilung``; wer nur ``p_correct``
+    trägt, als ``basisrate`` (genau das war der alte Fallback in
+    ``record_snapshot``); ohne beide als ``keine``. Belege bekommen
+    ``price_source``: Ein-Tipp-Belege (``source == "prompt"``) aus der Zeit
+    des gebuchten Prognose-Medians gelten als ``prognose`` — das ist
+    Rekonstruktion aus dem Buchungsweg, kein Messwert; explizit
+    mitgeschickte Preise (``explicit``, auch fehlende Angaben) gelten als
+    ``manuell``; ``nowcast`` bleibt (serverseitig aus dem Poll ergänzt).
+
+    Idempotent: Zeilen, die ihre Herkunft schon tragen, bleiben unverändert.
+    """
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        seen: list[dict[str, Any]] = []
+        for snap in ep.get("snapshots", []) or []:
+            if isinstance(snap, dict):
+                seen.append(snap)
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict) and all(snap is not s for s in seen):
+                seen.append(snap)
+        for snap in seen:
+            if snap.get("p_source") in P_SOURCES:
+                continue
+            if _to_float(snap.get("p_besser")) is not None:
+                snap["p_source"] = "verteilung"
+            elif _to_float(snap.get("p_correct")) is not None:
+                snap["p_source"] = "basisrate"
+            else:
+                snap["p_source"] = "keine"
+    for fill in store.get("fills", []) or []:
+        if not isinstance(fill, dict):
+            continue
+        if fill.get("price_source") in PRICE_SOURCES:
+            continue
+        if fill.get("source") == "prompt":
+            fill["price_source"] = "prognose"
+        else:
+            fill["price_source"] = "manuell"
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
     1: _migrate_store_v1_to_v2,
     2: _migrate_store_v2_to_v3,
     3: _migrate_store_v3_to_v4,
+    4: _migrate_store_v4_to_v5,
 }
 
 
@@ -558,6 +644,27 @@ def action_track_record(store: dict[str, Any], action: str) -> dict[str, Any] | 
     }
 
 
+def snapshot_p_source(snap: dict[str, Any] | None) -> str:
+    """Herkunft der P-Schätzung eines Snapshots (O5) — defensiv.
+
+    Migrierte Stores tragen ``p_source``; handgebaute Stores (Tests, alte
+    Exporte) nicht. Die Rekonstruktion folgt derselben Regel wie die
+    Migration 4 → 5: gespeicherte Verteilungs-P → ``verteilung``, nur
+    ``p_correct`` → ``basisrate`` (der alte Fallback in ``record_snapshot``),
+    sonst ``keine``. Eine explizit gespeicherte Quelle gewinnt immer.
+    """
+    if not isinstance(snap, dict):
+        return "keine"
+    stored = snap.get("p_source")
+    if stored in P_SOURCES:
+        return stored
+    if _to_float(snap.get("p_besser")) is not None:
+        return "verteilung"
+    if _to_float(snap.get("p_correct")) is not None:
+        return "basisrate"
+    return "keine"
+
+
 def record_snapshot(
     settings, snapshot_data: dict[str, Any], clock=None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -600,11 +707,19 @@ def record_snapshot(
         action = snapshot_data.get("action", "no_advice")
 
         # Verteilungs-P (§4.1/§4.2): dieselbe Zahl, die das UI nach dem
-        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt Brier auf
-        # die interne Ledger-Schätzung zurück — sonst könnte das Gate nie öffnen.
-        p_besser = snapshot_data.get("p_besser")
-        if p_besser is None:
+        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt die
+        # gespeicherte Schätzung auf die interne Ledger-Quote zurück.
+        # O5: Die Quelle steht je Zeile dabei (``p_source``) — der Brier wird
+        # je Quelle getrennt ausgewiesen und das M7-Gate rechnet nur über
+        # Verteilungs-P. Eine nicht-finite Verteilungs-P ist keine Messung
+        # und fällt ebenfalls auf die Basisrate zurück.
+        p_dist = _to_float(snapshot_data.get("p_besser"))
+        if p_dist is not None:
+            p_besser = p_dist
+            p_source = "verteilung"
+        else:
             p_besser = estimate_p(store, action)
+            p_source = "basisrate" if p_besser is not None else "keine"
 
         # O1: Auch der Snapshot nennt keine erfundene Uhrzeit. ``decide``
         # schickt die gemessene Stunde (Europe/Berlin, mit Minutenanteil);
@@ -634,8 +749,12 @@ def record_snapshot(
             # Grund der Ablehnung in Klartext (nur bei ``no_advice``): Das
             # Tagebuch zeigt damit „warum“, nicht nur „keine Empfehlung“.
             "decline_reason": snapshot_data.get("decline_reason"),
-            "p_besser": snapshot_data.get("p_besser"),
+            "p_besser": p_dist,
             "p_correct": p_besser,
+            # O5: Herkunft der gespeicherten Schätzung — ``p_besser`` ist die
+            # bereinigte Verteilungs-P (nicht-finite Angaben sind keine
+            # Messung und landen nicht im Ledger).
+            "p_source": p_source,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
             "fuel": snapshot_data.get("fuel", "e10"),
             # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
@@ -883,6 +1002,9 @@ def record_fill(
     ``fuel`` ∈ {e10, e5, diesel}, ``station_id`` ∈ Polling-Set. Fehlt
     ``price_paid``, wird der Nowcast-Preis der Station gesucht; ohne ihn
     ``ValueError("price_not_available")`` — kein erfundener 1,70-€-Default.
+    O17: Der Client deklariert die Preis-Herkunft (``live``|``manuell``);
+    ein Ein-Tipp-Beleg (``source == "prompt"``) ohne Live-Nachweis wird mit
+    ``ValueError("prompt_price_not_live")`` abgewiesen statt gebucht.
     """
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
@@ -909,6 +1031,20 @@ def record_fill(
         if liters is None or not (MIN_LITERS <= liters <= MAX_LITERS):
             raise ValueError("invalid_liters")
 
+        # O17: Herkunft des Preises. Der Client deklariert „live“ (frischer
+        # Poll zur Tipp-Zeit) oder „manuell“ (eingetragen); alles andere ist
+        # kein gültiger Nachweis. „prognose“ vergibt nur die Migration 4 → 5
+        # für Altbestände — neue Belege mit Prognosepreis werden nicht mehr
+        # gebucht (der Ein-Tipp-Beleg nimmt den Live-Preis oder fragt nach,
+        # statt den Median zu buchen).
+        price_source_raw = fill_data.get("price_source")
+        if price_source_raw is None:
+            price_source_declared = None
+        elif price_source_raw in ("live", "manuell"):
+            price_source_declared = price_source_raw
+        else:
+            raise ValueError("invalid_price_source")
+
         price_paid_raw = fill_data.get("price_paid")
         if price_paid_raw is None:
             # §11.2: fehlt price_paid → Nowcast/Poll der Station.
@@ -922,7 +1058,7 @@ def record_fill(
                 MIN_PRICE_PAID <= price_paid <= MAX_PRICE_PAID
             ):
                 raise ValueError("invalid_price")
-            price_source = "explicit"
+            price_source = price_source_declared or "manuell"
 
         episode_id = fill_data.get("episode_id")
         ep = None
@@ -963,6 +1099,13 @@ def record_fill(
             ref_price = price_paid
 
         saved_eur = round((ref_price - price_paid) * liters, 2)
+
+        # O17: Der Ein-Tipp-Beleg („Ja, wie empfohlen“) steht und fällt mit
+        # dem Live-Preis — frisch vom Client deklariert oder vom Server aus
+        # dem Poll ergänzt. Ohne Live-Nachweis wird nichts gebucht, statt
+        # still einen Prognose-Median als gezahlten Preis zu verbuchen.
+        if source == "prompt" and price_source not in ("live", "nowcast"):
+            raise ValueError("prompt_price_not_live")
 
         fill_event = {
             "id": fill_id,
@@ -1291,6 +1434,95 @@ def _de(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+def _emit_day_cell(snap: dict[str, Any] | None) -> tuple[Any, Any, Any]:
+    """(Tag, Stunde, Wochentag) des Emits in Europe/Berlin — O6-Blöcke.
+
+    Der Tag ist der Blockschlüssel für den Tagesblock-Bootstrap, die
+    (Stunde, Wochentag)-Zelle trägt die Klimatologie-Referenz. Ohne
+    parsebaren Emit-Stempel (None, None, None): Die Zeile bildet einen
+    eigenen Block und fällt in der Klimatologie auf die globale Basisrate
+    zurück — kein Raten, kein Pooling von Unbekanntem.
+    """
+    if not snap:
+        return None, None, None
+    stamp = _parse_ts(snap.get("emitted_at"))
+    if stamp is None:
+        return None, None, None
+    try:
+        local = stamp.astimezone(BERLIN_TZ)
+    except Exception:
+        return None, None, None
+    return local.date().isoformat(), local.hour, local.weekday()
+
+
+def _block_bootstrap_ci(
+    blocks: list[list[float]],
+    samples: int = GATE_BOOTSTRAP_SAMPLES,
+    seed: int = GATE_BOOTSTRAP_SEED,
+) -> tuple[float | None, float | None]:
+    """Block-Bootstrap-Intervall (2,5 %/97,5 %-Perzentile) über Tagesblöcke.
+
+    Dasselbe Verfahren wie der Residuen-Bootstrap der Engine
+    (``engine/models.py``: Tagesblöcke, Ziehen mit Zurücklegen): Jede
+    Ziehung mittelt die quadrierten Fehler der gezogenen Blöcke, das
+    Intervall sind die Perzentile der Ziehungsmittel. Fester Samen — das
+    Intervall ist über Läufe stabil und damit testbar. Leere Eingabe →
+    (None, None); die Mindestblockzahl prüft der Aufrufer.
+    """
+    if not blocks or samples <= 0:
+        return None, None
+    rng = random.Random(seed)
+    n_blocks = len(blocks)
+    means: list[float] = []
+    for _ in range(samples):
+        pooled = 0.0
+        count = 0
+        for _ in range(n_blocks):
+            for value in blocks[rng.randrange(n_blocks)]:
+                pooled += value
+                count += 1
+        means.append(pooled / count if count else 0.0)
+    means.sort()
+    lo_idx = min(len(means) - 1, int(0.025 * len(means)))
+    hi_idx = min(len(means) - 1, int(0.975 * len(means)))
+    return round(means[lo_idx], 4), round(means[hi_idx], 4)
+
+
+def _reference_briers(
+    outcomes: list[float], cells: list[tuple[Any, Any] | None]
+) -> tuple[float | None, float | None]:
+    """Naive Referenzen des Gates auf derselben Grundgesamtheit (O6).
+
+    Basisrate: konstante Vorhersage der empirischen Trefferquote —
+    ``mean((q − y)²)``. Klimatologie: Leave-one-out je (Stunde,
+    Wochentag)-Zelle — jede Zeile wird mit der Quote der *anderen* Zeilen
+    ihrer Zelle bewertet, Einzelzellen fallen auf die globale Quote zurück.
+    Ohne LOO wäre die Klimatologie bei dünnen Zellen in-sample-perfekt und
+    damit unschlagbar (derselbe Fehler wie O11). Leere Eingabe → (None, None).
+    """
+    if not outcomes:
+        return None, None
+    base_rate = sum(outcomes) / len(outcomes)
+    ref_base = sum((base_rate - y) ** 2 for y in outcomes) / len(outcomes)
+    by_cell: dict[tuple[Any, Any], list[int]] = {}
+    for idx, cell in enumerate(cells):
+        if cell is None:
+            continue
+        by_cell.setdefault(cell, []).append(idx)
+    sq_sum = 0.0
+    for idx, y in enumerate(outcomes):
+        cell = cells[idx]
+        peers = [i for i in by_cell.get(cell, [])] if cell is not None else []
+        peers = [i for i in peers if i != idx]
+        if peers:
+            forecast = sum(outcomes[i] for i in peers) / len(peers)
+        else:
+            forecast = base_rate
+        sq_sum += (forecast - y) ** 2
+    ref_climate = sq_sum / len(outcomes)
+    return round(ref_base, 4), round(ref_climate, 4)
+
+
 def compute_advice_stats(
     store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
 ) -> dict[str, Any]:
@@ -1305,6 +1537,22 @@ def compute_advice_stats(
     ein Allzeit-Zähl-Gate (§0.4, §13) und rechnet über dieselbe
     Grundgesamtheit wie der Brier (``n_brier_all``), statt Gesamt-n gegen
     die P-Teilmenge zu vergleichen.
+
+    O5: Die P-Schätzung je Snapshot hat eine Quelle (``p_source``) —
+    ``brier_30d``/``brier_all`` bleiben der gemischte Score über alle Zeilen
+    mit gespeicherter Schätzung (Fortschreibung, als gemischt benannt),
+    ``brier_by_source``/``brier_all_by_source`` weisen ihn je Quelle getrennt
+    aus, und das Gate (``gate_n``/``gate_brier``) rechnet ausschließlich
+    über Zeilen mit ``p_source == "verteilung"``: Die Basisrate ist per
+    Konstruktion selbstkalibriert und darf das Gate nicht öffnen.
+
+    O6: Das Gate vergleicht keinen Punkt-Brier gegen 0,25 mehr. Es besteht
+    erst, wenn die Obergrenze des Block-Bootstrap-Intervalls (Tagesblöcke,
+    95 %) unter beiden naiven Referenzen — konstanter Basisrate und
+    Leave-one-out-Klimatologie je (Stunde, Wochentag) — auf derselben
+    Grundgesamtheit liegt (``gate_brier_ci``, ``gate_ref_base``,
+    ``gate_ref_climate``, ``n_day_blocks``). Unter 10 Tagesblöcken bleibt
+    das Intervall None („nicht messbar“).
     """
     now = now or dt.datetime.now(UTC)
     cutoff = now - dt.timedelta(days=window_days)
@@ -1341,6 +1589,44 @@ def compute_advice_stats(
             snapshots_total += 1
             if snap.get("id") not in settled_ids:
                 n_pending += 1
+    # O38: Fensterbilanz — genutzte vs. verstrichene Fenster je Woche/Monat.
+    # Nur Folgen mit mindestens einer echten Empfehlung sind „Fenster“ (reine
+    # no_advice-Folgen hatten keines, das hätte verstreichen können).
+    # „Genutzt“ = resolved (ein Beleg hat die Folge geschlossen), „verstrichen“
+    # = expired (72 h ohne Fill oder dismiss) — beides datiert nach closed_at
+    # (Fallback opened_at). Offene Folgen laufen noch und zählen in keine der
+    # beiden Seiten. Das Settlement ist davon unabhängig: Auch verstrichene
+    # Fenster werden abgerechnet (Konzept §5.4) — die Bilanz ist die
+    # Gegenprobe zur Trefferquote, nicht ihre Zerlegung.
+    cutoff_7d = now - dt.timedelta(days=7)
+    episodes_used_7d = episodes_expired_7d = 0
+    episodes_used_30d = episodes_expired_30d = 0
+    episodes_open = 0
+    for ep in episodes:
+        if not any(
+            s.get("action") in ("wait", "refuel_now", "refuel_elsewhere")
+            for s in ep.get("snapshots", []) or []
+        ):
+            continue
+        status = ep.get("status")
+        if status in ("open", "waiting", "due"):
+            episodes_open += 1
+            continue
+        if status not in ("resolved", "expired"):
+            continue
+        stamp = _parse_ts(ep.get("closed_at")) or _parse_ts(ep.get("opened_at"))
+        if stamp is None:
+            continue
+        if stamp >= cutoff:
+            if status == "resolved":
+                episodes_used_30d += 1
+            else:
+                episodes_expired_30d += 1
+        if stamp >= cutoff_7d:
+            if status == "resolved":
+                episodes_used_7d += 1
+            else:
+                episodes_expired_7d += 1
     n_void_all = sum(
         1
         for s in store.get("settlements", [])
@@ -1357,8 +1643,12 @@ def compute_advice_stats(
     elsewhere_n, elsewhere_hits = 0, 0
 
     # Brier-Score Berechnung: BS = 1/N * sum((p_pred - actual)^2)
-    # actual = 1 für win, 0 für loss/tie
+    # actual = 1 für win, 0 für loss/tie. O5: zusätzlich je P-Quelle
+    # getrennt (``p_source``) plus Zeilenzähler je Quelle — der gemischte
+    # Score bleibt als Fortschreibung daneben stehen.
     brier_sq_errors = []
+    brier_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    source_counts: dict[str, int] = {key: 0 for key in P_SOURCES}
 
     # 10 Bins für Reliability Diagramm (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
     bins = [
@@ -1378,6 +1668,7 @@ def compute_advice_stats(
         action = snap.get("action") if snap else None
         p_correct = snap.get("p_correct") if snap else None
         outcome = s.get("outcome")
+        source_counts[snapshot_p_source(snap)] += 1
 
         is_win = 1.0 if outcome == "win" else 0.0
 
@@ -1399,7 +1690,9 @@ def compute_advice_stats(
         # Score verzerren und fallen daher aus Zähler UND Nenner.
         if p_correct is not None and math.isfinite(p_correct):
             p_val = min(1.0, max(0.0, float(p_correct)))
-            brier_sq_errors.append((p_val - is_win) ** 2)
+            sq_error = (p_val - is_win) ** 2
+            brier_sq_errors.append(sq_error)
+            brier_by_source[snapshot_p_source(snap)].append(sq_error)
 
             bin_idx = min(9, max(0, int(p_val * 10)))
             bins[bin_idx]["count"] += 1
@@ -1434,49 +1727,119 @@ def compute_advice_stats(
         )
 
     # Allzeit-Brier über dieselbe Grundgesamtheit wie das Zähl-Gate: nur
-    # Settlements, deren Snapshot eine P-Schätzung trägt.
+    # Settlements, deren Snapshot eine P-Schätzung trägt. O5: je Quelle
+    # getrennt — das Gate steht auf der Verteilungs-Teilmenge allein.
     brier_all_sq: list[float] = []
+    brier_all_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    source_counts_all: dict[str, int] = {key: 0 for key in P_SOURCES}
+    gate_rows: list[dict[str, Any]] = []
     for s in settlements_all:
         snap = snapshots_by_id.get(s.get("snapshot_id"))
         p_correct = snap.get("p_correct") if snap else None
+        source = snapshot_p_source(snap)
+        source_counts_all[source] += 1
         if p_correct is None or not math.isfinite(p_correct):
             continue
         is_win = 1.0 if s.get("outcome") == "win" else 0.0
         p_val = min(1.0, max(0.0, float(p_correct)))
-        brier_all_sq.append((p_val - is_win) ** 2)
+        sq_error = (p_val - is_win) ** 2
+        brier_all_sq.append(sq_error)
+        brier_all_by_source[source].append(sq_error)
+        # O6: Gate-Zeilen mit Block- und Zellenschlüssel für Intervall und
+        # Referenzen — dieselbe Grundgesamtheit wie gate_sq (Verteilung).
+        if source == "verteilung":
+            day, hour, weekday = _emit_day_cell(snap)
+            gate_rows.append(
+                {
+                    "day": day,
+                    "cell": (hour, weekday) if hour is not None else None,
+                    "outcome": is_win,
+                    "sq": sq_error,
+                }
+            )
     n_brier_all = len(brier_all_sq)
     brier_all = round(sum(brier_all_sq) / n_brier_all, 4) if n_brier_all > 0 else None
 
-    # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die gleiche
-    # Grundgesamtheit, deren Brier wir messen (n_brier_all), Brier < 0,25.
-    # Die 90-Tage-Übergangsregel (live_only_days) ist Datenhygiene und kein
-    # Nenner hier.
+    def _source_block(errors: dict[str, list[float]]) -> dict[str, dict[str, Any]]:
+        return {
+            key: {
+                "brier": round(sum(values) / len(values), 4) if values else None,
+                "n": len(values),
+            }
+            for key, values in errors.items()
+        }
+
+    # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die
+    # Verteilungs-Teilmenge allein (O5) — die Basisrate ist per Konstruktion
+    # selbstkalibriert und öffnet das Gate nicht. Die 90-Tage-Übergangsregel
+    # (live_only_days) ist Datenhygiene und kein Nenner hier. O6: Kein
+    # Punkt-Brier gegen 0,25 mehr — das Gate besteht erst, wenn die
+    # Obergrenze des Block-Bootstrap-Intervalls unter beiden naiven
+    # Referenzen (Basisrate, Klimatologie) liegt.
     n_all = len(settlements_all)
-    calibrated = (
-        n_brier_all >= M7_MIN_RECOMMENDATIONS
-        and brier_all is not None
-        and brier_all < M7_BRIER_THRESHOLD
+    gate_sq = brier_all_by_source["verteilung"]
+    gate_n = len(gate_sq)
+    gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
+    day_blocks: dict[Any, list[float]] = {}
+    for pos, row in enumerate(gate_rows):
+        key = row["day"] if row["day"] is not None else f"unknown-{pos}"
+        day_blocks.setdefault(key, []).append(row["sq"])
+    n_day_blocks = len(day_blocks)
+    if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
+        gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
+    else:
+        gate_ci_lo, gate_ci_hi = None, None
+    gate_ref_base, gate_ref_climate = _reference_briers(
+        [row["outcome"] for row in gate_rows],
+        [row["cell"] for row in gate_rows],
     )
-    limit = _de(M7_BRIER_THRESHOLD)
-    if n_all < M7_MIN_RECOMMENDATIONS:
-        gate_status = f"Kalibrierung steht aus (n={n_all} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
-    elif brier_all is None:
-        # Zählstand reicht, aber kein Settlement trägt eine P-Schätzung: Der
+    binding_ref = min(gate_ref_base, gate_ref_climate) if gate_rows else None
+    calibrated = (
+        gate_n >= M7_MIN_RECOMMENDATIONS
+        and gate_ci_hi is not None
+        and binding_ref is not None
+        and gate_ci_hi < binding_ref
+    )
+    if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
+        gate_status = (
+            f"Kalibrierung steht aus (n={gate_n} < {M7_MIN_RECOMMENDATIONS} "
+            "Empfehlungen mit Verteilungs-P)"
+        )
+    elif gate_brier is None:
+        # Zählstand reicht, aber keine Zeile trägt eine Verteilungs-P: Der
         # Score ist nicht messbar. „kalibriert" wäre erfunden (§0.4).
         gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, keine P-Schätzung im Ledger)"
+            f"Kalibrierung nicht messbar (n={n_all}, keine Verteilungs-P im Ledger)"
         )
-    elif n_brier_all < M7_MIN_RECOMMENDATIONS:
-        # Gesamt-n reicht, aber die P-Teilmenge nicht — der Brier wäre über
-        # eine andere Grundgesamtheit gemessen als der Zähler (Prüfstand §3.6).
+    elif gate_n < M7_MIN_RECOMMENDATIONS:
+        # Gesamt-n reicht, aber die Verteilungs-Teilmenge nicht — der Brier
+        # wäre über eine andere Grundgesamtheit gemessen als der Zähler
+        # (Prüfstand §3.6), und die Basisrate öffnet das Gate nicht (O5).
         gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, nur {n_brier_all} "
-            "mit P-Schätzung im Ledger)"
+            f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
+            "mit Verteilungs-P im Ledger)"
         )
-    elif brier_all >= M7_BRIER_THRESHOLD:
-        gate_status = f"Kalibrierung nicht erreicht (Brier {_de(brier_all)} ≥ {limit})"
+    elif gate_ci_hi is None or binding_ref is None:
+        # Zählstand reicht, aber zu wenige Tagesblöcke für ein belastbares
+        # Intervall (ein Block hätte Varianz null — das Gate wäre ein
+        # Münzwurf mit Ansage). „Tagesblöcke“ ist Bootstrap-Sprache, nicht
+        # die 90-Tage-Übergangsregel — die bleibt eine andere Freigabe.
+        gate_status = (
+            f"Kalibrierung nicht messbar (n={gate_n}, nur {n_day_blocks} "
+            f"Tagesblöcke — das Intervall braucht min. {GATE_MIN_DAY_BLOCKS})"
+        )
+    elif gate_ci_hi >= binding_ref:
+        gate_status = (
+            f"Kalibrierung nicht erreicht (Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] ≥ Basis {_de(gate_ref_base)} "
+            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
+        )
     else:
-        gate_status = f"Kalibriert (n={n_all}, Brier {_de(brier_all)} < {limit})"
+        gate_status = (
+            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
+            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
+        )
 
     return {
         "n": n,
@@ -1486,9 +1849,38 @@ def compute_advice_stats(
         "n_all": n_all,
         "n_brier_all": n_brier_all,
         "brier_all": brier_all,
+        # O5: Brier je P-Quelle (30-Tage-Fenster und Allzeit) plus
+        # Zeilenzähler je Quelle — und die Gate-Grundgesamtheit
+        # (Verteilungs-P allein) als eigene Zahlen.
+        "brier_by_source": _source_block(brier_by_source),
+        "brier_all_by_source": _source_block(brier_all_by_source),
+        "p_source_counts": dict(source_counts),
+        "p_source_counts_all": dict(source_counts_all),
+        "gate_n": gate_n,
+        "gate_brier": gate_brier,
+        # O6: Intervall (Block-Bootstrap über Tagesblöcke, 95 %), beide naive
+        # Referenzen auf derselben Grundgesamtheit und die Fenstergröße —
+        # das Gate besteht erst, wenn die Obergrenze unter beiden liegt.
+        "gate_brier_ci": ([gate_ci_lo, gate_ci_hi] if gate_ci_hi is not None else None),
+        "gate_ref_base": gate_ref_base,
+        "gate_ref_climate": gate_ref_climate,
+        "n_day_blocks": n_day_blocks,
+        "min_day_blocks": GATE_MIN_DAY_BLOCKS,
+        "block_days": GATE_BLOCK_DAYS,
+        "bootstrap_samples": GATE_BOOTSTRAP_SAMPLES,
         # Zähl-Ehrlichkeit: ausgespielt vs. abgeschlossen vs. noch offen.
+        # O6: ``brier_threshold`` (0,25) ist kein Gate-Kriterium mehr, sondern
+        # das dokumentierte Münz-Niveau zum Einordnen — das Gate vergleicht
+        # die Intervall-Obergrenze gegen Basis- und Klima-Referenz.
         "snapshots_total": snapshots_total,
         "n_pending": n_pending,
+        # O38: Fensterbilanz — genutzte (resolved) vs. verstrichene (expired)
+        # Fenster je Woche/Monat plus laufende Folgen (in keiner der Seiten).
+        "episodes_used_7d": episodes_used_7d,
+        "episodes_expired_7d": episodes_expired_7d,
+        "episodes_used_30d": episodes_used_30d,
+        "episodes_expired_30d": episodes_expired_30d,
+        "episodes_open": episodes_open,
         "wins": wins,
         "losses": losses,
         "ties": ties,
@@ -1544,6 +1936,15 @@ def compute_wallet_stats(
 
     saved_eur = round(sum(f.get("saved_vs_always_now_eur", 0.0) for f in fills), 2)
 
+    # O17: Belege mit Prognosepreis (Altbestand, nur via Migration 4 → 5)
+    # tragen keinen gezahlten Preis — die verifizierte Ersparnis rechnet
+    # ohne sie und ist die zweite, ausdrücklich so benannte Spalte.
+    verified_fills = [f for f in fills if f.get("price_source") != "prognose"]
+    n_prognosis_price = len(fills) - len(verified_fills)
+    saved_verified_eur = round(
+        sum(f.get("saved_vs_always_now_eur", 0.0) for f in verified_fills), 2
+    )
+
     # w(h)-Histogramm der Tankzeiten: Default Pendlerprofil w0
     # w0: Mo-Fr 06-09 und 16-20 gewichtet, sonst flach
     w0 = [0.0] * 24
@@ -1590,6 +1991,9 @@ def compute_wallet_stats(
         "ignored": ignored,
         "unrelated": unrelated,
         "saved_eur": saved_eur,
+        # O17: Ersparnis ohne Prognosepreis-Belege plus deren Anzahl.
+        "saved_verified_eur": saved_verified_eur,
+        "n_prognosis_price": n_prognosis_price,
         "wh_hours": wh_hours,
         # A9: Wieviel hinter dem Profil steckt — die GUI sagt damit, ab wann
         # die persönliche Fensterreihenfolge gilt (Konzept §5.5 Schicht C).
@@ -1617,6 +2021,12 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
     # sein: wer teurer als der Referenzpreis tankt, hat gegen die Baseline
     # verloren). Belege ohne saved-Feld (Altbestand) tragen 0 — kein Reim.
     baseline_eur = total_eur + saved_eur
+    # O17: zweite Spalte ohne Prognosepreis-Belege (Altbestand, kein
+    # gezahlter Preis) plus deren Anzahl — je Zeile, nicht nur overall.
+    verified = [f for f in fills if f.get("price_source") != "prognose"]
+    saved_verified_eur = sum(
+        float(f.get("saved_vs_always_now_eur") or 0.0) for f in verified
+    )
     return {
         "key": key,
         "fills": len(fills),
@@ -1625,6 +2035,8 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_eur_per_fill": round(total_eur / len(fills), 2) if fills else None,
         "avg_eur_per_liter": round(total_eur / liters, 3) if liters > 0 else None,
         "saved_eur": round(saved_eur, 2),
+        "saved_verified_eur": round(saved_verified_eur, 2),
+        "n_prognosis_price": len(fills) - len(verified),
         "baseline_eur": round(baseline_eur, 2),
     }
 

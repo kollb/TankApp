@@ -6,7 +6,9 @@
 > Dimensionen ergänzt, die in der Ausgangsfrage fehlten
 > ([7](#7-dimensionen-die-in-der-aufzählung-fehlten), Befunde O33–O42), und
 > alle 42 Befunde in Batches mit Priorität und Check gruppiert
-> ([10](#10-batches-priorität-und-check)). Geprüft wurde der Bestand gegen sich selbst:
+> ([10](#10-batches-priorität-und-check)). Nachtrag 17.09.2026: Befund O43
+> kam bei der Umsetzung von O17 (Batch 2, 0.45.0) hinzu und steht in
+> Batch 5. Geprüft wurde der Bestand gegen sich selbst:
 > `engine/`, `app/`, `web/src/`, `rp2/`, `ops/` und `data-tools/`, dazu
 > Messungen am Demo-Stapel und an synthetischen 70-Tage-Daten — Protokoll und
 > Grenzen in [8](#8-gemessen-statt-behauptet). Bewusst **nicht** wiederholt
@@ -124,10 +126,11 @@ Ressourcen. P2 = inkonsistent, aber folgenarm. P3 = Schliff.
 | [O37](#o37--der-server-misst-sich-selbst-nicht) | P2 | keine Metriken | Keine Antwortzeiten, keine Parse-Dauer, kein Server-Budget: O23/O25/O26 sind unsichtbar und kommen wieder. |
 | [O39](#o39--das-ledger-ist-im-lan-für-alle-lesbar) | P2 | LAN-Exposition | Jeder Rechner im LAN liest alle Belege mit Zeit, Ort und Preis; ein Token-Mechanismus ist vorhanden, die Entscheidung nicht dokumentiert. |
 | [O42](#o42--der-push-grundsatz-kollidiert-mit-dem-preis-push) | P2 | Push-Regel offen | `notify.py` verbietet Preis- und Stationsdetails im Push — O29 braucht genau sie; die Kanal-Entscheidung steht nirgends. |
+| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) | P2 | Stunde bleibt 12 | Beleg ohne `tanked_at` bekommt den Server-Stempel, aber die Stunde 12 mit Herkunft „default“ — ableitbar wäre sie. |
 | [O40](#o40--die-diagramm-textalternative-nennt-keine-werte) | P3 | A11y-Rest | Diagramme tragen `role="img"` und `<desc>`, aber die Beschreibung nennt Reihen statt Werte, und `aria-label` ist überall „Diagramm“. |
 | [O41](#o41--drei-normalisierungswege-für-ein-artefakt) | P3 | drei Formen | Zwei Schreiber, drei Normalisierungswege, tote Felder und kein Test für `read_selection`. |
 
-Zwei Zahlen zum Einordnen: **14 der 42 Befunde sind P0/P1**, und die beiden
+Zwei Zahlen zum Einordnen: **14 der 43 Befunde sind P0/P1**, und die beiden
 P0-Befunde teilen sich eine Ursache — ein Wert fehlt (O1) oder eine Grenze
 greift (O22), und in beiden Fällen sagt niemand Bescheid.
 
@@ -266,6 +269,25 @@ wechselt erst, wenn die Schwelle um mehr als die halbe Bandbreite
 überschritten ist. Zusätzlich die Fallzahl anzeigen („auf 7 Tagen“), damit
 ein Badge mit n=7 nicht wie eines mit n=700 wirkt.
 
+**Umgesetzt in 0.45.0:** `rolling_picp_7d` bildet je Testtag das Mittel der
+Tagesquoten im 7-Tage-Fenster — ein Tag, eine Stimme — und meldet die
+Fallzahl als `n_days` (Tage mit bewerteten Punkten; unter
+`ROLLING_PICP_MIN_DAYS = 3` ist das Badge `null`, keine Aussage). Das Badge
+läuft als Kette über die Tageshistorie: Tage ohne Punkte aktualisieren den
+Stand nicht, der Wechsel über eine Schwelle braucht 1,5 pp Abstand jenseits
+der Schwelle (`ROLLING_PICP_HYSTERESIS_PP`, halber Grün/Gelb-Abstand). Die
+Fallzahl steht in der Antwort — in `current.n_days` wie in
+`/v1/decide` als `quality.rolling_picp_7d_days`. Zwei Korrekturen zum Befund:
+Erstens ist die Hysterese bewusst kein `noise_band`-Muster — bei n = 7 Tagen
+wäre 2σ ≈ ±22 pp, größer als jeder Schwellenabstand (3 bzw. 5 pp); das Badge
+würde als Latch kleben und Rot die §4.4-Empfehlung permanent blockieren.
+„Halbe Bandbreite“ ist hier der halbe Schwellenabstand. Zweitens zeigt die
+GUI den Badge nirgends an — Labor/System zeigen das Aggregat-`picp_95` aus
+`stats_summary`, eine andere Kennzahl (LUECKEN.md berichtigt); ein Badge-Display
+wäre neuer Scope ohne Design-Anker. Nachweis: `tests/test_o4_picp_days.py`
+(Tagesstimme gegen Pooling, Kette, Lückentage), Hysterese-Parametrisierung in
+`tests/test_backtest.py`, Fallzahl-Pin im B4-Güte-Test.
+
 ### O5 — Das M7-Gate mischt zwei Wahrscheinlichkeitsquellen
 
 **Beleg.** `app/feedback.py:494–497` und `:521` bauen `p_correct` entweder
@@ -289,6 +311,19 @@ Brier-Score wird je Quelle getrennt ausgewiesen, und das M7-Gate darf nur auf
 Verteilungs-P stehen. `LUECKEN.md` Zeile 520 an den Code anpassen — oder den
 Code an die Doku, je nachdem was gewollt ist; beides zusammen geht nicht.
 
+**Umgesetzt in 0.45.0:** `record_snapshot` speichert `p_source` je Zeile
+(Verteilungs-P aus den Draws, sonst die Ledger-Quote als `basisrate`, sonst
+`keine`); Feedback-Store Schema 4 → 5 rekonstruiert die Quelle für
+Altbestände mit Kennzeichnung (idempotent). `compute_advice_stats` weist den
+Brier je Quelle getrennt aus (`brier_by_source`, `brier_all_by_source`,
+`p_source_counts…`), und das Gate (`gate_n`/`gate_brier`) rechnet
+ausschließlich über `verteilung` — 100 Basisraten-Treffer öffnen es nicht.
+Das Tagebuch nennt je Zeile die Quelle, die M7-Fortschrittszeile der GUI
+zählt die Gate-Grundgesamtheit. `LUECKEN.md` §4.1–4.3 sagt dasselbe wie der
+Code (der Code wurde an die Doku angepasst: Gate nur über Verteilungs-P).
+Nachweis: `tests/test_o5_p_source.py` (11 Fälle) plus angepasste Gate-Tests
+in `tests/test_b4.py` und ein Fall in `web/src/data.test.ts`.
+
 ### O6 — Die Brier-Schwelle ist ein Münzwurf ohne Intervall
 
 **Beleg.** Die Gate-Bedingung „Brier < 0,25“ steht als feste Zahl im
@@ -310,6 +345,27 @@ erst, wenn die Obergrenze des Intervalls unter der Referenz liegt. Dieselbe
 Logik gilt für die Ensemble-Gewichtung, die in
 [LUECKEN.md](LUECKEN.md) Zeile 516 bereits als diskriminanzarm dokumentiert
 ist (0,51/0,49) — dort steht der Befund, hier nur der Querverweis.
+
+**Umgesetzt in 0.45.0:** Das Gate besteht erst, wenn die Obergrenze des
+Block-Bootstrap-Intervalls (Tagesblöcke in Europe/Berlin, 95 %, 1000
+Ziehungen mit festem Samen — dasselbe Verfahren wie der Residuen-Bootstrap
+in `engine/models.py`) unter beiden naiven Referenzen auf der
+Verteilungs-Grundgesamtheit liegt: konstanter Basisrate und
+Leave-one-out-Klimatologie je (Stunde, Wochentag) — LOO, damit dünne Zellen
+nicht in-sample-perfekt und damit unschlagbar sind. Unter 10 Tagesblöcken
+bleibt das Intervall `null` („nicht messbar“; ein Block hätte Varianz null).
+Die Antwort nennt Intervall, Fenstergröße und beide Referenzen
+(`gate_brier_ci`, `block_days`, `n_day_blocks`, `bootstrap_samples`,
+`gate_ref_base`, `gate_ref_climate`); `brier_threshold` (0,25) ist nur noch
+das dokumentierte Münz-Niveau. Die GUI zeigt Punkt, Intervall und Referenzen
+(`m7GateLine`, System-Metrik), KONZEPT §0.4/§5.1 nennt die neue Regel. Zum
+Ensemble: Der Rebuild aus dem Rolling-Origin-Backtest bleibt die
+dokumentierte „Arbeit“ in LUECKEN.md — das Gate-Muster (Intervall gegen
+Referenzen) steht dort jetzt als Vorlage für den Rebuild. Nachweis:
+`tests/test_o6_gate_interval.py` (13 Fälle, darunter der Ratchet „konstante
+Basisraten-Vorhersage mit Brier 0,16 besteht nicht“) plus angepasste
+Gate-Tests in `tests/test_b4.py`/`tests/test_o5_p_source.py` und neue Fälle
+in `web/src/data.test.ts`.
 
 ### O7 — Drei Tie-Konventionen in einem Ledger
 
@@ -580,6 +636,23 @@ die Maske nach, statt den Median zu buchen. Die Wallet-Bilanz kennzeichnet
 Belege mit Prognosepreis und rechnet sie nicht in die Güte-Kennzahlen — oder
 nur in einer zweiten, ausdrücklich so benannten Spalte. Ratchet-Test: ein
 prompt-Beleg ohne Live-Preis erzeugt keinen Beleg mit `expected_price`.
+
+**Umgesetzt in 0.45.0:** `record_fill` nimmt die Preis-Herkunft vom Client
+(`price_source: "live"|"manuell"`, sonst `400 invalid_price_source`); ein
+Ein-Tipp-Beleg (`source == "prompt"`) ohne Live-Nachweis wird mit
+`400 prompt_price_not_live` abgewiesen statt gebucht (`prognose` vergibt
+nur die Migration 4 → 5 für Altbestände). Die GUI bucht am Due-Prompt
+ausschließlich den frischen Live-Preis der empfohlenen Station
+(`promptFillPrice`, `web/src/fills.ts`) — der Knopf nennt genau diesen Preis
+und ist ohne ihn aus; wer ihn in der Lücke zwischen Anzeige und Tipp
+verliert, landet in der Erfassungs-Maske statt in einer Buchung. Belege mit
+Prognosepreis tragen in „Ich → Belege“ den Hinweis „kein gezahlter Preis“,
+die Bilanz und die Wallet-Kennzahlen nennen `saved_verified_eur` als zweite,
+ausdrücklich so benannte Spalte (`n_prognosis_price` je Zeile). Nachweis:
+`tests/test_o17_prompt_fill.py` (10 Fälle), `web/src/fills.test.ts`,
+`web/src/views/Jetzt.test.tsx` und `web/src/views/Ich.test.tsx` sowie zwei
+Fälle in der Demo-Suite (`web/e2e/demo.spec.ts`, ohne Mocks: gebuchter Preis
+= Live-Preis ≠ Köder, ohne Live-Preis kein POST).
 
 ### O18 — Vier Laborwerkzeuge sind dauerhaft stumm
 
@@ -1053,7 +1126,9 @@ Die Ausgangsfrage nannte fünf Dimensionen (mathematisch, statistisch, UX, UI,
 technisch) plus die Kundensicht. Zwölf weitere habe ich danach geprüft — mit
 demselben Maßstab: Beleg am Code, kein Verdacht. Vier davon sind im
 Wesentlichen erledigt und stehen deshalb in [9](#9-was-schon-richtig-ist),
-acht haben Befunde ergeben (O33–O42).
+acht haben Befunde ergeben (O33–O42). Ein neunter (O43) kam am 17.09.2026
+bei der Umsetzung von O17 hinzu — Nachtrag in der Dimensions-Tabelle und in
+Batch 5.
 
 | Dimension | Ergebnis der Prüfung |
 |---|---|
@@ -1068,6 +1143,7 @@ acht haben Befunde ergeben (O33–O42).
 | Wartbarkeit und Struktur | Befund [O41](#o41--drei-normalisierungswege-für-ein-artefakt) plus O21: doppelte und dreifache Implementierungen, große Module (`app/data.py` 1911 Zeilen, `web/src/data.ts` 3727, `rp2/fallback_gui.py` 3000) |
 | Recht und Lizenz | **Kein Befund.** Die GUI nennt Quelle und Lizenz samt Abfrage-Regel (`web/src/Dashboard.tsx:615`: „Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten“), `web/src/views/Settings.tsx:722` ebenso; Privatdaten und Schlüssel sind gitignored (`.gitignore`: `data/`, `polling.json`, `*.netrc`, `config.local.json`) |
 | Zeit, DST, Uhr | **Kein Befund.** `engine/data.py:237` (`local_day_hours`) und `:257` (`dst_transition_days`) behandeln Umstellungstage, der Backtest weist sie aus (H5), und `tanked_at` wird serverseitig validiert (`app/feedback.py:736–751`, `invalid_tanked_at` als 400) — O1 kann darauf aufbauen |
+| O1-Vollständigkeit (Nachtrag 17.09.2026 aus der O17-Umsetzung) | Befund [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel): Die Validierung greift, aber der Pfad ohne Angabe leitet nichts ab — Stempel echt, Stunde erfunden |
 | Sicherheit gegen Injection und Pfadzugriff | **Kein Befund.** Statische Auslieferung ist auf `settings.static` beschränkt und prüft `is_relative_to` (`app/server.py:695–696`), Schreib-Endpunkte haben ein Budget mit 429 (`:714–723`), Job-Log-Zeilen gehen durch `redact` (`app/data.py:883`), Fehlermeldungen durch `app/errors.public_detail` |
 | Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
 | Skalierbarkeit | Läuft auf [O22](#o22--die-veröffentlichung-passt-nicht-mehr-durch-das-leselimit) hinaus: Die Grenze ist nicht die Rechenzeit, sondern die Publikationsgröße |
@@ -1233,6 +1309,22 @@ der abgerechneten Fälle gegen die verstrichenen. Wenn O29 (Push) kommt, ist
 das dieselbe Größe: „3 von 5 Fenstern genutzt“. Ein Test, der eine Episode
 mit `status="expired"` durch die Zusammenfassung verfolgt.
 
+**Umgesetzt in 0.45.0:** `compute_advice_stats` zählt genutzte (`resolved`)
+gegen verstrichene (`expired`) Fenster je 7/30 Tage (`episodes_used_7d`,
+`episodes_expired_7d`, `episodes_used_30d`, `episodes_expired_30d`) plus
+laufende Folgen (`episodes_open`) — nur Folgen mit mindestens einer echten
+Empfehlung (`wait`/`refuel_now`/`refuel_elsewhere`), datiert nach `closed_at`
+(Fallback `opened_at`). Reine `no_advice`-Folgen hatten kein Fenster und
+zählen nirgends; offene Folgen laufen noch und stehen in keiner der beiden
+Seiten. Das Labor (Vertrauens-Konto) zeigt daraus „x von y Fenstern
+genutzt“ mit der Aufschlüsselung abgerechneter Empfehlungen gegen
+verstrichene Fenster (`windowsUsedLine`, Zahlen über `countLabel`,
+Alt-Payloads ohne O38-Zähler erfinden keine Bilanz). Nachweis:
+`tests/test_o38_windows.py` (expired-Folge in beiden Zählern, Monats-Fall,
+no_advice-Ausschluss, offene Folgen, `closed_at`-Fallback),
+`windowsUsedLine`-Tests in `web/src/data.test.ts` und Render-Tests in
+`web/src/views/Labor.test.tsx`; `format-convention.test.ts` bleibt grün.
+
 ### O39 — Das Ledger ist im LAN für alle lesbar
 
 **Beleg.** `app/server.py:1045` und `:1050` binden `0.0.0.0:1355`. Das
@@ -1334,6 +1426,31 @@ Dateirechte und Rotationshinweis für die URL, und ein Test, der den Payload
 gegen die jeweils gewählte Regel prüft (heute: keine Preise — der Test
 existiert in `web/src/notify.test.ts` für die GUI-Seite, nicht für den
 Server-Payload).
+
+### O43 — Beleg ohne Zeitstempel lernt die Stunde nicht aus dem Server-Stempel
+
+**Beleg.** `app/feedback.py:959–980` (`_validated_tanked_at`): Ohne Angabe
+kommt `None` zurück („der Aufrufer setzt den Zeitstempel“);
+`record_fill` speichert dann `tanked_at or now_str` (Z. 1102), aber
+`clock_hour_from_fill(fill_data, tanked_at)` (Z. 1074, Definition Z. 192–214)
+sieht nur das `None` und liefert `(12.0, "default")`. Gefunden bei der
+Umsetzung von O17 (0.45.0): Der HTTP-Check gegen den Demo-Server buchte ohne
+`tanked_at` und erhielt einen echten Stempel mit erfundener Stunde.
+
+**Wirkung.** Ein Beleg ohne `tanked_at` trägt einen echten Zeitstempel, aber
+die 12-Uhr-Stunde mit Herkunft „default“ — das w(h)-Profil zählt ihn zu den
+erfundenen Stunden (`wh_default_n`), obwohl die Stunde aus dem eigenen
+Stempel ableitbar wäre. Genau die Lücke, die O1 schließen wollte: Beleg-Zeit
+und Beleg-Stunde sind zwei Wahrheiten — Stempel echt, Stunde erfunden. Die
+GUI ist nicht betroffen (sendet `tanked_at` immer, `postFill` in
+`web/src/data.ts`); nur rohe API-Clients ohne Stempel laufen in den Pfad.
+Folgenarm, aber inkonsistent — P2.
+
+**DoD.** `record_fill` leitet die Stunde aus dem gesetzten Stempel ab
+(Herkunft „abgeleitet“, nicht „beleg“ — der Nutzer hat die Zeit nicht
+genannt, der Server hat sie gesetzt); nur wenn auch das scheitert, bleibt
+12/„default“. Test: Beleg ohne `tanked_at` trägt die Stunde des
+Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`.
 
 ## 8. Gemessen statt behauptet
 
@@ -1545,6 +1662,7 @@ Ziel: Jede Größe beantwortet die Frage, für die sie angezeigt wird.
 | [O11](#o11--die-heatmap-bewertet-sich-mit-eigenen-preisen) kein LOO | M | Test: Skaliert man die Preise einer Station, ändert sich ihre eigene Cheap-Probability nicht mehr (LOO); Vergleichsrechnung gegen `_loo_baseline` aus `engine/selection.py` |
 | [O14](#o14--umwegkilometer-sind-drei-verschiedene-größen) `dist_km` gemischt | M | Test: `dist_mode` steht in der Antwort und wird angezeigt; die Umwegrechnung verwendet ausschließlich Straßenkilometer, sonst einen benannten Schätzwert mit Faktor |
 | [O15](#o15--der-zeitwert-kippt-um-halb-fünf) Stufe 16:30 | S | Test: 16:29 und 16:31 unterscheiden sich höchstens um den interpolationsschritt — oder die Stufe ist in der Antwort und in der GUI benannt |
+| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) Stunde bleibt 12 (Nachtrag aus Batch 2) | S | Test: Beleg ohne `tanked_at` trägt die Stunde des Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`; nur ohne ableitbaren Stempel bleibt 12/`"default"` |
 
 **Batch-Abnahme:** Keine Kennzahl mehr, die gegen sich selbst null ergibt,
 keine Schwelle ohne Basisrate, keine Einheit ohne Namen.

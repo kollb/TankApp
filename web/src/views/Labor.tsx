@@ -51,6 +51,7 @@ import {
   rowOutcome,
   timeLabel,
   timeSpanLabel,
+  windowsUsedLine,
   type AdviceDiary,
   type Forecast,
   type Health,
@@ -356,6 +357,8 @@ export function LaborView(props: LaborViewProps) {
   }, [focusSection, onFocusHandled]);
 
   const advice = statsSummaryRes.data?.live_advice ?? null;
+  // O38: Fensterbilanz („x von y Fenstern genutzt“) — null ohne O38-Zähler.
+  const windowsLine = windowsUsedLine(advice);
   const quality = statsSummaryRes.data?.quality_metrics ?? null;
   const wins = Number(advice?.wins ?? 0);
   const losses = Number(advice?.losses ?? 0);
@@ -521,7 +524,7 @@ export function LaborView(props: LaborViewProps) {
               {" "}
               <InfoTooltip
                 label="Brier-Score (30 Tage)"
-                text="Mittlerer quadratischer Fehler der Prozent-Angaben: 0 = perfekt, kleiner ist besser. Unter 0,25 gilt die Prozent-Anzeige als kalibriert (M7)."
+                text="Mittlerer quadratischer Fehler der Prozent-Angaben: 0 = perfekt, kleiner ist besser. Die Prozent-Anzeige gilt als kalibriert, wenn die Obergrenze des Brier-Intervalls unter Basis- und Klima-Referenz liegt (M7)."
               />
               {deTrimmed(advice.brier_30d, 3)}
             </>
@@ -529,6 +532,9 @@ export function LaborView(props: LaborViewProps) {
         </p>
         {m7Line && (
           <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7Line}</p>
+        )}
+        {windowsLine && (
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{windowsLine}</p>
         )}
         <button
           onClick={() => jumpTo("sicherheit")}
@@ -796,12 +802,13 @@ export function LaborView(props: LaborViewProps) {
               Der Brier-Score ist der mittlere quadratische Fehler der
               Prozent-Angaben (0 = perfekt, 0,25 = Raten). Das M7-Gate ist die
               Führerschein-Prüfung der App: erst ab 100 abgerechneten
-              Empfehlungen und Brier &lt; 0,25 zeigt sie Prozente.
+              Empfehlungen, deren Brier-Intervall unter beiden Referenzen
+              liegt, zeigt sie Prozente.
             </p>
             <div className="rounded-lg bg-slate-950/70 p-2 font-mono text-xs text-slate-300">
               Brier = mean((p − o)²), o ∈ {"{"}0, 1{"}"} · Gate: n ≥{" "}
-              {advice?.min_recommendations ?? 100} ∧ Brier &lt;{" "}
-              {deTrimmed(advice?.brier_threshold ?? 0.25, 2)}
+              {advice?.min_recommendations ?? 100} ∧ Obergrenze(Brier-KI) &lt;{" "}
+              min(Basis, Klima) · ≥ {advice?.min_day_blocks ?? 10} Tagesblöcke
             </div>
           </ForTheCurious>
           <SelfCheck

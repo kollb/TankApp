@@ -125,7 +125,6 @@ function DashboardShell() {
     price,
     fresh,
     selected,
-    bestPrice,
     freshPrices,
     pinnedFirstStations,
     h,
@@ -175,6 +174,7 @@ function DashboardShell() {
     visibleFills,
     voidedCount,
     dueEpisode,
+    dueFillPrice,
     handleConfirmRecommendedFill,
     handleQuickFill,
     handleVoidFill,
@@ -446,7 +446,7 @@ function DashboardShell() {
             onTankQuick={(percent) => setTankPercent(percent)}
             dueEpisode={dueEpisode}
             dueDismissed={dueDismissed}
-            bestPrice={bestPrice}
+            dueFillPrice={dueFillPrice}
             onConfirmRecommended={(ep) => handleConfirmRecommendedFill(ep)}
             onDismissDue={(epId) => handleDismissDue(epId)}
             onOpenFills={() => {

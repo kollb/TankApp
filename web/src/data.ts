@@ -406,6 +406,12 @@ export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
 /** O1: Herkunft der Tankuhrzeit eines Belegs (`app/feedback.py`). */
 export type ClockHourSource = "beleg" | "abgeleitet" | "default";
+/**
+ * O17: Herkunft des Belegpreises — live (frischer Poll zur Tipp-Zeit),
+ * manuell (eingetragen), prognose (Altbestand, kein gezahlter Preis),
+ * nowcast (Server-Nowcast bei fehlendem Preis).
+ */
+export type PriceSource = "live" | "manuell" | "prognose" | "nowcast";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
 /** Ein Beleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
@@ -421,7 +427,7 @@ export type Fill = {
   clock_hour_source?: ClockHourSource | null;
   liters: number;
   price_paid: number;
-  price_source?: string;
+  price_source?: PriceSource;
   fuel: Fuel;
   source?: string;
   compliance?: Compliance;
@@ -557,6 +563,10 @@ export type BalanceRow = {
   avg_eur_per_fill: number | null;
   avg_eur_per_liter: number | null;
   saved_eur: number;
+  /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
+  saved_verified_eur: number;
+  /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
+  n_prognosis_price: number;
   baseline_eur: number;
 };
 
@@ -680,6 +690,8 @@ export type DecideResult = {
   quality?: {
     rolling_picp_7d_pct: number | null;
     rolling_picp_7d_points: number | null;
+    // O4: Fallzahl der Kennzahl in Tagen (Tage mit bewerteten Punkten).
+    rolling_picp_7d_days: number | null;
     rolling_picp_7d_badge: "green" | "yellow" | "red" | null;
     rolling_picp_7d_as_of?: string | null;
     rolling_picp_window_days: number;
@@ -835,6 +847,12 @@ export type StatsSummary = {
     /** Ausgespielte vs. noch offene Empfehlungen (Zähl-Ehrlichkeit). */
     snapshots_total?: number;
     n_pending?: number;
+    /** O38: Fensterbilanz — genutzte vs. verstrichene Fenster je Woche/Monat. */
+    episodes_used_7d?: number;
+    episodes_expired_7d?: number;
+    episodes_used_30d?: number;
+    episodes_expired_30d?: number;
+    episodes_open?: number;
     wins: number;
     losses: number;
     ties: number;
@@ -855,6 +873,25 @@ export type StatsSummary = {
     // ältere Statistik-Stände liefern sie nicht, dann gilt der Fallback unten.
     min_recommendations?: number;
     brier_threshold?: number;
+    /** O5: Brier je P-Quelle (30 Tage und Allzeit) — getrennt statt gemischt. */
+    brier_by_source?: Record<string, { brier: number | null; n: number }>;
+    brier_all_by_source?: Record<string, { brier: number | null; n: number }>;
+    p_source_counts?: Record<string, number>;
+    p_source_counts_all?: Record<string, number>;
+    /** O5: Gate-Grundgesamtheit — Verteilungs-P allein (Allzeit). */
+    gate_n?: number;
+    gate_brier?: number | null;
+    /** O6: Block-Bootstrap-Intervall des Gate-Briers — null bei zu wenigen Tagesblöcken. */
+    gate_brier_ci?: [number, number] | null;
+    /** O6: naive Referenzen auf der Gate-Grundgesamtheit (Basisrate, Klimatologie). */
+    gate_ref_base?: number | null;
+    gate_ref_climate?: number | null;
+    /** O6: Tagesblöcke des Intervalls (Europe/Berlin) + Mindestzahl. */
+    n_day_blocks?: number;
+    min_day_blocks?: number;
+    /** O6: Fenstergröße (Tage je Block) + Ziehungen des Bootstraps. */
+    block_days?: number;
+    bootstrap_samples?: number;
     reliability: Array<{
       bin: number;
       range: string;
@@ -870,6 +907,10 @@ export type StatsSummary = {
     ignored: number;
     unrelated: number;
     saved_eur: number;
+    /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
+    saved_verified_eur: number;
+    /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
+    n_prognosis_price: number;
     wh_hours: number[];
     last_fill?: any;
   };
@@ -1221,6 +1262,8 @@ export async function postFill(payload: {
   tanked_at?: string;
   liters: number;
   price_paid: number;
+  /** O17: Herkunft des Preises — live (Ein-Tipp-Beleg) oder manuell (Maske). */
+  price_source?: "live" | "manuell";
   fuel: string;
   source: string;
   episode_id?: string | null;
@@ -2529,6 +2572,9 @@ export const messages: Record<string, string> = {
   invalid_basis: "Unbekannte Vergleichs-Basis (overall oder hour erwartet).",
   unknown_station: "Station nicht im Polling-Set.",
   unknown_city: "Stadt nicht im Polling-Set.",
+  invalid_price_source: "Unbekannte Preis-Herkunft (live oder manuell erwartet).",
+  prompt_price_not_live:
+    "Ohne frischen Live-Preis kein Ein-Tipp-Beleg — bitte manuell erfassen.",
   price_not_available:
     "Kein Preis bestimmbar — weder live noch als Referenz. Später erneut versuchen.",
   decide_failed: "Empfehlung konnte nicht berechnet werden.",
@@ -2560,6 +2606,13 @@ export const NO_DATA_LINE = "Kein Datenstand — noch nichts gemeldet";
 
 /** Rückmeldung nach dem Buchen; die Einordnung hängt `fillPositionNote` an. */
 export const FILL_BOOKED_LINE = "Beleg in deiner Bilanz verbucht.";
+
+/**
+ * O17: Ein-Tipp-Beleg ohne frischen Live-Preis — die Maske fragt nach,
+ * statt den Prognose-Median zu buchen.
+ */
+export const NO_LIVE_PRICE_LINE =
+  "Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.";
 
 /** Hinweis des „Ansicht teilen“-Knopfs, wenn die Zwischenablage fehlt. */
 export const SHARE_URL_LINE = "URL steht jetzt in der Adresszeile — zum Teilen kopieren.";
@@ -3068,13 +3121,15 @@ export function livePhaseHint(phase?: LivePhase | null): string {
   );
 }
 
-// §0.4 ist ein Zähl-Gate, kein Datum: Brier < 0,25 bei ≥ 100 abgeschlossenen
-// Empfehlungen. Maßgeblich sind die Schwellen des Backends
-// (app/feedback.py → live_advice.min_recommendations / brier_threshold); die
-// Konstanten hier sind nur der Rückfall für Statistik-Stände, die sie nicht
-// mitschicken. Die 90-Tage-Übergangsregel (live_only_days der Engine) gehört
-// bewusst nicht in diesen Zähler: 90 Übergangs-Tage sind keine 100
-// Empfehlungen, bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
+// §0.4 ist ein Zähl-Gate, kein Datum: ≥ 100 abgeschlossene Empfehlungen,
+// und die Obergrenze des Brier-Intervalls liegt unter beiden Referenzen
+// (O6 — 0,25 ist nur noch das dokumentierte Münz-Niveau, kein Kriterium).
+// Maßgeblich sind die Schwellen des Backends (app/feedback.py →
+// live_advice.min_recommendations / brier_threshold); die Konstanten hier
+// sind nur der Rückfall für Statistik-Stände, die sie nicht mitschicken.
+// Die 90-Tage-Übergangsregel (live_only_days der Engine) gehört bewusst
+// nicht in diesen Zähler: 90 Übergangs-Tage sind keine 100 Empfehlungen,
+// bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
 export const M7_MIN_RECOMMENDATIONS = 100;
 export const M7_BRIER_THRESHOLD = 0.25;
 
@@ -3091,6 +3146,16 @@ export type M7Advice = {
   brier_threshold?: number | null;
   /** Noch laufende Empfehlungen (Fenster nicht vorbei, zählen erst nach Abrechnung). */
   n_pending?: number | null;
+  /** O5: Gate-Grundgesamtheit (Verteilungs-P, Allzeit) — gewinnt gegen n/brier_30d. */
+  gate_n?: number | null;
+  gate_brier?: number | null;
+  /** O6: Intervall, Referenzen, Blöcke und Ausgang — alles vom Server. */
+  gate_brier_ci?: [number, number] | null;
+  gate_ref_base?: number | null;
+  gate_ref_climate?: number | null;
+  n_day_blocks?: number | null;
+  min_day_blocks?: number | null;
+  calibrated?: boolean | null;
 };
 
 // Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
@@ -3112,35 +3177,145 @@ export function deNumber(value: number, decimals = 2): string {
 
 /**
  * Fortschrittszeile des M7-Gates: Zählstand abgeschlossener Empfehlungen und
- * Brier gegen Schwellwert — ohne Tageszahl. Die Übergangsregel (Datenhygiene)
- * hat mit {@link transitionRuleLine} ihre eigene Zeile und ihren eigenen
- * Nenner. `null` ohne Statistik-Lauf: dann gibt es keinen Zähler zu zeigen.
+ * Brier mit Intervall gegen beide Referenzen — ohne Tageszahl. Die
+ * Übergangsregel (Datenhygiene) hat mit {@link transitionRuleLine} ihre
+ * eigene Zeile und ihren eigenen Nenner. `null` ohne Statistik-Lauf: dann
+ * gibt es keinen Zähler zu zeigen.
  */
 export function m7GateLine(advice?: M7Advice | null): string | null {
   if (!advice) return null;
-  const n = advice.n ?? 0;
+  // O5: Das Gate zählt Verteilungs-P-Zeilen (Allzeit) — diese Zahlen stehen
+  // in gate_n/gate_brier; n/brier_30d bleiben Fallback für Alt-Payloads.
+  const gated = advice.gate_n != null;
+  const n = gated ? (advice.gate_n as number) : (advice.n ?? 0);
   const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
-  const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
   const pending = advice.n_pending ?? 0;
   const pendingNote =
     pending > 0
       ? ` ${pending} Empfehlung${pending > 1 ? "en" : ""} läuft${pending > 1 ? "en" : ""} noch und zählt erst nach der Abrechnung.`
       : "";
+  // O6: Das Gate vergleicht die Obergrenze des Brier-Intervalls gegen Basis-
+  // und Klima-Referenz — der Ausgang kommt vom Server (`calibrated`), die
+  // Zeile nennt nur Zahlen und erfindet keine zweite Wahrheit. Alt-Payloads
+  // ohne Gate-Grundgesamtheit behalten die alte Regel (eigener Wortlaut).
+  const brier = gated ? advice.gate_brier : advice.brier_30d;
   if (n < need) {
+    if (!gated) {
+      const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+      return (
+        `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
+        `(Brier-Schwelle < ${limit}).${pendingNote}`
+      );
+    }
     return (
-      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
-      `(Brier-Schwelle < ${limit}).${pendingNote}`
+      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen mit Verteilungs-P ` +
+      `(Freigabe: Obergrenze des Brier-Intervalls unter beiden Referenzen).${pendingNote}`
     );
   }
-  if (advice.brier_30d == null) {
+  if (brier == null) {
+    // T5: ein Satz, eine Stelle — nur die Grundgesamtheit unterscheidet sich.
     return (
       `Freigabe erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
-      `(keine P-Schätzung im Ledger).${pendingNote}`
+      `(keine ${gated ? "Verteilungs-P" : "P-Schätzung"} im Ledger).${pendingNote}`
     );
   }
+  if (!gated) {
+    const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+    return (
+      `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
+      `(Schwelle < ${limit}).${pendingNote}`
+    );
+  }
+  const ci = advice.gate_brier_ci ?? null;
+  const refs =
+    advice.gate_ref_base != null && advice.gate_ref_climate != null
+      ? ` gegen Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
+      : "";
+  if (!ci || advice.calibrated == null) {
+    const blocks = advice.n_day_blocks;
+    const needBlocks = advice.min_day_blocks;
+    const blockNote =
+      blocks != null && needBlocks != null
+        ? ` (${blocks} von min. ${needBlocks} Tagesblöcken)`
+        : "";
+    return (
+      `Freigabe noch nicht messbar: ${n} Empfehlungen, Brier ${deNumber(brier)}${blockNote}.${pendingNote}`
+    );
+  }
+  const verdict = advice.calibrated ? "erfüllt" : "nicht erreicht";
   return (
-    `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
-    `(Schwelle < ${limit}).${pendingNote}`
+    `Freigabe ${verdict}: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
+    `[${deNumber(ci[0])}–${deNumber(ci[1])}]${refs}.${pendingNote}`
+  );
+}
+
+/**
+ * O6: Kompaktzeile des Gate-Briers für die System-Metrik — Punkt, Intervall
+ * und beide Referenzen. Alt-Payloads ohne Gate-Felder behalten die alte
+ * Ziel-Formulierung; zu wenige Tagesblöcke nennen den Blockstand.
+ */
+export function m7BrierDetail(advice?: M7Advice | null): string {
+  const brier = advice?.gate_brier ?? advice?.brier_30d ?? null;
+  if (brier == null) {
+    return "Brier noch nicht messbar — braucht bewertete Empfehlungen.";
+  }
+  const ci = advice?.gate_brier_ci ?? null;
+  const refs =
+    advice?.gate_ref_base != null && advice?.gate_ref_climate != null
+      ? `Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
+      : null;
+  if (ci && refs) {
+    return (
+      `Brier ${deNumber(brier)} [${deNumber(ci[0])}–${deNumber(ci[1])}] ` +
+      `(Ziel: Obergrenze < ${refs})`
+    );
+  }
+  if (advice?.gate_n != null && advice?.n_day_blocks != null) {
+    return (
+      `Brier ${deNumber(brier)} (Intervall: ${advice.n_day_blocks} von min. ` +
+      `${advice.min_day_blocks ?? 10} Tagesblöcken)`
+    );
+  }
+  const limit = deNumber(advice?.brier_threshold ?? M7_BRIER_THRESHOLD);
+  return `Brier ${deNumber(brier)} (Ziel < ${limit})`;
+}
+
+export type WindowsAdvice = {
+  /** Abgerechnete Empfehlungen im 30-Tage-Fenster (Gegenprobe-Nenner). */
+  n?: number | null;
+  /** O38: genutzte vs. verstrichene Fenster je Woche/Monat. */
+  episodes_used_7d?: number | null;
+  episodes_expired_7d?: number | null;
+  episodes_used_30d?: number | null;
+  episodes_expired_30d?: number | null;
+};
+
+/**
+ * Fensterbilanz (O38): „x von y Fenstern genutzt“ plus die Aufschlüsselung
+ * abgerechneter Empfehlungen gegen verstrichene Fenster — die Gegenprobe
+ * zur Trefferquote. `null` ohne Statistik-Lauf oder ohne O38-Zähler
+ * (Alt-Payloads erfinden keine Bilanz).
+ */
+export function windowsUsedLine(advice?: WindowsAdvice | null): string | null {
+  const used30 = advice?.episodes_used_30d ?? null;
+  const expired30 = advice?.episodes_expired_30d ?? null;
+  if (used30 == null || expired30 == null) return null;
+  const total30 = used30 + expired30;
+  if (total30 === 0) {
+    return "Fensterbilanz (30 Tage): noch keine Fenster geschlossen.";
+  }
+  const settled = advice?.n ?? 0;
+  const settledWord = `Empfehlung${settled === 1 ? "" : "en"}`;
+  const used7 = advice?.episodes_used_7d ?? 0;
+  const expired7 = advice?.episodes_expired_7d ?? 0;
+  const week =
+    used7 + expired7 > 0
+      ? ` — 7 Tage: ${countLabel(used7)} von ${countLabel(used7 + expired7)} genutzt`
+      : "";
+  return (
+    `Fensterbilanz (30 Tage): ${countLabel(used30)} von ${countLabel(total30)} ` +
+    `Fenstern genutzt (${countLabel(settled)} ${settledWord} abgerechnet · ` +
+    `${countLabel(expired30)} Fenster verstrichen)${week}.`
   );
 }
 
@@ -3693,7 +3868,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     term: "Brier",
     de: "Treffergenauigkeit der Prozentzahlen",
     short: "Mittlerer quadratischer Abstand zwischen behaupteter Prozentzahl P und eingetretenem Ergebnis (0/1). Kleiner heißt ehrlicher.",
-    long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei mindestens 100 abgeschlossenen Empfehlungen (§0.4).",
+    long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert mindestens 100 abgeschlossene Empfehlungen, deren Brier-Intervall (Obergrenze) unter Basis- und Klima-Referenz liegt (§0.4); 0,25 ist nur das Münz-Niveau zum Einordnen.",
     anchor: "brier-score-treffergenauigkeit-der-prozentzahlen",
   },
   {

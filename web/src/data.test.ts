@@ -55,6 +55,7 @@ import {
   readShareParams,
   shareQuery,
   m7GateLine,
+  m7BrierDetail,
   rowOutcome,
   scoreRows,
   segments,
@@ -63,6 +64,7 @@ import {
   splitOnGap,
   transitionRuleLine,
   triggerSkipLabel,
+  windowsUsedLine,
   type Heatmap,
   type Station,
 } from "./data";
@@ -488,6 +490,141 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(m7GateLine({ n: 120, brier_30d: 0.31 })).toContain("Brier 0,31");
     expect(m7GateLine(null)).toBeNull();
     expect(m7GateLine(undefined)).toBeNull();
+  });
+
+  it("prefers the gate population over the mixed 30-day numbers (O5)", () => {
+    // Das Gate zählt Verteilungs-P-Zeilen (Allzeit), nicht das gemischte
+    // 30-Tage-Fenster — die Zeile nennt die Grundgesamtheit beim Namen.
+    const line = m7GateLine({
+      n: 120,
+      brier_30d: 0.18,
+      gate_n: 5,
+      gate_brier: 0.01,
+    });
+    expect(line).toContain("5 von 100 abgeschlossenen Empfehlungen mit Verteilungs-P");
+    const unmeasurable = m7GateLine({ n: 120, gate_n: 120, gate_brier: null });
+    expect(unmeasurable).toContain("keine Verteilungs-P im Ledger");
+  });
+
+  it("names the interval and both references once the count suffices (O6)", () => {
+    // O6: Kein Punkt-Brier gegen 0,25 mehr — die Zeile nennt Intervall und
+    // beide Referenzen, der Ausgang kommt vom Server (`calibrated`).
+    const open = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.19,
+      gate_brier_ci: [0.15, 0.23],
+      gate_ref_base: 0.24,
+      gate_ref_climate: 0.23,
+      n_day_blocks: 40,
+      min_day_blocks: 10,
+      calibrated: true,
+    });
+    expect(open).toContain("Freigabe erfüllt");
+    expect(open).toContain("Brier 0,19 [0,15–0,23]");
+    expect(open).toContain("Basis 0,24 / Klima 0,23");
+    const closed = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.24,
+      gate_brier_ci: [0.21, 0.27],
+      gate_ref_base: 0.24,
+      gate_ref_climate: 0.23,
+      calibrated: false,
+    });
+    expect(closed).toContain("Freigabe nicht erreicht");
+    expect(closed).toContain("Brier 0,24 [0,21–0,27]");
+  });
+
+  it("reports too few day blocks as unmeasurable, not as calibrated (O6)", () => {
+    const line = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.01,
+      gate_brier_ci: null,
+      gate_ref_base: 0.21,
+      gate_ref_climate: 0.2,
+      n_day_blocks: 3,
+      min_day_blocks: 10,
+      calibrated: false,
+    });
+    expect(line).toContain("Freigabe noch nicht messbar");
+    expect(line).toContain("3 von min. 10 Tagesblöcken");
+    expect(line).not.toContain("Freigabe erfüllt");
+  });
+
+  it("states the interval rule while the count is still open (O6)", () => {
+    const line = m7GateLine({ n: 120, gate_n: 5, gate_brier: 0.01 });
+    expect(line).toContain("5 von 100 abgeschlossenen Empfehlungen mit Verteilungs-P");
+    expect(line).toContain("Obergrenze des Brier-Intervalls unter beiden Referenzen");
+    expect(line).not.toContain("0,25");
+  });
+
+  it("keeps the system metric on point, interval and references (O6)", () => {
+    expect(
+      m7BrierDetail({
+        gate_n: 120,
+        gate_brier: 0.19,
+        gate_brier_ci: [0.15, 0.23],
+        gate_ref_base: 0.24,
+        gate_ref_climate: 0.23,
+      }),
+    ).toBe("Brier 0,19 [0,15–0,23] (Ziel: Obergrenze < Basis 0,24 / Klima 0,23)");
+    expect(
+      m7BrierDetail({ gate_n: 120, gate_brier: 0.01, n_day_blocks: 3, min_day_blocks: 10 }),
+    ).toBe("Brier 0,01 (Intervall: 3 von min. 10 Tagesblöcken)");
+    expect(m7BrierDetail({ n: 120, brier_30d: 0.18 })).toBe(
+      "Brier 0,18 (Ziel < 0,25)",
+    );
+    expect(m7BrierDetail(null)).toBe(
+      "Brier noch nicht messbar — braucht bewertete Empfehlungen.",
+    );
+  });
+
+  it("shows used vs. lapsed windows with the settled counter (O38)", () => {
+    // O38: „x von y Fenstern genutzt“ plus abgerechnete Empfehlungen gegen
+    // verstrichene Fenster — die Gegenprobe zur Trefferquote.
+    expect(
+      windowsUsedLine({
+        n: 12,
+        episodes_used_7d: 1,
+        episodes_expired_7d: 1,
+        episodes_used_30d: 3,
+        episodes_expired_30d: 2,
+      }),
+    ).toBe(
+      "Fensterbilanz (30 Tage): 3 von 5 Fenstern genutzt " +
+        "(12 Empfehlungen abgerechnet · 2 Fenster verstrichen) — 7 Tage: 1 von 2 genutzt.",
+    );
+  });
+
+  it("uses the singular and skips the week without closed windows (O38)", () => {
+    expect(
+      windowsUsedLine({
+        n: 1,
+        episodes_used_7d: 0,
+        episodes_expired_7d: 0,
+        episodes_used_30d: 1,
+        episodes_expired_30d: 0,
+      }),
+    ).toBe(
+      "Fensterbilanz (30 Tage): 1 von 1 Fenstern genutzt " +
+        "(1 Empfehlung abgerechnet · 0 Fenster verstrichen).",
+    );
+  });
+
+  it("invents no balance without closed windows or legacy payloads (O38)", () => {
+    expect(
+      windowsUsedLine({
+        n: 0,
+        episodes_used_30d: 0,
+        episodes_expired_30d: 0,
+      }),
+    ).toBe("Fensterbilanz (30 Tage): noch keine Fenster geschlossen.");
+    // Alt-Payloads ohne O38-Zähler: keine Bilanz statt einer erfundenen.
+    expect(windowsUsedLine({ n: 12 })).toBeNull();
+    expect(windowsUsedLine(null)).toBeNull();
+    expect(windowsUsedLine(undefined)).toBeNull();
   });
 
   it("keeps the 90-day transition rule in its own line", () => {

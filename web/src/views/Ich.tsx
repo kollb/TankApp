@@ -403,6 +403,11 @@ function FillsSection(props: IchViewProps) {
                     <p className="mt-1 font-mono text-slate-300">
                       {row.volume}
                     </p>
+                    {row.priceNote && (
+                      <p className="mt-0.5 text-amber-300/90">
+                        {row.priceNote}
+                      </p>
+                    )}
                     <p
                       className={`mt-0.5 font-mono ${
                         row.savingsTone === "good"
@@ -460,6 +465,11 @@ function FillsSection(props: IchViewProps) {
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-slate-300">
                         {row.pricePerLiter}
+                        {row.priceNote && (
+                          <span className="block text-amber-300/90">
+                            {row.priceNote}
+                          </span>
+                        )}
                       </td>
                       <td
                         className={`px-3 py-2 text-right font-mono ${
@@ -620,6 +630,18 @@ function BalanceSection(props: IchViewProps) {
                 Maßstab: die Liter zu dem Preis, der an deiner Station zum
                 Zeitpunkt der Tankung stand (Server).
               </p>
+              {(latest.n_prognosis_price ?? 0) > 0 && (
+                <p className="mt-1 text-xs leading-relaxed text-amber-300/90">
+                  Ohne Prognosepreis:{" "}
+                  {latest.saved_verified_eur >= 0 ? "+" : "−"}
+                  {euro(Math.abs(latest.saved_verified_eur))} € (
+                  {latest.n_prognosis_price}{" "}
+                  {latest.n_prognosis_price === 1
+                    ? "Beleg zählt nicht mit"
+                    : "Belege zählen nicht mit"}
+                  ).
+                </p>
+              )}
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
@@ -668,6 +690,9 @@ function BalanceSection(props: IchViewProps) {
                   {euro(Math.abs(data.overall.saved_eur))} €{" "}
                   {data.overall.saved_eur >= 0 ? "günstiger" : "teurer"}{" "}
                   gegenüber „immer sofort getankt“
+                  {(data.overall.n_prognosis_price ?? 0) > 0
+                    ? ` · verifiziert ${data.overall.saved_verified_eur >= 0 ? "+" : "−"}${euro(Math.abs(data.overall.saved_verified_eur))} € (ohne Prognosepreis-Belege)`
+                    : ""}
                   {data.overall.n_without_date > 0
                     ? ` · ${data.overall.n_without_date} ohne Datum (nicht im Verlauf)`
                     : ""}

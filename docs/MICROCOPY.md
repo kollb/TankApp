@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 16.09.2026 · App-Version **0.44.0** · gilt für `web/src/**`,
+> Stand: 17.09.2026 · App-Version **0.45.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
 > die ein Nutzer zu sehen bekommt.
 
@@ -210,6 +210,8 @@ dann der Grund.
 | Hinweis unter der Fensterliste (A9, seit 0.44.0 mit Herkunft) | aktiv: `Reihenfolge nach deinen Tankzeiten (<12> Belege) — günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` · darunter: `Noch nach Preis sortiert (<3> Belege von <8>) — ab <8> Belegen ordnet die App die Fenster nach deinen Tankzeiten, es fehlen <5>.` Belege ohne Zeitstempel hängen in **beiden** Fällen denselben Schlusssatz an: `<3> Belege ohne Zeitstempel zählen als 12 Uhr.` (Einzahl: `1 Beleg ohne Zeitstempel zählt als 12 Uhr.`); ohne solche Belege steht kein Schlusssatz (`personalizationNote` in `web/src/data.ts`, Zahlen aus `/v1/decide` → `personalization`) |
 | Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `Im Labor vertiefen: <Abschnitt>` (seit Phase 3) |
 | S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
+| Fällig-Prompt: Ein-Tipp-Beleg (O17, 0.45.0) | Knopf nennt den gebuchten Live-Preis: `Ja, wie empfohlen (<1,719> €/L)`; ohne Live-Preis ist er aus: `Ja, wie empfohlen (Preis unbekannt)`. Wer ihn in der Lücke zwischen Anzeige und Tipp verliert, landet in der Maske mit `Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.` — gebucht wird nie der Prognose-Median |
+| Ich → Belege: Prognosepreis (O17, 0.45.0) | Altbestand ohne gezahlten Preis trägt `Prognosepreis — kein gezahlter Preis`; die Bilanz nennt darunter die zweite Spalte: `Ohne Prognosepreis: <+2,00> € (<1> Beleg zählt nicht mit).` (Mehrzahl: `<n> Belege zählen nicht mit`) |
 
 ## 4c. Bereich „Labor“: feste Muster (0.36.0)
 

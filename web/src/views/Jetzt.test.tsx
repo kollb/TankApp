@@ -118,7 +118,7 @@ const baseProps: JetztViewProps = {
   onTankQuick: () => {},
   dueEpisode: null,
   dueDismissed: false,
-  bestPrice: 1.749,
+  dueFillPrice: 1.749,
   onConfirmRecommended: () => {},
   onDismissDue: () => {},
   onOpenFills: () => {},
@@ -406,5 +406,25 @@ describe("Ebene 1: Begründungs-Sheet", () => {
     expect(html).not.toContain("vier");
     expect(html).toContain("Grundlage: die geladenen Preismeldungen.");
     expect(html).toContain("Im Labor vertiefen: Was die App vorhersagt");
+  });
+});
+
+describe("Jetzt: Fällig-Prompt (O17)", () => {
+  const due = {
+    id: "ep_1",
+    status: "due",
+    last_snapshot: { station_id: "aral", expected_price: 1.559 },
+  };
+
+  it("nennt am Knopf den Live-Preis, der gebucht wird", () => {
+    const html = render({ dueEpisode: due as any, dueFillPrice: 1.719 });
+    expect(html).toContain("Ja, wie empfohlen (");
+    expect(html).toContain("1,719 €/L");
+  });
+
+  it("schaltet ohne Live-Preis ab, statt den Median zu buchen", () => {
+    const html = render({ dueEpisode: due as any, dueFillPrice: null });
+    expect(html).toContain("Preis unbekannt");
+    expect(html).toContain("disabled");
   });
 });
