@@ -590,6 +590,17 @@ export type BalanceRow = {
   avg_eur_per_fill: number | null;
   avg_eur_per_liter: number | null;
   saved_eur: number;
+  /**
+   * O30: dieselbe Ersparnis nach den bekannten Umwegkosten (Sprit +
+   * Zeitwert, dieselbe Formel wie die Entscheidung). Die Entscheidungen
+   * waren netto — die Bilanz weist jetzt beide Zeilen aus.
+   */
+  saved_net_eur?: number;
+  /** O30: abgezogene Umwegkosten in €. */
+  detour_cost_eur?: number;
+  /** O30: Belege mit bekanntem Umweg (davon `n_detour_estimated` geschätzt). */
+  n_detour_fills?: number;
+  n_detour_estimated?: number;
   /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
   saved_verified_eur: number;
   /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
@@ -970,6 +981,11 @@ export type StatsSummary = {
     ignored: number;
     unrelated: number;
     saved_eur: number;
+    /** O30: Ersparnis nach den bekannten Umwegkosten (dieselbe Formel). */
+    saved_net_eur?: number;
+    detour_cost_eur?: number;
+    n_detour_fills?: number;
+    n_detour_estimated?: number;
     /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
     saved_verified_eur: number;
     /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */

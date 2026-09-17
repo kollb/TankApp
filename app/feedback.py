@@ -2062,6 +2062,10 @@ def compute_wallet_stats(
     settled_grace = sum(1 for f in fills if f.get("settled") == "kulanz")
 
     saved_eur = round(sum(f.get("saved_vs_always_now_eur", 0.0) for f in fills), 2)
+    # O30: Wer 3 km Umweg fährt, zahlt Sprit und Zeit — die Entscheidung
+    # rechnete netto, die Bilanz wies brutto aus. Beide Zeilen, dieselbe
+    # Formel (``net_economics``), dieselben Parameter wie im Profil.
+    detour = _detour_totals(fills)
 
     # O17: Belege mit Prognosepreis (Altbestand, nur via Migration 4 → 5)
     # tragen keinen gezahlten Preis — die verifizierte Ersparnis rechnet
@@ -2098,6 +2102,9 @@ def compute_wallet_stats(
         "settled_in_window": settled_in_window,
         "settled_grace": settled_grace,
         "saved_eur": saved_eur,
+        # O30: dieselbe Ersparnis nach den bekannten Umwegkosten.
+        "saved_net_eur": round(saved_eur - detour["detour_cost_eur"], 2),
+        **detour,
         # O17: Ersparnis ohne Prognosepreis-Belege plus deren Anzahl.
         "saved_verified_eur": saved_verified_eur,
         "n_prognosis_price": n_prognosis_price,
@@ -2123,6 +2130,60 @@ def compute_wallet_stats(
     }
 
 
+def fill_detour_cost_eur(fill: dict[str, Any]) -> tuple[float, str | None]:
+    """O30: Umwegkosten eines Belegs — dieselbe Formel wie die Entscheidung.
+
+    Rückgabe ``(kosten_eur, quelle)``. ``quelle`` ist ``actual_receipt``
+    (vom Nutzer eingegebene Kilometer), ``estimated_snapshot`` (die zur
+    Empfehlung gehörende Schätzung, sichtbar als Schätzung) oder ``None``:
+    Kein bekannter Umweg kostet nichts — erfundene Kilometer gibt es nicht.
+    """
+    provenance = fill.get("elsewhere_net_provenance")
+    if not isinstance(provenance, dict):
+        return 0.0, None
+    km = _to_float(provenance.get("detour_km_total"))
+    consumption = _to_float(provenance.get("consumption_l_100km"))
+    speed = _to_float(provenance.get("speed_kmh"))
+    time_value = _to_float(provenance.get("time_value_eur_h"))
+    reference = _to_float(provenance.get("reference_price"))
+    price_paid = _to_float(fill.get("price_paid"))
+    liters = _to_float(fill.get("liters"))
+    values = (km, consumption, speed, time_value, reference, price_paid, liters)
+    if any(value is None for value in values):
+        return 0.0, None
+    economy = net_economics(
+        float(reference),
+        float(price_paid),
+        float(liters),
+        float(km),
+        float(consumption),
+        float(speed),
+        float(time_value),
+    )
+    source = str(provenance.get("distance_source") or "estimated_snapshot")
+    return float(economy["detour_cost_eur"]), source
+
+
+def _detour_totals(fills: list[dict[str, Any]]) -> dict[str, Any]:
+    """O30: Umwegkosten einer Beleggruppe, aufgeschlüsselt nach Herkunft."""
+    total = 0.0
+    known = 0
+    estimated = 0
+    for fill in fills:
+        cost, source = fill_detour_cost_eur(fill)
+        if source is None:
+            continue
+        total += cost
+        known += 1
+        if source == "estimated_snapshot":
+            estimated += 1
+    return {
+        "detour_cost_eur": round(total, 2),
+        "n_detour_fills": known,
+        "n_detour_estimated": estimated,
+    }
+
+
 def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
     """Eine Monats- oder Jahreszeile der Bilanz aus den zugehörigen Fills."""
     liters = sum(float(f.get("liters") or 0.0) for f in fills)
@@ -2141,6 +2202,9 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
     saved_verified_eur = sum(
         float(f.get("saved_vs_always_now_eur") or 0.0) for f in verified
     )
+    # O30: Die Bilanz entschied netto (Umwegkosten), wies aber brutto aus.
+    # Beide Zeilen stehen jetzt da, mit derselben Formel wie ``p_lohnt``.
+    detour = _detour_totals(fills)
     return {
         "key": key,
         "fills": len(fills),
@@ -2151,6 +2215,9 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
         "saved_eur": round(saved_eur, 2),
         "saved_verified_eur": round(saved_verified_eur, 2),
         "n_prognosis_price": len(fills) - len(verified),
+        # O30: netto = brutto − bekannte Umwegkosten (Sprit + Zeitwert).
+        "saved_net_eur": round(saved_eur - detour["detour_cost_eur"], 2),
+        **detour,
         "baseline_eur": round(baseline_eur, 2),
     }
 

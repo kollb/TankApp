@@ -529,6 +529,10 @@ Zeile; die Differenz steht in `overall.n_without_date`.
       "avg_eur_per_fill": 63.28,
       "avg_eur_per_liter": 1.687,
       "saved_eur": 2.0,
+      "saved_net_eur": 1.34,
+      "detour_cost_eur": 0.66,
+      "n_detour_fills": 1,
+      "n_detour_estimated": 0,
       "saved_verified_eur": 2.0,
       "n_prognosis_price": 0,
       "baseline_eur": 128.55
@@ -538,7 +542,9 @@ Zeile; die Differenz steht in `overall.n_without_date`.
   "overall": {
     "fills": 14, "liters": 610.5, "total_eur": 1024.9,
     "avg_eur_per_fill": 73.21, "avg_eur_per_liter": 1.679,
-    "saved_eur": 18.4, "saved_verified_eur": 18.4,
+    "saved_eur": 18.4, "saved_net_eur": 17.1,
+    "detour_cost_eur": 1.3, "n_detour_fills": 3, "n_detour_estimated": 1,
+    "saved_verified_eur": 18.4,
     "n_prognosis_price": 0, "baseline_eur": 1043.3,
     "n_without_date": 0, "saved_pct": 1.8
   },
@@ -556,6 +562,18 @@ erfundenen Leerzeilen. `saved_verified_eur` (O17, 0.45.0) ist die zweite,
 ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis
 (`price_source == "prognose"`, Altbestand, kein gezahlter Preis) — deren
 Anzahl nennt `n_prognosis_price` je Zeile.
+
+`saved_net_eur` (O30, 0.50.0) ist dieselbe Ersparnis **nach** den bekannten
+Umwegkosten: `saved_eur − detour_cost_eur`. Die Umwegkosten werden je Beleg
+aus `elsewhere_net_provenance` neu gerechnet — `net_economics(ref, paid,
+liters, detour_km, consumption_l_100km, speed_kmh, time_value_eur_h)`, also
+dieselbe Formel und dieselben Parameter wie in der Entscheidung (`p_lohnt`,
+O9) — nicht aus `elsewhere_net_eur` (das ist der Bruttovorteil). Belege ohne
+Herkunft kosten nichts und zählen nicht mit (`n_detour_fills`);
+`n_detour_estimated` nennt davon die mit geschätzter Strecke
+(`distance_source == "estimated_snapshot"`). Ohne Umweg ist netto = brutto —
+keine pauschale Schätzung. Dieselben Felder stehen in
+`personal_stats.wallet` (30-Tage-Blick).
 
 ## Profiles (A1 — Fahrzeug-/Haushaltsprofile, ohne Login)
 
