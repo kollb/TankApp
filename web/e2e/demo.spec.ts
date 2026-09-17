@@ -506,3 +506,27 @@ test("O17: ohne Live-Preis fragt die Maske, statt zu buchen", async ({
   ).toBeVisible();
   expect(posts, "kein Beleg ohne Live-Preis").toHaveLength(0);
 });
+
+test("O16: Labor zeigt δ̂-Balken mit Konfidenzintervall aus der Selektion", async ({
+  page,
+}) => {
+  // Die Balken im Abschnitt „Stationen“ lesen /api/v1/selection — vor 0.46.0
+  // blieb der Balken dauerhaft leer, weil das Feld im Backtest-Block nie
+  // gesendet wurde. Der Demo-Stapel bringt ein echtes Selektions-Artefakt mit.
+  await page.goto("/?tab=labor&section=stationen");
+
+  const body = page.locator("#labor-stationen-body");
+  await expect(body).toBeVisible({ timeout: 30_000 });
+
+  // Die Selektion ist geladen („Auswahl-Set: … Stationen“) und zeichnet.
+  await expect(page.getByText(/Auswahl-Set: \d+ Stationen/)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => body.locator("svg rect").count(), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+  // Mindestens ein Whisker (drei Linien je Intervall) plus Nulllinie.
+  expect(await body.locator("svg line").count()).toBeGreaterThanOrEqual(4);
+  await expect(body).toContainText("Konfidenzintervall");
+  await expect(body).not.toContainText("Noch kein Preis-Abstand messbar");
+});

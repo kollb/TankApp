@@ -292,3 +292,80 @@ describe("Labor: Spielplatz und Tagebuch-Kennzahlen", () => {
     expect(text).toContain("2026-09-07".slice(5));
   });
 });
+
+describe("Labor: Preis-Abstand aus der Selektion (O16)", () => {
+  const selectionWithDeltas = {
+    fuel: "e10",
+    count: 2,
+    stations: [
+      {
+        station_id: "uuid-nord",
+        city: "Frankfurt",
+        fuel: "e10",
+        name: "Demo-Tank Nord",
+        brand: "",
+        delta_ct: -4.2,
+        ci_lo: -6.1,
+        ci_hi: -2.3,
+        q_value: 0.02,
+        significant: true,
+      },
+      {
+        station_id: "uuid-sued",
+        city: "Frankfurt",
+        fuel: "e10",
+        name: "Demo-Tank Süd",
+        brand: "",
+        delta_ct: 3.1,
+        ci_lo: -1.2,
+        ci_hi: 7.4,
+        q_value: 0.31,
+        significant: false,
+      },
+    ],
+  };
+
+  it("zeichnet δ̂-Balken mit Konfidenzintervall und Signifikanz-Hinweis", () => {
+    const host = mount(
+      { focusSection: "stationen" },
+      { selection: res(selectionWithDeltas) },
+    );
+    const text = host.textContent ?? "";
+    // Die Werte kommen aus der Selektion — beide Stationen sind im Diagramm.
+    expect(text).toContain("Demo-Tank Nord");
+    expect(text).toContain("Demo-Tank Süd");
+    expect(text).toContain("Konfidenzintervall");
+    expect(text).toContain("nicht signifikant");
+    // Whisker und Balken sind gezeichnet (SVG-Linien für das Intervall).
+    const svg = host.querySelector("#labor-stationen-body svg");
+    expect(svg).not.toBeNull();
+    expect(svg!.querySelectorAll("rect").length).toBe(2);
+    expect(svg!.querySelectorAll("line").length).toBeGreaterThanOrEqual(7);
+    // Der dauerhafte Leer-Zustand von vor 0.46.0 ist weg.
+    expect(text).not.toContain("Noch kein Preis-Abstand messbar");
+  });
+
+  it("zeigt ohne Selektions-Artefakt den ehrlichen Leerzustand", () => {
+    const host = mount({ focusSection: "stationen" }, { selection: res(null) });
+    expect(host.textContent ?? "").toContain("Noch kein Preis-Abstand messbar");
+    expect(host.querySelector("#labor-stationen-body svg rect")).toBeNull();
+  });
+
+  it("lässt Stationen ohne δ̂ aus, statt Null-Balken zu erfinden", () => {
+    const host = mount(
+      { focusSection: "stationen" },
+      {
+        selection: res({
+          ...selectionWithDeltas,
+          stations: [
+            selectionWithDeltas.stations[0],
+            { ...selectionWithDeltas.stations[1], delta_ct: null },
+          ],
+        }),
+      },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("Demo-Tank Nord");
+    expect(text).not.toContain("Demo-Tank Süd");
+  });
+});

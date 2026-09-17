@@ -69,6 +69,10 @@ def demo_server(tmp_path_factory, demo_data):
         netrc=data_dir / "_netrc",
         static=ROOT / "web/dist",
     )
+    # O16: Die Selektion gehört zum gefüllten Demo-Bestand — das Labor liest
+    # δ̂ samt Konfidenzintervall aus /api/v1/selection, nicht aus einem Feld,
+    # das der Server nie sendet.
+    demo_data.build_selection_artifact(settings, built["observations"])
     live = LiveData(
         settings,
         query=demo_data.make_query(built["observations"], built["prices"]),
@@ -186,3 +190,25 @@ def test_health_ohne_erfundene_werte(demo_server):
     assert isinstance(health["alarms"], list)
     # Kein Collector auf dem Demo-Server: der Alarm steht da, statt zu fehlen.
     assert any(alarm["code"] == "collector_no_heartbeat" for alarm in health["alarms"])
+
+
+def test_selection_liefert_delta_mit_konfidenzintervall(demo_server):
+    """O16: ``/api/v1/selection`` trägt δ̂, KI, q-Wert und Signifikanz.
+
+    Das Labor zeichnet die Balken aus genau dieser Antwort — der curl-Check
+    des Batches: ``.stations[0] | {delta_ct, ci_lo, ci_hi, q_value}`` liefert
+    Werte statt ``null``.
+    """
+    status, _headers, body = _get(f"{demo_server}/api/v1/selection?fuel={FUEL}")
+    assert status == 200
+    payload = json.loads(body)
+    stations = payload.get("stations") or []
+    assert stations, "Selektion ohne Stationen — das Labor bliebe leer"
+    with_delta = [s for s in stations if s.get("delta_ct") is not None]
+    assert with_delta, "keine Station mit δ̂"
+    for station in with_delta:
+        assert station.get("ci_lo") is not None
+        assert station.get("ci_hi") is not None
+        assert station["ci_lo"] <= station["delta_ct"] <= station["ci_hi"]
+        assert station.get("q_value") is not None
+        assert isinstance(station.get("significant"), bool)
