@@ -8,6 +8,16 @@ Keine numpy/pandas-Abhängigkeit im Live-API-Pfad; die Listen sind klein
 Alle Wahrscheinlichkeiten sind relative Häufigkeiten über dieselben Draws;
 ``None`` bedeutet „keine Aussage“ (Block ungestützt oder Draws fehlen) und
 ist strikt von ``0.0`` zu unterscheiden.
+
+**Eine Lücke, zwei Schreibweisen (O44).** ``engine.probabilities`` füllt
+ungestützte Blöcke mit ``NaN``. Auf dem Weg in die Veröffentlichung macht
+``engine.storage.json_safe`` daraus ``null``, und ``json.loads`` liest das
+als ``None`` zurück — dieselbe Aussage in einer anderen Schreibweise. Geprüft
+wird sie hier **einmal** (:func:`_supported`), nicht an jeder Rechenstelle
+erneut: Vor 0.49.1 filterten die Funktionen nur ``NaN`` (``value == value``),
+und der Live-Pfad stürzte an ``None`` mit ``TypeError`` ab — ``/decide``
+antwortete dann ``decide_failed``, sobald die Veröffentlichung einen einzigen
+ungestützten Block im Umfeld eines Fensters trug.
 """
 
 from __future__ import annotations
@@ -21,8 +31,19 @@ THETA_CT = 1.0
 SURROUNDING_HOURS = 6.0
 
 
+def _supported(value) -> bool:
+    """Trägt dieser Draw-Punkt eine Aussage?
+
+    ``NaN`` (Engine-intern, ``NaN != NaN``) und ``None`` (dieselbe Lücke nach
+    dem JSON-Rundlauf, ``json_safe`` schreibt ``NaN`` als ``null``) heißen
+    beide „keine Aussage“. Die Unterscheidung ist wichtig: ``0.0`` ist ein
+    Ergebnis (nie unterschritten), ``None`` ist keines.
+    """
+    return value is not None and value == value
+
+
 def _finite(values):
-    return [value for value in values if value == value]  # NaN != NaN
+    return [value for value in values if _supported(value)]
 
 
 def _window_neighbors(
@@ -78,9 +99,9 @@ def window_p_details(
     credits = []
     for row in minima:
         own = row[block_idx] if block_idx < len(row) else None
-        if own != own:  # NaN
+        if not _supported(own):
             continue
-        environment = [row[j] for j in neighbors if j < len(row) and row[j] == row[j]]
+        environment = [row[j] for j in neighbors if j < len(row) and _supported(row[j])]
         if not environment:
             continue
         # Kleinerer Preis gewinnt. ``threshold_credit`` gibt bei Gleichstand
@@ -135,7 +156,7 @@ def p_lohnt(
     pairs = [
         (ref, alt)
         for ref, alt in zip(ref_nowcast, alt_nowcast)
-        if ref == ref and alt == alt
+        if _supported(ref) and _supported(alt)
     ]
     if not pairs or speed <= 0 or liters <= 0:
         return None

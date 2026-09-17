@@ -318,6 +318,7 @@ export function WocheView(props: WocheViewProps) {
           <div className="mt-2">
             <LoadError
               errorCode={problemCode}
+              detail={decide?.detail ?? null}
               fallback="Die Wochen-Fenster sind derzeit nicht erreichbar."
               onRetry={onRetry}
             />

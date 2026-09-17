@@ -1,6 +1,11 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.49.0** — neu seit 0.49.0: die
+> Stand: 17.09.2026 · App-Version **0.49.1** — neu seit 0.49.1: die
+> Stations-Antwort ist die verbindliche Form für die App (siehe
+> [Stations](#stations)); der RP2-Fallback liefert sie seit RP2 v4.3 mit
+> `cities` und je Zeile `observed_at`, und ein Fehlerpayload trägt bei
+> unerwarteten Ursachen bereinigten Klartext in `detail` (O44, siehe
+> [Fehlercodes](#fehlercodes)). Neu seit 0.49.0: die
 > Prognose-Veröffentlichung ist aufgeteilt (eine Datei je Station, Index mit
 > Zeigern, O22 Maßnahme d); der `publication`-Block im Health-Payload nennt
 > zusätzlich `index_bytes`/`file_count`/`largest_file_bytes` und den Grund
@@ -784,6 +789,20 @@ Antwort sortiert nach Preis (frisch zuerst):
 
 `price` nur wenn fresh (≤30 Min) und open, sonst null. `last_price` immer letzte Meldung.
 
+**Eine Form, zwei Antwortflächen (O44, seit 0.49.1):** Dieselbe Stations-Form
+antwortet auf dem Pi auch der RP2-Fallback (`<RP2-IP>:8000`,
+[rp2/fallback_gui.py](../rp2/fallback_gui.py)) — aus seinem Live-Puffer, mit
+`cities` (deduplizierte Ortslabel seiner Zeilen), je Zeile `observed_at` als
+Alias auf `fetched_at` und ausdrücklich `calibrated`/`decision_ready: false`
+(Quantile statt M7-Posterior). Die App liest `cities` für die Ortswahl und gilt
+eine Antwort ohne `cities` **oder** `stations` als „kein Payload“ statt als
+leere Liste (`web/src/data.ts::usableStations`, Regression
+`web/src/state/pi-fallback.test.tsx`); bei `nas_status: "offline"` sagt sie
+„Antwort kommt vom Pi-Fallback“. Der Fallback beantwortet nur seine sieben
+Pfade — alles andere ist `404` und im Fallback-Modus (gebaute GUI per
+`TEMPLATE_DIR`) in der Browser-Konsole zu sehen:
+[RP2.md](RP2.md#fallback-api-und-umschaltzeiten), [BETRIEB.md](BETRIEB.md).
+
 **Plausibilität (O35, seit 0.46.0):** Ein gemeldeter Wert außerhalb
 0,40–5,00 €/L (oder nicht endlich) ist eine Beobachtung, aber kein Preis —
 `price` und `last_price` bleiben null, der rohe Wert steht in
@@ -1285,6 +1304,16 @@ Siehe `web/src/data.ts` messages:
 - payload_too_large (413), invalid_json, invalid_request, server_error
 
 Alle Endpunkte liefern `error_code` statt Exception-Text, nie Tokens. Unbekannte Stationen/Städte liefern 404 mit spezifischem Code (kein pauschales `invalid_query`).
+
+**`detail` — die Ursache zum Code (O44, seit 0.49.1):** Antwortet
+`GET /api/v1/decide` mit `{"error_code": "decide_failed"}`, trägt der Payload
+zusätzlich `detail`: den bereinigten Klartext der unerwarteten Ursache
+(`app/errors.public_detail`, höchstens 240 Zeichen, ohne absolute Pfade,
+Tokens oder Stacktrace). Dieselbe Ursache steht im Serverlog
+(`decide: fehlgeschlagen — …`). Die GUI zeigt sie als „Ursache:“ unter dem
+Fehlercode — die Steuerung hängt weiter an `error_code`, `detail` ist
+Diagnose für den Betreiber. Maschinenlesbare Alternative für Jobs:
+`GET /api/v1/health → jobs.<job>.error_detail`.
 
 ## Beispiele
 

@@ -648,6 +648,7 @@ export function JetztView(props: JetztViewProps) {
               <div className="mb-3">
                 <LoadError
                   errorCode={problemCode}
+                  detail={decide?.detail ?? null}
                   fallback="Empfehlung derzeit nicht erreichbar."
                   onRetry={onRetry}
                   compact

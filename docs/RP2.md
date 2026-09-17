@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 16.09.2026 · App-Version 0.43.2 · RP2-Fallback v4.2 — **die** Anleitung
+> Stand: 17.09.2026 · App-Version 0.49.1 · RP2-Fallback v4.3 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -340,6 +340,20 @@ Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
 | `/api/v1/series?station=<uuid>&fuel=e10` | Tagesverlauf 06–24 Uhr einer Station aus dem Puffer (je Stunde die letzte offene Meldung, `null` ohne Meldung; dazu `min`/`max`/`now`) |
 | `/api/v1/nas-check` | NAS sofort neu prüfen (auch im Proxy-Modus) |
 
+> **Diese sieben Pfade sind alles, was der Fallback beantwortet.** Läuft auf
+> `<RP2-IP>:8000` die gebaute NAS-GUI (`TEMPLATE_DIR` auf `web/dist`) statt der
+> RP2-eigenen v4-Vorlage, fragt der Browser zusätzlich `stats/summary`,
+> `fills`, `selection`, `heatmap`, `forecast`, `advice/diary`,
+> `collector/status`, `jobs` und `log` an — der Fallback antwortet darauf
+> `404`, und die Konsole füllt sich. Das ist der Unterschied der beiden
+> Antwortflächen, kein Serverfehler: Der Fallback ist der Live-Puffer des Pi,
+> Prognose, Empfehlung und Beleg brauchen das NAS. Seit **RP2 v4.3 (0.49.1)**
+> trägt seine Stations-Antwort `cities` (Ortslabel) und je Zeile
+> `observed_at`; die App gilt eine Antwort ohne `cities`/`stations` als „kein
+> Payload“ (ehrlicher Leerzustand) und meldet bei `nas_status: "offline"`
+> „Antwort kommt vom Pi-Fallback“ — vorher brach die gebaute GUI an
+> `data.cities.includes(…)` mit einer weißen Seite ab (O44).
+>
 > **`/api/v1/series` ist nicht das NAS-`/api/v1/series`.** Der RP2 liest den
 > Tagesverlauf 06–24 Uhr aus seinem Ringpuffer (Parameter `station`, je Stunde
 > die letzte offene Meldung, dazu `min`/`max`/`now`); die NAS-GUI fragt die
@@ -564,6 +578,7 @@ Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `p
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 4.3 (0.49.1) | 17.09.2026 | **Antwortform der gebauten App (O44):** `/api/v1/stations` trägt `cities` (deduplizierte Ortslabel der Pufferzeilen) und je Zeile `observed_at` (Alias auf `fetched_at`, NAS-Schreibweise), dazu ausdrücklich `calibrated`/`decision_ready: false`; `/api/v1/series` akzeptiert neben `station` auch `station_id`, damit die NAS-GUI im Fallback-Modus läuft. Die RP2-eigene v4-Vorlage bleibt unverändert; kein neuer Endpunkt (es bleiben die sieben oben). Tests: 52 in `tests/test_rp2_fallback.py`, drei davon neu für diese Form. |
 | 4.2 (0.37.2) | 16.09.2026 | **Variante A „Kompakt“:** 19 Zellen → 6 Blöcke. Tagesstreifen kompakt (6 Tasten Fr/Sa/So + 3-Kachel-Abriss unten mit Einzeltagen), Stationen Top-3 + „Alle zeigen“ (3.0 zeigte alle Karten), F3-Toptreffer + Sparkline direkt in der Antwort-Karte statt eigener Kartenliste. Header ab 900 px einzeilig, Desktop-Gutter 1280 px wie NAS. Kein neuer Endpunkt. Tests 48/48 grün (hidden Kicker 4 + hidden Forecast-Card, 3×1100 + 900 px). JS-Literal-Escaping gefixt. |
 | 4.1 (0.37.2) | 15.09.2026 | **Sanity-Check-Fixes (Prüfbericht 15.09.):** (1) Fenster-Zeiten `time`/`date` in `summarize_forecast` und damit in `/decide` kommen jetzt in **Ortszeit** (Europe/Berlin), nicht UTC — der ISO-Stempel `at` bleibt UTC und wird von der GUI selbst umgerechnet. (2) **Schreibaktionen über die Pi-Adresse:** `POST`/`PUT`/`DELETE`/`PATCH` werden wie `GET` transparent zur NAS weitergeleitet (Body + Content-Type); NAS offline → ehrliche 503-JSON-Antwort statt 501-Fehlerseite (der Fallback bleibt nur lesend). (3) `f2` in `/decide` trägt `fresh`/`age_minutes`/`fresh_in_set`/`oldest_age_minutes`; ohne frische Meldung im Set kippt die Antwort-Karte auf „Preis-Momentaufnahme“ statt zu empfehlen (NAS-Parität: veraltete Preise tragen keine Empfehlung). (4) Fakt „Bestes Fenster“ benennt den echten Tag (`heute`/`morgen`/Datum) — das Fenster kommt aus den nächsten 24 h und darf nicht „heute“ heißen, wenn es morgen liegt. (5) „Frische Preise“ zählt nur Meldungen **mit Preis für den gewählten Kraftstoff**. (6) CSS-Fix (`--line` → `--border`, Fact-Boxen hatten in beiden Themes keine Umrandung), Tagesstreifen-Zellen mit `role="img"` + `aria-label` (Parität NAS-GUI), Health-Probe liest das vollständige Body statt der ersten 4096 Bytes. |
 | 4.0 (0.37.1) | 14.09.2026 | **Ortsfilter repariert:** Die Auswahl oben nutzt jetzt den stabilen Set-Key aus `polling.json` und zeigt bei Kurz-Keys z. B. `FRA · Frankfurt` bzw. `GT · Gütersloh`. Die API akzeptiert Key und Label, damit alte Links weiter funktionieren. Template-Wechsel per Inhalts-Hash, keine neue sichtbare Fallback-Version. |

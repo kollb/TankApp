@@ -4,6 +4,83 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.1] – 2026-09-17
+
+**Zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 sind behoben — und
+die App bleibt bedienbar, wenn statt des NAS die Pi-Fallback-GUI antwortet.**
+Nach dem Modell-Lauf (20 Prognosen, 0 Fehler) zeigte der Bereich „Stationen“
+`Uncaught TypeError … (reading 'find')` und „Jetzt“ meldete nur
+„Empfehlung konnte nicht berechnet werden. Code: decide_failed“; am Abend
+antwortete `<RP2-IP>:8000` im Fallback-Modus und die Seite brach mit
+`… (reading 'includes')` weiß ab. Beide Ursachen sind auf der Seite **und** in
+der Fallback-Antwort behoben.
+
+### Behoben
+
+- **`null` in den Draws war der Grund für `decide_failed` (O44):** Die
+  Engine füllt Fenster-Minima ohne Beobachtung mit `NaN`; auf dem Weg durch die
+  Veröffentlichung (JSON) wird daraus `null` → in Python `None`.
+  `app/pside.py::_supported` prüfte aber nur auf `NaN` (`value != value`) und
+  hielt `None` für einen Messwert — die erste Sortierung im Fenster warf
+  `TypeError: '<' not supported between instances of 'float' and 'NoneType'`,
+  `decide` brach ab, und die GUI zeigte nur den Code. Jetzt liest `_supported`
+  `None` wie `NaN` („keine Aussage“, nicht 0,0 €/L), `_finite` gibt die Regel
+  weiter, und `app/data.py` fängt jeden unerwarteten Fehler im Decide-Pfad ab:
+  er landet im Job-/Serverlog **und** als bereinigter Klartext in der Antwort
+  (`detail`), die GUI zeigt ihn als „Ursache:“ unter dem Fehlercode. Regression:
+  `tests/test_o44_null_draws.py` (6) — ohne den `pside`-Fix scheitern fünf
+  Fälle mit genau diesem `TypeError`.
+- **Fehlerpayloads sind keine Stationsdaten:** `web/src/views/Stationen.tsx`
+  las `decide.alternatives_nearby.find(…)`. Antwortet `decide` mit
+  `{error_code, detail}` (oder `null`), war das Feld `undefined` — der
+  Bereich „Stationen“ stürzte beim Rendern ab **zusätzlich** zur fehlenden
+  Empfehlung. Der Vergleich liest jetzt `(decide?.alternatives_nearby ?? [])`
+  und rendert die Liste erst mit echten Daten; `LoadError` zeigt die Ursache.
+  Regression in `web/src/views/Stationen.test.tsx`.
+- **Die Pi-Fallback-Antwort trägt, was die gebaute App liest (O44):**
+  `rp2/fallback_gui.py::_api_stations` lieferte `{fuel, stations,
+  fresh_prices}` **ohne** `cities`. Die ausgelieferte React-App liest aber
+  `data.cities.includes(city)` zur Ortswahl → `TypeError: Cannot read
+  properties of undefined (reading 'includes')` im Entry-Chunk, die Seite
+  blieb weiß. Die Antwort nennt jetzt `cities` (deduplizierte Ortslabel der
+  Pufferzeilen), je Zeile `observed_at` (Alias auf `fetched_at`, die
+  NAS-Schreibweise) und ausdrücklich `calibrated: false` /
+  `decision_ready: false`. `_api_series` akzeptiert neben `station` auch den
+  NAS-Parameter `station_id` — die App fragt ihn, der Fallback antwortete
+  vorher mit `400`.
+- **Fremde Payloads kosten nie mehr die Seite:** `web/src/data.ts` bekommt
+  `usableStations()` — ein Payload gilt nur dann als Stations-Payload, wenn er
+  `cities` **und** `stations` als Listen trägt; alles andere ist „kein
+  Payload“ (ehrlicher Leerzustand statt Vermutung). `state/overview.tsx`
+  filtert die Stations-Antwort einmal an dieser Stelle, alle Leser
+  (`data?.cities`, `data?.stations`) sind damit sicher. Regression:
+  `web/src/data.test.ts` und `web/src/state/pi-fallback.test.tsx` (3, gegen
+  einen Fetch-Stub mit der echten Fallback-Antwort).
+- **Die App sagt, woher die Zahlen kommen:** Antwortet der Pi-Fallback mit
+  `nas_status: "offline"`, steht im Mitteilungs-Register „Antwort kommt vom
+  Pi-Fallback: Das NAS ist für den Pi nicht erreichbar. Preise und Stationen
+  sind der Live-Puffer des Pi; Prognosen, Empfehlungen und Belege brauchen das
+  NAS.“ (`Dashboard.tsx`, Rang `warn`).
+
+### Dokumentiert
+
+- **Die 404-Wand im Fallback-Modus ist Absicht:** Die Pi-GUI implementiert
+  genau sieben Pfade (`health`, `stations`, `forecasts`, `decide`, `series`,
+  `nas-check`, plus die Oberfläche selbst); alles andere — `stats/summary`,
+  `fills`, `selection`, `heatmap`, `jobs`, `log` … — antwortet `404`. Läuft im
+  Fallback-Modus die gebaute NAS-GUI (per `TEMPLATE_DIR`), fragt der Browser
+  diese Pfade und die Konsole füllt sich mit `404`/`400`. Das ist der
+  Unterschied der beiden Antwortflächen, kein Serverfehler; die Einordnung
+  steht in [RP2.md](docs/RP2.md) und [BETRIEB.md](docs/BETRIEB.md).
+
+**Prüfung:** `pytest -q` (**982 passed**; neu `tests/test_o44_null_draws.py` (6)
+und drei Fälle in `tests/test_rp2_fallback.py`, zusammen 58 in beiden Dateien),
+`ruff check` und `ruff format --check` grün, `npm --prefix web test`
+(**1097 passed** in 41 Dateien; neu `web/src/state/pi-fallback.test.tsx` (3)
+und zwei Fälle in `data.test.ts`), `npm --prefix web run build` grün. E2E im
+Browser hier nicht lauffähig (Chromium in der Sandbox nicht installierbar);
+der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
+
 ## [0.49.0] – 2026-09-17
 
 **Zwei Produktionsbefunde aus dem Modell-Lauf vom 17.09.2026 (20 Stationen,

@@ -39,13 +39,18 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.49.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
-0.49.0 behebt zwei Produktionsbefunde vom 17.09.2026: die Selektion snappt
-Beobachtungs-Zeitstempel wie der Trainingspfad aufs Raster (Coverage zählte
-sonst nur exakte Raster-Treffer), und die Prognose-Veröffentlichung ist
-aufgeteilt (eine Datei je Station, Index mit Zeigern, O22 Maßnahme d).
+nicht gegen 0.49.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.49.1 behebt zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 (O44):
+`None` in den Draws ließ `decide` an einem `TypeError` scheitern (sichtbar war
+nur `decide_failed`), und zwei Stellen lasen Felder ungeprüft
+(`alternatives_nearby.find`, `cities.includes`) — die zweite traf den
+Pi-Fallback, dessen Stations-Antwort kein `cities` trug. 0.49.0 behebt davor
+zwei weitere Produktionsbefunde: die Selektion snappt Beobachtungs-Zeitstempel
+wie der Trainingspfad aufs Raster (Coverage zählte sonst nur exakte
+Raster-Treffer), und die Prognose-Veröffentlichung ist aufgeteilt (eine Datei
+je Station, Index mit Zeigern, O22 Maßnahme d).
 Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
-[LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
+[RP2.md](RP2.md), [LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
 [../CHANGELOG.md](../CHANGELOG.md).
 
 | Dokument | Stand | Warum nicht mitgezogen |
@@ -60,8 +65,7 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–5 tragen ihre Umsetzungs-Vermerke 0.44.0–0.48.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)) |
-| [RP2.md](RP2.md) | 0.43.2 | 0.44.0 ändert die Beleg-Uhrzeit serverseitig und die Veröffentlichung auf dem NAS; der RP2 holt `/api/v1/last_forecasts` per HTTP und bucht keine Belege — der Inhalt bleibt gültig, die Stand-Zeile ist nicht mitgezogen |
+| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–5 tragen ihre Umsetzungs-Vermerke 0.44.0–0.48.0 und O22 (d) den von 0.49.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)), der Betriebsbefund O44 den von 0.49.1 ([§7](OPTIMIERUNGS-BEFUND.md#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite)) |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) · [SPEICHER.md](SPEICHER.md) | — | Betriebs- und Übernahmeregeln, keine Versionsaussagen |

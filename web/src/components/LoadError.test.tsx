@@ -89,6 +89,27 @@ describe("LoadError (C6: einheitlicher Fehler-Zustand)", () => {
     expect(inline).not.toContain("border-dashed");
   });
 
+  it("names the cause when the server sends a cleaned detail (O44)", () => {
+    // Dieselbe Sprache wie die Job-Karte („Ursache: …“): Ein Code allein ist
+    // das Ende der Diagnose. Ohne `detail` bleibt die Box unverändert.
+    const html = markup({
+      errorCode: "decide_failed",
+      detail: "TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'",
+      fallback: "Empfehlung derzeit nicht erreichbar.",
+      compact: true,
+    });
+    expect(html).toContain("Ursache:");
+    expect(html).toContain("float");
+    expect(html).toContain("Code: decide_failed");
+
+    const withoutDetail = markup({
+      errorCode: "decide_failed",
+      fallback: "Empfehlung derzeit nicht erreichbar.",
+      compact: true,
+    });
+    expect(withoutDetail).not.toContain("Ursache:");
+  });
+
   it("renders an extra hint below the message", () => {
     const html = markup({
       errorCode: "polling_missing",

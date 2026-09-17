@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 17.09.2026 · App-Version 0.49.0. Abgleich von
+> Stand: 17.09.2026 · App-Version 0.49.1. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -105,6 +105,52 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 17.09.2026 — Version 0.49.1: zwei Abstürze aus dem Betrieb (O44)
+
+Der Befund kam aus dem echten Betrieb, nicht aus einem Review: Nach dem
+Modell-Lauf vom 17.09.2026 (20 Prognosen, 0 Fehler) zeigte der Bereich
+„Stationen“ `Uncaught TypeError … (reading 'find')`, „Jetzt“ meldete nur
+„Empfehlung konnte nicht berechnet werden. Code: decide_failed“; am Abend —
+das NAS war für den Pi nicht erreichbar — brach die über `<RP2-IP>:8000`
+ausgelieferte GUI mit `… (reading 'includes')` weiß ab, und die Konsole
+zeigte eine 404-Wand.
+
+**Ursache 1 (fehlende Empfehlung):** `app/pside.py::_supported` prüfte nur
+`value != value` (NaN) und hielt `None` für einen Preis. `None` entsteht
+aus `null`, wenn eine Draw-Datei ein Fenster ohne Beobachtung trägt — die
+Engine füllt dort `NaN`, die Veröffentlichung schreibt es als `null`. Die
+erste Sortierung im Fenster warf `TypeError: '<' not supported between
+instances of 'float' and 'NoneType'`, `decide` brach ab und die GUI zeigte
+nur den Code. Jetzt liest `_supported` `None` wie `NaN` („keine Aussage“,
+nicht 0,0 €/L), und `app/data.py` fängt jeden unerwarteten Fehler im
+Decide-Pfad ab: Log **und** bereinigter Klartext in der Antwort (`detail`),
+den `LoadError` als „Ursache:“ anzeigt. Die zweite Hälfte des Absturzes war
+die GUI selbst: `views/Stationen.tsx` las `decide.alternatives_nearby.find`
+und stürzte an einem Fehlerpayload (`{error_code, detail}`) ab — jetzt
+`?? []`.
+
+**Ursache 2 (weiße Seite im Fallback-Modus):** `rp2/fallback_gui.py`
+beantwortet genau sieben Pfade; alles andere ist `404` (Absicht, siehe
+[RP2.md](RP2.md#fallback-api-und-umschaltzeiten)). Seine
+`/api/v1/stations`-Antwort trug aber kein `cities`, während die gebaute
+App `data?.cities.includes(city)` zur Ortswahl liest: `TypeError: Cannot
+read properties of undefined (reading 'includes')`, Entry-Chunk, weiße
+Seite. Die Antwort nennt jetzt `cities`, je Zeile `observed_at` und
+`calibrated`/`decision_ready` ausdrücklich `false`; `_api_series`
+akzeptiert `station_id` (die App fragt die NAS-Schreibweise, der Fallback
+antwortete mit `400`). Auf der App-Seite filtert `usableStations()` in
+`web/src/data.ts` die Stations-Antwort: ohne `cities` **und** `stations`
+gilt sie als „kein Payload“ (ehrlicher Leerzustand), und `overview.tsx`
+meldet bei `nas_status: "offline"` „Antwort kommt vom Pi-Fallback …“
+(Rang `warn`).
+
+**Offen (Betrieb):** Ob die Pi-GUI ihre eigene v4-Vorlage ausliefert oder
+die gebaute NAS-GUI aus `web/dist` (`TEMPLATE_DIR`), entscheidet, welche
+Pfade der Browser zusätzlich anfragt — die 404-Wand bleibt in beiden
+Fällen erwartbar und ist jetzt in [BETRIEB.md](BETRIEB.md) beschrieben;
+die echten Absturz-Artefakte (Produktions-`current.json` und Pi-Template)
+lagen nicht im Checkout, geprüft wurde gegen die nachgebauten Payloads.
 
 ### 11.09.2026 — P-Seite aus der Prognoseverteilung (§4.1–4.3)
 Die Bootstrap-Pfade werden jetzt im Worker zu **2-h-Fenster-Minima je Draw

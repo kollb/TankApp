@@ -288,7 +288,11 @@ export function StationenView(props: StationenViewProps) {
           price(compareRowA.station),
           price(compareRowB.station),
           liters,
-          decide?.alternatives_nearby.find(
+          // O44: Ein Fehlerpayload (``{error_code, detail}``) hat keine
+          // ``alternatives_nearby`` — ohne den Klammer-Zusatz stürzte die
+          // ganze Ansicht hier mit „Cannot read properties of undefined“
+          // ab, statt den Vergleich ohne Server-Netto zu zeigen.
+          (decide?.alternatives_nearby ?? []).find(
             (alt) => alt.station_id === compareRowB.station.station_id,
           ) ?? null,
         )

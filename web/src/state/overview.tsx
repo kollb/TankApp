@@ -71,6 +71,7 @@ import {
   type Profiles,
   type Station,
   type Stations,
+  usableStations,
   type Health,
   type Forecast,
   type Point,
@@ -644,7 +645,11 @@ function useOverviewState() {
     return () => clearInterval(timer);
   }, []);
 
-  const data = prices.data;
+  // O44: Fremde Payloads (Pi-Fallback auf Port 8000, Proxy-Seiten, Fehler-
+  // Objekte) sind kein Stations-Payload. Ohne diese Prüfung las die Ansicht
+  // `data.cities.includes(...)` auf einem Objekt ohne `cities` und die ganze
+  // App blieb weiß (Befund 17.09.2026).
+  const data = usableStations(prices.data);
   const isStaleFuel = !!data && data.fuel !== fuel;
   const activeCity = data?.cities.includes(city) ? city : data?.cities[0] || "";
   const stations =
@@ -971,6 +976,16 @@ function useOverviewState() {
       ? `App-Server unterbrochen — angezeigt bleiben die letzten erfolgreich geladenen Preise vom ${timeLabel(data.generated_at)}. Die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist.`
       : "App-Server nicht erreichbar — die Ansicht lädt neu, sobald die Verbindung wiederhergestellt ist."
     : problem(data?.connection_error);
+  // O44: Antwortet der Pi-Fallback (``rp2/fallback_gui.py``, Port 8000), sind
+  // die Preise echt — der Puffer des Pi —, aber alles Modellseitige fehlt: Der
+  // Fallback kennt nur health, stations, forecasts, decide, series und
+  // nas-check. Ohne diesen Satz sieht die halb gefüllte Oberfläche aus wie ein
+  // NAS-Stand; mit ihm steht die Herkunft da und die leeren Bereiche haben
+  // eine Erklärung (Befund 17.09.2026).
+  const fallbackNotice =
+    data?.nas_status === "offline"
+      ? "Antwort kommt vom Pi-Fallback: Das NAS ist für den Pi nicht erreichbar. Preise und Stationen sind der Live-Puffer des Pi; Prognosen, Empfehlungen und Belege brauchen das NAS."
+      : null;
   // B10: Statuszeile der Offline-Queue — nur wenn wirklich etwas wartet.
   const queueBanner = queueStatusText(
     queue.length,
@@ -1331,6 +1346,7 @@ function useOverviewState() {
     refreshNow,
     browserOnline,
     connectionProblem,
+    fallbackNotice,
     // Offline-Queue
     queue,
     queueNote,
