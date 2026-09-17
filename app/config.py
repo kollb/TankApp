@@ -31,6 +31,14 @@ class Settings:
     # der einzige Geheimnisträger; sie wird in Logs/Meldungen bereinigt und
     # niemals im Payload oder im GUI angezeigt.
     notify_url: str = ""
+    # O42: Push-Modus — die dokumentierte Entscheidung, was der Push darf.
+    # „public“ (Default): Der Endpunkt gilt als fremder/öffentlicher Dienst
+    #   (z. B. ntfy.sh) → Meldungen bleiben bei Codes bzw. neutralen Sätzen;
+    #   keine Preise, keine Stationen, keine Koordinaten im Text.
+    # „lan“: selbst gehostetes ntfy im eigenen Netz → Fenster-Meldungen dürfen
+    #   Station, Fensterzeit und erwarteten Preis nennen; weiterhin verboten
+    #   bleiben Koordinaten, Pfade und Zugangsdaten.
+    notify_mode: str = "public"
     # Startknopf im GUI (POST /api/v1/jobs/{job}/run). Ohne Passwort, dafür
     # nur bei laufendem Job-Betrieb; wer ihn abschalten will: =0.
     gui_job_start: bool = True
@@ -104,6 +112,7 @@ class Settings:
             model_fuels=fuels,
             webhook_token=os.environ.get("TANKAPP_WEBHOOK_TOKEN", "").strip(),
             notify_url=os.environ.get("TANKAPP_NTFY_URL", "").strip(),
+            notify_mode=_env_choice("TANKAPP_NTFY_MODE", "public", {"public", "lan"}),
             gui_job_start=os.environ.get("TANKAPP_GUI_JOB_START", "1").strip().lower()
             not in {"0", "false", "off", "no"},
             m7_auto_apply=os.environ.get("TANKAPP_M7_AUTO_APPLY", "0").strip()

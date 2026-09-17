@@ -8,7 +8,24 @@ ntfy-Endpunkt (``TANKAPP_NTFY_URL``, URL inklusive Topic).
 
 Grundsätze:
 
-- **Keine Preis- oder Stationsdetails im Text.** Verschickt werden die stabilen
+- **O42 — die Kanal-Entscheidung (dokumentiert, statt offen):** Der Push teilt
+  sich in zwei Meldungsarten mit unterschiedlicher Datentiefe.
+  *Alarm-Meldungen* (``severity: error``) bleiben immer bei Codes und
+  Klartexten — keine Preise, keine Stationen, unabhängig vom Kanal.
+  *Fenster-Meldungen* (O29: Fenster offen, Empfehlung geändert, Fenster
+  verstrichen) richten sich nach dem konfigurierten Modus
+  (``TANKAPP_NTFY_MODE``, siehe unten). **Entscheidung:** Default ist
+  ``public`` — der Endpunkt gilt als fremder/öffentlicher Dienst (z. B.
+  ntfy.sh), die URL ist ein Bearer-Secret und schon die Zeitpunkte der
+  Meldungen sind Metadaten über das Tankverhalten; deshalb bleiben
+  Fenster-Meldungen dort bei neutralen Sätzen ohne Preis und Station. Wer
+  einen **eigenen ntfy-Server im LAN** betreibt, schaltet ``lan`` frei:
+  Dann dürfen Fenster-Meldungen Station, Fensterzeit und erwarteten Preis
+  nennen — weiterhin verboten bleiben Koordinaten, Pfade und Zugangsdaten.
+  Die Regel ist keine Frage der Vorsicht, sondern der Konfiguration: beide
+  Modi sind getestet (``tests/test_notify.py``), der gewählte Modus steht in
+  ``/api/v1/health`` → ``notify.mode``.
+- **Keine Preis- oder Stationsdetails im Alarm-Text.** Verschickt werden die stabilen
   Alarm-Codes, ihre deutschen Klartexte aus ``app/alarms.py`` (die selbst keine
   Zahlen tragen) und die App-Version. Keine Koordinaten, keine Stationen, keine
   Preise, keine Pfade, keine Zugangsdaten — die URL ist der einzige
@@ -18,6 +35,13 @@ Grundsätze:
   (Erinnerung, damit ein Dauerfehler nicht still bleibt) und einmal, wenn alle
   Errors weg sind („wieder betriebsbereit“). ``warn`` bleibt in der GUI — Push
   ist für ``error`` gedacht.
+- **Fenster-Meldungen (O29)**: genau eine Meldung je Episode beim Öffnen eines
+  empfohlenen Fensters (Verteilungs-P über ``WINDOW_PUSH_P_MIN``), eine
+  Abschlussmeldung, wenn das Fenster ungenutzt verstreicht, und eine
+  Änderungs-Meldung, wenn die Empfehlung auf ein anderes Fenster kippt.
+  Entdupliziert über die ``episode.id``, nachts still (Ruhezeit
+  ``WINDOW_QUIET_HOURS``) — Alarm-Meldungen kennen keine Ruhezeit, sie sind
+  ``severity: error``.
 - **Kein Effekt auf den Betrieb**: Zustellung fehlgeschlagen → bereinigte Zeile
   auf stderr, Zustand unverändert, der nächste Tick versucht es erneut. Der
   Notifier läuft als Daemon-Thread und wirft nie in die Server-Schleife.
@@ -35,6 +59,13 @@ import urllib.request
 
 from .errors import public_detail, redact
 
+try:
+    from zoneinfo import ZoneInfo
+
+    _BERLIN_TZ = ZoneInfo("Europe/Berlin")
+except Exception:  # pragma: no cover
+    _BERLIN_TZ = dt.timezone.utc
+
 # Prüftakt des Notifiers. Bewusst über dem kürzesten Job-Intervall (30 min) und
 # unter der Zeit, in der ein ausgefallener Collector wehtut.
 NOTIFY_INTERVAL_S = 300.0
@@ -45,6 +76,16 @@ NOTIFY_REPEAT_S = 6 * 3600.0
 NTFY_PRIORITY_ERROR = 4
 NTFY_PRIORITY_OK = 2
 STATE_RELATIVE = ("notify", "state.json")
+
+# O29: Fenster-Meldungen. ``WINDOW_PUSH_P_MIN`` ist die Verteilungs-P, ab der
+# ein empfohlenes Fenster eine Meldung wert ist — unterhalb bleibt der Push
+# still (das Fenster ist dann in der GUI ebenso wenig hervorgehoben). Die
+# Ruhezeit gilt nur für Fenster-Meldungen; Alarme (``severity: error``)
+# werden rund um die Uhr zugestellt.
+WINDOW_PUSH_P_MIN = 0.60
+WINDOW_QUIET_HOURS = (22.0, 7.0)  # Europe/Berlin: von 22 Uhr bis 7 Uhr
+NTFY_PRIORITY_WINDOW = 3
+WINDOWS_STATE_RELATIVE = ("notify", "windows.json")
 
 
 def error_codes(alarms) -> list[str]:
@@ -114,6 +155,278 @@ def build_payload(
 
 def state_path(settings):
     return settings.runtime / STATE_RELATIVE[0] / STATE_RELATIVE[1]
+
+
+# ---------------------------------------------------------------------------
+# O29/O42: Fenster-Meldungen — eine Meldung, wenn das empfohlene Fenster
+# aufgeht, sich die Empfehlung ändert oder das Fenster ungenutzt verstreicht.
+# Der Payload richtet sich nach dem Push-Modus (O42): ``public`` bleibt ohne
+# Preis/Station, ``lan`` darf beides nennen (nie Koordinaten oder Pfade).
+# ---------------------------------------------------------------------------
+
+
+def windows_state_path(settings):
+    return settings.runtime / WINDOWS_STATE_RELATIVE[0] / WINDOWS_STATE_RELATIVE[1]
+
+
+def load_windows_state(settings) -> dict:
+    """Zustand der Fenster-Meldungen; kaputte Dateien gelten als leer."""
+    try:
+        raw = json.loads(windows_state_path(settings).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"episodes": {}}
+    episodes = raw.get("episodes") if isinstance(raw, dict) else None
+    return {
+        "episodes": {
+            str(ep_id): entry
+            for ep_id, entry in (episodes or {}).items()
+            if isinstance(entry, dict)
+        }
+    }
+
+
+def save_windows_state(settings, state: dict) -> bool:
+    """Atomisch schreiben — ein halber Zustand würde Meldungen verdoppeln."""
+    path = windows_state_path(settings)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(temporary, path)
+        return True
+    except OSError:
+        return False
+
+
+def in_quiet_hours(
+    stamp: dt.datetime, quiet: tuple[float, float] = WINDOW_QUIET_HOURS
+) -> bool:
+    """Ruhezeit in Europe/Berlin (Default 22–7 Uhr) — nur für Fenster-Meldungen."""
+    try:
+        hour = (
+            stamp.astimezone(_BERLIN_TZ).hour
+            + stamp.astimezone(_BERLIN_TZ).minute / 60.0
+        )
+    except (ValueError, OverflowError, OSError):
+        return False
+    start, end = quiet
+    return hour >= start or hour < end
+
+
+def _de_price(value: float) -> str:
+    """Niveaus in €/L, de-DE (MICROCOPY) — 1,719 €/L statt 1.719."""
+    return f"{value:.3f} €/L".replace(".", ",")
+
+
+def _berlin_hhmm(iso_value: str | None) -> str | None:
+    """ISO-Zeitstempel als „HH:MM Uhr“ in Europe/Berlin, sonst None."""
+    if not isinstance(iso_value, str) or not iso_value.strip():
+        return None
+    try:
+        stamp = dt.datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=dt.timezone.utc)
+    try:
+        berlin = stamp.astimezone(_BERLIN_TZ)
+    except (ValueError, OverflowError, OSError):
+        return None
+    return f"{berlin.hour:02d}:{berlin.minute:02d} Uhr"
+
+
+def window_signature(snapshot: dict) -> str:
+    """Identität des empfohlenen Fensters — kippt sie, kippt die Empfehlung."""
+    return "|".join(
+        str(snapshot.get(key) or "")
+        for key in ("station_id", "window_start", "window_end")
+    )
+
+
+def _pushable_window(snapshot: dict, p_min: float) -> bool:
+    """Ein Fenster ist meldepflichtig, wenn die Verteilungs-P die Schwelle trägt.
+
+    ``p_besser`` ist die Verteilungs-P aus den Draws (O5: ``p_source``) —
+    die Basisrate kann eine Meldung nie auslösen. Fehlt die Verteilungs-P,
+    fehlt die Messung: kein Push statt einer behaupteten Sicherheit.
+    """
+    if not isinstance(snapshot, dict):
+        return False
+    if snapshot.get("action") != "wait":
+        return False
+    if not snapshot.get("window_start") or not snapshot.get("window_end"):
+        return False
+    try:
+        p = float(snapshot.get("p_besser"))
+    except (TypeError, ValueError):
+        return False
+    return p == p and p >= p_min  # NaN scheitert am Selbstvergleich
+
+
+def plan_window_events(
+    store: dict, state: dict, *, p_min: float = WINDOW_PUSH_P_MIN
+) -> list[dict]:
+    """Entscheidet aus Store + Melde-Zustand, welche Fenster-Meldung fällig ist.
+
+    Rein (keine Uhr nötig — die Ruhezeit prüft der Zustell-Pfad): liefert je
+    Episode höchstens ein Ereignis, Art ``open`` · ``changed`` · ``expired``.
+    Eine Episode, die nie gemeldet wurde (P unterhalb der Schwelle), erzeugt
+    auch keine Abschlussmeldung — es gibt nichts abzuschließen.
+    """
+    events: list[dict] = []
+    notified = (state or {}).get("episodes") or {}
+    for ep in (store or {}).get("episodes") or []:
+        if not isinstance(ep, dict):
+            continue
+        ep_id = ep.get("id")
+        if not isinstance(ep_id, str) or not ep_id:
+            continue
+        status = ep.get("status")
+        snapshot = ep.get("last_snapshot") or {}
+        entry = notified.get(ep_id)
+        if status in ("open", "waiting", "due"):
+            if not _pushable_window(snapshot, p_min):
+                continue
+            signature = window_signature(snapshot)
+            if entry is None:
+                events.append(
+                    {
+                        "episode_id": ep_id,
+                        "kind": "open",
+                        "snapshot": snapshot,
+                        "signature": signature,
+                    }
+                )
+            elif entry.get("signature") != signature and not entry.get(
+                "expired_notified"
+            ):
+                events.append(
+                    {
+                        "episode_id": ep_id,
+                        "kind": "changed",
+                        "snapshot": snapshot,
+                        "signature": signature,
+                    }
+                )
+        elif status == "expired":
+            if entry is not None and not entry.get("expired_notified"):
+                events.append(
+                    {
+                        "episode_id": ep_id,
+                        "kind": "expired",
+                        "snapshot": snapshot,
+                        "signature": entry.get("signature")
+                        or window_signature(snapshot),
+                    }
+                )
+        # „resolved“: Die Episode wurde genutzt — der Beleg spricht selbst,
+        # keine Abschlussmeldung. Der Zustand wird bei Gelegenheit entrümpelt.
+    return events
+
+
+def build_window_payload(
+    kind: str,
+    snapshot: dict,
+    *,
+    mode: str,
+    version: str | None = None,
+) -> dict:
+    """ntfy-Payload einer Fenster-Meldung (rein — Inhalt je Modus testbar).
+
+    O42: ``mode="public"`` bleibt bei neutralen Sätzen (keine Preise, keine
+    Stationen); ``mode="lan"`` nennt Station, Fensterzeit und erwarteten
+    Preis. Koordinaten und Pfade stehen in keinem der beiden Modi.
+    """
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    detail = mode == "lan"
+    station = str(snapshot.get("station_name") or "").strip()
+    window_text = None
+    start_text = _berlin_hhmm(snapshot.get("window_start"))
+    end_text = _berlin_hhmm(snapshot.get("window_end"))
+    if start_text and end_text:
+        window_text = f"{start_text}–{end_text}"
+    try:
+        expected_price = float(snapshot.get("expected_price"))
+    except (TypeError, ValueError):
+        expected_price = None
+
+    if kind == "open":
+        title = "TankApp: Günstiges Tankfenster offen"
+        if detail:
+            parts = ["Empfehlung: mit dem Tanken warten."]
+            if station:
+                parts.append(f"Station: {station}.")
+            if window_text:
+                parts.append(f"Fenster: {window_text}.")
+            if expected_price is not None:
+                parts.append(f"Erwarteter Preis: {_de_price(expected_price)}.")
+            parts.append("Details in der App.")
+            body = " ".join(parts)
+        else:
+            body = (
+                "Ein empfohlenes Zeitfenster zum Tanken ist aufgegangen. "
+                "Details in der App."
+            )
+        priority, tags = NTFY_PRIORITY_WINDOW, ["fuelpump"]
+    elif kind == "changed":
+        title = "TankApp: Tank-Empfehlung geändert"
+        if detail:
+            parts = ["Die Empfehlung hat sich geändert."]
+            if snapshot.get("action") == "wait" and window_text:
+                if station:
+                    parts.append(f"Neues Fenster: {window_text} ({station}).")
+                else:
+                    parts.append(f"Neues Fenster: {window_text}.")
+                if expected_price is not None:
+                    parts.append(f"Erwarteter Preis: {_de_price(expected_price)}.")
+            elif station:
+                parts.append(f"Betroffene Station: {station}.")
+            parts.append("Details in der App.")
+            body = " ".join(parts)
+        else:
+            body = "Die Tank-Empfehlung hat sich geändert. Neuer Stand in der App."
+        priority, tags = NTFY_PRIORITY_WINDOW, ["left_right_arrow"]
+    else:  # expired
+        title = "TankApp: Tankfenster verstrichen"
+        if detail:
+            parts = [
+                "Das empfohlene Zeitfenster ist zu Ende gegangen, ohne dass ein Beleg gebucht wurde."
+            ]
+            if window_text or station:
+                detail_bits = ", ".join(bit for bit in (window_text, station) if bit)
+                parts.append(f"({detail_bits})")
+            body = " ".join(parts)
+        else:
+            body = (
+                "Das empfohlene Zeitfenster ist zu Ende gegangen, "
+                "ohne dass ein Beleg gebucht wurde."
+            )
+        priority, tags = NTFY_PRIORITY_OK, ["hourglass_done"]
+
+    if version:
+        body = f"{body}\n(TankApp {version})"
+    return {"title": title, "message": body, "priority": priority, "tags": tags}
+
+
+def prune_windows_state(state: dict, store: dict) -> bool:
+    """Wirft Melde-Zustände heraus, deren Episode nicht mehr im Store ist.
+
+    Rückgabe: True, wenn sich etwas geändert hat. Die Retention räumt den
+    Store nach 90 Tagen auf; der Melde-Zustand folgt, sonst wüchse er für immer.
+    """
+    episodes = state.get("episodes") or {}
+    present = {
+        ep.get("id")
+        for ep in (store or {}).get("episodes") or []
+        if isinstance(ep, dict) and isinstance(ep.get("id"), str)
+    }
+    stale = [ep_id for ep_id in episodes if ep_id not in present]
+    for ep_id in stale:
+        episodes.pop(ep_id, None)
+    state["episodes"] = episodes
+    return bool(stale)
 
 
 def load_state(settings) -> dict:
@@ -305,9 +618,7 @@ class Notifier:
                     f"ntfy: Zustellung fehlgeschlagen — {redact(cause)}",
                     file=sys.stderr,
                 )
-            return result
-
-        if decision["recovered"]:
+        elif decision["recovered"]:
             payload = build_payload([], [], version=self.version, recovered=True)
             ok, cause = post(url, payload, opener=self.opener)
             self.last_error = "" if ok else cause
@@ -321,15 +632,85 @@ class Notifier:
                     f"ntfy: Zustellung fehlgeschlagen — {redact(cause)}",
                     file=sys.stderr,
                 )
-            return result
-
-        if decision["gone"]:
+        elif decision["gone"]:
             # Teilweise beruhigt: Zustand nachziehen, keine eigene Meldung —
             # die nächste Fehlermeldung nennt nur, was wirklich offen ist.
             for code in decision["gone"]:
                 state["sent"].pop(code, None)
             save_state(self.settings, state)
-        result["sent"] = []
+        result.setdefault("sent", [])
+
+        # O29: Fenster-Meldungen — eigener Zustand, eigene Regeln (O42-Modus,
+        # Ruhezeit). Ein Fehlschlag hier berührt den Alarm-Zustand nicht.
+        try:
+            window_result = self.window_tick(now)
+        except Exception as exc:  # der Betrieb darf nie am Push hängen
+            print(
+                f"ntfy: Fenster-Prüfschritt fehlgeschlagen — {public_detail(exc)}",
+                file=sys.stderr,
+            )
+            window_result = {"sent": [], "deferred": [], "delivered": False}
+        if window_result.get("sent") or window_result.get("deferred"):
+            result["windows"] = window_result
+            result["delivered"] = bool(
+                result["delivered"] or window_result.get("delivered")
+            )
+        return result
+
+    # --- Fenster-Meldungen (O29) --------------------------------------------
+    def window_tick(self, now: dt.datetime | None = None) -> dict:
+        """Ein Prüf-Schritt für Fenster-Meldungen: Store lesen, Ereignisse
+        planen, außerhalb der Ruhezeit höchstens je eine Meldung je Episode
+        zustellen. Liest den Feedback-Store (kein Schreibzugriff) und macht
+        nie einen Netz-Zugriff außer dem Versand selbst.
+        """
+        url = getattr(self.settings, "notify_url", "")
+        if not url:
+            return {"sent": [], "deferred": [], "delivered": False}
+        now = now or self.clock()
+        try:
+            from .feedback import load_store
+
+            store = load_store(self.settings)
+        except Exception:
+            return {"sent": [], "deferred": [], "delivered": False}
+        state = load_windows_state(self.settings)
+        if prune_windows_state(state, store):
+            save_windows_state(self.settings, state)
+        events = plan_window_events(store, state)
+        result: dict = {"sent": [], "deferred": [], "delivered": False}
+        if not events:
+            return result
+        # Ruhezeit (Europe/Berlin): Fenster-Meldungen warten bis zum Morgen —
+        # Alarm-Meldungen kennen diese Pause bewusst nicht.
+        if in_quiet_hours(now):
+            result["deferred"] = sorted({event["kind"] for event in events})
+            return result
+        mode = getattr(self.settings, "notify_mode", "public")
+        for event in events:
+            payload = build_window_payload(
+                event["kind"],
+                event["snapshot"],
+                mode=mode,
+                version=self.version,
+            )
+            ok, cause = post(url, payload, opener=self.opener)
+            if not ok:
+                self.last_error = cause
+                print(
+                    f"ntfy: Zustellung fehlgeschlagen — {redact(cause)}",
+                    file=sys.stderr,
+                )
+                continue
+            result["sent"].append(event["kind"])
+            result["delivered"] = True
+            entry = state["episodes"].setdefault(event["episode_id"], {})
+            if event["kind"] == "expired":
+                entry["expired_notified"] = True
+            else:
+                entry["signature"] = event["signature"]
+                entry["notified_at"] = now.isoformat()
+            save_windows_state(self.settings, state)
         return result
 
 
@@ -343,11 +724,15 @@ def notify_status(settings) -> dict:
     einzige Geheimnisträger und erscheint hier bewusst **nicht**.
     """
     configured = bool(getattr(settings, "notify_url", ""))
+    mode = getattr(settings, "notify_mode", "public")
     state = load_state(settings)
     sent = state.get("sent") or {}
     stamps = sorted(value for value in sent.values() if isinstance(value, str))
     return {
         "configured": configured,
+        # O42: Der gewählte Push-Modus ist sichtbar, damit die Datentiefe der
+        # Fenster-Meldungen (O29) keine Überraschung ist.
+        "mode": mode if mode in ("public", "lan") else "public",
         "open_errors": sorted(sent),
         "last_ok_at": state.get("last_ok_at"),
         "last_sent_at": stamps[-1] if stamps else None,
