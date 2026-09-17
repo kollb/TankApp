@@ -406,6 +406,12 @@ export type Intent = "none" | "wait" | "navigate" | "refuel_now" | "dismiss";
 export type Compliance = "followed" | "partial" | "ignored" | "unrelated";
 /** O1: Herkunft der Tankuhrzeit eines Belegs (`app/feedback.py`). */
 export type ClockHourSource = "beleg" | "abgeleitet" | "default";
+/**
+ * O17: Herkunft des Belegpreises — live (frischer Poll zur Tipp-Zeit),
+ * manuell (eingetragen), prognose (Altbestand, kein gezahlter Preis),
+ * nowcast (Server-Nowcast bei fehlendem Preis).
+ */
+export type PriceSource = "live" | "manuell" | "prognose" | "nowcast";
 export type AdviceOutcome = "win" | "loss" | "tie" | "void";
 
 /** Ein Beleg (Wallet-Ledger), wie ihn GET /api/v1/fills liefert. */
@@ -421,7 +427,7 @@ export type Fill = {
   clock_hour_source?: ClockHourSource | null;
   liters: number;
   price_paid: number;
-  price_source?: string;
+  price_source?: PriceSource;
   fuel: Fuel;
   source?: string;
   compliance?: Compliance;
@@ -557,6 +563,10 @@ export type BalanceRow = {
   avg_eur_per_fill: number | null;
   avg_eur_per_liter: number | null;
   saved_eur: number;
+  /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
+  saved_verified_eur: number;
+  /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
+  n_prognosis_price: number;
   baseline_eur: number;
 };
 
@@ -878,6 +888,10 @@ export type StatsSummary = {
     ignored: number;
     unrelated: number;
     saved_eur: number;
+    /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
+    saved_verified_eur: number;
+    /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
+    n_prognosis_price: number;
     wh_hours: number[];
     last_fill?: any;
   };
@@ -1229,6 +1243,8 @@ export async function postFill(payload: {
   tanked_at?: string;
   liters: number;
   price_paid: number;
+  /** O17: Herkunft des Preises — live (Ein-Tipp-Beleg) oder manuell (Maske). */
+  price_source?: "live" | "manuell";
   fuel: string;
   source: string;
   episode_id?: string | null;
@@ -2537,6 +2553,9 @@ export const messages: Record<string, string> = {
   invalid_basis: "Unbekannte Vergleichs-Basis (overall oder hour erwartet).",
   unknown_station: "Station nicht im Polling-Set.",
   unknown_city: "Stadt nicht im Polling-Set.",
+  invalid_price_source: "Unbekannte Preis-Herkunft (live oder manuell erwartet).",
+  prompt_price_not_live:
+    "Ohne frischen Live-Preis kein Ein-Tipp-Beleg — bitte manuell erfassen.",
   price_not_available:
     "Kein Preis bestimmbar — weder live noch als Referenz. Später erneut versuchen.",
   decide_failed: "Empfehlung konnte nicht berechnet werden.",
@@ -2568,6 +2587,13 @@ export const NO_DATA_LINE = "Kein Datenstand — noch nichts gemeldet";
 
 /** Rückmeldung nach dem Buchen; die Einordnung hängt `fillPositionNote` an. */
 export const FILL_BOOKED_LINE = "Beleg in deiner Bilanz verbucht.";
+
+/**
+ * O17: Ein-Tipp-Beleg ohne frischen Live-Preis — die Maske fragt nach,
+ * statt den Prognose-Median zu buchen.
+ */
+export const NO_LIVE_PRICE_LINE =
+  "Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.";
 
 /** Hinweis des „Ansicht teilen“-Knopfs, wenn die Zwischenablage fehlt. */
 export const SHARE_URL_LINE = "URL steht jetzt in der Adresszeile — zum Teilen kopieren.";

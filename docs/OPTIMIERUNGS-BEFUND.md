@@ -594,6 +594,23 @@ Belege mit Prognosepreis und rechnet sie nicht in die Güte-Kennzahlen — oder
 nur in einer zweiten, ausdrücklich so benannten Spalte. Ratchet-Test: ein
 prompt-Beleg ohne Live-Preis erzeugt keinen Beleg mit `expected_price`.
 
+**Umgesetzt in 0.45.0:** `record_fill` nimmt die Preis-Herkunft vom Client
+(`price_source: "live"|"manuell"`, sonst `400 invalid_price_source`); ein
+Ein-Tipp-Beleg (`source == "prompt"`) ohne Live-Nachweis wird mit
+`400 prompt_price_not_live` abgewiesen statt gebucht (`prognose` vergibt
+nur die Migration 4 → 5 für Altbestände). Die GUI bucht am Due-Prompt
+ausschließlich den frischen Live-Preis der empfohlenen Station
+(`promptFillPrice`, `web/src/fills.ts`) — der Knopf nennt genau diesen Preis
+und ist ohne ihn aus; wer ihn in der Lücke zwischen Anzeige und Tipp
+verliert, landet in der Erfassungs-Maske statt in einer Buchung. Belege mit
+Prognosepreis tragen in „Ich → Belege“ den Hinweis „kein gezahlter Preis“,
+die Bilanz und die Wallet-Kennzahlen nennen `saved_verified_eur` als zweite,
+ausdrücklich so benannte Spalte (`n_prognosis_price` je Zeile). Nachweis:
+`tests/test_o17_prompt_fill.py` (10 Fälle), `web/src/fills.test.ts`,
+`web/src/views/Jetzt.test.tsx` und `web/src/views/Ich.test.tsx` sowie zwei
+Fälle in der Demo-Suite (`web/e2e/demo.spec.ts`, ohne Mocks: gebuchter Preis
+= Live-Preis ≠ Köder, ohne Live-Preis kein POST).
+
 ### O18 — Vier Laborwerkzeuge sind dauerhaft stumm
 
 **Beleg.** `web/src/views/Labor.tsx` zeigt ε-Scan, Modellvergleich,

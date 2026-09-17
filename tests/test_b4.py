@@ -1508,6 +1508,9 @@ def test_void_fill_flags_and_audits(b4_settings):
             "tanked_at": NOW.isoformat(),
             "liters": 40.0,
             "price_paid": 1.629,
+            # O17: Ein-Tipp-Beleg ohne Live-Nachweis wird abgewiesen — der
+            # Storno-Test bucht GUI-konform mit deklariertem Live-Preis.
+            "price_source": "live",
             "fuel": "e10",
             "source": "prompt",
         }

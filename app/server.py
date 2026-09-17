@@ -92,6 +92,9 @@ _FILL_STATUS = {
     "invalid_price": 400,
     "invalid_fuel": 400,
     "invalid_tanked_at": 400,
+    # O17: Preis-Herkunft ungültig bzw. Ein-Tipp-Beleg ohne Live-Preis.
+    "invalid_price_source": 400,
+    "prompt_price_not_live": 400,
     "price_not_available": 400,
     "unknown_station": 404,
     "store_too_large": 503,

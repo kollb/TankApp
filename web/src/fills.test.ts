@@ -2,8 +2,8 @@
 // Der Test hält fest, was „—“ heißt und wie das Vorzeichen gelesen wird.
 
 import { describe, expect, it } from "vitest";
-import { fillRow, fillRows } from "./fills";
-import type { Fill } from "./data";
+import { fillRow, fillRows, promptFillPrice } from "./fills";
+import type { Fill, Station } from "./data";
 
 function fill(overrides: Partial<Fill> = {}): Fill {
   return {
@@ -64,5 +64,57 @@ describe("Belegzeilen", () => {
   it("hält die Reihenfolge der Belege", () => {
     const rows = fillRows([fill(), fill({ id: "fill_2" })]);
     expect(rows.map((row) => row.id)).toEqual(["fill_1", "fill_2"]);
+  });
+
+  it("kennzeichnet den Prognosepreis als keinen gezahlten Preis (O17)", () => {
+    expect(fillRow(fill({ price_source: "prognose" })).priceNote).toBe(
+      "Prognosepreis — kein gezahlter Preis",
+    );
+    expect(fillRow(fill({ price_source: "live" })).priceNote).toBeNull();
+    expect(fillRow(fill({ price_source: "manuell" })).priceNote).toBeNull();
+    expect(fillRow(fill()).priceNote).toBeNull();
+  });
+});
+
+describe("Ein-Tipp-Beleg (O17)", () => {
+  function station(overrides: Partial<Station> = {}): Station {
+    return {
+      station_id: "empfohlen",
+      city: "Demostadt",
+      name: "Empfohlene Station",
+      brand: "Marke",
+      fuel: "e10",
+      maps_url: null,
+      price: 1.719,
+      last_price: 1.719,
+      status: "open",
+      fresh: true,
+      observed_at: null,
+      age_minutes: 2,
+      ...overrides,
+    };
+  }
+  const stations = [
+    station(),
+    station({ station_id: "billig", price: 1.629, last_price: 1.629 }),
+  ];
+  const priceOf = (row: Station) => row.price;
+
+  it("nimmt den frischen Live-Preis der Beleg-Station", () => {
+    expect(promptFillPrice("empfohlen", stations, priceOf)).toBe(1.719);
+  });
+
+  it("nimmt den Preis der Beleg-Station, nicht den billigsten des Sets", () => {
+    // Der Knopf zeigte früher den Set-Bestpreis — gebucht wurde damit ein
+    // fremder Preis. Jetzt gehören Knopf und Buchung zur selben Station.
+    expect(promptFillPrice("empfohlen", stations, priceOf)).not.toBe(1.629);
+  });
+
+  it("fragt ohne frischen Preis nach, statt zu buchen", () => {
+    expect(promptFillPrice("empfohlen", [station({ price: null })], priceOf)).toBeNull();
+    expect(promptFillPrice("empfohlen", [station({ price: NaN })], priceOf)).toBeNull();
+    expect(promptFillPrice("unbekannt", stations, priceOf)).toBeNull();
+    expect(promptFillPrice(null, stations, priceOf)).toBeNull();
+    expect(promptFillPrice(undefined, stations, priceOf)).toBeNull();
   });
 });

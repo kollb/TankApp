@@ -989,6 +989,9 @@ def record_fill(
     ``fuel`` ∈ {e10, e5, diesel}, ``station_id`` ∈ Polling-Set. Fehlt
     ``price_paid``, wird der Nowcast-Preis der Station gesucht; ohne ihn
     ``ValueError("price_not_available")`` — kein erfundener 1,70-€-Default.
+    O17: Der Client deklariert die Preis-Herkunft (``live``|``manuell``);
+    ein Ein-Tipp-Beleg (``source == "prompt"``) ohne Live-Nachweis wird mit
+    ``ValueError("prompt_price_not_live")`` abgewiesen statt gebucht.
     """
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
@@ -1015,6 +1018,20 @@ def record_fill(
         if liters is None or not (MIN_LITERS <= liters <= MAX_LITERS):
             raise ValueError("invalid_liters")
 
+        # O17: Herkunft des Preises. Der Client deklariert „live“ (frischer
+        # Poll zur Tipp-Zeit) oder „manuell“ (eingetragen); alles andere ist
+        # kein gültiger Nachweis. „prognose“ vergibt nur die Migration 4 → 5
+        # für Altbestände — neue Belege mit Prognosepreis werden nicht mehr
+        # gebucht (der Ein-Tipp-Beleg nimmt den Live-Preis oder fragt nach,
+        # statt den Median zu buchen).
+        price_source_raw = fill_data.get("price_source")
+        if price_source_raw is None:
+            price_source_declared = None
+        elif price_source_raw in ("live", "manuell"):
+            price_source_declared = price_source_raw
+        else:
+            raise ValueError("invalid_price_source")
+
         price_paid_raw = fill_data.get("price_paid")
         if price_paid_raw is None:
             # §11.2: fehlt price_paid → Nowcast/Poll der Station.
@@ -1028,7 +1045,7 @@ def record_fill(
                 MIN_PRICE_PAID <= price_paid <= MAX_PRICE_PAID
             ):
                 raise ValueError("invalid_price")
-            price_source = "explicit"
+            price_source = price_source_declared or "manuell"
 
         episode_id = fill_data.get("episode_id")
         ep = None
@@ -1069,6 +1086,13 @@ def record_fill(
             ref_price = price_paid
 
         saved_eur = round((ref_price - price_paid) * liters, 2)
+
+        # O17: Der Ein-Tipp-Beleg („Ja, wie empfohlen“) steht und fällt mit
+        # dem Live-Preis — frisch vom Client deklariert oder vom Server aus
+        # dem Poll ergänzt. Ohne Live-Nachweis wird nichts gebucht, statt
+        # still einen Prognose-Median als gezahlten Preis zu verbuchen.
+        if source == "prompt" and price_source not in ("live", "nowcast"):
+            raise ValueError("prompt_price_not_live")
 
         fill_event = {
             "id": fill_id,
@@ -1701,6 +1725,15 @@ def compute_wallet_stats(
 
     saved_eur = round(sum(f.get("saved_vs_always_now_eur", 0.0) for f in fills), 2)
 
+    # O17: Belege mit Prognosepreis (Altbestand, nur via Migration 4 → 5)
+    # tragen keinen gezahlten Preis — die verifizierte Ersparnis rechnet
+    # ohne sie und ist die zweite, ausdrücklich so benannte Spalte.
+    verified_fills = [f for f in fills if f.get("price_source") != "prognose"]
+    n_prognosis_price = len(fills) - len(verified_fills)
+    saved_verified_eur = round(
+        sum(f.get("saved_vs_always_now_eur", 0.0) for f in verified_fills), 2
+    )
+
     # w(h)-Histogramm der Tankzeiten: Default Pendlerprofil w0
     # w0: Mo-Fr 06-09 und 16-20 gewichtet, sonst flach
     w0 = [0.0] * 24
@@ -1747,6 +1780,9 @@ def compute_wallet_stats(
         "ignored": ignored,
         "unrelated": unrelated,
         "saved_eur": saved_eur,
+        # O17: Ersparnis ohne Prognosepreis-Belege plus deren Anzahl.
+        "saved_verified_eur": saved_verified_eur,
+        "n_prognosis_price": n_prognosis_price,
         "wh_hours": wh_hours,
         # A9: Wieviel hinter dem Profil steckt — die GUI sagt damit, ab wann
         # die persönliche Fensterreihenfolge gilt (Konzept §5.5 Schicht C).
@@ -1774,6 +1810,12 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
     # sein: wer teurer als der Referenzpreis tankt, hat gegen die Baseline
     # verloren). Belege ohne saved-Feld (Altbestand) tragen 0 — kein Reim.
     baseline_eur = total_eur + saved_eur
+    # O17: zweite Spalte ohne Prognosepreis-Belege (Altbestand, kein
+    # gezahlter Preis) plus deren Anzahl — je Zeile, nicht nur overall.
+    verified = [f for f in fills if f.get("price_source") != "prognose"]
+    saved_verified_eur = sum(
+        float(f.get("saved_vs_always_now_eur") or 0.0) for f in verified
+    )
     return {
         "key": key,
         "fills": len(fills),
@@ -1782,6 +1824,8 @@ def _balance_row(key: str, fills: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_eur_per_fill": round(total_eur / len(fills), 2) if fills else None,
         "avg_eur_per_liter": round(total_eur / liters, 3) if liters > 0 else None,
         "saved_eur": round(saved_eur, 2),
+        "saved_verified_eur": round(saved_verified_eur, 2),
+        "n_prognosis_price": len(fills) - len(verified),
         "baseline_eur": round(baseline_eur, 2),
     }
 

@@ -305,6 +305,7 @@ Erfasst einen echten Tankbeleg im persönlichen Wallet-Ledger:
   "station_name": "Aral Hauptstr.",
   "liters": 40.0,
   "price_paid": 1.689,
+  "price_source": "live",
   "fuel": "e10",
   "source": "prompt",
   "episode_id": "ep_123456"
@@ -320,7 +321,8 @@ plausiblen Fenster liegen — höchstens 90 Tage (Retention) zurück, höchstens
 15 Minuten in der Zukunft —, sonst `400 invalid_tanked_at` (B5); ohne Angabe
 gilt „jetzt“. Freitext-Felder werden gekappt: `station_name` auf 120, `source`
 auf 40 Zeichen (B5). Fehler kommen als 4xx/503
-(`invalid_liters`/`invalid_price`/`invalid_fuel`/`invalid_tanked_at`/`price_not_available` → 400,
+(`invalid_liters`/`invalid_price`/`invalid_fuel`/`invalid_tanked_at`/`price_not_available`/
+`invalid_price_source`/`prompt_price_not_live` → 400,
 `unknown_station` → 404, `store_too_large`/`store_locked` → 503), nicht
 mehr als `200 {"error_code": …}`. `store_locked` heißt: Der
 Feedback-Store war während der Wartezeit von 5 s durchgehend belegt
@@ -335,6 +337,18 @@ Engine (`decision_hour`) — und ist über `clock_hour_source` als erfunden
 gekennzeichnet. Vor 0.44.0 war 12 Uhr der Wert **jedes** GUI-Belegs, das
 w(h)-Profil lernte also ab dem achten Beleg aus einer Uhrzeit, die nie gemessen
 wurde.
+
+**Preis-Herkunft (O17, 0.45.0):** Der Client deklariert je Beleg
+`price_source` — `live` (frischer Poll zur Tipp-Zeit, nur der
+Ein-Tipp-Beleg „Ja, wie empfohlen“) oder `manuell` (eingetragen, die
+Erfassungs-Maske); alles andere ist `400 invalid_price_source`. Ein
+expliziter Preis ohne Angabe gilt als `manuell`, ein fehlender Preis mit
+Server-Nowcast als `nowcast`. `prognose` vergibt nur die Migration 4 → 5
+für Altbestände — neue Belege mit Prognosepreis werden nicht mehr gebucht:
+Ein Ein-Tipp-Beleg (`source == "prompt"`) ohne Live-Nachweis wird mit
+`400 prompt_price_not_live` abgewiesen statt gebucht, und die GUI fragt
+dann in der Maske nach. Vor 0.45.0 trug „Ja, wie empfohlen“ den
+**erwarteten** Preis (Median der Prognose) als `price_paid` ein.
 
 Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `unrelated`) per Zeitstempel-Matching (`tanked_at` vs. Emit-/Fensterzeiten mit 45-min- bzw. −30/+60-min-Slack) und die realisierte Ersparnis im Vergleich zu sofortigem Tanken. Die offene Advice-Folge wird nur durch einen Beleg geschlossen, der die Empfehlung betrifft (`followed`/`partial` bzw. `ignored` an der Emit-Station) — ein fachlich fremder Beleg beendet die Folge nicht.
 
@@ -357,7 +371,7 @@ Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `un
       "clock_hour_source": "beleg",
       "liters": 41.2,
       "price_paid": 1.679,
-      "price_source": "explicit",
+      "price_source": "live",
       "fuel": "e10",
       "source": "prompt",
       "compliance": "followed",
@@ -446,6 +460,8 @@ Zeile; die Differenz steht in `overall.n_without_date`.
       "avg_eur_per_fill": 63.28,
       "avg_eur_per_liter": 1.687,
       "saved_eur": 2.0,
+      "saved_verified_eur": 2.0,
+      "n_prognosis_price": 0,
       "baseline_eur": 128.55
     }
   ],
@@ -453,7 +469,8 @@ Zeile; die Differenz steht in `overall.n_without_date`.
   "overall": {
     "fills": 14, "liters": 610.5, "total_eur": 1024.9,
     "avg_eur_per_fill": 73.21, "avg_eur_per_liter": 1.679,
-    "saved_eur": 18.4, "baseline_eur": 1043.3,
+    "saved_eur": 18.4, "saved_verified_eur": 18.4,
+    "n_prognosis_price": 0, "baseline_eur": 1043.3,
     "n_without_date": 0, "saved_pct": 1.8
   },
   "error_code": null
@@ -466,7 +483,10 @@ Referenzpreis (`price_now` des ersten Snapshots der Folge, sonst `price_paid`)
 (wer teurer als die Referenz tankt, hat gegen die Baseline verloren);
 `saved_pct` bleibt `null`, solange die Baseline nicht positiv ist. Zeilen sind
 absteigend sortiert (jüngste zuerst), nur Monate/Jahre mit Belegen — keine
-erfundenen Leerzeilen.
+erfundenen Leerzeilen. `saved_verified_eur` (O17, 0.45.0) ist die zweite,
+ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis
+(`price_source == "prognose"`, Altbestand, kein gezahlter Preis) — deren
+Anzahl nennt `n_prognosis_price` je Zeile.
 
 ## Profiles (A1 — Fahrzeug-/Haushaltsprofile, ohne Login)
 
@@ -508,7 +528,7 @@ Sprung braucht eine Migrationsfunktion, kein stiller Reset (B2-Muster).
 Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten Anker-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ Tages-Anker, Wahrheit = realisierte offene Preise). Der Tages-Anker ist `TANKAPP_DECISION_HOUR` (Default 12, `decisionHour` im Report; Engine-CLI: `--decision-hour`) — 12:00, weil Anhebungen nur mittags stattfinden und der hypothetische Entscheid erst dann weiß, ob es heute teurer wurde. Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
 2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt/Woanders, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen); noch laufende Empfehlungen zählen erst nach der Abrechnung (`n_pending`, `snapshots_total`, `n_void_all`). Seit O5 (0.45.0) trägt jede Zeile ihre P-Quelle (`p_source`: `verteilung`|`basisrate`|`keine`): `brier_by_source`/`brier_all_by_source` weisen den Score je Quelle getrennt aus, `p_source_counts`/`p_source_counts_all` zählen die Zeilen. Das M7-Gate ist ein **Zähl-Gate** (§0.4) über die Verteilungs-P allein: `calibrated` gilt ab `min_recommendations` (= 100, `app.feedback.M7_MIN_RECOMMENDATIONS`) abgeschlossenen Empfehlungen mit Verteilungs-P (`gate_n`) und `gate_brier` (Allzeit-Brier darüber) < `brier_threshold` (= 0,25, `M7_BRIER_THRESHOLD`); beide Schwellen werden mitgeliefert, damit die GUI keinen eigenen Nenner erfindet. `gate_status` unterscheidet „steht aus (n < 100)“, „nicht messbar“ (n reicht, aber keine Zeile trägt Verteilungs-P), „nicht erreicht“ (Brier ≥ Schwelle) und „kalibriert“. Die 90-Tage-Übergangsregel (Punkt 6) ist **kein** Bestandteil dieses Gates.
-3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis. Das Tankzeit-Profil w(h) (`wallet.wh_hours`, 24 Werte, ab `wh_min_fills` = 8 aktiven Belegen gegen das Pendler-Profil geschrumpft) nennt seit 0.44.0 seine Herkunft mit: `wh_clock_sources` (`{"beleg": n, "abgeleitet": n, "default": n}`), `wh_measured_n` und `wh_default_n` (O1) — Belege ohne Zeitstempel zählen die erfundene 12-Uhr-Projektion ins Profil und sind als solche gezählt.
+3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis. `saved_verified_eur` (O17, 0.45.0) ist die zweite, ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis (`n_prognosis_price`, Altbestand, kein gezahlter Preis). Das Tankzeit-Profil w(h) (`wallet.wh_hours`, 24 Werte, ab `wh_min_fills` = 8 aktiven Belegen gegen das Pendler-Profil geschrumpft) nennt seit 0.44.0 seine Herkunft mit: `wh_clock_sources` (`{"beleg": n, "abgeleitet": n, "default": n}`), `wh_measured_n` und `wh_default_n` (O1) — Belege ohne Zeitstempel zählen die erfundene 12-Uhr-Projektion ins Profil und sind als solche gezählt.
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 6. **`live_phase` (bewertete Live-Tage der Übergangsregel)**: gezählt aus den publizierten Bootstrap-Policies (`runtime/engine/current.json` → `policies`), nicht aus dem Browserdatum: `good_complete_days` (schwächste Station/Kraftstoff), `best_complete_days`, `required_complete_days` (Engine-Schwelle `live_only_days`, Default 90), `days_missing`, `min_daily_coverage`, `stations`, `live_only_stations`, `as_of` (Datenstand des Modell-Laufs), `complete`. Ohne Veröffentlichung oder bei uneinheitlichen Schwellen ist das Feld `null` — die GUI zeigt dann „noch keine Live-Abdeckungsdaten“ statt eines erfundenen Countdowns (§0.4). Achtung: Die Tageszahl ist die Übergangsregel (Archiv → Polling), **nicht** das M7-Gate; dieses bleibt „Allzeit-Brier der Verteilungs-P < 0,25 bei ≥ 100 Empfehlungen mit Verteilungs-P“ (Punkt 2). Beide Freigaben haben deshalb in der GUI eigene Kacheln und eigene Nenner: `live_only_days` (Engine-Schwelle, `engine/cli.py --live-only-days`, Default 90) für die Datenhygiene, `min_recommendations` für M7 — bei ~1 Empfehlung/Tag wären 100 Settlements ~100 Tage, M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (Konzept §13). Das Stationsdetail `data_policy` je Prognose (`GET /api/v1/forecast`) bleibt unverändert.
