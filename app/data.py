@@ -136,6 +136,11 @@ def _record_implausible_observations(
             if key in seen:
                 continue
             seen.add(key)
+            # NaN/Inf sind keine JSON-Zahlen — der Zähler bleibt gültiges JSON
+            # (der Wert ist dann None; gezählt wird der Vorfall trotzdem).
+            value = entry.get("value")
+            if isinstance(value, float) and not math.isfinite(value):
+                entry = {**entry, "value": None}
             entries.append(entry)
         cutoff = now - dt.timedelta(hours=IMPLAUSIBLE_WINDOW_H)
         kept = []
@@ -153,10 +158,11 @@ def _record_implausible_observations(
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_suffix(".tmp")
             temporary.write_text(
-                json.dumps({"entries": kept}, ensure_ascii=False), encoding="utf-8"
+                json.dumps({"entries": kept}, ensure_ascii=False, allow_nan=False),
+                encoding="utf-8",
             )
             os.replace(temporary, path)
-        except OSError:
+        except (OSError, ValueError):
             pass  # Zählen darf nie den Antwort-Pfad sprengen
 
 
