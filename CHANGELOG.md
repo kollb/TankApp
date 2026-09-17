@@ -4,6 +4,67 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.46.0] – 2026-09-17
+
+**Batch 3 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+ist umgesetzt: Was die GUI behauptet, ist belegt — und was sie empfehlen
+will, meldet sich. Der δ̂-Balken im Labor zeichnet (O16), Live-Preise kennen
+Plausibilitätsgrenzen (O35), das empfohlene Fenster schickt eine Meldung
+(O29), und die Push-Kanal-Entscheidung ist dokumentiert statt offen (O42).**
+
+### Geändert
+
+- **Push-Grundsatz entschieden und konfiguriert (O42, vorgezogener P2):**
+  `TANKAPP_NTFY_MODE` ∈ `public` (Default) · `lan`. Der Default behandelt den
+  Endpunkt als fremden/öffentlichen Dienst (ntfy.sh-Beispiel in BETRIEB.md):
+  Fenster-Meldungen bleiben bei neutralen Sätzen ohne Preis und Station — die
+  URL ist ein Bearer-Secret, und schon die Zeitpunkte sind Metadaten.
+  `lan` (selbst gehostetes ntfy) erlaubt Station, Fensterzeit und erwarteten
+  Preis; Koordinaten und Pfade bleiben in beiden Modi verboten.
+  Alarm-Meldungen sind unberührt (weiter nur Codes + Klartext). Der Modus
+  steht in `/api/v1/health` → `notify.mode`; die Regel steht im
+  `notify.py`-Docstring, MICROCOPY §4f und BETRIEB.md. Tests prüfen beide
+  Payload-Regeln (`tests/test_o29_window_push.py`).
+- **Fenster-Meldungen über den bestehenden Kanal (O29, P1):** Genau eine
+  Meldung je `episode.id`, wenn das empfohlene Fenster öffnet
+  (Verteilungs-P ≥ `WINDOW_PUSH_P_MIN = 0,60` — die Basisrate kann nie
+  auslösen), eine Abschlussmeldung, wenn es ohne Beleg verstreicht (nur,
+  wenn es vorher gemeldet war), und eine Änderungs-Meldung, wenn die
+  Empfehlung auf ein anderes Fenster kippt. Ruhezeit 22–7 Uhr
+  (Europe/Berlin) verschiebt Fenster-Meldungen auf den Morgen — Alarme
+  kennen sie nicht. Entdupliziert über `runtime/notify/windows.json`;
+  fehlgeschlagene Zustellung bleibt unmarkiert und wird erneut versucht.
+  Zahlen über Formatter (de-DE), Zeiten in Europe/Berlin.
+- **Live-Preise mit Plausibilitätsgrenzen (O35, P1):** Ein Paar Grenzen für
+  alle Pfade aus einer Quelle (`PRICE_PLAUSIBLE_MIN/MAX` in `app/data.py`;
+  `MIN_PRICE_PAID`/`MAX_PRICE_PAID` sind Aliasse): Werte außerhalb
+  0,40–5,00 €/L erscheinen weder als `price` noch als `last_price`, stehen
+  als `implausible_price` in der Stations-Antwort (die Station bleibt
+  sichtbar), sortieren sich nicht an die Spitze und werden gezählt
+  (`runtime/quality/implausible_prices.json`, je Beobachtung einmal,
+  24-h-Fenster). `/api/v1/health` → `price_implausible` nennt den Zähler,
+  ab dem ersten Wert schlägt Alarm `price_implausible` (warn) an. Vorher
+  verschwand der Wert still in `normalized_row` — ohne Kennzeichnung, ohne
+  Zähler. Der Archiv-Export behält sein Spaltenschema.
+- **δ̂-Balken im Labor (O16, P1):** Die Balken lesen aus
+  `/api/v1/selection` (δ̂, Konfidenzintervall als Whisker, Signifikanz aus
+  `q_value`/`significant` — nicht-signifikante Balken blass) statt aus
+  `stationScores.delta_ct`, einem Feld, das der Server nie sendet; der
+  Balken war dauerhaft leer. `BacktestStationScore.delta_ct` ist aus dem
+  Typ entfernt. Der Demo-Stapel bekommt ein echtes Selektions-Artefakt
+  (derselbe Pfad wie der NAS-Lauf, B = 400), damit Labor, curl-Check und
+  Demo-E2E echte Werte sehen.
+
+### Nachweise
+
+Neu: `tests/test_o29_window_push.py` (23 Fälle),
+`tests/test_o35_live_price_limits.py` (7 Fälle), Selektions-Vertrags-Test in
+`tests/test_e2e_demo.py`, Render-Tests in `web/src/views/Labor.test.tsx`
+(3 Fälle) und Demo-Spec in `web/e2e/demo.spec.ts`. Angepasst: Health-Block
+in `tests/test_notify.py`. Lokal grün: 920 pytest, 1089 vitest, ruff, Build;
+Playwright-Suiten laufen in der CI (Chromium in der Sandbox nicht
+installierbar).
+
 ## [0.45.0] – 2026-09-17
 
 **Batch 2 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)

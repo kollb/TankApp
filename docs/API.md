@@ -1,6 +1,9 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.45.0** — B3/B4/B5, Ereignis-Pipeline
+> Stand: 17.09.2026 · App-Version **0.46.0** — seit 0.46.0: `notify.mode`
+> (Push-Modus, O42) und `price_implausible`-Zähler (O35) in `/health`,
+> `implausible_price` je Station (O35), Fenster-Meldungen über den
+> ntfy-Kanal (O29). Davor: B3/B4/B5, Ereignis-Pipeline
 > (`POST /api/v1/jobs/trigger`, Issue 50) und die Endpunkte aus 0.10.0:
 > Beleg-Storno (`DELETE /api/v1/fills/{id}`, A3), Beleg-Verlauf
 > (`GET /api/v1/fills`), CSV-Export (`GET /api/v1/fills.csv`, A6),
@@ -557,7 +560,8 @@ Antwort:
     {"code": "collector_stale", "severity": "warn",
      "message": "Collector-Herzschlag ist veraltet (Preise können eingefroren sein)."}
   ],
-  "notify": {"configured": true, "open_errors": ["collector_no_heartbeat"],
+  "notify": {"configured": true, "mode": "public",
+             "open_errors": ["collector_no_heartbeat"],
              "last_ok_at": "2026-09-11T08:05:00+00:00"},
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
@@ -569,6 +573,7 @@ Antwort:
   "publication": {"bytes": 7280000, "budget_bytes": 6000000, "max_bytes": 10000000,
                   "over_budget": true, "readable": true,
                   "error_code": null, "reason": null},
+  "price_implausible": {"count_24h": 0, "last_at": null},
   "selection": {"published_at": "...", "count": 20},
   "collector": {
     "available": true,
@@ -624,11 +629,21 @@ Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 
 **`notify`** (B4): Sichtbarkeit der ntfy-Zustellung, die `severity: "error"`
 an `TANKAPP_NTFY_URL` schickt — `configured` (Variable gesetzt?),
-`open_errors` (welche Codes sind als gemeldet gespeichert), `last_ok_at`
-(Stempel der letzten „wieder betriebsbereit“-Meldung, `null` wenn nie).
+`mode` (Push-Modus `public`|`lan`, O42: bestimmt die Datentiefe der
+Fenster-Meldungen, Default `public`), `open_errors` (welche Codes sind als
+gemeldet gespeichert), `last_ok_at` (Stempel der letzten „wieder
+betriebsbereit“-Meldung, `null` wenn nie).
 Der Block liest nur die Zustandsdatei `data/runtime/notify/state.json`, kein
 Netz. Einrichten und Verhalten:
 [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4).
+
+**`price_implausible`** (O35, seit 0.46.0): Zähler der Live-Preise außerhalb
+0,40–5,00 €/L in den letzten 24 Stunden — `count_24h` und `last_at`
+(jüngste Beobachtung, `null` ohne Vorfall). Solche Werte werden nicht als
+`price` veröffentlicht, sondern als `implausible_price` gekennzeichnet
+(siehe Stationen); ab dem ersten Wert schlägt Alarm `price_implausible`
+(warn) an. Der Zähler liest nur `data/runtime/quality/implausible_prices.json`
+(je Beobachtung einmal, Dedupe über Station + Zeitstempel).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
@@ -675,7 +690,8 @@ Antwort sortiert nach Preis (frisch zuerst):
       "age_minutes": 5.2,
       "fresh": true,
       "last_price": 1.729,
-      "price": 1.729
+      "price": 1.729,
+      "implausible_price": null
     }
   ],
   "anchors": {
@@ -688,6 +704,16 @@ Antwort sortiert nach Preis (frisch zuerst):
 ```
 
 `price` nur wenn fresh (≤30 Min) und open, sonst null. `last_price` immer letzte Meldung.
+
+**Plausibilität (O35, seit 0.46.0):** Ein gemeldeter Wert außerhalb
+0,40–5,00 €/L (oder nicht endlich) ist eine Beobachtung, aber kein Preis —
+`price` und `last_price` bleiben null, der rohe Wert steht in
+`implausible_price` (sonst null). Die Station bleibt sichtbar und sortiert
+sich hinter alle Stationen mit Preis; der Vorfall wird in
+`/api/v1/health` → `price_implausible` gezählt und ab dem ersten Wert als
+gleichnamiger Alarm (warn) gemeldet. Dieselben Grenzen gelten im
+Belegpfad (`MIN_PRICE_PAID`/`MAX_PRICE_PAID`) und im Trainingspfad
+(`engine/data.py`).
 
 `anchors` (0.22.0): der Anker (Heimat-Startpunkt) je Stadt aus dem Polling-Set
 (`anchor` bzw. `lat`/`lon` auf Set-Ebene). Bei `city`-Filter ist nur die

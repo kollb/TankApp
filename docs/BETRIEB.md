@@ -1,10 +1,11 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.45.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.46.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.44.0: Größen-Alarme für die Veröffentlichung der Prognosen
-> (`publication_large`/`publication_unreadable`), `publication`-Block im
-> `/health`-Payload, Beleg-Schema v4 (Uhrzeit aus dem Beleg abgeleitet, O1).
+> Neu seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
+> dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
+> Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm
+> `price_implausible` (O35).
 > Mit klickbarem Inhaltsverzeichnis.
 
 ## Inhaltsverzeichnis
@@ -309,7 +310,7 @@ Nur `--archive-dir`, kein `--runtime-dir`: Runtime bleibt auf SSD, HDD nur Rohar
 | Modelle | Bei Start, danach täglich, bei Fehler stündlich, unabhängig vom Archiv |
 | Selektion | Bei Start, danach täglich, nach Modell best-effort, publiziert nach `runtime/selection/current.json` |
 | Settlement | Bei Start, danach alle 30 min: rechnet Advice-Snapshots nach Fensterende + 30 min Lag gegen *beobachtete* Preise ab (`runtime/feedback/store.json`), setzt fällige Episoden auf `due` |
-| Alarm-Zustellung (B4) | Alle 5 min `severity: error`-Alarme prüfen, nur Zustandswechsel senden — nur mit `TANKAPP_NTFY_URL` → [ntfy](#alarm-zustellung-über-ntfy-b4) |
+| Alarm-Zustellung (B4) | Alle 5 min `severity: error`-Alarme prüfen, nur Zustandswechsel senden; zusätzlich Fenster-Meldungen je Episode (O29, Ruhezeit 22–7 Uhr) — nur mit `TANKAPP_NTFY_URL` → [ntfy](#alarm-zustellung-über-ntfy-b4) |
 | Veröffentlichung | Erst nach fertiger Berechnung atomar ersetzen, alte Ergebnisse bei Fehlern behalten |
 | Neustart | Docker restart unless-stopped, startet mit Docker, holt nach |
 
@@ -813,6 +814,7 @@ Klartext.
 | `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
 | `publication_unreadable` | error | Veröffentlichung der Prognosen über dem Leselimit oder nicht parsebar — GUI zeigt überall „keine Prognose“ | Größe und Lesbarkeit prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `publication_large` | warn | Veröffentlichung über 6 MB, aber noch lesbar — Puffer zum Leselimit schrumpft | Stationen/Kraftstoffe oder `bootstrap_samples` prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
+| `price_implausible` | warn | mindestens ein Live-Preis der letzten 24 h außerhalb 0,40–5,00 €/L — als Beobachtung gekennzeichnet, nicht als Preis veröffentlicht (O35) | Zähler im Health-Payload (`price_implausible.count_24h`); bei Dauerbetrieb die Preisquelle prüfen |
 
 Ein Alarm ist eine **Zusammenfassung**, keine neue Prüfung: Dieselbe Information
 steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,
@@ -837,9 +839,29 @@ python3 tankapp.py nas-up
 # Handy: ntfy-App installieren, dasselbe Topic abonnieren.
 ```
 
-Gesendet wird **nur**, was auch im GUI-Tooltip steht, plus App-Version —
-stabile Codes und ihre deutschen Klartexte, keine Preise, keine Tankstellen,
-keine Koordinaten, keine Pfade, keine Zugangsdaten:
+Seit 0.46.0 meldet sich zusätzlich das **empfohlene Tankfenster** über
+denselben Kanal (O29): eine Meldung, wenn ein Fenster mit ausreichender
+Sicherheit aufgeht, eine, wenn die Empfehlung auf ein anderes Fenster
+kippt, und eine Abschlussmeldung, wenn das Fenster ungenutzt verstreicht.
+Entdupliziert über die Episoden-Kennung, nachts still (Ruhezeit 22–7 Uhr
+Europe/Berlin — gilt nur für Fenster-Meldungen, Alarme kommen rund um die
+Uhr). Was diese Meldungen dürfen, entscheidet der **Push-Modus** (O42):
+
+| Modus | Einrichtung | Fenster-Meldung trägt |
+|---|---|---|
+| `public` (Default) | `TANKAPP_NTFY_URL` zeigt auf einen fremden/öffentlichen Dienst (z. B. ntfy.sh) | neutralen Satz — keine Preise, keine Stationen |
+| `lan` | `TANKAPP_NTFY_MODE=lan` + eigener ntfy-Server im LAN | Station, Fensterzeit und erwarteten Preis — nie Koordinaten oder Pfade |
+
+Der Default ist bewusst der zurückhaltende: Die Webhook-URL ist ein
+Bearer-Secret, und schon die Zeitpunkte der Meldungen sind Metadaten über
+das eigene Tankverhalten. Wer Details will, hostet ntfy selbst und sagt es
+der App ausdrücklich. Der gewählte Modus steht in `/api/v1/health` →
+`notify.mode`; beide Payload-Regeln sind getestet
+(`tests/test_o29_window_push.py`).
+
+**Alarm-Meldungen** senden weiterhin nur, was auch im GUI-Tooltip steht,
+plus App-Version — stabile Codes und ihre deutschen Klartexte, keine Preise,
+keine Tankstellen, keine Koordinaten, keine Pfade, keine Zugangsdaten:
 
 ```json
 {"title": "TankApp: 2 Alarme",
@@ -913,16 +935,19 @@ ersatzlos**. Damit ist gemeint, dass die App keine Preis-Mitteilungen mehr
 versendet — **der System-Alarmweg bleibt davon unberührt** und unverändert
 aktiv. Die zwei Welten bleiben getrennt:
 
-| Pfad | Komponenten | Was sie melden | Stand seit 0.35.0 |
+| Pfad | Komponenten | Was sie melden | Stand |
 |---|---|---|---|
 | System-Alarme (Betrieb) | `app/alarms.py`, `app/notify.py` (B4) | Collector, Läufe, Store, Heartbeat — der Zustand der Maschine | **Unverändert**: `alarms[]` in `/health`, Header-Punkt, Kachel im System-Tab, ntfy-Zustandswechsel bei `severity: "error"` (dieses Kapitel) |
-| Preis-Erinnerungen / Push | — | hätte auf Preis-Chancen hingewiesen | **existiert nicht** — §11 streicht sie ersatzlos; es wird dafür keine Server-Komponente gebaut |
+| Fenster-Meldungen (Empfehlung) | `app/notify.py` (O29, seit 0.46.0) | empfohlenes Fenster offen / geändert / ungenutzt verstrichen — dieselbe Empfehlung, die die GUI zeigt | **aktiv**, sobald `TANKAPP_NTFY_URL` gesetzt ist; Datentiefe nach Push-Modus → [ntfy](#alarm-zustellung-über-ntfy-b4) |
+| Preis-Erinnerungen / Preis-Alarme | — | hätte auf Preis-Chancen hingewiesen („Jetzt 4 ct unter Tagesmedian“) | **existiert nicht** — §11 streicht sie ersatzlos; die Fenster-Meldung (O29) ist die Empfehlung, kein Preis-Ticker |
 
 Folgen für den Betrieb:
 
-- `TANKAPP_NTFY_URL` bedeutet weiterhin **nur System-Alarme**. Preis-Nachrichten
-  kommen nicht — und werden auch nicht kommen, es sei denn, Mitteilungen
-  kommen nach §11 als eigener, explizit einzuschaltender Baustein zurück.
+- `TANKAPP_NTFY_URL` bedeutet **System-Alarme plus Fenster-Meldungen**
+  (0.46.0, O29) — aber keine Preis-Ticker: Live-Preis-Nachrichten ohne
+  Empfehlung kommen nicht, und sie kommen auch nicht, es sei denn,
+  Mitteilungen kommen nach §11 als eigener, explizit einzuschaltender
+  Baustein zurück.
 - Störungen erscheinen in der neuen GUI **nur als Anzeige**: Header-Punkt plus
   Klartext im System-Tab mit Erster Aktion — kein Push, kein Ton (§11).
 - Die bestehenden Alarm-Einträge (Tabelle oben) gelten **unverändert**; es wird

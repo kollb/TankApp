@@ -1,8 +1,9 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 17.09.2026 · App-Version **0.45.0** · gilt für `web/src/**`,
-> `rp2/fallback_gui.py`, Fehlertexte in `app/**` und für jede neue Zeile Text,
-> die ein Nutzer zu sehen bekommt.
+> Stand: 17.09.2026 · App-Version **0.46.0** · gilt für `web/src/**`,
+> `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
+> `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
+> sehen bekommt.
 
 Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
@@ -19,6 +20,7 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4c. Bereich „Labor“: feste Muster (0.36.0)](#4c-bereich-labor-feste-muster-0360)
 - [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
 - [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
+- [4f. Push-Texte: Alarme und Fenster-Meldungen (0.46.0)](#4f-push-texte-alarme-und-fenster-meldungen-0460)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
 - [5b. Meldungen: ein Register, ein Rang (V3)](#5b-meldungen-ein-register-ein-rang-v3)
@@ -318,6 +320,9 @@ Information. Geprüft von `components/Notices.test.ts`.
   keine „ca.“-Werte ohne Rechnung dahinter (Ehrlichkeits-Regel, Konzept §0.4).
 - **Pfade, Tokens, URLs, Koordinaten.** Auch nicht in Alarm-Pushes: die
   ntfy-Nachricht trägt nur Alarm-Code, deutschen Klartext und App-Version.
+  Fenster-Meldungen (O29) richten sich nach dem Push-Modus (§4f): im Modus
+  `lan` dürfen sie Station, Fensterzeit und erwarteten Preis nennen —
+  Koordinaten und Pfade bleiben in beiden Modi verboten.
   **Einzige Ausnahme (T9/T6):** der Bereich „System“ in seinen Einrichtungs-
   und Diagnose-Texten — dort braucht ein Betreiber Datei- und Endpunkt-Namen
   (`polling.json`, `/api/v1/health`, `TANKAPP_NTFY_URL`). §4d beschreibt
@@ -353,6 +358,26 @@ für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb:
 
 Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
 `title=`.
+
+### 4f. Push-Texte: Alarme und Fenster-Meldungen (0.46.0)
+
+Push-Texte entstehen serverseitig (`app/notify.py`) — für sie gelten
+dieselben Regeln wie für die GUI: Zahlen über die Formatter (de-DE,
+„1,719 €/L“, „18:00 Uhr“ in Europe/Berlin), keine erfundenen Werte,
+„…“-Anführungen, kurzer handlungsleitender Ton. Zwei Meldungsarten, zwei
+Datentiefen (O42):
+
+| Art | Inhalt | Wann |
+|---|---|---|
+| Alarm (`severity: error`) | nur Code, deutscher Klartext, App-Version — nie Preise, Stationen, Pfade | Zustandswechsel, Erinnerung nach 6 h, „wieder betriebsbereit“ |
+| Fenster „offen“ | Modus `public`: neutraler Satz ohne Details · Modus `lan`: Station, Fensterzeit, erwarteter Preis | genau einmal je Episode beim Öffnen (Verteilungs-P ≥ Schwelle) |
+| Fenster „geändert“ | dieselbe Regel wie „offen“ | Empfehlung kippt auf ein anderes Fenster |
+| Fenster „verstrichen“ | neutraler Satz (`public`) bzw. Fensterzeit und Station (`lan`) | Fenster schließt ohne Beleg — nur, wenn es vorher gemeldet war |
+
+Koordinaten, Pfade und Links stehen in **keinem** Modus. Die Ruhezeit
+(22–7 Uhr, Europe/Berlin) gilt nur für Fenster-Meldungen; Alarme kommen
+rund um die Uhr. Geprüft von `tests/test_notify.py` und
+`tests/test_o29_window_push.py`.
 
 ## 7. Prüfung
 

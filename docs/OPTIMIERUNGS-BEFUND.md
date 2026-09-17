@@ -19,11 +19,14 @@
 > steht der Querverweis dabei, kein zweiter Befund.
 >
 > **Umsetzungsstand:** [Batch 1](#batch-1--p0--nicht-mehr-still-ausfallen)
-> (O1 + O22) ist mit **0.44.0** abgenommen — je Befund steht der Vermerk unter
-> dem DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2 stehen.
-> O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist bewusst offen
-> ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). Die
-> übrigen Batches sind unverändert offen.
+> (O1 + O22) ist mit **0.44.0** abgenommen,
+> [Batch 2](#batch-2--p1--die-zahlen-auf-denen-m7-steht) (O17, O5, O6, O4,
+> O38) mit **0.45.0** umgesetzt, [Batch 3](#batch-3--p1--anzeigen-die-leer-sind-oder-das-falsche-zeigen)
+> (O16, O35, O29, O42) mit **0.46.0** umgesetzt — je Befund steht der
+> Vermerk unter dem DoD, Zeilenangaben und Messwerte bleiben als Befund
+> gegen 0.43.2 stehen. O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist
+> bewusst offen ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)).
+> Die übrigen Batches sind unverändert offen.
 
 ## Inhaltsverzeichnis
 
@@ -609,6 +612,23 @@ die Selektion (kein zweiter Rechenweg). Dazu: `BacktestStationScore.delta_ct`
 optional machen oder entfernen (der Typ lügt heute), und ein Fixture-Test,
 der die leere Liste ausschließt.
 
+**Umgesetzt in 0.46.0:** Die Balken lesen aus `selection.data.stations`
+(bereits geladen, bereits typisiert) — δ̂ wird Balken, `ci_lo`/`ci_hi`
+werden Whisker (`DeltaBars` in `web/src/components/LabCharts.tsx`), die
+Signifikanz steht in `q_value`/`significant` (Balken mit q ≥ 0,05 bleiben
+blass), und die Skala spannt sich über Balken **und** Intervalle.
+`BacktestStationScore.delta_ct` ist aus dem Typ entfernt (der Typ log nicht
+mehr; `scoreRows` füllte vorher 0). Der Leer-Text bleibt ehrlich: ohne
+Selektions-Artefakt nennt er die Ursache. Damit auch Demo-Stapel und
+Browser-Suite echte Werte sehen, baut `ops/quality/demo_data.py` ein echtes
+Selektions-Artefakt über denselben Pfad wie der NAS-Lauf
+(`build_selection_artifact`, B = 400 statt 2000 — die Demo soll in Sekunden
+stehen). Nachweis: Render-Tests in `web/src/views/Labor.test.tsx`
+(3 Fälle, inkl. Whisker-Zählung und „Station ohne δ̂ fällt raus“),
+Vertrags-Test in `tests/test_e2e_demo.py` (δ̂, KI, q-Wert und Signifikanz je
+Station — der curl-Check des Batches), Demo-Spec in `web/e2e/demo.spec.ts`;
+`tsc` grün.
+
 ### O17 — Ein Tipp bucht den Prognosepreis als gezahlten Preis
 
 **Beleg.** `web/src/state/overview.tsx:1085–1106`
@@ -1063,6 +1083,24 @@ Profil, und derselbe Text wie in der GUI (MICROCOPY-Regel: Zahlen über
 Formatter). Das ist kein neues Subsystem — es ist `notify.py` plus ein
 Auslöser, den es schon gibt.
 
+**Umgesetzt in 0.46.0:** Genau eine Meldung je `episode.id`, wenn das
+empfohlene Fenster öffnet — Auslöser ist die Verteilungs-P des Snapshots
+(`WINDOW_PUSH_P_MIN = 0,60`; die Basisrate kann eine Meldung nie auslösen,
+O5), dazu die Abschlussmeldung (b), wenn das Fenster ohne Beleg verstreicht
+(nur, wenn es vorher gemeldet war), und die Änderungs-Meldung (c), wenn die
+Empfehlung auf ein anderes Fenster kippt. Entdupliziert über
+`runtime/notify/windows.json`; die Ruhezeit (22–7 Uhr Europe/Berlin)
+verschiebt Fenster-Meldungen auf den Morgen — Alarme kennen sie nicht.
+Zwei Ergänzungen zum Befund: Das Profil hat kein Ruhezeit-Feld, deshalb ist
+die Ruhezeit eine benannte Konstante im Push-Modul (künftig aus dem Profil,
+sobald es das Feld gibt); und die Auslösung hängt an der Tabellen-Aktion des
+Snapshots, nicht am M7-Gate — der Push transportiert denselben Vorschlag,
+den das Ledger misst. Zahlen über Formatter (de-DE), Zeiten in
+Europe/Berlin; die Texte stehen als Muster in
+[MICROCOPY.md §4f](MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460).
+Nachweis: `tests/test_o29_window_push.py` (23 Fälle, inkl. Ruhezeit über
+DST-Grenzen, Zustellfehler ohne Markierung, Episoden ohne Verteilungs-P).
+
 ### O30 — Die Bilanz zeigt brutto was netto gemeint ist
 
 **Beleg.** Wie O9, aus Nutzersicht: Die Wallet-Bilanz
@@ -1225,6 +1263,23 @@ nur nicht dort, wo entschieden wird.
 und die Sortierung überspringt sie. Dazu ein Zähler im Health-Payload und ab
 einer kleinen Schwelle ein Alarm `price_implausible` — der Katalog aus
 `alarms.py` und das `redact`-Muster sind vorhanden.
+
+**Umgesetzt in 0.46.0:** Ein Paar Grenzen, eine Quelle
+(`PRICE_PLAUSIBLE_MIN`/`PRICE_PLAUSIBLE_MAX` in `app/data.py`;
+`MIN_PRICE_PAID`/`MAX_PRICE_PAID` im Ledger sind Aliasse, der Trainingspfad
+prüft dieselben Werte). Ergänzung zum Befund: `normalized_row` filterte den
+Wert bereits — aber **still** (Preis weg, kein Grund, kein Zähler); jetzt
+liefert es den rohen Wert als `raw_price` mit, und `stations()` bricht das
+Schweigen: Werte außerhalb der Grenzen erscheinen weder als `price` noch als
+`last_price`, stehen als `implausible_price` in der Antwort, die Station
+bleibt sichtbar und sortiert sich hinter alle Stationen mit Preis. Jeder
+Vorfall wird gezählt (`runtime/quality/implausible_prices.json`, je
+Beobachtung einmal — Dedupe über Station + Zeitstempel, 24-h-Fenster),
+`/api/v1/health` → `price_implausible` nennt `count_24h`/`last_at`, und ab
+dem ersten Wert schlägt Alarm `price_implausible` (warn) an. Der
+Archiv-Export behält sein Spaltenschema (`extrasaction="ignore"`).
+Nachweis: `tests/test_o35_live_price_limits.py` (7 Fälle, inkl.
+Regressionstest für den Trainingspfad und Grenzwerte 0,40/5,00 als Preise).
 
 ### O36 — Vier Konfigurationsflächen und eine Zahl als Literal
 
@@ -1426,6 +1481,24 @@ Dateirechte und Rotationshinweis für die URL, und ein Test, der den Payload
 gegen die jeweils gewählte Regel prüft (heute: keine Preise — der Test
 existiert in `web/src/notify.test.ts` für die GUI-Seite, nicht für den
 Server-Payload).
+
+**Umgesetzt in 0.46.0:** Die Entscheidung ist konfiguriert und
+dokumentiert statt offen — `TANKAPP_NTFY_MODE` ∈ `public` · `lan`, Default
+`public`. Der Default ist bewusst der zurückhaltende (Variante (b)): Die
+Beispiel-Einrichtung in [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)
+nutzt ntfy.sh, die URL ist ein Bearer-Secret, und schon die Zeitpunkte der
+Meldungen sind Metadaten über das Tankverhalten — Fenster-Meldungen bleiben
+dort bei neutralen Sätzen ohne Preis und Station. Wer Variante (a) will
+(eigener ntfy-Server im LAN), sagt es der App ausdrücklich: `lan` erlaubt
+Station, Fensterzeit und erwarteten Preis — Koordinaten und Pfade bleiben
+in beiden Modi verboten. Alarm-Meldungen sind von der Entscheidung
+unberührt: weiter nur Codes und Klartexte. Die Regel steht im
+`notify.py`-Docstring, in
+[MICROCOPY.md §4f](MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460)
+und in [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4); der gewählte
+Modus steht in `/api/v1/health` → `notify.mode`. Nachweis: Payload-Tests für
+**beide** Regeln in `tests/test_o29_window_push.py` (Server-Seite — die
+Lücke aus dem Befund).
 
 ### O43 — Beleg ohne Zeitstempel lernt die Stunde nicht aus dem Server-Stempel
 

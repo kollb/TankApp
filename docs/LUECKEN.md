@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 17.09.2026 · App-Version 0.45.0. Abgleich von
+> Stand: 17.09.2026 · App-Version 0.46.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -540,7 +540,7 @@ Rechnung geändert.
 | 11.3 | Detail-Endpunkte + Deprecation |fertig (B5) |
 | 12 P0 | Datenquellen, Erreichbarkeit, E10 |fertig |
 | 12 P1 | Markenrabatte, w(h), Lebenszyklus |Rabatte offen, w(h) berechnet aber nicht zurückgekoppelt, CUSUM-/Coverage-Alarm teilweise |
-| 12 P2 | Push, Belege |Belege fertig (A3/A4/A6, Storno, Bilanz, CSV, Offline-Queue); **Preis-Push offen** (§12 P2, siehe „Bewusst offen“) |
+| 12 P2 | Push, Belege |Belege fertig (A3/A4/A6, Storno, Bilanz, CSV, Offline-Queue); **Fenster-Push fertig** (0.46.0, O29/O42: Fenster offen/geändert/verstrichen über ntfy, Modus-Entscheidung dokumentiert); Preis-Ticker offen (§12 P2, siehe „Bewusst offen“) |
 | 13 M1–M4 | Collector, Selektion, Engine, PWA |M1/M2/M4 fertig (PWA seit 0.38.0 mit Versionierung, Update-Hinweis und Offline-Queue); M3 ohne Echt-Daten-Abnahme |
 | 13 M5 | TankPuls-API |fertig (B4 + B5: Deprecation; Rate-Limit entfernt — LAN-only); **offen**: OpenAPI-Spezifikation aus M5-Fertig-Kriterium (siehe „Bewusst offen“) |
 | 13 M6 | Quantile-Boosting |optional, verworfen bis ≥ 3 Monate Daten |
@@ -552,7 +552,7 @@ Rechnung geändert.
 |---|---|---|
 | **ACI (§3.3)** | wartet auf Betrieb | Konzept verlangt 4 Wochen Live-Betrieb vor der Aktivierung; ohne echte Scores wäre α eine erfundene Zahl. Bootstrap-Intervalle bleiben als unkalibriert gekennzeichnet. |
 | **M3-Zweitmodell/Ensemble (§3.2)** | wartet auf Betrieb | Setzt die Abnahme-Kriterien (MASE, Pinball) voraus — die sind ohne echten Datenbestand nicht prüfbar. |
-| **Preis-Push (§12 P2)** | Arbeit | Der **Alarm**-Push ist seit 0.15.0 drin (ntfy, `severity: error` → [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)). Offen bleibt die Meldung „Jetzt 4 ct unter Tagesmedian“: Trigger aus dem Decision Layer sind vorbereitet, aber ungetestet, und der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt (kein Dauerfeuer). |
+| **Preis-Ticker (§12 P2)** | Arbeit | Der **Alarm**-Push ist seit 0.15.0 drin (ntfy, `severity: error`), und seit 0.46.0 meldet sich das **empfohlene Fenster** (O29: offen/geändert/verstrichen, je Episode eine Meldung, Ruhezeit 22–7 Uhr; die Versand-Regel ist als Push-Modus `public`/`lan` entschieden, O42 → [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)). Offen bleibt allein der Preis-Ticker „Jetzt 4 ct unter Tagesmedian“ — eine Meldung ohne Empfehlung, und für die gilt §11 des GUI-Neuentwurfs weiterhin (keine Preis-Erinnerungen). |
 | **Top-3-Fenster-Trefferquote (§6)** | Arbeit | Die Engine veröffentlicht je Tag eine Prognosestunde; drei Kandidatenfenster wären geraten. Erst mit Fensterstruktur im Backtest. |
 | **w(h)-Rückkopplung in Selektion/F3 (§5.5)** | wartet auf Betrieb | Profil ist berechnet (`wallet.wh_hours`), aber erst ab ≥ 8 Füllungen belastbar — vorher wäre der Default die ehrlichere Wahl. |
 | **Markenrabatte (§12 P1)** | entschieden | `--brand-rebate` ist ein Eingriff in δ̂ und Score; ohne echte Rabattdaten nicht kalibrierbar. |
