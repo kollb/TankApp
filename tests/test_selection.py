@@ -1,6 +1,7 @@
 """engine.selection: FDR-Signifikanz (B=2000) und EW-δ̂/Strukturbruch."""
 
 import inspect
+import re
 
 import numpy as np
 import pandas as pd
@@ -20,21 +21,32 @@ def test_selection_default_b_is_2000():
     assert Config().bootstrap_samples == 2000
 
 
-def test_nas_jobs_fix_b_at_2000():
+def test_nas_jobs_nehmen_die_ziehungen_aus_der_engine_konfiguration():
+    """O36-Ratchet: keine Ziehungs-Literale im Job-Pfad.
+
+    Der Vorgänger dieses Tests pinnte ``n_boot=2000`` als Literal in
+    ``worker.execute``/``refresh`` — genau die zweite Wahrheit, die O36
+    entfernt. Die **Absicht** bleibt: B darf nicht still auf einen Wert
+    fallen, mit dem Benjamini-Hochberg über das Stations-Set keine
+    Signifikanz mehr erreicht (siehe ``SELECTION_MIN_BOOTSTRAP``).
+    """
     import app.refresh as refresh
     import app.selection as selection
     import app.worker as worker
+    from engine.selection import SELECTION_MIN_BOOTSTRAP
 
-    assert "n_boot=2000" in inspect.getsource(worker.execute)
-    assert "n_boot=200" not in inspect.getsource(worker.execute).replace(
-        "n_boot=2000", ""
-    )
-    assert "n_boot=2000" in inspect.getsource(refresh.refresh)
-    # Default über die Signatur prüfen (nicht über __defaults__: die
-    # Parameterreihenfolge darf sich ändern, B=2000 darf es nicht).
+    for function in (worker.execute, refresh.refresh, selection.build_selection):
+        source = inspect.getsource(function)
+        assert not re.search(r"n_boot\s*=\s*\d", source), (
+            f"{function.__name__} trägt wieder ein Ziehungs-Literal"
+        )
+
+    # Eine Quelle: Default 2000 aus der Engine-Konfiguration, und ein
+    # bewusst kleiner Engine-Wert fällt nicht unter die Signifikanzgrenze.
+    assert SelectionConfig.from_engine_config(Config()).n_boot == 2000
     assert (
-        inspect.signature(selection.build_selection).parameters["n_boot"].default
-        == 2000
+        SelectionConfig.from_engine_config(Config(bootstrap_samples=200)).n_boot
+        == SELECTION_MIN_BOOTSTRAP
     )
 
 
@@ -343,18 +355,23 @@ def test_poll_window_changes_nothing_when_night_has_data():
 
 
 def test_nas_callers_pass_the_poll_window_to_selection():
-    """Beide NAS-Rechnungen müssen das Fenster der Engine-Config durchreichen.
+    """Beide NAS-Rechnungen messen Coverage im Fenster der Engine-Config.
 
     Ohne das misst die Selektion Nachtzellen als fehlende Daten — genau der
-    B21-Befund. Quellenprüfung wie bei ``test_nas_jobs_fix_b_at_2000``.
+    B21-Befund. Seit O36 reicht nicht mehr jeder Aufrufer das Fenster per Hand
+    durch, sondern ``SelectionConfig.from_engine_config`` übernimmt es:
+    Geprüft wird die Wirkung (ein verschobenes Fenster kommt an) und dass
+    beide Aufrufer die Factory nutzen.
     """
     import inspect
 
     import app.refresh as refresh
     import app.selection as selection
 
-    assert "poll_start=cfg.poll_start" in inspect.getsource(refresh.refresh)
-    assert "poll_end=cfg.poll_end" in inspect.getsource(refresh.refresh)
-    source = inspect.getsource(selection.build_selection)
-    assert "poll_start=cfg_engine.poll_start" in source
-    assert "poll_end=cfg_engine.poll_end" in source
+    derived = SelectionConfig.from_engine_config(Config(poll_start=7, poll_end=22))
+    assert (derived.poll_start, derived.poll_end) == (7, 22)
+
+    for function in (refresh.refresh, selection.build_selection):
+        assert "from_engine_config" in inspect.getsource(function), (
+            f"{function.__name__} baut die Selektions-Konfiguration wieder selbst"
+        )

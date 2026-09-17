@@ -94,13 +94,18 @@ def execute(name, settings, progress=None):
         }
     if name == "selection":
         try:
+            from .config import engine_config
             from .selection import build_selection
             from engine.storage import write_json
 
+            # O36: Die Selektion bekommt die Engine-Konfiguration, keine Zahl.
+            # Hier stand B = 2000 als Literal im Job-Dispatcher — eine Änderung
+            # von ``bootstrap_samples`` wirkte damit nur in den Modellen, nicht
+            # in der Selektion (docs/OPTIMIERUNGS-BEFUND.md O36).
             result = build_selection(
                 settings,
                 fuels=list(settings.model_fuels),
-                n_boot=2000,
+                config=engine_config(settings),
                 progress=progress,
             )
             out = settings.runtime / "selection" / "current.json"

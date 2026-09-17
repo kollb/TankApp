@@ -133,6 +133,30 @@ class Settings:
         )
 
 
+def engine_config(settings):
+    """Die Engine-Konfiguration zu diesen Settings — **eine** Quelle (O36).
+
+    Vorher baute jeder Job seine eigene: ``app/refresh.py`` nahm
+    ``city_subdivs`` und ``decision_hour`` aus den Settings, der standalone
+    Selektions-Job (``app/selection.py``) rief ``Config()`` ohne beide — zwei
+    Wahrheiten für dieselbe Engine. Jetzt kommt die Konfiguration hier her,
+    und die Selektion leitet ihre Werte über
+    ``SelectionConfig.from_engine_config`` daraus ab.
+
+    Der Import bleibt in der Funktion: ``engine.config`` zieht pandas, und
+    ``app/config.py`` wird von jedem CLI- und API-Pfad geladen.
+    """
+    from engine.config import Config
+
+    return Config(
+        # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
+        # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
+        city_subdivs=dict(getattr(settings, "city_subdivs", {})),
+        # Schicht-A-Anker (Konzept §5.5): TANKAPP_DECISION_HOUR, Default 12.
+        decision_hour=getattr(settings, "decision_hour", 12),
+    )
+
+
 def _env_choice(name: str, default: str, allowed: set[str]) -> str:
     """Umgebungsvariable mit erlaubten Werten; Unbekanntes fällt zurück."""
     value = os.environ.get(name, "").strip().lower()
