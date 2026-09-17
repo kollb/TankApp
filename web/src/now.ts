@@ -743,9 +743,16 @@ export function assumptionHint(input: NowInput): string | null {
  *
  * Ehrlichkeits-Grenzen:
  *   * Nur Stationen mit wirklich gemeldetem Preis (`price != null`).
- *   * „ct/L unter dem teuersten“ ist ein Abstand im Set, keine Prognose —
- *     deshalb heißt er auch so und wird nie „Ersparnis“ genannt.
- *   * Ohne zweiten Preis gibt es keinen Vergleich (Satz statt Zahl).
+ *   * **O19 — die Ersparnis rechnet gegen die Entscheidung, nicht gegen die
+ *     teuerste Station.** Bis 0.49.0 stand hier „X ct/L unter dem teuersten
+ *     Preis im Set, das sind Y €“: wahr, aber gegen eine Referenz, die
+ *     niemand wählt. Die persönliche Zahl rechnet jetzt gegen denselben
+ *     Anker, den die Empfehlung selbst nutzt (`ref_nowcast` = Jetzt-Preis der
+ *     Entscheidungs-Station, `app/pside.py::p_lohnt`), und die Referenz steht
+ *     im Satz. Die Spanne „günstigste bis teuerste“ bleibt daneben stehen —
+ *     als Spanne, benannt als solche, nie als Ersparnis.
+ *   * Ohne zweiten Preis gibt es keinen Vergleich (Satz statt Zahl); ohne
+ *     Entscheidungs-Anker gibt es keine persönliche Ersparnis, nur die Spanne.
  */
 export type NowBestNow = {
   /** Günstigste Station mit offenem Preis — `null` ohne frische Meldung. */
@@ -753,13 +760,27 @@ export type NowBestNow = {
   price: number | null;
   /** Bis zu drei Stationen, günstigste zuerst (Gleichstand bleibt stabil). */
   ranking: Array<{ station: Station; price: number }>;
-  /** Teuerster − günstigster Preis im Set, in ct/L. */
+  /**
+   * O19: Wogegen die Ersparnis gerechnet ist. `nowcast` = der Preis, den die
+   * Empfehlung für „jetzt tanken“ ansetzt; `none` = keine Empfehlung, also
+   * keine persönliche Zahl (die Spanne bleibt).
+   */
+  reference: {
+    kind: "nowcast" | "none";
+    station: string | null;
+    price: number | null;
+  };
+  /** Ersparnis gegen die Referenz in ct/L — `null` ohne Referenz. */
+  saveCt: number | null;
+  /** Dieselbe Ersparnis auf die Tankmenge (€). */
+  saveEur: number | null;
+  /** Günstigster − teuerster Preis im Set, in ct/L (eine Spanne). */
   spreadCt: number | null;
   /** Was die Preisspanne auf die Tankmenge bedeutet (€). */
   spreadEur: number | null;
   /** Anzahl Stationen mit offenem Preis. */
   freshCount: number;
-  /** Ein Satz, der ohne Modell gilt — nie „Ersparnis“, nie „Erwartet“. */
+  /** Ein Satz, der ohne Modell gilt — nie „Erwartet“, Referenz benannt. */
   sentence: string;
   mapsUrl: string | null;
 };
@@ -774,21 +795,45 @@ export function nowBestNow(input: NowInput): NowBestNow {
   const ranking = fresh.slice(0, 3);
   const best = fresh[0] ?? null;
   const worst = fresh.length > 1 ? fresh[fresh.length - 1] : null;
-  const spreadCt =
-    best && worst ? (worst.price - best.price) * 100 : null;
+  const spreadCt = best && worst ? (worst.price - best.price) * 100 : null;
   const spreadEur =
     spreadCt !== null ? (spreadCt / 100) * input.liters : null;
 
+  // O19: Referenz = der Anker der Empfehlung („jetzt tanken“ an der
+  // gewählten Station). Dieselbe Größe, gegen die `p_lohnt` rechnet — damit
+  // neben einer netto gerechneten Entscheidung keine brutto gegen den
+  // Maximalwert gerechnete Zahl steht.
+  const anchor = input.decide?.primary?.station ?? null;
+  const anchorPrice =
+    anchor && Number.isFinite(anchor.price_now ?? Number.NaN)
+      ? (anchor.price_now as number)
+      : null;
+  const reference: NowBestNow["reference"] =
+    best && anchorPrice !== null
+      ? { kind: "nowcast", station: anchor?.name || null, price: anchorPrice }
+      : { kind: "none", station: null, price: null };
+  const saveCt =
+    best && anchorPrice !== null ? (anchorPrice - best.price) * 100 : null;
+  const saveEur = saveCt !== null ? (saveCt / 100) * input.liters : null;
+
+  const litersText = deTrimmed(input.liters, 0);
   const sentence = !best
     ? "Kein offener Preis in der Sicht — mit der nächsten Preismeldung füllt sich der Vergleich."
     : !worst
       ? `Nur ${best.station.name} meldet gerade einen Preis (${euroPerLiter(best.price)}) — für einen Vergleich fehlt eine zweite Station.`
-      : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(spreadCt ?? 0)} unter dem teuersten Preis im Set, das sind ${euro(spreadEur ?? 0)} € bei ${deTrimmed(input.liters, 0)} L.`;
+      : saveCt === null
+        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — die Spanne im Set beträgt ${centPerLiter(spreadCt ?? 0)}.`
+        : saveCt <= 0.05
+          ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
+          : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(saveCt)} unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}) — das sind ${euro(saveEur ?? 0)} € bei ${litersText} L.`;
 
   return {
     station: best?.station ?? null,
     price: best?.price ?? null,
     ranking,
+    reference,
+    saveCt,
+    saveEur,
     spreadCt,
     spreadEur,
     freshCount: fresh.length,
@@ -812,7 +857,7 @@ export type NowDayPanel = {
   worst: { hour: number; value: number } | null;
   median: number | null;
   spreadCt: number | null;
-  /** Wert der aktuellen Stunde, sonst `null`. */
+  /** Letzter Preis der aktuellen Stunde (O20), sonst `null`. */
   nowValue: number | null;
   /** Jetzt gegenüber dem Tagesmedian (ct/L, positiv = teurer). */
   nowVsMedianCt: number | null;
@@ -863,8 +908,14 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
         Math.floor(open.length / 2)
       ]
     : null;
-  const nowCell = cells.find((cell) => cell.current && cell.value !== null);
-  const nowValue = nowCell?.value ?? null;
+  // O20: Die Zelle trägt das Stunden-Minimum (`value`) und den letzten Preis
+  // der Stunde (`latest`). „Jetzt“ ist ein Zeitpunkt, kein Minimum — die
+  // Jetzt-Kachel zeigt deshalb `latest` und fällt auf das Minimum zurück,
+  // wenn eine Alt-GUI nur `value` liefert.
+  const nowCell = cells.find(
+    (cell) => cell.current && (cell.latest !== null || cell.value !== null),
+  );
+  const nowValue = nowCell?.latest ?? nowCell?.value ?? null;
   const spreadCt = best && worst ? (worst.value - best.value) * 100 : null;
   const nowVsMedianCt =
     nowValue !== null && median !== null ? (nowValue - median) * 100 : null;

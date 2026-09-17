@@ -466,3 +466,22 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     expect(index).toContain("MICROCOPY.md");
   });
 });
+
+describe("O18: kein Dauertext ohne Datenpfad", () => {
+  it("views/Labor.tsx: keine Werkstatt verspricht Daten, die es nicht gibt", () => {
+    const labor = read("views/Labor.tsx");
+    // Vor O18 standen ε-Scan, Top-3 und CUSUM dauerhaft auf einem Text, der
+    // „noch keine Daten“ sagte, obwohl `/api/v1/selection` die Werte längst
+    // liefert. Jede Werkstatt hat jetzt entweder Daten oder nennt den Grund.
+    expect(labor).not.toMatch(/zu wenig Daten/i);
+    expect(labor).not.toContain("noch nicht messbar");
+    expect(labor).not.toContain("sobald genug Tage da sind");
+  });
+
+  it("views/laborModel.ts: keine erfundenen Trainingswerte als Platzhalter", () => {
+    const model = read("views/laborModel.ts");
+    // Die alten Fallbacks (μ = 1.5, Stunde 19) sahen aus wie Messwerte.
+    expect(model).not.toMatch(/\?\?\s*1\.5/);
+    expect(model).not.toMatch(/\?\?\s*19/);
+  });
+});

@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { heatmapPath, type Fuel } from "../data";
+import { authHeaders } from "../readToken";
 
 export function ApiExplorer({
   fuel,
@@ -114,7 +115,11 @@ export function ApiExplorer({
     setLoading(true);
     setAnswer(null);
     try {
-      const response = await fetch(target, { cache: "no-store" });
+      // O39: Persönliche Routen brauchen das Lese-Token, wenn eines gesetzt ist.
+      const response = await fetch(target, {
+        cache: "no-store",
+        headers: authHeaders(),
+      });
       const data: unknown = await response.json();
       const text = JSON.stringify(data, null, 2);
       setAnswer(text.length > 5000 ? `${text.slice(0, 5000)}\n… gekürzt` : text);

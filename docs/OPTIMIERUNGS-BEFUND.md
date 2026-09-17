@@ -1972,6 +1972,33 @@ braucht.
 Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine
 Entscheidung statt einer Nebenwirkung.
 
+**Umgesetzt mit 0.50.0 (17.09.2026).** Vorab geprüft: Aus Batch 1–5 war keine
+Folgeumsetzung offen — B25 (zweites Backup-Ziel), B22 (numerische Hebel) und
+C12 (Desktop-Zweispalter) stehen begründet im
+[Todo](../TODO.md) bzw. in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+Alle sieben Checks sind erfüllt und als Tests festgehalten
+(`tests/test_o21_score_parity.py`, `web/src/scoreParity.test.ts`,
+`web/src/now.test.ts`, `tests/test_o20_strip_band.py`, `web/src/strip.test.ts`,
+`tests/test_o30_balance_net.py`, `web/src/views/Labor.test.tsx`,
+`web/src/microcopy.test.ts`, `tests/test_o31_recap.py`,
+`tests/test_o39_read_token.py`):
+
+| Check | Ergebnis |
+|---|---|
+| Python- und TypeScript-Score liefern bei gleichen Eingaben gleiche Werte | erfüllt — `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben fünf Zeilen (ε 1.0/2.5 × 40/60 L); gelesen von `test_o21_score_parity.py` (9) und `scoreParity.test.ts` (8). Nebenbefund: `pot_share` teilte in TypeScript Euro durch ct/L und lag um `Liter/100` daneben — Python ist die Referenz |
+| Eine Profiländerung auf 60 L wirkt auf Score **und** Selektion | erfüllt — `app/selection.py` reicht das Profil-Volumen in `SelectionConfig.tank_volume` durch (`test_profile_volume_reaches_selection_config`); `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text |
+| Ersparnis gegen die Profil-Referenz, Referenz im Text benannt, Spanne bleibt Spanne | erfüllt — Anker ist `decide.primary.station.price_now`, dieselbe Referenz wie `p_lohnt`/`ref_nowcast` (`now.test.ts` §O19, `Jetzt.test.tsx`); `spreadCt`/`spreadEur` bleiben als benannte Spanne |
+| Neue günstigere Meldung ändert die Farbe früherer Stunden nicht; je Stunde das Minimum | erfüllt — feste Skala über 25/75-Perzentil (≤168 h, ≥3 Berliner Tage, ≥96 Punkte), `Math.min` statt `byHour.set`; Ratchets in `strip.test.ts`, Bestandsregeln in `test_o20_strip_band.py` (5) |
+| Bilanz zeigt eine Netto-Zeile, die mit O9 übereinstimmt; beide Zeilen benannt | erfüllt — `saved_net_eur = saved_eur − Σ Umwegkosten`, dieselbe Formel und dieselben Profil-Parameter wie `p_lohnt` (`test_umwegkosten_sind_dieselbe_formel_wie_die_entscheidung`, `test_wallet_stats_weist_brutto_und_netto_aus`); unvollständige Herkunft wird nicht ergänzt |
+| Je Labor-Werkzeug echte Daten oder ein ehrlicher Text; Ratchet gegen „zu wenig Daten“ | erfüllt — ε-Scan rechnet auf den Backtest-Zeilen nach (dieselbe `scoreRows`), Rang-Streuung liest `rank_std`, Strukturbruch `break_flag`/`break_stat`, der Modellvergleich nennt den Dauerzustand. Ratchet in `microcopy.test.ts`. Nebenbefund: `app/stats_summary.py` publizierte eine CUSUM-Schwelle von 3.0, während `cusum_break` bei 2.0 flaggt — jetzt eine Quelle (`engine.selection.CUSUM_THRESHOLD`) |
+| Wochenmeldung enthält abgerechnete Fälle, δ̂-Änderung, Datenqualität und Lernstand; alle Zahlen über Formatter | erfüllt — `test_o31_recap.py`; ein AST-Ratchet verbietet Format-Specs außerhalb von `de_int`/`de_ct`/`de_pct`. Einmal je ISO-Woche, nie in der Ruhezeit, `mode="public"` ohne Station und Preis (O42) |
+| LAN-Exposition in BETRIEB.md benannt; Read-Token testbar | erfüllt — `test_exposition_steht_in_der_betriebsdoku`; `/api/v1/fills` antwortet ohne Secret `401`, sobald `TANKAPP_READ_TOKEN` gesetzt ist, und bleibt offen, wenn nicht (`test_ohne_variable_bleibt_das_ledger_offen`, `test_mit_token_antwortet_fills_ohne_secret_401`); Markt- und Modelldaten bleiben offen |
+
+Offen aus diesem Batch, als Dauerzustand benannt statt geschlossen: Die Engine
+publiziert **kein Form-Modell je Station** — der Modellvergleich sagt das,
+statt einen Trainingswert zu erfinden. Ein echtes Form-Modell bleibt M7
+vorbehalten (§0.4).
+
 ### Batch 7 — P2 · Betrieb, Rest
 
 | Befund | Aufwand | Check |

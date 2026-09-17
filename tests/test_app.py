@@ -979,7 +979,12 @@ def test_overview_bundles_the_daily_payload_in_one_call(app_settings):
         {"fuel": "e10", "city": "Frankfurt"}
     )
     assert overview["episodes"] == data.episodes("due")
-    assert overview["day"] == data.series(UID, "Frankfurt", "e10", 24)
+    # O20: Die Tageskurve bleibt die Antwort des Einzelpfads — neu ist
+    # ausschließlich die feste Farbskala (`band`), die nur das Bundle trägt.
+    day = overview["day"]
+    single = data.series(UID, "Frankfurt", "e10", 24)
+    assert set(day) - set(single) == {"band"}
+    assert {key: value for key, value in day.items() if key != "band"} == single
 
 
 def test_overview_unknown_station_keeps_the_rest_and_drops_only_the_day(

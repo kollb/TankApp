@@ -901,10 +901,8 @@ function useOverviewState() {
   );
   const dayStrip =
     overviewTab
-      ? overviewPart<{ points: Point[]; error_code: string | null }>(
-          overview.data?.day,
-        )
-      : emptyResource<{ points: Point[]; error_code: string | null }>();
+      ? overviewPart<Overview["day"]>(overview.data?.day)
+      : emptyResource<Overview["day"]>();
   const forecast = useResource<Forecast>(
     tab === "labor" && identity ? `/api/v1/forecast?${identity}` : null,
     300000,
@@ -1017,7 +1015,14 @@ function useOverviewState() {
   // GUI-Neuentwurf: der Tagesstreifen ist jetzt „Heute im Blick“ (Jetzt)
   // und „Der Set-Ton“ (Stationen) — dieselbe pure Funktion (strip.ts),
   // dieselbe Overview-Antwort.
-  const stripCells = buildStripCells(dayStrip.data?.points ?? []);
+  // O20: Die Tonlagen-Skala kommt mit der Tageskurve vom Server (festes
+  // 7-Tage-Band). Ohne Band färbt der Streifen nicht — die Zahlen bleiben.
+  const stripBand = dayStrip.data?.band ?? null;
+  const stripCells = buildStripCells(
+    dayStrip.data?.points ?? [],
+    Date.now(),
+    stripBand,
+  );
 
   // Zwei Freigaben, zwei Zeilen — sie haben verschiedene Nenner:
   //   1. M7-Gate (§0.4): Zähl-Gate über abgeschlossene Empfehlungen
@@ -1388,6 +1393,7 @@ function useOverviewState() {
     timeValueUsed,
     autoZ,
     stripCells,
+    stripBand,
     nowPricesAt,
     nowForecastAt,
     observations,

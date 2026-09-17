@@ -39,22 +39,21 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.49.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
-0.49.1 behebt zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 (O44):
-`None` in den Draws ließ `decide` an einem `TypeError` scheitern (sichtbar war
-nur `decide_failed`), und zwei Stellen lasen Felder ungeprüft
-(`alternatives_nearby.find`, `cities.includes`) — die zweite traf den
-Pi-Fallback, dessen Stations-Antwort kein `cities` trug. 0.49.0 behebt davor
-zwei weitere Produktionsbefunde: die Selektion snappt Beobachtungs-Zeitstempel
-wie der Trainingspfad aufs Raster (Coverage zählte sonst nur exakte
-Raster-Treffer), und die Prognose-Veröffentlichung ist aufgeteilt (eine Datei
-je Station, Index mit Zeigern, O22 Maßnahme d).
+nicht gegen 0.50.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
+und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
+nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
+(O20), die Bilanz weist netto nach Umweg aus (O30), die Labor-Werkstätten
+zeigen echte Daten statt eines Dauertextes (O18), die Woche bekommt einen
+Rückblick über den ntfy-Kanal (O31), und persönliche Daten sind über
+`TANKAPP_READ_TOKEN` schützbar (O39).
 Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
-[RP2.md](RP2.md), [LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
+[LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
 [../CHANGELOG.md](../CHANGELOG.md).
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
+| [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
 | [MICROCOPY.md](MICROCOPY.md) | 0.46.0 | 0.47.0 ist ein Betriebs-Release ohne neue Textmuster: Der Text des neuen Alarms `backup_stale` folgt §4f (deutscher Klartext, Handlungsanweisung, keine Pfade), und die GUI zeigt ihn über die bestehende Alarm-Leiste |
 | [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0/0.43.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |

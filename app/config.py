@@ -27,6 +27,16 @@ class Settings:
     model_fuels: tuple[str, ...] = ("e10",)
     # Issue 50: gemeinsames Secret für den Uploader-Webhook (leer = Endpoint aus).
     webhook_token: str = ""
+    # O39: optionales Shared Secret für die **Lese**-Endpunkte des persönlichen
+    # Datenbestands (Belege, Bilanz, Tagebuch, Profile, Episoden, Alltags-
+    # Aggregat). Leer (Default) = offen, wie bisher: Die App läuft im eigenen
+    # LAN ohne Login, und das ist eine dokumentierte Entscheidung
+    # (docs/BETRIEB.md), keine Nebenwirkung mehr. Derselbe Mechanismus wie
+    # beim Webhook (``Authorization: Bearer <Secret>``), kein Login, keine
+    # Sitzung, keine Nutzer:innen. Schreib-Endpunkte bleiben bewusst offen —
+    # sie haben ihr eigenes Budget (429), und ein zweites Secret würde gegen
+    # die benannte Gefahr (Mitlesen im LAN) nichts ändern.
+    read_token: str = ""
     # B4: Alarm-Zustellung über ntfy. Leer = aus. Die URL (inklusive Topic) ist
     # der einzige Geheimnisträger; sie wird in Logs/Meldungen bereinigt und
     # niemals im Payload oder im GUI angezeigt.
@@ -118,6 +128,7 @@ class Settings:
             history_days=days,
             model_fuels=fuels,
             webhook_token=os.environ.get("TANKAPP_WEBHOOK_TOKEN", "").strip(),
+            read_token=os.environ.get("TANKAPP_READ_TOKEN", "").strip(),
             notify_url=os.environ.get("TANKAPP_NTFY_URL", "").strip(),
             notify_mode=_env_choice("TANKAPP_NTFY_MODE", "public", {"public", "lan"}),
             gui_job_start=os.environ.get("TANKAPP_GUI_JOB_START", "1").strip().lower()

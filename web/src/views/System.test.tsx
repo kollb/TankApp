@@ -293,3 +293,22 @@ describe("System: Trigger Pi → NAS (B8)", () => {
     expect(html).toContain("Keine Angabe");
   });
 });
+
+describe("System: persönliche Daten im Netz (O39)", () => {
+  it("nennt die offene Exposition, solange kein Token gesetzt ist", () => {
+    const html = render();
+    expect(html).toContain("Persönliche Daten im Netz");
+    expect(html).toContain("Offen im LAN");
+    expect(html).toContain("jeder Rechner im selben Netz");
+    expect(html).toContain('id="read-token"');
+  });
+
+  it("sagt, dass der Server ein Secret verlangt — und ob dieses Gerät eins hat", () => {
+    const html = render({
+      h: health({ personal_data: { read_protected: true } }),
+    });
+    expect(html).toContain("Token fehlt auf diesem Gerät");
+    expect(html).toContain("Zugang gesperrt");
+    expect(html).not.toContain("Offen im LAN");
+  });
+});

@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.50.0] – 2026-09-17
+
+**Batch 6 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
+
+### Geändert
+
+- **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.
+- **Ersparnis rechnet gegen die Empfehlung (O19):** `nowBestNow` nannte die Differenz zur *teuersten* Station im Set „deine Ersparnis“. Anker ist jetzt dieselbe Referenz wie in `p_lohnt`/`ref_nowcast`, im Kleingedruckten benannt; „billigste bis teuerste“ bleibt sichtbar — als Spanne, nicht als persönlicher Gewinn.
+- **Tagesstreifen mit fester Farbskala (O20):** Die Töne hingen am Min/Max des Tages, deshalb färbte eine neue günstige Meldung frühere Stunden um. Die Skala ist jetzt ein festes Band (25/75-Perzentil über höchstens 168 Stunden, ab drei Berliner Tagen), und je Stunde steht das **Minimum** statt der letzten Meldung — Streifen und Fenstersuche zeigen dieselbe Größe.
+- **Die Bilanz rechnet netto (O30):** `compute_wallet_stats` wies die Ersparnis ohne Umwegkosten aus, während `p_lohnt` netto entscheidet. Beide Zeilen stehen jetzt da — brutto und netto nach Umweg — mit derselben Formel und denselben Profil-Parametern wie die Entscheidung.
+- **Labor-Werkstätten zeigen echte Daten (O18):** ε-Scan, Rang-Streuung, Strukturbruch und Modellvergleich standen dauerhaft auf einem Text ohne Datenpfad. Der ε-Scan rechnet auf den Backtest-Zeilen nach (dieselbe `scoreRows` wie der Server), Rang-Streuung und Strukturbruch lesen `rank_std`/`break_flag`/`break_stat` aus dem Selektions-Artefakt, und der Modellvergleich nennt den Dauerzustand statt μ = 1,5 ct und Stunde 19 zu erfinden. Nebenbei korrigiert: `app/stats_summary.py` publizierte eine CUSUM-Schwelle von 3.0, während `cusum_break` bei 2.0 flaggt — jetzt eine Quelle (`engine.selection.CUSUM_THRESHOLD`).
+- **Wochen-Rückblick (O31):** Die Woche endete ohne Zusammenfassung. Der Rückblick fährt auf dem ntfy-Kanal aus O29 mit — höchstens einmal je ISO-Woche, nie in der Ruhezeit — und fasst ausschließlich vorhandene Größen zusammen: abgerechnete Empfehlungen in den Wörtern des Tagebuchs, größte Verbesserung/Verschlechterung nach `delta_recent5_ct`, Datenqualität und Lernstand. `mode="public"` nennt weder Station noch Preis (O42); `/api/v1/health` zeigt `recap_last_week`.
+- **Persönliche Daten sind eine Entscheidung (O39):** [BETRIEB.md](docs/BETRIEB.md) benennt die LAN-Exposition — was ohne Anmeldung lesbar ist, für wen, in welchem Netz. Neu: `TANKAPP_READ_TOKEN` schützt die Ledger-Routen (`/fills`, `/advice/diary`, `/profiles`, `/episodes`, `/overview`, CSV-Export) mit demselben Mechanismus wie der Webhook; leer bedeutet bewusst „offen“. Markt- und Modelldaten bleiben offen.
+
+**Prüfung:** `pytest -q` (**1045 passed**), `ruff check`, `npm --prefix web test` (**1129 passed**) und `npm --prefix web build`. Die Playwright-Suiten (`test:e2e`, `test:e2e:demo`) sind in dieser Arbeitsumgebung nicht installierbar und wurden **nicht** ausgeführt.
+
 ## [0.49.1] – 2026-09-17
 
 **Zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 sind behoben — und

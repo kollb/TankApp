@@ -369,3 +369,88 @@ describe("Labor: Preis-Abstand aus der Selektion (O16)", () => {
     expect(text).not.toContain("Demo-Tank Süd");
   });
 });
+
+describe("Labor: O18 — Werkstätten haben Daten oder einen ehrlichen Text", () => {
+  const rows = [
+    { day: "2026-09-01", cls: 0, mu: 2.4, p: 0.8, s: 3.1, best: 3.1, predHour: 19, curve: [] },
+    { day: "2026-09-02", cls: 0, mu: 0.4, p: 0.6, s: -1.2, best: 2.0, predHour: 18, curve: [] },
+    { day: "2026-09-03", cls: 1, mu: 1.5, p: null, s: 2.2, best: 2.2, predHour: 17, curve: [] },
+  ];
+  const backtest = {
+    daysEval: 3,
+    decisionHour: 12,
+    defaultEps: 1,
+    defaultLiters: 40,
+    litersSource: "default",
+    stations: [{ id: "s1", city: "Frankfurt", name: "Aral Mitte", brand: "Aral" }],
+    stationScores: [],
+    totals: { smart: 0, commit: 0, best: 0, regretEur: 0, n: 3, hitFreq: 0, pAvg: null, potShare: null },
+    calibration: [],
+    evalRows: { s1: rows },
+    models: {},
+    p8Series: {},
+    // O18: Der Server publiziert dieses Feld dauerhaft leer — die Werkstatt
+    // rechnet den Scan selbst nach, statt darauf zu warten.
+    scan: { eps: [], commitEur: [], smartEur: [], waits: [] },
+  };
+
+  it("ε-Scan: rechnet auf den Backtest-Zeilen statt auf ein leeres Feld zu warten", () => {
+    const host = mount(
+      { focusSection: "spielplatz", onFocusHandled: noop },
+      { statsSummaryRes: res({ backtest } as any) },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("Dieselbe Regel, andere Vorsicht");
+    expect(text).toContain("ε = 0,50 ct/L");
+    expect(text).toContain("ε = 3,00 ct/L");
+    expect(text).toContain("warten an");
+    expect(text).not.toContain("sobald genug Tage da sind");
+  });
+
+  it("ε-Scan: ohne Backtest-Tage steht der Grund, kein Versprechen", () => {
+    const host = mount({ focusSection: "spielplatz", onFocusHandled: noop });
+    const text = host.textContent ?? "";
+    expect(text).toContain("Ohne Backtest-Tage gibt es nichts nachzurechnen");
+    expect(text).not.toContain("sobald genug Tage da sind");
+  });
+
+  it("CUSUM und Rang-Streuung kommen aus dem Selektions-Artefakt", () => {
+    const host = mount(
+      { focusSection: "sicherheit", onFocusHandled: noop },
+      {
+        selection: res({
+          fuel: "e10",
+          count: 3,
+          stations: [
+            { station_id: "a", name: "A", rank_std: 0.8, break_flag: true, break_stat: 2.7 },
+            { station_id: "b", name: "B", rank_std: 1.2, break_flag: false, break_stat: 0.9 },
+            { station_id: "c", name: "C", rank_std: 1.0, break_flag: false, break_stat: 1.4 },
+          ],
+        } as any),
+        statsSummaryRes: res({
+          quality_metrics: { cusum_drift: { status: "unknown", max_cusum: null, threshold: 2 } },
+        } as any),
+      },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("1 von 3 Stationen mit Bruch-Flag");
+    expect(text).toContain("höchste CUSUM-Kennzahl 2,70");
+    expect(text).toContain("Schwelle 2,00");
+    expect(text).toContain("1,00 Plätze im Schnitt");
+    // Vorher stand hier dauerhaft „noch nicht messbar“.
+    expect(text).not.toContain("noch nicht messbar");
+  });
+
+  it("Modellvergleich: Dauerzustand statt erfundener Trainings-Erwartung", () => {
+    // Die Zeile steht im Abschnitt „4 · Lernen“, nicht im Spielplatz.
+    const host = mount(
+      { focusSection: "lernen", onFocusHandled: noop },
+      { statsSummaryRes: res({ backtest } as any) },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("kein Form-Modell je Station");
+    // Der alte Platzhalterwert (μ = 1,5 ct) sah aus wie ein Messwert.
+    expect(text).not.toContain("μ = 1,50 ct/L");
+  });
+
+});
