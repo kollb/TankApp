@@ -518,8 +518,12 @@ test("O16: Labor zeigt δ̂-Balken mit Konfidenzintervall aus der Selektion", as
   const body = page.locator("#labor-stationen-body");
   await expect(body).toBeVisible({ timeout: 30_000 });
 
-  // Die Selektion ist geladen („Auswahl-Set: … Stationen“) und zeichnet.
-  await expect(page.getByText(/Auswahl-Set: \d+ Stationen/)).toBeVisible({
+  // Die Selektion ist geladen und zeichnet: Die Lesehilfe unter dem Chart
+  // („Werte aus der Stations-Auswahl …“) rendert nur im gefüllten Zweig —
+  // steht sie, hat die Ansicht δ̂, KI und Signifikanz aus /api/v1/selection
+  // bekommen. (Die Zeile „Auswahl-Set: …“ steht im Abschnitt „Lernen“ und
+  // ist hier zugeklappt — bewusst kein Prüfziel.)
+  await expect(body).toContainText("Werte aus der Stations-Auswahl", {
     timeout: 30_000,
   });
   await expect
