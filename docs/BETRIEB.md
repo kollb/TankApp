@@ -859,6 +859,16 @@ der App ausdrücklich. Der gewählte Modus steht in `/api/v1/health` →
 `notify.mode`; beide Payload-Regeln sind getestet
 (`tests/test_o29_window_push.py`).
 
+**Rotation der URL:** Die URL (inklusive Topic) ist der einzige
+Geheimnisträger des Kanals. Sie rotiert durch Themenwechsel: neues Topic
+anlegen, `TANKAPP_NTFY_URL` in der NAS-Umgebung ändern, `nas-up`, das neue
+Topic auf dem Handy abonnieren — der Zustand in
+`runtime/notify/windows.json` bleibt dabei gültig, nur `state.json`-Codes
+gelten nach dem Neustart als neu gemeldet. Wer die URL in eine Datei legt
+(z. B. eine `.env` neben `ops/nas/app/compose.yml`), setzt die Rechte auf
+`600`; in der App selbst erscheint die URL nie (weder im Payload noch im
+GUI, Logs laufen durch `app/errors.redact`).
+
 **Alarm-Meldungen** senden weiterhin nur, was auch im GUI-Tooltip steht,
 plus App-Version — stabile Codes und ihre deutschen Klartexte, keine Preise,
 keine Tankstellen, keine Koordinaten, keine Pfade, keine Zugangsdaten:
