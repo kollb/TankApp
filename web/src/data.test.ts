@@ -55,6 +55,7 @@ import {
   readShareParams,
   shareQuery,
   m7GateLine,
+  m7BrierDetail,
   rowOutcome,
   scoreRows,
   segments,
@@ -502,6 +503,81 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(line).toContain("5 von 100 abgeschlossenen Empfehlungen mit Verteilungs-P");
     const unmeasurable = m7GateLine({ n: 120, gate_n: 120, gate_brier: null });
     expect(unmeasurable).toContain("keine Verteilungs-P im Ledger");
+  });
+
+  it("names the interval and both references once the count suffices (O6)", () => {
+    // O6: Kein Punkt-Brier gegen 0,25 mehr — die Zeile nennt Intervall und
+    // beide Referenzen, der Ausgang kommt vom Server (`calibrated`).
+    const open = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.19,
+      gate_brier_ci: [0.15, 0.23],
+      gate_ref_base: 0.24,
+      gate_ref_climate: 0.23,
+      n_day_blocks: 40,
+      min_day_blocks: 10,
+      calibrated: true,
+    });
+    expect(open).toContain("Freigabe erfüllt");
+    expect(open).toContain("Brier 0,19 [0,15–0,23]");
+    expect(open).toContain("Basis 0,24 / Klima 0,23");
+    const closed = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.24,
+      gate_brier_ci: [0.21, 0.27],
+      gate_ref_base: 0.24,
+      gate_ref_climate: 0.23,
+      calibrated: false,
+    });
+    expect(closed).toContain("Freigabe nicht erreicht");
+    expect(closed).toContain("Brier 0,24 [0,21–0,27]");
+  });
+
+  it("reports too few day blocks as unmeasurable, not as calibrated (O6)", () => {
+    const line = m7GateLine({
+      n: 120,
+      gate_n: 120,
+      gate_brier: 0.01,
+      gate_brier_ci: null,
+      gate_ref_base: 0.21,
+      gate_ref_climate: 0.2,
+      n_day_blocks: 3,
+      min_day_blocks: 10,
+      calibrated: false,
+    });
+    expect(line).toContain("Freigabe noch nicht messbar");
+    expect(line).toContain("3 von min. 10 Tagesblöcken");
+    expect(line).not.toContain("Freigabe erfüllt");
+  });
+
+  it("states the interval rule while the count is still open (O6)", () => {
+    const line = m7GateLine({ n: 120, gate_n: 5, gate_brier: 0.01 });
+    expect(line).toContain("5 von 100 abgeschlossenen Empfehlungen mit Verteilungs-P");
+    expect(line).toContain("Obergrenze des Brier-Intervalls unter beiden Referenzen");
+    expect(line).not.toContain("0,25");
+  });
+
+  it("keeps the system metric on point, interval and references (O6)", () => {
+    expect(
+      m7BrierDetail({
+        gate_n: 120,
+        gate_brier: 0.19,
+        gate_brier_ci: [0.15, 0.23],
+        gate_ref_base: 0.24,
+        gate_ref_climate: 0.23,
+      }),
+    ).toBe("Brier 0,19 [0,15–0,23] (Ziel: Obergrenze < Basis 0,24 / Klima 0,23)");
+    expect(
+      m7BrierDetail({ gate_n: 120, gate_brier: 0.01, n_day_blocks: 3, min_day_blocks: 10 }),
+    ).toBe("Brier 0,01 (Intervall: 3 von min. 10 Tagesblöcken)");
+    expect(m7BrierDetail({ n: 120, brier_30d: 0.18 })).toBe(
+      "Brier 0,18 (Ziel < 0,25)",
+    );
+    expect(m7BrierDetail(null)).toBe(
+      "Brier noch nicht messbar — braucht bewertete Empfehlungen.",
+    );
   });
 
   it("keeps the 90-day transition rule in its own line", () => {

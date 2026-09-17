@@ -281,22 +281,37 @@ def test_gate_ignores_basisrate_rows():
 
 
 def test_gate_opens_on_distribution_p_only():
-    """100 Verteilungs-Treffer mit Brier < 0,25 → Gate offen (Konzept §0.4)."""
-    snaps = [
-        {"id": f"s{i}", "action": "wait", "p_correct": 0.9, "p_source": "verteilung"}
-        for i in range(100)
-    ]
-    store = {
-        "episodes": [{"id": "ep", "snapshots": snaps}],
-        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
-    }
+    """100 Verteilungs-Zeilen mit Skill → Gate offen (Konzept §0.4, O6).
+
+    O6: Die Obergrenze des Intervalls muss unter beiden Referenzen liegen —
+    reine Treffer (Basisraten-Referenz 0,0) bestünden nicht. Der Aufbau
+    diskriminiert (hohe P auf Treffern, niedrige auf Nieten) über 20 Tage.
+    """
+    now = dt.datetime(2026, 9, 10, 14, 0, tzinfo=dt.timezone.utc)
+    snaps = []
+    settlements = []
+    for i in range(100):
+        win = i < 70
+        snaps.append(
+            {
+                "id": f"s{i}",
+                "action": "wait",
+                "p_correct": 0.9 if win else 0.1,
+                "p_source": "verteilung",
+                "emitted_at": (
+                    now - dt.timedelta(days=i // 5, hours=i % 9)
+                ).isoformat(),
+            }
+        )
+        settlements.append(
+            {"snapshot_id": f"s{i}", "outcome": "win" if win else "loss"}
+        )
+    store = {"episodes": [{"id": "ep", "snapshots": snaps}], "settlements": settlements}
     advice = compute_advice_stats(store)
     assert advice["gate_n"] == 100
     assert advice["gate_brier"] == 0.01
     assert advice["calibrated"] is True
-    assert (
-        advice["gate_status"] == "Kalibriert (n=100, Brier 0,01 < 0,25, Verteilungs-P)"
-    )
+    assert advice["gate_status"].startswith("Kalibriert (n=100, Brier 0,01 [")
 
 
 def test_diary_carries_p_source_after_migration(settings_with_station):

@@ -873,6 +873,17 @@ export type StatsSummary = {
     /** O5: Gate-Grundgesamtheit — Verteilungs-P allein (Allzeit). */
     gate_n?: number;
     gate_brier?: number | null;
+    /** O6: Block-Bootstrap-Intervall des Gate-Briers — null bei zu wenigen Tagesblöcken. */
+    gate_brier_ci?: [number, number] | null;
+    /** O6: naive Referenzen auf der Gate-Grundgesamtheit (Basisrate, Klimatologie). */
+    gate_ref_base?: number | null;
+    gate_ref_climate?: number | null;
+    /** O6: Tagesblöcke des Intervalls (Europe/Berlin) + Mindestzahl. */
+    n_day_blocks?: number;
+    min_day_blocks?: number;
+    /** O6: Fenstergröße (Tage je Block) + Ziehungen des Bootstraps. */
+    block_days?: number;
+    bootstrap_samples?: number;
     reliability: Array<{
       bin: number;
       range: string;
@@ -3102,13 +3113,15 @@ export function livePhaseHint(phase?: LivePhase | null): string {
   );
 }
 
-// §0.4 ist ein Zähl-Gate, kein Datum: Brier < 0,25 bei ≥ 100 abgeschlossenen
-// Empfehlungen. Maßgeblich sind die Schwellen des Backends
-// (app/feedback.py → live_advice.min_recommendations / brier_threshold); die
-// Konstanten hier sind nur der Rückfall für Statistik-Stände, die sie nicht
-// mitschicken. Die 90-Tage-Übergangsregel (live_only_days der Engine) gehört
-// bewusst nicht in diesen Zähler: 90 Übergangs-Tage sind keine 100
-// Empfehlungen, bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
+// §0.4 ist ein Zähl-Gate, kein Datum: ≥ 100 abgeschlossene Empfehlungen,
+// und die Obergrenze des Brier-Intervalls liegt unter beiden Referenzen
+// (O6 — 0,25 ist nur noch das dokumentierte Münz-Niveau, kein Kriterium).
+// Maßgeblich sind die Schwellen des Backends (app/feedback.py →
+// live_advice.min_recommendations / brier_threshold); die Konstanten hier
+// sind nur der Rückfall für Statistik-Stände, die sie nicht mitschicken.
+// Die 90-Tage-Übergangsregel (live_only_days der Engine) gehört bewusst
+// nicht in diesen Zähler: 90 Übergangs-Tage sind keine 100 Empfehlungen,
+// bei ~1 Empfehlung/Tag wäre das ein Nenner von ~100 Tagen.
 export const M7_MIN_RECOMMENDATIONS = 100;
 export const M7_BRIER_THRESHOLD = 0.25;
 
@@ -3128,6 +3141,13 @@ export type M7Advice = {
   /** O5: Gate-Grundgesamtheit (Verteilungs-P, Allzeit) — gewinnt gegen n/brier_30d. */
   gate_n?: number | null;
   gate_brier?: number | null;
+  /** O6: Intervall, Referenzen, Blöcke und Ausgang — alles vom Server. */
+  gate_brier_ci?: [number, number] | null;
+  gate_ref_base?: number | null;
+  gate_ref_climate?: number | null;
+  n_day_blocks?: number | null;
+  min_day_blocks?: number | null;
+  calibrated?: boolean | null;
 };
 
 // Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
@@ -3149,9 +3169,10 @@ export function deNumber(value: number, decimals = 2): string {
 
 /**
  * Fortschrittszeile des M7-Gates: Zählstand abgeschlossener Empfehlungen und
- * Brier gegen Schwellwert — ohne Tageszahl. Die Übergangsregel (Datenhygiene)
- * hat mit {@link transitionRuleLine} ihre eigene Zeile und ihren eigenen
- * Nenner. `null` ohne Statistik-Lauf: dann gibt es keinen Zähler zu zeigen.
+ * Brier mit Intervall gegen beide Referenzen — ohne Tageszahl. Die
+ * Übergangsregel (Datenhygiene) hat mit {@link transitionRuleLine} ihre
+ * eigene Zeile und ihren eigenen Nenner. `null` ohne Statistik-Lauf: dann
+ * gibt es keinen Zähler zu zeigen.
  */
 export function m7GateLine(advice?: M7Advice | null): string | null {
   if (!advice) return null;
@@ -3159,31 +3180,96 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
   // in gate_n/gate_brier; n/brier_30d bleiben Fallback für Alt-Payloads.
   const gated = advice.gate_n != null;
   const n = gated ? (advice.gate_n as number) : (advice.n ?? 0);
-  const brier = gated ? advice.gate_brier : advice.brier_30d;
   const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
-  const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
   const pending = advice.n_pending ?? 0;
   const pendingNote =
     pending > 0
       ? ` ${pending} Empfehlung${pending > 1 ? "en" : ""} läuft${pending > 1 ? "en" : ""} noch und zählt erst nach der Abrechnung.`
       : "";
-  const population = gated ? " mit Verteilungs-P" : "";
+  // O6: Das Gate vergleicht die Obergrenze des Brier-Intervalls gegen Basis-
+  // und Klima-Referenz — der Ausgang kommt vom Server (`calibrated`), die
+  // Zeile nennt nur Zahlen und erfindet keine zweite Wahrheit. Alt-Payloads
+  // ohne Gate-Grundgesamtheit behalten die alte Regel (eigener Wortlaut).
+  const brier = gated ? advice.gate_brier : advice.brier_30d;
   if (n < need) {
+    if (!gated) {
+      const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+      return (
+        `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
+        `(Brier-Schwelle < ${limit}).${pendingNote}`
+      );
+    }
     return (
-      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen${population} ` +
-      `(Brier-Schwelle < ${limit}).${pendingNote}`
+      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen mit Verteilungs-P ` +
+      `(Freigabe: Obergrenze des Brier-Intervalls unter beiden Referenzen).${pendingNote}`
     );
   }
   if (brier == null) {
+    // T5: ein Satz, eine Stelle — nur die Grundgesamtheit unterscheidet sich.
     return (
       `Freigabe erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
       `(keine ${gated ? "Verteilungs-P" : "P-Schätzung"} im Ledger).${pendingNote}`
     );
   }
+  if (!gated) {
+    const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
+    return (
+      `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
+      `(Schwelle < ${limit}).${pendingNote}`
+    );
+  }
+  const ci = advice.gate_brier_ci ?? null;
+  const refs =
+    advice.gate_ref_base != null && advice.gate_ref_climate != null
+      ? ` gegen Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
+      : "";
+  if (!ci || advice.calibrated == null) {
+    const blocks = advice.n_day_blocks;
+    const needBlocks = advice.min_day_blocks;
+    const blockNote =
+      blocks != null && needBlocks != null
+        ? ` (${blocks} von min. ${needBlocks} Tagesblöcken)`
+        : "";
+    return (
+      `Freigabe noch nicht messbar: ${n} Empfehlungen, Brier ${deNumber(brier)}${blockNote}.${pendingNote}`
+    );
+  }
+  const verdict = advice.calibrated ? "erfüllt" : "nicht erreicht";
   return (
-    `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
-    `(Schwelle < ${limit}).${pendingNote}`
+    `Freigabe ${verdict}: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
+    `[${deNumber(ci[0])}–${deNumber(ci[1])}]${refs}.${pendingNote}`
   );
+}
+
+/**
+ * O6: Kompaktzeile des Gate-Briers für die System-Metrik — Punkt, Intervall
+ * und beide Referenzen. Alt-Payloads ohne Gate-Felder behalten die alte
+ * Ziel-Formulierung; zu wenige Tagesblöcke nennen den Blockstand.
+ */
+export function m7BrierDetail(advice?: M7Advice | null): string {
+  const brier = advice?.gate_brier ?? advice?.brier_30d ?? null;
+  if (brier == null) {
+    return "Brier noch nicht messbar — braucht bewertete Empfehlungen.";
+  }
+  const ci = advice?.gate_brier_ci ?? null;
+  const refs =
+    advice?.gate_ref_base != null && advice?.gate_ref_climate != null
+      ? `Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
+      : null;
+  if (ci && refs) {
+    return (
+      `Brier ${deNumber(brier)} [${deNumber(ci[0])}–${deNumber(ci[1])}] ` +
+      `(Ziel: Obergrenze < ${refs})`
+    );
+  }
+  if (advice?.gate_n != null && advice?.n_day_blocks != null) {
+    return (
+      `Brier ${deNumber(brier)} (Intervall: ${advice.n_day_blocks} von min. ` +
+      `${advice.min_day_blocks ?? 10} Tagesblöcken)`
+    );
+  }
+  const limit = deNumber(advice?.brier_threshold ?? M7_BRIER_THRESHOLD);
+  return `Brier ${deNumber(brier)} (Ziel < ${limit})`;
 }
 
 /**
@@ -3735,7 +3821,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     term: "Brier",
     de: "Treffergenauigkeit der Prozentzahlen",
     short: "Mittlerer quadratischer Abstand zwischen behaupteter Prozentzahl P und eingetretenem Ergebnis (0/1). Kleiner heißt ehrlicher.",
-    long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei mindestens 100 abgeschlossenen Empfehlungen (§0.4).",
+    long: "Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl P(„Warten lohnt“) mit dem tatsächlich eingetretenen „hat Warten einen Vorteil gebracht?“ (Ja=1, Nein=0). 0 wäre perfekt, 0,25 entspricht Raten. Die Freigabe des Kalibrierungs-Gates fordert mindestens 100 abgeschlossene Empfehlungen, deren Brier-Intervall (Obergrenze) unter Basis- und Klima-Referenz liegt (§0.4); 0,25 ist nur das Münz-Niveau zum Einordnen.",
     anchor: "brier-score-treffergenauigkeit-der-prozentzahlen",
   },
   {

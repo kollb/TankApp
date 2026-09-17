@@ -327,6 +327,27 @@ Logik gilt für die Ensemble-Gewichtung, die in
 [LUECKEN.md](LUECKEN.md) Zeile 516 bereits als diskriminanzarm dokumentiert
 ist (0,51/0,49) — dort steht der Befund, hier nur der Querverweis.
 
+**Umgesetzt in 0.45.0:** Das Gate besteht erst, wenn die Obergrenze des
+Block-Bootstrap-Intervalls (Tagesblöcke in Europe/Berlin, 95 %, 1000
+Ziehungen mit festem Samen — dasselbe Verfahren wie der Residuen-Bootstrap
+in `engine/models.py`) unter beiden naiven Referenzen auf der
+Verteilungs-Grundgesamtheit liegt: konstanter Basisrate und
+Leave-one-out-Klimatologie je (Stunde, Wochentag) — LOO, damit dünne Zellen
+nicht in-sample-perfekt und damit unschlagbar sind. Unter 10 Tagesblöcken
+bleibt das Intervall `null` („nicht messbar“; ein Block hätte Varianz null).
+Die Antwort nennt Intervall, Fenstergröße und beide Referenzen
+(`gate_brier_ci`, `block_days`, `n_day_blocks`, `bootstrap_samples`,
+`gate_ref_base`, `gate_ref_climate`); `brier_threshold` (0,25) ist nur noch
+das dokumentierte Münz-Niveau. Die GUI zeigt Punkt, Intervall und Referenzen
+(`m7GateLine`, System-Metrik), KONZEPT §0.4/§5.1 nennt die neue Regel. Zum
+Ensemble: Der Rebuild aus dem Rolling-Origin-Backtest bleibt die
+dokumentierte „Arbeit“ in LUECKEN.md — das Gate-Muster (Intervall gegen
+Referenzen) steht dort jetzt als Vorlage für den Rebuild. Nachweis:
+`tests/test_o6_gate_interval.py` (13 Fälle, darunter der Ratchet „konstante
+Basisraten-Vorhersage mit Brier 0,16 besteht nicht“) plus angepasste
+Gate-Tests in `tests/test_b4.py`/`tests/test_o5_p_source.py` und neue Fälle
+in `web/src/data.test.ts`.
+
 ### O7 — Drei Tie-Konventionen in einem Ledger
 
 **Beleg.** `app/feedback.py`: Trefferquote zählt Gleichstand als 0,5

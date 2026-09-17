@@ -1041,26 +1041,43 @@ def test_m7_gate_thresholds_come_from_the_ledger_not_the_calendar(b4_settings):
 
 
 def test_m7_gate_calibrated_counts_settlements_and_brier():
-    """Ab n ≥ 100 mit Brier < 0,25 ist das Gate offen (Konzept §0.4)."""
+    """Das Gate öffnet Diskrimination, nicht Trefferquote (Konzept §0.4, O6).
+
+    O6: Die Intervall-Obergrenze muss unter beiden naiven Referenzen liegen —
+    100 Treffer mit p = 0,9 bestünden nicht (Basisraten-Referenz 0,0 bei
+    100 % Trefferquote). Der Aufbau diskriminiert deshalb: hohe P auf
+    Treffern, niedrige auf Nieten, verteilt über 20 Tagesblöcke.
+    """
     # O5: Das Gate zählt nur Zeilen mit Verteilungs-P — der handgebaute Store
     # trägt die Quelle explizit, sonst griffe die Rekonstruktion (basisrate).
-    snaps = [
-        {"id": f"s{i}", "action": "wait", "p_correct": 0.9, "p_source": "verteilung"}
-        for i in range(100)
-    ]
-    store = {
-        "episodes": [{"id": "ep", "snapshots": snaps}],
-        "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
-    }
+    snaps = []
+    settlements = []
+    for i in range(100):
+        win = i < 70
+        snaps.append(
+            {
+                "id": f"s{i}",
+                "action": "wait",
+                "p_correct": 0.9 if win else 0.1,
+                "p_source": "verteilung",
+                "emitted_at": (
+                    NOW - dt.timedelta(days=i // 5, hours=i % 9)
+                ).isoformat(),
+            }
+        )
+        settlements.append(
+            {"snapshot_id": f"s{i}", "outcome": "win" if win else "loss"}
+        )
+    store = {"episodes": [{"id": "ep", "snapshots": snaps}], "settlements": settlements}
     advice = compute_advice_stats(store)
     assert advice["n"] == 100
     assert advice["brier_30d"] == 0.01
     assert advice["gate_n"] == 100
     assert advice["gate_brier"] == 0.01
+    assert advice["n_day_blocks"] >= 10
     assert advice["calibrated"] is True
-    assert (
-        advice["gate_status"] == "Kalibriert (n=100, Brier 0,01 < 0,25, Verteilungs-P)"
-    )
+    assert advice["gate_status"].startswith("Kalibriert (n=100, Brier 0,01 [")
+    assert "Basis" in advice["gate_status"] and "Klima" in advice["gate_status"]
 
 
 def test_m7_gate_is_unmeasurable_without_probability():

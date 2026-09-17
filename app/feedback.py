@@ -13,6 +13,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import random
 import threading
 import time
 import uuid
@@ -135,6 +136,18 @@ P_SOURCES = ("verteilung", "basisrate", "keine")
 # historischer Name aus record_fill).
 PRICE_SOURCES = ("live", "manuell", "prognose", "nowcast")
 M7_BRIER_THRESHOLD = 0.25
+# O6 (0.45.0): Das M7-Gate vergleicht kein Punkt-Brier mehr gegen 0,25
+# (Münz-Niveau — das Feld bleibt als dokumentierte Referenz in der Antwort),
+# sondern die Obergrenze eines Block-Bootstrap-Intervalls über Tagesblöcke
+# gegen zwei Referenzen (konstante Basisrate, Klimatologie). 1000 Ziehungen
+# mit festem Samen: Das Intervall ist über Läufe stabil und damit
+# testbar; die Blöcke sind Kalendertage in Europe/Berlin. Unter 10 Blöcken
+# ist das Intervall degeneriert (ein Block hätte Varianz null) und bleibt
+# None — das Gate meldet dann „nicht messbar“ statt „kalibriert“.
+GATE_BOOTSTRAP_SAMPLES = 1000
+GATE_BOOTSTRAP_SEED = 20260917
+GATE_MIN_DAY_BLOCKS = 10
+GATE_BLOCK_DAYS = 1
 
 _STORE_THREAD_LOCK = threading.Lock()
 
@@ -1421,6 +1434,95 @@ def _de(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+def _emit_day_cell(snap: dict[str, Any] | None) -> tuple[Any, Any, Any]:
+    """(Tag, Stunde, Wochentag) des Emits in Europe/Berlin — O6-Blöcke.
+
+    Der Tag ist der Blockschlüssel für den Tagesblock-Bootstrap, die
+    (Stunde, Wochentag)-Zelle trägt die Klimatologie-Referenz. Ohne
+    parsebaren Emit-Stempel (None, None, None): Die Zeile bildet einen
+    eigenen Block und fällt in der Klimatologie auf die globale Basisrate
+    zurück — kein Raten, kein Pooling von Unbekanntem.
+    """
+    if not snap:
+        return None, None, None
+    stamp = _parse_ts(snap.get("emitted_at"))
+    if stamp is None:
+        return None, None, None
+    try:
+        local = stamp.astimezone(BERLIN_TZ)
+    except Exception:
+        return None, None, None
+    return local.date().isoformat(), local.hour, local.weekday()
+
+
+def _block_bootstrap_ci(
+    blocks: list[list[float]],
+    samples: int = GATE_BOOTSTRAP_SAMPLES,
+    seed: int = GATE_BOOTSTRAP_SEED,
+) -> tuple[float | None, float | None]:
+    """Block-Bootstrap-Intervall (2,5 %/97,5 %-Perzentile) über Tagesblöcke.
+
+    Dasselbe Verfahren wie der Residuen-Bootstrap der Engine
+    (``engine/models.py``: Tagesblöcke, Ziehen mit Zurücklegen): Jede
+    Ziehung mittelt die quadrierten Fehler der gezogenen Blöcke, das
+    Intervall sind die Perzentile der Ziehungsmittel. Fester Samen — das
+    Intervall ist über Läufe stabil und damit testbar. Leere Eingabe →
+    (None, None); die Mindestblockzahl prüft der Aufrufer.
+    """
+    if not blocks or samples <= 0:
+        return None, None
+    rng = random.Random(seed)
+    n_blocks = len(blocks)
+    means: list[float] = []
+    for _ in range(samples):
+        pooled = 0.0
+        count = 0
+        for _ in range(n_blocks):
+            for value in blocks[rng.randrange(n_blocks)]:
+                pooled += value
+                count += 1
+        means.append(pooled / count if count else 0.0)
+    means.sort()
+    lo_idx = min(len(means) - 1, int(0.025 * len(means)))
+    hi_idx = min(len(means) - 1, int(0.975 * len(means)))
+    return round(means[lo_idx], 4), round(means[hi_idx], 4)
+
+
+def _reference_briers(
+    outcomes: list[float], cells: list[tuple[Any, Any] | None]
+) -> tuple[float | None, float | None]:
+    """Naive Referenzen des Gates auf derselben Grundgesamtheit (O6).
+
+    Basisrate: konstante Vorhersage der empirischen Trefferquote —
+    ``mean((q − y)²)``. Klimatologie: Leave-one-out je (Stunde,
+    Wochentag)-Zelle — jede Zeile wird mit der Quote der *anderen* Zeilen
+    ihrer Zelle bewertet, Einzelzellen fallen auf die globale Quote zurück.
+    Ohne LOO wäre die Klimatologie bei dünnen Zellen in-sample-perfekt und
+    damit unschlagbar (derselbe Fehler wie O11). Leere Eingabe → (None, None).
+    """
+    if not outcomes:
+        return None, None
+    base_rate = sum(outcomes) / len(outcomes)
+    ref_base = sum((base_rate - y) ** 2 for y in outcomes) / len(outcomes)
+    by_cell: dict[tuple[Any, Any], list[int]] = {}
+    for idx, cell in enumerate(cells):
+        if cell is None:
+            continue
+        by_cell.setdefault(cell, []).append(idx)
+    sq_sum = 0.0
+    for idx, y in enumerate(outcomes):
+        cell = cells[idx]
+        peers = [i for i in by_cell.get(cell, [])] if cell is not None else []
+        peers = [i for i in peers if i != idx]
+        if peers:
+            forecast = sum(outcomes[i] for i in peers) / len(peers)
+        else:
+            forecast = base_rate
+        sq_sum += (forecast - y) ** 2
+    ref_climate = sq_sum / len(outcomes)
+    return round(ref_base, 4), round(ref_climate, 4)
+
+
 def compute_advice_stats(
     store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
 ) -> dict[str, Any]:
@@ -1443,6 +1545,14 @@ def compute_advice_stats(
     aus, und das Gate (``gate_n``/``gate_brier``) rechnet ausschließlich
     über Zeilen mit ``p_source == "verteilung"``: Die Basisrate ist per
     Konstruktion selbstkalibriert und darf das Gate nicht öffnen.
+
+    O6: Das Gate vergleicht keinen Punkt-Brier gegen 0,25 mehr. Es besteht
+    erst, wenn die Obergrenze des Block-Bootstrap-Intervalls (Tagesblöcke,
+    95 %) unter beiden naiven Referenzen — konstanter Basisrate und
+    Leave-one-out-Klimatologie je (Stunde, Wochentag) — auf derselben
+    Grundgesamtheit liegt (``gate_brier_ci``, ``gate_ref_base``,
+    ``gate_ref_climate``, ``n_day_blocks``). Unter 10 Tagesblöcken bleibt
+    das Intervall None („nicht messbar“).
     """
     now = now or dt.datetime.now(UTC)
     cutoff = now - dt.timedelta(days=window_days)
@@ -1584,17 +1694,31 @@ def compute_advice_stats(
     brier_all_sq: list[float] = []
     brier_all_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
     source_counts_all: dict[str, int] = {key: 0 for key in P_SOURCES}
+    gate_rows: list[dict[str, Any]] = []
     for s in settlements_all:
         snap = snapshots_by_id.get(s.get("snapshot_id"))
         p_correct = snap.get("p_correct") if snap else None
-        source_counts_all[snapshot_p_source(snap)] += 1
+        source = snapshot_p_source(snap)
+        source_counts_all[source] += 1
         if p_correct is None or not math.isfinite(p_correct):
             continue
         is_win = 1.0 if s.get("outcome") == "win" else 0.0
         p_val = min(1.0, max(0.0, float(p_correct)))
         sq_error = (p_val - is_win) ** 2
         brier_all_sq.append(sq_error)
-        brier_all_by_source[snapshot_p_source(snap)].append(sq_error)
+        brier_all_by_source[source].append(sq_error)
+        # O6: Gate-Zeilen mit Block- und Zellenschlüssel für Intervall und
+        # Referenzen — dieselbe Grundgesamtheit wie gate_sq (Verteilung).
+        if source == "verteilung":
+            day, hour, weekday = _emit_day_cell(snap)
+            gate_rows.append(
+                {
+                    "day": day,
+                    "cell": (hour, weekday) if hour is not None else None,
+                    "outcome": is_win,
+                    "sq": sq_error,
+                }
+            )
     n_brier_all = len(brier_all_sq)
     brier_all = round(sum(brier_all_sq) / n_brier_all, 4) if n_brier_all > 0 else None
 
@@ -1610,17 +1734,34 @@ def compute_advice_stats(
     # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die
     # Verteilungs-Teilmenge allein (O5) — die Basisrate ist per Konstruktion
     # selbstkalibriert und öffnet das Gate nicht. Die 90-Tage-Übergangsregel
-    # (live_only_days) ist Datenhygiene und kein Nenner hier.
+    # (live_only_days) ist Datenhygiene und kein Nenner hier. O6: Kein
+    # Punkt-Brier gegen 0,25 mehr — das Gate besteht erst, wenn die
+    # Obergrenze des Block-Bootstrap-Intervalls unter beiden naiven
+    # Referenzen (Basisrate, Klimatologie) liegt.
     n_all = len(settlements_all)
     gate_sq = brier_all_by_source["verteilung"]
     gate_n = len(gate_sq)
     gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
+    day_blocks: dict[Any, list[float]] = {}
+    for pos, row in enumerate(gate_rows):
+        key = row["day"] if row["day"] is not None else f"unknown-{pos}"
+        day_blocks.setdefault(key, []).append(row["sq"])
+    n_day_blocks = len(day_blocks)
+    if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
+        gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
+    else:
+        gate_ci_lo, gate_ci_hi = None, None
+    gate_ref_base, gate_ref_climate = _reference_briers(
+        [row["outcome"] for row in gate_rows],
+        [row["cell"] for row in gate_rows],
+    )
+    binding_ref = min(gate_ref_base, gate_ref_climate) if gate_rows else None
     calibrated = (
         gate_n >= M7_MIN_RECOMMENDATIONS
-        and gate_brier is not None
-        and gate_brier < M7_BRIER_THRESHOLD
+        and gate_ci_hi is not None
+        and binding_ref is not None
+        and gate_ci_hi < binding_ref
     )
-    limit = _de(M7_BRIER_THRESHOLD)
     if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
         gate_status = (
             f"Kalibrierung steht aus (n={gate_n} < {M7_MIN_RECOMMENDATIONS} "
@@ -1640,14 +1781,26 @@ def compute_advice_stats(
             f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
             "mit Verteilungs-P im Ledger)"
         )
-    elif gate_brier >= M7_BRIER_THRESHOLD:
+    elif gate_ci_hi is None or binding_ref is None:
+        # Zählstand reicht, aber zu wenige Tagesblöcke für ein belastbares
+        # Intervall (ein Block hätte Varianz null — das Gate wäre ein
+        # Münzwurf mit Ansage). „Tagesblöcke“ ist Bootstrap-Sprache, nicht
+        # die 90-Tage-Übergangsregel — die bleibt eine andere Freigabe.
         gate_status = (
-            f"Kalibrierung nicht erreicht (Brier {_de(gate_brier)} ≥ {limit}, "
-            "Verteilungs-P)"
+            f"Kalibrierung nicht messbar (n={gate_n}, nur {n_day_blocks} "
+            f"Tagesblöcke — das Intervall braucht min. {GATE_MIN_DAY_BLOCKS})"
+        )
+    elif gate_ci_hi >= binding_ref:
+        gate_status = (
+            f"Kalibrierung nicht erreicht (Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] ≥ Basis {_de(gate_ref_base)} "
+            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
         )
     else:
         gate_status = (
-            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} < {limit}, Verteilungs-P)"
+            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
+            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
         )
 
     return {
@@ -1667,7 +1820,20 @@ def compute_advice_stats(
         "p_source_counts_all": dict(source_counts_all),
         "gate_n": gate_n,
         "gate_brier": gate_brier,
+        # O6: Intervall (Block-Bootstrap über Tagesblöcke, 95 %), beide naive
+        # Referenzen auf derselben Grundgesamtheit und die Fenstergröße —
+        # das Gate besteht erst, wenn die Obergrenze unter beiden liegt.
+        "gate_brier_ci": ([gate_ci_lo, gate_ci_hi] if gate_ci_hi is not None else None),
+        "gate_ref_base": gate_ref_base,
+        "gate_ref_climate": gate_ref_climate,
+        "n_day_blocks": n_day_blocks,
+        "min_day_blocks": GATE_MIN_DAY_BLOCKS,
+        "block_days": GATE_BLOCK_DAYS,
+        "bootstrap_samples": GATE_BOOTSTRAP_SAMPLES,
         # Zähl-Ehrlichkeit: ausgespielt vs. abgeschlossen vs. noch offen.
+        # O6: ``brier_threshold`` (0,25) ist kein Gate-Kriterium mehr, sondern
+        # das dokumentierte Münz-Niveau zum Einordnen — das Gate vergleicht
+        # die Intervall-Obergrenze gegen Basis- und Klima-Referenz.
         "snapshots_total": snapshots_total,
         "n_pending": n_pending,
         "wins": wins,

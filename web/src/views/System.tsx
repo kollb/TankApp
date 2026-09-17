@@ -38,13 +38,13 @@ import { SkeletonPanel } from "../components/Skeleton";
 import {
   GLOSSARY,
   JOB_LABELS,
-  M7_BRIER_THRESHOLD,
   M7_MIN_RECOMMENDATIONS,
   ageWord,
   centPerLiter,
   countLabel,
   deNumber,
   MASE_TARGET,
+  m7BrierDetail,
   deTrimmed,
   euro,
   lifecycleTip,
@@ -618,14 +618,10 @@ export function SystemView(props: SystemViewProps) {
               label="M7-Kalibrierung"
               value={
                 <span className="font-mono text-amber-300">
-                  {liveAdvice?.n ?? 0}/{liveAdvice?.min_recommendations ?? M7_MIN_RECOMMENDATIONS}
+                  {liveAdvice?.gate_n ?? liveAdvice?.n ?? 0}/{liveAdvice?.min_recommendations ?? M7_MIN_RECOMMENDATIONS}
                 </span>
               }
-              detail={
-                liveAdvice?.brier_30d != null
-                  ? `Brier ${deNumber(liveAdvice.brier_30d)} (Ziel < ${deNumber(liveAdvice.brier_threshold ?? M7_BRIER_THRESHOLD)})`
-                  : "Brier noch nicht messbar — braucht bewertete Empfehlungen."
-              }
+              detail={m7BrierDetail(liveAdvice)}
               hint={m7Line ?? calibrationHint}
             />
           </div>

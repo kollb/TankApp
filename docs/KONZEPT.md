@@ -157,10 +157,12 @@ Entscheidung, die Werkstatt zeigt, warum man ihr vertrauen darf. Details in
 „82 %“ ist nur dann mehr als Wahrsagerei, wenn sie kalibriert ist.
 Deshalb gilt produktseitig:
 
-- **P_besser-Prozente dürfen erst angezeigt werden, wenn der Brier-Score
-  über ≥ 100 abgeschlossenen Empfehlungen < 0,25 nachgewiesen ist**
-  (erwartbar nach ca. 4–6 Wochen Live-Betrieb). Vorher: nur binäre
-  Empfehlung ohne Prozentzahl.
+- **P_besser-Prozente dürfen erst angezeigt werden, wenn die Obergrenze
+  des Brier-Intervalls (Block-Bootstrap über Tagesblöcke, 95 %) über
+  ≥ 100 abgeschlossenen Empfehlungen unter Basis- und Klima-Referenz
+  liegt** (erwartbar nach ca. 4–6 Wochen Live-Betrieb). Vorher: nur binäre
+  Empfehlung ohne Prozentzahl. 0,25 ist das Münz-Niveau zum Einordnen,
+  kein Kriterium (O6, 0.45.0).
 - Wenn die Prognoseverteilung zu breit oder die Entscheidung zu knapp ist
   (Rolling-PICP außerhalb Toleranz oder P_besser ∈ [40 %, 60 %]), lautet
   die Empfehlung **„Keine klare Empfehlung — tank nach Bedarf“** plus die
@@ -519,8 +521,13 @@ Engine-Güte. Implementiert im Statistik-Prototyp als Kalibrierungs-Plot
 in pp) — genau dieses Diagramm wandert als „Kalibrierung“-Sektion in die
 Werkstatt.
 
-**Hartes Gate (§0.4):** Prozent-Anzeigen erst ab Brier < 0,25 bei ≥ 100
-abgeschlossenen Empfehlungen. Vorher binäre Empfehlung.
+**Hartes Gate (§0.4, O6 seit 0.45.0):** Prozent-Anzeigen erst ab ≥ 100
+abgeschlossenen Empfehlungen mit Verteilungs-P, wenn die Obergrenze des
+Block-Bootstrap-Intervalls (Tagesblöcke, 95 %) unter beiden naiven Referenzen
+(konstante Basisrate, Leave-one-out-Klimatologie je Stunde/Wochentag) auf
+derselben Grundgesamtheit liegt. Vorher binäre Empfehlung. Unter 10
+Tagesblöcken bleibt das Intervall unbestimmt („nicht messbar“ statt
+„kalibriert“); 0,25 ist nur das Münz-Niveau zum Einordnen.
 
 ### 5.2 Erfolgs-Tracking (die eigentliche Vertrauensbildung)
 
