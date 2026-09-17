@@ -80,6 +80,12 @@ def main(argv=None) -> int:
         query=demo_data.make_query(built["observations"], built["prices"]),
         clock=lambda: dt.datetime.now(dt.timezone.utc),
     )
+    # O16: Auch die Selektion (δ̂ mit KI und q-Wert) gehört zum gefüllten
+    # Demo-Stapel — das Labor zeigt sie, und die Qualitäts-Gates messen den
+    # echten /api/v1/selection-Vertrag statt eines Leerzustands.
+    selection_marker = data_dir / "runtime/selection/current.json"
+    if args.rebuild or not selection_marker.is_file():
+        demo_data.build_selection_artifact(settings, built["observations"])
     server = make_server(settings, args.host, args.port, live)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

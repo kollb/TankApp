@@ -366,6 +366,9 @@ def test_health_shows_whether_delivery_is_configured(settings, bare):
 
     assert LiveData(bare).health()["notify"] == {
         "configured": False,
+        # O42: Der Push-Modus ist Teil des Health-Blocks, damit die
+        # Datentiefe der Fenster-Meldungen sichtbar bleibt.
+        "mode": "public",
         "open_errors": [],
         "last_ok_at": None,
         "last_sent_at": None,

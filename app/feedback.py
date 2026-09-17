@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from polling_plan import atomic_json, collector_lock
-from .data import metadata
+from .data import PRICE_PLAUSIBLE_MAX, PRICE_PLAUSIBLE_MIN, metadata
 
 UTC = dt.timezone.utc
 
@@ -38,8 +38,11 @@ FUELS = {"e10", "e5", "diesel"}
 # Grenzen ist kein Messwert, sondern Eingabemüll — 4xx statt still verbuchen.
 MIN_LITERS = 5.0
 MAX_LITERS = 100.0
-MIN_PRICE_PAID = 0.40
-MAX_PRICE_PAID = 5.00
+# O35: dieselben Grenzen wie der Trainings- und der Live-Pfad — eine Quelle
+# (``app/data.py``), drei Aliasse. Ein Beleg außerhalb dieser Grenzen ist
+# kein Messwert, ein Live-Wert außerhalb ist kein Preis.
+MIN_PRICE_PAID = PRICE_PLAUSIBLE_MIN
+MAX_PRICE_PAID = PRICE_PLAUSIBLE_MAX
 # Feedback-Store-Grenze: darüber wird nicht mehr still geleert, sondern
 # explizit ``store_too_large`` gemeldet (Prüfstand §3.5). Rotation 90 Tage
 # verhindert, dass der Store überhaupt dort ankommt.

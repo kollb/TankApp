@@ -378,16 +378,27 @@ export function LaborView(props: LaborViewProps) {
     return (rows.reduce((sum, b) => sum + b.mean_p * b.count, 0) / n) * 100;
   }, [advice]);
 
+  // O16: Der Preis-Abstand kommt aus der Selektion (`/api/v1/selection`) —
+  // dort rechnet die Engine δ̂ samt Bootstrap-KI und q-Wert. Vorher las die
+  // Ansicht ein Feld (`stationScores.delta_ct`), das der Server nie sendet,
+  // und der Balken blieb dauerhaft leer.
   const stationDeltas = useMemo(() => {
-    const scores = labData?.stationScores ?? [];
-    return scores
-      .filter((score) => Number.isFinite(score.delta_ct))
-      .map((score) => ({
-        id: score.station_id,
-        label: score.name || score.station_id,
-        deltaCt: score.delta_ct,
+    const rows = selection.data?.stations ?? [];
+    return rows
+      .filter((row) => Number.isFinite(row.delta_ct ?? Number.NaN))
+      .map((row) => ({
+        id: row.station_id,
+        label: row.name || row.station_id,
+        deltaCt: row.delta_ct as number,
+        ciLo: Number.isFinite(row.ci_lo ?? Number.NaN)
+          ? (row.ci_lo as number)
+          : null,
+        ciHi: Number.isFinite(row.ci_hi ?? Number.NaN)
+          ? (row.ci_hi as number)
+          : null,
+        significant: row.significant === true,
       }));
-  }, [labData]);
+  }, [selection]);
 
   const diaryEntries = diary.data?.entries ?? [];
   // Gleiche, direkt aufeinanderfolgende Einträge stehen als **eine** Zeile in
@@ -844,11 +855,17 @@ export function LaborView(props: LaborViewProps) {
                 <DeltaBars
                   values={stationDeltas.map((row) => row.deltaCt)}
                   labels={stationDeltas.map((row) => row.label)}
-                  ariaDescription="Balkendiagramm: Abstand jeder Station zum Stadt-Üblichen in Cent pro Liter; links = meist günstiger, rechts = meist teurer."
+                  whiskers={stationDeltas.map((row) =>
+                    row.ciLo != null && row.ciHi != null
+                      ? { lo: row.ciLo, hi: row.ciHi }
+                      : null,
+                  )}
+                  muted={stationDeltas.map((row) => !row.significant)}
+                  ariaDescription="Balkendiagramm: Abstand jeder Station zum Stadt-Üblichen in Cent pro Liter, mit Konfidenzintervall als senkrechtem Strich; links = meist günstiger, rechts = meist teurer. Blasse Balken sind statistisch nicht signifikant."
                 />
                 <ReadingAid
                   headline="Balken links = meist unter dem Üblichen (grün) · rechts = darüber."
-                  text={`Werte aus dem Backtest über ${labData?.daysTrain ?? "—"} Trainings-Tage. Der Strich in der Mitte ist der Stadt-Median.`}
+                  text="Werte aus der Stations-Auswahl: δ̂ mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg — blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median."
                 />
               </>
             ) : (

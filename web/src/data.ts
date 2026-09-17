@@ -745,12 +745,14 @@ export type StationModelLab = {
   pWe: number;
 };
 
+/** O16: δ̂ ist eine Selektions-Größe (`SelectionStation.delta_ct`) und kein
+ * Backtest-Ergebnis — der Score-Typ trägt das Feld nicht mehr (vorher stand
+ * hier eine Pflicht, die der Server nie füllt). */
 export type BacktestStationScore = {
   station_id: string;
   name: string;
   brand: string;
   city: string;
-  delta_ct: number;
   n: number;
   n_wait: number;
   hit_wait: number | null;
@@ -1086,7 +1088,6 @@ export function scoreRows(
     name: stationId,
     brand: "",
     city: "",
-    delta_ct: 0,
     n,
     n_wait: nWait,
     hit_wait: nWait ? hitWait / nWait : null,

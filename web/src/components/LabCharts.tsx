@@ -239,16 +239,26 @@ export function HistogramBars({
   );
 }
 
-/** Balken um die Nulllinie (z. B. Netto-Ergebnis je Tag für Paarvergleich). */
+/** Balken um die Nulllinie (z. B. Netto-Ergebnis je Tag für Paarvergleich).
+ *
+ * O16: Optional tragen die Balken einen Konfidenz-Whisker (``whiskers``) und
+ * einen Bedeutungs-Zustand (``muted`` — nicht signifikant = blasser). Die
+ * Skala spannt sich über Balken **und** Whisker, damit kein Intervall
+ * abgeschnitten wird.
+ */
 export function DeltaBars({
   values,
   labels,
+  whiskers,
+  muted,
   height = 170,
   fmt = (v: number) => `${euro(v, 2)} €`,
   ariaDescription,
 }: {
   values: number[];
   labels?: string[];
+  whiskers?: Array<{ lo: number; hi: number } | null>;
+  muted?: boolean[];
   height?: number;
   fmt?: (v: number) => string;
   ariaDescription?: string;
@@ -268,7 +278,15 @@ export function DeltaBars({
   const iw = W - padL - padR;
   const ih = H - padT - padB;
   if (values.length === 0) return null;
-  const vMax = Math.max(...values.map((v) => Math.abs(v)), 0.01);
+  const vMax = Math.max(
+    ...values.map((v) => Math.abs(v)),
+    ...(whiskers ?? []).flatMap((w) =>
+      w && Number.isFinite(w.lo) && Number.isFinite(w.hi)
+        ? [Math.abs(w.lo), Math.abs(w.hi)]
+        : [0],
+    ),
+    0.01,
+  );
   const Y = (v: number) => padT + ih / 2 - (v / vMax) * (ih / 2);
   const n = values.length;
   const bw = Math.min((iw / n) * 0.66, 34);
@@ -288,9 +306,21 @@ export function DeltaBars({
         const x = padL + i * step + (step - bw) / 2;
         const y = Math.min(Y(v), Y(0));
         const h = Math.abs(Y(v) - Y(0));
+        const whisker = whiskers?.[i] ?? null;
+        const isMuted = muted?.[i] === true;
+        const opacity = isMuted ? 0.38 : 0.85;
+        const cx = x + bw / 2;
+        const capW = Math.min(bw * 0.7, 16);
         return (
           <g key={i}>
-            <rect x={x} y={y} width={bw} height={Math.max(h, 0.5)} rx={2} fill={v >= 0 ? c.positive : c.negative} opacity={0.85} />
+            <rect x={x} y={y} width={bw} height={Math.max(h, 0.5)} rx={2} fill={v >= 0 ? c.positive : c.negative} opacity={opacity} />
+            {whisker && Number.isFinite(whisker.lo) && Number.isFinite(whisker.hi) && (
+              <g stroke={c.text} strokeWidth={1} opacity={isMuted ? 0.45 : 0.9}>
+                <line x1={cx} x2={cx} y1={Y(whisker.lo)} y2={Y(whisker.hi)} />
+                <line x1={cx - capW / 2} x2={cx + capW / 2} y1={Y(whisker.lo)} y2={Y(whisker.lo)} />
+                <line x1={cx - capW / 2} x2={cx + capW / 2} y1={Y(whisker.hi)} y2={Y(whisker.hi)} />
+              </g>
+            )}
             {labels && labels[i] && (
               <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize={9.5} fill={c.text}>
                 {labels[i]}

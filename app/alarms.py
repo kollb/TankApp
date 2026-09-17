@@ -13,11 +13,19 @@ Jeder Alarm ist ein dict mit:
   job       — Jobname, nur bei Job-Alarmen
 """
 
+import datetime as dt
 from pathlib import Path
 from typing import Any
 
-from .data import publication_status
+from .data import (
+    PRICE_PLAUSIBLE_MAX,
+    PRICE_PLAUSIBLE_MIN,
+    implausible_price_status,
+    publication_status,
+)
 from .feedback import FEEDBACK_MAX_BYTES
+
+UTC = dt.timezone.utc
 
 
 def _mb(size: int | None) -> str:
@@ -43,6 +51,7 @@ def build_alarms(
     job_errors: dict[str, str],
     polling_error: str | None,
     station_count: int,
+    clock=None,
 ) -> list[dict[str, Any]]:
     """Fasst die vorhandenen Zustandsprüfungen zu einem ``alarms[]``-Block zusammen."""
     alarms: list[dict[str, Any]] = []
@@ -210,6 +219,33 @@ def build_alarms(
                 ),
                 "bytes": publication.get("bytes"),
                 "budget_bytes": publication.get("budget_bytes"),
+            }
+        )
+
+    # O35: Ein Live-Preis außerhalb 0,40–5,00 €/L ist ein API-Artefakt — er
+    # wird nicht als Preis publiziert, aber der Vorfall soll sichtbar sein,
+    # statt still die Sortierung zu überspringen. Nur ein lokaler Read des
+    # Zählers (Healthcheck-Budget bleibt).
+    implausible = implausible_price_status(
+        settings, clock=clock or (lambda: dt.datetime.now(UTC))
+    )
+    if implausible.get("count_24h"):
+        count = int(implausible["count_24h"])
+        lo = f"{PRICE_PLAUSIBLE_MIN:.2f}".replace(".", ",")
+        hi = f"{PRICE_PLAUSIBLE_MAX:.2f}".replace(".", ",")
+        alarms.append(
+            {
+                "code": "price_implausible",
+                "severity": "warn",
+                "message": (
+                    f"{'Ein Live-Preis' if count == 1 else f'{count} Live-Preise'} "
+                    f"der letzten 24 Stunden liegt außerhalb der Grenzen "
+                    f"{lo}–{hi} €/L und wurde nicht als Preis veröffentlicht — "
+                    "die Station bleibt sichtbar, Empfehlung und Sortierung "
+                    "nutzen den Wert nicht. Bei Dauerbetrieb die Preisquelle prüfen."
+                ),
+                "count_24h": count,
+                "last_at": implausible.get("last_at"),
             }
         )
 

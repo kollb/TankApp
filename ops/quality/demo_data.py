@@ -316,6 +316,28 @@ def build_publication(
     }
 
 
+def build_selection_artifact(settings, observations: pd.DataFrame, n_boot: int = 400) -> dict:
+    """O16: δ̂-Selektion für den Demo-Stapel — derselbe Pfad wie der NAS-Lauf.
+
+    Schreibt die synthetischen Beobachtungen als Trainingsbestand
+    (``runtime/training/e10.csv.gz``) und ruft das echte
+    ``app.selection.build_selection`` auf; das Artefakt landet unter
+    ``runtime/selection/current.json`` (wie ``app/worker.py`` es schreibt).
+    Kleineres B als produktiv (2000): Der Demo-Stapel soll in Sekunden
+    stehen; die q-Wert-Untergrenze 1/(B+1) bleibt für Demo-Zwecke fein genug.
+    """
+    from app.selection import build_selection
+    from engine.storage import write_json
+
+    training_dir = Path(settings.runtime) / "training"
+    training_dir.mkdir(parents=True, exist_ok=True)
+    frame = observations.copy()
+    frame.to_csv(training_dir / "e10.csv.gz", index=False, compression="gzip")
+    result = build_selection(settings, fuels=["e10"], n_boot=n_boot)
+    write_json(Path(settings.runtime) / "selection" / "current.json", result)
+    return result
+
+
 def build(data_dir: Path, days: int = 70) -> dict:
     """Legt den kompletten Demo-Datenbestand an; liefert die Query-Funktion."""
     data_dir = Path(data_dir)
