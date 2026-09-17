@@ -151,10 +151,12 @@ erfundenen 12-Uhr-Projektion zählen (O1). Die GUI hängt den Satz an die
 Fensterliste (`personalizationNote` in `web/src/data.ts`).
 
 `quality` weist die Engine-Qualität der ausgewählten Station aus
-(Konzept §3.3.3): `rolling_picp_7d_pct` (Rolling-Intervallquote über die
-letzten 7 Backtest-Tage), `rolling_picp_7d_points`, `rolling_picp_7d_badge`
-(`green` ≥ 93 %, `yellow` ≥ 90 %, `red` < 90 %, nominal 95 %; `null` bei
-weniger als 72 Punkten oder ohne veröffentlichten Backtest) und `gate`
+(Konzept §3.3.3): `rolling_picp_7d_pct` (Mittel der Tagesquoten über die
+letzten 7 Backtest-Tage, O4), `rolling_picp_7d_points`,
+`rolling_picp_7d_days` (Fallzahl: Tage mit bewerteten Punkten),
+`rolling_picp_7d_badge` (`green` ≥ 93 %, `yellow` ≥ 90 %, `red` < 90 %,
+nominal 95 %, mit Hysterese: Wechsel erst 1,5 pp jenseits der Schwelle;
+`null` bei weniger als 3 Tagen oder ohne veröffentlichten Backtest) und `gate`
 (`"picp"`, wenn das Güte-Gate greift). Ist `gate` gesetzt, lautet die
 Tabellen-Aktion `no_advice` („Keine klare Empfehlung — Prognose derzeit
 unsicher …“), egal wie gut die €-Seite aussieht (§4.4/§4.5 Schritt 1);

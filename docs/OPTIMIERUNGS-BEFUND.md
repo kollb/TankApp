@@ -269,6 +269,25 @@ wechselt erst, wenn die Schwelle um mehr als die halbe Bandbreite
 überschritten ist. Zusätzlich die Fallzahl anzeigen („auf 7 Tagen“), damit
 ein Badge mit n=7 nicht wie eines mit n=700 wirkt.
 
+**Umgesetzt in 0.45.0:** `rolling_picp_7d` bildet je Testtag das Mittel der
+Tagesquoten im 7-Tage-Fenster — ein Tag, eine Stimme — und meldet die
+Fallzahl als `n_days` (Tage mit bewerteten Punkten; unter
+`ROLLING_PICP_MIN_DAYS = 3` ist das Badge `null`, keine Aussage). Das Badge
+läuft als Kette über die Tageshistorie: Tage ohne Punkte aktualisieren den
+Stand nicht, der Wechsel über eine Schwelle braucht 1,5 pp Abstand jenseits
+der Schwelle (`ROLLING_PICP_HYSTERESIS_PP`, halber Grün/Gelb-Abstand). Die
+Fallzahl steht in der Antwort — in `current.n_days` wie in
+`/v1/decide` als `quality.rolling_picp_7d_days`. Zwei Korrekturen zum Befund:
+Erstens ist die Hysterese bewusst kein `noise_band`-Muster — bei n = 7 Tagen
+wäre 2σ ≈ ±22 pp, größer als jeder Schwellenabstand (3 bzw. 5 pp); das Badge
+würde als Latch kleben und Rot die §4.4-Empfehlung permanent blockieren.
+„Halbe Bandbreite“ ist hier der halbe Schwellenabstand. Zweitens zeigt die
+GUI den Badge nirgends an — Labor/System zeigen das Aggregat-`picp_95` aus
+`stats_summary`, eine andere Kennzahl (LUECKEN.md berichtigt); ein Badge-Display
+wäre neuer Scope ohne Design-Anker. Nachweis: `tests/test_o4_picp_days.py`
+(Tagesstimme gegen Pooling, Kette, Lückentage), Hysterese-Parametrisierung in
+`tests/test_backtest.py`, Fallzahl-Pin im B4-Güte-Test.
+
 ### O5 — Das M7-Gate mischt zwei Wahrscheinlichkeitsquellen
 
 **Beleg.** `app/feedback.py:494–497` und `:521` bauen `p_correct` entweder

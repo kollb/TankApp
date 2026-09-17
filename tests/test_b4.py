@@ -182,6 +182,7 @@ def test_decide_red_rolling_picp_is_published_and_blocks_advice(b4_settings):
                                 "day": "2026-09-09",
                                 "picp_pct": 88.5,
                                 "points": 144,
+                                "n_days": 7,
                                 "badge": "red",
                             }
                         },
@@ -200,6 +201,7 @@ def test_decide_red_rolling_picp_is_published_and_blocks_advice(b4_settings):
     assert body["quality"] == {
         "rolling_picp_7d_pct": 88.5,
         "rolling_picp_7d_points": 144,
+        "rolling_picp_7d_days": 7,
         "rolling_picp_7d_badge": "red",
         "rolling_picp_7d_as_of": "2026-09-09",
         "rolling_picp_window_days": 7,

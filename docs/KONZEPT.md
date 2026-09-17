@@ -343,7 +343,11 @@ täglich; Benchmark = saisonale Naive.
    Abhängigkeit muss die tatsächliche Überdeckung laufend geprüft werden.
    Die operationelle Wahrheit bleibt das gemessene Rolling-PICP.
 3. **Monitoring:** 7-Tage-Rolling-PICP je Station als Konfidenz-Badge
-   (grün ≥ Nominal − 2 pp, gelb ± 5 pp, rot → §4.4-Modus).
+   (grün ≥ Nominal − 2 pp, gelb ≥ Nominal − 5 pp, rot darunter → §4.4-Modus).
+   Seit 0.45.0 (O4) zählt jeder Tag genau eine Stimme (Mittel der
+   Tagesquoten, Fallzahl = Tage mit bewerteten Punkten, Minimum 3 Tage);
+   das Badge läuft mit Hysterese über die Tageshistorie und wechselt erst
+   1,5 pp jenseits der Schwelle.
 
 ### 3.4 Horizonte & Gütenachweis
 

@@ -690,6 +690,8 @@ export type DecideResult = {
   quality?: {
     rolling_picp_7d_pct: number | null;
     rolling_picp_7d_points: number | null;
+    // O4: Fallzahl der Kennzahl in Tagen (Tage mit bewerteten Punkten).
+    rolling_picp_7d_days: number | null;
     rolling_picp_7d_badge: "green" | "yellow" | "red" | null;
     rolling_picp_7d_as_of?: string | null;
     rolling_picp_window_days: number;

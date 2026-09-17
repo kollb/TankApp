@@ -1149,6 +1149,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "quality": {
             "rolling_picp_7d_pct": rolling.get("picp_pct"),
             "rolling_picp_7d_points": rolling.get("points"),
+            # O4: Fallzahl der Kennzahl in Tagen (Tage mit bewerteten
+            # Punkten); unter 3 Tagen ist das Badge keine Aussage.
+            "rolling_picp_7d_days": rolling.get("n_days"),
             "rolling_picp_7d_badge": rolling_badge,
             "rolling_picp_7d_as_of": rolling.get("day"),
             "rolling_picp_window_days": 7,

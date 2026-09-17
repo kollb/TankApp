@@ -143,9 +143,13 @@ echtes 30-Tage-Fenster der Kennzahlen (M7-Gate bleibt Allzeit-Zähl-Gate
   gedeckelt). Modell-Schema 2, alte Artefakte werden beim nächsten Lauf
   neu gefittet.
 - **Rolling-PICP 7 d je Station** (§3.3.3) im Backtest: Badge grün ≥ 93 %,
-  gelb ≥ 90 %, rot < 90 % (nominal 95 %, < 72 Punkte = keine Aussage),
-  publiziert in `current.json` (`rolling_picp_7d`), als `quality`-Feld in
-  `/v1/decide` und als Intervall-Kachel-Zeile in der Startkarte.
+  gelb ≥ 90 %, rot < 90 % (nominal 95 %), seit 0.45.0 (O4) als Mittel der
+  Tagesquoten mit Hysterese (Wechsel erst 1,5 pp jenseits der Schwelle;
+  < 3 Tage mit bewerteten Punkten = keine Aussage), publiziert in
+  `current.json` (`rolling_picp_7d`), als `quality`-Feld in `/v1/decide`
+  (dort inkl. Fallzahl `rolling_picp_7d_days`). Die GUI zeigt den Badge
+  nicht an — die Intervall-Kachel (Startkarte/System/Labor) zeigt das
+  Aggregat-`picp_95` aus `stats_summary`, eine andere Kennzahl.
 - **Güte-Gate** (§4.4/§4.5 Schritt 1): Rot im Rolling-PICP der
   ausgewählten Station → `no_advice` „Keine klare Empfehlung — Prognose
   derzeit unsicher …“ *vor* F2/F1.

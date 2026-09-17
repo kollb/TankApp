@@ -449,6 +449,7 @@ describe("Frische der Prognose (Regression)", () => {
     withPublishing.quality = {
       rolling_picp_7d_pct: 94.2,
       rolling_picp_7d_points: 220,
+      rolling_picp_7d_days: 7,
       rolling_picp_7d_badge: "green",
       rolling_picp_7d_as_of: "2026-09-14T09:25:00+02:00",
       rolling_picp_window_days: 7,
