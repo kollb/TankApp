@@ -287,8 +287,12 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Keine klare Empfehlung");
     expect(html).toContain("Jetzt am günstigsten: Shell Nord");
     expect(html).toContain("1,709 €/L");
-    // Der Abstand ist ein Set-Abstand, nie eine „Ersparnis“.
-    expect(html).toContain("unter dem teuersten Preis im Set");
+    // O19: Die Ersparnis rechnet gegen den Anker der Empfehlung und benennt
+    // ihn; die Set-Spanne steht daneben als Spanne.
+    expect(html).toContain(
+      "unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (Aral Mitte, 1,749 €/L)",
+    );
+    expect(html).toContain("Spanne im Set:");
     expect(html).toContain("Das Modell lernt noch");
   });
 
