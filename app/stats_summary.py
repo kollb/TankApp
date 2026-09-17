@@ -25,6 +25,11 @@ from .feedback import (
 )
 from .thresholds import active_thresholds
 
+# O18: Die CUSUM-Schwelle kommt aus der Engine — hier stand 3,0, während
+# `engine.selection.cusum_break` bei h = 2,0 flaggt. Die GUI zeigte also eine
+# Schwelle, die keine Entscheidung trifft.
+from engine.selection import CUSUM_THRESHOLD
+
 UTC = dt.timezone.utc
 
 
@@ -331,7 +336,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
             "cusum_drift": {
                 "status": "unknown",
                 "max_cusum": None,
-                "threshold": 3.0,
+                "threshold": CUSUM_THRESHOLD,
             },
         }
     rows = [r for r in pub.get("forecasts", []) if r.get("metrics")]
@@ -343,7 +348,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
             "cusum_drift": {
                 "status": "unknown",
                 "max_cusum": None,
-                "threshold": 3.0,
+                "threshold": CUSUM_THRESHOLD,
             },
         }
     picp = _safe_median([r["metrics"].get("picp95_pct") for r in rows])
@@ -358,7 +363,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
         "cusum_drift": {
             "status": "unknown",
             "max_cusum": None,
-            "threshold": 3.0,
+            "threshold": CUSUM_THRESHOLD,
         },
     }
 

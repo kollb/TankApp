@@ -558,7 +558,13 @@ def daily_median_series(
     return np.asarray(keys, dtype=float), np.asarray(medians, dtype=float)
 
 
-def cusum_break(daily: np.ndarray, h: float = 2.0) -> tuple[bool, float]:
+# O18: Die CUSUM-Schwelle als benannte Konstante — `app/stats_summary.py`
+# publizierte bisher 3,0 als „Schwelle“, während hier bei 2,0 geflaggt wird.
+# Zwei Zahlen für dieselbe Schwelle, eine davon falsch angezeigt.
+CUSUM_THRESHOLD = 2.0
+
+
+def cusum_break(daily: np.ndarray, h: float = CUSUM_THRESHOLD) -> tuple[bool, float]:
     """Retrospektiver CUSUM-Changepoint-Test auf Tages-δ̂ (Issue 48 / F5).
 
     Statistik: maximale kumulierte Median-Abweichung, robust skaliert:

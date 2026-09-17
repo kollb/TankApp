@@ -366,6 +366,15 @@ export type SelectionStation = {
   best_hour?: number | null;
   vol_ct?: number | null;
   rank_std?: number | null;
+  /**
+   * O18: Diese Felder schreibt die Engine je Station
+   * (`engine/selection.py`) — die Labor-Werkstätten lesen sie, statt auf
+   * Kennzahlen zu warten, die niemand berechnet.
+   */
+  break_flag?: boolean | null;
+  break_stat?: number | null;
+  delta_ew_ct?: number | null;
+  delta_recent5_ct?: number | null;
   dist_km?: number | null;
   dist_mode?: string | null;
   maps_url?: string | null;
