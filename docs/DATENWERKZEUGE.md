@@ -1,14 +1,16 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 15.09.2026 · App-Version 0.38.0. Nachschlagewerk für `data-tools/`
+> Stand: 17.09.2026 · App-Version 0.49.3. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
-> Dauerbetrieb in [BETRIEB.md](BETRIEB.md).
+> Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
+> [12-Uhr-Regel-Check](#12-uhr-regel-check).
 
 ## Inhaltsverzeichnis
 
 - [Interne Einzelprogramme](#interne-einzelprogramme)
 - [Datenformate](#datenformate)
 - [Optionale vertiefte Stationsanalyse](#optionale-vertiefte-stationsanalyse)
+- [12-Uhr-Regel-Check](#12-uhr-regel-check)
 
 ## Interne Einzelprogramme
 
@@ -75,3 +77,35 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
 
 Spezialfälle nur bei Bedarf: [UUID-Migration](archiv/STATIONS-UUID-MIGRATION.md) und
 [Engine-Diagnose](ENGINE.md).
+
+## 12-Uhr-Regel-Check
+
+`analysis/noon_rule_check.py --data <csv> --fuel E10` (seit 0.49.3).
+Beantwortet auf dem echten Bestand die Frage, die am 17.09.2026 die
+Tages-Panels in Zweifel zog: **Zeigen die beobachteten Preise überhaupt die
+12-Uhr-Regel** (Erhöhung nur um 12:00, seit 2026-04-01 Gesetz,
+`engine/config.py: price_law_local`) — oder trägt der Bestand noch das
+Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
+stammen?
+
+Vier Zählungen, getrennt nach Zeitraum vor/nach `--law-date`:
+
+1. Anstiege ≥ Schwelle (Default 1 ct, wie die Engine) — am 12-Uhr-Punkt
+   (± `--noon-tol-min`) vs. außerhalb; Intervalle über `--max-gap-min`
+   sind nicht bewertbar (der Sprung könnte legal in der Lücke liegen) und
+   werden separat ausgewiesen statt als Verstoß gezählt.
+2. Stunde des Tagestiefs je Stationstag (Gates `--min-obs`/`--min-hours`,
+   sonst misst man Polling-Lücken statt Preismuster).
+3. Stunde des Tageshochs, gleiche Gates.
+4. Medianer Sprung über die 12-Uhr-Kante (letzte Beobachtung davor →
+   erste danach).
+
+Erwartung unter der Regel: Anstiege konzentrieren sich auf den
+12-Uhr-Punkt, das Tagestief wandert in den Block 6–12, das Hoch in
+12–18, die Kante ist deutlich positiv (≈ Mittagssprung). Bleibt das
+Abend-Tief stehen, stammen die Tages-Panels aus alten Mustern — dann ist
+die Lektüre der App-Statistiken zu korrigieren, nicht das Panel.
+
+Kein Modell, kein Schätzen; Ausgabe Konsole +
+`data/analysis/report_noon_rule.md` (`--report`). Eingabe sind dieselben
+CSVs wie für die Selektion (export via `data-tools/export_influx.py`).

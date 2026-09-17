@@ -2,12 +2,20 @@
 // (UI-NEUENTWURF §5.1 ④, §8 Tagesstreifen).
 //
 // Der Streifen ist reine Anzeige-Logik: letzte offene Preismeldung je
-// Stunde, in drei Tonlagen (eher günstig / Mitte / eher teuer) und mit
-// „jetzt“-Markierung. Keine Prognose, keine Empfehlung — das ist seine
-// Ehrlichkeits-Zusage (vorher Stand im Alltagstab, jetzt geteilter
-// Baustein von „Jetzt“ und „Stationen“).
+// Stunde **des heutigen Berliner Kalendertags**, in drei Tonlagen (eher
+// günstig / Mitte / eher teuer) und mit „jetzt“-Markierung. Keine
+// Prognose, keine Empfehlung — das ist seine Ehrlichkeits-Zusage (vorher
+// Stand im Alltagstab, jetzt geteilter Baustein von „Jetzt“ und
+// „Stationen“).
+//
+// Seit 0.49.3 strikt Kalendertag: Der Server liefert ein rollierendes
+// 24-h-Fenster; ohne den Schnitt standen in den Zellen 18–24 Uhr am
+// Nachmittag die Meldungen von **gestern Abend** — „Günstigste Stunde
+// 20–22 Uhr“ war dann buchstäblich eine Vergangenheits-Beobachtung, die
+// wie eine Planungsgröße aussah (Nutzer-Feedback 17.09.2026). Zukünftige
+// Stunden bleiben jetzt ehrlich leer.
 
-import { berlinHour, type Point } from "./data";
+import { berlinDay, berlinHour, type Point } from "./data";
 
 export type StripCell = {
   hour: number;
@@ -21,14 +29,18 @@ export type StripCell = {
  * der Pi-Fallback (Parität, B11): Zelle „24“ trägt die Mitternachtsmeldung
  * (00:00–00:59), Stunden 1–5 liegen außerhalb des 06–24-Fensters.
  *
- * Nur `status === "open"` mit finitem Preis zählt — leere Stunden
- * bleiben leer (keine erfundenen Werte). Die Tonlagen sind relative
- * Drittel des Tages-Extremwerts; ohne Messwerte bleibt alles „empty“.
+ * Nur `status === "open"` mit finitem Preis **vom heutigen Berliner
+ * Kalendertag** zählt — Meldungen von gestern (das Server-Fenster rolliert
+ * 24 h) fallen heraus, leere Stunden bleiben leer (keine erfundenen
+ * Werte). Die Tonlagen sind relative Drittel des Tages-Extremwerts; ohne
+ * Messwerte bleibt alles „empty“.
  */
 export function buildStripCells(
   points: Point[] | null | undefined,
   now = Date.now(),
 ): StripCell[] {
+  const today = berlinDay(now);
+  const todayKey = today ? today.join("-") : null;
   const byHour = new Map<number, number>();
   for (const p of points ?? []) {
     const ms = Date.parse(p.timestamp);
@@ -39,6 +51,9 @@ export function buildStripCells(
       !Number.isFinite(ms)
     )
       continue;
+    // Kalendertag-Schnitt (0.49.3): Gestern ist keine „heutige“ Stunde.
+    const pointDay = berlinDay(ms);
+    if (!todayKey || !pointDay || pointDay.join("-") !== todayKey) continue;
     const hour = Math.floor(berlinHour(new Date(ms)));
     // Mitternacht ist die Tagesgrenze des Streifens — nicht verloren.
     if (hour === 0) byHour.set(24, p.price);

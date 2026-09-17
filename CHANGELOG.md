@@ -4,6 +4,50 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.3] – 2026-09-17
+
+**Der Tagesstreifen lügt nicht mehr unbemerkt gestern hinein — und ein
+neues Prüf-Skript klärt, ob die echten Daten die 12-Uhr-Regel zeigen.**
+Auslöser ist die Nutzer-Rückfrage vom 17.09.2026 zu „Heute im Blick“:
+„Günstigste Stunde 20–22 Uhr“ las sich wie ein Tipp für heute Abend,
+stammte aber — weil das Server-Fenster 24 h rolliert — am Nachmittag aus
+den Meldungen von **gestern** Abend. Gleiches galt für Tagesmedian und
+„eher günstig am Abend“. Weil seit 01.04.2026 Erhöhungen nur noch um
+12:00 Uhr erlaubt sind (Österreich-Modell), ist doppelt wichtig, was die
+Panels eigentlich messen: Tagesstunden liegen unter der Regel in
+**zwei** Zyklen (Vormittag = Ende des gestrigen Abtrags).
+
+### Behoben
+
+- **Tagesstreifen strikt auf den Berliner Kalendertag geschnitten**
+  (`web/src/strip.ts::buildStripCells`, gilt für „Jetzt“ und
+  „Stationen“): Meldungen von gestern fallen heraus, zukünftige Stunden
+  bleiben ehrlich leer, statt das gestrige Abendniveau als „heute“
+  auszugeben. „Günstigste Stunde“, Tagesmedian/Spanne und die
+  Tagesrhythmus-Zeile beziehen sich damit wirklich auf den aktuellen Tag;
+  die Abdeckungs-Zeile bleibt unverändert ehrlich („x von 19 Stunden mit
+  offener Meldung“). Kein Gesetz festgeschrieben, keine Prognose geändert
+  — nur die Anzeige misst jetzt, was sie ausgibt zu messen. Regression:
+  `web/src/strip.test.ts` (gestrige Abendmeldungen erscheinen nicht als
+  heutige Zellen; heutige Früh- und Mitternachtsmeldung zählen weiter).
+
+### Neu
+
+- **`analysis/noon_rule_check.py` — der 12-Uhr-Regel-Check für den echten
+  Bestand.** Beantwortet auf exportierten Preis-CSVs (wie bei der
+  Selektion) getrennt vor/nach `--law-date` (Default 2026-04-01 =
+  `engine/config.py: price_law_local`): Wie viele Anstiege ≥ 1 ct laufen
+  am 12-Uhr-Punkt vs. außerhalb (zu lange Beobachtungslücken sind „nicht
+  bewertbar“ und werden separat ausgewiesen statt als Verstoß gezählt),
+  in welcher Stunde Tagestief und -hoch liegen (nur Tage mit genug
+  Beobachtungen — sonst misst man Polling-Lücken) und wie groß der Sprung
+  über die 12-Uhr-Kante ist. Damit entscheidet ein Blick in die eigenen
+  Daten, ob ein Panel wie „Günstigste Stunde 20–22 Uhr“ echtem aktuellem
+  Verhalten entspringt oder Vorgesetzes-Mustern — erst dann lohnt die
+  Debatte über Modell- oder Text-Anpassungen. Doku:
+  [docs/DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md#12-uhr-regel-check);
+  `docs/README.md` führt DATENWERKZEUGE.md wieder als geprüft.
+
 ## [0.49.2] – 2026-09-17
 
 **Lesbare Stations-Achse im Labor.** Nutzer-Feedback vom 17.09.2026: Bei

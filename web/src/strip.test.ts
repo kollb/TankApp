@@ -88,6 +88,35 @@ describe("buildStripCells", () => {
     expect(cells[14].tone).toBe("pricey"); // 1.95 = Maximum
   });
 
+  it("0.49.3: gestrige Abendmeldungen stehen nicht als heutige Zellen im Streifen", () => {
+    // Das Server-Fenster rolliert 24 h: Am 14.09. um 12:00 enthält es den
+    // 13.09. ab ~12:00. Ohne Kalendertag-Schnitt landeten die gestrigen
+    // 18–24-Uhr-Meldungen in den Zellen 18–24 — „Günstigste Stunde
+    // 20–22 Uhr“ war dann gestern, las sich aber wie ein Tipp für heute.
+    const mitGestern = [
+      ...points,
+      point(1.5, "2026-09-13T16:00:00Z"), // gestern 18:00 Berlin
+      // gestern 20:00 Berlin — ohne den Schnitt wäre das mit 1,55 die
+      // „günstigste Stunde“ des Streifens, gelesen als Tipp für heute.
+      point(1.55, "2026-09-13T18:00:00Z"),
+    ];
+    const cells = buildStripCells(mitGestern, NOW);
+    // Heute 18:00: keine Meldung (die gestrige 1,50 zählt nicht).
+    expect(cells[12].value).toBeNull();
+    // Heute 20:00: unverändert die heutige Meldung aus `points`.
+    expect(cells[14].value).toBe(1.95);
+  });
+
+  it("0.49.3: Meldungen von heute früh und heute Mitternacht zählen weiter", () => {
+    const mitMitternacht = [
+      ...points,
+      point(1.65, "2026-09-13T22:10:00Z"), // heute 00:10 Berlin
+    ];
+    const cells = buildStripCells(mitMitternacht, NOW);
+    expect(cells[1].value).toBe(1.7); // heute 07:30 Berlin
+    expect(cells[18].value).toBe(1.65); // Zelle 24 = heute 00:10 Berlin
+  });
+
   it("markiert die aktuelle Berliner Stunde", () => {
     const cells = buildStripCells(points, NOW);
     const current = cells.filter((cell) => cell.current);
