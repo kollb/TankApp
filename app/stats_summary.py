@@ -42,6 +42,19 @@ def set_publication_provider(fn) -> None:
     _publication_provider = fn
 
 
+def _read_publication() -> dict:
+    """**Ein** Lesevorgang je Anfrage (O23).
+
+    Drei Baufunktionen brauchen dieselbe Veröffentlichung (Backtest,
+    Güte-Kacheln, Live-Phase); vorher rief jede den Provider selbst auf und
+    parste die Datei damit dreimal je ``/stats/summary``. Der Provider bleibt
+    der einzige Zugang — ``app/data.py`` setzt ihn auf das memoisierte
+    ``publication(settings)``, ein circular import entsteht dadurch nicht.
+    """
+    pub = _publication_provider()
+    return pub if isinstance(pub, dict) else {}
+
+
 def _empty_backtest() -> dict[str, Any]:
     """Struktur des leeren Backtest-Felds — UI kann Felder abfragen ohne Fehler.
 
@@ -147,7 +160,7 @@ def _score_rows(
 
 
 def _build_backtest_from_publication(
-    metas: dict, target_city: str | None
+    metas: dict, target_city: str | None, pub: dict | None = None
 ) -> dict[str, Any]:
     """Baut das Backtest-Feld aus der Engine-Veröffentlichung (runtime/engine/current.json).
 
@@ -156,9 +169,11 @@ def _build_backtest_from_publication(
     Engine-Fits fehlen, wird das leere Backtest-Feld zurückgegeben — keine
     Demo-Daten, keine erfundenen Bewertungen.
     """
-    # publication(settings) braucht das Settings-Objekt, nicht metas.
-    # Das settings wird per closure vom Aufrufer (evaluate_stats_summary) gereicht.
-    pub = _publication_provider()
+    # publication(settings) braucht das Settings-Objekt, nicht metas — der
+    # Aufrufer (evaluate_stats_summary) reicht das einmal gelesene Bundle
+    # durch (O23); ohne Angabe gilt der Provider (Tests, Einzelaufrufe).
+    if pub is None:
+        pub = _read_publication()
     if not pub or not pub.get("forecasts"):
         return _empty_backtest()
 
@@ -284,14 +299,15 @@ def _safe_median(values: list) -> float | None:
     return round((s[n // 2 - 1] + s[n // 2]) / 2, 4)
 
 
-def _quality_metrics_from_publication() -> dict[str, Any]:
+def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]:
     """Liest reale Engine-Qualitäts-Metriken aus dem publizierten Bundle.
 
     Liefert ``None`` für alle Felder, wenn keine Engine-Veröffentlichung
     existiert. Das ist explizit — die GUI darf keine Demo-Zahlen
     anzeigen, sondern soll "noch keine Daten" rendern.
     """
-    pub = _publication_provider()
+    if pub is None:
+        pub = _read_publication()
     if not pub or not pub.get("forecasts"):
         return {
             "top3_hit_rate": None,
@@ -345,7 +361,7 @@ def _int_or_none(value: Any) -> int | None:
     return parsed if parsed >= 0 else None
 
 
-def _live_phase_from_publication() -> dict[str, Any] | None:
+def _live_phase_from_publication(pub: dict | None = None) -> dict[str, Any] | None:
     """Übergangsregel (bewertete Live-Tage) aus der Engine-Veröffentlichung.
 
     Gezählt wird pro Station/Kraftstoff aus ``runtime/engine/current.json`` →
@@ -358,7 +374,8 @@ def _live_phase_from_publication() -> dict[str, Any] | None:
     Live-Abdeckungsdaten“ statt einer erfundenen Tageszahl. Die Schwelle
     kommt aus der Engine (Default 90 Tage), nicht aus der Oberfläche.
     """
-    pub = _publication_provider() or {}
+    if pub is None:
+        pub = _read_publication()
     rows = [p for p in (pub.get("policies") or []) if isinstance(p, dict)]
     if not rows:
         return None
@@ -412,13 +429,16 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
     city = params.get("city")
 
     metas, problem = metadata(live_data.settings)
+    # O23: Die Veröffentlichung wird **einmal** gelesen und an die drei
+    # Baufunktionen weitergereicht — vorher parste jede der drei die Datei.
+    pub = _read_publication()
 
     # Schicht A: Backtest — aus engine/current.json, sonst leer
     if problem:
         backtest = _empty_backtest()
         backtest["error_code"] = problem
     else:
-        backtest = _build_backtest_from_publication(metas, city)
+        backtest = _build_backtest_from_publication(metas, city, pub)
 
     # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo)
     store = load_store(live_data.settings)
@@ -431,11 +451,11 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
     thresholds, tuning = active_thresholds(live_advice, auto_apply=auto_apply)
 
     # Güte-Kacheln: aus engine/current.json, sonst None
-    quality_metrics = _quality_metrics_from_publication()
+    quality_metrics = _quality_metrics_from_publication(pub)
     # Live-Abdeckung (Übergangsregel): aus den publizierten Policies, sonst None.
     # Die GUI darf daraus keinen Kalender-Countdown ableiten, wenn die Engine
     # nichts geliefert hat — fehlende Daten bleiben fehlende Daten.
-    live_phase = _live_phase_from_publication()
+    live_phase = _live_phase_from_publication(pub)
 
     return {
         "generated_at": live_data.clock().isoformat(),
