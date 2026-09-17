@@ -1522,3 +1522,133 @@ def test_template_microcopy_rules():
     assert bang is None, f"Ausrufezeichen am Satzende: {bang.group(0)!r}"
     address = re.search(r"\b(du|dir|dich)\b", text, flags=re.IGNORECASE)
     assert address is None, f"direkte Anrede: {address.group(0)!r}"
+
+
+# ---------------------------------------------------------------------------
+# O44: Der Fallback spricht die Form der gebauten App (web/dist)
+# ---------------------------------------------------------------------------
+#
+# Befund 17.09.2026: Im Browser lief die gebaute App (SPA, Index-Chunk aus
+# ``web/dist``), während die Anfragen der Pi (Port 8000) beantwortete — der
+# Proxy hielt das NAS für offline. Die SPA las daraufhin ``data.cities`` aus
+# einer Antwort, die kein ``cities`` trug (TypeError, weiße Seite), und der
+# Verlauf antwortete auf ``station_id`` mit 400, weil der Fallback nur
+# ``station`` kannte. Beides ist derselbe Sachverhalt: Die gleichnamigen
+# Endpunkte müssen die Form liefern, die die App dort liest.
+
+
+def test_stations_payload_carries_the_fields_the_app_reads(tmp_path):
+    """``cities`` in der Schreibweise der Zeilen, ``observed_at`` je Station."""
+    server, _ = start_fallback_server(tmp_path, poll_lines=default_poll_lines())
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        data = get_json(base, "/api/v1/stations?fuel=e10")
+        # Die App wählt ihre aktive Stadt aus ``cities`` und filtert dann über
+        # ``row.city`` — beide müssen dieselbe Schreibweise tragen (Label),
+        # sonst findet sie ihre eigenen Stationen nicht mehr.
+        assert data["cities"] == sorted(data["cities"], key=data["cities"].index)
+        assert set(data["cities"]) == {s["city"] for s in data["stations"]}
+        assert "Frankfurt" in data["cities"]
+        # Alter/Frische je Zeile: der Puffer führt den Poll-Stempel als
+        # ``fetched_at``, die App liest ``observed_at``.
+        for row in data["stations"]:
+            assert row["observed_at"] == row["fetched_at"]
+            assert row["observed_at"]
+        # Die App-Form verlangt diese Felder; ohne sie fällt sie in den
+        # Leerzustand, obwohl Preise da sind.
+        for key in ("generated_at", "fuel", "fresh_prices", "nas_status"):
+            assert key in data
+        assert data["calibrated"] is False and data["decision_ready"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_stations_cities_stay_label_city_even_with_short_set_key(tmp_path):
+    """Kurzer Set-Key („FRA“) darf die Labels der Zeilen nicht verdrängen."""
+    meta_path = tmp_path / "polling.json"
+    meta_path.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "FRA": {
+                        "label": "Frankfurt",
+                        "batch": [UID_B],
+                        "stations": [{"uuid": UID_B, "name": "Station Beta"}],
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    today = dt.datetime.now(LOCAL_TZ).date()
+    lines = [
+        {
+            "fetched_at": local_iso(today, 7, 5),
+            "source": "test",
+            "city": "Frankfurt",
+            "prices": {UID_B: {"status": "open", "e10": 1.700}},
+        }
+    ]
+    # Ohne Metadaten kennt der Puffer nur UUID und Stadt; Namen und Set-Key
+    # kommen aus der polling.json — genau der Weg, der „FRA“ und „Frankfurt“
+    # auseinanderhält.
+    ctx = make_ctx(tmp_path, poll_lines=lines, with_forecast=False, with_meta=False)
+    ctx.meta.paths = [meta_path]
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        data = get_json(base, "/api/v1/stations?fuel=e10")
+        assert data["cities"] == ["Frankfurt"]
+        assert data["stations"][0]["city"] == "Frankfurt"
+        # Das Fallback-Template behält seine eigene Liste mit dem Set-Key.
+        health = get_json(base, "/api/v1/health")
+        assert health["city_options"] == [{"value": "FRA", "label": "Frankfurt"}]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_series_accepts_the_app_station_id(tmp_path):
+    """``station_id`` (App) und ``station`` (Template) meinen dieselbe UUID."""
+    today = dt.datetime.now(LOCAL_TZ).date()
+    lines = [
+        poll_line(today, 7, 5, {"status": "open", "e10": 1.700}),
+        poll_line(today, 7, 55, {"status": "open", "e10": 1.690}),
+    ]
+    server, _ = start_fallback_server(tmp_path, poll_lines=lines, with_forecast=False)
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        by_id = get_json(base, f"/api/v1/series?station_id={UID_A}&fuel=e10")
+        by_name = get_json(base, f"/api/v1/series?station={UID_A}&fuel=e10")
+        # Nur der Antwort-Zeitstempel darf sich unterscheiden.
+        assert {k: v for k, v in by_id.items() if k != "generated_at"} == {
+            k: v for k, v in by_name.items() if k != "generated_at"
+        }
+        assert by_id["max"]["value"] == 1.690
+        # Ohne beide Namen bleibt es der 400er — kein stilles Raten.
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            get_json(base, "/api/v1/series?fuel=e10")
+        assert exc.value.code == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_client_disconnect_while_reading_request_line_stays_silent(tmp_path, capsys):
+    """Abgebrochene Keep-Alive-Verbindungen erzeugen keinen Journald-Traceback."""
+    ctx = make_ctx(tmp_path, with_forecast=False)
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    try:
+        try:
+            raise ConnectionResetError(104, "Connection reset by peer")
+        except ConnectionResetError:
+            server.handle_error(None, ("127.0.0.1", 12345))
+
+        captured = capsys.readouterr()
+        assert "ConnectionResetError" not in captured.err
+        assert "Exception occurred" not in captured.err
+    finally:
+        server.server_close()

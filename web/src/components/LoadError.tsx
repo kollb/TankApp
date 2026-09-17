@@ -27,9 +27,14 @@ const BUTTON =
  *   Ohne `onRetry` erscheint kein Knopf, statt ihn tot zu rendern.
  * - `compact`: schmale Variante für Inline-Boxen (z. B. die Empfehlungs-Zeile
  *   im Alltag), die nicht wie ein leeres Panel aussehen sollen.
+ * - `detail`: bereinigte Ursache (z. B. `decide.detail`), erscheint als
+ *   „Ursache: …“ unter dem Code — derselbe Wortlaut wie in `JobCard`
+ *   (`error_detail`). Ohne Detail bleibt die Box unverändert; der Rohtext
+ *   kommt nie aus der GUI, sondern nur so, wie `app/errors.py` ihn freigibt.
  */
 export function LoadError({
   errorCode = null,
+  detail = null,
   fallback,
   onRetry,
   retryLabel = "Erneut laden",
@@ -38,6 +43,7 @@ export function LoadError({
   children,
 }: {
   errorCode?: string | null;
+  detail?: string | null;
   fallback: string;
   onRetry?: () => void;
   retryLabel?: string;
@@ -60,6 +66,15 @@ export function LoadError({
         <div className="min-w-0 flex-1">
           <p className="m-0">{text}</p>
           {children}
+          {detail ? (
+            <p
+              className={`m-0 mt-1.5 break-words ${
+                compact ? "font-mono text-xs text-rose-300/80" : "text-xs text-slate-400"
+              }`}
+            >
+              <span className="font-semibold">Ursache:</span> {detail}
+            </p>
+          ) : null}
           {errorCode ? (
             <p
               className={`m-0 mt-1.5 font-mono text-xs ${

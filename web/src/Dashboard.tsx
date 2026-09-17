@@ -182,6 +182,7 @@ function DashboardShell() {
     handleDismissDue,
     handleIntent,
     showJobLog,
+    fallbackNotice,
   } = ov;
 
   /* V3 (GUI-TEXT-BEFUND): ein Mitteilungs-Register mit Rang statt acht
@@ -228,6 +229,16 @@ function DashboardShell() {
             text: connectionProblem,
             actionLabel: prices.error ? null : "Einrichtung ansehen",
             onAction: () => gotoTab("system"),
+          },
+        ] as NoticeItem[])
+      : []),
+    ...(fallbackNotice
+      ? ([
+          {
+            id: "pi-fallback",
+            rank: "warn",
+            text: fallbackNotice,
+            note: "Sobald das NAS wieder antwortet, lädt die Ansicht neu — dann stehen auch Prognosen und Empfehlungen bereit.",
           },
         ] as NoticeItem[])
       : []),

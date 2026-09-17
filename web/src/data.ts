@@ -31,7 +31,35 @@ export type Stations = {
   anchors?: Record<string, { lat: number; lon: number }>;
   connection_error: string | null;
   fresh_prices: number;
+  /**
+   * Nur der RP2-Fallback setzt das: ``"offline"``, wenn der Pi antwortet,
+   * weil das NAS nicht erreichbar ist (``rp2/fallback_gui.py``). Die Felder
+   * ``cities``/``stations`` sind dort dieselben — die Herkunft ist damit
+   * sichtbar, statt als NAS-Antwort durchzugehen.
+   */
+  nas_status?: "online" | "offline";
 };
+
+/**
+ * O44: Ein Stations-Payload muss tragen, wofür es gehalten wird.
+ *
+ * Befund 17.09.2026: Im Betrieb antwortete der Pi-Fallback (`rp2/fallback_gui.py`,
+ * Port 8000) auf eine SPA geladen hatte — dessen `/api/v1/stations` liefert
+ * ``{fuel, stations, fresh_prices, nas_status}`` **ohne** ``cities``. Die
+ * Ansicht las ``data?.cities.includes(city)``: ``data`` war gesetzt, ``cities``
+ * nicht — ``TypeError: Cannot read properties of undefined (reading 'includes')``
+ * und die ganze App blieb weiß. Ein einzelnes Fremd-Payload darf nie mehr als
+ * eine leere Seite kosten.
+ *
+ * ``null`` heißt hier „kein Stations-Payload“ und wird von der Ansicht wie
+ * „keine Daten“ behandelt (ehrlicher Zustand); ein fehlendes ``cities`` ist
+ * genau das, kein leeres Set.
+ */
+export function usableStations(payload: Stations | null | undefined): Stations | null {
+  if (!payload) return null;
+  if (!Array.isArray(payload.cities) || !Array.isArray(payload.stations)) return null;
+  return payload;
+}
 /** Fortschritt eines laufenden NAS-Jobs (app/progress.py → /api/v1/health). */
 export type JobProgress = {
   job: string;
@@ -752,6 +780,12 @@ export type DecideResult = {
     fitted_at?: string | null;
   };
   error_code?: string | null;
+  /**
+   * O44: Bereinigte Ursache eines Fehlerpayloads (app/errors.py, ohne Pfade
+   * und Token). Gesetzt statt ``undefined``, wenn der Server die Empfehlung
+   * nicht berechnen konnte — dieselbe Sprache wie ``error_detail`` der Jobs.
+   */
+  detail?: string | null;
 };
 
 /**

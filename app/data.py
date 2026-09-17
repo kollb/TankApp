@@ -2055,8 +2055,19 @@ class LiveData:
             raise e
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
-        except Exception:
-            return {"error_code": "decide_failed"}
+        except Exception as exc:
+            # O44: „decide_failed“ war das Ende der Diagnose — die Ursache
+            # steckte in einem stummen ``except``, während die GUI nur einen
+            # Code zeigte (Befund 17.09.2026: ``TypeError`` an ``null``-Draws).
+            # Die bereinigte Ursache (ohne Pfade/Token, app/errors.py) geht
+            # jetzt in den Container-Log **und** als ``detail`` in die Antwort
+            # — dieselbe Sprache wie ``error_detail`` der Jobs
+            # (app/worker.py), dieselbe Anzeige („Ursache: …“, JobCard).
+            from .errors import public_detail
+
+            detail = public_detail(exc)
+            print(f"decide: fehlgeschlagen — {detail}", flush=True)
+            return {"error_code": "decide_failed", "detail": detail}
 
     def episodes(self, status: str | None = None):
         """Liefert Episoden (z. B. ?status=due für Due-Prompt beim Öffnen)."""
