@@ -1309,6 +1309,22 @@ der abgerechneten Fälle gegen die verstrichenen. Wenn O29 (Push) kommt, ist
 das dieselbe Größe: „3 von 5 Fenstern genutzt“. Ein Test, der eine Episode
 mit `status="expired"` durch die Zusammenfassung verfolgt.
 
+**Umgesetzt in 0.45.0:** `compute_advice_stats` zählt genutzte (`resolved`)
+gegen verstrichene (`expired`) Fenster je 7/30 Tage (`episodes_used_7d`,
+`episodes_expired_7d`, `episodes_used_30d`, `episodes_expired_30d`) plus
+laufende Folgen (`episodes_open`) — nur Folgen mit mindestens einer echten
+Empfehlung (`wait`/`refuel_now`/`refuel_elsewhere`), datiert nach `closed_at`
+(Fallback `opened_at`). Reine `no_advice`-Folgen hatten kein Fenster und
+zählen nirgends; offene Folgen laufen noch und stehen in keiner der beiden
+Seiten. Das Labor (Vertrauens-Konto) zeigt daraus „x von y Fenstern
+genutzt“ mit der Aufschlüsselung abgerechneter Empfehlungen gegen
+verstrichene Fenster (`windowsUsedLine`, Zahlen über `countLabel`,
+Alt-Payloads ohne O38-Zähler erfinden keine Bilanz). Nachweis:
+`tests/test_o38_windows.py` (expired-Folge in beiden Zählern, Monats-Fall,
+no_advice-Ausschluss, offene Folgen, `closed_at`-Fallback),
+`windowsUsedLine`-Tests in `web/src/data.test.ts` und Render-Tests in
+`web/src/views/Labor.test.tsx`; `format-convention.test.ts` bleibt grün.
+
 ### O39 — Das Ledger ist im LAN für alle lesbar
 
 **Beleg.** `app/server.py:1045` und `:1050` binden `0.0.0.0:1355`. Das

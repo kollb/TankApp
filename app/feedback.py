@@ -1589,6 +1589,44 @@ def compute_advice_stats(
             snapshots_total += 1
             if snap.get("id") not in settled_ids:
                 n_pending += 1
+    # O38: Fensterbilanz — genutzte vs. verstrichene Fenster je Woche/Monat.
+    # Nur Folgen mit mindestens einer echten Empfehlung sind „Fenster“ (reine
+    # no_advice-Folgen hatten keines, das hätte verstreichen können).
+    # „Genutzt“ = resolved (ein Beleg hat die Folge geschlossen), „verstrichen“
+    # = expired (72 h ohne Fill oder dismiss) — beides datiert nach closed_at
+    # (Fallback opened_at). Offene Folgen laufen noch und zählen in keine der
+    # beiden Seiten. Das Settlement ist davon unabhängig: Auch verstrichene
+    # Fenster werden abgerechnet (Konzept §5.4) — die Bilanz ist die
+    # Gegenprobe zur Trefferquote, nicht ihre Zerlegung.
+    cutoff_7d = now - dt.timedelta(days=7)
+    episodes_used_7d = episodes_expired_7d = 0
+    episodes_used_30d = episodes_expired_30d = 0
+    episodes_open = 0
+    for ep in episodes:
+        if not any(
+            s.get("action") in ("wait", "refuel_now", "refuel_elsewhere")
+            for s in ep.get("snapshots", []) or []
+        ):
+            continue
+        status = ep.get("status")
+        if status in ("open", "waiting", "due"):
+            episodes_open += 1
+            continue
+        if status not in ("resolved", "expired"):
+            continue
+        stamp = _parse_ts(ep.get("closed_at")) or _parse_ts(ep.get("opened_at"))
+        if stamp is None:
+            continue
+        if stamp >= cutoff:
+            if status == "resolved":
+                episodes_used_30d += 1
+            else:
+                episodes_expired_30d += 1
+        if stamp >= cutoff_7d:
+            if status == "resolved":
+                episodes_used_7d += 1
+            else:
+                episodes_expired_7d += 1
     n_void_all = sum(
         1
         for s in store.get("settlements", [])
@@ -1836,6 +1874,13 @@ def compute_advice_stats(
         # die Intervall-Obergrenze gegen Basis- und Klima-Referenz.
         "snapshots_total": snapshots_total,
         "n_pending": n_pending,
+        # O38: Fensterbilanz — genutzte (resolved) vs. verstrichene (expired)
+        # Fenster je Woche/Monat plus laufende Folgen (in keiner der Seiten).
+        "episodes_used_7d": episodes_used_7d,
+        "episodes_expired_7d": episodes_expired_7d,
+        "episodes_used_30d": episodes_used_30d,
+        "episodes_expired_30d": episodes_expired_30d,
+        "episodes_open": episodes_open,
         "wins": wins,
         "losses": losses,
         "ties": ties,

@@ -847,6 +847,12 @@ export type StatsSummary = {
     /** Ausgespielte vs. noch offene Empfehlungen (Zähl-Ehrlichkeit). */
     snapshots_total?: number;
     n_pending?: number;
+    /** O38: Fensterbilanz — genutzte vs. verstrichene Fenster je Woche/Monat. */
+    episodes_used_7d?: number;
+    episodes_expired_7d?: number;
+    episodes_used_30d?: number;
+    episodes_expired_30d?: number;
+    episodes_open?: number;
     wins: number;
     losses: number;
     ties: number;
@@ -3272,6 +3278,45 @@ export function m7BrierDetail(advice?: M7Advice | null): string {
   }
   const limit = deNumber(advice?.brier_threshold ?? M7_BRIER_THRESHOLD);
   return `Brier ${deNumber(brier)} (Ziel < ${limit})`;
+}
+
+export type WindowsAdvice = {
+  /** Abgerechnete Empfehlungen im 30-Tage-Fenster (Gegenprobe-Nenner). */
+  n?: number | null;
+  /** O38: genutzte vs. verstrichene Fenster je Woche/Monat. */
+  episodes_used_7d?: number | null;
+  episodes_expired_7d?: number | null;
+  episodes_used_30d?: number | null;
+  episodes_expired_30d?: number | null;
+};
+
+/**
+ * Fensterbilanz (O38): „x von y Fenstern genutzt“ plus die Aufschlüsselung
+ * abgerechneter Empfehlungen gegen verstrichene Fenster — die Gegenprobe
+ * zur Trefferquote. `null` ohne Statistik-Lauf oder ohne O38-Zähler
+ * (Alt-Payloads erfinden keine Bilanz).
+ */
+export function windowsUsedLine(advice?: WindowsAdvice | null): string | null {
+  const used30 = advice?.episodes_used_30d ?? null;
+  const expired30 = advice?.episodes_expired_30d ?? null;
+  if (used30 == null || expired30 == null) return null;
+  const total30 = used30 + expired30;
+  if (total30 === 0) {
+    return "Fensterbilanz (30 Tage): noch keine Fenster geschlossen.";
+  }
+  const settled = advice?.n ?? 0;
+  const settledWord = `Empfehlung${settled === 1 ? "" : "en"}`;
+  const used7 = advice?.episodes_used_7d ?? 0;
+  const expired7 = advice?.episodes_expired_7d ?? 0;
+  const week =
+    used7 + expired7 > 0
+      ? ` — 7 Tage: ${countLabel(used7)} von ${countLabel(used7 + expired7)} genutzt`
+      : "";
+  return (
+    `Fensterbilanz (30 Tage): ${countLabel(used30)} von ${countLabel(total30)} ` +
+    `Fenstern genutzt (${countLabel(settled)} ${settledWord} abgerechnet · ` +
+    `${countLabel(expired30)} Fenster verstrichen)${week}.`
+  );
 }
 
 /**

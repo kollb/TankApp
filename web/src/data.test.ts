@@ -64,6 +64,7 @@ import {
   splitOnGap,
   transitionRuleLine,
   triggerSkipLabel,
+  windowsUsedLine,
   type Heatmap,
   type Station,
 } from "./data";
@@ -578,6 +579,52 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(m7BrierDetail(null)).toBe(
       "Brier noch nicht messbar — braucht bewertete Empfehlungen.",
     );
+  });
+
+  it("shows used vs. lapsed windows with the settled counter (O38)", () => {
+    // O38: „x von y Fenstern genutzt“ plus abgerechnete Empfehlungen gegen
+    // verstrichene Fenster — die Gegenprobe zur Trefferquote.
+    expect(
+      windowsUsedLine({
+        n: 12,
+        episodes_used_7d: 1,
+        episodes_expired_7d: 1,
+        episodes_used_30d: 3,
+        episodes_expired_30d: 2,
+      }),
+    ).toBe(
+      "Fensterbilanz (30 Tage): 3 von 5 Fenstern genutzt " +
+        "(12 Empfehlungen abgerechnet · 2 Fenster verstrichen) — 7 Tage: 1 von 2 genutzt.",
+    );
+  });
+
+  it("uses the singular and skips the week without closed windows (O38)", () => {
+    expect(
+      windowsUsedLine({
+        n: 1,
+        episodes_used_7d: 0,
+        episodes_expired_7d: 0,
+        episodes_used_30d: 1,
+        episodes_expired_30d: 0,
+      }),
+    ).toBe(
+      "Fensterbilanz (30 Tage): 1 von 1 Fenstern genutzt " +
+        "(1 Empfehlung abgerechnet · 0 Fenster verstrichen).",
+    );
+  });
+
+  it("invents no balance without closed windows or legacy payloads (O38)", () => {
+    expect(
+      windowsUsedLine({
+        n: 0,
+        episodes_used_30d: 0,
+        episodes_expired_30d: 0,
+      }),
+    ).toBe("Fensterbilanz (30 Tage): noch keine Fenster geschlossen.");
+    // Alt-Payloads ohne O38-Zähler: keine Bilanz statt einer erfundenen.
+    expect(windowsUsedLine({ n: 12 })).toBeNull();
+    expect(windowsUsedLine(null)).toBeNull();
+    expect(windowsUsedLine(undefined)).toBeNull();
   });
 
   it("keeps the 90-day transition rule in its own line", () => {

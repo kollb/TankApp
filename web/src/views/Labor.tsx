@@ -51,6 +51,7 @@ import {
   rowOutcome,
   timeLabel,
   timeSpanLabel,
+  windowsUsedLine,
   type AdviceDiary,
   type Forecast,
   type Health,
@@ -356,6 +357,8 @@ export function LaborView(props: LaborViewProps) {
   }, [focusSection, onFocusHandled]);
 
   const advice = statsSummaryRes.data?.live_advice ?? null;
+  // O38: Fensterbilanz („x von y Fenstern genutzt“) — null ohne O38-Zähler.
+  const windowsLine = windowsUsedLine(advice);
   const quality = statsSummaryRes.data?.quality_metrics ?? null;
   const wins = Number(advice?.wins ?? 0);
   const losses = Number(advice?.losses ?? 0);
@@ -529,6 +532,9 @@ export function LaborView(props: LaborViewProps) {
         </p>
         {m7Line && (
           <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7Line}</p>
+        )}
+        {windowsLine && (
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{windowsLine}</p>
         )}
         <button
           onClick={() => jumpTo("sicherheit")}

@@ -771,6 +771,12 @@ Verarbeitung (NAS, nach Settlement-Job):
 Ein Fill ändert Schicht-B-Zahlen **nicht nachträglich**. Sonst würde
 „ich hab anders getankt“ die Kalibrierung der Ampel verbiegen.
 
+Seit 0.45.0 (O38) meldet Schicht B zusätzlich die **Fensterbilanz**:
+genutzte (`resolved`) gegen verstrichene (`expired`) Fenster je 7/30 Tage —
+nur Folgen mit echter Empfehlung, datiert nach `closed_at`. Sie ist die
+Gegenprobe zur Trefferquote (wie viele Fenster ungenutzt verstrichen),
+nicht ihre Zerlegung: Auch verstrichene Fenster werden gesettled.
+
 #### Schicht C — Wallet / Fills (selten, persönlich)
 
 ~1,2 Füllungen/Woche. Zu wenig für Brier, genug für drei Dinge:
