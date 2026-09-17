@@ -861,6 +861,12 @@ export type BacktestStationScore = {
   name: string;
   brand: string;
   city: string;
+  /**
+   * O21: Die Parameter gehören zur Zahl. Ein Euro-Wert ohne Tankmenge und
+   * Schwelle beantwortet keine Frage — beide stehen je Score-Block dabei.
+   */
+  eps?: number;
+  liters?: number;
   n: number;
   n_wait: number;
   hit_wait: number | null;
@@ -915,6 +921,8 @@ export type StatsSummary = {
     decisionHour: number;
     defaultEps: number;
     defaultLiters: number;
+    /** O21: „profile“ = Tankmenge aus dem Profil, „default“ = Platzhalter. */
+    litersSource?: string;
     days: string[];
     stations: Array<{
       id: string;
@@ -1135,6 +1143,16 @@ export type ThresholdTuning = {
   } | null;
 };
 
+/**
+ * O21: Runden wie der Server (`round(x, n)` in Python). Ohne gemeinsame
+ * Rundung weichen Labor (Server) und Werkstatt (GUI) in der letzten Stelle
+ * ab — und genau daraus entstand der `pot_share`-Einheitenfehler.
+ */
+function round(value: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round((value + Number.EPSILON) * f) / f;
+}
+
 export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
   const wait = r.mu >= eps;
   const s = r.s;
@@ -1189,28 +1207,34 @@ export function scoreRows(
     if (r.s > 0) sPos++;
   }
   const n = rows.length;
-  const toEur = (ct: number) => (ct / 100) * liters;
+  const toEur = (ct: number) => round((ct / 100) * liters, 2);
   const sumSmartEur = toEur(sumSmart);
-  const pot = Math.max(sumBest, 1e-9);
   return {
     station_id: stationId,
     name: stationId,
     brand: "",
     city: "",
+    // O21: Die Parameter gehören zur Zahl — dieselben Felder wie im
+    // Server-Score (`app/stats_summary.py::_score_rows`).
+    eps,
+    liters,
     n,
     n_wait: nWait,
-    hit_wait: nWait ? hitWait / nWait : null,
+    hit_wait: nWait ? round(hitWait / nWait, 4) : null,
     n_now: nNow,
-    hit_now: nNow ? hitNow / nNow : null,
+    hit_now: nNow ? round(hitNow / nNow, 4) : null,
     sum_smart_eur: sumSmartEur,
     sum_commit_eur: toEur(sumCommit),
     sum_best_eur: toEur(sumBest),
-    avg_regret_ct: n ? sumRegretCt / n : 0,
-    avg_regret_eur: n ? toEur(sumRegretCt) / n : 0,
-    p_avg: nP ? sumP / nP : 0,
+    avg_regret_ct: n ? round(sumRegretCt / n, 3) : 0,
+    avg_regret_eur: n ? round(toEur(sumRegretCt) / n, 3) : 0,
+    p_avg: nP ? round(sumP / nP, 4) : 0,
     p_known: nP > 0,
-    hit_freq: n ? sPos / n : 0,
-    pot_share: sumSmartEur / pot,
+    hit_freq: n ? round(sPos / n, 4) : 0,
+    // O21-Fix: vorher `sumSmartEur / sumBest` — Euro durch Cent. Der Anteil
+    // am Potenzial ist ein Verhältnis **gleicher** Einheiten (ct/ct), genau
+    // wie im Server. `tests/fixtures/score_parity.json` hält beide fest.
+    pot_share: sumBest > 0 ? round(sumSmart / sumBest, 4) : n ? 0 : 0,
   };
 }
 

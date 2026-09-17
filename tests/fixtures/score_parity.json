@@ -1,0 +1,136 @@
+{
+  "_comment": "O21: Eine Quelle für die Score-Formel. Beide Implementierungen (app/stats_summary.py::_score_rows und web/src/data.ts::scoreRows) müssen diese Fälle identisch liefern. Geändert wird die Formel nur hier — sonst weichen Labor (Server) und Werkstatt (GUI) ab.",
+  "rows": [
+    {
+      "day": "2026-09-01",
+      "cls": 0,
+      "mu": 2.4,
+      "p": 0.82,
+      "s": 3.1,
+      "best": 3.1,
+      "predHour": 19
+    },
+    {
+      "day": "2026-09-02",
+      "cls": 0,
+      "mu": 0.4,
+      "p": 0.65,
+      "s": -1.2,
+      "best": 2.0,
+      "predHour": 18
+    },
+    {
+      "day": "2026-09-03",
+      "cls": 1,
+      "mu": 1.0,
+      "p": null,
+      "s": 0.0,
+      "best": 0.5,
+      "predHour": 17
+    },
+    {
+      "day": "2026-09-04",
+      "cls": 0,
+      "mu": 3.0,
+      "p": 0.9,
+      "s": -0.5,
+      "best": 4.0,
+      "predHour": 20
+    },
+    {
+      "day": "2026-09-05",
+      "cls": 1,
+      "mu": 1.5,
+      "p": null,
+      "s": 2.2,
+      "best": 2.2,
+      "predHour": 16
+    }
+  ],
+  "cases": [
+    {
+      "eps": 1.0,
+      "liters": 40.0,
+      "expected": {
+        "eps": 1.0,
+        "liters": 40.0,
+        "n": 5,
+        "n_wait": 4,
+        "hit_wait": 0.5,
+        "n_now": 1,
+        "hit_now": 1.0,
+        "sum_smart_eur": 2.12,
+        "sum_commit_eur": 1.92,
+        "sum_best_eur": 4.72,
+        "avg_regret_ct": 1.3,
+        "avg_regret_eur": 0.52,
+        "p_avg": 0.79,
+        "hit_freq": 0.4,
+        "pot_share": 0.4492
+      }
+    },
+    {
+      "eps": 2.5,
+      "liters": 40.0,
+      "expected": {
+        "eps": 2.5,
+        "liters": 40.0,
+        "n": 5,
+        "n_wait": 1,
+        "hit_wait": 0.0,
+        "n_now": 4,
+        "hit_now": 0.5,
+        "sum_smart_eur": 0.0,
+        "sum_commit_eur": -0.2,
+        "sum_best_eur": 4.72,
+        "avg_regret_ct": 2.36,
+        "avg_regret_eur": 0.944,
+        "p_avg": 0.79,
+        "hit_freq": 0.4,
+        "pot_share": 0.0
+      }
+    },
+    {
+      "eps": 1.0,
+      "liters": 60.0,
+      "expected": {
+        "eps": 1.0,
+        "liters": 60.0,
+        "n": 5,
+        "n_wait": 4,
+        "hit_wait": 0.5,
+        "n_now": 1,
+        "hit_now": 1.0,
+        "sum_smart_eur": 3.18,
+        "sum_commit_eur": 2.88,
+        "sum_best_eur": 7.08,
+        "avg_regret_ct": 1.3,
+        "avg_regret_eur": 0.78,
+        "p_avg": 0.79,
+        "hit_freq": 0.4,
+        "pot_share": 0.4492
+      }
+    },
+    {
+      "eps": 2.5,
+      "liters": 60.0,
+      "expected": {
+        "eps": 2.5,
+        "liters": 60.0,
+        "n": 5,
+        "n_wait": 1,
+        "hit_wait": 0.0,
+        "n_now": 4,
+        "hit_now": 0.5,
+        "sum_smart_eur": 0.0,
+        "sum_commit_eur": -0.3,
+        "sum_best_eur": 7.08,
+        "avg_regret_ct": 2.36,
+        "avg_regret_eur": 1.416,
+        "p_avg": 0.79,
+        "hit_freq": 0.4,
+        "pot_share": 0.0
+      }
+    }
+  ]
+}

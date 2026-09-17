@@ -305,3 +305,28 @@ def _find(store: dict[str, Any], profile_id: str) -> dict[str, Any] | None:
         if isinstance(p, dict) and p.get("id") == profile_id:
             return p
     return None
+
+
+def active_profile(store: dict[str, Any]) -> dict[str, Any] | None:
+    """Das aktive Profil — ``None``, wenn keines aktiv ist (ehrlich leer).
+
+    O21: Server-Pfade (Score, Selektion) brauchen dieselbe Tankmenge wie die
+    GUI. Vorher rechnete jede Stelle mit ihrem eigenen Default (40 L), während
+    das Profil 10–100 L erlaubt.
+    """
+    active = public_profiles(store)["active"]
+    return _find(store, active) if active is not None else None
+
+
+def active_liters(store: dict[str, Any]) -> tuple[float, str]:
+    """Tankmenge des aktiven Profils plus Herkunft (``profile``/``default``).
+
+    Die Herkunft gehört zur Zahl: „40 L“ aus dem Profil und „40 L“ als
+    Platzhalter sind nicht dieselbe Aussage (O21).
+    """
+    profile = active_profile(store)
+    if profile is not None:
+        value = _to_float(profile.get("liters"))
+        if value is not None:
+            return float(value), "profile"
+    return float(DEFAULTS["liters"]), "default"

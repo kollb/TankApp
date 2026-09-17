@@ -1168,6 +1168,15 @@ export function LaborView(props: LaborViewProps) {
                     Bewertet werden Ratschläge, nicht deine Tankungen. Tagesanker
                     ist {anchorLabel} — die Ausgangslage jeder Zeile.
                   </p>
+                  {/* O21: Eine Euro-Zahl ohne Tankmenge und Schwelle
+                      beantwortet keine Frage — beide stehen dabei. */}
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Gerechnet für {deTrimmed(liters, 0)} L (
+                    {labData?.litersSource === "profile"
+                      ? "aus deinem Profil"
+                      : "Platzhalter, kein Profil aktiv"}
+                    ) und ε = {centPerLiter(eps, 2)}.
+                  </p>
                 </>
               )}
             </div>
@@ -1321,7 +1330,10 @@ export function LaborView(props: LaborViewProps) {
                 </li>
                 <li>
                   Immer sofort tanken wäre gewesen:{" "}
-                  <strong className="text-slate-100">{euro(labTotals.commit)} €</strong>
+                  <strong className="text-slate-100">{euro(labTotals.commit)} €</strong>{" "}
+                  <span className="text-slate-500">
+                    bei {deTrimmed(liters, 0)} L
+                  </span>
                 </li>
                 <li>
                   Perfektes Timing (Orakel):{" "}
