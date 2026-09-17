@@ -1,0 +1,27 @@
+# Optionale Erweiterung zu compose.yml: Backup-Überwachung (O33).
+#
+# Die App meldet die Backup-Alterung (Alarm `backup_stale` in
+# GET /api/v1/health, Grenze 36 Stunden) — dazu muss sie das Backup-Ziel
+# sehen. Dieses File mountet es read-only nach /backup und sagt der App, wo
+# es liegt. Ohne diese Erweiterung bleibt `backup.configured: false`: kein
+# Alarm, aber sichtbar im Health-Payload und in der GUI.
+#
+# Aufruf (zusammen mit der Hauptdatei, z. B. über `tankapp.py nas-up` mit
+# gesetztem TANKAPP_BACKUP_DIR — es hängt die Datei selbst an):
+#
+#   TANKAPP_BACKUP_DIR=/pfad/zu/backup docker compose \
+#       -f ops/nas/app/compose.yml -f ops/nas/app/compose.backup.yml up -d
+#
+# Read-only ist Absicht: Die App prüft nur Alter und Anzahl der Tars, sie
+# schreibt nie in das Backup.
+services:
+  app:
+    environment:
+      # Pfad **im Container** — das Ziel kommt unten als Bind dazu. Diese
+      # Zeile gewinnt gegen die leere Vorgabe aus compose.yml.
+      TANKAPP_CONTAINER_BACKUP_DIR: /backup
+    volumes:
+      - type: bind
+        source: ${TANKAPP_BACKUP_DIR:?Run mit TANKAPP_BACKUP_DIR=/pfad/zu/backup}
+        target: /backup
+        read_only: true

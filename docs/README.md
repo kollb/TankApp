@@ -39,16 +39,17 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.44.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
-0.44.0 ist Batch 1 des Optimierungs-Befunds: die Tankuhrzeit eines Belegs
-(`clock_hour`/`clock_hour_source`, Store-Schema 4) und die Veröffentlichung der
-Prognosen (kompakt, gerundet, `publication` im Health-Payload, zwei neue
-Alarme). Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
-[MICROCOPY.md](MICROCOPY.md), [LUECKEN.md](LUECKEN.md),
-[../TODO.md](../TODO.md) und [../CHANGELOG.md](../CHANGELOG.md).
+nicht gegen 0.47.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.47.0 ist Batch 4 des Optimierungs-Befunds: Betrieb — ein Parse je Datenstand
+im Healthcheck (O23), HTTP/1.1 statt HTTP/1.0 (O24), eine Konfigurationsquelle
+für Engine und Selektion (O36) und Backup-Alterung als Alarm (O33).
+Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
+[LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
+[../CHANGELOG.md](../CHANGELOG.md).
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
+| [MICROCOPY.md](MICROCOPY.md) | 0.46.0 | 0.47.0 ist ein Betriebs-Release ohne neue Textmuster: Der Text des neuen Alarms `backup_stale` folgt §4f (deutscher Klartext, Handlungsanweisung, keine Pfade), und die GUI zeigt ihn über die bestehende Alarm-Leiste |
 | [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0/0.43.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
@@ -58,7 +59,7 @@ Alarme). Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; Batch 1 (O1 + O22) trägt den Umsetzungs-Vermerk 0.44.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)) |
+| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–4 tragen ihre Umsetzungs-Vermerke 0.44.0–0.47.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)) |
 | [RP2.md](RP2.md) | 0.43.2 | 0.44.0 ändert die Beleg-Uhrzeit serverseitig und die Veröffentlichung auf dem NAS; der RP2 holt `/api/v1/last_forecasts` per HTTP und bucht keine Belege — der Inhalt bleibt gültig, die Stand-Zeile ist nicht mitgezogen |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
@@ -112,7 +113,7 @@ Eintrag, kein Eintrag ohne Grund.
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
 | [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) | Vermessung der gebauten GUI gegen den Entwurf: Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Gate-Selbsttäuschung, Props-Drilling — Befunde U1–U8 mit DoD, umgesetzt in 0.41.0 (archiviert mit Erledigt-Vermerk) |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmenge-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13 mit DoD, noch ohne Abnahme |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | Sichtung von 0.43.2 gegen sich selbst, ohne Auftrag und ohne Abnahme: Mathematik/Statistik (O1–O15), UX/UI (O16–O21), Technik/Betrieb (O22–O28), Kundensicht (O29–O32), dazu die Dimensionen Datenhaltbarkeit, Integrität, Konfiguration, Beobachtbarkeit, Wirkung, Zugriff, Datenschutz, Barrierefreiheit, Wartbarkeit (O33–O42) — je Befund Beleg mit Zeilenangabe, Wirkung und DoD; Messprotokoll, Abgrenzung zu bekannten Aufgaben und acht Batches mit Priorität, Aufwand und Check je Befund; Batch 1 (O1 + O22) ist mit 0.44.0 abgenommen und trägt den Vermerk je Befund |
+| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | Sichtung von 0.43.2 gegen sich selbst, ohne Auftrag und ohne Abnahme: Mathematik/Statistik (O1–O15), UX/UI (O16–O21), Technik/Betrieb (O22–O28), Kundensicht (O29–O32), dazu die Dimensionen Datenhaltbarkeit, Integrität, Konfiguration, Beobachtbarkeit, Wirkung, Zugriff, Datenschutz, Barrierefreiheit, Wartbarkeit (O33–O42) — je Befund Beleg mit Zeilenangabe, Wirkung und DoD; Messprotokoll, Abgrenzung zu bekannten Aufgaben und acht Batches mit Priorität, Aufwand und Check je Befund; die Batches 1–4 (O1, O22, O17, O5, O6, O4, O38, O16, O35, O29, O42, O23, O24, O36, O33) sind mit 0.44.0–0.47.0 umgesetzt und tragen je Befund den Vermerk samt Batch-Abnahme |
 | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |

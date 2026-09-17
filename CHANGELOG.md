@@ -4,6 +4,134 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.47.0] – 2026-09-17
+
+**Batch 4 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+ist umgesetzt: Betrieb — Kosten, Haltbarkeit, Kohärenz. Der Dauerbetrieb kostet
+messbar weniger (O23, O24), eine Konfigurationsänderung wirkt in der ganzen App
+(O36), und ein ausfallendes Backup wird gelb statt unsichtbar (O33). Vorab
+geprüft: Aus Batch 1–3 waren keine Folgeumsetzungen offen — O22-Maßnahme (d)
+und O43 stehen begründet in
+[LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. Batch 5.**
+
+### Geändert
+
+- **Ein Parse je Datenstand statt einer je Anfrage (O23, P1):**
+  `/api/v1/health` (Docker-Healthcheck alle 30 s **und** GUI-Poll) parste die
+  komplette Veröffentlichung, `/api/v1/stats/summary` dieselbe Datei dreimal
+  (Backtest, Güte-Kacheln, Live-Phase). `publication()` und
+  `selection_publication()` memoisieren jetzt über `(Pfad, mtime_ns, Größe,
+  Inode)` — das Muster aus `metadata()`, mit der Inode dazu, weil alle
+  Schreiber atomar über `engine/storage.write_json` ersetzen und die `mtime`
+  auf manchen Dateisystemen grob auflöst (gemessen: zwei Schreibvorgänge im
+  Mikrosekunden-Abstand mit identischem `st_mtime_ns`). `app/alarms.py` nutzt
+  denselben Leser statt eines eigenen Parses, `evaluate_stats_summary` liest
+  einmal und reicht das Bundle an die drei Baufunktionen durch. Gemessen auf
+  dem Demo-Stapel (2,52 MB, 6 Stationen, bester von 5 Läufen, dieselbe
+  Maschine): `/health` **17,0 ms → 0,2 ms** (1 Parse + 1 Selektions-Parse →
+  0), `/stats/summary` **53,0 ms → 0,1 ms** (3 Parses → 0); nach einem
+  Datenstandswechsel 17,2 ms mit genau einem Parse. Kosten: eine geparste
+  Veröffentlichung im Speicher, gemessen **3,8×** die Dateigröße
+  (2,52 MB → 9,6 MB). `clear_publication_cache()` für Werkzeuge und Tests.
+- **Server spricht HTTP/1.1 (O24, P1):** `app/server.py` setzte kein
+  `protocol_version`, also galt der Default HTTP/1.0 — jede der vielen
+  parallelen GUI-Anfragen zahlte einen neuen TCP-Handshake. Jetzt
+  `protocol_version = "HTTP/1.1"` plus `timeout = 65 s` (Keep-Alive belegt je
+  Verbindung einen Thread; 65 s liegen über dem längsten GUI-Poll von 60 s).
+  Keep-Alive verlangt, dass kein ungelesener Request-Body im Strom bleibt:
+  `_payload()` liest den Body immer zuerst (ein Leser für POST und PUT,
+  Fehlercodes unverändert), `_discard_body()` räumt ihn bei GET/PATCH/501 ab,
+  und wo nicht gelesen wird (429 Schreib-Budget, 413, chunked, unlesbare
+  Länge) beendet `_end_keep_alive()` die Verbindung — sichtbar als
+  `Connection: close`. `json()`/`csv()` schicken keine zweite Antwort mehr auf
+  denselben Request, sonst würde ein Fehlerpfad den Strom verschieben.
+- **Eine Konfigurationsquelle für Engine und Selektion (O36, P1):**
+  `SelectionConfig.from_engine_config(cfg, **overrides)` übernimmt alle
+  gemeinsamen Knöpfe (`bootstrap_samples` → `n_boot`, EW-Halbwertszeit, `seed`,
+  Raster, `ffill_minutes`, Polling-Fenster, Zeitzone);
+  `app/config.py::engine_config(settings)` ist die eine Stelle, an der die
+  Engine-Konfiguration aus den Settings entsteht — vorher baute der
+  Selektions-Job `Config()` ohne `city_subdivs` und `decision_hour`, die der
+  Modell-Lauf sehr wohl übernahm. `app/worker.py` und `app/refresh.py` reichen
+  die Konfiguration durch; das Ziehungs-Literal im Job-Dispatcher ist weg
+  (`grep -n "n_boot=2000" app/worker.py` findet nichts mehr). `n_boot` bekommt
+  `SELECTION_MIN_BOOTSTRAP = 1000`: `p_min = 1/(B+1)`, mit Benjamini-Hochberg
+  über m ≈ 11 Stationen ist `q_min ≈ m/(B+1)` — unter B ≈ 220 wäre selbst die
+  stärkste Station nie signifikant. Ein explizites Override (Demo-Stapel:
+  B = 400) gilt, und `bootstrap_floor_note()` benennt die Abweichung im
+  Job-Log statt sie still zu lassen.
+- **`ffill_minutes` in beiden Flächen dieselbe Zahl (O36):** 30 Minuten auch in
+  der Selektion, statt `None` („Kadenz raten“, `max(30, 3 × medianer
+  Abstand)`, bei grober Kadenz bis 180 Minuten). Begründung: Der Collector
+  pollt höchstens alle 5 Minuten (MTS-K-Regel), 30 Minuten decken sechs
+  verpasste Polls; drei Stunden füllen würde Preise erfinden, die der
+  Trainingspfad ablehnt. Gemessen auf dem Demo-Bestand (5-Minuten-Kadenz):
+  δ̂, Konfidenzintervalle und q-Werte sind mit 30 bitgleich zum alten
+  Kadenz-Raten — die alte Formel ergab dort `max(30, 3×5) = 30`. Direkt
+  konstruierte Konfigurationen (Tests, Werkzeuge) behalten `None`.
+- **Backup-Alterung wird gelb (O33, P1):** `app/backup.py` prüft per `stat`
+  das Backup-Ziel (`TANKAPP_BACKUP_DIR`, im Container read-only gemountet über
+  `ops/nas/app/compose.backup.yml` — `tankapp.py nas-up` hängt die Datei bei
+  gesetzter Variable selbst an). `/api/v1/health` → `backup` nennt Alter,
+  Anzahl Tages- und Monatsstände; ab **36 Stunden** ohne neues
+  `tankapp-runtime-<datum>.tar.gz`, bei leerem Ziel (`no_backup`) und bei
+  nicht erreichbarem Ziel (`directory_missing`) schlägt Alarm `backup_stale`
+  (warn) an. Monatsstände zählen bewusst nicht als Herzschlag: Sie sind bis zu
+  31 Tage alt, ohne dass etwas fehlt, und deckten einen toten Cron sonst einen
+  Monat lang zu. Ohne konfiguriertes Ziel gibt es keinen Alarm — aber
+  `configured: false` steht im Health-Payload, statt unsichtbar zu bleiben.
+- **Aufbewahrung passt zur Fehlererkennungs-Dauer (O33):**
+  `ops/nas/backup.sh` behält 14 Tagesstände (`TANKAPP_BACKUP_KEEP_DAYS`)
+  **plus 6 Monatsstände** (`TANKAPP_BACKUP_KEEP_MONTHLY`,
+  `tankapp-runtime-monthly-<JJJJ-MM>.tar.gz`); die Tages-Rotation nimmt die
+  Monatsstände ausdrücklich aus. 14 Tage sind kürzer als die Zeit, die ein
+  langsam zerstörender Fehler braucht, um aufzufallen. Das zweite Backup-Ziel
+  steht als ausdrückliche Entscheidung in
+  [BETRIEB.md](docs/BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf
+  dem NAS plus eine Kopie der unersetzbaren Bestände (Bilanz als
+  `fills.csv`, Polling-Set) außerhalb des Geräts; ein zweites automatisches
+  Ziel bleibt offen und steht im Todo.
+
+### Neu
+
+- **`tests/test_o23_parse_budget.py`** (8 Fälle): Parse-Zahl je Endpunkt
+  (stats/summary genau einer, health bei unverändertem Datenstand keiner),
+  neuer Datenstand wird gelesen, geteilter Stand wird von Lesern nicht
+  verändert, `publication_unreadable` bleibt bei unlesbarer Datei stehen.
+- **`tests/test_o24_http11.py`** (10 Fälle) gegen einen echten Server:
+  HTTP/1.1, `Content-Length` auf jedem Pfad (inkl. HEAD und 404), zwei
+  Anfragen auf einer Verbindung, POST/PATCH lassen die Verbindung nutzbar,
+  413/429/chunked beenden sie mit `Connection: close`, Fehlercodes unverändert.
+- **`tests/test_o36_config_source.py`** (8 Fälle): `bootstrap_samples=4000`
+  kommt durch `build_selection` in der Selektion an, Worker reicht `Config`
+  statt Zahl, Ratchet gegen Ziehungs-Literale im Job-Pfad, `ffill_minutes` in
+  beiden Flächen, `engine_config` übernimmt Feiertagsdummy und
+  Entscheid-Stunde, Signifikanz-Untergrenze samt Hinweis.
+- **`tests/test_o33_backup_stale.py`** (9 Fälle): 40 Stunden altes Tar →
+  `backup_stale` (warn), frisches Tar → still, leeres und nicht erreichbares
+  Ziel → Alarm, ohne Konfiguration kein Alarm aber Zustand, Monatsstand zählt
+  nicht als Herzschlag, Health-Payload nennt den Stand, Aufbewahrungsregel in
+  Skript und Doku, Mount read-only.
+- **`ops/nas/app/compose.backup.yml`**: optionale Erweiterung, die das
+  Backup-Ziel read-only nach `/backup` mountet.
+
+### Prüfungen
+
+- Lokal grün (Python 3.11, venv): `ruff check`, `ruff format --check`,
+  **955 pytest** (vorher 920), **1089 Vitest**, `npm run build`.
+- Umgestellt statt gelöscht: Die beiden Quellen-Ratchets in
+  `tests/test_selection.py` pinnten genau die Literale, die O36 entfernt —
+  sie prüfen jetzt die Wirkung (Fenster kommt an, Factory wird genutzt,
+  Untergrenze greift). `tests/test_app.py` gibt dem Fake-Handler Header
+  (Keep-Alive prüft den Request-Body).
+- Batch-Checks mit Messung: `curl -sv --http1.1 …/api/v1/health
+  …/api/v1/health` zeigt „Re-using existing connection #0“ und zwei
+  `HTTP/1.1 200` mit `Content-Length`; `grep -n "n_boot=2000" app/worker.py`
+  ist leer; `ops/nas/backup.sh` im Probelauf: Tages- plus Monatsstand,
+  Rotation behält 6 Monatsstände und frisst sie nicht.
+- Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
+  Chromium ist in der Sandbox nicht installierbar.
+
 ## [0.46.0] – 2026-09-17
 
 **Batch 3 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)

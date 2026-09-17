@@ -1,8 +1,12 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.46.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.47.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
+> Neu seit 0.47.0: Backup-Alterung wird überwacht (Alarm `backup_stale`,
+> `backup` im Health-Payload), `ops/nas/backup.sh` behält zusätzlich sechs
+> Monatsstände, und der Server antwortet mit HTTP/1.1 (O23, O24, O33 —
+> Batch 4 des [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md)).
+> Seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
 > dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
 > Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm
 > `price_implausible` (O35).
@@ -750,8 +754,59 @@ nicht gesichert. Ein NAS-Disk-Crash wäre der Verlust der Bilanz. Täglich siche
 
 `TANKAPP_RUNTIME_DIR` ist das in `compose.yml` gemountete `runtime/`-Verzeichnis
 (siehe `tankapp.py nas-up`), `TANKAPP_BACKUP_DIR` das vorhandene Backup-Ziel.
-Das Skript erzeugt `tankapp-runtime-<datum>.tar.gz` und behält 14 Tage
-(`TANKAPP_BACKUP_KEEP_DAYS` anpassbar).
+
+**Aufbewahrung (O33, seit 0.47.0):** 14 Tagesstände
+(`TANKAPP_BACKUP_KEEP_DAYS`) **plus 6 Monatsstände**
+(`TANKAPP_BACKUP_KEEP_MONTHLY`, `tankapp-runtime-monthly-<JJJJ-MM>.tar.gz`).
+Die zweite Stufe ist keine Spielerei: 14 Tage sind kürzer als die Zeit, die ein
+langsam zerstörender Fehler braucht, um aufzufallen — ein Wallet-Bug oder eine
+stille Größen-Grenze hat dann alle guten Tagesstände überschrieben, bevor
+jemand hinschaut. Ein Monatsstand ist der Stand, zu dem man zurück kann. Die
+Tages-Rotation nimmt die Monatsstände ausdrücklich aus.
+
+**Die App prüft das Alter mit (O33):** `backup.sh` kann still ausfallen —
+NAS-Update, Pfad umbenannt, Volume ausgehängt — und vor 0.47.0 merkte das
+nichts. Seit 0.47.0 meldet `GET /api/v1/health` → `backup` Alter und Anzahl der
+Tagesstände, und ab **36 Stunden** ohne neues Tar schlägt Alarm `backup_stale`
+(warn) an. Gezählt werden die Tagesstände, nicht die Monatsstände: Ein
+Monatsstand ist bis zu 31 Tage alt, ohne dass etwas fehlt, und würde einen
+toten Cron einen Monat lang überdecken.
+
+Dazu muss die App das Ziel sehen können — im Container ist es das nicht von
+allein. `tankapp.py nas-up` hängt die Erweiterung `ops/nas/app/compose.backup.yml`
+automatisch an, wenn `TANKAPP_BACKUP_DIR` in seiner Umgebung gesetzt ist; das
+Ziel wird **read-only** nach `/backup` gemountet (die App prüft nur Alter und
+Anzahl, sie schreibt nie in das Backup):
+
+```bash
+TANKAPP_BACKUP_DIR=/pfad/zu/backup python tankapp.py nas-up
+# Gegenprobe: /api/v1/health → "backup": {"configured": true, "age_hours": …}
+```
+
+Ohne die Variable bleibt `backup.configured: false` — kein Alarm (die App weiß
+nicht, ob anderswo gesichert wird), aber sichtbar im Health-Payload statt
+still. Ein **konfiguriertes, aber nicht erreichbares** Ziel ist dagegen ein
+Alarm (`reason: "directory_missing"`): Genau dann wäre ein Backup
+verschwunden, ohne dass es jemand merkt.
+
+**Zweites Ziel — ausdrückliche Entscheidung.** `TANKAPP_BACKUP_DIR` liegt
+üblicherweise auf demselben NAS wie die Daten: Ein NAS-Ausfall nimmt Daten
+**und** Sicherung mit, und die einzigen unersetzbaren Bestände — die
+Tank-Bilanz (`runtime/feedback/store.json`) und die privaten
+Anker-Koordinaten im Polling-Set — hätten keine zweite Kopie. Stand
+17.09.2026 ist die Entscheidung: **ein Ziel auf dem NAS plus eine Kopie der
+unersetzbaren Bestände außerhalb des Geräts.** Konkret heißt das
+
+* Laufzeitdaten täglich ins NAS-Backup-Ziel (dieses Skript), und
+* `GET /api/v1/fills.csv` (die Bilanz) sowie `polling.json` (Koordinaten)
+  regelmäßig auf ein zweites Gerät — derselbe Ort, an dem auch
+  [die Pi-Dateien](#pi-sicherung) landen.
+
+Wer es bei einem Gerät belassen will, trifft das bewusst und schreibt es hier
+her: Ein einzelnes Ziel schützt vor gelöschten oder zerlegten Dateien, nicht
+vor einem toten NAS. Ein zweites automatisches Ziel (rsync des Backup-Ordners
+auf ein anderes Gerät) ist offen und steht im
+[Todo](../TODO.md#b-technisch-backend-datenhaltung-betrieb-qualität).
 
 Restore (durchgespielt, nicht nur aufgeschrieben):
 
@@ -815,6 +870,7 @@ Klartext.
 | `publication_unreadable` | error | Veröffentlichung der Prognosen über dem Leselimit oder nicht parsebar — GUI zeigt überall „keine Prognose“ | Größe und Lesbarkeit prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `publication_large` | warn | Veröffentlichung über 6 MB, aber noch lesbar — Puffer zum Leselimit schrumpft | Stationen/Kraftstoffe oder `bootstrap_samples` prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `price_implausible` | warn | mindestens ein Live-Preis der letzten 24 h außerhalb 0,40–5,00 €/L — als Beobachtung gekennzeichnet, nicht als Preis veröffentlicht (O35) | Zähler im Health-Payload (`price_implausible.count_24h`); bei Dauerbetrieb die Preisquelle prüfen |
+| `backup_stale` | warn | letztes Laufzeit-Backup älter als 36 h, Ziel leer oder nicht erreichbar (O33) | Cron-Eintrag, Mount und `TANKAPP_BACKUP_DIR` prüfen → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 
 Ein Alarm ist eine **Zusammenfassung**, keine neue Prüfung: Dieselbe Information
 steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,

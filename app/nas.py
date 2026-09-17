@@ -207,6 +207,13 @@ def up(args):
         # Server (LAN-only) via TANKAPP_OSRM_URL, aus: TANKAPP_OSRM=0.
         "TANKAPP_OSRM": os.environ.get("TANKAPP_OSRM", "1"),
         "TANKAPP_OSRM_URL": os.environ.get("TANKAPP_OSRM_URL", ""),
+        # O33: Backup-Überwachung ist optional. Die Variable nennt das Ziel
+        # **auf dem NAS**; compose.backup.yml mountet es read-only nach
+        # /backup und setzt dort den Container-Pfad. Ohne Variable: kein
+        # Mount, backup.configured=false im Health-Payload (sichtbar, nicht
+        # still).
+        "TANKAPP_BACKUP_DIR": os.environ.get("TANKAPP_BACKUP_DIR", "").strip(),
+        "TANKAPP_CONTAINER_BACKUP_DIR": "",
         "TANKAPP_BUILD_COMMIT": build_commit,
     }
     command = [
@@ -217,6 +224,11 @@ def up(args):
         "-f",
         str(ROOT / "ops/nas/app/compose.yml"),
     ]
+    if values["TANKAPP_BACKUP_DIR"]:
+        # Erst die Erweiterung anhängen, dann config/up: Die zweite Datei
+        # setzt den Container-Pfad und den Bind-Mount.
+        values["TANKAPP_CONTAINER_BACKUP_DIR"] = "/backup"
+        command += ["-f", str(ROOT / "ops/nas/app/compose.backup.yml")]
     # B24(c): Vor dem Recreate warnen, wenn ein Modell-Lauf aktiv ist —
     # `compose up --force-recreate` ersetzt den Container und tötet den
     # laufenden Job; der Lauf würde sonst unbemerkt sterben (siehe Befund

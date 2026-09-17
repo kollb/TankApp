@@ -1287,6 +1287,15 @@ class LiveData:
             for name in ("archive", "models", "selection", "settlement")
         }
 
+        # O33: Backup-Alterung — einmal lesen, derselbe Stand dient dem
+        # Alarm-Block und dem Health-Payload (kein zweiter Scan).
+        try:
+            from .backup import backup_status
+
+            backup = backup_status(self.settings, clock=self.clock)
+        except Exception:
+            backup = {"configured": False, "stale": False, "reason": None}
+
         # B4: aggregierter Alarm-Block — nur Aggregation der obigen Prüfungen,
         # keine neuen Netz-/Influx-Zugriffe (Healthcheck-Budget 3–5 s).
         try:
@@ -1300,6 +1309,7 @@ class LiveData:
                 polling_error=problem,
                 station_count=len(metas),
                 clock=self.clock,
+                backup=backup,
             )
         except Exception:
             alarms = []
@@ -1388,6 +1398,10 @@ class LiveData:
             "price_implausible": implausible_price_status(
                 self.settings, clock=self.clock
             ),
+            # O33: Alter des letzten Laufzeit-Backups. ``configured: false``
+            # heißt „nicht überwacht“ und ist bewusst kein Alarm — aber es
+            # steht hier, statt unsichtbar zu bleiben.
+            "backup": backup,
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)

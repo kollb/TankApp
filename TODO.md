@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 17.09.2026, App-Version 0.46.0)
+# TankApp — ToDo (Stand 17.09.2026, App-Version 0.47.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -42,6 +42,7 @@ Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
+| B25 | C | **Zweites automatisches Backup-Ziel (O33-Rest)** | Seit 0.47.0 meldet die App die Backup-Alterung (`backup_stale`, 36 h) und `ops/nas/backup.sh` behält 14 Tages- plus 6 Monatsstände — aber das Ziel liegt auf demselben Gerät wie die Daten: Ein NAS-Ausfall nimmt Daten **und** Sicherung mit. Die unersetzbaren Bestände (Tank-Bilanz, Polling-Set mit den Anker-Koordinaten) haben keine zweite automatische Kopie. DoD: rsync/Cron des Backup-Ordners auf ein zweites Gerät oder Datenträger, plus ein Alarm, wenn **auch** die Zweitkopie altert (Muster aus `app/backup.py`). Entscheidung und Zwischenstand: [BETRIEB.md](docs/BETRIEB.md#nas-laufzeitdaten-runtime-backup). |
 | B22 | D | **Zahlen-ändernde Hebel: `bootstrap_samples` und Nacht-Raster** | Entscheidung, kein Gratishebel. 2000→500 Ziehungen halbiert die Backtest-Zeit, verschiebt aber Kennzahlen (MASE/PICP/MPIW/MAE). Zweiter Hebel: `predict(hours=72/168)` rechnet das volle 5-Minuten-Raster inkl. Nacht, obwohl der Collector nur 06–24 Uhr pollt. Ändert `points_3d`/`points_7d` — erst entscheiden, ob die GUI die Nachtstunden braucht. Nach B15–B17 vermutlich überflüssig; ausdrücklich **nicht** als Laufzeit-Hebel einplanen. |
 
 ---

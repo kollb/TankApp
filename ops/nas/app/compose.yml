@@ -41,6 +41,10 @@ services:
       # Eigener OSRM-Server (empfohlen: NAS-Docker, LAN-only, ohne
       # Drittanbieter-Demo-Server). Leer = RoadRouter-Default.
       TANKAPP_OSRM_URL: "${TANKAPP_OSRM_URL:-}"
+      # O33: Ziel der Laufzeit-Backups **im Container** (read-only gemountet
+      # über compose.backup.yml). Leer = Backup-Alterung wird nicht überwacht;
+      # /api/v1/health zeigt dann backup.configured=false statt still zu sein.
+      TANKAPP_BACKUP_DIR: "${TANKAPP_CONTAINER_BACKUP_DIR:-}"
       TANKAPP_BUILD_COMMIT: "${TANKAPP_BUILD_COMMIT:-}"
       TZ: Europe/Berlin
     volumes:

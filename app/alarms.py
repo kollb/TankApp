@@ -17,6 +17,7 @@ import datetime as dt
 from pathlib import Path
 from typing import Any
 
+from .backup import backup_status, stale_message
 from .data import (
     PRICE_PLAUSIBLE_MAX,
     PRICE_PLAUSIBLE_MIN,
@@ -53,6 +54,7 @@ def build_alarms(
     polling_error: str | None,
     station_count: int,
     clock=None,
+    backup: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Fasst die vorhandenen Zustandsprüfungen zu einem ``alarms[]``-Block zusammen."""
     alarms: list[dict[str, Any]] = []
@@ -247,6 +249,26 @@ def build_alarms(
                 ),
                 "count_24h": count,
                 "last_at": implausible.get("last_at"),
+            }
+        )
+
+    # O33: Backup-Alterung. Stirbt der Cron (NAS-Update, Pfad umbenannt,
+    # Volume ausgehängt), meldete bisher nichts — der Verlust fiel erst beim
+    # Restore auf. Nur ``stat`` über das Backup-Ziel, kein Netz.
+    if backup is None:
+        try:
+            backup = backup_status(settings, clock=clock)
+        except Exception:
+            backup = {}
+    if backup.get("stale"):
+        alarms.append(
+            {
+                "code": "backup_stale",
+                "severity": "warn",
+                "message": stale_message(backup),
+                "reason": backup.get("reason"),
+                "age_hours": backup.get("age_hours"),
+                "newest_at": backup.get("newest_at"),
             }
         )
 
