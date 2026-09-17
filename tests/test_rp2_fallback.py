@@ -1635,3 +1635,20 @@ def test_series_accepts_the_app_station_id(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_client_disconnect_while_reading_request_line_stays_silent(tmp_path, capsys):
+    """Abgebrochene Keep-Alive-Verbindungen erzeugen keinen Journald-Traceback."""
+    ctx = make_ctx(tmp_path, with_forecast=False)
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    try:
+        try:
+            raise ConnectionResetError(104, "Connection reset by peer")
+        except ConnectionResetError:
+            server.handle_error(None, ("127.0.0.1", 12345))
+
+        captured = capsys.readouterr()
+        assert "ConnectionResetError" not in captured.err
+        assert "Exception occurred" not in captured.err
+    finally:
+        server.server_close()
