@@ -6,7 +6,9 @@
 > Dimensionen ergänzt, die in der Ausgangsfrage fehlten
 > ([7](#7-dimensionen-die-in-der-aufzählung-fehlten), Befunde O33–O42), und
 > alle 42 Befunde in Batches mit Priorität und Check gruppiert
-> ([10](#10-batches-priorität-und-check)). Geprüft wurde der Bestand gegen sich selbst:
+> ([10](#10-batches-priorität-und-check)). Nachtrag 17.09.2026: Befund O43
+> kam bei der Umsetzung von O17 (Batch 2, 0.45.0) hinzu und steht in
+> Batch 5. Geprüft wurde der Bestand gegen sich selbst:
 > `engine/`, `app/`, `web/src/`, `rp2/`, `ops/` und `data-tools/`, dazu
 > Messungen am Demo-Stapel und an synthetischen 70-Tage-Daten — Protokoll und
 > Grenzen in [8](#8-gemessen-statt-behauptet). Bewusst **nicht** wiederholt
@@ -124,10 +126,11 @@ Ressourcen. P2 = inkonsistent, aber folgenarm. P3 = Schliff.
 | [O37](#o37--der-server-misst-sich-selbst-nicht) | P2 | keine Metriken | Keine Antwortzeiten, keine Parse-Dauer, kein Server-Budget: O23/O25/O26 sind unsichtbar und kommen wieder. |
 | [O39](#o39--das-ledger-ist-im-lan-für-alle-lesbar) | P2 | LAN-Exposition | Jeder Rechner im LAN liest alle Belege mit Zeit, Ort und Preis; ein Token-Mechanismus ist vorhanden, die Entscheidung nicht dokumentiert. |
 | [O42](#o42--der-push-grundsatz-kollidiert-mit-dem-preis-push) | P2 | Push-Regel offen | `notify.py` verbietet Preis- und Stationsdetails im Push — O29 braucht genau sie; die Kanal-Entscheidung steht nirgends. |
+| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) | P2 | Stunde bleibt 12 | Beleg ohne `tanked_at` bekommt den Server-Stempel, aber die Stunde 12 mit Herkunft „default“ — ableitbar wäre sie. |
 | [O40](#o40--die-diagramm-textalternative-nennt-keine-werte) | P3 | A11y-Rest | Diagramme tragen `role="img"` und `<desc>`, aber die Beschreibung nennt Reihen statt Werte, und `aria-label` ist überall „Diagramm“. |
 | [O41](#o41--drei-normalisierungswege-für-ein-artefakt) | P3 | drei Formen | Zwei Schreiber, drei Normalisierungswege, tote Felder und kein Test für `read_selection`. |
 
-Zwei Zahlen zum Einordnen: **14 der 42 Befunde sind P0/P1**, und die beiden
+Zwei Zahlen zum Einordnen: **14 der 43 Befunde sind P0/P1**, und die beiden
 P0-Befunde teilen sich eine Ursache — ein Wert fehlt (O1) oder eine Grenze
 greift (O22), und in beiden Fällen sagt niemand Bescheid.
 
@@ -1083,7 +1086,9 @@ Die Ausgangsfrage nannte fünf Dimensionen (mathematisch, statistisch, UX, UI,
 technisch) plus die Kundensicht. Zwölf weitere habe ich danach geprüft — mit
 demselben Maßstab: Beleg am Code, kein Verdacht. Vier davon sind im
 Wesentlichen erledigt und stehen deshalb in [9](#9-was-schon-richtig-ist),
-acht haben Befunde ergeben (O33–O42).
+acht haben Befunde ergeben (O33–O42). Ein neunter (O43) kam am 17.09.2026
+bei der Umsetzung von O17 hinzu — Nachtrag in der Dimensions-Tabelle und in
+Batch 5.
 
 | Dimension | Ergebnis der Prüfung |
 |---|---|
@@ -1098,6 +1103,7 @@ acht haben Befunde ergeben (O33–O42).
 | Wartbarkeit und Struktur | Befund [O41](#o41--drei-normalisierungswege-für-ein-artefakt) plus O21: doppelte und dreifache Implementierungen, große Module (`app/data.py` 1911 Zeilen, `web/src/data.ts` 3727, `rp2/fallback_gui.py` 3000) |
 | Recht und Lizenz | **Kein Befund.** Die GUI nennt Quelle und Lizenz samt Abfrage-Regel (`web/src/Dashboard.tsx:615`: „Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten“), `web/src/views/Settings.tsx:722` ebenso; Privatdaten und Schlüssel sind gitignored (`.gitignore`: `data/`, `polling.json`, `*.netrc`, `config.local.json`) |
 | Zeit, DST, Uhr | **Kein Befund.** `engine/data.py:237` (`local_day_hours`) und `:257` (`dst_transition_days`) behandeln Umstellungstage, der Backtest weist sie aus (H5), und `tanked_at` wird serverseitig validiert (`app/feedback.py:736–751`, `invalid_tanked_at` als 400) — O1 kann darauf aufbauen |
+| O1-Vollständigkeit (Nachtrag 17.09.2026 aus der O17-Umsetzung) | Befund [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel): Die Validierung greift, aber der Pfad ohne Angabe leitet nichts ab — Stempel echt, Stunde erfunden |
 | Sicherheit gegen Injection und Pfadzugriff | **Kein Befund.** Statische Auslieferung ist auf `settings.static` beschränkt und prüft `is_relative_to` (`app/server.py:695–696`), Schreib-Endpunkte haben ein Budget mit 429 (`:714–723`), Job-Log-Zeilen gehen durch `redact` (`app/data.py:883`), Fehlermeldungen durch `app/errors.public_detail` |
 | Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
 | Skalierbarkeit | Läuft auf [O22](#o22--die-veröffentlichung-passt-nicht-mehr-durch-das-leselimit) hinaus: Die Grenze ist nicht die Rechenzeit, sondern die Publikationsgröße |
@@ -1365,6 +1371,31 @@ gegen die jeweils gewählte Regel prüft (heute: keine Preise — der Test
 existiert in `web/src/notify.test.ts` für die GUI-Seite, nicht für den
 Server-Payload).
 
+### O43 — Beleg ohne Zeitstempel lernt die Stunde nicht aus dem Server-Stempel
+
+**Beleg.** `app/feedback.py:959–980` (`_validated_tanked_at`): Ohne Angabe
+kommt `None` zurück („der Aufrufer setzt den Zeitstempel“);
+`record_fill` speichert dann `tanked_at or now_str` (Z. 1102), aber
+`clock_hour_from_fill(fill_data, tanked_at)` (Z. 1074, Definition Z. 192–214)
+sieht nur das `None` und liefert `(12.0, "default")`. Gefunden bei der
+Umsetzung von O17 (0.45.0): Der HTTP-Check gegen den Demo-Server buchte ohne
+`tanked_at` und erhielt einen echten Stempel mit erfundener Stunde.
+
+**Wirkung.** Ein Beleg ohne `tanked_at` trägt einen echten Zeitstempel, aber
+die 12-Uhr-Stunde mit Herkunft „default“ — das w(h)-Profil zählt ihn zu den
+erfundenen Stunden (`wh_default_n`), obwohl die Stunde aus dem eigenen
+Stempel ableitbar wäre. Genau die Lücke, die O1 schließen wollte: Beleg-Zeit
+und Beleg-Stunde sind zwei Wahrheiten — Stempel echt, Stunde erfunden. Die
+GUI ist nicht betroffen (sendet `tanked_at` immer, `postFill` in
+`web/src/data.ts`); nur rohe API-Clients ohne Stempel laufen in den Pfad.
+Folgenarm, aber inkonsistent — P2.
+
+**DoD.** `record_fill` leitet die Stunde aus dem gesetzten Stempel ab
+(Herkunft „abgeleitet“, nicht „beleg“ — der Nutzer hat die Zeit nicht
+genannt, der Server hat sie gesetzt); nur wenn auch das scheitert, bleibt
+12/„default“. Test: Beleg ohne `tanked_at` trägt die Stunde des
+Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`.
+
 ## 8. Gemessen statt behauptet
 
 Damit die Zahlen oben überprüfbar bleiben — und damit klar ist, welche
@@ -1575,6 +1606,7 @@ Ziel: Jede Größe beantwortet die Frage, für die sie angezeigt wird.
 | [O11](#o11--die-heatmap-bewertet-sich-mit-eigenen-preisen) kein LOO | M | Test: Skaliert man die Preise einer Station, ändert sich ihre eigene Cheap-Probability nicht mehr (LOO); Vergleichsrechnung gegen `_loo_baseline` aus `engine/selection.py` |
 | [O14](#o14--umwegkilometer-sind-drei-verschiedene-größen) `dist_km` gemischt | M | Test: `dist_mode` steht in der Antwort und wird angezeigt; die Umwegrechnung verwendet ausschließlich Straßenkilometer, sonst einen benannten Schätzwert mit Faktor |
 | [O15](#o15--der-zeitwert-kippt-um-halb-fünf) Stufe 16:30 | S | Test: 16:29 und 16:31 unterscheiden sich höchstens um den interpolationsschritt — oder die Stufe ist in der Antwort und in der GUI benannt |
+| [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel) Stunde bleibt 12 (Nachtrag aus Batch 2) | S | Test: Beleg ohne `tanked_at` trägt die Stunde des Server-Stempels (Europe/Berlin) und `clock_hour_source == "abgeleitet"`; nur ohne ableitbaren Stempel bleibt 12/`"default"` |
 
 **Batch-Abnahme:** Keine Kennzahl mehr, die gegen sich selbst null ergibt,
 keine Schwelle ohne Basisrate, keine Einheit ohne Namen.
