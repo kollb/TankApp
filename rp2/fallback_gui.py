@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -1324,7 +1325,25 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 }
             )
 
-    server = ThreadingHTTPServer((host, port), Handler)
+    class QuietThreadingHTTPServer(ThreadingHTTPServer):
+        """HTTP server that keeps routine client disconnects out of journald.
+
+        ``BaseServer.handle_error`` prints a full traceback for exceptions that
+        happen before our request handler reaches ``do_GET``/``do_POST`` — for
+        example while ``http.server`` is still reading the next request line on
+        a keep-alive connection. Browser reloads and aborted ``curl`` calls are
+        expected there, so they should not look like application crashes.
+        """
+
+        def handle_error(self, request, client_address):  # noqa: D401 (stdlib hook)
+            exc_type, _exc, _tb = sys.exc_info()
+            if exc_type and issubclass(
+                exc_type, (BrokenPipeError, ConnectionResetError)
+            ):
+                return
+            super().handle_error(request, client_address)
+
+    server = QuietThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
     return server
 
