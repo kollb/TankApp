@@ -64,6 +64,130 @@ META_TTL_S = 30.0  # Backstop für das Metadata-Memo (grobes mtime, z. B. NAS)
 READ_JSON_MAX_BYTES = 10_000_000
 PUBLICATION_BUDGET_BYTES = 6_000_000
 
+# --- Preis-Plausibilität (O35) ----------------------------------------------
+#
+# Ein Paar Grenzen für alle Pfade — eine „zweite Wahrheit“ wäre hier genau
+# die Lücke, die der Befund beschreibt: Der Trainingspfad filtert
+# 0,40–5,00 €/L samt Hampel-Artefakten (engine/data.py), das Ledger
+# verweigert Belege außerhalb derselben Grenzen (app/feedback.py,
+# ``MIN_PRICE_PAID``/``MAX_PRICE_PAID`` sind Aliasse auf diese Werte). Vor
+# 0.46.0 kannte der **Live-Pfad** keine Grenze: ein API-Ausreißer
+# (verrutschte Dezimalstelle) sortierte sich an die Spitze der Stationsliste
+# und wurde Empfehlungs-Anker. Jetzt gilt: Werte außerhalb der Grenzen sind
+# Beobachtungen, aber keine Preise — die Station bleibt sichtbar, ohne Preis,
+# mit Kennzeichnung (``implausible_price``), und der Vorfall wird gezählt
+# (``/api/v1/health`` → ``price_implausible``, Alarm ``price_implausible``).
+PRICE_PLAUSIBLE_MIN = 0.40
+PRICE_PLAUSIBLE_MAX = 5.00
+# Beobachtungs-Fenster des Zählers: Was länger zurückliegt, ist für die
+# Frage „kommt das gerade gehäuft vor?“ nicht mehr aussagekräftig.
+IMPLAUSIBLE_WINDOW_H = 24.0
+IMPLAUSIBLE_MAX_ENTRIES = 100
+IMPLAUSIBLE_RELATIVE = ("quality", "implausible_prices.json")
+
+_IMPLAUSIBLE_LOCK = threading.Lock()
+
+
+def implausible_price_path(settings) -> Path:
+    return (
+        Path(getattr(settings, "runtime", Path(".")))
+        / IMPLAUSIBLE_RELATIVE[0]
+        / IMPLAUSIBLE_RELATIVE[1]
+    )
+
+
+def plausible_price(value: float | None) -> bool:
+    """Ein Preis ist plausibel, wenn er endlich ist und in den Grenzen liegt.
+
+    Dieselbe Frage, die ``engine/data.py`` fürs Training beantwortet — hier
+    für den Live-Pfad, als eine Funktion statt zweier Literal-Paare.
+    """
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(price) and PRICE_PLAUSIBLE_MIN <= price <= PRICE_PLAUSIBLE_MAX
+
+
+def _record_implausible_observations(
+    settings, observations: list[dict], *, now: dt.datetime
+) -> None:
+    """Zählt unplausible Live-Preise — je Beobachtung einmal, nie je Poll.
+
+    Dedupliziert über (Station, Zeitstempel der Beobachtung): Derselbe
+    0,05-€/L-Wert bleibt in der Wiederholung desselben Polls **ein**
+    Vorfall. Einträge älter als ``IMPLAUSIBLE_WINDOW_H`` fallen heraus.
+    """
+    if not observations:
+        return
+    path = implausible_price_path(settings)
+    with _IMPLAUSIBLE_LOCK:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            entries = raw.get("entries") if isinstance(raw, dict) else None
+        except (OSError, ValueError):
+            entries = None
+        entries = [entry for entry in (entries or []) if isinstance(entry, dict)]
+        seen = {
+            (entry.get("station_id"), entry.get("observed_at")) for entry in entries
+        }
+        for entry in observations:
+            key = (entry.get("station_id"), entry.get("observed_at"))
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(entry)
+        cutoff = now - dt.timedelta(hours=IMPLAUSIBLE_WINDOW_H)
+        kept = []
+        for entry in entries:
+            try:
+                stamp = dt.datetime.fromisoformat(str(entry.get("observed_at")))
+            except (TypeError, ValueError):
+                continue
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=UTC)
+            if stamp >= cutoff:
+                kept.append(entry)
+        kept = kept[-IMPLAUSIBLE_MAX_ENTRIES:]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps({"entries": kept}, ensure_ascii=False), encoding="utf-8"
+            )
+            os.replace(temporary, path)
+        except OSError:
+            pass  # Zählen darf nie den Antwort-Pfad sprengen
+
+
+def implausible_price_status(settings, clock=None) -> dict[str, Any]:
+    """Zähler für ``/api/v1/health`` und den Alarm — nur ein lokaler Read."""
+    try:
+        raw = json.loads(implausible_price_path(settings).read_text(encoding="utf-8"))
+        entries = raw.get("entries") if isinstance(raw, dict) else None
+    except (OSError, ValueError):
+        entries = None
+    now = clock() if clock else dt.datetime.now(UTC)
+    cutoff = now - dt.timedelta(hours=IMPLAUSIBLE_WINDOW_H)
+    count = 0
+    last_at = None
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            stamp = dt.datetime.fromisoformat(str(entry.get("observed_at")))
+        except (TypeError, ValueError):
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        if stamp >= cutoff:
+            count += 1
+            observed = entry.get("observed_at")
+            if isinstance(observed, str) and (last_at is None or observed > last_at):
+                last_at = observed
+    return {"count_24h": count, "last_at": last_at}
+
+
 _META_LOCK = threading.Lock()
 _META_MEMO: dict[str, Any] = {"key": None, "value": None, "at": 0.0}
 # Nur der Kick-Zustand (kurz, keine IO unter dem Lock) — der Request-Pfad
@@ -836,6 +960,7 @@ class LiveData:
         rows, error = ({}, problem) if problem else self._load(fuel, metas)
         now = self.clock()
         result = []
+        implausible_seen = []
         for identity, meta in metas.items():
             if city and meta["city"] != city:
                 continue
@@ -848,6 +973,29 @@ class LiveData:
             fresh = error is None and age is not None and 0 <= age <= 30
             status = row["status"] if row else "unknown"
             price = float(row["price"]) if row and row["price"] else None
+            # O35: Derselbe Schutz wie im Trainings- und Belegpfad. Ein Wert
+            # außerhalb 0,40–5,00 €/L ist eine Beobachtung, aber kein Preis —
+            # er wird nicht publiziert (weder ``price`` noch ``last_price``,
+            # sonst stünde das Artefakt als „letzter bekannter Preis“ in der
+            # Karte), sortiert sich damit nicht an die Spitze, und der
+            # Vorfall wird gezählt statt verschwiegen. ``normalized_row``
+            # filtert den Wert bereits aus ``price`` heraus und liefert ihn
+            # als ``raw_price`` mit — hier wird das Schweigen gebrochen.
+            implausible_value = None
+            if row and not row.get("price") and row.get("raw_price") is not None:
+                raw_value = row["raw_price"]
+                if not plausible_price(raw_value):
+                    implausible_value = raw_value
+                    implausible_seen.append(
+                        {
+                            "station_id": identity[1],
+                            "city": identity[0],
+                            "fuel": fuel,
+                            "value": implausible_value,
+                            "observed_at": row["timestamp"],
+                            "recorded_at": now.isoformat(),
+                        }
+                    )
             result.append(
                 {
                     **meta,
@@ -858,8 +1006,13 @@ class LiveData:
                     "fresh": fresh,
                     "last_price": price,
                     "price": price if fresh and status == "open" else None,
+                    "implausible_price": implausible_value,
                 }
             )
+        try:
+            _record_implausible_observations(self.settings, implausible_seen, now=now)
+        except Exception:
+            pass  # Zählen darf nie den Antwort-Pfad sprengen
         result.sort(
             key=lambda row: (row["price"] is None, row["price"] or 0, row["name"])
         )
@@ -1062,6 +1215,7 @@ class LiveData:
                 job_errors=job_errors,
                 polling_error=problem,
                 station_count=len(metas),
+                clock=self.clock,
             )
         except Exception:
             alarms = []
@@ -1144,6 +1298,12 @@ class LiveData:
             # Erfolg meldet. ``bytes``/``budget_bytes``/``max_bytes`` sagen,
             # wie nah der Betrieb daran ist (``alarms[]`` schlägt an).
             "publication": publication_status(self.settings),
+            # O35: Live-Preise außerhalb 0,40–5,00 €/L werden nicht als Preis
+            # publiziert, aber gezählt — hier der Stand der letzten 24 h,
+            # damit ein API-Artefakt sichtbar wird statt still zu sortieren.
+            "price_implausible": implausible_price_status(
+                self.settings, clock=self.clock
+            ),
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)

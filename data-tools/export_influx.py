@@ -714,6 +714,7 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
     status = row.get("status", "").strip().lower() or "no prices"
     raw = row.get(fuel, "").strip()
     price = ""
+    raw_price = None
     if status == "open" and raw.lower() not in ("", "false", "true", "null"):
         try:
             number = float(raw)
@@ -721,6 +722,12 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
             raise ExportError(
                 "Nichtnumerischer Preis in InfluxDB; Export abgebrochen."
             ) from None
+        # O35: Der rohe Wert bleibt lesbar (``raw_price``), auch wenn er die
+        # Plausibilitätsgrenzen verfehlt — der Lesepfad (app/data.py) macht
+        # daraus die Kennzeichnung ``implausible_price`` samt Zähler, statt
+        # den Wert still verschwinden zu lassen. Der Export ins Archiv
+        # übernimmt nur die gefilterte Spalte ``price`` (unverändert).
+        raw_price = number
         if math.isfinite(number) and 0.4 <= number <= 5.0:
             price = f"{number:.3f}"
     return {
@@ -733,6 +740,7 @@ def normalized_row(row: dict, lookup: dict, fuel: str) -> dict:
         "lon": meta.get("lon", ""),
         "fuel": fuel.upper(),
         "price": price,
+        "raw_price": raw_price,
         "status": status,
         "source": "influxdb",
     }
@@ -770,7 +778,9 @@ def export_prices(
     try:
         opener = gzip.open if output.suffix == ".gz" else open
         with opener(name, "wt", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=COLUMNS)
+            # O35: ``raw_price`` ist nur für den Live-Lesepfad da — das
+            # Archiv-CSV behält sein Spaltenschema (extrasaction ignoriert es).
+            writer = csv.DictWriter(handle, fieldnames=COLUMNS, extrasaction="ignore")
             writer.writeheader()
             for lower, upper in windows:
                 query = flux_query(
