@@ -104,6 +104,13 @@ class FakeOpener:
 
 
 def notifier(settings, alarms, opener=None, now=NOW):
+    # O31: Der Wochen-Rückblick fährt auf demselben Tick mit. Diese Tests
+    # zählen Alarm-Zustellungen — die Woche gilt hier als zusammengefasst,
+    # damit kein zweiter POST die Zählung verschiebt. Das Verhalten des
+    # Rückblicks selbst prüft tests/test_o31_recap.py.
+    from app.recap import iso_week, save_recap_state
+
+    save_recap_state(settings, {"last_week": iso_week(now)})
     return Notifier(
         settings,
         lambda: alarms,
@@ -372,6 +379,9 @@ def test_health_shows_whether_delivery_is_configured(settings, bare):
         "open_errors": [],
         "last_ok_at": None,
         "last_sent_at": None,
+        # O31: welche Woche zuletzt zusammengefasst wurde.
+        "recap_last_week": None,
+        "recap_last_sent_at": None,
     }
 
 
