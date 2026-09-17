@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.49.1 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.50.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen

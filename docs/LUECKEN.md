@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 17.09.2026 · App-Version 0.49.1. Abgleich von
+> Stand: 17.09.2026 · App-Version 0.50.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -105,6 +105,25 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 17.09.2026 — Version 0.50.0: Batch 6 (Anzeige und Alltag)
+
+Sieben Befunde des Optimierungs-Befunds sind umgesetzt (O21, O19, O20, O30,
+O18, O31, O39); die Abnahme mit den einzelnen Checks steht im
+[Befund](OPTIMIERUNGS-BEFUND.md#batch-6--p2--anzeige-und-alltag). Zwei Punkte
+sind dabei als dauerhafte Zustände **benannt** statt geschlossen:
+
+- **Die Engine publiziert kein Form-Modell je Station.** Der Modellvergleich im
+  Labor sagt das jetzt, statt einen Trainingswert zu erfinden. Ein echtes
+  Form-Modell bleibt M7 vorbehalten (§0.4) — bis dahin ist der Text der Befund.
+- **`TANKAPP_READ_TOKEN` ist standardmäßig leer, das Ledger also offen.** Das
+  ist die dokumentierte Entscheidung für ein reines LAN
+  ([BETRIEB.md](BETRIEB.md)), kein Versehen; wer die App in ein fremdes Netz
+  stellt, setzt den Token.
+
+Aus Batch 1–5 war keine Folgeumsetzung offen. Weiterhin bewusst offen bleiben
+das zweite automatische Backup-Ziel (B25), die numerischen Hebel, die echten
+Betriebsbestand brauchen (B22), und der Desktop-Zweispalter (C12).
 
 ### 17.09.2026 — Version 0.49.1: zwei Abstürze aus dem Betrieb (O44)
 

@@ -1,6 +1,9 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.49.1** — neu seit 0.49.1: die
+> Stand: 17.09.2026 · App-Version **0.50.0** — neu seit 0.50.0: der
+> Lese-Schutz für persönliche Daten (O39, `TANKAPP_READ_TOKEN`) und der
+> Wochen-Rückblick (O31), der in `health.notify` seine letzte Woche nennt.
+> Davor seit 0.49.1: die
 > Stations-Antwort ist die verbindliche Form für die App (siehe
 > [Stations](#stations)); der RP2-Fallback liefert sie seit RP2 v4.3 mit
 > `cities` und je Zeile `observed_at`, und ein Fehlerpayload trägt bei
@@ -649,7 +652,10 @@ Antwort:
   ],
   "notify": {"configured": true, "mode": "public",
              "open_errors": ["collector_no_heartbeat"],
-             "last_ok_at": "2026-09-11T08:05:00+00:00"},
+             "last_ok_at": "2026-09-11T08:05:00+00:00",
+             "last_sent_at": "2026-09-11T08:00:00+00:00",
+             "recap_last_week": "2026-W37",
+             "recap_last_sent_at": "2026-09-14T07:05:00+00:00"},
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
     "archive": {"state": "success", "last_success_at": "...", "next_run_at": "..."},
@@ -734,9 +740,12 @@ an `TANKAPP_NTFY_URL` schickt — `configured` (Variable gesetzt?),
 `mode` (Push-Modus `public`|`lan`, O42: bestimmt die Datentiefe der
 Fenster-Meldungen, Default `public`), `open_errors` (welche Codes sind als
 gemeldet gespeichert), `last_ok_at` (Stempel der letzten „wieder
-betriebsbereit“-Meldung, `null` wenn nie).
-Der Block liest nur die Zustandsdatei `data/runtime/notify/state.json`, kein
-Netz. Einrichten und Verhalten:
+betriebsbereit“-Meldung, `null` wenn nie), `last_sent_at` (jüngste tatsächlich
+zugestellte Fehlermeldung). Seit 0.50.0 dazu `recap_last_week` und
+`recap_last_sent_at` (O31): welche ISO-Woche der Wochen-Rückblick zuletzt
+zusammengefasst hat und wann — `null`, solange noch keiner rausging.
+Der Block liest nur die Zustandsdateien `data/runtime/notify/state.json` und
+`notify/recap.json`, kein Netz. Einrichten und Verhalten:
 [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4).
 
 **`price_implausible`** (O35, seit 0.46.0): Zähler der Live-Preise außerhalb
