@@ -22,6 +22,13 @@ export default defineConfig({
   // Server-Antworten; im `desktop`-Projekt überspringt es sich selbst.
   testMatch: /(demo|mobile)\.spec\.ts/,
   reporter: process.env.CI ? "github" : "list",
+  // Genau ein Worker: Beide Projekte teilen sich einen Demo-Server mit einer
+  // Store-Datei. Parallel laufende Projekte haben sich gegenseitig die O17-
+  // Seeds überschrieben (dieselben Episode-IDs) und die Store-Schreibvorgänge
+  // des einen Projekts haben dem ETag-Test des anderen die 304er gekostet
+  // (data_version hängt am Feedback-Store). ~45 s mehr Laufzeit, dafür kein
+  // Flake mehr aus Projekt-Kollisionen.
+  workers: 1,
   // Der Aufbau rechnet echte Engine-Fits (45 Tage Demo-Verlauf) — das dauert
   // Minutenfrist, nicht Sekunden.
   timeout: 120_000,

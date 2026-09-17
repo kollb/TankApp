@@ -275,8 +275,9 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   // 304 ohne Body. Ein bestätigender Aufruf schreibt den Ledger nicht neu,
   // das ETag der letzten Antwort bleibt also gültig. Nur das 60-s-Uhrzeit-
   // Fenster kann dazwischenfunken: fällt der Refresh genau auf dessen Grenze,
-  // antwortet der Server korrekt mit 200 — deshalb bis zu drei Versuche, aber
-  // die Zusage „304“ muss fallen.
+  // antwortet der Server korrekt mit 200 — deshalb bis zu fünf Versuche, aber
+  // die Zusage „304“ muss fallen. (Fünf statt drei: Auf langsamen Läufern
+  // dauert ein Versuch länger, die Trefferfläche der Fenstergrenze wächst.)
   const button = page.getByRole("button", { name: "Daten aktualisieren" });
   // Ein Layout ohne diesen Knopf (z. B. sehr schmale Ansicht) prüft die
   // Revalidierung in `tests/test_e2e_demo.py` statt hier.
@@ -286,7 +287,7 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   );
   let revalidated = false;
   let carriedEtag = false;
-  for (let attempt = 0; attempt < 3 && !revalidated; attempt += 1) {
+  for (let attempt = 0; attempt < 5 && !revalidated; attempt += 1) {
     await expect(button).toBeEnabled();
     const before = responses.length;
     // Der Stand, den die App hält: das ETag der letzten Antwort. Genau das
@@ -305,7 +306,7 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
     revalidated = answer.status() === 304;
   }
   expect(carriedEtag).toBe(true);
-  expect(revalidated, "kein 304 nach drei Aktualisierungen").toBe(true);
+  expect(revalidated, "kein 304 nach fünf Aktualisierungen").toBe(true);
   // Ein 304 ersetzt die Anzeige nicht durch einen Leerzustand.
   await expect(page.locator("#jetzt-headline")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -446,14 +447,19 @@ test("O17: „Ja, wie empfohlen“ bucht den Live-Preis, nie den Median", async 
   const liveShown = Number(match![1].replace(",", "."));
   expect(liveShown).not.toBe(O17_DECOY_PRICE);
 
-  const [request] = await Promise.all([
-    page.waitForRequest(
-      (req) =>
-        req.url().includes("/api/v1/fills") && req.method() === "POST",
+  // Auf die ANTWORT warten, nicht auf den Versand: `waitForRequest` löst beim
+  // Abschicken aus — das folgende `GET /api/v1/fills` überholte dann den
+  // noch laufenden POST-Handler und der Beleg „fehlte im Ledger“ (Flake).
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) =>
+        res.url().includes("/api/v1/fills") &&
+        res.request().method() === "POST",
     ),
     button.click(),
   ]);
-  const body = request.postDataJSON();
+  expect(response.ok(), "POST /api/v1/fills wird angenommen").toBe(true);
+  const body = response.request().postDataJSON();
   expect(body.source).toBe("prompt");
   expect(body.station_id).toBe(O17_KNOWN_STATION);
   expect(body.price_source).toBe("live");
