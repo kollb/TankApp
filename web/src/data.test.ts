@@ -490,6 +490,20 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(m7GateLine(undefined)).toBeNull();
   });
 
+  it("prefers the gate population over the mixed 30-day numbers (O5)", () => {
+    // Das Gate zählt Verteilungs-P-Zeilen (Allzeit), nicht das gemischte
+    // 30-Tage-Fenster — die Zeile nennt die Grundgesamtheit beim Namen.
+    const line = m7GateLine({
+      n: 120,
+      brier_30d: 0.18,
+      gate_n: 5,
+      gate_brier: 0.01,
+    });
+    expect(line).toContain("5 von 100 abgeschlossenen Empfehlungen mit Verteilungs-P");
+    const unmeasurable = m7GateLine({ n: 120, gate_n: 120, gate_brier: null });
+    expect(unmeasurable).toContain("keine Verteilungs-P im Ledger");
+  });
+
   it("keeps the 90-day transition rule in its own line", () => {
     const line = transitionRuleLine(phase);
     expect(line).toContain("Datenumstellung Archiv → Live-Polling");

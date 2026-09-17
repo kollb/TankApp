@@ -855,6 +855,14 @@ export type StatsSummary = {
     // ältere Statistik-Stände liefern sie nicht, dann gilt der Fallback unten.
     min_recommendations?: number;
     brier_threshold?: number;
+    /** O5: Brier je P-Quelle (30 Tage und Allzeit) — getrennt statt gemischt. */
+    brier_by_source?: Record<string, { brier: number | null; n: number }>;
+    brier_all_by_source?: Record<string, { brier: number | null; n: number }>;
+    p_source_counts?: Record<string, number>;
+    p_source_counts_all?: Record<string, number>;
+    /** O5: Gate-Grundgesamtheit — Verteilungs-P allein (Allzeit). */
+    gate_n?: number;
+    gate_brier?: number | null;
     reliability: Array<{
       bin: number;
       range: string;
@@ -3091,6 +3099,9 @@ export type M7Advice = {
   brier_threshold?: number | null;
   /** Noch laufende Empfehlungen (Fenster nicht vorbei, zählen erst nach Abrechnung). */
   n_pending?: number | null;
+  /** O5: Gate-Grundgesamtheit (Verteilungs-P, Allzeit) — gewinnt gegen n/brier_30d. */
+  gate_n?: number | null;
+  gate_brier?: number | null;
 };
 
 // Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
@@ -3118,7 +3129,11 @@ export function deNumber(value: number, decimals = 2): string {
  */
 export function m7GateLine(advice?: M7Advice | null): string | null {
   if (!advice) return null;
-  const n = advice.n ?? 0;
+  // O5: Das Gate zählt Verteilungs-P-Zeilen (Allzeit) — diese Zahlen stehen
+  // in gate_n/gate_brier; n/brier_30d bleiben Fallback für Alt-Payloads.
+  const gated = advice.gate_n != null;
+  const n = gated ? (advice.gate_n as number) : (advice.n ?? 0);
+  const brier = gated ? advice.gate_brier : advice.brier_30d;
   const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
   const limit = deNumber(advice.brier_threshold ?? M7_BRIER_THRESHOLD);
   const pending = advice.n_pending ?? 0;
@@ -3126,20 +3141,21 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
     pending > 0
       ? ` ${pending} Empfehlung${pending > 1 ? "en" : ""} läuft${pending > 1 ? "en" : ""} noch und zählt erst nach der Abrechnung.`
       : "";
+  const population = gated ? " mit Verteilungs-P" : "";
   if (n < need) {
     return (
-      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen ` +
+      `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen${population} ` +
       `(Brier-Schwelle < ${limit}).${pendingNote}`
     );
   }
-  if (advice.brier_30d == null) {
+  if (brier == null) {
     return (
       `Freigabe erfüllt (${n} Empfehlungen) — Brier noch nicht messbar ` +
-      `(keine P-Schätzung im Ledger).${pendingNote}`
+      `(keine ${gated ? "Verteilungs-P" : "P-Schätzung"} im Ledger).${pendingNote}`
     );
   }
   return (
-    `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(advice.brier_30d)} ` +
+    `Freigabe erfüllt: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
     `(Schwelle < ${limit}).${pendingNote}`
   );
 }

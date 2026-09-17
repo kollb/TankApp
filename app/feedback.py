@@ -68,9 +68,17 @@ MAX_SOURCE_CHARS = 40
 #       still umgeschrieben: Die Migration rekonstruiert die Stunde aus dem
 #       gespeicherten Zeitstempel und kennzeichnet sie als ``abgeleitet``;
 #       Belege ohne Zeitstempel bleiben bei 12 Uhr und tragen ``default``.
+#   5 = O5/O17: Herkunft der P-Schätzung je Snapshot (``p_source``:
+#       ``verteilung``|``basisrate``|``keine``) und Herkunft des Belegpreises
+#       (``price_source``: ``live``|``manuell``|``prognose``|``nowcast``).
+#       Altbestände werden rekonstruiert und gekennzeichnet, nicht
+#       umgeschrieben: Snapshots mit gespeicherter Verteilungs-P gelten als
+#       ``verteilung``, Snapshots nur mit ``p_correct`` als ``basisrate``
+#       (der alte Fallback); Ein-Tipp-Belege (``source == "prompt"``) aus der
+#       Zeit des gebuchten Prognose-Medians gelten als ``prognose``.
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 4
+FEEDBACK_SCHEMA_VERSION = 5
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -109,6 +117,23 @@ CLOCK_HOUR_DEFAULT = 12.0
 # gespeicherten Zeitstempel rekonstruiert (Migration von Altbeständen),
 # ``default`` = kein Zeitstempel, also die erfundene 12-Uhr-Projektion.
 CLOCK_HOUR_SOURCES = ("beleg", "abgeleitet", "default")
+# O5 (0.45.0): Herkunft der P-Schätzung je Snapshot. Vorher buk
+# ``record_snapshot`` die Verteilungs-P und die selbstkalibrierte
+# Ledger-Quote (``estimate_p``) in eine Zahl (``p_correct``) — der Brier
+# mischte zwei Quellen und das M7-Gate konnte sich selbst erfüllen.
+# Jetzt trägt jede Zeile ihre Quelle: ``verteilung`` (P aus den
+# Prognose-Draws, Konzept §4.1/§4.2), ``basisrate`` (Ledger-Quote als
+# Fallback, wenn keine Draws veröffentlicht sind) oder ``keine``
+# (keine Schätzung — fällt aus Zähler und Nenner). Das M7-Gate rechnet
+# ausschließlich über ``verteilung``.
+P_SOURCES = ("verteilung", "basisrate", "keine")
+# O17 (0.45.0): Herkunft des Belegpreises. ``live`` = Ein-Tipp-Beleg mit
+# frischem Live-Preis; ``manuell`` = eingetragen, nicht live-verifiziert;
+# ``prognose`` = Altbestand aus der Zeit, als der Prognose-Median gebucht
+# wurde (nur via Migration, nie für neue Belege); ``nowcast`` = der Server
+# hat den Preis aus dem frischen Poll ergänzt (live-äquivalent,
+# historischer Name aus record_fill).
+PRICE_SOURCES = ("live", "manuell", "prognose", "nowcast")
 M7_BRIER_THRESHOLD = 0.25
 
 _STORE_THREAD_LOCK = threading.Lock()
@@ -267,12 +292,60 @@ def _migrate_store_v3_to_v4(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v4_to_v5(store: dict[str, Any]) -> dict[str, Any]:
+    """4 → 5 (0.44 → 0.45): Herkunft je Ledger-Zeile (O5, O17).
+
+    Snapshots bekommen ``p_source``: Wer eine gespeicherte Verteilungs-P
+    (``p_besser``) trägt, gilt als ``verteilung``; wer nur ``p_correct``
+    trägt, als ``basisrate`` (genau das war der alte Fallback in
+    ``record_snapshot``); ohne beide als ``keine``. Belege bekommen
+    ``price_source``: Ein-Tipp-Belege (``source == "prompt"``) aus der Zeit
+    des gebuchten Prognose-Medians gelten als ``prognose`` — das ist
+    Rekonstruktion aus dem Buchungsweg, kein Messwert; explizit
+    mitgeschickte Preise (``explicit``, auch fehlende Angaben) gelten als
+    ``manuell``; ``nowcast`` bleibt (serverseitig aus dem Poll ergänzt).
+
+    Idempotent: Zeilen, die ihre Herkunft schon tragen, bleiben unverändert.
+    """
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        seen: list[dict[str, Any]] = []
+        for snap in ep.get("snapshots", []) or []:
+            if isinstance(snap, dict):
+                seen.append(snap)
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict) and all(snap is not s for s in seen):
+                seen.append(snap)
+        for snap in seen:
+            if snap.get("p_source") in P_SOURCES:
+                continue
+            if _to_float(snap.get("p_besser")) is not None:
+                snap["p_source"] = "verteilung"
+            elif _to_float(snap.get("p_correct")) is not None:
+                snap["p_source"] = "basisrate"
+            else:
+                snap["p_source"] = "keine"
+    for fill in store.get("fills", []) or []:
+        if not isinstance(fill, dict):
+            continue
+        if fill.get("price_source") in PRICE_SOURCES:
+            continue
+        if fill.get("source") == "prompt":
+            fill["price_source"] = "prognose"
+        else:
+            fill["price_source"] = "manuell"
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
     1: _migrate_store_v1_to_v2,
     2: _migrate_store_v2_to_v3,
     3: _migrate_store_v3_to_v4,
+    4: _migrate_store_v4_to_v5,
 }
 
 
@@ -558,6 +631,27 @@ def action_track_record(store: dict[str, Any], action: str) -> dict[str, Any] | 
     }
 
 
+def snapshot_p_source(snap: dict[str, Any] | None) -> str:
+    """Herkunft der P-Schätzung eines Snapshots (O5) — defensiv.
+
+    Migrierte Stores tragen ``p_source``; handgebaute Stores (Tests, alte
+    Exporte) nicht. Die Rekonstruktion folgt derselben Regel wie die
+    Migration 4 → 5: gespeicherte Verteilungs-P → ``verteilung``, nur
+    ``p_correct`` → ``basisrate`` (der alte Fallback in ``record_snapshot``),
+    sonst ``keine``. Eine explizit gespeicherte Quelle gewinnt immer.
+    """
+    if not isinstance(snap, dict):
+        return "keine"
+    stored = snap.get("p_source")
+    if stored in P_SOURCES:
+        return stored
+    if _to_float(snap.get("p_besser")) is not None:
+        return "verteilung"
+    if _to_float(snap.get("p_correct")) is not None:
+        return "basisrate"
+    return "keine"
+
+
 def record_snapshot(
     settings, snapshot_data: dict[str, Any], clock=None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -600,11 +694,19 @@ def record_snapshot(
         action = snapshot_data.get("action", "no_advice")
 
         # Verteilungs-P (§4.1/§4.2): dieselbe Zahl, die das UI nach dem
-        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt Brier auf
-        # die interne Ledger-Schätzung zurück — sonst könnte das Gate nie öffnen.
-        p_besser = snapshot_data.get("p_besser")
-        if p_besser is None:
+        # M7-Gate zeigt. Fehlt sie (Altbestand, kein Modell), fällt die
+        # gespeicherte Schätzung auf die interne Ledger-Quote zurück.
+        # O5: Die Quelle steht je Zeile dabei (``p_source``) — der Brier wird
+        # je Quelle getrennt ausgewiesen und das M7-Gate rechnet nur über
+        # Verteilungs-P. Eine nicht-finite Verteilungs-P ist keine Messung
+        # und fällt ebenfalls auf die Basisrate zurück.
+        p_dist = _to_float(snapshot_data.get("p_besser"))
+        if p_dist is not None:
+            p_besser = p_dist
+            p_source = "verteilung"
+        else:
             p_besser = estimate_p(store, action)
+            p_source = "basisrate" if p_besser is not None else "keine"
 
         # O1: Auch der Snapshot nennt keine erfundene Uhrzeit. ``decide``
         # schickt die gemessene Stunde (Europe/Berlin, mit Minutenanteil);
@@ -634,8 +736,12 @@ def record_snapshot(
             # Grund der Ablehnung in Klartext (nur bei ``no_advice``): Das
             # Tagebuch zeigt damit „warum“, nicht nur „keine Empfehlung“.
             "decline_reason": snapshot_data.get("decline_reason"),
-            "p_besser": snapshot_data.get("p_besser"),
+            "p_besser": p_dist,
             "p_correct": p_besser,
+            # O5: Herkunft der gespeicherten Schätzung — ``p_besser`` ist die
+            # bereinigte Verteilungs-P (nicht-finite Angaben sind keine
+            # Messung und landen nicht im Ledger).
+            "p_source": p_source,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
             "fuel": snapshot_data.get("fuel", "e10"),
             # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
@@ -1305,6 +1411,14 @@ def compute_advice_stats(
     ein Allzeit-Zähl-Gate (§0.4, §13) und rechnet über dieselbe
     Grundgesamtheit wie der Brier (``n_brier_all``), statt Gesamt-n gegen
     die P-Teilmenge zu vergleichen.
+
+    O5: Die P-Schätzung je Snapshot hat eine Quelle (``p_source``) —
+    ``brier_30d``/``brier_all`` bleiben der gemischte Score über alle Zeilen
+    mit gespeicherter Schätzung (Fortschreibung, als gemischt benannt),
+    ``brier_by_source``/``brier_all_by_source`` weisen ihn je Quelle getrennt
+    aus, und das Gate (``gate_n``/``gate_brier``) rechnet ausschließlich
+    über Zeilen mit ``p_source == "verteilung"``: Die Basisrate ist per
+    Konstruktion selbstkalibriert und darf das Gate nicht öffnen.
     """
     now = now or dt.datetime.now(UTC)
     cutoff = now - dt.timedelta(days=window_days)
@@ -1357,8 +1471,12 @@ def compute_advice_stats(
     elsewhere_n, elsewhere_hits = 0, 0
 
     # Brier-Score Berechnung: BS = 1/N * sum((p_pred - actual)^2)
-    # actual = 1 für win, 0 für loss/tie
+    # actual = 1 für win, 0 für loss/tie. O5: zusätzlich je P-Quelle
+    # getrennt (``p_source``) plus Zeilenzähler je Quelle — der gemischte
+    # Score bleibt als Fortschreibung daneben stehen.
     brier_sq_errors = []
+    brier_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    source_counts: dict[str, int] = {key: 0 for key in P_SOURCES}
 
     # 10 Bins für Reliability Diagramm (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
     bins = [
@@ -1378,6 +1496,7 @@ def compute_advice_stats(
         action = snap.get("action") if snap else None
         p_correct = snap.get("p_correct") if snap else None
         outcome = s.get("outcome")
+        source_counts[snapshot_p_source(snap)] += 1
 
         is_win = 1.0 if outcome == "win" else 0.0
 
@@ -1399,7 +1518,9 @@ def compute_advice_stats(
         # Score verzerren und fallen daher aus Zähler UND Nenner.
         if p_correct is not None and math.isfinite(p_correct):
             p_val = min(1.0, max(0.0, float(p_correct)))
-            brier_sq_errors.append((p_val - is_win) ** 2)
+            sq_error = (p_val - is_win) ** 2
+            brier_sq_errors.append(sq_error)
+            brier_by_source[snapshot_p_source(snap)].append(sq_error)
 
             bin_idx = min(9, max(0, int(p_val * 10)))
             bins[bin_idx]["count"] += 1
@@ -1434,49 +1555,76 @@ def compute_advice_stats(
         )
 
     # Allzeit-Brier über dieselbe Grundgesamtheit wie das Zähl-Gate: nur
-    # Settlements, deren Snapshot eine P-Schätzung trägt.
+    # Settlements, deren Snapshot eine P-Schätzung trägt. O5: je Quelle
+    # getrennt — das Gate steht auf der Verteilungs-Teilmenge allein.
     brier_all_sq: list[float] = []
+    brier_all_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    source_counts_all: dict[str, int] = {key: 0 for key in P_SOURCES}
     for s in settlements_all:
         snap = snapshots_by_id.get(s.get("snapshot_id"))
         p_correct = snap.get("p_correct") if snap else None
+        source_counts_all[snapshot_p_source(snap)] += 1
         if p_correct is None or not math.isfinite(p_correct):
             continue
         is_win = 1.0 if s.get("outcome") == "win" else 0.0
         p_val = min(1.0, max(0.0, float(p_correct)))
-        brier_all_sq.append((p_val - is_win) ** 2)
+        sq_error = (p_val - is_win) ** 2
+        brier_all_sq.append(sq_error)
+        brier_all_by_source[snapshot_p_source(snap)].append(sq_error)
     n_brier_all = len(brier_all_sq)
     brier_all = round(sum(brier_all_sq) / n_brier_all, 4) if n_brier_all > 0 else None
 
-    # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die gleiche
-    # Grundgesamtheit, deren Brier wir messen (n_brier_all), Brier < 0,25.
-    # Die 90-Tage-Übergangsregel (live_only_days) ist Datenhygiene und kein
-    # Nenner hier.
+    def _source_block(errors: dict[str, list[float]]) -> dict[str, dict[str, Any]]:
+        return {
+            key: {
+                "brier": round(sum(values) / len(values), 4) if values else None,
+                "n": len(values),
+            }
+            for key, values in errors.items()
+        }
+
+    # M7 Kalibrierungs-Gate (§0.4, §6): Allzeit-Zähl-Gate über die
+    # Verteilungs-Teilmenge allein (O5) — die Basisrate ist per Konstruktion
+    # selbstkalibriert und öffnet das Gate nicht. Die 90-Tage-Übergangsregel
+    # (live_only_days) ist Datenhygiene und kein Nenner hier.
     n_all = len(settlements_all)
+    gate_sq = brier_all_by_source["verteilung"]
+    gate_n = len(gate_sq)
+    gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
     calibrated = (
-        n_brier_all >= M7_MIN_RECOMMENDATIONS
-        and brier_all is not None
-        and brier_all < M7_BRIER_THRESHOLD
+        gate_n >= M7_MIN_RECOMMENDATIONS
+        and gate_brier is not None
+        and gate_brier < M7_BRIER_THRESHOLD
     )
     limit = _de(M7_BRIER_THRESHOLD)
-    if n_all < M7_MIN_RECOMMENDATIONS:
-        gate_status = f"Kalibrierung steht aus (n={n_all} < {M7_MIN_RECOMMENDATIONS} Empfehlungen)"
-    elif brier_all is None:
-        # Zählstand reicht, aber kein Settlement trägt eine P-Schätzung: Der
+    if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
+        gate_status = (
+            f"Kalibrierung steht aus (n={gate_n} < {M7_MIN_RECOMMENDATIONS} "
+            "Empfehlungen mit Verteilungs-P)"
+        )
+    elif gate_brier is None:
+        # Zählstand reicht, aber keine Zeile trägt eine Verteilungs-P: Der
         # Score ist nicht messbar. „kalibriert" wäre erfunden (§0.4).
         gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, keine P-Schätzung im Ledger)"
+            f"Kalibrierung nicht messbar (n={n_all}, keine Verteilungs-P im Ledger)"
         )
-    elif n_brier_all < M7_MIN_RECOMMENDATIONS:
-        # Gesamt-n reicht, aber die P-Teilmenge nicht — der Brier wäre über
-        # eine andere Grundgesamtheit gemessen als der Zähler (Prüfstand §3.6).
+    elif gate_n < M7_MIN_RECOMMENDATIONS:
+        # Gesamt-n reicht, aber die Verteilungs-Teilmenge nicht — der Brier
+        # wäre über eine andere Grundgesamtheit gemessen als der Zähler
+        # (Prüfstand §3.6), und die Basisrate öffnet das Gate nicht (O5).
         gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, nur {n_brier_all} "
-            "mit P-Schätzung im Ledger)"
+            f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
+            "mit Verteilungs-P im Ledger)"
         )
-    elif brier_all >= M7_BRIER_THRESHOLD:
-        gate_status = f"Kalibrierung nicht erreicht (Brier {_de(brier_all)} ≥ {limit})"
+    elif gate_brier >= M7_BRIER_THRESHOLD:
+        gate_status = (
+            f"Kalibrierung nicht erreicht (Brier {_de(gate_brier)} ≥ {limit}, "
+            "Verteilungs-P)"
+        )
     else:
-        gate_status = f"Kalibriert (n={n_all}, Brier {_de(brier_all)} < {limit})"
+        gate_status = (
+            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} < {limit}, Verteilungs-P)"
+        )
 
     return {
         "n": n,
@@ -1486,6 +1634,15 @@ def compute_advice_stats(
         "n_all": n_all,
         "n_brier_all": n_brier_all,
         "brier_all": brier_all,
+        # O5: Brier je P-Quelle (30-Tage-Fenster und Allzeit) plus
+        # Zeilenzähler je Quelle — und die Gate-Grundgesamtheit
+        # (Verteilungs-P allein) als eigene Zahlen.
+        "brier_by_source": _source_block(brier_by_source),
+        "brier_all_by_source": _source_block(brier_all_by_source),
+        "p_source_counts": dict(source_counts),
+        "p_source_counts_all": dict(source_counts_all),
+        "gate_n": gate_n,
+        "gate_brier": gate_brier,
         # Zähl-Ehrlichkeit: ausgespielt vs. abgeschlossen vs. noch offen.
         "snapshots_total": snapshots_total,
         "n_pending": n_pending,

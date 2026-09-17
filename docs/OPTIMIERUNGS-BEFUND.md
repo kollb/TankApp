@@ -289,6 +289,19 @@ Brier-Score wird je Quelle getrennt ausgewiesen, und das M7-Gate darf nur auf
 Verteilungs-P stehen. `LUECKEN.md` Zeile 520 an den Code anpassen — oder den
 Code an die Doku, je nachdem was gewollt ist; beides zusammen geht nicht.
 
+**Umgesetzt in 0.45.0:** `record_snapshot` speichert `p_source` je Zeile
+(Verteilungs-P aus den Draws, sonst die Ledger-Quote als `basisrate`, sonst
+`keine`); Feedback-Store Schema 4 → 5 rekonstruiert die Quelle für
+Altbestände mit Kennzeichnung (idempotent). `compute_advice_stats` weist den
+Brier je Quelle getrennt aus (`brier_by_source`, `brier_all_by_source`,
+`p_source_counts…`), und das Gate (`gate_n`/`gate_brier`) rechnet
+ausschließlich über `verteilung` — 100 Basisraten-Treffer öffnen es nicht.
+Das Tagebuch nennt je Zeile die Quelle, die M7-Fortschrittszeile der GUI
+zählt die Gate-Grundgesamtheit. `LUECKEN.md` §4.1–4.3 sagt dasselbe wie der
+Code (der Code wurde an die Doku angepasst: Gate nur über Verteilungs-P).
+Nachweis: `tests/test_o5_p_source.py` (11 Fälle) plus angepasste Gate-Tests
+in `tests/test_b4.py` und ein Fall in `web/src/data.test.ts`.
+
 ### O6 — Die Brier-Schwelle ist ein Münzwurf ohne Intervall
 
 **Beleg.** Die Gate-Bedingung „Brier < 0,25“ steht als feste Zahl im

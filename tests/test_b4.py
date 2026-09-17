@@ -314,6 +314,8 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     assert snap["action"] == "wait"
     assert snap["p_besser"] == 0.75
     assert snap["p_correct"] == 0.75
+    # O5: Die Zeile nennt ihre Quelle — Verteilungs-P aus den Draws.
+    assert snap["p_source"] == "verteilung"
 
 
 def test_table_action_gates_use_distribution_p(b4_settings):
@@ -1031,14 +1033,21 @@ def test_m7_gate_thresholds_come_from_the_ledger_not_the_calendar(b4_settings):
     advice = live.stats_summary({"city": "Frankfurt", "fuel": "e10"})["live_advice"]
     assert advice["min_recommendations"] == M7_MIN_RECOMMENDATIONS == 100
     assert advice["brier_threshold"] == M7_BRIER_THRESHOLD == 0.25
-    assert advice["gate_status"] == ("Kalibrierung steht aus (n=0 < 100 Empfehlungen)")
+    assert advice["gate_status"] == (
+        "Kalibrierung steht aus (n=0 < 100 Empfehlungen mit Verteilungs-P)"
+    )
     # Kein Tageszähler im Gate-Text: Die Übergangsregel ist eine andere Freigabe.
     assert "Tage" not in advice["gate_status"]
 
 
 def test_m7_gate_calibrated_counts_settlements_and_brier():
     """Ab n ≥ 100 mit Brier < 0,25 ist das Gate offen (Konzept §0.4)."""
-    snaps = [{"id": f"s{i}", "action": "wait", "p_correct": 0.9} for i in range(100)]
+    # O5: Das Gate zählt nur Zeilen mit Verteilungs-P — der handgebaute Store
+    # trägt die Quelle explizit, sonst griffe die Rekonstruktion (basisrate).
+    snaps = [
+        {"id": f"s{i}", "action": "wait", "p_correct": 0.9, "p_source": "verteilung"}
+        for i in range(100)
+    ]
     store = {
         "episodes": [{"id": "ep", "snapshots": snaps}],
         "settlements": [{"snapshot_id": f"s{i}", "outcome": "win"} for i in range(100)],
@@ -1046,8 +1055,12 @@ def test_m7_gate_calibrated_counts_settlements_and_brier():
     advice = compute_advice_stats(store)
     assert advice["n"] == 100
     assert advice["brier_30d"] == 0.01
+    assert advice["gate_n"] == 100
+    assert advice["gate_brier"] == 0.01
     assert advice["calibrated"] is True
-    assert advice["gate_status"] == "Kalibriert (n=100, Brier 0,01 < 0,25)"
+    assert (
+        advice["gate_status"] == "Kalibriert (n=100, Brier 0,01 < 0,25, Verteilungs-P)"
+    )
 
 
 def test_m7_gate_is_unmeasurable_without_probability():
@@ -1066,7 +1079,7 @@ def test_m7_gate_is_unmeasurable_without_probability():
     assert advice["brier_30d"] is None
     assert advice["calibrated"] is False
     assert advice["gate_status"] == (
-        "Kalibrierung nicht messbar (n=100, keine P-Schätzung im Ledger)"
+        "Kalibrierung nicht messbar (n=100, keine Verteilungs-P im Ledger)"
     )
 
 
@@ -1468,7 +1481,7 @@ def test_gate_requires_p_population_not_total_n():
     }
     advice = compute_advice_stats(store)
     assert advice["calibrated"] is False
-    assert "P-Schätzung" in advice["gate_status"]
+    assert "Verteilungs-P" in advice["gate_status"]
 
 
 def _delete_json(url):
@@ -1693,6 +1706,9 @@ def test_advice_diary_lists_real_settlements(b4_settings):
         assert entry["price_window"] == 1.679
         assert entry["outcome"] == "win"
         assert entry["p_correct"] == 0.78
+        # O5: Der handgebaute Snapshot trägt nur p_correct — die Rekonstruktion
+        # meldet ihn als Basisrate (der alte record_snapshot-Fallback).
+        assert entry["p_source"] == "basisrate"
         assert entry["window_end"] == "2026-09-10T18:00:00+00:00"
         assert entry["decline_reason"] is None
         assert body["reason"] is None
