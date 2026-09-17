@@ -35,6 +35,10 @@ export function useLaborModel(
 
   const observations = segments(ov.history.data?.points || []);
 
+  const thinSupportPoints = forecastPoints.filter(
+    (p) => p.supported === true && (p.support_days ?? Infinity) <= 7,
+  );
+
   const modelPoints = forecastPoints.map((p) => ({
     x: Date.parse(p.timestamp),
     y: p.q50,
@@ -62,6 +66,8 @@ export function useLaborModel(
               x: Date.parse(p.timestamp),
               yLow: p.q025!,
               yHigh: p.q975!,
+              thin: p.supported === true && (p.support_days ?? Infinity) <= 7,
+              supportDays: p.support_days,
             })),
         },
       ]
@@ -83,6 +89,8 @@ export function useLaborModel(
               x: Date.parse(p.timestamp),
               yLow: p.q10!,
               yHigh: p.q90!,
+              thin: p.supported === true && (p.support_days ?? Infinity) <= 7,
+              supportDays: p.support_days,
             })),
         },
       ]
@@ -121,7 +129,6 @@ export function useLaborModel(
     let smart = 0,
       commit = 0,
       bestVal = 0,
-      always = 0,
       regretEur = 0,
       n = 0,
       sPos = 0,
@@ -130,7 +137,6 @@ export function useLaborModel(
       smart += sc.sum_smart_eur;
       commit += sc.sum_commit_eur;
       bestVal += sc.sum_best_eur;
-      always += sc.sum_always_eur;
       regretEur += sc.avg_regret_eur * sc.n;
       n += sc.n;
       sPos += sc.n * sc.hit_freq;
@@ -140,7 +146,6 @@ export function useLaborModel(
       smart,
       commit,
       best: bestVal,
-      always,
       regretEur: n ? regretEur / n : 0,
       n,
       hitFreq: n ? sPos / n : 0,
@@ -204,6 +209,7 @@ export function useLaborModel(
     fanBand95,
     forecastMarks,
     forecastWindow,
+    thinSupportPoints,
     labData,
     anchorHour,
     anchorLabel,

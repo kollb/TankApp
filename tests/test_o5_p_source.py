@@ -153,7 +153,7 @@ def test_migration_marks_old_snapshots_with_source():
         "audit": [],
     }
     store = migrate_store(raw)
-    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 5
+    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6
     by_id = {s["id"]: s for s in store["episodes"][0]["snapshots"]}
     assert by_id["s_dist"]["p_source"] == "verteilung"
     assert by_id["s_base"]["p_source"] == "basisrate"
@@ -356,4 +356,4 @@ def test_diary_carries_p_source_after_migration(settings_with_station):
     # Die Migration hat den Store auf dem Weg gehoben (Lesen migriert im
     # Speicher; der nächste Schreibvorgang sichert die Version).
     with locked_store(settings_with_station) as store:
-        assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 5
+        assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6

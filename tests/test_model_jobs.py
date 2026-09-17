@@ -98,7 +98,7 @@ def test_parallel_keeps_station_order(plan):
     assert [result["key"] for result in results] == [task[1] for task in tasks]
 
 
-def test_horizon_points_only_carry_quantiles(plan):
+def test_horizon_points_carry_only_public_quantiles_and_support(plan):
     series_map, cfg, tasks = plan
     results = run_tasks(tasks, series_map, cfg, ORIGIN, workers=2)
     predicted = [r for r in results if r["kind"] in {"fit", "wide"}]
@@ -304,3 +304,27 @@ def test_settings_parse_city_subdivisions(monkeypatch):
         "Frankfurt": "HE",
         "Gütersloh": "NW",
     }
+
+
+def test_horizon_records_publish_support_and_round_bands_to_tenth_cent():
+    """O10: thin local slots survive publication rather than looking certain."""
+    from app.model_jobs import _records
+
+    index = pd.date_range("2026-09-16T12:00:00Z", periods=2, freq="5min")
+    frame = pd.DataFrame(
+        {
+            "q025": [1.70149, 1.70251],
+            "q10": [1.71149, 1.71251],
+            "q50": [1.72149, 1.72251],
+            "q90": [1.73149, 1.73251],
+            "q975": [1.74149, 1.74251],
+            "support_days": [7, 21],
+            "supported": [True, True],
+        },
+        index=index,
+    )
+    records = _records(frame)
+    assert records[0]["support_days"] == 7
+    assert records[0]["supported"] is True
+    assert records[0]["q50"] == 1.721  # 0.001 €/L = 0.1 ct/L
+    assert records[1]["q50"] == 1.723

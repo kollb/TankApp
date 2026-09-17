@@ -1,10 +1,15 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.47.0** — seit 0.47.0 (Batch 4 des
+> Stand: 17.09.2026 · App-Version **0.48.0** — neu seit 0.48.0 (Batch 5 des
 > [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
-> `backup` (Alter der Laufzeit-Backups, O33) in `/health`, und der Server
-> antwortet mit **HTTP/1.1** statt HTTP/1.0 — mehrere Anfragen teilen sich eine
-> Verbindung (O24). Seit 0.46.0: `notify.mode` (Push-Modus, O42),
+> normierte Fenstersterne mit Rohwert/Basisrate (O12), 0,5-Gleichstände (O7),
+> strikte Belegfenster und Netto-Umweg-Provenienz (O8/O9), 7×24-
+> Personalisierung (O2/O3), Forecast-Support (O10), LOO-Heatmap (O11),
+> benannte Strecken/Zeitwertstufe (O14/O15) sowie Server-Uhrzeit für Belege
+> ohne `tanked_at` (O43). Seit 0.47.0: `backup` (Alter der Laufzeit-Backups,
+> O33) in `/health`, und der Server antwortet mit **HTTP/1.1** statt HTTP/1.0 —
+> mehrere Anfragen teilen sich eine Verbindung (O24). Seit 0.46.0:
+> `notify.mode` (Push-Modus, O42),
 > `price_implausible`-Zähler (O35) in `/health`,
 > `implausible_price` je Station (O35), Fenster-Meldungen über den
 > ntfy-Kanal (O29). Davor: B3/B4/B5, Ereignis-Pipeline
@@ -153,19 +158,24 @@ Eingabe ist `tank` `null`.
 
 Antwort (Ergänzung): `context` enthält `trip_mode`, `home_used`, `latest_by`,
 `horizon_cut`, `liters`, `consumption_l_100km`, `speed_kmh`,
-`value_of_time_eur_h`, `z_auto`, `is_peak`. `thresholds` zeigt die aktiven
+`value_of_time_eur_h`, `z_auto`, `is_peak`, `time_value_rule`. Bei Auto benennt
+`time_value_rule` die feste Stufe 16 €/h von 16:30–20:00 Uhr, sonst 10 €/h (O15);
+es gibt keinen unsichtbaren Zwischenwert. `thresholds` zeigt die aktiven
 Entscheidungsschwellen und den M7-Vorschlag (siehe
 [Stats Summary](#stats-summary-b4-3-schichten)). Liegt kein Fenster mehr vor
 `latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
 spätesten Tankzeitpunkt.
 
-`personalization` (A9/O1) sagt, ob die Fensterreihenfolge schon nach dem
-persönlichen Tankzeit-Profil w(h) gewichtet ist: `active`, `n_fills`,
-`min_fills` (= 8, `app.feedback.WH_MIN_FILLS`), `missing_fills` und seit 0.44.0
-`measured_fills`/`default_fills` — wie viele Belege eine gemessene oder
-rekonstruierte Tankzeit tragen und wie viele mangels Zeitstempel mit der
-erfundenen 12-Uhr-Projektion zählen (O1). Die GUI hängt den Satz an die
-Fensterliste (`personalizationNote` in `web/src/data.ts`).
+`personalization` (O2/O3) sagt, ob die Fensterreihenfolge schon nach dem
+persönlichen **Wochentag×Stunden**-Profil gewichtet ist: `active`, `n_fills`,
+`min_fills` (= 8, die Stärke des Standardprofil-Priors, nicht mehr eine
+Aktivierungsschwelle) und `missing_fills`. Jeder Beleg mit Zeitstempel wirkt ab
+dem ersten vorsichtig über `(n · empirisch + 8 · Standard) / (n + 8)`; ohne
+Belege bleibt die reine Preisreihenfolge. Dieselbe Profilquelle gewichtet auch
+die Top-3-Verfügbarkeit der Stationsselektion. `measured_fills` umfasst
+Beleg-, Server- und rekonstruierte Zeitstempel; `default_fills` bleibt nur für
+nicht rekonstruierbare Altzeilen mit markierter 12-Uhr-Projektion. Die GUI hängt
+den Satz an die Fensterliste (`personalizationNote` in `web/src/data.ts`).
 
 `quality` weist die Engine-Qualität der ausgewählten Station aus
 (Konzept §3.3.3): `rolling_picp_7d_pct` (Mittel der Tagesquoten über die
@@ -187,14 +197,23 @@ Ermittelt die primäre Handlungsempfehlung nach der €/P-Entscheidungstabelle (
 - `no_advice`: kein Ankerpreis, keine Prognose, Grauzone `p_besser` ∈ [40, 60] % — oder M7-Gate steht aus
 
 `p_besser` = P(min über dem empfohlenen Fenster ≤ p_jetzt − 1 ct) aus den
-Bootstrap-Draws; `p_lohnt` je F2-Zeile = P(€_netto > 0); F3-Fenster-P je
-Fenster = P(Fenster ≤ Minimum im ±6-h-Umfeld). Ohne veröffentlichte Draws
+Bootstrap-Draws; `p_lohnt` je F2-Zeile = P(€_netto > 0); F3 liefert je
+Fenster `p_raw` = P(Fenster ≤ Minimum im ±6-h-Umfeld), die Konkurrenzzahl
+`p_competitors`, `p_baseline` und `p` für die Sterne. `p` ist gegen die
+zufällige Basisrate `p_baseline = 1 / (p_competitors + 1)` normiert (`min(1, p_raw × (k+1))`), damit
+Randfenster mit weniger Nachbarn nicht mechanisch höhere Sterne erhalten (O12).
+Ohne veröffentlichte Draws
 (Altbestand, kein Modell) entfällt das Prozent-Gate ehrlich — es wird keine
 Zahl geraten, die €-Seite entscheidet allein.
 
+**Gleichstands-Konvention (O7):** Ein Ergebnis exakt auf der 1,0-ct/L-Schwelle
+ist `tie` und zählt als **0,5 Treffer**. Das gilt einheitlich für `p_besser`,
+Settlement, Gesamt- und Aktions-Trefferquote, Brier-Ziel und Reliability-Bins;
+bei `wait`/`refuel_elsewhere` gelten beide Grenzen ±1,0 ct/L als Gleichstand.
+
 M7-Gate (§0.4): Vor der Kalibrierung (weniger als 100 Empfehlungen mit Verteilungs-P oder Allzeit-Brier darüber ≥ 0,25) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb): der Snapshot speichert die Verteilungs-P (`p_besser`), Brier misst sie gegen das Settlement — ohne Draws fällt die gespeicherte Schätzung auf die interne Ledger-Quote zurück. Jede Zeile trägt ihre Quelle (`p_source`: `verteilung`|`basisrate`|`keine`); das Gate rechnet ausschließlich über `verteilung` (O5) — die Basisrate wird getrennt ausgewiesen, öffnet das Gate aber nicht. `alternatives_nearby[].p_lohnt` und `windows_today/week[].p` sind Informationswerte aus der Verteilung und hängen nicht am Gate.
 
-Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_today` und `windows_week` liefern je Fenster `expected_price`, `expected_saving_eur` (vs. jetzt tanken) und `p` (F3-Fenster-P, null ohne Draws). Alternativen nutzen die Luftlinie zwischen den Stationskoordinaten × 1,3 (`detour_mode: haversine`, Fallback `anchor_diff`).
+Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_today` und `windows_week` liefern je Fenster `expected_price`, `expected_saving_eur` (vs. jetzt tanken), `p` sowie die auditierbaren F3-Felder `p_raw`/`p_competitors`/`p_baseline`. Alternativen tragen `detour_km_source`: nur `road` bezeichnet eine Straßenstrecke; `estimated_air_circuity` bzw. `estimated_anchor_*` sind klar benannte Schätzungen (O14). Ihre ungerundete Formel für Brutto-, Sprit-, Zeit- und Netto-€ wird identisch bei Entscheidung, Draw-Wahrscheinlichkeit und Beleg-Abrechnung verwendet (O9).
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).
 
@@ -394,7 +413,10 @@ Ermittelt automatisch den Compliance-Grad (`followed`, `partial`, `ignored`, `un
       "fuel": "e10",
       "source": "prompt",
       "compliance": "followed",
-      "saved_vs_always_now_eur": 1.84
+      "settled": "im_fenster",
+      "saved_vs_always_now_eur": 1.84,
+      "elsewhere_net_eur": null,
+      "elsewhere_net_provenance": null
     }
   ],
   "error_code": null
@@ -409,10 +431,17 @@ sofort getankt“ (Referenz: `price_now` des ersten Snapshots der Folge, sonst
 (Zeitstempel-Matching, siehe [Fills](#fills-b4-belege)). Storno-Felder:
 `voided`, `voided_at`. `clock_hour` ist die ganze Stunde der Tankzeit in
 Europe/Berlin (Bucket des w(h)-Histogramms), `clock_hour_source` ∈ `beleg`
-(aus dem Beleg selbst: sein `tanked_at` oder eine explizite Angabe) ·
-`abgeleitet` (nachträglich aus dem gespeicherten Zeitstempel rekonstruiert —
-Migration auf Schema 4) · `default` (kein Zeitstempel, also die erfundene
-12-Uhr-Projektion).
+(aus `tanked_at`) · `server` (kein `tanked_at`: aus dem dokumentierten
+Server-Buchungszeitstempel, O43) · `abgeleitet` (nachträglich aus einem
+Alt-Zeitstempel rekonstruiert) · `default` (nur nicht rekonstruierbare
+Altzeile). Ein `wait`-Beleg trägt zusätzlich `settled: im_fenster` für das
+strikte veröffentlichte Fenster oder `kulanz` für die erlaubten −30/+60 Minuten;
+Kulanz bleibt sichtbar, zählt aber nur als `partial`, nicht als Qualitäts-Treffer
+(O8). Bei einer passenden `refuel_elsewhere`-Folge kann der Client
+`actual_detour_km_total` (gefahrene Gesamt-km) mitschicken. Dann enthält der
+Beleg `elsewhere_net_eur` und die Annahmen in `elsewhere_net_provenance` mit
+`distance_source: actual_receipt`; ohne Angabe wird die gespeicherte
+`estimated_snapshot` ausdrücklich so bezeichnet (O9).
 
 Stornierte Belege bleiben mit `voided: true` und `voided_at` in der Liste —
 gezählt wird sie in Wallet-Bilanz und w(h)-Profil **nicht** mehr. Fehler:
@@ -547,7 +576,7 @@ Sprung braucht eine Migrationsfunktion, kein stiller Reset (B2-Muster).
 Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 1. **Schicht A (Markt-Labor Backtest)**: 7 Tage Out-of-Sample Evaluation (`daysEval` aus der Engine-Publikation, `daysTrain` dito) mit echten Anker-Entscheidungszeilen je Stationstag (`evalRows`: μ/s/best/predHour + Erwartungskurve, Anker = letzter Preis ≤ Tages-Anker, Wahrheit = realisierte offene Preise). Der Tages-Anker ist `TANKAPP_DECISION_HOUR` (Default 12, `decisionHour` im Report; Engine-CLI: `--decision-hour`) — 12:00, weil Anhebungen nur mittags stattfinden und der hypothetische Entscheid erst dann weiß, ob es heute teurer wurde. Server-Scores spiegeln exakt die Frontend-Formeln (`rowOutcome`/`scoreRows`, Default ε = 1,0 ct, 40 L). `p` ist null, solange die Engine kein P-Modell hat; `calibration`/`models`/`p8Series`/`scan` sind ehrlich leer.
 2. **Schicht B (Live-Advice Ledger)**: Gesettelte Live-Snapshots mit Trefferquoten für Warten/Jetzt/Woanders, Brier-Score (30d, nur über Snapshots mit gespeicherter P-Schätzung) und Kalibrierungs-Bins. `void`-Settlements zählen weder zu n noch zu Brier (`n_void`, `n_brier` werden ausgewiesen); noch laufende Empfehlungen zählen erst nach der Abrechnung (`n_pending`, `snapshots_total`, `n_void_all`). Seit O5 (0.45.0) trägt jede Zeile ihre P-Quelle (`p_source`: `verteilung`|`basisrate`|`keine`): `brier_by_source`/`brier_all_by_source` weisen den Score je Quelle getrennt aus, `p_source_counts`/`p_source_counts_all` zählen die Zeilen. Das M7-Gate ist ein **Zähl-Gate** (§0.4) über die Verteilungs-P allein: `calibrated` gilt ab `min_recommendations` (= 100, `app.feedback.M7_MIN_RECOMMENDATIONS`) abgeschlossenen Empfehlungen mit Verteilungs-P (`gate_n`), wenn die Obergrenze des Block-Bootstrap-Intervalls (`gate_brier_ci`, Tagesblöcke, 95 %) unter beiden naiven Referenzen auf derselben Grundgesamtheit liegt — `gate_ref_base` (konstante Basisrate) und `gate_ref_climate` (Leave-one-out-Klimatologie je Stunde/Wochentag); `brier_threshold` (= 0,25, `M7_BRIER_THRESHOLD`) ist seit O6 (0.45.0) nur noch das dokumentierte Münz-Niveau, kein Kriterium. Unter `min_day_blocks` (= 10) Tagesblöcken bleibt das Intervall `null` („nicht messbar“ statt „kalibriert“); die Antwort nennt Intervall, Fenstergröße (`block_days`, `n_day_blocks`, `bootstrap_samples` = 1000) und beide Referenzen. `gate_status` unterscheidet „steht aus (n < 100)“, „nicht messbar“ (keine Verteilungs-P oder zu wenige Tagesblöcke), „nicht erreicht“ (Obergrenze ≥ Referenz) und „kalibriert“. Die 90-Tage-Übergangsregel (Punkt 6) ist **kein** Bestandteil dieses Gates. Seit O38 (0.45.0) meldet Schicht B zusätzlich die Fensterbilanz: `episodes_used_7d`/`episodes_expired_7d` und `episodes_used_30d`/`episodes_expired_30d` (genutzte vs. verstrichene Fenster, nur Folgen mit echter Empfehlung, datiert nach `closed_at`) plus `episodes_open` (laufende Folgen, in keiner der beiden Seiten). Das Labor zeigt daraus „x von y Fenstern genutzt“ mit abgerechneten Empfehlungen gegen verstrichene Fenster — die Gegenprobe zur Trefferquote.
-3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis. `saved_verified_eur` (O17, 0.45.0) ist die zweite, ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis (`n_prognosis_price`, Altbestand, kein gezahlter Preis). Das Tankzeit-Profil w(h) (`wallet.wh_hours`, 24 Werte, ab `wh_min_fills` = 8 aktiven Belegen gegen das Pendler-Profil geschrumpft) nennt seit 0.44.0 seine Herkunft mit: `wh_clock_sources` (`{"beleg": n, "abgeleitet": n, "default": n}`), `wh_measured_n` und `wh_default_n` (O1) — Belege ohne Zeitstempel zählen die erfundene 12-Uhr-Projektion ins Profil und sind als solche gezählt.
+3. **Schicht C (Wallet Ledger)**: Persönliche Füllungen, Befolgungsgrad und Netto-Ersparnis. `saved_verified_eur` (O17, 0.45.0) ist die zweite, ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis (`n_prognosis_price`, Altbestand, kein gezahlter Preis). Das Profil ist seit O2/O3 als `wallet.wh_weekday` (7×24, Montag=0) veröffentlicht; `wallet.wh_hours` bleibt die Summierung für ältere Leser. Ab dem ersten nutzbaren Beleg wird es gegen den festen Acht-Beleg-Standardprior geschrumpft. `wh_clock_sources` zählt `beleg`/`server`/`abgeleitet`/`default`; `wh_measured_n` fasst die drei zeitlich bestimmbaren Quellen zusammen, und nur `wh_default_n` sind nicht rekonstruierbare Altzeilen mit markierter 12-Uhr-Projektion (O43). `settled_in_window` und `settled_grace` trennen den strikten Fenster-Treffer von Kulanz (O8).
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus — die Produktion entscheidet weiterhin mit der kalibrierten Tabelle, §8.2 Nr. 1).
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 6. **`live_phase` (bewertete Live-Tage der Übergangsregel)**: gezählt aus den publizierten Bootstrap-Policies (`runtime/engine/current.json` → `policies`), nicht aus dem Browserdatum: `good_complete_days` (schwächste Station/Kraftstoff), `best_complete_days`, `required_complete_days` (Engine-Schwelle `live_only_days`, Default 90), `days_missing`, `min_daily_coverage`, `stations`, `live_only_stations`, `as_of` (Datenstand des Modell-Laufs), `complete`. Ohne Veröffentlichung oder bei uneinheitlichen Schwellen ist das Feld `null` — die GUI zeigt dann „noch keine Live-Abdeckungsdaten“ statt eines erfundenen Countdowns (§0.4). Achtung: Die Tageszahl ist die Übergangsregel (Archiv → Polling), **nicht** das M7-Gate; dieses bleibt „Allzeit-Brier der Verteilungs-P < 0,25 bei ≥ 100 Empfehlungen mit Verteilungs-P“ (Punkt 2). Beide Freigaben haben deshalb in der GUI eigene Kacheln und eigene Nenner: `live_only_days` (Engine-Schwelle, `engine/cli.py --live-only-days`, Default 90) für die Datenhygiene, `min_recommendations` für M7 — bei ~1 Empfehlung/Tag wären 100 Settlements ~100 Tage, M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (Konzept §13). Das Stationsdetail `data_policy` je Prognose (`GET /api/v1/forecast`) bleibt unverändert.
@@ -789,7 +818,7 @@ Liefert letzten publizierten Ausblick:
   "city": "Frankfurt",
   "fuel": "e10",
   "origin": "2026-09-10T00:00:00Z",
-  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8}, ...],
+  "points": [{"timestamp": "...", "q025": 1.6, "q10": 1.65, "q50": 1.7, "q90": 1.75, "q975": 1.8, "support_days": 7, "supported": true}, ...],
   "points_3d": [...],
   "points_7d": [...],
   "metrics": {"points": 1234, "mae_ct": 1.2, "mase": 0.85, "picp95_pct": 94.5},
@@ -803,11 +832,13 @@ Liefert letzten publizierten Ausblick:
 }
 ```
 
-- `points`, `points_3d` und `points_7d` enthalten seit 0.26.0 ausschließlich
-  `timestamp` und die fünf Quantile `q025`/`q10`/`q50`/`q90`/`q975`. Interne
-  Modell-Diagnosespalten wurden von keinem API-Abnehmer genutzt und gehen nicht
-  mehr über die Prozess- oder JSON-Grenze; fehlende Unterstützung ist an
-  `null`-Quantilen erkennbar.
+- `points`, `points_3d` und `points_7d` enthalten `timestamp`, die fünf auf
+  **0,1 ct/L** gerundeten Quantile `q025`/`q10`/`q50`/`q90`/`q975` sowie seit
+  O10 `support_days` und `supported`. `support_days` ist die Zahl der nutzbaren
+  Tage für den lokalen Wochentag/Stunden-Slot; die GUI markiert gestützte Slots
+  mit höchstens sieben Tagen hohl im Band. Bei `supported: false` sind Quantile
+  `null`, keine scheinpräzise Bandkante. Alte Publikationen dürfen die beiden
+  Support-Felder fehlen lassen.
 - `range_from`/`range_to`/`n_points`/`n_days` (0.18.0, C11): Datenreichweite des
   **Fits** — Trainingsfenster, letzte verwendete Beobachtung, Zahl der offenen
   5-Minuten-Preise und nutzbaren Tage. Die Werte stammen unverändert aus dem
@@ -836,7 +867,7 @@ Für RP2 Fallback-GUI Cache, nur 24h Horizonte (ohne 3d/7d):
 - `kind`: level|probability, Default level
   - `level`: Median €/L je (Wochentag, Stunde)
   - `probability`: Cheap-Probability in % je Zelle:
-    - mit `station_id`: P(Station ≤ Stadtmedian **der Zelle**) — teilt den Preis der Station mit dem Median aller Stationen des gleichen (DoW, Stunde)
+    - mit `station_id`: P(Station ≤ **Leave-one-out**-Stadtmedian der Zelle) — die Vergleichsbasis enthält nur andere Stationen desselben (DoW, Stunde); auch mehrere eigene Preise dürfen den Median nicht zu sich ziehen (O11)
     - ohne `station_id`, `basis=overall` (Default): P(Preis ≤ **Gesamtmedian des Zeitfensters**) — Anteil der offenen Preise der Stadt, die unter dem Gesamtmedian liegen
     - ohne `station_id`, `basis=hour` (**B12**): P(Preis ≤ **Median derselben Stunde**) — Spalten-Basis, rechnet den Tagesgang heraus und macht die Wochentage vergleichbar; die GUI nutzt ohne Station diesen Modus
 - `weeks`: 1–12, Default 6 (GUI-Wahl: 4/6/12)
@@ -880,7 +911,7 @@ Antwort:
 - level: Werte €/L (z. B. 1.689) oder null
 - probability: Werte 0–100 % (z. B. 73.5) oder null
 - `counts`: Stichprobe je Zelle (7×24) — die GUI blendet Zellen unter 8 Preisen aus (sonst kürt ein einzelner Nacht-Preis die „günstigste Stunde“) und lässt Tages-Zeilen unter 3 belastbaren Zellen leer
-- `reference_counts` (0.14.0, P0): Stichprobe der **Vergleichs-Basis** je Zelle (7×24), nur bei `kind=probability`, sonst `null`. Mit `station_id` = Zahl der Preise aller Stationen derselben Zelle (Stadtmedian), bei `basis=hour` = Zahl der Preise derselben Stunde über alle Wochentage (in jeder Zeile gleich), bei `basis=overall` = Gesamtzahl der Preise (überall gleich). Eine Zelle kann 8+ eigene Preise haben und trotzdem ein Artefakt zeigen — die GUI kennzeichnet Stunden, deren Basis unter 30 Preisen liegt, als „dünn“ und kürt daraus keine „typisch günstigste Stunde“
+- `reference_counts` (0.14.0, P0): Stichprobe der **Vergleichs-Basis** je Zelle (7×24), nur bei `kind=probability`, sonst `null`. Mit `station_id` = Zahl der Preise **anderer** Stationen derselben Zelle (LOO-Stadtmedian, O11), bei `basis=hour` = Zahl der Preise derselben Stunde über alle Wochentage (in jeder Zeile gleich), bei `basis=overall` = Gesamtzahl der Preise (überall gleich). Eine Zelle kann 8+ eigene Preise haben und trotzdem ein Artefakt zeigen — die GUI kennzeichnet Stunden, deren Basis unter 30 Preisen liegt, als „dünn“ und kürt daraus keine „typisch günstigste Stunde“
 - `range_from`/`range_to` (0.14.0, P0): echte Reichweite der verwendeten Preise (ISO-8601, UTC) oder `null` bei leerem Bestand. Das angefragte Fenster (`weeks`) ist gerade in der Anlaufphase größer als der Bestand; die GUI nennt Reichweite und Bestand und erklärt leere Wochentags-Zeilen als fehlende Tage statt als Datenverlust
 - `points`: Anzahl **verwendeter** offener Preise (geschlossene Meldungen und Preise `null` zählen nicht, 0.14.0); mit `station_id` nur die Preise dieser Station
 - `stations`: Zahl der Stationen, deren Preise verwendet wurden
@@ -1136,7 +1167,7 @@ curl -s "http://nas:1355/api/v1/jobs/models/log?lines=200" | jq
 - `station_id`: Ziel-Station (Alternative)
 - `ref_station_id`: Referenz-Station (z. B. aktuell ausgewählte), optional — falls fehlt, Stadtmedian frischer Preise als Referenz
 - `liters`: Tankmenge 5–100, Default 40
-- `detour_km`: einfache Mehrweg-Distanz km (onroute) bzw. einfache Entfernung (dedicated). **Ohne Angabe abgeleitet:** onroute = Luftlinie(Referenz, Ziel) × 1,3 (gleiche Umweg-Konvention wie `data-tools/road_route.py`), dedicated = Anker-Distanz zum Ziel; Fallback Anker-Differenz, dann 0 (Quelle in Antwortfeld `detour_km_source`: `query` | `derived` | `derived_anchor` | `zero`). Die reine Anker-Differenz |dist(Ziel) − dist(Ref)| wäre nur eine Dreiecksungleichungs-Schranke (0 bei gleicher Anker-Entfernung trotz km-Weite).
+- `detour_km`: angegebene einfache Mehrweg-Distanz km (onroute) bzw. einfache Entfernung (dedicated). Ohne Angabe wird zwischen Stationskoordinaten mit Luftlinie × 1,3 geschätzt; eine cached Anker-`road`-Distanz wird nur im dedicated-Modus ohne eigene Home-Koordinate als Straßenstrecke übernommen. `detour_km_source` benennt das zwingend: `declared` | `road` | `estimated_air_circuity` | `estimated_anchor_air_circuity` | `estimated_anchor_difference` | `unavailable`. Nur `road` ist eine Straßenstrecke. Die reine Anker-Differenz bleibt eine markierte Schätzung, keine Fahrroute (O14).
 - `consumption`: L/100km 3–20, Default 7
 - `speed`: km/h 10–130, Default 45
 - `value_of_time`: €/h 0–100, 0/entfällt = Auto
@@ -1164,7 +1195,7 @@ Antwort:
   "gross_eur": 1.6,
   "detour_km_oneway": 3.0,
   "detour_km_total": 3.0,
-  "detour_km_source": "query",
+  "detour_km_source": "declared",
   "mode": "onroute",
   "fuel_cost_eur": 0.35,
   "time_cost_eur": 0.8,
@@ -1176,6 +1207,7 @@ Antwort:
   "z_used": 12.0,
   "z_auto": true,
   "is_peak": false,
+  "time_value_rule": "Automatik: 16 €/h von 16:30 bis 20:00 Uhr, sonst 10 €/h.",
   "consumption_l_100km": 7.0,
   "speed_kmh": 45.0,
   "liters": 40.0,

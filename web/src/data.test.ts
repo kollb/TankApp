@@ -1246,16 +1246,16 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
     expect(note).not.toContain("fehlen");
   });
 
-  it("nennt die fehlenden Belege, solange nach Preis sortiert wird", () => {
+  it("erklärt, dass erst der erste Zeitbeleg die geglättete Gewichtung einschaltet", () => {
     const note = personalizationNote({
       active: false,
       n_fills: 5,
       min_fills: 8,
       missing_fills: 3,
     });
-    expect(note).toContain("5 Belege von 8");
-    expect(note).toContain("Noch nach Preis sortiert");
-    expect(note).toContain("es fehlen 3");
+    expect(note).toContain("Noch reine Preisreihenfolge");
+    expect(note).toContain("erste Beleg mit Zeit");
+    expect(note).toContain("Standardprofil geglättet");
   });
 
   it("schreibt den Einzahl-Beleg nicht als ‚1 Belege‘", () => {
@@ -1265,14 +1265,13 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
       min_fills: 8,
       missing_fills: 7,
     });
-    expect(note).toContain("1 Beleg von 8");
-    expect(note).not.toContain("1 Belege");
+    expect(note).toContain("erste Beleg mit Zeit");
+    expect(note).toContain("Standardprofil");
   });
 
-  // O1 (0.44.0): Belege ohne Zeitstempel tragen die erfundene 12-Uhr-Projektion
-  // der Engine ins Profil. Der Satz nennt sie, statt sie als Tankzeit
-  // durchgehen zu lassen.
-  it("nennt Belege ohne Zeitstempel als erfundene 12 Uhr", () => {
+  // O43: Neue Belege ohne tanked_at verwenden die Serverzeit. Nur alte
+  // Schemazeilen ohne rekonstruierbare Zeit bleiben als 12-Uhr-Projektion markiert.
+  it("nennt alte Belege ohne Zeitstempel als markierte 12-Uhr-Projektion", () => {
     const note = personalizationNote({
       active: true,
       n_fills: 12,
@@ -1282,7 +1281,7 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
       default_fills: 3,
     });
     expect(note).toContain("12 Belege");
-    expect(note).toContain("3 Belege ohne Zeitstempel zählen als 12 Uhr.");
+    expect(note).toContain("3 ältere Belege ohne Zeitstempel bleiben als 12-Uhr-Projektion markiert.");
   });
 
   it("schreibt einen Beleg ohne Zeitstempel in der Einzahl", () => {
@@ -1294,8 +1293,8 @@ describe("A9: Hinweis zur persönlichen Fensterreihenfolge (w(h))", () => {
       measured_fills: 4,
       default_fills: 1,
     });
-    expect(note).toContain("1 Beleg ohne Zeitstempel zählt als 12 Uhr.");
-    expect(note).not.toContain("1 Belege ohne");
+    expect(note).toContain("1 älterer Beleg ohne Zeitstempel bleibt als 12-Uhr-Projektion markiert.");
+    expect(note).not.toContain("1 ältere Belege ohne");
   });
 
   it("schweigt über die 12 Uhr, wenn jede Tankzeit gemessen ist", () => {

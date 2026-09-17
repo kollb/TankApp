@@ -95,6 +95,9 @@ def build_heatmap(
     cell_prices_station = defaultdict(
         list
     )  # (dow, hour) -> list prices gefilterte Station
+    # O11: Comparator must exclude the selected station's whole cell sample,
+    # not merely one current row, otherwise its own price shifts the median.
+    cell_prices_by_station = defaultdict(lambda: defaultdict(list))
     hour_prices = defaultdict(list)  # hour -> list prices aller Wochentage
     used_stamps: list[dt.datetime] = []  # echte Reichweite der verwendeten Preise
     used_stations: set = set()  # nur Stationen, deren Preise wirklich zählen
@@ -111,6 +114,9 @@ def build_heatmap(
         if p.get("station_id") is not None:
             used_stations.add(p["station_id"])
         cell_prices_all[(dow, hour)].append(price)
+        station_key = p.get("station_id")
+        if station_key is not None:
+            cell_prices_by_station[(dow, hour)][station_key].append(price)
         hour_prices[hour].append(price)
         if station_id is None or p.get("station_id") == station_id:
             cell_prices_station[(dow, hour)].append(price)
@@ -121,9 +127,6 @@ def build_heatmap(
 
     # B12: Spaltenmedian je Stunde (alle Wochentage, alle Stationen des Fensters)
     hour_median = {h: _median(lst) for h, lst in hour_prices.items()}
-
-    # Stadtmedian je Zelle (für station-spezifische probability)
-    cell_median = {key: _median(lst) for key, lst in cell_prices_all.items()}
 
     # Matrix aufbauen 7×24 — plus Zähler je Zelle: Die GUI blendet Zellen
     # mit zu wenigen Preisen aus (sonst kürt ein einzelner Nacht-Preis die
@@ -142,7 +145,11 @@ def build_heatmap(
             key = (dow, hour)
             if reference_counts is not None:
                 if station_id:
-                    reference_counts[dow][hour] = len(cell_prices_all.get(key, ()))
+                    reference_counts[dow][hour] = sum(
+                        len(values)
+                        for sid, values in cell_prices_by_station.get(key, {}).items()
+                        if sid != station_id
+                    )
                 elif basis == "hour":
                     reference_counts[dow][hour] = len(hour_prices.get(hour, ()))
                 else:
@@ -158,8 +165,17 @@ def build_heatmap(
                 matrix[dow][hour] = None if median is None else round(median, 3)
             else:  # probability
                 if station_id:
-                    # P(Station ≤ Stadtmedian_je_Zelle)
-                    reference = cell_median.get(key)
+                    # O11: P(selected station ≤ median of every *other*
+                    # station) per cell. This is LOO on station identity, so
+                    # repeated samples of the selected station cannot pull its
+                    # comparator toward themselves.
+                    reference_values = [
+                        price
+                        for sid, values in cell_prices_by_station.get(key, {}).items()
+                        if sid != station_id
+                        for price in values
+                    ]
+                    reference = _median(reference_values)
                     lst = cell_prices_station.get(key, [])
                 elif basis == "hour":
                     # B12: P(Preis ≤ Median derselben Stunde) — Tagesgang raus

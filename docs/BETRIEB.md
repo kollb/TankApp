@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.47.0 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.48.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.47.0: Backup-Alterung wird überwacht (Alarm `backup_stale`,
 > `backup` im Health-Payload), `ops/nas/backup.sh` behält zusätzlich sechs

@@ -71,6 +71,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# O2: the optional analysis tool shares the named default definition with the
+# production selection engine; it may aggregate it for its historical plots.
+from engine.personalization import default_weekday_profile
+
 # Optional: bundeslandspezifische Feiertage (--subdiv, s. KONZEPT.md §2/§3.2).
 # Feiertage sind in Deutschland Ländersache: Heilige Drei Könige (06.01.) gilt
 # nur in Bayern, Allerheiligen (01.11.) in Bayern/NRW, aber nicht in Hessen —
@@ -570,13 +574,10 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
         sel = (hour_arr == hi) & row_sel
         P[:, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
 
-    # Nutzerprofil: Pendlerfenster werktags, Wochenende gleichverteilt
-    w = np.zeros(24)
-    w[[6, 7, 8, 16, 17, 18, 19]] = 1.0
-    wd_weight, we_weight = 5 / 7, 2 / 7
-    w_weekday = w / w.sum() * wd_weight
-    w_weekend = np.full(24, 1 / 24) * we_weight
-    w_user = w_weekday + w_weekend
+    # O2: The shared weekday profile is aggregated only because this offline
+    # report still plots P(Top-3 | hour). Production uses its full 7×24 shape.
+    time_weights = np.asarray(default_weekday_profile())
+    w_user = time_weights.sum(axis=0)
 
     # Staufaktor, über das Nutzerprofil gemittelt: Anteil der Tankvorgänge im
     # Berufsverkehr (6-9/16-20 h werktags) bekommt f_peak, der Rest f_off.

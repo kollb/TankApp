@@ -245,7 +245,9 @@ def test_eleven_stations_are_over_the_warn_budget_and_say_so(settings, cfg):
     assert len(alarms) == 1
     assert alarms[0]["severity"] == "warn"
     assert alarms[0]["bytes"] == size
-    assert "7," in alarms[0]["message"]  # Größe in de-DE, nicht nur der Code
+    assert (
+        "," in alarms[0]["message"] and "MB groß" in alarms[0]["message"]
+    )  # de-DE, not only code
     # Kein Fehler-Alarm: Die App kann die Datei lesen.
     assert not _alarms(settings, "publication_unreadable")
 

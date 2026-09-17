@@ -9,8 +9,8 @@ gemessen wurde (docs/OPTIMIERUNGS-BEFUND.md O1).
 Geprüft wird hier der DoD-Nachweis:
   * ``tanked_at`` 18:40 Europe/Berlin → ``clock_hour == 18``,
     ``clock_hour_source == "beleg"`` (auch wenn der Client UTC schickt),
-  * ein Beleg ohne Zeitstempel → ``12`` und ``"default"`` — die erfundene
-    Uhrzeit bleibt, ist aber gekennzeichnet,
+  * ein Beleg ohne Zeitstempel → Uhrzeit aus dem Server-Zeitstempel und
+    ``"server"`` (O43), statt einer erfundenen 12-Uhr-Zelle,
   * dieselben Werte kommen über ``GET /api/v1/fills`` zurück,
   * das w(h)-Histogramm liegt nach Abendbelegen bei 18 und nicht bei 12,
   * Altbestände werden migriert **mit Kennzeichnung** statt still
@@ -119,20 +119,21 @@ def test_utc_timestamp_is_converted_to_berlin(settings_with_station):
     assert winter["clock_hour_source"] == "beleg"
 
 
-def test_receipt_without_timestamp_keeps_default_but_says_so(settings_with_station):
-    """Ohne Zeitstempel bleibt 12 Uhr — aber als erfundener Default gekennzeichnet."""
+def test_receipt_without_timestamp_uses_server_time_and_says_so(settings_with_station):
+    """O43: no receipt timestamp derives weekday/hour from the server clock."""
     fill = _fill(settings_with_station, id="fill-ohne-zeit")
-    assert fill["clock_hour"] == CLOCK_HOUR_DEFAULT == 12.0
-    assert fill["clock_hour_source"] == "default"
-    # Der gespeicherte Zeitstempel bleibt die Buchungszeit (unverändert zu vorher).
+    assert fill["clock_hour"] == 16  # 14:00 UTC = 16:00 CEST
+    assert fill["clock_hour_source"] == "server"
     assert fill["tanked_at"] == NOW.isoformat()
 
 
-def test_explicit_clock_hour_without_timestamp_is_kept(settings_with_station):
-    """Ein Client ohne Zeitstempel darf die Stunde selbst nennen (API-Feld bleibt)."""
+def test_explicit_clock_hour_without_timestamp_does_not_override_server_time(
+    settings_with_station,
+):
+    """A detached client clock cannot contradict the server booking timestamp."""
     fill = _fill(settings_with_station, clock_hour=6.5, id="fill-explicit")
-    assert fill["clock_hour"] == 6.5
-    assert fill["clock_hour_source"] == "beleg"
+    assert fill["clock_hour"] == 16
+    assert fill["clock_hour_source"] == "server"
 
 
 def test_timestamp_wins_over_contradicting_clock_hour(settings_with_station):
@@ -147,12 +148,15 @@ def test_timestamp_wins_over_contradicting_clock_hour(settings_with_station):
     assert fill["clock_hour_source"] == "beleg"
 
 
-def test_out_of_range_clock_hour_is_wrapped_not_invented(settings_with_station):
+def test_detached_clock_hour_is_ignored_without_a_receipt_timestamp(
+    settings_with_station,
+):
     fill = _fill(settings_with_station, clock_hour=27, id="fill-ueberlauf")
-    assert fill["clock_hour"] == 3
+    assert fill["clock_hour"] == 16
+    assert fill["clock_hour_source"] == "server"
     garbage = _fill(settings_with_station, clock_hour="viel", id="fill-muell")
-    assert garbage["clock_hour"] == CLOCK_HOUR_DEFAULT
-    assert garbage["clock_hour_source"] == "default"
+    assert garbage["clock_hour"] == 16
+    assert garbage["clock_hour_source"] == "server"
 
 
 # --- API: dieselben Werte über GET /api/v1/fills ----------------------------
@@ -204,6 +208,7 @@ def test_wh_histogram_moves_to_the_measured_evening_hour(settings_with_station):
     # Herkunft: alle Belege gemessen, keiner auf der erfundenen 12.
     assert wallet["wh_clock_sources"] == {
         "beleg": WH_MIN_FILLS,
+        "server": 0,
         "abgeleitet": 0,
         "default": 0,
     }
@@ -211,26 +216,21 @@ def test_wh_histogram_moves_to_the_measured_evening_hour(settings_with_station):
     assert wallet["wh_default_n"] == 0
 
 
-def test_wh_histogram_names_the_invented_hours(settings_with_station):
-    """Belege ohne Zeitstempel zählen mit der 12 — gezählt und benannt (DoD).
-
-    Der Default bleibt im Histogramm (eine erfundene Uhrzeit wird nicht durch
-    eine erfundene Auslassung ersetzt), aber die Antwort sagt, dass alle acht
-    Stunden erfunden sind: ``wh_default_n``. Wer das Profil liest, weiß damit,
-    dass die Mittagsspitze keine Messung ist.
-    """
+def test_wh_histogram_names_server_booked_hours(settings_with_station):
+    """O43: timestamp-free receipts use the server's real local hour, not 12."""
     for index in range(WH_MIN_FILLS):
         _fill(settings_with_station, id=f"fill-ohne-{index}")
     wallet = compute_wallet_stats(load_store(settings_with_station), now=NOW)
-    assert wallet["wh_default_n"] == WH_MIN_FILLS
-    assert wallet["wh_measured_n"] == 0
+    assert wallet["wh_n"] == WH_MIN_FILLS
+    assert wallet["wh_default_n"] == 0
+    assert wallet["wh_measured_n"] == WH_MIN_FILLS
     assert wallet["wh_clock_sources"] == {
         "beleg": 0,
+        "server": WH_MIN_FILLS,
         "abgeleitet": 0,
-        "default": WH_MIN_FILLS,
+        "default": 0,
     }
-    # Sichtbare Folge der erfundenen Stunden: die Spitze liegt bei 12.
-    assert wallet["wh_hours"][12] == max(wallet["wh_hours"])
+    assert wallet["wh_hours"][16] == max(wallet["wh_hours"])
 
 
 def test_voided_fills_do_not_count_into_the_provenance(settings_with_station):
@@ -289,7 +289,7 @@ def test_migration_reconstructs_hours_and_marks_them():
     store = migrate_store(legacy_store())
     # O5 (0.45.0): Schema 4 → 5 — die Stunden-Rekonstruktion (O1) läuft auf
     # dem Weg mit, das Ziel ist die aktuelle Version.
-    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 5
+    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6
     by_id = {fill["id"]: fill for fill in store["fills"]}
     # 16:40 UTC = 18:40 Europe/Berlin (Sommerzeit) — rekonstruiert, gekennzeichnet.
     assert by_id["fill_alt_1"]["clock_hour"] == 18

@@ -56,23 +56,20 @@ PROC_CGROUP = Path("/proc/self/cgroup")
 # sind bereits in price/observed/... aufgegangen und wären je Worker Ballast.
 WORKER_FRAME_COLUMNS = BACKTEST_FRAME_COLUMNS
 
-# Spalten der veröffentlichten Horizonte: Quantile + Zeitstempel. Interne
-# Diagnosewerte aus predict() gehören nicht ins JSON und nicht über die
-# Prozessgrenze (B20 Punkt 4).
-HORIZON_COLUMNS = ("timestamp", "q025", "q10", "q50", "q90", "q975")
-HORIZON_VALUE_COLUMNS = HORIZON_COLUMNS[1:]
+# Public horizon: quantiles plus local support evidence. The model already
+# computes these counts; dropping them made a thin band look as certain as a
+# richly observed slot (O10).
+HORIZON_VALUE_COLUMNS = ("q025", "q10", "q50", "q90", "q975")
+HORIZON_COLUMNS = ("timestamp", *HORIZON_VALUE_COLUMNS, "support_days", "supported")
 
-# O22: Nachkommastellen der veröffentlichten Preise und Quantile. 4 Stellen =
-# 0,0001 €/L = 0,01 ct/L — feiner als jede Anzeige (``euroPerLiter`` zeigt
-# drei, ``centPerLiter`` eine) und feiner als jede Schwelle der App
-# (``THETA_CT`` = 1,0 ct/L). Volle float-Präzision verdoppelt dagegen die
-# Veröffentlichung: Sie ist der Grund, warum elf Stationen nicht mehr durch
-# das Leselimit passen (docs/OPTIMIERUNGS-BEFUND.md O22).
+# O22: Draw- und Nowcast-Preise erhalten 4 Nachkommastellen (0,01 ct/L), um
+# die Publikation unter dem Leselimit zu halten. Die sichtbaren Horizont-
+# Quantile folgen dagegen O10 und werden unten auf 0,1 ct/L gerundet.
 PUBLICATION_DECIMALS = 4
 
 
 def _published(value):
-    """Preis/Quantil in Veröffentlichungs-Präzision — NaN bleibt NaN.
+    """Price publication precision (draw-related numeric fields remain 4 d.p.).
 
     Gerundet wird hier und nicht erst beim Schreiben, weil die Werte über die
     Prozessgrenze des Worker-Pools gehen: Was nicht publiziert werden soll,
@@ -84,6 +81,17 @@ def _published(value):
     if math.isnan(number):
         return number
     return round(number, PUBLICATION_DECIMALS)
+
+
+def _published_quantile(value):
+    """Forecast bands at 0.1 ct/L precision, as promised by O10."""
+    if value is None:
+        return None
+    number = float(value)
+    if math.isnan(number):
+        return number
+    # 0.001 €/L = 0.1 ct/L. It saves output and avoids faux precision.
+    return round(number, 3)
 
 
 _POOL_FAILURES = (OSError, ImportError, RuntimeError, ValueError)
@@ -316,17 +324,53 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
 
 
 def _records(frame) -> list[dict[str, Any]]:
-    """Nur veröffentlichte Quantile serialisieren, ohne DataFrame-Vollkopie.
+    """Serialize public horizon quantiles and support evidence without a frame copy.
 
-    Die Werte gehen durch :func:`_published` (O22): sechs Nachkommastellen
-    sind bei Preisen Ballast, und der Ballast entscheidet, ob elf Stationen
-    noch durch das Leselimit passen.
+    Bands use :func:`_published_quantile` at 0.1 ct/L (O10); draw prices stay
+    separately compact at four decimals for the O22 publication budget.
     """
     values = frame.loc[:, HORIZON_VALUE_COLUMNS].itertuples(index=False, name=None)
-    return [
-        dict(zip(HORIZON_COLUMNS, (stamp.isoformat(), *(_published(v) for v in row))))
-        for stamp, row in zip(frame.index, values)
-    ]
+    supports = frame.get("support_days")
+    supported = frame.get("supported")
+    records = []
+    for position, (stamp, row) in enumerate(zip(frame.index, values)):
+        support_days = None
+        if supports is not None:
+            try:
+                parsed = float(supports.iloc[position])
+                support_days = (
+                    int(parsed) if math.isfinite(parsed) and parsed >= 0 else None
+                )
+            except (TypeError, ValueError):
+                pass
+        supported_value = None
+        if supported is not None:
+            raw = supported.iloc[position]
+            try:
+                # Pandas NA has no truth value and float NaN must not turn
+                # into True merely because bool(nan) is truthy.
+                supported_value = (
+                    bool(raw)
+                    if raw is not None
+                    and not (isinstance(raw, float) and math.isnan(raw))
+                    else None
+                )
+            except (TypeError, ValueError):
+                supported_value = None
+        record = dict(
+            zip(
+                ("timestamp", *HORIZON_VALUE_COLUMNS),
+                (stamp.isoformat(), *(_published_quantile(value) for value in row)),
+            )
+        )
+        # Compatibility/size: synthetic and historic frames without support
+        # columns keep the compact old payload. Real predict() frames have
+        # both columns and always publish the O10 provenance together.
+        if supports is not None or supported is not None:
+            record["support_days"] = support_days
+            record["supported"] = supported_value
+        records.append(record)
+    return records
 
 
 def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:

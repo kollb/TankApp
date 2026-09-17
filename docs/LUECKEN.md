@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 17.09.2026 · App-Version 0.47.0. Abgleich von
+> Stand: 17.09.2026 · App-Version 0.48.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -257,12 +257,13 @@ verschiebt. Konzept §5.5 verlangt das Profil aus **eigenen** Tankvorgängen;
 umgesetzt ist es seit 0.44.0 so: Die Stunde wird serverseitig aus `tanked_at`
 in Europe/Berlin abgeleitet, der Zeitstempel gewinnt gegen eine
 widersprechende Angabe, und je Beleg steht die Herkunft dabei
-(`clock_hour_source` ∈ `beleg` · `abgeleitet` · `default`). Altbestände werden
+(`clock_hour_source` ∈ `beleg` · `server` · `abgeleitet` · `default`). Altbestände werden
 **nicht** still umgeschrieben (Schema 3 → 4 mit Kennzeichnung), und die
 Statistik nennt die Zusammensetzung (`wh_clock_sources`, `wh_measured_n`,
-`wh_default_n`) bis in den Satz der GUI (`personalizationNote`). Der Default
-12 Uhr bleibt für Belege ohne Zeitstempel — als ausgewiesene Projektion, nicht
-als Messung.
+`wh_default_n`) bis in den Satz der GUI (`personalizationNote`). Seit Batch 5
+liefert ein neuer Beleg ohne `tanked_at` die Stunde der Server-Buchungszeit
+(`clock_hour_source: server`); 12 Uhr bleibt nur für nicht rekonstruierbaren
+Altbestand eine ausgewiesene Projektion, nicht Messung.
 
 **O22 — die Veröffentlichung über dem Leselimit (Konzept §13, Betrieb).**
 `data/runtime/engine/current.json` wuchs mit `indent=2` und voller
@@ -270,8 +271,8 @@ float-Präzision; `app.data.read_json` verweigert jede Datei über 10 MB und gab
 still `{}` zurück — denselben Wert wie „noch keine Daten“. Ab rund fünf
 Stationen zeigte die App überall „keine Prognose“, während der Modell-Lauf
 Erfolg meldete. Umgesetzt sind die Maßnahmen (a)–(c): kompakt schreiben,
-Preise/Quantile auf 4 Dezimalen runden (0,0001 €/L = 0,01 ct/L, feiner als
-jede Anzeige und jede Schwelle) und laut werden — benannte Grenzen
+Draw- und Nowcast-Preise auf 4 Dezimalen runden (0,0001 €/L = 0,01 ct/L)
+und laut werden — benannte Grenzen
 (`PUBLICATION_BUDGET_BYTES` 6 MB, `READ_JSON_MAX_BYTES` 10 MB),
 `read_json_checked` unterscheidet `missing` · `too_large` · `invalid`,
 `/api/v1/health` trägt den `publication`-Block, `app/alarms.py` schlägt an

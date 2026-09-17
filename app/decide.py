@@ -28,8 +28,15 @@ from .feedback import (
     load_store,
     record_snapshot,
 )
-from .pside import THETA_CT, p_better, p_lohnt, window_p
-from .route import CIRCUITY, _auto_time_value, _berlin_hour, _parse_float
+from .pside import THETA_CT, p_better, p_lohnt, window_p_details
+from .route import (
+    AUTO_TIME_VALUE_RULE,
+    CIRCUITY,
+    _auto_time_value,
+    _berlin_hour,
+    _parse_float,
+    net_economics,
+)
 from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
 
 FUELS = {"e10", "e5", "diesel"}
@@ -133,45 +140,61 @@ def _p_besser_value(
 
 def _window_p_value(
     draws: dict[str, Any] | None, window_start: str | None
-) -> float | None:
-    """F3: ``P(Fenster ≤ Minimum im ±6-h-Umfeld)`` aus den Draws."""
+) -> dict[str, Any] | None:
+    """F3 probability including the comparable, baseline-normalized display value."""
     if not draws or not window_start:
         return None
     minima = draws.get("minima")
     if not minima:
         return None
-    return window_p(minima, _block_for_window(draws, window_start))
+    return window_p_details(minima, _block_for_window(draws, window_start))
 
 
 def _wh_weight(
-    wh_hours: list[float] | None,
-    start_hour: float | None,
-    end_hour: float | None,
+    profile: list[Any] | None,
+    start: Any,
+    end: Any,
 ) -> float | None:
-    """Mittlere Tankwahrscheinlichkeit eines Fensters aus w(h) (A9).
+    """Mean receipt availability of a window from a 24h or 7×24 profile.
 
-    ``w(h)`` ist das persönliche Tankzeit-Profil (24 Stunden, Summe ≈ 1,
-    Konzept §5.5 Schicht C). Ein 2-h-Fenster wird in Viertelstunden
-    abgetastet; Fenster über eine Stundengrenze (7–9 Uhr) zählen anteilig.
-    ``None``, wenn kein Profil vorliegt — dann bleibt die Preisreihenfolge
-    stehen (kein erfundenes Profil).
+    The 24-vector path remains for old callers/tests. New decision windows use
+    local weekday + hour from their ISO timestamps, so Saturday 10:00 is not
+    accidentally scored with Monday's commuter weight (O2).
     """
-    if not wh_hours or len(wh_hours) != 24:
+    if not profile or start is None or end is None:
         return None
-    if start_hour is None or end_hour is None:
+    is_weekday = len(profile) == 7 and all(
+        isinstance(day, list) and len(day) == 24 for day in profile
+    )
+    if is_weekday:
+        start_stamp, end_stamp = _parse_ts(start), _parse_ts(end)
+        if start_stamp is None or end_stamp is None:
+            return None
+        if end_stamp <= start_stamp:
+            end_stamp = start_stamp + dt.timedelta(minutes=15)
+        total, count = 0.0, 0
+        stamp = start_stamp
+        while stamp < end_stamp:
+            local = stamp.astimezone(BERLIN_TZ)
+            total += float(profile[local.weekday()][local.hour])
+            count += 1
+            stamp += dt.timedelta(minutes=15)
+        return round(total / count, 6) if count else None
+    if len(profile) != 24:
         return None
-    start, end = float(start_hour), float(end_hour)
-    if end <= start:
-        end = start + 0.25
+    try:
+        start_hour, end_hour = float(start), float(end)
+    except (TypeError, ValueError):
+        return None
+    if end_hour <= start_hour:
+        end_hour = start_hour + 0.25
     total, count = 0.0, 0
-    hour = start
-    while hour < end - 1e-9:
-        total += float(wh_hours[int(hour) % 24])
+    hour = start_hour
+    while hour < end_hour - 1e-9:
+        total += float(profile[int(hour) % 24])
         count += 1
         hour += 0.25
-    if not count:
-        return None
-    return round(total / count, 6)
+    return round(total / count, 6) if count else None
 
 
 def _rank_windows(
@@ -192,7 +215,7 @@ def _rank_windows(
         return windows
     for window in windows:
         window["wh_weight"] = _wh_weight(
-            wh_hours, window.get("start_hour"), window.get("end_hour")
+            wh_hours, window.get("start"), window.get("end")
         )
     if not wh_hours:
         windows.sort(key=lambda w: (w["expected_price"], w["start"]))
@@ -410,16 +433,14 @@ def _detour_km(
 ) -> tuple[float, str]:
     """Umweg-Streckenlänge je Fahrtmodus (km, **einseitig**).
 
-    - ``onroute`` (Default, Alltagsfall §10): nur der Mehrweg gegenüber der
-      Vergleichsstation — Luftlinie zwischen den Stationskoordinaten × 1,3
-      (gleiche Umweg-Konvention wie data-tools/road_route.py). Fallback
-      Anker-Distanz-Differenz (Dreiecksungleichungs-Schranke, kann 0 sein).
-    - ``dedicated`` (Extrafahrt): die einfache Strecke ab Zuhause; ohne
-      ``home``-Koordinate die Anker-Distanz aus dem Polling-Set (der Anker
-      ist der Heimatstandort). Die Aufrufer verdoppeln sie für Hin+Rück.
+    - ``onroute`` (Default): an estimated station-to-station detour from
+      aerial distance × 1.3; anchor-distance differences stay named estimates.
+    - ``dedicated``: the road distance from the configured anchor is accepted
+      only when metadata says ``dist_mode=road``. Coordinates and aerial
+      anchor distances are estimates, never labelled road.
 
-    Rückgabe: ``(km, quelle)``. ``quelle`` ist nie verschwiegen — sie sagt,
-    ob gerechnet oder geschätzt wurde.
+    Rückgabe: ``(km, quelle)`` with ``road``, ``estimated_*`` or
+    ``unavailable``. The caller must show this provenance (O14).
     """
     if mode == "dedicated":
         home_coords = home
@@ -428,21 +449,25 @@ def _detour_km(
             km = haversine_km(
                 home_coords[0], home_coords[1], cand_coords[0], cand_coords[1]
             )
-            return round(km * CIRCUITY, 2), "home_haversine"
+            return round(km * CIRCUITY, 2), "estimated_air_circuity"
         dist = cand.get("dist_km")
         if type(dist) in (int, float) and math.isfinite(dist) and dist >= 0:
-            return round(float(dist), 2), "anchor_dist"
-        return 0.0, "unknown"
+            if cand.get("dist_mode") == "road":
+                return round(float(dist), 2), "road"
+            return round(float(dist) * CIRCUITY, 2), "estimated_anchor_air_circuity"
+        return 0.0, "unavailable"
 
     from_coords, to_coords = _coords(chosen), _coords(cand)
     if from_coords and to_coords:
         km = haversine_km(from_coords[0], from_coords[1], to_coords[0], to_coords[1])
-        return round(km * CIRCUITY, 2), "haversine"
+        return round(km * CIRCUITY, 2), "estimated_air_circuity"
     dist_cand = cand.get("dist_km")
     dist_self = chosen.get("dist_km")
     if isinstance(dist_cand, (int, float)) and isinstance(dist_self, (int, float)):
-        return round(max(0.0, abs(dist_cand - dist_self)), 2), "anchor_diff"
-    return 0.0, "unknown"
+        return round(
+            max(0.0, abs(dist_cand - dist_self)), 2
+        ), "estimated_anchor_difference"
+    return 0.0, "unavailable"
 
 
 def _alternatives(
@@ -484,11 +509,14 @@ def _alternatives(
         detour_km, detour_source = _detour_km(chosen_station, cand, mode, home)
         # onroute: der Mehrweg fällt einmal an. dedicated: Hin + Rück.
         total_km = detour_km * (2.0 if mode == "dedicated" else 1.0)
-        fuel_eur = (total_km / 100.0) * consumption * cand_price
-        time_eur = (total_km / max(1.0, speed)) * z_used
-        detour_cost = fuel_eur + time_eur
-        gross_eur = (anchor - cand_price) * liters
-        net_eur = gross_eur - detour_cost
+        economics = net_economics(
+            anchor, cand_price, liters, total_km, consumption, speed, z_used
+        )
+        fuel_eur = economics["fuel_eur"]
+        time_eur = economics["time_eur"]
+        detour_cost = economics["detour_cost_eur"]
+        gross_eur = economics["gross_eur"]
+        net_eur = economics["net_eur"]
         alt_nowcast = nowcasts.get(cand["station_id"]) if nowcasts else None
         # H1/B6: Verdict aus denselben Schwellen wie route.py — server ist einzige Quelle.
         worth_th = th.get("elsewhere_net_eur", 1.5)
@@ -507,17 +535,28 @@ def _alternatives(
             "delta_ct": round((anchor - cand_price) * 100.0, 2),
             "detour_km": round(total_km, 2),
             "detour_km_est": round(total_km, 2),
-            "detour_mode": detour_source,
-            "dist_mode": detour_source,
+            "detour_km_source": detour_source,
+            # Legacy keys retain the trip mode / station distance only; the
+            # estimate source is no longer mislabelled as a road distance.
+            "detour_mode": mode,
+            "dist_mode": cand.get("dist_mode"),
             "trip_mode": mode,
             "fuel_cost_eur": round(fuel_eur, 2),
             "time_cost_eur": round(time_eur, 2),
             "detour_cost_eur": round(detour_cost, 2),
             "gross_eur": round(gross_eur, 2),
             "net_eur": round(net_eur, 2),
-            "critical_delta_ct": round(
-                (detour_cost / liters * 100.0) if liters else 0.0, 2
-            ),
+            "critical_delta_ct": round(economics["critical_delta_ct"], 2),
+            # Input provenance lets the later receipt settlement reproduce
+            # this estimate without presenting it as a driven route (O9).
+            "economics": {
+                "reference_price": round(anchor, 4),
+                "liters_assumed": liters,
+                "detour_km_total_est": total_km,
+                "consumption_l_100km": consumption,
+                "speed_kmh": speed,
+                "time_value_eur_h": z_used,
+            },
             "worth_it": net_eur >= worth_th,
             "verdict": verdict,
             "p_lohnt": p_lohnt(
@@ -843,13 +882,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         if (row.get("draws_24h") or {}).get("nowcast")
     }
 
-    # A9: Persönliches Tankzeit-Profil w(h) (Konzept §5.5 Schicht C). Der
-    # Ledger wird deshalb vor den Fenstern gelesen: Erst ab WH_MIN_FILLS
-    # Füllungen gewichtet das Profil die Fensterreihenfolge, darunter bleibt
-    # die reine Preisreihenfolge die ehrlichere Wahl.
+    # O2/O3: The receipt profile is weekday-aware and starts carefully with
+    # the first usable receipt (eight fills are prior strength, not a cliff).
     store = load_store(live_data.settings)
     wallet_stats = compute_wallet_stats(store, now=clock_now)
-    wh_hours = wallet_stats.get("wh_hours") or None
+    wh_weekday = wallet_stats.get("wh_weekday") or None
     wh_personalized = bool(wallet_stats.get("wh_personalized"))
     wh_n = int(wallet_stats.get("wh_n") or 0)
     wh_min_fills = int(wallet_stats.get("wh_min_fills") or WH_MIN_FILLS)
@@ -858,7 +895,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # Antwort sagt das, statt es als Messung auszugeben.
     wh_measured_n = int(wallet_stats.get("wh_measured_n") or 0)
     wh_default_n = int(wallet_stats.get("wh_default_n") or 0)
-    wh_profile = wh_hours if wh_personalized else None
+    wh_profile = wh_weekday if wh_personalized else None
 
     # Beste Fenster heute und über die Woche (echte 2-h-Blöcke).
     # latest_by schneidet den Horizont ab (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
@@ -1029,6 +1066,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "alt_station_name": best_alt["name"]
         if table_action == "refuel_elsewhere" and best_alt
         else None,
+        # A settlement needs the original benchmark and route assumption;
+        # keeping the displayed alternative alone made net saving unknowable.
+        "elsewhere_economics": best_alt.get("economics")
+        if table_action == "refuel_elsewhere" and best_alt
+        else None,
         "price_now": round(anchor, 3) if anchor is not None else None,
         "window_start": recommended_window["start"] if recommended_window else None,
         "window_end": recommended_window["end"] if recommended_window else None,
@@ -1083,7 +1125,16 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 )
                 if anchor is not None
                 else None,
-                "p": _window_p_value(draws_24h, w["start"]),
+                # ``p`` drives stars and is normalized against the actual
+                # count of surrounding windows; raw remains auditable (O12).
+                "p": (_window_p_value(draws_24h, w["start"]) or {}).get("normalized"),
+                "p_raw": (_window_p_value(draws_24h, w["start"]) or {}).get("raw"),
+                "p_competitors": (_window_p_value(draws_24h, w["start"]) or {}).get(
+                    "competitors"
+                ),
+                "p_baseline": (_window_p_value(draws_24h, w["start"]) or {}).get(
+                    "baseline"
+                ),
                 # A9: Anteil des persönlichen Tankzeit-Profils an diesem
                 # Fenster (null = nicht personalisiert, Reihenfolge = Preis).
                 "wh_weight": w.get("wh_weight"),
@@ -1100,7 +1151,14 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
                 )
                 if anchor is not None
                 else None,
-                "p": _window_p_value(draws_7d, w["start"]),
+                "p": (_window_p_value(draws_7d, w["start"]) or {}).get("normalized"),
+                "p_raw": (_window_p_value(draws_7d, w["start"]) or {}).get("raw"),
+                "p_competitors": (_window_p_value(draws_7d, w["start"]) or {}).get(
+                    "competitors"
+                ),
+                "p_baseline": (_window_p_value(draws_7d, w["start"]) or {}).get(
+                    "baseline"
+                ),
                 "wh_weight": w.get("wh_weight"),
             }
             for w in windows_week
@@ -1167,6 +1225,9 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             "value_of_time_eur_h": z_used,
             "z_auto": z_auto,
             "is_peak": is_peak,
+            "time_value_rule": AUTO_TIME_VALUE_RULE
+            if z_auto
+            else "Manuell gesetzter Zeitwert.",
             "trip_mode": mode,
             "home_used": home is not None,
             # Konzept §4.1/§4.3: Horizont [jetzt, latest_by].

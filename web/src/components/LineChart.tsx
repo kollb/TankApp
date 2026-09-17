@@ -14,7 +14,8 @@ export interface SeriesPts {
 export interface BandPts {
   name?: string;
   color: string;
-  pts: { x: number; yLow: number; yHigh: number }[];
+  /** O10: low-support forecast points get a hollow marker + native tooltip. */
+  pts: { x: number; yLow: number; yHigh: number; thin?: boolean; supportDays?: number | null }[];
 }
 
 export interface Mark {
@@ -344,12 +345,22 @@ export function LineChart({
           .map((p) => `${X(p.x).toFixed(1)},${Y(p.yLow).toFixed(1)}`)
           .join(" ");
         return (
-          <path
-            key={`band-${i}`}
-            d={`M${top} L${bottom} Z`}
-            fill={b.color}
-            opacity={0.16}
-          />
+          <g key={`band-${i}`}>
+            <path d={`M${top} L${bottom} Z`} fill={b.color} opacity={0.16} />
+            {b.pts.filter((p) => p.thin).map((p) => (
+              <circle
+                key={`thin-${p.x}`}
+                cx={X(p.x)}
+                cy={Y((p.yLow + p.yHigh) / 2)}
+                r={3.2}
+                fill={c.surface}
+                stroke={c.warn}
+                strokeWidth={1.4}
+              >
+                <title>{`Dünn gestützter Prognose-Slot: ${p.supportDays ?? "?"} Tage`}</title>
+              </circle>
+            ))}
+          </g>
         );
       })}
       {marks.map((m, i) => (

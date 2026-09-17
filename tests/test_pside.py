@@ -5,7 +5,7 @@ numpy/pandas-Abhängigkeit. Alle P sind relative Häufigkeiten über dieselben
 Draws; ``None`` heißt „keine Aussage“ (keine Draws / kein gestützter Block).
 """
 
-from app.pside import p_better, p_lohnt, window_p
+from app.pside import p_better, p_lohnt, window_p, window_p_details
 
 
 def test_p_better_threshold_and_none_cases():
@@ -13,8 +13,9 @@ def test_p_better_threshold_and_none_cases():
     # 1.67, 1.65, 1.60 sind ≥ 1 ct unter 1.689 → 3/4 = 0.75.
     minima = [[1.67, 1.70], [1.65, 1.71], [1.70, 1.72], [1.60, 1.73]]
     assert p_better(minima, 0, 1.689) == 0.75
-    # Genau 1 ct unter dem Anker zählt (Grenzfall, kein Float-Verlust).
-    assert p_better([[1.679], [1.70]], 0, 1.689) == 0.5
+    # Genau 1 ct unter dem Anker ist ein Gleichstand mit halbem Credit (O7):
+    # 0.5 Credit bei zwei Draws = 0.25 statt still als Erfolg zu zählen.
+    assert p_better([[1.679], [1.70]], 0, 1.689) == 0.25
     # Kein Draw unter der Schwelle → 0.0 (nicht None).
     assert p_better([[1.70], [1.71]], 0, 1.689) == 0.0
     # Ohne Draws / ohne Block / ohne Anker: keine Aussage.
@@ -63,3 +64,21 @@ def test_p_lohnt_nan_draws_skipped():
     ref = [1.70, float("nan")]
     alt = [1.60, 1.72]
     assert p_lohnt(ref, alt, 40.0, 2.0, 7.0, 45.0, 10.0) == 1.0
+
+
+def test_window_probability_is_normalized_against_edge_baseline():
+    # The first block has only three neighbours, so raw 25 % is exactly its
+    # 1/(k+1) chance baseline and normalizes to 100 %, like a middle block.
+    minima = [
+        [1.0, 2.0, 2.0, 2.0],  # win
+        [3.0, 2.0, 2.0, 2.0],  # loss
+        [3.0, 2.0, 2.0, 2.0],  # loss
+        [3.0, 2.0, 2.0, 2.0],  # loss
+    ]
+    edge = window_p_details(minima, 0)
+    assert edge == {"raw": 0.25, "normalized": 1.0, "competitors": 3, "baseline": 0.25}
+
+
+def test_exact_threshold_is_half_credit_in_p_side():
+    # One exact 1 ct draw verifies the named O7 convention without dilution.
+    assert p_better([[1.679]], 0, 1.689) == 0.5

@@ -87,7 +87,17 @@ def _write_fills(settings, hours: list[float]) -> None:
                 "episode_id": None,
                 "station_id": UID,
                 "station_name": "Station Alpha",
-                "tanked_at": (NOW - dt.timedelta(days=index + 1)).isoformat(),
+                # O2: weekday/hour is derived from the receipt timestamp;
+                # clock_hour alone is not a detached weekday evidence.
+                "tanked_at": (NOW - dt.timedelta(days=index + 1))
+                .astimezone(dt.timezone(dt.timedelta(hours=2)))
+                .replace(
+                    hour=int(hour),
+                    minute=round((hour % 1) * 60),
+                    second=0,
+                    microsecond=0,
+                )
+                .isoformat(),
                 "clock_hour": hour,
                 # O1 (0.44.0): ``record_fill`` schreibt die Herkunft der Stunde
                 # mit — der Stundenwert dieser Fixtur ist vom Beleg gedeckt.
@@ -156,7 +166,7 @@ def _live(a9_settings):
 # --- w(h)-Profil: Laden und Fenstergewicht --------------------------------
 
 
-def test_wh_profil_trägt_erst_ab_acht_füllungen(a9_settings):
+def test_wh_profil_wirkt_ab_dem_ersten_beleg_und_bleibt_geschrumpft(a9_settings):
     store = load_store(a9_settings)
     stats = compute_wallet_stats(store, now=NOW)
     assert stats["wh_personalized"] is False
@@ -167,7 +177,7 @@ def test_wh_profil_trägt_erst_ab_acht_füllungen(a9_settings):
     _write_fills(a9_settings, [18.0] * 7)
     stats = compute_wallet_stats(load_store(a9_settings), now=NOW)
     assert stats["wh_n"] == 7
-    assert stats["wh_personalized"] is False  # noch nicht belastbar
+    assert stats["wh_personalized"] is True  # O3: kein 7/8-Sprung
 
     _write_fills(a9_settings, [18.0])
     stats = compute_wallet_stats(load_store(a9_settings), now=NOW)
@@ -222,9 +232,9 @@ def test_ohne_füllungen_zählt_der_preis_nicht_die_uhrzeit(a9_settings):
     }
 
 
-def test_ab_acht_füllungen_zieht_das_profil_das_fenster(a9_settings):
-    """Acht Belege um 18 Uhr: das teurere Feierabendfenster führt."""
-    _write_fills(a9_settings, [18.0] * 8)
+def test_ab_dem_ersten_beleg_zieht_das_profil_das_fenster(a9_settings):
+    """Schon ein Beleg um 18 Uhr wirkt vorsichtig gegen den Acht-Beleg-Prior."""
+    _write_fills(a9_settings, [18.0])
     result = evaluate_decide(_live(a9_settings), {"city": "Frankfurt", "liters": 40})
     windows = result["windows_today"]
     assert [round(w["expected_price"], 3) for w in windows][0] == 1.605
@@ -233,8 +243,8 @@ def test_ab_acht_füllungen_zieht_das_profil_das_fenster(a9_settings):
     assert windows[0]["wh_weight"] > 0
     assert windows[-1]["wh_weight"] == 0
     assert result["personalization"]["active"] is True
-    assert result["personalization"]["n_fills"] == 8
-    assert result["personalization"]["missing_fills"] == 0
+    assert result["personalization"]["n_fills"] == 1
+    assert result["personalization"]["missing_fills"] == WH_MIN_FILLS - 1
     # Die Empfehlung folgt der neuen Reihenfolge.
     assert result["primary"]["recommended_window"]["start"].endswith("+02:00")
 

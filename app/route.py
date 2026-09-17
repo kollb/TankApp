@@ -19,7 +19,7 @@ detour_km ohne Angabe: aus den Stationskoordinaten abgeleitet (Luftlinie × 1,3,
   gleiche Umweg-Konvention wie data-tools/road_route.py) —
   onroute: Mehrweg gegenüber der Referenz, dedicated: Einweg zur Zielstation.
   Fallback Anker-Distanzen, dann 0 (detour_km_source:
-  query|derived|derived_anchor|zero).
+  declared|road|estimated_air_circuity|estimated_anchor_difference|unavailable).
 
 Explizit per Query übergebene Preise (price/ref_price) haben immer Vorrang
 vor Live-Preisen; ohne bestimmbaren Referenzpreis antwortet der Endpunkt mit
@@ -39,6 +39,44 @@ FUELS = {"e10", "e5", "diesel"}
 
 # Umweg-Faktor Luftlinie → Straße (Konvention aus data-tools/road_route.py).
 CIRCUITY = 1.3
+
+# Eine feste Regel statt Sprüngen ohne Erklärung (O15). Die UI nennt dieselbe
+# Grenze bei der Einstellung „Automatik“; eine manuelle Eingabe überschreibt sie.
+AUTO_TIME_VALUE_OFFPEAK_EUR_H = 10.0
+AUTO_TIME_VALUE_PEAK_EUR_H = 16.0
+AUTO_TIME_VALUE_PEAK_START_HOUR = 16.5
+AUTO_TIME_VALUE_PEAK_END_HOUR = 20.0
+AUTO_TIME_VALUE_RULE = "Automatik: 16 €/h von 16:30 bis 20:00 Uhr, sonst 10 €/h."
+
+
+def net_economics(
+    reference_price: float,
+    alternative_price: float,
+    liters: float,
+    detour_km_total: float,
+    consumption_l_100km: float,
+    speed_kmh: float,
+    time_value_eur_h: float,
+) -> dict[str, float]:
+    """Unrounded, auditable detour economics used by all decision paths (O9).
+
+    ``detour_km_total`` is deliberately already the *complete* driven detour.
+    That keeps dedicated/on-route route geometry outside the money formula and
+    makes later receipt settlement use exactly the same calculation.
+    """
+    fuel_eur = (detour_km_total / 100.0) * consumption_l_100km * alternative_price
+    time_eur = (detour_km_total / max(1.0, speed_kmh)) * time_value_eur_h
+    detour_cost_eur = fuel_eur + time_eur
+    gross_eur = (reference_price - alternative_price) * liters
+    return {
+        "fuel_eur": fuel_eur,
+        "time_eur": time_eur,
+        "detour_cost_eur": detour_cost_eur,
+        "gross_eur": gross_eur,
+        "net_eur": gross_eur - detour_cost_eur,
+        "critical_delta_ct": (detour_cost_eur / liters * 100.0) if liters else 0.0,
+        "delta_ct": (reference_price - alternative_price) * 100.0,
+    }
 
 
 def _active_elsewhere_thresholds(live_data) -> dict[str, float]:
@@ -164,10 +202,12 @@ def _berlin_hour(when_str: str | None) -> float | None:
 
 def _auto_time_value(hour: float | None):
     if hour is None:
-        # Default offpeak wenn unbekannt
-        return 10.0, False
-    is_peak = 16.5 <= hour <= 20.0
-    return (16.0 if is_peak else 10.0), is_peak
+        # Default offpeak when no timestamp is available.
+        return AUTO_TIME_VALUE_OFFPEAK_EUR_H, False
+    is_peak = AUTO_TIME_VALUE_PEAK_START_HOUR <= hour <= AUTO_TIME_VALUE_PEAK_END_HOUR
+    return (
+        AUTO_TIME_VALUE_PEAK_EUR_H if is_peak else AUTO_TIME_VALUE_OFFPEAK_EUR_H
+    ), is_peak
 
 
 def evaluate_route(live_data, params: dict):
@@ -327,7 +367,7 @@ def evaluate_route(live_data, params: dict):
     # (0 bei gleicher Anker-Entfernung trotz km-Weite) — die Luftlinie zwischen
     # den Stationen × 1,3 ist die bessere Näherung.
     detour_km = _parse_float(params.get("detour_km") or params.get("km"), None)
-    detour_source = "query" if detour_km is not None else None
+    detour_source = "declared" if detour_km is not None else None
     if detour_km is None:
         target_coords = _coords(target_meta)
         ref_coords = _coords(ref_meta)
@@ -340,8 +380,12 @@ def evaluate_route(live_data, params: dict):
                 and math.isfinite(target_dist)
                 and target_dist >= 0
             ):
-                detour_km = float(target_dist)
-                detour_source = "derived"
+                if target_meta.get("dist_mode") == "road":
+                    detour_km = float(target_dist)
+                    detour_source = "road"
+                else:
+                    detour_km = float(target_dist) * CIRCUITY
+                    detour_source = "estimated_anchor_air_circuity"
         else:
             if target_coords and ref_coords:
                 detour_km = (
@@ -353,7 +397,7 @@ def evaluate_route(live_data, params: dict):
                     )
                     * CIRCUITY
                 )
-                detour_source = "derived"
+                detour_source = "estimated_air_circuity"
             else:
                 target_dist = target_meta.get("dist_km") if target_meta else None
                 ref_dist = ref_meta.get("dist_km") if ref_meta else None
@@ -366,22 +410,26 @@ def evaluate_route(live_data, params: dict):
                 )
                 if dists_ok:
                     detour_km = max(0.0, float(target_dist) - float(ref_dist))
-                    detour_source = "derived_anchor"
+                    detour_source = "estimated_anchor_difference"
     if detour_km is None:
         detour_km = 0.0
-        detour_source = "zero"
+        detour_source = "unavailable"
     if not (0 <= detour_km <= 100):
         raise ValueError("invalid_detour")
 
-    # Berechnung: K = d·(c/100)·p + (d/v)·z, brutto = (p_ref - p_alt)·L
+    # K = d·(c/100)·p + (d/v)·z. Only this response rounds monetary values;
+    # decide, P(draw) and receipt settlement share the raw helper (O9).
     d = detour_km * (2 if mode == "dedicated" else 1)  # Gesamt-Umweg
-    fuel_eur = (d / 100.0) * consumption * target_price
-    time_eur = (d / max(1.0, speed)) * z_used
-    detour_cost = fuel_eur + time_eur
-    gross_eur = (ref_price - target_price) * liters
-    net_eur = gross_eur - detour_cost
-    critical_ct = (detour_cost / liters * 100) if liters else 0.0
-    delta_ct = (ref_price - target_price) * 100
+    economics = net_economics(
+        ref_price, target_price, liters, d, consumption, speed, z_used
+    )
+    fuel_eur = economics["fuel_eur"]
+    time_eur = economics["time_eur"]
+    detour_cost = economics["detour_cost_eur"]
+    gross_eur = economics["gross_eur"]
+    net_eur = economics["net_eur"]
+    critical_ct = economics["critical_delta_ct"]
+    delta_ct = economics["delta_ct"]
 
     # Schwellen aus derselben Config wie /api/v1/decide (Konzept §4.5: „alle
     # Schwellen in einer Config"). Vorher hart 1,50/0,50 € — das divergierte,
@@ -419,6 +467,9 @@ def evaluate_route(live_data, params: dict):
         "z_used": z_used,
         "z_auto": z_auto,
         "is_peak": is_peak,
+        "time_value_rule": AUTO_TIME_VALUE_RULE
+        if z_auto
+        else "Manuell gesetzter Zeitwert.",
         "when_hour": hour,
         "fuel_cost_eur": round(fuel_eur, 2),
         "time_cost_eur": round(time_eur, 2),
