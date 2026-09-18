@@ -1588,3 +1588,23 @@ def test_refresh_backtest_cache_can_be_disabled(model_setup, monkeypatch):
     publication = app_data.publication(settings)
     row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
     assert row["backtest_cached"] is False and row["backtest_computed_at"] is None
+
+
+def test_refresh_measures_the_pre_law_share_of_the_training_stock(model_setup):
+    """B30: Der Modell-Lauf zählt, was vor der 12-Uhr-Bodenkante liegt.
+
+    „Die Kante ändert heute nichts" soll eine Zahl sein, keine Behauptung:
+    ``law_quality`` steht im Publikations-Index neben ``gapfill_quality``.
+    """
+    refresh(model_setup, dt.datetime(2026, 8, 6, tzinfo=dt.timezone.utc))
+
+    index = model_setup.runtime / "engine" / "current.json"
+    payload = json.loads(index.read_text(encoding="utf-8"))
+    law = payload["law_quality"]
+    assert law["law_floor"] == "2026-04-01T10:00:00+00:00"
+    assert law["points_total"] > 0
+    # 120-Tage-Fenster ab dem 08.04.2026 — vollständig hinter der Kante.
+    assert law["points_before_law"] == 0
+    assert law["gapfill_events_before_law"] == 0
+    assert law["by_fuel"]["e10"]["points"] == law["points_total"]
+    assert law["by_fuel"]["e10"]["points_before_law"] == 0

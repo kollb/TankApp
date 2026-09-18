@@ -154,3 +154,53 @@ def test_fill_gaps_without_gaps_writes_nothing(tmp_path):
     assert paths == []
     assert quality["gaps_detected"] == 0
     assert not (tmp_path / "runtime" / "gapfill").exists()
+
+
+def test_fill_gaps_counts_events_before_the_law_floor(tmp_path):
+    """B30: Die Füllung zählt, was sie vor der 12-Uhr-Bodenkante einfüllt.
+
+    Der Befund verlangt die Messung vor dem Schnitt: Solange dieser Zähler
+    null ist, zieht die Archiv-Füllung kein vorgesetzliches Muster nach —
+    gemessen, nicht angenommen.
+    """
+    from types import SimpleNamespace
+
+    station = "uuid-1"
+    origin = pd.Timestamp("2026-09-11 12:00", tz="Europe/Berlin").tz_convert("UTC")
+    metas = {("Frankfurt", station): {"city": "Frankfurt", "name": "Test"}}
+    stamps = stamps_berlin(dt.date(2026, 9, 10), (11, 55), (13, 5))
+    live = frame(stamps, station)
+
+    # Kante 12:00 Uhr: Das eingefüllte Ereignis (12:30) liegt dahinter.
+    archive = tmp_path / "nach" / "prices"
+    write_raw_archive_day(archive, dt.date(2026, 9, 10), station)
+    settings = SimpleNamespace(archive=tmp_path / "nach", runtime=tmp_path / "rt-nach")
+    _, quality = fill_gaps(
+        settings,
+        Config(price_law_local="2026-09-10T12:00"),
+        metas,
+        ["e10"],
+        {"e10": live},
+        origin,
+        5,
+    )
+    assert quality["gap_events"] == 1
+    assert quality["events_before_law"] == 0
+
+    # Kante 13:00 Uhr: Dasselbe Ereignis liegt jetzt davor.
+    archive_alt = tmp_path / "vor" / "prices"
+    write_raw_archive_day(archive_alt, dt.date(2026, 9, 10), station)
+    settings_alt = SimpleNamespace(
+        archive=tmp_path / "vor", runtime=tmp_path / "rt-vor"
+    )
+    _, quality_alt = fill_gaps(
+        settings_alt,
+        Config(price_law_local="2026-09-10T13:00"),
+        metas,
+        ["e10"],
+        {"e10": live},
+        origin,
+        5,
+    )
+    assert quality_alt["gap_events"] == 1
+    assert quality_alt["events_before_law"] == 1

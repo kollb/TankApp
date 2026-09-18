@@ -113,6 +113,11 @@ def fill_gaps(
         "gaps_without_events": 0,
         "missing_days": 0,
         "files": [],
+        # B30: Wie viele der eingefüllten Archiv-Ereignisse **vor** der
+        # 12-Uhr-Bodenkante liegen. Solange das null ist, zieht die
+        # Archiv-Füllung kein vorgesetzliches Muster nach — gemessen, nicht
+        # angenommen (docs/BEFUND-12-UHR-REGEL.md §4).
+        "events_before_law": 0,
     }
     if not gaps:
         return [], quality
@@ -134,6 +139,9 @@ def fill_gaps(
     rows_by_fuel: dict[str, list] = {fuel: [] for fuel in fuels}
     by_upper = {fuel.upper(): fuel for fuel in fuels}
     filled = set()
+    from engine.models import law_since_utc
+
+    law = law_since_utc(cfg)
     for path in paths:
         with gzip.open(path, "rt", encoding="utf-8", newline="") as handle:
             for raw in csv.DictReader(handle):
@@ -150,6 +158,8 @@ def fill_gaps(
                         fuel = (raw.get("fuel") or "").upper()
                         if fuel in by_upper:
                             rows_by_fuel[by_upper[fuel]].append(raw)
+                            if stamp < law:
+                                quality["events_before_law"] += 1
                         break
     quality["gaps_filled"] = len(filled)
     quality["gaps_without_events"] = quality["gaps_detected"] - len(filled)
