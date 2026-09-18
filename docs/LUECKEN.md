@@ -128,7 +128,12 @@ Dauerbetrieb billiger und messbar:
   [BETRIEB.md](BETRIEB.md#nas-influxdb-backup).
 - **Getestet wird, was läuft (O27):** NAS-Bild und Pipeline nennen dieselbe
   Python-Linie (3.12) und dieselbe Node-Linie (22), `web/package.json` trägt
-  `engines`, und der Pipeline-Job `nas-image` fährt die Suite **im Bild**.
+  `engines`, und der Pipeline-Job `nas-image` fährt die Suite **im Bild**. Der
+  erste Lauf fand prompt zwei Driften, die auf dem Runner unsichtbar waren: ein
+  `ARG` hinter dem ersten `FROM` (Build tot nach 4 s) und ein Bild ohne `git`,
+  das seinen eigenen Commit nicht kannte (`/health.commit` `null`). Beide sind
+  behoben und durch Ratchets gesichert — der Beleg, dass der Job seinen Zweck
+  hat, nicht nur seinen Platz.
 
 Aus Batch 1–6 war keine Folgeumsetzung offen: O22(d) ist mit 0.49.0 umgesetzt,
 das zweite automatische Backup-Ziel (B25) und das Fehlen eines Form-Modells je
