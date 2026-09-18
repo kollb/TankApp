@@ -270,14 +270,41 @@ export function DeltaBars({
     ariaDescription ??
     `Balkendiagramm um die Nulllinie: ${values.length} Werte; grün = positiv, rot = negativ.`;
   const W = 720;
-  const H = height;
   const padL = 46;
   const padR = 10;
   const padT = 16;
-  const padB = 22;
+  const BASE_PAD_B = 22;
   const iw = W - padL - padR;
-  const ih = H - padT - padB;
   if (values.length === 0) return null;
+  const n = values.length;
+  const step = iw / n;
+  const bw = Math.min(step * 0.66, 34);
+  // X-Beschriftung: Solange die Namen nebeneinander passen, stehen sie
+  // waagrecht unter dem Balken. Sobald der längste Name breiter ist als
+  // eine Balkenspur, kippt die Achse um 45° und der Fußraum wächst mit —
+  // die Plotfläche selbst bleibt gleich groß (H wächst mit dem Fußraum).
+  // Zu lange Namen werden mit „…“ gekürzt; der volle Name bleibt per
+  // <title> (Hover) lesbar. (Feedback 17.09.2026: „Preis-Abstand je
+  // Station · Frankfurt“ — bei einem großen Stationsset standen alle
+  // Namen übereinander, die Achse war nicht mehr lesbar.)
+  const CHAR_W = 5.3; // mittlere Zeichenbreite der 9,5-px-Achsschrift
+  const PAD_B_MAX = 96;
+  const widest = (labels ?? []).reduce(
+    (m, l) => Math.max(m, (l ?? "").length),
+    0,
+  );
+  const rotated = widest * CHAR_W > step + 6;
+  const padB = rotated
+    ? Math.min(PAD_B_MAX, 16 + widest * CHAR_W * Math.SQRT1_2)
+    : BASE_PAD_B;
+  // Kürzung so, dass der gekippte Text im (gedeckelten) Fußraum bleibt.
+  const maxChars = rotated
+    ? Math.max(8, Math.floor(((PAD_B_MAX - 16) * Math.SQRT2) / CHAR_W))
+    : Number.POSITIVE_INFINITY;
+  const shortLabel = (l: string) =>
+    l.length > maxChars ? `${l.slice(0, maxChars - 1)}…` : l;
+  const H = height + padB - BASE_PAD_B;
+  const ih = H - padT - padB;
   const vMax = Math.max(
     ...values.map((v) => Math.abs(v)),
     ...(whiskers ?? []).flatMap((w) =>
@@ -288,9 +315,6 @@ export function DeltaBars({
     0.01,
   );
   const Y = (v: number) => padT + ih / 2 - (v / vMax) * (ih / 2);
-  const n = values.length;
-  const bw = Math.min((iw / n) * 0.66, 34);
-  const step = iw / n;
 
   return (
     <svg
@@ -322,8 +346,20 @@ export function DeltaBars({
               </g>
             )}
             {labels && labels[i] && (
-              <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize={9.5} fill={c.text}>
-                {labels[i]}
+              <text
+                x={x + bw / 2}
+                y={rotated ? padT + ih + 10 : H - 8}
+                textAnchor={rotated ? "end" : "middle"}
+                fontSize={9.5}
+                fill={c.text}
+                transform={
+                  rotated
+                    ? `rotate(-45 ${x + bw / 2} ${padT + ih + 10})`
+                    : undefined
+                }
+              >
+                {shortLabel(labels[i])}
+                <title>{labels[i]}</title>
               </text>
             )}
           </g>

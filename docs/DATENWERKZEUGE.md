@@ -1,14 +1,16 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 15.09.2026 · App-Version 0.38.0. Nachschlagewerk für `data-tools/`
+> Stand: 17.09.2026 · App-Version 0.50.1. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
-> Dauerbetrieb in [BETRIEB.md](BETRIEB.md).
+> Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
+> [12-Uhr-Regel-Check](#12-uhr-regel-check).
 
 ## Inhaltsverzeichnis
 
 - [Interne Einzelprogramme](#interne-einzelprogramme)
 - [Datenformate](#datenformate)
 - [Optionale vertiefte Stationsanalyse](#optionale-vertiefte-stationsanalyse)
+- [12-Uhr-Regel-Check](#12-uhr-regel-check)
 
 ## Interne Einzelprogramme
 
@@ -75,3 +77,108 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
 
 Spezialfälle nur bei Bedarf: [UUID-Migration](archiv/STATIONS-UUID-MIGRATION.md) und
 [Engine-Diagnose](ENGINE.md).
+
+## 12-Uhr-Regel-Check
+
+`analysis/noon_rule_check.py --data <csv> --fuel E10` (seit 0.49.3).
+Beantwortet auf dem echten Bestand die Frage, die am 17.09.2026 die
+Tages-Panels in Zweifel zog: **Zeigen die beobachteten Preise überhaupt die
+12-Uhr-Regel** (Erhöhung nur um 12:00, seit 2026-04-01 Gesetz,
+`engine/config.py: price_law_local`) — oder trägt der Bestand noch das
+Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
+stammen?
+
+**Ergebnis des Echteinsatzes (Live + Archiv-Kontrast):**
+[BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) — Live regeltreu
+(100 % am Mittagspunkt), Archiv zeigt den Regime-Wechsel 01.04.2026,
+Folgearbeit als B30 ausgelagert.
+
+### Welche Datenquelle?
+
+Entscheidend ist die Ziel-Frage **vor/nach dem Gesetz** — und Influx allein
+kann sie mit Ständen vor der UUID-Migration nicht beantworten:
+
+- **Influx-Export** (`export_influx.py`) umfasst sicher nur die **UUID-Ära**:
+  Der Uploader schreibt `station_id`-Tags erst seit der Migration
+  (ca. 07.–09.09.2026,
+  [STATIONS-UUID-MIGRATION](archiv/STATIONS-UUID-MIGRATION.md)). Ältere
+  Legacy-Punkte tragen nur den Stationsnamen; steht der mehrfach im aktiven
+  Polling-Set (Namenszwilling wie „Aral Tankstelle“), bricht der Export
+  bewusst ab — „mehrdeutig“, UUIDs werden nicht geraten, und weder darf ein
+  Namenszwilling entfernt noch ein Punkt umgedeutet werden.
+  `--uuid-only` exportiert sauber die UUID-Ära — das ist alles NACH dem
+  Gesetz, der „vor“-Block bleibt also leer.
+- **Archiv-M2-CSVs** (`data/ready/…` aus `ingest_history.py` /
+  `run_pipeline.py`) tragen die Stations-UUID aus den Tankerkönig-Metadaten
+  und reichen über den 01.04.2026 hinaus zurück — **das ist die Quelle für
+  den Vorher/Nachher-Kontrast**. Fehlt der Zeitraum, aus den Rohdumps
+  nachziehen (reine Standardbibliothek, kein venv nötig):
+
+```bash
+# Aus dem Repo-Wurzellauf: --raw nutzt automatisch data/raw/prices
+# (find mit -name "*-prices.csv*" zeigt, dass es gefüllt ist); der Anker
+# steht notfalls direkt am Aufruf, wenn analysis/config.local.json fehlt.
+# Zeitraum vor den Gesetzesbeginn legen:
+python data-tools/ingest_history.py \
+    --since 2026-03-01 --out data/ready-noon --fuel e10 \
+    --anchor "Frankfurt:50.11,8.68"
+.venv-analysis/bin/python analysis/noon_rule_check.py \
+    --data data/ready-noon/*.csv* --fuel E10
+```
+
+Der Ingest liest jeden Tagesdump mit reiner Standardbibliothek — für ein
+halbes Jahr regionaler Bestand ist das ein Lauf auf Minuten, keiner auf
+Sekunden. Fehlt der Raw-Baum doch, sagt der Fehlertext selbst, dass erst
+`data-tools/fetch_history.py` laufen muss.
+
+### Aufruf auf dem Daten-Host (NAS)
+
+Drei Schritte; der Check braucht nur numpy/pandas, **keine** volle
+Analyse-Werkstatt (matplotlib/holidays/engine werden nicht importiert):
+
+```bash
+cd /mnt/user/appdata/TankApp   # Repo-/appdata-Wurzel, dort liegen data/…
+
+# 1) Export mit dem Influx-Lesezugang aus data/influx.env.
+#    --since vor dem Gesetzesbeginn ansetzen, sonst fehlt der
+#    Vorher/Nachher-Kontrast (Default deckt nur ~70 Tage ab — alles danach).
+python data-tools/export_influx.py --fuel e10 \
+    --env-file data/influx.env --since 2026-03-01 --out data/export_e10.csv
+
+# 2) Analyse-Pakete einmalig (fehlen sie, sagt das Skript genau das).
+python3 -m venv .venv-analysis
+.venv-analysis/bin/pip install -r analysis/requirements.txt
+
+# 3) Der Check — Konsole + data/analysis/report_noon_rule.md.
+.venv-analysis/bin/python analysis/noon_rule_check.py \
+    --data data/export_e10.csv --fuel E10
+```
+
+Ohne venv geht alternativ `python3 -m pip install --user -r
+analysis/requirements.txt`; oder den Export auf den PC kopieren und dort
+auswerten (die Analyse ist laut [INSTALL.md](INSTALL.md) ohnehin
+NAS-oder-PC).
+
+### Was gezählt wird
+
+Vier Zählungen, getrennt nach Zeitraum vor/nach `--law-date`:
+
+1. Anstiege ≥ Schwelle (Default 1 ct, wie die Engine) — am 12-Uhr-Punkt
+   (± `--noon-tol-min`) vs. außerhalb; Intervalle über `--max-gap-min`
+   sind nicht bewertbar (der Sprung könnte legal in der Lücke liegen) und
+   werden separat ausgewiesen statt als Verstoß gezählt.
+2. Stunde des Tagestiefs je Stationstag (Gates `--min-obs`/`--min-hours`,
+   sonst misst man Polling-Lücken statt Preismuster).
+3. Stunde des Tageshochs, gleiche Gates.
+4. Medianer Sprung über die 12-Uhr-Kante (letzte Beobachtung davor →
+   erste danach).
+
+Erwartung unter der Regel: Anstiege konzentrieren sich auf den
+12-Uhr-Punkt, das Tagestief wandert in den Block 6–12, das Hoch in
+12–18, die Kante ist deutlich positiv (≈ Mittagssprung). Bleibt das
+Abend-Tief stehen, stammen die Tages-Panels aus alten Mustern — dann ist
+die Lektüre der App-Statistiken zu korrigieren, nicht das Panel.
+
+Kein Modell, kein Schätzen; Ausgabe Konsole +
+`data/analysis/report_noon_rule.md` (`--report`). Eingabe sind dieselben
+CSVs wie für die Selektion (export via `data-tools/export_influx.py`).

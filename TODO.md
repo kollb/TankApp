@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 17.09.2026, App-Version 0.50.0)
+# TankApp — ToDo (Stand 18.09.2026, App-Version 0.50.1)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -42,6 +42,7 @@ Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 | # | Prio | Fehlt | Warum es zählt / Definition of Done |
 |---|---|---|---|
+| B30 | B | **12-Uhr-Regel: Anzeige- und Kalibrierungs-Bodenkante (Schritt 3, ausgelagert 18.09.2026)** | Der Befund ([docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md)) zeigt: Live-Daten folgen der Regel exakt (100 % der Erhöhungen am 12-Uhr-Punkt, Tief im Vormittag), die Panels spiegeln dagegen den Mischbestand aus Vor-/Nach-Gesetz-Daten. Zwei Pakete: (1) Die modellfreien Beobachtungs-Panels (Wochentags-Muster, „billigste Stunde“, Vergleiche) werten nur Beobachtungen ab `price_law_local`-Datum — vorher ist mitzumessen, wie viel vorgesetzliches Muster gapfill dauerhaft nachzieht (Null-Pfad: Das 42-Tage-Fenster läuft sich sonst in ~6 Wochen rein). (2) Intraday-Formen (u_d) und AB/BC erneut, nur aus Nach-Gesetz-Daten fitten — mit Labor-Backtest wie bei früheren Kalibrierungs-Läufen. DoD: Kein Panel behauptet mehr das Abend-Muster, während die Nach-Gesetz-Daten das Gegenteil sagen; Kalibrierung belegt Backtest ohne Qualitätsverlust; kein Hardcode des Gesetzes (bleibt Config). |
 | B25 | C | **Zweites automatisches Backup-Ziel (O33-Rest)** | Seit 0.47.0 meldet die App die Backup-Alterung (`backup_stale`, 36 h) und `ops/nas/backup.sh` behält 14 Tages- plus 6 Monatsstände — aber das Ziel liegt auf demselben Gerät wie die Daten: Ein NAS-Ausfall nimmt Daten **und** Sicherung mit. Die unersetzbaren Bestände (Tank-Bilanz, Polling-Set mit den Anker-Koordinaten) haben keine zweite automatische Kopie. DoD: rsync/Cron des Backup-Ordners auf ein zweites Gerät oder Datenträger, plus ein Alarm, wenn **auch** die Zweitkopie altert (Muster aus `app/backup.py`). Entscheidung und Zwischenstand: [BETRIEB.md](docs/BETRIEB.md#nas-laufzeitdaten-runtime-backup). |
 | B22 | D | **Zahlen-ändernde Hebel: `bootstrap_samples` und Nacht-Raster** | Entscheidung, kein Gratishebel. 2000→500 Ziehungen halbiert die Backtest-Zeit, verschiebt aber Kennzahlen (MASE/PICP/MPIW/MAE). Zweiter Hebel: `predict(hours=72/168)` rechnet das volle 5-Minuten-Raster inkl. Nacht, obwohl der Collector nur 06–24 Uhr pollt. Ändert `points_3d`/`points_7d` — erst entscheiden, ob die GUI die Nachtstunden braucht. Nach B15–B17 vermutlich überflüssig; ausdrücklich **nicht** als Laufzeit-Hebel einplanen. |
 

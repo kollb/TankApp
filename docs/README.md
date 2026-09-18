@@ -39,7 +39,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.50.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.50.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
 nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
@@ -47,6 +47,23 @@ nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
 zeigen echte Daten statt eines Dauertextes (O18), die Woche bekommt einen
 Rückblick über den ntfy-Kanal (O31), und persönliche Daten sind über
 `TANKAPP_READ_TOKEN` schützbar (O39).
+0.50.1 führt den 12-Uhr-Strang mit main zusammen (Kalendertag-Schnitt + feste Farbskala in einem Streifen) und legt den Befund zum Gesetz als Report ab ([BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md)): Live-Daten regeltreu (alle Erhöhungen am Mittagspunkt), Panels aus dem Mischbestand beschrieben die Welt vor dem 01.04.2026; Schritt 3 (Anzeige-Bodenkante und Nach-Gesetz-Kalibrierung) ist als B30 ausgelagert.
+0.49.5 hält den 12-Uhr-Regel-Check auch an Tagen ohne gültigen Preis aufrecht (Statuszeilen werden zentral gefiltert, Lücken gezählt statt geraten — [DATENWERKZEUGE.md#12-uhr-regel-check](DATENWERKZEUGE.md#12-uhr-regel-check) erklärt die Datenquelle für den Vorher/Nachher-Kontrast); 0.49.4 macht auf der nackten NAS lauffähig (eigenständig, nur numpy/pandas, NAS-Ablauf in [DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check) dokumentiert); 0.49.3 schneidet den Tagesstreifen („Heute im Blick“) auf den Berliner
+Kalendertag — die Zellen 18–24 Uhr zeigten am Nachmittag Meldungen von
+gestern Abend als „heute“ — und bringt mit `analysis/noon_rule_check.py`
+den 12-Uhr-Regel-Check für den echten Bestand (Doku in
+[DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check)); 0.49.2 macht die
+Stations-Achse im Labor bei vielen Stationen lesbar (gekippt, gekürzt,
+voller Name per Tooltip).
+0.49.1 behebt zwei Abstürze aus dem Produktionsbetrieb vom 17.09.2026 (O44):
+`None` in den Draws ließ `decide` an einem `TypeError` scheitern (sichtbar war
+nur `decide_failed`), und zwei Stellen lasen Felder ungeprüft
+(`alternatives_nearby.find`, `cities.includes`) — die zweite traf den
+Pi-Fallback, dessen Stations-Antwort kein `cities` trug. 0.49.0 behebt davor
+zwei weitere Produktionsbefunde: die Selektion snappt Beobachtungs-Zeitstempel
+wie der Trainingspfad aufs Raster (Coverage zählte sonst nur exakte
+Raster-Treffer), und die Prognose-Veröffentlichung ist aufgeteilt (eine Datei
+je Station, Index mit Zeigern, O22 Maßnahme d).
 Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 [LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
 [../CHANGELOG.md](../CHANGELOG.md).
@@ -60,7 +77,6 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
 | [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |

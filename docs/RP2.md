@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 17.09.2026 · App-Version 0.49.1 · RP2-Fallback v4.3 — **die** Anleitung
+> Stand: 17.09.2026 · App-Version 0.49.5 · RP2-Fallback v4.3 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine

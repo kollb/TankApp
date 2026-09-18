@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.50.0** — neu seit 0.50.0: der
+> Stand: 17.09.2026 · App-Version **0.50.1** — neu seit 0.50.0: der
 > Lese-Schutz für persönliche Daten (O39, `TANKAPP_READ_TOKEN`) und der
 > Wochen-Rückblick (O31), der in `health.notify` seine letzte Woche nennt.
 > Davor seit 0.49.1: die

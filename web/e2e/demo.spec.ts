@@ -41,6 +41,21 @@ function berlinHour(date = new Date()): number {
   );
 }
 
+/** Wieviele Zellen des Tagesstreifens jetzt bepreist sein MÜSSEN.
+ *
+ * Seit 0.49.3 zählt nur der Berliner Kalendertag (kein rollierendes
+ * 24-h-Fenster, in dem gestrige Abendstunden als „heute" standen). Die
+ * Demo-Stationen sind 06–22 Uhr offen: morgens sind unmittelbar nach
+ * Öffnung legitimerweise nur wenige Zellen befüllt — die Zahl ist eine
+ * Funktion der Uhrzeit, nicht eine Konstante. Eine Takt-Kante darf eine
+ * Stunde kosten, deshalb lassen die Tests eine Stunde Toleranz zu. */
+function expectedPricedCells(date = new Date()): number {
+  const hour = berlinHour(date);
+  if (hour < 6) return 0;
+  if (hour > 22) return 17;
+  return hour - 5;
+}
+
 test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", async ({
   page,
 }) => {
@@ -73,7 +88,10 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
   await expect(cardPrice).toBeVisible();
 
   // ③ „Heute im Blick“: 19 Zellen (06–24 Uhr), jede beschriftet — mit Preis
-  //    oder als leere Stunde, nie als NaN/„null“.
+  //    oder als leere Stunde, nie als NaN/„null“. Seit 0.49.3 bleiben
+  //    zukünftige Stunden leer (Kalendertag statt 24-h-Rollfenster): Nach
+  //    Mitternacht und vor sechs Uhr sind alle Stunden leer — das ist die
+  //    neue Ehrlichkeit, kein Datenverlust.
   await expect(
     page.getByRole("heading", { name: "Heute im Blick" }),
   ).toBeVisible();
@@ -91,10 +109,17 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
     .map((label) => label.match(/(\d),(\d{3}) €\/L$/))
     .filter((match): match is RegExpMatchArray => match !== null)
     .map((match) => Number(`${match[1]}.${match[2]}`));
-  expect(prices.length).toBeGreaterThanOrEqual(6);
+  // Seit 0.49.3 zählt nur der Berliner Kalendertag: die bepreisten Zellen
+  // sind „seit 6 Uhr vergangene Stunden“, keine Mindestzahl. Vor dem
+  // Durchzug um 12 Uhr ist sechs schlicht falsch.
+  expect(prices.length).toBeGreaterThanOrEqual(
+    Math.max(0, expectedPricedCells() - 1),
+  );
   // Plausible Demo-Preise — ein NaN oder eine Einheit ohne Umrechnung fiele auf.
-  expect(Math.min(...prices)).toBeGreaterThan(1.0);
-  expect(Math.max(...prices)).toBeLessThan(3.0);
+  if (prices.length > 0) {
+    expect(Math.min(...prices)).toBeGreaterThan(1.0);
+    expect(Math.max(...prices)).toBeLessThan(3.0);
+  }
 
   // ④ Ortszeit: die als „jetzt“ markierte Zelle trägt die Berliner Stunde.
   //    Eine in UTC geschnittene Kurve (B3-Klasse) steht hier zwei Stunden
@@ -130,7 +155,8 @@ test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
 
   // Die 19 Zellen stehen sofort (leer) im DOM, die Preise kommen erst mit
   // der Overview-Antwort — vor dem Vermessen auf echte Werte warten, sonst
-  // misst dieser Test den Ladezustand statt des Streifens.
+  // misst dieser Test den Ladezustand statt des Streifens. Seit 0.49.3 ist
+  // die Sollzahl uhrzeitabhängig (Kalendertag statt 24-h-Rollfenster).
   await expect
     .poll(
       () =>
@@ -144,7 +170,7 @@ test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
           ),
       { timeout: 20_000 },
     )
-    .toBeGreaterThanOrEqual(6);
+    .toBeGreaterThanOrEqual(Math.max(0, expectedPricedCells() - 1));
 
   // DoD: Zellenbreite ≥ 26 px — darunter ist der Stundenwert nicht lesbar.
   const boxes = await cells.evaluateAll((nodes) =>
@@ -166,10 +192,13 @@ test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
   }
 
   // DoD: sichtbarer Werttext. Die Demo-Daten haben mehrere offene Stunden —
-  // mindestens sechs Zellen zeigen einen Preis, und der Text ist echt
-  // gerendert (nicht leer, nicht abgeschnitten versteckt).
+  // mindestens die seit Tagesbeginn verstrichenen Stunden zeigen einen Preis
+  // (Kalendertag-Schnitt 0.49.3: sechs ist nur ab 12 Uhr zulässig), und der
+  // Text ist echt gerendert (nicht leer, nicht abgeschnitten versteckt).
   const withPrice = boxes.filter((box) => /\d,\d{3} €\/L$/.test(box.label));
-  expect(withPrice.length).toBeGreaterThanOrEqual(6);
+  expect(withPrice.length).toBeGreaterThanOrEqual(
+    Math.max(0, expectedPricedCells() - 1),
+  );
   for (const box of withPrice.slice(0, 3)) {
     const cell = cells.filter({ hasText: box.text }).first();
     await expect(cell).toBeVisible();

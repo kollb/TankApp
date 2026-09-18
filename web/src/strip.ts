@@ -1,25 +1,36 @@
 // „Heute im Blick“ — der kompakte Tagesstreifen 06–24 Uhr
 // (UI-NEUENTWURF §5.1 ④, §8 Tagesstreifen).
 //
-// Der Streifen ist reine Anzeige-Logik: Stunden-Minimum der offenen
-// Preismeldungen, in drei Tonlagen und mit „jetzt“-Markierung. Keine
-// Prognose, keine Empfehlung — das ist seine Ehrlichkeits-Zusage (vorher
-// Stand im Alltagstab, jetzt geteilter Baustein von „Jetzt“ und „Stationen“).
+// „Heute im Blick“ — der kompakte Tagesstreifen 06–24 Uhr
+// (UI-NEUENTWURF §5.1 ④, §8 Tagesstreifen).
 //
-// O20 — zwei Korrekturen gegenüber dem Stand bis 0.49.0:
-//   1. **Feste Farbskala.** Die Tonlagen kamen aus Minimum/Maximum des
-//      Tages: Eine neue, günstigere Meldung um 18 Uhr färbte den ganzen
-//      bisherigen Tag um — dieselbe Zahl, abends eine andere Farbe. Jetzt
-//      kommt die Skala vom Server als Band über einen festen Bezugszeitraum
-//      (`StripBand`, 25./75. Perzentil der letzten 7 Tage). Ohne Band gibt
-//      es **kein** Farburteil (`tone: "unrated"`) statt einer Skala aus zwei
-//      Messwerten.
-//   2. **Stunden-Minimum statt letzter Meldung.** Die Fenstersuche bewertet
-//      das Minimum einer Stunde; der Streifen zeigte den Stand am
-//      Stundenende. Beide zeigen jetzt dieselbe Größe (`value`), der letzte
-//      Preis der Stunde bleibt für „jetzt“ erhalten (`latest`).
+// Der Streifen ist reine Anzeige-Logik: Stunden-Minimum der offenen
+// Preismeldungen **des heutigen Berliner Kalendertags**, in drei Tonlagen
+// und mit „jetzt“-Markierung. Keine Prognose, keine Empfehlung — das ist
+// seine Ehrlichkeits-Zusage (vorher Stand im Alltagstab, jetzt geteilter
+// Baustein von „Jetzt“ und „Stationen“).
+//
+// Zwei Korrektur-Lagen liegen übereinander:
+//   - **0.49.3 — strikt Kalendertag.** Der Server liefert ein rollierendes
+//     24-h-Fenster; ohne den Schnitt standen in den Zellen 18–24 Uhr am
+//     Nachmittag die Meldungen von **gestern Abend** — „Günstigste Stunde
+//     20–22 Uhr“ war dann buchstäblich eine Vergangenheits-Beobachtung,
+//     die wie eine Planungsgröße aussah (Nutzer-Feedback 17.09.2026).
+//     Zukünftige Stunden bleiben ehrlich leer.
+//   - **O20 (0.50.0) — feste Farbskala + Stunden-Minimum.** Die Tonlagen
+//     kamen aus Minimum/Maximum des Tages: Eine neue, günstigere Meldung
+//     um 18 Uhr färbte den ganzen bisherigen Tag um — dieselbe Zahl,
+//     abends eine andere Farbe. Jetzt kommt die Skala vom Server als
+//     Band über einen festen Bezugszeitraum (`StripBand`, 25./75.
+//     Perzentil der letzten 7 Tage). Ohne Band gibt es **kein**
+//     Farburteil (`tone: "unrated"`) statt einer Skala aus zwei
+//     Messwerten. Die Fenstersuche bewertet das Minimum einer Stunde;
+//     der Streifen zeigte den Stand am Stundenende. Beide zeigen jetzt
+//     dieselbe Größe (`value`), der letzte Preis der Stunde bleibt für
+//     „jetzt“ erhalten (`latest`).
 
 import {
+  berlinDay,
   berlinHour,
   countLabel,
   euroPerLiter,
@@ -46,16 +57,19 @@ export type StripCell = {
  * der Pi-Fallback (Parität, B11): Zelle „24“ trägt die Mitternachtsmeldung
  * (00:00–00:59), Stunden 1–5 liegen außerhalb des 06–24-Fensters.
  *
- * Nur `status === "open"` mit finitem Preis zählt — leere Stunden
- * bleiben leer (keine erfundenen Werte). Die Tonlagen sind feste Grenzen
- * des Bezugsbands; ohne Band bleibt alles `unrated` (Zahl ja, Farburteil
- * nein).
+ * Nur `status === "open"` mit finitem Preis **vom heutigen Berliner
+ * Kalendertag** zählt — Meldungen von gestern (das Server-Fenster rolliert
+ * 24 h) fallen heraus, leere Stunden bleiben leer (keine erfundenen
+ * Werte). Die Tonlagen sind feste Grenzen des Bezugsbands; ohne Band
+ * bleibt alles `unrated` (Zahl ja, Farburteil nein).
  */
 export function buildStripCells(
   points: Point[] | null | undefined,
   now = Date.now(),
   band: StripBand | null = null,
 ): StripCell[] {
+  const today = berlinDay(now);
+  const todayKey = today ? today.join("-") : null;
   const byHour = new Map<number, { min: number; last: number }>();
   for (const p of points ?? []) {
     const ms = Date.parse(p.timestamp);
@@ -66,6 +80,9 @@ export function buildStripCells(
       !Number.isFinite(ms)
     )
       continue;
+    // Kalendertag-Schnitt (0.49.3): Gestern ist keine „heutige“ Stunde.
+    const pointDay = berlinDay(ms);
+    if (!todayKey || !pointDay || pointDay.join("-") !== todayKey) continue;
     const hour = Math.floor(berlinHour(new Date(ms)));
     // Mitternacht ist die Tagesgrenze des Streifens — nicht verloren.
     const cell = hour === 0 ? 24 : hour >= 6 && hour <= 23 ? hour : null;

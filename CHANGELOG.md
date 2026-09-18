@@ -4,12 +4,36 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.50.1] – 2026-09-18
+
+**Zwei parallele Arbeitsstränge sind zusammengeführt, und der 12-Uhr-Befund
+liegt als Report vor (Schritt 3 bewusst ausgelagert).**
+
+### Zusammengeführt
+
+- **Merge der 0.49.2–0.49.5-Linie mit 0.49.1/0.50.0 (Batch 6):** In
+  `web/src/strip.ts` tragen der Kalendertag-Schnitt (0.49.3: gestern
+  erscheint nicht als heute) und O20 (feste Farbskala + Stunden-Minimum,
+  0.50.0) denselben Streifen — beide Zusagen stehen im Kommentar-Kopf und
+  in den Tests nebeneinander. CHANGELOG in Versionsfolge.
+
+### Dokumentiert
+
+- **[docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md):** Der
+  abgeschlossene Check in fünf Lagen — Problem („Abend günstig" trotz
+  12-Uhr-Gesetz), Befund (Live: 100 % der 169 Anstiege am Mittagspunkt,
+  Tief Median 7 Uhr; Archiv: Regime-Wechsel 01.04.2026 sichtbar —
+  Tageshoch von 8 auf 14 Uhr gewandert), Erledigtes (0.49.2–0.49.5 +
+  Merge), Ausgelagertes (Schritt 3, DoD in [TODO.md](TODO.md) B30),
+  Nicht-Fixbares (Legacy-Namenszwillinge, gerasterter Bestand,
+  Befristung bleibt Config-Entscheidung).
+
+**Prüfung:** `pytest -q` (1047 passed), `ruff check`, `npm --prefix web test`
+(1134 passed) und `npm --prefix web build`; der Merge-Stand trägt beide
+Streifen-Testreihen (Kalendertag + Band) gemeinsam.
+
 ## [0.50.0] – 2026-09-17
-
 **Batch 6 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
-
-### Geändert
-
 - **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.
 - **Ersparnis rechnet gegen die Empfehlung (O19):** `nowBestNow` nannte die Differenz zur *teuersten* Station im Set „deine Ersparnis“. Anker ist jetzt dieselbe Referenz wie in `p_lohnt`/`ref_nowcast`, im Kleingedruckten benannt; „billigste bis teuerste“ bleibt sichtbar — als Spanne, nicht als persönlicher Gewinn.
 - **Tagesstreifen mit fester Farbskala (O20):** Die Töne hingen am Min/Max des Tages, deshalb färbte eine neue günstige Meldung frühere Stunden um. Die Skala ist jetzt ein festes Band (25/75-Perzentil über höchstens 168 Stunden, ab drei Berliner Tagen), und je Stunde steht das **Minimum** statt der letzten Meldung — Streifen und Fenstersuche zeigen dieselbe Größe.
@@ -17,8 +41,117 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **Labor-Werkstätten zeigen echte Daten (O18):** ε-Scan, Rang-Streuung, Strukturbruch und Modellvergleich standen dauerhaft auf einem Text ohne Datenpfad. Der ε-Scan rechnet auf den Backtest-Zeilen nach (dieselbe `scoreRows` wie der Server), Rang-Streuung und Strukturbruch lesen `rank_std`/`break_flag`/`break_stat` aus dem Selektions-Artefakt, und der Modellvergleich nennt den Dauerzustand statt μ = 1,5 ct und Stunde 19 zu erfinden. Nebenbei korrigiert: `app/stats_summary.py` publizierte eine CUSUM-Schwelle von 3.0, während `cusum_break` bei 2.0 flaggt — jetzt eine Quelle (`engine.selection.CUSUM_THRESHOLD`).
 - **Wochen-Rückblick (O31):** Die Woche endete ohne Zusammenfassung. Der Rückblick fährt auf dem ntfy-Kanal aus O29 mit — höchstens einmal je ISO-Woche, nie in der Ruhezeit — und fasst ausschließlich vorhandene Größen zusammen: abgerechnete Empfehlungen in den Wörtern des Tagebuchs, größte Verbesserung/Verschlechterung nach `delta_recent5_ct`, Datenqualität und Lernstand. `mode="public"` nennt weder Station noch Preis (O42); `/api/v1/health` zeigt `recap_last_week`.
 - **Persönliche Daten sind eine Entscheidung (O39):** [BETRIEB.md](docs/BETRIEB.md) benennt die LAN-Exposition — was ohne Anmeldung lesbar ist, für wen, in welchem Netz. Neu: `TANKAPP_READ_TOKEN` schützt die Ledger-Routen (`/fills`, `/advice/diary`, `/profiles`, `/episodes`, `/overview`, CSV-Export) mit demselben Mechanismus wie der Webhook; leer bedeutet bewusst „offen“. Markt- und Modelldaten bleiben offen.
-
 **Prüfung:** `pytest -q` (**1045 passed**), `ruff check`, `npm --prefix web test` (**1129 passed**) und `npm --prefix web build`. Die Playwright-Suiten (`test:e2e`, `test:e2e:demo`) sind in dieser Arbeitsumgebung nicht installierbar und wurden **nicht** ausgeführt.
+
+## [0.49.5] – 2026-09-17
+
+**Der 12-Uhr-Regel-Check bricht nicht mehr an Tagen ohne gültigen Preis.**
+Erster NAS-Lauf mit dem neuen `--uuid-only`-Export (17.09.2026) endete mit
+`ValueError: All-NaN slice encountered`: Statuszeilen ohne gültigen Preis
+(`valid=false` / leerer Preis — z. B. eine den ganzen Tag geschlossene
+Station) gingen bis in die Tages-Extreme, wo der Schnitt nur aus NaN bestand.
+
+### Behoben
+
+- **`analysis/noon_rule_check.py` filtert jetzt zentral** in `_prepare`:
+  nur `valid`-Zeilen (falls die Spalte exportiert wurde) mit endlichem
+  Preis gehen in alle Zählungen. Offene Lücken zwischen Beobachtungen
+  raten nicht mehr lautlos vorbei — sie stehen danach ehrlich in
+  `gap_min` und landen oberhalb von `--max-gap-min` in „nicht bewertbar“.
+- **Doku-Klarstellung:** Der Vorher/Nachher-Kontrast zum Gesetz kommt aus
+  den Archiv-M2-CSVs, nicht aus Influx — UUID-Tags schreibt der Uploader
+  erst seit der Migration (~09.09.2026), und `--uuid-only` umfasst
+  entsprechend nur Tage *nach* dem Gesetz
+  ([DATENWERKZEUGE.md#welche-datenquelle](docs/DATENWERKZEUGE.md)).
+
+## [0.49.4] – 2026-09-17
+
+**Der 12-Uhr-Regel-Check läuft auf der nackten NAS.** Erster Echteinsatz am
+17.09.2026 zeigte zwei Hürden: Der Aufruf brach am fehlenden
+Influx-Aufruf-Parameter ab, und das Skript scheiterte an `numpy` — weil es
+`station_selection` importierte, zog es zusätzlich matplotlib, holidays und
+engine nach: auf dem Daten-Host viel zu viel Werkstatt für ein Zähl-Skript,
+und ohne Pakete kam nur ein roher ImportError.
+
+### Geändert
+
+- **`analysis/noon_rule_check.py` ist eigenständig** (nur numpy/pandas):
+  Der CSV-Lader (gleiches Schema wie `station_selection.load_prices`,
+  inkl. `.csv.gz`) ist lokal nachgebaut — kein Import der schweren
+  Selektions-Abhängigkeiten mehr. Fehlen numpy/pandas trotzdem, sagt das
+  Skript mit Klartext, wie sie installiert werden (venv- oder
+  `--user`-Zeile), statt mit Traceback zu enden. Ergebnis unverändert —
+  gegen den Referenzbestand bitgleich geprüft.
+- **NAS-Ablauf dokumentiert**
+  ([DATENWERKZEUGE.md#12-uhr-regel-check](docs/DATENWERKZEUGE.md)):
+  Drei-Schritte-Anleitung inkl. `--env-file data/influx.env` und dem
+  Hinweis, `--since` **vor** den Gesetzesbeginn zu legen — sonst liegt der
+  ganze Export im „ab“-Zeitraum und der Vorher/Nachher-Kontrast fehlt.
+
+## [0.49.3] – 2026-09-17
+
+**Der Tagesstreifen lügt nicht mehr unbemerkt gestern hinein — und ein
+neues Prüf-Skript klärt, ob die echten Daten die 12-Uhr-Regel zeigen.**
+Auslöser ist die Nutzer-Rückfrage vom 17.09.2026 zu „Heute im Blick“:
+„Günstigste Stunde 20–22 Uhr“ las sich wie ein Tipp für heute Abend,
+stammte aber — weil das Server-Fenster 24 h rolliert — am Nachmittag aus
+den Meldungen von **gestern** Abend. Gleiches galt für Tagesmedian und
+„eher günstig am Abend“. Weil seit 01.04.2026 Erhöhungen nur noch um
+12:00 Uhr erlaubt sind (Österreich-Modell), ist doppelt wichtig, was die
+Panels eigentlich messen: Tagesstunden liegen unter der Regel in
+**zwei** Zyklen (Vormittag = Ende des gestrigen Abtrags).
+
+### Behoben
+
+- **Tagesstreifen strikt auf den Berliner Kalendertag geschnitten**
+  (`web/src/strip.ts::buildStripCells`, gilt für „Jetzt“ und
+  „Stationen“): Meldungen von gestern fallen heraus, zukünftige Stunden
+  bleiben ehrlich leer, statt das gestrige Abendniveau als „heute“
+  auszugeben. „Günstigste Stunde“, Tagesmedian/Spanne und die
+  Tagesrhythmus-Zeile beziehen sich damit wirklich auf den aktuellen Tag;
+  die Abdeckungs-Zeile bleibt unverändert ehrlich („x von 19 Stunden mit
+  offener Meldung“). Kein Gesetz festgeschrieben, keine Prognose geändert
+  — nur die Anzeige misst jetzt, was sie ausgibt zu messen. Regression:
+  `web/src/strip.test.ts` (gestrige Abendmeldungen erscheinen nicht als
+  heutige Zellen; heutige Früh- und Mitternachtsmeldung zählen weiter).
+
+### Neu
+
+- **`analysis/noon_rule_check.py` — der 12-Uhr-Regel-Check für den echten
+  Bestand.** Beantwortet auf exportierten Preis-CSVs (wie bei der
+  Selektion) getrennt vor/nach `--law-date` (Default 2026-04-01 =
+  `engine/config.py: price_law_local`): Wie viele Anstiege ≥ 1 ct laufen
+  am 12-Uhr-Punkt vs. außerhalb (zu lange Beobachtungslücken sind „nicht
+  bewertbar“ und werden separat ausgewiesen statt als Verstoß gezählt),
+  in welcher Stunde Tagestief und -hoch liegen (nur Tage mit genug
+  Beobachtungen — sonst misst man Polling-Lücken) und wie groß der Sprung
+  über die 12-Uhr-Kante ist. Damit entscheidet ein Blick in die eigenen
+  Daten, ob ein Panel wie „Günstigste Stunde 20–22 Uhr“ echtem aktuellem
+  Verhalten entspringt oder Vorgesetzes-Mustern — erst dann lohnt die
+  Debatte über Modell- oder Text-Anpassungen. Doku:
+  [docs/DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md#12-uhr-regel-check);
+  `docs/README.md` führt DATENWERKZEUGE.md wieder als geprüft.
+
+## [0.49.2] – 2026-09-17
+
+**Lesbare Stations-Achse im Labor.** Nutzer-Feedback vom 17.09.2026: Bei
+„Preis-Abstand je Station · Frankfurt“ standen die Stationsnamen der X-Achse
+bei einem großen Stationsset übereinander — die Achse war nicht mehr lesbar.
+
+### Behoben
+
+- **`DeltaBars` kippt seine X-Beschriftung um 45°, sobald sie nicht mehr
+  nebeneinander passt** (`web/src/components/LabCharts.tsx`): Bisher zeichnete
+  das Diagramm jeden Stationsnamen waagrecht in die feste 720er-Skizze — bei
+  vielen Stationen (Breite je Spur ~20 px, Name ~140 px) lagen alle Texte
+  aufeinander. Gibt der längste Name nicht mehr Platz in einer Balkenspur,
+  kippt die Beschriftung um −45°, der Fußraum wächst mit (das SVG wird höher,
+  die Plotfläche bleibt gleich groß), zu lange Namen werden mit „…“ gekürzt
+  und bleiben vollständig per `<title>` (Hover/Focus) erreichbar. Mit wenigen,
+  kurzen Namen ändert sich nichts — die Achse bleibt waagrecht. Regression:
+  `web/src/components/LabCharts.test.tsx` (3 Fälle: waagrecht unverändert,
+  gekippt + gekürzt + vollständiger Name im `<title>`, Höhe wächst nur im
+  gekippten Fall).
 
 ## [0.49.1] – 2026-09-17
 
