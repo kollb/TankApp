@@ -90,7 +90,7 @@ def refresh(settings: Settings, now=None, progress=None):
     import export_influx as influx
     from engine.bootstrap import bootstrap, write_csv
     from engine.data import load_observations, prepare_series
-    from engine.models import SCHEMA_VERSION
+    from engine.models import SCHEMA_VERSION, law_since_utc
     from engine.selection import (
         SelectionConfig,
         bootstrap_floor_note,
@@ -246,6 +246,19 @@ def refresh(settings: Settings, now=None, progress=None):
                 progress.note("Lückenfüllung übersprungen — Training mit Lücken")
         forecasts, models, policies, failures = [], [], [], []
         selections = {}
+        # B30: Messung zur 12-Uhr-Bodenkante. Der Befund verlangt, vor dem
+        # Schnitt zu zählen, wie viel vorgesetzliches Muster im Bestand
+        # steckt — sonst ist „die Kante ändert heute nichts" eine Behauptung.
+        law_floor_stamp = law_since_utc(cfg)
+        law_quality = {
+            "law_floor": law_floor_stamp.isoformat(),
+            "points_total": 0,
+            "points_before_law": 0,
+            "gapfill_events_before_law": int(
+                gapfill_quality.get("events_before_law", 0) or 0
+            ),
+            "by_fuel": {},
+        }
         # Der Fit-Block ist der lange Teil: je Station laufen vier Aufgaben
         # (24 h, +3 d, +7 d, Backtest) — der Fortschritt zählt sie einzeln,
         # damit „Schritt x/y“ die Wartezeit erklärt.
@@ -265,6 +278,23 @@ def refresh(settings: Settings, now=None, progress=None):
             )
             observations, _ = load_observations(
                 history_paths + gapfill_paths + live_paths, cfg, fuel, ids
+            )
+            # B30: Vor-Gesetz-Anteil dieses Trainingsbestands.
+            if not observations.empty:
+                before_law = int((observations["timestamp"] < law_floor_stamp).sum())
+            else:
+                before_law = 0
+            law_quality["points_total"] += int(len(observations))
+            law_quality["points_before_law"] += before_law
+            law_quality["by_fuel"][fuel] = {
+                "points": int(len(observations)),
+                "points_before_law": before_law,
+            }
+            print(
+                f"models: {fuel}: 12-Uhr-Bodenkante "
+                f"{law_floor_stamp.date()}: {before_law} von "
+                f"{len(observations)} Beobachtungen davor",
+                flush=True,
             )
             data, policy = bootstrap(
                 observations, cfg, origin, expected_poll_minutes=cadence
@@ -632,6 +662,7 @@ def refresh(settings: Settings, now=None, progress=None):
                     "failures": failures,
                     "archive_quality": archive_quality,
                     "gapfill_quality": gapfill_quality,
+                    "law_quality": law_quality,
                 },
             )
             if progress:
@@ -704,6 +735,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 "policies": policies,
                 "archive_quality": archive_quality,
                 "gapfill_quality": gapfill_quality,
+                "law_quality": law_quality,
                 "model_file": model_name,
                 "calibrated": False,
                 "decision_ready": False,

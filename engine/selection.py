@@ -22,6 +22,7 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Any
 
+from .models import law_since_utc
 from .personalization import default_weekday_profile, normalized_profile
 
 import numpy as np
@@ -81,6 +82,14 @@ class SelectionConfig:
     # means the documented shared default; it is not a hidden hard-code.
     user_time_weights: Any = None
     time_profile_source: str = "default"
+    # B30: Bodenkante der 12-Uhr-Regel als tz-bewusste Instanz (UTC) oder
+    # ``None``. Beobachtungen davor beschreiben eine andere Rechtslage — das
+    # Tagestief lag am Abend, nicht im Vormittag
+    # (docs/BEFUND-12-UHR-REGEL.md §2) — und fallen deshalb aus δ̂, AV-Score
+    # und „billigste Stunde". Gezählt werden sie in ``points_before_law``.
+    # Kommt aus ``engine/config.py: price_law_local`` (eine Quelle, O36);
+    # ``None`` ist die Gegenmessung (TANKAPP_LAW_FLOOR=0).
+    law_floor: Any = None
 
     @classmethod
     def from_engine_config(cls, cfg, **overrides) -> "SelectionConfig":
@@ -99,7 +108,9 @@ class SelectionConfig:
         ``step_min``, ``ffill_minutes``, ``poll_start``/``poll_end`` und
         ``timezone``. Nur die Selektion betreffende Felder (``fuel``,
         ``min_coverage``, ``tank_volume``, ``delta_ew_half_life_days``,
-        ``dead_after_days``) bleiben Default bzw. Override.
+        ``dead_after_days``) bleiben Default bzw. Override. ``law_floor``
+        (B30) kommt aus ``cfg.price_law_local`` — dieselbe Instanz, die
+        ``engine/models.py::fit`` als Trainingsbeginn anlegt.
 
         ``n_boot`` bekommt die Signifikanz-Untergrenze
         (:data:`SELECTION_MIN_BOOTSTRAP`): Ein bewusst kleiner Wert in der
@@ -118,6 +129,8 @@ class SelectionConfig:
             "poll_start": int(cfg.poll_start),
             "poll_end": int(cfg.poll_end),
             "timezone": str(cfg.timezone),
+            # B30: dieselbe Kante, die der Fit anlegt — kein zweites Datum.
+            "law_floor": law_since_utc(cfg),
         }
         shared.update(overrides)
         return cls(**shared)
@@ -190,6 +203,60 @@ def _to_matrix(
         )
     limit = max(1, round(ffill_min / step_min))
     return mat.ffill(limit=limit)
+
+
+def law_floor_iso(cfg: SelectionConfig) -> str | None:
+    """Bodenkante als ISO-8601 für Artefakt und Anzeige; ``None`` ohne Kante."""
+    floor = getattr(cfg, "law_floor", None)
+    return None if floor is None else pd.Timestamp(floor).isoformat()
+
+
+def law_floor_split(
+    df: pd.DataFrame,
+    law_floor,
+    timezone: str = "Europe/Berlin",
+    subset: np.ndarray | None = None,
+):
+    """Beobachtungen an der 12-Uhr-Bodenkante teilen (B30).
+
+    Liefert ``(kept, points_before_law, days_before_law)``: ``kept`` ist der
+    Eingang ohne die Zeilen **vor** ``law_floor``, dazu die Zahl der
+    ausgeblendeten Beobachtungen und die Zahl der Kalendertage (``timezone``),
+    die sie betreffen. Ohne Kante (``law_floor`` ist ``None``,
+    ``TANKAPP_LAW_FLOOR=0``) bleibt der Eingang unverändert. ``subset`` grenzt
+    Zählen und Schneiden ein (z. B. auf eine Stadt).
+
+    Gemeinsamer Baustein aller Beobachtungs-Pfade — Selektion
+    (:func:`law_floor_cut`) und Offline-Werkzeuge
+    (``analysis/station_selection.py``) — damit die Kante überall dieselbe
+    Zahl liefert.
+    """
+    if law_floor is None or df is None or df.empty or "timestamp" not in df.columns:
+        return df, 0, 0
+    stamps = df["timestamp"]
+    if not pd.api.types.is_datetime64_any_dtype(stamps):
+        stamps = pd.to_datetime(stamps, utc=True)
+    elif stamps.dt.tz is None:
+        stamps = stamps.dt.tz_localize("UTC")
+    before = (stamps < pd.Timestamp(law_floor)).to_numpy()
+    if subset is not None:
+        before = before & np.asarray(subset, dtype=bool)
+    if not before.any():
+        return df, 0, 0
+    days = int(stamps[before].dt.tz_convert(timezone).dt.normalize().nunique())
+    return df.loc[~before], int(before.sum()), days
+
+
+def law_floor_cut(df: pd.DataFrame, city: str, cfg: SelectionConfig):
+    """Beobachtungen **einer Stadt** an der Kante teilen (B30).
+
+    Der Schnitt liegt **vor** :func:`_to_matrix`, nicht danach: Dort füllt
+    ``ffill(limit=…)`` Lücken vorwärts — eine Vor-Gesetz-Beobachtung tauchte
+    sonst als erste Zelle hinter der Kante wieder auf, und die „Bodenkante"
+    wäre eine Behauptung statt eines Schnitts.
+    """
+    subset = (df["city"] == city).to_numpy() if "city" in df.columns else None
+    return law_floor_split(df, getattr(cfg, "law_floor", None), cfg.timezone, subset)
 
 
 def scheduled_mask(index: pd.DatetimeIndex, cfg: SelectionConfig) -> np.ndarray:
@@ -762,8 +829,28 @@ def analyse_city_light(
     des Polling-Fensters gemessen und relativ zum Bestwert der Stadt
     angewandt — siehe ``scheduled_mask`` und ``coverage_gate``.
     """
-    mat = _to_matrix(df, city, cfg.step_min, cfg.ffill_minutes)
+    # B30: Erst an der 12-Uhr-Bodenkante schneiden, dann aufs Raster —
+    # sonst zieht der Forward-Fill Vor-Gesetz-Preise über die Kante.
+    kept, points_before_law, days_before_law = law_floor_cut(df, city, cfg)
+    law_fields = {
+        "law_floor": law_floor_iso(cfg),
+        "points_before_law": points_before_law,
+        "days_before_law": days_before_law,
+    }
+    mat = _to_matrix(kept, city, cfg.step_min, cfg.ffill_minutes)
     if mat.empty:
+        if points_before_law:
+            # Ehrlicher Grund statt „Stadt verschwunden": Der Bestand liegt
+            # vollständig vor der Kante — kein Ranking, aber erklärbar.
+            return _diagnostic(
+                city,
+                cfg,
+                mat,
+                [],
+                f"alle {points_before_law} Beobachtungen ({days_before_law} Tage) "
+                f"liegen vor der 12-Uhr-Bodenkante {law_fields['law_floor']}",
+                **law_fields,
+            )
         return None
     if mat.shape[1] < 2:
         # Zu wenig Stationen für LOO — Diagnose statt stilles None.
@@ -773,6 +860,7 @@ def analyse_city_light(
             mat,
             list(mat.columns),
             f"nur {mat.shape[1]} Station(en) mit Daten — LOO braucht ≥2 (≥4 für δ̂)",
+            **law_fields,
         )
     # A12: Lebenszyklus — tote Stationen (kein Preis seit dead_after_days
     # Kalendertagen) fallen vor dem Coverage-Gate aus dem Ranking.
@@ -825,6 +913,7 @@ def analyse_city_light(
                 lifecycles=lifecycles,
                 closed_stations=closed_stations,
                 nofuel_stations=nofuel_stations,
+                **law_fields,
             )
     # B21: Coverage nur über die Zellen des Polling-Fensters (06–24 Uhr) —
     # gegen das volle 24-h-Raster ist das Gate strukturell unerreichbar.
@@ -861,6 +950,7 @@ def analyse_city_light(
             nofuel_stations=nofuel_stations,
             nofuel_count=len(nofuel_stations),
             lifecycles=lifecycles,
+            **law_fields,
         )
 
     base = _loo_baseline(mat)
@@ -1010,6 +1100,7 @@ def analyse_city_light(
             nofuel_stations=nofuel_stations,
             nofuel_count=len(nofuel_stations),
             lifecycles=lifecycles,
+            **law_fields,
         )
 
     tab = pd.DataFrame(rows)
@@ -1119,6 +1210,9 @@ def analyse_city_light(
         # A13: Preis-Zwillinge als Warnung (nie auto-apply, Dauer-partial)
         "price_twins": price_twins,
         "price_twin_count": len(price_twins),
+        # B30: worauf dieses Ranking steht — Kante der 12-Uhr-Regel und wie
+        # viele Beobachtungen (über wie viele Tage) davor ausgeblendet sind.
+        **law_fields,
     }
     return result
 
@@ -1181,4 +1275,14 @@ def compute_all(df: pd.DataFrame, cfg: SelectionConfig, metas_by_city: dict) -> 
         "price_twin_count": len(all_twins),
         "lifecycle_totals": lifecycle_totals,
         "dead_after_days": getattr(cfg, "dead_after_days", 7),
+        # B30: Bodenkante der 12-Uhr-Regel über alle Städte — die GUI sagt
+        # damit, worauf das Ranking steht, und wie viel Bestand die Kante
+        # ausblendet (0 = Garantie ohne Wirkung, nicht „nicht gemessen").
+        "law_floor": law_floor_iso(cfg),
+        "points_before_law": sum(
+            int(r.get("points_before_law") or 0) for r in all_results
+        ),
+        "days_before_law": max(
+            (int(r.get("days_before_law") or 0) for r in all_results), default=0
+        ),
     }

@@ -16,6 +16,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | wissen, was im Dauerbetrieb zu tun ist (systemd, Backup, Alarme, Fehlersuche) | [BETRIEB.md](BETRIEB.md) |
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
 | das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
+| die 12-Uhr-Bodenkante für Panels und Kalibrierung umsetzen (B30, Arbeits-Checkliste) | [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
 | wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8, in 0.41.0 umgesetzt) | [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) |
 | wissen, wo Nutzertexte gegen das eigene Regelwerk laufen (Text-Befund T1–T13) | [TEXT-BEFUND.md](TEXT-BEFUND.md) |
@@ -39,7 +40,8 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.50.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.51.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.51.0 setzt Schritt 3 des 12-Uhr-Befunds um (B30): Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`, Payload und GUI nennen Kante und ausgeblendete Punkte, der Modell-Lauf misst den Vor-Gesetz-Anteil (`law_quality`). Konzept und Abnahme-Protokoll: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md); dabei ist der Befund §4 nachgerechnet — alle Muster-Fenster beginnen heute hinter dem Gesetz, die Kante ist Garantie statt Reparatur.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
 nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um

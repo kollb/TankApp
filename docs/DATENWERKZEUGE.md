@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 17.09.2026 · App-Version 0.50.1. Nachschlagewerk für `data-tools/`
+> Stand: 18.09.2026 · App-Version 0.51.0. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
 > [12-Uhr-Regel-Check](#12-uhr-regel-check).
@@ -69,6 +69,13 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
   Netto-Vorteil, Tankmenge, Zeit-/Spritkosten und Routing. Bei gerasterten M2-CSVs
   das Analyse-Raster passend wählen, etwa `--step-min 30`; fehlende Beobachtungen
   nicht durch beliebig lange Fortschreibung als Qualitätsnachweis ersetzen.
+- **12-Uhr-Bodenkante (B30, seit 0.51.0):** Beide Offline-Werkzeuge
+  (`analysis/station_selection.py`, `engine compare-stations`) werten nur
+  Beobachtungen ab `price_law_local` aus — davor galt ein anderer Tagesrhythmus,
+  und gemischt entsteht ein Muster, das es so nie gab. `--law-date` setzt die
+  Kante (z. B. `2026-04-01T12:00`), `--ignore-law-floor` mischt bewusst für eine
+  Gegenmessung; Konsolen- und Report-Zeile nennen Kante und Zähler. Liegt der
+  ganze Bestand vor der Kante, bricht das Werkzeug mit Grund ab.
 - `analysis/window_analysis.py --help`: Polling-Fenster auf vorhandenen Daten prüfen.
 - Ausgaben bleiben lokal: `results/station_scores_<fuel>.csv`,
   `data/analysis/report_top10.md` und `data/analysis/figures/`.

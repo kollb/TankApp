@@ -558,7 +558,23 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     origin = utc_time(origin, cfg.timezone)
     if origin != origin.floor(f"{cfg.step_minutes}min"):
         raise ValueError("Fit-Cutoff muss auf dem 5-Minuten-Raster liegen.")
-    start = calendar_before(origin, cfg.train_days, cfg)
+    nominal_start = calendar_before(origin, cfg.train_days, cfg)
+    # B30: Bodenkante der 12-Uhr-Regel. Intraday-Struktur (Harmonische,
+    # Mittags-Schritt, Slot-Profil) lernt nur aus Beobachtungen **ab**
+    # ``price_law_local``: Vor dem Gesetz lag das Tagestief am Abend, danach
+    # im Vormittag (docs/BEFUND-12-UHR-REGEL.md §2) — ein Fenster über beide
+    # Rechtslagen mittet zwei Tagesrhythmen zu einem, den es nie gab.
+    # Reicht der Nach-Gesetz-Bestand nicht für ``min_train_days``, scheitert
+    # der Fit mit Grund, statt still den alten Rhythmus mitzulernen.
+    law = law_since_utc(cfg)
+    start = max(nominal_start, law.floor(f"{cfg.step_minutes}min"))
+    law_floor_active = start > nominal_start
+    if law_floor_active:
+        window = series.frame.index
+        excluded = (window >= nominal_start) & (window < start)
+        pre_law_points = int(series.frame.loc[excluded, "price"].notna().sum())
+    else:
+        pre_law_points = 0
     # Reindex to the full training range so trailing outages reset AR state.
     index = pd.date_range(
         start, origin, freq=f"{cfg.step_minutes}min", inclusive="left"
@@ -573,6 +589,13 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
             f"{int(valid.sum())} offenen 5-Minuten-Preisen in "
             f"{cfg.train_days} Tagen; mindestens {cfg.min_train_days} Tage "
             f"mit {cfg.min_train_days * 24} Punkten erforderlich."
+            + (
+                f" Der Trainingsbeginn ist die 12-Uhr-Bodenkante "
+                f"{start.isoformat()} — Beobachtungen davor beschreiben die "
+                f"Rechtslage vor dem Gesetz ({pre_law_points} ausgeblendet)."
+                if law_floor_active
+                else ""
+            )
         )
     base = features(index, cfg)
     jump_train = jump_age_hours(price)
@@ -697,6 +720,14 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "training_points": int(valid.sum()),
         "status_known_fraction": float(frame.loc[price.notna(), "status_known"].mean()),
         "law_rise_outside_noon": int(irregular_rises),
+        # B30: Bodenkante der 12-Uhr-Regel im Fit — wirksamer Beginn, ob sie
+        # gegriffen hat und wie viele Beobachtungen sie ausgeblendet hat.
+        # ``law_floor_active`` ist heute (Fenster 42 Tage, Gesetz seit
+        # 01.04.2026) durchgehend False: Die Kante ist eine Garantie, keine
+        # Reparatur — sichtbar statt behauptet.
+        "law_floor": law.isoformat(),
+        "law_floor_active": bool(law_floor_active),
+        "pre_law_points_excluded": int(pre_law_points),
         "beta": beta,
         # Schema 2 (Konzept §3.2): Feiertagseffekt gepoolt geschätzt (γ),
         # Sprung-Hazard als Feature (Zeit seit letztem Sprung, gedeckelt).

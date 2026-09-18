@@ -202,6 +202,13 @@ def up(args):
         "TANKAPP_MODEL_WORKERS": os.environ.get("TANKAPP_MODEL_WORKERS", "0"),
         "TANKAPP_M7_AUTO_APPLY": os.environ.get("TANKAPP_M7_AUTO_APPLY", "0"),
         "TANKAPP_DECISION_HOUR": os.environ.get("TANKAPP_DECISION_HOUR", "12"),
+        # B30: Bodenkante der 12-Uhr-Regel. Leer = Default aus app/law.py
+        # (Spiegel von engine/config.py); TANKAPP_LAW_FLOOR=0 nur als
+        # Gegenmessung.
+        "TANKAPP_PRICE_LAW_LOCAL": os.environ.get(
+            "TANKAPP_PRICE_LAW_LOCAL", ""
+        ).strip(),
+        "TANKAPP_LAW_FLOOR": os.environ.get("TANKAPP_LAW_FLOOR", "1"),
         # Straßen-Distanzen: GUI liest nur den lokalen Routen-Cache;
         # fehlende Routen holt sie im Hintergrund von OSRM. Eigener
         # Server (LAN-only) via TANKAPP_OSRM_URL, aus: TANKAPP_OSRM=0.

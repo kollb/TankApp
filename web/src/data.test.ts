@@ -16,6 +16,7 @@ import {
   detourVerdict,
   epochLabel,
   euroPerHour,
+  lawFloorNote,
   FILL_LIMITS,
   fillFieldError,
   fillLimitHint,
@@ -1388,5 +1389,58 @@ describe("O44: Fremde Stations-Payloads sind kein Stations-Payload", () => {
       fresh_prices: 0,
     };
     expect(usableStations(empty)).toBe(empty);
+  });
+});
+
+/**
+ * B30: Die 12-Uhr-Bodenkante muss im Text stehen — ein kürzerer Bestand als
+ * das Fenster ist sonst unerklärlich, und ein gemischter Bestand sähe aus wie
+ * eine Aussage über den Tagesrhythmus.
+ */
+describe("lawFloorNote (B30: 12-Uhr-Bodenkante)", () => {
+  const floor = "2026-04-01T10:00:00+00:00"; // 12:00 Uhr Berliner Zeit
+
+  it("schweigt, wenn der Payload die Kante nicht kennt", () => {
+    expect(lawFloorNote(undefined)).toBeNull();
+    expect(lawFloorNote(null)).toBeNull();
+    expect(lawFloorNote({})).toBeNull();
+    expect(lawFloorNote({ law_floor: "kein-zeitpunkt" })).toBeNull();
+  });
+
+  it("nennt die Kante in Berliner Zeit, wenn nichts ausgeblendet ist", () => {
+    expect(lawFloorNote({ law_floor: floor, points_before_law: 0 })).toEqual({
+      text: "Alle Preise liegen nach der Bodenkante 01.04.2026, 12:00 Uhr.",
+      tone: "info",
+    });
+    expect(lawFloorNote({ law_floor: floor })?.text).toContain(
+      "Nur Preise ab 01.04.2026, 12:00 Uhr",
+    );
+  });
+
+  it("nennt Zahl und Grund, wenn Beobachtungen ausgeblendet sind", () => {
+    const note = lawFloorNote(
+      { law_floor: floor, points_before_law: 1234 },
+      "Beobachtungen",
+    );
+    expect(note).toEqual({
+      text:
+        "1.234 Beobachtungen vor 01.04.2026, 12:00 Uhr zählen nicht — davor " +
+        "galt ein anderer Tagesrhythmus.",
+      tone: "warn",
+    });
+  });
+
+  it("macht eine abgeschaltete Kante sichtbar statt still zu mischen", () => {
+    const note = lawFloorNote({ law_floor: null, points_before_law: 0 });
+    expect(note?.tone).toBe("warn");
+    expect(note?.text).toContain("Bodenkante der 12-Uhr-Regel abgeschaltet");
+    expect(note?.text).toContain("mischt");
+  });
+
+  it("verschiebt die Kante mit der Sommerzeit (UTC bleibt UTC)", () => {
+    // Dieselbe Regel, Winterzeit: 12:00 Uhr Berlin = 11:00 UTC.
+    expect(
+      lawFloorNote({ law_floor: "2026-01-15T11:00:00+00:00" })?.text,
+    ).toContain("15.01.2026, 12:00 Uhr");
   });
 });

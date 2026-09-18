@@ -1,6 +1,8 @@
 import copy
 import json
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -368,11 +370,21 @@ def test_ambiguous_cli_cutoff_is_an_actionable_value_error(value):
 
 
 def test_fit_at_night_handles_dst_gap_in_previous_day(observations, cfg):
+    """DST-Lücke im Vortag bricht den Nacht-Fit nicht.
+
+    B30: Die 12-Uhr-Bodenkante liegt hier **vor** den Daten — der Test prüft
+    die Zeitumstellung am 29.03.2026, nicht das Gesetz. Mit dem Default
+    (01.04.2026) läge der ganze Bestand vor der Kante und der Fit würde
+    zurecht mit „zu wenig nutzbare Tage" abbrechen (siehe
+    ``test_fit_floor_rejects_a_stock_entirely_before_the_law``).
+    """
+    cfg = replace(cfg, price_law_local="2026-03-01T12:00")
     raw = observations(days=35, start="2026-03-01")
     raw["status"] = "open"
     rows, _ = normalize_observations(raw, cfg)
     model = fit(prepare_series(rows, cfg)[0], "2026-03-30T02:30:00+02:00", cfg)
     assert predict(model).q50.notna().all()
+    assert model["law_floor_active"] is False
 
 
 # --- Issue 48 (F5): Strukturbruch / EWMA für δ̂ ---

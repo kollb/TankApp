@@ -199,8 +199,11 @@ Mit vorhandenen Engine-Paketen beispielsweise:
 py -3 -m engine compare-stations --data "data/ready/*.csv*" --polling data/analysis/stations/polling.json --poll-city Frankfurt --brand ARAL
 ```
 
-Ausgabe: `results/engine/price_twins/report.md` und `report.json`. Zu kurze oder
-lückenhafte gemeinsame Historie ist kein Beleg für Preisgleichheit. Bei
+Ausgabe: `results/engine/price_twins/report.md` und `report.json`. Seit 0.51.0
+zählt der Vergleich nur Beobachtungen ab der 12-Uhr-Bodenkante (`--law-date`,
+Default `price_law_local`; `--ignore-law-floor` mischt bewusst für eine
+Gegenmessung) — Report und Konsole nennen Kante und ausgeblendete Punkte.
+Zu kurze oder lückenhafte gemeinsame Historie ist kein Beleg für Preisgleichheit. Bei
 unterschiedlichen Preisverläufen beide Stationen vorerst behalten. Eine mögliche
 Redundanz ist ein Prüfhinweis, keine automatische Ausschlussentscheidung; auch
 Nutzbarkeit und Standort zählen.

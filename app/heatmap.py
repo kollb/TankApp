@@ -22,6 +22,14 @@ Die Vergleichs-Basis wirkt nur auf ``probability`` ohne ``station_id``; mit
 Station vergleicht die Heatmap ohnehin gegen den Zellen-Median, mit
 ``kind=level`` ist sie wirkungslos.
 
+**Bodenkante der 12-Uhr-Regel (B30).** Seit dem in ``engine/config.py:
+price_law_local`` stehenden Zeitpunkt darf der Preis nur noch mittags erhöht
+werden; davor galt das Gegenteil (Tief am Abend, Hoch am Morgen — belegt in
+[docs/BEFUND-12-UHR-REGEL.md]). Mit ``law_floor`` zählen deshalb nur
+Beobachtungen **ab** diesem Zeitpunkt: Eine Heatmap, die beide Rechtslagen
+mischt, zeigt die alte Welt. Die verworfenen Preise verschwinden nicht
+kommentarlos — ``points_before_law`` zählt sie.
+
 Neben den Werten liefert das Ergebnis zwei Ehrlichkeits-Angaben, die die GUI
 braucht, um nicht zu übertreiben (P0 12.09.2026 — „günstigste Stunde 06–08
 Uhr, 100 % Chance“, obwohl der Tracking-Bestand erst vier Tage alt war):
@@ -79,12 +87,17 @@ def build_heatmap(
     kind: str = "level",
     station_id: str | None = None,
     basis: str = "overall",
+    law_floor: dt.datetime | None = None,
 ):
     """7×24-Matrix (DoW × Stunde) aus offenen Preispunkten.
 
     ``basis`` (B12) bestimmt die Vergleichsgröße der Cheap-Probability **ohne**
     ``station_id``: ``overall`` = Gesamtmedian des Fensters (wie bisher),
     ``hour`` = Median derselben Stunde über alle Wochentage (Spalten-Basis).
+
+    ``law_floor`` (B30) ist die UTC-Instanz der 12-Uhr-Bodenkante: nutzbare
+    Preise davor fallen aus der Matrix und werden in ``points_before_law``
+    gezählt. ``None`` = keine Kante (``TANKAPP_LAW_FLOOR=0``).
     """
     if basis not in BASES:
         raise ValueError("invalid_basis")
@@ -101,6 +114,8 @@ def build_heatmap(
     hour_prices = defaultdict(list)  # hour -> list prices aller Wochentage
     used_stamps: list[dt.datetime] = []  # echte Reichweite der verwendeten Preise
     used_stations: set = set()  # nur Stationen, deren Preise wirklich zählen
+    points_before_law = 0  # B30: nutzbare Preise vor der Bodenkante
+    floor = _as_utc(law_floor) if law_floor is not None else None
 
     for p in points:
         ts = p["timestamp"]
@@ -109,8 +124,15 @@ def build_heatmap(
         price = p.get("price")
         if price is None or not math.isfinite(price):
             continue
+        stamp = _as_utc(ts)
+        # B30: Vor der 12-Uhr-Bodenkante galt eine andere Rechtslage. Diese
+        # Preise zählen nicht mit — gezählt werden sie trotzdem, damit die
+        # Anzeige sagen kann, wie viel Bestand die Kante ausblendet.
+        if floor is not None and stamp < floor:
+            points_before_law += 1
+            continue
         dow, hour = _berlin_dow_hour(ts)
-        used_stamps.append(_as_utc(ts))
+        used_stamps.append(stamp)
         if p.get("station_id") is not None:
             used_stations.add(p["station_id"])
         cell_prices_all[(dow, hour)].append(price)
@@ -213,4 +235,9 @@ def build_heatmap(
         # angefragte Fenster ist oft größer als der Bestand.
         "range_from": min(used_stamps).isoformat() if used_stamps else None,
         "range_to": max(used_stamps).isoformat() if used_stamps else None,
+        # B30: Bodenkante der 12-Uhr-Regel und was sie ausblendet. Beides
+        # steht im Payload, damit die GUI die Reichweite erklären kann, statt
+        # eine kleinere Stichprobe still zu akzeptieren.
+        "law_floor": law_floor.isoformat() if law_floor is not None else None,
+        "points_before_law": points_before_law,
     }

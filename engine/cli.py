@@ -208,6 +208,20 @@ def parser() -> argparse.ArgumentParser:
     comparison.add_argument(
         "--out", type=Path, default=Path("results/engine/price_twins")
     )
+    # B30: Bodenkante der 12-Uhr-Regel. Der Vergleich hat kein Zeitfenster —
+    # ohne Kante mischt er Vor- und Nach-Gesetz-Beobachtungen.
+    comparison.add_argument(
+        "--law-date",
+        default=None,
+        help="12-Uhr-Bodenkante als lokaler Zeitpunkt (Default: "
+        "engine/config.py price_law_local, z. B. 2026-04-01T12:00)",
+    )
+    comparison.add_argument(
+        "--ignore-law-floor",
+        action="store_true",
+        help="Bodenkante abschalten — mischt bewusst Vor- und "
+        "Nach-Gesetz-Beobachtungen (Gegenmessung)",
+    )
     return root
 
 
@@ -266,12 +280,23 @@ def run(args) -> int:
         return 0
     if args.command == "compare-stations":
         from .station_comparison import (
+            UNSET_LAW_FLOOR,
             compare_stations,
             markdown_report as comparison_markdown,
         )
 
+        law_floor = UNSET_LAW_FLOOR
+        if args.ignore_law_floor:
+            law_floor = None
+        elif args.law_date:
+            law_floor = utc_time(args.law_date)
         report = compare_stations(
-            input_paths(args.data), args.polling, args.fuel, args.brand, args.poll_city
+            input_paths(args.data),
+            args.polling,
+            args.fuel,
+            args.brand,
+            args.poll_city,
+            law_floor=law_floor,
         )
         args.out.mkdir(parents=True, exist_ok=True)
         write_json(args.out / "report.json", report)
@@ -281,6 +306,16 @@ def run(args) -> int:
         print(
             f"{len(report['pairs'])} Stationspaar(e) geprüft → {args.out / 'report.md'}"
         )
+        if report.get("law_floor"):
+            print(
+                f"12-Uhr-Bodenkante {report['law_floor']}: "
+                f"{report['points_before_law']} Beobachtungen davor ausgeblendet."
+            )
+        else:
+            print(
+                "12-Uhr-Bodenkante abgeschaltet (--ignore-law-floor): "
+                "Vor- und Nach-Gesetz-Beobachtungen gemischt."
+            )
         print(
             "Nur lesend: keine automatische Auswahl, keine Änderung an Polling-Set oder InfluxDB."
         )

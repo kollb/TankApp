@@ -326,6 +326,10 @@ export type Heatmap = {
   range_to?: string | null;
   points?: number;
   stations?: number;
+  /** B30: 12-Uhr-Bodenkante, auf die die Zellen geschnitten sind. */
+  law_floor?: string | null;
+  /** B30: ausgeblendete Preise vor der Kante. */
+  points_before_law?: number | null;
   error_code?: string | null;
 };
 
@@ -408,6 +412,11 @@ export type Selection = DataReach & {
   coverage_window?: string | null;
   coverage_reference?: number | null;
   coverage_threshold?: number | null;
+  // B30: 12-Uhr-Bodenkante der Selektion (Schnitt vor δ̂, Coverage und
+  // „billigste Stunde“). Ohne Feld ist die Kante unbekannt, nicht aus.
+  law_floor?: string | null;
+  points_before_law?: number | null;
+  days_before_law?: number | null;
 };
 
 export type RouteEvaluate = {
@@ -1928,6 +1937,92 @@ export function dataReachLabel(
     parts.push(`${berlinStamp(fromMs)} – ${berlinStamp(toMs)} Uhr`);
   }
   return parts.length ? parts.join(" · ") : null;
+}
+
+/**
+ * B30: Bodenkante der 12-Uhr-Regel in den Beobachtungs-Payloads.
+ *
+ * Seit dem 01.04.2026, 12:00 Uhr darf ein Preis zur Tagesmitte nur einmal
+ * steigen und danach bis zum nächsten Mittag nur noch fallen. Davor galt der
+ * alte Rhythmus mit dem Hoch am Abend. Ein Bestand, der beide Welten mischt,
+ * zeigt deshalb ein Muster, das es so nie gab — die Panels zählen nur
+ * Beobachtungen ab der Kante (docs/BEFUND-12-UHR-REGEL.md).
+ */
+export type LawFloorPayload = {
+  /** ISO-8601 (UTC) der Kante; `null` = Kante abgeschaltet. */
+  law_floor?: string | null;
+  /** Beobachtungen vor der Kante, die nicht mitzählen. */
+  points_before_law?: number | null;
+};
+
+export type LawFloorNote = {
+  text: string;
+  /** `warn` hebt ab: Hier ist etwas ausgeblendet oder bewusst gemischt. */
+  tone: "info" | "warn";
+};
+
+/** „01.04.2026, 14:00 Uhr“ — Berliner Zeit wie jeder andere Zeitpunkt. */
+function lawFloorStamp(ms: number): string | null {
+  if (!Number.isFinite(ms)) return null; // unlesbarer Zeitstempel → schweigen
+  const parts = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ms));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  if (!get("day") || !get("month") || !get("year")) return null;
+  return `${get("day")}.${get("month")}.${get("year")}, ${hour}:${get("minute")} Uhr`;
+}
+
+/**
+ * Ein Satz zur Bodenkante — oder null, wenn es nichts zu sagen gibt.
+ *
+ * Drei Zustände, drei Sätze: Die Kante blendet etwas aus (dann steht die Zahl
+ * im Text, sonst ist der kürzere Bestand unerklärlich), die Kante ist
+ * abgeschaltet (dann mischt der Bestand zwei Rechtslagen — das gehört
+ * sichtbar), oder der Payload kennt das Feld nicht (alte API — dann schweigt
+ * die Zeile, statt eine Kante zu behaupten).
+ */
+export function lawFloorNote(
+  payload: LawFloorPayload | null | undefined,
+  noun = "Preise",
+): LawFloorNote | null {
+  if (!payload || payload.law_floor === undefined) return null;
+  if (payload.law_floor === null) {
+    return {
+      text:
+        `Bodenkante der 12-Uhr-Regel abgeschaltet — der Bestand mischt ` +
+        `${noun} von vor und nach der Änderung. Tagesmuster aus diesem ` +
+        "Bestand gelten für keine der beiden Regeln.",
+      tone: "warn",
+    };
+  }
+  const stamp = lawFloorStamp(Date.parse(payload.law_floor));
+  if (!stamp) return null;
+  const before = payload.points_before_law;
+  if (before == null) {
+    return {
+      text: `Nur ${noun} ab ${stamp} — Bodenkante der 12-Uhr-Regel.`,
+      tone: "info",
+    };
+  }
+  if (before > 0) {
+    return {
+      text:
+        `${countLabel(before)} ${noun} vor ${stamp} zählen nicht — davor galt ` +
+        "ein anderer Tagesrhythmus.",
+      tone: "warn",
+    };
+  }
+  return {
+    text: `Alle ${noun} liegen nach der Bodenkante ${stamp}.`,
+    tone: "info",
+  };
 }
 
 /**

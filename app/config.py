@@ -6,6 +6,8 @@ from pathlib import Path
 
 from polling_plan import active_polling
 
+from .law import DEFAULT_PRICE_LAW_LOCAL
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -64,6 +66,16 @@ class Settings:
     # mittags) weiß man um 12 Uhr, ob es heute teurer wurde — morgens fehlt
     # dem hypothetischen Entscheid genau diese Information.
     decision_hour: int = 12
+    # B30: Bodenkante der 12-Uhr-Regel. Beobachtungen **vor** diesem lokalen
+    # Zeitpunkt beschreiben eine andere Rechtslage (Tief am Abend statt im
+    # Vormittag) und fallen deshalb aus den Beobachtungs-Panels und aus dem
+    # Training — gezählt, nicht still verworfen (``points_before_law``).
+    # TANKAPP_PRICE_LAW_LOCAL; der Wert wird über engine_config() in
+    # engine/config.py: price_law_local durchgereicht (eine Quelle, O36).
+    price_law_local: str = DEFAULT_PRICE_LAW_LOCAL
+    # TANKAPP_LAW_FLOOR=0 schaltet die Kante ab und stellt den Mischbestand
+    # wieder her — nur als Gegenmessung, nicht als Dauerzustand.
+    law_floor: bool = True
     # Modell-Lauf: 0 = automatisch (CPU-Kerne, maximal 8), 1 = seriell.
     model_workers: int = 0
     # B17: 21-Tage-Backtest je lokalem Endtag cachen (runtime/engine/
@@ -146,6 +158,13 @@ class Settings:
                 {"harmonic_ar2", "profile_ar2", "ensemble"},
             ),
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
+            # B30: Bodenkante der 12-Uhr-Regel (eine Quelle: dieser Wert wird
+            # über engine_config() zur Engine-Konfiguration).
+            price_law_local=os.environ.get(
+                "TANKAPP_PRICE_LAW_LOCAL", DEFAULT_PRICE_LAW_LOCAL
+            ).strip(),
+            law_floor=os.environ.get("TANKAPP_LAW_FLOOR", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
             backup_dir=_env_path("TANKAPP_BACKUP_DIR"),
             city_subdivs=_city_subdivs_from_env(),
             dead_after_days=_env_int("TANKAPP_DEAD_AFTER_DAYS", 7, low=0, high=365),
@@ -167,12 +186,19 @@ def engine_config(settings):
     """
     from engine.config import Config
 
+    from .law import price_law_local
+
     return Config(
         # Konzept §3.2: gepoolter Feiertags-Dummy je Bundesland; ohne
         # TANKAPP_CITY_SUBDIVS trägt er null (keine erfundenen Effekte).
         city_subdivs=dict(getattr(settings, "city_subdivs", {})),
         # Schicht-A-Anker (Konzept §5.5): TANKAPP_DECISION_HOUR, Default 12.
         decision_hour=getattr(settings, "decision_hour", 12),
+        # B30: Bodenkante der 12-Uhr-Regel. Ein Wert, zwei Konsumenten —
+        # dieselbe Instanz begrenzt Beobachtungs-Panels (app/law.py) und
+        # Trainingsfenster (engine/models.py::fit). Nie leer: Der Fallback
+        # auf den Default steht in app/law.py, nicht hier.
+        price_law_local=price_law_local(settings),
     )
 
 

@@ -48,6 +48,7 @@ import {
   deNumber,
   deTrimmed,
   euro,
+  lawFloorNote,
   percentLabel,
   rowOutcome,
   timeLabel,
@@ -323,6 +324,10 @@ export function LaborView(props: LaborViewProps) {
   // Selektions-Artefakt (`engine/selection.py`) — echte Daten statt eines
   // Dauertextes ohne Datenpfad.
   const selStations = selection.data?.stations ?? [];
+  // B30: δ̂, Coverage und „billigste Stunde“ entstehen nur aus Beobachtungen
+  // ab der 12-Uhr-Bodenkante. Der Satz sagt, was ausgeblendet ist — sonst
+  // liest sich ein kürzerer Bestand wie Datenverlust.
+  const selLaw = lawFloorNote(selection.data);
   const rankStability = useMemo(() => {
     const values = selStations
       .map((row) => row.rank_std)
@@ -918,6 +923,17 @@ export function LaborView(props: LaborViewProps) {
                 </Empty>
               </div>
             )}
+            {selLaw ? (
+              <p
+                className={`mt-3 text-xs leading-relaxed ${
+                  selLaw.tone === "warn"
+                    ? "text-amber-300/90"
+                    : "text-slate-400"
+                }`}
+              >
+                {selLaw.text}
+              </p>
+            ) : null}
           </div>
           <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">

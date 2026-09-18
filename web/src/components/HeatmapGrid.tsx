@@ -23,6 +23,7 @@ import {
   heatmapSampleLabel,
   hourBucketLabel,
   hourRunsLabel,
+  lawFloorNote,
   MIN_HEATMAP_POINTS,
   MIN_HEATMAP_REFERENCE,
   percentLabel,
@@ -113,6 +114,10 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
     : "—";
   const coverage = heatmapCoverage(heatmap);
   const coverageNote = heatmapCoverageNote(heatmap);
+  // B30: Die Zellen zählen nur Preise ab der 12-Uhr-Bodenkante. Ohne diese
+  // Zeile wäre ein kürzerer Bestand als das Fenster unerklärlich — und das
+  // Abend-Muster aus gemischten Daten sähe aus wie eine Aussage.
+  const law = lawFloorNote(heatmap);
   const sampleLabel = heatmapSampleLabel(heatmap);
   const rangeLabel = heatmapRangeLabel(heatmap);
 
@@ -282,7 +287,7 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
           </p>
         )
       ) : null}
-      {sampleLabel || rangeLabel || coverageNote ? (
+      {sampleLabel || rangeLabel || coverageNote || law ? (
         <p className="mt-3 text-xs leading-relaxed text-slate-400">
           <span className="font-semibold text-slate-300">Datenreichweite:</span>{" "}
           {[sampleLabel, rangeLabel].filter(Boolean).join(" · ") || "—"}
@@ -291,6 +296,15 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
             : null}
           {coverageNote ? (
             <span className="mt-1 block text-amber-300/90">{coverageNote}</span>
+          ) : null}
+          {law ? (
+            <span
+              className={`mt-1 block ${
+                law.tone === "warn" ? "text-amber-300/90" : "text-slate-400"
+              }`}
+            >
+              {law.text}
+            </span>
           ) : null}
         </p>
       ) : null}

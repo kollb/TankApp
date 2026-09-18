@@ -34,6 +34,12 @@ services:
       # Schicht-A-Anker des Backtests (Konzept §5.5): Tagesstunde des
       # hypothetischen Entscheids. Default 12 (nach der 12-Uhr-Anhebung).
       TANKAPP_DECISION_HOUR: "${TANKAPP_DECISION_HOUR:-12}"
+      # B30: Bodenkante der 12-Uhr-Regel. Beobachtungen vor diesem lokalen
+      # Zeitpunkt fallen aus Panels und Training (gezählt als
+      # points_before_law). Leer = Default 2026-04-01T12:00;
+      # TANKAPP_LAW_FLOOR=0 schaltet die Kante für Gegenmessungen ab.
+      TANKAPP_PRICE_LAW_LOCAL: "${TANKAPP_PRICE_LAW_LOCAL:-}"
+      TANKAPP_LAW_FLOOR: "${TANKAPP_LAW_FLOOR:-1}"
       # Straßen-Distanzen der GUI (Anker → Stationen): 1 = OSRM (Default),
       # 0 = nur Luftlinie (keinerlei Netz). Der Request-Pfad liest immer nur
       # den lokalen Routen-Cache; fehlende Routen werden im Hintergrund geholt.

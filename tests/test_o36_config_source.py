@@ -223,6 +223,32 @@ def test_engine_config_nimmt_feiertagsdummy_und_entscheidunt_aus_den_settings(
     assert cfg.city_subdivs == {"Frankfurt": "HE"}
 
 
+def test_bodenkante_der_12_uhr_regel_hat_eine_quelle(tmp_path):
+    """B30: Die Kante wandert über dieselbe Factory — kein zweites Datum.
+
+    Vorher hätte jeder Aufrufer ``price_law_local`` selbst durchreichen
+    müssen; wer es vergisst, mischt zwei Rechtslagen in δ̂ und „billigste
+    Stunde" (docs/BEFUND-12-UHR-REGEL.md §4).
+    """
+    from app.law import law_floor_utc
+    from engine.models import law_since_utc
+
+    cfg = Config(price_law_local="2026-07-01T12:00")
+    derived = SelectionConfig.from_engine_config(cfg)
+    assert derived.law_floor == law_since_utc(cfg)
+
+    # App-Seite: Settings → engine_config → Selektion ⇒ dieselbe Instanz.
+    settings = Settings(
+        data=tmp_path,
+        polling=tmp_path / "polling.json",
+        price_law_local="2026-07-01T12:00",
+    )
+    assert engine_config(settings).price_law_local == "2026-07-01T12:00"
+    assert SelectionConfig.from_engine_config(
+        engine_config(settings)
+    ).law_floor == law_floor_utc(settings)
+
+
 def test_signifikanz_untergrenze_faengt_kleine_engine_werte_ab():
     """Kein stiller Verlust der Signifikanz, wenn ``bootstrap_samples`` sinkt."""
     assert SELECTION_MIN_BOOTSTRAP >= 1000
