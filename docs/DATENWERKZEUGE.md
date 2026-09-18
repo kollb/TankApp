@@ -88,6 +88,36 @@ Tages-Panels in Zweifel zog: **Zeigen die beobachteten Preise überhaupt die
 Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
 
+### Welche Datenquelle?
+
+Entscheidend ist die Ziel-Frage **vor/nach dem Gesetz** — und Influx allein
+kann sie mit Ständen vor der UUID-Migration nicht beantworten:
+
+- **Influx-Export** (`export_influx.py`) umfasst sicher nur die **UUID-Ära**:
+  Der Uploader schreibt `station_id`-Tags erst seit der Migration
+  (ca. 07.–09.09.2026,
+  [STATIONS-UUID-MIGRATION](archiv/STATIONS-UUID-MIGRATION.md)). Ältere
+  Legacy-Punkte tragen nur den Stationsnamen; steht der mehrfach im aktiven
+  Polling-Set (Namenszwilling wie „Aral Tankstelle“), bricht der Export
+  bewusst ab — „mehrdeutig“, UUIDs werden nicht geraten, und weder darf ein
+  Namenszwilling entfernt noch ein Punkt umgedeutet werden.
+  `--uuid-only` exportiert sauber die UUID-Ära — das ist alles NACH dem
+  Gesetz, der „vor“-Block bleibt also leer.
+- **Archiv-M2-CSVs** (`data/ready/…` aus `ingest_history.py` /
+  `run_pipeline.py`) tragen die Stations-UUID aus den Tankerkönig-Metadaten
+  und reichen über den 01.04.2026 hinaus zurück — **das ist die Quelle für
+  den Vorher/Nachher-Kontrast**. Fehlt der Zeitraum, aus den Rohdumps
+  nachziehen (reine Standardbibliothek, kein venv nötig):
+
+```bash
+# Raw-Dumps liegen je nach Setup unter data/raw oder dem --archive-dir
+# (nas-up). Zeitraum vor den Gesetzesbeginn legen:
+python data-tools/ingest_history.py --raw <raw-pfad> \
+    --since 2026-03-01 --out data/ready-noon --fuel e10
+.venv-analysis/bin/python analysis/noon_rule_check.py \
+    --data data/ready-noon/*.csv* --fuel E10
+```
+
 ### Aufruf auf dem Daten-Host (NAS)
 
 Drei Schritte; der Check braucht nur numpy/pandas, **keine** volle
