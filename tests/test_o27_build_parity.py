@@ -52,6 +52,36 @@ def test_bild_nennt_python_und_node_linie_als_arg():
     assert _from_image("NODE_VERSION") == "node:${NODE_VERSION}-bookworm-slim"
 
 
+def test_jedes_from_arg_steht_vor_dem_ersten_from():
+    """Docker ersetzt in FROM nur ARGs, die **vor** dem ersten FROM stehen.
+
+    Ein ARG dahinter gehört zur Build-Stage; die nächste FROM-Zeile sähe ein
+    leeres ``${PYTHON_VERSION}`` und das Bild hieße ``python:-slim-bookworm``.
+    Genau so ist der erste Anlauf dieses Batches am 18.09.2026 im CI-Job
+    ``nas-image`` gestorben (``docker build``, exit 1 nach wenigen Sekunden,
+    bevor ``npm ci`` lief). Ein Builder ist in der Arbeitsumgebung nicht
+    verfügbar — diese Regel hält deshalb der Test, nicht das Bauen.
+    """
+    lines = DOCKERFILE.read_text(encoding="utf-8").splitlines()
+    from_indices = [i for i, line in enumerate(lines) if line.startswith("FROM ")]
+    assert from_indices, "Dockerfile hat kein FROM"
+    first_from = from_indices[0]
+    global_args = set()
+    for line in lines[:first_from]:
+        match = re.match(r"^ARG (\w+)=", line)
+        if match:
+            global_args.add(match.group(1))
+    used = set()
+    for index in from_indices:
+        used |= set(re.findall(r"\$\{(\w+)\}", lines[index]))
+    assert used, "kein FROM nutzt einen ARG — die Kopplung an die CI wäre lose"
+    missing = sorted(used - global_args)
+    assert not missing, (
+        f"FROM benutzt {missing}, die erst hinter dem ersten FROM deklariert "
+        "sind — dort sind sie leer und der Bildname wird ungültig"
+    )
+
+
 def test_python_matrix_enthaelt_die_bild_linie():
     """Batch-Check: Bild und Pipeline nennen dieselbe Python-Linie."""
     matrix = re.search(
