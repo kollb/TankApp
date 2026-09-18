@@ -198,7 +198,7 @@ describe("tankReach", () => {
   it("ohne Tankstand prüft die App nur heute (und sagt es)", () => {
     expect(
       tankReach(null, 0, todayWindow)?.text,
-    ).toContain("Tankstand nicht gepflegt");
+    ).toContain("Tankstand nicht angegeben");
     expect(tankReach(null, 2, todayWindow)).toBeNull();
   });
 
@@ -316,7 +316,7 @@ describe("weekLine / weekTankLine", () => {
   });
 
   it("weekTankLine: ehrlich ohne Angabe", () => {
-    expect(weekTankLine(null, null, 50).text).toBe("Tankstand nicht gepflegt");
+    expect(weekTankLine(null, null, 50).text).toBe("Tankstand nicht angegeben");
     expect(weekTankLine(null, 50, 50).text).toBe(
       "Tank: 50 % · ≈ 50 L Tank",
     );

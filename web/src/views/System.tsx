@@ -274,14 +274,14 @@ export function SystemView(props: SystemViewProps) {
           />
         ) : (
           <>
-            <div className="grid gap-2">
+            <div className="grid grid-cols-1 gap-2">
               {statusRows.map((row) => (
                 <StatusRowCard key={row.id} row={row} />
               ))}
             </div>
 
             {(collector?.available || h?.collector?.available) && (
-              <div className="mt-4 grid gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                     <Cpu size={12} aria-hidden="true" /> Collector-Details
@@ -379,7 +379,7 @@ export function SystemView(props: SystemViewProps) {
               <div className="mt-2 flex flex-wrap gap-2">
                 <a
                   href="/api/v1/fills.csv"
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
+                  className="tap-44 inline-flex items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
                 >
                   Belege als CSV herunterladen
                 </a>
@@ -420,7 +420,7 @@ export function SystemView(props: SystemViewProps) {
           </div>
         )}
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs uppercase tracking-wider text-slate-500">Stationen im Set</p>
             <p className="mt-1 text-lg font-bold text-white">{countLabel(coverage.stationCount)}</p>
@@ -451,7 +451,7 @@ export function SystemView(props: SystemViewProps) {
           </h3>
           {selection.data ? (
             <>
-              <div className="grid gap-3 text-xs sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-3">
                 <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Ohne Preis seit Tagen — tot <InfoTooltip label="tot" text={lifecycleTip("dead")} />
@@ -563,7 +563,7 @@ export function SystemView(props: SystemViewProps) {
             <Gauge size={14} className="text-emerald-400" aria-hidden="true" />
             Güte &amp; Kalibrierung
           </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Metric
               label="Top-3-Trefferquote (30 Tage)"
               value={
@@ -652,7 +652,7 @@ export function SystemView(props: SystemViewProps) {
           </button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <JobCard
             title="Archiv-Sync"
             icon={<Database size={17} className="text-emerald-400" />}
@@ -755,12 +755,12 @@ export function SystemView(props: SystemViewProps) {
           </div>
           <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-xs leading-relaxed text-slate-500">
             Starten: der Knopf <Play size={11} className="inline align-[-1px]" /> in der jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im NAS-Webauftritt,
-            nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="text-slate-400">{workerCommand}</code> — Details in{" "}
+            nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="break-all text-slate-400">{workerCommand}</code> — Details in{" "}
             <span className="text-slate-400">docs/BETRIEB.md</span>.
           </p>
           {webhookCapable && (
             <p className="mt-2 break-words text-xs leading-relaxed text-slate-500">
-              Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook: <code className="text-slate-400">{triggerCommand}</code>
+              Vom Pi aus kommt derselbe Lauf über den Uploader-Webhook: <code className="break-all text-slate-400">{triggerCommand}</code>
             </p>
           )}
         </section>
@@ -792,7 +792,7 @@ export function SystemView(props: SystemViewProps) {
             Keine aktiven Störungen — die Anlage meldet keine Alarme. Der Header-Punkt zeigt denselben Stand als grünen Punkt.
           </p>
         ) : (
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {alarms.map((alarm) => (
               <div
                 key={`${alarm.code}-${alarm.job ?? ""}`}
@@ -831,7 +831,7 @@ export function SystemView(props: SystemViewProps) {
             </Badge>
           </div>
           <p className="text-xs leading-relaxed text-slate-300">{notifyStatusLine(h?.notify)}</p>
-          <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
             <div className="flex justify-between gap-3">
               <dt className="text-slate-500">Zuletzt gemeldet</dt>
               <dd className="font-mono text-slate-200">{h?.notify?.last_sent_at ? timeLabel(h.notify.last_sent_at) : "—"}</dd>
@@ -867,7 +867,7 @@ export function SystemView(props: SystemViewProps) {
           <span className="font-mono text-xs text-slate-500">LAN-only · nichts verlässt die Anlage</span>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Belege, Version, Diagnose</p>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -876,7 +876,7 @@ export function SystemView(props: SystemViewProps) {
             <div className="mt-3 flex flex-wrap gap-2">
               <a
                 href="/api/v1/fills.csv"
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+                className="tap-44 inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
               >
                 /api/v1/fills.csv
               </a>
@@ -913,9 +913,13 @@ export function SystemView(props: SystemViewProps) {
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">Jobs manuell starten</p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            {/* Kommandozeilen sind eine Zeichenkette ohne Trennstelle: Auf
+                360 px malte der Webhook-Befehl 23 px über seine Karte
+                hinaus. `break-all` bricht ihn wie an den anderen Befehls-
+                Stellen dieses Bereichs (Zeile 414 ff., 504 ff.). */}
+            <p className="mt-1 break-words text-xs leading-relaxed text-slate-500">
               Der Knopf <Play size={11} className="inline align-[-1px]" /> in jeder Job-Karte startet denselben Lauf wie auf der Kommandozeile:{" "}
-              <code className="text-slate-400">{workerCommand}</code>. Webhook: <code className="text-slate-400">{triggerCommand}</code>.
+              <code className="break-all text-slate-400">{workerCommand}</code>. Webhook: <code className="break-all text-slate-400">{triggerCommand}</code>.
             </p>
           </div>
           {/* O39: Wer im LAN die eigenen Belege lesen kann, ist eine

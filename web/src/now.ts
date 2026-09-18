@@ -197,7 +197,7 @@ export function learningNote(decide: DecideResult | null): string | null {
   return (
     `Das Modell lernt noch — ${countLabel(done)} von ` +
     `${countLabel(M7_MIN_RECOMMENDATIONS)} abgeschlossenen Empfehlungen. ` +
-    "Die Preise unten sind live."
+    "Die Preise unten sind gemessen."
   );
 }
 
@@ -438,7 +438,7 @@ export function nowFacts(input: NowInput): NowFact[] {
     ? {
         label: "Tank reicht?",
         value: "—",
-        detail: "Tankstand nicht gepflegt",
+        detail: "Tankstand nicht angegeben",
       }
     : {
         label: "Tank reicht?",
@@ -474,7 +474,17 @@ export function nowSteps(input: NowInput): NowStep[] {
     });
   }
 
-  const later = decide.windows_week?.[0] ?? null;
+  // Auf Stufe C gibt es keine Empfehlung — dann darf auch kein Fenster als
+  // nächster Schritt stehen. Vorher widersprach sich der Bildschirm selbst:
+  // Die Karte sagte „Keine Prognose — Preise vergleichen“, drei Zeilen
+  // tiefer stand „Freitag 14:00–15:54 Uhr wäre noch besser (2,04 €
+  // weniger)“ — eine Prognose-Zahl mit zwei Nachkommastellen, genau die
+  // Sicherheit, die die Karte gerade verneint hat (Konzept §0.4,
+  // MICROCOPY §1 „keine Sicherheit behaupten, die nicht gemessen ist“).
+  // Die Fenster bleiben im Bereich „Woche“ erreichbar, wo sie mit ihrem
+  // Lernstand eingeordnet sind.
+  const later =
+    nowStage(decide) === "C" ? null : (decide.windows_week?.[0] ?? null);
   if (later && later.expected_saving_eur != null && later.expected_saving_eur > 0) {
     steps.push({
       id: "later-window",

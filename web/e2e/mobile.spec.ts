@@ -62,6 +62,25 @@ const MEASURE = () => {
     return false;
   };
 
+  /**
+   * Liegt das Element in einem Kasten, der es **abschneidet**? Dann ist es
+   * kein Fund: Die Kartenkacheln von Leaflet liegen bauartbedingt weit
+   * außerhalb des Rahmens und werden vom `overflow: hidden` des Containers
+   * beschnitten — sichtbar ist nur der Ausschnitt. Ohne diese Ausnahme
+   * meldet die Messung Kacheln bei „−180 … 76 px“ als „ragt aus dem Bild“,
+   * obwohl kein Pixel davon je gemalt wird (0.55.0).
+   */
+  const inClipper = (element: Element): boolean => {
+    for (
+      let node = element.parentElement;
+      node && node !== document.documentElement;
+      node = node.parentElement
+    ) {
+      if (/(hidden|clip|auto|scroll)/.test(overflowX(node))) return true;
+    }
+    return false;
+  };
+
   const viewport = window.innerWidth;
   const outside: Finding[] = [];
   const painted: Finding[] = [];
@@ -73,7 +92,7 @@ const MEASURE = () => {
     if (element.closest("svg")) continue;
     if (inScroller(element)) continue;
 
-    if (box.right > viewport + 1 || box.left < -1) {
+    if ((box.right > viewport + 1 || box.left < -1) && !inClipper(element)) {
       outside.push({
         label: describe(element),
         detail: `${box.left.toFixed(1)} … ${box.right.toFixed(1)} px bei ${viewport} px`,
@@ -185,10 +204,16 @@ async function seedReceipts(page: Page): Promise<string> {
   return stations[0]?.name ?? "";
 }
 
+// Die URL-Kennungen sind **alltagsdeutsch** (`routing.ts`: `stationen`,
+// `woche`) — nicht die internen `TabId`s (`stations`, `week`). Bis 0.55.0
+// stand hier die interne Schreibweise: `tabFromUrlId` kennt sie nicht und
+// liefert stillschweigend „Jetzt“. Die Suite maß deshalb zweimal den
+// Einstieg und nie „Stationen“ oder „Woche“ — genau dort lag der Querlauf,
+// den der Pixel-9-Check fand. `expectArea` unten verhindert die Wiederkehr.
 const AREAS = [
   { id: "jetzt", label: "Jetzt" },
-  { id: "stations", label: "Stationen" },
-  { id: "week", label: "Woche" },
+  { id: "stationen", label: "Stationen" },
+  { id: "woche", label: "Woche" },
   { id: "ich", label: "Ich" },
   { id: "labor", label: "Labor" },
   { id: "system", label: "System" },
@@ -204,6 +229,23 @@ const LAB_SECTIONS = [
   "glossar",
 ];
 
+/**
+ * Zusage, dass wirklich der gemeinte Bereich gemessen wird.
+ *
+ * `tabFromUrlId` fällt bei unbekannten Werten still auf „Jetzt“ zurück — für
+ * die App richtig (ein kaputter Link zeigt den Einstieg), für eine Messung
+ * fatal: Sie meldet grün, ohne den Bereich je gesehen zu haben. Der Beleg
+ * ist die Bereichs-Navigation selbst: genau ein Knopf trägt
+ * `aria-current="page"`, und das muss der gemeinte sein.
+ */
+async function expectArea(page: Page, label: string): Promise<void> {
+  await expect(
+    page.locator(`nav [aria-current="page"]`).first(),
+    `Nicht im Bereich „${label}“ gelandet — zeigt die URL-Kennung auf einen ` +
+      `anderen Bereich? (routing.ts nutzt alltagsdeutsche Kennungen.)`,
+  ).toHaveText(label);
+}
+
 test.describe("Mobil: kein Querlauf", () => {
   test.beforeEach(async ({ viewport }) => {
     test.skip(
@@ -218,6 +260,7 @@ test.describe("Mobil: kein Querlauf", () => {
     }) => {
       await page.goto(`/?tab=${area.id}`);
       await settled(page);
+      await expectArea(page, area.label);
       await check(page, area.label);
     });
   }
@@ -263,6 +306,75 @@ test.describe("Mobil: kein Querlauf", () => {
     await expect(
       page.locator('p:has-text("Günstigste Stunde")').first(),
     ).toBeHidden();
+  });
+
+  test("Echte Stationsnamen sprengen kein Raster (Pixel 9, 0.55.0)", async ({
+    page,
+  }) => {
+    // Nutzer-Feedback 18.09.2026: „Die Anzeige der 3 Stationen auf Jetzt sind
+    // zu breit und ragen aus dem Bild.“ Der Demo-Stack heißt „Demo-Tank Nord“
+    // (14 Zeichen) — der echte MTS-K-Bestand trägt Namen wie „Aral Tankstelle
+    // Frankfurt am Main Hanauer Landstraße 128“ (56 Zeichen). Die Suite maß
+    // deshalb nur kurze Namen und blieb grün, während die Liste bei echten
+    // Daten 496 px in einer 330-px-Karte belegte.
+    //
+    // Ursache war nicht die Länge, sondern `grid` **ohne** Spaltenangabe: Die
+    // implizite Spur ist `auto` und wächst auf den breitesten Eintrag, statt
+    // sich an die Karte zu binden — `truncate` bekam nie etwas zu kürzen.
+    // Der Test hängt lange Namen in jede Server-Antwort und misst erneut.
+    const LONG = [
+      "Aral Tankstelle Frankfurt am Main Hanauer Landstraße 128",
+      "ESSO STATION FRANKFURT MAIN FRIEDBERGER LANDSTR. 244",
+      "Shell Frankfurt Am Main Eschersheimer Landstrasse 297",
+      "TotalEnergies Frankfurt Am Main Mainzer Landstraße 251",
+      "JET FRANKFURT AM MAIN OFFENBACHER LANDSTRASSE 366",
+      "Supermarkt-Tankstelle am real Frankfurt Borsigallee 26",
+    ];
+    await page.route("**/api/v1/**", async (route) => {
+      const response = await route.fetch();
+      const type = response.headers()["content-type"] ?? "";
+      if (!type.includes("json")) return route.fulfill({ response });
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        return route.fulfill({ response });
+      }
+      // Jeder echte Stationsname wird stabil auf einen langen abgebildet —
+      // gleiche Station, gleicher Ersatz, damit Ranking und Karte zusammen
+      // passen.
+      const seen = new Map<string, string>();
+      const walk = (node: unknown): void => {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (!node || typeof node !== "object") return;
+        for (const [key, value] of Object.entries(node)) {
+          if (
+            (key === "name" || key === "station_name") &&
+            typeof value === "string" &&
+            value !== ""
+          ) {
+            if (!seen.has(value)) {
+              seen.set(value, LONG[seen.size % LONG.length]);
+            }
+            (node as Record<string, unknown>)[key] = seen.get(value);
+          } else walk(value);
+        }
+      };
+      walk(body);
+      return route.fulfill({ response, body: JSON.stringify(body) });
+    });
+
+    for (const area of ["jetzt", "stationen"] as const) {
+      await page.goto(`/?tab=${area}`);
+      await settled(page);
+      // Der lange Name ist wirklich in der Ansicht — sonst misst der Test
+      // die kurzen Demo-Namen und ist wertlos.
+      await expect(
+        page.getByText(LONG[0].slice(0, 28), { exact: false }).first(),
+        `Kein langer Stationsname in „${area}“ — greift die Umleitung?`,
+      ).toBeVisible();
+      await check(page, `${area} mit echten Stationsnamen`);
+    }
   });
 
   test("Ich: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({

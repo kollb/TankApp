@@ -252,7 +252,7 @@ function FillsSection(props: IchViewProps) {
             void onQuickFill();
           }}
         >
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="text-xs text-slate-400 sm:col-span-1">
               Station
               <select
@@ -630,7 +630,7 @@ function BalanceSection(props: IchViewProps) {
               ? monthBalanceLabel(latest.key)
               : yearBalanceLabel(latest.key)}
           </p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
                 Getankt

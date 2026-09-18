@@ -71,7 +71,7 @@ function render(overrides: Partial<WocheViewProps> = {}) {
 describe("Woche: Aufbau", () => {
   it("steht über der Tank-Zeile und dem Raster, mit Frische-Fußzeile", () => {
     const html = render();
-    const tank = html.indexOf("Tankstand nicht gepflegt");
+    const tank = html.indexOf("Tankstand nicht angegeben");
     const grid = html.indexOf("Beste Fenster (7 Tage)");
     const fresh = html.indexOf("Preise vor 4 Minuten");
     expect(tank).toBeGreaterThanOrEqual(0);

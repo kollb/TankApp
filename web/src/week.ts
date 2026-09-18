@@ -189,7 +189,7 @@ export function tankReach(
 ): TankReach | null {
   if (!tank) {
     return dayIndex === 0 && window
-      ? { tone: "neutral", text: "Tankstand nicht gepflegt — ohne Angabe prüft die App nicht." }
+      ? { tone: "neutral", text: "Tankstand nicht angegeben — ohne Angabe prüft die App nicht." }
       : null;
   }
   if (tank.state === "empty") {
@@ -366,7 +366,7 @@ export function weekTankLine(
 ): { text: string; detail: string } {
   if (tankPercent == null && !tank) {
     return {
-      text: "Tankstand nicht gepflegt",
+      text: "Tankstand nicht angegeben",
       detail: "Ohne Angabe sagt die App nichts zur Reichweite — „Ändern“ setzt den Füllstand.",
     };
   }

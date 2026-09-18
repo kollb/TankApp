@@ -4,6 +4,98 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.55.0] – 2026-09-18
+
+**Mobil nachgebessert (Nutzer-Feedback 18.09.2026: „Die mobile Variante auf einem Pixel 9 ist noch nicht optimal — die Anzeige der 3 Stationen im Bereich ‚Jetzt‘ ist zu breit und ragt aus dem Bild“).** Gemessen wurde am echten Browser auf 320/360/390/412 px, nicht nur auf den 390 px der Suite. Der gemeldete Überlauf war ein Symptom von zwei Ursachen, die beide tiefer lagen als die betroffene Karte — und eine davon hatte die Testsuite bisher strukturell nicht sehen können.
+
+### Die drei Stationen ragen nicht mehr aus dem Bild
+
+- **Ursache: `grid` ohne Spaltenangabe.** Ein Raster mit `gap`, aber ohne
+  `grid-cols-*`, legt eine implizite Spur an, deren Minimum `auto` ist — die
+  Spur wächst also auf die `min-content`-Breite des breitesten Kindes, statt
+  sich auf die Elternbreite zu beschränken. Ein langer Stationsname („ESSO
+  STATION FRANKFURT MAIN FRIEDBERGER LANDSTR. 244“) zog das Raster damit über
+  den Bildrand. Nachgemessen: 496 px Inhalt in einem 330 px breiten Kasten,
+  nach dem Fix 330 in 330. Betroffen waren **30 Raster** in allen Bereichen,
+  auch solche, die Spalten nur ab `sm:`/`lg:` definierten und mobil deshalb
+  ohne Angabe dastanden.
+- Die Namensspalte im 3er-Ranking bricht mobil jetzt zweizeilig um, statt die
+  Preisspalte zu verdrängen.
+
+### Warum das keine Prüfung gemerkt hat
+
+- **Die Mobil-Suite maß sechsmal denselben Bereich.** `mobile.spec.ts` steuerte
+  die Bereiche über `?tab=stations` und `?tab=week` an — die URL kennt aber
+  `stationen` und `woche`. `tabFromUrlId()` fällt bei Unbekanntem still auf
+  „Jetzt“ zurück, also lief die halbe Suite auf dem Einstieg und meldete
+  trotzdem grün. Die Ids sind korrigiert, und `expectArea()` prüft vor jeder
+  Messung, dass wirklich der gemeinte Bereich sichtbar ist.
+- **Die Demo-Namen waren zu kurz**, um das Raster zu sprengen (14 statt bis zu
+  56 Zeichen). Ein neuer Test schiebt echte Stationsnamen in Frankfurter Länge
+  ein und misst 412 × 915 (Pixel 9) zusätzlich zu 390 × 844.
+- **Leaflet-Kacheln sind kein Überlauf.** Sie liegen bauartbedingt weit
+  außerhalb des Rahmens und werden vom `overflow: hidden` des Containers
+  beschnitten; `inClipper()` nimmt sie deshalb aus, statt sie als Fund zu
+  melden.
+
+### Jede Größenklasse auf Knöpfen war wirkungslos
+
+- **Ursache: ein ungeschichtetes `button, select, input { font: inherit }`.**
+  Ungeschichtetes CSS gewinnt in der Kaskade gegen **jede** `@layer`, also auch
+  gegen Tailwinds `utilities`; die Kurzform `font:` setzt `font-size` mit
+  zurück. Am Demo-Stand zeigten dadurch **122 Bedienelemente** die geerbten
+  16 px statt ihrer Klasse (`text-xs`, `text-sm`, `text-[0.625rem]`).
+  Sichtbar war das unten in der Leiste: „Stationen“ brauchte 70 px in einer
+  64-px-Zelle und stand als „Statio…“ da, „System“ zusätzlich bei 320 px.
+- Die Regel liegt jetzt in `@layer base` und setzt `font-family` statt `font:`.
+  Damit stimmen alle Größen wieder, und die Leiste zeigt bei **320 bis 412 px**
+  alle sechs Namen vollständig — ohne ein Label zu kürzen.
+- **Tippfelder halten auf Touch-Geräten ausdrücklich 16 px.** Safari auf iOS
+  zoomt beim Fokus in jedes kleinere Feld. Das fiel vorher nicht auf, weil das
+  fehlerhafte `font: inherit` ohnehin alles auf 16 px zwang — seit die Klassen
+  wirken, wären es 12 px gewesen. `select` und Knöpfe bleiben kompakt, sie
+  lösen den Zoom nicht aus.
+
+### Karten-Pins halten ihren Text
+
+- Preis- und Heimat-Pin hatten feste Kacheln (`iconSize` 60 × 26 bzw. 26 × 26).
+  „Referenz“ braucht in 12-px-Monospace aber 57,8 px plus Polsterung: Die
+  Schrift lief über die Pille aufs Kartenbild, das „€“ stand frei daneben
+  (gemessen 69 px Inhalt in 60 px Kasten). Die Pins wachsen jetzt mit ihrem
+  Inhalt (`width: max-content`) und sitzen per `translate` mittig auf der
+  Koordinate — nachgemessen 0 px Abweichung bei allen sieben Pins.
+- Das Touch-Ziel von 44 px steckt jetzt in der Polsterung des Pins statt in
+  einem `::before` mit `inset: -9px`, das aus der eigenen Box ragte und in der
+  Messung nicht von echtem Überlauf zu unterscheiden war.
+
+### Texte aus Kundensicht
+
+- **Ein Selbstwiderspruch ist weg.** Ohne Empfehlung sagte die Karte „Keine
+  Prognose — Preise vergleichen“ und nannte drei Zeilen darunter als nächsten
+  Schritt „Freitag 14:00–15:54 Uhr wäre noch besser (2,04 € weniger)“ — eine
+  Prognosezahl auf zwei Nachkommastellen, also genau die Sicherheit, die die
+  Karte gerade verneint hatte. Auf Stufe C nennt `nowSteps()` kein Fenster
+  mehr (MICROCOPY §1: keine Sicherheit behaupten, die nicht gemessen ist); über
+  den Bereich „Woche“ bleiben die Fenster erreichbar.
+- „Tap“ → „Klick“ bzw. umformuliert (MICROCOPY §6 verbietet englische Wörter
+  ohne Erklärung), „Tankstand nicht gepflegt“ → „nicht angegeben“ (Pflege ist
+  Systemsprache), „Pflege in ‚Woche‘“ → „genauer einstellen in ‚Woche‘“,
+  „Die Preise unten sind live.“ → „… sind gemessen.“ — das grenzt zugleich
+  gegen die Prognose ab.
+
+### Neue Ratchets
+
+- **M1**: kein `grid` mit `gap`, aber ohne Spaltenangabe (nennt Datei, Zeile
+  und Klassenliste).
+- **U1**: kein ungeschichtetes `font:`-Kürzel; die Erbregel in `@layer base`
+  darf keine `font-size` setzen; Tippfelder halten 16 px.
+- **C5**: keine festen `iconSize`/`iconAnchor` an Karten-Pins.
+- Alle neuen Ratchets sind per Gegenprobe geprüft: Wird der alte Stand
+  wiederhergestellt, schlagen sie fehl.
+- `playwright.demo.config.ts` akzeptiert wie die Hauptkonfiguration
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE` — ohne diesen Haken war ausgerechnet die
+  Mobil-Suite in abgeschotteten Umgebungen nicht lauffähig.
+
 ## [0.54.0] – 2026-09-18
 
 **Batch 8 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).

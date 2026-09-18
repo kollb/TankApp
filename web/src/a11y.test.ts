@@ -262,6 +262,73 @@ describe("U6: Radius-Rampe", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// M1 — Jede `grid`-Fläche nennt ihre Spalten auch für das schmale Raster.
+//
+// Tailwinds `grid` setzt nur `display: grid`. Ohne `grid-cols-*` legt der
+// Browser eine **implizite** Spur an, und deren Größe ist `auto` — sie wächst
+// auf den breitesten Eintrag, statt sich an die Karte zu binden. Für eine
+// Liste mit langen Inhalten heißt das: `truncate`/`min-w-0` greifen nie, weil
+// es formal nichts zu kürzen gibt, und die Zeile malt über die Karte hinaus.
+//
+// Genau so entstand der Pixel-9-Befund vom 18.09.2026 („Die Anzeige der 3
+// Stationen auf Jetzt sind zu breit und ragen aus dem Bild“): Die Rangliste
+// stand in `grid gap-1.5`, ein echter Stationsname („Aral Tankstelle
+// Frankfurt am Main Hanauer Landstraße 128“) machte daraus 496 px in einer
+// 330-px-Karte. Auffällig wird das nur mit echten Namen — der Demo-Stack
+// heißt „Demo-Tank Nord“, deshalb blieb die Browser-Suite grün.
+//
+// Der Ratchet verlangt eine **unpräfigierte** Spaltenangabe: `sm:grid-cols-2`
+// allein hilft dem Handy nicht, dort gilt weiter die implizite Spur.
+// Ausgenommen ist nur, was seine Spalten in styles.css bekommt
+// (`daystrip-cells`) oder erst ab einer Breite überhaupt `grid` wird
+// (`sm:grid`).
+// ---------------------------------------------------------------------------
+describe("M1: Grid-Spalten im schmalen Raster", () => {
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const path = `${dir}/${entry}`;
+      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
+      else if (/\.tsx$/.test(entry) && !entry.includes(".test."))
+        out.push(path);
+    }
+    return out;
+  }
+
+  /** Spalten kommen aus dem Stylesheet, nicht aus der Klassenliste. */
+  const CSS_DRIVEN = ["daystrip-cells"];
+
+  it("jede grid-Fläche hat eine Spaltenangabe ohne Breiten-Präfix", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC_ROOT)) {
+      const content = readFileSync(file, "utf8");
+      for (const match of content.matchAll(
+        /className=\{?[`"]([^`"]*)[`"]/g,
+      )) {
+        const classes = match[1];
+        const tokens = classes.split(/\s+/).filter(Boolean);
+        // Nur das Display-Utility selbst: `sm:grid` schaltet erst ab 640 px
+        // auf Grid und ist bis dahin gar keine Grid-Fläche.
+        if (!tokens.includes("grid")) continue;
+        if (CSS_DRIVEN.some((marker) => classes.includes(marker))) continue;
+        if (tokens.some((token) => token.startsWith("grid-cols-"))) continue;
+        const line = content.slice(0, match.index ?? 0).split("\n").length;
+        offenders.push(
+          `${file.slice(SRC_ROOT.length + 1)}:${line} — „${classes}“`,
+        );
+      }
+    }
+    expect(
+      offenders,
+      "grid ohne unpräfigierte Spaltenangabe (implizite auto-Spur wächst " +
+        `auf den breitesten Eintrag und sprengt mobil die Karte):\n${offenders.join(
+          "\n",
+        )}`,
+    ).toEqual([]);
+  });
+});
+
 describe("C5: Touch-Ziele", () => {
   it("44 px gelten bei grober Zeigerart — und nur dort", () => {
     const coarse = STYLES.indexOf(
@@ -280,6 +347,114 @@ describe("C5: Touch-Ziele", () => {
     expect(MAP).toContain("tabIndex={0}");
     expect(MAP).toContain('role="button"');
     expect(MAP).toContain('event.key === "Enter"');
+  });
+
+  // 0.55.0: Der Preis-Pin trug `iconSize: [60, 26]`, „Referenz“ braucht in
+  // 12-px-Monospace aber 57,8 px plus Polsterung — die Schrift lief über die
+  // Pille aufs Kartenbild. Eine feste Kachel kann den Text prinzipiell nicht
+  // halten, sobald die Systemschrift größer steht; deshalb ist sie verboten.
+  it("Karten-Pins bekommen keine feste Kachelgröße", () => {
+    // Kommentare ausblenden: Der Begründungstext nennt die alten Maße.
+    const code = MAP.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+      /(^|\s)\/\/.*$/gm,
+      "",
+    );
+    const fixedSizes = [...code.matchAll(/icon(?:Size|Anchor):\s*\[/g)];
+    expect(
+      fixedSizes.length,
+      "iconSize/iconAnchor zwingt den Pin auf feste Maße — der Text passt " +
+        "dann nicht mehr hinein. Größe kommt aus dem Inhalt (width: max-content).",
+    ).toBe(0);
+    expect(STYLES).toContain(".custom-net-pin");
+    expect(STYLES).toContain("width: max-content");
+    // Zentriert wird per `translate` (eigene Eigenschaft): Leaflet schreibt
+    // die Position selbst als `transform` ins style-Attribut und würde ein
+    // `transform` aus dieser Datei überschreiben.
+    expect(STYLES).toContain("translate: -50% -50%");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U1 — Formularelemente dürfen ihre Größenklasse behalten.
+//
+// Bis 0.54.0 stand in styles.css ein ungeschichtetes
+// `button,select,input { font: inherit }`. Ungeschichtetes CSS gewinnt gegen
+// jede `@layer` — also auch gegen Tailwinds `utilities` — und die Kurzform
+// `font:` setzt `font-size` mit zurück. Damit war auf Knöpfen, Auswahlfeldern
+// und Eingaben **jede** Größenklasse wirkungslos: am Demo-Stand 122
+// Bedienelemente, die statt `text-xs`/`text-sm`/`text-[0.625rem]` die
+// geerbten 16 px zeigten. Sichtbar war das unten in der Leiste, wo
+// „Stationen“ mit 70 px in eine 64-px-Zelle sollte und als „Statio…“
+// abgeschnitten wurde.
+// ---------------------------------------------------------------------------
+describe("U1: Größenklassen auf Bedienelementen", () => {
+  // Kommentare zitieren die alten, falschen Regeln als Begründung — geprüft
+  // wird deshalb ausschließlich der wirksame Teil der Datei.
+  const CSS = STYLES.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("kein ungeschichtetes font-Kürzel auf button/select/input", () => {
+    // Alles außerhalb eines `@layer … { }` ist ungeschichtet und gewinnt
+    // gegen jede Utility. Blockgrenzen werden über die Klammertiefe
+    // bestimmt — ein Regex verzählt sich an den verschachtelten Media-Blöcken.
+    const layerSpans: Array<[number, number]> = [];
+    for (const match of CSS.matchAll(/@layer[^{;]*\{/g)) {
+      const start = match.index ?? 0;
+      let depth = 0;
+      for (let i = start + match[0].length - 1; i < CSS.length; i++) {
+        if (CSS[i] === "{") depth++;
+        else if (CSS[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            layerSpans.push([start, i]);
+            break;
+          }
+        }
+      }
+    }
+    const inLayer = (index: number) =>
+      layerSpans.some(([from, to]) => index > from && index < to);
+
+    const offenders = [...CSS.matchAll(/font:\s*[^;}]*inherit/g)]
+      .filter((match) => !inLayer(match.index ?? 0))
+      .map((match) => match[0]);
+    expect(
+      offenders,
+      "`font: inherit` ungeschichtet überschreibt text-* auf jedem Knopf " +
+        "(die Kurzform setzt font-size mit zurück). Gehört in @layer base " +
+        "und sollte font-family statt font: setzen.",
+    ).toEqual([]);
+  });
+
+  // iOS Safari zoomt beim Fokus in jedes Tippfeld unter 16 px. Bis 0.54.0
+  // verdeckte das `font: inherit` diesen Fall (alles war 16 px); seit die
+  // Größenklassen wirken, muss die Untergrenze ausdrücklich dastehen.
+  it("Tippfelder halten auf Touch-Geräten 16 px (kein iOS-Zoom)", () => {
+    const coarse = CSS.indexOf(
+      "@media (pointer: coarse), (any-pointer: coarse)",
+    );
+    const rule = CSS.slice(coarse, CSS.indexOf("\n}\n", coarse));
+    expect(rule).toContain("font-size: max(16px, 1rem)");
+    expect(rule).toContain("textarea");
+    // Knöpfe und Auswahlfelder lösen den Zoom nicht aus und bleiben kompakt:
+    // Der Selektorkopf (ohne die :not()-Ausschlüsse) nennt sie nicht.
+    const head = rule
+      .slice(rule.indexOf("input:not("))
+      .split("{")[0]
+      .replace(/:not\([^)]*\)/g, "");
+    for (const tag of ["button", "select", "a."]) {
+      expect(head, `${tag} gehört nicht in die 16-px-Regel`).not.toContain(tag);
+    }
+  });
+
+  it("die Erbregel steht in @layer base und lässt die Größe frei", () => {
+    const base = CSS.slice(CSS.indexOf("@layer base {"));
+    expect(base).toContain("font-family: inherit");
+    // font-size fehlt bewusst: sie gehört der Utility-Klasse.
+    const rule = base.slice(
+      base.indexOf("button,"),
+      base.indexOf("}", base.indexOf("font-family: inherit")),
+    );
+    expect(rule).not.toContain("font-size");
   });
 });
 

@@ -177,7 +177,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             + Neu / verwalten
           </button>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <PrecisionSlider
             id="liters"
             label="Deine Tankmenge"
@@ -254,7 +254,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             K = d · (c/100) · p + (d/v) · z
           </span>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <PrecisionSlider
             id="timeValue"
             label="Zeitwert"
@@ -406,7 +406,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             gilt für alle Ansichten
           </span>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <label htmlFor="settings-city" className="text-xs text-slate-400">
             Stadt
             <select
@@ -640,7 +640,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             LAN-only · nichts verlässt die Anlage
           </span>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">
               Belege exportieren (CSV)
@@ -652,7 +652,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <a
               href="/api/v1/fills.csv"
               title="Quelle: /api/v1/fills.csv"
-              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              className="tap-44 mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
             >
               Belege als Datei laden
             </a>
@@ -667,7 +667,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 deine Säulen (geräte-lokal, ohne Account).
               </p>
             ) : (
-              <ul className="mt-2 grid gap-1.5">
+              <ul className="mt-2 grid grid-cols-1 gap-1.5">
                 {pinnedStations.map(({ station }) => (
                   <li
                     key={station.station_id}
@@ -704,7 +704,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             Über
           </h3>
         </div>
-        <dl className="grid gap-3 text-xs text-slate-400 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-3 text-xs text-slate-400 sm:grid-cols-3">
           <div>
             <dt className="text-xs uppercase tracking-wider text-slate-500">
               Version

@@ -642,7 +642,9 @@ export function StationenView(props: StationenViewProps) {
                             rel="noopener noreferrer"
                             aria-label={`Route zu ${row.station.name} öffnen`}
                             title="Route öffnen"
-                            className="shrink-0 rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
+                            /* C5: Link-Touchziel — 32 px waren zu klein für
+                               eine Handlung, die man im Auto trifft. */
+                            className="tap-44 inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-700 p-2 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400"
                           >
                             <ArrowUpRight size={14} aria-hidden="true" />
                           </a>
@@ -673,7 +675,7 @@ export function StationenView(props: StationenViewProps) {
                       href={selected.station.maps_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-lg border border-slate-700 px-2.5 py-1.5 font-semibold text-slate-200 hover:border-emerald-500/40 hover:text-emerald-300"
+                      className="tap-44 inline-flex items-center justify-center rounded-lg border border-slate-700 px-2.5 py-1.5 font-semibold text-slate-200 hover:border-emerald-500/40 hover:text-emerald-300"
                     >
                       Route
                     </a>
@@ -693,7 +695,7 @@ export function StationenView(props: StationenViewProps) {
                   </button>
                 </div>
               </div>
-              <div className="grid gap-4 p-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
                 <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                   <p className="text-xs uppercase tracking-wider text-slate-500">
                     Preis
@@ -808,7 +810,7 @@ export function StationenView(props: StationenViewProps) {
                   )}
                 </div>
               </div>
-              <div className="grid gap-2 border-b border-slate-800 p-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 border-b border-slate-800 p-4 sm:grid-cols-2">
                 <label className="flex items-center gap-2 text-xs text-slate-400">
                   <span className="font-bold text-sky-300">A</span>
                   <span className="sr-only">Station A wählen</span>
@@ -860,7 +862,7 @@ export function StationenView(props: StationenViewProps) {
               </div>
               {comparePair && compareRowA && compareRowB ? (
                 <div className="p-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {[
                       { row: compareRowA, label: "A" },
                       { row: compareRowB, label: "B" },
@@ -873,7 +875,13 @@ export function StationenView(props: StationenViewProps) {
                           {label}
                           {row.isReference ? " · Referenz" : ""}
                         </p>
-                        <p className="mt-1 truncate text-sm font-semibold text-slate-200">
+                        {/* Der Name bricht um, statt zu kürzen: In A/B ist
+                            er die Frage („welche zwei vergleiche ich?“), und
+                            echte Namen tragen das Unterscheidende hinten
+                            („… Hanauer Landstraße 128“). Ein „ESSO STATION
+                            FRANKFURT MAIN FRIEDB…“ beantwortet sie nicht.
+                            `break-words` fängt Namen ohne Leerzeichen ab. */}
+                        <p className="mt-1 text-sm font-semibold break-words text-slate-200">
                           {row.station.name}
                         </p>
                         <p className="font-mono text-sm font-bold text-slate-100 tabular-nums">
