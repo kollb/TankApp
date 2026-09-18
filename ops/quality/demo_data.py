@@ -324,20 +324,25 @@ def build_selection_artifact(settings, observations: pd.DataFrame, n_boot: int =
 
     Schreibt die synthetischen Beobachtungen als Trainingsbestand
     (``runtime/training/e10.csv.gz``) und ruft das echte
-    ``app.selection.build_selection`` auf; das Artefakt landet unter
-    ``runtime/selection/current.json`` (wie ``app/worker.py`` es schreibt).
+    ``app.selection.build_selection`` auf; veröffentlicht wird über
+    ``publish_selection`` (O41: derselbe Schreiber wie der NAS-Lauf, eine
+    Datei je Kraftstoff plus die eine kombinierte ``current.json``).
     Kleineres B als produktiv (2000): Der Demo-Stapel soll in Sekunden
     stehen; die q-Wert-Untergrenze 1/(B+1) bleibt für Demo-Zwecke fein genug.
     """
-    from app.selection import build_selection
-    from engine.storage import write_json
+    from app.selection import build_selection, publish_selection
 
     training_dir = Path(settings.runtime) / "training"
     training_dir.mkdir(parents=True, exist_ok=True)
     frame = observations.copy()
     frame.to_csv(training_dir / "e10.csv.gz", index=False, compression="gzip")
     result = build_selection(settings, fuels=["e10"], n_boot=n_boot)
-    write_json(Path(settings.runtime) / "selection" / "current.json", result)
+    # O41: derselbe Schreiber wie der NAS-Lauf — und dieselbe Regel: ein
+    # struktureller Grund ohne Daten wird nicht veröffentlicht.
+    if result.get("error_code") in (None, "selection_not_available"):
+        publish_selection(
+            settings, result["generated_at"], result.get("by_fuel") or {}
+        )
     return result
 
 

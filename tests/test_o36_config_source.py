@@ -166,7 +166,14 @@ def test_worker_reicht_die_konfiguration_statt_einer_zahl(settings, monkeypatch)
 
     def fake_build_selection(settings_, fuels=None, config=None, n_boot=None, **kw):
         captured.update({"config": config, "n_boot": n_boot, "fuels": fuels})
-        return {"count": 3, "error_code": None}
+        # O41: die eine Artefakt-Form (selection_artifact) — der Worker
+        # entscheidet über by_fuel, nicht über ein flaches count-Feld.
+        return {
+            "generated_at": "2026-09-18T00:00:00+00:00",
+            "fuels": ["e10"],
+            "by_fuel": {"e10": {"cities": [], "top_global": []}},
+            "error_code": None,
+        }
 
     monkeypatch.setattr(selection, "build_selection", fake_build_selection)
 

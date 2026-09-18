@@ -2086,7 +2086,11 @@ class LiveData:
                 **coverage_info,
             }
         else:
-            # Fallback altes Format
+            # Zwei Fälle ohne by_fuel (O41): (1) read_selection meldet „kein
+            # Artefakt“ als Daten — leere Listen und der Grund, keine
+            # erfundenen Felder; (2) ein Altbestand vor der by_fuel-Ära mit
+            # flacher Stationsliste, den kein Schreiber mehr erzeugt —
+            # gefiltert nach Kraftstoff/Stadt wie bisher.
             stations = data.get("stations", [])
             filtered = [
                 s

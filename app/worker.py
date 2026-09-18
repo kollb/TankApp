@@ -95,8 +95,7 @@ def execute(name, settings, progress=None):
     if name == "selection":
         try:
             from .config import engine_config
-            from .selection import build_selection
-            from engine.storage import write_json
+            from .selection import build_selection, publish_selection
 
             # O36: Die Selektion bekommt die Engine-Konfiguration, keine Zahl.
             # Hier stand B = 2000 als Literal im Job-Dispatcher — eine Änderung
@@ -108,13 +107,21 @@ def execute(name, settings, progress=None):
                 config=engine_config(settings),
                 progress=progress,
             )
-            out = settings.runtime / "selection" / "current.json"
-            write_json(out, result)
-            if result.get("count", 0) == 0:
-                return {
-                    "state": "waiting",
-                    "error_code": result.get("error_code") or "selection_not_available",
-                }
+            # O41: Der Job veröffentlicht über denselben Schreiber wie
+            # refresh() (publish_selection) — dieselbe Form, derselbe
+            # Dateibestand. Ein struktureller Grund ohne Daten (polling.json
+            # fehlt, Lesefehler) wird **nicht** veröffentlicht — die letzte
+            # gute Publikation bleibt stehen, genau wie refresh() bei
+            # „waiting“ nichts schreibt. Vorher stand hier eine Fehler-
+            # Markierung ohne by_fuel, die der Leser wie ein fehlendes
+            # Artefakt behandelte.
+            if result.get("error_code") not in (None, "selection_not_available"):
+                return {"state": "waiting", "error_code": result["error_code"]}
+            publish_selection(
+                settings, result["generated_at"], result.get("by_fuel") or {}
+            )
+            if not result.get("by_fuel"):
+                return {"state": "waiting", "error_code": "selection_not_available"}
             return {"state": "success", "error_code": None}
         except ModuleNotFoundError:
             raise
