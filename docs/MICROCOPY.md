@@ -339,6 +339,32 @@ es nicht. Die Fläche benennt sich jetzt selbst:
 Das ist zugleich genauer: Gerechnet wird über die Stationen mit **offenem
 Preis**, nicht über alles, was im Polling-Set steht.
 
+### 5d. Ein Zustand, eine Zahl (0.55.0)
+
+Wenn ein Text eine Automatik beschreibt, nennt er den Wert **dieser
+Automatik** — nicht den gerade gerechneten. Beides fällt nur zusammen,
+solange die Automatik aktiv ist; sobald jemand einen festen Wert setzt,
+laufen die Zahlen auseinander und der Text behauptet zwei Dinge zugleich.
+
+Gefunden in 0.55.0 unter „Ich“ → „Fahrzeug“: Der Schalter zeigte
+`Auto (12 €/h · Nebenzeit)`, direkt darunter stand `0 = Auto: 10 €/h — gerade
+Nebenzeit`. Zwölf kam aus dem Profil, zehn aus der Uhrzeit-Regel; „Auto“ stand
+an beiden. Dieselbe Verwechslung steckte in der Auswahl unter „Stationen“ —
+die Auto-Option warb mit einer Zahl, die sie nie liefert.
+
+| Statt | Jetzt |
+|---|---|
+| `Auto (${timeValueUsed} €/h)` | `Auto (${autoZ.z} €/h)` |
+| `0 = Auto: <x> €/h — gerade Nebenzeit.` (immer) | `Fester Wert. Mit 0 rechnet die App nach Uhrzeit — gerade wären das <x> €/h (Nebenzeit).` bei gesetztem Wert |
+
+Regel: `timeValueUsed` ist der Wert, mit dem **gerechnet** wird — er gehört in
+Sätze über das Ergebnis. `autoZ.z` ist der Wert, den die **Automatik**
+ergäbe — er gehört in jeden Satz, in dem das Wort „Auto“ vorkommt. Ein
+Hinweis, der einen nicht aktiven Zustand beschreibt, sagt das im Konjunktiv
+(„gerade wären das …“), statt ihn im Präsens zu behaupten.
+
+Geprüft in `web/src/microcopy.test.ts` („„Auto“ zeigt den Automatik-Wert“).
+
 ## 6. Was nie im Text steht
 
 - **Erfundene Zahlen.** Keine Demo-Preise, keine Platzhalter-Prozentwerte,

@@ -3447,9 +3447,15 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
   const n = gated ? (advice.gate_n as number) : (advice.n ?? 0);
   const need = advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS;
   const pending = advice.n_pending ?? 0;
+  // 0.55.0: Die Mehrzahl wurde als Suffix an den Singular gehängt
+  // (`läuft` + `en`) — heraus kam „4 Empfehlungen läuften noch und zählt
+  // erst nach der Abrechnung“: ein erfundenes Verb und ein Numerus-Bruch im
+  // selben Satz. Unregelmäßige Verben brauchen die ganze Form.
   const pendingNote =
     pending > 0
-      ? ` ${pending} Empfehlung${pending > 1 ? "en" : ""} läuft${pending > 1 ? "en" : ""} noch und zählt erst nach der Abrechnung.`
+      ? pending === 1
+        ? " 1 Empfehlung läuft noch und zählt erst nach der Abrechnung."
+        : ` ${pending} Empfehlungen laufen noch und zählen erst nach der Abrechnung.`
       : "";
   // O6: Das Gate vergleicht die Obergrenze des Brier-Intervalls gegen Basis-
   // und Klima-Referenz — der Ausgang kommt vom Server (`calibrated`), die

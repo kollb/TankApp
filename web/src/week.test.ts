@@ -250,7 +250,7 @@ describe("weekWindowSummary", () => {
     // 15.09. bei „heute“ am 14.09. → dayLabel: „Morgen“.
     expect(summary?.headline).toContain("Morgen");
     expect(summary?.headline).toContain("19–21 Uhr");
-    expect(summary?.savingLine).toContain("5,0 ct/L günstiger erwartet");
+    expect(summary?.savingLine).toContain("5,0 ct/L günstiger als jetzt");
     expect(summary?.savingLine).toContain("2,00 €");
     expect(summary?.security).toBe("ziemlich sicher (80 %)");
   });

@@ -299,11 +299,21 @@ test("Zeitwert-Automatik zeigt Stoßzeit oder Nebenzeit", async ({ page }) => {
   await page.getByRole("button", { name: "Ich", exact: true }).click();
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
+  // 0.55.0: Bei 0 ist die Automatik aktiv — der Hinweis sagt das im Präsens.
   await expect(
-    page.getByText(/0 = Auto: 1[06] €\/h — gerade (Stoßzeit|Nebenzeit)\./),
+    page.getByText(/Automatik nach Uhrzeit: gerade 1[06] €\/h \((Stoßzeit|Nebenzeit)\)\./),
   ).toBeVisible();
   // Aktiver Wert: Auto (16 €/h · Stoßzeit) bzw. Auto (10 €/h · Nebenzeit).
   await expect(
     page.getByText(/Auto \(1[06] €\/h · (Stoßzeit|Nebenzeit)\)/),
   ).toBeVisible();
+
+  // Gegenprobe zum Befund aus 0.55.0: Mit festem Wert darf nirgends „Auto“
+  // mit dieser Zahl stehen — die Automatik greift dann nicht. Früher zeigte
+  // der Schalter „Auto (12 €/h · Nebenzeit)“ und der Hinweis gleichzeitig
+  // „0 = Auto: 10 €/h“.
+  await page.locator("#timeValue").fill("12");
+  await expect(page.getByText(/Fester Wert\./)).toBeVisible();
+  await expect(page.getByText(/gerade wären das 1[06] €\/h/)).toBeVisible();
+  await expect(page.getByText(/Auto \(12 €\/h/)).toHaveCount(0);
 });

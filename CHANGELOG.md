@@ -100,8 +100,36 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   richtet ein oder prüft nach; §6 lässt für diese Fläche ausdrücklich
   Betreibersprache zu. Die Regel steht als §5c in MICROCOPY.
 
+### Widersprüche im Text (aus der Lesung am Gerät)
+
+- **„Auto“ nannte eine Zahl, die die Automatik nie liefert.** Unter „Ich“ →
+  „Fahrzeug“ stand `Auto (12 €/h · Nebenzeit)` und direkt darunter
+  `0 = Auto: 10 €/h — gerade Nebenzeit`. Die Zwölf kam aus dem Profil, die
+  Zehn aus der Uhrzeit-Regel. Ursache: Die Anzeige interpolierte
+  `timeValueUsed` (= der gerechnete Wert, bei gesetztem Profil der manuelle)
+  statt `autoZ.z` (= was die Automatik ergäbe). Dieselbe Verwechslung steckte
+  in der Zeitwert-Auswahl unter „Stationen“ und in der Vorlesefassung des
+  Schiebereglers. Jetzt zeigt jede „Auto“-Stelle den Automatik-Wert.
+- **Der Hinweis beschrieb einen Zustand, der gar nicht galt.** Bei gesetztem
+  Zeitwert greift die Automatik nicht — der Satz behauptete trotzdem im
+  Präsens „gerade Nebenzeit“ und nannte die Regel „16 €/h von 16:30–20:00 Uhr,
+  sonst 10 €/h“ als feste Zahlen. Jetzt trennt der Text die Fälle: „Fester
+  Wert. Mit 0 rechnet die App nach Uhrzeit — gerade wären das 10 €/h
+  (Nebenzeit).“
+- **„4 Empfehlungen läuften noch und zählt erst nach der Abrechnung.“** Die
+  Mehrzahl wurde als Suffix an den Singular gehängt (`läuft` + `en`); heraus
+  kam ein erfundenes Verb neben einem Numerus-Bruch. Der Satz stand so in
+  „Labor“ **und** in „System“. Unregelmäßige Verben brauchen die ganze Form:
+  „4 Empfehlungen laufen noch und zählen erst nach der Abrechnung.“
+- **„Erwartet 1,735 €/L · 0,2 ct/L günstiger erwartet ≈ 0,08 €“** — „erwartet“
+  zweimal in einer Zeile, ohne dass der zweite Auftritt etwas hinzufügt. Die
+  Zeile sagt jetzt, wogegen verglichen wird: „0,2 ct/L günstiger als jetzt“.
+
 ### Neue Ratchets
 
+- **F3/§5d**: In `.tsx`-Nutzertext darf in der Nähe von „Auto“/„Automatik“
+  nicht `timeValueUsed` interpoliert werden — dort gehört `autoZ.z` hin.
+  Gegenprobe gefahren: Der wiederhergestellte Fehler fällt auf.
 - **M1**: kein `grid` mit `gap`, aber ohne Spaltenangabe (nennt Datei, Zeile
   und Klassenliste).
 - **U1**: kein ungeschichtetes `font:`-Kürzel; die Erbregel in `@layer base`

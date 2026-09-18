@@ -83,12 +83,15 @@ export interface VehiclePanelProps {
  */
 function timeValueShort(
   timeValue: number,
-  timeValueUsed: number,
   autoZ: { z: number; isPeak: boolean },
 ): string {
+  // 0.55.0: Der Auto-Zweig nannte `timeValueUsed`. Der ist nur dann der
+  // Automatik-Wert, wenn `timeValue` 0 ist — in diesem Zweig also gleich
+  // `autoZ.z`. Die direkte Quelle lässt keine Verwechslung offen, wenn der
+  // Aufrufer den Zweig einmal anders wählt.
   return timeValue > 0
     ? `${deTrimmed(timeValue)} €/h`
-    : `Auto (${deTrimmed(timeValueUsed)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
+    : `Auto (${deTrimmed(autoZ.z)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
 }
 
 /** Ich → Fahrzeug: was ist meins — und auf welchen Geräten gilt es. */
@@ -265,19 +268,36 @@ export function VehiclePanel(props: VehiclePanelProps) {
             max={PROFILE_BOUNDS.timeValue.max}
             step={0.5}
             unit="€/h"
-            valueText={timeValueShort(timeValue, timeValueUsed, autoZ)}
+            valueText={timeValueShort(timeValue, autoZ)}
             valueSpeech={
               timeValue > 0
                 ? euroPerHour(timeValue)
-                : `Automatik ${euroPerHour(timeValueUsed)}`
+                : `Automatik ${euroPerHour(autoZ.z)}`
             }
             hint={
               <span
                 className="mt-1 block text-xs text-slate-500"
                 title="Fachwort: Peak"
               >
-                0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
-                {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}. Die feste Regel lautet 16 €/h von 16:30–20:00 Uhr, sonst 10 €/h.
+                {/* 0.55.0: Der Hinweis beschrieb die Automatik immer im
+                    Präsens („gerade Nebenzeit“) — auch bei gesetztem Zeitwert,
+                    wo sie gar nicht greift. Daneben stand dann „Auto (12 €/h)“
+                    gegen „0 = Auto: 10 €/h“: zwei Zahlen, ein Zustand. Und die
+                    Regel nannte 16/10 €/h fest, obwohl `autoTimeValue()` die
+                    Quelle ist. Jetzt sagt der Satz, was tatsächlich gilt. */}
+                {timeValue > 0 ? (
+                  <>
+                    Fester Wert. Mit 0 rechnet die App nach Uhrzeit — gerade
+                    wären das {deTrimmed(autoZ.z, 1)} €/h (
+                    {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}).
+                  </>
+                ) : (
+                  <>
+                    Automatik nach Uhrzeit: gerade{" "}
+                    {deTrimmed(autoZ.z, 1)} €/h (
+                    {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}).
+                  </>
+                )}
               </span>
             }
           />

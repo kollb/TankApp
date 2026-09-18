@@ -81,7 +81,7 @@ export interface JetztViewProps {
   liters: number;
   /** Effektiver Zeitwert (Override oder Default). */
   timeValue: number;
-  timeValueUsed: number;
+  /** Was die Uhrzeit-Automatik ergäbe — Grundlage jeder „Auto“-Aussage. */
   autoZ: { z: number; isPeak: boolean };
   decideRes: ResourceState<DecideResult>;
   stations: Station[];
@@ -242,7 +242,6 @@ export function JetztView(props: JetztViewProps) {
     stripCells,
     tankPercent,
     timeValue,
-    timeValueUsed,
   } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [assumptionsOpen, setAssumptionsOpen] = useState(false);
@@ -598,9 +597,14 @@ export function JetztView(props: JetztViewProps) {
                       className="mt-1 block text-xs text-slate-500"
                       title="Fachwort: Peak und Off-Peak"
                     >
-                      0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h ·{" "}
-                      {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den
-                      Umweg
+                      {/* 0.55.0: Stand hier fest als „aktuell <Wert> €/h ·
+                          Stoßzeit/Nebenzeit“. Bei gesetztem Zeitwert war der
+                          Wert der manuelle, das Zeitwort aber das der nicht
+                          aktiven Automatik — zwei Aussagen über verschiedene
+                          Zustände in einer Klammer. */}
+                      {timeValue > 0
+                        ? `Fester Wert · mit 0 nach Uhrzeit (gerade ${deTrimmed(autoZ.z)} €/h) · wirkt auf den Umweg`
+                        : `0 = Auto · gerade ${deTrimmed(autoZ.z)} €/h (${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den Umweg`}
                     </span>
                   </label>
                 </div>

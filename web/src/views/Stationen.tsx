@@ -291,8 +291,10 @@ export function StationenView(props: StationenViewProps) {
     reference: ref ? { name: ref.station.name } : null,
     reason: ref?.reason ?? null,
     liters,
+    // 0.55.0: gleiche Verwechslung wie in der Auswahl — im Auto-Zweig ist
+    // `autoZ.z` die Quelle, nicht der eventuell manuelle `timeValueUsed`.
     timeValueLabel:
-      timeValue > 0 ? `${deTrimmed(timeValue)} €/h` : `Auto (${deTrimmed(timeValueUsed)} €/h)`,
+      timeValue > 0 ? `${deTrimmed(timeValue)} €/h` : `Auto (${deTrimmed(autoZ.z)} €/h)`,
     pricesAt,
     now,
   });
@@ -388,8 +390,13 @@ export function StationenView(props: StationenViewProps) {
               }}
               className="bg-slate-950 pr-1 text-slate-100"
             >
+              {/* 0.55.0: Stand hier `timeValueUsed` — das ist bei gesetztem
+                  Zeitwert der manuelle Wert. Die Auto-Option warb damit für
+                  eine Zahl, die die Automatik nie liefert („Auto (12 €/h)“,
+                  während sie 10 €/h ergäbe). Die Option muss zeigen, was man
+                  bekommt, wenn man sie wählt: `autoZ.z`. */}
               <option value="0">
-                Auto ({deTrimmed(timeValueUsed)} €/h ·{" "}
+                Auto ({deTrimmed(autoZ.z)} €/h ·{" "}
                 {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})
               </option>
               {[5, 8, 10, 12, 15, 20, 25, 30].map((z) => (

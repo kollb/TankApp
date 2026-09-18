@@ -96,7 +96,6 @@ const baseProps: JetztViewProps = {
   },
   liters: 40,
   timeValue: 12,
-  timeValueUsed: 12,
   autoZ: { z: 10, isPeak: false },
   selectedId: "aral",
   stations: [station("aral")],
