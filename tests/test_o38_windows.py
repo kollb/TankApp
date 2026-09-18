@@ -3,7 +3,7 @@
 Vor 0.45.0 wurde ``episode.status = \"expired\"`` zwar gesetzt, aber nie
 gezählt und nie angezeigt: Sichtbar waren nur abgerechnete Fälle, die
 verstrichenen Empfehlungen verschwanden — keine Gegenprobe zur
-Trefferquote (docs/OPTIMIERUNGS-BEFUND.md O38).
+Trefferquote (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O38).
 
 Seit O38 zählt ``compute_advice_stats`` genutzte (resolved) gegen
 verstrichene (expired) Fenster je Woche/Monat — nur Folgen mit echter

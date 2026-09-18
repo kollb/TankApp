@@ -458,7 +458,7 @@ describe("C8: Installationshinweis", () => {
 // ---------------------------------------------------------------------------
 // O40 — Die Textalternative eines Diagramms nennt Werte.
 //
-// Befund (docs/OPTIMIERUNGS-BEFUND.md O40): Die Beschreibung entstand aus den
+// Befund (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O40): Die Beschreibung entstand aus den
 // Reihennamen („Liniendiagramm: Erwarteter Preis, Band.“), das `aria-label`
 // war überall dasselbe Wort „Diagramm“. Ein Screenreader erfuhr, **welche**
 // Reihen ein Diagramm zeigt, nicht wohin sie laufen — und in „Labor“ liegen

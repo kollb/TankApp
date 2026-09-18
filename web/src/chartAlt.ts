@@ -1,6 +1,6 @@
 // O40 — Textalternativen der Diagramme nennen Werte, nicht nur Reihennamen.
 //
-// Befund (docs/OPTIMIERUNGS-BEFUND.md O40): Die Beschreibung entstand aus den
+// Befund (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O40): Die Beschreibung entstand aus den
 // Reihennamen („Liniendiagramm: Erwarteter Preis, Band.“) und das `aria-label`
 // war in allen Bausteinen dasselbe Wort „Diagramm“. Ein Screenreader erfuhr
 // damit, **welche** Reihen ein Diagramm zeigt, aber nicht wohin sie laufen —

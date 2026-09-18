@@ -1946,7 +1946,7 @@ export function dataReachLabel(
  * steigen und danach bis zum nächsten Mittag nur noch fallen. Davor galt der
  * alte Rhythmus mit dem Hoch am Abend. Ein Bestand, der beide Welten mischt,
  * zeigt deshalb ein Muster, das es so nie gab — die Panels zählen nur
- * Beobachtungen ab der Kante (docs/BEFUND-12-UHR-REGEL.md).
+ * Beobachtungen ab der Kante (docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md).
  */
 export type LawFloorPayload = {
   /** ISO-8601 (UTC) der Kante; `null` = Kante abgeschaltet. */

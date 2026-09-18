@@ -1,7 +1,7 @@
 # TankApp API — Endpunkte & Spezifikation
 
 > Stand: 18.09.2026 · App-Version **0.52.0** — neu seit 0.52.0 (Batch 7 des
-> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
+> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
 > jede Antwort trägt `X-Process-Time` und `/health` einen
 > [`performance`](#health)-Block (O37); `If-None-Match` → `304` gilt nicht mehr
 > nur für `/overview`, sondern auch für `decide`, `stations`, `heatmap`,
@@ -25,7 +25,7 @@
 > zusätzlich `index_bytes`/`file_count`/`largest_file_bytes` und den Grund
 > `incomplete`, die Endpunkte liefern dieselbe Struktur wie vorher.
 > Davor neu seit 0.48.0 (Batch 5 des
-> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
+> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
 > normierte Fenstersterne mit Rohwert/Basisrate (O12), 0,5-Gleichstände (O7),
 > strikte Belegfenster und Netto-Umweg-Provenienz (O8/O9), 7×24-
 > Personalisierung (O2/O3), Forecast-Support (O10), LOO-Heatmap (O11),
@@ -43,7 +43,7 @@
 > `alarms[]` + `version`/`commit` in `/health` (B4/B9). Seit 0.40.0 nennt das
 > Advice-Tagebuch den Grund einer Ablehnung (`decline_reason`) und den Namen der
 > Station (`station_name`). Seit **0.44.0** (Batch 1 des
-> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check))
+> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check))
 > trägt jeder Beleg die Herkunft seiner Tankuhrzeit (`clock_hour_source`, O1),
 > der Feedback-Store hat `schema_version` **4** (Altbestände werden beim Laden
 > migriert, siehe [BETRIEB.md](BETRIEB.md)), und `/health` nennt Größe und
@@ -1058,7 +1058,7 @@ Antwort:
   der Bestand mischt Vor- und Nach-Gesetz-Preise. Fehlen beide Felder (alte
   Version), ist die Kante unbekannt — die GUI behauptet dann keine. Auf dem
   heutigen Bestand ist `points_before_law` 0: Alle Beobachtungsfenster beginnen
-  hinter dem 01.04.2026 ([Befund §4.1](BEFUND-12-UHR-REGEL.md#41-die-prämisse-war-rechnerisch-veraltet))
+  hinter dem 01.04.2026 ([Befund §4.1](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md#41-die-prämisse-war-rechnerisch-veraltet))
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:

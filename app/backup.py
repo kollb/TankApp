@@ -6,7 +6,7 @@ Vor 0.47.0 wusste die App nichts davon: Starb der Cron — NAS-Update, Pfad
 umbenannt, Volume ausgehängt —, meldete nichts, und der Verlust fiel erst beim
 Restore auf. Der Alarm-Katalog kannte ``collector_stale``, ``job_failed``,
 ``store_too_large`` und ``stations_dead``, aber keinen Code für das Backup
-(docs/OPTIMIERUNGS-BEFUND.md O33).
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O33).
 
 Dieses Modul liefert den Zustand dafür: **nur** ``stat`` über das Backup-Ziel,
 kein Netz und kein InfluxDB — dieselbe Regel wie der übrige Health-Block

@@ -15,12 +15,9 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | TankApp auf Pi + NAS einrichten (erster Start) | [INSTALL.md](INSTALL.md) |
 | wissen, was im Dauerbetrieb zu tun ist (systemd, Backup, Alarme, Fehlersuche) | [BETRIEB.md](BETRIEB.md) |
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
-| das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
-| die 12-Uhr-Bodenkante für Panels und Kalibrierung umsetzen (B30, Arbeits-Checkliste) | [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
 | wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8, in 0.41.0 umgesetzt) | [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) |
-| wissen, wo Nutzertexte gegen das eigene Regelwerk laufen (Text-Befund T1–T13) | [TEXT-BEFUND.md](TEXT-BEFUND.md) |
-| wissen, wo 0.43.2 noch Optimierungspotenzial hat (Rechnung, Anzeige, Betrieb, Alltag, Backup, Wirkung — Befund O1–O42; Batch 1 = O1 + O22 ist in 0.44.0 umgesetzt) | [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) |
+| nachlesen, welche Befunde die App geformt haben (Optimierungs-Befund O1–O44, Text-Befund T1–T13, 12-Uhr-Regel, B30 — alle abgearbeitet) | [archiv/README.md](archiv/README.md) |
 | den abgeschlossenen GUI-Neuentwurf nachvollziehen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) |
 | eine tote oder sortenlose Station im Polling-Set tauschen | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) |
 | verstehen, wie Pi ↔ NAS ↔ Browser zusammenspielen | [ARCHITEKTUR.md](ARCHITEKTUR.md) |
@@ -49,7 +46,7 @@ Diagramm (O40). O28 und O41 desselben Batches lagen seit PR #154 auf `main`,
 ohne Versionswechsel — mit diesem Release sind Ledger und Befund wieder
 deckungsgleich. Mitgezogen sind [MICROCOPY.md](MICROCOPY.md) (§4g: die neuen
 Muster für Belegmaske und Diagramm-Beschreibung) und
-[OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) (Abnahme-Vermerk je Check).
+[OPTIMIERUNGS-BEFUND.md](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) (Abnahme-Vermerk je Check).
 0.53.0 setzt zwei Nutzerurteile vom 18.09.2026 um: Der Mini-Verlauf in der
 Stationszeile ist entfallen („niemand kann was mit dem Graphen anfangen“ — die
 Linie hatte weder Achse noch Zeitbezug; der Verlauf bleibt als Knopf je Zeile
@@ -71,7 +68,7 @@ rotiert und das Roharchiv ist als bewusst ungesichert benannt (O34), und Bild
 wie Pipeline bauen gegen dieselbe Python-/Node-Linie — die Suite läuft jetzt
 **im Bild** (O27). Messwerte und Budgets:
 [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
-0.51.0 setzt Schritt 3 des 12-Uhr-Befunds um (B30): Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`, Payload und GUI nennen Kante und ausgeblendete Punkte, der Modell-Lauf misst den Vor-Gesetz-Anteil (`law_quality`). Konzept und Abnahme-Protokoll: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md); dabei ist der Befund §4 nachgerechnet — alle Muster-Fenster beginnen heute hinter dem Gesetz, die Kante ist Garantie statt Reparatur.
+0.51.0 setzt Schritt 3 des 12-Uhr-Befunds um (B30): Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`, Payload und GUI nennen Kante und ausgeblendete Punkte, der Modell-Lauf misst den Vor-Gesetz-Anteil (`law_quality`). Konzept und Abnahme-Protokoll: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md); dabei ist der Befund §4 nachgerechnet — alle Muster-Fenster beginnen heute hinter dem Gesetz, die Kante ist Garantie statt Reparatur.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
 nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
@@ -79,7 +76,7 @@ nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
 zeigen echte Daten statt eines Dauertextes (O18), die Woche bekommt einen
 Rückblick über den ntfy-Kanal (O31), und persönliche Daten sind über
 `TANKAPP_READ_TOKEN` schützbar (O39).
-0.50.1 führt den 12-Uhr-Strang mit main zusammen (Kalendertag-Schnitt + feste Farbskala in einem Streifen) und legt den Befund zum Gesetz als Report ab ([BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md)): Live-Daten regeltreu (alle Erhöhungen am Mittagspunkt), Panels aus dem Mischbestand beschrieben die Welt vor dem 01.04.2026; Schritt 3 (Anzeige-Bodenkante und Nach-Gesetz-Kalibrierung) ist als B30 ausgelagert.
+0.50.1 führt den 12-Uhr-Strang mit main zusammen (Kalendertag-Schnitt + feste Farbskala in einem Streifen) und legt den Befund zum Gesetz als Report ab ([BEFUND-12-UHR-REGEL.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md)): Live-Daten regeltreu (alle Erhöhungen am Mittagspunkt), Panels aus dem Mischbestand beschrieben die Welt vor dem 01.04.2026; Schritt 3 (Anzeige-Bodenkante und Nach-Gesetz-Kalibrierung) ist als B30 ausgelagert.
 0.49.5 hält den 12-Uhr-Regel-Check auch an Tagen ohne gültigen Preis aufrecht (Statuszeilen werden zentral gefiltert, Lücken gezählt statt geraten — [DATENWERKZEUGE.md#12-uhr-regel-check](DATENWERKZEUGE.md#12-uhr-regel-check) erklärt die Datenquelle für den Vorher/Nachher-Kontrast); 0.49.4 macht auf der nackten NAS lauffähig (eigenständig, nur numpy/pandas, NAS-Ablauf in [DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check) dokumentiert); 0.49.3 schneidet den Tagesstreifen („Heute im Blick“) auf den Berliner
 Kalendertag — die Zellen 18–24 Uhr zeigten am Nachmittag Meldungen von
 gestern Abend als „heute“ — und bringt mit `analysis/noon_rule_check.py`
@@ -103,7 +100,6 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
 | [API.md](API.md) | 0.52.0 | 0.53.0 ist reine GUI-Arbeit: kein Endpunkt, kein Payload, kein Fehlercode angefasst — die Endpunkt-Beschreibung bleibt gültig, geprüft ist sie gegen 0.52.0 |
-| [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) | 0.51.0 | Abgeschlossener Prüfbericht zum 12-Uhr-Gesetz; Batch 7 und 0.53.0 ändern weder Panel noch Kalibrierung |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und 0.53.0 reine GUI-Arbeit — keins von beiden fasst ein Werkzeug an |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
 | [BETRIEB.md](BETRIEB.md) | 0.53.0 | 0.54.0 ist reine GUI-Arbeit: kein Dienst, kein Cron, kein Alarm, kein Backup-Pfad angefasst — Abläufe und Störungsfälle bleiben gültig, geprüft sind sie gegen 0.53.0 |
@@ -114,16 +110,30 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
-| [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–7 tragen ihre Umsetzungs-Vermerke 0.44.0–0.52.0 und O22 (d) den von 0.49.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)), der Betriebsbefund O44 den von 0.49.1 ([§7](OPTIMIERUNGS-BEFUND.md#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite)) |
-| [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) · [SPEICHER.md](SPEICHER.md) | — | Betriebs- und Übernahmeregeln, keine Versionsaussagen |
 
 `tests/test_ledger_drift.py` prüft, dass jedes Dokument eine Stand-Zeile im
 Kopf hat, dass keine **neuere** Version behauptet wird als die App und dass
 diese Liste vollständig bleibt — beide Richtungen: kein alter Stand ohne
-Eintrag, kein Eintrag ohne Grund.
+Eintrag, kein Eintrag ohne Grund. Archivierte Dokumente stehen bewusst nicht
+darin: Sie sind historisch und werden nicht nachgeführt.
+
+### Aufgeräumt am 18.09.2026
+
+Mit dem Abschluss des Optimierungs-Befunds (0.54.0) hat `docs/` fünf
+Dokumente verloren — nicht gelöscht, sondern nach
+[archiv/](archiv/README.md) ausgelagert, weil sie ihre Aufgabe erfüllt haben:
+der **Optimierungs-Befund** (O1–O44, Batch 1–8 abgearbeitet), der
+**12-Uhr-Befund** samt **B30-Checkliste** (umgesetzt in 0.51.0), der
+**Text-Befund** (T1–T13, umgesetzt in 0.39.0) und die
+**Fallback-GUI-v2-Checkliste** (umgesetzt in 0.33.0, deren eigener Schritt 6.2
+genau diese Auslagerung verlangte). Jedes trägt oben einen Banner mit
+Archivdatum, Ergebnis und dem Verweis auf das lebende Dokument; alle
+Querverweise aus Code und Doku sind nachgezogen, der Link-Test bleibt grün.
+Was bleibt, sind die **17 lebenden Dokumente** dieses Ordners: Anleitung,
+Betrieb, Referenz, Konzept, Regelwerk — plus das Archiv für alles, worauf
+Commits und Kommentare noch zeigen.
 
 ## Lesereihenfolge
 
@@ -167,8 +177,8 @@ Eintrag, kein Eintrag ohne Grund.
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
 | [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) | Vermessung der gebauten GUI gegen den Entwurf: Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Gate-Selbsttäuschung, Props-Drilling — Befunde U1–U8 mit DoD, umgesetzt in 0.41.0 (archiviert mit Erledigt-Vermerk) |
-| [TEXT-BEFUND.md](TEXT-BEFUND.md) | Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmenge-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13 mit DoD, noch ohne Abnahme |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | Sichtung von 0.43.2 gegen sich selbst, ohne Auftrag und ohne Abnahme: Mathematik/Statistik (O1–O15), UX/UI (O16–O21), Technik/Betrieb (O22–O28), Kundensicht (O29–O32), dazu die Dimensionen Datenhaltbarkeit, Integrität, Konfiguration, Beobachtbarkeit, Wirkung, Zugriff, Datenschutz, Barrierefreiheit, Wartbarkeit (O33–O42) — je Befund Beleg mit Zeilenangabe, Wirkung und DoD; Messprotokoll, Abgrenzung zu bekannten Aufgaben und acht Batches mit Priorität, Aufwand und Check je Befund; die Batches 1–5 (O1–O15 mit den jeweils zugeordneten Batch-Punkten, O17, O22–O24, O29, O33, O35, O36, O38, O42, O43) sind mit 0.44.0–0.48.0 umgesetzt und tragen je Befund den Vermerk samt Batch-Abnahme |
+| [TEXT-BEFUND-2026-09-15.md](archiv/TEXT-BEFUND-2026-09-15.md) | **Archiviert.** Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmengen-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13, erledigt in 0.39.0 |
+| [OPTIMIERUNGS-BEFUND-2026-09-18.md](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) | **Archiviert, vollständig abgearbeitet.** Sichtung von 0.43.2 gegen sich selbst: Mathematik/Statistik (O1–O15), UX/UI (O16–O21), Technik/Betrieb (O22–O28), Kundensicht (O29–O32), dazu zwölf weitere Dimensionen (O33–O44) — je Befund Beleg mit Zeilenangabe, Wirkung, DoD und Batch. Batch 1–8 sind mit 0.44.0–0.54.0 umgesetzt oder als Dauerzustand benannt; jeder Befund trägt seinen Vermerk |
 | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) | Archivierte Arbeits-Checkliste zum abgeschlossenen Neuentwurf: Phasen, Definition of Done je Bereich, Messwerte, Fallback-Gleichschritt, Abnahme |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |

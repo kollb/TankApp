@@ -1,5 +1,7 @@
 # OPTIMIERUNGS-BEFUND — wo 0.43.2 noch Luft hat
 
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Der Befund ist **vollständig abgearbeitet**: Batch 1–8 (O1–O44) sind mit 0.44.0–0.54.0 umgesetzt oder als Dauerzustand benannt, jeder Befund trägt seinen Umsetzungsvermerk. Das Dokument bleibt als Protokoll lesbar — Zeilenangaben und Messwerte stehen gegen 0.43.2 und werden nicht nachgeführt. Was heute gilt: [LUECKEN.md](../LUECKEN.md) (Konzept ↔ Stand), [TODO.md](../../TODO.md) (Arbeitsliste), [CHANGELOG.md](../../CHANGELOG.md) (Nachweise je Version).
+>
 > Stand: 16.09.2026 · App-Version **0.43.2** · Arbeitsdokument (Sichtung,
 > keine Abnahme, kein Auftrag). Alle Zeilenangaben sind gegen 0.43.2
 > nachgeprüft. Zweiter Durchgang am selben Tag: zwölf
@@ -16,9 +18,9 @@
 > `engine/`, `app/`, `web/src/`, `rp2/`, `ops/` und `data-tools/`, dazu
 > Messungen am Demo-Stapel und an synthetischen 70-Tage-Daten — Protokoll und
 > Grenzen in [8](#8-gemessen-statt-behauptet). Bewusst **nicht** wiederholt
-> werden die offenen Aufgaben A–H aus [../TODO.md](../TODO.md), die
-> archivierten Prüfberichte in [archiv/README.md](archiv/README.md) und die
-> Text-Befunde T1–T13 aus [TEXT-BEFUND.md](TEXT-BEFUND.md). Wo ein Befund an
+> werden die offenen Aufgaben A–H aus [../TODO.md](../../TODO.md), die
+> archivierten Prüfberichte in [archiv/README.md](README.md) und die
+> Text-Befunde T1–T13 aus [TEXT-BEFUND.md](TEXT-BEFUND-2026-09-15.md). Wo ein Befund an
 > eine bekannte offene Entscheidung rührt (B22 Nacht-Raster, C12 Desktop),
 > steht der Querverweis dabei, kein zweiter Befund.
 >
@@ -32,7 +34,7 @@
 > (O2, O3, O7–O15, O43) mit **0.48.0** umgesetzt — je Befund steht der Vermerk
 > unter dem DoD, Zeilenangaben und Messwerte bleiben als Befund gegen 0.43.2
 > stehen. **O22-Maßnahme (d) (Aufteilen der Veröffentlichung) ist mit 0.49.0
-> umgesetzt** ([LUECKEN.md](LUECKEN.md#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)):
+> umgesetzt** ([LUECKEN.md](../LUECKEN.md#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)):
 > Die zweite Stadt hob das Polling-Set auf 20 Stationen und die Monolith-Datei
 > auf 13,5 MB — der vereinbarte Auslöser trat ein, jede Stations-Prognose liegt
 > jetzt in einer eigenen Datei, `current.json` ist ein Index mit Zeigern.
@@ -43,7 +45,7 @@
 > `main` (ohne Versionswechsel), O32 und O40 mit 0.54.0. **Damit ist jeder
 > Befund dieses Dokuments umgesetzt oder als Dauerzustand benannt**; die
 > offenen Reste stehen nicht hier, sondern als Arbeitspunkte in
-> [../TODO.md](../TODO.md) (B25, C13, B22, C12).
+> [../TODO.md](../../TODO.md) (B25, C13, B22, C12).
 
 ## Inhaltsverzeichnis
 
@@ -80,11 +82,11 @@ Abgrenzung, damit nichts doppelt läuft: B22 (Bootstrap-Samples, Nacht-Raster)
 und C12 (Desktop-Zweispalter) sind offene Entscheidungen, keine neuen
 Befunde; hier steht jeweils nur die Messung, die die Entscheidung erleichtert
 (O22, O25). Das Ensemble-Problem (Gewichte aus In-Sample-MASE) ist in
-[LUECKEN.md](LUECKEN.md) bereits mit denselben Zahlen dokumentiert und wird
+[LUECKEN.md](../LUECKEN.md) bereits mit denselben Zahlen dokumentiert und wird
 hier nicht neu verkauft — es taucht nur als Querverweis in O6 auf, weil die
 Brier-Schwelle dieselbe Schwäche erbt.
 
-Seit dem ersten Durchgang ist **0.43.2** erschienen ([../CHANGELOG.md](../CHANGELOG.md)):
+Seit dem ersten Durchgang ist **0.43.2** erschienen ([../CHANGELOG.md](../../CHANGELOG.md)):
 vier Nutzerbefunde sind dort behoben (Lernstand-Satz doppelt, Geometrie des
 Tagesstreifens, Karten-Anker, Mobil-Robustheit mit eigener Browser-Suite).
 Keiner davon wird hier wiederholt. Berührt ist allein O20: 0.43.2 hat die
@@ -200,7 +202,7 @@ statt sie umzuschreiben. Die Herkunft ist bis in die GUI sichtbar:
 `wh_clock_sources`/`wh_measured_n`/`wh_default_n` in
 `GET /api/v1/stats/summary`, `personalization.measured_fills`/`default_fills`
 in `/api/v1/decide`, Schlusssatz in `personalizationNote`
-([MICROCOPY.md §4b](MICROCOPY.md#4b-bereich-jetzt-feste-muster-0340)).
+([MICROCOPY.md §4b](../MICROCOPY.md#4b-bereich-jetzt-feste-muster-0340)).
 Zusätzlich: Snapshots nennen keine erfundene Emit-Uhrzeit mehr, und der
 Stunden-Fallback von `classify_compliance` bekommt den Minutenanteil.
 Nachweis: `tests/test_o1_clock_hour.py` (15 Fälle, inkl. UTC→Berlin,
@@ -315,7 +317,7 @@ wäre neuer Scope ohne Design-Anker. Nachweis: `tests/test_o4_picp_days.py`
 **Beleg.** `app/feedback.py:494–497` und `:521` bauen `p_correct` entweder
 aus der Verteilung oder aus `estimate_p`; `estimate_p` ist in `:437–441` eine
 Laplace-Basisrate derselben Aktion (`(wins+1)/(n+2)`). Ein Feld `p_source`
-existiert nicht. [LUECKEN.md](LUECKEN.md) Zeile 520 beschreibt das Gate so,
+existiert nicht. [LUECKEN.md](../LUECKEN.md) Zeile 520 beschreibt das Gate so,
 als käme `p` ausschließlich aus der Verteilung.
 
 **Wirkung.** Zwei Probleme in einer Zahl. Erstens: Verteilungs-P und
@@ -325,7 +327,7 @@ Kalibrierung. Zweitens: `estimate_p` ist per Konstruktion selbstkalibriert
 (eine Laplace-Rate eigener Treffer sagt eigene Treffer gut vorher). Wenn das
 M7-Gate auf Brier über `p_correct` steht und `p_correct` teilweise
 `estimate_p` ist, kann das Gate sich selbst erfüllen — genau die
-Gate-Selbsttäuschung, die [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md)
+Gate-Selbsttäuschung, die [archiv/GUI-UX-BEFUND.md](GUI-UX-BEFUND.md)
 als U-Befund für die GUI beschrieben hat, hier auf der Rechenseite.
 
 **DoD.** `p_source` je Ledger-Zeile (`"verteilung"|"basisrate"|"keine"`), der
@@ -350,7 +352,7 @@ in `tests/test_b4.py` und ein Fall in `web/src/data.test.ts`.
 
 **Beleg.** Die Gate-Bedingung „Brier < 0,25“ steht als feste Zahl im
 Ledger-Pfad (`app/feedback.py`, Brier-Bildung `:1281`) und in
-[KONZEPT.md](KONZEPT.md)/[LUECKEN.md](LUECKEN.md) als M7-Kriterium.
+[KONZEPT.md](../KONZEPT.md)/[LUECKEN.md](../LUECKEN.md) als M7-Kriterium.
 
 **Wirkung.** 0,25 ist der Brier-Score einer konstanten 50-Prozent-Vorhersage.
 Ein Modell, das nichts weiß, besteht die Schwelle also fast — und mit
@@ -365,7 +367,7 @@ Hysterese entscheidet eine Nachkommastelle über „kalibriert“.
 und Klimatologie (gleiche Stunde, gleicher Wochentag), (c) das Gate besteht
 erst, wenn die Obergrenze des Intervalls unter der Referenz liegt. Dieselbe
 Logik gilt für die Ensemble-Gewichtung, die in
-[LUECKEN.md](LUECKEN.md) Zeile 516 bereits als diskriminanzarm dokumentiert
+[LUECKEN.md](../LUECKEN.md) Zeile 516 bereits als diskriminanzarm dokumentiert
 ist (0,51/0,49) — dort steht der Befund, hier nur der Querverweis.
 
 **Umgesetzt in 0.45.0:** Das Gate besteht erst, wenn die Obergrenze des
@@ -615,8 +617,8 @@ Gleichzeitig liegt die echte Größe längst im Browser: Labor lädt
 
 **Wirkung.** Der Balken, der den Hauspreis-Vergleich je Station zeigen soll,
 ist dauerhaft leer, und der Leer-Text schiebt es auf die Datenlage statt auf
-ein fehlendes Feld. [UI-NEUENTWURF.md](UI-NEUENTWURF.md) Zeilen 588–597
-spezifizieren den Hauspreis-Vergleich, [LUECKEN.md](LUECKEN.md) Zeilen 476
+ein fehlendes Feld. [UI-NEUENTWURF.md](../UI-NEUENTWURF.md) Zeilen 588–597
+spezifizieren den Hauspreis-Vergleich, [LUECKEN.md](../LUECKEN.md) Zeilen 476
 und 489 führen δ̂-Auswahl und Stations-Labor als fertig. Kein Test liefert `stationScores`
 mit `delta_ct` (kein Fixture in `web/src/views/Labor.test.tsx`,
 `web/src/lab.test.ts`, `web/e2e/`), also ist die Suite grün über einem
@@ -841,7 +843,7 @@ Originalfunktionen `_records`/`_draws`):
 Zum Vergleich der Demo-Stapel: 6 Stationen, 200 Draws, kompakt geschrieben
 (`ops/quality/demo_data.py:337–338`) — **4,14 MB**, also schon 41 % des
 Limits, aber weit genug darunter, dass keine Suite die Klippe sieht.
-[ANALYSE.md](ANALYSE.md) Zeile 135 nennt die echte Konfiguration:
+[ANALYSE.md](../ANALYSE.md) Zeile 135 nennt die echte Konfiguration:
 **m = 11 Stationen**, B = 2000 fest.
 
 **Wirkung.** Bei etwa **5 Stationen** ist das Limit erreicht, bei den 11 des
@@ -904,7 +906,7 @@ stummen Nachmittag.
   `/last_forecasts` — darüber auch der RP2-Cache) und braucht atomares
   Schreiben über mehrere Pfade. Die Klippe ist durch (a)–(c)
   plus Alarm messbar und meldend; die Entscheidung steht begründet in
-  [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+  [LUECKEN.md](../LUECKEN.md#bewusst-offen-backlog-mit-grund).
 
 **Nachmessung mit Produktionsparametern (11 Stationen, `bootstrap_samples=2000`,
 `train_days=42`, 24 h/72 h/168 h, 500 publizierte Draws):**
@@ -1032,7 +1034,7 @@ obwohl sich ihr Datenstand über denselben `_file_stamp`-Mechanismus
 nur für statische Assets, die selten gebaut werden; ETag/304 auf alle
 read-only-Endpunkte ausweiten, die einen Datenstempel haben. Beides zusammen
 nimmt dem NAS-Poll den größten Teil seiner Kosten. Messwert für
-[QUALITAET.md](QUALITAET.md) nachziehen, damit das Budget nicht nur im
+[QUALITAET.md](../QUALITAET.md) nachziehen, damit das Budget nicht nur im
 Browser steht.
 
 ### O26 — Jeder Decide-Poll nimmt die Schreibsperre
@@ -1091,7 +1093,7 @@ die Tagesblöcke stationsübergreifend gemeinsam gezogen wurden (A11)“).
 geschrieben (`ops/quality/demo_data.py:337–338`) und enthält gemessen
 **51 480 `NaN`-Token** — für Python lesbar, für `jq` und jeden Browser-Parser
 ungültig. Die Produktion ist sauber (`write_json` mit `json_safe`,
-`engine/storage.py:41–43`), aber [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md)
+`engine/storage.py:41–43`), aber [STATIONEN-TAUSCH.md](../STATIONEN-TAUSCH.md)
 Zeile 293 empfiehlt genau `jq '.failures' data/runtime/engine/current.json`.
 
 **Wirkung.** Drei kleine Stellen, an denen Code und Kommentar auseinander
@@ -1108,7 +1110,7 @@ und Produktion erzeugen dann byte-gleiche Strukturen).
 ## 6. Kundensicht
 
 Der Nutzer ist eine Person, das Netz ist ein LAN, Anmeldung ist bewusst nicht
-vorgesehen ([../TODO.md](../TODO.md), Rahmenbedingungen). Befunde O29–O32
+vorgesehen ([../TODO.md](../../TODO.md), Rahmenbedingungen). Befunde O29–O32
 sind deshalb aus der Perspektive „was fehlt mir im Alltag“ formuliert.
 
 ### O29 — Kein Hinweis wenn das Fenster aufgeht
@@ -1117,7 +1119,7 @@ sind deshalb aus der Perspektive „was fehlt mir im Alltag“ formuliert.
 Alarme genutzt (`app/alarms.py` baut die Meldungen, die GUI zeigt sie);
 die Fenstersuche kennt Beginn und Ende des empfohlenen Fensters
 (`app/decide.py:1088–1102`, `windows_today` mit `start`/`end`/`p`).
-[LUECKEN.md](LUECKEN.md) Zeile 510 führt Preis-Push als bewusst offen
+[LUECKEN.md](../LUECKEN.md) Zeile 510 führt Preis-Push als bewusst offen
 („der Versand braucht eine Entscheidung, wer wann was aufs Handy bekommt“),
 Zeile 498 als offenen Punkt der Produkt-KPIs.
 
@@ -1150,7 +1152,7 @@ sobald es das Feld gibt); und die Auslösung hängt an der Tabellen-Aktion des
 Snapshots, nicht am M7-Gate — der Push transportiert denselben Vorschlag,
 den das Ledger misst. Zahlen über Formatter (de-DE), Zeiten in
 Europe/Berlin; die Texte stehen als Muster in
-[MICROCOPY.md §4f](MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460).
+[MICROCOPY.md §4f](../MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460).
 Nachweis: `tests/test_o29_window_push.py` (23 Fälle, inkl. Ruhezeit über
 DST-Grenzen, Zustellfehler ohne Markierung, Episoden ohne Verteilungs-P).
 
@@ -1240,7 +1242,7 @@ umgesetzt mit 0.49.1.
 | O1-Vollständigkeit (Nachtrag 17.09.2026 aus der O17-Umsetzung) | Befund [O43](#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel): Die Validierung greift, aber der Pfad ohne Angabe leitet nichts ab — Stempel echt, Stunde erfunden |
 | Robustheit gegen fremde Antwortformen (Nachtrag 17.09.2026 abends aus dem Betrieb) | Befund [O44](#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite): `null` in den Draws ließ `decide` an einem `TypeError` scheitern (nur der Code `decide_failed` war sichtbar), und zwei Stellen lasen Felder ungeprüft (`alternatives_nearby.find`, `cities.includes`) — die zweite traf den Pi-Fallback, der kein `cities` lieferte |
 | Sicherheit gegen Injection und Pfadzugriff | **Kein Befund.** Statische Auslieferung ist auf `settings.static` beschränkt und prüft `is_relative_to` (`app/server.py:695–696`), Schreib-Endpunkte haben ein Budget mit 429 (`:714–723`), Job-Log-Zeilen gehen durch `redact` (`app/data.py:883`), Fehlermeldungen durch `app/errors.public_detail` |
-| Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
+| Externe Abhängigkeiten und Ausfall | **Kein eigener Befund.** [BETRIEB.md](../BETRIEB.md) deckt Collector-, Uploader-, GLIBC- und Preislücken-Fälle breit ab, die Alarm-Codes sind benannt, OSRM ist optional und selbst gehostet (`app/data.py:61–68`) |
 | Skalierbarkeit | Läuft auf [O22](#o22--die-veröffentlichung-passt-nicht-mehr-durch-das-leselimit) hinaus: Die Grenze ist nicht die Rechenzeit, sondern die Publikationsgröße |
 
 ### O33 — Die Backup-Alterung bleibt unsichtbar
@@ -1286,10 +1288,10 @@ Health-Payload — unsichtbar ist es damit nicht. Aufbewahrung:
 `ops/nas/backup.sh` behält 14 Tagesstände plus 6 Monatsstände
 (`TANKAPP_BACKUP_KEEP_MONTHLY`), die Tages-Rotation nimmt die Monatsstände
 aus. Lage (c) — zweites Ziel — steht als ausdrückliche Entscheidung in
-[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf dem
+[BETRIEB.md](../BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf dem
 NAS plus eine Kopie der unersetzbaren Bestände (Bilanz als `fills.csv`,
 Polling-Set) außerhalb des Geräts; ein zweites **automatisches** Ziel bleibt
-offen und steht im [Todo](../TODO.md). Nachweis:
+offen und steht im [Todo](../../TODO.md). Nachweis:
 `tests/test_o33_backup_stale.py` (9 Fälle).
 
 ### O34 — Historie und Archiv haben keine Aufbewahrungsregel
@@ -1424,7 +1426,7 @@ die Wirkung.
 Trigger-Abstände und Budgets (`:146`, `:227`, `:257`, `:348`), ebenso
 `app/data.py` für Staleness (`:88`, `:373`, `:584`). Es gibt keine
 Antwortzeiten im Health-Payload, keinen `X-Process-Time`-Header, kein
-Parse-Zeit-Feld. [QUALITAET.md](QUALITAET.md) führt Budgets für Lighthouse
+Parse-Zeit-Feld. [QUALITAET.md](../QUALITAET.md) führt Budgets für Lighthouse
 und den Lastpfad gegen `/api/v1/overview` — also Browser-Seite, gemessen von
 Hand.
 
@@ -1489,7 +1491,7 @@ anonyme Lese-Limit wurde in 0.12.0 entfernt (`:404–406`), Schreib-Endpunkte
 haben ein Budget mit 429 (`:714–723`), und ein Token-Mechanismus existiert
 bereits: `Authorization`-Prüfung für den Webhook (`:811–822`), Konfiguration
 über `webhook_token` (`app/config.py:28–29`), dokumentiert in
-[BETRIEB.md](BETRIEB.md) Zeilen 248–251.
+[BETRIEB.md](../BETRIEB.md) Zeilen 248–251.
 
 **Wirkung.** Jeder Rechner im LAN — Gast-WLAN, ein Kompromittiertes Gerät,
 ein neugieriger Router-Dienst — kann `GET /api/v1/fills` lesen: alle
@@ -1500,7 +1502,7 @@ Bind-Entscheidung, keine dokumentierte Entscheidung. Und es ist billig
 änderbar, weil der Token-Pfad schon da ist.
 
 **DoD.** Zwei Schritte, beide klein: (a) die Exposition in
-[BETRIEB.md](BETRIEB.md) ausdrücklich benennen (was lesbar ist, für wen,
+[BETRIEB.md](../BETRIEB.md) ausdrücklich benennen (was lesbar ist, für wen,
 welches Netz) — damit die Rahmenbedingung „kein Login“ als Entscheidung
 sichtbar bleibt und nicht als Übersehen wirkt; (b) optional ein
 `TANKAPP_READ_TOKEN` für die Ledger-Endpunkte, derselbe Mechanismus wie beim
@@ -1587,7 +1589,7 @@ Server-Payload).
 **Umgesetzt in 0.46.0:** Die Entscheidung ist konfiguriert und
 dokumentiert statt offen — `TANKAPP_NTFY_MODE` ∈ `public` · `lan`, Default
 `public`. Der Default ist bewusst der zurückhaltende (Variante (b)): Die
-Beispiel-Einrichtung in [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4)
+Beispiel-Einrichtung in [BETRIEB.md](../BETRIEB.md#alarm-zustellung-über-ntfy-b4)
 nutzt ntfy.sh, die URL ist ein Bearer-Secret, und schon die Zeitpunkte der
 Meldungen sind Metadaten über das Tankverhalten — Fenster-Meldungen bleiben
 dort bei neutralen Sätzen ohne Preis und Station. Wer Variante (a) will
@@ -1596,8 +1598,8 @@ Station, Fensterzeit und erwarteten Preis — Koordinaten und Pfade bleiben
 in beiden Modi verboten. Alarm-Meldungen sind von der Entscheidung
 unberührt: weiter nur Codes und Klartexte. Die Regel steht im
 `notify.py`-Docstring, in
-[MICROCOPY.md §4f](MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460)
-und in [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4); der gewählte
+[MICROCOPY.md §4f](../MICROCOPY.md#4f-push-texte-alarme-und-fenster-meldungen-0460)
+und in [BETRIEB.md](../BETRIEB.md#alarm-zustellung-über-ntfy-b4); der gewählte
 Modus steht in `/api/v1/health` → `notify.mode`. Nachweis: Payload-Tests für
 **beide** Regeln in `tests/test_o29_window_push.py` (Server-Seite — die
 Lücke aus dem Befund).
@@ -1732,7 +1734,7 @@ oben wird von der Suite gesehen — das ist Teil der Befunde (O16, O22).
 | F3-Wahrscheinlichkeit über alle Blöcke | Median 0,018, Mittel 0,285, Maximum 1,000; 85 Blöcke | `app/pside.py:window_p` auf Demo-Draws |
 | Sterne-Verteilung derselben Blöcke | 70 × 0 Sterne, 1 × 1, 14 × 3, 0 × 2 | `windowStars`-Schwellen aus `web/src/week.ts:58–65` |
 | Randeffekt der Nachbarschaft | Block 0: 3 Konkurrenten, Basisrate 0,25, p 0,307; Block 3: 6 Konkurrenten, Basisrate 0,14, p 0,349 | `app/pside.py:59–63` |
-| Ensemble-Gewichte | In-Sample-MASE ergibt rund 52/48 (0,173/0,185); echtes Out-of-Sample: Zweitmodell 1,64 ct gegen Hauptmodell 3,6 ct | `engine/models.py` auf synthetischen Daten — **bekannt**, in [LUECKEN.md](LUECKEN.md) Zeile 516 dokumentiert |
+| Ensemble-Gewichte | In-Sample-MASE ergibt rund 52/48 (0,173/0,185); echtes Out-of-Sample: Zweitmodell 1,64 ct gegen Hauptmodell 3,6 ct | `engine/models.py` auf synthetischen Daten — **bekannt**, in [LUECKEN.md](../LUECKEN.md) Zeile 516 dokumentiert |
 | Parse-Zeit einer Veröffentlichung | rund 175 ms für 4,14 MB | `json.loads` auf der Demo-Datei |
 | gzip-Stufen | Stufe 6: rund 547 ms; Stufe 1: rund 122 ms | `gzip.compress` auf einer Antwort in Veröffentlichungsgröße |
 | NaN-Serialisierung der API | kein Problem: `server.py:43–47` saniert NaN zu `None`, `:464–466` schreibt mit `allow_nan=False` | Code-Lektüre plus Parse-Prüfung |
@@ -1771,7 +1773,7 @@ werden oben als Vorbild zitiert:
   `microcopy.test.ts`/`format-convention.test.ts` halten das als Ratchet.
   Jeder Anzeige-Befund oben ist deshalb billig zu beheben: Die Darstellung
   muss nur die richtige Größe bekommen.
-- **`ops/nas/backup.sh`** und [BETRIEB.md](BETRIEB.md) Zeilen 649–727 sichern
+- **`ops/nas/backup.sh`** und [BETRIEB.md](../BETRIEB.md) Zeilen 649–727 sichern
   Laufzeitdaten täglich mit Rotation, die Preishistorie wöchentlich, und der
   Restore ist „durchgespielt, nicht nur aufgeschrieben“ — die Grundlage, auf
   der O33/O34 nur noch Lücken benennen.
@@ -1830,7 +1832,7 @@ Checks im Einzelnen:
 |---|---|
 | Beleg mit `tanked_at` 18:40 Europe/Berlin → `clock_hour == 18`, `clock_hour_source == "beleg"` | erfüllt (`test_evening_receipt_is_booked_at_18_not_12`); zusätzlich UTC→Berlin (`test_utc_timestamp_is_converted_to_berlin`) und Widerspruch (`test_timestamp_wins_over_contradicting_clock_hour`) |
 | Beleg ohne `tanked_at` → Berliner Stunde aus Server-Stempel, `"server"` | erfüllt in Batch 5 (`test_receipt_without_timestamp_uses_server_time_and_says_so`); `default`/12 Uhr bleibt nur für nicht rekonstruierbaren Altbestand |
-| `GET /api/v1/fills` zeigt `tanked_at`, `clock_hour`, `clock_hour_source` | erfüllt (API-Test + [API.md](API.md#fills-b4-belege)) |
+| `GET /api/v1/fills` zeigt `tanked_at`, `clock_hour`, `clock_hour_source` | erfüllt (API-Test + [API.md](../API.md#fills-b4-belege)) |
 | `w(h)`-Histogramm hat nach zwei Abendbelegen sein Gewicht bei 18 | erfüllt (`test_wh_histogram_moves_to_the_measured_evening_hour`, `test_wh_histogram_names_the_invented_hours`) |
 | 11 Stationen, `bootstrap_samples=2000` → unter 8 MB **und** `publication_large` in `/api/v1/health` | erfüllt: **7,28 MB**, Alarm warn (beide in einem Test) |
 | `jq -e .failures data/runtime/engine/current.json` läuft durch | erfüllt: Echtlauf-Test parst die geschriebene Datei und prüft `.failures` |
@@ -1838,7 +1840,7 @@ Checks im Einzelnen:
 | Health-Payload nennt die Publikationsgröße | erfüllt (`publication.bytes`/`budget_bytes`/`max_bytes`) |
 
 Offen aus diesem Batch: O22-Maßnahme (d), Aufteilen der Veröffentlichung —
-begründet in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+begründet in [LUECKEN.md](../LUECKEN.md#bewusst-offen-backlog-mit-grund).
 
 ### Batch 2 — P1 · Die Zahlen, auf denen M7 steht
 
@@ -1867,7 +1869,7 @@ nicht umsetzbar ist — der einzige vorgezogene Befund.
 | [O16](#o16--der-laborbalken-für-den-hauspreis-bleibt-leer) δ̂-Balken leer | S | Playwright/Labor: `stationDeltas.length > 0` mit Demo-Daten, Balken **mit** KI-Whisker; `curl -s 'localhost:1355/api/v1/selection?fuel=e10' \| jq '.stations[0] \| {delta_ct, ci_lo, ci_hi, q_value}'` liefert Werte; `BacktestStationScore.delta_ct` ist aus dem Typ entfernt oder wirklich gefüllt (Typ-Lauf `tsc` grün) |
 | [O35](#o35--live-preise-kennen-keine-plausibilitätsgrenze) Live-Preis ohne Grenze | S | Test: Ein Influx-Wert 0,05 €/L und einer 9,90 €/L erscheinen nicht als `price`, die Station sortiert sich **nicht** an die Spitze, und `/api/v1/health` zählt `price_implausible`; dieselben Werte im Trainingspfad bleiben gefiltert (Regressionstest für `engine/data.py:76`) |
 | [O29](#o29--kein-hinweis-wenn-das-fenster-aufgeht) kein Push | M | Test: Fensteröffnung mit `p` über der Schwelle erzeugt genau eine Meldung je `episode.id`; Wiederholung innerhalb der Ruhezeit erzeugt keine zweite; Schließen ohne Beleg erzeugt die Abschlussmeldung; Payload entspricht der in O42 gewählten Regel |
-| [O42](#o42--der-push-grundsatz-kollidiert-mit-dem-preis-push) Push-Grundsatz (P2, vorgezogen) | S | Entscheidung steht in `notify.py`-Docstring und [BETRIEB.md](BETRIEB.md); Test prüft den Server-Payload gegen die gewählte Regel (öffentlich: keine Preise, keine Stationen; selbst gehostet: Preis und Station erlaubt, keine Koordinaten, keine Pfade) |
+| [O42](#o42--der-push-grundsatz-kollidiert-mit-dem-preis-push) Push-Grundsatz (P2, vorgezogen) | S | Entscheidung steht in `notify.py`-Docstring und [BETRIEB.md](../BETRIEB.md); Test prüft den Server-Payload gegen die gewählte Regel (öffentlich: keine Preise, keine Stationen; selbst gehostet: Preis und Station erlaubt, keine Koordinaten, keine Pfade) |
 
 **Batch-Abnahme:** Das Labor zeigt die Selektionsstatistik, die längst
 publiziert ist; ein unplausibler Preis kann keine Empfehlung mehr auslösen;
@@ -1882,7 +1884,7 @@ Ziel: Der Dauerbetrieb kostet messbar weniger und verliert nichts.
 | [O23](#o23--der-healthcheck-parst-die-veröffentlichung-alle-30-sekunden) Health parst alles | S | Test zählt die Parses: `/api/v1/stats/summary` → genau **ein** Parse, `/api/v1/health` bei unverändertem `(mtime, size)` → **kein** Parse; Messung: zwei aufeinanderfolgende Health-Antworten unter 20 ms |
 | [O24](#o24--der-server-spricht-http10) HTTP/1.0 | S | Test: `protocol_version == "HTTP/1.1"` und jede Antwort trägt `Content-Length`; `curl -sv --http1.1 -o /dev/null localhost:1355/api/v1/health localhost:1355/api/v1/health` zeigt **eine** Verbindung (`Re-using existing connection`) |
 | [O36](#o36--vier-konfigurationsflächen-und-eine-zahl-als-literal) Konfig-Drift | M | Test: `bootstrap_samples=4000` in der Engine-Konfiguration führt zu `n_boot == 4000` in der Selektion; `grep -n "n_boot=2000" app/worker.py` findet nichts mehr; `ffill_minutes` hat in beiden Flächen denselben Wert mit Begründung |
-| [O33](#o33--die-backup-alterung-bleibt-unsichtbar) Backup-Alarm | S | Test legt ein 40 Stunden altes `tankapp-runtime-*.tar.gz` an und erwartet `backup_stale` (warn); mit frischem Tar bleibt der Alarm aus; zweites Backup-Ziel und Aufbewahrungsregel stehen in [BETRIEB.md](BETRIEB.md) |
+| [O33](#o33--die-backup-alterung-bleibt-unsichtbar) Backup-Alarm | S | Test legt ein 40 Stunden altes `tankapp-runtime-*.tar.gz` an und erwartet `backup_stale` (warn); mit frischem Tar bleibt der Alarm aus; zweites Backup-Ziel und Aufbewahrungsregel stehen in [BETRIEB.md](../BETRIEB.md) |
 
 **Batch-Abnahme:** Der Healthcheck kostet nichts mehr, Anfragen teilen sich
 eine Verbindung, Backup-Alterung wird gelb, und eine Konfigurationsänderung
@@ -1908,8 +1910,8 @@ Checks im Einzelnen:
 
 Offen aus diesem Batch: ein zweites **automatisches** Backup-Ziel (rsync auf
 ein anderes Gerät) — als Entscheidung und offener Punkt in
-[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup) und im
-[Todo](../TODO.md) benannt, nicht still gelassen.
+[BETRIEB.md](../BETRIEB.md#nas-laufzeitdaten-runtime-backup) und im
+[Todo](../../TODO.md) benannt, nicht still gelassen.
 
 ### Batch 5 — P2 · Rechnung und Statistik im Einzelnen
 
@@ -1973,7 +1975,7 @@ braucht.
 | [O18](#o18--vier-laborwerkzeuge-sind-dauerhaft-stumm) tote Werkzeuge | M | Je Werkzeug: entweder zeigt ein Test echte Daten (CUSUM aus `break_flag`/`break_stat`, Top-3 aus `rank_std`), oder der Text nennt den Dauerzustand — Microcopy-Ratchet gegen „zu wenig Daten“ ohne Datenpfad |
 | [O30](#o30--die-bilanz-zeigt-brutto-was-netto-gemeint-ist) Bilanz brutto | S | Test: Die Bilanz zeigt eine Netto-Zeile, die mit O9 übereinstimmt; beide Zeilen sind benannt |
 | [O31](#o31--die-woche-endet-ohne-zusammenfassung) Wochenrückblick | M | Test: Die Wochenmeldung enthält abgerechnete Fälle (inklusive Kulanz aus O8), δ̂-Änderung (`delta_recent5_ct`), Datenqualität und Lernstand; alle Zahlen über Formatter |
-| [O39](#o39--das-ledger-ist-im-lan-für-alle-lesbar) LAN-Exposition | S | Die Exposition ist in [BETRIEB.md](BETRIEB.md) benannt; falls Read-Token gewählt: Test, dass `/api/v1/fills` ohne Token 401 antwortet, sobald `TANKAPP_READ_TOKEN` gesetzt ist, und unverändert offen bleibt, wenn nicht |
+| [O39](#o39--das-ledger-ist-im-lan-für-alle-lesbar) LAN-Exposition | S | Die Exposition ist in [BETRIEB.md](../BETRIEB.md) benannt; falls Read-Token gewählt: Test, dass `/api/v1/fills` ohne Token 401 antwortet, sobald `TANKAPP_READ_TOKEN` gesetzt ist, und unverändert offen bleibt, wenn nicht |
 
 **Batch-Abnahme:** Jede Zahl nennt ihre Referenz, jedes Werkzeug hat entweder
 Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine
@@ -1982,7 +1984,7 @@ Entscheidung statt einer Nebenwirkung.
 **Umgesetzt mit 0.50.0 (17.09.2026).** Vorab geprüft: Aus Batch 1–5 war keine
 Folgeumsetzung offen — B25 (zweites Backup-Ziel), B22 (numerische Hebel) und
 C12 (Desktop-Zweispalter) stehen begründet im
-[Todo](../TODO.md) bzw. in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+[Todo](../../TODO.md) bzw. in [LUECKEN.md](../LUECKEN.md#bewusst-offen-backlog-mit-grund).
 Alle sieben Checks sind erfüllt und als Tests festgehalten
 (`tests/test_o21_score_parity.py`, `web/src/scoreParity.test.ts`,
 `web/src/now.test.ts`, `tests/test_o20_strip_band.py`, `web/src/strip.test.ts`,
@@ -2012,8 +2014,8 @@ vorbehalten (§0.4).
 |---|---|---|
 | [O25](#o25--kompression-und-revalidierung-sind-zu-teuer-und-zu-selten) gzip 6 | S | Messung: dieselbe Antwort mit Stufe 1 unter 150 ms (vorher 547 ms); Test: zweite Anfrage mit `If-None-Match` auf `/decide`, `/stations`, `/heatmap`, `/stats/summary` ergibt 304 |
 | [O26](#o26--jeder-decide-poll-nimmt-die-schreibsperre) Lock im Lesepfad | S | Test: `GET /decide` erhöht den Sperren-Zähler des Stores nicht; ein Beleg wird während laufender Polls ohne messbare Wartezeit gebucht |
-| [O37](#o37--der-server-misst-sich-selbst-nicht) keine Metriken | S | Test: Antworten tragen `X-Process-Time`, `/api/v1/health` nennt Parse-Dauer und Publikationsgröße; Budget steht in [QUALITAET.md](QUALITAET.md) |
-| [O34](#o34--historie-und-archiv-haben-keine-aufbewahrungsregel) Aufbewahrung | S | Der InfluxDB-Cron rotiert (`find … -mtime +N -delete` im Befehl); [BETRIEB.md](BETRIEB.md) nennt die Archiv-Entscheidung mit Begründung |
+| [O37](#o37--der-server-misst-sich-selbst-nicht) keine Metriken | S | Test: Antworten tragen `X-Process-Time`, `/api/v1/health` nennt Parse-Dauer und Publikationsgröße; Budget steht in [QUALITAET.md](../QUALITAET.md) |
+| [O34](#o34--historie-und-archiv-haben-keine-aufbewahrungsregel) Aufbewahrung | S | Der InfluxDB-Cron rotiert (`find … -mtime +N -delete` im Befehl); [BETRIEB.md](../BETRIEB.md) nennt die Archiv-Entscheidung mit Begründung |
 | [O27](#o27--bild-und-pipeline-bauen-gegen-andere-versionen) Versionsdrift | M | Ein Pipeline-Job baut das Bild und fährt die Suite **im Bild**; `web/package.json` hat `engines`; Bild und Pipeline nennen dieselbe Python-Linie |
 
 **Batch-Abnahme:** Kosten sind messbar und budgetiert, Sperren sitzen nicht
@@ -2022,7 +2024,7 @@ mehr im Lesepfad, und was getestet wird, ist was läuft.
 **Umgesetzt mit 0.52.0 (18.09.2026).** Vorab geprüft: Aus Batch 1–6 war keine
 Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische
 Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet im
-[Todo](../TODO.md), in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)
+[Todo](../../TODO.md), in [LUECKEN.md](../LUECKEN.md#bewusst-offen-backlog-mit-grund)
 und beim [Batch-6-Vermerk](#batch-6--p2--anzeige-und-alltag). Alle fünf Checks
 sind erfüllt und als Tests festgehalten (`tests/test_o25_revalidation.py`,
 `tests/test_o26_read_path_lock.py`, `tests/test_o37_server_metrics.py`,
@@ -2046,7 +2048,7 @@ sind erfüllt und als Tests festgehalten (`tests/test_o25_revalidation.py`,
 Offen aus diesem Batch: kein Dauerzustand — aber zwei Ehrlichkeiten: Der neue
 Lauf der Suite **im Bild** ist in dieser Arbeitsumgebung nicht ausführbar (kein
 Docker), er läuft erstmals in der CI; und die Lighthouse-/Last-Messwerte in
-[QUALITAET.md](QUALITAET.md) sind **nicht** neu gefahren (Batch 7 ändert keine
+[QUALITAET.md](../QUALITAET.md) sind **nicht** neu gefahren (Batch 7 ändert keine
 GUI), das Selbstmessungs-Budget ist deshalb als **Warnung** eingetragen, nicht
 als Fehler.
 
@@ -2065,8 +2067,8 @@ tut.
 **Umgesetzt — O28 + O41 mit PR #154 (18.09.2026), O32 + O40 mit 0.54.0.**
 Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit
 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende
-Form-Modell je Station stehen begründet im [Todo](../TODO.md) und in
-[LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund). Alle vier Checks sind
+Form-Modell je Station stehen begründet im [Todo](../../TODO.md) und in
+[LUECKEN.md](../LUECKEN.md#bewusst-offen-backlog-mit-grund). Alle vier Checks sind
 erfüllt und als Tests festgehalten (`tests/test_o28_comment_runtime_truth.py`,
 `tests/test_o41_selection_form.py`, `web/src/fills.test.ts`,
 `web/src/views/Ich.test.tsx`, `web/src/chartAlt.test.ts`,
@@ -2075,7 +2077,7 @@ erfüllt und als Tests festgehalten (`tests/test_o28_comment_runtime_truth.py`,
 | Check | Ergebnis |
 |---|---|
 | Docstrings stimmen mit A11 überein | erfüllt — `engine/probabilities.py` und `app/pside.py` nennen die gemeinsame Ziehung als umgesetzt (sie **ist** es und weist sich je Draw-Block als `shared` aus); Ratchet gegen die alte Behauptung „noch nicht umgesetzt“ |
-| `demo_data.py` schreibt über `write_json`, also `jq -e . current.json` grün | erfüllt — der Demo-Stapel nutzt `write_split_publication` (dieselbe Funktion wie die Produktion, `json_safe`/`allow_nan=False`); vorher standen gemessen 51 480 `NaN`-Token in der Datei, an der [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) die `jq`-Prüfung nachvollziehbar macht. Jede geschriebene Datei besteht die strenge JSON-Prüfung |
+| `demo_data.py` schreibt über `write_json`, also `jq -e . current.json` grün | erfüllt — der Demo-Stapel nutzt `write_split_publication` (dieselbe Funktion wie die Produktion, `json_safe`/`allow_nan=False`); vorher standen gemessen 51 480 `NaN`-Token in der Datei, an der [STATIONEN-TAUSCH.md](../STATIONEN-TAUSCH.md) die `jq`-Prüfung nachvollziehbar macht. Jede geschriebene Datei besteht die strenge JSON-Prüfung |
 | Suite-Lauf mit `-W error::RuntimeWarning` für die Selektionstests bleibt grün | erfüllt — die All-NaN-Schnitte (Nachtzellen hinter dem Polling-Fenster, tote Stationen) liegen in `warnings.catch_warnings` als erwartbarer Zweig; vorher rauhten 18 `RuntimeWarning`-Zeilen den Lauf |
 | Beide Schreiber (`refresh.py`, `worker.py`) erzeugen dieselbe Form | erfüllt — `selection_artifact()`/`publish_selection()` in `app/selection.py` sind die eine Factory, die toten Felder (`stations`/`cities`/`count`, die niemand las) sind weg |
 | Die API-Antwort ist vor und nach der Änderung byte-identisch | erfüllt — Sonde gegen den Vorgänger-Commit über 6 Platten-Zustände × 2 Städte, leerer Diff; Altbestände (flache Liste, Worker-Altform) bleiben lesbar |

@@ -235,7 +235,7 @@ def test_bodenkante_der_12_uhr_regel_hat_eine_quelle(tmp_path):
 
     Vorher hätte jeder Aufrufer ``price_law_local`` selbst durchreichen
     müssen; wer es vergisst, mischt zwei Rechtslagen in δ̂ und „billigste
-    Stunde" (docs/BEFUND-12-UHR-REGEL.md §4).
+    Stunde" (docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §4).
     """
     from app.law import law_floor_utc
     from engine.models import law_since_utc

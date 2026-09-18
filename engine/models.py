@@ -561,7 +561,7 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     # B30: Bodenkante der 12-Uhr-Regel. Intraday-Struktur (Harmonische,
     # Mittags-Schritt, Slot-Profil) lernt nur aus Beobachtungen **ab**
     # ``price_law_local``: Vor dem Gesetz lag das Tagestief am Abend, danach
-    # im Vormittag (docs/BEFUND-12-UHR-REGEL.md §2) — ein Fenster über beide
+    # im Vormittag (docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §2) — ein Fenster über beide
     # Rechtslagen mittet zwei Tagesrhythmen zu einem, den es nie gab.
     # Reicht der Nach-Gesetz-Bestand nicht für ``min_train_days``, scheitert
     # der Fit mit Grund, statt still den alten Rhythmus mitzulernen.

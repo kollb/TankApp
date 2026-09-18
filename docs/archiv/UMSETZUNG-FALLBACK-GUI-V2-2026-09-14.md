@@ -1,12 +1,14 @@
 # UMSETZUNG-FALLBACK-GUI-V2 — Arbeits-Checkliste
 
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Arbeits-Checkliste, abgeschlossen: Schritte 1–4 sind mit 0.33.0 umgesetzt und geprüft. Schritt 6.2 (diese Auslagerung) ist damit erledigt; die Pi-Sichtprüfung 5.2 ist am 18.09.2026 als nicht nötig geschlossen — der Fallback läuft dort seit Monaten im Betrieb ([TODO.md](../../TODO.md#geschlossen-als-nicht-nötig-18092026)). Was heute gilt: [RP2.md](../RP2.md).
+>
 > Stand: 14.09.2026 · **umgesetzt in App-Version 0.33.0** (Branch
 > `arena/01a09ed1-tankapp`) · Konzept aus
 > [PR #112](https://github.com/kollb/TankApp/pull/112).
 > Diese Checkliste ist die Arbeitsunterlage für die Implementierung des
 > gebilligten Konzepts aus [PR #112](https://github.com/kollb/TankApp/pull/112).
-> Konzept-Mockup (Beispieldaten): [archiv/mockups/fallback_gui_v2.html](archiv/mockups/fallback_gui_v2.html).
-> Nach Abschluss: dieses Dokument in [archiv/](archiv/README.md) auslagern.
+> Konzept-Mockup (Beispieldaten): [archiv/mockups/fallback_gui_v2.html](mockups/fallback_gui_v2.html).
+> Nach Abschluss: dieses Dokument in [archiv/](README.md) auslagern.
 >
 > **Stand der Abarbeitung:** Schritte 1–4 sind umgesetzt und geprüft
 > (CI-Spiegel grün, DOM-Smoke-Test aller Zustände). Offen bleibt bewusst
@@ -37,7 +39,7 @@
 - Alltag/Werkstatt-Trennung (Werkstatt: Sparklines, Rohdaten, Datenstatus).
 - Sticky-Status- + Steuerleiste; Sticky-Aktions-Chip beim Scrollen.
 - Ehrlichkeits-Regel: Preis-Score ≠ Wahrscheinlichkeit; Cache-Alter sichtbar.
-- Leitplanken: [GUI-VORLAGEN.md](GUI-VORLAGEN.md), Texte: [MICROCOPY.md](MICROCOPY.md).
+- Leitplanken: [GUI-VORLAGEN.md](../GUI-VORLAGEN.md), Texte: [MICROCOPY.md](../MICROCOPY.md).
 
 **Grenzen (bewusst nicht im Fallback):** Belege/Wallet, Heatmaps,
 kalibrierte M7-Wahrscheinlichkeit, Umweg-Ökonomie mit Profil — bleiben
@@ -98,7 +100,7 @@ Alle Änderungen in `rp2/fallback_gui.py`.
 ## 2. Neues Template in rp2/fallback_gui.py
 
 - [x] **2.1** `_TEMPLATE_HEAD` + `_TEMPLATE_REST` durch das Mockup-Design
-  ersetzen ([archiv/mockups/fallback_gui_v2.html](archiv/mockups/fallback_gui_v2.html)),
+  ersetzen ([archiv/mockups/fallback_gui_v2.html](mockups/fallback_gui_v2.html)),
   mit diesen Anpassungen:
   - **Mock-Bar + Beispieldaten raus** (`STATIONS`, `FORECAST`, `DAYSTRIP`,
     Mock-Clock `NOW_MIN`) — das sind betrachungshelfer, kein App-Code.
@@ -118,7 +120,7 @@ Alle Änderungen in `rp2/fallback_gui.py`.
     - `series` → Tagesstreifen (neuer Endpunkt aus Schritt 1)
   - **Leer-/Fehlerzustände** aus dem alten Template beibehalten
     (kein Cache, Puffer leer, 503-Handling, `CACHE_REBOOT_HINT`).
-  - **Microcopy** laut [MICROCOPY.md](MICROCOPY.md): €/L mit 3 Nachkommastellen,
+  - **Microcopy** laut [MICROCOPY.md](../MICROCOPY.md): €/L mit 3 Nachkommastellen,
     Differenzen in ct, „…“-Anführungszeichen, keine Ausrufezeichen,
     keine Emoji im Fließtext. Neue Muster in Schritt 4.2 registrieren.
 - [x] **2.2** Vorher wissen: Die Tests prüfen das Template nur über den
@@ -141,7 +143,7 @@ Alle Änderungen in `rp2/fallback_gui.py`.
     Cache nicht neu liest).
   - Index liefert weiterhin das Template mit aktuellem `VERSION_MARKER`.
 - [x] **3.2** Kompletter CI-Spiegel lokal grün, bevor gepusht wird
-  (Befehle stehen in [AGENTS.md](../AGENTS.md)): ruff check, ruff
+  (Befehle stehen in [AGENTS.md](../../AGENTS.md)): ruff check, ruff
   format --check, `pytest -q`, `npm --prefix web test`, `npm --prefix web run build`.
   (Web/Engine sind von der Änderung unberührt, der Spiegel ist trotzdem Pflicht.)
 

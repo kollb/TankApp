@@ -113,7 +113,7 @@ export function promptFillPrice(
 /**
  * O32 — Was neben dem Preisfeld der Belegmaske steht.
  *
- * Befund (docs/OPTIMIERUNGS-BEFUND.md O32): Das Feld wird aus dem Snapshot
+ * Befund (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O32): Das Feld wird aus dem Snapshot
  * vorbefüllt, und zwischen Empfehlung und Erfassung vergehen Minuten bis
  * Stunden (Offline-Queue). Der Nutzer sah eine Zahl, die alt sein konnte,
  * ohne Vergleich — also entweder blind abtippen oder die Stationsanzeige

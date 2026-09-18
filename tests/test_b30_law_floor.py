@@ -1,6 +1,6 @@
 """B30 — Bodenkante der 12-Uhr-Regel (Beobachtung, Selektion, Kalibrierung).
 
-Der Befund [docs/BEFUND-12-UHR-REGEL.md] belegt den Regimewechsel zum
+Der Befund [docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md] belegt den Regimewechsel zum
 01.04.2026: Vor dem Gesetz liegt das Tagestief am Abend, danach im Vormittag
 (alle 169 Anstiege am Mittagspunkt). Beobachtungs-Kennzahlen, die beide
 Rechtslagen mischen, beschreiben deshalb die alte Welt.

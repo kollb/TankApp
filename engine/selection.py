@@ -86,7 +86,7 @@ class SelectionConfig:
     # B30: Bodenkante der 12-Uhr-Regel als tz-bewusste Instanz (UTC) oder
     # ``None``. Beobachtungen davor beschreiben eine andere Rechtslage — das
     # Tagestief lag am Abend, nicht im Vormittag
-    # (docs/BEFUND-12-UHR-REGEL.md §2) — und fallen deshalb aus δ̂, AV-Score
+    # (docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §2) — und fallen deshalb aus δ̂, AV-Score
     # und „billigste Stunde". Gezählt werden sie in ``points_before_law``.
     # Kommt aus ``engine/config.py: price_law_local`` (eine Quelle, O36);
     # ``None`` ist die Gegenmessung (TANKAPP_LAW_FLOOR=0).

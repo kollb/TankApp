@@ -3,7 +3,7 @@
 Vor 0.45.0 buk ``record_snapshot`` die Verteilungs-P und die
 selbstkalibrierte Ledger-Quote (``estimate_p``) in eine Zahl (``p_correct``):
 Der Brier-Score mischte beide Quellen, und das M7-Gate konnte sich über die
-Basisrate selbst erfüllen (docs/OPTIMIERUNGS-BEFUND.md O5).
+Basisrate selbst erfüllen (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O5).
 
 Geprüft wird hier der DoD-Nachweis:
   * jede Snapshot-Zeile trägt ``p_source`` (``verteilung``|``basisrate``|``keine``),

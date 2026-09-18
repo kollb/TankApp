@@ -11,7 +11,7 @@ Vor 0.47.0 parste jeder Leser die komplette Veröffentlichung
 
 Gemessen auf dem Demo-Stapel (2,52 MB, 6 Stationen): 21,7 ms je Health-Aufruf
 und 90,3 ms je Stats-Aufruf, davon 88 % ``json.loads``
-(docs/OPTIMIERUNGS-BEFUND.md O23).
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O23).
 
 Diese Datei hält den Batch-Check fest: ``/api/v1/stats/summary`` → genau
 **ein** Parse, ``/api/v1/health`` bei unverändertem ``(mtime, size)`` →

@@ -3,7 +3,7 @@
 Vor 0.45.0 bestand das M7-Gate bei Punkt-Brier < 0,25 — dem Score einer
 konstanten 50-Prozent-Vorhersage. Eine Nachkommastelle entschied über
 „kalibriert“, ohne Intervall, ohne Fenster, ohne Hysterese
-(docs/OPTIMIERUNGS-BEFUND.md O6).
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O6).
 
 Seit O6 besteht das Gate erst, wenn die Obergrenze des Block-Bootstrap-
 Intervalls (Tagesblöcke, 95 %) unter beiden naiven Referenzen — konstanter

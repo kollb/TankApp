@@ -4,7 +4,7 @@ Vor 0.44.0 las ``record_fill`` die Stunde aus einem Feld, das die GUI nie
 sendet (``clock_hour``), und fiel auf 12 Uhr zurück: Jeder über die GUI
 erfasste Beleg landete im w(h)-Histogramm bei 12 — ab dem achten Beleg stand
 die Personalisierung der Fensterreihenfolge damit auf einer Uhrzeit, die nie
-gemessen wurde (docs/OPTIMIERUNGS-BEFUND.md O1).
+gemessen wurde (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O1).
 
 Geprüft wird hier der DoD-Nachweis:
   * ``tanked_at`` 18:40 Europe/Berlin → ``clock_hour == 18``,
