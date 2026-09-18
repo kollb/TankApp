@@ -1764,8 +1764,14 @@ class LiveData:
         wirksam: ``overall`` vergleicht jede Zelle gegen den Gesamtmedian des
         Fensters, ``hour`` gegen den Median derselben Stunde (Spalten-Basis,
         rechnet den Tagesgang heraus und macht die Wochentage vergleichbar).
+
+        B30: Beobachtungen **vor** der 12-Uhr-Bodenkante
+        (``app/law.py``, aus ``TANKAPP_PRICE_LAW_LOCAL``) zählen nicht mit —
+        sie beschreiben die Rechtslage vor dem Gesetz. ``law_floor`` und
+        ``points_before_law`` im Payload machen den Schnitt sichtbar.
         """
         from .heatmap import BASES as HEATMAP_BASES, build_heatmap
+        from .law import law_floor_utc
 
         if fuel not in FUELS:
             raise ValueError("invalid_fuel")
@@ -1858,7 +1864,13 @@ class LiveData:
                 "matrix": [],
             }
 
-        result = build_heatmap(points, kind=kind, station_id=station_id, basis=basis)
+        result = build_heatmap(
+            points,
+            kind=kind,
+            station_id=station_id,
+            basis=basis,
+            law_floor=law_floor_utc(self.settings),
+        )
 
         return {
             "generated_at": now.isoformat(),
@@ -1881,6 +1893,10 @@ class LiveData:
             "range_to": result["range_to"],
             "points": result["points"],
             "stations": result["stations"],
+            # B30: Bodenkante der 12-Uhr-Regel — worauf diese Heatmap steht
+            # und wie viele nutzbare Preise davor ausgeblendet sind.
+            "law_floor": result["law_floor"],
+            "points_before_law": result["points_before_law"],
             "error_code": None,
         }
 
