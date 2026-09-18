@@ -19,6 +19,7 @@ Ausgang: JSON-serialisierbare Struktur für /api/v1/selection und runtime/select
 from __future__ import annotations
 
 import datetime as dt
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -976,11 +977,18 @@ def analyse_city_light(
     win = (rank <= 3).astype(float).where(mat.notna())
     P = np.full((mat.shape[1], 7, 24), np.nan)
     hour_arr = np.floor(hours).astype(int)
-    for weekday in range(7):
-        for hi in range(24):
-            sel = (weekday_arr == weekday) & (hour_arr == hi)
-            if sel.any():
-                P[:, weekday, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
+    # O28: Eine (Wochentag, Stunde)-Zelle ohne einzigen verwertbaren Wert —
+    # Nachtzellen hinter dem Polling-Fenster, tote Stationen — lässt
+    # ``np.nanmean`` über einen All-NaN-Schnitt laufen. NaN ist hier das
+    # erwartete Ergebnis („keine Aussage“), die RuntimeWarning wäre
+    # Fehlalarm; derselbe Umgang wie in ``engine.probabilities.block_minima``.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # All-NaN → NaN
+        for weekday in range(7):
+            for hi in range(24):
+                sel = (weekday_arr == weekday) & (hour_arr == hi)
+                if sel.any():
+                    P[:, weekday, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
 
     sids = list(mat.columns)
     rows = []
@@ -991,7 +999,18 @@ def analyse_city_light(
     no_delta = []
     for j, sid in enumerate(sids):
         d = delta[sid].to_numpy()
-        d_hat = float(np.nanmedian(d))
+        # O28: Eine Station ohne einzigen verwertbaren δ̂-Wert ist der
+        # erwartbare Fall (tote Station, LOO ohne Überlappung) — der
+        # All-NaN-Median ist dann NaN und wird unten begründet übersprungen,
+        # die Warnung wäre Fehlalarm.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # All-NaN → NaN
+            d_hat = float(np.nanmedian(d))
+            half = np.floor(hours * 2) / 2
+            bins = np.arange(0, 24, 0.5)
+            # Halbe-Stunden-Bins ohne Beobachtung (Nachtzellen hinter dem
+            # Polling-Fenster) laufen hier über einen All-NaN-Schnitt.
+            med = np.array([np.nanmedian(d[half == b]) for b in bins])
         if not np.isfinite(d_hat):
             no_delta.append(sid)
             continue
@@ -1023,9 +1042,6 @@ def analyse_city_light(
         )
         break_flag, break_stat = cusum_break(_day_meds)
 
-        half = np.floor(hours * 2) / 2
-        bins = np.arange(0, 24, 0.5)
-        med = np.array([np.nanmedian(d[half == b]) for b in bins])
         cnt = np.array([np.sum(~np.isnan(d[half == b])) for b in bins])
         r2, amp, best_hour, _, _ = _harmonic_fit(bins, med, cnt)
 

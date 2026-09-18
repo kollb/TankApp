@@ -9,7 +9,10 @@ hier ein deterministischer Ersatz:
 * ``data/setup/polling.json`` — sechs Stationen einer Demostadt mit
   Koordinaten und Anker,
 * ``data/runtime/engine/current.json`` — eine Publikation aus einem echten
-  Engine-Lauf (Fit, 24-h- und 7-d-Prognose, Bootstrap-Draws),
+  Engine-Lauf (Fit, 24-h- und 7-d-Prognose, Bootstrap-Draws), geschrieben
+  über denselben Schreiber wie der NAS-Lauf (O28: aufgeteiltes Layout —
+  kleiner Index plus eine Datei je Station unter ``forecasts/``, gültiges
+  JSON ohne ``NaN``-Token),
 * frische Preiszeilen, die genau so aussehen wie ein InfluxDB-Resultat, plus
   24 h Verlauf für die Tageskurve.
 
@@ -356,8 +359,33 @@ def build(data_dir: Path, days: int = 70) -> dict:
     observations = synthetic_observations(days=days)
     origin = pd.Timestamp(observations.timestamp.max()).tz_convert("UTC")
     publication = build_publication(observations, origin)
-    (data_dir / "runtime/engine/current.json").write_text(
-        json.dumps(publication), encoding="utf-8"
+    # O28: Dieselbe Schreiber-Funktion wie die Produktion — vorher schrieb
+    # dieser Stapel die Veröffentlichung mit ``json.dumps`` selbst und damit
+    # NaN-tolerant (gemessen rund 51 480 ``NaN``-Token: für Python lesbar,
+    # für ``jq`` und jeden Browser-Parser ungültig — genau der Stapel, an dem
+    # STATIONEN-TAUSCH.md die Prüfung ``jq '.failures' … current.json``
+    # nachvollziehbar macht). ``write_split_publication`` schreibt über
+    # ``engine.storage.write_json`` (``json_safe``, ``allow_nan=False``),
+    # und Demo und Betrieb liegen im selben aufgeteilten Layout vor:
+    # kleiner Index + eine Datei je Station.
+    from app.data import write_split_publication
+
+    write_split_publication(
+        data_dir / "runtime/engine",
+        publication["published_at"],
+        publication["forecasts"],
+        index_extra={
+            key: publication[key]
+            for key in (
+                "failures",
+                "policies",
+                "archive_quality",
+                "gapfill_quality",
+                "model_file",
+                "calibrated",
+                "decision_ready",
+            )
+        },
     )
     _now, prices = latest_prices(observations)
     return {"observations": observations, "prices": prices, "origin": origin}

@@ -220,7 +220,7 @@ def test_eleven_stations_stay_under_the_size_budget(settings, cfg):
     assert size < CHECK_BUDGET_BYTES, f"{size / 1e6:.2f} MB — Klippe nicht gebannt"
     assert size < READ_JSON_MAX_BYTES
     # Die Datei ist gültiges JSON ohne NaN-Token — ``jq -e .failures`` läuft
-    # durch (die Demo umgeht ``write_json``, die Produktion nicht; O28c).
+    # durch (seit O28c schreibt auch der Demo-Stapel über ``write_json``).
     text = path.read_text(encoding="utf-8")
     assert "NaN" not in text and "Infinity" not in text
     assert json.loads(text)["failures"] == []

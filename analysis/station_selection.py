@@ -49,6 +49,7 @@ import argparse
 import datetime as dt
 import json
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -608,9 +609,15 @@ def analyse_city(df: pd.DataFrame, city: str, cfg: Config,
     win = (rank <= 3).astype(float).where(mat.notna())
     P = np.full((mat.shape[1], 24), np.nan)
     hour_arr = np.floor(hours).astype(int)
-    for hi in range(24):
-        sel = (hour_arr == hi) & row_sel
-        P[:, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
+    # O28: Stunden ohne verwertbaren Wert (All-NaN-Schnitt, z. B. Nachtzellen
+    # hinter dem Polling-Fenster) sind hier der erwartbare Fall — NaN statt
+    # Warnung, gespiegelt zu engine/selection.py (analyse_city_light).
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # All-NaN → NaN
+        for hi in range(24):
+            sel = (hour_arr == hi) & row_sel
+            if sel.any():
+                P[:, hi] = np.nanmean(win.to_numpy()[sel], axis=0)
 
     # O2: The shared weekday profile is aggregated only because this offline
     # report still plots P(Top-3 | hour). Production uses its full 7×24 shape.

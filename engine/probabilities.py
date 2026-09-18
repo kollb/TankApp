@@ -13,9 +13,12 @@ Live-API-Pfad bleibt frei von numpy/pandas.
 
 Alle Größen sind relative Häufigkeiten über dieselben B Draws; NaN bedeutet
 „Punkt/Block nicht gestützt“ (keine definierte Wahrscheinlichkeit). Die
-gemeinsame Ziehung über Stationen (§4.2) ist noch nicht umgesetzt —
-``P_lohnt`` rechnet mit unabhängigen Nowcast-Draws (dokumentierte Abweichung
-in LUECKEN.md).
+gemeinsame Ziehung über Stationen (§4.2, A11) ist umgesetzt: Die Tages-Blöcke
+werden stationsübergreifend gemeinsam gezogen
+(``shared_day_uniforms``/``blocks_from_uniform``), und die Veröffentlichung
+weist je Draw-Block ``shared`` aus (``app/model_jobs.py::_draws``) —
+``TANKAPP_SHARED_DRAWS=0`` stellt die alte, unabhängige Ziehung für
+Gegenmessungen wieder her.
 """
 
 from __future__ import annotations
