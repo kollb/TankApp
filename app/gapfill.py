@@ -116,7 +116,7 @@ def fill_gaps(
         # B30: Wie viele der eingefüllten Archiv-Ereignisse **vor** der
         # 12-Uhr-Bodenkante liegen. Solange das null ist, zieht die
         # Archiv-Füllung kein vorgesetzliches Muster nach — gemessen, nicht
-        # angenommen (docs/BEFUND-12-UHR-REGEL.md §4).
+        # angenommen (docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §4).
         "events_before_law": 0,
     }
     if not gaps:

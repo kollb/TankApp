@@ -4,6 +4,118 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.54.0] – 2026-09-18
+
+**Batch 8 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+
+### Die Belegmaske zeigt den Live-Preis (O32)
+
+- **Preis und Alter stehen neben dem Feld.** Zwischen Empfehlung und Erfassung
+  vergehen Minuten bis Stunden (Offline-Queue); das Preisfeld war aus dem
+  Snapshot vorbefüllt und der Nutzer hatte keinen Vergleich — also entweder
+  blind abtippen oder die Stationsanzeige suchen, zwei Wege, wo einer genügt.
+  Jetzt sagt die Maske: „Jetzt an der Station: 1,719 €/L, gemeldet vor
+  3 Minuten.“ Das Alter kommt aus `observed_at` der Meldung, ersatzweise aus
+  `age_minutes` des Servers; fehlt **beides**, bleibt es ungenannt statt
+  geschätzt, und ohne frischen Preis steht gar nichts da.
+- **Eine Abweichung ab 1,0 ct/L ist markiert**, mit Richtung: „Deine Eingabe
+  liegt 3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst.“
+  Die Schwelle ist bewusst grob: Sie soll das echte Auseinanderlaufen zeigen,
+  nicht die dritte Nachkommastelle. Und sie korrigiert nichts — gezahlt hat
+  der Nutzer, was an der Säule stand, nicht was die App weiß.
+- Die Regel liegt als reine Funktion `fillPriceHint()` in `web/src/fills.ts`,
+  nicht in der View (D1): Die Maske rendert, sie entscheidet nichts.
+
+### Diagramme nennen ihre Werte (O40)
+
+- **Die Textalternative beschreibt den Verlauf, nicht die Legende.** Vorher
+  baute sie sich aus den Reihennamen — „Liniendiagramm: Erwarteter Preis,
+  Band.“ Ein Screenreader erfuhr damit, **welche** Reihen ein Diagramm zeigt,
+  aber nicht, wohin sie laufen. Neu: `web/src/chartAlt.ts` baut aus denselben
+  Punkten, die gezeichnet werden, einen Satz mit Zahlen — Anfang, Ende,
+  Richtung und Tief/Hoch bei Linien (`Erwarteter Preis fällt von 1,780 €/L
+  auf 1,710 €/L`), Spanne bei Bändern, Umfang/Spanne/Mitte beim Histogramm,
+  Verteilung und beide Ausschläge mit Stationsnamen bei den Balken, mittlere
+  Abweichung von der Diagonalen samt Richtung beim Kalibrierungs-Plot.
+- **Tief und Hoch nur, wenn sie nicht die Endpunkte sind** — sonst stünde
+  dieselbe Zahl dreimal im Satz. Alle Zahlen laufen über die Formatter aus
+  `data.ts` (MICROCOPY §3, de-DE mit Komma), und keine Funktion erfindet einen
+  Wert: Ohne Punkte gibt es den ehrlichen Kurztext („Liniendiagramm ohne
+  Werte.“) statt einer gerundeten Null.
+- **Jedes Diagramm hat ein eigenes `aria-label`.** Vorher hießen alle
+  „Diagramm“ — im Bereich „Labor“ liegen vier davon in einer Ansicht, für eine
+  Vorleserin nicht unterscheidbar. Die fünf Aufrufstellen in „Labor“ und
+  „Stationen“ benennen jetzt ihr Diagramm („Prognose-Fächer“, „Versprochen
+  gegen eingetroffen“, „Preis-Abstand je Station · Frankfurt“, „Tageskurve der
+  Backtest-Zeile“, „Preisverlauf der Station“).
+- **Die Farbregel ist keine Textalternative mehr.** Der alte Balken-Rückfall
+  sagte „grün = positiv, rot = negativ“ — eine Information, die genau dem
+  fehlt, der die Beschreibung liest. Jetzt zählt der Satz die Seiten und nennt
+  die Ausreißer, blasse (nicht signifikante) Balken ausdrücklich als solche.
+
+### Nebenbefund aus der Umsetzung
+
+- **`LineChart` hatte `xFmt` als Default-Parameter** (Datum/Uhrzeit). Für den
+  Tooltip stimmt das — die meisten Reihen tragen Epoch-Millisekunden. Die
+  Textalternative hätte damit aber auch die Stundenachse der Backtest-Tageskurve
+  (0–24) als Datum vorgelesen. Der Default wandert deshalb an die eine Stelle,
+  die ihn braucht; in der Beschreibung wird die x-Position nur genannt, wenn
+  der Aufrufer sie ausdrücklich benennt.
+
+### Doku und Prüfstand
+
+- Der [Optimierungs-Befund](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) trägt den
+  Umsetzungsvermerk je Check; [LUECKEN.md](docs/LUECKEN.md) und
+  [TODO.md](TODO.md) stehen auf 0.54.0. **Ehrlich dazu:** O28 und O41 lagen
+  seit PR #154 auf `main`, ohne dass Version, CHANGELOG oder Befund es sagten —
+  der Befund behauptete im Kopf weiterhin „offen ist damit nur noch Batch 8“.
+  Das ist mit diesem Eintrag geradegezogen.
+- Neu: `web/src/chartAlt.test.ts` (20 Fälle — die Regeln der Sätze, inklusive
+  „erfindet ohne Daten nichts“), der O40-Ratchet in `web/src/a11y.test.ts`
+  (5 Fälle gegen echtes SVG-Markup: jede Instanz mit mindestens einer
+  formatierten Zahl, Labels einer Ansicht paarweise verschieden, kein
+  `aria-label="Diagramm"` mehr in den Bausteinen), O32 in `web/src/fills.test.ts`
+  (8) und `web/src/views/Ich.test.tsx` (3).
+- Nachweis: **1129 Pytest**, **1180 Vitest** (vorher 1144), `ruff check` +
+  `ruff format --check`, `npm --prefix web run build`, und beide
+  Browser-Suiten über den in
+  [QUALITAET.md](docs/QUALITAET.md#e2e-ohne-mocks-seit-0380) beschriebenen
+  `@sparticuz/chromium`-Weg: Alltagssuite **38/38 grün** gegen einen leeren
+  Server, Demo- plus Mobil-Suite **25 grün / 11 skipped** gegen den
+  Demo-Stack.
+
+### Arbeitsliste geschlossen, `docs/` aufgeräumt (Nachtrag am selben Tag)
+
+- **Die vier verbliebenen Arbeitspunkte sind als *nicht nötig* geschlossen** —
+  Entscheidung des Betreibers nach Abschluss des Befunds: **B25** (zweites
+  automatisches Backup-Ziel: bräuchte ein zweites Gerät, das es im Haushalt
+  nicht gibt — Alarm, Generationen und die manuelle Zweitkopie stehen),
+  **C13** (mobile Kopfzeile: 0.53.0 hat die Verdichtung gebracht, die
+  restlichen 197 px sind Steuerzeilen), **B22** (`bootstrap_samples`: würde
+  MASE/PICP/MPIW verschieben und Laufzeit sparen, die niemanden stört) und
+  **C12** (Desktop-Zweispalter: Umbau aller Ansichten ohne Beschwerde).
+  Ebenso die vier Betriebsaufgaben — B30-DoD-Backtest (der Mischbestand, gegen
+  den er zu rechnen wäre, existiert produktiv nicht mehr), die Nachher-Messung
+  des Modell-Laufs, das Lighthouse-Budget (bleibt Warnung: gemessen 0,97–0,98,
+  ein hartes Gate scheiterte irgendwann an der CI-Läufer-Auslastung) und die
+  Pi-Sichtprüfung der Fallback-GUI. Gründe je Punkt in
+  [TODO.md](TODO.md#geschlossen-als-nicht-nötig-18092026); **`TODO.md` hat
+  damit keine offene Zeile mehr**, und in
+  [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) trägt keine
+  Zeile mehr die Marke „Arbeit“.
+- **Fünf Dokumente sind ins [Archiv](docs/archiv/README.md) ausgelagert**, weil
+  sie ihre Aufgabe erfüllt haben: der Optimierungs-Befund (O1–O44), der
+  12-Uhr-Befund samt B30-Checkliste, der Text-Befund (T1–T13) und die
+  Fallback-GUI-v2-Checkliste — deren eigener Schritt 6.2 genau diese
+  Auslagerung verlangte und damit erledigt ist. Jedes trägt einen Banner mit
+  Archivdatum, Ergebnis und Verweis auf das lebende Dokument. Gelöscht wurde
+  nichts: `docs/` führt jetzt 17 lebende Dokumente, alles andere bleibt lesbar,
+  weil Commits und Kommentare darauf zeigen. Nachgezogen sind **alle**
+  Verweise — Markdown, Python-Docstrings und TypeScript-Kommentare (26
+  Code-Dateien); `test_local_documentation_links_exist` bleibt grün.
+- **Abhängigkeiten:** `tzdata >= 2026.4` (#137) und `matplotlib >= 3.11.2`
+  (#136) sind gemergt.
+
 ## [0.53.0] – 2026-09-18
 
 **Zwei Nutzerurteile vom 18.09.2026 sind umgesetzt: Der Mini-Verlauf in der
@@ -97,7 +209,7 @@ Tagesstreifen“ beschreibt:
 
 ## [0.52.0] – 2026-09-18
 
-**Batch 7 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+**Batch 7 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
 
 ### Billigere Antworten (O25)
 
@@ -243,7 +355,7 @@ er ausgeblendet hat.**
 
 ### Nachgerechnet: die Prämisse war veraltet
 
-- **[docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md) §4** kündigte an,
+- **[docs/BEFUND-12-UHR-REGEL.md](docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) §4** kündigte an,
   die Panels „sagen sonst weiter die alte Welt". Alle Muster-Fenster beginnen
   heute hinter dem Gesetz (Kalibrierung 42 Tage → 2026-08-07, Heatmap 84 Tage →
   2026-06-26, Modell 120 Tage → 2026-05-21; das Gesetz ist 170 Tage her) — aus
@@ -258,7 +370,7 @@ er ausgeblendet hat.**
 
 **Offen:** der DoD-Backtest „ohne Qualitätsverlust" braucht echte NAS-Daten
 über beide Rechtslagen. Er ist nicht gelaufen; das Runbook liegt in
-[UMSETZUNG-B30-12-UHR-BODENKANTE.md](docs/UMSETZUNG-B30-12-UHR-BODENKANTE.md).
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](docs/archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md).
 
 **Prüfung:** `ruff check` + `ruff format --check` (117 Dateien), `pytest -q`
 (1079 passed, davon 28 neu in `tests/test_b30_law_floor.py`),
@@ -280,7 +392,7 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 
 ### Dokumentiert
 
-- **[docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md):** Der
+- **[docs/BEFUND-12-UHR-REGEL.md](docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md):** Der
   abgeschlossene Check in fünf Lagen — Problem („Abend günstig" trotz
   12-Uhr-Gesetz), Befund (Live: 100 % der 169 Anstiege am Mittagspunkt,
   Tief Median 7 Uhr; Archiv: Regime-Wechsel 01.04.2026 sichtbar —
@@ -294,7 +406,7 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 Streifen-Testreihen (Kalendertag + Band) gemeinsam.
 
 ## [0.50.0] – 2026-09-17
-**Batch 6 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
+**Batch 6 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
 - **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.
 - **Ersparnis rechnet gegen die Empfehlung (O19):** `nowBestNow` nannte die Differenz zur *teuersten* Station im Set „deine Ersparnis“. Anker ist jetzt dieselbe Referenz wie in `p_lohnt`/`ref_nowcast`, im Kleingedruckten benannt; „billigste bis teuerste“ bleibt sichtbar — als Spanne, nicht als persönlicher Gewinn.
 - **Tagesstreifen mit fester Farbskala (O20):** Die Töne hingen am Min/Max des Tages, deshalb färbte eine neue günstige Meldung frühere Stunden um. Die Skala ist jetzt ein festes Band (25/75-Perzentil über höchstens 168 Stunden, ab drei Berliner Tagen), und je Stunde steht das **Minimum** statt der letzten Meldung — Streifen und Fenstersuche zeigen dieselbe Größe.
@@ -548,7 +660,7 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.48.0] – 2026-09-17
 
-**Batch 5 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
+**Batch 5 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
 
 ### Geändert
 
@@ -561,7 +673,7 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.47.0] – 2026-09-17
 
-**Batch 4 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+**Batch 4 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Betrieb — Kosten, Haltbarkeit, Kohärenz. Der Dauerbetrieb kostet
 messbar weniger (O23, O24), eine Konfigurationsänderung wirkt in der ganzen App
 (O36), und ein ausfallendes Backup wird gelb statt unsichtbar (O33). Vorab
@@ -689,7 +801,7 @@ und O43 stehen begründet in
 
 ## [0.46.0] – 2026-09-17
 
-**Batch 3 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+**Batch 3 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Was die GUI behauptet, ist belegt — und was sie empfehlen
 will, meldet sich. Der δ̂-Balken im Labor zeichnet (O16), Live-Preise kennen
 Plausibilitätsgrenzen (O35), das empfohlene Fenster schickt eine Meldung
@@ -750,7 +862,7 @@ installierbar).
 
 ## [0.45.0] – 2026-09-17
 
-**Batch 2 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+**Batch 2 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Die Zahlen, auf denen M7 steht. Der Ledger misst jetzt, was er zu
 messen behauptet — P-Quellen getrennt (O5), kein erfundener Belegpreis (O17),
 Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
@@ -834,13 +946,13 @@ Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
   nicht aus dem Server-Stempel) — als Nebenbefund aus der O17-Umsetzung
   dokumentiert und nach Batch 5 (P2, Rechnung und Statistik im Einzelnen)
   verwiesen, statt Batch-2-Scope-Creep. Siehe
-  [OPTIMIERUNGS-BEFUND.md](docs/OPTIMIERUNGS-BEFUND.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
+  [OPTIMIERUNGS-BEFUND.md](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
 - Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
   Chromium ist in der Sandbox nicht installierbar.
 
 ## [0.44.0] – 2026-09-16
 
-**Batch 1 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)
+**Batch 1 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: zwei stille Falschaussagen. Die GUI-Buchung galt als 12-Uhr-Tankung
 (O1), und die Veröffentlichung der Prognosen war ab rund fünf Stationen nicht
 mehr lesbar — ohne Fehler, ohne Alarm (O22).**
@@ -2134,7 +2246,7 @@ bleibt byte-identisch.
 Tabelle, Alltag und Werkstatt getrennt — und sie liest den Preis-Puffer nur
 noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 [PR #112](https://github.com/kollb/TankApp/pull/112) nach der Arbeits-Checkliste
-[docs/UMSETZUNG-FALLBACK-GUI-V2.md](docs/UMSETZUNG-FALLBACK-GUI-V2.md).
+[docs/UMSETZUNG-FALLBACK-GUI-V2.md](docs/archiv/UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
 
 ### Hinzugefügt
 

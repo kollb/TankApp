@@ -8,7 +8,7 @@ Schreiber schrieben zwei verschiedene Formen in dieselbe Datei
 ``count``). Die flachen Felder las niemand — ``LiveData.selection`` baut seine
 Stationen aus ``by_fuel``, ``app/recap.py`` ebenso —, und kein Test deckte
 ``read_selection`` ab, deshalb blieb die Dreifachheit unsichtbar
-(docs/OPTIMIERUNGS-BEFUND.md O41).
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O41).
 
 Geprüft wird der Batch-Check:
 

@@ -3,7 +3,7 @@
 Vor 0.45.0 trug „Ja, wie empfohlen“ den **erwarteten** Preis (Median der
 Prognose) als ``price_paid`` ein — Wallet-Bilanz und Güte-Kennzahlen
 rechneten mit einem Preis, den niemand gezahlt hat
-(docs/OPTIMIERUNGS-BEFUND.md O17).
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O17).
 
 Geprüft wird hier der Server-Anteil des DoD:
   * der Client deklariert die Preis-Herkunft (``live``|``manuell``),

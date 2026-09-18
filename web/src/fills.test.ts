@@ -2,7 +2,7 @@
 // Der Test hält fest, was „—“ heißt und wie das Vorzeichen gelesen wird.
 
 import { describe, expect, it } from "vitest";
-import { fillRow, fillRows, promptFillPrice } from "./fills";
+import { fillPriceHint, fillRow, fillRows, promptFillPrice } from "./fills";
 import type { Fill, Station } from "./data";
 
 function fill(overrides: Partial<Fill> = {}): Fill {
@@ -116,5 +116,123 @@ describe("Ein-Tipp-Beleg (O17)", () => {
     expect(promptFillPrice("unbekannt", stations, priceOf)).toBeNull();
     expect(promptFillPrice(null, stations, priceOf)).toBeNull();
     expect(promptFillPrice(undefined, stations, priceOf)).toBeNull();
+  });
+});
+
+// O32 — Die Belegmaske zeigt den Live-Preis.
+//
+// Befund: Das Feld wurde aus dem Snapshot vorbefüllt, der Nutzer sah eine
+// Zahl, die alt sein konnte, ohne Vergleich. Der Test hält fest, was die
+// Maske sagt — und was sie ohne Deckung verschweigt.
+describe("O32: Live-Preis neben dem Preisfeld", () => {
+  function station(overrides: Partial<Station> = {}): Station {
+    return {
+      station_id: "empfohlen",
+      city: "Frankfurt",
+      name: "Demo-Tank Nord",
+      brand: "Demo",
+      fuel: "e10",
+      maps_url: null,
+      price: 1.719,
+      last_price: 1.719,
+      status: "open",
+      fresh: true,
+      observed_at: "2026-09-18T18:57:00+02:00",
+      age_minutes: 3,
+      ...overrides,
+    };
+  }
+  // 19:00 Berliner Zeit — drei Minuten nach der Meldung oben.
+  const now = Date.parse("2026-09-18T19:00:00+02:00");
+
+  it("nennt Preis und Alter der Meldung", () => {
+    const hint = fillPriceHint({
+      station: station(),
+      livePrice: 1.719,
+      typed: "1,719",
+      now,
+    });
+    expect(hint?.price).toBe("1,719 €/L");
+    expect(hint?.age).toBe("vor 3 Minuten");
+    expect(hint?.text).toBe("Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.");
+  });
+
+  it("markiert eine Abweichung über der Schwelle mit Richtung", () => {
+    const hint = fillPriceHint({
+      station: station(),
+      livePrice: 1.719,
+      typed: "1,749",
+      now,
+    });
+    expect(hint?.drifted).toBe(true);
+    expect(hint?.driftCt).toBeCloseTo(3.0, 6);
+    expect(hint?.driftText).toContain("3,0 ct/L über dem gemeldeten Preis");
+    // Gebucht wird, was getippt wurde — die Maske korrigiert nichts.
+    expect(hint?.driftText).toContain("gebucht wird, was du eingibst");
+  });
+
+  it("schweigt unterhalb der Schwelle", () => {
+    const hint = fillPriceHint({
+      station: station(),
+      livePrice: 1.719,
+      typed: "1,725",
+      now,
+    });
+    expect(hint?.drifted).toBe(false);
+    expect(hint?.driftText).toBeNull();
+  });
+
+  it("erkennt die Abweichung auch nach unten", () => {
+    const hint = fillPriceHint({
+      station: station(),
+      livePrice: 1.719,
+      typed: "1,659",
+      now,
+    });
+    expect(hint?.driftText).toContain("6,0 ct/L unter dem gemeldeten Preis");
+  });
+
+  it("fällt auf age_minutes zurück, wenn der Zeitstempel fehlt", () => {
+    const hint = fillPriceHint({
+      station: station({ observed_at: null, age_minutes: 90 }),
+      livePrice: 1.719,
+      typed: "",
+      now,
+    });
+    expect(hint?.age).toBe("vor 2 Stunden");
+  });
+
+  it("nennt ohne jedes Alter nur den Preis, statt eines zu erfinden", () => {
+    const hint = fillPriceHint({
+      station: station({ observed_at: null, age_minutes: null }),
+      livePrice: 1.719,
+      typed: "",
+      now,
+    });
+    expect(hint?.age).toBeNull();
+    expect(hint?.text).toBe("Jetzt an der Station: 1,719 €/L.");
+  });
+
+  it("schweigt ganz ohne frischen Preis und ohne Station", () => {
+    expect(
+      fillPriceHint({ station: station(), livePrice: null, typed: "1,7", now }),
+    ).toBeNull();
+    expect(
+      fillPriceHint({ station: null, livePrice: 1.7, typed: "1,7", now }),
+    ).toBeNull();
+    expect(
+      fillPriceHint({ station: station(), livePrice: NaN, typed: "", now }),
+    ).toBeNull();
+  });
+
+  it("vergleicht nichts, solange das Feld keine Zahl trägt", () => {
+    const hint = fillPriceHint({
+      station: station(),
+      livePrice: 1.719,
+      typed: "",
+      now,
+    });
+    expect(hint?.driftCt).toBeNull();
+    expect(hint?.drifted).toBe(false);
   });
 });

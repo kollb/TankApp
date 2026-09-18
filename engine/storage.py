@@ -8,7 +8,7 @@ Zwei Schreib-Varianten, eine Funktion (O22):
   Prognosen. ``indent=2`` bläht sie gemessen um rund 50 % auf (eine Zeile je
   Wert plus Einrückung bei zehntausenden Werten); elf Stationen lagen damit
   bei 22,4 MB und somit jenseits des Leselimits von ``app.data.read_json``
-  (docs/OPTIMIERUNGS-BEFUND.md O22).
+  (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O22).
 
 ``write_json`` gibt die geschriebene **Byte-Größe** zurück, weil der Schreiber
 sie kennen muss: Eine Veröffentlichung über dem Leselimit fällt beim Lesen

@@ -6,7 +6,7 @@
 > [UI-NEUENTWURF.md](../UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
 > §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](../GUI-VORLAGEN.md) ·
 > Texte: [MICROCOPY.md](../MICROCOPY.md) ·
-> Vorlage für diese Liste: [UMSETZUNG-FALLBACK-GUI-V2.md](../UMSETZUNG-FALLBACK-GUI-V2.md).
+> Vorlage für diese Liste: [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
 >
 > **Diese Datei ist die Arbeitsunterlage.** Sie führt die Phasen aus §16 als
 > abhakbare Schritte, mit Definition of Done je Schritt. Regel aus §16:

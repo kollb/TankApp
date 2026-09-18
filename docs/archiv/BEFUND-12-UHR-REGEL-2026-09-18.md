@@ -1,12 +1,14 @@
 # 12-Uhr-Regel — Befund-Report
 
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Abgeschlossener Prüfbericht. Schritt 3 ist mit 0.51.0 umgesetzt ([UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md](UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md)); der DoD-Backtest über beide Rechtslagen ist am 18.09.2026 als nicht nötig geschlossen — ein Mischbestand, gegen den er zu rechnen wäre, existiert produktiv nicht mehr. Was heute gilt: die Bodenkante im Code (`app/law.py`, `TANKAPP_LAW_FLOOR`) und [ENGINE.md](../ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
+>
 > Stand: 18.09.2026 · App-Version 0.51.0 (§4 nachgerechnet und umgesetzt).
 > 17.09.2026 (Stimmt die Preislogik/Anzeige noch, seit die 12-Uhr-Regel
 > gilt?) in fünf Lagen: Problem, Befund, Erledigtes, Schritt 3, Nicht-Fixbares. Daten: Live-Export der eigenen NAS
 > (`export_influx.py --uuid-only`, 5-Minuten-Takt) und der Archiv-Kontrast
 > auf demselben `analysis/noon_rule_check.py`-Gerüst — kein Modell, kein
 > Bauchgefühl, nur Beobachtungen. Werkzeug-Doku:
-> [DATENWERKZEUGE.md#12-uhr-regel-check](DATENWERKZEUGE.md#12-uhr-regel-check).
+> [DATENWERKZEUGE.md#12-uhr-regel-check](../DATENWERKZEUGE.md#12-uhr-regel-check).
 
 ## Inhaltsverzeichnis
 
@@ -121,7 +123,7 @@ Ansicht; nach dem Gesetz gilt das Gegenteil.
 
 Dazu zwei Doku-Schienen: NAS-Ablauf und Datenquellen-Auswahl
 (UUID-Ära vs. Archiv-M2) in
-[DATENWERKZEUGE.md#12-uhr-regel-check](DATENWERKZEUGE.md#12-uhr-regel-check).
+[DATENWERKZEUGE.md#12-uhr-regel-check](../DATENWERKZEUGE.md#12-uhr-regel-check).
 
 **Zwischenbilanz:** Die gestellte Einzelfrage („Stimmt die Anzeige noch?")
 ist beantwortet: Der gezeigte Abend-Tipp war (a) ein echter
@@ -133,7 +135,7 @@ greift.
 ## 4 · Schritt 3 (B30) ist umgesetzt
 
 Erledigt am 18.09.2026 (0.51.0). Konzept, Schnittreihenfolge und Abnahme in
-[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md).
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md).
 
 ### 4.1 Die Prämisse war rechnerisch veraltet
 
@@ -200,7 +202,7 @@ Bestand erfindet.
 
 Der DoD-Backtest „ohne Qualitätsverlust“ braucht echte NAS-Daten über beide
 Rechtslagen. Er ist **nicht** gelaufen; das Runbook dafür steht in
-[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md)
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md)
 (§6), der synthetische Nachweis ersetzt ihn nicht.
 
 Optional und unverändert: Re-Ingest des Archiv-Zeitraums mit feinerer Dichte
@@ -210,7 +212,7 @@ Optional und unverändert: Re-Ingest des Archiv-Zeitraums mit feinerer Dichte
 
 | Bestand | Warum nicht | Umgang damit |
 |---|---|---|
-| **Legacy-Punkte in Influx ohne `station_id`** (vor ca. 09.09.2026) | Bei Namenszwillingen („Aral Tankstelle") ist die Zuordnung nicht rekonstruierbar — jede Zuordnung wäre geraten (bewusst verboten, s. [STATIONS-UUID-MIGRATION](archiv/STATIONS-UUID-MIGRATION.md)). | Ehrlicher Weg: `--uuid-only`; die Serien bleiben stehen, nichts wird gelöscht. |
+| **Legacy-Punkte in Influx ohne `station_id`** (vor ca. 09.09.2026) | Bei Namenszwillingen („Aral Tankstelle") ist die Zuordnung nicht rekonstruierbar — jede Zuordnung wäre geraten (bewusst verboten, s. [STATIONS-UUID-MIGRATION](STATIONS-UUID-MIGRATION.md)). | Ehrlicher Weg: `--uuid-only`; die Serien bleiben stehen, nichts wird gelöscht. |
 | **Exakter Sprungzeitpunkt im gerasterten Archiv** | 60-min-Raster kann den ~4-min-Sprung nicht lokalisieren (§2.3); die feineren Roh-Dumps sind zwar da, aber alter gerasterter Bestand bleibt, was er ist. | 5-Minuten-Polling liefert ab jetzt die Zeitpunkt-Beweise; bei Bedarf Re-Ingest mit feiner Dichte für die Neuzeit. |
 | **Vergangene Panel-Anzeigen** | Was vor dem Schnitt angezeigt wurde, war für den damaligen Bestand korrekt (alt) beziehungsweise durch den Fenster-Fehler verzerrt (gefixt) — Rückwirkendes Ummalen erfindet eine andere Vergangenheit. | Dokumentiert hier; der Befund bleibt im Archiv. |
 | **Befristung/Änderung des Gesetzes** | Heute gilt die 12-Uhr-Regel; morgen kann ein anderes Schema gelten. Jede feste Verdrahtung („günstig 20–12 Uhr o. ä.") wäre beim nächsten Beschluss falsch-kalibrer. | Gesetz bleibt **Konfiguration statt Logik** (`price_law_local`); der Befund-Kalk (dieses Skript) misst bei jeder Rechtslage weiter. |
@@ -234,7 +236,7 @@ python data-tools/ingest_history.py \
 ```
 
 Gefundene Fehlbedienungen auf dem Weg (nur der Vollständigkeit halber —
-alle im Runbook in [DATENWERKZEUGE.md](DATENWERKZEUGE.md) dokumentiert):
+alle im Runbook in [DATENWERKZEUGE.md](../DATENWERKZEUGE.md) dokumentiert):
 `--env-file` fehlte beim ersten Export; `--raw` mit einer Datei statt dem
 Verzeichnis belegt; Anker-Flag statt `analysis/config.local.json`;
 Copy-Paste-Doppelziele in der Shell.

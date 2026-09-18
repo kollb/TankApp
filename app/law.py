@@ -4,7 +4,7 @@ Seit dem in ``engine/config.py: price_law_local`` stehenden Zeitpunkt darf der
 Preis nur noch einmal täglich (12:00 Uhr) erhöht werden. Beobachtungen **vor**
 diesem Zeitpunkt beschreiben eine andere Rechtslage: Ihr Tagesmuster (Tief am
 Abend, Hoch am Morgen) ist das Gegenteil dessen, was die Nach-Gesetz-Daten
-zeigen — belegt in [docs/BEFUND-12-UHR-REGEL.md].
+zeigen — belegt in [docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md].
 
 Dieses Modul liefert die gemeinsame Kante als **eine** UTC-Instanz:
 

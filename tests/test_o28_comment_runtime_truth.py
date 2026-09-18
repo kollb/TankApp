@@ -1,7 +1,7 @@
 """O28 — Kleine Unehrlichkeiten in Kommentar und Laufzeit (Batch 8).
 
 Drei Stellen, an denen Code und Kommentar auseinanderliefen
-(docs/OPTIMIERUNGS-BEFUND.md O28):
+(docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O28):
 
 (a) ``engine/selection.py`` ließ ``np.nanmean``/``np.nanmedian`` über
     All-NaN-Schnitte laufen — Nachtzellen hinter dem Polling-Fenster und

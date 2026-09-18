@@ -116,7 +116,7 @@ META_TTL_S = 30.0  # Backstop für das Metadata-Memo (grobes mtime, z. B. NAS)
 #
 # Das Budget liegt bewusst unter der Hälfte des Leselimits: Eine weitere
 # Station im Polling-Set oder ein zusätzlicher Kraftstoff soll angekündigt
-# sein, bevor die Klippe erreicht ist (docs/OPTIMIERUNGS-BEFUND.md O22).
+# sein, bevor die Klippe erreicht ist (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O22).
 READ_JSON_MAX_BYTES = 10_000_000
 PUBLICATION_BUDGET_BYTES = 6_000_000
 

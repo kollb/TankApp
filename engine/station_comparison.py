@@ -14,7 +14,7 @@ from .models import law_since_utc
 
 #: B30: Bodenkante der 12-Uhr-Regel. Beobachtungen davor beschreiben eine
 #: andere Rechtslage (Tagestief am Abend statt im Vormittag,
-#: docs/BEFUND-12-UHR-REGEL.md §2); ein Preis-Zwillings-Vergleich über beide
+#: docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §2); ein Preis-Zwillings-Vergleich über beide
 #: mischt zwei Welten zu einer Übereinstimmung, die keine ist.
 UNSET_LAW_FLOOR = object()
 

@@ -1,12 +1,14 @@
 # TEXT-BEFUND — wo die Worte gegen das eigene Regelwerk laufen
 
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Lektorat zum Stand 0.38.0; die Befunde T1–T13 sind mit 0.39.0 umgesetzt. Das Dokument bleibt als Protokoll eingefroren. Verbindlich für neue Texte ist allein [MICROCOPY.md](../MICROCOPY.md).
+>
 > Stand: 15.09.2026 · App-Version **0.38.0** · Arbeitsdokument (Lektorat,
 > keine Abnahme). Gelesen wurden alle sichtbaren Texte in `web/src/` (Views,
 > Bausteine, `messages` in `data.ts`, Glossar) gegen
-> [MICROCOPY.md](MICROCOPY.md), dazu eine Randsichtung der
+> [MICROCOPY.md](../MICROCOPY.md), dazu eine Randsichtung der
 > Fallback-GUI (`rp2/fallback_gui.py`). Der strukturelle GUI-Befund steht in
-> [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md), die Aufgabenliste in
-> [../TODO.md](../TODO.md).
+> [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md), die Aufgabenliste in
+> [../TODO.md](../../TODO.md).
 
 ## Inhaltsverzeichnis
 
@@ -31,7 +33,7 @@
 ## 1. Ausgangslage: das Regelwerk steht, der Befund ist die Abweichung
 
 Die TankApp ist im Text weiter als die meisten Apps:
-[MICROCOPY.md](MICROCOPY.md) regelt Tonfall, Zeichen, Einheiten und
+[MICROCOPY.md](../MICROCOPY.md) regelt Tonfall, Zeichen, Einheiten und
 Zustandssätze, `web/src/data.ts` zwingt Zahlen durch Formatter, und
 `web/src/microcopy.test.ts` prüft Anführungszeichen als Ratchet. Genau deshalb
 fallen die Abweichungen unten auf: Es sind keine Stilfragen, sondern Stellen,
@@ -39,7 +41,7 @@ wo die GUI vom eigenen Regelwerk abweicht — oder wo das Regelwerk selbst eine
 Frage offen lässt, die jede View anders beantwortet.
 
 Alle Zeilenangaben beziehen sich auf den Stand 0.38.0 (`49e849c`, der
-Doku-Stand von [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md)). Der Ratchet prüft heute
+Doku-Stand von [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md)). Der Ratchet prüft heute
 nur paare `„…“` und fehlende HTML-Entities — er sieht keine der folgenden
 Abweichungen. Zwei Befunde (T1, T2) sind keine Schönheitsfehler: Sie lassen
 Nutzer:innen das Falsche lesen bzw. lesen Fehler wie Erfolge.
@@ -82,7 +84,7 @@ Storno) laufen in `setActionFeedback` und landen in **einem** Banner:
   1321, 1350, 1371, 1408–1409, 1470`), während das Icon daneben dieselbe
   Aussage schon visuell macht — dreifache Kodierung desselben.
 - Vier Meldungen enden auf Ausrufezeichen
-  („… verbucht!“, „… gespeichert!“), gegen [MICROCOPY §1](MICROCOPY.md#1-tonfall)
+  („… verbucht!“, „… gespeichert!“), gegen [MICROCOPY §1](../MICROCOPY.md#1-tonfall)
   („Kein Ausrufezeichen im Fließtext“).
 - Dieselbe Rolle mischt Begründungs-Zeichen: „— bitte manuell erfassen.“
   (`Dashboard.tsx:1315`) steht neben „– bitte erneut versuchen.“
@@ -137,7 +139,7 @@ bestehender Satz. Testfall mit gemischtem Set.
 
 ### T5 — Das Tagebuch bricht die eigenen Ergebnis-Worte
 
-[MICROCOPY §4c](MICROCOPY.md#4c-bereich-labor-feste-muster-0360) legt fest:
+[MICROCOPY §4c](../MICROCOPY.md#4c-bereich-labor-feste-muster-0360) legt fest:
 Ergebnis-Worte des Tagebuchs sind `richtig` · `daneben` · `unentschieden` ·
 `nicht bewertbar` — „nie „Treffer“, nie „Fehler““. Die Einträge halten das
 ein (`lab.ts:172–196`). Dasselbe Panel widerspricht sich selbst:
@@ -176,7 +178,7 @@ kontra Doppelbenennung (Liste verbotener Synonym-Paare im Ratchet).
 
 ### T7 — Ausgemusterte Wörter leben weiter
 
-[MICROCOPY §4](MICROCOPY.md#4-benennungen) sagt: Die alten Tabs heißen nicht
+[MICROCOPY §4](../MICROCOPY.md#4-benennungen) sagt: Die alten Tabs heißen nicht
 mehr „Statistik“, nicht „Prüfstand“, „Alltag“ ist ersetzt. In sichtbaren
 Texten stehen sie trotzdem:
 
@@ -333,7 +335,7 @@ ziehen — derselbe Dialog sagt heute beides.
 - Das Glossar trägt drei Namen: Nav „Glossar“, Kicker „Hilfe · Nachschlagen“
   + Titel „Was heißt das?“ (`views/Glossary.tsx:15–19`), Footer-Knopf
   „Glossar — was heißt das?“ (`Dashboard.tsx:2128–2134`). Dass es als
-  Haupt-Tab fehl am Platz ist, steht in [GUI-UX-BEFUND U3](archiv/GUI-UX-BEFUND.md#u3--navigation-ein-pillen-streifen-statt-der-entworfenen-raster) — hier geht es um den Namen.
+  Haupt-Tab fehl am Platz ist, steht in [GUI-UX-BEFUND U3](GUI-UX-BEFUND.md#u3--navigation-ein-pillen-streifen-statt-der-entworfenen-raster) — hier geht es um den Namen.
 - Dieselbe Aktion, zwei Wörter: Tankstand-Schnellauswahl zurücknehmen heißt
   „Keine Angabe“ (`views/Woche.tsx:256`) und „ausblenden“
   (`views/Jetzt.tsx:786`).
@@ -387,9 +389,9 @@ bzw. `toFixed`-Ausnahme für SVG-Koordinaten bestätigen).
 | T12 | **P2** | Frage-Antwort-Paare und Doppelungen auflösen | Leseführung ohne Kosten |
 | T13 | **P2** | Kleinschliff-Tabelle abarbeiten, Ratchets erweitern | jede Zeile ein Einzeiler |
 
-Die Liste ist bewusst noch nicht als Tabellenzeilen in [TODO.md](../TODO.md)
+Die Liste ist bewusst noch nicht als Tabellenzeilen in [TODO.md](../../TODO.md)
 unter C — das gehört mit der ersten Umsetzung zusammen rein. Anders als
-[U1–U8](archiv/GUI-UX-BEFUND.md#3-priorisierte-arbeitsliste) sind die meisten Punkte
+[U1–U8](GUI-UX-BEFUND.md#3-priorisierte-arbeitsliste) sind die meisten Punkte
 hier Einzeiler ohne strukturellen Eingriff: Der Aufwand liegt im Treffen der
 Benennungen, nicht im Code.
 

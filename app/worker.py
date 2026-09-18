@@ -100,7 +100,7 @@ def execute(name, settings, progress=None):
             # O36: Die Selektion bekommt die Engine-Konfiguration, keine Zahl.
             # Hier stand B = 2000 als Literal im Job-Dispatcher — eine Änderung
             # von ``bootstrap_samples`` wirkte damit nur in den Modellen, nicht
-            # in der Selektion (docs/OPTIMIERUNGS-BEFUND.md O36).
+            # in der Selektion (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O36).
             result = build_selection(
                 settings,
                 fuels=list(settings.model_fuels),

@@ -5,7 +5,7 @@ Vor 0.44.0 schrieb ``app/refresh.py`` die Veröffentlichung der Prognosen mit
 jede Datei über 10 MB **still** (``return default`` → ``{}``). ``{}`` ist
 zugleich der normale „noch keine Daten“-Zustand: Ab rund fünf Stationen zeigte
 die App überall „keine Prognose“, während ``/api/v1/jobs/models/log`` Erfolg
-meldete und kein Alarm ausgelöst wurde (docs/OPTIMIERUNGS-BEFUND.md O22).
+meldete und kein Alarm ausgelöst wurde (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O22).
 
 Geprüft wird der Batch-Check:
 

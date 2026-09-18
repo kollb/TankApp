@@ -15,7 +15,7 @@
 > überwacht (Alarm `backup_stale`, `backup` im Health-Payload),
 > `ops/nas/backup.sh` behält zusätzlich sechs Monatsstände, und der Server
 > antwortet mit HTTP/1.1 (O23, O24, O33 — Batch 4 des
-> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md)).
+> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md)).
 > Seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
 > dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
 > Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm

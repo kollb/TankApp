@@ -85,7 +85,7 @@ from engine.personalization import default_weekday_profile
 # B30: Bodenkante der 12-Uhr-Regel. Dieses Werkzeug hat kein Zeitfenster — es
 # wertet den übergebenen Bestand vollständig aus. Liegen darin Beobachtungen
 # von vor dem Gesetz, mischt „billigste Stunde" zwei Rechtslagen (Tief am
-# Abend statt im Vormittag, docs/BEFUND-12-UHR-REGEL.md §2). Kante und
+# Abend statt im Vormittag, docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §2). Kante und
 # Schnitt kommen aus der Engine, damit dieselbe Zahl herauskommt wie in der
 # Selektion (engine/selection.py::law_floor_split).
 from engine.config import Config as EngineConfig

@@ -40,14 +40,18 @@ import { LineChart } from "../components/LineChart";
 import { LoadError } from "../components/LoadError";
 import { SkeletonChart, SkeletonPanel } from "../components/Skeleton";
 import { CalibChart, DeltaBars } from "../components/LabCharts";
+// O40: Werte in der Textalternative — dieselben Punkte, die gezeichnet werden.
+import { calibChartAlt, deltaBarsAlt, lineChartAlt } from "../chartAlt";
 import { Badge, Empty, InfoTooltip, panel } from "../components/ui";
 import {
   HEATMAP_WEEKS,
   autoTimeTicks,
   centPerLiter,
+  countLabel,
   deNumber,
   deTrimmed,
   euro,
+  euroPerLiter,
   lawFloorNote,
   percentLabel,
   rowOutcome,
@@ -691,7 +695,19 @@ export function LaborView(props: LaborViewProps) {
                 xDomain={forecastWindow}
                 xTicks={autoTimeTicks(forecastWindow[0], forecastWindow[1])}
                 yFmt={(value) => euro(value, 3)}
-                ariaDescription={`Geführter Aufbau, Schritt ${fanStep + 1} von 4: wahrscheinlichster Preis${fanStep >= 1 ? ", 80-%-Band" : ""}${fanStep >= 2 ? ", 95-%-Band" : ""}${fanStep >= 1 && thinSupportPoints.length ? `, ${thinSupportPoints.length} hohle Markierungen für dünn gestützte Slots` : ""}${fanStep >= 3 ? ", darüber die echten beobachteten Preise" : ""} in €/L.`}
+                ariaLabel="Prognose-Fächer"
+                // O40: Der Schritt-Text sagt, was **gezeigt** wird; die Werte
+                // dazu kommen aus denselben Punkten, die gezeichnet werden.
+                ariaDescription={`Prognose-Fächer, Schritt ${fanStep + 1} von 4${
+                  fanStep >= 1 && thinSupportPoints.length
+                    ? ` (${countLabel(thinSupportPoints.length)} hohle Markierungen für dünn gestützte Slots)`
+                    : ""
+                }. ${lineChartAlt({
+                  series: forecastSeries,
+                  bands: forecastBands,
+                  fmtY: (value) => euroPerLiter(value),
+                  fmtX: (x) => `${timeLabel(new Date(x).toISOString())} Uhr`,
+                })}`}
               />
               <ReadingAid
                 headline={
@@ -768,7 +784,11 @@ export function LaborView(props: LaborViewProps) {
               <CalibChart
                 points={calibPoints}
                 livePoints={livePointsForChart}
-                ariaDescription="Kalibrierungsdiagramm: X-Achse die versprochene Sicherheit in Prozent, Y-Achse die eingetroffene Trefferquote; die Diagonale ist die perfekte Kalibrierung."
+                ariaLabel="Versprochen gegen eingetroffen"
+                ariaDescription={calibChartAlt({
+                  points: calibPoints,
+                  livePoints: livePointsForChart,
+                })}
               />
               <ReadingAid
                 headline={
@@ -908,7 +928,15 @@ export function LaborView(props: LaborViewProps) {
                       : null,
                   )}
                   muted={stationDeltas.map((row) => !row.significant)}
-                  ariaDescription="Balkendiagramm: Abstand jeder Station zum Stadt-Üblichen in Cent pro Liter, mit Konfidenzintervall als senkrechtem Strich; links = meist günstiger, rechts = meist teurer. Blasse Balken sind statistisch nicht signifikant."
+                  ariaLabel={`Preis-Abstand je Station, ${activeCity || "Stadt"}`}
+                  ariaDescription={`Abstand jeder Station zum Stadt-Üblichen, mit Konfidenzintervall als senkrechtem Strich. ${deltaBarsAlt(
+                    {
+                      values: stationDeltas.map((row) => row.deltaCt),
+                      labels: stationDeltas.map((row) => row.label),
+                      fmt: (value) => centPerLiter(value),
+                      muted: stationDeltas.map((row) => !row.significant),
+                    },
+                  )}`}
                 />
                 <ReadingAid
                   headline="Balken links = meist unter dem Üblichen (grün) · rechts = darüber."
@@ -1554,7 +1582,14 @@ export function LaborView(props: LaborViewProps) {
                             ]}
                             xTicks={autoTimeTicks(0, 24)}
                             yFmt={(value) => `${deTrimmed(value, 1)} ct`}
-                            ariaDescription="Tageskurve der Backtest-Zeile: erwartete Preisdifferenz in Cent je Stunde gegenüber dem Tagesanker, mit Markierungen für Anker und prognostizierte Tiefstphase."
+                            ariaLabel="Tageskurve der Backtest-Zeile"
+                            ariaDescription={`Tageskurve der Backtest-Zeile: erwartete Preisdifferenz je Stunde gegenüber dem Tagesanker ${anchorLabel}. ${lineChartAlt(
+                              {
+                                series: [{ pts: dayCurve }],
+                                fmtY: (value) => centPerLiter(value),
+                                fmtX: (x) => `${deTrimmed(x, 0)} Uhr`,
+                              },
+                            )}`}
                           />
                         </div>
                       )}
@@ -1612,7 +1647,14 @@ export function LaborView(props: LaborViewProps) {
                     Date.now(),
                   )}
                   yFmt={(value) => euro(value, 3)}
-                  ariaDescription={`Beobachtete Preise der gewählten Station, ${spanLabel}, in €/L. Lücken heißen: keine offene Meldung — geschätzt wird nichts.`}
+                  ariaLabel="Beobachtete Preise der gewählten Station"
+                  ariaDescription={`Beobachtete Preise der gewählten Station, ${spanLabel}. ${lineChartAlt(
+                    {
+                      series: observations,
+                      fmtY: (value) => euroPerLiter(value),
+                      fmtX: (x) => `${timeLabel(new Date(x).toISOString())} Uhr`,
+                    },
+                  )} Lücken heißen: keine offene Meldung — geschätzt wird nichts.`}
                 />
                 <ReadingAid
                   headline={`Gemessene Preise: ${spanLabel}.`}

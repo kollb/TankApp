@@ -25,7 +25,7 @@ Station vergleicht die Heatmap ohnehin gegen den Zellen-Median, mit
 **Bodenkante der 12-Uhr-Regel (B30).** Seit dem in ``engine/config.py:
 price_law_local`` stehenden Zeitpunkt darf der Preis nur noch mittags erhöht
 werden; davor galt das Gegenteil (Tief am Abend, Hoch am Morgen — belegt in
-[docs/BEFUND-12-UHR-REGEL.md]). Mit ``law_floor`` zählen deshalb nur
+[docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md]). Mit ``law_floor`` zählen deshalb nur
 Beobachtungen **ab** diesem Zeitpunkt: Eine Heatmap, die beide Rechtslagen
 mischt, zeigt die alte Welt. Die verworfenen Preise verschwinden nicht
 kommentarlos — ``points_before_law`` zählt sie.

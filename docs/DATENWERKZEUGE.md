@@ -96,7 +96,7 @@ Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
 
 **Ergebnis des Echteinsatzes (Live + Archiv-Kontrast):**
-[BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) — Live regeltreu
+[BEFUND-12-UHR-REGEL.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) — Live regeltreu
 (100 % am Mittagspunkt), Archiv zeigt den Regime-Wechsel 01.04.2026,
 Folgearbeit als B30 ausgelagert.
 
