@@ -83,9 +83,23 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   `.dockerignore` `tests/` und `docs/` ausschließt (beide liest die Suite).
 - Ratchet: `tests/test_o27_build_parity.py` hält Dockerfile, Matrix, Node-Pins,
   `engines` und den Job zusammen — eine Zahl allein driftet wieder.
+- Der erste Lauf in der CI hat genau das geliefert, wofür der Job da ist — zwei
+  Driften, die der Suite auf dem Runner nicht auffielen:
+  1. `ARG PYTHON_VERSION` stand **hinter** dem ersten `FROM` und galt damit nur
+     für die Web-Stufe; `FROM python:${PYTHON_VERSION}-slim-bookworm` expandierte
+     zu `python:-slim-bookworm` und der Build starb in 4 s. Beide ARGs stehen
+     jetzt vor dem ersten `FROM` (Ratchet
+     `test_jedes_from_arg_steht_vor_dem_ersten_from`).
+  2. Im Bild gibt es kein `git` und kein `.git`, also war `/health.commit`
+     `null` — `tests/test_e2e_demo.py::test_health_ohne_erfundene_werte` fiel
+     mit 1 failed / 1112 passed. Der Check-Build übergibt jetzt
+     `--build-arg TANKAPP_BUILD_COMMIT="$GITHUB_SHA"`, denselben Weg geht der
+     Betrieb über `compose.yml` (Ratchet `test_check_bild_nennt_seinen_commit`).
+     Lokal nachgestellt: ohne `git` im `PATH` fällt der Test, mit gesetzter
+     Variable besteht er.
 
-**Prüfung:** `ruff check` + `ruff format --check`, `pytest -q` (**1114 passed**,
-davon 35 neu in `tests/test_o25_revalidation.py`, `test_o26_read_path_lock.py`,
+**Prüfung:** `ruff check` + `ruff format --check`, `pytest -q` (**1116 passed**,
+davon 37 neu in `tests/test_o25_revalidation.py`, `test_o26_read_path_lock.py`,
 `test_o37_server_metrics.py`, `test_o34_retention.py`, `test_o27_build_parity.py`),
 `npm --prefix web test` (1142 passed) und `npm --prefix web run build`. Die
 beiden Playwright-Suiten sind lokal nicht gelaufen (Browser-Download in der

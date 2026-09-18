@@ -728,8 +728,10 @@ Antwort:
 
 **Version und Build-Hash** (B9): `version` kommt aus `app/version.py`
 (`VERSION`, je Release angehoben), `commit` ist der Kurzhash des Checkouts bzw.
-`TANKAPP_BUILD_COMMIT`. Im Docker-Image ist `commit` `null` — das Image enthält
-kein `.git`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
+`TANKAPP_BUILD_COMMIT`. Im Docker-Image ist `commit` `null`, solange niemand
+`TANKAPP_BUILD_COMMIT` setzt — das Image enthält weder `.git` noch `git`;
+`ops/nas/app/compose.yml` reicht die Variable als Build-Argument durch, der
+CI-Job `nas-image` setzt `$GITHUB_SHA`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
 Oberflächen (NAS, RP2-Proxy/Fallback, Pi) die Frage „was läuft hier?“.
 
 **`publication`** (O22, 0.44.0; aufgeteilt seit 0.49.0): Größe und Lesbarkeit

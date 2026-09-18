@@ -1171,9 +1171,13 @@ curl -s http://<NAS>:1355/api/v1/health |
   python3 -c 'import json,sys; h=json.load(sys.stdin); print(h["version"], h["commit"], [a["code"] for a in h["alarms"]])'
 ```
 
-Im Docker-Image ist `commit` `null`, weil das Image kein `.git` enthält; bei
-Bedarf `TANKAPP_BUILD_COMMIT=<hash>` als Umgebung für den Container setzen
-(`app/version.py` liest sie beim Import). Die RP2-Fallback-GUI trägt einen
+Im Docker-Image ist `commit` `null`, solange `TANKAPP_BUILD_COMMIT` nicht
+gesetzt ist — das Image enthält weder `.git` noch `git` (`app/version.py` liest
+die Variable beim Import und ruft sonst `git`). `ops/nas/app/compose.yml` reicht
+sie als Build-Argument durch, also genügt
+`TANKAPP_BUILD_COMMIT=$(git rev-parse --short HEAD) docker compose up -d --build`.
+Wer den Hash nicht setzt, betreibt trotzdem einen funktionsfähigen Stand — nur
+sagt `/health` dann nicht, welcher. Die RP2-Fallback-GUI trägt einen
 eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
 Version: [CHANGELOG](../CHANGELOG.md).
 

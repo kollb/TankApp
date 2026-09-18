@@ -128,7 +128,7 @@ def test_pipeline_faehrt_die_suite_im_bild():
     text = TESTS_YML.read_text(encoding="utf-8")
     start = text.index("  nas-image:")
     job = text[start:]
-    assert "docker build -f ops/nas/app/Dockerfile" in job
+    assert re.search(r"docker build[^\n]*-f ops/nas/app/Dockerfile", job)
     assert "Suite im Bild" in job, "der Job nennt den Nachweis nicht beim Namen"
     # Die Suite läuft im Bild (docker run … pytest), nicht auf dem Runner.
     assert re.search(r"docker run[^\n]*tankapp-web:check", job)
@@ -155,3 +155,23 @@ def test_zeitzonen_datenstand_kommt_aus_dem_paket():
 def test_bild_und_pipeline_verweisen_auf_den_ratchet(path):
     """Wer die Zahl ändert, stolpert über den Hinweis auf diese Datei."""
     assert "test_o27_build_parity" in path.read_text(encoding="utf-8")
+
+
+def test_check_bild_nennt_seinen_commit():
+    """Der Check-Build übergibt ``TANKAPP_BUILD_COMMIT`` — sonst lügt ``/health``.
+
+    ``app/version.py`` liest erst die Variable und ruft dann ``git``. Beides
+    fehlt im Bild (kein git, kein .git), also bleibt ``commit`` ohne das
+    Build-Argument ``null`` — dokumentiert in ``docs/API.md`` und
+    ``docs/BETRIEB.md``, dort mit dem Hinweis, die Variable bei Bedarf zu
+    setzen. Ohne den Wert prüft der Job ein Bild, das im Fehlerfall nicht
+    sagen kann, welcher Stand läuft — genau die Frage, die B9 beantwortet.
+    """
+    job = TESTS_YML.read_text(encoding="utf-8").split("  nas-image:", 1)[1]
+    assert '--build-arg TANKAPP_BUILD_COMMIT="$GITHUB_SHA"' in job, (
+        "das Check-Bild baut ohne Commit: /health.commit bliebe null, obwohl "
+        "der Betrieb denselben Weg über compose.yml geht"
+    )
+    # compose.yml muss denselben Namen führen, sonst driftet die Übergabe.
+    compose = (ROOT / "ops" / "nas" / "app" / "compose.yml").read_text(encoding="utf-8")
+    assert "TANKAPP_BUILD_COMMIT" in compose
