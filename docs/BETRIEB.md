@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.50.1 — alles, was nach der Ersteinrichtung
+> Stand: 18.09.2026 · App-Version 0.51.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
@@ -38,6 +38,7 @@
   - [Was automatisch läuft](#was-automatisch-läuft)
   - [GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)](#gui-responsivität-straßen-distanzen-ohne-netz-blockade-seit-0240)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
+  - [12-Uhr-Bodenkante beobachten (B30, seit 0.51.0)](#12-uhr-bodenkante-beobachten-b30-seit-0510)
   - [Größe der Veröffentlichung (O22, seit 0.44.0)](#größe-der-veröffentlichung-o22-seit-0440)
   - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
@@ -411,6 +412,31 @@ curl -s "http://<nas>:1355/api/v1/jobs/models/log?lines=200" | jq -r '.lines[]'
 
 Typische Dauer nach der Beschleunigung (B5): **~14 s je Station** statt
 rund 3 Minuten; 10 Stationen auf 4 Kernen damit unter einer Minute.
+
+### 12-Uhr-Bodenkante beobachten (B30, seit 0.51.0)
+
+Beobachtungs-Panels (Heatmap), Selektion und Kalibrierung zählen nur
+Beobachtungen **ab** `price_law_local` — dem Zeitpunkt, seit dem die
+12-Uhr-Regel gilt. Der Lauf schreibt den Anteil Vorsgesetzliches in den
+Publikations-Index, damit das nicht behauptet, sondern gelesen wird:
+
+```bash
+python -c "import json; d=json.load(open('runtime/engine/current.json'));\
+print(json.dumps(d.get('law_quality'), indent=2, ensure_ascii=False))"
+```
+
+`law_quality` nennt `law_floor` (UTC), `points_total`, `points_before_law`,
+`gapfill_events_before_law` (wie viel Vorsgesetzliches die Archiv-Auffüllung
+nachgezogen hat) und `by_fuel`. Erwartung im Dauerbetrieb: beide Zähler **0** —
+die Fenster beginnen heute hinter dem Gesetz. Steigt `points_before_law`, ist
+entweder `price_law_local` verschoben (Rechtswechsel) oder der Nachzug holt
+alte Tage herein; beides ist dann sichtbar statt still. Dasselbe Feld steht im
+Fehler-Fall in `runtime/engine/last-attempt.json`.
+
+| Variable | Wirkung |
+|---|---|
+| `TANKAPP_PRICE_LAW_LOCAL` | Kante als lokaler Zeitpunkt, z. B. `2026-04-01T12:00` (Default aus `engine/config.py`). Bei Gesetzeswechsel hier ändern — kein Code-Fassen. |
+| `TANKAPP_LAW_FLOOR` | `0`/`false`/`off`/`no` schaltet die Bodenkante ab: Heatmap, Selektion und Fit mischen dann bewusst Vor- und Nach-Gesetz-Daten. Nur für Gegenmessungen; die GUI sagt, dass gemischt ist. |
 
 ### Größe der Veröffentlichung (O22, seit 0.44.0)
 

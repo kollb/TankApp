@@ -40,7 +40,8 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.50.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.51.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.51.0 setzt Schritt 3 des 12-Uhr-Befunds um (B30): Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`, Payload und GUI nennen Kante und ausgeblendete Punkte, der Modell-Lauf misst den Vor-Gesetz-Anteil (`law_quality`). Konzept und Abnahme-Protokoll: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md); dabei ist der Befund §4 nachgerechnet — alle Muster-Fenster beginnen heute hinter dem Gesetz, die Kante ist Garantie statt Reparatur.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
 nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um

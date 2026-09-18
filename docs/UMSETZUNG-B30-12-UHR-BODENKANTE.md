@@ -1,6 +1,6 @@
 # UMSETZUNG-B30 — 12-Uhr-Bodenkante für Beobachtung und Kalibrierung
 
-> Stand: 18.09.2026 · App-Version **0.50.1** → Ziel **0.51.0** ·
+> Stand: 18.09.2026 · **umgesetzt in 0.51.0** (Abnahme-Protokoll §7) ·
 > Auftrag: [TODO.md](../TODO.md) **B30**, Befund
 > [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) §4 („Schritt 3").
 > Dieses Dokument ist die Arbeitsunterlage **vor** dem Code: Was gebaut wird,
@@ -16,6 +16,7 @@
 - [4 · Messung — wie viel Vor-Gesetz-Material nachzieht](#4--messung--wie-viel-vor-gesetz-material-nachzieht)
 - [5 · Tests und Abnahme](#5--tests-und-abnahme)
 - [6 · Was offen bleibt und warum](#6--was-offen-bleibt-und-warum)
+- [7 · Abnahme-Protokoll (18.09.2026)](#7--abnahme-protokoll-18092026)
 
 ## 0 · Nachgerechnet: Was der Befund übersieht
 
@@ -153,3 +154,27 @@ Wirkung — und das steht dann da, statt behauptet zu werden.
   [DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check).
 - **Keine rückwirkende Korrektur** bereits angezeigter Werte
   (Befund §5): Ummalen erfindet eine andere Vergangenheit.
+
+## 7 · Abnahme-Protokoll (18.09.2026)
+
+Umgesetzt in acht Schnitten, jeder mit eigenem Prüfstand. Die Zahlen sind
+synthetisch erzeugt und hier gemessen — nicht geschätzt.
+
+| Schnitt | Wo | Nachweis |
+|---|---|---|
+| Kante | `app/law.py`, `Settings.price_law_local`/`law_floor`, Env-Passthrough | 13 Tests: DST-Kante, ungültiger Wert, `TANKAPP_LAW_FLOOR=0`, Label |
+| Heatmap | `app/data.py::heatmap` | 3 Tests: Zellen zählen ab Kante, `points_before_law`, Forward-Fill-Leck (Zelle 12:00 ohne Schnitt 1.75, mit Schnitt `NaN` bis 12:30) |
+| Selektion | `engine/selection.py::law_floor_cut` | 5 Tests; Frame 5 Stationen × 34 Tage: Schnitt blendet **28 380 Punkte über 27 Tage** aus, `range_from` wandert auf 01.04.2026 12:00, `n_days` 9 statt 35, δ̂ der Station „a" kippt **+2,5 ct → −2,5 ct**; alles vor der Kante ⇒ `station_count == 0` mit `reason` |
+| Fit | `engine/models.py::fit` | 5 Tests: Klemme aktiv ⇒ `training_start = 2026-04-01T10:00Z`, `law_floor_active = True`, `pre_law_points_excluded = 6756`; No-op ⇒ unverändert; Bestand ganz davor ⇒ `ValueError` nennt Kante; 24-h-Segment hinter der Kante: maximaler Schritt **0.0** (288 Punkte) |
+| Messung | `app/gapfill.py`, `app/refresh.py` | 2 Tests: eingefülltes Ereignis 12:30 zählt 1 bei Kante 13:00 und 0 bei 12:00; `law_quality` im Publikations-Index (`points_before_law = 0` im 120-Tage-Fenster) |
+| Werkzeuge | `engine/station_comparison.py`, `engine/cli.py`, `analysis/station_selection.py` | 2 Tests + echter Lauf des Selektions-Werkzeugs: δ̂(st-0) **−3,0 ct** und „billigste Stunde" 02:30 mit Kante gegen **+1,9 ct** und 17:30 mit `--ignore-law-floor`; Zwillings-Vergleich fällt unter 28 qualifizierenden Tagen auf `insufficient_data` statt zu urteilen |
+| GUI | `web/src/data.ts::lawFloorNote`, `components/HeatmapGrid.tsx`, `views/Labor.tsx` | 3 Tests (Vitest): Satz in Berliner Zeit (UTC-Umrechnung über Sommer-/Winterzeit), ausgeblendete Zahl über `countLabel`, Schweigen bei altem Payload |
+| Doku | Befund §4, `TODO.md`, `docs/API.md`, `CHANGELOG.md`, 0.51.0 | Link- und Anker-Prüfung (`tests/test_operations.py`) grün |
+
+Prüfstände am Ende: `ruff check` + `ruff format --check` (117 Dateien),
+`pytest -q` **1079 passed**, `npm --prefix web test` **1142 passed**,
+`npm --prefix web run build`. Die Playwright-Suiten (`test:e2e`,
+`test:e2e:demo`) sind in der Arbeitsumgebung nicht gelaufen — der
+Browser-Download ist dort blockiert; sie laufen in CI.
+
+Nicht erfüllt und offen benannt: der DoD-Backtest auf echten NAS-Daten (§6).

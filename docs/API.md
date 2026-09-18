@@ -1,6 +1,10 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.50.1** — neu seit 0.50.0: der
+> Stand: 18.09.2026 · App-Version **0.51.0** — neu seit 0.50.1: die
+> 12-Uhr-Bodenkante (B30) fährt in [Heatmap](#heatmap-b39) und
+> [Selection](#selection--meine-stationen-b310) mit (`law_floor`,
+> `points_before_law`, `days_before_law`) — Beobachtungen vor
+> `price_law_local` zählen dort nicht mehr mit. Davor seit 0.50.0: der
 > Lese-Schutz für persönliche Daten (O39, `TANKAPP_READ_TOKEN`) und der
 > Wochen-Rückblick (O31), der in `health.notify` seine letzte Woche nennt.
 > Davor seit 0.49.1: die
@@ -981,6 +985,8 @@ Antwort:
   "range_to": "2026-09-12T05:55:00+00:00",
   "points": 12345,
   "stations": 10,
+  "law_floor": "2026-04-01T10:00:00+00:00",
+  "points_before_law": 0,
   "error_code": null
 }
 ```
@@ -993,6 +999,13 @@ Antwort:
 - `range_from`/`range_to` (0.14.0, P0): echte Reichweite der verwendeten Preise (ISO-8601, UTC) oder `null` bei leerem Bestand. Das angefragte Fenster (`weeks`) ist gerade in der Anlaufphase größer als der Bestand; die GUI nennt Reichweite und Bestand und erklärt leere Wochentags-Zeilen als fehlende Tage statt als Datenverlust
 - `points`: Anzahl **verwendeter** offener Preise (geschlossene Meldungen und Preise `null` zählen nicht, 0.14.0); mit `station_id` nur die Preise dieser Station
 - `stations`: Zahl der Stationen, deren Preise verwendet wurden
+- `law_floor`/`points_before_law` (0.51.0, B30): 12-Uhr-Bodenkante der
+  Beobachtungs-Panels (ISO-8601, UTC) und Zahl der Preise **vor** ihr, die nicht
+  mitzählen. `law_floor: null` heißt: Kante abgeschaltet (`TANKAPP_LAW_FLOOR=0`),
+  der Bestand mischt Vor- und Nach-Gesetz-Preise. Fehlen beide Felder (alte
+  Version), ist die Kante unbekannt — die GUI behauptet dann keine. Auf dem
+  heutigen Bestand ist `points_before_law` 0: Alle Beobachtungsfenster beginnen
+  hinter dem 01.04.2026 ([Befund §4.1](BEFUND-12-UHR-REGEL.md#41-die-prämisse-war-rechnerisch-veraltet))
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:
@@ -1049,6 +1062,9 @@ Antwort:
   "range_to": "2026-09-11T23:55:00+00:00",
   "n_points": 284310,
   "n_days": 73,
+  "law_floor": "2026-04-01T10:00:00+00:00",
+  "points_before_law": 0,
+  "days_before_law": 0,
   "error_code": null,
   "calibrated": false,
   "decision_ready": false
@@ -1062,6 +1078,13 @@ Felder:
   Summe der Beobachtungen, längste Tagesreihe). „Rang 1“ aus zehn Tagen ist eine
   andere Aussage als „Rang 1“ aus drei Monaten; die GUI weist das aus. Je Stadt
   stehen dieselben Felder im Stadt-Eintrag. Altbestände ohne die Felder: `null`.
+
+- `law_floor`/`points_before_law`/`days_before_law` (0.51.0, B30): 12-Uhr-Bodenkante
+  der Selektion und was davor liegt (Beobachtungen, Berliner Kalendertage). δ̂,
+  Coverage und `best_hour` entstehen nur aus Nach-Gesetz-Beobachtungen; der
+  Schnitt liegt vor der Raster-Matrix, damit `ffill` keine Vor-Gesetz-Preise als
+  erste Zelle hinter der Kante wieder auftauchen lässt. `law_floor: null` =
+  Kante abgeschaltet (`TANKAPP_LAW_FLOOR=0`), fehlende Felder = alte Version.
 
 - `delta_ct` (δ̂): Median(p_i − LOO-Stadtmedian) ct/L, negativ = günstiger
 - `delta_ew_ct`: EW-Median über Tages-δ̂ (Halbwertszeit 7 Tage, F5 — reagiert bei

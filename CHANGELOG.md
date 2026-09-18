@@ -4,7 +4,75 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
-## [0.50.1] – 2026-09-18
+## [0.51.0] – 2026-09-18
+
+**Schritt 3 des 12-Uhr-Befunds (B30) ist umgesetzt: Beobachtungen vor dem
+Gesetz zählen in keinem Beobachtungs-Pfad mehr mit — und jeder Pfad sagt, was
+er ausgeblendet hat.**
+
+### Boden-Kante statt Mischbestand
+
+- **Eine Kante, ein Baustein (`app/law.py`, `engine/selection.py::law_floor_split`):**
+  Die Grenze ist `price_law_local` (`engine/config.py`, heute
+  `2026-04-01T12:00` Europe/Berlin), als UTC-Instanz und als Label. Kein Pfad
+  kodiert das Gesetz selbst — es bleibt Konfiguration. `TANKAPP_LAW_FLOOR=0`
+  stellt den alten Mischbestand für Gegenmessungen wieder her.
+- **Heatmap (`/api/v1/heatmap`):** Zellen zählen nur Beobachtungen ab der Kante;
+  `law_floor` und `points_before_law` fahren im Payload mit. Der Schnitt liegt
+  **vor** der Raster-Matrix — `ffill(limit=…)` hätte eine Vor-Gesetz-Beobachtung
+  sonst als erste Zelle hinter der Kante wieder auftauchen lassen und die
+  „Bodenkante" wäre eine Behauptung statt eines Schnitts.
+- **Selektion (`/api/v1/selection`):** δ̂, Coverage und „billigste Stunde" nur
+  aus Nach-Gesetz-Daten; `law_floor`, `points_before_law`, `days_before_law` im
+  Payload. Liegt ein Stadt-Bestand ganz vor der Kante, liefert die Stadt eine
+  `reason` statt eines erfundenen Rankings.
+- **Kalibrierung (`engine/models.py::fit`):** `training_start` ist
+  `max(nominal, Kante)`. Reicht der Nach-Gesetz-Bestand nicht für
+  `min_train_days`, nennt der Fehler Kante und ausgeblendete Punkte statt
+  „zu wenige Daten". Das Artefakt trägt `law_floor_active` und
+  `pre_law_points_excluded` (Schema-Version bleibt 2 — die Felder sind additiv).
+- **Offline-Werkzeuge:** `engine/station_comparison.py` (Preis-Zwillinge) und
+  `analysis/station_selection.py` hatten **kein** Zeitfenster und mischten als
+  einzige Pfade wirklich. Beide zählen ab der Kante, beide nennen sie im Report;
+  CLI-Flags `--law-date` und `--ignore-law-floor`. Nebenbei:
+  `analysis/station_selection.py` legte den Repo-Root nicht auf `sys.path` —
+  der in [DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md) dokumentierte Aufruf brach
+  mit `No module named 'engine'` ab.
+- **Messung statt Behauptung:** Der Modell-Lauf schreibt `law_quality` in den
+  Publikations-Index (`runtime/engine/current.json`, auch im Fehler-Fall):
+  `points_total`, `points_before_law`, `gapfill_events_before_law`, `by_fuel`.
+  `gapfill_quality.events_before_law` zählt, wie viel Vorsgesetzliches die
+  Archiv-Auffüllung nachzieht.
+- **GUI:** Heatmap (Datenreichweite-Zeile) und „Preis-Abstand je Station" sagen
+  in Berliner Zeit, ab wann gezählt wird und wie viele Preise davor liegen
+  (`lawFloorNote`, `web/src/data.ts`); fehlt das Feld, schweigt die Zeile, statt
+  eine Kante zu behaupten.
+
+### Nachgerechnet: die Prämisse war veraltet
+
+- **[docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md) §4** kündigte an,
+  die Panels „sagen sonst weiter die alte Welt". Alle Muster-Fenster beginnen
+  heute hinter dem Gesetz (Kalibrierung 42 Tage → 2026-08-07, Heatmap 84 Tage →
+  2026-06-26, Modell 120 Tage → 2026-05-21; das Gesetz ist 170 Tage her) — aus
+  diesem Bestand kann kein Abend-Tipp mehr entstehen. Die Kante ist damit eine
+  **Garantie**, keine Reparatur: beweisbar ein No-op auf heutigen Daten
+  (`points_before_law = 0`), scharf bei verschobenem `price_law_local` und bei
+  Archiv-Nachzug. §4.1 legt die Rechnung offen, §4.2 die Schnitte, §4.3 das
+  Messen und Gegenmessen.
+- Auf synthetischem Bestand ist der Unterschied sichtbar: Stations-Selektion
+  δ̂ −3,0 ct mit Kante gegen +1,9 ct gemischt, „billigste Stunde" 02:30 gegen
+  17:30.
+
+**Offen:** der DoD-Backtest „ohne Qualitätsverlust" braucht echte NAS-Daten
+über beide Rechtslagen. Er ist nicht gelaufen; das Runbook liegt in
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](docs/UMSETZUNG-B30-12-UHR-BODENKANTE.md).
+
+**Prüfung:** `ruff check` + `ruff format --check` (117 Dateien), `pytest -q`
+(1079 passed, davon 28 neu in `tests/test_b30_law_floor.py`),
+`npm --prefix web test` (1142 passed) und `npm --prefix web run build`. Die
+beiden Playwright-Suiten sind lokal nicht gelaufen (Browser-Download in der
+Arbeitsumgebung blockiert) — sie laufen in CI.
+
 
 **Zwei parallele Arbeitsstränge sind zusammengeführt, und der 12-Uhr-Befund
 liegt als Report vor (Schritt 3 bewusst ausgelagert).**

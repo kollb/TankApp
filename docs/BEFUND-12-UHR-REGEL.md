@@ -1,9 +1,8 @@
 # 12-Uhr-Regel — Befund-Report
 
-> Stand: 18.09.2026 · App-Version 0.50.1. Beantwortet die Nutzer-Frage vom
+> Stand: 18.09.2026 · App-Version 0.51.0 (§4 nachgerechnet und umgesetzt).
 > 17.09.2026 (Stimmt die Preislogik/Anzeige noch, seit die 12-Uhr-Regel
-> gilt?) in fünf Lagen: Problem, Befund, Erledigtes, Ausgelagertes,
-> Nicht-Fixbares. Daten: Live-Export der eigenen NAS
+> gilt?) in fünf Lagen: Problem, Befund, Erledigtes, Schritt 3, Nicht-Fixbares. Daten: Live-Export der eigenen NAS
 > (`export_influx.py --uuid-only`, 5-Minuten-Takt) und der Archiv-Kontrast
 > auf demselben `analysis/noon_rule_check.py`-Gerüst — kein Modell, kein
 > Bauchgefühl, nur Beobachtungen. Werkzeug-Doku:
@@ -15,7 +14,7 @@
 - [1 · Was war das Problem](#1--was-war-das-problem)
 - [2 · Was die Daten belegen](#2--was-die-daten-belegen)
 - [3 · Was bereits gefixt wurde](#3--was-bereits-gefixt-wurde)
-- [4 · Was wird noch gemacht (Schritt 3, ausgelagert)](#4--was-wird-noch-gemacht-schritt-3-ausgelagert)
+- [4 · Schritt 3 (B30) ist umgesetzt](#4--schritt-3-b30-ist-umgesetzt)
 - [5 · Was sich nicht fixen lässt](#5--was-sich-nicht-fixen-lässt)
 - [Anhang · Reproduktion](#anhang--reproduktion)
 
@@ -29,9 +28,10 @@
 - **Gefixt:** Anzeigefehler (Tagesstreifen quer über Mitternacht, 0.49.3),
   Werkzeug-Lauffähigkeit auf der NAS (0.49.4/0.49.5), Lesbarkeit des
   Labors (0.49.2); Beweis, dass `price_law_local` in der Prognose greift.
-- **Ausgelagert (Schritt 3):** Anzeige-Panels auf Nach-Gesetz-Basis
-  schneiden und die Modell-Kalibrierung ab dem Gesetzesdatum ziehen —
-  DoD in [TODO.md](../TODO.md).
+- **Schritt 3 (B30) erledigt (0.51.0):** Beobachtungs-Panels, Selektion,
+  Kalibrierung und beide Offline-Werkzeuge zählen nur Beobachtungen **ab**
+  `price_law_local`; Payload und GUI nennen, was ausgeblendet ist. Die
+  Prämisse dieses Kapitels war dabei rechnerisch veraltet — §4.1.
 - **Nicht fixbar:** Legacy-Serien mit Namenszwilling (nie wieder
   zuordenbar), gerastertes Archiv ohne exakten Sprungzeitpunkt, die
   Vergangenheit selbst — und dass das Gesetz befristet ist (darum
@@ -116,6 +116,7 @@ Ansicht; nach dem Gesetz gilt das Gegenteil.
 | **0.49.3** | Tagesstreifen strikt auf den Berliner **Kalendertag** geschnitten (gestern taucht nicht mehr als heute auf; Regression in `strip.test.ts`). **Werkzeug** `analysis/noon_rule_check.py` für genau diese Befund-Messung. Doku: Beobachtungspanels sind modellfreie Messung, Prognose ist gesetzesgesteuert. |
 | **0.49.4** | Check **eigenständig** (nur numpy/pandas — bricht nicht mehr über matplotlib/engine an der NAS); Klartext-Installationsrezept; NAS-Runbook inkl. `--env-file data/influx.env` und `--since` vor dem Gesetz. |
 | **0.49.5** | Check verträgt Tage **ohne gültige Preise** (ganztägig geschlossene Station warf `All-NaN slice`); zentraler valid-/finite-Filter, Lücken werden als „nicht bewertbar" gezählt statt geraten; Regressions-Test nagelt den Absturz fest. |
+| **0.51.0** | **Schritt 3 (B30):** 12-Uhr-Bodenkante als Schnitt in allen Beobachtungs-Pfaden — Heatmap, Selektion, Modell-Fit, Preis-Zwillinge und Stations-Selektion zählen nur Daten ab der Kante; Payload, GUI und Publikations-Index nennen Kante und ausgeblendete Punkte. Messbar über `law_quality`, abschaltbar über `TANKAPP_LAW_FLOOR=0` (s. §4). |
 | **Merge mit main (0.49.1/0.50.0)** | Paralleler Schub (Batch 6: u. a. **O20 feste Farbskala + Stunden-Minimum** im Tagesstreifen) ist mit dem Kalendertag-Schnitt **vereinigt** — beide Zusagen gelten gleichzeitig (1134 Vitest). |
 
 Dazu zwei Doku-Schienen: NAS-Ablauf und Datenquellen-Auswahl
@@ -129,31 +130,81 @@ in gemischtem Bestand — für bist dahin angezeigt Zahlen korrekt geblieben.
 Die Daten der 12-Uhr-Ära ticken regeltreu, das bisherige Modell-Regelwerk
 greift.
 
-## 4 · Was wird noch gemacht (Schritt 3, ausgelagert)
+## 4 · Schritt 3 (B30) ist umgesetzt
 
-Auf Nutzer-Entscheidung (18.09.2026) nicht Teil der aktuellen Lieferung.
-Zwei definierte Arbeitspakete mit DoD in [TODO.md](../TODO.md) **B30**:
+Erledigt am 18.09.2026 (0.51.0). Konzept, Schnittreihenfolge und Abnahme in
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md).
 
-1. **Anzeige-Bodenkante Nach-Gesetz:** Die modellfreien
-   Beobachtungs-Panels (Wochentags-Muster, „billigste Stunde",
-   Vergleiche) werten nur Beobachtungen **ab `price_law_local`-Datum** —
-   sonst sagt das Panel weiter die alte Welt. Kleiner Eingriff, scheibchenweise,
-   mit Testgarantie. *Alternativpfad ohne Code:* Das 42-Tage-Fenster läuft
-   sich in ~6 Wochen von selbst vollständig in die Nach-Gesetz-Ära —
-   **falls** die Archiv-Auffüllung (gapfill) nicht dauerhaft vorgesetzliches
-   Muster nachzieht; genau das muss das Paket zuerst quantifizieren.
-2. **Modell-Kalibrierung ab Gesetzesdatum:** Intraday-Formen (u_d) und
-   AB/BC nur aus Nach-Gesetz-Daten fitten — sonst lernt das Modell den
-   alten Tagesrhythmus weiter. Vor Abnahme: kurzer Labor-Backtest
-   (selbes Vorgehen wie bei früheren Kalibrierungs-Läufen).
+### 4.1 Die Prämisse war rechnerisch veraltet
 
-Optional dabei: Re-Ingest des Archiv-Zeitraums mit feinerer Dichte
+Dieses Kapitel kündigte an, die Panels „sagen sonst weiter die alte Welt“.
+Nachgerechnet galt das für den Bestand von heute nicht: Die Regel steht bei
+`price_law_local = 2026-04-01T12:00` (`engine/config.py:44`), seit **170
+Tagen** (Stand 18.09.2026). Jedes Fenster mit Zeitbegrenzung beginnt dahinter:
+
+| Pfad | Fenster | Start am 18.09.2026 |
+|---|---|---|
+| Kalibrierung (`train_days`) | 42 Tage | 2026-08-07 |
+| Heatmap (`HEATMAP_WEEKS`, max. 12 Wochen) | 84 Tage | 2026-06-26 |
+| Modell-Training (`Settings.model_days`) | 120 Tage | 2026-05-21 |
+| Selektion, Preis-Zwillinge | **kein** Fenster — ganzer publizierter Bestand | — |
+| Preis-Verlauf/Nachzug (`history_days`) | 365 Tage | 2025-09-18 |
+
+Die Muster-Panels liegen also längst vollständig in der Nach-Gesetz-Ära; aus
+diesem Bestand kann kein Abend-Tipp mehr entstehen. (Der Jahres-Nachzug ist
+kein Muster-Panel: Im Preis-Verlauf sind Vor-Gesetz-Preise korrekt.)
+
+Richtig bleibt der zweite Teil: **Zwei Pfade hatten überhaupt keine
+Zeitgrenze** — `analysis/station_selection.py` und
+`engine/station_comparison.py` werten den Bestand vollständig aus. Dazu
+kommen die Fälle, in denen die Kante wieder scharf wird: ein verschobenes
+`price_law_local` (Gesetzeswechsel, Backtest) und Archiv-Nachzug über
+`app/gapfill.py`/`app/history.py`, der Vorsgesetzliches in den Bestand zieht.
+
+Die Bodenkante ist deshalb eine **Garantie, keine Reparatur** — auf heutigen
+Daten beweisbar ein No-op (`points_before_law = 0`, s. §4.3), bei
+Rechtswechsel oder Nachzug die einzige Grenze, die noch greift.
+
+### 4.2 Was geschnitten wird
+
+| Pfad | Schnitt |
+|---|---|
+| Heatmap (`/api/v1/heatmap`) | Zellen zählen nur Beobachtungen ab der Kante; `law_floor`, `points_before_law` im Payload. Schnitt **vor** der Matrix — `ffill` hätte Vor-Gesetz-Preise sonst als erste Zelle hinter der Kante wieder auftauchen lassen. |
+| Selektion (`/api/v1/selection`) | δ̂, Coverage und „billigste Stunde“ nur aus Nach-Gesetz-Daten; `law_floor`, `points_before_law`, `days_before_law` im Payload. |
+| Kalibrierung (`engine/models.py::fit`) | `training_start = max(nominal, Kante)`; das Artefakt nennt `law_floor_active`, `pre_law_points_excluded`. Reicht der Nach-Gesetz-Bestand nicht für `min_train_days`, sagt der Fehler das mit Kante und Zahl statt „zu wenige Daten“. |
+| Preis-Zwillinge (`engine/station_comparison.py`) | Paar-Vergleich zählt nur gemeinsame Beobachtungen ab der Kante; Report nennt `law_floor` und `points_before_law`. CLI: `--law-date`, `--ignore-law-floor`. |
+| Stations-Selektion (`analysis/station_selection.py`) | Schnitt über denselben Baustein (`engine/selection.py::law_floor_split`); `--law-date`, `--ignore-law-floor`; Report nennt Kante und Zähler. |
+
+**Kein Code dieser Lieferung legt das Gesetz hart fest.** Die Regel bleibt
+ein konfigurierbarer Wert (`engine/config.py: price_law_local`,
+`TANKAPP_PRICE_LAW_LOCAL`); die Bodenkante liest ihn und ist über
+`TANKAPP_LAW_FLOOR=0` abschaltbar.
+
+### 4.3 Messen und Gegenmessen
+
+Der Modell-Lauf schreibt den Anteil Vorsgesetzliches in den
+Publikations-Index (`runtime/engine/current.json`, Feld `law_quality`:
+`law_floor`, `points_total`, `points_before_law`,
+`gapfill_events_before_law`, `by_fuel`) — damit der No-op-Beweis nicht
+behauptet, sondern gelesen wird. Erwartung auf dem heutigen Bestand:
+`points_before_law = 0` und `gapfill_events_before_law = 0`.
+
+Gegenmessung (bewusst gemischter Bestand, z. B. um den Unterschied zu
+zeigen): `TANKAPP_LAW_FLOOR=0` für die App, `--ignore-law-floor` für die
+beiden Offline-Werkzeuge. Auf synthetischem Bestand kippt dabei das
+Vorzeichen: Stations-Selektion δ̂ −3,0 ct (Kante) gegen +1,9 ct (gemischt),
+„billigste Stunde“ 02:30 gegen 17:30 — genau die Aussage, die ein gemischter
+Bestand erfindet.
+
+### 4.4 Offen
+
+Der DoD-Backtest „ohne Qualitätsverlust“ braucht echte NAS-Daten über beide
+Rechtslagen. Er ist **nicht** gelaufen; das Runbook dafür steht in
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md)
+(§6), der synthetische Nachweis ersetzt ihn nicht.
+
+Optional und unverändert: Re-Ingest des Archiv-Zeitraums mit feinerer Dichte
 (§2.3), falls exakte Sprung-Zahlen auch aus der Historie gebraucht werden.
-
-→ **Kein Code dieser Lieferung legt das derzeitige Gesetz hart fest.** Die
-Regel lebt ausschließlich als konfigurierbarer Wert
-(`engine/config.py: price_law_local`) — bei Befristung/Änderung keine
-Refactor-Orgie, nur eine Config-Kante.
 
 ## 5 · Was sich nicht fixen lässt
 
