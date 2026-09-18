@@ -103,8 +103,23 @@ def load_prices(paths: list[Path], fuel: str) -> pd.DataFrame:
 
 
 def _prepare(paths: list[Path], fuel: str) -> pd.DataFrame:
-    """Beobachtungen laden und um Berlin-Kalendertag/-Stunde ergänzen."""
+    """Beobachtungen laden, auf echte Preise filtern und um Berlin-
+    Kalendertag/-Stunde ergänzen. Der Filter ist Pflicht, nicht Vorsicht:
+    Statuszeilen ohne gültigen Preis (valid=false / leerer Preis, z. B. eine
+    den ganzen Tag geschlossene Station) würden in den Tages-Extremen als
+    All-NaN-Schnitt den Lauf in einen Traceback kippen; für Sprung- und
+    Anstiegszählungen dürfen Nachbarwerte zudem echte Beobachtungen sein —
+    die ehrliche Lückenlänge zählt dann über ``gap_min`` als „nicht
+    bewertbar“, statt den Tag lautlos zu verschlucken."""
     df = load_prices(paths, fuel).copy()
+    if "valid" in df.columns:
+        df = df[df["valid"].astype(str).str.lower() == "true"]
+    df = df[np.isfinite(df["price"].to_numpy(dtype=float))]
+    if df.empty:
+        raise SystemExit(
+            "Keine gültigen Beobachtungen (valid/endlicher Preis) im Bestand. "
+            "Prüfen, ob der gewählte Export-Modus (--uuid-only) und --since überhaupt Daten liefern."
+        )
     df["ts"] = pd.to_datetime(df["timestamp"], utc=True)
     df["local"] = df["ts"].dt.tz_convert(BERLIN)
     df["day"] = df["local"].dt.date

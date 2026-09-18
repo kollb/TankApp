@@ -4,6 +4,27 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.5] – 2026-09-17
+
+**Der 12-Uhr-Regel-Check bricht nicht mehr an Tagen ohne gültigen Preis.**
+Erster NAS-Lauf mit dem neuen `--uuid-only`-Export (17.09.2026) endete mit
+`ValueError: All-NaN slice encountered`: Statuszeilen ohne gültigen Preis
+(`valid=false` / leerer Preis — z. B. eine den ganzen Tag geschlossene
+Station) gingen bis in die Tages-Extreme, wo der Schnitt nur aus NaN bestand.
+
+### Behoben
+
+- **`analysis/noon_rule_check.py` filtert jetzt zentral** in `_prepare`:
+  nur `valid`-Zeilen (falls die Spalte exportiert wurde) mit endlichem
+  Preis gehen in alle Zählungen. Offene Lücken zwischen Beobachtungen
+  raten nicht mehr lautlos vorbei — sie stehen danach ehrlich in
+  `gap_min` und landen oberhalb von `--max-gap-min` in „nicht bewertbar“.
+- **Doku-Klarstellung:** Der Vorher/Nachher-Kontrast zum Gesetz kommt aus
+  den Archiv-M2-CSVs, nicht aus Influx — UUID-Tags schreibt der Uploader
+  erst seit der Migration (~09.09.2026), und `--uuid-only` umfasst
+  entsprechend nur Tage *nach* dem Gesetz
+  ([DATENWERKZEUGE.md#welche-datenquelle](docs/DATENWERKZEUGE.md)).
+
 ## [0.49.4] – 2026-09-17
 
 **Der 12-Uhr-Regel-Check läuft auf der nackten NAS.** Erster Echteinsatz am

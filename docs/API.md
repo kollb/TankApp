@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.49.4** — neu seit 0.49.1: die
+> Stand: 17.09.2026 · App-Version **0.49.5** — neu seit 0.49.1: die
 > Stations-Antwort ist die verbindliche Form für die App (siehe
 > [Stations](#stations)); der RP2-Fallback liefert sie seit RP2 v4.3 mit
 > `cities` und je Zeile `observed_at`, und ein Fehlerpayload trägt bei

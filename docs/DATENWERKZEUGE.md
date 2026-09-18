@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 17.09.2026 · App-Version 0.49.4. Nachschlagewerk für `data-tools/`
+> Stand: 17.09.2026 · App-Version 0.49.5. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
 > [12-Uhr-Regel-Check](#12-uhr-regel-check).
