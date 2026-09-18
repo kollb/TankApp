@@ -1981,6 +1981,11 @@ class LiveData:
                     closed_stations.extend(c.get("closed_stations", []) or [])
                     nofuel_stations.extend(c.get("nofuel_stations", []) or [])
                 coverage_info = {}
+            # B30: Bodenkante der 12-Uhr-Regel — der Stadt-Eintrag, wenn eine
+            # Stadt gewählt ist, sonst die Fuel-Aggregation (compute_all).
+            # Altbestände ohne die Felder liefern None; die GUI zeigt dann
+            # keine Kanten-Zeile, statt eine Reichweite zu erfinden.
+            law_source = city_entry if (city and city_entry) else fuel_data
             return {
                 "generated_at": data.get("generated_at")
                 or fuel_data.get("generated_at"),
@@ -1998,6 +2003,12 @@ class LiveData:
                 "range_to": fuel_data.get("range_to"),
                 "n_points": fuel_data.get("n_points"),
                 "n_days": fuel_data.get("n_days"),
+                # B30: worauf dieses Ranking steht — Kante der 12-Uhr-Regel
+                # und wie viele Beobachtungen (über wie viele Tage) davor
+                # ausgeblendet sind.
+                "law_floor": law_source.get("law_floor"),
+                "points_before_law": law_source.get("points_before_law"),
+                "days_before_law": law_source.get("days_before_law"),
                 "error_code": None,
                 "calibrated": False,
                 "decision_ready": False,

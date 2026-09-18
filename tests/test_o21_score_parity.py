@@ -155,6 +155,9 @@ def test_profilaenderung_auf_60_l_wirkt_auf_die_selektion(settings, monkeypatch)
         poll_start = 6
         poll_end = 24
         timezone = "Europe/Berlin"
+        # B30: Die Kante der 12-Uhr-Regel gehört zu den gemeinsamen Knöpfen,
+        # die from_engine_config() übernimmt.
+        price_law_local = "2026-04-01T12:00"
 
     import pandas as pd
 

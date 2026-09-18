@@ -17,6 +17,7 @@ Diese Reihe prüft die Kante selbst:
 
 import datetime as dt
 
+import numpy as np
 import pytest
 
 from app.config import Settings, engine_config
@@ -249,3 +250,187 @@ def test_heatmap_floor_can_be_switched_off_for_a_counter_measurement(law_setting
     assert heatmap["points"] == 2
     assert heatmap["counts"][0][20] == 1
     assert heatmap["counts"][2][16] == 1
+
+
+# --- Selektion: δ̂, AV-Score und „billigste Stunde" -------------------------
+
+import pandas as pd  # noqa: E402  (Abschnitt Selektion, nach den reinen Kanten-Tests)
+from engine.selection import (  # noqa: E402
+    SelectionConfig,
+    _to_matrix,
+    analyse_city_light,
+    compute_all,
+    law_floor_cut,
+)
+
+SELECTION_CITY = "Teststadt"
+# 01.04.2026 12:00 Europe/Berlin (Sommerzeit) — dieselbe Instanz wie app/law.py.
+SELECTION_FLOOR = pd.Timestamp("2026-04-01T10:00:00+00:00")
+NOON = pd.Timestamp("2026-04-01 12:00", tz="Europe/Berlin")
+
+
+def _selection_frame(days_pre=20, days_post=14, start="2026-03-06"):
+    """Fünf Stationen, 5-Minuten-Takt 06–24 Uhr, über den Regimewechsel hinweg.
+
+    Station „a" ist **vor** dem Gesetz 5 ct teurer als der Stadtmedian und
+    danach 2,5 ct billiger — genau die Lage, in der ein Mischbestand das
+    Gegenteil der Nach-Gesetz-Welt behauptet.
+    """
+    frames = []
+    for position, sid in enumerate(["a", "b", "c", "d", "e"]):
+        stamps = []
+        base = pd.Timestamp(start, tz="Europe/Berlin")
+        for day in range(days_pre + days_post):
+            date = base + pd.Timedelta(days=day)
+            stamps.append(
+                pd.date_range(
+                    date + pd.Timedelta(hours=6), periods=18 * 12, freq="5min"
+                )
+            )
+        index = stamps[0].append(stamps[1:])
+        price = np.full(len(index), 1.70 + 0.01 * position)
+        if sid == "a":
+            law = pd.Timestamp("2026-04-01T12:00", tz="Europe/Berlin")
+            price = price + np.where(index < law, 0.05, 0.0)
+        frames.append(
+            pd.DataFrame(
+                {
+                    "timestamp": index,
+                    "station_id": sid,
+                    "city": SELECTION_CITY,
+                    "fuel": "E10",
+                    "price": price,
+                    "status": "open",
+                    "source": "influxdb",
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def _cfg(**overrides):
+    base = {
+        "n_boot": 200,
+        "step_min": 5,
+        "ffill_minutes": 30.0,
+        "law_floor": SELECTION_FLOOR,
+    }
+    base.update(overrides)
+    return SelectionConfig(**base)
+
+
+def test_selection_cut_stops_the_panel_from_describing_the_old_world():
+    """Vor dem Gesetz war „a" die teuerste Station, danach die billigste.
+
+    Ohne Schnitt behauptet das Ranking weiter +2,5 ct (alte Welt); mit Schnitt
+    steht dort −2,5 ct. Das ist die B30-DoD: Kein Panel behauptet das
+    Vor-Gesetz-Muster, während die Nach-Gesetz-Daten das Gegenteil sagen.
+    """
+    df = _selection_frame()
+    cut = analyse_city_light(df, SELECTION_CITY, _cfg(), np.random.default_rng(42), {})
+    mixed = analyse_city_light(
+        df, SELECTION_CITY, _cfg(law_floor=None), np.random.default_rng(42), {}
+    )
+
+    station_cut = {row["station_id"]: row for row in cut["stations"]}
+    station_mixed = {row["station_id"]: row for row in mixed["stations"]}
+    assert station_mixed["a"]["delta_ct"] == pytest.approx(2.5, abs=1e-6)
+    assert station_cut["a"]["delta_ct"] == pytest.approx(-2.5, abs=1e-6)
+    # Reichweite des Rankings beginnt an der Kante, nicht im Vormonat.
+    assert cut["range_from"] == NOON.isoformat()
+    assert mixed["range_from"] == "2026-03-06T06:00:00+01:00"
+    assert cut["n_days"] == 9
+    assert mixed["n_days"] == 35
+
+
+def test_selection_reports_what_the_floor_hides():
+    """Die Kante zählt, was sie ausblendet — statt still zu verkleinern."""
+    df = _selection_frame()
+    result = analyse_city_light(
+        df, SELECTION_CITY, _cfg(), np.random.default_rng(42), {}
+    )
+    assert result["law_floor"] == SELECTION_FLOOR.isoformat()
+    assert result["points_before_law"] == 28380
+    assert result["days_before_law"] == 27
+
+    aggregate = compute_all(df, _cfg(), {SELECTION_CITY: {}})
+    assert aggregate["law_floor"] == SELECTION_FLOOR.isoformat()
+    assert aggregate["points_before_law"] == 28380
+    assert aggregate["days_before_law"] == 27
+
+
+def test_selection_without_floor_keeps_the_mixed_baseline():
+    """Gegenmessung: law_floor=None lässt den Bestand, wie er war."""
+    df = _selection_frame()
+    result = analyse_city_light(
+        df, SELECTION_CITY, _cfg(law_floor=None), np.random.default_rng(42), {}
+    )
+    assert result["law_floor"] is None
+    assert result["points_before_law"] == 0
+    assert result["days_before_law"] == 0
+
+
+def test_selection_explains_a_stock_entirely_before_the_floor():
+    """Stadt verschwindet nicht kommentarlos, wenn alles vor der Kante liegt."""
+    df = _selection_frame()
+    result = analyse_city_light(
+        df,
+        SELECTION_CITY,
+        _cfg(law_floor=pd.Timestamp("2026-10-01T10:00:00+00:00")),
+        np.random.default_rng(42),
+        {},
+    )
+    assert result["station_count"] == 0
+    assert "12-Uhr-Bodenkante" in result["reason"]
+    assert result["points_before_law"] == len(df)
+
+
+def test_forward_fill_carries_no_pre_law_price_over_the_floor():
+    """Der Schnitt liegt vor dem Raster — sonst füllt ffill die Kante auf.
+
+    Station „a" meldet zuletzt 11:55 (Vor-Gesetz-Preis) und wieder 12:30.
+    Ohne Schnitt trägt die Zelle 12:00 den weitergereichten Vor-Gesetz-Preis;
+    mit Schnitt ist sie leer, bis „a" selbst nach dem Gesetz meldet.
+    """
+    rows = [
+        {
+            "timestamp": stamp,
+            "station_id": "b",
+            "city": SELECTION_CITY,
+            "fuel": "E10",
+            "price": 1.72,
+            "status": "open",
+            "source": "influxdb",
+        }
+        for stamp in pd.date_range(
+            "2026-04-01 11:00", periods=20, freq="5min", tz="Europe/Berlin"
+        )
+    ]
+    for stamp, price in (
+        (pd.Timestamp("2026-04-01 11:55", tz="Europe/Berlin"), 1.75),
+        (pd.Timestamp("2026-04-01 12:30", tz="Europe/Berlin"), 1.70),
+    ):
+        rows.append(
+            {
+                "timestamp": stamp,
+                "station_id": "a",
+                "city": SELECTION_CITY,
+                "fuel": "E10",
+                "price": price,
+                "status": "open",
+                "source": "influxdb",
+            }
+        )
+    df = pd.DataFrame(rows)
+
+    leaked = _to_matrix(df, SELECTION_CITY, 5, 30.0)
+    assert float(leaked.loc[NOON, "a"]) == pytest.approx(1.75)
+
+    kept, before, days = law_floor_cut(df, SELECTION_CITY, _cfg())
+    assert (before, days) == (13, 1)
+    cut = _to_matrix(kept, SELECTION_CITY, 5, 30.0)
+    assert cut.index.min() == NOON
+    assert pd.isna(cut.loc[NOON, "a"])
+    assert float(
+        cut.loc[pd.Timestamp("2026-04-01 12:30", tz="Europe/Berlin"), "a"]
+    ) == (pytest.approx(1.70))
