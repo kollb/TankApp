@@ -110,13 +110,21 @@ kann sie mit Ständen vor der UUID-Migration nicht beantworten:
   nachziehen (reine Standardbibliothek, kein venv nötig):
 
 ```bash
-# Raw-Dumps liegen je nach Setup unter data/raw oder dem --archive-dir
-# (nas-up). Zeitraum vor den Gesetzesbeginn legen:
-python data-tools/ingest_history.py --raw <raw-pfad> \
-    --since 2026-03-01 --out data/ready-noon --fuel e10
+# Aus dem Repo-Wurzellauf: --raw nutzt automatisch data/raw/prices
+# (find mit -name "*-prices.csv*" zeigt, dass es gefüllt ist); der Anker
+# steht notfalls direkt am Aufruf, wenn analysis/config.local.json fehlt.
+# Zeitraum vor den Gesetzesbeginn legen:
+python data-tools/ingest_history.py \
+    --since 2026-03-01 --out data/ready-noon --fuel e10 \
+    --anchor "Frankfurt:50.11,8.68"
 .venv-analysis/bin/python analysis/noon_rule_check.py \
     --data data/ready-noon/*.csv* --fuel E10
 ```
+
+Der Ingest liest jeden Tagesdump mit reiner Standardbibliothek — für ein
+halbes Jahr regionaler Bestand ist das ein Lauf auf Minuten, keiner auf
+Sekunden. Fehlt der Raw-Baum doch, sagt der Fehlertext selbst, dass erst
+`data-tools/fetch_history.py` laufen muss.
 
 ### Aufruf auf dem Daten-Host (NAS)
 
