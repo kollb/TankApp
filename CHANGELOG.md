@@ -101,10 +101,10 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 **Prüfung:** `ruff check` + `ruff format --check`, `pytest -q` (**1116 passed**,
 davon 37 neu in `tests/test_o25_revalidation.py`, `test_o26_read_path_lock.py`,
 `test_o37_server_metrics.py`, `test_o34_retention.py`, `test_o27_build_parity.py`),
-`npm --prefix web test` (1142 passed) und `npm --prefix web run build`. Die
-beiden Playwright-Suiten sind lokal nicht gelaufen (Browser-Download in der
-Arbeitsumgebung blockiert); der neue Lauf der Suite **im Bild** braucht Docker
-und läuft erstmals in der CI.
+`npm --prefix web test` (**1142 passed**, 44 Dateien) und `npm --prefix web run
+build`. Die beiden Playwright-Suiten konnten in der Arbeitsumgebung nicht laufen
+(Browser-Download blockiert) — sie liefen in der CI, Job `web` grün. Ebenso der
+neue Lauf der Suite **im Bild**: grün, nach den zwei obigen Funden.
 
 ## [0.51.0] – 2026-09-18
 
