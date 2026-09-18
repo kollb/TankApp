@@ -82,6 +82,20 @@ function contrast(a: string, b: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
+/**
+ * Alle Quelldateien unter src/ (ohne Tests). Wird von mehreren Ratchets
+ * benutzt (U1, U6, M1, C5) — eine Fassung statt drei Kopien.
+ */
+function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const path = `${dir}/${entry}`;
+    if (statSync(path).isDirectory()) out.push(...sourceFiles(path, pattern));
+    else if (pattern.test(entry) && !entry.includes(".test.")) out.push(path);
+  }
+  return out;
+}
+
 describe("C5: Kontrast AA der gedämpften Texttöne", () => {
   const dark = colorTokens(block(":root {"));
   const light = colorTokens(block("html.light {"));
@@ -108,7 +122,10 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
     "hell: --color-%s hält 4,5:1 auf Seite und Karte",
     (name) => {
       const value = light[name];
-      expect(value, `${name} wird unter html.light nicht angehoben`).toBeDefined();
+      expect(
+        value,
+        `${name} wird unter html.light nicht angehoben`,
+      ).toBeDefined();
       for (const surface of lightSurfaces) {
         expect(
           contrast(value, surface),
@@ -123,20 +140,30 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
   it.each([
     ["dunkel", DARK_CHART, "#0f172a"],
     ["hell", LIGHT_CHART, "#ffffff"],
-  ] as const)("Diagrammpalette %s: Texttöne halten 4,5:1 auf der Diagrammfläche", (_name, palette, surface) => {
-    // Text im Diagramm: AA verlangt 4,5:1.
-    for (const role of ["text", "textStrong", "accent", "positive", "negative", "warn"] as const) {
+  ] as const)(
+    "Diagrammpalette %s: Texttöne halten 4,5:1 auf der Diagrammfläche",
+    (_name, palette, surface) => {
+      // Text im Diagramm: AA verlangt 4,5:1.
+      for (const role of [
+        "text",
+        "textStrong",
+        "accent",
+        "positive",
+        "negative",
+        "warn",
+      ] as const) {
+        expect(
+          contrast(palette[role], surface),
+          `${role} (${palette[role]}) auf ${surface} ist zu blass`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      // Achsen-Ticks sind Striche, kein Text: 3:1 (WCAG 1.4.11) reichen.
       expect(
-        contrast(palette[role], surface),
-        `${role} (${palette[role]}) auf ${surface} ist zu blass`,
-      ).toBeGreaterThanOrEqual(4.5);
-    }
-    // Achsen-Ticks sind Striche, kein Text: 3:1 (WCAG 1.4.11) reichen.
-    expect(
-      contrast(palette.tick, surface),
-      `tick (${palette.tick}) auf ${surface} hebt sich zu wenig ab`,
-    ).toBeGreaterThanOrEqual(3);
-  });
+        contrast(palette.tick, surface),
+        `tick (${palette.tick}) auf ${surface} hebt sich zu wenig ab`,
+      ).toBeGreaterThanOrEqual(3);
+    },
+  );
 
   it("keine Diagramm-Datei trägt mehr feste Hexfarben", () => {
     const chartFiles = [
@@ -153,7 +180,9 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
   });
 
   it("beide Diagrammpaletten bedienen dieselben Rollen", () => {
-    expect(Object.keys(LIGHT_CHART).sort()).toEqual(Object.keys(DARK_CHART).sort());
+    expect(Object.keys(LIGHT_CHART).sort()).toEqual(
+      Object.keys(DARK_CHART).sort(),
+    );
   });
 
   it("die übrigen Texttöne der Skala bleiben lesbar", () => {
@@ -171,7 +200,10 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
       "#38bdf8": "#1e293b", // sky-400
     };
     for (const [color, surface] of Object.entries(palette)) {
-      expect(contrast(color, surface), `${color} auf ${surface}`).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(color, surface),
+        `${color} auf ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
     }
   });
 });
@@ -188,17 +220,6 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
 // der Systemschrift skalieren.
 // ---------------------------------------------------------------------------
 describe("U1: Typografie-Ratchet", () => {
-  function sourceFiles(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir)) {
-      const path = `${dir}/${entry}`;
-      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
-      else if (/\.tsx?$/.test(entry) && !entry.includes(".test."))
-        out.push(path);
-    }
-    return out;
-  }
-
   const files = sourceFiles(SRC_ROOT);
 
   it("keine Textgröße unter 12 px als px-Fixierung", () => {
@@ -236,17 +257,6 @@ describe("U1: Typografie-Ratchet", () => {
 // bleiben erlaubt, sie sind keine Kartenfrage.
 // ---------------------------------------------------------------------------
 describe("U6: Radius-Rampe", () => {
-  function sourceFiles(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir)) {
-      const path = `${dir}/${entry}`;
-      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
-      else if (/\.tsx?$/.test(entry) && !entry.includes(".test."))
-        out.push(path);
-    }
-    return out;
-  }
-
   it("rounded-xl/-2xl steht nur in components/ui.tsx", () => {
     const files = sourceFiles(SRC_ROOT).filter((f) => f !== UI_FILE);
     const banned = /rounded-(xl|2xl)\b/;
@@ -285,17 +295,6 @@ describe("U6: Radius-Rampe", () => {
 // (`sm:grid`).
 // ---------------------------------------------------------------------------
 describe("M1: Grid-Spalten im schmalen Raster", () => {
-  function sourceFiles(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir)) {
-      const path = `${dir}/${entry}`;
-      if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
-      else if (/\.tsx$/.test(entry) && !entry.includes(".test."))
-        out.push(path);
-    }
-    return out;
-  }
-
   /** Spalten kommen aus dem Stylesheet, nicht aus der Klassenliste. */
   const CSS_DRIVEN = ["daystrip-cells"];
 
@@ -303,9 +302,7 @@ describe("M1: Grid-Spalten im schmalen Raster", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(SRC_ROOT)) {
       const content = readFileSync(file, "utf8");
-      for (const match of content.matchAll(
-        /className=\{?[`"]([^`"]*)[`"]/g,
-      )) {
+      for (const match of content.matchAll(/className=\{?[`"]([^`"]*)[`"]/g)) {
         const classes = match[1];
         const tokens = classes.split(/\s+/).filter(Boolean);
         // Nur das Display-Utility selbst: `sm:grid` schaltet erst ab 640 px
@@ -338,7 +335,7 @@ describe("C5: Touch-Ziele", () => {
     const rule = STYLES.slice(coarse, STYLES.indexOf("\n}", coarse));
     expect(rule).toContain("min-height: 44px");
     expect(rule).toContain("min-width: 44px");
-    for (const hook of ['button', '[role="button"]', "select", "input"]) {
+    for (const hook of ["button", '[role="button"]', "select", "input"]) {
       expect(rule, `${hook} fehlt im 44-px-Block`).toContain(hook);
     }
   });
@@ -371,6 +368,36 @@ describe("C5: Touch-Ziele", () => {
     // die Position selbst als `transform` ins style-Attribut und würde ein
     // `transform` aus dieser Datei überschreiben.
     expect(STYLES).toContain("translate: -50% -50%");
+  });
+
+  // Die 44-px-Regel in styles.css greift bei `a` nur über die Klasse
+  // `tap-44` — ein nacktes `a` bliebe sonst überall auf Textzeilenhöhe, auch
+  // dort, wo es wie ein Knopf aussieht. Gemeint sind Links, die als Fläche
+  // gestaltet sind (runde Ecken **und** Hintergrund oder Rahmen); reine
+  // Textlinks im Fließtext bleiben ausgenommen, für sie gilt die Regel nicht.
+  it("knopfartige Links tragen tap-44", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC_ROOT).filter((f) =>
+      f.endsWith(".tsx"),
+    )) {
+      const content = readFileSync(file, "utf8");
+      for (const match of content.matchAll(/<a\s[^>]*>/gs)) {
+        const tag = match[0];
+        const className = /className=(?:"([^"]*)"|\{`([^`]*)`\})/s.exec(tag);
+        const classes = className?.[1] ?? className?.[2] ?? "";
+        const looksLikeButton =
+          /rounded-(lg|full|md|xl)/.test(classes) &&
+          /(^|\s)(bg-|border)/.test(classes);
+        if (!looksLikeButton || classes.includes("tap-44")) continue;
+        const line = content.slice(0, match.index).split("\n").length;
+        offenders.push(`${file.replace(SRC_ROOT, "src")}:${line}`);
+      }
+    }
+    expect(
+      offenders,
+      "Diese Links sehen aus wie Knöpfe, bekommen ohne `tap-44` aber nicht " +
+        `die 44-px-Trefferfläche:\n${offenders.join("\n")}`,
+    ).toEqual([]);
   });
 });
 
@@ -549,7 +576,12 @@ describe("C8: Querformat", () => {
       landscape,
       STYLES.indexOf("\n}\n", STYLES.indexOf(".daystrip-cells", landscape)),
     );
-    for (const hook of [".app-header", ".app-tagline", ".app-main", ".daystrip-cells"]) {
+    for (const hook of [
+      ".app-header",
+      ".app-tagline",
+      ".app-main",
+      ".daystrip-cells",
+    ]) {
       expect(rule, `${hook} fehlt im Querformat-Block`).toContain(hook);
     }
     for (const hook of ["app-header", "app-tagline"]) {

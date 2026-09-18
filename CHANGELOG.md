@@ -89,7 +89,13 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   und Klassenliste).
 - **U1**: kein ungeschichtetes `font:`-Kürzel; die Erbregel in `@layer base`
   darf keine `font-size` setzen; Tippfelder halten 16 px.
-- **C5**: keine festen `iconSize`/`iconAnchor` an Karten-Pins.
+- **C5**: keine festen `iconSize`/`iconAnchor` an Karten-Pins; Links, die wie
+  Knöpfe aussehen (runde Ecken **und** Hintergrund oder Rahmen), tragen
+  `tap-44` — die 44-px-Regel greift bei `a` nur über diese Klasse, ein nackter
+  Link bliebe auf Textzeilenhöhe. Alle sechs vorhandenen sind bereits richtig;
+  der Ratchet hält den Stand.
+- Die Dateisuche der Ratchets (U1, U6, M1, C5) stand dreimal wortgleich im
+  Code und liegt jetzt einmal auf Modulebene.
 - Alle neuen Ratchets sind per Gegenprobe geprüft: Wird der alte Stand
   wiederhergestellt, schlagen sie fehl.
 - `playwright.demo.config.ts` akzeptiert wie die Hauptkonfiguration
