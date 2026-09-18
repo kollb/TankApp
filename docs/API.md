@@ -1,6 +1,13 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 18.09.2026 · App-Version **0.51.0** — neu seit 0.50.1: die
+> Stand: 18.09.2026 · App-Version **0.52.0** — neu seit 0.52.0 (Batch 7 des
+> [Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)):
+> jede Antwort trägt `X-Process-Time` und `/health` einen
+> [`performance`](#health)-Block (O37); `If-None-Match` → `304` gilt nicht mehr
+> nur für `/overview`, sondern auch für `decide`, `stations`, `heatmap`,
+> `stats/summary`, `selection` und `last_forecasts` (O25, siehe
+> [Auth & Limits](#auth--limits)); gzip fährt API-Antworten mit Stufe 1.
+> Davor seit 0.50.1: die
 > 12-Uhr-Bodenkante (B30) fährt in [Heatmap](#heatmap-b39) und
 > [Selection](#selection--meine-stationen-b310) mit (`law_floor`,
 > `points_before_law`, `days_before_law`) — Beobachtungen vor
@@ -120,9 +127,31 @@ frei (GUI-Polling).
   überall außer: content-hashierte Assets (`/assets/…`, `immutable`) und die
   semi-statischen Antworten `heatmap`/`last_forecasts`
   (`public, max-age=900` — sie ändern sich nur mit dem Modelllauf, B7).
+  `no-store` bleibt bewusst stehen, auch wo ein ETag fährt: Die Revalidierung
+  macht die GUI selbst (`web/src/data.ts`), persönliche Zahlen gehören nicht in
+  einen Festplatten-Cache.
+- **Revalidierung (B7, ausgeweitet mit O25/0.52.0):** `200`-Antworten auf
+  `/api/v1/overview`, `/decide`, `/stations`, `/heatmap`, `/stats/summary`,
+  `/selection` (+ `/stations/selection`) und `/last_forecasts` tragen ein
+  `ETag` (Datenstand + Route + Parameter). Schickt der Client es als
+  `If-None-Match` und hat sich der Datenstand nicht geändert, antwortet der
+  Server `304 Not Modified` **ohne Body und ohne Neuberechnung** — der
+  Datenstand ist derselbe Stempel wie beim Overview (Collector-Heartbeat,
+  Engine-/Selektions-Artefakt, Feedback-Store, Polling-Set plus ein
+  60-s-Uhrzeitfenster). Persönliche Endpunkte (`fills`, `profiles`,
+  `episodes`, `advice/diary`) und die Influx-Pfade mit frei wählbarem Fenster
+  (`series`, `forecast`, `day`) revalidieren bewusst nicht.
 - JSON-Antworten werden ab 512 Byte als `Content-Encoding: gzip` ausgeliefert,
   wenn der Client `Accept-Encoding: gzip` schickt (B7); `Vary: Accept-Encoding`
-  ist immer gesetzt.
+  ist immer gesetzt. **Stufe 1** statt 6 (O25/0.52.0): gemessen an 2,08 MB JSON
+  11,3 ms/18,1 % der Rohgröße gegen 46,2 ms/13,9 % — die CPU-Zeit fällt auf dem
+  NAS bei jedem Poll an, die paar Prozent Größe im LAN nicht.
+- **`X-Process-Time` (O37, seit 0.52.0):** Jede Antwort — auch `304`, `404` und
+  statische Dateien — trägt die Bearbeitungszeit in Sekunden
+  (`X-Process-Time: 0.004182`), dieselbe Konvention wie gunicorn/nginx. Die
+  Zusammenfassung (p95, Maximum, langsamste Route) steht in
+  `/api/v1/health` → [`performance`](#health); das Budget in
+  [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
@@ -671,7 +700,13 @@ Antwort:
                   "largest_file_bytes": 720000,
                   "budget_bytes": 6000000, "max_bytes": 10000000,
                   "over_budget": false, "readable": true,
-                  "error_code": null, "reason": null},
+                  "error_code": null, "reason": null,
+                  "parse_ms": 18.4, "parsed_at": "2026-09-18T12:04:11+00:00"},
+  "performance": {"window": 200, "count": 200, "p95_ms": 6.1, "max_ms": 240.8,
+                  "budget_ms": 300.0, "slowest_route": "/api/v1/stats/summary",
+                  "slowest_p95_ms": 41.3,
+                  "by_route": {"/api/v1/health": {"count": 61, "p95_ms": 3.2}},
+                  "store_lock": {"acquired": 7, "wait_ms": 12.5}},
   "price_implausible": {"count_24h": 0, "last_at": null},
   "backup": {"configured": true, "count": 14, "monthly_count": 6,
              "newest_at": "2026-09-17T01:30:04+00:00", "age_hours": 10.5,
@@ -693,8 +728,10 @@ Antwort:
 
 **Version und Build-Hash** (B9): `version` kommt aus `app/version.py`
 (`VERSION`, je Release angehoben), `commit` ist der Kurzhash des Checkouts bzw.
-`TANKAPP_BUILD_COMMIT`. Im Docker-Image ist `commit` `null` — das Image enthält
-kein `.git`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
+`TANKAPP_BUILD_COMMIT`. Im Docker-Image ist `commit` `null`, solange niemand
+`TANKAPP_BUILD_COMMIT` setzt — das Image enthält weder `.git` noch `git`;
+`ops/nas/app/compose.yml` reicht die Variable als Build-Argument durch, der
+CI-Job `nas-image` setzt `$GITHUB_SHA`. Beide Werte stehen im GUI-Footer; sie beantworten bei drei
 Oberflächen (NAS, RP2-Proxy/Fallback, Pi) die Frage „was läuft hier?“.
 
 **`publication`** (O22, 0.44.0; aufgeteilt seit 0.49.0): Größe und Lesbarkeit
@@ -715,7 +752,23 @@ aufgeteilter Veröffentlichung zusätzlich `index_bytes`, `file_count` und
 Modell-Lauf gibt es keine Veröffentlichung (`reason: "missing"`,
 `error_code: null`). Der Modell-Lauf nennt dieselben Zahlen im Job-Log
 (`models: Veröffentlichung 13,5 MB gesamt: 20 Stations-Dateien plus Index,
-größte Datei 0,7 MB …`).
+größte Datei 0,7 MB …`). Seit 0.52.0 (O37) zusätzlich `parse_ms` und
+`parsed_at`: Dauer und Zeitpunkt des letzten Pars **dieses** Datenstands — das
+Lese-Memo (O23) macht den Parse selten, und wenn er teuer wird (wachsende
+Veröffentlichung, O22), steht es hier. `null` heißt „für den aktuellen Stand hat
+noch niemand geparst", nie „0 ms".
+
+**`performance`** (O37, seit 0.52.0): Selbstmessung des Servers — was
+`X-Process-Time` je Antwort sagt, als Zusammenfassung über die letzten
+**200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
+`budget_ms` (= 300 ms, das Budget aus
+[QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520)), dazu
+`slowest_route`/`slowest_p95_ms` und je Route mit mindestens fünf Antworten ein
+eigener Wert in `by_route`. `store_lock` zählt Akquisen und Wartezeit der
+Feedback-Store-Sperre (O26): Steigt `acquired`, obwohl niemand Belege bucht,
+nimmt ein Lesepfad wieder die Sperre. Kein Monitoring, kein Alarm — die
+Frage, die der Block beantwortet, ist „warum hängt das gerade?", auf dem Gerät,
+auf dem es hängt.
 
 **`alarms[]`** (B4): Aggregation der vorhandenen Prüfungen, **ohne** neue Netz-
 oder InfluxDB-Zugriffe (das 3–5-s-Budget des Docker-Healthchecks bleibt). Jeder

@@ -431,6 +431,29 @@ def migrate_store(raw: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+# O26/O37: Beobachtbarkeit der Sperre. Wer misst, sieht den Konflikt, bevor
+# er wehtut: ``acquired`` zählt jede Akquise der Store-Sperre, ``wait_seconds``
+# die dabei verlorene Zeit (Thread- **und** Dateisperre). Der reine Lesepfad
+# (``/decide``-Poll) darf den Zähler nicht bewegen — das ist der Nachweis,
+# dass er sperrenfrei ist (``tests/test_o26_read_path_lock.py``).
+_LOCK_STATS = {"acquired": 0, "wait_seconds": 0.0}
+_LOCK_STATS_LOCK = threading.Lock()
+
+
+def lock_stats() -> dict[str, Any]:
+    """Sperren-Zähler des Feedback-Stores als JSON-taugliche Kopie (O26/O37).
+
+    ``/api/v1/health`` zeigt den Block (``store_lock``), damit ein wachsender
+    Zähler im Dauerbetrieb auffällt — und ein Test kann beweisen, dass ein
+    Lese-Poll keine Sperre nimmt.
+    """
+    with _LOCK_STATS_LOCK:
+        return {
+            "acquired": _LOCK_STATS["acquired"],
+            "wait_ms": round(_LOCK_STATS["wait_seconds"] * 1000.0, 1),
+        }
+
+
 @contextmanager
 def locked_store(settings):
     """Thread- + prozessübergreifend essicheres Lesen/Schreiben des Feedback-Stores.
@@ -454,7 +477,13 @@ def locked_store(settings):
     Text in ``web/src/data.ts``) statt des Rohtexts „in diesem Verzeichnis
     läuft bereits ein Prozess", den die API als ``invalid_query`` (400)
     ausgegeben hat: klingt nach falscher Eingabe, war aber belegter Speicher.
+
+    O26: Diese Sperre ist ein **Schreib**-Werkzeug. Reine Lesepfade nehmen sie
+    nicht: ``record_snapshot`` prüft vorher sperrenfrei, ob der Aufruf den
+    Store überhaupt ändert (``_peek_confirmation``), und bleibt sonst ohne
+    Sperre. Sonst wartet ein Beleg hinter einem Poll, der nichts schreibt.
     """
+    started = time.monotonic()
     with _STORE_THREAD_LOCK:
         lock = None
         last_error = None
@@ -471,6 +500,9 @@ def locked_store(settings):
                 time.sleep(LOCK_RETRY_SECONDS)
         if lock is None:
             raise ValueError("store_locked") from last_error
+        with _LOCK_STATS_LOCK:
+            _LOCK_STATS["acquired"] += 1
+            _LOCK_STATS["wait_seconds"] += time.monotonic() - started
         try:
             store = load_store(settings)
             before = _store_digest(store)
@@ -700,6 +732,64 @@ def snapshot_p_source(snap: dict[str, Any] | None) -> str:
     return "keine"
 
 
+def _peek_confirmation(
+    settings, snapshot_data: dict[str, Any], clock=None
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """O26: Sperrenfreier Vorblick — ändert dieser Snapshot den Store nicht?
+
+    Der ``/decide``-Poll läuft über diesen Aufruf, und die GUI pollt ihn.
+    Vorher nahm jeder Poll die exklusive Store-Sperre, auch wenn am Ende
+    ``_same_advice`` feststellte, dass nichts zu schreiben war: Ein Beleg
+    (Schreibpfad) wartete dann hinter einer Abfrage, die nichts ändert.
+
+    Der Vorblick liest den Store **ohne** Sperre (``atomic_json`` schreibt
+    über ``os.replace``, ein Leser sieht also immer einen ganzen Stand) und
+    prüft dieselben Bedingungen, unter denen der Pfad unter Sperre ohne
+    Änderung zurückkehrt:
+
+    - es gibt eine offene Episode (sonst entstünde eine neue — Schreibvorgang),
+    - ihr letzter Snapshot ist dieselbe Entscheidung (``_same_advice``),
+    - keine Episode läuft gerade ab (der Ablauf ändert ``status``/``closed_at``).
+
+    Trifft alles zu, ist ``(store, episode)`` die Antwort — ohne Sperre.
+    Sonst ``None``: Dann entscheidet der volle Pfad unter Sperre, inklusive
+    erneuter Prüfung. Ein Wettlauf zwischen Vorblick und Schreibvorgang ist
+    damit harmlos: Der Vorblick kann nur „keine Änderung" sagen, wenn sie zum
+    Lesezeitpunkt galt; die Sperre übernimmt, sobald Zweifel bestehen.
+    """
+    try:
+        store = load_store(settings)
+    except Exception:
+        # Zu groß, unlesbar, Schema zu neu: Der Pfad unter Sperre meldet es
+        # mit demselben Fehler — der Vorblick entscheidet nichts.
+        return None
+    now_str = _now_iso(clock)
+    clock_now = clock() if clock else dt.datetime.now(UTC)
+    for ep in store.get("episodes", []):
+        if ep.get("status") not in ("open", "waiting", "due"):
+            continue
+        opened = _parse_ts(ep.get("opened_at"))
+        if opened is None:
+            continue
+        age_h = (clock_now - opened).total_seconds() / 3600.0
+        if age_h > EPISODE_MAX_HOURS:
+            return None  # Ablauf setzt status/closed_at → Schreibvorgang
+    ep = _open_episode(store)
+    if not ep or not ep.get("last_snapshot"):
+        return None  # neue Episode bzw. erster Snapshot → Schreibvorgang
+    probe = {
+        "action": snapshot_data.get("action", "no_advice"),
+        "station_id": snapshot_data.get("station_id"),
+        "alt_station_id": snapshot_data.get("alt_station_id"),
+        "fuel": snapshot_data.get("fuel", "e10"),
+        "decline_reason": snapshot_data.get("decline_reason"),
+        "emitted_at": now_str,
+    }
+    if not _same_advice(ep["last_snapshot"], probe):
+        return None
+    return store, ep
+
+
 def record_snapshot(
     settings, snapshot_data: dict[str, Any], clock=None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -722,7 +812,14 @@ def record_snapshot(
     mtime-Wert dieses Stores — schriebe jeder Aufruf, wäre das ETag der
     Antwort schon beim Ausliefern veraltet und jede Aktualisierung liefe in
     ein 200 samt Neuberechnung (B7).
+
+    O26: Derselbe Schreibverzicht gilt jetzt auch der **Sperre**. Eine
+    Bestätigung läuft über ``_peek_confirmation`` sperrenfrei; die Sperre
+    wird nur noch genommen, wenn der Aufruf den Store wirklich ändern kann.
     """
+    confirmed = _peek_confirmation(settings, snapshot_data, clock)
+    if confirmed is not None:
+        return confirmed
     with locked_store(settings) as store:
         now_str = _now_iso(clock)
         clock_now = clock() if clock else dt.datetime.now(UTC)

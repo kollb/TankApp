@@ -840,6 +840,12 @@ _PUBLICATION_MEMO: dict[str, Any] = {"key": None, "value": None, "reason": None}
 _SELECTION_MEMO: dict[str, Any] = {"key": None, "value": None}
 _PUBLICATION_LOCK = threading.Lock()
 _SELECTION_LOCK = threading.Lock()
+# O37: Was kostet der Parse? Das Lese-Memo (O23) macht ihn selten — aber wenn
+# er teuer wird (wachsende Veröffentlichung, O22), soll ``/api/v1/health`` es
+# zeigen, bevor es wehtut. Je Artefakt die letzte Messung samt Datenstands-
+# Schlüssel: Passt der Schlüssel nicht zum aktuellen Stand, nennt
+# ``publication_status`` keine Zahl, statt eine alte als aktuelle auszugeben.
+_PARSE_STATS: dict[str, Any] = {"publication": None, "selection": None}
 
 
 def _memo_stamp(path) -> str:
@@ -926,16 +932,23 @@ def publication(settings):
     with _PUBLICATION_LOCK:
         if _PUBLICATION_MEMO["key"] == key and _PUBLICATION_MEMO["value"] is not None:
             return _PUBLICATION_MEMO["value"]
+    started = time.monotonic()
     raw, reason = read_json_checked(path)
     value = raw if isinstance(raw, dict) else {}
     if reason is None and isinstance(raw, dict):
         if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
             value, split_reason = _merge_split_publication(raw, path.parent)
             reason = reason or split_reason
+    elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
     with _PUBLICATION_LOCK:
         _PUBLICATION_MEMO["key"] = key
         _PUBLICATION_MEMO["value"] = value
         _PUBLICATION_MEMO["reason"] = reason
+        _PARSE_STATS["publication"] = {
+            "key": key,
+            "ms": elapsed_ms,
+            "at": dt.datetime.now(UTC).isoformat(),
+        }
     return value
 
 
@@ -974,6 +987,11 @@ def publication_status(settings) -> dict[str, Any]:
         "readable": False,
         "error_code": None,
         "reason": None,
+        # O37: Dauer des letzten Pars **dieses** Datenstands. None heißt
+        # „für den aktuellen Stand hat noch niemand geparst“ — ehrlicher als
+        # eine alte Zahl, die als aktuelle aussieht.
+        "parse_ms": None,
+        "parsed_at": None,
     }
     try:
         size = path.stat().st_size
@@ -989,7 +1007,14 @@ def publication_status(settings) -> dict[str, Any]:
     with _PUBLICATION_LOCK:
         memo_key = _PUBLICATION_MEMO["key"]
         memo_reason = _PUBLICATION_MEMO["reason"]
+        measured = _PARSE_STATS["publication"]
     stamp = _memo_stamp(path)
+    # O37: Die Parse-Dauer gehört zum Datenstand. Passt der Schlüssel nicht
+    # zum aktuellen Stand, bleibt ``parse_ms`` None — eine Zahl von einem
+    # älteren Stand wäre eine falsche Aussage über diesen.
+    if isinstance(measured, dict) and measured.get("key") == (str(path), stamp):
+        status["parse_ms"] = measured.get("ms")
+        status["parsed_at"] = measured.get("at")
     if memo_reason is not None and memo_key == (str(path), stamp):
         # Ein Parse-Fehler ist per ``stat`` unsichtbar — das Lese-Memo (O23)
         # nennt den Grund, ohne dass diese Prüfung selbst parst.
@@ -1068,11 +1093,18 @@ def selection_publication(settings):
     with _SELECTION_LOCK:
         if _SELECTION_MEMO["key"] == key and _SELECTION_MEMO["value"] is not None:
             return _SELECTION_MEMO["value"]
+    started = time.monotonic()
     raw, _reason = read_json_checked(path)
     value = raw if isinstance(raw, dict) else {}
+    elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
     with _SELECTION_LOCK:
         _SELECTION_MEMO["key"] = key
         _SELECTION_MEMO["value"] = value
+        _PARSE_STATS["selection"] = {
+            "key": key,
+            "ms": elapsed_ms,
+            "at": dt.datetime.now(UTC).isoformat(),
+        }
     return value
 
 
@@ -1496,6 +1528,27 @@ class LiveData:
                 for name in ("models", "selection")
             }
 
+    def _performance(self) -> dict[str, Any]:
+        """Latenz- und Sperren-Blick für ``/api/v1/health`` (O37).
+
+        ``app/metrics`` fasst die ``X-Process-Time``-Werte der letzten
+        Antworten zusammen (p95, Maximum, langsamste Route, Budget aus
+        ``docs/QUALITAET.md``); der Sperren-Zähler kommt aus ``app.feedback``
+        und zeigt, ob ein Lesepfad wieder die Store-Sperre nimmt (O26).
+        Beide Teile sind optional: Fällt einer aus, fehlt er hier — /health
+        darf an der Selbstmessung nicht scheitern.
+        """
+        from . import metrics
+
+        performance: dict[str, Any] = dict(metrics.summary())
+        try:
+            from .feedback import lock_stats
+
+            performance["store_lock"] = lock_stats()
+        except Exception:
+            performance["store_lock"] = None
+        return performance
+
     def health(self):
         job_errors = self.job_errors.copy()
         trigger_stats = self.trigger_info()
@@ -1648,6 +1701,13 @@ class LiveData:
             # Erfolg meldet. ``bytes``/``budget_bytes``/``max_bytes`` sagen,
             # wie nah der Betrieb daran ist (``alarms[]`` schlägt an).
             "publication": publication_status(self.settings),
+            # O37: Selbstmessung — Latenz-Fenster der letzten Antworten
+            # (``app/metrics.py``, dasselbe, was ``X-Process-Time`` je Antwort
+            # sagt) plus Sperren-Zähler des persönlichen Speichers (O26).
+            # Beides ist billig und macht O22/O23/O26 im Betrieb sichtbar,
+            # bevor sie wehtun: Eine Antwort, die 900 ms braucht, weil eine
+            # Datei gewachsen ist, steht hier, nicht nur im Gefühl.
+            "performance": self._performance(),
             # O35: Live-Preise außerhalb 0,40–5,00 €/L werden nicht als Preis
             # publiziert, aber gezählt — hier der Stand der letzten 24 h,
             # damit ein API-Artefakt sichtbar wird statt still zu sortieren.
@@ -2409,19 +2469,28 @@ class LiveData:
         except Exception:
             return {"error_code": "stats_summary_failed"}
 
-    def overview_etag(self, params: dict) -> str | None:
-        """ETag für /overview — Datenstand + Parameter, billig berechenbar.
+    def read_etag(self, route: str, params: dict) -> str | None:
+        """ETag eines read-only-Endpunkts — Datenstand + Route + Parameter (O25).
 
-        Revalidierung ist nur möglich, wenn ``data_version()`` läuft;
-        sonst None (ehrlicher Fallback: kein 304, Antwort wird immer
-        berechnet).
+        Billig berechenbar: ``data_version()`` liest Datei-Stats, keine
+        Influx-Query. Die Route gehört in den Wert, damit zwei Endpunkte beim
+        selben Datenstand nicht dasselbe ETag tragen (ein Client, der beide
+        pollt, bekäme sonst ein 304 für die falsche Antwort).
+
+        Revalidierung ist nur möglich, wenn ``data_version()`` läuft; sonst
+        None (ehrlicher Fallback: kein 304, die Antwort wird immer berechnet).
         """
         try:
             version = data_version(self.settings, self.clock)
         except Exception:
             return None
         canonical = json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
-        return hashlib.sha1(f"{version}|{canonical}".encode("utf-8")).hexdigest()
+        raw = f"{version}|{route}|{canonical}"
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+    def overview_etag(self, params: dict) -> str | None:
+        """ETag für /overview — dieselbe Regel wie :meth:`read_etag` (B7)."""
+        return self.read_etag("/api/v1/overview", params)
 
     def overview(self, params: dict, etag: str | None = None) -> dict:
         """B7: Der Alltag in einer Anfrage — statt sechs parallelen GUI-Polls.

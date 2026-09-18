@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 17.09.2026 · App-Version **0.45.0**
+> Stand: 18.09.2026 · App-Version **0.52.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -40,7 +40,16 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.51.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.52.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.52.0 setzt Batch 7 des Optimierungs-Befunds um (Betrieb, Rest): API-Antworten
+komprimieren mit gzip-Stufe 1 und revalidieren über `If-None-Match` auf sechs
+weiteren Endpunkten (O25), der Decide-Poll nimmt die Feedback-Store-Sperre nicht
+mehr (O26), der Server misst sich selbst (`X-Process-Time`,
+`performance`/`publication.parse_ms` in `/health`, O37), der InfluxDB-Cron
+rotiert und das Roharchiv ist als bewusst ungesichert benannt (O34), und Bild
+wie Pipeline bauen gegen dieselbe Python-/Node-Linie — die Suite läuft jetzt
+**im Bild** (O27). Messwerte und Budgets:
+[QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
 0.51.0 setzt Schritt 3 des 12-Uhr-Befunds um (B30): Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`, Payload und GUI nennen Kante und ausgeblendete Punkte, der Modell-Lauf misst den Vor-Gesetz-Anteil (`law_quality`). Konzept und Abnahme-Protokoll: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md); dabei ist der Befund §4 nachgerechnet — alle Muster-Fenster beginnen heute hinter dem Gesetz, die Kante ist Garantie statt Reparatur.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
@@ -72,9 +81,10 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
+| [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) | 0.51.0 | Abgeschlossener Prüfbericht zum 12-Uhr-Gesetz; Batch 7 ändert weder Panel noch Kalibrierung |
+| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und fasst kein Werkzeug an |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
 | [MICROCOPY.md](MICROCOPY.md) | 0.46.0 | 0.47.0 ist ein Betriebs-Release ohne neue Textmuster: Der Text des neuen Alarms `backup_stale` folgt §4f (deutscher Klartext, Handlungsanweisung, keine Pfade), und die GUI zeigt ihn über die bestehende Alarm-Leiste |
-| [QUALITAET.md](QUALITAET.md) | 0.41.1 | Lighthouse-Messwerte aus 0.41.1; für 0.42.0/0.43.0 wurde keine Messung neu gefahren |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
 | [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
@@ -82,7 +92,7 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [TEXT-BEFUND.md](TEXT-BEFUND.md) | 0.38.0 | Arbeitsdokument: Lektorat zum Stand 0.38.0 — T1–T13 sind in 0.39.0 umgesetzt, der Befund bleibt als Protokoll eingefroren |
-| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–5 tragen ihre Umsetzungs-Vermerke 0.44.0–0.48.0 und O22 (d) den von 0.49.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)), der Betriebsbefund O44 den von 0.49.1 ([§7](OPTIMIERUNGS-BEFUND.md#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite)) |
+| [OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) | 0.43.2 | Arbeitsdokument: Sichtung gegen 0.43.2, Zeilenangaben und Messwerte bleiben eingefroren; die Batches 1–7 tragen ihre Umsetzungs-Vermerke 0.44.0–0.52.0 und O22 (d) den von 0.49.0 ([§10](OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check)), der Betriebsbefund O44 den von 0.49.1 ([§7](OPTIMIERUNGS-BEFUND.md#o44--zwei-abstürze-aus-dem-produktionsbetrieb-fremde-antwortformen-brechen-die-seite)) |
 | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) | 0.33.0 | Umsetzungsprotokoll, historisch |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | — | Entwurf, bewusst unabhängig vom Bestand |
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) · [SPEICHER.md](SPEICHER.md) | — | Betriebs- und Übernahmeregeln, keine Versionsaussagen |
