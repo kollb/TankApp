@@ -88,10 +88,21 @@ def test_demo_stack_liefert_publikation_und_frische_preise(tmp_path):
     # Ungültige UUIDs wären „polling_invalid“ — das GUI bliebe leer.
     assert len(validate_sets(payload)) == 1
 
-    publication = json.loads(
+    # O28: Der Demo-Stapel schreibt über denselben Schreiber wie der
+    # NAS-Lauf — aufgeteiltes Layout, Index + eine Datei je Station. Gelesen
+    # wird hier wie in ``app.data.publication()``: Index folgen, Stationen
+    # zusammenziehen.
+    index = json.loads(
         (tmp_path / "runtime/engine/current.json").read_text(encoding="utf-8")
     )
-    forecasts = publication["forecasts"]
+    assert index["layout"] == "split-forecast-files"
+    assert index["failures"] == []
+    forecasts = []
+    for entry in index["forecasts"]:
+        part = json.loads(
+            (tmp_path / "runtime/engine" / entry["file"]).read_text(encoding="utf-8")
+        )
+        forecasts.append(part["forecast"])
     assert len(forecasts) == len(demo_data.STATIONS)
     for row in forecasts:
         # Entscheidungs-Layer braucht Draws: ohne sie sind p_besser/p_lohnt

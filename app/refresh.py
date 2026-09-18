@@ -98,6 +98,7 @@ def refresh(settings: Settings, now=None, progress=None):
     )
     from engine.storage import write_json
     from polling_plan import collector_lock
+    from .selection import publish_selection
     from .gapfill import fill_gaps
     from .history import prepare_archive
     from .model_jobs import ModelTaskPool, resolve_workers
@@ -759,20 +760,14 @@ def refresh(settings: Settings, now=None, progress=None):
 
         # --- Selektions-Artefakte publizieren (für „Meine Stationen“) ---
         try:
-            sel_dir = settings.runtime / "selection"
-            sel_dir.mkdir(parents=True, exist_ok=True)
-            # Einzeldateien je Kraftstoff + kombinierte current.json
-            for fuel_key, sel_data in selections.items():
-                write_json(sel_dir / f"{fuel_key}.json", sel_data)
-            # Kombiniert
-            combined = {
-                "generated_at": origin.isoformat(),
-                "fuels": list(selections.keys()),
-                "by_fuel": selections,
-            }
-            write_json(sel_dir / "current.json", combined)
+            # O41: eine Form für beide Schreiber — der eigenständige
+            # selection-Job (app/worker.py) veröffentlicht über dieselbe
+            # Funktion, keine zweite Wahrheit über das Artefakt.
+            publish_selection(settings, origin.isoformat(), selections)
             print(
-                f"models: Selektion publiziert nach {sel_dir}/current.json", flush=True
+                f"models: Selektion publiziert nach "
+                f"{settings.runtime / 'selection'}/current.json",
+                flush=True,
             )
         except Exception as exc:
             print(

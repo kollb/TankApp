@@ -234,9 +234,11 @@ Decision Layer rechnet daraus ohne Numerik-Abhängigkeit (`app/pside.py`):
   Ledger-Trefferquote als F1-Gate **und** als Brier-Input,
 - `p_lohnt` = P(€_netto > 0) je F2-Zeile,
 - F3-Fenster-P = P(Fenster ≤ Minimum im ±6-h-Umfeld) je Fenster.
-**Dokumentierte Abweichung:** die gemeinsame Bootstrap-Ziehung über
-Stationen (§4.2) ist nicht umgesetzt — `p_lohnt` rechnet mit unabhängigen
-Nowcast-Draws (siehe „Bewusst offen“). Das M7-Gate (§0.4) bleibt hart:
+**Dokumentierte Abweichung (Stand 11.09.2026, mit 0.31.0/A11 geschlossen):**
+die gemeinsame Bootstrap-Ziehung über Stationen (§4.2) war damals nicht
+umgesetzt — `p_lohnt` rechnete mit unabhängigen Nowcast-Draws. Seit 0.31.0
+ziehen alle Stationen eines Laufs ihre Tages-Blöcke gemeinsam
+(`draws_*.shared` weist es aus). Das M7-Gate (§0.4) bleibt hart:
 `primary.p_correct` erscheint erst nach der Kalibrierung.
 
 ### 11.09.2026 — P1/P2/P3-Fixes (Prüfstand §3/§7)
@@ -650,7 +652,7 @@ Rechnung geändert.
 | 3.1–3.2 | Aufbereitung, Strukturmodell + AR(2), 12-Uhr-Regel |Strukturmodell + AR(2) + 12-Uhr-Regel fertig; **fertig**: Hampel-Filter (§3.1 Schritt 3), gepoolter Feiertags-Dummy je Bundesland + Zeit-seit-letztem-Sprung als Feature (§3.2, Update 11.09.2026 abends); **offen**: M3-Zweitmodell/Ensemble (Echt-Daten-Abnahme) |
 | 3.3 | Bootstrap-Intervalle |fertig (unkalibriert, gekennzeichnet); **fertig**: 7-Tage-Rolling-PICP je Station als Konfidenz-Badge (§3.3.3, Update 11.09.2026 abends); **ACI offen** (§3.3 selbst: erst nach 4 Wochen Live-Betrieb) |
 | 3.4 | Backtest 24 h, Horizonte +3/+7 d |fertig; **fertig**: Mehrtage-Backtests +3 d/+7 d im Rolling-Origin-Backtest (Update 11.09.2026 abends) |
-| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite jetzt aus der Prognoseverteilung**: `p_besser` = P(min ≤ p−1 ct) aus den Draws (F1-Gate + Brier), `p_lohnt` je F2-Zeile, F3-Fenster-P je Fenster. **Abweichung**: gemeinsame Ziehung über Stationen (§4.2) offen — `p_lohnt` nutzt unabhängige Nowcast-Draws (siehe „Bewusst offen“). **O5 (0.45.0):** je Snapshot steht `p_source` (`verteilung`|`basisrate`|`keine`); der Brier wird je Quelle getrennt ausgewiesen, das M7-Gate rechnet ausschließlich über `verteilung` — Code und Doku sagen dasselbe |
+| 4.1–4.3 | F1/F2/F3 inkl. Fenster-Top-3 |Regel- und €-Seite fertig (B4) + `latest_by` (B5); **P-Seite jetzt aus der Prognoseverteilung**: `p_besser` = P(min ≤ p−1 ct) aus den Draws (F1-Gate + Brier), `p_lohnt` je F2-Zeile, F3-Fenster-P je Fenster. Die gemeinsame Ziehung über Stationen (§4.2, A11) ist seit 0.31.0 umgesetzt und je Draw-Block ausgewiesen (`draws_*.shared`, `TANKAPP_SHARED_DRAWS=0` für Gegenmessungen) — der bis 0.30.x gültige Vorbehalt (unabhängige Nowcast-Draws, „dokumentierte Abweichung“) ist damit weg. **O5 (0.45.0):** je Snapshot steht `p_source` (`verteilung`|`basisrate`|`keine`); der Brier wird je Quelle getrennt ausgewiesen, das M7-Gate rechnet ausschließlich über `verteilung` — Code und Doku sagen dasselbe |
 | 4.4 | „Keine klare Empfehlung“ |fertig (Grauzone P_besser ∈ [40, 60] % aus den Draws); **fertig**: Güte-Gate als Auswertungsschritt 1 (§4.5) — Rolling-PICP rot → „Keine klare Empfehlung“ ohne Ampel/Prozent (Update 11.09.2026 abends) |
 | 4.5 | Schwellen in einer Config |fertig (B5: `app/thresholds.py`) |
 | 5.1–5.2 | Brier, Reliability, zwei Ledger |fertig; Brier je P-Quelle getrennt, Gate nur über Verteilungs-P (O5, 0.45.0), Gate mit Intervall gegen zwei Referenzen (O6, 0.45.0) |

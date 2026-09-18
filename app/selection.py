@@ -17,64 +17,101 @@ Quelle: training/*.csv.gz aus InfluxDB + Archiv (echte Daten), keine Demo.
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 from .data import read_json
 
 UTC = dt.timezone.utc
 
+# Lesbare Kraftstoffe der Einzeldateien (Falls current.json fehlt oder ein
+# Alt-Artefakt ohne by_fuel vorliegt).
+_FUELS = ["e10", "e5", "diesel"]
+
+
+def selection_artifact(generated_at, by_fuel, error_code=None):
+    """Die eine Form des kombinierten Selektions-Artefakts (O41).
+
+    Vorher schrieben zwei Stellen zwei Formen: ``app/refresh.py`` einen
+    Index ``{"generated_at", "fuels", "by_fuel"}`` und ``app/worker.py``
+    das Ergebnis von ``build_selection`` mit zusätzlichen flachen Feldern
+    (``stations``, ``cities``, ``count``). Gelesen hat die flache Form
+    niemand — ``LiveData.selection`` baut seine Stationen aus ``by_fuel``,
+    ``app/recap.py`` ebenso. Diese Factory ist jetzt die eine Struktur,
+    die **beide Schreiber** schreiben und ``read_selection`` normalisiert;
+    ``error_code`` trägt den Grund, wenn kein Kraftstoff ein Ranking liefert.
+    """
+    return {
+        "generated_at": generated_at,
+        "fuels": list(by_fuel.keys()),
+        "by_fuel": by_fuel,
+        "error_code": error_code,
+    }
+
+
+def publish_selection(settings, generated_at, by_fuel) -> dict:
+    """Schreibt die Selektions-Artefakte — der gemeinsame Schreiber (O41).
+
+    Eine Datei je Kraftstoff plus die eine kombinierte ``current.json``;
+    ``refresh()`` (models-Job) und der eigenständige selection-Job rufen
+    dieselbe Funktion, dadurch erzeugen beide Schreiber dieselbe Form und
+    denselben Dateibestand. Rückgabe ist das kombinierte Artefakt.
+    """
+    from engine.storage import write_json
+
+    sel_dir = Path(settings.runtime) / "selection"
+    sel_dir.mkdir(parents=True, exist_ok=True)
+    for fuel_key, sel_data in by_fuel.items():
+        write_json(sel_dir / f"{fuel_key}.json", sel_data)
+    combined = selection_artifact(generated_at, by_fuel)
+    write_json(sel_dir / "current.json", combined)
+    return combined
+
 
 def read_selection(settings):
-    raw = read_json(settings.runtime / "selection/current.json", None)
-    if isinstance(raw, dict) and raw:
-        if "by_fuel" in raw:
-            # Alle gerankten Stationen zählen (top_global ist auf 10/Fuel gekappt).
-            count = 0
-            for fuel_data in raw["by_fuel"].values():
-                if isinstance(fuel_data, dict):
-                    cities = fuel_data.get("cities") or []
-                    if cities:
-                        count += sum(len(c.get("stations", [])) for c in cities)
-                    else:
-                        count += len(fuel_data.get("top_global", []))
-            raw["count"] = count
-        return raw
+    """Liest das Selektions-Artefakt und normalisiert auf die eine Form (O41).
 
-    fuels = ["e10", "e5", "diesel"]
+    Drei Lese-Pfade, eine Rückgabe: ``current.json`` (beide Schreiber),
+    die Einzeldateien je Kraftstoff, oder — wenn keins davon existiert —
+    nur der ``error_code``. Die flachen Felder (``stations``/``cities``/
+    ``count``) aus der alten Worker-Form baute vorher jeder Pfad anders;
+    sie waren tot (die API zählt ihre Stationen selbst aus ``by_fuel``).
+    """
+    raw = read_json(settings.runtime / "selection/current.json", None)
+    if isinstance(raw, dict) and isinstance(raw.get("by_fuel"), dict):
+        return selection_artifact(
+            raw.get("generated_at"), raw["by_fuel"], raw.get("error_code")
+        )
+
     by_fuel = {}
-    all_stations = []
-    cities_set = set()
     generated = None
-    for fuel in fuels:
+    for fuel in _FUELS:
         data = read_json(settings.runtime / f"selection/{fuel}.json", None)
         if isinstance(data, dict) and data.get("cities"):
             by_fuel[fuel] = data
             if not generated:
                 generated = data.get("generated_at")
-            for city in data["cities"]:
-                cities_set.add(city.get("city"))
-                all_stations.extend(city.get("stations", []))
 
     if by_fuel:
-        return {
-            "generated_at": generated,
-            "fuels": list(by_fuel.keys()),
-            "by_fuel": by_fuel,
-            "count": len(all_stations),
-            "cities": list(cities_set),
-            "stations": all_stations,
-            "error_code": None,
-        }
+        return selection_artifact(generated, by_fuel, None)
 
-    return {
-        "error_code": "selection_not_available",
-        "stations": [],
-        "count": 0,
-        "cities": [],
-    }
+    # Altbestand vor der by_fuel-Ära: flache Stationsliste, von der API über
+    # ihren Kompatibilitäts-Pfad gelesen. Kein Schreiber erzeugt diese Form
+    # mehr (O41 — beide Schreiber schreiben selection_artifact); gelesen
+    # bleibt sie, bis der letzte Altbestand ersetzt ist — wie die Monolith-
+    # Publikation bei O22(d).
+    if isinstance(raw, dict) and raw.get("stations"):
+        return raw
+
+    return {"error_code": "selection_not_available"}
 
 
 def build_selection(settings, fuels=None, config=None, n_boot=None, progress=None):
     """Baut Selektions-Artefakt aus Trainingsbestand (standalone Job).
+
+    Rückgabe ist die eine Artefakt-Form (``selection_artifact``, O41) —
+    dieselbe Struktur, die ``app/refresh.py`` in die kombinierte
+    ``current.json`` schreibt. Nur der Fehlerfall trägt ``error_code`` mit
+    einem Grund statt Daten; dann veröffentlicht der Worker nichts.
 
     ``config`` ist die Engine-Konfiguration (``engine.config.Config``); ohne
     Angabe wird sie aus den Settings gebaut (``app.config.engine_config``).
@@ -117,10 +154,11 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
 
         metas, problem = metadata(settings)
         if problem:
+            # Kein Artefakt, nur Job-Grund: Der Worker veröffentlicht dazu
+            # nichts (O41) — die letzte gute Publikation bleibt stehen, wie
+            # refresh() bei „waiting“ auch schweigt.
             return {
                 "error_code": problem,
-                "stations": [],
-                "count": 0,
                 "generated_at": dt.datetime.now(UTC).isoformat(),
             }
 
@@ -130,7 +168,6 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
 
         ids = {uid for _, uid in metas}
         by_fuel = {}
-        all_flat = []
 
         for fuel in fuels:
             # Training data path
@@ -192,7 +229,6 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
                     # (excluded_count, station_count) sind im Artefakt enthalten.
                     pass
                 by_fuel[fuel] = result
-                all_flat.extend(result.get("top_global", []))
                 if progress:
                     progress.step(label=f"{fuel}: {top_n} Stationen")
             except Exception as exc:
@@ -208,20 +244,16 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
                     progress.step(label=f"{fuel}: Fehler — {detail}")
                 continue
 
-        return {
-            "generated_at": dt.datetime.now(UTC).isoformat(),
-            "fuels": list(by_fuel.keys()),
-            "by_fuel": by_fuel,
-            "count": len(all_flat),
-            "stations": all_flat,
-            "cities": list(metas_by_city.keys()),
-            "error_code": None if by_fuel else "selection_not_available",
-        }
+        # O41: dieselbe Form, die refresh() für die kombinierte Datei baut —
+        # eine Factory, zwei Schreiber, keine flachen Zweitfelder mehr.
+        return selection_artifact(
+            dt.datetime.now(UTC).isoformat(),
+            by_fuel,
+            None if by_fuel else "selection_not_available",
+        )
 
     except Exception:
         return {
             "error_code": "selection_failed",
-            "stations": [],
-            "count": 0,
             "generated_at": dt.datetime.now(UTC).isoformat(),
         }
