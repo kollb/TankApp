@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 17.09.2026 · App-Version 0.49.3. Nachschlagewerk für `data-tools/`
+> Stand: 17.09.2026 · App-Version 0.49.4. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
 > [12-Uhr-Regel-Check](#12-uhr-regel-check).
@@ -87,6 +87,36 @@ Tages-Panels in Zweifel zog: **Zeigen die beobachteten Preise überhaupt die
 `engine/config.py: price_law_local`) — oder trägt der Bestand noch das
 Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
+
+### Aufruf auf dem Daten-Host (NAS)
+
+Drei Schritte; der Check braucht nur numpy/pandas, **keine** volle
+Analyse-Werkstatt (matplotlib/holidays/engine werden nicht importiert):
+
+```bash
+cd /mnt/user/appdata/TankApp   # Repo-/appdata-Wurzel, dort liegen data/…
+
+# 1) Export mit dem Influx-Lesezugang aus data/influx.env.
+#    --since vor dem Gesetzesbeginn ansetzen, sonst fehlt der
+#    Vorher/Nachher-Kontrast (Default deckt nur ~70 Tage ab — alles danach).
+python data-tools/export_influx.py --fuel e10 \
+    --env-file data/influx.env --since 2026-03-01 --out data/export_e10.csv
+
+# 2) Analyse-Pakete einmalig (fehlen sie, sagt das Skript genau das).
+python3 -m venv .venv-analysis
+.venv-analysis/bin/pip install -r analysis/requirements.txt
+
+# 3) Der Check — Konsole + data/analysis/report_noon_rule.md.
+.venv-analysis/bin/python analysis/noon_rule_check.py \
+    --data data/export_e10.csv --fuel E10
+```
+
+Ohne venv geht alternativ `python3 -m pip install --user -r
+analysis/requirements.txt`; oder den Export auf den PC kopieren und dort
+auswerten (die Analyse ist laut [INSTALL.md](INSTALL.md) ohnehin
+NAS-oder-PC).
+
+### Was gezählt wird
 
 Vier Zählungen, getrennt nach Zeitraum vor/nach `--law-date`:
 

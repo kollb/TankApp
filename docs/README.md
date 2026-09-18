@@ -39,8 +39,8 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.49.3 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
-0.49.3 schneidet den Tagesstreifen („Heute im Blick“) auf den Berliner
+nicht gegen 0.49.4 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.49.4 macht den 12-Uhr-Regel-Check auf der nackten NAS lauffähig (eigenständig, nur numpy/pandas, NAS-Ablauf in [DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check) dokumentiert); 0.49.3 schneidet den Tagesstreifen („Heute im Blick“) auf den Berliner
 Kalendertag — die Zellen 18–24 Uhr zeigten am Nachmittag Meldungen von
 gestern Abend als „heute“ — und bringt mit `analysis/noon_rule_check.py`
 den 12-Uhr-Regel-Check für den echten Bestand (Doku in

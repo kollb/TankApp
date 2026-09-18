@@ -4,6 +4,30 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.49.4] – 2026-09-17
+
+**Der 12-Uhr-Regel-Check läuft auf der nackten NAS.** Erster Echteinsatz am
+17.09.2026 zeigte zwei Hürden: Der Aufruf brach am fehlenden
+Influx-Aufruf-Parameter ab, und das Skript scheiterte an `numpy` — weil es
+`station_selection` importierte, zog es zusätzlich matplotlib, holidays und
+engine nach: auf dem Daten-Host viel zu viel Werkstatt für ein Zähl-Skript,
+und ohne Pakete kam nur ein roher ImportError.
+
+### Geändert
+
+- **`analysis/noon_rule_check.py` ist eigenständig** (nur numpy/pandas):
+  Der CSV-Lader (gleiches Schema wie `station_selection.load_prices`,
+  inkl. `.csv.gz`) ist lokal nachgebaut — kein Import der schweren
+  Selektions-Abhängigkeiten mehr. Fehlen numpy/pandas trotzdem, sagt das
+  Skript mit Klartext, wie sie installiert werden (venv- oder
+  `--user`-Zeile), statt mit Traceback zu enden. Ergebnis unverändert —
+  gegen den Referenzbestand bitgleich geprüft.
+- **NAS-Ablauf dokumentiert**
+  ([DATENWERKZEUGE.md#12-uhr-regel-check](docs/DATENWERKZEUGE.md)):
+  Drei-Schritte-Anleitung inkl. `--env-file data/influx.env` und dem
+  Hinweis, `--since` **vor** den Gesetzesbeginn zu legen — sonst liegt der
+  ganze Export im „ab“-Zeitraum und der Vorher/Nachher-Kontrast fehlt.
+
 ## [0.49.3] – 2026-09-17
 
 **Der Tagesstreifen lügt nicht mehr unbemerkt gestern hinein — und ein

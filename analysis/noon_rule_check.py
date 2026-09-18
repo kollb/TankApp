@@ -27,13 +27,21 @@ Vier empirische Fragen, getrennt nach Zeitraum (vor/nach Gesetzesbeginn):
   4. Mittagsschritt: Medianer Sprung über die 12-Uhr-Kante (letzte
      Beobachtung davor vs. erste danach, gleiche Station, knapper Abstand).
 
-Eingabe sind dieselben CSVs wie bei station_selection.py
-(data-tools/export_influx.py / fetch_history.py). Kein Modell, kein
-Schätzen — nur Zählen auf den Beobachtungen.
+Eingabe sind CSVs im Schema von station_selection.py / den Export-Werkzeugen
+(data-tools/export_influx.py / fetch_history.py) — das Skript liest sie
+selbst, **ohne** station_selection zu importieren: Der Check braucht nur
+numpy/pandas und soll auf dem Daten-Host laufen, ohne dass dort die volle
+Analyse-Werkstatt (matplotlib, holidays, engine) installiert sein muss.
+Kein Modell, kein Schätzen — nur Zählen auf den Beobachtungen.
 
-Aufruf::
+Aufruf (auf dem Daten-Host, Influx-Lesezugang aus data/influx.env)::
 
+    python data-tools/export_influx.py --fuel e10 --env-file data/influx.env \
+        --since 2026-03-01 --out data/export_e10.csv
     python analysis/noon_rule_check.py --data data/export_e10.csv --fuel E10
+
+Der --since-Zeitraum muss **vor** dem Gesetzesbeginn ansetzen, sonst fehlt
+der Vorher/Nachher-Kontrast (Default-Export liegt sonst komplett danach).
 
 Ausgabe: Konsole + Markdown-Report (Default data/analysis/report_noon_rule.md).
 """
@@ -41,25 +49,57 @@ Ausgabe: Konsole + Markdown-Report (Default data/analysis/report_noon_rule.md).
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import numpy as np
-import pandas as pd
-
-# Repo-Wurzel UND analysis/ auf den Pfad: station_selection importiert
-# engine.personalization (geteilter Default, O2) — das schlägt fehl, wenn
-# das Skript aus einem anderen Arbeitsverzeichnis gestartet wird.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from station_selection import load_prices  # noqa: E402
+try:
+    import numpy as np
+    import pandas as pd
+except ImportError as exc:  # Analyse-Pakete fehlen (z. B. nackte NAS-Box)
+    raise SystemExit(
+        f"Analyse-Abhängigkeit fehlt: {exc.name}. Einmalig installieren:\n"
+        "  python3 -m venv .venv-analysis\n"
+        "  .venv-analysis/bin/pip install -r analysis/requirements.txt\n"
+        "Danach das Skript mit .venv-analysis/bin/python starten.\n"
+        "(Alternativ: python3 -m pip install --user -r analysis/requirements.txt)"
+    ) from exc
 
 BERLIN = ZoneInfo("Europe/Berlin")
 LAW_DEFAULT = "2026-04-01"
 
 # Tagesstunden-Blöcke für die Min/Max-Verteilung (Berliner Wanduhr).
 BLOCKS = [(0, 6, "0–6"), (6, 12, "6–12"), (12, 18, "12–18"), (18, 24, "18–24")]
+
+REQUIRED_COLUMNS = {
+    "timestamp",
+    "station_id",
+    "station_name",
+    "brand",
+    "city",
+    "lat",
+    "lon",
+    "fuel",
+    "price",
+}
+
+
+def load_prices(paths: list[Path], fuel: str) -> pd.DataFrame:
+    """Dieselbe Grundregel wie ``station_selection.load_prices``: CSVs
+    (auch ``.csv.gz``) lesen, Pflichtspalten prüfen, auf den Kraftstoff
+    filtern. Lokal nachgebaut, damit dieser Check ohne die schweren
+    Selektions-Abhängigkeiten läuft — gleiches Schema, keine Abweichung."""
+    frames = []
+    for p in paths:
+        df = pd.read_csv(p, parse_dates=["timestamp"])
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            raise SystemExit(f"{p}: fehlende Spalten {sorted(missing)}")
+        frames.append(df)
+    df = pd.concat(frames, ignore_index=True)
+    df = df[df.fuel.str.upper() == fuel.upper()]
+    if df.empty:
+        raise SystemExit(f"Keine Zeilen für fuel={fuel}")
+    return df
 
 
 def _prepare(paths: list[Path], fuel: str) -> pd.DataFrame:
