@@ -16,6 +16,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | wissen, was im Dauerbetrieb zu tun ist (systemd, Backup, Alarme, Fehlersuche) | [BETRIEB.md](BETRIEB.md) |
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
 | das Fallback-GUI-v2-Konzept umsetzen (Arbeits-Checkliste) | [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2.md) |
+| die 12-Uhr-Bodenkante für Panels und Kalibrierung umsetzen (B30, Arbeits-Checkliste) | [UMSETZUNG-B30-12-UHR-BODENKANTE.md](UMSETZUNG-B30-12-UHR-BODENKANTE.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
 | wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8, in 0.41.0 umgesetzt) | [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) |
 | wissen, wo Nutzertexte gegen das eigene Regelwerk laufen (Text-Befund T1–T13) | [TEXT-BEFUND.md](TEXT-BEFUND.md) |
