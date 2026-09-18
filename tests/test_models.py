@@ -295,11 +295,14 @@ def test_noon_law_projection_keeps_nan_and_short_input(cfg):
     values = np.array([1.0, np.nan, 1.1, 1.2, 1.0, np.nan, 0.9, 0.8, np.nan, 0.7])
     projected = noon_law_projection(values, index, cfg)
     assert np.isnan(projected[1]) and np.isnan(projected[5]) and np.isnan(projected[8])
-    # Inner rise 1.1 → 1.2 is pooled; the NaN gap is a barrier (Lücken
-    # bleiben Lücken: keine Kopplung über unbekannte Intervalle hinweg).
-    np.testing.assert_allclose(projected[2:4], [1.15, 1.15])
-    for run in (projected[2:5], projected[6:8], projected[9:10]):
-        assert np.all(np.diff(run) <= 1e-12)
+    # NaN bleibt NaN, koppelt aber nicht als Barriere: die Projektion läuft
+    # über die endlichen Werte hinweg (Fix für 12-Uhr-Verstöße über Lücken).
+    # Finite Werte [1.0,1.1,1.2,1.0,0.9,0.8,0.7] → [1.1,1.1,1.1,1.0,0.9,0.8,0.7]
+    expected_finite = np.array([1.1, 1.1, 1.1, 1.0, 0.9, 0.8, 0.7])
+    np.testing.assert_allclose(projected[np.isfinite(projected)], expected_finite)
+    # Gesamtes Segment muss nicht-steigend sein, wenn NaN ignoriert werden.
+    finite = projected[np.isfinite(projected)]
+    assert np.all(np.diff(finite) <= 1e-12)
     np.testing.assert_array_equal(
         noon_law_projection(np.array([1.0]), index[:1], cfg), [1.0]
     )
@@ -492,8 +495,9 @@ def test_project_paths_dedup_is_bitwise_identical(cfg):
 
     Referenz ist die frühere Implementierung (Projektion jedes einzelnen
     Pfads). Die deduplizierte Fassung muss exakt identisch sein — auch mit
-    NaN-Lücken als Barriere, ganzen NaN-Zeilen und Zeilen, die sich je
-    Segment wiederholen (dort greift die Deduplizierung).
+    NaN-Lücken (bleiben NaN, aber Projektion koppelt darüber), ganzen
+    NaN-Zeilen und Zeilen, die sich je Segment wiederholen (dort greift die
+    Deduplizierung).
     """
     for index in (
         # Mitternachts-Origin (Backtest-Folds): zwei volle 12-Uhr-Segmente.
