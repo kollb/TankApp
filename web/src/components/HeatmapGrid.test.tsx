@@ -142,3 +142,26 @@ describe("HeatmapGrid (P0: günstige Stunde wiederfindbar)", () => {
     expect(plain).toContain("Fenster 6 Wochen abgedeckt");
   });
 });
+
+  it("nennt die 12-Uhr-Bodenkante, aus der die Zellen stammen (B30)", () => {
+    const heatmap: Heatmap = {
+      ...startupHeatmap(),
+      range_from: "2026-04-01T10:05:00+00:00",
+      range_to: "2026-05-14T05:55:00+00:00",
+      points: 812,
+      law_floor: "2026-04-01T10:00:00+00:00",
+      points_before_law: 2041,
+    };
+    const plain = text(renderToStaticMarkup(<HeatmapGrid heatmap={heatmap} />));
+    expect(plain).toContain(
+      "2.041 Preise vor 01.04.2026, 12:00 Uhr zählen nicht",
+    );
+    expect(plain).toContain("davor galt ein anderer Tagesrhythmus");
+    // Ohne Kante im Payload (alte API) behauptet die GUI keine.
+    const legacy = text(
+      renderToStaticMarkup(
+        <HeatmapGrid heatmap={{ ...heatmap, law_floor: undefined }} />,
+      ),
+    );
+    expect(legacy).not.toContain("Bodenkante");
+  });

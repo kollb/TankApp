@@ -368,6 +368,30 @@ describe("Labor: Preis-Abstand aus der Selektion (O16)", () => {
     expect(text).toContain("Demo-Tank Nord");
     expect(text).not.toContain("Demo-Tank Süd");
   });
+
+  it("nennt die 12-Uhr-Bodenkante, aus der δ̂ stammt (B30)", () => {
+    const host = mount(
+      { focusSection: "stationen" },
+      {
+        selection: res({
+          ...selectionWithDeltas,
+          law_floor: "2026-04-01T10:00:00+00:00",
+          points_before_law: 1234,
+        }),
+      },
+    );
+    expect(host.textContent ?? "").toContain(
+      "1.234 Preise vor 01.04.2026, 12:00 Uhr zählen nicht",
+    );
+  });
+
+  it("behauptet ohne Kante im Payload keine (alte API)", () => {
+    const host = mount(
+      { focusSection: "stationen" },
+      { selection: res(selectionWithDeltas) },
+    );
+    expect(host.textContent ?? "").not.toContain("Bodenkante");
+  });
 });
 
 describe("Labor: O18 — Werkstätten haben Daten oder einen ehrlichen Text", () => {
