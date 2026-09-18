@@ -7,6 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # O27: 3.12 ist die Linie des NAS-Bildes
+        # (ops/nas/app/Dockerfile, PYTHON_VERSION) und muss hier stehen —
+        # sonst ist „grün getestet“ ein anderer Interpreter als
+        # „ausgeliefert“. 3.11 bleibt dabei, weil der Pi-Collector darauf
+        # läuft (engine/requirements.txt zieht je Interpreter ein anderes
+        # numpy). tests/test_o27_build_parity.py hält Bild und Matrix
+        # zusammen.
         python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +44,14 @@ jobs:
             requirements-dev.txt
             app/requirements.txt
             engine/requirements.txt
+      # O27: Dieselbe Node-Linie wie das Bild (NODE_VERSION im Dockerfile).
+      # Ohne diese Zeile baute der Job mit der Node-Version des Runners —
+      # eine dritte Linie neben Bild und quality.yml.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
       - run: npm --prefix web test
       - run: npm --prefix web run build
@@ -69,3 +84,28 @@ jobs:
           assert LiveData(s).health()['polling_error'] == 'polling_missing';
           s.runtime.mkdir(parents=True, exist_ok=True);
           assert __import__('os').getuid() != 0"
+      - name: Interpreter und tzdata-Stand des Bildes nennen (O27)
+        # Sichtbar im Protokoll statt nur im Dockerfile: Dieselbe Python-Linie
+        # wie die Matrix oben, und ein tzdata-Datenstand, der nicht von dem
+        # des CI-Runners abweicht (Europe/Berlin kommt aus dem pip-Paket).
+        run: >-
+          docker run --rm tankapp-web:check python -c
+          "import sys, tzdata, zoneinfo, datetime;
+          print('python', sys.version.split()[0]);
+          print('tzdata', tzdata.__version__);
+          print('berlin', zoneinfo.ZoneInfo('Europe/Berlin'),
+          datetime.datetime(2026, 7, 1, tzinfo=zoneinfo.ZoneInfo('Europe/Berlin')).utcoffset())"
+      - name: Suite im Bild (O27)
+        # Der eigentliche Nachweis, dass getestet wird, was läuft: derselbe
+        # Interpreter, dieselben installierten Paket-Versionen wie im Betrieb,
+        # nur pytest/ruff kommen dazu. Der Quellbaum wird gemountet statt ins
+        # Bild kopiert, weil .dockerignore tests/ und docs/ ausschließt — beide
+        # liest die Suite (Doku-Link-Test). --user 0, weil pip ins Site-Packages
+        # des Bildes schreibt; PYTHONDONTWRITEBYTECODE=1 kommt aus dem Bild,
+        # -p no:cacheprovider hält das gemountete Verzeichnis sauber.
+        run: >-
+          docker run --rm --user 0 -v "$PWD:/src" -w /src
+          -e TANKAPP_DATA_DIR=/tmp/tankapp-image
+          tankapp-web:check sh -c
+          "python -m pip install --no-cache-dir -q -r requirements-dev.txt
+          && python -m pytest -q -p no:cacheprovider"

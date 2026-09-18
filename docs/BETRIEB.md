@@ -1,8 +1,14 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 18.09.2026 · App-Version 0.51.0 — alles, was nach der Ersteinrichtung
+> Stand: 18.09.2026 · App-Version 0.52.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
+> Neu seit 0.52.0: Der InfluxDB-Cron rotiert seine Wochenstände (acht Stände,
+> O34), und die Sicherung nennt das Roharchiv als bewusste Entscheidung —
+> beide im Abschnitt
+> [NAS InfluxDB Backup](#nas-influxdb-backup). Der Server misst sich selbst
+> (`X-Process-Time`, `performance` in `/api/v1/health`); Budget und Bedeutung
+> stehen in [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
+> Davor neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
 > gelten der einzelnen Datei, eine fehlende Stations-Datei meldet
 > `reason: "incomplete"`. Davor neu seit 0.47.0: Backup-Alterung wird
@@ -829,13 +835,29 @@ Restore: Repo klonen, Dateien zurückkopieren, Units nach `/etc/systemd/system/`
 
 ### NAS InfluxDB Backup
 
-Ringpuffer auf Pi bewusst nicht sichern. Wöchentliches Tar-Backup des InfluxDB-Volumes per cron auf NAS:
+Ringpuffer auf Pi bewusst nicht sichern. Wöchentliches Tar-Backup des InfluxDB-Volumes per cron auf NAS — **mit Rotation** (O34, seit 0.52.0):
 
 ```cron
 0 3 * * 0 cd $HOME/TankApp/ops/nas/influxdb && docker run --rm \
     -v tankapp_influxdb_data:/data -v $PWD/backup:/backup alpine \
-    tar czf /backup/influxdb-$(date +\%F).tar.gz -C /data .
+    sh -c 'tar czf /backup/influxdb-$(date +\%F).tar.gz -C /data . \
+           && find /backup -maxdepth 1 -name "influxdb-*.tar.gz" -mtime +56 -delete'
 ```
+
+**Aufbewahrung (O34):** acht Wochenstände (56 Tage), dann löscht der Cron die
+ältesten. Begründung, nicht Gewohnheit: Jeder Wochen-Snapshot enthält die
+**ganze** Historie — der jüngste ist damit fast immer der Restore-Punkt, und
+ein acht Wochen alter Stand unterscheidet sich vom heutigen nur um acht Wochen
+Preise. Ältere Stände braucht man für den Fall, dass das Volume beschädigt oder
+still verstümmelt ist; dafür reichen acht Wochen Rückblick, während 52 Kopien
+desselben Bestands pro Jahr nur Platz fressen. Eine Monatsstufe wie beim
+Laufzeit-Backup (unten) ist hier bewusst **nicht** eingebaut: Dort schützt sie
+vor einem langsam zerstörenden Fehler in der **persönlichen Bilanz**, die es
+nirgends sonst gibt. Preise dagegen sind entweder live gepollt (dann liegt der
+Wert im jüngsten Stand) oder aus dem Archiv nachladbar (unten).
+
+Wer die Zeile in eine `crontab` übernimmt, schreibt sie als **eine** Zeile
+(cron kennt kein `\`-Zeilenende); die Umbrüche oben sind nur Lesbarkeit.
 
 Restore:
 
@@ -846,6 +868,18 @@ docker compose up -d
 ```
 
 Org/Bucket/Token sind im Volume enthalten.
+
+**Was bewusst in keiner Sicherung liegt (O34):** das **Roharchiv**
+(`--archive-dir`, die nationalen MTS-K-Tagesdateien auf der HDD, mehrere GB).
+Es ist die Trainingsgrundlage, aber per `history-sync` regenerierbar: Der Job
+lädt fehlende Tagesdateien beim Anbieter nach
+([Preislücke nachholen](#preislücke-nachholen-polling-ausfall--beschädigtes-pollingjson)),
+mit 0,4 s Pause je Datei (`data-tools/fetch_history.py --delay`). Ein
+vollständiger Wiederaufbau des Default-Bestands (ein Jahr, zwei Dateien je Tag
+≈ 730 Downloads) kostet damit ~5 Minuten Pause plus Download-Zeit — kein
+Bestand, für den man eine zweite Kopie pflegen muss. Nicht regenerierbar sind
+dagegen die **live gepollten** Preise im InfluxDB-Volume (oben) und die
+persönliche Bilanz in `runtime/` (unten); beide haben deshalb eine Sicherung.
 
 ### NAS Laufzeitdaten (runtime/) Backup
 
