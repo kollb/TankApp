@@ -25,10 +25,12 @@
 // client-seitige Rechnung.
 //
 // Bewusster Schnitt (Checkliste 1.9/1.10): Die 24-h-Sparkline je Zeile
-// braucht pro Station einen eigenen Series-Poll; bis die v2-Atlas-Antwort
-// (Checkliste 1.10) steht, zeigt nur die ausgewählte Station ihr
-// Mini-Verlauf (aus dem vorhandenen Tagesstreifen), die anderen ehrlich
-// keines.
+// braucht pro Station einen eigenen Series-Poll — es bleibt beim Schnitt.
+// Bis 0.53.0 trug wenigstens die ausgewählte Zeile eine Mini-Linie aus dem
+// Tagesstreifen; sie ist entfallen (Nutzer-Urteil 18.09.2026: „niemand kann
+// was mit dem Graphen anfangen“ — keine Achse, kein Zeitbezug, keine
+// y-Skala). Der Verlauf steht dort, wo er lesbar ist: als eigener Knopf je
+// Zeile im Stations-Detail.
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -136,45 +138,6 @@ const SPANS: Array<{ hours: number; label: string }> = [
 
 function spanLabel(hours: number): string {
   return SPANS.find((span) => span.hours === hours)?.label ?? `${hours} Stunden`;
-}
-
-/** Mini-Verlauf (24 h) einer Zeile: 19 Punkte aus dem Tagesstreifen. */
-function Sparkline({ cells }: { cells: StripCell[] }) {
-  const values = cells.map((cell) => cell.value);
-  const known = values.filter((v): v is number => v !== null);
-  if (known.length < 3) return null;
-  const min = Math.min(...known);
-  const max = Math.max(...known);
-  const span = max - min || 1;
-  const w = 96;
-  const h = 24;
-  const step = w / Math.max(1, values.length - 1);
-  const pts: string[] = [];
-  values.forEach((value, i) => {
-    if (value === null) return;
-    const x = i * step;
-    const y = h - ((value - min) / span) * (h - 4) - 2;
-    pts.push(`${x},${y}`);
-  });
-  if (pts.length < 2) return null;
-  return (
-    <svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      role="img"
-      aria-label="Preisverlauf der letzten 24 Stunden (ausgeblendete Punkte = keine offene Meldung)"
-      className="shrink-0"
-    >
-      <polyline
-        points={pts.join(" ")}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-sky-400/80"
-      />
-    </svg>
-  );
 }
 
 export function StationenView(props: StationenViewProps) {
@@ -569,13 +532,13 @@ export function StationenView(props: StationenViewProps) {
                   return (
                     <div
                       key={row.station.station_id}
-                      className={`flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-slate-800/40 ${isSel ? "bg-emerald-500/[.04]" : ""}`}
+                      className={`flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 py-3 transition-colors hover:bg-slate-800/40 sm:flex-nowrap ${isSel ? "bg-emerald-500/[.04]" : ""}`}
                     >
                       <button
                         onClick={() => openStation(row)}
                         aria-pressed={isSel}
                         aria-label={`${row.station.name} als Referenz und Detail wählen`}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        className="flex min-w-0 flex-1 basis-full items-center gap-3 text-left sm:basis-auto"
                       >
                         <span
                           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
@@ -606,9 +569,18 @@ export function StationenView(props: StationenViewProps) {
                           </span>
                         </span>
                       </button>
-                      <span className="flex shrink-0 items-center gap-3">
-                        {isSel && <Sparkline cells={stripCells} />}
-                        <span className="text-right">
+                      {/* Zwei Zeilen auf 390 px (0.53.0, Nutzer-Urteil
+                          „niemand kann was mit dem Graphen anfangen“):
+                          Vorher teilten sich der Mini-Verlauf, Name, Preis
+                          und drei Knöpfe eine Zeile — für „Demo-Tank Ost“
+                          blieben 79 px, die Liste zeigte „Demo-T…“. Der
+                          Mini-Verlauf ist entfallen (96 × 24 px ohne Achse,
+                          Zeitbezug und y-Skala; der Verlauf steht als eigener
+                          Knopf je Zeile im Stations-Detail, dort mit Achsen
+                          und Lesehilfe), Name und Preis stehen mobil in zwei
+                          Zeilen, ab `sm` unverändert in einer. */}
+                      <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-end">
+                        <span className="text-left sm:text-right">
                           <span
                             className={`block font-mono text-sm font-bold tabular-nums ${row.isReference ? "text-emerald-300" : "text-slate-200"}`}
                           >

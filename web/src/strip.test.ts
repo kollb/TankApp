@@ -1,17 +1,12 @@
 // „Heute im Blick“: der kompakte Tagesstreifen (UI-NEUENTWURF §5.1 ④).
 // Geprüft wird die Ehrlichkeits-Zusage: nur offene Meldungen zählen,
-// leere Stunden bleiben leer, die Sparkline existiert erst ab drei Werten —
+// leere Stunden bleiben leer —
 // und seit O20: Die Tonlagen kommen aus einer **festen** Skala (Server-Band
 // über 7 Tage) und je Stunde steht das Minimum, nicht die letzte Meldung.
 
 import { describe, expect, it } from "vitest";
 import type { Point } from "./data";
-import {
-  buildStripCells,
-  stripBandNote,
-  stripSparkline,
-  type StripBand,
-} from "./strip";
+import { buildStripCells, stripBandNote, type StripBand } from "./strip";
 
 /** Festes Band, wie es `app/data.py::price_band` liefert (25./75. Perzentil). */
 const BAND: StripBand = {
@@ -194,24 +189,5 @@ describe("stripBandNote (O20)", () => {
 
   it("sagt ohne Band ehrlich, dass die Skala fehlt", () => {
     expect(stripBandNote(null)).toContain("keine Farbskala");
-  });
-});
-
-describe("stripSparkline", () => {
-  it("unter drei Werten steht ehrlich null (keine flache Linie)", () => {
-    const cells = buildStripCells(
-      [point(1.7, "2026-09-14T05:30:00Z"), point(1.9, "2026-09-14T09:00:00Z")],
-      NOW,
-    );
-    expect(stripSparkline(cells)).toBeNull();
-  });
-
-  it("ab drei Werten liefert sie die Reihe (NaN für leere Stunden)", () => {
-    const cells = buildStripCells(points, NOW);
-    const series = stripSparkline(cells);
-    expect(series).not.toBeNull();
-    expect(series).toHaveLength(19);
-    expect(series?.[1]).toBe(1.7);
-    expect(Number.isNaN(series?.[7]!)).toBe(true); // 13:00 leer
   });
 });
