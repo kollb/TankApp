@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 18.09.2026 · App-Version 0.53.0. Abgleich von
+> Stand: 18.09.2026 · App-Version 0.54.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -105,6 +105,40 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 18.09.2026 — Version 0.54.0: Batch 8 (Schliff) — der Befund ist durch
+
+Die letzten beiden Befunde des
+[Optimierungs-Befunds](OPTIMIERUNGS-BEFUND.md#batch-8--p3--schliff) sind
+umgesetzt; O28 und O41 desselben Batches lagen seit PR #154 auf `main`.
+
+- **Die Belegmaske zeigt den Live-Preis (O32).** Zwischen Empfehlung und
+  Erfassung vergehen Minuten bis Stunden (Offline-Queue) — das Preisfeld war
+  vorbefüllt, ohne Vergleich. Jetzt steht daneben der Live-Preis der gewählten
+  Station **mit Alter**, und eine Abweichung ab 1,0 ct/L ist mit Richtung
+  markiert. Zwei Ehrlichkeiten dabei: Fehlt Zeitstempel **und** Serveralter,
+  bleibt das Alter ungenannt statt geschätzt, und ohne frischen Preis steht gar
+  nichts da. Die Maske korrigiert nichts — gebucht wird, was getippt wurde.
+- **Diagramme nennen ihre Werte (O40).** Die Textalternative entstand aus den
+  Reihennamen; ein Screenreader erfuhr, welche Reihen ein Diagramm zeigt, nicht
+  wohin sie laufen. Jetzt baut `web/src/chartAlt.ts` den Satz aus denselben
+  Punkten, die gezeichnet werden (Verlauf, Tief/Hoch, Bandspanne, Verteilung,
+  Ausschläge mit Stationsnamen, Abweichung von der Diagonalen), und jedes
+  Diagramm trägt ein eigenes `aria-label` statt des Sammelworts „Diagramm“ —
+  im Bereich „Labor“ liegen vier in einer Ansicht. Ohne Punkte gibt es den
+  ehrlichen Kurztext statt einer gerundeten Null.
+
+**Damit ist jeder Befund des Optimierungs-Befunds umgesetzt oder als
+Dauerzustand benannt.** Bewusst offen bleiben weiterhin das zweite
+automatische Backup-Ziel (B25), die mobile Kopfzeile (C13), die numerischen
+Hebel, die echten Betriebsbestand brauchen (B22), und der Desktop-Zweispalter
+(C12) — alle unten mit Grund und als Arbeitspunkte in [TODO.md](../TODO.md).
+
+**Prozess-Ehrlichkeit:** O28 und O41 kamen mit PR #154 auf `main`, ohne dass
+`app/version.py`, der CHANGELOG oder der Kopf des Befunds es sagten — der
+Befund behauptete weiter „offen ist damit nur noch Batch 8“. Ein halber Batch
+ohne Release-Arbeit ist derselbe Ledger-Drift, gegen den
+`tests/test_ledger_drift.py` angetreten ist; mit 0.54.0 ist er geradegezogen.
 
 ### 18.09.2026 — Version 0.53.0: ein Graph weniger, „Jetzt“ mobil verdichtet
 

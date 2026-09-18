@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 18.09.2026 · App-Version **0.53.0**
+> Stand: 18.09.2026 · App-Version **0.54.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -40,7 +40,16 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.53.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.54.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.54.0 schließt Batch 8 des Optimierungs-Befunds ab und damit den ganzen
+Befund: Die Belegmaske zeigt den Live-Preis der Station mit Alter und markiert
+eine Abweichung ab 1,0 ct/L (O32), und die Textalternative eines Diagramms
+nennt seine Werte statt seiner Reihennamen, bei eigenem `aria-label` je
+Diagramm (O40). O28 und O41 desselben Batches lagen seit PR #154 auf `main`,
+ohne Versionswechsel — mit diesem Release sind Ledger und Befund wieder
+deckungsgleich. Mitgezogen sind [MICROCOPY.md](MICROCOPY.md) (§4g: die neuen
+Muster für Belegmaske und Diagramm-Beschreibung) und
+[OPTIMIERUNGS-BEFUND.md](OPTIMIERUNGS-BEFUND.md) (Abnahme-Vermerk je Check).
 0.53.0 setzt zwei Nutzerurteile vom 18.09.2026 um: Der Mini-Verlauf in der
 Stationszeile ist entfallen („niemand kann was mit dem Graphen anfangen“ — die
 Linie hatte weder Achse noch Zeitbezug; der Verlauf bleibt als Knopf je Zeile
@@ -97,7 +106,8 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) | 0.51.0 | Abgeschlossener Prüfbericht zum 12-Uhr-Gesetz; Batch 7 und 0.53.0 ändern weder Panel noch Kalibrierung |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und 0.53.0 reine GUI-Arbeit — keins von beiden fasst ein Werkzeug an |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
-| [MICROCOPY.md](MICROCOPY.md) | 0.46.0 | 0.47.0 ist ein Betriebs-Release ohne neue Textmuster: Der Text des neuen Alarms `backup_stale` folgt §4f (deutscher Klartext, Handlungsanweisung, keine Pfade), und die GUI zeigt ihn über die bestehende Alarm-Leiste |
+| [BETRIEB.md](BETRIEB.md) | 0.53.0 | 0.54.0 ist reine GUI-Arbeit: kein Dienst, kein Cron, kein Alarm, kein Backup-Pfad angefasst — Abläufe und Störungsfälle bleiben gültig, geprüft sind sie gegen 0.53.0 |
+| [QUALITAET.md](QUALITAET.md) | 0.53.0 | Budgets, Lasttest und Lighthouse-Schwellen sind von 0.54.0 unberührt. Der dort beschriebene `@sparticuz/chromium`-Weg ist für dieses Release erneut gelaufen (38/38 bzw. 25 grün / 11 skipped) und stimmt unverändert; durchgesehen ist das Dokument im Ganzen gegen 0.53.0 |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
 | [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |

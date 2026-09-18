@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 17.09.2026 · App-Version **0.46.0** · gilt für `web/src/**`,
+> Stand: 18.09.2026 · App-Version **0.54.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt.
@@ -21,6 +21,7 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
 - [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
 - [4f. Push-Texte: Alarme und Fenster-Meldungen (0.46.0)](#4f-push-texte-alarme-und-fenster-meldungen-0460)
+- [4g. Belegmaske und Diagramm-Beschreibungen (0.54.0)](#4g-belegmaske-und-diagramm-beschreibungen-0540)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
 - [5b. Meldungen: ein Register, ein Rang (V3)](#5b-meldungen-ein-register-ein-rang-v3)
@@ -381,6 +382,28 @@ Koordinaten, Pfade und Links stehen in **keinem** Modus. Die Ruhezeit
 (22–7 Uhr, Europe/Berlin) gilt nur für Fenster-Meldungen; Alarme kommen
 rund um die Uhr. Geprüft von `tests/test_notify.py` und
 `tests/test_o29_window_push.py`.
+
+### 4g. Belegmaske und Diagramm-Beschreibungen (0.54.0)
+
+Zwei Stellen, an denen Text **Zahlen** trägt, die sonst nur als Bild oder als
+vorbefülltes Feld existieren. Regel für beide: Die Zahl kommt aus derselben
+Quelle wie die Darstellung, läuft durch die Formatter aus §3 — und wo keine
+Quelle ist, steht auch keine Zahl.
+
+| Stelle | Muster |
+|---|---|
+| Live-Preis an der Belegmaske (O32) | `Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.` — Niveau in €/L, Alter über `ageWord`. Ohne belegbares Alter (weder `observed_at` noch `age_minutes`) endet der Satz nach dem Preis; ohne frischen Preis steht gar nichts da |
+| Abweichung der Eingabe (O32) | `Deine Eingabe liegt 3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst.` — Differenz in ct/L (§3), Richtung `über`/`unter`, Schwelle 1,0 ct/L (`PRICE_DRIFT_CT`). Der Halbsatz nach dem Gedankenstrich bleibt: Die App korrigiert den Beleg nicht |
+| Textalternative eines Diagramms (O40) | Ein Satz mit Werten, nicht mit Reihennamen: `Liniendiagramm. Erwarteter Preis fällt von 1,780 €/L auf 1,710 €/L, Tief 1,690 €/L.` Gebaut in `web/src/chartAlt.ts` aus denselben Punkten, die gezeichnet werden |
+| Diagramm ohne Daten | `Liniendiagramm ohne Werte.` — nie eine gerundete Null, nie „0,000 €/L“ |
+| `aria-label` eines Diagramms | benennt **dieses** Diagramm, nicht die Gattung: `Prognose-Fächer` · `Versprochen gegen eingetroffen` · `Preis-Abstand je Station · Frankfurt` · `Tageskurve der Backtest-Zeile` · `Preisverlauf der Station`. „Diagramm“ allein ist verboten — im Labor liegen vier in einer Ansicht |
+
+Die Textalternative nennt Tief und Hoch nur, wenn sie **nicht** die Endpunkte
+sind (sonst stünde dieselbe Zahl dreimal), und sie beschreibt nie die Farbe:
+„grün = positiv“ hilft genau dem nicht, der die Beschreibung liest — gezählt
+werden stattdessen die Seiten und die Ausreißer mit Namen. Geprüft von
+`web/src/chartAlt.test.ts` und dem O40-Block in `web/src/a11y.test.ts`, die
+Belegmaske von `web/src/fills.test.ts` und `web/src/views/Ich.test.tsx`.
 
 ## 7. Prüfung
 

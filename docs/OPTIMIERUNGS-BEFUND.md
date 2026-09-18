@@ -38,8 +38,12 @@
 > jetzt in einer eigenen Datei, `current.json` ist ein Index mit Zeigern.
 > [Batch 6](#batch-6--p2--anzeige-und-alltag) (O18–O21, O30, O31, O39) ist
 > mit **0.50.0** und [Batch 7](#batch-7--p2--betrieb-rest) (O25, O26, O37, O34,
-> O27) mit **0.52.0** umgesetzt; offen ist damit nur noch
-> [Batch 8](#batch-8--p3--schliff) (O28, O32, O40, O41).
+> O27) mit **0.52.0** umgesetzt. **[Batch 8](#batch-8--p3--schliff) (O28, O32,
+> O40, O41) ist mit 0.54.0 abgeschlossen** — O28 und O41 kamen mit PR #154 auf
+> `main` (ohne Versionswechsel), O32 und O40 mit 0.54.0. **Damit ist jeder
+> Befund dieses Dokuments umgesetzt oder als Dauerzustand benannt**; die
+> offenen Reste stehen nicht hier, sondern als Arbeitspunkte in
+> [../TODO.md](../TODO.md) (B25, C13, B22, C12).
 
 ## Inhaltsverzeichnis
 
@@ -2057,3 +2061,39 @@ als Fehler.
 
 **Batch-Abnahme:** Kommentar, Demo-Artefakt und A11y-Text sagen, was der Code
 tut.
+
+**Umgesetzt — O28 + O41 mit PR #154 (18.09.2026), O32 + O40 mit 0.54.0.**
+Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit
+0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende
+Form-Modell je Station stehen begründet im [Todo](../TODO.md) und in
+[LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund). Alle vier Checks sind
+erfüllt und als Tests festgehalten (`tests/test_o28_comment_runtime_truth.py`,
+`tests/test_o41_selection_form.py`, `web/src/fills.test.ts`,
+`web/src/views/Ich.test.tsx`, `web/src/chartAlt.test.ts`,
+`web/src/a11y.test.ts`):
+
+| Check | Ergebnis |
+|---|---|
+| Docstrings stimmen mit A11 überein | erfüllt — `engine/probabilities.py` und `app/pside.py` nennen die gemeinsame Ziehung als umgesetzt (sie **ist** es und weist sich je Draw-Block als `shared` aus); Ratchet gegen die alte Behauptung „noch nicht umgesetzt“ |
+| `demo_data.py` schreibt über `write_json`, also `jq -e . current.json` grün | erfüllt — der Demo-Stapel nutzt `write_split_publication` (dieselbe Funktion wie die Produktion, `json_safe`/`allow_nan=False`); vorher standen gemessen 51 480 `NaN`-Token in der Datei, an der [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) die `jq`-Prüfung nachvollziehbar macht. Jede geschriebene Datei besteht die strenge JSON-Prüfung |
+| Suite-Lauf mit `-W error::RuntimeWarning` für die Selektionstests bleibt grün | erfüllt — die All-NaN-Schnitte (Nachtzellen hinter dem Polling-Fenster, tote Stationen) liegen in `warnings.catch_warnings` als erwartbarer Zweig; vorher rauhten 18 `RuntimeWarning`-Zeilen den Lauf |
+| Beide Schreiber (`refresh.py`, `worker.py`) erzeugen dieselbe Form | erfüllt — `selection_artifact()`/`publish_selection()` in `app/selection.py` sind die eine Factory, die toten Felder (`stations`/`cities`/`count`, die niemand las) sind weg |
+| Die API-Antwort ist vor und nach der Änderung byte-identisch | erfüllt — Sonde gegen den Vorgänger-Commit über 6 Platten-Zustände × 2 Städte, leerer Diff; Altbestände (flache Liste, Worker-Altform) bleiben lesbar |
+| Die Maske zeigt Live-Preis und Alter neben dem Feld | erfüllt — `fillPriceHint()` in `web/src/fills.ts`: „Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.“ Alter aus `observed_at`, ersatzweise `age_minutes`; fehlt beides, bleibt es **ungenannt** statt geschätzt, und ohne frischen Preis steht nichts da (`test_schweigt_ganz_ohne_frischen_preis`) |
+| Abweichung über der Schwelle ist markiert | erfüllt — ab **1,0 ct/L** mit Richtung („3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst“); unterhalb schweigt die Zeile, und der getippte Wert wird nie überschrieben. Render-Nachweis in `views/Ich.test.tsx` |
+| Jedes Diagramm hat eine Beschreibung mit mindestens einer formatierten Zahl | erfüllt — `web/src/chartAlt.ts` baut den Satz aus denselben Punkten, die gezeichnet werden (Anfang/Ende/Richtung, Tief und Hoch nur wenn sie nicht die Endpunkte sind, Bandspanne, Histogramm-Mitte, beide Balken-Ausschläge mit Namen, mittlere Abweichung von der Diagonalen). Zahlen über die Formatter; ohne Punkte der ehrliche Kurztext statt einer Null. Ratchet gegen echtes SVG-Markup in `a11y.test.ts` |
+| Ein unterscheidbares `aria-label` je Diagramm | erfüllt — jeder Baustein nimmt `ariaLabel`, die fünf Aufrufstellen in „Labor“/„Stationen“ benennen ihr Diagramm; der Ratchet prüft paarweise Verschiedenheit **und** dass `aria-label="Diagramm"` in den Bausteinen nicht zurückkommt |
+
+Nebenbefund bei O40: `LineChart` hatte `xFmt` als Default-Parameter
+(Datum/Uhrzeit) — für den Tooltip richtig, für die Textalternative falsch: Die
+Stundenachse der Backtest-Tageskurve (0–24) wäre als Datum vorgelesen worden.
+Der Default sitzt jetzt an der einen Stelle, die ihn braucht; in der
+Beschreibung wird die x-Position nur genannt, wenn der Aufrufer sie benennt.
+
+Offen aus diesem Batch: **kein Dauerzustand.** Geprüft ist gegen 1129 Pytest,
+1180 Vitest, Ruff, Build und beide Browser-Suiten (38/38 bzw. 25 grün /
+11 skipped). Ein Prozessbefund bleibt: O28 und O41
+lagen seit PR #154 auf `main`, während Version, CHANGELOG und der Kopf dieses
+Dokuments weiter „offen ist damit nur noch Batch 8“ sagten — ein halber Batch
+ohne Release-Arbeit ist derselbe Ledger-Drift, gegen den
+`tests/test_ledger_drift.py` angetreten ist.

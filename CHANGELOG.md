@@ -4,6 +4,86 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.54.0] – 2026-09-18
+
+**Batch 8 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+
+### Die Belegmaske zeigt den Live-Preis (O32)
+
+- **Preis und Alter stehen neben dem Feld.** Zwischen Empfehlung und Erfassung
+  vergehen Minuten bis Stunden (Offline-Queue); das Preisfeld war aus dem
+  Snapshot vorbefüllt und der Nutzer hatte keinen Vergleich — also entweder
+  blind abtippen oder die Stationsanzeige suchen, zwei Wege, wo einer genügt.
+  Jetzt sagt die Maske: „Jetzt an der Station: 1,719 €/L, gemeldet vor
+  3 Minuten.“ Das Alter kommt aus `observed_at` der Meldung, ersatzweise aus
+  `age_minutes` des Servers; fehlt **beides**, bleibt es ungenannt statt
+  geschätzt, und ohne frischen Preis steht gar nichts da.
+- **Eine Abweichung ab 1,0 ct/L ist markiert**, mit Richtung: „Deine Eingabe
+  liegt 3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst.“
+  Die Schwelle ist bewusst grob: Sie soll das echte Auseinanderlaufen zeigen,
+  nicht die dritte Nachkommastelle. Und sie korrigiert nichts — gezahlt hat
+  der Nutzer, was an der Säule stand, nicht was die App weiß.
+- Die Regel liegt als reine Funktion `fillPriceHint()` in `web/src/fills.ts`,
+  nicht in der View (D1): Die Maske rendert, sie entscheidet nichts.
+
+### Diagramme nennen ihre Werte (O40)
+
+- **Die Textalternative beschreibt den Verlauf, nicht die Legende.** Vorher
+  baute sie sich aus den Reihennamen — „Liniendiagramm: Erwarteter Preis,
+  Band.“ Ein Screenreader erfuhr damit, **welche** Reihen ein Diagramm zeigt,
+  aber nicht, wohin sie laufen. Neu: `web/src/chartAlt.ts` baut aus denselben
+  Punkten, die gezeichnet werden, einen Satz mit Zahlen — Anfang, Ende,
+  Richtung und Tief/Hoch bei Linien (`Erwarteter Preis fällt von 1,780 €/L
+  auf 1,710 €/L`), Spanne bei Bändern, Umfang/Spanne/Mitte beim Histogramm,
+  Verteilung und beide Ausschläge mit Stationsnamen bei den Balken, mittlere
+  Abweichung von der Diagonalen samt Richtung beim Kalibrierungs-Plot.
+- **Tief und Hoch nur, wenn sie nicht die Endpunkte sind** — sonst stünde
+  dieselbe Zahl dreimal im Satz. Alle Zahlen laufen über die Formatter aus
+  `data.ts` (MICROCOPY §3, de-DE mit Komma), und keine Funktion erfindet einen
+  Wert: Ohne Punkte gibt es den ehrlichen Kurztext („Liniendiagramm ohne
+  Werte.“) statt einer gerundeten Null.
+- **Jedes Diagramm hat ein eigenes `aria-label`.** Vorher hießen alle
+  „Diagramm“ — im Bereich „Labor“ liegen vier davon in einer Ansicht, für eine
+  Vorleserin nicht unterscheidbar. Die fünf Aufrufstellen in „Labor“ und
+  „Stationen“ benennen jetzt ihr Diagramm („Prognose-Fächer“, „Versprochen
+  gegen eingetroffen“, „Preis-Abstand je Station · Frankfurt“, „Tageskurve der
+  Backtest-Zeile“, „Preisverlauf der Station“).
+- **Die Farbregel ist keine Textalternative mehr.** Der alte Balken-Rückfall
+  sagte „grün = positiv, rot = negativ“ — eine Information, die genau dem
+  fehlt, der die Beschreibung liest. Jetzt zählt der Satz die Seiten und nennt
+  die Ausreißer, blasse (nicht signifikante) Balken ausdrücklich als solche.
+
+### Nebenbefund aus der Umsetzung
+
+- **`LineChart` hatte `xFmt` als Default-Parameter** (Datum/Uhrzeit). Für den
+  Tooltip stimmt das — die meisten Reihen tragen Epoch-Millisekunden. Die
+  Textalternative hätte damit aber auch die Stundenachse der Backtest-Tageskurve
+  (0–24) als Datum vorgelesen. Der Default wandert deshalb an die eine Stelle,
+  die ihn braucht; in der Beschreibung wird die x-Position nur genannt, wenn
+  der Aufrufer sie ausdrücklich benennt.
+
+### Doku und Prüfstand
+
+- Der [Optimierungs-Befund](docs/OPTIMIERUNGS-BEFUND.md) trägt den
+  Umsetzungsvermerk je Check; [LUECKEN.md](docs/LUECKEN.md) und
+  [TODO.md](TODO.md) stehen auf 0.54.0. **Ehrlich dazu:** O28 und O41 lagen
+  seit PR #154 auf `main`, ohne dass Version, CHANGELOG oder Befund es sagten —
+  der Befund behauptete im Kopf weiterhin „offen ist damit nur noch Batch 8“.
+  Das ist mit diesem Eintrag geradegezogen.
+- Neu: `web/src/chartAlt.test.ts` (20 Fälle — die Regeln der Sätze, inklusive
+  „erfindet ohne Daten nichts“), der O40-Ratchet in `web/src/a11y.test.ts`
+  (5 Fälle gegen echtes SVG-Markup: jede Instanz mit mindestens einer
+  formatierten Zahl, Labels einer Ansicht paarweise verschieden, kein
+  `aria-label="Diagramm"` mehr in den Bausteinen), O32 in `web/src/fills.test.ts`
+  (8) und `web/src/views/Ich.test.tsx` (3).
+- Nachweis: **1129 Pytest**, **1180 Vitest** (vorher 1144), `ruff check` +
+  `ruff format --check`, `npm --prefix web run build`, und beide
+  Browser-Suiten über den in
+  [QUALITAET.md](docs/QUALITAET.md#e2e-ohne-mocks-seit-0380) beschriebenen
+  `@sparticuz/chromium`-Weg: Alltagssuite **38/38 grün** gegen einen leeren
+  Server, Demo- plus Mobil-Suite **25 grün / 11 skipped** gegen den
+  Demo-Stack.
+
 ## [0.53.0] – 2026-09-18
 
 **Zwei Nutzerurteile vom 18.09.2026 sind umgesetzt: Der Mini-Verlauf in der
