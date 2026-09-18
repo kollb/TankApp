@@ -58,6 +58,12 @@ from pathlib import Path
 # Optionales Straßen-Routing (data-tools/road_route.py): OSRM/OpenStreetMap
 # liefert echte Fahrstrecken + Fahrzeiten statt Luftlinie × Circuity.
 # Nur Standardbibliothek; fehlt das Modul, läuft alles weiter mit Haversine.
+# B30: Auch der Repo-Root gehört auf den Pfad — das Werkzeug importiert
+# ``engine.*`` (Wochentags-Profil, 12-Uhr-Bodenkante) und wird als Skript
+# gestartet; dann ist sys.path[0] ``analysis/`` und nicht das Repo
+# (``python analysis/station_selection.py --help`` brach mit
+# ``No module named 'engine'`` ab).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-tools"))
 try:
     from road_route import RoadRouter
@@ -74,6 +80,18 @@ import pandas as pd
 # O2: the optional analysis tool shares the named default definition with the
 # production selection engine; it may aggregate it for its historical plots.
 from engine.personalization import default_weekday_profile
+
+# B30: Bodenkante der 12-Uhr-Regel. Dieses Werkzeug hat kein Zeitfenster — es
+# wertet den übergebenen Bestand vollständig aus. Liegen darin Beobachtungen
+# von vor dem Gesetz, mischt „billigste Stunde" zwei Rechtslagen (Tief am
+# Abend statt im Vormittag, docs/BEFUND-12-UHR-REGEL.md §2). Kante und
+# Schnitt kommen aus der Engine, damit dieselbe Zahl herauskommt wie in der
+# Selektion (engine/selection.py::law_floor_split).
+from engine.config import Config as EngineConfig
+from engine.models import law_since_utc, utc_time
+from engine.selection import law_floor_split
+
+DEFAULT_LAW_DATE = EngineConfig().price_law_local
 
 # Optional: bundeslandspezifische Feiertage (--subdiv, s. KONZEPT.md §2/§3.2).
 # Feiertage sind in Deutschland Ländersache: Heilige Drei Könige (06.01.) gilt
@@ -102,6 +120,11 @@ class Config:
     # Issue 48 (F5): δ̂ als EW-Median über Tages-δ̂ (schnellere Reaktion
     # auf Betreiber-/Strategiewechsel). Halbwertszeit in Tagen.
     delta_ew_half_life_days: float | None = 7.0
+    # B30: Bodenkante der 12-Uhr-Regel (UTC-Instanz) oder None
+    # (--ignore-law-floor). ``law_floor_dropped`` zählt die ausgeblendeten
+    # Beobachtungen — der Report nennt beides.
+    law_floor: object | None = None
+    law_floor_dropped: int = 0
     w_level: float = 0.40
     w_avail: float = 0.25
     w_pred: float = 0.15
@@ -907,6 +930,14 @@ def build_report(results: list[CityResult], top: pd.DataFrame, cfg: Config,
       f"δ̂-EW-Halbwertszeit {cfg.delta_ew_half_life_days} Tage, "
       f"Coverage-Gate ≥ {cfg.min_coverage:.0%}, FDR-Schwelle q < 0.05, "
       f"Ranking nach **{cfg.rank_by}**.\n")
+    if cfg.law_floor is not None:
+        A(f"**12-Uhr-Bodenkante:** nur Beobachtungen ab {cfg.law_floor} "
+          f"({cfg.law_floor_dropped:,} davor ausgeblendet). Vor dem Gesetz galt "
+          f"ein anderer Tagesrhythmus — beide zusammen ergeben ein Muster, das "
+          f"es so nie gab.\n")
+    else:
+        A("**12-Uhr-Bodenkante:** abgeschaltet (`--ignore-law-floor`) — dieser "
+          "Lauf mischt bewusst Vor- und Nach-Gesetz-Beobachtungen.\n")
     dist_basis = ("echten Straßen-km/Fahrzeit via OSRM-OpenStreetMap" if cfg.router == "osrm"
                   else f"Luftlinie × {cfg.circuity:g} (Circuity)")
     A(f"**Umweg-Modell `{cfg.trip_mode}`:** K = d·(c/100)·p + t·z auf Basis der {dist_basis}"
@@ -1093,6 +1124,13 @@ def main() -> None:
     ap.add_argument("--boot-ew-half-life", type=float, default=14.0,
                     help="Halbwertszeit (Tage) für den exponentiell gewichteten "
                          "Tagesblock-Bootstrap (Issue 46); <=0 = uniform.")
+    ap.add_argument("--law-date", default=DEFAULT_LAW_DATE,
+                    help="12-Uhr-Bodenkante als lokaler Zeitpunkt "
+                         "(engine/config.py price_law_local). Beobachtungen davor "
+                         "zählen nicht mit. Default: %(default)s")
+    ap.add_argument("--ignore-law-floor", action="store_true",
+                    help="Bodenkante abschalten: mischt bewusst Vor- und "
+                         "Nach-Gesetz-Beobachtungen (Gegenmessung).")
     ap.add_argument("--delta-ew-half-life", type=float, default=7.0,
                     help="Halbwertszeit (Tage) für den EW-Median von δ̂ über "
                          "Tages-δ̂ (Issue 48/F5); <=0 = klassischer Median.")
@@ -1183,7 +1221,33 @@ def main() -> None:
                   f"(Fallback: Luftlinie × {cfg.circuity:g})")
     rng = np.random.default_rng(cfg.seed)
 
+    # B30: Bodenkante auflösen und schneiden — vor der Analyse, damit weder
+    # δ̂ noch „billigste Stunde" die Vor-Gesetz-Welt mitlernen.
+    if args.ignore_law_floor:
+        cfg.law_floor = None
+    else:
+        cfg.law_floor = (
+            law_since_utc(EngineConfig())
+            if args.law_date == DEFAULT_LAW_DATE
+            else utc_time(args.law_date)
+        )
+
     df = load_prices(args.data, cfg.fuel)
+    loaded = len(df)
+    df, cfg.law_floor_dropped, law_days = law_floor_split(df, cfg.law_floor)
+    if cfg.law_floor is None:
+        print("12-Uhr-Bodenkante: abgeschaltet (--ignore-law-floor) — der Bestand "
+              "mischt Vor- und Nach-Gesetz-Beobachtungen.")
+    elif cfg.law_floor_dropped:
+        print(f"12-Uhr-Bodenkante {cfg.law_floor}: {cfg.law_floor_dropped:,} von "
+              f"{loaded:,} Beobachtungen ({law_days} Tage) davor ausgeblendet.")
+    else:
+        print(f"12-Uhr-Bodenkante {cfg.law_floor}: keine Beobachtung davor.")
+    if df.empty:
+        raise ValueError(
+            f"Alle {loaded:,} Beobachtungen liegen vor der 12-Uhr-Bodenkante "
+            f"{cfg.law_floor} — Zeitraum wählen oder --ignore-law-floor setzen."
+        )
     cities = sorted(df.city.unique())
     print(f"Geladen: {len(df):,} Zeilen | Städte: {', '.join(cities)} | Kraftstoff: {cfg.fuel}")
 

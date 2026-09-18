@@ -521,3 +521,106 @@ def test_law_date_is_configuration_not_logic(observations):
     assert model["law_floor"] == "2026-08-01T10:00:00+00:00"
     assert model["law_floor_active"] is True
     assert model["training_start"] == "2026-08-01T10:00:00+00:00"
+
+
+# --- Offline-Werkzeug: Preis-Zwillings-Vergleich ----------------------------
+
+import json  # noqa: E402
+from dataclasses import replace as dc_replace  # noqa: E402
+from engine.cli import main as engine_main  # noqa: E402
+from engine.station_comparison import compare_pair  # noqa: E402
+
+
+def _twin_polling(tmp_path):
+    path = tmp_path / "polling.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "test": {
+                        "label": "Testmarkt",
+                        "batch": ["station-1", "station-2"],
+                        "stations": [
+                            {
+                                "uuid": "station-1",
+                                "name": "Aral Test",
+                                "brand": "ARAL",
+                                "dist_km": 1.0,
+                            },
+                            {
+                                "uuid": "station-2",
+                                "name": "Aral Test",
+                                "brand": "ARAL",
+                                "dist_km": 3.0,
+                            },
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_price_twin_comparison_cuts_at_the_law_floor(series):
+    """Der Vergleich zählt nur Beobachtungen ab der Kante — und sagt es."""
+    b = dc_replace(series, station_id="station-2", frame=series.frame.copy())
+    cfg = EngineConfig()
+
+    full = compare_pair(series, b, cfg)
+    assert full["points_before_law"] == 0
+    assert full["qualifying_days"] == 35
+
+    floor = pd.Timestamp("2026-07-25T10:00:00+00:00")
+    cut = compare_pair(series, b, cfg, law_floor=floor)
+    assert cut["points_before_law"] > 0
+    assert cut["common_points"] < full["common_points"]
+    assert cut["qualifying_days"] < full["qualifying_days"]
+    # Unter 28 qualifizierenden Tagen ist ein Zwillingsurteil keine Aussage.
+    assert cut["classification"] == "insufficient_data"
+
+
+def test_compare_stations_cli_names_the_floor_and_the_counter_measurement(
+    observations, tmp_path
+):
+    """CLI: --law-date schneidet, --ignore-law-floor mischt bewusst."""
+    a = observations().drop(columns=["status", "source"])
+    b = a.copy()
+    b["station_id"] = "station-2"
+    path = tmp_path / "history.csv.gz"
+    pd.concat([a, b]).to_csv(path, index=False)
+    polling = _twin_polling(tmp_path)
+
+    def run(extra, out):
+        assert (
+            engine_main(
+                [
+                    "compare-stations",
+                    "--data",
+                    str(path),
+                    "--polling",
+                    str(polling),
+                    "--out",
+                    str(tmp_path / out),
+                ]
+                + extra
+            )
+            == 0
+        )
+        return json.loads((tmp_path / out / "report.json").read_text(encoding="utf-8"))
+
+    cut = run(["--law-date", "2026-07-20T12:00"], "cut")
+    assert cut["law_floor"] == "2026-07-20T10:00:00+00:00"
+    assert cut["points_before_law"] > 0
+    assert "12-Uhr-Bodenkante" in (tmp_path / "cut" / "report.md").read_text(
+        encoding="utf-8"
+    )
+
+    mixed = run(["--ignore-law-floor"], "mixed")
+    assert mixed["law_floor"] is None
+    assert mixed["points_before_law"] == 0
+    assert "abgeschaltet" in (tmp_path / "mixed" / "report.md").read_text(
+        encoding="utf-8"
+    )
+    assert mixed["pairs"][0]["common_points"] > cut["pairs"][0]["common_points"]

@@ -10,6 +10,13 @@ import pandas as pd
 
 from .config import Config
 from .data import PriceSeries, load_observations, prepare_series, scheduled
+from .models import law_since_utc
+
+#: B30: Bodenkante der 12-Uhr-Regel. Beobachtungen davor beschreiben eine
+#: andere Rechtslage (Tagestief am Abend statt im Vormittag,
+#: docs/BEFUND-12-UHR-REGEL.md §2); ein Preis-Zwillings-Vergleich über beide
+#: mischt zwei Welten zu einer Übereinstimmung, die keine ist.
+UNSET_LAW_FLOOR = object()
 
 CRITERIA = {
     "min_days": 28,
@@ -61,13 +68,28 @@ def polling_stations(path: Path, brand: str | None, city: str | None) -> dict:
     return result
 
 
-def compare_pair(a: PriceSeries, b: PriceSeries, cfg: Config, criteria=None) -> dict:
+def compare_pair(
+    a: PriceSeries,
+    b: PriceSeries,
+    cfg: Config,
+    criteria=None,
+    law_floor=None,
+) -> dict:
     rules = CRITERIA if criteria is None else criteria
     if a.city != b.city or a.fuel != b.fuel:
         raise ValueError("Nur Stationen derselben Kampagne und Sorte vergleichen.")
     # Only input observations on the availability grid, never engine-added fill.
     fa = a.frame.loc[scheduled(a.frame.index, cfg)]
     fb = b.frame.loc[scheduled(b.frame.index, cfg)]
+    # B30: nur Beobachtungen ab der 12-Uhr-Bodenkante (None = Gegenmessung).
+    points_before_law = 0
+    if law_floor is not None:
+        floor = pd.Timestamp(law_floor)
+        before_a = fa.index < floor
+        before_b = fb.index < floor
+        points_before_law = int(before_a.sum() + before_b.sum())
+        fa = fa.loc[~before_a]
+        fb = fb.loc[~before_b]
     pa = fa.loc[fa.observed & fa.price.notna(), "price"]
     pb = fb.loc[fb.observed & fb.price.notna(), "price"]
     common = pd.concat([pa.rename("a"), pb.rename("b")], axis=1).dropna()
@@ -112,13 +134,25 @@ def compare_pair(a: PriceSeries, b: PriceSeries, cfg: Config, criteria=None) -> 
         "max_abs_delta_ct": float(delta_ct.max()) if len(common) else None,
         "known_status_comparisons": len(statuses),
         "status_conflicts": conflicts,
+        "points_before_law": points_before_law,
         "opening_hours_verified": False,
         "auto_apply": False,
     }
 
 
-def compare_stations(paths, polling, fuel="E10", brand=None, city=None):
+def compare_stations(
+    paths, polling, fuel="E10", brand=None, city=None, law_floor=UNSET_LAW_FLOOR
+):
+    """Preis-Zwillinge prüfen — nur Beobachtungen ab der 12-Uhr-Bodenkante.
+
+    ``law_floor`` ist defaultmäßig der Zeitpunkt aus
+    ``engine/config.py: price_law_local`` (:data:`UNSET_LAW_FLOOR`); ``None``
+    schaltet die Kante für einen bewussten Vor-/Nach-Gesetz-Kontrast aus
+    (CLI: ``--ignore-law-floor``).
+    """
     cfg = Config()
+    if law_floor is UNSET_LAW_FLOOR:
+        law_floor = law_since_utc(cfg)
     meta = polling_stations(polling, brand, city)
     observations, quality = load_observations(
         paths, cfg, fuel, {key[1] for key in meta}
@@ -136,7 +170,7 @@ def compare_stations(paths, polling, fuel="E10", brand=None, city=None):
     for label in sorted({key[0] for key in meta}):
         keys = sorted(key for key in meta if key[0] == label)
         for ka, kb in combinations(keys, 2):
-            pair = compare_pair(by_id[ka], by_id[kb], cfg)
+            pair = compare_pair(by_id[ka], by_id[kb], cfg, law_floor=law_floor)
             nearer = None
             da, db = meta[ka]["dist_km"], meta[kb]["dist_km"]
             if (
@@ -154,6 +188,12 @@ def compare_stations(paths, polling, fuel="E10", brand=None, city=None):
         "fuel": fuel,
         "criteria": CRITERIA,
         "poll_window": "06–24 Europe/Berlin",
+        # B30: worauf der Vergleich steht — Kante der 12-Uhr-Regel und wie
+        # viele Beobachtungen davor ausgeblendet sind.
+        "law_floor": (
+            pd.Timestamp(law_floor).isoformat() if law_floor is not None else None
+        ),
+        "points_before_law": sum(int(pair["points_before_law"]) for pair in pairs),
         "quality": quality,
         "stations": list(meta.values()),
         "pairs": pairs,
@@ -188,6 +228,14 @@ def markdown_report(report):
         f"Schwellen: ≥{c['min_days']} Tage mit je ≥{c['min_common_points_per_day']} gemeinsamen Eingangszeilen; "
         f"≥{c['min_overlap_pct']:g} % Beobachtungsüberlappung; ≥{c['min_agreement_pct']:g} % Preise innerhalb "
         f"{c['price_tolerance_ct']:g} ct/L. Bekannte unterschiedliche Status verhindern eine Zwillingsempfehlung.",
+        "",
+        (
+            f"12-Uhr-Bodenkante: nur Beobachtungen ab {report['law_floor']} — "
+            f"{report['points_before_law']} davor ausgeblendet."
+            if report.get("law_floor")
+            else "12-Uhr-Bodenkante abgeschaltet (--ignore-law-floor): "
+            "Der Vergleich mischt Vor- und Nach-Gesetz-Beobachtungen."
+        ),
         "",
         "**Kein Polling-Set wurde verändert. Ein gleicher Name ist kein Preisnachweis.**",
         "",

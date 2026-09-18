@@ -211,38 +211,52 @@ def law_floor_iso(cfg: SelectionConfig) -> str | None:
     return None if floor is None else pd.Timestamp(floor).isoformat()
 
 
-def law_floor_cut(df: pd.DataFrame, city: str, cfg: SelectionConfig):
-    """Beobachtungen einer Stadt an der 12-Uhr-Bodenkante teilen (B30).
+def law_floor_split(
+    df: pd.DataFrame,
+    law_floor,
+    timezone: str = "Europe/Berlin",
+    subset: np.ndarray | None = None,
+):
+    """Beobachtungen an der 12-Uhr-Bodenkante teilen (B30).
 
     Liefert ``(kept, points_before_law, days_before_law)``: ``kept`` ist der
-    Eingang ohne die Zeilen **vor** ``cfg.law_floor``, dazu die Zahl der
-    ausgeblendeten Beobachtungen und die Zahl der Berliner Kalendertage, die
-    sie betreffen. Ohne Kante (``law_floor`` ist ``None``,
-    ``TANKAPP_LAW_FLOOR=0``) bleibt der Eingang unverändert.
+    Eingang ohne die Zeilen **vor** ``law_floor``, dazu die Zahl der
+    ausgeblendeten Beobachtungen und die Zahl der Kalendertage (``timezone``),
+    die sie betreffen. Ohne Kante (``law_floor`` ist ``None``,
+    ``TANKAPP_LAW_FLOOR=0``) bleibt der Eingang unverändert. ``subset`` grenzt
+    Zählen und Schneiden ein (z. B. auf eine Stadt).
 
-    Der Schnitt liegt **vor** :func:`_to_matrix`, nicht danach: Dort füllt
-    ``ffill(limit=…)`` Lücken vorwärts — eine Vor-Gesetz-Beobachtung tauchte
-    sonst als erste Zelle hinter der Kante wieder auf, und die „Bodenkante"
-    wäre eine Behauptung statt eines Schnitts.
+    Gemeinsamer Baustein aller Beobachtungs-Pfade — Selektion
+    (:func:`law_floor_cut`) und Offline-Werkzeuge
+    (``analysis/station_selection.py``) — damit die Kante überall dieselbe
+    Zahl liefert.
     """
-    floor = getattr(cfg, "law_floor", None)
-    if floor is None or df is None or df.empty or "timestamp" not in df.columns:
+    if law_floor is None or df is None or df.empty or "timestamp" not in df.columns:
         return df, 0, 0
     stamps = df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(stamps):
         stamps = pd.to_datetime(stamps, utc=True)
     elif stamps.dt.tz is None:
         stamps = stamps.dt.tz_localize("UTC")
-    in_city = (
-        (df["city"] == city).to_numpy()
-        if "city" in df.columns
-        else np.ones(len(df), bool)
-    )
-    before = in_city & (stamps < pd.Timestamp(floor)).to_numpy()
+    before = (stamps < pd.Timestamp(law_floor)).to_numpy()
+    if subset is not None:
+        before = before & np.asarray(subset, dtype=bool)
     if not before.any():
         return df, 0, 0
-    days = int(stamps[before].dt.tz_convert(cfg.timezone).dt.normalize().nunique())
+    days = int(stamps[before].dt.tz_convert(timezone).dt.normalize().nunique())
     return df.loc[~before], int(before.sum()), days
+
+
+def law_floor_cut(df: pd.DataFrame, city: str, cfg: SelectionConfig):
+    """Beobachtungen **einer Stadt** an der Kante teilen (B30).
+
+    Der Schnitt liegt **vor** :func:`_to_matrix`, nicht danach: Dort füllt
+    ``ffill(limit=…)`` Lücken vorwärts — eine Vor-Gesetz-Beobachtung tauchte
+    sonst als erste Zelle hinter der Kante wieder auf, und die „Bodenkante"
+    wäre eine Behauptung statt eines Schnitts.
+    """
+    subset = (df["city"] == city).to_numpy() if "city" in df.columns else None
+    return law_floor_split(df, getattr(cfg, "law_floor", None), cfg.timezone, subset)
 
 
 def scheduled_mask(index: pd.DatetimeIndex, cfg: SelectionConfig) -> np.ndarray:
