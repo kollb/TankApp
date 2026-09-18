@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -201,6 +203,11 @@ def test_calendar_day_backtest_handles_dst(observations):
         min_slot_days=2,
         bootstrap_samples=100,
         poll_start=0,
+        # B30: Der Backtest läuft über März-Daten, die Kante der 12-Uhr-Regel
+        # liegt hier davor — geprüft wird die Zeitumstellung, nicht das
+        # Gesetz. Mit dem Default (01.04.2026) fiele jeder Fold vor die
+        # Bodenkante und der Backtest bliebe zurecht leer.
+        price_law_local="2026-03-01T12:00",
     )
     raw = observations(days=35, start="2026-03-01")
     raw["status"] = "open"
@@ -345,6 +352,9 @@ def _dst_observations(observations):
 
 
 def test_backtest_flags_dst_day_without_changing_the_fold_count(observations, cfg):
+    # B30: Kante vor den März-Daten — sonst scheitern die Folds vor dem
+    # 01.04.2026 an der Bodenkante statt an der Zeitumstellung.
+    cfg = replace(cfg, price_law_local="2026-03-01T12:00")
     raw = _dst_observations(observations)
     data, _ = normalize_observations(raw, cfg)
     report, _ = run_backtest(

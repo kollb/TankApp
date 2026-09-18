@@ -434,3 +434,90 @@ def test_forward_fill_carries_no_pre_law_price_over_the_floor():
     assert float(
         cut.loc[pd.Timestamp("2026-04-01 12:30", tz="Europe/Berlin"), "a"]
     ) == (pytest.approx(1.70))
+
+
+# --- Kalibrierung: Trainingsbeginn ab der Kante -----------------------------
+
+from dataclasses import replace  # noqa: E402
+from engine.config import Config as EngineConfig  # noqa: E402
+from engine.data import normalize_observations, prepare_series  # noqa: E402
+from engine.models import fit, predict  # noqa: E402
+
+FIT_KNOBS = {
+    "train_days": 42,
+    "min_train_days": 7,
+    "min_slot_days": 2,
+    "bootstrap_samples": 100,
+}
+
+
+def _fit_series(observations, cfg, days, start):
+    raw = observations(days=days, start=start)
+    raw["status"] = "open"
+    rows, _ = normalize_observations(raw, cfg)
+    return prepare_series(rows, cfg)[0]
+
+
+def test_fit_clamps_the_training_start_to_the_law(observations):
+    """Fenster über den Regimewechsel: gelernt wird erst ab der Kante."""
+    cfg = EngineConfig(**FIT_KNOBS)
+    series = _fit_series(observations, cfg, 45, "2026-03-06")
+    model = fit(series, "2026-04-20T00:00:00+02:00", cfg)
+
+    assert model["law_floor"] == "2026-04-01T10:00:00+00:00"
+    assert model["law_floor_active"] is True
+    assert model["training_start"] == "2026-04-01T10:00:00+00:00"
+    assert model["pre_law_points_excluded"] > 0
+
+
+def test_fit_floor_is_a_no_op_on_todays_window(observations):
+    """42-Tage-Fenster heute (Beginn 04.07.2026) liegt hinter der Kante."""
+    cfg = EngineConfig(**FIT_KNOBS)
+    series = _fit_series(observations, cfg, 45, "2026-07-01")
+    model = fit(series, "2026-08-15T00:00:00+02:00", cfg)
+
+    assert model["law_floor_active"] is False
+    assert model["pre_law_points_excluded"] == 0
+    # 42 Tage vor dem Cutoff, als UTC-Instanz: 04.07.2026 00:00 Berlin.
+    assert model["training_start"] == "2026-07-03T22:00:00+00:00"
+
+
+def test_fit_floor_rejects_a_stock_entirely_before_the_law(observations):
+    """Kein stilles Mitlernen des alten Rhythmus — der Fit nennt den Grund."""
+    cfg = EngineConfig(**FIT_KNOBS)
+    series = _fit_series(observations, cfg, 35, "2026-02-20")
+    with pytest.raises(ValueError, match="12-Uhr-Bodenkante"):
+        fit(series, "2026-03-27T00:00:00+01:00", cfg)
+
+
+def test_fit_with_the_floor_still_forecasts_and_holds_the_law(observations):
+    """Synthetischer Nachweis der B30-DoD — der echte Backtest ist Betrieb.
+
+    Geklemmter Trainingsbeginn darf die Prognose nicht brechen, und die
+    12-Uhr-Projektion gilt weiter: Innerhalb eines Segments [12:00 Uhr,
+    nächste 12:00 Uhr) steigt kein Preis-Segment.
+    """
+    cfg = EngineConfig(**FIT_KNOBS)
+    series = _fit_series(observations, cfg, 45, "2026-03-06")
+    model = fit(series, "2026-04-20T00:00:00+02:00", cfg)
+
+    # 36 h, damit das Segment [12:00 Uhr, nächste 12:00 Uhr) vollständig im
+    # Raster liegt — nur dann koppelt die Projektion (engine/models.py).
+    out = predict(model, hours=36)
+    segment = out.q50.loc[
+        (out.index >= pd.Timestamp("2026-04-20 12:00", tz="Europe/Berlin"))
+        & (out.index < pd.Timestamp("2026-04-21 12:00", tz="Europe/Berlin"))
+    ].dropna()
+    assert len(segment) == 288
+    steps = segment.to_numpy()[1:] - segment.to_numpy()[:-1]
+    assert (steps <= 1e-9).all()
+
+
+def test_law_date_is_configuration_not_logic(observations):
+    """Verschiebt sich das Gesetz, folgt die Kante — kein Hardcode."""
+    cfg = replace(EngineConfig(**FIT_KNOBS), price_law_local="2026-08-01T12:00")
+    series = _fit_series(observations, cfg, 45, "2026-07-01")
+    model = fit(series, "2026-08-20T00:00:00+02:00", cfg)
+    assert model["law_floor"] == "2026-08-01T10:00:00+00:00"
+    assert model["law_floor_active"] is True
+    assert model["training_start"] == "2026-08-01T10:00:00+00:00"
