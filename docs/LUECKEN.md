@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 18.09.2026 · App-Version 0.51.0. Abgleich von
+> Stand: 18.09.2026 · App-Version 0.52.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -105,6 +105,37 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 18.09.2026 — Version 0.52.0: Batch 7 (Betrieb, Rest)
+
+Fünf Befunde des Optimierungs-Befunds sind umgesetzt (O25, O26, O37, O34,
+O27); die Abnahme mit den einzelnen Checks steht im
+[Befund](OPTIMIERUNGS-BEFUND.md#batch-7--p2--betrieb-rest). Der Batch ändert
+keine Zahl, die das GUI zeigt, und kein Konzept-Versprechen — er macht den
+Dauerbetrieb billiger und messbar:
+
+- **Messbar statt behauptet (O37):** Jede Antwort trägt `X-Process-Time`,
+  `/api/v1/health` nennt p95/Maximum/langsamste Route der letzten 200
+  Antworten, die Parse-Dauer der Veröffentlichung und den Sperren-Zähler des
+  persönlichen Speichers. Das Budget (p95 ≤ 300 ms im LAN) steht in
+  [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
+- **Lesepfad ohne Sperre (O26):** Ein `/decide`-Poll, der nichts ändert, nimmt
+  die Feedback-Store-Sperre nicht mehr — ein Beleg wartet nicht hinter einer
+  Abfrage.
+- **Aufbewahrung entschieden (O34):** Der InfluxDB-Cron rotiert (acht
+  Wochenstände), und das Roharchiv ist als bewusst **nicht** gesichert benannt
+  (per `history-sync` regenerierbar) — beides in
+  [BETRIEB.md](BETRIEB.md#nas-influxdb-backup).
+- **Getestet wird, was läuft (O27):** NAS-Bild und Pipeline nennen dieselbe
+  Python-Linie (3.12) und dieselbe Node-Linie (22), `web/package.json` trägt
+  `engines`, und der Pipeline-Job `nas-image` fährt die Suite **im Bild**.
+
+Aus Batch 1–6 war keine Folgeumsetzung offen: O22(d) ist mit 0.49.0 umgesetzt,
+das zweite automatische Backup-Ziel (B25) und das Fehlen eines Form-Modells je
+Station stehen begründet unten bzw. im
+[Befund](OPTIMIERUNGS-BEFUND.md#batch-6--p2--anzeige-und-alltag). Bewusst offen
+bleiben damit weiterhin B25, die numerischen Hebel, die echten
+Betriebsbestand brauchen (B22), und der Desktop-Zweispalter (C12).
 
 ### 17.09.2026 — Version 0.50.0: Batch 6 (Anzeige und Alltag)
 

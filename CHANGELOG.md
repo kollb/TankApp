@@ -4,6 +4,94 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.52.0] – 2026-09-18
+
+**Batch 7 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+
+### Billigere Antworten (O25)
+
+- **gzip-Stufe 1 statt 6** für API-Antworten (`GZIP_LEVEL_API` in
+  `app/server.py`). Gemessen im Sandkasten an einer Antwort in
+  Veröffentlichungsgröße (2,08 MB JSON): **11,3 ms / 18,1 %** der Rohgröße gegen
+  46,2 ms / 13,9 % bei Stufe 6 (146,1 ms bei Stufe 9) — Faktor ~4 bei ~4
+  Prozentpunkten. Die CPU-Zeit fiel auf dem NAS bei jedem Poll an. Statische
+  Assets komprimiert dieser Server gar nicht (content-hashierte Vite-Dateien,
+  `immutable`), die teurere Stufe hätte keinen Abnehmer.
+- **Revalidierung auf sechs weiteren Endpunkten:** `/decide`, `/stations`,
+  `/heatmap`, `/stats/summary`, `/selection` (+ `/stations/selection`) und
+  `/last_forecasts` tragen ein `ETag` und antworten auf `If-None-Match` mit
+  `304` ohne Body und ohne Neuberechnung — vorher kannte nur `/overview` das
+  Muster (B7). `LiveData.read_etag(route, params)` ist die eine Quelle; die
+  Route gehört in den Wert, damit zwei Endpunkte beim selben Datenstand nicht
+  dasselbe ETag tragen. Persönliche Endpunkte (`fills`, `profiles`, `episodes`,
+  `advice/diary`) und die Influx-Pfade mit frei wählbarem Fenster (`series`,
+  `forecast`, `day`) revalidieren bewusst nicht. Die GUI revalidiert selbst
+  (`useResource`), `Cache-Control: no-store` bleibt stehen.
+
+### Lesepfad ohne Sperre (O26)
+
+- `record_snapshot` prüft **vor** der Sperre (`_peek_confirmation`, sperrenfreies
+  Lesen), ob der Aufruf den Store überhaupt ändert: offene Episode vorhanden,
+  letzter Snapshot dieselbe Entscheidung, keine Episode läuft ab. Nur sonst
+  bleibt der Pfad ohne Thread- und Dateisperre; jeder Zweifel läuft weiter unter
+  Sperre mit erneuter Prüfung. Vorher nahm jeder `/decide`-Poll die exklusive
+  Sperre auf dem persönlichen Speicher — ein Beleg wartete hinter einer Abfrage,
+  die nichts schreibt. Gemessen: **3,7 ms** Buchung bei 12 nebenläufigen Polls,
+  genau eine Sperren-Akquise.
+- Neu: `app.feedback.lock_stats()` zählt Akquisen und Wartezeit; der Block steht
+  als `performance.store_lock` in `/api/v1/health`.
+
+### Der Server misst sich selbst (O37)
+
+- **`X-Process-Time`** je Antwort (200, 304, 404, statisch) in Sekunden —
+  dieselbe Konvention wie gunicorn/nginx. Nur beantwortete Requests zählen, ein
+  Keep-Alive-Timeout wird kein 65-s-Ausreißer.
+- **`app/metrics.py`:** rollierendes Fenster über die letzten 200 Antworten,
+  als `performance` in `/api/v1/health` — `p95_ms`, `max_ms`, `slowest_route`,
+  je Route ab fünf Antworten `by_route`, dazu `budget_ms`.
+- **`publication.parse_ms`/`parsed_at`:** Dauer und Zeitpunkt des letzten Pars
+  **dieses** Datenstands (O23 macht ihn selten; wird er teuer, steht es hier).
+  `null` heißt „für den aktuellen Stand hat noch niemand geparst", nie „0 ms".
+- Budget in [docs/QUALITAET.md](docs/QUALITAET.md#selbstmessung-des-servers-seit-0520):
+  p95 einer API-Antwort im LAN ≤ **300 ms** — als Zahl im Code
+  (`REQUEST_BUDGET_MS`) und damit in jedem Health-Payload, nicht nur in der Doku.
+
+### Aufbewahrung entschieden (O34)
+
+- Der InfluxDB-Cron **rotiert**: `find /backup … -mtime +56 -delete` hinter dem
+  `tar` — acht Wochenstände statt unbegrenzt (jeder enthält die ganze Historie).
+  Begründung und der Verzicht auf eine Monatsstufe stehen in
+  [docs/BETRIEB.md](docs/BETRIEB.md#nas-influxdb-backup).
+- Das **Roharchiv** ist als bewusst **nicht** gesichert benannt: per
+  `history-sync` regenerierbar (~730 Downloads × 0,4 s ≈ 5 min für ein Jahr
+  Bestand). Nicht regenerierbar sind die live gepollten Preise im Volume und die
+  Bilanz in `runtime/` — beide haben eine Sicherung.
+
+### Getestet wird, was läuft (O27)
+
+- `ops/nas/app/Dockerfile` nennt `ARG PYTHON_VERSION=3.12` und
+  `ARG NODE_VERSION=22` — vorher lief das Bild auf `python:3.14` / `node:26`,
+  während die Pipeline gegen 3.11/3.12 prüfte und der web-Job die Node-Version
+  des CI-Runners nahm. Die Matrix behält 3.11 (Pi-Collector) **und** 3.12
+  (Bild), `web`-Job und `quality.yml` pinnen Node 22.
+- `web/package.json` trägt `engines.node = "^22.12.0"` (Untergrenze aus vite 8 /
+  vitest 5). `tzdata` kommt in Bild **und** Pipeline über
+  `app/requirements.txt`, nicht über das Debian-Paket.
+- Der CI-Job `nas-image` fährt die Suite **im Bild**: `docker run … pytest` nach
+  `pip install -r requirements-dev.txt` — derselbe Interpreter, dieselben
+  Paket-Versionen wie im Betrieb. Der Quellbaum wird gemountet, weil
+  `.dockerignore` `tests/` und `docs/` ausschließt (beide liest die Suite).
+- Ratchet: `tests/test_o27_build_parity.py` hält Dockerfile, Matrix, Node-Pins,
+  `engines` und den Job zusammen — eine Zahl allein driftet wieder.
+
+**Prüfung:** `ruff check` + `ruff format --check`, `pytest -q` (**1114 passed**,
+davon 35 neu in `tests/test_o25_revalidation.py`, `test_o26_read_path_lock.py`,
+`test_o37_server_metrics.py`, `test_o34_retention.py`, `test_o27_build_parity.py`),
+`npm --prefix web test` (1142 passed) und `npm --prefix web run build`. Die
+beiden Playwright-Suiten sind lokal nicht gelaufen (Browser-Download in der
+Arbeitsumgebung blockiert); der neue Lauf der Suite **im Bild** braucht Docker
+und läuft erstmals in der CI.
+
 ## [0.51.0] – 2026-09-18
 
 **Schritt 3 des 12-Uhr-Befunds (B30) ist umgesetzt: Beobachtungen vor dem

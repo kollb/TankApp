@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 18.09.2026, App-Version 0.51.0)
+# TankApp — ToDo (Stand 18.09.2026, App-Version 0.52.0)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und

@@ -35,8 +35,11 @@
 > umgesetzt** ([LUECKEN.md](LUECKEN.md#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)):
 > Die zweite Stadt hob das Polling-Set auf 20 Stationen und die Monolith-Datei
 > auf 13,5 MB — der vereinbarte Auslöser trat ein, jede Stations-Prognose liegt
-> jetzt in einer eigenen Datei, `current.json` ist ein Index mit Zeigern. Die
-> übrigen Batches (6–8) sind unverändert offen.
+> jetzt in einer eigenen Datei, `current.json` ist ein Index mit Zeigern.
+> [Batch 6](#batch-6--p2--anzeige-und-alltag) (O18–O21, O30, O31, O39) ist
+> mit **0.50.0** und [Batch 7](#batch-7--p2--betrieb-rest) (O25, O26, O37, O34,
+> O27) mit **0.52.0** umgesetzt; offen ist damit nur noch
+> [Batch 8](#batch-8--p3--schliff) (O28, O32, O40, O41).
 
 ## Inhaltsverzeichnis
 
@@ -2011,6 +2014,37 @@ vorbehalten (§0.4).
 
 **Batch-Abnahme:** Kosten sind messbar und budgetiert, Sperren sitzen nicht
 mehr im Lesepfad, und was getestet wird, ist was läuft.
+
+**Umgesetzt mit 0.52.0 (18.09.2026).** Vorab geprüft: Aus Batch 1–6 war keine
+Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische
+Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet im
+[Todo](../TODO.md), in [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)
+und beim [Batch-6-Vermerk](#batch-6--p2--anzeige-und-alltag). Alle fünf Checks
+sind erfüllt und als Tests festgehalten (`tests/test_o25_revalidation.py`,
+`tests/test_o26_read_path_lock.py`, `tests/test_o37_server_metrics.py`,
+`tests/test_o34_retention.py`, `tests/test_o27_build_parity.py`):
+
+| Check | Ergebnis |
+|---|---|
+| Dieselbe Antwort mit Stufe 1 unter 150 ms (vorher 547 ms) | erfüllt: `GZIP_LEVEL_API = 1`. Gemessen im Sandkasten an 2,08 MB JSON: **11,3 ms / 18,1 %** der Rohgröße (Stufe 1) gegen 46,2 ms / 13,9 % (Stufe 6) und 146,1 ms (Stufe 9) — Faktor ~4 bei ~4 Prozentpunkten. Statische Assets komprimiert dieser Server gar nicht (content-hashierte Vite-Dateien, `immutable`), Stufe 6 hätte also keinen Abnehmer |
+| Zweite Anfrage mit `If-None-Match` auf `/decide`, `/stations`, `/heatmap`, `/stats/summary` ergibt 304 | erfüllt — dazu `/selection` und `/last_forecasts` (derselbe Datenstempel). `data.read_etag(route, params)` ist die eine Quelle, die Route gehört in den Wert; die GUI revalidiert selbst (`useResource`). Persönliche Endpunkte und die Influx-Pfade mit freiem Fenster bleiben bewusst draußen (`REVALIDATED_ROUTES`). Der erste `/decide`-Poll legt die Episode an und hebt damit den Datenstand — ab dem zweiten greift 304 |
+| `GET /decide` erhöht den Sperren-Zähler des Stores nicht | erfüllt: `app.feedback.lock_stats()` zählt Akquisen und Wartezeit; fünf `/decide`-Polls bewegen den Zähler nicht (`_peek_confirmation` liest sperrenfrei und prüft dieselben Bedingungen wie der Pfad unter Sperre). Gegenproben: geänderte Entscheidung und ablaufende Episode nehmen die Sperre weiter |
+| Ein Beleg wird während laufender Polls ohne messbare Wartezeit gebucht | erfüllt: **3,7 ms** Buchung bei 12 nebenläufigen Polls, genau **eine** Sperren-Akquise (die des Belegs); Schwelle im Test 1 s |
+| Antworten tragen `X-Process-Time` | erfüllt — jede Antwort (200, 304, 404, statisch), Sekunden wie gunicorn/nginx; nur beantwortete Requests zählen ins Fenster, ein Keep-Alive-Timeout wird kein 65-s-Ausreißer |
+| `/api/v1/health` nennt Parse-Dauer und Publikationsgröße | erfüllt: `publication.parse_ms`/`parsed_at` (nur für den aktuellen Datenstand, sonst `null` — keine alte Zahl als aktuelle) neben `bytes`/`budget_bytes`, dazu `performance` (p95, Maximum, langsamste Route, je Route ab fünf Antworten) und `performance.store_lock` |
+| Budget steht in QUALITAET.md | erfüllt: p95 ≤ **300 ms** im LAN als eigene Zeile der Budget-Tabelle und als `REQUEST_BUDGET_MS` im Code — `budget_ms` fährt in jedem Health-Payload mit |
+| Der InfluxDB-Cron rotiert (`find … -mtime +N -delete` im Befehl) | erfüllt: `-mtime +56 -delete` hinter dem `tar` (acht Wochenstände), mit Begründung — jeder Stand enthält die ganze Historie, eine Monatsstufe wie beim Laufzeit-Backup schützt dort vor einem anderen Risiko |
+| BETRIEB.md nennt die Archiv-Entscheidung mit Begründung | erfüllt: „bewusst nicht gesichert, weil per `history-sync` regenerierbar" (~730 Downloads × 0,4 s ≈ 5 min für ein Jahr Bestand) — plus die Abgrenzung, was **nicht** regenerierbar ist (Live-Polls im Volume, Bilanz in `runtime/`) |
+| Ein Pipeline-Job baut das Bild und fährt die Suite **im Bild** | erfüllt: `nas-image` baut, nennt Interpreter/tzdata und läuft `pytest` **im** Bild (`docker run … sh -c "pip install -r requirements-dev.txt && pytest"`) — derselbe Interpreter, dieselben Paket-Versionen wie im Betrieb. Der Quellbaum wird gemountet, weil `.dockerignore` `tests/` und `docs/` ausschließt |
+| `web/package.json` hat `engines` | erfüllt: `"node": "^22.12.0"` (Untergrenze aus vite 8 / vitest 5) |
+| Bild und Pipeline nennen dieselbe Python-Linie | erfüllt: `ARG PYTHON_VERSION=3.12` / `ARG NODE_VERSION=22` sind die eine Quelle, die Matrix fährt 3.11 (Pi) **und** 3.12 (Bild), `web`-Job und `quality.yml` pinnen Node 22 — vorher lief das Bild auf 3.14/26, die Pipeline auf 3.11/3.12 und der web-Job auf der Node-Version des Runners. Ratchet: `tests/test_o27_build_parity.py` |
+
+Offen aus diesem Batch: kein Dauerzustand — aber zwei Ehrlichkeiten: Der neue
+Lauf der Suite **im Bild** ist in dieser Arbeitsumgebung nicht ausführbar (kein
+Docker), er läuft erstmals in der CI; und die Lighthouse-/Last-Messwerte in
+[QUALITAET.md](QUALITAET.md) sind **nicht** neu gefahren (Batch 7 ändert keine
+GUI), das Selbstmessungs-Budget ist deshalb als **Warnung** eingetragen, nicht
+als Fehler.
 
 ### Batch 8 — P3 · Schliff
 
