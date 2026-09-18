@@ -1,6 +1,6 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 16.09.2026 · App-Version **0.41.1** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 18.09.2026 · App-Version **0.52.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
@@ -16,6 +16,7 @@ im echten Browser gegen die echte App (Abschnitt
 - [Was gemessen wird](#was-gemessen-wird)
 - [Der Demo-Stack](#der-demo-stack)
 - [E2E ohne Mocks (seit 0.38.0)](#e2e-ohne-mocks-seit-0380)
+- [Selbstmessung des Servers (seit 0.52.0)](#selbstmessung-des-servers-seit-0520)
 - [Lokal ausführen](#lokal-ausführen)
 - [Budgets](#budgets)
 - [Messwerte](#messwerte)
@@ -91,6 +92,44 @@ Server-Teil der Zusage zusätzlich als Python-Test daneben, der überall läuft.
 
 ---
 
+## Selbstmessung des Servers (seit 0.52.0)
+
+Bis 0.51.0 entstanden alle Latenzzahlen dieses Dokuments durch Handmessung —
+in einer Sandkiste oder im Last-Workflow. Auf dem NAS lief dieselbe App ohne
+Äquivalent: Niemand sah, dass eine Antwort 900 ms braucht, weil die
+Veröffentlichung gewachsen ist (O22), ein Parse zurückgekommen ist (O23) oder
+eine Sperre im Lesepfad sitzt (O26). Seit 0.52.0 misst der Server sich selbst,
+mit zwei billigen Feldern und ohne neue Infrastruktur:
+
+| Feld | Wo | Was es sagt |
+|---|---|---|
+| `X-Process-Time` | Header **jeder** Antwort (auch 304, 404, statisch) | Bearbeitungszeit dieser Antwort in Sekunden (`0.004182`) — dieselbe Konvention wie gunicorn/nginx. Sichtbar in den DevTools und in `curl -D -`. |
+| `performance` | `GET /api/v1/health` | p95, Maximum und langsamste Route über die letzten **200** Antworten (`app/metrics.py`), je Route ab fünf Antworten, dazu `budget_ms` aus der Tabelle unten |
+| `performance.store_lock` | `GET /api/v1/health` | Akquisen und Wartezeit der Feedback-Store-Sperre (O26). Ein steigender Zähler ohne Schreibvorgänge heißt: ein Lesepfad nimmt wieder die Sperre. |
+| `publication.parse_ms` / `parsed_at` | `GET /api/v1/health` | Dauer des letzten Pars **dieses** Datenstands (O23 macht ihn selten — wenn er teuer wird, steht es hier). `null` heißt „für den aktuellen Stand hat noch niemand geparst“, nie „0 ms“. |
+
+```bash
+curl -sD - -o /dev/null localhost:1355/api/v1/health | grep -i x-process-time
+curl -s localhost:1355/api/v1/health \
+  | jq '{performance, publication: {bytes: .publication.bytes, parse_ms: .publication.parse_ms}}'
+```
+
+**Budget:** p95 einer API-Antwort im LAN ≤ **300 ms**. Die Zahl steht als
+`REQUEST_BUDGET_MS` in `app/metrics.py` und fährt in jedem Health-Payload mit
+(`performance.budget_ms`) — ein Budget, das nur in der Doku steht, alarmiert
+niemanden. `tests/test_o37_server_metrics.py` hält Header, Payload und Doku
+zusammen. Das Last-Budget für `/overview` (≤ 1000 ms p95, Tabelle unten)
+bleibt daneben stehen: Es misst den Aggregat-Pfad unter 8 Clients, nicht die
+einzelne Antwort im Leerlauf.
+
+**Abgrenzung:** Das ist kein Monitoring. Es gibt keinen Export, keine
+Historie über den Prozess-Lebenszeitraum hinaus und keinen Alarm auf
+`performance` — die Alarme bleiben beim Alarm-Katalog in
+[BETRIEB.md](BETRIEB.md). Die Messung beantwortet eine Frage: „Warum hängt
+das gerade?“ — und zwar auf dem Gerät, auf dem es hängt.
+
+---
+
 ## Lokal ausführen
 
 ```bash
@@ -127,6 +166,7 @@ schreibt seinen Bericht als JSON nach stdout.
 | Größe | Budget | Ebene | Begründung |
 |---|---|---|---|
 | p95 Latenz `/overview` | ≤ 1000 ms | Fehler | Ab ~1 s wirkt ein Refresh im Alltag wie „hängt“. |
+| p95 einer API-Antwort (Server-Selbstmessung) | ≤ 300 ms | Warnung | O37: `X-Process-Time` bzw. `performance.p95_ms` in `/api/v1/health` — die einzelne Antwort im Leerlauf, gemessen auf dem Gerät selbst. Über 300 ms ist eine Antwort nicht mehr „sofort“; das Last-Budget oben (8 Clients) bleibt separat. |
 | p99 Latenz `/overview` | ≤ 2000 ms | Fehler | Einzelne Treffer nach einem Modell-Lauf oder Job-Start sind erklärbar — aber nicht doppelt so lang wie p95. |
 | Fehlerhafte Antworten | 0 (alles 2xx/3xx) | Fehler | Die App hat kein API-Rate-Limit mehr (0.12.0); 429 darf es im Normalbetrieb nicht geben. |
 | 304-Anteil der Revalidierungen | ≥ 20 % | Fehler | B7 trägt nur, wenn `If-None-Match` auch unter Last greift. Sonst zahlt jeder Refresh die volle Berechnung. |

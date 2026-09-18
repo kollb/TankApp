@@ -16,6 +16,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from polling_plan import collector_lock
+from . import metrics
 from .config import ROOT
 from .data import LiveData, read_json
 from .worker import INTERVALS, is_transient_error
@@ -66,6 +67,33 @@ def _is_personal_read(norm_path: str) -> bool:
 # statt 5–10 s, solange sich die zugrunde liegenden Daten nicht geändert
 # haben (höchstens alle 300 s möglich, Token-Bucket).
 _ALREADY_ANSWERED = object()
+
+# O25: Dieselbe Revalidierung für die übrigen read-only-Endpunkte, deren
+# Inhalt an demselben Datenstempel hängt (`data_version`: Collector-
+# Heartbeat, Engine-/Selektions-Artefakt, Feedback-Store, Polling-Set plus
+# ein 60-s-Uhrzeitfenster). Vorher kannte nur /overview ein ETag — /decide,
+# /stations, /heatmap, /stats/summary und /selection luden bei jedem Poll
+# komplett, obwohl sich ihr Datenstand über denselben Mechanismus
+# ausdrücken lässt. Die GUI revalidiert selbst (``web/src/data.ts``
+# ``useResource``: If-None-Match aus der letzten Antwort), deshalb wirkt das
+# unabhängig vom Browser-Cache; ``Cache-Control: no-store`` bleibt bewusst
+# stehen (persönliche Zahlen gehören nicht in einen Festplatten-Cache).
+#
+# Bewusst **nicht** dabei: Endpunkte mit persönlichen Daten, die je Request
+# neu gelten müssen (/fills, /profiles, /episodes, /advice/diary), und die
+# Influx-Pfade mit frei wählbarem Fenster (/series, /forecast, /day) — dort
+# wäre ein 304 eine Behauptung über Daten, die der Stempel nicht abdeckt.
+REVALIDATED_ROUTES = frozenset(
+    (
+        "/api/v1/decide",
+        "/api/v1/heatmap",
+        "/api/v1/last_forecasts",
+        "/api/v1/selection",
+        "/api/v1/stations",
+        "/api/v1/stations/selection",
+        "/api/v1/stats/summary",
+    )
+)
 
 
 def _sanitize_for_json(payload):
@@ -189,15 +217,27 @@ def _write_budget_left(client: str) -> bool:
 # B7: JSON-Antworten komprimieren, wenn der Client es versteht. Unterhalb
 # des Schwellwerts schrumpft gzip kaum — Overhead lohnt nicht.
 GZIP_MIN_BYTES = 512
+# O25: Kompressionsstufe für API-Antworten. Gemessen im Sandkasten an einer
+# Antwort in Veröffentlichungsgröße (2,08 MB JSON): Stufe 1 → 11,3 ms und
+# 18,1 % der Rohgröße, Stufe 6 → 46,2 ms und 13,9 %. Faktor ~4 bei ~4
+# Prozentpunkten Größe — und die CPU-Zeit fällt auf dem NAS an, bei jedem
+# Poll, für jede große Antwort, während die zusätzliche Größe im LAN keine
+# Rolle spielt. Stufe 6/9 bleibt bewusst ungenutzt: Statische Assets
+# komprimiert dieser Server gar nicht (Vite liefert sie content-hashierte
+# und ``immutable`` gecacht, einmal je Build), also gibt es hier keinen Pfad,
+# für den sich die teurere Stufe lohnte.
+GZIP_LEVEL_API = 1
 
 
-def _gzip_if_accepted(accept_encoding: str | None, content: bytes) -> bytes:
+def _gzip_if_accepted(
+    accept_encoding: str | None, content: bytes, level: int = GZIP_LEVEL_API
+) -> bytes:
     """Liefert gzip-gepackte Bytes — oder das Original, wenn nicht lohnend."""
     if not accept_encoding or "gzip" not in accept_encoding.lower():
         return content
     if len(content) < GZIP_MIN_BYTES:
         return content
-    return gzip.compress(content, compresslevel=6)
+    return gzip.compress(content, compresslevel=level)
 
 
 def _fill_status(res) -> int:
@@ -444,7 +484,35 @@ class Handler(SimpleHTTPRequestHandler):
         # Antwort-Zustände müssen je Request neu beginnen.
         self._response_started = False
         self._connection_header = False
-        super().handle_one_request()
+        # O37: Messung je Antwort. Der Startzeitpunkt lebt im Handler, nicht
+        # im Socket — gemessen wird, was die App tut, nicht was das Netz tut.
+        self._request_started = time.monotonic()
+        try:
+            super().handle_one_request()
+        finally:
+            # Nur vermerken, wenn wirklich geantwortet wurde: Eine
+            # Keep-Alive-Verbindung, die im Leerlauf timeoutet, läuft
+            # denselben Pfad — ohne Antwort wäre das ein 65-s-Ausreißer
+            # unter dem Namen der vorherigen Route.
+            if getattr(self, "_response_started", False):
+                metrics.observe(
+                    self._metric_route(), time.monotonic() - self._request_started
+                )
+
+    def _metric_route(self) -> str:
+        """Route für die Latenz-Messung (O37) — ohne Query, ohne Stationen.
+
+        API-Pfade bleiben lesbar (``/api/v1/decide``); alles andere ist
+        ``static`` — Einzel-Assets aufzuschreiben brächte je Build neue
+        Namen ins Fenster und keine Erkenntnis.
+        """
+        try:
+            path = urlsplit(self.path or "").path
+        except ValueError:
+            return "static"
+        if path.startswith(("/api/", "/v1/")):
+            return path
+        return "static"
 
     def send_response_only(self, code, message=None):
         # Merkt, dass dieser Request bereits eine Antwort angefangen hat.
@@ -461,8 +529,12 @@ class Handler(SimpleHTTPRequestHandler):
         self._successor = None
         # B7: pro Antwort setzbare Cache-Politik (None = klassische Regeln).
         self._cache_policy: str | None = None
-        # B7: ETag der laufenden Antwort (nur /overview) — von json() mitgeliefert.
-        self._overview_etag: str | None = None
+        # B7/O25: ETag der laufenden Antwort — von json() mitgeliefert, damit
+        # der Client den nächsten Poll revalidieren kann (If-None-Match).
+        self._response_etag: str | None = None
+        # O37: Startzeitpunkt dieses Requests — Grundlage für
+        # ``X-Process-Time`` und die Latenz-Messung in ``app/metrics.py``.
+        self._request_started = time.monotonic()
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
@@ -544,6 +616,14 @@ class Handler(SimpleHTTPRequestHandler):
     # Festschreibung „nur Heimnetz/VPN, keine Portfreigabe“ überlassen.
 
     def end_headers(self):
+        # O37: Bearbeitungszeit dieser Antwort — Sekunden mit
+        # Mikrosekunden-Auflösung, dieselbe Konvention wie gunicorn/nginx
+        # (``$request_time``). Ein Header, keine Infrastruktur: Wer wissen
+        # will, warum die GUI hängt, sieht es in den DevTools, und /health
+        # fasst dasselbe als p95 zusammen.
+        started = getattr(self, "_request_started", None)
+        if started is not None:
+            self.send_header("X-Process-Time", f"{time.monotonic() - started:.6f}")
         # O24: Beendet diese Antwort die Verbindung, sagt der Server es —
         # sonst schreibt der Client seinen nächsten Request in einen bereits
         # geschlossenen Socket. ``send_error`` setzt den Header selbst, dann
@@ -626,10 +706,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._cache_policy = "public, max-age=900"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        if status == 200 and self._overview_etag:
-            # B7: ETag mitliefern — der Client revalidiert damit den
+        if status == 200 and self._response_etag:
+            # B7/O25: ETag mitliefern — der Client revalidiert damit den
             # nächsten Refresh (If-None-Match) statt neu zu laden.
-            self.send_header("ETag", self._overview_etag)
+            self.send_header("ETag", self._response_etag)
         self.send_header("Content-Length", str(len(body)))
         if body is not content:
             self.send_header("Content-Encoding", "gzip")
@@ -667,6 +747,20 @@ class Handler(SimpleHTTPRequestHandler):
         # O39: Persönliche Daten nur mit Secret, wenn eines gesetzt ist.
         if not self._gate_read(norm_path):
             return _ALREADY_ANSWERED
+
+        # B7/O25: Revalidierung. Unveränderter Datenstand → 304 ohne Body und
+        # ohne Neuberechnung. Läuft **nach** dem Lese-Schutz (O39): Ohne
+        # Secret gibt es auch keinen Datenstands-Nachweis.
+        etag = None
+        if norm_path == "/api/v1/overview" or norm_path in REVALIDATED_ROUTES:
+            params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
+            etag = self.data.read_etag(norm_path, params)
+            if etag:
+                match = self.headers.get("If-None-Match") if self.headers else None
+                if match and _etag_matches(match, etag):
+                    self._not_modified(etag)
+                    return _ALREADY_ANSWERED
+                self._response_etag = etag
 
         if norm_path == "/api/v1/health":
             return self.data.health()
@@ -727,17 +821,10 @@ class Handler(SimpleHTTPRequestHandler):
         # --- B7: Alltags-Aggregat — eine Anfrage statt sechs Parallel-Polls ---
         if norm_path == "/api/v1/overview":
             params = {k: v[0] if len(v) == 1 else v for k, v in query.items()}
-            etag = self.data.overview_etag(params)
-            if etag:
-                match = self.headers.get("If-None-Match") if self.headers else None
-                if match and _etag_matches(match, etag):
-                    # Datenstand unverändert → 304 ohne Body, ohne Compute.
-                    self._not_modified(etag)
-                    return _ALREADY_ANSWERED
-            payload = self.data.overview(params, etag)
-            if etag:
-                self._overview_etag = etag
-            return payload
+            # ``etag`` kommt aus dem Revalidierungs-Block oben; das
+            # Antwort-Memo von ``overview`` ist damit je Datenstand gefüllt —
+            # auch für Anfragen ohne If-None-Match.
+            return self.data.overview(params, etag)
 
         # --- B4 M5/M7 neue Endpunkte ---
         if norm_path == "/api/v1/decide":
