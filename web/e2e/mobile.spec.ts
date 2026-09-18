@@ -222,6 +222,49 @@ test.describe("Mobil: kein Querlauf", () => {
     });
   }
 
+  test("Jetzt: die Verdichtung ist aktiv — kein Zurück zur langen Fassung", async ({
+    page,
+  }) => {
+    // Nutzer-Feedback 18.09.2026: „Zu lang auf mobil“. Der Einstieg maß auf
+    // 390 × 844 2 530 px gegen 1 223 px des Entwurfs
+    // (`ui-neuentwurf-mockup`) — die drei Fakten standen als drei Karten
+    // (409 px), die drei Kennzahlen von „Heute im Blick“ als drei Kacheln
+    // (260 px statt 88 px). Beides ist seit 0.53.0 verdichtet. Geprüft wird
+    // die Struktur, nicht eine Pixelzahl: dieselben drei Fakten in EINER
+    // Reihe, die Kennzahlen als sichtbare Zeilenliste, die Desktop-Karten
+    // ausgeblendet (keine doppelte Anzeige).
+    await page.goto("/");
+    await settled(page);
+    const labels = ["Jetzt hier", "Bestes Fenster heute", "Tank reicht?"];
+    const tops: number[] = [];
+    for (const label of labels) {
+      const el = page.getByText(label, { exact: true }).first();
+      await expect(el).toBeVisible();
+      const box = await el.boundingBox();
+      expect(box, `Keine Box für „${label}“`).not.toBeNull();
+      tops.push(Math.round(box!.y));
+    }
+    // Fakt 1 und 2 teilen sich die erste Reihe; der Tank-Fakt steht darunter
+    // über die volle Breite (seine Schnellauswahl bräuchte in einer halben
+    // Spalte fünf Zeilen). Die Zusage ist deshalb: höchstens ZWEI kompakte
+    // Reihen — die drei gestapelten Karten von vorher lagen bei je ~110 px
+    // plus Abständen, also deutlich darüber.
+    expect(
+      Math.abs(tops[0] - tops[1]),
+      `„${labels[0]}“ und „${labels[1]}“ stehen nicht in einer Reihe: ${tops.join(", ")}`,
+    ).toBeLessThan(4);
+    expect(
+      tops[2] - tops[0],
+      `Die Fakten brauchen mehr als zwei Reihen: ${tops.join(", ")}`,
+    ).toBeLessThan(140);
+
+    // Kennzahlen: die Zeilenliste ist da, die drei Desktop-Karten nicht.
+    await expect(page.locator("dt", { hasText: "Tagesmedian" })).toBeVisible();
+    await expect(
+      page.locator('p:has-text("Günstigste Stunde")').first(),
+    ).toBeHidden();
+  });
+
   test("Ich: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
     page,
   }) => {

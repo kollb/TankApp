@@ -199,6 +199,82 @@ describe("Jetzt: Aufbau", () => {
     expect(value).toBeGreaterThan(hour);
   });
 
+  it("„Heute im Blick“: mobil dieselben drei Zahlen, nur gestapelt", () => {
+    // Mobil-Verdichtung 0.53.0 („Zu lang auf mobil“, 18.09.2026): Die drei
+    // Kennzahlen standen auf 390 px als drei eigene Karten (260 px statt der
+    // 88 px des Entwurfs). Mobil ist der Primärfall — dort steht jetzt eine
+    // Zeilenliste aus derselben Quelle (`nowDayPanel`), Desktop behält die
+    // Karten. Geprüft wird, dass beide Anordnungen dieselben Werte tragen und
+    // dass die Liste nicht selbst wieder versteckt wird (`hidden` ohne
+    // `sm:`-Gegenstück) — die mobile Fassung darf nur den Desktop ausblenden.
+    const html = render({
+      stripCells: [
+        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+      ],
+    });
+    const list = html.slice(html.indexOf("<dl"));
+    for (const label of ["Günstigste Stunde", "Tagesmedian", "Jetzt"]) {
+      expect(list).toContain(label);
+    }
+    expect(list).toContain("12–13 Uhr · 1,709 €/L");
+    // Die drei Desktop-Karten bleiben vollständig und stehen ab `sm`.
+    expect(html).toContain(
+      '<div class="mt-3 hidden gap-2 sm:grid sm:grid-cols-3">',
+    );
+    // Die Mobil-Liste ist nur unterhalb von `sm` verborgen, nie ganz.
+    expect(list).toContain("sm:hidden");
+  });
+
+  it("drei Fakten bleiben drei Fakten — auch mobil keine Nullreihe", () => {
+    // 0.53.0: Die Fakten-Reihe stand mobil als drei gestapelte Karten
+    // (409 px). Sie ist jetzt die 3er-Reihe des Entwurfs
+    // (ui-neuentwurf-mockup: 88 px), der Tank-Fakt darunter über zwei
+    // Spalten — dieselben drei Fakten, zwei Anordnungen. Der Fehler, der
+    // hier nicht passieren darf: einen Fakt per `hidden` weglassen, damit
+    // es kürzer aussieht.
+    const html = render({
+      decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
+    });
+    const grid = html.slice(html.indexOf("sm:grid-cols-3"), html.indexOf("Nächste Schritte"));
+    expect(grid).toContain("Jetzt hier");
+    expect(grid).toContain("Bestes Fenster heute");
+    expect(grid).toContain("Tank reicht?");
+    // Tank-Fakt mobil volle Breite, die beiden anderen je eine halbe.
+    expect(grid).toContain("col-span-6 sm:col-span-1");
+    expect(grid).toContain("col-span-3 sm:col-span-1");
+    // Die Schnellauswahl bleibt erreichbar (kein Wischen nötig).
+    for (const label of ["¼", "½", "¾", "voll"]) {
+      expect(grid).toContain(`>${label}</button>`);
+    }
+  });
+
+  it("die Rangliste nennt den Stationsnamen, die Marke erst ab `sm`", () => {
+    // 0.53.0, Fund aus dem Mobil-Check: Auf 390 px teilten sich Rang, Name,
+    // Marke und zwei Preisspalten eine Zeile — „Demo-Tank Nord“ wurde zu
+    // „Demo-T…“. Die Marke steht mobil nicht mehr in der Zeile (sie steht im
+    // Station-Detail); der Name bleibt vollständig.
+    const html = render({
+      decideRes: {
+        data: {
+          ...decide("wait"),
+          primary: { ...decide("wait").primary, action: "no_advice" },
+        },
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+      stations: [
+        station("nord", { name: "Demo-Tank Nord", price: 1.664 }),
+        station("ost", { name: "Demo-Tank Ost", price: 1.671 }),
+      ],
+    });
+    const list = html.slice(html.indexOf("<ol"));
+    expect(list).toContain("Demo-Tank Nord");
+    expect(list).toContain("hidden shrink-0 text-slate-500 sm:inline");
+  });
+
   it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
     const html = render({
       stripCells: [

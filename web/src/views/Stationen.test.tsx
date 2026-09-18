@@ -144,6 +144,29 @@ describe("Stationen: Aufbau", () => {
     );
   });
 
+  it("trägt keinen Mini-Verlauf in der Zeile — der Verlauf ist ein Knopf", () => {
+    // 0.53.0: Die Mini-Sparkline der gewählten Zeile ist entfallen
+    // (Nutzer-Urteil 18.09.2026: „niemand kann was mit dem Graphen
+    // anfangen“). Die 96 × 24 px ohne Achse, Zeitbezug und y-Skala trugen
+    // keine lesbare Aussage; der Verlauf steht als eigener Knopf je Zeile im
+    // Stations-Detail. Dieser Ratchet verhindert, dass die Linie als
+    // „Dekoration“ zurückkommt — eine Linie ohne Achsen gibt es hier nicht
+    // mehr.
+    const html = render({
+      stations: [station("aral", { price: 1.749 })],
+      stripCells: [
+        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+        { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
+      ],
+    });
+    const list = html.slice(html.indexOf("1 Stationen"), html.indexOf("Station-Nr-1"));
+    expect(list).not.toContain("<polyline");
+    expect(list).not.toContain("Preisverlauf der letzten 24 Stunden");
+    // Der Weg zum lesbaren Verlauf bleibt: ein Knopf je Zeile.
+    expect(list).toContain("Verlauf von Station aral ansehen");
+  });
+
   it("markiert die Referenz als sichtbaren Bezugspunkt", () => {
     const html = render({
       stations: [station("aral", { price: 1.749 }), station("b", { price: 1.689 })],

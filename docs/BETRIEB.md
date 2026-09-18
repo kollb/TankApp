@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 18.09.2026 · App-Version 0.52.0 — alles, was nach der Ersteinrichtung
+> Stand: 18.09.2026 · App-Version 0.53.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.52.0: Der InfluxDB-Cron rotiert seine Wochenstände (acht Stände,
 > O34), und die Sicherung nennt das Roharchiv als bewusste Entscheidung —
@@ -1418,6 +1418,44 @@ Abhilfe: python3 verwenden, das zur glibc des NAS passt. Auf Unraid gehören pyt
 Ausdrücklich nicht versuchen: glibc von Hand aktualisieren/downgraden/neu bauen — legt gesamtes NAS lahm.
 
 `bash ops/nas/preflight.sh` prüft Version und ob python3 Standardbibliothek laden kann, meldet diesen Fall eigenständig.
+
+### `reportAllChanges`/`startTime` in der Browser-Konsole
+
+Symptom (gemeldet am 18.09.2026):
+
+```
+Uncaught TypeError: Cannot read properties of undefined (reading 'startTime')
+    at et.reportAllChanges (<anonymous>:2:19429)
+    at <anonymous>:2:13070
+    …
+    at n.timeout (<anonymous>:2:5652)
+```
+
+**Kein TankApp-Fehler.** Der Stack besteht nur aus `<anonymous>`-Frames ohne
+App-Bezug, und die Byte-Offsets sind identisch mit dem bekannten Fehler der
+`web-vitals`-Kopie, die **Chrome DevTools** selbst in die Seite injiziert
+(GoogleChrome/web-vitals #792, angular/angular #70464 — beide mit genau
+`:2:19429` und `n.timeout (:2:5652)`). Er tritt bevorzugt bei Navigationen mit
+offenem DevTools-Panel auf, unabhängig davon, welche App läuft.
+
+TankApp kann ihn nicht verursachen: Die Oberfläche lädt kein `web-vitals`,
+keine Analytik und keine Fremdskripte (`app/server.py` setzt
+`Content-Security-Policy: script-src 'self'`; im Markup stehen nur
+`/theme-boot.js` und das eigene Vite-Bundle).
+
+Prüfen lässt sich das in zwei Schritten:
+
+```bash
+# 1. DevTools zu (oder Inkognito-Fenster ohne Erweiterungen) → Fehler weg?
+# 2. Seite laden und im Network-Panel nach fremden Skripten suchen:
+curl -s http://<NAS>:1355/ | grep -o '<script[^>]*>'
+```
+
+Erscheint der Fehler auch ohne DevTools und ohne Erweiterungen, ist der
+Initiator im Panel „Sources“ zu benennen — dann erst lohnt ein Ticket, und der
+Stack gehört vollständig mitgeschickt. Andere Konsolen-Meldungen mit
+`<anonymous>`-Frames aus `VM…`-Skripten sind nach derselben Regel zu
+behandeln: ohne App-Frame (`assets/…-<hash>.js`) nicht die App.
 
 ## Speichermanagement (Pi shm + NAS SSD/HDD)
 

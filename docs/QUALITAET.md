@@ -1,6 +1,6 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 18.09.2026 · App-Version **0.52.0** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 18.09.2026 · App-Version **0.53.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
@@ -85,10 +85,42 @@ Die zweite Suite tut dasselbe ohne Mocks, gegen den echten Demo-Stack:
 | Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` — prüft, dass die Suite mockfrei bleibt und Config, Skript und CI-Schritt zusammenpassen |
 | Laufzeit | 6 Tests (3 Fälle × Desktop/Mobil) in **13,3 s** im ersten grünen CI-Lauf (Demo-Aufbau inklusive) |
 
-Der Browser-Teil ist lokal nur lauffähig, wenn Chromium vorhanden ist
-(`npx --prefix web playwright install chromium`). In Sandboxen ohne
-Browser-Download bleibt die Suite der CI vorbehalten — deshalb liegt der
-Server-Teil der Zusage zusätzlich als Python-Test daneben, der überall läuft.
+Der Browser-Teil braucht Chromium: im Normalfall
+`npx --prefix web playwright install chromium` (lädt von `cdn.playwright.dev`).
+Ist der Download gesperrt (Sandkasten ohne Netzzugang zu diesem CDN), lässt
+sich ein Chromium aus dem npm-Registry-Paket `@sparticuz/chromium` verwenden —
+der Weg ist am 18.09.2026 gelaufen und liefert beide Suiten grün:
+
+```bash
+# 1. Chromium für Serverless + Puppeteer (npm-Registry ist erreichbar):
+mkdir -p /tmp/chrome && cd /tmp/chrome && npm init -y
+npm i @sparticuz/chromium puppeteer-core
+node -e "import('@sparticuz/chromium').then(c => c.default.executablePath()).then(console.log)"
+# → /tmp/chromium (entpackt sich selbst; AL2023 kennt nur 3 Pflicht-Bibliotheken)
+
+# 2. NSS/NSPR für den Start nachlegen (Debian hat sie in keinem Paket dabei):
+python3 -m venv /tmp/brotlivenv && /tmp/brotlivenv/bin/pip install brotli
+/tmp/brotlivenv/bin/python -c "
+import brotli, tarfile, io
+raw = brotli.decompress(open('/tmp/chrome/node_modules/@sparticuz/chromium/bin/al2023.tar.br','rb').read())
+tarfile.open(fileobj=io.BytesIO(raw)).extractall('/tmp/chromium-libs')"
+
+# 3. Die beiden Suiten starten (jeweils aus web/):
+#    Alltagssuite, gemockt — gegen einen LEEREN Server (TANKAPP_DATA_DIR leer):
+TANKAPP_DATA_DIR=/tmp/empty-data .venv/bin/python tankapp.py serve --host 127.0.0.1 --port 1359 &
+TANKAPP_TEST_URL=http://127.0.0.1:1359 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/tmp/chromium \
+  LD_LIBRARY_PATH=/tmp/chromium-libs/lib npx playwright test        # 38 grün
+#    Demo-/Mobil-Suite: Start über web/playwright.demo.local.config.ts (gitignored),
+#    der Demo-Server kommt aus dem webServer-Block der Demo-Config:
+LD_LIBRARY_PATH=/tmp/chromium-libs/lib npx playwright test \
+  --config playwright.demo.local.config.ts                          # 25 grün, 11 skipped
+```
+
+**Nicht** mit dem Demo-Server gegen die gemockte Suite fahren: Sechs ihrer Fälle
+prüfen den Leerzustand („Erst ein Set, dann der Atlas“) und scheitern dann an
+den Demo-Daten — das sieht nach einem Regressionsfehler aus, ist aber der
+falsche Server. Deshalb liegt der Server-Teil der Zusage zusätzlich als
+Python-Test daneben, der überall läuft.
 
 ---
 

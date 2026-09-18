@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 18.09.2026 · App-Version **0.52.0**
+> Stand: 18.09.2026 · App-Version **0.53.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -40,7 +40,19 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.52.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.53.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.53.0 setzt zwei Nutzerurteile vom 18.09.2026 um: Der Mini-Verlauf in der
+Stationszeile ist entfallen („niemand kann was mit dem Graphen anfangen“ — die
+Linie hatte weder Achse noch Zeitbezug; der Verlauf bleibt als Knopf je Zeile
+im Stations-Detail), und der Einstieg „Jetzt“ ist auf dem Handy verdichtet
+(„Zu lang auf mobil“): Die drei Fakten stehen mobil in der 3er-Reihe des
+Entwurfs, „Heute im Blick“ zeigt seine drei Kennzahlen als Zeilenliste statt
+als Karten, und die Stationszeilen tragen mobil zwei Zeilen (vorher
+„Demo-T…“). Gemessen im Sandkasten: 2 530 px → 2 118 px bei 390 × 844 gegen
+1 223 px des Mockups. Neue Zusage im Browser statt nur im Unit-Test
+(`web/e2e/mobile.spec.ts`). Dazu die Abgrenzung „`reportAllChanges`/`startTime`
+ist Chrome DevTools, nicht TankApp“ in
+[BETRIEB.md](BETRIEB.md#reportallchangesstarttime-in-der-browser-konsole).
 0.52.0 setzt Batch 7 des Optimierungs-Befunds um (Betrieb, Rest): API-Antworten
 komprimieren mit gzip-Stufe 1 und revalidieren über `If-None-Match` auf sechs
 weiteren Endpunkten (O25), der Decide-Poll nimmt die Feedback-Store-Sperre nicht
@@ -81,8 +93,9 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
-| [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) | 0.51.0 | Abgeschlossener Prüfbericht zum 12-Uhr-Gesetz; Batch 7 ändert weder Panel noch Kalibrierung |
-| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und fasst kein Werkzeug an |
+| [API.md](API.md) | 0.52.0 | 0.53.0 ist reine GUI-Arbeit: kein Endpunkt, kein Payload, kein Fehlercode angefasst — die Endpunkt-Beschreibung bleibt gültig, geprüft ist sie gegen 0.52.0 |
+| [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) | 0.51.0 | Abgeschlossener Prüfbericht zum 12-Uhr-Gesetz; Batch 7 und 0.53.0 ändern weder Panel noch Kalibrierung |
+| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und 0.53.0 reine GUI-Arbeit — keins von beiden fasst ein Werkzeug an |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
 | [MICROCOPY.md](MICROCOPY.md) | 0.46.0 | 0.47.0 ist ein Betriebs-Release ohne neue Textmuster: Der Text des neuen Alarms `backup_stale` folgt §4f (deutscher Klartext, Handlungsanweisung, keine Pfade), und die GUI zeigt ihn über die bestehende Alarm-Leiste |
 | [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |

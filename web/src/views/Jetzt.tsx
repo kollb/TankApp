@@ -718,8 +718,11 @@ export function JetztView(props: JetztViewProps) {
                       <span className="truncate text-slate-200">
                         {entry.station.name}
                       </span>
+                      {/* Marke nur, wo Platz ist: auf 390 px fraß sie den
+                          Stationsnamen („Demo-T…“) — und sie steht ohnehin
+                          im Station-Detail. 0.53.0, Fund aus dem Mobil-Check. */}
                       {entry.station.brand && (
-                        <span className="shrink-0 text-slate-500">
+                        <span className="hidden shrink-0 text-slate-500 sm:inline">
                           {entry.station.brand}
                         </span>
                       )}
@@ -761,23 +764,45 @@ export function JetztView(props: JetztViewProps) {
         )}
       </div>
 
-      {/* ② Drei Fakten */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      {/* ② Drei Fakten — immer dieselben drei, immer dieselbe Reihenfolge
+          (§5.1). Mobil stehen sie in der 3er-Reihe des Entwurfs (Mockup
+          `ui-neuentwurf-mockup`: 88 px) statt als drei gestapelte Karten
+          (409 px, „Zu lang auf mobil“, 18.09.2026); ab `sm` unverändert die
+          großen Karten. Dieselben Werte aus `nowFacts`, zwei Anordnungen. */}
+      <div className="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3">
         {facts.map((fact, index) => (
-          <div key={fact.label} className={`${panel} p-4`}>
-            <div className="text-xs uppercase tracking-widest text-slate-500">
-              {fact.label}
+          <div
+            key={fact.label}
+            className={`${panel} p-2.5 sm:p-4 ${index === 2 ? "col-span-6 sm:col-span-1" : "col-span-3 sm:col-span-1"}`}
+          >
+            {/* Mobil stehen die drei Fakten in einer Zeile nebeneinander; der
+                Tank-Fakt läuft darunter über die volle Breite, weil seine
+                Schnellauswahl sonst in einer 90-px-Spalte umbricht (der
+                Hinweissatz brauchte dort fünf Zeilen). Ab `sm` unverändert
+                drei gleich breite Karten. */}
+            <div
+              className={
+                index === 2
+                  ? "flex flex-wrap items-baseline gap-x-2 sm:block"
+                  : undefined
+              }
+            >
+              <span className="block text-[0.625rem] uppercase leading-tight tracking-wide text-slate-500 sm:text-xs sm:tracking-widest">
+                {fact.label}
+              </span>
+              <span className="block text-sm font-bold text-white tabular-nums sm:mt-1 sm:text-lg">
+                {fact.value}
+              </span>
+              <span className="block text-[0.6875rem] leading-snug text-slate-400 sm:mt-1 sm:text-xs sm:leading-relaxed">
+                {fact.detail}
+              </span>
             </div>
-            <div className="mt-1 text-lg font-bold text-white tabular-nums">
-              {fact.value}
-            </div>
-            <div className="mt-1 text-xs leading-relaxed text-slate-400">
-              {fact.detail}
-            </div>
-            {/* Tankstand als Fakt: Schnellauswahl statt Formular (§5.1). */}
+            {/* Tankstand als Fakt: Schnellauswahl statt Formular (§5.1). Mobil
+                zweizeilig (2 × 2), damit die vier Knöpfe in der schmalen
+                Karte bleiben, ohne die Reihe höher zu machen. */}
             {index === 2 && (
-              <div className="mt-3">
-                <div className="flex flex-wrap items-center gap-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-3 sm:block">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
                   {TANK_QUICK.map((item) => (
                     <button
                       key={item.percent}
@@ -786,7 +811,7 @@ export function JetztView(props: JetztViewProps) {
                       }
                       aria-pressed={tankPercent === item.percent}
                       title={`${item.percent} % Füllstand setzen`}
-                      className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${
+                      className={`rounded-lg border px-1.5 py-0.5 text-[0.6875rem] font-bold sm:px-2.5 sm:py-1 sm:text-xs ${
                         tankPercent === item.percent
                           ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                           : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-200"
@@ -798,13 +823,13 @@ export function JetztView(props: JetztViewProps) {
                   {tankPercent !== null && (
                     <button
                       onClick={() => onTankQuick(null)}
-                      className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-300"
+                      className="rounded-lg border border-slate-700 px-1.5 py-0.5 text-[0.6875rem] text-slate-500 hover:text-slate-300 sm:px-2.5 sm:py-1 sm:text-xs"
                     >
                       Keine Angabe
                     </button>
                   )}
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">
+                <p className="text-[0.6875rem] leading-snug text-slate-500 sm:mt-1.5 sm:text-xs sm:leading-normal">
                   {tankPercent !== null
                     ? `Füllstand ${deTrimmed(tankPercent, 0)} % — Pflege in „Woche“.`
                     : "Ein Tap, dann prüft die App, ob Warten riskant ist."}
@@ -854,7 +879,7 @@ export function JetztView(props: JetztViewProps) {
             <p className="text-xs leading-relaxed text-slate-300">
               {dayPanel.headline}
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 hidden gap-2 sm:grid sm:grid-cols-3">
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
                   Günstigste Stunde
@@ -901,6 +926,37 @@ export function JetztView(props: JetztViewProps) {
                 </p>
               </div>
             </div>
+            {/* Mobil verdichtet (0.53.0): Die drei Kennzahlen belegten dort je
+                eine eigene Karte und damit 260 px statt 88 px, obwohl Mobil
+                der Primärfall ist („Zu lang auf mobil“, 18.09.2026). Desktop
+                behält die drei Karten unverändert — dieselben Zahlen aus
+                derselben Quelle (`nowDayPanel`), zwei Anordnungen. */}
+            <dl className="mt-3 grid gap-1 text-xs leading-snug sm:hidden">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">Günstigste Stunde</dt>
+                <dd className="font-mono font-semibold text-emerald-300 tabular-nums">
+                  {dayPanel.best
+                    ? `${dayPanel.bestLabel} · ${euroPerLiter(dayPanel.best.value)}`
+                    : "keine offene Meldung"}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">Tagesmedian</dt>
+                <dd className="font-mono font-semibold text-slate-200 tabular-nums">
+                  {dayPanel.median !== null
+                    ? euroPerLiter(dayPanel.median)
+                    : "—"}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="shrink-0 text-slate-500">Jetzt</dt>
+                <dd className="text-right font-mono font-semibold text-slate-200 tabular-nums">
+                  {dayPanel.nowValue !== null
+                    ? euroPerLiter(dayPanel.nowValue)
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
             <div className="daystrip-cells mt-3 grid gap-1.5">
               {stripCells.map((cell) => {
                 // Balkenhöhe = Preis innerhalb der Tagesspanne. So liest man

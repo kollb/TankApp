@@ -143,17 +143,3 @@ export function stripBandNote(band: StripBand | null): string {
   const span = days ? `der letzten ${days} Tage` : "des Bezugszeitraums";
   return `Farbskala ${span}: grün bis ${euroPerLiter(band.lo)}, rot ab ${euroPerLiter(band.hi)}.`;
 }
-
-/**
- * Sparkline-Daten für die Stationsliste (UI-NEUENTWURF §5.2 „Verlauf
- * schlägt Moment“): die 19 Zellen als Werte-Reihe (null = keine
- * Meldung). Ohne Daten `null` — die Zeile zeigt dann ehrlich kein
- * Mini-Verlauf, statt eine flache Linie zu erfinden.
- */
-export function stripSparkline(cells: StripCell[]): number[] | null {
-  const values = cells.map((cell) => cell.value).filter(
-    (value): value is number => value !== null,
-  );
-  if (values.length < 3) return null;
-  return cells.map((cell) => cell.value ?? Number.NaN);
-}

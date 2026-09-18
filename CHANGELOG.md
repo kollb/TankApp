@@ -4,6 +4,97 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.53.0] – 2026-09-18
+
+**Zwei Nutzerurteile vom 18.09.2026 sind umgesetzt: Der Mini-Verlauf in der
+Stationszeile ist weg („niemand kann was mit dem Graphen anfangen“), und der
+Einstieg „Jetzt“ ist auf dem Handy verdichtet („Zu lang auf mobil“) — gemessen
+statt geschätzt, mit dem Entwurf als Maßstab.**
+
+### Der Graph ohne Aussage ist weg („Stationen“)
+
+- **Die Mini-Sparkline der Zeile ist entfallen.** Sie war 96 × 24 px, ohne
+  Achse, ohne Zeitbezug und ohne y-Skala — eine Linie, die man nur erraten
+  konnte; sie stand genau in der Zeile der gewählten Station, direkt vor dem
+  Preis in €/L. Der Verlauf bleibt erreichbar und wird dort gezeigt, wo er
+  lesbar ist: als eigener Knopf je Zeile (`Verlauf von <Station> ansehen`) im
+  Stations-Detail, mit Achsen, Zeitraum-Umschalter und Lesehilfe. Damit ist
+  `stripSparkline` (samt Test) und die `Sparkline`-Komponente entfernt; ein
+  Ratchet in `views/Stationen.test.tsx` hält fest, dass in der Liste keine
+  Linie ohne Achse zurückkommt.
+- **Die Stationszeile hat mobil zwei Zeilen.** Vorher teilten sich Rang, Name,
+  Marke, Preis, Netto-€ und drei Knöpfe eine Zeile: Für „Demo-Tank Ost“ blieben
+  79 px, die Liste zeigte „Demo-T…“. Jetzt steht der Name in der ersten Zeile
+  (volle Breite), Preis/Netto und die Knöpfe in der zweiten; ab `sm`
+  unverändert eine Zeile (`sm:flex-nowrap`). Derselbe Grund, dieselbe Stelle:
+  Der Name ist die Information, der Rest die Sortierhilfe.
+- **In der Rangliste der Entscheidungskarte** („Keine klare Empfehlung“)
+  entfällt die Marke auf 390 px (`hidden … sm:inline`) — sie fraß den
+  Stationsnamen („Demo-T…“) und steht ohnehin im Station-Detail.
+
+### „Jetzt“ mobil verdichtet
+
+Gemessen im Sandkasten (390 × 844, Demo-Stack): Einstieg **2 530 px** gegen
+**1 223 px** des Entwurfs (`ui-neuentwurf-mockup`, den die Nutzer kennen). Die
+zwei Ausreißer waren genau die Blöcke, die §5.1 als Reihe bzw. als „kompakter
+Tagesstreifen“ beschreibt:
+
+| Block | vorher | jetzt | Entwurf |
+|---|---|---|---|
+| ② Drei Fakten | 409 px (drei gestapelte Karten) | 190 px | 88 px |
+| ④ Heute im Blick | 706 px | 504 px | 138 px |
+| **Einstieg gesamt** | **2 530 px** | **2 118 px** | 1 223 px |
+
+- **② Drei Fakten als 3er-Reihe (§5.1, mobil der Primärfall):** Die ersten
+  beiden Fakten stehen nebeneinander, der Tank-Fakt darunter über die volle
+  Breite — seine Schnellauswahl „¼ ½ ¾ voll“ bräuchte in einer halben Spalte
+  fünf Zeilen für den Hinweissatz (deshalb zwei Reihen, nicht drei Spalten à
+  drei Karten). Ab `sm` unverändert drei gleich breite Karten. Dieselben Werte
+  aus `nowFacts`; `views/Jetzt.test.tsx` prüft, dass kein Fakt per `hidden`
+  verschwindet.
+- **④ „Heute im Blick“ mit Zeilenliste statt Kacheln:** Auf 390 px belegten
+  die drei Kennzahlen je eine eigene Karte (260 px). Mobil sind sie jetzt eine
+  Zeilenliste aus derselben Quelle `nowDayPanel` (günstigste Stunde,
+  Tagesmedian, jetzt), Desktop behält die drei Karten — dieselben Zahlen in
+  zwei Anordnungen.
+- **Der Tagesstreifen selbst bleibt bei 5 Spalten.** Die 19 Zellen des
+  Entwurfs brauchen ≥ 1 280 px, 10 Spalten ≥ 640 px (sonst läuft „1,784“ aus
+  der Zelle — genau der Befund vom 16.09.2026, gesichert im Ratchet
+  `a11y.test.ts`); bei 390 px bleiben deshalb die 5 Spalten. Die Verdichtung
+  kommt aus den Blöcken darüber, nicht aus kleinerer Schrift.
+- **Neu: eine Mobil-Zusage im Browser statt nur in Unit-Tests**
+  (`web/e2e/mobile.spec.ts`): Die drei Fakten stehen in höchstens zwei Reihen
+  (Fakt 1 und 2 in einer), die Kennzahlen-Zeilenliste ist sichtbar und die
+  Desktop-Karten sind es nicht. Der erste Lauf dieses Tests hat gleich einen
+  eigenen Denkfehler gefunden (er erwartete alle drei Fakten in einer Reihe).
+
+### Bewusst nicht angefasst
+
+- **Die Kopfzeile bleibt mobil 197 px in vier Steuerzeilen** (Stadt,
+  Kraftstoff, Profil, Alarm/Teilen/Aktualisieren). Sie weiter zu verdichten
+  hieße, Steuerungen auszulagern (Blattmenü statt Zeile) — das ändert §5.1
+  „Gemeinsame Kopfzeile“ und braucht eine eigene Entscheidung. Als offener
+  Punkt mit Grund benannt in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+- **`reportAllChanges`/`startTime` in der Konsole ist kein TankApp-Fehler.**
+  Der Stack besteht nur aus `<anonymous>`-Frames; die Offsets (`:2:19429`,
+  `n.timeout (:2:5652)`) sind identisch mit dem bekannten Fehler der
+  `web-vitals`-Kopie, die Chrome DevTools selbst injiziert. Zum Nachlesen (und
+  für die Abgrenzung „VM-Skript ≠ eigene Datei“) in
+  [BETRIEB.md](docs/BETRIEB.md#reportallchangesstarttime-in-der-browser-konsole).
+
+### Prüfungen
+
+- `ruff check` + `ruff format --check`, **1116 pytest**, `npm --prefix web test`
+  (**1144 Vitest**, 44 Dateien) und `npm --prefix web run build`.
+- **Beide Playwright-Suiten laufen in dieser Umgebung** (Chromium aus
+  `@sparticuz/chromium` mit den passenden NSS-Bibliotheken, Start der Suiten
+  mit `PLAYWRIGHT_CHROMIUM_EXECUTABLE` bzw. der nicht versionierten
+  `web/playwright.demo.local.config.ts`): Alltagssuite **38/38 grün** gegen
+  einen leeren Server (`TANKAPP_TEST_URL`), Demo- plus Mobil-Suite
+  **25 grün / 11 skipped** gegen den Demo-Stack (`ops/quality/demo_server.py`)
+  — inklusive der neuen Verdichtungs-Zusage und der bestehenden Mobil-Zusagen
+  (kein Querlauf, nichts ragt heraus, keine Zelle malt über ihre Box).
+
 ## [0.52.0] – 2026-09-18
 
 **Batch 7 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
