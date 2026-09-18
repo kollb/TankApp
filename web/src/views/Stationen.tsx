@@ -55,6 +55,7 @@ import {
   ageWord,
   autoTimeTicks,
   centPerLiter,
+  countLabel,
   euro,
   euroPerLiter,
   deTrimmed,
@@ -1030,7 +1031,8 @@ function SeriesChart({
         xDomain={[minX, maxX]}
         xTicks={autoTimeTicks(minX, maxX)}
         yFmt={(value) => euro(value, 3)}
-        ariaDescription={`Preisverlauf der letzten ${spanLabel(spanHours)} in €/L: Linie = offene Meldungen (${known.length} Punkte), gestrichelte Linie = Tagesmedian, grüne Marke = jüngste Meldung (${euroPerLiter(last.y)}), Spanne ${euroPerLiter(minY)} bis ${euroPerLiter(maxY)}.`}
+        ariaLabel="Preisverlauf der Station"
+        ariaDescription={`Preisverlauf der letzten ${spanLabel(spanHours)} in €/L: Linie = offene Meldungen (${countLabel(known.length)} Punkte), gestrichelte Linie = Tagesmedian, grüne Marke = jüngste Meldung (${euroPerLiter(last.y)}), Spanne ${euroPerLiter(minY)} bis ${euroPerLiter(maxY)}.`}
       />
       <p className="mt-2 text-xs leading-relaxed text-slate-500">
         Durchgezogen = offene Meldungen · gestrichelt = Tagesmedian

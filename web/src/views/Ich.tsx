@@ -39,7 +39,7 @@ import {
   type FillsSummary,
   type Station,
 } from "../data";
-import { fillRows } from "../fills";
+import { fillPriceHint, fillRows } from "../fills";
 import {
   SettingsPanel,
   VehiclePanel,
@@ -211,6 +211,19 @@ function FillsSection(props: IchViewProps) {
   // solange „meistgenutzt“ keine Mehrbeobachtung wäre.
   const mostUsed = mostUsedStation(fillList);
 
+  // O32: Was neben dem Preisfeld steht — Live-Preis der gewählten Station
+  // mit Alter, und die Abweichung der Eingabe, sobald sie über der Schwelle
+  // liegt. Ohne frischen Preis bleibt die Zeile leer statt zu raten.
+  const quickStation =
+    pinnedFirstStations.find((row) => row.station_id === quickStationId) ??
+    null;
+  const priceHint = fillPriceHint({
+    station: quickStation,
+    livePrice: quickStation ? priceOf(quickStation) : null,
+    typed: quickPriceStr,
+    now: props.now,
+  });
+
   return (
     <div>
       {/* T2: derselbe Kanal wie im Kopf — Fehler in rose, nicht in grün. */}
@@ -299,6 +312,18 @@ function FillsSection(props: IchViewProps) {
                 {fillLimitHint("price")} · Vorschlag: frischer Preis der
                 Station.
               </span>
+              {/* O32: Live-Preis mit Alter — der Vergleich, den man sonst in
+                  der Stationsliste suchen müsste. */}
+              {priceHint && (
+                <span className="mt-1 block text-xs leading-snug text-slate-400">
+                  {priceHint.text}
+                </span>
+              )}
+              {priceHint?.driftText && (
+                <span className="mt-1 block text-xs leading-snug text-amber-300">
+                  {priceHint.driftText}
+                </span>
+              )}
               {quickDraft.priceError && (
                 <span className="mt-1 block text-xs leading-snug text-rose-300">
                   {quickDraft.priceError}

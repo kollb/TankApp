@@ -7,7 +7,16 @@
 // und die beiden Fassungen wären auseinandergelaufen (D1: die View rendert,
 // sie entscheidet nichts).
 
-import { euro, timeLabel, type Fill, type Station } from "./data";
+import {
+  ageWord,
+  centPerLiter,
+  euro,
+  euroPerLiter,
+  germanDecimalToNumber,
+  timeLabel,
+  type Fill,
+  type Station,
+} from "./data";
 
 export type FillRow = {
   id: string;
@@ -99,4 +108,91 @@ export function promptFillPrice(
   if (!row) return null;
   const live = priceOf(row);
   return live !== null && Number.isFinite(live) ? live : null;
+}
+
+/**
+ * O32 — Was neben dem Preisfeld der Belegmaske steht.
+ *
+ * Befund (docs/OPTIMIERUNGS-BEFUND.md O32): Das Feld wird aus dem Snapshot
+ * vorbefüllt, und zwischen Empfehlung und Erfassung vergehen Minuten bis
+ * Stunden (Offline-Queue). Der Nutzer sah eine Zahl, die alt sein konnte,
+ * ohne Vergleich — also entweder blind abtippen oder die Stationsanzeige
+ * suchen. Jetzt nennt die Maske den Live-Preis **mit Alter**, und eine
+ * Abweichung über der Schwelle ist markiert.
+ *
+ * Bewusst ohne Automatik: Der getippte Wert wird nie überschrieben. Was hier
+ * entsteht, ist eine Aussage, keine Korrektur — gezahlt hat der Nutzer, was
+ * an der Säule stand, nicht was die App weiß.
+ */
+export const PRICE_DRIFT_CT = 1.0;
+
+export type FillPriceHint = {
+  /** „1,719 €/L“ — der frische Live-Preis der gewählten Station. */
+  price: string;
+  /** „vor 3 Minuten“ — Alter der Meldung, nie geraten. */
+  age: string | null;
+  /** Der Satz neben dem Feld, fertig formatiert. */
+  text: string;
+  /** Abweichung der Eingabe zum Live-Preis in ct/L (null: kein Vergleich). */
+  driftCt: number | null;
+  /** True, sobald die Abweichung die Schwelle überschreitet. */
+  drifted: boolean;
+  /** Der Hinweis zur Abweichung — nur gesetzt, wenn `drifted`. */
+  driftText: string | null;
+};
+
+/**
+ * Live-Preis, Alter und Abweichung für die Belegmaske. `null`, wenn die
+ * Station keinen frischen Preis hat: Dann steht neben dem Feld nichts statt
+ * einer Zahl ohne Deckung (die Ehrlichkeits-Regel gilt auch hier).
+ *
+ * `typed` ist der Rohtext des Feldes — verglichen wird nur, wenn er eine
+ * Zahl ergibt. Die Schwelle ist bewusst grob (1 ct/L): Sie soll das echte
+ * Auseinanderlaufen zeigen, nicht die dritte Nachkommastelle.
+ */
+export function fillPriceHint(input: {
+  station: Station | null | undefined;
+  livePrice: number | null;
+  typed: string;
+  now?: number;
+}): FillPriceHint | null {
+  const { station, livePrice, typed, now = Date.now() } = input;
+  if (!station) return null;
+  if (livePrice === null || !Number.isFinite(livePrice)) return null;
+
+  const price = euroPerLiter(livePrice);
+  // Das Alter kommt aus der Meldung selbst (`observed_at`); `age_minutes` ist
+  // der Serverstand derselben Größe und springt ein, wenn der Zeitstempel
+  // fehlt. Ohne beides bleibt das Alter ungenannt statt geschätzt.
+  const observedMs = station.observed_at
+    ? Date.parse(station.observed_at)
+    : Number.NaN;
+  const minutes = Number.isFinite(observedMs)
+    ? Math.max(0, (now - observedMs) / 60000)
+    : station.age_minutes !== null && Number.isFinite(station.age_minutes)
+      ? station.age_minutes
+      : null;
+  const age = minutes === null ? null : ageWord(minutes);
+
+  const value = germanDecimalToNumber(typed);
+  const driftCt =
+    value === null || !Number.isFinite(value)
+      ? null
+      : (value - livePrice) * 100;
+  const drifted = driftCt !== null && Math.abs(driftCt) >= PRICE_DRIFT_CT;
+
+  return {
+    price,
+    age,
+    text: age
+      ? `Jetzt an der Station: ${price}, gemeldet ${age}.`
+      : `Jetzt an der Station: ${price}.`,
+    driftCt,
+    drifted,
+    driftText: drifted
+      ? `Deine Eingabe liegt ${centPerLiter(Math.abs(driftCt as number))} ` +
+        `${(driftCt as number) > 0 ? "über" : "unter"} dem gemeldeten Preis — ` +
+        `gebucht wird, was du eingibst.`
+      : null,
+  };
 }

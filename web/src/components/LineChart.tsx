@@ -2,6 +2,8 @@
 
 import React, { useId, useState } from "react";
 import { compressedAxis, euro, gapBands } from "../data";
+// O40: Die Textalternative nennt Werte, nicht nur Reihennamen.
+import { lineChartAlt } from "../chartAlt";
 import { useChartPalette } from "../chartTheme";
 
 export interface SeriesPts {
@@ -41,13 +43,14 @@ export function LineChart({
   xDomain,
   height = 220,
   yFmt = (v: number) => euro(v, 1),
-  xFmt = defaultXFmt,
+  xFmt,
   ySuffix = " €/L",
   xTicks = [],
   gapMinutes = 0,
   gapLabel = "keine Daten",
   maxGapMinutes = 45,
   ariaDescription,
+  ariaLabel = "Liniendiagramm",
 }: {
   series: SeriesPts[];
   bands?: BandPts[];
@@ -55,6 +58,13 @@ export function LineChart({
   xDomain?: [number, number];
   height?: number;
   yFmt?: (v: number) => string;
+  /**
+   * Beschriftung der x-Position im Tooltip. Ohne Angabe gilt der Zeit-Formatter
+   * (die meisten Reihen tragen Epoch-Millisekunden). O40: In der
+   * Textalternative wird die Position nur genannt, wenn der Aufrufer sie
+   * ausdrücklich benennt — eine Stundenachse als Datum vorzulesen wäre
+   * schlechter als sie wegzulassen.
+   */
   xFmt?: (x: number) => string;
   ySuffix?: string;
   xTicks?: { x: number; label: string }[];
@@ -62,23 +72,31 @@ export function LineChart({
   gapLabel?: string;
   maxGapMinutes?: number;
   ariaDescription?: string;
+  /**
+   * O40: Das Label unterscheidet die Diagramme einer Ansicht. Vorher hieß
+   * jedes „Diagramm“ — in „Labor“ liegen vier davon übereinander.
+   */
+  ariaLabel?: string;
 }) {
   // V1: Achsen und Texte folgen dem Thema (dunkel/hell).
   const c = useChartPalette();
   const [hover, setHover] = useState<{ si: number; pi: number } | null>(null);
   const hatchId = useId().replace(/:/g, "");
   // C5: role="img" bekommt eine beschreibende Textfassung (aria-describedby),
-  // nicht nur „Diagramm“ — Reihennamen und Einheit als kurze Ersatzbeschreibung.
+  // nicht nur „Diagramm“.
+  // O40: Ohne eigenen Text beschreibt der Rückfall den Verlauf **mit Zahlen**
+  // (Anfang, Ende, Tief, Hoch, Bandspanne) — vorher standen dort nur die
+  // Reihennamen, also „welche Linien“ statt „wohin sie laufen“.
   const descId = useId().replace(/:/g, "");
-  const legendNames = [
-    ...series.map((s) => s.name),
-    ...bands.map((b) => b.name),
-  ].filter((name): name is string => !!name);
   const desc =
     ariaDescription ??
-    (legendNames.length
-      ? `Liniendiagramm: ${legendNames.join(", ")}. Werte in ${ySuffix.trim() || "Skaleneinheiten"}.`
-      : "Liniendiagramm.");
+    lineChartAlt({
+      series,
+      bands,
+      fmtY: yFmt,
+      fmtX: xFmt,
+      unit: ySuffix,
+    });
   const W = 720;
   const H = height;
   const padL = 46;
@@ -186,7 +204,7 @@ export function LineChart({
       ? { ...clipped[hover.si].pts[hover.pi], color: clipped[hover.si].color }
       : null;
   const tipLines = hovered
-    ? [xFmt(hovered.x), `${yFmt(hovered.y)}${ySuffix}`]
+    ? [(xFmt ?? defaultXFmt)(hovered.x), `${yFmt(hovered.y)}${ySuffix}`]
     : [];
   const tipW =
     Math.max(...tipLines.map((l) => l.length), 0) * 6.4 + 18;
@@ -218,7 +236,7 @@ export function LineChart({
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Diagramm"
+      aria-label={ariaLabel}
       aria-describedby={descId}
       onMouseLeave={() => setHover(null)}
     >

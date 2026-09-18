@@ -6,7 +6,12 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { DARK_CHART, LIGHT_CHART } from "./chartTheme";
+import { CalibChart, DeltaBars } from "./components/LabCharts";
+import { LineChart } from "./components/LineChart";
+import { centPerLiter, euroPerLiter } from "./data";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -447,6 +452,131 @@ describe("C8: Installationshinweis", () => {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
       ),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O40 — Die Textalternative eines Diagramms nennt Werte.
+//
+// Befund (docs/OPTIMIERUNGS-BEFUND.md O40): Die Beschreibung entstand aus den
+// Reihennamen („Liniendiagramm: Erwarteter Preis, Band.“), das `aria-label`
+// war überall dasselbe Wort „Diagramm“. Ein Screenreader erfuhr, **welche**
+// Reihen ein Diagramm zeigt, nicht wohin sie laufen — und in „Labor“ liegen
+// vier Diagramme in einer Ansicht.
+//
+// Der Ratchet prüft echtes Markup: Jede gerenderte Diagramm-Instanz trägt
+// eine Beschreibung mit mindestens einer de-DE-formatierten Zahl, und die
+// Labels einer Ansicht sind verschieden.
+// ---------------------------------------------------------------------------
+describe("O40: Diagramme beschreiben ihre Werte", () => {
+  /** Eine de-DE-Zahl mit Dezimalkomma oder Tausenderpunkt — nie „1.75“. */
+  const GERMAN_NUMBER = /\d+(?:\.\d{3})*(?:,\d+)?/;
+
+  function charts(html: string): { label: string; desc: string }[] {
+    const out: { label: string; desc: string }[] = [];
+    for (const svg of html.matchAll(/<svg[^>]*role="img"[\s\S]*?<\/svg>/g)) {
+      const markup = svg[0];
+      const label = markup.match(/aria-label="([^"]*)"/)?.[1] ?? "";
+      const desc = markup.match(/<desc[^>]*>([\s\S]*?)<\/desc>/)?.[1] ?? "";
+      out.push({ label, desc });
+    }
+    return out;
+  }
+
+  const priceSeries = [
+    {
+      name: "Erwarteter Preis",
+      color: "#38bdf8",
+      pts: [
+        { x: 1, y: 1.789 },
+        { x: 2, y: 1.742 },
+        { x: 3, y: 1.711 },
+      ],
+    },
+  ];
+
+  it("das Liniendiagramm nennt Anfang, Ende und Richtung mit Zahlen", () => {
+    const [chart] = charts(
+      renderToStaticMarkup(
+        React.createElement(LineChart, {
+          series: priceSeries,
+          yFmt: (v: number) => euroPerLiter(v),
+        }),
+      ),
+    );
+    expect(chart.desc).toMatch(GERMAN_NUMBER);
+    expect(chart.desc).toContain("1,789 €/L");
+    expect(chart.desc).toContain("1,711 €/L");
+    expect(chart.desc).toContain("fällt");
+    // Der alte Rückfall nannte nur die Reihe und sonst nichts.
+    expect(chart.desc).not.toBe("Liniendiagramm: Erwarteter Preis.");
+  });
+
+  it("die Balken nennen Ausschlag und Namen statt der Farbregel", () => {
+    const [chart] = charts(
+      renderToStaticMarkup(
+        React.createElement(DeltaBars, {
+          values: [-2.4, 0.8],
+          labels: ["Demo-Tank Nord", "Demo-Tank Ost"],
+          fmt: (v: number) => centPerLiter(v),
+        }),
+      ),
+    );
+    expect(chart.desc).toMatch(GERMAN_NUMBER);
+    expect(chart.desc).toContain("Demo-Tank Nord mit -2,4 ct/L");
+    expect(chart.desc).not.toContain("grün = positiv");
+  });
+
+  it("die Kalibrierung nennt die Abweichung von der Diagonalen", () => {
+    const [chart] = charts(
+      renderToStaticMarkup(
+        React.createElement(CalibChart, {
+          points: [
+            { p: 0.6, hit: 0.7, n: 40, cls: 0 },
+            { p: 0.8, hit: 0.86, n: 25, cls: 1 },
+          ],
+        }),
+      ),
+    );
+    expect(chart.desc).toMatch(GERMAN_NUMBER);
+    expect(chart.desc).toContain("über der Diagonalen");
+  });
+
+  it("jede Diagramm-Instanz einer Ansicht hat ein eigenes Label", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        "div",
+        null,
+        React.createElement(LineChart, {
+          series: priceSeries,
+          ariaLabel: "Prognose-Fächer",
+        }),
+        React.createElement(LineChart, {
+          series: priceSeries,
+          ariaLabel: "Beobachtete Preise der gewählten Station",
+        }),
+        React.createElement(DeltaBars, {
+          values: [1, -1],
+          ariaLabel: "Preis-Abstand je Station",
+        }),
+      ),
+    );
+    const labels = charts(html).map((chart) => chart.label);
+    expect(labels).toHaveLength(3);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).not.toContain("Diagramm");
+  });
+
+  it("kein Diagramm-Baustein trägt das alte Sammel-Label", () => {
+    for (const file of [
+      "components/LineChart.tsx",
+      "components/LabCharts.tsx",
+    ]) {
+      const content = read(file);
+      expect(content, `${file} labelt noch pauschal`).not.toContain(
+        'aria-label="Diagramm"',
+      );
+    }
   });
 });
 

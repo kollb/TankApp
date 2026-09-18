@@ -15,6 +15,7 @@ import type {
   FillDraftCheck,
   FillsSummary,
   Fuel,
+  Station,
 } from "../data";
 import {
   ICH_SECTIONS,
@@ -157,6 +158,58 @@ describe("Ich: Leerzustände", () => {
     expect(html).toContain(
       "Noch keine Belege — die Bilanz füllt sich mit jedem erfassten",
     );
+  });
+});
+
+// O32 — Die Belegmaske zeigt den Live-Preis neben dem Feld.
+//
+// Befund: Zwischen Empfehlung und Erfassung vergehen Minuten bis Stunden
+// (Offline-Queue). Der Nutzer sah eine vorbefüllte Zahl ohne Vergleich. Der
+// Render-Test hält fest, dass die Zeile wirklich in der Maske steht — die
+// Regeln des Satzes selbst liegen in `fills.test.ts`.
+describe("Ich → Belege: Live-Preis an der Maske (O32)", () => {
+  function station(overrides: Partial<Station> = {}): Station {
+    return {
+      station_id: "nord",
+      city: "Frankfurt",
+      name: "Demo-Tank Nord",
+      brand: "Demo",
+      fuel: "e10" as Fuel,
+      maps_url: null,
+      price: 1.719,
+      last_price: 1.719,
+      status: "open",
+      fresh: true,
+      observed_at: "2026-09-18T18:57:00+02:00",
+      age_minutes: 3,
+      ...overrides,
+    };
+  }
+  const maskProps = {
+    initialSection: "fills" as const,
+    pinnedFirstStations: [station()],
+    quickStationId: "nord",
+    priceOf: (row: Station) => row.price,
+    now: Date.parse("2026-09-18T19:00:00+02:00"),
+  };
+
+  it("nennt Live-Preis und Alter neben dem Preisfeld", () => {
+    const html = render({ ...maskProps, quickPriceStr: "1,719" });
+    expect(html).toContain("Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.");
+  });
+
+  it("markiert eine Abweichung über der Schwelle", () => {
+    const html = render({ ...maskProps, quickPriceStr: "1,769" });
+    expect(html).toContain("5,0 ct/L über dem gemeldeten Preis");
+  });
+
+  it("schweigt, wenn die Station keinen frischen Preis hat", () => {
+    const html = render({
+      ...maskProps,
+      pinnedFirstStations: [station({ price: null })],
+      quickPriceStr: "1,719",
+    });
+    expect(html).not.toContain("Jetzt an der Station:");
   });
 });
 

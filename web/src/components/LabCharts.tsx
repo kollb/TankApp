@@ -1,6 +1,13 @@
 import React, { useId } from "react";
 // C9: Zahlenformate kommen aus einem Satz — Achsen/Tooltips sind keine Ausnahme.
 import { centPerLiter, countLabel, euro, percentLabel } from "../data";
+// O40: Die Textalternative nennt Werte, nicht nur Reihennamen.
+import {
+  calibChartAlt,
+  deltaBarsAlt,
+  histogramAlt,
+  lineChartAlt,
+} from "../chartAlt";
 import { useChartPalette } from "../chartTheme";
 
 export interface SeriesPts {
@@ -24,6 +31,7 @@ export function LabLineChart({
   yFmt = (v: number) => euro(v, 1),
   xTicks = [],
   ariaDescription,
+  ariaLabel = "Liniendiagramm",
 }: {
   series: SeriesPts[];
   marks?: Mark[];
@@ -31,19 +39,17 @@ export function LabLineChart({
   yFmt?: (v: number) => string;
   xTicks?: { x: number; label: string }[];
   ariaDescription?: string;
+  /** O40: unterscheidbar, wenn eine Ansicht mehrere Diagramme trägt. */
+  ariaLabel?: string;
 }) {
   const c = useChartPalette();
   // C5: role="img" trägt eine beschreibende Textfassung (aria-describedby),
   // nicht nur ein Label — Screenreader bekommen sagen, was das Diagramm zeigt.
+  // O40: Ohne eigenen Text beschreibt der Rückfall den **Verlauf** mit Zahlen
+  // (Anfang, Ende, Tief, Hoch) statt nur die Reihennamen aufzuzählen.
   const descId = useId();
-  const seriesNames = series
-    .map((s) => s.name)
-    .filter((name): name is string => !!name);
   const desc =
-    ariaDescription ??
-    (seriesNames.length
-      ? `Liniendiagramm: ${seriesNames.join(", ")}.`
-      : "Liniendiagramm.");
+    ariaDescription ?? lineChartAlt({ series, fmtY: yFmt });
   const W = 720;
   const H = height;
   const padL = 46;
@@ -94,7 +100,7 @@ export function LabLineChart({
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Diagramm"
+      aria-label={ariaLabel}
       aria-describedby={descId}
     >
       <desc id={descId}>{desc}</desc>
@@ -146,6 +152,7 @@ export function HistogramBars({
   height = 190,
   fmt = (v: number) => centPerLiter(v),
   ariaDescription,
+  ariaLabel = "Histogramm",
 }: {
   values: number[];
   color?: string;
@@ -153,17 +160,15 @@ export function HistogramBars({
   height?: number;
   fmt?: (v: number) => string;
   ariaDescription?: string;
+  /** O40: unterscheidbar, wenn eine Ansicht mehrere Diagramme trägt. */
+  ariaLabel?: string;
 }) {
   const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  // O40: mit Spanne und Mitte statt nur der Anzahl — die Zahl allein sagt
+  // nichts über die Verteilung, die das Bild zeigt.
   const descId = useId();
-  const desc =
-    ariaDescription ??
-    `Histogramm der Verteilung über ${values.length} Werten${
-      thresholds.length
-        ? `; Schwellen-Marker: ${thresholds.map((t) => t.label).join(", ")}`
-        : ""
-    }.`;
+  const desc = ariaDescription ?? histogramAlt({ values, fmt, thresholds });
   const W = 720;
   const H = height;
   const padL = 40;
@@ -197,7 +202,7 @@ export function HistogramBars({
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Verteilung"
+      aria-label={ariaLabel}
       aria-describedby={descId}
     >
       <desc id={descId}>{desc}</desc>
@@ -254,6 +259,7 @@ export function DeltaBars({
   height = 170,
   fmt = (v: number) => `${euro(v, 2)} €`,
   ariaDescription,
+  ariaLabel = "Balkendiagramm",
 }: {
   values: number[];
   labels?: string[];
@@ -262,13 +268,15 @@ export function DeltaBars({
   height?: number;
   fmt?: (v: number) => string;
   ariaDescription?: string;
+  /** O40: unterscheidbar, wenn eine Ansicht mehrere Diagramme trägt. */
+  ariaLabel?: string;
 }) {
   const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  // O40: Die Farbregel („grün = positiv“) ist für eine Vorleserin keine
+  // Information — der Rückfall nennt stattdessen Verteilung und Ausreißer.
   const descId = useId();
-  const desc =
-    ariaDescription ??
-    `Balkendiagramm um die Nulllinie: ${values.length} Werte; grün = positiv, rot = negativ.`;
+  const desc = ariaDescription ?? deltaBarsAlt({ values, labels, fmt, muted });
   const W = 720;
   const padL = 46;
   const padR = 10;
@@ -321,7 +329,7 @@ export function DeltaBars({
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Tagesergebnisse"
+      aria-label={ariaLabel}
       aria-describedby={descId}
     >
       <desc id={descId}>{desc}</desc>
@@ -383,17 +391,20 @@ export function CalibChart({
   points,
   livePoints = [],
   ariaDescription,
+  ariaLabel = "Kalibrierungsdiagramm",
 }: {
   points: { p: number; hit: number; n: number; cls: number }[];
   livePoints?: { p: number; hit: number; n: number }[];
   ariaDescription?: string;
+  /** O40: unterscheidbar, wenn eine Ansicht mehrere Diagramme trägt. */
+  ariaLabel?: string;
 }) {
   const c = useChartPalette();
   // C5: beschreibende Textfassung für Screenreader (aria-describedby).
+  // O40: Der Rückfall nennt die mittlere Abweichung von der Diagonalen mit
+  // Richtung — das ist die Aussage des Bildes, nicht die Achsenbelegung.
   const descId = useId();
-  const desc =
-    ariaDescription ??
-    "Kalibrierungsdiagramm: vorhergesagte Wahrscheinlichkeit (X-Achse) gegen beobachtete Trefferquote (Y-Achse); ein Punkt je Wahrscheinlichkeits-Bin, die Diagonale ist die perfekte Kalibrierung.";
+  const desc = ariaDescription ?? calibChartAlt({ points, livePoints });
   if (points.length === 0 && livePoints.length === 0) {
     return (
       <div className="rounded-lg bg-slate-900/60 p-4 text-xs leading-relaxed text-slate-500">
@@ -420,7 +431,7 @@ export function CalibChart({
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Kalibrierung"
+      aria-label={ariaLabel}
       aria-describedby={descId}
     >
       <desc id={descId}>{desc}</desc>
