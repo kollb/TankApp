@@ -4,6 +4,34 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.50.1] – 2026-09-18
+
+**Zwei parallele Arbeitsstränge sind zusammengeführt, und der 12-Uhr-Befund
+liegt als Report vor (Schritt 3 bewusst ausgelagert).**
+
+### Zusammengeführt
+
+- **Merge der 0.49.2–0.49.5-Linie mit 0.49.1/0.50.0 (Batch 6):** In
+  `web/src/strip.ts` tragen der Kalendertag-Schnitt (0.49.3: gestern
+  erscheint nicht als heute) und O20 (feste Farbskala + Stunden-Minimum,
+  0.50.0) denselben Streifen — beide Zusagen stehen im Kommentar-Kopf und
+  in den Tests nebeneinander. CHANGELOG in Versionsfolge.
+
+### Dokumentiert
+
+- **[docs/BEFUND-12-UHR-REGEL.md](docs/BEFUND-12-UHR-REGEL.md):** Der
+  abgeschlossene Check in fünf Lagen — Problem („Abend günstig" trotz
+  12-Uhr-Gesetz), Befund (Live: 100 % der 169 Anstiege am Mittagspunkt,
+  Tief Median 7 Uhr; Archiv: Regime-Wechsel 01.04.2026 sichtbar —
+  Tageshoch von 8 auf 14 Uhr gewandert), Erledigtes (0.49.2–0.49.5 +
+  Merge), Ausgelagertes (Schritt 3, DoD in [TODO.md](TODO.md) B30),
+  Nicht-Fixbares (Legacy-Namenszwillinge, gerasterter Bestand,
+  Befristung bleibt Config-Entscheidung).
+
+**Prüfung:** `pytest -q` (1047 passed), `ruff check`, `npm --prefix web test`
+(1134 passed) und `npm --prefix web build`; der Merge-Stand trägt beide
+Streifen-Testreihen (Kalendertag + Band) gemeinsam.
+
 ## [0.50.0] – 2026-09-17
 **Batch 6 des [Optimierungs-Befunds](docs/OPTIMIERUNGS-BEFUND.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
 - **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.

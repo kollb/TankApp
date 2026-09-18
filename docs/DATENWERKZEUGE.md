@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 17.09.2026 · App-Version 0.49.5. Nachschlagewerk für `data-tools/`
+> Stand: 17.09.2026 · App-Version 0.50.1. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
 > [12-Uhr-Regel-Check](#12-uhr-regel-check).
@@ -87,6 +87,11 @@ Tages-Panels in Zweifel zog: **Zeigen die beobachteten Preise überhaupt die
 `engine/config.py: price_law_local`) — oder trägt der Bestand noch das
 Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
+
+**Ergebnis des Echteinsatzes (Live + Archiv-Kontrast):**
+[BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md) — Live regeltreu
+(100 % am Mittagspunkt), Archiv zeigt den Regime-Wechsel 01.04.2026,
+Folgearbeit als B30 ausgelagert.
 
 ### Welche Datenquelle?
 

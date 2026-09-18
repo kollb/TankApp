@@ -39,7 +39,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.50.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.50.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 0.50.0 setzt Batch 6 des Optimierungs-Befunds um (Anzeige und Alltag): Score
 und Selektion rechnen mit der Tankmenge aus dem Profil (O21), die Ersparnis
 nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
@@ -47,6 +47,7 @@ nennt ihre Referenz (O19), der Tagesstreifen färbt nicht mehr rückwirkend um
 zeigen echte Daten statt eines Dauertextes (O18), die Woche bekommt einen
 Rückblick über den ntfy-Kanal (O31), und persönliche Daten sind über
 `TANKAPP_READ_TOKEN` schützbar (O39).
+0.50.1 führt den 12-Uhr-Strang mit main zusammen (Kalendertag-Schnitt + feste Farbskala in einem Streifen) und legt den Befund zum Gesetz als Report ab ([BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL.md)): Live-Daten regeltreu (alle Erhöhungen am Mittagspunkt), Panels aus dem Mischbestand beschrieben die Welt vor dem 01.04.2026; Schritt 3 (Anzeige-Bodenkante und Nach-Gesetz-Kalibrierung) ist als B30 ausgelagert.
 0.49.5 hält den 12-Uhr-Regel-Check auch an Tagen ohne gültigen Preis aufrecht (Statuszeilen werden zentral gefiltert, Lücken gezählt statt geraten — [DATENWERKZEUGE.md#12-uhr-regel-check](DATENWERKZEUGE.md#12-uhr-regel-check) erklärt die Datenquelle für den Vorher/Nachher-Kontrast); 0.49.4 macht auf der nackten NAS lauffähig (eigenständig, nur numpy/pandas, NAS-Ablauf in [DATENWERKZEUGE.md](DATENWERKZEUGE.md#12-uhr-regel-check) dokumentiert); 0.49.3 schneidet den Tagesstreifen („Heute im Blick“) auf den Berliner
 Kalendertag — die Zellen 18–24 Uhr zeigten am Nachmittag Meldungen von
 gestern Abend als „heute“ — und bringt mit `analysis/noon_rule_check.py`
