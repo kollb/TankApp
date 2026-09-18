@@ -247,7 +247,11 @@ def noon_law_projection(
     Innerhalb jedes Segments [12:00 Uhr, nächste 12:00 Uhr) darf der Preis
     nur gleich bleiben oder sinken; der erlaubte Sprung liegt exakt an der
     Segmentgrenze. Segmente, die vor dem Gesetzesbeginn (lokale Zeit)
-    begannen, bleiben unverändert; NaN bleibt NaN.
+    begannen, bleiben unverändert; NaN bleibt NaN, wird aber nicht als
+    Barriere behandelt — ein Anstieg über eine Schließungs-/Nachtlücke
+    hinweg (z. B. 22:00 → 06:00) ist nach dem Gesetz ebenfalls unzulässig,
+    weil kein 12:00-Punkt dazwischen liegt. Die Projektion läuft deshalb
+    über die endlichen Werte des Segments hinweg.
 
     ``segments`` erlaubt es, die Segmentgrenzen einmal zu berechnen und für
     alle Bootstrap-Pfade wiederzuverwenden (predict() projiziert bis zu
@@ -263,17 +267,12 @@ def noon_law_projection(
         if boundary < law:
             continue
         chunk = result[start:stop]
-        mask = np.isfinite(chunk)
-        position = 0
-        while position < len(chunk):
-            if not mask[position]:
-                position += 1
-                continue
-            end = position
-            while end < len(chunk) and mask[end]:
-                end += 1
-            chunk[position:end] = isotonic_decreasing(chunk[position:end])
-            position = end
+        finite_mask = np.isfinite(chunk)
+        if not np.any(finite_mask):
+            continue
+        finite_vals = chunk[finite_mask]
+        projected = isotonic_decreasing(finite_vals)
+        chunk[finite_mask] = projected
         result[start:stop] = chunk
     return result
 
@@ -1034,7 +1033,16 @@ def predict(
             draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
         else:
             draws = rng.choice(len(block), size=cfg.bootstrap_samples, p=block_weights)
-        paths[:, positions] = point[positions] + block[draws[:, None], slot[positions]]
+        drawn = block[draws[:, None], slot[positions]]
+        # Fix für 12-Uhr-Verstöße durch wechselnde NaN-Mengen: Ein fehlender
+        # Tagesblock an einem Slot (z. B. Nachtlücke) führte zu NaN-Pfaden,
+        # die aus dem Quantil herausfielen — das Quantil konnte dadurch
+        # steigen, obwohl jeder einzelne Pfad fallend war. Fehlende Residuen
+        # werden mit 0 gefüllt (Struktur allein), damit alle Ziehungen an
+        # gestützten Slots endlich bleiben und die Monotonie der Quantile
+        # aus der Monotonie der Pfade folgt.
+        drawn = np.where(np.isfinite(drawn), drawn, 0.0)
+        paths[:, positions] = point[positions] + drawn
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
     # B15: Pfade je Segment deduplizieren statt jeden Vollpfad einzeln zu
     # projizieren — bitgleich, aber deutlich weniger Projektionsarbeit.
@@ -1046,6 +1054,47 @@ def predict(
         quantiles = np.nanquantile(paths, QUANTILES, axis=0).T
     supported &= np.isfinite(quantiles).all(axis=1)
     quantiles[~supported] = np.nan
+    # Fix 12-Uhr-Verstöße durch wechselnde NaN-Mengen: Selbst wenn jeder
+    # Pfad einzeln nicht-steigend ist, kann das Quantil steigen, wenn die
+    # Teilmenge der endlichen Pfade wechselt (z. B. Nachtlücke). Die finale
+    # Veröffentlichung muss deshalb selbst projiziert werden. Zusätzlich wird
+    # die Quantil-Ordnung (q025 ≤ q10 ≤ q50 ≤ q90 ≤ q975) erhalten — min/max
+    # zweier fallender Folgen bleibt fallend, daher bleibt die 12-Uhr-Regel
+    # nach dem Clippen erhalten.
+    for qi in range(quantiles.shape[1]):
+        quantiles[:, qi] = noon_law_projection(
+            quantiles[:, qi], index, cfg, segments=segments
+        )
+    # Ordnung je Zeitpunkt wahren (Sicherheitsnetz für unabhängige Projektion)
+    # q50 ist Anker, untere Quantile ≤ Anker, obere ≥ Anker.
+    # NaN bleibt NaN (ungestützt).
+    q50_idx = Q_COLUMNS.index("q50")
+    q10_idx = Q_COLUMNS.index("q10")
+    q025_idx = Q_COLUMNS.index("q025")
+    q90_idx = Q_COLUMNS.index("q90")
+    q975_idx = Q_COLUMNS.index("q975")
+    # Untere: min erhält fallend
+    quantiles[:, q10_idx] = np.where(
+        np.isfinite(quantiles[:, q10_idx]) & np.isfinite(quantiles[:, q50_idx]),
+        np.minimum(quantiles[:, q10_idx], quantiles[:, q50_idx]),
+        quantiles[:, q10_idx],
+    )
+    quantiles[:, q025_idx] = np.where(
+        np.isfinite(quantiles[:, q025_idx]) & np.isfinite(quantiles[:, q10_idx]),
+        np.minimum(quantiles[:, q025_idx], quantiles[:, q10_idx]),
+        quantiles[:, q025_idx],
+    )
+    # Obere: max erhält fallend
+    quantiles[:, q90_idx] = np.where(
+        np.isfinite(quantiles[:, q90_idx]) & np.isfinite(quantiles[:, q50_idx]),
+        np.maximum(quantiles[:, q90_idx], quantiles[:, q50_idx]),
+        quantiles[:, q90_idx],
+    )
+    quantiles[:, q975_idx] = np.where(
+        np.isfinite(quantiles[:, q975_idx]) & np.isfinite(quantiles[:, q90_idx]),
+        np.maximum(quantiles[:, q975_idx], quantiles[:, q90_idx]),
+        quantiles[:, q975_idx],
+    )
     result = pd.DataFrame(quantiles, index=index, columns=Q_COLUMNS)
     result.index.name = "timestamp"
     result["structure"] = np.where(supported, structure, np.nan)
