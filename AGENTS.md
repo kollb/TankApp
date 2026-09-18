@@ -13,6 +13,17 @@ npm --prefix web run test:e2e
 npm --prefix web run test:e2e:demo   # braucht python -m pip install -r requirements-dev.txt
 ```
 
+Optional — Code-Coverage wie der PR-Kommentar in `.github/workflows/coverage.yml`
+(kein Gate, kein Bestandteil des Spiegels; `pytest-cov` bewusst nicht in
+`requirements-dev.txt`):
+
+```
+python -m pip install pytest-cov
+python -m pytest --cov=app --cov=engine --cov=tankapp --cov-report=term-missing
+```
+
+Details: `docs/TESTABDECKUNG.md`.
+
 **Die Browser-Suite gehört dazu.** `web`-Job der CI führt `npm --prefix web
 run test:e2e` aus (Playwright, Desktop 1440 px + Mobil 390 px); wer sie lokal
 auslässt, pusht rote Läufe. Einmalig `npx --prefix web playwright install

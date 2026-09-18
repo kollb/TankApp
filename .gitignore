@@ -36,6 +36,11 @@ ops/nas/influxdb/.env
 # Test-/Lint-Ausgaben
 .pytest_cache/
 .ruff_cache/
+# Coverage-Artefakte aus dem lokalen Aufruf in docs/TESTABDECKUNG.md
+.coverage
+coverage.xml
+pytest.xml
+pytest-coverage.txt
 # Lokale Secrets, auch außerhalb des bisherigen NAS-Pfads
 .env
 apikey.txt

@@ -1,0 +1,78 @@
+name: TankApp coverage (PR)
+
+# Code-Coverage als PR-Kommentar — bewusst NICHT blockierend.
+#
+# Die harte CI-Ampel bleibt `tests.yml` (Ruff + pytest + Browser-Suite).
+# Coverage ist ein separates Signal ohne Gate: Der Job rechnet die Abdeckung
+# unter Python 3.12 (Stammjob der Matrix aus tests.yml) aus. `continue-on-error`
+# verhindert jeden roten Haken; Fehlstarts sind unter „Checks“ als ausgegrauter
+# Haken sichtbar, der PR bleibt freigebbar.
+#
+# Unter `pull_request` laufen die Python-Tests **doppelt** (eine Kopie in
+# tests.yml, eine hier), weil der Kommentar `pull-requests: write` braucht —
+# eine Berechtigung, die tests.yml nicht bekommen soll (docs/BETRIEB.md:
+# geringste Rechte).
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  coverage:
+    # Kein Kommentar für PRs aus Forks (github.token → read-only, kein Zugriff
+    # auf „Willst du Co-Autoren erlauben“). Der Job liefe sonst als grüner
+    # Haken mit leerem Ergebnis durch — er setzt hier stattdessen sauber aus.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+    # Weich statt hart: Auch ein roter Testlauf oder ein Fehler beim
+    # Kommentieren darf aus diesem Workflow keinen blockierenden Haken machen —
+    # die Ampel bleibt tests.yml.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            app/requirements.txt
+            engine/requirements.txt
+      - name: Tests mit Coverage fahren (nur Python-Anteil, kein Ruff-Spiegel)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements-dev.txt pytest-cov
+          python -m pytest --junitxml=pytest.xml \
+            --cov=app --cov=engine --cov=tankapp \
+            --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml \
+            -q | tee pytest-coverage.txt
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+      - name: Coverage-Kommentar
+        # Kein `if: always()` und kein Schwellwert: Der Kommentar entsteht nur
+        # in einem sauberen grünen Testlauf; ein roter Lauf macht schon über
+        # tests.yml Lärm und erzeugt hier keinen Folgefehler. Ein Prozentwert
+        # ist kein Gate — dann würde er doch wieder blocken.
+        uses: MishaKav/pytest-coverage-comment@v1.12.2
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          pytest-xml-coverage-path: ./coverage.xml
+          junitxml-path: ./pytest.xml
+          title: Testabdeckung (Python)
+          badge-title: Coverage
+          report-only-changed-files: true
+          remove-link-from-badge: true
+          remove-links-to-files: true
+          remove-links-to-lines: true
+      - name: Coverage-Artefakt (XML, zum Nachmessen)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+          if-no-files-found: ignore

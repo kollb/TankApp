@@ -33,6 +33,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | die GUI-Vorlagen in `sample/` als Design-Basis nutzen | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) |
 | eine Zeile Nutzertext schreiben (Tonfall, Einheiten, Zitate, Fehlertexte) | [MICROCOPY.md](MICROCOPY.md) |
 | Lighthouse/Last messen und die Budgets nachziehen | [QUALITAET.md](QUALITAET.md) |
+| den Coverage-Kommentar im PR verstehen (was er zeigt, warum er nicht blockt) | [TESTABDECKUNG.md](TESTABDECKUNG.md) |
 | eine frühere Prüfung oder ein altes Konzept nachlesen | [archiv/README.md](archiv/README.md) |
 
 ### Nicht gegen die aktuelle Version geprüft
@@ -140,6 +141,7 @@ Eintrag, kein Eintrag ohne Grund.
 | [GUI-VORLAGEN.md](GUI-VORLAGEN.md) | Die beiden Prototypen in `sample/` als gestalterische Basis: Übernahmeregeln, visuelle Leitplanken, Trennung Daten/Design |
 | [MICROCOPY.md](MICROCOPY.md) | Regelwerk für alle Nutzertexte: Tonfall, Anführungszeichen, Zahlen-/Einheiten-Konvention (€/L vs. ct/L), Benennungen, Leer-/Lade-/Fehlerzustände |
 | [QUALITAET.md](QUALITAET.md) | Qualitäts-Gates (D4): Lighthouse-Budgets, Lastpfad gegen `/api/v1/overview`, Demo-Stack, E2E-Suite ohne Mocks, Messwerte und die B7-Rest-Entscheidung |
+| [TESTABDECKUNG.md](TESTABDECKUNG.md) | Python-Coverage als PR-Kommentar (`.github/workflows/coverage.yml`): nicht blockierend, ein eigener Workflow, was nicht gemessen wird, lokaler Aufruf |
 
 ### Projektstand (Repo-Wurzel, nicht in `docs/`)
 
