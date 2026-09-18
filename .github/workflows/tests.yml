@@ -109,12 +109,17 @@ jobs:
         # roter Job ohne lesbare Ursache kostet einen Blindflug.
         run: |
           set -o pipefail
+          # Actions führt run:-Blöcke mit `bash -e` aus: Ohne `set +e` bricht
+          # die rote Pipeline das Skript, bevor die Annotation unten steht —
+          # dann ist der Job rot **und** stumm (genau der erste Anlauf).
+          set +e
           docker run --rm --user 0 -v "$PWD:/src" -w /src \
             -e TANKAPP_DATA_DIR=/tmp/tankapp-image \
             tankapp-web:check sh -c \
             "python -VV && python -c 'import numpy, pandas; print(\"numpy\", numpy.__version__, \"pandas\", pandas.__version__)' && python -m pip install --no-cache-dir -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider" \
             2>&1 | tee /tmp/suite-im-bild.log
           status=${PIPESTATUS[0]}
+          set -e
           if [ "$status" -ne 0 ]; then
             msg=$(sed -n '/short test summary info/,$p' /tmp/suite-im-bild.log | head -60)
             [ -n "$msg" ] || msg=$(tail -n 60 /tmp/suite-im-bild.log)
