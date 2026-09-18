@@ -368,7 +368,7 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain(
       "unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (Aral Mitte, 1,749 €/L)",
     );
-    expect(html).toContain("Spanne im Set:");
+    expect(html).toContain("Günstigste bis teuerste:");
     expect(html).toContain("Das Modell lernt noch");
   });
 

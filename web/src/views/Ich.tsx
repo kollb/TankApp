@@ -271,7 +271,7 @@ function FillsSection(props: IchViewProps) {
                     </option>
                   ))
                 ) : (
-                  <option value="">Keine Station im Set</option>
+                  <option value="">Noch keine Station eingerichtet</option>
                 )}
               </select>
             </label>

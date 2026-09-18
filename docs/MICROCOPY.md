@@ -216,7 +216,7 @@ dann der Grund.
 | S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
 | Fällig-Prompt: Ein-Tipp-Beleg (O17, 0.45.0) | Knopf nennt den gebuchten Live-Preis: `Ja, wie empfohlen (<1,719> €/L)`; ohne Live-Preis ist er aus: `Ja, wie empfohlen (Preis unbekannt)`. Wer ihn in der Lücke zwischen Anzeige und Tipp verliert, landet in der Maske mit `Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.` — gebucht wird nie der Prognose-Median |
 | Ich → Belege: Prognosepreis (O17, 0.45.0) | Altbestand ohne gezahlten Preis trägt `Prognosepreis — kein gezahlter Preis`; die Bilanz nennt darunter die zweite Spalte: `Ohne Prognosepreis: <+2,00> € (<1> Beleg zählt nicht mit).` (Mehrzahl: `<n> Belege zählen nicht mit`) |
-| Günstigste Station jetzt (O19, 0.50.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Spanne im Set: <5,0> ct/L · <2,25> € bei <45> L`. Ohne Empfehlung: `… (gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — die Spanne im Set beträgt <5,0> ct/L.)`; ist die Referenz selbst die günstigste: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
+| Günstigste Station jetzt (O19, 0.50.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Günstigste bis teuerste: <5,0> ct/L · <2,25> € bei <45> L`. Ohne Empfehlung: `… (gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — zwischen günstigster und teuerster Station liegen <5,0> ct/L.)`; ist die Referenz selbst die günstigste: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
 | Bilanz netto nach Umweg (O30, 0.50.0) | `Nach Umweg: <+6,34> € — Umwegkosten <1,66> € bei <1> Beleg, davon <1> mit geschätzter Strecke.` ohne Beleg mit Umweg `Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.` | `Ich` (Bilanz-Karte, O30) | Die Brutto-Zeile heißt ausdrücklich „brutto“, die Netto-Zeile steht darunter — dieselbe Formel wie die Entscheidung (`p_lohnt`, O9), Belege ohne Umweg erfinden keine Kilometer. |
 
 ## 4c. Bereich „Labor“: feste Muster (0.36.0)
@@ -317,6 +317,27 @@ werden mit „ · “ aneinandergereiht (nie gestapelt), die gemeinsame Dauer is
 `components/Notices.tsx` (`reduceNotices`) + `components/NoticesView.tsx`;
 Fehler- und Warn-Icons sind dekorativ (`aria-hidden`), der Text trägt die
 Information. Geprüft von `components/Notices.test.ts`.
+
+### 5c. „Set“ ist Betriebssprache (0.55.0)
+
+Das **Polling-Set** ist die Liste der Stationen, die der Collector abfragt —
+ein Begriff aus der Einrichtung. In „System“ und „Labor“ ist er richtig: Wer
+dort liest, richtet ein oder prüft nach, und §6 lässt für diese Fläche
+ausdrücklich Betreibersprache zu.
+
+Auf den Alltagsschirmen („Jetzt“, „Stationen“, „Ich“) steht er nicht mehr. Wer
+nur tanken will, liest „Spanne im Set: 4,4 ct/L“ und hat kein Bild davon,
+welche Menge gemeint ist — erklärt wurde das Wort nirgends, im Glossar stand
+es nicht. Die Fläche benennt sich jetzt selbst:
+
+| Statt | Jetzt |
+|---|---|
+| `Spanne im Set: <5,0> ct/L` | `Günstigste bis teuerste: <5,0> ct/L` |
+| `die Spanne im Set beträgt <5,0> ct/L` | `zwischen günstigster und teuerster Station liegen <5,0> ct/L` |
+| `Keine Station im Set` | `Noch keine Station eingerichtet` |
+
+Das ist zugleich genauer: Gerechnet wird über die Stationen mit **offenem
+Preis**, nicht über alles, was im Polling-Set steht.
 
 ## 6. Was nie im Text steht
 

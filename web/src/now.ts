@@ -784,7 +784,8 @@ export type NowBestNow = {
   saveCt: number | null;
   /** Dieselbe Ersparnis auf die Tankmenge (€). */
   saveEur: number | null;
-  /** Günstigster − teuerster Preis im Set, in ct/L (eine Spanne). */
+  /** Günstigster − teuerster Preis unter den Stationen mit offenem
+   * Preis, in ct/L (eine Spanne). */
   spreadCt: number | null;
   /** Was die Preisspanne auf die Tankmenge bedeutet (€). */
   spreadEur: number | null;
@@ -832,7 +833,7 @@ export function nowBestNow(input: NowInput): NowBestNow {
     : !worst
       ? `Nur ${best.station.name} meldet gerade einen Preis (${euroPerLiter(best.price)}) — für einen Vergleich fehlt eine zweite Station.`
       : saveCt === null
-        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — die Spanne im Set beträgt ${centPerLiter(spreadCt ?? 0)}.`
+        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — zwischen günstigster und teuerster Station liegen ${centPerLiter(spreadCt ?? 0)}.`
         : saveCt <= 0.05
           ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
           : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(saveCt)} unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}) — das sind ${euro(saveEur ?? 0)} € bei ${litersText} L.`;

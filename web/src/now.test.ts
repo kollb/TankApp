@@ -639,7 +639,9 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
     expect(result.saveCt).toBeNull();
     expect(result.saveEur).toBeNull();
     expect(result.spreadCt).toBeCloseTo(5.0, 6);
-    expect(result.sentence).toContain("Spanne im Set");
+    expect(result.sentence).toContain(
+      "zwischen günstigster und teuerster Station",
+    );
     expect(result.sentence).not.toContain("€ bei 45 L");
   });
 

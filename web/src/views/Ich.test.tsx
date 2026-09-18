@@ -150,7 +150,7 @@ describe("Ich: Leerzustände", () => {
   it("Belege: ohne Buchungen der ehrliche Hinweis statt leeren Fläche", () => {
     const html = render({ initialSection: "fills" });
     expect(html).toContain("Noch keine Belege");
-    expect(html).toContain("Keine Station im Set");
+    expect(html).toContain("Noch keine Station eingerichtet");
   });
 
   it("Bilanz: ohne Belege füllt sie sich mit der Buchung", () => {

@@ -83,12 +83,33 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   „Die Preise unten sind live.“ → „… sind gemessen.“ — das grenzt zugleich
   gegen die Prognose ab.
 
+### „Set“ verlässt die Alltagsschirme
+
+- **Das Wort war nirgends erklärt.** Das Polling-Set ist die Liste der
+  Stationen, die der Collector abfragt — Einrichtungssprache. Auf dem
+  Hauptschirm stand aber „Spanne im Set: 4,4 ct/L“, ohne dass irgendwo steht,
+  welche Menge gemeint ist; im Glossar fehlte der Begriff. Jetzt benennt die
+  Zeile ihre Fläche selbst: `Günstigste bis teuerste: <5,0> ct/L · <2,25> €
+  bei <45> L`, ohne Empfehlung `… zwischen günstigster und teuerster Station
+  liegen <5,0> ct/L`, und in der Belegmaske `Noch keine Station eingerichtet`.
+  Das ist zugleich genauer — gerechnet wird über die Stationen mit **offenem
+  Preis**, nicht über alles, was im Polling-Set steht.
+- Auch der Leerzustand in „Stationen“ spricht deutsch: „Erst Stationen
+  einrichten, dann der Atlas“ statt „Erst ein Set, dann der Atlas“.
+- **In „System“ und „Labor“ bleibt „Polling-Set“ stehen.** Wer dort liest,
+  richtet ein oder prüft nach; §6 lässt für diese Fläche ausdrücklich
+  Betreibersprache zu. Die Regel steht als §5c in MICROCOPY.
+
 ### Neue Ratchets
 
 - **M1**: kein `grid` mit `gap`, aber ohne Spaltenangabe (nennt Datei, Zeile
   und Klassenliste).
 - **U1**: kein ungeschichtetes `font:`-Kürzel; die Erbregel in `@layer base`
   darf keine `font-size` setzen; Tippfelder halten 16 px.
+- **F3/§5c**: „Set“ steht in `now.ts`, `week.ts`, `stations.ts`, `strip.ts`
+  und den vier Alltags-Views nicht mehr im Nutzertext (System/Labor
+  ausgenommen). Der Ratchet fand beim ersten Lauf prompt eine Stelle, die ich
+  übersehen hatte.
 - **C5**: keine festen `iconSize`/`iconAnchor` an Karten-Pins; Links, die wie
   Knöpfe aussehen (runde Ecken **und** Hintergrund oder Rahmen), tragen
   `tap-44` — die 44-px-Regel greift bei `a` nur über diese Klasse, ein nackter

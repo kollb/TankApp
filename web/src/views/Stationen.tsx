@@ -416,10 +416,10 @@ export function StationenView(props: StationenViewProps) {
             <MapPin size={13} aria-hidden="true" />
             Noch keine Stationen
           </span>
-          <h2 className="mt-3 text-xl font-bold text-white">Erst ein Set, dann der Atlas</h2>
+          <h2 className="mt-3 text-xl font-bold text-white">Erst Stationen einrichten, dann der Atlas</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">
-            Sobald das gemeinsame Polling-Set Stationen enthält, stehen hier
-            Karte, Liste und Vergleich — mit den aktuellen Preisen.
+            Sobald die App Stationen beobachtet, stehen hier Karte, Liste
+            und Vergleich — mit den aktuellen Preisen.
           </p>
           <button
             onClick={() => onNavigate("system")}
@@ -503,8 +503,8 @@ export function StationenView(props: StationenViewProps) {
             ) : stations.length === 0 ? (
               <div className="p-5">
                 <Empty>
-                  Noch keine Stationen — erst muss ein gemeinsames
-                  Polling-Set laufen (System), dann füllt sich die Liste
+                  Noch keine Stationen — erst im Bereich „System“ einrichten,
+                  welche Stationen beobachtet werden; dann füllt sich die Liste
                   automatisch.
                 </Empty>
               </div>

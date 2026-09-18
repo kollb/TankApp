@@ -675,7 +675,7 @@ export function JetztView(props: JetztViewProps) {
               </span>
               {bestNow.spreadEur !== null && (
                 <span className="text-xs text-slate-400">
-                  Spanne im Set: {centPerLiter(bestNow.spreadCt ?? 0)} ·
+                  Günstigste bis teuerste: {centPerLiter(bestNow.spreadCt ?? 0)} ·
                   {" "}
                   {euro(bestNow.spreadEur)} € bei {deTrimmed(liters, 0)} L
                 </span>

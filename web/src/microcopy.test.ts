@@ -167,6 +167,38 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     }
   });
 
+  // ── 3b. „Set“ bleibt Betriebssprache (§5c, 0.55.0) ──
+  //
+  // Das Polling-Set ist die Liste der abgefragten Stationen — ein Begriff aus
+  // der Einrichtung. In „System“ und „Labor“ ist er richtig (§6 lässt dort
+  // Betreibersprache zu), auf den Alltagsschirmen nicht: Wer nur tanken will,
+  // liest „Spanne im Set“ und weiß nicht, welche Menge gemeint ist. Erklärt
+  // wurde das Wort nirgends, im Glossar stand es nicht.
+  const EVERYDAY_FILES = [
+    "now.ts",
+    "week.ts",
+    "stations.ts",
+    "strip.ts",
+    "views/Jetzt.tsx",
+    "views/Stationen.tsx",
+    "views/Woche.tsx",
+    "views/Ich.tsx",
+  ];
+
+  it.each(EVERYDAY_FILES)("%s: sagt „Set“ nicht zum Nutzer", (relativePath) => {
+    // Nur das Wort als solches — `new Set()`, `setState`, `Settings` und
+    // Wortzusammensetzungen im Code sind nicht gemeint.
+    const hits = userVisible(read(relativePath)).match(
+      /(?:^|[\s„"'(])[Ss]et\b(?!\s*[(<])/g,
+    );
+    expect(
+      hits,
+      `${relativePath}: ${hits?.length}× „Set“ — §5c sagt: die Fläche ` +
+        "benennen („günstigste bis teuerste Station“), nicht die interne " +
+        "Liste. In System/Labor bleibt „Polling-Set“ erlaubt.",
+    ).toBeNull();
+  });
+
   // ── 4. Ergebnis-Worte des Tagebuchs (§4c) ──
 
   it("die Tagebuch-Filter sind die §4c-Ergebnis-Worte", () => {
