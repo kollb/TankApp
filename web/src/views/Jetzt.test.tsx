@@ -100,9 +100,10 @@ const baseProps: JetztViewProps = {
   autoZ: { z: 10, isPeak: false },
   selectedId: "aral",
   stations: [station("aral")],
+  stripBand: null,
   stripCells: [
-    { hour: 6, value: null, tone: "empty", current: false },
-    { hour: 12, value: 1.749, tone: "cheap", current: true },
+    { hour: 6, value: null, latest: null, tone: "empty", current: false },
+    { hour: 12, value: 1.749, latest: 1.749, tone: "cheap", current: true },
   ],
   pricesAt: minutesAgo(4),
   forecastAt: minutesAgo(35),
@@ -177,9 +178,9 @@ describe("Jetzt: Aufbau", () => {
     // Reihenfolge Balken → Stunde → Wert.
     const html = render({
       stripCells: [
-        { hour: 6, value: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, tone: "cheap", current: true },
-        { hour: 18, value: null, tone: "empty", current: false },
+        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+        { hour: 18, value: null, latest: null, tone: "empty", current: false },
       ],
     });
     const cells = html.split('role="img"').slice(1);
@@ -201,9 +202,9 @@ describe("Jetzt: Aufbau", () => {
   it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
     const html = render({
       stripCells: [
-        { hour: 6, value: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, tone: "cheap", current: true },
-        { hour: 18, value: 1.729, tone: "mid", current: false },
+        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+        { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
       ],
     });
     expect(html).toContain("Günstigste Stunde");
@@ -220,6 +221,7 @@ describe("Jetzt: Aufbau", () => {
       stripCells: [6, 7, 8, 9, 10, 11].map((hour) => ({
         hour,
         value: 2.289,
+        latest: 2.289,
         tone: "cheap" as const,
         current: hour === 9,
       })),
@@ -285,8 +287,12 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Keine klare Empfehlung");
     expect(html).toContain("Jetzt am günstigsten: Shell Nord");
     expect(html).toContain("1,709 €/L");
-    // Der Abstand ist ein Set-Abstand, nie eine „Ersparnis“.
-    expect(html).toContain("unter dem teuersten Preis im Set");
+    // O19: Die Ersparnis rechnet gegen den Anker der Empfehlung und benennt
+    // ihn; die Set-Spanne steht daneben als Spanne.
+    expect(html).toContain(
+      "unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (Aral Mitte, 1,749 €/L)",
+    );
+    expect(html).toContain("Spanne im Set:");
     expect(html).toContain("Das Modell lernt noch");
   });
 

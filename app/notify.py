@@ -655,6 +655,26 @@ class Notifier:
             result["delivered"] = bool(
                 result["delivered"] or window_result.get("delivered")
             )
+
+        # O31: Wochen-Rückblick — derselbe Kanal, eigener Zustand (eine
+        # Meldung je ISO-Woche). Ein Fehlschlag berührt weder Alarm- noch
+        # Fenster-Zustand.
+        try:
+            recap_result = self.recap_tick(now)
+        except Exception as exc:  # der Betrieb darf nie am Push hängen
+            print(
+                f"ntfy: Wochen-Rückblick fehlgeschlagen — {public_detail(exc)}",
+                file=sys.stderr,
+            )
+            recap_result = {"sent": False, "delivered": False, "reason": "failed"}
+        if recap_result.get("sent") or recap_result.get("reason") in (
+            "quiet_hours",
+            "failed",
+        ):
+            result["recap"] = recap_result
+            result["delivered"] = bool(
+                result["delivered"] or recap_result.get("delivered")
+            )
         return result
 
     # --- Fenster-Meldungen (O29) --------------------------------------------
@@ -713,6 +733,69 @@ class Notifier:
             save_windows_state(self.settings, state)
         return result
 
+    # --- Wochen-Rückblick (O31) ---------------------------------------------
+    def recap_tick(self, now: dt.datetime | None = None) -> dict:
+        """Ein Prüf-Schritt für den Wochen-Rückblick: höchstens eine Meldung
+        je ISO-Woche, nie in der Ruhezeit, Inhalt ausschließlich aus
+        vorhandenen Größen (Advice-Ledger, Selektions-Artefakt, Wallet).
+        """
+        url = getattr(self.settings, "notify_url", "")
+        if not url:
+            return {"sent": False, "delivered": False, "reason": "not_configured"}
+        from .recap import (
+            build_facts,
+            build_payload,
+            load_recap_state,
+            load_selection,
+            plan,
+            save_recap_state,
+        )
+
+        now = now or self.clock()
+        state = load_recap_state(self.settings)
+        decision = plan(state, now)
+        if not decision["send"]:
+            return {
+                "sent": False,
+                "delivered": False,
+                "week": decision["week"],
+                "reason": decision["reason"],
+            }
+        try:
+            from .feedback import load_store
+
+            store = load_store(self.settings)
+        except Exception:
+            store = None
+        facts = build_facts(store, load_selection(self.settings), now)
+        payload = build_payload(
+            facts,
+            mode=getattr(self.settings, "notify_mode", "public"),
+            version=self.version,
+        )
+        ok, cause = post(url, payload, opener=self.opener)
+        if not ok:
+            self.last_error = cause
+            print(
+                f"ntfy: Zustellung fehlgeschlagen — {redact(cause)}",
+                file=sys.stderr,
+            )
+            return {
+                "sent": False,
+                "delivered": False,
+                "week": decision["week"],
+                "reason": "delivery_failed",
+            }
+        state["last_week"] = decision["week"]
+        state["last_sent_at"] = now.isoformat()
+        save_recap_state(self.settings, state)
+        return {
+            "sent": True,
+            "delivered": True,
+            "week": decision["week"],
+            "reason": None,
+        }
+
 
 def notify_status(settings) -> dict:
     """Sichtbarkeit für /api/v1/health: konfiguriert, offen, zuletzt gemeldet.
@@ -726,6 +809,9 @@ def notify_status(settings) -> dict:
     configured = bool(getattr(settings, "notify_url", ""))
     mode = getattr(settings, "notify_mode", "public")
     state = load_state(settings)
+    from .recap import load_recap_state
+
+    recap = load_recap_state(settings)
     sent = state.get("sent") or {}
     stamps = sorted(value for value in sent.values() if isinstance(value, str))
     return {
@@ -736,4 +822,7 @@ def notify_status(settings) -> dict:
         "open_errors": sorted(sent),
         "last_ok_at": state.get("last_ok_at"),
         "last_sent_at": stamps[-1] if stamps else None,
+        # O31: Sichtbar, welche Woche zuletzt zusammengefasst wurde.
+        "recap_last_week": recap.get("last_week"),
+        "recap_last_sent_at": recap.get("last_sent_at"),
     }

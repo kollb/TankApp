@@ -9,6 +9,9 @@ import { useMemo } from "react";
 import { rowOutcome, scoreRows, segments, type StatsSummary } from "../data";
 import type { OverviewState } from "../state/overview";
 
+/** O18: Prüf-Schwellen des ε-Scans — dieselbe Regel, andere Vorsicht. */
+export const EPS_GRID = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
+
 export function useLaborModel(
   ov: Pick<
     OverviewState,
@@ -154,6 +157,28 @@ export function useLaborModel(
     };
   }, [labScores]);
 
+  // O18: Der ε-Scan war dauerhaft leer, weil der Server kein `scan`-Feld
+  // publiziert (`app/stats_summary.py`: „kein P-/Form-Modell in der Engine“).
+  // Die Werkstatt braucht dafür aber keine neue Datenquelle — es ist eine
+  // Nachrechnung auf denselben Backtest-Zeilen, die sie ohnehin lädt, mit
+  // derselben `scoreRows`-Formel wie der Server (O21-Paritäts-Fixture).
+  const epsScan = useMemo(() => {
+    const rows = labData?.evalRows
+      ? Object.values(labData.evalRows).flat()
+      : [];
+    if (!rows.length) return null;
+    return EPS_GRID.map((threshold) => {
+      const sc = scoreRows(rows, threshold, ov.liters, "");
+      return {
+        eps: threshold,
+        smartEur: sc.sum_smart_eur,
+        commitEur: sc.sum_commit_eur,
+        waits: sc.n_wait,
+        n: sc.n,
+      };
+    });
+  }, [labData, ov.liters]);
+
   const calibPoints = labData?.calibration || [];
   const liveReliability = ov.statsSummaryRes.data?.live_advice?.reliability || [];
   const livePointsForChart = liveReliability
@@ -183,6 +208,10 @@ export function useLaborModel(
     : null;
 
   const labDayClass = activeLabDayRow?.cls ?? 0;
+  // O18: Ohne publiziertes Form-Modell (`labData.models` ist leer, die Engine
+  // liefert keines) standen hier **erfundene** Platzhalter: μ = 1,5 ct und
+  // „billigste Stunde meist 19:00“. Beides sah aus wie ein Messwert. Jetzt
+  // null — die Ansicht sagt den Dauerzustand, statt zu rechnen.
   const labSaves = labModel
     ? labDayClass === 0
       ? labModel.savesWk
@@ -192,12 +221,12 @@ export function useLaborModel(
     ? labDayClass === 0
       ? labModel.predWk
       : labModel.predWe
-    : 19;
+    : null;
   const labMu = labModel
     ? labDayClass === 0
       ? labModel.muWk
       : labModel.muWe
-    : 1.5;
+    : null;
 
   return {
     f,
@@ -211,6 +240,7 @@ export function useLaborModel(
     forecastWindow,
     thinSupportPoints,
     labData,
+    epsScan,
     anchorHour,
     anchorLabel,
     labTotals,

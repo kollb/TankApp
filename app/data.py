@@ -23,6 +23,62 @@ try:
 except Exception:  # pragma: no cover
     BERLIN_TZ = UTC
 
+# --- O20: feste Farbskala des Tagesstreifens --------------------------------
+#
+# Die GUI färbte die 19 Stunden relativ zum Minimum/Maximum **des Tages**:
+# Kommt um 18 Uhr ein günstigerer Preis dazu, wird der ganze bisherige Tag
+# heller — eine Stunde, die morgens „dunkel = billig“ war, ist abends
+# dieselbe Zahl in einer anderen Farbe. Dazu gewann je Stunde die **letzte**
+# Meldung, während die Fenstersuche das Stunden-Minimum nutzt (zwei
+# Wahrheiten für dieselbe Zelle).
+#
+# Die Skala kommt deshalb aus einem festen Bezugszeitraum (7 Tage) und nicht
+# aus dem Tag selbst: 25./75. Perzentil der Preise mit Meldung. Eine neue
+# Meldung verschiebt dieses Band praktisch nicht, und die Tonlage einer
+# Stunde bedeutet dasselbe wie gestern („unter/über dem üblichen Band dieser
+# Station“). Zu dünner Bestand (< STRIP_BAND_MIN_DAYS Tage oder
+# < STRIP_BAND_MIN_POINTS Preise) liefert **keine** Skala — die GUI zeigt die
+# Zahlen dann ohne Farburteil, statt eine Skala aus zwei Messwerten zu
+# erfinden.
+STRIP_BAND_HOURS = 168
+STRIP_BAND_MIN_DAYS = 3
+STRIP_BAND_MIN_POINTS = 96
+DAY_SERIES_HOURS = 24
+
+
+def price_band(prices, days: int | None = None) -> dict[str, Any] | None:
+    """25./75. Perzentil als feste Tonlagen-Skala (O20), sonst ``None``.
+
+    Bewusst ohne Numerik-Abhängigkeit (Decision Layer, ``app/pside.py``):
+    ``statistics.quantiles`` reicht für zwei Perzentile. ``days`` ist die
+    Zahl der Tage, aus denen die Preise stammen — sie steht mit in der
+    Antwort, damit die GUI benennen kann, wofür die Skala gilt.
+    """
+    import statistics
+
+    values = sorted(
+        float(value)
+        for value in prices or ()
+        if isinstance(value, (int, float)) and math.isfinite(float(value))
+    )
+    if len(values) < STRIP_BAND_MIN_POINTS:
+        return None
+    if days is not None and days < STRIP_BAND_MIN_DAYS:
+        return None
+    lo, _median, hi = statistics.quantiles(values, n=4, method="inclusive")
+    if not (lo < hi):
+        # Konstanter Bestand (Demo-Artefakt, tote Station): eine Spanne von
+        # null wäre eine Skala ohne Aussage — ehrlich keine Skala.
+        return None
+    return {
+        "lo": round(lo, 4),
+        "hi": round(hi, 4),
+        "basis": "percentile_25_75",
+        "hours": STRIP_BAND_HOURS,
+        "n_points": len(values),
+        "days": days,
+    }
+
 
 # --- Straßen-Distanzen: Request-Pfad ohne Netzwerk --------------------------
 #
@@ -1602,6 +1658,15 @@ class LiveData:
             # heißt „nicht überwacht“ und ist bewusst kein Alarm — aber es
             # steht hier, statt unsichtbar zu bleiben.
             "backup": backup,
+            # O39: Wer im LAN die eigenen Belege lesen kann, ist eine
+            # Entscheidung (docs/BETRIEB.md), keine Nebenwirkung der
+            # Bind-Zeile. ``read_protected: true`` heißt: die persönlichen
+            # Routen (Belege, Bilanz, Tagebuch, Profile, Episoden, Overview)
+            # antworten nur mit ``TANKAPP_READ_TOKEN``; false = offen wie
+            # bisher. Markt- und Modelldaten sind nie betroffen.
+            "personal_data": {
+                "read_protected": bool(getattr(self.settings, "read_token", "")),
+            },
             "selection": {
                 "published_at": sel.get("generated_at")
                 if isinstance(sel, dict)
@@ -2369,7 +2434,7 @@ class LiveData:
                 # Alltags bleibt voll funktionsfähig.
                 decide_params.pop("station_id", None)
             elif city:
-                day_res = self.series(station_id, city, fuel, 24)
+                day_res = self.day_with_band(station_id, city, fuel)
 
         decide_res = self.decide(decide_params)
         fills_res = self.fills()
@@ -2393,6 +2458,44 @@ class LiveData:
                 if len(self.overview_cache) >= 64:
                     self.overview_cache.clear()
                 self.overview_cache[etag] = result
+        return result
+
+    def day_with_band(self, station_id: str, city: str, fuel: str) -> dict:
+        """O20: Tageskurve **plus** feste Tonlagen-Skala aus einer Abfrage.
+
+        Der Alltag brauchte bisher 24 h (`day.points`); die Farbskala des
+        Tagesstreifens braucht einen Bezugszeitraum, der sich nicht mit jeder
+        neuen Meldung verschiebt. Zwei Abfragen (24 h + 168 h) wären doppelte
+        Kosten im meistgenutzten Pfad — deshalb **eine** Abfrage über
+        ``STRIP_BAND_HOURS``, aus der die Tageskurve geschnitten und das Band
+        gerechnet wird. Die Antwortform von ``series`` bleibt erhalten
+        (``points``/``n_points``/``range_from``/``range_to``/``error_code``,
+        jetzt über die 24 h), neu ist ``band``.
+        """
+        result = self.series(station_id, city, fuel, STRIP_BAND_HOURS)
+        points = result.get("points") or []
+        cutoff = self.clock() - dt.timedelta(hours=DAY_SERIES_HOURS)
+        day_points: list[dict[str, Any]] = []
+        band_prices: list[float] = []
+        band_days: set[dt.date] = set()
+        for point in points:
+            price = point.get("price")
+            stamp_raw = point.get("timestamp")
+            try:
+                stamp = dt.datetime.fromisoformat(str(stamp_raw))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(price, (int, float)) and math.isfinite(float(price)):
+                band_prices.append(float(price))
+                band_days.add(stamp.astimezone(BERLIN_TZ).date())
+            if stamp >= cutoff:
+                day_points.append(point)
+        priced = [p for p in day_points if p.get("price") is not None]
+        result["points"] = day_points
+        result["n_points"] = len(priced)
+        result["range_from"] = priced[0]["timestamp"] if priced else None
+        result["range_to"] = priced[-1]["timestamp"] if priced else None
+        result["band"] = price_band(band_prices, days=len(band_days))
         return result
 
     def day_series(self, station_id: str, day: str):

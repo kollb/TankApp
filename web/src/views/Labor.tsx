@@ -39,12 +39,13 @@ import { useChartPalette } from "../chartTheme";
 import { LineChart } from "../components/LineChart";
 import { LoadError } from "../components/LoadError";
 import { SkeletonChart, SkeletonPanel } from "../components/Skeleton";
-import { CalibChart, DeltaBars, HistogramBars } from "../components/LabCharts";
+import { CalibChart, DeltaBars } from "../components/LabCharts";
 import { Badge, Empty, InfoTooltip, panel } from "../components/ui";
 import {
   HEATMAP_WEEKS,
   autoTimeTicks,
   centPerLiter,
+  deNumber,
   deTrimmed,
   euro,
   percentLabel,
@@ -235,13 +236,6 @@ function ReadingAid({ headline, text }: { headline: string; text: string }) {
   );
 }
 
-/** CUSUM-Status im Klartext — „unknown“ ist keine Aussage, sondern Stille. */
-function driftWord(status: string | null | undefined): string {
-  if (status === "normal") return "unauffällig";
-  if (status === "unknown" || !status) return "noch nicht messbar";
-  return status;
-}
-
 /** Prinzip-Skizze: ehrlich beschriftet, wenn eigene Daten fehlen (§10). */
 function SketchNote({ children }: { children: ReactNode }) {
   return (
@@ -307,6 +301,7 @@ export function LaborView(props: LaborViewProps) {
     fanBand95,
     forecastMarks,
     forecastWindow,
+    epsScan,
     labData,
     labDayClass,
     labModel,
@@ -323,6 +318,28 @@ export function LaborView(props: LaborViewProps) {
   // U8: Die Sorte kommt aus der Auswahl (Overview), nicht mehr aus einem
   // `any`-Feld des Forecast-Payloads.
   const fuelLabel = fuel === "diesel" ? "Diesel" : fuel.toUpperCase();
+
+  // O18: CUSUM-Flags und Rang-Streuung stehen je Station im
+  // Selektions-Artefakt (`engine/selection.py`) — echte Daten statt eines
+  // Dauertextes ohne Datenpfad.
+  const selStations = selection.data?.stations ?? [];
+  const rankStability = useMemo(() => {
+    const values = selStations
+      .map((row) => row.rank_std)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (!values.length) return null;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }, [selStations]);
+  const breakCount = selStations.length
+    ? selStations.filter((row) => row.break_flag === true).length
+    : null;
+  const stationCount = selStations.length;
+  const breakStats = selStations
+    .map((row) => row.break_stat)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const breakMax = breakStats.length ? Math.max(...breakStats) : null;
+  const cusumThreshold =
+    statsSummaryRes.data?.quality_metrics?.cusum_drift?.threshold ?? 2.0;
 
   const [open, setOpen] = useState<Record<LabSectionId, boolean>>({
     prognose: true,
@@ -781,19 +798,37 @@ export function LaborView(props: LaborViewProps) {
                         : "—"}{" "}
                     — unter 1,0 heißt besser als die einfache Vergleichsmethode.
                   </li>
+                  {/* O18: Beide Zeilen lasen Kennzahlen, die niemand
+                      berechnet (`top3_hit_rate`, `cusum_drift.status` sind
+                      serverseitig dauerhaft null/„unknown“). Die echten
+                      Größen liegen je Station im Selektions-Artefakt. */}
                   <li>
-                    <strong className="text-slate-100">Top-3-Trefferquote:</strong>{" "}
-                    {quality?.top3_hit_rate != null
-                      ? percentLabel(quality.top3_hit_rate * 100, 1)
-                      : "—"}{" "}
-                    der günstigsten Stunden wurden vorher richtig benannt.
+                    <strong className="text-slate-100">Rang-Streuung:</strong>{" "}
+                    {rankStability != null ? (
+                      <>
+                        {deNumber(rankStability, 2)} Plätze im Schnitt — wie
+                        stark sich die Reihenfolge der Stationen von Tag zu Tag
+                        verschiebt.
+                      </>
+                    ) : (
+                      <>noch keine Selektion geladen.</>
+                    )}
                   </li>
                   <li>
-                    <strong className="text-slate-100">Drift (CUSUM):</strong>{" "}
-                    {driftWord(quality?.cusum_drift?.status)}
-                    {quality?.cusum_drift?.threshold != null
-                      ? ` (Schwelle ${deTrimmed(quality.cusum_drift.threshold, 2)})`
-                      : ""}
+                    <strong className="text-slate-100">
+                      Strukturbruch (CUSUM):
+                    </strong>{" "}
+                    {breakCount != null ? (
+                      <>
+                        {breakCount} von {stationCount} Stationen mit Bruch-Flag
+                        {breakMax != null
+                          ? ` (höchste CUSUM-Kennzahl ${deNumber(breakMax, 2)}, Schwelle ${deNumber(cusumThreshold, 2)})`
+                          : ""}
+                        .
+                      </>
+                    ) : (
+                      <>noch keine Selektion geladen.</>
+                    )}
                   </li>
                   <li>
                     <strong className="text-slate-100">Mittlerer Fehler (MAE):</strong>{" "}
@@ -1168,6 +1203,15 @@ export function LaborView(props: LaborViewProps) {
                     Bewertet werden Ratschläge, nicht deine Tankungen. Tagesanker
                     ist {anchorLabel} — die Ausgangslage jeder Zeile.
                   </p>
+                  {/* O21: Eine Euro-Zahl ohne Tankmenge und Schwelle
+                      beantwortet keine Frage — beide stehen dabei. */}
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Gerechnet für {deTrimmed(liters, 0)} L (
+                    {labData?.litersSource === "profile"
+                      ? "aus deinem Profil"
+                      : "Platzhalter, kein Profil aktiv"}
+                    ) und ε = {centPerLiter(eps, 2)}.
+                  </p>
                 </>
               )}
             </div>
@@ -1224,12 +1268,22 @@ export function LaborView(props: LaborViewProps) {
                     <strong className="text-slate-100">{euro(scenario.regret)} €</strong>{" "}
                     bei {deTrimmed(liters, 0)} L.
                   </li>
-                  {labMu != null && (
+                  {labMu != null ? (
                     <li>
                       Trainings-Erwartung der Station:{" "}
                       <strong className="text-slate-100">μ = {centPerLiter(labMu)}</strong>{" "}
                       ({labDayClass === 0 ? "Werktag" : "Wochenende/Feiertag"}),{" "}
                       {labSaves.length} Trainings-Tage.
+                    </li>
+                  ) : (
+                    /* O18: Die Engine publiziert kein Form-Modell je Station
+                       (`models` ist leer). Hier stand ein erfundenes
+                       „μ = 1,5 ct“ — jetzt steht der Dauerzustand. */
+                    <li className="text-slate-500">
+                      Werkstück „Modellvergleich“: Die Engine veröffentlicht kein
+                      Form-Modell je Station, deshalb gibt es hier nichts zu
+                      vergleichen — die Tageskurve oben zeigt die gemessenen
+                      Backtest-Zeilen.
                     </li>
                   )}
                 </ul>
@@ -1321,7 +1375,10 @@ export function LaborView(props: LaborViewProps) {
                 </li>
                 <li>
                   Immer sofort tanken wäre gewesen:{" "}
-                  <strong className="text-slate-100">{euro(labTotals.commit)} €</strong>
+                  <strong className="text-slate-100">{euro(labTotals.commit)} €</strong>{" "}
+                  <span className="text-slate-500">
+                    bei {deTrimmed(liters, 0)} L
+                  </span>
                 </li>
                 <li>
                   Perfektes Timing (Orakel):{" "}
@@ -1330,29 +1387,42 @@ export function LaborView(props: LaborViewProps) {
                   Regel.
                 </li>
               </ul>
-              {labData?.scan?.eps?.length ? (
+              {/* O18: Der Scan ist eine Nachrechnung auf denselben
+                  Backtest-Zeilen wie die Bilanz oben — nicht ein Feld, auf
+                  das gewartet wird. */}
+              {epsScan ? (
                 <div className="mt-3">
-                  <HistogramBars
-                    values={labData.scan.smartEur}
-                    thresholds={[
-                      {
-                        x: 0,
-                        color: c.violet,
-                        label: `Regel-Ergebnis bei ε = ${deTrimmed(labData.scan.eps[0], 2)} ct`,
-                      },
-                    ]}
-                    fmt={(value) => `${euro(value, 1)} €`}
-                    ariaDescription="Ergebnis der Entscheidungsregel über den geprüften Schwellen ε — zeigt, wie empfindlich die Regel auf die Vorsicht reagiert."
-                  />
+                  <p className="text-xs font-semibold text-slate-200">
+                    Dieselbe Regel, andere Vorsicht
+                  </p>
+                  <ul className="mt-1.5 space-y-1 text-xs leading-relaxed text-slate-300">
+                    {epsScan.map((point) => (
+                      <li
+                        key={point.eps}
+                        className={
+                          Math.abs(point.eps - eps) < 1e-9
+                            ? "font-semibold text-violet-200"
+                            : ""
+                        }
+                      >
+                        ε = {centPerLiter(point.eps, 2)}:{" "}
+                        <strong className="text-slate-100">
+                          {euro(point.smartEur)} €
+                        </strong>{" "}
+                        · warten an {point.waits} von {point.n} Tagen
+                        {Math.abs(point.eps - eps) < 1e-9 ? " (gewählt)" : ""}
+                      </li>
+                    ))}
+                  </ul>
                   <ReadingAid
                     headline="Die Regel reagiert flach auf ε — kein Feintuning-Wunder."
-                    text="Jeder Balken ist eine geprüfte Schwelle. Große Sprünge wären ein Warnzeichen: Sie hießen, dass ein einzelner Tag die Bilanz dreht."
+                    text="Jede Zeile ist dieselbe Regel mit einer anderen Schwelle, nachgerechnet auf denselben Tagen. Große Sprünge wären ein Warnzeichen: Sie hießen, dass ein einzelner Tag die Bilanz dreht."
                   />
                 </div>
               ) : (
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                  Ohne Backtest keine Schleife über die Schwellen — der
-                  Modell-Lauf legt sie an, sobald genug Tage da sind.
+                  Ohne Backtest-Tage gibt es nichts nachzurechnen — die Zeilen
+                  entstehen aus echter Preishistorie, nicht aus einer Schätzung.
                 </p>
               )}
             </div>

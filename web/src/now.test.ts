@@ -13,6 +13,7 @@ import {
   dayLabel,
   forecastStamp,
   learningNote,
+  nowBestNow,
   nowDayPanel,
   nowExplanation,
   nowFacts,
@@ -482,10 +483,11 @@ describe("Heute im Blick: Gleichstand als Spanne", () => {
       ...[6, 7, 8, 9, 10, 11].map((hour) => ({
         hour,
         value: 2.289,
+        latest: 2.289,
         tone: "cheap" as const,
         current: hour === 9,
       })),
-      { hour: 18, value: 2.349, tone: "pricey" as const, current: false },
+      { hour: 18, value: 2.349, latest: 2.349, tone: "pricey" as const, current: false },
     ];
     const panel = nowDayPanel(cells);
     expect(panel.bestLabel).toBe("06–12 Uhr");
@@ -498,9 +500,9 @@ describe("Heute im Blick: Gleichstand als Spanne", () => {
 
   it("einzelne günstigste Stunde bleibt 12–13 Uhr", () => {
     const panel = nowDayPanel([
-      { hour: 6, value: 1.759, tone: "pricey", current: false },
-      { hour: 12, value: 1.709, tone: "cheap", current: true },
-      { hour: 18, value: 1.729, tone: "mid", current: false },
+      { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+      { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+      { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
     ]);
     expect(panel.bestLabel).toBe("12–13 Uhr");
     expect(panel.tied).toBe(false);
@@ -576,5 +578,61 @@ describe("B2: timeInputToBerlinIso (Spätestens-tanken → latest_by)", () => {
     expect(timeInputToBerlinIso("25:00", SUMMER)).toBeNull();
     expect(timeInputToBerlinIso("10:60", SUMMER)).toBeNull();
     expect(timeInputToBerlinIso("kein-Format", SUMMER)).toBeNull();
+  });
+});
+
+describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximum", () => {
+  const stations = [
+    station("aral", { price: 1.759 }),
+    station("shell", { price: 1.709, name: "Shell Nord" }),
+    station("esso", { price: 1.729, name: "Esso West" }),
+  ];
+
+  it("nennt die Referenz der Empfehlung im Satz und rechnet gegen sie", () => {
+    const result = nowBestNow({
+      // Entscheidungs-Station Aral Mitte, Jetzt-Preis 1,749 €/L.
+      decide: decide("wait"),
+      stations,
+      liters: 45,
+      now: NOW,
+    });
+    expect(result.reference.kind).toBe("nowcast");
+    expect(result.reference.station).toBe("Aral Mitte");
+    expect(result.reference.price).toBe(1.749);
+    // 1,749 − 1,709 = 4,0 ct/L — nicht 5,0 ct/L gegen die teuerste Station.
+    expect(result.saveCt).toBeCloseTo(4.0, 6);
+    expect(result.saveEur).toBeCloseTo(1.8, 6);
+    expect(result.sentence).toContain("4,0 ct/L");
+    expect(result.sentence).toContain("Aral Mitte, 1,749 €/L");
+    expect(result.sentence).toContain("1,80 € bei 45 L");
+    // Gegen die teuerste Station wird nicht mehr gerechnet …
+    expect(result.sentence).not.toContain("teuersten");
+    // … die Spanne bleibt als Spanne erhalten.
+    expect(result.spreadCt).toBeCloseTo(5.0, 6);
+  });
+
+  it("ohne Empfehlung gibt es keine persönliche Ersparnis, nur die Spanne", () => {
+    const result = nowBestNow({ decide: null, stations, liters: 45, now: NOW });
+    expect(result.reference.kind).toBe("none");
+    expect(result.saveCt).toBeNull();
+    expect(result.saveEur).toBeNull();
+    expect(result.spreadCt).toBeCloseTo(5.0, 6);
+    expect(result.sentence).toContain("Spanne im Set");
+    expect(result.sentence).not.toContain("€ bei 45 L");
+  });
+
+  it("eine günstigere Referenz ergibt keine erfundene Ersparnis", () => {
+    // Die Entscheidungs-Station ist selbst die günstigste: nichts zu sparen.
+    const result = nowBestNow({
+      decide: decide("wait", {}, {
+        station: { id: "shell", name: "Shell Nord", price_now: 1.709 },
+      }),
+      stations,
+      liters: 45,
+      now: NOW,
+    });
+    expect(result.saveCt).toBeCloseTo(0, 6);
+    expect(result.sentence).toContain("nicht unter dem Preis");
+    expect(result.sentence).not.toContain("das sind");
   });
 });

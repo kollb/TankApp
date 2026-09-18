@@ -622,7 +622,7 @@ function BalanceSection(props: IchViewProps) {
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">
-                Gegenüber „immer sofort getankt“
+                Gegenüber „immer sofort getankt“ · brutto
               </p>
               <p
                 className={`mt-1 text-xl font-bold tabular-nums ${
@@ -636,6 +636,28 @@ function BalanceSection(props: IchViewProps) {
                 Maßstab: die Liter zu dem Preis, der an deiner Station zum
                 Zeitpunkt der Tankung stand (Server).
               </p>
+              {/* O30: Die Entscheidung rechnete netto (Umwegkosten), die
+                  Bilanz wies brutto aus — beide Zeilen, benannt. */}
+              {(latest.n_detour_fills ?? 0) > 0 ? (
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Nach Umweg:{" "}
+                  <span className="font-semibold tabular-nums">
+                    {(latest.saved_net_eur ?? latest.saved_eur) >= 0 ? "+" : "−"}
+                    {euro(Math.abs(latest.saved_net_eur ?? latest.saved_eur))} €
+                  </span>{" "}
+                  — Umwegkosten {euro(latest.detour_cost_eur ?? 0)} € bei{" "}
+                  {latest.n_detour_fills}{" "}
+                  {latest.n_detour_fills === 1 ? "Beleg" : "Belegen"}
+                  {(latest.n_detour_estimated ?? 0) > 0
+                    ? `, davon ${latest.n_detour_estimated} mit geschätzter Strecke`
+                    : ""}
+                  .
+                </p>
+              ) : (
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.
+                </p>
+              )}
               {(latest.n_prognosis_price ?? 0) > 0 && (
                 <p className="mt-1 text-xs leading-relaxed text-amber-300/90">
                   Ohne Prognosepreis:{" "}

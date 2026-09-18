@@ -25,6 +25,11 @@ from .feedback import (
 )
 from .thresholds import active_thresholds
 
+# O18: Die CUSUM-Schwelle kommt aus der Engine — hier stand 3,0, während
+# `engine.selection.cusum_break` bei h = 2,0 flaggt. Die GUI zeigte also eine
+# Schwelle, die keine Entscheidung trifft.
+from engine.selection import CUSUM_THRESHOLD
+
 UTC = dt.timezone.utc
 
 
@@ -55,6 +60,13 @@ def _read_publication() -> dict:
     return pub if isinstance(pub, dict) else {}
 
 
+# O21: ε hat keine Profil-Quelle (die Engine kennt keine ε-Voreinstellung),
+# deshalb bleibt 1,0 ct/L der **benannte** Default — aber er steht jetzt in
+# jedem Score-Block, statt still mitzurechnen.
+DEFAULT_EPS = 1.0
+DEFAULT_LITERS = 40.0
+
+
 def _empty_backtest() -> dict[str, Any]:
     """Struktur des leeren Backtest-Felds — UI kann Felder abfragen ohne Fehler.
 
@@ -65,8 +77,9 @@ def _empty_backtest() -> dict[str, Any]:
         "daysTrain": None,
         "daysEval": None,
         "decisionHour": 12,
-        "defaultEps": 1.0,
-        "defaultLiters": 40.0,
+        "defaultEps": DEFAULT_EPS,
+        "defaultLiters": DEFAULT_LITERS,
+        "litersSource": "default",
         "days": [],
         "stations": [],
         "stationScores": [],
@@ -138,6 +151,10 @@ def _score_rows(
         return round((ct / 100.0) * liters, 2)
 
     return {
+        # O21: Die Parameter gehören zur Zahl. „+12,40 €“ ohneTankmenge und
+        # Schwelle ist keine Aussage — beide stehen jetzt je Score-Block dabei.
+        "eps": eps,
+        "liters": liters,
         "n": n,
         "n_wait": n_wait,
         "hit_wait": round(hit_wait / n_wait, 4) if n_wait else None,
@@ -157,7 +174,11 @@ def _score_rows(
 
 
 def _build_backtest_from_publication(
-    metas: dict, target_city: str | None, pub: dict | None = None
+    metas: dict,
+    target_city: str | None,
+    pub: dict | None = None,
+    liters: float | None = None,
+    liters_source: str = "default",
 ) -> dict[str, Any]:
     """Baut das Backtest-Feld aus der Engine-Veröffentlichung (runtime/engine/current.json).
 
@@ -186,8 +207,10 @@ def _build_backtest_from_publication(
     backtest_days = rows[0].get("backtest_days", 7) or 7
     train_days = rows[0].get("train_days") or 42
     decision_hour = rows[0].get("decision_hour", 12) or 12
-    default_eps = 1.0
-    default_liters = 40.0
+    default_eps = DEFAULT_EPS
+    # O21: eine Tankmenge aus dem Profil — nicht mehr fest 40 L neben einer
+    # GUI, die mit der persönlichen Menge rechnet.
+    default_liters = float(liters) if liters is not None else DEFAULT_LITERS
     all_eval: list[dict[str, Any]] = []
 
     for row in rows:
@@ -267,6 +290,7 @@ def _build_backtest_from_publication(
         "decisionHour": decision_hour,
         "defaultEps": default_eps,
         "defaultLiters": default_liters,
+        "litersSource": liters_source,
         "days": sorted({r["day"] for r in all_eval if r.get("day")}),
         "stations": stations_info,
         "stationScores": station_scores,
@@ -312,7 +336,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
             "cusum_drift": {
                 "status": "unknown",
                 "max_cusum": None,
-                "threshold": 3.0,
+                "threshold": CUSUM_THRESHOLD,
             },
         }
     rows = [r for r in pub.get("forecasts", []) if r.get("metrics")]
@@ -324,7 +348,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
             "cusum_drift": {
                 "status": "unknown",
                 "max_cusum": None,
-                "threshold": 3.0,
+                "threshold": CUSUM_THRESHOLD,
             },
         }
     picp = _safe_median([r["metrics"].get("picp95_pct") for r in rows])
@@ -339,7 +363,7 @@ def _quality_metrics_from_publication(pub: dict | None = None) -> dict[str, Any]
         "cusum_drift": {
             "status": "unknown",
             "max_cusum": None,
-            "threshold": 3.0,
+            "threshold": CUSUM_THRESHOLD,
         },
     }
 
@@ -429,12 +453,27 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
     # Baufunktionen weitergereicht — vorher parste jede der drei die Datei.
     pub = _read_publication()
 
+    # O21: eine Tankmenge für alle Euro-Kennzahlen — die des aktiven Profils.
+    # Vorher rechnete der Server-Score fest mit 40 L, während die GUI mit der
+    # persönlichen Menge rechnete: zwei Zahlen nebeneinander, die nicht
+    # dieselbe Frage beantworten.
+    from .profiles import active_liters
+    from .profiles import load_store as load_profile_store
+
+    profile_liters, liters_source = active_liters(
+        load_profile_store(live_data.settings)
+    )
+
     # Schicht A: Backtest — aus engine/current.json, sonst leer
     if problem:
         backtest = _empty_backtest()
         backtest["error_code"] = problem
+        backtest["defaultLiters"] = profile_liters
+        backtest["litersSource"] = liters_source
     else:
-        backtest = _build_backtest_from_publication(metas, city, pub)
+        backtest = _build_backtest_from_publication(
+            metas, city, pub, liters=profile_liters, liters_source=liters_source
+        )
 
     # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo)
     store = load_store(live_data.settings)

@@ -83,6 +83,7 @@ import {
   type SystemStatusRow,
 } from "../system";
 import type { LabSectionId } from "../lab";
+import { readToken, setReadToken } from "../readToken";
 import { useOverview } from "../state/overview";
 
 // U8: Die System-View holt sich ihre Daten aus dem OverviewContext. Von der
@@ -188,6 +189,13 @@ export function SystemView(props: SystemViewProps) {
   const workerCommand = `docker exec tankapp-app python3 -m app.worker ${logJob}`;
 
   const [sheet, setSheet] = useState<"zustand" | "daten" | "laeufe" | "stoerungen" | null>(null);
+  // O39: Lese-Token für den persönlichen Datenbestand. Das Feld zeigt nie
+  // den gespeicherten Wert zurück (nur „eingetragen“), damit niemand beim
+  // Darüber-scrollen ein Secret liest.
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [tokenSaved, setTokenSaved] = useState<string | null>(null);
+  const tokenSet = readToken() !== "";
+  const readProtected = h?.personal_data?.read_protected === true;
 
   const statusRows = systemStatusRows({ health: h, collector: collector ?? h?.collector });
   // B8: Zustand des Triggers Pi → NAS (kommt mit dem Herzschlag-Punkt).
@@ -908,6 +916,78 @@ export function SystemView(props: SystemViewProps) {
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Der Knopf <Play size={11} className="inline align-[-1px]" /> in jeder Job-Karte startet denselben Lauf wie auf der Kommandozeile:{" "}
               <code className="text-slate-400">{workerCommand}</code>. Webhook: <code className="text-slate-400">{triggerCommand}</code>.
+            </p>
+          </div>
+          {/* O39: Wer im LAN die eigenen Belege lesen kann, ist eine
+              Entscheidung — hier sichtbar und änderbar. */}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                <ShieldCheck size={14} className="text-emerald-400" aria-hidden="true" />
+                Persönliche Daten im Netz
+              </h3>
+              <Badge warning={readProtected && !tokenSet}>
+                {readProtected
+                  ? tokenSet
+                    ? "Token eingetragen"
+                    : "Token fehlt auf diesem Gerät"
+                  : "Offen im LAN"}
+              </Badge>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-300">
+              {readProtected
+                ? "Der Server verlangt ein Lese-Token für Belege, Bilanz, Prognose-Tagebuch und Profile. Ohne Token zeigen diese Bereiche „Zugang gesperrt“ — Markt- und Modelldaten bleiben offen."
+                : "Belege, Bilanz und Profile sind im LAN ohne Secret lesbar — jeder Rechner im selben Netz, auch ein Gast im Gast-WLAN. Das ist die dokumentierte Entscheidung „kein Login“; mit TANKAPP_READ_TOKEN wird daraus ein geschützter Bestand."}
+            </p>
+            <form
+              className="mt-3 flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setTokenDraft("");
+                setTokenSaved(setReadToken(tokenDraft) ? "gespeichert" : "unverändert");
+              }}
+            >
+              <label htmlFor="read-token" className="text-xs text-slate-500">
+                Lese-Token (TANKAPP_READ_TOKEN)
+              </label>
+              <input
+                id="read-token"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={tokenDraft}
+                placeholder={tokenSet ? "eingetragen — neu eintragen überschreibt" : "leer = kein Token"}
+                onChange={(event) => {
+                  setTokenDraft(event.target.value);
+                  setTokenSaved(null);
+                }}
+                className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200"
+              />
+              <button
+                type="submit"
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:border-emerald-400/60"
+              >
+                Speichern
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTokenDraft("");
+                  setTokenSaved(setReadToken("") ? "gelöscht" : "unverändert");
+                }}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-slate-600"
+              >
+                Löschen
+              </button>
+              {tokenSaved ? (
+                <span role="status" className="text-xs text-slate-400">
+                  Token {tokenSaved} — die Ansicht lädt neu.
+                </span>
+              ) : null}
+            </form>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Gerätelokal im Browser gespeichert und als Header geschickt — nie in einer URL, also nicht in Logs. Schreib-Endpunkte bleiben offen (eigenes Budget); Entscheidung und Umfang:{" "}
+              <code className="text-slate-400">docs/BETRIEB.md</code>, Abschnitt „Zugriff im LAN“.
             </p>
           </div>
         </div>

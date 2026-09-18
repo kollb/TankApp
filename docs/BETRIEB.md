@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 17.09.2026 · App-Version 0.49.5 — alles, was nach der Ersteinrichtung
+> Stand: 17.09.2026 · App-Version 0.50.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
@@ -44,6 +44,7 @@
   - [Fehlgeschlagener Lauf: Ursache statt Raten](#fehlgeschlagener-lauf-ursache-statt-raten)
   - [Modell-Lauf beschleunigen](#modell-lauf-beschleunigen)
   - [Ressourcen während Phase B messen (B11)](#ressourcen-während-phase-b-messen-b11)
+- [Zugriff im LAN: was lesbar ist (O39, seit 0.50.0)](#zugriff-im-lan-was-lesbar-ist-o39-seit-0500)
 - [Backup & Wiederherstellung](#backup--wiederherstellung)
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
@@ -703,6 +704,71 @@ Und: `nas-up` niemals während eines Laufs — es ruft `compose up -d --build
 --force-recreate` und tötet den Job (B24, zwei Vorfälle am 12.09.2026). Seit
 0.21.0 warnt `nas-up` vorher; die Messung ist trotzdem futsch, wenn der Lauf
 mitten in Phase B stirbt.
+
+## Zugriff im LAN: was lesbar ist (O39, seit 0.50.0)
+
+Die App hat **kein Login, keine Sitzung und keine Nutzer:innen** — das ist die
+Rahmenbedingung des Projekts (Pi ↔ NAS ↔ Browser im eigenen Netz). Bis 0.49.0
+war die Folge dieser Entscheidung allerdings nirgends aufgeschrieben: Der
+Server bindet `0.0.0.0:1355` (`app/server.py`), und damit konnte **jeder
+Rechner im LAN** — ein Gast im Gast-WLAN, ein kompromittiertes Gerät, ein
+neugieriger Router-Dienst — den persönlichen Datenbestand lesen:
+
+| Route | Was drinsteht |
+|---|---|
+| `GET /api/v1/fills` · `/api/v1/fills.csv` | alle Tankvorgänge mit Zeit, Ort, Preis, Menge |
+| `GET /api/v1/fills/summary` | Monats-/Jahresbilanz derselben Belege |
+| `GET /api/v1/advice/diary` | Prognose-Tagebuch (wann welche Empfehlung galt) |
+| `GET /api/v1/profiles` | Fahrzeug-/Haushaltsprofile (Tankmenge, Verbrauch, Zeitwert) |
+| `GET /api/v1/episodes` | offene und verstrichene Tankfenster |
+| `GET /api/v1/overview` | Alltags-Aggregat — bündelt Belege und Episoden |
+
+Dazu kommt indirekt der Wohnort: Das Polling-Set (`data/analysis/stations/
+polling.json`) nennt die Anker-Koordinaten, und die Karte im GUI zeigt sie.
+
+Markt- und Modelldaten (`health`, `stations`, `series`, `forecast`, `heatmap`,
+`selection`, `stats/summary`, `collector/status`) enthalten nichts
+Persönliches und bleiben ohne Secret lesbar — sonst wäre die Ferndiagnose
+(`curl` vom anderen Rechner) nicht mehr möglich.
+
+### Entscheidung: offen bleiben oder Secret setzen
+
+Beides ist vertretbar, aber es soll eine **Entscheidung** sein:
+
+- **Offen (Default, `TANKAPP_READ_TOKEN` nicht gesetzt):** alles wie bisher.
+  Sinnvoll, solange das LAN nur aus eigenen Geräten besteht und kein
+  Gast-WLAN am selben Netz hängt. `/api/v1/health` sagt dann
+  `personal_data.read_protected: false`.
+- **Secret setzen:** `TANKAPP_READ_TOKEN=<Secret>` in
+  `/etc/tankapp/env` (NAS) bzw. in der Compose-Umgebung exportieren, bevor
+  `nas-up` das Projekt baut. Danach antworten die Routen der Tabelle oben nur
+  noch mit `Authorization: Bearer <Secret>`; ohne Secret kommt `401` mit
+  `error_code: "unauthorized"` (Markt- und Modelldaten bleiben offen). Derselbe
+  Mechanismus wie beim Uploader-Webhook (`TANKAPP_WEBHOOK_TOKEN`), nur in die
+  andere Richtung — kein Login, kein Ablaufdatum, keine Konten.
+
+```bash
+# Ohne Secret: offen (Default)
+curl -s -o /dev/null -w '%{http_code}\n' http://<nas>:1355/api/v1/fills      # 200
+# Mit gesetztem TANKAPP_READ_TOKEN:
+curl -s -o /dev/null -w '%{http_code}\n' http://<nas>:1355/api/v1/fills      # 401
+curl -s -H "Authorization: Bearer $TANKAPP_READ_TOKEN" \
+  http://<nas>:1355/api/v1/fills | head -c 120                              # Belege
+```
+
+Die GUI braucht dasselbe Secret: Bereich **System → Persönliche Daten im
+Netz**, Feld „Lese-Token“. Der Wert liegt gerätelokal im `localStorage`
+desselben Browsers (wie die übrigen Einstellungen) und wird als
+`Authorization`-Header mitgeschickt — er steht nie in einer URL, also auch
+nicht in Logs. Ohne eingetragenes Token zeigen die persönlichen Bereiche
+„Zugang gesperrt …“ statt leerer Listen.
+
+**Was bewusst nicht geschützt ist:** die Schreib-Endpunkte
+(`POST /api/v1/fills`, `POST /api/v1/episodes/{id}/intent`, Profile, Job-Start).
+Sie haben ihr eigenes Budget (429 ab 20 Schreibvorgängen je Minute und
+Client), und ein zweites Secret würde gegen die benannte Gefahr — Mitlesen im
+LAN — nichts ändern. Wer auch das Schreiben absperren will, braucht ein
+Reverse Proxy mit Auth vor dem Port; das ist dann eine andere Rahmenbedingung.
 
 ## Backup & Wiederherstellung
 

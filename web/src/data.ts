@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WebhookState } from "./system";
 import { enqueueWrite, isTransportError } from "./offline-queue";
+import { authHeaders, onReadTokenChange } from "./readToken";
 
 export type Fuel = "e10" | "e5" | "diesel";
 export type Station = {
@@ -210,6 +211,12 @@ export type Health = {
   /** O22: Größe und Lesbarkeit der Prognose-Veröffentlichung. */
   publication?: PublicationStatus | null;
   /**
+   * O39: Ist der persönliche Datenbestand im LAN geschützt? `true` heißt:
+   * die persönlichen Routen antworten nur mit `TANKAPP_READ_TOKEN`; `false`
+   * = offen wie bisher (dokumentierte Entscheidung, docs/BETRIEB.md).
+   */
+  personal_data?: { read_protected?: boolean } | null;
+  /**
    * B4: Zustand der Alarm-Zustellung (ntfy). Die Webhook-URL steht hier
    * bewusst nicht — nur ob ein Endpunkt konfiguriert ist, welche Error-Codes
    * als gemeldet gelten und wann zuletzt etwas rausging.
@@ -359,6 +366,15 @@ export type SelectionStation = {
   best_hour?: number | null;
   vol_ct?: number | null;
   rank_std?: number | null;
+  /**
+   * O18: Diese Felder schreibt die Engine je Station
+   * (`engine/selection.py`) — die Labor-Werkstätten lesen sie, statt auf
+   * Kennzahlen zu warten, die niemand berechnet.
+   */
+  break_flag?: boolean | null;
+  break_stat?: number | null;
+  delta_ew_ct?: number | null;
+  delta_recent5_ct?: number | null;
   dist_km?: number | null;
   dist_mode?: string | null;
   maps_url?: string | null;
@@ -611,6 +627,17 @@ export type BalanceRow = {
   avg_eur_per_fill: number | null;
   avg_eur_per_liter: number | null;
   saved_eur: number;
+  /**
+   * O30: dieselbe Ersparnis nach den bekannten Umwegkosten (Sprit +
+   * Zeitwert, dieselbe Formel wie die Entscheidung). Die Entscheidungen
+   * waren netto — die Bilanz weist jetzt beide Zeilen aus.
+   */
+  saved_net_eur?: number;
+  /** O30: abgezogene Umwegkosten in €. */
+  detour_cost_eur?: number;
+  /** O30: Belege mit bekanntem Umweg (davon `n_detour_estimated` geschätzt). */
+  n_detour_fills?: number;
+  n_detour_estimated?: number;
   /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
   saved_verified_eur: number;
   /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
@@ -776,13 +803,38 @@ export type DecideResult = {
  * weniger Last auf der NAS (File-Locks, HDD) und ein Refresh, der nicht
  * 5–10 s dauert, während die Ansicht tot wirkt.
  */
+/**
+ * O20: Tonlagen-Skala des Tagesstreifens — vom Server gerechnet
+ * (`app/data.py::price_band`), damit GUI und Fallback dieselbe Skala lesen
+ * und keine zweite Implementierung entsteht. `lo`/`hi` sind 25. und 75.
+ * Perzentil der Preise mit Meldung im Bezugszeitraum; `days` nennt, aus wie
+ * vielen Tagen die Skala wirklich stammt.
+ */
+export type StripBand = {
+  lo: number;
+  hi: number;
+  basis?: string;
+  hours?: number;
+  n_points?: number;
+  days?: number | null;
+};
+
 export type Overview = {
   generated_at: string;
   decide: DecideResult;
   fills: Fills;
   stats_summary: StatsSummary;
   episodes: { count: number; episodes: any[] };
-  day: { points: Point[]; error_code: string | null } | null;
+  day: {
+    points: Point[];
+    error_code: string | null;
+    /**
+     * O20: feste Tonlagen-Skala des Tagesstreifens (25./75. Perzentil der
+     * letzten 7 Tage, `app/data.py::price_band`). `null` = zu dünner
+     * Bestand — die GUI zeigt die Zahlen dann ohne Farburteil.
+     */
+    band?: StripBand | null;
+  } | null;
   error_code?: string | null;
 };
 
@@ -818,6 +870,12 @@ export type BacktestStationScore = {
   name: string;
   brand: string;
   city: string;
+  /**
+   * O21: Die Parameter gehören zur Zahl. Ein Euro-Wert ohne Tankmenge und
+   * Schwelle beantwortet keine Frage — beide stehen je Score-Block dabei.
+   */
+  eps?: number;
+  liters?: number;
   n: number;
   n_wait: number;
   hit_wait: number | null;
@@ -872,6 +930,8 @@ export type StatsSummary = {
     decisionHour: number;
     defaultEps: number;
     defaultLiters: number;
+    /** O21: „profile“ = Tankmenge aus dem Profil, „default“ = Platzhalter. */
+    litersSource?: string;
     days: string[];
     stations: Array<{
       id: string;
@@ -972,6 +1032,11 @@ export type StatsSummary = {
     ignored: number;
     unrelated: number;
     saved_eur: number;
+    /** O30: Ersparnis nach den bekannten Umwegkosten (dieselbe Formel). */
+    saved_net_eur?: number;
+    detour_cost_eur?: number;
+    n_detour_fills?: number;
+    n_detour_estimated?: number;
     /** O17: Ersparnis ohne Prognosepreis-Belege — die zweite, verifizierte Spalte. */
     saved_verified_eur: number;
     /** O17: Belege mit Prognosepreis (Altbestand, kein gezahlter Preis). */
@@ -1087,6 +1152,16 @@ export type ThresholdTuning = {
   } | null;
 };
 
+/**
+ * O21: Runden wie der Server (`round(x, n)` in Python). Ohne gemeinsame
+ * Rundung weichen Labor (Server) und Werkstatt (GUI) in der letzten Stelle
+ * ab — und genau daraus entstand der `pot_share`-Einheitenfehler.
+ */
+function round(value: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round((value + Number.EPSILON) * f) / f;
+}
+
 export function rowOutcome(r: EvalRowDto, eps: number, liters = 40) {
   const wait = r.mu >= eps;
   const s = r.s;
@@ -1141,28 +1216,34 @@ export function scoreRows(
     if (r.s > 0) sPos++;
   }
   const n = rows.length;
-  const toEur = (ct: number) => (ct / 100) * liters;
+  const toEur = (ct: number) => round((ct / 100) * liters, 2);
   const sumSmartEur = toEur(sumSmart);
-  const pot = Math.max(sumBest, 1e-9);
   return {
     station_id: stationId,
     name: stationId,
     brand: "",
     city: "",
+    // O21: Die Parameter gehören zur Zahl — dieselben Felder wie im
+    // Server-Score (`app/stats_summary.py::_score_rows`).
+    eps,
+    liters,
     n,
     n_wait: nWait,
-    hit_wait: nWait ? hitWait / nWait : null,
+    hit_wait: nWait ? round(hitWait / nWait, 4) : null,
     n_now: nNow,
-    hit_now: nNow ? hitNow / nNow : null,
+    hit_now: nNow ? round(hitNow / nNow, 4) : null,
     sum_smart_eur: sumSmartEur,
     sum_commit_eur: toEur(sumCommit),
     sum_best_eur: toEur(sumBest),
-    avg_regret_ct: n ? sumRegretCt / n : 0,
-    avg_regret_eur: n ? toEur(sumRegretCt) / n : 0,
-    p_avg: nP ? sumP / nP : 0,
+    avg_regret_ct: n ? round(sumRegretCt / n, 3) : 0,
+    avg_regret_eur: n ? round(toEur(sumRegretCt) / n, 3) : 0,
+    p_avg: nP ? round(sumP / nP, 4) : 0,
     p_known: nP > 0,
-    hit_freq: n ? sPos / n : 0,
-    pot_share: sumSmartEur / pot,
+    hit_freq: n ? round(sPos / n, 4) : 0,
+    // O21-Fix: vorher `sumSmartEur / sumBest` — Euro durch Cent. Der Anteil
+    // am Potenzial ist ein Verhältnis **gleicher** Einheiten (ct/ct), genau
+    // wie im Server. `tests/fixtures/score_parity.json` hält beide fest.
+    pot_share: sumBest > 0 ? round(sumSmart / sumBest, 4) : n ? 0 : 0,
   };
 }
 
@@ -2180,7 +2261,9 @@ export function useResource<T>(
       setState((prev) => ({ ...prev, pending: true }));
       try {
         const etag = etagRef.current.key === url ? etagRef.current.etag : null;
-        const headers: Record<string, string> = {};
+        // O39: Lese-Token für den persönlichen Datenbestand, wenn eines
+        // gesetzt ist (leer = offen, wie bisher).
+        const headers: Record<string, string> = { ...authHeaders() };
         if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,
@@ -2276,6 +2359,20 @@ export function useResource<T>(
     if (busyRef.current) queuedReloadRef.current = true;
     else loadRef.current();
   }, [refresh, url]);
+  // O39: Ein neu eingetragenes Lese-Token muss die persönlichen Ansichten
+  // sofort neu laden — sonst bleibt „Zugang gesperrt“ stehen, obwohl das
+  // Secret passt. Derselbe Weg wie der Refresh-Zähler (einreihen statt
+  // abbrechen); das ETag gilt für die alte Anfrage und wird verworfen.
+  useEffect(
+    () =>
+      onReadTokenChange(() => {
+        if (!url) return;
+        etagRef.current = { key: null, etag: null };
+        if (busyRef.current) queuedReloadRef.current = true;
+        else loadRef.current();
+      }),
+    [url],
+  );
   const hasData = state.data != null;
   return {
     ...state,
@@ -2625,6 +2722,8 @@ export const messages: Record<string, string> = {
     "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
   store_locked:
     "Speicher ist gerade belegt — in ein paar Sekunden erneut versuchen.",
+  unauthorized:
+    "Zugang gesperrt — der Server verlangt ein Lese-Token für persönliche Daten. Im Bereich „System“ unter „Persönliche Daten im Netz“ eintragen.",
   not_implemented: "Dieser Endpunkt ist (bewusst) nicht implementiert.",
   invalid_consumption: "Verbrauch außerhalb 3–20 L/100 km.",
   invalid_speed: "Tempo außerhalb 10–130 km/h.",

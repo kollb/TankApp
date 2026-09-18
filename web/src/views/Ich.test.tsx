@@ -335,4 +335,84 @@ describe("Ich: Prognosepreis (O17)", () => {
     expect(html).not.toContain("Ohne Prognosepreis:");
     expect(html).not.toContain("ohne Prognosepreis-Belege");
   });
+
+  it("O30: nennt netto nach Umweg neben dem Brutto-Wert", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 2,
+      liters: 80,
+      total_eur: 136,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 8,
+      saved_net_eur: 6.34,
+      detour_cost_eur: 1.66,
+      n_detour_fills: 1,
+      n_detour_estimated: 1,
+      saved_verified_eur: 8,
+      n_prognosis_price: 0,
+      baseline_eur: 144,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 2,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 5.5 },
+    };
+    const html = render({
+      initialSection: "balance",
+      fillsSummary: {
+        data: summary,
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 1,
+      },
+    });
+    // Beide Zeilen benannt: brutto …
+    expect(html).toContain("· brutto");
+    expect(html).toContain("+8,00 €");
+    // … und netto nach den bekannten Umwegkosten.
+    expect(html).toContain("Nach Umweg:");
+    expect(html).toContain("+6,34 €");
+    expect(html).toContain("Umwegkosten 1,66 € bei 1 Beleg");
+    expect(html).toContain("davon 1 mit geschätzter Strecke");
+  });
+
+  it("O30: ohne Umweg bleibt die Zahl gleich und sagt das", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 1,
+      liters: 40,
+      total_eur: 68,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 2,
+      saved_net_eur: 2,
+      detour_cost_eur: 0,
+      n_detour_fills: 0,
+      n_detour_estimated: 0,
+      saved_verified_eur: 2,
+      n_prognosis_price: 0,
+      baseline_eur: 70,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 1,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 2.8 },
+    };
+    const html = render({
+      initialSection: "balance",
+      fillsSummary: {
+        data: summary,
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 1,
+      },
+    });
+    expect(html).toContain("Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.");
+    expect(html).not.toContain("Umwegkosten");
+  });
 });

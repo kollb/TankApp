@@ -85,6 +85,13 @@ def make_settings(tmp_path, mode="public"):
 
 
 def notifier(settings, clock=DAY, opener=None):
+    # O31: Der Wochen-Rückblick fährt auf demselben Tick mit. Diese Tests
+    # zählen Fenster-Meldungen — die Woche gilt hier als zusammengefasst,
+    # damit kein zweiter POST die Zählung verschiebt. Das Verhalten des
+    # Rückblicks selbst prüft tests/test_o31_recap.py.
+    from app.recap import iso_week, save_recap_state
+
+    save_recap_state(settings, {"last_week": iso_week(clock)})
     return Notifier(
         settings,
         lambda: [],  # keine Alarme — hier geht es nur um Fenster-Meldungen
@@ -215,7 +222,13 @@ def test_window_without_distribution_p_stays_silent(tmp_path):
 
 
 def test_night_defers_until_morning_and_sends_once(tmp_path):
+    from app.recap import iso_week, save_recap_state
+
     settings = make_settings(tmp_path)
+    # O31: Dieser Test baut den Notifier selbst und zählt Fenster-Meldungen —
+    # die Woche gilt als zusammengefasst, sonst fährt der Wochen-Rückblick
+    # morgens als zweiter POST mit.
+    save_recap_state(settings, {"last_week": iso_week(DAY)})
     open_window_episode(settings, clock=NIGHT)
     fake = FakeOpener()
 

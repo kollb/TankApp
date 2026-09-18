@@ -1,6 +1,9 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 17.09.2026 · App-Version **0.49.5** — neu seit 0.49.1: die
+> Stand: 17.09.2026 · App-Version **0.50.0** — neu seit 0.50.0: der
+> Lese-Schutz für persönliche Daten (O39, `TANKAPP_READ_TOKEN`) und der
+> Wochen-Rückblick (O31), der in `health.notify` seine letzte Woche nennt.
+> Davor seit 0.49.1: die
 > Stations-Antwort ist die verbindliche Form für die App (siehe
 > [Stations](#stations)); der RP2-Fallback liefert sie seit RP2 v4.3 mit
 > `cities` und je Zeile `observed_at`, und ein Fehlerpayload trägt bei
@@ -70,9 +73,25 @@
 Kein App-weites Rate-Limit: Die App läuft im Heimnetz (LAN-only) — keine
 `X-RateLimit-*`-Header, kein `429` auf Lesen, keine API-Keys
 (`TANKAPP_API_KEYS` und `TANKAPP_RATE_*` sind ersatzlos entfernt,
-`app/ratelimit.py` gelöscht). Einzige Auth bleibt der Uploader-Webhook
-(`POST /api/v1/jobs/trigger`, nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`
-per `Authorization: Bearer`).
+`app/ratelimit.py` gelöscht). Auth gibt es an zwei Stellen, beide optional und
+beide dasselbe Schema (`Authorization: Bearer <Secret>`):
+
+- **Uploader-Webhook** (`POST /api/v1/jobs/trigger`, nur mit konfiguriertem
+  `TANKAPP_WEBHOOK_TOKEN`; ohne Secret existiert der Endpunkt nicht → `404`,
+  falsches Secret → `403`).
+- **Lese-Schutz für persönliche Daten (O39, seit 0.50.0):** Mit gesetztem
+  `TANKAPP_READ_TOKEN` antworten `GET /api/v1/fills`, `/api/v1/fills.csv`,
+  `/api/v1/fills/summary`, `/api/v1/advice/diary`, `/api/v1/profiles`
+  (+ `/api/v1/profiles/{id}`), `/api/v1/episodes` und `/api/v1/overview` nur
+  noch mit `Authorization: Bearer <Secret>`; sonst `401` mit
+  `{"error_code": "unauthorized"}` und `WWW-Authenticate: Bearer`. Ohne die
+  Variable bleiben sie unverändert offen — die Entscheidung (was im LAN lesbar
+  ist und für wen) steht in
+  [BETRIEB.md](BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500), der
+  Stand in `/api/v1/health` → `personal_data.read_protected`. Markt- und
+  Modelldaten (`health`, `stations`, `series`, `forecast`, `heatmap`,
+  `selection`, `stats/summary`, `collector/status`, `jobs/*/log`) sind nie
+  betroffen.
 
 **Schreib-Budget (B5):** Die Ledger-Endpunkte `POST /api/v1/fills`,
 `POST /api/v1/episodes/{id}/intent` (+ `outcome`-Alias) und
@@ -107,7 +126,7 @@ frei (GUI-Polling).
   - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
   - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3)
   - `POST /api/v1/profiles`, `PUT /api/v1/profiles/{id}`, `POST /api/v1/profiles/{id}/activate`, `POST /api/v1/profiles/activate`, `DELETE /api/v1/profiles/{id}` (Fahrzeug-/Haushaltsprofile ohne Login, A1)
-- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4) und `GET /api/v1/profiles` (Profil-Liste, A1)
+- Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4), `GET /api/v1/profiles` (Profil-Liste, A1), `GET /api/v1/advice/diary`, `GET /api/v1/episodes` und `GET /api/v1/overview` — seit 0.50.0 mit `TANKAPP_READ_TOKEN` geschützt (O39, siehe oben)
 - Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
 
 ## Übersicht
@@ -518,6 +537,10 @@ Zeile; die Differenz steht in `overall.n_without_date`.
       "avg_eur_per_fill": 63.28,
       "avg_eur_per_liter": 1.687,
       "saved_eur": 2.0,
+      "saved_net_eur": 1.34,
+      "detour_cost_eur": 0.66,
+      "n_detour_fills": 1,
+      "n_detour_estimated": 0,
       "saved_verified_eur": 2.0,
       "n_prognosis_price": 0,
       "baseline_eur": 128.55
@@ -527,7 +550,9 @@ Zeile; die Differenz steht in `overall.n_without_date`.
   "overall": {
     "fills": 14, "liters": 610.5, "total_eur": 1024.9,
     "avg_eur_per_fill": 73.21, "avg_eur_per_liter": 1.679,
-    "saved_eur": 18.4, "saved_verified_eur": 18.4,
+    "saved_eur": 18.4, "saved_net_eur": 17.1,
+    "detour_cost_eur": 1.3, "n_detour_fills": 3, "n_detour_estimated": 1,
+    "saved_verified_eur": 18.4,
     "n_prognosis_price": 0, "baseline_eur": 1043.3,
     "n_without_date": 0, "saved_pct": 1.8
   },
@@ -545,6 +570,18 @@ erfundenen Leerzeilen. `saved_verified_eur` (O17, 0.45.0) ist die zweite,
 ausdrücklich so benannte Spalte: die Ersparnis ohne Belege mit Prognosepreis
 (`price_source == "prognose"`, Altbestand, kein gezahlter Preis) — deren
 Anzahl nennt `n_prognosis_price` je Zeile.
+
+`saved_net_eur` (O30, 0.50.0) ist dieselbe Ersparnis **nach** den bekannten
+Umwegkosten: `saved_eur − detour_cost_eur`. Die Umwegkosten werden je Beleg
+aus `elsewhere_net_provenance` neu gerechnet — `net_economics(ref, paid,
+liters, detour_km, consumption_l_100km, speed_kmh, time_value_eur_h)`, also
+dieselbe Formel und dieselben Parameter wie in der Entscheidung (`p_lohnt`,
+O9) — nicht aus `elsewhere_net_eur` (das ist der Bruttovorteil). Belege ohne
+Herkunft kosten nichts und zählen nicht mit (`n_detour_fills`);
+`n_detour_estimated` nennt davon die mit geschätzter Strecke
+(`distance_source == "estimated_snapshot"`). Ohne Umweg ist netto = brutto —
+keine pauschale Schätzung. Dieselben Felder stehen in
+`personal_stats.wallet` (30-Tage-Blick).
 
 ## Profiles (A1 — Fahrzeug-/Haushaltsprofile, ohne Login)
 
@@ -615,7 +652,10 @@ Antwort:
   ],
   "notify": {"configured": true, "mode": "public",
              "open_errors": ["collector_no_heartbeat"],
-             "last_ok_at": "2026-09-11T08:05:00+00:00"},
+             "last_ok_at": "2026-09-11T08:05:00+00:00",
+             "last_sent_at": "2026-09-11T08:00:00+00:00",
+             "recap_last_week": "2026-W37",
+             "recap_last_sent_at": "2026-09-14T07:05:00+00:00"},
   "archive": {"archive_since": "2025-09-09", "last_complete_until": "2026-09-09", "missing_files": 0, "status": "complete"},
   "jobs": {
     "archive": {"state": "success", "last_success_at": "...", "next_run_at": "..."},
@@ -700,9 +740,12 @@ an `TANKAPP_NTFY_URL` schickt — `configured` (Variable gesetzt?),
 `mode` (Push-Modus `public`|`lan`, O42: bestimmt die Datentiefe der
 Fenster-Meldungen, Default `public`), `open_errors` (welche Codes sind als
 gemeldet gespeichert), `last_ok_at` (Stempel der letzten „wieder
-betriebsbereit“-Meldung, `null` wenn nie).
-Der Block liest nur die Zustandsdatei `data/runtime/notify/state.json`, kein
-Netz. Einrichten und Verhalten:
+betriebsbereit“-Meldung, `null` wenn nie), `last_sent_at` (jüngste tatsächlich
+zugestellte Fehlermeldung). Seit 0.50.0 dazu `recap_last_week` und
+`recap_last_sent_at` (O31): welche ISO-Woche der Wochen-Rückblick zuletzt
+zusammengefasst hat und wann — `null`, solange noch keiner rausging.
+Der Block liest nur die Zustandsdateien `data/runtime/notify/state.json` und
+`notify/recap.json`, kein Netz. Einrichten und Verhalten:
 [BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4).
 
 **`price_implausible`** (O35, seit 0.46.0): Zähler der Live-Preise außerhalb

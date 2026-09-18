@@ -1,11 +1,27 @@
 // „Heute im Blick“: der kompakte Tagesstreifen (UI-NEUENTWURF §5.1 ④).
 // Geprüft wird die Ehrlichkeits-Zusage: nur offene Meldungen zählen,
-// leere Stunden bleiben leer, Tonlagen sind relative Drittel und die
-// Sparkline existiert erst ab drei Werten.
+// leere Stunden bleiben leer, die Sparkline existiert erst ab drei Werten —
+// und seit O20: Die Tonlagen kommen aus einer **festen** Skala (Server-Band
+// über 7 Tage) und je Stunde steht das Minimum, nicht die letzte Meldung.
 
 import { describe, expect, it } from "vitest";
 import type { Point } from "./data";
-import { buildStripCells, stripSparkline } from "./strip";
+import {
+  buildStripCells,
+  stripBandNote,
+  stripSparkline,
+  type StripBand,
+} from "./strip";
+
+/** Festes Band, wie es `app/data.py::price_band` liefert (25./75. Perzentil). */
+const BAND: StripBand = {
+  lo: 1.72,
+  hi: 1.88,
+  basis: "percentile_25_75",
+  hours: 168,
+  n_points: 1200,
+  days: 7,
+};
 
 // Fester Zeitpunkt: 12:00 Uhr Berlin (Sommerzeit, UTC+2).
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
@@ -49,9 +65,9 @@ describe("buildStripCells", () => {
     // 24-h-Fensters, das der Server liefert. Stunden 1–5 bleiben
     // dagegen außerhalb des Fensters (01:00-Punkt in `points`).
     const withMidnight = [...points, point(1.65, "2026-09-13T22:10:00Z")];
-    const cells = buildStripCells(withMidnight, NOW);
+    const cells = buildStripCells(withMidnight, NOW, BAND);
     expect(cells[18].value).toBe(1.65);
-    expect(cells[18].tone).toBe("cheap"); // 1.65 = Minimum des Tages
+    expect(cells[18].tone).toBe("cheap"); // 1,65 unter dem Band (≤ 1,72)
   });
 
   it("B11: ohne Mitternachtsmeldung bleibt Zelle 24 leer", () => {
@@ -80,12 +96,55 @@ describe("buildStripCells", () => {
     expect(cells[0].value).toBeNull(); // 06:00
   });
 
-  it("rechnet die Tonlagen aus relativen Dritteln des Tages", () => {
-    const cells = buildStripCells(points, NOW);
-    expect(cells[1].tone).toBe("cheap"); // 1.70 = Minimum
-    expect(cells[6].tone).toBe("mid"); // 1.80 liegt in der Mitte
-    expect(cells[5].tone).toBe("pricey"); // 1.90 nahe Maximum
-    expect(cells[14].tone).toBe("pricey"); // 1.95 = Maximum
+  it("O20: färbt nach dem festen Band, nicht nach Tages-Min/Max", () => {
+    const cells = buildStripCells(points, NOW, BAND);
+    expect(cells[1].tone).toBe("cheap"); // 1,70 ≤ 1,72
+    expect(cells[6].tone).toBe("mid"); // 1,80 im Band
+    expect(cells[5].tone).toBe("pricey"); // 1,90 ≥ 1,88
+    expect(cells[14].tone).toBe("pricey"); // 1,95 ≥ 1,88
+  });
+
+  it("O20: eine neue, günstigere Meldung färbt frühere Stunden nicht um", () => {
+    // Der Befund: Kommt abends ein günstigerer Preis dazu, wurde der ganze
+    // Tag heller — dieselbe Zahl, andere Farbe. Mit fester Skala nicht.
+    const before = buildStripCells(points, NOW, BAND).map((cell) => cell.tone);
+    const later = buildStripCells(
+      // 19:00 UTC = 21:00 Berlin — eine neue Stunde, kein Überschreiben.
+      [...points, point(1.55, "2026-09-14T19:00:00Z")],
+      NOW,
+      BAND,
+    ).map((cell) => cell.tone);
+    // Alle Stunden bis 20 Uhr behalten ihre Tonlage …
+    expect(later.slice(0, 15)).toEqual(before.slice(0, 15));
+    // … und die neue Stunde ist selbst „günstig“, nicht „alles wird heller“.
+    expect(later[15]).toBe("cheap");
+  });
+
+  it("O20: je Stunde steht das Minimum, nicht der letzte Wert", () => {
+    // 10:10 teuer, 10:50 günstig — die Fenstersuche bewertet das Minimum,
+    // der Streifen zeigte bis 0.49.0 den Stand am Stundenende.
+    const cells = buildStripCells(
+      [point(1.7, "2026-09-14T08:10:00Z"), point(1.95, "2026-09-14T08:50:00Z")],
+      NOW,
+      BAND,
+    );
+    expect(cells[4].hour).toBe(10);
+    expect(cells[4].value).toBe(1.7); // Minimum der Stunde
+    expect(cells[4].latest).toBe(1.95); // letzter Preis der Stunde
+    expect(cells[4].tone).toBe("cheap");
+  });
+
+  it("O20: ohne Band gibt es Zahlen, aber kein Farburteil", () => {
+    const cells = buildStripCells(points, NOW, null);
+    expect(cells[1].value).toBe(1.7);
+    expect(cells[1].tone).toBe("unrated");
+    // Leere Stunden bleiben leer — „unrated“ ist kein Ersatz für „keine Daten“.
+    expect(cells[0].tone).toBe("empty");
+  });
+
+  it("O20: ein kaputtes Band (lo ≥ hi) gilt als keins", () => {
+    const cells = buildStripCells(points, NOW, { ...BAND, lo: 1.9, hi: 1.9 });
+    expect(cells[1].tone).toBe("unrated");
   });
 
   it("0.49.3: gestrige Abendmeldungen stehen nicht als heutige Zellen im Streifen", () => {
@@ -122,6 +181,19 @@ describe("buildStripCells", () => {
     const current = cells.filter((cell) => cell.current);
     expect(current).toHaveLength(1);
     expect(current[0].hour).toBe(12);
+  });
+});
+
+describe("stripBandNote (O20)", () => {
+  it("nennt die Grenzen in €/L und die Zahl der Tage", () => {
+    const note = stripBandNote(BAND);
+    expect(note).toContain("1,720 €/L");
+    expect(note).toContain("1,880 €/L");
+    expect(note).toContain("7");
+  });
+
+  it("sagt ohne Band ehrlich, dass die Skala fehlt", () => {
+    expect(stripBandNote(null)).toContain("keine Farbskala");
   });
 });
 
