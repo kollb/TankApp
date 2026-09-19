@@ -196,7 +196,7 @@ CSVs wie für die Selektion (export via `data-tools/export_influx.py`).
 `analysis/regime_check.py` (neu 19.09.2026). Anlass ist der Tankrabatt
 (−17 ct/L ab 01.10.2026, befristet bis 31.12.2026) und der Spritpreisdeckel
 (spätestens 01.01.2027). Befund, Konzept und Messtabellen:
-[BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md](BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md).
+[BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**.
 
 Der Check beantwortet die Frage, die jede Regime-Behandlung voraussetzt:
 **Wie stark, wie schnell und wie unterschiedlich gibt der Bestand eine

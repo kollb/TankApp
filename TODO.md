@@ -32,7 +32,7 @@
 ## A. Fachlich (Produkt & Domäne)
 
 Neu am 19.09.2026 aus
-[docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md](docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md):
+[docs/BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**:
 der Tankrabatt ab 01.10.2026 (−17 ct/L, befristet bis 31.12.2026) und der
 Spritpreisdeckel spätestens 01.01.2027 sind **datierte Regime-Wechsel**, die
 drei Zähler und die Entscheidungsgrundlage treffen. Drei Punkte sind fällig,
@@ -43,7 +43,7 @@ bevor der 01.10. da ist — alle drei sind P0, weil sie falsche Zahlen riskieren
   01.01.2027 vorschreibt? `app/law.py:law_rise_outside_noon` zählt den
   gesetzlich erzwungenen Anstieg um 00:00 heute als Verstoß (gemessen:
   1 Intervall je Station und Sorte), und dieselbe Frage entscheidet, ob die
-  12-Uhr-Projektion den Regime-Sprung poolen darf (Befund §2.3) oder ob die
+  12-Uhr-Projektion den Regime-Sprung poolen darf (Befund §5.3.3) oder ob die
   Kante eine Segmentgrenze wird (H6). **DoD:** Antwort einer zuständigen Stelle
   schriftlich; `LUECKEN.md` führt die Antwort; bis dahin bleibt die Projektion
   konservativ (Kante als Segmentgrenze, kein Pooling über den Bruch).
@@ -51,9 +51,10 @@ bevor der 01.10. da ist — alle drei sind P0, weil sie falsche Zahlen riskieren
   Deckel kommt „nach Luxemburger oder Belgischem Vorbild“; der Wert, die
   Referenz (Rohöl/notierte Produkte), der Rhythmus (monatlich/wöchentlich) und
   der Durchsetzungsmechanismus sind nicht definiert. Ein hartkodiertes `min()`
-  auf eine Konstante (Entwurf §3) ist gegen einen bewegten Deckel gemessen
+  auf eine Konstante (dritte Aussage des Entwurfs, Befund §5.1) ist gegen einen
+  bewegten Deckel gemessen
   *falsch*: Es erzeugt einen Anstieg um +5,00 ct und bricht damit selbst die
-  12-Uhr-Regel (Befund §2.4b, Anhang A.5). **DoD:** sobald die Ausgestaltung
+  12-Uhr-Regel (Befund §5.3.4b, §5.10). **DoD:** sobald die Ausgestaltung
   bekannt ist, Deckel als Zeitreihe `cap(t)` je Sorte und Region modellieren,
   Clip **vor** der Mittagsprojektion (Reihenfolge unter Test), und eine
   Deckel-Nähe-Warnung nur mit Kalibrierungsnachweis (M7-Gate).
@@ -129,7 +130,7 @@ die Folge (erster Lauf nach einem Reboot ist kalt).
 Kurzantwort: **kein Rechenfehler gefunden** — aber seit dem 19.09.2026 eine
 dokumentierte Lücke unter datierter äußerer Einwirkung. Die Punkte H6–H10
 kommen aus
-[docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md](docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md);
+[docs/BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5;
 alle Messwerte dort sind Rolling-Origin-Läufe der **echten**
 `engine.models.fit`/`predict`-Kette (`analysis/regime_check.py --simulate`),
 die Reihen sind synthetisch und auf die Live-Messwerte des 12-Uhr-Befunds
@@ -357,7 +358,7 @@ die ursprüngliche Definition of Done im [CHANGELOG](CHANGELOG.md) und in
 
 1. **Die Liste ist nicht mehr leer — es gibt datierte P0-Punkte.** Am
    19.09.2026 kamen A14–A16 und H6–H10 aus dem
-   [Regime-Befund](docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md) dazu; die
+   [Regime-Befund](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5 dazu; die
    Reihenfolge dort ist **Phasen mit Frist**, nicht Prioritäten: Phase 0
    (bis 30.09.2026: A16 messen, H7 Pool, H8 Zähler, H9 Alarme, H10 = M5
    vorziehen, H6 vorbereiten) → Phase 1 (Okt–Dez: aus dem echten Bruch lernen,

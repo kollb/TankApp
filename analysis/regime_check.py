@@ -5,7 +5,7 @@ Steuer-/Preisregime-Änderung durch?
 
 Anlass ist die Einigung auf einen Tankrabatt (−17 ct/L ab 01.10.2026, befristet
 bis 31.12.2026) und einen Spritpreisdeckel (spätestens 01.01.2027). Der Befund
-[docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md] misst die Folgen für die
+[docs/BEFUND-UX-MATH-2026-09-19.md] **Teil 5** misst die Folgen für die
 Prognose-Kette; dieses Werkzeug liefert die **Echtzahlen**, die dort fehlen:
 Es läuft auf dem eigenen Archivbestand, der mit dem Mai-Juni-Tankrabatt 2026
 bereits zwei Kanten enthält (Start 01.05. Senkung, Ende 01.07. Erhöhung). Das
@@ -31,7 +31,7 @@ Zwei Betriebsarten:
      findet der Lauf beide Rabatt-Kanten im Bestand, ohne dass man sie kennt.
 
   2. **Simulation** (``--simulate``, braucht die Engine): reproduziert die
-     Messtabellen des Befunds — Rolling-Origin-Läufe der echten
+     Messtabellen des Befunds (§5.10) — Rolling-Origin-Läufe der echten
      ``engine.models.fit``/``predict``-Kette über einen Bruch, für Status quo,
      hartkodierten Daten-Abzug, Schritt-Dummy und geschätzte Kante, plus die
      Projektions-Lemmata (12-Uhr-PAVA gegen Regime-Sprung, Deckel-Clip vor/nach
@@ -509,7 +509,7 @@ def build_report(rows: list[dict], total: dict, args, fuel: str) -> str:
         "  klebrig, ein Punkt-SE wäre zu klein.",
         "- `verzoegerung_tage` > 0 heißt: Die Station hat später gesenkt/erhöht",
         "  als angekündigt. Genau diese Verteilung trägt die Szenario-Mischung",
-        "  (Befund §R5.1); ein einzelner Mittelwert reicht dafür nicht.",
+        "  (Befund Teil 5, R5 Punkt 1); ein einzelner Mittelwert reicht nicht.",
         "- „keine Kante gefunden“ ist ein Ergebnis, kein Fehler: Eine Station",
         "  ohne ausreichenden Kontrast (≥ "
         f"{MIN_STEP_CT:.0f} ct) wird nicht auf einen Betrag festgenagelt.",
@@ -591,7 +591,7 @@ def make_prices(
 
 
 def projection_lemmata() -> None:
-    """Befund §2.3/§2.4: Regime-Sprung gegen 12-Uhr-Projektion, Deckel-Clip
+    """Befund §5.3.3/§5.3.4: Regime-Sprung gegen 12-Uhr-Projektion, Deckel-Clip
     vor/nach der Projektion."""
     _engine_on_path()
     from engine.config import Config
@@ -603,7 +603,7 @@ def projection_lemmata() -> None:
         local = index.tz_convert(BERLIN)
         return np.asarray(local.hour + local.minute / 60.0)
 
-    print("\n=== Projektions-Lemmata (Befund §2.3, §2.4) ===")
+    print("\n=== Projektions-Lemmata (Befund §5.3.3, §5.3.4) ===")
     for label, step, start, cut in (
         (
             "Anstieg +17 ct (Rabatt-Ende 01.01.)",
@@ -727,7 +727,7 @@ def simulate(scenarios: tuple[str, ...] = ("A", "B", "C")) -> None:
         Das Suchfenster ist bewusst begrenzt (``look_days``): Eine Kante, die
         älter ist als das halbe Trainingsfenster, ist für den Fit keine Kante
         mehr. Der Preis dafür ist messbar — altert der Bruch aus dem Fenster,
-        fällt die Schätzung auf die Ankündigung zurück (Befund §2.2, letzter
+        fällt die Schätzung auf die Ankündigung zurück (Befund §5.3.2, letzter
         Absatz). Die Antwort darauf ist Persistenz (R2.4), nicht ein
         unbegrenztes Suchfenster: unbegrenzt findet die Suche stattdessen
         irgendwann einen fremden, älteren Bruch.

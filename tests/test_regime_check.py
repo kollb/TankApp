@@ -1,5 +1,5 @@
 """Regressions-Schutz für analysis/regime_check.py und den Befund
-docs/BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md.
+docs/BEFUND-UX-MATH-2026-09-19.md, Teil 5.
 
 Genagelt werden die Aussagen, die der Befund *misst* und auf denen die
 Regime-Schicht (R2–R4) aufsetzt:
@@ -133,7 +133,7 @@ def test_flat_series_stays_below_the_threshold(tmp_path):
 
 
 def test_small_wobble_does_not_pass_the_amount_gate(tmp_path):
-    """Befund §2.2: Der Tageskontrast allein darf nicht reichen.
+    """Befund §5.3.2: Der Tageskontrast allein darf nicht reichen.
 
     Am 31.12.2026 fand der Lauf eine Kante aus Weihnachts-Rauschen
     (Kontrast über, slot-gematchter Betrag unter der Schwelle) und kippte den
@@ -219,7 +219,7 @@ def test_standard_error_grows_with_noisier_days(tmp_path):
 
 
 def test_regime_edge_as_segment_boundary_preserves_the_step():
-    """Befund §2.3: Ohne Kante poolt die 12-Uhr-PAVA einen Anstieg auf null."""
+    """Befund §5.3.3: Ohne Kante poolt die 12-Uhr-PAVA einen Anstieg auf null."""
     from engine.config import Config
     from engine.models import noon_law_projection
 
@@ -263,7 +263,7 @@ def test_falling_regime_needs_no_segment_edge():
 
 
 def test_moving_cap_must_be_clipped_before_the_projection():
-    """Befund §2.4b: Clip nach der Projektion erzeugt einen illegalen Anstieg."""
+    """Befund §5.3.4b: Clip nach der Projektion erzeugt einen illegalen Anstieg."""
     from engine.config import Config
     from engine.models import noon_law_projection
 
