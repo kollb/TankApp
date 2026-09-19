@@ -242,7 +242,26 @@ def normalize_regimes(raw, timezone: str) -> tuple[dict, ...]:
                 },
             )
         )
-    entries.sort(
+    # B1-Fix Regime-Dedup: fuel=None bedeutet „alle Sorten“. Wenn für denselben
+    # Zeitpunkt und dieselbe Art sowohl None als auch spezifische Sorten
+    # vorliegen, ist None das Superset – spezifische Einträge fallen weg.
+    # Vorher erlaubte der Key (parsed.value, kind, fuel) beides nebeneinander.
+    by_time_kind: dict[tuple, list[tuple[pd.Timestamp, dict]]] = {}
+    for ts, entry in entries:
+        gkey = (ts.value, entry["kind"])
+        by_time_kind.setdefault(gkey, []).append((ts, entry))
+    filtered: list[tuple[pd.Timestamp, dict]] = []
+    for group in by_time_kind.values():
+        has_none = any(e["fuel"] is None for _, e in group)
+        if has_none:
+            # Behalte nur die None-Einträge (es gibt höchstens einen je Gruppe
+            # wegen seen, aber defensiv alle Nones).
+            for ts, e in group:
+                if e["fuel"] is None:
+                    filtered.append((ts, e))
+        else:
+            filtered.extend(group)
+    filtered.sort(
         key=lambda pair: (pair[0].value, pair[1]["kind"], pair[1]["fuel"] or "")
     )
-    return tuple(entry for _stamp, entry in entries)
+    return tuple(entry for _stamp, entry in filtered)

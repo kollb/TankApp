@@ -16,8 +16,10 @@ Grundsätze:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import math
 import statistics
+from pathlib import Path
 from typing import Any
 
 from .data import haversine_km, metadata, publication
@@ -60,12 +62,63 @@ TANK_PERCENT_MIN, TANK_PERCENT_MAX = 0.0, 100.0
 TANK_CAPACITY_MIN, TANK_CAPACITY_MAX = 20.0, 120.0
 RANGE_KM_MAX = 1500.0
 
+# B1-Fix: Frische-Schwelle nicht mehr hardcodiert 15 min, sondern aus
+# polling.json abgeleitet (2× erwartete Poll-Periode). Fallback 15 min.
+FRESH_PRICE_FALLBACK_MINUTES = 15.0
+FRESH_PRICE_POLL_MULTIPLIER = 2.0
+
 try:
     from zoneinfo import ZoneInfo
 
     BERLIN_TZ = ZoneInfo("Europe/Berlin")
 except Exception:  # pragma: no cover
     BERLIN_TZ = dt.timezone.utc
+
+
+def _fresh_threshold_minutes(settings) -> float:
+    """Leitet die Frische-Schwelle aus polling.json ab (B1-Fix).
+
+    Erwartete Poll-Periode = len(sets) * request_interval_seconds / 60.
+    Frisch = < multiplier * Periode. Fallback 15 min wenn Datei fehlt
+    oder unlesbar. Begrenzt auf [5, 30] min – nie 0, nie Stunde.
+    """
+    try:
+        path = Path(getattr(settings, "polling", ""))
+        if not path.is_file():
+            return FRESH_PRICE_FALLBACK_MINUTES
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        sets = raw.get("sets") if isinstance(raw, dict) else None
+        if not isinstance(sets, dict) or not sets:
+            return FRESH_PRICE_FALLBACK_MINUTES
+        interval = raw.get("request_interval_seconds", 300)
+        try:
+            interval_f = float(interval)
+        except (TypeError, ValueError):
+            interval_f = 300.0
+        expected = len(sets) * interval_f / 60.0
+        if not math.isfinite(expected) or expected <= 0:
+            return FRESH_PRICE_FALLBACK_MINUTES
+        threshold = expected * FRESH_PRICE_POLL_MULTIPLIER
+        # Clamp
+        return max(5.0, min(30.0, threshold))
+    except Exception:
+        return FRESH_PRICE_FALLBACK_MINUTES
+
+
+def _is_price_fresh(station: dict[str, Any], threshold_minutes: float) -> bool:
+    """Ist der Live-Preis dieser Station frisch (< threshold)?"""
+    if station.get("price") is None:
+        return False
+    age = station.get("age_minutes")
+    if age is None:
+        # Kein Alter → als frisch werten (Server liefert gerade, aber ohne
+        # age Feld – konservativ frisch, damit nicht unnötig verrauscht).
+        return True
+    try:
+        age_f = float(age)
+    except (TypeError, ValueError):
+        return False
+    return age_f <= threshold_minutes
 
 
 def _parse_ts(value: Any) -> dt.datetime | None:
@@ -531,6 +584,7 @@ def _alternatives(
     mode: str = "onroute",
     home: tuple[float, float] | None = None,
     nowcasts: dict[str, list[float]] | None = None,
+    fresh_threshold_minutes: float = FRESH_PRICE_FALLBACK_MINUTES,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """F2-Liste: Netto-€ je Alternative (Konzept §4.2, Umweg-Ökonomie §10).
 
@@ -541,17 +595,15 @@ def _alternatives(
     Mit ``nowcasts`` (Station → Nowcast-Draws) wird je Zeile zusätzlich
     ``p_lohnt = P(netto > 0)`` aus den Draws ausgewiesen (§4.2 — die
     „kritische Zusatzinformation“). Ohne Draws bleibt ``p_lohnt`` None.
+    Frische (< threshold) → Konstante, stale → Draws (M5, beidseitig).
     """
+
     alternatives = []
     best = None
     ref_nowcast = nowcasts.get(chosen_station["station_id"]) if nowcasts else None
 
-    # M5: Konditionierung am frischen Referenzpreis (< 1 Poll-Periode als Konstante).
-    # Nur wenn der Referenzpreis stale ist (kein frischer Live-Preis), trägt ref_nowcast Draws.
-    is_ref_fresh = chosen_station.get("price") is not None and (
-        chosen_station.get("age_minutes") is None
-        or chosen_station.get("age_minutes") <= 15.0
-    )
+    # M5 beidseitig: frische Live-Preise als Konstante, nur stale Seite trägt Draws.
+    is_ref_fresh = _is_price_fresh(chosen_station, fresh_threshold_minutes)
     ref_price_cond = anchor if is_ref_fresh else None
 
     for cand in station_list:
@@ -576,6 +628,10 @@ def _alternatives(
         gross_eur = economics["gross_eur"]
         net_eur = economics["net_eur"]
         alt_nowcast = nowcasts.get(cand["station_id"]) if nowcasts else None
+
+        is_alt_fresh = _is_price_fresh(cand, fresh_threshold_minutes)
+        alt_price_cond = cand_price if is_alt_fresh else None
+
         # H1/B6: Verdict aus denselben Schwellen wie route.py — server ist einzige Quelle.
         worth_th = th.get("elsewhere_net_eur", 1.5)
         borderline_th = th.get("elsewhere_borderline_eur", 0.5)
@@ -585,6 +641,37 @@ def _alternatives(
             verdict = "borderline"
         else:
             verdict = "not_worth"
+
+        # p_lohnt beidseitig konditioniert: frisch→Konstante, stale→Draws,
+        # beide frisch→deterministisch.
+        p_lohnt_val = None
+        if (ref_nowcast is not None or ref_price_cond is not None) and (
+            alt_nowcast is not None or alt_price_cond is not None
+        ):
+            p_lohnt_val = p_lohnt(
+                ref_nowcast,
+                alt_nowcast,
+                liters,
+                total_km,
+                consumption,
+                speed,
+                z_used,
+                ref_price=ref_price_cond,
+                alt_price=alt_price_cond,
+            )
+        elif ref_price_cond is not None and alt_price_cond is not None:
+            p_lohnt_val = p_lohnt(
+                ref_nowcast,
+                alt_nowcast,
+                liters,
+                total_km,
+                consumption,
+                speed,
+                z_used,
+                ref_price=ref_price_cond,
+                alt_price=alt_price_cond,
+            )
+
         entry = {
             "station_id": cand["station_id"],
             "name": cand.get("name") or cand["station_id"],
@@ -594,8 +681,6 @@ def _alternatives(
             "detour_km": round(total_km, 2),
             "detour_km_est": round(total_km, 2),
             "detour_km_source": detour_source,
-            # Legacy keys retain the trip mode / station distance only; the
-            # estimate source is no longer mislabelled as a road distance.
             "detour_mode": mode,
             "dist_mode": cand.get("dist_mode"),
             "trip_mode": mode,
@@ -605,8 +690,6 @@ def _alternatives(
             "gross_eur": round(gross_eur, 2),
             "net_eur": round(net_eur, 2),
             "critical_delta_ct": round(economics["critical_delta_ct"], 2),
-            # Input provenance lets the later receipt settlement reproduce
-            # this estimate without presenting it as a driven route (O9).
             "economics": {
                 "reference_price": round(anchor, 4),
                 "liters_assumed": liters,
@@ -617,19 +700,10 @@ def _alternatives(
             },
             "worth_it": net_eur >= worth_th,
             "verdict": verdict,
-            "p_lohnt": p_lohnt(
-                ref_nowcast,
-                alt_nowcast,
-                liters,
-                total_km,
-                consumption,
-                speed,
-                z_used,
-                ref_price=ref_price_cond,
-            )
-            if (ref_nowcast or ref_price_cond is not None) and alt_nowcast
-            else None,
+            "p_lohnt": p_lohnt_val,
             "maps_url": cand.get("maps_url"),
+            "price_fresh": is_alt_fresh,
+            "ref_price_fresh": is_ref_fresh,
         }
         alternatives.append(entry)
         if best is None or net_eur > best["net_eur"]:
@@ -688,7 +762,7 @@ def _table_action(
 
     Die Prozent-Gates rechnen mit der **Prognoseverteilung**, nicht mit einer
     Ledger-Trefferquote: ``p_besser`` (§4.1) und, am F2-Zweig,
-    ``best_alt["p_lohnt"]`` (§4.2). Ist die Verteilung nicht verfügbar
+    ``best_alt[\"p_lohnt\"]`` (§4.2). Ist die Verteilung nicht verfügbar
     (``None``), entfallen die Prozent-Gates — dann entscheidet allein die
     €-Seite, ehrlich statt einer geratenen Zahl.
 
@@ -927,7 +1001,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     if not station_city:
         # Die Station stammt aus dem Polling-Set (metadata) — city muss also
         # gesetzt sein. Ohne Stadt wäre die spätere Abrechnung gegen eine
-        # geratene Stadt gelaufen (vorher still „Frankfurt", Prüfstand §3.8).
+        # geratene Stadt gelaufen (vorher still „Frankfurt\", Prüfstand §3.8).
         return {"error_code": "unknown_city"}
 
     # Ankerpreis: frisch > zuletzt beobachtet > unbekannt (None — nie erfunden).
@@ -1035,6 +1109,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     thresholds, tuning = active_thresholds(advice_stats, auto_apply=auto_apply)
 
     # Alternativen (F2 Umweg-Ökonomie) — nur mit Ankerpreis rechenbar.
+    fresh_threshold = _fresh_threshold_minutes(live_data.settings)
     if anchor is not None:
         alternatives_nearby, best_alt = _alternatives(
             station_list,
@@ -1048,6 +1123,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             mode,
             home,
             nowcasts,
+            fresh_threshold_minutes=fresh_threshold,
         )
     else:
         alternatives_nearby, best_alt = [], None
@@ -1183,7 +1259,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "p_besser": p_decision,
         # B2 A/B: Der Advice-Snapshot hält die beim Emit wirklich veröffentlichte
         # 24-h-Verteilung fest. Ohne Forecast bleibt die Messgruppe unbekannt,
-        # statt einen alten Ledger-Eintrag nachträglich „roh" zu nennen.
+        # statt einen alten Ledger-Eintrag nachträglich „roh\" zu nennen.
         "forecast_calibration_state": _forecast_calibration_state(forecast_data),
         "liters_assumed": liters,
         "fuel": fuel,
@@ -1291,6 +1367,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             # Konzept §4.1/§4.3: Horizont [jetzt, latest_by].
             "latest_by": latest_by.isoformat() if latest_by is not None else None,
             "horizon_cut": horizon_cut,
+            "fresh_threshold_minutes": fresh_threshold,
         },
         "thresholds": {
             "active": thresholds,
