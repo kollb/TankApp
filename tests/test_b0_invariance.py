@@ -92,6 +92,18 @@ def test_vorhersage_quantile_sind_unveraendert(model, golden, kind, shared):
     assert float(np.nansum(paths)) == pytest.approx(want["paths_nansum"], abs=1e-2)
 
 
+def test_vorhersage_ohne_diagnose_gleich_mit_diagnose(model, golden):
+    """Das Diagnose-Wörterbuch (PAVA-Pools) darf die Zahlen nicht anfassen."""
+    want = golden["predict"]["ensemble/shared=1"]
+    diagnostics: dict = {}
+    frame = predict(
+        model, 24, shared_draws=True, kind="ensemble", diagnostics=diagnostics
+    )
+    _close(frame["q50"].to_numpy(), want["q50"], atol=QUANTILE_ATOL)
+    _close(frame["q975"].to_numpy(), want["q975"], atol=QUANTILE_ATOL)
+    assert "pava_pool_stats" in diagnostics
+
+
 def test_72h_vorhersage_ist_unveraendert(model, golden):
     frame = predict(model, 72, kind="ensemble", shared_draws=True)
     _close(

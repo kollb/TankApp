@@ -336,30 +336,82 @@ def huber_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return beta
 
 
-def fit_ar2(residual: np.ndarray) -> np.ndarray:
+# AR(2)-Stabilisierung (B0, Befund §5.12/M4): Yule-Walker aus lückenhaften
+# Tripeln ist nicht garantiert stationär. Liegt eine Wurzel des
+# charakteristischen Polynoms außerhalb von ``AR_STABILITY_RADIUS``, werden
+# beide Koeffizienten um ``AR_SHRINK_FACTOR`` gestaucht — bis zu
+# ``AR_SHRINK_MAX_STEPS`` Mal, danach fällt der Fit auf φ = 0 zurück. Vor B0
+# geschah das stumm; jetzt zählt jeder Fit seine Stauch-Schritte
+# (``ar_shrink_events``) und nennt den Grund eines Rückfalls.
+AR_SHRINK_FACTOR = 0.9
+AR_STABILITY_RADIUS = 0.98
+AR_SHRINK_MAX_STEPS = 100
+AR_MIN_TRIPLES = 30
+
+
+def _ar2_detail(**overrides) -> dict:
+    detail = {
+        # Zahl der ×0,9-Schritte in diesem Fit (0 = Yule-Walker war stabil).
+        "shrink_events": 0,
+        # Grund, wenn φ = 0 zurückgegeben wurde; None = echter Fit.
+        "fallback": None,
+        # Zusammenhängende endliche Tripel, aus denen r0/r1/r2 kamen.
+        "triples": 0,
+        # Größter Wurzelbetrag vor bzw. nach dem Stauchen (None ohne Fit).
+        "root_radius_raw": None,
+        "root_radius": None,
+        "shrink_factor": AR_SHRINK_FACTOR,
+        "stability_radius": AR_STABILITY_RADIUS,
+    }
+    detail.update(overrides)
+    return detail
+
+
+def fit_ar2_detail(residual: np.ndarray) -> tuple[np.ndarray, dict]:
     """Yule-Walker using only contiguous valid triples, never across closures.
 
     Pairwise covariance estimates with missing observations need not be positive
     definite. Shrink coefficients toward zero until the recursion is stable.
+
+    Liefert ``(phi, detail)``; ``detail`` (B0) zählt die Stauch-Schritte und
+    benennt Rückfälle — die Zahlen selbst sind bitgleich zu ``fit_ar2`` vor
+    0.56.0 (gleiche Reihenfolge, gleiche In-place-Multiplikation).
     """
     if len(residual) < 3:
-        return np.zeros(2)
+        return np.zeros(2), _ar2_detail(fallback="too_few_points")
     triples = np.lib.stride_tricks.sliding_window_view(residual, 3)
     triples = triples[np.isfinite(triples).all(axis=1)]
-    if len(triples) < 30:
-        return np.zeros(2)
+    if len(triples) < AR_MIN_TRIPLES:
+        return np.zeros(2), _ar2_detail(
+            fallback="too_few_triples", triples=int(len(triples))
+        )
     r0 = np.mean(triples**2)
     if r0 < 1e-12:
-        return np.zeros(2)
+        return np.zeros(2), _ar2_detail(
+            fallback="zero_variance", triples=int(len(triples))
+        )
     r1 = np.mean((triples[:, 0] * triples[:, 1] + triples[:, 1] * triples[:, 2]) / 2)
     r2 = np.mean(triples[:, 0] * triples[:, 2])
     matrix = np.array([[r0, r1], [r1, r0]]) + np.eye(2) * r0 * 1e-6
     phi = np.linalg.solve(matrix, [r1, r2])
-    for _ in range(100):
-        if np.max(np.abs(np.roots([1, -phi[0], -phi[1]]))) < 0.98:
-            return phi
-        phi *= 0.9
-    return np.zeros(2)
+    detail = _ar2_detail(triples=int(len(triples)))
+    for step in range(AR_SHRINK_MAX_STEPS):
+        radius = float(np.max(np.abs(np.roots([1, -phi[0], -phi[1]]))))
+        if step == 0:
+            detail["root_radius_raw"] = radius
+        if radius < AR_STABILITY_RADIUS:
+            detail["shrink_events"] = step
+            detail["root_radius"] = radius
+            return phi, detail
+        phi *= AR_SHRINK_FACTOR
+    detail["shrink_events"] = AR_SHRINK_MAX_STEPS
+    detail["fallback"] = "not_stabilised"
+    return np.zeros(2), detail
+
+
+def fit_ar2(residual: np.ndarray) -> np.ndarray:
+    """Nur die Koeffizienten — Signatur wie vor B0 (Tests, analysis/)."""
+    return fit_ar2_detail(residual)[0]
 
 
 def seasonal_scale_detail(price: pd.Series, cfg: Config) -> dict:
@@ -545,6 +597,98 @@ def ensemble_detail(
         "window_days": int(window_days),
         "method": "inverse_mase_one_step_validation",
         "naive_mae": round(scale, 6),
+        # B0: Streuung der Gewichte über das Fenster — reine Diagnose, die
+        # veröffentlichten Gewichte oben bleiben die des Gesamtfensters.
+        "weight_spread": ensemble_weight_spread(
+            idx, n, errs["harmonic_ar2"], errs["profile_ar2"], naive, usable
+        ),
+    }
+
+
+# B0 (Befund M4): Blocklänge, über die die Ensemble-Gewichte einzeln
+# nachgerechnet werden. 288 Slots = ein 24-h-Tag auf dem 5-Minuten-Raster,
+# gezählt vom Fensterende rückwärts — bewusst Slot-Blöcke, keine Kalender-
+# tage (an DST-Tagen wäre der Kalendertag 276/300 Slots lang; für eine
+# Streuungs-Diagnose ist die Stunde Versatz unerheblich, und es braucht
+# keine Zeitzone im Rechenkern).
+ENSEMBLE_SPREAD_BLOCK_SLOTS = 288
+
+
+def ensemble_weight_spread(
+    idx: np.ndarray,
+    n: int,
+    err_h: np.ndarray,
+    err_p: np.ndarray,
+    naive: np.ndarray,
+    usable: np.ndarray,
+    block_slots: int = ENSEMBLE_SPREAD_BLOCK_SLOTS,
+) -> dict:
+    """Ensemble-Gewichtsstreuung (B0): dieselben inversen MASE-Gewichte wie
+    ``ensemble_detail``, aber je 288-Slot-Block des Validierungsfensters.
+
+    Der Befund (M4) nennt Gewichte von 0,51/0,49 „ohne Trennschärfe“ — ob
+    das ein stabiles Unentschieden ist oder ein Mittel aus wild wechselnden
+    Tagesgewinnern, sagt erst die Streuung. Ausgewiesen werden je Block das
+    Harmonik-Gewicht (Profil = 1 − Harmonik), Standardabweichung, Spanne und
+    die Zahl der Blöcke, in denen ein Kern vorn lag. Blöcke ohne
+    auswertbaren Punkt oder ohne gültige Naive zählen nicht. Reine Diagnose:
+    Nichts hiervon fließt in ``weights`` oder in die Prognose.
+    """
+    empty = {
+        "block_slots": int(block_slots),
+        "blocks": 0,
+        "harmonic_per_block": [],
+        "std": None,
+        "min": None,
+        "max": None,
+        "range": None,
+        "blocks_favouring": {"harmonic_ar2": 0, "profile_ar2": 0, "tie": 0},
+    }
+    if len(idx) == 0:
+        return empty
+    block_of = (n - 1 - np.asarray(idx)) // int(block_slots)
+    per_block: list[float] = []
+    favouring = {"harmonic_ar2": 0, "profile_ar2": 0, "tie": 0}
+    for block in sorted(set(int(b) for b in block_of), reverse=True):
+        in_block = block_of == block
+        base = in_block & usable
+        if not base.any():
+            continue
+        scale = float(np.mean(naive[base]))
+        if not np.isfinite(scale) or scale <= 0:
+            continue
+        mase_h = mase_p = None
+        mask_h = base & np.isfinite(err_h)
+        mask_p = base & np.isfinite(err_p)
+        if mask_h.any():
+            mase_h = float(np.mean(err_h[mask_h])) / scale
+        if mask_p.any():
+            mase_p = float(np.mean(err_p[mask_p])) / scale
+        inv_h = 1.0 / mase_h if mase_h and mase_h > 0 else 0.0
+        inv_p = 1.0 / mase_p if mase_p and mase_p > 0 else 0.0
+        total = inv_h + inv_p
+        if total <= 0:
+            continue
+        w_h = inv_h / total
+        per_block.append(round(w_h, 4))
+        if abs(w_h - 0.5) < 0.005:
+            favouring["tie"] += 1
+        elif w_h > 0.5:
+            favouring["harmonic_ar2"] += 1
+        else:
+            favouring["profile_ar2"] += 1
+    if not per_block:
+        return empty
+    values = np.asarray(per_block, dtype=float)
+    return {
+        "block_slots": int(block_slots),
+        "blocks": int(len(values)),
+        "harmonic_per_block": per_block,
+        "std": round(float(values.std()), 4),
+        "min": round(float(values.min()), 4),
+        "max": round(float(values.max()), 4),
+        "range": round(float(values.max() - values.min()), 4),
+        "blocks_favouring": favouring,
     }
 
 
@@ -635,9 +779,13 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     adjusted = price_values - holiday_beta * hol_train
     beta = huber_fit(x[valid], adjusted[valid])
     residual = adjusted - x @ beta
-    phi = fit_ar2(residual)
+    phi, ar_detail_h = fit_ar2_detail(residual)
     # [epsilon(t-1), epsilon(t-2)] at the forecast origin. No stale carryover.
-    state = residual[-2:][::-1] if np.isfinite(residual[-2:]).all() else np.zeros(2)
+    # B0: Der stille Zustands-Reset (Lücke direkt vor dem Cutoff → AR startet
+    # bei 0) wird als ``state_reset`` ausgewiesen (Befund §5.12: ohne die
+    # letzten beiden Residuen läuft die AR-Korrektur die ersten Stunden leer).
+    ar_state_reset = not bool(np.isfinite(residual[-2:]).all())
+    state = residual[-2:][::-1] if not ar_state_reset else np.zeros(2)
     # A10: Zweitmodell „profile_ar2“ — Tagesprofil je Slot (Median) statt
     # Harmonischer, sonst dieselbe Kette (Holiday-Bereinigung, AR(2),
     # Tagesblock-Bootstrap). Es ist bewusst **nicht** eine zweite Variante
@@ -646,11 +794,10 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     profile_level = _profile_level(adjusted, slot_train)
     profile_structure = profile_level[slot_train]
     profile_residual = adjusted - profile_structure
-    profile_phi = fit_ar2(profile_residual)
+    profile_phi, ar_detail_p = fit_ar2_detail(profile_residual)
+    profile_state_reset = not bool(np.isfinite(profile_residual[-2:]).all())
     profile_state = (
-        profile_residual[-2:][::-1]
-        if np.isfinite(profile_residual[-2:]).all()
-        else np.zeros(2)
+        profile_residual[-2:][::-1] if not profile_state_reset else np.zeros(2)
     )
     profile_blocks = _residual_blocks(index, profile_residual, cfg)
     ensemble = ensemble_detail(
@@ -739,6 +886,19 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "jump_threshold_eur": JUMP_THRESHOLD_EUR,
         "ar_phi": phi,
         "ar_state": state,
+        # B0 (Befund Teil 4): Was bisher stumm geschah, steht im Artefakt —
+        # Stauch-Schritte der AR(2)-Stabilisierung je Kern, Rückfallgrund,
+        # Wurzelradius und der Zustands-Reset am Cutoff. ``ar_shrink_events``
+        # ist der flache Zähler des Hauptkerns (Name aus dem Befund).
+        "ar_shrink_events": int(ar_detail_h["shrink_events"]),
+        "ar_state_reset": bool(ar_state_reset),
+        "ar_detail": {
+            "harmonic_ar2": {**ar_detail_h, "state_reset": bool(ar_state_reset)},
+            "profile_ar2": {
+                **ar_detail_p,
+                "state_reset": bool(profile_state_reset),
+            },
+        },
         "residual_blocks": blocks,
         # A10: Zweitmodell samt Gewichten (Konzept §3.2 M3). Fehlen die
         # Felder (Alt-Artefakt), rechnet predict allein mit dem Hauptpfad.
@@ -861,6 +1021,152 @@ def blocks_from_uniform(
     return np.clip(indexes, 0, n_blocks - 1)
 
 
+def pool_summary(original: np.ndarray, projected: np.ndarray) -> dict:
+    """PAVA-Pools eines projizierten Verlaufs (B0).
+
+    Ein Pool ist ein maximaler Lauf gleicher projizierter Werte, in dem
+    mindestens ein Punkt gegenüber dem Original verändert wurde — genau die
+    Blöcke, die der Pool-Adjacent-Violators-Lauf zu einem Mittel verschmolzen
+    hat. Bereits gleiche Nachbarn im Original bilden keinen Pool (PAVA
+    verschmilzt nur bei strikter Verletzung). NaN-Punkte werden übersprungen,
+    wie in ``noon_law_projection``.
+    """
+    original = np.asarray(original, dtype=float)
+    projected = np.asarray(projected, dtype=float)
+    finite = np.isfinite(original) & np.isfinite(projected)
+    empty = {"pools": 0, "pooled_points": 0, "max_pool_size": 0, "max_shift_ct": 0.0}
+    if not finite.any():
+        return empty
+    orig = original[finite]
+    proj = projected[finite]
+    changed = orig != proj
+    if not changed.any():
+        return empty
+    breaks = np.flatnonzero(np.diff(proj) != 0) + 1
+    starts = np.concatenate(([0], breaks))
+    stops = np.concatenate((breaks, [len(proj)]))
+    sizes: list[int] = []
+    for start, stop in zip(starts, stops):
+        if changed[start:stop].any():
+            sizes.append(int(stop - start))
+    return {
+        "pools": len(sizes),
+        "pooled_points": int(sum(sizes)),
+        "max_pool_size": max(sizes) if sizes else 0,
+        "max_shift_ct": round(100.0 * float(np.max(np.abs(orig - proj))), 4),
+    }
+
+
+def pava_pool_stats(
+    cfg: Config,
+    segments: list[tuple[int, int, pd.Timestamp]],
+    kernels: dict[str, tuple[np.ndarray | None, np.ndarray | None]],
+    paths: tuple[np.ndarray | None, np.ndarray | None],
+    quantiles: tuple[np.ndarray | None, np.ndarray | None],
+) -> dict:
+    """PAVA-Pool-Statistik je 12-Uhr-Segment (B0, Befund Teil 4).
+
+    Sichtbar wird, wie stark die 12-Uhr-Projektion in eine Prognose
+    eingreift: je Segment die Pools der Punktpfade beider Kerne, der Anteil
+    veränderter Bootstrap-Pfade und -Punkte sowie die veränderten Punkte je
+    Quantilspalte. Segmente vor dem Gesetzesbeginn werden nicht projiziert
+    und erscheinen nicht. Reine Diagnose — keine Prognosezahl hängt davon ab.
+    """
+    law = law_since_utc(cfg).tz_convert(cfg.timezone)
+    raw_paths, projected_paths = paths
+    raw_q, projected_q = quantiles
+    per_segment = []
+    totals: dict = {
+        name: {"pools": 0, "pooled_points": 0, "max_pool_size": 0, "max_shift_ct": 0.0}
+        for name, (raw, _proj) in kernels.items()
+        if raw is not None
+    }
+    paths_changed_total = 0
+    path_points_changed = 0
+    path_points_finite = 0
+    q_changed_total = {column: 0 for column in Q_COLUMNS}
+    for start, stop, boundary in segments:
+        if boundary < law:
+            continue
+        entry: dict = {
+            "segment_start_local": boundary.isoformat(),
+            "points": int(stop - start),
+        }
+        for name, (raw, proj) in kernels.items():
+            if raw is None or proj is None:
+                entry[name] = None
+                continue
+            summary = pool_summary(raw[start:stop], proj[start:stop])
+            entry[name] = summary
+            total = totals[name]
+            total["pools"] += summary["pools"]
+            total["pooled_points"] += summary["pooled_points"]
+            total["max_pool_size"] = max(
+                total["max_pool_size"], summary["max_pool_size"]
+            )
+            total["max_shift_ct"] = max(total["max_shift_ct"], summary["max_shift_ct"])
+        if raw_paths is not None and projected_paths is not None:
+            raw_chunk = raw_paths[:, start:stop]
+            proj_chunk = projected_paths[:, start:stop]
+            finite = np.isfinite(raw_chunk) & np.isfinite(proj_chunk)
+            changed = finite & (raw_chunk != proj_chunk)
+            n_paths = int(raw_chunk.shape[0])
+            paths_changed = int(changed.any(axis=1).sum())
+            entry["paths"] = {
+                "paths": n_paths,
+                "paths_changed": paths_changed,
+                "paths_changed_fraction": round(paths_changed / n_paths, 4)
+                if n_paths
+                else 0.0,
+                "points_changed_fraction": round(
+                    float(changed.sum()) / float(finite.sum()), 4
+                )
+                if finite.any()
+                else 0.0,
+                "max_shift_ct": round(
+                    100.0
+                    * float(np.max(np.abs(raw_chunk[finite] - proj_chunk[finite]))),
+                    4,
+                )
+                if finite.any()
+                else 0.0,
+            }
+            paths_changed_total += paths_changed
+            path_points_changed += int(changed.sum())
+            path_points_finite += int(finite.sum())
+        if raw_q is not None and projected_q is not None:
+            q_entry = {}
+            for qi, column in enumerate(Q_COLUMNS):
+                raw_col = raw_q[start:stop, qi]
+                proj_col = projected_q[start:stop, qi]
+                finite = np.isfinite(raw_col) & np.isfinite(proj_col)
+                changed = int((finite & (raw_col != proj_col)).sum())
+                q_entry[column] = changed
+                q_changed_total[column] += changed
+            entry["quantiles_points_changed"] = q_entry
+        per_segment.append(entry)
+    n_segments = len(per_segment)
+    n_paths_total = int(raw_paths.shape[0]) if raw_paths is not None else 0
+    return {
+        "segments": per_segment,
+        "law_segments": n_segments,
+        "totals": {
+            **totals,
+            "paths_changed_fraction": round(
+                paths_changed_total / (n_paths_total * n_segments), 4
+            )
+            if n_paths_total and n_segments
+            else 0.0,
+            "path_points_changed_fraction": round(
+                path_points_changed / path_points_finite, 4
+            )
+            if path_points_finite
+            else 0.0,
+            "quantiles_points_changed": q_changed_total,
+        },
+    }
+
+
 def predict(
     model: dict,
     hours: int = 24,
@@ -869,6 +1175,7 @@ def predict(
     return_paths: bool = False,
     shared_draws: bool = False,
     kind: str = "harmonic_ar2",
+    diagnostics: dict | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
     """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
     5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
@@ -892,6 +1199,13 @@ def predict(
     ``ensemble`` (inverse-MASE-gewichtete Mischung beider Punktprognosen).
     Die Verteilungsform kommt in allen drei Fällen aus dem Tagesblock-
     Bootstrap; das Ensemble verschiebt sie auf den gewichteten Punktwert.
+
+    ``diagnostics`` (B0): Wird ein Wörterbuch übergeben, legt ``predict``
+    darin ``pava_pool_stats`` ab — Anzahl und Größe der PAVA-Pools der
+    12-Uhr-Projektion je Segment (Punktpfade beider Kerne, Bootstrap-Pfade,
+    Quantilspalten). Ohne Wörterbuch entsteht keinerlei Mehrarbeit; mit
+    Wörterbuch ändert sich keine einzige Prognosezahl (nur Kopien vor der
+    Projektion werden verglichen).
     """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
@@ -949,9 +1263,8 @@ def predict(
     # 12-Uhr-Regel: Median und Struktur dürfen innerhalb der Segmente
     # [12:00 Uhr, nächste 12:00 Uhr) nicht steigen; der erlaubte Sprung liegt
     # an der Segmentgrenze. Segmente vor dem Gesetzesbeginn bleiben unverändert.
-    point_harmonic = noon_law_projection(
-        structure + correction[offsets], index, cfg, segments=segments
-    )
+    raw_harmonic = structure + correction[offsets]
+    point_harmonic = noon_law_projection(raw_harmonic, index, cfg, segments=segments)
     # A10: Zweitmodell und Ensemble-Punkt. Ohne Profil im Artefakt (Altbestand
     # oder Schema-1-Fit) bleibt der Hauptpfad allein — nie ein halbes Ensemble.
     raw_profile = model.get("profile_level")
@@ -964,6 +1277,7 @@ def predict(
     w_profile = float(weights.get("profile_ar2", 0.0) or 0.0)
     kind = (kind or "harmonic_ar2").strip().lower()
     point_profile = None
+    raw_profile_point = None
     if profile_level.shape == (288,) and np.isfinite(profile_level).any():
         profile_phi = np.asarray(
             model["profile_phi"]
@@ -986,11 +1300,11 @@ def predict(
             )
             profile_correction[i] = following
             profile_state = [following, profile_state[0]]
+        raw_profile_point = (
+            profile_level[slots(index, cfg)] + profile_correction[offsets]
+        )
         point_profile = noon_law_projection(
-            profile_level[slots(index, cfg)] + profile_correction[offsets],
-            index,
-            cfg,
-            segments=segments,
+            raw_profile_point, index, cfg, segments=segments
         )
     if kind == "ensemble" and point_profile is not None:
         total = w_harmonic + w_profile
@@ -1046,6 +1360,8 @@ def predict(
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
     # B15: Pfade je Segment deduplizieren statt jeden Vollpfad einzeln zu
     # projizieren — bitgleich, aber deutlich weniger Projektionsarbeit.
+    # B0: Nur mit Diagnose-Wunsch wird eine Kopie der rohen Pfade gehalten.
+    raw_paths = paths.copy() if diagnostics is not None else None
     paths = project_paths(paths, index, cfg, segments=segments)
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -1061,9 +1377,21 @@ def predict(
     # die Quantil-Ordnung (q025 ≤ q10 ≤ q50 ≤ q90 ≤ q975) erhalten — min/max
     # zweier fallender Folgen bleibt fallend, daher bleibt die 12-Uhr-Regel
     # nach dem Clippen erhalten.
+    raw_quantiles = quantiles.copy() if diagnostics is not None else None
     for qi in range(quantiles.shape[1]):
         quantiles[:, qi] = noon_law_projection(
             quantiles[:, qi], index, cfg, segments=segments
+        )
+    if diagnostics is not None:
+        diagnostics["pava_pool_stats"] = pava_pool_stats(
+            cfg,
+            segments,
+            kernels={
+                "harmonic_ar2": (raw_harmonic, point_harmonic),
+                "profile_ar2": (raw_profile_point, point_profile),
+            },
+            paths=(raw_paths, paths),
+            quantiles=(raw_quantiles, quantiles),
         )
     # Ordnung je Zeitpunkt wahren (Sicherheitsnetz für unabhängige Projektion)
     # q50 ist Anker, untere Quantile ≤ Anker, obere ≥ Anker.
