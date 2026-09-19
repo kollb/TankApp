@@ -1,9 +1,9 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 18.09.2026 · App-Version 0.51.0. Nachschlagewerk für `data-tools/`
+> Stand: 19.09.2026 · App-Version 0.55.1. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
-> [12-Uhr-Regel-Check](#12-uhr-regel-check).
+> [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
 
 ## Inhaltsverzeichnis
 
@@ -11,6 +11,7 @@
 - [Datenformate](#datenformate)
 - [Optionale vertiefte Stationsanalyse](#optionale-vertiefte-stationsanalyse)
 - [12-Uhr-Regel-Check](#12-uhr-regel-check)
+- [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung)
 
 ## Interne Einzelprogramme
 
@@ -189,3 +190,70 @@ die Lektüre der App-Statistiken zu korrigieren, nicht das Panel.
 Kein Modell, kein Schätzen; Ausgabe Konsole +
 `data/analysis/report_noon_rule.md` (`--report`). Eingabe sind dieselben
 CSVs wie für die Selektion (export via `data-tools/export_influx.py`).
+
+## Regime-Check: Durchgabe einer Steuer- oder Deckel-Änderung
+
+`analysis/regime_check.py` (neu 19.09.2026). Anlass ist der Tankrabatt
+(−17 ct/L ab 01.10.2026, befristet bis 31.12.2026) und der Spritpreisdeckel
+(spätestens 01.01.2027). Befund, Konzept und Messtabellen:
+[BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md](BEFUND-TANKRABATT-PREISDECKEL-2026-09-19.md).
+
+Der Check beantwortet die Frage, die jede Regime-Behandlung voraussetzt:
+**Wie stark, wie schnell und wie unterschiedlich gibt der Bestand eine
+angekündigte Preisänderung tatsächlich durch?** Geschätzt werden je Station und
+Sorte der Kanten-Tag `t_hat`, der Betrag `delta_ct` (slot-gematchte robuste
+Differenz — der Vergleich je 5-Minuten-Slot entfernt die Tagesform, die sonst
+mit 17 ct Spanne in den Betrag hineinläuft), ein Tagesblock-Standardfehler, die
+Verzögerung in Tagen und die Durchgabe in Prozent.
+
+**Der eigene Bestand enthält bereits zwei Kanten.** Das Archiv reicht bis
+2025-09-09 (`docs/API.md`: `archive_since`) und umfasst damit den
+Mai-Juni-Tankrabatt 2026 mit Start (01.05., Senkung) und Ende (01.07.,
+Erhöhung). Das Rabatt-**Ende** ist derselbe Schock in derselben Richtung wie
+das Rabatt-Ende am 01.01.2027 — wer den Januar vorbereiten will, misst den
+Juli. Deshalb ist dieser Check Phase 0 des Befunds und keine Vorstudie.
+
+### Aufruf auf dem Daten-Host (NAS)
+
+```bash
+# Juli-Kante (Rabatt-Ende, Erhöhung um +17 ct) auf dem echten Bestand
+python data-tools/export_influx.py --fuel e10 --env-file data/influx.env \
+    --since 2026-06-15 --out data/export_e10_juni_juli.csv
+python analysis/regime_check.py --data data/export_e10_juni_juli.csv \
+    --fuel E10 --break 2026-07-01 --announced-ct 17.0
+
+# Ohne --break wird die Kante je Station gesucht (--detect ist Default):
+python analysis/regime_check.py --data data/export_e10_juni_juli.csv --fuel E10
+
+# Diesel getrennt — die Energiesteuersätze unterscheiden sich je Sorte
+# (Benzin 65,45 ct/L, Diesel 47,04 ct/L), eine globale Zahl wäre falsch.
+python analysis/regime_check.py --data data/export_diesel_juni_juli.csv \
+    --fuel DIESEL --break 2026-07-01 --announced-ct 14.04
+```
+
+`--announced-ct` ist **vorzeichenbehaftet**: `-17` für eine Senkung, `+17` für
+eine Erhöhung; `durchgabe_pct = 100` bedeutet vollständige Durchgabe.
+`--cutoff` begrenzt die Schätzung auf Daten vor einem Zeitpunkt — derselbe
+Zukunftsleck-Schutz wie im Fit (`tests/test_regime_check.py` nagelt ihn).
+Der Messpfad braucht nur numpy/pandas (`analysis/requirements.txt`), keine
+Engine; Bericht nach `data/analysis/report_regime.md`.
+
+### Befund-Zahlen nachrechnen
+
+```bash
+python -m pip install -r engine/requirements.txt   # einmalig
+python analysis/regime_check.py --simulate         # Szenarien A, B, C
+python analysis/regime_check.py --simulate --scenarios C
+```
+
+`--simulate` fährt Rolling-Origin-Läufe der **echten**
+`engine.models.fit`/`predict`-Kette über einen Bruch: Status quo, der
+hartkodierte Daten-Abzug, das Schritt-Dummy-Äquivalent und die Variante mit
+geschätzter Kante, jeweils mit Bias, Intervallbreite und `P_besser` gegen die
+Wahrheit — plus die Projektions-Lemmata (Regime-Kante gegen 12-Uhr-PAVA,
+Deckel-Clip vor/nach der Projektion). **Die Reihen sind synthetisch**, auf die
+Live-Messwerte des
+[12-Uhr-Befunds](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) kalibriert
+(Tagesspanne 17 ct, Tief Median 7 Uhr, Hoch Median 12 Uhr, 44 % Mittagssprünge
+≥ 2 ct); die Kalibrierung steht unter Test. Sie belegen Mechanismen und
+Vorzeichen, keine Beträge für den Echtbestand — die liefert der Messpfad oben.
