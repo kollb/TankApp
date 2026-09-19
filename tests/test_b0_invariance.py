@@ -130,7 +130,15 @@ def _assert_metrics_equal(actual: dict, expected: dict) -> None:
 
 
 def test_backtest_kennzahlen_sind_unveraendert(series, cfg, golden):
-    report, rows = run_backtest([series], cfg, days=2, until="2026-08-01")
+    report, rows = run_backtest(
+        [series],
+        cfg,
+        days=2,
+        until="2026-08-01",
+        kind="harmonic_ar2",
+        shared_draws=False,
+        day_pair=False,
+    )
     want = golden["backtest"]
     _assert_metrics_equal(report["metrics"], want["metrics"])
     assert len(report["stations"]) == len(want["stations"])

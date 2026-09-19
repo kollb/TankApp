@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.58.0] – 2026-09-19
+
+**B3 — Mehrtage & Kerne (M2, M4) des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md).**
+
+- **Day-Pair-Bootstrap:** Aufeinanderfolgende Prognose-Kalendertage ziehen
+  aufeinanderfolgende Trainingsblöcke (`TANKAPP_DAYPAIR`, Default an). Aus
+  bleibt bitgleich zum Stand vor 0.58.0. Paare, deren späterer Trainingstag
+  auf einer deklarierten Regime-Kante liegt, fallen heraus (R2); ohne gültiges
+  Paar unabhängig. CLI: `--day-pair` / `--no-day-pair`.
+- **Publizierter Kern `profile_ar2`:** Default von App, Backtest und CLI ist
+  das Slot-Profil (gemessen besser als das Eine-Schritt-Ensemble). `ensemble`
+  und `harmonic_ar2` bleiben Schalter. Backtest und Veröffentlichung messen
+  denselben Pfad (`backtest_model_kind` = `model_kind`).
+- **M4-Folgepunkt sichtbar:** `ensemble.horizon_weights` (`not_estimated`) und
+  `horizon_kernel.mase` im Backtest-Bericht. Keine zweite Mischung nach
+  Horizont.
+- Cache-Schema 5 (Fingerprint `day_pair`). Compose reicht
+  `TANKAPP_MODEL_KIND` / `TANKAPP_DAYPAIR` / `TANKAPP_SHARED_DRAWS` durch.
+
 ## [0.57.0] – 2026-09-19
 
 **B2 — Kalibrierungsschicht des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b2--kalibrierungsschicht-der-kernbatch).**

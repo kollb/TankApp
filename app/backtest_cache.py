@@ -56,7 +56,7 @@ from typing import Any
 # Schema 4 (B2): Der Backtest liefert einen zeitlich getrennt geprüften
 # PIT-Kandidaten. Modellkern und Shared-Draw-Modus gehören in den
 # Fingerabdruck, damit nie eine Kurve einer anderen Verteilung dient.
-CACHE_SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 5
 
 # Dieselben Spalten gehen als schlanke initargs in den Modell-Pool. Sie sind
 # vollständig für fit() + run_backtest(); die übrigen PriceSeries-Spalten sind
@@ -88,6 +88,7 @@ PAYLOAD_KEYS = (
     "ar_shrink",
     "model_kind",
     "shared_draws",
+    "day_pair",
     "calibration_candidate",
 )
 
@@ -123,7 +124,8 @@ def fingerprint(
     days: int,
     *,
     model_kind: str = "harmonic_ar2",
-    shared_draws: bool = False,
+    shared_draws: bool = True,
+    day_pair: bool = True,
 ) -> str:
     """Fingerabdruck aller Eingaben, von denen der Bericht abhängt.
 
@@ -146,6 +148,7 @@ def fingerprint(
         "config": cfg.to_dict(),
         "model_kind": str(model_kind),
         "shared_draws": bool(shared_draws),
+        "day_pair": bool(day_pair),
     }
     return _sha256(
         json.dumps(header, sort_keys=True, ensure_ascii=False, default=str).encode(

@@ -96,10 +96,13 @@ class Settings:
     # Gegenmessung; ohne zeitlich getrennt abgenommene Kurve bleibt das Modell
     # trotz aktivem Schalter sichtbar unkalibriert.
     calibration: bool = True
-    # A10: Punktmodell der Prognose — „ensemble“ (Default, inverse MASE
-    # gewichtet), „harmonic_ar2“ (Hauptpfad allein, Stand vor 0.31.0) oder
-    # „profile_ar2“ (Zweitmodell allein). Gegenmessung per Env.
-    model_kind: str = "ensemble"
+    # A10/B3: Punktmodell der Prognose — „profile_ar2“ (Default seit 0.58.0,
+    # gemessen besser als das Eine-Schritt-Ensemble), „harmonic_ar2“
+    # (Hauptpfad allein) oder „ensemble“ (inverse-MASE-Mischung).
+    model_kind: str = "profile_ar2"
+    # B3: aufeinanderfolgende Prognose-Kalendertage als Paar ziehen
+    # (TANKAPP_DAYPAIR=0 = unabhängig, Stand vor 0.58.0).
+    day_pair: bool = True
     # Gepoolter Feiertags-Dummy je Bundesland (Konzept §3.2):
     # TANKAPP_CITY_SUBDIVS="Frankfurt:HE;Gütersloh:NW". Ohne Angabe bleibt
     # der Dummy beitragslos null (keine erfundenen Feiertagseffekte).
@@ -166,9 +169,11 @@ class Settings:
             not in {"0", "false", "off", "no"},
             model_kind=_env_choice(
                 "TANKAPP_MODEL_KIND",
-                "ensemble",
+                "profile_ar2",
                 {"harmonic_ar2", "profile_ar2", "ensemble"},
             ),
+            day_pair=os.environ.get("TANKAPP_DAYPAIR", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
             decision_hour=_env_int("TANKAPP_DECISION_HOUR", 12, low=0, high=23),
             # B30: Bodenkante der 12-Uhr-Regel (eine Quelle: dieser Wert wird
             # über engine_config() zur Engine-Konfiguration).
