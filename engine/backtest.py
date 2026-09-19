@@ -7,7 +7,8 @@ import pandas as pd
 
 from .config import Config
 from .data import PriceSeries, dst_transition_days, local_day_hours, scheduled
-from .models import fit, predict, utc_time
+from .models import QUANTILES, fit, predict, utc_time
+from .regimes import break_summary, breaks_within, regime_breaks_utc
 
 PENDING = [
     "M3-Zweitmodell (ETS/Local-Level) und inverse-MASE-Ensemble",
@@ -42,6 +43,121 @@ ROLLING_PICP_HYSTERESIS_PP = 1.5
 # (actual > q50) dreimal so stark bestraft wie Überschätzung:
 #   L = τ·(y−q) falls y ≥ q, sonst (1−τ)·(q−y).
 PINBALL_TAU_ASYM = 0.75
+
+
+# B0 (Befund Teil 4, §5.7): PIT-Paare. Für jeden bewerteten Punkt der
+# Mittelrang der Beobachtung unter den Bootstrap-Pfaden — bei perfekter
+# Kalibrierung gleichverteilt auf [0, 1]. Der Bericht verdichtet sie je
+# Station und Horizont zu einem Histogramm mit 40 Klassen à 0,025 (die
+# veröffentlichten Quantilstufen 2,5/10/50/90/97,5 % liegen genau auf
+# Klassengrenzen) und zur Abdeckung je Stufe. Die Paare selbst stehen als
+# Spalte ``pit`` in den Vorhersagezeilen (predictions.csv.gz).
+PIT_BINS = 40
+PIT_METHOD = "mid_rank_of_actual_among_bootstrap_paths"
+
+
+def pit_values(paths: np.ndarray, actual: np.ndarray) -> np.ndarray:
+    """Mittelrang-PIT je Spalte: (#Pfade < y + ½·#Pfade = y) / #endliche Pfade.
+
+    ``paths`` hat die Form (n_pfade, n_punkte), ``actual`` (n_punkte,).
+    Punkte ohne endlichen Pfad oder ohne Beobachtung bekommen NaN. Der
+    Mittelrang ist die randomisierungsfreie Wahl für die diskrete Bootstrap-
+    Verteilung (Bindungen zählen halb) — dieselbe Zahl in jedem Lauf.
+    """
+    paths = np.asarray(paths, dtype=float)
+    actual = np.asarray(actual, dtype=float)
+    if paths.ndim != 2 or paths.shape[1] != actual.shape[0]:
+        raise ValueError("pit_values: Pfade (n, k) und Beobachtungen (k,) erwartet.")
+    finite = np.isfinite(paths)
+    count = finite.sum(axis=0)
+    with np.errstate(invalid="ignore"):
+        below = (finite & (paths < actual)).sum(axis=0)
+        equal = (finite & (paths == actual)).sum(axis=0)
+    out = np.full(actual.shape, np.nan)
+    ok = (count > 0) & np.isfinite(actual)
+    out[ok] = (below[ok] + 0.5 * equal[ok]) / count[ok]
+    return out
+
+
+def pit_summary(pit: np.ndarray) -> dict:
+    """Histogramm (40 × 0,025) und Abdeckung je veröffentlichter Quantilstufe.
+
+    ``coverage[q]`` ist der Anteil der Punkte mit PIT ≤ q — kalibriert wäre
+    er gleich q. ``interval_95`` ist der Anteil in (0,025, 0,975], also die
+    PIT-Fassung der PICP.
+    """
+    values = np.asarray(pit, dtype=float)
+    values = values[np.isfinite(values)]
+    n = int(values.size)
+    if n == 0:
+        return {
+            "n": 0,
+            "bins": PIT_BINS,
+            "bin_width": 1.0 / PIT_BINS,
+            "histogram": [0] * PIT_BINS,
+            "coverage": {f"{q:g}": None for q in QUANTILES},
+            "interval_95": None,
+            "mean": None,
+        }
+    edges = np.linspace(0.0, 1.0, PIT_BINS + 1)
+    histogram, _ = np.histogram(np.clip(values, 0.0, 1.0), bins=edges)
+    return {
+        "n": n,
+        "bins": PIT_BINS,
+        "bin_width": 1.0 / PIT_BINS,
+        "histogram": [int(count) for count in histogram],
+        "coverage": {
+            f"{q:g}": round(float(np.mean(values <= q)), 4) for q in QUANTILES
+        },
+        "interval_95": round(
+            float(np.mean((values > QUANTILES[0]) & (values <= QUANTILES[-1]))), 4
+        ),
+        "mean": round(float(values.mean()), 4),
+    }
+
+
+def pit_report(
+    rows: pd.DataFrame,
+    horizon_rows: dict[int, pd.DataFrame],
+    series: list[PriceSeries],
+) -> dict:
+    """PIT-Block des Berichts: je Station, je Horizont, ``all`` und
+    ``break_free`` (Punkte, deren Fenster keine Regime-Kante überspannt)."""
+    frames = {"24h": rows}
+    for hours, frame in horizon_rows.items():
+        frames[f"{hours}h"] = frame
+    stations = []
+    for item in series:
+        horizons = {}
+        for label, frame in frames.items():
+            if len(frame):
+                subset = frame.loc[
+                    (frame.city == item.city)
+                    & (frame.station_id == item.station_id)
+                    & (frame.fuel == item.fuel)
+                ]
+                pit = subset.pit.to_numpy(dtype=float)
+                free = ~subset.regime_break_spanned.to_numpy(dtype=bool)
+            else:
+                pit = np.array([], dtype=float)
+                free = np.array([], dtype=bool)
+            horizons[label] = {
+                "all": pit_summary(pit),
+                "break_free": pit_summary(pit[free]),
+            }
+        stations.append({**item.identity(), "horizons": horizons})
+    return {
+        "method": PIT_METHOD,
+        "bins": PIT_BINS,
+        "levels": list(QUANTILES),
+        "note": (
+            "PIT = Mittelrang der Beobachtung unter den Bootstrap-Pfaden; "
+            "kalibriert wäre das Histogramm flach und coverage[q] = q. "
+            "break_free lässt Punkte weg, deren Trainings- oder "
+            "Bewertungsfenster eine deklarierte Regime-Kante überspannt."
+        ),
+        "stations": stations,
+    }
 
 
 def pinball_loss(actual, forecast, tau: float = PINBALL_TAU_ASYM):
@@ -326,12 +442,33 @@ def rolling_picp_7d(
     return results
 
 
+def _spanned(
+    breaks: list[dict], training_start: pd.Timestamp, stamps: pd.DatetimeIndex
+) -> np.ndarray:
+    """Je Zeitstempel: liegt eine Kante in [training_start, stamp]? (B0)"""
+    flags = np.zeros(len(stamps), dtype=bool)
+    if not breaks or not len(stamps):
+        return flags
+    # Vergleich über pandas, nicht über Rohwerte: Index und Timestamp können
+    # verschiedene Auflösungen tragen (µs vs. ns) — asi8/.value sind dann
+    # nicht dieselbe Einheit.
+    for item in breaks:
+        at = item["at"]
+        if at < training_start:
+            continue
+        flags |= np.asarray(stamps >= at, dtype=bool)
+    return flags
+
+
 def run_backtest(
     series: list[PriceSeries],
     cfg: Config,
     days: int = 21,
     until=None,
     strict_end: bool | None = None,
+    kind: str = "harmonic_ar2",
+    shared_draws: bool = False,
+    horizon_rows: bool = False,
 ) -> tuple[dict, pd.DataFrame]:
     """Rolling-Origin-Backtest über ``days`` lokale Tage bis ``until`` (exklusiv).
 
@@ -340,7 +477,25 @@ def run_backtest(
     Default: an, wenn das Ende automatisch aus den Daten bestimmt wird (der
     letzte Tag ist dann angebrochen und darf nicht als Wahrheit dienen);
     aus bei explizitem ``until`` (CLI-Auswertung mit bekannter Zukunft).
+
+    ``kind``/``shared_draws`` (B0): das gemessene Punktmodell und die
+    Ziehungsart. Default ist der Stand vor 0.56.0 — ``harmonic_ar2`` mit
+    unabhängiger Ziehung —, **nicht** das, was die App veröffentlicht
+    (``ensemble``, gemeinsame Ziehung). Der Bericht nennt beides unter
+    ``model_kind``/``shared_draws``, damit die Lücke sichtbar ist
+    (docs/LUECKEN.md); das Umschalten ist eine Messentscheidung für B3.
+
+    ``horizon_rows=True`` (B0) hängt die bewerteten Zeilen der +3-d/+7-d-
+    Fenster an die Rückgabe an (Spalte ``horizon_hours`` = 72/168; die
+    24-h-Zeilen tragen 0) — die PIT-Paare aller drei Horizonte landen so in
+    ``predictions.csv.gz``. Der Bericht ist davon unabhängig; Default aus,
+    damit ``rows`` für bestehende Aufrufer die 24-h-Zeilen bleiben.
     """
+    kind = (kind or "harmonic_ar2").strip().lower()
+    if kind not in ("harmonic_ar2", "profile_ar2", "ensemble"):
+        raise ValueError(
+            "Backtest-kind muss harmonic_ar2, profile_ar2 oder ensemble sein."
+        )
     if not 1 <= days <= 90:
         raise ValueError("Backtest-Zeitraum muss 1 bis 90 Tage betragen.")
     end = (
@@ -393,7 +548,10 @@ def run_backtest(
         h: {"evaluated": 0, "no_common_observations": 0, "beyond_test_end": 0}
         for h in HORIZON_HOURS
     }
+    declared_breaks = regime_breaks_utc(cfg)
     for item in series:
+        # B0: Kanten dieser Sorte (oder aller Sorten) — Marker je Fold/Zeile.
+        station_breaks = regime_breaks_utc(cfg, item.fuel)
         for local_origin in origins:
             origin = local_origin.tz_convert("UTC")
             stop = (local_origin + pd.DateOffset(days=1)).tz_convert("UTC")
@@ -423,7 +581,15 @@ def run_backtest(
             }
             try:
                 model = fit(item, origin, cfg)
-                forecast = predict(model, index=target)
+                # B0: Pfade mitnehmen — die Quantile sind mit und ohne
+                # ``return_paths`` dieselben; aus den Pfaden kommt der PIT.
+                forecast, paths = predict(
+                    model,
+                    index=target,
+                    kind=kind,
+                    shared_draws=shared_draws,
+                    return_paths=True,
+                )
             except ValueError as exc:
                 folds.append(
                     {
@@ -458,6 +624,19 @@ def run_backtest(
                 rows[key] = value
             rows["origin"] = origin.isoformat()
             rows["timestamp"] = rows.index.map(lambda time: time.isoformat())
+            # B0: PIT je Punkt und Regime-Marker — eine Zeile ist markiert,
+            # wenn zwischen Trainingsbeginn und Bewertungszeitpunkt eine
+            # deklarierte Kante liegt (Training oder Bewertung überspannt sie).
+            valid_positions = np.flatnonzero(valid.to_numpy())
+            rows["pit"] = pit_values(
+                paths[:, valid_positions], rows["actual"].to_numpy(dtype=float)
+            )
+            training_start = utc_time(model["training_start"], cfg.timezone)
+            rows["regime_break_spanned"] = _spanned(
+                station_breaks, training_start, rows.index
+            )
+            rows["horizon_hours"] = 0
+            fold_breaks = breaks_within(station_breaks, training_start, stop)
             scale_detail = model.get("mase_scale_detail") or {}
             folds.append(
                 {
@@ -474,6 +653,18 @@ def run_backtest(
                     "comparison_coverage_pct": 100 * len(rows) / int(observed.sum())
                     if observed.any()
                     else 0,
+                    # B0: AR(2)-Stauchung und Zustands-Reset je Fold (aus dem
+                    # Artefakt), Regime-Kanten im Fenster dieses Folds.
+                    "ar_shrink_events": int(model.get("ar_shrink_events") or 0),
+                    "ar_fallback": (model.get("ar_detail") or {})
+                    .get("harmonic_ar2", {})
+                    .get("fallback"),
+                    "ar_state_reset": bool(model.get("ar_state_reset", False)),
+                    "training_start": model["training_start"],
+                    "regime_break_spanned": bool(fold_breaks),
+                    "regime_breaks": [
+                        item_["announced_local"] for item_ in fold_breaks
+                    ],
                     **metrics(rows),
                 }
             )
@@ -504,30 +695,49 @@ def run_backtest(
                 if not h_observed.any():
                     horizon_folds[horizon_hours]["no_common_observations"] += 1
                     continue
-                h_forecast = predict(model, index=h_target)
+                h_forecast, h_paths = predict(
+                    model,
+                    index=h_target,
+                    kind=kind,
+                    shared_draws=shared_draws,
+                    return_paths=True,
+                )
                 h_valid = h_observed & h_forecast.q50.notna() & h_forecast.naive.notna()
                 h_rows = h_forecast.loc[h_valid].copy()
                 if not len(h_rows):
                     horizon_folds[horizon_hours]["no_common_observations"] += 1
                     continue
                 h_rows["actual"] = h_truth.loc[h_valid, "price"]
+                h_rows["source"] = h_truth.loc[h_valid, "source"]
+                h_rows["status_known"] = h_truth.loc[h_valid, "status_known"]
                 h_rows["mase_scale"] = (
                     model["mase_scale"] if model["mase_scale"] is not None else np.nan
                 )
                 for key, value in item.identity().items():
                     h_rows[key] = value
                 h_rows["origin"] = origin.isoformat()
+                h_rows["timestamp"] = h_rows.index.map(lambda time: time.isoformat())
+                h_rows["horizon_hours"] = horizon_hours
+                h_positions = np.flatnonzero(h_valid.to_numpy())
+                h_rows["pit"] = pit_values(
+                    h_paths[:, h_positions], h_rows["actual"].to_numpy(dtype=float)
+                )
+                h_rows["regime_break_spanned"] = _spanned(
+                    station_breaks, training_start, h_rows.index
+                )
                 horizon_predictions[horizon_hours].append(h_rows)
                 horizon_folds[horizon_hours]["evaluated"] += 1
     rows = pd.concat(predictions, ignore_index=True) if predictions else pd.DataFrame()
     aggregate = metrics(rows)
     horizon_report = {}
+    horizon_rows_by_hours: dict[int, pd.DataFrame] = {}
     for horizon_hours in HORIZON_HOURS:
         h_rows_all = (
             pd.concat(horizon_predictions[horizon_hours], ignore_index=True)
             if horizon_predictions[horizon_hours]
             else pd.DataFrame()
         )
+        horizon_rows_by_hours[horizon_hours] = h_rows_all
         horizon_report[f"{horizon_hours}h"] = {
             "window": "24 h am Horizontbeginn (origin + "
             f"{horizon_hours} h bis origin + {horizon_hours + 24} h)",
@@ -614,9 +824,73 @@ def run_backtest(
             }
         ),
     }
+    # B0 (§5.4.3): Regime-Kanten im Fenster — gezählt und markiert, nicht
+    # ausgeschlossen. „Fenster“ ist der Zeitraum, den irgendein Fold gesehen
+    # hat: vom frühesten Trainingsbeginn bis zum Ende des Testzeitraums.
+    window_start = min(
+        (
+            utc_time(fold["training_start"], cfg.timezone)
+            for fold in scored_folds
+            if fold.get("training_start")
+        ),
+        default=origins[0].tz_convert("UTC") - pd.Timedelta(days=cfg.train_days),
+    )
+    in_window = breaks_within(declared_breaks, window_start, end_utc)
+    flagged_rows = (
+        rows.regime_break_spanned.to_numpy(dtype=bool)
+        if len(rows)
+        else np.zeros(0, dtype=bool)
+    )
+    regime_report = {
+        "policy": "flagged_not_excluded",
+        "policy_note": (
+            "Deklarierte Kanten (Config.regimes) werden gezählt und je Fold/"
+            "Zeile markiert (regime_break_spanned: Kante zwischen Trainings-"
+            "beginn und Bewertungszeitpunkt). Ausgeschlossen wird nichts — "
+            "Kennzahlen über eine Kante sind als Modellgüte nicht "
+            "interpretierbar (Befund §5.4.3); metrics_break_free zeigt den "
+            "Rest."
+        ),
+        "window_start": window_start.isoformat(),
+        "window_end_exclusive": end_utc.isoformat(),
+        "declared": [break_summary(item) for item in declared_breaks],
+        "in_window": [break_summary(item) for item in in_window],
+        "count": len(in_window),
+        "folds_scored": len(scored_folds),
+        "folds_spanning": sum(
+            1 for fold in scored_folds if fold.get("regime_break_spanned")
+        ),
+        "points": int(len(rows)),
+        "points_spanning": int(flagged_rows.sum()),
+        "metrics_break_free": metrics(rows.loc[~flagged_rows])
+        if len(rows) and flagged_rows.any()
+        else None,
+    }
+    ar_report = {
+        "folds_scored": len(scored_folds),
+        "folds_shrunk": sum(
+            1 for fold in scored_folds if fold.get("ar_shrink_events", 0) > 0
+        ),
+        "shrink_events_total": int(
+            sum(fold.get("ar_shrink_events", 0) for fold in scored_folds)
+        ),
+        "folds_state_reset": sum(
+            1 for fold in scored_folds if fold.get("ar_state_reset")
+        ),
+        "fallbacks": {
+            reason: sum(1 for fold in scored_folds if fold.get("ar_fallback") == reason)
+            for reason in sorted(
+                {fold.get("ar_fallback") for fold in scored_folds} - {None}
+            )
+        },
+    }
     report = {
         "schema_version": 1,
         "status": "preliminary",
+        # B0: das gemessene Punktmodell und die Ziehungsart — bewusst neben
+        # den Kennzahlen, weil die App ein anderes Modell veröffentlicht.
+        "model_kind": kind,
+        "shared_draws": bool(shared_draws),
         "m3_complete": False,
         "decision_ready": False,
         "calibrated": False,
@@ -644,6 +918,11 @@ def run_backtest(
         # Kein M3-Abnahmekriterium (diese gelten für 24 h) — ehrlich
         # ausgewiesen, damit die Fan-Chart-Horizonte messbar sind.
         "horizons": horizon_report,
+        # B0: PIT-Histogramme je Station/Horizont (all / break_free), die
+        # Regime-Kanten im Fenster und die AR(2)-Stauchungen über alle Folds.
+        "pit": pit_report(rows, horizon_rows_by_hours, series),
+        "regime_breaks_in_window": regime_report,
+        "ar_shrink": ar_report,
         "decision": {
             "decision_hour": cfg.decision_hour,
             "theta_ct": DECISION_THETA_CT,
@@ -663,7 +942,22 @@ def run_backtest(
         "stations": per_station,
         "folds": folds,
     }
+    if horizon_rows:
+        extra = [frame for frame in horizon_rows_by_hours.values() if len(frame)]
+        if extra:
+            rows = pd.concat([rows, *extra], ignore_index=True)
     return report, rows
+
+
+def _break_line(item: dict) -> str:
+    """Eine Regime-Kante als Berichtszeile: Termin, Art, Sorte, Betrag, Quelle."""
+    value = item.get("announced_value")
+    amount = "Betrag unbekannt" if value is None else f"{value:+.1f} ct/L"
+    fuel = "alle Sorten" if item.get("fuel") is None else item["fuel"]
+    return (
+        f"{item['announced_local']} ({item['kind']}, {fuel}, {amount}, "
+        f"{item.get('status')}, Quelle: {item.get('source') or '—'})"
+    )
 
 
 def markdown_report(report: dict) -> str:
@@ -773,6 +1067,61 @@ def markdown_report(report: dict) -> str:
                 f"| {current.get('points', 0)} "
                 f"| {'—' if badge is None else badge} |"
             )
+    regime = report.get("regime_breaks_in_window")
+    pit = report.get("pit") or {}
+    if regime is not None:
+        # B0: Messgrundlagen — gemessenes Modell, Kanten im Fenster, PIT.
+        in_window = regime.get("in_window") or []
+        lines += [
+            "",
+            "## Messgrundlagen (B0)",
+            "",
+            f"Gemessenes Punktmodell: `{report.get('model_kind', 'harmonic_ar2')}`"
+            f"{' (gemeinsame Ziehung)' if report.get('shared_draws') else ' (unabhängige Ziehung)'}"
+            " — die App veröffentlicht `ensemble` mit gemeinsamer Ziehung; die "
+            "Kennzahlen hier gelten für das gemessene Modell.",
+            f"Regime-Kanten im Fenster ({regime.get('window_start')} bis "
+            f"{regime.get('window_end_exclusive')}): **{regime.get('count', 0)}**"
+            + (
+                " — " + "; ".join(_break_line(item) for item in in_window)
+                if in_window
+                else ""
+            )
+            + f". Folds mit Kante im Fenster: {regime.get('folds_spanning', 0)} von "
+            f"{regime.get('folds_scored', 0)}; Punkte: {regime.get('points_spanning', 0)} "
+            f"von {regime.get('points', 0)}. Markiert, nicht ausgeschlossen "
+            "(`regime_break_spanned`).",
+        ]
+        ar = report.get("ar_shrink") or {}
+        if ar:
+            lines.append(
+                f"AR(2)-Stabilisierung: {ar.get('folds_shrunk', 0)} von "
+                f"{ar.get('folds_scored', 0)} Folds gestaucht "
+                f"({ar.get('shrink_events_total', 0)} Schritte), "
+                f"{ar.get('folds_state_reset', 0)} Zustands-Resets, Rückfälle: "
+                f"{ar.get('fallbacks') or 'keine'}."
+            )
+        if pit.get("stations"):
+            lines += [
+                "",
+                "PIT (Mittelrang der Beobachtung unter den Bootstrap-Pfaden; "
+                "kalibriert: Anteil ≤ q gleich q, 95-%-Intervall 0,95):",
+                "",
+                "| Stadt | Station | Horizont | n | ≤ 0,025 | ≤ 0,5 | ≤ 0,975 | im 95-%-Band | n bruchfrei | 95-%-Band bruchfrei |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+            for station in pit["stations"]:
+                for label, horizon in (station.get("horizons") or {}).items():
+                    all_ = horizon["all"]
+                    free = horizon["break_free"]
+                    cov = all_.get("coverage") or {}
+                    lines.append(
+                        f"| {cell(station['city'])} | {cell(station['station_name'])} "
+                        f"| {label} | {all_['n']} | {number(cov.get('0.025'))} "
+                        f"| {number(cov.get('0.5'))} | {number(cov.get('0.975'))} "
+                        f"| {number(all_.get('interval_95'))} | {free['n']} "
+                        f"| {number(free.get('interval_95'))} |"
+                    )
     dst = report.get("dst") or {}
     if dst:
         days = dst.get("days") or []
