@@ -883,14 +883,16 @@ neben Version 1, bis die neue GUI flächendeckend läuft.
 
 ## 13. Mobil, Desktop, PWA
 
-- **Mobil (Primärfall Säule):** Bottom-Navigation (6 Punkte, 44-px-Ziele),
-  eine Spalte, Bottom-Sheets für Ebene 1, Sticky-Primärhandlung nur in
-  Jetzt („Navigieren“). Querformat: Tagesstreifen/Kalender werden
-  zweizeilig, keine neue Seite.
-- **Desktop (Primärfall Labor + Woche):** Seitenleiste links (6 Bereiche +
-  Labor farblich abgesetzt), Inhalt 2-spaltig (Kern + Einordnung daneben
-  statt darunter), Ebene 1 als Seitenpanel rechts (statt Sheet). Labor als
-  ruhige Lese-Spalte mit Sprungleiste oben.
+- **Mobil (Primärfall Säule):** Bottom-Navigation 3+1 (Jetzt/Woche/Stationen
+  + „Mehr“, 44-px-Ziele; „Mehr“ öffnet das Studio-Blatt mit Labor/Ich/System/
+  Glossar, umgesetzt in 0.59.0), eine Spalte, Bottom-Sheets für Ebene 1,
+  Sticky-Primärhandlung nur in Jetzt („Navigieren“). Querformat:
+  Tagesstreifen/Kalender werden zweizeilig, keine neue Seite.
+- **Desktop (Primärfall Labor + Woche):** Seitenleiste links (drei Haupt-
+  Bereiche + „Studio“-Gruppe mit Labor/Ich/System/Glossar, Labor farblich
+  abgesetzt; 0.59.0), Inhalt 2-spaltig (Kern + Einordnung daneben statt
+  darunter), Ebene 1 als Seitenpanel rechts (statt Sheet). Labor als ruhige
+  Lese-Spalte mit Sprungleiste oben.
 - **PWA (seit 0.38.0 umgesetzt, B10):** installierbar, Offline-Lesen des
   letzten Stands (API-Antworten ≤ 30 Min aus dem Service-Worker-Cache),
   Offline-Warteschlange für Belege und Vorsätze („wird gesendet, sobald
