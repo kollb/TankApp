@@ -45,6 +45,7 @@
   - [GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)](#gui-responsivität-straßen-distanzen-ohne-netz-blockade-seit-0240)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
   - [12-Uhr-Bodenkante beobachten (B30, seit 0.51.0)](#12-uhr-bodenkante-beobachten-b30-seit-0510)
+  - [Regime-Kalender (B0, seit 0.56.0)](#regime-kalender-b0-seit-0560)
   - [Größe der Veröffentlichung (O22, seit 0.44.0)](#größe-der-veröffentlichung-o22-seit-0440)
   - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
@@ -443,6 +444,42 @@ Fehler-Fall in `runtime/engine/last-attempt.json`.
 |---|---|
 | `TANKAPP_PRICE_LAW_LOCAL` | Kante als lokaler Zeitpunkt, z. B. `2026-04-01T12:00` (Default aus `engine/config.py`). Bei Gesetzeswechsel hier ändern — kein Code-Fassen. |
 | `TANKAPP_LAW_FLOOR` | `0`/`false`/`off`/`no` schaltet die Bodenkante ab: Heatmap, Selektion und Fit mischen dann bewusst Vor- und Nach-Gesetz-Daten. Nur für Gegenmessungen; die GUI sagt, dass gemischt ist. |
+
+### Regime-Kalender (B0, seit 0.56.0)
+
+Ein Regime-Wechsel ist ein datierter Eingriff ins Preisniveau — der Tankrabatt
+ab 01.10.2026 (−17 ct/L), sein Ende zum 01.01.2027, im Archiv der Mai-Juni-
+Rabatt 2026 ([Befund Teil 5](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)).
+Seit 0.56.0 kennt der Modell-Lauf diese Termine als **Kalender**, der wie
+`price_law_local` durchgereicht wird (`Settings.regimes` →
+`engine.config.Config.regimes`). **Gerechnet wird damit noch nichts:** Fit und
+Prognose sind bitgleich zu 0.55.2; der Backtest zählt die Kanten im Fenster
+(`regime_breaks_in_window`) und markiert jede Zeile und jeden Fold, deren
+Fenster eine Kante überspannt (`regime_break_spanned`). Kennzahlen über eine
+Kante sind als Modellgüte nicht lesbar — sie werden ausgewiesen, nicht
+ausgeschlossen (`metrics_break_free` zeigt den Rest). Details:
+[ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560).
+
+| Variable | Wirkung |
+|---|---|
+| `TANKAPP_REGIMES` | **leer/nicht gesetzt:** die vier bekannten Termine aus `app/regimes.py::DEFAULT_REGIMES` (01.05.2026 −17, 01.07.2026 +17, 01.10.2026 −17 angekündigt, 01.01.2027 +17 angekündigt; alle Sorten). **`0`/`off`/`none`:** kein Kalender (Gegenmessung ohne Marker). **JSON-Liste** `[{"announced_local": "2026-10-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "announced", "source": "…"}]` oder **Pfad einer `.json`-Datei** mit einer solchen Liste: genau diese Einträge — die nächste Maßnahme ist ein Eintrag, kein Code-Fassen. Ein bloßer ISO-String je Eintrag ist die Kurzform (`tax_step`, alle Sorten). |
+
+Erlaubte Werte: `kind` ∈ `tax_step`/`price_cap`, `fuel` ∈ `E5`/`E10`/`DIESEL`
+oder `null` (alle), `status` ∈ `announced`/`detected`/`in_force`/`unknown`,
+`announced_value` in ct/L brutto mit Vorzeichen (Richtung der Kante) oder
+`null`. Unbekannte Felder, unbekannte Sorten und mehrdeutige Wanduhrzeiten
+(Zeitumstellung) werden **abgelehnt**: Ein kaputter Kalender bricht den
+Modell-Lauf mit Grund ab (`Settings.from_env` → `ValueError`), statt ohne
+Marker weiterzulaufen — genau das unmarkierte Übergangsfenster ist der
+Fehler, vor dem Befund §5.7 warnt. Bis zum 01.10.2026 liegt keine Kante im
+21-Tage-Backtest-Fenster: `regime_breaks_in_window.count` ist 0 und keine
+Kennzahl ändert sich. Der Spritpreisdeckel ist **kein** eigener Eintrag,
+solange seine Ausgestaltung offen ist (A15) — bekannt ist nur das
+Rabatt-Ende.
+
+Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
+Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](API.md#forecast-messfelder-b0-seit-0560)),
+dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
 
 ### Größe der Veröffentlichung (O22, seit 0.44.0)
 

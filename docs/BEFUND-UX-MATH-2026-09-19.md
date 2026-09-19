@@ -891,6 +891,36 @@ Kalibrierung legen.
 **Abnahme:** Prognose bitgleich (Invarianz-Test), Zähler getestet, PIT-Paare
 im Backtest-Artefakt. Kein Nutzerverhalten ändert sich.
 
+> **Status 19.09.2026 — umgesetzt in 0.56.0** ([CHANGELOG](../CHANGELOG.md),
+> [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)), mit vier Vermerken aus
+> der kritischen Prüfung des Batches:
+>
+> 1. **Abnahme erfüllt:** `tests/test_b0_invariance.py` vergleicht Fit, Prognose
+>    und Backtest-Kennzahlen gegen eine Fixture aus dem Code **vor** der
+>    Änderung; Zähler und PIT-Paare sind getestet
+>    (`test_b0_counters.py`, `test_b0_pit_regime.py`, `test_b0_app.py`).
+> 2. **`pava_pool_stats` ist kein Artefakt-Zähler**, wie oben geschrieben,
+>    sondern eine Prognose-Diagnose: PAVA (12-Uhr-Projektion) läuft in
+>    `predict`, nicht im Fit. `predict(..., diagnostics={})` liefert sie;
+>    App-Veröffentlichung und `engine forecast` tragen sie je Prognose.
+> 3. **Der §5.7-Nachtrag ist als Kalender gebaut, nicht als Marker:**
+>    `Config.regimes` mit Zeit, Art, Sorte, Betrag, Status und Quelle
+>    (`TANKAPP_REGIMES`), weil R1–R3 dieselben Felder brauchen und ein
+>    bloßer Zeitstempel im Oktober nicht sagen könnte, welche Kante gemeint
+>    ist. `regime_breaks_in_window` zählt und markiert (`flagged_not_excluded`),
+>    rechnet aber nichts — die Prognose bleibt bitgleich.
+> 4. **Zwei Punkte sind offen und stehen mit Grund in
+>    [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund):** Die
+>    **Referenzmessung** PICP/Brier/MASE je Station ist nicht gelaufen (keine
+>    NAS-Daten in der Entwicklungsumgebung; Rezept in ENGINE.md; Brier gibt es
+>    nur global je P-Quelle aus dem Advice-Ledger, eine Stations-Aufteilung
+>    wäre bei ~1 Empfehlung/Tag lange nicht belastbar). Und **dabei gefunden:**
+>    Der Backtest maß bisher `harmonic_ar2` mit unabhängiger Ziehung, während
+>    die App das `ensemble` mit gemeinsamer Ziehung veröffentlicht — die
+>    Güte-Kacheln beschreiben ein anderes Modell als das gezeigte Band. B0
+>    macht beides benennbar (`--kind`, `--shared-draws`, `backtest_model_kind`
+>    neben `model_kind`); das Umschalten ändert jede Kennzahl und gehört zu B3.
+
 ## B1 — Eine Sprache für € und % (klein, sofort sichtbar)
 
 - `expected_saving` aus den Fensterminimum-Draws („bis zu X €“), zweite
@@ -1772,7 +1802,7 @@ Befund hängt sich ein, statt ihn zu ersetzen.
 
 | Batch | Auswirkung | Begründung |
 |---|---|---|
-| **B0** Messgrundlagen | **ergänzen**: PIT-Paare brauchen einen Regime-Marker, `regime_breaks_in_window` als Zähler | PIT-Paare aus dem Übergangsfenster sind der Trainingsstoff von B2 — unmarkiert trainiert die Kalibrierung auf einem Schock |
+| **B0** Messgrundlagen | **ergänzen**: PIT-Paare brauchen einen Regime-Marker, `regime_breaks_in_window` als Zähler — *umgesetzt in 0.56.0 als Kalender (`Config.regimes`), Marker je Zeile `regime_break_spanned`* | PIT-Paare aus dem Übergangsfenster sind der Trainingsstoff von B2 — unmarkiert trainiert die Kalibrierung auf einem Schock |
 | **B1** Eine Sprache für € und % | **vorziehen auf Phase 0** (0.7) | M5 (Nowcast am Live-Preis) ist die billigste Regime-Maßnahme für F2, §5.4.6 |
 | **B2** Kalibrierungsschicht | **Termin-Gate**: keine Freigabe auf Daten aus 01.10.–15.11. | Eine isotone Rekalibrierung, die auf Bruch-Daten lernt, kalibriert den Schock ein — dauerhaft |
 | **B3** Mehrtage & Kerne | **nachziehen**: Day-Pair-Bootstrap erst nach R2 | Mehrtages-Draws über eine Kante sind ohne Dummy doppelt falsch (§5.3.1, §5.4.1); die Ensemble-Gewichte sind im Oktober unbrauchbar (§5.4.3) |

@@ -66,6 +66,7 @@
 - [Stations](#stations)
 - [Series](#series)
 - [Forecast](#forecast)
+  - [Forecast-Messfelder (B0, seit 0.56.0)](#forecast-messfelder-b0-seit-0560)
 - [Last Forecasts (RP2)](#last-forecasts-rp2)
 - [Heatmap (B3.9)](#heatmap-b39)
 - [Selection / Meine Stationen (B3.10)](#selection--meine-stationen-b310)
@@ -982,6 +983,33 @@ Liefert letzten publizierten Ausblick:
   Publikationen ohne die Felder liefern `null` — die GUI zeigt dann keine Zeile.
 
 `stale` wenn Alter >24h. Bänder projiziert auf 12-Uhr-Regel (Erhöhungen nur 12:00).
+
+### Forecast-Messfelder (B0, seit 0.56.0)
+
+Batch B0 des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+hängt jeder Prognose Messfelder an — **Diagnose, keine Nutzerzahl:** die GUI
+liest sie nicht, `points`/Quantile sind bitgleich zu 0.55.2 (Invarianz-Test
+`tests/test_b0_invariance.py`). Sie stehen in `runtime/engine/forecasts/*.json`,
+in `GET /api/v1/forecast` und (ohne `points_3d`/`points_7d`) in
+`GET /api/v1/last_forecasts`. Ältere Publikationen lassen sie fehlen; Leser
+behandeln fehlende Felder wie `null`. Definitionen:
+[ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560).
+
+| Feld | Quelle | Inhalt |
+|---|---|---|
+| `ar_shrink_events` | Fit | Zahl der ×0,9-Stauchungen des AR(2)-Stabilitätsnetzes in diesem Fit (0 = stabil). |
+| `ar_state_reset` | Fit | `true`, wenn der AR-Zustand am Cutoff auf 0 gesetzt wurde (letzte Residuen nicht endlich). |
+| `ar_detail` | Fit | Je Kern (`harmonic_ar2`, `profile_ar2`): `shrink_events`, `fallback` (`null` oder Grund), `triples`, `root_radius_raw`/`root_radius`, `state_reset`. |
+| `pava_pool_stats` | Prognose | PAVA-Pools der 12-Uhr-Projektion je Segment (`segments[]`) und `totals` — wie stark die Projektion in diese Prognose eingegriffen hat. |
+| `pit` | Backtest | PIT-Histogramme **dieser Station** je Horizont (`24h`/`72h`/`168h`), `all` und `break_free`: `n`, `histogram` (40 Klassen), `coverage[q]`, `interval_95`, `mean`. |
+| `regime_breaks_in_window` | Backtest | Deklarierte Regime-Kanten: `declared`, `in_window`, `count`, `folds_spanning`, `points_spanning`, `metrics_break_free`, Politik `flagged_not_excluded`. |
+| `ar_shrink` | Backtest | Stauchungen über alle Folds: `folds_shrunk`, `shrink_events_total`, `folds_state_reset`, `fallbacks`. |
+| `backtest_model_kind`, `backtest_shared_draws` | Backtest | **Was der Backtest gemessen hat** (`harmonic_ar2`, unabhängige Ziehung — Stand vor 0.56.0). Das bestehende `model_kind` bleibt das **veröffentlichte** Modell (`ensemble`). Beide nebeneinander, weil sie heute nicht übereinstimmen ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). |
+| `ensemble.weight_spread` | Fit | Streuung der Ensemble-Gewichte je 288-Slot-Block des Validierungsfensters (`std`, `range`, `blocks_favouring`); `ensemble.weights` unverändert. |
+
+Der Backtest-Cache (`runtime/engine/backtest-cache/`) trägt Schema **3**;
+Einträge aus 0.55.2 (Schema 2) werden einmal neu gerechnet, danach greift der
+Cache wieder.
 
 ## Last Forecasts (RP2)
 

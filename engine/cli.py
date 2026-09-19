@@ -356,7 +356,10 @@ def run(args) -> int:
         forecasts = []
         now = pd.Timestamp.now(tz="UTC")
         for model in bundle["models"]:
-            frame = predict(model, args.hours)
+            # B0: dieselbe Pool-Diagnose wie in der App-Veröffentlichung;
+            # die Prognosezahlen sind mit und ohne ``diagnostics`` identisch.
+            diagnostics: dict = {}
+            frame = predict(model, args.hours, diagnostics=diagnostics)
             age = float((now - utc_time(model["origin"])).total_seconds() / 3600)
             frame["timestamp"] = frame.index.map(lambda time: time.isoformat())
             observation = model.get("last_observation")
@@ -389,6 +392,7 @@ def run(args) -> int:
                     "calibrated": False,
                     "decision_ready": False,
                     "interval_method": model["interval_method"],
+                    "pava_pool_stats": diagnostics.get("pava_pool_stats"),
                     "points": frame.to_dict(orient="records"),
                 }
             )

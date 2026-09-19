@@ -26,6 +26,11 @@ def test_full_offline_cli_round_trip(observations, tmp_path, capsys):
     payload = json.loads(forecast.read_text())
     assert len(payload["forecasts"][0]["points"]) == 3 * 288
     assert payload["decision_ready"] is False
+    # B0: die Werkstatt-Prognose trägt dieselbe PAVA-Pool-Diagnose wie die
+    # App-Veröffentlichung (Totale je Kern + Segmente), ohne Zahlenänderung.
+    pool_stats = payload["forecasts"][0]["pava_pool_stats"]
+    assert isinstance(pool_stats, dict)
+    assert "segments" in pool_stats and "totals" in pool_stats
     assert (
         main(
             [

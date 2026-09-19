@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 19.09.2026 · App-Version **0.55.2**
+> Stand: 19.09.2026 · App-Version **0.56.0**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -38,7 +38,20 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.55.2 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.56.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+0.56.0 setzt Batch B0 des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+um (Messgrundlagen): Zähler für das AR(2)-Stabilitätsnetz, die
+Ensemble-Gewichtsstreuung und die PAVA-Pools, PIT-Paare mit Regime-Marker im
+Backtest, `regime_breaks_in_window` als Zähler und der Regime-Kalender als
+Daten (`TANKAPP_REGIMES`) — bitgleich zur Prognose von 0.55.2
+(Invarianz-Test), kein Nutzertext ändert sich. Dabei gefunden: Der Backtest
+maß bisher `harmonic_ar2` mit unabhängiger Ziehung, veröffentlicht wird das
+Ensemble mit gemeinsamer Ziehung — jetzt benannt und messbar, Umschalten ist
+B3 ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). Mitgezogen sind
+[LUECKEN.md](LUECKEN.md), [../TODO.md](../TODO.md) und
+[../CHANGELOG.md](../CHANGELOG.md); [ENGINE.md](ENGINE.md), [API.md](API.md)
+und [BETRIEB.md](BETRIEB.md) haben je einen neuen, gegen 0.56.0 geschriebenen
+Abschnitt und stehen sonst auf ihrem alten Stand (Tabelle unten).
 0.54.0 schließt Batch 8 des Optimierungs-Befunds ab und damit den ganzen
 Befund: Die Belegmaske zeigt den Live-Preis der Station mit Alter und markiert
 eine Abweichung ab 1,0 ct/L (O32), und die Textalternative eines Diagramms
@@ -100,13 +113,16 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
-| [API.md](API.md) | 0.52.0 | 0.53.0 ist reine GUI-Arbeit: kein Endpunkt, kein Payload, kein Fehlercode angefasst — die Endpunkt-Beschreibung bleibt gültig, geprüft ist sie gegen 0.52.0 |
+| [API.md](API.md) | 0.52.0 | 0.53.0–0.55.2 sind GUI-/Test-Arbeit: kein Endpunkt, kein Payload, kein Fehlercode angefasst. 0.56.0 hängt der Prognose-Antwort nur Messfelder an — die stehen im neuen Abschnitt [Forecast-Messfelder (B0)](API.md#forecast-messfelder-b0-seit-0560), der gegen 0.56.0 geschrieben ist; der Rest ist gegen 0.52.0 geprüft |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
-| [BETRIEB.md](BETRIEB.md) | 0.53.0 | 0.54.0 ist reine GUI-Arbeit: kein Dienst, kein Cron, kein Alarm, kein Backup-Pfad angefasst — Abläufe und Störungsfälle bleiben gültig, geprüft sind sie gegen 0.53.0 |
-| [QUALITAET.md](QUALITAET.md) | 0.53.0 | Budgets, Lasttest und Lighthouse-Schwellen sind von 0.54.0 unberührt. Der dort beschriebene `@sparticuz/chromium`-Weg ist für dieses Release erneut gelaufen (38/38 bzw. 25 grün / 11 skipped) und stimmt unverändert; durchgesehen ist das Dokument im Ganzen gegen 0.53.0 |
-| [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble) |
+| [BETRIEB.md](BETRIEB.md) | 0.53.0 | 0.54.0–0.55.2 sind GUI-/Test-Arbeit: kein Dienst, kein Cron, kein Alarm, kein Backup-Pfad angefasst. 0.56.0 bringt eine Umgebungsvariable (`TANKAPP_REGIMES`) — dokumentiert im neuen Abschnitt [Regime-Kalender (B0)](BETRIEB.md#regime-kalender-b0-seit-0560), gegen 0.56.0 geschrieben; Abläufe und Störungsfälle sind gegen 0.53.0 geprüft |
+| [QUALITAET.md](QUALITAET.md) | 0.53.0 | Budgets, Lasttest und Lighthouse-Schwellen sind von 0.54.0–0.56.0 unberührt (0.56.0 ändert weder GUI noch Antwortzeiten; die Veröffentlichung wächst um < 1 % des 7,28-MB-Bezugswerts). Der dort beschriebene `@sparticuz/chromium`-Weg ist mit 0.54.0 erneut gelaufen (38/38 bzw. 25 grün / 11 skipped); durchgesehen ist das Dokument im Ganzen gegen 0.53.0 |
+| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.55.2 | 0.56.0 fasst kein Werkzeug in `data-tools/` und `analysis/` an — B0 liegt in `engine/` und `app/` |
+| [MICROCOPY.md](MICROCOPY.md) | 0.55.2 | 0.56.0 ändert keinen Nutzertext: B0 ist unsichtbar (Messfelder, die die GUI nicht liest) |
+| [BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md) | 0.55.2 | Stichtagsprüfung gegen 0.55.2 — der Befund bleibt als Prüfstand stehen; der Umsetzungsstand je Batch steht als Vermerk am Batch (B0 → 0.56.0) |
+| [ENGINE.md](ENGINE.md) | 0.11.0 | Werkstatt-Referenz für `engine/` — seither mehrfach umgebaut (Prozess-Pool, Backtest-Cache, DST-Kanten, Zweitmodell/Ensemble). Der Abschnitt [Messgrundlagen (B0)](ENGINE.md#messgrundlagen-b0-seit-0560) ist neu und gegen 0.56.0 geschrieben; §1–§7 sind **nicht** nachgeprüft (u. a. nennt §4 noch die alte 72-Punkte-Regel des Rolling-PICP, die O4 durch Tagesquoten ersetzt hat) |
 | [KONZEPT.md](KONZEPT.md) | 0.11.0 | Zielbild; der Abgleich mit dem Code steht in [LUECKEN.md](LUECKEN.md) |
-| [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
+| [ANALYSE.md](ANALYSE.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb bleiben unberührt. Mit 0.56.0 ist nur die Zeile „Gemessenes Modell (B0)“ unter „Backtest & Güte“ nachgetragen; der Rest ist nicht nachgeprüft |
 | [ARCHITEKTUR.md](ARCHITEKTUR.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [INSTALL.md](INSTALL.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
 | [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md) | 0.38.0 | 0.39.0 war ein Text-Release (T1–T13), 0.40.0 ändert Ledger-Grund und Tagebuch-Anzeige, 0.41.0/0.41.1 ist das GUI-Release (U1–U8), 0.42.0/0.43.0 sind Text-Releases (T1–T8, V1–V5) — Rechnungen, Endpunkte und Betrieb dieser Dokumente bleiben unberührt |
