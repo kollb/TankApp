@@ -687,9 +687,12 @@ Die JSON-Artefakte enthalten robuste Tagesform/Wochentags-Dummies, AR(2)-Nachlau
 und einen exponentiell gewichteten Residuen-Tagesblock-Bootstrap (neuere Tage
 höheres Ziehgewicht, Halbwertszeit 14 Tage, `interval_method:
 residual_day_bootstrap_ew_uncalibrated`). q.025/.10/.50/.90/.975 sind
-**unkalibrierte Intervalle**, keine ACI-Erfolgswahrscheinlichkeiten.
-`calibrated: false` und `decision_ready: false` bleiben gesetzt. Preise werden
-höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefittet.
+zunächst **unkalibrierte Intervalle**, keine ACI-Erfolgswahrscheinlichkeiten.
+Seit B2 kann ein neuer Fit eine *zuvor* abgenommene PIT-Kurve tragen;
+`decision_ready` bleibt davon unabhängig immer M7-Sache. Ohne gültige frühere
+Kurve oder bei ausgeschaltetem B2-Schalter bleibt `calibrated: false`. Preise
+werden höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise
+nicht gefittet.
 
 ## Messgrundlagen (B0, seit 0.56.0)
 
@@ -796,6 +799,51 @@ Empfehlungen und kommt aus dem Advice-Ledger (`app/feedback.py::
 compute_advice_stats`, `/api/v1/stats/summary`), global je P-Quelle; eine
 Stations-Aufteilung wäre ein eigener Schritt und bei ~1 Empfehlung/Tag lange
 nicht belastbar. Das steht so im Befund-Status, statt es zu behaupten.
+
+## PIT-Rekalibrierung (B2, seit 0.57.0)
+
+B2 kalibriert nicht den Punktpfad, sondern die **empirische Verteilung der
+24-h-Bootstrap-Pfade**. Ein Rolling-Origin-Backtest liefert für jede 24-h-Wahrheit den
+PIT-Mittelrang `u = F_roh(y)`. Aus den früheren, out-of-sample PITs lernt PAVA
+eine monotone empirische CDF `H`; für jede Pfadspalte werden die Draw-Ränge mit
+`H⁻¹` umgelegt. So gilt `F_kalibriert(y) = H(F_roh(y))`, während Rangordnung
+und gemeinsame Draw-Kopplung erhalten bleiben. Anschließend gilt die
+12-Uhr-Projektion erneut — eine bessere marginale Kalibrierung darf nie eine
+Rechtsregel verletzen.
+
+Der Kandidat wird **station-, sorten-, Modellkern- und Ziehungsmodusgenau**
+gespeichert (`model_kind`, `shared_draws`). Er nimmt nur 24-h-PITs ohne
+`regime_break_spanned`; frühere zwei Drittel der Backtest-Origins trainieren
+die Kurve, das letzte Drittel nimmt sie ab. Die Abnahme veröffentlicht
+`raw_coverage`/`calibrated_coverage` für die Quantilniveaus 2,5 %, 10 %,
+50 %, 90 % und 97,5 %, Zielbänder, `raw_picp95`/`calibrated_picp95` und das explizite
+`picp_release_gate`. Eine Station wird nur akzeptiert, wenn alle
+Quantil-Abdeckungen im Holdout-Band liegen und PICP95 gegenüber roh höchstens
+**2 Prozentpunkte** sinkt. Fehlende Roh-PITs, zu kleine oder nicht zeitlich
+trennbare Stichproben sind ein benannter unkalibrierter Zustand, nie ein
+stilles Akzeptieren.
+
+Die Veröffentlichung arbeitet absichtlich mit einem Lauf Verzögerung: Ein
+akzeptierter Kandidat aus dem *vorigen* Backtest kann beim jetzigen Fit aktiv
+werden; der aktuelle Backtest schreibt nur `calibration_candidate` für den
+nächsten Lauf. `calibration` ist daher die tatsächlich angewandte Hülle,
+`calibrated` ihr validierter Modellzustand und nicht die M7-Freigabe. Schema-2-
+Modelle bleiben lesbar, gelten aber ausdrücklich als unkalibriert; neue
+Artefakte sind Schema 3. Der Tages-Cache ist Schema 4, damit Kurven nie bei
+anderem Kern oder anderem Shared-Draw-Modus wiederverwendet werden.
+
+`TANKAPP_CALIBRATION=0` ist die A/B-Gegenprobe: Kandidaten und Messfelder
+werden weiter erzeugt, Pfade bleiben aber roh. Standard ist `1`. Zusätzlich
+blockiert der deklarierte Regime-Kalender jede Aktivierung vom Kanten-Tag bis
+45 lokale Kalendertage danach (bei der Kante 01.10.2026: einschließlich
+15.11.); die Hülle meldet dann `status: "regime_blackout"`. So kann eine vor
+der Kante akzeptierte Kurve nicht über den Bruch hinweg veröffentlicht werden.
+Die Labor-Kachel „PIT-Rekalibrierung der Prognose“ zeigt aktive Kurve und
+24-h-Kandidat; sie zeigt außerdem den getrennten Allzeit-Ledger-Brier für
+`raw` und `pit_24h`. Alt-Snapshots bleiben eine explizite dritte Gruppe
+`unknown`; der Vergleich ist zeitgetrennt, kein Kausalbeweis. 72-/168-h-Pfade
+bleiben ohne ihren eigenen Holdout-Kandidaten bewusst roh. Die Kachel ist vom
+Ledger-M7-Gate getrennt.
 
 ## 6. Häufige Probleme am Windows-PC
 

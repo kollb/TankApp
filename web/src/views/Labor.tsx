@@ -54,6 +54,10 @@ import {
   euroPerLiter,
   lawFloorNote,
   percentLabel,
+  pitCalibrationCandidateLine,
+  pitCalibrationLedgerBrierLine,
+  pitCalibrationStatus,
+  PIT_CALIBRATION_NO_CANDIDATE,
   rowOutcome,
   timeLabel,
   timeSpanLabel,
@@ -404,6 +408,12 @@ export function LaborView(props: LaborViewProps) {
     if (!n) return null;
     return (rows.reduce((sum, b) => sum + b.mean_p * b.count, 0) / n) * 100;
   }, [advice]);
+  // B2: Modell-PIT-Kalibrierung ist eine eigene technische Schicht. Sie darf
+  // nicht mit dem M7-Ledger-Gate (oben, Nutzerempfehlungen) verwechselt werden.
+  const modelCalibration = forecast.data?.calibration ?? null;
+  const calibrationCandidate = forecast.data?.calibration_candidate?.["24h"] ?? null;
+  const calibrationValidation = calibrationCandidate?.validation ?? null;
+  const calibrationActive = forecast.data?.calibrated === true;
 
   // O16: Der Preis-Abstand kommt aus der Selektion (`/api/v1/selection`) —
   // dort rechnet die Engine δ̂ samt Bootstrap-KI und q-Wert. Vorher las die
@@ -776,6 +786,33 @@ export function LaborView(props: LaborViewProps) {
               "Die Worte sind feste Stufen derselben Skala: ab 75 % „ziemlich sicher“, ab 55 % „eher sicher“, darunter „unsicher“.",
             ]}
           />
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+            <p className="text-xs font-semibold text-slate-200">
+              PIT-Rekalibrierung der Prognose
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              {pitCalibrationStatus(calibrationActive, modelCalibration?.status)}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              {pitCalibrationLedgerBrierLine(advice?.brier_all_by_calibration)}
+            </p>
+            {calibrationCandidate ? (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {pitCalibrationCandidateLine({
+                  status: calibrationCandidate.status,
+                  nPit: calibrationCandidate.n_pit,
+                  rawPicp95: calibrationValidation?.raw_picp95,
+                  calibratedPicp95: calibrationValidation?.calibrated_picp95,
+                  picpReleaseGate: calibrationValidation?.picp_release_gate,
+                  active: calibrationActive,
+                })}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {PIT_CALIBRATION_NO_CANDIDATE}
+              </p>
+            )}
+          </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p className="text-xs font-semibold text-slate-200">
@@ -1200,6 +1237,30 @@ export function LaborView(props: LaborViewProps) {
             )}
           </div>
 
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+            <p className="text-xs font-semibold text-slate-200">
+              PIT-Rekalibrierung der Prognose
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              {pitCalibrationStatus(calibrationActive, modelCalibration?.status)}
+            </p>
+            {calibrationCandidate ? (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {pitCalibrationCandidateLine({
+                  status: calibrationCandidate.status,
+                  nPit: calibrationCandidate.n_pit,
+                  rawPicp95: calibrationValidation?.raw_picp95,
+                  calibratedPicp95: calibrationValidation?.calibrated_picp95,
+                  picpReleaseGate: calibrationValidation?.picp_release_gate,
+                  active: calibrationActive,
+                })}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {PIT_CALIBRATION_NO_CANDIDATE}
+              </p>
+            )}
+          </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p
@@ -1402,6 +1463,30 @@ export function LaborView(props: LaborViewProps) {
             Prognosen, deshalb ehrlich vergleichbar. Nichts hier wird
             gespeichert und nichts ändert dein Profil.
           </p>
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+            <p className="text-xs font-semibold text-slate-200">
+              PIT-Rekalibrierung der Prognose
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              {pitCalibrationStatus(calibrationActive, modelCalibration?.status)}
+            </p>
+            {calibrationCandidate ? (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {pitCalibrationCandidateLine({
+                  status: calibrationCandidate.status,
+                  nPit: calibrationCandidate.n_pit,
+                  rawPicp95: calibrationValidation?.raw_picp95,
+                  calibratedPicp95: calibrationValidation?.calibrated_picp95,
+                  picpReleaseGate: calibrationValidation?.picp_release_gate,
+                  active: calibrationActive,
+                })}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                {PIT_CALIBRATION_NO_CANDIDATE}
+              </p>
+            )}
+          </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <div className="flex items-center gap-2">
