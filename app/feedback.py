@@ -2153,8 +2153,7 @@ def compute_advice_stats(
         and gate_slope_ci_lo <= GATE_RELIABILITY_SLOPE_TARGET <= gate_slope_ci_hi
         and abs(gate_slope - GATE_RELIABILITY_SLOPE_TARGET)
         < GATE_RELIABILITY_SLOPE_MAX_ABS_DEV
-        and (gate_slope_ci_hi - gate_slope_ci_lo)
-        < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
+        and (gate_slope_ci_hi - gate_slope_ci_lo) < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
     )
     gate_ref_base, gate_ref_climate = _reference_briers(
         [row["outcome"] for row in gate_rows],
