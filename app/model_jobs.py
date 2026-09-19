@@ -249,7 +249,8 @@ def _init(
     origin,
     cache_dir=None,
     shared_draws: bool = True,
-    model_kind: str = "ensemble",
+    model_kind: str = "profile_ar2",
+    day_pair: bool = True,
 ) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task).
 
@@ -264,9 +265,9 @@ def _init(
     _STATE["origin"] = origin
     _STATE["cache_dir"] = cache_dir
     _STATE["shared_draws"] = bool(shared_draws)
-    # A10: „harmonic_ar2“ (alt), „profile_ar2“ (Zweitmodell) oder
-    # „ensemble“ (Default: inverse-MASE-gewichtete Mischung).
-    _STATE["model_kind"] = str(model_kind or "harmonic_ar2").strip().lower()
+    _STATE["day_pair"] = bool(day_pair)
+    # A10/B3: Default seit 0.58.0 ist profile_ar2; ensemble bleibt Option.
+    _STATE["model_kind"] = str(model_kind or "profile_ar2").strip().lower()
 
 
 def _backtest(
@@ -275,8 +276,9 @@ def _backtest(
     days: int,
     cache_dir,
     *,
-    model_kind: str = "harmonic_ar2",
-    shared_draws: bool = False,
+    model_kind: str = "profile_ar2",
+    shared_draws: bool = True,
+    day_pair: bool = True,
 ) -> dict[str, Any]:
     """Backtest-Kennzahlen einer Station — aus dem Tages-Cache oder frisch.
 
@@ -299,6 +301,7 @@ def _backtest(
             days,
             model_kind=model_kind,
             shared_draws=shared_draws,
+            day_pair=day_pair,
         )
         hit = backtest_cache.load(cache_dir, cut, key)
         if hit is not None:
@@ -315,6 +318,7 @@ def _backtest(
         strict_end=True,
         kind=model_kind,
         shared_draws=shared_draws,
+        day_pair=day_pair,
     )
     # B2: Der Kandidat lernt ausschließlich aus diesem streng vergangenen
     # Backtest. ``origin`` trennt das frühere Trainingsdrittel zeitlich vom
@@ -346,6 +350,7 @@ def _backtest(
         "end_local": end_local.isoformat(),
         "model_kind": model_kind,
         "shared_draws": bool(shared_draws),
+        "day_pair": bool(day_pair),
         "24h": candidate_24h,
     }
     # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag — das
@@ -370,6 +375,7 @@ def _backtest(
         "ar_shrink": report.get("ar_shrink"),
         "model_kind": report.get("model_kind"),
         "shared_draws": report.get("shared_draws"),
+        "day_pair": report.get("day_pair"),
         "calibration_candidate": calibration_candidate,
     }
     computed_at = None
@@ -513,8 +519,9 @@ def _run(task: tuple) -> dict[str, Any]:
                     cfg,
                     hours,
                     _STATE.get("cache_dir"),
-                    model_kind=str(_STATE.get("model_kind") or "harmonic_ar2"),
+                    model_kind=str(_STATE.get("model_kind") or "profile_ar2"),
                     shared_draws=bool(_STATE.get("shared_draws", True)),
+                    day_pair=bool(_STATE.get("day_pair", True)),
                 ),
             )
             return out
@@ -525,7 +532,7 @@ def _run(task: tuple) -> dict[str, Any]:
             model = with_calibration(model, calibration)
         shared = bool(_STATE.get("shared_draws", True))
         # Achtung: nicht „kind“ heißen — das ist die Aufgabenart.
-        model_kind = str(_STATE.get("model_kind") or "harmonic_ar2")
+        model_kind = str(_STATE.get("model_kind") or "profile_ar2")
         # B0: PAVA-Pool-Statistik nur für die publizierte 24-h-Prognose —
         # ein Wörterbuch, das predict() füllt; ohne es keine Mehrarbeit.
         diagnostics: dict[str, Any] | None = {} if kind == "fit" else None
@@ -534,6 +541,7 @@ def _run(task: tuple) -> dict[str, Any]:
             hours=hours,
             return_paths=True,
             shared_draws=shared,
+            day_pair=bool(_STATE.get("day_pair", True)),
             kind=model_kind,
             diagnostics=diagnostics,
         )
@@ -574,14 +582,16 @@ class ModelTaskPool:
         workers: int = 1,
         cache_dir=None,
         shared_draws: bool = True,
-        model_kind: str = "ensemble",
+        model_kind: str = "profile_ar2",
+        day_pair: bool = True,
     ) -> None:
         self.series_map = _slim_series_map(series_map)
         self.cfg = cfg
         self.origin = origin
         self.cache_dir = cache_dir
         self.shared_draws = bool(shared_draws)
-        self.model_kind = str(model_kind or "harmonic_ar2").strip().lower()
+        self.day_pair = bool(day_pair)
+        self.model_kind = str(model_kind or "profile_ar2").strip().lower()
         # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
         # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
         # trotzdem pandas importieren und Speicher belegen.
@@ -601,6 +611,7 @@ class ModelTaskPool:
             self.cache_dir,
             self.shared_draws,
             self.model_kind,
+            self.day_pair,
         )
         if not self._serial:
             try:
@@ -615,6 +626,7 @@ class ModelTaskPool:
                         self.cache_dir,
                         self.shared_draws,
                         self.model_kind,
+                        self.day_pair,
                     ),
                 )
             except _POOL_FAILURES:
@@ -713,6 +725,7 @@ class ModelTaskPool:
             self.cache_dir,
             self.shared_draws,
             self.model_kind,
+            self.day_pair,
         )
 
 
@@ -725,7 +738,8 @@ def run_tasks(
     on_done: Callable[[dict[str, Any]], None] | None = None,
     cache_dir=None,
     shared_draws: bool = True,
-    model_kind: str = "ensemble",
+    model_kind: str = "profile_ar2",
+    day_pair: bool = True,
 ) -> list[dict[str, Any]]:
     """Kompatibler Ein-Wellen-Aufruf; Refresh nutzt einen Pool für zwei Wellen.
 
@@ -745,5 +759,6 @@ def run_tasks(
         cache_dir,
         shared_draws,
         model_kind,
+        day_pair,
     ) as pool:
         return pool.run(tasks, on_done=on_done)

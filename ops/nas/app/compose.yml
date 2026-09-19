@@ -34,6 +34,10 @@ services:
       # B2: 0 hält Bootstrap-Pfade für A/B-Messungen roh; 1 (Default) nutzt
       # ausschließlich zuvor zeitlich getrennt abgenommene PIT-Kurven.
       TANKAPP_CALIBRATION: "${TANKAPP_CALIBRATION:-1}"
+      # B3: publizierter Kern (profile_ar2) und Day-Pair-Bootstrap.
+      TANKAPP_MODEL_KIND: "${TANKAPP_MODEL_KIND:-profile_ar2}"
+      TANKAPP_SHARED_DRAWS: "${TANKAPP_SHARED_DRAWS:-1}"
+      TANKAPP_DAYPAIR: "${TANKAPP_DAYPAIR:-1}"
       # Schicht-A-Anker des Backtests (Konzept §5.5): Tagesstunde des
       # hypothetischen Entscheids. Default 12 (nach der 12-Uhr-Anhebung).
       TANKAPP_DECISION_HOUR: "${TANKAPP_DECISION_HOUR:-12}"

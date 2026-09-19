@@ -185,8 +185,9 @@ def test_bericht_zaehlt_kanten_und_nennt_das_modell(series, cfg_with_break):
     assert regime["folds_spanning"] == 2 and regime["folds_scored"] == 3
     assert regime["points_spanning"] == 2 * 216 and regime["points"] == 3 * 216
     assert regime["metrics_break_free"]["points"] == 216
-    assert report["model_kind"] == "harmonic_ar2"
-    assert report["shared_draws"] is False
+    assert report["model_kind"] == "profile_ar2"
+    assert report["shared_draws"] is True
+    assert report["day_pair"] is True
     ar = report["ar_shrink"]
     assert ar["folds_scored"] == 3 and ar["shrink_events_total"] >= 0
     assert set(ar) == {
@@ -200,7 +201,7 @@ def test_bericht_zaehlt_kanten_und_nennt_das_modell(series, cfg_with_break):
     text = markdown_report(report)
     assert "## Messgrundlagen (B0)" in text
     assert "Regime-Kanten im Fenster" in text and "-17.0 ct/L" in text
-    assert "Gemessenes Punktmodell: `harmonic_ar2`" in text
+    assert "Gemessenes Punktmodell: `profile_ar2`" in text
 
 
 def test_pit_block_je_station_und_horizont(series, cfg_with_break):
@@ -226,9 +227,12 @@ def test_pit_block_je_station_und_horizont(series, cfg_with_break):
 
 
 def test_marker_aendern_keine_kennzahl(series, cfg, cfg_with_break):
-    plain, plain_rows = run_backtest([series], cfg, days=2, until="2026-08-01")
+    # B0: Marker ohne Day-Pair — Paare über die Kante wären Rechenwerk (B3/R2).
+    plain, plain_rows = run_backtest(
+        [series], cfg, days=2, until="2026-08-01", day_pair=False
+    )
     marked, marked_rows = run_backtest(
-        [series], cfg_with_break, days=2, until="2026-08-01"
+        [series], cfg_with_break, days=2, until="2026-08-01", day_pair=False
     )
     for key in ("metrics", "stations", "criteria", "horizons", "rolling_picp_7d"):
         assert json_safe(plain[key]) == json_safe(marked[key]), key

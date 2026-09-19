@@ -547,6 +547,16 @@ def ensemble_detail(
         "n_eval": 0,
         "window_days": int(window_days),
         "method": "inverse_mase_one_step_validation",
+        "horizon_weights": {
+            "status": "not_estimated",
+            "note": (
+                "Gewichte je Horizont (24/72/168 h) gehören in den Rolling-"
+                "Origin-Backtest. Der Fit kennt nur den Eine-Schritt-MASE."
+            ),
+            "24h": None,
+            "72h": None,
+            "168h": None,
+        },
     }
     if n <= 288 + 2:
         return empty
@@ -602,6 +612,16 @@ def ensemble_detail(
         "weight_spread": ensemble_weight_spread(
             idx, n, errs["harmonic_ar2"], errs["profile_ar2"], naive, usable
         ),
+        "horizon_weights": {
+            "status": "not_estimated",
+            "note": (
+                "Gewichte je Horizont (24/72/168 h) gehören in den Rolling-"
+                "Origin-Backtest. Der Fit kennt nur den Eine-Schritt-MASE."
+            ),
+            "24h": None,
+            "72h": None,
+            "168h": None,
+        },
     }
 
 
@@ -1011,11 +1031,18 @@ def with_calibration(model: dict, envelope: dict) -> dict:
     return out
 
 
+# A11: gemeinsamer Tages-Uniform. B3: Day-Pair-Uniform (anderer Salz, damit
+# ein ausgeschaltetes Day-Pair die A11-Ziehung bitgleich lässt).
+SHARED_DRAW_SALT = 0xA11
+DAY_PAIR_SALT = 0xD2B3
+
+
 def shared_day_uniforms(
     cfg: Config,
     hours: int,
     day_position: int,
     samples: int | None = None,
+    salt: int = SHARED_DRAW_SALT,
 ) -> np.ndarray:
     """Gemeinsame Ziehungs-Zufallszahlen eines Tagesblocks (A11).
 
@@ -1030,9 +1057,14 @@ def shared_day_uniforms(
     Prozess. Jede Station bildet sie über ihre **eigene** Verteilung ab
     (comonotone Kopplung): ein „teurer Tag“ der gezogenen Zahl trifft alle
     Stationen gleichzeitig.
+
+    ``salt`` trennt A11 (Einzel-Tag) von B3 (Day-Pair). Default bleibt
+    ``SHARED_DRAW_SALT``, damit Aufrufer ohne Day-Pair bitgleich zu 0.57 sind.
     """
     samples = int(samples or cfg.bootstrap_samples)
-    seed = np.random.SeedSequence([int(cfg.seed), int(hours), int(day_position), 0xA11])
+    seed = np.random.SeedSequence(
+        [int(cfg.seed), int(hours), int(day_position), int(salt)]
+    )
     return np.random.default_rng(seed).random(samples)
 
 
@@ -1055,6 +1087,175 @@ def blocks_from_uniform(
             cumulative, np.asarray(uniform, dtype=float), side="right"
         )
     return np.clip(indexes, 0, n_blocks - 1)
+
+
+def _regime_break_dates(cfg: Config, fuel: str | None = None) -> set[str]:
+    """Lokale Kalendertage mit deklarierter Regime-Kante (R2/B3)."""
+    out: set[str] = set()
+    timezone = getattr(cfg, "timezone", "Europe/Berlin")
+    for entry in getattr(cfg, "regimes", ()) or ():
+        if not isinstance(entry, dict):
+            continue
+        announced = entry.get("announced_local")
+        if not announced:
+            continue
+        kind_fuel = entry.get("fuel")
+        if kind_fuel and fuel and str(kind_fuel).lower() != str(fuel).lower():
+            continue
+        try:
+            stamp = pd.Timestamp(announced)
+            if stamp.tzinfo is None:
+                stamp = stamp.tz_localize(timezone)
+            out.add(stamp.tz_convert(timezone).strftime("%Y-%m-%d"))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _training_block_dates(model: dict, cfg: Config) -> np.ndarray | None:
+    """Kalendertage der Residuen-Blöcke — dieselbe Reihenfolge wie im Fit."""
+    try:
+        start = utc_time(model["training_start"], cfg.timezone)
+        origin = utc_time(model["origin"], cfg.timezone)
+    except (KeyError, ValueError, TypeError):
+        return None
+    index = pd.date_range(
+        start, origin, freq=f"{cfg.step_minutes}min", inclusive="left"
+    )
+    if len(index) == 0:
+        return None
+    dates = pd.unique(index.tz_convert(cfg.timezone).strftime("%Y-%m-%d"))
+    return np.asarray(dates)
+
+
+def _day_pair_starts(
+    n_blocks: int, block_dates: np.ndarray | None, break_dates: set[str]
+) -> np.ndarray:
+    """Start-Indizes erlaubter aufeinanderfolgender Trainings-Tage.
+
+    Paar ``s`` zieht Blöcke ``(s, s+1)``. Liegt die Regime-Kante auf dem
+    späteren Tag, wäre das Paar über den Bruch gezogen (R2) — es fällt
+    heraus. Ohne gültiges Paar fällt der Aufrufer auf unabhängige Tage.
+    """
+    if n_blocks < 2:
+        return np.empty(0, dtype=int)
+    starts = np.arange(n_blocks - 1, dtype=int)
+    if block_dates is None or len(block_dates) != n_blocks or not break_dates:
+        return starts
+    keep = []
+    for start in starts:
+        later = str(block_dates[start + 1])
+        if later not in break_dates:
+            keep.append(int(start))
+    return np.asarray(keep, dtype=int)
+
+
+def _sample_block_indexes(
+    n_choices: int,
+    n_samples: int,
+    weights: np.ndarray | None,
+    *,
+    rng,
+    shared: bool,
+    cfg: Config,
+    hours: int,
+    position: int,
+    salt: int,
+) -> np.ndarray:
+    """Eine Ziehung aus ``n_choices`` (Tage oder Paar-Starts)."""
+    if n_choices <= 0:
+        raise ValueError("Keine Blöcke zum Ziehen vorhanden.")
+    if shared:
+        uniform = shared_day_uniforms(
+            cfg, hours, position, samples=n_samples, salt=salt
+        )
+        return blocks_from_uniform(uniform, n_choices, weights)
+    if weights is None:
+        return rng.integers(0, n_choices, size=n_samples)
+    return rng.choice(n_choices, size=n_samples, p=weights)
+
+
+def draw_day_blocks(
+    *,
+    n_forecast_days: int,
+    n_blocks: int,
+    n_samples: int,
+    block_weights: np.ndarray | None,
+    shared_draws: bool,
+    day_pair: bool,
+    cfg: Config,
+    hours: int,
+    rng,
+    pair_starts: np.ndarray | None = None,
+) -> np.ndarray:
+    """Block-Indizes je Prognose-Kalendertag, Form ``(n_samples, n_forecast_days)``.
+
+    ``day_pair=False``: unabhängige Tage — RNG-Verbrauch und A11-Salz wie
+    vor 0.58.0, also bitgleich.
+
+    ``day_pair=True``: nicht-überlappende Paare aufeinanderfolgender
+    Prognose-Tage ziehen aufeinanderfolgende Trainingsblöcke. Ein
+    überschüssiger letzter Tag bleibt unabhängig. Weniger als zwei Blöcke
+    oder kein erlaubtes Paar (Regime-Kante) fällt auf unabhängig zurück.
+    """
+    draws = np.empty((n_samples, n_forecast_days), dtype=int)
+    use_pairs = bool(day_pair) and n_blocks >= 2 and n_forecast_days >= 2
+    starts = (
+        np.asarray(pair_starts, dtype=int)
+        if pair_starts is not None
+        else np.arange(max(n_blocks - 1, 0), dtype=int)
+    )
+    if use_pairs and len(starts) == 0:
+        use_pairs = False
+    pair_weights = None
+    if use_pairs:
+        # Recency des Paars = Recency des späteren Blocks.
+        later_ages = np.asarray(
+            [n_blocks - 1 - int(start) - 1 for start in starts], dtype=float
+        )
+        half_life = getattr(cfg, "bootstrap_ew_half_life_days", None)
+        if half_life:
+            try:
+                hl = float(half_life)
+            except (TypeError, ValueError):
+                hl = 0.0
+            if np.isfinite(hl) and hl > 0:
+                raw = 0.5 ** (later_ages / hl)
+                total = float(raw.sum())
+                if total > 0 and np.isfinite(total):
+                    pair_weights = raw / total
+        n_pairs_forecast = n_forecast_days // 2
+        for pair_k in range(n_pairs_forecast):
+            choice = _sample_block_indexes(
+                len(starts),
+                n_samples,
+                pair_weights,
+                rng=rng,
+                shared=shared_draws,
+                cfg=cfg,
+                hours=hours,
+                position=pair_k,
+                salt=DAY_PAIR_SALT,
+            )
+            start = starts[choice]
+            draws[:, 2 * pair_k] = start
+            draws[:, 2 * pair_k + 1] = start + 1
+        leftover_from = n_pairs_forecast * 2
+    else:
+        leftover_from = 0
+    for day_position in range(leftover_from, n_forecast_days):
+        draws[:, day_position] = _sample_block_indexes(
+            n_blocks,
+            n_samples,
+            block_weights,
+            rng=rng,
+            shared=shared_draws,
+            cfg=cfg,
+            hours=hours,
+            position=day_position,
+            salt=SHARED_DRAW_SALT,
+        )
+    return draws
 
 
 def pool_summary(original: np.ndarray, projected: np.ndarray) -> dict:
@@ -1210,6 +1411,7 @@ def predict(
     index: pd.DatetimeIndex | None = None,
     return_paths: bool = False,
     shared_draws: bool = False,
+    day_pair: bool = False,
     kind: str = "harmonic_ar2",
     diagnostics: dict | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
@@ -1229,6 +1431,11 @@ def predict(
     Stationen eines Laufs (A11, Konzept §4.2): gleiche Zufallszahlen je
     (Horizont, Tagesposition), je Station über die eigene Blockverteilung
     abgebildet. Ohne das Flag bleibt die Ziehung unabhängig wie vor 0.31.0.
+
+    ``day_pair=True`` (B3) zieht aufeinanderfolgende Prognose-Kalendertage
+    als Paar aus aufeinanderfolgenden Trainingsblöcken. Aus ist bitgleich
+    zum Stand vor 0.58.0. Paare über eine Regime-Kante (R2) werden
+    ausgelassen; fehlt jedes Paar, fällt die Ziehung auf unabhängige Tage.
 
     ``kind`` wählt das Punktmodell (A10, Konzept §3.2 M3): ``harmonic_ar2``
     (Default, wie vor 0.31.0), ``profile_ar2`` (Zweitmodell) oder
@@ -1371,18 +1578,27 @@ def predict(
     block_weights = exp_block_weights(
         len(block), getattr(cfg, "bootstrap_ew_half_life_days", None)
     )
-    for day_position, day in enumerate(np.unique(local_dates)):
+    unique_days = np.unique(local_dates)
+    pair_starts = _day_pair_starts(
+        len(block),
+        _training_block_dates(model, cfg),
+        _regime_break_dates(cfg, model.get("fuel")),
+    )
+    day_draws = draw_day_blocks(
+        n_forecast_days=len(unique_days),
+        n_blocks=len(block),
+        n_samples=cfg.bootstrap_samples,
+        block_weights=block_weights,
+        shared_draws=shared_draws,
+        day_pair=day_pair,
+        cfg=cfg,
+        hours=hours,
+        rng=rng,
+        pair_starts=pair_starts,
+    )
+    for day_position, day in enumerate(unique_days):
         positions = np.flatnonzero(local_dates == day)
-        if shared_draws:
-            # A11: dieselben Zufallszahlen für dieses (Horizont, Tagesposition)
-            # in allen Stationen — die Abbildung auf die Blöcke bleibt je
-            # Station eigen (comonotone Kopplung, Konzept §4.2).
-            uniform = shared_day_uniforms(cfg, hours, day_position)
-            draws = blocks_from_uniform(uniform, len(block), block_weights)
-        elif block_weights is None:
-            draws = rng.integers(0, len(block), size=cfg.bootstrap_samples)
-        else:
-            draws = rng.choice(len(block), size=cfg.bootstrap_samples, p=block_weights)
+        draws = day_draws[:, day_position]
         drawn = block[draws[:, None], slot[positions]]
         # Fix für 12-Uhr-Verstöße durch wechselnde NaN-Mengen: Ein fehlender
         # Tagesblock an einem Slot (z. B. Nachtlücke) führte zu NaN-Pfaden,

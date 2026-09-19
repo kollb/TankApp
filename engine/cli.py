@@ -194,16 +194,34 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument(
                 "--kind",
                 choices=["harmonic_ar2", "profile_ar2", "ensemble"],
-                default="harmonic_ar2",
-                help="B0: gemessenes Punktmodell. Default harmonic_ar2 (Stand "
-                "vor 0.56.0); die App veröffentlicht ensemble — für die "
-                "Referenzmessung beides laufen lassen.",
+                default="profile_ar2",
+                help="B3: gemessenes Punktmodell. Default profile_ar2 "
+                "(publizierter Kern); ensemble und harmonic_ar2 bleiben "
+                "als Gegenprobe.",
             )
             command.add_argument(
                 "--shared-draws",
                 action="store_true",
-                help="B0: gemeinsame Tagesblock-Ziehung wie in der App (A11); "
-                "Default ist die unabhängige Ziehung des klassischen Backtests.",
+                default=True,
+                help="Gemeinsame Tagesblock-Ziehung (A11, Default an). "
+                "--no-shared-draws stellt unabhängig.",
+            )
+            command.add_argument(
+                "--no-shared-draws",
+                dest="shared_draws",
+                action="store_false",
+            )
+            command.add_argument(
+                "--day-pair",
+                action="store_true",
+                default=True,
+                help="B3: aufeinanderfolgende Prognosetage als Paar ziehen "
+                "(Default an). --no-day-pair stellt unabhängig.",
+            )
+            command.add_argument(
+                "--no-day-pair",
+                dest="day_pair",
+                action="store_false",
             )
             command.add_argument(
                 "--out", type=Path, default=Path("results/engine/backtest")
@@ -462,6 +480,7 @@ def run(args) -> int:
             args.until,
             kind=args.kind,
             shared_draws=bool(args.shared_draws),
+            day_pair=bool(getattr(args, "day_pair", True)),
             horizon_rows=True,
         )
         args.out.mkdir(parents=True, exist_ok=True)

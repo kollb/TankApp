@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 19.09.2026 · App-Version 0.57.0. Abgleich von
+> Stand: 19.09.2026 · App-Version 0.58.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Die technische
 > B2-PIT-Kurve ist nicht die M7-Produktfreigabe (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [19.09.2026 — Version 0.58.0: B3 Mehrtage & Kerne](#19092026--version-0580-b3-mehrtage--kerne)
   - [19.09.2026 — Version 0.57.0: B2 Kalibrierungsschicht](#19092026--version-0570-b2-kalibrierungsschicht)
   - [19.09.2026 — Version 0.56.0: B0 Messgrundlagen des UX/Mathe-Befunds](#19092026--version-0560-b0-messgrundlagen-des-uxmathe-befunds)
   - [16.09.2026 — Version 0.44.0: Batch 1 des Optimierungs-Befunds (O1 + O22)](#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)
@@ -107,6 +108,15 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 19.09.2026 — Version 0.58.0: B3 Mehrtage & Kerne
+
+Day-Pair-Bootstrap (`TANKAPP_DAYPAIR`) zieht aufeinanderfolgende Prognosetage
+aus aufeinanderfolgenden Trainingsblöcken; Paare über eine deklarierte
+Regime-Kante fallen heraus. Default-Kern ist `profile_ar2` (gemessen besser
+als das Eine-Schritt-Ensemble); Backtest und Veröffentlichung messen denselben
+Pfad. Horizont-Gewichte stehen als `not_estimated` im Artefakt (M4-Folge).
+Cache-Schema 5.
 
 ### 19.09.2026 — Version 0.57.0: B2 Kalibrierungsschicht
 

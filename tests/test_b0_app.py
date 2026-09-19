@@ -126,13 +126,14 @@ def _series_map(observations, cfg):
 def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
     observations, cfg, tmp_path
 ):
-    assert backtest_cache.CACHE_SCHEMA_VERSION == 4
+    assert backtest_cache.CACHE_SCHEMA_VERSION == 5
     assert {
         "pit",
         "regime_breaks_in_window",
         "ar_shrink",
         "model_kind",
         "shared_draws",
+        "day_pair",
         "calibration_candidate",
     } <= set(backtest_cache.PAYLOAD_KEYS)
     marked = Config(**{**cfg.to_dict(), "regimes": ("2026-07-31T00:00",)})
@@ -146,9 +147,12 @@ def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
     assert fresh["ok"] and fresh["backtest_cached"] is False
     # B2 misst dieselbe Verteilung, deren PIT-Kurve später auf die
     # Veröffentlichung angewandt wird (run_tasks-Default: Ensemble/shared).
-    assert fresh["model_kind"] == "ensemble" and fresh["shared_draws"] is True
+    assert fresh["model_kind"] == "profile_ar2" and fresh["shared_draws"] is True
+    assert fresh["day_pair"] is True
     candidate = fresh["calibration_candidate"]
-    assert candidate["model_kind"] == "ensemble" and candidate["shared_draws"] is True
+    assert (
+        candidate["model_kind"] == "profile_ar2" and candidate["shared_draws"] is True
+    )
     candidate_24h = candidate["24h"]
     assert candidate_24h["status"] in {
         "accepted",
@@ -179,7 +183,7 @@ def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
     ):
         assert hit[field] == fresh[field], field
     stored = json.loads(next(cache_dir.glob("e10-*.json")).read_text(encoding="utf-8"))
-    assert stored["cache_schema"] == 4
+    assert stored["cache_schema"] == 5
     assert "pit" in stored["payload"] and "regime_breaks_in_window" in stored["payload"]
 
 
@@ -246,7 +250,9 @@ def test_publikation_traegt_zaehler_pit_und_gemessenes_modell(
     assert forecast["ar_shrink"]["folds_scored"] == 1
     assert forecast["backtest_model_kind"] == "harmonic_ar2"
     assert forecast["backtest_shared_draws"] is False
-    assert forecast["model_kind"] == "ensemble"
+    assert forecast["model_kind"] == "profile_ar2"
+    assert forecast["day_pair"] is True
+    assert forecast["ensemble"]["horizon_weights"]["status"] == "not_estimated"
     # Das Modell-Artefakt trägt den Kalender in seiner Config.
     model_bundle = json.loads(
         (model_setup.runtime / "engine" / publication["model_file"]).read_text()

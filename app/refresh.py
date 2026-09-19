@@ -420,7 +420,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 identity: calibration_envelope(
                     prior_calibration_candidates.get((identity[0], identity[1], fuel)),
                     enabled=bool(getattr(settings, "calibration", True)),
-                    model_kind=getattr(settings, "model_kind", "ensemble"),
+                    model_kind=getattr(settings, "model_kind", "profile_ar2"),
                     shared_draws=bool(getattr(settings, "shared_draws", True)),
                     activation_blocked=calibration_regime_blackout(origin, cfg, fuel),
                 )
@@ -441,7 +441,8 @@ def refresh(settings: Settings, now=None, progress=None):
                 shared_draws=getattr(settings, "shared_draws", True),
                 # A10: Ensemble aus Haupt- und Zweitmodell (§3.2 M3);
                 # TANKAPP_MODEL_KIND stellt auf ein Einzelmodell um.
-                model_kind=getattr(settings, "model_kind", "ensemble"),
+                model_kind=getattr(settings, "model_kind", "profile_ar2"),
+                day_pair=getattr(settings, "day_pair", True),
             ) as task_pool:
                 # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
                 first = task_pool.run(
@@ -619,7 +620,8 @@ def refresh(settings: Settings, now=None, progress=None):
                         # und Bewertungsfenster kommen aus dem Fit, die GUI
                         # zeigt sie in der Werkstatt nur an.
                         "ensemble": model.get("ensemble"),
-                        "model_kind": getattr(settings, "model_kind", "ensemble"),
+                        "model_kind": getattr(settings, "model_kind", "profile_ar2"),
+                        "day_pair": bool(getattr(settings, "day_pair", True)),
                         # B2: angewandte Kurve (falls eine frühere Abnahme
                         # sie freigegeben hat) und der neue Kandidat für den
                         # nächsten Lauf bleiben getrennt sichtbar.
@@ -643,6 +645,7 @@ def refresh(settings: Settings, now=None, progress=None):
                         "ar_shrink": report.get("ar_shrink"),
                         "backtest_model_kind": report.get("model_kind"),
                         "backtest_shared_draws": report.get("shared_draws"),
+                        "backtest_day_pair": report.get("day_pair"),
                         "rolling_picp_7d": report.get("rolling_picp_7d"),
                         # Mehrtage-Horizonte +3 d/+7 d (Konzept §3.4):
                         # MASE/PICP der Fan-Chart-Horizonte, ehrlich

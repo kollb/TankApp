@@ -740,7 +740,8 @@ Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`
   App veröffentlicht aber `ensemble` mit gemeinsamer Ziehung (A10/A11). Der
   Backtest maß also bis heute nicht das, was der Nutzer sieht — B0 macht den
   Unterschied benennbar (`--kind ensemble --shared-draws`), das Umschalten des
-  Defaults ist eine Messentscheidung für B3 ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)).
+  Defaults ist seit 0.58.0 umgestellt: Backtest und Veröffentlichung messen
+  `profile_ar2` mit gemeinsamer Ziehung und Day-Pair ([LUECKEN.md](LUECKEN.md)).
 - `pit` — PIT-Paare als Histogramm je Station und Horizont (`24h`, `72h`,
   `168h`), jeweils `all` und `break_free`. PIT = Mittelrang der Beobachtung
   unter den Bootstrap-Pfaden, `(#Pfade < y + ½ · #Pfade = y) / #endliche Pfade`;

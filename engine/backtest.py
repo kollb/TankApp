@@ -466,8 +466,9 @@ def run_backtest(
     days: int = 21,
     until=None,
     strict_end: bool | None = None,
-    kind: str = "harmonic_ar2",
-    shared_draws: bool = False,
+    kind: str = "profile_ar2",
+    shared_draws: bool = True,
+    day_pair: bool = True,
     horizon_rows: bool = False,
 ) -> tuple[dict, pd.DataFrame]:
     """Rolling-Origin-Backtest über ``days`` lokale Tage bis ``until`` (exklusiv).
@@ -478,12 +479,10 @@ def run_backtest(
     letzte Tag ist dann angebrochen und darf nicht als Wahrheit dienen);
     aus bei explizitem ``until`` (CLI-Auswertung mit bekannter Zukunft).
 
-    ``kind``/``shared_draws`` (B0): das gemessene Punktmodell und die
-    Ziehungsart. Default ist der Stand vor 0.56.0 — ``harmonic_ar2`` mit
-    unabhängiger Ziehung —, **nicht** das, was die App veröffentlicht
-    (``ensemble``, gemeinsame Ziehung). Der Bericht nennt beides unter
-    ``model_kind``/``shared_draws``, damit die Lücke sichtbar ist
-    (docs/LUECKEN.md); das Umschalten ist eine Messentscheidung für B3.
+    ``kind``/``shared_draws``/``day_pair`` (B3): das gemessene Punktmodell
+    und die Ziehungsart. Default ist seit 0.58.0 derselbe Pfad wie die
+    Veröffentlichung (``profile_ar2``, gemeinsame Ziehung, Day-Pair).
+    Gegenprobe: ``harmonic_ar2`` / ``shared_draws=False`` / ``day_pair=False``.
 
     ``horizon_rows=True`` (B0) hängt die bewerteten Zeilen der +3-d/+7-d-
     Fenster an die Rückgabe an (Spalte ``horizon_hours`` = 72/168; die
@@ -588,6 +587,7 @@ def run_backtest(
                     index=target,
                     kind=kind,
                     shared_draws=shared_draws,
+                    day_pair=day_pair,
                     return_paths=True,
                 )
             except ValueError as exc:
@@ -700,6 +700,7 @@ def run_backtest(
                     index=h_target,
                     kind=kind,
                     shared_draws=shared_draws,
+                    day_pair=day_pair,
                     return_paths=True,
                 )
                 h_valid = h_observed & h_forecast.q50.notna() & h_forecast.naive.notna()
@@ -891,6 +892,7 @@ def run_backtest(
         # den Kennzahlen, weil die App ein anderes Modell veröffentlicht.
         "model_kind": kind,
         "shared_draws": bool(shared_draws),
+        "day_pair": bool(day_pair),
         "m3_complete": False,
         "decision_ready": False,
         "calibrated": False,
@@ -918,6 +920,22 @@ def run_backtest(
         # Kein M3-Abnahmekriterium (diese gelten für 24 h) — ehrlich
         # ausgewiesen, damit die Fan-Chart-Horizonte messbar sind.
         "horizons": horizon_report,
+        "horizon_kernel": {
+            "kind": kind,
+            "status": "measured",
+            "note": (
+                "MASE/PICP je Horizont gelten für denselben Kern wie model_kind. "
+                "Eine zweite Mischung nach Horizont (M4) ist Folgepunkt — "
+                "ensemble.horizon_weights bleibt not_estimated."
+            ),
+            "mase": {
+                "24h": aggregate.get("mase"),
+                "72h": (horizon_report.get("72h") or {}).get("metrics", {}).get("mase"),
+                "168h": (horizon_report.get("168h") or {})
+                .get("metrics", {})
+                .get("mase"),
+            },
+        },
         # B0: PIT-Histogramme je Station/Horizont (all / break_free), die
         # Regime-Kanten im Fenster und die AR(2)-Stauchungen über alle Folds.
         "pit": pit_report(rows, horizon_rows_by_hours, series),
@@ -1078,8 +1096,9 @@ def markdown_report(report: dict) -> str:
             "",
             f"Gemessenes Punktmodell: `{report.get('model_kind', 'harmonic_ar2')}`"
             f"{' (gemeinsame Ziehung)' if report.get('shared_draws') else ' (unabhängige Ziehung)'}"
-            " — die App veröffentlicht `ensemble` mit gemeinsamer Ziehung; die "
-            "Kennzahlen hier gelten für das gemessene Modell.",
+            f"{' · Day-Pair' if report.get('day_pair') else ' · unabhängige Tage'}"
+            " — Kennzahlen gelten für das gemessene Modell (Default seit 0.58.0: "
+            "profile_ar2, gemeinsame Ziehung, Day-Pair).",
             f"Regime-Kanten im Fenster ({regime.get('window_start')} bis "
             f"{regime.get('window_end_exclusive')}): **{regime.get('count', 0)}**"
             + (
