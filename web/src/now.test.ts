@@ -639,10 +639,10 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
     expect(result.saveCt).toBeNull();
     expect(result.saveEur).toBeNull();
     expect(result.spreadCt).toBeCloseTo(5.0, 6);
-    expect(result.sentence).toContain(
-      "zwischen günstigster und teuerster Station",
-    );
-    expect(result.sentence).not.toContain("€ bei 45 L");
+    // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Satz bleibt in diesem
+    // Zustand null — „am günstigsten (Preis)“ steht in Headline und Betrag,
+    // die Spanne in der Chip-Zeile der Karte. Er dupliziert nur noch.
+    expect(result.sentence).toBeNull();
   });
 
   it("eine günstigere Referenz ergibt keine erfundene Ersparnis", () => {

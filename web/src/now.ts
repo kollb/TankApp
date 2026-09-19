@@ -791,8 +791,13 @@ export type NowBestNow = {
   spreadEur: number | null;
   /** Anzahl Stationen mit offenem Preis. */
   freshCount: number;
-  /** Ein Satz, der ohne Modell gilt — nie „Erwartet“, Referenz benannt. */
-  sentence: string;
+  /**
+   * Ein Satz, der ohne Modell gilt — nie „Erwartet“, Referenz benannt.
+   * B4 (Befund UX/Mathe 2026-09-19): `null`, wenn die Karte dieselbe
+   * Information schon kompakter zeigt — ohne Empfehlung steht die Spanne
+   * in der Chip-Zeile, und der Satz würde sie nur noch einmal umstellen.
+   */
+  sentence: string | null;
   mapsUrl: string | null;
 };
 
@@ -828,12 +833,18 @@ export function nowBestNow(input: NowInput): NowBestNow {
   const saveEur = saveCt !== null ? (saveCt / 100) * input.liters : null;
 
   const litersText = deTrimmed(input.liters, 0);
-  const sentence = !best
+  // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Ohne Empfehlungs-Anker trägt der
+  // Satz keine eigene Information mehr — „am günstigsten (Preis)“ steht in
+  // Headline und Betrag, die Spanne in der Chip-Zeile der Karte. In dem
+  // Zustand bleibt er `null`, und die Karte ist der „1 + 3 + 1“-Kern.
+  // Solange die Empfehlung einen Anker setzt (saveCt ≠ null), bleibt der
+  // Satz: Er benennt die Referenz und die persönliche Ersparnis (O19).
+  const sentence: string | null = !best
     ? "Kein offener Preis in der Sicht — mit der nächsten Preismeldung füllt sich der Vergleich."
     : !worst
       ? `Nur ${best.station.name} meldet gerade einen Preis (${euroPerLiter(best.price)}) — für einen Vergleich fehlt eine zweite Station.`
       : saveCt === null
-        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — zwischen günstigster und teuerster Station liegen ${centPerLiter(spreadCt ?? 0)}.`
+        ? null
         : saveCt <= 0.05
           ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
           : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(saveCt)} unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}) — das sind ${euro(saveEur ?? 0)} € bei ${litersText} L.`;

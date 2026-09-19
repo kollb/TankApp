@@ -21,6 +21,14 @@ import { test, expect, type Page } from "@playwright/test";
 // echte API angelegt (kein `page.route`) — sonst bliebe genau die Liste
 // ungemessen, die auf dem Handy am längsten war.
 //
+// B4 (Befund UX/Mathe 2026-09-19): Die Hauptnavigation ist 3+1 — die
+// Studio-Bereiche (Labor, Ich, System, Glossar) liegen hinter dem
+// „Mehr“-Blatt. Die URL-Kennungen sind weiter gültig (`?tab=labor` usw.),
+// und die Ratchets unten halten das: `expectArea` beweist pro Bereich den
+// Landing-Ort (Leiste + Überschrift), der Scrolltiefe-Test die Verdichtung
+// des Entscheidungsbildschirms (≤ 1,5 Viewports), und der Verdichtungs-
+// Test zusätzlich, dass der Tagesstreifen default-eingeklappt ist.
+//
 // Die letzte Prüfung hält die Liste der bewusst scrollbaren Kästen fest:
 // Ein neuer Querlauf kann nicht still dazukommen.
 
@@ -210,13 +218,19 @@ async function seedReceipts(page: Page): Promise<string> {
 // liefert stillschweigend „Jetzt“. Die Suite maß deshalb zweimal den
 // Einstieg und nie „Stationen“ oder „Woche“ — genau dort lag der Querlauf,
 // den der Pixel-9-Check fand. `expectArea` unten verhindert die Wiederkehr.
+// `heading` (nur Studio-Bereiche): B4 (Befund UX/Mathe 2026-09-19) hat die
+// Studio-Bereiche hinter das „Mehr“-Blatt gelegt — in der Bottom-Leiste
+// trägt dann der „Mehr“-Eintrag `aria-current`, nicht der Bereich selbst.
+// Zwei Studio-Bereiche wären beide hinter „Mehr“; der Ratchet prüft daher
+// zusätzlich die Bereichs-Überschrift, damit ein schweigsamer Fallback
+// (z. B. labor → ich) weiter rot wird.
 const AREAS = [
   { id: "jetzt", label: "Jetzt" },
   { id: "stationen", label: "Stationen" },
   { id: "woche", label: "Woche" },
-  { id: "ich", label: "Ich" },
-  { id: "labor", label: "Labor" },
-  { id: "system", label: "System" },
+  { id: "ich", label: "Ich", heading: "Ich" },
+  { id: "labor", label: "Labor", heading: "Verstehen, warum die App das sagt" },
+  { id: "system", label: "System", heading: "Einmal einrichten. Weiterlaufen lassen." },
 ] as const;
 
 const ICH_TABS = ["Fahrzeug", "Belege", "Bilanz", "Einstellungen"];
@@ -234,16 +248,40 @@ const LAB_SECTIONS = [
  *
  * `tabFromUrlId` fällt bei unbekannten Werten still auf „Jetzt“ zurück — für
  * die App richtig (ein kaputter Link zeigt den Einstieg), für eine Messung
- * fatal: Sie meldet grün, ohne den Bereich je gesehen zu haben. Der Beleg
- * ist die Bereichs-Navigation selbst: genau ein Knopf trägt
- * `aria-current="page"`, und das muss der gemeinte sein.
+ * fatal: Sie meldet grün, ohne den Bereich je gesehen zu haben.
+ *
+ * Hauptbereiche (B4, Befund UX/Mathe 2026-09-19): Der Beleg ist die
+ * Bottom-Leiste — genau ein Knopf trägt `aria-current="page"`, und das muss
+ * der gemeinte sein.
+ *
+ * Studio-Bereiche (B4): Sie liegen hinter dem „Mehr“-Blatt, in der Leiste
+ * trägt der „Mehr“-Eintrag `aria-current`. Das genügt allein nicht, weil
+ * alle vier Studio-Bereiche denselben Eintrag markieren — der Beleg ist
+ * deshalb zusätzlich die Bereichs-Überschrift im Inhalt.
  */
-async function expectArea(page: Page, label: string): Promise<void> {
+async function expectArea(
+  page: Page,
+  area: (typeof AREAS)[number],
+): Promise<void> {
+  if (area.heading) {
+    const more = page.getByRole("button", { name: "Mehr", exact: true });
+    await expect(
+      more,
+      `Im Studio-Bereich „${area.label}“ fehlt der aktive „Mehr“-Eintrag.`,
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("heading", { name: area.heading, exact: true }),
+      `Nicht im Studio-Bereich „${area.label}“ gelandet — zeigt die ` +
+        `URL-Kennung auf einen anderen Bereich? (routing.ts nutzt ` +
+        `alltagsdeutsche Kennungen.)`,
+    ).toBeVisible();
+    return;
+  }
   await expect(
     page.locator(`nav [aria-current="page"]`).first(),
-    `Nicht im Bereich „${label}“ gelandet — zeigt die URL-Kennung auf einen ` +
-      `anderen Bereich? (routing.ts nutzt alltagsdeutsche Kennungen.)`,
-  ).toHaveText(label);
+    `Nicht im Bereich „${area.label}“ gelandet — zeigt die URL-Kennung auf ` +
+      `einen anderen Bereich? (routing.ts nutzt alltagsdeutsche Kennungen.)`,
+  ).toHaveText(area.label);
 }
 
 test.describe("Mobil: kein Querlauf", () => {
@@ -260,7 +298,7 @@ test.describe("Mobil: kein Querlauf", () => {
     }) => {
       await page.goto(`/?tab=${area.id}`);
       await settled(page);
-      await expectArea(page, area.label);
+      await expectArea(page, area);
       await check(page, area.label);
     });
   }
@@ -306,6 +344,89 @@ test.describe("Mobil: kein Querlauf", () => {
     await expect(
       page.locator('p:has-text("Günstigste Stunde")').first(),
     ).toBeHidden();
+    // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Tagesstreifen ist die
+    // einzige Visualisierung des Bildschirms und standardmäßig
+    // eingeklappt — „die Entscheidung braucht ihn nicht“. Der Ratchet
+    // hält genau das: Auslöser sichtbar, Profilsatz nicht gemalt.
+    const strip = page.locator("#jetzt-daystrip");
+    await expect(strip.locator("summary")).toBeVisible();
+    await expect(strip.locator(".daystrip-cells")).toBeHidden();
+  });
+
+  test("Jetzt: Scrolltiefe ≤ 1,5 Viewports (B4-Ratchet)", async ({
+    page,
+  }, testInfo) => {
+    // UX-KPI aus dem Befund (§1.7, übernommen aus UI-NEUENTWURF §15):
+    // „Scrolltiefe ‚Jetzt‘ ≤ 1,5 Viewports mobil“. Gemessen wird der
+    // Entscheidungsbildschirm selbst — die `section` vom „Jetzt“-H1 bis zur
+    // Frische-Fußzeile — gegen das Viewport (844 px im Mobile-Projekt).
+    //
+    // Warum die Section und nicht das ganze Dokument: Die globale Kopfzeile
+    // (mobil 3 Steuerreihen) und der globale Fuß sind Shell — die
+    // Einzeilen-Kopfzeile ist ausweislich des Befund-Wireframes
+    // „C13-Folge“ (LUECKEN: bewusst offener Arbeitspunkt C13) und gehört
+    // nicht zu B4. B4 ist parallel zu B2/B3 angelegt und darf an keinen
+    // späteren Batch koppeln; der Ratchet hält deshalb genau das, wofür
+    // B4 zeichnet: den Entscheidungsbildschirm. Die Dokumenttiefe wird
+    // weiterhin geloggt — ab C13 darf dieser Test auf die
+    // Dokument-Scrollhöhe verschärft werden.
+    //
+    // Gemessen wird bei der Wireframe-Entwurfsbreite (Befund §1.4:
+    // „390 px gedacht“), nicht im `narrow`-Projekt: 320 px ist die
+    // Störbreite der Überlauf-Prüfung (0.55.2), dort wird dasselbe Layout
+    // naturgemäß um Zeilenumbrüche tiefer.
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "Die KPI gilt bei der Entwurfsbreite 390 px (mobile-Projekt).",
+    );
+    await page.goto("/");
+    await settled(page);
+    await expectArea(page, AREAS[0]);
+    const { depth, docDepth, promptPx } = await page.evaluate(() => {
+      const section = document.querySelector(
+        'section[aria-labelledby="jetzt-title"]',
+      );
+      // Das Fensterende-Feedback („Gerade getankt?“) ist transientes
+      // Episoden-UI: Es erscheint, bis der Beleg gebucht oder verworfen
+      // ist, und ist Teil keiner festen Ansicht — die Messung des
+      // Entscheidungsbildschirms zählt es deshalb nicht mit.
+      const prompt = section
+        ? section.querySelector(
+            '[aria-label="Rückmeldung nach Fensterende"]',
+          )
+        : null;
+      const promptH = prompt
+        ? prompt.getBoundingClientRect().height + 16 // + `mb-4`
+        : 0;
+      const h = section
+        ? section.getBoundingClientRect().height - promptH
+        : Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+          );
+      return {
+        depth: h / window.innerHeight,
+        docDepth:
+          Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+          ) / window.innerHeight,
+        promptPx: Math.round(promptH),
+      };
+    });
+    console.log(
+      `[mobil] Jetzt-Scrolltiefe: ${depth.toFixed(2)} Viewports (Dokument: ${docDepth.toFixed(
+        2,
+      )}, Fensterende-Feedback: ${promptPx} px)`,
+    );
+    expect(
+      depth,
+      `„Jetzt“ scrollt tiefer als 1,5 Viewports (gemessen ${depth.toFixed(
+        2,
+      )}). Der Entscheidungsbildschirm trägt zu viel: Entscheidung, ` +
+        `Fakten, Streifen und Rückmeldung dürfen nicht alle vier auf ` +
+        `einem Scroll stehen (Befund §1.2: „1 + 3 + 1“).`,
+    ).toBeLessThanOrEqual(1.5 + 1e-6);
   });
 
   test("Echte Stationsnamen sprengen kein Raster (Pixel 9, 0.55.0)", async ({
@@ -368,11 +489,30 @@ test.describe("Mobil: kein Querlauf", () => {
       await page.goto(`/?tab=${area}`);
       await settled(page);
       // Der lange Name ist wirklich in der Ansicht — sonst misst der Test
-      // die kurzen Demo-Namen und ist wertlos.
-      await expect(
-        page.getByText(LONG[0].slice(0, 28), { exact: false }).first(),
-        `Kein langer Stationsname in „${area}“ — greift die Umleitung?`,
-      ).toBeVisible();
+      // die kurzen Demo-Namen und ist wertlos. Seit B4 zeigt „Jetzt“ keine
+      // Stationsliste mehr (die lebt in „Stationen“): Hier muss ein langer
+      // Name sichtbar sein (Fakt „Jetzt hier“ oder Umweg-Zeile), in
+      // „Stationen“ steht er in der vollständigen Liste — LONG[0]
+      // garantiert, weil die Umleitung die JSON-Reihenfolge abbildet.
+      if (area === "stationen") {
+        await expect(
+          page.getByText(LONG[0].slice(0, 28), { exact: false }).first(),
+          "Kein langer Stationsname in „Stationen“ — greift die Umleitung?",
+        ).toBeVisible();
+      } else {
+        const found = await Promise.all(
+          LONG.map(
+            async (name) =>
+              (await page
+                .getByText(name.slice(0, 28), { exact: false })
+                .count()) > 0,
+          ),
+        );
+        expect(
+          found.some(Boolean),
+          `Kein langer Stationsname in „${area}“ — greift die Umleitung?`,
+        ).toBeTruthy();
+      }
       await check(page, `${area} mit echten Stationsnamen`);
     }
   });

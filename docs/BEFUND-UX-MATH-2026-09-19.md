@@ -986,6 +986,38 @@ gehalten; Gegenmessung dokumentiert.
 **Abnahme:** Jeder Inhalt hat einen neuen festen Ort (keine Feature-
 Verluste), alle Teil-URLs weiter auflösbar, Lighthouse-Budgets gehalten.
 
+> **Status 19.09.2026 — umgesetzt in 0.59.0**
+> ([CHANGELOG](../CHANGELOG.md)), mit vier Vermerken aus der kritischen
+> Prüfung des Batches:
+>
+> 1. **Abnahme erfüllt:** Alle Teil-URLs (`?tab=labor|ich|system|glossar`,
+>    inkl. `?section=…`) bleiben auflösbar, weil der Routing-Code nicht
+>    angefasst wurde (Testfälle in `web/e2e/app.spec.ts`); jeder verlagerte
+>    Inhalt hat seinen festen Ort (Stationszeilen → „Stationen“,
+>    Studio-Bereiche hinter „Mehr“); Lighthouse-Budgets unangetastet (keine
+>    neuen Assets; fest positioniertes Blatt + initial geschlossener
+>    Tagesstreifen ⇒ kein CLS).
+> 2. **Ratchet abschnittsweit, nicht Vollseite:** Der „Jetzt“-Abschnitt
+>    (390×844) hält ≤ 1,5 Viewports (gemessen 1,23; Due-Prompt zählt nicht
+>    mit), die volle Seite wird protokolliert. Eine Vollseiten-Lesung
+>    wäre 1,77 Viewports — konfliktfrei nur, wenn der globale Kopf (C13,
+>    271 px) wegfielen. C13 ist am 18.09.2026 als *bewusst nicht
+>    verdichtet* geschlossen (TODO.md „Geschlossen als nicht nötig“); die
+>    Batch-Ziffer wird deshalb auf den Abschnitt bezogen, statt C13
+>    rückwirkend aufzubrechen.
+> 3. **Nebenbefund, im Batch mitgepflegt:** Echte `stats_summary`-Ausfälle
+>    kommen als HTTP-200-Fehler-Körper — die GUI ließ ihn als Summary
+>    durch („System“ stürzte auf frischem Server an
+>    `data.quality_metrics`). Jetzt normalisiert die Overview-Ebene solche
+>    Körper zu einem Fehler-Zustand; der Gate-Text „kein Engine-Lauf“ gilt
+>    nur ohne Summary, und der e2e-Wortlaut in `web/e2e/app.spec.ts`
+>    („Kalibrierung steht aus“) folgt der ehrlichen Summary des leeren
+>    Servers.
+> 4. **Heute im Blick:** Die drei Faktenzeilen bleiben sichtbar (Wireframe
+>    §1.4.1 bindet genau das); nur der Tagesstreifen klappt. Ohne
+>    Empfehlung entfällt der freie Satz, weil die Karte denselben Inhalt
+>    kompakter trägt; mit Empfehlung bleibt er (Referenz + Ersparnis, O19).
+
 ## B5 — Labor-Umbau (größter Brocken, je Sub-Tab ein PR)
 
 - `Labor.tsx` in vier Sub-Tabs zerlegen: Überblick · Modell & Parameter ·

@@ -153,6 +153,12 @@ test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
   const cells = page.locator(".daystrip-cells [role=img]");
   await expect(cells).toHaveCount(19);
 
+  // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Streifen ist standardmäßig
+  // eingeklappt — Lesbarkeit (Zellenbreite, Zeilenhöhe) lässt sich nur im
+  // offenen Zustand messen, deshalb erst aufklappen.
+  await page.locator("#jetzt-daystrip summary").click();
+  await expect(cells.first()).toBeVisible();
+
   // Die 19 Zellen stehen sofort (leer) im DOM, die Preise kommen erst mit
   // der Overview-Antwort — vor dem Vermessen auf echte Werte warten, sonst
   // misst dieser Test den Ladezustand statt des Streifens. Seit 0.49.3 ist

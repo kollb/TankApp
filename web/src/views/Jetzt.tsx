@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
+  ChevronRight,
   Clock,
   Compass,
   RotateCcw,
@@ -698,9 +699,15 @@ export function JetztView(props: JetztViewProps) {
                 {euroPerLiter(bestNow.price)}
               </p>
             )}
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
-              {bestNow.sentence}
-            </p>
+            {/* B4 (Befund UX/Mathe 2026-09-19, §1.4.1): `sentence` ist
+                `null`, wenn die Karte dieselbe Information schon kompakter
+                zeigt (Spanne in der Chip-Zeile, Preis in Headline/Betrag).
+                Dann bleibt die Karte bei „1 + 3 + 1“ ohne Wiederholungs-Satz. */}
+            {bestNow.sentence && (
+              <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
+                {bestNow.sentence}
+              </p>
+            )}
             {/* Der Lernstand steht genau einmal auf der Karte: `detail` der
                 grauen Antwort **ist** `learning` (nowVerdict: `learning ??
                 reason_short`). Die frühere zusätzliche Zeile darunter zeigte
@@ -712,66 +719,21 @@ export function JetztView(props: JetztViewProps) {
                 {verdict.detail}
               </p>
             )}
-            {bestNow.ranking.length > 1 && (
-              /* `grid-cols-1` ist Pflicht, nicht Deko: Ein `grid` ohne
-                 Spaltenangabe legt eine **implizite** Spur an, und die ist
-                 `auto` — sie wächst auf die breiteste Zeile statt auf die
-                 Kartenbreite. Ein langer Stationsname („Aral Tankstelle
-                 Frankfurt am Main Hanauer Landstraße 128“) machte die Spur
-                 496 px breit, obwohl die Karte 330 px hat; `truncate` griff
-                 nie, weil es nichts zu kürzen gab. Mit `minmax(0, 1fr)`
-                 (= `grid-cols-1`) ist die Spur an die Karte gebunden, und
-                 die Kürzung greift. Fund aus dem Pixel-9-Check, 0.55.0. */
-              <ol className="mt-4 grid grid-cols-1 gap-1.5">
-                {bestNow.ranking.map((entry, index) => (
-                  <li
-                    key={entry.station.station_id}
-                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs sm:flex-nowrap sm:items-center sm:justify-between sm:gap-3"
-                  >
-                    {/* Mobil zwei Zeilen wie in „Stationen“ (0.53.0): Name
-                        oben, Preis darunter. Echte Namen tragen das
-                        Unterscheidende hinten („… Hanauer Landstraße 128“) —
-                        auf einer Zeile blieb davon „ESSO STATION FRA…“ übrig,
-                        und damit beantwortet die Liste ihre eigene Frage
-                        („welche Station ist das?“) nicht mehr. Ab `sm` steht
-                        wieder alles in einer Zeile. */}
-                    <span className="flex w-full min-w-0 items-baseline gap-2 sm:w-auto sm:flex-1">
-                      <span className="w-4 shrink-0 font-mono text-slate-500">
-                        {index + 1}.
-                      </span>
-                      <span className="min-w-0 break-words text-slate-200 sm:truncate">
-                        {entry.station.name}
-                      </span>
-                      {/* Marke nur, wo Platz ist: auf 390 px fraß sie den
-                          Stationsnamen („Demo-T…“) — und sie steht ohnehin
-                          im Station-Detail. 0.53.0, Fund aus dem Mobil-Check. */}
-                      {entry.station.brand && (
-                        <span className="hidden shrink-0 text-slate-500 sm:inline">
-                          {entry.station.brand}
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex shrink-0 items-baseline gap-2 pl-6 sm:pl-0 sm:text-right">
-                      <span className="font-mono font-bold text-slate-100 tabular-nums">
-                        {euroPerLiter(entry.price)}
-                      </span>
-                      {bestNow.price !== null && index > 0 && (
-                        <span className="font-mono text-slate-500 tabular-nums">
-                          +{centPerLiter((entry.price - bestNow.price) * 100)}
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            {/* B4 (Befund UX/Mathe 19.09.2026, §1.4.1): Die Stationszeilen-
+                Liste lebt hier nicht mehr — „Stationen“ ist der einzige Ort
+                der Stationsliste (keine Dopplung, kein zweiter Ort derselben
+                Wahrheit). Hier bleibt die Entscheidung plus der Einweg:
+                der günstigste offene Preis (oben) und die Handlung. Die
+                zweite Aktion ist ein leiser Textlink (wie die Intent-Zeile
+                der grünen Karte): auf 390 px steht er neben der Route in
+                derselben 44-px-Zeile statt darunter als zweiter Button. */}
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
               {bestNow.mapsUrl && (
                 <a
                   href={bestNow.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="tap-44 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                  className="tap-44 inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
                 >
                   Route zur günstigsten
                   <ArrowRight size={15} aria-hidden="true" />
@@ -779,7 +741,7 @@ export function JetztView(props: JetztViewProps) {
               )}
               <button
                 onClick={() => onNavigate("stations")}
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+                className="min-w-0 text-xs font-semibold text-slate-400 underline decoration-dotted underline-offset-4 hover:text-slate-200"
               >
                 Alle {bestNow.freshCount} Preise vergleichen
               </button>
@@ -892,7 +854,9 @@ export function JetztView(props: JetztViewProps) {
       {/* ④ Heute im Blick — seit 0.36.0 mit Zahlen statt nur Farben
           (Nutzer-Feedback 14.09.2026: „zu wenig Infos“). Alles aus den
           Zellen selbst: günstigste/teuerste offene Stunde, Tagesmedian,
-          Abstand „jetzt“ zum Median und die Abdeckung. */}
+          Abstand „jetzt“ zum Median und die Abdeckung. Seit B4 (Befund
+          UX/Mathe 2026-09-19, §1.4.1) ist nur das Stundenprofil
+          eingeklappt — die Aussage und die Kennzahlen bleiben oben. */}
       {stripCells.length > 0 && (
         <>
           <h2 className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-200">
@@ -981,7 +945,25 @@ export function JetztView(props: JetztViewProps) {
                 </dd>
               </div>
             </dl>
-            <div className="daystrip-cells mt-3 grid gap-1.5">
+            {/* B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Tagesstreifen
+                ist die einzige Visualisierung auf diesem Bildschirm und
+                standardmäßig eingeklappt — die Entscheidung braucht ihn
+                nicht (Regel „1 + 3 + 1“). Die Kennzahlen darüber bleiben
+                sichtbar; das Stundenprofil öffnet sich hinter einem Tap.
+                `<details>` statt Zustands-Wechsel: Der Inhalt bleibt im
+                Dokument (Render- und Barrierefreiheitstests messen weiter
+                dasselbe), nur der Malbereich ist bis zum Aufklappen weg. */}
+            <details id="jetzt-daystrip" className="group mt-3">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-700 hover:text-slate-100 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={13}
+                  className="transition-transform group-open:rotate-90"
+                  aria-hidden="true"
+                />
+                Tagesstreifen 06–24 Uhr
+              </summary>
+              <div className="mt-3">
+            <div className="daystrip-cells grid gap-1.5">
               {stripCells.map((cell) => {
                 // Balkenhöhe = Preis innerhalb der Tagesspanne. So liest man
                 // das Profil, ohne 19 Zahlen zu vergleichen.
@@ -1075,6 +1057,8 @@ export function JetztView(props: JetztViewProps) {
               {dayPanel.coverage} Zahl = €/L (Stunden-Minimum) · Balken =
               Höhe im Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
             </p>
+              </div>
+            </details>
           </div>
         </>
       )}

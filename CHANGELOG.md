@@ -4,6 +4,55 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.59.0] – 2026-09-19
+
+**B4 — Navigation 3+1 und „Jetzt“ entschlackt
+([UX/Mathe-Befund, Teil 4](docs/BEFUND-UX-MATH-2026-09-19.md#b4--navigation-31-parallel-zu-b2b3-möglich)).**
+
+- **Bottom-Bar 3+1:** Die Haupt-Tab-Regel ist `Jetzt · Woche · Stationen`;
+  `Labor`, `Ich`, `System` und `Glossar` leben hinter einem einzigen
+  „Mehr“-Eintrag. Mobil öffnet er das Studio-Blatt (nicht-modal; Fokus springt
+  auf die aktive Zeile, Escape schließt, Hintergrund bleibt bedienbar), am
+  Desktop markiert eine „Studio“-Gruppe die vier Einträge in der Seitenleiste.
+  Jede Blatt-Zeile trägt ihre Erklär-Note („Labor · Verstehen, warum die App
+  das sagt“); der aktive Studio-Bereich zeigt am „Mehr“-Eintrag
+  `aria-current`. Die Ansichten selbst bleiben unverändert und verlieren nur
+  ihren Haupttab-Status; Alarm-Pille und Update-Banner bleiben im globalen
+  Kopf. Das URL-Schema ist kompromisslos unangetastet: `?tab=labor`,
+  `?tab=ich`, `?tab=system`, `?tab=glossar` (inkl. `?section=…`) bleiben
+  auflösbar — der Routing-Code ist gar nicht angefasst.
+- **„Jetzt“ entschlacken:** Die Stationszeilen-Liste verlässt die Ansicht
+  (sie lebt nur noch in „Stationen“), der Tagesstreifen startet eingeklappt,
+  die Umweg-Zeile bleibt. „Heute im Blick“ hält die drei Faktenzeilen
+  sichtbar (Wireframe §1.4.1: nur der Streifen klappt); ohne Empfehlung fällt
+  der Freitext-Satz weg, weil die Karte denselben Inhalt schon kompakter
+  zeigt — mit Empfehlung bleibt er, weil er Referenz und persönliche
+  Ersparnis benennt (O19).
+- **Scrolltiefen-Ratchet, abschnittsweit:** Der „Jetzt“-Abschnitt
+  (`section[aria-labelledby="jetzt-title"]`) bleibt bei 390×844 auf ≤ 1,5
+  Viewports (gemessen 1,23); die gesamte Seitenhöhe wird protokolliert, aber
+  nicht geratchtet. Eine Vollseiten-Lesung ist konstruktionsbedingt nicht
+  erreichbar: Die ganze Seite inkl. des globalen Kopfes (C13: Titel,
+  Alarm-Pille, Update-Banner; 271 px) misst 1,77 Viewports — der Überschuss
+  über 1,5 liegt am Kopf und dem restlichen Inhalt, nicht am Abschnitt. C13
+  ist am 18.09.2026 als *bewusst nicht verdichtet* geschlossen; der
+  Befund-Verweis bleibt als Hinweis, dass die Zahl gegen die C13-Entscheidung
+  zu lesen ist.
+- **S0-Normalisierung (Nebenbefund des Batches):** Echte
+  `stats_summary`-Ausfälle liefert der Server als HTTP-200-Fehler-Körper
+  (`{"error_code": …}`) — die GUI ließ ihn als Summary durch, und „System“
+  stürzte auf einem frischen Server an `data.quality_metrics`. Die
+  Overview-Ebene normalisiert solche Körper jetzt zu einem Fehler-Zustand
+  (kein `data`): „Labor“, „Ich“ und „System“ zeigen den ehrlichen
+  Lade-Fehler mit Grund statt Weißbild oder unzutreffender Leere; der Gate
+  sagt „kein Engine-Lauf“ genau dann, wenn es keine Summary gibt.
+- Tests: 8 neue B4-Ratchet-Fälle in `AppNav.test.tsx`, „Jetzt“-Fälle in
+  `now.test.ts`/`Jetzt.test.tsx`, der gemeinsame e2e-Helfer `e2e/nav.ts`
+  (Klick auf die 3+1-Navigation inkl. Studio-Blatt), Alltag-e2e 38/38 gegen
+  den leeren S0-Server, Demo-e2e 46 grün (14 bewusst übersprungen).
+  Lighthouse: keine neuen Assets; das Blatt ist fest positioniert und der
+  Streifen initial geschlossen — kein CLS, Budgets unangetastet.
+
 ## [0.58.0] – 2026-09-19
 
 **B3 — Mehrtage & Kerne (M2, M4) des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md).**

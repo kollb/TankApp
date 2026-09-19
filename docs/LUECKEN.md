@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 19.09.2026 · App-Version 0.58.0. Abgleich von
+> Stand: 19.09.2026 · App-Version 0.59.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Die technische
 > B2-PIT-Kurve ist nicht die M7-Produktfreigabe (§0.4).
