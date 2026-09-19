@@ -84,6 +84,7 @@ import {
   type JobLog,
   type Overview,
   type AdviceDiary,
+  type ResourceState,
 } from "../data";
 import {
   flushQueue,
@@ -846,10 +847,33 @@ function useOverviewState() {
     60000,
     refresh,
   );
-  const statsSummaryRes =
-    overviewTab
-      ? overviewPart<StatsSummary>(overview.data?.stats_summary)
-      : statsSummaryPoll;
+  // S0 (frischer Server): /stats/summary antwortet auf die fehlende
+  // Engine-Publikation mit HTTP 200 plus Fehler-Körper
+  // ({"error_code": "stats_summary_failed"}) — `useResource` zählt das als
+  // Daten. Die Views lesen Summen-Felder (quality_metrics, live_advice,
+  // backtest) gegen diesen Körper: Im System-Tab ging dadurch die gesamte
+  // App weiß (TypeError, gefunden über die B4-E2E am 19.09.2026).
+  // Normalisiert deshalb beide Pfade: Ein Fehler-Körper ist ein Fehler,
+  // keine Summary — die Views sehen `data: null` („kein Engine-Lauf“).
+  const asStatsResource = (
+    source: ResourceState<StatsSummary>,
+  ): ResourceState<StatsSummary> => {
+    const raw = source.data as
+      | { error_code?: string; quality_metrics?: unknown }
+      | null;
+    if (
+      raw &&
+      typeof raw === "object" &&
+      !("quality_metrics" in raw) &&
+      typeof raw.error_code === "string"
+    ) {
+      return { ...source, data: null, error: true, errorCode: raw.error_code };
+    }
+    return source;
+  };
+  const statsSummaryRes = overviewTab
+    ? asStatsResource(overviewPart<StatsSummary>(overview.data?.stats_summary))
+    : asStatsResource(statsSummaryPoll);
 
   const dueEpisodesRes =
     overviewTab
