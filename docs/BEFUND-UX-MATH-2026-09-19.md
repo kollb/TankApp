@@ -76,6 +76,11 @@
     - [A.4 Projektions- und Deckel-Lemmata](#a4-projektions--und-deckel-lemmata)
     - [A.5 MASE-Nenner und Ensemble-Gewichte (Szenario A)](#a5-mase-nenner-und-ensemble-gewichte-szenario-a)
   - [5.11 Anhang B: Grenzen der Messung](#511-anhang-b-grenzen-der-messung)
+- [5.12 Gegengutachten: Ergänzung und Beschluss](#512-gegengutachten-ergänzung-und-beschluss)
+  - [5.12.1 Gesamturteil](#5121-gesamturteil)
+  - [5.12.2 Drei technische Nachschärfungen](#5122-drei-technische-nachschärfungen)
+  - [5.12.3 Verbindlicher Batch-Ablauf](#5123-verbindlicher-batch-ablauf)
+  - [5.12.4 Abnahme- und Stop-Regeln](#5124-abnahme--und-stop-regeln)
 - [Anhang: Prüfprotokoll](#anhang-prüfprotokoll)
 
 ---
@@ -1981,6 +1986,178 @@ Ehrlichkeit vor Zeigen, wie in
    Effekt (hier −25 %) bleibt in derselben Größenordnung.
 
 ---
+
+
+## 5.12 Gegengutachten: Ergänzung und Beschluss
+
+> **Ergänzung zum Stand 19.09.2026.** Das vorgelegte Gegengutachten wird hier
+> in den bestehenden Befund eingearbeitet — nicht als weiteres Dokument. Es
+> bestätigt die Leitentscheidung „Regime-Kante statt 17-Cent-Korrektur“, findet
+> aber drei fehlende Implementierungsbedingungen. Dieser Abschnitt ist deshalb
+> der verbindliche Arbeitsbeschluss für die Batches; R1–R5 und B0–B7 bleiben
+> die technische Referenz, soweit sie hier nicht präzisiert werden.
+
+### 5.12.1 Gesamturteil
+
+**Kein fataler Fehler im Befund, aber eine gefährliche Auslassung im
+Umsetzungsplan.** Das Gegengutachten ist fachlich besonders wertvoll, weil es
+nicht die zentrale Architekturentscheidung umstößt, sondern ihre dynamischen
+Folgen bis in den AR-Nachlauf, die Übergangsphase und das Shrinkage verfolgt.
+
+| Aussage des Gegengutachtens | Beschluss | Konsequenz |
+|---|---|---|
+| „17 Cent abziehen“ verankert politische Erwartung statt Marktwirklichkeit | **übernehmen** | Kein historisches Umschreiben und kein globaler Betrag; Dummy/Rampe mit Prior, geschätzter Kante und Betrag |
+| PAVA löscht einen legalen Anstieg um Mitternacht | **übernehmen, blocker** | Regime-Kante ist eine erlaubte Segmentgrenze; bis zur Klärung wird die Annahme im Artefakt markiert |
+| Der 1. Januar erzeugt asymmetrischen Vertrauensschaden | **übernehmen, produktkritisch** | Falsches `WARTEN` wird höher gewichtet als verpasstes `JETZT`; in der Übergangsphase lieber `no_advice` |
+| MASE kann durch den Bruch künstlich besser werden | **übernehmen** | Kein grünes Gate und kein Tuning auf Fenstern mit Regime-Kante |
+| AR(2) darf Altregime-Residuen über die Kante tragen | **übernehmen, bisher fehlend** | Residuen-Zustand wird an der Kante geleert oder für einen definierten Zeitraum gedämpft; der Zustand muss im Artefakt sichtbar sein |
+| Harte Treppenstufe kann graduelle Durchgabe verfehlen | **übernehmen, mit Einschränkung** | Rampenmodell als kontrollierte Erweiterung; kein freier Mehrparameter-Fit kurz vor dem Termin |
+| `w = 0` bis Tag 5 ist eine künstliche Diskontinuität | **übernehmen** | Präzisionsgewicht wird stetig aus Prior- und Datenvarianz berechnet; Mindestdaten dienen als Sicherheits-Gate, nicht als Sprung im Gewicht |
+
+Der Begriff **„harter Dummy“** ist dabei nicht grundsätzlich falsch: Ein
+instantaner gesetzlicher Effekt darf als Treppe modelliert werden. Falsch wäre,
+die Treppe als sicher zu behandeln, wenn die Durchgabe empirisch eine Rampe
+ist. Die robuste Lösung ist ein Modellvergleich: Treppe als Basismodell,
+regularisierte Rampe als Alternative, Freigabe nur bei besserem
+Rolling-Origin-Nachweis.
+
+### 5.12.2 Drei technische Nachschärfungen
+
+#### A. AR(2)-Gedächtnis an der Regime-Kante flushen
+
+Der AR(2)-Fit darf nicht ungeprüft Residuen aus zwei Rechts- oder
+Preisregimen verbinden. Für jede Prognose wird daher ein `regime_id` je
+Zeitpunkt geführt. Schneidet die Zustandsstrecke eine Kante, gelten folgende
+Regeln:
+
+1. **Kante erkennen:** `regime_id[t] != regime_id[t-1]` invalidiert mindestens
+   die beiden AR-Lags, die auf das alte Regime zeigen.
+2. **Sicherer Default:** `phi = (0, 0)` für die ersten beiden Punkte im neuen
+   Regime; alternativ darf ein explizit dokumentierter gedämpfter Warmstart
+   verwendet werden. Der Strukturfit und der Regime-Dummy bleiben aktiv.
+3. **Kein Leck:** Ein Residuum vor der Kante darf nicht als Beobachtung für den
+   AR-Zustand nach der Kante dienen. Der Fit kann historische Daten nutzen,
+   aber der Online-Zustand muss an der Kante neu beginnen.
+4. **Messung:** Artefaktfelder `ar_state_reset`, `ar_warmup_points`,
+   `ar_shrink_events` und `regime_id` werden veröffentlicht. Ein Vergleich
+   „kein Flush / Flush / gedämpfter Warmstart“ läuft auf dem Juli-Ende und
+   synthetischen Szenarien.
+
+Das ist kein pauschales Löschen des AR-Modells. Nach zwei gültigen Punkten darf
+es wieder lernen; dadurch bleibt kurzfristige Dynamik erhalten, ohne einen
+politischen Sprung als Markt-Autokorrelation fortzuschreiben.
+
+#### B. Treppe gegen Rampe als verschachtelten Modellvergleich fitten
+
+Der Fit bekommt neben dem Schritt-Dummy eine begrenzte Übergangsfunktion. Eine
+geeignete erste Form ist
+
+```text
+D_step(t) = 1[t >= K]
+D_ramp(t) = clip((t - K) / tau, 0, 1),  tau in {12 h, 24 h, 48 h, 72 h}
+```
+
+`K` und der Betrag bleiben die geschätzten Größen aus R2; `tau` wird nicht
+beliebig optimiert, sondern aus einem kleinen, versionierten Kandidatensatz
+gewählt. Der Betrag bleibt je Sorte und wird mit der Ankündigung als Prior
+geschrumpft. Die Kandidaten werden auf demselben Rolling-Origin-Split bewertet
+mit q50-Bias, Intervallbreite, PICP und richtungsrichtigem `P_besser` — jeweils
+getrennt nach sofortiger und verzögerter Durchgabe.
+
+- **Treppe**, wenn eine nachgewiesene Kante innerhalb der Messauflösung liegt.
+- **Rampe**, wenn die Durchgabe über mehrere Messintervalle stabil verteilt
+  ist und der Backtest die Treppe schlägt.
+- **Szenario-Mischung**, wenn am Cutoff noch nicht entschieden werden kann, ob
+  Treppe oder Rampe gilt. Nicht die Unsicherheit durch einen Mittelwert
+  verstecken: die Draws tragen dann das Szenario-Bit wie in R5.1.
+
+Damit wird die Realität gradueller Durchgabe berücksichtigt, ohne wenige
+Übergangstage mit einer frei wachsenden Transition-Funktion zu überfitten.
+
+#### C. Shrinkage stetig und präzisionsbasiert machen
+
+Die bisherige Formulierung „bei weniger als fünf Nach-Tagen `w = 0`“ wird
+ersetzt. Für den Betrag gilt:
+
+```text
+w = precision_data / (precision_data + precision_prior)
+δ = w · δ_hat + (1 - w) · δ_announced
+precision = 1 / max(se², se_floor²)
+```
+
+`se_data` wird per day-block bootstrap **innerhalb der Vor-/Nach-Seite
+getrennt** geschätzt; `se_prior` bleibt die explizit dokumentierte
+Durchgabe-Unsicherheit. `se_floor` verhindert, dass ein einzelner dichter
+Collector-Lauf sofort Gewicht 1 erhält. Die fünf Tage sind künftig nur noch
+zwei Sicherheitsbedingungen: Vorher darf der Datenanteil das Übergangsmodell
+nicht allein freigeben, und bei zu wenigen gültigen Nach-Tagen bleibt
+`no_advice` oder Szenario-Mischung aktiv. Das Gewicht selbst wächst stetig.
+
+So kann ein sehr präziser Tag-3-Schätzer Evidenz beitragen, ohne dass er die
+Produktfreigabe erzwingt; zugleich gibt es keinen künstlichen Sprung von Tag 4
+auf Tag 5.
+
+### 5.12.3 Verbindlicher Batch-Ablauf
+
+Die bestehenden B0–B7 werden für die neuen Risiken in sechs abnehmbare
+Arbeitsbatches gegliedert. Jeder Batch endet mit einem Artefakt, einem
+Gegenlauf ohne Feature und einer dokumentierten Entscheidung. Kein Batch
+ändert gleichzeitig Modell, UI und Schwellenregel.
+
+| Batch | Zweck | Inhalt | Gate / Ergebnis |
+|---|---|---|---|
+| **G-R0** | Sicherheitsfreeze vor der Kante | R3-Segmentgrenze, `regime_transition` → `no_advice`, Gate-/Ledger-Ausschluss, Regime-Marker, Nowcast-Konditionierung | PAVA erhält den +17-ct-Sprung; keine falsche Empfehlung am Kanten-Tag; `TANKAPP_REGIME=0` bitgleich zum Status quo |
+| **G-R1** | Beobachten statt raten | Juli-Archiv messen: Kante, Verzögerung, Durchgabe, Sortenstreuung; persistenter Regime-Kalender und Rohdaten-Provenienz | Bericht je Station/Sorte; kein Wert wird aus der Pressemitteilung als Wahrheit übernommen |
+| **G-R2** | Dynamik entkoppeln | AR(2)-Flush/Warmstart, Zustands- und Regime-Marker, Tests gegen Residuen-Leck | Kein AR-Lag über die Kante; kurzfristige Qualität nach Warmup nicht schlechter als Status quo |
+| **G-R3** | Übergabe modellieren | Treppe/Rampe als verschachtelte Kandidaten, stetiges Präzisions-Shrinkage, getrennte SE, Szenario-Mischung | Juli-Ende bestanden: Bias, Breite und P-Richtung verbessern sich; kein harter Gewichtssprung |
+| **G-R4** | Messen ohne Selbsttäuschung | `regime_breaks_in_window`, MASE nur bruchfrei interpretieren, Settlements markieren; M7 und Schwellenregler nicht aus Übergangsdaten speisen | Übergangsdaten bleiben sichtbar, verändern aber weder Schwellen noch Kalibrierungsfreigabe |
+| **G-R5** | Freigabe und Betrieb | Rolling-Origin-Abnahme, Kalibrierung erst auf bruchfreien Daten, Labor-Karte „Regime & Rechtslagen“, Monitoring | Freigabe nur bei erfüllten Kriterien; sonst `no_advice`, kein stiller Fallback auf 17 ct |
+
+**Abhängigkeiten:** G-R0 und G-R1 sind die Vorbedingung für alles. G-R2 kann
+nach G-R0 separat umgesetzt werden. G-R3 hängt an G-R1 und muss vor B2/B3 auf
+Juli-Daten bewiesen sein. G-R4 läuft parallel, blockiert aber jede
+Interpretation von MASE/Brier/MASE. G-R5 folgt erst nach den Gegenläufen.
+B4 (Navigation) bleibt unabhängig und kann parallel laufen; B5 bekommt die
+Regime-Karte erst nach G-R3, damit die UI keine unfertige Modellsemantik
+verfestigt.
+
+**Reihenfolge für den 01.10.:** Nur G-R0 ist zwingend produktiv vor der
+Kante. G-R1 darf die Messung vorbereiten. G-R2/G-R3 werden nicht mit Gewalt
+in elf Tage gedrückt; bis sie auf dem Juli-Ende abgenommen sind, gilt die
+Ehrlichkeitsregel `regime_transition`/`no_advice`. **Das ist die zentrale
+operative Entscheidung.**
+
+### 5.12.4 Abnahme- und Stop-Regeln
+
+Ein Batch gilt nur dann als abgeschlossen, wenn alle vier Nachweise vorliegen:
+
+1. **Mechanismus-Test:** minimaler synthetischer Fall beweist genau die neue
+   Eigenschaft (AR-Flush, Rampe, Shrinkage oder Segmentkante).
+2. **Archiv-Test:** derselbe Code läuft über das Rabatt-Ende 01.07.2026,
+   ohne Zukunftsleck und mit Vergleich zum Status quo.
+3. **Negativtest:** ohne Regime-Deklaration bleibt das Verhalten unverändert;
+   bei unklarer Rechts- oder Datenlage wird nicht still korrigiert.
+4. **Produkt-Test:** die Ausgabe ist entweder richtungsrichtig oder lautet
+   `no_advice`; eine schmale, hochsichere, nachweislich falsche Zahl ist kein
+   zulässiges Zwischenresultat.
+
+**Stop-Regeln:**
+
+- Kein `17 ct`-Hardcoding in Trainingsdaten, Features oder Prognosepfaden.
+- Kein `w = 0/1`-Sprung allein aufgrund des Kalendertags.
+- Kein AR(2)-State über eine deklarierte Regime-Kante.
+- Kein MASE-/Brier-/M7-Release-Gate auf einem Fenster ohne
+  `regime_breaks_in_window`-Markierung.
+- Kein Deckel-Clipping ohne Quelle, Formel und Zeitreihe; bis dahin
+  `cap_status: unknown`.
+
+**Beschluss.** Wir übernehmen das Gegengutachten als verbindliche
+Nachschärfung des Befunds. Die Architektur bleibt: Rohdaten unverändert,
+Regime als Daten, Dummy/Rampe im Fit, Kante in der Projektion, Deckel vor der
+Projektion. Neu und ab jetzt verbindlich sind der AR-Flush, der verschachtelte
+Treppe/Rampe-Vergleich und das stetige Präzisions-Shrinkage. Vor dem
+01.10.2026 wird nur der sichere Teil ausgeliefert; jeder unsichere Teil hat
+`no_advice` als Ausfallmodus, nicht eine politisch angenommene Zahl.
 
 # Anhang: Prüfprotokoll
 
