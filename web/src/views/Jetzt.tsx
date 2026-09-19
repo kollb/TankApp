@@ -81,7 +81,7 @@ export interface JetztViewProps {
   liters: number;
   /** Effektiver Zeitwert (Override oder Default). */
   timeValue: number;
-  timeValueUsed: number;
+  /** Was die Uhrzeit-Automatik ergäbe — Grundlage jeder „Auto“-Aussage. */
   autoZ: { z: number; isPeak: boolean };
   decideRes: ResourceState<DecideResult>;
   stations: Station[];
@@ -242,7 +242,6 @@ export function JetztView(props: JetztViewProps) {
     stripCells,
     tankPercent,
     timeValue,
-    timeValueUsed,
   } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [assumptionsOpen, setAssumptionsOpen] = useState(false);
@@ -384,7 +383,7 @@ export function JetztView(props: JetztViewProps) {
                   Gerade getankt?
                 </h2>
                 <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
-                  Ein kurzer Tap erfasst deinen Beleg in deiner Bilanz.
+                  Ein Klick erfasst deinen Beleg in deiner Bilanz.
                 </p>
               </div>
             </div>
@@ -496,7 +495,11 @@ export function JetztView(props: JetztViewProps) {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => onIntent("navigate", verdict.mapsUrl)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                  /* `tap-44`: Die Route ist DIE Handlung an der Säule und war
+                     als <a> mit 36 px unter dem Touch-Ziel (C5/WCAG 2.5.5) —
+                     die 44-px-Regel in styles.css greift bei Links nur mit
+                     dieser Klasse. */
+                  className="tap-44 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
                 >
                   Route
                   <ArrowRight size={15} aria-hidden="true" />
@@ -548,7 +551,7 @@ export function JetztView(props: JetztViewProps) {
                   dein Profil bleibt unangetastet. Der Server rechnet mit den
                   neuen Werten neu (dieselbe Anfrage, andere Parameter).
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="text-slate-400">
                     Tankmenge (L)
                     <input
@@ -594,9 +597,14 @@ export function JetztView(props: JetztViewProps) {
                       className="mt-1 block text-xs text-slate-500"
                       title="Fachwort: Peak und Off-Peak"
                     >
-                      0 = Auto (aktuell {deTrimmed(timeValueUsed)} €/h ·{" "}
-                      {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den
-                      Umweg
+                      {/* 0.55.0: Stand hier fest als „aktuell <Wert> €/h ·
+                          Stoßzeit/Nebenzeit“. Bei gesetztem Zeitwert war der
+                          Wert der manuelle, das Zeitwort aber das der nicht
+                          aktiven Automatik — zwei Aussagen über verschiedene
+                          Zustände in einer Klammer. */}
+                      {timeValue > 0
+                        ? `Fester Wert · mit 0 nach Uhrzeit (gerade ${deTrimmed(autoZ.z)} €/h) · wirkt auf den Umweg`
+                        : `0 = Auto · gerade ${deTrimmed(autoZ.z)} €/h (${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}) · wirkt auf den Umweg`}
                     </span>
                   </label>
                 </div>
@@ -671,7 +679,7 @@ export function JetztView(props: JetztViewProps) {
               </span>
               {bestNow.spreadEur !== null && (
                 <span className="text-xs text-slate-400">
-                  Spanne im Set: {centPerLiter(bestNow.spreadCt ?? 0)} ·
+                  Günstigste bis teuerste: {centPerLiter(bestNow.spreadCt ?? 0)} ·
                   {" "}
                   {euro(bestNow.spreadEur)} € bei {deTrimmed(liters, 0)} L
                 </span>
@@ -705,17 +713,33 @@ export function JetztView(props: JetztViewProps) {
               </p>
             )}
             {bestNow.ranking.length > 1 && (
-              <ol className="mt-4 grid gap-1.5">
+              /* `grid-cols-1` ist Pflicht, nicht Deko: Ein `grid` ohne
+                 Spaltenangabe legt eine **implizite** Spur an, und die ist
+                 `auto` — sie wächst auf die breiteste Zeile statt auf die
+                 Kartenbreite. Ein langer Stationsname („Aral Tankstelle
+                 Frankfurt am Main Hanauer Landstraße 128“) machte die Spur
+                 496 px breit, obwohl die Karte 330 px hat; `truncate` griff
+                 nie, weil es nichts zu kürzen gab. Mit `minmax(0, 1fr)`
+                 (= `grid-cols-1`) ist die Spur an die Karte gebunden, und
+                 die Kürzung greift. Fund aus dem Pixel-9-Check, 0.55.0. */
+              <ol className="mt-4 grid grid-cols-1 gap-1.5">
                 {bestNow.ranking.map((entry, index) => (
                   <li
                     key={entry.station.station_id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs"
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs sm:flex-nowrap sm:items-center sm:justify-between sm:gap-3"
                   >
-                    <span className="flex min-w-0 items-center gap-2">
+                    {/* Mobil zwei Zeilen wie in „Stationen“ (0.53.0): Name
+                        oben, Preis darunter. Echte Namen tragen das
+                        Unterscheidende hinten („… Hanauer Landstraße 128“) —
+                        auf einer Zeile blieb davon „ESSO STATION FRA…“ übrig,
+                        und damit beantwortet die Liste ihre eigene Frage
+                        („welche Station ist das?“) nicht mehr. Ab `sm` steht
+                        wieder alles in einer Zeile. */}
+                    <span className="flex w-full min-w-0 items-baseline gap-2 sm:w-auto sm:flex-1">
                       <span className="w-4 shrink-0 font-mono text-slate-500">
                         {index + 1}.
                       </span>
-                      <span className="truncate text-slate-200">
+                      <span className="min-w-0 break-words text-slate-200 sm:truncate">
                         {entry.station.name}
                       </span>
                       {/* Marke nur, wo Platz ist: auf 390 px fraß sie den
@@ -727,12 +751,12 @@ export function JetztView(props: JetztViewProps) {
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 text-right">
+                    <span className="flex shrink-0 items-baseline gap-2 pl-6 sm:pl-0 sm:text-right">
                       <span className="font-mono font-bold text-slate-100 tabular-nums">
                         {euroPerLiter(entry.price)}
                       </span>
                       {bestNow.price !== null && index > 0 && (
-                        <span className="ml-2 font-mono text-slate-500 tabular-nums">
+                        <span className="font-mono text-slate-500 tabular-nums">
                           +{centPerLiter((entry.price - bestNow.price) * 100)}
                         </span>
                       )}
@@ -747,7 +771,7 @@ export function JetztView(props: JetztViewProps) {
                   href={bestNow.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                  className="tap-44 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
                 >
                   Route zur günstigsten
                   <ArrowRight size={15} aria-hidden="true" />
@@ -831,8 +855,8 @@ export function JetztView(props: JetztViewProps) {
                 </div>
                 <p className="text-[0.6875rem] leading-snug text-slate-500 sm:mt-1.5 sm:text-xs sm:leading-normal">
                   {tankPercent !== null
-                    ? `Füllstand ${deTrimmed(tankPercent, 0)} % — Pflege in „Woche“.`
-                    : "Ein Tap, dann prüft die App, ob Warten riskant ist."}
+                    ? `Füllstand ${deTrimmed(tankPercent, 0)} % — genauer einstellen in „Woche“.`
+                    : "Mit Tankstand prüft die App, ob Warten riskant ist."}
                 </p>
               </div>
             )}
@@ -846,7 +870,7 @@ export function JetztView(props: JetztViewProps) {
           <h2 className="mt-6 text-sm font-semibold text-slate-200">
             Nächste Schritte
           </h2>
-          <div className="mt-2 grid gap-2">
+          <div className="mt-2 grid grid-cols-1 gap-2">
             {steps.map((step) => (
               <button
                 key={step.id}
@@ -931,7 +955,7 @@ export function JetztView(props: JetztViewProps) {
                 der Primärfall ist („Zu lang auf mobil“, 18.09.2026). Desktop
                 behält die drei Karten unverändert — dieselben Zahlen aus
                 derselben Quelle (`nowDayPanel`), zwei Anordnungen. */}
-            <dl className="mt-3 grid gap-1 text-xs leading-snug sm:hidden">
+            <dl className="mt-3 grid grid-cols-1 gap-1 text-xs leading-snug sm:hidden">
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="shrink-0 text-slate-500">Günstigste Stunde</dt>
                 <dd className="font-mono font-semibold text-emerald-300 tabular-nums">

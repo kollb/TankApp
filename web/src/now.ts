@@ -197,7 +197,7 @@ export function learningNote(decide: DecideResult | null): string | null {
   return (
     `Das Modell lernt noch — ${countLabel(done)} von ` +
     `${countLabel(M7_MIN_RECOMMENDATIONS)} abgeschlossenen Empfehlungen. ` +
-    "Die Preise unten sind live."
+    "Die Preise unten sind gemessen."
   );
 }
 
@@ -438,7 +438,7 @@ export function nowFacts(input: NowInput): NowFact[] {
     ? {
         label: "Tank reicht?",
         value: "—",
-        detail: "Tankstand nicht gepflegt",
+        detail: "Tankstand nicht angegeben",
       }
     : {
         label: "Tank reicht?",
@@ -474,7 +474,17 @@ export function nowSteps(input: NowInput): NowStep[] {
     });
   }
 
-  const later = decide.windows_week?.[0] ?? null;
+  // Auf Stufe C gibt es keine Empfehlung — dann darf auch kein Fenster als
+  // nächster Schritt stehen. Vorher widersprach sich der Bildschirm selbst:
+  // Die Karte sagte „Keine Prognose — Preise vergleichen“, drei Zeilen
+  // tiefer stand „Freitag 14:00–15:54 Uhr wäre noch besser (2,04 €
+  // weniger)“ — eine Prognose-Zahl mit zwei Nachkommastellen, genau die
+  // Sicherheit, die die Karte gerade verneint hat (Konzept §0.4,
+  // MICROCOPY §1 „keine Sicherheit behaupten, die nicht gemessen ist“).
+  // Die Fenster bleiben im Bereich „Woche“ erreichbar, wo sie mit ihrem
+  // Lernstand eingeordnet sind.
+  const later =
+    nowStage(decide) === "C" ? null : (decide.windows_week?.[0] ?? null);
   if (later && later.expected_saving_eur != null && later.expected_saving_eur > 0) {
     steps.push({
       id: "later-window",
@@ -774,7 +784,8 @@ export type NowBestNow = {
   saveCt: number | null;
   /** Dieselbe Ersparnis auf die Tankmenge (€). */
   saveEur: number | null;
-  /** Günstigster − teuerster Preis im Set, in ct/L (eine Spanne). */
+  /** Günstigster − teuerster Preis unter den Stationen mit offenem
+   * Preis, in ct/L (eine Spanne). */
   spreadCt: number | null;
   /** Was die Preisspanne auf die Tankmenge bedeutet (€). */
   spreadEur: number | null;
@@ -822,7 +833,7 @@ export function nowBestNow(input: NowInput): NowBestNow {
     : !worst
       ? `Nur ${best.station.name} meldet gerade einen Preis (${euroPerLiter(best.price)}) — für einen Vergleich fehlt eine zweite Station.`
       : saveCt === null
-        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — die Spanne im Set beträgt ${centPerLiter(spreadCt ?? 0)}.`
+        ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}). Gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — zwischen günstigster und teuerster Station liegen ${centPerLiter(spreadCt ?? 0)}.`
         : saveCt <= 0.05
           ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
           : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(saveCt)} unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}) — das sind ${euro(saveEur ?? 0)} € bei ${litersText} L.`;

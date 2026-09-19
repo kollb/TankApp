@@ -136,10 +136,36 @@ html.light input[type="range"] {
   box-shadow: 0 0 25px -5px rgba(56, 189, 248, 0.25);
 }
 
-button,
-select,
-input {
-  font: inherit;
+/* --------------------------------------------------------------------------
+ * Formularelemente erben die Seitenschrift — aber als *Basis*, nicht als
+ * letztes Wort (0.55.0).
+ *
+ * Diese Regel stand bis 0.54.0 ungeschichtet hier. Ungeschichtetes CSS
+ * gewinnt in der Kaskade gegen **jede** `@layer` — also auch gegen Tailwinds
+ * `utilities`. Die Kurzform `font:` setzt dabei `font-size` mit zurück, und
+ * damit war auf `button`, `select` und `input` jede Größenklasse wirkungslos:
+ * gemessen am Demo-Stand 122 Bedienelemente, die statt ihrer Klasse
+ * (`text-xs`, `text-sm`, `text-[0.625rem]`, `text-[0.6875rem]`) die geerbten
+ * 16 px zeigten. Sichtbar wurde das unten in der Leiste, wo „Stationen“ mit
+ * 70 px in eine 64-px-Zelle sollte und als „Statio…“ abgeschnitten war.
+ *
+ * In `@layer base` verschoben, gilt weiter „erbt die Seitenschrift“, aber
+ * eine Utility-Klasse sticht sie wieder. `font-family`/`font-feature-*`
+ * einzeln statt `font:`, damit nur die Schriftart erbt und die Größe der
+ * Klasse gehört. Geprüft von src/a11y.test.ts (U1) und e2e/mobile.spec.ts.
+ * -------------------------------------------------------------------------- */
+@layer base {
+  button,
+  select,
+  input,
+  textarea {
+    font-family: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+  }
 }
 button,
 a,
@@ -184,6 +210,7 @@ input[type="range"] {
   [role="button"],
   select,
   input,
+  summary,
   a.tap-44 {
     min-height: 44px;
   }
@@ -191,6 +218,38 @@ input[type="range"] {
   [role="button"],
   a.tap-44 {
     min-width: 44px;
+  }
+
+  /* `summary` ist ein Tippziel wie ein Knopf — es klappt Inhalt auf und zu
+   * (0.55.1). Bis hierher stand es nicht in der Liste: Die drei Aufklapper
+   * („Annahmen“ in Jetzt, „Für Neugierige“ und „Selbst prüfen“ im Labor)
+   * kamen über ihre Polsterung nur auf 32–40 px. `min-height` allein
+   * zentriert den Text nicht, deshalb Flex — ohne `display` klebte er nach
+   * dem Wachsen oben am Rand. Das Aufklapp-Dreieck bleibt erhalten; wo die
+   * Komponente es ausblendet, tut sie das weiterhin selbst. */
+  summary {
+    display: flex;
+    align-items: center;
+  }
+
+  /* Tippfelder mindestens 16 px (0.55.0).
+   *
+   * Safari auf iOS zoomt beim Fokus automatisch in jedes Feld, dessen Schrift
+   * kleiner als 16 px ist — die Seite steht danach verschoben und muss von
+   * Hand zurückgezoomt werden. Bis 0.54.0 fiel das nicht auf, weil das
+   * ungeschichtete `font: inherit` (siehe oben) ohnehin alle Felder auf die
+   * geerbten 16 px zwang. Seit die Größenklassen wirken, wären es 12 px —
+   * deshalb hier ausdrücklich, statt es dem Zufall zu überlassen.
+   *
+   * Nur Eingaben, in die man tippt: `select` und Knöpfe lösen den Zoom nicht
+   * aus und bleiben kompakt, ebenso Schieberegler und Kästchen. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+      [type="button"]
+    ):not([type="submit"]):not([type="reset"]):not([type="color"]):not(
+      [type="file"]
+    ),
+  textarea {
+    font-size: max(16px, 1rem);
   }
 }
 
@@ -292,8 +351,31 @@ html.ptr-off body {
     font-size: 18px;
   }
 }
-.custom-net-pin::before {
-  content: "";
-  position: absolute;
-  inset: -9px;
+/* --------------------------------------------------------------------------
+ * Karten-Pins: so breit wie ihr Text, mittig auf der Koordinate, 44 px Ziel.
+ *
+ * Bis 0.54.0 bekamen beide Pins eine feste Kachel (`iconSize` 60 × 26 bzw.
+ * 26 × 26). Der Text passte da nicht hinein: „Referenz“ und „−12,34 €“
+ * brauchen in 12-px-Monospace 57,8 px plus Polsterung — die Schrift lief über
+ * die Pille hinaus aufs Kartenbild (gemessen 69 px Inhalt in 60 px Kasten).
+ * `width: max-content` lässt die Pille stattdessen mit ihrem Inhalt wachsen,
+ * auch wenn die Systemschrift größer steht (U1).
+ *
+ * `translate` (die eigenständige Eigenschaft, nicht `transform`) zentriert den
+ * Pin über seinem Punkt: Leaflet schreibt die Position als `transform:
+ * translate3d(...)` in das Style-Attribut, und ein `transform` in dieser Datei
+ * würde davon überschrieben. `translate` wird zusätzlich angewendet und bezieht
+ * seine Prozente auf die eigene Breite — genau das, was das feste `iconAnchor`
+ * vorher von Hand tat.
+ *
+ * C5: Die 9 px Polsterung sind das Touch-Ziel (26 px Pille + 2 × 9 = 44 px).
+ * Sie liegen im eigenen Kasten des Pins statt wie früher in einem `::before`
+ * mit `inset: -9px`; ein solches Pseudo-Element ragt aus der eigenen Box und
+ * war in der Mobil-Messung nicht von echtem Überlauf zu unterscheiden.
+ * -------------------------------------------------------------------------- */
+.custom-net-pin,
+.custom-anchor-pin {
+  width: max-content;
+  padding: 9px;
+  translate: -50% -50%;
 }

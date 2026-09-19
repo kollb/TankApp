@@ -203,14 +203,30 @@ describe("Ich → Fahrzeug (VehiclePanel)", () => {
     expect(html).toContain('id="timeValue"');
     expect(html).toContain('id="speed"');
     expect(html).toContain('id="detourMode"');
-    // Aktiver Zeitwert (manuell) und die Auto-Erklärung (verbatim).
+    // Aktiver Zeitwert (manuell).
     expect(html).toContain("12 €/h");
-    expect(html).toContain("0 = Auto: 10 €/h — gerade Nebenzeit.");
-    // Zeitwert 0 = Automatik zeigt den auto-berechneten Wert.
+    // 0.55.0: Bei gesetztem Zeitwert beschreibt der Hinweis die Automatik im
+    // Konjunktiv — vorher stand dort „0 = Auto: 10 €/h — gerade Nebenzeit.“
+    // neben dem Feldwert „Auto (12 €/h · Nebenzeit)“: zwei Zahlen für
+    // denselben Zustand, obwohl die Automatik gar nicht greift.
+    expect(html).toContain("Fester Wert.");
+    expect(html).toContain("gerade wären das");
+    expect(html).not.toContain("0 = Auto:");
+    // Zeitwert 0 = Automatik zeigt den auto-berechneten Wert. `timeValueUsed`
+    // ist in diesem Zustand per Definition `autoZ.z` — die Vorgabe hielt hier
+    // vorher 16 gegen autoZ.z = 10 und beschrieb damit einen Zustand, den es
+    // nicht geben kann.
     const auto = renderToStaticMarkup(
-      <VehiclePanel {...vehicleProps({ timeValue: 0, timeValueUsed: 16 })} />,
+      <VehiclePanel
+        {...vehicleProps({
+          timeValue: 0,
+          timeValueUsed: 16,
+          autoZ: { z: 16, isPeak: true },
+        })}
+      />,
     );
-    expect(auto).toContain("Auto (16 €/h · Nebenzeit)");
+    expect(auto).toContain("Auto (16 €/h · Stoßzeit)");
+    expect(auto).toContain("Automatik nach Uhrzeit");
   });
 
   it("nimmt die Fahrzeug-Grenzen aus PROFILE_BOUNDS (100-L-Tank)", () => {

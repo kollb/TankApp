@@ -167,6 +167,38 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
     }
   });
 
+  // ── 3b. „Set“ bleibt Betriebssprache (§5c, 0.55.0) ──
+  //
+  // Das Polling-Set ist die Liste der abgefragten Stationen — ein Begriff aus
+  // der Einrichtung. In „System“ und „Labor“ ist er richtig (§6 lässt dort
+  // Betreibersprache zu), auf den Alltagsschirmen nicht: Wer nur tanken will,
+  // liest „Spanne im Set“ und weiß nicht, welche Menge gemeint ist. Erklärt
+  // wurde das Wort nirgends, im Glossar stand es nicht.
+  const EVERYDAY_FILES = [
+    "now.ts",
+    "week.ts",
+    "stations.ts",
+    "strip.ts",
+    "views/Jetzt.tsx",
+    "views/Stationen.tsx",
+    "views/Woche.tsx",
+    "views/Ich.tsx",
+  ];
+
+  it.each(EVERYDAY_FILES)("%s: sagt „Set“ nicht zum Nutzer", (relativePath) => {
+    // Nur das Wort als solches — `new Set()`, `setState`, `Settings` und
+    // Wortzusammensetzungen im Code sind nicht gemeint.
+    const hits = userVisible(read(relativePath)).match(
+      /(?:^|[\s„"'(])[Ss]et\b(?!\s*[(<])/g,
+    );
+    expect(
+      hits,
+      `${relativePath}: ${hits?.length}× „Set“ — §5c sagt: die Fläche ` +
+        "benennen („günstigste bis teuerste Station“), nicht die interne " +
+        "Liste. In System/Labor bleibt „Polling-Set“ erlaubt.",
+    ).toBeNull();
+  });
+
   // ── 4. Ergebnis-Worte des Tagebuchs (§4c) ──
 
   it("die Tagebuch-Filter sind die §4c-Ergebnis-Worte", () => {
@@ -452,6 +484,41 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
       ).toBe(false);
     }
   });
+
+  /**
+   * §5d: Die Automatik-Anzeige nennt den Automatik-Wert.
+   *
+   * Gefunden in 0.55.0: Die Auswahl in „Stationen“ schrieb
+   * `Auto (${timeValueUsed} €/h)`. `timeValueUsed` ist aber
+   * `timeValue > 0 ? timeValue : autoZ.z` — bei gesetztem Profil also der
+   * manuelle Wert. Die Auto-Option warb damit für „12 €/h“, obwohl sie
+   * 10 €/h liefert; der Hinweis darunter nannte gleichzeitig die 10.
+   * Zwei Zahlen für einen Zustand, beide angeblich „Auto“.
+   *
+   * Die Regel ist eng gefasst: In unmittelbarer Nähe des Wortes „Auto“
+   * bzw. „Automatik“ darf `timeValueUsed` nicht interpoliert werden —
+   * dort gehört `autoZ.z` hin. Außerhalb solcher Stellen bleibt
+   * `timeValueUsed` der richtige Wert (er ist der tatsächlich gerechnete).
+   */
+  it.each(FILES.filter((f) => f.endsWith(".tsx")))(
+    "%s: „Auto“ zeigt den Automatik-Wert, nicht den benutzten",
+    (relativePath) => {
+      const text = userVisible(read(relativePath));
+      // Fenster um jedes „Auto (“/„Automatik “ bis zum Zeilenende bzw. der
+      // schließenden Klammer — lang genug für die Interpolation dahinter.
+      const offenders: string[] = [];
+      for (const match of text.matchAll(/Auto(?:matik)?\s*[({`]/g)) {
+        const window = text.slice(match.index, match.index + 160);
+        if (/timeValueUsed/.test(window) && !/autoZ\.z/.test(window)) {
+          offenders.push(window.replace(/\s+/g, " ").slice(0, 90));
+        }
+      }
+      expect(
+        offenders,
+        `${relativePath}: „Auto“ nennt timeValueUsed statt autoZ.z — bei gesetztem Zeitwert ist das der manuelle Wert, den die Automatik nie liefert.`,
+      ).toEqual([]);
+    },
+  );
 
   it("das Regelwerk selbst ist da und verlinkt", () => {
     const docs = readFileSync(

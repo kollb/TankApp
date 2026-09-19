@@ -198,7 +198,7 @@ describe("tankReach", () => {
   it("ohne Tankstand prüft die App nur heute (und sagt es)", () => {
     expect(
       tankReach(null, 0, todayWindow)?.text,
-    ).toContain("Tankstand nicht gepflegt");
+    ).toContain("Tankstand nicht angegeben");
     expect(tankReach(null, 2, todayWindow)).toBeNull();
   });
 
@@ -250,7 +250,7 @@ describe("weekWindowSummary", () => {
     // 15.09. bei „heute“ am 14.09. → dayLabel: „Morgen“.
     expect(summary?.headline).toContain("Morgen");
     expect(summary?.headline).toContain("19–21 Uhr");
-    expect(summary?.savingLine).toContain("5,0 ct/L günstiger erwartet");
+    expect(summary?.savingLine).toContain("5,0 ct/L günstiger als jetzt");
     expect(summary?.savingLine).toContain("2,00 €");
     expect(summary?.security).toBe("ziemlich sicher (80 %)");
   });
@@ -316,7 +316,7 @@ describe("weekLine / weekTankLine", () => {
   });
 
   it("weekTankLine: ehrlich ohne Angabe", () => {
-    expect(weekTankLine(null, null, 50).text).toBe("Tankstand nicht gepflegt");
+    expect(weekTankLine(null, null, 50).text).toBe("Tankstand nicht angegeben");
     expect(weekTankLine(null, 50, 50).text).toBe(
       "Tank: 50 % · ≈ 50 L Tank",
     );

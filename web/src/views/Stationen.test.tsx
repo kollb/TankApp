@@ -183,7 +183,7 @@ describe("Stationen: Aufbau", () => {
 describe("Stationen: Zustände", () => {
   it("S0: ohne Stationen führt die Karte zur Einrichtung", () => {
     const html = render({ stations: [], data: stationsPayload([]) });
-    expect(html).toContain("Erst ein Set, dann der Atlas");
+    expect(html).toContain("Erst Stationen einrichten, dann der Atlas");
     expect(html).toContain("Einrichtung ansehen");
   });
 
@@ -235,7 +235,7 @@ describe("Stationen: Datenfolge ist kein Defekt (Regression)", () => {
         receivedAt: 0,
       },
     });
-    expect(html).toContain("Erst ein Set, dann der Atlas");
+    expect(html).toContain("Erst Stationen einrichten, dann der Atlas");
     expect(html).not.toContain('role="alert"');
   });
 

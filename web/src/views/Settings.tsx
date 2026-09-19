@@ -83,12 +83,15 @@ export interface VehiclePanelProps {
  */
 function timeValueShort(
   timeValue: number,
-  timeValueUsed: number,
   autoZ: { z: number; isPeak: boolean },
 ): string {
+  // 0.55.0: Der Auto-Zweig nannte `timeValueUsed`. Der ist nur dann der
+  // Automatik-Wert, wenn `timeValue` 0 ist — in diesem Zweig also gleich
+  // `autoZ.z`. Die direkte Quelle lässt keine Verwechslung offen, wenn der
+  // Aufrufer den Zweig einmal anders wählt.
   return timeValue > 0
     ? `${deTrimmed(timeValue)} €/h`
-    : `Auto (${deTrimmed(timeValueUsed)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
+    : `Auto (${deTrimmed(autoZ.z)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
 }
 
 /** Ich → Fahrzeug: was ist meins — und auf welchen Geräten gilt es. */
@@ -177,7 +180,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             + Neu / verwalten
           </button>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <PrecisionSlider
             id="liters"
             label="Deine Tankmenge"
@@ -254,7 +257,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             K = d · (c/100) · p + (d/v) · z
           </span>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <PrecisionSlider
             id="timeValue"
             label="Zeitwert"
@@ -265,19 +268,36 @@ export function VehiclePanel(props: VehiclePanelProps) {
             max={PROFILE_BOUNDS.timeValue.max}
             step={0.5}
             unit="€/h"
-            valueText={timeValueShort(timeValue, timeValueUsed, autoZ)}
+            valueText={timeValueShort(timeValue, autoZ)}
             valueSpeech={
               timeValue > 0
                 ? euroPerHour(timeValue)
-                : `Automatik ${euroPerHour(timeValueUsed)}`
+                : `Automatik ${euroPerHour(autoZ.z)}`
             }
             hint={
               <span
                 className="mt-1 block text-xs text-slate-500"
                 title="Fachwort: Peak"
               >
-                0 = Auto: {deTrimmed(autoZ.z, 1)} €/h —{" "}
-                {autoZ.isPeak ? "gerade Stoßzeit" : "gerade Nebenzeit"}. Die feste Regel lautet 16 €/h von 16:30–20:00 Uhr, sonst 10 €/h.
+                {/* 0.55.0: Der Hinweis beschrieb die Automatik immer im
+                    Präsens („gerade Nebenzeit“) — auch bei gesetztem Zeitwert,
+                    wo sie gar nicht greift. Daneben stand dann „Auto (12 €/h)“
+                    gegen „0 = Auto: 10 €/h“: zwei Zahlen, ein Zustand. Und die
+                    Regel nannte 16/10 €/h fest, obwohl `autoTimeValue()` die
+                    Quelle ist. Jetzt sagt der Satz, was tatsächlich gilt. */}
+                {timeValue > 0 ? (
+                  <>
+                    Fester Wert. Mit 0 rechnet die App nach Uhrzeit — gerade
+                    wären das {deTrimmed(autoZ.z, 1)} €/h (
+                    {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}).
+                  </>
+                ) : (
+                  <>
+                    Automatik nach Uhrzeit: gerade{" "}
+                    {deTrimmed(autoZ.z, 1)} €/h (
+                    {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}).
+                  </>
+                )}
               </span>
             }
           />
@@ -406,7 +426,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             gilt für alle Ansichten
           </span>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <label htmlFor="settings-city" className="text-xs text-slate-400">
             Stadt
             <select
@@ -640,7 +660,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             LAN-only · nichts verlässt die Anlage
           </span>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
             <p className="text-xs font-semibold text-slate-200">
               Belege exportieren (CSV)
@@ -652,7 +672,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <a
               href="/api/v1/fills.csv"
               title="Quelle: /api/v1/fills.csv"
-              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              className="tap-44 mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
             >
               Belege als Datei laden
             </a>
@@ -667,7 +687,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 deine Säulen (geräte-lokal, ohne Account).
               </p>
             ) : (
-              <ul className="mt-2 grid gap-1.5">
+              <ul className="mt-2 grid grid-cols-1 gap-1.5">
                 {pinnedStations.map(({ station }) => (
                   <li
                     key={station.station_id}
@@ -704,7 +724,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             Über
           </h3>
         </div>
-        <dl className="grid gap-3 text-xs text-slate-400 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-3 text-xs text-slate-400 sm:grid-cols-3">
           <div>
             <dt className="text-xs uppercase tracking-wider text-slate-500">
               Version

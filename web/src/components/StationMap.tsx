@@ -353,10 +353,13 @@ export function StationMap({
             const anchorIcon = L.divIcon({
               className: "custom-anchor-pin",
               html: anchorPinHtml(),
-              // Nur das Haus-Symbol (kein Wort mehr) — der Pin ist so breit
-              // wie hoch, damit das Symbol mittig auf der Koordinate sitzt.
-              iconSize: [26, 26],
-              iconAnchor: [13, 13],
+              // Nur das Haus-Symbol (kein Wort mehr). Wie beim Preis-Pin
+              // bestimmt der Inhalt die Größe: `iconSize`/`iconAnchor` würden
+              // eine 26-px-Kachel erzwingen, in die das Symbol samt Polsterung
+              // und Rahmen (31 px) nicht passt. Zentriert wird in styles.css
+              // per `translate` — sonst käme der Versatz doppelt (0.55.0).
+              iconSize: undefined,
+              iconAnchor: undefined,
             });
             const anchorMarker = L.marker(anchorCoords, {
               icon: anchorIcon,
@@ -389,8 +392,17 @@ export function StationMap({
             const customIcon = L.divIcon({
               className: "custom-net-pin",
               html: `<div class="px-2 py-1 rounded-full border text-xs font-mono whitespace-nowrap shadow-md cursor-pointer transition-transform hover:scale-105 ${style.pinBg}">${badgeText}</div>`,
-              iconSize: [60, 26],
-              iconAnchor: [30, 13],
+              // Keine feste Kachel (0.55.0): Mit `iconSize: [60, 26]` war der
+              // Pin 60 px breit, während „Referenz“ und „−12,34 €“ in 12-px-
+              // Monospace 57,8 px Text brauchen — plus 2 × 8 px Polsterung und
+              // Rahmen rund 76 px. Die Schrift lief also über die eigene
+              // Pille hinaus (gemessen: 69 px Inhalt in 60 px Kasten, das „€“
+              // stand frei auf der Karte). Ohne `iconSize` setzt Leaflet keine
+              // Breite; die Pille wird so breit wie ihr Text, und styles.css
+              // rückt sie per `translate` auf die Koordinate. Das hält auch,
+              // wenn die Systemschrift größer steht (U1).
+              iconSize: undefined,
+              iconAnchor: undefined,
             });
 
             const marker = L.marker(coords, {

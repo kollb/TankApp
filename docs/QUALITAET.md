@@ -117,7 +117,7 @@ LD_LIBRARY_PATH=/tmp/chromium-libs/lib npx playwright test \
 ```
 
 **Nicht** mit dem Demo-Server gegen die gemockte Suite fahren: Sechs ihrer Fälle
-prüfen den Leerzustand („Erst ein Set, dann der Atlas“) und scheitern dann an
+prüfen den Leerzustand („Erst Stationen einrichten, dann der Atlas“) und scheitern dann an
 den Demo-Daten — das sieht nach einem Regressionsfehler aus, ist aber der
 falsche Server. Deshalb liegt der Server-Teil der Zusage zusätzlich als
 Python-Test daneben, der überall läuft.

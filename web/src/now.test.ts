@@ -290,7 +290,7 @@ describe("Drei Fakten, feste Reihenfolge", () => {
     expect(empty[2].detail).toContain("71 km");
     const unknown = nowFacts(input());
     expect(unknown[2].value).toBe("—");
-    expect(unknown[2].detail).toBe("Tankstand nicht gepflegt");
+    expect(unknown[2].detail).toBe("Tankstand nicht angegeben");
   });
 
   it("ohne Prognose bleibt das Fenster leer, nicht bunt", () => {
@@ -346,6 +346,28 @@ describe("Nächste Schritte: höchstens drei", () => {
 
   it("schweigt, wenn es nichts zu tun gibt", () => {
     expect(nowSteps(input())).toEqual([]);
+  });
+
+  it("nennt ohne Empfehlung kein Prognose-Fenster (Stufe C)", () => {
+    // Widerspruch aus dem Pixel-9-Check (18.09.2026): Die Karte sagte
+    // „Keine Prognose — Preise vergleichen“, darunter stand „Freitag
+    // 14:00–15:54 Uhr wäre noch besser (2,04 € weniger)“. Beides auf einem
+    // Bildschirm — die zweite Zeile behauptet die Sicherheit, die die erste
+    // gerade verneint (Konzept §0.4). Auf Stufe C bleibt der Schritt weg;
+    // die Alternative aus echten Preisen darf bleiben.
+    const blind = decide("no_advice");
+    blind.windows_week = [
+      {
+        start: "2026-09-15T19:00:00+02:00",
+        end: "2026-09-15T21:00:00+02:00",
+        expected_price: 1.689,
+        expected_saving_eur: 2.1,
+        p: 0.7,
+      },
+    ];
+    expect(nowSteps(input({ decide: blind })).map((s) => s.id)).not.toContain(
+      "later-window",
+    );
   });
 });
 
@@ -617,7 +639,9 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
     expect(result.saveCt).toBeNull();
     expect(result.saveEur).toBeNull();
     expect(result.spreadCt).toBeCloseTo(5.0, 6);
-    expect(result.sentence).toContain("Spanne im Set");
+    expect(result.sentence).toContain(
+      "zwischen günstigster und teuerster Station",
+    );
     expect(result.sentence).not.toContain("€ bei 45 L");
   });
 

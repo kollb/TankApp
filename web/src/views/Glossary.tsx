@@ -25,7 +25,7 @@ export function GlossaryView() {
         </p>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {GLOSSARY.map((entry) => (
           <section
             key={entry.id}
@@ -84,7 +84,7 @@ export function GlossaryView() {
         </p>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
           Sprache vor Rechnung: Jeder i-Punkt im Labor verweist hierher
-          — ein Tap zeigt die Kurzerklärung, diese Seite die Einordnung.
+          — ein Klick zeigt die Kurzerklärung, diese Seite die Einordnung.
         </p>
       </section>
     </>

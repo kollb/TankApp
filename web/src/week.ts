@@ -189,7 +189,7 @@ export function tankReach(
 ): TankReach | null {
   if (!tank) {
     return dayIndex === 0 && window
-      ? { tone: "neutral", text: "Tankstand nicht gepflegt — ohne Angabe prüft die App nicht." }
+      ? { tone: "neutral", text: "Tankstand nicht angegeben — ohne Angabe prüft die App nicht." }
       : null;
   }
   if (tank.state === "empty") {
@@ -249,10 +249,14 @@ export function weekWindowSummary(
     priceNow !== null
       ? (priceNow - window.expected_price) * 100
       : null;
+  // 0.55.0: Die Zeile steht im View hinter „Erwartet <Preis> €/L“ — mit
+  // „günstiger erwartet“ stand „erwartet“ zweimal in einem Satz, ohne dass
+  // der zweite Auftritt etwas hinzufügte. Stattdessen sagt die Zeile jetzt,
+  // woher der Vorsprung kommt: der Vergleich läuft gegen den Preis von jetzt.
   const savingLine =
     saving !== null
       ? saving >= 0.05
-        ? `${centPerLiter(saving)} günstiger erwartet ≈ ${
+        ? `${centPerLiter(saving)} günstiger als jetzt ≈ ${
             window.expected_saving_eur !== null
               ? `${euro(window.expected_saving_eur)} €`
               : "Betrag folgt mit der Tankmenge"
@@ -366,7 +370,7 @@ export function weekTankLine(
 ): { text: string; detail: string } {
   if (tankPercent == null && !tank) {
     return {
-      text: "Tankstand nicht gepflegt",
+      text: "Tankstand nicht angegeben",
       detail: "Ohne Angabe sagt die App nichts zur Reichweite — „Ändern“ setzt den Füllstand.",
     };
   }

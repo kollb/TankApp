@@ -96,7 +96,6 @@ const baseProps: JetztViewProps = {
   },
   liters: 40,
   timeValue: 12,
-  timeValueUsed: 12,
   autoZ: { z: 10, isPeak: false },
   selectedId: "aral",
   stations: [station("aral")],
@@ -368,7 +367,7 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain(
       "unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (Aral Mitte, 1,749 €/L)",
     );
-    expect(html).toContain("Spanne im Set:");
+    expect(html).toContain("Günstigste bis teuerste:");
     expect(html).toContain("Das Modell lernt noch");
   });
 

@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 18.09.2026 · App-Version **0.54.0** · gilt für `web/src/**`,
+> Stand: 19.09.2026 · App-Version **0.55.1** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt.
@@ -205,18 +205,18 @@ dann der Grund.
 | Ersparniszeile | `Erwartet <4,0> ct/L günstiger ≈ <1,60> €` — ct/L für Unterschiede, € für Beträge |
 | Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` — auf Stufe A kommt das **Wort aus dem Prozentwert** (Schwellen 75 / 55). Der Server-Badge beschreibt die Streuung der Lage; beide zusammen ergäben Sätze wie „unsicher (99 %)“ |
 | Stufe B (Worte ohne Prozent) | derselbe Satz ohne Klammer, dazu `Noch <n> abgeschlossene Empfehlungen bis zur Prozent-Anzeige.` |
-| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind live.` |
+| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind gemessen.` |
 | Drei Fakten | `Jetzt hier` · `Bestes Fenster heute` · `Tank reicht?` — immer dieselben drei, immer diese Reihenfolge |
-| Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht gepflegt` |
+| Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht angegeben` |
 | Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |
-| Nächste Schritte | `Günstigste Alternative: <Station>, <Preis> — netto <0,80> € nach <2,4> km Umweg` · `<Morgen> 19–21 Uhr wäre noch besser (<2,10> € weniger)` · `Tank reicht nicht bis zum Fenster — jetzt tanken oder Tankstand prüfen` |
+| Nächste Schritte | `Günstigste Alternative: <Station>, <Preis> — netto <0,80> € nach <2,4> km Umweg` · `<Morgen> 19–21 Uhr wäre noch besser (<2,10> € weniger)` · `Tank reicht nicht bis zum Fenster — jetzt tanken oder Tankstand prüfen`. **Auf Stufe C entfällt der Fenster-Schritt** (0.55.0): Die Karte sagt dort „Keine klare Empfehlung“, ein Fenster mit Centbetrag behauptete drei Zeilen darunter genau die Sicherheit, die sie gerade verneint hat. Die Fenster bleiben über den Bereich „Woche“ erreichbar |
 | Hinweis unter der Fensterliste (A9, seit 0.44.0 mit Herkunft) | aktiv: `Reihenfolge nach deinen Tankzeiten (<12> Belege) — günstige Fenster zu Stunden ohne eigenen Tankvorgang stehen weiter hinten.` · darunter: `Noch nach Preis sortiert (<3> Belege von <8>) — ab <8> Belegen ordnet die App die Fenster nach deinen Tankzeiten, es fehlen <5>.` Belege ohne Zeitstempel hängen in **beiden** Fällen denselben Schlusssatz an: `<3> Belege ohne Zeitstempel zählen als 12 Uhr.` (Einzahl: `1 Beleg ohne Zeitstempel zählt als 12 Uhr.`); ohne solche Belege steht kein Schlusssatz (`personalizationNote` in `web/src/data.ts`, Zahlen aus `/v1/decide` → `personalization`) |
 | Ebene 1 | Knopf `Warum?`, Sheet-Titel `Warum diese Empfehlung?`, Herkunftszeile `Grundlage: …`, Weg in die Tiefe `Im Labor vertiefen: <Abschnitt>` (seit Phase 3) |
 | Tagesstreifen-Legende (O20, 0.50.0) | `<n> von 19 Stunden mit offener Meldung … Zahl = €/L (Stunden-Minimum) · Balken = Höhe im Tagesverlauf · Rahmen = jetzt.` + Skalen-Satz: mit Band `Farbskala der letzten <7> Tage: grün bis <1,720> €/L, rot ab <1,880> €/L.` — ohne Band `Ohne Verlauf der letzten Tage keine Farbskala — die Zahlen stehen ohne Grün/Rot-Urteil.` Die Skala nennt immer ihren Bezugszeitraum; „unteres/oberes Drittel dieses Tages“ war der Befund (rückwirkendes Umfärben) und steht nur noch in der Pi-Fallback-Vorlage, die ihren Tag als Bezug im Satz benennt |
 | S0 „Einrichten“ | `Einrichten in drei Schritten` + `Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen festlegen · Schritt 3: Collector prüfen.` + Knopf `Einrichtung starten` |
 | Fällig-Prompt: Ein-Tipp-Beleg (O17, 0.45.0) | Knopf nennt den gebuchten Live-Preis: `Ja, wie empfohlen (<1,719> €/L)`; ohne Live-Preis ist er aus: `Ja, wie empfohlen (Preis unbekannt)`. Wer ihn in der Lücke zwischen Anzeige und Tipp verliert, landet in der Maske mit `Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.` — gebucht wird nie der Prognose-Median |
 | Ich → Belege: Prognosepreis (O17, 0.45.0) | Altbestand ohne gezahlten Preis trägt `Prognosepreis — kein gezahlter Preis`; die Bilanz nennt darunter die zweite Spalte: `Ohne Prognosepreis: <+2,00> € (<1> Beleg zählt nicht mit).` (Mehrzahl: `<n> Belege zählen nicht mit`) |
-| Günstigste Station jetzt (O19, 0.50.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Spanne im Set: <5,0> ct/L · <2,25> € bei <45> L`. Ohne Empfehlung: `… (gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — die Spanne im Set beträgt <5,0> ct/L.)`; ist die Referenz selbst die günstigste: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
+| Günstigste Station jetzt (O19, 0.50.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Günstigste bis teuerste: <5,0> ct/L · <2,25> € bei <45> L`. Ohne Empfehlung: `… (gegen welche Station sich das rechnet, steht fest, sobald eine Empfehlung da ist — zwischen günstigster und teuerster Station liegen <5,0> ct/L.)`; ist die Referenz selbst die günstigste: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
 | Bilanz netto nach Umweg (O30, 0.50.0) | `Nach Umweg: <+6,34> € — Umwegkosten <1,66> € bei <1> Beleg, davon <1> mit geschätzter Strecke.` ohne Beleg mit Umweg `Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.` | `Ich` (Bilanz-Karte, O30) | Die Brutto-Zeile heißt ausdrücklich „brutto“, die Netto-Zeile steht darunter — dieselbe Formel wie die Entscheidung (`p_lohnt`, O9), Belege ohne Umweg erfinden keine Kilometer. |
 
 ## 4c. Bereich „Labor“: feste Muster (0.36.0)
@@ -317,6 +317,53 @@ werden mit „ · “ aneinandergereiht (nie gestapelt), die gemeinsame Dauer is
 `components/Notices.tsx` (`reduceNotices`) + `components/NoticesView.tsx`;
 Fehler- und Warn-Icons sind dekorativ (`aria-hidden`), der Text trägt die
 Information. Geprüft von `components/Notices.test.ts`.
+
+### 5c. „Set“ ist Betriebssprache (0.55.0)
+
+Das **Polling-Set** ist die Liste der Stationen, die der Collector abfragt —
+ein Begriff aus der Einrichtung. In „System“ und „Labor“ ist er richtig: Wer
+dort liest, richtet ein oder prüft nach, und §6 lässt für diese Fläche
+ausdrücklich Betreibersprache zu.
+
+Auf den Alltagsschirmen („Jetzt“, „Stationen“, „Ich“) steht er nicht mehr. Wer
+nur tanken will, liest „Spanne im Set: 4,4 ct/L“ und hat kein Bild davon,
+welche Menge gemeint ist — erklärt wurde das Wort nirgends, im Glossar stand
+es nicht. Die Fläche benennt sich jetzt selbst:
+
+| Statt | Jetzt |
+|---|---|
+| `Spanne im Set: <5,0> ct/L` | `Günstigste bis teuerste: <5,0> ct/L` |
+| `die Spanne im Set beträgt <5,0> ct/L` | `zwischen günstigster und teuerster Station liegen <5,0> ct/L` |
+| `Keine Station im Set` | `Noch keine Station eingerichtet` |
+
+Das ist zugleich genauer: Gerechnet wird über die Stationen mit **offenem
+Preis**, nicht über alles, was im Polling-Set steht.
+
+### 5d. Ein Zustand, eine Zahl (0.55.0)
+
+Wenn ein Text eine Automatik beschreibt, nennt er den Wert **dieser
+Automatik** — nicht den gerade gerechneten. Beides fällt nur zusammen,
+solange die Automatik aktiv ist; sobald jemand einen festen Wert setzt,
+laufen die Zahlen auseinander und der Text behauptet zwei Dinge zugleich.
+
+Gefunden in 0.55.0 unter „Ich“ → „Fahrzeug“: Der Schalter zeigte
+`Auto (12 €/h · Nebenzeit)`, direkt darunter stand `0 = Auto: 10 €/h — gerade
+Nebenzeit`. Zwölf kam aus dem Profil, zehn aus der Uhrzeit-Regel; „Auto“ stand
+an beiden. Dieselbe Verwechslung steckte in der Auswahl unter „Stationen“ —
+die Auto-Option warb mit einer Zahl, die sie nie liefert.
+
+| Statt | Jetzt |
+|---|---|
+| `Auto (${timeValueUsed} €/h)` | `Auto (${autoZ.z} €/h)` |
+| `0 = Auto: <x> €/h — gerade Nebenzeit.` (immer) | `Fester Wert. Mit 0 rechnet die App nach Uhrzeit — gerade wären das <x> €/h (Nebenzeit).` bei gesetztem Wert |
+
+Regel: `timeValueUsed` ist der Wert, mit dem **gerechnet** wird — er gehört in
+Sätze über das Ergebnis. `autoZ.z` ist der Wert, den die **Automatik**
+ergäbe — er gehört in jeden Satz, in dem das Wort „Auto“ vorkommt. Ein
+Hinweis, der einen nicht aktiven Zustand beschreibt, sagt das im Konjunktiv
+(„gerade wären das …“), statt ihn im Präsens zu behaupten.
+
+Geprüft in `web/src/microcopy.test.ts` („„Auto“ zeigt den Automatik-Wert“).
 
 ## 6. Was nie im Text steht
 

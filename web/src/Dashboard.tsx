@@ -434,7 +434,6 @@ function DashboardShell() {
             activeCity={activeCity}
             liters={effLiters}
             timeValue={effTimeValue}
-            timeValueUsed={timeValueUsed}
             autoZ={autoZ}
             decideRes={decideRes}
             stations={stations}

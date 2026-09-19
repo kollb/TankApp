@@ -53,6 +53,16 @@ export default defineConfig({
     baseURL: process.env.TANKAPP_DEMO_URL || "http://127.0.0.1:1357",
     headless: true,
     trace: "retain-on-failure",
+    // Wie in playwright.config.ts: Wo Playwright seinen Browser nicht laden
+    // darf (abgeschottete Umgebungen), zeigt `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
+    // auf ein vorhandenes Chromium. Ohne diesen Haken war ausgerechnet die
+    // Mobil-Suite — die hier liegt — dort nicht lauffähig (0.55.0).
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+      ? {
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
+          args: ["--no-sandbox", "--disable-dev-shm-usage"],
+        }
+      : {},
   },
   projects: [
     { name: "desktop", use: { viewport: { width: 1440, height: 1050 } } },

@@ -600,7 +600,7 @@ export function LaborView(props: LaborViewProps) {
         ))}
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid grid-cols-1 gap-3">
         {/* ── 1. Prognose ───────────────────────────────────────────── */}
         <LabBlock
           id="prognose"
@@ -776,7 +776,7 @@ export function LaborView(props: LaborViewProps) {
               "Die Worte sind feste Stufen derselben Skala: ab 75 % „ziemlich sicher“, ab 55 % „eher sicher“, darunter „unsicher“.",
             ]}
           />
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p className="text-xs font-semibold text-slate-200">
                 Versprochen gegen eingetroffen
@@ -799,7 +799,7 @@ export function LaborView(props: LaborViewProps) {
                 text="Punkte auf der Diagonalen = ehrlich versprochen. Darunter hat die App zu viel versprochen, darüber war sie zu vorsichtig."
               />
             </div>
-            <div className="grid gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-xs font-semibold text-slate-200">
                   Was die App selbst prüft
@@ -1200,7 +1200,7 @@ export function LaborView(props: LaborViewProps) {
             )}
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <p
                 className="text-xs font-semibold text-slate-200"
@@ -1217,7 +1217,7 @@ export function LaborView(props: LaborViewProps) {
                 </p>
               ) : (
                 <>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div className="rounded-lg bg-slate-900/70 p-2.5">
                       <p className="text-xs uppercase tracking-wider text-slate-500">
                         Regel-Ergebnis
@@ -1402,7 +1402,7 @@ export function LaborView(props: LaborViewProps) {
             Prognosen, deshalb ehrlich vergleichbar. Nichts hier wird
             gespeichert und nichts ändert dein Profil.
           </p>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <div className="flex items-center gap-2">
                 <Target size={14} className="text-violet-300" aria-hidden="true" />

@@ -23,7 +23,7 @@ test("honest setup state and all views", async ({ page }) => {
   // error_code zurückliefert (Konsequenz fehlender Daten, kein Defekt).
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Erst ein Set, dann der Atlas" }),
+    page.getByRole("heading", { name: "Erst Stationen einrichten, dann der Atlas" }),
   ).toBeVisible();
   // „Labor“ (der ehemalige Werkstatt-Tab) ist die getrennte Welt für die
   // Mathematik: eine Seite, fünf Aufklapp-Abschnitte. Ohne Statistik-Lauf
@@ -225,7 +225,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
 // ---------------------------------------------------------------------------
 const AREA_URLS: Array<{ url: string; heading: string }> = [
   { url: "/", heading: "Jetzt" },
-  { url: "/?tab=stationen", heading: "Erst ein Set, dann der Atlas" },
+  { url: "/?tab=stationen", heading: "Erst Stationen einrichten, dann der Atlas" },
   { url: "/?tab=woche", heading: "Woche" },
   { url: "/?tab=ich", heading: "Ich" },
   { url: "/?tab=labor", heading: "Verstehen, warum die App das sagt" },
@@ -271,7 +271,7 @@ test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(
     page.getByRole("heading", {
-      name: "Erst ein Set, dann der Atlas",
+      name: "Erst Stationen einrichten, dann der Atlas",
       exact: true,
     }),
   ).toBeVisible();
