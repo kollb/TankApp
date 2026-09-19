@@ -5,7 +5,14 @@ numpy/pandas-Abhängigkeit. Alle P sind relative Häufigkeiten über dieselben
 Draws; ``None`` heißt „keine Aussage“ (keine Draws / kein gestützter Block).
 """
 
-from app.pside import p_better, p_lohnt, window_p, window_p_details
+from app.pside import (
+    expected_saving,
+    expected_window_min_price,
+    p_better,
+    p_lohnt,
+    window_p,
+    window_p_details,
+)
 
 
 def test_p_better_threshold_and_none_cases():
@@ -82,3 +89,39 @@ def test_window_probability_is_normalized_against_edge_baseline():
 def test_exact_threshold_is_half_credit_in_p_side():
     # One exact 1 ct draw verifies the named O7 convention without dilution.
     assert p_better([[1.679]], 0, 1.689) == 0.5
+
+
+def test_expected_saving_and_min_price_basic():
+    # Minima in Spalte 0: 1.60, 1.62, 1.64, 1.66 -> Median = 1.63
+    minima = [[1.60], [1.62], [1.64], [1.66]]
+    # anchor = 1.70, liters = 40.0 -> (1.70 - 1.63) * 40 = 0.07 * 40 = 2.80 €
+    assert expected_window_min_price(minima, 0) == 1.63
+    assert expected_saving(minima, 0, 1.70, 40.0) == 2.80
+
+    # Wenn der Median über dem Anker liegt, spart man nichts (0.0 €)
+    assert expected_saving(minima, 0, 1.50, 40.0) == 0.0
+
+
+def test_expected_saving_none_cases():
+    minima = [[1.60], [1.62]]
+    assert expected_saving(None, 0, 1.70, 40.0) is None
+    assert expected_saving(minima, None, 1.70, 40.0) is None
+    assert expected_saving(minima, 0, None, 40.0) is None
+    assert expected_saving(minima, 0, 1.70, 0.0) is None
+    assert expected_saving(minima, 0, 1.70, -10.0) is None
+    assert expected_saving([[float("nan")]], 0, 1.70, 40.0) is None
+    assert expected_window_min_price(None, 0) is None
+    assert expected_window_min_price([[float("nan")]], 0) is None
+
+
+def test_p_lohnt_conditioned_ref_price():
+    # M5: Mit frischer Referenz (ref_price = 1.70) als Konstante
+    alt = [1.60, 1.72]
+    # alt = 1.60 -> netto 3.33 € > 0 (win)
+    # alt = 1.72 -> netto < 0 (loss) -> 1/2 = 0.5
+    assert p_lohnt(None, alt, 40.0, 2.0, 7.0, 45.0, 10.0, ref_price=1.70) == 0.5
+    # Skalarer ref_nowcast verhält sich identisch
+    assert p_lohnt(1.70, alt, 40.0, 2.0, 7.0, 45.0, 10.0) == 0.5
+    # ref_price überschreibt ref_nowcast-Draws
+    noisy_ref = [1.50, 1.90]
+    assert p_lohnt(noisy_ref, alt, 40.0, 2.0, 7.0, 45.0, 10.0, ref_price=1.70) == 0.5

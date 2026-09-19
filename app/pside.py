@@ -22,6 +22,8 @@ ungestützten Block im Umfeld eines Fensters trug.
 
 from __future__ import annotations
 
+import statistics
+
 from .outcomes import threshold_credit
 from .route import net_economics
 
@@ -74,6 +76,48 @@ def p_better(minima, block_idx: int, anchor: float, theta_ct: float = THETA_CT):
     theta = theta_ct / 100.0
     credits = [threshold_credit(anchor - value, theta) for value in finite]
     return round(sum(credits) / len(credits), 4)
+
+
+def expected_window_min_price(minima, block_idx: int) -> float | None:
+    """Median der Fensterminima über alle gestützten Draws (M3).
+
+    Liefert das typische Preisminimum des Fensters in €/L (3 Dezimalstellen).
+    Gibt ``None`` zurück, wenn keine gestützten Draws vorliegen.
+    """
+    if not minima or block_idx is None:
+        return None
+    column = [row[block_idx] for row in minima if block_idx < len(row)]
+    finite = _finite(column)
+    if not finite:
+        return None
+    return round(statistics.median(finite), 3)
+
+
+def expected_saving(
+    minima,
+    block_idx: int,
+    anchor: float,
+    liters: float = 1.0,
+) -> float | None:
+    """F1: Erwartete Ersparnis aus den Fensterminimum-Draws (M3, Befund 19.09.2026).
+
+    Rechnet den Median über alle gestützten Draws von ``(anchor - m) * liters``,
+    wobei ``m = min_{t in Fenster} p(t)`` das Fensterminimum des jeweiligen
+    Bootstrap-Draws ist. Entspricht exakt demselben Zufallseffekt wie
+    :func:`p_better` („bis zu X €“).
+
+    Gibt ``None`` zurück, wenn keine gestützten Draws vorliegen oder
+    Anker/Liter ungültig sind; sonst mindestens ``0.0`` (gerundet auf 2 Stellen).
+    """
+    if not minima or block_idx is None or anchor is None or liters <= 0:
+        return None
+    column = [row[block_idx] for row in minima if block_idx < len(row)]
+    finite = _finite(column)
+    if not finite:
+        return None
+    m_median = statistics.median(finite)
+    saving = max(0.0, (anchor - m_median) * liters)
+    return round(saving, 2)
 
 
 def window_p_details(
@@ -144,13 +188,47 @@ def p_lohnt(
     consumption: float,
     speed: float,
     z_used: float,
+    ref_price: float | None = None,
 ):
     """F2: ``P(€_netto > 0)`` aus den Nowcast-Draws zweier Stationen (§4.2).
+
+    Konditionierung (M5, Befund 19.09.2026): Ist der Referenzpreis frisch
+    (< eine Poll-Periode), wird er als Konstante ``ref_price`` in die
+    Paarung eingesetzt — nur die potenziell stale Seite (die Alternative)
+    trägt dann Draws. Wurde ``ref_nowcast`` als skalarer Zahlenwert
+    übergeben, wird er ebenfalls als feste Referenz interpretiert.
 
     ``net_economics`` ist dieselbe Formel, die `/route/evaluate`, die
     Alternativen und die spätere Wallet-Abrechnung nutzen (O9). Ein exakt
     ausgeglichener Draw zählt als halber Treffer (O7).
     """
+    if speed <= 0 or liters <= 0:
+        return None
+
+    # M5: Skalare Referenz oder explizite Konditionierung
+    if (
+        ref_price is None
+        and isinstance(ref_nowcast, (int, float))
+        and _supported(ref_nowcast)
+    ):
+        ref_price = float(ref_nowcast)
+
+    if ref_price is not None:
+        if not _supported(ref_price) or not alt_nowcast:
+            return None
+        finite_alts = [alt for alt in alt_nowcast if _supported(alt)]
+        if not finite_alts:
+            return None
+        credits = [
+            threshold_credit(
+                net_economics(
+                    ref_price, alt, liters, detour_km_total, consumption, speed, z_used
+                )["net_eur"]
+            )
+            for alt in finite_alts
+        ]
+        return round(sum(credits) / len(credits), 4)
+
     if not ref_nowcast or not alt_nowcast:
         return None
     pairs = [
@@ -158,7 +236,7 @@ def p_lohnt(
         for ref, alt in zip(ref_nowcast, alt_nowcast)
         if _supported(ref) and _supported(alt)
     ]
-    if not pairs or speed <= 0 or liters <= 0:
+    if not pairs:
         return None
     credits = [
         threshold_credit(
