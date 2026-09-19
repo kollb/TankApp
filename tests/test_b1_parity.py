@@ -204,18 +204,22 @@ def test_b1_saving_parity_with_pside(b1_settings):
 
 
 def test_b1_p_lohnt_conditioned_on_fresh_reference_price(b1_settings):
-    """M5: Frischer Referenzpreis (< 15 min) konditioniert p_lohnt als Konstante."""
+    """M5/B1-Fix: Frische Preise beidseitig konditioniert – frisch→Konstante.
+
+    Beide Stationen frisch (2 min) → deterministisch aus Live-Preisen, nicht
+    aus den Nowcast-Draws. Ref-Draws (1.50) werden ignoriert.
+    """
     anchor = 1.70
 
     def query(cfg, flux):
-        # Alter: 2 Minuten (< 15 min Poll-Periode) -> FRISCH
+        # Alter: 2 Minuten (< 15 min Poll-Periode) -> FRISCH beidseitig
         yield raw_price(NOW - dt.timedelta(minutes=2), UID, "Frankfurt", anchor)
-        # Alternative mit aktuellem Preis
+        # Alternative mit aktuellem Preis frisch
         yield raw_price(NOW - dt.timedelta(minutes=2), OTHER, "Frankfurt", 1.62)
 
-    # Alternative B hat 4 Nowcast-Draws
+    # Alternative B hat 4 Nowcast-Draws (werden ignoriert weil frisch)
     cand_draws = [1.60, 1.62, 1.65, 1.75]
-    # Referenzstation A hat Draws, die aber ignoriert werden müssen, da Preis frisch ist!
+    # Referenzstation A hat Draws, die ignoriert werden müssen, da Preis frisch ist!
     ref_draws = [1.50, 1.50, 1.50, 1.50]  # Wenn nicht ignoriert, wäre p_lohnt 0.0
 
     _write_engine_forecast(b1_settings, [[1.70]], ref_draws, cand_draws, points=[])
@@ -226,7 +230,7 @@ def test_b1_p_lohnt_conditioned_on_fresh_reference_price(b1_settings):
     )
 
     alt = res["alternatives_nearby"][0]
-    # Direkte Berechnung mit pside unter Konditionierung ref_price=anchor
+    # Beidseitig frisch → deterministisch aus Live-Preisen (B1-Fix)
     expected_p = p_lohnt(
         ref_draws,
         cand_draws,
@@ -236,8 +240,9 @@ def test_b1_p_lohnt_conditioned_on_fresh_reference_price(b1_settings):
         speed=alt["economics"]["speed_kmh"],
         z_used=alt["economics"]["time_value_eur_h"],
         ref_price=anchor,
+        alt_price=1.62,
     )
-    # verify evaluate_decide passed ref_price=anchor, ignoring ref_draws
+    # verify evaluate_decide passed ref_price=anchor + alt_price, ignoring draws
     assert alt["p_lohnt"] == expected_p
     # Wäre auf ref_draws gerechnet worden, wäre p_lohnt 0.0 (weil ref_draws viel billiger war)
     p_with_ref_draws = p_lohnt(
@@ -254,12 +259,13 @@ def test_b1_p_lohnt_conditioned_on_fresh_reference_price(b1_settings):
 
 
 def test_b1_p_lohnt_stale_reference_price_uses_draws(b1_settings):
-    """M5: Veralteter Referenzpreis (> 15 min) nutzt ref_draws in p_lohnt."""
+    """M5/B1-Fix: Stale Referenz, frische Alternative → ref Draws vs alt Konstante."""
     anchor = 1.70
 
     def query(cfg, flux):
         # Alter: 30 Minuten (> 15 min Poll-Periode) -> VERALTET / STALE
         yield raw_price(NOW - dt.timedelta(minutes=30), UID, "Frankfurt", anchor)
+        # Alternative frisch (2 min) → Konstante
         yield raw_price(NOW - dt.timedelta(minutes=2), OTHER, "Frankfurt", 1.62)
 
     cand_draws = [1.60, 1.62, 1.65, 1.75]
@@ -273,7 +279,7 @@ def test_b1_p_lohnt_stale_reference_price_uses_draws(b1_settings):
     )
 
     alt = res["alternatives_nearby"][0]
-    # Direkte Berechnung mit pside unter staler Referenz (ref_draws verwendet, kein ref_price)
+    # B1-Fix: stale ref → Draws, frische alt → Konstante 1.62
     expected_p = p_lohnt(
         ref_draws,
         cand_draws,
@@ -283,5 +289,6 @@ def test_b1_p_lohnt_stale_reference_price_uses_draws(b1_settings):
         speed=alt["economics"]["speed_kmh"],
         z_used=alt["economics"]["time_value_eur_h"],
         ref_price=None,
+        alt_price=1.62,
     )
     assert alt["p_lohnt"] == expected_p

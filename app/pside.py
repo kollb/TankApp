@@ -189,14 +189,16 @@ def p_lohnt(
     speed: float,
     z_used: float,
     ref_price: float | None = None,
+    alt_price: float | None = None,
 ):
     """F2: ``P(€_netto > 0)`` aus den Nowcast-Draws zweier Stationen (§4.2).
 
-    Konditionierung (M5, Befund 19.09.2026): Ist der Referenzpreis frisch
-    (< eine Poll-Periode), wird er als Konstante ``ref_price`` in die
-    Paarung eingesetzt — nur die potenziell stale Seite (die Alternative)
-    trägt dann Draws. Wurde ``ref_nowcast`` als skalarer Zahlenwert
-    übergeben, wird er ebenfalls als feste Referenz interpretiert.
+    Konditionierung (M5, Befund 19.09.2026, erweitert B1-Fix): Ist ein
+    Live-Preis frisch (< Poll-Periode, via ``*_price``), wird er als
+    Konstante in die Paarung eingesetzt — nur die potenziell stale Seite
+    trägt dann Draws. Sind beide Seiten frisch, ist die Entscheidung
+    deterministisch. Skalare ``*_nowcast``-Werte werden ebenfalls als feste
+    Preise interpretiert (Alt-Format, JSON-Rundlauf).
 
     ``net_economics`` ist dieselbe Formel, die `/route/evaluate`, die
     Alternativen und die spätere Wallet-Abrechnung nutzen (O9). Ein exakt
@@ -205,16 +207,33 @@ def p_lohnt(
     if speed <= 0 or liters <= 0:
         return None
 
-    # M5: Skalare Referenz oder explizite Konditionierung
+    # M5: Skalare Eingaben oder explizite Konditionierung als Konstante.
     if (
         ref_price is None
         and isinstance(ref_nowcast, (int, float))
         and _supported(ref_nowcast)
     ):
         ref_price = float(ref_nowcast)
+    if (
+        alt_price is None
+        and isinstance(alt_nowcast, (int, float))
+        and _supported(alt_nowcast)
+    ):
+        alt_price = float(alt_nowcast)
+
+    # Beide Seiten frisch → deterministisch.
+    if ref_price is not None and alt_price is not None:
+        if not _supported(ref_price) or not _supported(alt_price):
+            return None
+        net = net_economics(
+            ref_price, alt_price, liters, detour_km_total, consumption, speed, z_used
+        )["net_eur"]
+        return round(threshold_credit(net), 4)
 
     if ref_price is not None:
-        if not _supported(ref_price) or not alt_nowcast:
+        if not _supported(ref_price):
+            return None
+        if not alt_nowcast:
             return None
         finite_alts = [alt for alt in alt_nowcast if _supported(alt)]
         if not finite_alts:
@@ -226,6 +245,24 @@ def p_lohnt(
                 )["net_eur"]
             )
             for alt in finite_alts
+        ]
+        return round(sum(credits) / len(credits), 4)
+
+    if alt_price is not None:
+        if not _supported(alt_price):
+            return None
+        if not ref_nowcast:
+            return None
+        finite_refs = [ref for ref in ref_nowcast if _supported(ref)]
+        if not finite_refs:
+            return None
+        credits = [
+            threshold_credit(
+                net_economics(
+                    ref, alt_price, liters, detour_km_total, consumption, speed, z_used
+                )["net_eur"]
+            )
+            for ref in finite_refs
         ]
         return round(sum(credits) / len(credits), 4)
 

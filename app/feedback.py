@@ -169,7 +169,11 @@ GATE_BLOCK_DAYS = 1
 # Zuverlässigkeitskurve verdecken. Die Steigung von Ergebnis auf versprochene
 # Wahrscheinlichkeit soll 1 sein; ihr Tagesblock-Intervall wird gegen diesen
 # Referenzwert geprüft, nicht ihr Punktwert gegen eine frei gewählte Grenze.
+# B2-Fix: Zusätzlich |slope-1|<0.3 und CI-Breite<1.0 – sonst wäre ein
+# Intervall [-5, 5] immer „ok“ (enthält 1), aber ohne Aussagekraft.
 GATE_RELIABILITY_SLOPE_TARGET = 1.0
+GATE_RELIABILITY_SLOPE_MAX_ABS_DEV = 0.3
+GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH = 1.0
 
 _STORE_THREAD_LOCK = threading.Lock()
 
@@ -2143,9 +2147,13 @@ def compute_advice_stats(
         [{"p": row["p"], "outcome": row["outcome"]} for row in gate_rows]
     )
     gate_slope_ok = (
-        gate_slope_ci_lo is not None
+        gate_slope is not None
+        and gate_slope_ci_lo is not None
         and gate_slope_ci_hi is not None
         and gate_slope_ci_lo <= GATE_RELIABILITY_SLOPE_TARGET <= gate_slope_ci_hi
+        and abs(gate_slope - GATE_RELIABILITY_SLOPE_TARGET)
+        < GATE_RELIABILITY_SLOPE_MAX_ABS_DEV
+        and (gate_slope_ci_hi - gate_slope_ci_lo) < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
     )
     gate_ref_base, gate_ref_climate = _reference_briers(
         [row["outcome"] for row in gate_rows],
@@ -2197,7 +2205,9 @@ def compute_advice_stats(
         gate_status = (
             "Kalibrierung nicht erreicht (Reliability-Steigung "
             f"{_de(gate_slope)} [{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] "
-            f"enthält Referenz {_de(GATE_RELIABILITY_SLOPE_TARGET)} nicht)"
+            f"enthält Referenz {_de(GATE_RELIABILITY_SLOPE_TARGET)} nicht "
+            f"oder |slope-1|≥{GATE_RELIABILITY_SLOPE_MAX_ABS_DEV} "
+            f"oder CI-Breite≥{GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH})"
         )
     else:
         gate_status = (

@@ -223,8 +223,12 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     from app.feedback import load_store
 
     def query(cfg, flux):
+        # UID frisch (5 min), OTHER stale (20 min) – damit greift beidseitige
+        # Konditionierung: Referenz als Konstante, Alternative via Draws.
+        # Bei beidseitig frisch wäre p_lohnt deterministisch aus Live-Preisen
+        # (B1-Fix), nicht mehr aus den Nowcast-Draws.
         yield raw_price(NOW - dt.timedelta(minutes=5), UID, "Frankfurt", 1.689)
-        yield raw_price(NOW - dt.timedelta(minutes=5), OTHER, "Frankfurt", 1.729)
+        yield raw_price(NOW - dt.timedelta(minutes=20), OTHER, "Frankfurt", 1.729)
 
     # Berlin: NOW 16:00 (UTC 14:00). Drei 2-h-Blöcke, billigster zuerst.
     block_starts = [
