@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 19.09.2026 · App-Version 0.55.1. Nachschlagewerk für `data-tools/`
+> Stand: 19.09.2026 · App-Version 0.55.2. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
 > [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
