@@ -481,6 +481,52 @@ Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
 Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](API.md#forecast-messfelder-b0-seit-0560)),
 dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
 
+**Betreiber-Checkliste (Stand 0.56.0; Begründung im
+[Befund §5.13](BEFUND-UX-MATH-2026-09-19.md#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)):**
+
+1. **Heute: nichts.** Wie gewohnt ausliefern (`nas-up`). Der Kalender kommt
+   als Default mit, der Lauf markiert von allein; Prognose, Band und
+   Empfehlung ändern sich nicht — auch am 01.10.2026 nicht. Ab dem Lauf vom
+   02.10.2026 steht in jeder Prognose `regime_breaks_in_window.count = 1`:
+
+   ```bash
+   python3 -c "import json,glob; f=sorted(glob.glob('runtime/engine/forecasts/*.json'))[0]; \
+   d=json.load(open(f)); r=d.get('regime_breaks_in_window') or {}; \
+   print(json.dumps({'count': r.get('count'), 'in_window': r.get('in_window'), 'declared': len(r.get('declared') or [])}, indent=2, ensure_ascii=False))"
+   ```
+
+2. **Wenn sich die Nachrichtenlage ändert** (Rabatt kommt, kommt anders,
+   kommt nicht): Kalender anpassen, `nas-up`. Kein Release nötig — eine
+   Datei unter `runtime/` reicht, weil `runtime/` im Container unter
+   `/data/runtime` liegt:
+
+   ```bash
+   # <runtime-dir>/regimes.json  (Sorte null = alle; je Sorte ein Eintrag, sobald Sätze je Sorte bekannt sind)
+   {"regimes": [
+     {"announced_local": "2026-05-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "in_force", "source": "Mai-Juni-Rabatt 2026, Start (Archiv)"},
+     {"announced_local": "2026-07-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": 17.0,  "status": "in_force", "source": "Mai-Juni-Rabatt 2026, Ende (Archiv)"},
+     {"announced_local": "2026-10-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "announced", "source": "Koalitionseinigung 19.09.2026"},
+     {"announced_local": "2027-01-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": 17.0,  "status": "announced", "source": "Rabatt-Ende 31.12.2026"}
+   ]}
+   ```
+
+   Dann in der NAS-Umgebung (`.env` neben `ops/nas/app/compose.yml`):
+   `TANKAPP_REGIMES=/data/runtime/regimes.json`. Alternativ die JSON-Liste
+   direkt als Wert. Ein Tippfehler bricht den Start mit Grund ab — das ist
+   gewollt (siehe oben); Rückweg ist `TANKAPP_REGIMES=` (leer = Defaults).
+   In 0.56.0 verschiebt eine Änderung nur die Markierung; Status und Betrag
+   werden erst mit den Rechenschichten (G-R0, R2) wirksam, und zwar nur bei
+   `in_force`/`detected` — ein `announced`-Eintrag stellt nichts scharf.
+
+3. **Einmal vor B2/B3, am PC:** die Referenzmessung nach
+   [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560) laufen lassen und das
+   Ergebnis am B0-Status im Befund eintragen. Ohne diesen Vorher-Wert ist
+   jede spätere Verbesserung eine Behauptung.
+
+4. **Nicht tun:** den Spritpreisdeckel als `price_cap` eintragen, bevor
+   Referenz und Formel bekannt sind (A15) — der Eintrag allein bewirkt in
+   0.56.0 nichts, würde aber später eine geratene Schranke scharf stellen.
+
 ### Größe der Veröffentlichung (O22, seit 0.44.0)
 
 Die Prognosen-Veröffentlichung unter `data/runtime/engine/` ist das, was der
