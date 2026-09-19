@@ -36,9 +36,11 @@ MAX_PICP_DEGRADATION = 0.02
 # die Stichprobengröße berücksichtigt. Die 2-pp-Untergrenze schützt zugleich
 # die äußeren 2,5-%-Quantile vor einer scheinpräzisen 1/1000-Aussage.
 MIN_COVERAGE_BAND = 0.02
-# 0,5-pp-Stützen halten die äußeren Quantile deutlich genauer als ein reines
-# Anzeige-Gitter und bleiben mit 201 Paaren pro Station klein.
-PIT_LEVELS = tuple(float(value) for value in np.linspace(0.0, 1.0, 201))
+# 0,25-pp-Stützen (401 Level) für die äußeren 2,5-%-Quantile: Bei 21 Tagen
+# mit 5-Min-Polling haben 2,5 % nur ~12 Beobachtungen — 0,5-pp-Gitter
+# quantisiert dort zu grob. 401 Punkte bleiben klein und sind für die
+# Freigabe (MAX_PICP_DEGRADATION 2 pp) entscheidend.
+PIT_LEVELS = tuple(float(value) for value in np.linspace(0.0, 1.0, 401))
 QUANTILE_LEVELS = (0.025, 0.10, 0.50, 0.90, 0.975)
 
 

@@ -496,12 +496,16 @@ export function WocheView(props: WocheViewProps) {
         </>
       )}
 
-      {/* Frische-Fußzeile (T8: ein Baustein) */}
+      {/* Frische-Fußzeile (T8: ein Baustein) – B2: Kalibrierungshorizont ehrlich nennen */}
       <FreshnessLine
         text={freshness.text}
         tone={freshness.tone}
         place={activeCity}
-        extra={line.length > 0 ? " · ab Tag 5 wird die Prognose breiter" : ""}
+        extra={
+          line.length > 0
+            ? " · ab Tag 5 wird die Prognose breiter · 24h kalibriert (PIT), 3/7d unkalibriert"
+            : ""
+        }
       />
 
       {explanation && (
