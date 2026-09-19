@@ -28,7 +28,14 @@ from .feedback import (
     load_store,
     record_snapshot,
 )
-from .pside import THETA_CT, p_better, p_lohnt, window_p_details
+from .pside import (
+    THETA_CT,
+    expected_saving,
+    expected_window_min_price,
+    p_better,
+    p_lohnt,
+    window_p_details,
+)
 from .route import (
     AUTO_TIME_VALUE_RULE,
     CIRCUITY,
@@ -148,6 +155,48 @@ def _window_p_value(
     if not minima:
         return None
     return window_p_details(minima, _block_for_window(draws, window_start))
+
+
+def _format_window_item(
+    w: dict[str, Any],
+    draws: dict[str, Any] | None,
+    anchor: float | None,
+    liters: float,
+) -> dict[str, Any]:
+    """Formatiert ein Fenster für windows_today / windows_week mit M3-Konsistenz."""
+    minima = draws.get("minima") if draws else None
+    block_idx = _block_for_window(draws, w["start"]) if draws else None
+    saving_draws = (
+        expected_saving(minima, block_idx, anchor, liters)
+        if minima and block_idx is not None and anchor is not None
+        else None
+    )
+    saving_median = (
+        round(max(0.0, (anchor - w["expected_price"]) * liters), 2)
+        if anchor is not None
+        else None
+    )
+    min_price = (
+        expected_window_min_price(minima, block_idx)
+        if minima and block_idx is not None
+        else None
+    )
+    p_info = _window_p_value(draws, w["start"]) if draws else None
+    return {
+        "start": w["start"],
+        "end": w["end"],
+        "expected_price": w["expected_price"],
+        "expected_min_price": min_price,
+        "expected_saving_eur": (
+            saving_draws if saving_draws is not None else saving_median
+        ),
+        "expected_saving_median_eur": saving_median,
+        "p": (p_info or {}).get("normalized"),
+        "p_raw": (p_info or {}).get("raw"),
+        "p_competitors": (p_info or {}).get("competitors"),
+        "p_baseline": (p_info or {}).get("baseline"),
+        "wh_weight": w.get("wh_weight"),
+    }
 
 
 def _wh_weight(
@@ -496,6 +545,15 @@ def _alternatives(
     alternatives = []
     best = None
     ref_nowcast = nowcasts.get(chosen_station["station_id"]) if nowcasts else None
+
+    # M5: Konditionierung am frischen Referenzpreis (< 1 Poll-Periode als Konstante).
+    # Nur wenn der Referenzpreis stale ist (kein frischer Live-Preis), trägt ref_nowcast Draws.
+    is_ref_fresh = chosen_station.get("price") is not None and (
+        chosen_station.get("age_minutes") is None
+        or chosen_station.get("age_minutes") <= 15.0
+    )
+    ref_price_cond = anchor if is_ref_fresh else None
+
     for cand in station_list:
         if cand["station_id"] == chosen_station["station_id"]:
             continue
@@ -567,8 +625,9 @@ def _alternatives(
                 consumption,
                 speed,
                 z_used,
+                ref_price=ref_price_cond,
             )
-            if ref_nowcast and alt_nowcast
+            if (ref_nowcast or ref_price_cond is not None) and alt_nowcast
             else None,
             "maps_url": cand.get("maps_url"),
         }
@@ -699,7 +758,7 @@ def _table_action(
         return (
             "wait",
             badge,
-            f"Preis fällt im Fenster voraussichtlich — Warten spart ca. {expected_saving_eur:.2f} €.",
+            f"Preis fällt im Fenster voraussichtlich — Warten spart bis zu {expected_saving_eur:.2f} €.",
             None,
         )
     if expected_saving_eur >= th["wait_eur_mid"] and (
@@ -708,7 +767,7 @@ def _table_action(
         return (
             "wait",
             "medium",
-            f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+            f"Eher warten: Fenster spart voraussichtlich bis zu {expected_saving_eur:.2f} €.",
             None,
         )
     if p_besser is not None and p_besser < th["now_p"]:
@@ -729,7 +788,7 @@ def _table_action(
     return (
         "wait",
         "medium",
-        f"Eher warten: Fenster spart voraussichtlich ca. {expected_saving_eur:.2f} €.",
+        f"Eher warten: Fenster spart voraussichtlich bis zu {expected_saving_eur:.2f} €.",
         None,
     )
 
@@ -910,27 +969,44 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     horizon_cut = bool(latest_by is not None and not windows_today and bool(points))
 
     if windows_today:
-        recommended_window = {
-            "start": windows_today[0]["start"],
-            "end": windows_today[0]["end"],
-            "expected_price": windows_today[0]["expected_price"],
-        }
+        rec_start = windows_today[0]["start"]
         expected_price_later = windows_today[0]["expected_price"]
         start_hour_later = windows_today[0]["start_hour"]
         end_hour_later = windows_today[0]["end_hour"]
+        rec_block_idx = _block_for_window(draws_24h, rec_start)
+        min_draws = draws_24h.get("minima") if draws_24h else None
+        expected_min_price_later = expected_window_min_price(min_draws, rec_block_idx)
+        saving_from_draws = (
+            expected_saving(min_draws, rec_block_idx, anchor, liters)
+            if min_draws and rec_block_idx is not None and anchor is not None
+            else None
+        )
+        recommended_window = {
+            "start": rec_start,
+            "end": windows_today[0]["end"],
+            "expected_price": expected_price_later,
+            "expected_min_price": expected_min_price_later,
+        }
     else:
         # Kein erfundenes Fenster: ohne Prognose keine Empfehlung.
         recommended_window = None
         expected_price_later = None
+        expected_min_price_later = None
         start_hour_later = None
         end_hour_later = None
+        saving_from_draws = None
 
     if anchor is not None and expected_price_later is not None:
-        expected_saving_eur = round(
+        expected_saving_median_eur = round(
             max(0.0, (anchor - expected_price_later) * liters), 2
         )
     else:
-        expected_saving_eur = 0.0
+        expected_saving_median_eur = 0.0
+
+    if saving_from_draws is not None:
+        expected_saving_eur = saving_from_draws
+    else:
+        expected_saving_eur = expected_saving_median_eur
 
     # M7-Schwellen (§13): Startwerte, optional an gemessene Trefferquoten
     # nachgezogen (nur wenn der Betreiber auto-apply gesetzt hat).
@@ -1079,7 +1155,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "expected_price": round(expected_price_later, 3)
         if expected_price_later is not None
         else None,
+        "expected_min_price": round(expected_min_price_later, 3)
+        if expected_min_price_later is not None
+        else None,
         "expected_saving_eur": expected_saving_eur,
+        "expected_saving_median_eur": expected_saving_median_eur,
         # Der Grund einer Ablehnung wandert mit ins Ledger: Das Tagebuch
         # zeigt damit je Zeile, **warum** nichts empfohlen wurde, statt nur
         # „keine Empfehlung“ zu wiederholen. Für Empfehlungen ist das Feld
@@ -1110,58 +1190,17 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             },
             "recommended_window": recommended_window,
             "expected_saving_eur": expected_saving_eur,
+            "expected_saving_median_eur": expected_saving_median_eur,
             "p_correct": p_correct,
             "confidence_badge": confidence_badge,
             "reason_short": reason_short,
         },
         "alternatives_nearby": alternatives_nearby,
         "windows_today": [
-            {
-                "start": w["start"],
-                "end": w["end"],
-                "expected_price": w["expected_price"],
-                "expected_saving_eur": round(
-                    max(0.0, (anchor - w["expected_price"]) * liters), 2
-                )
-                if anchor is not None
-                else None,
-                # ``p`` drives stars and is normalized against the actual
-                # count of surrounding windows; raw remains auditable (O12).
-                "p": (_window_p_value(draws_24h, w["start"]) or {}).get("normalized"),
-                "p_raw": (_window_p_value(draws_24h, w["start"]) or {}).get("raw"),
-                "p_competitors": (_window_p_value(draws_24h, w["start"]) or {}).get(
-                    "competitors"
-                ),
-                "p_baseline": (_window_p_value(draws_24h, w["start"]) or {}).get(
-                    "baseline"
-                ),
-                # A9: Anteil des persönlichen Tankzeit-Profils an diesem
-                # Fenster (null = nicht personalisiert, Reihenfolge = Preis).
-                "wh_weight": w.get("wh_weight"),
-            }
-            for w in windows_today
+            _format_window_item(w, draws_24h, anchor, liters) for w in windows_today
         ],
         "windows_week": [
-            {
-                "start": w["start"],
-                "end": w["end"],
-                "expected_price": w["expected_price"],
-                "expected_saving_eur": round(
-                    max(0.0, (anchor - w["expected_price"]) * liters), 2
-                )
-                if anchor is not None
-                else None,
-                "p": (_window_p_value(draws_7d, w["start"]) or {}).get("normalized"),
-                "p_raw": (_window_p_value(draws_7d, w["start"]) or {}).get("raw"),
-                "p_competitors": (_window_p_value(draws_7d, w["start"]) or {}).get(
-                    "competitors"
-                ),
-                "p_baseline": (_window_p_value(draws_7d, w["start"]) or {}).get(
-                    "baseline"
-                ),
-                "wh_weight": w.get("wh_weight"),
-            }
-            for w in windows_week
+            _format_window_item(w, draws_7d, anchor, liters) for w in windows_week
         ],
         "episode": {
             "id": ep.get("id"),

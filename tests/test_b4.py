@@ -242,11 +242,13 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     ]
     # Block 0: 3 von 4 Draws ≥ 1 ct unter dem Anker (p_besser = 0.75) und
     # 3 von 4 Draws unter dem ±6-h-Umfeld (F3-P = 0.75).
+    # M3: Fensterminima nah an den q50-Punkten (1.60–1.61 €), damit Ersparnis ≥ 2 €
+    # und die Tabelle wie im Test beabsichtigt „warten“ empfiehlt.
     minima = [
-        [1.67, 1.70, 1.71],
+        [1.61, 1.70, 1.71],
         [1.60, 1.71, 1.72],
         [1.70, 1.68, 1.72],
-        [1.66, 1.71, 1.72],
+        [1.62, 1.71, 1.72],
     ]
     draws = {
         "n": 4,
@@ -308,7 +310,12 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     assert body["windows_today"][0]["p"] == 1.0
     assert body["windows_today"][0]["p_competitors"] == 2
     assert body["windows_today"][0]["p_baseline"] == pytest.approx(1 / 3, abs=1e-4)
-    assert body["windows_today"][0]["expected_saving_eur"] == 3.36
+    # M3: expected_saving_eur aus den Fensterminimum-Draws (2.96 €),
+    # expected_saving_median_eur aus dem Fenster-Median (3.36 €).
+    assert body["windows_today"][0]["expected_saving_eur"] == 2.96
+    assert body["windows_today"][0]["expected_saving_median_eur"] == 3.36
+    assert body["primary"]["expected_saving_eur"] == 2.96
+    assert body["primary"]["expected_saving_median_eur"] == 3.36
     assert body["windows_week"][0]["p_raw"] == 0.75
     assert body["windows_week"][0]["p"] == 1.0
 
@@ -321,6 +328,8 @@ def test_decide_p_side_from_forecast_distribution(b4_settings):
     assert snap["action"] == "wait"
     assert snap["p_besser"] == 0.75
     assert snap["p_correct"] == 0.75
+    assert snap["expected_saving_eur"] == 2.96
+    assert snap["expected_saving_median_eur"] == 3.36
     # O5: Die Zeile nennt ihre Quelle — Verteilungs-P aus den Draws.
     assert snap["p_source"] == "verteilung"
 
@@ -447,10 +456,10 @@ def test_decline_reason_visible_before_m7_but_recommendation_muted(b4_settings):
                                 },
                             ],
                             "minima": [
-                                [1.67, 1.70, 1.71],
+                                [1.61, 1.70, 1.71],
                                 [1.60, 1.71, 1.72],
                                 [1.70, 1.68, 1.72],
-                                [1.66, 1.71, 1.72],
+                                [1.62, 1.71, 1.72],
                             ],
                             "nowcast": [1.68, 1.69, 1.70, 1.71],
                         },

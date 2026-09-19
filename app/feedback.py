@@ -880,7 +880,11 @@ def record_snapshot(
             "window_start_hour": snapshot_data.get("window_start_hour"),
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
+            "expected_min_price": snapshot_data.get("expected_min_price"),
             "expected_saving_eur": snapshot_data.get("expected_saving_eur", 0.0),
+            "expected_saving_median_eur": snapshot_data.get(
+                "expected_saving_median_eur", 0.0
+            ),
             # Grund der Ablehnung in Klartext (nur bei ``no_advice``): Das
             # Tagebuch zeigt damit „warum“, nicht nur „keine Empfehlung“.
             "decline_reason": snapshot_data.get("decline_reason"),
