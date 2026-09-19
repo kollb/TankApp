@@ -79,12 +79,18 @@ export function JobCard({
                 : "text-slate-400";
   return (
     <div className={`${panel} p-5`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5 text-sm font-semibold">
-          {icon}
-          {title}
+      {/* 0.55.2: `gap-2` + `min-w-0`, weil die Zeile bei 320 px überlief
+          (Job „Beleg-Verarbeitung“: 207 px Inhalt in 196 px Kasten). Als
+          Flex-Kinder haben beide Seiten `min-width: auto` und schrumpfen
+          nicht unter ihren Inhalt — der längste Jobname sprengt die Karte.
+          `min-w-0` erlaubt das Schrumpfen, `truncate` kürzt dann sichtbar
+          statt zu überlaufen; `shrink-0` hält Symbol und Status intakt. */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5 text-sm font-semibold">
+          <span className="shrink-0">{icon}</span>
+          <span className="truncate">{title}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span className={`text-xs font-semibold ${stateColor}`}>{state}</span>
           {logKey && enabled ? (
             <button

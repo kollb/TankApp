@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 19.09.2026 · App-Version **0.55.1** · gilt für `web/src/**`,
+> Stand: 19.09.2026 · App-Version **0.55.2** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt.
