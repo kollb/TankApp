@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 19.09.2026 · App-Version **0.55.1**
+> Stand: 19.09.2026 · App-Version **0.55.2**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -38,7 +38,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.55.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.55.2 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 0.54.0 schließt Batch 8 des Optimierungs-Befunds ab und damit den ganzen
 Befund: Die Belegmaske zeigt den Live-Preis der Station mit Alter und markiert
 eine Abweichung ab 1,0 ct/L (O32), und die Textalternative eines Diagramms

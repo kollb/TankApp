@@ -1,8 +1,12 @@
 # Befund 19.09.2026 — UX-Vision, mathematische Tiefenprüfung und Regime-Wechsel
 
-> Stand: 19.09.2026 · App-Version **0.55.1** · Stichtagsprüfung gegen den
-> Arbeitszweig `arena/01a0b83e-tankapp` (Basis `main` @ `be3c912`); Teil 5
-> zusätzlich gegen `arena/01a0b85b-tankapp` (Basis `main` @ `cfb10b9`).
+> Stand: 19.09.2026 · App-Version **0.55.2** · Stichtagsprüfung gegen den
+> Arbeitszweig `arena/01a0b83e-tankapp` (Basis `main` @ `be3c912`, Code-Stand
+> 0.55.1); Teil 5 zusätzlich gegen `arena/01a0b85b-tankapp` (Basis `main` @
+> `cfb10b9`). **0.55.2 ändert keine Prämisse dieses Befunds:** Es ist ein
+> GUI-/Test-Suite-Patch (Mobil-Projekt `narrow` mit 320 px, Job-Karte
+> `min-w-0`/`truncate` gegen Überlauf) — Engine, App-Schicht, Datenwerkzeuge
+> und Analyse sind unberührt, die Prüfung selbst lief gegen 0.55.1.
 > Rollen: Senior UI/UX-Design + Data Science. Drei Fragen: Wie muss die
 > Seitenstruktur aussehen, damit Kunden in 5 Sekunden wissen, **wann und wo**
 > sie tanken (Teil 1) — greift die Statistik (Huber-M-Schätzer, isotone
