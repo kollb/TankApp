@@ -4,6 +4,127 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.56.0] – 2026-09-19
+
+**B0 des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich): Messgrundlagen — unsichtbar, bitgleich.**
+Die Engine tat bis 0.55.2 drei Dinge stumm: Sie stauchte instabile
+AR(2)-Koeffizienten (×0,9, bis zu 100-mal, dann φ = 0), sie mischte zwei
+Modellkerne mit Gewichten, deren Streuung niemand kannte, und die
+12-Uhr-Projektion zog Punkte in Pools, ohne dass zu sehen war, wie viele.
+Dazu warf der Backtest die Information weg, die eine Kalibrierung braucht:
+**wo** die Beobachtung in der vorhergesagten Verteilung lag. Dieses Release
+macht das sichtbar und ändert **keine Prognosezahl** — kein Nutzertext, kein
+Band, keine Empfehlung bewegt sich.
+
+### Bitgleich, bewiesen
+
+- **Invarianz-Test** (`tests/test_b0_invariance.py`,
+  `tests/fixtures/b0_invariance.json`): Fit-Artefakt, 24-h-Prognosen und
+  Bootstrap-Pfade beider Kerne und des Ensembles (gemeinsame und unabhängige
+  Ziehung), die 72-h-Prognose des veröffentlichten Ensembles und die
+  Backtest-Kennzahlen werden gegen eine Fixture verglichen, die **vor** der
+  ersten B0-Änderung aus dem alten Code erzeugt wurde. `predict` liefert mit
+  und ohne `diagnostics`-Dict dieselben Zahlen; ein leerer Regime-Kalender
+  (Engine-Default) ist bitgleich zu 0.55.2.
+
+### Zähler im Modell-Artefakt (`engine/models.py`)
+
+- **`ar_shrink_events`, `ar_state_reset`, `ar_detail`:** Zahl der
+  ×0,9-Schritte des Stabilitätsnetzes, ob der AR-Zustand am Cutoff auf 0
+  gesetzt wurde, und je Kern der Grund eines Rückfalls auf φ = 0
+  (`too_few_points`, `too_few_triples`, `zero_variance`, `not_stabilised`)
+  samt Wurzelradius vor/nach dem Stauchen. Vorher gab es dafür keine Spur.
+- **`ensemble.weight_spread`:** dieselben inversen MASE-Gewichte wie
+  `ensemble.weights`, aber je 288-Slot-Block des Validierungsfensters —
+  `std`, `range`, und wie oft welcher Kern vorn lag. Antwort auf die Frage aus
+  M4, ob 0,51/0,49 ein stabiles Unentschieden ist oder das Mittel wilder
+  Tageswechsel. Die veröffentlichten Gewichte bleiben die des Gesamtfensters.
+- **`pava_pool_stats`:** Anzahl und Größe der PAVA-Pools der 12-Uhr-Projektion
+  je Segment, Anteil veränderter Bootstrap-Pfade und -Punkte, veränderte
+  Punkte je Quantilspalte. **Abweichung vom Befund:** kein Artefakt-Feld,
+  sondern eine `predict`-Diagnose (`predict(..., diagnostics={})`), weil PAVA
+  erst in der Prognose läuft; `engine forecast` und die App-Veröffentlichung
+  tragen sie je Prognose.
+
+### Backtest: PIT-Paare mit Regime-Marker (`engine/backtest.py`)
+
+- **PIT je Zeile:** Mittelrang der Beobachtung unter den Bootstrap-Pfaden
+  (`(#Pfade < y + ½·#Pfade = y) / #endliche Pfade`) als Spalte `pit` in
+  `predictions.csv.gz`, für 24 h **und** die Mehrtage-Fenster (72/168 h, neue
+  Spalte `horizon_hours`; die CLI schreibt diese Zeilen jetzt zusätzlich —
+  wer die Datei selbst liest, filtert auf `horizon_hours == 0`). Im Bericht je
+  Station und Horizont als 40-Klassen-Histogramm mit `coverage[q]`,
+  `interval_95` und `mean`, jeweils `all` und `break_free`. Das ist der
+  Trainingsstoff für die Kalibrierungsschicht (B2).
+- **Regime-Kalender statt bloßem Marker** (§5.7-Nachtrag des Befunds):
+  `Config.regimes` mit `announced_local`, `kind` (`tax_step`/`price_cap`),
+  `fuel`, `announced_value` (ct/L mit Vorzeichen), `status`
+  (`announced`/`detected`/`in_force`/`unknown`) und `source`. Ein bloßer
+  Zeitstempel hätte im Oktober die Frage „welche Kante, wie groß, woher
+  gewusst“ nicht beantworten können; R1–R3 brauchen dieselben Felder.
+  Normalisierung wie `price_law_local`: mehrdeutige Wanduhrzeiten, unbekannte
+  Felder und Sorten werden abgelehnt, nicht verschoben.
+- **`regime_breaks_in_window`:** deklarierte Kanten und die im Fenster
+  (Datum, Art, Sorte, Betrag, Status, Quelle), `count`, überspannende Folds
+  und Zeilen, `metrics_break_free`. Politik **`flagged_not_excluded`**:
+  Kennzahlen über eine Kante sind als Modellgüte nicht lesbar (§5.4.3) — sie
+  werden ausgewiesen, nicht stillschweigend entfernt. Jede Zeile trägt
+  `regime_break_spanned`, jeder Fold `regime_break_spanned`/`regime_breaks`.
+- **`ar_shrink`** summiert Stauchungen, Zustands-Resets und Rückfallgründe
+  über alle Folds; **`model_kind`/`shared_draws`** nennen, was gemessen wurde.
+- CLI: `--regime-break LOKALZEIT` (mehrfach) für alle Datenbefehle,
+  `engine backtest --kind harmonic_ar2|profile_ar2|ensemble` und
+  `--shared-draws`. Default ist der Stand vor 0.56.0.
+
+### App: Kalender durchgereicht, Messfelder veröffentlicht
+
+- **`TANKAPP_REGIMES`** (`app/regimes.py`, `Settings.regimes`,
+  `engine_config`): leer = die vier bekannten Termine (Mai-Juni-Rabatt 2026
+  Start/Ende im Archiv, 01.10.2026 −17 ct/L angekündigt, 01.01.2027 +17 ct/L
+  angekündigt; Koalitionseinigung vom 19.09.2026, Befund Teil 5), `0`/`off`
+  = kein Kalender, JSON-Liste oder `.json`-Pfad = eigener Kalender. Der
+  Spritpreisdeckel ist **kein** eigener Eintrag, solange seine Ausgestaltung
+  offen ist (A15). Ein kaputter Kalender bricht `Settings.from_env` mit Grund
+  ab — das unmarkierte Übergangsfenster ist der Fehler, vor dem §5.7 warnt.
+  Gerechnet wird mit dem Kalender in 0.56.0 **nichts**; das sind R1–R3 mit
+  eigenem Schalter. `ops/nas/app/compose.yml` reicht die Variable durch.
+- **Veröffentlichung je Station** (`runtime/engine/forecasts/*.json`,
+  `GET /api/v1/forecast`): `ar_shrink_events`, `ar_state_reset`, `ar_detail`,
+  `pava_pool_stats`, `pit` (eigene Station), `regime_breaks_in_window`,
+  `ar_shrink`, `backtest_model_kind`, `backtest_shared_draws`. Der
+  Backtest-Cache steigt auf Schema 3 (Einträge aus 0.55.2 werden einmal neu
+  gerechnet). Die GUI liest keines der Felder; Größenzuwachs der
+  Veröffentlichung < 1 % des 7,28-MB-Bezugswerts (O22).
+
+### Dabei gefunden — nicht in B0 geändert, weil B0 bitgleich sein muss
+
+- **Der Backtest misst nicht das veröffentlichte Modell.** `run_backtest` und
+  der Modell-Lauf messen per Default `harmonic_ar2` mit unabhängiger
+  Tagesblock-Ziehung (Stand vor A10/A11); die App veröffentlicht seit 0.31.0
+  das `ensemble` mit gemeinsamer Ziehung. PICP-Badge, Güte-Gate und
+  Rolling-PICP beschreiben also ein anderes Modell als das gezeigte Band.
+  Seit diesem Release nennt die Veröffentlichung beides
+  (`backtest_model_kind` neben `model_kind`) und beide Läufe sind per CLI
+  möglich; das Umschalten ist eine Messentscheidung für B3 und steht in
+  [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+- **Referenzmessung PICP/Brier/MASE je Station nicht gelaufen:** In der
+  Entwicklungsumgebung liegen keine NAS-Daten; das Rezept (zwei Backtests je
+  Bestand, Felder je Station) steht in
+  [docs/ENGINE.md](docs/ENGINE.md#messgrundlagen-b0-seit-0560). Brier gibt es
+  nur global je P-Quelle aus dem Advice-Ledger, nicht je Station — so benannt
+  statt behauptet.
+
+### Nachweis
+
+- Neu: `tests/test_b0_invariance.py` (10), `tests/test_b0_counters.py` (16),
+  `tests/test_b0_pit_regime.py` (21), `tests/test_b0_app.py` (11); die
+  CLI-Rundreise prüft `pava_pool_stats` in `engine forecast`. Doku:
+  [ENGINE.md](docs/ENGINE.md#messgrundlagen-b0-seit-0560) (neuer Abschnitt),
+  [API.md](docs/API.md#forecast-messfelder-b0-seit-0560),
+  [BETRIEB.md](docs/BETRIEB.md#regime-kalender-b0-seit-0560),
+  [LUECKEN.md](docs/LUECKEN.md). Testzahlen stehen in der Erledigt-Zeile von
+  [TODO.md](TODO.md) nach dem vollständigen Lauf.
+
 ## [0.55.2] – 2026-09-19
 
 **Die Mobil-Suite maß die falsche Breite.** Beide Playwright-Konfigurationen

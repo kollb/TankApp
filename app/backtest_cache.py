@@ -50,7 +50,10 @@ from typing import Any
 # Bei jeder Änderung an Inhalt oder Form des gecachten Payloads anheben.
 # Schema 2: Fingerabdruck auf die sechs tatsächlich gelesenen Frame-Spalten
 # normiert (B19); bestehende Schema-1-Dateien werden einmal sauber verfehlt.
-CACHE_SCHEMA_VERSION = 2
+# Schema 3 (B0, 0.56.0): Payload trägt zusätzlich pit, regime_breaks_in_window,
+# ar_shrink, model_kind und shared_draws; Schema-2-Dateien werden einmal
+# sauber verfehlt statt ohne diese Felder wiederverwendet.
+CACHE_SCHEMA_VERSION = 3
 
 # Dieselben Spalten gehen als schlanke initargs in den Modell-Pool. Sie sind
 # vollständig für fit() + run_backtest(); die übrigen PriceSeries-Spalten sind
@@ -75,6 +78,13 @@ PAYLOAD_KEYS = (
     # H5: DST-Ausweisung des Prüfzeitraums (Tage, Lücken, Grund) gehört zur
     # Bewertung und muss den Cache überleben.
     "dst",
+    # B0: PIT-Histogramme (eigene Station), Regime-Kanten im Fenster,
+    # AR(2)-Stauchungen über die Folds und das gemessene Punktmodell.
+    "pit",
+    "regime_breaks_in_window",
+    "ar_shrink",
+    "model_kind",
+    "shared_draws",
 )
 
 

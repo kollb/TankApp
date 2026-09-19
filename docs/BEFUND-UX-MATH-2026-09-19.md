@@ -84,6 +84,11 @@
   - [5.12.2 Drei technische Nachschärfungen](#5122-drei-technische-nachschärfungen)
   - [5.12.3 Verbindlicher Batch-Ablauf](#5123-verbindlicher-batch-ablauf)
   - [5.12.4 Abnahme- und Stop-Regeln](#5124-abnahme--und-stop-regeln)
+- [5.13 Nachtrag 0.56.0: Modularität, Konfigurierbarkeit, Betreiber-Pflichten](#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)
+  - [5.13.1 Ist das Konzept modular?](#5131-ist-das-konzept-modular)
+  - [5.13.2 Jetzt bauen, obwohl es noch Gespräche sind?](#5132-jetzt-bauen-obwohl-es-noch-gespräche-sind)
+  - [5.13.3 Was der Betreiber tun muss — und was von allein passiert](#5133-was-der-betreiber-tun-muss--und-was-von-allein-passiert)
+  - [5.13.4 Verbindlich ab jetzt](#5134-verbindlich-ab-jetzt)
 - [Anhang: Prüfprotokoll](#anhang-prüfprotokoll)
 
 ---
@@ -890,6 +895,36 @@ Kalibrierung legen.
 
 **Abnahme:** Prognose bitgleich (Invarianz-Test), Zähler getestet, PIT-Paare
 im Backtest-Artefakt. Kein Nutzerverhalten ändert sich.
+
+> **Status 19.09.2026 — umgesetzt in 0.56.0** ([CHANGELOG](../CHANGELOG.md),
+> [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)), mit vier Vermerken aus
+> der kritischen Prüfung des Batches:
+>
+> 1. **Abnahme erfüllt:** `tests/test_b0_invariance.py` vergleicht Fit, Prognose
+>    und Backtest-Kennzahlen gegen eine Fixture aus dem Code **vor** der
+>    Änderung; Zähler und PIT-Paare sind getestet
+>    (`test_b0_counters.py`, `test_b0_pit_regime.py`, `test_b0_app.py`).
+> 2. **`pava_pool_stats` ist kein Artefakt-Zähler**, wie oben geschrieben,
+>    sondern eine Prognose-Diagnose: PAVA (12-Uhr-Projektion) läuft in
+>    `predict`, nicht im Fit. `predict(..., diagnostics={})` liefert sie;
+>    App-Veröffentlichung und `engine forecast` tragen sie je Prognose.
+> 3. **Der §5.7-Nachtrag ist als Kalender gebaut, nicht als Marker:**
+>    `Config.regimes` mit Zeit, Art, Sorte, Betrag, Status und Quelle
+>    (`TANKAPP_REGIMES`), weil R1–R3 dieselben Felder brauchen und ein
+>    bloßer Zeitstempel im Oktober nicht sagen könnte, welche Kante gemeint
+>    ist. `regime_breaks_in_window` zählt und markiert (`flagged_not_excluded`),
+>    rechnet aber nichts — die Prognose bleibt bitgleich.
+> 4. **Zwei Punkte sind offen und stehen mit Grund in
+>    [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund):** Die
+>    **Referenzmessung** PICP/Brier/MASE je Station ist nicht gelaufen (keine
+>    NAS-Daten in der Entwicklungsumgebung; Rezept in ENGINE.md; Brier gibt es
+>    nur global je P-Quelle aus dem Advice-Ledger, eine Stations-Aufteilung
+>    wäre bei ~1 Empfehlung/Tag lange nicht belastbar). Und **dabei gefunden:**
+>    Der Backtest maß bisher `harmonic_ar2` mit unabhängiger Ziehung, während
+>    die App das `ensemble` mit gemeinsamer Ziehung veröffentlicht — die
+>    Güte-Kacheln beschreiben ein anderes Modell als das gezeigte Band. B0
+>    macht beides benennbar (`--kind`, `--shared-draws`, `backtest_model_kind`
+>    neben `model_kind`); das Umschalten ändert jede Kennzahl und gehört zu B3.
 
 ## B1 — Eine Sprache für € und % (klein, sofort sichtbar)
 
@@ -1772,7 +1807,7 @@ Befund hängt sich ein, statt ihn zu ersetzen.
 
 | Batch | Auswirkung | Begründung |
 |---|---|---|
-| **B0** Messgrundlagen | **ergänzen**: PIT-Paare brauchen einen Regime-Marker, `regime_breaks_in_window` als Zähler | PIT-Paare aus dem Übergangsfenster sind der Trainingsstoff von B2 — unmarkiert trainiert die Kalibrierung auf einem Schock |
+| **B0** Messgrundlagen | **ergänzen**: PIT-Paare brauchen einen Regime-Marker, `regime_breaks_in_window` als Zähler — *umgesetzt in 0.56.0 als Kalender (`Config.regimes`), Marker je Zeile `regime_break_spanned`* | PIT-Paare aus dem Übergangsfenster sind der Trainingsstoff von B2 — unmarkiert trainiert die Kalibrierung auf einem Schock |
 | **B1** Eine Sprache für € und % | **vorziehen auf Phase 0** (0.7) | M5 (Nowcast am Live-Preis) ist die billigste Regime-Maßnahme für F2, §5.4.6 |
 | **B2** Kalibrierungsschicht | **Termin-Gate**: keine Freigabe auf Daten aus 01.10.–15.11. | Eine isotone Rekalibrierung, die auf Bruch-Daten lernt, kalibriert den Schock ein — dauerhaft |
 | **B3** Mehrtage & Kerne | **nachziehen**: Day-Pair-Bootstrap erst nach R2 | Mehrtages-Draws über eine Kante sind ohne Dummy doppelt falsch (§5.3.1, §5.4.1); die Ensemble-Gewichte sind im Oktober unbrauchbar (§5.4.3) |
@@ -2161,6 +2196,145 @@ Projektion. Neu und ab jetzt verbindlich sind der AR-Flush, der verschachtelte
 Treppe/Rampe-Vergleich und das stetige Präzisions-Shrinkage. Vor dem
 01.10.2026 wird nur der sichere Teil ausgeliefert; jeder unsichere Teil hat
 `no_advice` als Ausfallmodus, nicht eine politisch angenommene Zahl.
+
+## 5.13 Nachtrag 0.56.0: Modularität, Konfigurierbarkeit, Betreiber-Pflichten
+
+> Nachgetragen am 19.09.2026 mit der Auslieferung von B0 (0.56.0), auf drei
+> Fragen des Betreibers: *Ist das Konzept modular oder konfigurierbar? Macht
+> es Sinn, es jetzt umzusetzen, wo Rabatt und Deckel noch Gespräche sind? Was
+> muss ich am Ende tun — oder läuft es von allein?*
+
+### 5.13.1 Ist das Konzept modular?
+
+Ja — und zwar in drei Achsen, die man getrennt prüfen kann. Der Stand je
+Schicht ist der von 0.56.0.
+
+| Schicht | Art | Schalter | Stand 0.56.0 | Wirkt, wenn das Gesetz **nicht** kommt? |
+|---|---|---|---|---|
+| **R1 Kalender** | Daten (kein Code) | `TANKAPP_REGIMES`: leer = Defaults, `0` = aus, JSON-Liste oder `.json`-Datei | **gebaut.** `app/regimes.py` → `Settings.regimes` → `Config.regimes`; Einträge mit `kind`, `fuel`, `announced_local`, `announced_value`, `status`, `source` | Er ist nur eine Liste. Ohne Schicht, die ihn liest, bewegt er keine Zahl. |
+| **Marker/Zähler** (Teil von G-R4) | Messen | fällt mit dem Kalender (`TANKAPP_REGIMES=0` → keine Marker) | **gebaut.** `regime_breaks_in_window`, `regime_break_spanned` je Fold und PIT-Paar, `metrics_break_free` | Nur Kennzeichnung: `all` bleibt die Kopfzahl, `break_free` wird zur Teilmenge. Falsch markiert ist billig; unmarkiert ist teuer (§5.7). |
+| **G-R0 Sicherheitsfreeze** (`regime_transition` → `no_advice`, Gate-/Ledger-Ausschluss, R3-Segmentgrenze, Nowcast-Konditionierung) | Rechnen, aber nur *Zurückhaltung* | `TANKAPP_REGIME=0` (reserviert, existiert noch nicht) | **nicht gebaut** (H6, H8, H9, H10 in [TODO.md](../TODO.md)) | Darf es nicht: siehe Regel 2 in 5.13.4 — die Degradation zündet nur an Einträgen mit `status` `in_force`/`detected`, nie an `announced`. |
+| **R2 Dummy + Kantenschätzer, R3 Segmentgrenze, G-R2 AR-Flush** | Rechnen, verändert Prognosen | `TANKAPP_REGIME=0` | **nicht gebaut** | Stop-Regel „kein w = 0/1-Sprung allein aus dem Kalendertag“: Der Kalender liefert den *Prior* für den Kantenzeitpunkt, den Schritt muss der Schätzer in den **Daten** finden. Ohne Schritt in den Daten bleibt δ̂ ≈ 0 und die Schicht ist wirkungslos. |
+| **R4 Deckel `cap(t)`** | Rechnen, zensiert | `TANKAPP_REGIME_CAP=0` | **nicht gebaut**, kein Kalender-Eintrag (A15) | Ohne Quelle, Formel und Zeitreihe gilt `cap_status: unknown` und es wird nicht geclippt. |
+| **R5/B5 Anzeige** (Labor-Karte, Heatmap-Marke, Nutzertext `regime_transition`) | Anzeigen | — | **nicht gebaut** | Zeigt nur, was die Schichten darunter ausweisen. |
+
+Drei Eigenschaften machen das modular statt nur „mit Schaltern versehen“:
+
+1. **Daten vor Code.** Was das Gesetz *ist* (Termin, Art, Sorte, Betrag,
+   Quelle, Status), steht im Kalender; was die Engine daraus *macht*, steht in
+   Schichten mit eigenem Schalter und eigener Gegenprobe („bitgleich ohne
+   Deklaration“). Ein neuer Termin ist ein Eintrag, keine Codeänderung. Genau
+   das Muster von `price_law_local`/`TANKAPP_LAW_FLOOR` (B30).
+2. **Jede Schicht ist einzeln abnehmbar und einzeln abschaltbar** (5.12.4:
+   Mechanismus-, Archiv-, Negativ-, Produkt-Test je Batch). Die Marker aus B0
+   sind der erste Beweis dafür: Kalender gesetzt, Prognose bitgleich
+   (`tests/test_b0_invariance.py`).
+3. **Der Rohbestand bleibt unverändert.** Nichts wird um 17 ct verschoben;
+   der Bruch bleibt in den Daten sichtbar und wird in Fit, Projektion und
+   Bericht *behandelt*, nicht *wegretuschiert*.
+
+**Was nicht modular ist und es auch nicht sein soll:** Der Status eines
+Eintrags (`announced` → `in_force`) ist eine Tatsachenbehauptung über die
+Welt. Die kann keine Schicht selbst herstellen — erst R2 (`detected`) misst,
+ob am Termin tatsächlich ein Schritt in den Preisen liegt. Bis dahin ist der
+Status Handarbeit (5.13.3).
+
+### 5.13.2 Jetzt bauen, obwohl es noch Gespräche sind?
+
+Die ehrliche Antwort ist dreigeteilt, entlang der Frage, **was eine Schicht
+braucht, um richtig zu sein.**
+
+- **B0 (ausgeliefert) — ja, unabhängig vom Gesetz.** PIT-Paare, AR-Zähler,
+  Gewichtsstreuung und PAVA-Pools sind Messgrundlagen für die Kalibrierung
+  (B2) und hätten auch ohne Tankrabatt gefehlt. Der Kalender kostet nichts,
+  solange keine Schicht rechnet, und die Marker sind billig, wenn sie falsch
+  sind (5.13.1). Das Archiv liefert außerdem eine **echte** Kante, die schon
+  passiert ist: Mai–Juli 2026. Alles, was für den Oktober gebaut wird, lässt
+  sich daran ohne Spekulation prüfen (5.12.4, Archiv-Test).
+- **G-R0 (Zurückhaltung: `no_advice` im Übergangsfenster, Gates und Ledger
+  nicht aus Bruchdaten speisen) — ja, vor dem 01.10., aber scharf gestellt
+  nur durch den Status.** Diese Schicht kann nichts Falsches *behaupten*,
+  sie kann nur *schweigen*. Ihr einziges Risiko ist ein unnötiges Schweigen,
+  wenn das Gesetz nicht kommt — und das ist ausgeschlossen, solange sie nur
+  an `in_force`/`detected` zündet (Regel 2). Kommt das Gesetz, ist der
+  Umstieg ein Statuswechsel, keine Entwicklung in elf Tagen.
+- **R2/R3/G-R2/G-R3 (Dummy, Kantenschätzer, AR-Flush, Rampe) — erst nach
+  der Juli-Messung (G-R1), nicht nach dem Kalender.** Diese Schichten
+  verändern Prognosen. Ihre Parameter (Verzögerung, Durchgabe, Sortenspanne)
+  kommen aus dem eigenen Archiv, nicht aus der Pressemitteilung (§5.9.3/4).
+  Ob der Oktober-Rabatt kommt, ändert daran nichts — der Juli ist da, und
+  die Schicht ist auch für die *nächste* Maßnahme gebaut. Was den Bau bis zur
+  Gesetzesverkündung aufschieben würde, ist nur der **Termin**, und der ist
+  ein Eintrag im Kalender.
+- **R4 Deckel — nein, nicht vor dem Gesetzestext.** Ohne Referenz, Formel
+  und Rhythmus wäre jede Schranke geraten; ein geratener Clip verfälscht die
+  Prognose in eine Richtung, die niemand sieht (§5.3.4). Bis dahin
+  `cap_status: unknown`, kein Kalender-Eintrag (A15).
+
+Kurz: **Gebaut wird, was aus dem eigenen Archiv beweisbar und per Daten
+scharfstellbar ist; gewartet wird, wo der Inhalt des Gesetzes selbst der
+Parameter ist.** Politische Unsicherheit landet im Kalender (`status`), nicht
+im Code.
+
+### 5.13.3 Was der Betreiber tun muss — und was von allein passiert
+
+Die Kurzfassung für den Betrieb, Kommandos in
+[BETRIEB.md](BETRIEB.md#regime-kalender-b0-seit-0560):
+
+**Von allein (0.56.0):** Der Kalender kommt als Default mit der App
+(01.05./01.07.2026 `in_force` aus dem Archiv; 01.10.2026 und 01.01.2027
+`announced`). Der tägliche Lauf zählt und markiert ab dem Lauf, dessen
+Fenster den Termin enthält (Kante 01.10. 00:00 → ab dem Lauf vom 02.10.2026
+steht `regime_breaks_in_window.count = 1`). Prognose, Band, Empfehlung und
+Nutzertexte ändern sich dadurch **nicht** — auch nicht am 01.10.
+
+**Jetzt nichts zu tun**, außer wie gewohnt ausliefern (`nas-up`). Optional,
+aber vor B2/B3 empfohlen: die Referenzmessung am PC
+([ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)), damit es einen
+Vorher-Wert gibt, gegen den sich jede spätere Schicht messen lässt.
+
+**Bei Nachrichten — drei Fälle, immer dieselbe Handbewegung** (Kalender
+ändern, `nas-up`; entweder per `TANKAPP_REGIMES` in der NAS-Umgebung oder als
+`regimes.json` unter `runtime/`, dann braucht es kein Release):
+
+| Es passiert … | In 0.56.0 zu tun | Sobald G-R0/R2 ausgeliefert sind |
+|---|---|---|
+| Rabatt kommt **wie angekündigt** (Gesetzblatt) | nichts — der Marker steht schon; das nächste Release setzt den Default auf `in_force` | Status auf `in_force` setzen (Eintrag oder Release) — erst das stellt Zurückhaltung und Kantenschätzer scharf |
+| Rabatt kommt **anders** (Termin, Betrag, nur einzelne Sorten) | Eintrag anpassen (`announced_local`, `announced_value`, je Sorte ein Eintrag) — nur die Markierung verschiebt sich | dito; der Kantenschätzer prüft den Termin ohnehin in den Daten (±Tage), der Betrag ist Prior |
+| Rabatt kommt **nicht** | `status: unknown` setzen oder den Eintrag streichen; falls vergessen: kostet nur eine unnötige `break_free`-Teilmenge, keine falsche Zahl | Eintrag streichen; solange `announced` steht, zündet ohnehin nichts (Regel 2) |
+| Deckel wird **konkret** | nichts eintragen, bis Referenz und Formel bekannt sind (A15) | `kind: price_cap`-Eintrag **und** R4 — das ist ein Release, kein Kalender-Eintrag allein |
+
+**Nicht automatisiert, und zwar absichtlich:** ob ein Gesetz kommt. Die App
+liest keine Nachrichten; sie misst Preise. Was sie *nach* dem Termin selbst
+kann — feststellen, dass da ein Schritt war (`detected`) — ist R2 und kommt
+nach der Juli-Messung.
+
+### 5.13.4 Verbindlich ab jetzt
+
+Zusätzlich zu den Stop-Regeln aus 5.12.4:
+
+1. **Der Kalender allein bewegt keine Zahl.** Jede Schicht, die Prognosen
+   verändert, braucht einen in den Daten gefundenen Schritt (R2) oder einen
+   ausdrücklich gesetzten Status; ein `announced`-Eintrag ist Prior und
+   Marker, nie Fakt. (Präzisierung von „kein w = 0/1-Sprung aus dem
+   Kalendertag“.)
+2. **`announced` zündet keine Degradation.** `regime_transition` →
+   `no_advice`, Gate-Suspendierung und Ledger-Ausschluss (G-R0/G-R4) lesen
+   nur `in_force`/`detected`. Sonst würde eine Meldung, die nie Gesetz wird,
+   die App zwei Wochen zum Schweigen bringen.
+3. **Sorte:** Ein Eintrag ohne Sorte (`fuel: null`) markiert die *Zeit* für
+   alle Sorten — für B0 richtig, weil der Termin alle trifft. Sein
+   `announced_value` ist die Pressezahl, keine Sortenwahrheit (§5.9.3); R2
+   schätzt den Betrag **je Sorte** und darf eine globale Zahl höchstens als
+   schwachen Prior lesen. Sobald Sätze je Sorte bekannt sind, gehört je Sorte
+   ein Eintrag in den Kalender.
+4. **Zwei Variablen, zwei Dinge:** `TANKAPP_REGIMES` (Daten: der Kalender)
+   und `TANKAPP_REGIME` (Rechnen: die Schichten ab G-R0, reserviert). Die
+   Gegenmessung „Kalender an, Schichten aus“ muss jederzeit möglich bleiben.
+5. **Kein kaputter Kalender läuft still weiter:** ungültige Einträge brechen
+   `Settings.from_env` mit Grund ab (gebaut in 0.56.0). Der Preis dafür ist
+   ein sichtbarer Fehlstart statt eines unmarkierten Übergangsfensters —
+   bewusst so gewählt.
 
 # Anhang: Prüfprotokoll
 

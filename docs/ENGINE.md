@@ -20,6 +20,7 @@
 - [Echte Daten wählen](#3-echte-daten-auswählen--a-oder-b)
 - [Datenqualität & Backtest](#4-datenqualität-und-backtest-auf-dem-pc)
 - [Modell fitten](#5-modell-fitten-und-prognose-erzeugen)
+- [Messgrundlagen B0](#messgrundlagen-b0-seit-0560)
 - [Häufige Probleme](#6-häufige-probleme-am-windows-pc)
 - [Collector am PC prüfen](#7-optional-collector-am-pc-mit-dataapikeytxt-prüfen)
 - [Noch offen M3](#noch-offen-in-m3)
@@ -689,6 +690,112 @@ residual_day_bootstrap_ew_uncalibrated`). q.025/.10/.50/.90/.975 sind
 **unkalibrierte Intervalle**, keine ACI-Erfolgswahrscheinlichkeiten.
 `calibrated: false` und `decision_ready: false` bleiben gesetzt. Preise werden
 höchstens 30 Minuten fortgeschrieben, geschlossene/veraltete Preise nicht gefittet.
+
+## Messgrundlagen (B0, seit 0.56.0)
+
+> Dieser Abschnitt ist gegen 0.56.0 geschrieben; die übrigen Abschnitte dieser
+> Datei stehen auf 0.11.0 (siehe [README.md](README.md#nicht-gegen-die-aktuelle-version-geprüft)).
+
+Batch B0 des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+macht sichtbar, was die Engine bis 0.55.2 stumm tat, und legt die Datenbasis
+für die Kalibrierungsschicht (B2). **Keine Prognosezahl ändert sich:**
+`tests/test_b0_invariance.py` vergleicht Fit, Prognose (beide Kerne, Ensemble,
+gemeinsame und unabhängige Ziehung) und Backtest-Kennzahlen Bit für Bit gegen
+`tests/fixtures/b0_invariance.json`, das vor der ersten B0-Änderung erzeugt
+wurde. Wer den Fit absichtlich ändert, erzeugt die Fixture neu und schreibt in
+den Commit, warum — die Fixture ist der Zeuge, nicht die Behauptung.
+
+### Zähler im Modell-Artefakt (`engine fit`)
+
+Je Modell in `data/models/forecast.json` (Schema 2, nur ergänzt):
+
+| Feld | Inhalt |
+|---|---|
+| `ar_shrink_events` | Zahl der ×0,9-Schritte des Stabilitätsnetzes im Haupt-AR(2) (`AR_SHRINK_FACTOR` 0,9, `AR_STABILITY_RADIUS` 0,98, höchstens `AR_SHRINK_MAX_STEPS` 100). 0 = Yule-Walker war stabil. Vor B0 geschah das Stauchen stumm. |
+| `ar_state_reset` | `true`, wenn die letzten zwei Residuen am Cutoff nicht endlich waren und der AR-Zustand auf 0 gesetzt wurde — der Nachlauf startet dann aus dem Nichts. |
+| `ar_detail.harmonic_ar2` / `ar_detail.profile_ar2` | Je Kern: `shrink_events`, `fallback` (`null` = echter Fit, sonst `too_few_points`, `too_few_triples`, `zero_variance`, `not_stabilised`), `triples` (zusammenhängende Tripel der Yule-Walker-Schätzung), `root_radius_raw`/`root_radius` (größter Wurzelbetrag vor/nach dem Stauchen), `shrink_factor`, `stability_radius`, `state_reset`. |
+| `ensemble.weight_spread` | Ensemble-Gewichtsstreuung (Befund M4): dieselben inversen MASE-Gewichte wie `ensemble.weights`, aber je 288-Slot-Block (ein Tag auf dem 5-Minuten-Raster) des 14-Tage-Validierungsfensters — `harmonic_per_block`, `std`, `min`/`max`/`range`, `blocks_favouring` (`harmonic_ar2`/`profile_ar2`/`tie`, Unentschieden bei < 0,005 Abstand zu 0,5). Reine Diagnose; `weights` bleiben die des Gesamtfensters. |
+
+`pava_pool_stats` ist **kein** Artefakt-Feld, sondern eine Prognose-Diagnose:
+`predict(model, hours, diagnostics={})` füllt das übergebene Dict; die
+Prognose ist mit und ohne Dict identisch (Test). `engine forecast` schreibt sie
+je Prognose in `data/engine/forecast.json`, die App veröffentlicht sie je
+Station. Inhalt: je 12-Uhr-Segment ab Gesetzesbeginn (`segments[]`:
+`segment_start_local`, `points`, je Kern `pools`/`pooled_points`/
+`max_pool_size`/`max_shift_ct`, dazu `paths` mit `paths_changed_fraction`/
+`points_changed_fraction`/`max_shift_ct` und `quantiles_points_changed` je
+Quantilspalte) und `totals` über alle Segmente. Ein Pool ist eine Folge von
+Punkten, die die 12-Uhr-Projektion (PAVA) auf einen gemeinsamen Wert gezogen
+hat; bereits gleiche Nachbarn zählen nicht.
+
+### Backtest-Bericht (`engine backtest`)
+
+Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`):
+
+- `model_kind`, `shared_draws` — **was gemessen wurde.** Default bleibt der
+  Stand vor 0.56.0: `harmonic_ar2` mit unabhängiger Tagesblock-Ziehung. Die
+  App veröffentlicht aber `ensemble` mit gemeinsamer Ziehung (A10/A11). Der
+  Backtest maß also bis heute nicht das, was der Nutzer sieht — B0 macht den
+  Unterschied benennbar (`--kind ensemble --shared-draws`), das Umschalten des
+  Defaults ist eine Messentscheidung für B3 ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)).
+- `pit` — PIT-Paare als Histogramm je Station und Horizont (`24h`, `72h`,
+  `168h`), jeweils `all` und `break_free`. PIT = Mittelrang der Beobachtung
+  unter den Bootstrap-Pfaden, `(#Pfade < y + ½ · #Pfade = y) / #endliche Pfade`;
+  40 Klassen, `coverage[q]` für q ∈ {0,025, 0,1, 0,5, 0,9, 0,975},
+  `interval_95` (Anteil in (0,025; 0,975]) und `mean`. Kalibriert wäre das
+  Histogramm flach und `coverage[q] = q`. Die Rohpaare stehen je Zeile in
+  `predictions.csv.gz` (Spalte `pit`) — das ist der Trainingsstoff von B2.
+- `regime_breaks_in_window` — deklarierte Regime-Kanten (`Config.regimes`,
+  CLI `--regime-break 2026-10-01T00:00`, mehrfach möglich; in der App
+  `TANKAPP_REGIMES`, [BETRIEB.md](BETRIEB.md#regime-kalender-b0-seit-0560)): `declared`
+  und `in_window` mit Datum (`announced_local`/`at_utc`), Art (`kind`), Sorte,
+  Betrag (`announced_value`, ct/L, Vorzeichen = Richtung), `status` und
+  `source`; `count`, `folds_spanning`/`points_spanning` und
+  `metrics_break_free`. **Politik `flagged_not_excluded`:** markiert und
+  gezählt, nichts ausgeschlossen — Kennzahlen über eine Kante sind als
+  Modellgüte nicht interpretierbar (Befund §5.4.3), aber sie verschwinden
+  nicht stillschweigend.
+- `ar_shrink` — über alle bewerteten Folds: `folds_shrunk`,
+  `shrink_events_total`, `folds_state_reset`, `fallbacks` je Grund. Je Fold
+  stehen `ar_shrink_events`, `ar_fallback`, `ar_state_reset`,
+  `training_start`, `regime_break_spanned` und `regime_breaks`.
+
+`predictions.csv.gz` trägt neben `pit` die Spalten `regime_break_spanned`
+(Kante zwischen Trainingsbeginn und Bewertungszeitpunkt) und `horizon_hours`:
+`0` sind die klassischen 24-h-Zeilen, `72`/`168` die bewerteten Mehrtage-Fenster,
+die die CLI seit 0.56.0 **zusätzlich** schreibt. Wer die Datei selbst
+auswertet, filtert auf `horizon_hours == 0`, sonst mischt er drei Horizonte.
+`run_backtest()` liefert ohne `horizon_rows=True` weiterhin nur die 24-h-Zeilen.
+
+Der Regime-Kalender wird wie `price_law_local` **durchgereicht, nicht
+verrechnet:** Fit und Prognose ignorieren ihn in 0.56.0; Dummy, Kante und
+Warmstart sind R1–R3 des Befunds und kommen mit eigenem Schalter. Ein leerer
+Kalender (Engine-Default) ist bitgleich zu 0.55.2.
+
+### Referenzmessung vor B2/B3 (Rezept, noch nicht gelaufen)
+
+Der Befund verlangt PICP/Brier/MASE **je Station vor jeder Änderung** als
+Vergleichsbasis. In der Entwicklungsumgebung liegen keine NAS-Daten; die
+Messung gehört auf den PC mit dem Export aus §3 und wird in der
+Erledigt-Zeile des Befunds (B0-Status) und in [LUECKEN.md](LUECKEN.md)
+festgehalten — **nicht** hier vorab mit erfundenen Zahlen.
+
+```powershell
+# Dieselben 21 Tage, zwei Läufe je Datenbestand: das bisher Gemessene und das Veröffentlichte.
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21 --regime-break 2026-10-01T00:00 --regime-break 2027-01-01T00:00 --out .\results\engine\ref-harmonic
+py -3 -m engine backtest --data @Daten --polling .\data\analysis\stations\polling.json --days 21 --kind ensemble --shared-draws --regime-break 2026-10-01T00:00 --regime-break 2027-01-01T00:00 --out .\results\engine\ref-ensemble
+```
+
+Festzuhalten je Lauf und Station (`report.json → stations[]`): `picp95_pct`,
+`mase` (mit `mase_points`), `pinball_asym_ct`; aus `pit → stations[]`
+`horizons.24h.all.interval_95` und `coverage`; dazu global `model_kind`,
+`shared_draws`, `regime_breaks_in_window.count` und `ar_shrink`. Liegt eine
+Kante im Fenster, gilt zusätzlich `metrics_break_free`. **Brier je Station
+gibt es im Backtest nicht** — der Brier-Score misst abgerechnete
+Empfehlungen und kommt aus dem Advice-Ledger (`app/feedback.py::
+compute_advice_stats`, `/api/v1/stats/summary`), global je P-Quelle; eine
+Stations-Aufteilung wäre ein eigener Schritt und bei ~1 Empfehlung/Tag lange
+nicht belastbar. Das steht so im Befund-Status, statt es zu behaupten.
 
 ## 6. Häufige Probleme am Windows-PC
 

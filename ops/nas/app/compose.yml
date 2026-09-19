@@ -40,6 +40,11 @@ services:
       # TANKAPP_LAW_FLOOR=0 schaltet die Kante für Gegenmessungen ab.
       TANKAPP_PRICE_LAW_LOCAL: "${TANKAPP_PRICE_LAW_LOCAL:-}"
       TANKAPP_LAW_FLOOR: "${TANKAPP_LAW_FLOOR:-1}"
+      # B0: Regime-Kalender (deklarierte Preisniveau-Kanten, app/regimes.py).
+      # Leer = bekannte Termine (01.05./01.07./01.10.2026, 01.01.2027);
+      # 0 = kein Kalender; JSON-Liste oder Pfad einer .json-Datei im
+      # Container. Nur Marker/Zähler im Backtest, kein Rechenwerk.
+      TANKAPP_REGIMES: "${TANKAPP_REGIMES:-}"
       # Straßen-Distanzen der GUI (Anker → Stationen): 1 = OSRM (Default),
       # 0 = nur Luftlinie (keinerlei Netz). Der Request-Pfad liest immer nur
       # den lokalen Routen-Cache; fehlende Routen werden im Hintergrund geholt.

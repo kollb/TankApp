@@ -7,6 +7,7 @@ from pathlib import Path
 from polling_plan import active_polling
 
 from .law import DEFAULT_PRICE_LAW_LOCAL
+from .regimes import DEFAULT_REGIMES, regimes_from_env
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,6 +77,11 @@ class Settings:
     # TANKAPP_LAW_FLOOR=0 schaltet die Kante ab und stellt den Mischbestand
     # wieder her — nur als Gegenmessung, nicht als Dauerzustand.
     law_floor: bool = True
+    # B0: Regime-Kalender (deklarierte Preisniveau-Kanten, app/regimes.py).
+    # TANKAPP_REGIMES: leer = bekannte Termine, 0/off = keiner, JSON-Liste
+    # oder Pfad einer .json-Datei. Wird über engine_config() zu
+    # engine/config.py: regimes — dort nur Marker/Zähler, kein Rechenwerk.
+    regimes: tuple[dict, ...] = DEFAULT_REGIMES
     # Modell-Lauf: 0 = automatisch (CPU-Kerne, maximal 8), 1 = seriell.
     model_workers: int = 0
     # B17: 21-Tage-Backtest je lokalem Endtag cachen (runtime/engine/
@@ -165,6 +171,8 @@ class Settings:
             ).strip(),
             law_floor=os.environ.get("TANKAPP_LAW_FLOOR", "1").strip().lower()
             not in {"0", "false", "off", "no"},
+            # B0: Regime-Kalender; ein kaputter Wert bricht hier mit Grund ab.
+            regimes=regimes_from_env(),
             backup_dir=_env_path("TANKAPP_BACKUP_DIR"),
             city_subdivs=_city_subdivs_from_env(),
             dead_after_days=_env_int("TANKAPP_DEAD_AFTER_DAYS", 7, low=0, high=365),
@@ -199,6 +207,10 @@ def engine_config(settings):
         # Trainingsfenster (engine/models.py::fit). Nie leer: Der Fallback
         # auf den Default steht in app/law.py, nicht hier.
         price_law_local=price_law_local(settings),
+        # B0: Regime-Kalender (app/regimes.py) — in der Engine nur Marker
+        # und Zähler (PIT-Paare, Backtest-Folds, regime_breaks_in_window);
+        # Config prüft die Einträge und lehnt kaputte mit Grund ab.
+        regimes=tuple(getattr(settings, "regimes", DEFAULT_REGIMES) or ()),
     )
 
 

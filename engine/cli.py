@@ -77,6 +77,8 @@ def load_raw_input(args):
         bootstrap_ew_half_life_days=(
             None if half_life is not None and half_life <= 0 else half_life
         ),
+        # B0: deklarierte Regime-Kanten (nur Marker/Zähler, kein Rechenwerk).
+        regimes=tuple(getattr(args, "regime_break", None) or ()),
     )
     ids = selected_ids(args.polling, args.poll_city)
     observations, quality = load_observations(
@@ -151,6 +153,15 @@ def parser() -> argparse.ArgumentParser:
             help="Gepoolter Feiertags-Dummy (Konzept §3.2), z. B. "
             "'Frankfurt:HE;Gütersloh:NW'; ohne Angabe trägt der Dummy null.",
         )
+        command.add_argument(
+            "--regime-break",
+            action="append",
+            metavar="LOKALZEIT",
+            help="B0: deklarierte Regime-Kante (ISO-Ortszeit, z. B. "
+            "2026-10-01T00:00), mehrfach möglich. Wird nur gezählt und an "
+            "Folds/PIT-Paaren markiert (regime_breaks_in_window) — kein "
+            "Rechenwerk, die Prognose bleibt gleich.",
+        )
         if name == "bootstrap":
             command.add_argument("--at", help="Exklusiver Cutoff (Default: jetzt)")
             command.add_argument("--live-only-days", type=int, default=90)
@@ -179,6 +190,20 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--days", type=int, default=21)
             command.add_argument(
                 "--until", help="Exklusives Ende, lokale Mitternacht (ISO-Datum)"
+            )
+            command.add_argument(
+                "--kind",
+                choices=["harmonic_ar2", "profile_ar2", "ensemble"],
+                default="harmonic_ar2",
+                help="B0: gemessenes Punktmodell. Default harmonic_ar2 (Stand "
+                "vor 0.56.0); die App veröffentlicht ensemble — für die "
+                "Referenzmessung beides laufen lassen.",
+            )
+            command.add_argument(
+                "--shared-draws",
+                action="store_true",
+                help="B0: gemeinsame Tagesblock-Ziehung wie in der App (A11); "
+                "Default ist die unabhängige Ziehung des klassischen Backtests.",
             )
             command.add_argument(
                 "--out", type=Path, default=Path("results/engine/backtest")
@@ -331,7 +356,10 @@ def run(args) -> int:
         forecasts = []
         now = pd.Timestamp.now(tz="UTC")
         for model in bundle["models"]:
-            frame = predict(model, args.hours)
+            # B0: dieselbe Pool-Diagnose wie in der App-Veröffentlichung;
+            # die Prognosezahlen sind mit und ohne ``diagnostics`` identisch.
+            diagnostics: dict = {}
+            frame = predict(model, args.hours, diagnostics=diagnostics)
             age = float((now - utc_time(model["origin"])).total_seconds() / 3600)
             frame["timestamp"] = frame.index.map(lambda time: time.isoformat())
             observation = model.get("last_observation")
@@ -364,6 +392,7 @@ def run(args) -> int:
                     "calibrated": False,
                     "decision_ready": False,
                     "interval_method": model["interval_method"],
+                    "pava_pool_stats": diagnostics.get("pava_pool_stats"),
                     "points": frame.to_dict(orient="records"),
                 }
             )
@@ -424,7 +453,17 @@ def run(args) -> int:
             f"{len(models)} Modelle → {args.out}; unkalibriert, M3-Abnahme noch offen."
         )
     else:
-        report, rows = run_backtest(series, cfg, args.days, args.until)
+        # B0: PIT-Paare aller Horizonte in predictions.csv.gz (horizon_hours
+        # 0/72/168); der Bericht selbst hängt nicht davon ab.
+        report, rows = run_backtest(
+            series,
+            cfg,
+            args.days,
+            args.until,
+            kind=args.kind,
+            shared_draws=bool(args.shared_draws),
+            horizon_rows=True,
+        )
         args.out.mkdir(parents=True, exist_ok=True)
         write_json(args.out / "report.json", {**report, "quality": quality})
         (args.out / "report.md").write_text(markdown_report(report), encoding="utf-8")

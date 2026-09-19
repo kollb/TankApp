@@ -45,6 +45,7 @@
   - [GUI-Responsivität: Straßen-Distanzen ohne Netz-Blockade (seit 0.24.0)](#gui-responsivität-straßen-distanzen-ohne-netz-blockade-seit-0240)
   - [Modell-Lauf beobachten](#modell-lauf-beobachten)
   - [12-Uhr-Bodenkante beobachten (B30, seit 0.51.0)](#12-uhr-bodenkante-beobachten-b30-seit-0510)
+  - [Regime-Kalender (B0, seit 0.56.0)](#regime-kalender-b0-seit-0560)
   - [Größe der Veröffentlichung (O22, seit 0.44.0)](#größe-der-veröffentlichung-o22-seit-0440)
   - [Wann erscheinen die Anker-Zeilen im Scoreboard?](#wann-erscheinen-die-anker-zeilen-im-scoreboard)
   - [Lauf manuell anstoßen](#lauf-manuell-anstoßen)
@@ -443,6 +444,88 @@ Fehler-Fall in `runtime/engine/last-attempt.json`.
 |---|---|
 | `TANKAPP_PRICE_LAW_LOCAL` | Kante als lokaler Zeitpunkt, z. B. `2026-04-01T12:00` (Default aus `engine/config.py`). Bei Gesetzeswechsel hier ändern — kein Code-Fassen. |
 | `TANKAPP_LAW_FLOOR` | `0`/`false`/`off`/`no` schaltet die Bodenkante ab: Heatmap, Selektion und Fit mischen dann bewusst Vor- und Nach-Gesetz-Daten. Nur für Gegenmessungen; die GUI sagt, dass gemischt ist. |
+
+### Regime-Kalender (B0, seit 0.56.0)
+
+Ein Regime-Wechsel ist ein datierter Eingriff ins Preisniveau — der Tankrabatt
+ab 01.10.2026 (−17 ct/L), sein Ende zum 01.01.2027, im Archiv der Mai-Juni-
+Rabatt 2026 ([Befund Teil 5](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)).
+Seit 0.56.0 kennt der Modell-Lauf diese Termine als **Kalender**, der wie
+`price_law_local` durchgereicht wird (`Settings.regimes` →
+`engine.config.Config.regimes`). **Gerechnet wird damit noch nichts:** Fit und
+Prognose sind bitgleich zu 0.55.2; der Backtest zählt die Kanten im Fenster
+(`regime_breaks_in_window`) und markiert jede Zeile und jeden Fold, deren
+Fenster eine Kante überspannt (`regime_break_spanned`). Kennzahlen über eine
+Kante sind als Modellgüte nicht lesbar — sie werden ausgewiesen, nicht
+ausgeschlossen (`metrics_break_free` zeigt den Rest). Details:
+[ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560).
+
+| Variable | Wirkung |
+|---|---|
+| `TANKAPP_REGIMES` | **leer/nicht gesetzt:** die vier bekannten Termine aus `app/regimes.py::DEFAULT_REGIMES` (01.05.2026 −17, 01.07.2026 +17, 01.10.2026 −17 angekündigt, 01.01.2027 +17 angekündigt; alle Sorten). **`0`/`off`/`none`:** kein Kalender (Gegenmessung ohne Marker). **JSON-Liste** `[{"announced_local": "2026-10-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "announced", "source": "…"}]` oder **Pfad einer `.json`-Datei** mit einer solchen Liste: genau diese Einträge — die nächste Maßnahme ist ein Eintrag, kein Code-Fassen. Ein bloßer ISO-String je Eintrag ist die Kurzform (`tax_step`, alle Sorten). |
+
+Erlaubte Werte: `kind` ∈ `tax_step`/`price_cap`, `fuel` ∈ `E5`/`E10`/`DIESEL`
+oder `null` (alle), `status` ∈ `announced`/`detected`/`in_force`/`unknown`,
+`announced_value` in ct/L brutto mit Vorzeichen (Richtung der Kante) oder
+`null`. Unbekannte Felder, unbekannte Sorten und mehrdeutige Wanduhrzeiten
+(Zeitumstellung) werden **abgelehnt**: Ein kaputter Kalender bricht den
+Modell-Lauf mit Grund ab (`Settings.from_env` → `ValueError`), statt ohne
+Marker weiterzulaufen — genau das unmarkierte Übergangsfenster ist der
+Fehler, vor dem Befund §5.7 warnt. Bis zum 01.10.2026 liegt keine Kante im
+21-Tage-Backtest-Fenster: `regime_breaks_in_window.count` ist 0 und keine
+Kennzahl ändert sich. Der Spritpreisdeckel ist **kein** eigener Eintrag,
+solange seine Ausgestaltung offen ist (A15) — bekannt ist nur das
+Rabatt-Ende.
+
+Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
+Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](API.md#forecast-messfelder-b0-seit-0560)),
+dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
+
+**Betreiber-Checkliste (Stand 0.56.0; Begründung im
+[Befund §5.13](BEFUND-UX-MATH-2026-09-19.md#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)):**
+
+1. **Heute: nichts.** Wie gewohnt ausliefern (`nas-up`). Der Kalender kommt
+   als Default mit, der Lauf markiert von allein; Prognose, Band und
+   Empfehlung ändern sich nicht — auch am 01.10.2026 nicht. Ab dem Lauf vom
+   02.10.2026 steht in jeder Prognose `regime_breaks_in_window.count = 1`:
+
+   ```bash
+   python3 -c "import json,glob; f=sorted(glob.glob('runtime/engine/forecasts/*.json'))[0]; \
+   d=json.load(open(f)); r=d.get('regime_breaks_in_window') or {}; \
+   print(json.dumps({'count': r.get('count'), 'in_window': r.get('in_window'), 'declared': len(r.get('declared') or [])}, indent=2, ensure_ascii=False))"
+   ```
+
+2. **Wenn sich die Nachrichtenlage ändert** (Rabatt kommt, kommt anders,
+   kommt nicht): Kalender anpassen, `nas-up`. Kein Release nötig — eine
+   Datei unter `runtime/` reicht, weil `runtime/` im Container unter
+   `/data/runtime` liegt:
+
+   ```bash
+   # <runtime-dir>/regimes.json  (Sorte null = alle; je Sorte ein Eintrag, sobald Sätze je Sorte bekannt sind)
+   {"regimes": [
+     {"announced_local": "2026-05-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "in_force", "source": "Mai-Juni-Rabatt 2026, Start (Archiv)"},
+     {"announced_local": "2026-07-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": 17.0,  "status": "in_force", "source": "Mai-Juni-Rabatt 2026, Ende (Archiv)"},
+     {"announced_local": "2026-10-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": -17.0, "status": "announced", "source": "Koalitionseinigung 19.09.2026"},
+     {"announced_local": "2027-01-01T00:00", "kind": "tax_step", "fuel": null, "announced_value": 17.0,  "status": "announced", "source": "Rabatt-Ende 31.12.2026"}
+   ]}
+   ```
+
+   Dann in der NAS-Umgebung (`.env` neben `ops/nas/app/compose.yml`):
+   `TANKAPP_REGIMES=/data/runtime/regimes.json`. Alternativ die JSON-Liste
+   direkt als Wert. Ein Tippfehler bricht den Start mit Grund ab — das ist
+   gewollt (siehe oben); Rückweg ist `TANKAPP_REGIMES=` (leer = Defaults).
+   In 0.56.0 verschiebt eine Änderung nur die Markierung; Status und Betrag
+   werden erst mit den Rechenschichten (G-R0, R2) wirksam, und zwar nur bei
+   `in_force`/`detected` — ein `announced`-Eintrag stellt nichts scharf.
+
+3. **Einmal vor B2/B3, am PC:** die Referenzmessung nach
+   [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560) laufen lassen und das
+   Ergebnis am B0-Status im Befund eintragen. Ohne diesen Vorher-Wert ist
+   jede spätere Verbesserung eine Behauptung.
+
+4. **Nicht tun:** den Spritpreisdeckel als `price_cap` eintragen, bevor
+   Referenz und Formel bekannt sind (A15) — der Eintrag allein bewirkt in
+   0.56.0 nichts, würde aber später eine geratene Schranke scharf stellen.
 
 ### Größe der Veröffentlichung (O22, seit 0.44.0)
 

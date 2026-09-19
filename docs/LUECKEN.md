@@ -1,6 +1,6 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 19.09.2026 · App-Version 0.55.2. Abgleich von
+> Stand: 19.09.2026 · App-Version 0.56.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
 > jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
 > M7 vorbehalten (§0.4).
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [19.09.2026 — Version 0.56.0: B0 Messgrundlagen des UX/Mathe-Befunds](#19092026--version-0560-b0-messgrundlagen-des-uxmathe-befunds)
   - [16.09.2026 — Version 0.44.0: Batch 1 des Optimierungs-Befunds (O1 + O22)](#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)
   - [16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet](#16092026--version-0432-mobil-robustheit-gemessen-statt-behauptet)
   - [16.09.2026 — Version 0.43.1: Prüfbericht PR #121 archiviert, Restpunkte geschlossen](#16092026--version-0431-prüfbericht-pr-121-archiviert-restpunkte-geschlossen)
@@ -105,6 +106,55 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 19.09.2026 — Version 0.56.0: B0 Messgrundlagen des UX/Mathe-Befunds
+
+Erster Batch des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich):
+sichtbar machen, was die Engine still tat, und die Datenbasis für die
+Kalibrierung (B2) legen — **ohne** eine Prognosezahl zu ändern.
+
+- **Bitgleich, bewiesen statt behauptet.** `tests/test_b0_invariance.py`
+  vergleicht Fit, Prognose (beide Kerne, Ensemble, gemeinsame und unabhängige
+  Ziehung) und Backtest-Kennzahlen gegen eine Fixture, die **vor** der ersten
+  Änderung aus dem alten Code erzeugt wurde. Der Default-Backtest
+  (`harmonic_ar2`, unabhängige Ziehung, 24-h-Zeilen) liefert dieselben Zahlen
+  wie 0.55.2.
+- **Zähler statt Stille.** Das AR(2)-Stabilitätsnetz (×0,9 bis zur Stabilität,
+  sonst φ = 0) lief ungezählt; jetzt stehen `ar_shrink_events`,
+  `ar_state_reset` und `ar_detail` (Grund eines Rückfalls) im Artefakt, der
+  Backtest summiert sie über die Folds (`ar_shrink`). Die Ensemble-Gewichte
+  bekommen ihre Streuung je Tagesblock (`ensemble.weight_spread`), die
+  12-Uhr-Projektion ihre Pool-Statistik (`pava_pool_stats`, Prognose-Diagnose
+  ohne Zahlenänderung).
+- **PIT-Paare mit Regime-Marker.** Jede Backtest-Zeile trägt den Mittelrang
+  der Beobachtung unter den Bootstrap-Pfaden (`pit`) und, ob ihr Fenster eine
+  deklarierte Regime-Kante überspannt (`regime_break_spanned`); der Bericht
+  fasst das je Station und Horizont als Histogramm zusammen (`pit`, `all` und
+  `break_free`) und zählt die Kanten im Fenster (`regime_breaks_in_window`:
+  Datum, Art, Betrag, Quelle, Status — Politik *markiert, nicht
+  ausgeschlossen*). Die Mehrtage-Fenster (72/168 h) schreiben ihre Zeilen
+  jetzt mit in `predictions.csv.gz` (Spalte `horizon_hours`).
+- **Regime-Kalender als Daten.** `Config.regimes` wird wie `price_law_local`
+  durchgereicht (`TANKAPP_REGIMES`, Default: die vier bekannten Termine, Datei
+  oder JSON-Liste möglich, kaputter Kalender bricht den Lauf mit Grund ab).
+  Gerechnet wird damit in 0.56.0 nichts — das sind R1–R3.
+- **Kritisch gegen den Befund geprüft, zwei Abweichungen:** (1) Der Befund
+  verlangt einen Regime-*Marker*; gebaut ist ein Kalender mit Art, Sorte,
+  Betrag, Status und Quelle, weil ein bloßer Zeitstempel die Frage „welche
+  Kante, wie groß, woher gewusst“ im Oktober nicht beantworten könnte und
+  R1–R3 dieselben Felder brauchen. (2) Der Befund zählt `pava_pool_stats` zu
+  den Artefakt-Zählern; PAVA läuft aber erst in der Prognose (nach dem Fit),
+  deshalb ist es eine `predict`-Diagnose, die App und `engine forecast`
+  veröffentlichen. **Dabei gefunden:** Der Backtest maß bis heute
+  `harmonic_ar2` mit unabhängiger Ziehung, die App veröffentlicht `ensemble`
+  mit gemeinsamer Ziehung — die Güte-Kacheln beschreiben ein anderes Modell
+  als das gezeigte. B0 macht beides benennbar (`--kind`, `--shared-draws`,
+  `backtest_model_kind` neben `model_kind`); das Umschalten steht unten als
+  Arbeitspunkt.
+- **Nicht gelaufen:** die Referenzmessung PICP/Brier/MASE je Station. Ohne
+  NAS-Daten gäbe es nur erfundene Zahlen; das Rezept steht in
+  [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560), der Punkt unten unter
+  „wartet auf Betrieb“.
 
 ### 18.09.2026 — Version 0.54.0: Batch 8 (Schliff) — der Befund ist durch
 
@@ -730,6 +780,8 @@ Rechnung geändert.
 | **`live_only_days` senken (90 → z. B. 28), „damit es zum M7-Zeitplan passt“** | entschieden | Die Übergangsregel liegt **nicht** im M7-Pfad: `/v1/decide` schreibt ab Tag 1 Shadow-Snapshots (`app/decide.py`, „der Ledger misst die Tabelle trotzdem“), und das Gate zählt abgeschlossene Settlements (`min_recommendations`). 28 statt 90 Tage brächten M7 keinen Tag früher — die Kacheln sind seit der Trennung ohnehin getrennt ausgewiesen ([API.md](API.md) Punkte 2 und 6). Was die 90 Tage kaufen, ist Modell-Input: ab Handover fällt das Archiv weg (`engine/bootstrap.py`, `selected_archive = archive.iloc[:0]`), der Fit braucht sein 42-Tage-Fenster (`engine/config.py`: `train_days=42`, Untergrenze `min_train_days=28`, geprüft in `engine/models.py::fit`). Bei 28 live-only Tagen läge der Fit exakt auf der Untergrenze — ein einziger Tag ohne Daten (Umbau, Collector-Ausfall) ließe ihn mit `ValueError` scheitern; bei 90 Tagen bleiben 62 Tage Puffer. **Untergrenze einer Senkung ist deshalb `train_days` = 42, nicht 28**, und sie gehört gemessen (Backtest: MASE/PICP bei 42 vs. 90 Tagen Live-Input), nicht geschätzt. Nebenbefund: `app/refresh.py` ruft `bootstrap()` zweimal ohne `live_only_days` auf (Abdeckungsprüfung und Training) — der Produktivpfad ist damit auf 90 fest, `--live-only-days` wirkt nur im Standalone-CLI. Ein Knopf `TANKAPP_LIVE_ONLY_DAYS` in `app/config.py` lohnt erst, wenn die Messung einen anderen Wert verlangt; das Mess-Rezept (zwei Backtests auf live-only Daten + Entscheidungsregel) steht in [ENGINE.md §4](ENGINE.md#4-datenqualität-und-backtest-auf-dem-pc). **18.09.2026 entschieden:** Die 90 Tage bleiben. Sie kosten nichts und kaufen 62 Tage Puffer über der Fit-Untergrenze; gesenkt wird erst, wenn der Betrieb einen Grund liefert. |
 | **Tankrabatt und Spritpreisdeckel — Regime-Wechsel 01.10.2026 und 01.01.2027** | Arbeit | Zwei datierte äußere Eingriffe treffen die Modell-Grundannahme „ein Regime, ein Niveau“: −17 ct/L ab 01.10.2026 (14 ct Energiesteuer + 3 ct USt-Effekt, befristet bis 31.12.2026) und ein Preisdeckel spätestens 01.01.2027. Gemessen an der echten `fit`/`predict`-Kette (`analysis/regime_check.py --simulate`): Intervallbreite 7,9 → 23–26 ct über fünf Wochen, `P_better` 0,000–0,448 in einem tatsächlich günstigen Fenster, und am 01.01.2027 `P_besser = 0,920` bei einem Fensterminimum **+10,0 ct über** dem Anker — die App rät in einen Anstieg von 17 ct hinein. Dazu ist der Feiertags-Pool (365 Tage) **heute schon** verzerrt: `holiday_beta` +5,96 → +4,48/+4,64 ct, also −1,47/−1,24 ct/L bei `THETA_CT = 1,0`. Arbeitspunkte A14–A16 und H6–H10 in [TODO.md](../TODO.md); Befund, Konzept und Messtabellen in [BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**. **Nicht früher entschieden,** weil der erste Entwurf (Trainingsdaten pauschal um 17 ct verschieben, `min()` auf eine Deckel-Konstante) die falsche Priorität setzte: Der Rabatt ist ein befristeter Übergang, der Deckel ein Dauerzustand. |
 | **Gesetzlicher Anstieg um 00:00 am 01.01.2027 gegen die 12-Uhr-Regel (Rechtsfrage)** | Arbeit | Wenn das Rabatt-Ende die Energiesteuer um 00:00 zurückhebt, ist der Anstieg gesetzlich vorgeschrieben — `noon_law_projection` poolt ihn auf null (gemessen: +16,89 → +0,00 ct, 231/288 Punkte verbogen), und `app/law.py:law_rise_outside_noon` zählt ihn als Verstoß (1 Intervall je Station und Sorte). Ob die App einen gesetzlichen Anstieg außerhalb von 12:00 anzeigen darf, ist eine Rechtsfrage, keine Modellfrage — deshalb steht sie **vor** dem Code (A14). Bis zur Antwort bleibt die Projektion konservativ: Regime-Kante als Segmentgrenze, kein Pooling über den Bruch. |
+| **Backtest misst nicht das veröffentlichte Modell (B0-Fund, 0.56.0)** | Arbeit | `engine backtest` und der Modell-Lauf messen per Default `harmonic_ar2` mit unabhängiger Tagesblock-Ziehung — der Stand vor A10/A11. Veröffentlicht wird seit 0.31.0 das `ensemble` mit gemeinsamer Ziehung. PICP-Badge, Güte-Gate und Rolling-PICP beschreiben also ein anderes Modell als das, dessen Band der Nutzer sieht. **Nicht in B0 umgeschaltet,** weil B0 bitgleich sein muss und ein Wechsel des Messmodells jede Kennzahl ändert, ohne dass ein Referenzwert vorläge. Seit 0.56.0 sind beide Läufe möglich (`--kind ensemble --shared-draws`) und die Veröffentlichung nennt beides (`backtest_model_kind` neben `model_kind`); erst die Referenzmessung (nächste Zeile) sagt, wie groß der Unterschied ist. Umschalten gehört zu B3 (Mehrtage & Kerne). |
+| **Referenzmessung PICP/Brier/MASE je Station vor B2/B3 (B0)** | wartet auf Betrieb | Der Befund verlangt die Basislinie **vor** jeder Kalibrierungs- oder Kernänderung. In der Entwicklungsumgebung liegen keine NAS-Daten; Rezept (zwei Backtests je Bestand, Felder je Station) in [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560). Ergebnis wird beim B0-Status im Befund und hier eingetragen. **Brier je Station gibt es nicht:** Der Brier-Score misst abgerechnete Empfehlungen (Advice-Ledger, global je P-Quelle); bei ~1 Empfehlung je Tag wäre eine Stations-Aufteilung monatelang nicht belastbar — im Rezept so benannt statt behauptet. |
 | **Spritpreisdeckel als dauerhafte Schicht (`cap(t)`)** | wartet auf Betrieb | Ausgestaltung offen („nach Luxemburger oder Belgischem Vorbild“): Wert, Referenz, Rhythmus und Durchsetzungsmechanismus sind nicht definiert. Ein hartkodiertes `min()` auf eine Konstante ist gegen einen **bewegten** Deckel gemessen falsch — Clip **nach** der Mittagsprojektion erzeugt einen Anstieg von +5,00 ct und bricht damit selbst die 12-Uhr-Regel; Clip **davor** ist legal (Lemma unter Test). Kein Arbeitspunkt, bevor die Ausgestaltung bekannt ist — deshalb die Marke „wartet auf Betrieb“: entschieden, aber erst mit dem Gesetzestext baubar (A15, Phase 2 bis 31.12.2026). |
 
 | Beobachtungspanels mischten Vor-/Nach-Gesetz-Daten (12-Uhr-Regel, Schritt 3) | erledigt (0.51.0) | Heatmap, Selektion, Modell-Fit und beide Offline-Werkzeuge zählen nur Beobachtungen ab `price_law_local`; Payload, GUI und Publikations-Index nennen Kante und ausgeblendete Punkte (`law_quality`), `TANKAPP_LAW_FLOOR=0` stellt den Mischbestand für Gegenmessungen wieder her. Konzept und Abnahme: [UMSETZUNG-B30-12-UHR-BODENKANTE.md](archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md). Dabei nachgerechnet: Alle Muster-Fenster beginnen heute hinter dem Gesetz — die Kante ist eine Garantie gegen Rechtswechsel und Archiv-Nachzug, kein Reparatur-Eingriff ([BEFUND-12-UHR-REGEL.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md#41-die-prämisse-war-rechnerisch-veraltet)). **18.09.2026 geschlossen:** Der DoD-Backtest über beide Rechtslagen entfällt — ein Mischbestand, gegen den sich „ohne Qualitätsverlust“ prüfen ließe, existiert produktiv nicht mehr; `TANKAPP_LAW_FLOOR=0` bleibt für Gegenmessungen. |
