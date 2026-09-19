@@ -1,9 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
+import { clickArea } from "./nav";
 
 // B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Umschalter, Horizont-Tabs,
 // Zeitwert-Automatik — seit Phase 3 im Labor (Abschnitt 1 „Prognose“ und
 // Spielplatz). Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
+// Seit B4 (Befund UX/Mathe 19.09.2026) liegen Labor/Ich mobil hinter dem
+// „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
 
 function stationsFixture(fuel: string) {
   return {
@@ -242,7 +245,7 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
 test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
   const seenHours = await stubApi(page, { horizons: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Labor", exact: true }).click();
+  await clickArea(page, "Labor");
   await expect(
     page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
   ).toBeVisible();
@@ -273,7 +276,7 @@ test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
 test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page }) => {
   await stubApi(page, { horizons: false });
   await page.goto("/");
-  await page.getByRole("button", { name: "Labor", exact: true }).click();
+  await clickArea(page, "Labor");
   await expect(
     page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
   ).toBeVisible();
@@ -296,7 +299,7 @@ test("Zeitwert-Automatik zeigt Stoßzeit oder Nebenzeit", async ({ page }) => {
   });
   await bRow.click();
   await expect(bRow).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await clickArea(page, "Ich");
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   // 0.55.0: Bei 0 ist die Automatik aktiv — der Hinweis sagt das im Präsens.

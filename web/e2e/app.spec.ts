@@ -1,8 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
+import { clickArea } from "./nav";
 
 // GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“. Die alten Tabs
 // „Alltag“ und „Einstellungen“ sind ersetzt — Stationen, Woche und Ich
-// führen die jeweiligen Bereiche weiter.
+// führen die jeweiligen Bereiche weiter. Seit B4 (Befund UX/Mathe
+// 19.09.2026) liegen die Studio-Bereiche (Labor, Ich, System, Glossar)
+// mobil hinter dem „Mehr“-Blatt — `clickArea` führt in beiden Rastern
+// zum Bereich.
 
 test("honest setup state and all views", async ({ page }) => {
   // Auf einem frischen Server ohne Polling-Set zeigt der Einstieg „Jetzt“ den
@@ -28,7 +32,9 @@ test("honest setup state and all views", async ({ page }) => {
   // „Labor“ (der ehemalige Werkstatt-Tab) ist die getrennte Welt für die
   // Mathematik: eine Seite, fünf Aufklapp-Abschnitte. Ohne Statistik-Lauf
   // bleibt sie ehrlich bei „kein Statistik-Lauf“ und nennt den Grund.
-  await page.getByRole("button", { name: "Labor", exact: true }).click();
+  // B4: mobil ein Tipper tiefer (Studio-Blatt) — `clickArea` in beiden
+  // Rastern.
+  await clickArea(page, "Labor");
   await expect(
     page.getByRole("heading", { name: "Verstehen, warum die App das sagt" }),
   ).toBeVisible();
@@ -38,7 +44,7 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByText("Kalibrierung steht aus", { exact: false }).first(),
   ).toBeVisible();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await clickArea(page, "System");
   await expect(
     page.getByRole("heading", {
       name: "Einmal einrichten. Weiterlaufen lassen.",
@@ -121,7 +127,7 @@ test("city/fuel changes never mix prices, closures never win", async ({
   await expect(page.getByText("F-Station", { exact: true })).toHaveCount(0);
   // C4 (weitergezogen): Die Tankmenge ist ein Default — der Eingabeort ist
   // jetzt „Ich → Fahrzeug“; die App rechnet haushaltsweit damit weiter.
-  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await clickArea(page, "Ich");
   await page.locator("#liters").fill("55");
   await expect(page.locator("#liters")).toHaveAttribute(
     "aria-valuetext",
@@ -143,7 +149,7 @@ test("city/fuel changes never mix prices, closures never win", async ({
     page.getByRole("button", { name: "Diesel", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   // Die Tankmenge übersteht den Reload (geräte-lokal gespeichert).
-  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await clickArea(page, "Ich");
   await expect(page.locator("#liters")).toHaveValue("55");
 });
 
@@ -154,7 +160,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // die Fahrzeug-Felder wohnen unter „Ich → Fahrzeug“, Kontext, Schwellen,
   // Darstellung und Daten unter „Ich → Einstellungen“.
   await page.goto("/");
-  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await clickArea(page, "Ich");
   // Unterseiten-Segment-Steuerung: ARIA-Tabs (kein Button-Rollenspiel).
   await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
 
@@ -205,7 +211,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Zurück auf den Default (dunkel), damit andere Tests nicht
   // von dieser Ansicht abhängen. Nach dem Reload startet die App in
   // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
-  await page.getByRole("button", { name: "Ich", exact: true }).click();
+  await clickArea(page, "Ich");
   await page
     .getByRole("tab", { name: "Einstellungen", exact: true })
     .click();
