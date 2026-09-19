@@ -4,6 +4,35 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.55.2] – 2026-09-19
+
+**Die Mobil-Suite maß die falsche Breite.** Beide Playwright-Konfigurationen
+prüften ausschließlich 390 px — ausgerechnet die Breite, bei der die
+gemeldeten Defekte aus 0.55.0 *nicht* auftraten. Der Nutzer meldete ein
+Pixel 9 (412 px), gefunden wurden die Fehler bei 320/360/412. Sogar der Test
+mit dem Namen „Echte Stationsnamen sprengen kein Raster (**Pixel 9**)" lief
+auf 390 px. Die Suite konnte den gemeldeten Fehler also gar nicht sehen; dass
+sie ihn nach dem Fix bestätigte, lag an den nachgereichten Messungen von Hand.
+
+- **Neues Projekt `narrow` (320 × 720).** 320 statt 412 px, weil es der
+  härtere Fall ist: Was dort trägt, trägt auf jedem breiteren Handy. Es ist
+  die schmalste Breite, die im Feld noch vorkommt.
+- **Beim ersten Lauf sofort einen echten Überlauf gefunden:** Die Job-Karte
+  „Beleg-Verarbeitung" in „System" brauchte 207 px in einem 196-px-Kasten.
+  Ursache ist das Flexbox-Standardverhalten — als Flex-Kinder haben Titel und
+  Status `min-width: auto` und schrumpfen nicht unter ihren Inhalt, der
+  längste Jobname sprengt damit die Karte. Jetzt `min-w-0` plus `truncate`
+  für den Titel und `shrink-0` für Symbol und Status: Der Name wird sichtbar
+  gekürzt, statt zu überlaufen.
+
+### Ratchet
+
+- **M2**: Die Demo-Konfiguration muss eine Breite ≤ 360 px messen. Ohne diese
+  Zusage kann das schmale Projekt still wieder verschwinden — und genau dieser
+  blinde Fleck hat die ursprüngliche Meldung erst nötig gemacht. Gegenprobe
+  gefahren: Ohne `narrow` meldet der Test „schmalste geprüfte Breite ist
+  390 px".
+
 ## [0.55.1] – 2026-09-19
 
 **Tippziele durchgemessen statt geschätzt.** Nach den Layout- und

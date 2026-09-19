@@ -73,5 +73,18 @@ export default defineConfig({
       // damit fixe Bottom-Leisten unklickbar macht; Breite reicht fürs Raster.
       use: { viewport: { width: 390, height: 844 }, hasTouch: true },
     },
+    {
+      // 0.55.2: Beide Configs prüften ausschließlich 390 px — ausgerechnet
+      // die Breite, bei der die Defekte aus 0.55.0 **nicht** auftraten. Der
+      // Nutzer meldete ein Pixel 9 (412 px), gefunden wurden die Fehler bei
+      // 320/360/412. Selbst der Test „Echte Stationsnamen sprengen kein
+      // Raster (Pixel 9)“ lief auf 390.
+      //
+      // 320 px statt 412, weil es der härtere Fall ist: Was hier trägt,
+      // trägt auch auf jedem breiteren Handy. Das ist die schmalste Breite,
+      // die im Feld noch vorkommt (iPhone SE 1. Gen., Galaxy Fold außen).
+      name: "narrow",
+      use: { viewport: { width: 320, height: 720 }, hasTouch: true },
+    },
   ],
 });

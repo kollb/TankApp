@@ -836,6 +836,36 @@ describe("O40: Diagramme beschreiben ihre Werte", () => {
   });
 });
 
+/**
+ * M2: Die Mobil-Suite muss eine schmale Breite messen.
+ *
+ * Gefunden in 0.55.2: Beide Playwright-Konfigurationen prüften ausschließlich
+ * 390 px — ausgerechnet die Breite, bei der die gemeldeten Defekte aus 0.55.0
+ * **nicht** auftraten. Der Nutzer meldete ein Pixel 9 (412 px); gefunden
+ * wurden die Fehler bei 320/360/412. Sogar der Test „Echte Stationsnamen
+ * sprengen kein Raster (Pixel 9)“ lief auf 390 px.
+ *
+ * Das `narrow`-Projekt (320 px) fand beim ersten Lauf prompt einen echten
+ * Überlauf in der Job-Karte „Beleg-Verarbeitung“ (207 px in 196 px). Ohne
+ * diese Zusage kann es still wieder verschwinden.
+ */
+describe("M2: Viewport-Abdeckung der Mobil-Suite", () => {
+  it("die Demo-Konfiguration misst eine Breite ≤ 360 px", () => {
+    const config = readFileSync(
+      `${dirname(SRC_ROOT)}/playwright.demo.config.ts`,
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+    const widths = [...config.matchAll(/width:\s*(\d+)/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(widths.length, "keine Viewport-Breiten gefunden").toBeGreaterThan(0);
+    expect(
+      Math.min(...widths),
+      `schmalste geprüfte Breite ist ${Math.min(...widths)} px — unter 360 px bricht das Raster zuerst, dort muss gemessen werden.`,
+    ).toBeLessThanOrEqual(360);
+  });
+});
+
 afterEach(() => {
   setPtrOff(false);
 });
