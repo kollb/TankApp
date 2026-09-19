@@ -87,9 +87,13 @@ MAX_SOURCE_CHARS = 40
 #       reproduzierbare Woanders-Nettoökonomie samt Distanz-Herkunft und eine
 #       serverzeitliche Uhrzeit (``clock_hour_source: server``), wenn kein
 #       Belegzeitstempel vorliegt.
+#   7 = B2: technischer Forecast-Zustand je Advice-Snapshot
+#       (``forecast_calibration_state``: ``raw``|``pit_24h``|``unknown``),
+#       damit der Ledger-Brier vor/nach PIT-Rekalibrierung vergleichbar bleibt.
+#       Altbestand ist ausdrücklich ``unknown``, nicht nachträglich „roh".
 # Jeder weitere Sprung: ``FEEDBACK_SCHEMA_VERSION`` anheben und eine
 # Schritt-Funktion in ``_STORE_MIGRATIONS`` ergänzen — nie wieder still.
-FEEDBACK_SCHEMA_VERSION = 6
+FEEDBACK_SCHEMA_VERSION = 7
 
 SNAPSHOT_COLLAPSE_MINUTES = 30
 EPISODE_MAX_HOURS = 72
@@ -138,6 +142,9 @@ CLOCK_HOUR_SOURCES = ("beleg", "server", "abgeleitet", "default")
 # (keine Schätzung — fällt aus Zähler und Nenner). Das M7-Gate rechnet
 # ausschließlich über ``verteilung``.
 P_SOURCES = ("verteilung", "basisrate", "keine")
+# B2: Zeitpunktgebundene technische Forecast-Schicht im Advice-Ledger. Nur
+# ``raw`` und ``pit_24h`` sind A/B-Messgruppen; Altbestand bleibt ``unknown``.
+FORECAST_CALIBRATION_STATES = ("raw", "pit_24h", "unknown")
 # O17 (0.45.0): Herkunft des Belegpreises. ``live`` = Ein-Tipp-Beleg mit
 # frischem Live-Preis; ``manuell`` = eingetragen, nicht live-verifiziert;
 # ``prognose`` = Altbestand aus der Zeit, als der Prognose-Median gebucht
@@ -158,6 +165,11 @@ GATE_BOOTSTRAP_SAMPLES = 1000
 GATE_BOOTSTRAP_SEED = 20260917
 GATE_MIN_DAY_BLOCKS = 10
 GATE_BLOCK_DAYS = 1
+# B2: Eine gut aussehende Brier-Zahl kann eine zu flache/steile
+# Zuverlässigkeitskurve verdecken. Die Steigung von Ergebnis auf versprochene
+# Wahrscheinlichkeit soll 1 sein; ihr Tagesblock-Intervall wird gegen diesen
+# Referenzwert geprüft, nicht ihr Punktwert gegen eine frei gewählte Grenze.
+GATE_RELIABILITY_SLOPE_TARGET = 1.0
 
 _STORE_THREAD_LOCK = threading.Lock()
 
@@ -389,6 +401,30 @@ def _migrate_store_v5_to_v6(store: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _migrate_store_v6_to_v7(store: dict[str, Any]) -> dict[str, Any]:
+    """6 → 7 (B2): A/B-Herkunft für den Ledger-Brier, ohne Altwerte zu raten."""
+    for ep in store.get("episodes", []) or []:
+        if not isinstance(ep, dict):
+            continue
+        seen: list[dict[str, Any]] = []
+        for snap in ep.get("snapshots", []) or []:
+            if isinstance(snap, dict):
+                seen.append(snap)
+        for key in ("first_snapshot", "last_snapshot"):
+            snap = ep.get(key)
+            if isinstance(snap, dict) and all(snap is not prior for prior in seen):
+                seen.append(snap)
+        for snap in seen:
+            # Der alte Store kennt den technischen Zustand nicht. Ihn anhand
+            # heutiger Artefakte zu erraten wäre Zeit-Leakage in der A/B-Bilanz.
+            if (
+                snap.get("forecast_calibration_state")
+                not in FORECAST_CALIBRATION_STATES
+            ):
+                snap["forecast_calibration_state"] = "unknown"
+    return store
+
+
 # Jeder Versionssprung genau eine Funktion; ``migrate_store`` läuft sie der
 # Reihe nach ab. Schlüssel = Version, **von der** die Funktion hochführt.
 _STORE_MIGRATIONS = {
@@ -397,6 +433,7 @@ _STORE_MIGRATIONS = {
     3: _migrate_store_v3_to_v4,
     4: _migrate_store_v4_to_v5,
     5: _migrate_store_v5_to_v6,
+    6: _migrate_store_v6_to_v7,
 }
 
 
@@ -639,6 +676,11 @@ def _same_advice(a: dict, b: dict) -> bool:
     # sonst der falsche Grund.
     if a.get("decline_reason") != b.get("decline_reason"):
         return False
+    # Ein A/B-Wechsel ist eine neue Messbedingung. Er darf nicht mit der
+    # früheren Roh-/PIT-Zeile kollabieren, selbst wenn die Tabellen-Aktion
+    # zufällig identisch blieb.
+    if snapshot_calibration_state(a) != snapshot_calibration_state(b):
+        return False
     # Eine erneut bestätigte Ablehnung ist keine neue Entscheidung: Es gibt
     # keinen Vergleichspreis, nichts zu messen. Sie wird ohne Zeitfenster
     # kollabiert — sonst schriebe jede Abfrage eines offenen Fensters einen
@@ -732,6 +774,14 @@ def snapshot_p_source(snap: dict[str, Any] | None) -> str:
     return "keine"
 
 
+def snapshot_calibration_state(snap: dict[str, Any] | None) -> str:
+    """B2-A/B-Gruppe am Emit-Zeitpunkt, mit ehrlichem Altbestand-Fallback."""
+    if not isinstance(snap, dict):
+        return "unknown"
+    state = snap.get("forecast_calibration_state")
+    return state if state in FORECAST_CALIBRATION_STATES else "unknown"
+
+
 def _peek_confirmation(
     settings, snapshot_data: dict[str, Any], clock=None
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
@@ -783,6 +833,7 @@ def _peek_confirmation(
         "alt_station_id": snapshot_data.get("alt_station_id"),
         "fuel": snapshot_data.get("fuel", "e10"),
         "decline_reason": snapshot_data.get("decline_reason"),
+        "forecast_calibration_state": snapshot_data.get("forecast_calibration_state"),
         "emitted_at": now_str,
     }
     if not _same_advice(ep["last_snapshot"], probe):
@@ -860,6 +911,11 @@ def record_snapshot(
         if snap_hour is None:
             snap_hour = _local_hour_fraction(clock_now)
 
+        state_raw = snapshot_data.get("forecast_calibration_state")
+        calibration_state = (
+            state_raw if state_raw in FORECAST_CALIBRATION_STATES else "unknown"
+        )
+
         snap_id = _uid("snap")
         snap = {
             "id": snap_id,
@@ -894,6 +950,10 @@ def record_snapshot(
             # bereinigte Verteilungs-P (nicht-finite Angaben sind keine
             # Messung und landen nicht im Ledger).
             "p_source": p_source,
+            # B2: Der Brier muss den technischen Zustand zum *damaligen*
+            # Emit-Zeitpunkt tragen, sonst ist A/B nur eine nachträgliche
+            # Behauptung. ``unknown`` bleibt von Altbeständen getrennt.
+            "forecast_calibration_state": calibration_state,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
             "fuel": snapshot_data.get("fuel", "e10"),
             # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
@@ -1712,6 +1772,55 @@ def _block_bootstrap_ci(
     return round(means[lo_idx], 4), round(means[hi_idx], 4)
 
 
+def _reliability_slope(rows: list[dict[str, float]]) -> float | None:
+    """OLS-Steigung ``outcome ~ intercept + p`` einer Reliability-Kurve.
+
+    Ohne Streuung der ausgegebenen Wahrscheinlichkeiten ist eine Steigung
+    nicht identifizierbar. ``None`` ist dann ehrlicher als die scheinbar gute
+    Steigung 1,0 einer Konstant-Prognose.
+    """
+    if len(rows) < 2:
+        return None
+    pairs = [
+        (float(row["p"]), float(row["outcome"]))
+        for row in rows
+        if math.isfinite(float(row["p"])) and math.isfinite(float(row["outcome"]))
+    ]
+    if len(pairs) < 2:
+        return None
+    p_mean = sum(p for p, _ in pairs) / len(pairs)
+    y_mean = sum(y for _, y in pairs) / len(pairs)
+    denominator = sum((p - p_mean) ** 2 for p, _ in pairs)
+    if denominator <= 1e-12:
+        return None
+    return sum((p - p_mean) * (y - y_mean) for p, y in pairs) / denominator
+
+
+def _block_bootstrap_reliability_ci(
+    blocks: list[list[dict[str, float]]],
+    samples: int = GATE_BOOTSTRAP_SAMPLES,
+    seed: int = GATE_BOOTSTRAP_SEED,
+) -> tuple[float | None, float | None]:
+    """95-%-Tagesblock-Bootstrap-KI der Reliability-Steigung (B2)."""
+    if not blocks or samples <= 0:
+        return None, None
+    rng = random.Random(seed)
+    slopes: list[float] = []
+    for _ in range(samples):
+        drawn: list[dict[str, float]] = []
+        for _ in range(len(blocks)):
+            drawn.extend(blocks[rng.randrange(len(blocks))])
+        slope = _reliability_slope(drawn)
+        if slope is not None and math.isfinite(slope):
+            slopes.append(slope)
+    if len(slopes) < max(10, samples // 10):
+        return None, None
+    slopes.sort()
+    lo_idx = min(len(slopes) - 1, int(0.025 * len(slopes)))
+    hi_idx = min(len(slopes) - 1, int(0.975 * len(slopes)))
+    return round(slopes[lo_idx], 4), round(slopes[hi_idx], 4)
+
+
 def _reference_briers(
     outcomes: list[float], cells: list[tuple[Any, Any] | None]
 ) -> tuple[float | None, float | None]:
@@ -1872,6 +1981,9 @@ def compute_advice_stats(
     # Score bleibt als Fortschreibung daneben stehen.
     brier_sq_errors = []
     brier_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    brier_by_calibration: dict[str, list[float]] = {
+        key: [] for key in FORECAST_CALIBRATION_STATES
+    }
     source_counts: dict[str, int] = {key: 0 for key in P_SOURCES}
 
     # 10 Bins für Reliability Diagramm (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
@@ -1914,6 +2026,7 @@ def compute_advice_stats(
             sq_error = (p_val - is_win) ** 2
             brier_sq_errors.append(sq_error)
             brier_by_source[snapshot_p_source(snap)].append(sq_error)
+            brier_by_calibration[snapshot_calibration_state(snap)].append(sq_error)
 
             bin_idx = min(9, max(0, int(p_val * 10)))
             bins[bin_idx]["count"] += 1
@@ -1955,6 +2068,9 @@ def compute_advice_stats(
     # getrennt — das Gate steht auf der Verteilungs-Teilmenge allein.
     brier_all_sq: list[float] = []
     brier_all_by_source: dict[str, list[float]] = {key: [] for key in P_SOURCES}
+    brier_all_by_calibration: dict[str, list[float]] = {
+        key: [] for key in FORECAST_CALIBRATION_STATES
+    }
     source_counts_all: dict[str, int] = {key: 0 for key in P_SOURCES}
     gate_rows: list[dict[str, Any]] = []
     for s in settlements_all:
@@ -1969,6 +2085,7 @@ def compute_advice_stats(
         sq_error = (p_val - is_win) ** 2
         brier_all_sq.append(sq_error)
         brier_all_by_source[source].append(sq_error)
+        brier_all_by_calibration[snapshot_calibration_state(snap)].append(sq_error)
         # O6: Gate-Zeilen mit Block- und Zellenschlüssel für Intervall und
         # Referenzen — dieselbe Grundgesamtheit wie gate_sq (Verteilung).
         if source == "verteilung":
@@ -1978,6 +2095,7 @@ def compute_advice_stats(
                     "day": day,
                     "cell": (hour, weekday) if hour is not None else None,
                     "outcome": is_win,
+                    "p": p_val,
                     "sq": sq_error,
                 }
             )
@@ -2005,14 +2123,30 @@ def compute_advice_stats(
     gate_n = len(gate_sq)
     gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
     day_blocks: dict[Any, list[float]] = {}
+    reliability_blocks: dict[Any, list[dict[str, float]]] = {}
     for pos, row in enumerate(gate_rows):
         key = row["day"] if row["day"] is not None else f"unknown-{pos}"
         day_blocks.setdefault(key, []).append(row["sq"])
+        reliability_blocks.setdefault(key, []).append(
+            {"p": row["p"], "outcome": row["outcome"]}
+        )
     n_day_blocks = len(day_blocks)
     if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
         gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
+        gate_slope_ci_lo, gate_slope_ci_hi = _block_bootstrap_reliability_ci(
+            list(reliability_blocks.values())
+        )
     else:
         gate_ci_lo, gate_ci_hi = None, None
+        gate_slope_ci_lo, gate_slope_ci_hi = None, None
+    gate_slope = _reliability_slope(
+        [{"p": row["p"], "outcome": row["outcome"]} for row in gate_rows]
+    )
+    gate_slope_ok = (
+        gate_slope_ci_lo is not None
+        and gate_slope_ci_hi is not None
+        and gate_slope_ci_lo <= GATE_RELIABILITY_SLOPE_TARGET <= gate_slope_ci_hi
+    )
     gate_ref_base, gate_ref_climate = _reference_briers(
         [row["outcome"] for row in gate_rows],
         [row["cell"] for row in gate_rows],
@@ -2023,6 +2157,7 @@ def compute_advice_stats(
         and gate_ci_hi is not None
         and binding_ref is not None
         and gate_ci_hi < binding_ref
+        and gate_slope_ok
     )
     if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
         gate_status = (
@@ -2043,14 +2178,14 @@ def compute_advice_stats(
             f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
             "mit Verteilungs-P im Ledger)"
         )
-    elif gate_ci_hi is None or binding_ref is None:
-        # Zählstand reicht, aber zu wenige Tagesblöcke für ein belastbares
-        # Intervall (ein Block hätte Varianz null — das Gate wäre ein
-        # Münzwurf mit Ansage). „Tagesblöcke“ ist Bootstrap-Sprache, nicht
-        # die 90-Tage-Übergangsregel — die bleibt eine andere Freigabe.
+    elif gate_ci_hi is None or binding_ref is None or gate_slope_ci_hi is None:
+        # Zählstand reicht, aber zu wenige Tagesblöcke oder keine P-Streuung
+        # für ein belastbares Intervall. Eine konstante Wahrscheinlichkeit
+        # bekommt ausdrücklich keine erfundene Steigung 1,0.
         gate_status = (
-            f"Kalibrierung nicht messbar (n={gate_n}, nur {n_day_blocks} "
-            f"Tagesblöcke — das Intervall braucht min. {GATE_MIN_DAY_BLOCKS})"
+            f"Kalibrierung nicht messbar (n={gate_n}, {n_day_blocks} Tagesblöcke; "
+            "Brier- und Steigungsintervall brauchen Streuung und mindestens "
+            f"{GATE_MIN_DAY_BLOCKS} Blöcke)"
         )
     elif gate_ci_hi >= binding_ref:
         gate_status = (
@@ -2058,11 +2193,19 @@ def compute_advice_stats(
             f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] ≥ Basis {_de(gate_ref_base)} "
             f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
         )
+    elif not gate_slope_ok:
+        gate_status = (
+            "Kalibrierung nicht erreicht (Reliability-Steigung "
+            f"{_de(gate_slope)} [{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] "
+            f"enthält Referenz {_de(GATE_RELIABILITY_SLOPE_TARGET)} nicht)"
+        )
     else:
         gate_status = (
             f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
             f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
-            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
+            f"/ Klima {_de(gate_ref_climate)}; Steigung {_de(gate_slope)} "
+            f"[{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] enthält "
+            f"{_de(GATE_RELIABILITY_SLOPE_TARGET)}, Verteilungs-P)"
         )
 
     return {
@@ -2078,6 +2221,10 @@ def compute_advice_stats(
         # (Verteilungs-P allein) als eigene Zahlen.
         "brier_by_source": _source_block(brier_by_source),
         "brier_all_by_source": _source_block(brier_all_by_source),
+        # B2 A/B: Vor/nach PIT-Kurve getrennt; ``unknown`` (Altbestand) ist
+        # sichtbar und darf nicht still in eine Seite der Messung fallen.
+        "brier_by_calibration": _source_block(brier_by_calibration),
+        "brier_all_by_calibration": _source_block(brier_all_by_calibration),
         "p_source_counts": dict(source_counts),
         "p_source_counts_all": dict(source_counts_all),
         "gate_n": gate_n,
@@ -2088,6 +2235,19 @@ def compute_advice_stats(
         "gate_brier_ci": ([gate_ci_lo, gate_ci_hi] if gate_ci_hi is not None else None),
         "gate_ref_base": gate_ref_base,
         "gate_ref_climate": gate_ref_climate,
+        # B2: Zweiter unabhängiger M7-Nachweis — das KI muss die ideale
+        # Reliability-Steigung 1 einschließen, sonst öffnet ein guter Brier
+        # allein das Produkt-Gate nicht.
+        "gate_reliability_slope": round(gate_slope, 4)
+        if gate_slope is not None
+        else None,
+        "gate_reliability_slope_ci": (
+            [gate_slope_ci_lo, gate_slope_ci_hi]
+            if gate_slope_ci_hi is not None
+            else None
+        ),
+        "gate_reliability_target": GATE_RELIABILITY_SLOPE_TARGET,
+        "gate_reliability_ok": gate_slope_ok,
         "n_day_blocks": n_day_blocks,
         "min_day_blocks": GATE_MIN_DAY_BLOCKS,
         "block_days": GATE_BLOCK_DAYS,

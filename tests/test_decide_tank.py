@@ -78,7 +78,7 @@ def tank_settings(tmp_path):
     )
 
 
-def _live_with_wait_forecast(settings):
+def _live_with_wait_forecast(settings, *, calibrated: bool = False):
     """Zwei frische Preise plus Prognose, die ein „Warten“-Fenster ausspielt."""
 
     def query(cfg, flux):
@@ -107,6 +107,22 @@ def _live_with_wait_forecast(settings):
                         "city": "Frankfurt",
                         "fuel": "e10",
                         "origin": NOW.isoformat(),
+                        "calibrated": calibrated,
+                        "calibration": (
+                            {
+                                "status": "active",
+                                "by_horizon": {
+                                    "24h": {
+                                        "schema_version": 1,
+                                        "method": "isotonic_pit_quantile_recalibration",
+                                        "levels": [0.0, 1.0],
+                                        "cdf": [0.0, 1.0],
+                                    }
+                                },
+                            }
+                            if calibrated
+                            else None
+                        ),
                         "points": [
                             {
                                 "timestamp": "2026-09-10T20:00:00+02:00",
@@ -212,6 +228,20 @@ def test_decide_carries_tank_block_without_input_noise(tank_settings):
     )
     assert body["tank"]["state"] == "ok"
     assert body["tank"]["range_km"] == 178.6
+
+
+def test_decide_ledgers_the_forecast_calibration_ab_state(tank_settings):
+    """B2: Der Ledger-Brier kennt die technische Verteilung beim Emit."""
+    from app.decide import _forecast_calibration_state
+
+    # Ein einzelnes Artefakt-Flag darf den Ledger nicht auf die PIT-Seite
+    # legen; maßgeblich ist dieselbe valide Hülle wie im Modellpfad.
+    assert _forecast_calibration_state({"calibrated": True}) == "raw"
+    live = _live_with_wait_forecast(tank_settings, calibrated=True)
+    evaluate_decide(live, {"city": "Frankfurt", "fuel": "e10", "liters": 40})
+    store = load_store(tank_settings)
+    snapshot = store["episodes"][0]["snapshots"][0]
+    assert snapshot["forecast_calibration_state"] == "pit_24h"
 
 
 def test_empty_tank_blocks_wait_recommendation_and_is_ledgered(tank_settings):

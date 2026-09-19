@@ -22,7 +22,7 @@ VALIDATION_WINDOW_DAYS = 14
 # den gepoolten Feiertags-Dummy und die Zeit seit dem letzten Preissprung.
 # beta wächst damit von 12 auf 13 Spalten (Feiertag läuft als eigener,
 # gepoolt geschätzter Koeffizient nebenher); alte Artefakte werden neu gefittet.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Sprung-Hazard-Feature: Preissprung = |Δp| ≥ 1 ct zwischen zwei beobachteten
 # Punkten (dieselbe Zählschwelle wie die 12-Uhr-Regel). Die Zeit seit dem
@@ -911,16 +911,27 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "mase_scale": scale_detail["scale"],
         "mase_scale_detail": scale_detail,
         "interval_method": interval_method,
+        # B2: Ein frisch gefittetes Modell kennt noch keine zeitlich getrennte
+        # PIT-Kurve. Der Modell-Lauf hängt nur eine im *vorigen* Backtest
+        # abgenommene Kurve an; bis dahin bleibt dies explizit unkalibriert.
+        "calibration": {
+            "schema_version": 1,
+            "method": "isotonic_pit_quantile_recalibration",
+            "enabled": False,
+            "status": "not_available",
+            "by_horizon": {},
+        },
         "calibrated": False,
         "decision_ready": False,
     }
 
 
 def validate_model(model: dict) -> Config:
-    if (
-        model.get("schema_version") != SCHEMA_VERSION
-        or model.get("model") != "harmonic_ar2"
-    ):
+    # Schema 3 ergänzt ausschließlich die optionale, aus früheren PITs
+    # gelernte Kalibrierung. Schema-2-Artefakte bleiben lesbar und sind per
+    # Definition unkalibriert — ein Refit ist dafür nicht nötig.
+    schema = model.get("schema_version")
+    if schema not in (2, SCHEMA_VERSION) or model.get("model") != "harmonic_ar2":
         raise ValueError("Unbekannte Modell-/Artefakt-Version; neu fitten.")
     cfg = Config(**model["config"])
     for key, shape in (("beta", (13,)), ("ar_phi", (2,)), ("ar_state", (2,))):
@@ -968,11 +979,36 @@ def validate_model(model: dict) -> Config:
         raise ValueError("Beobachtung darf nicht nach dem Trainings-Cutoff liegen.")
     if utc_time(model["training_end_exclusive"], cfg.timezone) != origin:
         raise ValueError("Inkonsistenter Trainings-Cutoff.")
-    if model.get("calibrated") is not False or model.get("decision_ready") is not False:
-        raise ValueError(
-            "Diese Engine-Version kann keine kalibrierten Empfehlungen freigeben."
-        )
+    calibrated = model.get("calibrated", False)
+    if not isinstance(calibrated, bool):
+        raise ValueError("Ungültiger Kalibrierungsstatus im Artefakt.")
+    if model.get("decision_ready") is not False:
+        raise ValueError("Die M7-Freigabe liegt im Advice-Ledger, nicht im Modell.")
+    if schema == 2:
+        if calibrated:
+            raise ValueError("Schema-2-Artefakte dürfen nicht als kalibriert gelten.")
+        return cfg
+    from .calibration import calibration_active
+
+    envelope = model.get("calibration")
+    if not isinstance(envelope, dict):
+        raise ValueError("Schema-3-Artefakt ohne Kalibrierungsstatus.")
+    if calibrated != calibration_active(envelope):
+        raise ValueError("Kalibrierungsstatus und PIT-Kurve sind inkonsistent.")
     return cfg
+
+
+def with_calibration(model: dict, envelope: dict) -> dict:
+    """Hängt eine geprüfte B2-Kurve an ein Modell, ohne den Fit zu verändern."""
+    from .calibration import calibration_active
+
+    out = dict(model)
+    out["schema_version"] = SCHEMA_VERSION
+    out["calibration"] = dict(envelope)
+    out["calibrated"] = calibration_active(envelope)
+    # Die Kurve korrigiert die Verteilung; die Produktfreigabe bleibt M7.
+    out["decision_ready"] = False
+    return out
 
 
 def shared_day_uniforms(
@@ -1363,6 +1399,25 @@ def predict(
     # B0: Nur mit Diagnose-Wunsch wird eine Kopie der rohen Pfade gehalten.
     raw_paths = paths.copy() if diagnostics is not None else None
     paths = project_paths(paths, index, cfg, segments=segments)
+    # B2: Eine nur aus früheren, zeitlich getrennten PITs abgenommene Kurve
+    # verschiebt die Rang-Quantile der Bootstrap-Pfade. Danach wird die
+    # Rechtsprojektion erneut angewandt: Eine marginal korrekte Verteilung
+    # darf niemals einen unzulässigen Preisanstieg in einen einzelnen Pfad
+    # zurückbringen. Fehlt/versagt die Kurve, bleibt der Pfad bitgleich.
+    from .calibration import calibrate_paths, calibration_for_hours
+
+    calibration = calibration_for_hours(model.get("calibration"), hours)
+    if calibration is not None:
+        paths = calibrate_paths(paths, calibration)
+        paths = project_paths(paths, index, cfg, segments=segments)
+        if diagnostics is not None:
+            diagnostics["calibration"] = {
+                "applied": True,
+                "horizon_hours": int(hours),
+                "n_pit": calibration.get("n_pit"),
+            }
+    elif diagnostics is not None:
+        diagnostics["calibration"] = {"applied": False, "horizon_hours": int(hours)}
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="All-NaN slice encountered", category=RuntimeWarning

@@ -1091,9 +1091,15 @@ def test_m7_gate_calibrated_counts_settlements_and_brier():
     assert advice["gate_n"] == 100
     assert advice["gate_brier"] == 0.01
     assert advice["n_day_blocks"] >= 10
-    assert advice["calibrated"] is True
-    assert advice["gate_status"].startswith("Kalibriert (n=100, Brier 0,01 [")
-    assert "Basis" in advice["gate_status"] and "Klima" in advice["gate_status"]
+    # B2: Diskrimination allein genügt nicht — p=.9/.1 bei perfekten
+    # Teilgruppen ist überkonfident, die Steigungs-KI enthält 1 nicht.
+    assert advice["calibrated"] is False
+    assert advice["gate_reliability_ok"] is False
+    assert advice["gate_status"].startswith(
+        "Kalibrierung nicht erreicht (Reliability-Steigung"
+    )
+    assert advice["gate_ref_base"] is not None
+    assert advice["gate_ref_climate"] is not None
 
 
 def test_m7_gate_is_unmeasurable_without_probability():

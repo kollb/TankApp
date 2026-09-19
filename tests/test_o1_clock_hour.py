@@ -289,7 +289,7 @@ def test_migration_reconstructs_hours_and_marks_them():
     store = migrate_store(legacy_store())
     # O5 (0.45.0): Schema 4 → 5 — die Stunden-Rekonstruktion (O1) läuft auf
     # dem Weg mit, das Ziel ist die aktuelle Version.
-    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6
+    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 7
     by_id = {fill["id"]: fill for fill in store["fills"]}
     # 16:40 UTC = 18:40 Europe/Berlin (Sommerzeit) — rekonstruiert, gekennzeichnet.
     assert by_id["fill_alt_1"]["clock_hour"] == 18

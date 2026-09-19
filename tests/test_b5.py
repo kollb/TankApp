@@ -225,26 +225,32 @@ def test_suggestion_needs_sample_size():
     assert any("Stichprobe" in text for text in proposal["reasons"])
 
 
-def test_weak_wait_hit_rate_tightens_gates():
+def test_weak_wait_hit_rate_tightens_euro_gates_not_probability():
     proposal = suggest_thresholds(
         {"wait_n": 60, "hit_wait": 0.55, "now_n": 60, "hit_now": 0.9}
     )
     assert proposal["changed"] is True
     thresholds = proposal["thresholds"]
-    assert thresholds["wait_p_high"] > DEFAULT_THRESHOLDS["wait_p_high"]
+    assert thresholds["wait_p_high"] == DEFAULT_THRESHOLDS["wait_p_high"]
+    assert thresholds["wait_p_mid"] == DEFAULT_THRESHOLDS["wait_p_mid"]
+    assert thresholds["elsewhere_p"] == DEFAULT_THRESHOLDS["elsewhere_p"]
+    assert thresholds["now_p"] == DEFAULT_THRESHOLDS["now_p"]
     assert thresholds["wait_eur_high"] > DEFAULT_THRESHOLDS["wait_eur_high"]
     assert any("WARTEN" in text for text in proposal["reasons"])
 
 
-def test_strong_wait_hit_rate_loosens_towards_defaults():
+def test_strong_wait_hit_rate_loosens_only_euro_towards_defaults():
     tightened = dict(DEFAULT_THRESHOLDS, wait_p_high=0.85, wait_eur_high=4.0)
     proposal = suggest_thresholds(
         {"wait_n": 60, "hit_wait": 0.95, "now_n": 60, "hit_now": 0.95},
         base=tightened,
     )
-    assert proposal["thresholds"]["wait_p_high"] < tightened["wait_p_high"]
+    assert proposal["thresholds"]["wait_p_high"] == tightened["wait_p_high"]
+    assert proposal["thresholds"]["wait_eur_high"] < tightened["wait_eur_high"]
     # Nie unter die Startwerte: konservativ in beide Richtungen.
-    assert proposal["thresholds"]["wait_p_high"] >= DEFAULT_THRESHOLDS["wait_p_high"]
+    assert (
+        proposal["thresholds"]["wait_eur_high"] >= DEFAULT_THRESHOLDS["wait_eur_high"]
+    )
 
 
 def test_weak_now_hit_rate_opens_more_wait_windows():
@@ -411,5 +417,6 @@ def test_clear_gap_still_moves_the_gates():
         {"wait_n": 400, "hit_wait": 0.50, "now_n": 400, "hit_now": 0.9}
     )
     assert proposal["changed"] is True
-    assert proposal["thresholds"]["wait_p_high"] > DEFAULT_THRESHOLDS["wait_p_high"]
+    assert proposal["thresholds"]["wait_p_high"] == DEFAULT_THRESHOLDS["wait_p_high"]
+    assert proposal["thresholds"]["wait_eur_high"] > DEFAULT_THRESHOLDS["wait_eur_high"]
     assert proposal["hysteresis"]["noise_band"]["wait"] < 0.2 - 0.05

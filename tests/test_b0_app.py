@@ -126,13 +126,14 @@ def _series_map(observations, cfg):
 def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
     observations, cfg, tmp_path
 ):
-    assert backtest_cache.CACHE_SCHEMA_VERSION == 3
+    assert backtest_cache.CACHE_SCHEMA_VERSION == 4
     assert {
         "pit",
         "regime_breaks_in_window",
         "ar_shrink",
         "model_kind",
         "shared_draws",
+        "calibration_candidate",
     } <= set(backtest_cache.PAYLOAD_KEYS)
     marked = Config(**{**cfg.to_dict(), "regimes": ("2026-07-31T00:00",)})
     series_map = _series_map(observations, marked)
@@ -143,19 +144,42 @@ def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
         0
     ]
     assert fresh["ok"] and fresh["backtest_cached"] is False
-    assert fresh["model_kind"] == "harmonic_ar2" and fresh["shared_draws"] is False
+    # B2 misst dieselbe Verteilung, deren PIT-Kurve später auf die
+    # Veröffentlichung angewandt wird (run_tasks-Default: Ensemble/shared).
+    assert fresh["model_kind"] == "ensemble" and fresh["shared_draws"] is True
+    candidate = fresh["calibration_candidate"]
+    assert candidate["model_kind"] == "ensemble" and candidate["shared_draws"] is True
+    candidate_24h = candidate["24h"]
+    assert candidate_24h["status"] in {
+        "accepted",
+        "rejected_validation",
+        "insufficient_pit",
+    }
     assert fresh["pit"]["station_id"] == key[1]
     assert set(fresh["pit"]["horizons"]) == {"24h", "72h", "168h"}
     assert fresh["pit"]["horizons"]["24h"]["all"]["n"] > 0
+    # B2 darf die nur als ``24h`` bezeichnete Kurve nicht mit den anderen
+    # Vorhersagehorizonten trainieren. Regime-Fenster können die Menge nur
+    # weiter verkleinern.
+    assert (
+        candidate_24h["n_pit"] + candidate_24h.get("n_test", 0)
+        <= fresh["pit"]["horizons"]["24h"]["break_free"]["n"]
+    )
     regime = fresh["regime_breaks_in_window"]
     assert regime["count"] == 1 and regime["folds_spanning"] >= 1
     assert fresh["ar_shrink"]["folds_scored"] == regime["folds_scored"]
     hit = run_tasks(task, series_map, marked, ORIGIN, workers=1, cache_dir=cache_dir)[0]
     assert hit["backtest_cached"] is True
-    for field in ("pit", "regime_breaks_in_window", "ar_shrink", "model_kind"):
+    for field in (
+        "pit",
+        "regime_breaks_in_window",
+        "ar_shrink",
+        "model_kind",
+        "calibration_candidate",
+    ):
         assert hit[field] == fresh[field], field
     stored = json.loads(next(cache_dir.glob("e10-*.json")).read_text(encoding="utf-8"))
-    assert stored["cache_schema"] == 3
+    assert stored["cache_schema"] == 4
     assert "pit" in stored["payload"] and "regime_breaks_in_window" in stored["payload"]
 
 

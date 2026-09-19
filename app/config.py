@@ -92,6 +92,10 @@ class Settings:
     # wegkorreliert werden). TANKAPP_SHARED_DRAWS=0 stellt die unabhängige
     # Ziehung wieder her (Gegenprobe, Stand vor 0.31.0).
     shared_draws: bool = True
+    # B2: PIT-Rekalibrierung der Bootstrap-Pfade. Der Schalter ist für die
+    # Gegenmessung; ohne zeitlich getrennt abgenommene Kurve bleibt das Modell
+    # trotz aktivem Schalter sichtbar unkalibriert.
+    calibration: bool = True
     # A10: Punktmodell der Prognose — „ensemble“ (Default, inverse MASE
     # gewichtet), „harmonic_ar2“ (Hauptpfad allein, Stand vor 0.31.0) oder
     # „profile_ar2“ (Zweitmodell allein). Gegenmessung per Env.
@@ -157,6 +161,8 @@ class Settings:
             backtest_cache=os.environ.get("TANKAPP_BACKTEST_CACHE", "1").strip().lower()
             not in {"0", "false", "off", "no"},
             shared_draws=os.environ.get("TANKAPP_SHARED_DRAWS", "1").strip().lower()
+            not in {"0", "false", "off", "no"},
+            calibration=os.environ.get("TANKAPP_CALIBRATION", "1").strip().lower()
             not in {"0", "false", "off", "no"},
             model_kind=_env_choice(
                 "TANKAPP_MODEL_KIND",

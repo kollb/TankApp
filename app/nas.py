@@ -201,6 +201,8 @@ def up(args):
         # Keine Geheimnisse — Werte kommen aus der Umgebung des Aufrufs.
         "TANKAPP_MODEL_WORKERS": os.environ.get("TANKAPP_MODEL_WORKERS", "0"),
         "TANKAPP_M7_AUTO_APPLY": os.environ.get("TANKAPP_M7_AUTO_APPLY", "0"),
+        # B2: An/Aus-Schalter für die PIT-Kurven (A/B-Messung), Default an.
+        "TANKAPP_CALIBRATION": os.environ.get("TANKAPP_CALIBRATION", "1"),
         "TANKAPP_DECISION_HOUR": os.environ.get("TANKAPP_DECISION_HOUR", "12"),
         # B30: Bodenkante der 12-Uhr-Regel. Leer = Default aus app/law.py
         # (Spiegel von engine/config.py); TANKAPP_LAW_FLOOR=0 nur als

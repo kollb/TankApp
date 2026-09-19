@@ -328,3 +328,13 @@ def test_horizon_records_publish_support_and_round_bands_to_tenth_cent():
     assert records[0]["supported"] is True
     assert records[0]["q50"] == 1.721  # 0.001 €/L = 0.1 ct/L
     assert records[1]["q50"] == 1.723
+
+
+def test_settings_parse_calibration_ab_switch(monkeypatch):
+    """B2: Der PIT-Schalter ist bewusst leicht für A/B-Läufe umsetzbar."""
+    from app.config import Settings
+
+    monkeypatch.setenv("TANKAPP_CALIBRATION", "0")
+    assert Settings.from_env().calibration is False
+    monkeypatch.setenv("TANKAPP_CALIBRATION", "on")
+    assert Settings.from_env().calibration is True

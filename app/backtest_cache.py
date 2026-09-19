@@ -53,7 +53,10 @@ from typing import Any
 # Schema 3 (B0, 0.56.0): Payload trägt zusätzlich pit, regime_breaks_in_window,
 # ar_shrink, model_kind und shared_draws; Schema-2-Dateien werden einmal
 # sauber verfehlt statt ohne diese Felder wiederverwendet.
-CACHE_SCHEMA_VERSION = 3
+# Schema 4 (B2): Der Backtest liefert einen zeitlich getrennt geprüften
+# PIT-Kandidaten. Modellkern und Shared-Draw-Modus gehören in den
+# Fingerabdruck, damit nie eine Kurve einer anderen Verteilung dient.
+CACHE_SCHEMA_VERSION = 4
 
 # Dieselben Spalten gehen als schlanke initargs in den Modell-Pool. Sie sind
 # vollständig für fit() + run_backtest(); die übrigen PriceSeries-Spalten sind
@@ -85,6 +88,7 @@ PAYLOAD_KEYS = (
     "ar_shrink",
     "model_kind",
     "shared_draws",
+    "calibration_candidate",
 )
 
 
@@ -112,7 +116,15 @@ def series_digest(frame) -> str:
     )
 
 
-def fingerprint(item, cfg, end_local, days: int) -> str:
+def fingerprint(
+    item,
+    cfg,
+    end_local,
+    days: int,
+    *,
+    model_kind: str = "harmonic_ar2",
+    shared_draws: bool = False,
+) -> str:
     """Fingerabdruck aller Eingaben, von denen der Bericht abhängt.
 
     ``item`` muss bereits auf ``end_local`` zugeschnitten sein
@@ -132,6 +144,8 @@ def fingerprint(item, cfg, end_local, days: int) -> str:
         "end_local": end_local.isoformat(),
         "days": int(days),
         "config": cfg.to_dict(),
+        "model_kind": str(model_kind),
+        "shared_draws": bool(shared_draws),
     }
     return _sha256(
         json.dumps(header, sort_keys=True, ensure_ascii=False, default=str).encode(

@@ -793,6 +793,21 @@ def _table_action(
     )
 
 
+def _forecast_calibration_state(forecast: dict[str, Any]) -> str:
+    """B2: Nur eine valide aktive Hülle darf den Ledger als PIT-Lauf markieren."""
+    if not forecast:
+        return "unknown"
+    try:
+        from engine.calibration import calibration_active
+
+        if calibration_active(forecast.get("calibration")):
+            return "pit_24h"
+    except Exception:
+        # Ein fehlerhaftes/älteres Artefakt darf keine A/B-Seite beanspruchen.
+        pass
+    return "raw"
+
+
 def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     fuel = (params.get("fuel") or "e10").lower()
     if fuel not in FUELS:
@@ -1166,6 +1181,10 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         # leer (dort zählt das Settlement).
         "decline_reason": reason_short if action_base == "no_advice" else None,
         "p_besser": p_decision,
+        # B2 A/B: Der Advice-Snapshot hält die beim Emit wirklich veröffentlichte
+        # 24-h-Verteilung fest. Ohne Forecast bleibt die Messgruppe unbekannt,
+        # statt einen alten Ledger-Eintrag nachträglich „roh" zu nennen.
+        "forecast_calibration_state": _forecast_calibration_state(forecast_data),
         "liters_assumed": liters,
         "fuel": fuel,
         "trip_mode": mode,

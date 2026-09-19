@@ -8,15 +8,16 @@ Regeln (alle Schwellen nach oben *und* unten begrenzt, ein Zyklus bewegt jede
 Schwelle nur um einen begrenzten Schritt — sonst schaukelt sich der Regler
 auf):
 
-1. ``hit_wait`` unter Ziel (70 %)  → **WARTEN erschweren**: Prozent- und
-   €-Gates der Warten-Zweige steigen. Falsches WARTEN ist der teure Fehler
-   (§4.5: Nutzer verliert Geld und ist genervt).
+1. ``hit_wait`` unter Ziel (70 %)  → **WARTEN erschweren**: nur die
+   €-Gates der Warten-Zweige steigen. Die Prozent-Gates bleiben seit B2
+   unverändert; ihre Kalibrierung ist Aufgabe der PIT-Schicht, nicht des
+   Schwellenreglers. Falsches WARTEN ist der teure Fehler (§4.5).
 2. ``hit_wait`` über Ziel + 10 pp → **WARTEN erleichtern**: Gates Richtung
    Startwerte senken (nie unter die Startwerte — konservativ).
 3. ``hit_now`` unter Ziel (85 %)   → **JETZT seltener**: die €-Schwelle, unter
    der „jetzt tanken“ gilt, sinkt; es öffnen sich mehr Warten-Fenster.
-4. Trefferquote ``refuel_elsewhere`` unter 60 % → Netto-Schwelle und
-   Prozent-Gate der Umweg-Empfehlung steigen.
+4. Trefferquote ``refuel_elsewhere`` unter 60 % → nur die Netto-Schwelle
+   der Umweg-Empfehlung steigt; ``elsewhere_p`` bleibt Kalibrierungssache.
 
 Der Nachzug ist **deterministisch aus dem Ledger** abgeleitet (kein zusätzlicher
 Zustand) und wird nur wirksam, wenn ``auto_apply`` aktiv ist (Konzept §8.2 Nr. 1:
@@ -182,13 +183,7 @@ def suggest_thresholds(
     if n_wait is not None and n_wait >= MIN_N and hit_wait is not None:
         gap = TARGETS["hit_wait"] - hit_wait
         if gap > band_wait:
-            step_p, step_eur = _step_p(gap), _step_eur(gap)
-            suggested["wait_p_high"] = _clamp(
-                "wait_p_high", current["wait_p_high"] + step_p
-            )
-            suggested["wait_p_mid"] = _clamp(
-                "wait_p_mid", current["wait_p_mid"] + step_p
-            )
+            step_eur = _step_eur(gap)
             suggested["wait_eur_high"] = _clamp(
                 "wait_eur_high", current["wait_eur_high"] + step_eur
             )
@@ -199,8 +194,8 @@ def suggest_thresholds(
                 f"WARTEN nur {hit_wait * 100:.0f} % richtig (Ziel "
                 f"{TARGETS['hit_wait'] * 100:.0f} %) — Lücke "
                 f"{gap * 100:.0f} pp liegt über dem Rauschband "
-                f"±{band_wait * 100:.0f} pp, Gates angezogen "
-                f"(+{step_p * 100:.0f} pp, +{step_eur:.2f} €)."
+                f"±{band_wait * 100:.0f} pp, €-Gates angezogen "
+                f"(+{step_eur:.2f} €; Prozent-Gates bleiben kalibriert)."
             )
         elif gap <= band_wait and gap > 0:
             reasons.append(
@@ -209,16 +204,7 @@ def suggest_thresholds(
                 f"±{band_wait * 100:.0f} pp (n={n_wait:.0f}), kein Nachzug."
             )
         elif hit_wait > TARGETS["hit_wait"] + 0.10 + band_wait:
-            step_p, step_eur = (
-                _step_p(hit_wait - TARGETS["hit_wait"] - 0.10),
-                _step_eur(hit_wait - TARGETS["hit_wait"] - 0.10),
-            )
-            suggested["wait_p_high"] = _clamp(
-                "wait_p_high", current["wait_p_high"] - step_p
-            )
-            suggested["wait_p_mid"] = _clamp(
-                "wait_p_mid", current["wait_p_mid"] - step_p
-            )
+            step_eur = _step_eur(hit_wait - TARGETS["hit_wait"] - 0.10)
             suggested["wait_eur_high"] = _clamp(
                 "wait_eur_high", current["wait_eur_high"] - step_eur
             )
@@ -227,7 +213,7 @@ def suggest_thresholds(
             )
             reasons.append(
                 f"WARTEN {hit_wait * 100:.0f} % richtig — Gates gelockert "
-                f"(−{step_p * 100:.0f} pp, −{step_eur:.2f} €), nie unter Startwert."
+                f"(−{step_eur:.2f} €; Prozent-Gates bleiben unverändert), nie unter Startwert."
             )
     else:
         reasons.append(
@@ -263,9 +249,6 @@ def suggest_thresholds(
                 "elsewhere_net_eur",
                 current["elsewhere_net_eur"] + _step_eur(gap_else) / 2,
             )
-            suggested["elsewhere_p"] = _clamp(
-                "elsewhere_p", current["elsewhere_p"] + _step_p(gap_else)
-            )
             reasons.append(
                 f"WOANDERS nur {hit_else * 100:.0f} % richtig — Lücke über dem "
                 f"Rauschband ±{band_else * 100:.0f} pp, Netto-Schwelle auf "
@@ -281,6 +264,13 @@ def suggest_thresholds(
         reasons.append(
             f"WOANDERS: Stichprobe zu klein für einen Nachzug (n={n_else} < {MIN_N})."
         )
+
+    # B2/M6a: Der Nachzug darf keine Wahrscheinlichkeit „zurechtdrehen".
+    # Diese drei Gates gehören semantisch zur PIT-/Ledger-Kalibrierung und
+    # bleiben auch bei TANKAPP_M7_AUTO_APPLY exakt auf ihren Startwerten.
+    probability_gates = ("wait_p_high", "wait_p_mid", "elsewhere_p", "now_p")
+    for key in probability_gates:
+        suggested[key] = current[key]
 
     # H3 Totband: Kleinstschritte zurücknehmen (der Vorschlag soll den Regler
     # bewegen, nicht im Rauschen zappeln).

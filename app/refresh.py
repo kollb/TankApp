@@ -15,6 +15,26 @@ TASKS_PER_STATION = 4
 # Kriterium `at_least_21_complete_test_days_per_station` aus dem
 # automatischen Lauf erfüllbar ist (bei 7 Tagen war es strukturell offen).
 BACKTEST_DAYS = 21
+# B2: Nach einer deklarierten Niveau-Kante muss ein vollständiges neues
+# Trainingsfenster entstehen. Die inklusive Frist entspricht für die bekannte
+# Kante 01.10. dem Termin-Gate 01.10.–15.11. aus dem Befund.
+CALIBRATION_REGIME_BLACKOUT_DAYS = 45
+
+
+def calibration_regime_blackout(origin, cfg, fuel: str) -> bool:
+    """Blockiert die Anwendung einer alten PIT-Kurve im Regime-Übergang."""
+    from engine.regimes import regime_breaks_utc
+
+    current_day = origin.tz_convert(cfg.timezone).date()
+    for regime in regime_breaks_utc(cfg, fuel):
+        break_day = regime["at"].tz_convert(cfg.timezone).date()
+        if (
+            break_day
+            <= current_day
+            <= break_day + dt.timedelta(days=CALIBRATION_REGIME_BLACKOUT_DAYS)
+        ):
+            return True
+    return False
 
 
 def _mb(size: int) -> str:
@@ -91,6 +111,7 @@ def refresh(settings: Settings, now=None, progress=None):
     from engine.bootstrap import bootstrap, write_csv
     from engine.data import load_observations, prepare_series
     from engine.models import SCHEMA_VERSION, law_since_utc
+    from engine.calibration import calibration_envelope
     from engine.selection import (
         SelectionConfig,
         bootstrap_floor_note,
@@ -102,6 +123,20 @@ def refresh(settings: Settings, now=None, progress=None):
     from .gapfill import fill_gaps
     from .history import prepare_archive
     from .model_jobs import ModelTaskPool, resolve_workers
+
+    # B2 lernt nie auf der eben zu veröffentlichenden Zukunft: Die Fit-Aufgaben
+    # erhalten ausschließlich den im *vorigen* Backtest gespeicherten,
+    # zeitlich getrennt abgenommenen Kandidaten. Der aktuelle Backtest erzeugt
+    # wiederum erst die Kandidatur für den nächsten Modell-Lauf.
+    prior_calibration_candidates = {
+        (
+            row.get("city"),
+            row.get("station_id"),
+            str(row.get("fuel") or "").lower(),
+        ): row.get("calibration_candidate")
+        for row in publication(settings).get("forecasts", [])
+        if isinstance(row, dict)
+    }
 
     metas, error = metadata(settings)
     if error or not settings.influx_env.is_file():
@@ -378,6 +413,20 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"{result.get('hours') or ''}{suffix}",
                     )
 
+            # B2: Kandidaten sind an Station, Kraftstoff, Modellkern und
+            # Shared-Draw-Modus gebunden. Eine andere Verteilung bekommt nie
+            # still dieselbe Kurve (siehe engine.calibration).
+            calibration_by_identity = {
+                identity: calibration_envelope(
+                    prior_calibration_candidates.get((identity[0], identity[1], fuel)),
+                    enabled=bool(getattr(settings, "calibration", True)),
+                    model_kind=getattr(settings, "model_kind", "ensemble"),
+                    shared_draws=bool(getattr(settings, "shared_draws", True)),
+                    activation_blocked=calibration_regime_blackout(origin, cfg, fuel),
+                )
+                for identity in series_map
+            }
+
             # B19: derselbe explizite fork-Pool bleibt für Phase A und B
             # stehen; series_map wird genau einmal als schlanke Worker-Sicht
             # initialisiert. Das spart den zweiten Pool-Start je Kraftstoff.
@@ -396,7 +445,10 @@ def refresh(settings: Settings, now=None, progress=None):
             ) as task_pool:
                 # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
                 first = task_pool.run(
-                    [("fit", identity, 24) for identity in series_map],
+                    [
+                        ("fit", identity, 24, calibration_by_identity[identity])
+                        for identity in series_map
+                    ],
                     on_done=note,
                 )
                 fitted = {}
@@ -452,8 +504,8 @@ def refresh(settings: Settings, now=None, progress=None):
                 for identity in fitted:
                     following.extend(
                         [
-                            ("wide", identity, 72),
-                            ("wide", identity, 168),
+                            ("wide", identity, 72, calibration_by_identity[identity]),
+                            ("wide", identity, 168, calibration_by_identity[identity]),
                             ("backtest", identity, BACKTEST_DAYS),
                         ]
                     )
@@ -568,6 +620,12 @@ def refresh(settings: Settings, now=None, progress=None):
                         # zeigt sie in der Werkstatt nur an.
                         "ensemble": model.get("ensemble"),
                         "model_kind": getattr(settings, "model_kind", "ensemble"),
+                        # B2: angewandte Kurve (falls eine frühere Abnahme
+                        # sie freigegeben hat) und der neue Kandidat für den
+                        # nächsten Lauf bleiben getrennt sichtbar.
+                        "calibration": model.get("calibration"),
+                        "calibrated": bool(model.get("calibrated", False)),
+                        "calibration_candidate": report.get("calibration_candidate"),
                         # B0 (Messgrundlagen): Zähler aus Fit und Backtest —
                         # AR(2)-Stauchung/Reset, PAVA-Pools der 24-h-Prognose,
                         # PIT-Histogramme, Regime-Kanten im Prüffenster und
@@ -598,7 +656,8 @@ def refresh(settings: Settings, now=None, progress=None):
                         "decision_hour": report.get("decision_hour", 12),
                         "operational_replay": False,
                         "data_policy": policy_by_identity.get(identity),
-                        "calibrated": False,
+                        # M7 bleibt unabhängig von der technischen
+                        # Verteilungs-Rekalibrierung die Produktfreigabe.
                         "decision_ready": False,
                         "retained_previous": False,
                     }
@@ -744,6 +803,12 @@ def refresh(settings: Settings, now=None, progress=None):
         # bleiben. Reihenfolge: erst die Stations-Dateien, dann der Index —
         # der Index ist der Commit-Zeiger; schlägt sein Schreiben fehl, bleibt
         # der vorige Stand gültig (``test_failed_publication_write_...``).
+        # Das Index-Feld ist nur dann wahr, wenn jede veröffentlichte Station
+        # eine aktive 24-h-Kurve trägt. Eine einzelne alte/retained Zeile darf
+        # den Gesamtzustand nicht schöner machen als er ist.
+        publication_calibrated = bool(forecasts) and all(
+            bool(row.get("calibrated", False)) for row in forecasts
+        )
         sizes = write_split_publication(
             output,
             origin.isoformat(),
@@ -755,7 +820,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 "gapfill_quality": gapfill_quality,
                 "law_quality": law_quality,
                 "model_file": model_name,
-                "calibrated": False,
+                "calibrated": publication_calibrated,
                 "decision_ready": False,
             },
         )
