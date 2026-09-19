@@ -248,11 +248,11 @@ describe("Jetzt: Aufbau", () => {
     }
   });
 
-  it("die Rangliste nennt den Stationsnamen, die Marke erst ab `sm`", () => {
-    // 0.53.0, Fund aus dem Mobil-Check: Auf 390 px teilten sich Rang, Name,
-    // Marke und zwei Preisspalten eine Zeile — „Demo-Tank Nord“ wurde zu
-    // „Demo-T…“. Die Marke steht mobil nicht mehr in der Zeile (sie steht im
-    // Station-Detail); der Name bleibt vollständig.
+  it("B4: keine Stationszeilen-Liste mehr — die Liste lebt nur in „Stationen“", () => {
+    // Befund UX/Mathe 2026-09-19, §1.4.1: „Die Stationszeilen-Liste entfällt
+    // hier vollständig (sie lebt in ‚Stationen‘)“. Die graue Karte zeigt
+    // weiterhin die Tatsache (günstigster offener Preis) und den Weg zur
+    // vollständigen Liste — aber keine zweite Fassung derselben Wahrheit.
     const html = render({
       decideRes: {
         data: {
@@ -269,9 +269,40 @@ describe("Jetzt: Aufbau", () => {
         station("ost", { name: "Demo-Tank Ost", price: 1.671 }),
       ],
     });
-    const list = html.slice(html.indexOf("<ol"));
-    expect(list).toContain("Demo-Tank Nord");
-    expect(list).toContain("hidden shrink-0 text-slate-500 sm:inline");
+    // Die Aufzählung der Preise ist weg — kein `<ol>` mehr in der Ansicht.
+    expect(html).not.toContain("<ol");
+    // Die Tatsache und der Weg bleiben: günstigster Preis plus Verweis.
+    expect(html).toContain("Jetzt am günstigsten: Demo-Tank Nord");
+    expect(html).toContain("Alle 2 Preise vergleichen");
+  });
+
+  it("B4: der Tagesstreifen ist default-eingeklappt, die Kennzahlen stehen darüber", () => {
+    // Befund UX/Mathe 2026-09-19, §1.4.1: „Der Tagesstreifen ist die einzige
+    // Visualisierung auf diesem Bildschirm und standardmäßig eingeklappt —
+    // die Entscheidung braucht ihn nicht.“ Geprüft: `<details>` ohne
+    // `open` (zu), der Auslöser trägt die Tagesfenster-Zeit, die Kennzahlen
+    // (Tagesmedian …) stehen vor dem Detail, der Streifensatz dahinter.
+    const html = render({
+      stripCells: [
+        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
+        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
+      ],
+    });
+    // Die Karte trägt selbst ein `<details>` (Annahmen) — der Streifen hat
+    // deshalb ein eigenes `id`, damit der Ratchet den richtigen meint.
+    const details = html.match(/<details[^>]*id="jetzt-daystrip"[^>]*>/);
+    expect(details, "Der Streifen sitzt nicht hinter `<details>`").not.toBeNull();
+    expect(details![0]).not.toContain("open");
+    expect(html).toContain("Tagesstreifen 06–24 Uhr");
+    // Reihenfolge: Kennzahlen (Zeilenliste) vor dem eingeklappten Detail.
+    expect(html.indexOf("Tagesmedian")).toBeLessThan(
+      html.indexOf('id="jetzt-daystrip"'),
+    );
+    // Der Streifensatz (Zellen + Abdeckung) ist im Detail — erreichbar, nur
+    // nicht default-malend.
+    const detail = html.slice(html.indexOf('id="jetzt-daystrip"'));
+    expect(detail).toContain("daystrip-cells");
+    expect(detail).toContain("Stunden mit offener Meldung");
   });
 
   it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
