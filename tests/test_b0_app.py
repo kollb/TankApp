@@ -150,7 +150,9 @@ def test_backtest_payload_traegt_die_messgrundlagen_und_ueberlebt_den_cache(
     assert fresh["model_kind"] == "profile_ar2" and fresh["shared_draws"] is True
     assert fresh["day_pair"] is True
     candidate = fresh["calibration_candidate"]
-    assert candidate["model_kind"] == "profile_ar2" and candidate["shared_draws"] is True
+    assert (
+        candidate["model_kind"] == "profile_ar2" and candidate["shared_draws"] is True
+    )
     candidate_24h = candidate["24h"]
     assert candidate_24h["status"] in {
         "accepted",

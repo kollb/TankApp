@@ -100,7 +100,9 @@ def test_predict_day_pair_aus_ist_bitgleich(series, cfg):
     model = fit(series, origin, cfg)
     off = predict(model, hours=72, return_paths=True, day_pair=False)
     default = predict(model, hours=72, return_paths=True)
-    np.testing.assert_array_equal(off[0]["q50"].to_numpy(), default[0]["q50"].to_numpy())
+    np.testing.assert_array_equal(
+        off[0]["q50"].to_numpy(), default[0]["q50"].to_numpy()
+    )
     np.testing.assert_array_equal(off[1], default[1])
 
 

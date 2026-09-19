@@ -931,7 +931,9 @@ def run_backtest(
             "mase": {
                 "24h": aggregate.get("mase"),
                 "72h": (horizon_report.get("72h") or {}).get("metrics", {}).get("mase"),
-                "168h": (horizon_report.get("168h") or {}).get("metrics", {}).get("mase"),
+                "168h": (horizon_report.get("168h") or {})
+                .get("metrics", {})
+                .get("mase"),
             },
         },
         # B0: PIT-Histogramme je Station/Horizont (all / break_free), die
