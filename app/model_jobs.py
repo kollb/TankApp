@@ -296,6 +296,7 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
     # Güte-Gate in /v1/decide braucht die aktuelle Zahl der ausgewählten
     # Station, nicht die aller anderen.
     rolling = report.get("rolling_picp_7d") or []
+    pit_stations = (report.get("pit") or {}).get("stations") or []
     payload = {
         "metrics": report.get("metrics"),
         "decision_rows": list(report.get("decision", {}).get("rows", [])),
@@ -305,6 +306,14 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
         # H5: Zeitumstellung im Prüfzeitraum — die GUI erklärt damit ein
         # „nicht bestimmbar“ und zeigt die betroffenen Tage.
         "dst": report.get("dst"),
+        # B0: PIT-Histogramme der eigenen Station (je Horizont, all/
+        # break_free), Regime-Kanten im Fenster, AR(2)-Stauchungen und das
+        # gemessene Punktmodell — Messgrundlagen für B2, keine Anzeige-Pflicht.
+        "pit": pit_stations[0] if pit_stations else None,
+        "regime_breaks_in_window": report.get("regime_breaks_in_window"),
+        "ar_shrink": report.get("ar_shrink"),
+        "model_kind": report.get("model_kind"),
+        "shared_draws": report.get("shared_draws"),
     }
     computed_at = None
     if cache_dir is not None and key is not None:
@@ -443,8 +452,16 @@ def _run(task: tuple) -> dict[str, Any]:
         shared = bool(_STATE.get("shared_draws", True))
         # Achtung: nicht „kind“ heißen — das ist die Aufgabenart.
         model_kind = str(_STATE.get("model_kind") or "harmonic_ar2")
+        # B0: PAVA-Pool-Statistik nur für die publizierte 24-h-Prognose —
+        # ein Wörterbuch, das predict() füllt; ohne es keine Mehrarbeit.
+        diagnostics: dict[str, Any] | None = {} if kind == "fit" else None
         frame, paths = predict(
-            model, hours=hours, return_paths=True, shared_draws=shared, kind=model_kind
+            model,
+            hours=hours,
+            return_paths=True,
+            shared_draws=shared,
+            kind=model_kind,
+            diagnostics=diagnostics,
         )
         out.update(
             ok=True,
@@ -455,6 +472,7 @@ def _run(task: tuple) -> dict[str, Any]:
         # lokal für predict(), der ~100-kB-Rücktransfer war aber tote Arbeit.
         if kind == "fit":
             out["model"] = model
+            out["pava_pool_stats"] = (diagnostics or {}).get("pava_pool_stats")
         return out
     except ValueError as exc:
         # Gleiche Meldung wie im seriellen Pfad (Engine-Text, keine Interna).

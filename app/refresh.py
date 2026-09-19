@@ -568,6 +568,23 @@ def refresh(settings: Settings, now=None, progress=None):
                         # zeigt sie in der Werkstatt nur an.
                         "ensemble": model.get("ensemble"),
                         "model_kind": getattr(settings, "model_kind", "ensemble"),
+                        # B0 (Messgrundlagen): Zähler aus Fit und Backtest —
+                        # AR(2)-Stauchung/Reset, PAVA-Pools der 24-h-Prognose,
+                        # PIT-Histogramme, Regime-Kanten im Prüffenster und
+                        # das Punktmodell, das der Backtest tatsächlich
+                        # gemessen hat (heute harmonic_ar2 — nicht das
+                        # veröffentlichte ensemble; docs/LUECKEN.md).
+                        "ar_shrink_events": model.get("ar_shrink_events"),
+                        "ar_state_reset": model.get("ar_state_reset"),
+                        "ar_detail": model.get("ar_detail"),
+                        "pava_pool_stats": fitted[identity].get("pava_pool_stats"),
+                        "pit": report.get("pit"),
+                        "regime_breaks_in_window": report.get(
+                            "regime_breaks_in_window"
+                        ),
+                        "ar_shrink": report.get("ar_shrink"),
+                        "backtest_model_kind": report.get("model_kind"),
+                        "backtest_shared_draws": report.get("shared_draws"),
                         "rolling_picp_7d": report.get("rolling_picp_7d"),
                         # Mehrtage-Horizonte +3 d/+7 d (Konzept §3.4):
                         # MASE/PICP der Fan-Chart-Horizonte, ehrlich
