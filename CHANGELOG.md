@@ -4,6 +4,39 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.55.1] – 2026-09-19
+
+**Tippziele durchgemessen statt geschätzt.** Nach den Layout- und
+Textkorrekturen aus 0.55.0 habe ich alle sechs Bereiche am echten Browser
+vermessen: Überlauf bei 320/375/412 px und im Querformat (915×412), dazu
+jedes sichtbare Bedienelement gegen die 44-px-Regel. Kein Bereich scrollt
+mehr waagerecht — aber zwei Tippziele waren zu klein, und beide fielen bisher
+durch die Prüfung, weil die Regel sie gar nicht erfasste.
+
+- **Das Logo in der Kopfzeile war 40×40 px — auf allen sechs Bereichen.** Auf
+  dem Handy bleibt vom Startseiten-Link nur das Symbol übrig, die Wortmarke
+  steht erst ab `sm`. Die 44-px-Regel fasst Links absichtlich nur über die
+  Klasse `tap-44` (sonst würde jeder Fließtext-Link zum Klotz) — und genau die
+  fehlte hier.
+- **Die drei Aufklapper kamen nur auf 32–40 px.** `summary` stand nicht in der
+  44-px-Liste, obwohl es ein Tippziel wie ein Knopf ist: „Annahmen“ in
+  „Jetzt“, „Für Neugierige“ und „Selbst prüfen“ im „Labor“. Die Höhe kam
+  allein aus der Polsterung. Jetzt steht `summary` in der Regel; damit der
+  Text im gewachsenen Kasten mittig bleibt, zusätzlich `display: flex`.
+
+### Ratchets
+
+- **C5**: `summary` gehört in die 44-px-Selektorliste; der Startseiten-Link
+  trägt `tap-44`. Beide Gegenproben gefahren — der wiederhergestellte Fehler
+  fällt auf.
+- **Zwei Fehlalarm-Lücken im bestehenden C5-Test geschlossen.** Er suchte die
+  Selektoren im gesamten `pointer: coarse`-Block, ohne Kommentare zu
+  entfernen: Mein eigener Begründungstext enthielt das Wort „summary“ und
+  färbte die Prüfung grün, obwohl der Selektor fehlte. Zweite Lücke: Ein
+  `summary`-Block weiter unten (`display: flex`) genügte dem `toContain`
+  ebenfalls. Geprüft wird jetzt die Selektorliste **vor**
+  `min-height: 44px`, auf kommentarfreiem CSS.
+
 ## [0.55.0] – 2026-09-18
 
 **Mobil nachgebessert (Nutzer-Feedback 18.09.2026: „Die mobile Variante auf einem Pixel 9 ist noch nicht optimal — die Anzeige der 3 Stationen im Bereich ‚Jetzt‘ ist zu breit und ragt aus dem Bild“).** Gemessen wurde am echten Browser auf 320/360/390/412 px, nicht nur auf den 390 px der Suite. Der gemeldete Überlauf war ein Symptom von zwei Ursachen, die beide tiefer lagen als die betroffene Karte — und eine davon hatte die Testsuite bisher strukturell nicht sehen können.

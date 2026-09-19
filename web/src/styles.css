@@ -210,6 +210,7 @@ input[type="range"] {
   [role="button"],
   select,
   input,
+  summary,
   a.tap-44 {
     min-height: 44px;
   }
@@ -217,6 +218,18 @@ input[type="range"] {
   [role="button"],
   a.tap-44 {
     min-width: 44px;
+  }
+
+  /* `summary` ist ein Tippziel wie ein Knopf — es klappt Inhalt auf und zu
+   * (0.55.1). Bis hierher stand es nicht in der Liste: Die drei Aufklapper
+   * („Annahmen“ in Jetzt, „Für Neugierige“ und „Selbst prüfen“ im Labor)
+   * kamen über ihre Polsterung nur auf 32–40 px. `min-height` allein
+   * zentriert den Text nicht, deshalb Flex — ohne `display` klebte er nach
+   * dem Wachsen oben am Rand. Das Aufklapp-Dreieck bleibt erhalten; wo die
+   * Komponente es ausblendet, tut sie das weiterhin selbst. */
+  summary {
+    display: flex;
+    align-items: center;
   }
 
   /* Tippfelder mindestens 16 px (0.55.0).

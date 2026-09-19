@@ -57,9 +57,12 @@ export function AppHeader({
           am oberen Rand: zwei Steuerzeilen dauerhaft über dem Inhalt wären
           der nächste Platzverlust. */}
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        {/* 0.55.1: `tap-44`, weil auf dem Handy nur das 40-px-Symbol übrig
+            bleibt (die Wortmarke steht erst ab `sm`) — als Link ohne die
+            Klasse greift die 44-px-Regel nicht, siehe C5-Ratchet. */}
         <a
           href="/"
-          className="flex shrink-0 items-center gap-3"
+          className="tap-44 flex shrink-0 items-center gap-3"
           aria-label="TankApp Startseite"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">

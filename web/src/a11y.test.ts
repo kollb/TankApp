@@ -332,12 +332,61 @@ describe("C5: Touch-Ziele", () => {
       "@media (pointer: coarse), (any-pointer: coarse)",
     );
     expect(coarse).toBeGreaterThanOrEqual(0);
-    const rule = STYLES.slice(coarse, STYLES.indexOf("\n}", coarse));
+    // Kommentare raus, bevor nach Selektoren gesucht wird: Der
+    // Begründungstext in diesem Block nennt die Hooks selbst („`summary` ist
+    // ein Tippziel …“) und würde die Prüfung grün färben, auch wenn der
+    // Selektor fehlt. Beim Einbau von `summary` genau so passiert.
+    const rule = STYLES.slice(coarse, STYLES.indexOf("\n}", coarse)).replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
     expect(rule).toContain("min-height: 44px");
     expect(rule).toContain("min-width: 44px");
-    for (const hook of ["button", '[role="button"]', "select", "input"]) {
-      expect(rule, `${hook} fehlt im 44-px-Block`).toContain(hook);
+    // 0.55.1: `summary` ist ein Tippziel wie ein Knopf — es klappt Inhalt auf
+    // und zu. Gemessen am Pixel 9 kamen die drei Aufklapper über ihre
+    // Polsterung nur auf 32–40 px.
+    //
+    // Geprüft wird die Selektorliste **vor** `min-height: 44px`, nicht der
+    // ganze Block: `summary` steht weiter unten noch einmal mit
+    // `display: flex`, und ein blosses `toContain` wäre schon damit
+    // zufrieden — auch wenn der Hook aus der 44-px-Liste fliegt.
+    const minHeightSelectors = rule.slice(0, rule.indexOf("min-height: 44px"));
+    for (const hook of [
+      "button",
+      '[role="button"]',
+      "select",
+      "input",
+      "summary",
+    ]) {
+      expect(
+        minHeightSelectors,
+        `${hook} fehlt in der Selektorliste vor min-height: 44px`,
+      ).toContain(hook);
     }
+  });
+
+  /**
+   * 0.55.1: Auf dem Handy bleibt vom Logo nur das 40-px-Symbol übrig — die
+   * Wortmarke daneben steht erst ab `sm`. Als `a` ohne `tap-44` greift die
+   * 44-px-Regel nicht (sie fasst Links absichtlich nur über diese Klasse,
+   * sonst würde jeder Fließtext-Link zum Klotz). Gemessen: 40×40 px auf
+   * allen sechs Bereichen.
+   */
+  it("das Logo in der Kopfzeile ist ein 44-px-Ziel", () => {
+    // Kommentare entfernen: Der Begründungstext daneben nennt „tap-44“
+    // selbst und würde die Prüfung sonst grün färben.
+    const code = APP_HEADER.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const anchor = code.indexOf('aria-label="TankApp Startseite"');
+    expect(anchor, "Startseiten-Link nicht gefunden").toBeGreaterThan(0);
+    const tagStart = code.lastIndexOf("<a", anchor);
+    const cls = /className="([^"]*)"/.exec(code.slice(tagStart, anchor))?.[1];
+    expect(
+      cls ?? "",
+      "Der Startseiten-Link trägt kein tap-44 — auf dem Handy bleibt nur das 40-px-Symbol.",
+    ).toMatch(/\btap-44\b/);
   });
 
   it("die Karten-Pins sind per Tastatur erreichbar", () => {
