@@ -1,9 +1,9 @@
 # TankApp Lücken-Check — Konzept gegen Stand
 
-> Stand: 19.09.2026 · App-Version 0.56.0. Abgleich von
+> Stand: 19.09.2026 · App-Version 0.57.0. Abgleich von
 > [KONZEPT.md](KONZEPT.md) (Zielbild) mit dem Code — § für §, mit Grund für
-> jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Kalibrierung bleibt
-> M7 vorbehalten (§0.4).
+> jeden offenen Punkt. **Kein Punkt behauptet Modellgüte:** Die technische
+> B2-PIT-Kurve ist nicht die M7-Produktfreigabe (§0.4).
 > Die unabhängige Prüfung vom 10.09.2026 liegt im
 > [Archiv](archiv/PRUEFSTAND-2026-09-10.md); ihre Befunde sind hier eingearbeitet
 > (Abschnitt „Umgesetzt seit der Prüfung“) oder als Aufgabe in
@@ -15,6 +15,7 @@
 - [Kurzfassung](#kurzfassung)
 - [B5: in diesem Durchgang geschlossen](#b5-in-diesem-durchgang-geschlossen)
 - [Umgesetzt seit der Prüfung am 10.09.2026](#umgesetzt-seit-der-prüfung-am-10092026)
+  - [19.09.2026 — Version 0.57.0: B2 Kalibrierungsschicht](#19092026--version-0570-b2-kalibrierungsschicht)
   - [19.09.2026 — Version 0.56.0: B0 Messgrundlagen des UX/Mathe-Befunds](#19092026--version-0560-b0-messgrundlagen-des-uxmathe-befunds)
   - [16.09.2026 — Version 0.44.0: Batch 1 des Optimierungs-Befunds (O1 + O22)](#16092026--version-0440-batch-1-des-optimierungs-befunds-o1--o22)
   - [16.09.2026 — Version 0.43.2: Mobil-Robustheit gemessen statt behauptet](#16092026--version-0432-mobil-robustheit-gemessen-statt-behauptet)
@@ -106,6 +107,26 @@ Tiefenanalysen ([V1](archiv/TIEFENANALYSE-2026-09-11.md),
 [V3](archiv/TIEFENANALYSE-V3-GUI-2026-09-11.md)) haben Punkte gefunden, die
 nicht in der Konzept-Abdeckung unten standen. Sie sind umgesetzt — die
 zugehörigen Aufgaben stehen nicht mehr in [TODO.md](../TODO.md).
+
+### 19.09.2026 — Version 0.57.0: B2 Kalibrierungsschicht
+
+- **PIT-Kurve statt Flag.** Die neue PAVA-Kurve kalibriert ausschließlich
+  Bootstrap-Draw-Ränge aus vergangenen 24-h-PITs. Zeitlicher Holdout,
+  Quantilabdeckung und die 2-pp-PICP95-Schranke entscheiden je Station;
+  Herkunft (`model_kind`, `shared_draws`) und Regime-Marker verhindern eine
+  Kurve für die falsche Verteilung. Aktivierung ist um einen Lauf verzögert.
+- **Sicherer Übergang.** Schema-2-Modelle bleiben lesbar/unkalibriert,
+  Schema 3 trägt die validierte Hülle; Cache-Schema 4 hält den Kandidaten.
+  Nach jeder deklarierten Regime-Kante ist die Anwendung 45 lokale Tage
+  blockiert (01.10.–15.11.2026). `TANKAPP_CALIBRATION=0` ist die A/B-Messung.
+- **Zwei getrennte Gates.** `forecast.calibrated` beschreibt nur die
+  technische PIT-Kurve; M7 bleibt im Advice-Ledger und verlangt jetzt Brier-
+  Skill **und** ein Reliability-Steigungsintervall, das 1 enthält. Der Ledger
+  trennt Brier vor/nach der PIT-Kurve (`raw`/`pit_24h`; Altbestand `unknown`),
+  aber der zeitgetrennte Vergleich ist kein Kausalbeweis. Der Schwellen-
+  Nachzug verändert ausschließlich Euro-/Zeit-/Umwegschwellen. Der ausstehende
+  Betriebsnachweis (PICP/Brier auf NAS-Daten) bleibt unten ausdrücklich als
+  solcher geführt.
 
 ### 19.09.2026 — Version 0.56.0: B0 Messgrundlagen des UX/Mathe-Befunds
 

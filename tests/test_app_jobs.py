@@ -117,7 +117,7 @@ def test_refresh_warmstarts_without_months_of_polling_and_marks_retained_model(
     model_path = output.parent / publication["model_file"]
     assert model_path.exists()
     model_bundle = json.loads(model_path.read_text())
-    assert model_bundle["schema_version"] == SCHEMA_VERSION == 2
+    assert model_bundle["schema_version"] == SCHEMA_VERSION == 3
     assert all(
         model["schema_version"] == SCHEMA_VERSION for model in model_bundle["models"]
     )

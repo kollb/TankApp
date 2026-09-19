@@ -362,6 +362,14 @@ def test_nas_compose_forwards_city_subdivisions_to_engine():
     assert 'TANKAPP_CITY_SUBDIVS: "${TANKAPP_CITY_SUBDIVS:-}"' in compose
 
 
+def test_nas_compose_forwards_calibration_ab_switch_to_the_app():
+    """B2: Der Gegenmess-Schalter muss den Container wirklich erreichen."""
+    compose = (
+        Path(__file__).resolve().parents[1] / "ops" / "nas" / "app" / "compose.yml"
+    ).read_text(encoding="utf-8")
+    assert 'TANKAPP_CALIBRATION: "${TANKAPP_CALIBRATION:-1}"' in compose
+
+
 def test_nas_compose_forwards_ntfy_webhook_to_the_app():
     """B4: Ohne die Variable im Container bleibt die Zustellung stumm."""
     compose = (

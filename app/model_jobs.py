@@ -269,7 +269,15 @@ def _init(
     _STATE["model_kind"] = str(model_kind or "harmonic_ar2").strip().lower()
 
 
-def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
+def _backtest(
+    item,
+    cfg,
+    days: int,
+    cache_dir,
+    *,
+    model_kind: str = "harmonic_ar2",
+    shared_draws: bool = False,
+) -> dict[str, Any]:
     """Backtest-Kennzahlen einer Station — aus dem Tages-Cache oder frisch.
 
     Rückgabe: die Payload-Felder (siehe app/backtest_cache.py::PAYLOAD_KEYS)
@@ -277,13 +285,21 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
     wird immer gerechnet (CLI, Tests).
     """
     from engine.backtest import last_complete_day, run_backtest, truncate_series
+    from engine.calibration import assess_candidate
     from . import backtest_cache
 
     end_local = last_complete_day([item], cfg)
     cut = truncate_series(item, end_local.tz_convert("UTC"))
     key = None
     if cache_dir is not None:
-        key = backtest_cache.fingerprint(cut, cfg, end_local, days)
+        key = backtest_cache.fingerprint(
+            cut,
+            cfg,
+            end_local,
+            days,
+            model_kind=model_kind,
+            shared_draws=shared_draws,
+        )
         hit = backtest_cache.load(cache_dir, cut, key)
         if hit is not None:
             return {
@@ -291,7 +307,47 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
                 "backtest_cached": True,
                 "backtest_computed_at": hit["computed_at"],
             }
-    report, _ = run_backtest([cut], cfg, days=days, until=end_local, strict_end=True)
+    report, rows = run_backtest(
+        [cut],
+        cfg,
+        days=days,
+        until=end_local,
+        strict_end=True,
+        kind=model_kind,
+        shared_draws=shared_draws,
+    )
+    # B2: Der Kandidat lernt ausschließlich aus diesem streng vergangenen
+    # Backtest. ``origin`` trennt das frühere Trainingsdrittel zeitlich vom
+    # späteren Holdout; Regime-Fenster bleiben aus der Kurve heraus, statt den
+    # Schock dauerhaft einzukalibrieren.
+    if rows is None:
+        # Einige schmale Test-/Betriebspfade liefern bewusst nur den Bericht;
+        # fehlende Roh-PITs sind ein unkalibrierter Zustand, kein Job-Fehler.
+        candidate_24h = assess_candidate([], [])
+    else:
+        calibration_rows = rows
+        # Die Hülle heißt bewusst ``24h``: 72-/168-h-PITs haben eine andere
+        # Vorhersageverteilung und dürfen nicht die Tages-Kurve kontaminieren.
+        # Alte schmale Test-Reports ohne Horizontspalte bleiben lesbar.
+        if len(calibration_rows) and "horizon_hours" in calibration_rows:
+            calibration_rows = calibration_rows.loc[
+                calibration_rows["horizon_hours"].astype(float) == 24.0
+            ]
+        if len(calibration_rows) and "regime_break_spanned" in calibration_rows:
+            calibration_rows = calibration_rows.loc[
+                ~calibration_rows["regime_break_spanned"].astype(bool)
+            ]
+        candidate_24h = assess_candidate(
+            calibration_rows.get("pit", []), calibration_rows.get("origin", [])
+        )
+    calibration_candidate = {
+        "schema_version": 1,
+        "method": "isotonic_pit_quantile_recalibration",
+        "end_local": end_local.isoformat(),
+        "model_kind": model_kind,
+        "shared_draws": bool(shared_draws),
+        "24h": candidate_24h,
+    }
     # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag — das
     # Güte-Gate in /v1/decide braucht die aktuelle Zahl der ausgewählten
     # Station, nicht die aller anderen.
@@ -314,6 +370,7 @@ def _backtest(item, cfg, days: int, cache_dir) -> dict[str, Any]:
         "ar_shrink": report.get("ar_shrink"),
         "model_kind": report.get("model_kind"),
         "shared_draws": report.get("shared_draws"),
+        "calibration_candidate": calibration_candidate,
     }
     computed_at = None
     if cache_dir is not None and key is not None:
@@ -434,7 +491,10 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
 
 def _run(task: tuple) -> dict[str, Any]:
     """Eine Aufgabe: kind = 'fit' | 'wide' | 'backtest'."""
-    kind, key, hours = task
+    kind, key, hours, *task_extra = task
+    # B2: Eine bereits im vorherigen Backtest abgenommene Kurve ist
+    # stationsspezifisch; sie darf nicht als globaler Worker-Zustand enden.
+    calibration = task_extra[0] if task_extra else None
     item = _STATE["series"][key]
     cfg = _STATE["cfg"]
     origin = _STATE["origin"]
@@ -446,9 +506,23 @@ def _run(task: tuple) -> dict[str, Any]:
         if kind == "backtest":
             # Kein eigener Fit am Cutoff: Der Backtest fittet je Fold selbst,
             # das Modell kommt aus der Phase-A-Aufgabe (B20 Punkt 1).
-            out.update(ok=True, **_backtest(item, cfg, hours, _STATE.get("cache_dir")))
+            out.update(
+                ok=True,
+                **_backtest(
+                    item,
+                    cfg,
+                    hours,
+                    _STATE.get("cache_dir"),
+                    model_kind=str(_STATE.get("model_kind") or "harmonic_ar2"),
+                    shared_draws=bool(_STATE.get("shared_draws", True)),
+                ),
+            )
             return out
         model = fit(item, origin, cfg)
+        if calibration is not None:
+            from engine.models import with_calibration
+
+            model = with_calibration(model, calibration)
         shared = bool(_STATE.get("shared_draws", True))
         # Achtung: nicht „kind“ heißen — das ist die Aufgabenart.
         model_kind = str(_STATE.get("model_kind") or "harmonic_ar2")
@@ -632,7 +706,14 @@ class ModelTaskPool:
         if pool is not None:
             with suppress(Exception):
                 pool.shutdown(wait=True, cancel_futures=True)
-        _init(self.series_map, self.cfg, self.origin, self.cache_dir)
+        _init(
+            self.series_map,
+            self.cfg,
+            self.origin,
+            self.cache_dir,
+            self.shared_draws,
+            self.model_kind,
+        )
 
 
 def run_tasks(

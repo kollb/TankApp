@@ -95,6 +95,7 @@ def test_snapshot_with_distribution_p_is_marked_verteilung(settings_with_station
     assert snap["p_besser"] == 0.75
     assert snap["p_correct"] == 0.75
     assert snap["p_source"] == "verteilung"
+    assert snap["forecast_calibration_state"] == "unknown"
 
 
 def test_snapshot_without_distribution_p_falls_back_to_basisrate(
@@ -132,6 +133,26 @@ def test_non_finite_distribution_p_falls_back_to_basisrate(settings_with_station
     assert snap["p_source"] == "basisrate"
 
 
+def test_snapshot_keeps_raw_and_pit_ab_measurements_separate(settings_with_station):
+    """Ein Schalterwechsel darf nicht in eine alte Advice-Zeile kollabieren."""
+    _, first = record_snapshot(
+        settings_with_station,
+        _snap_payload(p_besser=0.7, forecast_calibration_state="raw"),
+        clock=lambda: NOW,
+    )
+    _, second = record_snapshot(
+        settings_with_station,
+        _snap_payload(p_besser=0.7, forecast_calibration_state="pit_24h"),
+        clock=lambda: NOW + dt.timedelta(minutes=5),
+    )
+    assert len(second["snapshots"]) == 2
+    assert first["snapshots"][0]["forecast_calibration_state"] == "raw"
+    assert [snap["forecast_calibration_state"] for snap in second["snapshots"]] == [
+        "raw",
+        "pit_24h",
+    ]
+
+
 def test_migration_marks_old_snapshots_with_source():
     """Migration 4 → 5 rekonstruiert die Quelle — mit Kennzeichnung (O5)."""
     raw = {
@@ -153,14 +174,25 @@ def test_migration_marks_old_snapshots_with_source():
         "audit": [],
     }
     store = migrate_store(raw)
-    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6
+    assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 7
     by_id = {s["id"]: s for s in store["episodes"][0]["snapshots"]}
     assert by_id["s_dist"]["p_source"] == "verteilung"
     assert by_id["s_base"]["p_source"] == "basisrate"
     assert by_id["s_none"]["p_source"] == "keine"
+    # B2 rät den technischen Zustand alter Advice-Zeilen nicht nachträglich.
+    assert {snap["forecast_calibration_state"] for snap in by_id.values()} == {
+        "unknown"
+    }
     # Erst-/Letzt-Sicht laufen mit (keine zweite Wahrheit nach Migration).
     assert store["episodes"][0]["first_snapshot"]["p_source"] == "verteilung"
     assert store["episodes"][0]["last_snapshot"]["p_source"] == "keine"
+    assert (
+        store["episodes"][0]["first_snapshot"]["forecast_calibration_state"]
+        == "unknown"
+    )
+    assert (
+        store["episodes"][0]["last_snapshot"]["forecast_calibration_state"] == "unknown"
+    )
     # Idempotent: ein zweiter Lauf schreibt nichts um.
     again = migrate_store(store)
     assert again["episodes"][0]["snapshots"] == store["episodes"][0]["snapshots"]
@@ -221,12 +253,14 @@ def test_brier_is_reported_per_source():
                         "action": "wait",
                         "p_correct": 0.9,
                         "p_source": "verteilung",
+                        "forecast_calibration_state": "raw",
                     },
                     {
                         "id": "s_v2",
                         "action": "wait",
                         "p_correct": 0.9,
                         "p_source": "verteilung",
+                        "forecast_calibration_state": "pit_24h",
                     },
                     {
                         "id": "s_b1",
@@ -255,6 +289,15 @@ def test_brier_is_reported_per_source():
     assert advice["p_source_counts"] == {"verteilung": 2, "basisrate": 2, "keine": 0}
     assert advice["brier_all_by_source"]["verteilung"]["n"] == 2
     assert advice["brier_all_by_source"]["basisrate"]["n"] == 2
+    # B2: Ledger-Brier bleibt vor/nach der technischen PIT-Kurve getrennt.
+    # Der historische Eintrag ohne Marker wäre eine dritte, klar benannte
+    # Gruppe statt nachträglich auf eine Seite gerechnet zu werden.
+    assert advice["brier_by_calibration"] == {
+        "raw": {"brier": 0.01, "n": 1},
+        "pit_24h": {"brier": 0.01, "n": 1},
+        "unknown": {"brier": 0.16, "n": 2},
+    }
+    assert advice["brier_all_by_calibration"] == advice["brier_by_calibration"]
 
 
 def test_gate_ignores_basisrate_rows():
@@ -310,8 +353,13 @@ def test_gate_opens_on_distribution_p_only():
     advice = compute_advice_stats(store)
     assert advice["gate_n"] == 100
     assert advice["gate_brier"] == 0.01
-    assert advice["calibrated"] is True
-    assert advice["gate_status"].startswith("Kalibriert (n=100, Brier 0,01 [")
+    # B2: Ein niedriger Brier mit überkonfidenten .9/.1-Werten öffnet M7
+    # nicht mehr ohne Reliability-Steigungsnachweis.
+    assert advice["calibrated"] is False
+    assert advice["gate_reliability_ok"] is False
+    assert advice["gate_status"].startswith(
+        "Kalibrierung nicht erreicht (Reliability-Steigung"
+    )
 
 
 def test_diary_carries_p_source_after_migration(settings_with_station):
@@ -356,4 +404,4 @@ def test_diary_carries_p_source_after_migration(settings_with_station):
     # Die Migration hat den Store auf dem Weg gehoben (Lesen migriert im
     # Speicher; der nächste Schreibvorgang sichert die Version).
     with locked_store(settings_with_station) as store:
-        assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 6
+        assert store["schema_version"] == FEEDBACK_SCHEMA_VERSION == 7

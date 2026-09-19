@@ -1399,3 +1399,51 @@ def test_semi_static_endpoints_are_short_term_cacheable(app_settings):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_forecast_exposes_only_a_valid_active_b2_calibration(app_settings):
+    """B2: API trennt aktive Kurve, nächsten Kandidaten und M7-Freigabe."""
+    spec = {
+        "schema_version": 1,
+        "method": "isotonic_pit_quantile_recalibration",
+        "status": "accepted",
+        "n_pit": 240,
+        "levels": [0.0, 0.5, 1.0],
+        "cdf": [0.0, 0.5, 1.0],
+    }
+    envelope = {
+        "schema_version": 1,
+        "method": "isotonic_pit_quantile_recalibration",
+        "status": "active",
+        "enabled": True,
+        "by_horizon": {"24h": spec},
+    }
+    path = app_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E10",
+                        "origin": NOW.isoformat(),
+                        "points": [],
+                        # Das Flag allein genügt nie; nur die valide Hülle.
+                        "calibrated": False,
+                        "calibration": envelope,
+                        "calibration_candidate": {"24h": {"status": "accepted"}},
+                    }
+                ]
+            }
+        )
+    )
+    live = LiveData(app_settings, clock=lambda: NOW)
+    forecast = live.forecast(UID, "Frankfurt", "e10")
+    assert forecast["calibrated"] is True
+    assert forecast["calibration"] == envelope
+    assert forecast["calibration_candidate"]["24h"]["status"] == "accepted"
+    # Technische Pfadkalibrierung entriegelt niemals das Ledger-Produktgate.
+    assert forecast["decision_ready"] is False
+    assert live.last_forecasts()["calibrated"] is True

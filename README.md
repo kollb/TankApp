@@ -4,7 +4,7 @@
 Kein tägliches CSV-Kopieren, kein manuelles Modelltraining, keine erfundenen
 Preise.
 
-> Stand: 15.09.2026 · Version **0.38.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
+> Stand: 19.09.2026 · Version **0.57.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md) ·
 > nächste Aufgaben: [TODO.md](TODO.md) · Arbeitsregeln: [AGENTS.md](AGENTS.md)
 
 ## Inhaltsverzeichnis
@@ -53,8 +53,9 @@ Beleg-Export).
 
 **Ehrlichkeits-Regel (Konzept §0.4):** Ohne echte Daten zeigt die App einen
 Einrichtungszustand — keine Demo-Preise, keine „82 % sicher“ vor der
-Kalibrierung. Bis M7 erreicht ist, bleiben `calibrated=false` und
-`decision_ready=false`.
+Ledger-Kalibrierung. Bis M7 erreicht ist, bleibt `decision_ready=false`.
+`forecast.calibrated` kann davon getrennt schon die technische B2-PIT-Kurve für
+24-h-Pfade bezeichnen; sie entriegelt niemals eine Empfehlung.
 
 ## Geräte-Rollen
 

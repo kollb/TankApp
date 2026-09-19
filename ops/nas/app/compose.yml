@@ -31,6 +31,9 @@ services:
       TANKAPP_MODEL_WORKERS: "${TANKAPP_MODEL_WORKERS:-0}"
       # B5: 1 = vorgeschlagene Schwellen aus dem Advice-Ledger anwenden (M7).
       TANKAPP_M7_AUTO_APPLY: "${TANKAPP_M7_AUTO_APPLY:-0}"
+      # B2: 0 hält Bootstrap-Pfade für A/B-Messungen roh; 1 (Default) nutzt
+      # ausschließlich zuvor zeitlich getrennt abgenommene PIT-Kurven.
+      TANKAPP_CALIBRATION: "${TANKAPP_CALIBRATION:-1}"
       # Schicht-A-Anker des Backtests (Konzept §5.5): Tagesstunde des
       # hypothetischen Entscheids. Default 12 (nach der 12-Uhr-Anhebung).
       TANKAPP_DECISION_HOUR: "${TANKAPP_DECISION_HOUR:-12}"

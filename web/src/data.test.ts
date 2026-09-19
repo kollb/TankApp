@@ -58,6 +58,10 @@ import {
   shareQuery,
   m7GateLine,
   m7BrierDetail,
+  pitCalibrationCandidateLine,
+  pitCalibrationLedgerBrierLine,
+  pitCalibrationStatus,
+  PIT_CALIBRATION_NO_CANDIDATE,
   rowOutcome,
   scoreRows,
   segments,
@@ -520,11 +524,15 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
       gate_ref_climate: 0.23,
       n_day_blocks: 40,
       min_day_blocks: 10,
+      gate_reliability_slope: 1,
+      gate_reliability_slope_ci: [0.8, 1.2],
+      gate_reliability_target: 1,
       calibrated: true,
     });
     expect(open).toContain("Freigabe erfüllt");
     expect(open).toContain("Brier 0,19 [0,15–0,23]");
     expect(open).toContain("Basis 0,24 / Klima 0,23");
+    expect(open).toContain("Steigung 1,00 [0,80–1,20] enthält Ziel 1,00");
     const closed = m7GateLine({
       n: 120,
       gate_n: 120,
@@ -532,6 +540,8 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
       gate_brier_ci: [0.21, 0.27],
       gate_ref_base: 0.24,
       gate_ref_climate: 0.23,
+      gate_reliability_slope: 1.4,
+      gate_reliability_slope_ci: [1.2, 1.6],
       calibrated: false,
     });
     expect(closed).toContain("Freigabe nicht erreicht");
@@ -570,8 +580,14 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
         gate_brier_ci: [0.15, 0.23],
         gate_ref_base: 0.24,
         gate_ref_climate: 0.23,
+        gate_reliability_slope: 1,
+        gate_reliability_slope_ci: [0.8, 1.2],
+        gate_reliability_target: 1,
       }),
-    ).toBe("Brier 0,19 [0,15–0,23] (Ziel: Obergrenze < Basis 0,24 / Klima 0,23)");
+    ).toBe(
+      "Brier 0,19 [0,15–0,23] (Ziel: Obergrenze < Basis 0,24 / Klima 0,23); " +
+        "Steigung 1,00 [0,80–1,20] (Ziel: enthält 1,00)",
+    );
     expect(
       m7BrierDetail({ gate_n: 120, gate_brier: 0.01, n_day_blocks: 3, min_day_blocks: 10 }),
     ).toBe("Brier 0,01 (Intervall: 3 von min. 10 Tagesblöcken)");
@@ -581,6 +597,29 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(m7BrierDetail(null)).toBe(
       "Brier noch nicht messbar — braucht bewertete Empfehlungen.",
     );
+  });
+
+  it("names B2 PIT states from one shared copy source", () => {
+    expect(pitCalibrationStatus(false, "disabled")).toContain("Ausgeschaltet");
+    expect(
+      pitCalibrationCandidateLine({
+        status: "accepted",
+        nPit: 500,
+        rawPicp95: 0.95,
+        calibratedPicp95: 0.94,
+        picpReleaseGate: true,
+        active: false,
+      }),
+    ).toContain("frühestens im nächsten Modell-Lauf");
+    expect(PIT_CALIBRATION_NO_CANDIDATE).toContain("Noch kein PIT-Kandidat");
+    expect(
+      pitCalibrationLedgerBrierLine({
+        raw: { brier: 0.21, n: 30 },
+        pit_24h: { brier: 0.18, n: 20 },
+        unknown: { brier: null, n: 0 },
+      }),
+    ).toContain("roh 0,210 (n=30) · 24-h-PIT 0,180 (n=20)");
+    expect(pitCalibrationLedgerBrierLine()).toContain("Noch keine abgerechneten");
   });
 
   it("shows used vs. lapsed windows with the settled counter (O38)", () => {

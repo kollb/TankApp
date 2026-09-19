@@ -1,15 +1,15 @@
-"""O6 — Die Brier-Schwelle ist kein Münzwurf mehr (Intervall + Referenzen).
+"""O6/B2 — Brier-Skill plus Reliability-Steigung als M7-Gate.
 
 Vor 0.45.0 bestand das M7-Gate bei Punkt-Brier < 0,25 — dem Score einer
 konstanten 50-Prozent-Vorhersage. Eine Nachkommastelle entschied über
 „kalibriert“, ohne Intervall, ohne Fenster, ohne Hysterese
 (docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md O6).
 
-Seit O6 besteht das Gate erst, wenn die Obergrenze des Block-Bootstrap-
-Intervalls (Tagesblöcke, 95 %) unter beiden naiven Referenzen — konstanter
-Basisrate und Leave-one-out-Klimatologie je (Stunde, Wochentag) — auf
-derselben Grundgesamtheit (Verteilungs-P, Allzeit) liegt. Die Antwort nennt
-Intervall, Fenstergröße und beide Referenzen.
+Seit B2 besteht das Gate erst, wenn die Obergrenze des Block-Bootstrap-
+Brier-Intervalls (Tagesblöcke, 95 %) unter beiden naiven Referenzen —
+konstanter Basisrate und Leave-one-out-Klimatologie je (Stunde, Wochentag) —
+liegt **und** das Intervall der Reliability-Steigung die ideale Steigung 1
+enthält. Die Antwort nennt beide Nachweise.
 """
 
 import datetime as dt
@@ -48,13 +48,21 @@ def _store(rows):
     return {"episodes": [{"id": "ep", "snapshots": snaps}], "settlements": settlements}
 
 
-def _skill_rows(n_days=20, per_day=5):
-    """Diskriminierendes Modell: hohe P auf Treffern, niedrige auf Nieten."""
+def _skill_rows(n_days=20):
+    """Kalibrierter Skill: p=.75 trifft 3/4, p=.25 trifft 1/4 je Tag."""
     rows = []
-    outcomes = ["win"] * 70 + ["loss"] * 30
-    for i, outcome in enumerate(outcomes):
-        rows.append(
-            (i // per_day % n_days, 12, 0.9 if outcome == "win" else 0.1, outcome)
+    for day in range(n_days):
+        rows.extend(
+            [
+                (day, 12, 0.75, "win"),
+                (day, 12, 0.75, "win"),
+                (day, 12, 0.75, "win"),
+                (day, 12, 0.75, "loss"),
+                (day, 12, 0.25, "win"),
+                (day, 12, 0.25, "loss"),
+                (day, 12, 0.25, "loss"),
+                (day, 12, 0.25, "loss"),
+            ]
         )
     return rows
 
@@ -62,27 +70,47 @@ def _skill_rows(n_days=20, per_day=5):
 def test_gate_opens_when_upper_bound_beats_both_references():
     """Batch-Check: Skill (Diskrimination) öffnet das Gate — mit Intervall."""
     advice = compute_advice_stats(_store(_skill_rows()))
-    assert advice["gate_n"] == 100
-    assert advice["gate_brier"] == 0.01
-    assert advice["gate_brier_ci"] == [0.01, 0.01]
-    assert advice["gate_ref_base"] == 0.21
+    assert advice["gate_n"] == 160
+    assert advice["gate_brier"] == 0.1875
+    assert advice["gate_brier_ci"] == [0.1875, 0.1875]
+    assert advice["gate_ref_base"] == 0.25
     assert advice["gate_ref_climate"] is not None
     assert advice["gate_brier_ci"][1] < advice["gate_ref_base"]
     assert advice["gate_brier_ci"][1] < advice["gate_ref_climate"]
+    assert advice["gate_reliability_slope"] == 1.0
+    assert advice["gate_reliability_slope_ci"] == [1.0, 1.0]
+    assert advice["gate_reliability_ok"] is True
     assert advice["calibrated"] is True
-    assert advice["gate_status"].startswith("Kalibriert (n=100, Brier 0,01 [")
+    assert advice["gate_status"].startswith("Kalibriert (n=160, Brier 0,19 [")
 
 
 def test_response_names_interval_window_and_both_references():
     """Die Antwort enthält Intervall, Fenstergröße und beide Referenzen."""
     advice = compute_advice_stats(_store(_skill_rows()))
-    assert advice["gate_brier_ci"] == [0.01, 0.01]
+    assert advice["gate_brier_ci"] == [0.1875, 0.1875]
+    assert advice["gate_reliability_slope_ci"] == [1.0, 1.0]
     assert advice["block_days"] == 1
     assert advice["n_day_blocks"] == 20
     assert advice["min_day_blocks"] == GATE_MIN_DAY_BLOCKS == 10
     assert advice["bootstrap_samples"] == GATE_BOOTSTRAP_SAMPLES == 1000
-    assert advice["gate_ref_base"] == 0.21
+    assert advice["gate_ref_base"] == 0.25
     assert advice["gate_ref_climate"] is not None
+
+
+def test_brier_skill_alone_cannot_open_gate_with_wrong_reliability_slope():
+    """B2: Überkonfidente 0,9/0,1-Ps bleiben trotz Brier-Skill geschlossen."""
+    rows = []
+    for day in range(20):
+        rows.extend([(day, 12, 0.9, "win")] * 4)
+        rows.extend([(day, 12, 0.9, "loss")])
+        rows.extend([(day, 12, 0.1, "win")])
+        rows.extend([(day, 12, 0.1, "loss")] * 4)
+    advice = compute_advice_stats(_store(rows))
+    assert advice["gate_brier_ci"][1] < advice["gate_ref_base"]
+    assert advice["gate_reliability_slope_ci"] == [0.75, 0.75]
+    assert advice["gate_reliability_ok"] is False
+    assert advice["calibrated"] is False
+    assert "Reliability-Steigung" in advice["gate_status"]
 
 
 def test_constant_base_rate_prediction_fails_despite_low_brier():
@@ -98,7 +126,7 @@ def test_constant_base_rate_prediction_fails_despite_low_brier():
     assert advice["gate_brier"] == 0.16 < 0.25
     assert advice["gate_ref_base"] == 0.16
     assert advice["calibrated"] is False
-    assert advice["gate_status"].startswith("Kalibrierung nicht erreicht")
+    assert advice["gate_status"].startswith("Kalibrierung nicht messbar")
 
 
 def test_coin_flip_model_fails():
@@ -156,7 +184,9 @@ def test_rows_without_date_form_singleton_blocks():
     advice = compute_advice_stats(store)
     assert advice["n_day_blocks"] == 100
     assert advice["gate_brier_ci"] == [0.01, 0.01]
-    assert advice["calibrated"] is True
+    assert advice["gate_reliability_slope"] == 1.25
+    assert advice["gate_reliability_ok"] is False
+    assert advice["calibrated"] is False
 
 
 def test_interval_is_deterministic():
@@ -164,7 +194,7 @@ def test_interval_is_deterministic():
     store = _store(_skill_rows())
     first = compute_advice_stats(store)["gate_brier_ci"]
     second = compute_advice_stats(store)["gate_brier_ci"]
-    assert first == second == [0.01, 0.01]
+    assert first == second == [0.1875, 0.1875]
 
 
 def test_base_rate_reference_is_mean_squared_error_of_constant_q():

@@ -4,6 +4,33 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.57.0] – 2026-09-19
+
+**B2 — Kalibrierungsschicht des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b2--kalibrierungsschicht-der-kernbatch).**
+
+- Neue monotone PIT-Rekalibrierung für **24-h**-Bootstrap-Pfade: PAVA lernt aus
+  den B0-Rolling-Backtest-Paaren eine CDF und legt nur Draw-Ränge um; gemeinsame
+  Ziehungen und die 12-Uhr-Regel bleiben erhalten. Ein zeitlicher 2/3-zu-1/3-
+  Holdout prüft Quantil-Abdeckung und verbietet eine PICP95-Verschlechterung
+  von mehr als 2 Prozentpunkten.
+- Kein Leakage: Ein akzeptierter Kandidat gilt frühestens im folgenden
+  Modell-Lauf. Herkunft (`model_kind`, `shared_draws`) muss exakt passen;
+  Regime-Fenster bleiben aus dem Training und der Regime-Kalender blockiert
+  die Anwendung bis 45 lokale Tage nach einer Kante (01.10.–15.11.2026).
+  Modellartefakte sind Schema 3,
+  der Backtest-Cache Schema 4; Schema-2-Artefakte bleiben lesbar und explizit
+  unkalibriert.
+- `TANKAPP_CALIBRATION=0` ermöglicht die dokumentierte A/B-Gegenmessung;
+  Compose und `nas-up` reichen den Schalter durch. Forecasts veröffentlichen
+  getrennt aktive `calibration`/`calibrated` und den neuen
+  `calibration_candidate`; das Labor zeigt beides als PIT-Kachel. Advice-
+  Snapshots tragen den technischen Zustand beim Emit, daher weist der Ledger
+  den Brier für roh/PIT getrennt aus (Altbestand sichtbar als `unknown`).
+- Das M7-Ledger-Gate braucht jetzt neben dem Brier-Intervall gegen Basis- und
+  Klima-Referenz ein Tagesblock-Intervall der Reliability-Steigung, das 1
+  enthält. Schwellen-Auto-Apply darf ausschließlich €-/Zeit-/Umweg-Schwellen
+  verschieben; Prozent-Gates werden nicht mehr „zurechtgeregelt“.
+
 ## [0.56.0] – 2026-09-19
 
 **B0 des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich): Messgrundlagen — unsichtbar, bitgleich.**

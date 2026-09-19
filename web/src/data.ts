@@ -238,8 +238,9 @@ export type Health = {
   models: {
     published_at: string | null;
     count: number;
-    calibrated: false;
-    decision_ready: false;
+    /** B2: alle publizierten Pfade tragen eine aktive PIT-Kalibrierung. */
+    calibrated: boolean;
+    decision_ready: boolean;
   };
   selection?: {
     published_at: string | null;
@@ -282,6 +283,27 @@ export type Forecast = DataReach & {
     mase: number | null;
     picp95_pct: number | null;
   };
+  /** B2: aktiv angewandte PIT-Kurve, nie mit dem neuen Kandidaten vermischt. */
+  calibrated?: boolean;
+  calibration?: {
+    status?: string;
+    enabled?: boolean;
+    by_horizon?: Record<string, { n_pit?: number; status?: string }>;
+  } | null;
+  calibration_candidate?: {
+    status?: string;
+    model_kind?: string;
+    shared_draws?: boolean;
+    "24h"?: {
+      status?: string;
+      n_pit?: number;
+      validation?: {
+        raw_picp95?: number | null;
+        calibrated_picp95?: number | null;
+        picp_release_gate?: boolean;
+      };
+    };
+  } | null;
   /** H5: Zeitumstellung im Prüfzeitraum — ausgewiesen statt still. */
   dst?: DstReport | null;
 };
@@ -1010,6 +1032,9 @@ export type StatsSummary = {
     /** O5: Brier je P-Quelle (30 Tage und Allzeit) — getrennt statt gemischt. */
     brier_by_source?: Record<string, { brier: number | null; n: number }>;
     brier_all_by_source?: Record<string, { brier: number | null; n: number }>;
+    /** B2-A/B: Roh- und 24-h-PIT-Zustand beim damaligen Advice-Emit. */
+    brier_by_calibration?: Record<string, { brier: number | null; n: number }>;
+    brier_all_by_calibration?: Record<string, { brier: number | null; n: number }>;
     p_source_counts?: Record<string, number>;
     p_source_counts_all?: Record<string, number>;
     /** O5: Gate-Grundgesamtheit — Verteilungs-P allein (Allzeit). */
@@ -1020,6 +1045,11 @@ export type StatsSummary = {
     /** O6: naive Referenzen auf der Gate-Grundgesamtheit (Basisrate, Klimatologie). */
     gate_ref_base?: number | null;
     gate_ref_climate?: number | null;
+    /** B2: zweites M7-Kriterium, Tagesblock-KI der Reliability-Steigung. */
+    gate_reliability_slope?: number | null;
+    gate_reliability_slope_ci?: [number, number] | null;
+    gate_reliability_target?: number | null;
+    gate_reliability_ok?: boolean | null;
     /** O6: Tagesblöcke des Intervalls (Europe/Berlin) + Mindestzahl. */
     n_day_blocks?: number;
     min_day_blocks?: number;
@@ -3379,8 +3409,9 @@ export function livePhaseHint(phase?: LivePhase | null): string {
 }
 
 // §0.4 ist ein Zähl-Gate, kein Datum: ≥ 100 abgeschlossene Empfehlungen,
-// und die Obergrenze des Brier-Intervalls liegt unter beiden Referenzen
-// (O6 — 0,25 ist nur noch das dokumentierte Münz-Niveau, kein Kriterium).
+// die Obergrenze des Brier-Intervalls liegt unter beiden Referenzen **und**
+// das Tagesblock-Intervall der Reliability-Steigung enthält 1 (B2; 0,25 ist
+// nur noch das dokumentierte Münz-Niveau, kein Kriterium).
 // Maßgeblich sind die Schwellen des Backends (app/feedback.py →
 // live_advice.min_recommendations / brier_threshold); die Konstanten hier
 // sind nur der Rückfall für Statistik-Stände, die sie nicht mitschicken.
@@ -3396,6 +3427,63 @@ export const M7_BRIER_THRESHOLD = 0.25;
  */
 export const MASE_TARGET = 0.8;
 
+/** B2: Eine Stelle für die Zustände der technischen PIT-Kalibrierung. */
+export function pitCalibrationStatus(
+  active: boolean,
+  calibrationStatus?: string | null,
+): string {
+  if (active) {
+    return "Aktiv: Die 24-h-Bootstrap-Pfade dieser Station werden mit einer zuvor zeitlich getrennt geprüften PIT-Kurve neu quantiliert.";
+  }
+  if (calibrationStatus === "disabled") {
+    return "Ausgeschaltet: Der Kalibrierungs-Schalter ist für diesen Modell-Lauf deaktiviert; die Pfade bleiben roh.";
+  }
+  return "Noch nicht aktiv: Diese Prognose bleibt roh, bis ein früherer Backtest-Kandidat geprüft und mit gleicher Modellherkunft übernommen wurde.";
+}
+
+export function pitCalibrationCandidateLine(input: {
+  status?: string | null;
+  nPit?: number | null;
+  rawPicp95?: number | null;
+  calibratedPicp95?: number | null;
+  picpReleaseGate?: boolean | null;
+  active: boolean;
+}): string {
+  const status = input.status ?? "unbekannt";
+  const sample = input.nPit != null ? ` (${input.nPit} Lern-PITs)` : "";
+  const validation =
+    input.rawPicp95 != null && input.calibratedPicp95 != null
+      ? ` · PICP 95: roh ${percentLabel(input.rawPicp95 * 100, 1)}, geprüft ${percentLabel(input.calibratedPicp95 * 100, 1)}${input.picpReleaseGate ? " (≤ 2 pp Verschlechterung)" : " (Freigabe nicht erfüllt)"}.`
+      : ".";
+  const lag =
+    status === "accepted" && !input.active
+      ? " Er wird frühestens im nächsten Modell-Lauf angewandt, damit der Test nicht seine eigene Prognose kalibriert."
+      : "";
+  return `Neuer 24-h-Kandidat: ${status}${sample}${validation}${lag}`;
+}
+
+export const PIT_CALIBRATION_NO_CANDIDATE =
+  "Noch kein PIT-Kandidat aus dem Rolling-Backtest veröffentlicht.";
+
+/** B2: Klarer, nicht kausaler A/B-Vergleich aus dem Advice-Ledger. */
+export function pitCalibrationLedgerBrierLine(
+  groups?: Record<string, { brier: number | null; n: number }> | null,
+): string {
+  const raw = groups?.raw;
+  const pit = groups?.pit_24h;
+  const show = (group?: { brier: number | null; n: number }) =>
+    group?.brier != null ? `${deNumber(group.brier, 3)} (n=${group.n})` : null;
+  const rawText = show(raw);
+  const pitText = show(pit);
+  if (rawText && pitText) {
+    return `Ledger-Brier (alle Abrechnungen): roh ${rawText} · 24-h-PIT ${pitText}. Das ist eine zeitgetrennte A/B-Messung, kein Kausalbeweis.`;
+  }
+  if (rawText || pitText) {
+    return `Ledger-Brier (alle Abrechnungen): ${rawText ? `roh ${rawText}` : `24-h-PIT ${pitText}`}. Die Gegenmessung braucht noch abgerechnete Empfehlungen.`;
+  }
+  return "Ledger-Brier vor/nach PIT: Noch keine abgerechneten Empfehlungen in den A/B-Gruppen.";
+}
+
 export type M7Advice = {
   n?: number | null;
   brier_30d?: number | null;
@@ -3410,6 +3498,14 @@ export type M7Advice = {
   gate_brier_ci?: [number, number] | null;
   gate_ref_base?: number | null;
   gate_ref_climate?: number | null;
+  /** B2-A/B: Ledger-Brier getrennt nach technischem Forecast-Zustand. */
+  brier_by_calibration?: Record<string, { brier: number | null; n: number }>;
+  brier_all_by_calibration?: Record<string, { brier: number | null; n: number }>;
+  /** B2: zweites M7-Kriterium, Tagesblock-KI der Reliability-Steigung. */
+  gate_reliability_slope?: number | null;
+  gate_reliability_slope_ci?: [number, number] | null;
+  gate_reliability_target?: number | null;
+  gate_reliability_ok?: boolean | null;
   n_day_blocks?: number | null;
   min_day_blocks?: number | null;
   calibrated?: boolean | null;
@@ -3434,8 +3530,8 @@ export function deNumber(value: number, decimals = 2): string {
 
 /**
  * Fortschrittszeile des M7-Gates: Zählstand abgeschlossener Empfehlungen und
- * Brier mit Intervall gegen beide Referenzen — ohne Tageszahl. Die
- * Übergangsregel (Datenhygiene) hat mit {@link transitionRuleLine} ihre
+ * Brier mit Intervall gegen beide Referenzen und Reliability-Steigung gegen
+ * die Referenz 1 — ohne Tageszahl. Die Übergangsregel (Datenhygiene) hat mit {@link transitionRuleLine} ihre
  * eigene Zeile und ihren eigenen Nenner. `null` ohne Statistik-Lauf: dann
  * gibt es keinen Zähler zu zeigen.
  */
@@ -3472,7 +3568,7 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
     }
     return (
       `Freigabe offen: ${n} von ${need} abgeschlossenen Empfehlungen mit Verteilungs-P ` +
-      `(Freigabe: Obergrenze des Brier-Intervalls unter beiden Referenzen).${pendingNote}`
+      `(Freigabe: Obergrenze des Brier-Intervalls unter beiden Referenzen und Steigungsintervall enthält 1).${pendingNote}`
     );
   }
   if (brier == null) {
@@ -3490,11 +3586,13 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
     );
   }
   const ci = advice.gate_brier_ci ?? null;
+  const slopeCi = advice.gate_reliability_slope_ci ?? null;
+  const slopeTarget = advice.gate_reliability_target ?? 1;
   const refs =
     advice.gate_ref_base != null && advice.gate_ref_climate != null
       ? ` gegen Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
       : "";
-  if (!ci || advice.calibrated == null) {
+  if (!ci || !slopeCi || advice.calibrated == null) {
     const blocks = advice.n_day_blocks;
     const needBlocks = advice.min_day_blocks;
     const blockNote =
@@ -3506,9 +3604,14 @@ export function m7GateLine(advice?: M7Advice | null): string | null {
     );
   }
   const verdict = advice.calibrated ? "erfüllt" : "nicht erreicht";
+  const slope =
+    advice.gate_reliability_slope != null
+      ? `Steigung ${deNumber(advice.gate_reliability_slope)} `
+      : "Steigung ";
   return (
     `Freigabe ${verdict}: ${n} Empfehlungen, Brier ${deNumber(brier)} ` +
-    `[${deNumber(ci[0])}–${deNumber(ci[1])}]${refs}.${pendingNote}`
+    `[${deNumber(ci[0])}–${deNumber(ci[1])}]${refs}; ${slope}` +
+    `[${deNumber(slopeCi[0])}–${deNumber(slopeCi[1])}] enthält Ziel ${deNumber(slopeTarget)}.${pendingNote}`
   );
 }
 
@@ -3527,10 +3630,17 @@ export function m7BrierDetail(advice?: M7Advice | null): string {
     advice?.gate_ref_base != null && advice?.gate_ref_climate != null
       ? `Basis ${deNumber(advice.gate_ref_base)} / Klima ${deNumber(advice.gate_ref_climate)}`
       : null;
+  const slopeCi = advice?.gate_reliability_slope_ci ?? null;
+  const slopeTarget = advice?.gate_reliability_target ?? 1;
+  const slope = advice?.gate_reliability_slope;
   if (ci && refs) {
+    const slopeDetail = slopeCi
+      ? `; Steigung ${slope != null ? deNumber(slope) : "—"} ` +
+        `[${deNumber(slopeCi[0])}–${deNumber(slopeCi[1])}] (Ziel: enthält ${deNumber(slopeTarget)})`
+      : "; Steigung noch nicht messbar";
     return (
       `Brier ${deNumber(brier)} [${deNumber(ci[0])}–${deNumber(ci[1])}] ` +
-      `(Ziel: Obergrenze < ${refs})`
+      `(Ziel: Obergrenze < ${refs})${slopeDetail}`
     );
   }
   if (advice?.gate_n != null && advice?.n_day_blocks != null) {

@@ -46,6 +46,18 @@ STRIP_BAND_MIN_POINTS = 96
 DAY_SERIES_HOURS = 24
 
 
+def _calibration_active(value: Any) -> bool:
+    """Validiert den B2-Modellstatus am API-Rand (kein JSON-Flag-Vertrauen)."""
+    try:
+        from engine.calibration import calibration_active
+
+        return bool(calibration_active(value))
+    except Exception:
+        # Ein defektes/älteres Artefakt darf die lesende API nicht umwerfen und
+        # erst recht keine Kalibrierung behaupten.
+        return False
+
+
 def price_band(prices, days: int | None = None) -> dict[str, Any] | None:
     """25./75. Perzentil als feste Tonlagen-Skala (O20), sonst ``None``.
 
@@ -1692,7 +1704,9 @@ class LiveData:
             "models": {
                 "published_at": bundle.get("published_at"),
                 "count": len(bundle.get("forecasts", [])),
-                "calibrated": False,
+                # B2: technische PIT-Rekalibrierung je veröffentlichter
+                # Station. Sie ist nicht mit der M7-Produktfreigabe identisch.
+                "calibrated": bool(bundle.get("calibrated", False)),
                 "decision_ready": False,
             },
             # O22: Größe und Lesbarkeit der Veröffentlichung. Die Klippe war
@@ -1764,7 +1778,13 @@ class LiveData:
                 "range_to": row.get("range_to"),
                 "n_points": row.get("n_points"),
                 "n_days": row.get("n_days"),
-                "calibrated": False,
+                # B2 ist ein Modellzustand, nicht die M7-Produktfreigabe.
+                # Die gespeicherte Hülle wird durch die Engine validiert,
+                # statt ein beliebiges ``calibrated: true`` aus JSON zu
+                # vertrauen.
+                "calibration": row.get("calibration"),
+                "calibration_candidate": row.get("calibration_candidate"),
+                "calibrated": _calibration_active(row.get("calibration")),
                 "decision_ready": False,
             }
             if not include_draws:
@@ -1799,13 +1819,17 @@ class LiveData:
                 for k, v in row.items()
                 if k not in ("points_3d", "points_7d", "draws_24h", "draws_7d")
             }
+            slim["calibrated"] = _calibration_active(row.get("calibration"))
             valid_forecasts.append(slim)
 
         return {
             "generated_at": bundle.get("published_at"),
             "forecasts": valid_forecasts,
             "count": len(valid_forecasts),
-            "calibrated": False,
+            # Nur wenn jede übertragene Station eine *valide* aktive Hülle
+            # trägt. ``decision_ready`` bleibt ausschließlich M7 vorbehalten.
+            "calibrated": bool(valid_forecasts)
+            and all(row["calibrated"] for row in valid_forecasts),
             "decision_ready": False,
         }
 

@@ -197,6 +197,43 @@ describe("Labor: Erklär-Treppe Ebene 2 (§7)", () => {
     expect(host.querySelector("#labor-lernen-body")).toBeNull();
   });
 
+  it("zeigt aktive PIT-Kurve und zeitverzögerten Kandidaten getrennt", () => {
+    const host = mount(
+      { focusSection: "sicherheit" },
+      {
+        statsSummaryRes: res({
+          live_advice: {
+            brier_all_by_calibration: {
+              raw: { brier: 0.21, n: 30 },
+              pit_24h: { brier: 0.18, n: 20 },
+            },
+          },
+        }),
+        forecast: res({
+          points: [],
+          calibrated: false,
+          calibration: { status: "not_available" },
+          calibration_candidate: {
+            "24h": {
+              status: "accepted",
+              n_pit: 500,
+              validation: {
+                raw_picp95: 0.95,
+                calibrated_picp95: 0.94,
+                picp_release_gate: true,
+              },
+            },
+          },
+        }),
+      },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("PIT-Rekalibrierung der Prognose");
+    expect(text).toContain("PICP 95: roh 95,0 %, geprüft 94,0 %");
+    expect(text).toContain("frühestens im nächsten Modell-Lauf");
+    expect(text).toContain("roh 0,210 (n=30) · 24-h-PIT 0,180 (n=20)");
+  });
+
   it("bleibt ohne Sprung bei der Übersicht und zeigt den Glossar-Eingang", () => {
     const host = mount();
     const text = host.textContent ?? "";
