@@ -31,10 +31,48 @@
 
 ## A. Fachlich (Produkt & Domäne)
 
-*Keine offenen Punkte.* A9 (w(h)-Rückkopplung), A10 (Zweitmodell/Ensemble),
-A11 (gemeinsame Bootstrap-Ziehung), A12 (Lebenszyklus) und A13
-(Preis-Zwillinge) sind abgenommen — die vollständigen Nachweise stehen in der
-Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
+Neu am 19.09.2026 aus
+[docs/BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**:
+der Tankrabatt ab 01.10.2026 (−17 ct/L, befristet bis 31.12.2026) und der
+Spritpreisdeckel spätestens 01.01.2027 sind **datierte Regime-Wechsel**, die
+drei Zähler und die Entscheidungsgrundlage treffen. Drei Punkte sind fällig,
+bevor der 01.10. da ist — alle drei sind P0, weil sie falsche Zahlen riskieren.
+
+- **A14 (P0, bis 30.09.2026)** — **Rechtsfrage vor dem Code klären:** Darf die
+  App einen gesetzlichen Anstieg um 12:00 anzeigen, wenn das Gesetz ihn ab
+  01.01.2027 vorschreibt? `app/law.py:law_rise_outside_noon` zählt den
+  gesetzlich erzwungenen Anstieg um 00:00 heute als Verstoß (gemessen:
+  1 Intervall je Station und Sorte), und dieselbe Frage entscheidet, ob die
+  12-Uhr-Projektion den Regime-Sprung poolen darf (Befund §5.3.3) oder ob die
+  Kante eine Segmentgrenze wird (H6). **DoD:** Antwort einer zuständigen Stelle
+  schriftlich; `LUECKEN.md` führt die Antwort; bis dahin bleibt die Projektion
+  konservativ (Kante als Segmentgrenze, kein Pooling über den Bruch).
+- **A15 (D)** — **Deckel-Ausgestaltung abwarten, keine Zahl hartkodieren:** Der
+  Deckel kommt „nach Luxemburger oder Belgischem Vorbild“; der Wert, die
+  Referenz (Rohöl/notierte Produkte), der Rhythmus (monatlich/wöchentlich) und
+  der Durchsetzungsmechanismus sind nicht definiert. Ein hartkodiertes `min()`
+  auf eine Konstante (dritte Aussage des Entwurfs, Befund §5.1) ist gegen einen
+  bewegten Deckel gemessen
+  *falsch*: Es erzeugt einen Anstieg um +5,00 ct und bricht damit selbst die
+  12-Uhr-Regel (Befund §5.3.4b, §5.10). **DoD:** sobald die Ausgestaltung
+  bekannt ist, Deckel als Zeitreihe `cap(t)` je Sorte und Region modellieren,
+  Clip **vor** der Mittagsprojektion (Reihenfolge unter Test), und eine
+  Deckel-Nähe-Warnung nur mit Kalibrierungsnachweis (M7-Gate).
+- **A16 (P0, machbar heute)** — **Den eigenen Juli als Generalprobe messen:**
+  Das Archiv reicht bis 2025-09-09 (`docs/API.md`: `archive_since`) und enthält
+  damit den Mai-Juni-Tankrabatt 2026 — das Rabatt-**Ende** am 01.07. ist
+  derselbe Schock in derselben Richtung wie das Ende am 01.01.2027, und der
+  01.10.2026 ist die exakte Umkehrung des 01.05.2026. **DoD:**
+  `analysis/regime_check.py --data <Juli-Export> --break 2026-07-01
+  --announced-ct 17.0` für E10 **und** Diesel je Stadtset gelaufen, Bericht in
+  `data/analysis/report_regime.md`, Verzögerung/Durchgabe/Streuungsprofil im
+  Befund nachgetragen; Ablauf in
+  [docs/DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
+
+A9 (w(h)-Rückkopplung), A10 (Zweitmodell/Ensemble), A11 (gemeinsame
+Bootstrap-Ziehung), A12 (Lebenszyklus) und A13 (Preis-Zwillinge) sind
+abgenommen — die vollständigen Nachweise stehen in der Erledigt-Tabelle unten
+und im [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -89,10 +127,79 @@ die Folge (erster Lauf nach einem Reboot ist kalt).
 
 ## H. Mathematik (Prüfstrang 2)
 
-Kurzantwort: **kein Rechenfehler gefunden**. Die offenen mathematischen Punkte sind **Konsistenz und dokumentierte Ausbauten**, keine Bugs. A9–A11 (w(h), M3-Ensemble, gemeinsame Bootstrap-Ziehung) bleiben die fachlichen D-Items.
+Kurzantwort: **kein Rechenfehler gefunden** — aber seit dem 19.09.2026 eine
+dokumentierte Lücke unter datierter äußerer Einwirkung. Die Punkte H6–H10
+kommen aus
+[docs/BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5;
+alle Messwerte dort sind Rolling-Origin-Läufe der **echten**
+`engine.models.fit`/`predict`-Kette (`analysis/regime_check.py --simulate`),
+die Reihen sind synthetisch und auf die Live-Messwerte des 12-Uhr-Befunds
+kalibriert. A9–A11 (w(h), M3-Ensemble, gemeinsame Bootstrap-Ziehung) bleiben
+die fachlichen D-Items.
 
-*Keine offenen Punkte.* H3 (Schwellen-Hysterese, 0.31.0) und H5 (DST-Kante,
-0.29.0) sind erledigt; H1/H2/H4 waren davor geschlossen.
+- **H6 (P0, bis 30.09.2026)** — **Regime-Kante als Sprung-Instanz in die
+  12-Uhr-Projektion.** `noon_law_projection` poolt jeden Anstieg außerhalb von
+  12:00 weg; ein Regime-Anstieg um 00:00 am 01.01.2027 wird damit **auf null
+  gepoolt** (gemessen: +16,89 ct → +0,00 ct, 231/288 Punkte des Segments
+  verbogen, Fehler bis +9,83 ct) — die Korrektur wird von einer legalen
+  Nebenbedingung stillschweigend rückgängig gemacht. Als Segmentgrenze bleibt
+  der Sprung exakt stehen (0/288 verbogen, Lemma unter Test in
+  `tests/test_regime_check.py`). Voraussetzung ist A14. **DoD:**
+  `engine/models.py::_segment_bounds` kennt datierte Regime-Kanten aus
+  Konfiguration; Gegenprobe: ohne Kantenkonfiguration unverändertes Verhalten
+  (bestehende 42 Modell-Tests grün), mit Kante bleibt der Schritt stehen;
+  `docs/ENGINE.md` nennt die dritte Instanz.
+- **H7 (P0, bis 30.09.2026)** — **Feiertags-Pool gegen Regime-Verzerrung
+  schützen.** Der Entwurf normalisiert nur das 42-Tage-Fenster — der
+  Feiertags-Pool (`engine/config.py: holiday_pool_days = 365`) wird damit
+  **nicht** erfasst und ist heute schon verzerrt: Mit dem Mai-Juni-Rabatt im
+  Pool misst `holiday_beta` +4,48 ct (Nordrhein-Westfalen) bzw. +4,64 ct
+  (Bayern) statt +5,96 ct — **−1,47 bzw. −1,24 ct/L**, bei
+  `app/pside.py:THETA_CT = 1,0` also über der Schwelle und ~37 % der 4-ct
+  Warteschwelle. Vier von elf Feiertagen im Pool fallen in das Rabattfenster
+  (Pfingsten 24./25.05., Fronleichnam 04.06., dazu Referenz-Feiertage); ab dem
+  01.10.2026 wiederholt es sich (03.10., 01.11. NW, 25./26.12.). **DoD:**
+  Normalisierung wirkt auf **beide** Fits (Modell und Pool), gemessen als
+  `holiday_beta`-Differenz vor/nach auf dem echten Bestand, unter
+  `THETA_CT` nach der Korrektur; Regressionstest mit einem Rabatt-Fenster im
+  Pool.
+- **H8 (P0, bis 30.09.2026)** — **Die Gate-Zähler gegen den Bruch immun
+  machen.** Drei Zähler lesen Niveaus oder Zeitreihen-Statistik:
+  (1) `app/feedback.py:mae_threshold` ist der Naive-24h-MAE und springt über
+  den Bruch von 2,4 auf 6,3 ct — die berichtete `mase_24h` wird nicht-monoton
+  (0,115 → 0,515) und das Gate `mase_24h_below_0_95` kann **während** des
+  Schocks grün werden; (2) `engine/data.py:coverage_stability` und die
+  Tagesform-Korrelation (`engine/station_comparison.py`) lesen dasselbe
+  Niveau-Signal; (3) jeder Abgleich über den 01.10. ist ohne Korrektur wertlos.
+  **DoD:** `mase_scale` wird am Regime-Kalender normalisiert (oder das Gate
+  wird im Break-Fenster explizit suspendiert — Entscheidung dokumentiert),
+  Stabilitätsalarme unterscheiden Bruch von Datenstörung, der Oktober-Abgleich
+  trägt im Ledger und im Bericht ein Regime-Kennzeichen.
+- **H9 (P0, bis 30.09.2026)** — **Fehlalarme am Kanten-Tag zählen und
+  entschärfen.** Am 01.01.2027 sagt das unkorrigierte Modell
+  `P_besser = 0,920`, während das tatsächliche Fensterminimum **+10,0 ct über**
+  dem Anker liegt: Die App rät mit 92 % zum Tanken in einen Anstieg von 17 ct
+  hinein. Derselbe Mechanismus trifft die Gegenalarme
+  (`app/alarms.py:price_counter_alarm`, `price_reversal_alarm`) und die
+  Schwellen-Hysterese (`app/thresholds.py`), die über den Bruch hinweg zählt.
+  **DoD:** Am Kanten-Tag sind Ratenalarme, Gegenalarme und Hysterese-Zähler
+  unterdrückt oder Regime-bereinigt (Messung: Alarmzahl am 01.10./01.01. gegen
+  einen Referenztag), und die `no_advice`-Regel aus
+  [BEFUND-UX-MATH M5](docs/BEFUND-UX-MATH-2026-09-19.md#m5--nowcast-draws-trotz-frischem-live-preis-schwere-niedrig) greift für
+  ≈ 10–14 Tage nach dem Bruch mit ehrlichem Nutzertext nach
+  ([docs/MICROCOPY.md](docs/MICROCOPY.md), kein Jargon wie „Regime-Bruch“).
+- **H10 (P0, wirkt am 01.10. schon)** — **Den Bedingungs-Verstärker (M5)
+  vorziehen.** Gemessen ist der dominante Schaden nicht der Punkt, sondern die
+  Verteilung: Intervallbreite 7,9 → 23–26 ct (Faktor 3,0–3,4) über fünf Wochen,
+  dazu `P_besser` 0,000–0,448 in einem Fenster, das die Wahrheit als günstig
+  kennt. Der billigste Hebel dagegen ist der live-bedingte Nowcast aus
+  [BEFUND-UX-MATH M5](docs/BEFUND-UX-MATH-2026-09-19.md#m5--nowcast-draws-trotz-frischem-live-preis-schwere-niedrig) — er koppelt die
+  Prognose an den beobachteten Ist-Zustand und kostet keine Regime-Architektur.
+  **DoD:** M5 (Batch B1) ist vor dem 01.10.2026 umgesetzt und gemessen; die
+  Regime-Schicht R2–R4 des Befunds folgt danach und nicht davor.
+
+H3 (Schwellen-Hysterese, 0.31.0) und H5 (DST-Kante, 0.29.0) sind erledigt;
+H1/H2/H4 waren davor geschlossen.
 
 ---
 
@@ -249,12 +356,24 @@ die ursprüngliche Definition of Done im [CHANGELOG](CHANGELOG.md) und in
 
 ## Reihenfolge-Empfehlung
 
-1. **Die Liste ist leer.** Alle Arbeitspunkte sind abgearbeitet (C3 0.28.0,
+1. **Die Liste ist nicht mehr leer — es gibt datierte P0-Punkte.** Am
+   19.09.2026 kamen A14–A16 und H6–H10 aus dem
+   [Regime-Befund](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5 dazu; die
+   Reihenfolge dort ist **Phasen mit Frist**, nicht Prioritäten: Phase 0
+   (bis 30.09.2026: A16 messen, H7 Pool, H8 Zähler, H9 Alarme, H10 = M5
+   vorziehen, H6 vorbereiten) → Phase 1 (Okt–Dez: aus dem echten Bruch lernen,
+   Regime-Kalender als Daten wie `price_law_local`) → Phase 2 (bis 31.12.2026:
+   dauerhafte Deckel-Schicht `cap(t)`, sobald die Ausgestaltung bekannt ist,
+   A15). **Umgekehrte Priorität gegenüber dem ersten Entwurf:** Der Rabatt ist
+   ein befristeter Übergang (3 Monate), der Deckel ein Dauerzustand — der
+   Entwurf investierte die Architektur in den Übergang und behandelte den
+   Dauerzustand als einzeiliges `min()`.
+   Davor galt: Alle Arbeitspunkte waren abgearbeitet (C3 0.28.0,
    C5/C8/G4 0.29.0, D4/H3 0.31.0, C7/A12/A13 0.32.0, E2E/B8/B10 0.38.0,
    Optimierungs-Befund Batch 1–8 bis 0.54.0); die vier Reste B25, C13, B22 und
    C12 sind am 18.09.2026 als *nicht nötig* geschlossen
    ([oben](#geschlossen-als-nicht-nötig-18092026)). Was hier künftig
-   einzieht, kommt aus dem Betrieb — nicht aus einem Befund. Neue Panels und
+   einzieht, kommt aus dem Betrieb. Neue Panels und
    die Profil-Verwaltung landen weiter in `views/`/`components/` statt in
    `Dashboard.tsx` (D1, 0.19.0).
 2. **B7-Follow-up entschieden (0.31.0)**: `route/evaluate` **bleibt** ein

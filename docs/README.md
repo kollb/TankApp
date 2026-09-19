@@ -4,7 +4,7 @@
 nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 [`docs/archiv/`](archiv/README.md) — nichts wird stillschweigend gelöscht.
 
-> Stand: 18.09.2026 · App-Version **0.54.0**
+> Stand: 19.09.2026 · App-Version **0.55.1**
 > Was sich zuletzt geändert hat: [CHANGELOG](../CHANGELOG.md) ·
 > was als Nächstes ansteht: [TODO](../TODO.md)
 
@@ -16,6 +16,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 | wissen, was im Dauerbetrieb zu tun ist (systemd, Backup, Alarme, Fehlersuche) | [BETRIEB.md](BETRIEB.md) |
 | einen 24/7-Zugang über den RP2 (Fallback-GUI + NAS-Proxy) | [RP2.md](RP2.md) |
 | die GUI neu entwerfen (6 Bereiche, Erklär-Treppe, Labor) | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) |
+| die UX-Vision (Navigation 3+1, Parameterschrank), die mathematische Tiefenprüfung M1–M8 **und** die Regime-Wechsel Tankrabatt (01.10.2026) / Spritpreisdeckel (01.01.2027) nachlesen — Teil 5 mit Fristen, Konzept R1–R5 und Messtabellen | [BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md) |
 | wissen, warum sich die GUI trotz grüner TODO-Listen noch schwer anfühlt (UX-Befund U1–U8, in 0.41.0 umgesetzt) | [archiv/GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) |
 | nachlesen, welche Befunde die App geformt haben (Optimierungs-Befund O1–O44, Text-Befund T1–T13, 12-Uhr-Regel, B30 — alle abgearbeitet) | [archiv/README.md](archiv/README.md) |
 | den abgeschlossenen GUI-Neuentwurf nachvollziehen (Phasen-Checkliste) | [UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md) |
@@ -37,7 +38,7 @@ nach ihrer Aufgabe. Veraltete Dokumente und Stichtags-Prüfberichte liegen in
 Die Stand-Zeile oben in jedem Dokument nennt Datum und App-Version, **gegen die
 der Inhalt zuletzt durchgesehen wurde**. Diese Dokumente stehen bewusst auf
 älteren Ständen: Ihr Inhalt ist dadurch nicht falsch geworden, aber er ist auch
-nicht gegen 0.54.0 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
+nicht gegen 0.55.1 geprüft — wer sie anfasst, zieht die Stand-Zeile mit.
 0.54.0 schließt Batch 8 des Optimierungs-Befunds ab und damit den ganzen
 Befund: Die Belegmaske zeigt den Live-Preis der Station mit Alter und markiert
 eine Abweichung ab 1,0 ct/L (O32), und die Textalternative eines Diagramms
@@ -100,7 +101,6 @@ Mitgezogen sind [API.md](API.md), [BETRIEB.md](BETRIEB.md),
 | Dokument | Stand | Warum nicht mitgezogen |
 |---|---|---|
 | [API.md](API.md) | 0.52.0 | 0.53.0 ist reine GUI-Arbeit: kein Endpunkt, kein Payload, kein Fehlercode angefasst — die Endpunkt-Beschreibung bleibt gültig, geprüft ist sie gegen 0.52.0 |
-| [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | 0.51.0 | Offline-Werkzeuge und Datenquellen; Batch 7 ist ein Server-/CI-Batch und 0.53.0 reine GUI-Arbeit — keins von beiden fasst ein Werkzeug an |
 | [RP2.md](RP2.md) | 0.49.1 | Batch 6 ändert nichts am Pi-Fallback: Score, Streifen, Bilanz, Labor und Rückblick laufen auf dem NAS. Der Fallback liefert weiterhin die Stations-Form aus 0.49.1 |
 | [BETRIEB.md](BETRIEB.md) | 0.53.0 | 0.54.0 ist reine GUI-Arbeit: kein Dienst, kein Cron, kein Alarm, kein Backup-Pfad angefasst — Abläufe und Störungsfälle bleiben gültig, geprüft sind sie gegen 0.53.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 | Budgets, Lasttest und Lighthouse-Schwellen sind von 0.54.0 unberührt. Der dort beschriebene `@sparticuz/chromium`-Weg ist für dieses Release erneut gelaufen (38/38 bzw. 25 grün / 11 skipped) und stimmt unverändert; durchgesehen ist das Dokument im Ganzen gegen 0.53.0 |
@@ -175,6 +175,7 @@ Commits und Kommentare noch zeigen.
 | [API.md](API.md) | Alle `/api/v1/*`-Endpunkte mit Parametern, Antworten, Fehlercodes, Deprecation, Beispielen |
 | [ENGINE.md](ENGINE.md) | Modellwerkstatt: 12-Uhr-Regel, Datenqualität, Backtest-Rezepte, InfluxDB-Diagnose, Preis-Zwillinge, offene M3-Punkte |
 | [DATENWERKZEUGE.md](DATENWERKZEUGE.md) | Gebündelte Befehle (`tankapp.py …`), interne Einzelprogramme, Archiv- und Analyse-CSV-Schema, optionale vertiefte Stationsanalyse |
+| [BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md) | Stichtagsprüfung 19.09.2026 in fünf Teilen: UX-Konzept (Navigation 3+1, Parameterschrank), mathematische Tiefenanalyse M1–M8, nächste Schritte, Batch-Plan B0–B6 und **Teil 5** Regime-Wechsel Tankrabatt/Spritpreisdeckel mit Konzept R1–R5, Phasenplan und Messtabellen |
 | [UI-NEUENTWURF.md](UI-NEUENTWURF.md) | Gesamtkonzept der nächsten GUI-Iteration: Diagnose, 7 Leitideen, 6 Bereiche (Jetzt/Stationen/Woche/Ich/Labor/System), Erklär-Treppe, Zustände S0–S3 und Stufen A/B/C, API-Vision, 4 Migrationsphasen |
 | [GUI-UX-BEFUND.md](archiv/GUI-UX-BEFUND.md) | Vermessung der gebauten GUI gegen den Entwurf: Typografie, Geräte-Raster, Routing, Erklär-Treppe, Designsystem, Gate-Selbsttäuschung, Props-Drilling — Befunde U1–U8 mit DoD, umgesetzt in 0.41.0 (archiviert mit Erledigt-Vermerk) |
 | [TEXT-BEFUND-2026-09-15.md](archiv/TEXT-BEFUND-2026-09-15.md) | **Archiviert.** Lektorat aller Nutzertexte gegen MICROCOPY: Wochenlinie-Widerspruch, Feedback-Kanal, Tankmengen-Spannen, Tagebuch-Worte, Namens-Drift, Anglizismen, Pfade im Text — Befunde T1–T13, erledigt in 0.39.0 |
