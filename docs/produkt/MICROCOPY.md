@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 19.09.2026 · App-Version **0.55.2** · gilt für `web/src/**`,
+> Stand: 20.09.2026 · App-Version **0.60.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt.
@@ -262,6 +262,8 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 | Coverage-Gate | Fenster wie geliefert (`06–24 Uhr`) — kein zweites „Uhr“; Bestwert und Schwelle über `percentLabel` |
 | Diagnose-Export | Knopf `Diagnose als Datei` — JSON mit Version, Zustand, Coverage, letzten Log-Zeilen, ohne Tokens |
 | PWA | `der Service-Worker liegt unter /sw.js` — die Shell trägt die App-Version, ein wartender Worker meldet sich als „Neue Version verfügbar“; Belege/Vorsätze warten offline in der Queue und gehen raus, sobald die Verbindung steht (B10) |
+| Outbox-Karte (I1, 0.60.0) | Überschrift `Offline-Queue (Outbox)` + Badge `<n> offen` · `leer`; Satz `Belege und Vorsätze, die ohne Verbindung erfasst wurden, liegen hier, bis sie nachgereicht sind. …` — Endzustände `abgelehnt` · `abgelaufen` mit Fehlercode und Alter, nie still verworfen; Knöpfe `Outbox als JSON` · `Outbox als CSV` · `Abgeschlossene entfernen`; Zähler `<n> in der Historie`; nach dem Entfernen `<n> entfernt — der Nachweis bleibt im Export.`; Fußnote nennt IndexedDB-Name und 30-Sekunden-Takt |
+| Header-Banner wartender Einträge (I1) | warn-Ton: `Ein Eintrag ist lokal vorgemerkt und geht raus, sobald die Verbindung steht.` (Plural: `<n> Einträge sind …`), bei offenem Eintrag älter als eine Stunde angehängt `Der älteste wartet seit <Alter>.`; nur Endzustände: `Die Outbox hat sichtbare Endzustände.`; Note: `Nichts ist verloren; die Einträge liegen im Browser.` + `… abgelehnt oder abgelaufen — sichtbar unter „System“ → Diagnose.` |
 | API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
 | Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
 

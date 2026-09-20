@@ -158,6 +158,9 @@ _FILL_STATUS = {
     # B11: Belegter Feedback-Store — der Server kann gerade nicht schreiben,
     # der Request war aber korrekt. 503 (wiederholbar), nicht 400.
     "store_locked": 503,
+    # S3: Defekter Feedback-Store — das Schreiben ist gesperrt, bis der
+    # Bestand wiederhergestellt ist. 5xx statt 400: der Request war korrekt.
+    "store_corrupted": 503,
 }
 
 # A1: Statuscodes der Profil-Endpunkte — Fach-Codes 4xx, Rest 503
@@ -177,6 +180,8 @@ _PROFILE_STATUS = {
     "profiles_read_failed": 503,
     "profile_write_failed": 503,
     "store_too_large": 503,
+    # S3: Defekter Profil-Store — Schreiben gesperrt, bis wiederhergestellt.
+    "profiles_corrupted": 503,
 }
 
 

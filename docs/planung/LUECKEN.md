@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 20.09.2026 · App-Version 0.59.2
+> Stand: 20.09.2026 · App-Version 0.60.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -97,7 +97,7 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |
 | `w(h)` | Mindestens acht Füllungen für eine belastbare persönliche Rückkopplung |
 | Winter/Regime | Erster Regel-Winter separat prüfen; Simulationen nicht als Live-Messung verbuchen |
-| Ledger-Persistenz | Überschreiben beschädigter Stores und Verlust archivierter Zeilen aus der Langzeitbilanz sind bestätigt (NP1/NP5); die Speichertechnik bleibt gesondert zu entscheiden |
+| Ledger-Persistenz | Überschreiben beschädigter Stores ist seit 0.60.0 fail-closed (NP1/S3); der Verlust archivierter Zeilen aus der Langzeitbilanz bleibt offen (NP5); die serverseitige Speichertechnik bleibt gesondert zu entscheiden (die Browser-Queue ist seit 0.60.0 eine Outbox in IndexedDB) |
 | NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen |
 | Backup/Restore | Dateialter belegt keine Wiederherstellbarkeit; datenbankkonsistente Influx-Sicherung und vollständiger Restore-Nachweis fehlen im Audit |
 | NAS-Kampagnenquote | 6/2/2 nur offline; Bedarf am realen Mehrstadtbetrieb messen, nicht als NAS-Funktion behaupten |

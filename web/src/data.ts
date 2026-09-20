@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { WebhookState } from "./system";
-import { enqueueWrite, isTransportError } from "./offline-queue";
+import {
+  enqueueWrite,
+  isTransportError,
+  type OutboxSendResult,
+} from "./outbox";
 import { authHeaders, onReadTokenChange } from "./readToken";
 
 export type Fuel = "e10" | "e5" | "diesel";
@@ -1349,14 +1353,30 @@ export async function postIntent(episodeId: string, intent: string) {
       body,
     });
     if (isTransportError(res.status)) {
-      const list = enqueueWrite({ kind: "intent", path, body });
-      return { queued: true, queue_length: list.length };
+      return await queueOrReport({ kind: "intent", path, body });
     }
     return await res.json();
   } catch {
-    const list = enqueueWrite({ kind: "intent", path, body });
-    return { queued: true, queue_length: list.length };
+    return await queueOrReport({ kind: "intent", path, body });
   }
+}
+
+/**
+ * I1: Vormerken mit ehrlicher Antwort. `queue_full` (Puffer voll) und
+ * `storage_failed` (Browser-Speicher hat nicht angenommen) sind Fehlschläge
+ * — vorher hieß jede Störung „queued“, und der Eintrag war weg.
+ */
+async function queueOrReport(entry: {
+  kind: "fill" | "intent";
+  path: string;
+  body: string;
+}): Promise<
+  | { queued: true; queue_length: number }
+  | { queued: false; queue_error: "queue_full" | "storage_failed" }
+> {
+  const result = await enqueueWrite(entry);
+  if (result.ok) return { queued: true, queue_length: result.open };
+  return { queued: false, queue_error: result.error };
 }
 
 /** Antwort des Startknopfs: POST /api/v1/jobs/{job}/run (B6, ohne Passwort). */
@@ -1514,24 +1534,28 @@ export async function postFill(payload: {
       body,
     });
     if (isTransportError(res.status)) {
-      const list = enqueueWrite({ kind: "fill", path: "/api/v1/fills", body });
-      return { queued: true, queue_length: list.length };
+      return await queueOrReport({ kind: "fill", path: "/api/v1/fills", body });
     }
     return await res.json();
   } catch {
-    const list = enqueueWrite({ kind: "fill", path: "/api/v1/fills", body });
-    return { queued: true, queue_length: list.length };
+    return await queueOrReport({ kind: "fill", path: "/api/v1/fills", body });
   }
 }
 
 /**
- * B10: Versand eines vorgemerkten Eintrags. `permanent` unterscheidet die
- * Ablehnung (4xx → nicht wiederholen, melden) vom Verbindungsproblem.
+ * B10/I1: Versand eines vorgemerkten Eintrags.
+ *
+ * `permanent`: der Server hat eine Entscheidung getroffen — 4xx ohne 429
+ * (ungültige Liter, fremde Station) und S3-Zustände (defekter Ledger- oder
+ * Profil-Store, Store zu groß). Diese Einträge werden nicht wiederholt,
+ * sondern sichtbar abgelehnt: Wiederholen würde am selben Zustand scheitern.
+ * 429 bleibt wiederholbar (`retryAfterSeconds` aus `Retry-After`, sonst
+ * Outbox-Backoff) — „zu schnell“ ist kein „nie“.
  */
 export async function postQueued(entry: {
   path: string;
   body: string;
-}): Promise<{ ok: boolean; permanent?: boolean; error?: string | null }> {
+}): Promise<OutboxSendResult> {
   try {
     const res = await fetch(entry.path, {
       method: "POST",
@@ -1539,13 +1563,37 @@ export async function postQueued(entry: {
       body: entry.body,
     });
     if (res.ok) return { ok: true };
+    if (res.status === 429) {
+      const retryAfter = parseRetryAfter(res.headers.get("Retry-After"));
+      return { ok: false, error: "rate_limited", retryAfterSeconds: retryAfter };
+    }
     if (res.status >= 400 && res.status < 500) {
+      let code: string | null = null;
+      try {
+        const data = (await res.json()) as { error_code?: unknown };
+        if (typeof data?.error_code === "string") code = data.error_code;
+      } catch {
+        /* Kein JSON-Body — der Status entscheidet. */
+      }
+      if (
+        code === "store_corrupted" ||
+        code === "profiles_corrupted" ||
+        code === "store_too_large"
+      ) {
+        return { ok: false, permanent: true, error: code };
+      }
       return { ok: false, permanent: true, error: `http_${res.status}` };
     }
     return { ok: false, error: `http_${res.status}` };
   } catch {
     return { ok: false, error: "offline" };
   }
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
 function newFillId(): string {
@@ -2902,6 +2950,14 @@ export const messages: Record<string, string> = {
     "Persönlicher Speicher ist voll. Bitte den Betreiber informieren (Store zu groß).",
   store_locked:
     "Speicher ist gerade belegt — in ein paar Sekunden erneut versuchen.",
+  store_corrupted:
+    "Persönlicher Speicher (Ledger) ist beschädigt — nichts wurde ersetzt. Die defekte Datei liegt in der Quarantäne, der letzte gute Stand in der Laufzeit-Sicherung; Schritte: „System“ → Diagnose, Abschnitt „Offline-Queue & Speicher“.",
+  profiles_corrupted:
+    "Profil-Speicher ist beschädigt — nichts wurde ersetzt. Die defekte Datei liegt in der Quarantäne; Wiederherstellung aus der Laufzeit-Sicherung, Schritte: „System“ → Diagnose.",
+  queue_full:
+    "Der lokale Puffer ist voll — der Eintrag wurde nicht vorgemerkt. Offene Einträge übertragen oder abgeschlossene entfernen (System → Diagnose).",
+  queue_storage_failed:
+    "Der lokale Speicher hat nicht angenommen (Browser-Speicher voll oder gesperrt) — der Eintrag ist nicht gesichert, bitte erneut versuchen.",
   unauthorized:
     "Zugang gesperrt — der Server verlangt ein Lese-Token für persönliche Daten. Im Bereich „System“ unter „Persönliche Daten im Netz“ eintragen.",
   not_implemented: "Dieser Endpunkt ist (bewusst) nicht implementiert.",

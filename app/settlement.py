@@ -13,6 +13,8 @@ from .feedback import settle_snapshots
 def run_settlement_job(settings) -> dict[str, str | None]:
     try:
         from .data import LiveData
+        from .feedback import StoreCorrupted, StoreTooLarge
+        from .worker import JobAborted
 
         live = LiveData(settings)
         result = settle_snapshots(settings, live_data=live)
@@ -23,6 +25,16 @@ def run_settlement_job(settings) -> dict[str, str | None]:
             flush=True,
         )
         return {"state": "success", "error_code": None}
+    except JobAborted:
+        # S4: Abbruch ist kein Job-Fehler — der Worker-Handler hat den
+        # `aborted`-Zustand geschrieben; der Lauf endet hier.
+        raise
+    except StoreCorrupted:
+        # S3: defekter Bestand — benannter Code statt generischem Fehler;
+        # der Worker verschiebt den nächsten Versuch auf den Tagestakt.
+        return {"state": "failed", "error_code": "store_corrupted"}
+    except StoreTooLarge:
+        return {"state": "failed", "error_code": "store_too_large"}
     except Exception as exc:
         print(
             f"settlement: {type(exc).__name__}; Details werden nicht ausgegeben.",

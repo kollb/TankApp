@@ -1471,8 +1471,15 @@ def test_run_with_prior_running_records_abort_then_succeeds(tmp_path, monkeypatc
 
 
 @pytest.mark.skipif(os.name != "posix", reason="SIGTERM-Handler ist POSIX-only")
-def test_sigterm_marks_aborted_then_completion_wins(tmp_path, monkeypatch):
-    """B24(a): SIGTERM schreibt `aborted`; läuft der Job doch zu Ende, gewinnt das Ergebnis."""
+def test_sigterm_keeps_aborted_and_exits_aborted(tmp_path, monkeypatch):
+    """S4: SIGTERM ist ein Abbruch — `aborted` bleibt stehen, Exit-Code 3.
+
+    Der alte Vertrag („läuft er doch zu Ende, gewinnt das Ergebnis“) ist
+    genau die Lücke aus Befund S4: Arbeit nach dem Abbruchssignal wurde als
+    `success` verbucht, obwohl der Container im Prozess starb. Seit S4
+    wirft der Handler `JobAborted`, der Lauf stoppt, und der
+    `aborted`-Zustand kann nicht mehr von `success` überschrieben werden.
+    """
     import signal
     import threading
 
@@ -1498,15 +1505,15 @@ def test_sigterm_marks_aborted_then_completion_wins(tmp_path, monkeypatch):
 
     sender = threading.Thread(target=send_term, daemon=True)
     sender.start()
-    assert worker.run("models", settings) == 0
+    # S4: Abbruch bedeutet Exit-Code 3 — weder 0 (Erfolg) noch 2 (Fehler).
+    assert worker.run("models", settings) == 3
     sender.join(timeout=5)
     log = (settings.runtime / "jobs" / "models.log").read_text(encoding="utf-8")
     assert "abgebrochen in Phase 'fit'" in log
-    # Der Lauf wurde trotz SIGTERM regulär zu Ende geführt → das Ergebnis zählt.
-    assert (
-        json.loads((settings.runtime / "jobs" / "models.json").read_text())["state"]
-        == "success"
-    )
+    record = json.loads((settings.runtime / "jobs" / "models.json").read_text())
+    # Der Abbruch bleibt stehen: kein `success`-Override mehr.
+    assert record["state"] == "aborted"
+    assert record["error_code"] == "aborted"
 
 
 def test_nas_up_warns_while_model_job_is_running(tmp_path, monkeypatch, capsys):

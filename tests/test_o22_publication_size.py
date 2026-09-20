@@ -21,6 +21,7 @@ Geprüft wird der Batch-Check:
 """
 
 import datetime as dt
+import hashlib
 import json
 import math
 
@@ -403,6 +404,18 @@ def _write_split(settings, rows):
     )
 
 
+def _station_file(settings, row, generation):
+    """A1: Stations-Datei liegt in ihrer Generation, nicht flach unter forecasts/."""
+    return (
+        settings.runtime
+        / "engine"
+        / "forecasts"
+        / "generations"
+        / generation
+        / forecast_file_name(row)
+    )
+
+
 def test_twenty_stations_split_stay_readable(settings, cfg):
     """20 Stationen (zwei Städte) über der Monolith-Klippe — lesbar dank Aufteilung.
 
@@ -435,8 +448,8 @@ def test_twenty_stations_split_stay_readable(settings, cfg):
 def test_split_missing_station_file_is_incomplete_not_silent(settings, cfg):
     """Fehlt eine Stations-Datei, ist das ein Alarm — nicht „keine Prognose“."""
     rows = [_forecast_row(position, cfg) for position in range(3)]
-    _write_split(settings, rows)
-    victim = settings.runtime / "engine" / "forecasts" / forecast_file_name(rows[1])
+    sizes = _write_split(settings, rows)
+    victim = _station_file(settings, rows[1], sizes["generation"])
     victim.unlink()
     clear_publication_cache()
 
@@ -457,8 +470,8 @@ def test_split_missing_station_file_is_incomplete_not_silent(settings, cfg):
 def test_split_oversized_station_file_is_an_error(settings, cfg):
     """Eine einzelne Stations-Datei über dem Limit — die Klippe gilt je Datei."""
     rows = [_forecast_row(0, cfg)]
-    _write_split(settings, rows)
-    path = settings.runtime / "engine" / "forecasts" / forecast_file_name(rows[0])
+    sizes = _write_split(settings, rows)
+    path = _station_file(settings, rows[0], sizes["generation"])
     padding = "x" * (READ_JSON_MAX_BYTES + 100_000)
     write_json(path, {"forecast": rows[0], "padding": padding}, indent=None)
     clear_publication_cache()
@@ -477,6 +490,7 @@ def test_split_index_alone_carries_no_forecast_payload(settings, cfg):
         (settings.runtime / "engine" / "current.json").read_text(encoding="utf-8")
     )
     assert index["layout"] == "split-forecast-files"
+    assert index["generation"]
     for entry in index["forecasts"]:
         assert set(entry) == {
             "city",
@@ -485,5 +499,144 @@ def test_split_index_alone_carries_no_forecast_payload(settings, cfg):
             "origin",
             "retained_previous",
             "file",
+            "sha256",
         }
-        assert (settings.runtime / "engine" / entry["file"]).is_file()
+        # A1: Die Datei muss in der Index-Generation liegen und zur
+        # Station/Fahrstoff-Zeile passen — sonst wäre der Zeiger nutzlos.
+        assert entry["file"] == (
+            f"forecasts/generations/{index['generation']}/{forecast_file_name(entry)}"
+        )
+        path = settings.runtime / "engine" / entry["file"]
+        assert path.is_file()
+        part = json.loads(path.read_text(encoding="utf-8"))
+        assert part["generation"] == index["generation"]
+        assert part["forecast"]["station_id"] == entry["station_id"]
+        assert part["forecast"]["fuel"] == entry["fuel"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
+
+
+def test_tampered_station_file_is_corrupt_not_silent(settings, cfg):
+    """A1: Summen-/Identitätsabweichung pro Datei — Leser meldet corrupt,
+    statt die halbe Generation still zu verwerfen."""
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    sizes = _write_split(settings, rows)
+    victim = _station_file(settings, rows[1], sizes["generation"])
+    # Wert fälschen, JSON bleibt gültig — Summe + Identität stimmen nicht mehr.
+    part = json.loads(victim.read_text(encoding="utf-8"))
+    part["forecast"]["data_age_minutes_at_origin"] += 42.0
+    victim.write_text(json.dumps(part), encoding="utf-8")
+    clear_publication_cache()
+
+    bundle = publication(settings)
+    assert bundle["generation"] == sizes["generation"]
+    assert len(bundle["forecasts"]) == 2  # die übrigen bleiben verfügbar
+    skipped = bundle["skipped_forecast_files"][0]
+    assert skipped["reason"] == "corrupt"
+    assert rows[1]["station_id"] in skipped["file"]
+
+    # Wie bei „incomplete“: Health nennt den Grund — laut statt still.
+    status = publication_status(settings)
+    assert status["error_code"] == "publication_unreadable"
+    assert status["reason"] == "corrupt"
+
+
+def test_readers_never_mix_generations(settings, cfg):
+    """A1: Ein Leser sieht nur die Generation, auf die sein Index zeigt —
+    eine im Flug unterbrochene neue Generation ist unsichtbar."""
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    first = _write_split(settings, rows)
+    # Unterbrochener zweiter Lauf: neue Generation nur zur Hälfte auf Platte,
+    # Index noch auf der ersten Generation.
+    half_generation = "999999999999999-abcdef01"
+    half_dir = (
+        settings.runtime / "engine" / "forecasts" / "generations" / half_generation
+    )
+    half_dir.mkdir()
+    write_json(
+        half_dir / forecast_file_name(rows[0]),
+        {
+            "schema_version": 1,
+            "generation": half_generation,
+            "published_at": ORIGIN.isoformat(),
+            "forecast": rows[0],
+        },
+    )
+
+    status = publication_status(settings)
+    assert status["readable"] is True
+    assert status["reason"] is None
+    assert status["generation"] == first["generation"]
+
+    bundle = publication(settings)
+    assert bundle["generation"] == first["generation"]
+    assert len(bundle["forecasts"]) == 3
+    # Vollständig: alle Zeiger zeigen in die alte Generation, keine in die
+    # halbgeschriebene neue.
+    for entry in bundle["forecasts"]:
+        assert entry["file"].startswith(f"forecasts/generations/{first['generation']}/")
+    assert "skipped_forecast_files" not in bundle
+
+
+def test_warm_reader_keeps_its_own_generation_until_memo_goes(settings, cfg):
+    """A1: Ein Prozess, der die erste Generation gemerkt hat, liefert weiter
+    diesen vollständigen Stand — nicht die Hälfte des neuen Tauschs."""
+    from app.data import write_split_publication
+
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    first = _write_split(settings, rows)
+    warm = publication(settings)  # memoisiert
+    assert warm["generation"] == first["generation"]
+
+    # Zweiter Lauf ohne Cache-Reset: der Warm-Reader weiß nicht Bescheid.
+    second = write_split_publication(
+        settings.runtime / "engine",
+        ORIGIN.isoformat(),
+        rows,
+        index_extra={
+            "failures": [],
+            "policies": [{"mode": "bootstrap"}],
+            "archive_quality": {"events": 1},
+            "gapfill_quality": {"filled": 0},
+            "model_file": "models-test.json",
+            "calibrated": False,
+            "decision_ready": False,
+        },
+    )
+    assert second["generation"] != first["generation"]
+
+    # Der gemerkte Stand bleibt, was er war: vollständige erste Generation —
+    # kein Mischbild aus dem neuen Tausch.
+    assert warm["generation"] == first["generation"]
+    assert len(warm["forecasts"]) == 3
+    assert "skipped_forecast_files" not in warm
+    for entry in warm["forecasts"]:
+        assert entry["file"].startswith(f"forecasts/generations/{first['generation']}/")
+
+    # Neuer Aufruf: der Index-Stempel hat sich geändert → vollständig neuer
+    # Stand, ebenfalls eine einzige Generation.
+    fresh = publication(settings)
+    assert fresh is not warm
+    assert fresh["generation"] == second["generation"]
+    assert len(fresh["forecasts"]) == 3
+    assert "skipped_forecast_files" not in fresh
+    for entry in fresh["forecasts"]:
+        assert entry["file"].startswith(
+            f"forecasts/generations/{second['generation']}/"
+        )
+
+
+def test_previous_generation_survives_and_older_ones_are_removed(settings, cfg):
+    """A1: Die vorherige Generation bleibt lesbar, ältere werden abgeräumt."""
+    engine = settings.runtime / "engine"
+    rows = [_forecast_row(position, cfg) for position in range(3)]
+    first = _write_split(settings, rows)
+    second = _write_split(settings, rows)
+    gens = {p.name for p in (engine / "forecasts" / "generations").iterdir()}
+    assert gens == {first["generation"], second["generation"]}
+
+    third = _write_split(settings, rows)
+    gens = {p.name for p in (engine / "forecasts" / "generations").iterdir()}
+    assert gens == {second["generation"], third["generation"]}
+    assert not (engine / "forecasts" / "generations" / first["generation"]).exists()
+    # Die veraltete Generation ist kein Fehlalarm mehr.
+    assert publication_status(settings)["error_code"] is None

@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 20.09.2026 · App-Version 0.59.2
+> Stand: 20.09.2026 · App-Version 0.60.0
 
 ## Inhaltsverzeichnis
 
@@ -29,25 +29,14 @@ beauftragen.
 
 Grundlage ist der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md).
 Die folgenden Punkte betreffen nachgewiesene Vertragsverletzungen, keine
-neuen Features. Diese Korrekturgruppen sind noch nicht umgesetzt. Alternative
+neuen Features. NP1 ist umgesetzt (Release 0.60.0); NP2–NP6 sind noch offen. Alternative
 Architekturen, neue Schreibauthentisierung, Hardwarebudgets und optionale
 Pi-Inferenz sind damit nicht automatisch beauftragt.
 
-#### NP1 — P0: Belegpersistenz und Veröffentlichung sichern
-
-- [ ] Offline-Queue und Aufrufer korrigieren (I1): Erfolg erst nach lokaler
-  Persistenz bestätigen; parallele Enqueues beim Flush erhalten; 429 mit
-  Retry behandeln; abgelaufene/abgelehnte Einträge sichtbar halten.
-  **Abnahme:** Voller/gesperrter Speicher, A senden + B einreihen und
-  Mehrtab-/429-Gegenproben verlieren keinen bestätigten Eintrag.
-- [ ] Beschädigte oder unlesbare bestehende Ledger-/Profil-Stores von einem
-  Erststart unterscheiden und weitere Writes sperren (S3).
-  **Abnahme:** Fehlerhafte Bestandsdateien werden durch keine Mutation
-  überschrieben; intakte Belege und IDs sind wiederherstellbar.
-- [ ] Veröffentlichung generationskonsistent machen und nach Abbruch nicht
-  weiter committen (A1, S4). **Abnahme:** Fehler-Injektion nach jeder
-  Stationsdatei und SIGTERM liefern kalten wie warmen Lesern nur eine
-  vollständige Generation; kein nachträgliches `success` nach Abbruch.
+NP1 (Belegpersistenz, Ledger-Integrität, Publikationskonsistenz — I1, S3, A1,
+S4) ist mit [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)
+umgesetzt; die Gegenproben des Befunds laufen als dauerhafte
+Regressionstests.
 
 #### NP2 — P0: Bestehenden Leseschutz und Worker-Cache durchsetzen
 

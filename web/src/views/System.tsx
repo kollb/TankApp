@@ -84,6 +84,17 @@ import {
 } from "../system";
 import type { LabSectionId } from "../lab";
 import { readToken, setReadToken } from "../readToken";
+import {
+  clearTerminal,
+  exportCsv,
+  exportSnapshot,
+  listEntries,
+  listHistory,
+  OPEN_STATES,
+  subscribeOutbox,
+  TERMINAL_STATES,
+  type OutboxEntry,
+} from "../outbox";
 import { useOverview } from "../state/overview";
 
 // U8: Die System-View holt sich ihre Daten aus dem OverviewContext. Von der
@@ -194,6 +205,60 @@ export function SystemView(props: SystemViewProps) {
   // Darüber-scrollen ein Secret liest.
   const [tokenDraft, setTokenDraft] = useState("");
   const [tokenSaved, setTokenSaved] = useState<string | null>(null);
+
+  // I1: Outbox (Browser-Schreibwarteschlange) — offene Einträge, sichtbare
+  // Endzustände (abgelehnt/abgelaufen), Export (JSON/CSV) und die
+  // Nutzer-Entfernung. Die Buchhaltung liegt in `outbox.ts` (IndexedDB);
+  // die View zeigt nur.
+  const [outboxEntries, setOutboxEntries] = useState<OutboxEntry[]>([]);
+  const [outboxHistoryCount, setOutboxHistoryCount] = useState(0);
+  const [outboxNote, setOutboxNote] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () => {
+      void Promise.all([listEntries(), listHistory()]).then(([entries, history]) => {
+        if (!live) return;
+        setOutboxEntries(entries);
+        setOutboxHistoryCount(history.length);
+      });
+    };
+    load();
+    return subscribeOutbox(load);
+  }, []);
+  const outboxOpen = outboxEntries.filter((entry) =>
+    OPEN_STATES.includes(entry.state),
+  ).length;
+  const outboxTerminal = outboxEntries.filter((entry) =>
+    TERMINAL_STATES.includes(entry.state),
+  );
+  const downloadOutbox = (kind: "json" | "csv") => {
+    void exportSnapshot().then((snapshot) => {
+      const body =
+        kind === "json" ? JSON.stringify(snapshot, null, 2) : exportCsv(snapshot);
+      const blob = new Blob([body], {
+        type:
+          kind === "json"
+            ? "application/json;charset=utf-8"
+            : "text/csv;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `tankapp-outbox-${new Date().toISOString().slice(0, 10)}.${kind}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+  };
+  const clearOutboxTerminal = () => {
+    void clearTerminal().then((count) => {
+      setOutboxNote(
+        count > 0
+          ? `${countLabel(count)} entfernt — der Nachweis bleibt im Export.`
+          : null,
+      );
+      void listEntries().then(setOutboxEntries);
+    });
+  };
   const tokenSet = readToken() !== "";
   const readProtected = h?.personal_data?.read_protected === true;
 
@@ -992,6 +1057,92 @@ export function SystemView(props: SystemViewProps) {
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               Gerätelokal im Browser gespeichert und als Header geschickt — nie in einer URL, also nicht in Logs. Schreib-Endpunkte bleiben offen (eigenes Budget); Entscheidung und Umfang:{" "}
               <code className="text-slate-400">docs/betrieb/BETRIEB.md</code>, Abschnitt „Zugriff im LAN“.
+            </p>
+          </div>
+          {/* I1: Outbox — was offline erfasst wurde, steht hier, bis es
+              nachgereicht ist. Endzustände sind sichtbar, exportierbar und
+              vom Nutzer entfernbar — nichts wird still verworfen. */}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                <ScrollText size={14} className="text-sky-400" aria-hidden="true" />
+                Offline-Queue (Outbox)
+              </h3>
+              <Badge>{outboxOpen > 0 ? `${outboxOpen} offen` : "leer"}</Badge>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-300">
+              Belege und Vorsätze, die ohne Verbindung erfasst wurden, liegen hier, bis sie nachgereicht sind. Abgelehnte und abgelaufene Einträge bleiben sichtbar — nichts wird still verworfen. Mehrere Tabs arbeiten nebeneinander; jeder Eintrag hat einen sichtbaren Endzustand.
+            </p>
+            {outboxTerminal.length > 0 ? (
+              <ul className="mt-3 space-y-1">
+                {outboxTerminal.slice(0, 5).map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs text-slate-400 [overflow-wrap:anywhere]"
+                  >
+                    <span className="text-slate-300">
+                      {entry.kind === "fill" ? "Beleg" : "Auswahl"}
+                    </span>
+                    <span>{entry.path}</span>
+                    <span
+                      className={
+                        entry.state === "rejected"
+                          ? "text-rose-300"
+                          : "text-amber-300"
+                      }
+                    >
+                      {entry.state === "rejected" ? "abgelehnt" : "abgelaufen"}
+                    </span>
+                    {entry.last_error ? (
+                      <span className="text-slate-500">({entry.last_error})</span>
+                    ) : null}
+                    <span className="text-slate-600">
+                      {ageWord(Math.max(1, Math.floor((Date.now() - entry.created_at) / 60000)))}
+                    </span>
+                  </li>
+                ))}
+                {outboxTerminal.length > 5 ? (
+                  <li className="text-xs text-slate-500">
+                    …und {outboxTerminal.length - 5} weitere im Export.
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => downloadOutbox("json")}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Outbox als JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadOutbox("csv")}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Outbox als CSV
+              </button>
+              {outboxTerminal.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearOutboxTerminal}
+                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 hover:border-rose-400/60"
+                >
+                  Abgeschlossene entfernen
+                </button>
+              ) : null}
+              <span className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-400">
+                {outboxHistoryCount} in der Historie
+              </span>
+              {outboxNote ? (
+                <span role="status" className="text-xs text-slate-400">
+                  {outboxNote}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Im Browser gespeichert (IndexedDB, „tankapp.outbox.v1“); quittierte Einträge bleiben in der Historie nachweisbar. Der Nachreich-Takt läuft im 30-Sekunden-Takt mit — auch wenn das NAS in der Zwischenzeit neu gestartet hat.
             </p>
           </div>
         </div>

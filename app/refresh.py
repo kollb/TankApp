@@ -6,6 +6,7 @@ import uuid
 
 from .config import Settings, engine_config
 from .data import metadata, publication, write_split_publication
+from .worker import JobAborted
 
 
 # Aufgaben je Station: Fit+24 h, +3 d, +7 d, Backtest (siehe app/model_jobs.py).
@@ -273,6 +274,10 @@ def refresh(settings: Settings, now=None, progress=None):
                 cadence,
                 progress=progress,
             )
+        except JobAborted:
+            # S4: Abbruch läuft durch — kein „Lückenfüllung übersprungen“,
+            # das den Lauf nach SIGTERM weiterlaufen lassen würde.
+            raise
         except Exception as exc:
             # Die Füllung ist Kür: Scheitert sie, läuft das Training mit den
             # Lücken weiter statt ganz auszufallen — ehrlich vermerkt.
@@ -721,6 +726,10 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"models: Selektion {fuel}: {top_n} Top-Stationen, {city_n} Städte",
                         flush=True,
                     )
+            except JobAborted:
+                # S4: Abbruch läuft durch — „übersprungen“ wäre
+                # Weiterlaufen nach SIGTERM.
+                raise
             except Exception as exc:
                 print(
                     f"models: Selektion {fuel} übersprungen ({type(exc).__name__}: {exc})",
@@ -768,8 +777,13 @@ def refresh(settings: Settings, now=None, progress=None):
             ):
                 # O22(d): Der Lese-Pfad bringt je Zeile den Dateizeiger der
                 # aufgeteilten Veröffentlichung mit — er gehört nicht in die
-                # neu geschriebene Stations-Datei.
-                retained = {k: v for k, v in prior.items() if k != "file"}
+                # neu geschriebene Stations-Datei. A1: Auch der ``sha256``-Wert
+                # gilt nur der alten Datei; die neue Generation bekommt ihren
+                # eigenen Hash. Modell-Origin und Veröffentlichungs-Generation
+                # sind nicht dasselbe — ``retained_previous`` trägt das.
+                retained = {
+                    k: v for k, v in prior.items() if k not in ("file", "sha256")
+                }
                 forecasts.append({**retained, "retained_previous": True})
         if progress:
             progress.phase(
@@ -854,6 +868,10 @@ def refresh(settings: Settings, now=None, progress=None):
                 f"{settings.runtime / 'selection'}/current.json",
                 flush=True,
             )
+        except JobAborted:
+            # S4: Abbruch läuft durch — kein Publish, kein „success“ nach
+            # SIGTERM.
+            raise
         except Exception as exc:
             print(
                 f"models: Selektion-Publish übersprungen ({type(exc).__name__})",

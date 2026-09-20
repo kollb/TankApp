@@ -39,8 +39,25 @@ PERSISTENT_ERROR_CODES = frozenset(
         "archive_not_configured",  # Netrc fehlt — ändert sich nicht stündlich
         "influx_not_configured",  # Influx-Zugang fehlt
         "selection_not_available",  # noch keine Artefakte (folgt dem Modell-Lauf)
+        # S3: Defekter Feedback-Store — wiederholbare Wiederholungen bringen
+        # nichts, bis der Bestand wiederhergestellt ist.
+        "store_corrupted",
+        "store_too_large",
     }
 )
+
+
+class JobAborted(Exception):
+    """S4: Der Lauf wurde abgebrochen (SIGTERM) — ab hier kein Commit mehr.
+
+    Wird vom Signal-Handler in den laufenden Code hinein geworfen, damit der
+    Lauf bis zu allen Commit-Stellen (Publikationen, Status-Dateien) aufgewickelt
+    wird, statt dass der Handler nur den Zustand notiert und der Code
+    weiterläuft. Breiter gefangene ``Exception``-Abschnitte auf dem Weg nach
+    oben (``app/refresh.py``, ``app/selection.py``, ``app/settlement.py``)
+    müssen sie durchreichen (``raise``), sonst verschlucken sie den Abbruch.
+    """
+
 
 # Schneller Wiederholungsversuch nach flüchtigen Fehlern (wie bisher).
 TRANSIENT_RETRY_SECONDS = 3600
@@ -123,7 +140,7 @@ def execute(name, settings, progress=None):
             if not result.get("by_fuel"):
                 return {"state": "waiting", "error_code": "selection_not_available"}
             return {"state": "success", "error_code": None}
-        except ModuleNotFoundError:
+        except (ModuleNotFoundError, JobAborted):
             raise
         except Exception as exc:
             detail = public_detail(exc)
@@ -175,20 +192,24 @@ def run(name, settings):
     progress.phase("start", message="Job gestartet")
     print(f"{name}: gestartet {started.isoformat()}", flush=True)
 
-    # B24(a): SIGTERM-Handler im Job-Prozess — schreibt den Zustand als
-    # `aborted` samt Abbruchphase. Die 20-s-Grace-Periode des Containers
-    # reicht dafür; der anschließende SIGKILL findet einen ehrlichen Zustand
-    # vor statt eines ewigen `running`.
+    # B24(a) + S4: SIGTERM-Handler im Job-Prozess. Der Handler schreibt den
+    # Zustand als `aborted` samt Abbruchphase **und wirft `JobAborted`** in
+    # den laufenden Code: Kehrt er nur zurück, läuft die Arbeit weiter und
+    # `finish` drückt `success` über den Abbruch (Prüfstand §5.4 des
+    # Befunds). Durch die Ausnahme wird der Lauf bis zu allen Commit-Stellen
+    # aufgewickelt — nach dem Abbruch gibt es weder `success` noch eine
+    # Veröffentlichung. Die 20-s-Grace-Periode des Containers reicht; der
+    # anschließende SIGKILL findet einen ehrlichen Zustand vor.
     previous_handler = None
-    aborted_flag = {"written": False}
+    abort = {"flag": False}
     if os.name == "posix":
 
         def _mark_aborted(signum, frame):
             if progress.done:
                 return  # beendet — das Ergebnis steht, kein Abbruch mehr
-            if aborted_flag["written"]:
+            if abort["flag"]:
                 return
-            aborted_flag["written"] = True
+            abort["flag"] = True
             finished = dt.datetime.now(dt.timezone.utc)
             record = {
                 **state,
@@ -208,10 +229,31 @@ def run(name, settings):
                 f"{finished.isoformat().replace('+00:00', 'Z')} {name}: "
                 f"abgebrochen in Phase '{progress.phase_key}' (SIGTERM)",
             )
+            raise JobAborted(f"{name}: SIGTERM in Phase '{progress.phase_key}'")
 
         previous_handler = signal.signal(signal.SIGTERM, _mark_aborted)
 
+    def _finish_aborted() -> int:
+        """S4: Abschlussvertrag eines Abbruchs — kein `success` mehr.
+
+        Der Handler hat den `aborted`-Zustand bereits geschrieben; hier
+        stehen nur noch Fortschritts-Notiz und ein eigener Exitcode
+        (3 = abgebrochen, 0 = Erfolg, 2 = reguläres Versagen), damit
+        Überwachungen den Abbruch vom Erfolg trennen können.
+        """
+        progress.finish(
+            "aborted",
+            "Abgebrochen (SIGTERM) — kein Ergebnis veröffentlicht.",
+        )
+        print(f"{name}: abgebrochen (SIGTERM)", flush=True)
+        return 3
+
     def finish(outcome):
+        # S4: Trifft SIGTERM zwischen „Arbeit erledigt“ und „Status
+        # geschrieben“, gewinnt der Abbruch — `success` nach `aborted`
+        # wäre ein widersprüchlicher Zustand.
+        if abort["flag"]:
+            return _finish_aborted()
         finished = dt.datetime.now(dt.timezone.utc)
         state_value = outcome["state"]
         code = outcome.get("error_code")
@@ -246,6 +288,11 @@ def run(name, settings):
     try:
         try:
             return finish(execute(name, settings, progress))
+        except JobAborted:
+            # S4: SIGTERM mitten in der Arbeit — der `aborted`-Zustand steht,
+            # der Lauf endet hier. `finish` (und damit `success`/`failed`)
+            # wird nicht mehr erreicht.
+            return _finish_aborted()
         except ModuleNotFoundError as exc:
             # Modulname ist Teil der Ursache („No module named pandas“) und trägt
             # keine Interna — deshalb anders als unten bereinigt, aber begrenzt.
@@ -274,6 +321,11 @@ def run(name, settings):
                 }
             )
             raise
+    except JobAborted:
+        # S4: SIGTERM traf einen Fehlerzweig, der gerade seinen eigenen
+        # Status schriebs — der Abbruch gewinnt trotzdem (seine Aufzeichnung
+        # liegt vor).
+        return _finish_aborted()
     finally:
         if previous_handler is not None:
             signal.signal(signal.SIGTERM, previous_handler)

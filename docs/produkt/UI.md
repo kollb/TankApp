@@ -1,8 +1,9 @@
 # Oberfläche und Interaktion
 
-> Stand: 20.09.2026 · App-Version 0.59.2
+> Stand: 20.09.2026 · App-Version 0.60.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
-> Layoutkorrektur: [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20).
+> Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
+> wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 
 ## Inhaltsverzeichnis
 
@@ -48,7 +49,7 @@ die nur über einen alten Haupttab erreichbar waren.
 | Stationen | Polling-Set, Karte, Vergleich und Stationsdetails | Tagesverlauf im Detail statt unbeschrifteter Mini-Linie in jeder Zeile |
 | Labor | Modell, Güte, Kalibrierung, Heatmaps und Begründungen | Markt-Labor und Live-Advice nicht mit persönlicher Bilanz vermengen |
 | Ich | Fahrzeug, Profile, Tankstand, Belege und Bilanz | Ein Intent ist kein Beleg |
-| System | Konfiguration, Jobs, Archiv, Collector, Alarme und Export | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
+| System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox und Export | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
 „Heute im Blick“ zeigt die drei Faktenzeilen dauerhaft, den Tagesstreifen
@@ -104,8 +105,12 @@ Prognosekalibrierung und Produktfreigabe getrennt sichtbar.
   gültige Summary.
 - **Nicht entscheidungsbereit:** reine Preise zeigen, keine erfundene
   Empfehlung oder Sicherheitsquote.
-- **Offline:** Belege/Vorsätze können in der Offline-Queue verbleiben;
-  RP2-Fallback ist dagegen eine eigene, lesende Betriebsoberfläche.
+- **Offline:** Belege/Vorsätze, die ohne Verbindung erfasst werden, liegen
+  in der Outbox (IndexedDB): offene Einträge mit 30-s-Nachreich-Takt,
+  sichtbare Endzustände (`rejected`/`expired`), Export und Entfernung in
+  „System“ → Diagnose — nichts wird still verworfen. `queued=true` steht nur
+  für persistiert. RP2-Fallback ist dagegen eine eigene, lesende
+  Betriebsoberfläche.
 
 Forecast, Backtest, Live-Advice und Wallet müssen als unterschiedliche
 Datenquellen erkennbar bleiben. Diagramme brauchen eine Textalternative mit

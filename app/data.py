@@ -7,6 +7,7 @@ import math
 import os
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +145,11 @@ PUBLICATION_BUDGET_BYTES = 6_000_000
 # bleiben lesbar (ein Monolith übergangsweise, Demo-Stapel, Test-Fixtures).
 PUBLICATION_LAYOUT_SPLIT = "split-forecast-files"
 PUBLICATION_FORECASTS_DIRNAME = "forecasts"
+# A1: Eine Veröffentlichung ist eine **Generation** — ein Satz unveränderbarer
+# Stations-Dateien in ``forecasts/<generation>/`` plus der Index, der darauf
+# zeigt. Der alte flache Layout (Dateien mit stabilem Namen direkt unter
+# ``forecasts/``) bleibt lesbar; neu geschrieben wird nur generationiert.
+PUBLICATION_GENERATIONS_DIRNAME = "generations"
 
 
 def publication_forecasts_dir(settings):
@@ -155,76 +161,219 @@ def forecast_file_name(row) -> str:
     """Dateiname einer Stations-Prognose in der aufgeteilten Veröffentlichung.
 
     UUID plus Kraftstoff (mehrere Kraftstoffe je Station sind möglich); der
-    Name ist stabil, damit ein behaltener Vormodell-Lauf (``retained_previous``)
-    seine Datei weiternutzt und nicht doppelt ablegt.
+    Name ist stabil, damit ein behaltener Vormodell-Lauf
+    (``retained_previous``) dieselbe Adressierung trägt wie sein Vorgänger.
     """
     fuel = str(row.get("fuel") or "").strip().lower() or "fuel"
     return f"{row.get('station_id')}.{fuel}.json"
 
 
+def _new_generation_id(published_at) -> str:
+    """A1: Sortierbare Generations-ID — Zeitstempel plus kurzer Zufallsschweif.
+
+    Lexikographisch == zeitlich (``<millis>-<hex>``), damit die Retention
+    sortieren kann. Der Zufallsschweig trennt zwei Läufe in derselben
+    Millisekunde (Testumgebungen, schnelle Folgejobs) — zwei verschiedene
+    Generationen dürfen nie denselben Namen tragen.
+    """
+    try:
+        stamp = dt.datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        millis = int(stamp.timestamp() * 1000)
+    except (TypeError, ValueError):
+        millis = int(time.time() * 1000)
+    return f"{millis:015d}-{uuid.uuid4().hex[:8]}"
+
+
+def _generation_files(index: dict) -> set[str]:
+    """Alle Dateizeiger eines Index als Menge (``forecasts/…``-Pfade)."""
+    files = set()
+    for entry in index.get("forecasts") or []:
+        if isinstance(entry, dict) and entry.get("file"):
+            files.add(str(entry["file"]))
+    return files
+
+
+def _best_effort_remove(path: Path) -> None:
+    """A1: Datei oder Baum best-effort entfernen — Stille ist erlaubt.
+
+    Retention-Aufräumen darf die erfolgreiche Veröffentlichung nicht kippen:
+    Bleibt eine alte Generation liegen, räumt der nächste Lauf sie aus.
+    """
+    try:
+        if path.is_dir():
+            for member in sorted(path.iterdir()):
+                _best_effort_remove(member)
+            path.rmdir()
+        elif path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _verify_forecast_part(part_path, row: dict, entry: dict) -> None:
+    """A1: Stations-Datei vor dem Commit prüfen — Hash, Schema, Identität.
+
+    Die Datei muss existieren, als JSON lesbar sein, eine ``forecast``-Zeile
+    tragen, deren Identität (Station/Kraftstoff) zur Index-Zeile passt, und —
+    wenn die Index-Zeile einen ``sha256`` trägt — exakt diesen Hash liefern.
+    Fehlschlagen ist ein harter Fehler: Der Index wird nicht getauscht, der
+    vorige Stand bleibt gültig.
+    """
+    try:
+        raw = part_path.read_bytes()
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Stations-Datei {part_path.name} unlesbar: {exc}") from exc
+    digest = entry.get("sha256")
+    if digest and hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError(
+            f"Stations-Datei {part_path.name} weicht vom Index-Hash ab (A1)"
+        )
+    try:
+        parsed = json.loads(raw.decode("utf-8-sig"))
+    except (OSError, ValueError, UnicodeDecodeError) as exc:
+        raise ValueError(f"Stations-Datei {part_path.name} ungültiges JSON: {exc}")
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("forecast"), dict):
+        raise ValueError(
+            f"Stations-Datei {part_path.name} trägt kein ``forecast`` (A1)"
+        )
+    stored = parsed["forecast"]
+    if stored.get("station_id") != row.get("station_id"):
+        raise ValueError(
+            f"Stations-Datei {part_path.name}: Identität weicht vom Index ab (A1)"
+        )
+    if str(stored.get("fuel") or "").lower() != str(row.get("fuel") or "").lower():
+        raise ValueError(
+            f"Stations-Datei {part_path.name}: Kraftstoff weicht vom Index ab (A1)"
+        )
+
+
 def write_split_publication(engine_dir, published_at, forecasts, index_extra=None):
-    """O22(d): Aufgeteilte Veröffentlichung schreiben — Index + Stations-Dateien.
+    """A1/O22(d): Aufgeteilte, generationskonsistente Veröffentlichung.
 
     Einziger Schreiber dieses Layouts (``app/refresh.py`` ruft die Funktion;
-    Tests schreiben darüber dasselbe Format). Reihenfolge: erst die
-    Stations-Dateien, dann der Index — der Index ist der Commit-Zeiger;
-    schlägt sein Schreiben fehl, bleibt der vorige Stand gültig. Verwaiste
-    Stations-Dateien (Station aus dem Polling-Set entfernt) werden nach dem
-    Index best-effort abgeräumt.
+    Tests schreiben darüber dasselbe Format). Ein Lauf schreibt eine **neue
+    Generation**: alle Stations-Dateien entstehen unter
+    ``forecasts/generations/<generation>/`` (unveränderlich, nie
+    überschrieben), werden vor dem Commit geprüft (Hash/Schema/Identität,
+    ``_verify_forecast_part``) und erst danach wird der Index
+    ``current.json`` atomar getauscht — der Index ist der Commit-Zeiger.
+    Leser sehen damit ausschließlich eine vollständige alte oder eine
+    vollständige neue Generation, nie einen Mischstand (Befund A1).
 
-    Rückgabe: ``total_bytes`` (Summe aller Dateien), ``index_bytes``,
-    ``largest_file_bytes`` (die Klippe gilt der einzelnen Datei) und
-    ``file_count`` (Stations-Dateien ohne Index).
+    Schlägt ein Schritt fehl, bleibt der vorige Index gültig; die
+    verwaiste Generation bleibt liegen und wird vom nächsten erfolgreichen
+    Lauf abgeräumt. Alte Generationen werden erst gelöscht, wenn sie weder
+    vom neuen noch vom vorigen Index referenziert sind — ein warmer Leser
+    darf den vorletzten Stand noch vor sich haben.
+
+    Rückgabe: ``total_bytes`` (Summe aller Dateien der neuen Generation
+    plus Index), ``index_bytes``, ``largest_file_bytes`` (die Klippe gilt
+    der einzelnen Datei), ``file_count`` (Stations-Dateien ohne Index) und
+    ``generation``.
     """
     from engine.storage import write_json
 
     engine_dir = Path(engine_dir)
     forecasts_dir = engine_dir / PUBLICATION_FORECASTS_DIRNAME
-    forecasts_dir.mkdir(parents=True, exist_ok=True)
+    generations_dir = forecasts_dir / PUBLICATION_GENERATIONS_DIRNAME
+    index_path = engine_dir / "current.json"
+
+    # Voriger Index in Memory: Seine Referenzen überleben das Aufräumen
+    # (warmer Leser), sein ``generation``-Feld bestimmt die Retention.
+    prev_index, _prev_reason = read_json_checked(index_path)
+    prev_index = prev_index if isinstance(prev_index, dict) else {}
+    prev_referenced = _generation_files(prev_index)
+    prev_generation = prev_index.get("generation")
+
+    generation = _new_generation_id(published_at)
+    gen_dir = generations_dir / generation
+    gen_dir.mkdir(parents=True, exist_ok=True)
+
     index_rows = []
     total_bytes = 0
     largest_bytes = 0
     for row in forecasts:
         name = forecast_file_name(row)
+        part_path = gen_dir / name
         part_bytes = write_json(
-            forecasts_dir / name,
-            {"schema_version": 1, "published_at": published_at, "forecast": row},
+            part_path,
+            {
+                "schema_version": 1,
+                "generation": generation,
+                "published_at": published_at,
+                "forecast": row,
+            },
             indent=None,
         )
+        # A1: Prüfung vor dem Commit — die Datei muss dem Index-Hash und der
+        # Identität entsprechen, sonst wird der Index NICHT getauscht.
+        index_entry = {
+            "city": row.get("city"),
+            "station_id": row.get("station_id"),
+            "fuel": row.get("fuel"),
+            "origin": row.get("origin"),
+            "retained_previous": bool(row.get("retained_previous")),
+            "file": f"{PUBLICATION_FORECASTS_DIRNAME}/{PUBLICATION_GENERATIONS_DIRNAME}/{generation}/{name}",
+            "sha256": hashlib.sha256(part_path.read_bytes()).hexdigest(),
+        }
+        _verify_forecast_part(part_path, row, index_entry)
         total_bytes += part_bytes
         largest_bytes = max(largest_bytes, part_bytes)
-        index_rows.append(
-            {
-                "city": row.get("city"),
-                "station_id": row.get("station_id"),
-                "fuel": row.get("fuel"),
-                "origin": row.get("origin"),
-                "retained_previous": bool(row.get("retained_previous")),
-                "file": f"{PUBLICATION_FORECASTS_DIRNAME}/{name}",
-            }
-        )
+        index_rows.append(index_entry)
+
     index = {
         "schema_version": 1,
         "layout": PUBLICATION_LAYOUT_SPLIT,
+        "generation": generation,
         "published_at": published_at,
         "forecasts": index_rows,
     }
     index.update(index_extra or {})
-    index_bytes = write_json(engine_dir / "current.json", index, indent=None)
+    # Atomarer Tausch des Index — der Commit-Zeiger. Erst jetzt ist die neue
+    # Generation für Leser sichtbar; vorher sah jeder die alte.
+    index_bytes = write_json(index_path, index, indent=None)
     total_bytes += index_bytes
     largest_bytes = max(largest_bytes, index_bytes)
-    referenced = {entry["file"] for entry in index_rows}
-    for old in sorted(forecasts_dir.glob("*.json")):
-        if f"{PUBLICATION_FORECASTS_DIRNAME}/{old.name}" not in referenced:
-            try:
-                old.unlink()
-            except OSError:
-                pass
+
+    # Aufräumen: Referenzen des neuen UND des vorigen Index bleiben; alles
+    # andere unter ``forecasts/`` ist Abfall (ältere Generationen, verwaiste
+    # Stations-Dateien des alten flachen Layouts). Best-effort — Abräumen
+    # darf die erfolgreiche Veröffentlichung nicht kippen.
+    # A1: Es bleiben die Generationen, auf die der neue ODER der vorherige
+    # Index verweisen (beide gelesen, bevor der Index getauscht wird —
+    # warmer Leser ist abgedeckt). Alles andere ist Rest eines abgebrochenen
+    # Laufes oder ein zu alter Stand und wird abgeräumt.
+    keep = _generation_files(index) | prev_referenced
+    prefix = f"{PUBLICATION_FORECASTS_DIRNAME}/{PUBLICATION_GENERATIONS_DIRNAME}/"
+    keep_generations = {
+        rel.split("/")[2]
+        for rel in keep
+        if rel.startswith(prefix) and len(rel.split("/")) == 4
+    }
+    try:
+        for child in sorted(forecasts_dir.iterdir()):
+            rel = f"{PUBLICATION_FORECASTS_DIRNAME}/{child.name}"
+            if rel in keep:
+                continue
+            if child.name == PUBLICATION_GENERATIONS_DIRNAME:
+                for gen in sorted(child.iterdir()):
+                    if gen.name in keep_generations:
+                        continue
+                    _best_effort_remove(gen)
+            else:
+                _best_effort_remove(child)
+    except OSError:
+        pass
+
     return {
         "total_bytes": total_bytes,
         "index_bytes": index_bytes,
         "largest_file_bytes": largest_bytes,
         "file_count": len(index_rows),
+        "generation": generation,
+        "previous_generation": prev_generation,
     }
 
 
@@ -888,15 +1037,41 @@ def selection_publication_path(settings):
     return Path(settings.runtime) / "selection" / "current.json"
 
 
-def _merge_split_publication(raw: dict, base_dir) -> tuple[dict, str | None]:
-    """O22(d): Index + Stations-Dateien zur gewohnten Bundle-Form fügen.
+def _part_matches_entry(part: dict, entry: dict) -> bool:
+    """A1: Passt der Inhalt der Stations-Datei zur Index-Zeile?
 
-    Der Index trägt je Prognose einen Zeiger (``file``); die Zeile selbst
-    liegt in der Stations-Datei. Rückgabe ist ``(Bundle, Grund)`` — der Grund
-    ist ``None``, wenn alle Dateien lesbar waren, sonst der erste Fehlergrund
-    (für ``publication_status``: fehlende/kaputte Stations-Dateien sind
-    ``incomplete`` bzw. ``too_large``/``invalid``, nie das „missing“ des
-    Erstlauf-Zustands). Unlesbare Zeilen fehlen im Bundle und stehen in
+    Identität (Station/Kraftstoff) muss stimmen, und wenn die Index-Zeile
+    einen ``sha256`` trägt, ist zusätzlich der Hash der Datei-Bytes zu
+    prüfen. Der Index ist der Commit-Zeiger; sein Inhalt darf nicht still
+    von der Datei abweichen (Mischstand oder Beschädigung).
+    """
+    if not isinstance(part, dict) or not isinstance(part.get("forecast"), dict):
+        return False
+    row = part["forecast"]
+    if entry.get("station_id") is not None and row.get("station_id") != entry.get(
+        "station_id"
+    ):
+        return False
+    if (
+        entry.get("fuel") is not None
+        and str(row.get("fuel") or "").lower() != str(entry.get("fuel")).lower()
+    ):
+        return False
+    return True
+
+
+def _merge_split_publication(raw: dict, base_dir) -> tuple[dict, str | None]:
+    """O22(d)/A1: Index + Stations-Dateien zur gewohnten Bundle-Form fügen.
+
+    Der Index trägt je Prognose einen Zeiger (``file``) und — seit A1 — den
+    ``sha256`` der Stations-Datei; die Zeile selbst liegt in der Datei (in
+    der neuen Generation unter ``forecasts/generations/<gen>/``). Rückgabe
+    ist ``(Bundle, Grund)`` — der Grund ist ``None``, wenn alle Dateien
+    lesbar und konsistent waren, sonst der erste Fehlergrund (für
+    ``publication_status``: fehlende Stations-Dateien sind ``incomplete``,
+    zu große/ungültige ``too_large``/``invalid``, abweichender
+    Inhalt/Hash ``corrupt`` — nie das „missing“ des Erstlauf-Zustands).
+    Unlesbare/inkonsistente Zeilen fehlen im Bundle und stehen in
     ``skipped_forecast_files`` — laut statt still.
     """
     rows: list[Any] = []
@@ -909,7 +1084,21 @@ def _merge_split_publication(raw: dict, base_dir) -> tuple[dict, str | None]:
         if not rel or not isinstance(rel, str):
             rows.append(entry)  # defensive: Inline-Zeile im Index
             continue
-        part, part_reason = read_json_checked(base_dir / rel)
+        part_path = base_dir / rel
+        part, part_reason = read_json_checked(part_path)
+        if part_reason is None:
+            # A1: Prüfung vor der Annahme — Hash (aus dem Index) und
+            # Identität. Eine Datei, die zu ihrer Index-Zeile nicht passt,
+            # ist ein Mischstand/Beschädigung, kein lesbarer Inhalt.
+            digest = entry.get("sha256")
+            if (
+                isinstance(digest, str)
+                and digest
+                and hashlib.sha256(part_path.read_bytes()).hexdigest() != digest
+            ):
+                part_reason = "corrupt"
+            elif not _part_matches_entry(part, entry):
+                part_reason = "corrupt"
         row = part.get("forecast") if isinstance(part, dict) else None
         if part_reason is None and isinstance(row, dict):
             rows.append({**row, "file": rel})
@@ -918,6 +1107,7 @@ def _merge_split_publication(raw: dict, base_dir) -> tuple[dict, str | None]:
                 "missing": "incomplete",
                 "too_large": "too_large",
                 "invalid": "invalid",
+                "corrupt": "corrupt",
             }.get(part_reason or "invalid", "invalid")
             skipped.append({"file": rel, "reason": mapped})
             reason = reason or mapped
@@ -999,9 +1189,13 @@ def publication_status(settings) -> dict[str, Any]:
         "readable": False,
         "error_code": None,
         "reason": None,
+        # A1: Die Veröffentlichungs-Generation des aktuellen Index — damit
+        # GUI/Health benennen können, welchen Stand sie sehen (und alte
+        # Generationen im Aufräumen nicht mit neuen verwechseln).
+        "generation": None,
         # O37: Dauer des letzten Pars **dieses** Datenstands. None heißt
-        # „für den aktuellen Stand hat noch niemand geparst“ — ehrlicher als
-        # eine alte Zahl, die als aktuelle aussieht.
+        # „für den aktuellen Stand hat noch niemand geparst“ — ehrlicher
+        # als eine alte Zahl, die als aktuelle aussieht.
         "parse_ms": None,
         "parsed_at": None,
     }
@@ -1043,6 +1237,7 @@ def publication_status(settings) -> dict[str, Any]:
             bundle = _PUBLICATION_MEMO["value"]
     if not isinstance(bundle, dict) or bundle.get("layout") != PUBLICATION_LAYOUT_SPLIT:
         if isinstance(bundle, dict):
+            status["generation"] = bundle.get("generation")
             status["readable"] = True
             return status
         parsed, parse_reason = read_json_checked(path)
@@ -1060,10 +1255,19 @@ def publication_status(settings) -> dict[str, Any]:
             status["readable"] = True
             return status
         bundle = parsed
+    # A1: Die Generations-ID gehört zum Datenstand — sie steht im Index.
+    if isinstance(bundle, dict) and bundle.get("generation"):
+        status["generation"] = bundle.get("generation")
     total = size
     largest = size
     count = 0
     worst_reason = None
+    # A1: Die Merge-Prüfung (Hash/Identität) steht im zusammengeführten
+    # Bundle — der Health-Pfad nutzt sie statt die Dateien neu zu hashen.
+    if isinstance(bundle, dict):
+        for item in bundle.get("skipped_forecast_files") or []:
+            item_reason = item.get("reason") if isinstance(item, dict) else None
+            worst_reason = worst_reason or item_reason
     for entry in bundle.get("forecasts") or []:
         rel = entry.get("file") if isinstance(entry, dict) else None
         if not rel or not isinstance(rel, str):
@@ -2159,17 +2363,42 @@ class LiveData:
         except Exception:
             return {"error_code": "route_evaluate_failed"}
 
+    def _store_corrupted_payload(self) -> dict[str, Any]:
+        """S3: Fehlerbild eines defekten Ledger-Stores — mit Rettungsangebot.
+
+        Der Defekt wird nicht als leerer Store durchgereicht (stiller
+        Datenverlust), sondern benannt; ``quarantine``/``backup`` nennen, was
+        zur Wiederherstellung da ist.
+        """
+        from .feedback import store_recovery_options
+
+        return {
+            "error_code": "store_corrupted",
+            **store_recovery_options(self.settings),
+        }
+
+    def _profiles_corrupted_payload(self) -> dict[str, Any]:
+        """S3: Fehlerbild eines defekten Profil-Stores (analogs zum Ledger)."""
+        from .profiles import profiles_recovery_options
+
+        return {
+            "error_code": "profiles_corrupted",
+            **profiles_recovery_options(self.settings),
+        }
+
     def decide(self, params: dict):
         """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1)."""
         try:
             from .decide import evaluate_decide
-            from .feedback import StoreTooLarge
+            from .feedback import StoreCorrupted, StoreTooLarge
 
             return evaluate_decide(self, params)
         except ValueError as e:
             raise e
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            return self._store_corrupted_payload()
         except Exception as exc:
             # O44: „decide_failed“ war das Ende der Diagnose — die Ursache
             # steckte in einem stummen ``except``, während die GUI nur einen
@@ -2187,7 +2416,7 @@ class LiveData:
     def episodes(self, status: str | None = None):
         """Liefert Episoden (z. B. ?status=due für Due-Prompt beim Öffnen)."""
         try:
-            from .feedback import StoreTooLarge, load_store
+            from .feedback import StoreCorrupted, StoreTooLarge, load_store
 
             store = load_store(self.settings)
             episodes = store.get("episodes", [])
@@ -2203,6 +2432,10 @@ class LiveData:
             }
         except StoreTooLarge:
             return {"error_code": "store_too_large", "episodes": [], "count": 0}
+        except StoreCorrupted:
+            # S3: Defekt ist kein „leeres Tagebuch“ — ehrlicher Code statt
+            # einer leeren Liste, die nach „noch nichts da“ aussieht.
+            return {**self._store_corrupted_payload(), "episodes": [], "count": 0}
         except Exception:
             return {"error_code": "episodes_read_failed", "episodes": [], "count": 0}
 
@@ -2225,7 +2458,12 @@ class LiveData:
         try:
             if limit < 1 or limit > 500:
                 raise ValueError("invalid_query")
-            from .feedback import StoreTooLarge, load_store, snapshot_p_source
+            from .feedback import (
+                StoreCorrupted,
+                StoreTooLarge,
+                load_store,
+                snapshot_p_source,
+            )
 
             store = load_store(self.settings)
             snapshots = {
@@ -2292,18 +2530,22 @@ class LiveData:
             return {"error_code": "invalid_query", "entries": [], "count": 0}
         except StoreTooLarge:
             return {"error_code": "store_too_large", "entries": [], "count": 0}
+        except StoreCorrupted:
+            return {**self._store_corrupted_payload(), "entries": [], "count": 0}
         except Exception:
             return {"error_code": "diary_read_failed", "entries": [], "count": 0}
 
     def set_intent(self, episode_id: str, intent: str):
         """Setzt den Intent einer Episode (wait, navigate, refuel_now, dismiss)."""
         try:
-            from .feedback import StoreTooLarge, set_intent
+            from .feedback import StoreCorrupted, StoreTooLarge, set_intent
 
             res = set_intent(self.settings, episode_id, intent, clock=self.clock)
             return res
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            return self._store_corrupted_payload()
         except ValueError as exc:
             # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
             if str(exc) == "store_locked":
@@ -2315,13 +2557,17 @@ class LiveData:
     def record_fill(self, fill_data: dict):
         """Registriert einen Tankbeleg (Wallet-Ledger) — validiert (§11.2)."""
         try:
-            from .feedback import StoreTooLarge, record_fill
+            from .feedback import StoreCorrupted, StoreTooLarge, record_fill
 
             return record_fill(
                 self.settings, fill_data, live_data=self, clock=self.clock
             )
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            # S3: Defekt blockiert das Schreiben — kein Beleg geht verloren,
+            # aber auch keiner wird über den Defekt geschrieben.
+            return self._store_corrupted_payload()
         except ValueError as exc:
             # Fach-Codes aus der Validierung (invalid_liters, invalid_price,
             # unknown_station, price_not_available, …) statt Pauschal-Fehler.
@@ -2332,7 +2578,7 @@ class LiveData:
     def fills(self):
         """Wallet-Verlauf: alle Tankbelege (auch stornierte, mit ``voided``-Flag)."""
         try:
-            from .feedback import StoreTooLarge, load_store
+            from .feedback import StoreCorrupted, StoreTooLarge, load_store
 
             store = load_store(self.settings)
             fills = store.get("fills", [])
@@ -2344,17 +2590,21 @@ class LiveData:
             }
         except StoreTooLarge:
             return {"error_code": "store_too_large", "fills": [], "count": 0}
+        except StoreCorrupted:
+            return {**self._store_corrupted_payload(), "fills": [], "count": 0}
         except Exception:
             return {"error_code": "fills_read_failed", "fills": [], "count": 0}
 
     def void_fill(self, fill_id: str):
         """Storniert einen Beleg (A3) — Flag statt Löschen, mit Audit-Spur."""
         try:
-            from .feedback import StoreTooLarge, void_fill
+            from .feedback import StoreCorrupted, StoreTooLarge, void_fill
 
             return void_fill(self.settings, fill_id, clock=self.clock)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            return self._store_corrupted_payload()
         except ValueError as exc:
             # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
             if str(exc) == "store_locked":
@@ -2366,7 +2616,12 @@ class LiveData:
     def fills_summary(self):
         """A4: Monats-/Jahresbilanz des Wallet-Ledgers (Werkstatt-Panel)."""
         try:
-            from .feedback import StoreTooLarge, compute_wallet_balance, load_store
+            from .feedback import (
+                StoreCorrupted,
+                StoreTooLarge,
+                compute_wallet_balance,
+                load_store,
+            )
 
             store = load_store(self.settings)
             balance = compute_wallet_balance(store, now=self.clock())
@@ -2374,6 +2629,8 @@ class LiveData:
             return balance
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            return self._store_corrupted_payload()
         except Exception:
             return {"error_code": "fills_summary_failed"}
 
@@ -2381,9 +2638,15 @@ class LiveData:
 
     def profiles(self):
         try:
-            from .profiles import load_store, public_profiles
+            from .profiles import ProfileStoreCorrupted, load_store, public_profiles
 
             return public_profiles(load_store(self.settings))
+        except ProfileStoreCorrupted:
+            return {
+                **self._profiles_corrupted_payload(),
+                "profiles": [],
+                "active": None,
+            }
         except Exception:
             return {
                 "error_code": "profiles_read_failed",
@@ -2393,41 +2656,53 @@ class LiveData:
 
     def create_profile(self, payload: dict):
         try:
-            from .profiles import ProfileError, create_profile
+            from .profiles import ProfileError, ProfileStoreCorrupted, create_profile
 
             return create_profile(self.settings, payload, clock=self.clock)
         except ProfileError as exc:
             return {"error_code": str(exc) or "invalid_query"}
+        except ProfileStoreCorrupted:
+            return self._profiles_corrupted_payload()
         except Exception:
             return {"error_code": "profile_write_failed"}
 
     def update_profile(self, profile_id: str, payload: dict):
         try:
-            from .profiles import ProfileError, update_profile
+            from .profiles import (
+                ProfileError,
+                ProfileStoreCorrupted,
+                update_profile,
+            )
 
             return update_profile(self.settings, profile_id, payload, clock=self.clock)
         except ProfileError as exc:
             return {"error_code": str(exc) or "invalid_query"}
+        except ProfileStoreCorrupted:
+            return self._profiles_corrupted_payload()
         except Exception:
             return {"error_code": "profile_write_failed"}
 
     def activate_profile(self, profile_id: str | None):
         try:
-            from .profiles import ProfileError, activate_profile
+            from .profiles import ProfileError, ProfileStoreCorrupted, activate_profile
 
             return activate_profile(self.settings, profile_id)
         except ProfileError as exc:
             return {"error_code": str(exc) or "invalid_query"}
+        except ProfileStoreCorrupted:
+            return self._profiles_corrupted_payload()
         except Exception:
             return {"error_code": "profile_write_failed"}
 
     def delete_profile(self, profile_id: str):
         try:
-            from .profiles import ProfileError, delete_profile
+            from .profiles import ProfileError, ProfileStoreCorrupted, delete_profile
 
             return delete_profile(self.settings, profile_id)
         except ProfileError as exc:
             return {"error_code": str(exc) or "invalid_query"}
+        except ProfileStoreCorrupted:
+            return self._profiles_corrupted_payload()
         except Exception:
             return {"error_code": "profile_write_failed"}
 
@@ -2488,12 +2763,17 @@ class LiveData:
     def stats_summary(self, params: dict):
         """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""
         try:
-            from .feedback import StoreTooLarge
+            from .feedback import StoreCorrupted, StoreTooLarge
             from .stats_summary import evaluate_stats_summary
 
             return evaluate_stats_summary(self, params)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
+        except StoreCorrupted:
+            # S3: Wallet-/Advice-Teil fehlt bei Defekt — der Markt-Backtest
+            # allein wäre eine halbe Bilanz; ehrlicher Code statt leeren
+            # Zählern.
+            return self._store_corrupted_payload()
         except Exception:
             return {"error_code": "stats_summary_failed"}
 

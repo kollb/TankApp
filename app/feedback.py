@@ -206,6 +206,19 @@ class StoreSchemaTooNew(RuntimeError):
     """
 
 
+class StoreCorrupted(RuntimeError):
+    """Bestehender Feedback-Store ist unlesbar oder ungültig (S3).
+
+    „Datei fehlt“ (Erststart) und „Datei existiert, aber ist kaputt“ sind
+    zwei verschiedene Zustände. Der Defekt wird **fail-closed** behandelt:
+    Alle Writes schlagen mit diesem Fehler fehl, der Bestand bleibt
+    unverändert und wird unverändert in einer Quarantäne-Kopie aufbewahrt —
+    statt ein leerer Store den nächsten Schreibvorgang darüberzuschieben
+    (stiller Datenverlust). Abhilfe ist Wiederherstellung aus einer
+    Sicherung, nicht ein Überschreiben.
+    """
+
+
 def _hour_from_stamp(stamp: dt.datetime) -> float:
     """Ganze Stunde eines Zeitstempels in Europe/Berlin — Bucket von w(h).
 
@@ -576,6 +589,107 @@ def feedback_archive_path(settings) -> Path:
     return feedback_path(settings).parent / "archive.jsonl"
 
 
+def feedback_quarantine_dir(settings) -> Path:
+    """S3: Ablage für unveränderte Defekt-Kopien des Feedback-Stores."""
+    return feedback_path(settings).parent / "quarantine"
+
+
+def _empty_feedback_store() -> dict[str, Any]:
+    """Store eines Erststarts — die einzige Situation, in der „leer“ rechtens ist."""
+    return {
+        "schema_version": FEEDBACK_SCHEMA_VERSION,
+        "episodes": [],
+        "fills": [],
+        "settlements": [],
+        "audit": [],
+    }
+
+
+def _corrupt_feedback_store(settings, path, exc) -> StoreCorrupted:
+    """S3: Bestand unlesbar/ungültig — quarantänisieren und fail-closed.
+
+    Kopie statt Verschiebung: Die Quelldatei bleibt am Ort (der Fehler bleibt
+    reproduzierbar und sichtbar), die quarantänierten Bytes bewahren den
+    Bestand für die Wiederherstellung. Der Report legt Zeitstempel, Größe,
+    Hash und Ursache daneben. Die Quarantäne darf nie den Lese-/Schreibpfad
+    sprengen — gelingt die Kopie nicht, steht das im Fehler.
+    """
+    copied = False
+    try:
+        raw_bytes = path.read_bytes()
+        stamp = dt.datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        quarantine = feedback_quarantine_dir(settings)
+        quarantine.mkdir(parents=True, exist_ok=True)
+        target = quarantine / f"store-{stamp}.json"
+        target.write_bytes(raw_bytes)
+        (quarantine / f"store-{stamp}.report.json").write_text(
+            json.dumps(
+                {
+                    "at": dt.datetime.now(UTC).isoformat(),
+                    "source": str(path),
+                    "size_bytes": len(raw_bytes),
+                    "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+                    "error": str(exc) or type(exc).__name__,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        copied = True
+    except OSError:
+        pass
+    note = (
+        " Der Defekt liegt unverändert in der Quarantäne."
+        if copied
+        else " Der Defekt konnte nicht für die Quarantäne kopiert werden."
+    )
+    return StoreCorrupted(
+        f"Feedback-Store ist unlesbar ({type(exc).__name__}: {exc}). "
+        f"Der Bestand bleibt unverändert und wird nicht überschrieben.{note} "
+        "Wiederherstellung aus einer Laufzeit-Sicherung (docs/betrieb/BETRIEB.md)."
+    )
+
+
+def store_recovery_options(settings) -> dict[str, Any]:
+    """S3: Was der Betrieb zur Wiederherstellung eines Defekts nutzen kann.
+
+    ``quarantine``: die quarantänierten Defekt-Kopien (neueste zuerst, fünf)
+    relativ zum Laufzeitverzeichnis. ``backup``: das neueste Laufzeit-Backup
+    (``app/backup.py``) — darin liegt der letzte gute Store-Stand; nur, wenn
+    ein Backup-Ziel eingerichtet ist (ohne Ziel weiß die App nichts).
+    """
+    options: dict[str, Any] = {"quarantine": [], "backup": None}
+    try:
+        quarantine = feedback_quarantine_dir(settings)
+        copies = sorted(
+            (
+                path
+                for path in quarantine.glob("store-*.json")
+                if path.is_file() and ".report." not in path.name
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:5]
+        runtime = Path(getattr(settings, "runtime", Path(".")))
+        options["quarantine"] = [str(path.relative_to(runtime)) for path in copies]
+    except OSError:
+        pass
+    try:
+        from .backup import backup_status
+
+        status = backup_status(settings)
+        if status.get("configured"):
+            options["backup"] = {
+                "dir": status.get("dir"),
+                "newest_at": status.get("newest_at"),
+                "stale": status.get("stale"),
+            }
+    except Exception:
+        pass
+    return options
+
+
 def _store_digest(store: dict[str, Any]) -> bytes:
     """Kanonischer Fingerabdruck des Stores — Grundlage des Write-Throttles."""
     payload = json.dumps(store, sort_keys=True, ensure_ascii=False)
@@ -615,36 +729,53 @@ def _append_archive(settings, items: list[dict[str, Any]]) -> None:
 
 
 def load_store(settings) -> dict[str, Any]:
+    """Lädt den Feedback-Store — trennt Erststart von Defekt (S3).
+
+    * **Datei fehlt** → Erststart: leerer Store (wie bisher).
+    * **Datei vorhanden, aber unlesbar, ungültiges JSON oder kein Store**
+      → Defekt: ``StoreCorrupted``. Der Bestand wird unverändert in eine
+      Quarantäne-Kopie gelegt (``feedback_quarantine_dir``) und bleibt, wo
+      er liegt; alle weiteren Writes schlagen mit demselben Fehler fehl
+      statt den Defekt mit einem leeren Zustand zu überschreiben (stiller
+      Datenverlust).
+    * **Datei größer als ``FEEDBACK_MAX_BYTES``** → ``StoreTooLarge``.
+    """
     path = feedback_path(settings)
-    raw = None
     try:
-        if path.exists() and path.stat().st_size > FEEDBACK_MAX_BYTES:
-            raise StoreTooLarge(
-                f"Feedback-Store zu groß ({path.stat().st_size} Bytes > "
-                f"{FEEDBACK_MAX_BYTES}) — Retention/Archivierung prüfen."
-            )
+        stat = path.stat()
+    except FileNotFoundError:
+        return _empty_feedback_store()
+    except (OSError, ValueError) as exc:
+        # Selbst das ``stat`` schlägt fehl (Rechte, Dateisystem-Zustand):
+        # „fehlt“ von „defekt“ lässt sich nicht trennen — fail-closed,
+        # kein leerer Store.
+        raise _corrupt_feedback_store(settings, path, exc) from exc
+    if stat.st_size > FEEDBACK_MAX_BYTES:
+        raise StoreTooLarge(
+            f"Feedback-Store zu groß ({stat.st_size} Bytes > "
+            f"{FEEDBACK_MAX_BYTES}) — Retention/Archivierung prüfen."
+        )
+    try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        raw = None
-    if isinstance(raw, dict) and "episodes" in raw:
-        # B2: erst auf die aktuelle Schema-Version bringen — ein Altbestand
-        # ohne ``schema_version`` wird dadurch nie mehr still falsch gelesen.
-        store = migrate_store(raw)
-        return {
-            "schema_version": store["schema_version"],
-            "episodes": store.get("episodes") or [],
-            "fills": store.get("fills") or [],
-            "settlements": store.get("settlements") or [],
-            # A3: Audit-Spur (Storno-Vermerke) bleibt beim Laden erhalten —
-            # sonst ginge die Nachvollziehbarkeit eines Stornos still verloren.
-            "audit": store.get("audit") or [],
-        }
+    except (OSError, ValueError) as exc:
+        raise _corrupt_feedback_store(settings, path, exc) from exc
+    if not isinstance(raw, dict) or "episodes" not in raw:
+        raise _corrupt_feedback_store(
+            settings,
+            path,
+            ValueError("kein Feedback-Store (ungültige JSON-Struktur)"),
+        )
+    # B2: erst auf die aktuelle Schema-Version bringen — ein Altbestand
+    # ohne ``schema_version`` wird dadurch nie mehr still falsch gelesen.
+    store = migrate_store(raw)
     return {
-        "schema_version": FEEDBACK_SCHEMA_VERSION,
-        "episodes": [],
-        "fills": [],
-        "settlements": [],
-        "audit": [],
+        "schema_version": store["schema_version"],
+        "episodes": store.get("episodes") or [],
+        "fills": store.get("fills") or [],
+        "settlements": store.get("settlements") or [],
+        # A3: Audit-Spur (Storno-Vermerke) bleibt beim Laden erhalten —
+        # sonst ginge die Nachvollziehbarkeit eines Stornos still verloren.
+        "audit": store.get("audit") or [],
     }
 
 

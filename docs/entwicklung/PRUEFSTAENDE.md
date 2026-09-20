@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 20.09.2026 · App-Version 0.59.2
+> Stand: 20.09.2026 · App-Version 0.60.0
 
 ## Inhaltsverzeichnis
 
@@ -11,7 +11,7 @@
 
 Diese Dokumente behalten ihre ursprüngliche fachliche Stand-Zeile. Umzug,
 Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
-0.59.2. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
+0.60.0. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
@@ -27,7 +27,6 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [RP2.md](../betrieb/RP2.md) | 0.49.5 |
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 |
-| [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.55.2 |
 | [ANALYSE.md](../referenz/ANALYSE.md) | 0.38.0 |
 | [API.md](../referenz/API.md) | 0.52.0 |
 | [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.55.2 |

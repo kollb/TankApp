@@ -12,6 +12,7 @@
 // die Bereich-Umschaltung.
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -34,6 +35,7 @@ import {
   livePhaseHint,
   m7GateLine,
   PINNED_MAX,
+  ageWord,
   fillPositionNote,
   profileFields,
   profileFieldsDiffer,
@@ -88,11 +90,11 @@ import {
 } from "../data";
 import {
   flushQueue,
-  queueOldestAgeMs,
-  queueStatusText,
-  readQueue,
-  type QueuedWrite,
-} from "../offline-queue";
+  listEntries,
+  outboxSummary,
+  subscribeOutbox,
+  type OutboxEntry,
+} from "../outbox";
 import { forecastStamp, type NowTarget } from "../now";
 import { promptFillPrice } from "../fills";
 import { buildStripCells } from "../strip";
@@ -328,13 +330,19 @@ function useOverviewState() {
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
-  // B10: lokal vorgemerkte Belege/Vorsätze (§5.4) — sichtbar, nicht still.
-  const [queue, setQueue] = useState<QueuedWrite[]>(() => readQueue());
+  // B10/I1: lokal vorgemerkte Belege/Vorsätze (§5.4) — sichtbar, nicht
+  // still. Die Wahrheit liegt in der Outbox (IndexedDB); dieser Zustand
+  // ist nur die Ansicht davon (inkl. anderer Tabs über BroadcastChannel).
+  const [queue, setQueue] = useState<OutboxEntry[]>([]);
   const [queueNote, setQueueNote] = useState<string | null>(null);
+
+  const refreshOutbox = useCallback(async () => {
+    setQueue(await listEntries());
+  }, []);
 
   const flushPending = async () => {
     const result = await flushQueue(postQueued);
-    setQueue(result.list);
+    await refreshOutbox();
     if (result.rejected.length > 0) {
       setQueueNote(
         `${result.rejected.length === 1 ? "Ein vorgemerkter Eintrag wurde" : `${result.rejected.length} vorgemerkte Einträge wurden`} vom Server abgelehnt (${result.rejected[0].last_error ?? "abgelehnt"}) — bitte neu erfassen.`,
@@ -350,6 +358,8 @@ function useOverviewState() {
       setRefresh((count) => count + 1);
     }
   };
+  const flushRef = useRef<(() => Promise<void>) | null>(null);
+  flushRef.current = flushPending;
 
   useEffect(() => {
     const on = () => setBrowserOnline(true);
@@ -362,13 +372,27 @@ function useOverviewState() {
     };
   }, []);
 
-  // Beim Start und sobald das Netz zurück ist: Nachreichen, was liegen blieb.
+  // I1: Die Outbox-Änderungen abonnieren — eigene Schreiber wie andere
+  // Tabs (BroadcastChannel) aktualisieren die Statuszeile.
   useEffect(() => {
-    void flushPending();
-    const onOnline = () => void flushPending();
+    void refreshOutbox();
+    return subscribeOutbox(() => void refreshOutbox());
+  }, [refreshOutbox]);
+
+  // Beim Start und sobald das Netz zurück ist: Nachreichen, was liegen
+  // blieb. Zusätzlich der 30-Sekunden-Takt (I1/NP3): Ein NAS-Neustart
+  // mitten im offenen Tab passiert ohne Mount und ohne „online“-Ereignis —
+  // der Takt holt den Stand ein. Leere Ticks kosten nichts (Outbox leer,
+  // fällige Einträge tragen ihr eigenes Backoff).
+  useEffect(() => {
+    void flushRef.current?.();
+    const onOnline = () => void flushRef.current?.();
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const tick = window.setInterval(() => void flushRef.current?.(), 30_000);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(tick);
+    };
   }, []);
 
   // GUI-Neuentwurf §4.1: Suche als Nebenweg aus jeder Ansicht (⌘K / Strg+K).
@@ -1035,11 +1059,39 @@ function useOverviewState() {
     data?.nas_status === "offline"
       ? "Antwort kommt vom Pi-Fallback: Das NAS ist für den Pi nicht erreichbar. Preise und Stationen sind der Live-Puffer des Pi; Prognosen, Empfehlungen und Belege brauchen das NAS."
       : null;
-  // B10: Statuszeile der Offline-Queue — nur wenn wirklich etwas wartet.
-  const queueBanner = queueStatusText(
-    queue.length,
-    queueOldestAgeMs(queue, Date.now()),
-  );
+  // B10/I1: Statuszeile der Outbox — nur wenn wirklich etwas wartet oder
+  // ein sichtbarer Endzustand (abgelehnt/abgelaufen) liegt.
+  const queueSummary = outboxSummary(queue, Date.now());
+  const queueBanner = (() => {
+    if (queueSummary.open <= 0 && queueSummary.terminal <= 0) return null;
+    const openPart =
+      queueSummary.open === 0
+        ? ""
+        : queueSummary.open === 1
+          ? "Ein Eintrag ist lokal vorgemerkt und geht raus, sobald die Verbindung steht."
+          : `${queueSummary.open} Einträge sind lokal vorgemerkt und gehen raus, sobald die Verbindung steht.`;
+    const age =
+      queueSummary.oldestOpenMs != null && queueSummary.oldestOpenMs >= 60 * 60 * 1000
+        ? ` Der älteste wartet seit ${ageWord(
+            Math.floor(queueSummary.oldestOpenMs / 60000),
+          )}.`
+        : "";
+    const terminalPart =
+      queueSummary.terminal > 0
+        ? ` ${
+            queueSummary.terminal === 1
+              ? "Ein Eintrag ist"
+              : `${queueSummary.terminal} Einträge sind`
+          } abgelehnt oder abgelaufen — sichtbar unter „System“ → Diagnose.`
+        : "";
+    return {
+      tone: "warn" as const,
+      text:
+        openPart +
+        (queueSummary.open > 0 ? "" : "Die Outbox hat sichtbare Endzustände."),
+      note: `Nichts ist verloren; die Einträge liegen im Browser.${age}${terminalPart}`,
+    };
+  })();
   const h = health.error ? null : health.data;
   const collector = collectorStatus.data || h?.collector;
   // Job-Log: neueste Zeile unten, beim Job-Wechsel automatisch ans Ende.
@@ -1192,9 +1244,13 @@ function useOverviewState() {
       episode_id: ep.id,
     });
     if (res?.queued) {
-      setQueue(readQueue());
+      void refreshOutbox();
       feedback("warn", queuedNote("Beleg"), 6000);
       setDueDismissed(true);
+      return;
+    }
+    if (res?.queue_error) {
+      feedback("error", problem(res.queue_error) || res.queue_error);
       return;
     }
     if (res?.error_code) {
@@ -1240,8 +1296,12 @@ function useOverviewState() {
     });
     setFillSubmitting(false);
     if (res?.queued) {
-      setQueue(readQueue());
+      void refreshOutbox();
       feedback("warn", queuedNote("Beleg"), 6000);
+      return;
+    }
+    if (res?.queue_error) {
+      feedback("error", problem(res.queue_error) || res.queue_error);
       return;
     }
     if (res?.error_code) {
@@ -1298,9 +1358,13 @@ function useOverviewState() {
     if (epId) {
       const res = await postIntent(epId, intent);
       if (res?.queued) {
-        setQueue(readQueue());
+        void refreshOutbox();
         if (mapsUrl) window.open(mapsUrl, "_blank", "noopener,noreferrer");
         feedback("warn", queuedNote("Auswahl"), 6000);
+        return;
+      }
+      if (res?.queue_error) {
+        feedback("error", problem(res.queue_error) || res.queue_error);
         return;
       }
       if (res?.error_code) {
