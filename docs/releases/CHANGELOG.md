@@ -14,7 +14,7 @@ Doku, kein Code).**
   Frankfurt, Export ab 15.06.2026) auf dem Daten-Host; Berichte unter
   `data/analysis/` (E10: 586.297 gültige Beobachtungen / 282 Stationen,
   Diesel: 591.280 / 284). Die Echtzahlen sind in
-  [BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)
+  [BEFUND-UX-MATH-2026-09-19.md](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)
   §5.8 nachgetragen.
 - **Betrag (robust):** δ Median **+21,0 ct E10** (p10–p90 17,0–23,0,
   Spread 11,0) bzw. **+25,0 ct Diesel** (22,5–28,0, Spread 10,5) gegen
@@ -45,13 +45,13 @@ Doku, kein Code).**
   absoluten δ stehen. Alle drei warten auf die H-/R-Arbeit, nicht auf
   einen eigenen Patch.
 - Nachweis: keine Code-Änderung — Messung auf dem NAS, Nachtrag im
-  Befund, A16 in [TODO.md](TODO.md) geschlossen. Relevante Suites grün
+  Befund, A16 in [TODO.md](../planung/TODO.md) geschlossen. Relevante Suites grün
   (`test_ledger_drift.py`, `test_operations.py`, `test_regime_check.py`).
 
 ## [0.59.0] – 2026-09-19
 
 **B4 — Navigation 3+1 und „Jetzt“ entschlackt
-([UX/Mathe-Befund, Teil 4](docs/BEFUND-UX-MATH-2026-09-19.md#b4--navigation-31-parallel-zu-b2b3-möglich)).**
+([UX/Mathe-Befund, Teil 4](../archiv/BEFUND-UX-MATH-2026-09-19.md#b4--navigation-31-parallel-zu-b2b3-möglich)).**
 
 - **Bottom-Bar 3+1:** Die Haupt-Tab-Regel ist `Jetzt · Woche · Stationen`;
   `Labor`, `Ich`, `System` und `Glossar` leben hinter einem einzigen
@@ -99,7 +99,7 @@ Doku, kein Code).**
 
 ## [0.58.0] – 2026-09-19
 
-**B3 — Mehrtage & Kerne (M2, M4) des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md).**
+**B3 — Mehrtage & Kerne (M2, M4) des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md).**
 
 - **Day-Pair-Bootstrap:** Aufeinanderfolgende Prognose-Kalendertage ziehen
   aufeinanderfolgende Trainingsblöcke (`TANKAPP_DAYPAIR`, Default an). Aus
@@ -118,7 +118,7 @@ Doku, kein Code).**
 
 ## [0.57.0] – 2026-09-19
 
-**B2 — Kalibrierungsschicht des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b2--kalibrierungsschicht-der-kernbatch).**
+**B2 — Kalibrierungsschicht des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b2--kalibrierungsschicht-der-kernbatch).**
 
 - Neue monotone PIT-Rekalibrierung für **24-h**-Bootstrap-Pfade: PAVA lernt aus
   den B0-Rolling-Backtest-Paaren eine CDF und legt nur Draw-Ränge um; gemeinsame
@@ -145,7 +145,7 @@ Doku, kein Code).**
 
 ## [0.56.0] – 2026-09-19
 
-**B0 des [UX/Mathe-Befunds](docs/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich): Messgrundlagen — unsichtbar, bitgleich.**
+**B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich): Messgrundlagen — unsichtbar, bitgleich.**
 Die Engine tat bis 0.55.2 drei Dinge stumm: Sie stauchte instabile
 AR(2)-Koeffizienten (×0,9, bis zu 100-mal, dann φ = 0), sie mischte zwei
 Modellkerne mit Gewichten, deren Streuung niemand kannte, und die
@@ -245,11 +245,11 @@ Band, keine Empfehlung bewegt sich.
   Seit diesem Release nennt die Veröffentlichung beides
   (`backtest_model_kind` neben `model_kind`) und beide Läufe sind per CLI
   möglich; das Umschalten ist eine Messentscheidung für B3 und steht in
-  [docs/LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+  [docs/planung/LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 - **Referenzmessung PICP/Brier/MASE je Station nicht gelaufen:** In der
   Entwicklungsumgebung liegen keine NAS-Daten; das Rezept (zwei Backtests je
   Bestand, Felder je Station) steht in
-  [docs/ENGINE.md](docs/ENGINE.md#messgrundlagen-b0-seit-0560). Brier gibt es
+  [docs/referenz/ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560). Brier gibt es
   nur global je P-Quelle aus dem Advice-Ledger, nicht je Station — so benannt
   statt behauptet.
 
@@ -258,11 +258,11 @@ Band, keine Empfehlung bewegt sich.
 - Neu: `tests/test_b0_invariance.py` (10), `tests/test_b0_counters.py` (16),
   `tests/test_b0_pit_regime.py` (21), `tests/test_b0_app.py` (11); die
   CLI-Rundreise prüft `pava_pool_stats` in `engine forecast`. Doku:
-  [ENGINE.md](docs/ENGINE.md#messgrundlagen-b0-seit-0560) (neuer Abschnitt),
-  [API.md](docs/API.md#forecast-messfelder-b0-seit-0560),
-  [BETRIEB.md](docs/BETRIEB.md#regime-kalender-b0-seit-0560),
-  [LUECKEN.md](docs/LUECKEN.md). Testzahlen stehen in der Erledigt-Zeile von
-  [TODO.md](TODO.md) nach dem vollständigen Lauf.
+  [ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560) (neuer Abschnitt),
+  [API.md](../referenz/API.md#forecast-messfelder-b0-seit-0560),
+  [BETRIEB.md](../betrieb/BETRIEB.md#regime-kalender-b0-seit-0560),
+  [LUECKEN.md](../planung/LUECKEN.md). Testzahlen stehen in der Erledigt-Zeile von
+  [TODO.md](../planung/TODO.md) nach dem vollständigen Lauf.
 
 ## [0.55.2] – 2026-09-19
 
@@ -475,7 +475,7 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
 
 ## [0.54.0] – 2026-09-18
 
-**Batch 8 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+**Batch 8 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 
 ### Die Belegmaske zeigt den Live-Preis (O32)
 
@@ -533,9 +533,9 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
 
 ### Doku und Prüfstand
 
-- Der [Optimierungs-Befund](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) trägt den
-  Umsetzungsvermerk je Check; [LUECKEN.md](docs/LUECKEN.md) und
-  [TODO.md](TODO.md) stehen auf 0.54.0. **Ehrlich dazu:** O28 und O41 lagen
+- Der [Optimierungs-Befund](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) trägt den
+  Umsetzungsvermerk je Check; [LUECKEN.md](../planung/LUECKEN.md) und
+  [TODO.md](../planung/TODO.md) stehen auf 0.54.0. **Ehrlich dazu:** O28 und O41 lagen
   seit PR #154 auf `main`, ohne dass Version, CHANGELOG oder Befund es sagten —
   der Befund behauptete im Kopf weiterhin „offen ist damit nur noch Batch 8“.
   Das ist mit diesem Eintrag geradegezogen.
@@ -548,7 +548,7 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
 - Nachweis: **1129 Pytest**, **1180 Vitest** (vorher 1144), `ruff check` +
   `ruff format --check`, `npm --prefix web run build`, und beide
   Browser-Suiten über den in
-  [QUALITAET.md](docs/QUALITAET.md#e2e-ohne-mocks-seit-0380) beschriebenen
+  [QUALITAET.md](../entwicklung/QUALITAET.md#e2e-ohne-mocks-seit-0380) beschriebenen
   `@sparticuz/chromium`-Weg: Alltagssuite **38/38 grün** gegen einen leeren
   Server, Demo- plus Mobil-Suite **25 grün / 11 skipped** gegen den
   Demo-Stack.
@@ -568,11 +568,11 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
   des Modell-Laufs, das Lighthouse-Budget (bleibt Warnung: gemessen 0,97–0,98,
   ein hartes Gate scheiterte irgendwann an der CI-Läufer-Auslastung) und die
   Pi-Sichtprüfung der Fallback-GUI. Gründe je Punkt in
-  [TODO.md](TODO.md#geschlossen-als-nicht-nötig-18092026); **`TODO.md` hat
+  [TODO.md](../adr/0002-PRODUKTUMFANG.md#entscheidung); **`docs/planung/TODO.md` hat
   damit keine offene Zeile mehr**, und in
-  [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) trägt keine
+  [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis) trägt keine
   Zeile mehr die Marke „Arbeit“.
-- **Fünf Dokumente sind ins [Archiv](docs/archiv/README.md) ausgelagert**, weil
+- **Fünf Dokumente sind ins [Archiv](../archiv/README.md) ausgelagert**, weil
   sie ihre Aufgabe erfüllt haben: der Optimierungs-Befund (O1–O44), der
   12-Uhr-Befund samt B30-Checkliste, der Text-Befund (T1–T13) und die
   Fallback-GUI-v2-Checkliste — deren eigener Schritt 6.2 genau diese
@@ -655,13 +655,13 @@ Tagesstreifen“ beschreibt:
   Kraftstoff, Profil, Alarm/Teilen/Aktualisieren). Sie weiter zu verdichten
   hieße, Steuerungen auszulagern (Blattmenü statt Zeile) — das ändert §5.1
   „Gemeinsame Kopfzeile“ und braucht eine eigene Entscheidung. Als offener
-  Punkt mit Grund benannt in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+  Punkt mit Grund benannt in [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 - **`reportAllChanges`/`startTime` in der Konsole ist kein TankApp-Fehler.**
   Der Stack besteht nur aus `<anonymous>`-Frames; die Offsets (`:2:19429`,
   `n.timeout (:2:5652)`) sind identisch mit dem bekannten Fehler der
   `web-vitals`-Kopie, die Chrome DevTools selbst injiziert. Zum Nachlesen (und
   für die Abgrenzung „VM-Skript ≠ eigene Datei“) in
-  [BETRIEB.md](docs/BETRIEB.md#reportallchangesstarttime-in-der-browser-konsole).
+  [BETRIEB.md](../betrieb/BETRIEB.md#reportallchangesstarttime-in-der-browser-konsole).
 
 ### Prüfungen
 
@@ -678,7 +678,7 @@ Tagesstreifen“ beschreibt:
 
 ## [0.52.0] – 2026-09-18
 
-**Batch 7 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](TODO.md) bzw. [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+**Batch 7 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 
 ### Billigere Antworten (O25)
 
@@ -724,7 +724,7 @@ Tagesstreifen“ beschreibt:
 - **`publication.parse_ms`/`parsed_at`:** Dauer und Zeitpunkt des letzten Pars
   **dieses** Datenstands (O23 macht ihn selten; wird er teuer, steht es hier).
   `null` heißt „für den aktuellen Stand hat noch niemand geparst", nie „0 ms".
-- Budget in [docs/QUALITAET.md](docs/QUALITAET.md#selbstmessung-des-servers-seit-0520):
+- Budget in [docs/entwicklung/QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520):
   p95 einer API-Antwort im LAN ≤ **300 ms** — als Zahl im Code
   (`REQUEST_BUDGET_MS`) und damit in jedem Health-Payload, nicht nur in der Doku.
 
@@ -733,7 +733,7 @@ Tagesstreifen“ beschreibt:
 - Der InfluxDB-Cron **rotiert**: `find /backup … -mtime +56 -delete` hinter dem
   `tar` — acht Wochenstände statt unbegrenzt (jeder enthält die ganze Historie).
   Begründung und der Verzicht auf eine Monatsstufe stehen in
-  [docs/BETRIEB.md](docs/BETRIEB.md#nas-influxdb-backup).
+  [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#nas-influxdb-backup).
 - Das **Roharchiv** ist als bewusst **nicht** gesichert benannt: per
   `history-sync` regenerierbar (~730 Downloads × 0,4 s ≈ 5 min für ein Jahr
   Bestand). Nicht regenerierbar sind die live gepollten Preise im Volume und die
@@ -810,7 +810,7 @@ er ausgeblendet hat.**
   einzige Pfade wirklich. Beide zählen ab der Kante, beide nennen sie im Report;
   CLI-Flags `--law-date` und `--ignore-law-floor`. Nebenbei:
   `analysis/station_selection.py` legte den Repo-Root nicht auf `sys.path` —
-  der in [DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md) dokumentierte Aufruf brach
+  der in [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) dokumentierte Aufruf brach
   mit `No module named 'engine'` ab.
 - **Messung statt Behauptung:** Der Modell-Lauf schreibt `law_quality` in den
   Publikations-Index (`runtime/engine/current.json`, auch im Fehler-Fall):
@@ -824,7 +824,7 @@ er ausgeblendet hat.**
 
 ### Nachgerechnet: die Prämisse war veraltet
 
-- **[docs/BEFUND-12-UHR-REGEL.md](docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) §4** kündigte an,
+- **[docs/BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) §4** kündigte an,
   die Panels „sagen sonst weiter die alte Welt". Alle Muster-Fenster beginnen
   heute hinter dem Gesetz (Kalibrierung 42 Tage → 2026-08-07, Heatmap 84 Tage →
   2026-06-26, Modell 120 Tage → 2026-05-21; das Gesetz ist 170 Tage her) — aus
@@ -839,7 +839,7 @@ er ausgeblendet hat.**
 
 **Offen:** der DoD-Backtest „ohne Qualitätsverlust" braucht echte NAS-Daten
 über beide Rechtslagen. Er ist nicht gelaufen; das Runbook liegt in
-[UMSETZUNG-B30-12-UHR-BODENKANTE.md](docs/archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md).
+[UMSETZUNG-B30-12-UHR-BODENKANTE.md](../archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md).
 
 **Prüfung:** `ruff check` + `ruff format --check` (117 Dateien), `pytest -q`
 (1079 passed, davon 28 neu in `tests/test_b30_law_floor.py`),
@@ -861,12 +861,12 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 
 ### Dokumentiert
 
-- **[docs/BEFUND-12-UHR-REGEL.md](docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md):** Der
+- **[docs/BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md):** Der
   abgeschlossene Check in fünf Lagen — Problem („Abend günstig" trotz
   12-Uhr-Gesetz), Befund (Live: 100 % der 169 Anstiege am Mittagspunkt,
   Tief Median 7 Uhr; Archiv: Regime-Wechsel 01.04.2026 sichtbar —
   Tageshoch von 8 auf 14 Uhr gewandert), Erledigtes (0.49.2–0.49.5 +
-  Merge), Ausgelagertes (Schritt 3, DoD in [TODO.md](TODO.md) B30),
+  Merge), Ausgelagertes (Schritt 3, DoD in [TODO.md](../planung/TODO.md) B30),
   Nicht-Fixbares (Legacy-Namenszwillinge, gerasterter Bestand,
   Befristung bleibt Config-Entscheidung).
 
@@ -875,14 +875,14 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 Streifen-Testreihen (Kalendertag + Band) gemeinsam.
 
 ## [0.50.0] – 2026-09-17
-**Batch 6 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. im [Todo](TODO.md).
+**Batch 6 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis) bzw. im [Todo](../planung/TODO.md).
 - **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.
 - **Ersparnis rechnet gegen die Empfehlung (O19):** `nowBestNow` nannte die Differenz zur *teuersten* Station im Set „deine Ersparnis“. Anker ist jetzt dieselbe Referenz wie in `p_lohnt`/`ref_nowcast`, im Kleingedruckten benannt; „billigste bis teuerste“ bleibt sichtbar — als Spanne, nicht als persönlicher Gewinn.
 - **Tagesstreifen mit fester Farbskala (O20):** Die Töne hingen am Min/Max des Tages, deshalb färbte eine neue günstige Meldung frühere Stunden um. Die Skala ist jetzt ein festes Band (25/75-Perzentil über höchstens 168 Stunden, ab drei Berliner Tagen), und je Stunde steht das **Minimum** statt der letzten Meldung — Streifen und Fenstersuche zeigen dieselbe Größe.
 - **Die Bilanz rechnet netto (O30):** `compute_wallet_stats` wies die Ersparnis ohne Umwegkosten aus, während `p_lohnt` netto entscheidet. Beide Zeilen stehen jetzt da — brutto und netto nach Umweg — mit derselben Formel und denselben Profil-Parametern wie die Entscheidung.
 - **Labor-Werkstätten zeigen echte Daten (O18):** ε-Scan, Rang-Streuung, Strukturbruch und Modellvergleich standen dauerhaft auf einem Text ohne Datenpfad. Der ε-Scan rechnet auf den Backtest-Zeilen nach (dieselbe `scoreRows` wie der Server), Rang-Streuung und Strukturbruch lesen `rank_std`/`break_flag`/`break_stat` aus dem Selektions-Artefakt, und der Modellvergleich nennt den Dauerzustand statt μ = 1,5 ct und Stunde 19 zu erfinden. Nebenbei korrigiert: `app/stats_summary.py` publizierte eine CUSUM-Schwelle von 3.0, während `cusum_break` bei 2.0 flaggt — jetzt eine Quelle (`engine.selection.CUSUM_THRESHOLD`).
 - **Wochen-Rückblick (O31):** Die Woche endete ohne Zusammenfassung. Der Rückblick fährt auf dem ntfy-Kanal aus O29 mit — höchstens einmal je ISO-Woche, nie in der Ruhezeit — und fasst ausschließlich vorhandene Größen zusammen: abgerechnete Empfehlungen in den Wörtern des Tagebuchs, größte Verbesserung/Verschlechterung nach `delta_recent5_ct`, Datenqualität und Lernstand. `mode="public"` nennt weder Station noch Preis (O42); `/api/v1/health` zeigt `recap_last_week`.
-- **Persönliche Daten sind eine Entscheidung (O39):** [BETRIEB.md](docs/BETRIEB.md) benennt die LAN-Exposition — was ohne Anmeldung lesbar ist, für wen, in welchem Netz. Neu: `TANKAPP_READ_TOKEN` schützt die Ledger-Routen (`/fills`, `/advice/diary`, `/profiles`, `/episodes`, `/overview`, CSV-Export) mit demselben Mechanismus wie der Webhook; leer bedeutet bewusst „offen“. Markt- und Modelldaten bleiben offen.
+- **Persönliche Daten sind eine Entscheidung (O39):** [BETRIEB.md](../betrieb/BETRIEB.md) benennt die LAN-Exposition — was ohne Anmeldung lesbar ist, für wen, in welchem Netz. Neu: `TANKAPP_READ_TOKEN` schützt die Ledger-Routen (`/fills`, `/advice/diary`, `/profiles`, `/episodes`, `/overview`, CSV-Export) mit demselben Mechanismus wie der Webhook; leer bedeutet bewusst „offen“. Markt- und Modelldaten bleiben offen.
 **Prüfung:** `pytest -q` (**1045 passed**), `ruff check`, `npm --prefix web test` (**1129 passed**) und `npm --prefix web build`. Die Playwright-Suiten (`test:e2e`, `test:e2e:demo`) sind in dieser Arbeitsumgebung nicht installierbar und wurden **nicht** ausgeführt.
 
 ## [0.49.5] – 2026-09-17
@@ -904,7 +904,7 @@ Station) gingen bis in die Tages-Extreme, wo der Schnitt nur aus NaN bestand.
   den Archiv-M2-CSVs, nicht aus Influx — UUID-Tags schreibt der Uploader
   erst seit der Migration (~09.09.2026), und `--uuid-only` umfasst
   entsprechend nur Tage *nach* dem Gesetz
-  ([DATENWERKZEUGE.md#welche-datenquelle](docs/DATENWERKZEUGE.md)).
+  ([DATENWERKZEUGE.md#welche-datenquelle](../referenz/DATENWERKZEUGE.md)).
 
 ## [0.49.4] – 2026-09-17
 
@@ -925,7 +925,7 @@ und ohne Pakete kam nur ein roher ImportError.
   `--user`-Zeile), statt mit Traceback zu enden. Ergebnis unverändert —
   gegen den Referenzbestand bitgleich geprüft.
 - **NAS-Ablauf dokumentiert**
-  ([DATENWERKZEUGE.md#12-uhr-regel-check](docs/DATENWERKZEUGE.md)):
+  ([DATENWERKZEUGE.md#12-uhr-regel-check](../referenz/DATENWERKZEUGE.md)):
   Drei-Schritte-Anleitung inkl. `--env-file data/influx.env` und dem
   Hinweis, `--since` **vor** den Gesetzesbeginn zu legen — sonst liegt der
   ganze Export im „ab“-Zeitraum und der Vorher/Nachher-Kontrast fehlt.
@@ -971,7 +971,7 @@ Panels eigentlich messen: Tagesstunden liegen unter der Regel in
   Daten, ob ein Panel wie „Günstigste Stunde 20–22 Uhr“ echtem aktuellem
   Verhalten entspringt oder Vorgesetzes-Mustern — erst dann lohnt die
   Debatte über Modell- oder Text-Anpassungen. Doku:
-  [docs/DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md#12-uhr-regel-check);
+  [docs/referenz/DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md#12-uhr-regel-check);
   `docs/README.md` führt DATENWERKZEUGE.md wieder als geprüft.
 
 ## [0.49.2] – 2026-09-17
@@ -1062,7 +1062,7 @@ der Fallback-Antwort behoben.
   Fallback-Modus die gebaute NAS-GUI (per `TEMPLATE_DIR`), fragt der Browser
   diese Pfade und die Konsole füllt sich mit `404`/`400`. Das ist der
   Unterschied der beiden Antwortflächen, kein Serverfehler; die Einordnung
-  steht in [RP2.md](docs/RP2.md) und [BETRIEB.md](docs/BETRIEB.md).
+  steht in [RP2.md](../betrieb/RP2.md) und [BETRIEB.md](../betrieb/BETRIEB.md).
 
 **Prüfung:** `pytest -q` (**982 passed**; neu `tests/test_o44_null_draws.py` (6)
 und drei Fälle in `tests/test_rp2_fallback.py`, zusammen 58 in beiden Dateien),
@@ -1129,7 +1129,7 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.48.0] – 2026-09-17
 
-**Batch 5 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
+**Batch 5 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
 
 ### Geändert
 
@@ -1142,13 +1142,13 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.47.0] – 2026-09-17
 
-**Batch 4 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 4 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Betrieb — Kosten, Haltbarkeit, Kohärenz. Der Dauerbetrieb kostet
 messbar weniger (O23, O24), eine Konfigurationsänderung wirkt in der ganzen App
 (O36), und ein ausfallendes Backup wird gelb statt unsichtbar (O33). Vorab
 geprüft: Aus Batch 1–3 waren keine Folgeumsetzungen offen — O22-Maßnahme (d)
 und O43 stehen begründet in
-[LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund) bzw. Batch 5.**
+[LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis) bzw. Batch 5.**
 
 ### Geändert
 
@@ -1223,7 +1223,7 @@ und O43 stehen begründet in
   Monatsstände ausdrücklich aus. 14 Tage sind kürzer als die Zeit, die ein
   langsam zerstörender Fehler braucht, um aufzufallen. Das zweite Backup-Ziel
   steht als ausdrückliche Entscheidung in
-  [BETRIEB.md](docs/BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf
+  [BETRIEB.md](../betrieb/BETRIEB.md#nas-laufzeitdaten-runtime-backup): ein Ziel auf
   dem NAS plus eine Kopie der unersetzbaren Bestände (Bilanz als
   `fills.csv`, Polling-Set) außerhalb des Geräts; ein zweites automatisches
   Ziel bleibt offen und steht im Todo.
@@ -1270,7 +1270,7 @@ und O43 stehen begründet in
 
 ## [0.46.0] – 2026-09-17
 
-**Batch 3 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 3 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Was die GUI behauptet, ist belegt — und was sie empfehlen
 will, meldet sich. Der δ̂-Balken im Labor zeichnet (O16), Live-Preise kennen
 Plausibilitätsgrenzen (O35), das empfohlene Fenster schickt eine Meldung
@@ -1331,7 +1331,7 @@ installierbar).
 
 ## [0.45.0] – 2026-09-17
 
-**Batch 2 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 2 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: Die Zahlen, auf denen M7 steht. Der Ledger misst jetzt, was er zu
 messen behauptet — P-Quellen getrennt (O5), kein erfundener Belegpreis (O17),
 Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
@@ -1415,13 +1415,13 @@ Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
   nicht aus dem Server-Stempel) — als Nebenbefund aus der O17-Umsetzung
   dokumentiert und nach Batch 5 (P2, Rechnung und Statistik im Einzelnen)
   verwiesen, statt Batch-2-Scope-Creep. Siehe
-  [OPTIMIERUNGS-BEFUND.md](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
+  [OPTIMIERUNGS-BEFUND.md](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
 - Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
   Chromium ist in der Sandbox nicht installierbar.
 
 ## [0.44.0] – 2026-09-16
 
-**Batch 1 des [Optimierungs-Befunds](docs/archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 1 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
 ist umgesetzt: zwei stille Falschaussagen. Die GUI-Buchung galt als 12-Uhr-Tankung
 (O1), und die Veröffentlichung der Prognosen war ab rund fünf Stationen nicht
 mehr lesbar — ohne Fehler, ohne Alarm (O22).**
@@ -1451,7 +1451,7 @@ mehr lesbar — ohne Fehler, ohne Alarm (O22).**
   `GET /api/v1/stats/summary`, `personalization.measured_fills`/`default_fills`
   in `/api/v1/decide` — und die GUI hängt den Satz an:
   `3 Belege ohne Zeitstempel zählen als 12 Uhr.`
-  ([MICROCOPY §4b](docs/MICROCOPY.md#4b-bereich-jetzt-feste-muster-0340)).
+  ([MICROCOPY §4b](../produkt/MICROCOPY.md#4b-bereich-jetzt-feste-muster)).
 - **Snapshots nennen keine erfundene Emit-Uhrzeit mehr (O1):** Fehlt
   `clock_hour` im Snapshot, ist der Emit-Zeitpunkt die Quelle; der
   Stunden-Fallback von `classify_compliance` bekommt den Minutenanteil
@@ -1481,10 +1481,10 @@ mehr lesbar — ohne Fehler, ohne Alarm (O22).**
 
 - **`publication`-Block in `GET /api/v1/health`:** `bytes`, `budget_bytes`,
   `max_bytes`, `over_budget`, `readable`, `error_code`, `reason`
-  ([API.md](docs/API.md#health)). Eine fehlende Datei ist kein Fehler — vor dem
+  ([API.md](../referenz/API.md#health)). Eine fehlende Datei ist kein Fehler — vor dem
   ersten Modell-Lauf gibt es keine Veröffentlichung (`reason: "missing"`,
   `error_code: null`). Betriebsanleitung mit `du -h`/`jq`-Checks:
-  [BETRIEB.md](docs/BETRIEB.md#größe-der-veröffentlichung-o22-seit-0440).
+  [BETRIEB.md](../betrieb/BETRIEB.md#größe-der-veröffentlichung-o22-seit-0440).
 - **`tests/test_o1_clock_hour.py`** (15 Fälle): UTC → Berlin, Winterzeit,
   Widerspruch Beleg-Zeit gegen Beleg-Stunde, Migration 3 → 4 inkl. Idempotenz,
   Wirkung auf das w(h)-Histogramm, `clock_hour_source` in der API-Antwort.
@@ -1520,7 +1520,7 @@ Eine einzelne Stations-Zeile: 2,04 MB → 0,66 MB.
   `/last_forecasts` — darüber auch der RP2-Cache). Die
   Klippe ist durch (a)–(c) plus Alarm benannt und gemessen; der Rest steht als
   offene Entscheidung in
-  [LUECKEN.md](docs/LUECKEN.md#bewusst-offen-backlog-mit-grund).
+  [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 - Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
   Chromium ist in der Sandbox nicht installierbar.
 
@@ -1605,13 +1605,13 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
 ### Geändert
 
 - **Prüfbericht archiviert:**
-  [docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md](docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md)
+  [docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md](../archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md)
   enthält den Wortlaut der Tiefenanalyse aus
   [PR #121](https://github.com/kollb/TankApp/pull/121) unverändert (Prüfstand
   0.37.0); §9 ist der Erledigt-Nachweis je Befund — B1–B12, M1/M8 und der
   Demo-Stack in 0.37.2, die E2E ohne Mocks in 0.38.0, die Bundle-Aufteilung in
   0.41.0. `docs/archiv/README.md` führt ihn mit Nachfolger-Verweis auf
-  [LUECKEN.md](docs/LUECKEN.md). Vorher lag der Bericht nur in der Wurzel des
+  [LUECKEN.md](../planung/LUECKEN.md). Vorher lag der Bericht nur in der Wurzel des
   offenen PR — außerhalb der Doku-Regel („alle Dokumente in `docs/`“).
 - **`windowStars`-Vertrag:** Der Kommentar in `web/src/week.ts` behauptete,
   die Stern-Schwellen entsprächen den Wort-Stufen der Ampel-Karte; tatsächlich
@@ -1624,11 +1624,11 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
   in „Jetzt“ kappten aber weiter bei **80 L** — `PROFILE_BOUNDS` war dabei
   toter Code. Jetzt ziehen beide Stellen ihre Grenzen aus `PROFILE_BOUNDS`
   (eine Quelle mit dem Server), der Fehlertext sagt „zwischen 10 und 100 L“,
-  und [MICROCOPY.md](docs/MICROCOPY.md)/[API.md](docs/API.md) nennen dieselbe
+  und [MICROCOPY.md](../produkt/MICROCOPY.md)/[API.md](../referenz/API.md) nennen dieselbe
   Spanne. Tests: `web/src/settings.test.tsx` (Slider-Grenzen),
   `web/src/views/Jetzt.test.tsx` (Annahmen-Zeile),
   `tests/test_profiles.py` (100 L → 200, 101 L → 400).
-- **[RP2.md](docs/RP2.md) an die Realität gezogen:** `/api/v1/series` ist
+- **[RP2.md](../betrieb/RP2.md) an die Realität gezogen:** `/api/v1/series` ist
   gegen das NAS-`/api/v1/series` abgegrenzt (`station` statt `station_id`,
   Stundenraster 06–24 Uhr aus dem Ringpuffer statt Rohreihe 1–168 h);
   „Fallback-GUI v3“ → v4; „Bestes Fenster heute“ → „Bestes Fenster“ mit Tag
@@ -1700,7 +1700,7 @@ Einheiten-/Zeitraum-Form je Größe — jede Regel wieder als Ratchet.**
 ## [0.42.0] – 2026-09-16
 
 **GUI-Text-Befund T1–T8 und V1–V2 umgesetzt (PR #125): Die Texte richten sich
-nach [MICROCOPY.md](docs/MICROCOPY.md) — und die Regeln stehen jetzt als
+nach [MICROCOPY.md](../produkt/MICROCOPY.md) — und die Regeln stehen jetzt als
 Ratchet im Test, nicht nur im Regelwerk.**
 
 ### Geändert
@@ -1775,7 +1775,7 @@ Lighthouse-Gate misst jetzt CLS ≈ 0 auf allen drei Zuständen.**
     Modulstart parallel zum Daten-Gate (Code-Splitting pro Bereich bleibt —
     U7). Gemessen: CLS 0,00 / 0,00 / 0,03, Performance 0,97–0,98,
     Barrierefreiheit/Best Practices/SEO je 1,0; Messwerte in
-    [docs/QUALITAET.md](docs/QUALITAET.md).
+    [docs/entwicklung/QUALITAET.md](../entwicklung/QUALITAET.md).
 - **Mobile E2E-Emulation + Overflows.** Die CI-Mobile-Checks liefen mit
   `isMobile: true`, das im Headless-Layout-Viewport auf 573 px aufweitet —
   die Suites nutzen jetzt Viewport 390×844 + `hasTouch`. Dazu die echten
@@ -1799,7 +1799,7 @@ Lighthouse-Gate misst jetzt CLS ≈ 0 auf allen drei Zuständen.**
 Oberfläche folgt dem eigenen Entwurf (Typografie, Geräte-Raster, Routing,
 Erklär-Treppe, Designsystem) und misst sich ehrlich.**
 
-Der [GUI-UX-Befund](docs/archiv/GUI-UX-BEFUND.md) (Stand 0.38.0) hatte der
+Der [GUI-UX-Befund](../archiv/GUI-UX-BEFUND.md) (Stand 0.38.0) hatte der
 gebauten GUI eine „nicht umgesetzte Hälfte des Entwurfs“ bescheinigt: zu kleine
 Schrift, ein Navigations-Streifen statt der Geräte-Raster, Bereichszustand ohne
 URL, eine Erklär-Treppe mit Sprüngen statt Sheets am Ort, ein Lighthouse-Gate,
@@ -1819,7 +1819,7 @@ Erledigt-Vermerk ins Archiv.
   Budgets für Übertragungsvolumen (≤ 1,5 MB) und CLS (≤ 0,1) sind scharf
   (Fehler statt Warnung); Code-Splitting pro Bereich (`views/*` laden als
   eigene Chunks, `lazy()` + Suspense-Skeleton). Messwerte und Budgets in
-  [docs/QUALITAET.md](docs/QUALITAET.md), Ratchet in
+  [docs/entwicklung/QUALITAET.md](../entwicklung/QUALITAET.md), Ratchet in
   `tests/test_quality_gates.py`.
 - **U1 (P1) — Typografie-Rampe.** Fließtext und Zahlen sind überall ≥ 12 px
   und in `rem` statt `px`; 8/9-px-Klassen bleiben reine Dekoration. Ratchet
@@ -1833,7 +1833,7 @@ Erledigt-Vermerk ins Archiv.
   Steuerungen scrollen seitwärts statt umzubrechen. Das Glossar ist kein
   Hauptbereich mehr — sein Eingang liegt im Labor-Kopf. Bereichs-Ansichten
   laden weiter als eigene Chunks. *Bewusst offen:* der zweispaltige
-  Desktop-Inhalt (§13) steht als C12 in [TODO.md](TODO.md).
+  Desktop-Inhalt (§13) steht als C12 in [TODO.md](../planung/TODO.md).
 - **U4 (P2) — Bereichs-Routing.** Bereich und Labor-Abschnitt stehen in der
   URL (`?tab=…&section=…`), `pushState`/`popstate` werken, Browser-Zurück
   fährt die Ansichten in umgekehrter Reihenfolge ab; ein Test pro Bereich in
@@ -1866,8 +1866,8 @@ Erledigt-Vermerk ins Archiv.
 ### Dokumentation
 
 - GUI-UX-Befund mit Erledigt-Vermerk archiviert
-  ([docs/archiv/GUI-UX-BEFUND.md](docs/archiv/GUI-UX-BEFUND.md));
-  TODO.md führt die Abnahme unter „C. GUI / UX“ und als offene Zeile C12
+  ([docs/archiv/GUI-UX-BEFUND.md](../archiv/GUI-UX-BEFUND.md));
+  docs/planung/TODO.md führt die Abnahme unter „C. GUI / UX“ und als offene Zeile C12
   (zweispaltiger Desktop-Inhalt).
 ## [0.40.0] – 2026-09-15
 
@@ -1941,7 +1941,7 @@ Station.
 - **Tagebuch-Satz bei Ablehnung.** Mit gespeichertem Grund heißt es „Kein
   Vergleichspreis — die App hatte hier keine Empfehlung: <Grund>.“; ohne
   Grund (Altbestand) bleibt der Void-Satz. Beide Muster stehen in
-  [MICROCOPY.md](docs/MICROCOPY.md) §4c.
+  [MICROCOPY.md](../produkt/MICROCOPY.md) §4c.
 
 ### Tests
 
@@ -1970,7 +1970,7 @@ Falsche lesen: Die Wochenlinie zeichnete den teuersten Tag als höchsten
 Balken, während die Legende „höher = günstiger“ versprach (T1), und der
 Aktions-Kanal zeigte „Speichern fehlgeschlagen“ grün mit Häkchen (T2). Beides
 ist repariert; dazu elf Punkte, in denen die GUI vom eigenen Regelwerk
-[MICROCOPY.md](docs/MICROCOPY.md) abwich — Benennungen, Anglizismen, Pfade im
+[MICROCOPY.md](../produkt/MICROCOPY.md) abwich — Benennungen, Anglizismen, Pfade im
 Fließtext, Anrede, Vorzeichen und Doppelungen.
 
 ### Geändert
@@ -2075,7 +2075,7 @@ Fällen, was Sache ist — statt es zu verschweigen.
   Älteres als 7 Tage verworfen, mehr als 50 Einträge ehrlich abgelehnt.
   Ablage in `localStorage` statt IndexedDB: winzige JSON-Objekte ohne
   Binärinhalt, LAN-App ohne Transaktionsbedarf — die Abweichung vom Konzept
-  steht in `docs/LUECKEN.md`.
+  steht in `docs/planung/LUECKEN.md`.
 
 ### Tests
 
@@ -2098,15 +2098,15 @@ Fällen, was Sache ist — statt es zu verschweigen.
 
 ### Dokumentation
 
-- `docs/API.md` (`webhook`-Feld), `docs/ARCHITEKTUR.md` (Ablauf mit Quittierung),
-  `docs/BETRIEB.md` (Webhook-Zustandstabelle statt „weiterhin Fire-and-Forget“
-  und ein Abschnitt „GUI-Update und Offline-Queue“), `docs/MICROCOPY.md`
-  (PWA-Zeile), `docs/KONZEPT.md` (Queue-Ablage).
-- **Arbeitsliste gradegezogen:** [TODO.md](TODO.md) stand im Kopf auf 0.32.0,
+- `docs/referenz/API.md` (`webhook`-Feld), `docs/architektur/ARCHITEKTUR.md` (Ablauf mit Quittierung),
+  `docs/betrieb/BETRIEB.md` (Webhook-Zustandstabelle statt „weiterhin Fire-and-Forget“
+  und ein Abschnitt „GUI-Update und Offline-Queue“), `docs/produkt/MICROCOPY.md`
+  (PWA-Zeile), `docs/produkt/KONZEPT.md` (Queue-Ablage).
+- **Arbeitsliste gradegezogen:** [TODO.md](../planung/TODO.md) stand im Kopf auf 0.32.0,
   während die App 0.37.2 war; erledigte Punkte hingen mit „*(Erledigt in …)*“
   weiter in den offenen Tabellen. Jetzt gilt: oben steht, was offen ist (nur
   noch B22), unten die Erledigt-Tabelle; jedem Punkt ist seine Version
-  zugeordnet. [docs/LUECKEN.md](docs/LUECKEN.md) ist auf 0.38.0 gezogen, hat den
+  zugeordnet. [docs/planung/LUECKEN.md](../planung/LUECKEN.md) ist auf 0.38.0 gezogen, hat den
   fehlenden GUI-Neuentwurf-Abschnitt (0.33.0–0.38.0) bekommen, und die Tabelle
   „Bewusst offen“ führt statt der drei erledigten Themen nur noch die
   verbleibenden — jede Zeile mit Status (`Arbeit` / `wartet auf Betrieb` /
@@ -2124,15 +2124,15 @@ Fällen, was Sache ist — statt es zu verschweigen.
   als Alltag/Werkstatt/System/Einstellungen (jetzt sechs Bereiche: Jetzt, Woche,
   Stationen, Labor, Ich, System), READMEs „Stand der Umsetzung“ nannte
   Rate-Limiting (LAN-only entfernt) und führte Zweitmodell/Ensemble als offen
-  (seit 0.31.0 implementiert); `docs/DATENWERKZEUGE.md` hatte eine doppelte
+  (seit 0.31.0 implementiert); `docs/referenz/DATENWERKZEUGE.md` hatte eine doppelte
   Überschrift und die Programme `swap_stations.py`/`prune_influx.py` nicht,
-  `docs/STATIONEN-TAUSCH.md` keine Stand-Zeile, `docs/QUALITAET.md` die Suite
+  `docs/betrieb/STATIONEN-TAUSCH.md` keine Stand-Zeile, `docs/entwicklung/QUALITAET.md` die Suite
   ohne Mocks nicht.
 - **Ratchet erweitert:** `tests/test_ledger_drift.py` verlangt zusätzlich eine
   Stand-Zeile und ein Inhaltsverzeichnis im Kopf jedes Dokuments und gleicht die
   Audit-Liste in `docs/README.md` in **beiden** Richtungen gegen die tatsächlich
   zurückgefallenen Dokumente ab.
-- **Browser-Rolle dokumentiert:** `docs/ARCHITEKTUR.md` beschreibt die PWA jetzt
+- **Browser-Rolle dokumentiert:** `docs/architektur/ARCHITEKTUR.md` beschreibt die PWA jetzt
   als eigenen Abschnitt (zwei Caches mit Versions-Stempel und 30-Minuten-Grenze,
   wartender Service Worker, Offline-Queue in `localStorage`); README, MICROCOPY,
   QUALITAET, SPEICHER und die Fallback-Checkliste haben ein
@@ -2181,7 +2181,7 @@ Parität/Lücken zwischen den Oberflächen und der defekte Demo-Stack.
   PATCH` leiten jetzt wie `do_GET` transparent zur NAS weiter (Body nach
   `Content-Length`, Deckel 32 MiB → 413, `Content-Type` durchgereicht);
   NAS offline → ehrliche `503`-JSON-Antwort statt 501 (der Fallback bleibt
-  nur lesend). Doku [RP2.md](docs/RP2.md) nachgezogen.
+  nur lesend). Doku [RP2.md](../betrieb/RP2.md) nachgezogen.
 - **B5 — System-Fußzeile war fast immer rot.** `systemFreshness` wertete
   alle vier Zeitstempel mit der 30-min-Preisschwelle ab — Modelle und
   Selektion laufen aber **täglich** (worker `INTERVALS`: 86 400 s), ein
@@ -2274,13 +2274,13 @@ Parität/Lücken zwischen den Oberflächen und der defekte Demo-Stack.
   fielen B1/B3 und der Demo-Defekt hier auf, nicht in der CI. Eine echte
   End-to-End-Prüfung gegen den (behebteten) Demo-Stack gehört in
   `web/e2e/`, sobald ein Browser zur Verfügung steht (Playwright-Download in
-  der Sandbox blockiert). Begründet in [LUECKEN.md](docs/LUECKEN.md).
+  der Sandbox blockiert). Begründet in [LUECKEN.md](../planung/LUECKEN.md).
 
 ### Dokumentation
 
-- [RP2.md](docs/RP2.md): Stand/Version, Changelog 4.1, Proxy-Schreib-
+- [RP2.md](../betrieb/RP2.md): Stand/Version, Changelog 4.1, Proxy-Schreib-
   verhalten (inkl. 503 ohne NAS), `decide`-Frischekontext.
-- [LUECKEN.md](docs/LUECKEN.md): E2E-ohne-Mocks und PWA/Service-Worker als
+- [LUECKEN.md](../planung/LUECKEN.md): E2E-ohne-Mocks und PWA/Service-Worker als
   begründet offen eingetragen.
 
 ## [0.37.1] – 2026-09-14
@@ -2532,7 +2532,7 @@ Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
   und Zeitwert ändern sich direkt neben der Empfehlung (lokal, kein
   Setting); `assumptionHint()` benennt die ausschlaggebende Annahme
   („Kippt zu ‚Jetzt‘, wenn du vor HH:MM tanken musst …“).
-- **Entscheidung 2.4 (Alarme) in [BETRIEB.md](docs/BETRIEB.md)**:
+- **Entscheidung 2.4 (Alarme) in [BETRIEB.md](../betrieb/BETRIEB.md)**:
   §11 streicht Preis-Erinnerungen/Push (es wird dafür keine Komponente
   gebaut); der System-Alarmweg (`app/alarms.py`, `app/notify.py`/ntfy B4,
   bestehende Codes) bleibt unverändert aktiv; Störungen erscheinen in der
@@ -2555,7 +2555,7 @@ Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
   (inkl. „Serverfehler zeigt keinen Erfolg“) und die Horizons-/
   Zeitwert-Automatik-Tests in `horizons.spec.ts`.
 - `app/version.py` 0.34.0 → 0.35.0; `docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md`
-  (Phasen 1+2 abgearbeitet, Messwerte, F4-Liste) und `docs/MICROCOPY.md`
+  (Phasen 1+2 abgearbeitet, Messwerte, F4-Liste) und `docs/produkt/MICROCOPY.md`
   kennen die neuen Dateien/Bereiche.
 
 ### Behoben
@@ -2592,7 +2592,7 @@ Stufe A/Fehler/Offline, Pi-Fallback, Vorleser-Stichprobe) steht aus
 drei Fakten, höchstens drei nächste Schritte, ein Tagesstreifen und die
 Frische-Fußzeile — in genau dieser Reihenfolge.** Dazu die Arbeitsliste
 (`docs/archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md`), die reparierte Entscheidungsvorlage
-(`docs/UI-NEUENTWURF.md`) und der Gleichschritt in der Pi-Fallback-GUI.
+(`docs/produkt/UI.md`) und der Gleichschritt in der Pi-Fallback-GUI.
 Ehrlich dazu: **die Abnahme auf dem Pi steht noch aus** (Checkliste §7.3);
 die Sichtprüfung auf Desktop (1440 px) und Smartphone (390 px) ist mit
 Demo-Daten durchgeführt, die Browser-Suite läuft mit 16/16 grün.
@@ -2644,16 +2644,16 @@ Demo-Daten durchgeführt, die Browser-Suite läuft mit 16/16 grün.
   Engine-Publikation (`quality.rolling_picp_7d_as_of`) bzw. dem Fit
   (`debug.fitted_at`); neue reine Funktion `forecastStamp` mit Test. Fehlt
   beides, sagt die Fußzeile ehrlich „Prognose kein Stand“.
-- **`docs/UI-NEUENTWURF.md` repariert:** In §12 waren zwei API-Zeilen
+- **`docs/produkt/UI.md` repariert:** In §12 waren zwei API-Zeilen
   verschmolzen (`ops/runs/{job}/start` + `ops/diagnostics`), §18 endete mit
   ~15 Fragment-Wiederholungen. Die Entscheidungsvorlage ist wieder lesbar.
 
 ### Geändert
 
-- `docs/MICROCOPY.md`: neue feste Muster für „Jetzt“ (§4b) und die
+- `docs/produkt/MICROCOPY.md`: neue feste Muster für „Jetzt“ (§4b) und die
   Fallback-Fakten/Fußzeile (§4a, Markerversion 4.0); die Tabs-Zeile nennt
   jetzt „Jetzt“ als Einstieg.
-- `docs/RP2.md`: Fallback-Version 4.0, Antwort-Karte beschrieben.
+- `docs/betrieb/RP2.md`: Fallback-Version 4.0, Antwort-Karte beschrieben.
 - `docs/README.md`: Index um `UI-NEUENTWURF.md` und
   `UMSETZUNG-GUI-NEUENTWURF.md` ergänzt.
 
@@ -2715,7 +2715,7 @@ bleibt byte-identisch.
 Tabelle, Alltag und Werkstatt getrennt — und sie liest den Preis-Puffer nur
 noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 [PR #112](https://github.com/kollb/TankApp/pull/112) nach der Arbeits-Checkliste
-[docs/UMSETZUNG-FALLBACK-GUI-V2.md](docs/archiv/UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
+[docs/UMSETZUNG-FALLBACK-GUI-V2.md](../archiv/UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
 
 ### Hinzugefügt
 
@@ -2741,7 +2741,7 @@ noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 - **Snapshot-TTL-Cache (5 s, `SNAPSHOT_TTL_S`):** `Context.snapshot()` hält den
   Puffer-Stand kurz und baut ihn unter einem Lock auf. Vorher lasen die vier
   Endpunkte eines GUI-Refreshs denselben Puffer viermal neu.
-- **Microcopy §4a** ([docs/MICROCOPY.md](docs/MICROCOPY.md)): die festen
+- **Microcopy §4a** ([docs/produkt/MICROCOPY.md](../produkt/MICROCOPY.md)): die festen
   Muster der neuen Oberfläche (Verdict-Sätze, Tagesstreifen-Caption,
   „<Kraftstoff> nicht geführt“, Sortierungs-Labels, Sticky-Chip, Ehrlichkeits-Zeile).
 
@@ -2758,9 +2758,9 @@ noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 
 ### Geändert
 
-- Version 0.33.0, `docs/RP2.md` (Stand-Zeile, Fallback-API-Tabelle,
+- Version 0.33.0, `docs/betrieb/RP2.md` (Stand-Zeile, Fallback-API-Tabelle,
   Funktionsliste der GUI, Abschnitt zum Tagesstreifen, Changelog) und
-  `docs/MICROCOPY.md` nachgezogen.
+  `docs/produkt/MICROCOPY.md` nachgezogen.
 - Dienst-Neustart installiert das neue Template automatisch; die alte Datei
   wird weiterhin als `templates/index.html.old` gesichert
   (Marker `<!-- tankapp-fallback-gui v3.0 sha:… -->`). Der Proxy-Pfad bleibt
@@ -2794,24 +2794,24 @@ erledigt.
   0 = aus), Alarme `stations_dead`/`stations_lifecycle`, Artefakt-Felder
   (`dead_stations`, `lifecycle_counts`, `lifecycles` je Zeile) und
   Unterscheidung in Werkstatt- und System-Tab. Doku-Abschnitt
-  [ANALYSE.md](docs/ANALYSE.md#lebenszyklus-der-stationen).
+  [ANALYSE.md](../referenz/ANALYSE.md#lebenszyklus-der-stationen).
 - **A13 — Abnahme Preis-Zwillinge:** `_detect_price_twins` mit denselben
   Schwellen wie der manuelle Vergleich (≥ 28 Tage mit je ≥ 12 gemeinsamen
   Punkten, ≥ 90 % Überlappung, ≥ 99 % innerhalb 0,1 ct/L), Warnung im
   Artefakt (`price_twins`/`price_twin_count`, `auto_apply: false`), Alarm
   `price_twins` und Paar-Tabelle im System-Tab.
-  [ANALYSE.md](docs/ANALYSE.md#preis-zwillinge).
+  [ANALYSE.md](../referenz/ANALYSE.md#preis-zwillinge).
 - **C7 — Abnahme Hilfe/Glossar:** „Was heißt das?“-Tab mit 10 Begriffen
   (δ̂, MASE, PICP, Brier, ε, Regret, q-Wert, AV-Score, Lebenszyklus,
   Preis-Zwillinge), i-Tooltips (`InfoTooltip`) in Werkstatt und System,
-  jeder Eintrag mit gültigem `docs/ANALYSE.md`-Anker — die Abschnitte
+  jeder Eintrag mit gültigem `docs/referenz/ANALYSE.md`-Anker — die Abschnitte
   MASE/PICP/Brier/ε/Regret/Lebenszyklus/Zwillinge sind neu in der Doku,
   q-Wert/AV-Score verweisen auf die bestehenden.
 - **F3 (Rest) — Footer ans Regelwerk:** „Abfrage gedrosselt“ → „Abfrage
   höchstens alle 5 Minuten“ (konkret statt Jargon),
   „Beobachtungsfenster“ → „Polling-Fenster“ (Doku-Vokabular, Konzept §7).
   Die deutsche Kurzzeile („Keine Demo-Preise. …“) bleibt — eine pro
-  Auftritt, kein Englisch, keine Behauptung ([MICROCOPY.md](docs/MICROCOPY.md) §6).
+  Auftritt, kein Englisch, keine Behauptung ([MICROCOPY.md](../produkt/MICROCOPY.md) §6).
 
 ### Behoben
 
@@ -2828,19 +2828,19 @@ erledigt.
   ein Zehntel Request je Poll, `prices.php`-Batch zu 10). Alle Stellen
   sagen jetzt die Wahrheit: Vergleichsplatz weg, Polling-Set stabil bis
   zum bestätigten Tausch. Die Entscheidung (keine Selbst-Tot-Schleife,
-  Pfad = Alarm → [Tausch-Anleitung](docs/STATIONEN-TAUSCH.md)) steht in
-  [LUECKEN.md](docs/LUECKEN.md) begründet.
+  Pfad = Alarm → [Tausch-Anleitung](../betrieb/STATIONEN-TAUSCH.md)) steht in
+  [LUECKEN.md](../planung/LUECKEN.md) begründet.
 
 ### Dokumentation
 
-- [ANALYSE.md](docs/ANALYSE.md): neue Abschnitte „Lebenszyklus der
+- [ANALYSE.md](../referenz/ANALYSE.md): neue Abschnitte „Lebenszyklus der
   Stationen“, „Preis-Zwillinge“, „MASE (Fehler gegen die Naive)“,
   „PICP (Band-Trefferquote)“ und „Empfehlungs-Bilanz (Brier, Epsilon,
   Regret)“ mit Brier/ε/Regret-Unterabschnitten; Glossar-Wortlaut
   wortgleich in der Doku.
-- [LUECKEN.md](docs/LUECKEN.md): 0.32.0-Abschnitt; Polling-Set-Entscheidung
+- [LUECKEN.md](../planung/LUECKEN.md): 0.32.0-Abschnitt; Polling-Set-Entscheidung
   als begründet-offen eingetragen.
-- [TODO.md](TODO.md): A12/A13/C7/F3 erledigt (0.32.0), H3 als 0.31.0
+- [TODO.md](../planung/TODO.md): A12/A13/C7/F3 erledigt (0.32.0), H3 als 0.31.0
   nachgetragen (Code, Tests und CHANGELOG waren da, das TODO lag).
 
 ### Tests
@@ -2909,13 +2909,13 @@ Fenster-Reihenfolge lernt aus deinen Tankzeiten.
   Chrome läuft mit `--no-sandbox`. Vorher startete Lighthouse-CI den Server
   und wartete auf „bereit auf“ — auf dem CI-Läufer dauerte der Demo-Aufbau
   länger als diese Wartezeit, der Lauf brach **ohne Bericht** ab: ein rotes
-  Gate ohne Befund. Begründung in [QUALITAET.md](docs/QUALITAET.md).
+  Gate ohne Befund. Begründung in [QUALITAET.md](../entwicklung/QUALITAET.md).
 
 ### Dokumentation
 
-- [ANALYSE.md](docs/ANALYSE.md): P-Seite mit gemeinsamer Ziehung und
+- [ANALYSE.md](../referenz/ANALYSE.md): P-Seite mit gemeinsamer Ziehung und
   Messwerten, neuer Abschnitt „Ensemble aus zwei Modellkernen (A10)“.
-- [LUECKEN.md](docs/LUECKEN.md): Punkt „gemeinsame Bootstrap-Ziehung“
+- [LUECKEN.md](../planung/LUECKEN.md): Punkt „gemeinsame Bootstrap-Ziehung“
   geschlossen; neu und begründet offen: Ensemble-Gewichte aus dem
   Rolling-Origin-Backtest statt aus dem Validierungsfenster.
 
@@ -3021,9 +3021,9 @@ offenen Frage (G4 Cache, H5 Zeitumstellung).
   sperren das Overscrollen an der Wurzel nur zwischen `pointerdown` und
   `pointerup`; Slider und Karte sind zusätzlich als `.no-ptr` markiert, die
   Leaflet-Fläche scrollt nie die Seite mit.
-- **Dokumentation:** [docs/ENGINE.md](docs/ENGINE.md) beschreibt die
+- **Dokumentation:** [docs/referenz/ENGINE.md](../referenz/ENGINE.md) beschreibt die
   DST-Ausweisung und die Gründe für `mase: null`;
-  [docs/RP2.md](docs/RP2.md) und [docs/SPEICHER.md](docs/SPEICHER.md) halten
+  [docs/betrieb/RP2.md](../betrieb/RP2.md) und [docs/betrieb/SPEICHER.md](../betrieb/SPEICHER.md) halten
   die G4-Entscheidung fest (CACHE_DIR-Zeile, Reboot-Zeile, eigener Absatz).
 
 ### Tests
@@ -3095,7 +3095,7 @@ eine eigene Messung nach dem Deploy — sie hält B11 nicht offen.
 
 - Sammler `ops/nas/measure-phase-b.sh`: Python-Prozesse über `cmdline` **und**
   `/proc/pid/comm`.
-- [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11):
+- [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#ressourcen-während-phase-b-messen-b11):
   B11 mit den fünf Zahlen; Kaltlauf nach B15/B16 **~2,6 min**.
 
 ## [0.26.0] – 2026-09-13
@@ -3148,10 +3148,10 @@ gemessenen B11-Ressourcenwerte sind in der Betriebsanleitung eingeordnet.
   abgebildet. Beispieltest: acht Host-Kerne, aber Affinität oder Quota für zwei
   CPUs ergeben zwei Worker. Ein positiver, expliziter
   `TANKAPP_MODEL_WORKERS`-Wert bleibt eine bewusste Betreiber-Vorgabe.
-- **Doku-Integrität:** Der Merge vor diesem Batch hatte `TODO.md` mitten in der
+- **Doku-Integrität:** Der Merge vor diesem Batch hatte `docs/planung/TODO.md` mitten in der
   0.25.1-Zeile abgeschnitten (einschließlich Reihenfolge-Abschnitt); der
   verlorene, unveränderte Historienteil ist wiederhergestellt. Damit zeigt der
-  bestehende Link aus `docs/LUECKEN.md` wieder auf einen vorhandenen Anker.
+  bestehende Link aus `docs/planung/LUECKEN.md` wieder auf einen vorhandenen Anker.
 
 ### Gemessen
 
@@ -3216,7 +3216,7 @@ gar nicht mehr eingereicht werden.
 ### Betrieb
 
 - **B11-Messprotokoll auf den Kaltlauf umgestellt**
-  ([docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11)):
+  ([docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#ressourcen-während-phase-b-messen-b11)):
   Der Tages-Cache des Backtests (B17) gilt für den ganzen lokalen Tag — sein
   Fingerabdruck enthält `end_local`, den letzten vollständigen Tag. Weil
   `models` nach B18 nur 1×/Tag läuft, ist **jeder Planlauf ein Kaltlauf**
@@ -3230,7 +3230,7 @@ gar nicht mehr eingereicht werden.
   Maxima/Minima zusammen. Die vier von Hand getippten Befehle treffen das
   40-s-Fenster eines Warm-Laufs nicht mehr.
 - **Die Messung selbst steht weiterhin aus** — B11 bleibt offen, bis die fünf
-  Zahlen in [TODO.md](TODO.md) eingetragen sind.
+  Zahlen in [TODO.md](../planung/TODO.md) eingetragen sind.
 
 ### Tests
 
@@ -3242,7 +3242,7 @@ gar nicht mehr eingereicht werden.
 
 ## [0.25.0] – 2026-09-13
 
-**Batch 0 des Laufzeit-Bündels** (TODO.md §B, „0 — ohne Code“): Ursachen
+**Batch 0 des Laufzeit-Bündels** (docs/planung/TODO.md §B, „0 — ohne Code“): Ursachen
 klären statt rechnen. Der Hauptbefund ist kein Laufzeit-Thema, aber ein
 echter Fehler: „e10: **0 Stationen**“ im Modell-Lauf war weder ein
 Eingabedaten-Problem noch ein stiller Fehler, sondern ein Coverage-Gate, das
@@ -3317,12 +3317,12 @@ Stationen“ war damit dauerhaft leer.
 - **Diagnose-Texte nennen Zahlen**: „nach Coverage-Gate (≥85 % vom
   Stadt-Bestwert 98 % im Fenster 06–24 Uhr) nur 2 Station(en) übrig — LOO
   braucht ≥4“ statt „nach Coverage ≥85% nur 2 Station(en) übrig“.
-- `docs/ANALYSE.md`: Coverage-Gate (Zeile 6 der Selektions-Tabelle) mit der
+- `docs/referenz/ANALYSE.md`: Coverage-Gate (Zeile 6 der Selektions-Tabelle) mit der
   neuen Definition und dem Unterschied zur Offline-Pipeline
   `analysis/station_selection.py` (dort bleibt das absolute Gate mit
   `--min-coverage`, weil dort ein Operator auf die Fehlermeldung reagieren
   kann).
-- `docs/BETRIEB.md`: Messprotokoll „Ressourcen während Phase B messen (B11)“
+- `docs/betrieb/BETRIEB.md`: Messprotokoll „Ressourcen während Phase B messen (B11)“
   — die ausstehende NAS-Messung als Copy-Paste-Block statt als Erinnerungsnotiz.
 
 ### Gemessen
@@ -3367,12 +3367,12 @@ es ist nicht null, und es steht hier, weil dies ein Laufzeit-Bündel ist.
 > 10:15: 1,5 min, 10:50: 1,4 min) statt 10,3 min am 12.09.2026 — Backtest
 > komplett aus dem Tages-Cache („19 aus Tages-Cache, 0 neu gerechnet“),
 > Phase B nur noch ~50 s. Ein Kaltstart des Caches (erster Lauf des Tages)
-> ist in diesem Log nicht enthalten. Nachgetragen in TODO.md, Batch 1 und 3.
+> ist in diesem Log nicht enthalten. Nachgetragen in docs/planung/TODO.md, Batch 1 und 3.
 >
 > **Weiter offen: B11 auf der Zielhardware** — `docker top tankapp-web-app-1`
 > und `docker stats --no-stream` **während Phase B** (nicht im Leerlauf),
 > Protokoll in
-> [docs/BETRIEB.md](docs/BETRIEB.md#ressourcen-während-phase-b-messen-b11).
+> [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#ressourcen-während-phase-b-messen-b11).
 > Erwartet wird keine Beschleunigung, sondern der Beleg, ob 4 Worker ×
 > pandas in `shm_size: 256m` und 4,2 Gi verfügbarem Host-Speicher passen.
 
@@ -3503,7 +3503,7 @@ am RP2 schon hatte und die NAS-GUI (dunkles Slate) nicht.
   alle drei Kraftstoffe beim Start im Hintergrund vor
   (`LiveData.prewarm()` in `app/server.py`), sodass der erste
   GUI-Request danach in der Praxis nie wartet.
-- `docs/BETRIEB.md`: Abschnitt „GUI-Responsivität“ mit
+- `docs/betrieb/BETRIEB.md`: Abschnitt „GUI-Responsivität“ mit
   OSRM-Empfehlung (eigener Server) und Verhalten bei Internet-Ausfall.
 
 ### Behoben
@@ -3995,15 +3995,15 @@ Doku-Ordner (B14), Microcopy-Regelwerk als eine Seite mit Ratchet-Test
   Entwarnung“ in Berliner Zeit. Ohne konfigurierten Webhook steht dort die
   Tatsache, nicht ein Fehler: „Keine Push-Zustellung eingerichtet — Alarme
   stehen nur hier in der GUI“ plus Einrichtungshinweis auf
-  `TANKAPP_NTFY_URL`/[docs/BETRIEB.md](docs/BETRIEB.md). Die Texte sind reine
+  `TANKAPP_NTFY_URL`/[docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md). Die Texte sind reine
   Funktionen in `web/src/data.ts` (`notifyTone`, `notifyStatusLine`,
   `notifyLastLine`) und in `web/src/notify.test.ts` getestet, damit kein Panel
   eine eigene Formulierung erfindet. Serverseitig kam dafür genau ein Feld
   dazu: `notify.last_sent_at` (jüngster Zeitstempel einer zugestellten
   Fehlermeldung) — die Webhook-URL bleibt wie bisher außen vor.
-- **F3 (Rest) — Microcopy-Regelwerk** [docs/MICROCOPY.md](docs/MICROCOPY.md),
-  eine Seite, verlinkt aus [docs/README.md](docs/README.md), der Repo-`README`
-  und [AGENTS.md](AGENTS.md): Tonfall („ehrlich, knapp, handlungsleitend“, mit
+- **F3 (Rest) — Microcopy-Regelwerk** [docs/produkt/MICROCOPY.md](../produkt/MICROCOPY.md),
+  eine Seite, verlinkt aus [docs/README.md](../README.md), der Repo-`README`
+  und [AGENTS.md](../../AGENTS.md): Tonfall („ehrlich, knapp, handlungsleitend“, mit
   Ja/Nein-Tabelle), Anführungszeichen und Sonderzeichen (`„…“`, `—` vs. `–`,
   `·`, `…`), Zahlen/Einheiten (**Regel: Niveaus in €/L, Differenzen in ct/L**,
   Uhrzeiten immer Europe/Berlin, Formatter statt `toFixed`), Benennungen
@@ -4065,7 +4065,7 @@ bestehenden Rechnungen.
   `/api/v1/health` zeigt `notify` (`configured`, `open_errors`, `last_ok_at`).
   `ops/nas/app/compose.yml` reicht die Variable durch, Einrichtung und
   Verhalten stehen in
-  [docs/BETRIEB.md](docs/BETRIEB.md#alarm-zustellung-über-ntfy-b4). Offen
+  [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#alarm-zustellung-über-ntfy-b4). Offen
   bleibt die Anzeige im System-Tab der GUI (TODO B4).
 - **D3 — Property-Tests der Umweg-Ökonomie**
   (`web/src/data.property.test.ts`, neu; `fast-check` als devDependency): Die
@@ -4264,7 +4264,7 @@ als erledigt heraus; die echte Lücke war die `outline-none`-Überschreibung.
   still. Ein Store aus einer *neueren* Version wird mit
   `StoreSchemaTooNew` (503-Familie) abgelehnt, statt ihn still zu
   überschreiben. Tests inkl. „alter 0.10-Store → neuer Code“;
-  Doku-Absatz in [docs/BETRIEB.md](docs/BETRIEB.md#schema-version-des-feedback-stores-b2).
+  Doku-Absatz in [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#schema-version-des-feedback-stores-b2).
 - **A6 — Share-URL**: `?city=…&fuel=…&station_id=…&liters=…&weeks=…&basis=…`
   wird beim Start in die Ansicht übernommen (einmalig, vor den
   localStorage-Preferences) — nötig spätestens seit `heatmapWeeks`/
@@ -4320,7 +4320,7 @@ entfernt.
   mit echten Tankerkönig-Archiv-Ereignissen geschlossen — nur Lückenfenster,
   nur Vergangenheit, Live behält per Engine-Dedup immer Vorrang; Ergebnis als
   `gapfill_quality` in der Publikation. Details:
-  [docs/BETRIEB.md](docs/BETRIEB.md#polling-lücken-werden-automatisch-aus-dem-archiv-geschlossen).
+  [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md#polling-lücken-werden-automatisch-aus-dem-archiv-geschlossen).
 - **`TANKAPP_DECISION_HOUR`** (Default 12, Engine-CLI `--decision-hour`):
   Der Schicht-A-Anker ist konfigurierbar und fließt in Backtest-Report
   (`decisionHour`), Werkstatt-Texte und Labor-Diagramm ein.
@@ -4372,11 +4372,11 @@ entfernt.
   API-Default bleibt `overall` (bestehende Aufrufe ändern sich nicht), die GUI
   schaltet ohne Station auf `hour` und erklärt die Wahl; mit gewählter Station
   ist der Umschalter deaktiviert (dort vergleicht die Heatmap ohnehin je Zelle).
-  Begründung und Grenzen: [docs/ANALYSE.md](docs/ANALYSE.md#cheap-probability).
+  Begründung und Grenzen: [docs/referenz/ANALYSE.md](../referenz/ANALYSE.md#cheap-probability).
 - **G2** Journal-Cap für die RP2-Dienste: Drop-in-Beispiel
   `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`,
   `SystemMaxFileSize=10M`) + `journalctl --vacuum-size=50M` als
-  Wartungsschritt; Anleitung in [docs/RP2.md](docs/RP2.md#journal-gr%C3%B6%C3%9Fe-begrenzen-sd-karte-schonen).
+  Wartungsschritt; Anleitung in [docs/betrieb/RP2.md](../betrieb/RP2.md#journal-gr%C3%B6%C3%9Fe-begrenzen-sd-karte-schonen).
 - **E5** Heatmap-Zeitraum wählbar: Wochen-Select **4/6/12** (Default 6) neben
   „Heatmap Art“; die `heatmapWeeks`-Preference hatte bisher keinen Eingabeweg.
 - **E6** Slider mit Begleit-Zahlenfeld: Verbrauch `step=0,5`, Tankmenge
@@ -4434,7 +4434,7 @@ entfernt.
 - **A6** CSV-Export der eigenen Tankbelege: `GET /api/v1/fills.csv` + Download
   im System-Tab.
 - **B1** Backup der Laufzeitdaten: `ops/nas/backup.sh` + Restore-Absatz in
-  docs/BETRIEB.md.
+  docs/betrieb/BETRIEB.md.
 - **B4** Aggregierter Alarm-Block `alarms[]` in `GET /api/v1/health` + roter/
   gelber/grüner Punkt im Header.
 - **B6/H1** Umweg server-only: Server liefert `detour_km_est`, `dist_mode`,
@@ -4452,7 +4452,7 @@ entfernt.
 - **C10** Heatmap: Tages-Zusammenfassung (Median + günstigste Stunde je Tag),
   Hervorhebung der heutigen Zeile, Fazit-Satz + Erklärzeile.
 - **Doku-Umbau:** alle Dokumente in `docs/`, Index `docs/README.md`; Modul-READMEs
-  eingezogen; Archiv `docs/archiv/` mit Legende; `docs/BETRIEB.md`/`RP2.md`
+  eingezogen; Archiv `docs/archiv/` mit Legende; `docs/betrieb/BETRIEB.md`/`RP2.md`
   gerettet; Link-Test ausgeweitet auf alle Markdowns inkl. Anker.
 
 ### Geändert
@@ -4466,6 +4466,6 @@ entfernt.
   (1-MB-Ring, ältere Hälfte wird verworfen).
 - **Dokumentation an einem Ort:** Verweise in Python-Docstrings, CLI-Hilfen,
   `AGENTS.md`, `.github/dependabot.yml` und übrigen Dokumenten nachgezogen.
-- **Inhalte auf Stand 0.10.x gebracht:** `docs/API.md`, `docs/INSTALL.md`,
-  `docs/ANALYSE.md`, `docs/ARCHITEKTUR.md`, `docs/LUECKEN.md`, `README.md`,
-  `TODO.md`.
+- **Inhalte auf Stand 0.10.x gebracht:** `docs/referenz/API.md`, `docs/betrieb/INSTALL.md`,
+  `docs/referenz/ANALYSE.md`, `docs/architektur/ARCHITEKTUR.md`, `docs/planung/LUECKEN.md`, `README.md`,
+  `docs/planung/TODO.md`.

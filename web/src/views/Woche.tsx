@@ -1,4 +1,4 @@
-// Woche — der Zeit-Planer (docs/UI-NEUENTWURF.md §5.3, Phase 2).
+// Woche — der Zeit-Planer (docs/produkt/UI.md, BereichePhase 2).
 //
 // Feste Reihenfolge, nie anders:
 //   ① Tank-Zeile (Füllstand + Reichweite, „Ändern“ öffnet die Pflege)

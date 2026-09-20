@@ -2,7 +2,7 @@
 
 > Stand: 12.09.2026. Übernahmeregeln für die beiden Prototypen in `sample/`.
 > Früher `sample/README.md`; Dokumentation hat jetzt einen Ort (`docs/`).
-> Die Regel selbst steht auch in [AGENTS.md](../AGENTS.md): Beim Aufräumen von
+> Die Regel selbst steht auch in [AGENTS.md](../../AGENTS.md): Beim Aufräumen von
 > Demo-Daten werden diese Vorlagen **nicht** gelöscht.
 
 ## Inhaltsverzeichnis
@@ -19,8 +19,8 @@ löschen und nicht durch ein unverbundenes Landingpage-Design ersetzen.
 
 | Vorlage | Übernahme |
 |---|---|
-| [`good gui`](../sample/good%20gui/) | Alltags-Homepage: `TankAppDashboard`, sticky Navigation, Kampagnen-/Kraftstoff-Umschalter, `DecisionCockpit`, Tagesstreifen, Umwegvergleich und Feedback-Karten. |
-| [`good statistic gui`](../sample/good%20statistic%20gui/) | Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
+| [`good gui`](../../sample/good%20gui) | Alltags-Homepage: `TankAppDashboard`, sticky Navigation, Kampagnen-/Kraftstoff-Umschalter, `DecisionCockpit`, Tagesstreifen, Umwegvergleich und Feedback-Karten. |
+| [`good statistic gui`](../../sample/good%20statistic%20gui) | Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
 
 ## Visuelle Leitplanken aus dem vorhandenen Code
 

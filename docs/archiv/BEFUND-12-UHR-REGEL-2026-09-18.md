@@ -1,6 +1,6 @@
 # 12-Uhr-Regel — Befund-Report
 
-> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Abgeschlossener Prüfbericht. Schritt 3 ist mit 0.51.0 umgesetzt ([UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md](UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md)); der DoD-Backtest über beide Rechtslagen ist am 18.09.2026 als nicht nötig geschlossen — ein Mischbestand, gegen den er zu rechnen wäre, existiert produktiv nicht mehr. Was heute gilt: die Bodenkante im Code (`app/law.py`, `TANKAPP_LAW_FLOOR`) und [ENGINE.md](../ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Abgeschlossener Prüfbericht. Schritt 3 ist mit 0.51.0 umgesetzt ([UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md](UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md)); der DoD-Backtest über beide Rechtslagen ist am 18.09.2026 als nicht nötig geschlossen — ein Mischbestand, gegen den er zu rechnen wäre, existiert produktiv nicht mehr. Was heute gilt: die Bodenkante im Code (`app/law.py`, `TANKAPP_LAW_FLOOR`) und [ENGINE.md](../referenz/ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr).
 >
 > Stand: 18.09.2026 · App-Version 0.51.0 (§4 nachgerechnet und umgesetzt).
 > 17.09.2026 (Stimmt die Preislogik/Anzeige noch, seit die 12-Uhr-Regel
@@ -8,7 +8,7 @@
 > (`export_influx.py --uuid-only`, 5-Minuten-Takt) und der Archiv-Kontrast
 > auf demselben `analysis/noon_rule_check.py`-Gerüst — kein Modell, kein
 > Bauchgefühl, nur Beobachtungen. Werkzeug-Doku:
-> [DATENWERKZEUGE.md#12-uhr-regel-check](../DATENWERKZEUGE.md#12-uhr-regel-check).
+> [DATENWERKZEUGE.md#12-uhr-regel-check](../referenz/DATENWERKZEUGE.md#12-uhr-regel-check).
 
 ## Inhaltsverzeichnis
 
@@ -123,7 +123,7 @@ Ansicht; nach dem Gesetz gilt das Gegenteil.
 
 Dazu zwei Doku-Schienen: NAS-Ablauf und Datenquellen-Auswahl
 (UUID-Ära vs. Archiv-M2) in
-[DATENWERKZEUGE.md#12-uhr-regel-check](../DATENWERKZEUGE.md#12-uhr-regel-check).
+[DATENWERKZEUGE.md#12-uhr-regel-check](../referenz/DATENWERKZEUGE.md#12-uhr-regel-check).
 
 **Zwischenbilanz:** Die gestellte Einzelfrage („Stimmt die Anzeige noch?")
 ist beantwortet: Der gezeigte Abend-Tipp war (a) ein echter
@@ -236,7 +236,7 @@ python data-tools/ingest_history.py \
 ```
 
 Gefundene Fehlbedienungen auf dem Weg (nur der Vollständigkeit halber —
-alle im Runbook in [DATENWERKZEUGE.md](../DATENWERKZEUGE.md) dokumentiert):
+alle im Runbook in [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) dokumentiert):
 `--env-file` fehlte beim ersten Export; `--raw` mit einer Datei statt dem
 Verzeichnis belegt; Anker-Flag statt `analysis/config.local.json`;
 Copy-Paste-Doppelziele in der Shell.

@@ -1,6 +1,6 @@
 # UMSETZUNG-FALLBACK-GUI-V2 — Arbeits-Checkliste
 
-> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Arbeits-Checkliste, abgeschlossen: Schritte 1–4 sind mit 0.33.0 umgesetzt und geprüft. Schritt 6.2 (diese Auslagerung) ist damit erledigt; die Pi-Sichtprüfung 5.2 ist am 18.09.2026 als nicht nötig geschlossen — der Fallback läuft dort seit Monaten im Betrieb ([TODO.md](../../TODO.md#geschlossen-als-nicht-nötig-18092026)). Was heute gilt: [RP2.md](../RP2.md).
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Arbeits-Checkliste, abgeschlossen: Schritte 1–4 sind mit 0.33.0 umgesetzt und geprüft. Schritt 6.2 (diese Auslagerung) ist damit erledigt; die Pi-Sichtprüfung 5.2 ist am 18.09.2026 als nicht nötig geschlossen — der Fallback läuft dort seit Monaten im Betrieb ([TODO.md](../adr/0002-PRODUKTUMFANG.md#entscheidung)). Was heute gilt: [RP2.md](../betrieb/RP2.md).
 >
 > Stand: 14.09.2026 · **umgesetzt in App-Version 0.33.0** (Branch
 > `arena/01a09ed1-tankapp`) · Konzept aus
@@ -39,7 +39,7 @@
 - Alltag/Werkstatt-Trennung (Werkstatt: Sparklines, Rohdaten, Datenstatus).
 - Sticky-Status- + Steuerleiste; Sticky-Aktions-Chip beim Scrollen.
 - Ehrlichkeits-Regel: Preis-Score ≠ Wahrscheinlichkeit; Cache-Alter sichtbar.
-- Leitplanken: [GUI-VORLAGEN.md](../GUI-VORLAGEN.md), Texte: [MICROCOPY.md](../MICROCOPY.md).
+- Leitplanken: [GUI-VORLAGEN.md](../produkt/GUI-VORLAGEN.md), Texte: [MICROCOPY.md](../produkt/MICROCOPY.md).
 
 **Grenzen (bewusst nicht im Fallback):** Belege/Wallet, Heatmaps,
 kalibrierte M7-Wahrscheinlichkeit, Umweg-Ökonomie mit Profil — bleiben
@@ -120,7 +120,7 @@ Alle Änderungen in `rp2/fallback_gui.py`.
     - `series` → Tagesstreifen (neuer Endpunkt aus Schritt 1)
   - **Leer-/Fehlerzustände** aus dem alten Template beibehalten
     (kein Cache, Puffer leer, 503-Handling, `CACHE_REBOOT_HINT`).
-  - **Microcopy** laut [MICROCOPY.md](../MICROCOPY.md): €/L mit 3 Nachkommastellen,
+  - **Microcopy** laut [MICROCOPY.md](../produkt/MICROCOPY.md): €/L mit 3 Nachkommastellen,
     Differenzen in ct, „…“-Anführungszeichen, keine Ausrufezeichen,
     keine Emoji im Fließtext. Neue Muster in Schritt 4.2 registrieren.
 - [x] **2.2** Vorher wissen: Die Tests prüfen das Template nur über den
@@ -149,7 +149,7 @@ Alle Änderungen in `rp2/fallback_gui.py`.
 
 ## 4. Doku und Release
 
-- [x] **4.1** `docs/RP2.md`:
+- [x] **4.1** `docs/betrieb/RP2.md`:
   - Fallback-API-Tabelle (Abschnitt „Fallback-API und Umschaltzeiten"):
     Zeile für `GET /api/v1/series?station=&fuel=` ergänzen.
   - Funktionsliste der Fallback-GUI (heute: „Status-Pills, E10/E5/Diesel,
@@ -158,11 +158,11 @@ Alle Änderungen in `rp2/fallback_gui.py`.
     umstellen (Antwort-Karte, Stations-Karten, Tagesstreifen,
     Alltag/Werkstatt, Sticky-Chip).
   - Stand-Zeile und RP2-Fallback-Version (v3.0) aktualisieren.
-- [x] **4.2** `docs/MICROCOPY.md`: neue Textmuster aufnehmen (Verdict-Sätze,
+- [x] **4.2** `docs/produkt/MICROCOPY.md`: neue Textmuster aufnehmen (Verdict-Sätze,
   Tagesstreifen-Caption „Leere Stunden hatten keine offene Meldung",
   „&lt;Kraftstoff&gt; nicht geführt", Sortierungs-Labels, Sticky-Chip).
 - [x] **4.3** `app/version.py`: 0.31.0 → **0.33.0** (0.32.0 war beim Merge
-  von PR #108 bereits belegt); `CHANGELOG.md` ergänzen (neues
+  von PR #108 bereits belegt); `docs/releases/CHANGELOG.md` ergänzen (neues
   Fallback-Template v3.0, `series`-Endpunkt, Snapshot-TTL-Cache,
   Messwerte aus Schritt 0).
 - [x] **4.4** `docs/README.md`: diese Checkliste im Index

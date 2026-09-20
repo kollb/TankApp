@@ -4,9 +4,9 @@
 > [PR #121](https://github.com/kollb/TankApp/pull/121) (vorgelegt am 15.09.2026,
 > Prüfstand `main` @ `9f33b84` = 0.37.0). Der Wortlaut der Prüfung steht
 > unverändert hier (Archiv-Regel) — die Umsetzung ist am Ende in §9 verzeichnet.
-> **Nachfolger:** [../LUECKEN.md](../LUECKEN.md) (offene Produktpunkte),
-> [../RP2.md](../RP2.md) (Fallback/Proxy im Betrieb), [../BETRIEB.md](../BETRIEB.md)
-> und [../../CHANGELOG.md](../../CHANGELOG.md) (Änderungen je Version).
+> **Nachfolger:** [LUECKEN.md](../planung/LUECKEN.md) (offene Produktpunkte),
+> [../RP2.md](../betrieb/RP2.md) (Fallback/Proxy im Betrieb), [BETRIEB.md](../betrieb/BETRIEB.md)
+> und [CHANGELOG.md](../releases/CHANGELOG.md) (Änderungen je Version).
 
 ## Inhalt
 
@@ -14,7 +14,7 @@
 - [9. Erledigt-Nachweis (Nachtrag 16.09.2026)](#9-erledigt-nachweis-nachtrag-16092026)
 
 Stand: Branch `arena/01a0a13b-tankapp` = `main` @ `9f33b84` (0.37.0), 14.09.2026.
-Scope: React-GUI nach `docs/UI-NEUENTWURF.md` (Phasen 1–4) + Fallback-GUI v4.0 nach
+Scope: React-GUI nach `docs/produkt/UI.md` (Phasen 1–4) + Fallback-GUI v4.0 nach
 `docs/UMSETZUNG-FALLBACK-GUI-V2.md` + die dazugehörige Server-/Engine-Koppelung.
 
 ## 0. Methode
@@ -139,7 +139,7 @@ PUT  /api/v1/profiles   → 501
 (DELETE/PATCH analog)
 ```
 
-`docs/RP2.md:52` verspricht „NAS online → RP2 leitet **transparent** zur **vollen**
+`docs/betrieb/RP2.md:52` verspricht „NAS online → RP2 leitet **transparent** zur **vollen**
 NAS-GUI weiter" — in Wahrheit ist die GUI über die Pi-Adresse nur **read-only**: Beleg
 buchen, Intent melden (M7-Feedback!), Job starten, Profil anlegen/ändern/löschen, Beleg
 stornieren — alles 501. Vor PR #119/112 war die Pi-Adresse ohnehin Fallback-only, heute
@@ -357,7 +357,7 @@ Code; hier steht, wo. Verifiziert am 16.09.2026 (App 0.43.1) mit
 `ruff check`, `ruff format --check`, 806 pytest, 1053 Vitest und
 `npm --prefix web run build`. Die Browser-Suiten liefen hier nicht — der
 Chromium-Download ist in der Sandbox gesperrt (so auch in
-[../LUECKEN.md](../LUECKEN.md)); sie gehören zur CI
+[LUECKEN.md](../planung/LUECKEN.md)); sie gehören zur CI
 (`.github/workflows/tests.yml`, `test:e2e` und `test:e2e:demo`).
 
 ### 9.1 Befunde → Umsetzung
@@ -390,12 +390,12 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
 - **B8:** Der Fallback nimmt veraltete Meldungen nicht aus dem Vergleich,
   sondern zeigt sie mit ihrem Alter und kippt die Antwort-Karte — so bleibt der
   Notbetrieb nützlich, ohne eine Empfehlung zu behaupten. Festgehalten in
-  [../RP2.md](../RP2.md) (Changelog 4.1).
+  [../RP2.md](../betrieb/RP2.md) (Changelog 4.1).
 - **B11/M1:** Der NAS-Streifen führt die Stunde 24 als eigene Zelle (19 Zellen,
   Parität zum Fallback); die Stunden 1–5 bleiben außerhalb des 06–24-Fensters.
 - **M7:** PWA-Shell, Update-Anzeige und Offline-Queue sind seit 0.38.0 gebaut.
   Die Pi-Adresse als zweiter Einstieg bleibt Betriebsdoku
-  ([../RP2.md](../RP2.md)) — die NAS-GUI kennt die RP2-Adresse nicht.
+  ([../RP2.md](../betrieb/RP2.md)) — die NAS-GUI kennt die RP2-Adresse nicht.
 
 ### 9.3 Kleinigkeiten aus §5/§6, geschlossen mit 0.43.1
 
@@ -408,7 +408,7 @@ Chromium-Download ist in der Sandbox gesperrt (so auch in
 - `windowStars`-Kommentar präzisiert: Die 35–55-%-Klasse hat keine eigene
   Wortstufe (sie unterscheidet sich von `wordFromPercent` nur dort) — jetzt
   im Code benannt und in `web/src/week.test.ts` festgehalten.
-- [../RP2.md](../RP2.md): `/api/v1/series` ist gegen das NAS-`/api/v1/series`
+- [../RP2.md](../betrieb/RP2.md): `/api/v1/series` ist gegen das NAS-`/api/v1/series`
   abgegrenzt (Parameter `station` statt `station_id`, Stundenraster 06–24 Uhr
   aus dem Puffer statt Rohreihe 1–168 h).
 - Der Template-Test hieß noch `test_template_is_the_v3_gui_…` — auf v4

@@ -1,5 +1,5 @@
 // Jetzt — die reine Logik des ersten Bereichs aus dem GUI-Neuentwurf
-// (docs/UI-NEUENTWURF.md §5.1, §7, §10).
+// (docs/produkt/UI.md, Bereiche).
 //
 // Warum eine eigene Datei: Die Ansicht rendert, sie entscheidet nichts (D1).
 // Alles hier ist aus Server-Zahlen ableitbar und ohne DOM prüfbar — die vier
@@ -7,7 +7,7 @@
 // höchstens drei nächste Schritte, die Frische-Fußzeile und die Begründung
 // der Ebene 1.
 //
-// Ehrlichkeits-Regeln, die hier durchgesetzt werden (docs/MICROCOPY.md):
+// Ehrlichkeits-Regeln, die hier durchgesetzt werden (docs/produkt/MICROCOPY.md):
 //   * Prozent nur auf Stufe A (≥ 100 abgeschlossene Empfehlungen, Brier unter
 //     der Schwelle). Stufe B nennt Worte plus Fortschritt, Stufe C bleibt grau
 //     ohne Empfehlung — nie ein Prozentwert, der nicht gemessen ist.

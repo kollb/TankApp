@@ -6,7 +6,7 @@
 // Handy an der Säule. Ein Skeleton hält den Platz, den der Inhalt gleich
 // braucht, und sagt per `aria-busy`, dass hier noch etwas kommt.
 //
-// Regeln (docs/MICROCOPY.md, Abschnitt „Zustände“):
+// Regeln (docs/produkt/MICROCOPY.md, Abschnitt „Zustände“):
 //   - Skeleton nur für das **erste** Laden. Ein Aktualisierungs-Poll über
 //     vorhandenen Daten darf die Zahlen nicht wegnehmen — sonst flackert die
 //     Ansicht alle 30 s.

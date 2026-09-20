@@ -4,8 +4,8 @@
 > Prognoseverteilung (11.09.2026), Hampel-Filter, Rolling-PICP und Güte-Gate
 > enthalten; seit 0.25.0 Coverage-Gate im Polling-Fenster und relativ zum
 > Stadt-Bestwert (B21). Methodik-Nachschlagewerk, keine Checkliste: Einrichten
-> [INSTALL.md](INSTALL.md), rechnen lassen [BETRIEB.md](BETRIEB.md),
-> offene Punkte [LUECKEN.md](LUECKEN.md) · [TODO.md](../TODO.md).
+> [INSTALL.md](../betrieb/INSTALL.md), rechnen lassen [BETRIEB.md](../betrieb/BETRIEB.md),
+> offene Punkte [LUECKEN.md](../planung/LUECKEN.md) · [TODO.md](../planung/TODO.md).
 
 ## Inhaltsverzeichnis
 
@@ -188,15 +188,15 @@ durchs Gate (ohne Preise schließt es sie dort aus) und stehen in
 Artefakt, aggregiert `lifecycle_totals`; `dead_after_days` ist ausgewiesen.
 `dead_after_days: 0`/`None` schaltet die Tot-Erkennung ab (Umgebung:
 `TANKAPP_DEAD_AFTER_DAYS`, 0–365). Alarme: `stations_dead`,
-`stations_lifecycle` (beide `warn`, [BETRIEB.md](BETRIEB.md)).
+`stations_lifecycle` (beide `warn`, [BETRIEB.md](../betrieb/BETRIEB.md)).
 
 Bewusst **nicht** automatisch: der Umbau des Polling-Sets. Tote Stationen
-werden weiter gepollt, bis sie per [Tausch-Anleitung](STATIONEN-TAUSCH.md)
+werden weiter gepollt, bis sie per [Tausch-Anleitung](../betrieb/STATIONEN-TAUSCH.md)
 ersetzt sind — wer nicht mehr gepollt wird, kann nie wieder „aktiv“ werden
 (eine Selbst-Tot-Schleife), und ein Request holt bis zu 10 Stationen
 (`prices.php`-Batch), sodass eine tote Station höchstens ein Zehntel Request
 je Poll kostet. Der Pfad ist Alarm → System-Tab → Tausch mit Bestätigung,
-nie ein stiller Umbau. Begründung: [LUECKEN.md](LUECKEN.md).
+nie ein stiller Umbau. Begründung: [LUECKEN.md](../planung/LUECKEN.md).
 
 ### Preis-Zwillinge
 
@@ -217,7 +217,7 @@ Abweichungs-Kennzahlen (`mean`/`p95`/`max` des absoluten Abstands) als
 `price_twin_count`), als Warnung `price_twins` in `/health` und als Tabelle
 im System-Tab. `auto_apply` ist immer `false`: Zwillinge werden **nie**
 automatisch aus dem Polling-Set entfernt — prüfen, bestätigen, dann erst per
-[Tausch-Anleitung](STATIONEN-TAUSCH.md) bereinigen.
+[Tausch-Anleitung](../betrieb/STATIONEN-TAUSCH.md) bereinigen.
 
 ## Heatmaps DoW×Stunde B3.9
 
@@ -369,7 +369,7 @@ Seit 2026-04-01 dürfen Tankstellen Preis nur um 12:00 Uhr erhöhen; Senkungen j
 | Rolling-PICP 7 d | Je Station im Backtest; Tagesmittel mit Hysterese (O4, seit 0.45.0): Badge grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %, Wechsel erst 1,5 pp jenseits der Schwelle, < 3 Tage = keine Aussage). Publiziert als `rolling_picp_7d`, in `/v1/decide` als `quality` (inkl. Fallzahl `rolling_picp_7d_days`) |
 | Backtest-Fenster des NAS-Jobs | **21 Tage** statt 7 (`app/refresh.py`), damit das Gate `at_least_21_complete_test_days_per_station` aus dem automatischen Lauf erfüllbar ist |
 | Güte-Gate | Rolling-PICP **rot** → `no_advice` („Keine klare Empfehlung — Prognose derzeit unsicher …“) als Auswertungsschritt 1, *vor* F2/F1 (§4.5) |
-| Gemessenes Modell (B0, seit 0.56.0) | Der Backtest misst per Default `harmonic_ar2` mit **unabhängiger** Ziehung (Stand vor A10/A11); veröffentlicht wird das `ensemble` mit **gemeinsamer** Ziehung. Seit 0.56.0 stehen beide nebeneinander (`backtest_model_kind` neben `model_kind`), dazu PIT-Paare je Station/Horizont und Regime-Marker im Bericht ([ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)). Umschalten des Messmodells ist B3 ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)) |
+| Gemessenes Modell (B0, seit 0.56.0) | Der Backtest misst per Default `harmonic_ar2` mit **unabhängiger** Ziehung (Stand vor A10/A11); veröffentlicht wird das `ensemble` mit **gemeinsamer** Ziehung. Seit 0.56.0 stehen beide nebeneinander (`backtest_model_kind` neben `model_kind`), dazu PIT-Paare je Station/Horizont und Regime-Marker im Bericht ([ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)). Umschalten des Messmodells ist B3 ([LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis)) |
 
 Cutoff lokale Mitternacht, Trainingsfenster 42 Tage (nicht pauschal verdoppelt; stattdessen
 exponentiell gewichteter Tagesblock-Bootstrap, HWZ 14d). MAE, RMSE, MASE, sMAPE, Pinball
@@ -509,7 +509,7 @@ denselben AR(2)-Nachlauf. Der Sprung gegen den bisherigen Hauptpfad kommt
 also vom Zweitmodell, nicht von der Mischung. Die Gewichte stattdessen aus
 dem Rolling-Origin-Backtest (Mehrstufen-Fehler, wie er später tatsächlich
 gebraucht wird) zu ziehen, ist ein eigener Schritt und bewusst offen
-([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). Bis dahin gilt:
+([LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis)). Bis dahin gilt:
 das Ensemble ist nie schlechter als das **schlechtere** der beiden Modelle,
 und `TANKAPP_MODEL_KIND` stellt jeden Pfad einzeln her — die Zahl oben ist
 damit nachprüfbar, nicht geglaubt.
@@ -538,13 +538,13 @@ Antwort: delta_ct, gross_eur, fuel_cost_eur, time_cost_eur, detour_cost_eur, net
 
 ## Verweise
 
-- [Installation](INSTALL.md)
-- [Architektur](ARCHITEKTUR.md)
+- [Installation](../betrieb/INSTALL.md)
+- [Architektur](../architektur/ARCHITEKTUR.md)
 - [API](API.md)
-- [Betrieb](BETRIEB.md)
-- [Konzept](KONZEPT.md) — vollständiges Zielbild
-- [Lücken-Check](LUECKEN.md) — Konzept ↔ Stand, bewusst offene Punkte mit Grund
-- [TODO](../TODO.md) — priorisierte Arbeitsliste (u. a. A11 gemeinsame Ziehung)
+- [Betrieb](../betrieb/BETRIEB.md)
+- [Konzept](../produkt/KONZEPT.md) — vollständiges Zielbild
+- [Lücken-Check](../planung/LUECKEN.md) — Konzept ↔ Stand, bewusst offene Punkte mit Grund
+- [TODO](../planung/TODO.md) — priorisierte Arbeitsliste (u. a. A11 gemeinsame Ziehung)
 - [Engine-Referenz](ENGINE.md) — Backtest-Rezepte, Datenqualität, 12-Uhr-Regel
 - [Werkzeuge](DATENWERKZEUGE.md)
  Ziehung)

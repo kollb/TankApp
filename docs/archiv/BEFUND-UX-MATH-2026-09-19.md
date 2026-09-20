@@ -1,5 +1,12 @@
 # Befund 19.09.2026 — UX-Vision, mathematische Tiefenprüfung und Regime-Wechsel
 
+> **Historischer Prüfbericht** · Prüfung: 19.09.2026 (Nachträge bis 20.09.2026).
+> Archiviert am 20.09.2026. Versionsbezogene Aussagen sind keine aktuelle
+> Anleitung; Archivierung bedeutet nicht, dass alle Vorschläge erledigt sind.
+> Aktuell: [Projektstand](../planung/LUECKEN.md), [Aufgaben](../planung/TODO.md),
+> [Regime-Plan](../planung/REGIME.md), [UI](../produkt/UI.md).
+
+
 > Stand: 19.09.2026 · App-Version **0.55.2** · Stichtagsprüfung gegen den
 > Arbeitszweig `arena/01a0b83e-tankapp` (Basis `main` @ `be3c912`); Teil 5
 > zusätzlich gegen `arena/01a0b85b-tankapp` (Basis `main` @ `cfb10b9`).
@@ -13,12 +20,12 @@
 > (Teil 2) — und was richten die beiden datierten Regime-Wechsel Tankrabatt
 > (01.10.2026) und Spritpreisdeckel (01.01.2027) in der Engine an (Teil 5)?
 > Dieser Befund ist eine Diskussionsvorlage wie
-> [UI-NEUENTWURF.md](UI-NEUENTWURF.md); er ersetzt weder Konzept noch
+> [UI.md](../produkt/UI.md); er ersetzt weder Konzept noch
 > Analyse-Referenz. Er lebt in `docs/`, solange seine Punkte offen sind, und
 > wandert nach deren Abschluss nach `docs/archiv/` (Hausregel für datierte
 > Befunde, wie
-> [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md)
-> nach B30). Arbeitspunkte: [../TODO.md](../TODO.md) — Teil 1/2 als
+> [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](BEFUND-12-UHR-REGEL-2026-09-18.md)
+> nach B30). Arbeitspunkte: [TODO.md](../planung/TODO.md) — Teil 1/2 als
 > Batch-Plan B0–B6 (Teil 4), Teil 5 als A14–A16 und H6–H10 mit Fristen.
 
 ## Inhaltsverzeichnis
@@ -167,7 +174,7 @@ dafür B1 (M5-Nowcast) vorziehen (§5.6, §5.7).
 ## 1.1 Ist-Analyse: die sechs Bereiche
 
 Geprüft gegen Code-Stand 0.55.1 (`web/src/views/*`, `AppNav.tsx`,
-`routing.ts`, `lab.ts`, [UI-NEUENTWURF.md](UI-NEUENTWURF.md)):
+`routing.ts`, `lab.ts`, [UI.md](../produkt/UI.md)):
 
 | Bereich | Datei (Zeilen) | Inhalt | Urteil |
 |---|---|---|---|
@@ -182,7 +189,7 @@ Geprüft gegen Code-Stand 0.55.1 (`web/src/views/*`, `AppNav.tsx`,
 (Antwort → Begründung → Beweis), die ehrlichen Zustände (`no_advice` mit
 Grund, Datenalter je Zahl), das Labor als optisch getrennte Welt, das
 URL-Routing (`?tab=…&section=…`), die eine Alltagssprache
-([MICROCOPY.md](MICROCOPY.md)).
+([MICROCOPY.md](../produkt/MICROCOPY.md)).
 
 **Die vier Konstruktionsfehler:**
 
@@ -318,7 +325,7 @@ nur die Umweg-Zeile bleibt, weil sie Teil von F1/F2 ist.
 Regel: Die 7-Tage-Zeilen zeigen **Vergangenheitsprofil und Prognose
 getrennt eingefärbt** (Prognose gestrichelt/markiert, mit Legende in einer
 Zeile) — die Heatmap ist Vergangenheit, die Fenster sind Prognose; beide
-Sprachen dürfen sich nicht mischen (siehe [ANALYSE.md](ANALYSE.md),
+Sprachen dürfen sich nicht mischen (siehe [ANALYSE.md](../referenz/ANALYSE.md),
 Heatmaps sind „Analyse-, keine Entscheidungswerkzeuge“).
 
 ### 1.4.3 „Stationen“ — der Preis-Atlas
@@ -896,8 +903,8 @@ Kalibrierung legen.
 **Abnahme:** Prognose bitgleich (Invarianz-Test), Zähler getestet, PIT-Paare
 im Backtest-Artefakt. Kein Nutzerverhalten ändert sich.
 
-> **Status 19.09.2026 — umgesetzt in 0.56.0** ([CHANGELOG](../CHANGELOG.md),
-> [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)), mit vier Vermerken aus
+> **Status 19.09.2026 — umgesetzt in 0.56.0** ([CHANGELOG](../releases/CHANGELOG.md),
+> [ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560)), mit vier Vermerken aus
 > der kritischen Prüfung des Batches:
 >
 > 1. **Abnahme erfüllt:** `tests/test_b0_invariance.py` vergleicht Fit, Prognose
@@ -915,7 +922,7 @@ im Backtest-Artefakt. Kein Nutzerverhalten ändert sich.
 >    ist. `regime_breaks_in_window` zählt und markiert (`flagged_not_excluded`),
 >    rechnet aber nichts — die Prognose bleibt bitgleich.
 > 4. **Zwei Punkte sind offen und stehen mit Grund in
->    [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund):** Die
+>    [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis):** Die
 >    **Referenzmessung** PICP/Brier/MASE je Station ist nicht gelaufen (keine
 >    NAS-Daten in der Entwicklungsumgebung; Rezept in ENGINE.md; Brier gibt es
 >    nur global je P-Quelle aus dem Advice-Ledger, eine Stations-Aufteilung
@@ -987,7 +994,7 @@ gehalten; Gegenmessung dokumentiert.
 Verluste), alle Teil-URLs weiter auflösbar, Lighthouse-Budgets gehalten.
 
 > **Status 19.09.2026 — umgesetzt in 0.59.0**
-> ([CHANGELOG](../CHANGELOG.md)), mit vier Vermerken aus der kritischen
+> ([CHANGELOG](../releases/CHANGELOG.md)), mit vier Vermerken aus der kritischen
 > Prüfung des Batches:
 >
 > 1. **Abnahme erfüllt:** Alle Teil-URLs (`?tab=labor|ich|system|glossar`,
@@ -1002,7 +1009,7 @@ Verluste), alle Teil-URLs weiter auflösbar, Lighthouse-Budgets gehalten.
 >    mit), die volle Seite wird protokolliert. Eine Vollseiten-Lesung
 >    wäre 1,77 Viewports — konfliktfrei nur, wenn der globale Kopf (C13,
 >    271 px) wegfielen. C13 ist am 18.09.2026 als *bewusst nicht
->    verdichtet* geschlossen (TODO.md „Geschlossen als nicht nötig“); die
+>    verdichtet* geschlossen (docs/planung/TODO.md „Geschlossen als nicht nötig“); die
 >    Batch-Ziffer wird deshalb auf den Abschnitt bezogen, statt C13
 >    rückwirkend aufzubrechen.
 > 3. **Nebenbefund, im Batch mitgepflegt:** Echte `stats_summary`-Ausfälle
@@ -1051,7 +1058,7 @@ Trennungs-Ratchet grün, keine Labor-Inhalte verloren.
 ## Was bewusst in keinen Batch kommt
 
 OpenAPI, zweite Backup-Ziel-Befassung, Kampagnen-Quote auf dem NAS und die
-übrigen „bewusst offen“-Posten aus [LUECKEN.md](LUECKEN.md): Sie haben
+übrigen „bewusst offen“-Posten aus [LUECKEN.md](../planung/LUECKEN.md): Sie haben
 dort ihren Grund und werden durch diesen Befund nicht berührt. M8 selbst
 ist keine Code-Aufgabe — B5 liefert die Anzeige, B6 die Messung.
 
@@ -1071,16 +1078,16 @@ ist keine Code-Aufgabe — B5 liefert die Anzeige, B6 die Messung.
 > Zahlen dieses Teils stammen aus Rolling-Origin-Läufen der echten
 > `engine.models.fit`/`predict`-Kette auf synthetischen Reihen, kalibriert auf
 > die Live-Messwerte aus
-> [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md)
+> [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](BEFUND-12-UHR-REGEL-2026-09-18.md)
 > §2.1 (Tagesspanne 17 ct, Tief Median 7 Uhr, Hoch Median 12 Uhr, 44 %
 > Mittagssprünge ≥ 2 ct). **Keine Zahl stammt aus dem Echtbestand** — der liegt
 > auf dem NAS und war hier nicht erreichbar. Reproduktion:
-> [analysis/regime_check.py](../analysis/regime_check.py); `--simulate` rechnet
+> [analysis/regime_check.py](../../analysis/regime_check.py); `--simulate` rechnet
 > die Tabellen in §5.10 nach, der Messpfad läuft auf einem echten Export
-> (Aufruf in [DATENWERKZEUGE.md](DATENWERKZEUGE.md#regime-check-durchgabe-einer-steuer--oder-deckel-änderung)).
-> Arbeitspunkte: [../TODO.md](../TODO.md) A14–A16 (Fachlich) und H6–H10
+> (Aufruf in [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md#regime-check-durchgabe-einer-steuer--oder-deckel-änderung)).
+> Arbeitspunkte: [TODO.md](../planung/TODO.md) A14–A16 (Fachlich) und H6–H10
 > (Mathematik); offene Punkte mit Grund in
-> [LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund).
+> [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 
 ## 5.1 Urteil über den Entwurf — Kurzfassung
 
@@ -1405,7 +1412,7 @@ löst aber weder die erste Woche noch die Verteilung —
 — und destabilisiert den Fit danach (08.11.: `P_besser` 0,044 bei einer
 Wahrheit von −6,7 ct; bei 14 Tagen liegt der Fit nahe an `min_train_days = 28`
 bzw. unter ihr, ein einziger Collector-Ausfalltag lässt ihn mit `ValueError`
-scheitern). Die in [ENGINE.md](ENGINE.md) offen gehaltene 90-vs-42-Entscheidung
+scheitern). Die in [ENGINE.md](../referenz/ENGINE.md) offen gehaltene 90-vs-42-Entscheidung
 darf deshalb **nicht** im Oktober getroffen werden: Jede Messung in diesem
 Monat misst den Bruch, nicht das Fenster (§5.4.3, §5.8).
 
@@ -1421,7 +1428,7 @@ früh und ärgert sich über verpasste 10 ct. Am 01.01. steigt der Preis: Ein zu
 niedrig liegendes Modell sagt „warten“ — und der Nutzer läuft in die Erhöhung
 hinein. Genau das benennt `app/thresholds.py` als den teuren Fehler
 („Falsches WARTEN ist der teure Fehler“), und
-[archiv/GUTACHTEN-2026-09-10.md](archiv/GUTACHTEN-2026-09-10.md) nennt es
+[archiv/GUTACHTEN-2026-09-10.md](GUTACHTEN-2026-09-10.md) nennt es
 asymmetrisch („Warten und in eine 10-Cent-Erhöhung laufen, kostet massiv
 Vertrauen").
 
@@ -1451,7 +1458,7 @@ oder er wird der schlechteste Tag dieser App.**
 Der Feiertags-Koeffizient γ wird bewusst **nicht** im 42-Tage-Fenster geschätzt,
 sondern gepoolt über bis zu `holiday_pool_days = 365` — korrekt begründet
 („0–1 Feiertage je 6-Wochen-Fenster wären unidentifizierbar“). Das Pool-Fenster
-reicht damit bis September 2025 zurück (`docs/API.md`: `archive_since
+reicht damit bis September 2025 zurück (`docs/referenz/API.md`: `archive_since
 2025-09-09`) und **enthält den Mai-Juni-Tankrabatt 2026 vollständig**. Von den
 11 Feiertagen im Pool (NW) fallen vier in das Rabatt-Fenster: 01.05., 14.05.
 (Himmelfahrt), 25.05. (Pfingstmontag), 04.06. (Fronleichnam). Der
@@ -1873,7 +1880,7 @@ Streuung je Station. Wer den Oktober vorbereiten will, misst den Juli.
    Streuung über Stationen. Bericht nach `data/analysis/`, wie beim
    12-Uhr-Check.
 2. Rolling-Origin-Backtest über den 01.07.2026 (`engine backtest --until
-   2026-07-15 --at …`, Rezept in [ENGINE.md](ENGINE.md)): Status quo vs. R3 vs.
+   2026-07-15 --at …`, Rezept in [ENGINE.md](../referenz/ENGINE.md)): Status quo vs. R3 vs.
    R2 — drei Läufe, dieselben Tage. **Zielgrößen:** Bias q50 am Sprungtag
    ≤ 3 ct/L, Breite q975−q025 ≤ 1,5× Vor-Bruch-Basiswert, `P_besser` am
    Sprungtag in Richtung der Wahrheit (Szenario C: von 0,920 auf ≤ 0,20).
@@ -1959,7 +1966,7 @@ sonst ist die Schranke falsch gesetzt).
    Hochpreisphasen; nicht modelliert, nicht geraten, hier nur benannt.
 6. **Keine Zahl dieses Befunds stammt aus dem Echtbestand.** Alle Messungen
    laufen auf synthetischen Reihen, die auf die eigenen Messwerte aus
-   [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md)
+   [archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](BEFUND-12-UHR-REGEL-2026-09-18.md)
    kalibriert sind (Anhang B). Sie belegen **Mechanismen und Vorzeichen**, nicht
    Beträge für den eigenen Stationsbestand. Die Beträge liefert 0.1.
 
@@ -2052,7 +2059,7 @@ Information, sehen aber gültig aus.
 ## 5.11 Anhang B: Grenzen der Messung
 
 Ehrlichkeit vor Zeigen, wie in
-[archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md)
+[archiv/BEFUND-12-UHR-REGEL-2026-09-18.md](BEFUND-12-UHR-REGEL-2026-09-18.md)
 §5.3.3:
 
 1. **Synthetische Reihen, keine Echtbestands-Messung.** Der Generator ist auf
@@ -2282,7 +2289,7 @@ Schicht ist der von 0.56.0.
 |---|---|---|---|---|
 | **R1 Kalender** | Daten (kein Code) | `TANKAPP_REGIMES`: leer = Defaults, `0` = aus, JSON-Liste oder `.json`-Datei | **gebaut.** `app/regimes.py` → `Settings.regimes` → `Config.regimes`; Einträge mit `kind`, `fuel`, `announced_local`, `announced_value`, `status`, `source` | Er ist nur eine Liste. Ohne Schicht, die ihn liest, bewegt er keine Zahl. |
 | **Marker/Zähler** (Teil von G-R4) | Messen | fällt mit dem Kalender (`TANKAPP_REGIMES=0` → keine Marker) | **gebaut.** `regime_breaks_in_window`, `regime_break_spanned` je Fold und PIT-Paar, `metrics_break_free` | Nur Kennzeichnung: `all` bleibt die Kopfzahl, `break_free` wird zur Teilmenge. Falsch markiert ist billig; unmarkiert ist teuer (§5.7). |
-| **G-R0 Sicherheitsfreeze** (`regime_transition` → `no_advice`, Gate-/Ledger-Ausschluss, R3-Segmentgrenze, Nowcast-Konditionierung) | Rechnen, aber nur *Zurückhaltung* | `TANKAPP_REGIME=0` (reserviert, existiert noch nicht) | **nicht gebaut** (H6, H8, H9, H10 in [TODO.md](../TODO.md)) | Darf es nicht: siehe Regel 2 in 5.13.4 — die Degradation zündet nur an Einträgen mit `status` `in_force`/`detected`, nie an `announced`. |
+| **G-R0 Sicherheitsfreeze** (`regime_transition` → `no_advice`, Gate-/Ledger-Ausschluss, R3-Segmentgrenze, Nowcast-Konditionierung) | Rechnen, aber nur *Zurückhaltung* | `TANKAPP_REGIME=0` (reserviert, existiert noch nicht) | **nicht gebaut** (H6, H8, H9, H10 in [TODO.md](../planung/TODO.md)) | Darf es nicht: siehe Regel 2 in 5.13.4 — die Degradation zündet nur an Einträgen mit `status` `in_force`/`detected`, nie an `announced`. |
 | **R2 Dummy + Kantenschätzer, R3 Segmentgrenze, G-R2 AR-Flush** | Rechnen, verändert Prognosen | `TANKAPP_REGIME=0` | **nicht gebaut** | Stop-Regel „kein w = 0/1-Sprung allein aus dem Kalendertag“: Der Kalender liefert den *Prior* für den Kantenzeitpunkt, den Schritt muss der Schätzer in den **Daten** finden. Ohne Schritt in den Daten bleibt δ̂ ≈ 0 und die Schicht ist wirkungslos. |
 | **R4 Deckel `cap(t)`** | Rechnen, zensiert | `TANKAPP_REGIME_CAP=0` | **nicht gebaut**, kein Kalender-Eintrag (A15) | Ohne Quelle, Formel und Zeitreihe gilt `cap_status: unknown` und es wird nicht geclippt. |
 | **R5/B5 Anzeige** (Labor-Karte, Heatmap-Marke, Nutzertext `regime_transition`) | Anzeigen | — | **nicht gebaut** | Zeigt nur, was die Schichten darunter ausweisen. |
@@ -2348,7 +2355,7 @@ im Code.
 ### 5.13.3 Was der Betreiber tun muss — und was von allein passiert
 
 Die Kurzfassung für den Betrieb, Kommandos in
-[BETRIEB.md](BETRIEB.md#regime-kalender-b0-seit-0560):
+[BETRIEB.md](../betrieb/BETRIEB.md#regime-kalender-b0-seit-0560):
 
 **Von allein (0.56.0):** Der Kalender kommt als Default mit der App
 (01.05./01.07.2026 `in_force` aus dem Archiv; 01.10.2026 und 01.01.2027
@@ -2359,7 +2366,7 @@ Nutzertexte ändern sich dadurch **nicht** — auch nicht am 01.10.
 
 **Jetzt nichts zu tun**, außer wie gewohnt ausliefern (`nas-up`). Optional,
 aber vor B2/B3 empfohlen: die Referenzmessung am PC
-([ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560)), damit es einen
+([ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560)), damit es einen
 Vorher-Wert gibt, gegen den sich jede spätere Schicht messen lässt.
 
 **Bei Nachrichten — drei Fälle, immer dieselbe Handbewegung** (Kalender
@@ -2432,7 +2439,7 @@ Day-Block-Bootstrap), `engine/config.py` (`train_days`, `holiday_pool_days`,
 `app/decide.py`, `app/pside.py` (`THETA_CT`), `app/thresholds.py`,
 `app/alarms.py`, `app/feedback.py` (M7-Gate, 30-Tage-Fenster),
 `app/model_jobs.py`, `analysis/noon_rule_check.py` (Gerüst-Vorlage),
-`docs/API.md` (`archive_since`). Nachgerechnet: PAVA-Poolung eines
+`docs/referenz/API.md` (`archive_since`). Nachgerechnet: PAVA-Poolung eines
 Regime-Anstiegs (+16,89 → +0,00 ct, 231/288 Punkte), derselbe Sprung als
 Segmentgrenze (0/288), Deckel-Clip vor und nach der Projektion (+5,00 ct gegen
 +0,00 ct), Quantilsordnung unter `min(·, c)`, Feiertags-Pool-Referenzen

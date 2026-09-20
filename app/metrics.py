@@ -3,7 +3,7 @@
 Vor 0.52.0 maß der Server sich selbst nicht: ``time.monotonic()`` diente
 ausschließlich Trigger-Abständen und Budgets, und die einzigen Latenzzahlen
 im Projekt entstanden durch Handmessung in einer Sandkiste
-([docs/QUALITAET.md](../docs/QUALITAET.md)). Auf dem NAS gibt es kein
+([docs/entwicklung/QUALITAET.md](../docs/entwicklung/QUALITAET.md)). Auf dem NAS gibt es kein
 Äquivalent — also auch keine Frühwarnung, wenn eine Antwort langsamer wird,
 weil eine Datei gewachsen ist (O22), ein Parse zurückkommt (O23) oder eine
 Sperre im Lesepfad sitzt (O26).
@@ -13,7 +13,7 @@ Zwei Felder, keine Infrastruktur:
 * ``X-Process-Time`` je Antwort (Header, ``app/server.py``),
 * ein rollierendes Fenster über die letzten Antworten, das
   ``/api/v1/health`` als ``performance`` ausweist — p95, Maximum und die
-  langsamste Route, dazu das Budget aus ``docs/QUALITAET.md``.
+  langsamste Route, dazu das Budget aus ``docs/entwicklung/QUALITAET.md``.
 
 Kosten: eine ``deque`` mit ``WINDOW`` Tupeln und eine Sortierung je
 Health-Aufruf. Kein Prometheus, keine Histogramme, kein Export.
@@ -30,7 +30,7 @@ from typing import Any
 # lang genug für einen brauchbaren p95, kurz genug, um einen Ausreißer nicht
 # über Stunden mitzuschleppen.
 WINDOW = 200
-# Budget aus docs/QUALITAET.md („Lastpfad LAN“): p95 einer API-Antwort im
+# Budget aus docs/entwicklung/QUALITAET.md („Lastpfad LAN“): p95 einer API-Antwort im
 # Heimnetz. Steht hier als Zahl, damit /health es neben die Messung stellen
 # kann — ein Budget, das nur in der Doku steht, alarmiert niemanden.
 REQUEST_BUDGET_MS = 300.0

@@ -1,9 +1,9 @@
 # UMSETZUNG-B30 — 12-Uhr-Bodenkante für Beobachtung und Kalibrierung
 
-> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Arbeits-Checkliste, abgeschlossen: B30 ist mit 0.51.0 umgesetzt und abgenommen (§7). Der verbliebene DoD-Backtest auf echten NAS-Daten ist am 18.09.2026 als nicht nötig geschlossen ([TODO.md](../../TODO.md#geschlossen-als-nicht-nötig-18092026)). Was heute gilt: [ENGINE.md](../ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr) und [BETRIEB.md](../BETRIEB.md).
+> **Archiviert am 18.09.2026 · App-Version 0.54.0.** Arbeits-Checkliste, abgeschlossen: B30 ist mit 0.51.0 umgesetzt und abgenommen (§7). Der verbliebene DoD-Backtest auf echten NAS-Daten ist am 18.09.2026 als nicht nötig geschlossen ([TODO.md](../adr/0002-PRODUKTUMFANG.md#entscheidung)). Was heute gilt: [ENGINE.md](../referenz/ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr) und [BETRIEB.md](../betrieb/BETRIEB.md).
 >
 > Stand: 18.09.2026 · **umgesetzt in 0.51.0** (Abnahme-Protokoll §7) ·
-> Auftrag: [TODO.md](../../TODO.md) **B30**, Befund
+> Auftrag: [TODO.md](../planung/TODO.md) **B30**, Befund
 > [BEFUND-12-UHR-REGEL.md](BEFUND-12-UHR-REGEL-2026-09-18.md) §4 („Schritt 3").
 > Dieses Dokument ist die Arbeitsunterlage **vor** dem Code: Was gebaut wird,
 > was bewusst nicht, und woran die Abnahme hängt. Nach dem Merge in
@@ -91,7 +91,7 @@ Leitplanken:
 | `app/data.py::heatmap` | Kante aus den Settings einsetzen, beide Felder in den Payload. |
 | `engine/selection.py` | `SelectionConfig.law_floor`; `analyse_city_light` schneidet die Matrix **vor** δ̂/AV/`best_hour`; Stadt- und Fuel-Eintrag nennen `law_floor`, `points_before_law`, `days_before_law`. |
 | `app/selection.py`, `app/refresh.py` | Kante über `SelectionConfig.from_engine_config` — kein zweiter Pfad. |
-| `web/src/data.ts` | `heatmapLawFloorNote()` + `selectionLawFloorNote()`: „Beobachtungen ab …" nach [MICROCOPY.md](../MICROCOPY.md). |
+| `web/src/data.ts` | `heatmapLawFloorNote()` + `selectionLawFloorNote()`: „Beobachtungen ab …" nach [MICROCOPY.md](../produkt/MICROCOPY.md). |
 | `analysis/station_selection.py`, `engine/station_comparison.py` | Bodenkante + `--ignore-law-floor` für bewusste Vor-/Nach-Gesetz-Kontraste. |
 
 **Warum die Selektion als Ganzes geschnitten wird** (nicht nur `best_hour`):
@@ -115,7 +115,7 @@ Tagesrhythmus mitzulernen.
 
 Die drei bestehenden Gesetzesebenen (Mittags-Schritt im Strukturmodell,
 PAVA-Projektion je Segment, `law_rise_outside_noon` als Datenqualitäts-Zähler,
-siehe [ENGINE.md](../ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr))
+siehe [ENGINE.md](../referenz/ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr))
 bleiben unverändert — die Kante ist eine vierte, vorgelagerte Ebene.
 
 ## 4 · Messung — wie viel Vor-Gesetz-Material nachzieht
@@ -153,7 +153,7 @@ Wirkung — und das steht dann da, statt behauptet zu werden.
   echte NAS-Daten (20 Stationen, 5-Minuten-Takt). In der Arbeitsumgebung läuft
   nur ein synthetischer Nachweis, dass die Klemme fit- und backtestfähig
   bleibt. Der echte Labor-Backtest ist ein Betriebsschritt — Rezept in
-  [DATENWERKZEUGE.md](../DATENWERKZEUGE.md#12-uhr-regel-check).
+  [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md#12-uhr-regel-check).
 - **Keine rückwirkende Korrektur** bereits angezeigter Werte
   (Befund §5): Ummalen erfindet eine andere Vergangenheit.
 
@@ -171,7 +171,7 @@ synthetisch erzeugt und hier gemessen — nicht geschätzt.
 | Messung | `app/gapfill.py`, `app/refresh.py` | 2 Tests: eingefülltes Ereignis 12:30 zählt 1 bei Kante 13:00 und 0 bei 12:00; `law_quality` im Publikations-Index (`points_before_law = 0` im 120-Tage-Fenster) |
 | Werkzeuge | `engine/station_comparison.py`, `engine/cli.py`, `analysis/station_selection.py` | 2 Tests + echter Lauf des Selektions-Werkzeugs: δ̂(st-0) **−3,0 ct** und „billigste Stunde" 02:30 mit Kante gegen **+1,9 ct** und 17:30 mit `--ignore-law-floor`; Zwillings-Vergleich fällt unter 28 qualifizierenden Tagen auf `insufficient_data` statt zu urteilen |
 | GUI | `web/src/data.ts::lawFloorNote`, `components/HeatmapGrid.tsx`, `views/Labor.tsx` | 3 Tests (Vitest): Satz in Berliner Zeit (UTC-Umrechnung über Sommer-/Winterzeit), ausgeblendete Zahl über `countLabel`, Schweigen bei altem Payload |
-| Doku | Befund §4, `TODO.md`, `docs/API.md`, `CHANGELOG.md`, 0.51.0 | Link- und Anker-Prüfung (`tests/test_operations.py`) grün |
+| Doku | Befund §4, `docs/planung/TODO.md`, `docs/referenz/API.md`, `docs/releases/CHANGELOG.md`, 0.51.0 | Link- und Anker-Prüfung (`tests/test_operations.py`) grün |
 
 Prüfstände am Ende: `ruff check` + `ruff format --check` (117 Dateien),
 `pytest -q` **1079 passed**, `npm --prefix web test` **1142 passed**,

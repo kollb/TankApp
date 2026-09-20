@@ -15,16 +15,18 @@ Standardsätze für Leer-, Lade- und Fehlerzustände.
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
-- [4a. Fallback-GUI: feste Muster (0.34.0)](#4a-fallback-gui-feste-muster-0340)
-- [4b. Bereich „Jetzt“: feste Muster (0.34.0)](#4b-bereich-jetzt-feste-muster-0340)
-- [4c. Bereich „Labor“: feste Muster (0.36.0)](#4c-bereich-labor-feste-muster-0360)
-- [4d. Bereich „System“: feste Muster (0.37.0)](#4d-bereich-system-feste-muster-0370)
-- [4e. Tooltips ergänzen, sie erklären nicht (V2)](#4e-tooltips-ergänzen-sie-erklären-nicht-v2)
-- [4f. Push-Texte: Alarme und Fenster-Meldungen (0.46.0)](#4f-push-texte-alarme-und-fenster-meldungen-0460)
-- [4g. Belegmaske und Diagramm-Beschreibungen (0.54.0)](#4g-belegmaske-und-diagramm-beschreibungen-0540)
+  - [4a. Fallback-GUI: feste Muster](#4a-fallback-gui-feste-muster)
+  - [4b. Bereich „Jetzt“: feste Muster](#4b-bereich-jetzt-feste-muster)
+  - [4c. Bereich „Labor“: feste Muster](#4c-bereich-labor-feste-muster)
+  - [4d. Bereich „System“: feste Muster](#4d-bereich-system-feste-muster)
+  - [4e. Tooltips ergänzen, sie erklären nicht](#4e-tooltips-ergänzen-sie-erklären-nicht)
+  - [4f. Push-Texte: Alarme und Fenster-Meldungen](#4f-push-texte-alarme-und-fenster-meldungen)
+  - [4g. Belegmaske und Diagramm-Beschreibungen](#4g-belegmaske-und-diagramm-beschreibungen)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
-- [5a. Wortlaut je Zustand (T8)](#5a-wortlaut-je-zustand-t8)
-- [5b. Meldungen: ein Register, ein Rang (V3)](#5b-meldungen-ein-register-ein-rang-v3)
+  - [5a. Wortlaut je Zustand](#5a-wortlaut-je-zustand)
+  - [5b. Meldungen: ein Register, ein Rang](#5b-meldungen-ein-register-ein-rang)
+  - [5c. „Set“ ist Betriebssprache](#5c-set-ist-betriebssprache)
+  - [5d. Ein Zustand, eine Zahl](#5d-ein-zustand-eine-zahl)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
 
@@ -138,8 +140,8 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 
 | Gemeint | Wort in der App |
 |---|---|
-| die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
-| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
+| die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI.md](UI.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
+| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](../archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“, nicht „Füllung“, nicht „Tankbeleg“ — auch nicht als Überschrift) |
 | die Rechengröße für Tankvolumen | **Tankmenge** (10–100 L) — im Beleg heißt dieselbe Spalte **Liter** und meint die getankten Liter (5–100 L) |
@@ -165,7 +167,7 @@ Fachbegriffe (δ̂, MASE, PICP, Brier, ε, Regret) bleiben der Werkstatt
 vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 (F2, 0.15.0). Der Alltag kommt ohne sie aus.
 
-## 4a. Fallback-GUI: feste Muster (0.34.0)
+### 4a. Fallback-GUI: feste Muster
 
 Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
 `tankapp-fallback-gui v4.0`) — nicht neu formulieren, nur wiederverwenden.
@@ -193,9 +195,9 @@ Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
 | Frische-Fußzeile (v4.0) | `Preise <4 min> alt · Prognose <35 min> alt` — Alter von Preismeldung und Modell-Lauf, `—` statt „gerade eben“, wenn ein Stand fehlt |
 | Fakt ohne Fenster | `—` mit Grund `kein Fenster mit Vorsprung` (nie ein geschätztes Fenster) |
 
-## 4b. Bereich „Jetzt“: feste Muster (0.34.0)
+### 4b. Bereich „Jetzt“: feste Muster
 
-Der Einstieg aus [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §5.1. Die Reihenfolge
+Der Einstieg aus [UI.md](UI.md) §5.1. Die Reihenfolge
 der Sätze ist Teil des Entwurfs: erst die Handlung, dann Menge/Sicherheit,
 dann der Grund.
 
@@ -219,7 +221,7 @@ dann der Grund.
 | Günstigste Station jetzt (O19, 0.50.0; B4 0.59.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Günstigste bis teuerste: <5,0> ct/L · <2,25> € bei <45> L`. **B4 (0.59.0):** Ohne Empfehlung steht der Satz nicht mehr — die Karte zeigt denselben Inhalt (günstigster Preis in Headline/Betrag, Spanne in der Chip-Zeile) schon kompakter, und der Satz würde ihn nur noch einmal umstellen (`nowBestNow.sentence` = `null`); ist die Referenz selbst die günstigste, bleibt der Satz: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
 | Bilanz netto nach Umweg (O30, 0.50.0) | `Nach Umweg: <+6,34> € — Umwegkosten <1,66> € bei <1> Beleg, davon <1> mit geschätzter Strecke.` ohne Beleg mit Umweg `Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.` | `Ich` (Bilanz-Karte, O30) | Die Brutto-Zeile heißt ausdrücklich „brutto“, die Netto-Zeile steht darunter — dieselbe Formel wie die Entscheidung (`p_lohnt`, O9), Belege ohne Umweg erfinden keine Kilometer. |
 
-## 4c. Bereich „Labor“: feste Muster (0.36.0)
+### 4c. Bereich „Labor“: feste Muster
 
 Der Beweis-Ort (UI-NEUENTWURF §6/§7). Regel: Das Labor erklärt **mehr**, es
 spricht aber nicht anders — dieselben Wörter wie „Jetzt“, dazu das Fachwort.
@@ -246,9 +248,9 @@ Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`, `trustSentence`).
 | Heatmap mobil (0.43.2) | `Die Matrix ist breit: seitlich schieben zeigt alle 24 Stunden. Farben und Zeilen erklärt die Lesehilfe darunter.` — nur unterhalb `sm`; die Matrix bleibt die eine bewusst schiebbare Fläche, `ReadingAid` darunter trägt die Erklärung wie bisher |
 | Spielplatz | `Perfektes Timing (Orakel)` · `Eine Station sezieren` · Rohpreise `24 Stunden`/`3 Tage`/`7 Tage` — der Spielplatz sagt in jedem Fall, dass er mit **deinen** Daten rechnet, nicht mit einer Simulation |
 
-## 4d. Bereich „System“: feste Muster (0.37.0)
+### 4d. Bereich „System“: feste Muster
 
-Technik-Bereich nach [UI-NEUENTWURF.md](UI-NEUENTWURF.md) §5.5. Reihenfolge ist
+Technik-Bereich nach [UI.md](UI.md) §5.5. Reihenfolge ist
 Teil des Entwurfs: Zustand → Daten → Läufe → Störungen → Diagnose, darunter
 die Frische-Fußzeile. Logik in `web/src/system.ts`.
 
@@ -262,6 +264,64 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 | PWA | `der Service-Worker liegt unter /sw.js` — die Shell trägt die App-Version, ein wartender Worker meldet sich als „Neue Version verfügbar“; Belege/Vorsätze warten offline in der Queue und gehen raus, sobald die Verbindung steht (B10) |
 | API | bleibt `/api/v1` — ein v2-Baum wird nicht erfunden |
 | Weg in die Tiefe | `Warum?` öffnet Ebene 1, `Im Labor vertiefen` springt in den Labor-Abschnitt |
+
+### 4e. Tooltips ergänzen, sie erklären nicht
+
+Ein `title=` erscheint nur mit Maus oder Tastaturfokus — auf dem Telefon und
+für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb:
+
+| Regel | Ja | Nein |
+|---|---|---|
+| Erklärung steht im sichtbaren Text | Hinweis unter der Filterleiste: „‚offen‘ zeigt nur Stationen mit aktuellem Preis …“ | `title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"` als einzige Quelle |
+| Tooltip bleibt kurz (≤ 80 Zeichen, ein Satz) | `title="Zeitwert für die Umweg-Rechnung"` | `title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"` |
+| Fachwort im Tooltip ist erlaubt (§1) | `title="Fachwort: Peak"` | `title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"` — die Definition gehört in den Text |
+| Herkunft darf im Tooltip stehen (§4d) | `title="Quelle: /api/v1/fills.csv"` | — |
+| Ein deaktivierter Knopf sagt sichtbar, warum | Text neben dem Knopf: „Verbindung läuft …“ | Erklärung nur im `title=` des deaktivierten Knopfs |
+
+Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
+`title=`.
+
+### 4f. Push-Texte: Alarme und Fenster-Meldungen
+
+Push-Texte entstehen serverseitig (`app/notify.py`) — für sie gelten
+dieselben Regeln wie für die GUI: Zahlen über die Formatter (de-DE,
+„1,719 €/L“, „18:00 Uhr“ in Europe/Berlin), keine erfundenen Werte,
+„…“-Anführungen, kurzer handlungsleitender Ton. Zwei Meldungsarten, zwei
+Datentiefen (O42):
+
+| Art | Inhalt | Wann |
+|---|---|---|
+| Alarm (`severity: error`) | nur Code, deutscher Klartext, App-Version — nie Preise, Stationen, Pfade | Zustandswechsel, Erinnerung nach 6 h, „wieder betriebsbereit“ |
+| Fenster „offen“ | Modus `public`: neutraler Satz ohne Details · Modus `lan`: Station, Fensterzeit, erwarteter Preis | genau einmal je Episode beim Öffnen (Verteilungs-P ≥ Schwelle) |
+| Fenster „geändert“ | dieselbe Regel wie „offen“ | Empfehlung kippt auf ein anderes Fenster |
+| Fenster „verstrichen“ | neutraler Satz (`public`) bzw. Fensterzeit und Station (`lan`) | Fenster schließt ohne Beleg — nur, wenn es vorher gemeldet war |
+
+Koordinaten, Pfade und Links stehen in **keinem** Modus. Die Ruhezeit
+(22–7 Uhr, Europe/Berlin) gilt nur für Fenster-Meldungen; Alarme kommen
+rund um die Uhr. Geprüft von `tests/test_notify.py` und
+`tests/test_o29_window_push.py`.
+
+### 4g. Belegmaske und Diagramm-Beschreibungen
+
+Zwei Stellen, an denen Text **Zahlen** trägt, die sonst nur als Bild oder als
+vorbefülltes Feld existieren. Regel für beide: Die Zahl kommt aus derselben
+Quelle wie die Darstellung, läuft durch die Formatter aus §3 — und wo keine
+Quelle ist, steht auch keine Zahl.
+
+| Stelle | Muster |
+|---|---|
+| Live-Preis an der Belegmaske (O32) | `Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.` — Niveau in €/L, Alter über `ageWord`. Ohne belegbares Alter (weder `observed_at` noch `age_minutes`) endet der Satz nach dem Preis; ohne frischen Preis steht gar nichts da |
+| Abweichung der Eingabe (O32) | `Deine Eingabe liegt 3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst.` — Differenz in ct/L (§3), Richtung `über`/`unter`, Schwelle 1,0 ct/L (`PRICE_DRIFT_CT`). Der Halbsatz nach dem Gedankenstrich bleibt: Die App korrigiert den Beleg nicht |
+| Textalternative eines Diagramms (O40) | Ein Satz mit Werten, nicht mit Reihennamen: `Liniendiagramm. Erwarteter Preis fällt von 1,780 €/L auf 1,710 €/L, Tief 1,690 €/L.` Gebaut in `web/src/chartAlt.ts` aus denselben Punkten, die gezeichnet werden |
+| Diagramm ohne Daten | `Liniendiagramm ohne Werte.` — nie eine gerundete Null, nie „0,000 €/L“ |
+| `aria-label` eines Diagramms | benennt **dieses** Diagramm, nicht die Gattung: `Prognose-Fächer` · `Versprochen gegen eingetroffen` · `Preis-Abstand je Station · Frankfurt` · `Tageskurve der Backtest-Zeile` · `Preisverlauf der Station`. „Diagramm“ allein ist verboten — im Labor liegen vier in einer Ansicht |
+
+Die Textalternative nennt Tief und Hoch nur, wenn sie **nicht** die Endpunkte
+sind (sonst stünde dieselbe Zahl dreimal), und sie beschreibt nie die Farbe:
+„grün = positiv“ hilft genau dem nicht, der die Beschreibung liest — gezählt
+werden stattdessen die Seiten und die Ausreißer mit Namen. Geprüft von
+`web/src/chartAlt.test.ts` und dem O40-Block in `web/src/a11y.test.ts`, die
+Belegmaske von `web/src/fills.test.ts` und `web/src/views/Ich.test.tsx`.
 
 ## 5. Zustände: leer, lädt, Fehler
 
@@ -281,7 +341,7 @@ die Frische-Fußzeile. Logik in `web/src/system.ts`.
 Ein Panel erfindet keinen eigenen Fehlertext: Klartexte stehen zentral in
 `messages` in `web/src/data.ts`, je `error_code` genau einer.
 
-### 5a. Wortlaut je Zustand (T8)
+### 5a. Wortlaut je Zustand
 
 Vier Verben für „lädt“ und acht Knopftexte für „nochmal“ waren der Befund —
 hier steht je Zustand **eine** Formulierung:
@@ -299,7 +359,7 @@ hier steht je Zustand **eine** Formulierung:
 
 Geprüft von `microcopy.test.ts` (Ladetexte, Retry-Knöpfe, Frische-Baustein).
 
-### 5b. Meldungen: ein Register, ein Rang (V3)
+### 5b. Meldungen: ein Register, ein Rang
 
 Acht Blöcke über dem Inhalt waren der Befund — jede Meldung mit eigener Dauer
 und ohne Ordnung. Seit 0.43.0 gilt:
@@ -318,7 +378,7 @@ werden mit „ · “ aneinandergereiht (nie gestapelt), die gemeinsame Dauer is
 Fehler- und Warn-Icons sind dekorativ (`aria-hidden`), der Text trägt die
 Information. Geprüft von `components/Notices.test.ts`.
 
-### 5c. „Set“ ist Betriebssprache (0.55.0)
+### 5c. „Set“ ist Betriebssprache
 
 Das **Polling-Set** ist die Liste der Stationen, die der Collector abfragt —
 ein Begriff aus der Einrichtung. In „System“ und „Labor“ ist er richtig: Wer
@@ -339,7 +399,7 @@ es nicht. Die Fläche benennt sich jetzt selbst:
 Das ist zugleich genauer: Gerechnet wird über die Stationen mit **offenem
 Preis**, nicht über alles, was im Polling-Set steht.
 
-### 5d. Ein Zustand, eine Zahl (0.55.0)
+### 5d. Ein Zustand, eine Zahl
 
 Wenn ein Text eine Automatik beschreibt, nennt er den Wert **dieser
 Automatik** — nicht den gerade gerechneten. Beides fällt nur zusammen,
@@ -393,64 +453,6 @@ Geprüft in `web/src/microcopy.test.ts` („„Auto“ zeigt den Automatik-Wert�
   „Dein Tank-Kompass. Ohne Rätselraten.“ (Kopfzeile) und „Keine Demo-Preise.
   Keine erfundene Sicherheit.“ (Fußzeile). Ein englisches Wort ohne deutsche
   Erklärung — etwa ein `LIVE`-Badge — steht nirgends.
-
-### 4e. Tooltips ergänzen, sie erklären nicht (V2)
-
-Ein `title=` erscheint nur mit Maus oder Tastaturfokus — auf dem Telefon und
-für Screenreader-Nutzer:innen fällt er ganz weg. Deshalb:
-
-| Regel | Ja | Nein |
-|---|---|---|
-| Erklärung steht im sichtbaren Text | Hinweis unter der Filterleiste: „‚offen‘ zeigt nur Stationen mit aktuellem Preis …“ | `title="Nur Stationen mit aktuellem Preis für den gewählten Kraftstoff"` als einzige Quelle |
-| Tooltip bleibt kurz (≤ 80 Zeichen, ein Satz) | `title="Zeitwert für die Umweg-Rechnung"` | `title="Wirkt auf die Umweg-Rechnung des Servers (Was-wäre-wenn, nicht das Profil)"` |
-| Fachwort im Tooltip ist erlaubt (§1) | `title="Fachwort: Peak"` | `title="Stoßzeit = Peak (16:30–20:00), sonst Nebenzeit"` — die Definition gehört in den Text |
-| Herkunft darf im Tooltip stehen (§4d) | `title="Quelle: /api/v1/fills.csv"` | — |
-| Ein deaktivierter Knopf sagt sichtbar, warum | Text neben dem Knopf: „Verbindung läuft …“ | Erklärung nur im `title=` des deaktivierten Knopfs |
-
-Der Ratchet (`microcopy.test.ts`, Regel 10) prüft Länge und Satzzahl jedes
-`title=`.
-
-### 4f. Push-Texte: Alarme und Fenster-Meldungen (0.46.0)
-
-Push-Texte entstehen serverseitig (`app/notify.py`) — für sie gelten
-dieselben Regeln wie für die GUI: Zahlen über die Formatter (de-DE,
-„1,719 €/L“, „18:00 Uhr“ in Europe/Berlin), keine erfundenen Werte,
-„…“-Anführungen, kurzer handlungsleitender Ton. Zwei Meldungsarten, zwei
-Datentiefen (O42):
-
-| Art | Inhalt | Wann |
-|---|---|---|
-| Alarm (`severity: error`) | nur Code, deutscher Klartext, App-Version — nie Preise, Stationen, Pfade | Zustandswechsel, Erinnerung nach 6 h, „wieder betriebsbereit“ |
-| Fenster „offen“ | Modus `public`: neutraler Satz ohne Details · Modus `lan`: Station, Fensterzeit, erwarteter Preis | genau einmal je Episode beim Öffnen (Verteilungs-P ≥ Schwelle) |
-| Fenster „geändert“ | dieselbe Regel wie „offen“ | Empfehlung kippt auf ein anderes Fenster |
-| Fenster „verstrichen“ | neutraler Satz (`public`) bzw. Fensterzeit und Station (`lan`) | Fenster schließt ohne Beleg — nur, wenn es vorher gemeldet war |
-
-Koordinaten, Pfade und Links stehen in **keinem** Modus. Die Ruhezeit
-(22–7 Uhr, Europe/Berlin) gilt nur für Fenster-Meldungen; Alarme kommen
-rund um die Uhr. Geprüft von `tests/test_notify.py` und
-`tests/test_o29_window_push.py`.
-
-### 4g. Belegmaske und Diagramm-Beschreibungen (0.54.0)
-
-Zwei Stellen, an denen Text **Zahlen** trägt, die sonst nur als Bild oder als
-vorbefülltes Feld existieren. Regel für beide: Die Zahl kommt aus derselben
-Quelle wie die Darstellung, läuft durch die Formatter aus §3 — und wo keine
-Quelle ist, steht auch keine Zahl.
-
-| Stelle | Muster |
-|---|---|
-| Live-Preis an der Belegmaske (O32) | `Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.` — Niveau in €/L, Alter über `ageWord`. Ohne belegbares Alter (weder `observed_at` noch `age_minutes`) endet der Satz nach dem Preis; ohne frischen Preis steht gar nichts da |
-| Abweichung der Eingabe (O32) | `Deine Eingabe liegt 3,0 ct/L über dem gemeldeten Preis — gebucht wird, was du eingibst.` — Differenz in ct/L (§3), Richtung `über`/`unter`, Schwelle 1,0 ct/L (`PRICE_DRIFT_CT`). Der Halbsatz nach dem Gedankenstrich bleibt: Die App korrigiert den Beleg nicht |
-| Textalternative eines Diagramms (O40) | Ein Satz mit Werten, nicht mit Reihennamen: `Liniendiagramm. Erwarteter Preis fällt von 1,780 €/L auf 1,710 €/L, Tief 1,690 €/L.` Gebaut in `web/src/chartAlt.ts` aus denselben Punkten, die gezeichnet werden |
-| Diagramm ohne Daten | `Liniendiagramm ohne Werte.` — nie eine gerundete Null, nie „0,000 €/L“ |
-| `aria-label` eines Diagramms | benennt **dieses** Diagramm, nicht die Gattung: `Prognose-Fächer` · `Versprochen gegen eingetroffen` · `Preis-Abstand je Station · Frankfurt` · `Tageskurve der Backtest-Zeile` · `Preisverlauf der Station`. „Diagramm“ allein ist verboten — im Labor liegen vier in einer Ansicht |
-
-Die Textalternative nennt Tief und Hoch nur, wenn sie **nicht** die Endpunkte
-sind (sonst stünde dieselbe Zahl dreimal), und sie beschreibt nie die Farbe:
-„grün = positiv“ hilft genau dem nicht, der die Beschreibung liest — gezählt
-werden stattdessen die Seiten und die Ausreißer mit Namen. Geprüft von
-`web/src/chartAlt.test.ts` und dem O40-Block in `web/src/a11y.test.ts`, die
-Belegmaske von `web/src/fills.test.ts` und `web/src/views/Ich.test.tsx`.
 
 ## 7. Prüfung
 

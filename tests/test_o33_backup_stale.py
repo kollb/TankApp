@@ -8,7 +8,7 @@ nimmt Daten **und** Sicherung mit.
 
 Batch-Check: Ein 40 Stunden altes ``tankapp-runtime-*.tar.gz`` ergibt
 ``backup_stale`` (warn); mit frischem Tar bleibt der Alarm aus; zweites
-Backup-Ziel und Aufbewahrungsregel stehen in [BETRIEB.md](../docs/BETRIEB.md).
+Backup-Ziel und Aufbewahrungsregel stehen in [BETRIEB.md](../docs/betrieb/BETRIEB.md).
 """
 
 import datetime as dt
@@ -202,7 +202,7 @@ def test_aufbewahrungsregel_steht_im_skript_und_in_der_doku():
     assert "! -name 'tankapp-runtime-monthly-*.tar.gz'" in script
     assert "TANKAPP_BACKUP_KEEP_MONTHLY:-6" in script
 
-    betrieb = (ROOT / "docs/BETRIEB.md").read_text(encoding="utf-8")
+    betrieb = (ROOT / "docs/betrieb/BETRIEB.md").read_text(encoding="utf-8")
     assert "backup_stale" in betrieb
     assert "Monatsstände" in betrieb
     # Zweites Ziel als ausdrückliche Entscheidung, nicht als Nebenwirkung.

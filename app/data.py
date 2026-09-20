@@ -1545,7 +1545,7 @@ class LiveData:
 
         ``app/metrics`` fasst die ``X-Process-Time``-Werte der letzten
         Antworten zusammen (p95, Maximum, langsamste Route, Budget aus
-        ``docs/QUALITAET.md``); der Sperren-Zähler kommt aus ``app.feedback``
+        ``docs/entwicklung/QUALITAET.md``); der Sperren-Zähler kommt aus ``app.feedback``
         und zeigt, ob ein Lesepfad wieder die Store-Sperre nimmt (O26).
         Beide Teile sind optional: Fällt einer aus, fehlt er hier — /health
         darf an der Selbstmessung nicht scheitern.
@@ -1733,7 +1733,7 @@ class LiveData:
             # steht hier, statt unsichtbar zu bleiben.
             "backup": backup,
             # O39: Wer im LAN die eigenen Belege lesen kann, ist eine
-            # Entscheidung (docs/BETRIEB.md), keine Nebenwirkung der
+            # Entscheidung (docs/betrieb/BETRIEB.md), keine Nebenwirkung der
             # Bind-Zeile. ``read_protected: true`` heißt: die persönlichen
             # Routen (Belege, Bilanz, Tagebuch, Profile, Episoden, Overview)
             # antworten nur mit ``TANKAPP_READ_TOKEN``; false = offen wie

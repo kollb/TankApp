@@ -3,7 +3,7 @@
 TankApp – Collector: pollt Stadtsets (je bis zu 10 Stationen) live von der
 Tankerkönig-Preis-API (prices.php, 1 Request für bis zu 10 UUIDs) und
 schreibt die Snapshots als JSONL in einen Ringpuffer (7 Tage), ganz nach
-docs/KONZEPT.md §1.2/§7/§9.1.
+docs/produkt/KONZEPT.md §1.2/§7/§9.1.
 
 Läuft auf dem Raspberry Pi 24/7 (nur Standardbibliothek, ~40-60 MiB RSS);
 der bestehende Uploader liest denselben Puffer und schreibt auf das NAS.

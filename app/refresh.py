@@ -633,7 +633,7 @@ def refresh(settings: Settings, now=None, progress=None):
                         # PIT-Histogramme, Regime-Kanten im Prüffenster und
                         # das Punktmodell, das der Backtest tatsächlich
                         # gemessen hat (heute harmonic_ar2 — nicht das
-                        # veröffentlichte ensemble; docs/LUECKEN.md).
+                        # veröffentlichte ensemble; docs/planung/LUECKEN.md).
                         "ar_shrink_events": model.get("ar_shrink_events"),
                         "ar_state_reset": model.get("ar_state_reset"),
                         "ar_detail": model.get("ar_detail"),

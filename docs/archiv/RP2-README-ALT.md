@@ -2,10 +2,10 @@
 
 > **Archiviert — Kurzreferenz, die früher neben dem RP2-Code lag.**
 > Inhalt (Dateistruktur, Fallback-JSON-API, Umschaltzeiten, Template-Updates,
-> Changelog) ist in [../RP2.md](../RP2.md) aufgegangen. Dokumentation lebt nur
+> Changelog) ist in [../RP2.md](../betrieb/RP2.md) aufgegangen. Dokumentation lebt nur
 > noch in `docs/`. Archiv-Übersicht: [README.md](README.md).
 
-> **Kanonische Anleitung jetzt unter [docs/RP2.md](../RP2.md)** mit klickbarem Inhaltsverzeichnis.
+> **Kanonische Anleitung jetzt unter [docs/betrieb/RP2.md](../betrieb/RP2.md)** mit klickbarem Inhaltsverzeichnis.
 > Diese Datei bleibt als Kurzreferenz im `rp2/`-Ordner.
 
 **24/7 Zugang zur TankApp über eine einzige Adresse — den RP2 (Port 8000).**
@@ -74,7 +74,7 @@ rp2/
 │   └── index.html                # Fallback-GUI (HTML+CSS+JS, eine Datei)
 ├── tankapp-forecast-cache.service
 ├── tankapp-fallback-gui.service
-├── ANLEITUNG.md                  # Alte ausführliche Anleitung (jetzt konsolidiert in docs/RP2.md)
+├── ANLEITUNG.md                  # Alte ausführliche Anleitung (jetzt konsolidiert in docs/betrieb/RP2.md)
 └── README.md                     # diese Datei (Kurzreferenz)
 ```
 
@@ -98,7 +98,7 @@ rp2/
 
 **Ohne `polling.json` fehlen Namen, Marken und Navigation** — die UUID wird
 dann angezeigt. Die Datei liegt beim Collector bereits auf dem Pi
-(siehe [docs/INSTALL.md](../INSTALL.md) §2.2, Details [docs/BETRIEB.md](../BETRIEB.md)).
+(siehe [docs/betrieb/INSTALL.md](../betrieb/INSTALL.md) §2.2, Details [docs/betrieb/BETRIEB.md](../betrieb/BETRIEB.md)).
 
 ## 🧪 Verhalten & Tests
 
@@ -138,6 +138,6 @@ das Template im Repo, wird die alte Datei beim nächsten Service-Start nach
 
 ## Vollständige Anleitung
 
-**→ [docs/RP2.md](../RP2.md)** — konsolidierte Schritt-für-Schritt Anleitung mit TOC, Fehlersuche, Prognose-Qualität, Nutzung.
+**→ [docs/betrieb/RP2.md](../betrieb/RP2.md)** — konsolidierte Schritt-für-Schritt Anleitung mit TOC, Fehlersuche, Prognose-Qualität, Nutzung.
 
-Alte `rp2/ANLEITUNG.md` bleibt erhalten, ist aber jetzt in `docs/RP2.md` konsolidiert. Siehe auch [docs/README.md](../../README.md) für alle Dokumente.
+Alte `rp2/ANLEITUNG.md` bleibt erhalten, ist aber jetzt in `docs/betrieb/RP2.md` konsolidiert. Siehe auch [docs/README.md](../../README.md) für alle Dokumente.

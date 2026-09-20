@@ -1,4 +1,4 @@
-// Stationen — der Preis-Atlas (docs/UI-NEUENTWURF.md §5.2).
+// Stationen — der Preis-Atlas (docs/produkt/UI.md, Bereiche).
 //
 // Reine Logik, ohne DOM (D1): Referenz-Wahl, die Netto-€-Zeilen,
 // Einordnungs-Sätze, A-gegen-B-Vergleich und die Frische-Fußzeile.

@@ -12,7 +12,6 @@
 - [2) NAS: Was ist persistent und wo liegt es?](#2-nas-was-ist-persistent-und-wo-liegt-es)
   - [Warum Influx auf SSD bleiben sollte](#warum-influx-auf-ssd-bleiben-sollte)
   - [Wenn Influx doch auf HDD soll](#wenn-influx-doch-auf-hdd-soll)
-- [3) Konkrete Änderungen im Code (13.09.2026)](#3-konkrete-änderungen-im-code-13092026)
 - [4) Checkliste für den Betreiber](#4-checkliste-für-den-betreiber)
 - [5) Offene Punkte](#5-offene-punkte)
 
@@ -106,13 +105,6 @@ Technisch möglich, aber Spindown-Ziel dann aufgeben:
 
 Empfehlung: **Influx auf SSD lassen**, Retention auf 1 Jahr kürzen, Backups auf HDD. So bleibt die 3,38 GB stabil statt wachsend, und die HDD kann schlafen.
 
-## 3) Konkrete Änderungen im Code (13.09.2026)
-
-- `data-tools/collect_prices.py`: `_read_ack_ts()` + `ring_prune()` löscht gesyncte Dateien (älter als gestern) sofort nach Ack, nicht erst nach 7 Tagen. Log zeigt „Ringpuffer: X alte Tag(e) gelöscht“.
-- `web/src/data.ts`: `useResource` behält Daten stale (kein `data=null` bei URL-Wechsel), `prevUrlRef` erkennt nur URL-Wechsel, Interval-Wechsel (System-Tab 60 s↔15 s) startet nur Timer neu — kein Flackern mehr.
-- `web/src/Dashboard.tsx`: Header `isStaleFuel = data.fuel !== fuel`, `online` false bei Stale, `fresh=[]` bei Stale, Anzeige „Daten werden geladen …“ sobald `pending`, nicht nur bei `!data`.
-- `web/src/views/Jetzt.tsx` und `Stationen.tsx`: Skeleton statt „Noch kein frischer Preis“ / „Kein frischer Preis – bitte manuell erfassen“, solange der Kraftstoffwechsel noch lädt (früher `views/Daily.tsx`, mit dem GUI-Neuentwurf umbenannt).
-
 ## 4) Checkliste für den Betreiber
 
 - [ ] Pi: `collect_prices.py` aktualisieren (`git pull`), Dienst neu starten — ab dann weniger tmpfs.
@@ -123,6 +115,6 @@ Empfehlung: **Influx auf SSD lassen**, Retention auf 1 Jahr kürzen, Backups auf
 
 ## 5) Offene Punkte
 
-- **Erledigt:** `data-tools/prune_influx.py` liegt im Repo (Delete API, `--older-than-days`, `--dry-run`) — der Kurzaufruf steht in [BETRIEB.md](BETRIEB.md#speichermanagement-pi-shm--nas-ssdhdd).
+- **Pruning:** `data-tools/prune_influx.py` liegt im Repo (Delete API, `--older-than-days`, `--dry-run`) — der Kurzaufruf steht in [BETRIEB.md](BETRIEB.md#speichermanagement-pi-shm--nas-ssdhdd).
 - Influx auf HDD mit SSD-Cache (bcache) — komplex, nur wenn die SSD wirklich knapp wird; entschieden ist „Influx bleibt auf SSD“ (siehe oben).
 - Downsampling alter Punkte (stündliche Mittelwerte) — bewusst nicht gebaut, siehe Punkt 4.

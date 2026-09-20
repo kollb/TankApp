@@ -1,6 +1,6 @@
 # GUI-FALLBACK-SANITY — Prüfbericht 2026-09-14
 
-> **Archiviert am 14.09.2026 · App-Version 0.37.1.** Stichtagsprüfung nach echter NAS/Pi-Abnahme des GUI-Neuentwurfs. Nachfolger für offene Produktpunkte: [../LUECKEN.md](../LUECKEN.md). Laufende Betriebsanweisungen stehen in [../BETRIEB.md](../BETRIEB.md) und [../RP2.md](../RP2.md).
+> **Archiviert am 14.09.2026 · App-Version 0.37.1.** Stichtagsprüfung nach echter NAS/Pi-Abnahme des GUI-Neuentwurfs. Nachfolger für offene Produktpunkte: [LUECKEN.md](../planung/LUECKEN.md). Laufende Betriebsanweisungen stehen in [BETRIEB.md](../betrieb/BETRIEB.md) und [../RP2.md](../betrieb/RP2.md).
 
 - [1. Ergebnis](#1-ergebnis)
 - [2. UX/UI-Sanity](#2-uxui-sanity)

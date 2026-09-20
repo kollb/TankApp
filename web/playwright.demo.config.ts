@@ -8,7 +8,7 @@ import { defineConfig } from "@playwright/test";
 // `/api/v1/*`-Pfad per `page.route` und beweist damit Rendering-Logik, nicht
 // die Integration Server ↔ GUI. Genau deshalb fielen B1 (NaN brach
 // `/last_forecasts`), B3 (UTC statt Ortszeit) und der defekte Demo-Stack in
-// den 15.09.-Sanity-Check statt in die CI (docs/LUECKEN.md, „Bewusst offen“).
+// den 15.09.-Sanity-Check statt in die CI (docs/planung/LUECKEN.md, „Bewusst offen“).
 //
 // Aufruf: `npm --prefix web run test:e2e:demo` — der GUI-Build (`npm run
 // build`) muss stehen, weil der Demo-Server `web/dist` ausliefert. Der Server

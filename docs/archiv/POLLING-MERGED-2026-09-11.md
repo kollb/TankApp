@@ -2,7 +2,7 @@
 
 > **Archiviert — Punktstand des gemergten Polling-Sets vom 11.09.2026.**
 > Das **aktive** Set liegt gitignored in `docs/analysis/stations/polling.json`.
-> Stationen tauschen: [../STATIONEN-TAUSCH.md](../STATIONEN-TAUSCH.md); neue Stadt:
+> Stationen tauschen: [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md); neue Stadt:
 > `python3 tankapp.py add-city`. Ergebnis-JSON: [POLLING-MERGED-2026-09-11.json](POLLING-MERGED-2026-09-11.json).
 > Archiv-Übersicht: [README.md](README.md).
 

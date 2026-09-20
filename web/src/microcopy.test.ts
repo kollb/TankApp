@@ -1,4 +1,4 @@
-// F3: Microcopy-Ratchet zum Regelwerk in docs/MICROCOPY.md.
+// F3: Microcopy-Ratchet zum Regelwerk in docs/produkt/MICROCOPY.md.
 //
 // Mechanisch prüfbare Regeln — genau die laufen ohne Prüfung auseinander:
 //   1. Anführungszeichen in Nutzertexten sind `„…“` — paarig, in dieser
@@ -96,7 +96,7 @@ function read(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
 }
 
-describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
+describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
   it.each(FILES)("%s: Anführungszeichen sind paarig „…“", (relativePath) => {
     const source = read(relativePath);
     const open = (source.match(/„/g) ?? []).length;
@@ -273,7 +273,7 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
    * Ausnahme T9 ist der System-Bereich (`TECH_TEXT_ALLOWED`). Geprüft werden
    * Sätze, nicht Code: Ein Literal zählt als Satz, wenn es aus mindestens drei
    * Wörtern besteht und nicht mit `/`, `?` oder `#` anfängt — damit fallen
-   * `fetch`-Pfade und CSS-Klassen heraus, aber „… (docs/INSTALL.md …)“ nicht.
+   * `fetch`-Pfade und CSS-Klassen heraus, aber „… (docs/betrieb/INSTALL.md …)“ nicht.
    */
   const TECH_PATTERNS: ReadonlyArray<RegExp> = [
     /\/api\/v\d/,
@@ -522,7 +522,7 @@ describe("F3: Microcopy-Regelwerk (docs/MICROCOPY.md)", () => {
 
   it("das Regelwerk selbst ist da und verlinkt", () => {
     const docs = readFileSync(
-      fileURLToPath(new URL("../../docs/MICROCOPY.md", import.meta.url)),
+      fileURLToPath(new URL("../../docs/produkt/MICROCOPY.md", import.meta.url)),
       "utf8",
     );
     expect(docs).toMatch(/[Ee]hrlich, knapp, handlungsleitend/);

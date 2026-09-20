@@ -1,7 +1,7 @@
 # TankApp API — Endpunkte & Spezifikation
 
 > Stand: 18.09.2026 · App-Version **0.52.0** — neu seit 0.52.0 (Batch 7 des
-> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
+> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
 > jede Antwort trägt `X-Process-Time` und `/health` einen
 > [`performance`](#health)-Block (O37); `If-None-Match` → `304` gilt nicht mehr
 > nur für `/overview`, sondern auch für `decide`, `stations`, `heatmap`,
@@ -25,7 +25,7 @@
 > zusätzlich `index_bytes`/`file_count`/`largest_file_bytes` und den Grund
 > `incomplete`, die Endpunkte liefern dieselbe Struktur wie vorher.
 > Davor neu seit 0.48.0 (Batch 5 des
-> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
+> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
 > normierte Fenstersterne mit Rohwert/Basisrate (O12), 0,5-Gleichstände (O7),
 > strikte Belegfenster und Netto-Umweg-Provenienz (O8/O9), 7×24-
 > Personalisierung (O2/O3), Forecast-Support (O10), LOO-Heatmap (O11),
@@ -43,10 +43,10 @@
 > `alarms[]` + `version`/`commit` in `/health` (B4/B9). Seit 0.40.0 nennt das
 > Advice-Tagebuch den Grund einer Ablehnung (`decline_reason`) und den Namen der
 > Station (`station_name`). Seit **0.44.0** (Batch 1 des
-> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check))
+> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check))
 > trägt jeder Beleg die Herkunft seiner Tankuhrzeit (`clock_hour_source`, O1),
 > der Feedback-Store hat `schema_version` **4** (Altbestände werden beim Laden
-> migriert, siehe [BETRIEB.md](BETRIEB.md)), und `/health` nennt Größe und
+> migriert, siehe [BETRIEB.md](../betrieb/BETRIEB.md)), und `/health` nennt Größe und
 > Lesbarkeit der Prognose-Veröffentlichung (`publication`, O22) samt der Alarme
 > `publication_large`/`publication_unreadable`.
 > Alles serverseitig, keine Demo-Fallbacks (Ehrlichkeits-Regel, Konzept §0.4).
@@ -99,7 +99,7 @@ beide dasselbe Schema (`Authorization: Bearer <Secret>`):
   `{"error_code": "unauthorized"}` und `WWW-Authenticate: Bearer`. Ohne die
   Variable bleiben sie unverändert offen — die Entscheidung (was im LAN lesbar
   ist und für wen) steht in
-  [BETRIEB.md](BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500), der
+  [BETRIEB.md](../betrieb/BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500), der
   Stand in `/api/v1/health` → `personal_data.read_protected`. Markt- und
   Modelldaten (`health`, `stations`, `series`, `forecast`, `heatmap`,
   `selection`, `stats/summary`, `collector/status`, `jobs/*/log`) sind nie
@@ -152,7 +152,7 @@ frei (GUI-Polling).
   (`X-Process-Time: 0.004182`), dieselbe Konvention wie gunicorn/nginx. Die
   Zusammenfassung (p95, Maximum, langsamste Route) steht in
   `/api/v1/health` → [`performance`](#health); das Budget in
-  [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
+  [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520).
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
@@ -763,7 +763,7 @@ noch niemand geparst", nie „0 ms".
 `X-Process-Time` je Antwort sagt, als Zusammenfassung über die letzten
 **200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
 `budget_ms` (= 300 ms, das Budget aus
-[QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520)), dazu
+[QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520)), dazu
 `slowest_route`/`slowest_p95_ms` und je Route mit mindestens fünf Antworten ein
 eigener Wert in `by_route`. `store_lock` zählt Akquisen und Wartezeit der
 Feedback-Store-Sperre (O26): Steigt `acquired`, obwohl niemand Belege bucht,
@@ -791,7 +791,7 @@ grün ohne Alarm.
 | `publication_large` | warn | Eine Datei der Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — seit der Aufteilung (0.49.0) praktisch unerreichbar, eine Stations-Datei ist ~0,7 MB (O22) |
 | `backup_stale` | warn | letztes Laufzeit-Backup älter als `BACKUP_STALE_HOURS` (36 h), Backup-Ziel leer oder nicht erreichbar (O33) |
 
-Reihenfolge und Aktionen: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+Reihenfolge und Aktionen: [BETRIEB.md](../betrieb/BETRIEB.md#system-alarme-lesen).
 
 **`notify`** (B4): Sichtbarkeit der ntfy-Zustellung, die `severity: "error"`
 an `TANKAPP_NTFY_URL` schickt — `configured` (Variable gesetzt?),
@@ -804,7 +804,7 @@ zugestellte Fehlermeldung). Seit 0.50.0 dazu `recap_last_week` und
 zusammengefasst hat und wann — `null`, solange noch keiner rausging.
 Der Block liest nur die Zustandsdateien `data/runtime/notify/state.json` und
 `notify/recap.json`, kein Netz. Einrichten und Verhalten:
-[BETRIEB.md](BETRIEB.md#alarm-zustellung-über-ntfy-b4).
+[BETRIEB.md](../betrieb/BETRIEB.md#alarm-zustellung-über-ntfy-b4).
 
 **`price_implausible`** (O35, seit 0.46.0): Zähler der Live-Preise außerhalb
 0,40–5,00 €/L in den letzten 24 Stunden — `count_24h` und `last_at`
@@ -828,7 +828,7 @@ erreichbarem Ziel (`reason: "directory_missing"`). Ohne konfiguriertes Ziel
 gibt es **keinen** Alarm (`reason: "not_configured"`) — die App weiß nicht, ob
 anderswo gesichert wird; unsichtbar ist der Zustand damit nicht.
 Einrichten und Aufbewahrungsregel:
-[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup).
+[BETRIEB.md](../betrieb/BETRIEB.md#nas-laufzeitdaten-runtime-backup).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
@@ -892,7 +892,7 @@ Antwort sortiert nach Preis (frisch zuerst):
 
 **Eine Form, zwei Antwortflächen (O44, seit 0.49.1):** Dieselbe Stations-Form
 antwortet auf dem Pi auch der RP2-Fallback (`<RP2-IP>:8000`,
-[rp2/fallback_gui.py](../rp2/fallback_gui.py)) — aus seinem Live-Puffer, mit
+[rp2/fallback_gui.py](../../rp2/fallback_gui.py)) — aus seinem Live-Puffer, mit
 `cities` (deduplizierte Ortslabel seiner Zeilen), je Zeile `observed_at` als
 Alias auf `fetched_at` und ausdrücklich `calibrated`/`decision_ready: false`
 (Quantile statt M7-Posterior). Die App liest `cities` für die Ortswahl und gilt
@@ -902,7 +902,7 @@ leere Liste (`web/src/data.ts::usableStations`, Regression
 „Antwort kommt vom Pi-Fallback“. Der Fallback beantwortet nur seine sieben
 Pfade — alles andere ist `404` und im Fallback-Modus (gebaute GUI per
 `TEMPLATE_DIR`) in der Browser-Konsole zu sehen:
-[RP2.md](RP2.md#fallback-api-und-umschaltzeiten), [BETRIEB.md](BETRIEB.md).
+[RP2.md](../betrieb/RP2.md#fallback-api-und-umschaltzeiten), [BETRIEB.md](../betrieb/BETRIEB.md).
 
 **Plausibilität (O35, seit 0.46.0):** Ein gemeldeter Wert außerhalb
 0,40–5,00 €/L (oder nicht endlich) ist eine Beobachtung, aber kein Preis —
@@ -986,7 +986,7 @@ Liefert letzten publizierten Ausblick:
 
 ### Forecast-Messfelder (B0, seit 0.56.0)
 
-Batch B0 des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+Batch B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
 hängt jeder Prognose Messfelder an — **Diagnose, keine Nutzerzahl:** die GUI
 liest sie nicht, `points`/Quantile sind bitgleich zu 0.55.2 (Invarianz-Test
 `tests/test_b0_invariance.py`). Sie stehen in `runtime/engine/forecasts/*.json`,
@@ -1004,7 +1004,7 @@ behandeln fehlende Felder wie `null`. Definitionen:
 | `pit` | Backtest | PIT-Histogramme **dieser Station** je Horizont (`24h`/`72h`/`168h`), `all` und `break_free`: `n`, `histogram` (40 Klassen), `coverage[q]`, `interval_95`, `mean`. |
 | `regime_breaks_in_window` | Backtest | Deklarierte Regime-Kanten: `declared`, `in_window`, `count`, `folds_spanning`, `points_spanning`, `metrics_break_free`, Politik `flagged_not_excluded`. |
 | `ar_shrink` | Backtest | Stauchungen über alle Folds: `folds_shrunk`, `shrink_events_total`, `folds_state_reset`, `fallbacks`. |
-| `backtest_model_kind`, `backtest_shared_draws` | Backtest | **Was der Backtest gemessen hat** (`harmonic_ar2`, unabhängige Ziehung — Stand vor 0.56.0). Das bestehende `model_kind` bleibt das **veröffentlichte** Modell (`ensemble`). Beide nebeneinander, weil sie heute nicht übereinstimmen ([LUECKEN.md](LUECKEN.md#bewusst-offen-backlog-mit-grund)). |
+| `backtest_model_kind`, `backtest_shared_draws` | Backtest | **Was der Backtest gemessen hat** (`harmonic_ar2`, unabhängige Ziehung — Stand vor 0.56.0). Das bestehende `model_kind` bleibt das **veröffentlichte** Modell (`ensemble`). Beide nebeneinander, weil sie heute nicht übereinstimmen ([LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis)). |
 | `ensemble.weight_spread` | Fit | Streuung der Ensemble-Gewichte je 288-Slot-Block des Validierungsfensters (`std`, `range`, `blocks_favouring`); `ensemble.weights` unverändert. |
 | `calibration` / `calibrated` | B2-Modell | Validierte, **aktuell auf 24-h-Pfade angewandte** PIT-Hülle bzw. ihr boolescher Zustand. `calibrated` hier ist technische Pfadkalibrierung, nicht M7/`decision_ready`; weitere Horizonte bleiben roh, bis sie einen eigenen zeitlich validierten Kandidaten haben. Schema-2-/Alt-Publikationen bleiben `false`. |
 | `calibration_candidate` | B2-Backtest | Kandidat für den **nächsten** Lauf, einschließlich Herkunft (`model_kind`, `shared_draws`) und `24h.validation`: rohe/kalibrierte Quantilabdeckung sowie PICP95-Holdout-Gate. Ein Status `accepted` ist noch keine Anwendung im selben Lauf. |
@@ -1088,7 +1088,7 @@ Antwort:
   der Bestand mischt Vor- und Nach-Gesetz-Preise. Fehlen beide Felder (alte
   Version), ist die Kante unbekannt — die GUI behauptet dann keine. Auf dem
   heutigen Bestand ist `points_before_law` 0: Alle Beobachtungsfenster beginnen
-  hinter dem 01.04.2026 ([Befund §4.1](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md#41-die-prämisse-war-rechnerisch-veraltet))
+  hinter dem 01.04.2026 ([Befund §4.1](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md#41-die-prämisse-war-rechnerisch-veraltet))
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:

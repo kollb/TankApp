@@ -213,7 +213,7 @@ export type Health = {
   /**
    * O39: Ist der persönliche Datenbestand im LAN geschützt? `true` heißt:
    * die persönlichen Routen antworten nur mit `TANKAPP_READ_TOKEN`; `false`
-   * = offen wie bisher (dokumentierte Entscheidung, docs/BETRIEB.md).
+   * = offen wie bisher (dokumentierte Entscheidung, docs/betrieb/BETRIEB.md).
    */
   personal_data?: { read_protected?: boolean } | null;
   /**
@@ -3477,7 +3477,7 @@ export const M7_MIN_RECOMMENDATIONS = 100;
 export const M7_BRIER_THRESHOLD = 0.25;
 
 /**
- * Zielwert für MASE an sprungfreien Tagen (docs/ENGINE.md) — angezeigt über
+ * Zielwert für MASE an sprungfreien Tagen (docs/referenz/ENGINE.md) — angezeigt über
  * `deNumber`, damit im Text „0,80“ steht und nicht „0.80“ (GUI-TEXT-BEFUND T4).
  */
 export const MASE_TARGET = 0.8;
@@ -3980,7 +3980,7 @@ export function yearBalanceLabel(key: string): string {
 /**
  * C4: Dark/Light-Umschaltung der NAS-GUI.
  *
- * Dunkel (Slate-950) ist die Design-Basis (docs/GUI-VORLAGEN.md) und bleibt
+ * Dunkel (Slate-950) ist die Design-Basis (docs/produkt/GUI-VORLAGEN.md) und bleibt
  * der Default. „Hell (Slate)“ ist eine helle Variante derselben Skala:
  * dieselben Tailwind-Klassen, andere Token-Werte unter `html.light` in
  * styles.css — abgeleitet von der Light-Palette der Fallback-GUI

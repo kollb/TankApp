@@ -1,4 +1,4 @@
-// System — die reine Logik des Technik-Bereichs (docs/UI-NEUENTWURF.md §5.5, Phase 4).
+// System — die reine Logik des Technik-Bereichs (docs/produkt/UI.md, BereichePhase 4).
 //
 // Warum eine eigene Datei: Die Ansicht rendert, sie entscheidet nichts (D1).
 // Alles hier ist aus Server-Zahlen ableitbar und ohne DOM prüfbar — die vier
@@ -34,7 +34,7 @@ import {
 import { labHint, type LabHint } from "./lab";
 
 /** T5: derselbe Hinweis an beiden Stellen (Daten-Karte und Einrichtungsliste). */
-const INFLUX_MISSING = "influx.env fehlt — docs/INSTALL.md, Abschnitt InfluxDB.";
+const INFLUX_MISSING = "influx.env fehlt — docs/betrieb/INSTALL.md, Abschnitt InfluxDB.";
 
 export type SystemTone = "ok" | "warn" | "error" | "unknown";
 
@@ -134,7 +134,7 @@ export function systemStatusRows(input: {
         label: "Datenbank (NAS)",
         tone: "warn",
         headline: `${countLabel(h.station_count)} Stationen eingebunden`,
-        detail: "Polling-Set fehlt oder leer — docs/INSTALL.md, Abschnitt Polling-Set.",
+        detail: "Polling-Set fehlt oder leer — docs/betrieb/INSTALL.md, Abschnitt Polling-Set.",
         meta: h.polling_path ? `Pfad: ${h.polling_path}` : null,
       };
     }
@@ -443,7 +443,7 @@ export function systemExplanationStoerungen(
       alarmCount > 0
         ? `${countLabel(alarmCount)} Störung${alarmCount === 1 ? "" : "en"} aktiv — jede mit Code, Klartext und Checkliste, was zu tun ist.`
         : "Keine aktiven Störungen — die Anlage meldet keine Alarme.",
-      "Gelb und Rot erscheinen nur als Anzeige im System-Tab und als Punkt in der Kopfzeile — kein Push, kein Ton (Betriebs-Entscheidung seit 0.35.0, docs/BETRIEB.md).",
+      "Gelb und Rot erscheinen nur als Anzeige im System-Tab und als Punkt in der Kopfzeile — kein Push, kein Ton (Betriebs-Entscheidung seit 0.35.0, docs/betrieb/BETRIEB.md).",
       "Alarm-Zustellung über ntfy ist optional: Ist TANKAPP_NTFY_URL gesetzt, kommen Fehler-Alarme aufs Handy — sonst stehen sie nur hier.",
     ],
     source:
@@ -471,7 +471,7 @@ export function systemSetupSteps(input: {
       done: (h?.station_count ?? 0) > 0,
       hint: h?.station_count
         ? `${countLabel(h.station_count)} Stationen eingebunden.`
-        : "Gemeinsames Polling-Set fehlt — docs/INSTALL.md, Abschnitt Polling-Set.",
+        : "Gemeinsames Polling-Set fehlt — docs/betrieb/INSTALL.md, Abschnitt Polling-Set.",
     },
     {
       label: "Collector-Herzschlag",

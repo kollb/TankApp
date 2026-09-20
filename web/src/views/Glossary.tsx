@@ -1,6 +1,6 @@
 // C7: Hilfe/Glossar-Layer — „Was heißt das?“ für die Werkstatt.
 // Einfache Seite mit deutschen Primärlabeln und Fachwort im Tooltip.
-// Begriffe konsistent zu docs/ANALYSE.md, MICROCOPY §4.
+// Begriffe konsistent zu docs/referenz/ANALYSE.md, MICROCOPY §4.
 //
 // Kein englischer Hook, kein Demo — jede Zeile erklärt, was zu tun ist.
 
@@ -58,7 +58,7 @@ export function GlossaryView() {
             {entry.anchor && (
               <p
                 className="mt-2 text-xs text-slate-500"
-                title={`docs/ANALYSE.md#${entry.anchor}`}
+                title={`docs/referenz/ANALYSE.md#${entry.anchor}`}
               >
                 Mehr dazu steht in der Analyse (Doku).
               </p>
@@ -76,7 +76,7 @@ export function GlossaryView() {
         </div>
         <p
           className="mt-2 text-sm leading-relaxed text-slate-400"
-          title="docs/ANALYSE.md · docs/KONZEPT.md §4 · §5 · §8 · docs/MICROCOPY.md"
+          title="docs/README.md · Methodik, Produktkonzept und Textregeln"
         >
           Die vollständige Methodik steht in der Analyse und im Konzept — dort
           mit Formeln und Quellen. Das Regelwerk für alle Texte liegt im

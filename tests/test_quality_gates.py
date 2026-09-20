@@ -31,7 +31,7 @@ def test_lighthouse_budgets_sind_hinterlegt():
     assertions = config["ci"]["assert"]["assertions"]
     # Harte Gates: Rückfälle in Barrierefreiheit/Best-Practices/SEO stoppen
     # den PR. Performance bleibt warnend, solange keine Messung vorliegt
-    # (docs/QUALITAET.md, Abschnitt „Offen“).
+    # (docs/entwicklung/QUALITAET.md, Abschnitt „Offen“).
     for key in ("categories:accessibility", "categories:best-practices"):
         level, options = assertions[key]
         assert level == "error", key

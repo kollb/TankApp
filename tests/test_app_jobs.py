@@ -172,7 +172,7 @@ def test_publication_is_written_compact_parseable_and_measured(model_setup, caps
       Mit Einrückung lag dieselbe Datei bei elf Stationen über dem Leselimit
       von ``app.data.read_json`` und die App fiel lautlos auf „keine Prognose“.
     * gültiges JSON ohne ``NaN``-Token: ``jq -e .failures`` läuft durch
-      (docs/STATIONEN-TAUSCH.md empfiehlt genau diesen Befehl).
+      (docs/betrieb/STATIONEN-TAUSCH.md empfiehlt genau diesen Befehl).
     * die Größe steht im Job-Log — der Modell-Lauf meldet nicht mehr nur
       Erfolg, während die Datei auf die Klippe zusteuert.
     """

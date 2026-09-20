@@ -1,4 +1,4 @@
-// Jetzt — der Tank-Kompass (docs/UI-NEUENTWURF.md §5.1).
+// Jetzt — der Tank-Kompass (docs/produkt/UI.md, Bereiche).
 //
 // Feste Reihenfolge, nie anders:
 //   ① Entscheidung (genau eine Karte, volle Breite, vier Ausgänge)

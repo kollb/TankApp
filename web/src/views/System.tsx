@@ -1,4 +1,4 @@
-// System — Anlage & Daten (docs/UI-NEUENTWURF.md §5.5, Phase 4).
+// System — Anlage & Daten (docs/produkt/UI.md, BereichePhase 4).
 //
 // Feste Reihenfolge, nie anders:
 //   ① Zustand (4 Bausteine, je eine Zeile: Collector, Datenbank, Modelle, App)
@@ -756,7 +756,7 @@ export function SystemView(props: SystemViewProps) {
           <p className="mt-3 break-words rounded-lg bg-slate-950/60 p-2.5 text-xs leading-relaxed text-slate-500">
             Starten: der Knopf <Play size={11} className="inline align-[-1px]" /> in der jeweiligen Job-Karte oben (ohne Passwort, wirkt nur im NAS-Webauftritt,
             nie zwei Läufe gleichzeitig). Auf der Kommandozeile stattdessen <code className="break-all text-slate-400">{workerCommand}</code> — Details in{" "}
-            <span className="text-slate-400">docs/BETRIEB.md</span>.
+            <span className="text-slate-400">docs/betrieb/BETRIEB.md</span>.
           </p>
           {webhookCapable && (
             <p className="mt-2 break-words text-xs leading-relaxed text-slate-500">
@@ -852,7 +852,7 @@ export function SystemView(props: SystemViewProps) {
           )}
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
             {notifyLastLine(h?.notify) ??
-              "Einrichtung: TANKAPP_NTFY_URL setzen (docs/BETRIEB.md, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
+              "Einrichtung: TANKAPP_NTFY_URL setzen (docs/betrieb/BETRIEB.md, Abschnitt „Alarm-Zustellung über ntfy“). Verschickt werden nur Alarme mit Schweregrad „Fehler“ — ohne Preise, Stationen oder Pfade."}
           </p>
         </div>
       </div>
@@ -991,7 +991,7 @@ export function SystemView(props: SystemViewProps) {
             </form>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               Gerätelokal im Browser gespeichert und als Header geschickt — nie in einer URL, also nicht in Logs. Schreib-Endpunkte bleiben offen (eigenes Budget); Entscheidung und Umfang:{" "}
-              <code className="text-slate-400">docs/BETRIEB.md</code>, Abschnitt „Zugriff im LAN“.
+              <code className="text-slate-400">docs/betrieb/BETRIEB.md</code>, Abschnitt „Zugriff im LAN“.
             </p>
           </div>
         </div>

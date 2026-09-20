@@ -3,7 +3,7 @@
 #
 # Sichert die App-Laufzeitdaten, die bisher NICHT im Backup waren: persönliche
 # Tank-Bilanz (feedback/store.json), Selektion, Job-Stände. Der InfluxDB-Volume-
-# Backup (Preise) ist davon getrennt, siehe docs/BETRIEB.md → "Backup & Wiederherstellung".
+# Backup (Preise) ist davon getrennt, siehe docs/betrieb/BETRIEB.md → "Backup & Wiederherstellung".
 #
 # Aufruf (cron, täglich):
 #   TANKAPP_RUNTIME_DIR=/pfad/zu/runtime TANKAPP_BACKUP_DIR=/pfad/zu/backup ops/nas/backup.sh

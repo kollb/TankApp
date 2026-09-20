@@ -7,7 +7,7 @@ name: TankApp quality gates
 #
 # Die Gates laufen gegen den Demo-Stack (ops/quality/): dieselbe App, nur mit
 # injizierter Preisabfrage statt InfluxDB und einer vorab gerechneten
-# Engine-Publikation. Details, Budgets und letzte Messwerte: docs/QUALITAET.md
+# Engine-Publikation. Details, Budgets und letzte Messwerte: docs/entwicklung/QUALITAET.md
 on:
   workflow_dispatch:
   schedule:

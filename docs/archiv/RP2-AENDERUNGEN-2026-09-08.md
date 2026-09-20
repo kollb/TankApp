@@ -3,8 +3,8 @@
 > **Archiviert — Änderungsbericht zur RP2-Einführung (v1.0, 08.09.2026).**
 > Die Einrichtungsschritte sind überholt: NAS-IP wird **nicht** per `sed` in
 > Quelldateien gesetzt (sondern als systemd-Drop-in), und es sind **keine**
-> pip-Pakete nötig. Aktuell: [../RP2.md](../RP2.md), Änderungen seither in
-> [../../CHANGELOG.md](../../CHANGELOG.md). Archiv-Übersicht: [README.md](README.md).
+> pip-Pakete nötig. Aktuell: [../RP2.md](../betrieb/RP2.md), Änderungen seither in
+> [CHANGELOG.md](../releases/CHANGELOG.md). Archiv-Übersicht: [README.md](README.md).
 
 **Zusammenfassung aller Änderungen an der TankApp, um Prognosen (F1/F3) auf dem RP2 zu cachen.**
 
@@ -281,7 +281,7 @@ docker start tankapp
 - [Detaillierte Anleitung](RP2-ANLEITUNG-ALT.md)
 - [Technische Dokumentation](RP2-README-ALT.md)
 - [Haupt-README](../../README.md)
-- [Konzept](../KONZEPT.md)
+- [Konzept](../produkt/KONZEPT.md)
 
 ---
 

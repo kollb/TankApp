@@ -1,11 +1,11 @@
 # UMSETZUNG-GUI-NEUENTWURF — Arbeits-Checkliste
 
-> **Archiviert am 14.09.2026 · App-Version 0.37.1.** Diese Arbeits-Checkliste ist abgeschlossen. Nachfolger für neue Befunde: [LUECKEN.md](../LUECKEN.md) und konkrete Prüfberichte in [docs/archiv/](README.md).
+> **Archiviert am 14.09.2026 · App-Version 0.37.1.** Diese Arbeits-Checkliste ist abgeschlossen. Nachfolger für neue Befunde: [LUECKEN.md](../planung/LUECKEN.md) und konkrete Prüfberichte in [docs/archiv/](README.md).
 >
 > Stand: 14.09.2026 · App-Version **0.37.1** · Konzept:
-> [UI-NEUENTWURF.md](../UI-NEUENTWURF.md) (§16 Phasen, §7 Erklär-Treppe,
-> §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](../GUI-VORLAGEN.md) ·
-> Texte: [MICROCOPY.md](../MICROCOPY.md) ·
+> [UI.md](../produkt/UI.md) (§16 Phasen, §7 Erklär-Treppe,
+> §10 Zustände) · Leitplanken: [GUI-VORLAGEN.md](../produkt/GUI-VORLAGEN.md) ·
+> Texte: [MICROCOPY.md](../produkt/MICROCOPY.md) ·
 > Vorlage für diese Liste: [UMSETZUNG-FALLBACK-GUI-V2.md](UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
 >
 > **Diese Datei ist die Arbeitsunterlage.** Sie führt die Phasen aus §16 als
@@ -67,7 +67,7 @@ Bereiche der Phasen 1–4 erfüllt:
       (`renderToStaticMarkup`, feste Uhr), Volltext-Ratchet erweitert.
 - [x] CI-Spiegel grün: ruff check, ruff format --check, `pytest -q`,
       `npm --prefix web test`, `npm --prefix web run build`.
-- [x] `app/version.py` angehoben, `CHANGELOG.md` ergänzt.
+- [x] `app/version.py` angehoben, `docs/releases/CHANGELOG.md` ergänzt.
 
 **Messwerte (Baseline 14.09.2026, Phase 0 vor dem Schnitt „Jetzt“).** Die
 Werte aus §15 sind ohne Nutzer nicht messbar; hier steht, was messbar ist —
@@ -86,7 +86,7 @@ und was ehrlich offen bleibt:
 
 ## 1. Phase 0 — Fundament
 
-- [x] **0.1** `docs/UI-NEUENTWURF.md` reparieren: §12 hatte zwei verschmolzene
+- [x] **0.1** `docs/produkt/UI.md` reparieren: §12 hatte zwei verschmolzene
   API-Zeilen (`ops/runs/{job}/start` + `ops/diagnostics`), §18 hatte am Ende
   ~15 Fragment-Wiederholungen. Beides wiederhergestellt.
 - [x] **0.2** Diese Checkliste angelegt und in `docs/README.md` eingetragen.
@@ -197,8 +197,8 @@ und was ehrlich offen bleibt:
 - [x] **2.4** Erinnerungen/Alarme: §17.9 streicht Push ersatzlos. Vor dem
   Umbau muss definiert sein, was mit `app/alarms.py`, `app/notify.py` und
   den bestehenden Alarm-Einträgen passiert (Betriebs-Entscheidung, gehört
-  in [BETRIEB.md](../BETRIEB.md)). *Erledigt: die Betriebs-Entscheidung steht
-  in [BETRIEB.md → „System-Alarme und GUI-Neuentwurf“](../BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350) —
+  in [BETRIEB.md](../betrieb/BETRIEB.md)). *Erledigt: die Betriebs-Entscheidung steht
+  in [BETRIEB.md → „System-Alarme und GUI-Neuentwurf“](../betrieb/BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350) —
   §11 streicht **Preis-Erinnerungen/Push** (es wird dafür keine Komponente
   gebaut); der **System-Alarmweg** (`app/alarms.py`, `app/notify.py`/ntfy B4,
   bestehende Codes) bleibt unverändert aktiv. Störungen erscheinen in der
@@ -249,7 +249,7 @@ und was ehrlich offen bleibt:
 
 ## 6. Fallback-Gleichschritt (jede Phase)
 
-Die Pi-Fallback-GUI ([RP2.md](../RP2.md)) ist eine **zweite Oberfläche
+Die Pi-Fallback-GUI ([RP2.md](../betrieb/RP2.md)) ist eine **zweite Oberfläche
 desselben Produkts**. Sie darf schlanker sein (Standardbibliothek, kein
 Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
 
@@ -274,7 +274,7 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   Antwort-Karte erzählt weiter die drei Fakten von „Jetzt“; das Template
   bleibt bei Version 4.0 (nichts Neues hinzugefügt, nichts geändert).
   Preis-Erinnerungen/Push gibt es auf keiner der drei Oberflächen (§11,
-  Betriebs-Entscheidung in [BETRIEB.md](../BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
+  Betriebs-Entscheidung in [BETRIEB.md](../betrieb/BETRIEB.md#system-alarme-und-gui-neuentwurf-seit-0350)).*
   *Liste Phase 4: „System“ bleibt NAS-only — Collector-Status, Job-Start,
   Diagnose-Export und ntfy leben auf dem NAS. Der Pi zeigt weiter die drei
   Fakten von „Jetzt“; das Template bleibt bei Version 4.0.*
@@ -318,6 +318,6 @@ Tankstand, keine Belege, kein M7), aber sie darf nicht anderes erzählen.
   [GUI-FALLBACK-SANITY-2026-09-14.md](GUI-FALLBACK-SANITY-2026-09-14.md)
   dokumentiert.
 - [x] **8.2** Dieses Dokument ist abgeschlossen und liegt im Archiv. Gültige
-  Betriebs-Aussagen bleiben in [../BETRIEB.md](../BETRIEB.md), Zielbild in
-  [../UI-NEUENTWURF.md](../UI-NEUENTWURF.md), offene/neu gefundene Punkte in
-  [../LUECKEN.md](../LUECKEN.md).
+  Betriebs-Aussagen bleiben in [BETRIEB.md](../betrieb/BETRIEB.md), Zielbild in
+  [UI.md](../produkt/UI.md), offene/neu gefundene Punkte in
+  [LUECKEN.md](../planung/LUECKEN.md).

@@ -135,7 +135,7 @@ if [ -n "$pv" ]; then
   if python3 -c "import math" >/dev/null 2>&1; then
     say_ok "python3 $pv"
   else
-    say_fail "python3 $pv laedt die eigene Standardbibliothek nicht (python3 -c 'import math' schlaegt fehl, z. B. GLIBC-Fehler): Python passt nicht zur NAS-glibc -> docs/INSTALL.md, 'Stoerungsfall NAS: unpassendes Python'"
+    say_fail "python3 $pv laedt die eigene Standardbibliothek nicht (python3 -c 'import math' schlaegt fehl, z. B. GLIBC-Fehler): Python passt nicht zur NAS-glibc -> docs/betrieb/INSTALL.md, 'Stoerungsfall NAS: unpassendes Python'"
   fi
 else
   say_fail "python3 fehlt"

@@ -2,7 +2,7 @@
 
 > **Archiviert — Tiefenanalyse V2 vom 11.09.2026 (Prüfstrang 2: Korrektheit +
 > was unabhängig vom Konzept fehlt).** Befundstand vor App-Version 0.10.0; die
-> abgeleiteten Aufgaben stehen in [../../TODO.md](../../TODO.md) (Abschnitte E–H).
+> abgeleiteten Aufgaben stehen in [TODO.md](../planung/TODO.md) (Abschnitte E–H).
 > Archiv-Übersicht: [README.md](README.md).
 
 > 2026-09-11 · Commit 440402e + Live-Code Review · Ergänzung zu `TIEFENANALYSE.md` + `Prüfstand.md`
