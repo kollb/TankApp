@@ -276,6 +276,15 @@ bei `wait`/`refuel_elsewhere` gelten beide Grenzen ±1,0 ct/L als Gleichstand.
 
 M7-Gate (§0.4): Vor der Ledger-Kalibrierung (weniger als 100 Empfehlungen mit Verteilungs-P, kein Brier-Intervall unter beiden Referenzen **oder** kein Reliability-Steigungsintervall, das 1 enthält) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Die technische B2-PIT-Kalibrierung eines Forecasts ist davon getrennt. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb): der Snapshot speichert die Verteilungs-P (`p_besser`), Brier misst sie gegen das Settlement — ohne Draws fällt die gespeicherte Schätzung auf die interne Ledger-Quote zurück. Jede Zeile trägt ihre Quelle (`p_source`: `verteilung`|`basisrate`|`keine`); das Gate rechnet ausschließlich über `verteilung` (O5) — die Basisrate wird getrennt ausgewiesen, öffnet das Gate aber nicht. `alternatives_nearby[].p_lohnt` und `windows_today/week[].p` sind Informationswerte aus der Verteilung und hängen nicht am Gate.
 
+**Semantik der Ersparnisfelder (F2):** `expected_saving_eur` ist aus
+Fensterminimum-Draws `max(0, (Preisanker − Median(Fensterminima)) × Liter)`.
+Der historische Feld-/Funktionsname bleibt kompatibel; er bezeichnet **keinen
+arithmetischen Erwartungswert** und keine gesicherte Nettoersparnis. Ohne
+Draws wird auf die ebenfalls bei null abgeschnittene Median-Preis-Differenz
+(`expected_saving_median_eur`) zurückgegriffen. Verluste werden abgeschnitten;
+diese Kennzahlen sind daher weder eine Gewinn-/Verlustbilanz noch ein
+Ersatz für `p_better`. Der Pi erzeugt keine solche Kennzahl aus Randquantilen.
+
 Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_today` und `windows_week` liefern je Fenster `expected_price`, `expected_saving_eur` (vs. jetzt tanken), `p` sowie die auditierbaren F3-Felder `p_raw`/`p_competitors`/`p_baseline`. Alternativen tragen `detour_km_source`: nur `road` bezeichnet eine Straßenstrecke; `estimated_air_circuity` bzw. `estimated_anchor_*` sind klar benannte Schätzungen (O14). Ihre ungerundete Formel für Brutto-, Sprit-, Zeit- und Netto-€ wird identisch bei Entscheidung, Draw-Wahrscheinlichkeit und Beleg-Abrechnung verwendet (O9).
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).

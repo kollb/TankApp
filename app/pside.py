@@ -99,12 +99,13 @@ def expected_saving(
     anchor: float,
     liters: float = 1.0,
 ) -> float | None:
-    """F1: Erwartete Ersparnis aus den Fensterminimum-Draws (M3, Befund 19.09.2026).
+    """Abgeschnittene Medianersparnis der Fensterminima (historischer API-Name).
 
     Rechnet den Median über alle gestützten Draws von ``(anchor - m) * liters``,
     wobei ``m = min_{t in Fenster} p(t)`` das Fensterminimum des jeweiligen
-    Bootstrap-Draws ist. Entspricht exakt demselben Zufallseffekt wie
-    :func:`p_better` („bis zu X €“).
+    Bootstrap-Draws ist. Danach bei null abgeschnitten: kein arithmetischer
+    Erwartungswert, keine Verlustbilanz und keine gesicherte Ersparnis.
+    :func:`p_better` misst separat eine Schwellenwahrscheinlichkeit.
 
     Gibt ``None`` zurück, wenn keine gestützten Draws vorliegen oder
     Anker/Liter ungültig sind; sonst mindestens ``0.0`` (gerundet auf 2 Stellen).

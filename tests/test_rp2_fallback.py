@@ -313,32 +313,22 @@ def test_snapshots_fall_back_to_yesterday_at_night(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_point_stats_uniform_assumption():
-    # q025=1.60, q975=1.80, aktuell 1.70 -> P(günstiger)=0.5,
-    # E[min(0, 1.70-X)] = d^2/(2w) = 0.1^2/(2*0.2) = 0.025
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.70)
-    assert stats["price_score"] == pytest.approx(0.5, abs=1e-9)
-    assert stats["exp_saving_per_l"] == pytest.approx(0.025, abs=1e-9)
-    # aktuell über q975 -> P=1, Ersparnis = 1.90 - Mittel(1.70) = 0.20
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.90)
-    assert stats["price_score"] == 1.0
-    assert stats["exp_saving_per_l"] == pytest.approx(0.20, abs=1e-9)
-    # aktuell unter q025 -> kein Gewinn
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.50)
-    assert stats["price_score"] == 0.0
-    assert stats["exp_saving_per_l"] == 0.0
-    # kaputte Quantile -> None
-    assert rp2.point_stats({"q025": 1.9, "q975": 1.8}, 1.7) is None
-
-
-def test_template_labels_score_not_probability():
-    """Issue 49: Fallback-UI nennt den Wert „Preis-Score“ (historisches
-    Quantil), nie „Wahrscheinlichkeit“ — die kalibrierte M7-Wahrscheinlichkeit
-    bleibt dem NAS vorbehalten."""
-    html = rp2.DEFAULT_INDEX_HTML
-    assert "Wahrsch. günstiger" not in html
-    assert "Preis-Score" in html
-    assert "keine kalibrierte Wahrscheinlichkeit" in html
+def test_symmetric_quantiles_do_not_claim_expected_saving():
+    now = dt.datetime.now(UTC)
+    point = {
+        "q025": 1.60,
+        "q50": 1.70,
+        "q975": 1.80,
+        "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+    }
+    # The removed uniform heuristic gave E[max(1.70-X,0)] = .025/L,
+    # i.e. EUR 1 per 40 L, despite E[1.70-X] = 0. No such statistic remains.
+    summary = rp2.summarize_forecast([point], now, 1.70)
+    assert summary["timeline"][0]["q50"] == 1.70
+    assert not {"best", "windows", "price_score", "expected_saving"} & summary.keys()
+    assert "expected_saving" not in json.dumps(summary)
+    assert "price_score" not in rp2.DEFAULT_INDEX_HTML
+    assert "keine erwartete Nettoersparnis" in rp2.DEFAULT_INDEX_HTML
 
 
 def test_summarize_forecast_ignores_past_points():
@@ -347,9 +337,9 @@ def test_summarize_forecast_ignores_past_points():
     points = forecast_points(1.70, origin)  # 3 Punkte in der Vergangenheit
     summary = rp2.summarize_forecast(points, now, 1.70)
     assert summary is not None
-    assert summary["best"]["at"] >= now.replace(microsecond=0).isoformat()[:16]
+    assert summary["timeline"][0]["at"] >= now.replace(microsecond=0).isoformat()[:16]
     # Fenster: Dip kommt ab h=14 (also jetzt+11 h)
-    assert summary["best"]["time"]
+    assert summary["timeline"][0]["time"]
 
 
 def test_summarize_forecast_none_when_only_past():
@@ -404,18 +394,12 @@ def test_fallback_api_endpoints(tmp_path):
         assert decide["available"] is True
         assert decide["f2"]["station"]["name"] == "Station Alpha"
         assert decide["f2"]["price"] == 1.699
-        assert decide["f1"]["available"] is True
-        assert decide["f1"]["recommendation"] in ("wait", "refuel_now")
-        # Issue 49: Der Gleichverteilungs-Fallback darf sich nicht
-        # „Wahrscheinlichkeit“ nennen — nur Preis-Score/historisches Quantil.
-        f1_text = decide["f1"]["reason"] + " " + decide["f1"]["basis"]
-        # Die alte falsche Behauptung darf nicht mehr auftreten; der Wert wird
-        # als Preis-Score/historisches Quantil ausgewiesen (der explizite
-        # Disclaimer „keine kalibrierte Wahrscheinlichkeit“ ist erlaubt).
-        assert "Wahrscheinlichkeit unter dem jetzigen Preis" not in f1_text
-        assert "Preis-Score" in f1_text and "Quantil" in f1_text
-        if decide["f1"]["recommendation"] == "wait":
-            assert decide["f1"]["expected_saving_eur_tank"] >= 1.0
+        assert decide["f1"]["available"] is False
+        assert decide["f1"]["recommendation"] == "no_advice"
+        assert decide["action"] == "no_advice"
+        assert decide["decision_ready"] is False
+        assert decide["windows"] == []
+        assert "expected_saving" not in json.dumps(decide)
     finally:
         server.shutdown()
         server.server_close()
@@ -806,7 +790,7 @@ def test_answer_card_has_three_facts_and_freshness_footer():
     # deshalb wird hier nur der feste Bestandteil gefixt.
     assert 'class="facts"' in html
     start = html.index('class="facts"')
-    labels = ("Jetzt hier", "Bestes Fenster ", "Frische Preise")
+    labels = ("Jetzt hier", "Fensterentscheidung", "Frische Preise")
     positions = []
     for label in labels:
         at = html.index(label, start)
@@ -814,7 +798,7 @@ def test_answer_card_has_three_facts_and_freshness_footer():
         positions.append(at)
     assert positions == sorted(positions)
     # B7: Der Tag des Fensters kommt aus dayWord, Default „heute“.
-    assert "dayWord(waitWindow.at)" in html
+    assert "Keine Fensterentscheidung" in html
     # Frische-Fußzeile: Satzbau und Altersquellen
     assert 'class="fresh-footer"' in html
     assert '" alt · Prognose "' in html
@@ -1257,12 +1241,12 @@ def test_summarize_forecast_reports_local_time_not_utc(monkeypatch):
     ]
     summary = rp2.summarize_forecast(points, now, current_price=1.70)
     # best = erster Punkt (Ersparnis 0.15 > 0.14)
-    assert summary["best"]["time"] == "00:30"
-    assert summary["best"]["date"] == "2026-01-16"
+    assert summary["timeline"][0]["time"] == "00:30"
+    assert summary["timeline"][0]["date"] == "2026-01-16"
     # Der ISO-Stempel bleibt UTC — die GUI rendert ihn selbst in Berlin.
-    assert summary["best"]["at"] == "2026-01-15T23:30:00+00:00"
-    assert summary["windows"][1]["time"] == "09:20"
-    assert summary["windows"][1]["date"] == "2026-01-16"
+    assert summary["timeline"][0]["at"] == "2026-01-15T23:30:00+00:00"
+    assert summary["timeline"][1]["time"] == "09:20"
+    assert summary["timeline"][1]["date"] == "2026-01-16"
 
 
 def test_summarize_forecast_local_time_in_summer(monkeypatch):
@@ -1280,8 +1264,8 @@ def test_summarize_forecast_local_time_in_summer(monkeypatch):
         }
     ]
     summary = rp2.summarize_forecast(points, now, current_price=1.70)
-    assert summary["best"]["time"] == "00:30"
-    assert summary["best"]["date"] == "2026-07-16"
+    assert summary["timeline"][0]["time"] == "00:30"
+    assert summary["timeline"][0]["date"] == "2026-07-16"
 
 
 # ---------------------------------------------------------------------------
@@ -1651,4 +1635,45 @@ def test_client_disconnect_while_reading_request_line_stays_silent(tmp_path, cap
         assert "ConnectionResetError" not in captured.err
         assert "Exception occurred" not in captured.err
     finally:
+        server.server_close()
+
+
+@pytest.mark.parametrize("quality", ["red", "missing", "green", "expired"])
+def test_fallback_never_grants_actions_for_cached_quantiles(tmp_path, quality):
+    lines = [
+        {"fetched_at": now_iso(40), "prices": {UID_A: {"status": "open", "e10": 1.70}}},
+        {"fetched_at": now_iso(1), "prices": {UID_B: {"status": "open", "e10": 1.80}}},
+    ]
+    server, ctx = start_fallback_server(tmp_path, poll_lines=lines)
+    now = dt.datetime.now(UTC)
+    payload = json.loads(ctx.cache_file.read_text())
+    for fc in payload["forecasts"]:
+        fc["points"] = [
+            {
+                "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+                "q025": 1.60,
+                "q50": 1.70,
+                "q975": 1.80,
+            }
+        ]
+        if quality != "missing":
+            fc.update(
+                decision_ready=quality == "green",
+                calibrated=quality == "green",
+                stale_data_at_origin=quality != "green",
+                rolling_picp_status="green" if quality == "green" else "red",
+            )
+    if quality == "expired":
+        payload["generated_at"] = (now - dt.timedelta(days=2)).isoformat()
+    ctx.cache_file.write_text(json.dumps(payload))
+    try:
+        result = get_json(f"http://127.0.0.1:{server.server_port}", "/api/v1/decide")
+        assert result["f2"]["fresh_in_set"] == 1
+        assert result["f2"]["fresh"] is False
+        assert result["f1"]["recommendation"] == "no_advice"
+        assert result["decision_ready"] is False
+        assert result["windows"] == []
+        assert "expected_saving" not in json.dumps(result)
+    finally:
+        server.shutdown()
         server.server_close()

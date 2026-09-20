@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 import threading
@@ -63,7 +64,6 @@ FRESH_MINUTES = 15  # Snapshot gilt als "aktuell" bis zu diesem Alter
 SNAPSHOT_TTL_S = 5.0  # Kurzzeit-Cache für Context.snapshot()
 SERIES_FIRST_HOUR = 6  # Tagesstreifen beginnt mit der Stunde 06
 SERIES_LAST_HOUR = 24  # Zelle „24“ ist die Mitternachtsstunde (00:00–00:59)
-WAIT_THRESHOLD_EUR = 1.0  # F1: ab so viel erwarteter Ersparnis pro Tank -> warten
 DEFAULT_LITERS = 40
 MIN_LITERS = 5
 MAX_LITERS = 100
@@ -102,7 +102,11 @@ def parse_ts(value) -> datetime | None:
 
 
 def is_number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +379,7 @@ def build_stations(
                 "maps_url": m.get("maps"),
                 "fetched_at": rec["fetched_at"],
                 "age_minutes": round(age, 1),
-                "fresh": age <= FRESH_MINUTES,
+                "fresh": 0 <= age <= FRESH_MINUTES,
             }
         )
     return out
@@ -396,80 +400,42 @@ def load_forecasts(cache_file: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def point_stats(point: dict, current_price: float | None) -> dict | None:
-    """Preis-Score (0…1) + erwartete Ersparnis/Liter — KEINE Wahrscheinlichkeit.
-
-    Vereinfachte Annahme: gleichförmige Verteilung zwischen den historischen
-    Quantilen q025 und q975 (Formfehler bis ~8,4 Prozentpunkte gegenüber der
-    kalibrierten Posterior M7). Die GUI darf das deshalb nicht
-    „Wahrscheinlichkeit“ nennen, sondern nur „Preis-Score“ auf Basis des
-    historischen Quantils. Die kalibrierte Wahrscheinlichkeit liefert
-    ausschließlich das NAS (M7).
-    """
-    lo, hi = point.get("q025"), point.get("q975")
-    if not (is_number(lo) and is_number(hi) and hi > lo):
-        return None
-    price_score = 0.0
-    exp_saving = 0.0
-    if current_price is not None:
-        price_score = max(0.0, min(1.0, (current_price - lo) / (hi - lo)))
-        if current_price > lo:
-            if current_price >= hi:
-                exp_saving = current_price - (lo + hi) / 2.0
-            else:
-                d = current_price - lo
-                exp_saving = d * d / (2.0 * (hi - lo))
-    return {
-        "price_score": round(price_score, 3),
-        "exp_saving_per_l": round(exp_saving, 5),
-    }
-
-
 def summarize_forecast(
     points: list[dict] | None, now: datetime, current_price: float | None
 ) -> dict | None:
-    """Zusammenfassung der zukünftigen Prognose-Punkte (ab jetzt, max. 24 h)."""
-    future: list[tuple[datetime, dict, dict]] = []
-    horizon = now + timedelta(hours=25)
-    for p in points or []:
-        if not isinstance(p, dict):
-            continue
-        ts = parse_ts(p.get("timestamp"))
-        if ts is None or ts < now - timedelta(minutes=5) or ts > horizon:
-            continue
-        stats = point_stats(p, current_price)
-        if stats is None:
-            continue
-        future.append((ts, p, stats))
-    if not future:
-        return None
-    ranked = sorted(future, key=lambda t: t[2]["exp_saving_per_l"], reverse=True)
+    """Descriptive quantiles only: no CDF, savings or locally selected window.
 
-    def window(ts: datetime, p: dict, stats: dict) -> dict:
-        # Die Punkte sind UTC (Engine-Index); „time“/„date“ sind API-Vertrag
-        # für Menschen → Ortszeit (Europe/Berlin). Der ISO-Stempel „at“ bleibt
-        # UTC — die GUI rendert ihn selbst mit Europe/Berlin.
+    Marginal quantiles do not specify a distribution of window minima. In
+    particular, a positive-part gain is not a signed expected net saving.
+    ``current_price`` remains a compatibility argument, never a decision input.
+    """
+    future = []
+    for point in points or []:
+        if not isinstance(point, dict):
+            continue
+        ts = parse_ts(point.get("timestamp"))
+        quantiles = [point.get(key) for key in ("q025", "q50", "q975")]
+        if (
+            ts is None
+            or not now <= ts <= now + timedelta(hours=24)
+            or not all(is_number(q) for q in quantiles)
+            or not 0 < quantiles[0] <= quantiles[1] <= quantiles[2]
+        ):
+            continue
         local = ts.astimezone(local_tz())
-        return {
+        future.append({
             "at": ts.isoformat(),
             "time": local.strftime("%H:%M"),
             "date": local.strftime("%Y-%m-%d"),
-            "q50": p.get("q50"),
-            "q025": p.get("q025"),
-            "q975": p.get("q975"),
-            "price_score": stats["price_score"],
-            "expected_saving_ct_per_l": round(stats["exp_saving_per_l"] * 100, 1),
-        }
-
-    best_ts, best_p, best_stats = ranked[0]
-    medians = [p.get("q50") for _, p, _ in future if is_number(p.get("q50"))]
+            **dict(zip(("q025", "q50", "q975"), quantiles)),
+        })
+    if not future:
+        return None
+    future.sort(key=lambda point: point["at"])
     return {
-        "best": window(best_ts, best_p, best_stats),
-        "windows": [
-            window(ts, p, s) for ts, p, s in ranked[:3] if s["exp_saving_per_l"] > 0
-        ],
-        "min_q50": min(medians) if medians else None,
-        "max_q50": max(medians) if medians else None,
+        "timeline": future,
+        "min_q50": min(point["q50"] for point in future),
+        "max_q50": max(point["q50"] for point in future),
         "points": len(future),
     }
 
@@ -1267,70 +1233,28 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 "oldest_age_minutes": oldest_age,
             }
 
-            # F1/F3 aus gecachten Prognosen (für die günstigste Station)
-            f1: dict = {"available": False}
-            windows: list[dict] = []
-            forecast_info: dict = {"available": False}
-            forecasts = snap["forecasts"]
-            if forecasts and forecasts.get("forecasts"):
-                fc = next(
-                    (
-                        f
-                        for f in forecasts["forecasts"]
-                        if isinstance(f, dict)
-                        and f.get("station_id") == cheapest["station_id"]
-                        and str(f.get("fuel", "")).lower() == fuel
-                        and isinstance(f.get("points"), list)
-                    ),
-                    None,
-                )
-                if fc:
-                    summary = summarize_forecast(fc["points"], now, cheapest[fuel])
-                    gen_ts = parse_ts(forecasts.get("generated_at"))
-                    forecast_info = {
-                        "available": summary is not None,
-                        "generated_at": forecasts.get("generated_at"),
-                        "age_hours": round((now - gen_ts).total_seconds() / 3600.0, 1)
-                        if gen_ts
-                        else None,
-                        "station": cheapest["name"],
-                    }
-                    if summary:
-                        best = summary["best"]
-                        saving_eur = best["expected_saving_ct_per_l"] / 100.0 * liters
-                        wait = (
-                            saving_eur >= WAIT_THRESHOLD_EUR
-                            and best["price_score"] >= 0.5
-                        )
-                        f1 = {
-                            "available": True,
-                            "recommendation": "wait" if wait else "refuel_now",
-                            "reason": (
-                                f"Prognose rechnet bis {best['time']} Uhr mit ~"
-                                f"{best['q50']:.3f} € (Preis-Score "
-                                f"{int(round(best['price_score'] * 100))} % auf Basis "
-                                f"des historischen Quantils), erwartet "
-                                f"~{saving_eur:.2f} € Ersparnis für {liters} L."
-                                if wait
-                                else "Kein deutlich günstigeres Fenster in den nächsten 24 h "
-                                "abzusehen — jetzt tanken passt."
-                            ),
-                            "best_at": best["at"],
-                            "expected_price": best["q50"],
-                            "price_score": best["price_score"],
-                            "expected_saving_eur_tank": round(saving_eur, 2),
-                            "current_price": cheapest[fuel],
-                            "basis": "Preis-Score aus historischen Quantilen "
-                            "(Gleichverteilung zwischen q025/q975) — "
-                            "keine kalibrierte Wahrscheinlichkeit; "
-                            "die exakte M7-Berechnung läuft auf dem NAS",
-                        }
-                        windows = summary["windows"]
+            # Fail closed: the Pi has neither hard personal constraints nor
+            # a validated NAS decision envelope. Cached quantiles cannot grant
+            # an action, even if individual quality flags happen to be green.
+            f1 = {
+                "available": False,
+                "recommendation": "no_advice",
+                "reason": "Nur Preisvergleich — Tank- und Warteentscheidungen "
+                "benötigen die geprüfte NAS-Entscheidung und das persönliche Profil.",
+            }
+            windows = []
+            forecasts = snap["forecasts"] or {}
+            forecast_info = {
+                "available": bool(forecasts.get("forecasts")),
+                "generated_at": forecasts.get("generated_at"),
+            }
 
             self._json(
                 {
                     "available": True,
                     "mode": "fallback",
+                    "decision_ready": False,
+                    "action": "no_advice",
                     "fuel": fuel,
                     "liters": liters,
                     "generated_at": now.isoformat(),
@@ -2121,7 +2045,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
     die vollwertige TankApp-GUI. Im Fallback-Modus kommen die Live-Preise direkt aus dem
     Collector-Puffer; Prognosen sind gecacht und bis zu 24 h alt.</p>
     <p>F1 „Jetzt oder warten“ · F2 „Hier oder woanders“ · F3 „Heute oder später“ —
-    Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit
+    Quantile sind beschreibende Prognosedaten, keine Aktionsfreigabe
     (die liefert ausschließlich das NAS, M7) · Auto-Refresh alle 60 s.</p>
   </footer>
 </main>
@@ -2407,7 +2331,7 @@ function renderAnswer(decide, stations, health) {
       '<div class="verdict"><span class="verdict-icon">' + ICONS.fuel + "</span>" +
       '<div style="min-width:0"><div class="verdict-text" id="answer-title">Noch kein frischer Preis.</div>' +
       '<div class="verdict-reason">' + esc(reason) +
-      " Der Status oben zeigt, wo es hängt — sobald der Collector meldet, steht hier die Empfehlung.</div></div></div>";
+      " Der Status oben zeigt, wo es hängt — sobald der Collector meldet, steht hier der Preisvergleich.</div></div></div>";
     return;
   }
   const f2 = decide.f2;
@@ -2415,41 +2339,18 @@ function renderAnswer(decide, stations, health) {
   const live = rows.find((x) => x.station_id === s.station_id) || {};
   const f1 = decide.f1 || {};
   const fc = decide.forecast || {};
-  const waiting = !!f1.available && f1.recommendation === "wait";
-  // B8: Ohne frische Meldung im Set ist der Preisvergleich nur eine
-  // Momentaufnahme — die Antwort kippt von „Empfehlung“ auf „Zustand“.
-  const staleSet = isNum(f2.fresh_in_set) && f2.fresh_in_set === 0;
-  let verdict, reason, icon;
-  if (staleSet) {
-    icon = ICONS.clock;
-    verdict = "Preis-Momentaufnahme — kein frischer Report im Set";
-    reason = "Alle Preismeldungen im Set sind veraltet (älteste: " +
-      ageLabel(f2.oldest_age_minutes) + ") — bis der Collector wieder meldet" +
-      " ist das nur ein Preisvergleich, keine Empfehlung." +
-      (f1.reason ? " " + esc(f1.reason) : "");
-  } else if (waiting) {
-    icon = ICONS.clock;
-    verdict = "Bis " + esc(relDay(f1.best_at)) + " Uhr warten lohnt sich";
-    reason = esc(f1.reason || "");
-  } else if (f1.available) {
-    icon = ICONS.fuel;
-    verdict = "Jetzt tanken";
-    reason = esc(f1.reason || "");
-  } else {
-    icon = ICONS.fuel;
-    verdict = "Aktueller Preisvergleich";
-    reason = "Keine Prognose für die günstigste Station" +
-      (fc.generated_at ? " (Cache von " + esc(shortStamp(fc.generated_at)) + ")" : "") +
-      " — ohne sie gibt es keinen belastbaren Grund zu warten. Nimm die günstigste frische Station." +
-      " " + esc(REBOOT_HINT);
-  }
+  const waiting = false;
+  const staleSet = !f2.fresh;
+  const icon = staleSet ? ICONS.clock : ICONS.fuel;
+  const verdict = staleSet ? "Preis-Momentaufnahme — gewählter Preis veraltet" : "Aktueller Preisvergleich";
+  const reason = esc(f1.reason || "Nur Preisvergleich — keine Tank- oder Warteempfehlung.") +
+    (staleSet ? " Die günstigste Meldung ist nicht frisch, auch wenn andere Stationen aktuelle Preise haben." : "");
   const vsLabel = f2.saving_vs === "second" && f2.second_name
     ? "gegen " + esc(f2.second_name) + " (2. günstigste)"
     : "gegen die teuerste im Set";
   const route = s.maps_url
     ? '<div class="actions"><a class="btn primary" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">' + ICONS.pin + "Route öffnen</a></div>"
     : "";
-  const waitWindow = (decide.windows || [])[0];
   /* Frische-Fußzeile: Alter der Preismeldung und des Modell-Laufs, in Worten —
      dieselbe Aussage wie in der NAS-GUI („Preise 4 min alt · Prognose 35 min alt“). */
   const priceAge = isNum(live.age_minutes) ? ageLabel(live.age_minutes) : "—";
@@ -2458,33 +2359,13 @@ function renderAnswer(decide, stations, health) {
   // gewählten Kraftstoff melden — eine frische Meldung ohne Diesel-Preis
   // zählt in der Diesel-Ansicht nicht mit.
   const freshCount = rows.filter((row) => row.fresh && isNum(row.price)).length;
-  const waitChip = waitWindow
-    ? '<span class="chip info">' + ICONS.window + '<span class="chip-txt">„Jetzt oder warten“: ' +
-      esc(relDay(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " €/L · −" +
-      eurTank((waitWindow.expected_saving_ct_per_l / 100) * state.liters) + "</span></span>"
-    : "";
+  const waitChip = "";
   const secondChip = f2.second_name
     ? '<span class="chip">' + ICONS.swap + '<span class="chip-txt">„Hier oder woanders“: 2. = ' +
       esc(f2.second_name) + " · " + eur(f2.second_price) + " €/L</span></span>"
     : "";
-  // Variante A · Kompakt: Forecast als integrierte Zeile in Antwort, keine eigene Karte mehr.
-  // Bestes Fenster als 1-Zeilen-Preview + aufklappbare Details (alle Fenster).
-  const forecastPreview = (() => {
-    if (!waitWindow) {
-      if (!f1.available) return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">Prognose-Cache fehlt oder kein Vorteil — nimm die günstigste frische Station.</span></div>';
-      return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">' + esc(f1.reason || "kein Vorteil in 24 h") + '</span></div>';
-    }
-    const detailRows = (decide.windows || []).map((w) => 
-      '<div class="win" style="margin-top:0"><span class="when">' + esc(relDay(w.at)) + " Uhr<small>Score " + pct(w.price_score) + "</small></span>" +
-      '<span class="mid">~' + eur(w.q50) + ' €/L</span><span class="save">−' + eurTank((w.expected_saving_ct_per_l/100)*state.liters) + "</span></div>"
-    ).join("");
-    return '<div class="next-window-preview" role="region" aria-label="Bestes Fenster">' +
-      '<span class="label">' + ICONS.window + ' Bestes Fenster ' + esc(dayWord(waitWindow.at) || "heute") + '</span>' +
-      '<span class="mid">' + esc(clockOf(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " € · Score " + pct(waitWindow.price_score) + "</span>" +
-      '<span class="save">−' + eurTank((waitWindow.expected_saving_ct_per_l/100)*state.liters) + "</span>" +
-      '<button type="button" id="forecast-preview-toggle" aria-expanded="false" aria-controls="forecast-preview-detail">Details \u25be</button></div>' +
-      '<div id="forecast-preview-detail" class="forecast-detail hidden">' + detailRows + '<p class="strip-note">Ersparnis pro ' + state.liters + ' L. Preis-Score = historisches Quantil, keine M7.</p></div>';
-  })();
+  const forecastPreview = '<div class="next-window-preview"><span class="label">' + ICONS.window +
+    ' Keine Fensterentscheidung</span><span class="mid">Prognosedaten stehen in der Werkstatt; Entscheidungen bleiben beim NAS.</span></div>';
   // B8: Ein veraltetes Set trägt nicht den „warten“-Look.
   el.className = "card answer" + (staleSet ? "" : waiting ? " waiting" : "");
   el.innerHTML = kicker +
@@ -2500,7 +2381,7 @@ function renderAnswer(decide, stations, health) {
       (isNum(live.drive_min) ? "<span>≈ " + Math.round(live.drive_min) + " min Fahrt</span>" : "") +
       (live.station_id ? ageHtml(live) : "") +
     "</div></div>" +
-    '<div class="savings-line">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) +
+    '<div class="savings-line">Preisabstand ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) +
       " pro " + state.liters + ' L-Tank <span class="vs">' + vsLabel + "</span></div>" +
     route +
     forecastPreview +
@@ -2509,17 +2390,14 @@ function renderAnswer(decide, stations, health) {
       '<div class="fact"><div class="l">Jetzt hier</div>' +
         '<div class="v">' + eur(f2.price) + ' <small>€/L</small></div>' +
         '<div class="d">' + esc(shortName(s.name)) + "</div></div>" +
-      // B7: Das Fenster kommt aus den nächsten 24 h und kann morgen liegen —
-      // dann heißt das Label auch „morgen“ (oder Datum), nicht „heute“.
-      '<div class="fact"><div class="l">Bestes Fenster ' + (waitWindow ? dayWord(waitWindow.at) || "heute" : "heute") + "</div>" +
-        '<div class="v">' + (waitWindow ? clockOf(waitWindow.at) : "—") + "</div>" +
-        '<div class="d">' + (waitWindow ? "~" + eur(waitWindow.q50) + " €/L" : "kein Fenster mit Vorsprung") + "</div></div>" +
+      '<div class="fact"><div class="l">Fensterentscheidung</div>' +
+        '<div class="v">—</div><div class="d">nur auf dem NAS</div></div>' +
       '<div class="fact"><div class="l">Frische Preise</div>' +
         '<div class="v">' + freshCount + "</div>" +
         '<div class="d">von ' + rows.length + " Stationen im Set</div></div>" +
     "</div>" +
     '<p class="fresh-footer">Preise ' + priceAge + " alt · Prognose " + forecastAge + " alt</p>" +
-    '<p class="strip-note">Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).</p>';
+    '<p class="strip-note">Quantile sind keine kalibrierte Wahrscheinlichkeit und keine erwartete Nettoersparnis.</p>';
 }
 
 function renderDaystrip(series, decide, health) {
@@ -2753,43 +2631,7 @@ function renderForecast(decide, forecasts) {
     if (section) section.classList.add("hidden");
     if (kicker && kicker.classList.contains("section-kicker")) kicker.classList.add("hidden");
   }
-  const sub = $("#forecast-sub");
-  const body = $("#forecast-body");
-  // trotzdem noch Status für Werkstatt befüllen, aber Alltag-Karte bleibt versteckt
-  if (!body) return;
-  const fc = (decide && decide.forecast) || {};
-  const windows = decide && Array.isArray(decide.windows) ? decide.windows : [];
-  const name = decide && decide.available ? decide.f2.station.name : "";
-  if (forecasts && forecasts.generated_at) {
-    sub.textContent = "· Cache vom " + shortStamp(forecasts.generated_at) +
-      (isNum(fc.age_hours) ? " (" + fc.age_hours + " h alt)" : "") +
-      " · Basis: " + (fc.station || name || "günstigste Station");
-  } else {
-    sub.textContent = "· kein Prognose-Cache";
-  }
-  if (!decide || !decide.available) {
-    body.innerHTML = '<div class="empty">Keine Prognose möglich, solange keine offenen Stationen mit Preis im Puffer sind.</div>';
-    return;
-  }
-  if (!windows.length) {
-    body.innerHTML = '<div class="empty">Keine gecachten Prognosen für ' + esc(FUEL_LABEL[state.fuel]) +
-      " vorhanden. Sobald das NAS wieder läuft, füllt cache_forecasts.py den Cache (alle 5 min). " +
-      esc(REBOOT_HINT) + "<br>„Jetzt ist die günstigste Station?“ (F2) funktioniert trotzdem.</div>";
-    return;
-  }
-  let html = "";
-  for (const w of windows) {
-    html += '<div class="win">' +
-      '<span class="when">' + esc(relDay(w.at)) + " Uhr<small>Preis-Score " + pct(w.price_score) + "</small></span>" +
-      '<span class="mid">erwartet ~' + eur(w.q50) + " €/L</span>" +
-      '<span class="save">−' + eurTank((w.expected_saving_ct_per_l / 100) * state.liters) + "</span>" +
-      '<span class="wstation" title="' + esc(name) + '">' + esc(name) + "</span>" +
-      "</div>";
-  }
-  html += '<p class="strip-note">Ersparnis pro ' + state.liters +
-    " L-Tank. Preis-Score = Gleichverteilung zwischen q025/q975 — keine kalibrierte " +
-    "Wahrscheinlichkeit; die exakte M7-Rechnung läuft auf dem NAS.</p>";
-  body.innerHTML = html;
+
 }
 
 function renderWerkstatt(forecasts, stations, health) {
@@ -2819,7 +2661,7 @@ function sparkCard(e) {
   const range = isNum(sum.min_q50) && isNum(sum.max_q50)
     ? "24-h-Band " + eur(sum.min_q50) + "–" + eur(sum.max_q50) + " €"
     : "";
-  const best = sum.best ? "günstigster Moment " + relDay(sum.best.at) + " (~" + eur(sum.best.q50) + " €)" : "";
+  const best = "Nur beschreibende Quantile — keine Fensterentscheidung";
   const meta = [e.city ? esc(e.city) : "", range ? esc(range) : "", best ? esc(best) : ""].filter(Boolean).join(" · ");
   return '<div class="spark-card"><div class="spark-head">' +
     '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + "</span>" +
