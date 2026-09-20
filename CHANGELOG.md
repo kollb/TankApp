@@ -4,6 +4,50 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.59.1] – 2026-09-20
+
+**A16 — Juli-Generalprobe vermessen (Phase 0 des Regime-Befunds; Messung +
+Doku, kein Code).**
+
+- **Gelaufen:** `analysis/regime_check.py --data <Juli-Export> --break
+  2026-07-01 --announced-ct 17.0` für **E10 und Diesel** (Stadtset
+  Frankfurt, Export ab 15.06.2026) auf dem Daten-Host; Berichte unter
+  `data/analysis/` (E10: 586.297 gültige Beobachtungen / 282 Stationen,
+  Diesel: 591.280 / 284). Die Echtzahlen sind in
+  [BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)
+  §5.8 nachgetragen.
+- **Betrag (robust):** δ Median **+21,0 ct E10** (p10–p90 17,0–23,0,
+  Spread 11,0) bzw. **+25,0 ct Diesel** (22,5–28,0, Spread 10,5) gegen
+  17,0 ct angekündigt — Durchgabe-Median 123,5 % / 147,1 %. **R2
+  bestätigt:** Der Betrag muss aus den Daten geschätzt werden; ein Dummy
+  auf die Ankündigung würde um 4–8 ct unterkorrigieren. E10 und Diesel
+  brauchen getrennte δ.
+- **Verzögerung (nicht übernommen):** bimodal und sortenverschieden
+  (E10-Median 0 Tage mit Nebencluster +6, Diesel-Median +9 Tage mit
+  Streuung bei 0) — synchron über Stationen, also ein Marktmerkmal,
+  keine individuelle Trägheit. Ob ein zweites Ereignis Anfang Juli oder
+  ein Detektions-Artefakt des langen Fensters (Detektion über den vollen
+  Export, nicht nur ±14 d) dahintersteht, klärt der Tagesmedian-Plot —
+  bis dahin trägt sie keine Szenario-Mischung (R5.1 wartet).
+- **Substanz:** je Station exakt 24/24 Slots (de facto Stundenraster,
+  kein Puffer); `se_ct` in rund einem Drittel der Zeilen nicht
+  berechenbar (`nan`: Tagesblock-Bootstrap auf lückenhafter Slot-Matrix;
+  δ als Median über gematchte Slots unberührt). R2 braucht dafür ein
+  SE-Handling.
+- **Simulation verifiziert:** `--simulate` reproduziert die
+  §5.10-Tabellen (Szenario C, 01.01.: Bias −15,37 ct, `P_besser = 0,920`
+  bei Wahrheit +10,0 ct; Projektions-Lemmata identisch) — Mechanik und
+  Vorzeichen des Befunds stehen.
+- **Dabei gefunden, nicht geändert** (Muster aus B0): `se_ct`-Darstellung
+  `nan` statt `—` in `build_report`; Detektionsfenster auf das
+  Messfenster begrenzen; Diesel-`announced-ct` 17,0 (Kalender) vs. 14,04
+  (DATENWERKZEUGE-Beispiel) — betrifft nur die Prozent-Relation, die
+  absoluten δ stehen. Alle drei warten auf die H-/R-Arbeit, nicht auf
+  einen eigenen Patch.
+- Nachweis: keine Code-Änderung — Messung auf dem NAS, Nachtrag im
+  Befund, A16 in [TODO.md](TODO.md) geschlossen. Relevante Suites grün
+  (`test_ledger_drift.py`, `test_operations.py`, `test_regime_check.py`).
+
 ## [0.59.0] – 2026-09-19
 
 **B4 — Navigation 3+1 und „Jetzt“ entschlackt

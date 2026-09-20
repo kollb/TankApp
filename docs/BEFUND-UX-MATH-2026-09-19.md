@@ -1883,6 +1883,43 @@ Streuung je Station. Wer den Oktober vorbereiten will, misst den Juli.
 5. `law_rise_outside_noon` am 01.07.2026: ohne 0.5 dreistellig, mit 0.5 null —
    und die echten Verstöße bleiben stehen.
 
+> **Messung 20.09.2026 (A16, Juli-Generalprobe, Frankfurt E10 + Diesel,
+> 0.59.1)** — Punkt 1 der Phase-0-Abnahme ist gelaufen, die Berichte
+> liegen auf dem Daten-Host unter `data/analysis/`. Bestand: E10
+> 586.297 gültige Beobachtungen / 282 Stationen (256 geschätzt), Diesel
+> 591.280 / 284 (258 geschätzt); Export ab 15.06.2026 ohne `--until`, de
+> facto Stundenraster (je Station exakt 24 belegte 5-Min-Slots).
+> Ankündigung jeweils 2026-07-01 · +17,0 ct/L wie im Regime-Kalender
+> (`DEFAULT_REGIMES`).
+>
+> | Sorte | δ Median (p10–p90) | Spread | Durchgabe Median | Verzögerung Median (Max) |
+> |---|---|---|---|---|
+> | E10 | +21,0 ct (17,0–23,0) | 11,0 ct | 123,5 % | 0 Tage (14) |
+> | Diesel | +25,0 ct (22,5–28,0) | 10,5 ct | 147,1 % | 9 Tage (14) |
+>
+> Drei Befunde, eine Warnung: (1) **R2 bestätigt — der Betrag muss
+> geschätzt werden.** Angekündigt waren 17,0 ct, durchgereicht wurden im
+> Median 21,0 (E10) bzw. 25,0 ct (Diesel); ein Dummy auf die Ankündigung
+> würde um 4–8 ct unterkorrigieren. E10 und Diesel brauchen getrennte δ
+> (kein globales Delta); die Diesel-Frage 17,0 vs. 14,04
+> (DATENWERKZEUGE-Beispiel) betrifft nur die Prozent-Relation, die
+> absoluten δ stehen. (2) **Die Verzögerung wird nicht übernommen.** Sie
+> ist bimodal und sortenverschieden (E10: Median 0 mit Nebencluster +6;
+> Diesel: Median +9 mit Streuung bei 0) — synchron über Stationen, also
+> ein Marktmerkmal, keine individuelle Trägheit. Ob dahinter ein zweites
+> Ereignis Anfang Juli oder ein Detektions-Artefakt des langen Fensters
+> (Detektion über den vollen Export bis September, nicht nur ±14 d)
+> steht, klärt der Tagesmedian-Plot — bis dahin trägt sie keine
+> Szenario-Mischung (R5.1 wartet). (3) **Die Schätzung steht auf
+> Mindestsubstanz:** exakt 24/24 Slots je Station (kein Puffer), `se_ct`
+> in rund einem Drittel der Zeilen nicht berechenbar (`nan`:
+> Tagesblock-Bootstrap auf lückenhafter Slot-Matrix; δ als Median über
+> gematchte Slots unberührt). R2 braucht dafür ein SE-Handling.
+> Nebenbefund Simulation: `--simulate` reproduziert die §5.10-Tabellen
+> (Szenario C, 01.01.: Bias −15,37 ct, `P_besser = 0,920` bei Wahrheit
+> +10,0 ct; Projektions-Lemmata identisch) — Mechanik und Vorzeichen
+> dieses Befunds stehen, nur die Beträge kamen aus der Synthetik.
+
 **Abnahme Phase 1/2:** PICP je Quantilstufe über die Kante (nicht nur 95 %),
 Brier auf dem Ledger getrennt nach „Settlement schneidet eine Kante“ und
 „schneidet keine“, MASE **nur** auf bruchfreien Fenstern, und für den Deckel:
