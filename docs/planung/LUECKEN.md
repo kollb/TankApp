@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 20.09.2026 · App-Version 0.59.1
+> Stand: 20.09.2026 · App-Version 0.59.2
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -19,9 +19,9 @@
 | Datenerhebung | Mehrstadt-Collector, RAM-Ring, Heartbeat, Upload mit Ack und Wiederholung | [Architektur](../architektur/ARCHITEKTUR.md) |
 | NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup | [Betrieb](../betrieb/BETRIEB.md) |
 | Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe | [UI](../produkt/UI.md) |
-| Labor | Vier Sub-Tabs, acht Parameterkarten, Beta-Intervall, CSV/API-Rohdatenraum; Abnahme noch offen | [UI](../produkt/UI.md#labor-unterbereiche) |
+| Labor | Vier Sub-Tabs, acht Parameterkarten, Beta-Intervall, CSV/API-Rohdatenraum; Layout-Regressionsschutz für lange Bezeichner bei 320/390 px | [UI](../produkt/UI.md#labor-unterbereiche) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
-| Kalibrierung | Zeitlich validierte PIT-Kandidaten für 24 h, Herkunftsprüfung, Aktivierung frühestens im Folgelauf, Regime-Blackout | [Engine](../referenz/ENGINE.md#pit-rekalibrierung-b2-seit-0570) |
+| Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 | [Befund](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md#3-mathematische-modelle-und-performance) |
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, Fahrtmodus, pfadbasierte Wahrscheinlichkeiten und getrennte €-Semantik | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
@@ -34,10 +34,38 @@ eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 ## Offene Arbeit
 
-In [TODO](TODO.md) stehen ausschließlich zwei unmittelbar ausführbare
-Pflichtpunkte: **A14**, die Rechts-/Terminbasis vor weiteren Regime-Eingriffen
-klären, und **B5**, den reproduzierten 320-px-Textüberlauf im Labor beheben.
-Der Labor-Umbau selbst ist implementiert und wird nicht erneut beauftragt.
+In [TODO](TODO.md) stehen unmittelbar ausführbare Korrekturen:
+**A14** klärt die Rechts-/Terminbasis vor weiteren Regime-Eingriffen.
+Der Labor-Umbau einschließlich des schmalen Kartenumbruchs ist implementiert;
+B5 ist im [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20) dokumentiert
+und wird nicht erneut beauftragt.
+
+Der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md)
+ergänzt bestätigte Integrationsfehler; sie sind **nicht behoben** und in
+[NP1–NP6](TODO.md#n1-naspi-integrationsfehler-beheben) mit Abnahmen
+extrahiert. Bis zur Korrektur gelten folgende Grenzen:
+
+- **Datenintegrität:** Offline-Queue, beschädigte Stores und unterbrochene
+  Veröffentlichungen können bestätigte Eingaben verlieren bzw. gemischte
+  Modellstände liefern. Retention sichert die Allzeit-/Jahresbilanz nicht.
+- **Schutz:** Der optionale Lesetoken ist über Compose, Proxy, Aggregat-/POST-
+  Rückgaben und aktiven Service-Worker-Cache nicht durchgängig wirksam.
+- **Failover:** Der Pi ist kein gleichwertiger Decision Layer. Empfehlungen
+  bei veraltetem ausgewähltem Preis und der API-/UI-Rückwechsel sind nicht
+  abgenommen; NAS-Wiederkehr garantiert kein automatisches Queue-Nachreichen.
+- **Modelle:** Nichtleere 24-h-Kalibrierung, kausale Vorverarbeitung,
+  Gapfill-Übernahme, DST-Segmente, Bias-Prüfung und vollständige
+  Kalibrierungsprovenienz sind noch zu korrigieren. Ein M7-Slope-Nachweis
+  allein beweist keine unverzerrte Wahrscheinlichkeit.
+- **Nachreichen:** Watermarks während eines Jobs, Uhr-Rücksprünge und
+  veränderliche Upload-Tags verletzen die bisherigen Synchronisationsannahmen.
+
+Die Bestandsübersicht oben bezeichnet implementierte Komponenten, nicht deren
+Fehlerfreiheit. Synthetische Gegenproben belegen die beschriebenen Fehler,
+aber keine neue Hardware-, Influx-Restore- oder Feldqualitätsabnahme.
+Ein zweiter Ledger-Schreiber, eine Datenbankmigration, neue Schreibauthentisierung
+oder Pi-Modelltraining sind Vorschläge bzw. gesonderte Architekturentscheidungen,
+keine beschlossenen Funktionen.
 
 **Noch nicht beauftragter Regime-Ausbau:** A15 und H6–H10 hängen von der
 bestätigten Rechtslage, dem betroffenen Bestand und der Entscheidung für
@@ -69,7 +97,9 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |
 | `w(h)` | Mindestens acht Füllungen für eine belastbare persönliche Rückkopplung |
 | Winter/Regime | Erster Regel-Winter separat prüfen; Simulationen nicht als Live-Messung verbuchen |
-| Ledger-Persistenz | JSON-Store im Ein-Nutzer-Betrieb; DB-Wechsel zusammen mit gemessener Retention-/Rotationsanforderung bewerten |
+| Ledger-Persistenz | Überschreiben beschädigter Stores und Verlust archivierter Zeilen aus der Langzeitbilanz sind bestätigt (NP1/NP5); die Speichertechnik bleibt gesondert zu entscheiden |
+| NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen |
+| Backup/Restore | Dateialter belegt keine Wiederherstellbarkeit; datenbankkonsistente Influx-Sicherung und vollständiger Restore-Nachweis fehlen im Audit |
 | NAS-Kampagnenquote | 6/2/2 nur offline; Bedarf am realen Mehrstadtbetrieb messen, nicht als NAS-Funktion behaupten |
 
 Die Juli-Generalprobe **A16 ist gemessen**: Frankfurt, E10 und Diesel,

@@ -166,7 +166,7 @@ export function ParamCardShell({
           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${LAB_BORDER} ${LAB_BG} ${LAB_ACCENT} text-xs font-bold`}>
             {number}
           </span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
             <p className={`text-xs font-bold uppercase tracking-[.2em] ${LAB_ACCENT}`}>
               Karte {number} · {chain}
             </p>

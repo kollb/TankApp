@@ -1,6 +1,6 @@
 # Dokumentation
 
-> Stand: 20.09.2026 · Repository-Version **0.59.1**
+> Stand: 20.09.2026 · Repository-Version **0.59.2**
 > Dieser Index ist kein pauschaler Prüfvermerk für alle verlinkten Dokumente.
 > Technische Einzelreferenzen behalten ihren jeweiligen Prüfstand.
 
@@ -62,6 +62,9 @@ Die aktuelle App-Version wird in `app/version.py` geführt.
 
 - [Release-Historie](releases/CHANGELOG.md): Änderungen je App-Version.
 - [Archiv](archiv/README.md): datierte Prüfungen, Messbelege und alte Anleitungen.
+- [NAS-/Pi-Befund vom 20.09.2026](archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md):
+  Architektur, Failover, Datenintegrität, Sicherheit und Modellgrenzen;
+  reproduzierte Fehler getrennt von offenen Hardware-/Qualitätsnachweisen.
 
 Ein Prüfbericht belegt seinen Stichtag, nicht den heutigen Zustand. Aktuelle
 Regeln werden nicht aus der höchsten Versionsnummer eines alten Entwurfs

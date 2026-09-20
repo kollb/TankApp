@@ -20,6 +20,7 @@ Archivierung bedeutet nicht, dass jeder Vorschlag umgesetzt ist. Aktuell sind
 | [ANALYSE-B0-B1-B2-2026-09-19.md](ANALYSE-B0-B1-B2-2026-09-19.md) | Stichtagsreview; Empfehlungen noch zu entscheiden | [Review-Vorschläge](ANALYSE-B0-B1-B2-2026-09-19.md#empfehlungen) |
 | [BEFUND-12-UHR-REGEL-2026-09-18.md](BEFUND-12-UHR-REGEL-2026-09-18.md) | Befund bzw. abgeschlossene Bodenkanten-Umsetzung | [Engine](../referenz/ENGINE.md#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr) |
 | [BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md) | Datierter UX-/Mathe-Befund, Messbelege; offene Teile extrahiert | [Regime-Plan und TODO](../planung/REGIME.md) |
+| [BEFUND-TANKAPP-NAS-PI-2026-09-20.md](BEFUND-TANKAPP-NAS-PI-2026-09-20.md) | Stichtagsprüfung von Failover, Integrität, Sicherheit und Modellen; keine Umsetzung oder Hardwareabnahme | [Bestätigte Korrekturen](../planung/TODO.md#n1-naspi-integrationsfehler-beheben) und [Freigabegrenzen](../planung/LUECKEN.md#offene-arbeit) |
 | [GUI-FALLBACK-SANITY-2026-09-14.md](GUI-FALLBACK-SANITY-2026-09-14.md) | Alte Anleitung oder Fallback-Prüfung | [RP2](../betrieb/RP2.md) |
 | [GUI-UX-BEFUND.md](GUI-UX-BEFUND.md) | GUI-Prüfung oder abgeschlossene Umsetzung | [UI und Projektstand](../produkt/UI.md) |
 | [GUTACHTEN-2026-09-10.md](GUTACHTEN-2026-09-10.md) | Stichtagsprüfung, keine aktuelle Anleitung | [Projektstand](../planung/LUECKEN.md) |

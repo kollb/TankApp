@@ -1,8 +1,8 @@
 # Oberfläche und Interaktion
 
-> Stand: 20.09.2026 · App-Version 0.59.1
+> Stand: 20.09.2026 · App-Version 0.59.2
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
-> Offene Abnahme: [TODO B5](../planung/TODO.md#b5-labor-überlauf-beheben).
+> Layoutkorrektur: [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20).
 
 ## Inhaltsverzeichnis
 
@@ -74,9 +74,10 @@ Beta(5,5)-Intervall der Trefferquote. Karte 8 beschreibt auch geplante
 Regime-Bausteine und ist deshalb **kein Beleg**, dass Normalisierung, Deckel
 oder Projektionsausnahme in der Engine implementiert sind.
 
-Die Implementierung ist von der vollständigen Abnahme zu unterscheiden.
-Der schmale 320-px-Browsertest zeigt einen bestehenden Textüberlauf an der
-Regime-Karte; [TODO B5](../planung/TODO.md#b5-labor-überlauf-beheben) hält diesen Rest fest.
+Lange Modellbezeichner in Kette, Titel und Erklärung der Parameterkarten
+brechen innerhalb ihrer verfügbaren Breite um. Dafür wird Text weder gekürzt
+noch zusätzlich abgeschnitten. Der geometrische Browsertest prüft dies bei
+320 und 390 px auch mit einem absichtlich überlangen Bezeichner.
 
 ## Antwort, Begründung und Beweis
 
@@ -130,5 +131,6 @@ Oberfläche gegen echte Serverantworten. Beides ist erforderlich. Zusätzlich
 bleiben Microcopy-Ratchet, mobile Layout-Prüfungen und die
 [Qualitätsbudgets](../entwicklung/QUALITAET.md) maßgeblich.
 
-Die Labor-Struktur ist implementiert; ausstehende Abnahmekriterien und der
-reproduzierte Layoutbefund stehen in [TODO B5](../planung/TODO.md#b5-labor-überlauf-beheben).
+Für das Labor bleiben alle sechs historischen Abschnittssprünge sowie der
+Umbruch langer Bezeichner in den Parameterkarten Teil der Demo-Browser-Suite.
+Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.

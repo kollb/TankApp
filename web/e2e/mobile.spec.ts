@@ -550,6 +550,22 @@ test.describe("Mobil: kein Querlauf", () => {
     }
   });
 
+  test("Labor: lange Bezeichner umbrechen in der Parameterkarte", async ({ page }) => {
+    await page.goto("/?tab=labor&subtab=modell");
+    await settled(page);
+    const sentence = page
+      .locator("#karte-8-regime")
+      .getByText(/^Deklarierte Regime-Kanten/);
+    await expect(sentence).toBeVisible();
+    // Auch mit schmaleren CI-Schriften erzwingt der ungetrennte Bezeichner
+    // einen Umbruch. Der echte Kartentext bleibt vollständig erhalten.
+    const identifier = "RegimeProvenienzOhneTrennzeichen".repeat(4);
+    await sentence.evaluate((element, value) => element.append(` ${value}`), identifier);
+    await expect(sentence).toContainText(identifier);
+    await expect(sentence).toHaveCSS("overflow-x", "visible");
+    await check(page, "Labor → Regime-Karte mit langem Bezeichner");
+  });
+
   test("Dialoge bleiben im Bild", async ({ page }) => {
     for (const area of ["jetzt", "system"] as const) {
       await page.goto(`/?tab=${area}`);

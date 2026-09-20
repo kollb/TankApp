@@ -1,11 +1,11 @@
 # Notwendige nächste Schritte
 
-> Stand: 20.09.2026 · App-Version 0.59.1
+> Stand: 20.09.2026 · App-Version 0.59.2
 
 ## Inhaltsverzeichnis
 
 - [A14: Rechts- und Terminbasis klären](#a14-rechts--und-terminbasis-klären)
-- [B5: Labor-Überlauf beheben](#b5-labor-überlauf-beheben)
+- [N1: NAS/Pi-Integrationsfehler beheben](#n1-naspi-integrationsfehler-beheben)
 
 ### A14: Rechts- und Terminbasis klären
 
@@ -23,16 +23,90 @@ Termine werden nicht als geltendes Recht oder feste Entwicklungsfrist
 behandelt. Erst danach lässt sich der notwendige Regime-Code verbindlich
 beauftragen.
 
-### B5: Labor-Überlauf beheben
+### N1: NAS/Pi-Integrationsfehler beheben
 
-**P1 · reproduzierbarer Fehler in der Browser-Suite.**
+**P0/P1/P2 · Priorität je bestätigter Vertragsverletzung wie unten benannt.**
 
-- [ ] Den Textüberlauf der Regime-Karte im Labor bei 320 px beheben
-  (`web/src/views/labor/Modell.tsx`, Kartentext aus `web/src/lab.ts`).
-- [ ] Den bestehenden Test „Labor: alle sechs Abschnitte tragen ohne
-  Querlauf“ im Playwright-Projekt `narrow` und anschließend die vollständige
-  Demo-Browser-Suite ausführen; den Test nicht abschwächen.
+Grundlage ist der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md).
+Die folgenden Punkte betreffen nachgewiesene Vertragsverletzungen, keine
+neuen Features. Diese Korrekturgruppen sind noch nicht umgesetzt. Alternative
+Architekturen, neue Schreibauthentisierung, Hardwarebudgets und optionale
+Pi-Inferenz sind damit nicht automatisch beauftragt.
 
-**Abnahme:** Der Kartentext bleibt innerhalb seiner Box und
-`npm --prefix web run test:e2e:demo` ist grün. Der Fehler ist auch auf dem
-unveränderten Ausgangscommit `b1e60df` reproduziert (209 px Text in 202 px Box).
+#### NP1 — P0: Belegpersistenz und Veröffentlichung sichern
+
+- [ ] Offline-Queue und Aufrufer korrigieren (I1): Erfolg erst nach lokaler
+  Persistenz bestätigen; parallele Enqueues beim Flush erhalten; 429 mit
+  Retry behandeln; abgelaufene/abgelehnte Einträge sichtbar halten.
+  **Abnahme:** Voller/gesperrter Speicher, A senden + B einreihen und
+  Mehrtab-/429-Gegenproben verlieren keinen bestätigten Eintrag.
+- [ ] Beschädigte oder unlesbare bestehende Ledger-/Profil-Stores von einem
+  Erststart unterscheiden und weitere Writes sperren (S3).
+  **Abnahme:** Fehlerhafte Bestandsdateien werden durch keine Mutation
+  überschrieben; intakte Belege und IDs sind wiederherstellbar.
+- [ ] Veröffentlichung generationskonsistent machen und nach Abbruch nicht
+  weiter committen (A1, S4). **Abnahme:** Fehler-Injektion nach jeder
+  Stationsdatei und SIGTERM liefern kalten wie warmen Lesern nur eine
+  vollständige Generation; kein nachträgliches `success` nach Abbruch.
+
+#### NP2 — P0: Bestehenden Leseschutz und Worker-Cache durchsetzen
+
+- [ ] `TANKAPP_READ_TOKEN` im Compose-Pfad durchreichen, Authorization über
+  den Pi erhalten und persönliche Inhalte in Aggregat-/Idempotenzantworten
+  demselben Schutz unterstellen (S1). **Abnahme:** Negative Tests für
+  `/stats/summary`, persönliche `/decide`-Felder und `POST /fills` mit
+  bekannter ID; berechtigte Reads funktionieren direkt und über Pi.
+- [ ] Service-Worker-Response korrekt klonen; persönliche Cache-Antworten bei
+  fehlender/geänderter Berechtigung ausschließen und die Altersgrenze
+  tatsächlich durchsetzen (S2). **Abnahme:** Cold-cache-Erstabruf,
+  Tokenentzug und 24-h-Offline-Cache mit aktivem Worker im echten Browser
+  testen; keine Abschaltung des Workers nur für diese Zusicherungen.
+
+#### NP3 — P1: Failover ohne fachliche oder API-Freigabeausweitung
+
+- [ ] Pi-Auswahl auf die Frische der **gewählten** Station und gültige
+  Qualitäts-/Zeitrandbedingungen begrenzen; Quantil-Heuristik nicht als
+  erwartete Nettoersparnis oder gleichwertige NAS-Empfehlung ausgeben
+  (F1, F2). **Abnahme:** Die dokumentierte 40-/1-Minuten-Gegenprobe erzeugt
+  keine Warteempfehlung für den veralteten Preis; symmetrische Gewinne und
+  Verluste werden nicht als gesicherte Ersparnis dargestellt.
+- [ ] Fach-Readiness und NAS-Rückwechsel vertragssicher machen (A2, I2);
+  Queue-Retry an NAS-Wiederkehr statt nur Browser-`online` koppeln (I1).
+  **Abnahme:** Ungültiger Health-Body, Health 200/API 503 und geöffneter Tab
+  bei NAS aus/an behalten korrekte Zustände und wartende Belege.
+
+#### NP4 — P1: Trainings- und Kalibrierungsverträge korrigieren
+
+- [ ] Tageshorizont zwischen Engine und PIT-Kandidat eindeutig definieren
+  (M1). **Abnahme:** Echter Backtest liefert nichtleere 24-h-PIT-Eingaben
+  bis in den NAS-Kandidaten; keine ausschließlich gemockten Horizontzeilen.
+- [ ] Aufbereitung pro Cutoff kausal machen und Gapfill-Priorität pro
+  Verfügbarkeits-Bucket herstellen (M2, I4). **Abnahme:** Zukünftige
+  Daten ändern keine vergangene Trainingsmaske; historische Füllzeilen
+  schließen echte Lücken, ohne Live-Closed-/No-Price-Zustände zu ersetzen.
+- [ ] Lokale Mittagsgrenzen DST-sicher konstruieren (M3).
+  **Abnahme:** 23-/25-h-Tage einschließlich 25./26.10.2026 behalten dieselbe
+  Monotonie über Mitternacht; nur die modellierte Mittagsgrenze trennt.
+- [ ] M7-Kalibrierung im Mittel zusätzlich zur Steigung prüfen und
+  Kalibrierungsaktivierung an den Day-Pair-/Konfigurationsstand binden
+  (M5, M6). **Abnahme:** Das +10-pp-Bias-Gegenbeispiel wird nicht als
+  kalibriert freigegeben; geänderter Verteilungsmodus entwertet alte Kurven.
+
+#### NP5 — P1: Nachreichen und langfristige Bilanz erhalten
+
+- [ ] Während eines Jobs eintreffende höhere Watermarks zuverlässig
+  nachverarbeiten (I5). **Abnahme:** Ein neuer Datenstand erzeugt genau
+  einen notwendigen Folgelauf, keine verlorene Wake-Markierung.
+- [ ] Uploader-ACK und Replay-Identität von rückspringender Uhr bzw.
+  veränderlichen Stationsnamen trennen (I3). **Abnahme:** Neue Zeilen vor
+  dem Zeit-ACK werden nicht übersprungen; Retry nach Namensänderung erzeugt
+  keinen zweiten fachlichen Messpunkt.
+- [ ] Archivierte Belege/Settlements in den zugesagten Jahres-/Allzeitbestand
+  einbeziehen (F3). **Abnahme:** Die 90-Tage-Retention ändert weder
+  Allzeitbelegzahl noch Jahressummen oder die definierte M7-Grundgesamtheit.
+
+#### NP6 — P2: Feiertagseffekt im Profilkern erhalten
+
+- [ ] Abgezogenen Feiertagseffekt im `profile_ar2`-Prognosezweig konsistent
+  berücksichtigen (M4). **Abnahme:** Die dokumentierte Feiertags-Sensitivitätsprobe
+  wirkt auch im Profilkern; `holiday_beta=0` und Tage ohne Feiertag bleiben stabil.
