@@ -4,6 +4,55 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.60.0] – 2026-09-20
+
+**Batch 1 (P0): Belegpersistenz, Ledger-Integrität, Publikationskonsistenz
+(I1, S3, A1, S4)** — die P0-Korrekturgruppe des
+[NAS-/Pi-Befunds vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md),
+ausgeführt als [Issue #181](https://github.com/kollb/TankApp/issues/181).
+
+- **I1 — Outbox statt Offline-Queue.** Die Browser-Schreibwarteschlange wird
+  eine transaktionale Outbox in IndexedDB (`tankapp.outbox.v1`, Stores
+  `entries` + `history`) in `web/src/outbox.ts`. `queued=true` wird erst nach
+  persistiertem Eintrag gemeldet; Quota- und Speicherfehler antworten ehrlich
+  (`queue_full` / `storage_failed`), statt einen verlorenen Eintrag als
+  gesichert zu bestätigen. Der Flush claimt Einträge über ein 30-s-Lease je Tab statt die
+  Gesamtliste zurückzuschreiben — parallele Enqueues überleben. 429 bleibt
+  retryfähig (`Retry-After`, Backoff 30 s bis 6 h); dauerhafte 4xx-Ablehnung
+  und Alter über 7 Tage landen in sichtbaren Endzuständen `rejected` /
+  `expired`, die exportierbar (JSON/CSV) und vom Nutzer entfernbar bleiben —
+  nichts wird still verworfen. Mehrere Tabs koordinieren sich über
+  BroadcastChannel; der Nachreich-Takt läuft im 30-Sekunden-Takt.
+  Neu in der Oberfläche: Outbox-Karte in „System“ → Diagnose und ein
+  Header-Banner, solange Einträge warten.
+- **S3 — Beschädigte Stores fail-closed.** `app/feedback.py` (Ledger) und
+  `app/profiles.py` (Profile) unterscheiden Erststart (Datei fehlt) von
+  Defekt (unlesbar, ungültiges JSON, abgeschnittene Datei). Bei Defekt
+  bleiben alle Writes gesperrt (`store_corrupted` / `profiles_corrupted`),
+  der Bestand wird als `quarantine/store-<ts>.json` (bzw.
+  `profiles-<ts>.json`) plus Fehlerbericht abgelegt, und die
+  Laufzeit-Sicherung bietet den letzten validierten Stand an — IDs und Summen
+  bleiben erhalten. Keine Mutation überschreibt mehr eine fehlerhafte
+  Bestandsdatei.
+- **A1 — Publikation generationskonsistent.** Stationsdateien werden
+  unveränderlich nach `forecasts/generations/<generation>/` geschrieben; erst
+  danach wechselt die Index atomar. Reader prüfen Hash, Schema und Identität
+  gegen die Index, binden die Memoisierung an die Generation und löschen
+  alte Generationen erst, wenn weder neue noch alte Index sie belegen;
+  behaltene alte Modelle tragen `retained_previous`. Ein Mischstand ist nicht
+  mehr darstellbar — kalte und warme Leser sehen nur eine vollständige
+  Generation.
+- **S4 — Abbruch bleibt Abbruch.** Der SIGTERM-Handler markiert den Lauf als
+  `aborted` und wirft `JobAborted` in den Job-Code; von dort weg gibt es kein
+  `success`, keine Veröffentlichung und keinen Commit mehr (Exitcode 3).
+  Grace-Period und Worker-Pool folgen demselben Abbruchvertrag.
+- **Dauerhafte Regressionstests aus den Gegenproben des Befunds:**
+  `web/src/outbox.test.ts` (I1: voll/gesperrter Speicher, parallele Enqueues,
+  429, Lease, Abgang nach 7 Tagen, Export), `tests/test_s3_store_integrity.py`
+  (S3: unlesbar/ungültig/abgeschnitten, Recovery),
+  `tests/test_o22_publication_size.py` (A1: Fehler-Injektion nach jeder
+  Stationsdatei) und `tests/test_app_jobs.py` (S4: echtes SIGTERM).
+
 ## [0.59.2] – 2026-09-20
 
 **B5 — Labor-Parameterkarten auf schmalen Bildschirmen umbrechen.**

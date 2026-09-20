@@ -20,6 +20,7 @@ import datetime as dt
 from pathlib import Path
 
 from .data import read_json
+from .worker import JobAborted
 
 UTC = dt.timezone.utc
 
@@ -231,6 +232,10 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
                 by_fuel[fuel] = result
                 if progress:
                     progress.step(label=f"{fuel}: {top_n} Stationen")
+            except JobAborted:
+                # S4: Abbruch läuft durch — „Fehler/übersprungen“ wäre
+                # Weiterlaufen nach SIGTERM.
+                raise
             except Exception as exc:
                 if progress:
                     # Kurz die Ursache zeigen (ohne Pfade), damit „Fehler“
@@ -252,6 +257,10 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
             None if by_fuel else "selection_not_available",
         )
 
+    except JobAborted:
+        # S4: Abbruch ist kein Selektionsfehler — der Worker-Handler hat den
+        # `aborted`-Zustand geschrieben; hier kein „selection_failed“ zurück.
+        raise
     except Exception:
         return {
             "error_code": "selection_failed",

@@ -70,10 +70,92 @@ class ProfileError(ValueError):
     """Validierungsfehler mit Fach-Code für die 4xx-Antwort des Servers."""
 
 
+class ProfileStoreCorrupted(RuntimeError):
+    """Bestehender Profil-Store ist unlesbar oder ungültig (S3).
+
+    Dasselbe Muster wie ``app.feedback.StoreCorrupted``: „Datei fehlt“
+    (Erststart) ist kein Defekt. Eine **vorhandene** Datei, die nicht
+    lesbar, zu groß oder strukturell kein Profil-Store ist, wird fail-closed
+    behandelt — der Defekt wird unverändert quarantäniert, alle Writes
+    schlagen fehl, statt der nächste Schreibvorgang einen leeren Store
+    darüberzuschieben (stiller Datenverlust).
+    """
+
+
 def profiles_path(settings) -> Path:
     p = settings.runtime / "profiles" / "profiles.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def profiles_quarantine_dir(settings) -> Path:
+    """S3: Ablage für unveränderte Defekt-Kopien des Profil-Stores."""
+    return profiles_path(settings).parent / "quarantine"
+
+
+def _corrupt_profiles_store(settings, path, exc) -> ProfileStoreCorrupted:
+    """S3: Bestand unlesbar/ungültig — quarantänisieren und fail-closed.
+
+    Wie der Feedback-Store: Kopie statt Verschiebung (Quelldatei bleibt am
+    Ort), Report mit Zeitstempel, Größe, Hash und Ursache daneben. Die
+    Quarantäne darf nie den Lese-/Schreibpfad sprengen.
+    """
+    copied = False
+    try:
+        raw_bytes = path.read_bytes()
+        stamp = dt.datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        quarantine = profiles_quarantine_dir(settings)
+        quarantine.mkdir(parents=True, exist_ok=True)
+        target = quarantine / f"profiles-{stamp}.json"
+        target.write_bytes(raw_bytes)
+        (quarantine / f"profiles-{stamp}.report.json").write_text(
+            json.dumps(
+                {
+                    "at": dt.datetime.now(UTC).isoformat(),
+                    "source": str(path),
+                    "size_bytes": len(raw_bytes),
+                    "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+                    "error": str(exc) or type(exc).__name__,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        copied = True
+    except OSError:
+        pass
+    note = (
+        " Der Defekt liegt unverändert in der Quarantäne."
+        if copied
+        else " Der Defekt konnte nicht für die Quarantäne kopiert werden."
+    )
+    return ProfileStoreCorrupted(
+        f"Profil-Store ist unlesbar ({type(exc).__name__}: {exc}). "
+        f"Der Bestand bleibt unverändert und wird nicht überschrieben.{note} "
+        "Wiederherstellung aus einer Laufzeit-Sicherung (docs/betrieb/BETRIEB.md)."
+    )
+
+
+def profiles_recovery_options(settings) -> dict[str, Any]:
+    """S3: Quarantäne-Kopien relativ zum Laufzeitverzeichnis (neueste zuerst)."""
+    options: dict[str, Any] = {"quarantine": []}
+    try:
+        quarantine = profiles_quarantine_dir(settings)
+        copies = sorted(
+            (
+                path
+                for path in quarantine.glob("profiles-*.json")
+                if path.is_file() and ".report." not in path.name
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:5]
+        runtime = Path(getattr(settings, "runtime", Path(".")))
+        options["quarantine"] = [str(path.relative_to(runtime)) for path in copies]
+    except OSError:
+        pass
+    return options
 
 
 def _store_digest(store: dict[str, Any]) -> bytes:
@@ -155,21 +237,34 @@ def locked_profiles(settings):
             lock.__exit__(None, None, None)
 
 
-def _read_json(path: Path, default=None):
-    """Lokale Kopie des read_json-Musters — bewusst ohne Import aus app.data
-    (data.py importiert die Profil-Funktionen, hier wäre der Kreis geschlossen)."""
-    try:
-        if path.stat().st_size > 10_000_000:
-            return default
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return default
-
-
 def load_store(settings) -> dict[str, Any]:
-    raw = _read_json(profiles_path(settings), None)
+    """Lädt den Profil-Store — trennt Erststart von Defekt (S3).
+
+    Dasselbe Muster wie ``app.feedback.load_store``: Fehlt die Datei, ist es
+    der Erststart (leerer Store). Eine **vorhandene** Datei, die nicht
+    lesbar ist, zu groß ist oder kein Profil-Store, wirft
+    ``ProfileStoreCorrupted`` — fail-closed, mit Quarantäne-Kopie statt
+    stilles Überschreiben durch den nächsten Schreibvorgang.
+    """
+    path = profiles_path(settings)
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return migrate_store({})
+    except (OSError, ValueError) as exc:
+        raise _corrupt_profiles_store(settings, path, exc) from exc
+    if stat.st_size > 10_000_000:
+        raise _corrupt_profiles_store(
+            settings, path, ValueError("Datei größer als 10 MB")
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise _corrupt_profiles_store(settings, path, exc) from exc
     if not isinstance(raw, dict):
-        raw = {}
+        raise _corrupt_profiles_store(
+            settings, path, ValueError("kein Profil-Store (ungültige JSON-Struktur)")
+        )
     return migrate_store(raw)
 
 

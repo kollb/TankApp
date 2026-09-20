@@ -164,10 +164,15 @@ def test_demo_stapel_ist_strenges_json_wie_die_produktion(tmp_path):
     assert index["failures"] == []
     assert len(index["forecasts"]) == len(demo_data.STATIONS)
 
-    files = sorted((engine_dir / "forecasts").glob("*.json"))
+    # A1: Die Stations-Dateien liegen in ihrer Generation — rekursiv suchen,
+    # jede Datei gehört zur Index-Generation.
+    files = sorted((engine_dir / "forecasts").rglob("*.json"))
     assert len(files) == len(demo_data.STATIONS)
+    generation = index["generation"]
     for path in files:
+        assert path.parent.name == generation, path
         text = path.read_text(encoding="utf-8")
         assert "NaN" not in text and "Infinity" not in text, path.name
         part = _strict_loads(text)
+        assert part["generation"] == generation
         assert part["forecast"]["draws_24h"]["n"] > 0
