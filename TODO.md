@@ -1,4 +1,4 @@
-# TankApp — ToDo (Stand 19.09.2026, App-Version 0.59.0)
+# TankApp — ToDo (Stand 20.09.2026, App-Version 0.59.1)
 
 > **Rahmenbedingung:** Die App läuft ausschließlich im eigenen LAN (Pi ↔ NAS ↔
 > Browser). **Usermanagement, Login und Auth sind explizit nicht nötig** und
@@ -35,8 +35,9 @@ Neu am 19.09.2026 aus
 [docs/BEFUND-UX-MATH-2026-09-19.md](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**:
 der Tankrabatt ab 01.10.2026 (−17 ct/L, befristet bis 31.12.2026) und der
 Spritpreisdeckel spätestens 01.01.2027 sind **datierte Regime-Wechsel**, die
-drei Zähler und die Entscheidungsgrundlage treffen. Drei Punkte sind fällig,
-bevor der 01.10. da ist — alle drei sind P0, weil sie falsche Zahlen riskieren.
+drei Zähler und die Entscheidungsgrundlage treffen. Drei Punkte waren fällig,
+bevor der 01.10. da ist — A16 (Generalprobe) ist am 20.09.2026 vermessen
+(siehe Erledigt-Tabelle), A14 bleibt als P0, A15 wartet als D auf die Politik.
 
 - **A14 (P0, bis 30.09.2026)** — **Rechtsfrage vor dem Code klären:** Darf die
   App einen gesetzlichen Anstieg um 12:00 anzeigen, wenn das Gesetz ihn ab
@@ -58,21 +59,11 @@ bevor der 01.10. da ist — alle drei sind P0, weil sie falsche Zahlen riskieren
   bekannt ist, Deckel als Zeitreihe `cap(t)` je Sorte und Region modellieren,
   Clip **vor** der Mittagsprojektion (Reihenfolge unter Test), und eine
   Deckel-Nähe-Warnung nur mit Kalibrierungsnachweis (M7-Gate).
-- **A16 (P0, machbar heute)** — **Den eigenen Juli als Generalprobe messen:**
-  Das Archiv reicht bis 2025-09-09 (`docs/API.md`: `archive_since`) und enthält
-  damit den Mai-Juni-Tankrabatt 2026 — das Rabatt-**Ende** am 01.07. ist
-  derselbe Schock in derselben Richtung wie das Ende am 01.01.2027, und der
-  01.10.2026 ist die exakte Umkehrung des 01.05.2026. **DoD:**
-  `analysis/regime_check.py --data <Juli-Export> --break 2026-07-01
-  --announced-ct 17.0` für E10 **und** Diesel je Stadtset gelaufen, Bericht in
-  `data/analysis/report_regime.md`, Verzögerung/Durchgabe/Streuungsprofil im
-  Befund nachgetragen; Ablauf in
-  [docs/DATENWERKZEUGE.md](docs/DATENWERKZEUGE.md#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
 
 A9 (w(h)-Rückkopplung), A10 (Zweitmodell/Ensemble), A11 (gemeinsame
-Bootstrap-Ziehung), A12 (Lebenszyklus) und A13 (Preis-Zwillinge) sind
-abgenommen — die vollständigen Nachweise stehen in der Erledigt-Tabelle unten
-und im [CHANGELOG](CHANGELOG.md).
+Bootstrap-Ziehung), A12 (Lebenszyklus), A13 (Preis-Zwillinge) und A16
+(Juli-Generalprobe, 0.59.1) sind abgenommen — die vollständigen Nachweise
+stehen in der Erledigt-Tabelle unten und im [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -214,6 +205,7 @@ sind. Vollständig erledigt und aus den Tabellen oben entfernt:
 
 | Version | Punkte |
 |---|---|
+| 0.59.1 (20.09.2026) | **A16 — Juli-Generalprobe vermessen (Messung + Doku, kein Code):** `analysis/regime_check.py --break 2026-07-01 --announced-ct 17.0` für E10 (586.297 Beobachtungen / 282 Stationen, 256 geschätzt) und Diesel (591.280 / 284, 258 geschätzt) auf dem Daten-Host gelaufen, Berichte unter `data/analysis/`, Echtzahlen in [BEFUND-UX-MATH §5.8](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) nachgetragen. Kernbefunde: δ Median +21,0 ct E10 / +25,0 ct Diesel gegen 17,0 ct angekündigt (R2-Betragsschätzung bestätigt, Sorten trennen); Verzögerung bimodal (E10-Median 0, Diesel-Median +9) und ungeklärt — nicht übernommen, Tagesmedian-Plot als Follow-up; Schätzung auf Mindestsubstanz (24/24 Slots, Stundenraster), `se_ct` teils `nan`. `--simulate` reproduziert die §5.10-Tabellen. Dabei gefunden, nicht geändert: `nan`-Darstellung, Detektionsfenster, Diesel-14,04-Frage. |
 | 0.59.0 (19.09.2026) | **B4 — Navigation 3+1** ([UX/Mathe-Befund, Teil 4](docs/BEFUND-UX-MATH-2026-09-19.md#b4--navigation-31-parallel-zu-b2b3-möglich)): Bottom-Bar Jetzt/Woche/Stationen + Studio-Blatt (mobil) bzw. „Studio“-Gruppe (Desktop) für Labor/Ich/System/Glossar, URL-Schema (`?tab=labor` …, `?section=…`) unangetastet; „Jetzt“ entschlackt (Stationszeilen → nur „Stationen“, Tagesstreifen eingeklappt, Faktenzeilen von „Heute im Blick“ sichtbar, ohne Empfehlung kein doppelter Satz); Scrolltiefen-Ratchet **abschnittsweit** (≤ 1,5 Viewports, gemessen 1,23) — die Vollseite (1,77 Viewports) ist gegen die C13-Entscheidung bewusst nicht erreichbar; S0-Nebenbefund: HTTP-200-Fehler-Körper von `stats/summary` werden in der Overview-Ebene zu einem Fehler-Zustand normalisiert (statt „System“-Weißbild), e2e-Helfer `web/e2e/nav.ts`. Alltag-e2e 38/38 gegen leeren Server, Demo-e2e 46 grün. |
 | 0.58.0 (19.09.2026) | **B3 — Mehrtage & Kerne:** Day-Pair-Bootstrap (`TANKAPP_DAYPAIR`, Default an), Default-Kern `profile_ar2` (Backtest misst denselben Pfad wie die Veröffentlichung), Horizont-Gewichte als sichtbarer Folgepunkt (`not_estimated`). Neu `tests/test_b3_daypair.py`. |
 | 0.57.0 (19.09.2026) | **B2 — Kalibrierungsschicht:** monotone PIT-Kurve auf 24-h-Draws, Holdout, Herkunfts- und Regime-Sperren, Cache-Schema 4, `TANKAPP_CALIBRATION=0`. |
@@ -366,9 +358,10 @@ die ursprüngliche Definition of Done im [CHANGELOG](CHANGELOG.md) und in
 
 1. **Die Liste ist nicht mehr leer — es gibt datierte P0-Punkte.** Am
    19.09.2026 kamen A14–A16 und H6–H10 aus dem
-   [Regime-Befund](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5 dazu; die
-   Reihenfolge dort ist **Phasen mit Frist**, nicht Prioritäten: Phase 0
-   (bis 30.09.2026: A16 messen, H7 Pool, H8 Zähler, H9 Alarme, H10 = M5
+   [Regime-Befund](docs/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) Teil 5 dazu; A16 ist seit 20.09.2026
+   vermessen (0.59.1). Die Reihenfolge dort ist **Phasen mit Frist**,
+   nicht Prioritäten: Phase 0
+   (bis 30.09.2026: H7 Pool, H8 Zähler, H9 Alarme, H10 = M5
    vorziehen, H6 vorbereiten) → Phase 1 (Okt–Dez: aus dem echten Bruch lernen,
    Regime-Kalender als Daten wie `price_law_local`) → Phase 2 (bis 31.12.2026:
    dauerhafte Deckel-Schicht `cap(t)`, sobald die Ausgestaltung bekannt ist,
