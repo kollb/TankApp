@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.59.2] – 2026-09-20
+
+**B5 — Labor-Parameterkarten auf schmalen Bildschirmen umbrechen.**
+
+- Der Kopf von `ParamCardShell` erlaubt `overflow-wrap: anywhere`, damit
+  lange Modellbezeichner in Kette, Titel und Erklärung innerhalb ihrer
+  verfügbaren Breite umbrechen. Kartentexte, Schriftgrößen und Inhalte bleiben
+  unverändert; kein zusätzliches Abschneiden und keine horizontale Scrollbox.
+- Der bestehende Demo-Browsertest für alle sechs Labor-Abschnitte bleibt
+  unverändert. Ein zusätzlicher Test verlängert die Regime-Erklärung gezielt
+  um einen ungetrennten Bezeichner und prüft Text-Erhalt, sichtbaren Overflow
+  und dieselben geometrischen Layoutgrenzen bei 320 und 390 px.
+- Der [NAS-/Pi-Befund zum Stand 0.59.1](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md)
+  ist archiviert und indiziert; seine offenen Integritäts-, Schutz-, Failover-
+  und Modellkorrekturen sind mit Abnahmekriterien in TODO und Grenzen in
+  LUECKEN übernommen. Dieser Release behebt nur den Labor-Layoutfehler,
+  nicht die übrigen Audit-Befunde; keine neue Hardware-/Feldqualitätsabnahme.
+
 ## [0.59.1] – 2026-09-20
 
 **A16 — Juli-Generalprobe vermessen (Phase 0 des Regime-Befunds; Messung +

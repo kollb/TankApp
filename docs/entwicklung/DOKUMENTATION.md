@@ -127,15 +127,18 @@ Lokal am 20.09.2026, Python 3.11 und Node 22:
 Der Fehler betrifft einen bereits bestehenden Textüberlauf der Labor-Regime-
 Karte bei 320 px. Gegenprobe auf unverändertem Ausgangscommit `b1e60df`
 reproduziert denselben Test und dieselben Breiten. Kein durch die
-Dokumentationsverschiebung entstandener Fehler; offene Arbeit in
-[TODO B5](../planung/TODO.md#b5-labor-überlauf-beheben).
+Dokumentationsverschiebung entstandener Fehler; beim damaligen Prüfstand
+als B5 offen. Die nachfolgende Korrektur steht im
+[Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20); die historischen
+Messergebnisse oben bleiben unverändert.
 
 Der normale Playwright-Browserdownload war nicht erreichbar. Verwendet wurde
 Chromium 153 aus `@sparticuz/chromium` mit lokal bereitgestellten Laufzeitlibs,
 ohne Änderung der Projektabhängigkeiten. Keine Hardware-/NAS-Live-Abnahme.
-Der vorhandene Fehler bleibt ausdrücklich offen. Auf Wunsch des Betreibers
-wird die Dokumentationsänderung trotzdem als PR zur Prüfung vorgelegt; die
-rote Demo-Prüfung wird dort benannt, nicht als bestanden dargestellt.
+Der vorhandene Fehler blieb bei dieser Aufräumaktion ausdrücklich offen.
+Auf Wunsch des Betreibers wurde die damalige Dokumentationsänderung trotzdem
+als PR zur Prüfung vorgelegt; die rote Demo-Prüfung wurde dort benannt,
+nicht als bestanden dargestellt.
 
 ## Change-Log des Aufräumens
 
