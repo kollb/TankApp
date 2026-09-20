@@ -3,14 +3,14 @@
 RP2 Fallback-GUI + NAS-Proxy auf Port 8000 (nur Python-Standardbibliothek).
 
 Verhalten:
-  * NAS online  -> alle Requests (GUI + /api/*) werden transparent an das NAS
-                   weitergeleitet. Unter der RP2-Adresse (Port 8000) erscheint
+  * NAS bereit  -> neue GUI-Aufrufe und NAS-API-Requests werden weitergeleitet.
+                   Offene Tabs binden ihre API per X-TankApp-UI (nas-v1/pi-v1). Unter der RP2-Adresse (Port 8000) erscheint
                    dann die vollwertige TankApp-GUI vom NAS.
   * NAS offline -> lokale Fallback-GUI mit
                    - Live-Preisen aus dem RAM-Puffer (/dev/shm/tankapp),
                    - Stationen-Metadaten (Name, Marke, Koordinaten) aus
                      polling.json (die JSONL-Snapshots enthalten nur UUID+Preis),
-                   - gecachten Prognosen aus /tmp/tankapp_cache (F1/F3).
+                   - gecachten, beschreibenden Prognosen aus /tmp/tankapp_cache.
 
 Konfiguration (Umgebungsvariablen, systemd-Drop-in):
   NAS_IP / NAS_PORT      NAS-Adresse (Default: http://<NAS_IP>:1355)
@@ -27,7 +27,7 @@ API-Endpunkte (Fallback-Modus):
   GET /api/v1/health           Status (NAS, Preise, Prognosen, Metadaten)
   GET /api/v1/stations?fuel=   Stationen mit allen Preisen, sortiert
   GET /api/v1/forecasts?fuel=  gecachte Prognosen + Zusammenfassung je Station
-  GET /api/v1/decide?fuel=&liters=  F1/F2/F3-Entscheidung (einfache Logik)
+  GET /api/v1/decide?fuel=&liters=  Preisvergleich, immer no_advice
   GET /api/v1/series?station=&fuel= Tagesverlauf 06–24 Uhr aus dem Puffer
   GET /api/v1/nas-check        NAS-Status sofort neu prüfen
 
@@ -39,8 +39,11 @@ zusätzlich (er braucht die Stunden, nicht nur den letzten Stand je Station).
 
 from __future__ import annotations
 
+import gzip
+import io
 import hashlib
 import json
+import math
 import os
 import sys
 import threading
@@ -52,7 +55,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "4.3"
+VERSION = "5.0"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -63,9 +66,8 @@ FRESH_MINUTES = 15  # Snapshot gilt als "aktuell" bis zu diesem Alter
 SNAPSHOT_TTL_S = 5.0  # Kurzzeit-Cache für Context.snapshot()
 SERIES_FIRST_HOUR = 6  # Tagesstreifen beginnt mit der Stunde 06
 SERIES_LAST_HOUR = 24  # Zelle „24“ ist die Mitternachtsstunde (00:00–00:59)
-WAIT_THRESHOLD_EUR = 1.0  # F1: ab so viel erwarteter Ersparnis pro Tank -> warten
 DEFAULT_LITERS = 40
-MIN_LITERS = 5
+MIN_LITERS = 10
 MAX_LITERS = 100
 NAS_CHECK_TIMEOUT_S = 2.0
 # G4: Der Prognose-Cache liegt bewusst in /tmp (tmpfs) und ist damit nach
@@ -78,7 +80,7 @@ CACHE_REBOOT_HINT = (
     "automatisch mit dem nächsten Abruf (alle 5 Minuten)."
 )
 PROXY_TIMEOUT_S = 15.0
-HEALTH_TTL_ONLINE_S = 15.0  # wie schnell wird das NAS (nach Wiederkehr) bemerkt
+HEALTH_TTL_ONLINE_S = 15.0  # Probe-Cache, keine garantierte Umschaltzeit
 HEALTH_TTL_OFFLINE_S = 30.0  # wie oft wird nach einem Offline-Zustand neu geprüft
 SNAPSHOT_DAYS_BACK = 2  # letzte N Tag-Dateien berücksichtigen (Nacht-Puffer)
 MAX_PROXY_BODY = 32 * 1024 * 1024
@@ -102,7 +104,11 @@ def parse_ts(value) -> datetime | None:
 
 
 def is_number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +381,7 @@ def build_stations(
                 "maps_url": m.get("maps"),
                 "fetched_at": rec["fetched_at"],
                 "age_minutes": round(age, 1),
-                "fresh": age <= FRESH_MINUTES,
+                "fresh": 0 <= age <= FRESH_MINUTES,
             }
         )
     return out
@@ -396,80 +402,73 @@ def load_forecasts(cache_file: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def point_stats(point: dict, current_price: float | None) -> dict | None:
-    """Preis-Score (0…1) + erwartete Ersparnis/Liter — KEINE Wahrscheinlichkeit.
+def forecast_valid_for_display(package: dict | None, row: dict, now: datetime) -> bool:
+    """Conservative cached-data validity; explicitly NOT decision readiness.
 
-    Vereinfachte Annahme: gleichförmige Verteilung zwischen den historischen
-    Quantilen q025 und q975 (Formfehler bis ~8,4 Prozentpunkte gegenüber der
-    kalibrierten Posterior M7). Die GUI darf das deshalb nicht
-    „Wahrscheinlichkeit“ nennen, sondern nur „Preis-Score“ auf Basis des
-    historischen Quantils. Die kalibrierte Wahrscheinlichkeit liefert
-    ausschließlich das NAS (M7).
+    Align with the NAS's 24-hour model age bound, require a non-stale origin
+    and active calibration plus green rolling coverage. Missing evidence is
+    not green. The NAS cache does not include personal constraints or a signed
+    action envelope, so even valid display data never authorize an action.
     """
-    lo, hi = point.get("q025"), point.get("q975")
-    if not (is_number(lo) and is_number(hi) and hi > lo):
-        return None
-    price_score = 0.0
-    exp_saving = 0.0
-    if current_price is not None:
-        price_score = max(0.0, min(1.0, (current_price - lo) / (hi - lo)))
-        if current_price > lo:
-            if current_price >= hi:
-                exp_saving = current_price - (lo + hi) / 2.0
-            else:
-                d = current_price - lo
-                exp_saving = d * d / (2.0 * (hi - lo))
-    return {
-        "price_score": round(price_score, 3),
-        "exp_saving_per_l": round(exp_saving, 5),
-    }
+    package = package or {}
+    generated = parse_ts(package.get("generated_at"))
+    origin = parse_ts(row.get("origin"))
+    valid_until = parse_ts(package.get("valid_until"))
+    rolling = row.get("rolling_picp_7d") or {}
+    current = rolling.get("current") if isinstance(rolling, dict) else None
+    return bool(
+        generated
+        and origin
+        and 0 <= (now - generated).total_seconds() <= 86400
+        and 0 <= (now - origin).total_seconds() <= 86400
+        and ("valid_until" not in package or valid_until and now < valid_until)
+        and row.get("calibrated") is True
+        and row.get("stale_data_at_origin") is False
+        and isinstance(current, dict)
+        and current.get("badge") == "green"
+        and isinstance(row.get("points"), list)
+        and summarize_forecast(row["points"], now, None)
+    )
 
 
 def summarize_forecast(
     points: list[dict] | None, now: datetime, current_price: float | None
 ) -> dict | None:
-    """Zusammenfassung der zukünftigen Prognose-Punkte (ab jetzt, max. 24 h)."""
-    future: list[tuple[datetime, dict, dict]] = []
-    horizon = now + timedelta(hours=25)
-    for p in points or []:
-        if not isinstance(p, dict):
+    """Descriptive quantiles only: no CDF, savings or locally selected window.
+
+    Marginal quantiles do not specify a distribution of window minima. In
+    particular, a positive-part gain is not a signed expected net saving.
+    ``current_price`` remains a compatibility argument, never a decision input.
+    """
+    future = []
+    for point in points or []:
+        if not isinstance(point, dict):
             continue
-        ts = parse_ts(p.get("timestamp"))
-        if ts is None or ts < now - timedelta(minutes=5) or ts > horizon:
+        ts = parse_ts(point.get("timestamp"))
+        quantiles = [point.get(key) for key in ("q025", "q50", "q975")]
+        if (
+            ts is None
+            or not now <= ts <= now + timedelta(hours=24)
+            or not all(is_number(q) for q in quantiles)
+            or not 0 < quantiles[0] <= quantiles[1] <= quantiles[2]
+        ):
             continue
-        stats = point_stats(p, current_price)
-        if stats is None:
-            continue
-        future.append((ts, p, stats))
+        local = ts.astimezone(local_tz())
+        future.append(
+            {
+                "at": ts.isoformat(),
+                "time": local.strftime("%H:%M"),
+                "date": local.strftime("%Y-%m-%d"),
+                **dict(zip(("q025", "q50", "q975"), quantiles)),
+            }
+        )
     if not future:
         return None
-    ranked = sorted(future, key=lambda t: t[2]["exp_saving_per_l"], reverse=True)
-
-    def window(ts: datetime, p: dict, stats: dict) -> dict:
-        # Die Punkte sind UTC (Engine-Index); „time“/„date“ sind API-Vertrag
-        # für Menschen → Ortszeit (Europe/Berlin). Der ISO-Stempel „at“ bleibt
-        # UTC — die GUI rendert ihn selbst mit Europe/Berlin.
-        local = ts.astimezone(local_tz())
-        return {
-            "at": ts.isoformat(),
-            "time": local.strftime("%H:%M"),
-            "date": local.strftime("%Y-%m-%d"),
-            "q50": p.get("q50"),
-            "q025": p.get("q025"),
-            "q975": p.get("q975"),
-            "price_score": stats["price_score"],
-            "expected_saving_ct_per_l": round(stats["exp_saving_per_l"] * 100, 1),
-        }
-
-    best_ts, best_p, best_stats = ranked[0]
-    medians = [p.get("q50") for _, p, _ in future if is_number(p.get("q50"))]
+    future.sort(key=lambda point: point["at"])
     return {
-        "best": window(best_ts, best_p, best_stats),
-        "windows": [
-            window(ts, p, s) for ts, p, s in ranked[:3] if s["exp_saving_per_l"] > 0
-        ],
-        "min_q50": min(medians) if medians else None,
-        "max_q50": max(medians) if medians else None,
+        "timeline": future,
+        "min_q50": min(point["q50"] for point in future),
+        "max_q50": max(point["q50"] for point in future),
         "points": len(future),
     }
 
@@ -479,8 +478,54 @@ def summarize_forecast(
 # ---------------------------------------------------------------------------
 
 
+def read_bounded_response(resp, limit: int) -> bytes:
+    """Read a complete, bounded response before committing downstream headers.
+
+    Missing Content-Length is legal (chunked / close-delimited). A declared
+    length must match; a truncated response must never look like success.
+    """
+    declared = resp.headers.get("Content-Length")
+    length = int(declared) if declared is not None else None
+    if length is not None and not 0 <= length <= limit:
+        raise ValueError("response_length")
+    body = resp.read(limit + 1)
+    if len(body) > limit or (length is not None and len(body) != length):
+        raise ValueError("response_length")
+    return body
+
+
+def stations_ready(data) -> bool:
+    """A well-framed 200 can still carry a database/collector failure."""
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get("stations"), list)
+        and isinstance(data.get("cities"), list)
+        and all(isinstance(city, str) for city in data["cities"])
+        and data.get("connection_error") is None
+        and not data.get("error_code")
+        and all(
+            isinstance(row, dict) and isinstance(row.get("station_id"), str)
+            for row in data["stations"]
+        )
+    )
+
+
+STATE_HINTS = {
+    "nas_ready": "NAS bereit — die vollständige Ansicht ist verfügbar.",
+    "nas_degraded": "NAS antwortet, aber die Fach-API ist nicht bereit — lokale Preise bleiben verfügbar.",
+    "pi_prices_only": "Nur lokale Preise — keine Tank- oder Warteempfehlung.",
+    "pi_forecast_valid": "Lokale Preise und gültige Prognosedaten — keine Aktionsfreigabe.",
+    "recovering": "NAS kehrt zurück — die Bereitschaft wird erneut geprüft.",
+}
+
+
 class NasState:
-    """Gemeinsamer (thread-sicherer) NAS-Status mit Kurzzeit-Cache."""
+    """Single-flight readiness with ordered failures and recovery hysteresis.
+
+    Initial success may serve the NAS immediately. After a failure, two
+    successful probes separated by recovery_interval are required. A proxy
+    failure invalidates an older in-flight probe (revision fence).
+    """
 
     def __init__(
         self,
@@ -489,69 +534,116 @@ class NasState:
         ttl_online: float = HEALTH_TTL_ONLINE_S,
         ttl_offline: float = HEALTH_TTL_OFFLINE_S,
         timeout: float = NAS_CHECK_TIMEOUT_S,
+        recovery_interval: float = 2.0,
     ):
         self.base_url = base_url
         self.health_url = health_url or (
             f"{base_url}/api/v1/health" if base_url else None
         )
-        self.ttl_online = ttl_online
-        self.ttl_offline = ttl_offline
-        self.timeout = timeout
-        self._lock = threading.Lock()
+        self.ttl_online, self.ttl_offline = ttl_online, ttl_offline
+        self.timeout, self.recovery_interval = timeout, recovery_interval
+        self._lock = threading.Condition()
+        self._probing = False
+        self._revision = 0
+        self._needs_recovery = False
+        self._recovery_at: float | None = None
         self.online: bool | None = None
-        self.checked_at: float = 0.0
+        self.checked_at = 0.0
+        self.checked_at_iso: str | None = None
         self.last_error: str | None = None
+        self.state = "pi_prices_only"
 
     def _probe(self) -> tuple[bool, str | None]:
+        stage = "health"
         try:
-            with urllib.request.urlopen(self.health_url, timeout=self.timeout) as resp:
-                # Vollständiges Body lesen (bis zur Obergrenze), nicht die
-                # ersten 4096 Bytes: Das Health-Payload wächst (mehr
-                # Alarms, längere Fehler-Strings), und ein abgeschnittenes
-                # JSON ist per Definition nicht parsebar.
-                try:
-                    length = min(
-                        int(resp.headers.get("Content-Length") or 0),
-                        128 * 1024,
+            for url, key in (
+                (self.health_url, "app"),
+                (f"{self.base_url}/api/v1/stations?fuel=e10", "stations"),
+            ):
+                stage = "health" if key == "app" else "api"
+                with urllib.request.urlopen(url, timeout=self.timeout) as resp:
+                    data = json.loads(read_bounded_response(resp, 2 * 1024 * 1024))
+                    valid = (
+                        isinstance(data, dict) and data.get("app") == "online"
+                        if key == "app"
+                        else stations_ready(data)
                     )
-                    body = resp.read(length) if length else b""
-                except (ValueError, OSError):
-                    body = b""
-                try:
-                    data = json.loads(body.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    data = {}
-                if resp.status == 200 and (not data or data.get("app") == "online"):
-                    return True, None
-                return False, f"health antwortet nicht 'online' (HTTP {resp.status})"
-        except Exception as exc:  # URLError, TimeoutError, HTTPError, ...
-            return False, type(exc).__name__
+                    if resp.status != 200 or not valid:
+                        return False, f"{stage}:invalid_payload"
+            return True, None
+        except Exception as exc:
+            return False, f"{stage}:{type(exc).__name__}"
 
     def is_online(self, force: bool = False) -> bool:
         if not self.base_url:
             return False
         with self._lock:
+            if self._probing:
+                # Simultaneous forced probes join this one, not another round.
+                self._lock.wait_for(lambda: not self._probing)
+                return bool(self.online)
             now = time.monotonic()
-            ttl = self.ttl_online if self.online else self.ttl_offline
+            ttl = (
+                self.recovery_interval
+                if self.state == "recovering"
+                else (self.ttl_online if self.online else self.ttl_offline)
+            )
             if not force and self.online is not None and now - self.checked_at < ttl:
-                return self.online
-        ok, err = self._probe()
+                return bool(self.online)
+            self._probing = True
+            revision = self._revision
+        try:
+            ok, error = self._probe()
+        except Exception as exc:
+            ok, error = False, f"health:{type(exc).__name__}"
         with self._lock:
-            self.online, self.checked_at, self.last_error = ok, time.monotonic(), err
-        return ok
+            if revision == self._revision:
+                now = time.monotonic()
+                self.checked_at, self.checked_at_iso = now, utcnow().isoformat()
+                self.last_error = error
+                if not ok:
+                    self._fail(error or "probe_failed")
+                elif self._needs_recovery:
+                    if self._recovery_at is None:
+                        self._recovery_at = now
+                    elif now - self._recovery_at >= self.recovery_interval:
+                        self._needs_recovery = False
+                    self.online = not self._needs_recovery
+                    self.state = "nas_ready" if self.online else "recovering"
+                else:
+                    self.online, self.state = True, "nas_ready"
+            self._probing = False
+            self._lock.notify_all()
+            return bool(self.online)
+
+    def _fail(self, reason: str):
+        self.online = False
+        self.last_error = reason
+        self._needs_recovery = True
+        self._recovery_at = None
+        self.state = (
+            "nas_degraded"
+            if reason.startswith(("api:", "proxy:"))
+            else "pi_prices_only"
+        )
 
     def mark_offline(self, reason: str):
         with self._lock:
-            self.online = False
-            self.checked_at = time.monotonic()
-            self.last_error = reason
+            self._revision += 1
+            self._fail(reason)
+            self.checked_at, self.checked_at_iso = (
+                time.monotonic(),
+                utcnow().isoformat(),
+            )
 
     def info(self) -> dict:
         with self._lock:
             return {
                 "configured": bool(self.base_url),
                 "online": bool(self.online) if self.base_url else False,
-                "last_check": utcnow().isoformat() if self.checked_at else None,
+                "state": self.state,
+                "hint": STATE_HINTS[self.state],
+                "last_check": self.checked_at_iso,
                 "error": self.last_error,
             }
 
@@ -587,6 +679,25 @@ class Context:
         self._snapshot_lock = threading.Lock()
         self._snapshot: dict | None = None
         self._snapshot_at = 0.0
+
+    def failover_info(self) -> dict:
+        snapshot = self.snapshot()
+        package = snapshot["forecasts"] or {}
+        rows = package.get("forecasts") or []
+        valid = isinstance(rows, list) and any(
+            isinstance(row, dict) and forecast_valid_for_display(package, row, utcnow())
+            for row in rows
+        )
+        data_state = "pi_forecast_valid" if valid else "pi_prices_only"
+        nas = self.nas.info()
+        state = data_state if nas["state"] == "pi_prices_only" else nas["state"]
+        return {
+            "state": state,
+            "hint": STATE_HINTS[state],
+            "data_state": data_state,
+            "decision_ready": False,
+            "api_contract": "pi-v1",
+        }
 
     def snapshot(self, force: bool = False) -> dict:
         """Puffer-Stand, kurz zwischengespeichert (SNAPSHOT_TTL_S).
@@ -642,6 +753,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 flush=True,
             )
 
+        def end_headers(self):
+            self._response_started = True
+            super().end_headers()
+
         def _send(
             self,
             status: int,
@@ -652,6 +767,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-TankApp-Contract", "pi-v1")
+            self.send_header("Vary", "X-TankApp-UI, X-Force-Fallback")
             for key, value in (extra_headers or {}).items():
                 self.send_header(key, value)
             self.end_headers()
@@ -666,9 +784,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         # -- Routing ---------------------------------------------------------
         def do_GET(self):
+            self._response_started = False
             self._handle()
 
         def do_HEAD(self):
+            self._response_started = False
             self._handle()
 
         # B4: Schreibaktionen (Beleg buchen, Intent, Profil, …) werden wie
@@ -698,6 +818,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             return self.rfile.read(length) if length > 0 else b""
 
         def _handle_write(self):
+            self._response_started = False
             try:
                 url = urllib.parse.urlsplit(self.path)
                 # Body immer zuerst lesen: Keep-Alive-Verbindung bleibt
@@ -718,15 +839,17 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if url.path.startswith("/api/"):
                     self._error(
                         503,
-                        "NAS offline — Schreibaktionen sind nur erreichbar,"
-                        " wenn das NAS antwortet (der Fallback ist nur lesend)."
-                        " Der Knopf „NAS prüfen“ oben löst das direkt.",
+                        "NAS nicht bereit — der Fallback ist nur lesend. "
+                        "Vorgemerkte Belege werden nach bestätigter Rückkehr nachgereicht.",
                     )
                 else:
                     self._error(405, "Methode wird hier nicht unterstützt.")
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as exc:  # Server bleibt laufen
+                if self._response_started:
+                    self.close_connection = True
+                    return
                 try:
                     self._error(500, f"interner Fehler: {type(exc).__name__}")
                 except Exception:
@@ -741,6 +864,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     or "fallback" in query
                     or self.headers.get("X-Force-Fallback") == "1"
                 )
+                ui_contract = self.headers.get("X-TankApp-UI")
+                if ui_contract not in (None, "pi-v1", "nas-v1"):
+                    self._error(
+                        409, "API-Modus unbekannt — die Ansicht benötigt ein Update."
+                    )
+                    return
+                force_fb = force_fb or ui_contract == "pi-v1"
                 # nas-check ist ein RP2-eigener Steuer-Endpunkt (kein NAS-API-
                 # Pfad) und wird daher auch im Proxy-Modus lokal beantwortet.
                 if url.path == "/api/v1/nas-check":
@@ -751,6 +881,16 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         return
                     # Proxy fehlgeschlagen -> NAS als offline markiert, Fallback senden
                 if url.path.startswith("/api/"):
+                    # Only stations share a schema. In particular series,
+                    # health and decide MUST NOT change shape in a NAS tab.
+                    if ui_contract == "nas-v1" and url.path != "/api/v1/stations":
+                        self._error(
+                            503,
+                            "NAS nicht bereit — die Ansicht bleibt erhalten; lokale Preise sind verfügbar.",
+                        )
+                        return
+                    if url.path == "/api/v1/health":
+                        ctx.nas.is_online()
                     self._api(url.path, query)
                 elif url.path in ("/", "/index.html"):
                     self._index()
@@ -759,6 +899,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as exc:  # Server bleibt laufen
+                if self._response_started:
+                    self.close_connection = True
+                    return
                 try:
                     self._error(500, f"interner Fehler: {type(exc).__name__}")
                 except Exception:
@@ -766,17 +909,15 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         # -- NAS-Proxy -------------------------------------------------------
         def _proxy(self, body: bytes | None = None) -> bool:
-            """Request an die NAS weiterleiten.
+            """Buffer and verify upstream completely; never retry a started reply.
 
-            ``body`` nur für Schreibmethoden (POST/PUT/DELETE/PATCH): wird
-            zusammen mit dem Content-Type der Anfrage durchgereicht.
+            No write is replayed here. A lost write acknowledgement remains a
+            retryable 503 for the idempotent browser outbox, never a Pi write.
+            4xx/304 keep their auth/cache semantics rather than being hidden.
             """
             target = ctx.nas.base_url + self.path
+            response_received = False
             try:
-                # Der Proxy ist sicherheits- und cache-semantisch transparent:
-                # Credentials, Revalidierung und Kompression dürfen am NAS
-                # nicht verloren gehen. Hop-by-hop-Header bleiben bewusst
-                # ausgeschlossen.
                 headers = {}
                 for name in (
                     "Authorization",
@@ -792,71 +933,101 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if body is None:
                     headers.pop("Content-Type", None)
                 req = urllib.request.Request(
-                    target, method=self.command, data=body, headers=headers or {}
+                    target, method=self.command, data=body, headers=headers
                 )
-                with urllib.request.urlopen(req, timeout=ctx.proxy_timeout) as resp:
-                    self.send_response(resp.status)
-                    has_length = bool(resp.headers.get("Content-Length"))
-                    for header in (
-                        "Content-Type",
-                        "Content-Length",
-                        "Content-Encoding",
-                        "Cache-Control",
-                        "ETag",
-                        "Last-Modified",
-                        "Vary",
-                        "X-Content-Type-Options",
-                        "X-Frame-Options",
-                        "Content-Security-Policy",
-                        "Referrer-Policy",
-                    ):
-                        # urlopen dekodiert Chunks/Close-Framing; ohne bekannte
-                        # Bodylänge darf kein Content-Length vorgegeben werden
-                        if not has_length and header == "Content-Length":
-                            continue
-                        value = resp.headers.get(header)
-                        if value:
-                            self.send_header(header, value)
-                    if not has_length:
-                        # Bodylänge unbekannt (chunked/close-delimited) ->
-                        # Keep-Alive nicht antasten, Connection abschließen
-                        self.send_header("Connection", "close")
-                        self.close_connection = True
-                    self.send_header("X-TankApp-Proxy", "nas")
-                    self.end_headers()
-                    if self.command == "HEAD":
-                        return True
-                    sent = 0
-                    while True:
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        sent += len(chunk)
-                        if sent > MAX_PROXY_BODY:
-                            return True
-                    return True
-            except urllib.error.HTTPError as exc:
-                # Fehler des NAS (404, 400, ...) so weiterleiten wie bekommen
-                body = b""
-                if self.command != "HEAD":
-                    try:
-                        body = exc.read()[:MAX_PROXY_BODY]
-                    except Exception:
-                        body = b""
-                self.send_response(exc.code)
-                ctype = exc.headers.get("Content-Type") if exc.headers else None
-                if ctype:
-                    self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("X-TankApp-Proxy", "nas")
-                self.end_headers()
-                if body:
-                    self.wfile.write(body)
-                return True
+                try:
+                    response = urllib.request.urlopen(req, timeout=ctx.proxy_timeout)
+                except urllib.error.HTTPError as exc:
+                    response = exc
+                with response as resp:
+                    response_received = True
+                    status = resp.status
+                    if status >= 500 and self.command in ("GET", "HEAD"):
+                        raise ValueError(f"http_{status}")
+                    payload = (
+                        b""
+                        if self.command == "HEAD" or status == 304
+                        else read_bounded_response(resp, MAX_PROXY_BODY)
+                    )
+                    path = urllib.parse.urlsplit(self.path).path
+                    json_endpoint = path in {
+                        "/api/v1/health",
+                        "/api/v1/stations",
+                        "/api/v1/overview",
+                        "/api/v1/decide",
+                        "/api/v1/series",
+                        "/api/v1/forecast",
+                        "/api/v1/last_forecasts",
+                    }
+                    if self.command != "HEAD" and status == 200 and json_endpoint:
+                        decoded = payload
+                        if resp.headers.get("Content-Encoding") == "gzip":
+                            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as zipped:
+                                decoded = zipped.read(MAX_PROXY_BODY + 1)
+                        if len(decoded) > MAX_PROXY_BODY:
+                            raise ValueError("api_payload")
+                        data = json.loads(decoded)
+                        if not isinstance(data, dict):
+                            raise ValueError("api_payload")
+                        if path == "/api/v1/stations" and not stations_ready(data):
+                            raise ValueError("stations_not_ready")
+                        if path == "/api/v1/health" and data.get("app") != "online":
+                            raise ValueError("health_not_ready")
+                    forwarded = {
+                        name: resp.headers[name]
+                        for name in (
+                            "Content-Type",
+                            "Content-Encoding",
+                            "Cache-Control",
+                            "ETag",
+                            "Last-Modified",
+                            "Vary",
+                            "X-Content-Type-Options",
+                            "X-Frame-Options",
+                            "Content-Security-Policy",
+                            "Referrer-Policy",
+                            "WWW-Authenticate",
+                            "Retry-After",
+                        )
+                        if resp.headers.get(name) is not None
+                    }
+                    # HEAD/304 length is the selected representation length,
+                    # not the (empty) transfer body. Otherwise normalize framing.
+                    length = (
+                        resp.headers.get("Content-Length")
+                        if self.command == "HEAD" or status == 304
+                        else str(len(payload))
+                    )
+                    if length is not None:
+                        if int(length) < 0:
+                            raise ValueError("response_length")
+                        forwarded["Content-Length"] = length
+                    if status >= 500:
+                        # A complete write rejection is not a lost ACK. Keep
+                        # its error_code (e.g. store_corrupted) so Batch 1's
+                        # outbox can distinguish permanent rejection from retry.
+                        ctx.nas.mark_offline(f"api:http_{status}")
+                    forwarded["Vary"] = ", ".join(
+                        filter(
+                            None,
+                            (forwarded.get("Vary"), "X-TankApp-UI, X-Force-Fallback"),
+                        )
+                    )
             except Exception as exc:
-                ctx.nas.mark_offline(type(exc).__name__)
+                stage = "proxy" if response_received else "transport"
+                ctx.nas.mark_offline(f"{stage}:{type(exc).__name__}")
                 return False
+            # Nothing in this phase is allowed to return False: the response
+            # has been selected. A client write failure closes the connection.
+            self.send_response(status)
+            for name, value in forwarded.items():
+                self.send_header(name, value)
+            self.send_header("X-TankApp-Proxy", "nas")
+            self.send_header("X-TankApp-Contract", "nas-v1")
+            self.end_headers()
+            if payload:
+                self.wfile.write(payload)
+            return True
 
         # -- Fallback: Hauptseite ---------------------------------------------
         def _index(self):
@@ -914,11 +1085,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     {
                         "online": online,
                         "nas": info,
+                        "failover": ctx.failover_info(),
                         "hint": (
-                            "NAS ist online — jetzt neu laden (Reload) zeigt die "
-                            "vollwertige NAS-GUI."
+                            "NAS bereit — „NAS-Ansicht öffnen“ wechselt die Oberfläche."
                             if online
-                            else "NAS nicht erreichbar — Fallback-GUI bleibt aktiv."
+                            else info["hint"]
                         ),
                     }
                 )
@@ -995,6 +1166,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 {
                     "status": "fallback",
                     "version": VERSION,
+                    "failover": ctx.failover_info(),
                     "cities": cities,
                     "city_options": city_options,
                     "generated_at": price_now.isoformat(),
@@ -1034,6 +1206,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             fuel = self._fuel(query)
             city = self._city(query)
             snap = ctx.snapshot()
+            nas_client = self.headers.get("X-TankApp-UI") == "nas-v1"
             rows = self._filter_city(list(snap["stations"]), city)
             rows.sort(
                 key=lambda s: (
@@ -1048,7 +1221,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     {
                         **s,
                         "fuel": fuel,
-                        "price": s.get(fuel) if s["status"] == "open" else None,
+                        "city": s["city_label"] if nas_client else s["city"],
+                        "last_price": s.get(fuel),
+                        "price": s.get(fuel)
+                        if s["status"] == "open" and (s["fresh"] or not nas_client)
+                        else None,
                         # O44: Die gebaute App (``web/dist``) liest je Zeile
                         # ``observed_at`` für Alter und Frische-Fußzeile; der
                         # Puffer führt den Poll-Zeitstempel als ``fetched_at``.
@@ -1064,9 +1241,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             # ``city_options`` mit dem Set-Key als Wert).
             cities = list(
                 dict.fromkeys(
-                    str(s.get("city") or "").strip()
+                    str(s.get("city_label" if nas_client else "city") or "").strip()
                     for s in snap["stations"]
-                    if str(s.get("city") or "").strip()
+                    if str(s.get("city_label" if nas_client else "city") or "").strip()
                 )
             )
             self._json(
@@ -1075,11 +1252,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "fuel": fuel,
                     "cities": cities,
                     "fresh_minutes": FRESH_MINUTES,
+                    "connection_error": None,
                     "stations": out,
                     "fresh_prices": sum(
                         1 for s in out if s["fresh"] and s["price"] is not None
                     ),
-                    "nas_status": "offline" if not ctx.nas.online else "online",
+                    "nas_status": "offline",
+                    "source": "pi",
                     # Ehrlichkeit in der App-Form: Der Fallback kennt weder
                     # Kalibrierung noch Modell-Prognosen (die kommen aus dem
                     # RP2-Cache, nicht aus der Engine-Veröffentlichung).
@@ -1142,6 +1321,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "origin": fc.get("origin"),
                         "last_observation": fc.get("last_observation"),
                         "stale_data_at_origin": fc.get("stale_data_at_origin"),
+                        "valid_for_display": forecast_valid_for_display(
+                            forecasts, fc, now
+                        ),
+                        "decision_ready": False,
                         "current_price": current,
                         "summary": summarize_forecast(points, now, current),
                         "points": points,
@@ -1230,10 +1413,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             cheapest = open_stations[0]
             second = open_stations[1] if len(open_stations) > 1 else None
             priciest = open_stations[-1]
-            # B8: Die NAS-GUI nullt veraltete Preise, bevor sie die günstigste
-            # sucht; der Fallback zeigt die Zahlen weiter an, macht die
-            # Frische aber sichtbar — die Antwort-Karte kippt auf
-            # „Momentaufnahme“, wenn im Set keine frische Meldung liegt.
+            # A snapshot, not a station decision: stale selected prices stay
+            # visible and explicitly labelled, even if another station is fresh.
             fresh_in_set = sum(1 for s in open_stations if s["fresh"])
             oldest_age = max(s["age_minutes"] for s in open_stations)
             # Fix: spart vs zweitgünstigste statt vs teuerste (Top1 vs Top10 nicht sinnvoll)
@@ -1267,70 +1448,28 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 "oldest_age_minutes": oldest_age,
             }
 
-            # F1/F3 aus gecachten Prognosen (für die günstigste Station)
-            f1: dict = {"available": False}
-            windows: list[dict] = []
-            forecast_info: dict = {"available": False}
-            forecasts = snap["forecasts"]
-            if forecasts and forecasts.get("forecasts"):
-                fc = next(
-                    (
-                        f
-                        for f in forecasts["forecasts"]
-                        if isinstance(f, dict)
-                        and f.get("station_id") == cheapest["station_id"]
-                        and str(f.get("fuel", "")).lower() == fuel
-                        and isinstance(f.get("points"), list)
-                    ),
-                    None,
-                )
-                if fc:
-                    summary = summarize_forecast(fc["points"], now, cheapest[fuel])
-                    gen_ts = parse_ts(forecasts.get("generated_at"))
-                    forecast_info = {
-                        "available": summary is not None,
-                        "generated_at": forecasts.get("generated_at"),
-                        "age_hours": round((now - gen_ts).total_seconds() / 3600.0, 1)
-                        if gen_ts
-                        else None,
-                        "station": cheapest["name"],
-                    }
-                    if summary:
-                        best = summary["best"]
-                        saving_eur = best["expected_saving_ct_per_l"] / 100.0 * liters
-                        wait = (
-                            saving_eur >= WAIT_THRESHOLD_EUR
-                            and best["price_score"] >= 0.5
-                        )
-                        f1 = {
-                            "available": True,
-                            "recommendation": "wait" if wait else "refuel_now",
-                            "reason": (
-                                f"Prognose rechnet bis {best['time']} Uhr mit ~"
-                                f"{best['q50']:.3f} € (Preis-Score "
-                                f"{int(round(best['price_score'] * 100))} % auf Basis "
-                                f"des historischen Quantils), erwartet "
-                                f"~{saving_eur:.2f} € Ersparnis für {liters} L."
-                                if wait
-                                else "Kein deutlich günstigeres Fenster in den nächsten 24 h "
-                                "abzusehen — jetzt tanken passt."
-                            ),
-                            "best_at": best["at"],
-                            "expected_price": best["q50"],
-                            "price_score": best["price_score"],
-                            "expected_saving_eur_tank": round(saving_eur, 2),
-                            "current_price": cheapest[fuel],
-                            "basis": "Preis-Score aus historischen Quantilen "
-                            "(Gleichverteilung zwischen q025/q975) — "
-                            "keine kalibrierte Wahrscheinlichkeit; "
-                            "die exakte M7-Berechnung läuft auf dem NAS",
-                        }
-                        windows = summary["windows"]
+            # Fail closed: the Pi has neither hard personal constraints nor
+            # a validated NAS decision envelope. Cached quantiles cannot grant
+            # an action, even if individual quality flags happen to be green.
+            f1 = {
+                "available": False,
+                "recommendation": "no_advice",
+                "reason": "Nur Preisvergleich — Tank- und Warteentscheidungen "
+                "benötigen die geprüfte NAS-Entscheidung und das persönliche Profil.",
+            }
+            windows = []
+            forecasts = snap["forecasts"] or {}
+            forecast_info = {
+                "available": bool(forecasts.get("forecasts")),
+                "generated_at": forecasts.get("generated_at"),
+            }
 
             self._json(
                 {
                     "available": True,
                     "mode": "fallback",
+                    "decision_ready": False,
+                    "action": "no_advice",
                     "fuel": fuel,
                     "liters": liters,
                     "generated_at": now.isoformat(),
@@ -1338,7 +1477,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "f1": f1,
                     "windows": windows,
                     "forecast": forecast_info,
-                    "nas_status": "offline" if not ctx.nas.online else "online",
+                    "nas_status": "offline",
+                    "source": "pi",
                 }
             )
 
@@ -2014,7 +2154,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
       </select>
     </label>
     <label class="field">Tank
-      <input id="liters" type="number" min="5" max="100" step="5" value="40" aria-label="Tankgröße in Liter"> L
+      <input id="liters" type="number" min="10" max="100" step="1" value="40" aria-label="Tankgröße in Liter"> L
     </label>
     <span class="spacer"></span>
     <div class="seg slim" id="view-tabs" role="tablist" aria-label="Ansicht">
@@ -2034,7 +2174,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
     <div class="cols">
     <div class="col col-a">
 
-    <p class="section-kicker"><span class="idx">1 · </span>Empfehlung</p>
+    <p class="section-kicker"><span class="idx">1 · </span>Preisvergleich</p>
     <section class="card answer" id="answer-card" aria-labelledby="answer-title">
       <div class="muted"><span class="spinner"></span> Lade …</div>
     </section>
@@ -2069,7 +2209,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
           <button type="button" data-sort="near">Nähe</button>
           <button type="button" data-sort="fresh">Aktuell</button>
         </div>
-        <span class="muted" style="font-size:11.5px">Sortierung wirkt auf die Liste, nicht auf die Empfehlung.</span>
+        <span class="muted" style="font-size:11.5px">Sortierung wirkt auf die Liste, nicht auf den Preisvergleich.</span>
       </div>
       <div class="st-grid" id="st-grid"><div class="muted"><span class="spinner"></span> Lade …</div></div>
       <button class="collapse-link hidden" id="stations-toggle" type="button" aria-expanded="false">
@@ -2117,12 +2257,12 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
   </div>
 
   <footer class="foot">
-    <p>Diese Adresse läuft auf dem <b>RP2</b>. Wenn das <b>NAS online</b> ist, zeigt sie automatisch
-    die vollwertige TankApp-GUI. Im Fallback-Modus kommen die Live-Preise direkt aus dem
-    Collector-Puffer; Prognosen sind gecacht und bis zu 24 h alt.</p>
-    <p>F1 „Jetzt oder warten“ · F2 „Hier oder woanders“ · F3 „Heute oder später“ —
-    Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit
-    (die liefert ausschließlich das NAS, M7) · Auto-Refresh alle 60 s.</p>
+    <p>Diese Adresse läuft auf dem <b>RP2</b>. Sobald das <b>NAS bereit</b> ist,
+    öffnet ein Klick auf den NAS-Status die vollständige Ansicht. Dieser Tab bleibt bis dahin im Pi-Modus.
+    Preise kommen aus dem Collector-Puffer; gecachte Prognosen können veraltet sein.</p>
+    <p>Nur Preisvergleich — keine Tank-, Warte- oder Fensterentscheidung.
+    Quantile sind beschreibende Prognosedaten, keine Aktionsfreigabe.
+    Auto-Refresh alle 60 s; keine garantierte Umschaltzeit.</p>
   </footer>
 </main>
 
@@ -2164,7 +2304,7 @@ function savedSort() {
 const state = {
   fuel: savedFuel(),
   city: String(LS.get("city", "") || ""),
-  liters: Math.max(5, Math.min(100, Number(LS.get("liters", 40)) || 40)),
+  liters: Math.max(10, Math.min(100, Number(LS.get("liters", 40)) || 40)),
   view: LS.get("view", "alltag") === "werkstatt" ? "werkstatt" : "alltag",
   sort: savedSort(),
 };
@@ -2284,7 +2424,10 @@ function applyTheme(t) {
 
 /* ------------------------------- Daten ----------------------------------- */
 async function j(url) {
-  const r = await fetch(url, { cache: "no-store" });
+  const r = await fetch(url, { cache: "no-store", headers: { "X-TankApp-UI": "pi-v1" } });
+  if (r.headers.get("X-TankApp-Contract") && r.headers.get("X-TankApp-Contract") !== "pi-v1") {
+    throw new Error("API-Modus passt nicht zur Ansicht");
+  }
   if (!r.ok) {
     const err = new Error("HTTP " + r.status);
     err.status = r.status;
@@ -2351,12 +2494,14 @@ function renderHeader(health) {
     $("#nas-text").textContent = "NAS nicht konfiguriert";
   } else if (nas.online) {
     nasPill.className = "pill ok";
-    nasPill.title = "NAS erreichbar — neu laden zeigt die vollwertige NAS-GUI. Klick prüft sofort neu.";
-    $("#nas-text").textContent = "NAS online";
+    nasPill.title = "NAS bereit — Klick öffnet die vollständige Ansicht.";
+    $("#nas-text").textContent = "NAS bereit — Ansicht öffnen";
   } else {
     nasPill.className = "pill bad";
     nasPill.title = "NAS nicht erreichbar" + (nas.error ? " (" + nas.error + ")" : "") + " — Fallback-Modus. Klick prüft sofort neu.";
-    $("#nas-text").textContent = "NAS offline";
+    $("#nas-text").textContent = nas.state === "recovering" ? "NAS kehrt zurück" :
+      nas.state === "nas_degraded" ? "NAS eingeschränkt" : "NAS offline";
+    nasPill.title = nas.hint || nasPill.title;
   }
   const p = h.prices || {};
   const pricePill = $("#price-pill");
@@ -2407,7 +2552,7 @@ function renderAnswer(decide, stations, health) {
       '<div class="verdict"><span class="verdict-icon">' + ICONS.fuel + "</span>" +
       '<div style="min-width:0"><div class="verdict-text" id="answer-title">Noch kein frischer Preis.</div>' +
       '<div class="verdict-reason">' + esc(reason) +
-      " Der Status oben zeigt, wo es hängt — sobald der Collector meldet, steht hier die Empfehlung.</div></div></div>";
+      " Der Status oben zeigt, wo es hängt — sobald der Collector meldet, steht hier der Preisvergleich.</div></div></div>";
     return;
   }
   const f2 = decide.f2;
@@ -2415,41 +2560,18 @@ function renderAnswer(decide, stations, health) {
   const live = rows.find((x) => x.station_id === s.station_id) || {};
   const f1 = decide.f1 || {};
   const fc = decide.forecast || {};
-  const waiting = !!f1.available && f1.recommendation === "wait";
-  // B8: Ohne frische Meldung im Set ist der Preisvergleich nur eine
-  // Momentaufnahme — die Antwort kippt von „Empfehlung“ auf „Zustand“.
-  const staleSet = isNum(f2.fresh_in_set) && f2.fresh_in_set === 0;
-  let verdict, reason, icon;
-  if (staleSet) {
-    icon = ICONS.clock;
-    verdict = "Preis-Momentaufnahme — kein frischer Report im Set";
-    reason = "Alle Preismeldungen im Set sind veraltet (älteste: " +
-      ageLabel(f2.oldest_age_minutes) + ") — bis der Collector wieder meldet" +
-      " ist das nur ein Preisvergleich, keine Empfehlung." +
-      (f1.reason ? " " + esc(f1.reason) : "");
-  } else if (waiting) {
-    icon = ICONS.clock;
-    verdict = "Bis " + esc(relDay(f1.best_at)) + " Uhr warten lohnt sich";
-    reason = esc(f1.reason || "");
-  } else if (f1.available) {
-    icon = ICONS.fuel;
-    verdict = "Jetzt tanken";
-    reason = esc(f1.reason || "");
-  } else {
-    icon = ICONS.fuel;
-    verdict = "Aktueller Preisvergleich";
-    reason = "Keine Prognose für die günstigste Station" +
-      (fc.generated_at ? " (Cache von " + esc(shortStamp(fc.generated_at)) + ")" : "") +
-      " — ohne sie gibt es keinen belastbaren Grund zu warten. Nimm die günstigste frische Station." +
-      " " + esc(REBOOT_HINT);
-  }
+  const waiting = false;
+  const staleSet = !f2.fresh;
+  const icon = staleSet ? ICONS.clock : ICONS.fuel;
+  const verdict = staleSet ? "Preis-Momentaufnahme — gewählter Preis veraltet" : "Aktueller Preisvergleich";
+  const reason = esc(f1.reason || "Nur Preisvergleich — keine Tank- oder Warteempfehlung.") +
+    (staleSet ? " Die günstigste Meldung ist nicht frisch, auch wenn andere Stationen aktuelle Preise haben." : "");
   const vsLabel = f2.saving_vs === "second" && f2.second_name
     ? "gegen " + esc(f2.second_name) + " (2. günstigste)"
     : "gegen die teuerste im Set";
   const route = s.maps_url
     ? '<div class="actions"><a class="btn primary" href="' + esc(s.maps_url) + '" target="_blank" rel="noopener">' + ICONS.pin + "Route öffnen</a></div>"
     : "";
-  const waitWindow = (decide.windows || [])[0];
   /* Frische-Fußzeile: Alter der Preismeldung und des Modell-Laufs, in Worten —
      dieselbe Aussage wie in der NAS-GUI („Preise 4 min alt · Prognose 35 min alt“). */
   const priceAge = isNum(live.age_minutes) ? ageLabel(live.age_minutes) : "—";
@@ -2458,33 +2580,13 @@ function renderAnswer(decide, stations, health) {
   // gewählten Kraftstoff melden — eine frische Meldung ohne Diesel-Preis
   // zählt in der Diesel-Ansicht nicht mit.
   const freshCount = rows.filter((row) => row.fresh && isNum(row.price)).length;
-  const waitChip = waitWindow
-    ? '<span class="chip info">' + ICONS.window + '<span class="chip-txt">„Jetzt oder warten“: ' +
-      esc(relDay(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " €/L · −" +
-      eurTank((waitWindow.expected_saving_ct_per_l / 100) * state.liters) + "</span></span>"
-    : "";
+  const waitChip = "";
   const secondChip = f2.second_name
     ? '<span class="chip">' + ICONS.swap + '<span class="chip-txt">„Hier oder woanders“: 2. = ' +
       esc(f2.second_name) + " · " + eur(f2.second_price) + " €/L</span></span>"
     : "";
-  // Variante A · Kompakt: Forecast als integrierte Zeile in Antwort, keine eigene Karte mehr.
-  // Bestes Fenster als 1-Zeilen-Preview + aufklappbare Details (alle Fenster).
-  const forecastPreview = (() => {
-    if (!waitWindow) {
-      if (!f1.available) return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">Prognose-Cache fehlt oder kein Vorteil — nimm die günstigste frische Station.</span></div>';
-      return '<div class="next-window-preview"><span class="label">' + ICONS.window + ' Kein Fenster mit Vorsprung</span><span class="mid">' + esc(f1.reason || "kein Vorteil in 24 h") + '</span></div>';
-    }
-    const detailRows = (decide.windows || []).map((w) => 
-      '<div class="win" style="margin-top:0"><span class="when">' + esc(relDay(w.at)) + " Uhr<small>Score " + pct(w.price_score) + "</small></span>" +
-      '<span class="mid">~' + eur(w.q50) + ' €/L</span><span class="save">−' + eurTank((w.expected_saving_ct_per_l/100)*state.liters) + "</span></div>"
-    ).join("");
-    return '<div class="next-window-preview" role="region" aria-label="Bestes Fenster">' +
-      '<span class="label">' + ICONS.window + ' Bestes Fenster ' + esc(dayWord(waitWindow.at) || "heute") + '</span>' +
-      '<span class="mid">' + esc(clockOf(waitWindow.at)) + " · ~" + eur(waitWindow.q50) + " € · Score " + pct(waitWindow.price_score) + "</span>" +
-      '<span class="save">−' + eurTank((waitWindow.expected_saving_ct_per_l/100)*state.liters) + "</span>" +
-      '<button type="button" id="forecast-preview-toggle" aria-expanded="false" aria-controls="forecast-preview-detail">Details \u25be</button></div>' +
-      '<div id="forecast-preview-detail" class="forecast-detail hidden">' + detailRows + '<p class="strip-note">Ersparnis pro ' + state.liters + ' L. Preis-Score = historisches Quantil, keine M7.</p></div>';
-  })();
+  const forecastPreview = '<div class="next-window-preview"><span class="label">' + ICONS.window +
+    ' Keine Fensterentscheidung</span><span class="mid">Prognosedaten stehen in der Werkstatt; Entscheidungen bleiben beim NAS.</span></div>';
   // B8: Ein veraltetes Set trägt nicht den „warten“-Look.
   el.className = "card answer" + (staleSet ? "" : waiting ? " waiting" : "");
   el.innerHTML = kicker +
@@ -2500,7 +2602,7 @@ function renderAnswer(decide, stations, health) {
       (isNum(live.drive_min) ? "<span>≈ " + Math.round(live.drive_min) + " min Fahrt</span>" : "") +
       (live.station_id ? ageHtml(live) : "") +
     "</div></div>" +
-    '<div class="savings-line">spart ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) +
+    '<div class="savings-line">Preisabstand ' + ct(f2.saving_ct_per_l) + "/L · " + eurTank(f2.saving_eur_tank) +
       " pro " + state.liters + ' L-Tank <span class="vs">' + vsLabel + "</span></div>" +
     route +
     forecastPreview +
@@ -2509,17 +2611,14 @@ function renderAnswer(decide, stations, health) {
       '<div class="fact"><div class="l">Jetzt hier</div>' +
         '<div class="v">' + eur(f2.price) + ' <small>€/L</small></div>' +
         '<div class="d">' + esc(shortName(s.name)) + "</div></div>" +
-      // B7: Das Fenster kommt aus den nächsten 24 h und kann morgen liegen —
-      // dann heißt das Label auch „morgen“ (oder Datum), nicht „heute“.
-      '<div class="fact"><div class="l">Bestes Fenster ' + (waitWindow ? dayWord(waitWindow.at) || "heute" : "heute") + "</div>" +
-        '<div class="v">' + (waitWindow ? clockOf(waitWindow.at) : "—") + "</div>" +
-        '<div class="d">' + (waitWindow ? "~" + eur(waitWindow.q50) + " €/L" : "kein Fenster mit Vorsprung") + "</div></div>" +
+      '<div class="fact"><div class="l">Fensterentscheidung</div>' +
+        '<div class="v">—</div><div class="d">nur auf dem NAS</div></div>' +
       '<div class="fact"><div class="l">Frische Preise</div>' +
         '<div class="v">' + freshCount + "</div>" +
         '<div class="d">von ' + rows.length + " Stationen im Set</div></div>" +
     "</div>" +
     '<p class="fresh-footer">Preise ' + priceAge + " alt · Prognose " + forecastAge + " alt</p>" +
-    '<p class="strip-note">Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).</p>';
+    '<p class="strip-note">Quantile sind keine kalibrierte Wahrscheinlichkeit und keine erwartete Nettoersparnis.</p>';
 }
 
 function renderDaystrip(series, decide, health) {
@@ -2753,43 +2852,7 @@ function renderForecast(decide, forecasts) {
     if (section) section.classList.add("hidden");
     if (kicker && kicker.classList.contains("section-kicker")) kicker.classList.add("hidden");
   }
-  const sub = $("#forecast-sub");
-  const body = $("#forecast-body");
-  // trotzdem noch Status für Werkstatt befüllen, aber Alltag-Karte bleibt versteckt
-  if (!body) return;
-  const fc = (decide && decide.forecast) || {};
-  const windows = decide && Array.isArray(decide.windows) ? decide.windows : [];
-  const name = decide && decide.available ? decide.f2.station.name : "";
-  if (forecasts && forecasts.generated_at) {
-    sub.textContent = "· Cache vom " + shortStamp(forecasts.generated_at) +
-      (isNum(fc.age_hours) ? " (" + fc.age_hours + " h alt)" : "") +
-      " · Basis: " + (fc.station || name || "günstigste Station");
-  } else {
-    sub.textContent = "· kein Prognose-Cache";
-  }
-  if (!decide || !decide.available) {
-    body.innerHTML = '<div class="empty">Keine Prognose möglich, solange keine offenen Stationen mit Preis im Puffer sind.</div>';
-    return;
-  }
-  if (!windows.length) {
-    body.innerHTML = '<div class="empty">Keine gecachten Prognosen für ' + esc(FUEL_LABEL[state.fuel]) +
-      " vorhanden. Sobald das NAS wieder läuft, füllt cache_forecasts.py den Cache (alle 5 min). " +
-      esc(REBOOT_HINT) + "<br>„Jetzt ist die günstigste Station?“ (F2) funktioniert trotzdem.</div>";
-    return;
-  }
-  let html = "";
-  for (const w of windows) {
-    html += '<div class="win">' +
-      '<span class="when">' + esc(relDay(w.at)) + " Uhr<small>Preis-Score " + pct(w.price_score) + "</small></span>" +
-      '<span class="mid">erwartet ~' + eur(w.q50) + " €/L</span>" +
-      '<span class="save">−' + eurTank((w.expected_saving_ct_per_l / 100) * state.liters) + "</span>" +
-      '<span class="wstation" title="' + esc(name) + '">' + esc(name) + "</span>" +
-      "</div>";
-  }
-  html += '<p class="strip-note">Ersparnis pro ' + state.liters +
-    " L-Tank. Preis-Score = Gleichverteilung zwischen q025/q975 — keine kalibrierte " +
-    "Wahrscheinlichkeit; die exakte M7-Rechnung läuft auf dem NAS.</p>";
-  body.innerHTML = html;
+
 }
 
 function renderWerkstatt(forecasts, stations, health) {
@@ -2819,7 +2882,9 @@ function sparkCard(e) {
   const range = isNum(sum.min_q50) && isNum(sum.max_q50)
     ? "24-h-Band " + eur(sum.min_q50) + "–" + eur(sum.max_q50) + " €"
     : "";
-  const best = sum.best ? "günstigster Moment " + relDay(sum.best.at) + " (~" + eur(sum.best.q50) + " €)" : "";
+  const best = e.valid_for_display
+    ? "Gültige Prognosedaten — keine Fensterentscheidung"
+    : "Historischer Cache — Qualität oder Gültigkeit nicht bestätigt";
   const meta = [e.city ? esc(e.city) : "", range ? esc(range) : "", best ? esc(best) : ""].filter(Boolean).join(" · ");
   return '<div class="spark-card"><div class="spark-head">' +
     '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + "</span>" +
@@ -2998,7 +3063,7 @@ $("#city").addEventListener("change", () => {
   refresh();
 });
 $("#liters").addEventListener("change", () => {
-  const v = Math.max(5, Math.min(100, Number($("#liters").value) || state.liters));
+  const v = Math.max(10, Math.min(100, Number($("#liters").value) || state.liters));
   $("#liters").value = v;
   if (v !== state.liters) {
     state.liters = v;
@@ -3014,11 +3079,19 @@ $("#nas-pill").addEventListener("click", async () => {
   try {
     const r = await j("/api/v1/nas-check");
     if (r.online) {
-      banner("NAS ist wieder online — die Seite lädt jetzt die vollwertige NAS-GUI.");
-      setTimeout(() => { window.location.href = "/"; }, 600);
+      // Explicit user-triggered transition only; no timer can lose a draft.
+      // Both shells share these preferences and the IndexedDB outbox origin.
+      try {
+        const cityOption = ((lastPayload && lastPayload.health.city_options) || []).find((c) => c.value === state.city);
+        localStorage.setItem("tankapp.liters", JSON.stringify(Math.max(10, Math.min(100, Number($("#liters").value) || state.liters))));
+        localStorage.setItem("tankapp.fuel", JSON.stringify(state.fuel));
+        localStorage.setItem("tankapp.city", JSON.stringify(cityOption ? cityOption.label : state.city));
+        window.location.href = "/";
+      } catch {
+        banner("Ansichtswechsel nicht möglich — Eingaben konnten nicht lokal gesichert werden.", true);
+      }
     } else {
-      banner("NAS ist nach wie vor nicht erreichbar" + (r.nas && r.nas.error ? " (" + r.nas.error + ")" : "") +
-        " — der Fallback bleibt aktiv und prüft selbst weiter.", true);
+      banner(r.hint || "NAS nicht bereit — der Fallback bleibt aktiv.", true);
       refresh();
     }
   } catch (e) {

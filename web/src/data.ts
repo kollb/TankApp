@@ -753,6 +753,7 @@ export type DecideResult = {
       end: string;
       expected_price: number;
     } | null;
+    /** Clipped median advantage of window minima; NOT an arithmetic expectation. */
     expected_saving_eur: number;
     p_correct: number | null;
     confidence_badge: "high" | "medium" | "low";
@@ -797,6 +798,7 @@ export type DecideResult = {
     start: string;
     end: string;
     expected_price: number;
+    /** Clipped median advantage (legacy field name), not expected net savings. */
     expected_saving_eur: number | null;
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
@@ -811,6 +813,7 @@ export type DecideResult = {
     start: string;
     end: string;
     expected_price: number;
+    /** Clipped median advantage (legacy field name), not expected net savings. */
     expected_saving_eur: number | null;
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
@@ -2491,7 +2494,9 @@ export function useResource<T>(
         const etag = etagRef.current.key === url ? etagRef.current.etag : null;
         // O39: Lese-Token für den persönlichen Datenbestand, wenn eines
         // gesetzt ist (leer = offen, wie bisher).
-        const headers: Record<string, string> = { ...authHeaders() };
+        const headers: Record<string, string> = {
+          ...authHeaders(), "X-TankApp-UI": "nas-v1",
+        };
         if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,

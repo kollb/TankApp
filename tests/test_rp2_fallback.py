@@ -313,32 +313,22 @@ def test_snapshots_fall_back_to_yesterday_at_night(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_point_stats_uniform_assumption():
-    # q025=1.60, q975=1.80, aktuell 1.70 -> P(günstiger)=0.5,
-    # E[min(0, 1.70-X)] = d^2/(2w) = 0.1^2/(2*0.2) = 0.025
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.70)
-    assert stats["price_score"] == pytest.approx(0.5, abs=1e-9)
-    assert stats["exp_saving_per_l"] == pytest.approx(0.025, abs=1e-9)
-    # aktuell über q975 -> P=1, Ersparnis = 1.90 - Mittel(1.70) = 0.20
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.90)
-    assert stats["price_score"] == 1.0
-    assert stats["exp_saving_per_l"] == pytest.approx(0.20, abs=1e-9)
-    # aktuell unter q025 -> kein Gewinn
-    stats = rp2.point_stats({"q025": 1.60, "q975": 1.80}, 1.50)
-    assert stats["price_score"] == 0.0
-    assert stats["exp_saving_per_l"] == 0.0
-    # kaputte Quantile -> None
-    assert rp2.point_stats({"q025": 1.9, "q975": 1.8}, 1.7) is None
-
-
-def test_template_labels_score_not_probability():
-    """Issue 49: Fallback-UI nennt den Wert „Preis-Score“ (historisches
-    Quantil), nie „Wahrscheinlichkeit“ — die kalibrierte M7-Wahrscheinlichkeit
-    bleibt dem NAS vorbehalten."""
-    html = rp2.DEFAULT_INDEX_HTML
-    assert "Wahrsch. günstiger" not in html
-    assert "Preis-Score" in html
-    assert "keine kalibrierte Wahrscheinlichkeit" in html
+def test_symmetric_quantiles_do_not_claim_expected_saving():
+    now = dt.datetime.now(UTC)
+    point = {
+        "q025": 1.60,
+        "q50": 1.70,
+        "q975": 1.80,
+        "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+    }
+    # The removed uniform heuristic gave E[max(1.70-X,0)] = .025/L,
+    # i.e. EUR 1 per 40 L, despite E[1.70-X] = 0. No such statistic remains.
+    summary = rp2.summarize_forecast([point], now, 1.70)
+    assert summary["timeline"][0]["q50"] == 1.70
+    assert not {"best", "windows", "price_score", "expected_saving"} & summary.keys()
+    assert "expected_saving" not in json.dumps(summary)
+    assert "price_score" not in rp2.DEFAULT_INDEX_HTML
+    assert "keine erwartete Nettoersparnis" in rp2.DEFAULT_INDEX_HTML
 
 
 def test_summarize_forecast_ignores_past_points():
@@ -347,9 +337,9 @@ def test_summarize_forecast_ignores_past_points():
     points = forecast_points(1.70, origin)  # 3 Punkte in der Vergangenheit
     summary = rp2.summarize_forecast(points, now, 1.70)
     assert summary is not None
-    assert summary["best"]["at"] >= now.replace(microsecond=0).isoformat()[:16]
+    assert summary["timeline"][0]["at"] >= now.replace(microsecond=0).isoformat()[:16]
     # Fenster: Dip kommt ab h=14 (also jetzt+11 h)
-    assert summary["best"]["time"]
+    assert summary["timeline"][0]["time"]
 
 
 def test_summarize_forecast_none_when_only_past():
@@ -404,18 +394,12 @@ def test_fallback_api_endpoints(tmp_path):
         assert decide["available"] is True
         assert decide["f2"]["station"]["name"] == "Station Alpha"
         assert decide["f2"]["price"] == 1.699
-        assert decide["f1"]["available"] is True
-        assert decide["f1"]["recommendation"] in ("wait", "refuel_now")
-        # Issue 49: Der Gleichverteilungs-Fallback darf sich nicht
-        # „Wahrscheinlichkeit“ nennen — nur Preis-Score/historisches Quantil.
-        f1_text = decide["f1"]["reason"] + " " + decide["f1"]["basis"]
-        # Die alte falsche Behauptung darf nicht mehr auftreten; der Wert wird
-        # als Preis-Score/historisches Quantil ausgewiesen (der explizite
-        # Disclaimer „keine kalibrierte Wahrscheinlichkeit“ ist erlaubt).
-        assert "Wahrscheinlichkeit unter dem jetzigen Preis" not in f1_text
-        assert "Preis-Score" in f1_text and "Quantil" in f1_text
-        if decide["f1"]["recommendation"] == "wait":
-            assert decide["f1"]["expected_saving_eur_tank"] >= 1.0
+        assert decide["f1"]["available"] is False
+        assert decide["f1"]["recommendation"] == "no_advice"
+        assert decide["action"] == "no_advice"
+        assert decide["decision_ready"] is False
+        assert decide["windows"] == []
+        assert "expected_saving" not in json.dumps(decide)
     finally:
         server.shutdown()
         server.server_close()
@@ -806,7 +790,7 @@ def test_answer_card_has_three_facts_and_freshness_footer():
     # deshalb wird hier nur der feste Bestandteil gefixt.
     assert 'class="facts"' in html
     start = html.index('class="facts"')
-    labels = ("Jetzt hier", "Bestes Fenster ", "Frische Preise")
+    labels = ("Jetzt hier", "Fensterentscheidung", "Frische Preise")
     positions = []
     for label in labels:
         at = html.index(label, start)
@@ -814,7 +798,7 @@ def test_answer_card_has_three_facts_and_freshness_footer():
         positions.append(at)
     assert positions == sorted(positions)
     # B7: Der Tag des Fensters kommt aus dayWord, Default „heute“.
-    assert "dayWord(waitWindow.at)" in html
+    assert "Keine Fensterentscheidung" in html
     # Frische-Fußzeile: Satzbau und Altersquellen
     assert 'class="fresh-footer"' in html
     assert '" alt · Prognose "' in html
@@ -837,6 +821,9 @@ class FakeNasHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/v1/health":
             body = json.dumps({"app": "online"}).encode()
+            ctype = "application/json"
+        elif self.path.startswith("/api/v1/stations"):
+            body = json.dumps({"stations": [], "cities": []}).encode()
             ctype = "application/json"
         else:
             body = b"NAS-GUI-PROXIED"
@@ -1257,12 +1244,12 @@ def test_summarize_forecast_reports_local_time_not_utc(monkeypatch):
     ]
     summary = rp2.summarize_forecast(points, now, current_price=1.70)
     # best = erster Punkt (Ersparnis 0.15 > 0.14)
-    assert summary["best"]["time"] == "00:30"
-    assert summary["best"]["date"] == "2026-01-16"
+    assert summary["timeline"][0]["time"] == "00:30"
+    assert summary["timeline"][0]["date"] == "2026-01-16"
     # Der ISO-Stempel bleibt UTC — die GUI rendert ihn selbst in Berlin.
-    assert summary["best"]["at"] == "2026-01-15T23:30:00+00:00"
-    assert summary["windows"][1]["time"] == "09:20"
-    assert summary["windows"][1]["date"] == "2026-01-16"
+    assert summary["timeline"][0]["at"] == "2026-01-15T23:30:00+00:00"
+    assert summary["timeline"][1]["time"] == "09:20"
+    assert summary["timeline"][1]["date"] == "2026-01-16"
 
 
 def test_summarize_forecast_local_time_in_summer(monkeypatch):
@@ -1280,8 +1267,8 @@ def test_summarize_forecast_local_time_in_summer(monkeypatch):
         }
     ]
     summary = rp2.summarize_forecast(points, now, current_price=1.70)
-    assert summary["best"]["time"] == "00:30"
-    assert summary["best"]["date"] == "2026-07-16"
+    assert summary["timeline"][0]["time"] == "00:30"
+    assert summary["timeline"][0]["date"] == "2026-07-16"
 
 
 # ---------------------------------------------------------------------------
@@ -1315,6 +1302,8 @@ class EchoNasHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/v1/health":
             body = json.dumps({"app": "online"}).encode()
+        elif self.path.startswith("/api/v1/stations"):
+            body = json.dumps({"stations": [], "cities": []}).encode()
         else:
             body = b"NAS-GUI-PROXIED"
         self.send_response(200)
@@ -1396,7 +1385,7 @@ def test_write_without_nas_gets_honest_503(tmp_path):
             urllib.request.urlopen(request, timeout=5)
         assert excinfo.value.code == 503
         payload = json.loads(excinfo.value.read().decode("utf-8"))
-        assert "NAS offline" in payload["error"]
+        assert "NAS nicht bereit" in payload["error"]
     finally:
         server.shutdown()
         server.server_close()
@@ -1651,4 +1640,462 @@ def test_client_disconnect_while_reading_request_line_stays_silent(tmp_path, cap
         assert "ConnectionResetError" not in captured.err
         assert "Exception occurred" not in captured.err
     finally:
+        server.server_close()
+
+
+@pytest.mark.parametrize("quality", ["red", "missing", "green", "expired"])
+def test_fallback_never_grants_actions_for_cached_quantiles(tmp_path, quality):
+    lines = [
+        {"fetched_at": now_iso(40), "prices": {UID_A: {"status": "open", "e10": 1.70}}},
+        {"fetched_at": now_iso(1), "prices": {UID_B: {"status": "open", "e10": 1.80}}},
+    ]
+    server, ctx = start_fallback_server(tmp_path, poll_lines=lines)
+    now = dt.datetime.now(UTC)
+    payload = json.loads(ctx.cache_file.read_text())
+    for fc in payload["forecasts"]:
+        fc["points"] = [
+            {
+                "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+                "q025": 1.60,
+                "q50": 1.70,
+                "q975": 1.80,
+            }
+        ]
+        if quality != "missing":
+            fc.update(
+                decision_ready=quality == "green",
+                calibrated=quality == "green",
+                stale_data_at_origin=quality != "green",
+                rolling_picp_status="green" if quality == "green" else "red",
+            )
+    if quality == "expired":
+        payload["generated_at"] = (now - dt.timedelta(days=2)).isoformat()
+    ctx.cache_file.write_text(json.dumps(payload))
+    try:
+        result = get_json(f"http://127.0.0.1:{server.server_port}", "/api/v1/decide")
+        assert result["f2"]["fresh_in_set"] == 1
+        assert result["f2"]["fresh"] is False
+        assert result["f1"]["recommendation"] == "no_advice"
+        assert result["decision_ready"] is False
+        assert result["windows"] == []
+        assert "expected_saving" not in json.dumps(result)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def readiness_nas():
+    """Real HTTP failure injection, including chunked/lengthless framing."""
+    state = {
+        "health": b'{"app":"online"}',
+        "api_status": 200,
+        "framing": "length",
+        "request_status": 200,
+        "requests": 0,
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            state["requests"] += 1
+            if self.path == "/api/v1/health":
+                body, status = state["health"], 200
+            elif self.path.startswith("/api/v1/stations"):
+                body, status = (
+                    state.get("api_body", b'{"stations":[],"cities":[]}'),
+                    state["api_status"],
+                )
+            else:
+                body, status = (
+                    state.get("request_body", b'{"primary":{}}'),
+                    state["request_status"],
+                )
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Retry-After", "37")
+            self.send_header("ETag", '"fixture"')
+            if state["framing"] == "chunked":
+                self.send_header("Transfer-Encoding", "chunked")
+            elif state["framing"] != "absent":
+                extra = 10 if state["framing"] == "truncated" else 0
+                self.send_header("Content-Length", str(len(body) + extra))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if state["framing"] == "chunked":
+                self.wfile.write(
+                    f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+                )
+            else:
+                self.wfile.write(body)
+            self.close_connection = True
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.do_GET()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", state
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize(
+    "body", [b"hello", b"{}", b"[]", b"null", b'{"app":"offline"}', b'{"app":']
+)
+def test_readiness_rejects_invalid_health(readiness_nas, body):
+    base, state = readiness_nas
+    state["health"] = body
+    nas = rp2.NasState(base)
+    assert nas.is_online() is False
+    assert nas.info()["state"] == "pi_prices_only"
+
+
+@pytest.mark.parametrize("framing", ["absent", "chunked", "length", "truncated"])
+def test_readiness_framing(readiness_nas, framing):
+    base, state = readiness_nas
+    state["framing"] = framing
+    assert rp2.NasState(base).is_online() is (framing != "truncated")
+
+
+def test_health_200_api_503_is_degraded_and_returns_local_prices(
+    tmp_path, readiness_nas
+):
+    nas_base, state = readiness_nas
+    state["api_status"] = 503
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+    )
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        prices = get_json(base, "/api/v1/stations")
+        assert len(prices["stations"]) == 3
+        assert prices["nas_status"] == "offline"
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_proxy_503_after_ready_falls_back_without_second_response(
+    tmp_path, readiness_nas
+):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base, ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["api_status"] = 503
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/api/v1/stations") as response:
+            assert response.status == 200
+            assert len(json.load(response)["stations"]) == 3
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_readiness_recovery_hysteresis_and_stable_timestamp(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(rp2.time, "monotonic", lambda: now[0])
+    nas = rp2.NasState("http://nas", recovery_interval=2)
+    monkeypatch.setattr(nas, "_probe", lambda: (True, None))
+    assert nas.is_online()
+    nas.mark_offline("api:http_503")
+    assert not nas.is_online(force=True)
+    assert nas.info()["state"] == "recovering"
+    stamp = nas.info()["last_check"]
+    assert nas.info()["last_check"] == stamp
+    # Hammering the button is not independent proof of recovery.
+    assert not nas.is_online(force=True)
+    now[0] += 2
+    assert nas.is_online(force=True)
+    assert nas.info()["state"] == "nas_ready"
+
+
+def test_probe_singleflight_and_proxy_failure_fences_older_result(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    nas = rp2.NasState("http://nas")
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    all_waiting = threading.Event()
+    wait_count = []
+    original_wait = nas._lock.wait_for
+
+    def wait_for(predicate):
+        wait_count.append(1)
+        if len(wait_count) == 7:
+            all_waiting.set()
+        return original_wait(predicate)
+
+    monkeypatch.setattr(nas._lock, "wait_for", wait_for)
+
+    def probe():
+        calls.append(1)
+        entered.set()
+        assert release.wait(3)
+        return True, None
+
+    monkeypatch.setattr(nas, "_probe", probe)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(nas.is_online, True) for _ in range(8)]
+        assert entered.wait(3)
+        assert all_waiting.wait(3)
+        # This newer failure must win over the old successful probe.
+        nas.mark_offline("proxy:newer_failure")
+        release.set()
+        assert not any(f.result() for f in futures)
+    assert len(calls) == 1
+    assert nas.info()["error"] == "proxy:newer_failure"
+
+
+def test_versioned_tabs_do_not_change_api_schema(tmp_path, readiness_nas):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+    )
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def get(path, mode):
+        req = urllib.request.Request(base + path, headers={"X-TankApp-UI": mode})
+        return urllib.request.urlopen(req)
+
+    try:
+        # Even with a ready NAS a Pi tab gets its own health and decide.
+        with get("/api/v1/health", "pi-v1") as response:
+            assert json.load(response)["nas"]["online"] is True
+            assert response.headers["Cache-Control"] == "no-store"
+        with get("/api/v1/decide", "pi-v1") as response:
+            assert json.load(response)["f1"]["recommendation"] == "no_advice"
+        with get("/api/v1/decide", "nas-v1") as response:
+            assert "primary" in json.load(response)
+        state["api_status"] = 503
+        ctx.nas.is_online(force=True)
+        for path in (
+            "/api/v1/health",
+            "/api/v1/decide",
+            "/api/v1/series?station_id=x&fuel=e10",
+            "/api/v1/overview",
+        ):
+            with pytest.raises(urllib.error.HTTPError) as error:
+                get(path, "nas-v1")
+            assert error.value.code == 503
+            assert "f1" not in json.load(error.value)
+        with get("/api/v1/stations", "nas-v1") as response:
+            assert len(json.load(response)["stations"]) == 3
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_proxy_never_falls_back_after_downstream_write_starts(
+    tmp_path, readiness_nas, monkeypatch
+):
+    from email.message import Message
+
+    nas_base, _ = readiness_nas
+    ctx = make_ctx(tmp_path, nas_base=nas_base)
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    handler = object.__new__(server.RequestHandlerClass)
+    handler.path, handler.command, handler.headers = "/api/v1/decide", "GET", Message()
+    handler._response_started = False
+    statuses, fallbacks = [], []
+    handler.send_response = statuses.append
+    handler.send_header = lambda *args: None
+
+    def end_headers():
+        handler._response_started = True
+
+    class BrokenWriter:
+        def write(self, body):
+            raise OSError("downstream write failed")
+
+    handler.end_headers = end_headers
+    handler.wfile = BrokenWriter()
+    handler._api = lambda *args: fallbacks.append(args)
+    try:
+        handler._handle()
+        assert statuses == [200]
+        assert fallbacks == []
+        assert handler.close_connection is True
+        assert ctx.nas.info()["online"] is True  # downstream is not NAS failure
+    finally:
+        server.server_close()
+
+
+def test_proxy_truncated_body_falls_back_before_headers(tmp_path, readiness_nas):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base, ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["framing"] = "truncated"
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/api/v1/stations") as response:
+            assert response.headers["X-TankApp-Contract"] == "pi-v1"
+            assert len(json.load(response)["stations"]) == 3
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cached_forecast_validity_is_not_action_permission(tmp_path):
+    now = dt.datetime.now(UTC)
+    package = {"generated_at": now.isoformat()}
+    row = {
+        "origin": now.isoformat(),
+        "calibrated": True,
+        "stale_data_at_origin": False,
+        "rolling_picp_7d": {"current": {"badge": "green"}},
+        "points": [
+            {
+                "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+                "q025": 1.60,
+                "q50": 1.70,
+                "q975": 1.80,
+            }
+        ],
+    }
+    assert rp2.forecast_valid_for_display(package, row, now)
+    ctx = make_ctx(tmp_path, with_forecast=False)
+    ctx.cache_file.parent.mkdir(exist_ok=True)
+    ctx.cache_file.write_text(json.dumps({**package, "forecasts": [row]}))
+    assert ctx.failover_info()["state"] == "pi_forecast_valid"
+    assert ctx.failover_info()["decision_ready"] is False
+    for patch in (
+        {"calibrated": False},
+        {"stale_data_at_origin": True},
+        {"rolling_picp_7d": {"current": {"badge": "red"}}},
+        {"origin": (now - dt.timedelta(days=2)).isoformat()},
+        {"origin": (now + dt.timedelta(minutes=1)).isoformat()},
+    ):
+        assert not rp2.forecast_valid_for_display(package, {**row, **patch}, now)
+    assert not rp2.forecast_valid_for_display(
+        {**package, "valid_until": now.isoformat()}, row, now
+    )
+    assert not rp2.forecast_valid_for_display({}, row, now)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"not json",
+        b"[]",
+        b'{"stations": null, "cities":[]}',
+        b'{"stations":[],"cities":[],"connection_error":"influx_read_failed"}',
+        b'{"stations":[],"cities":[],"error_code":"unavailable"}',
+    ],
+)
+def test_api_200_with_error_payload_is_not_ready(readiness_nas, tmp_path, body):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, nas_base=nas_base, poll_lines=default_poll_lines(), ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["api_body"] = body
+        # A live request also rejects this, even inside a cached ready period.
+        result = get_json(f"http://127.0.0.1:{server.server_port}", "/api/v1/stations")
+        assert result["source"] == "pi"
+        assert result["nas_status"] == "offline"
+        assert not ctx.nas.is_online(force=True)
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429, 304])
+def test_proxy_preserves_auth_cache_and_retry_errors(tmp_path, readiness_nas, status):
+    nas_base, state = readiness_nas
+    state["request_status"] = status
+    server, ctx = start_fallback_server(tmp_path, nas_base=nas_base)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{server.server_port}/api/v1/decide"
+            )
+        response = error.value
+        assert response.code == status
+        assert response.headers["X-TankApp-Proxy"] == "nas"
+        assert response.headers["WWW-Authenticate"] == "Bearer"
+        assert response.headers["Retry-After"] == "37"
+        assert response.headers["ETag"] == '"fixture"'
+        assert "X-TankApp-UI" in response.headers["Vary"]
+        if status == 304:
+            assert response.read() == b""
+        assert ctx.nas.info()["online"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_bounded_response_rejects_oversize_and_bad_lengths():
+    import io
+
+    for length in ("abc", "-1", "999", "1", None):
+        response = io.BytesIO(b"abcdefgh")
+        response.headers = {} if length is None else {"Content-Length": length}
+        with pytest.raises(ValueError):
+            rp2.read_bounded_response(response, 4)
+
+
+def test_nas_station_contract_keeps_city_label_and_nulls_stale_price(tmp_path):
+    lines = [
+        {
+            "city": "GT",
+            "fetched_at": now_iso(40),
+            "prices": {UID_A: {"status": "open", "e10": 1.7}},
+        }
+    ]
+    server, ctx = start_fallback_server(tmp_path, poll_lines=lines)
+    # Also ensure a manually pinned local reply never masquerades as NAS data.
+    ctx.nas.online = True
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/api/v1/stations",
+            headers={"X-TankApp-UI": "nas-v1", "X-Force-Fallback": "1"},
+        )
+        with urllib.request.urlopen(request) as response:
+            result = json.load(response)
+        assert result["nas_status"] == "offline"
+        assert result["cities"] == ["Gütersloh"]
+        assert result["stations"][0]["city"] == "Gütersloh"
+        assert result["stations"][0]["price"] is None
+        assert result["stations"][0]["last_price"] == 1.7
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_complete_write_rejections_keep_outbox_error_codes(
+    tmp_path, readiness_nas, status
+):
+    nas_base, state = readiness_nas
+    state["request_status"] = status
+    state["request_body"] = b'{"error_code":"store_corrupted"}'
+    server, ctx = start_fallback_server(tmp_path, nas_base=nas_base)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as error:
+            _post_json(
+                f"http://127.0.0.1:{server.server_port}",
+                "/api/v1/fills",
+                {"liters": 40},
+            )
+        assert error.value.code == status
+        assert json.load(error.value) == {"error_code": "store_corrupted"}
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
         server.server_close()

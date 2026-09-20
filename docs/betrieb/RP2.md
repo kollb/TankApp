@@ -1,6 +1,6 @@
 # RP2 Fallback-GUI + NAS-Proxy
 
-> Stand: 17.09.2026 · App-Version 0.49.5 · RP2-Fallback v4.3 — **die** Anleitung
+> Stand: 20.09.2026 · App-Version 0.61.0 · RP2-Fallback v5.0 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
 > liegen im [Archiv](../archiv/README.md); neben dem RP2-Code liegt bewusst keine
@@ -49,7 +49,7 @@
 
 ## Ziel
 
-24/7 Verfügbarkeit über **eine Adresse** — den RP2 (Port 8000). NAS online → RP2 leitet transparent zur vollen NAS-GUI weiter — **inklusive der Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`: Beleg buchen, Intent melden, Profil anlegen/ändern/löschen); Body und `Content-Type` werden durchgereicht. NAS offline → dieselbe Adresse zeigt Fallback-GUI (Live-Preise + gecachte Prognosen); dort gibt es keine Schreibendpunkte, eine Schreibaktion antwortet mit einer ehrlichen 503-JSON („NAS offline — …“), nicht mit einer 501-Fehlerseite.
+Zugang über **eine Adresse** (keine Verfügbarkeitsgarantie) — den RP2 (Port 8000). NAS bereit → RP2 leitet neue Seitenaufrufe zur vollen NAS-GUI weiter — **inklusive der Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`: Beleg buchen, Intent melden, Profil anlegen/ändern/löschen); Body und `Content-Type` werden durchgereicht. NAS nicht bereit → ein neuer Seitenaufruf zeigt Fallback-GUI (Live-Preise + gecachte Prognosen); dort gibt es keine Schreibendpunkte, eine Schreibaktion antwortet mit einer ehrlichen 503-JSON („NAS nicht bereit — …“), nicht mit einer 501-Fehlerseite.
 
 ```text
 Browser ──► http://<RP2-IP>:8000
@@ -59,7 +59,7 @@ Browser ──► http://<RP2-IP>:8000
                  └─ NAS offline ──► Fallback-GUI:
                      • Live-Preise aus /dev/shm/tankapp (echte Datenalter)
                      • Stationennamen/Marken/Koordinaten aus polling.json
-                     • gecachte Prognosen (F1/F2/F3) aus /tmp/tankapp_cache
+                     • beschreibende Prognose-Quantile (keine Aktionen) aus /tmp/tankapp_cache
                      • Heartbeat aus meta/heartbeat.json (Collector-Livestatus)
 ```
 
@@ -80,11 +80,11 @@ Browser ──► http://<RP2-IP>:8000
 
 Ergebnis:
 
-- ✅ F2 (Hier oder woanders?): Immer verfügbar (Live-Preise aus RP2-Puffer)
-- ✅ F1 (Jetzt oder warten?): Verfügbar mit gecachten Prognosen (max 24h alt)
-- ✅ F3 (Heute oder später?): Verfügbar mit gecachten Prognosen
-- ✅ Eine Adresse: `http://<RP2-IP>:8000` zeigt automatisch NAS- oder Fallback-GUI
-- ✅ **B3.11**: Collector-Herzschlag im Fallback sichtbar (tmpfs-Nutzung, älteste Datei)
+- Preisvergleich aus dem lokalen Puffer; keine Garantie für frische Preise.
+- Kein eigener Pi-Decision-Layer: F1/F3 und persönliche Stations-/Fensterwahl
+  bleiben beim NAS. Der Pi zeigt Preisabstände, keine Nettoersparnis.
+- Eine Adresse: neue Aufrufe wählen anhand der Readiness die Oberfläche;
+  offene Tabs behalten ihren API-Vertrag (siehe unten).
 
 ### Dateien im `rp2/`-Ordner
 
@@ -289,25 +289,22 @@ cat /dev/shm/tankapp/meta/heartbeat.json | python3 -m json.tool
 http://<RP2-IP>:8000
 ```
 
-- NAS online: vollwertige NAS-GUI (React, Live-Charts, System-Panel, Heatmaps, Meine Stationen, Collector-Status, Route-Evaluate) — RP2 proxyst transparent
-- NAS offline: Fallback-GUI v4 (Markierung „FALLBACK · RP2“) — **Antwort-Karte zuerst**
-  (Verdict „Jetzt tanken“ / „Bis <Zeit> Uhr warten lohnt sich“, günstigste Station,
-  Ersparnis, Route), F1/F2 als Chips, **Tagesstreifen 06–24 Uhr** aus dem Puffer,
-  **Stations-Karten** statt Tabelle (Name einzeilig mit Ellipsis, voller Name im
-  `title`, Marke/Stadt/Fahrzeit in der Meta-Zeile, Δ-Chip, 44-px-Route-Button),
-  F3-Fensterliste, **drei Fakten** unter der Empfehlung („Jetzt hier“ ·
-  „Bestes Fenster“ mit Tag · „Frische Preise“) und die **Frische-Fußzeile**
-  („Preise … alt · Prognose … alt“) im Gleichschritt mit dem Bereich „Jetzt“
-  der NAS-GUI. **Alltag/Werkstatt** umschaltbar: Werkstatt zeigt
-  Prognose-Sparklines, Rohdaten aller Treibstoffe und den Datenstatus
-  (Puffer, Metadaten, Cache-Alter, NAS). Sticky-Status- und Steuerleiste,
-  Sticky-Aktions-Chip beim Scrollen, Dark-Mode, E10/E5/Diesel, Ort-Filter
-  (auch kurze Set-Keys wie `FRA`/`GT`), Tankgröße, Auto-Refresh alle 60 s,
-  NAS-Pill als Sofort-Prüfung.
-  **Ab 1100 px (Desktop):** Inhaltsspalte 1280 px (wie `max-w-7xl` der NAS-GUI),
-  Kopf- und Steuerleiste in **einer** Zeile (~60 px statt ~185 px) und Alltag
-  zweispaltig — links Antwort-Karte und Tagesverlauf, rechts Stationen und
-  Prognosen. Unterhalb 1100 px bleibt alles wie auf dem Handy.
+- NAS bereit: vollständige NAS-GUI. Bei späterem Ausfall bleibt der Tab
+  erhalten; nur Stationen/Preise haben einen kompatiblen lokalen Ersatz.
+  Persönliche Eingaben bleiben im Tab, vorgemerkte Belege in IndexedDB.
+- NAS nicht bereit: Fallback-GUI v5 („FALLBACK · RP2“), nur Preisvergleich,
+  Tagesstreifen und Stationsliste. Ein veralteter ausgewählter Preis heißt
+  „Preis-Momentaufnahme“, selbst wenn eine andere Station frisch meldet.
+  Drei Fakten: „Jetzt hier“ · „Fensterentscheidung — nur auf dem NAS“ ·
+  „Frische Preise“. Werkstatt: beschreibende Quantile mit Gültigkeitshinweis,
+  Rohdaten und Pufferstatus. Keine Tank-/Warteaktion, kein bestes Fenster.
+- Kraftstoff, Ort, Tankmenge (10–100 L), Sortierung und Darstellung bleiben
+  lokale Präferenzen. Ein Pi-Tab pollt weiterhin seinen Pi-Vertrag und lädt
+  bei NAS-Wiederkehr **nicht automatisch** neu. „NAS bereit — Ansicht öffnen“
+  ist der ausdrückliche Wechsel; auch der noch fokussierte Tankmengenwert
+  wird vorher gesichert. Bei Speicherfehler bleibt die Ansicht stehen.
+- NAS und Pi müssen gemeinsam aktualisiert werden; die Modusbindung gilt
+  für die Oberflächen ab 0.61.0 / RP2 v5, nicht rückwirkend für alte Tabs.
 
 ### NAS offline testen
 
@@ -322,7 +319,7 @@ docker stop tankapp
 
 ```bash
 docker start tankapp
-# → innerhalb ~15s oder nach Klick „NAS prüfen“ bzw. curl http://<RP2-IP>:8000/api/v1/nas-check wieder volle NAS-GUI
+# → zwei erfolgreiche Readiness-Prüfungen bestätigen die Rückkehr; danach ist der ausdrückliche Ansichtswechsel möglich
 ```
 
 ### Fallback-API und Umschaltzeiten
@@ -336,40 +333,72 @@ Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
 | `/api/v1/health` | Status: NAS, Preise, Prognosen, Metadaten, Collector |
 | `/api/v1/stations?fuel=e10` | alle Stationen mit Preisen und echtem Datenalter |
 | `/api/v1/forecasts?fuel=e10` | gecachte Prognosen + 24-h-Zusammenfassung |
-| `/api/v1/decide?fuel=e10&liters=40` | F1/F2/F3-Entscheidung aus dem Cache |
+| `/api/v1/decide?fuel=e10&liters=40` | Preisvergleich; `action=no_advice`, `decision_ready=false`, keine Fenster |
 | `/api/v1/series?station=<uuid>&fuel=e10` | Tagesverlauf 06–24 Uhr einer Station aus dem Puffer (je Stunde die letzte offene Meldung, `null` ohne Meldung; dazu `min`/`max`/`now`) |
 | `/api/v1/nas-check` | NAS sofort neu prüfen (auch im Proxy-Modus) |
 
-> **Diese sieben Pfade sind alles, was der Fallback beantwortet.** Läuft auf
-> `<RP2-IP>:8000` die gebaute NAS-GUI (`TEMPLATE_DIR` auf `web/dist`) statt der
-> RP2-eigenen v4-Vorlage, fragt der Browser zusätzlich `stats/summary`,
-> `fills`, `selection`, `heatmap`, `forecast`, `advice/diary`,
-> `collector/status`, `jobs` und `log` an — der Fallback antwortet darauf
-> `404`, und die Konsole füllt sich. Das ist der Unterschied der beiden
-> Antwortflächen, kein Serverfehler: Der Fallback ist der Live-Puffer des Pi,
-> Prognose, Empfehlung und Beleg brauchen das NAS. Seit **RP2 v4.3 (0.49.1)**
-> trägt seine Stations-Antwort `cities` (Ortslabel) und je Zeile
-> `observed_at`; die App gilt eine Antwort ohne `cities`/`stations` als „kein
-> Payload“ (ehrlicher Leerzustand) und meldet bei `nas_status: "offline"`
-> „Antwort kommt vom Pi-Fallback“ — vorher brach die gebaute GUI an
-> `data.cities.includes(…)` mit einer weißen Seite ab (O44).
->
-> **`/api/v1/series` ist nicht das NAS-`/api/v1/series`.** Der RP2 liest den
-> Tagesverlauf 06–24 Uhr aus seinem Ringpuffer (Parameter `station`, je Stunde
-> die letzte offene Meldung, dazu `min`/`max`/`now`); die NAS-GUI fragt die
-> Rohreihe aus der InfluxDB ab (`station_id`, `hours=1–168`). Gemeinsam ist die
-> Frage „Verlauf einer Station“, nicht der Payload.
+**Versionierter Modus pro Tab (kein globales Modus-Cookie):**
 
-Umschaltverhalten:
+- Pi-HTML sendet `X-TankApp-UI: pi-v1`: alle API-Antworten bleiben lokal,
+  auch nach NAS-Rückkehr. `nas-check` bleibt immer ein Pi-Steuerendpunkt.
+- NAS-HTML sendet bei Lese-Polls `X-TankApp-UI: nas-v1`: NAS-Antworten bleiben NAS-Schema.
+  Bei Ausfall liefert nur `/stations` lokale Preise; alle anderen APIs
+  antworten retryfähig mit 503 statt einem fremden Schema. Insbesondere
+  `/series`, `/health`, `/decide` sind **nicht** schema-kompatibel.
+- Ein unbekannter Lese-Vertrag erhält 409. Requests ohne Vertrag behalten die
+  automatische Auswahl (CLI/Altclients). Antworten nennen
+  `X-TankApp-Contract`, lokale Antworten sind `no-store`; `Vary` trennt
+  `X-TankApp-UI` und `X-Force-Fallback`.
+- NAS-Tabs wechseln bei Rückkehr ohne Reload zur NAS-API zurück. Schon beim
+  ersten Abruffehler oder lokalen Stationsersatz bleiben alte Aktionen
+  gesperrt. Der erkannte Wiederkontakt stößt den Outbox-Flush an, zusätzlich
+  zu Mount, Browser-`online` und 30-s-Takt. Leases, Backoff und `Retry-After`
+  werden nicht umgangen. Ungesendete Formularwerte werden nicht neu gemountet.
+- `/?fallback=1`, `X-Force-Fallback: 1` und `FORCE_FALLBACK=1` erzwingen
+  lokalen Betrieb. Schreibaktionen bleiben ausschließlich beim NAS; der Pi
+  ist kein zweiter Ledger-Schreiber und wiederholt keine Proxy-Schreibanfrage.
 
-- NAS geht aus → **der nächste Request** fällt sofort in den Fallback zurück.
-- NAS kommt wieder → innerhalb von **15 s** (Online-TTL) oder sofort nach
-  `/api/v1/nas-check` bzw. Klick auf „NAS prüfen“.
-- `FORCE_FALLBACK=1` deaktiviert den Proxy dauerhaft (Testfall).
-- **Schreibaktionen** (`POST`/`PUT`/`DELETE`/`PATCH`) werden nur weitergeleitet,
-  wenn die NAS online ist; bei offline NAS antwortet der RP2 mit
-  `503 {"error": "NAS offline — …"}`. Der Fallback selbst ist nur lesend
-  (seine JSON-Endpunkte oben sind `GET`).
+**Readiness statt bloßer Erreichbarkeit:** `/health` muss HTTP 200 mit
+parsebarem Objekt und `app=online` liefern; zusätzlich muss `/stations?fuel=e10`
+HTTP 200 mit dem Stationsvertrag ohne `connection_error`/`error_code` liefern. Das ist technische Bereitschaft
+für Preise, **keine** Modell-/M7-Freigabe und kein Beweis für jede persönliche
+API. Ein Fehler einer tatsächlich benutzten Fach-API degradiert sofort.
+Fehlendes Content-Length ist erlaubt (Chunked/Close-Framing); ungültige,
+übergroße oder abgeschnittene Antworten werden verworfen. Pro Probe gilt
+2 MiB, pro Proxy-Antwort 32 MiB; vollständige Prüfung vor Antwortbeginn.
+Ein Abbruch beim Senden an den Browser führt nie zu einer zweiten Antwort.
+401/403/429 samt Auth-/Retry-Headern werden nicht als Offline kaschiert.
+Vollständig empfangene Schreibantworten bleiben auch bei 5xx erhalten:
+`store_corrupted` darf nicht in einen anonymen Transportfehler verwandelt
+werden, sonst verliert die Outbox aus Batch 1 ihren Ablehnungsgrund.
+
+`health.failover` und `nas-check.failover` nennen Zustand und Nutzertext:
+
+| Zustand | Bedeutung |
+|---|---|
+| `nas_ready` | Health und Stationsvertrag geprüft; NAS nutzbar |
+| `nas_degraded` | Health erreichbar, Fach-API oder laufender Proxy fehlgeschlagen; lokale Preise bleiben |
+| `pi_prices_only` | NAS nicht bereit und kein qualitäts-/zeitvalidierter Prognosecache; keine Aktionen |
+| `pi_forecast_valid` | Mindestens eine Cache-Reihe ist für die Anzeige gültig; weiterhin keine Aktionen |
+| `recovering` | Erstes positives Signal nach Ausfall; zweite Bestätigung steht aus |
+
+`data_state` benennt unabhängig davon den lokalen Datenstand. Gültige
+Prognoseanzeige verlangt Generation und Ursprung innerhalb der letzten 24 h,
+keinen Zukunftsursprung, ggf. noch nicht abgelaufenes `valid_until`,
+`calibrated=true`, `stale_data_at_origin=false`, grünen Rolling-PICP und
+wohlgeordnete, endliche Quantile für die Zukunft. Fehlende Belege sind nicht
+grün. Ein historischer Cache bleibt so beschriftet sichtbar, aber liefert
+weder Wahrscheinlichkeiten noch Aktionsfreigaben. Frische und Qualität jeder
+Station bleiben separat zu beachten; ein gültiger Eintrag gibt andere nicht frei.
+
+**Zeitverhalten:** 15 s Online-TTL, 30 s Offline-TTL, 2 s je Health-/Fachprobe,
+15 s Proxy-Timeout und 60 s Pi-UI-Poll sind Konfigurationswerte, **keine
+garantierte Umschaltzeit**. Bei erstmaligem Start reicht eine vollständige
+erfolgreiche Probe. Nach Ausfall braucht es zwei erfolgreiche Proben mit
+mindestens 2 s Abstand; parallele Prüfungen teilen eine Probe. Ein neuerer
+Proxyfehler schlägt ein älteres Probe-Ergebnis. Read-Timeouts sind keine
+End-to-End-Frist; Browser, Datenmenge und Netz beeinflussen die Dauer.
+`last_check` ist der tatsächliche Prüfzeitpunkt, nicht die Zeit des Lesens.
 
 Softwaretests (auf dem PC/NAS, nicht auf dem RP2 nötig):
 
@@ -379,24 +408,21 @@ python3 -m pytest tests/test_rp2_fallback.py tests/test_rp2_cache.py -q
 
 ## Funktionen
 
-| Funktion | NAS Online (proxied) | NAS Offline (Fallback) | Datenqualität |
-|---|---|---|---|
-| Vollständige NAS-GUI | ✅ unter `<RP2-IP>:8000` | ❌ reduziert | Optimal |
-| Live-Preise | ✅ Live | ✅ aus Puffer, echte Datenalter | Optimal |
-| F2 (Günstigste Station) | ✅ Voll | ✅ + Ersparnis je Liter & Tank | Optimal |
-| F1 (Jetzt/warten?) | ✅ exakt | ✅ vereinfachte Quantil-Logik | Gut (max 24h alt) |
-| F3 (Heute/später?) | ✅ exakt | ✅ Top-3-Fenster aus Cache | Gut |
-| Heatmaps DoW×Stunde | ✅ **B3.9** via `/api/v1/heatmap` | ❌ braucht InfluxDB | Optimal (NAS) |
-| Meine Stationen δ̂ | ✅ **B3.10** via `/api/v1/selection` | ❌ braucht Training | Optimal (NAS) |
-| Collector Livestatus | ✅ **B3.11** via `/api/v1/collector/status` | ✅ aus heartbeat.json | Optimal |
-| Route Evaluate | ✅ **B3.12** via `/api/v1/route/evaluate` | ✅ lokal im Fallback | Gut |
+| Funktion | NAS bereit (Proxy) | Pi-Fallback |
+|---|---|---|
+| Live-Preise | NAS-Bestand | Lokaler Puffer, echtes Alter je Station |
+| Preisvergleich | mit NAS-Randbedingungen | Nur beobachtete Preisabstände, keine Fahrt-/Tankempfehlung |
+| F1/F3 | Nur gemäß NAS-Qualitäts- und Profilgates | Keine Aktions- oder Fensterfreigabe |
+| Prognosekurven | NAS-Publikation | Beschreibende Quantile; historischer/ungeprüfter Cache gekennzeichnet |
+| Heatmaps, Selektion, Route Evaluate | NAS-API | Keine entsprechenden lokalen Endpunkte |
+| Collector-Livestatus | `/api/v1/collector/status` | Nur Preis-/Cache-/Metadatenstatus im lokalen Health |
 
-Fallback-Entscheidung arbeitet ehrlich: aus quantilierten Punkten (q025…q975)
-werden **Preis-Score** (0–100 % auf Basis des historischen Quantils,
-Gleichverteilungs-Annahme, Formfehler bis ~8,4 Prozentpunkte) und erwartete
-Ersparnis geschätzt. Der Fallback nennt das bewusst **nicht**
-„Wahrscheinlichkeit“ — die kalibrierte Posterior-Wahrscheinlichkeit (M7)
-liefert ausschließlich das NAS; dort bleibt die Bezeichnung unverändert.
+Zwei Randquantile und ein Median bestimmen keine Verteilung der
+Fensterminima und keine allgemeine CDF-Fehlerschranke. Der Pi schätzt daher
+weder „Preis-Score“ noch erwartete Nettoersparnis. Insbesondere liefert die
+symmetrische Spanne 1,60–1,80 €/L bei aktuell 1,70 €/L **keine** gesicherte
+Ersparnis von 1 € für 40 L. Die NAS-Medianersparnis ist separat im
+[API-Vertrag](../referenz/API.md#decide-b4-primär) beschrieben.
 
 Der **Tagesstreifen** kommt aus dem Collector-Puffer selbst: je Stunde die
 letzte **offene** Meldung für den gewählten Kraftstoff, Ortszeit. Stunden ohne
@@ -467,7 +493,7 @@ curl -s http://<RP2-IP>:8000/api/v1/nas-check
 curl -s http://<NAS-IP>:1355/api/v1/health
 ```
 
-Ursachen: NAS_IP falsch/leer, FORCE_FALLBACK=1, ?fallback=1 in URL, NAS antwortet nicht mit `{"app":"online"}`.
+Ursachen: NAS_IP falsch/leer, erzwungener oder tabgebundener Pi-Modus, ungültiger Health-Body, Fach-API nicht bereit oder Rückkehr noch nicht bestätigt. `nas-check` nennt den Zustand; ein bereites NAS wechselt einen Pi-Tab erst auf ausdrücklichen Klick.
 
 ### Port 8000 belegt
 
@@ -517,7 +543,7 @@ flüchtigen `/tmp`. Ein Persistieren auf die SD-Karte würde bei jedem Abruf (al
 5 Minuten) schreiben — der Preis dafür ist höher als der Nutzen eines Puffers,
 der nach einem Neustart in wenigen Minuten wieder gefüllt ist. Statt zu
 spiegeln, erklärt die Oberfläche den Zustand: `CACHE_REBOOT_HINT` im
-F1-Bereich, im Prognose-Raster und in der API-Fehlermeldung, dazu
+Preisvergleich, im Prognose-Raster und in der API-Fehlermeldung, dazu
 `boot_state_note()` beim Start des Cachers.
 
 Datenverlust-Fenster: Der RAM-Puffer überbrückt **7 Tage** NAS-Ausfall
@@ -528,18 +554,17 @@ vergrößern (tmpfs-Größe gegen 15 Polls/Tag/Station rechnen) — siehe
 
 ## Prognose-Qualität
 
-- Maximales Alter 24h (wenn NAS um 00:01 offline)
-- Typisch 6–12h (wenn NAS tagsüber läuft)
-- Aktualisierung alle 5 Min.
-
-Sind 24h alte Prognosen brauchbar? Ja — Preise ändern sich meist langsam über Tag, schnell bei Sprüngen. Für F1/F3 sind 24h alte Prognosen deutlich besser als gar keine.
+Ein Abruf alle 5 Minuten macht eine alte Publikation nicht neu. Der Cache
+kann beliebig alt werden; für „gültige Prognosedaten“ gelten die oben genannten
+Zeit-/Qualitätsprüfungen. Auch ein grüner Cache enthält keine validierten
+persönlichen Randbedingungen und gibt auf dem Pi keine Aktion frei.
 
 ## Nutzung
 
 ### Alltag
 
 1. Immer dieselbe Adresse: `http://<RP2-IP>:8000`
-2. Wenn NAS online: automatisch vollwertige NAS-GUI (proxied)
+2. Bei neuem Aufruf und bereitem NAS: vollständige NAS-GUI (Proxy); offene Pi-Tabs wechseln ausdrücklich
 3. Wenn NAS offline: automatisch Fallback mit Live-Preisen + gecachten Prognosen + Heartbeat
 4. Fallback erzwingen: `http://<RP2-IP>:8000/?fallback=1`
 

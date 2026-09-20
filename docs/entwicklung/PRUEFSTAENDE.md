@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 20.09.2026 · App-Version 0.60.0
+> Stand: 20.09.2026 · App-Version 0.61.0
 
 ## Inhaltsverzeichnis
 
@@ -11,10 +11,11 @@
 
 Diese Dokumente behalten ihre ursprüngliche fachliche Stand-Zeile. Umzug,
 Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
-0.60.0. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
+0.61.0. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
+| [UI](../produkt/UI.md) | 0.60.0 |
 | [README.md](../../README.md) | 0.59.1 |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 0.59.1 |
 | [ADR-Index](../adr/README.md) | 0.59.1 |
@@ -24,7 +25,6 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.38.0 |
 | [BETRIEB.md](../betrieb/BETRIEB.md) | 0.53.0 |
 | [INSTALL.md](../betrieb/INSTALL.md) | 0.38.0 |
-| [RP2.md](../betrieb/RP2.md) | 0.49.5 |
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 |
 | [ANALYSE.md](../referenz/ANALYSE.md) | 0.38.0 |

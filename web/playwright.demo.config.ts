@@ -16,11 +16,11 @@ import { defineConfig } from "@playwright/test";
 // unter `.demo-e2e-data/` und sind nicht versioniert.
 export default defineConfig({
   testDir: "./e2e",
-  // Nur diese Dateien — die gemockten Specs gehören zur Alltagssuite und
+  // Demo, Mobil und NAS/Pi-Failover — die gemockten Specs gehören zur Alltagssuite und
   // erwarten deren Server auf 1355. `mobile.spec.ts` misst die Mobil-Zusagen
   // (kein Querlauf, keine überlaufenden Zellen) und braucht dafür echte
   // Server-Antworten; im `desktop`-Projekt überspringt es sich selbst.
-  testMatch: /(demo|mobile)\.spec\.ts/,
+  testMatch: /(demo|mobile|failover)\.spec\.ts/,
   reporter: process.env.CI ? "github" : "list",
   // Genau ein Worker: Beide Projekte teilen sich einen Demo-Server mit einer
   // Store-Datei. Parallel laufende Projekte haben sich gegenseitig die O17-

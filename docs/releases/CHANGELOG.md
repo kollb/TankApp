@@ -4,6 +4,32 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.61.0] – 2026-09-20
+
+**Batch 3 (P1): Failover ohne Freigabeausweitung (F1, F2, A2, I2)** —
+[Issue #183](https://github.com/kollb/TankApp/issues/183).
+
+- Der Pi erzeugt aus gecachten Quantilen keine Tank-/Warteaktion und kein
+  bestes Fenster. Die Preis-Momentaufnahme kennzeichnet insbesondere einen
+  veralteten ausgewählten Preis, auch wenn andere Stationen frisch sind.
+- Gleichverteilungs-Score und positive-Teil-„Ersparnis“ entfernt. Die Werkstatt
+  zeigt nur beschreibende Quantile. NAS-`expected_saving` ist ausdrücklich
+  abgeschnittene Medianersparnis der Fensterminima, kein Erwartungswert.
+- Readiness verlangt gültigen Health-Body und Stations-API. Single-flight,
+  geordnete Fehler und Rückkehr-Hysterese verhindern überholende Probes;
+  Zustände und Nutzertexte trennen bereit, eingeschränkt, Wiederkehr und
+  lokalen Datenstand. Kein TTL-/Timeout-Wert verspricht eine Umschaltfrist.
+- Proxy-Antworten werden begrenzt vollständig gelesen, bevor Header starten.
+  Fach-503 nutzt lokale Preise; nach Antwortbeginn gibt es keinen zweiten
+  Antwortversuch. Auth-/Retry-/Cache-Header und 304 bleiben erhalten.
+- `X-TankApp-UI: pi-v1/nas-v1` bindet offene Tabs an ihren Vertrag. NAS-Tabs
+  behalten Formulare und Outbox ohne Reload, sperren alte Aktionen beim ersten
+  Fehler und stoßen bei Wiederkehr das Nachreichen an. Pi-Tabs wechseln nur
+  ausdrücklich; ihre Kraftstoff-/Ort-/Tankmengen-Eingaben bleiben erhalten.
+- Regressionen: 40-/1-Minuten-Preise, symmetrische Quantile, ungültiger Health,
+  Health 200/Fach-503, Chunked/abgeschnittene Antworten, konkurrierende Probes
+  und echte Browser-Tabs samt wartendem Beleg und ungesendetem Entwurf.
+
 ## [0.60.0] – 2026-09-20
 
 **Batch 1 (P0): Belegpersistenz, Ledger-Integrität, Publikationskonsistenz
