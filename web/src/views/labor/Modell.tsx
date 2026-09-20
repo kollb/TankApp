@@ -177,7 +177,7 @@ export function ModellView({
           {stationDeltas.length ? (
             <>
               <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
-              <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="delta_hat mit Bootstrap-CI und q-Wert - blasse Balken nicht signifikant." />
+              <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
             </>
           ) : (
             <Empty>Noch kein delta_hat - braucht 1 Woche Preise je Station.</Empty>
@@ -315,7 +315,7 @@ export function ModellView({
             {stationDeltas.length ? (
               <>
                 <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
-                <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="delta_hat mit Bootstrap-CI und q-Wert - blasse Balken nicht signifikant." />
+                <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
               </>
             ) : (
               <Empty>Noch kein delta_hat - braucht 1 Woche Preise je Station.</Empty>
