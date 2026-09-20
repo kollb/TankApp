@@ -51,6 +51,8 @@ PERSONAL_READ_ROUTES = (
     "/api/v1/episodes",
     # /overview bündelt Belege und Episoden — ohne es wäre der Schutz umgehbar.
     "/api/v1/overview",
+    "/api/v1/stats/summary",
+    "/api/v1/decide",
 )
 
 
