@@ -2,20 +2,20 @@
 
 > **Erledigt (0.41.0, 16.09.2026):** Alle Befunde U1–U8 sind umgesetzt und
 > abgenommen — U2/U7 (P0), U1/U3/U6 (P1), U4/U5/U8 (P2). Die Nachweise stehen
-> im [CHANGELOG](../../CHANGELOG.md) (0.41.0) und in der Erledigt-Tabelle von
-> [TODO.md](../../TODO.md); die Ratchets leben in `web/src/`
+> im [CHANGELOG](../releases/CHANGELOG.md) (0.41.0) und in der Erledigt-Tabelle von
+> [TODO.md](../planung/TODO.md); die Ratchets leben in `web/src/`
 > (`a11y.test.ts`, `AppNav.test.tsx`, `routing.test.ts`,
 > `format-convention.test.ts`). Bewusst offen geblieben ist nur der
 > zweispaltige Desktop-Inhalt (§13) — er steht als C12 in
-> [TODO.md](../../TODO.md). Dieser Befund bleibt als Protokoll lesbar und
+> [TODO.md](../planung/TODO.md). Dieser Befund bleibt als Protokoll lesbar und
 > wird nicht mehr gepflegt.
 
 > Stand: 15.09.2026 · App-Version **0.38.0** · Arbeitsdokument (Vermessung,
 > keine Abnahme). Gemessene Basis: `web/src/` (27 237 Zeilen TS/TSX), der
 > `web/dist`-Build und ein laufender Demo-Stack
 > (`ops/quality/demo_server.py`, Port 1357). Maßstab ist
-> [UI-NEUENTWURF.md](../UI-NEUENTWURF.md); der Konzept-Abgleich steht in
-> [LUECKEN.md](../LUECKEN.md), die Aufgabenliste in [TODO.md](../../TODO.md).
+> [UI.md](../produkt/UI.md); der Konzept-Abgleich steht in
+> [LUECKEN.md](../planung/LUECKEN.md), die Aufgabenliste in [TODO.md](../planung/TODO.md).
 
 ## Inhaltsverzeichnis
 
@@ -34,12 +34,12 @@
 
 ## 1. Ausgangslage: zwei Listen, eine Lücke
 
-[TODO.md](../../TODO.md) meldet nach PR #123 in **C. GUI / UX: „Keine offenen
+[TODO.md](../planung/TODO.md) meldet nach PR #123 in **C. GUI / UX: „Keine offenen
 Punkte"**. Das ist nicht falsch, aber eng: Die Ledger dort gleichen **Konzept ↔
 Code** und **Audit-Befunde ↔ Fix** ab (Punkte wie C3, C5, C7, C8, E2–E7). Keiner
 dieser Punkte misst, ob die Oberfläche *leicht zu lesen und zu bedienen* ist.
 
-Der Maßstab dafür liegt an anderer Stelle: [UI-NEUENTWURF.md](../UI-NEUENTWURF.md)
+Der Maßstab dafür liegt an anderer Stelle: [UI.md](../produkt/UI.md)
 beschreibt die anvisierte GUI **nach** dem Neuentwurf (§13 Geräte-Raster, §14
 Barrierefreiheit, §15 UX-KPIs, §16 Migrationspfad) — und dort ist die Umsetzung
 lückenhaft. Diese acht Befunde sind der Grund für das diffuse Unbehagen: Sie
@@ -51,7 +51,7 @@ Alle Zeilenangaben beziehen sich auf den Stand 0.38.0 (`0c3ed64`).
 
 ### U1 — Typografie ist pixel-fixiert und zu klein
 
-[UI-NEUENTWURF.md §14](../UI-NEUENTWURF.md#14-barrierefreiheit) verlangt explizit:
+[UI-NEUENTWURF.md §14](../produkt/UI.md#mobil-desktop-und-barrierefreiheit) verlangt explizit:
 „System-Schriftgröße wird respektiert (keine px-Fixierung der Fließtexte)“.
 Gemessen in `web/src` (ohne Tests):
 
@@ -91,14 +91,14 @@ Zum Vergleich: `components/HeatmapGrid.tsx:140` löst dasselbe Problem richtig
 (`overflow-x-auto`).
 
 **DoD:** Streifen auf Mobil auf zwei Zeilen
-([§13](../UI-NEUENTWURF.md#13-mobil-desktop-pwa): „Querformat/Zweizeilig statt
+([§13](../produkt/UI.md#mobil-desktop-und-barrierefreiheit): „Querformat/Zweizeilig statt
 neuer Seite") **oder** `overflow-x-auto` mit Mindestzellbreite;
 Playwright-Test bei 390 px, der Zellenbreite ≥ 26 px und sichtbaren Werttext
 verlangt.
 
 ### U3 — Navigation: ein Pillen-Streifen statt der entworfenen Raster
 
-[§13](../UI-NEUENTWURF.md#13-mobil-desktop-pwa) verspricht zwei unterschiedliche
+[§13](../produkt/UI.md#mobil-desktop-und-barrierefreiheit) verspricht zwei unterschiedliche
 Geräte-Raster: mobil Bottom-Navigation mit 6 Punkten, desktop Seitenleiste
 links, Ebene 1 als rechtes Seitenpanel, Inhalt zweispaltig. Implementiert ist
 **ein** Streifen oben (`Dashboard.tsx:1647` ff., `flex flex-wrap`), für alle
@@ -128,7 +128,7 @@ Zeile mit den vier wirklich globalen Steuerungen.
 
 ### U4 — Kein Routing, keine geteilte Antwort
 
-[§13](../UI-NEUENTWURF.md#13-mobil-desktop-pwa): „Jede Ansicht ist eine URL
+[§13](../produkt/UI.md#mobil-desktop-und-barrierefreiheit): „Jede Ansicht ist eine URL
 (`/jetzt`, `/station/{id}`, `/woche?fenster=…`, `/labor#sicherheit`)".
 Existiert nicht. Gelesen werden in `web/src/data.ts::readShareParams`
 (Zeile 1796) nur `city`, `fuel`, `station_id`, `liters`, `weeks`, `basis` —
@@ -147,7 +147,7 @@ richtiger Bereich.
 ### U5 — Die Erklär-Treppe führt aus dem Bereich heraus
 
 Die Erklär-Treppe (Antwort → Begründung → Beweis,
-[§7](../UI-NEUENTWURF.md#7-die-erklär-treppe-antwort--begründung--beweis)) ist
+[§7](../produkt/UI.md#antwort-begründung-und-beweis)) ist
 angebaut, aber der zweite Schritt springt weg: „Warum?“ in `views/Jetzt.tsx:469`
 und die System-Zeilen (`views/System.tsx:258,396,625`) rufen
 `openLabor(section, …)` auf — Sprung in einen anderen Bereich mit
@@ -176,7 +176,7 @@ auf eine erlaubte Menge beschränkt.
 
 ### U7 — Lighthouse-Gate prüft den Zustand nicht, den es behauptet
 
-[QUALITAET.md](../QUALITAET.md) (Zeile 31) und `web/lighthouserc.json` sagen:
+[QUALITAET.md](../entwicklung/QUALITAET.md) (Zeile 31) und `web/lighthouserc.json` sagen:
 gemessen werden „Zwei GUI-Zustände: Alltag und Statistik“. Die zweite URL ist
 aber `…&tab=statistik` — einen Bereich `statistik` gibt es seit dem Neuentwurf
 nicht mehr (`grep -rn "statistik" web/src` ohne Tests: **kein Treffer**). Beide
@@ -187,7 +187,7 @@ Dazu drei Verschärfungen:
 
 - `categories:performance`, `total-byte-weight`, LCP und CLS stehen alle auf
   `warn` — das Gate kann nicht rot werden, und das M4-Ziel > 0,90 ist nie
-  angefasst ([QUALITAET.md → Offen](../QUALITAET.md#offen)).
+  angefasst ([QUALITAET.md → Offen](../entwicklung/QUALITAET.md#offen)).
 - Der Demo-Stack liefert `decision_ready: False`, `calibrated: False`
   (`ops/quality/demo_data.py:315`) und keine Belege. Gemessen wird damit der
   **Einrichtungszustand** von „Jetzt“ (S0, `views/Jetzt.tsx:282`), nicht der
@@ -200,11 +200,11 @@ Dazu drei Verschärfungen:
 [U4](#u4--kein-routing-keine-geteilte-antwort) voraus) und eine dritte auf den
 Einrichtungszustand, damit beide Fälle belegt sind; Budgets von `warn` auf
 `error` für `total-byte-weight`/CLS; Code-Splitting pro Bereich (`import()` je
-`views/*`); die Messwerte in [QUALITAET.md](../QUALITAET.md) eintragen.
+`views/*`); die Messwerte in [QUALITAET.md](../entwicklung/QUALITAET.md) eintragen.
 
 ### U8 — Struktur: Props-Drilling ist der Grund, warum UX-Fixes teuer sind
 
-[§1](../UI-NEUENTWURF.md#1-diagnose-was-an-der-heutigen-gui-anstrengt) stellte
+[§1](../produkt/UI.md#navigation) stellte
 fest: „Riesen-Views, Props-Drilling — jede UX-Änderung ist ein Eingriff am
 offenen Herzen". Der Schnitt hat `Dashboard.tsx` von ~4 700 auf 2 172 Zeilen
 gebracht; die Views sind aber an dieselbe Stelle gewachsen und kriegen den
@@ -233,9 +233,9 @@ Oberfläche altert in großen Sprüngen statt in Korrekturen.
 | U5 | **P2** | Erklär-Treppe: Ebene 1 als Sheet am Ort | entfernt den Sprung, der `labReturn` braucht |
 | U8 | **P2** | Props-Drilling auflösen (D1 zu Ende führen) | macht U1–U6 billiger |
 
-Die Liste ist bewusst noch nicht in [TODO.md](../../TODO.md) als Tabellenzeilen
+Die Liste ist bewusst noch nicht in [TODO.md](../planung/TODO.md) als Tabellenzeilen
 unter C — das gehört mit der ersten Umsetzung zusammen rein, sonst steht dort
-ein Befund ohne Owner. Nach der Abnahme von U1/U2/U6: Eintrag in TODO.md under
+ein Befund ohne Owner. Nach der Abnahme von U1/U2/U6: Eintrag in docs/planung/TODO.md under
 „C. GUI / UX“, Ratchet-Tests in `web/src/`, und dieser Befund wandert mit
 Erledigt-Vermerk nach [archiv/](README.md).
 

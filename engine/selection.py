@@ -33,7 +33,7 @@ import pandas as pd
 # O36: Untergrenze für die Bootstrap-Ziehungen der Selektion. Die kleinste
 # erreichbare p-Wert-Stufe ist p_min = 1/(B+1); mit Benjamini-Hochberg über
 # m ≈ 11 Stationen ergibt das q_min ≈ m/(B+1). B = 200 liefert q ≥ 0,0547 —
-# selbst die stärkste Station wäre nie signifikant (docs/ANALYSE.md §B,
+# selbst die stärkste Station wäre nie signifikant (docs/referenz/ANALYSE.md §B,
 # „B=200 wäre ein Signifikanzblocker“). 1000 lässt Luft für ein größeres
 # Stations-Set, ohne die Rechenzeit des Produktionswerts 2000 zu verlangen.
 SELECTION_MIN_BOOTSTRAP = 1000
@@ -77,7 +77,7 @@ class SelectionConfig:
     # A12: Station-Lebenszyklus — nach so vielen Kalendertagen ohne
     # verwertbaren Preis gilt eine Station als „tot“ und fällt aus dem
     # Ranking (konfigurierbar, Default 7; None/0 = aus). Das Polling-Set
-    # bleibt stabil — Tausch nur mit Bestätigung (docs/ANALYSE.md).
+    # bleibt stabil — Tausch nur mit Bestätigung (docs/referenz/ANALYSE.md).
     dead_after_days: int | None = 7
     # O2: Weekly receipt availability mass, Monday=0 … Sunday=6. ``None``
     # means the documented shared default; it is not a hidden hard-code.

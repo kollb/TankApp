@@ -10,7 +10,7 @@ sieht, dass eine Antwort 900 ms braucht, weil eine Datei gewachsen ist.
 
 Batch-Check: Antworten tragen ``X-Process-Time``, ``/api/v1/health`` nennt
 Parse-Dauer und Publikationsgröße, und das Budget steht in
-[docs/QUALITAET.md](../docs/QUALITAET.md).
+[docs/entwicklung/QUALITAET.md](../docs/entwicklung/QUALITAET.md).
 """
 
 import datetime as dt
@@ -178,12 +178,12 @@ def test_health_zeigt_latenzfenster_und_sperrenzaehler(server):
 
 
 def test_budget_steht_in_qualitaetsdoku():
-    """Batch-Check: Das Budget steht in docs/QUALITAET.md — mit derselben Zahl."""
+    """Batch-Check: Das Budget steht in docs/entwicklung/QUALITAET.md — mit derselben Zahl."""
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parents[1] / "docs" / "QUALITAET.md").read_text(
-        encoding="utf-8"
-    )
+    text = (
+        Path(__file__).resolve().parents[1] / "docs/entwicklung/QUALITAET.md"
+    ).read_text(encoding="utf-8")
     assert "X-Process-Time" in text, "QUALITAET.md nennt den Messwert nicht"
     assert str(int(metrics.REQUEST_BUDGET_MS)) in text, (
         "das p95-Budget aus app/metrics.py steht nicht in QUALITAET.md"

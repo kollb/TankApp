@@ -1,4 +1,4 @@
-// Erklär-Treppe, Ebene 1 (docs/UI-NEUENTWURF.md §7): das Begründungs-Sheet.
+// Erklär-Treppe, Ebene 1 (docs/produkt/UI.md, Bereiche): das Begründungs-Sheet.
 //
 // „Warum?“ steht überall an derselben Stelle — hier ist der Ort, an dem die
 // Antwort erscheint: höchstens drei Sätze in Alltagssprache, die Herkunft der

@@ -3,8 +3,8 @@
 > **Archiviert — Mockup-Vergleich aus der Zeit vor der `web/`-GUI.**
 > Technik-Angaben (Flask, Next.js) und Funktionsumfang stimmen nicht mehr:
 > live sind `web/` (NAS-GUI, Vite/React) und `rp2/fallback_gui.py`
-> (Standardbibliothek). Beschrieben in [../RP2.md](../RP2.md), Design-Basis in
-> [../GUI-VORLAGEN.md](../GUI-VORLAGEN.md). Die HTML-Mockups liegen in
+> (Standardbibliothek). Beschrieben in [../RP2.md](../betrieb/RP2.md), Design-Basis in
+> [GUI-VORLAGEN.md](../produkt/GUI-VORLAGEN.md). Die HTML-Mockups liegen in
 > [mockups/](mockups/richtige_gui.html). Archiv-Übersicht: [README.md](README.md).
 
 Hier siehst du den **visuellen Unterschied** zwischen der vollwertigen GUI (NAS) und der Fallback-GUI (RP2).

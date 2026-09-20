@@ -1475,7 +1475,7 @@ _TEMPLATE_REST = """
 <style>
 /* ==========================================================================
    TankApp Fallback-GUI v4 — Alltag/Werkstatt, Antwort-Karte zuerst.
-   Gestaltungs-Leitplanken aus docs/GUI-VORLAGEN.md: Slate-950-Basis,
+   Gestaltungs-Leitplanken aus docs/produkt/GUI-VORLAGEN.md: Slate-950-Basis,
    Slate-900-Karten, Slate-800-Rahmen, Emerald = positiv/aktiv,
    Sky = Details/Kurven, Amber = Warnung. Nur Standardbibliothek-Webserver:
    alles (HTML, CSS, JS) steckt in dieser einen Datei.

@@ -17,7 +17,7 @@ Ein Lauf:
      data/setup/polling.json. Das aktive Set bleibt unverändert.
 
 Aktivieren ist ein separater Schritt auf dem Pi; dieses Skript gibt die
-genauen Befehle am Ende aus. Hintergrund: docs/STATIONEN-TAUSCH.md.
+genauen Befehle am Ende aus. Hintergrund: docs/betrieb/STATIONEN-TAUSCH.md.
 
 Nur Standardbibliothek; läuft auf NAS, Pi und PC. Beispiel:
 
@@ -338,7 +338,7 @@ def main(argv=None) -> int:
 
     check_ids = ",".join(uid for _, uid, *_ in chosen)
     print(
-        "\nNächste Schritte (Details: docs/STATIONEN-TAUSCH.md):\n"
+        "\nNächste Schritte (Details: docs/betrieb/STATIONEN-TAUSCH.md):\n"
         f"  1. Auf dem Pi live prüfen (KEY=$(cat data/apikey.txt)):\n"
         f"     curl -s 'https://creativecommons.tankerkoenig.de/json/prices.php"
         f"?ids={check_ids}&apikey=$KEY' | jq '.prices'\n"

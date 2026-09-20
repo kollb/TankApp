@@ -1,4 +1,4 @@
-// Ich — Fahrzeug, Belege, Bilanz, Einstellungen (docs/UI-NEUENTWURF.md
+// Ich — Fahrzeug, Belege, Bilanz, Einstellungen (docs/produkt/UI.md
 // §5.4, Phase 2).
 //
 // Vier Unterseiten, Segment-Steuerung oben, kein eigenes Menü. Die View

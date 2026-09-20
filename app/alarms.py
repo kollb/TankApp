@@ -76,7 +76,7 @@ def build_alarms(
                     "message": (
                         f"Polling-Set fehlt ({polling_path}) — keine Stadt eingerichtet. "
                         "Auf dem Pi data/analysis/stations/polling.json erzeugen "
-                        "(docs/INSTALL.md Abschnitt Polling-Set), auf dem NAS "
+                        "(docs/betrieb/INSTALL.md Abschnitt Polling-Set), auf dem NAS "
                         "TANKAPP_POLLING_FILE prüfen und ops/nas/preflight.sh ausführen. "
                         "Collector-Herzschlag ✓ und InfluxDB ✓ nützen ohne Polling-Set nichts."
                     ),

@@ -1,5 +1,5 @@
 """Regressions-Schutz für analysis/regime_check.py und den Befund
-docs/BEFUND-UX-MATH-2026-09-19.md, Teil 5.
+docs/archiv/BEFUND-UX-MATH-2026-09-19.md, Teil 5.
 
 Genagelt werden die Aussagen, die der Befund *misst* und auf denen die
 Regime-Schicht (R2–R4) aufsetzt:

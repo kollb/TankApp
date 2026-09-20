@@ -1,8 +1,8 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 15.09.2026 · App-Version 0.38.0 — extrahiert aus [KONZEPT.md](KONZEPT.md) §9
-> und [INSTALL.md](INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
-> benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](BETRIEB.md).
+> Stand: 15.09.2026 · App-Version 0.38.0 — extrahiert aus [KONZEPT.md](../produkt/KONZEPT.md) §9
+> und [INSTALL.md](../betrieb/INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
+> benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](../betrieb/BETRIEB.md).
 
 ## Inhaltsverzeichnis
 
@@ -57,10 +57,10 @@ Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsa
 | Archiv für Engine | **NAS: komprimierte Tagesdateien, ≥1 Jahr** | Automatischer Sync stündlich |
 | Engine-Fits, Backtests, ACI, Decision-Kalibrierung, Selektion | **NAS (oder PC per WOL)** | Pi bleibt Collector/Uploader |
 | Episode-/Snapshot-/Fill-Log | NAS Tabelle | Advice-Settlement getrennt von Wallet |
-| 24/7-Zugang + Ausfall-GUI | **RP2/Pi: Port 8000** | proxyt das NAS, zeigt sonst Live-Preise + gecachte Prognosen → [RP2.md](RP2.md) |
+| 24/7-Zugang + Ausfall-GUI | **RP2/Pi: Port 8000** | proxyt das NAS, zeigt sonst Live-Preise + gecachte Prognosen → [RP2.md](../betrieb/RP2.md) |
 | Alarm-Aggregation | **NAS: `/api/v1/health`** | ein `alarms[]`-Block statt sieben Endpunkte, ohne zusätzliche Netz-/Influx-Zugriffe |
 
-Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage (aber seit 13.09.2026: Dateien vollständig vor `meta/synced_until` werden nach Ack und 1 Tag Puffer gelöscht, RAM sinkt auf ~1–2 Tage — siehe [SPEICHER.md](SPEICHER.md) 4.1). Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
+Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage (aber seit 13.09.2026: Dateien vollständig vor `meta/synced_until` werden nach Ack und 1 Tag Puffer gelöscht, RAM sinkt auf ~1–2 Tage — siehe [SPEICHER.md](../betrieb/SPEICHER.md) 4.1). Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
 
 **Datenverlust-Fenster (explizit, TODO G3):** Der Ringpuffer behält
 `RING_DAYS = 7` Tage. Ist das NAS **länger** offline, verwirft `ring_prune`
@@ -222,7 +222,7 @@ Watermark bleibt gemerkt).
 
 ### InfluxDB
 
-- Bucket `tankapp`, Retention 5 Jahre (43800h) beim ersten Start, danach per `influx bucket update --retention 8760h` kürzbar — SSD-Tipp 1 Jahr, Details in [SPEICHER.md](SPEICHER.md)
+- Bucket `tankapp`, Retention 5 Jahre (43800h) beim ersten Start, danach per `influx bucket update --retention 8760h` kürzbar — SSD-Tipp 1 Jahr, Details in [SPEICHER.md](../betrieb/SPEICHER.md)
 - Least-Privilege Token: read+write nur für diesen Bucket
 - URL aus Container erreichbar: NAS-LAN-Adresse, nicht localhost
 
@@ -286,7 +286,7 @@ Watermark bleibt gemerkt).
 - `alarms[]` fasst die vorhandenen Prüfungen zusammen (Polling-Set, Herzschlag,
   Job-Fehler, Store-Größe) — **keine** neuen Zugriffe, damit das
   Healthcheck-Budget hält. Codes und Aktionen:
-  [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+  [BETRIEB.md](../betrieb/BETRIEB.md#system-alarme-lesen).
 - `version` (aus `app/version.py`) und `commit` (Checkout bzw.
   `TANKAPP_BUILD_COMMIT`) beantworten bei drei Oberflächen — NAS-GUI,
   RP2-Proxy/Fallback, Collector auf dem Pi — die Frage „welcher Stand läuft wo?“.
@@ -310,11 +310,11 @@ Das GUI ist eine PWA; der Service Worker (`web/public/sw.js`, im Build nach
   ab und zeigt „Neue Version verfügbar“; „Jetzt neu laden“ fordert die Übernahme
   an. Damit ist sichtbar, welcher Stand läuft.
 - **Schreiben.** Belege und Vorsätze landen ohne Verbindung in einer Queue
-  (`localStorage`, siehe [LUECKEN.md](LUECKEN.md) zur bewussten Abweichung von
+  (`localStorage`, siehe [LUECKEN.md](../planung/LUECKEN.md) zur bewussten Abweichung von
   IndexedDB) und gehen nach, sobald die Verbindung steht. Die Beleg-`id`
   entsteht beim Tanken, der Server ist darüber idempotent; 4xx wird gemeldet,
   nicht wiederholt. Betrieb und Fehlersuche:
-  [BETRIEB.md](BETRIEB.md#gui-update-und-offline-queue-b10-seit-0380).
+  [BETRIEB.md](../betrieb/BETRIEB.md#gui-update-und-offline-queue-b10-seit-0380).
 
 ## Ressourcen & SD-Härtung
 
@@ -346,10 +346,10 @@ log2ram/journald-Limits, noatime, systemd Watchdog, NTP Pflicht (UTC speichern, 
 
 ## Verweise
 
-- [Installation](INSTALL.md) — verbindlicher Ablauf
-- [Betrieb](BETRIEB.md) — systemd, Backup, Alarme, Fehlersuche
-- [RP2](RP2.md) — 24/7-Zugang, Proxy und Fallback-GUI
-- [API](API.md) — Endpunkte inkl. `/health` mit `alarms[]`
-- [Analyse](ANALYSE.md) — Selektion, Modelle, Heatmaps, P-Seite
-- [Konzept](KONZEPT.md) — fachliches Zielbild
-- [Lücken-Check](LUECKEN.md) — was vom Konzept offen ist und warum
+- [Installation](../betrieb/INSTALL.md) — verbindlicher Ablauf
+- [Betrieb](../betrieb/BETRIEB.md) — systemd, Backup, Alarme, Fehlersuche
+- [RP2](../betrieb/RP2.md) — 24/7-Zugang, Proxy und Fallback-GUI
+- [API](../referenz/API.md) — Endpunkte inkl. `/health` mit `alarms[]`
+- [Analyse](../referenz/ANALYSE.md) — Selektion, Modelle, Heatmaps, P-Seite
+- [Konzept](../produkt/KONZEPT.md) — fachliches Zielbild
+- [Lücken-Check](../planung/LUECKEN.md) — was vom Konzept offen ist und warum

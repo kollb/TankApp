@@ -34,7 +34,7 @@ class Settings:
     # Datenbestands (Belege, Bilanz, Tagebuch, Profile, Episoden, Alltags-
     # Aggregat). Leer (Default) = offen, wie bisher: Die App läuft im eigenen
     # LAN ohne Login, und das ist eine dokumentierte Entscheidung
-    # (docs/BETRIEB.md), keine Nebenwirkung mehr. Derselbe Mechanismus wie
+    # (docs/betrieb/BETRIEB.md), keine Nebenwirkung mehr. Derselbe Mechanismus wie
     # beim Webhook (``Authorization: Bearer <Secret>``), kein Login, keine
     # Sitzung, keine Nutzer:innen. Schreib-Endpunkte bleiben bewusst offen —
     # sie haben ihr eigenes Budget (429), und ein zweites Secret würde gegen

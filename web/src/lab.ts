@@ -1,4 +1,4 @@
-// Labor — die getrennte Mathematik (docs/UI-NEUENTWURF.md §6, §7, BEFUND B5).
+// Labor — die getrennte Mathematik (docs/produkt/UI.md, BereicheBEFUND B5).
 //
 // Diese Datei ist der **Adressraum** des Labors: die fünf alten Abschnitte
 // plus Spielplatz (backward compat) und die vier neuen Sub-Tabs

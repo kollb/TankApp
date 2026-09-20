@@ -76,8 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # --build-arg TANKAPP_BUILD_COMMIT: Das Bild hat kein git und kein .git,
-      # also bliebe /health.commit null (dokumentiert in docs/API.md und
-      # docs/BETRIEB.md). Dann liefe im Bild ein Stand, der seinen eigenen Hash
+      # also bliebe /health.commit null (dokumentiert in docs/referenz/API.md und
+      # docs/betrieb/BETRIEB.md). Dann liefe im Bild ein Stand, der seinen eigenen Hash
       # nicht kennt — und tests/test_e2e_demo.py besteht zu Recht auf einem
       # echten Commit. Denselben Weg geht der Betrieb über compose.yml.
       - run: docker build --build-arg TANKAPP_BUILD_COMMIT="$GITHUB_SHA" -f ops/nas/app/Dockerfile -t tankapp-web:check .

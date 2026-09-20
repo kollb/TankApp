@@ -2,8 +2,8 @@
 
 > **Archiviert — Tiefenanalyse vom 11.09.2026 (Prüfstrang 1: Konzept ↔ Code).**
 > Die Befunde beziehen sich auf den Stand vor App-Version 0.10.0. Die
-> priorisierte Arbeitsliste daraus ist [../../TODO.md](../../TODO.md); erledigte
-> Punkte sind dort entfernt. Änderungen seitdem: [../../CHANGELOG.md](../../CHANGELOG.md).
+> priorisierte Arbeitsliste daraus ist [TODO.md](../planung/TODO.md); erledigte
+> Punkte sind dort entfernt. Änderungen seitdem: [CHANGELOG.md](../releases/CHANGELOG.md).
 > Archiv-Übersicht: [README.md](README.md).
 
 > Datum: 2026-09-11 · Branch `arena/01a08eeb-tankapp` (aus `main` 440402e) · Basis: Prüfstand 10.09.2026 + LUECKEN.md + Live-Code-Review
@@ -143,7 +143,7 @@ Plus P1-P3 Fehlerliste (siehe §6 unten) – alle noch im aktuellen Code vorhand
 - `ANALYSE.md:139` Hampel als Schritt 3 ohne „Ziel“.
 - `decide.py:475` + `feedback.py:580` fallback Stadt hardcodiert „Frankfurt“ – Snapshot ohne city rechnet gegen falsche Stadt.
 - Engine-Doku `py -3` + Backslash – Ziel Linux NAS.
-- `docs/API.md` 501 HTML statt JSON, `POST /api/v1/episodes` Doku-Fehler.
+- `docs/referenz/API.md` 501 HTML statt JSON, `POST /api/v1/episodes` Doku-Fehler.
 
 ---
 
@@ -192,4 +192,4 @@ Nächster Schritt sollte P1-Fixes sein, danach bewusste Entscheidung ob P-Seite 
 > **Nachtrag 11.09.2026:** Die Entscheidung ist gefallen — die P-Seite wurde
 > aus der Prognoseverteilung gebaut (§4.1–4.3: `p_besser`/`p_lohnt`/
 > F3-Fenster-P aus veröffentlichten Draws). Offen bleibt nur die *gemeinsame*
-> Ziehung über Stationen (§4.2); siehe [LUECKEN.md](../LUECKEN.md).
+> Ziehung über Stationen (§4.2); siehe [LUECKEN.md](../planung/LUECKEN.md).

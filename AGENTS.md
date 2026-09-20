@@ -35,28 +35,32 @@ vorbehalten, der Server-Teil liegt als `tests/test_e2e_demo.py` bei.
 
 ## Dokumentation: ein Ort, ein Index
 
-- Alle Dokumente liegen in `docs/`; `docs/README.md` ist der Index. Keine READMEs
-  neben Code-Ordnern und keine Anleitungen in der Repo-Wurzel (dort bleiben nur
-  `README.md`, `CHANGELOG.md`, `TODO.md`, `AGENTS.md`).
-- Ein Dokument = eine Aufgabe, Name in ASCII-Großbuchstaben. Stand-Zeile
-  (Datum + App-Version) und klickbares Inhaltsverzeichnis oben.
-- Stichtags-Prüfungen, abgeschlossene Migrationen und Punktstände gehen nach
-  `docs/archiv/<THEMA>-<JJJJ-MM-TT>.md`, mit Banner (Stand, Nachfolger) und
-  Eintrag in `docs/archiv/README.md`. Noch gültige Betriebs-Aussagen vorher in
-  das zuständige lebende Dokument übernehmen (meist `docs/BETRIEB.md`).
-- Dokumente umbenennen oder verschieben heißt: **alle** Verweise nachziehen —
-  Markdown, Python-Docstrings, CLI-Hilfen und Fehlermeldungen, `web/`,
-  `.github/`, `ops/`. `tests/test_operations.py::test_local_documentation_links_exist`
-  prüft jeden lokalen Link und Anker; er muss grün bleiben.
-- Neue Version = `app/version.py` anheben und `CHANGELOG.md` ergänzen
-  (erscheint in `/api/v1/health` und im GUI-Footer).
-- Ehrlichkeits-Regel gilt auch für Doku: kein „fertig“ ohne Abnahme, offene
-  Punkte mit Grund (`docs/LUECKEN.md`) statt Lücke.
+- Fachliche Dokumente liegen in thematischen `docs/`-Unterordnern;
+  `docs/README.md` ist der einzige Gesamtindex. Im Root bleiben `README.md`,
+  `CONTRIBUTING.md`, `AGENTS.md` und technisch erforderliche Dateien.
+- Ein Dokument = eine Aufgabe, Dateinamen in ASCII-Großbuchstaben (ADRs mit
+  Nummernpräfix). Stand-Zeile und klickbares Inhaltsverzeichnis oben.
+- Aktuelle Dokumente enthalten nur gültige Regeln; Aufgaben, Release-Historie
+  und historische Belege sind getrennt. Entscheidungen als kurze ADRs.
+- `docs/planung/TODO.md` enthält nur notwendige, jetzt ausführbare Schritte
+  mit konkreter Handlung und Abnahme. Keine Review-Wunschliste, bloßen
+  Wartezustände, Erledigt-Einträge oder unbestätigten Szenario-Fristen.
+  Abhängige Ausbaupläne bleiben in der Fachplanung, Freigabegrenzen in LUECKEN.
+- Stichtags-Prüfungen und abgeschlossene Migrationen nach `docs/archiv/`, mit
+  Banner (Stand, Nachfolger) und Indexeintrag. Offene Aufgaben vorher in
+  `docs/planung/TODO.md`, gültige Regeln ins zuständige Dokument übernehmen.
+- Umbenennungen: alle Links, Anker, Python-Docstrings, CLI-Hilfen,
+  Fehlermeldungen, `web/`, `.github/` und `ops/` nachziehen.
+  `tests/test_operations.py::test_local_documentation_links_exist` muss grün sein.
+- App-Release: `app/version.py` und `docs/releases/CHANGELOG.md` gemeinsam
+  pflegen. Redaktionelle Änderungen sind kein App-Release.
+- Kein „fertig“ ohne Abnahme; offene Grenzen in `docs/planung/LUECKEN.md`.
+- Pflegekonvention und Struktur: [Dokumentationspflege](docs/entwicklung/DOKUMENTATION.md).
 
 ## Texte in der App
 
 Jede Zeile, die ein Nutzer sieht (GUI, Fallback-GUI, Fehlertexte), folgt
-[docs/MICROCOPY.md](docs/MICROCOPY.md): Tonfall „ehrlich, knapp,
+[docs/produkt/MICROCOPY.md](docs/produkt/MICROCOPY.md): Tonfall „ehrlich, knapp,
 handlungsleitend“, `„…“` als Anführungszeichen, Zahlen und Einheiten
 ausschließlich über die Formatter in `web/src/data.ts` (€/L für Niveaus,
 ct/L für Differenzen, Uhrzeiten Europe/Berlin). Neue Muster gehören in das
@@ -64,4 +68,4 @@ Regelwerk, nicht nur in das Panel.
 
 ## GUI-Basis bewahren
 
-`sample/good gui` und `sample/good statistic gui` sind ausdrücklich die gestalterische und technische Basis der neuen Homepage. Nicht beim Aufräumen von Demo-Daten löschen. Die Übernahmeregeln stehen in `docs/GUI-VORLAGEN.md`.
+`sample/good gui` und `sample/good statistic gui` sind ausdrücklich die gestalterische und technische Basis der neuen Homepage. Nicht beim Aufräumen von Demo-Daten löschen. Die Übernahmeregeln stehen in `docs/produkt/GUI-VORLAGEN.md`.

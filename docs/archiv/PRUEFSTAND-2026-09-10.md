@@ -2,15 +2,15 @@
 
 > **Archiviert — unabhängige Stichtagsprüfung vom 10.09.2026.**
 > Die Fehler §3.1–3.8 sind seit 11.09.2026 gefixt (siehe
-> [../LUECKEN.md](../LUECKEN.md)); was offen blieb, steht priorisiert in
-> [../../TODO.md](../../TODO.md). Paragraphennummern werden aus Code-Kommentaren
+> [LUECKEN.md](../planung/LUECKEN.md)); was offen blieb, steht priorisiert in
+> [TODO.md](../planung/TODO.md). Paragraphennummern werden aus Code-Kommentaren
 > zitiert („Prüfstand §3.1“) und bleiben deshalb unverändert.
 > Schritte aus diesem Blatt nicht mehr ausführen. Archiv-Übersicht: [README.md](README.md).
 
 > Geprüft am 10.09.2026 auf Branch `arena/01a08cad-tankapp` (Commit `378947a`).
 > Methode: Dokuabgleich (KONZEPT/API/ARCHITEKTUR/LUECKEN/ANALYSE/RP2) gegen Code,
 > vollständige Prüfläufe, Live-Probe gegen eine gestartete Instanz der NAS-App.
-> Dieses Blatt ergänzt [LUECKEN.md](../LUECKEN.md): LUECKEN listet die *selbst erkannten*
+> Dieses Blatt ergänzt [LUECKEN.md](../planung/LUECKEN.md): LUECKEN listet die *selbst erkannten*
 > offenen Punkte; hier stehen die Abweichungen, die **nicht** in LUECKEN stehen.
 
 ## 0. Ausgeführte Prüfungen (Ergebnis)
@@ -92,7 +92,7 @@ Kampagnen-Quote 6/2/2 existiert nur in der Offline-Pipeline
 |---|---|---|
 | 5-min-Raster, FFill ≤ 30 min, Staleness-Maske | `engine/data.py::prepare_series` | ✅ |
 | closed-Segmente fließen nicht in die Modellierung | `valid = fresh & status=="open" & price.notna()` | ✅ |
-| **Hampel-Filter (1 h, Median ± 5·MAD)** | — | ❌ ** nirgends implementiert** (dokumentiert in `docs/ANALYSE.md:139` als Schritt 3 der Aufbereitung) |
+| **Hampel-Filter (1 h, Median ± 5·MAD)** | — | ❌ ** nirgends implementiert** (dokumentiert in `docs/referenz/ANALYSE.md:139` als Schritt 3 der Aufbereitung) |
 | robuste harmonische Regression + DoW, Huber-IRLS, rollierend 42 d, täglicher Refit | `engine/models.py::fit/huber_fit` | ✅ |
 | **gepoolter Feiertags-Dummy je Bundesland** | — | ❌ fehlt (`features()` hat nur Harmonik + DoW + 12-Uhr-Sprung) |
 | **Zeit-seit-letztem-Preissprung als Feature** | — | ❌ fehlt |
@@ -113,7 +113,7 @@ Kampagnen-Quote 6/2/2 existiert nur in der Offline-Pipeline
 > inzwischen behoben — `p_besser`, `p_lohnt` und F3-Fenster-P kommen jetzt
 > aus der Prognoseverteilung (veröffentlichte Draws). Einzige verbleibende
 > Abweichung: die *gemeinsame* Ziehung über Stationen (§4.2) ist offen;
-> Details und Begründung in [LUECKEN.md](../LUECKEN.md) („Bewusst offen“).
+> Details und Begründung in [LUECKEN.md](../planung/LUECKEN.md) („Bewusst offen“).
 
 Das ist die gewichtigste Abweichung im ganzen Repo. `LUECKEN.md` führt
 „4.1–4.3 F1/F2/F3 inkl. Fenster-Top-3 → fertig (B4) + `latest_by` (B5)".
@@ -156,7 +156,7 @@ Traceback, `allow_nan=False`, keine Zugangsdaten in Antworten oder Logs.
 
 Fehler:
 
-* **`POST /api/v1/episodes` ist in `docs/API.md` (Übersicht *und* „Auth & Limits")
+* **`POST /api/v1/episodes` ist in `docs/referenz/API.md` (Übersicht *und* „Auth & Limits")
   als Schreib-Endpunkt dokumentiert — der Server antwortet 501.** Tatsächlich existiert
   nur `POST /api/v1/episodes/{id}/intent`. Zusätzlich liefert die 501-Antwort **HTML**
   (`send_error`) statt JSON — widerspricht dem eigenen Satz „Alle Endpunkte liefern
@@ -368,7 +368,7 @@ nicht nutzen.
 * `python -m engine.cli …` ist ein Stillstand-Null-Exit (`engine/cli.py` hat keinen
   `__main__`-Block); korrekt ist `python -m engine`. Einzelfehler in der Doku wäre es
   nicht, aber die Hürde ist vermeidbar.
-* `docs/ANALYSE.md:139` listet den Hampel-Filter als Aufbereitungsschritt 3,
+* `docs/referenz/ANALYSE.md:139` listet den Hampel-Filter als Aufbereitungsschritt 3,
   ohne „Ziel"; er existiert nicht.
 * `app/decide.py:475` und `app/feedback.py:580` fallbacken die Stadt auf das
   Hartcodierte `"Frankfurt"`. Bei einem Snapshot ohne `city` rechnet das Settlement
@@ -456,7 +456,7 @@ Schluss bei `unrelated` (3.2), Store-Größenfall (3.5), Tagesfenster der Statis
    korrekt, Bucket-Eviction. (½ Tag)
 4. **Doku-Schnellkorrektur:** API.md `POST /v1/episodes` streichen bzw. auf
    `/intent` stellen, 501 → JSON, `lat`/`lon`-Status in §11.1 klar als „offen",
-   `docs/ANALYSE.md` Hampel als „offen" markieren, LUECKEN-Eintrag §4.1–4.3 von
+   `docs/referenz/ANALYSE.md` Hampel als „offen" markieren, LUECKEN-Eintrag §4.1–4.3 von
    „fertig" auf „Regel fertig, Wahrscheinlichkeiten abweichend" stellen. (¼ Tag)
 5. **Alarm-Semantik:** `no prices` auf Tage umstellen. (¼ Tag)
 6. **Die P-Seite bauen, die das Konzept verspricht:** Pfade (oder Draw-Berechnung im

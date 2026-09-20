@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 //
 // Diese Datei enthält bewusst kein `page.route`: Sie beweist die Integration
 // Server ↔ GUI, nicht das Rendering von Attrappen. Genau diese Lücke nannte
-// docs/LUECKEN.md als Grund, warum B1 (NaN brach `/last_forecasts`), B3 (UTC
+// docs/planung/LUECKEN.md als Grund, warum B1 (NaN brach `/last_forecasts`), B3 (UTC
 // statt Ortszeit) und der defekte Demo-Stack erst im Sanity-Check auffielen.
 //
 // Die Server-Verträge (Overview, Tageskurve, ETag/304) prüft zusätzlich

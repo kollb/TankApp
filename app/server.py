@@ -36,7 +36,7 @@ SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 # LAN konnte bisher die eigenen Tankvorgänge (Zeit, Ort, Preis, Menge), die
 # Monatsbilanz, das Prognose-Tagebuch und die Profile lesen. Das bleibt die
 # documented decision „LAN ohne Login“, ist aber seit 0.50.0 eine Entscheidung
-# (docs/BETRIEB.md) und nicht mehr eine Nebenwirkung der Bind-Zeile: Mit
+# (docs/betrieb/BETRIEB.md) und nicht mehr eine Nebenwirkung der Bind-Zeile: Mit
 # ``TANKAPP_READ_TOKEN`` antworten genau diese Routen nur noch mit
 # ``Authorization: Bearer <Secret>``. Markt- und Modelldaten (health,
 # stations, forecast, heatmap, selection, stats/summary) bleiben offen — sie

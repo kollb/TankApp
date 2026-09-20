@@ -1,4 +1,4 @@
-// Stationen — der Preis-Atlas (docs/UI-NEUENTWURF.md §5.2).
+// Stationen — der Preis-Atlas (docs/produkt/UI.md, Bereiche).
 //
 // Feste Reihenfolge, nie anders:
 //   ① Suche + Filter (⌘K springt hierher)

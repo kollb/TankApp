@@ -6,7 +6,7 @@ Prognose-Tagebuch und die Profile lesen. Gegen die Rahmenbedingung „kein
 Login“ ist das abgewogen akzeptierbar — aber es war eine **Nebenwirkung** der
 Bind-Entscheidung, keine dokumentierte.
 
-Batch-Check: Die Exposition ist in ``docs/BETRIEB.md`` benannt, und mit
+Batch-Check: Die Exposition ist in ``docs/betrieb/BETRIEB.md`` benannt, und mit
 gesetztem ``TANKAPP_READ_TOKEN`` antwortet ``GET /api/v1/fills`` ohne Secret
 mit 401 — ohne die Variable bleibt alles unverändert offen. Markt- und
 Modelldaten sind nie betroffen.
@@ -183,7 +183,7 @@ def test_exposition_steht_in_der_betriebsdoku():
     """Batch-Check (a): Die Entscheidung ist benannt, nicht übersehen."""
     from app.config import ROOT
 
-    text = (ROOT / "docs" / "BETRIEB.md").read_text(encoding="utf-8")
+    text = (ROOT / "docs/betrieb/BETRIEB.md").read_text(encoding="utf-8")
     assert "TANKAPP_READ_TOKEN" in text
     # Was lesbar ist, für wen, in welchem Netz — die drei Fragen des Befunds.
     for needle in ("0.0.0.0", "Gast-WLAN", "Belege"):

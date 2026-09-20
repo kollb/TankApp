@@ -33,7 +33,7 @@ im echten Browser gegen die echte App (Abschnitt
 | Lastpfad | `node web/load/overview.mjs` (keine Abhängigkeit) | `GET /api/v1/overview` — 8 Clients, 30 s, gemischt aus Volllesen und `If-None-Match`-Revalidierung | derselbe Workflow |
 
 Warum ein **eigener** Workflow und nicht Teil von `tests.yml`: Der in
-[AGENTS.md](../AGENTS.md) festgeschriebene CI-Spiegel muss lokal ohne
+[AGENTS.md](../../AGENTS.md) festgeschriebene CI-Spiegel muss lokal ohne
 Chrome-Download lauffähig bleiben. Die Gates sind teuer (Minuten), der Spiegel
 ist schnell (Sekunden) — beides vermischt man nicht.
 
@@ -157,7 +157,7 @@ einzelne Antwort im Leerlauf.
 **Abgrenzung:** Das ist kein Monitoring. Es gibt keinen Export, keine
 Historie über den Prozess-Lebenszeitraum hinaus und keinen Alarm auf
 `performance` — die Alarme bleiben beim Alarm-Katalog in
-[BETRIEB.md](BETRIEB.md). Die Messung beantwortet eine Frage: „Warum hängt
+[BETRIEB.md](../betrieb/BETRIEB.md). Die Messung beantwortet eine Frage: „Warum hängt
 das gerade?“ — und zwar auf dem Gerät, auf dem es hängt.
 
 ---

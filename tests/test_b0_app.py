@@ -244,7 +244,7 @@ def test_publikation_traegt_zaehler_pit_und_gemessenes_modell(
     assert forecast["pava_pool_stats"]["law_segments"] >= 1
     assert "weight_spread" in forecast["ensemble"]
     # … und aus dem Backtest, samt dem gemessenen Modell neben dem
-    # veröffentlichten (heute verschieden — docs/LUECKEN.md).
+    # veröffentlichten (heute verschieden — docs/planung/LUECKEN.md).
     assert forecast["pit"]["station_id"] == UID
     assert forecast["regime_breaks_in_window"]["count"] == 0
     assert forecast["ar_shrink"]["folds_scored"] == 1

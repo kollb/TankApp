@@ -1,4 +1,4 @@
-// Woche — der Zeit-Planer (docs/UI-NEUENTWURF.md §5.3).
+// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche).
 //
 // Reine Logik, ohne DOM (D1): das 7-Tage-Raster, die Sterne, die
 // Horizont-Ehrlichkeit (Tage 5–7 „noch unsicher“), der Tank-Abgleich

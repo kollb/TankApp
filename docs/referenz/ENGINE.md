@@ -1,8 +1,8 @@
 # Engine-Referenz — optionale Modellwerkstatt
 
 > Stand: 12.09.2026 · App-Version 0.11.0. Werkstatt-Referenz für `engine/` —
-> **keine Installations-Checkliste**. Einrichtung: [INSTALL.md](INSTALL.md),
-> Betrieb: [BETRIEB.md](BETRIEB.md), Methodik im Überblick:
+> **keine Installations-Checkliste**. Einrichtung: [INSTALL.md](../betrieb/INSTALL.md),
+> Betrieb: [BETRIEB.md](../betrieb/BETRIEB.md), Methodik im Überblick:
 > [ANALYSE.md](ANALYSE.md). Früher lag diese Datei als `engine/README.md` neben
 > dem Code; Dokumentation hat jetzt einen Ort (`docs/`).
 
@@ -29,7 +29,7 @@
 
 
 **Keine Installations-Checkliste.** Der einzige Einstieg und die Reihenfolge
-stehen in [INSTALL.md](INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
+stehen in [INSTALL.md](../betrieb/INSTALL.md): Gütersloh sammeln, Live-GUI anbinden,
 NAS-Archiv parallel füllen, danach automatische Berechnung/Empfehlungen.
 
 Der gebündelte NAS-App-Dienst führt Archivabruf, Aufbereitung und Fits aus. Der Windows-PC
@@ -217,7 +217,7 @@ Pakete aus `analysis/requirements.txt`. Ohne separates Ziel wird der Ausschluss
 abgelehnt. Keine Kandidaten erfinden oder Grenzen lockern, um das Set aufzufüllen.
 
 **Nicht als Reparatur vermischter Influx-Namensserien aktivieren.** Erst die
-[UUID-Identität klären](archiv/STATIONS-UUID-MIGRATION.md); Vergleich und Vorschlag migrieren
+[UUID-Identität klären](../archiv/STATIONS-UUID-MIGRATION.md); Vergleich und Vorschlag migrieren
 keine Daten. Alte Daten oder Ack-Dateien nicht löschen/zurücksetzen. Der gebündelte
 Aktivierungsbefehl `tankapp.py activate-polling` ist ausdrücklich nur für die
 Addition neuer Stadtsets gedacht und weist Änderungen bestehender Sets ab.
@@ -520,7 +520,7 @@ Nur alte Punkte ohne UUID benötigen die Namenszuordnung. **Unbekannte/mehrdeuti
 Legacy-Namen führen zum Abbruch**, nicht zu geratenen IDs.
 
 Bei `Aral Tankstelle: mehrdeutig` und unterschiedlichen Preisverläufen im Vergleich:
-[Stations-UUID-Anleitung](archiv/STATIONS-UUID-MIGRATION.md) durchführen. Danach bewusst nur
+[Stations-UUID-Anleitung](../archiv/STATIONS-UUID-MIGRATION.md) durchführen. Danach bewusst nur
 UUID-getaggte Punkte lesen:
 
 ```powershell
@@ -697,9 +697,9 @@ nicht gefittet.
 ## Messgrundlagen (B0, seit 0.56.0)
 
 > Dieser Abschnitt ist gegen 0.56.0 geschrieben; die übrigen Abschnitte dieser
-> Datei stehen auf 0.11.0 (siehe [README.md](README.md#nicht-gegen-die-aktuelle-version-geprüft)).
+> Datei stehen auf 0.11.0 (siehe [README.md](../entwicklung/PRUEFSTAENDE.md#nicht-gegen-die-aktuelle-version-geprüft)).
 
-Batch B0 des [UX/Mathe-Befunds](BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+Batch B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
 macht sichtbar, was die Engine bis 0.55.2 stumm tat, und legt die Datenbasis
 für die Kalibrierungsschicht (B2). **Keine Prognosezahl ändert sich:**
 `tests/test_b0_invariance.py` vergleicht Fit, Prognose (beide Kerne, Ensemble,
@@ -735,13 +735,11 @@ hat; bereits gleiche Nachbarn zählen nicht.
 
 Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`):
 
-- `model_kind`, `shared_draws` — **was gemessen wurde.** Default bleibt der
-  Stand vor 0.56.0: `harmonic_ar2` mit unabhängiger Tagesblock-Ziehung. Die
-  App veröffentlicht aber `ensemble` mit gemeinsamer Ziehung (A10/A11). Der
-  Backtest maß also bis heute nicht das, was der Nutzer sieht — B0 macht den
-  Unterschied benennbar (`--kind ensemble --shared-draws`), das Umschalten des
-  Defaults ist seit 0.58.0 umgestellt: Backtest und Veröffentlichung messen
-  `profile_ar2` mit gemeinsamer Ziehung und Day-Pair ([LUECKEN.md](LUECKEN.md)).
+- `model_kind`, `shared_draws` und `day_pair` benennen den gemessenen Pfad.
+  Default von App und Backtest ist `profile_ar2` mit gemeinsamer Ziehung und
+  Day-Pair. `harmonic_ar2` und `ensemble` bleiben explizite Alternativen;
+  `backtest_model_kind` und `model_kind` müssen zur Veröffentlichung passen.
+
 - `pit` — PIT-Paare als Histogramm je Station und Horizont (`24h`, `72h`,
   `168h`), jeweils `all` und `break_free`. PIT = Mittelrang der Beobachtung
   unter den Bootstrap-Pfaden, `(#Pfade < y + ½ · #Pfade = y) / #endliche Pfade`;
@@ -751,7 +749,7 @@ Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`
   `predictions.csv.gz` (Spalte `pit`) — das ist der Trainingsstoff von B2.
 - `regime_breaks_in_window` — deklarierte Regime-Kanten (`Config.regimes`,
   CLI `--regime-break 2026-10-01T00:00`, mehrfach möglich; in der App
-  `TANKAPP_REGIMES`, [BETRIEB.md](BETRIEB.md#regime-kalender-b0-seit-0560)): `declared`
+  `TANKAPP_REGIMES`, [BETRIEB.md](../betrieb/BETRIEB.md#regime-kalender-b0-seit-0560)): `declared`
   und `in_window` mit Datum (`announced_local`/`at_utc`), Art (`kind`), Sorte,
   Betrag (`announced_value`, ct/L, Vorzeichen = Richtung), `status` und
   `source`; `count`, `folds_spanning`/`points_spanning` und
@@ -781,7 +779,7 @@ Kalender (Engine-Default) ist bitgleich zu 0.55.2.
 Der Befund verlangt PICP/Brier/MASE **je Station vor jeder Änderung** als
 Vergleichsbasis. In der Entwicklungsumgebung liegen keine NAS-Daten; die
 Messung gehört auf den PC mit dem Export aus §3 und wird in der
-Erledigt-Zeile des Befunds (B0-Status) und in [LUECKEN.md](LUECKEN.md)
+Erledigt-Zeile des Befunds (B0-Status) und in [LUECKEN.md](../planung/LUECKEN.md)
 festgehalten — **nicht** hier vorab mit erfundenen Zahlen.
 
 ```powershell
@@ -866,9 +864,9 @@ Ledger-M7-Gate getrennt.
 | Netz-/Lesefehler, obwohl der RPi schreibt | Schreib- und Lesezugriff sowie Rechner-/Proxy-Weg unterscheiden. Phase, HTTP-Status, Fehlerklasse und `errno`/`winerror` aus dem neuen Check beachten; Token zunächst unverändert lassen. |
 | Timeout, DNS-, Verbindungs- oder TLS-Fehler | Betroffenen Schritt beachten und Verbindung/Dienst prüfen. Ein sporadischer Timeout erklärt nicht gleichzeitig wiederkehrende HTTP 401. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
-| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](archiv/STATIONS-UUID-MIGRATION.md). |
-| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. [Ablauf §3a](archiv/STATIONS-UUID-MIGRATION.md). Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
-| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache: [Replay-Prüfung](archiv/STATIONS-UUID-MIGRATION.md). Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
+| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](../archiv/STATIONS-UUID-MIGRATION.md). |
+| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. [Ablauf §3a](../archiv/STATIONS-UUID-MIGRATION.md). Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
+| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache: [Replay-Prüfung](../archiv/STATIONS-UUID-MIGRATION.md). Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
 | Zu wenig Training / Exit 2 | QA und Skip-Gründe lesen, mehr Historie bereitstellen; keine Demo-Daten als Ersatz einspeisen. |
 
 Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` zusätzlich setzen

@@ -3,8 +3,8 @@
 **Das ist der einzige Installationseinstieg.** Stand: 15.09.2026 · App-Version 0.38.0.  
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
 Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
-[BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](API.md).  
-**[Alle Dokumente im Überblick → README.md](README.md)** — ein Ordner, ein Index.
+[BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](../referenz/API.md).  
+**[Alle Dokumente im Überblick → README.md](../README.md)** — ein Ordner, ein Index.
 
 ## Inhaltsverzeichnis
 
@@ -43,7 +43,7 @@ Pi → NAS: collector_status (Herzschlag) via InfluxDB
 - **PC:** optional einrichten oder Rechenläufe beschleunigen. Für Alltag nur Browser. Keine verpflichtende venv, kein tägliches Kopieren.
 - **Wenn NAS aus ist:** keine NAS-Jobs und keine dort gehostete GUI. Pi sammelt weiter; RAM-Puffer überbrückt bis zu 7 Tage, aber keinen Pi-Neustart. Archiv wird beim nächsten NAS-Lauf nachgeholt.
 
-Details: [ARCHITEKTUR.md](ARCHITEKTUR.md) und [BETRIEB.md](BETRIEB.md)
+Details: [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) und [BETRIEB.md](BETRIEB.md)
 
 ## Verbindliche Reihenfolge
 
@@ -257,11 +257,11 @@ weiterhin nicht abgenommen.** Zweitmodell/Ensemble, echte Güteprüfung und
 Out-of-sample-Kalibrierung bleiben offen; deshalb weiterhin `calibrated=false` /
 `decision_ready=false`. Noch kein belastbares „bis 18 Uhr warten“, keine
 erfundenen Wahrscheinlichkeiten oder garantierten Ersparnisse. Was offen ist und
-warum: [LUECKEN.md](LUECKEN.md) · [TODO.md](../TODO.md).
+warum: [LUECKEN.md](../planung/LUECKEN.md) · [TODO.md](../planung/TODO.md).
 
 Details Betrieb: [BETRIEB.md](BETRIEB.md)  
-API Details: [API.md](API.md)  
-Analyse: [ANALYSE.md](ANALYSE.md)
+API Details: [API.md](../referenz/API.md)  
+Analyse: [ANALYSE.md](../referenz/ANALYSE.md)
 
 ## B3 Neue Features
 

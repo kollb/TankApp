@@ -8,7 +8,7 @@ desselben Bestands. Das Roharchiv (``--archive-dir``) kam dagegen in keiner
 Sicherung vor — weder als „wird mitgesichert" noch als „bewusst nicht".
 
 Batch-Check: Der InfluxDB-Cron rotiert (``find … -mtime +N -delete`` im
-Befehl), und [BETRIEB.md](../docs/BETRIEB.md) nennt die Archiv-Entscheidung
+Befehl), und [BETRIEB.md](../docs/betrieb/BETRIEB.md) nennt die Archiv-Entscheidung
 mit Begründung.
 """
 
@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BETRIEB = ROOT / "docs" / "BETRIEB.md"
+BETRIEB = ROOT / "docs/betrieb/BETRIEB.md"
 
 
 def _influx_backup_block() -> str:

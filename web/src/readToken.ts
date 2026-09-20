@@ -1,7 +1,7 @@
 // O39 — Lese-Token für den persönlichen Datenbestand.
 //
 // Der Server bindet 0.0.0.0: Ohne Secret kann jeder Rechner im LAN die
-// eigenen Belege lesen (docs/BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500).
+// eigenen Belege lesen (docs/betrieb/BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500).
 // Wer `TANKAPP_READ_TOKEN` setzt, bekommt die persönlichen Routen nur noch
 // mit `Authorization: Bearer <Secret>`; die GUI braucht dasselbe Secret.
 //

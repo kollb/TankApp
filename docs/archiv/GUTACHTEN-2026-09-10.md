@@ -3,7 +3,7 @@
 > **Archiviert — gutachterliche Stellungnahme vom 10.09.2026.**
 > Zweitmeinung zur statistischen Methodik (Befunde F1/F2/F5) inklusive des
 > Repos-Nachtrags. Übernommene Punkte sind im Code; nicht übernommene
-> Empfehlungen stehen begründet in [../LUECKEN.md](../LUECKEN.md) „Bewusst offen“.
+> Empfehlungen stehen begründet in [LUECKEN.md](../planung/LUECKEN.md) „Bewusst offen“.
 > Archiv-Übersicht: [README.md](README.md).
 
 **Stand:** 10. September 2026
@@ -78,14 +78,14 @@ gehalten — mit folgendem Ergebnis:
 
 | Befund / Empfehlung | Befund am Code |
 |---|---|
-| **F2:** NAS-Job müsse zwingend auf B ≥ 2000 konfiguriert werden | Bereits umgesetzt: `engine/selection.py` rechnet fest mit B = 2000; [ANALYSE.md](../ANALYSE.md) dokumentiert den B=200-Blocker samt Begründung |
+| **F2:** NAS-Job müsse zwingend auf B ≥ 2000 konfiguriert werden | Bereits umgesetzt: `engine/selection.py` rechnet fest mit B = 2000; [ANALYSE.md](../referenz/ANALYSE.md) dokumentiert den B=200-Blocker samt Begründung |
 | **F1:** Bug in der Prozentanzeige (Float 0,5 als % formatiert) | Im aktuellen Code nicht reproduzierbar — alle Anzeigen rechnen korrekt ×100 (`web/src/Dashboard.tsx`, `app/feedback.py`) |
 | Strukturbruch-Test (CUSUM) bzw. EW-Median auf δ̂ | Bereits implementiert: `delta_ew_ct` (EW-Median, HWZ 7 d) und `break_flag`/`break_stat` (CUSUM) in der Selektion |
 | Asymmetrischer Pinball-Loss | Bereits Konzept §3.2 Kriterium 3 und `engine/backtest.py` (asym. τ = 0,75, 3× Strafe) |
 | Event-getriebene Pipeline (Webhook statt Polling) | Bereits implementiert (Issue 50: `POST /api/v1/jobs/trigger`, Debounce + Idempotenz) |
-| Feedback-Ledger in relationale DB (ACID) | Offen entschieden — Status quo ist der JSON-Store; siehe [LUECKEN.md](../LUECKEN.md) „Bewusst offen" und [Prüfstand §3.5](PRUEFSTAND-2026-09-10.md) (Retention als erster Handlungsbedarf) |
-| Fallback-UI als PyQt6-Desktop-Widget | Nicht übernommen — der browserbasierte RP2-Fallback bleibt Konzept ([RP2.md](../RP2.md)) |
-| Beta-Binomial-Posterior statt Laplace-Glättung | Offen dokumentiert in [LUECKEN.md](../LUECKEN.md) „Bewusst offen"; beide Schätzer sind priorsauber, ein Wechsel vor M7 bringt keinen messbaren Unterschied |
+| Feedback-Ledger in relationale DB (ACID) | Offen entschieden — Status quo ist der JSON-Store; siehe [LUECKEN.md](../planung/LUECKEN.md) „Bewusst offen" und [Prüfstand §3.5](PRUEFSTAND-2026-09-10.md) (Retention als erster Handlungsbedarf) |
+| Fallback-UI als PyQt6-Desktop-Widget | Nicht übernommen — der browserbasierte RP2-Fallback bleibt Konzept ([RP2.md](../betrieb/RP2.md)) |
+| Beta-Binomial-Posterior statt Laplace-Glättung | Offen dokumentiert in [LUECKEN.md](../planung/LUECKEN.md) „Bewusst offen"; beide Schätzer sind priorsauber, ein Wechsel vor M7 bringt keinen messbaren Unterschied |
 
 Die Verweise auf „Kapitel 4.3" (668 ms) und „Kapitel 8" (Gutachterfragen) lassen
 sich keinem Repo-Dokument zuordnen (Referenzbruch); die Stellungnahme bleibt

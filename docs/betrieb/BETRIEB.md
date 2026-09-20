@@ -7,7 +7,7 @@
 > beide im Abschnitt
 > [NAS InfluxDB Backup](#nas-influxdb-backup). Der Server misst sich selbst
 > (`X-Process-Time`, `performance` in `/api/v1/health`); Budget und Bedeutung
-> stehen in [QUALITAET.md](QUALITAET.md#selbstmessung-des-servers-seit-0520).
+> stehen in [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520).
 > Davor neu seit 0.48.0: Die Prognose-Veröffentlichung ist aufgeteilt (eine Datei je
 > Station, `current.json` als Index, O22 Maßnahme d) — die Größen-Grenzen
 > gelten der einzelnen Datei, eine fehlende Stations-Datei meldet
@@ -15,7 +15,7 @@
 > überwacht (Alarm `backup_stale`, `backup` im Health-Payload),
 > `ops/nas/backup.sh` behält zusätzlich sechs Monatsstände, und der Server
 > antwortet mit HTTP/1.1 (O23, O24, O33 — Batch 4 des
-> [Optimierungs-Befunds](archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md)).
+> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md)).
 > Seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
 > dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
 > Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm
@@ -203,7 +203,7 @@ Collector schreibt `meta/heartbeat.json` nach jedem Poll (tmpfs-Nutzung, ältest
 - Frisch = ≤15 Min.
 - `dry-run` zeigt Heartbeat-Zeile
 - Auch ohne Preis-Zeilen wird Heartbeat übertragen
-- **Ohne InfluxDB:** Collector POSTet den Herzschlag direkt ans NAS (`TANKAPP_NAS_URL` oder `TANKAPP_NAS_HEARTBEAT_URL` setzen, Base-URL oder `…/api/v1/collector/heartbeat`). Das NAS legt ihn unter `runtime/collector/heartbeat.json` ab und `GET /api/v1/collector/status` wertet es als Fallback-Quelle `source: "nas"` aus. Siehe [API.md → Collector Heartbeat (POST)](API.md#collector-heartbeat-post-b311).
+- **Ohne InfluxDB:** Collector POSTet den Herzschlag direkt ans NAS (`TANKAPP_NAS_URL` oder `TANKAPP_NAS_HEARTBEAT_URL` setzen, Base-URL oder `…/api/v1/collector/heartbeat`). Das NAS legt ihn unter `runtime/collector/heartbeat.json` ab und `GET /api/v1/collector/status` wertet es als Fallback-Quelle `source: "nas"` aus. Siehe [API.md → Collector Heartbeat (POST)](../referenz/API.md#collector-heartbeat-post-b311).
 
 ## NAS: InfluxDB
 
@@ -263,7 +263,7 @@ Benötigt:
 2. `data/influx.env` mit Lesezugang (Nur-Lese-Token, URL = NAS-LAN-Adresse:8086, nicht localhost)
 3. Archivzugang privat als `data/_netrc` oder `~/.netrc` (nicht Collector-Key). Ohne ihn startet Live-GUI trotzdem, aber keine Modelle.
 
-Optional, für die Ereignis-Pipeline (Uploader-Webhook, siehe `docs/ARCHITEKTUR.md`):
+Optional, für die Ereignis-Pipeline (Uploader-Webhook, siehe `docs/architektur/ARCHITEKTUR.md`):
 `TANKAPP_WEBHOOK_TOKEN=<Secret>` exportieren, bevor `nas-up` das Compose-Projekt
 baut/aktualisiert; denselben Wert auf dem Pi als `TANKAPP_NAS_WEBHOOK_TOKEN`
 hinterlegen. Ohne Token bleibt der Trigger-Endpoint deaktiviert und die Jobs
@@ -449,7 +449,7 @@ Fehler-Fall in `runtime/engine/last-attempt.json`.
 
 Ein Regime-Wechsel ist ein datierter Eingriff ins Preisniveau — der Tankrabatt
 ab 01.10.2026 (−17 ct/L), sein Ende zum 01.01.2027, im Archiv der Mai-Juni-
-Rabatt 2026 ([Befund Teil 5](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)).
+Rabatt 2026 ([Befund Teil 5](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)).
 Seit 0.56.0 kennt der Modell-Lauf diese Termine als **Kalender**, der wie
 `price_law_local` durchgereicht wird (`Settings.regimes` →
 `engine.config.Config.regimes`). **Gerechnet wird damit noch nichts:** Fit und
@@ -458,7 +458,7 @@ Prognose sind bitgleich zu 0.55.2; der Backtest zählt die Kanten im Fenster
 Fenster eine Kante überspannt (`regime_break_spanned`). Kennzahlen über eine
 Kante sind als Modellgüte nicht lesbar — sie werden ausgewiesen, nicht
 ausgeschlossen (`metrics_break_free` zeigt den Rest). Details:
-[ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560).
+[ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560).
 
 | Variable | Wirkung |
 |---|---|
@@ -478,11 +478,11 @@ solange seine Ausgestaltung offen ist (A15) — bekannt ist nur das
 Rabatt-Ende.
 
 Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
-Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](API.md#forecast-messfelder-b0-seit-0560)),
+Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](../referenz/API.md#forecast-messfelder-b0-seit-0560)),
 dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
 
 **Betreiber-Checkliste (Stand 0.56.0; Begründung im
-[Befund §5.13](BEFUND-UX-MATH-2026-09-19.md#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)):**
+[Befund §5.13](../archiv/BEFUND-UX-MATH-2026-09-19.md#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)):**
 
 1. **Heute: nichts.** Wie gewohnt ausliefern (`nas-up`). Der Kalender kommt
    als Default mit, der Lauf markiert von allein; Prognose, Band und
@@ -519,7 +519,7 @@ dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
    `in_force`/`detected` — ein `announced`-Eintrag stellt nichts scharf.
 
 3. **Einmal vor B2/B3, am PC:** die Referenzmessung nach
-   [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560) laufen lassen und das
+   [ENGINE.md](../referenz/ENGINE.md#messgrundlagen-b0-seit-0560) laufen lassen und das
    Ergebnis am B0-Status im Befund eintragen. Ohne diesen Vorher-Wert ist
    jede spätere Verbesserung eine Behauptung.
 
@@ -615,7 +615,7 @@ curl -fsS -X POST http://<nas>:1355/api/v1/jobs/trigger \
   -H "Content-Type: application/json" \
   -d '{"job":"models"}'
 # Antwort {"status":"queued","job":"models"} heißt geweckt, nicht gelaufen:
-# Der Scheduler prüft Debounce und Datenstand selbst (docs/API.md).
+# Der Scheduler prüft Debounce und Datenstand selbst (docs/referenz/API.md).
 
 # b) Direkt im Container — startet sofort und umgeht Debounce/Idempotenz.
 docker exec tankapp-app python3 -m app.worker models
@@ -717,9 +717,9 @@ Endzustand `partial (some_models_unavailable)`.
 
 Ein früherer Lauf desselben Tags (14:26–14:29, 1029 MiB / 370 %) war **kein**
 Kaltlauf („9 aus Tages-Cache, 10 neu gerechnet“, 2,1 min) — am Peak ändert das
-nichts. Zahlen: [TODO.md](../TODO.md#b11-kaltlauf-13092026). Die
-**Nachher-Dauer von 0.26.0** (ein Pool, `fork`, Cache-Schema 2) ist eine
-eigene Messung nach dem Deploy — sie hält B11 nicht offen. Leerlaufwerte
+nichts. Maßgeblich sind die Messwerte in der Tabelle oben. Eine zusätzliche
+Nachher-Messung ist kein offener Auftrag
+([Umfangsentscheidung](../adr/0002-PRODUKTUMFANG.md#entscheidung)). Leerlaufwerte
 aus `docker stats` (220–280 MiB, 7–10 PIDs) bleiben ungeeignet: Sie entstehen,
 bevor der Prozess-Pool steht.
 
@@ -1027,9 +1027,9 @@ unersetzbaren Bestände außerhalb des Geräts.** Konkret heißt das
 
 Wer es bei einem Gerät belassen will, trifft das bewusst und schreibt es hier
 her: Ein einzelnes Ziel schützt vor gelöschten oder zerlegten Dateien, nicht
-vor einem toten NAS. Ein zweites automatisches Ziel (rsync des Backup-Ordners
-auf ein anderes Gerät) ist offen und steht im
-[Todo](../TODO.md#b-technisch-backend-datenhaltung-betrieb-qualität).
+vor einem toten NAS. Ein zweites automatisches Ziel ist bewusst nicht beauftragt; die manuelle
+externe Zweitkopie bleibt die vereinbarte Absicherung
+([ADR 0001](../adr/0001-BETRIEB-UND-SPEICHER.md#entscheidung)).
 
 Restore (durchgespielt, nicht nur aufgeschrieben):
 
@@ -1217,8 +1217,8 @@ keine Webhook-Felder — die GUI sagt dann „keine Angabe“ statt „in Ordnun
 
 ### System-Alarme und GUI-Neuentwurf (seit 0.35.0)
 
-Betriebs-Entscheidung zu Checkliste [2.4](archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md): Das
-GUI-Neuentwurf-Konzept ([UI-NEUENTWURF.md](UI-NEUENTWURF.md) §11,
+Betriebs-Entscheidung zu Checkliste [2.4](../archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md): Das
+GUI-Neuentwurf-Konzept ([UI.md](../produkt/UI.md) §11,
 Entscheidung 14.9.) streicht **Preis-Erinnerungen, Preis-Alarme und Push
 ersatzlos**. Damit ist gemeint, dass die App keine Preis-Mitteilungen mehr
 versendet — **der System-Alarmweg bleibt davon unberührt** und unverändert
@@ -1263,7 +1263,7 @@ sie als Build-Argument durch, also genügt
 Wer den Hash nicht setzt, betreibt trotzdem einen funktionsfähigen Stand — nur
 sagt `/health` dann nicht, welcher. Die RP2-Fallback-GUI trägt einen
 eigenen Template-Hash-Marker → [RP2.md](RP2.md#template-updates). Änderungen je
-Version: [CHANGELOG](../CHANGELOG.md).
+Version: [CHANGELOG](../releases/CHANGELOG.md).
 
 ### 404-Wand und Absturz auf `<RP2-IP>:8000` (Fallback-Modus, seit 0.49.1)
 
@@ -1319,7 +1319,7 @@ wäre genau die stille Lüge, die B10 beseitigt hat.
   als Zeile über den Tabs („… sind lokal vorgemerkt und gehen raus, sobald die
   Verbindung steht“). Ablage in `localStorage` statt IndexedDB: winzige
   JSON-Objekte, kein Binärinhalt, keine Transaktionen nötig (Abweichung vom
-  Konzept §5.4, in [LUECKEN.md](LUECKEN.md) vermerkt).
+  Konzept §5.4, in [LUECKEN.md](../planung/LUECKEN.md) vermerkt).
   - Ober­grenzen: 50 Einträge, älter als 7 Tage wird verworfen (die Ansicht
     sagt das nicht als Fehler, sondern lässt die Zeile verschwinden).
   - Beleg-`id` und `tanked_at` entstehen **beim Tanken**, nicht beim
@@ -1427,13 +1427,13 @@ python3 data-tools/export_influx.py --env-file data/influx.env --uuid-only
 
 Eine **optionale** Nachlieferung alter JSONL-Sicherungen (Replay) ist nur mit
 belegter ursprünglicher Zeitzone zulässig und steht vollständig im Archiv:
-[archiv/STATIONS-UUID-MIGRATION.md](archiv/STATIONS-UUID-MIGRATION.md) —
+[archiv/STATIONS-UUID-MIGRATION.md](../archiv/STATIONS-UUID-MIGRATION.md) —
 `upload_influx.py --replay --replay-timezone …`, erst im Dry-Run; bei
 `TIME_OFFSET_MISSING` keine Uhrzeit raten.
 
 **Nie:** einen Namenszwilling aus `polling.json` entfernen, um alte Punkte
 umzudeuten. Das ändert die Bedeutung der Historie, nicht die Daten. Diagnose
-am PC: [ENGINE.md](ENGINE.md) (Tabelle „Stationsname mehrdeutig“).
+am PC: [ENGINE.md](../referenz/ENGINE.md) (Tabelle „Stationsname mehrdeutig“).
 
 ### Uploader Störungsfälle
 

@@ -430,18 +430,13 @@ def test_broken_host_python_fails_with_guidance_not_traceback():
     assert result.returncode == 2
     assert "Traceback" not in result.stderr
     assert "Kein TankApp-Codefehler" in result.stderr
-    assert "docs/INSTALL.md" in result.stderr
+    assert "docs/betrieb/INSTALL.md" in result.stderr
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Alle Markdown-Dokumente leben in docs/ (inkl. docs/archiv/) plus die
-# Wurzel-Dateien README/CHANGELOG/TODO/AGENTS. Modul-READMEs neben dem Code
-# gibt es bewusst nicht mehr — die Doku hat genau einen Ort.
+# Root entry points plus every thematic document, including archived evidence.
 DOCUMENTS = [
-    ROOT / "README.md",
-    ROOT / "CHANGELOG.md",
-    ROOT / "TODO.md",
-    ROOT / "AGENTS.md",
+    *sorted(ROOT.glob("*.md")),
     *sorted((ROOT / "docs").rglob("*.md")),
 ]
 

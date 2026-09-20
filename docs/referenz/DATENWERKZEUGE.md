@@ -1,8 +1,8 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
 > Stand: 19.09.2026 · App-Version 0.55.2. Nachschlagewerk für `data-tools/`
-> und `analysis/`; der Ablauf steht in [INSTALL.md](INSTALL.md), der
-> Dauerbetrieb in [BETRIEB.md](BETRIEB.md). Neu: der
+> und `analysis/`; der Ablauf steht in [INSTALL.md](../betrieb/INSTALL.md), der
+> Dauerbetrieb in [BETRIEB.md](../betrieb/BETRIEB.md). Neu: der
 > [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
 
 ## Inhaltsverzeichnis
@@ -19,15 +19,15 @@
 |---|---|
 | `collect_prices.py` | Ein Collector für alle Stadtsets, Round-Robin, ein Request-Budget, persistenter Zeitplan, JSONL-Puffer. |
 | `polling_plan.py` | Gemeinsame Validierung, atomare JSON-Ausgaben, Prozesssperre und Request-Zeitplan. |
-| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
+| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](../betrieb/BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
 | `fetch_history.py` | HTTP-Tagesdownload, gzip, Wiederholung und atomare `.part`-Übernahme. NAS-Zeitplanung bevorzugt über den Sync-Wrapper, nicht nur `--since yesterday`. |
 | `discover_stations.py` | Vorläufige Auswahl aus Stationsmetadaten, ohne lange Preishistorie. |
 | `ingest_history.py` | M2-Aufbereitung; gerasterte Daten sind nicht automatisch zeitgenaue Live-Beobachtungen. |
 | `run_pipeline.py` | Optionale vertiefte Historien-/Stationsanalyse, kein Installationsbeginn mehr. Schützt Sets anderer Städte vor Überschreiben. |
 | `export_influx.py` | Nur lesender Live-Export, bestehender Lesezugang über `--env-file`; keine InfluxDB-Einrichtung. |
 | `road_route.py` | Routing für die vertiefte Umweg-/Kostenbewertung. |
-| `swap_stations.py` | Tote oder ungeeignete Stationen 1:1 tauschen: liest die Modell-Fehler, sucht Ersatz aus der Kandidaten-CSV, validiert das ganze Set und schreibt **nur** den Vorschlag — Ablauf in [STATIONEN-TAUSCH.md](STATIONEN-TAUSCH.md). |
-| `prune_influx.py` | InfluxDB verkleinern (Delete API per Zeitfenster oder Retention kürzen), damit die SSD nicht mit der 5-Jahre-Retention wächst — Hintergrund in [SPEICHER.md](SPEICHER.md). |
+| `swap_stations.py` | Tote oder ungeeignete Stationen 1:1 tauschen: liest die Modell-Fehler, sucht Ersatz aus der Kandidaten-CSV, validiert das ganze Set und schreibt **nur** den Vorschlag — Ablauf in [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md). |
+| `prune_influx.py` | InfluxDB verkleinern (Delete API per Zeitfenster oder Retention kürzen), damit die SSD nicht mit der 5-Jahre-Retention wächst — Hintergrund in [SPEICHER.md](../betrieb/SPEICHER.md). |
 
 Archiv und Polling kommen beide von Tankerkönig. Ein Modell kann die jüngsten
 Polling-Daten allein verwenden, während das NAS trotzdem ein langes Archiv für
@@ -48,7 +48,7 @@ Preisdateien sind Änderungsprotokolle, keine regelmäßigen Polling-Snapshots.
 Original-Zeitstempel mit UTC-Offset und Änderungsflags aufbewahren; ein dichteres
 Raster liefert keine zusätzlichen Beobachtungen. Unbekannter Öffnungsstatus
 ist kein belegtes `open`. Der laufende NAS-Sync steht ausschließlich in
-[INSTALL.md](INSTALL.md); Download-Optionen zeigt `fetch_history.py --help`.
+[INSTALL.md](../betrieb/INSTALL.md); Download-Optionen zeigt `fetch_history.py --help`.
 
 Aufbereitete Analyse-CSVs verwenden folgendes Schema:
 
@@ -63,7 +63,7 @@ Aufbereitete Analyse-CSVs verwenden folgendes Schema:
 Nicht der Beginn der Installation: Für eine neue Stadt zuerst `tankapp.py add-city`
 verwenden. Die historische Optimierung kann später auf dem NAS oder optional am
 PC erfolgen. Dafür gelten `analysis/requirements.txt` und die Methodik in
-[KONZEPT.md](KONZEPT.md). `analysis/config.local.json` enthält Anker und
+[KONZEPT.md](../produkt/KONZEPT.md). `analysis/config.local.json` enthält Anker und
 Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetzen.
 
 - `analysis/station_selection.py --help`: Raster, Coverage-Gate (Default 85 %),
@@ -83,7 +83,7 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
 - Preis-Zwillinge und explizite Ersatzvorschläge: [Engine-Referenz](ENGINE.md#preis-zwillinge).
   Ein Vorschlag ändert nicht das aktive Set und repariert keine Namenskollisionen.
 
-Spezialfälle nur bei Bedarf: [UUID-Migration](archiv/STATIONS-UUID-MIGRATION.md) und
+Spezialfälle nur bei Bedarf: [UUID-Migration](../archiv/STATIONS-UUID-MIGRATION.md) und
 [Engine-Diagnose](ENGINE.md).
 
 ## 12-Uhr-Regel-Check
@@ -97,7 +97,7 @@ Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
 
 **Ergebnis des Echteinsatzes (Live + Archiv-Kontrast):**
-[BEFUND-12-UHR-REGEL.md](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) — Live regeltreu
+[BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) — Live regeltreu
 (100 % am Mittagspunkt), Archiv zeigt den Regime-Wechsel 01.04.2026,
 Folgearbeit als B30 ausgelagert.
 
@@ -109,7 +109,7 @@ kann sie mit Ständen vor der UUID-Migration nicht beantworten:
 - **Influx-Export** (`export_influx.py`) umfasst sicher nur die **UUID-Ära**:
   Der Uploader schreibt `station_id`-Tags erst seit der Migration
   (ca. 07.–09.09.2026,
-  [STATIONS-UUID-MIGRATION](archiv/STATIONS-UUID-MIGRATION.md)). Ältere
+  [STATIONS-UUID-MIGRATION](../archiv/STATIONS-UUID-MIGRATION.md)). Ältere
   Legacy-Punkte tragen nur den Stationsnamen; steht der mehrfach im aktiven
   Polling-Set (Namenszwilling wie „Aral Tankstelle“), bricht der Export
   bewusst ab — „mehrdeutig“, UUIDs werden nicht geraten, und weder darf ein
@@ -164,7 +164,7 @@ python3 -m venv .venv-analysis
 
 Ohne venv geht alternativ `python3 -m pip install --user -r
 analysis/requirements.txt`; oder den Export auf den PC kopieren und dort
-auswerten (die Analyse ist laut [INSTALL.md](INSTALL.md) ohnehin
+auswerten (die Analyse ist laut [INSTALL.md](../betrieb/INSTALL.md) ohnehin
 NAS-oder-PC).
 
 ### Was gezählt wird
@@ -196,7 +196,7 @@ CSVs wie für die Selektion (export via `data-tools/export_influx.py`).
 `analysis/regime_check.py` (neu 19.09.2026). Anlass ist der Tankrabatt
 (−17 ct/L ab 01.10.2026, befristet bis 31.12.2026) und der Spritpreisdeckel
 (spätestens 01.01.2027). Befund, Konzept und Messtabellen:
-[BEFUND-UX-MATH-2026-09-19.md](BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**.
+[BEFUND-UX-MATH-2026-09-19.md](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**.
 
 Der Check beantwortet die Frage, die jede Regime-Behandlung voraussetzt:
 **Wie stark, wie schnell und wie unterschiedlich gibt der Bestand eine
@@ -207,7 +207,7 @@ mit 17 ct Spanne in den Betrag hineinläuft), ein Tagesblock-Standardfehler, die
 Verzögerung in Tagen und die Durchgabe in Prozent.
 
 **Der eigene Bestand enthält bereits zwei Kanten.** Das Archiv reicht bis
-2025-09-09 (`docs/API.md`: `archive_since`) und umfasst damit den
+2025-09-09 (`docs/referenz/API.md`: `archive_since`) und umfasst damit den
 Mai-Juni-Tankrabatt 2026 mit Start (01.05., Senkung) und Ende (01.07.,
 Erhöhung). Das Rabatt-**Ende** ist derselbe Schock in derselben Richtung wie
 das Rabatt-Ende am 01.01.2027 — wer den Januar vorbereiten will, misst den
@@ -253,7 +253,7 @@ geschätzter Kante, jeweils mit Bias, Intervallbreite und `P_besser` gegen die
 Wahrheit — plus die Projektions-Lemmata (Regime-Kante gegen 12-Uhr-PAVA,
 Deckel-Clip vor/nach der Projektion). **Die Reihen sind synthetisch**, auf die
 Live-Messwerte des
-[12-Uhr-Befunds](archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) kalibriert
+[12-Uhr-Befunds](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) kalibriert
 (Tagesspanne 17 ct, Tief Median 7 Uhr, Hoch Median 12 Uhr, 44 % Mittagssprünge
 ≥ 2 ct); die Kalibrierung steht unter Test. Sie belegen Mechanismen und
 Vorzeichen, keine Beträge für den Echtbestand — die liefert der Messpfad oben.

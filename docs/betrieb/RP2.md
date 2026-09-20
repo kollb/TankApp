@@ -3,7 +3,7 @@
 > Stand: 17.09.2026 · App-Version 0.49.5 · RP2-Fallback v4.3 — **die** Anleitung
 > für den 24/7-Zugang über den Pi/RP2. Die alten Einzeldateien
 > (`rp2/README.md`, `rp2/ANLEITUNG.md`, `rp2/AENDERUNGEN.md`, Mockup-Vergleich)
-> liegen im [Archiv](archiv/README.md); neben dem RP2-Code liegt bewusst keine
+> liegen im [Archiv](../archiv/README.md); neben dem RP2-Code liegt bewusst keine
 > eigene Doku mehr.
 
 ## Inhaltsverzeichnis
@@ -45,7 +45,7 @@
   - [Alltag](#alltag)
   - [B3 Features im Alltag](#b3-features-im-alltag)
 - [Updates & Changelog](#updates--changelog)
-  - [Changelog](#changelog)
+  - [Changelog](#release-nachweise)
 
 ## Ziel
 
@@ -63,7 +63,7 @@ Browser ──► http://<RP2-IP>:8000
                      • Heartbeat aus meta/heartbeat.json (Collector-Livestatus)
 ```
 
-> Alternativvorschlag aus dem [Gutachten](archiv/GUTACHTEN-2026-09-10.md) (10.09.2026), ein
+> Alternativvorschlag aus dem [Gutachten](../archiv/GUTACHTEN-2026-09-10.md) (10.09.2026), ein
 > PyQt6-Desktop-Widget als Fallback zu betreiben, wurde geprüft und **nicht
 > übernommen**: Der browserbasierte Fallback braucht auf dem RP2 keine
 > GUI-Runtime und bleibt Konzept (Bewertung: Gutachten-Nachtrag).
@@ -100,7 +100,7 @@ rp2/
 
 Dokumentation liegt ausschließlich in `docs/` — diese Datei. Die alten
 RP2-Anleitungen und die HTML-Mockups von 2026-09-08 sind im
-[Archiv](archiv/README.md#alte-rp2-dokumente).
+[Archiv](../archiv/README.md#bestand-und-nachfolger).
 
 ## Voraussetzungen
 
@@ -509,7 +509,7 @@ Der RP2 läuft auf einer SD-Karte; Schreibzugriffe sind deshalb begrenzt.
 | `/tmp/tankapp_cache/cache.log` | Ring-Cap **1 MB** (`CACHE_LOG_MAX_BYTES`): wird die Grenze überschritten, bleibt nur die jüngere Hälfte plus Markierungszeile | keine — wächst nicht mehr unbegrenzt (Fix G1, Version 0.10.0) |
 | `/tmp/tankapp_cache/last_forecasts.json` | atomar überschrieben, feste Größe | keine |
 | `/dev/shm/tankapp/*.jsonl` | Ringpuffer im RAM, `RING_DAYS=7` | keine SD-Schreiblast; Inhalt liegt zusätzlich in InfluxDB |
-| journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | `SystemMaxUse=50M` + `SystemMaxFileSize=10M` durch das Drop-in [rp2/journald.conf.d/50-tankapp-journal.conf](../rp2/journald.conf.d/50-tankapp-journal.conf) | Einmal installieren (siehe [Journal-Größe begrenzen](#journal-größe-begrenzen-sd-karte-schonen)); Zwischendurch `journalctl --vacuum-size=50M` (Fix G2, Version 0.11.0) |
+| journald (`tankapp-fallback-gui`, `tankapp-forecast-cache`) | `SystemMaxUse=50M` + `SystemMaxFileSize=10M` durch das Drop-in [rp2/journald.conf.d/50-tankapp-journal.conf](../../rp2/journald.conf.d/50-tankapp-journal.conf) | Einmal installieren (siehe [Journal-Größe begrenzen](#journal-größe-begrenzen-sd-karte-schonen)); Zwischendurch `journalctl --vacuum-size=50M` (Fix G2, Version 0.11.0) |
 | `/tmp/tankapp_cache` nach Reboot | `/tmp` ist flüchtig → bis zum ersten erfolgreichen Fetch zeigt der Fallback ehrlich „keine Prognose“ (`CACHE_REBOOT_HINT`) | **entschieden (G4, 0.29.0): bleibt so** — der häufigere SD-Schreibzugriff wäre teurer als ein in Minuten wieder gefüllter Puffer; die Startzeile von `cache_forecasts.py` (`boot_state_note()`) nennt den Zustand in `cache.log` und `systemctl status`. Preise aus `/dev/shm` sind nach tmpfs-Mount ebenfalls erst nach dem nächsten Poll da |
 
 **G4-Entscheidung (13.09.2026, Version 0.29.0):** Der Prognose-Cache bleibt im
@@ -524,7 +524,7 @@ Datenverlust-Fenster: Der RAM-Puffer überbrückt **7 Tage** NAS-Ausfall
 (`RING_DAYS=7`); ist das NAS länger offline, verwirft `ring_prune` noch nicht
 hochgeladene Snapshots. Bei geplantem langen NAS-Ausfall den Puffer vorher
 vergrößern (tmpfs-Größe gegen 15 Polls/Tag/Station rechnen) — siehe
-[ARCHITEKTUR.md](ARCHITEKTUR.md#ressourcen--sd-härtung).
+[ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md#ressourcen--sd-härtung).
 
 ## Prognose-Qualität
 
@@ -574,22 +574,10 @@ sudo systemctl restart tankapp-forecast-cache tankapp-fallback-gui
 
 Wenn nach Update etwas klemmt: `git log --oneline -5`, `git revert <commit>`, `python3 tankapp.py nas-up`
 
-### Changelog
+### Release-Nachweise
 
-| Version | Datum | Änderungen |
-|---|---|---|
-| 4.3 (0.49.1) | 17.09.2026 | **Antwortform der gebauten App (O44):** `/api/v1/stations` trägt `cities` (deduplizierte Ortslabel der Pufferzeilen) und je Zeile `observed_at` (Alias auf `fetched_at`, NAS-Schreibweise), dazu ausdrücklich `calibrated`/`decision_ready: false`; `/api/v1/series` akzeptiert neben `station` auch `station_id`, damit die NAS-GUI im Fallback-Modus läuft. Die RP2-eigene v4-Vorlage bleibt unverändert; kein neuer Endpunkt (es bleiben die sieben oben). Tests: 52 in `tests/test_rp2_fallback.py`, drei davon neu für diese Form. |
-| 4.2 (0.37.2) | 16.09.2026 | **Variante A „Kompakt“:** 19 Zellen → 6 Blöcke. Tagesstreifen kompakt (6 Tasten Fr/Sa/So + 3-Kachel-Abriss unten mit Einzeltagen), Stationen Top-3 + „Alle zeigen“ (3.0 zeigte alle Karten), F3-Toptreffer + Sparkline direkt in der Antwort-Karte statt eigener Kartenliste. Header ab 900 px einzeilig, Desktop-Gutter 1280 px wie NAS. Kein neuer Endpunkt. Tests 48/48 grün (hidden Kicker 4 + hidden Forecast-Card, 3×1100 + 900 px). JS-Literal-Escaping gefixt. |
-| 4.1 (0.37.2) | 15.09.2026 | **Sanity-Check-Fixes (Prüfbericht 15.09.):** (1) Fenster-Zeiten `time`/`date` in `summarize_forecast` und damit in `/decide` kommen jetzt in **Ortszeit** (Europe/Berlin), nicht UTC — der ISO-Stempel `at` bleibt UTC und wird von der GUI selbst umgerechnet. (2) **Schreibaktionen über die Pi-Adresse:** `POST`/`PUT`/`DELETE`/`PATCH` werden wie `GET` transparent zur NAS weitergeleitet (Body + Content-Type); NAS offline → ehrliche 503-JSON-Antwort statt 501-Fehlerseite (der Fallback bleibt nur lesend). (3) `f2` in `/decide` trägt `fresh`/`age_minutes`/`fresh_in_set`/`oldest_age_minutes`; ohne frische Meldung im Set kippt die Antwort-Karte auf „Preis-Momentaufnahme“ statt zu empfehlen (NAS-Parität: veraltete Preise tragen keine Empfehlung). (4) Fakt „Bestes Fenster“ benennt den echten Tag (`heute`/`morgen`/Datum) — das Fenster kommt aus den nächsten 24 h und darf nicht „heute“ heißen, wenn es morgen liegt. (5) „Frische Preise“ zählt nur Meldungen **mit Preis für den gewählten Kraftstoff**. (6) CSS-Fix (`--line` → `--border`, Fact-Boxen hatten in beiden Themes keine Umrandung), Tagesstreifen-Zellen mit `role="img"` + `aria-label` (Parität NAS-GUI), Health-Probe liest das vollständige Body statt der ersten 4096 Bytes. |
-| 4.0 (0.37.1) | 14.09.2026 | **Ortsfilter repariert:** Die Auswahl oben nutzt jetzt den stabilen Set-Key aus `polling.json` und zeigt bei Kurz-Keys z. B. `FRA · Frankfurt` bzw. `GT · Gütersloh`. Die API akzeptiert Key und Label, damit alte Links weiter funktionieren. Template-Wechsel per Inhalts-Hash, keine neue sichtbare Fallback-Version. |
-| 4.0 | 14.09.2026 | **Antwort-Karte im Gleichschritt mit „Jetzt“ (GUI-Neuentwurf §5.1).** Unter der Empfehlung stehen jetzt dieselben drei Fakten in derselben Reihenfolge wie in der NAS-GUI — „Jetzt hier“ (Preis + Stationsname), „Bestes Fenster heute“ (Fenster aus dem Cache) und „Frische Preise“ (Zahl frischer Stationen im Set; der Tankstand fehlt hier bewusst, er ist NAS-Sache). Darunter die Frische-Fußzeile `Preise … alt · Prognose … alt` aus Preismeldung und Modell-Lauf. Kein neuer Endpunkt, keine neue Abhängigkeit, kein neues Skript: nur Templatemarkup, CSS und ein JS-Helfer `minutesSince`. Test: `tests/test_rp2_fallback.py::test_answer_card_has_three_facts_and_freshness_footer`. |
-| 3.1 | 14.09.2026 | **Desktop-Layout der Fallback-GUI.** Kopf- und Steuerleiste liefen über die ganze Fensterbreite, Karten und Listen aber in einer 1060-px-Spalte mittig — bei 1920 px stand der Schriftzug 416 px neben dem Inhalt. Leisten und Inhalt teilen jetzt dieselbe Spalte (`--content`, `--gutter`); ab 1100 px wächst sie auf 1280 px, Kopf- und Steuerleiste rücken in eine Zeile, die Kraftstoff-Umschaltung streckt sich nicht mehr, der Alltag steht zweispaltig (7/5) und die Werkstatt-Sparklines zweispaltig. Die Kicker-Zahlen („1 · Empfehlung“) entfallen ab 1100 px; unterhalb bleibt kein Pixel anders. Reines CSS + zwei Wrapper-Divs: kein neuer Endpunkt, keine neue Abhängigkeit, Template-Wechsel per Hash (Sicherung `index.html.old`). |
-| 3.0 | 14.09.2026 | **Fallback-GUI v3** nach dem gebilligten Konzept (PR #112): Antwort-Karte zuerst, Stations-Karten statt Tabelle (kein horizontales Scrollen auf 390 px), Tagesstreifen 06–24 Uhr, Alltag/Werkstatt-Trennung, Sticky-Status-/Steuerleiste und Sticky-Aktions-Chip. Neu: `GET /api/v1/series` (Tagesverlauf aus dem Puffer) und ein 5-s-Snapshot-Cache — ein GUI-Zyklus liest den Puffer jetzt **einmal** statt viermal (Messung: 406 KiB Puffer, 216 Zeilen, 18 Stationen — Snapshot-Read 7,5 ms, `/series` 4,7 ms bei ~2,1 KiB Antwort, `/health` und `/decide` mit warmem Cache 0,8 ms statt 7–8 ms). Template wächst auf 59 KiB im Speicher; keine neuen Abhängigkeiten, keine Proxy-Änderung. |
-| 2.3 | 12.09.2026 | Wartung: Journal-Cap für die RP2-Dienste — Drop-in `rp2/journald.conf.d/50-tankapp-journal.conf` (`SystemMaxUse=50M`) + `journalctl --vacuum-size=50M` als Wartungsschritt (TODO G2). GUI-Code unverändert. |
-| 2.2 | 12.09.2026 | `cache.log` mit 1-MB-Ring-Cap (`CACHE_LOG_MAX_BYTES`) — kein unbegrenztes Wachstum/SD-Verschleiß mehr (TODO G1). Doku: alte RP2-Dateien ins Archiv, Inhalte hier konsolidiert (Dateistruktur, Fallback-API, Umschaltzeiten, Template-Updates, Wartung). |
-| 2.1 | 09.09.2026 | **B3**: NAS-Proxy leitet auch neue Endpunkte heatmap/selection/collector/route weiter. Fallback zeigt Heartbeat (tmpfs-Nutzung). |
-| 2.0 | 09.09.2026 | NAS-Proxy: Port 8000 zeigt bei NAS online volle NAS-GUI, Fallback sonst. Namen/Marken/Navigation aus polling.json. Neue Fallback-GUI: Dark/Light, E10/E5/Diesel, Datenalter, Tankgröße, F1/F3 aus Quantil-Prognosen, Sparklines, Auto-Refresh, NAS prüfen. JSON-API: health/stations/forecasts/decide/nas-check. Template-Update per Hash. |
-| 1.1 | 09.09.2026 | NAS-IP über Env statt fest im Code; nur Standardbibliothek; atomarer Cache-Write |
-| 1.0 | 08.09.2026 | Initial: RP2 Fallback-GUI mit F1/F2/F3 |
+Änderungen werden ausschließlich in der [Release-Historie](../releases/CHANGELOG.md)
+gepflegt. Maßgeblich für den laufenden Dienst sind die Funktionen und
+Betriebsanweisungen dieses Dokuments, nicht frühere Template-Iterationen.
 
 Support: Logs prüfen (`journalctl -u tankapp-forecast-cache -f`), Cache prüfen (`cat /tmp/tankapp_cache/last_forecasts.json`), NAS-GUI prüfen (`http://<NAS-IP>:1355`), Heartbeat prüfen (`cat /dev/shm/tankapp/meta/heartbeat.json`), Version/Commit des NAS (`GET /api/v1/health` → `version`, `commit`, siehe [BETRIEB.md](BETRIEB.md#version-und-build-hash-prüfen)). Die RP2-Template-Version steht im Marker der erzeugten `templates/index.html`.

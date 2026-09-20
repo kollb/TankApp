@@ -1,5 +1,5 @@
 // C7: Glossar-Tabelle („Was heißt das?“) — Invarianten der Hilfe-Seite.
-// Die Doku-Anker selbst prüft tests/test_glossary.py gegen docs/ANALYSE.md;
+// Die Doku-Anker selbst prüft tests/test_glossary.py gegen docs/referenz/ANALYSE.md;
 // hier steht, was die Tabelle aus sich heraus garantiert: Pflichtbegriffe,
 // vollständige Einträge, ehrliche Lebenszyklus-Texte (kein Kontingent-
 // Versprechen — tote Stationen werden weiter gepollt, bis das Polling-Set

@@ -23,7 +23,7 @@ except ImportError as _exc:
         "für eine neuere glibc, z. B. Fehler `GLIBC_2.44' von libm) und passt "
         "nicht zu diesem Gerät. Kein TankApp-Codefehler; nichts wurde verändert.\n"
         "Abhilfe: ein zur System-glibc passendes python3 verwenden; glibc nie von "
-        "Hand aktualisieren. Siehe docs/INSTALL.md, Abschnitt "
+        "Hand aktualisieren. Siehe docs/betrieb/INSTALL.md, Abschnitt "
         "„Störungsfall NAS: unpassendes Python“.\n"
     )
     raise SystemExit(2)

@@ -47,7 +47,7 @@ from app.model_jobs import (
 from engine.config import Config
 from engine.storage import write_json
 
-# Produktions-Set: m = 11 Stationen (docs/ANALYSE.md), B = 2000 fest.
+# Produktions-Set: m = 11 Stationen (docs/referenz/ANALYSE.md), B = 2000 fest.
 STATIONS = 11
 # Batch-Check O22: ``du -h data/runtime/engine/current.json`` unter 8 MB.
 CHECK_BUDGET_BYTES = 8_000_000

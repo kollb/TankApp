@@ -150,18 +150,18 @@ def stale_message(status: dict[str, Any]) -> str:
         return (
             "Das Backup-Ziel der Laufzeitdaten ist nicht erreichbar — es wird "
             "gerade nichts gesichert. Cron-Eintrag, Mount und "
-            "TANKAPP_BACKUP_DIR prüfen (docs/BETRIEB.md, "
+            "TANKAPP_BACKUP_DIR prüfen (docs/betrieb/BETRIEB.md, "
             "„NAS Laufzeitdaten (runtime/) Backup“)."
         )
     if reason == "no_backup":
         return (
             "Im Backup-Ziel liegt kein Laufzeit-Backup — die Tank-Bilanz hätte "
             "keine Sicherung. Cron-Eintrag für ops/nas/backup.sh prüfen "
-            "(docs/BETRIEB.md)."
+            "(docs/betrieb/BETRIEB.md)."
         )
     return (
         f"Das letzte Laufzeit-Backup ist {_hours(status.get('age_hours'))} alt "
         f"(Grenze {_hours(status.get('stale_hours'))}) — der tägliche Cron hat "
         "mindestens einen Lauf verpasst. Ohne frisches Backup ist die "
-        "Tank-Bilanz ungeschützt (docs/BETRIEB.md)."
+        "Tank-Bilanz ungeschützt (docs/betrieb/BETRIEB.md)."
     )

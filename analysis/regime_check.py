@@ -5,7 +5,7 @@ Steuer-/Preisregime-Änderung durch?
 
 Anlass ist die Einigung auf einen Tankrabatt (−17 ct/L ab 01.10.2026, befristet
 bis 31.12.2026) und einen Spritpreisdeckel (spätestens 01.01.2027). Der Befund
-[docs/BEFUND-UX-MATH-2026-09-19.md] **Teil 5** misst die Folgen für die
+[docs/archiv/BEFUND-UX-MATH-2026-09-19.md] **Teil 5** misst die Folgen für die
 Prognose-Kette; dieses Werkzeug liefert die **Echtzahlen**, die dort fehlen:
 Es läuft auf dem eigenen Archivbestand, der mit dem Mai-Juni-Tankrabatt 2026
 bereits zwei Kanten enthält (Start 01.05. Senkung, Ende 01.07. Erhöhung). Das

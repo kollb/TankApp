@@ -162,8 +162,8 @@ def test_check_bild_nennt_seinen_commit():
 
     ``app/version.py`` liest erst die Variable und ruft dann ``git``. Beides
     fehlt im Bild (kein git, kein .git), also bleibt ``commit`` ohne das
-    Build-Argument ``null`` — dokumentiert in ``docs/API.md`` und
-    ``docs/BETRIEB.md``, dort mit dem Hinweis, die Variable bei Bedarf zu
+    Build-Argument ``null`` — dokumentiert in ``docs/referenz/API.md`` und
+    ``docs/betrieb/BETRIEB.md``, dort mit dem Hinweis, die Variable bei Bedarf zu
     setzen. Ohne den Wert prüft der Job ein Bild, das im Fehlerfall nicht
     sagen kann, welcher Stand läuft — genau die Frage, die B9 beantwortet.
     """

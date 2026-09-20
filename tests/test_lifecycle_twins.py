@@ -6,7 +6,7 @@ aber unbelegt — diese Suite hält das Versprechen fest:
 - A12: vier Zustände (aktiv/tot/geschlossen/führt-nicht), tote Stationen
   fallen vor dem Coverage-Gate aus dem Ranking, Schwelle konfigurierbar
   (``TANKAPP_DEAD_AFTER_DAYS``, 0 = aus). Das Polling-Set bleibt stabil —
-  Tausch nur mit Bestätigung (docs/ANALYSE.md#lebenszyklus-der-stationen).
+  Tausch nur mit Bestätigung (docs/referenz/ANALYSE.md#lebenszyklus-der-stationen).
 - A13: Zwillinge mit denselben Schwellen wie der manuelle Vergleich
   (28 Tage × ≥12 Punkte, ≥90 % Überlappung, ≥99 % ≤0,1 ct/L), als Warnung
   im Artefakt und im System-Tab, nie auto-apply.
