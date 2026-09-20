@@ -290,8 +290,10 @@ test("NAS nicht erreichbar (503): Beleg wird vorgemerkt, kein Erfolg behauptet",
   await expect(page.getByText(/Beleg lokal vorgemerkt/)).toBeVisible();
   await expect(page.getByText("Beleg in deiner Bilanz verbucht.")).toHaveCount(0);
   // Die Queue sagt selbst, dass etwas wartet (B10) — sichtbar, nicht still.
+  // Genau ein Eintrag ist vorgemerkt → Singular („geht raus“); der Plural
+  // („gehen raus“) steht erst ab zwei Einträgen.
   await expect(
-    page.getByText(/lokal vorgemerkt und gehen raus, sobald die Verbindung steht/),
+    page.getByText(/lokal vorgemerkt und geht raus, sobald die Verbindung steht/),
   ).toBeVisible();
 });
 
