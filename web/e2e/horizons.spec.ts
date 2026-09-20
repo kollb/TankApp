@@ -262,7 +262,19 @@ test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
 
   // Zeitraum der echten Preise (Spielplatz): 24 Stunden → 3 Tage. Der
   // Umschalter steuert die Abfrage — dieselbe Regel wie im Stationen-Verlauf.
-  await page.getByRole("button", { name: "Spielplatz", exact: true }).click();
+  // Zeitraum der echten Preise (Spielplatz): 24 Stunden → 3 Tage. Der
+  // Umschalter steuert die Abfrage — dieselbe Regel wie im Stationen-Verlauf.
+  // B5: Spielplatz wohnt jetzt im Modell-Tab (Sub-Tabs)
+  const modellTab = page.getByRole("tab", { name: /Modell/ }).first();
+  if (await modellTab.isVisible().catch(() => false)) {
+    await modellTab.click();
+  }
+  const spielplatzToggle = page.getByRole("button", { name: /Spielplatz/ }).first();
+  // Falls zugeklappt, aufklappen — default ist offen, aber sicherheitshalber
+  const expanded = await spielplatzToggle.getAttribute("aria-expanded").catch(() => null);
+  if (expanded === "false") {
+    await spielplatzToggle.click();
+  }
   const spielplatz = page.locator("#labor-spielplatz");
   await expect(
     spielplatz.getByRole("button", { name: "24 Stunden", exact: true }),
