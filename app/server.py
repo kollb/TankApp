@@ -39,8 +39,9 @@ SUNSET_DATE = "Wed, 01 Sep 2027 00:00:00 GMT"
 # (docs/betrieb/BETRIEB.md) und nicht mehr eine Nebenwirkung der Bind-Zeile: Mit
 # ``TANKAPP_READ_TOKEN`` antworten genau diese Routen nur noch mit
 # ``Authorization: Bearer <Secret>``. Markt- und Modelldaten (health,
-# stations, forecast, heatmap, selection, stats/summary) bleiben offen — sie
-# enthalten nichts Persönliches.
+# stations, forecast, heatmap, selection) bleiben offen. Aggregierte Antworten
+# sind nicht automatisch unpersönlich: /decide kann personal_stats und
+# /stats/summary kann Wallet/live_advice enthalten.
 PERSONAL_READ_ROUTES = (
     "/api/v1/fills",
     "/api/v1/fills.csv",
@@ -1137,6 +1138,11 @@ class Handler(SimpleHTTPRequestHandler):
 
         # --- B4 Fills Endpoint: POST /api/v1/fills ---
         if norm_path == "/api/v1/fills":
+            # Idempotenz anhand einer bekannten ID darf keinen Beleg als
+            # Lesebypass zurückgeben. Auch neue Belege folgen dem gleichen
+            # Vertrag, sobald ein Read-Token aktiviert ist.
+            if not self._gate_read(norm_path):
+                return
             if not self._gate_write():
                 return
             try:
