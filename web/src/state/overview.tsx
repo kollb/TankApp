@@ -35,6 +35,7 @@ import {
   livePhaseHint,
   m7GateLine,
   PINNED_MAX,
+  PROFILE_BOUNDS,
   ageWord,
   fillPositionNote,
   profileFields,
@@ -198,8 +199,8 @@ function useOverviewState() {
     (value) =>
       typeof value === "number" &&
       Number.isFinite(value) &&
-      value >= 10 &&
-      value <= 80,
+      value >= PROFILE_BOUNDS.liters.min &&
+      value <= PROFILE_BOUNDS.liters.max,
     share.liters,
   );
   const [consumption, setConsumption] = usePreference(
@@ -698,6 +699,19 @@ function useOverviewState() {
   // `data.cities.includes(...)` auf einem Objekt ohne `cities` und die ganze
   // App blieb weiß (Befund 17.09.2026).
   const data = usableStations(prices.data);
+  // Readiness is observed through the successful NAS stations contract,
+  // not navigator.onLine. Recovery must not remount the shell or lose drafts.
+  const nasReady = browserOnline && !!data && prices.failStreak === 0 &&
+    data.nas_status !== "offline" && !data.connection_error;
+  const wasNasReady = useRef<boolean | null>(null);
+  useEffect(() => {
+    const recovered = wasNasReady.current === false && nasReady;
+    wasNasReady.current = nasReady;
+    if (recovered) {
+      void flushRef.current?.(); // preserves outbox leases / Retry-After
+      setRefresh((value) => value + 1);
+    }
+  }, [nasReady]);
   const isStaleFuel = !!data && data.fuel !== fuel;
   const activeCity = data?.cities.includes(city) ? city : data?.cities[0] || "";
   const stations =
@@ -885,7 +899,11 @@ function useOverviewState() {
   });
   const decideRes =
     overviewTab
-      ? overviewPart<DecideResult>(overview.data?.decide)
+      ? overviewPart<DecideResult>(
+          // Prices may remain visible on a failed poll. Action grants may
+          // not: hide on the FIRST failure, not the banner's second-failure debounce.
+          nasReady && overview.failStreak === 0 ? overview.data?.decide : null,
+        )
       : emptyResource<DecideResult>();
 
   const statsSummaryPoll = useResource<StatsSummary>(
@@ -1057,7 +1075,7 @@ function useOverviewState() {
   // eine Erklärung (Befund 17.09.2026).
   const fallbackNotice =
     data?.nas_status === "offline"
-      ? "Antwort kommt vom Pi-Fallback: Das NAS ist für den Pi nicht erreichbar. Preise und Stationen sind der Live-Puffer des Pi; Prognosen, Empfehlungen und Belege brauchen das NAS."
+      ? "Antwort kommt vom Pi-Fallback: Das NAS ist für den Pi nicht bereit. Preise und Stationen sind der Live-Puffer des Pi; Prognosen, Empfehlungen und Belege brauchen das NAS."
       : null;
   // B10/I1: Statuszeile der Outbox — nur wenn wirklich etwas wartet oder
   // ein sichtbarer Endzustand (abgelehnt/abgelaufen) liegt.

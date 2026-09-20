@@ -822,6 +822,9 @@ class FakeNasHandler(BaseHTTPRequestHandler):
         if self.path == "/api/v1/health":
             body = json.dumps({"app": "online"}).encode()
             ctype = "application/json"
+        elif self.path.startswith("/api/v1/stations"):
+            body = json.dumps({"stations": [], "cities": []}).encode()
+            ctype = "application/json"
         else:
             body = b"NAS-GUI-PROXIED"
             ctype = "text/html; charset=utf-8"
@@ -1299,6 +1302,8 @@ class EchoNasHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/v1/health":
             body = json.dumps({"app": "online"}).encode()
+        elif self.path.startswith("/api/v1/stations"):
+            body = json.dumps({"stations": [], "cities": []}).encode()
         else:
             body = b"NAS-GUI-PROXIED"
         self.send_response(200)
@@ -1677,3 +1682,292 @@ def test_fallback_never_grants_actions_for_cached_quantiles(tmp_path, quality):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.fixture
+def readiness_nas():
+    """Real HTTP failure injection, including chunked/lengthless framing."""
+    state = {
+        "health": b'{"app":"online"}',
+        "api_status": 200,
+        "framing": "length",
+        "request_status": 200,
+        "requests": 0,
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            state["requests"] += 1
+            if self.path == "/api/v1/health":
+                body, status = state["health"], 200
+            elif self.path.startswith("/api/v1/stations"):
+                body, status = b'{"stations":[],"cities":[]}', state["api_status"]
+            else:
+                body, status = b'{"primary":{}}', state["request_status"]
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            if state["framing"] == "chunked":
+                self.send_header("Transfer-Encoding", "chunked")
+            elif state["framing"] != "absent":
+                extra = 10 if state["framing"] == "truncated" else 0
+                self.send_header("Content-Length", str(len(body) + extra))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if state["framing"] == "chunked":
+                self.wfile.write(
+                    f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+                )
+            else:
+                self.wfile.write(body)
+            self.close_connection = True
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", state
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize(
+    "body", [b"hello", b"{}", b"[]", b"null", b'{"app":"offline"}', b'{"app":']
+)
+def test_readiness_rejects_invalid_health(readiness_nas, body):
+    base, state = readiness_nas
+    state["health"] = body
+    nas = rp2.NasState(base)
+    assert nas.is_online() is False
+    assert nas.info()["state"] == "pi_prices_only"
+
+
+@pytest.mark.parametrize("framing", ["absent", "chunked", "length", "truncated"])
+def test_readiness_framing(readiness_nas, framing):
+    base, state = readiness_nas
+    state["framing"] = framing
+    assert rp2.NasState(base).is_online() is (framing != "truncated")
+
+
+def test_health_200_api_503_is_degraded_and_returns_local_prices(
+    tmp_path, readiness_nas
+):
+    nas_base, state = readiness_nas
+    state["api_status"] = 503
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+    )
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        prices = get_json(base, "/api/v1/stations")
+        assert len(prices["stations"]) == 3
+        assert prices["nas_status"] == "offline"
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_proxy_503_after_ready_falls_back_without_second_response(
+    tmp_path, readiness_nas
+):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base, ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["api_status"] = 503
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/api/v1/stations") as response:
+            assert response.status == 200
+            assert len(json.load(response)["stations"]) == 3
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_readiness_recovery_hysteresis_and_stable_timestamp(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(rp2.time, "monotonic", lambda: now[0])
+    nas = rp2.NasState("http://nas", recovery_interval=2)
+    monkeypatch.setattr(nas, "_probe", lambda: (True, None))
+    assert nas.is_online()
+    nas.mark_offline("api:http_503")
+    assert not nas.is_online(force=True)
+    assert nas.info()["state"] == "recovering"
+    stamp = nas.info()["last_check"]
+    assert nas.info()["last_check"] == stamp
+    # Hammering the button is not independent proof of recovery.
+    assert not nas.is_online(force=True)
+    now[0] += 2
+    assert nas.is_online(force=True)
+    assert nas.info()["state"] == "nas_ready"
+
+
+def test_probe_singleflight_and_proxy_failure_fences_older_result(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    nas = rp2.NasState("http://nas")
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    all_waiting = threading.Event()
+    wait_count = []
+    original_wait = nas._lock.wait_for
+
+    def wait_for(predicate):
+        wait_count.append(1)
+        if len(wait_count) == 7:
+            all_waiting.set()
+        return original_wait(predicate)
+
+    monkeypatch.setattr(nas._lock, "wait_for", wait_for)
+
+    def probe():
+        calls.append(1)
+        entered.set()
+        assert release.wait(3)
+        return True, None
+
+    monkeypatch.setattr(nas, "_probe", probe)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(nas.is_online, True) for _ in range(8)]
+        assert entered.wait(3)
+        assert all_waiting.wait(3)
+        # This newer failure must win over the old successful probe.
+        nas.mark_offline("proxy:newer_failure")
+        release.set()
+        assert not any(f.result() for f in futures)
+    assert len(calls) == 1
+    assert nas.info()["error"] == "proxy:newer_failure"
+
+
+def test_versioned_tabs_do_not_change_api_schema(tmp_path, readiness_nas):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base
+    )
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def get(path, mode):
+        req = urllib.request.Request(base + path, headers={"X-TankApp-UI": mode})
+        return urllib.request.urlopen(req)
+
+    try:
+        # Even with a ready NAS a Pi tab gets its own health and decide.
+        with get("/api/v1/health", "pi-v1") as response:
+            assert json.load(response)["nas"]["online"] is True
+            assert response.headers["Cache-Control"] == "no-store"
+        with get("/api/v1/decide", "pi-v1") as response:
+            assert json.load(response)["f1"]["recommendation"] == "no_advice"
+        with get("/api/v1/decide", "nas-v1") as response:
+            assert "primary" in json.load(response)
+        state["api_status"] = 503
+        ctx.nas.is_online(force=True)
+        for path in (
+            "/api/v1/health",
+            "/api/v1/decide",
+            "/api/v1/series?station_id=x&fuel=e10",
+            "/api/v1/overview",
+        ):
+            with pytest.raises(urllib.error.HTTPError) as error:
+                get(path, "nas-v1")
+            assert error.value.code == 503
+            assert "f1" not in json.load(error.value)
+        with get("/api/v1/stations", "nas-v1") as response:
+            assert len(json.load(response)["stations"]) == 3
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_proxy_never_falls_back_after_downstream_write_starts(
+    tmp_path, readiness_nas, monkeypatch
+):
+    from email.message import Message
+
+    nas_base, _ = readiness_nas
+    ctx = make_ctx(tmp_path, nas_base=nas_base)
+    server = rp2.make_server(ctx, "127.0.0.1", 0)
+    handler = object.__new__(server.RequestHandlerClass)
+    handler.path, handler.command, handler.headers = "/api/v1/decide", "GET", Message()
+    handler._response_started = False
+    statuses, fallbacks = [], []
+    handler.send_response = statuses.append
+    handler.send_header = lambda *args: None
+
+    def end_headers():
+        handler._response_started = True
+
+    class BrokenWriter:
+        def write(self, body):
+            raise OSError("downstream write failed")
+
+    handler.end_headers = end_headers
+    handler.wfile = BrokenWriter()
+    handler._api = lambda *args: fallbacks.append(args)
+    try:
+        handler._handle()
+        assert statuses == [200]
+        assert fallbacks == []
+        assert handler.close_connection is True
+        assert ctx.nas.info()["online"] is True  # downstream is not NAS failure
+    finally:
+        server.server_close()
+
+
+def test_proxy_truncated_body_falls_back_before_headers(tmp_path, readiness_nas):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, poll_lines=default_poll_lines(), nas_base=nas_base, ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["framing"] = "truncated"
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/api/v1/stations") as response:
+            assert response.headers["X-TankApp-Contract"] == "pi-v1"
+            assert len(json.load(response)["stations"]) == 3
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cached_forecast_validity_is_not_action_permission(tmp_path):
+    now = dt.datetime.now(UTC)
+    package = {"generated_at": now.isoformat()}
+    row = {
+        "origin": now.isoformat(),
+        "calibrated": True,
+        "stale_data_at_origin": False,
+        "rolling_picp_7d": {"current": {"badge": "green"}},
+        "points": [
+            {
+                "timestamp": (now + dt.timedelta(hours=1)).isoformat(),
+                "q025": 1.60,
+                "q50": 1.70,
+                "q975": 1.80,
+            }
+        ],
+    }
+    assert rp2.forecast_valid_for_display(package, row, now)
+    ctx = make_ctx(tmp_path, with_forecast=False)
+    ctx.cache_file.parent.mkdir(exist_ok=True)
+    ctx.cache_file.write_text(json.dumps({**package, "forecasts": [row]}))
+    assert ctx.failover_info()["state"] == "pi_forecast_valid"
+    assert ctx.failover_info()["decision_ready"] is False
+    for patch in (
+        {"calibrated": False},
+        {"stale_data_at_origin": True},
+        {"rolling_picp_7d": {"current": {"badge": "red"}}},
+        {"origin": (now - dt.timedelta(days=2)).isoformat()},
+        {"origin": (now + dt.timedelta(minutes=1)).isoformat()},
+    ):
+        assert not rp2.forecast_valid_for_display(package, {**row, **patch}, now)
+    assert not rp2.forecast_valid_for_display(
+        {**package, "valid_until": now.isoformat()}, row, now
+    )
+    assert not rp2.forecast_valid_for_display({}, row, now)

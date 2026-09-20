@@ -3,8 +3,8 @@
 RP2 Fallback-GUI + NAS-Proxy auf Port 8000 (nur Python-Standardbibliothek).
 
 Verhalten:
-  * NAS online  -> alle Requests (GUI + /api/*) werden transparent an das NAS
-                   weitergeleitet. Unter der RP2-Adresse (Port 8000) erscheint
+  * NAS bereit  -> neue GUI-Aufrufe und NAS-API-Requests werden weitergeleitet.
+                   Offene Tabs binden ihre API per X-TankApp-UI (nas-v1/pi-v1). Unter der RP2-Adresse (Port 8000) erscheint
                    dann die vollwertige TankApp-GUI vom NAS.
   * NAS offline -> lokale Fallback-GUI mit
                    - Live-Preisen aus dem RAM-Puffer (/dev/shm/tankapp),
@@ -27,7 +27,7 @@ API-Endpunkte (Fallback-Modus):
   GET /api/v1/health           Status (NAS, Preise, Prognosen, Metadaten)
   GET /api/v1/stations?fuel=   Stationen mit allen Preisen, sortiert
   GET /api/v1/forecasts?fuel=  gecachte Prognosen + Zusammenfassung je Station
-  GET /api/v1/decide?fuel=&liters=  F1/F2/F3-Entscheidung (einfache Logik)
+  GET /api/v1/decide?fuel=&liters=  Preisvergleich, immer no_advice
   GET /api/v1/series?station=&fuel= Tagesverlauf 06–24 Uhr aus dem Puffer
   GET /api/v1/nas-check        NAS-Status sofort neu prüfen
 
@@ -39,6 +39,8 @@ zusätzlich (er braucht die Stunden, nicht nur den letzten Stand je Station).
 
 from __future__ import annotations
 
+import gzip
+import io
 import hashlib
 import json
 import math
@@ -53,7 +55,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "4.3"
+VERSION = "5.0"
 # VERSION_MARKER wird am Ende des Moduls aus dem Template-Inhalt gebaut
 # (Inhalts-Hash), damit auch JS-/CSS-Fixes innerhalb derselben Version auf
 # bestehenden Installationen automatisch ersetzt werden.
@@ -78,7 +80,7 @@ CACHE_REBOOT_HINT = (
     "automatisch mit dem nächsten Abruf (alle 5 Minuten)."
 )
 PROXY_TIMEOUT_S = 15.0
-HEALTH_TTL_ONLINE_S = 15.0  # wie schnell wird das NAS (nach Wiederkehr) bemerkt
+HEALTH_TTL_ONLINE_S = 15.0  # Probe-Cache, keine garantierte Umschaltzeit
 HEALTH_TTL_OFFLINE_S = 30.0  # wie oft wird nach einem Offline-Zustand neu geprüft
 SNAPSHOT_DAYS_BACK = 2  # letzte N Tag-Dateien berücksichtigen (Nacht-Puffer)
 MAX_PROXY_BODY = 32 * 1024 * 1024
@@ -400,6 +402,35 @@ def load_forecasts(cache_file: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def forecast_valid_for_display(package: dict | None, row: dict, now: datetime) -> bool:
+    """Conservative cached-data validity; explicitly NOT decision readiness.
+
+    Align with the NAS's 24-hour model age bound, require a non-stale origin
+    and active calibration plus green rolling coverage. Missing evidence is
+    not green. The NAS cache does not include personal constraints or a signed
+    action envelope, so even valid display data never authorize an action.
+    """
+    package = package or {}
+    generated = parse_ts(package.get("generated_at"))
+    origin = parse_ts(row.get("origin"))
+    valid_until = parse_ts(package.get("valid_until"))
+    rolling = row.get("rolling_picp_7d") or {}
+    current = rolling.get("current") if isinstance(rolling, dict) else None
+    return bool(
+        generated
+        and origin
+        and 0 <= (now - generated).total_seconds() <= 86400
+        and 0 <= (now - origin).total_seconds() <= 86400
+        and ("valid_until" not in package or valid_until and now < valid_until)
+        and row.get("calibrated") is True
+        and row.get("stale_data_at_origin") is False
+        and isinstance(current, dict)
+        and current.get("badge") == "green"
+        and isinstance(row.get("points"), list)
+        and summarize_forecast(row["points"], now, None)
+    )
+
+
 def summarize_forecast(
     points: list[dict] | None, now: datetime, current_price: float | None
 ) -> dict | None:
@@ -423,12 +454,14 @@ def summarize_forecast(
         ):
             continue
         local = ts.astimezone(local_tz())
-        future.append({
-            "at": ts.isoformat(),
-            "time": local.strftime("%H:%M"),
-            "date": local.strftime("%Y-%m-%d"),
-            **dict(zip(("q025", "q50", "q975"), quantiles)),
-        })
+        future.append(
+            {
+                "at": ts.isoformat(),
+                "time": local.strftime("%H:%M"),
+                "date": local.strftime("%Y-%m-%d"),
+                **dict(zip(("q025", "q50", "q975"), quantiles)),
+            }
+        )
     if not future:
         return None
     future.sort(key=lambda point: point["at"])
@@ -445,8 +478,38 @@ def summarize_forecast(
 # ---------------------------------------------------------------------------
 
 
+def read_bounded_response(resp, limit: int) -> bytes:
+    """Read a complete, bounded response before committing downstream headers.
+
+    Missing Content-Length is legal (chunked / close-delimited). A declared
+    length must match; a truncated response must never look like success.
+    """
+    declared = resp.headers.get("Content-Length")
+    length = int(declared) if declared is not None else None
+    if length is not None and not 0 <= length <= limit:
+        raise ValueError("response_length")
+    body = resp.read(limit + 1)
+    if len(body) > limit or (length is not None and len(body) != length):
+        raise ValueError("response_length")
+    return body
+
+
+STATE_HINTS = {
+    "nas_ready": "NAS bereit — die vollständige Ansicht ist verfügbar.",
+    "nas_degraded": "NAS antwortet, aber die Fach-API ist nicht bereit — lokale Preise bleiben verfügbar.",
+    "pi_prices_only": "Nur lokale Preise — keine Tank- oder Warteempfehlung.",
+    "pi_forecast_valid": "Lokale Preise und gültige Prognosedaten — keine Aktionsfreigabe.",
+    "recovering": "NAS kehrt zurück — die Bereitschaft wird erneut geprüft.",
+}
+
+
 class NasState:
-    """Gemeinsamer (thread-sicherer) NAS-Status mit Kurzzeit-Cache."""
+    """Single-flight readiness with ordered failures and recovery hysteresis.
+
+    Initial success may serve the NAS immediately. After a failure, two
+    successful probes separated by recovery_interval are required. A proxy
+    failure invalidates an older in-flight probe (revision fence).
+    """
 
     def __init__(
         self,
@@ -455,69 +518,122 @@ class NasState:
         ttl_online: float = HEALTH_TTL_ONLINE_S,
         ttl_offline: float = HEALTH_TTL_OFFLINE_S,
         timeout: float = NAS_CHECK_TIMEOUT_S,
+        recovery_interval: float = 2.0,
     ):
         self.base_url = base_url
         self.health_url = health_url or (
             f"{base_url}/api/v1/health" if base_url else None
         )
-        self.ttl_online = ttl_online
-        self.ttl_offline = ttl_offline
-        self.timeout = timeout
-        self._lock = threading.Lock()
+        self.ttl_online, self.ttl_offline = ttl_online, ttl_offline
+        self.timeout, self.recovery_interval = timeout, recovery_interval
+        self._lock = threading.Condition()
+        self._probing = False
+        self._revision = 0
+        self._needs_recovery = False
+        self._recovery_at: float | None = None
         self.online: bool | None = None
-        self.checked_at: float = 0.0
+        self.checked_at = 0.0
+        self.checked_at_iso: str | None = None
         self.last_error: str | None = None
+        self.state = "pi_prices_only"
 
     def _probe(self) -> tuple[bool, str | None]:
+        stage = "health"
         try:
-            with urllib.request.urlopen(self.health_url, timeout=self.timeout) as resp:
-                # Vollständiges Body lesen (bis zur Obergrenze), nicht die
-                # ersten 4096 Bytes: Das Health-Payload wächst (mehr
-                # Alarms, längere Fehler-Strings), und ein abgeschnittenes
-                # JSON ist per Definition nicht parsebar.
-                try:
-                    length = min(
-                        int(resp.headers.get("Content-Length") or 0),
-                        128 * 1024,
+            for url, key in (
+                (self.health_url, "app"),
+                (f"{self.base_url}/api/v1/stations?fuel=e10", "stations"),
+            ):
+                stage = "health" if key == "app" else "api"
+                with urllib.request.urlopen(url, timeout=self.timeout) as resp:
+                    data = json.loads(read_bounded_response(resp, 2 * 1024 * 1024))
+                    valid = isinstance(data, dict) and (
+                        data.get("app") == "online"
+                        if key == "app"
+                        else isinstance(data.get("stations"), list)
+                        and isinstance(data.get("cities"), list)
+                        and all(
+                            isinstance(row, dict)
+                            and isinstance(row.get("station_id"), str)
+                            for row in data["stations"]
+                        )
                     )
-                    body = resp.read(length) if length else b""
-                except (ValueError, OSError):
-                    body = b""
-                try:
-                    data = json.loads(body.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    data = {}
-                if resp.status == 200 and (not data or data.get("app") == "online"):
-                    return True, None
-                return False, f"health antwortet nicht 'online' (HTTP {resp.status})"
-        except Exception as exc:  # URLError, TimeoutError, HTTPError, ...
-            return False, type(exc).__name__
+                    if resp.status != 200 or not valid:
+                        return False, f"{stage}:invalid_payload"
+            return True, None
+        except Exception as exc:
+            return False, f"{stage}:{type(exc).__name__}"
 
     def is_online(self, force: bool = False) -> bool:
         if not self.base_url:
             return False
         with self._lock:
+            if self._probing:
+                # Simultaneous forced probes join this one, not another round.
+                self._lock.wait_for(lambda: not self._probing)
+                return bool(self.online)
             now = time.monotonic()
-            ttl = self.ttl_online if self.online else self.ttl_offline
+            ttl = (
+                self.recovery_interval
+                if self.state == "recovering"
+                else (self.ttl_online if self.online else self.ttl_offline)
+            )
             if not force and self.online is not None and now - self.checked_at < ttl:
-                return self.online
-        ok, err = self._probe()
+                return bool(self.online)
+            self._probing = True
+            revision = self._revision
+        try:
+            ok, error = self._probe()
+        except Exception as exc:
+            ok, error = False, f"health:{type(exc).__name__}"
         with self._lock:
-            self.online, self.checked_at, self.last_error = ok, time.monotonic(), err
-        return ok
+            if revision == self._revision:
+                now = time.monotonic()
+                self.checked_at, self.checked_at_iso = now, utcnow().isoformat()
+                self.last_error = error
+                if not ok:
+                    self._fail(error or "probe_failed")
+                elif self._needs_recovery:
+                    if self._recovery_at is None:
+                        self._recovery_at = now
+                    elif now - self._recovery_at >= self.recovery_interval:
+                        self._needs_recovery = False
+                    self.online = not self._needs_recovery
+                    self.state = "nas_ready" if self.online else "recovering"
+                else:
+                    self.online, self.state = True, "nas_ready"
+            self._probing = False
+            self._lock.notify_all()
+            return bool(self.online)
+
+    def _fail(self, reason: str):
+        self.online = False
+        self.last_error = reason
+        self._needs_recovery = True
+        self._recovery_at = None
+        self.state = (
+            "nas_degraded"
+            if reason.startswith(("api:", "proxy:"))
+            else "pi_prices_only"
+        )
 
     def mark_offline(self, reason: str):
         with self._lock:
-            self.online = False
-            self.checked_at = time.monotonic()
-            self.last_error = reason
+            self._revision += 1
+            self._fail(reason)
+            self.checked_at, self.checked_at_iso = (
+                time.monotonic(),
+                utcnow().isoformat(),
+            )
 
     def info(self) -> dict:
         with self._lock:
             return {
                 "configured": bool(self.base_url),
                 "online": bool(self.online) if self.base_url else False,
-                "last_check": utcnow().isoformat() if self.checked_at else None,
+                "state": self.state,
+                "hint": STATE_HINTS[self.state],
+                "last_check": self.checked_at_iso,
                 "error": self.last_error,
             }
 
@@ -553,6 +669,25 @@ class Context:
         self._snapshot_lock = threading.Lock()
         self._snapshot: dict | None = None
         self._snapshot_at = 0.0
+
+    def failover_info(self) -> dict:
+        snapshot = self.snapshot()
+        package = snapshot["forecasts"] or {}
+        rows = package.get("forecasts") or []
+        valid = isinstance(rows, list) and any(
+            isinstance(row, dict) and forecast_valid_for_display(package, row, utcnow())
+            for row in rows
+        )
+        data_state = "pi_forecast_valid" if valid else "pi_prices_only"
+        nas = self.nas.info()
+        state = data_state if nas["state"] == "pi_prices_only" else nas["state"]
+        return {
+            "state": state,
+            "hint": STATE_HINTS[state],
+            "data_state": data_state,
+            "decision_ready": False,
+            "api_contract": "pi-v1",
+        }
 
     def snapshot(self, force: bool = False) -> dict:
         """Puffer-Stand, kurz zwischengespeichert (SNAPSHOT_TTL_S).
@@ -608,6 +743,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 flush=True,
             )
 
+        def end_headers(self):
+            self._response_started = True
+            super().end_headers()
+
         def _send(
             self,
             status: int,
@@ -618,6 +757,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-TankApp-Contract", "pi-v1")
+            self.send_header("Vary", "X-TankApp-UI, X-Force-Fallback")
             for key, value in (extra_headers or {}).items():
                 self.send_header(key, value)
             self.end_headers()
@@ -632,9 +774,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         # -- Routing ---------------------------------------------------------
         def do_GET(self):
+            self._response_started = False
             self._handle()
 
         def do_HEAD(self):
+            self._response_started = False
             self._handle()
 
         # B4: Schreibaktionen (Beleg buchen, Intent, Profil, …) werden wie
@@ -664,6 +808,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             return self.rfile.read(length) if length > 0 else b""
 
         def _handle_write(self):
+            self._response_started = False
             try:
                 url = urllib.parse.urlsplit(self.path)
                 # Body immer zuerst lesen: Keep-Alive-Verbindung bleibt
@@ -693,6 +838,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as exc:  # Server bleibt laufen
+                if self._response_started:
+                    self.close_connection = True
+                    return
                 try:
                     self._error(500, f"interner Fehler: {type(exc).__name__}")
                 except Exception:
@@ -707,6 +855,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     or "fallback" in query
                     or self.headers.get("X-Force-Fallback") == "1"
                 )
+                ui_contract = self.headers.get("X-TankApp-UI")
+                if ui_contract not in (None, "pi-v1", "nas-v1"):
+                    self._error(
+                        409, "API-Modus unbekannt — die Ansicht benötigt ein Update."
+                    )
+                    return
+                force_fb = force_fb or ui_contract == "pi-v1"
                 # nas-check ist ein RP2-eigener Steuer-Endpunkt (kein NAS-API-
                 # Pfad) und wird daher auch im Proxy-Modus lokal beantwortet.
                 if url.path == "/api/v1/nas-check":
@@ -717,6 +872,16 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         return
                     # Proxy fehlgeschlagen -> NAS als offline markiert, Fallback senden
                 if url.path.startswith("/api/"):
+                    # Only stations share a schema. In particular series,
+                    # health and decide MUST NOT change shape in a NAS tab.
+                    if ui_contract == "nas-v1" and url.path != "/api/v1/stations":
+                        self._error(
+                            503,
+                            "NAS nicht bereit — die Ansicht bleibt erhalten; lokale Preise sind verfügbar.",
+                        )
+                        return
+                    if url.path == "/api/v1/health":
+                        ctx.nas.is_online()
                     self._api(url.path, query)
                 elif url.path in ("/", "/index.html"):
                     self._index()
@@ -725,6 +890,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as exc:  # Server bleibt laufen
+                if self._response_started:
+                    self.close_connection = True
+                    return
                 try:
                     self._error(500, f"interner Fehler: {type(exc).__name__}")
                 except Exception:
@@ -732,17 +900,14 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         # -- NAS-Proxy -------------------------------------------------------
         def _proxy(self, body: bytes | None = None) -> bool:
-            """Request an die NAS weiterleiten.
+            """Buffer and verify upstream completely; never retry a started reply.
 
-            ``body`` nur für Schreibmethoden (POST/PUT/DELETE/PATCH): wird
-            zusammen mit dem Content-Type der Anfrage durchgereicht.
+            No write is replayed here. A lost write acknowledgement remains a
+            retryable 503 for the idempotent browser outbox, never a Pi write.
+            4xx/304 keep their auth/cache semantics rather than being hidden.
             """
             target = ctx.nas.base_url + self.path
             try:
-                # Der Proxy ist sicherheits- und cache-semantisch transparent:
-                # Credentials, Revalidierung und Kompression dürfen am NAS
-                # nicht verloren gehen. Hop-by-hop-Header bleiben bewusst
-                # ausgeschlossen.
                 headers = {}
                 for name in (
                     "Authorization",
@@ -758,71 +923,87 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if body is None:
                     headers.pop("Content-Type", None)
                 req = urllib.request.Request(
-                    target, method=self.command, data=body, headers=headers or {}
+                    target, method=self.command, data=body, headers=headers
                 )
-                with urllib.request.urlopen(req, timeout=ctx.proxy_timeout) as resp:
-                    self.send_response(resp.status)
-                    has_length = bool(resp.headers.get("Content-Length"))
-                    for header in (
-                        "Content-Type",
-                        "Content-Length",
-                        "Content-Encoding",
-                        "Cache-Control",
-                        "ETag",
-                        "Last-Modified",
-                        "Vary",
-                        "X-Content-Type-Options",
-                        "X-Frame-Options",
-                        "Content-Security-Policy",
-                        "Referrer-Policy",
-                    ):
-                        # urlopen dekodiert Chunks/Close-Framing; ohne bekannte
-                        # Bodylänge darf kein Content-Length vorgegeben werden
-                        if not has_length and header == "Content-Length":
-                            continue
-                        value = resp.headers.get(header)
-                        if value:
-                            self.send_header(header, value)
-                    if not has_length:
-                        # Bodylänge unbekannt (chunked/close-delimited) ->
-                        # Keep-Alive nicht antasten, Connection abschließen
-                        self.send_header("Connection", "close")
-                        self.close_connection = True
-                    self.send_header("X-TankApp-Proxy", "nas")
-                    self.end_headers()
-                    if self.command == "HEAD":
-                        return True
-                    sent = 0
-                    while True:
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        sent += len(chunk)
-                        if sent > MAX_PROXY_BODY:
-                            return True
-                    return True
-            except urllib.error.HTTPError as exc:
-                # Fehler des NAS (404, 400, ...) so weiterleiten wie bekommen
-                body = b""
-                if self.command != "HEAD":
-                    try:
-                        body = exc.read()[:MAX_PROXY_BODY]
-                    except Exception:
-                        body = b""
-                self.send_response(exc.code)
-                ctype = exc.headers.get("Content-Type") if exc.headers else None
-                if ctype:
-                    self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("X-TankApp-Proxy", "nas")
-                self.end_headers()
-                if body:
-                    self.wfile.write(body)
-                return True
+                try:
+                    response = urllib.request.urlopen(req, timeout=ctx.proxy_timeout)
+                except urllib.error.HTTPError as exc:
+                    response = exc
+                with response as resp:
+                    status = resp.status
+                    if status >= 500:
+                        raise ValueError(f"http_{status}")
+                    payload = (
+                        b""
+                        if self.command == "HEAD" or status == 304
+                        else read_bounded_response(resp, MAX_PROXY_BODY)
+                    )
+                    path = urllib.parse.urlsplit(self.path).path
+                    json_endpoint = path in {
+                        "/api/v1/health",
+                        "/api/v1/stations",
+                        "/api/v1/overview",
+                        "/api/v1/decide",
+                        "/api/v1/series",
+                        "/api/v1/forecast",
+                        "/api/v1/last_forecasts",
+                    }
+                    if self.command != "HEAD" and status == 200 and json_endpoint:
+                        decoded = payload
+                        if resp.headers.get("Content-Encoding") == "gzip":
+                            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as zipped:
+                                decoded = zipped.read(MAX_PROXY_BODY + 1)
+                        if len(decoded) > MAX_PROXY_BODY or not isinstance(
+                            json.loads(decoded), dict
+                        ):
+                            raise ValueError("api_payload")
+                    forwarded = {
+                        name: resp.headers[name]
+                        for name in (
+                            "Content-Type",
+                            "Content-Encoding",
+                            "Cache-Control",
+                            "ETag",
+                            "Last-Modified",
+                            "Vary",
+                            "X-Content-Type-Options",
+                            "X-Frame-Options",
+                            "Content-Security-Policy",
+                            "Referrer-Policy",
+                            "WWW-Authenticate",
+                            "Retry-After",
+                        )
+                        if resp.headers.get(name) is not None
+                    }
+                    # HEAD/304 length is the selected representation length,
+                    # not the (empty) transfer body. Otherwise normalize framing.
+                    length = (
+                        resp.headers.get("Content-Length")
+                        if self.command == "HEAD" or status == 304
+                        else str(len(payload))
+                    )
+                    if length is not None:
+                        forwarded["Content-Length"] = length
+                    forwarded["Vary"] = ", ".join(
+                        filter(
+                            None,
+                            (forwarded.get("Vary"), "X-TankApp-UI, X-Force-Fallback"),
+                        )
+                    )
             except Exception as exc:
-                ctx.nas.mark_offline(type(exc).__name__)
+                ctx.nas.mark_offline(f"proxy:{type(exc).__name__}")
                 return False
+            # Nothing in this phase is allowed to return False: the response
+            # has been selected. A client write failure closes the connection.
+            self.send_response(status)
+            for name, value in forwarded.items():
+                self.send_header(name, value)
+            self.send_header("X-TankApp-Proxy", "nas")
+            self.send_header("X-TankApp-Contract", "nas-v1")
+            self.end_headers()
+            if payload:
+                self.wfile.write(payload)
+            return True
 
         # -- Fallback: Hauptseite ---------------------------------------------
         def _index(self):
@@ -880,11 +1061,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     {
                         "online": online,
                         "nas": info,
+                        "failover": ctx.failover_info(),
                         "hint": (
-                            "NAS ist online — jetzt neu laden (Reload) zeigt die "
-                            "vollwertige NAS-GUI."
+                            "NAS bereit — „NAS-Ansicht öffnen“ wechselt die Oberfläche."
                             if online
-                            else "NAS nicht erreichbar — Fallback-GUI bleibt aktiv."
+                            else info["hint"]
                         ),
                     }
                 )
@@ -961,6 +1142,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 {
                     "status": "fallback",
                     "version": VERSION,
+                    "failover": ctx.failover_info(),
                     "cities": cities,
                     "city_options": city_options,
                     "generated_at": price_now.isoformat(),
@@ -1108,6 +1290,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "origin": fc.get("origin"),
                         "last_observation": fc.get("last_observation"),
                         "stale_data_at_origin": fc.get("stale_data_at_origin"),
+                        "valid_for_display": forecast_valid_for_display(
+                            forecasts, fc, now
+                        ),
+                        "decision_ready": False,
                         "current_price": current,
                         "summary": summarize_forecast(points, now, current),
                         "points": points,
@@ -2208,7 +2394,7 @@ function applyTheme(t) {
 
 /* ------------------------------- Daten ----------------------------------- */
 async function j(url) {
-  const r = await fetch(url, { cache: "no-store" });
+  const r = await fetch(url, { cache: "no-store", headers: { "X-TankApp-UI": "pi-v1" } });
   if (!r.ok) {
     const err = new Error("HTTP " + r.status);
     err.status = r.status;
@@ -2276,11 +2462,13 @@ function renderHeader(health) {
   } else if (nas.online) {
     nasPill.className = "pill ok";
     nasPill.title = "NAS erreichbar — neu laden zeigt die vollwertige NAS-GUI. Klick prüft sofort neu.";
-    $("#nas-text").textContent = "NAS online";
+    $("#nas-text").textContent = "NAS bereit — Ansicht öffnen";
   } else {
     nasPill.className = "pill bad";
     nasPill.title = "NAS nicht erreichbar" + (nas.error ? " (" + nas.error + ")" : "") + " — Fallback-Modus. Klick prüft sofort neu.";
-    $("#nas-text").textContent = "NAS offline";
+    $("#nas-text").textContent = nas.state === "recovering" ? "NAS kehrt zurück" :
+      nas.state === "nas_degraded" ? "NAS eingeschränkt" : "NAS offline";
+    nasPill.title = nas.hint || nasPill.title;
   }
   const p = h.prices || {};
   const pricePill = $("#price-pill");
@@ -2661,7 +2849,9 @@ function sparkCard(e) {
   const range = isNum(sum.min_q50) && isNum(sum.max_q50)
     ? "24-h-Band " + eur(sum.min_q50) + "–" + eur(sum.max_q50) + " €"
     : "";
-  const best = "Nur beschreibende Quantile — keine Fensterentscheidung";
+  const best = e.valid_for_display
+    ? "Gültige Prognosedaten — keine Fensterentscheidung"
+    : "Historischer Cache — Qualität oder Gültigkeit nicht bestätigt";
   const meta = [e.city ? esc(e.city) : "", range ? esc(range) : "", best ? esc(best) : ""].filter(Boolean).join(" · ");
   return '<div class="spark-card"><div class="spark-head">' +
     '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + "</span>" +
@@ -2856,11 +3046,19 @@ $("#nas-pill").addEventListener("click", async () => {
   try {
     const r = await j("/api/v1/nas-check");
     if (r.online) {
-      banner("NAS ist wieder online — die Seite lädt jetzt die vollwertige NAS-GUI.");
-      setTimeout(() => { window.location.href = "/"; }, 600);
+      // Explicit user-triggered transition only; no timer can lose a draft.
+      // Both shells share these preferences and the IndexedDB outbox origin.
+      try {
+        const cityOption = ((lastPayload && lastPayload.health.city_options) || []).find((c) => c.value === state.city);
+        localStorage.setItem("tankapp.liters", JSON.stringify(Math.max(5, Math.min(100, Number($("#liters").value) || state.liters))));
+        localStorage.setItem("tankapp.fuel", JSON.stringify(state.fuel));
+        localStorage.setItem("tankapp.city", JSON.stringify(cityOption ? cityOption.label : state.city));
+        window.location.href = "/";
+      } catch {
+        banner("Ansichtswechsel nicht möglich — Eingaben konnten nicht lokal gesichert werden.", true);
+      }
     } else {
-      banner("NAS ist nach wie vor nicht erreichbar" + (r.nas && r.nas.error ? " (" + r.nas.error + ")" : "") +
-        " — der Fallback bleibt aktiv und prüft selbst weiter.", true);
+      banner(r.hint || "NAS nicht bereit — der Fallback bleibt aktiv.", true);
       refresh();
     }
   } catch (e) {

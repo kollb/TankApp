@@ -2491,7 +2491,9 @@ export function useResource<T>(
         const etag = etagRef.current.key === url ? etagRef.current.etag : null;
         // O39: Lese-Token für den persönlichen Datenbestand, wenn eines
         // gesetzt ist (leer = offen, wie bisher).
-        const headers: Record<string, string> = { ...authHeaders() };
+        const headers: Record<string, string> = {
+          ...authHeaders(), "X-TankApp-UI": "nas-v1",
+        };
         if (etag) headers["If-None-Match"] = etag;
         const response = await fetch(url!, {
           signal: controller.signal,
