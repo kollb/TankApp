@@ -306,6 +306,55 @@ export type Forecast = DataReach & {
   } | null;
   /** H5: Zeitumstellung im Prüfzeitraum — ausgewiesen statt still. */
   dst?: DstReport | null;
+  // B5: Parameterschrank diagnostics — from engine publication
+  beta?: number[] | null;
+  ar_phi?: number[] | null;
+  ar_shrink_events?: number | null;
+  ar_state_reset?: boolean | null;
+  ar_detail?: Record<string, any> | null;
+  ensemble?: {
+    weights?: Record<string, number>;
+    mase?: Record<string, number | null>;
+    mae?: Record<string, number | null>;
+    n_eval?: number;
+    window_days?: number;
+    method?: string;
+    weight_spread?: {
+      blocks?: number;
+      harmonic_per_block?: number[];
+      std?: number | null;
+      min?: number | null;
+      max?: number | null;
+      range?: number | null;
+      blocks_favouring?: Record<string, number>;
+    } | null;
+    horizon_weights?: {
+      status?: string;
+      note?: string;
+      "24h"?: number | null;
+      "72h"?: number | null;
+      "168h"?: number | null;
+    } | null;
+  } | null;
+  model_kind?: string | null;
+  day_pair?: boolean | null;
+  shared_draws?: boolean | null;
+  pava_pool_stats?: any | null;
+  pit?: any | null;
+  regime_breaks_in_window?: any | null;
+  ar_shrink?: any | null;
+  law_floor?: string | null;
+  law_floor_active?: boolean | null;
+  pre_law_points_excluded?: number | null;
+  law_rise_outside_noon?: number | null;
+  rolling_picp_7d?: any | null;
+  horizons?: Record<string, any> | null;
+  training_start?: string | null;
+  training_days?: number | null;
+  training_points?: number | null;
+  holiday_beta?: number | null;
+  holiday_source?: string | null;
+  jump_age_hours?: number | null;
 };
 
 export type DstReport = {
@@ -2152,6 +2201,8 @@ export type ShareConfig = {
   tab?: ShareTab;
   /** U4: Labor-Abschnitt als Anker der geteilten Antwort (`?section=…`). */
   section?: string;
+  /** B5: Labor Sub-Tab (`?subtab=…`). */
+  subtab?: string;
 };
 
 /** Aktuelle Sicht als Share-Parameter — kommt aus readShareParams heraus. */
@@ -2164,6 +2215,7 @@ export type ShareView = {
   heatmapBasis: HeatmapBasis;
   tab?: ShareTab;
   section?: string | null;
+  subtab?: string | null;
 };
 
 /** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
@@ -2205,6 +2257,8 @@ export function readShareParams(search: string): ShareConfig {
   }
   const section = params.get("section");
   if (section && /^[a-z0-9_-]{1,32}$/.test(section)) out.section = section;
+  const subtab = params.get("subtab");
+  if (subtab && /^[a-z0-9_-]{1,32}$/.test(subtab)) out.subtab = subtab;
   return out;
 }
 
@@ -2232,6 +2286,7 @@ export function shareQuery(view: ShareView): string {
   // Default außen vor.
   if (view.tab && view.tab !== "jetzt") params.set("tab", view.tab);
   if (view.section) params.set("section", view.section);
+  if (view.subtab) params.set("subtab", view.subtab);
   return params.toString();
 }
 
