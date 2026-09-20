@@ -125,3 +125,13 @@ def test_p_lohnt_conditioned_ref_price():
     # ref_price überschreibt ref_nowcast-Draws
     noisy_ref = [1.50, 1.90]
     assert p_lohnt(noisy_ref, alt, 40.0, 2.0, 7.0, 45.0, 10.0, ref_price=1.70) == 0.5
+
+
+def test_expected_saving_is_clipped_median_not_arithmetic_expectation():
+    # Same three minima: signed mean saving is negative, typical (median)
+    # advantage is positive. The public legacy name must not redefine this.
+    minima = [[1.60], [1.60], [2.00]]
+    assert expected_saving(minima, 0, 1.70, 40) == 4.0
+    assert sum((1.70 - row[0]) * 40 for row in minima) / 3 < 0
+    # Symmetric gains/losses yield zero, not EUR 1 from a positive-part gain.
+    assert expected_saving([[1.60], [1.70], [1.80]], 0, 1.70, 40) == 0.0

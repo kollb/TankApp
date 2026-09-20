@@ -25,7 +25,7 @@
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, Fahrtmodus, pfadbasierte Wahrscheinlichkeiten und getrennte €-Semantik | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
-| RP2 | NAS-Proxy einschließlich Schreibaktionen bei erreichbarem NAS; offline nur lesender Fallback | [RP2](../betrieb/RP2.md) |
+| RP2 | Readiness-geprüfter NAS-Proxy; versionierte Tab-Verträge; Pi nur Preisvergleich, keine Aktionen | [RP2](../betrieb/RP2.md) |
 | Qualität | Unit-Tests, Browser-Suite mit Mocks und eigene Demo-Suite ohne Mocks | [Qualität](../entwicklung/QUALITAET.md) |
 
 Die frühere Abweichung zwischen Backtest-Kern und veröffentlichtem Modell ist
@@ -41,18 +41,22 @@ B5 ist im [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20) dokumentie
 und wird nicht erneut beauftragt.
 
 Der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md)
-ergänzt bestätigte Integrationsfehler; sie sind **nicht behoben** und in
-[NP1–NP6](TODO.md#n1-naspi-integrationsfehler-beheben) mit Abnahmen
-extrahiert. Bis zur Korrektur gelten folgende Grenzen:
+ergänzt bestätigte Integrationsfehler. Batch 1/2 und der konservative
+Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
+[TODO](TODO.md#n1-naspi-integrationsfehler-beheben). Es gelten folgende Grenzen:
 
-- **Datenintegrität:** Offline-Queue, beschädigte Stores und unterbrochene
-  Veröffentlichungen können bestätigte Eingaben verlieren bzw. gemischte
-  Modellstände liefern. Retention sichert die Allzeit-/Jahresbilanz nicht.
-- **Schutz:** Der optionale Lesetoken ist über Compose, Proxy, Aggregat-/POST-
-  Rückgaben und aktiven Service-Worker-Cache nicht durchgängig wirksam.
-- **Failover:** Der Pi ist kein gleichwertiger Decision Layer. Empfehlungen
-  bei veraltetem ausgewähltem Preis und der API-/UI-Rückwechsel sind nicht
-  abgenommen; NAS-Wiederkehr garantiert kein automatisches Queue-Nachreichen.
+- **Datenintegrität:** Outbox, fail-closed Stores und konsistente Publikation
+  sind implementiert. Retention sichert die Allzeit-/Jahresbilanz noch nicht.
+- **Schutz:** Der optionale Lesetoken schützt keine unverschlüsselte
+  Verbindung; Betrieb und Zugriffsschutz bleiben Betreiberaufgabe.
+- **Failover:** Der Pi ist ausdrücklich kein gleichwertiger Decision Layer:
+  keine eigene Aktionsfreigabe, keine lokale Modellinferenz, kein zweiter
+  Ledger-Schreiber. Readiness, gebundene API-Verträge und Wiederkehr-Flush
+  sind mit echten Handlern im Browser geprüft; Zielhardware-Latenzen und
+  Stromausfall nicht. Offene NAS-Formulare bleiben im selben Tab erhalten;
+  ungebuchte Entwürfe sind kein versprochener persistenter Beleg. Alte Tabs
+  vor 0.61.0 benötigen einmalig ein Update/Reload. Backoff begrenzt, wann eine
+  wartende Outbox tatsächlich erneut sendet.
 - **Modelle:** Nichtleere 24-h-Kalibrierung, kausale Vorverarbeitung,
   Gapfill-Übernahme, DST-Segmente, Bias-Prüfung und vollständige
   Kalibrierungsprovenienz sind noch zu korrigieren. Ein M7-Slope-Nachweis

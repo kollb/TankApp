@@ -1385,7 +1385,7 @@ def test_write_without_nas_gets_honest_503(tmp_path):
             urllib.request.urlopen(request, timeout=5)
         assert excinfo.value.code == 503
         payload = json.loads(excinfo.value.read().decode("utf-8"))
-        assert "NAS offline" in payload["error"]
+        assert "NAS nicht bereit" in payload["error"]
     finally:
         server.shutdown()
         server.server_close()
@@ -1704,11 +1704,20 @@ def readiness_nas():
             if self.path == "/api/v1/health":
                 body, status = state["health"], 200
             elif self.path.startswith("/api/v1/stations"):
-                body, status = b'{"stations":[],"cities":[]}', state["api_status"]
+                body, status = (
+                    state.get("api_body", b'{"stations":[],"cities":[]}'),
+                    state["api_status"],
+                )
             else:
-                body, status = b'{"primary":{}}', state["request_status"]
+                body, status = (
+                    state.get("request_body", b'{"primary":{}}'),
+                    state["request_status"],
+                )
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
+            self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Retry-After", "37")
+            self.send_header("ETag", '"fixture"')
             if state["framing"] == "chunked":
                 self.send_header("Transfer-Encoding", "chunked")
             elif state["framing"] != "absent":
@@ -1723,6 +1732,10 @@ def readiness_nas():
             else:
                 self.wfile.write(body)
             self.close_connection = True
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.do_GET()
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -1971,3 +1984,118 @@ def test_cached_forecast_validity_is_not_action_permission(tmp_path):
         {**package, "valid_until": now.isoformat()}, row, now
     )
     assert not rp2.forecast_valid_for_display({}, row, now)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"not json",
+        b"[]",
+        b'{"stations": null, "cities":[]}',
+        b'{"stations":[],"cities":[],"connection_error":"influx_read_failed"}',
+        b'{"stations":[],"cities":[],"error_code":"unavailable"}',
+    ],
+)
+def test_api_200_with_error_payload_is_not_ready(readiness_nas, tmp_path, body):
+    nas_base, state = readiness_nas
+    server, ctx = start_fallback_server(
+        tmp_path, nas_base=nas_base, poll_lines=default_poll_lines(), ttl_online=60
+    )
+    try:
+        assert ctx.nas.is_online()
+        state["api_body"] = body
+        # A live request also rejects this, even inside a cached ready period.
+        result = get_json(f"http://127.0.0.1:{server.server_port}", "/api/v1/stations")
+        assert result["source"] == "pi"
+        assert result["nas_status"] == "offline"
+        assert not ctx.nas.is_online(force=True)
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429, 304])
+def test_proxy_preserves_auth_cache_and_retry_errors(tmp_path, readiness_nas, status):
+    nas_base, state = readiness_nas
+    state["request_status"] = status
+    server, ctx = start_fallback_server(tmp_path, nas_base=nas_base)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{server.server_port}/api/v1/decide"
+            )
+        response = error.value
+        assert response.code == status
+        assert response.headers["X-TankApp-Proxy"] == "nas"
+        assert response.headers["WWW-Authenticate"] == "Bearer"
+        assert response.headers["Retry-After"] == "37"
+        assert response.headers["ETag"] == '"fixture"'
+        assert "X-TankApp-UI" in response.headers["Vary"]
+        if status == 304:
+            assert response.read() == b""
+        assert ctx.nas.info()["online"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_bounded_response_rejects_oversize_and_bad_lengths():
+    import io
+
+    for length in ("abc", "-1", "999", "1", None):
+        response = io.BytesIO(b"abcdefgh")
+        response.headers = {} if length is None else {"Content-Length": length}
+        with pytest.raises(ValueError):
+            rp2.read_bounded_response(response, 4)
+
+
+def test_nas_station_contract_keeps_city_label_and_nulls_stale_price(tmp_path):
+    lines = [
+        {
+            "city": "GT",
+            "fetched_at": now_iso(40),
+            "prices": {UID_A: {"status": "open", "e10": 1.7}},
+        }
+    ]
+    server, ctx = start_fallback_server(tmp_path, poll_lines=lines)
+    # Also ensure a manually pinned local reply never masquerades as NAS data.
+    ctx.nas.online = True
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/api/v1/stations",
+            headers={"X-TankApp-UI": "nas-v1", "X-Force-Fallback": "1"},
+        )
+        with urllib.request.urlopen(request) as response:
+            result = json.load(response)
+        assert result["nas_status"] == "offline"
+        assert result["cities"] == ["Gütersloh"]
+        assert result["stations"][0]["city"] == "Gütersloh"
+        assert result["stations"][0]["price"] is None
+        assert result["stations"][0]["last_price"] == 1.7
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_complete_write_rejections_keep_outbox_error_codes(
+    tmp_path, readiness_nas, status
+):
+    nas_base, state = readiness_nas
+    state["request_status"] = status
+    state["request_body"] = b'{"error_code":"store_corrupted"}'
+    server, ctx = start_fallback_server(tmp_path, nas_base=nas_base)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as error:
+            _post_json(
+                f"http://127.0.0.1:{server.server_port}",
+                "/api/v1/fills",
+                {"liters": 40},
+            )
+        assert error.value.code == status
+        assert json.load(error.value) == {"error_code": "store_corrupted"}
+        assert ctx.nas.info()["state"] == "nas_degraded"
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -51,19 +51,6 @@ Regressionstests.
   Tokenentzug und 24-h-Offline-Cache mit aktivem Worker im echten Browser
   testen; keine Abschaltung des Workers nur für diese Zusicherungen.
 
-#### NP3 — P1: Failover ohne fachliche oder API-Freigabeausweitung
-
-- [ ] Pi-Auswahl auf die Frische der **gewählten** Station und gültige
-  Qualitäts-/Zeitrandbedingungen begrenzen; Quantil-Heuristik nicht als
-  erwartete Nettoersparnis oder gleichwertige NAS-Empfehlung ausgeben
-  (F1, F2). **Abnahme:** Die dokumentierte 40-/1-Minuten-Gegenprobe erzeugt
-  keine Warteempfehlung für den veralteten Preis; symmetrische Gewinne und
-  Verluste werden nicht als gesicherte Ersparnis dargestellt.
-- [ ] Fach-Readiness und NAS-Rückwechsel vertragssicher machen (A2, I2);
-  Queue-Retry an NAS-Wiederkehr statt nur Browser-`online` koppeln (I1).
-  **Abnahme:** Ungültiger Health-Body, Health 200/API 503 und geöffneter Tab
-  bei NAS aus/an behalten korrekte Zustände und wartende Belege.
-
 #### NP4 — P1: Trainings- und Kalibrierungsverträge korrigieren
 
 - [ ] Tageshorizont zwischen Engine und PIT-Kandidat eindeutig definieren

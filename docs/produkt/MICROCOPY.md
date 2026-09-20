@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 20.09.2026 · App-Version **0.60.0** · gilt für `web/src/**`,
+> Stand: 20.09.2026 · App-Version **0.61.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt.
@@ -170,30 +170,31 @@ vorbehalten und stehen dort im `title`/Tooltip hinter einem deutschen Label
 ### 4a. Fallback-GUI: feste Muster
 
 Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
-`tankapp-fallback-gui v4.0`) — nicht neu formulieren, nur wiederverwenden.
+`tankapp-fallback-gui v5.0`) — nicht neu formulieren, nur wiederverwenden.
 
 | Stelle | Muster |
 |---|---|
-| Verdict (F1) | `Jetzt tanken` · `Bis <Zeitpunkt> Uhr warten lohnt sich` (Zeitpunkt mit „heute“/„morgen“-Präfix, immer mit „Uhr“) |
-| Verdict ohne Prognose | `Aktueller Preisvergleich` + „ohne sie gibt es keinen belastbaren Grund zu warten“ |
+| Preisvergleich | `Aktueller Preisvergleich` bzw. `Preis-Momentaufnahme — gewählter Preis veraltet`; nie Tank-/Warteaktion |
+| Ohne Aktionsfreigabe | `Nur Preisvergleich — Tank- und Warteentscheidungen benötigen die geprüfte NAS-Entscheidung und das persönliche Profil.` |
 | Antwort-Karte leer | `Noch kein frischer Preis.` + „Der Status oben zeigt, wo es hängt“ |
 | Kicker der Antwort-Karte | `<KRAFTSTOFF> · <ORT | ALLE ORTE> · STAND <HH:MM> UHR` |
-| F1-Chip | `„Jetzt oder warten“: <Zeitpunkt> · ~<Preis> €/L · −<Betrag>` |
+| Fenster | `Keine Fensterentscheidung` · `Prognosedaten stehen in der Werkstatt; Entscheidungen bleiben beim NAS.` |
 | F2-Chip | `„Hier oder woanders“: 2. = <Station> · <Preis> €/L` |
 | Tagesstreifen-Caption | `Grün = unteres Preisdrittel dieses Tages an dieser Station, rot = oberes Drittel. Leere Stunden hatten keine offene Meldung — nichts wird erfunden.` |
 | Tagesstreifen leer | `Heute liegt noch keine offene Meldung für <Kraftstoff> an dieser Station vor — das Polling-Fenster ist 06–24 Uhr.` |
 | Kraftstoff fehlt an der Station | `<Kraftstoff> nicht geführt` (grau, kursiv; nicht „nicht verfügbar“) |
 | Station ohne offene Meldung | `geschlossen` bzw. `keine Preise` — der API-Code (z. B. „no prices“) steht nur im `title` der Werkstatt-Zeile |
 | Abstand zur günstigsten | Delta-Chip `beste` / `+<x> ct` (ct/L für Unterschiede, €/L für Niveaus) |
-| Sortierung | Knöpfe `Preis` · `Nähe` · `Aktuell`, darunter `Sortierung wirkt auf die Liste, nicht auf die Empfehlung.` |
+| Sortierung | Knöpfe `Preis` · `Nähe` · `Aktuell`, darunter `Sortierung wirkt auf die Liste, nicht auf den Preisvergleich.` |
 | Ansicht | `Alltag` · `Werkstatt`; Datenstatus-Karte `Woher die Daten kommen` |
 | Sticky-Chip | `Günstigste <Preis> €/L · <erste drei Wörter des Namens> …` |
-| Ehrlichkeits-Zeile | `Preis-Score = historisches Quantil (q025–q975), keine kalibrierte Wahrscheinlichkeit — die rechnet ausschließlich das NAS (M7).` |
-| NAS-Prüfung | Klick auf die NAS-Pill: `NAS ist wieder online — die Seite lädt jetzt die vollwertige NAS-GUI.` bzw. `NAS ist nach wie vor nicht erreichbar … — der Fallback bleibt aktiv und prüft selbst weiter.` |
+| Cache-Qualität | `Gültige Prognosedaten — keine Fensterentscheidung` bzw. `Historischer Cache — Qualität oder Gültigkeit nicht bestätigt` |
+| Ehrlichkeits-Zeile | `Quantile sind keine kalibrierte Wahrscheinlichkeit und keine erwartete Nettoersparnis.` |
+| NAS-Prüfung | `NAS bereit — Ansicht öffnen` · `NAS kehrt zurück` · `NAS eingeschränkt` · `NAS offline`; kein automatischer Reload |
 | Ladefehler | `Daten konnten nicht geladen werden (<HTTP-Code>) — die Anzeige bleibt stehen, der nächste Versuch läuft automatisch.` |
-| Drei Fakten der Antwort-Karte (v4.0) | `Jetzt hier` · `Bestes Fenster heute` · `Frische Preise` — immer dieselben drei, immer diese Reihenfolge. Der Tankstand fehlt hier **bewusst** (NAS-Sache), dafür nennt der dritte Fakt `von <n> Stationen im Set` |
+| Drei Fakten der Antwort-Karte (v5.0) | `Jetzt hier` · `Fensterentscheidung` · `Frische Preise` — in dieser Reihenfolge |
 | Frische-Fußzeile (v4.0) | `Preise <4 min> alt · Prognose <35 min> alt` — Alter von Preismeldung und Modell-Lauf, `—` statt „gerade eben“, wenn ein Stand fehlt |
-| Fakt ohne Fenster | `—` mit Grund `kein Fenster mit Vorsprung` (nie ein geschätztes Fenster) |
+| Fakt ohne Fenster | `—` mit Grund `nur auf dem NAS` |
 
 ### 4b. Bereich „Jetzt“: feste Muster
 

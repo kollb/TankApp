@@ -10,7 +10,7 @@ Verhalten:
                    - Live-Preisen aus dem RAM-Puffer (/dev/shm/tankapp),
                    - Stationen-Metadaten (Name, Marke, Koordinaten) aus
                      polling.json (die JSONL-Snapshots enthalten nur UUID+Preis),
-                   - gecachten Prognosen aus /tmp/tankapp_cache (F1/F3).
+                   - gecachten, beschreibenden Prognosen aus /tmp/tankapp_cache.
 
 Konfiguration (Umgebungsvariablen, systemd-Drop-in):
   NAS_IP / NAS_PORT      NAS-Adresse (Default: http://<NAS_IP>:1355)
@@ -67,7 +67,7 @@ SNAPSHOT_TTL_S = 5.0  # Kurzzeit-Cache für Context.snapshot()
 SERIES_FIRST_HOUR = 6  # Tagesstreifen beginnt mit der Stunde 06
 SERIES_LAST_HOUR = 24  # Zelle „24“ ist die Mitternachtsstunde (00:00–00:59)
 DEFAULT_LITERS = 40
-MIN_LITERS = 5
+MIN_LITERS = 10
 MAX_LITERS = 100
 NAS_CHECK_TIMEOUT_S = 2.0
 # G4: Der Prognose-Cache liegt bewusst in /tmp (tmpfs) und ist damit nach
@@ -494,6 +494,22 @@ def read_bounded_response(resp, limit: int) -> bytes:
     return body
 
 
+def stations_ready(data) -> bool:
+    """A well-framed 200 can still carry a database/collector failure."""
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get("stations"), list)
+        and isinstance(data.get("cities"), list)
+        and all(isinstance(city, str) for city in data["cities"])
+        and data.get("connection_error") is None
+        and not data.get("error_code")
+        and all(
+            isinstance(row, dict) and isinstance(row.get("station_id"), str)
+            for row in data["stations"]
+        )
+    )
+
+
 STATE_HINTS = {
     "nas_ready": "NAS bereit — die vollständige Ansicht ist verfügbar.",
     "nas_degraded": "NAS antwortet, aber die Fach-API ist nicht bereit — lokale Preise bleiben verfügbar.",
@@ -547,16 +563,10 @@ class NasState:
                 stage = "health" if key == "app" else "api"
                 with urllib.request.urlopen(url, timeout=self.timeout) as resp:
                     data = json.loads(read_bounded_response(resp, 2 * 1024 * 1024))
-                    valid = isinstance(data, dict) and (
-                        data.get("app") == "online"
+                    valid = (
+                        isinstance(data, dict) and data.get("app") == "online"
                         if key == "app"
-                        else isinstance(data.get("stations"), list)
-                        and isinstance(data.get("cities"), list)
-                        and all(
-                            isinstance(row, dict)
-                            and isinstance(row.get("station_id"), str)
-                            for row in data["stations"]
-                        )
+                        else stations_ready(data)
                     )
                     if resp.status != 200 or not valid:
                         return False, f"{stage}:invalid_payload"
@@ -829,9 +839,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if url.path.startswith("/api/"):
                     self._error(
                         503,
-                        "NAS offline — Schreibaktionen sind nur erreichbar,"
-                        " wenn das NAS antwortet (der Fallback ist nur lesend)."
-                        " Der Knopf „NAS prüfen“ oben löst das direkt.",
+                        "NAS nicht bereit — der Fallback ist nur lesend. "
+                        "Vorgemerkte Belege werden nach bestätigter Rückkehr nachgereicht.",
                     )
                 else:
                     self._error(405, "Methode wird hier nicht unterstützt.")
@@ -907,6 +916,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             4xx/304 keep their auth/cache semantics rather than being hidden.
             """
             target = ctx.nas.base_url + self.path
+            response_received = False
             try:
                 headers = {}
                 for name in (
@@ -930,8 +940,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 except urllib.error.HTTPError as exc:
                     response = exc
                 with response as resp:
+                    response_received = True
                     status = resp.status
-                    if status >= 500:
+                    if status >= 500 and self.command in ("GET", "HEAD"):
                         raise ValueError(f"http_{status}")
                     payload = (
                         b""
@@ -953,10 +964,15 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         if resp.headers.get("Content-Encoding") == "gzip":
                             with gzip.GzipFile(fileobj=io.BytesIO(payload)) as zipped:
                                 decoded = zipped.read(MAX_PROXY_BODY + 1)
-                        if len(decoded) > MAX_PROXY_BODY or not isinstance(
-                            json.loads(decoded), dict
-                        ):
+                        if len(decoded) > MAX_PROXY_BODY:
                             raise ValueError("api_payload")
+                        data = json.loads(decoded)
+                        if not isinstance(data, dict):
+                            raise ValueError("api_payload")
+                        if path == "/api/v1/stations" and not stations_ready(data):
+                            raise ValueError("stations_not_ready")
+                        if path == "/api/v1/health" and data.get("app") != "online":
+                            raise ValueError("health_not_ready")
                     forwarded = {
                         name: resp.headers[name]
                         for name in (
@@ -983,7 +999,14 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         else str(len(payload))
                     )
                     if length is not None:
+                        if int(length) < 0:
+                            raise ValueError("response_length")
                         forwarded["Content-Length"] = length
+                    if status >= 500:
+                        # A complete write rejection is not a lost ACK. Keep
+                        # its error_code (e.g. store_corrupted) so Batch 1's
+                        # outbox can distinguish permanent rejection from retry.
+                        ctx.nas.mark_offline(f"api:http_{status}")
                     forwarded["Vary"] = ", ".join(
                         filter(
                             None,
@@ -991,7 +1014,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         )
                     )
             except Exception as exc:
-                ctx.nas.mark_offline(f"proxy:{type(exc).__name__}")
+                stage = "proxy" if response_received else "transport"
+                ctx.nas.mark_offline(f"{stage}:{type(exc).__name__}")
                 return False
             # Nothing in this phase is allowed to return False: the response
             # has been selected. A client write failure closes the connection.
@@ -1182,6 +1206,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             fuel = self._fuel(query)
             city = self._city(query)
             snap = ctx.snapshot()
+            nas_client = self.headers.get("X-TankApp-UI") == "nas-v1"
             rows = self._filter_city(list(snap["stations"]), city)
             rows.sort(
                 key=lambda s: (
@@ -1196,7 +1221,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     {
                         **s,
                         "fuel": fuel,
-                        "price": s.get(fuel) if s["status"] == "open" else None,
+                        "city": s["city_label"] if nas_client else s["city"],
+                        "last_price": s.get(fuel),
+                        "price": s.get(fuel)
+                        if s["status"] == "open" and (s["fresh"] or not nas_client)
+                        else None,
                         # O44: Die gebaute App (``web/dist``) liest je Zeile
                         # ``observed_at`` für Alter und Frische-Fußzeile; der
                         # Puffer führt den Poll-Zeitstempel als ``fetched_at``.
@@ -1212,9 +1241,9 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             # ``city_options`` mit dem Set-Key als Wert).
             cities = list(
                 dict.fromkeys(
-                    str(s.get("city") or "").strip()
+                    str(s.get("city_label" if nas_client else "city") or "").strip()
                     for s in snap["stations"]
-                    if str(s.get("city") or "").strip()
+                    if str(s.get("city_label" if nas_client else "city") or "").strip()
                 )
             )
             self._json(
@@ -1223,11 +1252,13 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "fuel": fuel,
                     "cities": cities,
                     "fresh_minutes": FRESH_MINUTES,
+                    "connection_error": None,
                     "stations": out,
                     "fresh_prices": sum(
                         1 for s in out if s["fresh"] and s["price"] is not None
                     ),
-                    "nas_status": "offline" if not ctx.nas.online else "online",
+                    "nas_status": "offline",
+                    "source": "pi",
                     # Ehrlichkeit in der App-Form: Der Fallback kennt weder
                     # Kalibrierung noch Modell-Prognosen (die kommen aus dem
                     # RP2-Cache, nicht aus der Engine-Veröffentlichung).
@@ -1382,10 +1413,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             cheapest = open_stations[0]
             second = open_stations[1] if len(open_stations) > 1 else None
             priciest = open_stations[-1]
-            # B8: Die NAS-GUI nullt veraltete Preise, bevor sie die günstigste
-            # sucht; der Fallback zeigt die Zahlen weiter an, macht die
-            # Frische aber sichtbar — die Antwort-Karte kippt auf
-            # „Momentaufnahme“, wenn im Set keine frische Meldung liegt.
+            # A snapshot, not a station decision: stale selected prices stay
+            # visible and explicitly labelled, even if another station is fresh.
             fresh_in_set = sum(1 for s in open_stations if s["fresh"])
             oldest_age = max(s["age_minutes"] for s in open_stations)
             # Fix: spart vs zweitgünstigste statt vs teuerste (Top1 vs Top10 nicht sinnvoll)
@@ -1448,7 +1477,8 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                     "f1": f1,
                     "windows": windows,
                     "forecast": forecast_info,
-                    "nas_status": "offline" if not ctx.nas.online else "online",
+                    "nas_status": "offline",
+                    "source": "pi",
                 }
             )
 
@@ -2124,7 +2154,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
       </select>
     </label>
     <label class="field">Tank
-      <input id="liters" type="number" min="5" max="100" step="5" value="40" aria-label="Tankgröße in Liter"> L
+      <input id="liters" type="number" min="10" max="100" step="1" value="40" aria-label="Tankgröße in Liter"> L
     </label>
     <span class="spacer"></span>
     <div class="seg slim" id="view-tabs" role="tablist" aria-label="Ansicht">
@@ -2144,7 +2174,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
     <div class="cols">
     <div class="col col-a">
 
-    <p class="section-kicker"><span class="idx">1 · </span>Empfehlung</p>
+    <p class="section-kicker"><span class="idx">1 · </span>Preisvergleich</p>
     <section class="card answer" id="answer-card" aria-labelledby="answer-title">
       <div class="muted"><span class="spinner"></span> Lade …</div>
     </section>
@@ -2179,7 +2209,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
           <button type="button" data-sort="near">Nähe</button>
           <button type="button" data-sort="fresh">Aktuell</button>
         </div>
-        <span class="muted" style="font-size:11.5px">Sortierung wirkt auf die Liste, nicht auf die Empfehlung.</span>
+        <span class="muted" style="font-size:11.5px">Sortierung wirkt auf die Liste, nicht auf den Preisvergleich.</span>
       </div>
       <div class="st-grid" id="st-grid"><div class="muted"><span class="spinner"></span> Lade …</div></div>
       <button class="collapse-link hidden" id="stations-toggle" type="button" aria-expanded="false">
@@ -2227,12 +2257,12 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
   </div>
 
   <footer class="foot">
-    <p>Diese Adresse läuft auf dem <b>RP2</b>. Wenn das <b>NAS online</b> ist, zeigt sie automatisch
-    die vollwertige TankApp-GUI. Im Fallback-Modus kommen die Live-Preise direkt aus dem
-    Collector-Puffer; Prognosen sind gecacht und bis zu 24 h alt.</p>
-    <p>F1 „Jetzt oder warten“ · F2 „Hier oder woanders“ · F3 „Heute oder später“ —
-    Quantile sind beschreibende Prognosedaten, keine Aktionsfreigabe
-    (die liefert ausschließlich das NAS, M7) · Auto-Refresh alle 60 s.</p>
+    <p>Diese Adresse läuft auf dem <b>RP2</b>. Sobald das <b>NAS bereit</b> ist,
+    öffnet ein Klick auf den NAS-Status die vollständige Ansicht. Dieser Tab bleibt bis dahin im Pi-Modus.
+    Preise kommen aus dem Collector-Puffer; gecachte Prognosen können veraltet sein.</p>
+    <p>Nur Preisvergleich — keine Tank-, Warte- oder Fensterentscheidung.
+    Quantile sind beschreibende Prognosedaten, keine Aktionsfreigabe.
+    Auto-Refresh alle 60 s; keine garantierte Umschaltzeit.</p>
   </footer>
 </main>
 
@@ -2274,7 +2304,7 @@ function savedSort() {
 const state = {
   fuel: savedFuel(),
   city: String(LS.get("city", "") || ""),
-  liters: Math.max(5, Math.min(100, Number(LS.get("liters", 40)) || 40)),
+  liters: Math.max(10, Math.min(100, Number(LS.get("liters", 40)) || 40)),
   view: LS.get("view", "alltag") === "werkstatt" ? "werkstatt" : "alltag",
   sort: savedSort(),
 };
@@ -2395,6 +2425,9 @@ function applyTheme(t) {
 /* ------------------------------- Daten ----------------------------------- */
 async function j(url) {
   const r = await fetch(url, { cache: "no-store", headers: { "X-TankApp-UI": "pi-v1" } });
+  if (r.headers.get("X-TankApp-Contract") && r.headers.get("X-TankApp-Contract") !== "pi-v1") {
+    throw new Error("API-Modus passt nicht zur Ansicht");
+  }
   if (!r.ok) {
     const err = new Error("HTTP " + r.status);
     err.status = r.status;
@@ -2461,7 +2494,7 @@ function renderHeader(health) {
     $("#nas-text").textContent = "NAS nicht konfiguriert";
   } else if (nas.online) {
     nasPill.className = "pill ok";
-    nasPill.title = "NAS erreichbar — neu laden zeigt die vollwertige NAS-GUI. Klick prüft sofort neu.";
+    nasPill.title = "NAS bereit — Klick öffnet die vollständige Ansicht.";
     $("#nas-text").textContent = "NAS bereit — Ansicht öffnen";
   } else {
     nasPill.className = "pill bad";
@@ -3030,7 +3063,7 @@ $("#city").addEventListener("change", () => {
   refresh();
 });
 $("#liters").addEventListener("change", () => {
-  const v = Math.max(5, Math.min(100, Number($("#liters").value) || state.liters));
+  const v = Math.max(10, Math.min(100, Number($("#liters").value) || state.liters));
   $("#liters").value = v;
   if (v !== state.liters) {
     state.liters = v;
@@ -3050,7 +3083,7 @@ $("#nas-pill").addEventListener("click", async () => {
       // Both shells share these preferences and the IndexedDB outbox origin.
       try {
         const cityOption = ((lastPayload && lastPayload.health.city_options) || []).find((c) => c.value === state.city);
-        localStorage.setItem("tankapp.liters", JSON.stringify(Math.max(5, Math.min(100, Number($("#liters").value) || state.liters))));
+        localStorage.setItem("tankapp.liters", JSON.stringify(Math.max(10, Math.min(100, Number($("#liters").value) || state.liters))));
         localStorage.setItem("tankapp.fuel", JSON.stringify(state.fuel));
         localStorage.setItem("tankapp.city", JSON.stringify(cityOption ? cityOption.label : state.city));
         window.location.href = "/";
