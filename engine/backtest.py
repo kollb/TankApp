@@ -7,7 +7,7 @@ import pandas as pd
 
 from .config import Config
 from .data import PriceSeries, dst_transition_days, local_day_hours, scheduled
-from .models import QUANTILES, fit, predict, utc_time
+from .models import QUANTILES, fit, predict, utc_time, wall_clock_hour
 from .regimes import break_summary, breaks_within, regime_breaks_utc
 
 PENDING = [
@@ -269,7 +269,10 @@ def decision_row(
     """
     if len(target) == 0:
         return None
-    cutoff = (local_origin + pd.DateOffset(hours=decision_hour)).tz_convert("UTC")
+    # M3: Anker auf echtem lokalem Mittag konstruieren (Wanduhr), nicht als
+    # „Mitternacht + decision_hour verstrichene Stunden“ — sonst liegt der
+    # Entscheidungs-Anker an 23-/25-Stunden-Tagen um eine Stunde daneben.
+    cutoff = wall_clock_hour(local_origin, decision_hour).tz_convert("UTC")
     before = target <= cutoff
     after = target > cutoff
     if not bool(after.any()):

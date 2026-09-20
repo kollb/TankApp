@@ -191,6 +191,39 @@ def isotonic_decreasing(values: np.ndarray) -> np.ndarray:
     return out
 
 
+def wall_clock_hour(times, hour: int = 12, days_back=0):
+    """Wanduhr-``hour``:00 des lokalen Kalendertags von ``times`` (M3).
+
+    Gerechnet wird auf dem **naiven lokalen Kalender**
+    (``tz_localize(None)``), erst das Ergebnis wird lokalisiert.
+    ``normalize() + Timedelta(hours=…)`` rechnet stattdessen in
+    *verstrichenen* Stunden und landet an einem 25-Stunden-Tag (Herbst-
+    umstellung, z. B. 25.10.2026) bei 11:00 bzw. an einem 23-Stunden-Tag
+    bei 13:00 Uhr. Der Segmentierer erzeugte dadurch über Mitternacht zwei
+    verschiedene „Mittags“-Schlüssel — eine unerlaubte Anhebungsgrenze
+    exakt um 00:00 Uhr, an der ein Preisanstieg unprojiziert durchging.
+    Auch ``days_back`` wird als Kalendertag (naiv) abgezogen, damit der
+    Vortages-Mittag über eine Umstellung hinweg stimmt.
+
+    Mittags-Stunden existieren in Europe/Berlin immer (Umstellung 02:00/
+    03:00 Uhr); ``nonexistent="shift_forward"`` ist nur ein Sicherheitsnetz
+    für exotische Zeitzonen. Akzeptiert ``Timestamp`` oder
+    ``DatetimeIndex`` (tz-bewusst oder naiv) und gibt denselben Typ zurück.
+    """
+    if getattr(times, "tz", None) is None:
+        return (
+            times.normalize()
+            + pd.Timedelta(hours=hour)
+            - pd.to_timedelta(days_back, unit="D")
+        )
+    naive = (
+        times.tz_localize(None).normalize()
+        + pd.Timedelta(hours=hour)
+        - pd.to_timedelta(days_back, unit="D")
+    )
+    return naive.tz_localize(times.tz, nonexistent="shift_forward")
+
+
 def _segment_bounds(
     local: pd.DatetimeIndex,
 ) -> list[tuple[int, int, pd.Timestamp]]:
@@ -203,6 +236,13 @@ def _segment_bounds(
     außerhalb des 12-Uhr-Punkts ebenfalls unzulässig).
     Liefert (start, stop, segment_beginn_noon).
 
+    M3: Die Mittags-Schlüssel entstehen auf dem lokalen Kalenderdatum
+    (``wall_clock_hour``) — nicht aus verstrichenen Stunden. An 23-/25-
+    Stunden-Tagen bleibt die Segmentgrenze dadurch die *modellierte*
+    Mittagsgrenze; vorher spaltete die Zeitumstellung ein Segment über
+    Mitternacht in zwei Schlüssel (11:00/12:00) und ließ einen Anstieg
+    1,50 → 1,70 €/L um 00:00 Uhr unverändert durch.
+
     Vektorisiert über die int64-Rohwerte: Der frühere Skalarvergleich
     ``seg[position] != seg[start]`` baute je Punkt ein ``pd.Timestamp``
     (ca. 8 Mio. Boxing-Operationen pro 7-Tage-Prognose) und war damit der
@@ -210,13 +250,8 @@ def _segment_bounds(
     """
     if len(local) == 0:
         return []
-    day = local.normalize()
     before_noon = local.hour < 12
-    seg = (
-        day
-        + pd.Timedelta(hours=12)
-        - pd.to_timedelta(before_noon.astype(int), unit="D")
-    )
+    seg = wall_clock_hour(local, 12, before_noon.astype(int))
     values = _asi8(seg)
     starts = np.flatnonzero(np.concatenate(([True], values[1:] != values[:-1])))
     stops = np.concatenate((starts[1:], [len(values)]))
@@ -852,9 +887,9 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     if len(index) > 1:
         both_finite = finite[1:] & finite[:-1]
         risen = price_values[1:] > price_values[:-1] + 0.01
-        noon = (local_index[1:].normalize() + pd.Timedelta(hours=12)).tz_convert(
-            index.tz
-        )
+        # M3: echter lokaler Mittag (Wanduhr), nicht „Mitternacht + 12
+        # verstrichene Stunden“ — an Umstellungstagen sonst 11:00/13:00 Uhr.
+        noon = wall_clock_hour(local_index[1:]).tz_convert(index.tz)
         after_law = noon >= law
         spans_noon = (index[:-1] < noon) & (noon <= index[1:])
         irregular_rises = int((both_finite & risen & after_law & ~spans_noon).sum())
