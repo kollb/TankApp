@@ -53,36 +53,14 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (url.pathname.startsWith("/api/")) {
-    // Stale-while-revalidate mit Altersgrenze: An der Säule mit schlechtem
-    // Netz lieber den letzten Stand als nichts — die GUI zeigt das Alter.
-    event.respondWith(
-      caches.open(API).then(async (cache) => {
-        const cached = await cache.match(request);
-        const fresh = fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              const stamped = new Response(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers: new Headers(response.headers),
-              });
-              stamped.headers.set("x-tankapp-cached-at", String(Date.now()));
-              cache.put(request, stamped.clone());
-            }
-            return response;
-          })
-          .catch(() => null);
-        if (cached) {
-          const age = Date.now() - Number(cached.headers.get("x-tankapp-cached-at") || 0);
-          if (Number.isFinite(age) && age < API_MAX_AGE_MS) {
-            event.waitUntil(fresh);
-            return cached;
-          }
-        }
-        const network = await fresh;
-        return network || cached || Response.error();
-      }),
-    );
+    // API-Antworten werden nie in CacheStorage abgelegt. Das ist absichtlich
+    // network-first ohne Offline-Fallback: Antworten können Belege,
+    // personal_stats oder live_advice enthalten, und CacheStorage kennt weder
+    // Bearer-Token noch dessen Entzug. Vor allem darf ein abgelaufenes
+    // persönliches Ergebnis nicht als vermeintlich aktueller Stand erscheinen.
+    // Die Netzantwort wird unverändert zurückgegeben; kein Clone übernimmt
+    // ihren bereits gelesenen Body.
+    event.respondWith(fetch(request));
     return;
   }
 

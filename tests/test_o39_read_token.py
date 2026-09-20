@@ -136,6 +136,8 @@ def test_falsches_secret_bleibt_draussen(guarded_server):
         "/api/v1/episodes",
         # /overview bündelt Belege + Episoden: ohne Schutz wäre er die Umgehung.
         "/api/v1/overview",
+        "/api/v1/stats/summary",
+        "/api/v1/decide",
     ],
 )
 def test_jede_persoenliche_route_ist_geschuetzt(guarded_server, path):

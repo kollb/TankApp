@@ -773,12 +773,24 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             """
             target = ctx.nas.base_url + self.path
             try:
-                headers = None
-                if body is not None:
-                    headers = {}
-                    content_type = self.headers.get("Content-Type")
-                    if content_type:
-                        headers["Content-Type"] = content_type
+                # Der Proxy ist sicherheits- und cache-semantisch transparent:
+                # Credentials, Revalidierung und Kompression dürfen am NAS
+                # nicht verloren gehen. Hop-by-hop-Header bleiben bewusst
+                # ausgeschlossen.
+                headers = {}
+                for name in (
+                    "Authorization",
+                    "If-None-Match",
+                    "If-Modified-Since",
+                    "Accept-Encoding",
+                    "Accept",
+                    "Content-Type",
+                ):
+                    value = self.headers.get(name)
+                    if value:
+                        headers[name] = value
+                if body is None:
+                    headers.pop("Content-Type", None)
                 req = urllib.request.Request(
                     target, method=self.command, data=body, headers=headers or {}
                 )
@@ -792,6 +804,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         "Cache-Control",
                         "ETag",
                         "Last-Modified",
+                        "Vary",
+                        "X-Content-Type-Options",
+                        "X-Frame-Options",
+                        "Content-Security-Policy",
+                        "Referrer-Policy",
                     ):
                         # urlopen dekodiert Chunks/Close-Framing; ohne bekannte
                         # Bodylänge darf kein Content-Length vorgegeben werden
