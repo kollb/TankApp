@@ -17,6 +17,21 @@ PENDING = [
     "Echt-Daten-Abnahme aller M3-Kriterien auf NAS/PC",
 ]
 
+# Horizont-Vertrag (M1): ``horizon_hours`` in den Backtest-Zeilen ist der
+# **Vorlauf des Zieltags** — die Stunden vom Prognose-Origin bis zum Beginn
+# des bewerteten Fensters —, nicht die Fensterlänge. Jedes bewertete Fenster
+# ist 24 h lang; sie unterscheiden sich nur im Vorlauf:
+#   * ``DAILY_LEAD_HOURS = 0``: das klassische Tagesfenster [origin, +24 h).
+#     Das ist die Prognose, die live veröffentlicht und 24-h-rekalibriert
+#     wird (die Hülle heißt nach der *Fensterlänge* ``24h``).
+#   * ``HORIZON_HOURS = (72, 168)``: dieselben 24-h-Fenster am Anfang des
+#     +3-d- bzw. +7-d-Horizonts (Konzept §3.4) — eigene Vorhersage-
+#     verteilung, eigene Messung, nie Teil der 24-h-Kurve.
+# Vorlauf (0/72/168) und Fensterlänge (immer 24 h) sind damit getrennt und
+# eindeutig; vorher selektierte der NAS-Kandidat ``horizon_hours == 24`` und
+# bekam null Zeilen, weil der Produzent für das Tagesfenster 0 schreibt.
+DAILY_LEAD_HOURS = 0
+
 # Mehrtage-Backtests (Konzept §3.4): zusätzlich zum 24-h-Tag je Origin wird
 # das 24-h-Fenster am Anfang des +3-d- bzw. +7-d-Horizonts bewertet.
 HORIZON_HOURS = (72, 168)
@@ -638,7 +653,9 @@ def run_backtest(
             rows["regime_break_spanned"] = _spanned(
                 station_breaks, training_start, rows.index
             )
-            rows["horizon_hours"] = 0
+            # M1: Tagesfenster = Vorlauf 0 (Fensterlänge 24 h). Siehe
+            # ``DAILY_LEAD_HOURS``; der NAS-Kandidat selektiert denselben Wert.
+            rows["horizon_hours"] = DAILY_LEAD_HOURS
             fold_breaks = breaks_within(station_breaks, training_start, stop)
             scale_detail = model.get("mase_scale_detail") or {}
             folds.append(
