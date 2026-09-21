@@ -751,10 +751,19 @@ export type DecideResult = {
     recommended_window: {
       start: string;
       end: string;
+      /** Median der q50-Punkte im Fenster — „der erwartete Preis“ der Karte. */
       expected_price: number;
+      /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
+      expected_min_price?: number | null;
     } | null;
     /** Clipped median advantage of window minima; NOT an arithmetic expectation. */
     expected_saving_eur: number;
+    /**
+     * O45: dieselbe Ersparnis gegen den **Medianpreis** des Fensters — die
+     * Zahl, die zum angezeigten ct/L-Abstand passt. Ohne Draws identisch zu
+     * `expected_saving_eur` (der Server fällt dann auf sie zurück).
+     */
+    expected_saving_median_eur?: number | null;
     p_correct: number | null;
     confidence_badge: "high" | "medium" | "low";
     reason_short: string;
@@ -800,6 +809,10 @@ export type DecideResult = {
     expected_price: number;
     /** Clipped median advantage (legacy field name), not expected net savings. */
     expected_saving_eur: number | null;
+    /** O45: Ersparnis gegen den Medianpreis — passt zum angezeigten ct/L-Abstand. */
+    expected_saving_median_eur?: number | null;
+    /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
+    expected_min_price?: number | null;
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
     /** Auditable raw P before edge/baseline normalization. */
@@ -815,6 +828,10 @@ export type DecideResult = {
     expected_price: number;
     /** Clipped median advantage (legacy field name), not expected net savings. */
     expected_saving_eur: number | null;
+    /** O45: Ersparnis gegen den Medianpreis — passt zum angezeigten ct/L-Abstand. */
+    expected_saving_median_eur?: number | null;
+    /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
+    expected_min_price?: number | null;
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
     p_raw?: number | null;

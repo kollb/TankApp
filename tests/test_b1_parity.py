@@ -190,7 +190,9 @@ def test_b1_saving_parity_with_pside(b1_settings):
     assert w0["expected_saving_median_eur"] == direct_median_saving
     assert w0["expected_min_price"] == direct_expected_min_price
 
-    # Microcopy: _table_action verwendet „bis zu X €“
+    # Microcopy: _table_action verwendet „bis zu X €“ — in de-DE (Komma,
+    # MICROCOPY §3), und ohne ``saving_median_eur`` bleibt es die kurze
+    # Fassung (O45: Die Basis wird nur benannt, wenn beide auseinanderfallen).
     from app.decide import _table_action
 
     _act, _badge, reason, _ = _table_action(
@@ -200,7 +202,7 @@ def test_b1_saving_parity_with_pside(b1_settings):
         best_alt=None,
         p_besser=0.8,
     )
-    assert f"bis zu {direct_expected_saving:.2f} €" in reason
+    assert f"bis zu {direct_expected_saving:.2f}".replace(".", ",") + " €" in reason
 
 
 def test_b1_p_lohnt_conditioned_on_fresh_reference_price(b1_settings):

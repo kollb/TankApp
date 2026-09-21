@@ -4,6 +4,36 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.62.1] – 2026-09-21
+
+**O45 — Ersparnis mit benannter Basis.** Befund aus der Nutzung: Die
+Warten-Empfehlung las sich als Widerspruch — „Prognose rechnet bis 11:50 Uhr
+mit ~2,221 € … erwartet ~2,09 € Ersparnis für 55 L“ neben 2,229 €/L aktuell.
+2,229 − 2,221 sind 0,44 €, nicht 2,09 €: Beide Zahlen stimmten, rechneten aber
+gegen verschiedene Größen.
+
+- `expected_saving_eur` rechnet gegen den Median der **Fensterminima**
+  (2,191 €/L → 2,09 €), `expected_saving_median_eur` gegen den Medianpreis des
+  Fensters (`expected_price`, 2,221 €/L → 0,44 €). Die €-Gates der Tabelle
+  bleiben bei der Minimums-Größe — sie ist die passende Größe zu `p_besser`
+  (P(min ≤ Anker − 1 ct)) und zum Settlement (`_realized_min`).
+- `reason_short` nennt beide Basen, sobald sie auseinanderfallen:
+  „Warten spart im günstigsten Moment bis zu 2,09 €, im Mittel 0,44 €.“ Ohne
+  Draws (beide Größen identisch) bleibt die kurze Fassung.
+- GUI: Der €-Betrag der Ersparniszeile folgt jetzt demselben Preis wie der
+  ct/L-Abstand daneben (`expected_saving_median_eur`). Trägt nur das
+  Fensterminimum einen Vorsprung, steht „Im günstigsten Moment ≈ 2,09 €
+  günstiger“ statt einer Zahl, die der gezeigte Fensterpreis nicht trägt; die
+  „Warum?“-Erklärung benennt beide Basen im Satz. Dieselbe Basis gilt für den
+  Fenster-Schritt unter „Nächste Schritte“ und für die Fensterliste im Bereich
+  „Woche“ (`windowSavingEur` in `web/src/now.ts`) — beide standen bisher mit
+  der Minimums-Ersparnis neben dem Medianpreis.
+- Beträge in `reason_short` sind de-DE (2,09 €, vorher 2.09 € — MICROCOPY §3).
+- Vertrag: [API.md](../referenz/API.md) „O45 — beide Basen, benannt“,
+  Muster in [MICROCOPY.md](../produkt/MICROCOPY.md) §4b. Regressionen:
+  `tests/test_o45_saving_basis.py` (Zahlen des Befunds über `/decide`,
+  Satz der Tabelle) und `web/src/now.test.ts` (Ersparniszeile, Erklärung).
+
 ## [0.62.0] – 2026-09-21
 
 **Batch 4 (P1): Modell- und Kalibrierungsverträge korrigiert (M1, M2, I4,

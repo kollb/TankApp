@@ -24,6 +24,7 @@ import { labHint, type LabHint } from "./lab";
 import {
   dayLabel,
   nowStage,
+  windowSavingEur,
   wordFromPercent,
   type NowStage,
 } from "./now";
@@ -140,8 +141,8 @@ export type WeekListEntry = {
 
 /**
  * „Alle Fenster nach Ersparnis“ — die sortierte Liste unter dem Raster
- * (§5.3). Ersparnis = (aktuell − erwartet) × …; der Server liefert
- * `expected_saving_eur` vor, sonst null (keine Rechnung ohne Liter).
+ * (§5.3). Ersparnis = (aktuell − erwartet) × …; der Server liefert beide
+ * Basen, die Liste zeigt und sortiert die zum Preis passende (O45).
  */
 export function weekWindowList(
   days: WeekDay[],
@@ -152,7 +153,7 @@ export function weekWindowList(
     entries.push({
       day,
       window: day.window,
-      savingEur: day.window.expected_saving_eur,
+      savingEur: windowSavingEur(day.window),
     });
   }
   entries.sort((a, b) => {
