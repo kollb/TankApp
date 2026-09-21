@@ -55,13 +55,36 @@ PERSONAL_READ_ROUTES = (
     "/api/v1/decide",
 )
 
+# A21-B1.3: Pfadmuster mit variabler ID — die zentrale Stelle für alle
+# Beleg-Aliasse. Regeln, damit kein Alias den Read-Guard umgeht:
+# * Jeder Pfad, der einen **Beleg** zurückgibt, steht hier — unabhängig vom
+#   HTTP-Verb. POST/DELETE antworten mit dem Vollbeleg (Idempotenz-Rückgabe
+#   von ``record_fill``, idempotente Storno-Rückgabe von ``void_fill``) und
+#   sind damit dieselbe Lese-Fläche wie GET.
+# * Neue Aliasse MÜSSEN hier ergänzt werden, nicht in einzelnen Handlern —
+#   ``_gate_read`` hängt für GET, POST und DELETE an ``_is_personal_read``.
+PERSONAL_READ_PREFIXES = (
+    "/api/v1/profiles/",  # Profil-Detail (dieselben Daten wie die Liste)
+    "/api/v1/fills/",  # Beleg-Detail UND Storno (void_fill liefert den Beleg)
+)
+PERSONAL_READ_ALIAS_MARKERS = (
+    # B4-Alias von POST /api/v1/fills: POST .../recommendations/<id>/outcome
+    # ruft record_fill() auf und antwortet im Idempotenzfall mit dem Vollbeleg
+    # (A21-B1.3: war ohne Guard die offene Hintertür zum Ledger).
+    ("/api/v1/recommendations/", "/outcome"),
+)
+
 
 def _is_personal_read(norm_path: str) -> bool:
     """Gehört die Route zum persönlichen Datenbestand (O39)?"""
     if norm_path in PERSONAL_READ_ROUTES:
         return True
-    # /api/v1/profiles/<id> und /api/v1/fills/<id> tragen dieselben Daten.
-    return norm_path.startswith(("/api/v1/profiles/", "/api/v1/fills/"))
+    if norm_path.startswith(PERSONAL_READ_PREFIXES):
+        return True
+    return any(
+        norm_path.startswith(prefix) and norm_path.endswith(suffix)
+        for prefix, suffix in PERSONAL_READ_ALIAS_MARKERS
+    )
 
 
 # B7-Revalidierung: /overview antwortet mit 304 Not Modified, wenn der
@@ -1218,6 +1241,13 @@ class Handler(SimpleHTTPRequestHandler):
         if norm_path.startswith("/api/v1/recommendations/") and norm_path.endswith(
             "/outcome"
         ):
+            # A21-B1.3: Der Alias ruft record_fill() auf — dieselbe
+            # Idempotenz-Rückgabe mit Vollbeleg wie POST /fills. Der
+            # Read-Guard geht **jedem** Store-Zugriff voran (auch Fehler- und
+            # Retry-Pfade): Ohne ihn liefert eine bekannte Beleg-ID ohne
+            # Token 200 + vollständigen Beleg.
+            if not self._gate_read(norm_path):
+                return
             if not self._gate_write():
                 return
             try:
@@ -1339,6 +1369,11 @@ class Handler(SimpleHTTPRequestHandler):
             fill_id = norm_path[len("/api/v1/fills/") :].strip("/")
             if not fill_id or "/" in fill_id:
                 self.json({"error_code": "invalid_query"}, 400)
+                return
+            # A21-B1.3: void_fill() ist idempotent und antwortet mit dem
+            # (stornierten) Vollbeleg — dieselbe Lese-Fläche wie GET. Ohne
+            # Token darf weder ein Beleg erscheinen noch das Storno ziehen.
+            if not self._gate_read(norm_path):
                 return
             if not self._gate_write():
                 return
