@@ -139,6 +139,11 @@ def test_fill_gaps_clips_events_to_gap_window(tmp_path):
     assert "2026-09-10T10:30:00+00:00" in content  # 12:30 Berlin, in Lücke
     assert "1.689" in content
     assert "08:00" not in content  # 10:00 Berlin liegt vor der Lücke
+    # I4: Füll-Zeilen sind markiert — der Bootstrap behandelt sie je
+    # Verfügbarkeits-Bucket, unmarkiertes Archiv bleibt Präfix-only.
+    with gzip.open(paths[0], "rt", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows and all(row["source"] == "gapfill" for row in rows)
 
 
 def test_fill_gaps_without_gaps_writes_nothing(tmp_path):

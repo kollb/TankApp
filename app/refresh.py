@@ -739,6 +739,35 @@ def refresh(settings: Settings, now=None, progress=None):
             f"models: {len(forecasts)} Prognosen, {len(failures)} Fehler",
             flush=True,
         )
+        # I4: Die Erfolgsmeldung „Lücken geschlossen“ hängt an der echten
+        # Nutzung — nur der Bootstrap weiß, welche Füll-Ereignisse im Training
+        # landeten (Live-Vorrang je Verfügbarkeits-Bucket). Geschriebene, aber
+        # ungenutzte Ereignisse werden ehrlich benannt, nicht als Erfolg.
+        gapfill_used = sum(
+            int(row.get("gapfill_rows_used", 0) or 0) for row in policies
+        )
+        gapfill_dropped = sum(
+            int(row.get("gapfill_rows_excluded", 0) or 0) for row in policies
+        )
+        if gapfill_quality and not gapfill_quality.get("skipped"):
+            gapfill_quality["rows_used_in_training"] = gapfill_used
+            gapfill_quality["rows_dropped_live_priority"] = gapfill_dropped
+            if gapfill_used:
+                gapfill_note = (
+                    f"Lücken geschlossen: {gapfill_used} Archiv-Ereignisse "
+                    f"im Training genutzt"
+                )
+            elif gapfill_quality.get("gap_events"):
+                gapfill_note = (
+                    "Lückenfüllung: Ereignisse geschrieben, aber ungenutzt — "
+                    "Live-Polls decken alle Buckets"
+                )
+            else:
+                gapfill_note = ""
+            if gapfill_note:
+                print(f"models: {gapfill_note}", flush=True)
+                if progress:
+                    progress.note(gapfill_note)
         if not forecasts:
             print(
                 "models: keine Station fittbar; Details in engine/last-attempt.json",

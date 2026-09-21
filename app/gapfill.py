@@ -15,8 +15,12 @@ Grundsätze (keine erfundenen Daten):
   fallen weg — sie gehören dem Live-Betrieb, nicht dem Archiv.
 - Nur innerhalb des Polling-Fensters (``poll_start``–``poll_end``): Die
   Nacht ist Sammelpause, keine Lücke.
-- Live hat immer Vorrang: Archiv-Zeilen tragen ``source=history`` und
-  verlieren im Engine-Dedup gegen jeden Live-Poll desselben Zeitpunkts.
+- Live hat immer Vorrang: Füll-Zeilen tragen ``source=gapfill`` (I4). Im
+  Engine-Dedup verlieren sie gegen jeden Live-Poll desselben Zeitpunkts,
+  und der Bootstrap lässt sie nur in Verfügbarkeits-Buckets zu, die kein
+  Live-Poll belegt — ein Live-Status (auch closed/no-price) wird niemals
+  ersetzt. Ob die Ereignisse wirklich im Training landen, entscheidet der
+  Bootstrap; die Erfolgsmeldung hängt an seiner Nutzung, nicht am Schreiben.
 """
 
 import csv
@@ -176,10 +180,13 @@ def fill_gaps(
         quality["gap_events"] += len(rows)
         quality["files"].append(destination.name)
     if progress:
+        # Noch keine Erfolgsmeldung „geschlossen“: Ob die Ereignisse im
+        # Training landen, entscheidet der Bootstrap (Live-Vorrang je
+        # Bucket). Hier wird nur der Kandidatenstand gemeldet (I4).
         progress.note(
             f"Lückenfüllung: {quality['gaps_filled']} von "
             f"{quality['gaps_detected']} Lücken mit "
-            f"{quality['gap_events']} Archiv-Ereignissen geschlossen"
+            f"{quality['gap_events']} Archiv-Ereignissen belegt"
             + (
                 f" ({quality['missing_days']} Archivtage fehlend)"
                 if quality["missing_days"]
@@ -203,4 +210,9 @@ def _write_gapfill(destination: Path, rows: list) -> None:
         writer = csv.DictWriter(handle, fieldnames=COLUMNS)
         writer.writeheader()
         for raw in rows:
-            writer.writerow({key: raw.get(key, "") for key in COLUMNS})
+            row = {key: raw.get(key, "") for key in COLUMNS}
+            # I4: eigene Herkunft statt ``history`` — der Bootstrap behandelt
+            # markierte Füll-Ereignisse je Verfügbarkeits-Bucket (nur wirklich
+            # fehlende Buckets), unmarkiertes Archiv bleibt reiner Präfix.
+            row["source"] = "gapfill"
+            writer.writerow(row)

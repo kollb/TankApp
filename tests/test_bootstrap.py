@@ -259,3 +259,106 @@ def test_ew_bootstrap_reacts_faster_after_regime_shift():
     assert mean_uniform == pytest.approx(-2.5, abs=0.6)
     assert mean_ew < mean_uniform
     assert abs(mean_ew - (-5.0)) < abs(mean_uniform - (-5.0))
+
+
+def _filler_rows(entries):
+    """Archiv-artige Füll-Zeilen: kein Status (unbekannt), Quelle markiert."""
+    return pd.DataFrame(
+        {
+            "timestamp": [entry[0] for entry in entries],
+            "city": ["Testmarkt"] * len(entries),
+            "station_id": ["station-1"] * len(entries),
+            "station_name": ["Teststation"] * len(entries),
+            "fuel": ["E10"] * len(entries),
+            "price": [entry[1] for entry in entries],
+            "source": [entry[2] for entry in entries],
+        }
+    )
+
+
+def test_gapfill_closes_midstream_gap_but_never_live_buckets(observations, cfg):
+    """I4: Markierte Füll-Ereignisse schließen nur wirklich freie Buckets.
+
+    Eine Dauerlücke *hinter* dem ersten Live-Poll wird durch
+    ``source=gapfill``-Zeilen geschlossen (unmarkiertes Archiv bleibt dort
+    Präfix-only und fällt weg). Ein Füll-Ereignis im Bucket eines
+    Live-Polls — hier ein geschlossener Zustand — wird verworfen: Live
+    behält sein Bucket, auch ohne Preis. Die Zähler weisen beides aus.
+    """
+    live = observations(days=2)
+    stamps = pd.to_datetime(live.timestamp)
+    gap = (stamps >= pd.Timestamp("2026-07-02T12:00:00+02:00")) & (
+        stamps < pd.Timestamp("2026-07-02T13:00:00+02:00")
+    )
+    live = live.loc[~gap].copy()
+    closed = pd.to_datetime(live.timestamp).eq(
+        pd.Timestamp("2026-07-02T15:00:00+02:00")
+    )
+    assert bool(closed.any())
+    live.loc[closed, "status"] = "closed"
+    fillers = _filler_rows(
+        [
+            # Frei (Lücke 12:00–12:55) → darf ins Training.
+            ("2026-07-02T12:30:00+02:00", 1.689, "gapfill"),
+            # Bucket 15:00 gehört dem Live-closed-Poll → muss fallen.
+            ("2026-07-02T14:57:00+02:00", 1.999, "gapfill"),
+            # Unmarkiertes Archiv hinter first_live → Präfix-Regel, fällt.
+            ("2026-07-02T12:45:00+02:00", 1.555, "history"),
+        ]
+    )
+    result, report = bootstrap(
+        normalized(pd.concat([live, fillers]), cfg), cfg, "2026-07-03"
+    )
+    item = report["stations"][0]
+    assert item["mode"] == "bootstrap"
+    assert item["gapfill_rows_used"] == 1
+    assert item["gapfill_rows_excluded"] == 1
+    assert item["history_rows_used"] == 0
+    assert item["history_rows_excluded"] == 1
+
+    used = result.loc[result.source.eq("gapfill"), "timestamp"]
+    assert used.tolist() == [pd.Timestamp("2026-07-02T10:30:00Z")]
+    assert not result.source.eq("history").any()
+    # Geschlossener Live-Zustand bleibt erhalten, Füllpreis erscheint nicht.
+    series = prepare_series(normalized(result, cfg), cfg)[0].frame
+    at_closed = pd.Timestamp("2026-07-02T15:00:00+02:00")
+    assert series.loc[at_closed, "status"] == "closed"
+    assert pd.isna(series.loc[at_closed, "price"])
+    filled = pd.Timestamp("2026-07-02T12:30:00+02:00")
+    assert series.loc[filled, "price"] == pytest.approx(1.689)
+    assert bool(series.loc[filled, "observed"])
+
+
+def test_gapfill_used_in_live_only_but_untagged_archive_dropped(observations, cfg):
+    """I4: Auch im live_only-Modus schließen markierte Füllungen echte
+    Restlücken; unmarkiertes Archiv bleibt draußen."""
+    live = observations(days=90, start="2026-06-01")
+    hole = pd.to_datetime(live.timestamp).isin(
+        pd.to_datetime(
+            [
+                "2026-07-15T12:00:00+02:00",
+                "2026-07-15T12:05:00+02:00",
+                "2026-07-15T12:10:00+02:00",
+            ]
+        )
+    )
+    assert int(hole.sum()) == 3
+    live = live.loc[~hole]
+    fillers = _filler_rows(
+        [
+            ("2026-07-15T12:05:00+02:00", 1.689, "gapfill"),
+            ("2026-07-15T12:10:00+02:00", 1.555, "history"),
+        ]
+    )
+    result, report = bootstrap(
+        normalized(pd.concat([live, fillers]), cfg), cfg, "2026-08-30"
+    )
+    item = report["stations"][0]
+    assert item["mode"] == "live_only"
+    assert item["gapfill_rows_used"] == 1
+    assert item["gapfill_rows_excluded"] == 0
+    assert item["history_rows_used"] == 0
+    assert item["history_rows_excluded"] == 1
+    used = result.loc[result.source.eq("gapfill"), "timestamp"]
+    assert used.tolist() == [pd.Timestamp("2026-07-15T10:05:00Z")]
+    assert not result.source.eq("history").any()

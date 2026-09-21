@@ -1,8 +1,13 @@
 """Archive warm start and a conservative, auditable handover to polling.
 
 Both paths carry Tankerkönig data. `source` denotes the acquisition path, not
-an independent market feed. Never repair a polling outage with archive rows:
-archive snapshots have no reliable opening-status/availability-time evidence.
+an independent market feed. Untagged archive rows never repair a polling
+outage — archive snapshots have no reliable opening-status/availability-time
+evidence — they are kept only as a prefix before the first live poll. The
+one exception is rows explicitly tagged ``source=gapfill`` (I4): real archive
+events clipped to detected polling gaps. They are admitted per availability
+bucket and only where no live poll owns the bucket, so a live state
+(including closed/no-price) is never replaced.
 """
 
 import os
@@ -81,6 +86,15 @@ def bootstrap(
             )
         live = group.loc[group.source.eq("influxdb")].sort_values("timestamp")
         archive = group.loc[~group.source.eq("influxdb")].copy()
+        # I4: markierte Füll-Ereignisse (app/gapfill.py) gegen unmarkiertes
+        # Archiv. Nur sie dürfen Lücken hinter dem ersten Live-Poll schließen;
+        # unmarkiertes Archiv bleibt konservativ reiner Präfix.
+        gapfill = archive.loc[archive.source.eq("gapfill")]
+        untagged = archive.loc[~archive.source.eq("gapfill")]
+        # Bucket-Eigentum: Ein Live-Poll besitzt seinen 5-Minuten-Bucket —
+        # auch als closed/no-price. Nur wirklich freie Buckets sind Lücken.
+        live_buckets = set(live._bucket.tolist())
+        gapfill_used = gapfill.loc[~gapfill._bucket.isin(live_buckets)]
         first_live = live._bucket.min() if len(live) else None
         latest = live.drop_duplicates("_bucket", keep="last").set_index("_bucket")
         usable = latest.status_known & (
@@ -107,22 +121,25 @@ def bootstrap(
         )
         live_only = good_days == live_only_days and fresh
         if live_only:
-            selected_archive = archive.iloc[:0]
+            selected_untagged = untagged.iloc[:0]
             mode, reason = "live_only", "90-day-policy-passed"
             if live_only_days != 90:
                 reason = "configured-day-policy-passed"
         else:
             # Ownership boundary at availability bucket: even a later archive row
             # in the first live bucket cannot resurrect a live closed/no-price state.
-            selected_archive = (
-                archive.loc[archive._bucket < first_live]
+            selected_untagged = (
+                untagged.loc[untagged._bucket < first_live]
                 if first_live is not None
-                else archive
+                else untagged
             )
             mode = "bootstrap" if len(live) else "history_only"
             reason = "insufficient-daily-live-coverage"
             if good_days == live_only_days and not fresh:
                 reason = "latest-live-response-missing-invalid-or-stale"
+        # Markierte Füllung gilt in jedem Modus (auch live_only): Sie schließt
+        # ausschließlich Buckets, die kein Live-Poll belegt — echte Lücken.
+        selected_archive = pd.concat([selected_untagged, gapfill_used])
         parts.extend([selected_archive, live])
         stations.append(
             {
@@ -141,9 +158,13 @@ def bootstrap(
                 "worst_daily_coverage": float(daily.min()),
                 "fresh_live": fresh,
                 "live_age_minutes_at_last_scheduled_bucket": age,
-                "history_rows_used": len(selected_archive),
+                "history_rows_used": len(selected_untagged),
                 "live_rows_used": len(live),
-                "history_rows_excluded": len(archive) - len(selected_archive),
+                "history_rows_excluded": len(untagged) - len(selected_untagged),
+                # I4: Zähler spiegeln den tatsächlich genutzten Bestand —
+                # markierte Füllung getrennt vom unmarkierten Präfix.
+                "gapfill_rows_used": len(gapfill_used),
+                "gapfill_rows_excluded": len(gapfill) - len(gapfill_used),
             }
         )
     result = pd.concat(parts, ignore_index=True).sort_values("timestamp", kind="stable")
@@ -156,7 +177,10 @@ def bootstrap(
         "market_data_provider": "Tankerkönig",
         "coverage_window_start": start.isoformat(),
         "coverage_window_end_exclusive": local_end.isoformat(),
-        "policy": "archive-prefix-then-polling; no archive repair of live gaps",
+        "policy": (
+            "archive-prefix-then-polling; tagged gapfill closes buckets "
+            "without live; no archive repair of live states"
+        ),
         "calibrated": False,
         "decision_ready": False,
         "historical_backtest_is_operational_replay": False,
