@@ -12,6 +12,7 @@
 - [2) NAS: Was ist persistent und wo liegt es?](#2-nas-was-ist-persistent-und-wo-liegt-es)
   - [Warum Influx auf SSD bleiben sollte](#warum-influx-auf-ssd-bleiben-sollte)
   - [Wenn Influx doch auf HDD soll](#wenn-influx-doch-auf-hdd-soll)
+  - [Feedback-Store und -Archiv: zwei Dateien, ein Vertrag (A21-B3.1)](#feedback-store-und--archiv-zwei-dateien-ein-vertrag-a21-b31)
 - [4) Checkliste für den Betreiber](#4-checkliste-für-den-betreiber)
 - [5) Offene Punkte](#5-offene-punkte)
 
@@ -107,6 +108,35 @@ Technisch möglich, aber Spindown-Ziel dann aufgeben:
 - Folge: HDD wacht alle 30 s auf. Wer das will, sollte in Unraid den Spindown für dieses Array deaktivieren oder ein SSD-Cache-Pool mit `prefer` nutzen (Influx bleibt auf SSD, wird aber bei Bedarf auf HDD ausgelagert).
 
 Empfehlung: **Influx auf SSD lassen**, Retention auf 1 Jahr kürzen, Backups auf HDD. So bleibt die 3,38 GB stabil statt wachsend, und die HDD kann schlafen.
+
+### Feedback-Store und -Archiv: zwei Dateien, ein Vertrag (A21-B3.1)
+
+Die persönliche Tank-Bilanz ist bewusst **keine** Datenbank, sondern zwei
+Dateien unter `runtime/feedback/`:
+
+- `store.json` — der heiße Bestand (90-Tage-Fenster), atomar geschrieben
+  (temporäre Datei + Umbenennen), Größe über `FEEDBACK_MAX_BYTES` (10 MB)
+  überwacht.
+- `archive.jsonl` — was die tägliche Retention aus dem Store auslagert
+  (eine JSON-Zeile je Beleg/Episode/Settlement, mit Sammlungs- und
+  Schema-Stempel). Wächst nur langsam (~1–2 MB je Jahr); Allzeitbilanz und
+  M7 rechnen über Store **plus** Archiv.
+
+Der Übergang zwischen beiden ist ein Publikationsvertrag, kein
+Nebenprodukt der Implementierung: Die Retention ersetzt das Archiv **atomar
+und zuerst** (fertige Datei umbenennen — Leser sehen niemals eine halbe
+Zeile), danach erst den Store ohne die ausgelagerten Belege. Leser (Decide,
+Overview, Summary) lesen umgekehrt: erst den Store, dann das Archiv. Damit
+geht am Übergang kein Beleg verloren und keines wird doppelt gezählt; ein
+Abbruch dazwischen ist harmlos (heiß gewinnt, der nächste Lauf erkennt die
+Identität wieder). Das Backup (`ops/nas/backup.sh`) hält dieselbe Reihenfolge
+ein und nimmt dazu die Sperrdatei des Stores — siehe unten.
+
+Fehlerverträge: Beide Dateien sind fail-closed — fehlend (Erststart) ist
+gesund und leer, unlesbar/beschädigt ist `store_corrupted` bzw.
+`archive_corrupted` mit Quarantäne-Kopie, zu neu (Schema-Stempel) verlangt
+ein App-Update. Details und Wiederherstellung:
+[BETRIEB.md](BETRIEB.md#feedback-archiv-und-ledger-integrität-a21-b31).
 
 ## 4) Checkliste für den Betreiber
 

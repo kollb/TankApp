@@ -1013,6 +1013,17 @@ anderswo gesichert wird; unsichtbar ist der Zustand damit nicht.
 Einrichten und Aufbewahrungsregel:
 [BETRIEB.md](../betrieb/BETRIEB.md#nas-laufzeitdaten-runtime-backup).
 
+**`archive_corrupted`-Alarm** (A21-B3.1, seit 0.66.0): Der Alarm folgt der
+ersten Diagnose eines Ledger-Lesevorgangs (z. B. der nächste
+`/overview`-Poll): Sie legt den Quarantäne-Report an, und `/health`
+vergleicht nur dann — billig, im Healthcheck-Budget — den aktuellen
+Archivbestand (SHA-256) mit dem gemerkten Defekt. Gleiche Bytes heißt
+weiterhin defekt, andere Bytes (z. B. nach einem Restore aus der
+Laufzeit-Sicherung) hebt den Alarm auf. Ein fehlendes Archiv ist der
+Erststart-Zustand und kein Alarm. Der Zustand der Endpunkte:
+[feedback.py](../../app/feedback.py) (`ArchiveCorrupted`), Wiederherstellung:
+[BETRIEB.md](../betrieb/BETRIEB.md#feedback-archiv-und-ledger-integrität-a21-b31).
+
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
 Restschätzung — der System-Tab zeigt daraus Balken und Text. Nach dem Lauf
@@ -1641,6 +1652,7 @@ Siehe `web/src/data.ts` messages:
 - price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
 - store_too_large (503), store_locked (503, Feedback-Store 5 s belegt — wiederholbar, B11), not_implemented (501)
+- archive_corrupted (503 bei Schreibwegen, sonst 200 + Code im Body): Beleg-Archiv unlesbar/beschädigt — Decide/Overview/Summary/Fills-Summary liefern den Code mit Quarantäne- und Backup-Hinweis statt einer Teilbilanz; Schreibwege, deren Retention das Archiv fortsetzen müsste, scheitern wiederholbar, ohne den Bestand zu verändern (A21-B3.1)
 - fill_not_found (404, `DELETE /api/v1/fills/{id}`), void_fill_failed (503), fills_read_failed
 - invalid_tank (400, `/api/v1/decide` — Tankstand außerhalb 0–100 % bzw. 20–120 l bzw. 0–1500 km)
 - profile_not_found (404), profile_limit (409), invalid_profile_name, invalid_time_value_eur_h, invalid_speed_kmh, invalid_tank_capacity_l (400, Profil-Endpunkte), profile_write_failed / profiles_read_failed / fills_summary_failed (503)

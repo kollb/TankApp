@@ -61,6 +61,7 @@
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
+  - [Feedback-Archiv und Ledger-Integrität (A21-B3.1)](#feedback-archiv-und-ledger-integrität-a21-b31)
 - [System-Alarme lesen](#system-alarme-lesen)
   - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
   - [Webhook Pi → NAS (B8, seit 0.38.0)](#webhook-pi--nas-b8-seit-0380)
@@ -1088,17 +1089,56 @@ nie still als leer behandelt: Erst das App-Update, kein Überschreiben. Beim
 Restore alter Backups ist deshalb kein Handanlegen nötig — einbinden und die
 App migrieren lassen.
 
-Aktuelle Version: **4** (0.44.0, O1). Der Sprung 3 → 4 ergänzt je Beleg
-`clock_hour_source` — und ist eine **Auszeichnung, keine Umschrift**: Die
-Uhrzeit eines Belegs wird seit 0.44.0 serverseitig aus `tanked_at` in
-Europe/Berlin abgeleitet (`"beleg"` = GUI hat `clock_hour` selbst geschickt,
-`"abgeleitet"` = aus dem Zeitstempel, `"default"` = 12 Uhr, weil der Beleg
-keinen Zeitstempel trägt). Alte Belege werden **nicht** still umgeschrieben:
-Ein Bestand aus Version 3 behält seine 12-Uhr-Werte, trägt danach aber
-`"default"` als Herkunft, und die Statistik nennt die Anzahl
-(`wh_default_n` in `GET /api/v1/stats/summary`). Wer sein Tankzeit-Profil neu
-auf echte Uhrzeiten stellen will, löscht den Altbestand bewusst (Backup vorher:
-`GET /api/v1/fills.csv`) — ein Restore des Backups migriert danach auf Version 4.
+Aktuelle Version: **7**. Jeder Sprung ergänzt Felder, ohne Altbestände
+umzuschreiben; die Migrationen laufen auch über die ins Archiv ausgelagerten
+Belege (siehe unten). Die Herkunfts-Felder je Beleg (`clock_hour_source` ∈
+`beleg`/`server`/`abgeleitet`/`default`, `p_source`, `price_source`,
+`forecast_calibration_state`) sind Auszeichnungen, keine Umschriften — alte
+Belege behalten ihre Werte und werden nur gekennzeichnet; die Statistik zählt
+die Herkünfte (`wh_clock_sources`, `wh_default_n` in
+`GET /api/v1/stats/summary`). Wer sein Tankzeit-Profil neu auf echte Uhrzeiten
+stellen will, löscht den Altbestand bewusst (Backup vorher:
+`GET /api/v1/fills.csv`).
+
+### Feedback-Archiv und Ledger-Integrität (A21-B3.1)
+
+Der persönliche Ledger liegt in zwei Dateien: dem **heißen** Store
+(`runtime/feedback/store.json`, 90-Tage-Fenster) und dem **Archiv**
+(`runtime/feedback/archive.jsonl`, alles, was die Retention aus dem Store
+auslagert — Allzeitbilanz und M7 rechnen über beide). Der Store ist seit S3
+fail-closed; seit 0.66.0 gilt derselbe Vertrag für das Archiv:
+
+| Zustand | Verhalten |
+|---|---|
+| Datei fehlt | Erststart — Retention hat noch nie ausgelagert: leeres, gesundes Archiv |
+| unlesbar (Rechte, I/O) oder beschädigt (ungültiges UTF-8, kaputte JSON-Zeile, auch ein abgebrochener Teil-Write am Dateiende) | `archive_corrupted`: Decide, Overview, Summary und Fills-Summary antworten mit dem Code statt einer Teilbilanz; Schreibwege, deren Retention das Archiv fortsetzen müsste, scheitern wiederholbar (503). Die defekte Datei bleibt **unverändert** am Ort und liegt als Kopie in `runtime/feedback/quarantine/` (einmal je Inhalt, mit Report: Zeit, Größe, SHA-256, Ursache, Häufigkeit) |
+| Stempel einer neueren App-Version | `StoreSchemaTooNew` — kein Defekt; App-Update, kein Überschreiben |
+
+Es gibt bewusst **keine Teilansicht** („nur die intakten Zeilen lesen“): Eine
+Allzeitbilanz, die beschädigte Belege still auslässt, wäre eine scheinbar
+vollständige — deshalb leitet dieser Zustand auch keine normale M7-Freigabe
+ab. `GET /api/v1/health` meldet den Zustand als Alarm `archive_corrupted`
+(error), sobald ein Lesevorgang ihn diagnostiziert hat (der nächste
+Overview-Poll); der Vergleich läuft billig über den Quarantäne-Report, nicht
+über ein Archiv-Parsing je Healthcheck.
+
+**Wiederherstellen:** letzte Laufzeit-Sicherung besorgen (siehe
+[NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)),
+dann in einer **isolierten, leeren** Umgebung wiederherstellen und verifizieren
+(`ops/nas/restore.sh`, siehe ebenda) — nie über die laufende Produktion. Der
+heiße Store bleibt vom Archiv-Defekt unangetastet: Belege der letzten 90 Tage
+bleiben lesbar (`GET /api/v1/fills`), erst Allzeitbilanz und Freigaben sind
+gesperrt. Nach dem Restore hebt sich der Alarm von selbst (anderer Inhalt,
+anderer Hash).
+
+**Warum am Übergang nichts verloren geht:** Die Retention veröffentlicht das
+Archiv **atomar und zuerst** (Umbenennen einer fertigen Datei), danach erst
+den Store ohne die ausgelagerten Belege; Leser lesen umgekehrt (Store zuerst,
+dann Archiv). Ein Abbruch dazwischen lässt einen Beleg in beiden Dateien
+liegen — der Merge zählt ihn einmal (heiß gewinnt), der nächste Lauf
+erkennt die Identität wieder. Retention ist keine fachliche Löschung: Zähler,
+Geldsummen, Stornos und Settlement-Identitäten wandern vollständig ins
+Archiv.
 
 ## System-Alarme lesen
 
@@ -1120,6 +1160,7 @@ Klartext.
 | `job_aborted` (mit `job`) | warn | Lauf hart beendet, z. B. Container-Neustart (`state: aborted`) | Nichts tun — letzte Ergebnisse bleiben erhalten; nächster Versuch folgt |
 | `store_too_large` | error | persönlicher Feedback-Store über der Größen-Grenze — neue Belege werden abgelehnt | Restore/Retention → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 | `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
+| `archive_corrupted` | error | Beleg-Archiv (`archive.jsonl`, älter als 90 Tage) unlesbar oder beschädigt — Allzeitbilanz und Freigaben gesperrt; Decide/Overview/Summary melden `archive_corrupted` | Wiederherstellung aus der Laufzeit-Sicherung → [Feedback-Archiv und Ledger-Integrität](#feedback-archiv-und-ledger-integrität-a21-b31) |
 | `publication_unreadable` | error | Veröffentlichung der Prognosen über dem Leselimit oder nicht parsebar — GUI zeigt überall „keine Prognose“ | Größe und Lesbarkeit prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `publication_large` | warn | Veröffentlichung über 6 MB, aber noch lesbar — Puffer zum Leselimit schrumpft | Stationen/Kraftstoffe oder `bootstrap_samples` prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `price_implausible` | warn | mindestens ein Live-Preis der letzten 24 h außerhalb 0,40–5,00 €/L — als Beobachtung gekennzeichnet, nicht als Preis veröffentlicht (O35) | Zähler im Health-Payload (`price_implausible.count_24h`); bei Dauerbetrieb die Preisquelle prüfen |
@@ -1578,6 +1619,26 @@ behandeln: ohne App-Frame (`assets/…-<hash>.js`) nicht die App.
 ## Speichermanagement (Pi shm + NAS SSD/HDD)
 
 Siehe ausführlich [SPEICHER.md](SPEICHER.md) — Kurzfassung:
+
+- **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. `collect_prices.py:ring_prune()` löscht eine Datei vorzeitig nur, wenn der Uploader sie **vollständig als Dateipräfix bestätigt** hat (v2-Cursor ≥ Dateigröße, A21-B1.1) und sie älter als gestern ist — RAM sinkt auf ~1–2 Tage. Ein Ereigniszeitstempel (`fetched_at_max`) allein löscht nichts. Bei NAS-Ausfall weiter bis 7 Tage (FIFO, bewusster Verlust mit Zähler in `meta/fifo_losses.jsonl` und Herzschlag). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Dateibestätigung, 1 Tag Rest bleibt.
+
+- **NAS persistent**: Nicht nur Influx. `runtime/` (Jobs, `engine/current.json`, `selection/current.json`, `feedback/store.json`, Training-Cache) auf SSD, Roharchiv auf HDD, private Configs (`polling.json`, `influx.env`, `netrc`) auf SSD read-only. Influx selbst: `prices` + `collector_status`.
+
+- **3,38 GB auf `/mnt/user/appdata` (SSD)**: Influx-Volume + Runtime. Auf HDD verschieben würde bedeuten: HDD wacht alle 30 s auf (Stations-Poll, Health, Overview-Tageskurve, Heatmap). Spindown wäre aus. Deshalb **Influx auf SSD lassen**, Archiv auf HDD (State liegt auf SSD, damit HDD nur bei Bedarf wacht).
+
+- **SSD sparen**: Retention von 5 Jahren (43800h) auf 1 Jahr (8760h) kürzen (`docker exec tankapp-influxdb influx bucket update --org gtwrlab --name tankapp --retention 8760h`), Backups (`ops/nas/backup.sh` + Influx-Tar) auf HDD legen, `runtime/backtest-cache/` darf jederzeit gelöscht werden, optional `data-tools/prune_influx.py --older-than-days 365` für Delete-API.
+
+Details, Befehle und HDD-Spindown-Checkliste: [SPEICHER.md](SPEICHER.md).
+
+## M1 Abnahme 14 Tage
+
+M1 erfüllt, wenn Collector+Ringpuffer+Uploader 14 Tage durchgelaufen und:
+
+1. Datenlücken <2% (pro Station/Tag ~216 Polls erwartet, 14 Tage ~3000, ≥~2940 Punkte)
+2. Ack-Protokoll fehlerfrei: keine verlorene Zeile, keine fachlichen Duplikate — die Cursor in `meta/synced_until` bilden stets lückenlos bestätigte Dateipräfixe (A21-B1.1), und die Punktezahl in InfluxDB stimmt mit den Stations-Snapshots überein (Wiederholungen nach Fehlern erzeugen dank Punkt-Identität keine neuen fachlichen Punkte)
+
+Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich Betrieb & Kontrolle durchgehen und Backup prüfen.
+[SPEICHER.md](SPEICHER.md) — Kurzfassung:
 
 - **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. `collect_prices.py:ring_prune()` löscht eine Datei vorzeitig nur, wenn der Uploader sie **vollständig als Dateipräfix bestätigt** hat (v2-Cursor ≥ Dateigröße, A21-B1.1) und sie älter als gestern ist — RAM sinkt auf ~1–2 Tage. Ein Ereigniszeitstempel (`fetched_at_max`) allein löscht nichts. Bei NAS-Ausfall weiter bis 7 Tage (FIFO, bewusster Verlust mit Zähler in `meta/fifo_losses.jsonl` und Herzschlag). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Dateibestätigung, 1 Tag Rest bleibt.
 
