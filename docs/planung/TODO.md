@@ -52,9 +52,3 @@ Gegenproben des Befunds laufen als dauerhafte Regressionstests.
   tatsächlich durchsetzen (S2). **Abnahme:** Cold-cache-Erstabruf,
   Tokenentzug und 24-h-Offline-Cache mit aktivem Worker im echten Browser
   testen; keine Abschaltung des Workers nur für diese Zusicherungen.
-
-#### NP6 — P2: Feiertagseffekt im Profilkern erhalten
-
-- [x] Abgezogenen Feiertagseffekt im `profile_ar2`-Prognosezweig konsistent
-  berücksichtigen (M4). **Abnahme:** Die dokumentierte Feiertags-Sensitivitätsprobe
-  wirkt auch im Profilkern; `holiday_beta=0` und Tage ohne Feiertag bleiben stabil.
