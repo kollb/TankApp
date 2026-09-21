@@ -41,9 +41,12 @@ sie als Studio-Gruppe erreichbar. Details: [UI](docs/produkt/UI.md).
 Der Modell-Default ist `profile_ar2` mit gemeinsamer Bootstrap-Ziehung und
 Day-Pair-Blöcken. Eine technische PIT-Rekalibrierung ist nur für 24 Stunden
 vorgesehen. **Sie ist keine Produktfreigabe:** Empfehlungen brauchen zusätzlich
-das M7-Ledger-Gate. Ohne die erforderlichen Daten bleibt
-`decision_ready=false`; aktuelle Preise können trotzdem angezeigt werden.
-Ein Softwaretest ist weder ein Nachweis für Modellgüte noch eine Geräteabnahme.
+das M7-Ledger-Gate und die Freigabekette (A21-B1.4) — frische Preise,
+gültiger Prognosezeitraum, vollständige Pfade, veröffentlichte Güte. Ohne
+die erforderliche Evidenz bleibt `decision_ready=false`; aktuelle Preise und
+Sperrgründe (`blocking_reasons`) können trotzdem angezeigt werden. Eine
+freigegebene Handlung ist befristet (`valid_until`). Ein Softwaretest ist
+weder ein Nachweis für Modellgüte noch eine Geräteabnahme.
 
 ## Repository
 

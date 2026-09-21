@@ -1,6 +1,6 @@
 # TankApp Speichermanagement — Pi shm und NAS SSD/HDD
 
-> Stand: 15.09.2026 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“
+> Stand: 21.09.2026 · App-Version 0.64.0 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“ Seit A21-B1.1 gilt für „Nach Influx-Upload löschbar?“ der Dateibestätigungs-Nachweis statt eines Zeitstempels; bewusste FIFO-Verluste sind getrennt gezählt.
 
 ## Inhaltsverzeichnis
 
@@ -20,31 +20,34 @@
 ### Was liegt dort?
 
 - `YYYY-MM-DD.jsonl` — ein Snapshot je Poll (06–24 Uhr, alle 5 min pro Request-Budget, Round-Robin über Stadtsets). Bei 10 Stationen ~2,5 kB/Poll → ~0,6 MB/Tag, bei mehreren Städten proportional mehr.
-- `meta/heartbeat.json` — letzter Poll, tmpfs-Auslastung, älteste Datei, poll_count.
-- `meta/synced_until` — Ack des Uploaders (ISO-Zeitstempel des neuesten erfolgreich nach Influx geschriebenen Snapshots).
+- `meta/heartbeat.json` — letzter Poll, tmpfs-Auslastung, älteste Datei, poll_count, unbestätigter Bestand und bewusste FIFO-Verluste (A21-B1.1).
+- `meta/synced_until` — Ack des Uploaders (JSON Schema v2): Byte-Cursor je Tagesdatei plus `prefix_sha256` des bestätigten Präfixes und `fetched_at_max` (nur Messgröße, nie Commit-Position). Die Invariante: Der Cursor ist stets ein **lückenlos bestätigtes Dateipräfix** in Datei-/Offsetordnung (A21-B1.1).
+- `meta/quarantine/` — isolierte beschädigte Pufferzeilen (A21-B1.2), eine Datei je Vorfall, benannt nach Quelldatei und Byte-Offsets.
+- `meta/fifo_losses.jsonl` — Protokoll bewusster FIFO-Verluste nach der Aufbewahrungsgrenze (A21-B1.1).
 
 ### Braucht es das alles?
 
-Der Ringpuffer ist **Wiederholungs- und Ausfallpuffer**: Ist das NAS länger offline, hält er die letzten 7 Tage im RAM, damit nichts auf die SD geschrieben werden muss (SD-Schonung). Ist das NAS wieder da, schiebt der Uploader alles hinter `synced_until` nach.
+Der Ringpuffer ist **Wiederholungs- und Ausfallpuffer**: Ist das NAS länger offline, hält er die letzten 7 Tage im RAM, damit nichts auf die SD geschrieben werden muss (SD-Schonung). Ist das NAS wieder da, schiebt der Uploader alles nach, was der Byte-Cursor noch nicht lückenlos bestätigt hat — Ereigniszeiten (auch bei Uhr-Rücksprung oder spät angehängten älteren Zeilen) sind dafür keine Position.
 
-**Nach Influx-Upload löschbar? Ja.**
+**Nach Influx-Upload löschbar? Ja — mit Dateibestätigung.**
 
-- `read_unsynced()` im Uploader überspringt bereits Dateien, deren Datum `< ack.date()` ist — sie sind vollständig gesynct.
-- Seit 13.09.2026 löscht `collect_prices.py:ring_prune()` zusätzlich **gesyncte** Dateien, sobald ihr Datum `< ack.date()` **und** älter als gestern ist. Gestern bleibt bewusst 1 Tag für manuelle Kontrolle im Puffer, selbst wenn gesynct.
+- `collect_prices.py:ring_prune()` löscht eine Datei nur vorzeitig, wenn der v2-Cursor des Uploaders **die ganze Datei** bestätigt (`cursors[datum] ≥ Dateigröße`) und ihr Datum älter als gestern ist. Ein `fetched_at_max`-Zeitstempel allein ist ausdrücklich **kein** Bestätigungs­nachweis (A21-B1.1); alte v1-Acks ohne Cursor gelten als unbestätigt.
+- Gestern bleibt bewusst 1 Tag für manuelle Kontrolle im Puffer, selbst wenn bestätigt.
 - Ergebnis: Bei stabilem NAS liegt nur noch ~1–2 Tage im tmpfs (0,6–1,2 MB statt 4,2 MB), bei NAS-Ausfall weiter bis 7 Tage (FIFO).
 
 ```python
 # Logik in collect_prices.py
-# - ack_date = parse(meta/synced_until).date()
-# - file_date < ack_date and file_date < today-1 → löschen (gesynct)
-# - file_date < today-(RING_DAYS-1) → löschen (Überlaufschutz, auch ungesynct)
+# - acked = v2-Cursor(der Datei) >= Dateigröße   # Dateibestätigung, nicht Datum
+# - acked and file_date < today-1        → löschen (bestätigt)
+# - file_date < today-(RING_DAYS-1)      → löschen (FIFO-Überlaufschutz, auch
+#                                          unbestätigt — bewusster Verlust)
 ```
 
 Damit ist die Antwort: **Nein, alles muss nicht 7 Tage im RAM liegen.** Nach erfolgreichem Upload kann es weg, 1 Tag Rest bleibt für Debug/Replay. Wer noch mehr sparen will: `RING_DAYS=3` setzen und `size=16M` in `/etc/fstab` reicht bei 10 Stationen immer noch.
 
 ### Was passiert bei 7+ Tagen NAS-Ausfall?
 
-`ring_prune` verwirft auch **ungesyncte** Snapshots älter als 7 Tage — diese Polls sind dann dauerhaft weg (kein Nachholen aus RAM). Das Tankerkönig-Archiv (national, Tagesdateien) wird beim nächsten Archiv-Sync nachgeholt, enthält aber nicht die eigenen 5-Minuten-Polls. Für geplanten Langausfall: `size=` vergrößern und `RING_DAYS` erhöhen.
+`ring_prune` verwirft nach `RING_DAYS` (Default 7) auch **unbestätigte** Dateien — diese Polls sind dann dauerhaft weg (kein Nachholen aus RAM). Das ist der bewussten FIFO-Grenze geschuldet und wird getrennt vom erfolgreichen Sync gezählt: jeder Verlust landet in `meta/fifo_losses.jsonl`, die Summen (`fifo_dropped_files`, `fifo_dropped_lines`) und der unbestätigte Bestand (`unacked_files`, `oldest_unacked_age_days`) stehen im Herzschlag (`meta/heartbeat.json`) und damit im System-Bereich. Das Tankerkönig-Archiv (national, Tagesdateien) wird beim nächsten Archiv-Sync nachgeholt, enthält aber nicht die eigenen 5-Minuten-Polls. Für geplanten Langausfall: `size=` vergrößern und `RING_DAYS` erhöhen.
 
 ### Und der Prognose-Cache des RP2?
 

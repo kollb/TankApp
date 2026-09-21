@@ -1,6 +1,13 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 18.09.2026 · App-Version **0.52.0** — neu seit 0.52.0 (Batch 7 des
+> Stand: 21.09.2026 · App-Version **0.64.0** — neu seit 0.64.0 (A21-B1,
+> Issues #198–#201): die **Freigabekette** von `decide`
+> (`blocking_reasons`, `valid_until`, `decision_ready = (action !=
+> "no_advice")`, siehe [Decide](#decide-b4-primär)) und die
+> **Beleg-Aliasse** unter dem O39-Leseschutz (`POST /fills`,
+> `POST …/outcome`, `DELETE /fills/{id}` und `GET /fills/{id}` nur noch mit
+> `Authorization: Bearer <TANKAPP_READ_TOKEN>`, siehe
+> [Auth & Limits](#auth--limits)). Davor seit 0.52.0 (Batch 7 des
 > [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
 > jede Antwort trägt `X-Process-Time` und `/health` einen
 > [`performance`](#health)-Block (O37); `If-None-Match` → `304` gilt nicht mehr
@@ -91,13 +98,28 @@ beide dasselbe Schema (`Authorization: Bearer <Secret>`):
 - **Uploader-Webhook** (`POST /api/v1/jobs/trigger`, nur mit konfiguriertem
   `TANKAPP_WEBHOOK_TOKEN`; ohne Secret existiert der Endpunkt nicht → `404`,
   falsches Secret → `403`).
-- **Lese-Schutz für persönliche Daten (O39, seit 0.50.0):** Mit gesetztem
+- **Lese-Schutz für persönliche Daten (O39, seit 0.50.0, ausgeweitet auf
+  Beleg-Aliasse A21-B1.3/0.64.0):** Mit gesetztem
   `TANKAPP_READ_TOKEN` antworten `GET /api/v1/fills`, `/api/v1/fills.csv`,
   `/api/v1/fills/summary`, `/api/v1/advice/diary`, `/api/v1/profiles`
   (+ `/api/v1/profiles/{id}`), `/api/v1/episodes` und `/api/v1/overview` nur
   noch mit `Authorization: Bearer <Secret>`; sonst `401` mit
-  `{"error_code": "unauthorized"}` und `WWW-Authenticate: Bearer`. Ohne die
-  Variable bleiben sie unverändert offen — die Entscheidung (was im LAN lesbar
+  `{"error_code": "unauthorized"}` und `WWW-Authenticate: Bearer`. **Seit
+  0.64.0** sitzen auch die Beleg-Aliasse hinter demselben Guard, weil sie
+  einen Vollbeleg zurückgeben oder einen Lesebypass erlauben würden:
+  `GET /api/v1/fills/{id}` (Detail), `POST /api/v1/fills`
+  (Idempotenz-Retry mit bekannter `id` liefert den Vollbeleg),
+  `POST /api/v1/recommendations/{id}/outcome` (Alias zu `record_fill`,
+  Antwort ist der Beleg) und `DELETE /api/v1/fills/{id}` (idempotentes
+  Storno, antwortet mit dem Beleg). Der Read-Guard geht **jedem**
+  Store-Zugriff und der Schreib-Budget-Prüfung voran: ohne Secret kein
+  State-Change, `401` statt `400`/`404` — auch im Fehlerpfad und über den
+  Pi-Proxy, der den `Authorization`-Header unverändert durchreicht.
+  Bewusst **ohne** Read-Guard bleiben `PUT/POST /api/v1/profiles*` und
+  `POST /api/v1/episodes/{id}/intent` (ohne `outcome`): sie antworten nicht
+  mit einem Vollbeleg (Restgrenze, benannt im PR #198–#201). Ohne die
+  Variable bleiben alle Routen unverändert offen — die Entscheidung (was im
+  LAN lesbar
   ist und für wen) steht in
   [BETRIEB.md](../betrieb/BETRIEB.md#zugriff-im-lan-was-lesbar-ist-o39-seit-0500), der
   Stand in `/api/v1/health` → `personal_data.read_protected`. Markt- und
@@ -156,9 +178,9 @@ frei (GUI-Polling).
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
-  - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot)
-  - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4)
-  - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3)
+  - `POST /api/v1/episodes/{episode_id}/intent` (Nutzer-Intent setzen, B4) bzw. `POST /api/v1/recommendations/{id}/outcome` (Alias, schreibt ein Fill gegen den letzten Snapshot; die Beleg-Antwort steht seit 0.64.0 hinter dem O39-Leseschutz, A21-B1.3)
+  - `POST /api/v1/fills` (Persönliche Tankbelege für Wallet-Ledger, B4; seit 0.64.0 mit O39-Leseschutz, A21-B1.3)
+  - `DELETE /api/v1/fills/{id}` (Beleg stornieren: `voided`-Flag statt Löschen, A3; seit 0.64.0 mit O39-Leseschutz, A21-B1.3)
   - `POST /api/v1/profiles`, `PUT /api/v1/profiles/{id}`, `POST /api/v1/profiles/{id}/activate`, `POST /api/v1/profiles/activate`, `DELETE /api/v1/profiles/{id}` (Fahrzeug-/Haushaltsprofile ohne Login, A1)
 - Lesend, aber persönlich: `GET /api/v1/fills` (Verlauf), `GET /api/v1/fills.csv` (Export, A6), `GET /api/v1/fills/summary` (Monats-/Jahresbilanz, A4), `GET /api/v1/profiles` (Profil-Liste, A1), `GET /api/v1/advice/diary`, `GET /api/v1/episodes` und `GET /api/v1/overview` — seit 0.50.0 mit `TANKAPP_READ_TOKEN` geschützt (O39, siehe oben)
 - Nicht implementierte Schreib-Endpunkte → `501` mit JSON `{"error_code": "not_implemented"}` (außer RP2 Fallback lokal)
@@ -275,6 +297,35 @@ Settlement, Gesamt- und Aktions-Trefferquote, Brier-Ziel und Reliability-Bins;
 bei `wait`/`refuel_elsewhere` gelten beide Grenzen ±1,0 ct/L als Gleichstand.
 
 M7-Gate (§0.4): Vor der Ledger-Kalibrierung (weniger als 100 Empfehlungen mit Verteilungs-P, kein Brier-Intervall unter beiden Referenzen **oder** kein Reliability-Steigungsintervall, das 1 enthält) antwortet `primary.action` immer mit `no_advice` und `p_correct: null`. Die technische B2-PIT-Kalibrierung eines Forecasts ist davon getrennt. Der Advice-Ledger misst die Tabellen-Aktion trotzdem ab Tag 1 (Shadow-Betrieb): der Snapshot speichert die Verteilungs-P (`p_besser`), Brier misst sie gegen das Settlement — ohne Draws fällt die gespeicherte Schätzung auf die interne Ledger-Quote zurück. Jede Zeile trägt ihre Quelle (`p_source`: `verteilung`|`basisrate`|`keine`); das Gate rechnet ausschließlich über `verteilung` (O5) — die Basisrate wird getrennt ausgewiesen, öffnet das Gate aber nicht. `alternatives_nearby[].p_lohnt` und `windows_today/week[].p` sind Informationswerte aus der Verteilung und hängen nicht am Gate.
+
+**Freigabekette (A21-B1.4, seit 0.64.0):** Eine Handlung wird nur
+freigegeben, wenn die **gesamte** aktuelle Evidenz trägt — nicht nur das M7.
+Die Kette prüft in Prioritätsreihenfolge: frischer Preis (ein fehlender
+Preis mit `last_price`-Fallback ist `price_stale`, kein Anker ohne
+Nachweis), offene Station, frische Herkunft (`stale_data_at_origin`), ein
+gültiges Modell (`origin` höchstens 24 h alt, mindestens ein
+Zukunfts-Punkt), die Pfade (fehlende Draws/Minima → `paths_missing`,
+nicht-numerische/NaN/Inf → `paths_invalid`), die veröffentlichte Güte
+(`rolling_picp_7d` mit ≥ 3 Tagen; rotes Badge → `quality_gate`) und als
+Letztes M7 (`m7_pending`). Ohne Prognosepunkte zählt allein
+`forecast_missing`. Die Antwort trägt dazu:
+
+| Feld | Bedeutung |
+|---|---|
+| `blocking_reasons` | stabile Codes der gebrochenen Glieder, in Prioritätsreihenfolge, ohne Duplikate; `[]` genau bei Freigabe |
+| `valid_until` | ISO-Ende der Gültigkeit (min aus Preisfrische und `origin` + 24 h) oder `null` ohne freigegebene Aktion |
+| `decision_ready` | genau `true`, wenn `primary.action != "no_advice"` — sonst `false` |
+
+Ohne Freigabe bleibt `primary.action` bei `no_advice`, `p_correct` ist
+`null`, und `reason_short` nennt den Evidenzgrund (überstimmt die Kette eine
+Tabellen-Aktion) bzw. den Tabellenablehnungsgrund (bei eigener
+Tabellen-Ablehnung — an diesem Text hängt der Ledger-Kollaps). Preisspanne
+und Fenster bleiben als **Fakten** sichtbar, unabhängig von der Freigabe.
+Eine gecachte Antwort darf eine abgelaufene Aktion nicht erneut freigeben:
+`/overview` prüft jeden Cache-Treffer gegen `valid_until` (`release_still_valid`)
+und baut bei Ablauf neu auf. PIT-Kalibrierung ist kein Universal-Kriterium —
+rohe und `pit_24h`-Pfade können freigegeben werden; eine kaputte PIT-Hülle
+lässt `raw` zu, eine unbekannte Herkunft sperrt (`origin_unknown`).
 
 **Semantik der Ersparnisfelder (F2):** `expected_saving_eur` ist aus
 Fensterminimum-Draws `max(0, (Preisanker − Median(Fensterminima)) × Liter)`.
@@ -537,10 +588,15 @@ gezählt wird sie in Wallet-Bilanz und w(h)-Profil **nicht** mehr. Fehler:
 Setzt `voided` statt zu löschen und schreibt eine Audit-Zeile
 (`{"at", "action": "void_fill", "fill_id"}`) in den Store. Idempotent: ein
 zweites Storno desselben Belegs ändert nichts und liefert denselben Beleg.
+Seit 0.64.0 (A21-B1.3) verlangt die Beleg-Antwort bei gesetztem
+`TANKAPP_READ_TOKEN` den Bearer-Secret (`401 unauthorized` ohne — kein
+Storno, kein Beleg, `401` geht `400`/`404` vor, siehe
+[Auth & Limits](#auth--limits)).
 
 | Antwort | Bedeutung |
 |---|---|
 | `200` + Beleg | storniert (oder war schon storniert) |
+| `401 {"error_code":"unauthorized"}` | `TANKAPP_READ_TOKEN` gesetzt, Secret fehlt/falsch (A21-B1.3) |
 | `404 {"error_code":"fill_not_found"}` | `id` nicht im Store |
 | `400 {"error_code":"invalid_query"}` | leere `id` oder Pfad mit weiterem `/` |
 | `503 {"error_code":"store_too_large"}` | Store über der Größen-Grenze |

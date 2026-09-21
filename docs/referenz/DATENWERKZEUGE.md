@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 19.09.2026 · App-Version 0.55.2. Nachschlagewerk für `data-tools/`
+> Stand: 21.09.2026 · App-Version 0.64.0. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](../betrieb/INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](../betrieb/BETRIEB.md). Neu: der
 > [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
@@ -17,9 +17,9 @@
 
 | Programm | Aufgabe |
 |---|---|
-| `collect_prices.py` | Ein Collector für alle Stadtsets, Round-Robin, ein Request-Budget, persistenter Zeitplan, JSONL-Puffer. |
+| `collect_prices.py` | Ein Collector für alle Stadtsets, Round-Robin, ein Request-Budget, persistenter Zeitplan, JSONL-Puffer. `ring_prune()` löscht bestätigte Tage erst nach Dateibestätigung (v2-Cursor ≥ Größe) vorzeitig; die FIFO-Grenze (`RING_DAYS`) verwirft auch unbestätigte Dateien bewusst und protokolliert das in `meta/fifo_losses.jsonl` (A21-B1.1). |
 | `polling_plan.py` | Gemeinsame Validierung, atomare JSON-Ausgaben, Prozesssperre und Request-Zeitplan. |
-| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags und bestehendes Ack-Verfahren. Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](../betrieb/BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
+| `upload_influx.py` | Pi-Puffer nach InfluxDB auf dem NAS, UUID-Tags. Ack-Vertrag (A21-B1.1): Der Cursor je Tagesdatei in `meta/synced_until` (Schema v2) bestätigt nur **lückenlos verkettete Dateibereiche** in Datei-/Offsetordnung, mit `prefix_sha256` des bestätigten Präfixes — Ereigniszeit (`fetched_at_max`) ist Messgröße, nie Commit-Position; im Zweifel wird erneut gesendet (Punkt-Identität ist idempotent). Beschädigte vollständige Zeilen (ungültiges UTF-8, defektes JSON, falsches Schema) werden nach `meta/quarantine/` isoliert (Datei/Offset/Grund/Rohbytes), bevor der ACK an ihnen vorbeigeht; ein Dateischwanz ohne Zeilenumbruch bleibt unbestätigt (A21-B1.2). Weckt danach optional die NAS-Jobs (`POST /api/v1/jobs/trigger`, Issue 50): Die Antwort ist die Quittierung; bleibt sie aus, wird der Trigger mit Backoff (30 s … 15 min, höchstens 2 h) wiederholt und der Zustand über den Herzschlag gemeldet (B8, 0.38.0) — Details in [BETRIEB.md](../betrieb/BETRIEB.md#webhook-pi--nas-b8-seit-0380). |
 | `fetch_history.py` | HTTP-Tagesdownload, gzip, Wiederholung und atomare `.part`-Übernahme. NAS-Zeitplanung bevorzugt über den Sync-Wrapper, nicht nur `--since yesterday`. |
 | `discover_stations.py` | Vorläufige Auswahl aus Stationsmetadaten, ohne lange Preishistorie. |
 | `ingest_history.py` | M2-Aufbereitung; gerasterte Daten sind nicht automatisch zeitgenaue Live-Beobachtungen. |

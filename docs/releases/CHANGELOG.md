@@ -4,6 +4,59 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.64.0] – 2026-09-21
+
+**A21-B1 (Sofortschutz): Synchronisierung, Zugriff, Freigabe** —
+[Issue #198](https://github.com/kollb/TankApp/issues/198),
+[#199](https://github.com/kollb/TankApp/issues/199),
+[#200](https://github.com/kollb/TankApp/issues/200),
+[#201](https://github.com/kollb/TankApp/issues/201), NP7.
+
+- **#198 — Upload-ACK ohne Lücken.** Die Bestätigung schließt nur
+  zusammenhängende Dateibereiche ab (`advance_ack` nach Datei-Offset,
+  nicht das Datums-Maximum des Batches); ein 5-Min-Uhrrücksprung in der
+  Ereigniszeit überspringt keine Zeile mehr. Das Collector-Pruning räumt
+  nur nach vollständigem Dateibestätigungs-Nachweis (Präfix-SHA-256 über
+  Namensliste, Größe, cksum) — alte ACK-Versionen, Rotation, Truncation
+  und Neustart senden im Zweifel erneut. FIFO-Verluste (rotierender
+  tmpfs-Puffer) sind getrennt gezählt (`fifo_loss_rows/files`) und
+  ausgewiesen.
+- **#199 — Uploader frisst kaputte Zeilen nicht mehr.** Decode-,
+  JSON- und Schema-Prüfung laufen in der Fehlerbehandlung: eine kaputte
+  Zeile wird verworfen und in der `stamps`-Diagnose nach Datei und
+  Byte-Offset protokolliert, gültige Nachbarzeilen laufen weiter. Ein
+  Dateischwanz wird als Zwischenzustand geführt und später verarbeitet,
+  eine endgültig kaputte Zeile zählt als `rejected`. Kein gültiger
+  Datensatz wird je per ACK übersprungen; Zugangsdaten erscheinen in
+  keiner Diagnose.
+- **#200 — Beleg-Aliasse unter dem O39-Leseschutz.** Mit gesetztem
+  `TANKAPP_READ_TOKEN` verlangen auch `GET /fills/{id}`, `POST /fills`
+  (Idempotenz-Retry), `POST /recommendations/{id}/outcome` und
+  `DELETE /fills/{id}` den Bearer-Secret — `401 unauthorized` ohne
+  Beleg und ohne State-Change, der Read-Guard geht jedem Store-Zugriff
+  voran. Der Pi-Proxy reicht `Authorization` durch. *Restgrenze:*
+  `PUT/POST /profiles*` und `POST /episodes/{id}/intent` (ohne
+  `outcome`) bleiben ohne Read-Guard — sie antworten nicht mit einem
+  Vollbeleg.
+- **#201 — nur ausreichende aktuelle Evidenz gibt eine Handlung frei.**
+  Das bestandene M7-Gate ersetzte bisher fehlende aktuelle Evidenz; ein
+  Preis von `null` fiel auf `last_price` zurück und ein Median-Potenzial
+  ohne Draws wurde als Aktion ausgesprochen. Jetzt prüft die
+  Freigabekette Preis-Frische (`price_missing`/`price_stale`), Station,
+  Herkunft (`stale_data_at_origin`, `origin_unknown`), Modellalter und
+  Zukunfts-Punkte (`forecast_missing`/`forecast_expired`), Pfade
+  (`paths_missing`/`paths_invalid`), Güte (`quality_missing`/
+  `quality_gate`) und als Letztes M7 (`m7_pending`) — maschinenlesbar als
+  `blocking_reasons`, mit `valid_until` je Freigabe; `decision_ready`
+  gilt exakt für `action != "no_advice"`. Ein Cache-Treffer darf eine
+  abgelaufene Aktion nicht erneut freigeben (`release_still_valid` in
+  `/overview`). Die graue Karte führt den Sperrgrund, der Lern-Zählstand
+  steht genau einmal darunter. PIT bleibt kein Universal-Kriterium (roh
+  und `pit_24h` freigebbar, kaputte Hülle → `raw`), physische
+  Tankwarnungen (A2) bleiben getrennt. *Restgrenze:* der Feldbetrieb
+  gegen echtes Influx/Pi/NAS ist hier nicht abgenommen — es gelten nur
+  die Regressionstests.
+
 ## [0.63.1] – 2026-09-21
 
 **Batch 7 (P2): Feiertagseffekt im Profilkern erhalten (M4)** —

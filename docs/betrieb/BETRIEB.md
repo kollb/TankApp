@@ -1,8 +1,12 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 18.09.2026 · App-Version 0.53.0 — alles, was nach der Ersteinrichtung
+> Stand: 21.09.2026 · App-Version 0.53.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.52.0: Der InfluxDB-Cron rotiert seine Wochenstände (acht Stände,
+> Neu seit 0.64.0: Der Upload-Ack bestätigt nur lückenlose Dateibereiche
+> (A21-B1.1), beschädigte Pufferzeilen werden isoliert (A21-B1.2), und der
+> Ringpuffer zählt bewusste FIFO-Verluste getrennt — in der
+> [Fehlersuche](#fehlersuche) und in
+> [SPEICHER.md](SPEICHER.md). Davor neu seit 0.52.0: Der InfluxDB-Cron rotiert seine Wochenstände (acht Stände,
 > O34), und die Sicherung nennt das Roharchiv als bewusste Entscheidung —
 > beide im Abschnitt
 > [NAS InfluxDB Backup](#nas-influxdb-backup). Der Server misst sich selbst
@@ -879,12 +883,38 @@ desselben Browsers (wie die übrigen Einstellungen) und wird als
 nicht in Logs. Ohne eingetragenes Token zeigen die persönlichen Bereiche
 „Zugang gesperrt …“ statt leerer Listen.
 
-**Was bewusst nicht geschützt ist:** die Schreib-Endpunkte
-(`POST /api/v1/fills`, `POST /api/v1/episodes/{id}/intent`, Profile, Job-Start).
-Sie haben ihr eigenes Budget (429 ab 20 Schreibvorgängen je Minute und
-Client), und ein zweites Secret würde gegen die benannte Gefahr — Mitlesen im
-LAN — nichts ändern. Wer auch das Schreiben absperren will, braucht ein
-Reverse Proxy mit Auth vor dem Port; das ist dann eine andere Rahmenbedingung.
+**Was bewusst nicht geschützt ist:** `PUT/POST /api/v1/profiles*`,
+`POST /api/v1/episodes/{id}/intent` (ohne `outcome`) und der Job-Start.
+Sie antworten nicht mit einem Vollbeleg, haben ihr eigenes Budget (429 ab
+20 Schreibvorgängen je Minute und Client), und ein zweites Secret würde
+gegen die benannte Gefahr — Mitlesen im LAN — nichts ändern. Wer auch das
+Schreiben absperren will, braucht ein Reverse Proxy mit Auth vor dem Port;
+das ist dann eine andere Rahmenbedingung. (Restgrenze A21-B1.3, benannt im
+PR #198–#201.)
+
+### Beleg-Aliasse unter dem Lese-Schutz (A21-B1.3, seit 0.64.0)
+
+Seit 0.64.0 antworten auch die Routen, die einen **Vollbeleg**
+zurückgeben, nur noch mit dem Secret — sonst wäre eine bekannte Beleg-ID
+ein Lesebypass (Idempotenz-Retry, idempotentes Storno) bzw. eine
+Outcome-Anfrage eine Schreibprobe mit Beleg-Antwort:
+
+| Route | Warum geschützt |
+|---|---|
+| `GET /api/v1/fills/{id}` | Beleg-Detail |
+| `POST /api/v1/fills` | Idempotenz-Retry mit bekannter `id` liefert den Vollbeleg |
+| `POST /api/v1/recommendations/{id}/outcome` | Alias zu `record_fill`, Antwort ist der Beleg |
+| `DELETE /api/v1/fills/{id}` | idempotentes Storno, antwortet mit dem Beleg |
+
+Ohne Secret (oder mit falschem) kommt `401` mit
+`error_code: "unauthorized"` und `WWW-Authenticate: Bearer` — **kein
+Beleg, kein State-Change**, und der Read-Guard geht jedem Store-Zugriff
+und der 400/404-Fehlerbehandlung voran (`401 ≠ 400`: ein unbekannter
+Payload verrät erst nach dem Guard etwas). Der Pi-Fallback-Proxy leitet
+den `Authorization`-Header unverändert an das NAS durch — der Guard gilt
+dort identisch, ohne eigene Token-Verwaltung. Ohne gesetztes
+`TANKAPP_READ_TOKEN` bleibt alles offen wie bisher; die
+GUI braucht dann nur das eine Secret aus „Persönliche Daten im Netz“.
 
 ## Backup & Wiederherstellung
 
@@ -1445,6 +1475,10 @@ am PC: [ENGINE.md](../referenz/ENGINE.md) (Tabelle „Stationsname mehrdeutig“
 | `HTTP 404` | Org/Bucket existiert nicht — Org/Bucket prüfen |
 | `HTTP 400` | Line Protocol abgelehnt — sollte nicht vorkommen |
 | `⚠ PUFFER ÜBERFÜLLT` | älteste unsynced Zeile ≥6 Tage — NAS-Ausfall zu lang, FIFO Verlust |
+| `⚠ Ack-Halt` | ACK-Kette unterbrochen (A21-B1.1) — der Rest wird erneut gesendet statt übersprungen; Datei/Offset nennen die Grenze |
+| `⚠ … beschädigte Zeile(n) isoliert` | defekte Pufferzeilen nach `meta/quarantine/` gelegt (A21-B1.2), Datei/Offset dort benannt — kein stiller Import, kein stiller Verlust |
+| `⏳ Unvollständiger Dateischwanz` | Zeile ohne abschließenden Zeilenumbruch (laufender Append) — bleibt unbestätigt und wird später erneut gelesen |
+| `⚠ Ringpuffer-FIFO` | Collector: Tage nach `RING_DAYS` bewusst verworfen; ohne Upload-Bestätigung als Verlust in `meta/fifo_losses.jsonl` protokolliert |
 | `⚠ Stationsnamen nicht verfügbar` | polling.json fehlt — station-Tag enthält UUID statt Name |
 | `⇡ Collector-Herzschlag → InfluxDB` | **B3.11** Heartbeat erfolgreich übertragen |
 
@@ -1545,7 +1579,7 @@ behandeln: ohne App-Frame (`assets/…-<hash>.js`) nicht die App.
 
 Siehe ausführlich [SPEICHER.md](SPEICHER.md) — Kurzfassung:
 
-- **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. Seit 13.09.2026 löscht der Collector Dateien, die vollständig vor `meta/synced_until` liegen (vom Uploader bestätigt) und älter als gestern sind — RAM sinkt auf ~1–2 Tage. Bei NAS-Ausfall weiter bis 7 Tage (FIFO). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Ack, 1 Tag Rest bleibt.
+- **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. `collect_prices.py:ring_prune()` löscht eine Datei vorzeitig nur, wenn der Uploader sie **vollständig als Dateipräfix bestätigt** hat (v2-Cursor ≥ Dateigröße, A21-B1.1) und sie älter als gestern ist — RAM sinkt auf ~1–2 Tage. Ein Ereigniszeitstempel (`fetched_at_max`) allein löscht nichts. Bei NAS-Ausfall weiter bis 7 Tage (FIFO, bewusster Verlust mit Zähler in `meta/fifo_losses.jsonl` und Herzschlag). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Dateibestätigung, 1 Tag Rest bleibt.
 
 - **NAS persistent**: Nicht nur Influx. `runtime/` (Jobs, `engine/current.json`, `selection/current.json`, `feedback/store.json`, Training-Cache) auf SSD, Roharchiv auf HDD, private Configs (`polling.json`, `influx.env`, `netrc`) auf SSD read-only. Influx selbst: `prices` + `collector_status`.
 
@@ -1560,6 +1594,6 @@ Details, Befehle und HDD-Spindown-Checkliste: [SPEICHER.md](SPEICHER.md).
 M1 erfüllt, wenn Collector+Ringpuffer+Uploader 14 Tage durchgelaufen und:
 
 1. Datenlücken <2% (pro Station/Tag ~216 Polls erwartet, 14 Tage ~3000, ≥~2940 Punkte)
-2. Ack-Protokoll fehlerfrei: keine verlorene Zeile, keine Duplikate — `meta/synced_until` stets ≥ zweit-neueste Pufferzeile, Punktezahl in InfluxDB stimmt mit Stations-Snapshots überein
+2. Ack-Protokoll fehlerfrei: keine verlorene Zeile, keine fachlichen Duplikate — die Cursor in `meta/synced_until` bilden stets lückenlos bestätigte Dateipräfixe (A21-B1.1), und die Punktezahl in InfluxDB stimmt mit den Stations-Snapshots überein (Wiederholungen nach Fehlern erzeugen dank Punkt-Identität keine neuen fachlichen Punkte)
 
 Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich Betrieb & Kontrolle durchgehen und Backup prüfen.

@@ -1,7 +1,8 @@
 # ADR 0003: Modellpfad, Kalibrierung und Produktfreigabe trennen
 
 - **Status:** angenommen; implementierte Entscheidungen konsolidiert.
-- **Stand:** 19.09.2026 · dokumentiert 20.09.2026 · App 0.59.1.
+- **Stand:** 21.09.2026 · App-Version 0.64.0 · dokumentiert 20.09.2026 ·
+  erweitert 21.09.2026 (A21-B1.4).
 
 ## Inhaltsverzeichnis
 
@@ -28,6 +29,18 @@ kalibriert ist.
   45 lokale Tage.
 - `calibrated` ist ein technischer Zustand; `decision_ready` benötigt
   zusätzlich das M7-Gate auf abgerechneten Advice-Daten.
+- **Freigabekette (A21-B1.4, 0.64.0):** Auch ein bestandenes M7-Gate gibt
+  keine Handlung frei, solange ein Glied der aktuellen Evidenz fehlt:
+  frischer Preis (Preis ohne Nachweis bleibt gesperrt, `price_stale` — der
+  `last_price`-Fallback darf Preisspanne zeigen, aber keine Aktion
+  begründen), offene Station, frische Herkunft, ein höchstens 24 h altes
+  Modell mit Zukunfts-Punkten, vollständige endliche Pfade und veröffentlichte
+  Güte (≥ 3 Tage). Die gebrochenen Glieder stehen als
+  `blocking_reasons` im Vertrag, das Gültigkeitsende einer Freigabe als
+  `valid_until`; ein Cache darf abgelaufene Aktionen nicht erneut zeigen.
+  PIT bleibt wie zuvor nur ein Zustand der Pfade — `raw` und `pit_24h`
+  können freigeben, eine kaputte Hülle wird zu `raw`, eine unbekannte
+  Herkunft sperrt. Physische Tankwarnungen (A2) bleiben davon unberührt.
 - Der Schwellennachzug verändert keine Prozent-Gates, um Güte künstlich
   passend zu machen.
 - 90 Tage Live-only-Handover bleiben vom M7-Zeitplan unabhängig. Eine Senkung
@@ -37,7 +50,10 @@ kalibriert ist.
 
 72-/168-h-Bänder bleiben unkalibriert. Ohne belastbaren Ledger bleibt die
 Empfehlung gesperrt, obwohl aktuelle Preise und technische Prognosen existieren.
-Horizontabhängige Ensemble-Gewichte werden als nicht geschätzt ausgewiesen;
+Seit A21-B1.4 gilt dasselbe für jede gebrochene Stelle der Evidenzkette: die
+App zeigt die Tatsachen (Preisspanne, Fenster) und nennt den Sperrgrund,
+statt aus einem Median-Potenzial eine Handlung abzuleiten. Horizontabhängige
+Ensemble-Gewichte werden als nicht geschätzt ausgewiesen;
 eine alternative Modellmischung darf nicht allein aus historischen Texten
 als aktiver Default übernommen werden.
 

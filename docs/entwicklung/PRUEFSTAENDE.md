@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 21.09.2026 · App-Version 0.63.1
+> Stand: 21.09.2026 · App-Version 0.64.0
 
 ## Inhaltsverzeichnis
 
@@ -24,14 +24,11 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [DOKUMENTATION.md](DOKUMENTATION.md) | 0.59.1 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.59.1 |
 | [REGIME.md](../planung/REGIME.md) | 0.59.1 |
-| [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.38.0 |
 | [BETRIEB.md](../betrieb/BETRIEB.md) | 0.53.0 |
 | [INSTALL.md](../betrieb/INSTALL.md) | 0.38.0 |
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 |
 | [ANALYSE.md](../referenz/ANALYSE.md) | 0.38.0 |
-| [API.md](../referenz/API.md) | 0.52.0 |
-| [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.55.2 |
 | [ENGINE.md](../referenz/ENGINE.md) | 0.11.0 |
 
 ## Pflege
