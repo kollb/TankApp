@@ -7,6 +7,8 @@ nach InfluxDB 2.x auf dem NAS (Konzept §9.1). Nur Standardbibliothek.
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import http.client
 import datetime as dt
 import json
@@ -20,6 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import NamedTuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from polling_plan import active_polling
@@ -132,7 +135,7 @@ def parse_ts(s: str) -> dt.datetime:
 
 
 def empty_ack() -> dict:
-    return {"v": ACK_SCHEMA, "cursors": {}, "fetched_at_max": None}
+    return {"v": ACK_SCHEMA, "cursors": {}, "fetched_at_max": None, "stamps": {}}
 
 
 def read_ack(meta_dir: Path) -> dict:
@@ -172,10 +175,17 @@ def read_ack(meta_dir: Path) -> dict:
                         clean[str(key)] = int(value)
                     except (TypeError, ValueError):
                         continue
+            stamps: dict[str, dict] = {}
+            raw_stamps = data.get("stamps")
+            if isinstance(raw_stamps, dict):
+                for key, value in raw_stamps.items():
+                    if isinstance(value, dict):
+                        stamps[str(key)] = dict(value)
             return {
                 "v": ACK_SCHEMA,
                 "cursors": clean,
                 "fetched_at_max": data.get("fetched_at_max"),
+                "stamps": stamps,
             }
         return empty_ack()
     try:
@@ -197,6 +207,11 @@ def write_ack(meta_dir: Path, ack: dict) -> None:
             str(key): int(value) for key, value in (ack.get("cursors") or {}).items()
         },
         "fetched_at_max": ack.get("fetched_at_max"),
+        "stamps": {
+            str(key): dict(value)
+            for key, value in (ack.get("stamps") or {}).items()
+            if isinstance(value, dict)
+        },
     }
     tmp = meta_dir / ".synced_until.tmp"
     tmp.write_text(
@@ -207,10 +222,19 @@ def write_ack(meta_dir: Path, ack: dict) -> None:
 
 
 def advance_ack(ack: dict, batch) -> dict:
-    """Advance per-file byte cursors after a successful (or empty) batch.
+    """A21-B1.1: Cursor nur für verkettete, zusammenhängende Pufferbereiche.
 
-    Event time is recorded only as ``fetched_at_max`` for the collector's
-    date prune — it is never the skip predicate.
+    Invariante: Der Cursor je Datei ist ein **lückenlos bestätigtes
+    Byte-Präfix**. Ein Batch wird in der Reihenfolge seiner Tiles verarbeitet;
+    für jede Datei muss die Kette am bestätigten Cursor ansetzen (bzw. bei 0,
+    wenn der Leser nach einer nachgewiesenen Verkürzung neu begonnen hat) und
+    lückenlos fortlaufen. Ein Kettenbruch bestätigt nichts mehr dahinter — der
+    Rest wird erneut gesucht statt still übersprungen (Neusenden ist dank
+    Punkt-Identität in InfluxDB idempotent).
+
+    Ereigniszeit bleibt Messgröße: sie wandert nur als ``fetched_at_max`` und
+    ist nie Commit-Position. Eine rückspringende Uhr vertauscht
+    Ereigniszeiten, keine Dateibereiche.
     """
     out = {
         "v": ACK_SCHEMA,
@@ -218,15 +242,46 @@ def advance_ack(ack: dict, batch) -> dict:
             str(key): int(value) for key, value in (ack.get("cursors") or {}).items()
         },
         "fetched_at_max": ack.get("fetched_at_max"),
+        "stamps": {
+            str(key): dict(value)
+            for key, value in (ack.get("stamps") or {}).items()
+            if isinstance(value, dict)
+        },
     }
     fetched = ack_fetched_at(out)
-    for ts, _snap, file_name, end_offset in batch:
-        prev = int(out["cursors"].get(file_name, 0) or 0)
-        if int(end_offset) > prev:
-            out["cursors"][file_name] = int(end_offset)
-        if fetched is None or ts > fetched:
-            fetched = ts
-            out["fetched_at_max"] = ts.isoformat()
+    chain: dict[str, int] = {}
+    blocked: set[str] = set()
+    for tile in batch:
+        name = tile.file_name
+        if tile.ts is not None and (fetched is None or tile.ts > fetched):
+            fetched = tile.ts
+            out["fetched_at_max"] = tile.ts.isoformat()
+        if name in blocked:
+            continue
+        cursor = int(out["cursors"].get(name, 0) or 0)
+        prev = chain.get(name)
+        if prev is None:
+            # Anker: Scanbeginn. Offset 0 heißt Neubeginn nach Verkürzung/
+            # Rotation — der Cursor darf dann auch zurückspringen (erneutes
+            # Senden ist sicher); eine Vorwärtslücke nie.
+            if tile.start_offset != cursor and tile.start_offset != 0:
+                log(
+                    f"⚠ Ack-Halt {name}: Bereich beginnt bei Offset "
+                    f"{tile.start_offset}, bestätigt ist nur bis {cursor} — "
+                    "Lücke wird nicht übersprungen, sondern erneut gesucht."
+                )
+                blocked.add(name)
+                continue
+        elif tile.start_offset != prev:
+            log(
+                f"⚠ Ack-Halt {name}: Kette bricht bei Offset "
+                f"{tile.start_offset} (erwartet {prev}) — Rest nicht "
+                "bestätigt, wird erneut gesendet."
+            )
+            blocked.add(name)
+            continue
+        out["cursors"][name] = int(tile.end_offset)
+        chain[name] = int(tile.end_offset)
     return out
 
 
@@ -256,33 +311,91 @@ def _file_in_v1_rescan(path: Path, ack: dict) -> bool:
     return mtime >= floor
 
 
-def read_unsynced(
-    poll_dir: Path, ack: dict | None
-) -> "list[tuple[dt.datetime, dict, str, int]]":
-    """Unacknowledged snapshots with per-file byte cursors.
+class SyncTile(NamedTuple):
+    """Ein zusammenhängend verarbeiteter Bytebereich einer Pufferdatei.
 
-    Each item is ``(fetched_at, snap, file_name, end_offset)``. The cursor
-    is the file offset, not event time — a clock rollback or a late older
-    ``fetched_at`` is not skipped.
+    Die Tiles einer Datei verketten sich exakt: Das erste beginnt am
+    Scan-Anfang (Cursor bzw. 0 nach Verkürzung), jedes folgende am Ende
+    seines Vorgängers. Leere Zeilen liegen im Span des Folgetiles; ein
+    abgebrochener Dateischwanz erzeugt gar kein Tile (A21-B1.2).
     """
-    rows: "list[tuple[dt.datetime, dict, str, int]]" = []
-    bad = 0
+
+    kind: str  # "row" (gültige Meldung) | "damaged" (zu isolieren)
+    file_name: str
+    start_offset: int
+    end_offset: int
+    ts: dt.datetime | None  # nur "row"
+    snap: dict | None  # nur "row"
+    raw: bytes  # Zeile ohne Zeilenumbruch (Quarantäne/Diagnose)
+    reason: str | None  # nur "damaged": "utf8" | "json" | "schema"
+
+
+class BufferScan(NamedTuple):
+    tiles: "list[SyncTile]"  # verkettete Kette, Datei-/Offsetordnung
+    rows: "list[SyncTile]"  # Sicht auf kind == "row"
+    damaged: "list[SyncTile]"  # Sicht auf kind == "damaged"
+    tail_files: "list[str]"  # Dateien mit unvollständigem Schwanz
+
+
+def _prefix_sha256(path: Path, end: int) -> str:
+    """SHA-256 der Bytes ``[0, end)`` — Nachweis des bestätigten Präfixes."""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            remaining = int(end)
+            while remaining > 0:
+                chunk = handle.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def scan_unsynced(poll_dir: Path, ack: dict | None) -> BufferScan:
+    """Unbestätigte Pufferbereiche als verkettete Tiles (A21-B1.1/A21-B1.2).
+
+    Reihenfolge ist **Datei- und Offset-Reihenfolge**, nie Ereigniszeit — nur
+    so ist der Cursor ein lückenlos bestätigtes Präfix. Beschädigte
+    vollständige Zeilen (ungültiges UTF-8, defektes JSON, falsches Schema)
+    werden als eigene Tiles sichtbar; der Aufrufer isoliert sie, bevor der ACK
+    an ihnen vorbeigeht. Ein Dateischwanz ohne abschließenden Zeilenumbruch
+    (laufender Append oder abgebrochener Schreibvorgang) endet die Kette
+    unbestätigt — er darf weder bestätigt noch als beschädigt gelten.
+    """
+    tiles: "list[SyncTile]" = []
+    tail_files: "list[str]" = []
     if not poll_dir.is_dir():
-        return rows
+        return BufferScan(tiles, [], [], tail_files)
     ack = ack or empty_ack()
     cursors = ack.get("cursors") or {}
+    recorded_stamps = ack.get("stamps") or {}
     for path in sorted(poll_dir.glob("*.jsonl")):
         if not _file_in_v1_rescan(path, ack):
             continue
         start = int(cursors.get(path.name, 0) or 0)
         try:
-            size = path.stat().st_size
+            stat = path.stat()
         except OSError:
             continue
+        size = stat.st_size
         if start > size:
+            # Verkürzung: Neubeginn bei 0 — im Zweifel erneut senden.
             start = 0
+        if start > 0:
+            # A21-B1.1: Das bestätigte Präfix muss noch dieselben Bytes
+            # tragen. Ein Ersatz unter dem Cursor (Rotation, auch bei gleicher
+            # Größe oder grober mtime-Auflösung) ändert den Hash: dann wird
+            # von 0 erneut gesendet statt still zu überspringen.
+            recorded = recorded_stamps.get(path.name)
+            want = recorded.get("prefix_sha256") if isinstance(recorded, dict) else None
+            if want and _prefix_sha256(path, start) != want:
+                start = 0
         if start >= size:
             continue
+        span_start = start
         with path.open("rb") as handle:
             if start:
                 handle.seek(start)
@@ -291,23 +404,119 @@ def read_unsynced(
                 if not raw:
                     break
                 end_offset = handle.tell()
-                line = raw.decode("utf-8").strip()
-                if not line:
-                    continue
+                if not raw.endswith(b"\n"):
+                    # Unvollständiger Dateischwanz: nicht bestätigen, nicht
+                    # beschädigt nennen — er kann gerade erst teilweise
+                    # geschrieben worden sein und noch wachsen.
+                    tail_files.append(path.name)
+                    break
+                body = raw[:-1]
+                snap = None
+                ts = None
+                reason = None
                 try:
-                    snap = json.loads(line)
-                    ts = parse_ts(snap["fetched_at"])
-                except (ValueError, KeyError, TypeError, UnicodeDecodeError):
-                    bad += 1
+                    line = body.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    reason = "utf8"
+                    line = ""
+                if reason is None and not line:
+                    # Leerzeile: Bytes liegen im Span des Folgetiles.
                     continue
-                rows.append((ts, snap, path.name, end_offset))
-    if bad:
-        log(
-            f"⚠ {bad} kaputte Puffer-Zeile(n) übersprungen (Abbruch während Schreibens?) "
-            "— sie werden nicht nachgeschickt."
-        )
-    rows.sort(key=lambda r: (r[0], r[2], r[3]))
-    return rows
+                if reason is None:
+                    try:
+                        parsed = json.loads(line)
+                    except ValueError:
+                        reason = "json"
+                    else:
+                        try:
+                            if not isinstance(parsed, dict):
+                                raise TypeError("payload is not an object")
+                            ts = parse_ts(parsed["fetched_at"])
+                            snap = parsed
+                        except (AttributeError, KeyError, TypeError, ValueError):
+                            reason = "schema"
+                            snap = None
+                            ts = None
+                if reason is not None:
+                    tiles.append(
+                        SyncTile(
+                            "damaged",
+                            path.name,
+                            span_start,
+                            end_offset,
+                            None,
+                            None,
+                            body,
+                            reason,
+                        )
+                    )
+                else:
+                    tiles.append(
+                        SyncTile(
+                            "row",
+                            path.name,
+                            span_start,
+                            end_offset,
+                            ts,
+                            snap,
+                            body,
+                            None,
+                        )
+                    )
+                span_start = end_offset
+    rows = [tile for tile in tiles if tile.kind == "row"]
+    damaged = [tile for tile in tiles if tile.kind == "damaged"]
+    return BufferScan(tiles, rows, damaged, tail_files)
+
+
+def read_unsynced(poll_dir: Path, ack: dict | None) -> "list[SyncTile]":
+    """Unbestätigte Meldungen — Sicht ``kind == \"row\"`` auf :func:`scan_unsynced`.
+
+    Eine beschädigte Zeile beendet den Lauf nicht mehr (A21-B1.2): sie fehlt
+    hier, wird aber in :func:`scan_unsynced` sichtbar und von
+    :func:`run_upload` mit Datei-/Offsetbezug isoliert, bevor der ACK an ihr
+    vorbeigeht. Der Dateischwanz ohne Zeilenumbruch bleibt unbestätigt.
+    """
+    return scan_unsynced(poll_dir, ack).rows
+
+
+def quarantine_tile(meta_dir: Path, tile: SyncTile) -> Path:
+    """A21-B1.2: Isoliert eine beschädigte Pufferzeile nachvollziehbar.
+
+    Eine Datei je Vorfall unter ``meta/quarantine/``, benannt nach Quelldatei
+    und Byte-Offsets. Exklusives Anlegen macht Wiederholungen nach einem
+    Abbruch idempotent. Der Eintrag nennt Datei, Offsets, Grund, SHA-256 und
+    die Rohbytes (base64) — die Diagnose im Log nennt nur Datei, Offsets und
+    Zähler, nie Zugangsdaten und nie Rohinhalte.
+    """
+    qdir = meta_dir / "quarantine"
+    qdir.mkdir(parents=True, exist_ok=True)
+    target = qdir / f"{tile.file_name}.{tile.start_offset}-{tile.end_offset}.json"
+    payload = {
+        "file": tile.file_name,
+        "start_offset": int(tile.start_offset),
+        "end_offset": int(tile.end_offset),
+        "reason": tile.reason,
+        "sha256": hashlib.sha256(tile.raw).hexdigest(),
+        "raw_base64": base64.b64encode(tile.raw).decode("ascii"),
+        "quarantined_at": dt.datetime.now().astimezone().isoformat(),
+    }
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    try:
+        with target.open("x", encoding="utf-8") as handle:
+            handle.write(data)
+    except FileExistsError:
+        # Bereits isoliert (Retry nach Abbruch zwischen Quarantäne und Ack).
+        return target
+    except OSError:
+        # Halb geschriebener Eintrag gilt nicht als isoliert — beim Retry
+        # wird erneut geschrieben.
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise
+    return target
 
 
 def load_station_names(poll_json: Path) -> "dict[str, dict[str, str]]":
@@ -723,10 +932,12 @@ def run_upload(cfg: Cfg, state: State) -> int:
     webhook_tick(cfg, state)
 
     ack = read_ack(cfg.meta_dir)
-    rows = read_unsynced(cfg.poll_dir, ack)
+    scan = scan_unsynced(cfg.poll_dir, ack)
+    rows = scan.rows
 
     if rows:
-        age_d = (dt.datetime.now().astimezone() - rows[0][0]).total_seconds() / 86400.0
+        oldest_ts = min(tile.ts for tile in rows)
+        age_d = (dt.datetime.now().astimezone() - oldest_ts).total_seconds() / 86400.0
         if (
             age_d >= OVERFLOW_ALARM_DAYS
             and time.time() - state.last_overflow_log >= OVERFLOW_LOG_EVERY_S
@@ -759,16 +970,37 @@ def run_upload(cfg: Cfg, state: State) -> int:
     newest = None
     wrote_prices = False
     n_points = 0
-    if rows:
-        for offset in range(0, len(rows), UPLOAD_BATCH_POINTS):
-            batch = rows[offset : offset + UPLOAD_BATCH_POINTS]
+    n_quarantined = 0
+    if scan.tiles:
+        for offset in range(0, len(scan.tiles), UPLOAD_BATCH_POINTS):
+            batch = scan.tiles[offset : offset + UPLOAD_BATCH_POINTS]
             lines: "list[str]" = []
-            for ts, snap, _file_name, _end in batch:
-                lines.extend(
-                    snap_to_lines(
-                        ts, snap, names_by_city.get(snap.get("city") or "", {})
+            for tile in batch:
+                if tile.kind == "row":
+                    lines.extend(
+                        snap_to_lines(
+                            tile.ts,
+                            tile.snap,
+                            names_by_city.get(tile.snap.get("city") or "", {}),
+                        )
                     )
-                )
+                    continue
+                # A21-B1.2: beschädigte Zeile VOR der Bestätigung isolieren.
+                # Scheitert die Quarantäne, bleibt der Cursor davor stehen —
+                # ein unbemerkter Import oder ein stiller Verlust ist beides
+                # ausgeschlossen.
+                try:
+                    quarantine_tile(cfg.meta_dir, tile)
+                    n_quarantined += 1
+                except OSError as e:
+                    state.fails += 1
+                    log(
+                        f"✗ Quarantäne für {tile.file_name} "
+                        f"@ {tile.start_offset}–{tile.end_offset} "
+                        f"({tile.reason}) fehlgeschlagen: {e} — Ack bleibt "
+                        "stehen, Unbestätigtes wird erneut versucht."
+                    )
+                    return 1
             if lines:
                 try:
                     influx_write(cfg, lines)
@@ -782,23 +1014,49 @@ def run_upload(cfg: Cfg, state: State) -> int:
                     wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
                     log(
                         f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
-                        f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
+                        f"Versuch in {wait} s (Ack bleibt stehen, der Bereich "
+                        "wird erneut gesendet)."
                     )
                     return 1
                 wrote_prices = True
                 n_points += len(lines)
             ack = advance_ack(ack, batch)
+            # A21-B1.1: je Datei den Hash des jetzt bestätigten Präfixes
+            # mitbestätigen — ein Ersatz unter dem Cursor (Rotation) ist
+            # damit beim nächsten Lauf erkennbar („im Zweifel erneut senden“).
+            for name in {tile.file_name for tile in batch}:
+                cursor = int(ack["cursors"].get(name, 0) or 0)
+                ack.setdefault("stamps", {})[name] = {
+                    "prefix_sha256": _prefix_sha256(cfg.poll_dir / name, cursor),
+                    "for_bytes": cursor,
+                }
             write_ack(cfg.meta_dir, ack)
-            newest = batch[-1][0]
+            for tile in batch:
+                if tile.ts is not None and (newest is None or tile.ts > newest):
+                    newest = tile.ts
         state.fails = 0
-        if newest:
-            log(
-                f"⇡ {len(rows)} Zeile(n) ({n_points} Punkte) → InfluxDB "
-                f"(synced until {newest.isoformat()})"
+        if rows or n_quarantined:
+            summary = (
+                f"⇡ {len(rows)} Zeile(n) ({n_points} Punkte) → InfluxDB — "
+                "zusammenhängendes Dateipräfix bestätigt"
             )
-            if wrote_prices:
-                # Issue 50: sichere Write-Bestätigung als Ereignis an die NAS-App.
-                notify_nas(cfg, state, newest)
+            if n_quarantined:
+                summary += (
+                    f"; ⚠ {n_quarantined} beschädigte Zeile(n) isoliert "
+                    "(meta/quarantine, Datei/Offset dort benannt)"
+                )
+            log(summary)
+        if scan.tail_files:
+            names = ", ".join(sorted(set(scan.tail_files)))
+            log(
+                f"⏳ Unvollständiger Dateischwanz in {names} — nicht bestätigt "
+                "und nicht beschädigt, wird später erneut gelesen."
+            )
+        if wrote_prices and newest:
+            # Issue 50: sichere Write-Bestätigung als Ereignis an die NAS-App.
+            # Watermark = jüngste Ereigniszeit der bestätigten Zeilen
+            # (Messgröße, keine Commit-Position).
+            notify_nas(cfg, state, newest)
 
     if heartbeat_line:
         try:
@@ -813,7 +1071,8 @@ def run_upload(cfg: Cfg, state: State) -> int:
             wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
             log(
                 f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
-                f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
+                f"Versuch in {wait} s (Ack bleibt stehen, der Bereich "
+                "wird erneut gesendet)."
             )
             return 1
         state.fails = 0
@@ -866,11 +1125,12 @@ def run_loop(cfg: Cfg, state: State) -> int:
 
 def dry_run(args: argparse.Namespace) -> int:
     ack = read_ack(args.poll_dir / "meta")
-    rows = read_unsynced(args.poll_dir, ack)
+    scan = scan_unsynced(args.poll_dir, ack)
+    rows = scan.rows
     hb = read_heartbeat_file(args.poll_dir)
     # Ohne Cfg-Ziel zeigt dry-run keine Webhook-Felder (nichts eingerichtet).
     hb_line = heartbeat_to_line(hb) if hb else None
-    if not rows and not hb_line:
+    if not rows and not scan.damaged and not hb_line and not scan.tail_files:
         log(
             f"0 unsynced Zeilen in {args.poll_dir} — Puffer voll gesynct ✓ (oder leer)."
         )
@@ -879,21 +1139,37 @@ def dry_run(args: argparse.Namespace) -> int:
         return 0
     names_by_city = load_station_names(args.poll_json)
     lines: "list[str]" = []
-    for ts, snap, _file_name, _end in rows:
+    for tile in rows:
         lines.extend(
-            snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {}))
+            snap_to_lines(
+                tile.ts, tile.snap, names_by_city.get(tile.snap.get("city") or "", {})
+            )
         )
     if hb_line:
         lines.append(hb_line)
     log(
         f"[dry-run] {len(rows)} unsynced Zeilen "
-        f"({rows[0][0].isoformat() if rows else '–'} … {rows[-1][0].isoformat() if rows else '–'}) → {len(lines)} Punkte, "
+        f"({rows[0].ts.isoformat() if rows else '–'} … {rows[-1].ts.isoformat() if rows else '–'}) → {len(lines)} Punkte, "
         "dies WÜRDE per POST /api/v2/write gesendet:"
     )
     for line in lines[:DRYRUN_MAX_LINES]:
         print("  " + line)
     if len(lines) > DRYRUN_MAX_LINES:
         print(f"  … (+{len(lines) - DRYRUN_MAX_LINES} weitere)")
+    if scan.damaged:
+        log(
+            f"[dry-run] {len(scan.damaged)} beschädigte Zeile(n) würden isoliert "
+            "(meta/quarantine): "
+            + ", ".join(
+                f"{t.file_name} @{t.start_offset}–{t.end_offset} ({t.reason})"
+                for t in scan.damaged[:5]
+            )
+        )
+    if scan.tail_files:
+        log(
+            "[dry-run] Unvollständiger Dateischwanz (nicht bestätigt): "
+            + ", ".join(sorted(set(scan.tail_files)))
+        )
     log("[dry-run] nichts gesendet, Ack bleibt stehen.")
     return 0
 
