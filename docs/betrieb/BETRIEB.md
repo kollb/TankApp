@@ -1129,7 +1129,9 @@ docker compose -f ops/nas/app/compose.yml start app
 
 `--compare` setzt die Quelle (der noch laufende oder angehaltene alte
 Bestand) ins Verhältnis: Schema-Version, Stornos, Summen und der
-Beleg-Fingerabdruck müssen übereinstimmen. Ohne `--compare` prüft der
+Beleg-Fingerabdruck müssen übereinstimmen. Der Verifizierer braucht nur die
+Python-Standardbibliothek — er läuft direkt auf dem NAS-Host, ohne
+App-Container. Ohne `--compare` prüft der
 Verifizierer den Bestand für sich (Vollständigkeit, Parsebarkeit, keine
 doppelte Identität). Danach einmal `GET /api/v1/health` prüfen: `app` =
 `online`, kein Alarm `store_too_large` oder `archive_corrupted`. Preise

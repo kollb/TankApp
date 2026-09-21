@@ -18,8 +18,9 @@ Quellbestand verglichen — gleiche Belegzahlen, Summen, Stornos und derselbe
 kanonische Fingerabdruck. Ohne Quelle prüft das Werkzeug nur die
 Selbstkonsistenz (die Gegenprobe läuft in tests/test_a21_b3_backup.py).
 
-Aufruf (Repository-Root, App-Abhängigkeiten installiert — z. B. im
-App-Container oder in der Entwicklungsumgebung):
+Aufruf (Repository-Root). Bewusst nur Standardbibliothek: Der Lesepfad über
+``app.feedback`` braucht keine Pakete — der Verifizierer läuft daher direkt
+mit dem python3 des NAS-Hosts, ohne App-Container oder -Abhängigkeiten:
 
     python3 ops/nas/verify_restore.py --runtime <wiederhergestelltes runtime/> \
         [--compare <Quell-runtime/>] [--json]
