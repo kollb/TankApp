@@ -1,6 +1,14 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 21.09.2026 · App-Version **0.64.0** — neu seit 0.64.0 (A21-B1,
+> Stand: 21.09.2026 · App-Version **0.65.0** — neu seit 0.65.0 (A21-B2,
+> Issues #202–#204): die **Messung beginnt an der Requestzeile**
+> (Client-Leerlauf steht als `idle` im `Server-Timing`, außerhalb von
+> `total`/`X-Process-Time`; jede Antwort trägt eine `X-Request-ID`, der
+> Pi-Proxy die Spans `pi_*`/`nas_*`), **ein Lesezustand je Revision** für
+> `/overview` (`data_version`, `partial_errors`, Singleflight) und
+> **Ablagen an der Datenabhängigkeit** (Verlauf am Preisstand statt an
+> Litern; Dateistempel mit Inode und Inhaltsabdruck statt `int(mtime)`).
+> Neu seit 0.64.0 (A21-B1,
 > Issues #198–#201): die **Freigabekette** von `decide`
 > (`blocking_reasons`, `valid_until`, `decision_ready = (action !=
 > "no_advice")`, siehe [Decide](#decide-b4-primär)) und die
@@ -390,6 +398,59 @@ Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (k
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).
 
+## Overview (B7 Alltags-Aggregat)
+
+`GET /api/v1/overview?city=Frankfurt&fuel=e10&station_id=<uuid>&liters=40&…`
+
+Eine Anfrage statt sechs paralleler GUI-Polls: `decide`, `fills`,
+`stats/summary`, fällige `episodes` und die Tageskurve (`day`, inklusive
+Tonlagen-Skala `band`) in einer Antwort.
+
+```json
+{
+  "generated_at": "2026-09-21T17:58:25+00:00",
+  "data_version": "9cd4a15b21487971d9fbb02b26b14f96327ed784",
+  "partial_errors": [],
+  "decide": { "…": "wie /decide" },
+  "fills": { "…": "wie /fills" },
+  "stats_summary": { "…": "wie /stats/summary" },
+  "episodes": { "count": 0, "episodes": [] },
+  "day": { "points": [], "band": null, "error_code": null },
+  "error_code": null
+}
+```
+
+- **Ein Lesezustand je Revision (A21-B2.2, seit 0.65.0).** `decide` und
+  `stats_summary` teilen Ledger, Advice-/Wallet-Statistik und Schwellen — die
+  Tageskurve eingeschlossen. Die Revision ergibt sich aus
+  `data_version()` (Store, Archiv, Engine-/Selektionsartefakt, Profil,
+  Polling-Set), einem 5-Minuten-Zeitfenster und `m7_auto_apply`. Innerhalb der Revision
+  dient die Berechnung aus dem Prozessspeicher (auch für Anfragen ohne
+  `If-None-Match`); ein neuer Beleg, ein neuer Snapshot, ein neues
+  Uhr-/Tagesfenster oder eine geänderte Policy rechnen neu. Parallele
+  Anfragen derselben Revision warten auf **eine** Rechnung (Singleflight),
+  Fehler werden nicht gespeichert.
+- **`data_version`** nennt den Stand, aus dem **alle** Teile der Antwort
+  stammen. Sie ist nicht das ETag (das ist `sha1(data_version|route|params)`),
+  sondern dessen sichtbarer Anteil: Ein Client kann damit zwei Antworten
+  vergleichen, ohne die Kennzahl der Komponenten zu deuten.
+- **`partial_errors[]`** benennt Teilausfälle je Komponente — `day`,
+  `decide`, `stats_summary`, `fills`, `episodes`
+  (`{"component": "…", "error_code": "…"}`).
+  `error_code: null` auf oberster Ebene heißt nur „die Anfrage ist nicht
+  gescheitert“ — es ist **kein** Vollständigkeitsnachweis (Auditbefund §4.3:
+  ohne Influx-Konfiguration stand innen `influx_read_failed`, außen `null`).
+  Leere Liste = alle Komponenten haben geantwortet.
+- **ETag/304:** Dieselbe Revalidierung wie `decide`/`stats/summary` (O25);
+  ein 304 ist eine gültige Antwort und trägt `X-Process-Time`,
+  `Server-Timing` und `X-Request-ID` (A21-B2.1). Ein Cache-Treffer wird
+  zusätzlich gegen `valid_until` der mitgelieferten Aktion geprüft
+  (`release_still_valid`, A21-B1.4) — eine abgelaufene Freigabe erscheint aus
+  keinem Speicher erneut.
+- Die Teile tragen die Feldformen der Einzelendpunkte, **ohne** neue
+  Semantik: `decide` bleibt die Empfehlung mit Snapshot-Emission, `fills` und
+  `episodes` bleiben lesend.
+
 ## Episodes & Intent (B4)
 
 `GET /api/v1/episodes?status=due`
@@ -490,7 +551,9 @@ Ehrlichkeits-Regeln:
   Fenster, Ankerpreis und P-Schätzung), `settled_at` die Abrechnung. Ein
   **gewechselter Grund** ist dagegen eine neue Aussage und ergibt eine eigene
   Zeile. Der Schreibverzicht ist die Bedingung der ETag-Revalidierung von
-  `/overview` (`data_version()` liest den mtime-Wert des Stores, B7).
+  `/overview` (`data_version()` stempelt je Quelle
+  `Gerät:Inode:mtime_ns:Größe:Inhaltsabdruck`, B7/A21-B2.3 — gelesen werden
+  höchstens 64 KiB je Datei, darüber Kopf und Ende).
 
 Fehler:
 
@@ -1061,6 +1124,18 @@ Geschlossen/fehlend trennt Linie, offener Preis bleibt als Stufe stehen.
   kein Preis-Bestand. Das angefragte Fenster (`hours`) ist in der Anlaufphase
   größer als der Bestand; die GUI nennt darum die echte Reichweite, statt die
   Achse als volle Abdeckung erscheinen zu lassen.
+- **Ablage an der Datenabhängigkeit (A21-B2.3, seit 0.65.0).** Das Ergebnis
+  hängt an Station, Stadt, Kraftstoff, `hours` und dem **Preisstand**
+  (Collector-Heartbeat, local Heartbeat, Polling-Set, 60-s-Uhrfenster) —
+  nicht an Litern, Zeitwert, Tankstand oder Belegen. Eine Literänderung im
+  GUI kostet deshalb keine neue Influx-Query. Neuer Poll oder neues
+  Uhrfenster lesen neu; ein Fehler wird höchstens 5 s ausgeliefert (danach
+  versucht es der nächste Abruf erneut), parallele identische Abrufe erzeugen
+  **eine** Query (Singleflight), die Ablage ist begrenzt und verdrängt den
+  ältesten Stand gezielt. Der Tagesstreifen in
+  [Übersicht](#overview-b7-alltags-aggregat) nutzt dieselbe Ablage; die
+  Antwort bleibt ansonsten unverändert (`points`, `n_points`, `range_from`,
+  `range_to`, `error_code`, mit `band` nur im Overview-Pfad).
 
 ## Forecast
 

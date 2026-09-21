@@ -4,6 +4,65 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.65.0] – 2026-09-21
+
+**A21-B2 (Overview-Latenz: messen und Lesepfad entlasten)** —
+[Issue #202](https://github.com/kollb/TankApp/issues/202),
+[#203](https://github.com/kollb/TankApp/issues/203),
+[#204](https://github.com/kollb/TankApp/issues/204), Audit vom 21.09.2026
+([#197](https://github.com/kollb/TankApp/issues/197), §3.4/§3.5).
+
+- **#202 — die Messung beginnt an der Requestzeile.** Der Timer startete vor
+  dem Warten auf die nächste Keep-Alive-Anfrage: 300 ms Clientpause standen
+  als 301,7 ms Bearbeitungszeit in `X-Process-Time` (echte Arbeit: 1,8 ms) und
+  verfälschten die Routen-Statistik. Jetzt stempelt der Reader den Eingang der
+  Requestzeile; die Wartezeit steht getrennt als `idle` im `Server-Timing`
+  (ausdrücklich außerhalb von `total`). Neu sind `X-Request-ID` (übernommen
+  oder erzeugt, sanitisiert) und benannte Spans für History, Ledger, Advice,
+  Wallet, Snapshot, Serialisierung, gzip und Body; `/health` weist p95/Max je
+  Route und Verbindungen ohne Antwort aus. Der Pi-Proxy reicht die
+  Diagnose-Header durch, führt `pi_proxy`/`pi_total` getrennt und stellt die
+  NAS-Werte mit `nas_`-Präfix daneben. Metriknamen bleiben begrenzt (feste
+  Route-/Span-Listen, ID-Segmente werden zu `*`); Tokens, Stations- oder
+  Beleginhalte und private Querywerte stehen in keinem Label.
+  *Restgrenze:* keine Millisekunden-Zusage im Test (langsame CI), und die
+  Abnahme p95 ≤ 300 ms auf der Zielhardware ist #214 (A21-B5) — Docker,
+  Influx, Pi und NAS wurden hier nicht gefahren.
+- **#203 — ein Lesezustand je Revision.** `/overview` rief `decide` und
+  `stats/summary`; beide luden Store und Archiv selbst und rechneten Advice-
+  und Wallet-Statistik getrennt (bei 1 600 Settlements 1,82 s, davon 1,79 s
+  doppelt), der Snapshot-Vorblick parste den Store ein drittes Mal. Jetzt
+  liefert `app/read_state.py` **einen** Lesezustand je Revision (Datenstand +
+  5-Minuten-Uhrfenster + `m7_auto_apply`) mit heißem Store, gemergtem Ledger,
+  Statistik und daraus abgeleiteten Schwellen; `decide` und `stats_summary`
+  lesen dieselben Dicts. Parallele Anfragen einer Revision rechnen genau
+  einmal (Singleflight), Fehler werden nicht gespeichert, die Ablage ist auf
+  vier Revisionen begrenzt und verdrängt gezielt. Die Antwort trägt additiv
+  `data_version` und `partial_errors[{component,error_code}]`:
+  `error_code: null` außen ist kein Vollständigkeitsnachweis mehr. Kein
+  Ledger wird verkürzt und keine Zahl ersetzt — der Test vergleicht die
+  Statistik mit der direkten Rechnung auf demselben Bestand.
+- **#204 — Ablagen an der echten Datenabhängigkeit.** Der Verlauf hing an
+  Litern, Zeitwert und Tankstand: eine Literänderung kostete eine neue
+  Influx-Query und 3,76 s. Jetzt schlüsselt `prices_version()` die Verlaufs-
+  Ablage auf die Preisquellen (Herzschläge, Polling-Set, Uhrfenster); eine
+  Profiländerung invalidiert ETags und Lesezustand, aber nicht die
+  Preishistorie. Identische parallele Misses erzeugen eine Query
+  (Singleflight), Fehler verfallen nach 5 s, die Ablagen sind begrenzt und
+  verdrängen gezielt statt zu leeren (die Overview-Ablage leerte früher bei
+  64 Einträgen alles). Der Dateistempel ist jetzt
+  `Gerät:Inode:mtime_ns:Größe:Inhaltsabdruck` statt `int(mtime):Größe` —
+  gleich große Änderungen in derselben Sekunde invalidieren korrekt
+  (Audit-Reproduktion). Eine warme Ablage umgeht den O39-Leseschutz nicht;
+  das sichert ein Test am laufenden Server. *Restgrenze:* der Abdruck liest
+  je Aufruf höchstens 64 KiB (darüber Kopf/Ende; die App ersetzt ihre
+  Bestände atomar und fällt am Inode auf), und die Pi/NAS-Abnahme ist nicht
+  gefahren.
+- Doku: `docs/referenz/API.md` (Overview-Revision und Teilfehler,
+  `X-Request-ID`/`Server-Timing`, Verlaufs-Ablage),
+  `docs/entwicklung/QUALITAET.md` (Vorher/Nachher-Messung des Lesepfads,
+  Sandkasten — keine NAS-Abnahme), `docs/betrieb/RP2.md` (Pi-Diagnose).
+
 ## [0.64.0] – 2026-09-21
 
 **A21-B1 (Sofortschutz): Synchronisierung, Zugriff, Freigabe** —
