@@ -13,7 +13,7 @@ from .feedback import settle_snapshots
 def run_settlement_job(settings) -> dict[str, str | None]:
     try:
         from .data import LiveData
-        from .feedback import StoreCorrupted, StoreTooLarge
+        from .feedback import ArchiveCorrupted, StoreCorrupted, StoreTooLarge
         from .worker import JobAborted
 
         live = LiveData(settings)
@@ -35,6 +35,11 @@ def run_settlement_job(settings) -> dict[str, str | None]:
         return {"state": "failed", "error_code": "store_corrupted"}
     except StoreTooLarge:
         return {"state": "failed", "error_code": "store_too_large"}
+    except ArchiveCorrupted:
+        # A21-B3.1: Die Retention des Settlement-Laufs kann das Archiv nicht
+        # fortgeschrieben bekommen (fail-closed) — benannter Code, der heiße
+        # Bestand bleibt unverändert.
+        return {"state": "failed", "error_code": "archive_corrupted"}
     except Exception as exc:
         print(
             f"settlement: {type(exc).__name__}; Details werden nicht ausgegeben.",

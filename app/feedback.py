@@ -13,7 +13,9 @@ import datetime as dt
 import hashlib
 import json
 import math
+import os
 import random
+import tempfile
 import threading
 import time
 import uuid
@@ -216,6 +218,35 @@ class StoreCorrupted(RuntimeError):
     statt ein leerer Store den nächsten Schreibvorgang darüberzuschieben
     (stiller Datenverlust). Abhilfe ist Wiederherstellung aus einer
     Sicherung, nicht ein Überschreiben.
+    """
+
+
+class ArchiveCorrupted(RuntimeError):
+    """Bestehendes Feedback-Archiv ist unlesbar oder beschädigt (A21-B3.1).
+
+    Der Store ist seit S3 fail-closed; das Archiv (``archive.jsonl`` der
+    90-Tage-Retention) wurde dagegen still verderbt gelesen: Kaputte
+    JSON-Zeilen fielen aus der Bilanz, manche Lesefehler sahen aus wie ein
+    leerer Bestand (Audit 21.09.2026, #197 §1.5). Der Vertrag jetzt —
+    fünf Zustände, klar getrennt:
+
+    * **fehlend** → Erststart bzw. „Retention hat noch nie ausgelagert“:
+      leere Sammlungen, gesund (:func:`load_archive_records`).
+    * **unlesbar** (OSError: Rechte, I/O) und **defekt** (ungültiges UTF-8,
+      ungültige JSON-Zeile, kein Objekt, unbekannte ``collection`` — auch
+      ein abgebrochener Teil-Write am Dateiende) →
+      :class:`ArchiveCorrupted`: der Bestand bleibt unverändert am Ort und
+      liegt zusätzlich als Quarantäne-Kopie mit Report. Keine noch so
+      erlaubte Teilansicht: Eine Allzeitbilanz, die beschädigte Belege
+      still auslässt, wäre eine vollständige Bilanz ohne deren Inhalt —
+      deshalb leitet dieser Zustand auch keine normale M7-Freigabe ab.
+    * **zu neu** (Schema-Stempel über dem des Codes) →
+      :class:`StoreSchemaTooNew`: kein Defekt, Abhilfe ist das App-Update.
+
+    Writes schlagen fehl, sobald die Retention das Archiv anfassen würde
+    (``_append_archive``); der heiße Store bleibt dabei unangetastet — der
+    ausgelagerte Bestand geht nicht verloren, der Schreibversuch kehrt mit
+    diesem Fehler zurück.
     """
 
 
@@ -536,6 +567,23 @@ def locked_store(settings):
     nicht: ``record_snapshot`` prüft vorher sperrenfrei, ob der Aufruf den
     Store überhaupt ändert (``_peek_confirmation``), und bleibt sonst ohne
     Sperre. Sonst wartet ein Beleg hinter einem Poll, der nichts schreibt.
+
+    A21-B3.1 — Publikationsvertrag des Hotstore-/Archiv-Handovers. Innerhalb
+    dieser Sperre wird in **dieser** Reihenfolge veröffentlicht:
+
+    1. ``_append_archive`` ersetzt das Archiv atomar (``os.replace``) und
+       **vor** dem Store — der Archivbestand wächst als Menge nur.
+    2. ``save_store`` schreibt danach den Store ohne die ausgelagerten
+       Einträge, ebenfalls atomar.
+
+    Leser (``ledger_from_store``) lesen umgekehrt: **erst** den Store, dann
+    das Archiv. Damit sieht jeder Lesevorgang einen vollständigen Ledger:
+    Was vor dem Store-Lesen bereits ausgelagert war, steht im danach
+    gelesenen, nur gewachsenen Archiv; umgekehrt gewinnt bei Duplikaten der
+    heiße Stand. Ein Abbruch zwischen 1 und 2 lässt die Einträge in beiden
+    Dateien — ohne Verlust, ohne Verdopplung in der Bilanz; der nächste Lauf
+    erkennt die Identität wieder. Deshalb darf diese Reihenfolge nicht
+    gedreht und das Archiv nicht im Anhang-Modus geschrieben werden.
     """
     started = time.monotonic()
     with _STORE_THREAD_LOCK:
@@ -651,13 +699,190 @@ def _corrupt_feedback_store(settings, path, exc) -> StoreCorrupted:
     )
 
 
+# A21-B3.1: Die Sammlungen, die die Retention ins Archiv schreibt. Eine Zeile
+# mit einer anderen ``collection`` ist kein bekanntes Schema — früher wurde
+# sie still übersprungen, jetzt ist sie ein benannter Defekt.
+ARCHIVE_COLLECTIONS = ("episodes", "fills", "settlements")
+
+
+def _archive_identity(item: dict[str, Any]) -> tuple[str, Any] | None:
+    """Identität einer Archivzeile — dieselbe wie beim Merge in den Ledger.
+
+    Episoden und Füllungen tragen ``id``, Settlements ``snapshot_id`` (wie
+    :func:`_merge_by_id``). Zeilen ohne Identität (Altbestand) bleiben alle
+    erhalten — sie zu deduplizieren hieße, sie ununterscheidbar zu machen.
+    """
+    key = item.get("collection")
+    ident = item.get("snapshot_id") if key == "settlements" else item.get("id")
+    if not ident:
+        return None
+    return (str(key), str(ident))
+
+
+def _parse_archive_line(line: str, lineno: int) -> dict[str, Any]:
+    """Eine JSONL-Zeile des Archivs — streng, ohne stillen Rückfall (A21-B3.1).
+
+    Jede nicht-leere Zeile muss ein JSON-Objekt mit bekannter ``collection``
+    sein; der optionale ``schema_version``-Stempel darf nicht über dem des
+    Codes liegen (Zeilen ohne Stempel stammen aus Versionen ≤ 7 und laufen
+    wie bisher durch die Migration). Alles andere ist
+    :class:`ArchiveCorrupted` bzw. :class:`StoreSchemaTooNew`.
+    """
+    try:
+        item = json.loads(line)
+    except ValueError as exc:
+        raise ArchiveCorrupted(
+            f"Feedback-Archiv, Zeile {lineno}: ungültiges JSON ({exc})."
+        ) from exc
+    if not isinstance(item, dict):
+        raise ArchiveCorrupted(f"Feedback-Archiv, Zeile {lineno}: kein JSON-Objekt.")
+    key = item.get("collection")
+    if key not in ARCHIVE_COLLECTIONS:
+        raise ArchiveCorrupted(
+            f"Feedback-Archiv, Zeile {lineno}: unbekannte collection {key!r}."
+        )
+    stamp = item.get("schema_version")
+    if stamp is not None:
+        try:
+            version = int(stamp)
+        except (TypeError, ValueError) as exc:
+            raise ArchiveCorrupted(
+                f"Feedback-Archiv, Zeile {lineno}: unparsebarer "
+                f"schema_version-Stempel {stamp!r}."
+            ) from exc
+        if version > FEEDBACK_SCHEMA_VERSION:
+            raise StoreSchemaTooNew(
+                f"Feedback-Archiv trägt Schema-Stempel {version}, der Code "
+                f"kennt nur {FEEDBACK_SCHEMA_VERSION}. Erst die App "
+                "aktualisieren — das Archiv wird nicht überschrieben."
+            )
+    return item
+
+
+def _corrupt_archive(settings, path, exc) -> ArchiveCorrupted:
+    """A21-B3.1: Archiv-Defekt quarantänisieren und fail-closed melden.
+
+    Anders als beim Store wird die Kopie **inhaltsdedupliziert** benannt
+    (``archive-<sha16>.jsonl``): Das Archiv wird bei Defekt bei jedem Lese-
+    Versuch neu diagnostiziert (Decide, Overview, …) — eine Kopie je Vorfall
+    hätte die Quarantäne mit identischen Bytes gefüllt. Der Report wird je
+    Inhalt einmal geführt und zählt die Vorfälle (``occurrences``,
+    ``first_seen``/``at``). Die Quarantäne darf den Lese-/Schreibpfad nie
+    sprengen; gelingt die Kopie nicht, steht das im Fehler.
+    """
+    copied = False
+    occurrences = 1
+    first_seen = None
+    try:
+        raw_bytes = path.read_bytes()
+        digest = hashlib.sha256(raw_bytes).hexdigest()
+        quarantine = feedback_quarantine_dir(settings)
+        quarantine.mkdir(parents=True, exist_ok=True)
+        target = quarantine / f"archive-{digest[:16]}.jsonl"
+        if not target.exists():
+            target.write_bytes(raw_bytes)
+        copied = True
+        report = quarantine / f"archive-{digest[:16]}.report.json"
+        try:
+            previous = json.loads(report.read_text(encoding="utf-8"))
+            if isinstance(previous, dict):
+                occurrences = int(previous.get("occurrences", 1)) + 1
+                first_seen = previous.get("first_seen")
+        except (OSError, ValueError, TypeError):
+            pass
+        now_iso = dt.datetime.now(UTC).isoformat()
+        report.write_text(
+            json.dumps(
+                {
+                    "at": now_iso,
+                    "first_seen": first_seen or now_iso,
+                    "source": str(path),
+                    "size_bytes": len(raw_bytes),
+                    "sha256": digest,
+                    "error": str(exc) or type(exc).__name__,
+                    "occurrences": occurrences,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    note = (
+        " Der Defekt liegt unverändert in der Quarantäne."
+        if copied
+        else " Der Defekt konnte nicht für die Quarantäne kopiert werden."
+    )
+    return ArchiveCorrupted(
+        f"Feedback-Archiv ist unlesbar oder beschädigt "
+        f"({type(exc).__name__}: {exc}). Der Bestand bleibt unverändert und "
+        f"wird nicht überschrieben; eine Bilanz ohne die betroffenen Belege "
+        f"wäre eine scheinbar vollständige.{note} Wiederherstellung aus einer "
+        "Laufzeit-Sicherung (docs/betrieb/BETRIEB.md)."
+    )
+
+
+def archive_corruption_status(settings) -> dict[str, Any]:
+    """Billiger Gesundheitsblick auf das Archiv für ``/api/v1/health``.
+
+    Im Normalfall kostet er nur ein Verzeichnislisting der (leeren)
+    Quarantäne. Liegt dort ein Archiv-Report, wird **nur dann** der aktuelle
+    Bestand gelesen und gehasht und mit dem gemerkten Defekt verglichen:
+    gleiche Bytes heißt weiterhin defekt, andere Bytes (z. B. nach einem
+    Restore) heißt wieder gesund. Ein fehlendes Archiv ist der
+    Erststart-Zustand — kein Alarm. Health lügt so keinen Gesundzustand,
+    ohne bei jedem Request das ganze Archiv zu prüfen.
+    """
+    status: dict[str, Any] = {
+        "corrupted": False,
+        "error": None,
+        "last_seen": None,
+        "quarantine": None,
+    }
+    try:
+        reports = sorted(
+            feedback_quarantine_dir(settings).glob("archive-*.report.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return status
+    for report in reports:
+        try:
+            data = json.loads(report.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        digest = data.get("sha256")
+        if not isinstance(digest, str) or not digest:
+            continue
+        try:
+            current = hashlib.sha256(
+                feedback_archive_path(settings).read_bytes()
+            ).hexdigest()
+        except OSError:
+            # Datei fehlt (Erststart/absichtlich entfernt) — kein Defekt.
+            continue
+        if current == digest:
+            return {
+                "corrupted": True,
+                "error": data.get("error"),
+                "last_seen": data.get("at"),
+                "quarantine": report.name,
+            }
+    return status
+
+
 def store_recovery_options(settings) -> dict[str, Any]:
-    """S3: Was der Betrieb zur Wiederherstellung eines Defekts nutzen kann.
+    """S3/A21-B3.1: Was der Betrieb zur Wiederherstellung eines Defekts nutzen kann.
 
     ``quarantine``: die quarantänierten Defekt-Kopien (neueste zuerst, fünf)
-    relativ zum Laufzeitverzeichnis. ``backup``: das neueste Laufzeit-Backup
-    (``app/backup.py``) — darin liegt der letzte gute Store-Stand; nur, wenn
-    ein Backup-Ziel eingerichtet ist (ohne Ziel weiß die App nichts).
+    relativ zum Laufzeitverzeichnis — Store- **und** Archiv-Kopien (A21-B3.1).
+    ``backup``: das neueste Laufzeit-Backup (``app/backup.py``) — darin liegt
+    der letzte gute Store-Stand; nur, wenn ein Backup-Ziel eingerichtet ist
+    (ohne Ziel weiß die App nichts).
     """
     options: dict[str, Any] = {"quarantine": [], "backup": None}
     try:
@@ -665,7 +890,8 @@ def store_recovery_options(settings) -> dict[str, Any]:
         copies = sorted(
             (
                 path
-                for path in quarantine.glob("store-*.json")
+                for pattern in ("store-*.json", "archive-*.jsonl")
+                for path in quarantine.glob(pattern)
                 if path.is_file() and ".report." not in path.name
             ),
             key=lambda path: path.stat().st_mtime,
@@ -720,49 +946,134 @@ def _prune_and_archive(store: dict[str, Any]) -> list[dict[str, Any]]:
     return archived
 
 
+def _read_archive_text(settings, path: Path) -> str:
+    """Archiv-Bytes streng lesen — fehlend, unlesbar und defekt getrennt.
+
+    ``FileNotFoundError`` ist der Erststart-Zustand und wird als leerer Text
+    zurückgegeben; jeder andere OSError und defektes UTF-8 werden über
+    :func:`_corrupt_archive` diagnostiziert (Quarantäne + fail-closed).
+    """
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        raise _corrupt_archive(settings, path, exc) from exc
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _corrupt_archive(settings, path, exc) from exc
+
+
 def _append_archive(settings, items: list[dict[str, Any]]) -> None:
+    """Retention-Einträge ins Archiv — atomar veröffentlicht (A21-B3.1).
+
+    Publikationsvertrag des Hotstore-/Archiv-Handovers (siehe
+    :func:`locked_store`): Das Archiv wird **zuerst** atomar ersetzt
+    (``os.replace`` — Leser sehen entweder den alten oder den neuen
+    vollständigen Bestand, nie eine halbe Zeile), danach erst der Store ohne
+    die ausgelagerten Einträge. Früher wurde die Datei im Anhang-Modus
+    geschrieben: Ein Abbruch mitten im Schreiben hinterließ eine
+    abgeschnittene Zeile am Dateiende, die das Lesen still übersprang.
+
+    Der neue Bestand wird aus dem alten **streng** neu gebaut — ein
+    beschädigtes Archiv wird nicht fortgeschrieben (fail-closed), und
+    Zeilen, deren Identität (``id``/``snapshot_id``) schon existiert, werden
+    durch die letzte Fassung ersetzt („Wiederanlauf nach Unterbrechung“:
+    Einträge, die archiviert, aber deren Store-Speicherung abgebrochen
+    wurde, werden beim nächsten Lauf erkannt, statt das Archiv mit
+    Dubletten wachsen zu lassen).
+    """
     if not items:
         return
-    with feedback_archive_path(settings).open("a", encoding="utf-8") as fh:
-        for item in items:
-            fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
-
-
-def load_archive_records(settings) -> dict[str, list]:
-    """JSONL archive produced by 90-day prune — empty collections if missing."""
-    collections: dict[str, list] = {"episodes": [], "fills": [], "settlements": []}
     path = feedback_archive_path(settings)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return collections
-    except OSError:
-        return collections
-    for line in text.splitlines():
+    text = _read_archive_text(settings, path)
+    # Bestehende Zeilen unverändert übernehmen (kein Neu-Serialisieren der
+    # Altbestände), dedupliziert über die Identität: erste Position,
+    # letzter Inhalt — dieselbe Semantik wie _merge_by_id beim Lesen.
+    lines: list[str] = []
+    index: dict[tuple[str, Any], int] = {}
+    for lineno, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
         try:
-            item = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(item, dict):
-            continue
-        key = item.get("collection")
-        if key not in collections:
-            continue
-        collections[key].append({k: v for k, v in item.items() if k != "collection"})
+            item = _parse_archive_line(line, lineno)
+        except ArchiveCorrupted as exc:
+            raise _corrupt_archive(settings, path, exc) from exc
+        identity = _archive_identity(item)
+        if identity is not None and identity in index:
+            lines[index[identity]] = line
+        else:
+            if identity is not None:
+                index[identity] = len(lines)
+            lines.append(line)
+    for item in items:
+        stamped = {
+            "collection": item["collection"],
+            "schema_version": FEEDBACK_SCHEMA_VERSION,
+            **{k: v for k, v in item.items() if k != "collection"},
+        }
+        line = json.dumps(stamped, ensure_ascii=False, default=str)
+        identity = _archive_identity(stamped)
+        if identity is not None and identity in index:
+            lines[index[identity]] = line
+        else:
+            if identity is not None:
+                index[identity] = len(lines)
+            lines.append(line)
+    payload = "".join(line + "\n" for line in lines)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
     try:
-        migrated = migrate_store(
-            {
-                "schema_version": 1,
-                "episodes": collections["episodes"],
-                "fills": collections["fills"],
-                "settlements": collections["settlements"],
-                "audit": [],
-            }
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=".archive.jsonl.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = handle.name
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def load_archive_records(settings) -> dict[str, list]:
+    """JSONL-Archiv der 90-Tage-Retention — streng gelesen (A21-B3.1).
+
+    Fehlend → leere Sammlungen (Erststart; die Datei entsteht erst mit der
+    ersten Auslagerung). Alles andere — unlesbar, defektes UTF-8, ungültige
+    JSON-Zeile, unbekanntes Schema, zu neuer Stempel — ist ein benannter
+    Zustand statt einer stillen Teilbilanz: :class:`ArchiveCorrupted` bzw.
+    :class:`StoreSchemaTooNew` (Vertrag: :class:`ArchiveCorrupted`).
+    """
+    collections: dict[str, list] = {"episodes": [], "fills": [], "settlements": []}
+    path = feedback_archive_path(settings)
+    text = _read_archive_text(settings, path)
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            item = _parse_archive_line(line, lineno)
+        except ArchiveCorrupted as exc:
+            raise _corrupt_archive(settings, path, exc) from exc
+        collections[item["collection"]].append(
+            {k: v for k, v in item.items() if k not in ("collection", "schema_version")}
         )
-    except StoreSchemaTooNew:
-        return collections
+    migrated = migrate_store(
+        {
+            "schema_version": 1,
+            "episodes": collections["episodes"],
+            "fills": collections["fills"],
+            "settlements": collections["settlements"],
+            "audit": [],
+        }
+    )
     return {
         "episodes": migrated.get("episodes") or [],
         "fills": migrated.get("fills") or [],
@@ -802,6 +1113,12 @@ def ledger_from_store(hot: dict[str, Any], settings) -> dict[str, Any]:
     ``/overview`` rief das über ``decide`` und ``stats_summary`` zweimal. Der
     gemeinsame Lesezustand (``app/read_state.py``) lädt den **heißen** Store
     einmal und baut daraus denselben Ledger wie :func:`load_ledger`.
+
+    A21-B3.1: Die Reihenfolge ist Teil des Handover-Vertrags — **erst** der
+    heiße Store (Parameter, schon gelesen), **dann** das Archiv. Zusammen mit
+    der Schreibreihenfolge in :func:`locked_store` (Archiv zuerst, atomar)
+    sieht jeder Lesevorgang einen vollständigen Ledger: kein Verlust, keine
+    Vermischung unvereinbarer Stände, Duplikate gewinnt der heiße Stand.
     """
     archived = load_archive_records(settings)
     return {
