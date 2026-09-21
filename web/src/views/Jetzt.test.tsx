@@ -367,9 +367,11 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Das Modell lernt noch");
     expect(html).not.toContain("% sicher");
     // Nutzer-Feedback 16.09.2026: „Das Modell lernt noch … ist doppelt“. Der
-    // Satz kam zweimal, weil `nowVerdict.detail` ihn schon trägt
+    // Satz kam zweimal, weil `nowVerdict.detail` ihn schon trug
     // (`learning ?? reason_short`) und die Karte ihn darunter noch einmal
-    // rendert. Hier steht der Zählstand deshalb genau einmal.
+    // renderte. A21-B1.4: Die Detailzeile führt jetzt den Servergrund
+    // (`reason_short || learning`), der Zählstand steht in der eigenen
+    // Zeile darunter — weiterhin genau einmal, nie doppelt.
     expect(html.split("Das Modell lernt noch").length - 1).toBe(1);
     expect(html.split("von 100 abgeschlossenen Empfehlungen").length - 1).toBe(
       1,

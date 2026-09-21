@@ -708,17 +708,26 @@ export function JetztView(props: JetztViewProps) {
                 {bestNow.sentence}
               </p>
             )}
-            {/* Der Lernstand steht genau einmal auf der Karte: `detail` der
-                grauen Antwort **ist** `learning` (nowVerdict: `learning ??
-                reason_short`). Die frühere zusätzliche Zeile darunter zeigte
-                denselben Satz ein zweites Mal („Das Modell lernt noch — 4 von
-                100 …“ stand doppelt). `learning` bleibt nur für die
-                Leerzustands-Prüfung darüber stehen. */}
+            {/* A21-B1.4: `detail` der grauen Antwort führt den **Servergrund**
+                (Sperrgrund der Freigabekette bzw. Tabellenablehnung) —
+                nowVerdict: `reason_short || learning`. Der Zählstand
+                („Das Modell lernt noch …“) steht dann in der eigenen Zeile
+                darunter — jeweils genau einmal, nie doppelt (Nutzer-Feedback
+                16.09.2026: „Das Modell lernt noch … ist doppelt“). Ohne
+                Servergrund **ist** `detail` der Lernhinweis — dann nicht
+                noch einmal darunter. */}
             {verdict?.detail && verdict.action === "no_advice" && (
               <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
                 {verdict.detail}
               </p>
             )}
+            {verdict?.action === "no_advice" &&
+              learning &&
+              verdict.detail !== learning && (
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
+                  {learning}
+                </p>
+              )}
             {/* B4 (Befund UX/Mathe 19.09.2026, §1.4.1): Die Stationszeilen-
                 Liste lebt hier nicht mehr — „Stationen“ ist der einzige Ort
                 der Stationsliste (keine Dopplung, kein zweiter Ort derselben

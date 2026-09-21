@@ -600,7 +600,7 @@ def test_v1_ack_is_not_a_skip_predicate(uploader, saved_buffer):
     assert ack["cursors"] == {}
     assert ack["fetched_at_max"] == TIME
     rows = uploader.read_unsynced(cfg.poll_dir, ack)
-    assert rows and rows[0][0].isoformat() == TIME
+    assert rows and rows[0].ts.isoformat() == TIME
 
 
 # ---------------------------------------------------------------------------

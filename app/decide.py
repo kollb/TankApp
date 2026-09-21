@@ -121,6 +121,231 @@ def _is_price_fresh(station: dict[str, Any], threshold_minutes: float) -> bool:
     return age_f <= threshold_minutes
 
 
+# A21-B1.4: Zentrale Aktionsverwendbarkeit (Issue 201). Ein bestandenes,
+# **historisches** M7-Gate ersetzt keine aktuelle Evidenz: Eine prädiktive
+# Handlung wird nur freigegeben, wenn die gesamte Kette trägt —
+#   frisch (Preis) → Station nutzbar → Prognose/Horizont → Herkunft →
+#   Pfade → statistisches Gate → zulässige Handlung (M7).
+# Die Codes sind der API-/UI-Vertrag (``blocking_reasons``), stabil und
+# maschinenlesbar; die Tupelreihenfolge ist die Priorität, in der der erste
+# Sperrgrund ``reason_short`` trägt. Bewusst **kein** Kriterium: „PIT
+# active“ — eine rohe Veröffentlichung ist freigebbar, nur die Herkunft
+# (``origin``) muss bekannt und das Modell aktuell sein.
+ACTION_BLOCKING_REASONS = (
+    "price_missing",
+    "price_stale",
+    "station_unusable",
+    "data_stale",
+    "forecast_missing",
+    "forecast_expired",
+    "origin_unknown",
+    "paths_missing",
+    "paths_invalid",
+    "quality_missing",
+    "quality_gate",
+    "m7_pending",
+)
+
+# Menschliche Sperrgrund-Texte — dieselbe Sprache wie die Tabelle (§4.5).
+_BLOCK_REASON_TEXT = {
+    "price_missing": (
+        "Kein aktueller Preis für diese Station — ohne Anker keine Empfehlung."
+    ),
+    "price_stale": (
+        "Der Preis dieser Station ist nicht mehr frisch — "
+        "Empfehlungen brauchen aktuelle Preise."
+    ),
+    "station_unusable": (
+        "Diese Station hat derzeit geschlossen oder ist nicht nutzbar."
+    ),
+    "data_stale": (
+        "Die Prognose beruht auf veralteten Eingangsdaten — keine Handlungsempfehlung."
+    ),
+    "forecast_missing": ("Keine Prognose verfügbar — Empfehlung erst mit Modelldaten."),
+    "forecast_expired": (
+        "Der Prognosezeitraum ist abgelaufen — "
+        "Empfehlung erst mit dem nächsten Modell-Lauf."
+    ),
+    "origin_unknown": (
+        "Die Prognose nennt keinen Datenstand — Herkunft unbekannt, keine Freigabe."
+    ),
+    "paths_missing": (
+        "Die Prognoseverteilung fehlt — ohne sie keine belastbare Empfehlung."
+    ),
+    "paths_invalid": (
+        "Die Prognoseverteilung enthält ungültige Werte — keine belastbare Empfehlung."
+    ),
+    "quality_missing": (
+        "Keine ausreichende Güteinfo (7-Tage-Intervallquote) — "
+        "nicht belegt ist keine Aussage."
+    ),
+    "quality_gate": (
+        "Keine klare Empfehlung — Prognose derzeit unsicher "
+        "(7-Tage-Intervallquote außerhalb Toleranz). Tank nach Bedarf."
+    ),
+    "m7_pending": (
+        "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
+        "Empfehlungen aber noch nicht freigegeben."
+    ),
+}
+
+# Gültigkeitsfenster einer Freigabe — dieselbe 24-h-Altersgrenze wie die
+# Anzeigeprüfung des Pi (``rp2.fallback_gui.forecast_valid_for_display``).
+FORECAST_MAX_AGE_HOURS = 24
+# O4: Unter dieser Fallzahl ist das Rolling-PICP-Badge keine Aussage.
+QUALITY_MIN_DAYS = 3
+
+
+def _has_future_point(points: list[dict[str, Any]], now: dt.datetime) -> bool:
+    for point in points or []:
+        stamp = _parse_ts(point.get("timestamp"))
+        if stamp is not None and stamp > now:
+            return True
+    return False
+
+
+def _paths_reason(draws_24h: Any) -> str | None:
+    """``paths_missing``/``paths_invalid``/None — Pfade = veröffentlichte Draws.
+
+    Die Minima sind die Simulationspfade der Fensterminima (2-D: Block ×
+    Ziehung). Fehlende Pfade sind **kein** Freigabegrund mehr (Issue 201:
+    „fehlende Pfade → Median-Potenzial trotzdem prädiktive Aktion“ war der
+    Bug) — nichtendliche Werte sind ein eigener Sperrgrund statt einer
+    stillen ``None`` in der Prozent-Rechnung.
+    """
+    minima = draws_24h.get("minima") if isinstance(draws_24h, dict) else None
+    if not minima:
+        return "paths_missing"
+    for block in minima:
+        entries = block if isinstance(block, (list, tuple)) else [block]
+        if not entries:
+            return "paths_invalid"
+        for value in entries:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return "paths_invalid"
+            if not math.isfinite(number):
+                return "paths_invalid"
+    return None
+
+
+def _action_blocking_reasons(
+    station: dict[str, Any],
+    forecast_data: dict[str, Any],
+    *,
+    fresh_threshold_minutes: float,
+    now: dt.datetime,
+) -> list[str]:
+    """A21-B1.4: Trägt die **aktuelle** Evidenz eine prädiktive Handlung?
+
+    Zentrale Verwendbarkeitsprüfung für jede Handlungsausgabe — auch aus
+    Caches und Wiederkehr-Pfaden. Preis- und Potenzialanzeige bleiben davon
+    unberührt (Ankerpreis darf der ``last_price``-Fallback sein, die
+    Fenster zeigen ihr Median-Potenzial) — nur die **Freigabe** hängt an
+    dieser Kette. Ohne Prognose sind die Folgeprüfungen subsumiert; die
+    Rückgabe ist in ``ACTION_BLOCKING_REASONS``-Reihenfolge sortiert.
+    """
+    found: set[str] = set()
+    # 1 — frisch: Nur ein frischer Live-Preis trägt die Freigabe. ``price``
+    #     ist bereits ``None``, sobald die Beobachtung alt oder die Station
+    #     geschlossen ist (``stations()``) — mit ``last_price`` ist der Preis
+    #     also *vorhanden, aber alt*.
+    if station.get("price") is None:
+        if station.get("last_price") is None:
+            found.add("price_missing")
+        else:
+            found.add("price_stale")
+    elif not _is_price_fresh(station, fresh_threshold_minutes):
+        found.add("price_stale")
+    # 2 — Station nutzbar: geschlossene Stationen empfehlen nichts.
+    if (station.get("status") or "open") != "open":
+        found.add("station_unusable")
+    points = forecast_data.get("points") or []
+    if not forecast_data or not points:
+        found.add("forecast_missing")
+        return [r for r in ACTION_BLOCKING_REASONS if r in found]
+    # 3 — Prognose/Horizont: gültiger Zeitraum und frische Eingangsdaten.
+    if forecast_data.get("stale_data_at_origin") is True:
+        found.add("data_stale")
+    origin = _parse_ts(forecast_data.get("origin"))
+    if origin is None:
+        # 4 — Herkunft: ohne bekannten Datenstand ist nichts belegt.
+        found.add("origin_unknown")
+    else:
+        age = now - origin
+        if not dt.timedelta(0) <= age <= dt.timedelta(hours=FORECAST_MAX_AGE_HOURS):
+            found.add("forecast_expired")
+    if not _has_future_point(points, now):
+        found.add("forecast_expired")
+    # 5 — Pfade: die veröffentlichte Verteilung muss da und reell sein.
+    paths = _paths_reason(forecast_data.get("draws_24h"))
+    if paths:
+        found.add(paths)
+    # 6 — statistisches Gate: nicht belegt ist keine Aussage (O4), rot ist
+    #     eine aktive Sperre — „kein roter PICP“ ist keine positive Güte.
+    rolling = (forecast_data.get("rolling_picp_7d") or {}).get("current") or {}
+    badge = rolling.get("badge") if isinstance(rolling, dict) else None
+    days = rolling.get("n_days") if isinstance(rolling, dict) else None
+    if badge not in ("green", "yellow", "red"):
+        found.add("quality_missing")
+    else:
+        try:
+            enough_days = days is not None and int(days) >= QUALITY_MIN_DAYS
+        except (TypeError, ValueError):
+            enough_days = False
+        if not enough_days:
+            found.add("quality_missing")
+        elif badge == "red":
+            found.add("quality_gate")
+    return [r for r in ACTION_BLOCKING_REASONS if r in found]
+
+
+def _action_valid_until(
+    station: dict[str, Any],
+    forecast_data: dict[str, Any],
+    *,
+    fresh_threshold_minutes: float,
+    now: dt.datetime,
+) -> str:
+    """Ende der Freigabe-Gültigkeit (ISO) — min(Preisfrische, Modellalter)."""
+    bounds: list[dt.datetime] = []
+    age = station.get("age_minutes")
+    try:
+        age_f = float(age) if age is not None else None
+    except (TypeError, ValueError):
+        age_f = None
+    if age_f is not None:
+        remaining = max(0.0, fresh_threshold_minutes - age_f)
+        bounds.append(now + dt.timedelta(minutes=remaining))
+    origin = _parse_ts(forecast_data.get("origin"))
+    if origin is not None:
+        bounds.append(origin + dt.timedelta(hours=FORECAST_MAX_AGE_HOURS))
+    if not bounds:
+        bounds.append(now + dt.timedelta(minutes=fresh_threshold_minutes))
+    return min(bounds).isoformat()
+
+
+def release_still_valid(decide_res: dict[str, Any] | None, now: dt.datetime) -> bool:
+    """A21-B1.4: Darf eine gecachte Freigabe noch gezeigt werden?
+
+    Eine freigegebene Aktion trägt ``valid_until``; abgelaufen darf sie aus
+    **keinem** Cache erneut erscheinen (Overview-Cache-Hit, Übergabe,
+    Wiederkehr). ``no_advice`` ohne ``valid_until`` altert nicht — eine
+    Ablehnung ist zeitunabhängig gültig. Unlesbare Gültigkeit wird als
+    abgelaufen gewertet (fail-safe, im Zweifel neu berechnen).
+    """
+    if not isinstance(decide_res, dict):
+        return True
+    raw = decide_res.get("valid_until")
+    if not raw:
+        return True
+    until = _parse_ts(raw)
+    if until is None:
+        return False
+    return now < until
+
+
 def _parse_ts(value: Any) -> dt.datetime | None:
     if not value or not isinstance(value, str):
         return None
@@ -1230,37 +1455,63 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     else:
         p_decision = None
 
-    # M7-Gate (§0.4): Vor der Kalibrierung keine Handlungsempfehlung und
-    # kein P_besser anzeigen — der Ledger misst die Tabelle trotzdem (Shadow).
-    # F2-P_lohnt und F3-Fenster-P sind Informationswerte aus der Verteilung
-    # (§4.2/§4.3) und hängen nicht am Kalibrierungs-Gate. Die Tankstand-
-    # Warnung (A2) ist Physik und erscheint unabhängig davon als eigener Block.
-    if is_calibrated:
+    # A21-B1.4: Freigabekette (Issue 201) — ein bestandenes, historisches
+    # M7-Gate ersetzt keine aktuelle Evidenz. Die zentrale Verwendbarkeits-
+    # prüfung geht **jeder** Handlungsausgabe voran; erst wenn die Kette frei
+    # und M7 bestanden ist, erscheint die Tabelle (oder der A2-Physik-Kipp)
+    # als Handlung. Der Ledger misst die Tabelle weiter im Shadow-Betrieb
+    # (``action_base``), auch wenn die Anzeige gesperrt ist.
+    chain_reasons = _action_blocking_reasons(
+        chosen_station,
+        forecast_data,
+        fresh_threshold_minutes=fresh_threshold,
+        now=clock_now,
+    )
+    blocking_reasons = list(chain_reasons)
+    if not is_calibrated:
+        blocking_reasons.append("m7_pending")
+    if blocking_reasons:
+        action = "no_advice"
+        p_correct = None
+        confidence_badge = "low"
+        # Drei Fälle — vorher waren es zwei (§4.5, Konzept §4.4):
+        #   * Die **Evidenzkette** überstimmt eine Tabellen-Aktion (oder den
+        #     A2-Physik-Kipp): ihr erster Sperrgrund führt den Text — auch
+        #     wenn die Tabelle aus dem last_price-Fallback heraus „warten“
+        #     gerechnet hätte (kein Median-Potenzial als Handlung).
+        #   * Die **Tabelle** hat abgelehnt: Ihr Grund ist die stabile
+        #     Aussage über die Datenlage (an ihrem Text hängen Kollapsregel
+        #     und Schreibverzicht des Ledgers, B7) — er bleibt sichtbar,
+        #     sonst sagt die App nur noch „Kalibrierung steht aus“ und
+        #     verschweigt, warum sie nichts vorschlägt. Die weiteren
+        #     Sperrgründe stehen maschinenlesbar in ``blocking_reasons``.
+        #   * Nur M7 fehlt und die Tabelle hätte empfohlen: der
+        #     Kalibrierungs-Hinweis. Eine Empfehlung ohne Freigabe als
+        #     „Grund“ zu zeigen, wäre die Empfehlung selbst.
+        if chain_reasons and action_base != "no_advice":
+            reason_short = _BLOCK_REASON_TEXT[chain_reasons[0]]
+        elif action_base == "no_advice":
+            reason_short = _gate_safe_reason(reason_code, reason)
+        else:
+            reason_short = _BLOCK_REASON_TEXT["m7_pending"]
+    else:
         action = action_base
         p_correct = p_decision
         confidence_badge = badge
         reason_short = reason
-    else:
-        action = "no_advice"
-        p_correct = None
-        confidence_badge = "low"
-        # Zwei verschiedene Fälle, die vorher denselben Text trugen (§4.5,
-        # Konzept §4.4):
-        #   * Die **Tabelle** hat abgelehnt (kein Anker, kein Fenster, keine
-        #     Prognose, Grauzone, rotes Güte-Gate). Ihr Grund ist keine
-        #     Empfehlung, sondern eine Aussage über die Datenlage — er bleibt
-        #     sichtbar, sonst sagt die App nur noch „Kalibrierung steht aus“
-        #     und verschweigt, warum sie nichts vorschlägt.
-        #   * Die Tabelle hätte empfohlen, das **M7-Gate** verdeckt sie.
-        #     Dort bleibt der Kalibrierungs-Hinweis: Eine Empfehlung ohne
-        #     Freigabe als „Grund“ zu zeigen, wäre die Empfehlung selbst.
-        if action_base == "no_advice":
-            reason_short = _gate_safe_reason(reason_code, reason)
-        else:
-            reason_short = (
-                "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
-                "Empfehlungen aber noch nicht freigegeben."
-            )
+    # Bereitschaft ↔ Handlung: genau die freigegebene Aktion ist „ready“ —
+    # nie ein Widerspruch zwischen beiden Feldern (API-/UI-/Failover-Vertrag).
+    decision_ready = action != "no_advice"
+    valid_until = (
+        _action_valid_until(
+            chosen_station,
+            forecast_data,
+            fresh_threshold_minutes=fresh_threshold,
+            now=clock_now,
+        )
+        if decision_ready
+        else None
+    )
 
     # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
     # p_besser ist die Verteilungs-P, die Brier gegen das Settlement misst —
@@ -1378,7 +1629,12 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
             "default_fills": wh_default_n,
         },
         "calibrated": is_calibrated,
-        "decision_ready": False,
+        # A21-B1.4: Bereitschaft = freigegebene Handlung; die maschinenlesbaren
+        # Sperrgründe und die Gültigkeitsgrenze der Freigabe stehen daneben
+        # (API-/UI-Vertrag, Issue 201).
+        "decision_ready": decision_ready,
+        "blocking_reasons": blocking_reasons,
+        "valid_until": valid_until,
         # Engine-Qualität der ausgewählten Station (Konzept §3.3.3):
         # Rolling-PICP 7 d aus dem 21-Tage-Backtest. „gate“ ist gesetzt,
         # wenn das Güte-Gate (§4.4/§4.5 Schritt 1) die Empfehlung blockiert.

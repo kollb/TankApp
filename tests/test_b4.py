@@ -423,6 +423,8 @@ def test_decline_reason_visible_before_m7_but_recommendation_muted(b4_settings):
 
     # (b) Mit Draws spricht die Tabelle „warten“; das Gate verdeckt sie und
     #     der Ledger misst trotzdem (Shadow-Betrieb ab Tag 1).
+    #     A21-B1.4: die Evidenzkette steht frei (Güte belegt) — gesperrt hat
+    #     hier tatsächlich nur das M7-Gate.
     path = b4_settings.runtime / "engine/current.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -435,6 +437,14 @@ def test_decline_reason_visible_before_m7_but_recommendation_muted(b4_settings):
                         "city": "Frankfurt",
                         "fuel": "e10",
                         "origin": NOW.isoformat(),
+                        "rolling_picp_7d": {
+                            "current": {
+                                "badge": "green",
+                                "picp_pct": 95.0,
+                                "points": 144,
+                                "n_days": 7,
+                            }
+                        },
                         "points": [
                             {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
                             {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},
@@ -566,6 +576,14 @@ def test_snapshot_collapse_rule(b4_settings):
                         "city": "Frankfurt",
                         "fuel": "e10",
                         "origin": NOW.isoformat(),
+                        "rolling_picp_7d": {
+                            "current": {
+                                "badge": "green",
+                                "picp_pct": 95.0,
+                                "points": 144,
+                                "n_days": 7,
+                            }
+                        },
                         "points": [
                             {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.60},
                             {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.61},

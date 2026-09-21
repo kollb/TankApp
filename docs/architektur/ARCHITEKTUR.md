@@ -1,6 +1,6 @@
 # TankApp Architektur — Pi ↔ NAS ↔ Browser ↔ RP2
 
-> Stand: 15.09.2026 · App-Version 0.38.0 — extrahiert aus [KONZEPT.md](../produkt/KONZEPT.md) §9
+> Stand: 21.09.2026 · App-Version 0.64.0 (Ack-Vertrag A21-B1.1 nachgezogen) — extrahiert aus [KONZEPT.md](../produkt/KONZEPT.md) §9
 > und [INSTALL.md](../betrieb/INSTALL.md), ergänzt um RP2-Zugang, Alarm-Aggregation und die
 > benannten Datenverlust-Fenster. Betrieb/Handgriffe: [BETRIEB.md](../betrieb/BETRIEB.md).
 
@@ -60,7 +60,7 @@ Produktprinzip: Aus Prognose-Quantilen wird eine Entscheidung mit Kalibrierungsa
 | 24/7-Zugang + Ausfall-GUI | **RP2/Pi: Port 8000** | proxyt das NAS, zeigt sonst Live-Preise + gecachte Prognosen → [RP2.md](../betrieb/RP2.md) |
 | Alarm-Aggregation | **NAS: `/api/v1/health`** | ein `alarms[]`-Block statt sieben Endpunkte, ohne zusätzliche Netz-/Influx-Zugriffe |
 
-Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage (aber seit 13.09.2026: Dateien vollständig vor `meta/synced_until` werden nach Ack und 1 Tag Puffer gelöscht, RAM sinkt auf ~1–2 Tage — siehe [SPEICHER.md](../betrieb/SPEICHER.md) 4.1). Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until`, idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
+Ablauf Collector: append JSON-Zeilen an `/dev/shm/tankapp/YYYY-MM-DD.jsonl`; Ringpuffer 7 Tage (aber seit A21-B1.1: Dateien mit vollständig bestätigtem Byte-Präfix in `meta/synced_until` werden nach Ack und 1 Tag Puffer gelöscht, RAM sinkt auf ~1–2 Tage — siehe [SPEICHER.md](../betrieb/SPEICHER.md) 4.1). Uploader pingt TCP 8086 alle 60s, Batch-Transfer, Ack via `meta/synced_until` als lückenlos bestätigtes Dateipräfix (Schema v2, Ereigniszeiten sind nie Commit-Position), idempotent. Jeder Punkt enthält `station_id` UUID-Tag; `station` bleibt Anzeigename. Replay ist explizit.
 
 **Datenverlust-Fenster (explizit, TODO G3):** Der Ringpuffer behält
 `RING_DAYS = 7` Tage. Ist das NAS **länger** offline, verwirft `ring_prune`
@@ -135,8 +135,9 @@ Key als Datei `data/apikey.txt` chmod 600 sicherer als Env.
 
 Uploader läuft als zweite Service auf demselben Pi:
 
-- Liest unsynced Zeilen hinter `meta/synced_until`
-- Schiebt nach InfluxDB, schiebt Ack erst nach 2xx weiter
+- Liest unbestätigte Zeilen hinter dem Byte-Cursor in `meta/synced_until` (Schema v2)
+- Schiebt nach InfluxDB, schiebt Ack erst nach 2xx weiter — und dann nur als lückenlos verkettetes Dateipräfix; im Zweifel wird erneut gesendet
+- Beschädigte vollständige Zeilen gehen nach `meta/quarantine/` statt den Lauf zu brechen oder still zu verlieren (A21-B1.2)
 - Backoff 60s → 15min
 - systemd Type=notify + WatchdogSec=30
 
