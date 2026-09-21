@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 20.09.2026 · App-Version 0.61.0
+> Stand: 21.09.2026 · App-Version 0.62.0
 
 ## Inhaltsverzeichnis
 
@@ -50,23 +50,6 @@ Regressionstests.
   tatsächlich durchsetzen (S2). **Abnahme:** Cold-cache-Erstabruf,
   Tokenentzug und 24-h-Offline-Cache mit aktivem Worker im echten Browser
   testen; keine Abschaltung des Workers nur für diese Zusicherungen.
-
-#### NP4 — P1: Trainings- und Kalibrierungsverträge korrigieren
-
-- [ ] Tageshorizont zwischen Engine und PIT-Kandidat eindeutig definieren
-  (M1). **Abnahme:** Echter Backtest liefert nichtleere 24-h-PIT-Eingaben
-  bis in den NAS-Kandidaten; keine ausschließlich gemockten Horizontzeilen.
-- [ ] Aufbereitung pro Cutoff kausal machen und Gapfill-Priorität pro
-  Verfügbarkeits-Bucket herstellen (M2, I4). **Abnahme:** Zukünftige
-  Daten ändern keine vergangene Trainingsmaske; historische Füllzeilen
-  schließen echte Lücken, ohne Live-Closed-/No-Price-Zustände zu ersetzen.
-- [ ] Lokale Mittagsgrenzen DST-sicher konstruieren (M3).
-  **Abnahme:** 23-/25-h-Tage einschließlich 25./26.10.2026 behalten dieselbe
-  Monotonie über Mitternacht; nur die modellierte Mittagsgrenze trennt.
-- [ ] M7-Kalibrierung im Mittel zusätzlich zur Steigung prüfen und
-  Kalibrierungsaktivierung an den Day-Pair-/Konfigurationsstand binden
-  (M5, M6). **Abnahme:** Das +10-pp-Bias-Gegenbeispiel wird nicht als
-  kalibriert freigegeben; geänderter Verteilungsmodus entwertet alte Kurven.
 
 #### NP5 — P1: Nachreichen und langfristige Bilanz erhalten
 

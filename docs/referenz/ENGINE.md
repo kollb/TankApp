@@ -763,10 +763,21 @@ Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`
   `training_start`, `regime_break_spanned` und `regime_breaks`.
 
 `predictions.csv.gz` trägt neben `pit` die Spalten `regime_break_spanned`
-(Kante zwischen Trainingsbeginn und Bewertungszeitpunkt) und `horizon_hours`:
-`0` sind die klassischen 24-h-Zeilen, `72`/`168` die bewerteten Mehrtage-Fenster,
-die die CLI seit 0.56.0 **zusätzlich** schreibt. Wer die Datei selbst
-auswertet, filtert auf `horizon_hours == 0`, sonst mischt er drei Horizonte.
+(Kante zwischen Trainingsbeginn und Bewertungszeitpunkt) und `horizon_hours`.
+
+**Horizont-Vertrag (M1, seit 0.62.0):** `horizon_hours` ist der **Vorlauf des
+Zieltags** — die Stunden vom Prognose-Origin bis zum Beginn des bewerteten
+Fensters —, nicht die Fensterlänge. Jedes bewertete Fenster ist 24 h lang;
+die Zeilen unterscheiden sich nur im Vorlauf: `0` = das klassische Tagesfenster
+`[origin, +24 h)` (`DAILY_LEAD_HOURS` in `engine/backtest.py` — die live
+veröffentlichte, 24-h-rekalibrierte Prognose), `72`/`168` = dieselben 24-h-Fenster
+am Anfang des +3-d- bzw. +7-d-Horizonts (Konzept §3.4). Wer die Datei selbst
+auswertet, filtert auf `horizon_hours == 0`, sonst mischt er drei Horizonte —
+und der NAS-Kandidat (`app/model_jobs.py`) selektiert denselben Vorlauf 0. Der
+Kalibrierungs-Hüllenschlüssel `24h` ist dagegen die **Fensterlänge** (`predict(hours=24)`
+schlägt die Kurve darüber nach); Vorlauf und Fensterlänge sind bewusst zwei
+benannte Größen, seit ein `== 24`-Filter an dieser Stelle genau null Zeilen traf
+und die 24-h-Rekalibrierung nie zustande kam (Befund M1).
 `run_backtest()` liefert ohne `horizon_rows=True` weiterhin nur die 24-h-Zeilen.
 
 Der Regime-Kalender wird wie `price_law_local` **durchgereicht, nicht

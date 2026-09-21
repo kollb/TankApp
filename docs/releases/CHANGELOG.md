@@ -4,6 +4,54 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.62.0] – 2026-09-21
+
+**Batch 4 (P1): Modell- und Kalibrierungsverträge korrigiert (M1, M2, I4,
+M3, M5, M6)** — [Issue #184](https://github.com/kollb/TankApp/issues/184).
+
+- **M1 — Horizontvertrag.** `horizon_hours` in Backtest-Zeilen ist der
+  Vorlauf des Zieltags (0/72/168), jedes Fenster 24 h lang. Der
+  NAS-Kalibrierungskandidat selektiert Vorlauf 0 (`DAILY_LEAD_HOURS`) statt
+  der Fensterlänge 24 — vorher traf der Filter null Zeilen und die
+  24-h-Rekalibrierung kam nie zustande. E2E-Test mit echtem Engine-Backtest
+  bis in den Kandidaten (n_pit > 0); Vertrag in ENGINE.md/ANALYSE.md.
+- **M2 — Kausale Aufbereitung.** Der Hampel-Filter rechnet nachlaufend
+  (120-min-Fenster der Vergangenheit, Isolation rückwärts): dieselbe Maske
+  live und in jedem Backtest-Fold, ein späterer Suffix ändert keine frühere
+  Maske (Abnahmetest gegen zentrierte Regression). Die
+  12-Uhr-Regel-Diagnostik liest die neue vor-Hampel-Spalte `price_raw` und
+  bleibt damit vom Trainingsfilter getrennt; `price_raw` gehört zum
+  Backtest-Fingerabdruck.
+- **I4 — Gapfill je Verfügbarkeits-Bucket.** Füll-Zeilen tragen
+  `source=gapfill` und werden nur in Buckets zugelassen, die kein Live-Poll
+  besitzt — Live-Closed-/No-Price-Zustände werden nie ersetzt, echte
+  Dauerlücken hinter dem ersten Live-Poll werden geschlossen (auch im
+  live_only-Modus). Unmarkiertes Archiv bleibt Präfix-only. Neue Zähler
+  `gapfill_rows_used`/`gapfill_rows_excluded`; die Erfolgsmeldung „Lücken
+  geschlossen" kommt erst nach dem Bootstrap und hängt an der echten
+  Nutzung.
+- **M3 — DST-sichere Mittagsgrenzen.** Segmentgrenzen, 12-Uhr-Zähler und
+  Entscheidungsanker entstehen auf dem lokalen Kalenderdatum
+  (`wall_clock_hour`) und werden erst danach lokalisiert — 23-/25-h-Tage
+  bekommen keine falsche 11:00/13:00-Grenze mehr; Monotonie über Mitternacht
+  ist getestet (beide Umstellungen, Pfade davor).
+- **M5 — M7-Gate.** Drei getrennte Nachweise: Skill als gemeinsam
+  block-resampte Brier-Differenz zur besseren naiven Referenz (Referenzen je
+  Ziehung auf denselben Zeilen neu gerechnet), Reliability-Steigung mit
+  Tagesblock-Intervall und **Kalibrierung im Mittel** — das Bias-Intervall
+  mean(y)−mean(p) muss 0 enthalten. Das +10-pp-Gegenbeispiel (Steigung 1,0,
+  Brier-Skill) bleibt geschlossen. Reliability je Wahrscheinlichkeits-Bin
+  mit Binomialband steht als Diagnose im Payload.
+- **M6 — Aktivierungsprovenienz.** `calibration_envelope` verlangt den
+  ausgewiesenen Day-Pair-Modus; Alt-Kandidaten ohne `day_pair` aktivieren
+  nichts mehr (ein Moduswechsel entwertet alte Kurven nachweisbar). Der
+  Umschlag trägt einen SHA-256-Fingerabdruck über Modellkern, Modi,
+  Horizontdefinition, Datenstand und Regime-Referenz. Die
+  Kandidatenprüfung nutzt Tagesblock-Bootstrap-Bänder statt Tick-Zahlen und
+  weist Holdout-Tage plus Kish-ESS aus. **Hinweis:** Der erste Lauf nach dem
+  Update bleibt sichtbar unkalibriert, bis der Backtest Kandidaten im neuen
+  Vertrag liefert.
+
 ## [0.61.0] – 2026-09-20
 
 **Batch 3 (P1): Failover ohne Freigabeausweitung (F1, F2, A2, I2)** —
