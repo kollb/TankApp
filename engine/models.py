@@ -1586,7 +1586,9 @@ def predict(
             profile_correction[i] = following
             profile_state = [following, profile_state[0]]
         raw_profile_point = (
-            profile_level[slots(index, cfg)] + profile_correction[offsets]
+            profile_level[slots(index, cfg)]
+            + profile_correction[offsets]
+            + float(model["holiday_beta"]) * hol_forecast
         )
         point_profile = noon_law_projection(
             raw_profile_point, index, cfg, segments=segments

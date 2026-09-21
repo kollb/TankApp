@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 21.09.2026 · App-Version 0.63.0
+> Stand: 21.09.2026 · App-Version 0.63.1
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
