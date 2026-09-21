@@ -19,6 +19,8 @@ sichtbar unkalibriert; es gibt keinen stillen Fallback.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
@@ -214,6 +216,73 @@ def _coverage_band(level: float, n: int) -> tuple[float, float]:
     return max(0.0, level - radius), min(1.0, level + radius)
 
 
+# M6: Abdeckungsbänder aus dem Tagesblock-Bootstrap (fester Samen) statt aus
+# der Tick-Zahl. PIT-Ticks desselben Origins sind keine unabhängigen Ziehungen;
+# ein Band aus n Ticks ist scheingenau, wenn es auf wenigen Tagen steht.
+COVERAGE_BOOTSTRAP_SAMPLES = 1000
+COVERAGE_BOOTSTRAP_SEED = 20260920
+
+
+def _day_blocks(values: np.ndarray, origins: np.ndarray) -> list[np.ndarray]:
+    grouped: dict[str, list[float]] = {}
+    for origin, value in zip(origins, values):
+        grouped.setdefault(str(origin), []).append(float(value))
+    return [np.asarray(group, dtype=float) for group in grouped.values()]
+
+
+def _effective_sample_size(blocks: list[np.ndarray]) -> float:
+    """Kish-ESS über Tagesblöcke: (Σn_b)² / Σn_b² — effektive *Tage*.
+
+    Gleich große Tage → ESS = Anzahl der Tage; dominiert ein einzelner
+    Riesentag, bleibt die ESS nahe 1. Das ist die ehrliche unabhängige
+    Stichprobe hinter den Abdeckungsbändern — die Tick-Zahl allein wäre
+    scheingenau, weil Ticks desselben Tages geklumpt sind.
+    """
+    sizes = np.asarray([len(block) for block in blocks], dtype=float)
+    total = float(sizes.sum())
+    if total <= 0:
+        return 0.0
+    denominator = float((sizes**2).sum())
+    return total * total / denominator if denominator > 0 else 0.0
+
+
+def _coverage_bands_by_day(
+    values: np.ndarray,
+    origins: np.ndarray,
+    samples: int = COVERAGE_BOOTSTRAP_SAMPLES,
+    seed: int = COVERAGE_BOOTSTRAP_SEED,
+) -> dict[str, list[float]]:
+    """95-%-Band je Quantilslevel: Tagesblöcke mit Zurücklegen ziehen.
+
+    Der 2-pp-Floor (``MIN_COVERAGE_BAND``) bleibt als Untergrenze der
+    Bandbreite erhalten — identische Tage würden sonst ein degeneriert
+    schmales Band ergeben, das jede Kurve durchwinkt.
+    """
+    blocks = _day_blocks(values, origins)
+    if len(blocks) < 2:
+        return {
+            f"{level:g}": [round(lo, 4), round(hi, 4)]
+            for level in QUANTILE_LEVELS
+            for lo, hi in [_coverage_band(level, int(len(values)))]
+        }
+    rng = np.random.default_rng(seed)
+    n_blocks = len(blocks)
+    covers = np.empty((samples, len(QUANTILE_LEVELS)), dtype=float)
+    for sample in range(samples):
+        drawn = rng.integers(0, n_blocks, n_blocks)
+        pooled = np.concatenate([blocks[index] for index in drawn])
+        for column, level in enumerate(QUANTILE_LEVELS):
+            covers[sample, column] = float(np.mean(pooled <= level))
+    bands: dict[str, list[float]] = {}
+    for column, level in enumerate(QUANTILE_LEVELS):
+        lo = float(np.percentile(covers[:, column], 2.5))
+        hi = float(np.percentile(covers[:, column], 97.5))
+        lo = min(lo, level - MIN_COVERAGE_BAND)
+        hi = max(hi, level + MIN_COVERAGE_BAND)
+        bands[f"{level:g}"] = [round(max(0.0, lo), 4), round(min(1.0, hi), 4)]
+    return bands
+
+
 def assess_candidate(
     pits: Any,
     origins: Any = None,
@@ -272,6 +341,7 @@ def assess_candidate(
     train_mask = np.asarray([str(value) in train_origins for value in ordered_origins])
     train = ordered_pits[train_mask]
     test = ordered_pits[~train_mask]
+    test_origins = ordered_origins[~train_mask]
     candidate = fit_pit_calibration(train, min_samples=min_samples)
     if candidate["status"] != "candidate" or len(test) < int(min_samples):
         candidate["status"] = "insufficient_pit"
@@ -280,11 +350,11 @@ def assess_candidate(
     calibrated = calibrated_pit(test, candidate)
     raw_coverage = _coverage(test)
     calibrated_coverage = _coverage(calibrated)
-    target_bands = {
-        f"{level:g}": [round(lo, 4), round(hi, 4)]
-        for level in QUANTILE_LEVELS
-        for lo, hi in [_coverage_band(level, len(test))]
-    }
+    # M6: Bänder aus Tagesblöcken, nicht aus Tick-Zahlen — plus die
+    # effektive Stichprobengröße (Kish-ESS) der Holdout-Tage.
+    test_blocks = _day_blocks(test, test_origins)
+    ess_days = _effective_sample_size(test_blocks)
+    target_bands = _coverage_bands_by_day(test, test_origins)
     target_ok = all(
         target_bands[key][0] <= calibrated_coverage[key] <= target_bands[key][1]
         for key in calibrated_coverage
@@ -310,6 +380,13 @@ def assess_candidate(
                 "raw_coverage": raw_coverage,
                 "calibrated_coverage": calibrated_coverage,
                 "target_bands": target_bands,
+                # M6: Stichprobenstruktur des Holdouts — Tage, effektive
+                # Tagesblock-Größe (Kish-ESS) und Bandmethode. „n_test
+                # Ticks“ allein war scheingenau bei wenigen Tagen.
+                "n_test_days": int(len(test_blocks)),
+                "ess_day_blocks": round(float(ess_days), 1),
+                "coverage_band_method": "day_block_bootstrap",
+                "coverage_bootstrap_samples": int(COVERAGE_BOOTSTRAP_SAMPLES),
                 "raw_picp95": raw_picp,
                 "calibrated_picp95": calibrated_picp,
                 "max_picp_degradation_pp": int(MAX_PICP_DEGRADATION * 100),
@@ -322,19 +399,33 @@ def assess_candidate(
     return candidate
 
 
+def _provenance_fingerprint(parts: dict[str, Any]) -> str:
+    """Stabiler SHA-256 über die Aktivierungs-Herkunft (M6)."""
+    payload = json.dumps(parts, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def calibration_envelope(
     candidate: Any,
     *,
     enabled: bool,
     model_kind: str,
     shared_draws: bool,
+    day_pair: bool = True,
     activation_blocked: bool = False,
 ) -> dict[str, Any]:
     """Macht einen geprüften Backtest-Kandidaten zum Modell-Artefakt.
 
     Eine Kurve darf ausschließlich die Verteilung kalibrieren, aus der ihre
-    PITs stammen. ``kind`` und Shared-Draws sind deshalb Provenienz, nicht
-    Deko. Bei jeder Abweichung bleibt die Veröffentlichung unkalibriert.
+    PITs stammen. Modellkern, Shared-Draws **und Day-Pair-Modus** sind
+    deshalb Provenienz, nicht Deko (M6): Ein Kandidat, der einen dieser
+    Modi nicht ausweist oder abweicht, bleibt sichtbar unkalibriert — ein
+    Moduswechsel entwertet alte Kurven nachweisbar statt still.
+
+    Der Umschlag trägt außerdem einen Provenienz-Fingerabdruck über
+    Modellkern, Verteilungsmodi, Horizontdefinition (24-h-Fenster am
+    Vorlauf 0), Datenstand (``end_local``) und Regime-Referenz — dieselbe
+    Kurve in anderer Herkunft bekommt einen anderen Fingerabdruck.
     """
     base = {
         "schema_version": CALIBRATION_SCHEMA_VERSION,
@@ -344,6 +435,7 @@ def calibration_envelope(
         "by_horizon": {},
         "model_kind": str(model_kind),
         "shared_draws": bool(shared_draws),
+        "day_pair": bool(day_pair),
     }
     if not enabled:
         return {**base, "status": "disabled"}
@@ -363,17 +455,40 @@ def calibration_envelope(
         return {**base, "status": str(status)}
     if isinstance(spec, dict) and spec.get("status") != "accepted":
         return {**base, "status": str(spec.get("status") or "not_available")}
-    if candidate.get("model_kind") != str(model_kind) or bool(
-        candidate.get("shared_draws")
-    ) != bool(shared_draws):
+    # M6: Der Aktivierungsvertrag verlangt den ausgewiesenen Day-Pair-Modus.
+    # Ein Kandidat ohne ``day_pair`` stammt aus dem Altvertrag und kann seine
+    # Verteilungsherkunft nicht belegen — er aktiviert nichts mehr.
+    if candidate.get("day_pair") is None:
+        return {**base, "status": "model_mismatch"}
+    if (
+        candidate.get("model_kind") != str(model_kind)
+        or bool(candidate.get("shared_draws")) != bool(shared_draws)
+        or bool(candidate.get("day_pair")) != bool(day_pair)
+    ):
         return {**base, "status": "model_mismatch"}
     if not valid_calibration(spec):
         return {**base, "status": "invalid_candidate"}
+    provenance = {
+        "model_kind": str(model_kind),
+        "shared_draws": bool(shared_draws),
+        "day_pair": bool(day_pair),
+        # Horizontdefinition: live veröffentlichtes 24-h-Fenster am Vorlauf 0
+        # (``DAILY_LEAD_HOURS``, engine/backtest.py) — Hüllenschlüssel ist die
+        # Fensterlänge.
+        "horizon": {"window_hours": 24, "lead_hours": 0},
+        "end_local": candidate.get("end_local"),
+        "regime_ref": candidate.get("regime_ref"),
+        "n_pit": spec.get("n_pit"),
+    }
     return {
         **base,
         "status": "active",
         "source_end_local": candidate.get("end_local"),
         "by_horizon": {"24h": spec},
+        "provenance": {
+            **provenance,
+            "fingerprint": _provenance_fingerprint(provenance),
+        },
     }
 
 

@@ -85,7 +85,12 @@ def test_envelope_refuses_other_model_distribution():
         [f"2026-08-{day:02d}T12:00:00+00:00" for day in range(1, 25)], 100
     )
     candidate = assess_candidate(pits, origins, min_samples=100)
-    candidate = {"model_kind": "ensemble", "shared_draws": True, "24h": candidate}
+    candidate = {
+        "model_kind": "ensemble",
+        "shared_draws": True,
+        "day_pair": True,
+        "24h": candidate,
+    }
     active = calibration_envelope(
         candidate, enabled=True, model_kind="ensemble", shared_draws=True
     )
@@ -164,3 +169,112 @@ def test_regime_blackout_blocks_activation_through_the_declared_cooldown(cfg):
     assert not calibration_regime_blackout(
         pd.Timestamp("2026-11-16T10:00:00Z"), marked, "e10"
     )
+
+
+def _m6_candidate():
+    pits = np.tile(_skewed_pits(100), 24)
+    origins = np.repeat(
+        [f"2026-08-{day:02d}T12:00:00+00:00" for day in range(1, 25)], 100
+    )
+    curve = assess_candidate(pits, origins, min_samples=100)
+    assert curve["status"] == "accepted"
+    return {
+        "model_kind": "ensemble",
+        "shared_draws": True,
+        "day_pair": True,
+        "end_local": "2026-08-24T00:00:00+02:00",
+        "regime_ref": {"n_breaks": 0, "at_utc": []},
+        "24h": curve,
+    }
+
+
+def test_envelope_contract_covers_day_pair_and_fingerprints_provenance():
+    """M6: Der Aktivierungsvertrag nennt den Day-Pair-Modus; die Herkunft
+    trägt einen Fingerabdruck über Kern, Modi, Horizont, Datenstand und
+    Regime-Referenz."""
+    candidate = _m6_candidate()
+    active = calibration_envelope(
+        candidate,
+        enabled=True,
+        model_kind="ensemble",
+        shared_draws=True,
+        day_pair=True,
+    )
+    assert active["status"] == "active" and calibration_active(active)
+    provenance = active["provenance"]
+    assert provenance["day_pair"] is True
+    assert provenance["horizon"] == {"window_hours": 24, "lead_hours": 0}
+    assert provenance["end_local"] == "2026-08-24T00:00:00+02:00"
+    assert provenance["regime_ref"] == {"n_breaks": 0, "at_utc": []}
+    fingerprint = provenance["fingerprint"]
+    assert isinstance(fingerprint, str) and len(fingerprint) == 64
+
+    # Dieselbe Herkunft → derselbe Fingerabdruck (deterministisch).
+    again = calibration_envelope(
+        dict(candidate),
+        enabled=True,
+        model_kind="ensemble",
+        shared_draws=True,
+        day_pair=True,
+    )
+    assert again["provenance"]["fingerprint"] == fingerprint
+
+    # Anderer Datenstand → anderer Fingerabdruck.
+    later = dict(candidate, end_local="2026-08-25T00:00:00+02:00")
+    moved = calibration_envelope(
+        later,
+        enabled=True,
+        model_kind="ensemble",
+        shared_draws=True,
+        day_pair=True,
+    )
+    assert moved["provenance"]["fingerprint"] != fingerprint
+
+
+def test_changed_distribution_mode_invalidates_old_curves():
+    """M6-Abnahme: Ein geänderter Modus entwertet alte Kurven nachweisbar.
+
+    Ein Kandidat des Altvertrags (ohne ``day_pair``) kann seine
+    Verteilungsherkunft nicht belegen — und ein Moduswechsel (Day-Pair
+    aus statt an) aktiviert dieselbe Kurve nicht still weiter.
+    """
+    candidate = _m6_candidate()
+    legacy = {key: value for key, value in candidate.items() if key != "day_pair"}
+    old = calibration_envelope(
+        legacy,
+        enabled=True,
+        model_kind="ensemble",
+        shared_draws=True,
+        day_pair=True,
+    )
+    assert old["status"] == "model_mismatch" and not calibration_active(old)
+
+    switched = calibration_envelope(
+        candidate,
+        enabled=True,
+        model_kind="ensemble",
+        shared_draws=True,
+        day_pair=False,
+    )
+    assert switched["status"] == "model_mismatch" and not calibration_active(switched)
+
+
+def test_assess_reports_day_structure_and_effective_sample_size():
+    """M6: Abdeckungsbänder kommen aus Tagesblöcken, und die effektive
+    Stichprobengröße der Holdout-Tage wird sichtbar."""
+    pits = np.tile(_skewed_pits(100), 24)
+    origins = np.repeat(
+        [f"2026-08-{day:02d}T12:00:00+00:00" for day in range(1, 25)], 100
+    )
+    candidate = assess_candidate(pits, origins, min_samples=100)
+    validation = candidate["validation"]
+    assert validation["coverage_band_method"] == "day_block_bootstrap"
+    assert validation["coverage_bootstrap_samples"] == 1000
+    assert candidate["split"]["test_origins"] == 8
+    assert validation["n_test_days"] == 8
+    # Gleich große Tage → Kish-ESS = Zahl der unabhängigen Tage (nicht die
+    # Tick-Zahl: 800 Ticks auf 8 Tagen tragen wie 8 unabhängige Ziehungen).
+    assert validation["ess_day_blocks"] == pytest.approx(8.0)
+    # Bänder bleiben trotz identischer Tage durch den 2-pp-Floor ehrlich breit.
+    for level, (lo, hi) in validation["target_bands"].items():
+        assert hi - lo >= 0.04 - 1e-9, level

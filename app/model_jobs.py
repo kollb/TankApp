@@ -357,6 +357,19 @@ def _backtest(
         candidate_24h = assess_candidate(
             calibration_rows.get("pit", []), calibration_rows.get("origin", [])
         )
+    # M6: Regime-Referenz des Aktivierungsvertrags — welche deklarierten
+    # Kanten im Kandidatenfenster lagen. Eine andere Regime-Welt teilt sich
+    # damit nachweisbar nicht dieselbe Kurve (Provenienz-Fingerabdruck).
+    regime_window = report.get("regime_breaks_in_window") or {}
+    regime_entries = regime_window.get("in_window") or []
+    regime_ref = {
+        "n_breaks": int(regime_window.get("count") or 0),
+        "at_utc": sorted(
+            str(entry.get("at_utc"))
+            for entry in regime_entries
+            if isinstance(entry, dict) and entry.get("at_utc")
+        ),
+    }
     calibration_candidate = {
         "schema_version": 1,
         "method": "isotonic_pit_quantile_recalibration",
@@ -364,6 +377,7 @@ def _backtest(
         "model_kind": model_kind,
         "shared_draws": bool(shared_draws),
         "day_pair": bool(day_pair),
+        "regime_ref": regime_ref,
         # M1: Der Hüllen-Schlüssel ``24h`` ist die *Fensterlänge* der live
         # veröffentlichten Tagesprognose (Vorlauf 0). Er ist bewusst nicht der
         # Vorlauf: ``engine.calibration.calibration_for_hours`` schlägt die

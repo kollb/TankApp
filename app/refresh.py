@@ -418,15 +418,18 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"{result.get('hours') or ''}{suffix}",
                     )
 
-            # B2: Kandidaten sind an Station, Kraftstoff, Modellkern und
-            # Shared-Draw-Modus gebunden. Eine andere Verteilung bekommt nie
-            # still dieselbe Kurve (siehe engine.calibration).
+            # B2/M6: Kandidaten sind an Station, Kraftstoff, Modellkern und
+            # die Verteilungsmodi (Shared-Draws, Day-Pair) gebunden. Eine
+            # andere Verteilung bekommt nie still dieselbe Kurve; ein
+            # Moduswechsel entwertet alte Kurven nachweisbar
+            # (siehe engine.calibration).
             calibration_by_identity = {
                 identity: calibration_envelope(
                     prior_calibration_candidates.get((identity[0], identity[1], fuel)),
                     enabled=bool(getattr(settings, "calibration", True)),
                     model_kind=getattr(settings, "model_kind", "profile_ar2"),
                     shared_draws=bool(getattr(settings, "shared_draws", True)),
+                    day_pair=bool(getattr(settings, "day_pair", True)),
                     activation_blocked=calibration_regime_blackout(origin, cfg, fuel),
                 )
                 for identity in series_map
