@@ -965,6 +965,10 @@ def test_overview_bundles_the_daily_payload_in_one_call(app_settings):
     overview = data.overview(params)
     assert set(overview) == {
         "generated_at",
+        # A21-B2.2 (#203): Revisionsangabe und explizite Teilfehler sind
+        # additiv — der Vertrag wächst, die Teile bleiben formgleich.
+        "data_version",
+        "partial_errors",
         "decide",
         "fills",
         "stats_summary",
@@ -973,6 +977,9 @@ def test_overview_bundles_the_daily_payload_in_one_call(app_settings):
         "error_code",
     }
     assert overview["error_code"] is None
+    # Alle Teile haben geantwortet → leere Liste (nicht: „unbekannt“).
+    assert overview["partial_errors"] == []
+    assert isinstance(overview["data_version"], str) and overview["data_version"]
     assert overview["decide"] == data.decide(params)
     assert overview["fills"] == data.fills()
     assert overview["stats_summary"] == data.stats_summary(
@@ -1118,9 +1125,11 @@ def test_overview_cache_avoids_second_computation(app_settings):
     calls = []
     original_decide = data.decide
 
-    def counting_decide(p):
+    # A21-B2.2: /overview reicht den gemeinsamen Lesezustand als ``read``
+    # durch — der Zähler muss dieselbe Signatur annehmen.
+    def counting_decide(p, read=None):
         calls.append(1)
-        return original_decide(p)
+        return original_decide(p, read=read)
 
     data.decide = counting_decide
     etag = data.overview_etag(params)
@@ -1129,7 +1138,8 @@ def test_overview_cache_avoids_second_computation(app_settings):
     second = data.overview(params, etag)
     assert first == second
     assert calls == [1]
-    # Ohne ETag (Revalidierung unbrauchbar) bleibt jeder Call eine Rechnung.
+    # Ohne ETag (Revalidierung unbrauchbar) bleibt jeder Call eine Rechnung;
+    # der gemeinsame Lesezustand spart nur Ledger/Statistik, nicht decide.
     data.decide = counting_decide
     calls.clear()
     data.overview(params)

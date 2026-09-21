@@ -1,7 +1,7 @@
 # ADR 0003: Modellpfad, Kalibrierung und Produktfreigabe trennen
 
 - **Status:** angenommen; implementierte Entscheidungen konsolidiert.
-- **Stand:** 21.09.2026 · App-Version 0.64.0 · dokumentiert 20.09.2026 ·
+- **Stand:** 21.09.2026 · App-Version 0.65.0 · dokumentiert 20.09.2026 ·
   erweitert 21.09.2026 (A21-B1.4).
 
 ## Inhaltsverzeichnis

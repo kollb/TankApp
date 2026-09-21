@@ -8,6 +8,8 @@ import os
 import threading
 import time
 import uuid
+import zlib
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -642,28 +644,62 @@ def _run_route_refresh(anchor, missing_targets, cache_path, key):
 OVERVIEW_REVALIDATE_SECONDS = 60
 
 
+# Bis zu dieser Größe wird der ganze Inhalt für den Abdruck gelesen; darüber
+# nur Kopf und Ende (Archive wachsen ausschließlich am Ende, und die App
+# ersetzt ihre Bestände atomar — dabei wechselt der Inode).
+_STAMP_FULL_DIGEST_BYTES = 64 * 1024
+_STAMP_EDGE_BYTES = 16 * 1024
+
+
+def _content_digest(path, size: int) -> str:
+    """Kurzer Inhaltsabdruck (crc32) — fängt gleich große Änderungen.
+
+    Bis :data:`_STAMP_FULL_DIGEST_BYTES` wird die Datei ganz gelesen (die
+    beobachteten Bestände sind wenige Kilobyte); darüber nur Kopf und Ende.
+    """
+    with path.open("rb") as handle:
+        if size <= _STAMP_FULL_DIGEST_BYTES:
+            crc = zlib.crc32(handle.read())
+        else:
+            head = handle.read(_STAMP_EDGE_BYTES)
+            handle.seek(max(0, size - _STAMP_EDGE_BYTES))
+            crc = zlib.crc32(handle.read(_STAMP_EDGE_BYTES), zlib.crc32(head))
+    return f"{crc & 0xFFFFFFFF:08x}"
+
+
 def _file_stamp(path) -> str:
-    """mtime:Größe als Versions-Anteil — „absent“ ohne Datei, kein Fehler."""
+    """Gerät:Inode:mtime_ns:Größe:Inhaltsabdruck — „absent“ ohne Datei.
+
+    ``int(mtime):Größe`` (bis 0.64.0) kollidierte, sobald sich der Inhalt
+    innerhalb derselben Sekunde änderte und die Größe gleich blieb (Audit
+    §3.5: „Beleg storniert, gleich langer Ersatzbeleg“ → dieselbe
+    ``data_version``, also 304 auf einen veralteten Stand). Jetzt zählen
+    Nanosekunden, Inode **und** Inhalt: Der crc32-Abdruck unterscheidet
+    zwei gleich große, gleich alte Stände; ein atomarer Austausch (alle
+    App-Schreibpfade) fällt schon am neuen Inode auf. Gelesen wird je
+    Aufruf höchstens :data:`_STAMP_FULL_DIGEST_BYTES` (darüber Kopf/Ende)
+    — bewusst begrenzt statt den ganzen Bestand je Request zu hashen.
+    """
     try:
         stamp = path.stat()
-        return f"{int(stamp.st_mtime)}:{stamp.st_size}"
     except (OSError, ValueError):
         return "absent"
+    try:
+        digest = _content_digest(path, stamp.st_size)
+    except (OSError, ValueError):
+        # Unlesbar (Rechte, Race, Verzeichnis): der Stempel bleibt ehrlich
+        # grob — die nächste Anfrage sieht den neuen Dateistand.
+        digest = "unreadable"
+    return f"{stamp.st_dev}:{stamp.st_ino}:{stamp.st_mtime_ns}:{stamp.st_size}:{digest}"
 
 
-def data_version(settings, clock) -> str:
-    """Billiges Datenstands-Signal für die /overview-Revalidierung.
+def _price_source_parts(settings, clock) -> list[str]:
+    """Die Preisquellen als Stempel-Liste: Herzschläge, Polling-Set, Uhrfenster.
 
-    Nur Datei-Stats, keine InfluxDB-Queries — der Revalidierungspfad muss
-    nicht teurer sein als ein Cache-Treffer. Die Overview-Antwort kann sich
-    nur ändern, wenn sich eine ihrer Quellen geändert hat:
-      - Collector-Heartbeat: letzter Tankerkönig-Poll (Token-Bucket:
-        höchstens 1×/300 s) → neue Preise in InfluxDB
-      - Engine-/Selektions-Artefakte: neuer Modelllauf
-      - Feedback-Store: neue Belege
-      - Feedback-Archiv: 90-Tage-Auslagerung (F3-Allzeitbilanz)
-      - Polling-Set: geänderter Stations-Mix
-    plus das Uhrzeit-Fenster (siehe OVERVIEW_REVALIDATE_SECONDS).
+    „Preise“ heißt hier: alles, was eine neue Influx-Zeile oder ein neues
+    Beobachtungsfenster bewirkt. Der Ledger (Store/Archiv), die
+    Engine-Veröffentlichung und das Profil gehören **nicht** dazu — sie
+    ändern keine Preishistorie (A21-B2.3, #204).
     """
     from . import collector_status
 
@@ -691,17 +727,60 @@ def data_version(settings, clock) -> str:
             local_ts = str(local["timestamp"])
             break
     tick = int(clock().timestamp() // OVERVIEW_REVALIDATE_SECONDS)
+    return [
+        f"hb:{hb_ts}:{_file_stamp(settings.runtime / 'collector' / 'heartbeat.json')}",
+        f"local:{local_ts}",
+        f"polling:{_file_stamp(settings.polling)}",
+        f"tick:{tick}",
+    ]
+
+
+def prices_version(settings, clock) -> str:
+    """Datenstand der **Preisquellen** — Grundlage der Verlaufs-Ablage.
+
+    Der Verlauf (``/series``, Tagesband) hängt an Station, Stadt,
+    Kraftstoff, Fensterlänge und diesem Stand — nicht an Litern, Zeitwert,
+    Tankstand oder Belegen. Ein Literwechsel oder ein neuer Snapshot darf
+    darum keine neue Influx-Query kosten (Audit §3.5: 3,76 s für eine
+    Liter-Änderung). Neuer Collector-Poll, neues Polling-Set oder ein neues
+    Uhrfenster invalidieren dagegen sofort.
+    """
+    raw = "|".join(_price_source_parts(settings, clock))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def data_version(settings, clock) -> str:
+    """Billiges Datenstands-Signal für die /overview-Revalidierung.
+
+    Nur Datei-Stats und kurze Inhaltsabdrücke, keine InfluxDB-Queries — der
+    Revalidierungspfad muss nicht teurer sein als ein Cache-Treffer. Die
+    Overview-Antwort kann sich nur ändern, wenn sich eine ihrer Quellen
+    geändert hat:
+      - Collector-Heartbeat: letzter Tankerkönig-Poll (Token-Bucket:
+        höchstens 1×/300 s) → neue Preise in InfluxDB
+      - Engine-/Selektions-Artefakte: neuer Modelllauf
+      - Feedback-Store: neue Belege
+      - Feedback-Archiv: 90-Tage-Auslagerung (F3-Allzeitbilanz)
+      - Profil-Store (A21-B2.3): aktives Profil → Liter/Wallet/Personalisierung
+      - Polling-Set: geänderter Stations-Mix
+    plus das Uhrzeit-Fenster (siehe OVERVIEW_REVALIDATE_SECONDS).
+
+    Der Stempel je Datei ist ``mtime_ns:Größe:Inhaltsabdruck`` (A21-B2.3):
+    „gleiche Sekunde, gleiche Größe“ kann damit nicht mehr kollidieren
+    (Audit §3.5), ohne je Request den ganzen Inhalt zu lesen.
+    """
     raw = "|".join(
-        (
-            f"hb:{hb_ts}:{_file_stamp(settings.runtime / 'collector' / 'heartbeat.json')}",
-            f"local:{local_ts}",
+        _price_source_parts(settings, clock)
+        + [
             f"engine:{_file_stamp(settings.runtime / 'engine' / 'current.json')}",
             f"selection:{_file_stamp(settings.runtime / 'selection' / 'current.json')}",
             f"feedback:{_file_stamp(settings.runtime / 'feedback' / 'store.json')}",
             f"archive:{_file_stamp(settings.runtime / 'feedback' / 'archive.jsonl')}",
-            f"polling:{_file_stamp(settings.polling)}",
-            f"tick:{tick}",
-        )
+            # A21-B2.3 (#204): Das aktive Profil (Liter, Tankgröße, Verbrauch)
+            # geht in Personalisierung und Wallet ein — eine Profiländerung
+            # ist damit ein neuer Datenstand für ETags und Lesezustand.
+            f"profiles:{_file_stamp(settings.runtime / 'profiles' / 'profiles.json')}",
+        ]
     )
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
@@ -1136,13 +1215,16 @@ def publication(settings):
     with _PUBLICATION_LOCK:
         if _PUBLICATION_MEMO["key"] == key and _PUBLICATION_MEMO["value"] is not None:
             return _PUBLICATION_MEMO["value"]
+    from . import metrics
+
     started = time.monotonic()
-    raw, reason = read_json_checked(path)
-    value = raw if isinstance(raw, dict) else {}
-    if reason is None and isinstance(raw, dict):
-        if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
-            value, split_reason = _merge_split_publication(raw, path.parent)
-            reason = reason or split_reason
+    with metrics.measure("publication"):
+        raw, reason = read_json_checked(path)
+        value = raw if isinstance(raw, dict) else {}
+        if reason is None and isinstance(raw, dict):
+            if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
+                value, split_reason = _merge_split_publication(raw, path.parent)
+                reason = reason or split_reason
     elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
     with _PUBLICATION_LOCK:
         _PUBLICATION_MEMO["key"] = key
@@ -1341,8 +1423,17 @@ class LiveData:
         self.cache = {}
         # B7-Revalidierung: /overview-Antwort-Cache, key = ETag
         # (Datenstand + Parameter). Verwaiste ETags tauchen nie wieder auf;
-        # die Obergrenze hält das Dict klein (Einträge sind kleine JSONs).
-        self.overview_cache = {}
+        # die Obergrenze hält die Ablage klein (Einträge sind kleine JSONs).
+        # A21-B2.3 (#204): LRU mit gezielter Verdrängung — das frühere
+        # ``clear()`` bei 64 Einträgen warf auch den gerade gültigen Stand
+        # weg und ließ den nächsten Poll neu rechnen (Audit §3.5).
+        self.overview_cache = OrderedDict()
+        # A21-B2.3 (#204): Verlauf/Tagesband je *Datenabhängigkeit*
+        # (Station, Stadt, Kraftstoff, Fenster, Datenstand) — nicht je
+        # Parameter. Dieselbe Ablage für Einzel- und Overview-Pfad.
+        self.series_cache = OrderedDict()
+        self.series_lock = threading.Lock()
+        self.series_inflight = {}
         self.jobs_enabled = False
         self.job_errors = {}
         # stats_summary liest die Engine-Veröffentlichung über diesen Provider,
@@ -1371,6 +1462,9 @@ class LiveData:
     # Kraftstoffe beim Start im Hintergrund vor (prewarm()), sodass der
     # erste GUI-Request danach in der Praxis nie auf InfluxDB wartet.
     STALE_AFTER_S = 30.0  # Neulese-Intervall wie bisher (30 s)
+    # /overview-Antworten je ETag vorhalten; die älteste fällt gezielt
+    # heraus, statt bei Erreichen der Grenze alles zu leeren.
+    OVERVIEW_MAX_ENTRIES = 64
 
     def _load(self, fuel, metas):
         """Letzter bekannter Preis-Stand je Kraftstoff.
@@ -1627,6 +1721,48 @@ class LiveData:
             "calibrated": False,
         }
 
+    # --- Verlauf/History: Ablage am Datenstand, nicht an den Parametern ----
+    #
+    # Der Verlauf hängt an Station, Stadt, Kraftstoff, Fensterlänge und
+    # Datenstand — **nicht** an Litern, Zeitwert oder Tankstand. Ein
+    # Parameterwechsel („41,25 statt 55 Liter“) darf darum keine neue
+    # Influx-Query auslösen (Audit §3.5: 3,76 s für genau diesen Fall).
+    SERIES_MAX_ENTRIES = 12
+    # Ein kaputter Read ist kein Datenstand: Fehler werden höchstens so
+    # lange ausgeliefert, danach versucht es der nächste Request erneut.
+    SERIES_ERROR_TTL_S = 5.0
+    # Mitläufer warten höchstens so lange auf den Singleflight-Eigentümer;
+    # danach rechnen sie selbst (keine Anfrage wartet unbegrenzt).
+    SERIES_WAIT_TIMEOUT_S = 15.0
+
+    def _series_revision(self) -> str:
+        """Preisdatenstand, an dem der Verlauf hängt (ohne Ledger/Profil)."""
+        try:
+            return prices_version(self.settings, self.clock)
+        except Exception:
+            return "unknown"
+
+    def _series_cached(self, key):
+        """Ablagetreffer — ``None``, wenn nichts (mehr) Gültiges daliegt.
+
+        Fehlereinträge verfallen nach :data:`SERIES_ERROR_TTL_S`; danach
+        wird neu gelesen statt den Fehler zu wiederholen.
+        """
+        with self.series_lock:
+            entry = self.series_cache.get(key)
+            if entry is None:
+                return None
+            mono, cached = entry
+            if cached.get("error_code") is not None and (
+                time.monotonic() - mono > self.SERIES_ERROR_TTL_S
+            ):
+                del self.series_cache[key]
+                return None
+            self.series_cache.move_to_end(key)
+            # Flache Kopie: ``day_with_band`` ersetzt Felder im Ergebnis —
+            # die Ablage darf davon nichts sehen.
+            return dict(cached)
+
     def series(self, uid, city, fuel, hours=24):
         if fuel not in FUELS or not 1 <= hours <= 168:
             raise ValueError("invalid_query")
@@ -1634,6 +1770,8 @@ class LiveData:
         if (city, uid) not in metas:
             raise ValueError("unknown_station")
         if problem or not self.settings.influx_env.is_file():
+            # Konfigurationszustand, kein Datenstand: nicht ablegen (billig
+            # zu beantworten, und ein Fix wirkt sofort).
             return {
                 "points": [],
                 "n_points": 0,
@@ -1641,8 +1779,51 @@ class LiveData:
                 "range_to": None,
                 "error_code": problem or "influx_not_configured",
             }
+        key = (uid, city, fuel, hours, self._series_revision())
+        cached = self._series_cached(key)
+        if cached is not None:
+            return cached
+        with self.series_lock:
+            event = self.series_inflight.get(key)
+            if event is None:
+                event = threading.Event()
+                self.series_inflight[key] = event
+                owner = True
+            else:
+                owner = False
+        if not owner:
+            # Singleflight: parallele identische Misses erzeugen **eine**
+            # Query. Der Eigentümer hinterlässt immer ein Ergebnis (auch
+            # einen Fehler); erst wenn er nichts hinterlässt, rechnet
+            # dieser Thread selbst.
+            event.wait(self.SERIES_WAIT_TIMEOUT_S)
+            cached = self._series_cached(key)
+            if cached is not None:
+                return cached
+        try:
+            result = self._read_series(uid, city, fuel, hours)
+            # Erst ablegen, dann die Mitläufer wecken — sonst wachen sie
+            # auf, finden nichts und rechnen doppelt.
+            with self.series_lock:
+                self.series_cache[key] = (time.monotonic(), result)
+                self.series_cache.move_to_end(key)
+                while len(self.series_cache) > self.SERIES_MAX_ENTRIES:
+                    # Gezielt die älteste Ablage verdrängen — kein clear(),
+                    # das auch den gerade gültigen Stand wegwirft.
+                    self.series_cache.popitem(last=False)
+        finally:
+            with self.series_lock:
+                waiter = self.series_inflight.pop(key, None)
+            if waiter is not None:
+                waiter.set()
+        return dict(result)
+
+    def _read_series(self, uid, city, fuel, hours):
+        """Die Influx-Query hinter :meth:`series` (ein Aufruf je Ablage-Miss)."""
         now = self.clock()
         try:
+            from . import metrics
+
             cfg = influx.load_config(self.settings.influx_env, timeout=10)
             cfg.validate()
             lookup = influx.station_lookup(self.settings.polling)
@@ -1655,7 +1836,11 @@ class LiveData:
                 {city: [uid]},
             )
             points = []
-            for raw in self.query(cfg, query):
+            # A21-B2.1: Der Influx-Read ist ein eigener Span. Auf dem NAS
+            # hängt er an Netz/DB und ist keine Rechenzeit des Requests.
+            with metrics.measure("history"):
+                rows = list(self.query(cfg, query))
+            for raw in rows:
                 if raw.get("station_id") != uid or raw.get("city") != city:
                     raise ValueError("Wrong identity")
                 row = influx.normalized_row(raw, lookup, fuel)
@@ -2393,13 +2578,17 @@ class LiveData:
             **profiles_recovery_options(self.settings),
         }
 
-    def decide(self, params: dict):
-        """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1)."""
+    def decide(self, params: dict, read=None):
+        """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1).
+
+        ``read`` ist der gemeinsame Lesezustand (A21-B2.2): ``/overview``
+        reicht ihn an ``decide`` **und** ``stats_summary`` weiter.
+        """
         try:
             from .decide import evaluate_decide
             from .feedback import StoreCorrupted, StoreTooLarge
 
-            return evaluate_decide(self, params)
+            return evaluate_decide(self, params, read=read)
         except ValueError as e:
             raise e
         except StoreTooLarge:
@@ -2767,13 +2956,16 @@ class LiveData:
             )
         return buf.getvalue()
 
-    def stats_summary(self, params: dict):
-        """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""
+    def stats_summary(self, params: dict, read=None):
+        """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet.
+
+        ``read`` (A21-B2.2) ist der gemeinsame Lesezustand aus ``/overview``.
+        """
         try:
             from .feedback import StoreCorrupted, StoreTooLarge
             from .stats_summary import evaluate_stats_summary
 
-            return evaluate_stats_summary(self, params)
+            return evaluate_stats_summary(self, params, read=read)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
         except StoreCorrupted:
@@ -2787,8 +2979,8 @@ class LiveData:
     def read_etag(self, route: str, params: dict) -> str | None:
         """ETag eines read-only-Endpunkts — Datenstand + Route + Parameter (O25).
 
-        Billig berechenbar: ``data_version()`` liest Datei-Stats, keine
-        Influx-Query. Die Route gehört in den Wert, damit zwei Endpunkte beim
+        Billig berechenbar: ``data_version()`` stempelt Datei-Stats und kurze
+        Inhaltsabdrücke (je Datei höchstens 64 KiB), keine Influx-Query. Die Route gehört in den Wert, damit zwei Endpunkte beim
         selben Datenstand nicht dasselbe ETag tragen (ein Client, der beide
         pollt, bekäme sonst ein 304 für die falsche Antwort).
 
@@ -2829,6 +3021,8 @@ class LiveData:
         if etag:
             with self.lock:
                 cached = self.overview_cache.get(etag)
+                if cached is not None:
+                    self.overview_cache.move_to_end(etag)
             if cached is not None:
                 # A21-B1.4: Eine abgelaufene Freigabe darf aus keinem Cache
                 # erneut erscheinen — der Treffer endet am ``valid_until`` der
@@ -2854,16 +3048,47 @@ class LiveData:
             elif city:
                 day_res = self.day_with_band(station_id, city, fuel)
 
-        decide_res = self.decide(decide_params)
+        from . import metrics, read_state
+
+        # A21-B2.2 (#203): **ein** Lesezustand für diesen Request. Decide und
+        # Stats-Summary teilen Ledger, Statistik und Schwellen; der
+        # Snapshot-Vorblick benutzt denselben heißen Store.
+        bundle = read_state.load_bundle(self.settings, self.clock())
+
+        with metrics.measure("decide"):
+            decide_res = self.decide(decide_params, read=bundle)
         fills_res = self.fills()
         summary_params = {"fuel": fuel}
         if city:
             summary_params["city"] = city
-        summary_res = self.stats_summary(summary_params)
+        with metrics.measure("stats"):
+            summary_res = self.stats_summary(summary_params, read=bundle)
         episodes_res = self.episodes("due")
+
+        # Explizite Teilfehler: ``error_code`` außen bleibt die Aussage über
+        # die **Anfrage**, ist aber kein Vollständigkeitsnachweis (Audit
+        # §4.3) — eine Komponente kann fehlschlagen, während außen ``null``
+        # steht. ``partial_errors`` benennt sie, ``data_version`` die
+        # Revision, aus der alle Teile stammen.
+        # Alle Teile, die einen Fehlercode tragen können — auch ``fills`` und
+        # ``episodes``: Sonst bliebe genau der Fall verdeckt, den der Audit
+        # §4.3 zeigte (innen Fehler, außen ``null``).
+        partial_errors = [
+            {"component": component, "error_code": code}
+            for component, code in (
+                ("day", (day_res or {}).get("error_code")),
+                ("decide", (decide_res or {}).get("error_code")),
+                ("stats_summary", (summary_res or {}).get("error_code")),
+                ("fills", (fills_res or {}).get("error_code")),
+                ("episodes", (episodes_res or {}).get("error_code")),
+            )
+            if code
+        ]
 
         result = {
             "generated_at": self.clock().isoformat(),
+            "data_version": bundle.data_version,
+            "partial_errors": partial_errors,
             "decide": decide_res,
             "fills": fills_res,
             "stats_summary": summary_res,
@@ -2873,9 +3098,10 @@ class LiveData:
         }
         if etag:
             with self.lock:
-                if len(self.overview_cache) >= 64:
-                    self.overview_cache.clear()
                 self.overview_cache[etag] = result
+                self.overview_cache.move_to_end(etag)
+                while len(self.overview_cache) > self.OVERVIEW_MAX_ENTRIES:
+                    self.overview_cache.popitem(last=False)
         return result
 
     def day_with_band(self, station_id: str, city: str, fuel: str) -> dict:

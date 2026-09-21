@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 21.09.2026 · App-Version 0.64.0
+> Stand: 21.09.2026 · App-Version 0.65.0
 
 ## Inhaltsverzeichnis
 
@@ -15,6 +15,7 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
+| [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.64.0 |
 | [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.61.0 |
 | [RP2.md](../betrieb/RP2.md) | 0.61.0 |
 | [UI](../produkt/UI.md) | 0.60.0 |

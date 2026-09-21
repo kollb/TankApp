@@ -939,6 +939,19 @@ export type StripBand = {
 
 export type Overview = {
   generated_at: string;
+  /**
+   * A21-B2.2: Der Datenstand, aus dem **alle** Teile dieser Antwort stammen
+   * (Store, Archiv, Engine-/Selektionsartefakt, Polling-Set, Zeitfenster).
+   * Er ist der sichtbare Anteil des ETags — zwei Antworten mit derselben
+   * Zahl beschreiben denselben Stand.
+   */
+  data_version?: string;
+  /**
+   * A21-B2.2: Teilausfälle je Komponente. Leer heißt „alle Teile haben
+   * geantwortet“; `error_code: null` außen ist **kein**
+   * Vollständigkeitsnachweis.
+   */
+  partial_errors?: Array<{ component: string; error_code: string }>;
   decide: DecideResult;
   fills: Fills;
   stats_summary: StatsSummary;

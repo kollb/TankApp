@@ -795,13 +795,14 @@ def _merge_by_id(hot: list, archived: list, id_key: str) -> list:
     return out
 
 
-def load_ledger(settings) -> dict[str, Any]:
-    """Hot store plus ``archive.jsonl`` for year/all-time/M7 (F3).
+def ledger_from_store(hot: dict[str, Any], settings) -> dict[str, Any]:
+    """Hot store plus ``archive.jsonl`` — ohne den Store erneut zu lesen.
 
-    Writes, diary and the live episode list stay on ``load_store`` (90-day
-    hot window). Hot wins on duplicate ``id`` / ``snapshot_id``.
+    A21-B2.2 (#203): ``load_ledger`` las den Store und das Archiv je Aufruf;
+    ``/overview`` rief das über ``decide`` und ``stats_summary`` zweimal. Der
+    gemeinsame Lesezustand (``app/read_state.py``) lädt den **heißen** Store
+    einmal und baut daraus denselben Ledger wie :func:`load_ledger`.
     """
-    hot = load_store(settings)
     archived = load_archive_records(settings)
     return {
         "schema_version": hot.get("schema_version"),
@@ -812,6 +813,15 @@ def load_ledger(settings) -> dict[str, Any]:
         ),
         "audit": hot.get("audit") or [],
     }
+
+
+def load_ledger(settings) -> dict[str, Any]:
+    """Hot store plus ``archive.jsonl`` for year/all-time/M7 (F3).
+
+    Writes, diary and the live episode list stay on ``load_store`` (90-day
+    hot window). Hot wins on duplicate ``id`` / ``snapshot_id``.
+    """
+    return ledger_from_store(load_store(settings), settings)
 
 
 def load_store(settings) -> dict[str, Any]:
@@ -1004,7 +1014,10 @@ def snapshot_calibration_state(snap: dict[str, Any] | None) -> str:
 
 
 def _peek_confirmation(
-    settings, snapshot_data: dict[str, Any], clock=None
+    settings,
+    snapshot_data: dict[str, Any],
+    clock=None,
+    store: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """O26: Sperrenfreier Vorblick — ändert dieser Snapshot den Store nicht?
 
@@ -1028,12 +1041,13 @@ def _peek_confirmation(
     damit harmlos: Der Vorblick kann nur „keine Änderung" sagen, wenn sie zum
     Lesezeitpunkt galt; die Sperre übernimmt, sobald Zweifel bestehen.
     """
-    try:
-        store = load_store(settings)
-    except Exception:
-        # Zu groß, unlesbar, Schema zu neu: Der Pfad unter Sperre meldet es
-        # mit demselben Fehler — der Vorblick entscheidet nichts.
-        return None
+    if store is None:
+        try:
+            store = load_store(settings)
+        except Exception:
+            # Zu groß, unlesbar, Schema zu neu: Der Pfad unter Sperre meldet
+            # es mit demselben Fehler — der Vorblick entscheidet nichts.
+            return None
     now_str = _now_iso(clock)
     clock_now = clock() if clock else dt.datetime.now(UTC)
     for ep in store.get("episodes", []):
@@ -1063,7 +1077,10 @@ def _peek_confirmation(
 
 
 def record_snapshot(
-    settings, snapshot_data: dict[str, Any], clock=None
+    settings,
+    snapshot_data: dict[str, Any],
+    clock=None,
+    store: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Registriert einen Snapshot nach der 30-min-Kollabierungsregel (§5.4).
 
@@ -1088,8 +1105,14 @@ def record_snapshot(
     O26: Derselbe Schreibverzicht gilt jetzt auch der **Sperre**. Eine
     Bestätigung läuft über ``_peek_confirmation`` sperrenfrei; die Sperre
     wird nur noch genommen, wenn der Aufruf den Store wirklich ändern kann.
+
+    A21-B2.2 (#203): ``store`` ist der **bereits gelesene** heiße Store des
+    Lesezustands. Der Vorblick benutzt ihn statt eines zweiten ``load_store``
+    — Entscheidung und Snapshot-Zeile beschreiben damit denselben Stand. Der
+    Schreibpfad lädt unter Sperre neu (ein fremder Beleg darf nicht
+    überschrieben werden), der Vorblick bleibt wie zuvor unverbindlich.
     """
-    confirmed = _peek_confirmation(settings, snapshot_data, clock)
+    confirmed = _peek_confirmation(settings, snapshot_data, clock, store=store)
     if confirmed is not None:
         return confirmed
     with locked_store(settings) as store:

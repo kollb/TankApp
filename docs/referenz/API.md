@@ -1,6 +1,14 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 21.09.2026 · App-Version **0.64.0** — neu seit 0.64.0 (A21-B1,
+> Stand: 21.09.2026 · App-Version **0.65.0** — neu seit 0.65.0 (A21-B2,
+> Issues #202–#204): die **Messung beginnt an der Requestzeile**
+> (Client-Leerlauf steht als `idle` im `Server-Timing`, außerhalb von
+> `total`/`X-Process-Time`; jede Antwort trägt eine `X-Request-ID`, der
+> Pi-Proxy die Spans `pi_*`/`nas_*`), **ein Lesezustand je Revision** für
+> `/overview` (`data_version`, `partial_errors`, Singleflight) und
+> **Ablagen an der Datenabhängigkeit** (Verlauf am Preisstand statt an
+> Litern; Dateistempel mit Inode und Inhaltsabdruck statt `int(mtime)`).
+> Neu seit 0.64.0 (A21-B1,
 > Issues #198–#201): die **Freigabekette** von `decide`
 > (`blocking_reasons`, `valid_until`, `decision_ready = (action !=
 > "no_advice")`, siehe [Decide](#decide-b4-primär)) und die
@@ -175,6 +183,45 @@ frei (GUI-Polling).
   Zusammenfassung (p95, Maximum, langsamste Route) steht in
   `/api/v1/health` → [`performance`](#health); das Budget in
   [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520).
+  **Seit 0.65.0 (A21-B2.1) beginnt die Zahl mit dem Eingang der Requestzeile.**
+  Clientleerlauf zwischen zwei Keep-Alive-Anfragen zählt nicht mehr mit; er
+  steht als eigener Span `idle` im `Server-Timing`.
+- **`Server-Timing` (A21-B2.1, seit 0.65.0):** Benannte Dauerabschnitte
+  **derselben** Antwort in Millisekunden, damit eine langsame Antwort ohne
+  Attach-Profiler erklärbar ist:
+
+  | Span | Bedeutung |
+  |---|---|
+  | `idle` | Clientpause vor der Anfrage — **nicht** in `total` |
+  | `body` | Request-Body lesen |
+  | `history` | Influx-Verlauf (inkl. 7-Tage-Kurve/Band des Overview) |
+  | `ledger` / `advice` / `wallet` / `stats` | Ledger lesen, Advice-Statistik (inkl. Bootstrap), Wallet-Statistik, Statistik-Ebene gesamt |
+  | `publication` | Modell-Veröffentlichung parsen |
+  | `snapshot` | Entscheidungs-Snapshot (Store-Sperre/Pfad) |
+  | `serialize` / `gzip` | JSON-Serialisierung, Kompression |
+  | `total` | Bearbeitung bis zum Antwortkopf (= `X-Process-Time`) |
+
+  Die Namen sind eine **Whitelist** (`app/metrics.py::SPANS`); unbekannte
+  Namen werden verworfen. Der Versand (Socket-Schreiben) liegt **nach** dem
+  Antwortkopf und steht deshalb nicht im Header dieser Antwort, sondern als
+  `performance.send_p95_ms` in `/health`.
+- **`X-Request-ID` (A21-B2.1, seit 0.65.0):** Korrelations-ID je Anfrage.
+  Ein Client-Wert wird nur übernommen, wenn er
+  `[A-Za-z0-9._:-]{1,64}` genügt (sonst zufällig erzeugt) — der Wert landet im
+  Antwortkopf, nie im Log, und erzeugt kein hochkardinales Metrik-Label.
+  Der Pi sendet dieselbe ID an die NAS und legt die NAS-Antwortwerte
+  `X-Process-Time`/`Server-Timing` **unverändert** als
+  `X-TankApp-NAS-Process-Time`/`X-TankApp-NAS-Server-Timing` daneben.
+  Sein eigenes `Server-Timing` trägt `pi_total`, `pi_proxy` (Wartezeit auf die
+  NAS, inklusive Lesen der Antwort) und die NAS-Spans mit Präfix `nas_`:
+
+  ```
+  Server-Timing: pi_total;dur=182.400, pi_proxy;dur=180.100,
+                 nas_history;dur=120.000, nas_total;dur=150.000
+  X-TankApp-NAS-Process-Time: 0.150000
+  X-TankApp-NAS-Server-Timing: history;dur=120.000, total;dur=150.000
+  ```
+
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
@@ -351,6 +398,59 @@ Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (k
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).
 
+## Overview (B7 Alltags-Aggregat)
+
+`GET /api/v1/overview?city=Frankfurt&fuel=e10&station_id=<uuid>&liters=40&…`
+
+Eine Anfrage statt sechs paralleler GUI-Polls: `decide`, `fills`,
+`stats/summary`, fällige `episodes` und die Tageskurve (`day`, inklusive
+Tonlagen-Skala `band`) in einer Antwort.
+
+```json
+{
+  "generated_at": "2026-09-21T17:58:25+00:00",
+  "data_version": "9cd4a15b21487971d9fbb02b26b14f96327ed784",
+  "partial_errors": [],
+  "decide": { "…": "wie /decide" },
+  "fills": { "…": "wie /fills" },
+  "stats_summary": { "…": "wie /stats/summary" },
+  "episodes": { "count": 0, "episodes": [] },
+  "day": { "points": [], "band": null, "error_code": null },
+  "error_code": null
+}
+```
+
+- **Ein Lesezustand je Revision (A21-B2.2, seit 0.65.0).** `decide` und
+  `stats_summary` teilen Ledger, Advice-/Wallet-Statistik und Schwellen — die
+  Tageskurve eingeschlossen. Die Revision ergibt sich aus
+  `data_version()` (Store, Archiv, Engine-/Selektionsartefakt, Profil,
+  Polling-Set), einem 5-Minuten-Zeitfenster und `m7_auto_apply`. Innerhalb der Revision
+  dient die Berechnung aus dem Prozessspeicher (auch für Anfragen ohne
+  `If-None-Match`); ein neuer Beleg, ein neuer Snapshot, ein neues
+  Uhr-/Tagesfenster oder eine geänderte Policy rechnen neu. Parallele
+  Anfragen derselben Revision warten auf **eine** Rechnung (Singleflight),
+  Fehler werden nicht gespeichert.
+- **`data_version`** nennt den Stand, aus dem **alle** Teile der Antwort
+  stammen. Sie ist nicht das ETag (das ist `sha1(data_version|route|params)`),
+  sondern dessen sichtbarer Anteil: Ein Client kann damit zwei Antworten
+  vergleichen, ohne die Kennzahl der Komponenten zu deuten.
+- **`partial_errors[]`** benennt Teilausfälle je Komponente — `day`,
+  `decide`, `stats_summary`, `fills`, `episodes`
+  (`{"component": "…", "error_code": "…"}`).
+  `error_code: null` auf oberster Ebene heißt nur „die Anfrage ist nicht
+  gescheitert“ — es ist **kein** Vollständigkeitsnachweis (Auditbefund §4.3:
+  ohne Influx-Konfiguration stand innen `influx_read_failed`, außen `null`).
+  Leere Liste = alle Komponenten haben geantwortet.
+- **ETag/304:** Dieselbe Revalidierung wie `decide`/`stats/summary` (O25);
+  ein 304 ist eine gültige Antwort und trägt `X-Process-Time`,
+  `Server-Timing` und `X-Request-ID` (A21-B2.1). Ein Cache-Treffer wird
+  zusätzlich gegen `valid_until` der mitgelieferten Aktion geprüft
+  (`release_still_valid`, A21-B1.4) — eine abgelaufene Freigabe erscheint aus
+  keinem Speicher erneut.
+- Die Teile tragen die Feldformen der Einzelendpunkte, **ohne** neue
+  Semantik: `decide` bleibt die Empfehlung mit Snapshot-Emission, `fills` und
+  `episodes` bleiben lesend.
+
 ## Episodes & Intent (B4)
 
 `GET /api/v1/episodes?status=due`
@@ -451,7 +551,9 @@ Ehrlichkeits-Regeln:
   Fenster, Ankerpreis und P-Schätzung), `settled_at` die Abrechnung. Ein
   **gewechselter Grund** ist dagegen eine neue Aussage und ergibt eine eigene
   Zeile. Der Schreibverzicht ist die Bedingung der ETag-Revalidierung von
-  `/overview` (`data_version()` liest den mtime-Wert des Stores, B7).
+  `/overview` (`data_version()` stempelt je Quelle
+  `Gerät:Inode:mtime_ns:Größe:Inhaltsabdruck`, B7/A21-B2.3 — gelesen werden
+  höchstens 64 KiB je Datei, darüber Kopf und Ende).
 
 Fehler:
 
@@ -835,15 +937,20 @@ Lese-Memo (O23) macht den Parse selten, und wenn er teuer wird (wachsende
 Veröffentlichung, O22), steht es hier. `null` heißt „für den aktuellen Stand hat
 noch niemand geparst", nie „0 ms".
 
-**`performance`** (O37, seit 0.52.0): Selbstmessung des Servers — was
-`X-Process-Time` je Antwort sagt, als Zusammenfassung über die letzten
-**200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
+**`performance`** (O37, seit 0.52.0; erweitert in 0.65.0): Selbstmessung des
+Servers — was `X-Process-Time` je Antwort sagt, als Zusammenfassung über die
+letzten **200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
 `budget_ms` (= 300 ms, das Budget aus
 [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520)), dazu
 `slowest_route`/`slowest_p95_ms` und je Route mit mindestens fünf Antworten ein
 eigener Wert in `by_route`. `store_lock` zählt Akquisen und Wartezeit der
 Feedback-Store-Sperre (O26): Steigt `acquired`, obwohl niemand Belege bucht,
-nimmt ein Lesepfad wieder die Sperre. Kein Monitoring, kein Alarm — die
+nimmt ein Lesepfad wieder die Sperre. Seit 0.65.0 (A21-B2.1) zusätzlich:
+`by_status` (2xx/304/4xx/5xx im Fenster, ohne Doppelzählung),
+`send_p95_ms`/`send_max_ms` (Socket-Schreibvorgang nach dem Antwortkopf),
+`keep_alive_timeouts` (Verbindungen ohne Anfrage — gezählt, keiner Route
+zugeschrieben), `requests` (Zähler über die Prozesslebenszeit) und `spans`
+(die erlaubten `Server-Timing`-Namen). Kein Monitoring, kein Alarm — die
 Frage, die der Block beantwortet, ist „warum hängt das gerade?", auf dem Gerät,
 auf dem es hängt.
 
@@ -1017,6 +1124,18 @@ Geschlossen/fehlend trennt Linie, offener Preis bleibt als Stufe stehen.
   kein Preis-Bestand. Das angefragte Fenster (`hours`) ist in der Anlaufphase
   größer als der Bestand; die GUI nennt darum die echte Reichweite, statt die
   Achse als volle Abdeckung erscheinen zu lassen.
+- **Ablage an der Datenabhängigkeit (A21-B2.3, seit 0.65.0).** Das Ergebnis
+  hängt an Station, Stadt, Kraftstoff, `hours` und dem **Preisstand**
+  (Collector-Heartbeat, local Heartbeat, Polling-Set, 60-s-Uhrfenster) —
+  nicht an Litern, Zeitwert, Tankstand oder Belegen. Eine Literänderung im
+  GUI kostet deshalb keine neue Influx-Query. Neuer Poll oder neues
+  Uhrfenster lesen neu; ein Fehler wird höchstens 5 s ausgeliefert (danach
+  versucht es der nächste Abruf erneut), parallele identische Abrufe erzeugen
+  **eine** Query (Singleflight), die Ablage ist begrenzt und verdrängt den
+  ältesten Stand gezielt. Der Tagesstreifen in
+  [Übersicht](#overview-b7-alltags-aggregat) nutzt dieselbe Ablage; die
+  Antwort bleibt ansonsten unverändert (`points`, `n_points`, `range_from`,
+  `range_to`, `error_code`, mit `band` nur im Overview-Pfad).
 
 ## Forecast
 

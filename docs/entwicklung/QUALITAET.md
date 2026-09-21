@@ -139,6 +139,8 @@ mit zwei billigen Feldern und ohne neue Infrastruktur:
 | `performance` | `GET /api/v1/health` | p95, Maximum und langsamste Route über die letzten **200** Antworten (`app/metrics.py`), je Route ab fünf Antworten, dazu `budget_ms` aus der Tabelle unten |
 | `performance.store_lock` | `GET /api/v1/health` | Akquisen und Wartezeit der Feedback-Store-Sperre (O26). Ein steigender Zähler ohne Schreibvorgänge heißt: ein Lesepfad nimmt wieder die Sperre. |
 | `publication.parse_ms` / `parsed_at` | `GET /api/v1/health` | Dauer des letzten Pars **dieses** Datenstands (O23 macht ihn selten — wenn er teuer wird, steht es hier). `null` heißt „für den aktuellen Stand hat noch niemand geparst“, nie „0 ms“. |
+| `Server-Timing` | Header **jeder** Antwort (seit 0.65.0, A21-B2.1) | Benannte Abschnitte derselben Antwort: `history`, `ledger`, `advice`, `wallet`, `stats`, `snapshot`, `publication`, `serialize`, `gzip`, `total` — und `idle` (Clientpause **vor** der Anfrage, ausdrücklich außerhalb von `total`). Feste Namensliste (`app/metrics.py::SPANS`), keine Token, keine Stations-IDs. |
+| `X-Request-ID` | Header **jeder** Antwort (seit 0.65.0, A21-B2.1) | Korrelations-ID derselben Anfrage: vom Client übernommen, wenn sie dem Zeichenvorrat `[A-Za-z0-9._:-]{1,64}` genügt, sonst zufällig erzeugt. Der Pi reicht sie an die NAS durch; zusammen mit `X-TankApp-NAS-Process-Time` und `X-TankApp-NAS-Server-Timing` unterscheidet sie Pi-Zeit, Wartezeit und NAS-Zeit. |
 
 ```bash
 curl -sD - -o /dev/null localhost:1355/api/v1/health | grep -i x-process-time
@@ -159,6 +161,32 @@ Historie über den Prozess-Lebenszeitraum hinaus und keinen Alarm auf
 `performance` — die Alarme bleiben beim Alarm-Katalog in
 [BETRIEB.md](../betrieb/BETRIEB.md). Die Messung beantwortet eine Frage: „Warum hängt
 das gerade?“ — und zwar auf dem Gerät, auf dem es hängt.
+
+### Keep-Alive-Pause ist keine Bearbeitungszeit (A21-B2.1, 21.09.2026)
+
+Der Audit vom 21.09.2026 fand die Messung an der falschen Stelle: Der Timer
+startete vor dem blockierenden Lesen der **nächsten** Keep-Alive-Anfrage. In
+der Gegenprobe auf einer Verbindung, zwei `/api/v1/health`-Aufrufe mit 300 ms
+Clientpause dazwischen: echte Bearbeitung **1,8 ms**, gemeldeter
+`X-Process-Time` **301,7 ms** — die Pause floss zusätzlich in den p95 der
+Route. Wer damit eine 2,00-s-Antwort erklären wollte, sah nur, dass irgendwo
+300 ms steckten.
+
+Seit 0.65.0 beginnt die Messung mit dem **Eingang der Requestzeile**
+(`_TrackedReader` stempelt die erste Zeile des Requests). Die Pause davor steht
+als eigener Span `idle` im `Server-Timing` — sichtbar, aber nicht in `total`
+und nicht in `X-Process-Time`. `tests/test_a21_b2_latency.py` hält die
+Gegenprobe fest: 400 ms Clientpause, danach `X-Process-Time < 200 ms`,
+`idle ≥ 300 ms`, `performance.max_ms < 200 ms`. Der Test prüft bewusst
+Verhältnisse, keine absoluten Millisekunden — ein langsamer CI-Läufer darf
+ihn nicht rot machen.
+
+Dazu getrennt gemessen und in `/health` ausgewiesen: `performance.by_status`
+(200/304/4xx/5xx ohne Doppelzählung), `performance.send_p95_ms` /
+`send_max_ms` (Socket-Schreibvorgang **nach** dem Antwortkopf),
+`performance.keep_alive_timeouts` (Verbindungen, die ohne Anfrage endeten —
+gezählt, aber keiner Route als Latenz zugeschrieben) und `performance.spans`
+(die erlaubte Namensliste).
 
 ---
 
@@ -228,6 +256,55 @@ schreibt seinen Bericht als JSON nach stdout.
 Einordnung: Ein einzelnes GUI pollt im Minutentakt, ein Haushalt mit drei
 Geräten also ~0,05 Abrufe/s. Der Lastpfad fährt das Tausendfache — die
 Reserve ist groß, der Regler ist nicht die Last, sondern der 60-s-Takt.
+
+**Overview-Lesepfad nach der Entkopplung (A21-B2.2, 21.09.2026)** —
+`ops/quality/bench_overview.py`, Sandkasten, synthetischer Ledger,
+`OPENBLAS_NUM_THREADS=1`; „vorher“ aus dem Audit `c485744`, je Stufe der
+Median aus drei **ungecachten** Aufrufen einer Messung:
+
+| Ledger | vorher (ungecacht) | nachher ungecacht | nachher Speichertreffer |
+|---|---|---|---|
+| leer | 10,9 ms | 11,3 ms | 11,4 ms |
+| 160 Settlements / 20 Tagesblöcke | 377,6 ms | 188,7 ms | 11,1 ms |
+| 800 / 100 | 1 820,4 ms | 875,1 ms | 13,2 ms |
+| 1 600 / 200 | 3 596,3 ms | 1 745,6 ms | 16,0 ms |
+
+Der ungecachte Pfad halbiert sich, weil Advice- und Wallet-Statistik nicht
+mehr zweimal je Anfrage entstehen (Decide und Stats-Summary teilen einen
+Lesezustand); der Speichertreffer lässt nur noch die serielle Kette
+(Tagesband → Entscheidungstabelle → Belege → fällige Episoden) übrig. Diese
+Zahlen sind eine Sandkastenmessung, **keine** NAS-Abnahme — p95 ≤ 300 ms auf
+der Zielhardware bleibt Issue #214. Die Regressionstests prüfen deshalb
+Aufrufzahlen und Ergebnisidentität, keine Millisekunden.
+
+### Ablagen an der Datenabhängigkeit (A21-B2.3, 21.09.2026)
+
+Drei Änderungen, alle gegen Auditbefunde (§3.5) und alle mit Regressionstest
+(`tests/test_a21_b2_deps.py`):
+
+* **Verlauf am Preisstand, nicht an den Parametern.** `prices_version()`
+  (Herzschläge, Polling-Set, 60-s-Uhrfenster) schlüsselt die Ablage von
+  `/api/v1/series` und des Tagesbandes. Ein Liter-, Tank- oder Zeitwertwechsel
+  kostet damit keine neue Influx-Query (vorher: 3,76 s); ein neuer
+  Collector-Poll oder ein neues Uhrfenster liest sofort neu. Fehler verfallen
+  nach 5 s, parallele identische Misses erzeugen eine Query, die Ablage ist
+  auf zwölf Einträge begrenzt und verdrängt den ältesten gezielt.
+* **Antwort-Ablage mit gezielter Verdrängung.** Der ETag-Cache von
+  `/overview` warf bei 64 Einträgen alles weg (auch den gerade gültigen
+  Stand); jetzt ist er eine LRU mit derselben Obergrenze.
+* **Dateistempel mit Inode und Inhaltsabdruck.** `int(mtime):Größe` konnte
+  zwei Stände derselben Sekunde bei gleicher Größe nicht unterscheiden
+  (Reproduktion im Test). Der Stempel ist jetzt
+  `Gerät:Inode:mtime_ns:Größe:crc32`; die App ersetzt ihre Bestände atomar,
+  der Inode fängt das ohne Inhaltlesen ab. *Kosten/Grenze:* je Aufruf wird
+  höchstens 64 KiB gelesen (darüber Kopf und Ende zu je 16 KiB) — das ist
+  bewusst begrenzt, statt den ganzen Bestand je Request zu hashen; die
+  Grenze hält ein Test fest.
+
+Die Messung dieser Änderungen ist wieder der Sandkasten
+(`ops/quality/bench_overview.py`) — kein Docker, kein NAS, kein Pi. Die
+Abnahme auf der Zielhardware (p95 ≤ 300 ms, `Server-Timing` am echten Pfad)
+bleibt Issue #214.
 
 **Lighthouse** (0.41.1, Desktop-Preset, je 3 Läufe, lokaler Demo-Stack):
 

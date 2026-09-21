@@ -1,6 +1,6 @@
 # TankApp Speichermanagement — Pi shm und NAS SSD/HDD
 
-> Stand: 21.09.2026 · App-Version 0.64.0 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“ Seit A21-B1.1 gilt für „Nach Influx-Upload löschbar?“ der Dateibestätigungs-Nachweis statt eines Zeitstempels; bewusste FIFO-Verluste sind getrennt gezählt.
+> Stand: 21.09.2026 · App-Version 0.65.0 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“ Seit A21-B1.1 gilt für „Nach Influx-Upload löschbar?“ der Dateibestätigungs-Nachweis statt eines Zeitstempels; bewusste FIFO-Verluste sind getrennt gezählt.
 
 ## Inhaltsverzeichnis
 

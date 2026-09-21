@@ -11,6 +11,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { resourceErrorVisible, useResource } from "./data";
+import { setReadToken } from "./readToken";
 
 describe("B7: Fehler-Policy (ein Poll-Fehler ≠ Ausfall)", () => {
   it("zeigt den ersten Fehlversuch, wenn nichts anzuzeigen wäre", () => {
@@ -122,6 +123,59 @@ describe("B7-Revalidierung: ETag/304-Protokoll", () => {
       await act(async () => {
         root.unmount();
       });
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("O39 + B7: Tokenwechsel verwirft das ETag (A21-B2.3)", () => {
+  it("lädt nach einem neuen Secret neu — ohne If-None-Match, mit Bearer", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: { ifNoneMatch: string | null; authorization: string | null }[] = [];
+    globalThis.fetch = (async (
+      _input: unknown,
+      init?: { headers?: Record<string, string> },
+    ) => {
+      const headers = init?.headers ?? {};
+      calls.push({
+        ifNoneMatch: headers["If-None-Match"] ?? null,
+        authorization: headers["Authorization"] ?? null,
+      });
+      return new Response(JSON.stringify({ stand: "a" }), {
+        status: 200,
+        headers: { ETag: "etag-aaa", "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    function Probe() {
+      useResource<{ stand: string }>("/api/v1/overview?fuel=e10", 600_000, 0);
+      return null;
+    }
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    try {
+      setReadToken("");
+      await act(async () => {
+        root.render(<Probe />);
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].ifNoneMatch).toBeNull();
+      expect(calls[0].authorization).toBeNull();
+
+      // Neues Secret: der ETag der alten Anfrage gilt nicht mehr — sonst
+      // bekäme der Client ein 304 auf eine Antwort, die er nie sah.
+      await act(async () => {
+        setReadToken("geheim");
+      });
+      await act(async () => {});
+      expect(calls).toHaveLength(2);
+      expect(calls[1].ifNoneMatch).toBeNull();
+      expect(calls[1].authorization).toBe("Bearer geheim");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      setReadToken("");
       globalThis.fetch = originalFetch;
     }
   });

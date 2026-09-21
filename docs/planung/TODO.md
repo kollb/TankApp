@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 21.09.2026 · App-Version 0.64.0
+> Stand: 21.09.2026 · App-Version 0.65.0
 
 ## Inhaltsverzeichnis
 

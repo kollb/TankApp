@@ -23,11 +23,10 @@ from pathlib import Path
 from typing import Any
 
 from .data import haversine_km, metadata, publication
+from . import metrics
+from .read_state import ReadBundle, load_bundle
 from .feedback import (
     WH_MIN_FILLS,
-    compute_advice_stats,
-    compute_wallet_stats,
-    load_ledger,
     record_snapshot,
 )
 from .pside import (
@@ -46,7 +45,7 @@ from .route import (
     _parse_float,
     net_economics,
 )
-from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
+from .thresholds import DEFAULT_THRESHOLDS
 
 FUELS = {"e10", "e5", "diesel"}
 
@@ -1150,7 +1149,17 @@ def _forecast_calibration_state(forecast: dict[str, Any]) -> str:
     return "raw"
 
 
-def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
+def evaluate_decide(
+    live_data, params: dict[str, Any], read: ReadBundle | None = None
+) -> dict[str, Any]:
+    """Entscheidung rechnen.
+
+    ``read`` ist der gemeinsame Lesezustand dieser Revision (A21-B2.2, #203).
+    Ohne ihn wird er hier geladen — dann teilen sich nur die Kennzahlen
+    innerhalb dieses Aufrufs einen Stand. ``/overview`` reicht denselben
+    Zustand an ``stats_summary`` weiter, damit beide Antwortteile aus einer
+    Rechnung stammen.
+    """
     fuel = (params.get("fuel") or "e10").lower()
     if fuel not in FUELS:
         raise ValueError("invalid_fuel")
@@ -1300,8 +1309,12 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     # O2/O3: The receipt profile is weekday-aware and starts carefully with
     # the first usable receipt (eight fills are prior strength, not a cliff).
-    store = load_ledger(live_data.settings)
-    wallet_stats = compute_wallet_stats(store, now=clock_now)
+    # A21-B2.2: Ledger, Wallet- und Advice-Statistik kommen aus dem einen
+    # Lesezustand dieser Revision (Span ``ledger``/``wallet``/``advice``
+    # entsteht dort) — nicht mehr zweimal je Anfrage.
+    bundle = read or load_bundle(live_data.settings, clock_now)
+    store = bundle.hot_store
+    wallet_stats = bundle.wallet
     wh_weekday = wallet_stats.get("wh_weekday") or None
     wh_personalized = bool(wallet_stats.get("wh_personalized"))
     wh_n = int(wallet_stats.get("wh_n") or 0)
@@ -1370,11 +1383,11 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
     auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
 
     # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion
-    # (der Store und die Wallet-Kennzahlen stehen schon oben, A9).
-    advice_stats = compute_advice_stats(store, now=clock_now)
+    # (Statistik und Schwellen stehen im Lesezustand, A9/A21-B2.2).
+    advice_stats = bundle.advice
     is_calibrated = advice_stats.get("calibrated", False)
 
-    thresholds, tuning = active_thresholds(advice_stats, auto_apply=auto_apply)
+    thresholds, tuning = bundle.thresholds, bundle.tuning
 
     # Alternativen (F2 Umweg-Ökonomie) — nur mit Ankerpreis rechenbar.
     fresh_threshold = _fresh_threshold_minutes(live_data.settings)
@@ -1566,7 +1579,16 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         "tank_state": tank.get("state") if tank else None,
     }
 
-    _, ep = record_snapshot(live_data.settings, snapshot_input, clock=live_data.clock)
+    # A21-B2.1: Snapshot-Log/Sperre als eigener Span — er wartet auf die
+    # Store-Sperre und darf nicht als Rechenzeit der Entscheidung gelesen
+    # werden.
+    with metrics.measure("snapshot"):
+        _, ep = record_snapshot(
+            live_data.settings,
+            snapshot_input,
+            clock=live_data.clock,
+            store=store,
+        )
 
     return {
         "primary": {

@@ -18,12 +18,7 @@ import datetime as dt
 from typing import Any
 
 from .data import metadata
-from .feedback import (
-    compute_advice_stats,
-    compute_wallet_stats,
-    load_ledger,
-)
-from .thresholds import active_thresholds
+from .read_state import ReadBundle, load_bundle
 
 # O18: Die CUSUM-Schwelle kommt aus der Engine — hier stand 3,0, während
 # `engine.selection.cusum_break` bei h = 2,0 flaggt. Die GUI zeigte also eine
@@ -437,7 +432,9 @@ def _live_phase_from_publication(pub: dict | None = None) -> dict[str, Any] | No
     }
 
 
-def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
+def evaluate_stats_summary(
+    live_data, params: dict[str, Any], read: ReadBundle | None = None
+) -> dict[str, Any]:
     """Drei-Schichten-Statistik ohne Demo-Daten.
 
     Felder, die noch nicht aus echten Daten abgeleitet werden können, sind
@@ -475,15 +472,15 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
             metas, city, pub, liters=profile_liters, liters_source=liters_source
         )
 
-    # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo)
-    store = load_ledger(live_data.settings)
-    live_advice = compute_advice_stats(store, now=live_data.clock())
-    wallet = compute_wallet_stats(store, now=live_data.clock())
-
-    # M7-Schwellen-Nachzug (Konzept §5.5 Schicht B Schritt 4, §13 M7):
-    # Vorschlag aus den gemessenen Trefferquoten; wirksam nur mit auto_apply.
-    auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
-    thresholds, tuning = active_thresholds(live_advice, auto_apply=auto_apply)
+    # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo).
+    # A21-B2.2 (#203): aus dem gemeinsamen Lesezustand der Revision — die
+    # Spans ``ledger``/``advice``/``wallet`` entstehen dort, und ``/overview``
+    # teilt genau dieses Ergebnis mit ``decide`` (dieselben Dicts, dieselben
+    # Schwellen, ein Stand).
+    bundle = read or load_bundle(live_data.settings, live_data.clock())
+    live_advice = bundle.advice
+    wallet = bundle.wallet
+    thresholds, tuning = bundle.thresholds, bundle.tuning
 
     # Güte-Kacheln: aus engine/current.json, sonst None
     quality_metrics = _quality_metrics_from_publication(pub)
