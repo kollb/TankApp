@@ -661,6 +661,7 @@ def data_version(settings, clock) -> str:
         höchstens 1×/300 s) → neue Preise in InfluxDB
       - Engine-/Selektions-Artefakte: neuer Modelllauf
       - Feedback-Store: neue Belege
+      - Feedback-Archiv: 90-Tage-Auslagerung (F3-Allzeitbilanz)
       - Polling-Set: geänderter Stations-Mix
     plus das Uhrzeit-Fenster (siehe OVERVIEW_REVALIDATE_SECONDS).
     """
@@ -697,6 +698,7 @@ def data_version(settings, clock) -> str:
             f"engine:{_file_stamp(settings.runtime / 'engine' / 'current.json')}",
             f"selection:{_file_stamp(settings.runtime / 'selection' / 'current.json')}",
             f"feedback:{_file_stamp(settings.runtime / 'feedback' / 'store.json')}",
+            f"archive:{_file_stamp(settings.runtime / 'feedback' / 'archive.jsonl')}",
             f"polling:{_file_stamp(settings.polling)}",
             f"tick:{tick}",
         )
@@ -1477,7 +1479,12 @@ class LiveData:
                 sorted(selected),
                 selected,
             )
-            query += '  |> group(columns: ["city", "station_id"])\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
+            # I3: city is a field, not a tag — grouping by it would split a
+            # rename into two series and drop the latest price.
+            query += (
+                '  |> group(columns: ["station_id"])'
+                '\n  |> sort(columns: ["_time"])\n  |> tail(n: 1)\n'
+            )
             seen, kept = 0, 0
             for raw in self.query(cfg, query):
                 # Einzelne defekte Zeilen überspringen, statt alle
@@ -2620,10 +2627,10 @@ class LiveData:
                 StoreCorrupted,
                 StoreTooLarge,
                 compute_wallet_balance,
-                load_store,
+                load_ledger,
             )
 
-            store = load_store(self.settings)
+            store = load_ledger(self.settings)
             balance = compute_wallet_balance(store, now=self.clock())
             balance["error_code"] = None
             return balance

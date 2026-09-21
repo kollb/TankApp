@@ -96,10 +96,10 @@ def _active_elsewhere_thresholds(live_data) -> dict[str, float]:
         }
 
     try:
-        from .feedback import compute_advice_stats, load_store
+        from .feedback import compute_advice_stats, load_ledger
 
         auto_apply = bool(getattr(live_data.settings, "m7_auto_apply", False))
-        store = load_store(live_data.settings)
+        store = load_ledger(live_data.settings)
         advice_stats = compute_advice_stats(store)
         thresholds, _ = active_thresholds(advice_stats, auto_apply=auto_apply)
         return {

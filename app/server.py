@@ -144,6 +144,31 @@ DEFAULT_TRIGGER_GAP_S = 600.0
 # sofort wirken, aber Dauergeklicke keine Läufe stapeln.
 MANUAL_MIN_GAP_S = 60.0
 
+
+def merge_watermark(current, incoming):
+    """Keep the highest pending watermark. ``None`` never overwrites a number."""
+    if incoming is None:
+        return current
+    if current is None:
+        return incoming
+    try:
+        return incoming if int(incoming) > int(current) else current
+    except (TypeError, ValueError):
+        return incoming
+
+
+def watermark_ahead(left, right) -> bool:
+    """True if ``left`` is a strictly newer watermark than ``right``."""
+    if left is None:
+        return False
+    if right is None:
+        return True
+    try:
+        return int(left) > int(right)
+    except (TypeError, ValueError):
+        return str(left) != str(right)
+
+
 # Validierungs-/Fachfehler der Fill-Endpunkte → echter HTTP-Status statt
 # 200 {"error_code": …} (Prüfstand §3.1). Alles Unbekannte ist ein
 # Serverfehler (503), nie ein stiller Erfolg.
@@ -283,7 +308,7 @@ class Scheduler:
         if name not in TRIGGERABLE_JOBS:
             return {"status": "rejected", "reason": "unknown_job"}
         with self.lock:
-            self.pending[name] = watermark
+            self.pending[name] = merge_watermark(self.pending.get(name), watermark)
         self.wake[name].set()
         return {"status": "queued", "job": name}
 
@@ -367,10 +392,18 @@ class Scheduler:
         wake = self.wake[name]
         state = self.job_state(name)
         first = True
+        follow_delay = None
         while not self.stop_event.is_set():
             # Erster Lauf im Prozess: sofort (bisheriges Verhalten), danach
             # Intervall bzw. Fehler-Backoff — unterbrochen durch Webhook-Triggers.
-            fired = wake.wait(0.0 if first else self.next_delay(name, state))
+            # I5: ein Nachlauf nach einem Job wartet nur die Rest-Debounce-
+            # Lücke (oder das Intervall, was kürzer ist), nicht den vollen Takt.
+            if follow_delay is not None:
+                delay = follow_delay
+                follow_delay = None
+            else:
+                delay = 0.0 if first else self.next_delay(name, state)
+            fired = wake.wait(delay)
             first = False
             if self.stop_event.is_set():
                 break
@@ -387,7 +420,19 @@ class Scheduler:
                 if decision != "run":
                     with self.lock:
                         self.trigger_skips[name] = decision
+                        if decision == "debounced":
+                            # Die Daten sind nicht verarbeitet — Watermark
+                            # nicht verwerfen, sonst fehlt der Folgelauf.
+                            self.pending[name] = merge_watermark(
+                                self.pending.get(name), watermark
+                            )
                     continue
+            else:
+                # Intervall-Tick: eine vorgemerkte Watermark mitnehmen, ohne
+                # sie als Webhook-Trigger zu zählen.
+                with self.lock:
+                    watermark = self.pending.pop(name, None)
+            input_wm = watermark
             try:
                 code = self.run_once(name, watermark=watermark)
                 if code not in (None, 0, 2):
@@ -396,10 +441,25 @@ class Scheduler:
                     self.errors.pop(name, None)
             except OSError:
                 self.errors[name] = "job_start_failed"
-            # Ein Wake, das *während* des Laufs gesetzt wurde, ist erledigt:
-            # der Job hat ja gerade gerechnet. Sonst startet er sofort erneut.
+            # I5: Ein Wake während des Laufs ist *nicht* erledigt, wenn die
+            # vorgemerkte Watermark neuer ist als der Input dieses Laufs.
+            # wake.clear() allein würde den Folgelauf bis zum Intervall
+            # verschieben und die Pending-Marke ungenutzt liegen lassen.
             wake.clear()
+            leftover = None
+            with self.lock:
+                leftover = self.pending.get(name)
+                if leftover is not None and not watermark_ahead(leftover, input_wm):
+                    self.pending.pop(name, None)
+                    leftover = None
             state = self.job_state(name)
+            if leftover is not None:
+                gap = TRIGGER_MIN_GAP_S.get(name, DEFAULT_TRIGGER_GAP_S)
+                remaining = gap - (time.monotonic() - self.last_start.get(name, 0.0))
+                follow_delay = min(self.next_delay(name, state), max(0.0, remaining))
+                # Kein wake.set(): sonst kehrt wait() sofort zurück, admit_trigger
+                # debounce't, und die Pending-Marke liegt bis zum Intervall.
+                # Der Timeout-Pfad nimmt die Watermark ohne Extra-Trigger mit.
 
     def run_once(self, name, watermark=None):
         path = self.settings.runtime / "logs" / f"{name}.log"

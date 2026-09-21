@@ -147,7 +147,7 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
         )
         from .config import engine_config
         from .data import metadata
-        from .feedback import compute_wallet_stats, load_store
+        from .feedback import compute_wallet_stats, load_ledger
         from .profiles import active_liters
         from .profiles import load_store as load_profile_store
 
@@ -195,7 +195,7 @@ def build_selection(settings, fuels=None, config=None, n_boot=None, progress=Non
                 # O2: Selection receives the very same 7×24 profile as
                 # decide. No receipts uses its named default, never a second
                 # commuter literal hidden in this job.
-                wallet = compute_wallet_stats(load_store(settings))
+                wallet = compute_wallet_stats(load_ledger(settings))
                 overrides["user_time_weights"] = wallet.get("wh_weekday")
                 # O21: dieselbe Tankmenge wie im Score und in der GUI.
                 # `saving_per_fill_eur` wurde bisher für feste 40 L publiziert,

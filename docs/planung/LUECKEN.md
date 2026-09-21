@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 21.09.2026 · App-Version 0.62.1
+> Stand: 21.09.2026 · App-Version 0.63.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -46,7 +46,9 @@ Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
 [TODO](TODO.md#n1-naspi-integrationsfehler-beheben). Es gelten folgende Grenzen:
 
 - **Datenintegrität:** Outbox, fail-closed Stores und konsistente Publikation
-  sind implementiert. Retention sichert die Allzeit-/Jahresbilanz noch nicht.
+  sind implementiert. Die 90-Tage-Retention lagert in `archive.jsonl` aus;
+  Jahres-/Allzeitbilanz und die M7-Grundgesamtheit lesen Hot-Store plus Archiv
+  (0.63.0, F3). Der 90-Tage-Live-Fenster-Handover bleibt unverändert.
 - **Schutz:** Der optionale Lesetoken schützt keine unverschlüsselte
   Verbindung; Betrieb und Zugriffsschutz bleiben Betreiberaufgabe.
 - **Failover:** Der Pi ist ausdrücklich kein gleichwertiger Decision Layer:
@@ -75,8 +77,11 @@ Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
   M6-Vertrag veröffentlichte Kurven des Altvertrags (ohne `day_pair`):
   Der erste Lauf nach dem Update bleibt sichtbar unkalibriert, bis der
   Backtest einen Kandidaten mit ausgewiesenem Modus liefert.
-- **Nachreichen:** Watermarks während eines Jobs, Uhr-Rücksprünge und
-  veränderliche Upload-Tags verletzen die bisherigen Synchronisationsannahmen.
+- **Nachreichen:** Mit 0.63.0 nachgezogen (I5/I3): ein höherer Watermark
+  während eines Jobs erzeugt genau einen Folgelauf; der Uploader-ACK ist ein
+  Datei-Offset plus Event-Zeit, Stationsname/Stadt sind Felder. Der
+  Betriebsnachweis bleibt die echte ACK-Datei und der Pi-Heartbeat, nicht nur
+  der Unit-Test.
 
 Die Bestandsübersicht oben bezeichnet implementierte Komponenten, nicht deren
 Fehlerfreiheit. Synthetische Gegenproben belegen die beschriebenen Fehler,
@@ -115,7 +120,7 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |
 | `w(h)` | Mindestens acht Füllungen für eine belastbare persönliche Rückkopplung |
 | Winter/Regime | Erster Regel-Winter separat prüfen; Simulationen nicht als Live-Messung verbuchen |
-| Ledger-Persistenz | Überschreiben beschädigter Stores ist seit 0.60.0 fail-closed (NP1/S3); der Verlust archivierter Zeilen aus der Langzeitbilanz bleibt offen (NP5); die serverseitige Speichertechnik bleibt gesondert zu entscheiden (die Browser-Queue ist seit 0.60.0 eine Outbox in IndexedDB) |
+| Ledger-Persistenz | Überschreiben beschädigter Stores ist seit 0.60.0 fail-closed (NP1/S3); Archivzeilen gehören seit 0.63.0 zur Jahres-/Allzeitbilanz und zur M7-Grundgesamtheit (NP5/F3); die serverseitige Speichertechnik bleibt gesondert zu entscheiden (die Browser-Queue ist seit 0.60.0 eine Outbox in IndexedDB) |
 | NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen |
 | Backup/Restore | Dateialter belegt keine Wiederherstellbarkeit; datenbankkonsistente Influx-Sicherung und vollständiger Restore-Nachweis fehlen im Audit |
 | NAS-Kampagnenquote | 6/2/2 nur offline; Bedarf am realen Mehrstadtbetrieb messen, nicht als NAS-Funktion behaupten |
