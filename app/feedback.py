@@ -1991,6 +1991,122 @@ def _reference_briers(
     return round(ref_base, 4), round(ref_climate, 4)
 
 
+def _loo_reference_briers(
+    outcomes: list[float], cells: list[tuple[Any, Any] | None]
+) -> tuple[float | None, float | None]:
+    """O(n)-Variante von ``_reference_briers`` für die Bootstrap-Ziehung.
+
+    Wertgleich (Leave-one-out über Zellsummen statt Peer-Listen), aber ohne
+    quadratischen Term — pro Ziehung wird sie ``GATE_BOOTSTRAP_SAMPLES``-mal
+    ausgewertet. Leere Eingabe → (None, None).
+    """
+    if not outcomes:
+        return None, None
+    n = len(outcomes)
+    base_rate = sum(outcomes) / n
+    ref_base = sum((base_rate - y) ** 2 for y in outcomes) / n
+    cell_sum: dict[Any, float] = {}
+    cell_count: dict[Any, int] = {}
+    for y, cell in zip(outcomes, cells):
+        if cell is None:
+            continue
+        cell_sum[cell] = cell_sum.get(cell, 0.0) + y
+        cell_count[cell] = cell_count.get(cell, 0) + 1
+    sq_sum = 0.0
+    for y, cell in zip(outcomes, cells):
+        count = cell_count.get(cell, 0) if cell is not None else 0
+        if count > 1:
+            forecast = (cell_sum[cell] - y) / (count - 1)
+        else:
+            forecast = base_rate
+        sq_sum += (forecast - y) ** 2
+    return round(ref_base, 4), round(sq_sum / n, 4)
+
+
+def _block_bootstrap_skill_ci(
+    blocks: list[list[dict[str, Any]]],
+    samples: int = GATE_BOOTSTRAP_SAMPLES,
+    seed: int = GATE_BOOTSTRAP_SEED,
+) -> tuple[float | None, float | None]:
+    """M5: gemeinsames Block-Bootstrap der Brier-*Differenz* zur Referenz.
+
+    Punktvergleiche (Modell-KI-Obergrenze gegen Punkt-Referenz) mischen zwei
+    Unsicherheitsquellen, die auf denselben Tagesblöcken sitzen. Hier wird
+    die Differenz ``Brier(Modell) − min(Basisrate, LOO-Klimatologie)`` je
+    Ziehung auf *denselben* gezogenen Zeilen neu gerechnet — Referenzen
+    inbegriffen — und das 95-%-Intervall der Differenzen berichtet. Das Gate
+    besteht erst, wenn die Obergrenze unter 0 liegt: Skill gegen beide
+    naive Referenzen zugleich, nicht gegen deren Punktwerte.
+    """
+    if not blocks or samples <= 0:
+        return None, None
+    rng = random.Random(seed)
+    diffs: list[float] = []
+    for _ in range(samples):
+        drawn: list[dict[str, Any]] = []
+        for _ in range(len(blocks)):
+            drawn.extend(blocks[rng.randrange(len(blocks))])
+        if not drawn:
+            continue
+        model = sum(row["sq"] for row in drawn) / len(drawn)
+        ref_base, ref_climate = _loo_reference_briers(
+            [row["outcome"] for row in drawn], [row["cell"] for row in drawn]
+        )
+        refs = [value for value in (ref_base, ref_climate) if value is not None]
+        if not refs:
+            continue
+        diffs.append(model - min(refs))
+    if len(diffs) < max(10, samples // 10):
+        return None, None
+    diffs.sort()
+    lo_idx = min(len(diffs) - 1, int(0.025 * len(diffs)))
+    hi_idx = min(len(diffs) - 1, int(0.975 * len(diffs)))
+    return round(diffs[lo_idx], 4), round(diffs[hi_idx], 4)
+
+
+GATE_RELIABILITY_BIN_EDGES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+
+def _reliability_bins(
+    rows: list[dict[str, Any]], edges=GATE_RELIABILITY_BIN_EDGES
+) -> list[dict[str, Any]]:
+    """M5: Reliability je Wahrscheinlichkeits-Bin (Diagnose, kein Gate).
+
+    Die Steigung ist ein Globalmaß; sie kann lokale Fehlanpassungen über
+    den relevanten Wahrscheinlichkeitsbereich mitteln. Die Bins zeigen je
+    Abschnitt Trefferquote gegen mittleres P mit 95-%-Binomialband
+    (Normalapproximation) — sichtbar im Payload, damit „kalibriert“ nicht
+    nur global, sondern über den Bereich nachvollziehbar ist.
+    """
+    out: list[dict[str, Any]] = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        selected = [
+            row
+            for row in rows
+            if (lo <= row["p"] < hi) or (hi == edges[-1] and row["p"] >= hi)
+        ]
+        n = len(selected)
+        if n == 0:
+            continue
+        p_mean = sum(row["p"] for row in selected) / n
+        rate = sum(row["outcome"] for row in selected) / n
+        half = 1.96 * math.sqrt(max(rate * (1.0 - rate), 0.0) / n)
+        out.append(
+            {
+                "lo": round(lo, 2),
+                "hi": round(hi, 2),
+                "n": n,
+                "p": round(p_mean, 4),
+                "rate": round(rate, 4),
+                "band": [
+                    round(max(0.0, rate - half), 4),
+                    round(min(1.0, rate + half), 4),
+                ],
+            }
+        )
+    return out
+
+
 def compute_advice_stats(
     store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
 ) -> dict[str, Any]:
@@ -2259,21 +2375,35 @@ def compute_advice_stats(
     gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
     day_blocks: dict[Any, list[float]] = {}
     reliability_blocks: dict[Any, list[dict[str, float]]] = {}
+    bias_blocks: dict[Any, list[float]] = {}
+    skill_blocks: dict[Any, list[dict[str, Any]]] = {}
     for pos, row in enumerate(gate_rows):
         key = row["day"] if row["day"] is not None else f"unknown-{pos}"
         day_blocks.setdefault(key, []).append(row["sq"])
         reliability_blocks.setdefault(key, []).append(
             {"p": row["p"], "outcome": row["outcome"]}
         )
+        # M5: Kalibrierung im Mittel — Vorzeichenfehler je Zeile; das
+        # Block-Intervall muss 0 enthalten.
+        bias_blocks.setdefault(key, []).append(row["outcome"] - row["p"])
+        skill_blocks.setdefault(key, []).append(row)
     n_day_blocks = len(day_blocks)
     if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
         gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
         gate_slope_ci_lo, gate_slope_ci_hi = _block_bootstrap_reliability_ci(
             list(reliability_blocks.values())
         )
+        gate_bias_ci_lo, gate_bias_ci_hi = _block_bootstrap_ci(
+            list(bias_blocks.values())
+        )
+        gate_skill_ci_lo, gate_skill_ci_hi = _block_bootstrap_skill_ci(
+            list(skill_blocks.values())
+        )
     else:
         gate_ci_lo, gate_ci_hi = None, None
         gate_slope_ci_lo, gate_slope_ci_hi = None, None
+        gate_bias_ci_lo, gate_bias_ci_hi = None, None
+        gate_skill_ci_lo, gate_skill_ci_hi = None, None
     gate_slope = _reliability_slope(
         [{"p": row["p"], "outcome": row["outcome"]} for row in gate_rows]
     )
@@ -2286,17 +2416,39 @@ def compute_advice_stats(
         < GATE_RELIABILITY_SLOPE_MAX_ABS_DEV
         and (gate_slope_ci_hi - gate_slope_ci_lo) < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
     )
+    # M5: Intercept-/Mittel-Nachweis neben der Steigung. Eine Steigung 1 mit
+    # systematischem Versatz (+10 pp) war vorher „kalibriert“ — das Mittel
+    # muss stimmen, nicht nur die Empfindlichkeit.
+    gate_bias = (
+        round(sum(row["outcome"] - row["p"] for row in gate_rows) / gate_n, 4)
+        if gate_n > 0
+        else None
+    )
+    gate_bias_ok = (
+        gate_bias_ci_lo is not None
+        and gate_bias_ci_hi is not None
+        and gate_bias_ci_lo <= 0.0 <= gate_bias_ci_hi
+    )
     gate_ref_base, gate_ref_climate = _reference_briers(
         [row["outcome"] for row in gate_rows],
         [row["cell"] for row in gate_rows],
     )
     binding_ref = min(gate_ref_base, gate_ref_climate) if gate_rows else None
+    gate_skill_diff = (
+        round(gate_brier - binding_ref, 4)
+        if gate_brier is not None and binding_ref is not None
+        else None
+    )
+    # M5: Skill-Differenz gemeinsam block-resampled (Referenzen je Ziehung
+    # neu auf denselben Zeilen) statt Punkt-Referenz gegen KI-Obergrenze.
+    gate_skill_ok = gate_skill_ci_hi is not None and gate_skill_ci_hi < 0
+    # M5: Proper Scoring (Skill) und Kalibrierung (Steigung + Mittel) sind
+    # getrennte Nachweise — alle drei müssen tragen, keiner ersetzt einen.
     calibrated = (
         gate_n >= M7_MIN_RECOMMENDATIONS
-        and gate_ci_hi is not None
-        and binding_ref is not None
-        and gate_ci_hi < binding_ref
+        and gate_skill_ok
         and gate_slope_ok
+        and gate_bias_ok
     )
     if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
         gate_status = (
@@ -2317,7 +2469,13 @@ def compute_advice_stats(
             f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
             "mit Verteilungs-P im Ledger)"
         )
-    elif gate_ci_hi is None or binding_ref is None or gate_slope_ci_hi is None:
+    elif (
+        gate_ci_hi is None
+        or binding_ref is None
+        or gate_slope_ci_hi is None
+        or gate_bias_ci_hi is None
+        or gate_skill_ci_hi is None
+    ):
         # Zählstand reicht, aber zu wenige Tagesblöcke oder keine P-Streuung
         # für ein belastbares Intervall. Eine konstante Wahrscheinlichkeit
         # bekommt ausdrücklich keine erfundene Steigung 1,0.
@@ -2326,11 +2484,13 @@ def compute_advice_stats(
             "Brier- und Steigungsintervall brauchen Streuung und mindestens "
             f"{GATE_MIN_DAY_BLOCKS} Blöcke)"
         )
-    elif gate_ci_hi >= binding_ref:
+    elif not gate_skill_ok:
         gate_status = (
-            f"Kalibrierung nicht erreicht (Brier {_de(gate_brier)} "
-            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] ≥ Basis {_de(gate_ref_base)} "
-            f"/ Klima {_de(gate_ref_climate)}, Verteilungs-P)"
+            f"Kalibrierung nicht erreicht (Brier-Differenz zur besseren "
+            f"Referenz {_de(gate_skill_diff)} "
+            f"[{_de(gate_skill_ci_lo)}–{_de(gate_skill_ci_hi)}] ≥ 0; "
+            f"Basis {_de(gate_ref_base)} / Klima {_de(gate_ref_climate)}, "
+            "Verteilungs-P)"
         )
     elif not gate_slope_ok:
         gate_status = (
@@ -2340,13 +2500,24 @@ def compute_advice_stats(
             f"oder |slope-1|≥{GATE_RELIABILITY_SLOPE_MAX_ABS_DEV} "
             f"oder CI-Breite≥{GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH})"
         )
+    elif not gate_bias_ok:
+        # M5: +10-pp-Versatz mit Steigung 1 und Brier-Skill ist keine
+        # Kalibrierung — das Mittel-Intervall muss 0 enthalten.
+        gate_status = (
+            "Kalibrierung nicht erreicht (Kalibrierung im Mittel: Bias "
+            f"mean(y)−mean(p) {_de(gate_bias)} "
+            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0 nicht, "
+            "Verteilungs-P)"
+        )
     else:
         gate_status = (
             f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
             f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
             f"/ Klima {_de(gate_ref_climate)}; Steigung {_de(gate_slope)} "
             f"[{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] enthält "
-            f"{_de(GATE_RELIABILITY_SLOPE_TARGET)}, Verteilungs-P)"
+            f"{_de(GATE_RELIABILITY_SLOPE_TARGET)}; Bias {_de(gate_bias)} "
+            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0, "
+            "Verteilungs-P)"
         )
 
     return {
@@ -2389,6 +2560,27 @@ def compute_advice_stats(
         ),
         "gate_reliability_target": GATE_RELIABILITY_SLOPE_TARGET,
         "gate_reliability_ok": gate_slope_ok,
+        # M5: Kalibrierung im Mittel (Intercept) — Block-Bootstrap-Intervall
+        # des Vorzeichenfehlers mean(y)−mean(p); das Gate besteht nur, wenn
+        # das Intervall 0 enthält. Steigung 1 allein reicht nicht (+10 pp).
+        "gate_bias": gate_bias,
+        "gate_bias_ci": (
+            [gate_bias_ci_lo, gate_bias_ci_hi] if gate_bias_ci_hi is not None else None
+        ),
+        "gate_bias_ok": gate_bias_ok,
+        # M5: Brier-Differenz zur besseren naiven Referenz, je Ziehung
+        # gemeinsam block-resampled (Referenzen auf denselben Zeilen neu
+        # gerechnet). Obergrenze < 0 = Skill-Nachweis.
+        "gate_skill_diff": gate_skill_diff,
+        "gate_skill_diff_ci": (
+            [gate_skill_ci_lo, gate_skill_ci_hi]
+            if gate_skill_ci_hi is not None
+            else None
+        ),
+        "gate_skill_ok": gate_skill_ok,
+        # M5: Reliability über den Wahrscheinlichkeitsbereich (Diagnose mit
+        # Binomialbändern) — die globale Steigung mittelt lokale Mängel.
+        "gate_reliability_bins": _reliability_bins(gate_rows),
         "n_day_blocks": n_day_blocks,
         "min_day_blocks": GATE_MIN_DAY_BLOCKS,
         "block_days": GATE_BLOCK_DAYS,

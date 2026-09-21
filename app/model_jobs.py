@@ -286,7 +286,12 @@ def _backtest(
     plus ``backtest_cached`` und ``backtest_computed_at``. Ohne ``cache_dir``
     wird immer gerechnet (CLI, Tests).
     """
-    from engine.backtest import last_complete_day, run_backtest, truncate_series
+    from engine.backtest import (
+        DAILY_LEAD_HOURS,
+        last_complete_day,
+        run_backtest,
+        truncate_series,
+    )
     from engine.calibration import assess_candidate
     from . import backtest_cache
 
@@ -330,12 +335,20 @@ def _backtest(
         candidate_24h = assess_candidate([], [])
     else:
         calibration_rows = rows
-        # Die Hülle heißt bewusst ``24h``: 72-/168-h-PITs haben eine andere
-        # Vorhersageverteilung und dürfen nicht die Tages-Kurve kontaminieren.
+        # M1: ``horizon_hours`` ist der **Vorlauf des Zieltags** (Stunden vom
+        # Origin bis zum Fensterbeginn), nicht die Fensterlänge. Das live
+        # veröffentlichte, 24-h-rekalibrierte Tagesfenster hat Vorlauf 0
+        # (``DAILY_LEAD_HOURS``); die 72-/168-h-Fenster sind dieselben 24-h-
+        # Fenster mit größerem Vorlauf und einer anderen Vorhersageverteilung
+        # — sie dürfen die Tages-Kurve nicht kontaminieren. Vorher wurde hier
+        # ``== 24`` selektiert (Fensterlänge statt Vorlauf), was genau null
+        # Zeilen traf, weil der Produzent für das Tagesfenster 0 schreibt:
+        # der NAS-Kandidat bekam ``insufficient_pit, n_pit=0`` (Befund M1).
         # Alte schmale Test-Reports ohne Horizontspalte bleiben lesbar.
         if len(calibration_rows) and "horizon_hours" in calibration_rows:
             calibration_rows = calibration_rows.loc[
-                calibration_rows["horizon_hours"].astype(float) == 24.0
+                calibration_rows["horizon_hours"].astype(float)
+                == float(DAILY_LEAD_HOURS)
             ]
         if len(calibration_rows) and "regime_break_spanned" in calibration_rows:
             calibration_rows = calibration_rows.loc[
@@ -344,6 +357,19 @@ def _backtest(
         candidate_24h = assess_candidate(
             calibration_rows.get("pit", []), calibration_rows.get("origin", [])
         )
+    # M6: Regime-Referenz des Aktivierungsvertrags — welche deklarierten
+    # Kanten im Kandidatenfenster lagen. Eine andere Regime-Welt teilt sich
+    # damit nachweisbar nicht dieselbe Kurve (Provenienz-Fingerabdruck).
+    regime_window = report.get("regime_breaks_in_window") or {}
+    regime_entries = regime_window.get("in_window") or []
+    regime_ref = {
+        "n_breaks": int(regime_window.get("count") or 0),
+        "at_utc": sorted(
+            str(entry.get("at_utc"))
+            for entry in regime_entries
+            if isinstance(entry, dict) and entry.get("at_utc")
+        ),
+    }
     calibration_candidate = {
         "schema_version": 1,
         "method": "isotonic_pit_quantile_recalibration",
@@ -351,6 +377,12 @@ def _backtest(
         "model_kind": model_kind,
         "shared_draws": bool(shared_draws),
         "day_pair": bool(day_pair),
+        "regime_ref": regime_ref,
+        # M1: Der Hüllen-Schlüssel ``24h`` ist die *Fensterlänge* der live
+        # veröffentlichten Tagesprognose (Vorlauf 0). Er ist bewusst nicht der
+        # Vorlauf: ``engine.calibration.calibration_for_hours`` schlägt die
+        # Kurve zur Prognose-Fensterlänge nach (predict(hours=24)), während
+        # ``horizon_hours`` in den Backtest-Zeilen der Vorlauf ist.
         "24h": candidate_24h,
     }
     # Rolling-PICP 7 d (Konzept §3.3.3): nur der eigene Eintrag — das

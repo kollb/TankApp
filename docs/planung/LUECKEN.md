@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 20.09.2026 · App-Version 0.61.0
+> Stand: 21.09.2026 · App-Version 0.62.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -57,10 +57,24 @@ Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
   ungebuchte Entwürfe sind kein versprochener persistenter Beleg. Alte Tabs
   vor 0.61.0 benötigen einmalig ein Update/Reload. Backoff begrenzt, wann eine
   wartende Outbox tatsächlich erneut sendet.
-- **Modelle:** Nichtleere 24-h-Kalibrierung, kausale Vorverarbeitung,
-  Gapfill-Übernahme, DST-Segmente, Bias-Prüfung und vollständige
-  Kalibrierungsprovenienz sind noch zu korrigieren. Ein M7-Slope-Nachweis
-  allein beweist keine unverzerrte Wahrscheinlichkeit.
+- **Modelle:** Die Batch-4-Verträge (0.62.0) sind im Code korrigiert:
+  Horizont-Vorlauf statt Fensterlänge im NAS-Kandidaten (M1), kausale
+  Hampel-Aufbereitung mit getrennter Datenqualitätsdiagnostik (M2),
+  DST-sichere Mittagsgrenzen (M3), Gapfill-Priorität je
+  Verfügbarkeits-Bucket (I4), Bias-/Mittel-Prüfung mit gemeinsam
+  block-resamptem Skill-Gate (M5) und Day-Pair-/Regime-Provenienz der
+  Kalibrierungsaktivierung (M6). Offen bleibt der **Betriebsnachweis auf
+  NAS-Daten** (ausstehender Betriebsnachweis unten) und zwei ehrliche
+  Grenzen: (1) Die *endgültige veröffentlichte Prognose* wird nicht selbst
+  out-of-sample replayt — der Kalibrierungsnachweis läuft auf dem
+  zeitgetrennten PIT-Holdout des Backtests, ein Live-Replay der
+  publizierten Kurve braucht Betriebshistorie; (2) der kausale Hampel-Filter
+  entfernt den ersten Poll eines echten Sprungs (ein Bucket FFill) —
+  Trainingspreise starten bestätigte Sprünge einen Bucket später, die
+  Diagnostik (`price_raw`) bleibt ungefiltert. Außerdem entwertet der
+  M6-Vertrag veröffentlichte Kurven des Altvertrags (ohne `day_pair`):
+  Der erste Lauf nach dem Update bleibt sichtbar unkalibriert, bis der
+  Backtest einen Kandidaten mit ausgewiesenem Modus liefert.
 - **Nachreichen:** Watermarks während eines Jobs, Uhr-Rücksprünge und
   veränderliche Upload-Tags verletzen die bisherigen Synchronisationsannahmen.
 

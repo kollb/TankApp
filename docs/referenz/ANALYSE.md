@@ -337,7 +337,7 @@ Erster Durchstich in `engine/` liest echte Daten, fittet robuste Tagesform und W
 
 1. 5-Min-Raster je (Station, fuel); Lücken → Forward-Fill ≤30min, sonst NaN + Staleness-Maske
 2. closed-Spannen: Preis = letzter Open-Preis, Flag open=0; diese Segmente fließen nicht in Zyklus-Modellierung
-3. Hampel-Filter (Fenster 1h, Median ±5·MAD) gegen API-Artefakte — **implementiert** in `engine/data.py::hampel_mask` (± 60 min, Schranke `max(5·1,4826·MAD, 1 ct)`, nur isolierte Einzel-Punkte; Zähler `hampel_removed_points` in `describe()`, Update 11.09.2026)
+3. Hampel-Filter gegen API-Artefakte — **implementiert** in `engine/data.py::hampel_mask`, seit 0.62.0 **kausal** (M2): nachlaufendes 120-min-Fenster (25 Punkte, nur Vergangenheit), Schranke `max(5·1,4826·MAD, 1 ct)`, Isolation rückwärts (Vorgänger innerhalb der Schranke). Die Maske eines Zeitpunkts hängt damit nur an Daten ≤ diesem Punkt — Live und jeder Backtest-Fold sehen dieselbe Aufbereitung, und ein späterer Suffix ändert keine frühere Maske. Preis der Kausalität: der erste Poll eines echten Sprungs kann als Artefakt fallen (ein Bucket FFill); ab der Bestätigung bleibt der Sprung erhalten. Die retrospektive Datenqualitäts-Diagnostik (12-Uhr-Regel-Zähler) liest die vor-Hampel-Spalte `price_raw` und bleibt damit vom Trainingsfilter getrennt. Zähler `hampel_removed_points` in `describe()` (Update 20.09.2026)
 4. Tagesblöcke als Bootstrap-/Backtest-Einheit
 
 ### Strukturmodell + AR2
@@ -365,7 +365,8 @@ Seit 2026-04-01 dürfen Tankstellen Preis nur um 12:00 Uhr erhöhen; Senkungen j
 | Horizont | Arbeitsstand |
 |---|---|
 | Heute / 24 h | Prognose + täglicher Rolling-Origin-Backtest implementiert; **kein** Echt-Daten-Gütenachweis (M3-Abnahme offen) |
-| +3 d / +7 d | Ausblick ab Cutoff **und** Mehrtage-Backtests gegen beobachtete Preise (`horizons` im Report, seit 11.09.2026); ehrlich als Zusatz ausgewiesen, kein M3-Abnahmekriterium |
+| Horizont-Vertrag (M1, seit 0.62.0) | `horizon_hours` in Backtest-Zeilen = **Vorlauf** vom Origin bis Fensterbeginn (`DAILY_LEAD_HOURS = 0` für das Tagesfenster, `72`/`168` für die Mehrtage-Fenster); jedes Fenster ist 24 h lang. Der NAS-Kandidat selektiert Vorlauf 0; der Hüllenschlüssel `24h` bleibt die Fensterlänge ([ENGINE.md](ENGINE.md#backtest-bericht-engine-backtest)) |
+| +3 d / +7 d | Ausblick ab Cutoff **und** Mehrtage-Backtests gegen beobachtete Preise (`horizons` im Report, seit 11.09.2026); dieselben 24-h-Fenster mit größerem Vorlauf — eigene Verteilung, nie Teil der 24-h-Kurve; ehrlich als Zusatz ausgewiesen, kein M3-Abnahmekriterium |
 | Rolling-PICP 7 d | Je Station im Backtest; Tagesmittel mit Hysterese (O4, seit 0.45.0): Badge grün ≥ 93 %, gelb ≥ 90 %, rot < 90 % (nominal 95 %, Wechsel erst 1,5 pp jenseits der Schwelle, < 3 Tage = keine Aussage). Publiziert als `rolling_picp_7d`, in `/v1/decide` als `quality` (inkl. Fallzahl `rolling_picp_7d_days`) |
 | Backtest-Fenster des NAS-Jobs | **21 Tage** statt 7 (`app/refresh.py`), damit das Gate `at_least_21_complete_test_days_per_station` aus dem automatischen Lauf erfüllbar ist |
 | Güte-Gate | Rolling-PICP **rot** → `no_advice` („Keine klare Empfehlung — Prognose derzeit unsicher …“) als Auswertungsschritt 1, *vor* F2/F1 (§4.5) |
@@ -436,8 +437,12 @@ Ziehung schon zufällig richtig — gleicher Samen und gleiche Blockzahl ergaben
 dieselbe Indexfolge, also denselben Kalendertag. A11 schreibt das fest und
 verbessert genau den Fall, in dem die alte Ziehung ohne Hinweis entkoppelte:
 unterschiedlich viele Tagesblöcke (erhaltene Prognosen, `retained_previous`).
-Das M7-Gate (§0.4) bleibt hart: `primary.p_correct` erscheint erst nach der
-Kalibrierung (n ≥ 100 abgeschlossene Empfehlungen, Brier < 0,25).
+Das M7-Gate (§0.4) bleibt hart: `primary.p_correct` erscheint erst nach dem
+Kalibrierungsnachweis (n ≥ 100 abgeschlossene Empfehlungen mit Verteilungs-P
+**und** drei getrennten Nachweisen, seit 0.62.0/M5: Skill gegen beide naive
+Referenzen als gemeinsam block-resampte Brier-Differenz, Reliability-Steigung
+mit Tagesblock-Intervall, Kalibrierung im Mittel — das Bias-Intervall
+mean(y)−mean(p) muss 0 enthalten).
 
 ## Empfehlungs-Bilanz (Brier, Epsilon, Regret)
 
@@ -452,9 +457,16 @@ Der Brier-Score vergleicht jede Empfehlungs-Prozentzahl `p_besser`
 („Warten lohnt“) mit dem tatsächlich eingetretenen Ergebnis (Ja = 1, Nein =
 0): mittlerer quadratischer Abstand über alle abgeschlossenen Empfehlungen
 (`app/feedback.py`, Advice-Ledger). **0 wäre perfekt, 0,25 entspricht
-Raten.** Die Freigabe des Kalibrierungs-Gates fordert Brier < 0,25 bei
-mindestens 100 abgeschlossenen Empfehlungen (Konzept §0.4, M7) — darunter
-zählen nur aktuelle Preise, keine Prozent-Behauptung.
+Raten.** Die Freigabe des Kalibrierungs-Gates (Konzept §0.4, M7) fordert seit
+O6/M5 mehr als einen Punkt-Brier: mindestens 100 abgeschlossene Empfehlungen
+mit Verteilungs-P, die Obergrenze der **gemeinsam block-resamten**
+Brier-Differenz zur besseren naiven Referenz (Basisrate, LOO-Klimatologie)
+unter 0, ein Tagesblock-Intervall der Reliability-Steigung, das 1 enthält,
+und ein Bias-Intervall mean(y)−mean(p), das 0 enthält — ein systematischer
+Versatz (+10 pp) mit idealer Steigung bleibt damit geschlossen. Zusätzlich
+steht die Reliability je Wahrscheinlichkeits-Bin mit Binomialband im Payload
+(`gate_reliability_bins`). Darunter zählen nur aktuelle Preise, keine
+Prozent-Behauptung.
 
 ### Epsilon-Schwelle des Labor-Vergleichs
 

@@ -418,15 +418,18 @@ def refresh(settings: Settings, now=None, progress=None):
                         f"{result.get('hours') or ''}{suffix}",
                     )
 
-            # B2: Kandidaten sind an Station, Kraftstoff, Modellkern und
-            # Shared-Draw-Modus gebunden. Eine andere Verteilung bekommt nie
-            # still dieselbe Kurve (siehe engine.calibration).
+            # B2/M6: Kandidaten sind an Station, Kraftstoff, Modellkern und
+            # die Verteilungsmodi (Shared-Draws, Day-Pair) gebunden. Eine
+            # andere Verteilung bekommt nie still dieselbe Kurve; ein
+            # Moduswechsel entwertet alte Kurven nachweisbar
+            # (siehe engine.calibration).
             calibration_by_identity = {
                 identity: calibration_envelope(
                     prior_calibration_candidates.get((identity[0], identity[1], fuel)),
                     enabled=bool(getattr(settings, "calibration", True)),
                     model_kind=getattr(settings, "model_kind", "profile_ar2"),
                     shared_draws=bool(getattr(settings, "shared_draws", True)),
+                    day_pair=bool(getattr(settings, "day_pair", True)),
                     activation_blocked=calibration_regime_blackout(origin, cfg, fuel),
                 )
                 for identity in series_map
@@ -739,6 +742,35 @@ def refresh(settings: Settings, now=None, progress=None):
             f"models: {len(forecasts)} Prognosen, {len(failures)} Fehler",
             flush=True,
         )
+        # I4: Die Erfolgsmeldung „Lücken geschlossen“ hängt an der echten
+        # Nutzung — nur der Bootstrap weiß, welche Füll-Ereignisse im Training
+        # landeten (Live-Vorrang je Verfügbarkeits-Bucket). Geschriebene, aber
+        # ungenutzte Ereignisse werden ehrlich benannt, nicht als Erfolg.
+        gapfill_used = sum(
+            int(row.get("gapfill_rows_used", 0) or 0) for row in policies
+        )
+        gapfill_dropped = sum(
+            int(row.get("gapfill_rows_excluded", 0) or 0) for row in policies
+        )
+        if gapfill_quality and not gapfill_quality.get("skipped"):
+            gapfill_quality["rows_used_in_training"] = gapfill_used
+            gapfill_quality["rows_dropped_live_priority"] = gapfill_dropped
+            if gapfill_used:
+                gapfill_note = (
+                    f"Lücken geschlossen: {gapfill_used} Archiv-Ereignisse "
+                    f"im Training genutzt"
+                )
+            elif gapfill_quality.get("gap_events"):
+                gapfill_note = (
+                    "Lückenfüllung: Ereignisse geschrieben, aber ungenutzt — "
+                    "Live-Polls decken alle Buckets"
+                )
+            else:
+                gapfill_note = ""
+            if gapfill_note:
+                print(f"models: {gapfill_note}", flush=True)
+                if progress:
+                    progress.note(gapfill_note)
         if not forecasts:
             print(
                 "models: keine Station fittbar; Details in engine/last-attempt.json",

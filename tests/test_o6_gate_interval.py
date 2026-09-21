@@ -240,3 +240,57 @@ def test_single_block_bootstrap_has_zero_width():
     ``GATE_MIN_DAY_BLOCKS`` None (siehe ``test_single_day_has_no_interval``).
     """
     assert _block_bootstrap_ci([[0.01] * 100]) == (0.01, 0.01)
+
+
+def _bias_rows(n_days=20):
+    """M5-Gegenbeispiel: Steigung 1, Brier-Skill, aber +10 pp im Mittel.
+
+    Je Tag 10× p=0,2 (3 Treffer = 30 %) und 10× p=0,6 (7 Treffer = 70 %):
+    OLS-Steigung exakt 1,0, Brier 0,22 unter beiden naiven Referenzen
+    (Basis 0,25; LOO-Klima ≈ 0,25) — aber mean(y) = 0,5 gegen
+    mean(p) = 0,4. Vor M5 öffnete dieses Ledger das Gate.
+    """
+    rows = []
+    for day in range(n_days):
+        for i in range(10):
+            rows.append((day, 12, 0.2, "win" if i < 3 else "loss"))
+        for i in range(10):
+            rows.append((day, 12, 0.6, "win" if i < 7 else "loss"))
+    return rows
+
+
+def test_ten_point_bias_with_perfect_slope_is_not_calibrated():
+    """M5-Abnahme: +10-pp-Versatz darf nicht als kalibriert veröffentlicht
+    werden — auch nicht mit idealer Steigung und echtem Brier-Skill."""
+    advice = compute_advice_stats(_store(_bias_rows()))
+    assert advice["gate_n"] == 400
+    # Die alten Nachweise bleiben grün — genau das war die Lücke.
+    assert advice["gate_reliability_slope"] == 1.0
+    assert advice["gate_reliability_ok"] is True
+    assert advice["gate_skill_diff_ci"] is not None
+    assert advice["gate_skill_diff_ci"][1] < 0
+    # Der neue Mittel-Nachweis schlägt an: Bias +0,10, Intervall enthält 0 nicht.
+    assert advice["gate_bias"] == 0.1
+    assert advice["gate_bias_ci"][0] > 0
+    assert advice["gate_bias_ok"] is False
+    assert advice["calibrated"] is False
+    assert "Kalibrierung im Mittel" in advice["gate_status"]
+
+
+def test_skill_gate_resamples_references_jointly():
+    """M5: Die Skill-Differenz wird je Ziehung auf denselben Zeilen gerechnet.
+
+    Kalibrierter Skill-Ledger: Punktdifferenz und gemeinsames Intervall
+    liegen unter 0; das Intervall gehört zur Differenz, nicht zum
+    Punkt-Brier (gate_brier_ci bleibt separat berichtbar).
+    """
+    advice = compute_advice_stats(_store(_skill_rows()))
+    assert advice["gate_skill_diff"] == -0.0625
+    assert advice["gate_skill_diff_ci"] == [-0.0625, -0.0625]
+    assert advice["gate_skill_ok"] is True
+    assert advice["gate_bias"] == 0.0
+    assert advice["gate_bias_ok"] is True
+    # Reliability über den Bereich: beide Bins tragen Trefferquote ≈ P.
+    bins = {bin_row["lo"]: bin_row for bin_row in advice["gate_reliability_bins"]}
+    assert bins[0.2]["rate"] == 0.25 and bins[0.2]["p"] == 0.25
+    assert bins[0.6]["rate"] == 0.75 and bins[0.6]["p"] == 0.75

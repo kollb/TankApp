@@ -183,8 +183,56 @@ def test_hampel_preserves_persistent_real_price_change(cfg):
     rows, _ = normalize_observations(raw(times.astype(str), prices, ["open"] * 31), cfg)
     series = prepare_series(rows, cfg)[0]
 
-    assert series.hampel_removed == 0
-    assert series.frame.loc[times[15] :, "price"].eq(1.80).all()
+    # M2: kausal (nachlaufend) statt zentriert. Der *erste* Poll eines echten
+    # Sprungs ist vom Vorgänger allein nicht von einem Einzel-Artefakt zu
+    # unterscheiden und fällt aus (FFill überbrückt genau diesen Bucket).
+    assert series.hampel_removed == 1
+    assert pd.isna(series.frame.loc[times[15], "price"]) or (
+        series.frame.loc[times[15], "price"] == 1.70
+    )
+    # Ab dem bestätigenden Poll bleibt der Sprung vollständig erhalten — er
+    # wird nicht als „Artefakt-Fenster“ weggefressen.
+    assert series.frame.loc[times[16] :, "price"].eq(1.80).all()
+
+
+def test_hampel_is_causal_no_future_leak_into_past_mask(cfg):
+    """M2-Abnahme: Ein zukünftiger Suffix ändert keine Maske eines Cutoffs.
+
+    Konstruiert: Punkt 24 (letzter vor dem Cutoff) weicht im Präfix isoliert
+    nach oben ab. Der Suffix ab 25 trägt denselben Wert weiter — ein
+    *zentrierter* Filter würde Punkt 24 mit dem vollen Fenster [12..36]
+    nachträglich als Beginn eines echten Sprungs deuten (Median kippt auf den
+    höheren Wert) und nicht mehr maskieren. Der kausale Filter entscheidet
+    Punkt 24 nur aus Daten ≤ 24 und bleibt identisch, egal was danach kommt.
+    """
+    times = pd.date_range("2026-07-01T06:00:00Z", periods=41, freq="5min")
+    cutoff = times[25]
+
+    prefix_prices = np.full(len(times), 1.70)
+    prefix_prices[24] = 1.90  # isolierte Abweichung am Präfix-Rand
+    prefix_rows, _ = normalize_observations(
+        raw(times.astype(str), prefix_prices, ["open"] * len(times)), cfg
+    )
+    prefix_series = prepare_series(
+        prefix_rows.loc[prefix_rows.timestamp < cutoff], cfg
+    )[0]
+
+    full_prices = prefix_prices.copy()
+    full_prices[25:] = 1.90  # Suffix „bestätigt“ den Wert von Punkt 24
+    full_rows, _ = normalize_observations(
+        raw(times.astype(str), full_prices, ["open"] * len(times)), cfg
+    )
+    full_series = prepare_series(full_rows, cfg)[0]
+
+    prefix_frame = prefix_series.frame
+    common = prefix_frame.index
+    # Weder die vorbereiteten Preise noch die Beobachtungs-Masken des
+    # früheren Cutoffs dürfen sich durch den Suffix ändern.
+    assert full_series.frame.loc[common, "price"].equals(prefix_frame["price"])
+    assert full_series.frame.loc[common, "observed"].equals(prefix_frame["observed"])
+    # Punkt 24 bleibt im kausalen Lauf maskiert (NaN — dichte 5-min-Polls,
+    # kein FFill-Übertrag), obwohl der Suffix ihn zentriert „bestätigen“ würde.
+    assert pd.isna(full_series.frame.loc[times[24], "price"])
 
 
 @pytest.mark.parametrize(

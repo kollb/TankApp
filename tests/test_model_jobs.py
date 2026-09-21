@@ -338,3 +338,41 @@ def test_settings_parse_calibration_ab_switch(monkeypatch):
     assert Settings.from_env().calibration is False
     monkeypatch.setenv("TANKAPP_CALIBRATION", "on")
     assert Settings.from_env().calibration is True
+
+
+# M1 (Befund 20.09.2026): Die 24-h-Rekalibrierung bekam null Daten, weil der
+# NAS-Kandidat ``horizon_hours == 24`` (Fensterlänge) selektierte, der
+# Backtest-Produzent für das Tagesfenster aber den Vorlauf 0 schreibt. Der
+# Test fährt die echte Kette Engine-Backtest → NAS-Kandidat ohne Mock-Fixture.
+
+
+def test_backtest_candidate_receives_nonempty_daily_pit(observations, cfg):
+    """Echter Engine-Lauf: nichtleere 24-h-PIT-Eingaben bis in den Kandidaten."""
+    from app.model_jobs import _backtest
+
+    normalized, _ = normalize_observations(observations(days=35), cfg)
+    item = prepare_series(normalized, cfg)[0]
+    payload = _backtest(item, cfg, days=21, cache_dir=None)
+    candidate = payload["calibration_candidate"]["24h"]
+    # Vor dem Fix: {"status": "insufficient_pit", "n_pit": 0}. Jetzt muss die
+    # Tages-Kurve aus dem Vorlauf-0-Fenster gespeist werden.
+    assert candidate["n_pit"] > 0
+    assert candidate["status"] in {"accepted", "rejected_validation"}
+    # Die Hülle ist nach Fensterlänge benannt; der Kandidat trägt Provenienz.
+    assert payload["calibration_candidate"]["model_kind"] == "profile_ar2"
+
+
+def test_backtest_horizon_labels_are_leads_not_window_length(observations, cfg):
+    """``horizon_hours`` ist der Vorlauf (0/72/168), nicht die Fensterlänge."""
+    from engine.backtest import DAILY_LEAD_HOURS, run_backtest
+
+    normalized, _ = normalize_observations(observations(days=35), cfg)
+    series = prepare_series(normalized, cfg)
+    _report, rows = run_backtest(series, cfg, days=21, horizon_rows=True)
+    leads = sorted(int(value) for value in rows["horizon_hours"].unique())
+    assert DAILY_LEAD_HOURS == 0
+    # Kein Label 24 — die Fensterlänge steht nicht in der Horizont-Spalte.
+    assert 24 not in leads
+    assert leads == [0, 72, 168]
+    daily = rows.loc[rows["horizon_hours"] == DAILY_LEAD_HOURS]
+    assert daily["pit"].notna().any()

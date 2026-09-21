@@ -130,16 +130,29 @@ def load_observations(
     return normalize_observations(pd.concat(chunks, ignore_index=True), cfg)
 
 
-# Hampel-Filter (Konzept §3.1 Schritt 3): ±60 min auf dem 5-Minuten-Raster
-# (25 Punkte), Schranke max(5 · 1,4826 · MAD, 1 ct). Zwei Schutzstufen:
+# Hampel-Filter (Konzept §3.1 Schritt 3), M2 **kausal**: 120-min-Fenster der
+# *Vergangenheit* (25 Punkte auf dem 5-Minuten-Raster), Schranke
+# max(5 · 1,4826 · MAD, 1 ct). Zwei Schutzstufen:
 # - Der 1-ct-Boden: bei flachem Fenster (MAD → 0) fällt nur, was über einer
 #   ganzen Cent-Abweichung liegt — Rauschen und die glatte Tageskurve bleiben.
-# - Isolation: entfernt wird nur der *einzelne* Punkt, dessen direkte
-#   Nachbarn innerhalb der Schranke bleiben. Echte Preissprünge persistieren
-#   (Nachbarn weichen ebenso ab) und bleiben; ein API-Artefakt (Einzel-Poll
+# - Isolation: entfernt wird nur der *einzelne* Punkt, dessen unmittelbarer
+#   Vorgänger innerhalb der Schranke bleibt. Ein API-Artefakt (Einzel-Poll
 #   mit falscher Dezimalstelle) reitet im nächsten Poll zurück und wird als
-#   isoliert erkannt. Ohne Isolation würde der Filter auch Ecken der
-#   Tageskurve oder Sprungstellen löschen.
+#   isoliert erkannt; ein persistenter Preissprung bleibt ab dem zweiten Poll
+#   stehen (der Vorgänger weicht dann ebenso ab).
+#
+# Warum kausal (nachlaufend) statt zentriert: Die zentrierte Maske wurde auf
+# dem gesamten Bestand gerechnet, bevor die Backtest-Folds ihre Vergangenheit
+# abschneiden — die Maske eines früheren Cutoffs hing damit von späteren
+# Beobachtungen ab (Befund M2), und live steht der „zukünftige“ Nachbar am
+# Datenrand ohnehin nie zur Verfügung. Nachlaufend hängt die Entscheidung für
+# einen Punkt nur von Daten ≤ diesem Punkt ab: Live und Backtest sehen
+# dieselbe Aufbereitung, und ein angehängter Suffix ändert keine frühere
+# Maske. Preis der Kausalität: Der *erste* Poll eines echten Sprungs ist vom
+# Vorgänger allein nicht von einem Artefakt zu unterscheiden und fällt
+# ggf. aus (FFill überbrückt einen Bucket); ab der Bestätigung bleibt der
+# Sprung vollständig erhalten. Retrospektive Datenqualitätsdiagnostik, die
+# bewusst beide Nachbarn nutzt, gehört nicht in diesen Trainingspfad.
 HAMPEL_WINDOW_POINTS = 25
 HAMPEL_ABS_FLOOR_EUR = 0.01
 
@@ -150,20 +163,22 @@ def hampel_mask(price: pd.Series) -> tuple[pd.Series, int]:
     Rechnet über die beobachteten Preise (NaN = geschlossen/fehlt und bricht
     das Fenster nicht, liefert aber auch keine Schranke). Weniger als 3
     unterstützte Punkte im Fenster → keine Robuststatistik, kein Flag.
+
+    Kausal (M2): Fenster und Isolation schauen ausschließlich zurück, die
+    Maske eines Zeitpunkts ist damit unabhängig von jedem späteren Suffix —
+    dieselbe Aufbereitung live und in jedem Backtest-Fold.
     """
-    median = price.rolling(HAMPEL_WINDOW_POINTS, center=True, min_periods=3).median()
+    median = price.rolling(HAMPEL_WINDOW_POINTS, center=False, min_periods=3).median()
     mad = (
         (price - median)
         .abs()
-        .rolling(HAMPEL_WINDOW_POINTS, center=True, min_periods=3)
+        .rolling(HAMPEL_WINDOW_POINTS, center=False, min_periods=3)
         .median()
     )
     bound = np.maximum(5 * 1.4826 * mad, HAMPEL_ABS_FLOOR_EUR)
     deviation = (price - median).abs()
     deviated = (price.notna() & median.notna() & (deviation > bound)).fillna(False)
-    neighbor = deviated.shift(1, fill_value=False) | deviated.shift(
-        -1, fill_value=False
-    )
+    neighbor = deviated.shift(1, fill_value=False)
     masked = deviated & ~neighbor
     return masked, int(masked.sum())
 
@@ -201,18 +216,32 @@ def prepare_series(observations: pd.DataFrame, cfg: Config) -> list[PriceSeries]
         # Raster/FFill — ein Artefakt-Preis darf nicht gefillt oder gefittet
         # werden. Entfernte Preise fallen aus; frische Nachbarn übernehmen
         # über den bestehenden FFill, weiter entfernt wird es ehrlich stale.
+        # M2: vor-Hampel-Beobachtungen bleiben als eigene Spalte erhalten.
+        # Der kausale Filter formt die Trainingspreise (``price``); die
+        # retrospektive Datenqualitäts-Diagnostik (12-Uhr-Regel-Zähler in
+        # ``fit``) liest dagegen ``price_raw`` und bleibt so vom Filter
+        # getrennt — ein echter, anhaltender Sprung würde sonst an seiner
+        # Anstiegsflanke maskiert und der Zähler blind.
+        raw_observed = group.price.copy()
         artifact, removed = hampel_mask(group.price)
         group["price"] = group.price.mask(artifact)
         grid = pd.date_range(
             group.index.min(), group.index.max(), freq=f"{cfg.step_minutes}min"
         )
         state = group.reindex(grid, method="ffill")
+        raw_state = raw_observed.reindex(grid, method="ffill")
         age = (pd.Series(grid, index=grid) - state.timestamp).dt.total_seconds() / 60
         fresh = age.le(cfg.ffill_minutes)
         valid = fresh & state.status.eq("open") & state.price.notna()
+        # Diagnose-Gültigkeit ohne Hampel-Maske: ``price_raw`` soll die rohe
+        # Beobachtung auch dort zeigen, wo der Filter sie als Artefakt
+        # verworfen hat — sonst wäre der Zähler genau an der Anstiegsflanke
+        # blind, die er prüfen soll.
+        valid_raw = fresh & state.status.eq("open") & raw_state.notna()
         frame = pd.DataFrame(
             {
                 "price": state.price.where(valid).astype(float),
+                "price_raw": raw_state.where(valid_raw).astype(float),
                 "observed": grid.isin(group.index) & valid,
                 "response_observed": grid.isin(group.index),
                 "available": fresh,
