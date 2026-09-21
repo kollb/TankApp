@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 21.09.2026 · App-Version 0.63.0
+> Stand: 21.09.2026 · App-Version 0.63.1
 
 ## Inhaltsverzeichnis
 
@@ -29,14 +29,15 @@ beauftragen.
 
 Grundlage ist der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md).
 Die folgenden Punkte betreffen nachgewiesene Vertragsverletzungen, keine
-neuen Features. NP1 ist umgesetzt (Release 0.60.0), NP5 mit 0.63.0; NP2, NP6 sind noch offen. Alternative
+neuen Features. NP1 ist umgesetzt (Release 0.60.0), NP5 mit 0.63.0, NP6 mit 0.63.1; NP2 ist noch offen. Alternative
 Architekturen, neue Schreibauthentisierung, Hardwarebudgets und optionale
 Pi-Inferenz sind damit nicht automatisch beauftragt.
 
 NP1 (Belegpersistenz, Ledger-Integrität, Publikationskonsistenz — I1, S3, A1,
 S4) ist mit [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)
 umgesetzt; NP5 (Nachreichen, Upload-Identität, Langzeitbilanz — I5, I3, F3)
-mit [Release 0.63.0](../releases/CHANGELOG.md#0630--2026-09-21). Die
+mit [Release 0.63.0](../releases/CHANGELOG.md#0630--2026-09-21); NP6 (Feiertagseffekt
+im Profilkern — M4) mit [Release 0.63.1](../releases/CHANGELOG.md#0631--2026-09-21). Die
 Gegenproben des Befunds laufen als dauerhafte Regressionstests.
 
 #### NP2 — P0: Bestehenden Leseschutz und Worker-Cache durchsetzen
@@ -54,6 +55,6 @@ Gegenproben des Befunds laufen als dauerhafte Regressionstests.
 
 #### NP6 — P2: Feiertagseffekt im Profilkern erhalten
 
-- [ ] Abgezogenen Feiertagseffekt im `profile_ar2`-Prognosezweig konsistent
+- [x] Abgezogenen Feiertagseffekt im `profile_ar2`-Prognosezweig konsistent
   berücksichtigen (M4). **Abnahme:** Die dokumentierte Feiertags-Sensitivitätsprobe
   wirkt auch im Profilkern; `holiday_beta=0` und Tage ohne Feiertag bleiben stabil.

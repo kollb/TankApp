@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.63.1] – 2026-09-21
+
+**Batch 7 (P2): Feiertagseffekt im Profilkern erhalten (M4)** —
+[Issue #187](https://github.com/kollb/TankApp/issues/187), NP6.
+
+- **M4 — Feiertagseffekt im Profilkern.** Der im Fit-Schritt von den Preisen
+  abgezogene gepoolte Feiertagseffekt (`holiday_beta * hol_train`) wurde im
+  harmonischen Prognosezweig wieder aufaddiert, fehlte jedoch im
+  `profile_ar2`-Pfad. `predict` berücksichtigt nun `holiday_beta * hol_forecast`
+  konsistent auch vor der 12-Uhr-Projektion des Profilkerns.
+- **Invarianz und Randfälle.** Tage ohne Feiertag, Fits mit `holiday_beta=0`
+  sowie Konfigurationen ohne Bundesland-Zuweisung (`city_subdivs`) bleiben
+  exakt unverändert.
+- **Sensitivitätsprobe.** Regressionstest `test_m4_holiday_effect_preserved_in_profile_kernel`
+  in `tests/test_models.py` bildet die Befundprobe auf dem 03.10.2026 ab:
+  `holiday_beta + 0,05 €/L` lässt den Median im harmonischen Kern wie im
+  Standard-Profilkern um genau 0,05 steigen.
+
 ## [0.63.0] – 2026-09-21
 
 **Batch 5 (P1): Nachreichen, Upload-Identität, Langzeitbilanz (I5, I3, F3)** —

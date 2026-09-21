@@ -602,11 +602,13 @@ Kennzahlen im Regelfall nicht. Bleibt eine Skala trotzdem leer, ist
 `mase: null` mit `mase_none_reason` (`no_scored_points`, `naive_scale_undefined`)
 statt eines stillen Nullwerts ausgewiesen.
 
-**Feiertags-Dummy (§3.2):** Mit `--city-subdivs "Frankfurt:HE;Gütersloh:NW"`
-bekommt das Strukturmodell den gepoolten Feiertags-Dummy je Bundesland
+**Feiertags-Dummy (§3.2, M4):** Mit `--city-subdivs "Frankfurt:HE;Gütersloh:NW"`
+bekommt das Modell den gepoolten Feiertags-Dummy je Bundesland
 (Paket `holidays` aus `engine/requirements.txt`); ohne Angabe trägt der
 Dummy null. Der Koeffizient wird aus bis zu 365 Tagen geschätzt
-(`holiday_pool_days`), nicht aus dem 42-Tage-Fenster.
+(`holiday_pool_days`), nicht aus dem 42-Tage-Fenster. Der Feiertagseffekt
+wirkt konsistent auf alle Modellkerne (`profile_ar2`, `harmonic_ar2` und
+`ensemble`).
 
 **Gate-Metriken (Schwellen, Issue 47):** MASE und PICP95 bleiben; ergänzt um
 asymmetrischen Pinball-Loss τ=0,75 — Unterschätzung des Preises (tatsächlich
