@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+from engine.config import Config
 from engine.data import normalize_observations, prepare_series
 from engine.holidays import _holiday_days, holiday_flags
 from engine.selection import (
@@ -689,3 +690,100 @@ def test_holiday_flags_searchsorted_matches_set_membership(cfg):
         reference = np.asarray([d in days for d in local.normalize()], dtype=float)
         np.testing.assert_array_equal(flags, reference)
         assert source == f"holidays:{subdiv}"
+
+
+def test_m4_holiday_effect_preserved_in_profile_kernel(cfg):
+    """M4: Feiertagseffekt im Standard-Profilkern erhalten (Sensitivitätsprobe).
+
+    Auf dem Feiertag 03.10.2026 (Tag der Deutschen Einheit, bundesweit) wird
+    ausschließlich holiday_beta im gefitteten Modell um 0,05 €/L erhöht.
+    Sowohl der harmonische Kern als auch der Profilkern müssen um 0,05 steigen.
+    Randfälle:
+    - holiday_beta == 0 oder feiertagsfreie Tage bleiben unbeeinflusst (diff == 0).
+    - Konfigurationen ohne city_subdivs bleiben unbeeinflusst.
+    """
+    from engine.data import normalize_observations, prepare_series
+
+    cfg_subdiv = Config(
+        timezone="Europe/Berlin",
+        city_subdivs={"Teststadt": "HE"},
+        train_days=42,
+        min_train_days=7,
+        min_slot_days=2,
+        bootstrap_samples=100,
+    )
+    days = 63
+    index = pd.date_range(
+        "2026-08-01", periods=days * 288, freq="5min", tz="Europe/Berlin"
+    )
+    hour = np.asarray(index.hour + index.minute / 60)
+    price = 1.70 + 0.04 * np.cos(hour * 2 * np.pi / 24)
+    df = pd.DataFrame(
+        {
+            "timestamp": index.astype(str),
+            "city": "Teststadt",
+            "station_id": "station-1",
+            "station_name": "Teststation",
+            "fuel": "E10",
+            "price": price,
+            "status": "open",
+            "source": "influxdb",
+        }
+    )
+    obs, _ = normalize_observations(df, cfg_subdiv)
+    series_item = prepare_series(obs, cfg_subdiv)[0]
+    origin = "2026-10-03T00:00:00+02:00"
+    model = fit(series_item, origin, cfg_subdiv)
+
+    # 1. Sensitivitätsprobe auf Feiertag 03.10.2026
+    model_mod = dict(model)
+    model_mod["holiday_beta"] = float(model["holiday_beta"]) + 0.05
+
+    p_harm_0 = predict(model, 24, kind="harmonic_ar2")
+    p_harm_1 = predict(model_mod, 24, kind="harmonic_ar2")
+    diff_harm = (p_harm_1["q50"] - p_harm_0["q50"]).dropna()
+    np.testing.assert_allclose(diff_harm, 0.05, rtol=1e-5, atol=1e-5)
+
+    p_prof_0 = predict(model, 24, kind="profile_ar2")
+    p_prof_1 = predict(model_mod, 24, kind="profile_ar2")
+    diff_prof = (p_prof_1["q50"] - p_prof_0["q50"]).dropna()
+    np.testing.assert_allclose(diff_prof, 0.05, rtol=1e-5, atol=1e-5)
+
+    # Auch die Punktprognosen steigen um 0,05
+    diff_harm_pt = (p_harm_1["harmonic_ar2"] - p_harm_0["harmonic_ar2"]).dropna()
+    diff_prof_pt = (p_prof_1["profile_ar2"] - p_prof_0["profile_ar2"]).dropna()
+    np.testing.assert_allclose(diff_harm_pt, 0.05, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(diff_prof_pt, 0.05, rtol=1e-5, atol=1e-5)
+
+    # 2. Tag ohne Feiertag (2026-10-04): holiday_beta-Änderung darf keinen Effekt haben
+    non_hol_idx = pd.date_range("2026-10-04T00:00:00+02:00", periods=288, freq="5min")
+    p_prof_non_0 = predict(model, 24, index=non_hol_idx, kind="profile_ar2")
+    p_prof_non_1 = predict(model_mod, 24, index=non_hol_idx, kind="profile_ar2")
+    diff_prof_non = (p_prof_non_1["q50"] - p_prof_non_0["q50"]).dropna()
+    np.testing.assert_allclose(diff_prof_non, 0.0, atol=1e-9)
+
+    # 3. holiday_beta == 0: Profilkern liefert bitgleich dieselben Werte wie zuvor
+    model_zero = dict(model)
+    model_zero["holiday_beta"] = 0.0
+    p_prof_z = predict(model_zero, 24, kind="profile_ar2")
+    diff_z = (p_prof_z["q50"] - p_prof_0["q50"]).dropna()
+    np.testing.assert_allclose(diff_z, 0.0, atol=1e-9)
+
+    # 4. Ohne city_subdivs: Feiertagseffekt greift nicht (holiday_subdiv is None)
+    cfg_no_subdiv = Config(
+        timezone="Europe/Berlin",
+        city_subdivs={},
+        train_days=42,
+        min_train_days=7,
+        min_slot_days=2,
+        bootstrap_samples=100,
+    )
+    obs_no, _ = normalize_observations(df, cfg_no_subdiv)
+    series_no = prepare_series(obs_no, cfg_no_subdiv)[0]
+    model_no = fit(series_no, origin, cfg_no_subdiv)
+    model_no_mod = dict(model_no)
+    model_no_mod["holiday_beta"] = float(model_no["holiday_beta"]) + 0.05
+    p_no_0 = predict(model_no, 24, kind="profile_ar2")
+    p_no_1 = predict(model_no_mod, 24, kind="profile_ar2")
+    diff_no = (p_no_1["q50"] - p_no_0["q50"]).dropna()
+    np.testing.assert_allclose(diff_no, 0.0, atol=1e-9)
