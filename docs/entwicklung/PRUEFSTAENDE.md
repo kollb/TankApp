@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 21.09.2026 · App-Version 0.62.1
+> Stand: 21.09.2026 · App-Version 0.63.0
 
 ## Inhaltsverzeichnis
 
@@ -11,7 +11,7 @@
 
 Diese Dokumente behalten ihre ursprüngliche fachliche Stand-Zeile. Umzug,
 Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
-0.62.1. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
+0.63.0. Einzelne neuere Abschnitte können zusätzlich gekennzeichnet sein.
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|

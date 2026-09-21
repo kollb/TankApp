@@ -76,7 +76,7 @@ def test_equal_names_and_timestamp_have_distinct_point_identities(uploader):
     assert len(lines) == 2
     assert f"station_id={A} " in lines[0]
     assert f"station_id={B} " in lines[1]
-    assert "station=Aral\\ Test" in lines[0] and "station=Aral\\ Test" in lines[1]
+    assert 'station="Aral Test"' in lines[0] and 'station="Aral Test"' in lines[1]
     assert "e10=1.700" in lines[0] and "e10=1.800" in lines[1]
     assert lines[0].rsplit(" ", 1)[1] == lines[1].rsplit(" ", 1)[1]
     assert "e5=" not in lines[0] and "diesel=" not in lines[1]
@@ -95,13 +95,14 @@ def test_name_fallback_tag_escaping_and_nonfinite_prices(uploader):
     lines = uploader.snap_to_lines(
         uploader.parse_ts(TIME), snap, {A: "Name = one, two"}
     )
-    assert "station=Name\\ \\=\\ one\\,\\ two," in lines[0]
+    assert 'station="Name = one, two"' in lines[0]
     assert (
         'status="closed"' in lines[0]
         and "e10=" not in lines[0]
         and "diesel=" not in lines[0]
     )
-    assert f"station={B},station_id={B}" in lines[1]
+    assert f"station_id={B} " in lines[1]
+    assert f'station="{B}"' in lines[1]
 
 
 def test_normal_upload_keeps_ack_until_success_then_advances(
@@ -122,7 +123,10 @@ def test_normal_upload_keeps_ack_until_success_then_advances(
         uploader, "influx_write", lambda cfg, lines: received.extend(lines)
     )
     assert uploader.run_upload(cfg, uploader.State()) == 0
-    assert cfg.ack_file.read_text().strip() == TIME
+    ack = json.loads(cfg.ack_file.read_text())
+    assert ack["v"] == 2
+    assert ack["fetched_at_max"] == TIME
+    assert ack["cursors"][path.name] == path.stat().st_size
     assert len(received) == 2 and all("station_id=" in line for line in received)
 
 
@@ -549,6 +553,56 @@ def test_cli_timezone_dry_run_without_credentials(
     assert path.read_bytes() == original and cfg.ack_file.read_bytes() == ack
 
 
+def test_series_identity_ignores_station_rename(uploader):
+    """I3: rename changes the display field, not the Influx series key."""
+    ts = uploader.parse_ts(TIME)
+    before = uploader.snap_to_lines(ts, snapshot(), {A: "Aral Test", B: "Aral Test"})
+    after = uploader.snap_to_lines(ts, snapshot(), {A: "Shell Now", B: "Aral Test"})
+    assert before[0].split(" ", 1)[0] == after[0].split(" ", 1)[0]
+    assert f"prices,station_id={A}" == before[0].split(" ", 1)[0]
+    assert 'station="Aral Test"' in before[0]
+    assert 'station="Shell Now"' in after[0]
+    assert before[0].rsplit(" ", 1)[1] == after[0].rsplit(" ", 1)[1]
+
+
+def test_late_older_row_is_not_skipped_by_clock_ack(
+    uploader, saved_buffer, monkeypatch
+):
+    """I3: a late older fetched_at after the cursor is still uploaded."""
+    cfg, path = saved_buffer
+    received = []
+    monkeypatch.setattr(
+        uploader, "influx_write", lambda cfg, lines: received.extend(lines)
+    )
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    first = list(received)
+    assert first
+    ack = json.loads(cfg.ack_file.read_text())
+    assert ack["cursors"][path.name] == path.stat().st_size
+    late = snapshot("2026-09-07T05:30:00+00:00")
+    late["prices"][A]["e10"] = 1.65
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(late) + "\n")
+    received.clear()
+    assert uploader.run_upload(cfg, uploader.State()) == 0
+    assert any("e10=1.650" in line for line in received)
+    assert all(
+        f"station_id={A}" in line or f"station_id={B}" in line for line in received
+    )
+
+
+def test_v1_ack_is_not_a_skip_predicate(uploader, saved_buffer):
+    """I3: a v1 ISO ack is empty cursors plus a bounded rescan, never ts > ack."""
+    cfg, path = saved_buffer
+    cfg.ack_file.write_text(TIME + "\n")
+    ack = uploader.read_ack(cfg.meta_dir)
+    assert ack["v"] == 1
+    assert ack["cursors"] == {}
+    assert ack["fetched_at_max"] == TIME
+    rows = uploader.read_unsynced(cfg.poll_dir, ack)
+    assert rows and rows[0][0].isoformat() == TIME
+
+
 # ---------------------------------------------------------------------------
 # Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write
 # ---------------------------------------------------------------------------
@@ -634,7 +688,10 @@ def test_webhook_failure_never_breaks_upload(uploader, saved_buffer, monkeypatch
     assert uploader.run_upload(cfg, uploader.State()) == 0
     assert len(received) == 2
     # Ack trotzdem vorgerückt — der Webhook ist reiner Optimierungsweg.
-    assert cfg.ack_file.read_text().strip() == TIME
+    ack = json.loads(cfg.ack_file.read_text())
+    path = next(cfg.poll_dir.glob("*.jsonl"))
+    assert ack["fetched_at_max"] == TIME
+    assert ack["cursors"][path.name] == path.stat().st_size
 
 
 def test_webhook_rate_limited_and_only_with_price_rows(
@@ -701,7 +758,16 @@ def test_webhook_skipped_when_only_heartbeat_uploaded(
         lambda request, timeout: calls.append(request) or FakeResponse(),
     )
     cfg = webhook_cfg(uploader, saved_buffer, "http://nas:1355", token="t")
-    cfg.ack_file.write_text(TIME + "\n")  # alles schon hochgeladen
+    cfg.ack_file.write_text(
+        json.dumps(
+            {
+                "v": 2,
+                "cursors": {path.name: path.stat().st_size},
+                "fetched_at_max": TIME,
+            }
+        )
+        + "\n"
+    )
 
     def write(cfg, lines):
         writes.extend(lines)

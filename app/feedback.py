@@ -728,6 +728,92 @@ def _append_archive(settings, items: list[dict[str, Any]]) -> None:
             fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
 
 
+def load_archive_records(settings) -> dict[str, list]:
+    """JSONL archive produced by 90-day prune — empty collections if missing."""
+    collections: dict[str, list] = {"episodes": [], "fills": [], "settlements": []}
+    path = feedback_archive_path(settings)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return collections
+    except OSError:
+        return collections
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        key = item.get("collection")
+        if key not in collections:
+            continue
+        collections[key].append({k: v for k, v in item.items() if k != "collection"})
+    try:
+        migrated = migrate_store(
+            {
+                "schema_version": 1,
+                "episodes": collections["episodes"],
+                "fills": collections["fills"],
+                "settlements": collections["settlements"],
+                "audit": [],
+            }
+        )
+    except StoreSchemaTooNew:
+        return collections
+    return {
+        "episodes": migrated.get("episodes") or [],
+        "fills": migrated.get("fills") or [],
+        "settlements": migrated.get("settlements") or [],
+    }
+
+
+def _merge_by_id(hot: list, archived: list, id_key: str) -> list:
+    """Archive first, then hot — duplicate ``id_key`` keeps the hot row."""
+    by_id: dict[Any, dict] = {}
+    order: list[Any] = []
+    anon = 0
+    for item in list(archived) + list(hot):
+        if not isinstance(item, dict):
+            continue
+        ident = item.get(id_key)
+        if ident:
+            if ident not in by_id:
+                order.append(ident)
+            by_id[ident] = item
+        else:
+            anon += 1
+            order.append(("anon", anon, item))
+    out = []
+    for key in order:
+        if isinstance(key, tuple):
+            out.append(key[2])
+        else:
+            out.append(by_id[key])
+    return out
+
+
+def load_ledger(settings) -> dict[str, Any]:
+    """Hot store plus ``archive.jsonl`` for year/all-time/M7 (F3).
+
+    Writes, diary and the live episode list stay on ``load_store`` (90-day
+    hot window). Hot wins on duplicate ``id`` / ``snapshot_id``.
+    """
+    hot = load_store(settings)
+    archived = load_archive_records(settings)
+    return {
+        "schema_version": hot.get("schema_version"),
+        "episodes": _merge_by_id(hot.get("episodes") or [], archived["episodes"], "id"),
+        "fills": _merge_by_id(hot.get("fills") or [], archived["fills"], "id"),
+        "settlements": _merge_by_id(
+            hot.get("settlements") or [], archived["settlements"], "snapshot_id"
+        ),
+        "audit": hot.get("audit") or [],
+    }
+
+
 def load_store(settings) -> dict[str, Any]:
     """Lädt den Feedback-Store — trennt Erststart von Defekt (S3).
 

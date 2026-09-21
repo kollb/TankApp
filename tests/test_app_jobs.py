@@ -541,6 +541,54 @@ def test_scheduler_wakes_for_webhook_trigger_and_passes_watermark(
     assert calls == [("models", None), ("models", 1727)]
 
 
+def test_scheduler_coalesces_mid_run_watermark_into_one_follow_up(
+    tmp_path, monkeypatch
+):
+    """I5: a higher watermark during run_once yields exactly one follow-up."""
+    import threading
+    import time as time_mod
+
+    from app.server import TRIGGER_MIN_GAP_S, Scheduler
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    scheduler = Scheduler(settings)
+    calls = []
+    waits = []
+
+    def once(name, watermark=None):
+        if not calls:
+            scheduler.request("models", watermark=150)
+            scheduler.request("models", watermark=200)
+            scheduler.request("models", watermark=180)
+        calls.append((name, watermark))
+        scheduler.last_start[name] = time_mod.monotonic()
+        write_job_state(tmp_path, name, success_at=0, watermark=watermark)
+        return 0
+
+    def wait(delay):
+        waits.append(delay)
+        if len(waits) == 1:
+            assert delay == 0
+            return False
+        if len(waits) >= 3:
+            scheduler.stop_event.set()
+            return False
+        # Nachlauf: Rest-Debounce, nicht der volle Takt — sonst wäre die
+        # Wake während des Laufs bis morgen verloren.
+        assert 0.0 <= delay < 86400
+        assert delay <= TRIGGER_MIN_GAP_S["models"]
+        return False
+
+    monkeypatch.setattr(scheduler, "run_once", once)
+    monkeypatch.setattr(scheduler.wake["models"], "wait", wait)
+    thread = threading.Thread(target=scheduler.loop, args=("models",), daemon=True)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert calls == [("models", None), ("models", 200)]
+    assert scheduler.pending.get("models") is None
+
+
 def test_worker_records_trigger_watermark_on_success(tmp_path, monkeypatch):
     import app.worker as worker
 

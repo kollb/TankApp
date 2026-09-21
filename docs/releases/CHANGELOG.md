@@ -4,6 +4,34 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.63.0] – 2026-09-21
+
+**Batch 5 (P1): Nachreichen, Upload-Identität, Langzeitbilanz (I5, I3, F3)** —
+[Issue #185](https://github.com/kollb/TankApp/issues/185), NP5.
+
+- **I5 — Nachreichen.** Trifft während `run_once` ein höherer Watermark ein,
+  bleibt die Pending-Marke erhalten und der Scheduler fährt genau einen
+  Folgelauf nach der Rest-Debounce-Lücke (nicht erst beim nächsten Takt).
+  `wake.clear()` nach dem Lauf verwirft denselben Datenstand nicht mehr
+  still. Ein Lauf bekommt nur den Input-Watermark seines Starts.
+- **I3 — Upload-Identität.** Der ACK ist Schema v2: Byte-Offset je JSONL-Datei
+  plus `fetched_at_max` (nur Collector-Prune). Eine rückspringende Uhr oder
+  eine spät angehängte ältere Zeile wird nicht übersprungen. `station_id` ist
+  das einzige Influx-Tag; Name und Stadt sind Felder — ein Rename forkt die
+  Serie nicht. Heartbeat-Write ist vom Preis-ACK unabhängig. Der Collector
+  liest `fetched_at_max` aus v2-JSON; Live-`group` hängt nur an der UUID.
+- **F3 — Langzeitbilanz.** `load_ledger` mischt `archive.jsonl` und den
+  90-Tage-Hot-Store (Hot gewinnt bei gleicher ID). Jahres-/Allzeitbilanz,
+  Wallet-Profil, M7-Gate und `fills_summary` lesen das Ledger; Schreiben,
+  Tagebuch, Episodenliste und 7-Tage-Recap bleiben auf dem Hot-Store.
+  Retention ändert Allzeitbelegzahl, Jahressummen und die M7-Grundgesamtheit
+  nicht.
+
+Gegenproben: `tests/test_app_jobs.py` (ein Folgelauf), `tests/test_influx_identity.py`
+(Offset-ACK, Rename, späte ältere Zeile), `tests/test_batch5_ledger.py`
+(Retention vs. Allzeit/M7). Betriebsnachweis bleibt die echte `synced_until`-
+Datei und der unabhängige Pi-Heartbeat.
+
 ## [0.62.1] – 2026-09-21
 
 **O45 — Ersparnis mit benannter Basis.** Befund aus der Nutzung: Die

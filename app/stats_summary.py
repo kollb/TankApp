@@ -21,7 +21,7 @@ from .data import metadata
 from .feedback import (
     compute_advice_stats,
     compute_wallet_stats,
-    load_store,
+    load_ledger,
 )
 from .thresholds import active_thresholds
 
@@ -476,7 +476,7 @@ def evaluate_stats_summary(live_data, params: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Schicht B & C: Live-Advice & Wallet (immer echt, nie Demo)
-    store = load_store(live_data.settings)
+    store = load_ledger(live_data.settings)
     live_advice = compute_advice_stats(store, now=live_data.clock())
     wallet = compute_wallet_stats(store, now=live_data.clock())
 

@@ -39,6 +39,14 @@ HTTP_TIMEOUT_S = 30
 PING_TIMEOUT_S = 5
 DRYRUN_MAX_LINES = 40
 REPLAY_BATCH_POINTS = 1000
+UPLOAD_BATCH_POINTS = REPLAY_BATCH_POINTS
+ACK_SCHEMA = 2
+# v1 was a single ISO timestamp used as ``ts > ack``. A clock rollback or a
+# late older row appended after that ACK was skipped forever. Treat v1 as
+# empty cursors plus a 7-day bounded rescan: Influx identity is idempotent,
+# so rewriting those days is safe. Walking ``last ts <= ack`` would still
+# skip older-ts lines that arrived after the original ACK.
+V1_RESCAN_DAYS = 7
 # Issue 50: Webhook an die NAS-App nach sicherem InfluxDB-Write. Scheitert er,
 # läuft der intervallo-basierte Job unverändert weiter (Graceful Degradation,
 # keine neue Abhängigkeit).
@@ -123,64 +131,182 @@ def parse_ts(s: str) -> dt.datetime:
     return ts
 
 
-def read_ack(meta_dir: Path) -> "dt.datetime | None":
+def empty_ack() -> dict:
+    return {"v": ACK_SCHEMA, "cursors": {}, "fetched_at_max": None}
+
+
+def read_ack(meta_dir: Path) -> dict:
+    """Load the uploader cursor (schema v2: per-file byte offsets).
+
+    Schema v1 was a single ISO timestamp. A v1 file is treated as empty
+    cursors plus ``fetched_at_max`` for the collector's date prune and a
+    bounded 7-day rescan — never as ``ts > ack``.
+    """
     try:
         s = (meta_dir / "synced_until").read_text(encoding="utf-8").strip()
     except OSError:
-        return None
+        return empty_ack()
     if not s:
-        return None
+        return empty_ack()
+    if s.startswith("{"):
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            log(
+                "⚠ Ack-Datei nicht lesbar — als 'nichts gesynced' behandelt "
+                "(Neusenden ist dank Punkt-Identität in InfluxDB harmlos)."
+            )
+            return empty_ack()
+        if not isinstance(data, dict):
+            return empty_ack()
+        try:
+            version = int(data.get("v") or 0)
+        except (TypeError, ValueError):
+            version = 0
+        if version >= ACK_SCHEMA:
+            cursors = data.get("cursors") or {}
+            clean: dict[str, int] = {}
+            if isinstance(cursors, dict):
+                for key, value in cursors.items():
+                    try:
+                        clean[str(key)] = int(value)
+                    except (TypeError, ValueError):
+                        continue
+            return {
+                "v": ACK_SCHEMA,
+                "cursors": clean,
+                "fetched_at_max": data.get("fetched_at_max"),
+            }
+        return empty_ack()
     try:
-        return parse_ts(s)
+        ts = parse_ts(s)
     except ValueError:
         log(
             f"⚠ Ack-Datei nicht lesbar ({s!r}) — als 'nichts gesynced' behandelt "
             "(Neusenden ist dank Punkt-Identität in InfluxDB harmlos)."
         )
-        return None
+        return empty_ack()
+    return {"v": 1, "cursors": {}, "fetched_at_max": ts.isoformat()}
 
 
-def write_ack(meta_dir: Path, ts: dt.datetime) -> None:
+def write_ack(meta_dir: Path, ack: dict) -> None:
     meta_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "v": ACK_SCHEMA,
+        "cursors": {
+            str(key): int(value) for key, value in (ack.get("cursors") or {}).items()
+        },
+        "fetched_at_max": ack.get("fetched_at_max"),
+    }
     tmp = meta_dir / ".synced_until.tmp"
-    tmp.write_text(ts.isoformat() + "\n", encoding="utf-8")
+    tmp.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     tmp.replace(meta_dir / "synced_until")
 
 
+def advance_ack(ack: dict, batch) -> dict:
+    """Advance per-file byte cursors after a successful (or empty) batch.
+
+    Event time is recorded only as ``fetched_at_max`` for the collector's
+    date prune — it is never the skip predicate.
+    """
+    out = {
+        "v": ACK_SCHEMA,
+        "cursors": {
+            str(key): int(value) for key, value in (ack.get("cursors") or {}).items()
+        },
+        "fetched_at_max": ack.get("fetched_at_max"),
+    }
+    fetched = ack_fetched_at(out)
+    for ts, _snap, file_name, end_offset in batch:
+        prev = int(out["cursors"].get(file_name, 0) or 0)
+        if int(end_offset) > prev:
+            out["cursors"][file_name] = int(end_offset)
+        if fetched is None or ts > fetched:
+            fetched = ts
+            out["fetched_at_max"] = ts.isoformat()
+    return out
+
+
+def ack_fetched_at(ack: dict | None) -> dt.datetime | None:
+    if not ack:
+        return None
+    raw = ack.get("fetched_at_max")
+    if not raw:
+        return None
+    try:
+        return parse_ts(str(raw))
+    except ValueError:
+        return None
+
+
+def _file_in_v1_rescan(path: Path, ack: dict) -> bool:
+    if int(ack.get("v") or 0) >= ACK_SCHEMA:
+        return True
+    fetched = ack_fetched_at(ack)
+    if fetched is None:
+        return True
+    floor = fetched - dt.timedelta(days=V1_RESCAN_DAYS)
+    try:
+        mtime = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc)
+    except OSError:
+        return True
+    return mtime >= floor
+
+
 def read_unsynced(
-    poll_dir: Path, ack: "dt.datetime | None"
-) -> "list[tuple[dt.datetime, dict]]":
-    rows: "list[tuple[dt.datetime, dict]]" = []
+    poll_dir: Path, ack: dict | None
+) -> "list[tuple[dt.datetime, dict, str, int]]":
+    """Unacknowledged snapshots with per-file byte cursors.
+
+    Each item is ``(fetched_at, snap, file_name, end_offset)``. The cursor
+    is the file offset, not event time — a clock rollback or a late older
+    ``fetched_at`` is not skipped.
+    """
+    rows: "list[tuple[dt.datetime, dict, str, int]]" = []
     bad = 0
     if not poll_dir.is_dir():
         return rows
-    ack_date = ack.date() if ack else None
+    ack = ack or empty_ack()
+    cursors = ack.get("cursors") or {}
     for path in sorted(poll_dir.glob("*.jsonl")):
-        try:
-            file_date = dt.date.fromisoformat(path.stem)
-        except ValueError:
-            file_date = None
-        if ack_date is not None and file_date is not None and file_date < ack_date:
+        if not _file_in_v1_rescan(path, ack):
             continue
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+        start = int(cursors.get(path.name, 0) or 0)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if start > size:
+            start = 0
+        if start >= size:
+            continue
+        with path.open("rb") as handle:
+            if start:
+                handle.seek(start)
+            while True:
+                raw = handle.readline()
+                if not raw:
+                    break
+                end_offset = handle.tell()
+                line = raw.decode("utf-8").strip()
                 if not line:
                     continue
                 try:
                     snap = json.loads(line)
                     ts = parse_ts(snap["fetched_at"])
-                except (ValueError, KeyError, TypeError):
+                except (ValueError, KeyError, TypeError, UnicodeDecodeError):
                     bad += 1
                     continue
-                if ack is None or ts > ack:
-                    rows.append((ts, snap))
+                rows.append((ts, snap, path.name, end_offset))
     if bad:
         log(
             f"⚠ {bad} kaputte Puffer-Zeile(n) übersprungen (Abbruch während Schreibens?) "
             "— sie werden nicht nachgeschickt."
         )
-    rows.sort(key=lambda r: r[0])
+    rows.sort(key=lambda r: (r[0], r[2], r[3]))
     return rows
 
 
@@ -217,14 +343,23 @@ def esc_str(v: str) -> str:
 
 
 def snap_to_lines(ts: dt.datetime, snap: dict, names: "dict[str, str]") -> "list[str]":
-    city = esc_tag(str(snap.get("city") or "unknown"))
+    """Line protocol with UUID-only series identity (I3).
+
+    ``station_id`` is the sole tag (Influx identity / idempotency key).
+    Display name and city are fields: a rename does not fork the series.
+    """
+    city = str(snap.get("city") or "unknown")
     ns = int(ts.timestamp() * 1_000_000_000)
     out = []
     for uid, rec in (snap.get("prices") or {}).items():
         if not isinstance(rec, dict):
             continue
-        station = esc_tag(str(names.get(uid) or uid))
-        fields = [f'status="{esc_str(str(rec.get("status") or "no prices"))}"']
+        station = str(names.get(uid) or uid)
+        fields = [
+            f'status="{esc_str(str(rec.get("status") or "no prices"))}"',
+            f'city="{esc_str(city)}"',
+            f'station="{esc_str(station)}"',
+        ]
         for fu in FUELS:
             v = rec.get(fu)
             if (
@@ -235,10 +370,7 @@ def snap_to_lines(ts: dt.datetime, snap: dict, names: "dict[str, str]") -> "list
             ):
                 continue
             fields.append(f"{fu}={float(v):.3f}")
-        station_id = esc_tag(str(uid))
-        out.append(
-            f"prices,city={city},station={station},station_id={station_id} {','.join(fields)} {ns}"
-        )
+        out.append(f"prices,station_id={esc_tag(str(uid))} {','.join(fields)} {ns}")
     return out
 
 
@@ -266,9 +398,8 @@ def heartbeat_to_line(heartbeat: dict, webhook: dict | None = None) -> str | Non
         ns = int(time.time() * 1_000_000_000)
 
     host = esc_tag("pi")
-    city = esc_tag(str(heartbeat.get("city") or "unknown"))
 
-    fields = []
+    fields = [f'city="{esc_str(str(heartbeat.get("city") or "unknown"))}"']
     try:
         fields.append(f'last_poll_at="{esc_str(str(last_poll))}"')
     except Exception:
@@ -312,7 +443,7 @@ def heartbeat_to_line(heartbeat: dict, webhook: dict | None = None) -> str | Non
     if not fields:
         return None
 
-    return f"collector_status,host={host},city={city} {','.join(fields)} {ns}"
+    return f"collector_status,host={host} {','.join(fields)} {ns}"
 
 
 def influx_ping(cfg: Cfg) -> "tuple[bool, str]":
@@ -617,63 +748,75 @@ def run_upload(cfg: Cfg, state: State) -> int:
                 hb, webhook=webhook_influx_fields(cfg, state)
             )
 
-    if not rows and not heartbeat_line:
-        return 0
-
     names_by_city = load_station_names(cfg.poll_json)
     if not names_by_city and not state.names_warned:
         state.names_warned = True
         log(
-            "⚠ Stationsnamen nicht verfügbar (polling.json fehlt?) — station-Tag "
+            "⚠ Stationsnamen nicht verfügbar (polling.json fehlt?) — station-Feld "
             "enthält die UUID statt des Namens."
         )
 
-    lines: "list[str]" = []
     newest = None
+    wrote_prices = False
+    n_points = 0
     if rows:
-        for ts, snap in rows:
-            lines.extend(
-                snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {}))
-            )
-        newest = rows[-1][0]
-
-        if not lines and newest:
-            write_ack(cfg.meta_dir, newest)
+        for offset in range(0, len(rows), UPLOAD_BATCH_POINTS):
+            batch = rows[offset : offset + UPLOAD_BATCH_POINTS]
+            lines: "list[str]" = []
+            for ts, snap, _file_name, _end in batch:
+                lines.extend(
+                    snap_to_lines(
+                        ts, snap, names_by_city.get(snap.get("city") or "", {})
+                    )
+                )
+            if lines:
+                try:
+                    influx_write(cfg, lines)
+                except (
+                    urllib.error.HTTPError,
+                    urllib.error.URLError,
+                    TimeoutError,
+                    OSError,
+                ) as e:
+                    state.fails += 1
+                    wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
+                    log(
+                        f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
+                        f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
+                    )
+                    return 1
+                wrote_prices = True
+                n_points += len(lines)
+            ack = advance_ack(ack, batch)
+            write_ack(cfg.meta_dir, ack)
+            newest = batch[-1][0]
+        state.fails = 0
+        if newest:
             log(
-                f"⇡ {len(rows)} Zeile(n) ohne Punkt als gesendet markiert "
+                f"⇡ {len(rows)} Zeile(n) ({n_points} Punkte) → InfluxDB "
                 f"(synced until {newest.isoformat()})"
             )
-            # still try heartbeat below
-            lines = []
-            newest = None  # don't ack twice
+            if wrote_prices:
+                # Issue 50: sichere Write-Bestätigung als Ereignis an die NAS-App.
+                notify_nas(cfg, state, newest)
 
     if heartbeat_line:
-        lines.append(heartbeat_line)
-
-    if not lines:
-        return 0
-
-    try:
-        influx_write(cfg, lines)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as e:
-        state.fails += 1
-        wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
-        log(
-            f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
-            f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
-        )
-        return 1
-
-    state.fails = 0
-    if newest:
-        write_ack(cfg.meta_dir, newest)
-        log(
-            f"⇡ {len(rows)} Zeile(n) ({len(lines)} Punkte) → InfluxDB "
-            f"(synced until {newest.isoformat()})"
-        )
-        # Issue 50: sichere Write-Bestätigung als Ereignis an die NAS-App.
-        notify_nas(cfg, state, newest)
-    if heartbeat_line:
+        try:
+            influx_write(cfg, [heartbeat_line])
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+        ) as e:
+            state.fails += 1
+            wait = min(BACKOFF_BASE_S * 2 ** (state.fails - 1), BACKOFF_MAX_S)
+            log(
+                f"✗ InfluxDB-Write fehlgeschlagen: {explain_write_error(e, cfg)} — "
+                f"Versuch in {wait} s (Ack bleibt stehen, nichts geht verloren)."
+            )
+            return 1
+        state.fails = 0
         state.last_heartbeat = now_mono
         log("⇡ Collector-Herzschlag → InfluxDB (collector_status)")
     return 0
@@ -736,7 +879,7 @@ def dry_run(args: argparse.Namespace) -> int:
         return 0
     names_by_city = load_station_names(args.poll_json)
     lines: "list[str]" = []
-    for ts, snap in rows:
+    for ts, snap, _file_name, _end in rows:
         lines.extend(
             snap_to_lines(ts, snap, names_by_city.get(snap.get("city") or "", {}))
         )

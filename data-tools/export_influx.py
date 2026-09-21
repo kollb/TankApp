@@ -313,7 +313,10 @@ def flux_query(
     def quote(value):
         return json.dumps(value, ensure_ascii=False)
 
-    identity_filter = ""
+    # I3: city/station are fields (UUID is the only tag). Filter city after
+    # pivot; include those fields so pivot keeps them as columns.
+    tag_filter = ""
+    after_pivot = ""
     if station_ids is not None:
         clauses = [
             f"(r.city == {quote(city)} and contains(value: r.station_id, set: {quote(sorted(ids))}))"
@@ -322,19 +325,26 @@ def flux_query(
         ]
         if not clauses:
             raise ExportError("Keine ausgewählten UUIDs für den UUID-Export.")
-        identity_filter = (
-            "  |> filter(fn: (r) => exists r.station_id and ("
-            + " or ".join(clauses)
-            + "))\n"
+        all_ids = sorted({uid for ids in station_ids.values() for uid in ids})
+        tag_filter = (
+            "  |> filter(fn: (r) => exists r.station_id and "
+            f"contains(value: r.station_id, set: {quote(all_ids)}))\n"
+        )
+        after_pivot = "  |> filter(fn: (r) => " + " or ".join(clauses) + ")\n"
+    else:
+        after_pivot = (
+            "  |> filter(fn: (r) => "
+            f"contains(value: r.city, set: {quote(sorted(cities))}))\n"
         )
     return (
         f"from(bucket: {quote(bucket)})\n"
         f"  |> range(start: time(v: {quote(start.isoformat())}), stop: time(v: {quote(stop.isoformat())}))\n"
         '  |> filter(fn: (r) => r._measurement == "prices")\n'
-        f"  |> filter(fn: (r) => contains(value: r.city, set: {quote(sorted(cities))}))\n"
-        f"{identity_filter}"
-        f'  |> filter(fn: (r) => r._field == "status" or r._field == {quote(fuel)})\n'
+        f"{tag_filter}"
+        f'  |> filter(fn: (r) => r._field == "status" or r._field == {quote(fuel)}'
+        ' or r._field == "city" or r._field == "station")\n'
         '  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")\n'
+        f"{after_pivot}"
         f'  |> keep(columns: ["_time", "city", "station", "station_id", "status", {quote(fuel)}])\n'
         '  |> sort(columns: ["_time"])\n'
     )

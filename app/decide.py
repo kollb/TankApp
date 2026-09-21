@@ -27,7 +27,7 @@ from .feedback import (
     WH_MIN_FILLS,
     compute_advice_stats,
     compute_wallet_stats,
-    load_store,
+    load_ledger,
     record_snapshot,
 )
 from .pside import (
@@ -1075,7 +1075,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
 
     # O2/O3: The receipt profile is weekday-aware and starts carefully with
     # the first usable receipt (eight fills are prior strength, not a cliff).
-    store = load_store(live_data.settings)
+    store = load_ledger(live_data.settings)
     wallet_stats = compute_wallet_stats(store, now=clock_now)
     wh_weekday = wallet_stats.get("wh_weekday") or None
     wh_personalized = bool(wallet_stats.get("wh_personalized"))

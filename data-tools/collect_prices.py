@@ -260,13 +260,27 @@ def write_snapshot(out_dir: Path, snap: dict) -> Path:
 
 
 def _read_ack_ts(meta_dir: Path) -> dt.datetime | None:
-    """Liest meta/synced_until (vom Uploader) — None, wenn noch nichts gesynct."""
+    """Liest meta/synced_until (vom Uploader) — None, wenn noch nichts gesynct.
+
+    Schema v2 is JSON with ``fetched_at_max`` (event time for the date prune
+    only). Schema v1 was a bare ISO timestamp.
+    """
     try:
         s = (meta_dir / "synced_until").read_text(encoding="utf-8").strip()
     except OSError:
         return None
     if not s:
         return None
+    if s.startswith("{"):
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        s = str(data.get("fetched_at_max") or "").strip()
+        if not s:
+            return None
     try:
         ts = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
         if ts.tzinfo is None:

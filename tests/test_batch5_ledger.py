@@ -202,3 +202,76 @@ def test_timestamp_free_fill_exposes_server_time_source(settings):
     )
     assert fill["clock_hour"] == 14  # 12:00 UTC = 14:00 Europe/Berlin in September
     assert fill["clock_hour_source"] == "server"
+
+
+def test_retention_keeps_alltime_fills_year_sums_and_m7_population(settings):
+    """F3: 90-day prune must not empty year/all-time balance or the M7 set."""
+    from app.feedback import (
+        FEEDBACK_RETENTION_DAYS,
+        compute_advice_stats,
+        compute_wallet_balance,
+        load_ledger,
+        load_store,
+        locked_store,
+    )
+
+    wall = dt.datetime.now(dt.timezone.utc)
+    old = wall - dt.timedelta(days=FEEDBACK_RETENTION_DAYS + 30)
+    with locked_store(settings) as store:
+        store["fills"].extend(
+            [
+                {
+                    "id": "fill-old",
+                    "tanked_at": old.isoformat(),
+                    "liters": 40.0,
+                    "price_paid": 1.70,
+                    "saved_vs_always_now_eur": 2.0,
+                    "voided": False,
+                },
+                {
+                    "id": "fill-new",
+                    "tanked_at": wall.isoformat(),
+                    "liters": 40.0,
+                    "price_paid": 1.60,
+                    "saved_vs_always_now_eur": 1.0,
+                    "voided": False,
+                },
+            ]
+        )
+        store["episodes"].append(
+            {
+                "id": "ep-old",
+                "opened_at": old.isoformat(),
+                "status": "resolved",
+                "snapshots": [
+                    {
+                        "id": "s-old",
+                        "action": "wait",
+                        "p_correct": 0.9,
+                        "p_source": "verteilung",
+                        "emitted_at": old.isoformat(),
+                    }
+                ],
+            }
+        )
+        store["settlements"].append(
+            {
+                "snapshot_id": "s-old",
+                "outcome": "win",
+                "settled_at": old.isoformat(),
+            }
+        )
+
+    hot = load_store(settings)
+    assert [row["id"] for row in hot["fills"]] == ["fill-new"]
+    assert hot["settlements"] == []
+    ledger = load_ledger(settings)
+    balance = compute_wallet_balance(ledger, now=wall)
+    assert balance["n_fills_total"] == 2
+    year = next(row for row in balance["years"] if row["key"] == str(old.year))
+    assert year["fills"] == 2
+    assert year["saved_eur"] == 3.0
+    assert compute_wallet_balance(hot, now=wall)["n_fills_total"] == 1
+    advice = compute_advice_stats(ledger, now=wall)
+    assert advice["n_all"] == 1
+    assert compute_advice_stats(hot, now=wall)["n_all"] == 0
