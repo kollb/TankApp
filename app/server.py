@@ -212,6 +212,9 @@ _FILL_STATUS = {
     # S3: Defekter Feedback-Store — das Schreiben ist gesperrt, bis der
     # Bestand wiederhergestellt ist. 5xx statt 400: der Request war korrekt.
     "store_corrupted": 503,
+    # A21-B3.1: Defektes Archiv — die Retention kann nicht auslagern; der
+    # Schreibversuch kehrt wiederholbar zurück, bis wiederhergestellt ist.
+    "archive_corrupted": 503,
 }
 
 # A1: Statuscodes der Profil-Endpunkte — Fach-Codes 4xx, Rest 503

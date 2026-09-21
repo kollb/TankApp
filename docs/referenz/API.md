@@ -1,6 +1,9 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 21.09.2026 · App-Version **0.65.0** — neu seit 0.65.0 (A21-B2,
+> Stand: 21.09.2026 · App-Version **0.66.0** — neu seit 0.66.0 (A21-B3):
+> das Archiv ist fail-closed in den Ledger eingebunden (Alarm
+> `archive_corrupted`, A21-B3.1), und der Backup-Herzschlag hängt an der
+> Verifiziertheit (Alarm `backup_unverified`, A21-B3.2). Davor neu seit 0.65.0 (A21-B2,
 > Issues #202–#204): die **Messung beginnt an der Requestzeile**
 > (Client-Leerlauf steht als `idle` im `Server-Timing`, außerhalb von
 > `total`/`X-Process-Time`; jede Antwort trägt eine `X-Request-ID`, der
@@ -889,7 +892,9 @@ Antwort:
   "price_implausible": {"count_24h": 0, "last_at": null},
   "backup": {"configured": true, "count": 14, "monthly_count": 6,
              "newest_at": "2026-09-17T01:30:04+00:00", "age_hours": 10.5,
-             "stale_hours": 36.0, "stale": false, "reason": null},
+             "stale_hours": 36.0, "stale": false, "reason": null,
+             "verified": true, "verified_count": 13, "unverified_count": 1,
+             "verified_newest_at": "2026-09-17T01:30:04+00:00"},
   "selection": {"published_at": "...", "count": 20},
   "collector": {
     "available": true,
@@ -972,7 +977,8 @@ grün ohne Alarm.
 | `store_growing` | warn | Feedback-Store über 80 % der Grenze |
 | `publication_unreadable` | error | Eine Datei der Prognose-Veröffentlichung über `READ_JSON_MAX_BYTES` (`reason: "too_large"`), nicht parsebar (`reason: "invalid"`) oder eine Stations-Datei fehlt (`reason: "incomplete"`, die übrigen Prognosen bleiben verfügbar) — seit 0.49.0 gilt die Klippe der einzelnen Datei (O22) |
 | `publication_large` | warn | Eine Datei der Veröffentlichung über `PUBLICATION_BUDGET_BYTES` (6 MB), aber noch lesbar — seit der Aufteilung (0.49.0) praktisch unerreichbar, eine Stations-Datei ist ~0,7 MB (O22) |
-| `backup_stale` | warn | letztes Laufzeit-Backup älter als `BACKUP_STALE_HOURS` (36 h), Backup-Ziel leer oder nicht erreichbar (O33) |
+| `backup_stale` | warn | letztes **verifiziertes** Laufzeit-Backup älter als `BACKUP_STALE_HOURS` (36 h), Backup-Ziel leer oder nicht erreichbar (O33, A21-B3.2) |
+| `backup_unverified` | error | jüngster Tagesstand ohne gültiges Erfolgsmanifest — leer, abgebrochen, gekürzt, umbenannt oder vor 0.66.0 erzeugt; frisches Alter allein ist kein Herzschlag (A21-B3.2) |
 
 Reihenfolge und Aktionen: [BETRIEB.md](../betrieb/BETRIEB.md#system-alarme-lesen).
 
@@ -1010,8 +1016,32 @@ einen Monat lang zu. `stale` (und damit Alarm `backup_stale`, warn) gilt ab
 erreichbarem Ziel (`reason: "directory_missing"`). Ohne konfiguriertes Ziel
 gibt es **keinen** Alarm (`reason: "not_configured"`) — die App weiß nicht, ob
 anderswo gesichert wird; unsichtbar ist der Zustand damit nicht.
-Einrichten und Aufbewahrungsregel:
+
+Seit 0.66.0 (A21-B3.2) ist der Herzschlag an die **Verifiziertheit** gebunden:
+`ops/nas/backup.sh` schreibt erst nach bestandener Inhaltsprüfung das
+Erfolgsmanifest `<name>.manifest.json` neben jedes Tar, und die App vergleicht
+Name, Größe und Bestätigungsfelder des Manifests mit dem jüngsten Tagesstand
+(`verified`). Passt es nicht — leer, abgebrochen, gekürzt, umbenannt oder aus
+Zeiten vor 0.66.0 — gilt `reason: "unverified"` und damit Alarm
+`backup_unverified` (error, schärfer als `backup_stale`, denn der Betrieb
+glaubt sonst an eine Sicherung, die niemand geprüft hat). `verified_count` /
+`unverified_count` zählen die Tagesstände nach Manifestzustand,
+`verified_newest_at` nennt den jüngsten geprüften Stand (Kontext für die
+Fehlermeldung). Die App liest dafür nur das kleine JSON neben dem Tar — sie
+öffnet und prüft bewusst **keine** Tar-Inhalte im Requestpfad.
+Einrichten, Aufbewahrung und Restore:
 [BETRIEB.md](../betrieb/BETRIEB.md#nas-laufzeitdaten-runtime-backup).
+
+**`archive_corrupted`-Alarm** (A21-B3.1, seit 0.66.0): Der Alarm folgt der
+ersten Diagnose eines Ledger-Lesevorgangs (z. B. der nächste
+`/overview`-Poll): Sie legt den Quarantäne-Report an, und `/health`
+vergleicht nur dann — billig, im Healthcheck-Budget — den aktuellen
+Archivbestand (SHA-256) mit dem gemerkten Defekt. Gleiche Bytes heißt
+weiterhin defekt, andere Bytes (z. B. nach einem Restore aus der
+Laufzeit-Sicherung) hebt den Alarm auf. Ein fehlendes Archiv ist der
+Erststart-Zustand und kein Alarm. Der Zustand der Endpunkte:
+[feedback.py](../../app/feedback.py) (`ArchiveCorrupted`), Wiederherstellung:
+[BETRIEB.md](../betrieb/BETRIEB.md#feedback-archiv-und-ledger-integrität-a21-b31).
 
 **Job-Fortschritt** (B5): Läuft ein Job (`state: "running"`), liefert
 `progress` Phase, Schritt `x/y`, aktuelles Label, Prozent, Laufzeit und
@@ -1641,6 +1671,7 @@ Siehe `web/src/data.ts` messages:
 - price_not_available (400 beim Fill), decide_failed, backtest_not_available
 - episode_not_found (404), episodes_read_failed, set_intent_failed, record_fill_failed, settlement_failed, stats_summary_failed
 - store_too_large (503), store_locked (503, Feedback-Store 5 s belegt — wiederholbar, B11), not_implemented (501)
+- archive_corrupted (503 bei Schreibwegen, sonst 200 + Code im Body): Beleg-Archiv unlesbar/beschädigt — Decide/Overview/Summary/Fills-Summary liefern den Code mit Quarantäne- und Backup-Hinweis statt einer Teilbilanz; Schreibwege, deren Retention das Archiv fortsetzen müsste, scheitern wiederholbar, ohne den Bestand zu verändern (A21-B3.1)
 - fill_not_found (404, `DELETE /api/v1/fills/{id}`), void_fill_failed (503), fills_read_failed
 - invalid_tank (400, `/api/v1/decide` — Tankstand außerhalb 0–100 % bzw. 20–120 l bzw. 0–1500 km)
 - profile_not_found (404), profile_limit (409), invalid_profile_name, invalid_time_value_eur_h, invalid_speed_kmh, invalid_tank_capacity_l (400, Profil-Endpunkte), profile_write_failed / profiles_read_failed / fills_summary_failed (503)

@@ -1,8 +1,16 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 21.09.2026 · App-Version 0.53.0 — alles, was nach der Ersteinrichtung
+> Stand: 21.09.2026 · App-Version 0.66.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
-> Neu seit 0.64.0: Der Upload-Ack bestätigt nur lückenlose Dateibereiche
+> Neu seit 0.66.0 (A21-B3.2): Laufzeit-Backups werden erst nach Inhaltsprüfung
+> veröffentlicht (Erfolgsmanifest neben jedem Tar), ein ungeprüfter jüngster
+> Stand alarmiert als `backup_unverified` (error), und der Restore wird mit
+> `ops/nas/restore.sh` plus Verifizierer nachgewiesen — siehe
+> [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup).
+> Ebenfalls 0.66.0 (A21-B3.1): Beschädigte Archive blockieren sichtbar
+> (Alarm `archive_corrupted`, Quarantäne-Kopie) statt still zu fehlen —
+> siehe [Feedback-Archiv und Ledger-Integrität](#feedback-archiv-und-ledger-integrität-a21-b31).
+> Davor neu seit 0.64.0: Der Upload-Ack bestätigt nur lückenlose Dateibereiche
 > (A21-B1.1), beschädigte Pufferzeilen werden isoliert (A21-B1.2), und der
 > Ringpuffer zählt bewusste FIFO-Verluste getrennt — in der
 > [Fehlersuche](#fehlersuche) und in
@@ -61,6 +69,7 @@
   - [Pi Sicherung](#pi-sicherung)
   - [NAS InfluxDB Backup](#nas-influxdb-backup)
   - [NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)
+  - [Feedback-Archiv und Ledger-Integrität (A21-B3.1)](#feedback-archiv-und-ledger-integrität-a21-b31)
 - [System-Alarme lesen](#system-alarme-lesen)
   - [Alarm-Zustellung über ntfy (B4)](#alarm-zustellung-über-ntfy-b4)
   - [Webhook Pi → NAS (B8, seit 0.38.0)](#webhook-pi--nas-b8-seit-0380)
@@ -998,8 +1007,8 @@ persönliche Bilanz in `runtime/` (unten); beide haben deshalb eine Sicherung.
 ### NAS Laufzeitdaten (runtime/) Backup
 
 Das InfluxDB-Volume sichert die **Preise** — nicht die persönliche Tank-Bilanz.
-Die liegt in `runtime/` (Feedback-Store, Selektion, Job-Stände) und wird bisher
-nicht gesichert. Ein NAS-Disk-Crash wäre der Verlust der Bilanz. Täglich sichern:
+Die liegt in `runtime/` (Feedback-Store, Selektion, Job-Stände) und wird
+täglich gesichert. Ein NAS-Disk-Crash wäre sonst der Verlust der Bilanz.
 
 ```cron
 30 3 * * * TANKAPP_RUNTIME_DIR=/data/runtime TANKAPP_BACKUP_DIR=/pfad/zu/backup $HOME/TankApp/ops/nas/backup.sh
@@ -1008,32 +1017,67 @@ nicht gesichert. Ein NAS-Disk-Crash wäre der Verlust der Bilanz. Täglich siche
 `TANKAPP_RUNTIME_DIR` ist das in `compose.yml` gemountete `runtime/`-Verzeichnis
 (siehe `tankapp.py nas-up`), `TANKAPP_BACKUP_DIR` das vorhandene Backup-Ziel.
 
-**Aufbewahrung (O33, seit 0.47.0):** 14 Tagesstände
-(`TANKAPP_BACKUP_KEEP_DAYS`) **plus 6 Monatsstände**
-(`TANKAPP_BACKUP_KEEP_MONTHLY`, `tankapp-runtime-monthly-<JJJJ-MM>.tar.gz`).
-Die zweite Stufe ist keine Spielerei: 14 Tage sind kürzer als die Zeit, die ein
+**Erst validieren, dann veröffentlichen (A21-B3.2, seit 0.66.0):** Bis 0.65.0
+schrieb das Skript direkt in den endgültigen Tagesnamen — wurde es unterbrochen
+(NAS voll, App schrieb mit), lag hinterher eine leere oder halbe Datei unter
+gültigem Namen, und der Health-Check meldete „frisch“. Jetzt läuft der Lauf in
+drei Schritten:
+
+1. **Temporär schreiben:** Das Tar entsteht unter verstecktem, eindeutigem
+   Namen (`.tankapp-runtime-<tag>.<pid>.tar.gz.tmp`) im Ziel. Abgebrochene
+   Läufe bleiben nie als gültiger Tagesname stehen; vergessene Temp-Dateien
+   älter als 60 Minuten räumt der nächste Lauf ab.
+2. **Inhalt prüfen, bevor es zählt:** nicht leer, gzip entpackbar, Mitglieder
+   erwartungsgemäß — inklusive `feedback/store.json`, falls es zur Laufzeit
+   existierte. Erst nach bestandener Prüfung folgt das atomare Umbenennen
+   (`mv`) in `tankapp-runtime-<JJJJ-MM-TT>.tar.gz` und das Schreiben des
+   **Erfolgsmanifests** `<name>.manifest.json` (Größe, SHA-256, Mitglieder,
+   Sperrzustand — ebenfalls über einen Temporärnamen).
+3. **Konsistenter Stand:** Das Skript nimmt dieselbe Feedback-Sperre wie die
+   App (`.collector.lock`) und sichert `store.json` vor `archive.jsonl` — die
+   dokumentierte Leserichtung. Temporärdateien der atomaren Schreiber
+   (`*.tmp`) werden ausgelassen: Sie sind niemals gültiger Inhalt. Schlägt das
+   Tar oder die Validierung fehl, endet der Lauf mit Fehlermeldung und
+   ungleich null — der letzte gute Tagesstand bleibt bytegleich liegen.
+
+**Aufbewahrung:** 14 Tagesstände (`TANKAPP_BACKUP_KEEP_DAYS`) **plus 6
+Monatsstände** (`TANKAPP_BACKUP_KEEP_MONTHLY`,
+`tankapp-runtime-monthly-<JJJJ-MM>.tar.gz`, je mit eigenem Manifest). Die
+zweite Stufe ist keine Spielerei: 14 Tage sind kürzer als die Zeit, die ein
 langsam zerstörender Fehler braucht, um aufzufallen — ein Wallet-Bug oder eine
 stille Größen-Grenze hat dann alle guten Tagesstände überschrieben, bevor
 jemand hinschaut. Ein Monatsstand ist der Stand, zu dem man zurück kann. Die
-Tages-Rotation nimmt die Monatsstände ausdrücklich aus.
+Tages-Rotation nimmt die Monatsstände ausdrücklich aus und löscht Tar und
+Manifest nur zusammen; ihr Fehler beendet den Lauf mit Fehler, nie still.
 
-**Die App prüft das Alter mit (O33):** `backup.sh` kann still ausfallen —
-NAS-Update, Pfad umbenannt, Volume ausgehängt — und vor 0.47.0 merkte das
-nichts. Seit 0.47.0 meldet `GET /api/v1/health` → `backup` Alter und Anzahl der
-Tagesstände, und ab **36 Stunden** ohne neues Tar schlägt Alarm `backup_stale`
-(warn) an. Gezählt werden die Tagesstände, nicht die Monatsstände: Ein
-Monatsstand ist bis zu 31 Tage alt, ohne dass etwas fehlt, und würde einen
-toten Cron einen Monat lang überdecken.
+**Die App prüft Herzschlag, nicht nur Alter (O33 + A21-B3.2):** `backup.sh`
+kann still ausfallen — NAS-Update, Pfad umbenannt, Volume ausgehängt — und vor
+0.47.0 merkte das nichts. Seit 0.47.0 meldet `GET /api/v1/health` → `backup`
+Alter und Anzahl der Tagesstände, und ab **36 Stunden** ohne neues Tar schlägt
+Alarm `backup_stale` (warn) an. Seit 0.66.0 gilt zusätzlich: **Ein Tagesstand
+zählt nur als Herzschlag, wenn sein Erfolgsmanifest passt** (Name, Größe,
+`gzip: ok`). Ein frisches Alter allein belegt keine erfolgreiche Sicherung —
+die 0-Byte-Datei eines abgebrochenen Laufs wäre sonst „frisch“ gewesen. Passt
+das Manifest des jüngsten Tagesstands nicht (leer, abgebrochen, gekürzt,
+umbenannt oder aus Skript-Zeiten vor 0.66.0), schlägt stattdessen Alarm
+`backup_unverified` (error) an; die Health-Antwort nennt `verified_count` und
+`unverified_count`, und der jüngste *verifizierte* Stand bleibt als
+`verified_newest_at` sichtbar. Alte Bestände ohne Manifest werden ehrlich
+gezählt, aber nicht als gültig behauptet. Gezählt werden die Tagesstände,
+nicht die Monatsstände: Ein Monatsstand ist bis zu 31 Tage alt, ohne dass
+etwas fehlt, und würde einen toten Cron einen Monat lang überdecken. Die App
+liest dabei nur das kleine Manifest neben dem Tar — sie liest und prüft keine
+Tar-Inhalte im Requestpfad (Health-Budget).
 
 Dazu muss die App das Ziel sehen können — im Container ist es das nicht von
 allein. `tankapp.py nas-up` hängt die Erweiterung `ops/nas/app/compose.backup.yml`
 automatisch an, wenn `TANKAPP_BACKUP_DIR` in seiner Umgebung gesetzt ist; das
 Ziel wird **read-only** nach `/backup` gemountet (die App prüft nur Alter und
-Anzahl, sie schreibt nie in das Backup):
+Verifiziertheit, sie schreibt nie in das Backup):
 
 ```bash
 TANKAPP_BACKUP_DIR=/pfad/zu/backup python tankapp.py nas-up
-# Gegenprobe: /api/v1/health → "backup": {"configured": true, "age_hours": …}
+# Gegenprobe: /api/v1/health → "backup": {"configured": true, "age_hours": …, "verified": true, …}
 ```
 
 Ohne die Variable bleibt `backup.configured: false` — kein Alarm (die App weiß
@@ -1061,20 +1105,39 @@ vor einem toten NAS. Ein zweites automatisches Ziel ist bewusst nicht beauftragt
 externe Zweitkopie bleibt die vereinbarte Absicherung
 ([ADR 0001](../adr/0001-BETRIEB-UND-SPEICHER.md#entscheidung)).
 
-Restore (durchgespielt, nicht nur aufgeschrieben):
+**Restore — nachweisen, nicht hoffen (A21-B3.2):** Vor 0.66.0 stand hier ein
+`tar xzf` von Hand. Jetzt gehört der Nachweis zum Vorgang:
+`ops/nas/restore.sh` stellt nur in ein **leeres, isoliertes Ziel** wieder her
+(niemals auf Produktionsdaten), prüft das Tar vor dem Entpacken (gzip-Test)
+und ruft danach den Verifizierer `ops/nas/verify_restore.py`, der Belegzahlen,
+Summen, Stornos, Archiv-Integrität und Schema-Stempel der wiederhergestellten
+Sicht prüft:
 
 ```bash
 # App stoppen, damit der Store nicht während des Kopierens geschrieben wird.
 docker compose -f ops/nas/app/compose.yml stop app
-mkdir -p /data/runtime
-tar xzf tankapp-runtime-<datum>.tar.gz -C /data/runtime
+
+# Wiederherstellung in ein frisches Verzeichnis, verglichen mit der Quelle:
+bash ops/nas/restore.sh /pfad/zu/backup/tankapp-runtime-2026-09-21.tar.gz \
+     /data/runtime-neu --compare /data/runtime
+
+# Gegenprobe des Fachstands: Belege, Liter, Euro, Stornos, Fingerabdruck.
+# „Verifikation: OK“ — erst dann das Verzeichnis an die Stelle von runtime/ schieben
+# und die App starten.
 docker compose -f ops/nas/app/compose.yml start app
-# Gegenprobe: Wallet-Zähler in der GUI und GET /api/v1/fills zeigen den alten Stand.
 ```
 
-Danach einmal `GET /api/v1/health` prüfen: `app` = `online`, kein Alarm
-`store_too_large`. Preise kommen aus InfluxDB (separates Backup) und bleiben
-vom runtime-Restore unberührt.
+`--compare` setzt die Quelle (der noch laufende oder angehaltene alte
+Bestand) ins Verhältnis: Schema-Version, Stornos, Summen und der
+Beleg-Fingerabdruck müssen übereinstimmen. Der Verifizierer braucht nur die
+Python-Standardbibliothek — er läuft direkt auf dem NAS-Host, ohne
+App-Container. Ohne `--compare` prüft der
+Verifizierer den Bestand für sich (Vollständigkeit, Parsebarkeit, keine
+doppelte Identität). Danach einmal `GET /api/v1/health` prüfen: `app` =
+`online`, kein Alarm `store_too_large` oder `archive_corrupted`. Preise
+kommen aus InfluxDB (separates Backup,
+[NAS InfluxDB Backup](#nas-influxdb-backup)) und bleiben vom runtime-Restore
+unberührt — beide Sicherungen sind bewusst getrennte Vorgänge.
 
 ### Schema-Version des Feedback-Stores (B2)
 
@@ -1088,17 +1151,56 @@ nie still als leer behandelt: Erst das App-Update, kein Überschreiben. Beim
 Restore alter Backups ist deshalb kein Handanlegen nötig — einbinden und die
 App migrieren lassen.
 
-Aktuelle Version: **4** (0.44.0, O1). Der Sprung 3 → 4 ergänzt je Beleg
-`clock_hour_source` — und ist eine **Auszeichnung, keine Umschrift**: Die
-Uhrzeit eines Belegs wird seit 0.44.0 serverseitig aus `tanked_at` in
-Europe/Berlin abgeleitet (`"beleg"` = GUI hat `clock_hour` selbst geschickt,
-`"abgeleitet"` = aus dem Zeitstempel, `"default"` = 12 Uhr, weil der Beleg
-keinen Zeitstempel trägt). Alte Belege werden **nicht** still umgeschrieben:
-Ein Bestand aus Version 3 behält seine 12-Uhr-Werte, trägt danach aber
-`"default"` als Herkunft, und die Statistik nennt die Anzahl
-(`wh_default_n` in `GET /api/v1/stats/summary`). Wer sein Tankzeit-Profil neu
-auf echte Uhrzeiten stellen will, löscht den Altbestand bewusst (Backup vorher:
-`GET /api/v1/fills.csv`) — ein Restore des Backups migriert danach auf Version 4.
+Aktuelle Version: **7**. Jeder Sprung ergänzt Felder, ohne Altbestände
+umzuschreiben; die Migrationen laufen auch über die ins Archiv ausgelagerten
+Belege (siehe unten). Die Herkunfts-Felder je Beleg (`clock_hour_source` ∈
+`beleg`/`server`/`abgeleitet`/`default`, `p_source`, `price_source`,
+`forecast_calibration_state`) sind Auszeichnungen, keine Umschriften — alte
+Belege behalten ihre Werte und werden nur gekennzeichnet; die Statistik zählt
+die Herkünfte (`wh_clock_sources`, `wh_default_n` in
+`GET /api/v1/stats/summary`). Wer sein Tankzeit-Profil neu auf echte Uhrzeiten
+stellen will, löscht den Altbestand bewusst (Backup vorher:
+`GET /api/v1/fills.csv`).
+
+### Feedback-Archiv und Ledger-Integrität (A21-B3.1)
+
+Der persönliche Ledger liegt in zwei Dateien: dem **heißen** Store
+(`runtime/feedback/store.json`, 90-Tage-Fenster) und dem **Archiv**
+(`runtime/feedback/archive.jsonl`, alles, was die Retention aus dem Store
+auslagert — Allzeitbilanz und M7 rechnen über beide). Der Store ist seit S3
+fail-closed; seit 0.66.0 gilt derselbe Vertrag für das Archiv:
+
+| Zustand | Verhalten |
+|---|---|
+| Datei fehlt | Erststart — Retention hat noch nie ausgelagert: leeres, gesundes Archiv |
+| unlesbar (Rechte, I/O) oder beschädigt (ungültiges UTF-8, kaputte JSON-Zeile, auch ein abgebrochener Teil-Write am Dateiende) | `archive_corrupted`: Decide, Overview, Summary und Fills-Summary antworten mit dem Code statt einer Teilbilanz; Schreibwege, deren Retention das Archiv fortsetzen müsste, scheitern wiederholbar (503). Die defekte Datei bleibt **unverändert** am Ort und liegt als Kopie in `runtime/feedback/quarantine/` (einmal je Inhalt, mit Report: Zeit, Größe, SHA-256, Ursache, Häufigkeit) |
+| Stempel einer neueren App-Version | `StoreSchemaTooNew` — kein Defekt; App-Update, kein Überschreiben |
+
+Es gibt bewusst **keine Teilansicht** („nur die intakten Zeilen lesen“): Eine
+Allzeitbilanz, die beschädigte Belege still auslässt, wäre eine scheinbar
+vollständige — deshalb leitet dieser Zustand auch keine normale M7-Freigabe
+ab. `GET /api/v1/health` meldet den Zustand als Alarm `archive_corrupted`
+(error), sobald ein Lesevorgang ihn diagnostiziert hat (der nächste
+Overview-Poll); der Vergleich läuft billig über den Quarantäne-Report, nicht
+über ein Archiv-Parsing je Healthcheck.
+
+**Wiederherstellen:** letzte Laufzeit-Sicherung besorgen (siehe
+[NAS Laufzeitdaten (runtime/) Backup](#nas-laufzeitdaten-runtime-backup)),
+dann in einer **isolierten, leeren** Umgebung wiederherstellen und verifizieren
+(`ops/nas/restore.sh`, siehe ebenda) — nie über die laufende Produktion. Der
+heiße Store bleibt vom Archiv-Defekt unangetastet: Belege der letzten 90 Tage
+bleiben lesbar (`GET /api/v1/fills`), erst Allzeitbilanz und Freigaben sind
+gesperrt. Nach dem Restore hebt sich der Alarm von selbst (anderer Inhalt,
+anderer Hash).
+
+**Warum am Übergang nichts verloren geht:** Die Retention veröffentlicht das
+Archiv **atomar und zuerst** (Umbenennen einer fertigen Datei), danach erst
+den Store ohne die ausgelagerten Belege; Leser lesen umgekehrt (Store zuerst,
+dann Archiv). Ein Abbruch dazwischen lässt einen Beleg in beiden Dateien
+liegen — der Merge zählt ihn einmal (heiß gewinnt), der nächste Lauf
+erkennt die Identität wieder. Retention ist keine fachliche Löschung: Zähler,
+Geldsummen, Stornos und Settlement-Identitäten wandern vollständig ins
+Archiv.
 
 ## System-Alarme lesen
 
@@ -1120,10 +1222,12 @@ Klartext.
 | `job_aborted` (mit `job`) | warn | Lauf hart beendet, z. B. Container-Neustart (`state: aborted`) | Nichts tun — letzte Ergebnisse bleiben erhalten; nächster Versuch folgt |
 | `store_too_large` | error | persönlicher Feedback-Store über der Größen-Grenze — neue Belege werden abgelehnt | Restore/Retention → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 | `store_growing` | warn | Store über 80 % der Grenze | 90-Tage-Retention prüfen, Bilanz sichern: `GET /api/v1/fills.csv` |
+| `archive_corrupted` | error | Beleg-Archiv (`archive.jsonl`, älter als 90 Tage) unlesbar oder beschädigt — Allzeitbilanz und Freigaben gesperrt; Decide/Overview/Summary melden `archive_corrupted` | Wiederherstellung aus der Laufzeit-Sicherung → [Feedback-Archiv und Ledger-Integrität](#feedback-archiv-und-ledger-integrität-a21-b31) |
 | `publication_unreadable` | error | Veröffentlichung der Prognosen über dem Leselimit oder nicht parsebar — GUI zeigt überall „keine Prognose“ | Größe und Lesbarkeit prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `publication_large` | warn | Veröffentlichung über 6 MB, aber noch lesbar — Puffer zum Leselimit schrumpft | Stationen/Kraftstoffe oder `bootstrap_samples` prüfen → [Größe der Veröffentlichung](#größe-der-veröffentlichung-o22-seit-0440) |
 | `price_implausible` | warn | mindestens ein Live-Preis der letzten 24 h außerhalb 0,40–5,00 €/L — als Beobachtung gekennzeichnet, nicht als Preis veröffentlicht (O35) | Zähler im Health-Payload (`price_implausible.count_24h`); bei Dauerbetrieb die Preisquelle prüfen |
-| `backup_stale` | warn | letztes Laufzeit-Backup älter als 36 h, Ziel leer oder nicht erreichbar (O33) | Cron-Eintrag, Mount und `TANKAPP_BACKUP_DIR` prüfen → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
+| `backup_stale` | warn | letztes **verifiziertes** Laufzeit-Backup älter als 36 h, Ziel leer oder nicht erreichbar (O33, A21-B3.2) | Cron-Eintrag, Mount und `TANKAPP_BACKUP_DIR` prüfen → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
+| `backup_unverified` | error | jüngster Tagesstand ohne gültiges Erfolgsmanifest — leer, abgebrochen, gekürzt oder vor 0.66.0 erzeugt (A21-B3.2) | Cron-Protokoll und Backup-Ziel prüfen; der letzte verifizierte Stand gilt als Herzschlag → [NAS Laufzeitdaten](#nas-laufzeitdaten-runtime-backup) |
 
 Ein Alarm ist eine **Zusammenfassung**, keine neue Prüfung: Dieselbe Information
 steht auch in den Fach-Endpunkten (`/api/v1/collector/status`,
@@ -1578,6 +1682,26 @@ behandeln: ohne App-Frame (`assets/…-<hash>.js`) nicht die App.
 ## Speichermanagement (Pi shm + NAS SSD/HDD)
 
 Siehe ausführlich [SPEICHER.md](SPEICHER.md) — Kurzfassung:
+
+- **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. `collect_prices.py:ring_prune()` löscht eine Datei vorzeitig nur, wenn der Uploader sie **vollständig als Dateipräfix bestätigt** hat (v2-Cursor ≥ Dateigröße, A21-B1.1) und sie älter als gestern ist — RAM sinkt auf ~1–2 Tage. Ein Ereigniszeitstempel (`fetched_at_max`) allein löscht nichts. Bei NAS-Ausfall weiter bis 7 Tage (FIFO, bewusster Verlust mit Zähler in `meta/fifo_losses.jsonl` und Herzschlag). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Dateibestätigung, 1 Tag Rest bleibt.
+
+- **NAS persistent**: Nicht nur Influx. `runtime/` (Jobs, `engine/current.json`, `selection/current.json`, `feedback/store.json`, Training-Cache) auf SSD, Roharchiv auf HDD, private Configs (`polling.json`, `influx.env`, `netrc`) auf SSD read-only. Influx selbst: `prices` + `collector_status`.
+
+- **3,38 GB auf `/mnt/user/appdata` (SSD)**: Influx-Volume + Runtime. Auf HDD verschieben würde bedeuten: HDD wacht alle 30 s auf (Stations-Poll, Health, Overview-Tageskurve, Heatmap). Spindown wäre aus. Deshalb **Influx auf SSD lassen**, Archiv auf HDD (State liegt auf SSD, damit HDD nur bei Bedarf wacht).
+
+- **SSD sparen**: Retention von 5 Jahren (43800h) auf 1 Jahr (8760h) kürzen (`docker exec tankapp-influxdb influx bucket update --org gtwrlab --name tankapp --retention 8760h`), Backups (`ops/nas/backup.sh` + Influx-Tar) auf HDD legen, `runtime/backtest-cache/` darf jederzeit gelöscht werden, optional `data-tools/prune_influx.py --older-than-days 365` für Delete-API.
+
+Details, Befehle und HDD-Spindown-Checkliste: [SPEICHER.md](SPEICHER.md).
+
+## M1 Abnahme 14 Tage
+
+M1 erfüllt, wenn Collector+Ringpuffer+Uploader 14 Tage durchgelaufen und:
+
+1. Datenlücken <2% (pro Station/Tag ~216 Polls erwartet, 14 Tage ~3000, ≥~2940 Punkte)
+2. Ack-Protokoll fehlerfrei: keine verlorene Zeile, keine fachlichen Duplikate — die Cursor in `meta/synced_until` bilden stets lückenlos bestätigte Dateipräfixe (A21-B1.1), und die Punktezahl in InfluxDB stimmt mit den Stations-Snapshots überein (Wiederholungen nach Fehlern erzeugen dank Punkt-Identität keine neuen fachlichen Punkte)
+
+Beide Dienste 14 Tage unbeaufsichtigt laufen lassen; wöchentlich Betrieb & Kontrolle durchgehen und Backup prüfen.
+[SPEICHER.md](SPEICHER.md) — Kurzfassung:
 
 - **Pi `/dev/shm/tankapp`**: Ringpuffer 7 Tage, ~0,6 MB/Tag. `collect_prices.py:ring_prune()` löscht eine Datei vorzeitig nur, wenn der Uploader sie **vollständig als Dateipräfix bestätigt** hat (v2-Cursor ≥ Dateigröße, A21-B1.1) und sie älter als gestern ist — RAM sinkt auf ~1–2 Tage. Ein Ereigniszeitstempel (`fetched_at_max`) allein löscht nichts. Bei NAS-Ausfall weiter bis 7 Tage (FIFO, bewusster Verlust mit Zähler in `meta/fifo_losses.jsonl` und Herzschlag). „Braucht es das alles? Nach Influx-Upload löschbar?“ → Ja, nach Dateibestätigung, 1 Tag Rest bleibt.
 

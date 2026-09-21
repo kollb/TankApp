@@ -2578,6 +2578,35 @@ class LiveData:
             **profiles_recovery_options(self.settings),
         }
 
+    def _store_corrupted_payload(self) -> dict[str, Any]:
+        """S3: Fehlerbild eines defekten Ledger-Stores — mit Rettungsangebot.
+
+        Der Defekt wird nicht als leerer Store durchgereicht (stiller
+        Datenverlust), sondern benannt; ``quarantine``/``backup`` nennen, was
+        zur Wiederherstellung da ist.
+        """
+        from .feedback import store_recovery_options
+
+        return {
+            "error_code": "store_corrupted",
+            **store_recovery_options(self.settings),
+        }
+
+    def _archive_corrupted_payload(self) -> dict[str, Any]:
+        """A21-B3.1: Fehlerbild eines defekten Archivs — mit Rettungsangebot.
+
+        Gleiches Muster wie beim Store: Das Archiv geht in Allzeitbilanz und
+        M7 ein; ein Defekt darin ist keine leere Auslage, sondern ein
+        benannter Zustand. ``quarantine`` führt die Archiv-Kopie, ``backup``
+        den letzten gesicherten Stand.
+        """
+        from .feedback import store_recovery_options
+
+        return {
+            "error_code": "archive_corrupted",
+            **store_recovery_options(self.settings),
+        }
+
     def decide(self, params: dict, read=None):
         """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1).
 
@@ -2586,7 +2615,7 @@ class LiveData:
         """
         try:
             from .decide import evaluate_decide
-            from .feedback import StoreCorrupted, StoreTooLarge
+            from .feedback import ArchiveCorrupted, StoreCorrupted, StoreTooLarge
 
             return evaluate_decide(self, params, read=read)
         except ValueError as e:
@@ -2595,6 +2624,10 @@ class LiveData:
             return {"error_code": "store_too_large"}
         except StoreCorrupted:
             return self._store_corrupted_payload()
+        except ArchiveCorrupted:
+            # A21-B3.1: Das Archiv geht in die Allzeitbilanz und in M7 ein —
+            # ein Defekt darin ist kein „weniger Daten“, sondern keiner.
+            return self._archive_corrupted_payload()
         except Exception as exc:
             # O44: „decide_failed“ war das Ende der Diagnose — die Ursache
             # steckte in einem stummen ``except``, während die GUI nur einen
@@ -2753,7 +2786,12 @@ class LiveData:
     def record_fill(self, fill_data: dict):
         """Registriert einen Tankbeleg (Wallet-Ledger) — validiert (§11.2)."""
         try:
-            from .feedback import StoreCorrupted, StoreTooLarge, record_fill
+            from .feedback import (
+                ArchiveCorrupted,
+                StoreCorrupted,
+                StoreTooLarge,
+                record_fill,
+            )
 
             return record_fill(
                 self.settings, fill_data, live_data=self, clock=self.clock
@@ -2764,6 +2802,11 @@ class LiveData:
             # S3: Defekt blockiert das Schreiben — kein Beleg geht verloren,
             # aber auch keiner wird über den Defekt geschrieben.
             return self._store_corrupted_payload()
+        except ArchiveCorrupted:
+            # A21-B3.1: Die Retention kann das defekte Archiv nicht
+            # fortsetzen — der Beleg ist nicht gebucht (Aufrufer hat den
+            # Fehler), der Bestand bleibt unverändert.
+            return self._archive_corrupted_payload()
         except ValueError as exc:
             # Fach-Codes aus der Validierung (invalid_liters, invalid_price,
             # unknown_station, price_not_available, …) statt Pauschal-Fehler.
@@ -2794,13 +2837,20 @@ class LiveData:
     def void_fill(self, fill_id: str):
         """Storniert einen Beleg (A3) — Flag statt Löschen, mit Audit-Spur."""
         try:
-            from .feedback import StoreCorrupted, StoreTooLarge, void_fill
+            from .feedback import (
+                ArchiveCorrupted,
+                StoreCorrupted,
+                StoreTooLarge,
+                void_fill,
+            )
 
             return void_fill(self.settings, fill_id, clock=self.clock)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
         except StoreCorrupted:
             return self._store_corrupted_payload()
+        except ArchiveCorrupted:
+            return self._archive_corrupted_payload()
         except ValueError as exc:
             # B11: Belegter Store ist wiederholbar (503), kein Eingabefehler.
             if str(exc) == "store_locked":
@@ -2813,6 +2863,7 @@ class LiveData:
         """A4: Monats-/Jahresbilanz des Wallet-Ledgers (Werkstatt-Panel)."""
         try:
             from .feedback import (
+                ArchiveCorrupted,
                 StoreCorrupted,
                 StoreTooLarge,
                 compute_wallet_balance,
@@ -2827,6 +2878,10 @@ class LiveData:
             return {"error_code": "store_too_large"}
         except StoreCorrupted:
             return self._store_corrupted_payload()
+        except ArchiveCorrupted:
+            # A21-B3.1: Monats-/Jahresbilanz rechnet über Store **plus**
+            # Archiv — ein Defekt darf nicht als runde Teilbilanz durchgehen.
+            return self._archive_corrupted_payload()
         except Exception:
             return {"error_code": "fills_summary_failed"}
 
@@ -2962,7 +3017,7 @@ class LiveData:
         ``read`` (A21-B2.2) ist der gemeinsame Lesezustand aus ``/overview``.
         """
         try:
-            from .feedback import StoreCorrupted, StoreTooLarge
+            from .feedback import ArchiveCorrupted, StoreCorrupted, StoreTooLarge
             from .stats_summary import evaluate_stats_summary
 
             return evaluate_stats_summary(self, params, read=read)
@@ -2973,6 +3028,11 @@ class LiveData:
             # allein wäre eine halbe Bilanz; ehrlicher Code statt leeren
             # Zählern.
             return self._store_corrupted_payload()
+        except ArchiveCorrupted:
+            # A21-B3.1: dasselbe für das Archiv — die Kennzahlen rechnen auf
+            # dem gemergten Ledger, einem Defekt darf keine Teilstatistik
+            # folgen, die wie eine vollständige aussieht.
+            return self._archive_corrupted_payload()
         except Exception:
             return {"error_code": "stats_summary_failed"}
 
@@ -3049,11 +3109,19 @@ class LiveData:
                 day_res = self.day_with_band(station_id, city, fuel)
 
         from . import metrics, read_state
+        from .feedback import ArchiveCorrupted, StoreCorrupted, StoreTooLarge
 
         # A21-B2.2 (#203): **ein** Lesezustand für diesen Request. Decide und
         # Stats-Summary teilen Ledger, Statistik und Schwellen; der
         # Snapshot-Vorblick benutzt denselben heißen Store.
-        bundle = read_state.load_bundle(self.settings, self.clock())
+        # A21-B3.1: Ein defekter Store oder Archiv wirft die ganze Antwort
+        # nicht mehr auf 500 — ``decide`` und ``stats_summary`` laden ihren
+        # eigenen Zustand, scheitern benannt und laufen als ``partial_errors``
+        # mit; die unbeschädigten Teile (fills, episodes, day) bleiben.
+        try:
+            bundle = read_state.load_bundle(self.settings, self.clock())
+        except (StoreCorrupted, StoreTooLarge, ArchiveCorrupted):
+            bundle = None
 
         with metrics.measure("decide"):
             decide_res = self.decide(decide_params, read=bundle)
@@ -3087,7 +3155,14 @@ class LiveData:
 
         result = {
             "generated_at": self.clock().isoformat(),
-            "data_version": bundle.data_version,
+            # Ohne Lesezustand (defekter Store/Archiv) bleibt der Datenstand
+            # trotzdem ehrlich: ``data_version`` stempelt nur Datei-Stats,
+            # liest den Ledger-Inhalt nicht.
+            "data_version": (
+                bundle.data_version
+                if bundle is not None
+                else data_version(self.settings, self.clock)
+            ),
             "partial_errors": partial_errors,
             "decide": decide_res,
             "fills": fills_res,

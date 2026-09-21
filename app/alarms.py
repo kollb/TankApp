@@ -172,6 +172,35 @@ def build_alarms(
             }
         )
 
+    # A21-B3.1: Archiv-Defekt. Das Archiv geht in Allzeitbilanz und M7 ein;
+    # Decide/Summary melden ``archive_corrupted`` — Health darf dann kein
+    # stilles Gesundsignal aussenden. Billig: ohne Vorfall nur ein Listing
+    # der Quarantäne; mit Vorfall wird der aktuelle Bestand gegen den
+    # gemerkten Defekt-Hash verglichen (Restore hebt den Alarm auf).
+    from .feedback import archive_corruption_status
+
+    try:
+        archive = archive_corruption_status(settings)
+    except Exception:
+        archive = {}
+    if archive.get("corrupted"):
+        alarms.append(
+            {
+                "code": "archive_corrupted",
+                "severity": "error",
+                "message": (
+                    "Das Beleg-Archiv (älter als 90 Tage) ist beschädigt — "
+                    "Allzeitbilanz und Freigabegrundlagen sind gesperrt, bis es "
+                    "wiederhergestellt ist. Die defekte Datei liegt unverändert "
+                    "am Ort und als Kopie in der Quarantäne; Wiederherstellung "
+                    "aus der Laufzeit-Sicherung (docs/betrieb/BETRIEB.md, "
+                    "„NAS Laufzeitdaten (runtime/) Backup“)."
+                ),
+                "last_seen": archive.get("last_seen"),
+                "quarantine": archive.get("quarantine"),
+            }
+        )
+
     # O22: Veröffentlichung der Prognosen — Größe und Lesbarkeit. Vor 0.44.0
     # fiel eine Datei über dem Leselimit still als ``{}`` aus, also als „noch
     # keine Daten“: keine Prognosen, keine Fenster, keine Laborwerte — während
@@ -268,14 +297,26 @@ def build_alarms(
         except Exception:
             backup = {}
     if backup.get("stale"):
+        # A21-B3.2: Ein ungeprüfter jüngster Stand ist schlimmer als ein alter
+        # guter: Der Betrieb glaubt an eine Sicherung, die niemand geprüft
+        # hat (die 0-Byte-Datei des Audits wäre „frisch“ gewesen). Eigener
+        # Code, eigene Schwere (error) — ein alter, verifizierter Stand
+        # bleibt warn (backup_stale).
+        code = (
+            "backup_unverified"
+            if backup.get("reason") == "unverified"
+            else "backup_stale"
+        )
         alarms.append(
             {
-                "code": "backup_stale",
-                "severity": "warn",
+                "code": code,
+                "severity": "error" if code == "backup_unverified" else "warn",
                 "message": stale_message(backup),
                 "reason": backup.get("reason"),
                 "age_hours": backup.get("age_hours"),
                 "newest_at": backup.get("newest_at"),
+                "verified_count": backup.get("verified_count"),
+                "unverified_count": backup.get("unverified_count"),
             }
         )
 

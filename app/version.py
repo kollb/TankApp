@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Sprach- und Verhaltens-Version der App. Bei jedem Release anheben;
 # Änderungen seit dem letzten Stand stehen im docs/releases/CHANGELOG.md.
-VERSION = "0.65.0"
+VERSION = "0.66.0"
 
 ROOT = Path(__file__).resolve().parents[1]
 

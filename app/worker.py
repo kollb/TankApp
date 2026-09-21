@@ -43,6 +43,9 @@ PERSISTENT_ERROR_CODES = frozenset(
         # nichts, bis der Bestand wiederhergestellt ist.
         "store_corrupted",
         "store_too_large",
+        # A21-B3.1: Dasselbe für das Archiv — die Retention schreibt erst
+        # wieder, wenn der Bestand wiederhergestellt ist.
+        "archive_corrupted",
     }
 )
 

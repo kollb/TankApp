@@ -4,6 +4,67 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.66.0] – 2026-09-21
+
+**A21-B3 (Archivintegrität und wiederherstellbare Backups)** —
+[Issue #205](https://github.com/kollb/TankApp/issues/205),
+[#206](https://github.com/kollb/TankApp/issues/206), Audit vom 21.09.2026
+([#197](https://github.com/kollb/TankApp/issues/197), §1.5/§4.4).
+
+- **#205 (A21-B3.1) — Archivkorruption und Hotstore/Archiv-Handover
+  konsistent behandeln.** Beschädigte Archivzeilen wurden bisher still
+  übersprungen, ein unlesbares Archiv galt wie ein fehlendes — die Bilanz
+  rechnete weiter, ohne dass jemand etwas merkte (Audit-Reproduktion:
+  kaputte Zeile halbierte die Allzeitbilanz). Jetzt ist das Archiv
+  fail-closed in den Ledger eingebunden: Unlesbar/UTF-8/JSON/Sammlung/Schema
+  bricht mit `ArchiveCorrupted` (HTTP 503), es gibt keine Teilansicht, und
+  eine Quarantäne-Kopie (`runtime/feedback/quarantine/`, dedupliziert nach
+  SHA-256) sichert den Befund, bevor irgendetwas weiterschreibt. Der Alarm
+  `archive_corrupted` (error) nennt Datei und Zeile; die Wiederherstellung
+  läuft bewusst manuell über die Quarantäne. Der Handover Store↔Archiv ist
+  ein Publikationsvertrag: Die Retention ersetzt das Archiv atomar und
+  zuerst, danach erst den Store; Leser nehmen den Store zuerst und mergen
+  mit heiß-gewinnt. Ein Abbruch dazwischen ist dadurch harmlos — kein Beleg
+  geht verloren, keines wird doppelt gezählt. Der Beleg-Stempel wächst auf
+  Schema 7; ein Stempel einer neueren App-Version bleibt `StoreSchemaTooNew`
+  (kein Überschreiben). *Restgrenze:* kein Werkzeug zur automatischen
+  Quarantäne-Reparatur (bewusst — Eingriff in die Bilanz bleibt menschlich),
+  und die serverseitige Speichertechnik ist weiter A21-B4/#211.
+- **#206 (A21-B3.2) — Backups erst nach Validierung veröffentlichen und
+  Restore nachweisen.** `ops/nas/backup.sh` schrieb direkt in den
+  endgültigen Tagesnamen: Ein abgebrochener Lauf (NAS voll, App schrieb mit)
+  konnte eine leere oder halbe Datei unter gültigem Namen hinterlassen, und
+  der Health-Check meldete „frisch“ (Audit-Reproduktion: 0-Byte-Tar galt als
+  erfolgreiche Sicherung). Jetzt entsteht das Tar unter verstecktem
+  eindeutigem Temporärnamen, wird geprüft (nicht leer, gzip entpackbar,
+  erwartete Mitglieder) und erst dann atomar umbenannt; daneben schreibt das
+  Skript das Erfolgsmanifest `<name>.manifest.json` (Größe, SHA-256,
+  Sperrzustand). Die App bindet den Herzschlag an die Verifiziertheit:
+  `backup` im Health-Payload vergleicht das Manifest des jüngsten
+  Tagesstands (Name, Größe, Bestätigungsfelder — bewusst kein Tar-Lesen im
+  Requestpfad) und alarmiert als `backup_unverified` (error), wenn es nicht
+  passt; ein alter verifizierter Stand bleibt `backup_stale` (warn).
+  Bestände aus Zeiten vor dem Manifest gelten ehrlich als ungeprüft
+  (`unverified_count`), nicht als gültig. Das Skript nimmt dieselbe
+  Feedback-Sperre wie die App und sichert `store.json` vor `archive.jsonl`;
+  Temporärdateien der atomaren Schreiber (`*.tmp`) bleiben außen vor — eine
+  zwischen Listing und Lesen umbenannte Temp-Datei hätte sonst gesunde Läufe
+  fehlschlagen lassen (im Test gefunden und gefixt). Rotation löscht Tar und
+  Manifest nur zusammen und nur auf fertigen Namen. Neu sind
+  `ops/nas/restore.sh` (stellt nur in leere, isolierte Ziele wieder her,
+  prüft das Tar vor dem Entpacken) und `ops/nas/verify_restore.py` (prüft
+  Belegzahlen, Summen, Stornos, Archiv-Integrität und Schema-Stempel der
+  wiederhergestellten Sicht; `--compare` rechnet sie gegen die Quelle,
+  Fingerabdruck über die gemergte Sicht). Runtime- und Influx-Sicherung
+  bleiben getrennte Vorgänge. *Restgrenze:* Der Verifizierer prüft die
+  technische/fachliche Konsistenz des Laufzeitstands, aber es gab keinen
+  Restore auf Produktionsdaten im Feld; die Abnahme der Zielhardware ist
+  #214 (A21-B5), die Influx-seitige Sicherung bleibt bewusst unberührt.
+- Doku: `docs/betrieb/BETRIEB.md` (Feedback-Archiv und Ledger-Integrität,
+  Backup/Restore neu geschrieben, Alarmtabelle), `docs/referenz/API.md`
+  (`archive_corrupted`, `backup`-Felder), `docs/betrieb/SPEICHER.md`
+  (Dateivertrag inkl. Backup), `docs/planung/LUECKEN.md`.
+
 ## [0.65.0] – 2026-09-21
 
 **A21-B2 (Overview-Latenz: messen und Lesepfad entlasten)** —

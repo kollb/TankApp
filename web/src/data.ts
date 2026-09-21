@@ -3001,6 +3001,8 @@ export const messages: Record<string, string> = {
     "Speicher ist gerade belegt — in ein paar Sekunden erneut versuchen.",
   store_corrupted:
     "Persönlicher Speicher (Ledger) ist beschädigt — nichts wurde ersetzt. Die defekte Datei liegt in der Quarantäne, der letzte gute Stand in der Laufzeit-Sicherung; Schritte: „System“ → Diagnose, Abschnitt „Offline-Queue & Speicher“.",
+  archive_corrupted:
+    "Das Beleg-Archiv (älter als 90 Tage) ist beschädigt — nichts wurde ersetzt. Allzeitbilanz und Freigaben bleiben gesperrt, bis wiederhergestellt ist. Die defekte Datei liegt in der Quarantäne, der letzte gute Stand in der Laufzeit-Sicherung; Schritte: „System“ → Diagnose.",
   profiles_corrupted:
     "Profil-Speicher ist beschädigt — nichts wurde ersetzt. Die defekte Datei liegt in der Quarantäne; Wiederherstellung aus der Laufzeit-Sicherung, Schritte: „System“ → Diagnose.",
   queue_full:
