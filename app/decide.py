@@ -721,6 +721,40 @@ GRAY_ZONE_REASON_GATE_SAFE = (
 )
 
 
+def _eur(value: float) -> str:
+    """Betrag in de-DE (MICROCOPY §3) — 2,09 € statt 2.09 €."""
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _wait_saving_clause(saving_eur: float, saving_median_eur: float | None) -> str:
+    """€-Teil des Warten-Grunds — mit benannter Basis (O45).
+
+    Zwei verschiedene Größen tragen denselben Namen „Ersparnis“:
+    ``saving_eur`` rechnet gegen den Median der **Fensterminima**
+    (``app.pside.expected_saving`` — dieselbe Größe, gegen die das
+    Settlement den beobachteten Mindestpreis im Fenster abrechnet),
+    ``saving_median_eur`` gegen den Median des Fensterpreises
+    (``expected_price``, die Zahl, die die Karte als „erwartet“ zeigt).
+
+    Ohne die Basis im Satz standen beide nebeneinander: „erwartet ~2,221 €/L“
+    neben „2,09 € Ersparnis für 55 L“ — die 2,09 € gehören aber zu 2,191 €/L,
+    der Medianpreis trägt nur 0,44 €. Der Satz benennt deshalb beide, sobald
+    sie auseinanderfallen (ohne Draws sind sie identisch, dann bleibt die
+    kurze Fassung).
+    """
+    if saving_median_eur is None or abs(saving_median_eur - saving_eur) < 0.005:
+        return f"bis zu {_eur(saving_eur)} €"
+    if saving_median_eur <= 0.0:
+        return (
+            f"im günstigsten Moment bis zu {_eur(saving_eur)} €, "
+            "im Mittel kein Vorsprung gegenüber jetzt"
+        )
+    return (
+        f"im günstigsten Moment bis zu {_eur(saving_eur)} €, "
+        f"im Mittel {_eur(saving_median_eur)} €"
+    )
+
+
 def _gate_safe_reason(reason_code: str | None, reason: str) -> str:
     """Der Tabellengrund, wie er **vor** der M7-Freigabe gezeigt werden darf.
 
@@ -742,6 +776,8 @@ def _table_action(
     th: dict[str, float] | None = None,
     no_window_reason: str | None = None,
     quality_gate: str | None = None,
+    *,
+    saving_median_eur: float | None = None,
 ) -> tuple[str, str, str, str | None]:
     """€/P-Entscheidungstabelle (Konzept §4.1, §4.2, §4.4, Auswertung §4.5).
 
@@ -768,6 +804,12 @@ def _table_action(
 
     Alle Schwellen kommen aus ``th`` (Konzept §4.5: „Alle Schwellen liegen in
     einer Config“; M7 zieht sie an gemessene Trefferquoten nach, §13).
+
+    ``saving_median_eur`` ist die Medianpreis-Ersparnis zum selben Fenster
+    (O45): Die €-Gates rechnen mit ``expected_saving_eur`` (Fensterminima,
+    passend zu ``p_besser`` und zum Settlement), der Satz nennt aber beide
+    Basen, sobald sie auseinanderfallen — sonst liest sich die Empfehlung
+    neben dem angezeigten Medianpreis wie ein Widerspruch.
     """
     th = th or DEFAULT_THRESHOLDS
     # Güte-Gate (§4.5 Schritt 1, §4.4): Rot im Rolling-PICP → keine Ampel,
@@ -825,6 +867,7 @@ def _table_action(
         )
     # F1 (§4.1). Ohne Verteilungs-P kann die grüne Ampel („≥ 70 %“) nicht
     # belegt werden → dann höchstens „gelb“ (ehrlich statt geraten).
+    saving_clause = _wait_saving_clause(expected_saving_eur, saving_median_eur)
     if expected_saving_eur >= th["wait_eur_high"] and (
         p_besser is None or p_besser >= th["wait_p_high"]
     ):
@@ -832,7 +875,7 @@ def _table_action(
         return (
             "wait",
             badge,
-            f"Preis fällt im Fenster voraussichtlich — Warten spart bis zu {expected_saving_eur:.2f} €.",
+            f"Preis fällt im Fenster voraussichtlich — Warten spart {saving_clause}.",
             None,
         )
     if expected_saving_eur >= th["wait_eur_mid"] and (
@@ -841,7 +884,7 @@ def _table_action(
         return (
             "wait",
             "medium",
-            f"Eher warten: Fenster spart voraussichtlich bis zu {expected_saving_eur:.2f} €.",
+            f"Eher warten: Fenster spart voraussichtlich {saving_clause}.",
             None,
         )
     if p_besser is not None and p_besser < th["now_p"]:
@@ -855,14 +898,14 @@ def _table_action(
         return (
             "refuel_now",
             "medium",
-            f"Warten brächte < {th['now_eur']:.2f} € Ersparnis — jetzt tanken.",
+            f"Warten brächte < {_eur(th['now_eur'])} € Ersparnis — jetzt tanken.",
             None,
         )
     # Fallback (€-Gates ohne belastbares P): Ersparnis ≥ Schwelle → warten.
     return (
         "wait",
         "medium",
-        f"Eher warten: Fenster spart voraussichtlich bis zu {expected_saving_eur:.2f} €.",
+        f"Eher warten: Fenster spart voraussichtlich {saving_clause}.",
         None,
     )
 
@@ -1162,6 +1205,7 @@ def evaluate_decide(live_data, params: dict[str, Any]) -> dict[str, Any]:
         thresholds,
         no_window_reason,
         quality_gate,
+        saving_median_eur=expected_saving_median_eur,
     )
     # A2: Physik vor Fenster. Sagt die Tabelle „warten“, der Tank ist aber im
     # Reservebereich, gewinnt der Tankstand — „bestes Fenster morgen“ wäre

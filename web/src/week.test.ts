@@ -190,6 +190,22 @@ describe("weekWindowList", () => {
     const list = weekWindowList(days);
     expect(list.map((entry) => entry.savingEur)).toEqual([2.1, 0.5, null]);
   });
+
+  it("O45: zeigt die Ersparnis aus der Basis des angezeigten Preises", () => {
+    // Die Zeile nennt `expected_price` €/L — die Ersparnis daneben muss aus
+    // demselben Preis folgen, nicht aus dem Median der Fensterminima.
+    const days = weekDays(
+      [
+        window("2026-09-15T19:00:00+02:00", {
+          expected_price: 2.221,
+          expected_saving_eur: 2.09,
+          expected_saving_median_eur: 0.44,
+        }),
+      ],
+      NOW,
+    );
+    expect(weekWindowList(days)[0].savingEur).toBe(0.44);
+  });
 });
 
 describe("tankReach", () => {

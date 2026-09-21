@@ -245,6 +245,73 @@ describe("Ampel-Karte 2.0: vier Ausgänge", () => {
   });
 });
 
+describe("O45: ct/L und € kommen aus derselben Basis", () => {
+  // Befund 21.09.2026: „erwartet ~2,221 €/L“ stand neben „~2,09 € Ersparnis
+  // für 55 L“ — 2,229 − 2,221 sind aber 0,44 €. Die 2,09 € gehören zu
+  // 2,191 €/L (Median der Fensterminima), einem Preis, den die Karte nie
+  // gezeigt hat. Der €-Betrag neben dem ct/L-Abstand muss deshalb aus
+  // demselben Preis folgen wie dieser Abstand.
+  const window = {
+    start: "2026-09-21T10:00:00+02:00",
+    end: "2026-09-21T11:50:00+02:00",
+    expected_price: 2.221,
+    expected_min_price: 2.191,
+  };
+
+  const befund = decide(
+    "wait",
+    { windows_today: [{ ...window, expected_saving_eur: 2.09, p: 0.71 }] },
+    {
+      station: { id: "aral", name: "Aral Mitte", price_now: 2.229, maps_url: null },
+      recommended_window: window,
+      expected_saving_eur: 2.09,
+      expected_saving_median_eur: 0.44,
+      reason_short:
+        "Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu 2,09 €, im Mittel 0,44 €.",
+    },
+  );
+
+  it("der €-Betrag folgt dem angezeigten Fensterpreis", () => {
+    const verdict = nowVerdict(input({ decide: befund, liters: 55 }));
+    expect(verdict?.amount).toContain("0,8 ct/L günstiger");
+    expect(verdict?.amount).toContain("0,44 €");
+    // Die Minimums-Ersparnis steht nicht mehr unbenannt daneben …
+    expect(verdict?.amount).not.toContain("2,09");
+    // … sondern im Satz, der ihre Basis nennt.
+    expect(verdict?.detail).toContain("im günstigsten Moment bis zu 2,09 €");
+  });
+
+  it("die Erklärung benennt beide Basen", () => {
+    const explain = nowExplanation({
+      ...input({ decide: befund, liters: 55 }),
+      pricesAt: null,
+    });
+    expect(explain?.sentences[1]).toContain("0,8 ct/L über dem erwarteten Fensterpreis");
+    expect(explain?.sentences[1]).toContain("Im günstigsten Moment des Fensters wären es 2,09 €");
+    expect(explain?.sentences[1]).toContain("im Mittel 0,44 €");
+  });
+
+  it("ohne Draws bleibt eine Zahl — keine erfundene zweite Basis", () => {
+    const verdict = nowVerdict(input());
+    expect(verdict?.amount).toBe("Erwartet 4,0 ct/L günstiger ≈ 1,60 €");
+  });
+
+  it("trägt nur das Fensterminimum einen Vorsprung, steht das da", () => {
+    const nurMinimum = decide(
+      "wait",
+      {},
+      {
+        station: { id: "aral", name: "Aral Mitte", price_now: 2.229, maps_url: null },
+        recommended_window: { ...window, expected_price: 2.235 },
+        expected_saving_eur: 2.09,
+        expected_saving_median_eur: 0,
+      },
+    );
+    const verdict = nowVerdict(input({ decide: nurMinimum, liters: 55 }));
+    expect(verdict?.amount).toBe("Im günstigsten Moment ≈ 2,09 € günstiger");
+  });
+});
+
 describe("Drei Fakten, feste Reihenfolge", () => {
   it("nennt genau Jetzt hier · Bestes Fenster heute · Tank reicht?", () => {
     const facts = nowFacts(input());
@@ -342,6 +409,26 @@ describe("Nächste Schritte: höchstens drei", () => {
     expect(steps.map((s) => s.id)).toEqual(["alternative", "later-window", "tank"]);
     expect(steps[1].text).toContain("Morgen 19–21 Uhr");
     expect(steps[2].target).toBe("tank");
+  });
+
+  it("O45: der €-Wert des Fenster-Schritts passt zum Fensterpreis", () => {
+    const withLater = decide("wait");
+    withLater.windows_week = [
+      {
+        start: "2026-09-15T19:00:00+02:00",
+        end: "2026-09-15T21:00:00+02:00",
+        expected_price: 2.221,
+        expected_saving_eur: 2.09,
+        expected_saving_median_eur: 0.44,
+        p: 0.71,
+      },
+    ];
+    const steps = nowSteps(input({ decide: withLater, liters: 55 }));
+    const later = steps.find((step) => step.id === "later-window");
+    // Nicht die 2,09 € aus den Fensterminima, sondern die 0,44 €, die zum
+    // Medianpreis 2,221 €/L gehören.
+    expect(later?.text).toContain("0,44 € weniger");
+    expect(later?.text).not.toContain("2,09");
   });
 
   it("schweigt, wenn es nichts zu tun gibt", () => {

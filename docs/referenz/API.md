@@ -285,6 +285,17 @@ Draws wird auf die ebenfalls bei null abgeschnittene Median-Preis-Differenz
 diese Kennzahlen sind daher weder eine Gewinn-/Verlustbilanz noch ein
 Ersatz für `p_better`. Der Pi erzeugt keine solche Kennzahl aus Randquantilen.
 
+**O45 — beide Basen, benannt.** `expected_saving_eur` (Fensterminima) und
+`expected_saving_median_eur` (Medianpreis `expected_price`) sind verschiedene
+Größen und können weit auseinanderliegen: Bei 2,229 €/L aktuell, 2,221 €/L
+Medianpreis und 2,191 €/L Median der Fensterminima sind das 2,09 € gegen
+0,44 € (55 L). Die €-Gates der Tabelle rechnen mit `expected_saving_eur` —
+derselben Größe, gegen die `p_besser` und das Settlement (`_realized_min`)
+rechnen. `reason_short` nennt deshalb beide Basen, sobald sie
+auseinanderfallen („im günstigsten Moment bis zu 2,09 €, im Mittel 0,44 €“),
+und die GUI stellt den €-Betrag nur neben einen ct/L-Abstand aus derselben
+Basis. Beträge in `reason_short` sind de-DE (Komma).
+
 Ehrlichkeits-Regeln: Ohne frischen/letzten Preis ist `station.price_now` null (kein erfundener Anker, keine Ersparnis-Rechnung). Ohne Prognose sind `windows_today` leer und `recommended_window` null (kein erfundenes Fenster). Fenstergrenzen sind echte Prognose-Zeitstempel (ISO) aus 2-h-Blöcken; `windows_today` und `windows_week` liefern je Fenster `expected_price`, `expected_saving_eur` (vs. jetzt tanken), `p` sowie die auditierbaren F3-Felder `p_raw`/`p_competitors`/`p_baseline`. Alternativen tragen `detour_km_source`: nur `road` bezeichnet eine Straßenstrecke; `estimated_air_circuity` bzw. `estimated_anchor_*` sind klar benannte Schätzungen (O14). Ihre ungerundete Formel für Brutto-, Sprit-, Zeit- und Netto-€ wird identisch bei Entscheidung, Draw-Wahrscheinlichkeit und Beleg-Abrechnung verwendet (O9).
 
 Emittiert automatisch einen Advice-Snapshot im Persistent Store (mit 30-Minuten-Collapse zur Vermeidung von Dubletten). Das Settlement erfolgt durch den Worker-Job gegen *beobachtete* Preise nach Fensterende + 30 min Lag; ohne beobachtete Preise bleibt der Snapshot `pending`, nicht bewertbare Snapshots werden `void` (zählen weder zu n noch zu Brier).

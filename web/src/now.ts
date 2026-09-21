@@ -229,6 +229,21 @@ export type NowVerdict = {
   stageNote: string | null;
 };
 
+/**
+ * O45: Die Ersparnis aus derselben Basis wie der Preis, der daneben steht —
+ * dem Medianpreis des Fensters (`expected_saving_median_eur`). Fenster zeigen
+ * `expected_price` €/L; die Ersparnis aus den **Fensterminima**
+ * (`expected_saving_eur`) passt nicht zu dieser Zahl: Bei 2,229 €/L aktuell
+ * und 2,221 €/L Medianpreis sind das 0,44 € (55 L), während die Minima
+ * 2,09 € ergeben. Alte Antworten ohne das Feld fallen zurück.
+ */
+export function windowSavingEur(window: {
+  expected_saving_eur: number | null;
+  expected_saving_median_eur?: number | null;
+}): number | null {
+  return window.expected_saving_median_eur ?? window.expected_saving_eur;
+}
+
 /** Erwartete Ersparnis in ct/L, wenn beide Preise bekannt sind. */
 export function savingPerLiterCt(
   priceNow: number | null | undefined,
@@ -290,14 +305,24 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     const deltaCt = window
       ? savingPerLiterCt(p.station.price_now, window.expected_price)
       : null;
-    const saving = p.expected_saving_eur;
+    // O45: Der €-Betrag neben dem ct/L-Abstand kommt aus derselben Basis wie
+    // dieser Abstand — dem Medianpreis des Fensters (`expected_price`, die
+    // Zahl, die als „erwartet“ angezeigt wird). `expected_saving_eur` rechnet
+    // gegen den Median der **Fensterminima** und steht nur mit benannter
+    // Basis da: „erwartet ~2,221 €/L“ neben „2,09 € Ersparnis für 55 L“ las
+    // sich wie ein Widerspruch — die 2,09 € gehören zu 2,191 €/L, der
+    // Medianpreis trägt 0,44 €.
+    const typicalSaving = p.expected_saving_median_eur ?? p.expected_saving_eur;
+    const bestSaving = p.expected_saving_eur;
     let amount: string | null = null;
     if (deltaCt != null && deltaCt > 0) {
-      amount =
-        `Erwartet ${centPerLiter(deltaCt)} günstiger` +
-        (saving != null ? ` ≈ ${euro(saving)} €` : "");
-    } else if (saving != null && saving > 0) {
-      amount = `Erwartet ≈ ${euro(saving)} € günstiger`;
+      amount = `Erwartet ${centPerLiter(deltaCt)} günstiger ≈ ${euro(typicalSaving)} €`;
+    } else if (typicalSaving > 0) {
+      amount = `Erwartet ≈ ${euro(typicalSaving)} € günstiger`;
+    } else if (bestSaving > 0) {
+      // Nur das Fensterminimum trägt einen Vorsprung — benannt, statt als
+      // erwarteter Preis getarnt.
+      amount = `Im günstigsten Moment ≈ ${euro(bestSaving)} € günstiger`;
     }
     return {
       action: p.action,
@@ -485,7 +510,9 @@ export function nowSteps(input: NowInput): NowStep[] {
   // Lernstand eingeordnet sind.
   const later =
     nowStage(decide) === "C" ? null : (decide.windows_week?.[0] ?? null);
-  if (later && later.expected_saving_eur != null && later.expected_saving_eur > 0) {
+  // O45: auch hier die Ersparnis aus der Basis des angezeigten Fensterpreises.
+  const laterSaving = later ? windowSavingEur(later) : null;
+  if (later && laterSaving != null && laterSaving > 0) {
     steps.push({
       id: "later-window",
       text:
@@ -493,7 +520,7 @@ export function nowSteps(input: NowInput): NowStep[] {
         `${hourRangeLabel(
           berlinHour(new Date(later.start)),
           berlinHour(new Date(later.end)),
-        )} wäre noch besser (${euro(later.expected_saving_eur)} € weniger)`,
+        )} wäre noch besser (${euro(laterSaving)} € weniger)`,
       target: "week",
     });
   }
@@ -620,13 +647,24 @@ export function nowExplanation(
   const deltaCt = window
     ? savingPerLiterCt(decide.primary.station?.price_now, window.expected_price)
     : null;
+  // O45: Die beiden Ersparnis-Basen benennen, sobald sie auseinanderfallen.
+  // Die Empfehlung rechnet gegen den Median der Fensterminima, der Abstand
+  // hier gegen den Medianpreis — ohne diesen Satz stand in der Empfehlung
+  // ein €-Betrag, den der genannte Fensterpreis nicht trägt.
+  const bestSaving = decide.primary.expected_saving_eur;
+  const typicalSaving =
+    decide.primary.expected_saving_median_eur ?? bestSaving;
+  const basisSplit =
+    bestSaving > typicalSaving + 0.005
+      ? ` Im günstigsten Moment des Fensters wären es ${euro(bestSaving)} €, im Mittel ${euro(typicalSaving)} €.`
+      : "";
   if (deltaCt != null && deltaCt > 0) {
     sentences.push(
-      `Der aktuelle Preis liegt ${centPerLiter(deltaCt)} über dem erwarteten Fensterpreis.`,
+      `Der aktuelle Preis liegt ${centPerLiter(deltaCt)} über dem erwarteten Fensterpreis.${basisSplit}`,
     );
   } else if (deltaCt != null && deltaCt < 0) {
     sentences.push(
-      `Der aktuelle Preis liegt ${centPerLiter(Math.abs(deltaCt))} unter dem erwarteten Fensterpreis — viel Luft nach unten bleibt nicht.`,
+      `Der aktuelle Preis liegt ${centPerLiter(Math.abs(deltaCt))} unter dem erwarteten Fensterpreis — viel Luft nach unten bleibt nicht.${basisSplit}`,
     );
   } else {
     sentences.push(
