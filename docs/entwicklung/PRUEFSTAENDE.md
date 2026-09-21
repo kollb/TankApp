@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 21.09.2026 · App-Version 0.65.0
+> Stand: 21.09.2026 · App-Version 0.66.0
 
 ## Inhaltsverzeichnis
 
@@ -15,6 +15,8 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
+| [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.65.0 |
+| [ADR 0003 (Modell und Freigabe)](../adr/0003-MODELL-UND-FREIGABE.md) | 0.65.0 |
 | [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.64.0 |
 | [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.61.0 |
 | [RP2.md](../betrieb/RP2.md) | 0.61.0 |
@@ -25,7 +27,6 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [DOKUMENTATION.md](DOKUMENTATION.md) | 0.59.1 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.59.1 |
 | [REGIME.md](../planung/REGIME.md) | 0.59.1 |
-| [BETRIEB.md](../betrieb/BETRIEB.md) | 0.53.0 |
 | [INSTALL.md](../betrieb/INSTALL.md) | 0.38.0 |
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 |

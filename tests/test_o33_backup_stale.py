@@ -56,12 +56,36 @@ def _settings(tmp_path, backup_dir=None) -> Settings:
     )
 
 
-def _backup(directory: Path, name: str, age_hours: float) -> Path:
+def _backup(
+    directory: Path, name: str, age_hours: float, verified: bool = True
+) -> Path:
+    """Legt einen Tages-/Monatsstand an — seit A21-B3.2 mit Erfolgsmanifest.
+
+    ``verified=False`` schreibt den Stand ohne Manifest (alter Skript-Stand
+    oder Fremdeingriff): Er zählt nicht mehr als Herzschlag.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
     path.write_bytes(b"\x1f\x8b\x08\x00fake-tar")
     stamp = (NOW - dt.timedelta(hours=age_hours)).timestamp()
     os.utime(path, (stamp, stamp))
+    if verified:
+        (directory / f"{name}.manifest.json").write_text(
+            json.dumps(
+                {
+                    "tool": "tankapp-backup",
+                    "manifest_version": 1,
+                    "created_at": NOW.isoformat(),
+                    "file": name,
+                    "size_bytes": path.stat().st_size,
+                    "sha256": "0" * 64,
+                    "entries": 4,
+                    "gzip": "ok",
+                    "store_present": True,
+                }
+            ),
+            encoding="utf-8",
+        )
     return path
 
 
@@ -82,6 +106,8 @@ def test_altes_backup_wird_gelb(tmp_path):
     """Batch-Check: 40 Stunden ohne neues Tar → ``backup_stale`` (warn)."""
     target = tmp_path / "backup"
     _backup(target, "tankapp-runtime-2026-09-15.tar.gz", 40)
+    # Ohne Manifest wäre der Grund 'unverified' — hier steht der Alarms-Fall
+    # „verifiziert, aber zu alt“ im Fokus.
     settings = _settings(tmp_path, backup_dir=target)
 
     status = backup_status(settings, clock=lambda: NOW)

@@ -297,14 +297,26 @@ def build_alarms(
         except Exception:
             backup = {}
     if backup.get("stale"):
+        # A21-B3.2: Ein ungeprüfter jüngster Stand ist schlimmer als ein alter
+        # guter: Der Betrieb glaubt an eine Sicherung, die niemand geprüft
+        # hat (die 0-Byte-Datei des Audits wäre „frisch“ gewesen). Eigener
+        # Code, eigene Schwere (error) — ein alter, verifizierter Stand
+        # bleibt warn (backup_stale).
+        code = (
+            "backup_unverified"
+            if backup.get("reason") == "unverified"
+            else "backup_stale"
+        )
         alarms.append(
             {
-                "code": "backup_stale",
-                "severity": "warn",
+                "code": code,
+                "severity": "error" if code == "backup_unverified" else "warn",
                 "message": stale_message(backup),
                 "reason": backup.get("reason"),
                 "age_hours": backup.get("age_hours"),
                 "newest_at": backup.get("newest_at"),
+                "verified_count": backup.get("verified_count"),
+                "unverified_count": backup.get("unverified_count"),
             }
         )
 

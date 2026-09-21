@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 21.09.2026 · App-Version 0.65.0
+> Stand: 21.09.2026 · App-Version 0.66.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -122,7 +122,7 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 | Winter/Regime | Erster Regel-Winter separat prüfen; Simulationen nicht als Live-Messung verbuchen |
 | Ledger-Persistenz | Überschreiben beschädigter Stores ist seit 0.60.0 fail-closed (NP1/S3); Archivzeilen gehören seit 0.63.0 zur Jahres-/Allzeitbilanz und zur M7-Grundgesamtheit (NP5/F3); die serverseitige Speichertechnik bleibt gesondert zu entscheiden (die Browser-Queue ist seit 0.60.0 eine Outbox in IndexedDB) |
 | NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen |
-| Backup/Restore | Dateialter belegt keine Wiederherstellbarkeit; datenbankkonsistente Influx-Sicherung und vollständiger Restore-Nachweis fehlen im Audit |
+| Backup/Restore | Runtime-Backups sind seit 0.66.0 validiert veröffentlicht (Erfolgsmanifest) und der Restore per `ops/nas/restore.sh` + Verifizierer gegen die Quelle nachgewiesen (A21-B3.2); offen bleibt die datenbankkonsistente Influx-Sicherung und ein Restore-Nachweis mit Produktionsdaten im Feld |
 | NAS-Kampagnenquote | 6/2/2 nur offline; Bedarf am realen Mehrstadtbetrieb messen, nicht als NAS-Funktion behaupten |
 
 Die Juli-Generalprobe **A16 ist gemessen**: Frankfurt, E10 und Diesel,

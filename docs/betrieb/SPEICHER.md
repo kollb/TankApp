@@ -1,6 +1,6 @@
 # TankApp Speichermanagement — Pi shm und NAS SSD/HDD
 
-> Stand: 21.09.2026 · App-Version 0.65.0 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“ Seit A21-B1.1 gilt für „Nach Influx-Upload löschbar?“ der Dateibestätigungs-Nachweis statt eines Zeitstempels; bewusste FIFO-Verluste sind getrennt gezählt.
+> Stand: 21.09.2026 · App-Version 0.66.0 (Messwerte und Unraid-Pfade: 13.09.2026) — beantwortet die Fragen aus dem Betrieb: „Braucht es das tmpfs alles? Nach Influx-Upload löschbar?“ und „Alles persistent nur in Influx? Tankapp/Influx 3,38 GB auf SSD — irgendwann auf HDD verschieben, aber Spindown?“ Seit A21-B1.1 gilt für „Nach Influx-Upload löschbar?“ der Dateibestätigungs-Nachweis statt eines Zeitstempels; bewusste FIFO-Verluste sind getrennt gezählt.
 
 ## Inhaltsverzeichnis
 
@@ -137,6 +137,18 @@ gesund und leer, unlesbar/beschädigt ist `store_corrupted` bzw.
 `archive_corrupted` mit Quarantäne-Kopie, zu neu (Schema-Stempel) verlangt
 ein App-Update. Details und Wiederherstellung:
 [BETRIEB.md](BETRIEB.md#feedback-archiv-und-ledger-integrität-a21-b31).
+
+Dasselbe Misstrauen gilt dem Backup (A21-B3.2, seit 0.66.0): Das Tar entsteht
+unter verstecktem Temporärnamen und wird erst nach Inhaltsprüfung umbenannt;
+das Erfolgsmanifest (`<name>.manifest.json`, Größe und SHA-256) daneben ist
+der Herzschlag-Nachweis für die App — frisches Dateialter allein belegt keine
+erfolgreiche Sicherung mehr. Temporärdateien der atomaren Schreiber (`*.tmp`)
+bleiben bewusst außen vor: Sie sind nie gültiger Inhalt, und ihre
+Flüchtigkeit (Listing vs. Lesen) würde sonst gesunde Läufe fehlschlagen
+lassen. Der Restore läuft isoliert (`ops/nas/restore.sh`, nur in leere Ziele)
+und wird vom Verifizierer gegen die Quelle gerechnet — Belegzahlen, Summen,
+Stornos und Beleg-Fingerabdruck. Betrieb und Cron-Eintrag:
+[BETRIEB.md](BETRIEB.md#nas-laufzeitdaten-runtime-backup).
 
 ## 4) Checkliste für den Betreiber
 
