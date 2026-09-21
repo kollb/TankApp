@@ -549,6 +549,73 @@ class Scheduler:
                         process.kill()
 
 
+class _TrackedReader:
+    """Delegiert an den Socket-Leser und stempelt den Eingang der Requestzeile.
+
+    ``BaseHTTPRequestHandler.handle_one_request`` liest die Requestzeile mit
+    ``self.rfile.readline(...)`` — diese Zeile ist der ehrliche Startpunkt der
+    Bearbeitung. Ein Handler, der erst nach dem Lesen anfängt zu messen,
+    verpasst den Body; einer, der vorher misst, zählt den Clientleerlauf
+    (Audit 21.09.2026). Deshalb sitzt der Stempel genau an dieser Stelle.
+    Nur die **erste** nicht-leere Zeile je Request zählt: die folgenden
+    ``readline``-Aufrufe lesen Header bzw. den Body.
+    """
+
+    __slots__ = ("_handler", "_reader")
+
+    def __init__(self, handler, reader):
+        self._handler = handler
+        self._reader = reader
+
+    def __getattr__(self, name):
+        return getattr(self._reader, name)
+
+    def readline(self, *args, **kwargs):
+        line = self._reader.readline(*args, **kwargs)
+        if line and getattr(self._handler, "_awaiting_request_line", False):
+            self._handler._awaiting_request_line = False
+            self._handler._request_received = time.monotonic()
+        return line
+
+
+# A21-B2.1: Die Routen, die als eigener Metrikname erlaubt sind. Alles andere
+# unter /api/… landet in ``/api/v1/*``; Pfadanfänge mit variabler ID
+# (``/api/v1/fills/<id>``) werden zu ``…/*``. Diese Tabellen sind der
+# einzige Ort, an dem ein Label entsteht — Tests halten sie mit der
+# Routentabelle in ``api()`` zusammen (tests/test_a21_b2_latency.py).
+_METRIC_KNOWN_ROUTES = frozenset(
+    (
+        "/api/v1/health",
+        "/api/v1/stations",
+        "/api/v1/stations/selection",
+        "/api/v1/series",
+        "/api/v1/forecast",
+        "/api/v1/last_forecasts",
+        "/api/v1/heatmap",
+        "/api/v1/selection",
+        "/api/v1/collector/status",
+        "/api/v1/route/evaluate",
+        "/api/v1/overview",
+        "/api/v1/decide",
+        "/api/v1/episodes",
+        "/api/v1/advice/diary",
+        "/api/v1/fills",
+        "/api/v1/fills.csv",
+        "/api/v1/fills/summary",
+        "/api/v1/profiles",
+        "/api/v1/stats/summary",
+        "/api/v1/day",
+    )
+)
+_METRIC_ROUTE_PREFIXES = (
+    "/api/v1/jobs/",
+    "/api/v1/episodes/",
+    "/api/v1/fills/",
+    "/api/v1/profiles/",
+    "/api/v1/recommendations/",
+)
+
+
 class Handler(SimpleHTTPRequestHandler):
     # O24: HTTP/1.1 statt des Defaults HTTP/1.0. Ohne Keep-Alive zahlt jede
     # der vielen parallelen GUI-Anfragen (/overview, /decide, /stations,
@@ -570,44 +637,100 @@ class Handler(SimpleHTTPRequestHandler):
     # nur benannt: ``_payload`` und ``_discard_body`` teilen sie sich.
     MAX_REQUEST_BODY = 100_000
 
+    def setup(self):
+        # A21-B2.1: Der Timer darf **nicht** vor dem Warten auf die nächste
+        # Keep-Alive-Anfrage starten. Der Audit maß einen Health-Aufruf mit
+        # 1,8 ms echter Arbeit, während ``X-Process-Time`` nach 300 ms
+        # Clientpause 301,7 ms meldete — und dieselbe Zahl floss in die
+        # Routenstatistik. Deshalb wird der Socket-Leser verpackt: Sobald die
+        # Requestzeile wirklich da ist, fällt der Startstempel
+        # (``_request_received``), alles davor ist ``idle``.
+        super().setup()
+        self._reader = self.rfile
+        self.rfile = _TrackedReader(self, self._reader)
+
     def handle_one_request(self):
         # Bei Keep-Alive lebt derselbe Handler über mehrere Requests; die
         # Antwort-Zustände müssen je Request neu beginnen.
         self._response_started = False
         self._connection_header = False
-        # O37: Messung je Antwort. Der Startzeitpunkt lebt im Handler, nicht
-        # im Socket — gemessen wird, was die App tut, nicht was das Netz tut.
-        self._request_started = time.monotonic()
+        self._status_code = None
+        self._head_seconds = None
+        self._send_seconds = None
+        self._request_received = None
+        # ``_TrackedReader`` stempelt die **erste** nicht-leere Zeile dieses
+        # Requests — alles Folgende sind Header/Body.
+        self._awaiting_request_line = True
+        # „Idle“ ist die Spanne zwischen Ende der letzten Antwort (bzw.
+        # Verbindungsaufbau) und Eingang der Requestzeile — gemessen, aber
+        # nicht als Bearbeitungszeit gebucht (sie steht nur im Server-Timing
+        # als ``idle``, damit die Trennung sichtbar ist).
+        self._wait_started = time.monotonic()
+        # Die Request-ID des Clients kennt erst ``parse_request`` (``headers``
+        # entstehen dort); hier beginnt der Sammler mit einer erzeugten ID.
+        spans = metrics.RequestSpans(metrics.new_request_id())
+        self._spans = spans
+        token = metrics.activate(spans)
         try:
             super().handle_one_request()
         finally:
-            # Nur vermerken, wenn wirklich geantwortet wurde: Eine
-            # Keep-Alive-Verbindung, die im Leerlauf timeoutet, läuft
-            # denselben Pfad — ohne Antwort wäre das ein 65-s-Ausreißer
-            # unter dem Namen der vorherigen Route.
+            metrics.deactivate(token)
             if getattr(self, "_response_started", False):
-                metrics.observe(
-                    self._metric_route(), time.monotonic() - self._request_started
+                # Beide Zahlen sind dieselbe Messung: Eingang der Requestzeile
+                # bis Antwortkopf. Der Socket-Schreibvorgang liegt danach und
+                # wird getrennt geführt (``observe_send``).
+                seconds = (
+                    self._head_seconds
+                    if self._head_seconds is not None
+                    else max(0.0, time.monotonic() - self._request_received_start())
                 )
+                metrics.observe(self._metric_route(), seconds, self._status_code)
+            else:
+                # Kein Fehler, keine Route: Verbindung ohne Antwort beendet
+                # (Leerlauf-Timeout oder Client-Abbruch). Gezählt, nicht als
+                # Latenz gebucht — sonst stünde ein 65-s-Ausreißer unter dem
+                # Namen der vorherigen Route.
+                metrics.note_keep_alive_timeout()
+
+    def parse_request(self) -> bool:
+        """Request-Zeile/Header lesen und die Request-ID des Clients übernehmen.
+
+        Erst hier existiert ``self.headers``; die ID wird deshalb nicht beim
+        Anlegen des Sammlers gelesen. Ein ungültiger Wert wird verworfen und
+        durch die erzeugte ID ersetzt (keine Header-Injektion, kein
+        hochkardinaler Fremdwert im Antwortkopf).
+        """
+        ok = super().parse_request()
+        provided = metrics.sanitize_request_id(
+            getattr(self, "headers", None) and self.headers.get("X-Request-ID")
+        )
+        if provided:
+            self._spans.request_id = provided
+        return ok
+
+    def _request_received_start(self) -> float:
+        return self._request_received if self._request_received else self._wait_started
 
     def _metric_route(self) -> str:
-        """Route für die Latenz-Messung (O37) — ohne Query, ohne Stationen.
+        """Route für die Latenz-Messung (O37, A21-B2.1) — begrenztes Label.
 
-        API-Pfade bleiben lesbar (``/api/v1/decide``); alles andere ist
-        ``static`` — Einzel-Assets aufzuschreiben brächte je Build neue
-        Namen ins Fenster und keine Erkenntnis.
+        Query und Stationsinhalte gehören nicht hinein; ID-Segmente werden
+        durch ``*`` ersetzt und unbekannte API-Pfade zu ``/api/v1/*``
+        zusammengefasst (``app/metrics.route_label``) — ein Client, der
+        beliebige Pfade anfragt, erzeugt damit keine neuen Metriknamen.
         """
         try:
             path = urlsplit(self.path or "").path
         except ValueError:
             return "static"
-        if path.startswith(("/api/", "/v1/")):
-            return path
-        return "static"
+        return metrics.route_label(
+            path, known=_METRIC_KNOWN_ROUTES, prefixes=_METRIC_ROUTE_PREFIXES
+        )
 
     def send_response_only(self, code, message=None):
         # Merkt, dass dieser Request bereits eine Antwort angefangen hat.
         self._response_started = True
+        self._status_code = code
         super().send_response_only(code, message)
 
     def send_header(self, keyword, value):
@@ -623,9 +746,17 @@ class Handler(SimpleHTTPRequestHandler):
         # B7/O25: ETag der laufenden Antwort — von json() mitgeliefert, damit
         # der Client den nächsten Poll revalidieren kann (If-None-Match).
         self._response_etag: str | None = None
-        # O37: Startzeitpunkt dieses Requests — Grundlage für
-        # ``X-Process-Time`` und die Latenz-Messung in ``app/metrics.py``.
-        self._request_started = time.monotonic()
+        # A21-B2.1: Messzustand des Requests. ``_request_received`` setzt
+        # ``_TrackedReader`` in dem Moment, in dem die Requestzeile da ist;
+        # ``_head_seconds`` ist die Bearbeitungszeit bis zum Antwortkopf
+        # (identisch zu ``X-Process-Time`` und zur Routenstatistik).
+        self._request_received = None
+        self._wait_started = time.monotonic()
+        self._head_seconds = None
+        self._send_seconds = None
+        self._status_code = None
+        self._awaiting_request_line = False
+        self._spans = metrics.RequestSpans(metrics.new_request_id())
         super().__init__(*args, directory=str(data.settings.static), **kwargs)
 
     def log_message(self, format, *args):
@@ -655,6 +786,8 @@ class Handler(SimpleHTTPRequestHandler):
         Für Antworten, die den Body inhaltlich nicht brauchen (501, 429,
         GET/HEAD mit unerwartetem Body). Über der Obergrenze oder ohne
         bekannte Länge wird nicht gelesen, sondern die Verbindung beendet.
+        A21-B2.1: Der Body-Eingang ist ein eigener Span — auf dem Pi/NAS
+        hängt er am Netz und ist keine Rechenzeit.
         """
         length = self._body_length()
         if length is None or length < 0 or length > self.MAX_REQUEST_BODY:
@@ -662,7 +795,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             if length:
-                self.rfile.read(length)
+                with metrics.measure("body"):
+                    self.rfile.read(length)
         except (OSError, ValueError):
             self._end_keep_alive()
 
@@ -687,7 +821,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.json({"error_code": "payload_too_large"}, 413)
             return None
         try:
-            body = self.rfile.read(length) if length else b"{}"
+            if length:
+                with metrics.measure("body"):
+                    body = self.rfile.read(length)
+            else:
+                body = b"{}"
             payload = json.loads(body.decode("utf-8") or "{}")
         except Exception:
             # Der Body ist gelesen, die Verbindung bleibt nutzbar.
@@ -707,14 +845,25 @@ class Handler(SimpleHTTPRequestHandler):
     # Festschreibung „nur Heimnetz/VPN, keine Portfreigabe“ überlassen.
 
     def end_headers(self):
-        # O37: Bearbeitungszeit dieser Antwort — Sekunden mit
+        # O37/A21-B2.1: Bearbeitungszeit dieser Antwort — Sekunden mit
         # Mikrosekunden-Auflösung, dieselbe Konvention wie gunicorn/nginx
         # (``$request_time``). Ein Header, keine Infrastruktur: Wer wissen
         # will, warum die GUI hängt, sieht es in den DevTools, und /health
         # fasst dasselbe als p95 zusammen.
-        started = getattr(self, "_request_started", None)
-        if started is not None:
-            self.send_header("X-Process-Time", f"{time.monotonic() - started:.6f}")
+        #
+        # Der Startpunkt ist der Eingang der Requestzeile (``_TrackedReader``)
+        # — nicht der Beginn des Wartens auf die nächste Keep-Alive-Anfrage.
+        # Die Clientpause steht als eigener Span ``idle`` im ``Server-Timing``,
+        # ausdrücklich **außerhalb** von ``total``/``X-Process-Time``.
+        received = self._request_received
+        if received is not None:
+            self._head_seconds = time.monotonic() - received
+            self._spans.add("total", self._head_seconds)
+            idle = max(0.0, received - self._wait_started)
+            self._spans.idle_seconds = idle
+            self.send_header("X-Process-Time", f"{self._head_seconds:.6f}")
+            self.send_header("Server-Timing", self._spans.header_value())
+        self.send_header("X-Request-ID", self._spans.request_id)
         # O24: Beendet diese Antwort die Verbindung, sagt der Server es —
         # sonst schreibt der Client seinen nächsten Request in einen bereits
         # geschlossenen Socket. ``send_error`` setzt den Header selbst, dann
@@ -780,13 +929,15 @@ class Handler(SimpleHTTPRequestHandler):
             # als eine verdorbene Verbindung (Fehlerpfade, die nach einer
             # Antwort auslösen, enden hier).
             return
-        content = json.dumps(
-            _sanitize_for_json(payload), ensure_ascii=False, allow_nan=False
-        ).encode()
+        with metrics.measure("serialize"):
+            content = json.dumps(
+                _sanitize_for_json(payload), ensure_ascii=False, allow_nan=False
+            ).encode()
         headers = getattr(self, "headers", None)
-        body = _gzip_if_accepted(
-            headers.get("Accept-Encoding") if headers else None, content
-        )
+        with metrics.measure("gzip"):
+            body = _gzip_if_accepted(
+                headers.get("Accept-Encoding") if headers else None, content
+            )
         if status == 200 and self.path.startswith(
             ("/api/v1/heatmap", "/api/v1/last_forecasts")
         ):
@@ -810,7 +961,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(body)
+            self._write_body(body)
 
     def csv(self, content: str, filename: str, status=200):
         if getattr(self, "_response_started", False):
@@ -822,7 +973,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(body)
+            self._write_body(body)
+
+    def _write_body(self, body: bytes) -> None:
+        """Antwort-Body schreiben und den Versand getrennt messen (A21-B2.1).
+
+        Der Versand liegt hinter dem Antwortkopf und kann deshalb nicht mehr
+        im ``Server-Timing`` **dieser** Antwort stehen; ``/api/v1/health``
+        führt ihn als eigene Zahl (``send_p95_ms``). Ohne diese Trennung wäre
+        ein langsamer Client als Serverarbeit lesbar.
+        """
+        started = time.monotonic()
+        self.wfile.write(body)
+        self._send_seconds = time.monotonic() - started
+        metrics.observe_send(self._send_seconds)
 
     def api(self, path, query):
         def value(key, default=None):

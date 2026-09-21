@@ -175,6 +175,45 @@ frei (GUI-Polling).
   Zusammenfassung (p95, Maximum, langsamste Route) steht in
   `/api/v1/health` → [`performance`](#health); das Budget in
   [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520).
+  **Seit 0.65.0 (A21-B2.1) beginnt die Zahl mit dem Eingang der Requestzeile.**
+  Clientleerlauf zwischen zwei Keep-Alive-Anfragen zählt nicht mehr mit; er
+  steht als eigener Span `idle` im `Server-Timing`.
+- **`Server-Timing` (A21-B2.1, seit 0.65.0):** Benannte Dauerabschnitte
+  **derselben** Antwort in Millisekunden, damit eine langsame Antwort ohne
+  Attach-Profiler erklärbar ist:
+
+  | Span | Bedeutung |
+  |---|---|
+  | `idle` | Clientpause vor der Anfrage — **nicht** in `total` |
+  | `body` | Request-Body lesen |
+  | `history` | Influx-Verlauf (inkl. 7-Tage-Kurve/Band des Overview) |
+  | `ledger` / `advice` / `wallet` / `stats` | Ledger lesen, Advice-Statistik (inkl. Bootstrap), Wallet-Statistik, Statistik-Ebene gesamt |
+  | `publication` | Modell-Veröffentlichung parsen |
+  | `snapshot` | Entscheidungs-Snapshot (Store-Sperre/Pfad) |
+  | `serialize` / `gzip` | JSON-Serialisierung, Kompression |
+  | `total` | Bearbeitung bis zum Antwortkopf (= `X-Process-Time`) |
+
+  Die Namen sind eine **Whitelist** (`app/metrics.py::SPANS`); unbekannte
+  Namen werden verworfen. Der Versand (Socket-Schreiben) liegt **nach** dem
+  Antwortkopf und steht deshalb nicht im Header dieser Antwort, sondern als
+  `performance.send_p95_ms` in `/health`.
+- **`X-Request-ID` (A21-B2.1, seit 0.65.0):** Korrelations-ID je Anfrage.
+  Ein Client-Wert wird nur übernommen, wenn er
+  `[A-Za-z0-9._:-]{1,64}` genügt (sonst zufällig erzeugt) — der Wert landet im
+  Antwortkopf, nie im Log, und erzeugt kein hochkardinales Metrik-Label.
+  Der Pi sendet dieselbe ID an die NAS und legt die NAS-Antwortwerte
+  `X-Process-Time`/`Server-Timing` **unverändert** als
+  `X-TankApp-NAS-Process-Time`/`X-TankApp-NAS-Server-Timing` daneben.
+  Sein eigenes `Server-Timing` trägt `pi_total`, `pi_proxy` (Wartezeit auf die
+  NAS, inklusive Lesen der Antwort) und die NAS-Spans mit Präfix `nas_`:
+
+  ```
+  Server-Timing: pi_total;dur=182.400, pi_proxy;dur=180.100,
+                 nas_history;dur=120.000, nas_total;dur=150.000
+  X-TankApp-NAS-Process-Time: 0.150000
+  X-TankApp-NAS-Server-Timing: history;dur=120.000, total;dur=150.000
+  ```
+
 - Schreib-Endpunkte:
   - `POST /api/v1/collector/heartbeat` (Collector-Herzschlag, B3.11)
   - `POST /api/v1/jobs/trigger` (Uploader-Webhook, Issue 50; nur mit konfiguriertem `TANKAPP_WEBHOOK_TOKEN`, Auth per `Authorization: Bearer <Token>`)
@@ -835,15 +874,20 @@ Lese-Memo (O23) macht den Parse selten, und wenn er teuer wird (wachsende
 Veröffentlichung, O22), steht es hier. `null` heißt „für den aktuellen Stand hat
 noch niemand geparst", nie „0 ms".
 
-**`performance`** (O37, seit 0.52.0): Selbstmessung des Servers — was
-`X-Process-Time` je Antwort sagt, als Zusammenfassung über die letzten
-**200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
+**`performance`** (O37, seit 0.52.0; erweitert in 0.65.0): Selbstmessung des
+Servers — was `X-Process-Time` je Antwort sagt, als Zusammenfassung über die
+letzten **200** Antworten (`app/metrics.py`): `count`, `p95_ms`, `max_ms`,
 `budget_ms` (= 300 ms, das Budget aus
 [QUALITAET.md](../entwicklung/QUALITAET.md#selbstmessung-des-servers-seit-0520)), dazu
 `slowest_route`/`slowest_p95_ms` und je Route mit mindestens fünf Antworten ein
 eigener Wert in `by_route`. `store_lock` zählt Akquisen und Wartezeit der
 Feedback-Store-Sperre (O26): Steigt `acquired`, obwohl niemand Belege bucht,
-nimmt ein Lesepfad wieder die Sperre. Kein Monitoring, kein Alarm — die
+nimmt ein Lesepfad wieder die Sperre. Seit 0.65.0 (A21-B2.1) zusätzlich:
+`by_status` (2xx/304/4xx/5xx im Fenster, ohne Doppelzählung),
+`send_p95_ms`/`send_max_ms` (Socket-Schreibvorgang nach dem Antwortkopf),
+`keep_alive_timeouts` (Verbindungen ohne Anfrage — gezählt, keiner Route
+zugeschrieben), `requests` (Zähler über die Prozesslebenszeit) und `spans`
+(die erlaubten `Server-Timing`-Namen). Kein Monitoring, kein Alarm — die
 Frage, die der Block beantwortet, ist „warum hängt das gerade?", auf dem Gerät,
 auf dem es hängt.
 

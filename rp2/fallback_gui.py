@@ -45,12 +45,14 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -84,6 +86,91 @@ HEALTH_TTL_ONLINE_S = 15.0  # Probe-Cache, keine garantierte Umschaltzeit
 HEALTH_TTL_OFFLINE_S = 30.0  # wie oft wird nach einem Offline-Zustand neu geprüft
 SNAPSHOT_DAYS_BACK = 2  # letzte N Tag-Dateien berücksichtigen (Nacht-Puffer)
 MAX_PROXY_BODY = 32 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# A21-B2.1: Requestmessung und Diagnoseheader
+# ---------------------------------------------------------------------------
+# Der Pi war blind für NAS-Latenz: ``X-Process-Time`` und Spans der NAS
+# wurden nicht weitergereicht, und die eigene Wartezeit auf die NAS stand in
+# keiner Zahl. Der Proxy misst deshalb getrennt:
+#
+# * ``X-Process-Time`` — Bearbeitung **auf dem Pi** (bis zum Antwortkopf),
+# * ``X-TankApp-NAS-Process-Time`` — der Wert der NAS, unverändert,
+# * ``Server-Timing`` — Pi-Einträge ``pi_total``/``pi_proxy`` plus die
+#   NAS-Einträge mit Präfix ``nas_`` (keine Vermischung, eine Korrelation
+#   über dieselbe ``X-Request-ID``).
+MAX_REQUEST_ID_CHARS = 64
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,%d}$" % MAX_REQUEST_ID_CHARS)
+# Namen der NAS-Spans (app/metrics.py SPANS) — unbekannte Einträge werden
+# verworfen, damit kein Fremdheader die Pi-Antwort mit Labels flutet.
+_NAS_SPAN_NAMES = frozenset(
+    (
+        "idle",
+        "body",
+        "history",
+        "decide",
+        "ledger",
+        "advice",
+        "wallet",
+        "stats",
+        "publication",
+        "snapshot",
+        "serialize",
+        "gzip",
+        "total",
+    )
+)
+
+
+def new_request_id() -> str:
+    return uuid.uuid4().hex[:16]
+
+
+def sanitize_request_id(value) -> str | None:
+    """Client-/NAS-Request-ID übernehmen — nur im erlaubten Zeichenvorrat."""
+    if not value or not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if _REQUEST_ID_RE.match(value) else None
+
+
+def _split_server_timing(value: str) -> list[str]:
+    """``Server-Timing`` in Einträge zerlegen — Kommas in ``desc="…"`` zählen nicht."""
+    entries: list[str] = []
+    current: list[str] = []
+    quoted = False
+    for char in value:
+        if char == '"':
+            quoted = not quoted
+        if char == "," and not quoted:
+            entry = "".join(current).strip()
+            if entry:
+                entries.append(entry)
+            current = []
+            continue
+        current.append(char)
+    tail = "".join(current).strip()
+    if tail:
+        entries.append(tail)
+    return entries
+
+
+def _prefix_server_timing(value: str | None, prefix: str) -> list[str]:
+    """NAS-Einträge mit ``prefix`` versehen — nur bekannte Span-Namen.
+
+    Ein von der NAS gelieferter Eintrag, der nicht in der festen Namensliste
+    (``app/metrics.SPANS``) steht, wird verworfen: Der Pi reicht ein
+    Messvertrag weiter, nicht einen beliebigen Header.
+    """
+    if not value:
+        return []
+    out = []
+    for entry in _split_server_timing(value):
+        name = entry.split(";")[0].strip()
+        if name in _NAS_SPAN_NAMES:
+            out.append(f"{prefix}{entry}")
+    return out
 
 
 def utcnow() -> datetime:
@@ -753,8 +840,55 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 flush=True,
             )
 
+        def _begin(self):
+            """Requestmessung zurücksetzen und Request-ID festlegen (A21-B2.1).
+
+            Die ID wird vom Client übernommen (erlaubter Zeichenvorrat),
+            sonst erzeugt; im Proxyfall reicht der Pi sie an die NAS durch,
+            damit beide Antworten dieselbe Korrelation tragen.
+            """
+            self._response_started = False
+            self._request_started = time.monotonic()
+            self._request_id = (
+                sanitize_request_id(self.headers.get("X-Request-ID"))
+                or new_request_id()
+            )
+            self._nas_process_time = None
+            self._nas_server_timing = None
+            self._proxy_seconds = None
+
         def end_headers(self):
             self._response_started = True
+            # A21-B2.1: Pi-Zeit, NAS-Zeit und Proxywartezeit getrennt nennen.
+            # ``X-Process-Time`` bleibt die Bearbeitung **dieses** Geräts; die
+            # NAS-Zahl fährt unter eigenem Namen mit, sonst läse sich die
+            # Proxywartezeit wie NAS-Rechenzeit.
+            started = getattr(self, "_request_started", None)
+            if started is not None:
+                pi_seconds = time.monotonic() - started
+                timing = [
+                    f"pi_total;dur={pi_seconds * 1000.0:.3f};"
+                    'desc="pi processing until head"'
+                ]
+                proxy_seconds = getattr(self, "_proxy_seconds", None)
+                if proxy_seconds is not None:
+                    timing.append(
+                        "pi_proxy;dur="
+                        f"{proxy_seconds * 1000.0:.3f};"
+                        'desc="pi waiting for nas"'
+                    )
+                nas_timing = getattr(self, "_nas_server_timing", None)
+                timing.extend(_prefix_server_timing(nas_timing, "nas_"))
+                self.send_header("X-Process-Time", f"{pi_seconds:.6f}")
+                self.send_header("Server-Timing", ", ".join(timing))
+                nas_process_time = getattr(self, "_nas_process_time", None)
+                if nas_process_time:
+                    self.send_header("X-TankApp-NAS-Process-Time", nas_process_time)
+                if nas_timing:
+                    self.send_header("X-TankApp-NAS-Server-Timing", nas_timing)
+            request_id = getattr(self, "_request_id", None)
+            if request_id:
+                self.send_header("X-Request-ID", request_id)
             super().end_headers()
 
         def _send(
@@ -784,11 +918,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
 
         # -- Routing ---------------------------------------------------------
         def do_GET(self):
-            self._response_started = False
+            self._begin()
             self._handle()
 
         def do_HEAD(self):
-            self._response_started = False
+            self._begin()
             self._handle()
 
         # B4: Schreibaktionen (Beleg buchen, Intent, Profil, …) werden wie
@@ -818,7 +952,7 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
             return self.rfile.read(length) if length > 0 else b""
 
         def _handle_write(self):
-            self._response_started = False
+            self._begin()
             try:
                 url = urllib.parse.urlsplit(self.path)
                 # Body immer zuerst lesen: Keep-Alive-Verbindung bleibt
@@ -932,9 +1066,15 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                         headers[name] = value
                 if body is None:
                     headers.pop("Content-Type", None)
+                # A21-B2.1: Dieselbe Request-ID an die NAS — direkte und
+                # durchgereichte Antwort sind damit korrelierbar.
+                headers["X-Request-ID"] = (
+                    getattr(self, "_request_id", None) or new_request_id()
+                )
                 req = urllib.request.Request(
                     target, method=self.command, data=body, headers=headers
                 )
+                upstream_started = time.monotonic()
                 try:
                     response = urllib.request.urlopen(req, timeout=ctx.proxy_timeout)
                 except urllib.error.HTTPError as exc:
@@ -942,6 +1082,16 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 with response as resp:
                     response_received = True
                     status = resp.status
+                    # Die Wartezeit auf die NAS wird **am Ende** gestellt (sie
+                    # enthält das Lesen der Antwort); die Diagnoseheader der
+                    # NAS werden unverändert übernommen.
+                    self._nas_process_time = resp.headers.get("X-Process-Time")
+                    self._nas_server_timing = resp.headers.get("Server-Timing")
+                    nas_request_id = sanitize_request_id(
+                        resp.headers.get("X-Request-ID")
+                    )
+                    if nas_request_id:
+                        self._request_id = nas_request_id
                     if status >= 500 and self.command in ("GET", "HEAD"):
                         raise ValueError(f"http_{status}")
                     payload = (
@@ -1017,6 +1167,10 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 stage = "proxy" if response_received else "transport"
                 ctx.nas.mark_offline(f"{stage}:{type(exc).__name__}")
                 return False
+            # A21-B2.1: Proxywartezeit = Zeit, bis die NAS-Antwort vollständig
+            # gepuffert und geprüft ist. Sie wird **separat** ausgewiesen
+            # (``pi_proxy``), nicht in die NAS-Zeit gerechnet.
+            self._proxy_seconds = time.monotonic() - upstream_started
             # Nothing in this phase is allowed to return False: the response
             # has been selected. A client write failure closes the connection.
             self.send_response(status)

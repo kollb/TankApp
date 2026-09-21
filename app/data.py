@@ -1136,13 +1136,16 @@ def publication(settings):
     with _PUBLICATION_LOCK:
         if _PUBLICATION_MEMO["key"] == key and _PUBLICATION_MEMO["value"] is not None:
             return _PUBLICATION_MEMO["value"]
+    from . import metrics
+
     started = time.monotonic()
-    raw, reason = read_json_checked(path)
-    value = raw if isinstance(raw, dict) else {}
-    if reason is None and isinstance(raw, dict):
-        if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
-            value, split_reason = _merge_split_publication(raw, path.parent)
-            reason = reason or split_reason
+    with metrics.measure("publication"):
+        raw, reason = read_json_checked(path)
+        value = raw if isinstance(raw, dict) else {}
+        if reason is None and isinstance(raw, dict):
+            if raw.get("layout") == PUBLICATION_LAYOUT_SPLIT:
+                value, split_reason = _merge_split_publication(raw, path.parent)
+                reason = reason or split_reason
     elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
     with _PUBLICATION_LOCK:
         _PUBLICATION_MEMO["key"] = key
@@ -1643,6 +1646,8 @@ class LiveData:
             }
         now = self.clock()
         try:
+            from . import metrics
+
             cfg = influx.load_config(self.settings.influx_env, timeout=10)
             cfg.validate()
             lookup = influx.station_lookup(self.settings.polling)
@@ -1655,7 +1660,11 @@ class LiveData:
                 {city: [uid]},
             )
             points = []
-            for raw in self.query(cfg, query):
+            # A21-B2.1: Der Influx-Read ist ein eigener Span. Auf dem NAS
+            # hängt er an Netz/DB und ist keine Rechenzeit des Requests.
+            with metrics.measure("history"):
+                rows = list(self.query(cfg, query))
+            for raw in rows:
                 if raw.get("station_id") != uid or raw.get("city") != city:
                     raise ValueError("Wrong identity")
                 row = influx.normalized_row(raw, lookup, fuel)
@@ -2854,12 +2863,16 @@ class LiveData:
             elif city:
                 day_res = self.day_with_band(station_id, city, fuel)
 
-        decide_res = self.decide(decide_params)
+        from . import metrics
+
+        with metrics.measure("decide"):
+            decide_res = self.decide(decide_params)
         fills_res = self.fills()
         summary_params = {"fuel": fuel}
         if city:
             summary_params["city"] = city
-        summary_res = self.stats_summary(summary_params)
+        with metrics.measure("stats"):
+            summary_res = self.stats_summary(summary_params)
         episodes_res = self.episodes("due")
 
         result = {

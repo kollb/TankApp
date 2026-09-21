@@ -349,6 +349,16 @@ Im Fallback-Modus beantwortet der RP2 dieselben Pfade selbst (JSON, nur lesend):
   automatische Auswahl (CLI/Altclients). Antworten nennen
   `X-TankApp-Contract`, lokale Antworten sind `no-store`; `Vary` trennt
   `X-TankApp-UI` und `X-Force-Fallback`.
+- **Diagnose durch den Proxy (A21-B2.1, seit 0.65.0):** Der Pi schickt die
+  `X-Request-ID` des Clients an die NAS weiter und legt deren
+  `X-Process-Time`/`Server-Timing` unverändert als
+  `X-TankApp-NAS-Process-Time`/`X-TankApp-NAS-Server-Timing` bei. Sein eigenes
+  `Server-Timing` nennt `pi_total` (Pi-Bearbeitung bis zum Antwortkopf),
+  `pi_proxy` (Wartezeit auf die NAS, inklusive Lesen und Prüfen der Antwort)
+  und die NAS-Spans mit Präfix `nas_`. Damit ist entscheidbar, ob eine
+  langsame Antwort aus dem Pi, aus dem Netz oder aus der NAS-Arbeit kommt —
+  `X-Process-Time` des Pi bleibt die Pi-Zeit und enthält die Proxywartezeit
+  nicht.
 - NAS-Tabs wechseln bei Rückkehr ohne Reload zur NAS-API zurück. Schon beim
   ersten Abruffehler oder lokalen Stationsersatz bleiben alte Aktionen
   gesperrt. Der erkannte Wiederkontakt stößt den Outbox-Flush an, zusätzlich
