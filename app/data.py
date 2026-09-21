@@ -2830,7 +2830,14 @@ class LiveData:
             with self.lock:
                 cached = self.overview_cache.get(etag)
             if cached is not None:
-                return cached
+                # A21-B1.4: Eine abgelaufene Freigabe darf aus keinem Cache
+                # erneut erscheinen — der Treffer endet am ``valid_until`` der
+                # mitgelieferten Aktion (Issue 201). ``no_advice`` altert
+                # nicht und bleibt ein Treffer.
+                from .decide import release_still_valid
+
+                if release_still_valid(cached.get("decide"), self.clock()):
+                    return cached
         city = params.get("city")
         station_id = params.get("station_id")
 

@@ -138,8 +138,18 @@ describe("Stufen der Sicherheit (§10)", () => {
     expect(verdict?.stageNote).toBe(note);
   });
 
-  it("der graue Anfangszustand nennt den Zählstand statt eines Versprechens", () => {
-    const learning = decide("no_advice", { calibrated: false });
+  it("der graue Zustand zeigt zuerst den Servergrund (A21-B1.4)", () => {
+    // Der Sperrgrund der Freigabekette darf nicht hinter einem allgemeinen
+    // Lernhinweis verschwinden — die Karte soll sagen, WARUM es keine
+    // Empfehlung gibt.
+    const blocked = decide("no_advice", {}, { reason_short: "Der Preis dieser Station ist nicht mehr frisch." });
+    const verdict = nowVerdict(input({ decide: blocked }));
+    expect(verdict?.detail).toBe("Der Preis dieser Station ist nicht mehr frisch.");
+    expect(verdict?.percent).toBeNull();
+  });
+
+  it("ohne Servergrund nennt der graue Anfangszustand den Zählstand", () => {
+    const learning = decide("no_advice", { calibrated: false }, { reason_short: "" });
     learning.personal_stats.advice.last_30d_total = 12;
     expect(learningNote(learning)).toContain("Das Modell lernt noch");
     const verdict = nowVerdict(input({ decide: learning }));

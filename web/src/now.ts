@@ -377,6 +377,10 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
   }
 
   // no_advice: grau ist ein erster Klasse-Zustand mit Begründung, kein Fehler.
+  // A21-B1.4: Der **Servergrund** führt (Sperrgrund der Freigabekette bzw.
+  // Tabellenablehnung) — der Lernhinweis ist nur noch der Rückfall ohne
+  // Serverdetail, sonst überdeckt er den eigentlichen Grund („warum keine
+  // Empfehlung“) mit einer allgemeinen Lernmeldung.
   const learning = learningNote(decide);
   return {
     action: p.action,
@@ -384,8 +388,8 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     headline: "Keine klare Empfehlung",
     amount: null,
     detail:
-      learning ??
-      p.reason_short ??
+      p.reason_short ||
+      learning ||
       "Die Preise springen — die App rät nicht.",
     stationName: null,
     mapsUrl: null,

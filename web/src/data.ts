@@ -872,6 +872,20 @@ export type DecideResult = {
   };
   calibrated: boolean;
   decision_ready: boolean;
+  /**
+   * A21-B1.4: maschinenlesbare Sperrgründe der Freigabekette (stabile
+   * Codes: `price_missing`, `price_stale`, `station_unusable`, `data_stale`,
+   * `forecast_missing`, `forecast_expired`, `origin_unknown`,
+   * `paths_missing`, `paths_invalid`, `quality_missing`, `quality_gate`,
+   * `m7_pending`). Leer genau dann, wenn `decision_ready` wahr ist.
+   */
+  blocking_reasons?: string[];
+  /**
+   * A21-B1.4: Ende der Gültigkeit dieser Freigabe (ISO) — ab hier darf ein
+   * Cache die Aktion nicht erneut zeigen. `null`/fehlt ohne freigegebene
+   * Aktion (eine Ablehnung altert nicht).
+   */
+  valid_until?: string | null;
   // A2: Tankstand-Bewertung (Physik, unabhängig von der Ampel) — null ohne
   // Tankstand-Eingabe (dann sagt die App nichts über den Tankstand).
   tank?: TankInfo | null;
