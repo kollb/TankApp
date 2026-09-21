@@ -878,7 +878,14 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     # Erhöhungspunkt (12:00 Uhr, ab Gesetzesbeginn) enthalten. Das sind
     # mögliche Datenartefakte oder Regelverstöße; sie bleiben im Modell,
     # werden nur sichtbar gezählt.
-    price_values = price.to_numpy()
+    # M2: Der Zähler liest die vor-Hampel-Beobachtungen (``price_raw``) —
+    # die retrospektive Datenqualitäts-Diagnostik bleibt damit von der
+    # kausalen Trainingsaufbereitung getrennt und wird durch die
+    # Artefakt-Filterung nicht blind (sonst verschwindet die Anstiegsflanke
+    # eines echten Sprungs und der Zähler zählt 0). Fällt auf ``price``
+    # zurück, wenn die Diagnose-Spalte fehlt (z. B. schlanke Alt-Rahmen).
+    diag_price = frame["price_raw"] if "price_raw" in frame.columns else price
+    price_values = diag_price.to_numpy()
     finite = np.isfinite(price_values)
     local_index = index.tz_convert(cfg.timezone)
     law = law_since_utc(cfg).tz_convert(index.tz)

@@ -61,8 +61,12 @@ CACHE_SCHEMA_VERSION = 5
 # Dieselben Spalten gehen als schlanke initargs in den Modell-Pool. Sie sind
 # vollständig für fit() + run_backtest(); die übrigen PriceSeries-Spalten sind
 # daraus abgeleitete Anzeige-/Diagnosewerte und werden dort nie gelesen.
+# ``price_raw`` (M2) zählt dazu *nicht*: fit() liest die vor-Hampel-Preise für
+# den 12-Uhr-Regel-Zähler, also sind sie Backtest-Wahrheit und gehören in den
+# Fingerabdruck.
 BACKTEST_FRAME_COLUMNS = (
     "price",
+    "price_raw",
     "observed",
     "response_observed",
     "status_known",
