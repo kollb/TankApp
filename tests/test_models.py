@@ -19,6 +19,7 @@ from engine.selection import (
 from engine.models import (
     _naive_profile,
     _residual_blocks,
+    _segment_bounds,
     features,
     fit,
     fit_ar2,
@@ -32,6 +33,7 @@ from engine.models import (
     slots,
     utc_time,
     validate_model,
+    wall_clock_hour,
 )
 from engine.storage import json_safe, write_json
 
@@ -306,6 +308,107 @@ def test_noon_law_projection_keeps_nan_and_short_input(cfg):
     np.testing.assert_array_equal(
         noon_law_projection(np.array([1.0]), index[:1], cfg), [1.0]
     )
+
+
+# M3 (Befund 20.09.2026): Sommerzeit darf keine falsche Monotoniegrenze
+# erzeugen. Vor dem Fix rechnete der Segmentierer „Mitternacht + 12
+# verstrichene Stunden“; an der Herbstumstellung (25.10.2026, 25-Stunden-Tag)
+# landete der Schlüssel bei 11:00 statt 12:00 Uhr, über Mitternacht
+# entstanden zwei „Mittags“-Segmente und ein Anstieg 1,50 → 1,70 €/L um
+# 00:00 Uhr blieb unverändert.
+
+
+def test_wall_clock_hour_is_local_calendar_noon_on_dst_days():
+    # 25-Stunden-Tag (Herbst) und 23-Stunden-Tag (Frühjahr): Wanduhr-Mittag
+    # ist 12:00 Ortszeit — nicht 11:00/13:00 durch verstrichene Stunden.
+    autumn = wall_clock_hour(pd.Timestamp("2026-10-25 06:00", tz="Europe/Berlin"))
+    spring = wall_clock_hour(pd.Timestamp("2026-03-29 06:00", tz="Europe/Berlin"))
+    assert (autumn.hour, autumn.minute) == (12, 0)
+    assert (spring.hour, spring.minute) == (12, 0)
+    # Der Vortages-Mittag über die Frühjahrs-Umstellung hinweg bleibt 12:00.
+    day_back = wall_clock_hour(
+        pd.Timestamp("2026-03-29 06:00", tz="Europe/Berlin"), 12, 1
+    )
+    assert (day_back.hour, day_back.minute) == (12, 0)
+    assert day_back.date() == pd.Timestamp("2026-03-28").date()
+    # Vektorisiert (DatetimeIndex) identisch zum Skalar.
+    idx = pd.DatetimeIndex(["2026-10-25 06:00", "2026-10-26 06:00"], tz="Europe/Berlin")
+    hours = wall_clock_hour(idx)
+    assert list(hours.hour) == [12, 12]
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        # Herbstumstellung: 25.10. 23:55 → 26.10. 00:00 (25-Stunden-Tag).
+        ("2026-10-25 23:55", "2026-10-26 00:00"),
+        # Frühjahrsumstellung 2027 (nach price_law_local 01.04.2026):
+        # 27.03. 23:55 → 28.03. 00:00 (23-Stunden-Tag).
+        ("2027-03-27 23:55", "2027-03-28 00:00"),
+    ],
+)
+def test_no_false_monotony_boundary_across_dst_midnight(cfg, before, after):
+    index = pd.DatetimeIndex([before, after], tz="Europe/Berlin")
+    # Beide Punkte liegen im selben Segment [12:00 Vortag, 12:00 Tag) —
+    # Mitternacht trennt nicht.
+    segments = _segment_bounds(index)
+    assert len(segments) == 1
+    # Ein Anstieg über Mitternacht wird projiziert (1,50 → 1,70 €/L aus dem
+    # Befund darf nicht unverändert durchgehen). Beide Umstellungs-Segmente
+    # beginnen nach dem Gesetzesbeginn (01.04.2026), die 12-Uhr-Regel gilt.
+    projected = noon_law_projection(np.array([1.50, 1.70]), index, cfg)
+    assert projected[1] <= projected[0] + 1e-12
+
+
+def test_real_noon_boundary_still_separates_on_dst_day(cfg):
+    # Die modellierte Mittagsgrenze trennt weiterhin — auch am Umstellungs-
+    # folgetag: 11:55 → 12:00 Uhr sind zwei Segmente, der 12-Uhr-Sprung ist
+    # erlaubt.
+    index = pd.date_range("2026-10-26 08:00", "2026-10-26 16:00", freq="5min")
+    index = index.tz_localize("Europe/Berlin")
+    segments = _segment_bounds(index)
+    assert len(segments) == 2
+    noon_pos = index.get_loc(pd.Timestamp("2026-10-26 12:00", tz="Europe/Berlin"))
+    assert segments[0][1] == noon_pos and segments[1][0] == noon_pos
+    values = np.full(len(index), 1.0)
+    values[noon_pos:] = 1.04
+    projected = noon_law_projection(values, index, cfg)
+    assert projected[noon_pos] == 1.04 and projected[noon_pos - 1] == 1.0
+
+
+def test_multi_day_forecast_keeps_monotony_across_dst_night(observations, cfg):
+    # Vollständiger Mehrtagspfad über die Herbstumstellung: innerhalb jedes
+    # [12:00, 12:00)-Segments (das die Umstellungs-Mitternacht einschließt)
+    # bleibt q50 nicht-steigend; nur die echten Mittagsgrenzen trennen.
+    normalized, _ = normalize_observations(
+        observations(days=30, start="2026-09-25"), cfg
+    )
+    dst_series = prepare_series(normalized, cfg)[0]
+    model = fit(dst_series, "2026-10-24", cfg)
+    index = pd.date_range(
+        "2026-10-24 12:00", periods=3 * 288 + 12, freq="5min", tz="Europe/Berlin"
+    ).tz_convert("UTC")
+    forecast = predict(model, index=index)
+    q50 = forecast["q50"].to_numpy(dtype=float)
+    local = index.tz_convert(cfg.timezone)
+    segments = _segment_bounds(local)
+    # Der Pfad umfasst die Umstellungs-Mitternacht 25./26.10. — es gibt also
+    # ein Segment, das beide Tage verbindet (keine falsche Grenze um 00:00).
+    assert any(
+        local[start].date() != local[stop - 1].date() for start, stop, _ in segments
+    )
+    # Kern des Befunds: Keine Segmentgrenze darf auf die Umstellungs-
+    # Mitternacht 26.10. 00:00 fallen. Vor dem Fix teilte die 25-h-Umstellung
+    # das Segment dort in zwei „Mittags“-Schlüssel.
+    boundary_positions = {start for start, _stop, _ in segments}
+    midnight_pos = index.get_loc(
+        pd.Timestamp("2026-10-26 00:00", tz="Europe/Berlin").tz_convert("UTC")
+    )
+    assert midnight_pos not in boundary_positions
+    for start, stop, _boundary in segments:
+        chunk = q50[start:stop]
+        chunk = chunk[np.isfinite(chunk)]
+        assert np.all(np.diff(chunk) <= 1e-9)
 
 
 def _noon_step_observations(violate_day=None):
