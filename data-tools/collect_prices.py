@@ -259,74 +259,190 @@ def write_snapshot(out_dir: Path, snap: dict) -> Path:
     return path
 
 
-def _read_ack_ts(meta_dir: Path) -> dt.datetime | None:
-    """Liest meta/synced_until (vom Uploader) — None, wenn noch nichts gesynct.
+def _read_ack_v2(meta_dir: Path) -> dict | None:
+    """Liest meta/synced_until als v2-Cursorbestand (vom Uploader).
 
-    Schema v2 is JSON with ``fetched_at_max`` (event time for the date prune
-    only). Schema v1 was a bare ISO timestamp.
+    A21-B1.1: Nur v2-JSON mit Byte-Cursor(n) ist ein Dateibestätigungs­
+    nachweis. Ein v1-Zeitstempel (oder eine unlesbare/alte ACK-Datei) liefert
+    ``None`` — dann gilt jede Datei als unbestätigt und wird nie vorzeitig
+    gelöscht (im Zweifel bleibt sie liegen, bis die FIFO-Grenze bewusst greift).
     """
     try:
         s = (meta_dir / "synced_until").read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    if not s:
+    if not s or not s.startswith("{"):
         return None
-    if s.startswith("{"):
-        try:
-            data = json.loads(s)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(data, dict):
-            return None
-        s = str(data.get("fetched_at_max") or "").strip()
-        if not s:
-            return None
     try:
-        ts = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
-        return ts
-    except ValueError:
+        data = json.loads(s)
+    except json.JSONDecodeError:
         return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        version = int(data.get("v") or 0)
+    except (TypeError, ValueError):
+        return None
+    if version < 2:
+        return None
+    cursors = data.get("cursors") or {}
+    clean: dict[str, int] = {}
+    if isinstance(cursors, dict):
+        for key, value in cursors.items():
+            try:
+                clean[str(key)] = int(value)
+            except (TypeError, ValueError):
+                continue
+    return {"cursors": clean, "fetched_at_max": data.get("fetched_at_max")}
 
 
-def ring_prune(out_dir: Path, keep_days: int = RING_DAYS) -> list[str]:
-    """Ringpuffer + Synced-Pruning (Speichermanagement 4.1).
+def file_fully_acknowledged(meta_dir: Path, name: str, size: int) -> bool:
+    """A21-B1.1: vollständig bestätigt = v2-Cursor deckt die ganze Datei.
 
-    - Dateien älter als keep_days (Default 7) werden immer gelöscht (FIFO, §9.1).
-    - Zusätzlich: Ist eine Datei vollständig vor dem Ack (synced_until) —
-      d. h. ihr Datum < ack.date() — kann sie nach erfolgreichem Influx-Upload
-      gelöscht werden, um RAM auf /dev/shm zu sparen. Wir behalten trotzdem
-      mindestens gestern (1 Tag) für manuelle Kontrolle, selbst wenn gesynct.
-      Das beantwortet „Braucht es das? Wenn einmal auf Influx kann doch
-      gelöscht werden?“: Ja, nach Ack, aber 1 Tag Puffer bleibt.
+    Ein globaler Ereigniszeitstempel (``fetched_at_max``) ist ausdrücklich
+    **kein** Bestätigungsnachweis — eine Datei mit Cursor 0 darf an ihm nicht
+    scheitern (Gegenprobe des A21-Audits). Nachträglich angehängte Zeilen
+    wachsen über den Cursor hinaus und schützen die Datei erneut.
+    """
+    ack = _read_ack_v2(meta_dir)
+    if ack is None:
+        return False
+    try:
+        return int(ack["cursors"].get(name, 0) or 0) >= int(size)
+    except (TypeError, ValueError):
+        return False
+
+
+def _count_lines(path: Path) -> int:
+    n = 0
+    try:
+        with path.open("rb") as handle:
+            for _ in handle:
+                n += 1
+    except OSError:
+        return 0
+    return n
+
+
+def _record_fifo_loss(meta_dir: Path, records: list[dict]) -> None:
+    """Bewusste FIFO-Verluste protokollieren (A21-B1.1) — sichtbar, nicht still."""
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with (meta_dir / "fifo_losses.jsonl").open("a", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # Zähler dürfen nie den Poll-Lauf sprengen
+
+
+def fifo_loss_totals(meta_dir: Path) -> dict:
+    """Kumulierte bewusste FIFO-Verluste (Dateien/Zeilen) aus meta/fifo_losses.jsonl."""
+    totals = {"files": 0, "lines": 0}
+    try:
+        with (meta_dir / "fifo_losses.jsonl").open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                totals["files"] += int(record.get("files") or 0)
+                totals["lines"] += int(record.get("lines") or 0)
+    except OSError:
+        pass
+    return totals
+
+
+def unacked_summary(out_dir: Path) -> dict:
+    """Aktueller unbestätigte Pufferbestand — für Herzschlag/System-Ansicht.
+
+    ``unacked_files`` zählt Dateien, deren Bytes der Uploader noch nicht als
+    zusammenhängend bestätigt hat (oder die mangels v2-ACK gar nicht als
+    bestätigbar gelten). Das ist der ehrliche Gegenwert zum „0 ausstehend“
+    des alten Zeitstempel-ACKs.
+    """
+    meta_dir = out_dir / "meta"
+    unacked = []
+    for p in sorted(out_dir.glob("*.jsonl")):
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        if not file_fully_acknowledged(meta_dir, p.name, size):
+            unacked.append(p)
+    oldest_age = None
+    if unacked:
+        try:
+            oldest = min(unacked, key=lambda p: p.stat().st_mtime)
+            oldest_age = round((time.time() - oldest.stat().st_mtime) / 86400.0, 2)
+        except OSError:
+            oldest_age = None
+    losses = fifo_loss_totals(meta_dir)
+    return {
+        "unacked_files": len(unacked),
+        "oldest_unacked_age_days": oldest_age,
+        "fifo_dropped_files": losses["files"],
+        "fifo_dropped_lines": losses["lines"],
+    }
+
+
+def ring_prune(out_dir: Path, keep_days: int = RING_DAYS) -> dict:
+    """Ringpuffer + bestätigtes Synced-Pruning (A21-B1.1, Speichermanagement 4.1).
+
+    - Vorzeitiges Löschen nur bei **nachgewiesener** vollständiger
+      Dateibestätigung (v2-Cursor ≥ Dateigröße) und älter als gestern —
+      ``fetched_at_max`` allein löscht nichts mehr (Gegenprobe: Cursor 0 und
+      neuer globaler Zeitstempel).
+    - Unbestätigte Dateien bleiben innerhalb der Aufbewahrung liegen, auch
+      nach einem Teilfehler, Uhr-Rücksprung oder inkonsistentem ACK.
+    - Nach ``keep_days`` (Default 7) greift die FIFO-Grenze (§9.1) auch für
+      unbestätigte Dateien: bewusster Verlust, getrennt gezählt, in
+      ``meta/fifo_losses.jsonl`` protokolliert und im Herzschlag sichtbar —
+      nie als erfolgreicher Sync.
     """
     cutoff = dt.date.today() - dt.timedelta(days=keep_days - 1)
-    ack = _read_ack_ts(out_dir / "meta")
-    ack_date = ack.date() if ack else None
-    removed: list[str] = []
+    meta_dir = out_dir / "meta"
     today = dt.date.today()
-    for p in out_dir.glob("*.jsonl"):
+    result = {"removed_synced": [], "removed_fifo": [], "fifo_unacked": []}
+    loss_records: list[dict] = []
+    for p in sorted(out_dir.glob("*.jsonl")):
         try:
             d = dt.date.fromisoformat(p.stem)
         except ValueError:
             continue
-        # Vollständig gesynct → darf weg, aber gestern behalten
-        if ack_date is not None and d < ack_date:
-            if d < today - dt.timedelta(days=1):
-                try:
-                    p.unlink()
-                    removed.append(p.name)
-                except OSError:
-                    pass
-                continue
-        if d < cutoff:
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        acked = file_fully_acknowledged(meta_dir, p.name, size)
+        # Vollständig bestätigt → darf weg, aber gestern bleibt zur Kontrolle.
+        if acked and d < today - dt.timedelta(days=1):
             try:
                 p.unlink()
-                removed.append(p.name)
+                result["removed_synced"].append(p.name)
             except OSError:
                 pass
-    return removed
+            continue
+        if d < cutoff:
+            n_lines = _count_lines(p) if not acked else 0
+            try:
+                p.unlink()
+            except OSError:
+                continue
+            result["removed_fifo"].append(p.name)
+            if not acked:
+                result["fifo_unacked"].append(p.name)
+                loss_records.append(
+                    {
+                        "at": dt.datetime.now().astimezone().isoformat(),
+                        "file": p.name,
+                        "files": 1,
+                        "lines": n_lines,
+                        "reason": "fifo_after_retention",
+                    }
+                )
+    if loss_records:
+        _record_fifo_loss(meta_dir, loss_records)
+    return result
 
 
 def write_heartbeat(out_dir: Path, snap: dict, poll_count: int) -> None:
@@ -369,6 +485,11 @@ def write_heartbeat(out_dir: Path, snap: dict, poll_count: int) -> None:
         round(total / 1_000_000, 2) if isinstance(total, (int, float)) else None
     )
 
+    # A21-B1.1: unbestätigter Pufferbestand und bewusste FIFO-Verluste
+    # sichtbar machen — „0 ausstehend“ war bisher eine Behauptung des
+    # Zeitstempel-ACKs, kein Nachweis.
+    sync_state = unacked_summary(out_dir)
+
     payload = {
         "timestamp": snap.get("fetched_at"),
         "last_poll_at": snap.get("fetched_at"),
@@ -392,6 +513,10 @@ def write_heartbeat(out_dir: Path, snap: dict, poll_count: int) -> None:
             "age_days": oldest_age_days,
         },
         "ring_days": RING_DAYS,
+        "unacked_files": sync_state["unacked_files"],
+        "oldest_unacked_age_days": sync_state["oldest_unacked_age_days"],
+        "fifo_dropped_files": sync_state["fifo_dropped_files"],
+        "fifo_dropped_lines": sync_state["fifo_dropped_lines"],
         "generated_at": dt.datetime.now().astimezone().isoformat(),
     }
 
@@ -429,6 +554,10 @@ def write_heartbeat(out_dir: Path, snap: dict, poll_count: int) -> None:
                     "tmpfs_total_mb": tmpfs_total_mb,
                     "oldest_file_age_days": oldest_age_days,
                     "poll_count": poll_count,
+                    "unacked_files": payload.get("unacked_files"),
+                    "oldest_unacked_age_days": payload.get("oldest_unacked_age_days"),
+                    "fifo_dropped_files": payload.get("fifo_dropped_files"),
+                    "fifo_dropped_lines": payload.get("fifo_dropped_lines"),
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
@@ -710,9 +839,23 @@ def collect(args):
             else:
                 stale_no_price.pop(uid, None)
 
-        removed = ring_prune(args.out)
-        if removed:
-            log(f"Ringpuffer: {len(removed)} alte Tag(e) gelöscht ({removed[0]} …).")
+        pruned = ring_prune(args.out)
+        if pruned["removed_synced"]:
+            log(
+                f"Ringpuffer: {len(pruned['removed_synced'])} bestätigte Tag(e) "
+                f"gelöscht ({pruned['removed_synced'][0]} …)."
+            )
+        if pruned["removed_fifo"]:
+            note = (
+                f"⚠ Ringpuffer-FIFO: {len(pruned['removed_fifo'])} Tag(e) nach "
+                f"{RING_DAYS} Tagen bewusst verworfen"
+            )
+            if pruned["fifo_unacked"]:
+                note += (
+                    f", davon {len(pruned['fifo_unacked'])} OHNE Upload-Bestätigung "
+                    "(Verlust protokolliert in meta/fifo_losses.jsonl)"
+                )
+            log(note)
 
         print_table(snap, stset, args.fuel)
         if args.once:
