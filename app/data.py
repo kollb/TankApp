@@ -2402,13 +2402,17 @@ class LiveData:
             **profiles_recovery_options(self.settings),
         }
 
-    def decide(self, params: dict):
-        """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1)."""
+    def decide(self, params: dict, read=None):
+        """Entscheidungs-API — GET /api/v1/decide (Konzept §4, §11.1).
+
+        ``read`` ist der gemeinsame Lesezustand (A21-B2.2): ``/overview``
+        reicht ihn an ``decide`` **und** ``stats_summary`` weiter.
+        """
         try:
             from .decide import evaluate_decide
             from .feedback import StoreCorrupted, StoreTooLarge
 
-            return evaluate_decide(self, params)
+            return evaluate_decide(self, params, read=read)
         except ValueError as e:
             raise e
         except StoreTooLarge:
@@ -2776,13 +2780,16 @@ class LiveData:
             )
         return buf.getvalue()
 
-    def stats_summary(self, params: dict):
-        """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet."""
+    def stats_summary(self, params: dict, read=None):
+        """Drei-Schichten-Statistik: Markt-Backtest, Live-Advice, Wallet.
+
+        ``read`` (A21-B2.2) ist der gemeinsame Lesezustand aus ``/overview``.
+        """
         try:
             from .feedback import StoreCorrupted, StoreTooLarge
             from .stats_summary import evaluate_stats_summary
 
-            return evaluate_stats_summary(self, params)
+            return evaluate_stats_summary(self, params, read=read)
         except StoreTooLarge:
             return {"error_code": "store_too_large"}
         except StoreCorrupted:
@@ -2863,20 +2870,42 @@ class LiveData:
             elif city:
                 day_res = self.day_with_band(station_id, city, fuel)
 
-        from . import metrics
+        from . import metrics, read_state
+
+        # A21-B2.2 (#203): **ein** Lesezustand für diesen Request. Decide und
+        # Stats-Summary teilen Ledger, Statistik und Schwellen; der
+        # Snapshot-Vorblick benutzt denselben heißen Store.
+        bundle = read_state.load_bundle(self.settings, self.clock())
 
         with metrics.measure("decide"):
-            decide_res = self.decide(decide_params)
+            decide_res = self.decide(decide_params, read=bundle)
         fills_res = self.fills()
         summary_params = {"fuel": fuel}
         if city:
             summary_params["city"] = city
         with metrics.measure("stats"):
-            summary_res = self.stats_summary(summary_params)
+            summary_res = self.stats_summary(summary_params, read=bundle)
         episodes_res = self.episodes("due")
+
+        # Explizite Teilfehler: ``error_code`` außen bleibt die Aussage über
+        # die **Anfrage**, ist aber kein Vollständigkeitsnachweis (Audit
+        # §4.3) — eine Komponente kann fehlschlagen, während außen ``null``
+        # steht. ``partial_errors`` benennt sie, ``data_version`` die
+        # Revision, aus der alle Teile stammen.
+        partial_errors = [
+            {"component": component, "error_code": code}
+            for component, code in (
+                ("day", (day_res or {}).get("error_code")),
+                ("decide", (decide_res or {}).get("error_code")),
+                ("stats_summary", (summary_res or {}).get("error_code")),
+            )
+            if code
+        ]
 
         result = {
             "generated_at": self.clock().isoformat(),
+            "data_version": bundle.data_version,
+            "partial_errors": partial_errors,
             "decide": decide_res,
             "fills": fills_res,
             "stats_summary": summary_res,

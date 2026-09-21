@@ -52,10 +52,18 @@ def _fresh_metadata_memo():
     # Eintrag teilen. ``clear_publication_cache`` ist dieselbe Funktion, die
     # auch Werkzeuge nach einem eigenen Schreibvorgang aufrufen.
     data_module.clear_publication_cache()
+    # A21-B2.2: Der gemeinsame Lesezustand (Ledger + Statistik je Revision)
+    # ist prozess-global. Ohne Reset könnte ein Test die Statistik eines
+    # früheren Tests mit anderem Store erben — die Revisionsschlüssel sind
+    # Pfad-/Zeitstempel, zwei Tests könnten also denselben Schlüssel treffen.
+    import app.read_state as read_state_module
+
+    read_state_module.clear_cache()
     yield
     data_module._META_MEMO.update({"key": None, "value": None, "at": 0.0})
     data_module._ROUTE_REFRESH.clear()
     data_module.clear_publication_cache()
+    read_state_module.clear_cache()
 
 
 @pytest.fixture

@@ -38,6 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 import app.decide as decide_module
+import app.feedback as feedback_module
 import app.metrics as metrics
 from app.config import Settings
 from app.data import LiveData
@@ -352,13 +353,15 @@ def test_influx_verzoegerung_landet_im_history_span(server, query):
 
 def test_advice_verzoegerung_landet_im_advice_span(server, monkeypatch):
     """Eingespritzte Statistikzeit wird dem Advice-Span zugeordnet."""
-    original = decide_module.compute_advice_stats
+    # A21-B2.2: Die Statistik entsteht im gemeinsamen Lesezustand, also wird
+    # dort die Wartezeit eingespiegelt (app.feedback.compute_advice_stats).
+    original = feedback_module.compute_advice_stats
 
     def slow(*args, **kwargs):
         time.sleep(0.12)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(decide_module, "compute_advice_stats", slow)
+    monkeypatch.setattr(feedback_module, "compute_advice_stats", slow)
     _status, headers, _body = _get(server, OVERVIEW)
     spans = _spans(headers)
     assert spans.get("advice", 0.0) >= 100.0
