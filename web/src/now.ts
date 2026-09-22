@@ -230,12 +230,11 @@ export type NowVerdict = {
 };
 
 /**
- * O45: Die Ersparnis aus derselben Basis wie der Preis, der daneben steht —
- * dem Medianpreis des Fensters (`expected_saving_median_eur`). Fenster zeigen
- * `expected_price` €/L; die Ersparnis aus den **Fensterminima**
- * (`expected_saving_eur`) passt nicht zu dieser Zahl: Bei 2,229 €/L aktuell
- * und 2,221 €/L Medianpreis sind das 0,44 € (55 L), während die Minima
- * 2,09 € ergeben. Alte Antworten ohne das Feld fallen zurück.
+ * O45: Der UI-Betrag aus derselben Basis wie der Preis daneben — dem
+ * Medianpreis des Fensters (`expected_saving_median_eur`). Fenster zeigen
+ * `expected_price` €/L; das separate Draw-Potenzial aus den Fensterminima
+ * (`expected_saving_eur`) ist keine arithmetische Erwartung und wird nur mit
+ * seiner eigenen Bezeichnung gezeigt. Alte Antworten ohne das Feld fallen zurück.
  */
 export function windowSavingEur(window: {
   expected_saving_eur: number | null;
@@ -309,20 +308,19 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     // dieser Abstand — dem Medianpreis des Fensters (`expected_price`, die
     // Zahl, die als „erwartet“ angezeigt wird). `expected_saving_eur` rechnet
     // gegen den Median der **Fensterminima** und steht nur mit benannter
-    // Basis da: „erwartet ~2,221 €/L“ neben „2,09 € Ersparnis für 55 L“ las
-    // sich wie ein Widerspruch — die 2,09 € gehören zu 2,191 €/L, der
-    // Medianpreis trägt 0,44 €.
+    // Basis da: „Median 2,221 €/L“ neben dem Draw-Potenzial „2,09 € für
+    // 55 L“ bleibt nachvollziehbar — der Medianpreis trägt hier 0,44 €.
     const typicalSaving = p.expected_saving_median_eur ?? p.expected_saving_eur;
     const bestSaving = p.expected_saving_eur;
     let amount: string | null = null;
     if (deltaCt != null && deltaCt > 0) {
-      amount = `Erwartet ${centPerLiter(deltaCt)} günstiger ≈ ${euro(typicalSaving)} €`;
+      amount = `Im Median ${centPerLiter(deltaCt)} günstiger ≈ ${euro(typicalSaving)} €`;
     } else if (typicalSaving > 0) {
-      amount = `Erwartet ≈ ${euro(typicalSaving)} € günstiger`;
+      amount = `Im Median ≈ ${euro(typicalSaving)} € günstiger`;
     } else if (bestSaving > 0) {
-      // Nur das Fensterminimum trägt einen Vorsprung — benannt, statt als
-      // erwarteter Preis getarnt.
-      amount = `Im günstigsten Moment ≈ ${euro(bestSaving)} € günstiger`;
+      // Nur das Draw-Potenzial trägt einen Vorsprung — benannt, statt als
+      // Erwartungswert oder Garantie getarnt.
+      amount = `Fensterpotenzial ≈ ${euro(bestSaving)} € günstiger`;
     }
     return {
       action: p.action,
@@ -660,7 +658,7 @@ export function nowExplanation(
     decide.primary.expected_saving_median_eur ?? bestSaving;
   const basisSplit =
     bestSaving > typicalSaving + 0.005
-      ? ` Im günstigsten Moment des Fensters wären es ${euro(bestSaving)} €, im Mittel ${euro(typicalSaving)} €.`
+      ? ` Das Draw-Potenzial des Fensters beträgt ${euro(bestSaving)} €; der Medianbetrag beträgt ${euro(typicalSaving)} €.`
       : "";
   if (deltaCt != null && deltaCt > 0) {
     sentences.push(

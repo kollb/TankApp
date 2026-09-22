@@ -1,6 +1,12 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 21.09.2026 · App-Version **0.66.0** — neu seit 0.66.0 (A21-B3):
+> Stand: 22.09.2026 · App-Version **0.67.0** — neu seit 0.67.0 (A21-B4):
+> DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis
+> `latest_by`, getrennte physische/What-if-Mengen und ein expliziter
+> Nutzenvertrag (`benefit_contract`). Partial-Block-Draws werden als
+> `suffix_minima` veröffentlicht; ältere Publikationen bleiben mit
+> `draw_scope: "legacy_whole_block"` lesbar, sind aber entsprechend markiert.
+> Davor seit 0.66.0 (A21-B3):
 > das Archiv ist fail-closed in den Ledger eingebunden (Alarm
 > `archive_corrupted`, A21-B3.1), und der Backup-Herzschlag hängt an der
 > Verifiziertheit (Alarm `backup_unverified`, A21-B3.2). Davor neu seit 0.65.0 (A21-B2,
@@ -279,6 +285,19 @@ Parameter (Ergänzung zu B4, Konzept §11.1):
 | `tank_percent` | **A2**: Füllstand 0–100 (F3 „Tank bei ¼ — kann ich warten?“). Übersetzt über `tank_capacity_l` und Verbrauch in Restreichweite. Außerhalb 0–100 → `400 invalid_tank`. |
 | `tank_capacity_l` | **A2**: Tankgröße 20–120 l (Default 50), nur zusammen mit `tank_percent` wirksam. Außerhalb → `400 invalid_tank`. |
 | `range_km` | **A2**: Restreichweite direkt (z. B. Bordcomputer), 0–1500 km; schlägt `tank_percent` vor. Außerhalb → `400 invalid_tank`. |
+| `quantity_mode` | **A21-B4.3**: `physical` (Default) begrenzt die verwendete Menge auf die freie Tankkapazität; `what_if` hält die angefragten Liter als ausdrücklich hypothetisches Szenario fest und sperrt jede reale Aktionsfreigabe. Ungültig → `400 invalid_quantity_mode`. |
+
+**Mengenvertrag (A21-B4.3):** `context.liters_requested` ist die angefragte Menge,
+`context.liters` und `quantity.used_liters` die tatsächlich für Rechnung,
+Ranking und Anzeige verwendete Menge. Bei bekanntem Füllstand ist
+`quantity.available_liters = capacity × (1 − percent / 100)` und die verwendete
+Menge höchstens diese freie Kapazität; zum Beispiel ergeben 55 L, 25 % und
+55 L Kapazität **41,25 L**, nicht 55 L. Bei `quantity_mode=what_if` bleibt die
+Szenariomenge erhalten, `quantity.mode` lautet `what_if`,
+`benefit_contract.action.hypothetical_only` ist `true` und
+`primary.action` bleibt `no_advice`. 0 % (leer), 100 % (voll), unbekannt sowie
+NaN/Inf sind getrennte Fälle; ein voller Tank setzt `tank_full`, unbekannter
+Füllstand setzt keine erfundene Kapazität.
 
 **Tankstand (A2):** Mit `tank_percent`/`range_km` antwortet `decide` zusätzlich
 mit einem `tank`-Block: `range_km` (Restreichweite), `reserve_range_km`
@@ -300,6 +319,19 @@ Entscheidungsschwellen und den M7-Vorschlag (siehe
 [Stats Summary](#stats-summary-b4-3-schichten)). Liegt kein Fenster mehr vor
 `latest_by`, lautet die Aktion `no_advice` mit dem Hinweis auf den
 spätesten Tankzeitpunkt.
+
+**Restfenster und DST (A21-B4.1/.2):** Vergangenheitswerte und Starts vor
+`now` sind aus Median, Ranking, Wahrscheinlichkeit und Potenzial entfernt;
+der Grenzpunkt bei `now` bleibt ausführbar. `latest_by` ist inklusiv, spätere
+Punkte werden ausgeschlossen. Ein Fenster enthält nur noch tatsächlich
+verfügbare Forecast-Zeitstempel und trägt `draw_scope`. `whole_published_block`
+ist ein vollständiger Block, `suffix_artifact` eine exakte Restblock-Verteilung,
+`partial_without_prefix_artifact`/`partial_without_suffix_artifact` fehlt
+bewusst Evidenz, und `legacy_whole_block` kennzeichnet eine vor B4.2 erzeugte
+Veröffentlichung, die aus Kompatibilitätsgründen nicht still umgedeutet wird.
+Der Worker verwendet lokale Kalenderblöcke, serialisiert deren UTC-Start und
+trennt beide Herbst-Folds; deshalb bleiben 23-/25-Stunden-Tage und Mitternacht
+monoton und identifizierbar.
 
 `personalization` (O2/O3) sagt, ob die Fensterreihenfolge schon nach dem
 persönlichen **Wochentag×Stunden**-Profil gewichtet ist: `active`, `n_fills`,
@@ -385,6 +417,18 @@ Draws wird auf die ebenfalls bei null abgeschnittene Median-Preis-Differenz
 (`expected_saving_median_eur`) zurückgegriffen. Verluste werden abgeschnitten;
 diese Kennzahlen sind daher weder eine Gewinn-/Verlustbilanz noch ein
 Ersatz für `p_better`. Der Pi erzeugt keine solche Kennzahl aus Randquantilen.
+
+**Nutzenvertrag (A21-B4.4):** `benefit_contract.potential` benennt diese
+abgeschnittene Mediangröße als Potenzial (`arithmetic_expectation: false`,
+`guaranteed: false`, `losses_included: false`). Sie ist getrennt von
+`benefit_contract.ranking` (Median der noch nutzbaren q50-Punkte), der
+`probability` (Draw-Wahrscheinlichkeit), `action` (ausführbare oder
+hypothetische Strategie) und `strategy_utility` (erst nach Replay/Settlement
+verfügbarer realisierter Netto-Nutzen). `oracle.reachable_by_strategy` ist
+explizit `false`: Das reale Fensterminimum ist eine Untergrenze, kein
+versprochener Erfolg. Diese Benennung gilt auch im `stats/summary`-Feld
+`benefit_contract`; Score-Aliasse heißen dort `strategy_saving_eur`,
+`realized_policy_delta_eur` und `oracle_lower_bound_eur`.
 
 **O45 — beide Basen, benannt.** `expected_saving_eur` (Fensterminima) und
 `expected_saving_median_eur` (Medianpreis `expected_price`) sind verschiedene
@@ -842,6 +886,15 @@ Liefert die 3 strikt getrennten Schichten gemäß Konzept §5.5:
 4. **M7-Schwellen-Nachzug** (Konzept §5.5 Schicht B Schritt 4, §13 M7): `threshold_tuning` liefert `targets` (Trefferquote WARTEN 70 %, JETZT 85 %, WOANDERS 60 %), die `sample`-Größen je Aktion, `reasons` und den `thresholds`-Vorschlag; `thresholds` sind die **aktiven** Schwellen der Entscheidungstabelle. Nachgezogen wird erst ab `min_n` = 25 ausgespielten Empfehlungen je Aktion; wirksam wird der Vorschlag nur mit `TANKAPP_M7_AUTO_APPLY=1` (Default aus). Seit B2 darf der Nachzug ausschließlich die Euro-/Zeit-/Umweg-Schwellen ändern; `wait_p_high`, `wait_p_mid`, `elsewhere_p` und `now_p` bleiben unverändert, denn Wahrscheinlichkeitskalibrierung ist Aufgabe der PIT-/Ledger-Nachweise, nicht eines Reglers.
 5. **Güte-Kacheln**: Nur `picp_95` ist echt (Median aus der Engine-Publikation). `top3_hit_rate`, `mase_sprungfrei` und `cusum_drift` sind null/`unknown` (Konzept §6, offen) — die Gesamt-MASE als „sprungfrei“ zu etikettieren wäre Etikettenschwindel.
 6. **`live_phase` (bewertete Live-Tage der Übergangsregel)**: gezählt aus den publizierten Bootstrap-Policies (`runtime/engine/current.json` → `policies`), nicht aus dem Browserdatum: `good_complete_days` (schwächste Station/Kraftstoff), `best_complete_days`, `required_complete_days` (Engine-Schwelle `live_only_days`, Default 90), `days_missing`, `min_daily_coverage`, `stations`, `live_only_stations`, `as_of` (Datenstand des Modell-Laufs), `complete`. Ohne Veröffentlichung oder bei uneinheitlichen Schwellen ist das Feld `null` — die GUI zeigt dann „noch keine Live-Abdeckungsdaten“ statt eines erfundenen Countdowns (§0.4). Achtung: Die Tageszahl ist die Übergangsregel (Archiv → Polling), **nicht** das M7-Gate; dieses bleibt „≥ 100 Verteilungs-P-Empfehlungen, Brier-KI unter Basis/Klima und Steigungs-KI enthält 1“ (Punkt 2). Beide Freigaben haben deshalb in der GUI eigene Kacheln und eigene Nenner: `live_only_days` (Engine-Schwelle, `engine/cli.py --live-only-days`, Default 90) für die Datenhygiene, `min_recommendations` für M7 — bei ~1 Empfehlung/Tag wären 100 Settlements ~100 Tage, M7 soll aber nach ~4 Wochen Live-Betrieb schaltbar sein (Konzept §13). Das Stationsdetail `data_policy` je Prognose (`GET /api/v1/forecast`) bleibt unverändert.
+
+**B4.4-Vertrag in Schicht A:** Score-Zeilen tragen die kompatiblen, aber
+fachlich benannten Felder `strategy_saving_eur` (realisierter Nutzen der
+Threshold-Policy), `realized_policy_delta_eur` (inklusive Verlustseite) und
+`oracle_lower_bound_eur` (beobachtetes Minimum, nicht erreichbar durch die
+Strategie). `potential_is_expectation` ist immer `false`,
+`oracle_reachable` immer `false`; der Top-Level-`benefit_contract` nennt
+Ranking, Potenzial, Strategie- und Oracle-Metrik gemeinsam. Kein Feld darf
+als garantierte oder arithmetische Erwartungsersparnis beschriftet werden.
 
 
 ## Health

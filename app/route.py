@@ -33,6 +33,7 @@ import datetime as dt
 import math
 
 from .data import haversine_km, metadata
+from .quantity import QUANTITY_MODES, resolve_quantity
 from .thresholds import DEFAULT_THRESHOLDS, active_thresholds
 
 FUELS = {"e10", "e5", "diesel"}
@@ -218,9 +219,39 @@ def evaluate_route(live_data, params: dict):
     if fuel not in FUELS:
         raise ValueError("invalid_fuel")
 
-    liters = _parse_float(params.get("liters"), 40.0)
+    liters_raw = params.get("liters")
+    liters = (
+        40.0
+        if liters_raw is None or not str(liters_raw).strip()
+        else _parse_float(liters_raw, None)
+    )
     if liters is None or not (5 <= liters <= 100):
         raise ValueError("invalid_liters")
+    quantity_mode = str(params.get("quantity_mode") or "physical").lower()
+    if quantity_mode not in QUANTITY_MODES:
+        raise ValueError("invalid_quantity_mode")
+
+    def optional_float(raw):
+        if raw is None or not str(raw).strip():
+            return None
+        value = _parse_float(raw, None)
+        if value is None:
+            raise ValueError("invalid_tank")
+        return value
+
+    tank_percent = optional_float(params.get("tank_percent"))
+    tank_capacity = optional_float(params.get("tank_capacity_l"))
+    if tank_percent is not None and not 0 <= tank_percent <= 100:
+        raise ValueError("invalid_tank")
+    if tank_capacity is not None and not 20 <= tank_capacity <= 120:
+        raise ValueError("invalid_tank")
+    quantity = resolve_quantity(
+        liters,
+        tank_percent,
+        tank_capacity,
+        mode=quantity_mode,
+    )
+    liters = float(quantity["used_liters"])
 
     consumption = _parse_float(params.get("consumption"), 7.0)
     if not (3 <= consumption <= 20):
@@ -457,6 +488,7 @@ def evaluate_route(live_data, params: dict):
         "ref_price_source": ref_price_source,
         "delta_ct": round(delta_ct, 2),
         "liters": liters,
+        "quantity": quantity,
         "detour_km_oneway": round(detour_km, 3),
         "detour_km_total": round(d, 2),
         "detour_km_source": detour_source,

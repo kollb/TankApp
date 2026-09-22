@@ -1182,6 +1182,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "invalid_home",
                     "invalid_basis",
                     "invalid_tank",
+                    "invalid_quantity_mode",
                     "invalid_profile_name",
                     "invalid_time_value_eur_h",
                     "invalid_speed_kmh",

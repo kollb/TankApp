@@ -1,6 +1,6 @@
 # Produktkonzept
 
-> Stand: 20.09.2026 · App-Version 0.59.1 · Konsolidierter Produktstand.
+> Stand: 22.09.2026 · App-Version 0.67.0 · Konsolidierter Produktstand.
 > Implementierungsgrenzen: [Projektstand](../planung/LUECKEN.md).
 > Endpunktverträge: [API](../referenz/API.md).
 
@@ -76,7 +76,11 @@ Ohne zulässiges Paar fällt die Ziehung auf unabhängige Tage zurück.
 
 Die Engine liefert Pfade und Quantile für 24, 72 und 168 Stunden. Aussagen
 über ein Fensterminimum werden aus den Pfaden berechnet, nicht aus einer
-nachträglich erfundenen Normalverteilung um den Median.
+nachträglich erfundenen Normalverteilung um den Median. Die lokale
+2-Stunden-Kompression verwendet eine UTC-Blockidentität; dadurch bleiben
+Mitternacht, der 23-Stunden-Frühlingstag, der 25-Stunden-Herbsttag und beide
+Herbst-Folds chronologisch unterscheidbar. Ein Blockstart ist kein lokales
+naives Datum, sondern ein serialisierter UTC-Stempel.
 
 ### Technische Kalibrierung
 
@@ -113,6 +117,23 @@ Aktuelle Schwellen und Prioritäten stehen in `app/decide.py` und
 `app/thresholds.py`, der öffentliche Vertrag in der
 [API-Referenz](../referenz/API.md). Dieses Konzept führt keine zweite
 Parametertabelle mit abweichenden Prototypwerten.
+
+### Restzeit und fachliche Menge
+
+Ein Fenster ist die Menge der Prognosepunkte in `[now, latest_by]`; vergangene
+Punkte und Starts dürfen weder Medianpreis noch Ranking, P, Potenzial oder
+Strategie beeinflussen. `latest_by` ist ein inklusiver Grenzpunkt. Der
+Fenster-Median ist ein Ranking-/Anzeigewert, das abgeschnittene Medianpotenzial
+(`expected_saving_eur`) ist ein mögliches Upside und weder arithmetische
+Erwartung noch Garantie. Draw-Wahrscheinlichkeit, Handlung/Freigabe,
+ausführbare Strategie und später gemessener Netto-Nutzen bleiben eigene
+Größen.
+
+Die angefragten Liter sind nicht automatisch die verfügbare Tankmenge. Im
+physischen Modus wird mit der freien Kapazität gerechnet; 55 L Anfrage bei
+25 % in einem 55-L-Tank bedeuten 41,25 L. `what_if` darf 55 L als Szenario
+zeigen, ist aber ausdrücklich hypothetisch und sperrt eine reale Aktion.
+Profil, Defaults und historische Belege werden nicht rückwirkend umgedeutet.
 
 ### F2: Hier oder woanders
 

@@ -266,11 +266,13 @@ export function JetztView(props: JetztViewProps) {
   const decide = decideRes.data ?? null;
   const problemCode =
     decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
+  const calculationLiters = decide?.quantity?.used_liters ?? liters;
+  const quantityNotice = decide?.quantity?.notice ?? null;
   const input = {
     decide,
     stations,
     selectedId,
-    liters,
+    liters: calculationLiters,
     now,
     latestBy: assumptions.latestBy,
     timeValue,
@@ -522,7 +524,10 @@ export function JetztView(props: JetztViewProps) {
               >
                 <span className="flex items-center gap-2 font-semibold">
                   <SlidersHorizontal size={13} aria-hidden="true" />
-                  Annahmen: {deTrimmed(liters, 0)} L
+                  Annahmen: {deTrimmed(calculationLiters, 0)} L
+                  {decide?.quantity?.adjusted
+                    ? ` (frei: ${deTrimmed(decide.quantity.available_liters ?? calculationLiters, 0)} L)`
+                    : ""}
                   {assumptionsActive && latestByLabel
                     ? ` · bis ${latestByLabel} Uhr`
                     : ""}
@@ -552,6 +557,11 @@ export function JetztView(props: JetztViewProps) {
                   dein Profil bleibt unangetastet. Der Server rechnet mit den
                   neuen Werten neu (dieselbe Anfrage, andere Parameter).
                 </p>
+                {quantityNotice && (
+                  <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                    {quantityNotice} Rechnung und Anzeige nennen {deTrimmed(calculationLiters, 0)} L.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="text-slate-400">
                     Tankmenge (L)
@@ -682,7 +692,7 @@ export function JetztView(props: JetztViewProps) {
                 <span className="text-xs text-slate-400">
                   Günstigste bis teuerste: {centPerLiter(bestNow.spreadCt ?? 0)} ·
                   {" "}
-                  {euro(bestNow.spreadEur)} € bei {deTrimmed(liters, 0)} L
+                  {euro(bestNow.spreadEur)} € bei {deTrimmed(calculationLiters, 0)} L
                 </span>
               )}
             </div>

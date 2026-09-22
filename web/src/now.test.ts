@@ -277,7 +277,7 @@ describe("O45: ct/L und € kommen aus derselben Basis", () => {
       expected_saving_eur: 2.09,
       expected_saving_median_eur: 0.44,
       reason_short:
-        "Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu 2,09 €, im Mittel 0,44 €.",
+        "Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu 2,09 €, Medianbetrag beträgt 0,44 €.",
     },
   );
 
@@ -297,13 +297,13 @@ describe("O45: ct/L und € kommen aus derselben Basis", () => {
       pricesAt: null,
     });
     expect(explain?.sentences[1]).toContain("0,8 ct/L über dem erwarteten Fensterpreis");
-    expect(explain?.sentences[1]).toContain("Im günstigsten Moment des Fensters wären es 2,09 €");
-    expect(explain?.sentences[1]).toContain("im Mittel 0,44 €");
+    expect(explain?.sentences[1]).toContain("Das Draw-Potenzial des Fensters beträgt 2,09 €");
+    expect(explain?.sentences[1]).toContain("Medianbetrag beträgt 0,44 €");
   });
 
   it("ohne Draws bleibt eine Zahl — keine erfundene zweite Basis", () => {
     const verdict = nowVerdict(input());
-    expect(verdict?.amount).toBe("Erwartet 4,0 ct/L günstiger ≈ 1,60 €");
+    expect(verdict?.amount).toBe("Im Median 4,0 ct/L günstiger ≈ 1,60 €");
   });
 
   it("trägt nur das Fensterminimum einen Vorsprung, steht das da", () => {
@@ -318,7 +318,7 @@ describe("O45: ct/L und € kommen aus derselben Basis", () => {
       },
     );
     const verdict = nowVerdict(input({ decide: nurMinimum, liters: 55 }));
-    expect(verdict?.amount).toBe("Im günstigsten Moment ≈ 2,09 € günstiger");
+    expect(verdict?.amount).toBe("Fensterpotenzial ≈ 2,09 € günstiger");
   });
 });
 

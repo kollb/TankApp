@@ -93,12 +93,24 @@ def _empty_backtest() -> dict[str, Any]:
         "models": {},
         "p8Series": {},
         "scan": {"eps": [], "commitEur": [], "smartEur": [], "waits": []},
+        "contract": {
+            "strategy_id": "backtest-threshold-v1",
+            "strategy_saving_eur": None,
+            "realized_policy_delta_eur": None,
+            "oracle_lower_bound_eur": None,
+            "potential_is_expectation": False,
+            "oracle_reachable": False,
+        },
         "error_code": "backtest_not_available",
     }
 
 
 def _score_rows(
-    rows: list[dict[str, Any]], eps: float, liters: float
+    rows: list[dict[str, Any]],
+    eps: float,
+    liters: float,
+    *,
+    include_contract: bool = False,
 ) -> dict[str, Any]:
     """Server-Spiegel von web/src/data.ts scoreRows (gleiche Formeln).
 
@@ -145,7 +157,7 @@ def _score_rows(
     def to_eur(ct: float) -> float:
         return round((ct / 100.0) * liters, 2)
 
-    return {
+    result = {
         # O21: Die Parameter gehören zur Zahl. „+12,40 €“ ohneTankmenge und
         # Schwelle ist keine Aussage — beide stehen jetzt je Score-Block dabei.
         "eps": eps,
@@ -166,6 +178,16 @@ def _score_rows(
         if sum_best > 0
         else (0.0 if n else None),
     }
+    if include_contract:
+        # A21-B4.4: compatible aliases with an explicit semantic contract.
+        result.update(
+            strategy_saving_eur=to_eur(sum_smart),
+            realized_policy_delta_eur=to_eur(sum_commit),
+            oracle_lower_bound_eur=to_eur(sum_best),
+            potential_is_expectation=False,
+            oracle_reachable=False,
+        )
+    return result
 
 
 def _build_backtest_from_publication(
@@ -249,7 +271,9 @@ def _build_backtest_from_publication(
         all_eval.extend(station_rows)
 
         # Reale Engine-Metriken (MAE, MASE, PICP) + Entscheidungs-Scores.
-        score = _score_rows(station_rows, default_eps, default_liters)
+        score = _score_rows(
+            station_rows, default_eps, default_liters, include_contract=True
+        )
         station_scores.append(
             {
                 "station_id": sid,
@@ -263,12 +287,23 @@ def _build_backtest_from_publication(
             }
         )
 
-    total_score = _score_rows(all_eval, default_eps, default_liters)
+    total_score = _score_rows(
+        all_eval, default_eps, default_liters, include_contract=True
+    )
     n_total = total_score["n"]
     totals: dict[str, Any] = {
         "smart": total_score["sum_smart_eur"] if n_total else None,
         "commit": total_score["sum_commit_eur"] if n_total else None,
         "best": total_score["sum_best_eur"] if n_total else None,
+        "strategy_saving_eur": total_score["strategy_saving_eur"] if n_total else None,
+        "realized_policy_delta_eur": total_score["realized_policy_delta_eur"]
+        if n_total
+        else None,
+        "oracle_lower_bound_eur": total_score["oracle_lower_bound_eur"]
+        if n_total
+        else None,
+        "potential_is_expectation": False,
+        "oracle_reachable": False,
         "regretEur": total_score["avg_regret_eur"] if n_total else None,
         "n": n_total,
         "hitFreq": total_score["hit_freq"] if n_total else None,
@@ -494,6 +529,19 @@ def evaluate_stats_summary(
         "fuel": fuel,
         "city": city,
         "backtest": backtest,
+        "benefit_contract": {
+            "version": 1,
+            "strategy_id": "backtest-threshold-v1",
+            "ranking_metric": "median_q50_day_forecast",
+            "strategy_saving_metric": "realized_threshold_policy_saving",
+            "potential_metric": "clipped_positive_strategy_saving",
+            "oracle_metric": "realized_day_minimum_lower_bound",
+            "potential_is_expectation": False,
+            "loss_side": "realized_policy_delta_eur",
+            "oracle_reachable": False,
+            "liters": profile_liters,
+            "liters_source": liters_source,
+        },
         "live_advice": live_advice,
         "wallet": wallet,
         "threshold_tuning": tuning,
