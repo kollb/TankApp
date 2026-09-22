@@ -1,6 +1,6 @@
 # Engine-Referenz — optionale Modellwerkstatt
 
-> Stand: 12.09.2026 · App-Version 0.11.0. Werkstatt-Referenz für `engine/` —
+> Stand: 22.09.2026 · App-Version 0.67.0. Werkstatt-Referenz für `engine/` —
 > **keine Installations-Checkliste**. Einrichtung: [INSTALL.md](../betrieb/INSTALL.md),
 > Betrieb: [BETRIEB.md](../betrieb/BETRIEB.md), Methodik im Überblick:
 > [ANALYSE.md](ANALYSE.md). Früher lag diese Datei als `engine/README.md` neben
@@ -8,6 +8,7 @@
 
 ## Inhaltsverzeichnis
 
+- [A21-B4 Zeitblöcke und Draw-Veröffentlichung](#a21-b4-zeitblöcke-und-draw-veröffentlichung)
 - [Bezugsweg-Regel](#bezugsweg-regel-für-die-entwicklung)
 - [12-Uhr-Regel](#12-uhr-regel-preiserhöhungen-nur-um-1200-uhr)
 - [Schlüssel-Übersicht](#welcher-schlüssel-wird-wofür-verwendet)
@@ -36,6 +37,25 @@ Der gebündelte NAS-App-Dienst führt Archivabruf, Aufbereitung und Fits aus. De
 kann optional schneller rechnen; dafür vorhandenes Python 3.11+ verwenden,
 **keine neue venv erforderlich**. Für `tankapp.py add-city` und `history-sync`
 sind auch die untenstehenden Python-Pakete nicht nötig.
+
+## A21-B4 Zeitblöcke und Draw-Veröffentlichung
+
+`engine.timeblocks.block_key_utc` bildet die lokale Kalendergrenze auf einen
+UTC-Identitätsstempel ab. Die IDs in `engine.probabilities.block_ids` sind
+chronologisch sortierte numerische Codes; `block_starts` liefert dieselben
+Grenzen als monotone UTC-Timestamps. Die Berechnung ist timezone-aware und
+behandelt den fehlenden Frühjahrs-Slot, Mitternacht und beide Folds der
+Herbststunde ohne naive lokale `floor`-Vergleiche. Das gilt für 24-, 72- und
+168-Stunden-Indizes.
+
+Die 24-h-Entscheidungsveröffentlichung enthält zusätzlich `suffix_minima` für
+den ersten Block. Das Artefakt enthält die echten Restblock-Minima je Draw;
+im Produktions-JSON ist die Matrix als `uint16_delta_1e4_from_block_minimum`
+platzsparend serialisiert. Ein Fenster nach `now` ersetzt damit nicht mehr ein
+Ganzblock-Minimum durch eine unmarkierte Schätzung. Für einen Deadline-Schnitt
+fehlt absichtlich ein Präfix-Artefakt; die API setzt die P dann auf `null` und
+nennt die fehlende Evidenz. Alte Veröffentlichungen werden als
+`legacy_whole_block` markiert, nicht rückwirkend als exakte Suffixe ausgegeben.
 
 ## Bezugsweg-Regel für die Entwicklung
 

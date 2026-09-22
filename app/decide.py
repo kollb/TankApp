@@ -24,11 +24,13 @@ from typing import Any
 
 from .data import haversine_km, metadata, publication
 from . import metrics
+from .benefit import build_benefit_contract
 from .read_state import ReadBundle, load_bundle
 from .feedback import (
     WH_MIN_FILLS,
     record_snapshot,
 )
+from .quantity import QUANTITY_MODES, resolve_quantity
 from .pside import (
     THETA_CT,
     expected_saving,
@@ -46,6 +48,7 @@ from .route import (
     net_economics,
 )
 from .thresholds import DEFAULT_THRESHOLDS
+from engine.timeblocks import block_key_utc
 
 FUELS = {"e10", "e5", "diesel"}
 
@@ -143,6 +146,8 @@ ACTION_BLOCKING_REASONS = (
     "quality_missing",
     "quality_gate",
     "m7_pending",
+    "tank_full",
+    "what_if_only",
 )
 
 # Menschliche Sperrgrund-Texte — dieselbe Sprache wie die Tabelle (§4.5).
@@ -185,6 +190,11 @@ _BLOCK_REASON_TEXT = {
     "m7_pending": (
         "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
         "Empfehlungen aber noch nicht freigegeben."
+    ),
+    "tank_full": "Der Tank ist voll — für diese Planung ist keine Tankmenge verfügbar.",
+    "what_if_only": (
+        "Was-wäre-wenn: Diese Menge ist ein Szenario und gibt keine reale "
+        "Aktionsfreigabe."
     ),
 }
 
@@ -387,23 +397,22 @@ def _parse_deadline(value: Any) -> dt.datetime | None:
     return stamp
 
 
-def _floor_2h(stamp: dt.datetime) -> dt.datetime:
-    """Blockbeginn eines 2-h-Fensters (Berlin), sekundengenau gefloort."""
-    local = stamp.astimezone(BERLIN_TZ).replace(minute=0, second=0, microsecond=0)
-    return local.replace(hour=(local.hour // 2) * 2)
+def _calendar_block_key(stamp: dt.datetime) -> dt.datetime:
+    """Kanonische UTC-Identität desselben DST-sicheren 2-h-Blocks wie der Worker."""
+    return block_key_utc(stamp, "Europe/Berlin", 120)
 
 
 def _block_for_window(draws: dict[str, Any], window_start: str) -> int | None:
     """Index des veröffentlichten Blocks zu einem Fensterbeginn.
 
-    Blockanfänge liegen als UTC-ISO vor; der Vergleich erfolgt über den
-    gefloorten Zeitpunkt selbst (nicht über String-Gleichheit), damit
-    Zeitzonen-Schreibweisen keine Rolle spielen.
+    Worker und API verwenden beide die UTC-Identität des lokalen
+    Kalenderblocks. Das ist absichtlich kein ``floor`` auf der lokalisieren
+    Zeit: Bei der zweiten 02:00-Stunde wäre diese Operation mehrdeutig.
     """
     stamp = _parse_ts(window_start)
     if stamp is None:
         return None
-    target = _floor_2h(stamp).astimezone(dt.timezone.utc)
+    target = _calendar_block_key(stamp)
     for index, block in enumerate(draws.get("blocks", []) or []):
         if _parse_ts(block.get("start")) == target:
             return index
@@ -434,17 +443,139 @@ def _window_p_value(
     return window_p_details(minima, _block_for_window(draws, window_start))
 
 
+def _draws_for_window(
+    window: dict[str, Any],
+    draws: dict[str, Any] | None,
+    latest_by: dt.datetime | None = None,
+) -> tuple[dict[str, Any] | None, int | None, str]:
+    """Return draw minima only when they cover the *same* usable time range.
+
+    A published block minimum includes every point in that block. It must not
+    be reused after the current point or a deadline has cut the block. Until a
+    point-level/suffix artifact is published, the API deliberately returns no
+    distribution-based minimum for such a partial block; the q50 median still
+    describes the visible usable points. This is a missing-evidence state, not
+    an invented partial minimum.
+    """
+    if not draws:
+        return None, None, "unavailable"
+    block_idx = _block_for_window(draws, window.get("start"))
+    if block_idx is None:
+        return None, None, "unavailable"
+    blocks = draws.get("blocks") or []
+    try:
+        block_start = _parse_ts(blocks[block_idx].get("start"))
+        block_end = _parse_ts(blocks[block_idx].get("end"))
+        window_start = _parse_ts(window.get("start"))
+    except (IndexError, AttributeError):
+        return None, None, "unavailable"
+    if block_start is None or block_end is None or window_start is None:
+        return None, None, "unavailable"
+    if latest_by is not None and latest_by < block_end:
+        return None, None, "partial_without_prefix_artifact"
+    if window_start != block_start:
+        suffix = draws.get("suffix_minima")
+        if isinstance(suffix, dict) and suffix.get("block") == block_idx:
+            return draws, block_idx, "suffix_artifact"
+        # Publications before A21-B4.2 have no partial-range artifact. Read
+        # them compatibly but label the evidence instead of pretending it is
+        # an exact suffix; fresh worker publications always take the branch
+        # above or expose an honest missing-evidence scope.
+        if "suffix_minima" not in draws:
+            return draws, block_idx, "legacy_whole_block"
+        return None, None, "partial_without_suffix_artifact"
+    return draws, block_idx, "whole_published_block"
+
+
+def _scoped_minima(
+    window: dict[str, Any],
+    draws: dict[str, Any] | None,
+    block_idx: int | None,
+    draw_scope: str,
+) -> tuple[list[list[Any]] | None, int | None]:
+    """Read whole-block or exact origin-block suffix draw minima."""
+    if not draws or block_idx is None:
+        return None, None
+    if draw_scope in {"whole_published_block", "legacy_whole_block"}:
+        return draws.get("minima"), block_idx
+    if draw_scope != "suffix_artifact":
+        return None, None
+    suffix = draws.get("suffix_minima")
+    if not isinstance(suffix, dict) or suffix.get("block") != block_idx:
+        return None, None
+    starts = suffix.get("starts") or []
+    target = _parse_ts(window.get("start"))
+    if target is None:
+        return None, None
+    offset = next(
+        (
+            position
+            for position, value in enumerate(starts)
+            if _parse_ts(value) == target
+        ),
+        None,
+    )
+    if offset is None:
+        return None, None
+    rows = suffix.get("minima")
+    if rows is None and suffix.get("encoding") == "uint16_delta_1e4_from_block_minimum":
+        import base64
+        import struct
+
+        try:
+            row_count = int(suffix.get("rows"))
+            column_count = int(suffix.get("columns"))
+            raw = base64.b64decode(suffix.get("minima_b64", ""), validate=True)
+            deltas = struct.unpack(
+                f"<{row_count * column_count}H",
+                raw,
+            )
+        except (TypeError, ValueError, struct.error):
+            return None, None
+        rows = []
+        original = draws.get("minima") or []
+        missing = int(suffix.get("missing", 65535))
+        for row_number in range(row_count):
+            base = (
+                original[row_number][block_idx]
+                if row_number < len(original)
+                and isinstance(original[row_number], list)
+                and block_idx < len(original[row_number])
+                else None
+            )
+            row = []
+            for delta in deltas[
+                row_number * column_count : (row_number + 1) * column_count
+            ]:
+                if delta == missing or not isinstance(base, (int, float)):
+                    row.append(None)
+                else:
+                    row.append(round(float(base) + delta / 10000.0, 4))
+            rows.append(row)
+    rows = rows or []
+    column = [
+        row[offset] for row in rows if isinstance(row, list) and offset < len(row)
+    ]
+    original = draws.get("minima") or []
+    replaced = [list(row) for row in original if isinstance(row, list)]
+    for position, value in enumerate(column):
+        if position < len(replaced) and block_idx < len(replaced[position]):
+            replaced[position][block_idx] = value
+    return replaced, block_idx
+
+
 def _format_window_item(
     w: dict[str, Any],
     draws: dict[str, Any] | None,
     anchor: float | None,
     liters: float,
+    latest_by: dt.datetime | None = None,
 ) -> dict[str, Any]:
-    """Formatiert ein Fenster für windows_today / windows_week mit M3-Konsistenz."""
-    minima = draws.get("minima") if draws else None
-    block_idx = _block_for_window(draws, w["start"]) if draws else None
+    """Formatiert ein Fenster aus genau seinem ausführbaren Restzeitraum."""
+    scoped_draws, block_idx, draw_scope = _draws_for_window(w, draws, latest_by)
+    minima, minima_idx = _scoped_minima(w, scoped_draws, block_idx, draw_scope)
     saving_draws = (
-        expected_saving(minima, block_idx, anchor, liters)
+        expected_saving(minima, minima_idx, anchor, liters)
         if minima and block_idx is not None and anchor is not None
         else None
     )
@@ -454,15 +585,21 @@ def _format_window_item(
         else None
     )
     min_price = (
-        expected_window_min_price(minima, block_idx)
-        if minima and block_idx is not None
+        expected_window_min_price(minima, minima_idx)
+        if minima and minima_idx is not None
         else None
     )
-    p_info = _window_p_value(draws, w["start"]) if draws else None
+    draw_view = (
+        {**scoped_draws, "minima": minima}
+        if scoped_draws and minima is not None
+        else None
+    )
+    p_info = _window_p_value(draw_view, w["start"]) if draw_view else None
     return {
         "start": w["start"],
         "end": w["end"],
         "expected_price": w["expected_price"],
+        "draw_scope": draw_scope,
         "expected_min_price": min_price,
         "expected_saving_eur": (
             saving_draws if saving_draws is not None else saving_median
@@ -584,28 +721,28 @@ def _today_windows(
     ``wh_hours`` (persönliches Tankzeit-Profil, A9) gewichtet die Reihenfolge;
     ohne Profil zählt allein der Preis.
     """
-    blocks: dict[tuple, list[tuple[dt.datetime, float]]] = {}
+    blocks: dict[dt.datetime, list[tuple[dt.datetime, float]]] = {}
     for point in points:
         stamp = _parse_ts(point.get("timestamp"))
         q50 = _q50(point)
         if stamp is None or q50 is None:
             continue
-        berlin = stamp.astimezone(BERLIN_TZ)
-        key = (berlin.date().isoformat(), int(berlin.hour // 2))
+        key = _calendar_block_key(stamp)
         blocks.setdefault(key, []).append((stamp, q50))
-    today_key = clock_now.astimezone(BERLIN_TZ).date().isoformat()
+    today_key = clock_now.astimezone(BERLIN_TZ).date()
     windows = []
-    for (day, _block), entries in blocks.items():
-        if day != today_key:
+    for block_start, entries in blocks.items():
+        if block_start.astimezone(BERLIN_TZ).date() != today_key:
             continue
-        entries.sort(key=lambda e: e[0])
-        end = entries[-1][0]
-        if end <= clock_now:
-            continue  # Block vollständig vergangen
-        if latest_by is not None and end > latest_by:
-            continue  # Block endet nach dem spätesten Tankzeitpunkt
-        start = entries[0][0]
-        median = round(statistics.median(q for _, q in entries), 3)
+        usable = [
+            (stamp, q50)
+            for stamp, q50 in sorted(entries, key=lambda entry: entry[0])
+            if stamp >= clock_now and (latest_by is None or stamp <= latest_by)
+        ]
+        if not usable:
+            continue  # Kein tatsächlich noch erreichbarer Rasterpunkt.
+        start, end = usable[0][0], usable[-1][0]
+        median = round(statistics.median(q for _, q in usable), 3)
         start_berlin = start.astimezone(BERLIN_TZ)
         end_berlin = end.astimezone(BERLIN_TZ)
         windows.append(
@@ -615,6 +752,7 @@ def _today_windows(
                 "expected_price": median,
                 "start_hour": round(start_berlin.hour + start_berlin.minute / 60.0, 2),
                 "end_hour": round(end_berlin.hour + end_berlin.minute / 60.0, 2),
+                "_block_start": block_start.isoformat(),
             }
         )
     return _rank_windows(windows, wh_hours=wh_hours, anchor=anchor)[:3]
@@ -634,25 +772,25 @@ def _week_windows(
     §1.4). Nur Blöcke, die noch nicht vollständig vergangen sind, und mit
     ``latest_by`` nur Blöcke, die vor dem spätesten Tankzeitpunkt enden.
     """
-    blocks: dict[tuple, list[tuple[dt.datetime, float]]] = {}
+    blocks: dict[dt.datetime, list[tuple[dt.datetime, float]]] = {}
     for point in points_7d:
         stamp = _parse_ts(point.get("timestamp"))
         q50 = _q50(point)
         if stamp is None or q50 is None:
             continue
-        berlin = stamp.astimezone(BERLIN_TZ)
-        key = (berlin.date().isoformat(), int(berlin.hour // 2))
+        key = _calendar_block_key(stamp)
         blocks.setdefault(key, []).append((stamp, q50))
     windows = []
-    for (_day, _block), entries in blocks.items():
-        entries.sort(key=lambda e: e[0])
-        start = entries[0][0]
-        end = entries[-1][0]
-        if end <= clock_now:
-            continue  # Block vollständig vergangen
-        if latest_by is not None and end > latest_by:
-            continue  # Block endet nach dem spätesten Tankzeitpunkt
-        median = round(statistics.median(q for _, q in entries), 3)
+    for block_start, entries in blocks.items():
+        usable = [
+            (stamp, q50)
+            for stamp, q50 in sorted(entries, key=lambda entry: entry[0])
+            if stamp >= clock_now and (latest_by is None or stamp <= latest_by)
+        ]
+        if not usable:
+            continue  # Kein tatsächlich noch erreichbarer Rasterpunkt.
+        start, end = usable[0][0], usable[-1][0]
+        median = round(statistics.median(q for _, q in usable), 3)
         start_berlin = start.astimezone(BERLIN_TZ)
         end_berlin = end.astimezone(BERLIN_TZ)
         windows.append(
@@ -662,6 +800,7 @@ def _week_windows(
                 "expected_price": median,
                 "start_hour": round(start_berlin.hour + start_berlin.minute / 60.0, 2),
                 "end_hour": round(end_berlin.hour + end_berlin.minute / 60.0, 2),
+                "_block_start": block_start.isoformat(),
             }
         )
     return _rank_windows(windows, wh_hours=wh_hours, anchor=anchor)[:3]
@@ -704,13 +843,13 @@ def tank_context(
     - ``low``: Rest ≤ 2 × Reserve → Hinweis, Fenster bleibt machbar.
     - ``ok``: kein Tankstand-Hinweis.
     """
+    capacity = (
+        tank_capacity_l if tank_capacity_l is not None else TANK_CAPACITY_DEFAULT_L
+    )
     if range_km_input is not None:
         range_km = float(range_km_input)
         source = "input"
     elif tank_percent is not None:
-        capacity = (
-            tank_capacity_l if tank_capacity_l is not None else TANK_CAPACITY_DEFAULT_L
-        )
         range_km = (
             capacity * (float(tank_percent) / 100.0) / max(0.1, consumption) * 100.0
         )
@@ -742,7 +881,12 @@ def tank_context(
     return {
         "input": source,
         "tank_percent": tank_percent,
-        "tank_capacity_l": tank_capacity_l,
+        "tank_capacity_l": capacity if tank_percent is not None else tank_capacity_l,
+        "free_capacity_l": (
+            round(max(0.0, capacity * (1.0 - tank_percent / 100.0)), 3)
+            if tank_percent is not None
+            else None
+        ),
         "range_km": round(range_km, 1),
         "reserve_range_km": round(reserve_km, 1),
         "state": state,
@@ -1164,9 +1308,18 @@ def evaluate_decide(
     if fuel not in FUELS:
         raise ValueError("invalid_fuel")
 
-    liters = _parse_float(params.get("liters"), 40.0)
+    liters_raw = params.get("liters")
+    liters = (
+        40.0
+        if liters_raw is None or not str(liters_raw).strip()
+        else _parse_float(liters_raw, None)
+    )
     if liters is None or not (5.0 <= liters <= 100.0):
         raise ValueError("invalid_liters")
+
+    quantity_mode = str(params.get("quantity_mode") or "physical").lower()
+    if quantity_mode not in QUANTITY_MODES:
+        raise ValueError("invalid_quantity_mode")
 
     consumption = _parse_float(params.get("consumption"), 7.0)
     if not (3.0 <= consumption <= 20.0):
@@ -1227,20 +1380,36 @@ def evaluate_decide(
 
     # A2: Tankstand für F3 — Füllstand in Prozent (mit Tankgröße) oder
     # Rest-km direkt. Fehlt beides, bleibt tank None (keine Tankstand-Aussage).
-    tank_percent = _parse_float(params.get("tank_percent"), None)
+    def optional_float(raw: Any) -> float | None:
+        if raw is None or not str(raw).strip():
+            return None
+        value = _parse_float(raw, None)
+        if value is None:
+            raise ValueError("invalid_tank")
+        return value
+
+    tank_percent = optional_float(params.get("tank_percent"))
     if tank_percent is not None and not (
         TANK_PERCENT_MIN <= tank_percent <= TANK_PERCENT_MAX
     ):
         raise ValueError("invalid_tank")
-    tank_capacity = _parse_float(params.get("tank_capacity_l"), None)
+    tank_capacity = optional_float(params.get("tank_capacity_l"))
     if tank_capacity is not None and not (
         TANK_CAPACITY_MIN <= tank_capacity <= TANK_CAPACITY_MAX
     ):
         raise ValueError("invalid_tank")
-    range_km_input = _parse_float(params.get("range_km"), None)
+    range_km_input = optional_float(params.get("range_km"))
     if range_km_input is not None and not (0.0 <= range_km_input <= RANGE_KM_MAX):
         raise ValueError("invalid_tank")
     tank = tank_context(tank_percent, tank_capacity, range_km_input, consumption)
+    quantity = resolve_quantity(
+        liters,
+        tank_percent,
+        tank_capacity,
+        mode=quantity_mode,
+        default_capacity_l=TANK_CAPACITY_DEFAULT_L,
+    )
+    liters = float(quantity["used_liters"])
 
     city = params.get("city")
     station_id = params.get("station_id")
@@ -1343,11 +1512,15 @@ def evaluate_decide(
         expected_price_later = windows_today[0]["expected_price"]
         start_hour_later = windows_today[0]["start_hour"]
         end_hour_later = windows_today[0]["end_hour"]
-        rec_block_idx = _block_for_window(draws_24h, rec_start)
-        min_draws = draws_24h.get("minima") if draws_24h else None
-        expected_min_price_later = expected_window_min_price(min_draws, rec_block_idx)
+        scoped_draws, rec_block_idx, rec_draw_scope = _draws_for_window(
+            windows_today[0], draws_24h, latest_by
+        )
+        min_draws, min_draw_idx = _scoped_minima(
+            windows_today[0], scoped_draws, rec_block_idx, rec_draw_scope
+        )
+        expected_min_price_later = expected_window_min_price(min_draws, min_draw_idx)
         saving_from_draws = (
-            expected_saving(min_draws, rec_block_idx, anchor, liters)
+            expected_saving(min_draws, min_draw_idx, anchor, liters)
             if min_draws and rec_block_idx is not None and anchor is not None
             else None
         )
@@ -1391,7 +1564,7 @@ def evaluate_decide(
 
     # Alternativen (F2 Umweg-Ökonomie) — nur mit Ankerpreis rechenbar.
     fresh_threshold = _fresh_threshold_minutes(live_data.settings)
-    if anchor is not None:
+    if anchor is not None and liters > 0:
         alternatives_nearby, best_alt = _alternatives(
             station_list,
             chosen_station,
@@ -1413,7 +1586,22 @@ def evaluate_decide(
     # Ledger-Grundrate. p_besser = P(min über Fenster ≤ p_jetzt − θ), θ = 1 ct.
     # Ohne Draws bleibt p None — dann entscheidet die €-Seite ohne Prozent-Gate.
     rec_start = recommended_window["start"] if recommended_window else None
-    p_better_own = _p_besser_value(draws_24h, rec_start, anchor)
+    rec_draws, _rec_draw_idx, _rec_draw_scope = (
+        _draws_for_window(windows_today[0], draws_24h, latest_by)
+        if windows_today
+        else (None, None, "unavailable")
+    )
+    rec_minima, _rec_min_idx = (
+        _scoped_minima(windows_today[0], rec_draws, _rec_draw_idx, _rec_draw_scope)
+        if windows_today
+        else (None, None)
+    )
+    rec_draw_view = (
+        {**rec_draws, "minima": rec_minima}
+        if rec_draws and rec_minima is not None
+        else None
+    )
+    p_better_own = _p_besser_value(rec_draw_view, rec_start, anchor)
     alt_draws = (
         by_station.get(best_alt["station_id"], {}).get("draws_24h")
         if best_alt
@@ -1481,6 +1669,10 @@ def evaluate_decide(
         now=clock_now,
     )
     blocking_reasons = list(chain_reasons)
+    if quantity["used_liters"] <= 0:
+        blocking_reasons.append("tank_full")
+    if quantity_mode == "what_if":
+        blocking_reasons.append("what_if_only")
     if not is_calibrated:
         blocking_reasons.append("m7_pending")
     if blocking_reasons:
@@ -1501,8 +1693,14 @@ def evaluate_decide(
         #   * Nur M7 fehlt und die Tabelle hätte empfohlen: der
         #     Kalibrierungs-Hinweis. Eine Empfehlung ohne Freigabe als
         #     „Grund“ zu zeigen, wäre die Empfehlung selbst.
-        if chain_reasons and action_base != "no_advice":
-            reason_short = _BLOCK_REASON_TEXT[chain_reasons[0]]
+        quantity_blockers = [
+            code for code in ("tank_full", "what_if_only") if code in blocking_reasons
+        ]
+        release_reasons = chain_reasons + quantity_blockers
+        if release_reasons and action_base != "no_advice":
+            reason_short = _BLOCK_REASON_TEXT[release_reasons[0]]
+        elif quantity_blockers:
+            reason_short = _BLOCK_REASON_TEXT[quantity_blockers[0]]
         elif action_base == "no_advice":
             reason_short = _gate_safe_reason(reason_code, reason)
         else:
@@ -1515,6 +1713,14 @@ def evaluate_decide(
     # Bereitschaft ↔ Handlung: genau die freigegebene Aktion ist „ready“ —
     # nie ein Widerspruch zwischen beiden Feldern (API-/UI-/Failover-Vertrag).
     decision_ready = action != "no_advice"
+    benefit_contract = build_benefit_contract(
+        liters=liters,
+        quantity=quantity,
+        anchor_price=anchor,
+        latest_by=latest_by.isoformat() if latest_by is not None else None,
+        decision_ready=decision_ready,
+        draw_scope=_rec_draw_scope,
+    )
     valid_until = (
         _action_valid_until(
             chosen_station,
@@ -1549,6 +1755,9 @@ def evaluate_decide(
         "price_now": round(anchor, 3) if anchor is not None else None,
         "window_start": recommended_window["start"] if recommended_window else None,
         "window_end": recommended_window["end"] if recommended_window else None,
+        "window_block_start": windows_today[0].get("_block_start")
+        if windows_today
+        else None,
         "window_start_hour": start_hour_later,
         "window_end_hour": end_hour_later,
         "expected_price": round(expected_price_later, 3)
@@ -1570,6 +1779,9 @@ def evaluate_decide(
         # statt einen alten Ledger-Eintrag nachträglich „roh\" zu nennen.
         "forecast_calibration_state": _forecast_calibration_state(forecast_data),
         "liters_assumed": liters,
+        "liters_requested": quantity["requested_liters"],
+        "quantity_mode": quantity_mode,
+        "quantity_source": quantity["source"],
         "fuel": fuel,
         "trip_mode": mode,
         "latest_by": latest_by.isoformat() if latest_by is not None else None,
@@ -1577,6 +1789,7 @@ def evaluate_decide(
         # Informationsträger (Auswertung „Deadline-Druck × Reserve“),
         # die Kollabierung hängt weiter nur an Aktion/Station/Fenster.
         "tank_state": tank.get("state") if tank else None,
+        "benefit_contract": benefit_contract,
     }
 
     # A21-B2.1: Snapshot-Log/Sperre als eigener Span — er wartet auf die
@@ -1609,10 +1822,12 @@ def evaluate_decide(
         },
         "alternatives_nearby": alternatives_nearby,
         "windows_today": [
-            _format_window_item(w, draws_24h, anchor, liters) for w in windows_today
+            _format_window_item(w, draws_24h, anchor, liters, latest_by)
+            for w in windows_today
         ],
         "windows_week": [
-            _format_window_item(w, draws_7d, anchor, liters) for w in windows_week
+            _format_window_item(w, draws_7d, anchor, liters, latest_by)
+            for w in windows_week
         ],
         "episode": {
             "id": ep.get("id"),
@@ -1624,6 +1839,10 @@ def evaluate_decide(
         # unabhängig von der Ampel (Physik, kein Modellwert). ``None``,
         # wenn keine Tankstand-Eingabe vorliegt.
         "tank": tank,
+        # A21-B4.3: requested, usable and hypothetical amounts are never
+        # collapsed into one unlabeled ``liters`` value.
+        "quantity": quantity,
+        "benefit_contract": benefit_contract,
         "personal_stats": {
             "advice": {
                 "last_30d_hits": advice_stats.get("wins", 0),
@@ -1676,6 +1895,10 @@ def evaluate_decide(
             "fuel": fuel,
             "city": station_city,
             "liters": liters,
+            "liters_requested": quantity["requested_liters"],
+            "quantity_mode": quantity_mode,
+            "quantity_source": quantity["source"],
+            "available_liters": quantity["available_liters"],
             "consumption_l_100km": consumption,
             "speed_kmh": speed,
             "value_of_time_eur_h": z_used,

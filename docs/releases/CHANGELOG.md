@@ -4,6 +4,36 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.67.0] – 2026-09-22
+
+**A21-B4 (Zeitfenster, DST und fachliche Mengen-/Nutzenverträge)** —
+Issues [#207](https://github.com/kollb/TankApp/issues/207) bis
+[#210](https://github.com/kollb/TankApp/issues/210).
+
+- **#207 — DST-sichere Draw-Kompression:** Lokale Kalenderblöcke werden mit
+  einer kanonischen UTC-Identität serialisiert. Frühjahrs-/Herbstwechsel,
+  Mitternacht und beide Herbst-Folds bleiben monoton; die IDs und Starts von
+  23-/25-Stunden- sowie 24-/168-h-Forecasts sind konsistent. Der erste
+  Forecast-Block veröffentlicht exakte Rest-Minima als platzsparendes
+  `suffix_minima`-Artefakt.
+- **#208 — ausführbares Restfenster:** Punkte vor `now` und nach `latest_by`
+  beeinflussen weder Median/Rangfolge noch P, Potenzial oder Handlung. Der
+  Deadline-Grenzpunkt bleibt inklusiv; ein fehlendes Präfixartefakt erzeugt
+  keine erfundene Ganzblock-Wahrscheinlichkeit. Snapshot-Identitäten benutzen
+  die stabile Block-ID statt des sichtbaren Suffixstarts.
+- **#209 — Mengenvertrag:** Angefragte Liter, freie physische Menge und
+  hypothetische What-if-Menge sind getrennt. Ein voller Tank sperrt Aktionen;
+  What-if ist stets nicht ausführbar. API, Feedback-Snapshot und GUI nennen
+  dieselbe verwendete Menge; historische Belege bleiben unverändert.
+- **#210 — Nutzenvertrag:** Medianpotenzial, Medianpreis, Draw-Wahrscheinlichkeit,
+  Threshold-Strategie und realisiertes Netto-Ergebnis sind benannt getrennt.
+  Stats-Aliasse und `benefit_contract` tragen explizit, dass Potenzial keine
+  arithmetische Erwartung, Garantie oder erreichte Oracle-Untergrenze ist.
+- Regressionen decken DST-Folds, Restfenster-/Deadline-Grenzen, Mengen- und
+  What-if-Fälle, NaN/Inf sowie Snapshot-/Score-Verträge ab. Diese Tests sind
+  kein Hardware-, NAS- oder Live-Nutzen-Abnahmebeleg; offene Grenzen stehen in
+  [LUECKEN.md](../planung/LUECKEN.md).
+
 ## [0.66.0] – 2026-09-21
 
 **A21-B3 (Archivintegrität und wiederherstellbare Backups)** —

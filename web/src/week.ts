@@ -250,6 +250,8 @@ export function weekWindowSummary(
     priceNow !== null
       ? (priceNow - window.expected_price) * 100
       : null;
+  const medianSaving =
+    window.expected_saving_median_eur ?? window.expected_saving_eur;
   // 0.55.0: Die Zeile steht im View hinter „Erwartet <Preis> €/L“ — mit
   // „günstiger erwartet“ stand „erwartet“ zweimal in einem Satz, ohne dass
   // der zweite Auftritt etwas hinzufügte. Stattdessen sagt die Zeile jetzt,
@@ -258,8 +260,8 @@ export function weekWindowSummary(
     saving !== null
       ? saving >= 0.05
         ? `${centPerLiter(saving)} günstiger als jetzt ≈ ${
-            window.expected_saving_eur !== null
-              ? `${euro(window.expected_saving_eur)} €`
+            medianSaving !== null
+              ? `${euro(medianSaving)} € im Median`
               : "Betrag folgt mit der Tankmenge"
           }`
         : "Kein klarer Vorsprung gegenüber dem aktuellen Preis"

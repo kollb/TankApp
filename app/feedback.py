@@ -1224,6 +1224,14 @@ def _same_advice(a: dict, b: dict) -> bool:
     # sonst der falsche Grund.
     if a.get("decline_reason") != b.get("decline_reason"):
         return False
+    # B4.2: the visible suffix start moves as the clock advances, but the
+    # executable decision remains the same local block. Collapse on the
+    # canonical block identity, not on a past/future sample label.
+    if a.get("action") != "no_advice":
+        block_a = a.get("window_block_start") or a.get("window_start")
+        block_b = b.get("window_block_start") or b.get("window_start")
+        if block_a != block_b:
+            return False
     # Ein A/B-Wechsel ist eine neue Messbedingung. Er darf nicht mit der
     # früheren Roh-/PIT-Zeile kollabieren, selbst wenn die Tabellen-Aktion
     # zufällig identisch blieb.
@@ -1494,6 +1502,7 @@ def record_snapshot(
             "price_now": snapshot_data.get("price_now"),
             "window_start": snapshot_data.get("window_start"),
             "window_end": snapshot_data.get("window_end"),
+            "window_block_start": snapshot_data.get("window_block_start"),
             "window_start_hour": snapshot_data.get("window_start_hour"),
             "window_end_hour": snapshot_data.get("window_end_hour"),
             "expected_price": snapshot_data.get("expected_price"),
@@ -1516,6 +1525,10 @@ def record_snapshot(
             # Behauptung. ``unknown`` bleibt von Altbeständen getrennt.
             "forecast_calibration_state": calibration_state,
             "liters_assumed": snapshot_data.get("liters_assumed", 40.0),
+            "liters_requested": snapshot_data.get("liters_requested"),
+            "quantity_mode": snapshot_data.get("quantity_mode", "physical"),
+            "quantity_source": snapshot_data.get("quantity_source"),
+            "benefit_contract": snapshot_data.get("benefit_contract"),
             "fuel": snapshot_data.get("fuel", "e10"),
             # Konzepteigene Felder (Prüfstand §3.7): Fahrtmodus und
             # Deadline müssen im Store landen, sonst sind spätere

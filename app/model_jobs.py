@@ -35,6 +35,7 @@ Fortschritt und Restschätzung ehrlich (B20).
 
 from __future__ import annotations
 
+import base64
 import math
 import multiprocessing as mp
 import os
@@ -496,30 +497,81 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
         block_starts,
         nowcast_draws,
     )
+    import numpy as np
     import pandas as pd
 
     n = min(DECISION_DRAWS, paths.shape[0])
     ids = block_ids(index, cfg.timezone, BLOCK_MINUTES)
     starts = block_starts(index, cfg.timezone, BLOCK_MINUTES)
     minima = block_minima(paths[:n], ids)
-    blocks = [
-        {
-            "start": stamp.isoformat(),
-            "end": (stamp + pd.Timedelta(minutes=BLOCK_MINUTES)).isoformat(),
-        }
-        for stamp in starts
-    ]
+    blocks = []
+    for position, stamp in enumerate(starts):
+        # The next canonical start is the real end. On a DST transition this
+        # is not necessarily start + 120 UTC minutes (the repeated hour must
+        # not overlap its neighbour). The last block uses the nominal local
+        # block duration as a safe horizon edge.
+        end = (
+            starts[position + 1]
+            if position + 1 < len(starts)
+            else stamp + pd.Timedelta(minutes=BLOCK_MINUTES)
+        )
+        blocks.append({"start": stamp.isoformat(), "end": end.isoformat()})
     # O22: Auch die Draws sind Preise — dieselbe Veröffentlichungs-Präzision
     # wie die Quantile. Die Fenster-Minima sind die größte einzelne Zahlengruppe
     # der Veröffentlichung (500 Draws × 84 Blöcke je Station).
     minima_rows = [[_published(v) for v in row] for row in minima.tolist()]
     nowcast_row = [_published(v) for v in nowcast_draws(paths[:n]).tolist()]
+    # A21-B4.2: the first forecast block is the only block that can be
+    # partially consumed by the next API request. Publish exact suffix minima
+    # for it instead of reusing a whole-block minimum after ``now``. Keeping
+    # this artifact to the origin block preserves the publication budget; later
+    # blocks are either whole or explicitly reported as lacking partial draw
+    # evidence until the next model run.
+    suffix = None
+    if n and len(index) and len(ids):
+        first_block = int(ids[0])
+        positions = np.flatnonzero(ids == first_block)
+        # The first sample is the block minimum already published in
+        # ``minima``. Suffixes start at the next sample; this saves a duplicate
+        # column and is exactly the range that can be visible after a request
+        # clock reaches the forecast origin.
+        suffix_positions = positions[1:]
+        values = np.full((n, len(suffix_positions)), np.nan)
+        with np.errstate(all="ignore"):
+            for offset in range(len(suffix_positions) - 1, -1, -1):
+                segment = paths[:n, suffix_positions[offset:]]
+                safe = np.where(np.isfinite(segment), segment, np.inf)
+                minimum = safe.min(axis=1)
+                values[:, offset] = np.where(np.isfinite(minimum), minimum, np.nan)
+        # A JSON matrix costs too much at 500 draws × 2 h. The public whole
+        # block minimum is the base; each suffix value is a non-negative
+        # 0.0001 EUR/L delta encoded as uint16.  65535 means no finite path.
+        deltas = np.full((n, len(suffix_positions)), 65535, dtype="<u2")
+        for draw in range(n):
+            base = minima_rows[draw][first_block]
+            if not isinstance(base, (int, float)) or not math.isfinite(base):
+                continue
+            for offset, value in enumerate(values[draw]):
+                if math.isfinite(float(value)):
+                    delta = int(round((_published(value) - base) * 10000))
+                    if 0 <= delta < 65535:
+                        deltas[draw, offset] = delta
+        suffix = {
+            "block": first_block,
+            "starts": [index[position].isoformat() for position in suffix_positions],
+            "rows": n,
+            "columns": len(suffix_positions),
+            "encoding": "uint16_delta_1e4_from_block_minimum",
+            "missing": 65535,
+            "minima_b64": base64.b64encode(deltas.tobytes()).decode("ascii"),
+        }
     return {
         "n": n,
         "block_minutes": BLOCK_MINUTES,
         "blocks": blocks,
         "minima": minima_rows,
         "nowcast": nowcast_row,
+        "suffix_minima": suffix,
         # A11: gemeinsame Ziehung über Stationen (Konzept §4.2). False =
         # unabhängige Ziehung (Stand vor 0.31.0) — dann ist P_lohnt zu
         # selbstsicher, weil der Marktgleichlauf herausfällt.

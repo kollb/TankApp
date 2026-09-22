@@ -58,6 +58,7 @@ VERIFY_RESTORE = ROOT / "ops" / "nas" / "verify_restore.py"
 
 UID = "00000000-0000-0000-0000-000000000001"
 NOW = dt.datetime(2026, 9, 21, 12, 0, tzinfo=dt.timezone.utc)
+BACKUP_NAME = f"tankapp-runtime-{dt.date.today().isoformat()}.tar.gz"
 OLD = NOW - dt.timedelta(days=120)
 # Restore-Skripte rufen ``python3`` — in der Testumgebung ist das der
 # Interpreter mit den App-Abhängigkeiten (CI: setup-python; lokal: venv).
@@ -214,7 +215,7 @@ def _alarms(settings, backup=None) -> list[dict]:
 def test_leere_datei_gilt_nicht_als_erfolgreiche_sicherung(tmp_path):
     """Repro aus dem Audit: 0-Byte-Tar unter gültigem Namen → kein Herzschlag."""
     target = tmp_path / "backup"
-    empty = _daily(target, "tankapp-runtime-2026-09-21.tar.gz", verified=False)
+    empty = _daily(target, BACKUP_NAME, verified=False)
     empty.write_bytes(b"")  # formfrisch, inhaltlich nichts
     settings = _settings(tmp_path, backup_dir=target)
 
@@ -235,7 +236,7 @@ def test_nur_temporaere_dateien_gelten_nicht_als_backup(tmp_path):
     """Abgebrochene Läufe hinterlassen versteckte .tmp-Dateien — kein Backup."""
     target = tmp_path / "backup"
     target.mkdir()
-    leftover = target / ".tankapp-runtime-2026-09-21.4242.tar.gz.tmp"
+    leftover = target / f".{BACKUP_NAME[:-7]}.4242.tar.gz.tmp"
     leftover.write_bytes(b"\x1f\x8b halb")
     settings = _settings(tmp_path, backup_dir=target)
 
@@ -273,7 +274,7 @@ def test_altbestand_ohne_manifest_ist_gezaehlt_nicht_gueltig(tmp_path):
     """
     target = tmp_path / "backup"
     _daily(target, "tankapp-runtime-2026-09-10.tar.gz", verified=False, hours=200)
-    _daily(target, "tankapp-runtime-2026-09-21.tar.gz", verified=True, hours=6)
+    _daily(target, BACKUP_NAME, verified=True, hours=6)
     settings = _settings(tmp_path, backup_dir=target)
 
     status = backup_status(settings, clock=lambda: NOW)
@@ -288,10 +289,8 @@ def test_altbestand_ohne_manifest_ist_gezaehlt_nicht_gueltig(tmp_path):
 def test_manifest_groesse_weicht_ab(tmp_path):
     """Kürzung/Umbenennung nach der Verifikation: Manifest passt nicht mehr."""
     target = tmp_path / "backup"
-    path = _daily(target, "tankapp-runtime-2026-09-21.tar.gz", verified=True)
-    _write_manifest(
-        target, "tankapp-runtime-2026-09-21.tar.gz", size=path.stat().st_size - 1
-    )
+    path = _daily(target, BACKUP_NAME, verified=True)
+    _write_manifest(target, BACKUP_NAME, size=path.stat().st_size - 1)
     settings = _settings(tmp_path, backup_dir=target)
 
     status = backup_status(settings, clock=lambda: NOW)
@@ -316,11 +315,9 @@ def test_backup_sh_validiert_und_publiziert(tmp_path):
     result = _run_backup(runtime, target)
 
     assert result.returncode == 0, result.stderr
-    tar = target / "tankapp-runtime-2026-09-21.tar.gz"
+    tar = target / BACKUP_NAME
     assert tar.is_file() and tar.stat().st_size > 0
-    manifest = json.loads(
-        _manifest_for(target, "tankapp-runtime-2026-09-21.tar.gz").read_text()
-    )
+    manifest = json.loads(_manifest_for(target, BACKUP_NAME).read_text())
     assert manifest["file"] == tar.name
     assert manifest["size_bytes"] == tar.stat().st_size
     assert manifest["gzip"] == "ok"
@@ -354,7 +351,7 @@ def test_backup_sh_leere_runtime_ist_kein_erfolg(tmp_path):
 
     assert result.returncode != 0
     assert "keine Dateien" in result.stderr
-    assert not (target / "tankapp-runtime-2026-09-21.tar.gz").exists()
+    assert not (target / BACKUP_NAME).exists()
 
 
 def test_abgebrochener_lauf_laesst_den_letzten_guten_stand(tmp_path):
@@ -363,10 +360,10 @@ def test_abgebrochener_lauf_laesst_den_letzten_guten_stand(tmp_path):
     _seed_runtime(runtime, [_fill("hot_fresh", days=0)])
     target = tmp_path / "backup"
     assert _run_backup(runtime, target).returncode == 0
-    good = target / "tankapp-runtime-2026-09-21.tar.gz"
+    good = target / BACKUP_NAME
     good_bytes = good.read_bytes()
     _age(good, 30)  # gestern
-    _age(_manifest_for(target, "tankapp-runtime-2026-09-21.tar.gz"), 30)
+    _age(_manifest_for(target, BACKUP_NAME), 30)
     # Fault Injection: eine unlesbare Datei im Laufzeitverzeichnis lässt tar
     # scheitern (voller Datenträger/Rechte stehen symptomatisch dafür).
     blocked = runtime / "blocked.json"
@@ -420,7 +417,7 @@ def test_rotation_nur_auf_fertige_namen_und_mit_manifest(tmp_path):
     assert not (target / "tankapp-runtime-2026-09-01.tar.gz").exists()
     assert not _manifest_for(target, "tankapp-runtime-2026-09-01.tar.gz").exists()
     assert not (target / "tankapp-runtime-2026-08-31.tar.gz").exists()
-    assert (target / "tankapp-runtime-2026-09-21.tar.gz").is_file()  # heute bleibt
+    assert (target / BACKUP_NAME).is_file()  # heute bleibt
     assert not stale_tmp.exists()  # Kehricht abgeräumt
 
 
@@ -439,9 +436,7 @@ def test_rotationsfehler_wird_signalisiert(tmp_path):
     result = _run_backup(runtime, target)
 
     assert result.returncode != 0
-    assert (
-        target / "tankapp-runtime-2026-09-21.tar.gz"
-    ).is_file()  # neuer guter Stand bleibt
+    assert (target / BACKUP_NAME).is_file()  # neuer guter Stand bleibt
     assert old.exists() or not old.exists()  # Aufräumen darf teils gelaufen sein
 
 
@@ -470,7 +465,7 @@ def test_restore_verifiziert_belegzahlen_summen_stornos(tmp_path):
     runtime = _rich_runtime(tmp_path)
     target = tmp_path / "backup"
     assert _run_backup(runtime, target).returncode == 0
-    tar = target / "tankapp-runtime-2026-09-21.tar.gz"
+    tar = target / BACKUP_NAME
     restored = tmp_path / "restore-target"
 
     result = _run_restore(tar, restored, "--compare", runtime)
@@ -486,7 +481,7 @@ def test_restore_korruptes_tar_hinterlaesst_kein_halbes_ziel(tmp_path):
     runtime = _rich_runtime(tmp_path)
     target = tmp_path / "backup"
     assert _run_backup(runtime, target).returncode == 0
-    tar = target / "tankapp-runtime-2026-09-21.tar.gz"
+    tar = target / BACKUP_NAME
     raw = tar.read_bytes()
     tar.write_bytes(raw[: len(raw) // 2])  # abgeschnitten
     restored = tmp_path / "restore-target"
@@ -503,7 +498,7 @@ def test_restore_verweigert_nicht_leeres_ziel(tmp_path):
     runtime = _rich_runtime(tmp_path)
     target = tmp_path / "backup"
     assert _run_backup(runtime, target).returncode == 0
-    tar = target / "tankapp-runtime-2026-09-21.tar.gz"
+    tar = target / BACKUP_NAME
     occupied = tmp_path / "occupied"
     occupied.mkdir()
     (occupied / "wichtig.txt").write_text("produktion")
@@ -516,7 +511,7 @@ def test_restore_verweigert_nicht_leeres_ziel(tmp_path):
 
 
 def test_restore_verweigert_leeres_backup(tmp_path):
-    empty = tmp_path / "tankapp-runtime-2026-09-21.tar.gz"
+    empty = tmp_path / BACKUP_NAME
     empty.write_bytes(b"")
     result = _run_restore(empty, tmp_path / "target")
     assert result.returncode != 0
@@ -529,10 +524,7 @@ def test_verifizierer_weist_beschaeftigtes_archiv_aus(tmp_path):
     target = tmp_path / "backup"
     assert _run_backup(runtime, target).returncode == 0
     restored = tmp_path / "restore-target"
-    assert (
-        _run_restore(target / "tankapp-runtime-2026-09-21.tar.gz", restored).returncode
-        == 0
-    )
+    assert _run_restore(target / BACKUP_NAME, restored).returncode == 0
     feedback_archive_path(SimpleNamespace(runtime=restored)).write_text("{kaputt\n")
 
     env = {
@@ -594,7 +586,7 @@ def test_restore_unter_gleichzeitiger_app_aktivitaet(tmp_path):
     assert result.returncode == 0, result.stderr
 
     restored = tmp_path / "restore-target"
-    restore = _run_restore(target / "tankapp-runtime-2026-09-21.tar.gz", restored)
+    restore = _run_restore(target / BACKUP_NAME, restored)
     assert restore.returncode == 0, restore.stderr + restore.stdout
 
     ledger = load_ledger(SimpleNamespace(runtime=restored))
@@ -626,7 +618,7 @@ def test_influx_trennung_ist_explizit(tmp_path):
 def test_health_payload_nennt_verifiziertheit(tmp_path):
     """Die neuen Felder stehen im Health-Payload — kein stiller Schema-Wechsel."""
     target = tmp_path / "backup"
-    _daily(target, "tankapp-runtime-2026-09-21.tar.gz", verified=True, hours=6)
+    _daily(target, BACKUP_NAME, verified=True, hours=6)
     settings = _settings(tmp_path, backup_dir=target)
 
     status = backup_status(settings, clock=lambda: NOW)

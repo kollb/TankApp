@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 21.09.2026 · App-Version 0.66.0
+> Stand: 21.09.2026 · App-Version 0.67.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -23,7 +23,8 @@
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 | [Befund](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md#3-mathematische-modelle-und-performance) |
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
-| Entscheidung | `latest_by`, Fahrtmodus, pfadbasierte Wahrscheinlichkeiten und getrennte €-Semantik | [API](../referenz/API.md) |
+| Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik | [API](../referenz/API.md) |
+| Mengen-/Nutzenvertrag | Physische freie Menge, explizites What-if, benanntes Medianpotenzial, ausführbare Strategie und Oracle-Untergrenze getrennt; historische Belege bleiben unverändert | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
 | RP2 | Readiness-geprüfter NAS-Proxy; versionierte Tab-Verträge; Pi nur Preisvergleich, keine Aktionen | [RP2](../betrieb/RP2.md) |
 | Qualität | Unit-Tests, Browser-Suite mit Mocks und eigene Demo-Suite ohne Mocks | [Qualität](../entwicklung/QUALITAET.md) |
@@ -116,6 +117,7 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 |---|---|
 | M7 und Kalibrierung | Genügend abgerechnete echte Advice, bestandene Brier-/Reliability-Gates und Beobachtung über Betriebszeit; technische PIT-Kalibrierung allein reicht nicht |
 | Modellgüte | Vergleich auf echtem Bestand je Station/Horizont, einschließlich alternativer Kerne; keine neue Abnahme durch diese Dokuänderung |
+| A21-B4 Betriebsabnahme | DST-/Restfenster-/Mengen-/Nutzenverträge sind synthetisch regressionsgeprüft. Eine Hardware-/NAS-Feldabnahme, reale Draw-Abdeckung und ein belastbarer Live-Nettonutzen bleiben separat offen; der Code-Fix ist kein Betriebsnachweis. |
 | B0-Referenz | PICP/MASE je Station und Brier global nach P-Quelle; ein stationsweiser Brier ist bei geringer Advice-Zahl nicht belastbar |
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |
 | `w(h)` | Mindestens acht Füllungen für eine belastbare persönliche Rückkopplung |

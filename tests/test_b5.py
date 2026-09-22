@@ -147,6 +147,34 @@ def test_week_windows_respect_deadline():
     assert _week_windows(points, base, base) == []
 
 
+def test_today_window_uses_only_the_future_suffix():
+    """A 17:45 request must not let 16:00/17:00 lower the usable median."""
+    now = dt.datetime(2026, 9, 10, 15, 45, tzinfo=dt.timezone.utc)
+    points = [
+        {"timestamp": "2026-09-10T16:00:00+02:00", "q50": 1.80},
+        {"timestamp": "2026-09-10T17:00:00+02:00", "q50": 1.75},
+        {"timestamp": "2026-09-10T17:55:00+02:00", "q50": 1.70},
+    ]
+    windows = _today_windows(points, now)
+    assert len(windows) == 1
+    assert windows[0]["start"] == "2026-09-10T17:55:00+02:00"
+    assert windows[0]["expected_price"] == 1.70
+
+
+def test_deadline_keeps_an_inclusive_future_point_and_drops_later_points():
+    now = dt.datetime(2026, 9, 10, 15, 45, tzinfo=dt.timezone.utc)
+    deadline = dt.datetime(2026, 9, 10, 15, 50, tzinfo=dt.timezone.utc)
+    points = [
+        {"timestamp": "2026-09-10T17:50:00+02:00", "q50": 1.70},
+        {"timestamp": "2026-09-10T17:55:00+02:00", "q50": 1.60},
+        {"timestamp": "2026-09-10T18:00:00+02:00", "q50": 1.50},
+    ]
+    windows = _today_windows(points, now, deadline)
+    assert len(windows) == 1
+    assert windows[0]["start"] == windows[0]["end"]
+    assert windows[0]["expected_price"] == 1.70
+
+
 def test_decide_rejects_broken_latest_by(settings_with_prices):
     live = LiveData(settings_with_prices, query=query, clock=lambda: NOW)
     from app.decide import evaluate_decide

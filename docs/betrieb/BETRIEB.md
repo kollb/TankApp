@@ -1,7 +1,15 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 21.09.2026 · App-Version 0.66.0 — alles, was nach der Ersteinrichtung
+> Stand: 22.09.2026 · App-Version 0.67.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
+> Neu seit 0.67.0 (A21-B4): Der Modelljob veröffentlicht DST-sichere UTC-
+> Blockstarts und ein platzsparendes `suffix_minima`-Artefakt für den ersten
+> 24-/168-h-Block. Bei der Betriebsprüfung müssen `draw_scope` und ein
+> eventuelles `partial_without_prefix_artifact` beachtet werden; eine
+> `legacy_whole_block`-Meldung stammt aus einer alten Publikation und ist kein
+> exaktes Restfenster. Mengen (`physical`/`what_if`) und
+> `benefit_contract` gehören in Snapshot-/API-Logs und dürfen bei einem
+> historischen Beleg nicht nachträglich umgerechnet werden.
 > Neu seit 0.66.0 (A21-B3.2): Laufzeit-Backups werden erst nach Inhaltsprüfung
 > veröffentlicht (Erfolgsmanifest neben jedem Tar), ein ungeprüfter jüngster
 > Stand alarmiert als `backup_unverified` (error), und der Restore wird mit
@@ -36,6 +44,7 @@
 
 ## Inhaltsverzeichnis
 
+- [A21-B4 Modell-/Mengenvertrag](#a21-b4-modell-mengenvertrag)
 - [Pi: Collector + Uploader](#pi-collector--uploader)
   - [Repo auf Pi bringen](#repo-auf-pi-bringen)
   - [RAM-Puffer tmpfs](#ram-puffer-tmpfs)
@@ -83,6 +92,24 @@
   - [parameter error Diagnose](#parameter-error-diagnose)
   - [NAS Python GLIBC Fehler](#nas-python-glibc-fehler)
 - [M1 Abnahme 14 Tage](#m1-abnahme-14-tage)
+
+## A21-B4 Modell-/Mengenvertrag
+
+Nach jedem Modelllauf die veröffentlichte Stationdatei und den Index gemeinsam
+prüfen. `draws_24h`/`draws_7d.blocks[].start` müssen UTC-Stempel in aufsteigender
+Reihenfolge sein; bei DST ist die lokale Darstellung nicht die Identität. Für
+einen laufenden Restblock ist `suffix_minima` die einzige exakte
+Draw-Grundlage. Fehlt bei einem Deadline-Schnitt ein Präfixartefakt, ist
+`p`/Fensterminimum `null` statt Ganzblock-Evidenz.
+
+Bei Supportfällen Menge und Herkunft zusammen notieren:
+`quantity.requested_liters`, `quantity.used_liters`,
+`quantity.available_liters`, `quantity.mode` und `quantity.source`. `what_if`
+ist kein Betriebsfreigabesignal. Snapshots bewahren diese Werte sowie den
+`benefit_contract`; Settlement und historische Belege schreiben sie nicht
+rückwirkend um. Die fachliche Bedeutung der Scores steht in der
+[API-Referenz](../referenz/API.md#decide-b4-primär), nicht in einer
+nachträglichen Interpretation eines Euro-Feldes.
 
 ## Pi: Collector + Uploader
 

@@ -50,6 +50,25 @@ def test_block_ids_empty_input():
     assert len(starts) == 0
 
 
+def test_dst_spring_and_autumn_keep_utc_identity_and_both_folds():
+    """23-/25-hour forecasts never use ambiguous local ``floor`` values."""
+    for start in ("2026-03-28T22:00:00Z", "2026-10-24T22:00:00Z"):
+        index = pd.date_range(start, periods=25 * 12, freq="5min", tz="UTC")
+        ids = block_ids(index, "Europe/Berlin", BLOCK_MINUTES)
+        starts = block_starts(index, "Europe/Berlin", BLOCK_MINUTES)
+        assert ids.shape == (len(index),)
+        assert np.all(np.diff(ids) >= 0)
+        assert len(starts) == int(ids.max()) + 1
+        assert starts.is_monotonic_increasing
+        assert str(starts.tz) == "UTC"
+
+    autumn = pd.date_range("2026-10-25T00:00:00Z", periods=25, freq="5min", tz="UTC")
+    autumn_ids = block_ids(autumn, "Europe/Berlin", BLOCK_MINUTES)
+    # 02:00 CEST and 02:00 CET are distinct UTC blocks, not a merged hour.
+    assert autumn_ids[0] != autumn_ids[-1]
+    assert len(block_starts(autumn, "Europe/Berlin", BLOCK_MINUTES)) == 2
+
+
 def test_block_minima_shape_nan_semantics_and_values():
     # 3 Blöcke à 2 Zeitpunkte: Block 0 = [1, 3], Block 1 = [2, 1], Block 2 = [5, 9].
     paths = np.array([[1.0, 3.0, 2.0, 1.0, 5.0, 9.0]])

@@ -602,11 +602,23 @@ export type TankInfo = {
   input: "input" | "computed";
   tank_percent: number | null;
   tank_capacity_l: number | null;
+  free_capacity_l?: number | null;
   range_km: number;
   reserve_range_km: number;
   state: "empty" | "low" | "ok";
   blocks_wait: boolean;
   message: string | null;
+};
+
+/** A21-B4.3: quantity contract shared by decision, UI and replay. */
+export type QuantityContext = {
+  mode: "physical" | "what_if";
+  requested_liters: number;
+  used_liters: number;
+  available_liters: number | null;
+  adjusted: boolean;
+  source: string;
+  notice: string | null;
 };
 
 /**
@@ -756,7 +768,7 @@ export type DecideResult = {
       /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
       expected_min_price?: number | null;
     } | null;
-    /** Clipped median advantage of window minima; NOT an arithmetic expectation. */
+    /** Clipped median potential of window minima; NOT an arithmetic expectation. */
     expected_saving_eur: number;
     /**
      * O45: dieselbe Ersparnis gegen den **Medianpreis** des Fensters — die
@@ -813,6 +825,14 @@ export type DecideResult = {
     expected_saving_median_eur?: number | null;
     /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
     expected_min_price?: number | null;
+    /** Draw evidence covers the same usable range, or is intentionally absent. */
+    draw_scope?:
+      | "whole_published_block"
+      | "legacy_whole_block"
+      | "suffix_artifact"
+      | "partial_without_suffix_artifact"
+      | "partial_without_prefix_artifact"
+      | "unavailable";
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
     /** Auditable raw P before edge/baseline normalization. */
@@ -832,6 +852,14 @@ export type DecideResult = {
     expected_saving_median_eur?: number | null;
     /** O45: Median der Fensterminima — die Basis von `expected_saving_eur`. */
     expected_min_price?: number | null;
+    /** Draw evidence covers the same usable range, or is intentionally absent. */
+    draw_scope?:
+      | "whole_published_block"
+      | "legacy_whole_block"
+      | "suffix_artifact"
+      | "partial_without_suffix_artifact"
+      | "partial_without_prefix_artifact"
+      | "unavailable";
     /** O12: normalized against the actual surrounding-window baseline. */
     p: number | null;
     p_raw?: number | null;
@@ -889,6 +917,25 @@ export type DecideResult = {
   // A2: Tankstand-Bewertung (Physik, unabhängig von der Ampel) — null ohne
   // Tankstand-Eingabe (dann sagt die App nichts über den Tankstand).
   tank?: TankInfo | null;
+  /** A21-B4.3: requested vs. physically/hypothetically used volume. */
+  quantity?: QuantityContext;
+  /** A21-B4.4: explicit ranking/potential/probability/replay semantics. */
+  benefit_contract?: Record<string, unknown>;
+  context?: {
+    fuel: Fuel;
+    city: string;
+    liters: number;
+    liters_requested?: number;
+    quantity_mode?: "physical" | "what_if";
+    quantity_source?: string;
+    available_liters?: number | null;
+    consumption_l_100km: number;
+    speed_kmh: number;
+    value_of_time_eur_h: number;
+    trip_mode: string;
+    latest_by?: string | null;
+    horizon_cut?: boolean;
+  };
   // Engine-Qualität der ausgewählten Station (Konzept §3.3.3): Rolling-PICP
   // 7 d aus dem Backtest. null = nicht veröffentlicht (Altpublikation).
   quality?: {
@@ -1015,6 +1062,11 @@ export type BacktestStationScore = {
   sum_smart_eur: number;
   sum_commit_eur: number;
   sum_best_eur: number;
+  strategy_saving_eur?: number;
+  realized_policy_delta_eur?: number;
+  oracle_lower_bound_eur?: number;
+  potential_is_expectation?: boolean;
+  oracle_reachable?: boolean;
   avg_regret_ct: number;
   avg_regret_eur: number;
   p_avg: number;
@@ -1055,6 +1107,19 @@ export type StatsSummary = {
   generated_at: string;
   fuel: Fuel;
   city: string | null;
+  benefit_contract?: {
+    version: number;
+    strategy_id: string;
+    ranking_metric: string;
+    strategy_saving_metric: string;
+    potential_metric: string;
+    oracle_metric: string;
+    potential_is_expectation: boolean;
+    loss_side: string;
+    oracle_reachable: boolean;
+    liters: number;
+    liters_source: string;
+  };
   backtest: {
     daysTrain: number | null;
     daysEval: number | null;

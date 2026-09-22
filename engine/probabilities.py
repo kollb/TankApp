@@ -28,38 +28,53 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from .timeblocks import block_key_utc
+
 # Konzept §4: B = 500 Draws für die relativen Häufigkeiten des Decision Layers.
 DECISION_DRAWS = 500
 # 2-h-Fenster (entspricht app/decide.py::_today_windows).
 BLOCK_MINUTES = 120
 
 
+def _block_keys(
+    index: pd.DatetimeIndex, timezone_name: str, minutes: int
+) -> pd.DatetimeIndex:
+    """Canonical UTC block key for every sample, in sample order."""
+    if len(index) == 0:
+        return pd.DatetimeIndex([], tz="UTC")
+    if index.tz is None:
+        raise ValueError("block compression requires a timezone-aware index")
+    return pd.DatetimeIndex(
+        [
+            block_key_utc(stamp.to_pydatetime(), timezone_name, minutes)
+            for stamp in index
+        ]
+    ).tz_convert("UTC")
+
+
 def block_ids(
     index: pd.DatetimeIndex, timezone: str, minutes: int = BLOCK_MINUTES
 ) -> np.ndarray:
-    """Chronologischer Block-Index je Zeitpunkt (lokale Zeit, 2-h-Raster).
+    """Chronological block ID for each timestamp, DST-safe and UTC-identical.
 
-    ``np.unique`` sortiert die Grenzen, ``return_inverse`` liefert für jeden
-    Zeitpunkt den Index in diese sortierte Folge — Block 0 ist also der
-    früheste. Identisch für Teilraster, solange sie dieselben
-    Block-Grenzen berühren (wie bei ``predict`` dokumentiert).
+    Blocks are local wall-clock calendar blocks, but their identity is the UTC
+    instant of the applicable boundary. The two 02:00 occurrences in autumn
+    therefore get different IDs; a missing 02:00 in spring is represented by
+    the transition instant instead of an exception or a silently removed slot.
     """
-    local = index.tz_convert(timezone)
-    keys = local.normalize() if minutes >= 1440 else local.floor(f"{minutes}min")
-    _, ids = np.unique(keys, return_inverse=True)
+    keys = _block_keys(index, timezone, minutes)
+    ids, _ = pd.factorize(keys, sort=True)
     return ids
 
 
 def block_starts(
     index: pd.DatetimeIndex, timezone: str, minutes: int = BLOCK_MINUTES
 ) -> pd.DatetimeIndex:
-    """Eindeutige Block-Anfänge in chronologischer Reihenfolge (UTC)."""
-    if len(index) == 0:
+    """Canonical, unique block starts in chronological UTC order."""
+    keys = _block_keys(index, timezone, minutes)
+    if len(keys) == 0:
         return pd.DatetimeIndex([], tz="UTC")
-    local = index.tz_convert(timezone)
-    keys = local.normalize() if minutes >= 1440 else local.floor(f"{minutes}min")
-    stamps = pd.DatetimeIndex(np.unique(keys)).tz_convert("UTC")
-    return stamps
+    return pd.DatetimeIndex(sorted(set(keys))).tz_convert("UTC")
 
 
 def block_minima(paths: np.ndarray, ids: np.ndarray) -> np.ndarray:
