@@ -6,4 +6,4 @@
 numpy>=1.26,<3; python_version < "3.12"
 numpy>=2.5.3,<3; python_version >= "3.12"
 holidays>=0.104
-pandas>=3.0.5,<4
+pandas>=3.0.6,<4
