@@ -2,6 +2,8 @@
 data/
 # Kennzahlen, Berichte und Abbildungen werden pro Lauf neu erzeugt
 results/
+# Missingness-Ablation (A21-B5.2, #212) — Messartefakte, nicht versioniert
+artifacts/
 __pycache__/
 *.pyc
 

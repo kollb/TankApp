@@ -31,6 +31,18 @@ SCHEMA_VERSION = 3
 JUMP_THRESHOLD_EUR = 0.01
 JUMP_AGE_CAP_HOURS = 168.0
 
+# A21-B5.2 (#212): Missingness-Policy für NaN-Residuen im Tagesblock-Bootstrap.
+# Default bleibt die 0-Füllung (Struktur allein) — der 12-Uhr-Fix braucht
+# endliche Pfade. Ein Policy-Wechsel braucht robusten Ablations-Beweis
+# (data-tools/ablation_missingness.py, docs/referenz/MISSINGNESS.md); ein
+# negatives Ablationsergebnis lässt die Sperre/Default einfach stehen.
+MISSINGNESS_POLICY_DEFAULT = "zero_fill"
+MISSINGNESS_POLICIES = ("zero_fill", "coherent_block", "no_release")
+# Unterhalb dieses Anteils effektiver Draws je Zeitpunkt gilt der Punkt in der
+# Baseline ``no_release`` als nicht freigegeben (kein Release bei zu wenig
+# Support — die ehrliche Referenz zur stillen 0-Füllung).
+MIN_EFFECTIVE_DRAWS_SHARE = 0.5
+
 
 def exp_block_weights(n_blocks: int, half_life_days: float | None) -> np.ndarray | None:
     """Exponentielle Ziehgewichte für Tagesblöcke (Issue 46).
@@ -1446,6 +1458,69 @@ def pava_pool_stats(
     }
 
 
+def fill_residual_draws(
+    drawn: np.ndarray,
+    *,
+    policy: str = MISSINGNESS_POLICY_DEFAULT,
+    min_effective_draws: int | None = None,
+) -> tuple[np.ndarray, dict]:
+    """NaN-Residuen des gezogenen Tages auffüllen und Wirkung messen (A21-B5.2).
+
+    Grund ist der 12-Uhr-Fix: Ein fehlender Tagesblock an einem Slot (z. B.
+    Nachtlücke) führte zu NaN-Pfaden, die aus dem Quantil herausfielen — das
+    Quantil konnte steigen, obwohl jeder einzelne Pfad fallend war. Die
+    0-Füllung (Struktur allein) hält alle Ziehungen endlich, imputiert aber
+    stille Nullresiduen, die Varianz und Schärfe verzerren können. Die Policy
+    ist deshalb austauschbar und ihre Wirkung je Zeitpunkt messbar
+    (``effective_draws``/``null_fill_share``); Ablation und Aktivierungs-
+    bedingungen: ``data-tools/ablation_missingness.py``,
+    ``docs/referenz/MISSINGNESS.md``.
+
+    - ``zero_fill`` (A, Default, Verhalten wie bisher): 0 je fehlender Zelle.
+    - ``coherent_block`` (C, Baseline): ein gezogener Tag mit irgendeiner Lücke
+      wird als Ganzes fallengelassen (ganzer Tag reine Struktur) — nie ein halb
+      echter, halb gefüllter Tag.
+    - ``no_release`` (B, Baseline): wie A, aber Zeitpunkte mit weniger als
+      ``min_effective_draws`` endlichen Zellen sind nicht freigegeben.
+
+    Rückgabe ``(filled, info)``; ``info`` nennt ``effective_draws`` und
+    ``null_fill_share`` je Zeitpunkt, ``release_ok`` je Zeitpunkt sowie die
+    verwendete Policy/Schwelle. Ziehungen und RNG-Verbrauch ändern sich nie —
+    die Ablation vergleicht paarweise bei identischem Seed.
+    """
+    drawn = np.asarray(drawn, dtype=float)
+    if drawn.ndim != 2:
+        raise ValueError("fill_residual_draws erwartet (n_samples, n_slots).")
+    policy = (policy or MISSINGNESS_POLICY_DEFAULT).strip().lower()
+    if policy not in MISSINGNESS_POLICIES:
+        raise ValueError(
+            f"Unbekannte Missingness-Policy {policy!r}; erlaubt: {MISSINGNESS_POLICIES}."
+        )
+    missing = ~np.isfinite(drawn)
+    n_samples = int(drawn.shape[0])
+    if min_effective_draws is None:
+        min_effective_draws = max(1, int(round(MIN_EFFECTIVE_DRAWS_SHARE * n_samples)))
+    filled = np.where(missing, 0.0, drawn)
+    if policy == "coherent_block":
+        bad_rows = missing.any(axis=1)
+        filled[bad_rows] = 0.0
+    null_fills = missing.sum(axis=0).astype(int)
+    effective = n_samples - null_fills
+    info = {
+        "policy": policy,
+        "effective_draws": effective,
+        "null_fill_share": (
+            null_fills.astype(float) / n_samples
+            if n_samples
+            else null_fills.astype(float)
+        ),
+        "release_ok": effective >= int(min_effective_draws),
+        "min_effective_draws": int(min_effective_draws),
+        "n_samples": n_samples,
+    }
+    return filled, info
+
+
 def predict(
     model: dict,
     hours: int = 24,
@@ -1456,6 +1531,8 @@ def predict(
     day_pair: bool = False,
     kind: str = "harmonic_ar2",
     diagnostics: dict | None = None,
+    missingness_policy: str = MISSINGNESS_POLICY_DEFAULT,
+    min_effective_draws: int | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray]:
     """Prognose ab Cutoff. Das Raster muss eindeutig, sortiert und auf dem
     5-Minuten-Raster liegen. Die 12-Uhr-Regel-Projektion verwendet das
@@ -1491,6 +1568,12 @@ def predict(
     Quantilspalten). Ohne Wörterbuch entsteht keinerlei Mehrarbeit; mit
     Wörterbuch ändert sich keine einzige Prognosezahl (nur Kopien vor der
     Projektion werden verglichen).
+
+    ``missingness_policy``/``min_effective_draws`` (A21-B5.2, #212): steuern
+    die Auffüllung fehlender Residuen (Default ``zero_fill`` = Verhalten wie
+    bisher, siehe ``fill_residual_draws``) und die Freigabe bei zu wenig
+    Support; jede Prognose misst zusätzlich ``effective_draws`` und
+    ``null_fill_share`` je Zeitpunkt.
     """
     cfg = validate_model(model)
     origin = utc_time(model["origin"], cfg.timezone)
@@ -1614,6 +1697,10 @@ def predict(
     counts = np.isfinite(block).sum(axis=0)
     supported = counts[slot] >= cfg.min_slot_days
     paths = np.full((cfg.bootstrap_samples, len(index)), np.nan)
+    # A21-B5.2 (#212): Wirkungsmessung der Residuen-Auffüllung je Zeitpunkt.
+    effective_draws = np.full(len(index), int(cfg.bootstrap_samples), dtype=int)
+    null_fill_share = np.zeros(len(index), dtype=float)
+    release_ok = np.ones(len(index), dtype=bool)
     rng = np.random.default_rng(cfg.seed)
     local_dates = index.tz_convert(cfg.timezone).strftime("%Y-%m-%d")
     # A single draw supplies a whole day's error path, not independent ticks.
@@ -1644,14 +1731,18 @@ def predict(
         positions = np.flatnonzero(local_dates == day)
         draws = day_draws[:, day_position]
         drawn = block[draws[:, None], slot[positions]]
-        # Fix für 12-Uhr-Verstöße durch wechselnde NaN-Mengen: Ein fehlender
-        # Tagesblock an einem Slot (z. B. Nachtlücke) führte zu NaN-Pfaden,
-        # die aus dem Quantil herausfielen — das Quantil konnte dadurch
-        # steigen, obwohl jeder einzelne Pfad fallend war. Fehlende Residuen
-        # werden mit 0 gefüllt (Struktur allein), damit alle Ziehungen an
-        # gestützten Slots endlich bleiben und die Monotonie der Quantile
-        # aus der Monotonie der Pfade folgt.
-        drawn = np.where(np.isfinite(drawn), drawn, 0.0)
+        # A21-B5.2 (#212): Fehlende Residuen werden policy-gesteuert gefüllt
+        # (Default 0 = Struktur allein — der 12-Uhr-Fix braucht endliche Pfade,
+        # siehe fill_residual_draws) und die Wirkung je Zeitpunkt gemessen,
+        # statt still zu imputieren.
+        drawn, miss_info = fill_residual_draws(
+            drawn,
+            policy=missingness_policy,
+            min_effective_draws=min_effective_draws,
+        )
+        effective_draws[positions] = miss_info["effective_draws"]
+        null_fill_share[positions] = miss_info["null_fill_share"]
+        release_ok[positions] = miss_info["release_ok"]
         paths[:, positions] = point[positions] + drawn
     # Die 12-Uhr-Regel gilt für jedes Szenario, nicht nur für den Median.
     # B15: Pfade je Segment deduplizieren statt jeden Vollpfad einzeln zu
@@ -1684,6 +1775,12 @@ def predict(
         )
         quantiles = np.nanquantile(paths, QUANTILES, axis=0).T
     supported &= np.isfinite(quantiles).all(axis=1)
+    if (
+        missingness_policy or MISSINGNESS_POLICY_DEFAULT
+    ).strip().lower() == "no_release":
+        # Baseline „kein Release bei zu wenig Support" (A21-B5.2): Punkte mit
+        # zu wenigen effektiven Draws sind ehrlich nicht freigegeben.
+        supported &= release_ok
     quantiles[~supported] = np.nan
     # Fix 12-Uhr-Verstöße durch wechselnde NaN-Mengen: Selbst wenn jeder
     # Pfad einzeln nicht-steigend ist, kann das Quantil steigen, wenn die
@@ -1751,6 +1848,19 @@ def predict(
     result["naive"] = np.asarray(model["naive_profile"], dtype=float)[slot]
     result["support_days"] = counts[slot]
     result["supported"] = supported
+    result["effective_draws"] = effective_draws
+    result["null_fill_share"] = null_fill_share
+    if diagnostics is not None:
+        diagnostics["missingness"] = {
+            "policy": (missingness_policy or MISSINGNESS_POLICY_DEFAULT)
+            .strip()
+            .lower(),
+            "null_fill_share_max": float(null_fill_share.max()) if len(index) else 0.0,
+            "effective_draws_min": (
+                int(effective_draws.min()) if len(index) else int(cfg.bootstrap_samples)
+            ),
+            "release_ok_all": bool(release_ok.all()),
+        }
     if return_paths:
         # P-Seite (Konzept §4.1–4.3): die volle Verteilung mitliefern. An
         # ungestützten Punkten gibt es keine definierte Wahrscheinlichkeit —
