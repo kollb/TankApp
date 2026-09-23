@@ -52,6 +52,7 @@
 | [Mitwirken](../CONTRIBUTING.md) | Umgebung und Prüfsequenz |
 | [Qualität](entwicklung/QUALITAET.md) | Demo-Stack, Browser-Prüfungen und Messbudgets |
 | [Prüfstände](entwicklung/PRUEFSTAENDE.md) | Nicht gegen die aktuelle App-Version geprüfte Referenzen |
+| [Gutachter-Prüfung](entwicklung/GUTACHTER-PRUEFUNG.md) | Prüfgrundlage für externe Verifikation von Texten, GUI und statistischem Modell |
 | [Dokumentationspflege](entwicklung/DOKUMENTATION.md) | Ordnerstruktur, Aufräumprotokoll und Pflegekonventionen |
 | [Projektstand](planung/LUECKEN.md) | Implementiert, unbewiesen oder bewusst begrenzt |
 | [TODO](planung/TODO.md) | Offene Aufgaben mit Abhängigkeiten und Abnahmekriterien |
