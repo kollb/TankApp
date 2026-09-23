@@ -270,7 +270,7 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>AR(2): Residuen mit phi1 phi2. Stationaer wenn Wurzeln ausserhalb Einheitskreis; sonst Stauchung 0.9. Stabilitaet (Wurzel-Radius <1) sagt nichts ueber Level-Bruch (CUSUM) — 8/10 Bruch-Flags trotz Radius 0,89 ist moeglich, aber irrefuehrend als "stabil ja".</p>
+              <p>AR(2): Residuen mit phi1 phi2. Stationaer wenn Wurzeln ausserhalb Einheitskreis; sonst Stauchung 0.9. Stabilitaet (Wurzel-Radius &lt;1) sagt nichts ueber Level-Bruch (CUSUM) — 8/10 Bruch-Flags trotz Radius 0,89 ist moeglich, aber irrefuehrend als "stabil ja".</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"phi_hat Yule-Walker Check |lambda| kleiner 1 sonst phi mal 0.9"}</div>
               <p>AR-Groesse: shrink_events={f?.ar_shrink_events ?? "-"} state_reset={f?.ar_state_reset ? "ja" : "nein"} — holiday_beta gehoert zu Karte 1.</p>
             </ForTheCurious>
@@ -351,7 +351,7 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Zwei Kerne: harmonisch plus Tagesprofil. 14-Tage Rolling-Validierung zu MASE zu inverse-MASE-Gewichte — aktuell global (one_step), nicht je Horizont. Titel "Gewichte je Horizont" irrefuehrend, da horizon_weights.status=not_estimated und Werte 24h/72h/168h = -. MASE hier One-Step-MASE (0,19/0,31 <1) vs Guete-MASE 2,75 (24h-Fenster) — unterschiedliche Definition, gleicher Name verwirrt.</p>
+              <p>Zwei Kerne: harmonisch plus Tagesprofil. 14-Tage Rolling-Validierung zu MASE zu inverse-MASE-Gewichte — aktuell global (one_step), nicht je Horizont. Titel "Gewichte je Horizont" irrefuehrend, da horizon_weights.status=not_estimated und Werte 24h/72h/168h = -. MASE hier One-Step-MASE (0,19/0,31 &lt;1) vs Guete-MASE 2,75 (24h-Fenster) — unterschiedliche Definition, gleicher Name verwirrt.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_k = (1/MASE_k)/Sum(1/MASE) w_spread = std(w)"}</div>
               <p>B2 Kalibrierung: PIT-Kurve aus Backtest-PITs; Status: {f?.calibrated ? "aktiv" : (f?.calibration?.status ?? "-")} n_pit je Horizont: {f?.calibration?.by_horizon ? Object.entries(f.calibration.by_horizon).map(([h, v]: any) => `${h}:${v?.n_pit ?? "-"}`).join(" ") : "-"} · PIT-Groesse stationaer n_pit={pitN ?? "-"} (24h-Fenster).</p>
             </ForTheCurious>

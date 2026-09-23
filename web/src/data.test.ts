@@ -698,8 +698,8 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
         episodes_expired_30d: 2,
       }),
     ).toBe(
-      "Fensterbilanz (30 Tage): 3 von 5 Fenstern genutzt " +
-        "(12 Empfehlungen abgerechnet · 2 Fenster verstrichen) — 7 Tage: 1 von 2 genutzt.",
+      "Fensterbilanz (30 Tage): 3 von 5 Episoden-Fenstern genutzt " +
+        "(12 Empfehlungen abgerechnet = Empfehlungen, 2 Fenster verstrichen ohne Beleg) — 7 Tage: 1 von 2 genutzt. Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.",
     );
   });
 
@@ -713,8 +713,8 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
         episodes_expired_30d: 0,
       }),
     ).toBe(
-      "Fensterbilanz (30 Tage): 1 von 1 Fenstern genutzt " +
-        "(1 Empfehlung abgerechnet · 0 Fenster verstrichen).",
+      "Fensterbilanz (30 Tage): 1 von 1 Episoden-Fenstern genutzt " +
+        "(1 Empfehlung abgerechnet = Empfehlungen, 0 Fenster verstrichen ohne Beleg). Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.",
     );
   });
 
