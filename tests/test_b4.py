@@ -380,10 +380,16 @@ def test_table_action_gates_use_distribution_p(b4_settings):
     assert _table_action(1.70, 1.695, 0.20, None, None)[0] == "refuel_now"
 
     # F2: netto ≥ Schwelle und p_lohnt ≥ elsewhere_p → refuel_elsewhere.
-    alt = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.8}
+    # Befund A2 (23.09.2026): die Freigabe braucht zusätzlich einen FRISCHEN
+    # Alternativpreis — ein abgelaufener Preis (last_price) löst keine Fahrt
+    # mehr aus (gelieferte Alternativen tragen price_fresh immer).
+    alt = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.8, "price_fresh": True}
     assert _table_action(1.70, 1.64, 2.40, alt, 0.8)[0] == "refuel_elsewhere"
+    # Veralteter Alternativpreis → F2-Zweig greift nicht, F1 entscheidet.
+    alt_stale = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.8, "price_fresh": False}
+    assert _table_action(1.70, 1.64, 2.40, alt_stale, 0.8)[0] == "wait"
     # p_lohnt unter der Schwelle → F2-Zweig greift nicht, F1 entscheidet.
-    alt_weak = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.3}
+    alt_weak = {"name": "Shell", "net_eur": 2.0, "p_lohnt": 0.3, "price_fresh": True}
     assert _table_action(1.70, 1.64, 2.40, alt_weak, 0.8)[0] == "wait"
 
 

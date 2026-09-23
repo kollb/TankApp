@@ -9,8 +9,11 @@
 //
 // Ehrlichkeits-Regeln, die hier durchgesetzt werden (docs/produkt/MICROCOPY.md):
 //   * Prozent nur auf Stufe A (≥ 100 abgeschlossene Empfehlungen, Brier unter
-//     der Schwelle). Stufe B nennt Worte plus Fortschritt, Stufe C bleibt grau
-//     ohne Empfehlung — nie ein Prozentwert, der nicht gemessen ist.
+//     der Schwelle). Stufe C bleibt grau ohne Empfehlung — nie ein
+//     Prozentwert, der nicht gemessen ist. Eine Stufe B („Worte ohne
+//     Prozent, dazu Fortschritt“) gab es im Entwurf: sie war strukturell
+//     unerreichbar, weil der Server ohne M7-Gate „no_advice“ erzwingt
+//     (Befund A5, 23.09.2026) — Texte und Zweige dazu sind entfernt.
 //   * „Bisher“ ist kein „Erwartet“: historische Sätze sind als Muster
 //     beschriftet, nie als Prognose verkleidet.
 //   * Fehlt eine Zahl, steht „—“ mit Grund — nicht 0 und nicht geschätzt.
@@ -138,15 +141,18 @@ export function windowMarks(window: {
  * A „Nachgewiesen“ — Worte + Prozent · B „Lernend“ — Worte + Fortschritt ·
  * C „Zurückhaltend“ — grau, keine Empfehlung.
  */
-export type NowStage = "A" | "B" | "C";
+export type NowStage = "A" | "C";
 
 export function nowStage(decide: DecideResult | null): NowStage {
   // Achtung: Der Server liefert bei einem Fehler ein Objekt ohne `primary`
   // (z. B. `{"error_code": "polling_missing"}`) — und zwar mit HTTP 200 im
   // Overview-Aggregat. Ein ungeprüfter Zugriff hier hat die ganze App
   // abstürzen lassen (leere Seite). Deshalb durchgehend optional.
+  // Es gibt nur zwei erreichbare Stufen: A (M7-Gate überschritten, Empfehlung
+  // mit Prozent) und C (grau, kein gemessener Prozentwert). Eine Stufe B ist
+  // nicht möglich: ohne Gate erzwingt der Server `no_advice` (`m7_pending`).
   if (!decide?.primary || decide.primary.action === "no_advice") return "C";
-  return decide.calibrated ? "A" : "B";
+  return decide.calibrated ? "A" : "C";
 }
 
 /** Wort zur Sicherheit — nie allein, immer zusätzlich zur Farbe. */
@@ -173,16 +179,23 @@ export function wordFromPercent(percent: number): string {
   return "unsicher";
 }
 
-/** Fortschritt bis zur Prozent-Anzeige (nur Stufe B, nie ein Countdown). */
-export function stageProgressNote(decide: DecideResult | null): string | null {
-  if (nowStage(decide) !== "B" || !decide) return null;
-  const done = decide?.personal_stats?.advice?.last_30d_total ?? 0;
-  const missing = Math.max(0, M7_MIN_RECOMMENDATIONS - done);
-  if (missing === 0) return null;
-  return (
-    `Noch ${missing} abgeschlossene Empfehlung${missing === 1 ? "" : "en"} ` +
-    `bis zur Prozent-Anzeige.`
-  );
+/**
+ * Der Fortschritt des M7-Zähl-Gates: abgeschlossene Empfehlungen im
+ * Vertragsschnitt (gate_n) gegen die Schwelle — nie das 30-Tage-Fenster
+ * (Befund A3, 23.09.2026): Beide Zähler waren in den Fortschrittstexten
+ * vermischt, „von 100 abgeschlossenen Empfehlungen“ zählte so je nach
+ * Verlauf zu niedrig oder sprang volatil. Fallback für Alt-Payloads:
+ * 30-Tage-Fenster.
+ */
+function m7Progress(
+  decide: DecideResult,
+): { done: number; need: number } | null {
+  const advice = decide.personal_stats?.advice;
+  if (!advice) return null;
+  return {
+    done: advice.gate_n ?? advice.last_30d_total ?? 0,
+    need: advice.min_recommendations ?? M7_MIN_RECOMMENDATIONS,
+  };
 }
 
 /**
@@ -192,11 +205,11 @@ export function stageProgressNote(decide: DecideResult | null): string | null {
 export function learningNote(decide: DecideResult | null): string | null {
   // Nur mit echter Antwort: Ein Fehlerpayload sagt nichts über den Lernstand.
   if (!decide?.primary || decide.calibrated) return null;
-  const done = decide?.personal_stats?.advice?.last_30d_total ?? 0;
-  if (done >= M7_MIN_RECOMMENDATIONS) return null;
+  const progress = m7Progress(decide);
+  if (!progress || progress.done >= progress.need) return null;
   return (
-    `Das Modell lernt noch — ${countLabel(done)} von ` +
-    `${countLabel(M7_MIN_RECOMMENDATIONS)} abgeschlossenen Empfehlungen. ` +
+    `Das Modell lernt noch — ${countLabel(progress.done)} von ` +
+    `${countLabel(progress.need)} abgeschlossenen Empfehlungen. ` +
     "Die Preise unten sind gemessen."
   );
 }
@@ -226,7 +239,6 @@ export type NowVerdict = {
   /** Nur auf Stufe A gefüllt. */
   percent: number | null;
   word: string | null;
-  stageNote: string | null;
 };
 
 /**
@@ -290,7 +302,6 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
   const p = decide?.primary;
   if (!decide || !p) return null;
   const { detail, percent, word } = confidenceDetail(decide, input.liters);
-  const stageNote = stageProgressNote(decide);
   const reason = p.reason_short ? [p.reason_short, detail].join(" · ") : detail;
 
   if (p.action === "wait") {
@@ -332,7 +343,6 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: p.station.maps_url ?? null,
       percent,
       word,
-      stageNote,
     };
   }
 
@@ -350,7 +360,6 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: p.station.maps_url ?? null,
       percent,
       word,
-      stageNote,
     };
   }
 
@@ -370,7 +379,6 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: alt?.maps_url ?? p.station.maps_url ?? null,
       percent,
       word,
-      stageNote,
     };
   }
 
@@ -393,7 +401,6 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     mapsUrl: null,
     percent: null,
     word: null,
-    stageNote: null,
   };
 }
 
@@ -674,18 +681,26 @@ export function nowExplanation(
     );
   }
 
+  // Befund B1 (23.09.2026): bei „Woanders“ stehen brutto-Prozent und
+  // netto-€ nebeneinander — die Ebene-1-Notiz benennt die Trennung, damit
+  // das Prozent nicht als Chance auf genau diese Ersparnis gelesen wird.
+  if (stage === "A" && decide.primary?.action === "refuel_elsewhere") {
+    sentences.push(
+      "Das Prozent misst die reine Preisdifferenz (brutto); der €-Betrag rechnet Umweg und Zeit ab (netto).",
+    );
+  }
+
   const advice = decide.personal_stats?.advice;
   if (stage === "A" && advice?.last_30d_total) {
+    // Befund A3 (23.09.2026): Trefferzahl mit halben Unentschieden — exakt
+    // dieselbe Abrechnung wie die Prozentzahl danach (hit_rate zählt
+    // „tie“ × 0,5). Sonst nannte der Satz Zähler und Quote zweier
+    // verschieden gearteter Ereignisse (2 von 4 → „2 trafen zu (63 %)“).
+    const hits = advice.last_30d_hits + (advice.last_30d_ties ?? 0) / 2;
     sentences.push(
       `Von ${countLabel(advice.last_30d_total)} abgeschlossenen Empfehlungen ` +
-        `trafen ${countLabel(advice.last_30d_hits)} zu ` +
+        `trafen ${deTrimmed(hits, hits % 1 ? 1 : 0)} zu ` +
         `(${percentLabel(advice.hit_rate == null ? null : advice.hit_rate * 100, 0)}).`,
-    );
-  } else if (stage === "B") {
-    sentences.push(
-      `Die Trefferquote wird noch gemessen — ${countLabel(
-        advice?.last_30d_total ?? 0,
-      )} von ${countLabel(M7_MIN_RECOMMENDATIONS)} abgeschlossenen Empfehlungen.`,
     );
   } else {
     sentences.push(
@@ -743,13 +758,14 @@ export function assumptionHint(input: NowInput): string | null {
   }
 
   if (p.action === "wait" && p.recommended_window) {
-    // 3. Warten: der Kipp-Punkt ist der Zeitpunkt, bis zu dem man tanken
-    //    MUSS — der Server zählt ein Fenster nur, wenn es vor latest_by
-    //    ENDET.
+    // 3. Warten: Befund A7 (23.09.2026): Der Server kürzt ein Fenster
+    //    ausschnittweise auf „endets spätestens bei latest_by“ — der
+    //    behauptete Schnitt „zählt nur, wenn es vor latest_by endet“ hat
+    //    nie gegolten. Der echte Kipp-Punkt liegt am Fensterbeginn.
     return (
       `Kippt zu „Jetzt“, wenn das Tanken vor ${hourOnlyLabel(
-        p.recommended_window.end,
-      )} fällig wird.`
+        p.recommended_window.start,
+      )} fällig wird — bis dahin kürzt der Server das Fenster nur.`
     );
   }
 
@@ -771,9 +787,15 @@ export function assumptionHint(input: NowInput): string | null {
         input.timeValue != null && input.timeValue > 0
           ? `${euro(input.timeValue, input.timeValue % 1 ? 1 : 0)} €/h`
           : "Automatik-Zeitwert";
+      // Befund B1 (23.09.2026): auf dieser Karte stehen zwei Rechnungen
+      // nebeneinander — das Prozent misst die reine Preisdifferenz
+      // (brutto), der €-Betrag rechnet Umweg und Zeit ab (netto). Beides
+      // wird hier benannt, damit niemand die 83 % dem €-Betrag zurechnet.
       return (
         `Entscheidend ist der Umweg: ${kilometersLabel(alt.detour_km, 1)} extra, ` +
-        `Zeitwert ${z} — berechnet vom Server.`
+        `Zeitwert ${z} — berechnet vom Server. Das Prozent der Karte gilt ` +
+        `der reinen Preisdifferenz (brutto), der €-Betrag rechnet Umweg und ` +
+        `Zeit ab (netto).`
       );
     }
   }
@@ -965,10 +987,15 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
         value: sorted[sorted.length - 1].value,
       }
     : null;
-  const median = open.length
-    ? [...open.map((cell) => cell.value)].sort((a, b) => a - b)[
-        Math.floor(open.length / 2)
-      ]
+  // A4-Regression (Befund 23.09.2026): Bei gerader Stichprobe lag der obere
+  // der beiden Mittelwerte drin — der „Tagesmedian“ zeigte systematisch zu
+  // hoch. Echter Median: Mittelwert der beiden mittleren Stunden-Minima.
+  const values = open.map((cell) => cell.value).sort((a, b) => a - b);
+  const half = Math.floor(values.length / 2);
+  const median = values.length
+    ? values.length % 2 === 1
+      ? values[half]
+      : (values[half - 1] + values[half]) / 2
     : null;
   // O20: Die Zelle trägt das Stunden-Minimum (`value`) und den letzten Preis
   // der Stunde (`latest`). „Jetzt“ ist ein Zeitpunkt, kein Minimum — die

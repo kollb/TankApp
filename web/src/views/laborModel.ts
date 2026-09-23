@@ -143,7 +143,9 @@ export function useLaborModel(
       regretEur += sc.avg_regret_eur * sc.n;
       n += sc.n;
       sPos += sc.n * sc.hit_freq;
-      pSum += sc.p_avg * sc.n;
+      // p_avg ist null, wenn die Station kein gemessenes P kennt (A8) —
+      // solche Zeilen tragen nichts zur Cohort-Mitte bei.
+      if (sc.p_avg != null) pSum += sc.p_avg * sc.n;
     }
     return {
       smart,

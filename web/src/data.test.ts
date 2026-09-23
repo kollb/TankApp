@@ -373,7 +373,15 @@ describe("B4 decision scoring and lab outcomes", () => {
     expect(score.p_avg).toBeCloseTo(0.6, 4);
     const none = scoreRows([{ ...sampleRow, p: null }], 1.5, 40, "s");
     expect(none.p_known).toBe(false);
-    expect(none.p_avg).toBe(0);
+    // Befund A8 (23.09.2026): ohne Messung null wie der Server — nie ein
+    // erfundenes 0, denn das würde Cohort-Mittelwerte nach unten ziehen.
+    expect(none.p_avg).toBeNull();
+    // Volles Potenzial ist bei Potenzial 0 die ehrliche 0, bei leerer
+    // Station aber servergleich null (vorher totes `: n ? 0 : 0`).
+    expect(
+      scoreRows([{ ...sampleRow, best: 0 }], 1.5, 40, "s").pot_share,
+    ).toBe(0);
+    expect(scoreRows([], 1.5, 40, "s").pot_share).toBeNull();
   });
 });
 

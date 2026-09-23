@@ -474,11 +474,6 @@ export function JetztView(props: JetztViewProps) {
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
               {verdict.detail}
             </p>
-            {verdict.stageNote && (
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                {verdict.stageNote}
-              </p>
-            )}
             {hint && (
               <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
                 {hint}

@@ -889,6 +889,11 @@ export type DecideResult = {
     advice: {
       last_30d_hits: number;
       last_30d_total: number;
+      /** Befund A3: Unentschieden des 30-Tage-Fensters — halbgewichtet wie hit_rate. */
+      last_30d_ties?: number;
+      /** Befund A3: Fortschritt des M7-Vertragsschnitts (Allzeit, Kohorte), nicht 30-Tage-Fenster. */
+      gate_n?: number;
+      min_recommendations?: number;
       hit_rate: number | null;
       brier_30d: number | null;
     };
@@ -1069,10 +1074,10 @@ export type BacktestStationScore = {
   oracle_reachable?: boolean;
   avg_regret_ct: number;
   avg_regret_eur: number;
-  p_avg: number;
+  p_avg: number | null;
   p_known: boolean;
   hit_freq: number;
-  pot_share: number;
+  pot_share: number | null;
 };
 
 export type CalibPoint = {
@@ -1441,13 +1446,19 @@ export function scoreRows(
     sum_best_eur: toEur(sumBest),
     avg_regret_ct: n ? round(sumRegretCt / n, 3) : 0,
     avg_regret_eur: n ? round(toEur(sumRegretCt) / n, 3) : 0,
-    p_avg: nP ? round(sumP / nP, 4) : 0,
+    // Befund A8 (23.09.2026): null statt 0 wie der Server
+    // (`stats_summary.py::_score_rows`): Ohne ein gemessenes P darf die
+    // Zeile kein „0 %“ beitragen — sonst senkt sie Cohort-Mittelwerte
+    // künstlich (p_known erklärt den leeren Fall).
+    p_avg: nP ? round(sumP / nP, 4) : null,
     p_known: nP > 0,
     hit_freq: n ? round(sPos / n, 4) : 0,
     // O21-Fix: vorher `sumSmartEur / sumBest` — Euro durch Cent. Der Anteil
     // am Potenzial ist ein Verhältnis **gleicher** Einheiten (ct/ct), genau
     // wie im Server. `tests/fixtures/score_parity.json` hält beide fest.
-    pot_share: sumBest > 0 ? round(sumSmart / sumBest, 4) : n ? 0 : 0,
+    // Server-Gleichlauf (A8): Bei leerer Station `null`, bei Potenzial 0
+    // ehrlich 0 — das tote `: n ? 0 : 0` verschleierte beide Fälle.
+    pot_share: sumBest > 0 ? round(sumSmart / sumBest, 4) : n ? 0 : null,
   };
 }
 

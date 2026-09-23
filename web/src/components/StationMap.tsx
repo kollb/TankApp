@@ -239,7 +239,11 @@ export function StationMap({
       netEur = 0;
       verdict = "selected";
     } else if (alt) {
-      netEur = alt.net_eur;
+      // Befund A1 (23.09.2026): Der Server zählt net_eur als Ersparnis
+      // (positiv = spart), alle €-Anzeigezeilen der App zeigen dagegen
+      // „− = günstiger“ (Preisdiff gegen die Referenz). Umwandlung hier
+      // — sonst zeigen Pin und Detailkarten das Vorzeichen invertiert.
+      netEur = -alt.net_eur;
       worthIt = alt.worth_it;
       if (alt.verdict) {
         verdict =

@@ -89,9 +89,11 @@ def fit_pit_calibration(
 ) -> dict[str, Any]:
     """Lernt H, die monotone CDF der B0-PIT-Werte.
 
-    Die CDF wird auf einem festen 2,5-pp-Gitter gespeichert. Das Gitter macht
-    Artefakte klein und reproduzierbar; PAVA auf der CDF ist im Idealfall ein
-    No-op, schützt aber gegen künftig gewichtete/aggregierte PIT-Eingaben.
+    Die CDF wird auf einem festen 0,25-pp-Gitter (401 Levels) gespeichert.
+    Das Gitter macht Artefakte klein und reproduzierbar; PAVA auf der CDF
+    ist im Idealfall ein No-op, schützt aber gegen künftig gewichtete/
+    aggregierte PIT-Eingaben. (Docstring korrigiert — Befund B3, 23.09.2026:
+    „2,5 pp" war Drift, der Konstanten-Kommentar war korrekt.)
     """
     values = _finite_pits(pits)
     n = int(values.size)
