@@ -3736,7 +3736,53 @@ export type M7Advice = {
   n_day_blocks?: number | null;
   min_day_blocks?: number | null;
   calibrated?: boolean | null;
+  /** A21-B5.1 (#211): Gültigkeitsbereich der M7-Freigabe (Vertragskohorte). */
+  gate_context?: {
+    fuel?: string | null;
+    model_contract?: string | null;
+    calibration_mode?: string | null;
+    decision_contract?: string | null;
+    regime_ref?: string | null;
+  } | null;
+  gate_context_source?: string | null;
+  gate_provenance_complete?: boolean | null;
+  /** Reiner Statistik-Ausgang ohne Herkunftsforderung (historische Güte). */
+  statistical_verdict?: boolean | null;
 };
+
+/**
+ * A21-B5.1 (#211): Benennt, **wofür** die M7-Freigabe gilt — Vertrag,
+ * Kalibrierungsmodus und Regime-Bezug. Die Zeile trennt historische Güte
+ * (``gate_cohorts``) von der gültigen Vertragsfreigabe; ein Vertragswechsel
+ * braucht eine eigens belegte Freigabe. `null` ohne Gate-Kontext (Alt-Payload).
+ */
+export function m7GateScopeLine(advice?: M7Advice | null): string | null {
+  const ctx = advice?.gate_context;
+  if (!ctx) return null;
+  const known = (value?: string | null) =>
+    value != null && value !== "" && value !== "unknown";
+  const complete =
+    advice?.gate_provenance_complete ??
+    (known(ctx.fuel) &&
+      known(ctx.model_contract) &&
+      known(ctx.calibration_mode) &&
+      known(ctx.decision_contract) &&
+      (ctx.regime_ref == null || known(ctx.regime_ref)));
+  if (!complete) {
+    return "Gültigkeitsbereich unvollständig (Altbestand ohne vollständige Vertragsangaben): Das ist historische Güte und öffnet keine Aktionsfreigabe.";
+  }
+  const mode =
+    ctx.calibration_mode === "pit_24h"
+      ? "24-h-PIT-Kalibrierung"
+      : ctx.calibration_mode === "raw"
+        ? "rohe Pfade"
+        : "Kalibrierungsmodus unbekannt";
+  const regime =
+    ctx.regime_ref == null
+      ? "ohne bestätigte Regime-Kante"
+      : "nach bestätigter Regime-Kante";
+  return `Gültigkeitsbereich dieser Freigabe: ${ctx.fuel}, Modellvertrag ${ctx.model_contract}, ${mode}, ${ctx.decision_contract}, ${regime}. Ein Vertragswechsel braucht eine eigens belegte Freigabe.`;
+}
 
 // Kurze deutsche Schreibweise ohne erzwungene Nullen (6,5 statt 6,50) — für
 // Werte, die direkt aus einem Eingabefeld kommen und nicht gerundet werden

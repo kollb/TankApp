@@ -18,6 +18,8 @@ import datetime as dt
 from typing import Any
 
 from .data import metadata
+from .feedback import advice_for_context
+from .gate_context import statistical_gate_context
 from .read_state import ReadBundle, load_bundle
 
 # O18: Die CUSUM-Schwelle kommt aus der Engine — hier stand 3,0, während
@@ -517,6 +519,29 @@ def evaluate_stats_summary(
     wallet = bundle.wallet
     thresholds, tuning = bundle.thresholds, bundle.tuning
 
+    # A21-B5.1 (#211): Die M7-Kachel zeigt die Güte im Gültigkeitsbereich
+    # der angefragten Sorte **und** der aktuellen Veröffentlichung — nicht
+    # still über alle Vertragskohorten gemischt. Die historische Gesamtgüte
+    # bleibt in ``live_advice.gate_cohorts``/``brier_all_*`` sichtbar; ohne
+    # Veröffentlichung bleibt die automatische Auswahl des Lesezustands.
+    gate_source = live_advice.get("gate_context_source", "current")
+    forecast_rows = [
+        row
+        for row in (pub.get("forecasts") or [])
+        if isinstance(row, dict) and str(row.get("fuel") or "").strip().lower() == fuel
+    ]
+    if forecast_rows:
+        live_advice = advice_for_context(
+            live_advice,
+            statistical_gate_context(
+                forecast_rows[0],
+                fuel,
+                live_data.clock(),
+                getattr(live_data.settings, "regimes", ()) or (),
+            ),
+        )
+        gate_source = "requested"
+
     # Güte-Kacheln: aus engine/current.json, sonst None
     quality_metrics = _quality_metrics_from_publication(pub)
     # Live-Abdeckung (Übergangsregel): aus den publizierten Policies, sonst None.
@@ -549,6 +574,10 @@ def evaluate_stats_summary(
         "quality_metrics": quality_metrics,
         "live_phase": live_phase,
         "calibrated": live_advice.get("calibrated", False),
+        # A21-B5.1: Gültigkeitsbereich der M7-Kachel — historische Güte,
+        # Vertragsfreigabe und Aktionsfreigabe bleiben getrennt benannt.
+        "gate_context": live_advice.get("gate_context"),
+        "gate_context_source": gate_source,
         "decision_ready": False,
         "error_code": None,
     }

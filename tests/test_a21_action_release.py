@@ -29,6 +29,7 @@ from app.decide import (
     release_still_valid,
 )
 from app.feedback import _empty_feedback_store, load_store
+from app.gate_context import statistical_gate_context
 
 UID = "00000000-0000-0000-0000-000000000001"
 NOW = dt.datetime(2026, 9, 10, 14, 0, tzinfo=dt.timezone.utc)  # 16:00 Berlin
@@ -98,8 +99,13 @@ def settings(tmp_path):
 # --- M7-Ledger (geprüfter Skill, öffnet das M7-Gate) -----------------------
 
 
-def _skill_store():
-    """Besterand plus geprüfte Skill-Zeilen — ``calibrated`` ist True (O6)."""
+def _skill_store(context=None):
+    """Besterand plus geprüfte Skill-Zeilen — ``calibrated`` ist True (O6).
+
+    A21-B5.1 (#211): Die Zeilen tragen den Vertragskontext der Prognose, die
+    sie freigeben sollen — die M7-Freigabe gilt nur im passenden
+    Gültigkeitsbereich, nicht über alle Kohorten gemischt.
+    """
     snaps, settlements = [], []
     rows = []
     for day in range(20):
@@ -116,17 +122,18 @@ def _skill_store():
             ]
         )
     for i, (day, hour, p, outcome) in enumerate(rows):
-        snaps.append(
-            {
-                "id": f"s{i}",
-                "action": "wait",
-                "p_correct": p,
-                "p_source": "verteilung",
-                "emitted_at": (NOW - dt.timedelta(days=day))
-                .replace(hour=hour, minute=0, second=0, microsecond=0)
-                .isoformat(),
-            }
-        )
+        snap = {
+            "id": f"s{i}",
+            "action": "wait",
+            "p_correct": p,
+            "p_source": "verteilung",
+            "emitted_at": (NOW - dt.timedelta(days=day))
+            .replace(hour=hour, minute=0, second=0, microsecond=0)
+            .isoformat(),
+        }
+        if context is not None:
+            snap["gate_context"] = dict(context)
+        snaps.append(snap)
         settlements.append({"snapshot_id": f"s{i}", "outcome": outcome})
     return {
         **_empty_feedback_store(),
@@ -135,10 +142,21 @@ def _skill_store():
     }
 
 
-def _seed_m7(settings):
+def _seed_m7(settings, row=None):
+    """Skill-Bestand im Vertragskontext der Prognose ``row`` aussäen.
+
+    Ohne ``row`` gilt der Kontext der rohen Standard-Prognose; der PIT-Fall
+    braucht seine eigene Kohorte (``test_freigabe_mit_pit_24h_ist_moeglich``).
+    """
+    context = statistical_gate_context(
+        row if row is not None else _evidence_row(),
+        "e10",
+        NOW,
+        settings.regimes,
+    )
     store_file = settings.runtime / "feedback" / "store.json"
     store_file.parent.mkdir(parents=True, exist_ok=True)
-    store_file.write_text(json.dumps(_skill_store()), encoding="utf-8")
+    store_file.write_text(json.dumps(_skill_store(context=context)), encoding="utf-8")
 
 
 # --- Prognose-Veröffentlichung ---------------------------------------------
@@ -177,19 +195,27 @@ PIT_ENVELOPE = {
 
 
 def _evidence_row(**overrides):
-    """Eine Prognosezeile mit **vollständiger** Evidenz — per Override lochen."""
+    """Eine Prognosezeile mit **vollständiger** Evidenz — per Override lochen.
+
+    ``model_kind``/``day_pair``/``shared`` bilden den Modellvertrag des
+    M7-Gültigkeitsbereichs (A21-B5.1) — dieselben Felder, die eine
+    Veröffentlichung aus dem Modell-Lauf trägt.
+    """
     row = {
         "station_id": UID,
         "city": "Frankfurt",
         "fuel": "e10",
         "origin": NOW.isoformat(),
         "points": POINTS,
+        "model_kind": "profile_ar2",
+        "day_pair": True,
         "draws_24h": {
             "n": 4,
             "block_minutes": 120,
             "blocks": BLOCKS,
             "minima": MINIMA,
             "nowcast": [1.68, 1.69, 1.70, 1.71],
+            "shared": True,
         },
         "rolling_picp_7d": {
             "current": {"badge": "green", "picp_pct": 95.0, "points": 144, "n_days": 7}
@@ -472,7 +498,9 @@ def test_freigabe_mit_roher_verteilung_ist_moeglich(settings):
 
 
 def test_freigabe_mit_pit_24h_ist_moeglich(settings):
-    _seed_m7(settings)
+    # A21-B5.1: PIT-Pfade sind eine eigene Vertragskohorte — die Freigabe
+    # braucht Skill-Evidenz **im PIT-Kontext**, nicht gemischt mit raw.
+    _seed_m7(settings, row=_evidence_row(calibrated=True, calibration=PIT_ENVELOPE))
     _publish(
         settings,
         _evidence_row(calibrated=True, calibration=PIT_ENVELOPE),

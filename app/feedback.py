@@ -25,6 +25,16 @@ from typing import Any
 
 from polling_plan import atomic_json, collector_lock
 from .data import PRICE_PLAUSIBLE_MAX, PRICE_PLAUSIBLE_MIN, metadata
+from .gate_context import (
+    GATE_CONTRACT_FIELDS,
+    POOLING_POLICY,
+    STATISTICAL_CONTRACT_VERSION,
+    UNKNOWN,
+    describe_gate_context,
+    gate_context_key,
+    normalize_gate_context,
+    same_gate_context,
+)
 from .outcomes import outcome_credit, symmetric_threshold_outcome, threshold_outcome
 from .route import net_economics
 from engine.personalization import hourly_profile, weekday_profile
@@ -1237,6 +1247,11 @@ def _same_advice(a: dict, b: dict) -> bool:
     # zufällig identisch blieb.
     if snapshot_calibration_state(a) != snapshot_calibration_state(b):
         return False
+    # A21-B5.1: Dasselbe gilt für einen Vertragswechsel des Gültigkeits-
+    # bereichs (Kraftstoff, Modellvertrag, Kalibrierungsmodus,
+    # Entscheidungsvertrag, Regime-Bezug) — eine neue Messbedingung.
+    if not same_gate_context(snapshot_gate_context(a), snapshot_gate_context(b)):
+        return False
     # Eine erneut bestätigte Ablehnung ist keine neue Entscheidung: Es gibt
     # keinen Vergleichspreis, nichts zu messen. Sie wird ohne Zeitfenster
     # kollabiert — sonst schriebe jede Abfrage eines offenen Fensters einen
@@ -1338,6 +1353,107 @@ def snapshot_calibration_state(snap: dict[str, Any] | None) -> str:
     return state if state in FORECAST_CALIBRATION_STATES else "unknown"
 
 
+def snapshot_gate_context(snap: dict[str, Any] | None) -> dict[str, Any]:
+    """A21-B5.1: Vertragskontext eines Snapshots, Altbestand ehrlich ``unknown``.
+
+    Neue Snapshots tragen ``gate_context`` (fünf Vertragsfelder); Altbestand
+    ohne Feld wird **nicht** rückwirkend zu einer nachgewiesenen Kohorte
+    erklärt, sondern bildet die eigene ``unknown``-Kohorte (Issue 211).
+    """
+    if not isinstance(snap, dict):
+        return normalize_gate_context(None)
+    return normalize_gate_context(snap.get("gate_context"))
+
+
+def gate_provenance_complete(context: Any) -> bool:
+    """Vollständige Herkunft = kein Vertragsfeld ist ``unknown``.
+
+    ``regime_ref=None`` („noch keine bestätigte Kante“) ist dabei eine
+    **bekannte** Angabe; nur der Altbestand-Marker ``unknown`` fehlt.
+    """
+    ctx = normalize_gate_context(context)
+    return (
+        all(
+            ctx[field] != UNKNOWN
+            for field in GATE_CONTRACT_FIELDS
+            if field != "regime_ref"
+        )
+        and ctx["regime_ref"] != UNKNOWN
+    )
+
+
+def select_gate_cohort(advice: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Gate-Ergebnis einer ``compute_advice_stats``-Antwort für einen Kontext.
+
+    Exakte Vertragsgleichheit — kein Beimischen fremder Kohorten. Ohne
+    passende Evidenz liefert ein ehrlicher Leerblock (``match=False``,
+    ``calibrated=False``) statt eines fremden Verdicts.
+    """
+    key = gate_context_key(context)
+    for entry in advice.get("gate_cohorts") or []:
+        if entry.get("context_key") == key:
+            return {**entry, "match": True}
+    empty = _empty_gate_block(
+        normalize_gate_context(context),
+        rows=[],
+        has_other=bool(advice.get("gate_cohorts")),
+    )
+    return {
+        "context": normalize_gate_context(context),
+        "context_key": key,
+        "provenance_complete": gate_provenance_complete(context),
+        "match": False,
+        **empty,
+        "release_ready": False,
+        "calibrated": False,
+    }
+
+
+_GATE_VIEW_KEYS = (
+    "gate_n",
+    "gate_brier",
+    "gate_brier_ci",
+    "gate_ref_base",
+    "gate_ref_climate",
+    "gate_reliability_slope",
+    "gate_reliability_slope_ci",
+    "gate_reliability_ok",
+    "gate_bias",
+    "gate_bias_ci",
+    "gate_bias_ok",
+    "gate_skill_diff",
+    "gate_skill_diff_ci",
+    "gate_skill_ok",
+    "gate_reliability_bins",
+    "n_day_blocks",
+    "statistical_verdict",
+    "calibrated",
+    "gate_status",
+)
+
+
+def advice_for_context(advice: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Kopie einer ``compute_advice_stats``-Antwort für einen Vertragskontext.
+
+    Die Top-Level-Gate-Felder werden durch die Ergebnisse **dieser** Kohorte
+    ersetzt (``gate_context_source="requested"``) — die GUI zeigt damit die
+    Güte des Gültigkeitsbereichs der aktuellen Auswahl, getrennt von der
+    historischen Gesamtgüte (``gate_cohorts``, ``brier_all_*``, ``n_all``).
+    Der Cache-Lesezustand bleibt unangetastet (nur Kopie).
+    """
+    entry = select_gate_cohort(advice, context)
+    view = dict(advice)
+    for key in _GATE_VIEW_KEYS:
+        if key in entry:
+            view[key] = entry[key]
+    view["gate_context"] = normalize_gate_context(context)
+    view["gate_context_key"] = gate_context_key(context)
+    view["gate_context_source"] = "requested"
+    view["gate_provenance_complete"] = entry.get("provenance_complete", False)
+    view["gate_match"] = entry.get("match", False)
+    return view
+
+
 def _peek_confirmation(
     settings,
     snapshot_data: dict[str, Any],
@@ -1394,6 +1510,9 @@ def _peek_confirmation(
         "fuel": snapshot_data.get("fuel", "e10"),
         "decline_reason": snapshot_data.get("decline_reason"),
         "forecast_calibration_state": snapshot_data.get("forecast_calibration_state"),
+        # A21-B5.1: Ein Vertragswechsel ist eine neue Messbedingung und darf
+        # nicht als „dieselbe Entscheidung“ kollabieren.
+        "gate_context": snapshot_data.get("gate_context"),
         "emitted_at": now_str,
     }
     if not _same_advice(ep["last_snapshot"], probe):
@@ -1484,6 +1603,9 @@ def record_snapshot(
         calibration_state = (
             state_raw if state_raw in FORECAST_CALIBRATION_STATES else "unknown"
         )
+        # A21-B5.1: Vertragskontext einmal normalisiert — fehlt die Angabe
+        # (Alt-Clients, Tests), bleibt der Kontext ehrlich ``unknown``.
+        gate_context = normalize_gate_context(snapshot_data.get("gate_context"))
 
         snap_id = _uid("snap")
         snap = {
@@ -1539,6 +1661,15 @@ def record_snapshot(
             # informativ für spätere Auswertungen; die Snapshot-
             # Kollabierung hängt weiter nur an Aktion/Station/Fenster.
             "tank_state": snapshot_data.get("tank_state"),
+            # A21-B5.1 (#211): reproduzierbare Herkunft — Vertragskontext
+            # (fünf Felder, app/gate_context.py) und der reine
+            # Szenario-Hinweis auf angekündigte Regime-Termine (A14).
+            # Altbestand ohne Angabe bleibt ``unknown`` und wird nicht
+            # rückwirkend zur aktuellen Kohorte erklärt.
+            "gate_context": gate_context,
+            "regime_scenario_pending": bool(
+                snapshot_data.get("regime_scenario_pending")
+            ),
         }
 
         if not ep:
@@ -2111,6 +2242,10 @@ def _void_settlement(
         "outcome": "void",
         "void_reason": reason,
         "regret_eur": 0.0,
+        # A21-B5.1: Herkunft je Settlement (denormalisiert) — Altbestand
+        # wird beim Settle-Zeitpunkt aus dem Snapshot gelesen und bleibt
+        # ``unknown``, statt nachträglich einer Kohorte zugeschlagen.
+        "gate_context": snapshot_gate_context(snap),
     }
     store["settlements"].append(settlement)
     return settlement
@@ -2208,6 +2343,9 @@ def _settle_one_snapshot(
         "p_realized": round(p_real, 3),
         "outcome": outcome,
         "regret_eur": regret,
+        # A21-B5.1: Herkunft je Settlement (denormalisiert) — derselbe
+        # Vertragskontext wie beim Emit.
+        "gate_context": snapshot_gate_context(snap),
     }
     store["settlements"].append(settlement)
     return settlement
@@ -2546,8 +2684,249 @@ def _reliability_bins(
     return out
 
 
+def _empty_gate_block(
+    context: dict[str, Any],
+    *,
+    rows: list[dict[str, Any]] | None = None,
+    has_other: bool = False,
+    n_all: int = 0,
+) -> dict[str, Any]:
+    """Leeres Gate-Ergebnis — für Kohorten ohne jede passende Evidenz."""
+    return _gate_stats_for_rows(context, rows or [], has_other=has_other, n_all=n_all)
+
+
+def _gate_stats_for_rows(
+    context: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    has_other: bool = False,
+    n_all: int = 0,
+) -> dict[str, Any]:
+    """M7-Gate über **eine** Vertragskohorte (A21-B5.1, Issue 211).
+
+    Dieselbe Statistik wie zuvor (O5/O6/M5: Verteilungs-P, Block-Bootstrap
+    über Tagesblöcke, Skill gegen Basis/Klima gemeinsam resampelt, Steigung
+    und Bias) — aber nur über die Zeilen dieses Gültigkeitsbereichs. Fremde
+    Kohorten werden nie beigemischt; bei zu wenig passender Evidenz bleibt
+    das Gate ehrlich gesperrt.
+
+    ``statistical_verdict`` ist der reine Statistik-Ausgang (was ``calibrated``
+    vor 0.68.0 war). ``calibrated``/``release_ready`` sind erst erfüllt, wenn
+    zusätzlich die Herkunft vollständig ist — Legacy/unknown erklärt die
+    aktuelle Kohorte nicht rückwirkend für nachgewiesen (Issue 211).
+    """
+    gate_n = len(rows)
+    gate_brier = round(sum(row["sq"] for row in rows) / gate_n, 4) if gate_n else None
+    provenance_complete = gate_provenance_complete(context)
+    day_blocks: dict[Any, list[float]] = {}
+    reliability_blocks: dict[Any, list[dict[str, float]]] = {}
+    bias_blocks: dict[Any, list[float]] = {}
+    skill_blocks: dict[Any, list[dict[str, Any]]] = {}
+    for pos, row in enumerate(rows):
+        key = row["day"] if row["day"] is not None else f"unknown-{pos}"
+        day_blocks.setdefault(key, []).append(row["sq"])
+        reliability_blocks.setdefault(key, []).append(
+            {"p": row["p"], "outcome": row["outcome"]}
+        )
+        # M5: Kalibrierung im Mittel — Vorzeichenfehler je Zeile; das
+        # Block-Intervall muss 0 enthalten.
+        bias_blocks.setdefault(key, []).append(row["outcome"] - row["p"])
+        skill_blocks.setdefault(key, []).append(row)
+    n_day_blocks = len(day_blocks)
+    if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
+        gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
+        gate_slope_ci_lo, gate_slope_ci_hi = _block_bootstrap_reliability_ci(
+            list(reliability_blocks.values())
+        )
+        gate_bias_ci_lo, gate_bias_ci_hi = _block_bootstrap_ci(
+            list(bias_blocks.values())
+        )
+        gate_skill_ci_lo, gate_skill_ci_hi = _block_bootstrap_skill_ci(
+            list(skill_blocks.values())
+        )
+    else:
+        gate_ci_lo, gate_ci_hi = None, None
+        gate_slope_ci_lo, gate_slope_ci_hi = None, None
+        gate_bias_ci_lo, gate_bias_ci_hi = None, None
+        gate_skill_ci_lo, gate_skill_ci_hi = None, None
+    gate_slope = _reliability_slope(
+        [{"p": row["p"], "outcome": row["outcome"]} for row in rows]
+    )
+    gate_slope_ok = (
+        gate_slope is not None
+        and gate_slope_ci_lo is not None
+        and gate_slope_ci_hi is not None
+        and gate_slope_ci_lo <= GATE_RELIABILITY_SLOPE_TARGET <= gate_slope_ci_hi
+        and abs(gate_slope - GATE_RELIABILITY_SLOPE_TARGET)
+        < GATE_RELIABILITY_SLOPE_MAX_ABS_DEV
+        and (gate_slope_ci_hi - gate_slope_ci_lo) < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
+    )
+    # M5: Intercept-/Mittel-Nachweis neben der Steigung. Eine Steigung 1 mit
+    # systematischem Versatz (+10 pp) war vorher „kalibriert“ — das Mittel
+    # muss stimmen, nicht nur die Empfindlichkeit.
+    gate_bias = (
+        round(sum(row["outcome"] - row["p"] for row in rows) / gate_n, 4)
+        if gate_n > 0
+        else None
+    )
+    gate_bias_ok = (
+        gate_bias_ci_lo is not None
+        and gate_bias_ci_hi is not None
+        and gate_bias_ci_lo <= 0.0 <= gate_bias_ci_hi
+    )
+    gate_ref_base, gate_ref_climate = _reference_briers(
+        [row["outcome"] for row in rows],
+        [row["cell"] for row in rows],
+    )
+    binding_ref = min(gate_ref_base, gate_ref_climate) if rows else None
+    gate_skill_diff = (
+        round(gate_brier - binding_ref, 4)
+        if gate_brier is not None and binding_ref is not None
+        else None
+    )
+    # M5: Skill-Differenz gemeinsam block-resampled (Referenzen je Ziehung
+    # neu auf denselben Zeilen) statt Punkt-Referenz gegen KI-Obergrenze.
+    gate_skill_ok = gate_skill_ci_hi is not None and gate_skill_ci_hi < 0
+    # M5: Proper Scoring (Skill) und Kalibrierung (Steigung + Mittel) sind
+    # getrennte Nachweise — alle drei müssen tragen, keiner ersetzt einen.
+    statistical_verdict = (
+        gate_n >= M7_MIN_RECOMMENDATIONS
+        and gate_skill_ok
+        and gate_slope_ok
+        and gate_bias_ok
+    )
+    if not rows and has_other:
+        # A21-B5.1: Evidenz liegt nur in fremden Kohorten — sie öffnet diesen
+        # Gültigkeitsbereich nicht (Issue 211: kein Beimischen fremder Historie).
+        gate_status = (
+            f"Kalibrierung steht aus (n=0 < {M7_MIN_RECOMMENDATIONS} passende "
+            "Empfehlungen im Gültigkeitsbereich "
+            f"{describe_gate_context(context)}) — fremde Kohorten öffnen ihn nicht"
+        )
+    elif gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
+        gate_status = (
+            f"Kalibrierung steht aus (n={gate_n} < {M7_MIN_RECOMMENDATIONS} "
+            "Empfehlungen mit Verteilungs-P)"
+        )
+    elif gate_brier is None:
+        # Zählstand reicht, aber keine Zeile trägt eine Verteilungs-P: Der
+        # Score ist nicht messbar. „kalibriert\" wäre erfunden (§0.4).
+        gate_status = (
+            f"Kalibrierung nicht messbar (n={n_all}, keine Verteilungs-P im Ledger)"
+        )
+    elif gate_n < M7_MIN_RECOMMENDATIONS:
+        # Gesamt-n reicht, aber die Verteilungs-Teilmenge nicht — der Brier
+        # wäre über eine andere Grundgesamtheit gemessen als der Zähler
+        # (Prüfstand §3.6), und die Basisrate öffnet das Gate nicht (O5).
+        gate_status = (
+            f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
+            "mit Verteilungs-P im Ledger)"
+        )
+    elif (
+        gate_ci_hi is None
+        or binding_ref is None
+        or gate_slope_ci_hi is None
+        or gate_bias_ci_hi is None
+        or gate_skill_ci_hi is None
+    ):
+        # Zählstand reicht, aber zu wenige Tagesblöcke oder keine P-Streuung
+        # für ein belastbares Intervall. Eine konstante Wahrscheinlichkeit
+        # bekommt ausdrücklich keine erfundene Steigung 1,0.
+        gate_status = (
+            f"Kalibrierung nicht messbar (n={gate_n}, {n_day_blocks} Tagesblöcke; "
+            "Brier- und Steigungsintervall brauchen Streuung und mindestens "
+            f"{GATE_MIN_DAY_BLOCKS} Blöcke)"
+        )
+    elif not gate_skill_ok:
+        gate_status = (
+            f"Kalibrierung nicht erreicht (Brier-Differenz zur besseren "
+            f"Referenz {_de(gate_skill_diff)} "
+            f"[{_de(gate_skill_ci_lo)}–{_de(gate_skill_ci_hi)}] ≥ 0; "
+            f"Basis {_de(gate_ref_base)} / Klima {_de(gate_ref_climate)}, "
+            "Verteilungs-P)"
+        )
+    elif not gate_slope_ok:
+        gate_status = (
+            "Kalibrierung nicht erreicht (Reliability-Steigung "
+            f"{_de(gate_slope)} [{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] "
+            f"enthält Referenz {_de(GATE_RELIABILITY_SLOPE_TARGET)} nicht "
+            f"oder |slope-1|≥{GATE_RELIABILITY_SLOPE_MAX_ABS_DEV} "
+            f"oder CI-Breite≥{GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH})"
+        )
+    elif not gate_bias_ok:
+        # M5: +10-pp-Versatz mit Steigung 1 und Brier-Skill ist keine
+        # Kalibrierung — das Mittel-Intervall muss 0 enthalten.
+        gate_status = (
+            "Kalibrierung nicht erreicht (Kalibrierung im Mittel: Bias "
+            f"mean(y)−mean(p) {_de(gate_bias)} "
+            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0 nicht, "
+            "Verteilungs-P)"
+        )
+    elif not provenance_complete:
+        # A21-B5.1: Die Statistik trägt, aber der Altbestand nennt seinen
+        # Vertrag nicht. Historische Güte bleibt sichtbar — eine
+        # Aktionsfreigabe für die **aktuelle** Kohorte darf das nicht
+        # rückwirkend begründen (Issue 211).
+        gate_status = (
+            f"Historisch kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}], Verteilungs-P) — "
+            "Herkunft unvollständig (Vertragskontext "
+            f"{describe_gate_context(context)}): öffnet keine Aktionsfreigabe."
+        )
+    else:
+        gate_status = (
+            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
+            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
+            f"/ Klima {_de(gate_ref_climate)}; Steigung {_de(gate_slope)} "
+            f"[{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] enthält "
+            f"{_de(GATE_RELIABILITY_SLOPE_TARGET)}; Bias {_de(gate_bias)} "
+            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0, "
+            "Verteilungs-P)"
+        )
+    calibrated = statistical_verdict and provenance_complete
+    return {
+        "gate_n": gate_n,
+        "gate_brier": gate_brier,
+        "gate_brier_ci": ([gate_ci_lo, gate_ci_hi] if gate_ci_hi is not None else None),
+        "gate_ref_base": gate_ref_base,
+        "gate_ref_climate": gate_ref_climate,
+        "gate_reliability_slope": round(gate_slope, 4)
+        if gate_slope is not None
+        else None,
+        "gate_reliability_slope_ci": (
+            [gate_slope_ci_lo, gate_slope_ci_hi]
+            if gate_slope_ci_hi is not None
+            else None
+        ),
+        "gate_reliability_ok": gate_slope_ok,
+        "gate_bias": gate_bias,
+        "gate_bias_ci": (
+            [gate_bias_ci_lo, gate_bias_ci_hi] if gate_bias_ci_hi is not None else None
+        ),
+        "gate_bias_ok": gate_bias_ok,
+        "gate_skill_diff": gate_skill_diff,
+        "gate_skill_diff_ci": (
+            [gate_skill_ci_lo, gate_skill_ci_hi]
+            if gate_skill_ci_hi is not None
+            else None
+        ),
+        "gate_skill_ok": gate_skill_ok,
+        "gate_reliability_bins": _reliability_bins(rows),
+        "n_day_blocks": n_day_blocks,
+        "provenance_complete": provenance_complete,
+        "statistical_verdict": statistical_verdict,
+        "calibrated": calibrated,
+        "release_ready": calibrated,
+        "gate_status": gate_status,
+    }
+
+
 def compute_advice_stats(
-    store: dict[str, Any], now: dt.datetime | None = None, window_days: int = 30
+    store: dict[str, Any],
+    now: dt.datetime | None = None,
+    window_days: int = 30,
+    *,
+    gate_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Berechnet Advice-Ledger-KPIs (Brier, Trefferquoten, Reliability).
 
@@ -2576,6 +2955,18 @@ def compute_advice_stats(
     Grundgesamtheit liegt (``gate_brier_ci``, ``gate_ref_base``,
     ``gate_ref_climate``, ``n_day_blocks``). Unter 10 Tagesblöcken bleibt
     das Intervall None („nicht messbar“).
+
+    A21-B5.1 (#211): Das Gate rechnet je **Vertragskohorte** (fünf
+    Vertragsfelder in ``gate_context``, siehe ``app/gate_context.py``):
+    Kraftstoff, Modellvertrag, Kalibrierungsmodus, Entscheidungsvertrag und
+    Regime-Bezug. Die Top-Level-Gate-Felder beschreiben die ausgewählte
+    Kohorte — mit ``gate_context`` explizit angefordert (Freigabepfade),
+    sonst automatisch die Kohorte der jüngsten Gate-Zeile. ``gate_cohorts``
+    weist jede Kohorte getrennt aus; Altbestand ohne Herkunft bleibt als
+    ``unknown``-Kohorte sichtbar und zählt in die Allzeitbilanz, öffnet aber
+    nie die Freigabe eines bekannten Vertrags. ``calibrated`` ist erst bei
+    statistischem Erfolg **und** vollständiger Herkunft True — der reine
+    Statistik-Ausgang steht in ``statistical_verdict``.
     """
     now = now or dt.datetime.now(UTC)
     cutoff = now - dt.timedelta(days=window_days)
@@ -2778,8 +3169,10 @@ def compute_advice_stats(
         brier_all_by_calibration[snapshot_calibration_state(snap)].append(sq_error)
         # O6: Gate-Zeilen mit Block- und Zellenschlüssel für Intervall und
         # Referenzen — dieselbe Grundgesamtheit wie gate_sq (Verteilung).
+        # A21-B5.1: plus Vertragskontext für die Kohortenbildung.
         if source == "verteilung":
             day, hour, weekday = _emit_day_cell(snap)
+            row_context = snapshot_gate_context(snap)
             gate_rows.append(
                 {
                     "day": day,
@@ -2787,6 +3180,9 @@ def compute_advice_stats(
                     "outcome": is_win,
                     "p": p_val,
                     "sq": sq_error,
+                    "context": row_context,
+                    "context_key": gate_context_key(row_context),
+                    "emitted_at": snap.get("emitted_at"),
                 }
             )
     n_brier_all = len(brier_all_sq)
@@ -2808,157 +3204,57 @@ def compute_advice_stats(
     # Punkt-Brier gegen 0,25 mehr — das Gate besteht erst, wenn die
     # Obergrenze des Block-Bootstrap-Intervalls unter beiden naiven
     # Referenzen (Basisrate, Klimatologie) liegt.
+    #
+    # A21-B5.1 (#211): Rechnung je Vertragskohorte (app/gate_context.py).
+    # Zulässiges Pooling: Stationen/Städte innerhalb einer Kohorte; fremde
+    # Kohorten werden nie beigemischt. Die Auswahl der **aktiven** Kohorte
+    # erfolgt über ``gate_context`` (Freigabepfade) oder — ohne Angabe —
+    # über die jüngste Gate-Zeile; Altbestand ohne Herkunft bleibt als
+    # ``unknown``-Kohorte sichtbar, öffnet aber keine Vertragsfreigabe.
     n_all = len(settlements_all)
-    gate_sq = brier_all_by_source["verteilung"]
-    gate_n = len(gate_sq)
-    gate_brier = round(sum(gate_sq) / gate_n, 4) if gate_n > 0 else None
-    day_blocks: dict[Any, list[float]] = {}
-    reliability_blocks: dict[Any, list[dict[str, float]]] = {}
-    bias_blocks: dict[Any, list[float]] = {}
-    skill_blocks: dict[Any, list[dict[str, Any]]] = {}
-    for pos, row in enumerate(gate_rows):
-        key = row["day"] if row["day"] is not None else f"unknown-{pos}"
-        day_blocks.setdefault(key, []).append(row["sq"])
-        reliability_blocks.setdefault(key, []).append(
-            {"p": row["p"], "outcome": row["outcome"]}
+    rows_by_cohort: dict[str, list[dict[str, Any]]] = {}
+    for row in gate_rows:
+        rows_by_cohort.setdefault(row["context_key"], []).append(row)
+    cohort_entries: list[dict[str, Any]] = []
+    for key in sorted(rows_by_cohort):
+        rows = rows_by_cohort[key]
+        entry_context = rows[0]["context"]
+        cohort_entries.append(
+            {
+                "context": entry_context,
+                "context_key": key,
+                "gate_pooling_policy": POOLING_POLICY,
+                **_gate_stats_for_rows(
+                    entry_context, rows, has_other=False, n_all=n_all
+                ),
+            }
         )
-        # M5: Kalibrierung im Mittel — Vorzeichenfehler je Zeile; das
-        # Block-Intervall muss 0 enthalten.
-        bias_blocks.setdefault(key, []).append(row["outcome"] - row["p"])
-        skill_blocks.setdefault(key, []).append(row)
-    n_day_blocks = len(day_blocks)
-    if n_day_blocks >= GATE_MIN_DAY_BLOCKS:
-        gate_ci_lo, gate_ci_hi = _block_bootstrap_ci(list(day_blocks.values()))
-        gate_slope_ci_lo, gate_slope_ci_hi = _block_bootstrap_reliability_ci(
-            list(reliability_blocks.values())
-        )
-        gate_bias_ci_lo, gate_bias_ci_hi = _block_bootstrap_ci(
-            list(bias_blocks.values())
-        )
-        gate_skill_ci_lo, gate_skill_ci_hi = _block_bootstrap_skill_ci(
-            list(skill_blocks.values())
-        )
+    if gate_context is not None:
+        want_context = normalize_gate_context(gate_context)
+        context_source = "requested"
+    elif gate_rows:
+        newest = max(gate_rows, key=lambda row: str(row.get("emitted_at") or ""))
+        want_context = newest["context"]
+        context_source = "current"
     else:
-        gate_ci_lo, gate_ci_hi = None, None
-        gate_slope_ci_lo, gate_slope_ci_hi = None, None
-        gate_bias_ci_lo, gate_bias_ci_hi = None, None
-        gate_skill_ci_lo, gate_skill_ci_hi = None, None
-    gate_slope = _reliability_slope(
-        [{"p": row["p"], "outcome": row["outcome"]} for row in gate_rows]
+        want_context = normalize_gate_context(None)
+        context_source = "legacy"
+    want_key = gate_context_key(want_context)
+    selected = next(
+        (entry for entry in cohort_entries if entry["context_key"] == want_key), None
     )
-    gate_slope_ok = (
-        gate_slope is not None
-        and gate_slope_ci_lo is not None
-        and gate_slope_ci_hi is not None
-        and gate_slope_ci_lo <= GATE_RELIABILITY_SLOPE_TARGET <= gate_slope_ci_hi
-        and abs(gate_slope - GATE_RELIABILITY_SLOPE_TARGET)
-        < GATE_RELIABILITY_SLOPE_MAX_ABS_DEV
-        and (gate_slope_ci_hi - gate_slope_ci_lo) < GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH
-    )
-    # M5: Intercept-/Mittel-Nachweis neben der Steigung. Eine Steigung 1 mit
-    # systematischem Versatz (+10 pp) war vorher „kalibriert“ — das Mittel
-    # muss stimmen, nicht nur die Empfindlichkeit.
-    gate_bias = (
-        round(sum(row["outcome"] - row["p"] for row in gate_rows) / gate_n, 4)
-        if gate_n > 0
-        else None
-    )
-    gate_bias_ok = (
-        gate_bias_ci_lo is not None
-        and gate_bias_ci_hi is not None
-        and gate_bias_ci_lo <= 0.0 <= gate_bias_ci_hi
-    )
-    gate_ref_base, gate_ref_climate = _reference_briers(
-        [row["outcome"] for row in gate_rows],
-        [row["cell"] for row in gate_rows],
-    )
-    binding_ref = min(gate_ref_base, gate_ref_climate) if gate_rows else None
-    gate_skill_diff = (
-        round(gate_brier - binding_ref, 4)
-        if gate_brier is not None and binding_ref is not None
-        else None
-    )
-    # M5: Skill-Differenz gemeinsam block-resampled (Referenzen je Ziehung
-    # neu auf denselben Zeilen) statt Punkt-Referenz gegen KI-Obergrenze.
-    gate_skill_ok = gate_skill_ci_hi is not None and gate_skill_ci_hi < 0
-    # M5: Proper Scoring (Skill) und Kalibrierung (Steigung + Mittel) sind
-    # getrennte Nachweise — alle drei müssen tragen, keiner ersetzt einen.
-    calibrated = (
-        gate_n >= M7_MIN_RECOMMENDATIONS
-        and gate_skill_ok
-        and gate_slope_ok
-        and gate_bias_ok
-    )
-    if gate_n < M7_MIN_RECOMMENDATIONS and n_all < M7_MIN_RECOMMENDATIONS:
-        gate_status = (
-            f"Kalibrierung steht aus (n={gate_n} < {M7_MIN_RECOMMENDATIONS} "
-            "Empfehlungen mit Verteilungs-P)"
-        )
-    elif gate_brier is None:
-        # Zählstand reicht, aber keine Zeile trägt eine Verteilungs-P: Der
-        # Score ist nicht messbar. „kalibriert" wäre erfunden (§0.4).
-        gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, keine Verteilungs-P im Ledger)"
-        )
-    elif gate_n < M7_MIN_RECOMMENDATIONS:
-        # Gesamt-n reicht, aber die Verteilungs-Teilmenge nicht — der Brier
-        # wäre über eine andere Grundgesamtheit gemessen als der Zähler
-        # (Prüfstand §3.6), und die Basisrate öffnet das Gate nicht (O5).
-        gate_status = (
-            f"Kalibrierung nicht messbar (n={n_all}, nur {gate_n} "
-            "mit Verteilungs-P im Ledger)"
-        )
-    elif (
-        gate_ci_hi is None
-        or binding_ref is None
-        or gate_slope_ci_hi is None
-        or gate_bias_ci_hi is None
-        or gate_skill_ci_hi is None
-    ):
-        # Zählstand reicht, aber zu wenige Tagesblöcke oder keine P-Streuung
-        # für ein belastbares Intervall. Eine konstante Wahrscheinlichkeit
-        # bekommt ausdrücklich keine erfundene Steigung 1,0.
-        gate_status = (
-            f"Kalibrierung nicht messbar (n={gate_n}, {n_day_blocks} Tagesblöcke; "
-            "Brier- und Steigungsintervall brauchen Streuung und mindestens "
-            f"{GATE_MIN_DAY_BLOCKS} Blöcke)"
-        )
-    elif not gate_skill_ok:
-        gate_status = (
-            f"Kalibrierung nicht erreicht (Brier-Differenz zur besseren "
-            f"Referenz {_de(gate_skill_diff)} "
-            f"[{_de(gate_skill_ci_lo)}–{_de(gate_skill_ci_hi)}] ≥ 0; "
-            f"Basis {_de(gate_ref_base)} / Klima {_de(gate_ref_climate)}, "
-            "Verteilungs-P)"
-        )
-    elif not gate_slope_ok:
-        gate_status = (
-            "Kalibrierung nicht erreicht (Reliability-Steigung "
-            f"{_de(gate_slope)} [{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] "
-            f"enthält Referenz {_de(GATE_RELIABILITY_SLOPE_TARGET)} nicht "
-            f"oder |slope-1|≥{GATE_RELIABILITY_SLOPE_MAX_ABS_DEV} "
-            f"oder CI-Breite≥{GATE_RELIABILITY_SLOPE_MAX_CI_WIDTH})"
-        )
-    elif not gate_bias_ok:
-        # M5: +10-pp-Versatz mit Steigung 1 und Brier-Skill ist keine
-        # Kalibrierung — das Mittel-Intervall muss 0 enthalten.
-        gate_status = (
-            "Kalibrierung nicht erreicht (Kalibrierung im Mittel: Bias "
-            f"mean(y)−mean(p) {_de(gate_bias)} "
-            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0 nicht, "
-            "Verteilungs-P)"
-        )
-    else:
-        gate_status = (
-            f"Kalibriert (n={gate_n}, Brier {_de(gate_brier)} "
-            f"[{_de(gate_ci_lo)}–{_de(gate_ci_hi)}] < Basis {_de(gate_ref_base)} "
-            f"/ Klima {_de(gate_ref_climate)}; Steigung {_de(gate_slope)} "
-            f"[{_de(gate_slope_ci_lo)}–{_de(gate_slope_ci_hi)}] enthält "
-            f"{_de(GATE_RELIABILITY_SLOPE_TARGET)}; Bias {_de(gate_bias)} "
-            f"[{_de(gate_bias_ci_lo)}–{_de(gate_bias_ci_hi)}] enthält 0, "
-            "Verteilungs-P)"
-        )
-
+    if selected is None:
+        selected = {
+            "context": want_context,
+            "context_key": want_key,
+            "gate_pooling_policy": POOLING_POLICY,
+            **_empty_gate_block(
+                want_context,
+                rows=[],
+                has_other=bool(gate_rows),
+                n_all=n_all,
+            ),
+        }
     return {
         "n": n,
         "n_void": n_void,
@@ -2978,52 +3274,57 @@ def compute_advice_stats(
         "brier_all_by_calibration": _source_block(brier_all_by_calibration),
         "p_source_counts": dict(source_counts),
         "p_source_counts_all": dict(source_counts_all),
-        "gate_n": gate_n,
-        "gate_brier": gate_brier,
+        # A21-B5.1 (#211): Diese Gate-Felder beschreiben die **ausgewählte
+        # Vertragskohorte** (``gate_context``/``gate_context_source``) —
+        # nicht mehr still den gemischten Lebenszeit-Ledger. Fremde
+        # Kohorten stehen getrennt in ``gate_cohorts``; die Allzeitbilanz
+        # (``n_all``, ``brier_all_by_source``, …) bleibt unabhängig davon
+        # vollständig.
+        "gate_n": selected["gate_n"],
+        "gate_brier": selected["gate_brier"],
         # O6: Intervall (Block-Bootstrap über Tagesblöcke, 95 %), beide naive
         # Referenzen auf derselben Grundgesamtheit und die Fenstergröße —
         # das Gate besteht erst, wenn die Obergrenze unter beiden liegt.
-        "gate_brier_ci": ([gate_ci_lo, gate_ci_hi] if gate_ci_hi is not None else None),
-        "gate_ref_base": gate_ref_base,
-        "gate_ref_climate": gate_ref_climate,
+        "gate_brier_ci": selected["gate_brier_ci"],
+        "gate_ref_base": selected["gate_ref_base"],
+        "gate_ref_climate": selected["gate_ref_climate"],
         # B2: Zweiter unabhängiger M7-Nachweis — das KI muss die ideale
         # Reliability-Steigung 1 einschließen, sonst öffnet ein guter Brier
         # allein das Produkt-Gate nicht.
-        "gate_reliability_slope": round(gate_slope, 4)
-        if gate_slope is not None
-        else None,
-        "gate_reliability_slope_ci": (
-            [gate_slope_ci_lo, gate_slope_ci_hi]
-            if gate_slope_ci_hi is not None
-            else None
-        ),
+        "gate_reliability_slope": selected["gate_reliability_slope"],
+        "gate_reliability_slope_ci": selected["gate_reliability_slope_ci"],
         "gate_reliability_target": GATE_RELIABILITY_SLOPE_TARGET,
-        "gate_reliability_ok": gate_slope_ok,
+        "gate_reliability_ok": selected["gate_reliability_ok"],
         # M5: Kalibrierung im Mittel (Intercept) — Block-Bootstrap-Intervall
         # des Vorzeichenfehlers mean(y)−mean(p); das Gate besteht nur, wenn
         # das Intervall 0 enthält. Steigung 1 allein reicht nicht (+10 pp).
-        "gate_bias": gate_bias,
-        "gate_bias_ci": (
-            [gate_bias_ci_lo, gate_bias_ci_hi] if gate_bias_ci_hi is not None else None
-        ),
-        "gate_bias_ok": gate_bias_ok,
+        "gate_bias": selected["gate_bias"],
+        "gate_bias_ci": selected["gate_bias_ci"],
+        "gate_bias_ok": selected["gate_bias_ok"],
         # M5: Brier-Differenz zur besseren naiven Referenz, je Ziehung
         # gemeinsam block-resampled (Referenzen auf denselben Zeilen neu
         # gerechnet). Obergrenze < 0 = Skill-Nachweis.
-        "gate_skill_diff": gate_skill_diff,
-        "gate_skill_diff_ci": (
-            [gate_skill_ci_lo, gate_skill_ci_hi]
-            if gate_skill_ci_hi is not None
-            else None
-        ),
-        "gate_skill_ok": gate_skill_ok,
+        "gate_skill_diff": selected["gate_skill_diff"],
+        "gate_skill_diff_ci": selected["gate_skill_diff_ci"],
+        "gate_skill_ok": selected["gate_skill_ok"],
         # M5: Reliability über den Wahrscheinlichkeitsbereich (Diagnose mit
         # Binomialbändern) — die globale Steigung mittelt lokale Mängel.
-        "gate_reliability_bins": _reliability_bins(gate_rows),
-        "n_day_blocks": n_day_blocks,
+        "gate_reliability_bins": selected["gate_reliability_bins"],
+        "n_day_blocks": selected["n_day_blocks"],
         "min_day_blocks": GATE_MIN_DAY_BLOCKS,
         "block_days": GATE_BLOCK_DAYS,
         "bootstrap_samples": GATE_BOOTSTRAP_SAMPLES,
+        # A21-B5.1: Gültigkeitsbereich, Kohortenübersicht und Vertragsrolle.
+        # ``calibrated`` ist Freigabefähigkeit (Statistik **und** vollständige
+        # Herkunft); ``statistical_verdict`` bleibt der reine Statistik-Ausgang.
+        "gate_context": selected["context"],
+        "gate_context_key": selected["context_key"],
+        "gate_context_source": context_source,
+        "gate_provenance_complete": selected["provenance_complete"],
+        "gate_pooling_policy": POOLING_POLICY,
+        "gate_contract_version": STATISTICAL_CONTRACT_VERSION,
+        "gate_cohorts": cohort_entries,
+        "gate_rows_total": len(gate_rows),
         # Zähl-Ehrlichkeit: ausgespielt vs. abgeschlossen vs. noch offen.
         # O6: ``brier_threshold`` (0,25) ist kein Gate-Kriterium mehr, sondern
         # das dokumentierte Münz-Niveau zum Einordnen — das Gate vergleicht
@@ -3051,8 +3352,9 @@ def compute_advice_stats(
         "elsewhere_n": elsewhere_n,
         "elsewhere_hits": elsewhere_hits,
         "brier_30d": brier_30d,
-        "calibrated": calibrated,
-        "gate_status": gate_status,
+        "calibrated": selected["calibrated"],
+        "statistical_verdict": selected["statistical_verdict"],
+        "gate_status": selected["gate_status"],
         # Schwellen des Zähl-Gates mitliefern: Die GUI zeigt damit „n von 100
         # Empfehlungen" aus demselben Wert, an dem auch hier gerechnet wird —
         # und muss nicht die 90-Tage-Übergangsregel als Nenner missbrauchen.

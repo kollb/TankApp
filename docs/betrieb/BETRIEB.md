@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 22.09.2026 · App-Version 0.67.0 — alles, was nach der Ersteinrichtung
+> Stand: 22.09.2026 · App-Version 0.68.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.67.0 (A21-B4): Der Modelljob veröffentlicht DST-sichere UTC-
 > Blockstarts und ein platzsparendes `suffix_minima`-Artefakt für den ersten
@@ -953,6 +953,12 @@ dort identisch, ohne eigene Token-Verwaltung. Ohne gesetztes
 GUI braucht dann nur das eine Secret aus „Persönliche Daten im Netz“.
 
 ## Backup & Wiederherstellung
+
+> **Betriebsabnahme (A21-B5.4):** Messrezept und Protokoll für Latenz (p95
+> ≤ 300 ms), Poll-Kadenz, RPO ≤ 30 min und RTO ≤ 240 min auf NAS/Pi stehen in
+> [BETRIEBSABNAHME.md](BETRIEBSABNAHME.md) (`data-tools/ops_acceptance.py`,
+> `ops/nas/measure-phase-b.sh`). Ohne NAS-/Pi-Zugang bleibt die Abnahme offen —
+> die technische Umsetzung ist kein Betriebsnachweis.
 
 ### Pi Sicherung
 

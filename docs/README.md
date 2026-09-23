@@ -1,6 +1,6 @@
 # Dokumentation
 
-> Stand: 22.09.2026 · Repository-Version **0.67.0**
+> Stand: 22.09.2026 · Repository-Version **0.68.0**
 > Dieser Index ist kein pauschaler Prüfvermerk für alle verlinkten Dokumente.
 > Technische Einzelreferenzen behalten ihren jeweiligen Prüfstand.
 
@@ -18,6 +18,7 @@
 |---|---|
 | [Installation](betrieb/INSTALL.md) | Erstaufbau Pi → NAS → Browser |
 | [Betrieb](betrieb/BETRIEB.md) | Dienste, Konfiguration, Backup, Alarme und Fehlersuche |
+| [Betriebsabnahme](betrieb/BETRIEBSABNAHME.md) | NAS/Pi-Messrezept: Latenz, Pollkadenz, RPO/RTO (offen) |
 | [RP2](betrieb/RP2.md) | NAS-Proxy und lesender Fallback |
 | [Speicher](betrieb/SPEICHER.md) | RAM-Puffer, SSD/HDD und Aufbewahrung |
 | [Stationen tauschen](betrieb/STATIONEN-TAUSCH.md) | Kontrollierter Austausch im Polling-Set |
@@ -40,6 +41,8 @@
 | [API](referenz/API.md) | Endpunkte, Payloads, Fehlercodes |
 | [Analyse](referenz/ANALYSE.md) | Selektion, Modelle und Heatmaps |
 | [Engine](referenz/ENGINE.md) | Fit, Backtest, Kalibrierung und Messrezepte |
+| [Missingness](referenz/MISSINGNESS.md) | NaN-Residuen: Messung, Policies und Ablation |
+| [Replay](referenz/REPLAY.md) | Walk-forward-/Operational-Replay und Akzeptanzmargen |
 | [Datenwerkzeuge](referenz/DATENWERKZEUGE.md) | Collector, Import/Export und Offline-Prüfprogramme |
 
 ## Entwicklung und Planung

@@ -216,6 +216,15 @@ def test_antworten_zaehlen_status_und_send_getrennt(server):
     """200/404/2xx zählen im Fenster; der Versand hat eine eigene Zahl (B2.1)."""
     _get(server, "/api/v1/health")
     _get(server, "/api/v1/gibt-es-nicht")
+    # `observe()` läuft im Handler-Thread nach der Antwort: unter Last kann die
+    # Buchhaltung noch fehlen, wenn der Client schon liest. Kurz einwirken lassen
+    # (wie beim Keep-alive-Test), die Gleichheiten bleiben hart.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        summary = metrics.summary()
+        if summary["requests"] >= 2 and summary["send_count"] >= 1:
+            break
+        time.sleep(0.02)
     summary = metrics.summary()
     assert summary["requests"] == 2
     assert summary["by_status"].get("2xx") == 1

@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 21.09.2026 · App-Version 0.67.0
+> Stand: 22.09.2026 · App-Version 0.68.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -115,16 +115,19 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 
 | Thema | Was fehlt oder den Start begrenzt |
 |---|---|
-| M7 und Kalibrierung | Genügend abgerechnete echte Advice, bestandene Brier-/Reliability-Gates und Beobachtung über Betriebszeit; technische PIT-Kalibrierung allein reicht nicht |
+| M7 und Kalibrierung | Genügend abgerechnete echte Advice, bestandene Brier-/Reliability-Gates und Beobachtung über Betriebszeit; technische PIT-Kalibrierung allein reicht nicht. A21-B5.1 (0.68.0) bindet die Freigabe an Vertragskohorten — strenge Kohorten starten die Statistik neu (bis n ≥ 100 je Kohorte vergehen real Wochen/Monate); das ist der eingegangene Trade-off gegen unsauberes Pooling fremder Historie |
 | Modellgüte | Vergleich auf echtem Bestand je Station/Horizont, einschließlich alternativer Kerne; keine neue Abnahme durch diese Dokuänderung |
+| A21-B5.3 Replay-Freigabe | Der Walk-forward-/Replay-Harness misst Produktionsketten-Ausgänge gegen vorab festgelegte Margen; der Ersatzbestand (Rolle synthetic) ist Regression, **kein** Abnahmebeweis. Offen: einmaliger Freigabelauf mit äußerem, zeitlich unangetastetem Abnahmeset (Rolle acceptance) — bis dahin sind alle Replay-Zahlen Entwicklungsstand |
+| A21-B5.4 NAS/Pi-Betriebsabnahme | **Blocker: fehlender Zugang ist ein Blocker, kein erfolgreicher Test.** Messrezept/Tooling liegen vor (`docs/betrieb/BETRIEBSABNAHME.md`, `data-tools/ops_acceptance.py`); gemessen ist nichts — weder p95 ≤ 300 ms LAN noch Pollkadenz noch RPO/RTO. Der Audit-Befund Overview p95 2,00 s bleibt die einzige bekannte Messung |
+| A21-B5.2 Missingness | Die Ablation ist reproduzierbar, aber synthetisch (Einzelrealisierung, PICP unter Nominal); kein Policy-Wechsel ohne robusten Nachweis über echte Lückenmuster — Default bleibt zero_fill |
 | A21-B4 Betriebsabnahme | DST-/Restfenster-/Mengen-/Nutzenverträge sind synthetisch regressionsgeprüft. Eine Hardware-/NAS-Feldabnahme, reale Draw-Abdeckung und ein belastbarer Live-Nettonutzen bleiben separat offen; der Code-Fix ist kein Betriebsnachweis. |
 | B0-Referenz | PICP/MASE je Station und Brier global nach P-Quelle; ein stationsweiser Brier ist bei geringer Advice-Zahl nicht belastbar |
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |
 | `w(h)` | Mindestens acht Füllungen für eine belastbare persönliche Rückkopplung |
 | Winter/Regime | Erster Regel-Winter separat prüfen; Simulationen nicht als Live-Messung verbuchen |
 | Ledger-Persistenz | Überschreiben beschädigter Stores ist seit 0.60.0 fail-closed (NP1/S3); Archivzeilen gehören seit 0.63.0 zur Jahres-/Allzeitbilanz und zur M7-Grundgesamtheit (NP5/F3); die serverseitige Speichertechnik bleibt gesondert zu entscheiden (die Browser-Queue ist seit 0.60.0 eine Outbox in IndexedDB) |
-| NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen |
-| Backup/Restore | Runtime-Backups sind seit 0.66.0 validiert veröffentlicht (Erfolgsmanifest) und der Restore per `ops/nas/restore.sh` + Verifizierer gegen die Quelle nachgewiesen (A21-B3.2); offen bleibt die datenbankkonsistente Influx-Sicherung und ein Restore-Nachweis mit Produktionsdaten im Feld |
+| NAS-/Pi-Betrieb | Zielhardware-Latenzen, Speicher-/Threadbudgets, Watchdog, Stromausfall und tatsächlicher Cache-Mount nicht neu abgenommen; seit 0.68.0 mit fester Messlatte und Messrezept vorbereitet (siehe A21-B5.4 oben), Feldabnahme weiter offen |
+| Backup/Restore | Runtime-Backups sind seit 0.66.0 validiert veröffentlicht (Erfolgsmanifest) und der Restore per `ops/nas/restore.sh` + Verifizierer gegen die Quelle nachgewiesen (A21-B3.2); offen bleiben die datenbankkonsistente Influx-Sicherung, ein Restore-Nachweis mit Produktionsdaten im Feld und die RPO/RTO-Stopuhr (A21-B5.4) |
 | NAS-Kampagnenquote | 6/2/2 nur offline; Bedarf am realen Mehrstadtbetrieb messen, nicht als NAS-Funktion behaupten |
 
 Die Juli-Generalprobe **A16 ist gemessen**: Frankfurt, E10 und Diesel,

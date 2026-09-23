@@ -1,6 +1,6 @@
 # Produktkonzept
 
-> Stand: 22.09.2026 · App-Version 0.67.0 · Konsolidierter Produktstand.
+> Stand: 22.09.2026 · App-Version 0.68.0 · Konsolidierter Produktstand.
 > Implementierungsgrenzen: [Projektstand](../planung/LUECKEN.md).
 > Endpunktverträge: [API](../referenz/API.md).
 
@@ -94,6 +94,19 @@ Die technische Kurve gibt keine Empfehlung frei. Das M7-Gate bewertet echte
 abgerechnete Advice-Snapshots anhand von Brier-Referenzen und der Unsicherheit
 der Reliability-Steigung. Automatischer Schwellennachzug darf Geld-, Zeit-
 und Umwegschwellen verändern, nicht Prozent-Gates passend regeln.
+
+Seit 0.68.0 gilt die Freigabe nur für einen **Gültigkeitsbereich**
+(A21-B5.1): Kraftstoff, Modellvertrag ohne Fit-ID, Kalibrierungsmodus,
+Entscheidungsvertrag und bestätigter Regime-Zustand. Historische Güte,
+Vertragsfreigabe und aktuelle Verwendbarkeit sind getrennte Aussagen —
+Altbestand ohne Herkunft bleibt sichtbar, öffnet aber nichts rückwirkend.
+Ein Vertragswechsel braucht eine eigens belegte Freigabe; ein Deploy
+startet die Statistik-Zeit neu. Fehlende Residuen im Bootstrap werden als
+0 imputiert (12-Uhr-Integrität) und je Zeitpunkt gemessen; ein Wechsel der
+Auffüll-Policy braucht robusten Ablations-Beweis
+([Missingness](../referenz/MISSINGNESS.md)). Belastbare Güte-Urteile
+kommen aus dem Replay-Harness ([Replay](../referenz/REPLAY.md)), nicht aus
+Ersatzdaten.
 
 Technische Details und Messrezepte: [Engine](../referenz/ENGINE.md).
 Entscheidungsgrund: [ADR 0003](../adr/0003-MODELL-UND-FREIGABE.md).

@@ -4,6 +4,50 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.68.0] – 2026-09-22
+
+**A21-B5 (Gate-Gültigkeit, Missingness, Replay, Betriebsabnahme)** —
+Issues [#211](https://github.com/kollb/TankApp/issues/211) bis
+[#214](https://github.com/kollb/TankApp/issues/214).
+
+- **#211 — M7-Gate an Vertragskohorten und Regime:** Die Freigabe gilt nur
+  für (Kraftstoff, Modellvertrag ohne Fit-ID, Kalibrierungsmodus,
+  Entscheidungsvertrag, bestätigter Regime-Zustand) — harter exakter
+  Vergleich ohne Beimischen fremder Historie. Stations-/Städte-Pooling
+  bleibt innerhalb der Kohorte erlaubt. `calibrated` = statistisches Urteil
+  **und** vollständige Herkunft; unknown-Legacy bleibt als `gate_cohorts`/
+  Allzeitbilanz sichtbar, öffnet aber keine Vertragsfreigabe. Deploy/Refit
+  startet die Statistik-Zeit neu, Vertragswechsel nicht. Snapshots und
+  Settlements stempeln Herkunft (alias + roster); decide und
+  `stats/summary` nennen `gate_context`/`gate_context_source`.
+- **#212 — Missingness messbar und ablatiert:** NaN-Residuen→0 bleibt
+  Default (12-Uhr-Integrität), wird aber je Zeitpunkt gemessen
+  (`effective_draws`/`null_fill_share`) und gegen die Baselines
+  `coherent_block` und `no_release` paarweise bei gleichem Seed verglichen
+  (`data-tools/ablation_missingness.py`, `docs/referenz/MISSINGNESS.md`).
+  Befund: kein Policy-Wechsel gerechtfertigt — Default bleibt; negatives
+  Ergebnis ist zulässig und erzeugt kein automatisches neues Release.
+- **#213 — Walk-forward-/Replay-Harness:** Produktionskette
+  (refresh → evaluate_decide) über mehrere Ursprungsstunden, 23-/25-h-Tage,
+  Regime und Datenqualitäten mit strikt vor dem Ursprung geschnittenen
+  Dateneingängen; Kennzahlen getrennt (Quantil/PIT, PICP, Schärfe,
+  Ereignis-Brier, Reliability, Nettonutzen, Regret) mit Tagesblock-KIs und
+  Slices Fuel/Pooling/Modellvertrag/Horizont/Datenqualität. Vorab
+  festgelegte Akzeptanzmargen (`REPLAY_ACCEPTANCE`), maschinenlesbarer
+  Report mit Gate-Vergleich alt (gemischt) vs. neu (Kohorte). Der
+  Freigabelauf mit äußerem, zeitlich unangetastetem Abnahmeset bleibt
+  offen (LUECKEN).
+- **#214 — NAS/Pi-Betriebsabnahme vorbereitet, NICHT abgenommen:**
+  Messlatte (p95 ≤ 300 ms LAN, Pollkadenz 300 s/Set, RPO ≤ 30 min,
+  RTO ≤ 240 min), Messrezept (`docs/betrieb/BETRIEBSABNAHME.md`) und
+  Tooling (`data-tools/ops_acceptance.py`) mit Blocker-Regel: fehlender
+  Zugang ist ein Blocker, kein erfolgreicher Test — die Feldabnahme ist
+  offen und wird nicht behauptet.
+- Regressionen (52 Tests über die vier Themen) und reproduzierbare
+  Messartefakte (`results/`); CI-Spiegel grün. Hardware-/Docker- und
+  echte Holdout-Abnahmen bleiben explizit offen:
+  [LUECKEN.md](../planung/LUECKEN.md).
+
 ## [0.67.0] – 2026-09-22
 
 **A21-B4 (Zeitfenster, DST und fachliche Mengen-/Nutzenverträge)** —
