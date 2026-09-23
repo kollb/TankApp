@@ -187,13 +187,13 @@ export function GueteView({
                   der echten Preise lagen im 95-%-Band (Ziel 90–98 %).
                 </li>
                 <li>
-                  <strong className="text-slate-100">Prognose-Fehler (MASE):</strong>{" "}
+                  <strong className="text-slate-100">Prognose-Fehler (MASE 24h sprungfrei):</strong>{" "}
                   {metrics?.mase != null
                     ? deTrimmed(metrics.mase, 2)
                     : quality?.mase_sprungfrei != null
                       ? deTrimmed(quality.mase_sprungfrei, 2)
                       : "—"}{" "}
-                  — unter 1,0 heißt besser als Naive.
+                  — unter 1,0 heißt besser als Naive (24h-Fenster, nicht One-Step wie in Karte 5).
                 </li>
                 <li>
                   <strong className="text-slate-100">Rang-Streuung:</strong>{" "}

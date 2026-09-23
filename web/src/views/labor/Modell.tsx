@@ -445,7 +445,7 @@ export function ModellView({
                 <li>Gewartet haette sie an <strong className="text-slate-100">{scenario.wait} von {scenario.days}</strong> Tagen.</li>
                 <li>Richtig entschieden: <strong className="text-slate-100">{scenario.hits} von {scenario.days}</strong> Tagen.</li>
                 <li>Verlust aus falschem Warten: <strong className="text-slate-100">{euro(scenario.regret)} €</strong> bei {deTrimmed(liters, 0)} L.</li>
-                {labMu != null ? <li>Trainings-Erwartung: <strong className="text-slate-100">mu = {centPerLiter(labMu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}), {labSaves.length} Trainings-Tage.</li> : <li className="text-slate-500">Werkstueck Modellvergleich: Engine veroeffentlicht kein Form-Modell je Station.</li>}
+                {labMu != null ? <li>Trainings-Erwartung: <strong className="text-slate-100">mu = {centPerLiter(labMu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}), {labSaves.length} Trainings-Tage.</li> : activeLabDayRow ? <li>Backtest-Erwartung (kein publiziertes Form-Modell): <strong className="text-slate-100">mu = {centPerLiter(activeLabDayRow.mu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}) – Trainings-Form-Modell fehlt (models dict leer), Backtest-Zeile liefert mu.</li> : <li className="text-slate-500">Werkstueck Modellvergleich: Engine veroeffentlicht kein Form-Modell je Station.</li>}
               </ul>
             ) : <p className="mt-2 text-xs leading-relaxed text-slate-400">Der Regler wirkt, sobald ein Backtest vorliegt.</p>}
           </div>
