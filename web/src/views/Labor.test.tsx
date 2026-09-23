@@ -294,7 +294,8 @@ describe("Labor B5: Parameterschrank Karten Details", () => {
     expect(text).toContain("Kalibrierung");
     expect(text).toContain("shared_draws=ja");
     expect(text).toContain("day_pair=nein");
-    expect(text).toContain("B=2.000 Bloecke");
+    expect(text).toContain("B=2.000");
+    expect(text).toContain("Ziehungen");
     // AR(2)-Karte liest den Kern des veröffentlichten Modells.
     expect(text).toContain("phi1=0,500");
     expect(text).toContain("Wurzel-Radius 0,950");
@@ -321,7 +322,8 @@ describe("Labor B5: Parameterschrank Karten Details", () => {
     expect(text).toContain("Keine pava_pool_stats im Forecast.");
     expect(text).toContain("Kein Ensemble im Payload.");
     expect(text).toContain("shared_draws=-");
-    expect(text).toContain("B=- Bloecke");
+    expect(text).toContain("B=-");
+    expect(text).toContain("Ziehungen");
   });
 });
 

@@ -3976,8 +3976,8 @@ export function windowsUsedLine(advice?: WindowsAdvice | null): string | null {
       : "";
   return (
     `Fensterbilanz (30 Tage): ${countLabel(used30)} von ${countLabel(total30)} ` +
-    `Fenstern genutzt (${countLabel(settled)} ${settledWord} abgerechnet · ` +
-    `${countLabel(expired30)} Fenster verstrichen)${week}.`
+    `Episoden-Fenstern genutzt (${countLabel(settled)} ${settledWord} abgerechnet = Empfehlungen, ` +
+    `${countLabel(expired30)} Fenster verstrichen ohne Beleg)${week}. Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.`
   );
 }
 

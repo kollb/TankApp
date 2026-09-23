@@ -215,18 +215,18 @@ export const PARAM_CARDS: ParamCard[] = [
     id: "projektion",
     number: 4,
     title: "12-Uhr-Projektion (PAVA)",
-    chain: "Rohpfad → Segment [12:00–12:00) → isotone PAVA → Projektion",
+    chain: "Rohpfad → Segment [12:00–12:00) + Regime-Kanten → isotone PAVA → Projektion",
     sentence:
-      "Die 12-Uhr-Regel projiziert jeden Pfad auf nicht-steigend innerhalb eines [12:00–12:00)-Segments — nur an 12:00 darf er steigen, danach nur fallen, PAVA poolt Verstöße zu flachen Stufen.",
+      "Die 12-Uhr-Regel projiziert jeden Pfad auf nicht-steigend innerhalb eines [12:00–12:00)-Segments und zusaetzlicher Regime-Kanten — nur an 12:00 und an deklarierten Regime-Kanten darf er steigen, danach nur fallen, PAVA poolt Verstoesse zu flachen Stufen.",
     anchor: "karte-4-projektion",
   },
   {
     id: "ensemble",
     number: 5,
-    title: "Ensemble (Gewichte je Horizont)",
+    title: "Ensemble (inverse MASE, global)",
     chain: "Zwei Kerne → 14-Tage-Validierung → inverse-MASE-Gewichte → Spread",
     sentence:
-      "Zwei Modellkerne (harmonisch + Tagesprofil) werden per inversem MASE auf 14 Validierungstagen gemischt — Gewichte je Horizont (24/72/168 h) im Backtest, weight_spread zeigt, ob das Mischverhältnis stabil ist.",
+      "Zwei Modellkerne (harmonisch + Tagesprofil) werden per inversem MASE auf 14 Validierungstagen gemischt — aktuell global (one_step), horizon_weights 24/72/168 h derzeit not_estimated, weight_spread zeigt Stabilitaet des Mischverhaeltnisses.",
     anchor: "karte-5-ensemble",
   },
   {
