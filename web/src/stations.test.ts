@@ -206,6 +206,18 @@ describe("sortAtlasRows", () => {
     ]);
   });
 
+  it("A1-Regression: Server-Netto = Ersparnis — Empfehlung steht vorn", () => {
+    // net_eur +2,3 ist die Server-Empfehlung („spart netto"): im Atlas steht
+    // sie damit VOR der Referenz (0 €) — nie dahinter (Befund A1, 23.09.2026).
+    const rs = rows({ serverAlts: [serverAlt({})] });
+    const ordered = sortAtlasRows(rs, "net");
+    expect(ordered.map((row) => row.station.station_id)).toEqual([
+      "a", // server-Ersparnis +2,30 € → Kosten-€ −2,30
+      "b", // Referenz: 0 €
+      "c", // unbekannt — nie mit 0 verkleidet
+    ]);
+  });
+
   it("Preis: frische aufsteigend, ohne Preis nach hinten", () => {
     const ordered = sortAtlasRows(rows(), "price");
     expect(ordered.map((row) => row.station.station_id)).toEqual([
@@ -300,10 +312,17 @@ describe("atlasEur", () => {
     expect(atlasEur({ netEur: null, fillEur: 0, isReference: true })).toBeNull();
   });
 
-  it("formatiert Richtung, Betrag und Ton", () => {
-    const save = atlasEur({ netEur: -2.3, fillEur: null, isReference: false });
+  it("formatiert Richtung, Betrag und Ton — eine Konvention für beide Basen", () => {
+    // Befund A1 (23.09.2026): netEur ist Server-Ersparnis (positiv = spart),
+    // angezeigt wird in Kosten-€ — dieselbe Spaltonvention wie fillEur:
+    // „−" = günstiger („save"), „+" = teurer („cost"). Vorher erschienen
+    // vom Server empfohlene Stationen rot und Verlierer grün.
+    const save = atlasEur({ netEur: 2.3, fillEur: null, isReference: false });
     expect(save?.text).toBe("−2,30 €");
     expect(save?.tone).toBe("save");
+    const bad = atlasEur({ netEur: -2.3, fillEur: null, isReference: false });
+    expect(bad?.text).toBe("+2,30 €");
+    expect(bad?.tone).toBe("cost");
     const cost = atlasEur({ netEur: null, fillEur: 2.8, isReference: false });
     expect(cost?.text).toBe("+2,80 €");
     expect(cost?.tone).toBe("cost");

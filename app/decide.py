@@ -27,6 +27,7 @@ from . import metrics
 from .benefit import build_benefit_contract
 from .read_state import ReadBundle, load_bundle
 from .feedback import (
+    M7_MIN_RECOMMENDATIONS,
     WH_MIN_FILLS,
     record_snapshot,
     select_gate_cohort,
@@ -720,9 +721,13 @@ def _today_windows(
     """2-h-Blöcke (Berlin) des Heute-Forecasts, billigste zuerst.
 
     Fenstergrenzen sind echte Prognose-Zeitstempel (ISO), keine erfundenen
-    Stunden. Nur Blöcke, die noch nicht vollständig vergangen sind — und mit
-    ``latest_by`` nur Blöcke, die vollständig vor dem spätesten akzeptablen
-    Tankzeitpunkt enden (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
+    Stunden. Nur Blöcke, die noch nicht vollständig vergangen sind.
+    ``latest_by`` **verkürzt** die Blöcke auf die Rasterpunkte ≤ latest_by
+    (``usable``): Das Fenster bleibt sichtbar, solange sein Anfang recht-
+    zeitig erreichbar ist; erst wenn ``latest_by`` vor dem Fensterbeginn
+    liegt, entfällt es (Kipp-Punkt = Fensterbeginn, Befund A7 vom
+    23.09.2026 — frühere Texte behaupteten „endet vor", das Verhalten war
+    immer die Kürzung).
 
     ``wh_hours`` (persönliches Tankzeit-Profil, A9) gewichtet die Reihenfolge;
     ohne Profil zählt allein der Preis.
@@ -940,9 +945,12 @@ def _detour_km(
     dist_cand = cand.get("dist_km")
     dist_self = chosen.get("dist_km")
     if isinstance(dist_cand, (int, float)) and isinstance(dist_self, (int, float)):
-        return round(
-            max(0.0, abs(dist_cand - dist_self)), 2
-        ), "estimated_anchor_difference"
+        # Befund A6 (23.09.2026): Gleichlauf mit app/route.py — der Mehrweg
+        # gegenüber der Referenz ist einseitig: Liegt die Alternative näher
+        # am Anker, beträgt er 0, nicht die Betragsdifferenz. Die abs()-
+        # Fassung berechnete „Nähersein" als Umweg und minderte net_eur
+        # um Fahrkosten, die physisch nie anfallen.
+        return round(max(0.0, dist_cand - dist_self), 2), "estimated_anchor_difference"
     return 0.0, "unavailable"
 
 
@@ -970,6 +978,11 @@ def _alternatives(
     ``p_lohnt = P(netto > 0)`` aus den Draws ausgewiesen (§4.2 — die
     „kritische Zusatzinformation“). Ohne Draws bleibt ``p_lohnt`` None.
     Frische (< threshold) → Konstante, stale → Draws (M5, beidseitig).
+    Befund A2 (23.09.2026): Die Frische-Regel gilt nur für ``p_lohnt``;
+    ``net_eur``/``verdict``/``worth_it`` rechnen deterministisch — ggf. auf
+    einem abgelaufenen Preis. Darum bindet die F2-Freigabe in
+    ``_decide_table_action`` zusätzlich ``price_fresh`` der Alternative;
+    die Zeilen hier bleiben sichtbar, entscheiden aber nicht mehr allein.
     """
 
     alternatives = []
@@ -1213,9 +1226,14 @@ def _table_action(
         )
     # F2 zuerst (§4.5 Schritt 2): Alternative bei netto ≥ Schwelle und
     # P_lohnt ≥ Schwelle (ohne Draws entfällt nur das Prozent-Gate).
+    # Befund A2 (23.09.2026): die Freigabe braucht zusätzlich einen FRISCHEN
+    # Alternativpreis — net_eur/verdict rechnen deterministisch, und ein
+    # abgelaufener Preis (last_price) darf keine Fahrt auslösen (gleiche
+    # Logik wie _action_blocking_reasons für die gewählte Station).
     alt_p = best_alt.get("p_lohnt") if best_alt is not None else None
     if (
         best_alt is not None
+        and best_alt.get("price_fresh", False)
         and best_alt["net_eur"] >= th["elsewhere_net_eur"]
         and (alt_p is None or alt_p >= th["elsewhere_p"])
     ):
@@ -1262,10 +1280,14 @@ def _table_action(
             None,
         )
     if p_besser is not None and p_besser < th["now_p"]:
+        # Befund B2 (23.09.2026): die genannte Schwelle muss die aktive sein
+        # (M7-Regulatur kann sie vom Startwert 0,50 abrücken) — sonst
+        # behauptet der Grundsatz einen Schwellwert, der nicht gilt.
+        now_p_pct = int(round(th["now_p"] * 100))
         return (
             "refuel_now",
             "low",
-            "Warte-Empfehlung zu unsicher (P < 50 %) — jetzt tanken.",
+            f"Warte-Empfehlung zu unsicher (P < {now_p_pct} %) — jetzt tanken.",
             None,
         )
     if expected_saving_eur < th["now_eur"]:
@@ -1864,6 +1886,15 @@ def evaluate_decide(
             "advice": {
                 "last_30d_hits": advice_stats.get("wins", 0),
                 "last_30d_total": advice_stats.get("n", 0),
+                # Befund A3 (23.09.2026): Die GUI soll im selben Satz Zähler
+                # und Quote nennen können — ohne Ties würde „X trafen zu"
+                # hinter der (halb zählenden) Quote zurückfallen. Und: Der
+                # Countdown bis zum M7-Gate läuft auf dem Vertragsschnitt
+                # (gate_n), nie auf dem 30-Tage-Fenster — beides war in der
+                # GUI vermischt („X von 100 abgeschlossenen Empfehlungen").
+                "last_30d_ties": advice_stats.get("ties", 0),
+                "gate_n": gate_entry.get("gate_n") or 0,
+                "min_recommendations": M7_MIN_RECOMMENDATIONS,
                 "hit_rate": advice_stats.get("hit_rate"),
                 "brier_30d": advice_stats.get("brier_30d"),
             },

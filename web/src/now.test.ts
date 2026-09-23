@@ -7,7 +7,6 @@
 
 import { describe, expect, it } from "vitest";
 import type { DecideResult, Station } from "./data";
-import { M7_MIN_RECOMMENDATIONS } from "./data";
 import {
   confidenceWord,
   dayLabel,
@@ -22,7 +21,6 @@ import {
   nowSteps,
   nowVerdict,
   savingPerLiterCt,
-  stageProgressNote,
   timeInputToBerlinIso,
   wordFromPercent,
 } from "./now";
@@ -113,9 +111,11 @@ const input = (overrides: Partial<Parameters<typeof nowVerdict>[0]> = {}) => ({
 });
 
 describe("Stufen der Sicherheit (§10)", () => {
-  it("Stufe A nur mit Kalibrierung, Stufe C ohne Empfehlung", () => {
+  it("Stufe A nur mit Kalibrierung, Stufe C ohne Freigabekette", () => {
     expect(nowStage(decide("wait"))).toBe("A");
-    expect(nowStage(decide("wait", { calibrated: false }))).toBe("B");
+    // A5: Ohne M7-Gate („calibrated: false") gibt es keine Zwischenstufe —
+    // der Server würde ohnehin „no_advice" liefern; die GUI bleibt grau.
+    expect(nowStage(decide("wait", { calibrated: false }))).toBe("C");
     expect(nowStage(decide("no_advice", { calibrated: false }))).toBe("C");
     expect(nowStage(null)).toBe("C");
   });
@@ -127,15 +127,15 @@ describe("Stufen der Sicherheit (§10)", () => {
     expect(confidenceWord(null)).toBeNull();
   });
 
-  it("Stufe B nennt den Fortschritt, ohne Prozent zu zeigen", () => {
-    const schenke = decide("wait", { calibrated: false });
-    schenke.personal_stats.advice.last_30d_total = 12;
-    const note = stageProgressNote(schenke);
-    expect(note).toContain(`Noch ${M7_MIN_RECOMMENDATIONS - 12} abgeschlossene`);
-    const verdict = nowVerdict(input({ decide: schenke }));
+  it("A5: ohne kalibriertes Gate gibt es keine Stufe B — die Karte bleibt Stufe C", () => {
+    // Befund A5 (23.09.2026): Der Server erzwingt ohne M7-Gate
+    // action="no_advice" (m7_pending); eine Empfehlungs-Handlung ohne Gate
+    // kann nie auftreten. Käme so ein Alt-Payload doch an, bleibt die Karte
+    // grau statt Worte ohne Prozent zu erfinden.
+    const falscherZustand = decide("wait", { calibrated: false });
+    expect(nowStage(falscherZustand)).toBe("C");
+    const verdict = nowVerdict(input({ decide: falscherZustand }));
     expect(verdict?.percent).toBeNull();
-    expect(verdict?.word).toBe("ziemlich sicher");
-    expect(verdict?.stageNote).toBe(note);
   });
 
   it("der graue Zustand zeigt zuerst den Servergrund (A21-B1.4)", () => {
@@ -155,6 +155,20 @@ describe("Stufen der Sicherheit (§10)", () => {
     const verdict = nowVerdict(input({ decide: learning }));
     expect(verdict?.detail).toContain("Das Modell lernt noch");
     expect(verdict?.percent).toBeNull();
+  });
+
+  it("A3: der Lernstand zählt den M7-Vertragsschnitt, nicht das 30-Tage-Fenster", () => {
+    // Befund A3 (23.09.2026): „X von 100 abgeschlossenen Empfehlungen" lief
+    // auf dem 30-Tage-Fenster (last_30d_total) — volatil und falsch. Der
+    // Server meldet dank A3-Fix den Gate-Schnitt mit; die 30-Tage-Zahl ist
+    // nur noch Fallback für Alt-Payloads.
+    const learning = decide("no_advice", { calibrated: false }, { reason_short: "" });
+    learning.personal_stats.advice.last_30d_total = 3;
+    learning.personal_stats.advice.gate_n = 42;
+    learning.personal_stats.advice.min_recommendations = 100;
+    expect(learningNote(learning)).toContain("42 von 100");
+    delete learning.personal_stats.advice.gate_n;
+    expect(learningNote(learning)).toContain("3 von 100");
   });
 });
 
@@ -513,7 +527,7 @@ describe("Ebene 1: höchstens drei Sätze", () => {
     expect((explain?.sentences ?? []).length).toBeLessThanOrEqual(3);
   });
 
-  it("bleibt auf Stufe B und C ehrlich", () => {
+  it("bleibt in Stufe C ehrlich", () => {
     const learning = decide("no_advice", { calibrated: false });
     learning.personal_stats.advice.last_30d_total = 12;
     const stageC = nowExplanation({ ...input({ decide: learning }), pricesAt: null });
@@ -524,13 +538,33 @@ describe("Ebene 1: höchstens drei Sätze", () => {
     expect(
       nowExplanation({ ...input({ decide: withoutReason }), pricesAt: null })?.sentences[2],
     ).toContain("belastbare Empfehlung");
-    const learnB = decide("wait", { calibrated: false });
-    learnB.personal_stats.advice.last_30d_total = 12;
-    const stageB = nowExplanation({
-      ...input({ decide: learnB }),
+    // Befund A5 (23.09.2026): eine frühere „Stufe B“ mit eigenem Satz gab es
+    // nie — auch ein Alt-Payload mit Handlung ohne Gate landet in Stufe C.
+    const altPayload = decide("wait", { calibrated: false });
+    altPayload.personal_stats.advice.last_30d_total = 12;
+    const explanation = nowExplanation({
+      ...input({ decide: altPayload }),
       pricesAt: minutesAgo(4),
     });
-    expect(stageB?.sentences[2]).toContain("12 von 100");
+    expect(explanation?.sentences[2]).toBe("Der Preis fällt hier abends meist.");
+  });
+
+  it("A3: Trefferzahl und Quote rechnen Unentschieden gleich (halbes Gewicht)", () => {
+    // Befund A3 (23.09.2026): „Von X abgeschlossenen Empfehlungen trafen Y zu
+    // (Z %)" mischte Zählweisen — Y ohne Ties, Z mit Ties × 0,5. Jetzt steht
+    // im Zähler dieselbe halbgewichtete Zahl wie in der Klammer.
+    const decideA = decide("wait");
+    decideA.personal_stats.advice.last_30d_total = 4;
+    decideA.personal_stats.advice.last_30d_hits = 2;
+    decideA.personal_stats.advice.last_30d_ties = 1;
+    decideA.personal_stats.advice.hit_rate = 0.625;
+    const explanation = nowExplanation({
+      ...input({ decide: decideA }),
+      pricesAt: minutesAgo(4),
+    });
+    expect(explanation?.sentences[2]).toBe(
+      "Von 4 abgeschlossenen Empfehlungen trafen 2,5 zu (63 %).",
+    );
   });
 });
 
@@ -548,7 +582,6 @@ describe("Server-Fehlerpayload ohne primary (Regression)", () => {
     expect(nowVerdict(input({ decide: broken }))).toBeNull();
     expect(nowExplanation({ ...input({ decide: broken }), pricesAt: null })).toBeNull();
     expect(learningNote(broken)).toBeNull();
-    expect(stageProgressNote(broken)).toBeNull();
   });
 
   it("liefert trotzdem die drei Fakten und keine Schritte", () => {
@@ -615,6 +648,27 @@ describe("Heute im Blick: Gleichstand als Spanne", () => {
     expect(panel.headline).toContain("06–12 Uhr");
     expect(panel.headline).not.toContain("06–07 Uhr");
     expect(panel.headline).toContain("18–19 Uhr");
+  });
+
+  it("A4-Regression: bei gerader Stundenzahl ist der Tagesmedian der Mittelwert, nicht der obere Rand", () => {
+    // Befund A4 (23.09.2026): `sorted[n >> 1]` nahm den zweiten Mittelwert —
+    // bei 4 offenen Stunden [1.70, 1.71, 1.72, 1.73] stand „1,720" statt
+    // des Medians 1,715 €/L.
+    const panel = nowDayPanel([
+      { hour: 6, value: 1.7, latest: 1.7, tone: "cheap", current: false },
+      { hour: 8, value: 1.71, latest: 1.71, tone: "cheap", current: false },
+      { hour: 12, value: 1.72, latest: 1.72, tone: "mid", current: true },
+      { hour: 18, value: 1.73, latest: 1.73, tone: "pricey", current: false },
+    ]);
+    expect(panel.median).toBeCloseTo(1.715, 9);
+    expect(panel.nowVsMedianCt).toBeCloseTo(0.5, 9);
+    // Ungerade Stichprobe unverändert: der mittlere Wert.
+    const odd = nowDayPanel([
+      { hour: 6, value: 1.7, latest: 1.7, tone: "cheap", current: false },
+      { hour: 12, value: 1.72, latest: 1.72, tone: "mid", current: false },
+      { hour: 18, value: 1.73, latest: 1.73, tone: "pricey", current: false },
+    ]);
+    expect(odd.median).toBeCloseTo(1.72, 9);
   });
 
   it("einzelne günstigste Stunde bleibt 12–13 Uhr", () => {

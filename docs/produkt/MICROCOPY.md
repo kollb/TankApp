@@ -207,9 +207,9 @@ dann der Grund.
 | Ausgänge der Ampel-Karte 2.0 | `Jetzt tanken` (grün) · `Warten bis 18–20 Uhr` (grün, mit Uhr) · `Woanders tanken · <Station>` (blau) · `Keine klare Empfehlung` (grau) |
 | Ersparniszeile | `Erwartet <4,0> ct/L günstiger ≈ <1,60> €` — ct/L für Unterschiede, € für Beträge. **O45: ct/L und € kommen aus derselben Basis** — beide aus dem Medianpreis des Fensters (`expected_saving_median_eur`). Trägt nur das Fensterminimum einen Vorsprung, steht `Im günstigsten Moment ≈ <2,09> € günstiger` statt einer Zahl, die der genannte Fensterpreis nicht trägt |
 | Grund der Empfehlung (Server, O45) | `Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu <2,09> €, im Mittel <0,44> €.` · gelb: `Eher warten: Fenster spart voraussichtlich <…>.` Ohne Fensterminima-Draws fallen beide Größen zusammen, dann bleibt die kurze Fassung `Warten spart bis zu <2,40> €.` Beträge auch hier in de-DE (`2,09 €`, nie `2.09 €`) |
+| Brutto/netto-Trennung bei „Woanders tanken“ (B1) | Ebene-1-Hinweis: `Das Prozent misst die reine Preisdifferenz (brutto); der €-Betrag rechnet Umweg und Zeit ab (netto).` — seit 23.09.2026 Pflicht, weil Karten-Prozent (`p_lohnt`-Gate: `p_better_alt`) und der Server-Verdict zwei verschiedene Ereignisse messen |
 | Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` — auf Stufe A kommt das **Wort aus dem Prozentwert** (Schwellen 75 / 55). Der Server-Badge beschreibt die Streuung der Lage; beide zusammen ergäben Sätze wie „unsicher (99 %)“ |
-| Stufe B (Worte ohne Prozent) | derselbe Satz ohne Klammer, dazu `Noch <n> abgeschlossene Empfehlungen bis zur Prozent-Anzeige.` |
-| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind gemessen.` |
+| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind gemessen.` — `n` ist der M7-Gate-Schnitt (`gate_n`, Vertragskohorte über die Lernzeit), nicht das 30-Tage-Fenster (Befund A3, 23.09.2026) |
 | Drei Fakten | `Jetzt hier` · `Bestes Fenster heute` · `Tank reicht?` — immer dieselben drei, immer diese Reihenfolge |
 | Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht angegeben` |
 | Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |
@@ -333,7 +333,7 @@ Belegmaske von `web/src/fills.test.ts` und `web/src/views/Ich.test.tsx`.
 |---|---|---|
 | lädt (erstes Mal) | `components/Skeleton.tsx` — `SkeletonPanel`, `SkeletonChart`, `SkeletonRows` | Hält den Platz des künftigen Inhalts. `role="status"` + `aria-busy`, Label „<Sache> wird geladen/berechnet“ nur für Screenreader |
 | lädt (Aktualisierung) | **nichts** | Vorhandene Zahlen bleiben stehen. Ein Poll darf die Ansicht nicht leeren — sonst flackert sie im Takt |
-| Datenstand veraltet | `components/DataAge.tsx` (`dataAgeNote`) | Nur wenn der Stand die Schwelle reißt (Preise 30 min, Modell 180 min, Selektion 36 h; doppelt = roter Ton). Bei unbekanntem Stand: **kein** Banner |
+| Datenstand veraltet | `components/DataAge.tsx` (`dataAgeNote`) | Nur wenn der Stand die Schwelle reißt (Preise 30 min, Modell 24 h = 1440 min — seit B5: kurze 180 min markierten ein gesundes System stur „alt“, Selektion 36 h; doppelt = roter Ton). Bei unbekanntem Stand: **kein** Banner |
 | leer, weil noch nichts da | `Empty` | „Noch kein/e <Sache>.“ + was fehlt. Kein Alarm-Ton, kein „Erneut laden“ |
 | leer, weil bewusst nichts | `Empty` | Grund nennen, nicht entschuldigen: „Fehlende Tage, kein Datenverlust.“ |
 | Fehler (Panel) | `components/LoadError.tsx` | `problem(error_code)` als Klartext, Rohcode darunter, Knopf „Erneut laden“ |

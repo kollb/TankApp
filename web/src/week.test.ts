@@ -271,11 +271,12 @@ describe("weekWindowSummary", () => {
     expect(summary?.security).toBe("ziemlich sicher (80 %)");
   });
 
-  it("Stufe B: Wort ohne Prozent, mit dem M7-Ansatz", () => {
+  it("A5: ohne kalibriertes Gate gibt es keine Zwischenstufe — ehrlich „noch nicht messbar“", () => {
+    // Befund A5 (23.09.2026): „wird noch gemessen — Prozent ab 100
+    // Empfehlungen" versprach eine Stufe, die der Server nie freigibt (ohne
+    // M7-Gate → „no_advice").
     const summary = weekWindowSummary(day, decide({ calibrated: false }), 1.759);
-    expect(summary?.security).toBe(
-      "wird noch gemessen — Prozent ab 100 Empfehlungen",
-    );
+    expect(summary?.security).toBe("noch nicht messbar");
   });
 
   it("Stufe C (kein primary): noch nicht messbar", () => {

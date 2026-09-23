@@ -15,7 +15,6 @@ import {
   euroPerLiter,
   hourRangeLabel,
   kilometersLabel,
-  M7_MIN_RECOMMENDATIONS,
   percentLabel,
   type DecideResult,
   type TankInfo,
@@ -271,18 +270,13 @@ export function weekWindowSummary(
     stage === "A" && window.p !== null && window.p !== undefined
       ? Math.round(window.p * 100)
       : null;
-  const word =
-    percent !== null
-      ? wordFromPercent(percent)
-      : stage === "C"
-        ? "noch nicht messbar"
-        : "wird noch gemessen";
+  // Befund A5 (23.09.2026): eine Zwischenstufe „Worte ohne Prozent“ war
+  // unerreichbar — ohne M7-Gate antwortet der Server mit `no_advice`. Ohne
+  // gemessene Zahl heißt die Sicherheit deshalb ehrlich „noch nicht
+  // messbar“ statt „wird noch gemessen“.
+  const word = percent !== null ? wordFromPercent(percent) : "noch nicht messbar";
   const security =
-    percent !== null
-      ? `${word} (${percentLabel(percent, 0)})`
-      : stage === "B"
-        ? `${word} — Prozent ab ${countLabel(M7_MIN_RECOMMENDATIONS)} Empfehlungen`
-        : word;
+    percent !== null ? `${word} (${percentLabel(percent, 0)})` : word;
 
   return {
     // „Morgen“/„Heute“ hängt am Referenzzeitpunkt — nicht an der realen
@@ -331,18 +325,15 @@ export function weekExplanation(
   } else if (stage === "A" && decide?.personal_stats?.advice) {
     const advice = decide.personal_stats.advice;
     if (advice.last_30d_total > 0) {
+      // Befund A3 (23.09.2026): Trefferzahl mit halben Unentschieden —
+      // dieselbe Abrechnung wie die hit_rate-Klammer dahinter.
+      const hits = advice.last_30d_hits + (advice.last_30d_ties ?? 0) / 2;
       sentences.push(
-        `Von ${countLabel(advice.last_30d_total)} abgeschlossenen Empfehlungen traf ${countLabel(advice.last_30d_hits)} zu ${
+        `Von ${countLabel(advice.last_30d_total)} abgeschlossenen Empfehlungen traf ${deTrimmed(hits, hits % 1 ? 1 : 0)} zu ${
           advice.hit_rate == null ? "" : `(${percentLabel(advice.hit_rate * 100, 0)})`
         }.`,
       );
     }
-  } else if (stage === "B") {
-    sentences.push(
-      `Die Trefferquote wird noch gemessen — ${countLabel(
-        decide?.personal_stats?.advice?.last_30d_total ?? 0,
-      )} von ${countLabel(M7_MIN_RECOMMENDATIONS)} abgeschlossenen Empfehlungen.`,
-    );
   }
   return {
     sentences: sentences.slice(0, 3),

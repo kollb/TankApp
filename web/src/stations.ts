@@ -202,13 +202,15 @@ export function atlasMatchesFilter(
 
 /**
  * Sortierung der Atlas-Liste. Netto-€-Sortierung bevorzugt die
- * Server-Zahl und fällt auf Preisdiff × Tankmenge zurück — beides ist
- * eine €-Größe mit derselben Richtung (negativ = günstiger). Unbekannt
- * sortiert nach hinten, nie mit 0 verkleidet.
+ * Server-Zahl und fällt auf Preisdiff × Tankmenge zurück. Beide werden
+ * auf eine Richtung gebracht: **negativ = günstiger** ({@link netCostEur}
+ * dreht das Server-Vorzeichen um, weil `net_eur` des Servers die
+ * Ersparnis zählt, die Spalte dagegen den Betrag gegenüber der Referenz).
+ * Unbekannt sortiert nach hinten, nie mit 0 verkleidet.
  */
 export function sortAtlasRows(rows: AtlasRow[], sort: AtlasSort): AtlasRow[] {
   const value = (row: AtlasRow): number | null =>
-    sort === "net" ? (row.netEur ?? row.fillEur) : sort === "price" ? row.price : row.distKm;
+    sort === "net" ? netCostEur(row) : sort === "price" ? row.price : row.distKm;
   const ordered = [...rows].sort((a, b) => {
     const va = value(a);
     const vb = value(b);
@@ -227,6 +229,22 @@ export function sortAtlasRows(rows: AtlasRow[], sort: AtlasSort): AtlasRow[] {
 }
 
 /**
+ * Anzeige-€ einer Atlas-Zeile in einer einzigen Vorzeichenkonvention:
+ * **negativ = günstiger** (Ersparnis gegenüber der Referenz), positiv =
+ * Mehrkosten. Der Server rechnet `net_eur` umgekehrt (positiv = spart,
+ * siehe F2-Satz „spart netto +… €“), `fillEur` ist bereits Kosten-€
+ * ((Preis − Referenzpreis) × Tankmenge). An genau dieser Stelle werden
+ * beide verknüpft — vorher zeigte die Spalte empfohlene Stationen rot
+ * und schlechte grün (Befund A1, 23.09.2026).
+ */
+export function netCostEur(
+  row: Pick<AtlasRow, "netEur" | "fillEur">,
+): number | null {
+  if (row.netEur !== null) return -row.netEur;
+  return row.fillEur;
+}
+
+/**
  * Die €-Größe, die in der Zeile steht: Server-Netto, sonst
  * Preisdiff × Tankmenge. `label` benennt die Art, damit „netto“
  * nie mit einem bloßen Preisunterschied verwechselt wird.
@@ -235,7 +253,7 @@ export function atlasEur(
   row: Pick<AtlasRow, "netEur" | "fillEur" | "isReference">,
 ): { text: string; tone: "save" | "cost" | "neutral" } | null {
   if (row.isReference) return null;
-  const value = row.netEur ?? row.fillEur;
+  const value = netCostEur(row);
   if (value === null || !Number.isFinite(value)) return null;
   const tone: "save" | "cost" | "neutral" =
     value < -0.005 ? "save" : value > 0.005 ? "cost" : "neutral";
