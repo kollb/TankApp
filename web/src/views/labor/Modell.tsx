@@ -9,8 +9,11 @@ import { DeltaBars } from "../../components/LabCharts";
 import { useChartPalette } from "../../chartTheme";
 import { lineChartAlt, deltaBarsAlt } from "../../chartAlt";
 import {
+  MASE_24H,
+  MASE_ONE_STEP,
   autoTimeTicks,
   centPerLiter,
+  dataReachLabel,
   deNumber,
   deTrimmed,
   euro,
@@ -26,6 +29,16 @@ import { labSection, type LabSectionId, PARAM_CARDS, betaCredibleInterval } from
 import { useOverview } from "../../state/overview";
 import { useLaborModel } from "../laborModel";
 import { ForTheCurious, LabBlock, ReadingAid, SelfCheck, ThreeSentences, ParamCardShell } from "./components";
+
+/** R3/F3 + MICROCOPY T5: Diese Lesehilfe stand zweimal im Text — dieselbe
+ *  Aussage, ein Baustein. */
+const DELTA_BARS_AID = {
+  headline: "Links heißt günstiger als der Stadt-Median, rechts heißt teurer.",
+  text:
+    "Werte aus der Stations-Auswahl: δ̂ mit Bootstrap-Konfidenzintervall (senkrechter Strich) und " +
+    "Signifikanz nach Benjamini-Hochberg — blasse Balken sind nicht signifikant. Der Strich in der " +
+    "Mitte ist der Stadt-Median.",
+};
 
 export function ModellView({
   focusSection,
@@ -108,6 +121,9 @@ export function ModellView({
   }, []);
 
   const selLaw = lawFloorNote(selection.data);
+  /** R3/F3: Das Selektionsfenster steht im Payload (`Selection` extends
+   *  `DataReach`) — die Werkstatt nennt es, statt Wochen zu behaupten. */
+  const selReach = useMemo(() => dataReachLabel(selection.data ?? {}), [selection]);
   const stationDeltas = useMemo(() => {
     const rows = selection.data?.stations ?? [];
     return rows
@@ -186,7 +202,7 @@ export function ModellView({
         <h2 className="text-sm font-semibold text-white">Parameterschrank — 8 Karten in Kette</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
           Struktur, AR(2), Bootstrap, 12-Uhr-Projektion, Ensemble, Selektion, Schwellen, Regime. Jede Karte: Satz,
-          Diagramm, Parameter, Formel. B2/B3 Groessen bei ihrer Karte, Beta(5,5)-CI auf Karte 7.
+          Diagramm, Parameter, Formel. B2/B3 Größen bei ihrer Karte, Beta(5,5)-CI auf Karte 7.
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {PARAM_CARDS.map((card) => (
@@ -202,13 +218,19 @@ export function ModellView({
       </div>
 
       <LabBlock id="stationen" open={open.stationen} onToggle={() => toggle("stationen")} headline="3 · Stationen" question={labSection("stationen").question} blockRef={(node) => { blockRefs.current.stationen = node; }}>
-        <ThreeSentences sentences={["Jede Station wird mit dem Stadt-Ueblichen verglichen - dem Median derselben Stunde, nicht mit dem Durchschnitt.", "Der Abstand wird ueber Wochen gemittelt; Zufall mittelt sich heraus, ein System bleibt stehen.", "Was uebrig bleibt, ist der Preis-Abstand: Meist N ct unter dem Ueblichen heisst oft guenstig - nicht immer."]} />
+        <ThreeSentences
+          sentences={[
+            "Jede Station wird mit dem Stadt-Üblichen verglichen — mit dem Median derselben Stunde, nicht mit dem Durchschnitt.",
+            "Der Abstand wird über Wochen gemittelt; Zufall mittelt sich heraus, ein System bleibt stehen.",
+            "Was übrig bleibt, ist der Preis-Abstand: meist einige Cent unter dem Üblichen — oft günstig, nicht immer.",
+          ]}
+        />
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
           <p className="text-xs font-semibold text-slate-200">Preis-Abstand je Station · {activeCity || "Stadt"}</p>
           {stationDeltas.length ? (
             <>
               <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} fmt={centPerLiter} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
-              <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
+              <ReadingAid {...DELTA_BARS_AID} />
             </>
           ) : (
             <Empty>Noch kein delta_hat - braucht 1 Woche Preise je Station.</Empty>
@@ -220,7 +242,7 @@ export function ModellView({
       <ParamCardShell anchor={PARAM_CARDS[0].anchor} number={PARAM_CARDS[0].number} title={PARAM_CARDS[0].title} chain={PARAM_CARDS[0].chain} sentence={PARAM_CARDS[0].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-xs font-semibold text-slate-200">Diagramm: Huber-Gewichte ueber Tagesform</p>
+            <p className="text-xs font-semibold text-slate-200">Diagramm: Huber-Gewichte über der Tagesform</p>
             {beta && beta.length ? (
               <div className="mt-2">
                 <div className="h-24 rounded bg-slate-900/60 p-2">
@@ -247,9 +269,10 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Huber-Verlust: quadratisch nahe 0, linear fern — Ausreisser verbiegen Tagesform nicht. IRLS iteriert Gewichte. holiday_beta gehoert zur Struktur (Feiertags-Dummy in X), nicht zu AR(2).</p>
+              <p>Huber-Verlust: quadratisch nahe 0, linear fern — Ausreißer verbiegen die Tagesform nicht, IRLS
+                  iteriert die Gewichte. holiday_beta gehört zur Struktur (Feiertags-Dummy in X), nicht zu AR(2).</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"L(beta)=Sum rho((y-Xbeta)/sigma) Huber k=1.345 IRLS"}</div>
-              <p>B3 Struktur-Groesse: holiday_beta={f?.holiday_beta != null ? deNumber(f.holiday_beta, 3) : "-"} Quelle: {f?.holiday_source ?? "-"} · Beta-Laenge {beta?.length ?? "-"} (ones + 4 harmonic + 6 dow + after_law + jump_age = 13).</p>
+              <p>B3 Struktur-Größe: holiday_beta={f?.holiday_beta != null ? deNumber(f.holiday_beta, 3) : "-"} Quelle: {f?.holiday_source ?? "-"} · Beta-Länge {beta?.length ?? "-"} (ones + 4 harmonic + 6 dow + after_law + jump_age = 13).</p>
             </ForTheCurious>
           </div>
         </div>
@@ -258,7 +281,7 @@ export function ModellView({
       <ParamCardShell anchor={PARAM_CARDS[1].anchor} number={PARAM_CARDS[1].number} title={PARAM_CARDS[1].title} chain={PARAM_CARDS[1].chain} sentence={PARAM_CARDS[1].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-xs font-semibold text-slate-200">Diagramm: phi1 phi2 und Stabilitaet</p>
+            <p className="text-xs font-semibold text-slate-200">Diagramm: phi1/phi2 und Stabilität</p>
             {arPhi && arPhi.length >= 2 ? (
               <div className="mt-2 text-xs text-slate-300">
                 <p>phi1={deNumber(arPhi[0], 3)} phi2={deNumber(arPhi[1], 3)} Wurzel-Radius {arRootRadius != null ? deNumber(arRootRadius, 3) : "-"} stabil {arStable === null ? "-" : arStable ? "ja" : "nein"}</p>
@@ -270,9 +293,12 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>AR(2): Residuen mit phi1 phi2. Stationaer wenn Wurzeln ausserhalb Einheitskreis; sonst Stauchung 0.9. Stabilitaet (Wurzel-Radius &lt;1) sagt nichts ueber Level-Bruch (CUSUM) — 8/10 Bruch-Flags trotz Radius 0,89 ist moeglich, aber irrefuehrend als "stabil ja".</p>
+              <p>AR(2): Residuen mit phi1 und phi2. Stationär heißt: Beide Wurzeln liegen außerhalb des
+                  Einheitskreises — sonst staucht der Fit mit 0,9. Stabilität (Wurzel-Radius unter 1)
+                  sagt nichts über einen Level-Bruch: CUSUM kann Brüche melden, obwohl der Radius ruhig
+                  wirkt. Beide Zeilen zusammen lesen, keine allein.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"phi_hat Yule-Walker Check |lambda| kleiner 1 sonst phi mal 0.9"}</div>
-              <p>AR-Groesse: shrink_events={f?.ar_shrink_events ?? "-"} state_reset={f?.ar_state_reset ? "ja" : "nein"} — holiday_beta gehoert zu Karte 1.</p>
+              <p>AR-Größe: shrink_events={f?.ar_shrink_events ?? "-"} state_reset={f?.ar_state_reset ? "ja" : "nein"} — holiday_beta gehört zu Karte 1.</p>
             </ForTheCurious>
           </div>
         </div>
@@ -282,14 +308,17 @@ export function ModellView({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Tagesblock-Gewichte EW-HWZ</p>
-            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B={bootstrapSamples != null ? deTrimmed(bootstrapSamples, 0) : "-"} Ziehungen (Samples, nicht Bloecke)</p>
-            <p className="mt-1 text-xs text-slate-500">EW-Halbwertszeit: neuere Tage zaehlen mehr; Tagesbloecke erhalten Tagesform.</p>
+            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B={bootstrapSamples != null ? deTrimmed(bootstrapSamples, 0) : "-"} Ziehungen (Samples, nicht Blöcke)</p>
+            <p className="mt-1 text-xs text-slate-500">EW-Halbwertszeit: neuere Tage zählen mehr; Tagesblöcke erhalten die Tagesform.</p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Block-Bootstrap: Ziehe ganze Tage mit EW-Gewichten. shared_draws: gleiche Tages-Indizes fuer alle Stationen. day_pair: Paare zusammen. B ist Anzahl Ziehungen (Samples), nicht Bloecke — Bloecke sind n_days (z.B. 42).</p>
+              <p>Block-Bootstrap: ganze Tage mit EW-Gewichten ziehen. shared_draws: gleiche Tages-Indizes für
+                  alle Stationen, day_pair: Paare zusammen. B ist die Zahl der Ziehungen (Samples) —
+                  Blöcke sind die Tage des Fensters, nicht die Ziehungen.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_t = 2^(-age/HWZ) / Summe Block b zu day_t shared gleich"}</div>
-              <p>PIT-Groesse n_pit gehoert zu Karte 5/7 (Kalibrierung), nicht zu Bootstrap — hier nur Ziehungsmodus.</p>
+              <p>Die PIT-Größe n_pit gehört zu Karte 5/7 (Kalibrierung), nicht zum Bootstrap — hier steht nur
+                  der Ziehungsmodus.</p>
             </ForTheCurious>
           </div>
         </div>
@@ -317,8 +346,11 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>PAVA: Bei Verletzung steigend statt fallend poole beide zu Mittelwert, iteriere bis monoton fallend. 12-Uhr-Kante bei 12:00 Berlin plus Regime-Kanten (Config.regimes) sind zusaetzliche erlaubte Anstiegsstellen — Satz "nur an 12:00 darf er steigen" ist unvollstaendig.</p>
-              <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"Segment s=[12:00_d,12:00_d+1) oder [Regime-Kante, naechste Kante) y_hat=PAVA(y) rise frei bei Kanten"}</div>
+              <p>PAVA: Wo die Kurve steigt statt fällt, werden beide Punkte zum Mittelwert gepoolt — und das
+                  wiederholt, bis die Kurve monoton fällt. Erlaubte Anstiegsstellen sind die
+                  12-Uhr-Kante (12:00 Uhr Berlin) plus die Regime-Kanten; „nur an 12:00 darf er
+                  steigen“ ist deshalb zu kurz gegriffen.</p>
+              <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"Segment s=[12:00_d,12:00_d+1) oder [Regime-Kante, nächste Kante) y_hat=PAVA(y) rise frei bei Kanten"}</div>
               <p>B3: law_floor={f?.law_floor ?? "-"} active={f?.law_floor_active ? "ja" : "nein"} pre_law_excluded={f?.pre_law_points_excluded ?? "-"} rise_outside_noon={f?.law_rise_outside_noon ?? "-"} (sollte 0 sein){pavaStats ? ` pava: Segmente ${pavaStats.law_segments ?? "-"}, Pools ${pavaTotals?.pools ?? "-"}, gepoolte Punkte ${pavaTotals?.pooled_points ?? "-"}` : " pava: -"}</p>
             </ForTheCurious>
           </div>
@@ -328,7 +360,10 @@ export function ModellView({
       <ParamCardShell anchor={PARAM_CARDS[4].anchor} number={PARAM_CARDS[4].number} title={PARAM_CARDS[4].title} chain={PARAM_CARDS[4].chain} sentence={PARAM_CARDS[4].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <p className="text-xs font-semibold text-slate-200">Diagramm: Gewichte je Horizont</p>
+            {/* R3/F7: Der Titel hieß „Gewichte je Horizont“, obwohl der Fit
+                nur globale Gewichte kennt (`horizon_weights.status =
+                not_estimated`) — die Zeile darunter zeigte drei Mal „-“. */}
+            <p className="text-xs font-semibold text-slate-200">Diagramm: Ensemble-Gewichte (global)</p>
             {/* Befund N1e (23.09.2026, Runde 2): Mit gefülltem Payload stehen
                 hier lange Fach-Token (``inverse_mase_one_step_validation``) —
                 ohne ``overflow-wrap:anywhere`` malen sie über die eigene Box
@@ -336,13 +371,17 @@ export function ModellView({
             {ensemble ? (
               <div className="mt-2 text-xs text-slate-300 [overflow-wrap:anywhere]">
                 <p>method={ensemble.method ?? "-"} n_eval={ensemble.n_eval ?? "-"} window={ensemble.window_days ?? "-"}d</p>
-                <p className="mt-1">Gewichte: {ensemble.weights ? Object.entries(ensemble.weights).map(([k, v]) => `${k}:${deNumber(v as number, 2)}`).join(" ") : "-"}</p>
-                <p className="mt-1">MASE: {ensemble.mase ? Object.entries(ensemble.mase).map(([k, v]) => `${k}:${v == null ? "-" : deNumber(v as number, 3)}`).join(" ") : "-"}</p>
+                <p className="mt-1">Gewichte: {ensemble.weights ? Object.entries(ensemble.weights).map(([k, v]) => `${k}: ${deNumber(v as number, 2)}`).join(" · ") : "-"}</p>
+                {/* R3/F8: Diese MASE ist die Eine-Schritt-Validierung des Fits —
+                    nicht die 24-h-MASE der Güte. Beide tragen ihren Namen. */}
+                <p className="mt-1" title={`Fachwort: ${MASE_ONE_STEP.code}`}>
+                  {MASE_ONE_STEP.label} je Kern: {ensemble.mase ? Object.entries(ensemble.mase).map(([k, v]) => `${k}: ${v == null ? "-" : deNumber(v as number, 3)}`).join(" · ") : "-"}
+                </p>
                 {ensemble.weight_spread && (
                   <p className="mt-1 text-slate-500">spread blocks={ensemble.weight_spread.blocks ?? "-"} std={ensemble.weight_spread.std != null ? deNumber(ensemble.weight_spread.std, 3) : "-"} range=[{ensemble.weight_spread.min != null ? deNumber(ensemble.weight_spread.min, 3) : "-"} bis {ensemble.weight_spread.max != null ? deNumber(ensemble.weight_spread.max, 3) : "-"}]</p>
                 )}
                 {ensemble.horizon_weights && (
-                  <p className="mt-1 text-slate-500">horizon_weights: 24h={ensemble.horizon_weights["24h"] ?? "-"} 72h={ensemble.horizon_weights["72h"] ?? "-"} 168h={ensemble.horizon_weights["168h"] ?? "-"} ({ensemble.horizon_weights.status ?? "-"})</p>
+                  <p className="mt-1 text-slate-500">Gewichte je Horizont: 24h={ensemble.horizon_weights["24h"] ?? "-"} 72h={ensemble.horizon_weights["72h"] ?? "-"} 168h={ensemble.horizon_weights["168h"] ?? "-"} ({ensemble.horizon_weights.status ?? "-"})</p>
                 )}
               </div>
             ) : (
@@ -351,9 +390,20 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Zwei Kerne: harmonisch plus Tagesprofil. 14-Tage Rolling-Validierung zu MASE zu inverse-MASE-Gewichte — aktuell global (one_step), nicht je Horizont. Titel "Gewichte je Horizont" irrefuehrend, da horizon_weights.status=not_estimated und Werte 24h/72h/168h = -. MASE hier One-Step-MASE (0,19/0,31 &lt;1) vs Guete-MASE 2,75 (24h-Fenster) — unterschiedliche Definition, gleicher Name verwirrt.</p>
+              <p>
+                Zwei Kerne — harmonisch plus Tagesprofil — werden über das Validierungsfenster des Fits
+                gemischt{ensemble?.window_days != null ? ` (${deTrimmed(ensemble.window_days, 0)} Tage)` : ""}:
+                je Kern {MASE_ONE_STEP.label} (Eine-Schritt-Prognose, eine Rasterstufe voraus), Gewicht
+                proportional zu 1/{MASE_ONE_STEP.label}. Gewichte je Horizont schätzt der Fit nicht — sie
+                gehören in den Roll-Backtest, deshalb steht dort „not_estimated“.
+              </p>
+              <p className="mt-2">
+                Diese {MASE_ONE_STEP.label} ist nicht die {MASE_24H.label} der Güte: Dort wird die Prognose
+                auf das 24-Stunden-Fenster außerhalb der Stichprobe gemessen, hier der nächste Schritt im
+                Fit. Beide Werte unter 1,0 sind gut — vergleichbar miteinander sind sie nicht.
+              </p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_k = (1/MASE_k)/Sum(1/MASE) w_spread = std(w)"}</div>
-              <p>B2 Kalibrierung: PIT-Kurve aus Backtest-PITs; Status: {f?.calibrated ? "aktiv" : (f?.calibration?.status ?? "-")} n_pit je Horizont: {f?.calibration?.by_horizon ? Object.entries(f.calibration.by_horizon).map(([h, v]: any) => `${h}:${v?.n_pit ?? "-"}`).join(" ") : "-"} · PIT-Groesse stationaer n_pit={pitN ?? "-"} (24h-Fenster).</p>
+              <p>B2 Kalibrierung: PIT-Kurve aus Backtest-PITs; Status: {f?.calibrated ? "aktiv" : (f?.calibration?.status ?? "-")} n_pit je Horizont: {f?.calibration?.by_horizon ? Object.entries(f.calibration.by_horizon).map(([h, v]: any) => `${h}:${v?.n_pit ?? "-"}`).join(" ") : "-"} · PIT-Größe dieser Station n_pit={pitN ?? "-"} (24h-Fenster).</p>
             </ForTheCurious>
           </div>
         </div>
@@ -366,7 +416,7 @@ export function ModellView({
             {stationDeltas.length ? (
               <>
                 <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} fmt={centPerLiter} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
-                <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
+                <ReadingAid {...DELTA_BARS_AID} />
               </>
             ) : (
               <Empty>Noch kein delta_hat - braucht 1 Woche Preise je Station.</Empty>
@@ -375,9 +425,14 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>delta_hat(s)=mean_t(p(s,t)-median_ohne_s(t)) ueber 6 Wochen, nur ab law_floor. CI aus Tages-Block-Bootstrap B=2000 95 Prozent. q-Wert via BH.</p>
+              <p>delta_hat(s) = Mittelwert(p(s,t) - median_ohne_s(t)) über das Fenster der Selektion, nur Punkte
+                  ab law_floor. CI aus Tages-Block-Bootstrap mit 95 % Konfidenz, q-Wert über
+                  Benjamini-Hochberg. Die Ziehungszahl trägt der Payload nicht: Gerechnet wird mit
+                  mindestens 1.000 Ziehungen — darunter ist über das Stations-Set keine Signifikanz
+                  erreichbar; ein Override steht im Job-Log.
+                  {selReach ? ` Fenster: ${selReach}.` : ""}</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"delta_hat = mean(p-median) CI bootstrap q_BH"}</div>
-              <p>B3: Punkte vor law_floor zaehlen nicht.</p>
+              <p>B3: Punkte vor law_floor zählen nicht.</p>
             </ForTheCurious>
           </div>
         </div>
@@ -416,11 +471,12 @@ export function ModellView({
             <p className="text-xs font-semibold text-slate-200">Diagramm: Regime-Kanten im Kalender</p>
             <p className="mt-2 text-xs text-slate-400">Config.regimes: deklarierte Kanten Datum Quelle Betrag je Sorte zu Engine schaetzt delta_hat t_hat slot-gematcht zu Dummy in features zu Projektions-Kante zu Deckel cap(t) zu Zensierung.</p>
             <p className="mt-2 text-xs text-slate-500">Status: announced detected in_force. Quelle: Gesetzesblatt. Betrag: ct/L je Sorte.</p>
-            <p className="mt-2 text-xs text-slate-500">Zensierung: at_cap_points Punkte am Deckel, p_at_cap Anteil. Wenn p_at_cap groesser 20 Prozent, ist Deckel bindend.</p>
+            <p className="mt-2 text-xs text-slate-500">Zensierung: at_cap_points Punkte am Deckel, p_at_cap Anteil. Liegt der Anteil am Deckel über 20 Prozent, ist der Deckel bindend.</p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Regime-Schaetzung: Fuer jede Kante vergleiche Median der Differenzen vor/nach Kante, gematcht auf Wochentag und Stunde.</p>
+              <p>Regime-Schätzung: Für jede Kante wird der Median der Differenzen vor und nach der Kante
+                  verglichen, gematcht auf Wochentag und Stunde.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"delta_reg = median(t in match)(p_post-p_pre) t_hat via CUSUM Dummy 1(t>=kante) in X"}</div>
               <p>Projektions-Kante: _segment_bounds setzt bei Regime-Kante neue Segment-Grenze wie 12:00. Deckel: cap(t)=base+delta_regime, Zensierung: p_capped = clip(p, cap), at_cap = p ge cap minus epsilon.</p>
               <p className="mt-2 text-amber-300/80">Hinweis M8: Erster Winter nach der 12-Uhr-Regel - Deckel bindend? Siehe Daten-Tab.</p>
@@ -445,14 +501,14 @@ export function ModellView({
                 <li>Gewartet haette sie an <strong className="text-slate-100">{scenario.wait} von {scenario.days}</strong> Tagen.</li>
                 <li>Richtig entschieden: <strong className="text-slate-100">{scenario.hits} von {scenario.days}</strong> Tagen.</li>
                 <li>Verlust aus falschem Warten: <strong className="text-slate-100">{euro(scenario.regret)} €</strong> bei {deTrimmed(liters, 0)} L.</li>
-                {labMu != null ? <li>Trainings-Erwartung: <strong className="text-slate-100">mu = {centPerLiter(labMu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}), {labSaves.length} Trainings-Tage.</li> : activeLabDayRow ? <li>Backtest-Erwartung (kein publiziertes Form-Modell): <strong className="text-slate-100">mu = {centPerLiter(activeLabDayRow.mu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}) – Trainings-Form-Modell fehlt (models dict leer), Backtest-Zeile liefert mu.</li> : <li className="text-slate-500">Werkstueck Modellvergleich: Engine veroeffentlicht kein Form-Modell je Station.</li>}
+                {labMu != null ? <li>Trainings-Erwartung: <strong className="text-slate-100">mu = {centPerLiter(labMu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}), {labSaves.length} Trainings-Tage.</li> : activeLabDayRow ? <li>Backtest-Erwartung (kein publiziertes Form-Modell): <strong className="text-slate-100">mu = {centPerLiter(activeLabDayRow.mu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}) — das Trainings-Form-Modell fehlt (models dict leer), die Backtest-Zeile liefert mu.</li> : <li className="text-slate-500">Werkstück Modellvergleich: Die Engine veröffentlicht kein Form-Modell je Station.</li>}
               </ul>
             ) : <p className="mt-2 text-xs leading-relaxed text-slate-400">Der Regler wirkt, sobald ein Backtest vorliegt.</p>}
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Eine Station sezieren</p>
             {labData?.stations?.length ? (
-              <label className="mt-2 block text-xs text-slate-400">Station<select aria-label="Station fuer die Detail-Analyse" value={labData.stations.some((s) => s.id === selected?.station_id) ? selected?.station_id : labData.stations[0].id} onChange={(event) => setSelectedId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100">{labData.stations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}</select></label>
+              <label className="mt-2 block text-xs text-slate-400">Station<select aria-label="Station für die Detail-Analyse" value={labData.stations.some((s) => s.id === selected?.station_id) ? selected?.station_id : labData.stations[0].id} onChange={(event) => setSelectedId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100">{labData.stations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}</select></label>
             ) : <p className="mt-2 text-xs leading-relaxed text-slate-500">Keine Station im Backtest.</p>}
             {labRows.length ? (
               <>
@@ -461,13 +517,13 @@ export function ModellView({
                   <>
                     <ul className="mt-3 space-y-1 text-xs leading-relaxed text-slate-300">
                       <li>Erwartung mu = <strong className="text-slate-100">{centPerLiter(activeLabDayRow.mu)}</strong> Regel: <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.wait ? `warten bis ~${formatHour(activeLabDayRow.predHour)}` : "sofort tanken"}</strong></li>
-                      <li>Realisierte Ersparnis S = <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{centPerLiter(Math.abs(activeLabDayRow.s))} {activeLabDayRow.s >= 0 ? "guenstiger" : "teurer"}</strong> Urteil: <strong className={activeLabOutcome.hit ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.hit ? "richtig" : "daneben"}</strong></li>
+                      <li>Realisierte Ersparnis S = <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{centPerLiter(Math.abs(activeLabDayRow.s))} {activeLabDayRow.s >= 0 ? "günstiger" : "teurer"}</strong> Urteil: <strong className={activeLabOutcome.hit ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.hit ? "richtig" : "daneben"}</strong></li>
                     </ul>
-                    {dayCurve.length > 0 && <div className="mt-3"><LineChart height={190} series={[{ name: `Erwartung vs. ${anchorLabel}`, color: c.marker, pts: dayCurve }]} marks={[{ x: anchorHour, color: c.accent, label: anchorLabel }, ...(activeLabDayRow.predHour != null ? [{ x: activeLabDayRow.predHour, color: c.positive, label: "prognostizierte Tiefstphase" }] : [])]} xTicks={autoTimeTicks(0, 24)} yFmt={(value) => `${deTrimmed(value, 1)} ct`} ariaLabel="Tageskurve der Backtest-Zeile" ariaDescription={`Tageskurve: erwartete Preisdifferenz je Stunde gegenueber ${anchorLabel}. ${lineChartAlt({ series: [{ pts: dayCurve }], fmtY: (v) => centPerLiter(v), fmtX: (x) => `${deTrimmed(x, 0)} Uhr` })}`} /></div>}
+                    {dayCurve.length > 0 && <div className="mt-3"><LineChart height={190} series={[{ name: `Erwartung vs. ${anchorLabel}`, color: c.marker, pts: dayCurve }]} marks={[{ x: anchorHour, color: c.accent, label: anchorLabel }, ...(activeLabDayRow.predHour != null ? [{ x: activeLabDayRow.predHour, color: c.positive, label: "prognostizierte Tiefstphase" }] : [])]} xTicks={autoTimeTicks(0, 24)} yFmt={(value) => `${deTrimmed(value, 1)} ct`} ariaLabel="Tageskurve der Backtest-Zeile" ariaDescription={`Tageskurve: erwartete Preisdifferenz je Stunde gegenüber ${anchorLabel}. ${lineChartAlt({ series: [{ pts: dayCurve }], fmtY: (v) => centPerLiter(v), fmtX: (x) => `${deTrimmed(x, 0)} Uhr` })}`} /></div>}
                   </>
                 )}
               </>
-            ) : <p className="mt-2 text-xs leading-relaxed text-slate-500">Fuer diese Station liegt noch kein Backtest-Tag vor.</p>}
+            ) : <p className="mt-2 text-xs leading-relaxed text-slate-500">Für diese Station liegt noch kein Backtest-Tag vor.</p>}
           </div>
         </div>
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -475,7 +531,10 @@ export function ModellView({
           <div className="mt-2 flex flex-wrap gap-1 text-xs">{[{ hours: 24, label: timeSpanLabel(24) }, { hours: 72, label: timeSpanLabel(72) }, { hours: 168, label: timeSpanLabel(168) }].map((option) => <button key={option.hours} aria-pressed={spanHours === option.hours} onClick={() => setSpanHours(option.hours)} className={`rounded-md border px-2 py-1 font-semibold ${spanHours === option.hours ? "border-violet-500/40 bg-violet-500/10 text-violet-200" : "border-slate-800 text-slate-500 hover:text-slate-300"}`}>{option.label}</button>)}<span className="self-center text-slate-500">· {spanLabel}</span></div>
           {history.error || history.data?.error_code ? <div className="mt-3"><LoadError errorCode={history.data?.error_code || history.errorCode} fallback="Die Preis-Reihe konnte nicht geladen werden." onRetry={refreshNow} compact /></div> : observations.length ? <div className="mt-3"><LineChart height={200} series={observations} gapMinutes={30} xTicks={autoTimeTicks(Date.now() - spanHours * 3600000, Date.now())} yFmt={(value) => euro(value, 3)} ariaLabel="Beobachtete Preise der gewaehlten Station" ariaDescription={`Beobachtete Preise, ${spanLabel}. ${lineChartAlt({ series: observations, fmtY: (v) => euroPerLiter(v), fmtX: (x) => `${timeLabel(new Date(x).toISOString())} Uhr` })}`} /><ReadingAid headline={`Gemessene Preise: ${spanLabel}.`} text="Luecken sind ehrlich: Wo keine offene Meldung vorliegt, steht keine Linie." /></div> : history.pending && !history.data ? <div className="mt-3"><SkeletonChart height="h-48" label="Preis-Reihe wird geladen" /></div> : <div className="mt-3"><Empty>Keine Preise in diesem Zeitraum - Meldungen entstehen nur 06-24 Uhr.</Empty></div>}
         </div>
-        <SelfCheck question="Ist ein hoeheres epsilon automatisch sicherer?" answer="Nein. Ein hoeheres epsilon laesst die App seltener warten - sicherer wird die Aussage dadurch nicht, nur seltener." />
+        <SelfCheck
+          question="Ist ein höheres ε automatisch sicherer?"
+          answer="Nein. Ein höheres ε lässt die App seltener warten — sicherer wird die Aussage dadurch nicht, nur seltener."
+        />
       </LabBlock>
     </div>
   );

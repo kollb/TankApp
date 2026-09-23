@@ -495,12 +495,22 @@ export function UeberblickView({
           )}
         </div>
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-          <p className="text-xs font-semibold text-slate-200">Bilanz der Ratschläge</p>
+          {/* R3/F10: „Regel-Ergebnis / Orakel“ las sich als Kosten — es sind
+              Ersparnisse, und das Orakel ist die unerreichbare Referenz
+              (`oracle_reachable: false`), kein Ziel. Dieselben Wörter wie in
+              der Güte (MICROCOPY §4). */}
+          <p className="text-xs font-semibold text-slate-200">Backtest-Bilanz der Regel</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-400">
             {labTotals.n === 0
               ? "Ohne Backtest-Tage keine Bilanz: Die App rechnet sie erst, wenn genug echte Preishistorie da ist."
-              : `Regel-Ergebnis ${euro(labTotals.smart)} € · Orakel ${euro(labTotals.best)} € · Ø Mehrkosten ${euro(labTotals.regretEur)} € bei ${deTrimmed(ov.liters, 0)} L.`}
+              : `Ersparnis der Regel ${euro(labTotals.smart)} € · perfektes Timing (Orakel) ${euro(labTotals.best)} € · Ø Mehrkosten ${euro(labTotals.regretEur)} € bei ${deTrimmed(ov.liters, 0)} L.`}
           </p>
+          {labTotals.n > 0 && (
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Gerechnet auf echter Preishistorie außerhalb der Stichprobe — nicht aus dem Tagebuch oben:
+              Das zählt abgerechnete Empfehlungen.
+            </p>
+          )}
         </div>
         <ForTheCurious>
           <p>

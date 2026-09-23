@@ -31,6 +31,7 @@ import {
   hourRunsLabel,
   hourRunsOf,
   kilometersLabel,
+  medianOf,
   NO_DATA_LINE,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
@@ -989,14 +990,9 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
     : null;
   // A4-Regression (Befund 23.09.2026): Bei gerader Stichprobe lag der obere
   // der beiden Mittelwerte drin — der „Tagesmedian“ zeigte systematisch zu
-  // hoch. Echter Median: Mittelwert der beiden mittleren Stunden-Minima.
-  const values = open.map((cell) => cell.value).sort((a, b) => a - b);
-  const half = Math.floor(values.length / 2);
-  const median = values.length
-    ? values.length % 2 === 1
-      ? values[half]
-      : (values[half - 1] + values[half]) / 2
-    : null;
+  // hoch. Echter Median über `medianOf` (dieselbe Funktion rechnet die
+  // Heatmap-Zeile und die Tagesmedian-Linie der Stationen).
+  const median = medianOf(open.map((cell) => cell.value));
   // O20: Die Zelle trägt das Stunden-Minimum (`value`) und den letzten Preis
   // der Stunde (`latest`). „Jetzt“ ist ein Zeitpunkt, kein Minimum — die
   // Jetzt-Kachel zeigt deshalb `latest` und fällt auf das Minimum zurück,

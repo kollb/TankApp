@@ -380,14 +380,53 @@ im Poll-Fenster. Vergleich 42d-EW vs. 42d-uniform vs. 84d siehe Engine-Referenz 
 ### MASE (Fehler gegen die Naive)
 
 Die MASE misst den Fehler als Vergleich zur saisonalen Naive:
-Backtest-MAE des Modells geteilt durch den MAE der Vor-Tages-Preise zur
-selben Stunde. Die Kennzahl kommt aus dem Rolling-Origin-Backtest
-(`engine/backtest.py`); wo die Naive undefinierbar ist (keine bewertbaren
-Punkte, konstante Reihe), steht der Grund in `mase_none_reason` statt einer
-stillen Lücke. **Unter 1,0 heißt besser als die einfache
-Vergleichsmethode** — MASE 0,7 sind 30 % weniger Fehler als „nimm den
-gestrigen Preis“. Die Ensemble-Gewichte (A10) sind ∝ 1/MASE je Modellkern,
-gemessen auf den letzten 14 Trainingstagen.
+MAE des Modells geteilt durch den MAE der Vor-Tages-Preise zur selben
+Stunde. **Unter 1,0 heißt besser als die einfache Vergleichsmethode** —
+MASE 0,7 sind 30 % weniger Fehler als „nimm den gestrigen Preis“.
+
+Die App rechnet **zwei** MASE: gleicher Nenner, anderer Horizont, andere
+Stichprobe. Seit 0.69.0 tragen sie getrennte Namen (`MASE_1step`,
+`MASE_24h`) — vorher hießen beide in der GUI nur „MASE“, und ein Wert 0,19
+auf der Ensemble-Karte neben einem Wert 2,75 auf der Güte-Karte sah aus wie
+ein Widerspruch, war aber keiner (Befund R3, 23.09.2026). Beide gehören
+deshalb nie ohne ihren Namen in einen Text.
+
+#### MASE 1 Schritt (Eine-Schritt-Validierung des Ensembles)
+
+Gemessen wird die **Eine-Schritt-Prognose** — eine Rasterstufe (5 min)
+voraus, AR(2)-Zustand aus den beiden Vorpunkten — für beide Modellkerne auf
+dem Validierungsfenster des Fits (`VALIDATION_WINDOW_DAYS = 14` Tage,
+`engine/models.py::ensemble_detail`). Nenner ist der mittlere Fehler der
+saisonalen Naive desselben Slots am Vortag (`adjusted[idx - 288]`).
+Veröffentlicht als `forecast.form.ensemble.mase` je Kern, dazu `mae`,
+`naive_mae`, `n_eval`, `window_days` und
+`method = "inverse_mase_one_step_validation"`.
+
+Zweck: die Ensemble-Gewichte (A10) sind ∝ 1/MASE 1 Schritt, **global**
+(`one_step`) — Gewichte je Horizont gehören in den Rolling-Origin-Backtest,
+deshalb bleibt `horizon_weights.status = not_estimated`. Grenze: Der Wert
+sagt nichts über das 24-Stunden-Fenster, für das die Empfehlung entsteht;
+er ist kleiner als die 24-h-MASE, weil ein Schritt leichter ist als ein Tag.
+
+#### MASE 24 Stunden (Roll-Backtest auf das 24-h-Fenster)
+
+Der Rolling-Origin-Backtest prognostiziert das 24-h-Fenster und teilt seinen
+MAE durch den MAE der saisonalen Naive (`engine/backtest.py::metrics`,
+Skala `mase_scale` aus dem Fit). Gezählt werden abgeschlossene Prüfpunkte
+aus echten Beobachtungen (`mase_points`); wo die Naive undefinierbar ist
+(keine bewertbaren Punkte, konstante Reihe), steht der Grund in
+`mase_none_reason` statt einer stillen Lücke. Das NAS-Fenster beträgt
+**21 Tage** (`app/refresh.py`), damit das Gate
+`at_least_21_complete_test_days_per_station` im automatischen Lauf erfüllbar
+ist.
+
+Veröffentlicht je Backtest-Zeile als `metrics.mase` und als
+`backtest.totals.mase` = Median über die Stationen
+(`app/stats_summary.py::_score_rows`). Abnahme-Kriterium M3: MASE(24h)
+< 0,95 gesamt (siehe Tabelle oben). Eine Variante nur für Tage ohne
+Preissprung weist die Engine **bewusst nicht** aus — ohne Sprunglabel wäre
+sie erfunden, deshalb ist `quality_metrics.mase_sprungfrei` immer `null`
+([API.md](API.md#stats-summary-b4-3-schichten)).
 
 ### PICP (Band-Trefferquote)
 

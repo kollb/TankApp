@@ -10,6 +10,7 @@
 // Mechanik war, keine Aussage. Rechenlogik liegt als reine Funktionen in
 // `data.ts` (heatmapDaySummaries, hourRunsLabel, heatmapCoverageNote …).
 
+import { TriangleAlert } from "lucide-react";
 import {
   countLabel,
   euro,
@@ -21,6 +22,7 @@ import {
   heatmapDaySummaries,
   heatmapRangeLabel,
   heatmapSampleLabel,
+  heatmapThinReference,
   hourBucketLabel,
   hourRunsLabel,
   lawFloorNote,
@@ -29,9 +31,23 @@ import {
   percentLabel,
   type Heatmap,
   type HeatmapBest,
+  type LivePhase,
 } from "../data";
 
-export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
+/**
+ * `livePhase` ist die Übergangsregel Archiv → Live-Polling aus `stats/summary`
+ * (90 eigene Live-Tage). Sie gehört zur Datenreichweite: Ein Bestand von
+ * 17 Tagen erklärt sowohl die leeren Wochentage als auch den Grund, warum die
+ * App noch nicht ausschließlich mit eigenen Beobachtungen rechnet (R3/F13).
+ * Ohne Statistik-Lauf bleibt die Zeile weg — keine erfundene Schwelle.
+ */
+export function HeatmapGrid({
+  heatmap,
+  livePhase = null,
+}: {
+  heatmap: Heatmap;
+  livePhase?: LivePhase | null;
+}) {
   const { days, hours, matrix, kind } = heatmap;
   const isProb = kind === "probability";
   // B12: Spalten-Basis (Median derselben Stunde) — der Server liefert sie im
@@ -113,7 +129,12 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
       : euroPerLiter(bestDay.best.value)
     : "—";
   const coverage = heatmapCoverage(heatmap);
-  const coverageNote = heatmapCoverageNote(heatmap);
+  const coverageNote = heatmapCoverageNote(heatmap, livePhase);
+  // R3/F12: Die dünne Vergleichs-Basis war nur ein `title` und ein Chip an der
+  // Zeile — bei „Do 06–19 Uhr 50 %, 13 Stunden gleichauf“ aus zwei
+  // Vergleichspreisen stand die große Zahl im Bild und die Warnung daneben
+  // war kaum sichtbar. Sie gehört über die Matrix, mit den Tagen im Wort.
+  const thin = heatmapThinReference(summaries);
   // B30: Die Zellen zählen nur Preise ab der 12-Uhr-Bodenkante. Ohne diese
   // Zeile wäre ein kürzerer Bestand als das Fenster unerklärlich — und das
   // Abend-Muster aus gemischten Daten sähe aus wie eine Aussage.
@@ -150,6 +171,33 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
         Die Matrix ist breit: seitlich schieben zeigt alle 24 Stunden. Farben
         und Zeilen erklärt die Lesehilfe darunter.
       </p>
+      {thin ? (
+        <p
+          role="status"
+          className="mb-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200"
+        >
+          <TriangleAlert
+            size={14}
+            className="mt-0.5 shrink-0 text-amber-300"
+            aria-hidden="true"
+          />
+          <span>
+            <span className="font-semibold">Dünne Vergleichs-Basis:</span>{" "}
+            {countLabel(thin.days.length)} von {countLabel(thin.totalDays)}{" "}
+            {thin.totalDays === 1 ? "Wochentag" : "Wochentagen"} (
+            {thin.daysLabel}){" "}
+            {thin.days.length === 1 ? "liegt" : "liegen"} mit{" "}
+            <span className="font-semibold">
+              n={thin.minReference == null ? "—" : countLabel(thin.minReference)}
+            </span>{" "}
+            {thin.minReference === 1 ? "Vergleichspreis" : "Vergleichspreisen"}{" "}
+            unter dem Mindestmaß {countLabel(MIN_HEATMAP_REFERENCE)}. Die
+            „günstigste Stunde“ {thin.days.length === 1 ? "dieses Tages" : "dieser Tage"}{" "}
+            ist Mechanik, keine Empfehlung — die Werte bleiben sichtbar, tragen
+            aber keine Aussage.
+          </span>
+        </p>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="w-full text-center text-xs font-mono">
           <thead>
@@ -216,7 +264,10 @@ export function HeatmapGrid({ heatmap }: { heatmap: Heatmap }) {
                       <span title={bestTitle(dayName, summary.best)}>
                         {hourRunsLabel(summary.best.runs)}
                         {summary.best.thinReference ? (
-                          <span className="ml-1 text-xs font-semibold text-amber-400">
+                          <span
+                            title={`Vergleichs-Basis unter ${MIN_HEATMAP_REFERENCE} Preisen — Mechanik`}
+                            className="ml-1 rounded border border-amber-500/40 bg-amber-500/10 px-1 text-xs font-semibold text-amber-300"
+                          >
                             dünn
                           </span>
                         ) : null}

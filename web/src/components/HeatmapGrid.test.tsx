@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { HeatmapGrid } from "./HeatmapGrid";
-import type { Heatmap } from "../data";
+import { MIN_HEATMAP_REFERENCE, type Heatmap, type LivePhase } from "../data";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -141,7 +141,6 @@ describe("HeatmapGrid (P0: günstige Stunde wiederfindbar)", () => {
     expect(plain).not.toContain("kein Datenverlust");
     expect(plain).toContain("Fenster 6 Wochen abgedeckt");
   });
-});
 
   it("nennt die 12-Uhr-Bodenkante, aus der die Zellen stammen (B30)", () => {
     const heatmap: Heatmap = {
@@ -165,3 +164,65 @@ describe("HeatmapGrid (P0: günstige Stunde wiederfindbar)", () => {
     );
     expect(legacy).not.toContain("Bodenkante");
   });
+
+  it("stellt die dünne Vergleichs-Basis über die Matrix (R3)", () => {
+    // Vorher war die Warnung ein `title` und ein 10px-Chip an der Zeile: Die
+    // große Zahl stand im Bild, der Grund daneben war kaum sichtbar.
+    const markup = renderToStaticMarkup(<HeatmapGrid heatmap={startupHeatmap()} />);
+    const plain = text(markup);
+    expect(plain).toContain("Dünne Vergleichs-Basis");
+    expect(plain).toContain("1 von 1 Wochentag (Di) liegt mit");
+    expect(plain).toContain("n=16");
+    expect(plain).toContain(`Mindestmaß ${MIN_HEATMAP_REFERENCE}`);
+    expect(plain).toContain("Mechanik, keine Empfehlung");
+    // Die Warnung steht über der Matrix, nicht darunter.
+    expect(markup.indexOf("Dünne Vergleichs-Basis")).toBeLessThan(
+      markup.indexOf("<table"),
+    );
+
+    // Dieselbe Matrix im Dauerbetrieb: keine Warnung, dafür die Empfehlung.
+    const solid = text(
+      renderToStaticMarkup(<HeatmapGrid heatmap={startupHeatmap(240)} />),
+    );
+    expect(solid).not.toContain("Dünne Vergleichs-Basis");
+    expect(solid).toContain("Typisch am günstigsten");
+  });
+
+  it("zählt die fehlenden Tage und nennt die 90-Tage-Regel nur mit Phase (R3)", () => {
+    const phase: LivePhase = {
+      as_of: "2026-09-11T01:00:00+00:00",
+      stations: 2,
+      good_complete_days: 2,
+      best_complete_days: 7,
+      required_complete_days: 90,
+      days_missing: 88,
+      min_daily_coverage: 0.95,
+      live_only_stations: 0,
+      complete: false,
+    };
+    // „fehlende Tage, kein Datenverlust“ ohne Zahl war zu ungenau:
+    // Bestand 5 Tage, Fenster 42 Tage — 37 Tage fehlen.
+    const plain = text(
+      renderToStaticMarkup(<HeatmapGrid heatmap={startupHeatmap()} />),
+    );
+    expect(plain).toContain("Bestand aber nur 5 Tage — 37 Tage fehlen");
+    expect(plain).not.toContain("Datenumstellung");
+
+    const withPhase = text(
+      renderToStaticMarkup(
+        <HeatmapGrid heatmap={startupHeatmap()} livePhase={phase} />,
+      ),
+    );
+    expect(withPhase).toContain("Datenumstellung Archiv → Live-Polling");
+    expect(withPhase).toContain("90 vollständig live beobachtete Tage");
+    expect(withPhase).toContain("Noch 88 vollständige Live-Tage");
+
+    // Erfüllte Phase: kein Countdown, der nicht mehr läuft.
+    const done = text(
+      renderToStaticMarkup(
+        <HeatmapGrid heatmap={startupHeatmap()} livePhase={{ ...phase, complete: true }} />,
+      ),
+    );
+    expect(done).not.toContain("Datenumstellung");
+  });
+});

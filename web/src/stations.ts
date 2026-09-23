@@ -23,6 +23,7 @@ import {
   ageLabel,
   freshness,
   kilometersLabel,
+  medianOf,
   NO_DATA_LINE,
   type DecideResult,
   type Point,
@@ -567,8 +568,10 @@ export function dayMedianPoints(points: Point[]): Array<{ x: number; y: number }
   }
   return [...byDay.values()]
     .map((entry) => {
+      // A4-Klasse: echter Median statt des oberen Rands — die Linie teilen
+      // Stations-Detail und Labor, beide sollen denselben Wert zeigen.
       const sorted = [...entry.values].sort((a, b) => a - b);
-      return { x: entry.firstX, y: sorted[Math.floor(sorted.length / 2)] };
+      return { x: entry.firstX, y: medianOf(sorted) ?? sorted[0] };
     })
     .sort((a, b) => a.x - b.x);
 }

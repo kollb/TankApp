@@ -77,6 +77,11 @@ const FILES = [
   "components/NoticesView.tsx",
   "service-worker.ts",
   "state/overview.tsx",
+  "views/labor/Ueberblick.tsx",
+  "views/labor/Modell.tsx",
+  "views/labor/Guete.tsx",
+  "views/labor/Daten.tsx",
+  "views/labor/components.tsx",
 ];
 
 /**

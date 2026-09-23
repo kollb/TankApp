@@ -43,10 +43,8 @@ import {
   centPerLiter,
   countLabel,
   deNumber,
-  MASE_TARGET,
   m7BrierDetail,
   deTrimmed,
-  euro,
   lifecycleTip,
   notifyLastLine,
   notifyStatusLine,
@@ -643,17 +641,22 @@ export function SystemView(props: SystemViewProps) {
               detail="Tagesminimum in einem der 3 empfohlenen Zeitfenster. Ziel > 60 %."
               hint={statsSummaryRes.data?.quality_metrics.top3_hit_rate == null ? calibrationHint : null}
             />
+            {/* R3: Die Kachel war doppelt falsch — `euro()` auf eine
+                dimensionslose MASE (0,60 €) und ein `hint`, der „noch nicht
+                kalibriert“ versprach, wo die Engine die Metrik bewusst nie
+                veröffentlicht (`app/stats_summary.py`: kein Ad-hoc-Sprunglabel,
+                die Gesamt-MASE „sprungfrei“ zu nennen wäre Etikettenschwindel).
+                Deshalb: Zahl ohne Einheit, Grund im Text, kein Kalibrier-Hinweis. */}
             <Metric
-              label="Sprungfreie Tage · MASE"
+              label="MASE an sprungfreien Tagen"
               value={
                 statsSummaryRes.data?.quality_metrics.mase_sprungfrei != null ? (
-                  <span className="font-mono text-sky-300">{euro(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 2)}</span>
+                  <span className="font-mono text-sky-300">{deNumber(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 3)}</span>
                 ) : (
                   <span className="font-mono text-slate-500">—</span>
                 )
               }
-              detail={`Skalierter Fehler an sprungfreien Tagen. Ziel < ${deNumber(MASE_TARGET)}.`}
-              hint={statsSummaryRes.data?.quality_metrics.mase_sprungfrei == null ? calibrationHint : null}
+              detail="Bewusst leer: Die Engine kennzeichnet keine Preissprünge. Die veröffentlichte MASE als „sprungfrei“ auszugeben wäre Etikettenschwindel."
             />
             <Metric
               label="95-%-Band-Trefferquote · PICP"

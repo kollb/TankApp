@@ -369,6 +369,160 @@ describe("Labor B5: E2E Sprung-Tests punktgenau", () => {
   });
 });
 
+describe("Labor B5: Güte — Bilanz mit drei Nennern (R3)", () => {
+  /**
+   * Dieselben Backtest-Zeilen wie `scoreParity.test.ts` (aus der Python-Seite
+   * geschrieben): ε = 1,0 ct/L und 40 L sind der Stand der Werkstatt, also
+   * gilt Fall 0 der Fixture — n=5, pot_share 0,4492, hit_freq 0,4,
+   * hit_wait 0,5 (4 Wartetag), hit_now 1,0 (1 Jetzt-Tag).
+   */
+  async function parityRows() {
+    const fs = await import("fs");
+    const path = await import("path");
+    const file = path.resolve(__dirname, "../../../tests/fixtures/score_parity.json");
+    const fixture = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      rows: Record<string, unknown>[];
+    };
+    return fixture.rows;
+  }
+
+  function statsFixture(rows: Record<string, unknown>[]) {
+    return res({
+      generated_at: "2026-09-22T04:00:00+00:00",
+      city: "Frankfurt",
+      fuel: "e10",
+      backtest: {
+        daysTrain: 21,
+        daysEval: rows.length,
+        decisionHour: 12,
+        defaultEps: 1,
+        defaultLiters: 40,
+        litersSource: "profile",
+        days: rows.map((row) => String(row.day)),
+        stations: [
+          {
+            id: "s1",
+            city: "Frankfurt",
+            name: "Demo Nord",
+            brand: "B",
+            lat: 50.1,
+            lon: 8.7,
+            delta_ct: -1.2,
+          },
+        ],
+        stationScores: [],
+        totals: {
+          smart: null,
+          commit: null,
+          best: null,
+          regretEur: null,
+          n: 0,
+          hitFreq: null,
+          pAvg: null,
+          potShare: null,
+          mae_ct: 1.1,
+          mase: 0.83,
+          picp_95: 94,
+        },
+        calibration: [],
+        evalRows: { s1: rows },
+        models: {},
+        p8Series: {},
+        scan: { eps: [], commitEur: [], smartEur: [], waits: [] },
+      },
+      live_advice: {
+        n: 4,
+        wins: 2,
+        losses: 2,
+        ties: 0,
+        hit_rate: 0.5,
+        wait_n: 3,
+        wait_hits: 2,
+        now_n: 1,
+        now_hits: 1,
+        reliability: [],
+        episodes_used_7d: 1,
+        episodes_expired_7d: 1,
+        episodes_used_30d: 3,
+        episodes_expired_30d: 2,
+        episodes_open: 1,
+      },
+      quality_metrics: {
+        top3_hit_rate: null,
+        mase_sprungfrei: null,
+        picp_95: 94,
+        cusum_drift: { status: "unknown", max_cusum: null, threshold: 3 },
+      },
+    } as never);
+  }
+
+  it("nennt die drei Maßzahlen mit ihren Namen und erklärt die Nenner", async () => {
+    const rows = await parityRows();
+    const host = mount(
+      {},
+      { laborSubTab: "guete", statsSummaryRes: statsFixture(rows), liters: 40 },
+    );
+    const text = host.textContent ?? "";
+
+    // O21: Die Parameter stehen bei der Zahl, sonst ist „2,12 €“ keine Aussage.
+    expect(text).toContain("Backtest-Bilanz");
+    expect(text).toContain(`${rows.length} Tage`);
+    expect(text).toContain("40 L");
+
+    // MICROCOPY §4: registrierte Namen statt „obere Schranke“/„Potenzial“.
+    expect(text).toContain("Ersparnis der Regel");
+    expect(text).toContain("2,12 €");
+    expect(text).toContain("Perfektes Timing (Orakel)");
+    expect(text).toContain("4,72 €");
+    expect(text).toContain("Ø Mehrkosten zum perfekten Timing");
+    expect(text).toContain("0,52 €");
+
+    // R3: Die drei Verhältnisse standen nicht da — pot_share und hit_freq
+    // waren berechnet, aber nirgends sichtbar.
+    expect(text).toContain("Geholtes Potenzial");
+    expect(text).toContain("44,9 %");
+    expect(text).toContain("Richtige Entscheidungen");
+    expect(text).toContain("60,0 %");
+    expect(text).toContain("Tage mit Vorteil");
+    expect(text).toContain("40,0 %");
+    // Hoher Anteil neben wenigen richtigen Tagen ist kein Widerspruch — der
+    // Satz dazu gehört unter die Zahlen, nicht in einen Tooltip.
+    expect(text).toContain("Drei Maßzahlen, drei Nenner");
+    expect(text).toContain("kein Widerspruch");
+  });
+
+  it("trennt Fenster und Empfehlungen in der Fensterbilanz (R3)", async () => {
+    const rows = await parityRows();
+    const host = mount(
+      {},
+      { laborSubTab: "guete", statsSummaryRes: statsFixture(rows) },
+    );
+    const items = [...host.querySelectorAll("li")].map((li) => li.textContent ?? "");
+    expect(items).toContain(
+      "Fenster (30 Tage): 3 von 5 genutzt — 2 verstrichen ohne Beleg, 1 läuft noch.",
+    );
+    expect(items).toContain("7 Tage: 1 von 2 Fenstern genutzt.");
+    expect(items).toContain("Abgerechnete Empfehlungen (30 Tage): 4.");
+    // Kein Bruch aus zwei Grundgesamtheiten, kein „≠“ als Textersatz.
+    const text = host.textContent ?? "";
+    expect(text).toContain("Fenster und Empfehlungen sind zwei Zähler");
+    expect(text).not.toContain("≠");
+    expect(text).not.toContain("3 von 5 Episoden-Fenstern");
+  });
+
+  it("nennt beide MASE-Varianten beim Namen (R3)", async () => {
+    const rows = await parityRows();
+    const host = mount(
+      {},
+      { laborSubTab: "guete", statsSummaryRes: statsFixture(rows) },
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("MASE 24 Stunden");
+    expect(text).toContain("Nicht vergleichbar mit MASE 1 Schritt");
+    expect(text).toContain("0,83 (Median der Stationen)");
+  });
+});
+
 describe("Labor B5: View Zeilen <600", () => {
   it("Wrapper Labor.tsx <200 Zeilen, Sub-Tabs <600 (statisch geprüft via Dateigröße)", async () => {
     // Wir prüfen hier nur, dass die Dateien existieren und nicht absurd groß sind

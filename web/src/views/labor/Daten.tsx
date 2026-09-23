@@ -5,11 +5,13 @@ import { DataReachNote } from "../../components/DataReach";
 import { LoadError } from "../../components/LoadError";
 import { SkeletonPanel } from "../../components/Skeleton";
 import {
+  MASE_24H,
   countLabel,
   dataReachLabel,
   deNumber,
   euro,
   lawFloorNote,
+  percentLabel,
   timeLabel,
   type Point,
 } from "../../data";
@@ -211,16 +213,24 @@ export function DatenView() {
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="font-semibold text-slate-200">Qualität</p>
+            {/* R3: „PICP95: 95,0%“ und „Top3: 0.7“ waren Rohwerte ohne
+                Formatter — Prozent laufen über `percentLabel` (eine Quelle,
+                §3). Die MASE-Zeile nennt ihre Variante beim Namen: Was hier
+                steht, wäre die sprungfreie MASE, und die Engine veröffentlicht
+                sie bewusst nicht. */}
             <p className="mt-1">
-              MASE sprungfrei:{" "}
+              MASE an sprungfreien Tagen (nicht die {MASE_24H.label}):{" "}
               {statsSummaryRes.data?.quality_metrics?.mase_sprungfrei != null
                 ? deNumber(statsSummaryRes.data.quality_metrics.mase_sprungfrei, 3)
                 : "—"}{" "}
-              · PICP95:{" "}
-              {statsSummaryRes.data?.quality_metrics?.picp_95 != null
-                ? deNumber(statsSummaryRes.data.quality_metrics.picp_95, 1) + "%"
-                : "—"}{" "}
-              · Top3: {statsSummaryRes.data?.quality_metrics?.top3_hit_rate ?? "—"}
+              · PICP 95:{" "}
+              {percentLabel(statsSummaryRes.data?.quality_metrics?.picp_95, 1)} ·
+              Top-3-Trefferquote:{" "}
+              {statsSummaryRes.data?.quality_metrics?.top3_hit_rate != null
+                ? percentLabel(
+                    statsSummaryRes.data.quality_metrics.top3_hit_rate * 100,
+                  )
+                : "—"}
             </p>
           </div>
         </div>

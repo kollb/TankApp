@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  MASE_24H,
+  MASE_ONE_STEP,
+  medianOf,
   autoTimeTicks,
   personalizationNote,
   autoTimeValue,
@@ -36,6 +39,7 @@ import {
   heatmapPath,
   heatmapRangeLabel,
   heatmapSampleLabel,
+  heatmapThinReference,
   HEATMAP_BASES,
   HEATMAP_DEFAULT_BASIS,
   HEATMAP_DEFAULT_WEEKS,
@@ -71,6 +75,7 @@ import {
   splitOnGap,
   transitionRuleLine,
   triggerSkipLabel,
+  windowsBalance,
   windowsUsedLine,
   type Heatmap,
   type Station,
@@ -686,48 +691,68 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(pitCalibrationLedgerBrierLine()).toContain("Noch keine abgerechneten");
   });
 
-  it("shows used vs. lapsed windows with the settled counter (O38)", () => {
-    // O38: „x von y Fenstern genutzt“ plus abgerechnete Empfehlungen gegen
-    // verstrichene Fenster — die Gegenprobe zur Trefferquote.
-    expect(
-      windowsUsedLine({
-        n: 12,
-        episodes_used_7d: 1,
-        episodes_expired_7d: 1,
-        episodes_used_30d: 3,
-        episodes_expired_30d: 2,
-      }),
-    ).toBe(
-      "Fensterbilanz (30 Tage): 3 von 5 Episoden-Fenstern genutzt " +
-        "(12 Empfehlungen abgerechnet = Empfehlungen, 2 Fenster verstrichen ohne Beleg) — 7 Tage: 1 von 2 genutzt. Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.",
+  it("zählt Fenster und Empfehlungen getrennt (O38, R3)", () => {
+    // O38 + R3/F1: `episodes_*` zählen Fenster, `n` zählt abgerechnete
+    // Empfehlungen. Zwei Nenner — zwei Zeilen, die Beziehung als eigener Satz.
+    const advice = {
+      n: 12,
+      episodes_used_7d: 1,
+      episodes_expired_7d: 1,
+      episodes_used_30d: 3,
+      episodes_expired_30d: 2,
+    };
+    const balance = windowsBalance(advice)!;
+    expect(balance.windowsLine).toBe(
+      "Fenster (30 Tage): 3 von 5 genutzt — 2 verstrichen ohne Beleg.",
+    );
+    expect(balance.weekLine).toBe("7 Tage: 1 von 2 Fenstern genutzt.");
+    expect(balance.adviceLine).toBe(
+      "Abgerechnete Empfehlungen (30 Tage): 12.",
+    );
+    expect(balance.relationNote).toContain("zwei Zähler");
+    // Kein Zeichen als Textersatz (MICROCOPY §2/V4) — der Satz sagt es.
+    expect(balance.relationNote).not.toContain("≠");
+    // Kompaktform: dieselben Teile in derselben Reihenfolge, eine Zeile.
+    expect(windowsUsedLine(advice)).toBe(
+      [
+        balance.windowsLine,
+        balance.weekLine,
+        balance.adviceLine,
+        balance.relationNote,
+      ].join(" "),
     );
   });
 
-  it("uses the singular and skips the week without closed windows (O38)", () => {
-    expect(
-      windowsUsedLine({
-        n: 1,
-        episodes_used_7d: 0,
-        episodes_expired_7d: 0,
-        episodes_used_30d: 1,
-        episodes_expired_30d: 0,
-      }),
-    ).toBe(
-      "Fensterbilanz (30 Tage): 1 von 1 Episoden-Fenstern genutzt " +
-        "(1 Empfehlung abgerechnet = Empfehlungen, 0 Fenster verstrichen ohne Beleg). Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.",
+  it("nennt laufende Fenster und lässt die Woche ohne Schluss weg (O38)", () => {
+    const balance = windowsBalance({
+      n: 1,
+      episodes_used_30d: 1,
+      episodes_expired_30d: 0,
+      episodes_open: 2,
+    })!;
+    expect(balance.windowsLine).toBe(
+      "Fenster (30 Tage): 1 von 1 genutzt — 0 verstrichen ohne Beleg, " +
+        "2 laufen noch.",
+    );
+    expect(balance.weekLine).toBeNull();
+    expect(balance.adviceLine).toBe(
+      "Abgerechnete Empfehlungen (30 Tage): 1.",
     );
   });
 
-  it("invents no balance without closed windows or legacy payloads (O38)", () => {
-    expect(
-      windowsUsedLine({
-        n: 0,
-        episodes_used_30d: 0,
-        episodes_expired_30d: 0,
-      }),
-    ).toBe("Fensterbilanz (30 Tage): noch keine Fenster geschlossen.");
+  it("erfindet ohne geschlossene Fenster oder Alt-Payload keine Bilanz (O38)", () => {
+    const empty = { n: 0, episodes_used_30d: 0, episodes_expired_30d: 0 };
+    expect(windowsBalance(empty)!.windowsLine).toBe(
+      "Fenster (30 Tage): noch keine Fenster geschlossen.",
+    );
+    expect(windowsBalance(empty)!.adviceLine).toBeNull();
+    expect(windowsBalance(empty)!.relationNote).toBeNull();
+    expect(windowsUsedLine(empty)).toBe(
+      "Fenster (30 Tage): noch keine Fenster geschlossen.",
+    );
     // Alt-Payloads ohne O38-Zähler: keine Bilanz statt einer erfundenen.
     expect(windowsUsedLine({ n: 12 })).toBeNull();
+    expect(windowsBalance({ n: 12 })).toBeNull();
     expect(windowsUsedLine(null)).toBeNull();
     expect(windowsUsedLine(undefined)).toBeNull();
   });
@@ -1144,6 +1169,24 @@ describe("Heatmap-Tageszusammenfassung (P0)", () => {
     expect(diSolid.best?.minReference).toBe(MIN_HEATMAP_REFERENCE);
   });
 
+  it("sammelt die Tage mit zu dünner Vergleichs-Basis (R3)", () => {
+    // F12: Die Warnung stand nur im `title` und als Chip an der Zeile. Der
+    // Baustein nennt die Tage, damit die Fläche sie über der Matrix sagen kann.
+    const thin = heatmapThinReference(heatmapDaySummaries(reported()))!;
+    expect(thin.days).toEqual(["Di"]);
+    expect(thin.daysLabel).toBe("Di");
+    expect(thin.minReference).toBe(16);
+    expect(thin.totalDays).toBe(heatmapDaySummaries(reported()).length);
+
+    // Volle Basis → keine Warnung, also null statt einer leeren Box.
+    const solid = reported();
+    solid.reference_counts = solid.reference_counts!.map((row) =>
+      row.map((n) => ((n ?? 0) > 0 ? MIN_HEATMAP_REFERENCE : n)),
+    );
+    expect(heatmapThinReference(heatmapDaySummaries(solid))).toBeNull();
+    expect(heatmapThinReference([])).toBeNull();
+  });
+
   it("rechnet beim Niveau mit dem niedrigsten Median und €/L-Zellen", () => {
     const matrix = HEAT_DAYS.map((): (number | null)[] => HEAT_HOURS.map(() => null));
     const counts = HEAT_DAYS.map(() => HEAT_HOURS.map(() => 0));
@@ -1201,6 +1244,38 @@ describe("Heatmap-Tageszusammenfassung (P0)", () => {
   });
 });
 
+describe("Median-Konvention (A4: eine Quelle, eine Regel)", () => {
+  it("mittelt bei gerader Anzahl die beiden mittleren Werte", () => {
+    // Regression: `heatmapDaySummaries` und `dayMedianPoints` nahmen bei
+    // gerader Länge den oberen der beiden mittleren Werte — ein halber Cent
+    // zu hoch, sichtbar in der günstigsten Stunde.
+    expect(medianOf([2.2, 2.4])).toBe(2.3);
+    expect(medianOf([1, 2, 3, 4])).toBe(2.5);
+    expect(medianOf([4, 1, 3, 2])).toBe(2.5);
+  });
+
+  it("nimmt bei ungerader Anzahl den mittleren Wert", () => {
+    expect(medianOf([2.219])).toBe(2.219);
+    expect(medianOf([3, 1, 2])).toBe(2);
+  });
+
+  it("schweigt ohne Werte und überspringt null", () => {
+    expect(medianOf([])).toBeNull();
+    expect(medianOf([null, undefined])).toBeNull();
+    expect(medianOf([null, 2, undefined, 4])).toBe(3);
+  });
+});
+
+describe("MASE-Varianten (R3: ein Name, zwei Rechnungen)", () => {
+  it("trennt die Eine-Schritt-Validierung vom 24-h-Roll-Backtest", () => {
+    expect(MASE_ONE_STEP.code).toBe("MASE_1step");
+    expect(MASE_24H.code).toBe("MASE_24h");
+    expect(MASE_ONE_STEP.label).not.toBe(MASE_24H.label);
+    expect(MASE_ONE_STEP.basis).toContain("Eine-Schritt-Prognose");
+    expect(MASE_24H.basis).toContain("Roll-Backtest");
+  });
+});
+
 describe("Heatmap-Reichweite (P0: „Zahlen verloren?“)", () => {
   const startup = () =>
     heat({
@@ -1224,6 +1299,35 @@ describe("Heatmap-Reichweite (P0: „Zahlen verloren?“)", () => {
     expect(note).toContain("nur 5 Tage");
     expect(note).toContain("kein Datenverlust");
     expect(note).toContain("Di 08.09. 05:10");
+    // R3/F5: „fehlende Tage“ ohne Zahl war zu ungenau — Bestand 5 < Fenster 42.
+    expect(note).toContain("37 Tage fehlen");
+  });
+
+  it("hängt die 90-Tage-Regel nur an, wenn eine Phase vorliegt (R3)", () => {
+    const phase = {
+      as_of: "2026-09-11T01:00:00+00:00",
+      stations: 2,
+      good_complete_days: 2,
+      best_complete_days: 7,
+      required_complete_days: 90,
+      days_missing: 88,
+      min_daily_coverage: 0.95,
+      live_only_stations: 0,
+      complete: false,
+    };
+    const plain = heatmapCoverageNote(startup())!;
+    expect(plain).not.toContain("Datenumstellung");
+
+    const withPhase = heatmapCoverageNote(startup(), phase)!;
+    expect(withPhase).toContain("Datenumstellung Archiv → Live-Polling");
+    expect(withPhase).toContain("90 vollständig live beobachtete Tage");
+    expect(withPhase).toContain("Noch 88 vollständige Live-Tage");
+
+    // Erfüllte Phase: kein Countdown, der nicht mehr läuft.
+    expect(heatmapCoverageNote(startup(), { ...phase, complete: true })!).toBe(
+      plain,
+    );
+    expect(heatmapCoverageNote(startup(), null)).toBe(plain);
   });
 
   it("schweigt, wenn das Fenster gedeckt ist oder die Reichweite fehlt", () => {

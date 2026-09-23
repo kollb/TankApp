@@ -135,7 +135,12 @@ export function useLaborModel(
       regretEur = 0,
       n = 0,
       sPos = 0,
-      pSum = 0;
+      pSum = 0,
+      nP = 0,
+      waitN = 0,
+      waitHits = 0,
+      nowN = 0,
+      nowHits = 0;
     for (const { score: sc } of labScores) {
       smart += sc.sum_smart_eur;
       commit += sc.sum_commit_eur;
@@ -143,9 +148,18 @@ export function useLaborModel(
       regretEur += sc.avg_regret_eur * sc.n;
       n += sc.n;
       sPos += sc.n * sc.hit_freq;
+      waitN += sc.n_wait;
+      waitHits += (sc.hit_wait ?? 0) * sc.n_wait;
+      nowN += sc.n_now;
+      nowHits += (sc.hit_now ?? 0) * sc.n_now;
       // p_avg ist null, wenn die Station kein gemessenes P kennt (A8) —
-      // solche Zeilen tragen nichts zur Cohort-Mitte bei.
-      if (sc.p_avg != null) pSum += sc.p_avg * sc.n;
+      // solche Zeilen tragen nichts zur Cohort-Mitte bei, auch nicht als
+      // Nenner: Vorher teilte die Summe durch **alle** Tage und senkte den
+      // Mittelwert um den Anteil der Zeilen ohne P.
+      if (sc.p_avg != null) {
+        pSum += sc.p_avg * sc.n;
+        nP += sc.n;
+      }
     }
     return {
       smart,
@@ -153,9 +167,21 @@ export function useLaborModel(
       best: bestVal,
       regretEur: n ? regretEur / n : 0,
       n,
-      hitFreq: n ? sPos / n : 0,
-      pAvg: n ? pSum / n : 0,
-      potShare: bestVal > 0 ? smart / bestVal : 0,
+      /**
+       * Drei Maßzahlen, drei Nenner (R3, 23.09.2026) — sie stehen in der
+       * Güte nebeneinander und müssen deshalb unterscheidbar sein:
+       * `hitFreq` zählt Tage mit realisiertem Vorteil (Markt-Basisrate,
+       * unabhängig von der Entscheidung), `hitRate` zählt richtige
+       * Entscheidungen der Regel, `potShare` wiegt dieselbe Regel in Euro
+       * gegen das perfekte Timing. Server-Gleichlauf (A8): ohne Tage `null`,
+       * nicht 0.
+       */
+      hitFreq: n ? sPos / n : null,
+      hitRate: n ? (waitHits + nowHits) / n : null,
+      waitN,
+      nowN,
+      pAvg: nP ? pSum / nP : null,
+      potShare: bestVal > 0 ? smart / bestVal : n ? 0 : null,
     };
   }, [labScores]);
 

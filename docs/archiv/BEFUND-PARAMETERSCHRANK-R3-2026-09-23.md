@@ -102,3 +102,24 @@
 - Backtest pot_share vs hit_freq Erklärung im UI ergänzen.
 - MASE Namenscollision (One-Step vs 24h-Fenster) – unterschiedliche Labels einführen: MASE_1step vs MASE_24h.
 - Datenreichweite "Fehlende Tage, kein Datenverlust" – präziser: Bestand 17d < Fenster 28d, live_phase braucht 90d.
+
+## 5. Umsetzung (0.69.0)
+
+Die fünf offenen Punkte aus §4 sind mit App-Version 0.69.0 umgesetzt
+(Folge-Branch `arena/01a0cf34-tankapp`); Messwerte und Befundtexte oben
+bleiben unverändert.
+
+| Punkt aus §4 | Umsetzung | Ort |
+|---|---|---|
+| Fensterbilanz: Episoden vs. Empfehlungen trennen | `windowsBalance()` liefert je Zähler eine eigene Zeile plus einen Beziehungssatz; die GUI rendert drei `<li>` statt eines Bruchs aus zwei Mengen | `web/src/data.ts`, `web/src/views/labor/Guete.tsx` |
+| Wochenrhythmus: `thinReference` deutlicher | Warnbox über der Matrix mit den betroffenen Wochentagen, `n=` und Mindestmaß; `heatmapThinReference()` als Baustein | `web/src/components/HeatmapGrid.tsx`, `web/src/data.ts` |
+| `pot_share` vs. `hit_freq` erklären | Drei Verhältnis-Kacheln (`Geholtes Potenzial`, `Richtige Entscheidungen`, `Tage mit Vorteil`) plus Satz „Drei Maßzahlen, drei Nenner“ unter den Zahlen; `labTotals` berechnet `hitRate` und liefert `null` statt 0 (A8-Gleichlauf) | `web/src/views/labor/Guete.tsx`, `web/src/views/laborModel.ts` |
+| MASE-Namenskollision | `MASE_1step` (Eine-Schritt-Validierung, Ensemble-Gewichte) und `MASE_24h` (Roll-Backtest, 24-h-Fenster) als eigene Namen in GUI, Glossar und Referenz | `web/src/data.ts`, `docs/referenz/ANALYSE.md` |
+| Datenreichweite präziser | `heatmapCoverageNote()` nennt Bestand, Fenster und die Zahl der fehlenden Tage; die 90-Tage-Regel hängt nur an, wenn eine Live-Phase vorliegt | `web/src/data.ts`, `web/src/components/HeatmapGrid.tsx` |
+
+Eigene Befunde derselben Prüfung (nicht in §4): oberer Median statt echten
+Median in drei Anzeigen (`medianOf()` als eine Quelle), `System.tsx` zeigte
+eine dimensionslose MASE mit `euro()` und einen Kalibrier-Hinweis für eine
+Metrik, die die Engine bewusst nie veröffentlicht, `Daten.tsx` baute Prozent
+selbst, Karte 5 hieß „Gewichte je Horizont“ und nannte Zahlen aus einem Dump,
+Karte 6 behauptete `B=2000` und „6 Wochen“ ohne Quelle im Payload.
