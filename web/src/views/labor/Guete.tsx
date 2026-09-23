@@ -246,15 +246,15 @@ export function GueteView({
             <>
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Regel-Ergebnis</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Ersparnis Regel</p>
                   <p className="font-mono text-lg font-bold text-emerald-300">{euro(labTotals.smart)} €</p>
                 </div>
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Orakel</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Ersparnis Orakel (obere Schranke)</p>
                   <p className="font-mono text-lg font-bold text-slate-100">{euro(labTotals.best)} €</p>
                 </div>
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Ø Mehrkosten</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Ø Mehrkosten vs Orakel</p>
                   <p className="font-mono text-lg font-bold text-amber-300">{euro(labTotals.regretEur)} €</p>
                 </div>
               </div>

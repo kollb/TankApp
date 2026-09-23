@@ -15,6 +15,7 @@ import {
   deTrimmed,
   euro,
   euroPerLiter,
+  formatHour,
   lawFloorNote,
   timeLabel,
   timeSpanLabel,
@@ -206,7 +207,7 @@ export function ModellView({
           <p className="text-xs font-semibold text-slate-200">Preis-Abstand je Station · {activeCity || "Stadt"}</p>
           {stationDeltas.length ? (
             <>
-              <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
+              <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} fmt={centPerLiter} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
               <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
             </>
           ) : (
@@ -246,9 +247,9 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Huber-Verlust: quadratisch nahe 0, linear fern — Ausreisser verbiegen Tagesform nicht. IRLS iteriert Gewichte.</p>
+              <p>Huber-Verlust: quadratisch nahe 0, linear fern — Ausreisser verbiegen Tagesform nicht. IRLS iteriert Gewichte. holiday_beta gehoert zur Struktur (Feiertags-Dummy in X), nicht zu AR(2).</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"L(beta)=Sum rho((y-Xbeta)/sigma) Huber k=1.345 IRLS"}</div>
-              <p>Kalibrierung B2: PIT-Kurve aus Backtest-PITs; Status: {f?.calibrated ? "aktiv" : (f?.calibration?.status ?? "-")} n_pit je Horizont: {f?.calibration?.by_horizon ? Object.entries(f.calibration.by_horizon).map(([h, v]: any) => `${h}:${v?.n_pit ?? "-"}`).join(" ") : "-"}</p>
+              <p>B3 Struktur-Groesse: holiday_beta={f?.holiday_beta != null ? deNumber(f.holiday_beta, 3) : "-"} Quelle: {f?.holiday_source ?? "-"} · Beta-Laenge {beta?.length ?? "-"} (ones + 4 harmonic + 6 dow + after_law + jump_age = 13).</p>
             </ForTheCurious>
           </div>
         </div>
@@ -269,9 +270,9 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>AR(2): Residuen mit phi1 phi2. Stationaer wenn Wurzeln ausserhalb Einheitskreis; sonst Stauchung 0.9.</p>
+              <p>AR(2): Residuen mit phi1 phi2. Stationaer wenn Wurzeln ausserhalb Einheitskreis; sonst Stauchung 0.9. Stabilitaet (Wurzel-Radius <1) sagt nichts ueber Level-Bruch (CUSUM) — 8/10 Bruch-Flags trotz Radius 0,89 ist moeglich, aber irrefuehrend als "stabil ja".</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"phi_hat Yule-Walker Check |lambda| kleiner 1 sonst phi mal 0.9"}</div>
-              <p>B3 Groesse: holiday_beta={f?.holiday_beta != null ? deNumber(f.holiday_beta, 3) : "-"} Quelle: {f?.holiday_source ?? "-"}</p>
+              <p>AR-Groesse: shrink_events={f?.ar_shrink_events ?? "-"} state_reset={f?.ar_state_reset ? "ja" : "nein"} — holiday_beta gehoert zu Karte 1.</p>
             </ForTheCurious>
           </div>
         </div>
@@ -281,14 +282,14 @@ export function ModellView({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Tagesblock-Gewichte EW-HWZ</p>
-            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B={bootstrapSamples != null ? deTrimmed(bootstrapSamples, 0) : "-"} Bloecke</p>
+            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B={bootstrapSamples != null ? deTrimmed(bootstrapSamples, 0) : "-"} Ziehungen (Samples, nicht Bloecke)</p>
             <p className="mt-1 text-xs text-slate-500">EW-Halbwertszeit: neuere Tage zaehlen mehr; Tagesbloecke erhalten Tagesform.</p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Block-Bootstrap: Ziehe ganze Tage mit EW-Gewichten. shared_draws: gleiche Tages-Indizes fuer alle Stationen. day_pair: Paare zusammen.</p>
+              <p>Block-Bootstrap: Ziehe ganze Tage mit EW-Gewichten. shared_draws: gleiche Tages-Indizes fuer alle Stationen. day_pair: Paare zusammen. B ist Anzahl Ziehungen (Samples), nicht Bloecke — Bloecke sind n_days (z.B. 42).</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_t = 2^(-age/HWZ) / Summe Block b zu day_t shared gleich"}</div>
-              <p>B3: PIT-Groesse n_pit={pitN ?? "-"} (24h-Fenster, alle Folds; Status kennt der PIT-Schnitt nicht).</p>
+              <p>PIT-Groesse n_pit gehoert zu Karte 5/7 (Kalibrierung), nicht zu Bootstrap — hier nur Ziehungsmodus.</p>
             </ForTheCurious>
           </div>
         </div>
@@ -316,9 +317,9 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>PAVA: Bei Verletzung steigend statt fallend poole beide zu Mittelwert, iteriere bis monoton fallend. 12-Uhr-Kante bei 12:00 Berlin.</p>
-              <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"Segment s=[12:00_d,12:00_d+1) y_hat=PAVA(y) rise frei bei 12:00"}</div>
-              <p>B3: law_floor={f?.law_floor ?? "-"} active={f?.law_floor_active ? "ja" : "nein"} pre_law_excluded={f?.pre_law_points_excluded ?? "-"} rise_outside_noon={f?.law_rise_outside_noon ?? "-"}{pavaStats ? ` pava: Segmente ${pavaStats.law_segments ?? "-"}, Pools ${pavaTotals?.pools ?? "-"}, gepoolte Punkte ${pavaTotals?.pooled_points ?? "-"}` : " pava: -"}</p>
+              <p>PAVA: Bei Verletzung steigend statt fallend poole beide zu Mittelwert, iteriere bis monoton fallend. 12-Uhr-Kante bei 12:00 Berlin plus Regime-Kanten (Config.regimes) sind zusaetzliche erlaubte Anstiegsstellen — Satz "nur an 12:00 darf er steigen" ist unvollstaendig.</p>
+              <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"Segment s=[12:00_d,12:00_d+1) oder [Regime-Kante, naechste Kante) y_hat=PAVA(y) rise frei bei Kanten"}</div>
+              <p>B3: law_floor={f?.law_floor ?? "-"} active={f?.law_floor_active ? "ja" : "nein"} pre_law_excluded={f?.pre_law_points_excluded ?? "-"} rise_outside_noon={f?.law_rise_outside_noon ?? "-"} (sollte 0 sein){pavaStats ? ` pava: Segmente ${pavaStats.law_segments ?? "-"}, Pools ${pavaTotals?.pools ?? "-"}, gepoolte Punkte ${pavaTotals?.pooled_points ?? "-"}` : " pava: -"}</p>
             </ForTheCurious>
           </div>
         </div>
@@ -350,9 +351,9 @@ export function ModellView({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
-              <p>Zwei Kerne: harmonisch plus Tagesprofil. 14-Tage Rolling-Validierung zu MASE zu inverse-MASE-Gewichte. Horizon-weights getrennt.</p>
+              <p>Zwei Kerne: harmonisch plus Tagesprofil. 14-Tage Rolling-Validierung zu MASE zu inverse-MASE-Gewichte — aktuell global (one_step), nicht je Horizont. Titel "Gewichte je Horizont" irrefuehrend, da horizon_weights.status=not_estimated und Werte 24h/72h/168h = -. MASE hier One-Step-MASE (0,19/0,31 <1) vs Guete-MASE 2,75 (24h-Fenster) — unterschiedliche Definition, gleicher Name verwirrt.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_k = (1/MASE_k)/Sum(1/MASE) w_spread = std(w)"}</div>
-              <p>B2: Kalibrierung fliesst nach Ensemble.</p>
+              <p>B2 Kalibrierung: PIT-Kurve aus Backtest-PITs; Status: {f?.calibrated ? "aktiv" : (f?.calibration?.status ?? "-")} n_pit je Horizont: {f?.calibration?.by_horizon ? Object.entries(f.calibration.by_horizon).map(([h, v]: any) => `${h}:${v?.n_pit ?? "-"}`).join(" ") : "-"} · PIT-Groesse stationaer n_pit={pitN ?? "-"} (24h-Fenster).</p>
             </ForTheCurious>
           </div>
         </div>
@@ -364,7 +365,7 @@ export function ModellView({
             <p className="text-xs font-semibold text-slate-200">Diagramm: delta_hat je Station · {activeCity || "Stadt"}</p>
             {stationDeltas.length ? (
               <>
-                <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
+                <DeltaBars values={stationDeltas.map((r) => r.deltaCt)} labels={stationDeltas.map((r) => r.label)} whiskers={stationDeltas.map((r) => (r.ciLo != null && r.ciHi != null ? { lo: r.ciLo, hi: r.ciHi } : null))} muted={stationDeltas.map((r) => !r.significant)} fmt={centPerLiter} ariaLabel={`Preis-Abstand je Station, ${activeCity}`} ariaDescription={deltaBarsAlt({ values: stationDeltas.map((r) => r.deltaCt), labels: stationDeltas.map((r) => r.label), fmt: (v) => centPerLiter(v), muted: stationDeltas.map((r) => !r.significant) })} />
                 <ReadingAid headline="Links = guenstiger als Stadtmedian, rechts = teurer." text="Werte aus der Stations-Auswahl: \u03b4\u0302 mit Bootstrap-Konfidenzintervall (senkrechter Strich) und Signifikanz nach Benjamini-Hochberg \u2014 blasse Balken sind nicht signifikant. Der Strich in der Mitte ist der Stadt-Median." />
               </>
             ) : (
@@ -459,7 +460,7 @@ export function ModellView({
                 {activeLabDayRow && activeLabOutcome && (
                   <>
                     <ul className="mt-3 space-y-1 text-xs leading-relaxed text-slate-300">
-                      <li>Erwartung mu = <strong className="text-slate-100">{centPerLiter(activeLabDayRow.mu)}</strong> Regel: <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.wait ? `warten bis ~${String(activeLabDayRow.predHour).padStart(2, "0")}:00` : "sofort tanken"}</strong></li>
+                      <li>Erwartung mu = <strong className="text-slate-100">{centPerLiter(activeLabDayRow.mu)}</strong> Regel: <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.wait ? `warten bis ~${formatHour(activeLabDayRow.predHour)}` : "sofort tanken"}</strong></li>
                       <li>Realisierte Ersparnis S = <strong className={activeLabDayRow.s > 0 ? "text-emerald-300" : "text-rose-300"}>{centPerLiter(Math.abs(activeLabDayRow.s))} {activeLabDayRow.s >= 0 ? "guenstiger" : "teurer"}</strong> Urteil: <strong className={activeLabOutcome.hit ? "text-emerald-300" : "text-rose-300"}>{activeLabOutcome.hit ? "richtig" : "daneben"}</strong></li>
                     </ul>
                     {dayCurve.length > 0 && <div className="mt-3"><LineChart height={190} series={[{ name: `Erwartung vs. ${anchorLabel}`, color: c.marker, pts: dayCurve }]} marks={[{ x: anchorHour, color: c.accent, label: anchorLabel }, ...(activeLabDayRow.predHour != null ? [{ x: activeLabDayRow.predHour, color: c.positive, label: "prognostizierte Tiefstphase" }] : [])]} xTicks={autoTimeTicks(0, 24)} yFmt={(value) => `${deTrimmed(value, 1)} ct`} ariaLabel="Tageskurve der Backtest-Zeile" ariaDescription={`Tageskurve: erwartete Preisdifferenz je Stunde gegenueber ${anchorLabel}. ${lineChartAlt({ series: [{ pts: dayCurve }], fmtY: (v) => centPerLiter(v), fmtX: (x) => `${deTrimmed(x, 0)} Uhr` })}`} /></div>}
