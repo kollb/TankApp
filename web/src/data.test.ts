@@ -57,6 +57,7 @@ import {
   readShareParams,
   shareQuery,
   m7GateLine,
+  m7GateScopeLine,
   m7BrierDetail,
   pitCalibrationCandidateLine,
   pitCalibrationLedgerBrierLine,
@@ -597,6 +598,61 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
     expect(m7BrierDetail(null)).toBe(
       "Brier noch nicht messbar — braucht bewertete Empfehlungen.",
     );
+  });
+
+  it("names the M7 validity scope and keeps legacy honest (A21-B5.1)", () => {
+    // Vollständiger Vertragskontext: Die Zeile benennt Kraftstoff,
+    // Modellvertrag, Kalibrierungsmodus, Entscheidungsvertrag und
+    // Regime-Bezug — Vertragswechsel brauchen eine eigens belegte Freigabe.
+    expect(
+      m7GateScopeLine({
+        gate_context: {
+          fuel: "e10",
+          model_contract: "profile_ar2+day_pair=1+shared=1",
+          calibration_mode: "pit_24h",
+          decision_contract: "decision-v1",
+          regime_ref: "2026-07-01T00:00",
+        },
+        gate_provenance_complete: true,
+      }),
+    ).toBe(
+      "Gültigkeitsbereich dieser Freigabe: e10, Modellvertrag " +
+        "profile_ar2+day_pair=1+shared=1, 24-h-PIT-Kalibrierung, decision-v1, " +
+        "nach bestätigter Regime-Kante. Ein Vertragswechsel braucht eine " +
+        "eigens belegte Freigabe.",
+    );
+    // Ohne bestätigte Kante ist das eine bekannte Angabe, keine Lücke.
+    expect(
+      m7GateScopeLine({
+        gate_context: {
+          fuel: "e10",
+          model_contract: "profile_ar2+day_pair=1+shared=1",
+          calibration_mode: "raw",
+          decision_contract: "decision-v1",
+          regime_ref: null,
+        },
+        gate_provenance_complete: true,
+      }),
+    ).toContain("ohne bestätigte Regime-Kante");
+    // Altbestand (unknown) bleibt sichtbar, öffnet aber keine Freigabe.
+    expect(
+      m7GateScopeLine({
+        gate_context: {
+          fuel: "unknown",
+          model_contract: "unknown",
+          calibration_mode: "unknown",
+          decision_contract: "unknown",
+          regime_ref: "unknown",
+        },
+        gate_provenance_complete: false,
+      }),
+    ).toBe(
+      "Gültigkeitsbereich unvollständig (Altbestand ohne vollständige " +
+        "Vertragsangaben): Das ist historische Güte und öffnet keine " +
+        "Aktionsfreigabe.",
+    );
+    expect(m7GateScopeLine(null)).toBeNull();
+    expect(m7GateScopeLine({})).toBeNull();
   });
 
   it("names B2 PIT states from one shared copy source", () => {

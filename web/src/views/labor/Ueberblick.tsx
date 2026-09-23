@@ -64,6 +64,7 @@ export function UeberblickView({
     horizon,
     horizonDays,
     m7Line,
+    m7ScopeLine,
     observations,
     refreshNow,
     selection,
@@ -211,6 +212,9 @@ export function UeberblickView({
             : "Das Konto füllt sich mit der ersten abgerechneten Empfehlung — gezählt wird, nicht geschätzt. Solange die Liste leer ist, steht hier kein Prozentwert."}
         </p>
         {m7Line && <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7Line}</p>}
+        {m7ScopeLine && (
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7ScopeLine}</p>
+        )}
         {transitionLine && (
           <p className="mt-1 text-xs leading-relaxed text-slate-500">{transitionLine}</p>
         )}

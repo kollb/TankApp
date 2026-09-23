@@ -34,6 +34,7 @@ import {
   isHeatmapWeeks,
   livePhaseHint,
   m7GateLine,
+  m7GateScopeLine,
   PINNED_MAX,
   PROFILE_BOUNDS,
   ageWord,
@@ -1193,6 +1194,11 @@ function useOverviewState() {
     liveAdvice?.gate_status ||
     (statsSummaryRes.data ? "Kalibrierung steht aus" : "kein Engine-Lauf");
   const m7Line = statsSummaryRes.data ? m7GateLine(liveAdvice) : null;
+  // A21-B5.1: Gültigkeitsbereich der M7-Freigabe benennen — historische
+  // Güte, Vertragsfreigabe und Aktionsfreigabe bleiben getrennt sichtbar.
+  const m7ScopeLine = statsSummaryRes.data
+    ? m7GateScopeLine(liveAdvice)
+    : null;
   const transitionLine = transitionRuleLine(livePhase);
   // Hint für leere Güte-Kacheln im System-Tab: erklärt die fehlende
   // Live-Abdeckung, ohne eine Tageszahl zu erfinden.
@@ -1537,6 +1543,7 @@ function useOverviewState() {
     spanLabel,
     gateStatus,
     m7Line,
+    m7ScopeLine,
     transitionLine,
     calibrationHint,
     liveAdvice,

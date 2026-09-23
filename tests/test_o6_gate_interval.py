@@ -21,8 +21,22 @@ from app.feedback import (
     _reference_briers,
     compute_advice_stats,
 )
+from app.gate_context import decision_contract_id
 
 NOW = dt.datetime(2026, 9, 10, 14, 0, tzinfo=dt.timezone.utc)
+
+# A21-B5.1 (#211): Die Statistiktests messen die Gate-Mathematik in einem
+# **vollständig belegten** Vertragskontext — ``calibrated`` verlangt seit
+# 0.68.0 Statistik *und* Herkunft. Ohne ``gate_context`` wären diese Zeilen
+# Altbestand (``unknown``-Kohorte): historisch gültig, aber ohne
+# Aktionsfreigabe (``test_a21_b5_gate_context.py``).
+CONTEXT = {
+    "fuel": "e10",
+    "model_contract": "profile_ar2+day_pair=1+shared=1",
+    "calibration_mode": "raw",
+    "decision_contract": decision_contract_id(),
+    "regime_ref": None,
+}
 
 
 def _store(rows):
@@ -39,6 +53,7 @@ def _store(rows):
                 "action": "wait",
                 "p_correct": p,
                 "p_source": "verteilung",
+                "gate_context": dict(CONTEXT),
                 "emitted_at": (NOW - dt.timedelta(days=day))
                 .replace(hour=hour, minute=0, second=0, microsecond=0)
                 .isoformat(),

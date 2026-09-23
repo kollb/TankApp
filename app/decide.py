@@ -29,6 +29,12 @@ from .read_state import ReadBundle, load_bundle
 from .feedback import (
     WH_MIN_FILLS,
     record_snapshot,
+    select_gate_cohort,
+)
+from .gate_context import (
+    forecast_calibration_mode,
+    normalize_gate_context,
+    statistical_gate_context,
 )
 from .quantity import QUANTITY_MODES, resolve_quantity
 from .pside import (
@@ -1279,18 +1285,12 @@ def _table_action(
 
 
 def _forecast_calibration_state(forecast: dict[str, Any]) -> str:
-    """B2: Nur eine valide aktive Hülle darf den Ledger als PIT-Lauf markieren."""
-    if not forecast:
-        return "unknown"
-    try:
-        from engine.calibration import calibration_active
+    """B2: Nur eine valide aktive Hülle darf den Ledger als PIT-Lauf markieren.
 
-        if calibration_active(forecast.get("calibration")):
-            return "pit_24h"
-    except Exception:
-        # Ein fehlerhaftes/älteres Artefakt darf keine A/B-Seite beanspruchen.
-        pass
-    return "raw"
+    A21-B5.1: dieselbe Quelle wie der Kalibrierungsmodus des
+    Vertragskontexts (``app/gate_context.py``) — eine Wahrheit.
+    """
+    return forecast_calibration_mode(forecast)
 
 
 def evaluate_decide(
@@ -1558,7 +1558,19 @@ def evaluate_decide(
     # Ledger lesen: Tabellen-Qualität + interne P-Schätzung je Aktion
     # (Statistik und Schwellen stehen im Lesezustand, A9/A21-B2.2).
     advice_stats = bundle.advice
-    is_calibrated = advice_stats.get("calibrated", False)
+    # A21-B5.1 (#211): Die M7-Freigabe gilt nur im **Gültigkeitsbereich**
+    # dieser Entscheidung — Kraftstoff, Modellvertrag, Kalibrierungsmodus,
+    # Entscheidungsvertrag und Regime-Bezug. Fremde oder unvollständig
+    # belegte Kohorten öffnen die Freigabe nicht; die historische Güte
+    # bleibt in ``gate_cohorts`` sichtbar.
+    gate_context = statistical_gate_context(
+        forecast_data or None,
+        fuel,
+        clock_now,
+        getattr(live_data.settings, "regimes", ()) or (),
+    )
+    gate_entry = select_gate_cohort(advice_stats, gate_context)
+    is_calibrated = bool(gate_entry.get("calibrated", False))
 
     thresholds, tuning = bundle.thresholds, bundle.tuning
 
@@ -1789,6 +1801,11 @@ def evaluate_decide(
         # Informationsträger (Auswertung „Deadline-Druck × Reserve“),
         # die Kollabierung hängt weiter nur an Aktion/Station/Fenster.
         "tank_state": tank.get("state") if tank else None,
+        # A21-B5.1 (#211): Vertragskontext des Gültigkeitsbereichs (fünf
+        # Felder) plus der reine Szenario-Hinweis auf angekündigte
+        # Regime-Termine — reproduzierbare Herkunft für Ledger und Gate.
+        "gate_context": gate_context,
+        "regime_scenario_pending": gate_context.get("_scenario_pending"),
         "benefit_contract": benefit_contract,
     }
 
@@ -1870,6 +1887,12 @@ def evaluate_decide(
             "default_fills": wh_default_n,
         },
         "calibrated": is_calibrated,
+        # A21-B5.1 (#211): Gültigkeitsbereich dieser M7-Entscheidung — die
+        # Antwort unterscheidet historische Güte (``personal_stats``),
+        # Vertragsfreigabe (``calibrated`` + ``gate_context``) und aktuelle
+        # Verwendbarkeit (``blocking_reasons``/``decision_ready``).
+        "gate_context": normalize_gate_context(gate_context),
+        "gate_context_source": "requested",
         # A21-B1.4: Bereitschaft = freigegebene Handlung; die maschinenlesbaren
         # Sperrgründe und die Gültigkeitsgrenze der Freigabe stehen daneben
         # (API-/UI-Vertrag, Issue 201).
