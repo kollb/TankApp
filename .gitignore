@@ -74,6 +74,7 @@ netrc
 # E2E ohne Mocks (web/e2e/demo.spec.ts): Demo-Datenbestand des Demo-Stacks
 /.demo-e2e-data/
 /.demo-preview-data/
+/.demo-check/
 
 # Lokale virtuelle Umgebung
 .venv/

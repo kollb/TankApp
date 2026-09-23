@@ -123,7 +123,7 @@ def refresh(settings: Settings, now=None, progress=None):
     from .selection import publish_selection
     from .gapfill import fill_gaps
     from .history import prepare_archive
-    from .model_jobs import ModelTaskPool, resolve_workers
+    from .model_jobs import ModelTaskPool, model_parameter_fields, resolve_workers
 
     # B2 lernt nie auf der eben zu veröffentlichenden Zukunft: Die Fit-Aufgaben
     # erhalten ausschließlich den im *vorigen* Backtest gespeicherten,
@@ -624,12 +624,15 @@ def refresh(settings: Settings, now=None, progress=None):
                         # Rolling-PICP 7 d je Station (Konzept §3.3.3):
                         # Konfidenz-Badge + letzte 7 Testtage; „current“ ist
                         # die Zahl fürs Güte-Gate (§4.4) in /v1/decide.
-                        # A10: Zweitmodell und Ensemble — Gewichte, MASE
-                        # und Bewertungsfenster kommen aus dem Fit, die GUI
-                        # zeigt sie in der Werkstatt nur an.
-                        "ensemble": model.get("ensemble"),
+                        # Befund N1 (23.09.2026, Runde 2): Beta-Vektor,
+                        # AR(2)-Koeffizienten, Feiertags- und Rechtslage-
+                        # Felder kommen über ``model_parameter_fields`` in
+                        # die Veröffentlichung — die Labor-Karten lesen sie
+                        # aus dem Payload, nicht aus dem Modell-Artefakt.
+                        **model_parameter_fields(model),
                         "model_kind": getattr(settings, "model_kind", "profile_ar2"),
                         "day_pair": bool(getattr(settings, "day_pair", True)),
+                        "shared_draws": bool(getattr(settings, "shared_draws", True)),
                         # B2: angewandte Kurve (falls eine frühere Abnahme
                         # sie freigegeben hat) und der neue Kandidat für den
                         # nächsten Lauf bleiben getrennt sichtbar.
@@ -637,14 +640,13 @@ def refresh(settings: Settings, now=None, progress=None):
                         "calibrated": bool(model.get("calibrated", False)),
                         "calibration_candidate": report.get("calibration_candidate"),
                         # B0 (Messgrundlagen): Zähler aus Fit und Backtest —
-                        # AR(2)-Stauchung/Reset, PAVA-Pools der 24-h-Prognose,
-                        # PIT-Histogramme, Regime-Kanten im Prüffenster und
-                        # das Punktmodell, das der Backtest tatsächlich
-                        # gemessen hat (heute harmonic_ar2 — nicht das
-                        # veröffentlichte ensemble; docs/planung/LUECKEN.md).
-                        "ar_shrink_events": model.get("ar_shrink_events"),
-                        "ar_state_reset": model.get("ar_state_reset"),
-                        "ar_detail": model.get("ar_detail"),
+                        # PAVA-Pools der 24-h-Prognose, PIT-Histogramme,
+                        # Regime-Kanten im Prüffenster und das Punktmodell,
+                        # das der Backtest tatsächlich gemessen hat (heute
+                        # harmonic_ar2 — nicht das veröffentlichte ensemble;
+                        # docs/planung/LUECKEN.md). Die Fit-Zähler
+                        # (ar_shrink_events/ar_state_reset/ar_detail) liegen
+                        # in ``model_parameter_fields`` oben.
                         "pava_pool_stats": fitted[identity].get("pava_pool_stats"),
                         "pit": report.get("pit"),
                         "regime_breaks_in_window": report.get(

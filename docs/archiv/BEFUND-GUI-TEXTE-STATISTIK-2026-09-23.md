@@ -1,6 +1,8 @@
 # Tiefenanalyse 23.09.2026: GUI-Logik, GUI-Texte, Mathe/Statistik
 
-> Stand: 23.09.2026 · Stichtagsprüfung, keine Umsetzung.
+> Stand: 23.09.2026 · Stichtagsprüfung; **umgesetzt in PR #220 (A1–A8,
+> B1–B3) und PR #221 (Labor-Payload, Runde 2)** — Nachfolger:
+> [BEFUND-GUI-MATHE-R2-2026-09-23](BEFUND-GUI-MATHE-R2-2026-09-23.md).
 > Anlass: Verdacht, dass GUI, Texte und Statistik nicht das zeigen, was sie behaupten.
 > Gegenprobe: CI-Spiegel zum Befundtag lokal grün — `ruff check`/`format` sauber,
 > `pytest` 1524 bestanden, `vitest` 1245 bestanden, Web-Build ok. Die gefundenen

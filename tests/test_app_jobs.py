@@ -8,7 +8,7 @@ import pytest
 
 import app.data as app_data
 from app.config import Settings
-from app.model_jobs import PUBLICATION_DECIMALS
+from app.model_jobs import PUBLICATION_DECIMALS, model_parameter_fields
 from app.refresh import refresh
 from app.worker import run
 from engine.models import SCHEMA_VERSION
@@ -1629,6 +1629,48 @@ def test_refresh_publishes_backtest_provenance_and_reuses_daily_cache(
     assert row2["metrics"] == row["metrics"]
     assert row2["rolling_picp_7d"] == row["rolling_picp_7d"]
     assert "aus Tages-Cache" in capsys.readouterr().out
+
+
+def test_model_parameter_fields_reads_fit_and_config():
+    """Befund N1 (23.09.2026, Runde 2): derselbe Helfer für NAS-Lauf und
+    Demo-Stack — Felder aus dem Fit, Ziehungszahl aus der Modell-Config.
+    """
+    model = {
+        "beta": [0.1] * 13,
+        "ar_phi": [0.4, 0.1],
+        "config": {"bootstrap_samples": 2000},
+        "ensemble": None,
+    }
+    fields = model_parameter_fields(model)
+    assert fields["beta"] == [0.1] * 13
+    assert fields["ar_phi"] == [0.4, 0.1]
+    assert fields["bootstrap_samples"] == 2000
+    # Alt-Artefakt ohne die Felder: Feld fehlt, statt null zu erfinden.
+    assert "law_floor" not in model_parameter_fields({"config": {}})
+
+
+def test_refresh_publishes_model_parameters_for_labor_cards(model_setup):
+    """Befund N1 (23.09.2026, Runde 2): Beta-Vektor, AR(2)-Koeffizienten,
+    Feiertags- und Rechtslage-Felder stehen in der Veröffentlichung — nicht
+    nur im Modell-Artefakt. Die Labor-Karten „Modell & Parameter“ lesen sie
+    aus dem Forecast-Payload; vorher zeigten sie „Kein Beta-Vektor im
+    Forecast-Payload“.
+    """
+    refresh(model_setup, dt.datetime(2026, 8, 5, 12, tzinfo=dt.timezone.utc))
+    publication = app_data.publication(model_setup)
+    row = next(r for r in publication["forecasts"] if r["station_id"] == UID)
+    assert len(row["beta"]) == 13
+    assert len(row["ar_phi"]) == 2
+    assert row["bootstrap_samples"] > 0
+    assert row["law_floor"] == "2026-04-01T10:00:00+00:00"
+    assert "law_floor_active" in row
+    assert "pre_law_points_excluded" in row
+    assert "law_rise_outside_noon" in row
+    assert "holiday_beta" in row and "holiday_source" in row
+    assert row["ensemble"] is not None
+    # Ziehungsvertrag des Laufs, wie die Bootstrap-Karte ihn zeigt.
+    assert row["shared_draws"] is True
+    assert row["draws_24h"]["shared"] is True
 
 
 def test_refresh_backtest_cache_can_be_disabled(model_setup, monkeypatch):

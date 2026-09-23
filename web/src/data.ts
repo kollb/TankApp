@@ -343,6 +343,11 @@ export type Forecast = DataReach & {
   model_kind?: string | null;
   day_pair?: boolean | null;
   shared_draws?: boolean | null;
+  /** Backtest-Ziehungsmodus (Payload: ``backtest_shared_draws``). */
+  backtest_shared_draws?: boolean | null;
+  backtest_day_pair?: boolean | null;
+  /** Echte Ziehungszahl des Fits (Karte „Bootstrap“ zeigt sie statt 2000 fix). */
+  bootstrap_samples?: number | null;
   pava_pool_stats?: any | null;
   pit?: any | null;
   regime_breaks_in_window?: any | null;

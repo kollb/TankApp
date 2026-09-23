@@ -4,6 +4,42 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.68.1] – 2026-09-23
+
+**Labor-Payload und Demo-Vertrag (Befunde der zweiten Tiefenanalyse,
+23.09.2026)** — Behebt die leeren Karten in **Labor → Modell & Parameter**
+(„Kein Beta-Vektor im Forecast-Payload") und den abweichenden
+Demo-Ziehungsvertrag. Befund-Dokument:
+[BEFUND-GUI-MATHE-R2-2026-09-23](../archiv/BEFUND-GUI-MATHE-R2-2026-09-23.md).
+
+- **N1 — Modell-Parameter im Forecast-Payload:** `beta` (13 Koeffizienten),
+  `ar_phi`, `holiday_beta`/`holiday_source`, die Rechtslage-Felder
+  (`law_floor`, `law_floor_active`, `pre_law_points_excluded`,
+  `law_rise_outside_noon`), `bootstrap_samples` und `shared_draws` stehen
+  jetzt in jeder veröffentlichten Stations-Prognose (`app/refresh.py` über
+  den gemeinsamen Helfer `app.model_jobs.model_parameter_fields`). Vorher
+  lebten sie nur im Modell-Artefakt; Karten 1–4 fielen auf
+  „Kein … im Payload" zurück.
+- **N1 (GUI) — falsche Payload-Schlüssel:** Die Karten lasen Felder, die
+  der Server so nie trug — `ar_detail.root_modulus`/`stable` (echt:
+  `root_radius`, je Modellkern verschachtelt), `pit.n`/`pit.status` (echt:
+  `pit.horizons["24h"].all.n`), `pava_pool_stats.n_pools`/`pooled_steps`
+  (echt: `totals` je Kern plus `law_segments`), `shared_draws` (Produktion:
+  `backtest_shared_draws`), `training_days`/`training_points` (echt:
+  `n_days`/`n_points`) und das festgenagelte „B=2000 Blöcke" (jetzt die
+  echte Ziehungszahl). Die Beta-Balken skalieren relativ zum größten
+  Koeffizienten statt an |β|·10 zu clippen. Unit-Fixtures halten jetzt die
+  echte Payload-Form fest.
+- **N2 — Demo-Vertrag gleichlaufig:** `ops/quality/demo_data.py` baut die
+  Zeile über denselben Helfer und rechnet `predict`/`_draws` mit dem
+  Betriebsvertrag (`profile_ar2`, gemeinsame Ziehung, Day-Pair) — vorher
+  griffen die Engine-Defaults (`harmonic_ar2`, unabhängige Ziehung, kein
+  Day-Pair), der Demo-Stack sprach also einen anderen statistischen
+  Vertrag als der NAS-Lauf.
+- Dokumentation: [API](../referenz/API.md) führt die neuen Payload-Felder
+  auf und korrigiert „die GUI liest sie nicht"; `README.md` nennt wieder
+  die echte App-Version (stand dort noch 0.59.1).
+
 ## [0.68.0] – 2026-09-22
 
 **A21-B5 (Gate-Gültigkeit, Missingness, Replay, Betriebsabnahme)** —

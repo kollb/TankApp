@@ -788,6 +788,56 @@ def test_forecast_passes_fit_reach_through_and_defaults_to_none(app_settings):
     assert old["range_from"] is None and old["n_points"] is None
 
 
+def test_forecast_carries_model_parameters_for_labor_cards(app_settings):
+    """Befund N1 (23.09.2026, Runde 2): Die Labor-Karten „Modell & Parameter“
+    lesen Beta-Vektor, AR(2)-Koeffizienten, Feiertags- und Rechtslage-Felder
+    aus dem Forecast-Payload. Vor 0.68.1 lebten sie nur im Modell-Artefakt
+    (``models-*.json``); die Karten zeigten „Kein Beta-Vektor im Forecast-
+    Payload“. Die Antwort reicht jede veröffentlichte Zeile unverändert
+    durch — dieser Test hält das fest.
+    """
+    path = app_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True)
+    origin = (NOW - dt.timedelta(hours=2)).isoformat()
+    path.write_text(
+        json.dumps(
+            {
+                "forecasts": [
+                    {
+                        "station_id": UID,
+                        "city": "Frankfurt",
+                        "fuel": "E10",
+                        "origin": origin,
+                        "points": [],
+                        "beta": [0.0] * 13,
+                        "ar_phi": [0.5, 0.1],
+                        "holiday_beta": 0.02,
+                        "holiday_source": "none",
+                        "law_floor": "2026-04-01T12:00:00+02:00",
+                        "law_floor_active": False,
+                        "pre_law_points_excluded": 0,
+                        "law_rise_outside_noon": 1,
+                        "bootstrap_samples": 2000,
+                        "shared_draws": True,
+                    }
+                ]
+            }
+        )
+    )
+    live = LiveData(app_settings, clock=lambda: NOW)
+    forecast = live.forecast(UID, "Frankfurt", "e10")
+    assert forecast["beta"] == [0.0] * 13
+    assert forecast["ar_phi"] == [0.5, 0.1]
+    assert forecast["holiday_beta"] == 0.02
+    assert forecast["holiday_source"] == "none"
+    assert forecast["law_floor"] == "2026-04-01T12:00:00+02:00"
+    assert forecast["law_floor_active"] is False
+    assert forecast["pre_law_points_excluded"] == 0
+    assert forecast["law_rise_outside_noon"] == 1
+    assert forecast["bootstrap_samples"] == 2000
+    assert forecast["shared_draws"] is True
+
+
 def test_nan_quantile_points_do_not_break_public_endpoints(app_settings):
     """B1: Die Engine publiziert Quantil-Punkte mit NaN („Punkt nicht gestützt“).
 

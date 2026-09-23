@@ -1,8 +1,8 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 22.09.2026 · App-Version **0.68.0** — neu seit 0.68.0 (A21-B5):
-> Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary
-> und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
+> Stand: 23.09.2026 · App-Version **0.68.1** — neu seit 0.68.1: Modell-Parameter
+> im Forecast-Payload (`beta`, `ar_phi` u. a.). Neu seit 0.68.0 (A21-B5):
+> Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
 > DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis
 > `latest_by`, getrennte physische/What-if-Mengen und ein expliziter
 > Nutzenvertrag (`benefit_contract`). Partial-Block-Draws werden als
@@ -1280,16 +1280,25 @@ Liefert letzten publizierten Ausblick:
 ### Forecast-Messfelder (B0, seit 0.56.0)
 
 Batch B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
-hängt jeder Prognose Messfelder an — **Diagnose, keine Nutzerzahl:** die GUI
-liest sie nicht, `points`/Quantile sind bitgleich zu 0.55.2 (Invarianz-Test
+hängt jeder Prognose Messfelder an — **Diagnose, keine Nutzerzahl:**
+`points`/Quantile sind bitgleich zu 0.55.2 (Invarianz-Test
 `tests/test_b0_invariance.py`). Sie stehen in `runtime/engine/forecasts/*.json`,
 in `GET /api/v1/forecast` und (ohne `points_3d`/`points_7d`) in
 `GET /api/v1/last_forecasts`. Ältere Publikationen lassen sie fehlen; Leser
-behandeln fehlende Felder wie `null`. Definitionen:
+behandeln fehlende Felder wie `null`. **Die Labor-Karten „Modell &
+Parameter“ lesen einen Teil davon (Befund N1, 23.09.2026, Runde 2)** —
+vorher standen die Felder nur im Modell-Artefakt und die Karten blieben
+leer. Definitionen:
 [ENGINE.md](ENGINE.md#messgrundlagen-b0-seit-0560).
 
 | Feld | Quelle | Inhalt |
 |---|---|---|
+| `beta` | Fit | Beta-Vektor des Strukturmodells (13 Koeffizienten, Huber-IRLS): Tagesform/Wochentage + Sprung-Hazard. Karte 1 des Parameterschranks zeigt die ersten 48 (bzw. alle 13). |
+| `ar_phi` | Fit | AR(2)-Koeffizienten (φ₁, φ₂) der Residuenfollow-up-Karte (Karte 2). |
+| `holiday_beta`, `holiday_source` | Fit | Gepoolter Feiertagseffekt (Schema 2) und seine Quelle. |
+| `law_floor`, `law_floor_active`, `pre_law_points_excluded`, `law_rise_outside_noon` | Fit | Rechtslage im Fit: Bodenkante der 12-Uhr-Regel, ob sie griff, wie viele Beobachtungen davor liegen, unregelmäßige Anhebungen. |
+| `bootstrap_samples` | Fit-Config | Ziehungszahl des Laufs — die Labor-Karte „Bootstrap“ zeigt sie statt einer festen 2000. |
+| `shared_draws` | Lauf | Ziehungsmodus der veröffentlichten Prognose (Einstellung); neben `backtest_shared_draws` (was der Backtest maß). |
 | `ar_shrink_events` | Fit | Zahl der ×0,9-Stauchungen des AR(2)-Stabilitätsnetzes in diesem Fit (0 = stabil). |
 | `ar_state_reset` | Fit | `true`, wenn der AR-Zustand am Cutoff auf 0 gesetzt wurde (letzte Residuen nicht endlich). |
 | `ar_detail` | Fit | Je Kern (`harmonic_ar2`, `profile_ar2`): `shrink_events`, `fallback` (`null` oder Grund), `triples`, `root_radius_raw`/`root_radius`, `state_reset`. |

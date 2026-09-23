@@ -124,12 +124,42 @@ export function ModellView({
   const f: any = forecast.data ?? null;
   const beta = f?.beta as number[] | null;
   const arPhi = f?.ar_phi as number[] | null;
-  const arDetail = f?.ar_detail as any;
+  // Befund N1c (23.09.2026, Runde 2): ``ar_detail`` ist je Kern
+  // verschachtelt (``harmonic_ar2``/``profile_ar2``) und trägt
+  // ``root_radius``/``root_radius_raw`` — nicht ``root_modulus``/``stable``
+  // auf Top-Level. Gewählt wird der Kern, den die Veröffentlichung fährt
+  // (``model_kind``), Rückfall der Hauptkern.
+  const arDetailAll = f?.ar_detail as Record<string, any> | null | undefined;
+  const arDetail = arDetailAll
+    ? (arDetailAll[f?.model_kind] ?? arDetailAll.harmonic_ar2 ?? null)
+    : null;
+  const arRootRadius =
+    typeof arDetail?.root_radius === "number" ? (arDetail.root_radius as number) : null;
+  const arStable = arRootRadius != null ? arRootRadius < 1 : null;
   const ensemble = f?.ensemble as any;
-  const dayPair = f?.day_pair as boolean | null;
-  const sharedDraws = f?.shared_draws as boolean | null;
+  const dayPair = ((f?.day_pair ?? f?.backtest_day_pair) ?? null) as boolean | null;
+  // Produktion publiziert den Ziehungsmodus des Laufs (``shared_draws``)
+  // und den des Backtests (``backtest_shared_draws``); Alt-Payloads nur
+  // den zweiten.
+  const sharedDraws = ((f?.shared_draws ?? f?.backtest_shared_draws) ?? null) as
+    | boolean
+    | null;
+  const bootstrapSamples = f?.bootstrap_samples as number | null;
   const pavaStats = f?.pava_pool_stats as any;
-  const pit = f?.pit as any;
+  // PAVA-Summen des veröffentlichten Kerns (Rückfall Hauptkern) — die
+  // Statistik lebt je Kern unter ``totals``.
+  const pavaTotals =
+    (pavaStats?.totals?.[f?.model_kind] ??
+      pavaStats?.totals?.harmonic_ar2 ??
+      null) as
+    | { pools?: number; pooled_points?: number; max_pool_size?: number }
+    | null;
+  // PIT-Zahl der Station: Der Payload verschachtelt je Horizont
+  // (``pit.horizons["24h"].all.n``) — ``pit.n`` gab es nie.
+  const pitN =
+    typeof f?.pit?.horizons?.["24h"]?.all?.n === "number"
+      ? (f.pit.horizons["24h"].all.n as number)
+      : null;
 
   const dayCurve: Array<{ x: number; y: number }> =
     activeLabDayRow?.curve && activeLabDayRow.curve.length ? activeLabDayRow.curve : [];
@@ -194,12 +224,21 @@ export function ModellView({
               <div className="mt-2">
                 <div className="h-24 rounded bg-slate-900/60 p-2">
                   <div className="flex h-full items-end gap-px">
-                    {beta.slice(0, 48).map((v, i) => (
-                      <div key={i} className="flex-1 bg-violet-400/70" style={{ height: `${Math.min(100, Math.abs(v) * 10)}%` }} title={`beta[${i}]=${deNumber(v, 3)}`} />
-                    ))}
+                    {/* Befund N1c (23.09.2026, Runde 2): relative Höhe zum
+                        größten gezeigten Betrag — vorher skalierte
+                        ``|v|·10`` jeden Koeffizienten ab 0,1 €/L auf 100 %
+                        und alle Balken wirkten gleich hoch.
+                    */}
+                    {(() => {
+                      const shown = beta.slice(0, 48);
+                      const maxAbs = Math.max(...shown.map((v) => Math.abs(v)), 1e-9);
+                      return shown.map((v, i) => (
+                        <div key={i} className="flex-1 bg-violet-400/70" style={{ height: `${Math.max(2, (Math.abs(v) / maxAbs) * 100)}%` }} title={`beta[${i}]=${deNumber(v, 3)}`} />
+                      ));
+                    })()}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Beta-Vektor ({beta.length} Koeff.) robust per Huber-IRLS. Erste 48 gezeigt.</p>
+                <p className="mt-1 text-xs text-slate-500">Beta-Vektor ({beta.length} Koeff.) robust per Huber-IRLS. Erste {Math.min(beta.length, 48)} gezeigt, Höhe relativ zum größten Betrag.</p>
               </div>
             ) : (
               <p className="mt-2 text-xs text-slate-500">Kein Beta-Vektor im Forecast-Payload.</p>
@@ -221,8 +260,8 @@ export function ModellView({
             <p className="text-xs font-semibold text-slate-200">Diagramm: phi1 phi2 und Stabilitaet</p>
             {arPhi && arPhi.length >= 2 ? (
               <div className="mt-2 text-xs text-slate-300">
-                <p>phi1={deNumber(arPhi[0], 3)} phi2={deNumber(arPhi[1], 3)} Wurzel-Betrag {arDetail?.root_modulus ? deNumber(arDetail.root_modulus, 3) : "-"} stabil {arDetail?.stable === false ? "nein" : "ja"}</p>
-                <p className="mt-1 text-slate-500">shrink_events: {f?.ar_shrink_events ?? "-"} state_reset: {f?.ar_state_reset ? "ja" : "nein"} training: {f?.training_days ?? "-"} Tage, {f?.training_points ?? "-"} Punkte</p>
+                <p>phi1={deNumber(arPhi[0], 3)} phi2={deNumber(arPhi[1], 3)} Wurzel-Radius {arRootRadius != null ? deNumber(arRootRadius, 3) : "-"} stabil {arStable === null ? "-" : arStable ? "ja" : "nein"}</p>
+                <p className="mt-1 text-slate-500">shrink_events: {f?.ar_shrink_events ?? "-"} state_reset: {f?.ar_state_reset ? "ja" : "nein"} training: {f?.n_days ?? "-"} Tage, {f?.n_points ?? "-"} Punkte</p>
               </div>
             ) : (
               <p className="mt-2 text-xs text-slate-500">Kein AR(2) im Payload.</p>
@@ -242,14 +281,14 @@ export function ModellView({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Tagesblock-Gewichte EW-HWZ</p>
-            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B=2000 Bloecke</p>
+            <p className="mt-2 text-xs text-slate-400">shared_draws={sharedDraws === null ? "-" : sharedDraws ? "ja" : "nein"} day_pair={dayPair === null ? "-" : dayPair ? "ja" : "nein"} B={bootstrapSamples != null ? deTrimmed(bootstrapSamples, 0) : "-"} Bloecke</p>
             <p className="mt-1 text-xs text-slate-500">EW-Halbwertszeit: neuere Tage zaehlen mehr; Tagesbloecke erhalten Tagesform.</p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <ForTheCurious>
               <p>Block-Bootstrap: Ziehe ganze Tage mit EW-Gewichten. shared_draws: gleiche Tages-Indizes fuer alle Stationen. day_pair: Paare zusammen.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"w_t = 2^(-age/HWZ) / Summe Block b zu day_t shared gleich"}</div>
-              <p>B3: PIT-Groesse n_pit={pit?.n ?? "-"} pit_status={pit?.status ?? "-"}.</p>
+              <p>B3: PIT-Groesse n_pit={pitN ?? "-"} (24h-Fenster, alle Folds; Status kennt der PIT-Schnitt nicht).</p>
             </ForTheCurious>
           </div>
         </div>
@@ -261,7 +300,14 @@ export function ModellView({
             <p className="text-xs font-semibold text-slate-200">Diagramm: PAVA-Pooling einer Rohkurve</p>
             {pavaStats ? (
               <div className="mt-2 text-xs text-slate-300">
-                <p>pools={pavaStats.n_pools ?? "-"} pooled_steps={pavaStats.pooled_steps ?? "-"} max_pool={pavaStats.max_pool_size ?? "-"}</p>
+                {/* Befund N1c (23.09.2026, Runde 2): Die Statistik lebt in
+                    ``totals`` je Kern (``pools``, ``pooled_points``,
+                    ``max_pool_size``, ``max_shift_ct``) plus
+                    ``law_segments`` — ``n_pools``/``pooled_steps`` auf
+                    Top-Level gab es nie. Gezeigt wird der Hauptkern.
+                */}
+                <p>Segmente ab Bodenkante: {pavaStats.law_segments ?? "-"} · Pools: {pavaTotals?.pools ?? "-"}</p>
+                <p>gepoolte Punkte: {pavaTotals?.pooled_points ?? "-"} · max Pool: {pavaTotals?.max_pool_size ?? "-"}</p>
                 <p className="mt-1 text-slate-500">Projektion pro [12:00-12:00)-Segment: Rohpfad zu PAVA nicht-steigend ausser 12:00 Sprung erlaubt.</p>
               </div>
             ) : (

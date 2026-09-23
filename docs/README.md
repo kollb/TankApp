@@ -1,6 +1,6 @@
 # Dokumentation
 
-> Stand: 22.09.2026 · Repository-Version **0.68.0**
+> Stand: 23.09.2026 · Repository-Version **0.68.1**
 > Dieser Index ist kein pauschaler Prüfvermerk für alle verlinkten Dokumente.
 > Technische Einzelreferenzen behalten ihren jeweiligen Prüfstand.
 
