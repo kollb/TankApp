@@ -261,27 +261,67 @@ describe("Labor B5: Parameterschrank Karten Details", () => {
     const host = mount({}, {
       laborSubTab: "modell",
       forecast: res({
+        // Befund N1 (23.09.2026, Runde 2): Fixture in der echten Payload-
+        // Form — ar_detail je Kern mit root_radius, pava_pool_stats mit
+        // totals/law_segments, pit je Horizont verschachtelt. Die alten
+        // flachen Shapes (root_modulus, n_pools, pit.n) gab es serverseitig
+        // nie und arretierten die leeren Karten.
         beta: [0.1, 0.2],
         ar_phi: [0.5, 0.1],
-        ar_detail: { root_modulus: 0.8, stable: true },
+        model_kind: "profile_ar2",
+        ar_detail: {
+          harmonic_ar2: { shrink_events: 1, root_radius_raw: 1.2, root_radius: 0.9, triples: 4000 },
+          profile_ar2: { shrink_events: 2, root_radius_raw: 1.4, root_radius: 0.95, triples: 4000, state_reset: false },
+        },
         ar_shrink_events: 2,
+        n_days: 42,
+        n_points: 12096,
         shared_draws: true,
         day_pair: false,
+        bootstrap_samples: 2000,
         ensemble: { weights: { harm: 0.6, profile: 0.4 }, mase: { harm: 0.8 }, method: "inverse_mase" },
-        pava_pool_stats: { n_pools: 5 },
+        pava_pool_stats: {
+          law_segments: 3,
+          totals: { profile_ar2: { pools: 5, pooled_points: 17, max_pool_size: 4, max_shift_ct: 0.4 } },
+        },
         calibrated: true,
         calibration: { status: "active", by_horizon: { "24h": { n_pit: 100 } } },
-        pit: { n: 200, status: "ok" },
+        pit: { horizons: { "24h": { all: { n: 200 }, break_free: { n: 190 } } } },
       } as any),
       selection: res({ stations: [] } as any),
     });
     const text = host.textContent ?? "";
     expect(text).toContain("Kalibrierung");
-    expect(text).toContain("shared_draws");
-    expect(text).toContain("day_pair");
+    expect(text).toContain("shared_draws=ja");
+    expect(text).toContain("day_pair=nein");
+    expect(text).toContain("B=2.000 Bloecke");
+    // AR(2)-Karte liest den Kern des veröffentlichten Modells.
+    expect(text).toContain("phi1=0,500");
+    expect(text).toContain("Wurzel-Radius 0,950");
+    expect(text).toContain("stabil ja");
+    expect(text).toContain("training: 42 Tage, 12096 Punkte");
+    // PAVA-Karte liest totals je Kern.
+    expect(text).toMatch(/Pools: 5/);
+    expect(text).toMatch(/max Pool: 4/);
+    // PIT-Zahl aus dem verschachtelten Horizont-Schnitt.
+    expect(text).toContain("n_pit=200");
     expect(text).toContain("Gewichte");
-    // pava_pool_stats renamed to pools in safe version
     expect(text).toMatch(/pools|PAVA/);
+  });
+
+  it("Karten fallen ehrlich auf \u201e-\u201c, wenn der Payload die Felder nicht trägt", () => {
+    const host = mount({}, {
+      laborSubTab: "modell",
+      forecast: res({ points: [] } as any),
+      selection: res({ stations: [] } as any),
+    });
+    const text = host.textContent ?? "";
+    expect(text).toContain("Kein Beta-Vektor im Forecast-Payload.");
+    expect(text).toContain("Kein AR(2) im Payload.");
+    expect(text).toContain("Keine pava_pool_stats im Forecast.");
+    expect(text).toContain("Kein Ensemble im Payload.");
+    expect(text).toContain("shared_draws=-");
+    expect(text).toContain("B=- Bloecke");
   });
 });
 

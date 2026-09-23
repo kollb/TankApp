@@ -110,6 +110,20 @@ def test_demo_stack_liefert_publikation_und_frische_preise(tmp_path):
         assert row["draws_24h"]["n"] > 0
         assert len(row["draws_24h"]["nowcast"]) == row["draws_24h"]["n"]
         assert row["points"] and row["points_7d"]
+        # Befund N1/N2 (23.09.2026, Runde 2): Die Labor-Karten lesen die
+        # Modell-Parameter aus dem Payload — die Demo-Zeile trägt sie über
+        # denselben Helfer wie der NAS-Lauf, und der Ziehungsvertrag
+        # entspricht dem Betrieb (profile_ar2, gemeinsame Ziehung,
+        # Day-Pair), statt der Engine-Defaults von ``predict``.
+        assert row["beta"] and len(row["beta"]) == 13
+        assert row["ar_phi"] and len(row["ar_phi"]) == 2
+        assert row["model_kind"] == "profile_ar2"
+        assert row["day_pair"] is True
+        assert row["shared_draws"] is True
+        assert row["draws_24h"]["shared"] is True
+        assert row["bootstrap_samples"] > 0
+        assert "law_floor" in row and "holiday_source" in row
+        assert row["pava_pool_stats"] is not None
     assert len(built["prices"]) == len(demo_data.STATIONS)
     assert all(1.0 < price < 3.0 for price in built["prices"].values())
 

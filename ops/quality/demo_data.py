@@ -273,13 +273,37 @@ def build_publication(
         raise RuntimeError("Demo-Daten: keine Series nach der Aufbereitung.")
     # Wiederverwendung der echten Serialisierer: Das Publikationsschema ist
     # damit per Konstruktion identisch zum NAS-Lauf (kein zweiter Pfad).
-    from app.model_jobs import _draws, _records
+    # Befund N1/N2 (23.09.2026, Runde 2): auch die Modell-Parameter kommen
+    # über denselben Helfer in die Zeile wie im NAS-Lauf; vorher trug die
+    # Demo-Zeile fast keine Diagnosefelder und die Labor-Karten blieben
+    # leer. Ebenso der Ziehungsvertrag: ``predict``/``_draws`` ohne
+    # Argumente lieferten die Engine-Defaults (``harmonic_ar2``, unabhängige
+    # Ziehung, kein Day-Pair) — der Demo-Stack sprach also einen anderen
+    # statistischen Vertrag als der Betrieb (``profile_ar2``, shared
+    # Draws, Day-Pair). Jetzt dieselben Werte wie ``app/refresh.py``.
+    from app.model_jobs import _draws, _records, model_parameter_fields
 
     forecasts = []
     for item in series_list:
         model = fit(item, origin, cfg)
-        frame24, paths24 = predict(model, hours=24, return_paths=True)
-        frame168, paths168 = predict(model, hours=168, return_paths=True)
+        diagnostics: dict = {}
+        frame24, paths24 = predict(
+            model,
+            hours=24,
+            return_paths=True,
+            shared_draws=True,
+            day_pair=True,
+            kind="profile_ar2",
+            diagnostics=diagnostics,
+        )
+        frame168, paths168 = predict(
+            model,
+            hours=168,
+            return_paths=True,
+            shared_draws=True,
+            day_pair=True,
+            kind="profile_ar2",
+        )
         forecasts.append(
             {
                 **item.identity(),
@@ -288,13 +312,21 @@ def build_publication(
                 "points": _records(frame24),
                 "points_3d": [],
                 "points_7d": _records(frame168),
-                "draws_24h": _draws(frame24.index, paths24, cfg),
-                "draws_7d": _draws(frame168.index, paths168, cfg),
+                "draws_24h": _draws(frame24.index, paths24, cfg, shared=True),
+                "draws_7d": _draws(frame168.index, paths168, cfg, shared=True),
                 "train_days": cfg.train_days,
                 "range_from": model.get("training_start"),
                 "range_to": model.get("last_observation"),
                 "n_points": model.get("training_points"),
                 "n_days": model.get("training_days"),
+                **model_parameter_fields(model),
+                "model_kind": "profile_ar2",
+                "day_pair": True,
+                "shared_draws": True,
+                "pava_pool_stats": diagnostics.get("pava_pool_stats"),
+                "calibration": model.get("calibration"),
+                "calibrated": bool(model.get("calibrated", False)),
+                "calibration_candidate": None,
                 "metrics": None,
                 "dst": None,
                 "backtest_days": None,

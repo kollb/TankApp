@@ -68,6 +68,49 @@ HORIZON_COLUMNS = ("timestamp", *HORIZON_VALUE_COLUMNS, "support_days", "support
 # Quantile folgen dagegen O10 und werden unten auf 0,1 ct/L gerundet.
 PUBLICATION_DECIMALS = 4
 
+# Befund 23.09.2026 (Runde 2, N1): Modell-Parameter, die die Labor-Karten
+# „Modell & Parameter“ zeigen soll. Vor 0.68.1 lebten sie nur im Modell-
+# Artefakt (``models-*.json``) — der Forecast-Payload trug sie nicht, und
+# die Karten zeigten durchweg „Kein Beta-Vektor im Forecast-Payload“ /
+# „Kein AR(2) im Payload“. Diese Felder sind Anzeige-Diagnose (klein,
+# einige hundert Byte je Station), keine Prognosezahl.
+MODEL_PARAMETER_FIELDS = (
+    "beta",
+    "ar_phi",
+    "holiday_beta",
+    "holiday_source",
+    "law_floor",
+    "law_floor_active",
+    "pre_law_points_excluded",
+    "law_rise_outside_noon",
+    "ar_shrink_events",
+    "ar_state_reset",
+    "ar_detail",
+    "ensemble",
+)
+
+
+def model_parameter_fields(model: dict[str, Any]) -> dict[str, Any]:
+    """Modell-Parameter für die Veröffentlichung (eine Quelle, keine Kopien).
+
+    Liest die Felder aus :data:`MODEL_PARAMETER_FIELDS` aus dem Fit und
+    ergänzt ``bootstrap_samples`` aus der im Modell gespeicherten Config —
+    die Karte „Bootstrap“ zeigt die echte Ziehungszahl, nicht eine
+    festgenagelte 2000. ``app/refresh.py`` (NAS-Lauf) und
+    ``ops/quality/demo_data.py`` (Demo-Stack) bauen die Zeile damit aus
+    **demselben** Helfer, damit die Labor-Karten auf beiden Stacks dasselbe
+    sehen (kein zweiter Pfad). Fehlende Felder (Alt-Artefakt) fehlen auch
+    in der Rückgabe — Leser behandeln fehlende Felder wie ``null``.
+    """
+    fields: dict[str, Any] = {}
+    for key in MODEL_PARAMETER_FIELDS:
+        if key in model:
+            fields[key] = model[key]
+    config = model.get("config")
+    if isinstance(config, dict) and "bootstrap_samples" in config:
+        fields["bootstrap_samples"] = int(config["bootstrap_samples"])
+    return fields
+
 
 def _published(value):
     """Price publication precision (draw-related numeric fields remain 4 d.p.).
