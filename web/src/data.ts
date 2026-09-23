@@ -1159,6 +1159,15 @@ export type StatsSummary = {
       hitFreq: number | null;
       pAvg: number | null;
       potShare: number | null;
+      /**
+       * Median der Stations-Kennzahlen aus dem Backtest (Server:
+       * `app/stats_summary.py::_build_backtest_from_publication`). `mase` ist
+       * die 24-h-Variante ({@link MASE_24H}) — nicht die Eine-Schritt-MASE der
+       * Ensemble-Karte.
+       */
+      mae_ct?: number | null;
+      mase?: number | null;
+      picp_95?: number | null;
     };
     calibration: CalibPoint[];
     evalRows: Record<string, EvalRowDto[]>;
@@ -1927,6 +1936,29 @@ function pad2(value: number): string {
   return String(Math.trunc(value)).padStart(2, "0");
 }
 
+/**
+ * Echter Median — Mittelwert der beiden mittleren Werte bei gerader
+ * Stichprobe. `sorted[Math.floor(n / 2)]` allein ist der **obere Rand** und
+ * zeichnet jede Median-Anzeige systematisch zu hoch (Befund A4, 23.09.2026:
+ * im „Tagesmedian“ von „Jetzt“ gefunden, in Heatmap-Zeile und Tagesmedian-Linie
+ * saß dieselbe Zeile). Eine Stelle, damit die drei Anzeigen nicht erneut
+ * auseinanderlaufen. `null`/`undefined` in der Liste zählen nicht mit (Lücken
+ * sind Lücken, keine Nullen), und `null` kommt zurück, wenn nichts Bekanntes
+ * übrig bleibt — nie 0, nie Infinity.
+ */
+export function medianOf(
+  values: (number | null | undefined)[],
+): number | null {
+  const sorted = values
+    .filter((value): value is number => Number.isFinite(value as number))
+    .sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const half = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[half]
+    : (sorted[half - 1] + sorted[half]) / 2;
+}
+
 /** Kleinster bekannter Wert; null, wenn alles unbekannt (nie Infinity zeigen). */
 function minOrNull(values: (number | null | undefined)[]): number | null {
   const known = values.filter(
@@ -2033,7 +2065,11 @@ export function heatmapDaySummaries(heatmap: Heatmap): HeatmapDaySummary[] {
     // und keine „günstigste Stunde“ aus ein, zwei Nacht-Zellen.
     if (solid.length < MIN_HEATMAP_CELLS_PER_DAY) return;
     const sorted = solid.map((c) => c.value).sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
+    // A4-Klasse (Befund 23.09.2026): Bei gerader Zellenzahl war hier der obere
+    // der beiden Mittelwerte der „Median“ der Zeile — dieselbe Abweichung wie
+    // beim Tagesmedian in „Jetzt“. `medianOf` rechnet den echten Median; die
+    // Zeilen-Mediane wählen außerdem den „typisch günstigsten“ Tag.
+    const median = medianOf(sorted) ?? sorted[0];
     const bestValue = sorted.reduce((acc, v) =>
       isProb ? Math.max(acc, v) : Math.min(acc, v),
     );
@@ -2078,6 +2114,39 @@ export function heatmapBestDay(
         ? s
         : acc,
   );
+}
+
+export type HeatmapThinReference = {
+  /** Wochentage, deren beste Stunde auf einer zu dünnen Basis steht. */
+  days: string[];
+  /** Dieselben Tage als deutsche Aufzählung („Do und Fr“). */
+  daysLabel: string;
+  /** Kleinste Vergleichs-Stichprobe unter diesen Tagen; null = unbekannt. */
+  minReference: number | null;
+  /** Wochentage mit belastbarer Zeile insgesamt (Nenner der Warnung). */
+  totalDays: number;
+};
+
+/**
+ * R3/F12 (23.09.2026): Die dünne Vergleichs-Basis stand nur als `title` und
+ * als 10px-Chip an der Zeile — bei „Do 06–19 Uhr 50 %, 13 Stunden gleichauf“
+ * aus zwei Vergleichspreisen war die Warnung unsichtbar, die Zahl aber
+ * groß im Bild. Der Baustein sammelt die betroffenen Tage, damit die Fläche
+ * sie oberhalb der Matrix nennen kann. `null`, wenn keine Zeile dünn ist:
+ * Dann steht auch keine Warnung da.
+ */
+export function heatmapThinReference(
+  summaries: HeatmapDaySummary[],
+): HeatmapThinReference | null {
+  const thin = summaries.filter((summary) => summary.best?.thinReference);
+  if (!thin.length) return null;
+  const days = thin.map((summary) => summary.day);
+  return {
+    days,
+    daysLabel: joinGerman(days),
+    minReference: minOrNull(thin.map((summary) => summary.best?.minReference)),
+    totalDays: summaries.length,
+  };
 }
 
 export type HeatmapCoverage = {
@@ -2283,15 +2352,37 @@ export function lawFloorNote(
 /**
  * Erklärt leere Zeilen, bevor der Nutzer Datenverlust vermutet: nur wenn das
  * Fenster größer ist als der Bestand.
+ *
+ * R3/F13 (23.09.2026): „Fehlende Tage, kein Datenverlust“ allein nannte die
+ * Lücke nicht beim Namen — bei 17 Tagen Bestand im 28-Tage-Fenster fehlte die
+ * Zahl, und die zweite Schwelle (90 eigene Live-Tage für die Datenumstellung)
+ * stand gar nicht da. Beide Grenzen gehören in den Satz: die des Fensters
+ * (warum Zeilen leer sind) und die der Übergangsregel (warum die App trotzdem
+ * noch mit dem Archiv rechnet). `phase` ist optional — ohne Statistik-Lauf
+ * wird keine Schwelle erfunden.
  */
-export function heatmapCoverageNote(heatmap: Heatmap): string | null {
+export function heatmapCoverageNote(
+  heatmap: Heatmap,
+  phase?: LivePhase | null,
+): string | null {
   const coverage = heatmapCoverage(heatmap);
   if (!coverage || coverage.complete || coverage.windowDays <= 0) return null;
   const label = heatmapRangeLabel(heatmap);
+  const dayWord = (value: number) =>
+    `${countLabel(value)} ${value === 1 ? "Tag" : "Tage"}`;
+  const missingDays = Math.max(0, coverage.windowDays - coverage.days);
+  const live =
+    phase && !phase.complete
+      ? ` Die Datenumstellung Archiv → Live-Polling braucht ` +
+        `${countLabel(phase.required_complete_days)} vollständig live ` +
+        `beobachtete Tage je Station. ${livePhaseHint(phase)}`
+      : "";
   return (
-    `Fenster ${coverage.windowDays} Tage (${heatmap.weeks} Wochen), Bestand aber nur ` +
-    `${coverage.days} ${coverage.days === 1 ? "Tag" : "Tage"}${label ? ` — ${label}` : ""}. ` +
-    "Wochentage, die in dieser Zeit nicht vorkamen, bleiben leer: Das sind fehlende Tage, kein Datenverlust."
+    `Fenster ${dayWord(coverage.windowDays)} (${heatmap.weeks} Wochen), ` +
+    `Bestand aber nur ${dayWord(coverage.days)} — ${dayWord(missingDays)} ` +
+    `fehlen${label ? ` (${label})` : ""}. ` +
+    `Wochentage, die in dieser Zeit nicht vorkamen, bleiben leer: ` +
+    `Das sind fehlende Tage, kein Datenverlust.${live}`
   );
 }
 
@@ -3670,6 +3761,34 @@ export const M7_BRIER_THRESHOLD = 0.25;
  */
 export const MASE_TARGET = 0.8;
 
+/**
+ * R3/F8 (23.09.2026): Zwei Maßzahlen hießen „MASE“ und meinten Verschiedenes —
+ * im Parameterschrank stand 0,19, in der Güte 2,75, und derselbe Name las sich
+ * als Widerspruch. Beide bleiben, was sie sind (sie messen verschiedene
+ * Horizonte); sie tragen jetzt verschiedene Namen.
+ *
+ * `code` ist das Fachwort für den Tooltip und für die Dokumentation
+ * (MICROCOPY §1: deutsches Primärlabel sichtbar, Fachwort im `title`),
+ * `label` steht im Text, `basis` erklärt in einem Satz, was gemessen wird.
+ */
+export type MaseVariant = { code: string; label: string; basis: string };
+
+/** Ensemble-Gewichte: Eine-Schritt-Validierung im Fit (`ensemble.mase`). */
+export const MASE_ONE_STEP: MaseVariant = {
+  code: "MASE_1step",
+  label: "MASE 1 Schritt",
+  basis:
+    "Eine-Schritt-Prognose (eine Rasterstufe voraus) auf den Validierungstagen des Fits, geteilt durch den Fehler der saisonalen Naive desselben Slots am Vortag",
+};
+
+/** Roll-Backtest: 24-h-Fenster (`metrics.mase`, `backtest.totals.mase`). */
+export const MASE_24H: MaseVariant = {
+  code: "MASE_24h",
+  label: "MASE 24 Stunden",
+  basis:
+    "Prognose auf das 24-Stunden-Fenster im Roll-Backtest, geteilt durch den Fehler der saisonalen Naive (Vortagespreis zur selben Uhrzeit)",
+};
+
 /** B2: Eine Stelle für die Zustände der technischen PIT-Kalibrierung. */
 export function pitCalibrationStatus(
   active: boolean,
@@ -3950,35 +4069,98 @@ export type WindowsAdvice = {
   episodes_expired_7d?: number | null;
   episodes_used_30d?: number | null;
   episodes_expired_30d?: number | null;
+  /** O38: laufende Folgen — sie zählen auf keine der beiden Seiten. */
+  episodes_open?: number | null;
+};
+
+export type WindowsBalance = {
+  /** Fenster-Zähler (Episoden) — eigener Nenner, eigene Zeile. */
+  windowsLine: string;
+  /** 7-Tage-Schnitt derselben Fenster; null ohne geschlossene Fenster. */
+  weekLine: string | null;
+  /** Empfehlungen-Zähler — eigener Nenner; null ohne Abrechnungen. */
+  adviceLine: string | null;
+  /** Warum beide Zähler nicht auf denselben Bruch gehören; null ohne beide. */
+  relationNote: string | null;
 };
 
 /**
- * Fensterbilanz (O38): „x von y Fenstern genutzt“ plus die Aufschlüsselung
- * abgerechneter Empfehlungen gegen verstrichene Fenster — die Gegenprobe
- * zur Trefferquote. `null` ohne Statistik-Lauf oder ohne O38-Zähler
- * (Alt-Payloads erfinden keine Bilanz).
+ * Fensterbilanz (O38) — getrennt nach Zählern (R3, 23.09.2026).
+ *
+ * Der Befund: „0 von 1 Fenstern genutzt (4 Empfehlungen abgerechnet ·
+ * 1 Fenster verstrichen)“ stellte zwei Grundgesamtheiten in einen Bruch.
+ * `episodes_used_30d`/`episodes_expired_30d` zählen **Fenster** (Folgen mit
+ * echter Empfehlung, `resolved` gegen `expired`), `n` zählt **abgerechnete
+ * Empfehlungen** im 30-Tage-Ledger. Ein Fenster trägt mehrere Empfehlungen,
+ * und auch ein verstrichenes Fenster wird abgerechnet (`app/feedback.py`,
+ * O38-Kommentar) — die Zahlen dürfen also auseinanderlaufen, nur nicht
+ * als „x von y“ derselben Menge gelesen werden. Deshalb: je Zähler eine
+ * Zeile, die Beziehung als eigener Satz (MICROCOPY §5d: ein Zustand, eine
+ * Zahl). `null` ohne O38-Zähler — Alt-Payloads erfinden keine Bilanz.
  */
-export function windowsUsedLine(advice?: WindowsAdvice | null): string | null {
+export function windowsBalance(
+  advice?: WindowsAdvice | null,
+): WindowsBalance | null {
   const used30 = advice?.episodes_used_30d ?? null;
   const expired30 = advice?.episodes_expired_30d ?? null;
   if (used30 == null || expired30 == null) return null;
   const total30 = used30 + expired30;
-  if (total30 === 0) {
-    return "Fensterbilanz (30 Tage): noch keine Fenster geschlossen.";
-  }
+  const open = advice?.episodes_open ?? 0;
   const settled = advice?.n ?? 0;
-  const settledWord = `Empfehlung${settled === 1 ? "" : "en"}`;
+
+  const windowsLine =
+    total30 === 0
+      ? "Fenster (30 Tage): noch keine Fenster geschlossen."
+      : `Fenster (30 Tage): ${countLabel(used30)} von ${countLabel(total30)} ` +
+        `genutzt — ${countLabel(expired30)} verstrichen ohne Beleg` +
+        (open > 0
+          ? `, ${countLabel(open)} ${open === 1 ? "läuft" : "laufen"} noch`
+          : "") +
+        ".";
+
   const used7 = advice?.episodes_used_7d ?? 0;
   const expired7 = advice?.episodes_expired_7d ?? 0;
-  const week =
+  const weekLine =
     used7 + expired7 > 0
-      ? ` — 7 Tage: ${countLabel(used7)} von ${countLabel(used7 + expired7)} genutzt`
-      : "";
-  return (
-    `Fensterbilanz (30 Tage): ${countLabel(used30)} von ${countLabel(total30)} ` +
-    `Episoden-Fenstern genutzt (${countLabel(settled)} ${settledWord} abgerechnet = Empfehlungen, ` +
-    `${countLabel(expired30)} Fenster verstrichen ohne Beleg)${week}. Episoden ≠ Empfehlungen: Eine Empfehlung kann ohne Fenster sein.`
-  );
+      ? `7 Tage: ${countLabel(used7)} von ${countLabel(used7 + expired7)} Fenstern genutzt.`
+      : null;
+
+  const adviceLine =
+    settled > 0
+      ? `Abgerechnete Empfehlungen (30 Tage): ${countLabel(settled)}.`
+      : total30 > 0
+        ? "Abgerechnete Empfehlungen (30 Tage): noch keine."
+        : null;
+
+  return {
+    windowsLine,
+    weekLine,
+    adviceLine,
+    relationNote:
+      total30 > 0 || settled > 0
+        ? "Fenster und Empfehlungen sind zwei Zähler: Ein Fenster trägt mehrere " +
+          "Empfehlungen, und auch ein verstrichenes Fenster wird abgerechnet — " +
+          "beide Zahlen gehören nicht auf denselben Bruch."
+        : null,
+  };
+}
+
+/**
+ * Kompaktform der Fensterbilanz für Flächen mit einer Zeile. Die getrennten
+ * Zähler bleiben getrennt lesbar: erst die Fenster, dann die Empfehlungen,
+ * dann der Satz zur Beziehung.
+ */
+export function windowsUsedLine(advice?: WindowsAdvice | null): string | null {
+  const balance = windowsBalance(advice);
+  if (!balance) return null;
+  return [
+    balance.windowsLine,
+    balance.weekLine,
+    balance.adviceLine,
+    balance.relationNote,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" ");
 }
 
 /**
@@ -4499,9 +4681,25 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
     id: "mase",
     term: "MASE",
     de: "Vergleich zur saisonalen Naive",
-    short: "MASE = Backtest-MAE geteilt durch den MAE der saisonalen Naive. Unter 1,0 heißt besser als die einfache Vergleichsmethode.",
-    long: "Mean Absolute Scaled Error: Der Backtest-Fehler des Modells geteilt durch den Fehler der 24-Stunden-Naive (Vor-Tages-Preis zur selben Stunde). MASE 0,7 heißt 30 % besser als die Naive. Im Roll-Backtest letzte 7 abgeschlossene Prüftage, Daten aus echten Beobachtungen, keine Prognose.",
+    short: "MASE = Fehler des Modells geteilt durch den Fehler der saisonalen Naive. Unter 1,0 heißt besser als die einfache Vergleichsmethode. Die App rechnet zwei MASE: 1 Schritt und 24 Stunden — sie messen verschiedene Horizonte und stehen nie ohne ihren Namen da.",
+    long: "Mean Absolute Scaled Error: Der Fehler des Modells, geteilt durch den Fehler der saisonalen Naive (Preis des Vortags zur selben Uhrzeit). MASE 0,7 heißt 30 % weniger Fehler als „nimm den gestrigen Preis“. Weil der Nenner derselbe bleibt, der Horizont aber nicht, gibt es zwei Maßzahlen mit zwei Namen: „MASE 1 Schritt“ (Eine-Schritt-Validierung, trägt die Ensemble-Gewichte) und „MASE 24 Stunden“ (Roll-Backtest auf das 24-h-Fenster, trägt die Güte-Aussage). Beide sind unter 1,0 gut — vergleichen lassen sie sich nicht miteinander.",
     anchor: "mase-fehler-gegen-die-naive",
+  },
+  {
+    id: "mase-1step",
+    term: "MASE_1step",
+    de: "MASE 1 Schritt",
+    short: "Fehler der Eine-Schritt-Prognose gegen die saisonale Naive — gemessen im Fit auf den Validierungstagen, und die Grundlage der Ensemble-Gewichte.",
+    long: "Verglichen wird die Eine-Schritt-Prognose (eine Rasterstufe voraus, AR(2)-Zustand aus den beiden Vorpunkten) beider Modellkerne auf dem Validierungsfenster des Fits; Nenner ist der Fehler der saisonalen Naive desselben Slots am Vortag. Die Gewichte sind ∝ 1/MASE 1 Schritt — der Kern mit dem kleineren Fehler zieht stärker. Ein Wert unter 1,0 heißt: besser als die Naive auf dieser kurzen Strecke. Er sagt nichts über das 24-Stunden-Fenster, für das die Empfehlung entsteht.",
+    anchor: "mase-1-schritt-eine-schritt-validierung-des-ensembles",
+  },
+  {
+    id: "mase-24h",
+    term: "MASE_24h",
+    de: "MASE 24 Stunden",
+    short: "Fehler der 24-Stunden-Prognose gegen die saisonale Naive — gemessen im Roll-Backtest außerhalb der Stichprobe.",
+    long: "Der Rolling-Origin-Backtest prognostiziert das 24-h-Fenster und teilt seinen MAE durch den MAE der saisonalen Naive (Vortagespreis zur selben Uhrzeit). Gezählt werden abgeschlossene Prüftage aus echten Beobachtungen, im NAS-Lauf 21 Tage. Unter 1,0 heißt besser als die Naive, über 1,0 schlechter — dann ist der Vor-Tages-Preis die bessere Prognose. Eine Variante nur für Tage ohne Preissprung weist die Engine bewusst nicht aus: Ohne Sprunglabel wäre sie erfunden.",
+    anchor: "mase-24-stunden-roll-backtest-auf-das-24-h-fenster",
   },
   {
     id: "picp",

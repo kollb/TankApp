@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 23.09.2026 · App-Version **0.68.1** — neu seit 0.68.1: Modell-Parameter
+> Stand: 23.09.2026 · App-Version **0.69.0** — neu seit 0.68.1: Modell-Parameter
 > im Forecast-Payload (`beta`, `ar_phi` u. a.). Neu seit 0.68.0 (A21-B5):
 > Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
 > DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis

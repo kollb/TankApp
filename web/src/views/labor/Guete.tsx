@@ -8,6 +8,8 @@ import { HeatmapGrid } from "../../components/HeatmapGrid";
 import { calibChartAlt } from "../../chartAlt";
 import {
   HEATMAP_WEEKS,
+  MASE_24H,
+  MASE_ONE_STEP,
   centPerLiter,
   deNumber,
   deTrimmed,
@@ -17,7 +19,7 @@ import {
   pitCalibrationLedgerBrierLine,
   pitCalibrationStatus,
   PIT_CALIBRATION_NO_CANDIDATE,
-  windowsUsedLine,
+  windowsBalance,
   type HeatmapBasis,
 } from "../../data";
 import { labSection, type LabSectionId } from "../../lab";
@@ -41,6 +43,7 @@ export function GueteView({
     heatmapBasisActive,
     heatmapKind,
     heatmapWeeks,
+    liters,
     refreshNow,
     setHeatmapBasis,
     setHeatmapKind,
@@ -51,11 +54,8 @@ export function GueteView({
 
   const [eps] = useState(1.0);
   const [labDayIdx] = useState(13);
-  const { calibPoints, livePointsForChart, metrics, epsScan, labData, labTotals } = useLaborModel(
-    ov,
-    eps,
-    labDayIdx,
-  );
+  const { anchorLabel, calibPoints, livePointsForChart, metrics, epsScan, labData, labTotals } =
+    useLaborModel(ov, eps, labDayIdx);
 
   const [open, setOpen] = useState<Record<LabSectionId, boolean>>({
     prognose: false,
@@ -83,8 +83,21 @@ export function GueteView({
   }, [focusSection, onFocusHandled]);
 
   const advice = statsSummaryRes.data?.live_advice ?? null;
-  const windowsLine = windowsUsedLine(advice);
+  // R3: Fenster und Empfehlungen sind zwei Zähler — die Fläche zeigt sie als
+  // zwei Zeilen, nicht als einen Bruch mit zwei Nennern.
+  const balance = windowsBalance(advice);
   const quality = statsSummaryRes.data?.quality_metrics ?? null;
+  // Die 90-Tage-Übergangsregel gehört zur Datenreichweite der Heatmap (R3/F13).
+  const livePhase = statsSummaryRes.data?.live_phase ?? null;
+  // R3/F8: Zwei MASE, zwei Namen. `metrics.mase` ist die 24-h-Variante dieses
+  // Stationslaufs, `backtest.totals.mase` der Median über die Backtest-
+  // Stationen — beide messen dasselbe Fenster, nicht die Eine-Schritt-MASE der
+  // Ensemble-Karte. `quality_metrics.mase_sprungfrei` weist die Engine bewusst
+  // nicht aus (kein Ad-hoc-Sprunglabel) — die Zeile behauptet es deshalb auch
+  // nicht mehr.
+  const maseStation = metrics?.mase ?? null;
+  const mase24h = maseStation ?? labData?.totals?.mase ?? null;
+  const maseScope = maseStation != null ? "diese Station" : "Median der Stationen";
 
   const selStations = selection.data?.stations ?? [];
   const rankStability = useMemo(() => {
@@ -187,13 +200,19 @@ export function GueteView({
                   der echten Preise lagen im 95-%-Band (Ziel 90–98 %).
                 </li>
                 <li>
-                  <strong className="text-slate-100">Prognose-Fehler (MASE 24h sprungfrei):</strong>{" "}
-                  {metrics?.mase != null
-                    ? deTrimmed(metrics.mase, 2)
-                    : quality?.mase_sprungfrei != null
-                      ? deTrimmed(quality.mase_sprungfrei, 2)
-                      : "—"}{" "}
-                  — unter 1,0 heißt besser als Naive (24h-Fenster, nicht One-Step wie in Karte 5).
+                  <strong
+                    className="text-slate-100"
+                    title={`Fachwort: ${MASE_24H.code}`}
+                  >
+                    Prognose-Fehler ({MASE_24H.label}):
+                  </strong>{" "}
+                  {mase24h != null ? deTrimmed(mase24h, 2) : "—"}{" "}
+                  {mase24h != null ? `(${maseScope})` : ""} — unter 1,0 heißt besser als
+                  die Naive (Vortagespreis zur selben Uhrzeit), über 1,0 schlechter.{" "}
+                  <span className="text-slate-500" title={`Fachwort: ${MASE_ONE_STEP.code}`}>
+                    Nicht vergleichbar mit {MASE_ONE_STEP.label} auf der Ensemble-Karte:
+                    das ist die Eine-Schritt-Validierung, die die Gewichte trägt.
+                  </span>
                 </li>
                 <li>
                   <strong className="text-slate-100">Rang-Streuung:</strong>{" "}
@@ -225,18 +244,33 @@ export function GueteView({
                 </li>
               </ul>
             </div>
-            {windowsLine && (
+            {balance && (
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-xs font-semibold text-slate-200">Fensterbilanz</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-400">{windowsLine}</p>
+                {/* R3: zwei Zähler, zwei Zeilen — Fenster (Episoden) und
+                    abgerechnete Empfehlungen gehören nicht in einen Bruch. */}
+                <ul className="mt-1 space-y-1 text-xs leading-relaxed text-slate-300">
+                  <li>{balance.windowsLine}</li>
+                  {balance.weekLine ? <li>{balance.weekLine}</li> : null}
+                  {balance.adviceLine ? <li>{balance.adviceLine}</li> : null}
+                </ul>
+                {balance.relationNote ? (
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    {balance.relationNote}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
         </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          {/* O21: Die Parameter gehören zur Zahl — Tage, Tankmenge und
+              Handlungsschwelle stehen im Kopf, sonst ist „31,35 €“ keine
+              Aussage. */}
           <p className="text-xs font-semibold text-slate-200">
-            Backtest-Bilanz (außerhalb der Stichprobe: {labData?.daysEval ?? "—"} Tage)
+            Backtest-Bilanz (außerhalb der Stichprobe: {labData?.daysEval ?? "—"} Tage ·{" "}
+            {deTrimmed(liters, 0)} L · ε = {centPerLiter(eps, 2)})
           </p>
           {labTotals.n === 0 ? (
             <p className="mt-2 text-xs leading-relaxed text-slate-400">
@@ -246,18 +280,65 @@ export function GueteView({
             <>
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Ersparnis Regel</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Ersparnis der Regel</p>
                   <p className="font-mono text-lg font-bold text-emerald-300">{euro(labTotals.smart)} €</p>
                 </div>
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Ersparnis Orakel (obere Schranke)</p>
+                  {/* MICROCOPY §4: der Orakel-Bestwert heißt „Perfektes Timing
+                      (Orakel)“; der B4.4-Vertrag nennt dieselbe Zahl
+                      unerreichbar (`oracle_reachable: false`) — „obere
+                      Schranke“ klang nach einem Ziel. */}
+                  <p className="text-xs uppercase tracking-wider text-slate-500" title="Fachwort: sum_best_eur">
+                    Perfektes Timing (Orakel)
+                  </p>
                   <p className="font-mono text-lg font-bold text-slate-100">{euro(labTotals.best)} €</p>
                 </div>
                 <div className="rounded-lg bg-slate-900/70 p-2.5">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">Ø Mehrkosten vs Orakel</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-500" title="Fachwort: Regret">
+                    Ø Mehrkosten zum perfekten Timing
+                  </p>
                   <p className="font-mono text-lg font-bold text-amber-300">{euro(labTotals.regretEur)} €</p>
                 </div>
               </div>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-900/70 p-2.5">
+                  <p className="text-xs uppercase tracking-wider text-slate-500" title="Fachwort: pot_share">
+                    Geholtes Potenzial
+                  </p>
+                  <p className="font-mono text-lg font-bold text-sky-300">
+                    {labTotals.potShare == null ? "—" : percentLabel(labTotals.potShare * 100, 1)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-900/70 p-2.5">
+                  <p className="text-xs uppercase tracking-wider text-slate-500" title="Fachwort: hit_wait/hit_now">
+                    Richtige Entscheidungen
+                  </p>
+                  <p className="font-mono text-lg font-bold text-sky-300">
+                    {labTotals.hitRate == null ? "—" : percentLabel(labTotals.hitRate * 100, 1)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-900/70 p-2.5">
+                  <p className="text-xs uppercase tracking-wider text-slate-500" title="Fachwort: hit_freq">
+                    Tage mit Vorteil
+                  </p>
+                  <p className="font-mono text-lg font-bold text-slate-300">
+                    {labTotals.hitFreq == null ? "—" : percentLabel(labTotals.hitFreq * 100, 1)}
+                  </p>
+                </div>
+              </div>
+              {/* R3: „96 % Potenzial bei 27 % richtigen Tagen“ las sich als
+                  Widerspruch, weil zwei Nenner nebeneinander standen und
+                  keiner benannt war. Die Erklärung gehört unter die Zahlen. */}
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                Drei Maßzahlen, drei Nenner: <strong className="text-slate-300">Geholtes Potenzial</strong>{" "}
+                wiegt in Euro — ein Tag mit großem Vorsprung zählt stark, ein Tag ohne Vorsprung gar
+                nicht. <strong className="text-slate-300">Richtige Entscheidungen</strong> zählen Tage —
+                jeder gleich, egal wie groß der Unterschied war.{" "}
+                <strong className="text-slate-300">Tage mit Vorteil</strong> messen den Markt, nicht die
+                Regel: an wie vielen Tagen der Abend überhaupt billiger war als {anchorLabel}.
+                Hohes Potenzial neben wenigen richtigen Tagen ist deshalb kein Widerspruch — die
+                Ersparnis kommt dann aus wenigen Tagen mit großem Vorsprung.
+              </p>
               {epsScan && (
                 <div className="mt-3">
                   <p className="text-xs font-semibold text-slate-200">Dieselbe Regel, andere Vorsicht</p>
@@ -333,10 +414,10 @@ export function GueteView({
             </div>
           ) : heatmap.data ? (
             <div className="mt-3">
-              <HeatmapGrid heatmap={heatmap.data} />
+              <HeatmapGrid heatmap={heatmap.data} livePhase={livePhase} />
               <ReadingAid
                 headline="Zeilen sind Wochentage, Spalten sind Stunden (06–24)."
-                text="Grün heißt billiger als Vergleichswert, rot teurer. „dünn“ heißt: Zu wenige Preise in dieser Zelle."
+                text="Grün heißt billiger als Vergleichswert, rot teurer. „·“ heißt: zu wenige Preise in dieser Zelle. „dünn“ heißt: Die Vergleichs-Basis dieser Stunde trägt zu wenige Preise für eine Empfehlung."
               />
             </div>
           ) : heatmap.pending ? (

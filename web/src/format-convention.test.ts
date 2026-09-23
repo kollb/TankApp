@@ -67,6 +67,11 @@ const CLEAN = [
   "views/Labor.tsx",
   "system.ts",
   "views/System.tsx",
+  "views/labor/Ueberblick.tsx",
+  "views/labor/Modell.tsx",
+  "views/labor/Guete.tsx",
+  "views/labor/Daten.tsx",
+  "views/labor/components.tsx",
 ];
 
 function read(relativePath: string): string {

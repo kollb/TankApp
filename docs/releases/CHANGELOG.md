@@ -4,6 +4,67 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.69.0] – 2026-09-23
+
+**Labor-Ehrlichkeit: zwei Zähler, zwei MASE, echte Mediane** — die fünf
+offenen Punkte der dritten Befundrunde
+([BEFUND-PARAMETERSCHRANK-R3-2026-09-23](../archiv/BEFUND-PARAMETERSCHRANK-R3-2026-09-23.md#5-umsetzung-0690))
+plus eigene Befunde derselben Prüfung. GUI und Dokumentation; die Engine
+rechnet unverändert.
+
+- **Fensterbilanz (R3 §4.1):** `episodes_used/expired` zählen **Fenster**,
+  `advice.n` zählt **abgerechnete Empfehlungen** — standen als ein Bruch
+  („0 von 1 Fenstern genutzt (4 Empfehlungen)“). `windowsBalance()` liefert
+  je Zähler eine eigene Zeile und einen Beziehungssatz; die Güte rendert
+  drei Aufzählungspunkte statt einer Mischzahl. Muster in
+  [MICROCOPY §4c](../produkt/MICROCOPY.md#4c-bereich-labor-feste-muster).
+- **Zwei MASE, zwei Namen (R3 §4.4):** `MASE_1step` (Eine-Schritt-
+  Validierung des Fits, trägt die Ensemble-Gewichte) und `MASE_24h`
+  (Roll-Backtest auf das 24-h-Fenster, trägt die Güte-Aussage) heißen jetzt
+  überall so — GUI, Glossar und
+  [ANALYSE](../referenz/ANALYSE.md#mase-fehler-gegen-die-naive). Vorher stand
+  auf zwei Karten „MASE“ mit Werten 0,19 und 2,75, was wie ein Widerspruch
+  aussah und keiner war.
+- **`pot_share` gegen `hit_freq` (R3 §4.3):** Die Backtest-Bilanz zeigt drei
+  Verhältnis-Kacheln (`Geholtes Potenzial`, `Richtige Entscheidungen`,
+  `Tage mit Vorteil`) und erklärt darunter die drei Nenner — hohes
+  Potenzial neben wenigen richtigen Tagen ist kein Widerspruch.
+  `labTotals.hitRate` kam dazu; alle Verhältnisse liefern `null` statt 0,
+  wenn keine Tage vorliegen (Gleichlauf mit `app/stats_summary.py`, A8).
+- **Wochenrhythmus (R3 §4.2):** Eine dünne Vergleichs-Basis stand nur als
+  `title` und als Chip an der Zeile. `heatmapThinReference()` sammelt die
+  betroffenen Wochentage, die Warnbox steht jetzt **über** der Matrix mit
+  `n=`, Mindestmaß und dem Satz, dass die „günstigste Stunde“ dort Mechanik
+  ist und keine Empfehlung.
+- **Datenreichweite (R3 §4.5):** „fehlende Tage, kein Datenverlust“ ohne
+  Zahl war zu ungenau. Der Hinweis nennt Bestand, Fenster und die Zahl der
+  fehlenden Tage; die 90-Tage-Regel der Datenumstellung hängt nur an, wenn
+  eine Live-Phase vorliegt.
+- **Echter Median (eigener Befund):** `heatmapDaySummaries`,
+  `dayMedianPoints` und das Tagesmedian in „Jetzt“ nahmen bei gerader
+  Stichprobe den **oberen** der beiden mittleren Werte — jede Median-Anzeige
+  war systematisch einen halben Schritt zu hoch. `medianOf()` ist jetzt die
+  eine Quelle (Mittelwert der beiden mittleren Werte), mit Regressionstests.
+- **System → Modelle:** Die Kachel „Sprungfreie Tage · MASE“ formatierte
+  eine dimensionslose Kennzahl mit `euro()` (0,60 €) und hängte den
+  Kalibrier-Hinweis an eine Metrik, die die Engine bewusst nie
+  veröffentlicht (`mase_sprungfrei` ist immer `null`). Die Kachel sagt jetzt,
+  warum sie leer ist. Im Daten-Tab liefen `PICP95` und `Top3` als Rohwerte;
+  beide gehen über `percentLabel`.
+- **Parameterschrank:** Karte 5 hieß „Diagramm: Gewichte je Horizont“,
+  obwohl der Fit nur globale Gewichte kennt (`not_estimated`); ihr
+  „Für Neugierige“-Text nannte Zahlen aus einem Dump. Karte 6 behauptete
+  `B=2000` und „6 Wochen“, obwohl der Selektions-Payload weder Ziehungszahl
+  noch Fenster trägt — jetzt steht das Fenster aus `DataReach` da und die
+  Ziehungszahl wird als nicht publiziert benannt. Sichtbare Labor-Texte
+  laufen wieder mit Umlauten und „…“-Anführungen; die doppelte
+  Delta-Balken-Lesehilfe ist ein Baustein.
+- **Tests/Ratchets:** Die Microcopy- und Format-Ratchets prüfen jetzt auch
+  die fünf Labor-Views (§7-Auftrag), neue Render-Tests decken
+  Fensterbilanz, Backtest-Kacheln, MASE-Namen, dünne Basis und
+  Reichweiten-Hinweis ab; ein `it` außerhalb seines `describe` in
+  `HeatmapGrid.test.tsx` ist eingerückt.
+
 ## [0.68.1] – 2026-09-23
 
 **Labor-Payload und Demo-Vertrag (Befunde der zweiten Tiefenanalyse,
