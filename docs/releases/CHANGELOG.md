@@ -30,6 +30,13 @@ Demo-Ziehungsvertrag. Befund-Dokument:
   echte Ziehungszahl). Die Beta-Balken skalieren relativ zum größten
   Koeffizienten statt an |β|·10 zu clippen. Unit-Fixtures halten jetzt die
   echte Payload-Form fest.
+- **N1e — Querlauf mit gefülltem Payload (CI-Nachtrag):** Karte 4
+  dumpfte `pava_pool_stats` als umbruchlosen JSON-Block (~930 px),
+  Karte 5 brach `inverse_mase_one_step_validation` nicht um — beides
+  kam erst mit dem gefüllten Payload zum Tragen und fiel nur in der
+  Demo-Browser-Suite (Mobil-Ratchet 320/390 px) auf. Kompakte benannte
+  Summary statt JSON, `overflow-wrap:anywhere` auf Karte 5 und den
+  „Für Neugierige"-Kästen.
 - **N2 — Demo-Vertrag gleichlaufig:** `ops/quality/demo_data.py` baut die
   Zeile über denselben Helfer und rechnet `predict`/`_draws` mit dem
   Betriebsvertrag (`profile_ar2`, gemeinsame Ziehung, Day-Pair) — vorher

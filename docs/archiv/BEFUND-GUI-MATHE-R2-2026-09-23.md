@@ -34,6 +34,7 @@
 | N1c | — | GUI las falsche Schlüssel: `ar_detail.root_modulus`/`stable`, `pit.n`/`pit.status`, `pava_pool_stats.n_pools`/`pooled_steps`, `shared_draws` statt `backtest_shared_draws`, `training_days/points` statt `n_days/points`, „B=2000" festgenagelt; Beta-Balken clippten bei \|β\|·10 | behoben |
 | N1d | — | Unit-Fixtures arretierten die erfundenen Feldformen (`root_modulus: 0.8, stable: true`, `pit: {n, status}`, `n_pools`) | behoben |
 | N2 | mittel | Demo-Stack fuhr mit den Engine-Defaults `predict(kind="harmonic_ar2", shared_draws=False, day_pair=False)` statt dem Betriebsvertrag (`profile_ar2`, gemeinsame Ziehung, Day-Pair) — Draws trugen `shared: false`, der Modellvertrag löste zu „unbekannt" auf | behoben |
+| N1e | mittel | Mit gefülltem Payload meldeten die Mobil-Ratchets (320/390 px, Demo-Suite) Querlauf-Malerei: Karte 4 lies `JSON.stringify(pava_pool_stats)` als ~930 px umbruchlosen JSON-Block rendern, Karte 5 brach `method=inverse_mase_one_step_validation` nicht um. Beide Stellen waren vorher tot (Payload war leer) — die Mock-E2E stubt sie bis heute weg | behoben (kompakte benannte Summary statt JSON; `overflow-wrap:anywhere` auf Karte 5 und den „Für Neugierige"-Kästen) |
 | N3 | niedrig | `README.md` trug weiterhin „App-Version 0.59.1" (neun Versionen hinter `app/version.py` 0.68.0) | behoben |
 
 ## 2. N1 — Labor-Karten ohne Payload (hoch)
@@ -79,6 +80,16 @@ Karte mit `ar_detail: { root_modulus: 0.8, stable: true }`,
 Tests arretierten die erwarteten, nie gelieferten Formen (dieselbe
 Mechanik wie in der Runde-1-Analyse beschrieben: „Tests und E2E-Mocks
 bauen die Fehler ein").
+
+**N1e (nach dem ersten Fix im CI-Lauf gefunden):** Sobald der Payload die
+Felder trägt, rendern zwei Karten an 320/390 px über die eigene Box —
+genau das fingen die Mobil-Ratchets der Demo-Suite
+(`mobile.spec.ts`, „kein Querlauf") ein, während die Mock-E2E sie bis
+heute wegstubbt: Karte 4 dumpfte `JSON.stringify(pava_pool_stats)` als
+umbruchlosen ~930-px-JSON-Block, Karte 5 brach den 34-Zeichen-Token
+`inverse_mase_one_step_validation` nicht um. Fix: kompakte benannte
+Summary statt JSON-Dump und `overflow-wrap:anywhere` auf Karte 5 und den
+„Für Neugierige"-Kästen.
 
 **Fix:** Ein gemeinsamer Helfer `app.model_jobs.model_parameter_fields`
 liest die Modell-Parameter **eine Quelle** aus dem Fit;

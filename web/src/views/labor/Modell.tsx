@@ -318,7 +318,7 @@ export function ModellView({
             <ForTheCurious>
               <p>PAVA: Bei Verletzung steigend statt fallend poole beide zu Mittelwert, iteriere bis monoton fallend. 12-Uhr-Kante bei 12:00 Berlin.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"Segment s=[12:00_d,12:00_d+1) y_hat=PAVA(y) rise frei bei 12:00"}</div>
-              <p>B3: law_floor={f?.law_floor ?? "-"} active={f?.law_floor_active ? "ja" : "nein"} pre_law_excluded={f?.pre_law_points_excluded ?? "-"} rise_outside_noon={f?.law_rise_outside_noon ?? "-"} pava_pool_stats={pavaStats ? JSON.stringify(pavaStats) : "-"}</p>
+              <p>B3: law_floor={f?.law_floor ?? "-"} active={f?.law_floor_active ? "ja" : "nein"} pre_law_excluded={f?.pre_law_points_excluded ?? "-"} rise_outside_noon={f?.law_rise_outside_noon ?? "-"}{pavaStats ? ` pava: Segmente ${pavaStats.law_segments ?? "-"}, Pools ${pavaTotals?.pools ?? "-"}, gepoolte Punkte ${pavaTotals?.pooled_points ?? "-"}` : " pava: -"}</p>
             </ForTheCurious>
           </div>
         </div>
@@ -328,8 +328,12 @@ export function ModellView({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Gewichte je Horizont</p>
+            {/* Befund N1e (23.09.2026, Runde 2): Mit gefülltem Payload stehen
+                hier lange Fach-Token (``inverse_mase_one_step_validation``) —
+                ohne ``overflow-wrap:anywhere`` malen sie über die eigene Box
+                (Mobil-Ratchet, 320/390 px). */}
             {ensemble ? (
-              <div className="mt-2 text-xs text-slate-300">
+              <div className="mt-2 text-xs text-slate-300 [overflow-wrap:anywhere]">
                 <p>method={ensemble.method ?? "-"} n_eval={ensemble.n_eval ?? "-"} window={ensemble.window_days ?? "-"}d</p>
                 <p className="mt-1">Gewichte: {ensemble.weights ? Object.entries(ensemble.weights).map(([k, v]) => `${k}:${deNumber(v as number, 2)}`).join(" ") : "-"}</p>
                 <p className="mt-1">MASE: {ensemble.mase ? Object.entries(ensemble.mase).map(([k, v]) => `${k}:${v == null ? "-" : deNumber(v as number, 3)}`).join(" ") : "-"}</p>

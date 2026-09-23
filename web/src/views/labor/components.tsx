@@ -107,7 +107,11 @@ export function ForTheCurious({ children }: { children: ReactNode }) {
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200">
         Für Neugierige: Methode, Fachwort, Formel
       </summary>
-      <div className="space-y-2 border-t border-slate-800/70 px-3 py-3 text-xs leading-relaxed text-slate-400">
+      {/* [overflow-wrap:anywhere] — die Klappkästen tragen Fach-Token und
+          Formeln (``inverse_mase_one_step_validation``); ohne Umbruchregel
+          malen sie über die eigene Box und reißen den Mobil-Ratchet
+          (Befund N1e, 23.09.2026, Runde 2). */}
+      <div className="space-y-2 border-t border-slate-800/70 px-3 py-3 text-xs leading-relaxed text-slate-400 [overflow-wrap:anywhere]">
         {children}
       </div>
     </details>
