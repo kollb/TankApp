@@ -15,13 +15,12 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
-| [ENGINE.md](../referenz/ENGINE.md) | 0.67.0 |
+| [ENGINE.md](../referenz/ENGINE.md) | 0.70.0 |
 | [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.65.0 |
-| [ADR 0003 (Modell und Freigabe)](../adr/0003-MODELL-UND-FREIGABE.md) | 0.65.0 |
 | [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.64.0 |
-| [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.61.0 |
+| [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.70.0 |
 | [RP2.md](../betrieb/RP2.md) | 0.61.0 |
-| [UI](../produkt/UI.md) | 0.60.0 |
+| [UI](../produkt/UI.md) | 0.70.0 |
 | [BETRIEB.md](../betrieb/BETRIEB.md) | 0.68.0 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.68.0 |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 0.59.1 |
@@ -32,8 +31,8 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
 | [QUALITAET.md](QUALITAET.md) | 0.53.0 |
 | [SPEICHER.md](../betrieb/SPEICHER.md) | 0.66.0 |
-| [PRUEFSTAENDE.md](PRUEFSTAENDE.md) | 0.66.0 |
-| [ANALYSE.md](../referenz/ANALYSE.md) | 0.38.0 |
+| [PRUEFSTAENDE.md](PRUEFSTAENDE.md) | 0.70.0 |
+| [ANALYSE.md](../referenz/ANALYSE.md) | 0.70.0 |
 
 ## Pflege
 

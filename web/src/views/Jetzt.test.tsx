@@ -542,3 +542,22 @@ describe("Jetzt: Fällig-Prompt (O17)", () => {
     expect(html).toContain("disabled");
   });
 });
+
+describe("Jetzt: Preisvergleich trägt die Ansicht (A70, Priorität 1)", () => {
+  it("nennt Titel, Abdeckung und ehrliche Vergleichsgrenze", () => {
+    const html = render({
+      decideRes: {
+        data: decide("no_advice"),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+      stations: [station("aral"), station("shell", { price: null, fresh: false })],
+    });
+    expect(html).toContain("Jetzt günstig tanken");
+    expect(html).toContain("Jetzt am günstigsten: Station aral");
+    expect(html).toContain("Günstigste bekannte Station unter den beobachteten Stationen");
+    expect(html).toContain("1 von 2 eingerichteten Stationen mit frischem Preis");
+  });
+});

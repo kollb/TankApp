@@ -13,6 +13,7 @@
 - [Akzeptanzmargen](#akzeptanzmargen)
 - [Gate-Vergleich](#gate-vergleich)
 - [Aufruf](#aufruf)
+- [Abnahme-Manifest (seit 0.70.0)](#abnahme-manifest-seit-0700)
 - [Grenzen](#grenzen)
 
 ## Zweck
@@ -96,6 +97,19 @@ kann dadurch aufgehen, das Kohorten-Gate bleibt ehrlich gesperrt
 
 Report: `results/replay/report.json` (maschinenlesbar) und `report.md`.
 Exit-Code 2 = mindestens eine Marge NICHT erfüllt.
+
+## Abnahme-Manifest (seit 0.70.0)
+
+Der Prüfbericht (§6.4) verlangt einen fälschungssicheren Abnahmebeleg:
+Jeder Replay-Lauf schreibt `acceptance_manifest` in `report.json` —
+Holdout-Pfad, **SHA-256** und Bytezahl der Holdout-Datei, die Rolle des
+Laufs und einen Frozen-Hinweis (`holdout_sha256`, `holdout_bytes`,
+`role`, `frozen_note`; fehlt die Datei, stehen Hash und Bytes auf
+`null`, nie auf einem erfundenen Wert). **Synthetische Läufe tragen
+explizit keinen Hash und sind kein Abnahmebeleg** — der Manifest-Text
+sagt das im Report plain. Kalibriert ist nur der 24-h-Pfad
+(PIT-Hülle); 72-/168-h-Fenster sind unkalibrierte Szenarioprognosen
+und tragen in der App nie die Kalibrierungs-Sprache (UI.md, Woche).
 
 ## Grenzen
 

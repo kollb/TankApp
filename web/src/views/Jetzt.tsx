@@ -46,10 +46,12 @@ import {
   assumptionHint,
   learningNote,
   nowBestNow,
+  nowCoverage,
   nowDayPanel,
   nowExplanation,
   nowFacts,
   nowFreshness,
+  nowNetBest,
   nowSteps,
   nowVerdict,
   TANK_QUICK,
@@ -282,6 +284,11 @@ export function JetztView(props: JetztViewProps) {
   const steps = nowSteps(input);
   // „Was ist gerade am besten?“ — die Antwort ohne Modell (S0/S1/C).
   const bestNow = nowBestNow(input);
+  // Priorität 1: Abdeckung des beobachteten Sets + Netto-Vergleich für
+  // die Fahrt — die Karte beantwortet „Wo ist es jetzt günstig?“ in
+  // Sekunden, auch solange decision_ready=false bleibt.
+  const coverage = nowCoverage(stations, pricesAt, now);
+  const netBest = nowNetBest(input);
   const learning = learningNote(decide);
   const dayPanel = nowDayPanel(stripCells);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
@@ -675,7 +682,10 @@ export function JetztView(props: JetztViewProps) {
                 />
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+              Jetzt günstig tanken
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
               >
@@ -704,6 +714,19 @@ export function JetztView(props: JetztViewProps) {
                 {euroPerLiter(bestNow.price)}
               </p>
             )}
+            {/* Priorität 1: Abdeckung der beobachteten Stationen — bewusst
+                keine freie Umgebungssuche, also auch kein Marktversprechen
+                (§5c: „Set“ bleibt Betriebssprache und steht hier nicht). */}
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
+              Günstigste bekannte Station unter den beobachteten Stationen
+              {coverage.ageLine ? ` · ${coverage.ageLine}` : ""} ·{" "}
+              {coverage.line}
+            </p>
+            {/* Priorität 1: Netto-Vergleich für die Fahrt — günstigster Preis
+                vs. netto günstigste Wahl vs. nicht sinnvoll vergleichbar. */}
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-300">
+              {netBest.text}
+            </p>
             {/* B4 (Befund UX/Mathe 2026-09-19, §1.4.1): `sentence` ist
                 `null`, wenn die Karte dieselbe Information schon kompakter
                 zeigt (Spanne in der Chip-Zeile, Preis in Headline/Betrag).

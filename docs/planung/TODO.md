@@ -1,11 +1,23 @@
 # Notwendige nächste Schritte
 
-> Stand: 23.09.2026 · App-Version 0.69.0
+> Stand: 24.09.2026 · App-Version 0.70.0
 
 ## Inhaltsverzeichnis
 
 - [A14: Rechts- und Terminbasis klären](#a14-rechts--und-terminbasis-klären)
 - [N1: NAS/Pi-Integrationsfehler beheben](#n1-naspi-integrationsfehler-beheben)
+
+**Statusmodell:** Drei Zustände, keine vierte Liste. **Offen** sind A14 und
+NP2 unten — die einzigen P0-Aufträge dieser Datei. **Zustandsgesperrt** ist
+`decision_ready=false`, seit 0.70.0 dokumentierter Produkt-Blocker, kein
+TODO-Punkt: Der Preisvergleich trägt „Jetzt“, die Sperrung ist in
+`/v1/health` → `decision_availability` messbar, M7-Schnitte landen im Archiv
+`runtime/m7/archive.jsonl`. **Abgeschlossen** ist die Audit-Arbeit A70 aus
+dem Prüfbericht — Vertragsmatrix, Abnahme-Manifest, Lücken-Ablation,
+Verfügbarkeitsmessung — mit
+[Release 0.70.0](../releases/CHANGELOG.md#0700--2026-09-24) umgesetzt.
+Betriebsnachweise, die nur Zeit oder Feldmessung brauchen, stehen in
+[LUECKEN.md](LUECKEN.md#ausstehender-betriebsnachweis), nicht hier.
 
 ### A14: Rechts- und Terminbasis klären
 

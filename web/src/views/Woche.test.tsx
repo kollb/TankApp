@@ -234,3 +234,28 @@ describe("Woche: Zustände", () => {
     expect(html).toContain('role="alert"');
   });
 });
+
+describe("Woche: Kalibrierungsstand (A70, M2)", () => {
+  it("spätere Tage heißen Szenarioprognose, nicht kalibriert", () => {
+    const html = render({
+      decideRes: {
+        data: decide({
+          windows_week: [
+            {
+              start: "2026-09-15T19:00:00+02:00",
+              end: "2026-09-15T21:00:00+02:00",
+              expected_price: 1.709,
+              expected_saving_eur: 2,
+              p: 0.8,
+            },
+          ],
+        }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    expect(html).toContain("Szenarioprognose (unkalibriert)");
+  });
+});

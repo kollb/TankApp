@@ -339,3 +339,32 @@ def test_run_replay_walks_forward_on_production_chain(tmp_path, monkeypatch):
     )
     assert again["overall"] == result["overall"]
     assert again["margins"] == result["margins"]
+
+
+def test_replay_report_manifest_line_trennt_beleg_von_ersatz():
+    """M2: Die Lesefassung nennt Hash oder dessen Fehlen im Klartext."""
+    from app.replay import _manifest_md_line
+
+    missing = _manifest_md_line(None)
+    assert "fehlt" in missing
+    synthetic = _manifest_md_line(
+        {
+            "holdout": None,
+            "sha256": None,
+            "bytes": None,
+            "role": "synthetic",
+            "frozen_note": "Ersatzbestand (synthetic) — kein Abnahmebeweis.",
+        }
+    )
+    assert "kein Hash — kein Abnahmebeweis" in synthetic
+    acceptance = _manifest_md_line(
+        {
+            "holdout": "data/acceptance/holdout.csv",
+            "sha256": "abc123",
+            "bytes": 42,
+            "role": "acceptance",
+            "frozen_note": "Frozen.",
+        }
+    )
+    assert "abc123" in acceptance
+    assert "42 Bytes" in acceptance

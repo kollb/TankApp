@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 23.09.2026 · App-Version **0.69.0** — neu seit 0.68.1: Modell-Parameter
+> Stand: 24.09.2026 · App-Version **0.70.0** — neu seit 0.70.0 (A70): Vertrags-/Regime-Gates, Health-Verfügbarkeit. Neu seit 0.68.1: Modell-Parameter
 > im Forecast-Payload (`beta`, `ar_phi` u. a.). Neu seit 0.68.0 (A21-B5):
 > Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
 > DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis
@@ -388,11 +388,15 @@ Die Kette prüft in Prioritätsreihenfolge: frischer Preis (ein fehlender
 Preis mit `last_price`-Fallback ist `price_stale`, kein Anker ohne
 Nachweis), offene Station, frische Herkunft (`stale_data_at_origin`), ein
 gültiges Modell (`origin` höchstens 24 h alt, mindestens ein
-Zukunfts-Punkt), die Pfade (fehlende Draws/Minima → `paths_missing`,
-nicht-numerische/NaN/Inf → `paths_invalid`), die veröffentlichte Güte
-(`rolling_picp_7d` mit ≥ 3 Tagen; rotes Badge → `quality_gate`) und als
-Letztes M7 (`m7_pending`). Ohne Prognosepunkte zählt allein
-`forecast_missing`. Die Antwort trägt dazu:
+Zukunfts-Punkt), den Modellvertrag (nicht freigegebener Pfad →
+`model_not_released`, z. B. `ensemble`/`harmonic_ar2`; normative Matrix
+in `app/model_contracts.py`, nur `profile_ar2` mit `decision_release`),
+die 12-Uhr-Regime-Prüfung (≥ 10 auffällige Stationen →
+`regime_check_pending`), die Pfade (fehlende Draws/Minima →
+`paths_missing`, nicht-numerische/NaN/Inf → `paths_invalid`), die
+veröffentlichte Güte (`rolling_picp_7d` mit ≥ 3 Tagen; rotes Badge →
+`quality_gate`) und als Letztes M7 (`m7_pending`). Ohne Prognosepunkte
+zählt allein `forecast_missing`. Die Antwort trägt dazu:
 
 | Feld | Bedeutung |
 |---|---|
@@ -945,7 +949,15 @@ Antwort:
     "models": {"state": "success", "last_success_at": "...", "next_run_at": "...", "data_watermark": "1757584800", "triggers": 12, "last_trigger_skip": "debounced"},
     "selection": {"state": "success", ...}
   },
-  "models": {"published_at": "...", "count": 20, "calibrated": false, "decision_ready": false},
+  "models": {"published_at": "...", "count": 20, "calibrated": false, "decision_ready": false,
+             "contracts": {"productive": {"model_kind": "profile_ar2", "shared_draws": true, "day_pair": true},
+                           "contracts": {"profile_ar2": {"status": "productive", "decision_release": true},
+                                         "harmonic_ar2": {"status": "research", "decision_release": false},
+                                         "ensemble": {"status": "holdout", "decision_release": false}}},
+             "data_quality": {"stations_total": 20, "stations_voll": 18, "stations_lueckig": 1, "stations_duenn": 1, "weak_share": 0.1},
+             "regime_monitor": {"status": "ok", "stations_affected": 0}},
+  "decision_availability": {"count": 500, "ready_count": 0, "ready_share": 0.0, "m7_blocked_share": 0.86, "technical_blocked_share": 0.14,
+                            "by_reason": {"m7_pending": 430}},
   "publication": {"bytes": 13500000, "index_bytes": 4200, "file_count": 20,
                   "largest_file_bytes": 720000,
                   "budget_bytes": 6000000, "max_bytes": 10000000,
@@ -1026,6 +1038,20 @@ zugeschrieben), `requests` (Zähler über die Prozesslebenszeit) und `spans`
 (die erlaubten `Server-Timing`-Namen). Kein Monitoring, kein Alarm — die
 Frage, die der Block beantwortet, ist „warum hängt das gerade?", auf dem Gerät,
 auf dem es hängt.
+
+**`models.contracts` / `models.data_quality` / `models.regime_monitor` /
+`decision_availability`** (A70, seit 0.70.0): Der Prüfbericht stuft
+`decision_ready=false` als Produkt-Blocker ein — diese Felder machen die
+Sperre messbar. `contracts` spiegelt die normative Vertragsmatrix
+(`app/model_contracts.py`): den Produktivvertrag und je Pfad Status und
+`decision_release`. `data_quality` zählt die Veröffentlichung nach
+`voll`/`lueckig`/`duenn` und nennt `weak_share` (lückig+dünn durch alle).
+`regime_monitor` meldet `ok`/`warn`/`blocked` mit der Zahl betroffener
+Stationen (12-Uhr-Regel). `decision_availability` zählt über die letzten
+**500** `/v1/decide`-Antworten: `ready_share` sowie die Trennung
+`m7_blocked_share` (M7-Sperre) vs. `technical_blocked_share` (Technik)
+und `by_reason` (Sperrhäufigkeiten). Leeres Fenster: Anteile `null`,
+keine erfundene Null.
 
 **`alarms[]`** (B4): Aggregation der vorhandenen Prüfungen, **ohne** neue Netz-
 oder InfluxDB-Zugriffe (das 3–5-s-Budget des Docker-Healthchecks bleibt). Jeder
@@ -1306,7 +1332,7 @@ leer. Definitionen:
 | `pit` | Backtest | PIT-Histogramme **dieser Station** je Horizont (`24h`/`72h`/`168h`), `all` und `break_free`: `n`, `histogram` (40 Klassen), `coverage[q]`, `interval_95`, `mean`. |
 | `regime_breaks_in_window` | Backtest | Deklarierte Regime-Kanten: `declared`, `in_window`, `count`, `folds_spanning`, `points_spanning`, `metrics_break_free`, Politik `flagged_not_excluded`. |
 | `ar_shrink` | Backtest | Stauchungen über alle Folds: `folds_shrunk`, `shrink_events_total`, `folds_state_reset`, `fallbacks`. |
-| `backtest_model_kind`, `backtest_shared_draws` | Backtest | **Was der Backtest gemessen hat** (`harmonic_ar2`, unabhängige Ziehung — Stand vor 0.56.0). Das bestehende `model_kind` bleibt das **veröffentlichte** Modell (`ensemble`). Beide nebeneinander, weil sie heute nicht übereinstimmen ([LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis)). |
+| `backtest_model_kind`, `backtest_shared_draws` | Backtest | **Was der Backtest gemessen hat** (`harmonic_ar2`, unabhängige Ziehung — Stand vor 0.56.0). Das bestehende `model_kind` ist das **veröffentlichte** Modell; normativ trägt seit 0.70.0 nur `profile_ar2` die Entscheidungsfreigabe, `harmonic_ar2`/`ensemble` sind Forschungs- und Vergleichspfade ohne `decision_release` ([LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis), Vertragsmatrix `app/model_contracts.py`). |
 | `ensemble.weight_spread` | Fit | Streuung der Ensemble-Gewichte je 288-Slot-Block des Validierungsfensters (`std`, `range`, `blocks_favouring`); `ensemble.weights` unverändert. |
 | `calibration` / `calibrated` | B2-Modell | Validierte, **aktuell auf 24-h-Pfade angewandte** PIT-Hülle bzw. ihr boolescher Zustand. `calibrated` hier ist technische Pfadkalibrierung, nicht M7/`decision_ready`; weitere Horizonte bleiben roh, bis sie einen eigenen zeitlich validierten Kandidaten haben. Schema-2-/Alt-Publikationen bleiben `false`. |
 | `calibration_candidate` | B2-Backtest | Kandidat für den **nächsten** Lauf, einschließlich Herkunft (`model_kind`, `shared_draws`) und `24h.validation`: rohe/kalibrierte Quantilabdeckung sowie PICP95-Holdout-Gate. Ein Status `accepted` ist noch keine Anwendung im selben Lauf. |

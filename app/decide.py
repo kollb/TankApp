@@ -134,7 +134,8 @@ def _is_price_fresh(station: dict[str, Any], threshold_minutes: float) -> bool:
 # **historisches** M7-Gate ersetzt keine aktuelle Evidenz: Eine prädiktive
 # Handlung wird nur freigegeben, wenn die gesamte Kette trägt —
 #   frisch (Preis) → Station nutzbar → Prognose/Horizont → Herkunft →
-#   Pfade → statistisches Gate → zulässige Handlung (M7).
+#   Pfade → statistisches Gate → Modellvertrag → Regime → zulässige
+#   Handlung (M7).
 # Die Codes sind der API-/UI-Vertrag (``blocking_reasons``), stabil und
 # maschinenlesbar; die Tupelreihenfolge ist die Priorität, in der der erste
 # Sperrgrund ``reason_short`` trägt. Bewusst **kein** Kriterium: „PIT
@@ -152,6 +153,8 @@ ACTION_BLOCKING_REASONS = (
     "paths_invalid",
     "quality_missing",
     "quality_gate",
+    "model_not_released",
+    "regime_check_pending",
     "m7_pending",
     "tank_full",
     "what_if_only",
@@ -193,6 +196,15 @@ _BLOCK_REASON_TEXT = {
     "quality_gate": (
         "Keine klare Empfehlung — Prognose derzeit unsicher "
         "(7-Tage-Intervallquote außerhalb Toleranz). Tank nach Bedarf."
+    ),
+    "model_not_released": (
+        "Dieses Modell ist nicht für Empfehlungen freigegeben — nur der "
+        "produktive Vertrag (profile_ar2, gemeinsame Ziehung, Day-Pair) "
+        "trägt eine Handlung. Die Preise bleiben vergleichbar."
+    ),
+    "regime_check_pending": (
+        "Gehäufte Preisanstiege außerhalb der 12-Uhr-Regel — der "
+        "Regimezustand wird geprüft, bis dahin keine Empfehlung."
     ),
     "m7_pending": (
         "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
@@ -314,6 +326,28 @@ def _action_blocking_reasons(
             found.add("quality_missing")
         elif badge == "red":
             found.add("quality_gate")
+    # 7 — Modellvertrag (M1/Priorität 7): Nur der produktive Vertrag
+    # (profile_ar2, gemeinsame Ziehung, Day-Pair) trägt eine Empfehlung.
+    # Ensemble ist deaktiviert (keine Pfadparität), harmonic_ar2 ist
+    # experimentell; Alt-Artefakte ohne Vertragsfeld öffnen nichts
+    # rückwirkend (A21-B5.1).
+    try:
+        from .model_contracts import is_forecast_released
+
+        if not is_forecast_released(forecast_data):
+            found.add("model_not_released")
+    except Exception:
+        found.add("model_not_released")
+    # 8 — Regime (Priorität 6.4): Gehäufte 12-Uhr-Verletzungen an dieser
+    # Station sperren deren Empfehlung, bis der Regimezustand bestätigt
+    # ist. Die globale Häufung wertet der Betrieb über Health/Alarm aus.
+    try:
+        from .regime_monitor import station_blocked
+
+        if station_blocked(forecast_data):
+            found.add("regime_check_pending")
+    except Exception:
+        pass
     return [r for r in ACTION_BLOCKING_REASONS if r in found]
 
 
@@ -1830,6 +1864,22 @@ def evaluate_decide(
         "regime_scenario_pending": gate_context.get("_scenario_pending"),
         "benefit_contract": benefit_contract,
     }
+
+    # M5: Verfügbarkeit der Entscheidung zählen (rollierendes Fenster) —
+    # Anteil ready, Sperrgründe, M7- vs. Technik-Anteil. Nie ein Fehlerpfad:
+    # Die Messung darf die Antwort nicht kippen.
+    try:
+        from .decision_metrics import observe_decision
+
+        observe_decision(
+            decision_ready=decision_ready,
+            blocking_reasons=blocking_reasons,
+            station_id=station_id,
+            fuel=fuel,
+            at=clock_now,
+        )
+    except Exception:
+        pass
 
     # A21-B2.1: Snapshot-Log/Sperre als eigener Span — er wartet auf die
     # Store-Sperre und darf nicht als Rechenzeit der Entscheidung gelesen

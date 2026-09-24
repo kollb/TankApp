@@ -442,6 +442,10 @@ def test_decline_reason_visible_before_m7_but_recommendation_muted(b4_settings):
                         "station_id": UID,
                         "city": "Frankfurt",
                         "fuel": "e10",
+                        # A70: Die Evidenzkette prüft seit 0.70.0 den
+                        # Modellvertrag — ohne produktiven Kern trüge dieser
+                        # Fall `model_not_released` statt „nur M7 sperrt“.
+                        "model_kind": "profile_ar2",
                         "origin": NOW.isoformat(),
                         "rolling_picp_7d": {
                             "current": {

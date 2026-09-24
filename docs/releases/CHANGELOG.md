@@ -4,6 +4,46 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.70.0] – 2026-09-24
+
+**Audit-Umsetzung: Sperrung messbar, Verträge eindeutig, Preisvergleich trägt
+„Jetzt“** — die Prüfbericht-Punkte §6.2 (A5/M7-Blocker), §6.3 (M1-Vertrag),
+§6.4 (M2-Kalibrierung/Replay), §6.5 (M3-Missingness), §7.2 (M5-Verfügbarkeit),
+§8.1 (N1-Statusmodell) und die Prioritäten 1/5/6/7. Die Engine rechnet
+unverändert; neu sind Freigabelogik, Messung, GUI-Ehrlichkeit und Doku.
+
+- **M1-Vertragsmatrix:** `app/model_contracts.py` ist normativ —
+  `decision_release=true` nur für `profile_ar2` (gemeinsame Ziehung,
+  Day-Pair); `harmonic_ar2`/`ensemble` sind Forschungs-/Holdout-Pfade und
+  sperren mit `model_not_released`. Doku-Widerspruch ANALYSE/API gegen ENGINE
+  behoben ([ENGINE](../referenz/ENGINE.md#modell-vertragsmatrix-m1-seit-0700)).
+- **A5/M7-Blocker:** Jeder M7-Gate-Schnitt hängt ans Archiv
+  `runtime/m7/archive.jsonl` (Kohorte, Brier, Quote, Referenzen,
+  Verlässlichkeit, Ausschlüsse; Mindest-n 100). `decision_ready=false` ist
+  dokumentierter Produkt-Blocker — kein Technik-Detail.
+- **M5-Verfügbarkeit:** `app/decision_metrics.py` zählt 500 Antworten
+  (Ready-Anteil, Sperrhäufigkeiten, M7- vs. Technik-Trennung);
+  `/v1/health` trägt `decision_availability`, `models.contracts`,
+  `models.data_quality`, `models.regime_monitor`
+  ([API](../referenz/API.md#health)).
+- **M2-Replay/Kalibrierung:** `run_replay.py` schreibt `acceptance_manifest`
+  (Holdout-SHA-256, Rolle, Frozen-Hinweis; synthetisch ohne Hash, kein
+  Abnahmebeleg). Woche etikettiert jeden Tag (`24-h-Fenster
+  (PIT-kalibriert)` nur heute, danach `Szenarioprognose (unkalibriert)`).
+- **M3-Missingness:** Ablation mit `--seeds` und `--gap-pattern-from`
+  (`real_gaps` aus echten Lücken); Publikation trägt `data_quality`
+  (voll/lückig/dünn, `THIN_TRAIN_DAYS = 35`, `weak_share`).
+- **Regime-Monitor:** 12-Uhr-Häufung ok/warn/blocked (Schwellen 2/5/10),
+  Sperrcode `regime_check_pending` in der Kette vor M7.
+- **„Jetzt“ trägt der Preisvergleich (Priorität 1):** Graue Karte mit Titel
+  `Jetzt günstig tanken`, Abdeckung (`<n> von <m> eingerichteten Stationen
+  mit frischem Preis`), Netto-Zeile für die Fahrt und ehrlicher Grenze
+  (`Günstigste bekannte Station unter den beobachteten Stationen`);
+  Headline `Jetzt am günstigsten: <Station>` bleibt.
+- **N1-Statusmodell:** TODO kennt offen/zustandsgesperrt/abgeschlossen
+  (A14/NP2 bleiben die einzigen P0-Punkte); Prüfstände für ENGINE, ADR 0003,
+  MICROCOPY, UI, ANALYSE auf 0.70.0.
+
 ## [0.69.0] – 2026-09-23
 
 **Labor-Ehrlichkeit: zwei Zähler, zwei MASE, echte Mediane** — die fünf

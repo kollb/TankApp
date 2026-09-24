@@ -245,7 +245,30 @@ export type Health = {
     /** B2: alle publizierten Pfade tragen eine aktive PIT-Kalibrierung. */
     calibrated: boolean;
     decision_ready: boolean;
+    /** A70 (M1): normative Vertragsmatrix (app/model_contracts.py). */
+    contracts?: {
+      productive?: { model_kind?: string; shared_draws?: boolean; day_pair?: boolean };
+      contracts?: Record<string, { status?: string; decision_release?: boolean }>;
+    } | null;
+    /** A70 (M3): Exposition der Veröffentlichung (lückig/dünn-Anteil). */
+    data_quality?: {
+      stations_total?: number;
+      stations_voll?: number;
+      stations_lueckig?: number;
+      stations_duenn?: number;
+      weak_share?: number | null;
+    } | null;
+    /** A70 (Priorität 6.4): 12-Uhr-Regime-Monitor. */
+    regime_monitor?: { status?: string; stations_affected?: number } | null;
   };
+  /** A70 (M5): Verfügbarkeit der Entscheidung (rollierendes Fenster). */
+  decision_availability?: {
+    count?: number;
+    ready_count?: number;
+    ready_share?: number | null;
+    m7_blocked_share?: number | null;
+    technical_blocked_share?: number | null;
+  } | null;
   selection?: {
     published_at: string | null;
     count: number;
@@ -911,11 +934,12 @@ export type DecideResult = {
   calibrated: boolean;
   decision_ready: boolean;
   /**
-   * A21-B1.4: maschinenlesbare Sperrgründe der Freigabekette (stabile
+   * A21-B1.4/A70: maschinenlesbare Sperrgründe der Freigabekette (stabile
    * Codes: `price_missing`, `price_stale`, `station_unusable`, `data_stale`,
    * `forecast_missing`, `forecast_expired`, `origin_unknown`,
    * `paths_missing`, `paths_invalid`, `quality_missing`, `quality_gate`,
-   * `m7_pending`). Leer genau dann, wenn `decision_ready` wahr ist.
+   * `model_not_released`, `regime_check_pending`, `m7_pending`).
+   * Leer genau dann, wenn `decision_ready` wahr ist.
    */
   blocking_reasons?: string[];
   /**
