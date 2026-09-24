@@ -2,6 +2,12 @@ name: TankApp checks
 on: [push, pull_request]
 permissions:
   contents: read
+# Ein neuerer Push ersetzt den Lauf seines Vorgängers: Die Suite ist teuer
+# (Matrix + Suite im Bild), und es zählt nur der neueste Stand. Überholte
+# Läufe abzubrechen spart Runner-Minuten, ohne dass Deckung verloren geht.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   engine:
     runs-on: ubuntu-latest
@@ -28,7 +34,11 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m ruff check app tankapp.py data-tools/polling_plan.py data-tools/collect_prices.py engine data-tools/export_influx.py data-tools/upload_influx.py tests
       - run: python -m ruff format --check app tankapp.py data-tools/polling_plan.py engine data-tools/export_influx.py tests
-      - run: python -m pytest -q
+      # -n 2: Standard-Runner haben zwei Kerne; pytest-xdist kommt aus
+      # requirements-dev.txt. Gemessen (2 Kerne): seriell ~7 min, parallel
+      # ~4 min. Die Suite ist xdist-fest: Prozess-globale Zustände setzt
+      # conftest.py je Test zurück, jeder Worker ist ein eigener Prozess.
+      - run: python -m pytest -q -n 2
         env:
           OPENBLAS_NUM_THREADS: '1'
 
@@ -121,7 +131,7 @@ jobs:
           docker run --rm --user 0 -v "$PWD:/src" -w /src \
             -e TANKAPP_DATA_DIR=/tmp/tankapp-image \
             tankapp-web:check sh -c \
-            "python -VV && python -c 'import numpy, pandas; print(\"numpy\", numpy.__version__, \"pandas\", pandas.__version__)' && python -m pip install --no-cache-dir -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider" \
+            "python -VV && python -c 'import numpy, pandas; print(\"numpy\", numpy.__version__, \"pandas\", pandas.__version__)' && python -m pip install --no-cache-dir -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider -n 2" \
             2>&1 | tee /tmp/suite-im-bild.log
           status=${PIPESTATUS[0]}
           set -e

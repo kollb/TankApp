@@ -7,11 +7,16 @@ Vor jedem Commit den kompletten CI-Spiegel aus `.github/workflows/tests.yml` lok
 ```
 python -m ruff check app tankapp.py data-tools/polling_plan.py data-tools/collect_prices.py engine data-tools/export_influx.py data-tools/upload_influx.py tests
 python -m ruff format --check app tankapp.py data-tools/polling_plan.py engine data-tools/export_influx.py tests
-python -m pytest -q
+python -m pytest -q -n auto
 npm --prefix web test && npm --prefix web run build
 npm --prefix web run test:e2e
 npm --prefix web run test:e2e:demo   # braucht python -m pip install -r requirements-dev.txt
 ```
+
+`pytest -n auto` fährt die Suite parallel über die Kerne der Maschine
+(pytest-xdist kommt aus `requirements-dev.txt`); die CI pinnt `-n 2` auf die
+zwei Kerne der Standard-Runner. Ohne `-n` bleibt alles ebenfalls grün — nur
+langsamer.
 
 **Die Browser-Suite gehört dazu.** `web`-Job der CI führt `npm --prefix web
 run test:e2e` aus (Playwright, Desktop 1440 px + Mobil 390 px); wer sie lokal

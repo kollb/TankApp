@@ -206,6 +206,16 @@ def test_keepalive_pause_ist_idle_span_und_keine_bearbeitungszeit(server):
     # Und die Statistik sieht dieselbe Zahl: kein Ausreißer über der Pause.
     # (``slowest_route``/``by_route`` nennen erst ab ``MIN_SAMPLES_PER_ROUTE``
     # Antworten je Route einen p95 — bei zwei Anfragen wäre das Rauschen.)
+    # ``observe()`` läuft im Handler-Thread nach der Antwort: unter Last
+    # (z. B. parallele Suite via pytest-xdist) kann die Buchhaltung noch
+    # fehlen, während der Client schon prüft — kurz einwirken lassen wie
+    # beim Status/Send-Test unten; die Gleichheiten bleiben hart.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        summary = metrics.summary()
+        if summary["requests"] >= 2:
+            break
+        time.sleep(0.02)
     summary = metrics.summary()
     assert summary["requests"] == 2
     assert summary["max_ms"] < pause_s * 1000 / 2

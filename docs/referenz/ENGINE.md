@@ -273,7 +273,7 @@ nicht mit `--break-system-packages` erzwingen; das verwendete Python prüfen.
 ## 2. Optionale Softwaretests (ohne Daten / Schlüssel / NAS)
 
 ```powershell
-py -3 -m pytest -q
+py -3 -m pytest -q -n auto
 py -3 -m ruff check engine data-tools/export_influx.py tests
 py -3 -m ruff format --check engine data-tools/export_influx.py tests
 ```
