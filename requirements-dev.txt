@@ -1,3 +1,6 @@
 -r app/requirements.txt
 pytest>=9.1.1,<10
+# CI und lokaler Spiegel fahren die Suite parallel (-n 2 in tests.yml,
+# lokal -n auto): seriell dauern die ~1550 Tests auf zwei Kernen ~7 min.
+pytest-xdist>=3.6,<4
 ruff>=0.16.8,<1

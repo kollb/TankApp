@@ -25,6 +25,7 @@ DOCKERFILE = ROOT / "ops" / "nas" / "app" / "Dockerfile"
 TESTS_YML = ROOT / ".github" / "workflows" / "tests.yml"
 QUALITY_YML = ROOT / ".github" / "workflows" / "quality.yml"
 PACKAGE_JSON = ROOT / "web" / "package.json"
+PY311_SUITE = ROOT / "tests" / "o27_py311_suite.txt"
 
 
 def _image_line(arg: str) -> str:
@@ -155,6 +156,68 @@ def test_zeitzonen_datenstand_kommt_aus_dem_paket():
 def test_bild_und_pipeline_verweisen_auf_den_ratchet(path):
     """Wer die Zahl ändert, stolpert über den Hinweis auf diese Datei."""
     assert "test_o27_build_parity" in path.read_text(encoding="utf-8")
+
+
+_COLLECTOR_IMPORT = re.compile(r"^\s*(?:from|import)\s+engine\b", re.MULTILINE)
+
+
+def _collector_test_files() -> set[str]:
+    """Testmodule der Pi-Linie: Was läuft dort, muss auf 3.11 grün sein.
+
+    Regel: ``engine``-Import, ``data_tools_shim``-Nutzung (data-tools-
+    Skripte) oder Laden von ``rp2/``-Code. Das ist genau das, was Pi und
+    NAS-Engine ausführen — der App-/GUI-Stack des NAS-Bildes gehört nicht
+    dazu; er läuft ausschließlich auf 3.12 (Bild-Linie).
+    """
+    hits = set()
+    for path in sorted((ROOT / "tests").glob("test_*.py")):
+        if path.name == Path(__file__).name:
+            continue  # dieser Ratchet zitiert die Regel-Wörter selbst
+        text = path.read_text(encoding="utf-8")
+        if (
+            _COLLECTOR_IMPORT.search(text)
+            or "data_tools_shim" in text
+            or '"rp2"' in text
+        ):
+            hits.add(f"tests/{path.name}")
+    return hits
+
+
+def test_py311_teilmenge_deckt_collector_pfade_ab():
+    """Batch-Check: Die 3.11-Liste ist deckungsgleich mit der Pi-Fläche.
+
+    Neue Collector-Tests gehören in die Liste (sonst Prüflücke auf dem
+    Pi); Tests ohne Collector-Bezug gehören heraus (sonst totes Gewicht,
+    das die Minuten zurückbringt, die diese Aufteilung einspart).
+    """
+    listed = {
+        line.strip()
+        for line in PY311_SUITE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    expected = _collector_test_files()
+    missing = sorted(expected - listed)
+    extra = sorted(listed - expected)
+    assert not missing, (
+        f"Das 3.11-Bein verliert Collector-Tests: {missing} — nach "
+        f"tests/{PY311_SUITE.name} eintragen"
+    )
+    assert not extra, (
+        f"Das 3.11-Bein listet Tests ohne engine/data-tools/rp2-Bezug: {extra}"
+    )
+
+
+def test_pipeline_teilt_die_suite_nach_interpreter():
+    """Batch-Check: komplette Suite auf 3.12, Teilmenge auf 3.11."""
+    text = TESTS_YML.read_text(encoding="utf-8")
+    job = text[text.index("  engine:") : text.index("  web:")]
+    assert re.search(r"if:\s*matrix\.python-version == '3\.12'", job), (
+        "die komplette Suite ist nicht an das 3.12-Bein gebunden"
+    )
+    assert re.search(r"if:\s*matrix\.python-version == '3\.11'", job), (
+        "die Collector-Teilmenge ist nicht an das 3.11-Bein gebunden"
+    )
+    assert PY311_SUITE.name in job, "das 3.11-Bein nennt die Liste nicht"
 
 
 def test_check_bild_nennt_seinen_commit():
