@@ -87,6 +87,19 @@ def workspace_settings(workdir: Path, dataset: pd.DataFrame, *, fuel: str) -> Se
     )
 
 
+def _sha256_of(path: Path) -> dict[str, object]:
+    """Prüfsumme + Größe einer Datei (Akzeptanzmanifest, M2)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    size = 0
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return {"sha256": digest.hexdigest(), "bytes": size}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[2])
     source = parser.add_mutually_exclusive_group(required=True)
@@ -159,6 +172,31 @@ def main(argv: list[str] | None = None) -> int:
     )
     result["acceptance_margins"] = REPLAY_ACCEPTANCE
     result["timezone"] = BERLIN
+    # M2: Das Akzeptanzmanifest belegt, welches äußere Set unverändert in
+    # den Freigabelauf ging (Pfad, SHA-256, Bytes). Ersatzbestand trägt
+    # keinen Manifest-Hash — er ist Regression, kein Abnahmebeweis.
+    if args.holdout:
+        try:
+            checksum = _sha256_of(args.holdout)
+        except OSError:
+            checksum = {"sha256": None, "bytes": None}
+        result["acceptance_manifest"] = {
+            "holdout": str(args.holdout),
+            **checksum,
+            "role": role,
+            "frozen_note": (
+                "Akzeptanzbestand ist zeitlich unangetastet und wird "
+                "einmalig für den Freigabelauf verwendet."
+            ),
+        }
+    else:
+        result["acceptance_manifest"] = {
+            "holdout": None,
+            "sha256": None,
+            "bytes": None,
+            "role": role,
+            "frozen_note": "Ersatzbestand (synthetic) — kein Abnahmebeweis.",
+        }
     json_path, md_path = write_replay_report(result, args.out)
     ok = result["margins"]["ok"]
     print(

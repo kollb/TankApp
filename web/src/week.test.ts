@@ -345,3 +345,12 @@ describe("weekLine / weekTankLine", () => {
     );
   });
 });
+
+describe("M2: Kalibrierungsstand je Tag (A70)", () => {
+  it("nur Tag 0 ist 24-h-Fenster, Rest ist Szenarioprognose", async () => {
+    const { weekCalibrationNote } = await import("./week");
+    expect(weekCalibrationNote(0)).toContain("24-h-Fenster");
+    expect(weekCalibrationNote(1)).toBe("Szenarioprognose (unkalibriert)");
+    expect(weekCalibrationNote(6)).toBe("Szenarioprognose (unkalibriert)");
+  });
+});

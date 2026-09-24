@@ -10,6 +10,7 @@
 - [Policies](#policies)
 - [Aktivierungsbedingungen](#aktivierungsbedingungen)
 - [Ablation](#ablation)
+- [Lücken-Ablation (seit 0.70.0)](#lücken-ablation-seit-0700)
 - [Grenzen](#grenzen)
 
 ## Problem
@@ -92,6 +93,23 @@ Referenztreue unter allen vier Mustern nahe dem clean-Lauf (MAE q50 ≤ 0,002 ct
 `coherent_block` kollabiert unter isolierten/systematischen Lücken (PICP → 0);
 `no_release` greift zusätzlich zu `supported` erst unter der 50-%-Schwelle.
 **Kein Policy-Wechsel gerechtfertigt** — Default bleibt.
+
+## Lücken-Ablation (seit 0.70.0)
+
+Der Prüfbericht (§6.5) verlangt echte Lückenmuster und die Veröffentlichung
+der Datenqualität:
+
+- **Echte Muster:** `--gap-pattern-from gaps.csv` (Spalten `day,slot`)
+  ergänzt das Muster `real_gaps` — Lücken aus Betriebsdaten statt aus dem
+  Zufallsgenerator. `--seeds 7,8` fährt mehrere Seeds in einem Lauf
+  (Seed-Spalte im Report). Ohne Muster bleibt der Report 15-zeilig
+  (Kompat-Beleg `tests/test_a21_b5_missingness.py` bleibt gültig).
+- **Veröffentlichte Qualität:** Jede Publikation trägt `data_quality`
+  (`app/data_quality.py`): je Station `voll`/`lueckig`/`duenn`,
+  `THIN_TRAIN_DAYS = 35` (unter 35 von 42 Trainingstagen = dünn), dazu
+  `weak_share` (Anteil lückig+dünn) in `/v1/health` unter
+  `models.data_quality`. Die Hampel-Ablation bleibt Messung, keine
+  Modellkomplexität (Priorität 6).
 
 ## Grenzen
 

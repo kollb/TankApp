@@ -4,7 +4,7 @@ TankApp beantwortet mit echten Tankstellenpreisen drei Fragen: **Jetzt oder
 warten? Hier oder woanders? Heute oder später?** Preisbeobachtung,
 Modellprognose und persönliche Tankbilanz bleiben dabei getrennt.
 
-> Stand: 23.09.2026 · App-Version **0.69.0**
+> Stand: 24.09.2026 · App-Version **0.70.0**
 > [Dokumentation](docs/README.md) · [Offene Aufgaben](docs/planung/TODO.md) ·
 > [Release-Historie](docs/releases/CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md)
 
@@ -41,12 +41,14 @@ sie als Studio-Gruppe erreichbar. Details: [UI](docs/produkt/UI.md).
 Der Modell-Default ist `profile_ar2` mit gemeinsamer Bootstrap-Ziehung und
 Day-Pair-Blöcken. Eine technische PIT-Rekalibrierung ist nur für 24 Stunden
 vorgesehen. **Sie ist keine Produktfreigabe:** Empfehlungen brauchen zusätzlich
-das M7-Ledger-Gate und die Freigabekette (A21-B1.4) — frische Preise,
-gültiger Prognosezeitraum, vollständige Pfade, veröffentlichte Güte. Ohne
-die erforderliche Evidenz bleibt `decision_ready=false`; aktuelle Preise und
-Sperrgründe (`blocking_reasons`) können trotzdem angezeigt werden. Eine
-freigegebene Handlung ist befristet (`valid_until`). Ein Softwaretest ist
-weder ein Nachweis für Modellgüte noch eine Geräteabnahme.
+das M7-Ledger-Gate und die Freigabekette (A21-B1.4, A70) — frische Preise,
+gültiger Prognosezeitraum, produktiver Modellvertrag, Regime-Prüfung,
+vollständige Pfade, veröffentlichte Güte. Ohne die erforderliche Evidenz
+bleibt `decision_ready=false` — dokumentierter Produkt-Blocker, messbar in
+`/v1/health`; aktuelle Preise und Sperrgründe (`blocking_reasons`) können
+trotzdem angezeigt werden. Eine freigegebene Handlung ist befristet
+(`valid_until`). Ein Softwaretest ist weder ein Nachweis für Modellgüte
+noch eine Geräteabnahme.
 
 ## Repository
 

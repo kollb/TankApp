@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 23.09.2026 · App-Version 0.69.0
+> Stand: 24.09.2026 · App-Version 0.70.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -22,7 +22,7 @@
 | Labor | Vier Sub-Tabs, acht Parameterkarten, Beta-Intervall, CSV/API-Rohdatenraum; Layout-Regressionsschutz für lange Bezeichner bei 320/390 px | [UI](../produkt/UI.md#labor-unterbereiche) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 | [Befund](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md#3-mathematische-modelle-und-performance) |
-| Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
+| Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt „Jetzt“, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik | [API](../referenz/API.md) |
 | Mengen-/Nutzenvertrag | Physische freie Menge, explizites What-if, benanntes Medianpotenzial, ausführbare Strategie und Oracle-Untergrenze getrennt; historische Belege bleiben unverändert | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
@@ -119,7 +119,7 @@ Qualitätsregel erzeugt ohne Parameteränderung keine zusätzliche Aufgabe.
 | Modellgüte | Vergleich auf echtem Bestand je Station/Horizont, einschließlich alternativer Kerne; keine neue Abnahme durch diese Dokuänderung |
 | A21-B5.3 Replay-Freigabe | Der Walk-forward-/Replay-Harness misst Produktionsketten-Ausgänge gegen vorab festgelegte Margen; der Ersatzbestand (Rolle synthetic) ist Regression, **kein** Abnahmebeweis. Offen: einmaliger Freigabelauf mit äußerem, zeitlich unangetastetem Abnahmeset (Rolle acceptance) — bis dahin sind alle Replay-Zahlen Entwicklungsstand |
 | A21-B5.4 NAS/Pi-Betriebsabnahme | **Blocker: fehlender Zugang ist ein Blocker, kein erfolgreicher Test.** Messrezept/Tooling liegen vor (`docs/betrieb/BETRIEBSABNAHME.md`, `data-tools/ops_acceptance.py`); gemessen ist nichts — weder p95 ≤ 300 ms LAN noch Pollkadenz noch RPO/RTO. Der Audit-Befund Overview p95 2,00 s bleibt die einzige bekannte Messung |
-| A21-B5.2 Missingness | Die Ablation ist reproduzierbar, aber synthetisch (Einzelrealisierung, PICP unter Nominal); kein Policy-Wechsel ohne robusten Nachweis über echte Lückenmuster — Default bleibt zero_fill |
+| A21-B5.2 Missingness | Die Ablation ist reproduzierbar, aber synthetisch (Einzelrealisierung, PICP unter Nominal); seit 0.70.0 fährt sie echte Lückenmuster (`--gap-pattern-from`, `real_gaps`) und mehrere Seeds, und die Publikation trägt `data_quality`. Kein Policy-Wechsel ohne robusten Nachweis über echte Lückenmuster — Default bleibt zero_fill |
 | A21-B4 Betriebsabnahme | DST-/Restfenster-/Mengen-/Nutzenverträge sind synthetisch regressionsgeprüft. Eine Hardware-/NAS-Feldabnahme, reale Draw-Abdeckung und ein belastbarer Live-Nettonutzen bleiben separat offen; der Code-Fix ist kein Betriebsnachweis. |
 | B0-Referenz | PICP/MASE je Station und Brier global nach P-Quelle; ein stationsweiser Brier ist bei geringer Advice-Zahl nicht belastbar |
 | ACI | Mindestens vier Wochen Live-Betrieb und belastbare Scores vor einer Aktivierungsentscheidung |

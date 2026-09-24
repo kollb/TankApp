@@ -896,6 +896,20 @@ def _overall_metrics(folds: list[ReplayFold]) -> dict[str, Any]:
     }
 
 
+def _manifest_md_line(manifest: Any) -> str:
+    """Abnahme-Manifest als Lesezeile (M2) — ohne Hash kein Beleg."""
+    if not isinstance(manifest, dict):
+        return "- Abnahme-Manifest: fehlt (Lauf ohne Manifest)."
+    holdout = manifest.get("holdout") or "—"
+    sha = manifest.get("sha256") or "kein Hash — kein Abnahmebeweis"
+    size = manifest.get("bytes")
+    size_text = "—" if size is None else f"{size} Bytes"
+    role = manifest.get("role") or "—"
+    note = manifest.get("frozen_note") or ""
+    line = f"- Bestand: {holdout} · SHA-256: {sha} · {size_text} · Rolle: {role}."
+    return f"{line} {note}" if note else line
+
+
 def write_replay_report(result: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
     """Maschinenlesbaren Report (JSON) + Lesefassung (Markdown) schreiben."""
 
@@ -918,6 +932,10 @@ def write_replay_report(result: dict[str, Any], out_dir: Path) -> tuple[Path, Pa
         f"- Operator: {result['operator']} — Dateneingänge strikt vor dem "
         "Fold-Ursprung.",
         "- Akzeptanzmargen waren vor dem Lauf festgelegt (REPLAY_ACCEPTANCE).",
+        "",
+        "## Abnahme-Manifest",
+        "",
+        _manifest_md_line(result.get("acceptance_manifest")),
         "",
         "## Gesamt",
         "",

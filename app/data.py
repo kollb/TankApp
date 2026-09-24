@@ -509,6 +509,48 @@ def implausible_price_status(settings, clock=None) -> dict[str, Any]:
     return {"count_24h": count, "last_at": last_at}
 
 
+def _model_contracts_summary() -> dict[str, Any]:
+    """Normative Vertragsmatrix für Health (M1/Priorität 7) — nie ein Fehler."""
+    try:
+        from .model_contracts import describe
+
+        return describe()
+    except Exception:
+        return {"contracts": {}}
+
+
+def _publication_data_quality(bundle: Any) -> dict[str, Any]:
+    """M3-Exposition der Veröffentlichung — ohne I/O, nie ein Fehler."""
+    try:
+        from .data_quality import exposure
+
+        forecasts = bundle.get("forecasts") if isinstance(bundle, dict) else []
+        return exposure(forecasts)
+    except Exception:
+        return {"stations_total": 0, "weak_share": None}
+
+
+def _publication_regime_monitor(bundle: Any) -> dict[str, Any]:
+    """12-Uhr-Regime-Monitor der Veröffentlichung — nie ein Fehler."""
+    try:
+        from .regime_monitor import evaluate_publication
+
+        forecasts = bundle.get("forecasts") if isinstance(bundle, dict) else []
+        return evaluate_publication(forecasts)
+    except Exception:
+        return {"status": "ok", "stations_affected": 0}
+
+
+def _decision_availability_summary() -> dict[str, Any]:
+    """M5-Verfügbarkeit der Entscheidung — nie ein Fehler."""
+    try:
+        from .decision_metrics import summary
+
+        return summary()
+    except Exception:
+        return {"window": 0, "count": 0, "ready_share": None}
+
+
 _META_LOCK = threading.Lock()
 _META_MEMO: dict[str, Any] = {"key": None, "value": None, "at": 0.0}
 # Nur der Kick-Zustand (kurz, keine IO unter dem Lock) — der Request-Pfad
@@ -2104,7 +2146,18 @@ class LiveData:
                 # Station. Sie ist nicht mit der M7-Produktfreigabe identisch.
                 "calibrated": bool(bundle.get("calibrated", False)),
                 "decision_ready": False,
+                # A70 (M1/Priorität 7): normative Vertragsmatrix — welcher
+                # Modellvertrag produktiv Empfehlungen tragen darf.
+                "contracts": _model_contracts_summary(),
+                # A70 (M3): Exposition der Veröffentlichung — Anteil der
+                # Stationen auf lückenhaften/dünnen Daten.
+                "data_quality": _publication_data_quality(bundle),
+                # A70 (Priorität 6.4): 12-Uhr-Regime-Monitor — ok/warn/blocked.
+                "regime_monitor": _publication_regime_monitor(bundle),
             },
+            # A70 (M5): Verfügbarkeit der Entscheidung — ready-Anteil,
+            # Sperrgründe, M7- vs. Technik-Anteil (rollierendes Fenster).
+            "decision_availability": _decision_availability_summary(),
             # O22: Größe und Lesbarkeit der Veröffentlichung. Die Klippe war
             # vorher unsichtbar — eine Datei über dem Leselimit fällt als
             # ``{}`` aus, also als „noch keine Daten“, während der Modell-Job

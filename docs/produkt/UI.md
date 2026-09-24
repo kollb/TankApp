@@ -45,7 +45,7 @@ die nur über einen alten Haupttab erreichbar waren.
 | Bereich | Verantwortung | Abgrenzung |
 |---|---|---|
 | Jetzt | Empfehlung, drei Fakten, „Heute im Blick“, Umweg-Rechnung | Keine zweite vollständige Stationsliste |
-| Woche | Veröffentlichte Fenster für die nächsten Tage | Mehrtagesbänder nicht als PIT-kalibriert ausgeben |
+| Woche | Veröffentlichte Fenster für die nächsten Tage | Mehrtagesbänder nicht als PIT-kalibriert ausgeben — seit 0.70.0 trägt jede Tageskarte ihr Kalibrierungs-Etikett (`24-h-Fenster (PIT-kalibriert, wenn aktiv)` nur am heutigen Tag, danach `Szenarioprognose (unkalibriert)`), die Fußzeile nennt `24h kalibriert (PIT), 3/7d unkalibrierte Szenarioprognose` |
 | Stationen | Polling-Set, Karte, Vergleich und Stationsdetails | Tagesverlauf im Detail statt unbeschrifteter Mini-Linie in jeder Zeile |
 | Labor | Modell, Güte, Kalibrierung, Heatmaps und Begründungen | Markt-Labor und Live-Advice nicht mit persönlicher Bilanz vermengen |
 | Ich | Fahrzeug, Profile, Tankstand, Belege und Bilanz | Ein Intent ist kein Beleg |

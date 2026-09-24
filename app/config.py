@@ -96,9 +96,12 @@ class Settings:
     # Gegenmessung; ohne zeitlich getrennt abgenommene Kurve bleibt das Modell
     # trotz aktivem Schalter sichtbar unkalibriert.
     calibration: bool = True
-    # A10/B3: Punktmodell der Prognose — „profile_ar2“ (Default seit 0.58.0,
-    # gemessen besser als das Eine-Schritt-Ensemble), „harmonic_ar2“
-    # (Hauptpfad allein) oder „ensemble“ (inverse-MASE-Mischung).
+    # A10/B3/A70: Punktmodell der Prognose — „profile_ar2“ (Default seit
+    # 0.58.0, einziger produktiver Vertrag), „harmonic_ar2“ (experimentell,
+    # Offline-/Laborvergleiche) oder „ensemble“ (deaktiviert, M1: keine
+    # belegte End-to-end-Parität — die Freigabekette sperrt mit
+    # ``model_not_released``; Offline-Forschung bleibt möglich, trägt aber
+    # keine Empfehlung). Normativ: ``app/model_contracts.py``.
     model_kind: str = "profile_ar2"
     # B3: aufeinanderfolgende Prognose-Kalendertage als Paar ziehen
     # (TANKAPP_DAYPAIR=0 = unabhängig, Stand vor 0.58.0).

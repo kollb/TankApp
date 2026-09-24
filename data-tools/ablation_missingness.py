@@ -64,6 +64,7 @@ SCENARIOS = (
     "systematic_slots",
     "outage_days",
     "nas_catchup",
+    "real_gaps",
 )
 DEFAULT_SEED = 20260922
 SLOT_COUNT = 288  # 5-Minuten-Raster je Tag (Config erzwingt step_minutes=5)
@@ -121,12 +122,28 @@ def price_series_frame(series: pd.Series) -> pd.DataFrame:
     )
 
 
-def gap_mask(scenario: str, n_blocks: int, *, seed: int) -> np.ndarray:
-    """Boolean-Lückenmaske (True = fehlend) auf (Tag, 288 Slots)."""
+def gap_mask(
+    scenario: str,
+    n_blocks: int,
+    *,
+    seed: int,
+    pattern_from: Path | None = None,
+) -> np.ndarray:
+    """Boolean-Lückenmaske (True = fehlend) auf (Tag, 288 Slots).
+
+    ``real_gaps`` lädt ein reales Lückenmuster aus ``pattern_from`` (M3):
+    CSV mit Spalten ``day,slot`` (0-indiziert, Slot 0–287 auf dem
+    5-Minuten-Raster) — z. B. aus exportierten Polling-Lücken. Das Muster
+    wird auf die Blockzahl zugeschnitten bzw. periodisch wiederholt.
+    """
     mask = np.zeros((n_blocks, SLOT_COUNT), dtype=bool)
     rng = np.random.default_rng(seed + 17)
     if scenario == "clean":
         return mask
+    if scenario == "real_gaps":
+        if pattern_from is None:
+            raise ValueError("real_gaps braucht --gap-pattern-from (CSV).")
+        return real_gap_mask(pattern_from, n_blocks)
     if scenario == "isolated_slots":
         pick = rng.random(mask.shape) < 0.05
         return pick
@@ -145,6 +162,31 @@ def gap_mask(scenario: str, n_blocks: int, *, seed: int) -> np.ndarray:
         mask[6::7, 144:] = True
         return mask
     raise ValueError(f"Unbekanntes Ablationsszenario {scenario!r}.")
+
+
+def real_gap_mask(path: Path, n_blocks: int) -> np.ndarray:
+    """Reales Lückenmuster aus CSV (``day,slot``) auf (Tag, 288 Slots).
+
+    Zeilen außerhalb des Rasters werden verworfen (gezählt, nicht still
+    verschoben); das Muster wiederholt sich periodisch über die Blöcke.
+    """
+    import csv as csv_module
+
+    mask = np.zeros((n_blocks, SLOT_COUNT), dtype=bool)
+    with Path(path).open("r", encoding="utf-8", newline="") as handle:
+        reader = csv_module.DictReader(handle)
+        if reader.fieldnames is None or not {"day", "slot"} <= set(reader.fieldnames):
+            raise ValueError(f"{path}: erwartet Spalten day,slot.")
+        for row in reader:
+            try:
+                day = int(float(str(row["day"]).strip()))
+                slot = int(float(str(row["slot"]).strip()))
+            except (TypeError, ValueError):
+                continue
+            if slot < 0 or slot >= SLOT_COUNT or day < 0:
+                continue
+            mask[day % n_blocks, slot] = True
+    return mask
 
 
 def apply_gaps(model: dict, mask: np.ndarray) -> dict:
@@ -257,10 +299,13 @@ def run_ablation(
     hours: int = 48,
     scenarios: tuple[str, ...] = SCENARIOS,
     policies: tuple[str, ...] = MISSINGNESS_POLICIES,
+    pattern_from: Path | None = None,
 ) -> list[dict]:
     """Paarweise Ablation: gleicher Cutoff, gleicher Seed, alle Kombinationen."""
     for scenario in scenarios:
-        gap_mask(scenario, 1, seed=seed)  # Validierung der Namen
+        if scenario == "real_gaps" and pattern_from is None:
+            continue  # ohne Muster kein reales Szenario (kein Fehler)
+        gap_mask(scenario, 1, seed=seed, pattern_from=pattern_from)  # Namen prüfen
     horizon_days = (hours + 23) // 24
     total_days = history_days + horizon_days + 1
     series = synthetic_series(
@@ -302,8 +347,11 @@ def run_ablation(
 
     rows: list[dict] = []
     for scenario in scenarios:
+        if scenario == "real_gaps" and pattern_from is None:
+            continue
         masked_model = apply_gaps(
-            base_model, gap_mask(scenario, blocks.shape[0], seed=seed)
+            base_model,
+            gap_mask(scenario, blocks.shape[0], seed=seed, pattern_from=pattern_from),
         )
         for policy in policies:
             diagnostics: dict = {}
@@ -327,6 +375,7 @@ def run_ablation(
     scored: list[dict] = []
     for row in rows:
         entry = {
+            "seed": seed,
             "scenario": row["scenario"],
             "policy": row["policy"],
             **score_run(row["frame"], truth, reference),
@@ -341,6 +390,7 @@ def run_ablation(
 
 
 CSV_FIELDS = (
+    "seed",
     "scenario",
     "policy",
     "picp50",
@@ -387,14 +437,14 @@ def write_report(rows: list[dict], out_dir: Path, *, seed: int) -> tuple[Path, P
         "",
         "## Ergebnisse",
         "",
-        "| Szenario | Policy | PICP50 | PICP95 | Breite Ø | MAE q50 "
+        "| Seed | Szenario | Policy | PICP50 | PICP95 | Breite Ø | MAE q50 "
         "zum Clean | 12-Uhr-Verstöße | fill-share max | eff. Draws min "
         "| Release ok |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         lines.append(
-            "| {scenario} | {policy} | {picp50:.3f} | {picp95:.3f} | "
+            "| {seed} | {scenario} | {policy} | {picp50:.3f} | {picp95:.3f} | "
             "{width95:.4f} | {mae_q50_to_clean:.4f} | {noon_violations_q50} "
             "| {null_fill_share_max:.3f} | {effective_draws_min} | "
             "{release_ok_all} |".format(**row),
@@ -437,9 +487,20 @@ def write_report(rows: list[dict], out_dir: Path, *, seed: int) -> tuple[Path, P
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[2])
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--seeds",
+        default=None,
+        help="Mehrere Seeds (kommagetrennt) — robuster Nachweis (M3).",
+    )
     parser.add_argument("--history-days", type=int, default=42)
     parser.add_argument("--bootstrap-samples", type=int, default=200)
     parser.add_argument("--hours", type=int, default=48)
+    parser.add_argument(
+        "--gap-pattern-from",
+        type=Path,
+        default=None,
+        help="Reales Lückenmuster (CSV day,slot) für Szenario real_gaps (M3).",
+    )
     parser.add_argument(
         "--out",
         type=Path,
@@ -453,13 +514,24 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     bootstrap = 100 if args.quick else args.bootstrap_samples
     hours = 24 if args.quick else args.hours
-    rows = run_ablation(
-        seed=args.seed,
-        history_days=args.history_days,
-        bootstrap_samples=bootstrap,
-        hours=hours,
-    )
-    csv_path, md_path = write_report(rows, args.out, seed=args.seed)
+    if args.seeds:
+        seeds = [
+            int(part.strip()) for part in str(args.seeds).split(",") if part.strip()
+        ]
+    else:
+        seeds = [args.seed]
+    rows: list[dict] = []
+    for seed in seeds:
+        rows.extend(
+            run_ablation(
+                seed=seed,
+                history_days=args.history_days,
+                bootstrap_samples=bootstrap,
+                hours=hours,
+                pattern_from=args.gap_pattern_from,
+            )
+        )
+    csv_path, md_path = write_report(rows, args.out, seed=seeds[0])
     print(f"Ablation geschrieben: {csv_path} und {md_path} ({len(rows)} Läufe).")
     return 0
 

@@ -37,6 +37,7 @@ import {
 import { type LabSectionId } from "../lab";
 import { learningNote, nowFreshness, TANK_QUICK } from "../now";
 import {
+  weekCalibrationNote,
   weekDays,
   weekExplanation,
   weekLine,
@@ -385,7 +386,8 @@ export function WocheView(props: WocheViewProps) {
               Sicherheit zeigt die Sterne unter jedem Fenster (bis drei — die
               Bedeutung im Detail, Schwellen im Labor). Leere Tage: kein
               Fenster mit Vorsprung — keine Erfindung. Tage 5–7 sind „noch
-              unsicher“.
+              unsicher“. Nur 24-h-Fenster sind PIT-kalibriert — alle späteren
+              Tage sind unkalibrierte Szenarioprognosen.
             </p>
           </>
         )}
@@ -403,6 +405,10 @@ export function WocheView(props: WocheViewProps) {
             {summary.savingLine ? ` · ${summary.savingLine}` : ""}
           </p>
           <p className="mt-1 text-xs text-slate-300">{summary.security}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {weekCalibrationNote(selected.index)}
+            {selected.uncertain ? " · noch unsicher" : ""}
+          </p>
           {summary.tank && (
             <p
               className={`mt-2 text-xs ${
@@ -503,7 +509,7 @@ export function WocheView(props: WocheViewProps) {
         place={activeCity}
         extra={
           line.length > 0
-            ? " · ab Tag 5 wird die Prognose breiter · 24h kalibriert (PIT), 3/7d unkalibriert"
+            ? " · ab Tag 5 wird die Prognose breiter · 24h kalibriert (PIT), 3/7d unkalibrierte Szenarioprognose"
             : ""
         }
       />

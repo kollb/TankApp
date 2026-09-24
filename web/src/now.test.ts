@@ -811,3 +811,63 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
     expect(result.sentence).not.toContain("das sind");
   });
 });
+
+describe("Priorität 1: Abdeckung und Netto-Vergleich (A70)", () => {
+  it("nowCoverage nennt eingerichtete vs. frische Stationen", async () => {
+    const { nowCoverage } = await import("./now");
+    const stations = [
+      station("a", { price: 1.719 }),
+      station("b", { price: 1.749 }),
+      station("c", { price: null }),
+    ];
+    const coverage = nowCoverage(stations, minutesAgo(4), NOW);
+    expect(coverage.total).toBe(3);
+    expect(coverage.fresh).toBe(2);
+    expect(coverage.line).toContain("2 von 3");
+    expect(coverage.line).toContain("eingerichteten Stationen mit frischem Preis");
+    expect(coverage.ageLine).toContain("Preise vor 4 Minuten");
+  });
+
+  it("nowNetBest trennt netto Wahl von nicht vergleichbar", async () => {
+    const { nowNetBest } = await import("./now");
+    const stations = [
+      station("a", { name: "Station A", price: 1.719 }),
+      station("b", { name: "Station B", price: 1.729 }),
+    ];
+    const withNet = nowNetBest({
+      decide: decide("no_advice", {
+        alternatives_nearby: [
+          {
+            station_id: "b",
+            name: "Station B",
+            brand: "ARAL",
+            price: 1.729,
+            delta_ct: 1,
+            detour_km: 2,
+            net_eur: 1.4,
+            worth_it: true,
+            verdict: "worth",
+          },
+        ],
+      } as unknown as DecideResult),
+      stations,
+      liters: 40,
+      now: NOW,
+    });
+    expect(withNet.kind).toBe("net");
+    if (withNet.kind === "net") {
+      expect(withNet.text).toContain("Für diese Fahrt am günstigsten: Station B");
+      expect(withNet.text).toContain("netto");
+    }
+    const missing = nowNetBest({
+      decide: decide("no_advice", {
+        alternatives_nearby: [],
+      } as unknown as DecideResult),
+      stations,
+      liters: 40,
+      now: NOW,
+    });
+    expect(missing.kind).toBe("not_comparable");
+    expect(missing.text).toContain("Nicht sinnvoll vergleichbar");
+  });
+});

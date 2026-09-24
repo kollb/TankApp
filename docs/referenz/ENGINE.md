@@ -22,6 +22,8 @@
 - [Datenqualität & Backtest](#4-datenqualität-und-backtest-auf-dem-pc)
 - [Modell fitten](#5-modell-fitten-und-prognose-erzeugen)
 - [Messgrundlagen B0](#messgrundlagen-b0-seit-0560)
+- [Modell-Vertragsmatrix M1](#modell-vertragsmatrix-m1-seit-0700)
+- [Entscheidungsfreigabe als Produkt-Blocker](#entscheidungsfreigabe-als-produkt-blocker-a5m7-seit-0700)
 - [Häufige Probleme](#6-häufige-probleme-am-windows-pc)
 - [Collector am PC prüfen](#7-optional-collector-am-pc-mit-dataapikeytxt-prüfen)
 - [Noch offen M3](#noch-offen-in-m3)
@@ -941,6 +943,57 @@ auch `--once` erneut versuchen; bei Bedarf mit **Strg+C** abbrechen.
 Der produktive Uploader darf diesen Testpuffer nicht einlesen. Ein einzelner
 Snapshot ist außerdem noch keine Trainingshistorie; die M3-Engine liest die
 Analyse-CSVs aus §3, nicht direkt diese JSONL-Datei.
+
+## Modell-Vertragsmatrix (M1, seit 0.70.0)
+
+Normativ ist `app/model_contracts.py` — diese Datei fasst zusammen. Der
+Prüfbericht (§6.3) fand in der Doku zwei Veröffentlichungsmodelle
+(`ensemble` in ANALYSE/API, `profile_ar2` in ENGINE); seit 0.70.0 gilt
+genau eines:
+
+| Pfad | Status | `shared_draws` | `day_pair` | `decision_release` |
+|---|---|---|---|---|
+| `profile_ar2` | produktiv | ja | ja | **ja** (einziger Freigabepfad) |
+| `harmonic_ar2` | Forschung | nein | nein | nein |
+| `ensemble` | Holdout | ja | ja | nein (Vergleichspfad, keine Entscheidung) |
+
+- `is_forecast_released(model_kind)` ist die einzige Stelle, die der
+  Freigabekette die Antwort gibt; ein nicht freigegebener Pfad sperrt mit
+  `model_not_released` (§6.5 der Kette, vor M7).
+- `CONTRACT_FINGERPRINT` verändert sich nur bei Vertragsänderung und steht
+  in den A70-Tests als Zeuge.
+- Die 12-Uhr-Regime-Auffälligkeit sperrt mit `regime_check_pending`
+  (Schwellen 2/5/10 Stationen → ok/warn/blocked, `app/regime_monitor.py`);
+  der Monitor steht in `/v1/health` unter `models.regime_monitor`.
+
+## Entscheidungsfreigabe als Produkt-Blocker (A5/M7, seit 0.70.0)
+
+Der Prüfbericht (§6.2) stuft `decision_ready=false` als Produkt-Blocker
+ein, nicht als Technik-Detail: Solange die Freigabe fehlt, trägt der
+Preisvergleich die Ansicht „Jetzt“ (UI.md/MICROCOPY.md §4b) und keine
+Fenster-Prognose. Die Technik dazu:
+
+- **M7-Archiv (A5):** Jeder M7-Gate-Schnitt hängt einen Datensatz an
+  `runtime/m7/archive.jsonl` (`app/m7_release.py`): Woche, Kohorte
+  (`gate_n`), Brier, Trefferquote, Referenzen (`ref_model`,
+  `beat_ref_by`), Verlässlichkeit (`reliability_gap_5`) und Ausschlüsse
+  (`excluded`). Mindestgröße 100 (`M7_ARCHIVE_MIN_N`), sonst
+  `release_blocked_reason`. Das Archiv ist der Abnahme-Beleg, kein Log.
+- **Verfügbarkeit messen (M5):** `app/decision_metrics.py` zählt über ein
+  rollierendes Fenster (500 Antworten) den Ready-Anteil, die
+  Sperrhäufigkeiten und die Trennung M7-Sperre vs. technische Sperre.
+  `/v1/health` trägt `decision_availability` mit `ready_share`,
+  `m7_blocked_share` und `technical_blocked_share`.
+- **Datenqualität der Veröffentlichung (M3):** Jede Publikation trägt
+  `data_quality` (Stationen voll/lückig/dünn, `weak_share`);
+  `THIN_TRAIN_DAYS = 35` unter den 42 Trainingstagen heißt dünn.
+  Die Ablation kennt `--seeds` und `--gap-pattern-from` (`real_gaps`
+  aus echten Lücken-CSVs); Details in
+  [MISSINGNESS.md](MISSINGNESS.md#lücken-ablation-seit-0700).
+- **Replay-Abnahme (M2):** `run_replay.py` schreibt ein
+  `acceptance_manifest` (Holdout-Pfad, SHA-256, Bytes, Rolle,
+  Frozen-Hinweis); synthetische Replays tragen explizit keinen Hash und
+  sind kein Abnahmebeleg. Details in [REPLAY.md](REPLAY.md#abnahme-manifest-seit-0700).
 
 ## Noch offen in M3
 

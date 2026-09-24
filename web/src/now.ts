@@ -1039,3 +1039,100 @@ export function nowDayPanel(cells: StripCell[]): NowDayPanel {
     coverage,
   };
 }
+
+/**
+ * Abdeckung des Preisvergleichs (Priorität 1): „12 von 15 eingerichteten
+ * Stationen mit frischem Preis“ — plus Preisalter der frischesten Meldung.
+ * Die App hat bewusst keine freie Umgebungssuche; der Satz benennt das
+ * beobachtete Set, nie eine vollständige Marktdeckung.
+ */
+export type NowCoverage = {
+  total: number;
+  fresh: number;
+  /** „12 von 15 eingerichteten Stationen mit frischem Preis“ (o.ä.). */
+  line: string;
+  /** Preisalter der entscheidenden Meldungen („Preise vor 4 Minuten“). */
+  ageLine: string | null;
+};
+
+export function nowCoverage(
+  stations: Station[],
+  pricesAt: string | null | undefined,
+  now: number = Date.now(),
+): NowCoverage {
+  const total = stations.length;
+  const fresh = stations.filter(
+    (station) => station.price != null && Number.isFinite(station.price),
+  ).length;
+  const line =
+    total === 0
+      ? "Noch keine Station eingerichtet"
+      : fresh === 0
+        ? `0 von ${countLabel(total)} eingerichteten Stationen mit frischem Preis`
+        : `${countLabel(fresh)} von ${countLabel(total)} eingerichteten Stationen mit frischem Preis`;
+  const ageLine = pricesAt ? `Preise ${ageLabel(pricesAt, now)}` : null;
+  return { total, fresh, line, ageLine };
+}
+
+/**
+ * Netto-Vergleich für die Fahrt (Priorität 1, F2): günstigster Preis vs.
+ * netto günstigste Wahl vs. nicht sinnvoll vergleichbar. Die
+ * Umweg-Ökonomie kommt vom Server (`alternatives_nearby[].worth_it`,
+ * `net_eur`) — die GUI sortiert nur und benennt das Ergebnis.
+ */
+export type NowNetBest =
+  | {
+      kind: "net";
+      name: string;
+      netEur: number;
+      detourKm: number | null;
+      text: string;
+    }
+  | { kind: "same"; name: string; text: string }
+  | { kind: "none_worth"; cheapestName: string | null; text: string }
+  | { kind: "not_comparable"; text: string };
+
+export function nowNetBest(input: NowInput): NowNetBest {
+  const cheapest = [...input.stations]
+    .filter((s) => s.price != null && Number.isFinite(s.price))
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0];
+  const alternatives = input.decide?.alternatives_nearby ?? [];
+  const best = [...alternatives]
+    .filter((a) => a.worth_it)
+    .sort((a, b) => b.net_eur - a.net_eur)[0];
+  if (best) {
+    if (cheapest && best.name === cheapest.name) {
+      return {
+        kind: "same",
+        name: best.name,
+        text: `${best.name} ist auch netto die günstigste Wahl.`,
+      };
+    }
+    const detour =
+      best.detour_km_est ?? best.detour_km ?? null;
+    const detourText =
+      detour !== null ? ` trotz ${kilometersLabel(detour, 1)} Umweg` : "";
+    return {
+      kind: "net",
+      name: best.name,
+      netEur: best.net_eur,
+      detourKm: detour,
+      text:
+        `Für diese Fahrt am günstigsten: ${best.name}, netto ${euro(best.net_eur)} € ` +
+        `günstiger${detourText}`,
+    };
+  }
+  if (alternatives.length > 0) {
+    return {
+      kind: "none_worth",
+      cheapestName: cheapest?.name ?? null,
+      text: cheapest
+        ? `Keine Alternative lohnt den Umweg — günstigste bekannte Station bleibt ${cheapest.name}.`
+        : "Keine Alternative lohnt den Umweg.",
+    };
+  }
+  return {
+    kind: "not_comparable",
+    text: "Nicht sinnvoll vergleichbar — Profil- oder Routendaten fehlen.",
+  };
+}

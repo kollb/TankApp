@@ -1,6 +1,7 @@
 """One model-refresh operation on NAS or optional PC; only publish completed results."""
 
 import datetime as dt
+import hashlib
 import json
 import uuid
 
@@ -11,6 +12,12 @@ from .worker import JobAborted
 
 # Aufgaben je Station: Fit+24 h, +3 d, +7 d, Backtest (siehe app/model_jobs.py).
 TASKS_PER_STATION = 4
+
+# M2: Version der veröffentlichten Prognosekurve je Station. Nachträgliche
+# Auswertung („welche Kurve war wann sichtbar und entscheidungsrelevant“)
+# braucht diese Version plus Kalibrierungsstatus, Fingerprint und
+# Eingabedaten — sie stehen je Zeile in der Veröffentlichung.
+FORECAST_VERSION = 1
 
 # Prüfstand §1.3: Der NAS-Job fährt den 21-Tage-Backtest, damit das
 # Kriterium `at_least_21_complete_test_days_per_station` aus dem
@@ -36,6 +43,22 @@ def calibration_regime_blackout(origin, cfg, fuel: str) -> bool:
         ):
             return True
     return False
+
+
+def calibration_fingerprint(calibration: object) -> str | None:
+    """Provenienz-Fingerabdruck der aktiven Kurve (M2) — sonst None."""
+    if not isinstance(calibration, dict):
+        return None
+    provenance = calibration.get("provenance")
+    if isinstance(provenance, dict) and provenance.get("fingerprint"):
+        return str(provenance["fingerprint"])
+    return None
+
+
+def input_fingerprint(parts: dict) -> str:
+    """Stabiler SHA-256 über die Eingabedaten einer Prognose (M2)."""
+    payload = json.dumps(parts, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _mb(size: int) -> str:
@@ -639,14 +662,44 @@ def refresh(settings: Settings, now=None, progress=None):
                         "calibration": model.get("calibration"),
                         "calibrated": bool(model.get("calibrated", False)),
                         "calibration_candidate": report.get("calibration_candidate"),
+                        # M2: versionierte Kurve — welche Prognose zu welchem
+                        # Zeitpunkt sichtbar und entscheidungsrelevant war.
+                        "forecast_version": FORECAST_VERSION,
+                        "calibration_status": (model.get("calibration") or {}).get(
+                            "status"
+                        )
+                        if isinstance(model.get("calibration"), dict)
+                        else None,
+                        "calibration_fingerprint": calibration_fingerprint(
+                            model.get("calibration")
+                        ),
+                        "input_fingerprint": input_fingerprint(
+                            {
+                                "station_id": item.identity().get("station_id"),
+                                "city": item.identity().get("city"),
+                                "fuel": fuel,
+                                "origin": origin.isoformat(),
+                                "train_days": cfg.train_days,
+                                "model_kind": getattr(
+                                    settings, "model_kind", "profile_ar2"
+                                ),
+                                "day_pair": bool(getattr(settings, "day_pair", True)),
+                                "shared_draws": bool(
+                                    getattr(settings, "shared_draws", True)
+                                ),
+                                "last_observation": last,
+                                "range_from": model.get("training_start"),
+                                "range_to": model.get("last_observation"),
+                            }
+                        ),
                         # B0 (Messgrundlagen): Zähler aus Fit und Backtest —
                         # PAVA-Pools der 24-h-Prognose, PIT-Histogramme,
                         # Regime-Kanten im Prüffenster und das Punktmodell,
-                        # das der Backtest tatsächlich gemessen hat (heute
-                        # harmonic_ar2 — nicht das veröffentlichte ensemble;
-                        # docs/planung/LUECKEN.md). Die Fit-Zähler
-                        # (ar_shrink_events/ar_state_reset/ar_detail) liegen
-                        # in ``model_parameter_fields`` oben.
+                        # das der Backtest tatsächlich gemessen hat. Der
+                        # produktive Vertrag ist profile_ar2 (paritätisch);
+                        # ensemble ist deaktiviert (M1, app/model_contracts.py).
+                        # Die Fit-Zähler (ar_shrink_events/ar_state_reset/
+                        # ar_detail) liegen in ``model_parameter_fields`` oben.
                         "pava_pool_stats": fitted[identity].get("pava_pool_stats"),
                         "pit": report.get("pit"),
                         "regime_breaks_in_window": report.get(
@@ -873,6 +926,8 @@ def refresh(settings: Settings, now=None, progress=None):
                 "model_file": model_name,
                 "calibrated": publication_calibrated,
                 "decision_ready": False,
+                # M2: Kurvenversion des Laufs (je Station in der Zeile).
+                "forecast_version": FORECAST_VERSION,
             },
         )
         _report_publication_size(

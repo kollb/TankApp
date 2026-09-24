@@ -380,3 +380,17 @@ export function weekTankLine(
       : "Bewertung folgt mit der nächsten Empfehlung-Antwort.",
   };
 }
+
+/**
+ * Kalibrierungsstand je Wochen-Tag (M2): Nur 24-h-Pfade sind
+ * PIT-kalibriert — 72-/168-h-Fenster sind unkalibrierte
+ * Szenarioprognosen und erhalten nie dieselbe Vertrauenssprache.
+ */
+export const WEEK_CALIBRATION_24H =
+  "24-h-Fenster (PIT-kalibriert, wenn aktiv)";
+export const WEEK_CALIBRATION_SCENARIO =
+  "Szenarioprognose (unkalibriert)";
+
+export function weekCalibrationNote(dayIndex: number): string {
+  return dayIndex <= 0 ? WEEK_CALIBRATION_24H : WEEK_CALIBRATION_SCENARIO;
+}
