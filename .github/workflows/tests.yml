@@ -20,6 +20,15 @@ jobs:
         # läuft (engine/requirements.txt zieht je Interpreter ein anderes
         # numpy). tests/test_o27_build_parity.py hält Bild und Matrix
         # zusammen.
+        #
+        # Aufteilung der Suite: Auf 3.12 läuft die komplette Suite
+        # (Bild-Linie). Auf 3.11 läuft nur die Collector-Teilmenge
+        # (tests/o27_py311_suite.txt): Der Pi führt Collector (data-tools),
+        # Engine-Fits und rp2 aus, aber nicht den App-/GUI-Stack des
+        # NAS-Bildes — dieselben ~1500 Tests dort nochmal zu fahren,
+        # kostete Minuten ohne neue Deckung. Der Ratchet in
+        # test_o27_build_parity.py hält die Liste deckungsgleich mit den
+        # engine/data-tools/rp2-Importen der Suite.
         python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v7
@@ -38,7 +47,16 @@ jobs:
       # requirements-dev.txt. Gemessen (2 Kerne): seriell ~7 min, parallel
       # ~4 min. Die Suite ist xdist-fest: Prozess-globale Zustände setzt
       # conftest.py je Test zurück, jeder Worker ist ein eigener Prozess.
-      - run: python -m pytest -q -n 2
+      - name: Komplette Suite (3.12, Bild-Linie)
+        if: matrix.python-version == '3.12'
+        run: python -m pytest -q -n 2
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+      - name: Collector-Teilmenge (3.11, Pi-Linie)
+        if: matrix.python-version == '3.11'
+        run: >-
+          python -m pytest -q -n 2
+          $(grep -vE '^\s*(#|$)' tests/o27_py311_suite.txt | tr '\n' ' ')
         env:
           OPENBLAS_NUM_THREADS: '1'
 
