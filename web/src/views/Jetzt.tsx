@@ -907,7 +907,7 @@ export function JetztView(props: JetztViewProps) {
             <div className="mt-3 hidden gap-2 sm:grid sm:grid-cols-3">
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
-                  Günstigste Stunde
+                  {dayPanel.tied ? "Günstigste Stunden" : "Günstigste Stunde"}
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-emerald-300 tabular-nums">
                   {dayPanel.best ? dayPanel.bestLabel : "—"}
@@ -958,7 +958,7 @@ export function JetztView(props: JetztViewProps) {
                 derselben Quelle (`nowDayPanel`), zwei Anordnungen. */}
             <dl className="mt-3 grid grid-cols-1 gap-1 text-xs leading-snug sm:hidden">
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="shrink-0 text-slate-500">Günstigste Stunde</dt>
+                <dt className="shrink-0 text-slate-500">{dayPanel.tied ? "Günstigste Stunden" : "Günstigste Stunde"}</dt>
                 <dd className="font-mono font-semibold text-emerald-300 tabular-nums">
                   {dayPanel.best
                     ? `${dayPanel.bestLabel} · ${euroPerLiter(dayPanel.best.value)}`

@@ -174,9 +174,10 @@ export function DatenView() {
             <DataReachNote reach={forecast.data} noun="Preise im Training" />
             <p className="mt-1">
               Modell: { (forecast.data as any)?.model_kind ?? "—"} · Training:{" "}
-              {(forecast.data as any)?.training_days ?? "—"} Tage · Punkte:{" "}
-              {(forecast.data as any)?.training_points ?? "—"} · Kalibriert:{" "}
-              {forecast.data?.calibrated ? "ja" : "nein"}
+              {(forecast.data as any)?.training_days ?? (forecast.data as any)?.n_days ?? "—"}{" "}
+              Tage · Punkte:{" "}
+              {(forecast.data as any)?.training_points ?? (forecast.data as any)?.n_points ?? "—"} ·
+              Kalibriert: {forecast.data?.calibrated ? "ja" : "nein"}
             </p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">

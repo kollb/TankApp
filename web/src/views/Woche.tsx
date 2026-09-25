@@ -37,6 +37,8 @@ import {
 import { type LabSectionId } from "../lab";
 import { learningNote, nowFreshness, TANK_QUICK } from "../now";
 import {
+  WEEK_CALIBRATION_24H,
+  WEEK_CALIBRATION_SCENARIO,
   weekCalibrationNote,
   weekDays,
   weekExplanation,
@@ -509,7 +511,7 @@ export function WocheView(props: WocheViewProps) {
         place={activeCity}
         extra={
           line.length > 0
-            ? " · ab Tag 5 wird die Prognose breiter · 24h kalibriert (PIT), 3/7d unkalibrierte Szenarioprognose"
+            ? ` · ab Tag 5 wird die Prognose breiter · ${WEEK_CALIBRATION_24H}, Folgetage: ${WEEK_CALIBRATION_SCENARIO}`
             : ""
         }
       />

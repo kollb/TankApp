@@ -98,6 +98,11 @@ export function GueteView({
   const maseStation = metrics?.mase ?? null;
   const mase24h = maseStation ?? labData?.totals?.mase ?? null;
   const maseScope = maseStation != null ? "diese Station" : "Median der Stationen";
+  // Derselbe Ehrlichkeits-Grund wie bei MASE: Die Roll-Backtest-Zahl stammt
+  // aus den Kennzahlen der gewählten Station, die Geräte-Zahl
+  // (`quality.picp_95`) ist der Median über alle Stationen der Veröffentlichung.
+  const picpScope =
+    metrics?.picp95_pct != null ? "diese Station" : "Median der Stationen";
 
   const selStations = selection.data?.stations ?? [];
   const rankStability = useMemo(() => {
@@ -197,6 +202,9 @@ export function GueteView({
                     : quality?.picp_95 != null
                       ? percentLabel(quality.picp_95, 1)
                       : "—"}{" "}
+                  {metrics?.picp95_pct != null || quality?.picp_95 != null
+                    ? `(${picpScope}) `
+                    : ""}
                   der echten Preise lagen im 95-%-Band (Ziel 90–98 %).
                 </li>
                 <li>
@@ -225,7 +233,7 @@ export function GueteView({
                   )}
                 </li>
                 <li>
-                  <strong className="text-slate-100">Strukturbruch (CUSUM):</strong>{" "}
+                  <strong className="text-slate-100">Strukturbruch (CUSUM der Selektion):</strong>{" "}
                   {breakCount != null ? (
                     <>
                       {breakCount} von {stationCount} Stationen mit Bruch-Flag
@@ -269,7 +277,8 @@ export function GueteView({
               Handlungsschwelle stehen im Kopf, sonst ist „31,35 €“ keine
               Aussage. */}
           <p className="text-xs font-semibold text-slate-200">
-            Backtest-Bilanz (außerhalb der Stichprobe: {labData?.daysEval ?? "—"} Tage ·{" "}
+            Backtest-Bilanz (außerhalb der Stichprobe: {labData?.daysEval ?? "—"}{" "}
+            Tage je Station · {labTotals.n} Stationstage ·{" "}
             {deTrimmed(liters, 0)} L · ε = {centPerLiter(eps, 2)})
           </p>
           {labTotals.n === 0 ? (
@@ -332,10 +341,11 @@ export function GueteView({
               <p className="mt-2 text-xs leading-relaxed text-slate-400">
                 Drei Maßzahlen, drei Nenner: <strong className="text-slate-300">Geholtes Potenzial</strong>{" "}
                 wiegt in Euro — ein Tag mit großem Vorsprung zählt stark, ein Tag ohne Vorsprung gar
-                nicht. <strong className="text-slate-300">Richtige Entscheidungen</strong> zählen Tage —
-                jeder gleich, egal wie groß der Unterschied war.{" "}
+                nicht. <strong className="text-slate-300">Richtige Entscheidungen</strong> zählen die
+                Stationstage (je Station und Tag einer) — jeder gleich, egal wie groß der Unterschied
+                war.{" "}
                 <strong className="text-slate-300">Tage mit Vorteil</strong> messen den Markt, nicht die
-                Regel: an wie vielen Tagen der Abend überhaupt billiger war als {anchorLabel}.
+                Regel: an wie vielen Stationstagen der Abend überhaupt billiger war als {anchorLabel}.
                 Hohes Potenzial neben wenigen richtigen Tagen ist deshalb kein Widerspruch — die
                 Ersparnis kommt dann aus wenigen Tagen mit großem Vorsprung.
               </p>
@@ -346,7 +356,7 @@ export function GueteView({
                     {epsScan.map((point) => (
                       <li key={point.eps}>
                         ε = {centPerLiter(point.eps, 2)}: <strong className="text-slate-100">{euro(point.smartEur)} €</strong> · warten
-                        an {point.waits} von {point.n} Tagen
+                        an {point.waits} von {point.n} Stationstagen
                       </li>
                     ))}
                   </ul>

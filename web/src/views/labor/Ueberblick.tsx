@@ -208,7 +208,7 @@ export function UeberblickView({
               `(${wins} richtig · ${losses} daneben · ${ties} unentschieden` +
               (advice.n_void ? ` · ${advice.n_void} nicht bewertbar` : "") +
               (advice.n_pending ? ` · ${advice.n_pending} noch offen` : "") +
-              `)`
+              `) — Unentschieden zählen halb.`
             : "Das Konto füllt sich mit der ersten abgerechneten Empfehlung — gezählt wird, nicht geschätzt. Solange die Liste leer ist, steht hier kein Prozentwert."}
         </p>
         {m7Line && <p className="mt-1 text-xs leading-relaxed text-slate-500">{m7Line}</p>}

@@ -341,7 +341,7 @@ describe("weekLine / weekTankLine", () => {
       "Tank: 50 % · Restreichweite ≈ 200 km",
     );
     expect(weekTankLine(tank(), 50, 50).detail).toContain(
-      "inkl. Reserve ≈ 190 km",
+      "davon Reserve ≈ 190 km",
     );
   });
 });

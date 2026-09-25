@@ -263,7 +263,9 @@ export function weekWindowSummary(
               ? `${euro(medianSaving)} € im Median`
               : "Betrag folgt mit der Tankmenge"
           }`
-        : "Kein klarer Vorsprung gegenüber dem aktuellen Preis"
+        : saving <= -0.05
+          ? `Das Fenster liegt ${centPerLiter(Math.abs(saving))} über dem aktuellen Preis`
+          : "Kein klarer Vorsprung gegenüber dem aktuellen Preis"
       : null;
 
   const percent =
@@ -313,7 +315,9 @@ export function weekExplanation(
     sentences.push(
       deltaCt >= 0.05
         ? `Der aktuelle Preis liegt ${centPerLiter(deltaCt)} darüber — warten wäre der Vorsprung.`
-        : `Der aktuelle Preis liegt nahe am Fensterpreis — der Vorsprung ist klein.`,
+        : deltaCt <= -0.05
+          ? `Der aktuelle Preis liegt ${centPerLiter(Math.abs(deltaCt))} unter dem Fensterpreis — warten wäre teurer.`
+          : `Der aktuelle Preis liegt nahe am Fensterpreis — der Vorsprung ist klein.`,
     );
   } else {
     sentences.push("Der aktuelle Preis fehlt, deshalb steht kein Abstand.");
@@ -376,7 +380,7 @@ export function weekTankLine(
   return {
     text: `Tank: ${percentLabelPart} · ${range}`,
     detail: tank
-      ? `inkl. Reserve ≈ ${kilometersLabel(tank.reserve_range_km)}`
+      ? `davon Reserve ≈ ${kilometersLabel(tank.reserve_range_km)}`
       : "Bewertung folgt mit der nächsten Empfehlung-Antwort.",
   };
 }
