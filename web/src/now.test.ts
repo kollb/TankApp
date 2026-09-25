@@ -597,7 +597,7 @@ describe("Frische der Prognose (Regression)", () => {
   // Vorher stand in der Fußzeile `stats_summary.generated_at` — das ist der
   // Zeitpunkt der Antwortberechnung, also immer „gerade eben“. Der Modell-Lauf
   // datiert aus der Engine-Publikation bzw. dem Fit.
-  it("nimmt die Engine-Publikation, sonst den Fit", () => {
+  it("nimmt den Fit-Zeitpunkt der Veröffentlichung, sonst den Kalibrier-Stand", () => {
     const withPublishing = decide("wait");
     withPublishing.quality = {
       rolling_picp_7d_pct: 94.2,
@@ -611,6 +611,33 @@ describe("Frische der Prognose (Regression)", () => {
     };
     withPublishing.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-14T09:25:00+02:00" };
     expect(forecastStamp(withPublishing)).toBe("2026-09-14T09:25:00+02:00");
+
+    // Befund 25.09.2026: `rolling_picp_7d_as_of` ist ein reiner Kalendertag
+    // (der letzte bewertete Tag) und datiert den Lauf falsch — die Fußzeile
+    // sagte „Prognose vor 1 Tag“, obwohl der Fit Minuten zurücklag. Bei
+    // abweichenden Stempeln gewinnt deshalb der Fit-Zeitpunkt der
+    // Veröffentlichung (`debug.fitted_at` = `origin` der Publikation).
+    const differing = decide("wait");
+    differing.quality = {
+      rolling_picp_7d_pct: 94.2,
+      rolling_picp_7d_points: 220,
+      rolling_picp_7d_days: 7,
+      rolling_picp_7d_badge: "green",
+      rolling_picp_7d_as_of: "2026-09-24",
+      rolling_picp_window_days: 7,
+      rolling_picp_nominal_pct: 95,
+      gate: null,
+    };
+    differing.debug = {
+      forecast_url: "/api/v1/forecast",
+      fitted_at: "2026-09-25T09:30:00+02:00",
+    };
+    expect(forecastStamp(differing)).toBe("2026-09-25T09:30:00+02:00");
+
+    // Ohne Fit-Zeitpunkt bleibt der Rolling-Stand der Rückfall.
+    const onlyRolling = decide("wait");
+    onlyRolling.quality = { ...withPublishing.quality! };
+    expect(forecastStamp(onlyRolling)).toBe("2026-09-14T09:25:00+02:00");
 
     const onlyFit = decide("wait");
     onlyFit.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-13T23:00:00+02:00" };
@@ -798,6 +825,8 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
 
   it("eine günstigere Referenz ergibt keine erfundene Ersparnis", () => {
     // Die Entscheidungs-Station ist selbst die günstigste: nichts zu sparen.
+    // Kein Vergleich mit sich selbst (0.70.1, MICROCOPY §4b) — der Satz sagt,
+    // dass der günstigste Preis zugleich der Anker der Empfehlung ist.
     const result = nowBestNow({
       decide: decide("wait", {}, {
         station: { id: "shell", name: "Shell Nord", price_now: 1.709 },
@@ -807,8 +836,9 @@ describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximu
       now: NOW,
     });
     expect(result.saveCt).toBeCloseTo(0, 6);
-    expect(result.sentence).toContain("nicht unter dem Preis");
+    expect(result.sentence).toContain("und zugleich der Preis, den die Empfehlung");
     expect(result.sentence).not.toContain("das sind");
+    expect(result.sentence).not.toContain("nicht unter dem Preis");
   });
 });
 

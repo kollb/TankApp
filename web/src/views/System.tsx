@@ -667,7 +667,7 @@ export function SystemView(props: SystemViewProps) {
                   <span className="font-mono text-slate-500">—</span>
                 )
               }
-              detail="Anteil echter Preise im Konfidenzband. Ziel 90–98 %."
+              detail="Anteil echter Preise im Konfidenzband — Median über die Stationen. Ziel 90–98 %."
               hint={statsSummaryRes.data?.quality_metrics.picp_95 == null ? calibrationHint : null}
             />
             <Metric
@@ -687,7 +687,7 @@ export function SystemView(props: SystemViewProps) {
                   <span className="font-mono text-slate-500">—</span>
                 )
               }
-              detail="Schranke |CUSUM| ≤ 3σ über 14 Tage zur Erkennung von Stationsumbau."
+              detail="Schranke |CUSUM| ≤ 2,00 über 14 Tage zur Erkennung von Stationsumbau — eigene Messung, nicht der Strukturbruch der Selektion im Labor."
               hint={!statsSummaryRes.data?.quality_metrics.cusum_drift ? calibrationHint : null}
             />
             <Metric
@@ -768,7 +768,7 @@ export function SystemView(props: SystemViewProps) {
               </h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Dieselben Zeilen liegen als Datei unter <code className="text-slate-400">data/runtime/jobs/{logJob}.log</code> (die letzten 500). Beim Auslesen
-                werden Pfade und Zugangsdaten entfernt.
+                werden Pfade und Zugangsdaten entfernt. Die Zeitstempel der Logzeilen stehen in UTC, die übrigen Zeiten dieser Seite in Berliner Zeit.
               </p>
             </div>
             <button

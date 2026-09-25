@@ -247,9 +247,10 @@ describe("systemOverallTone", () => {
 });
 
 describe("systemDataCoverage", () => {
-  it("zählt Stationen und frische Preise", () => {
-    const data = { cities: ["Frankfurt"], fuel: "e10", stations: [stationRow("a")], generated_at: minutesAgo(4), connection_error: null, fresh_prices: 1 } as unknown as Stations;
-    const cov = systemDataCoverage({ data, stations: [stationRow("a"), stationRow("b")], freshCount: 1, selection: selection() });
+  it("zählt das Polling-Set über alle Städte und die frischen Preise der Sicht", () => {
+    const data = { cities: ["Frankfurt"], fuel: "e10", stations: [stationRow("a"), stationRow("b")], generated_at: minutesAgo(4), connection_error: null, fresh_prices: 1 } as unknown as Stations;
+    const cov = systemDataCoverage({ data, stations: [stationRow("a")], freshCount: 1, selection: selection() });
+    // „Stationen im Set“ zählt das Set (data.stations), nicht die Stadt-Sicht.
     expect(cov.stationCount).toBe(2);
     expect(cov.freshCount).toBe(1);
     expect(cov.cities).toEqual(["Frankfurt"]);

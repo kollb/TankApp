@@ -187,7 +187,8 @@ _BLOCK_REASON_TEXT = {
         "Die Prognoseverteilung fehlt — ohne sie keine belastbare Empfehlung."
     ),
     "paths_invalid": (
-        "Die Prognoseverteilung enthält ungültige Werte — keine belastbare Empfehlung."
+        "Die Prognoseverteilung enthält ungültige Werte — ohne gültige "
+        "Pfade keine belastbare Empfehlung."
     ),
     "quality_missing": (
         "Keine ausreichende Güteinfo (7-Tage-Intervallquote) — "

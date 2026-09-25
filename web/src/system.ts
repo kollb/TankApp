@@ -309,7 +309,10 @@ export function systemDataCoverage(input: {
   return {
     cities: input.data?.cities ?? [],
     fuel: input.data?.fuel ?? "e10",
-    stationCount: input.stations.length,
+    // „im Set“ = das gemeinsame Polling-Set über alle Städte. Die View
+    // übergibt die gefilterte Sicht (eine Stadt) — gezählt wird trotzdem das
+    // Set, damit die Kachel zu „Stationen (API)“ und den Städten darunter passt.
+    stationCount: input.data?.stations.length ?? input.stations.length,
     freshCount: input.freshCount,
     deadCount: sel?.dead_count ?? 0,
     closedCount: sel?.closed_count ?? 0,
@@ -501,7 +504,7 @@ export function systemSetupSteps(input: {
       done: input.decideReady,
       hint: input.decideReady
         ? "Der Kompass gibt eine belastbare Empfehlung."
-        : "Noch nicht freigegeben — bis dahin zählen nur aktuelle Preise.",
+        : "Noch nicht freigegeben — die bisherigen Empfehlungen sind Lern-Fälle.",
     },
   ];
 }
@@ -640,7 +643,7 @@ export function driftStatusLine(drift: {
   if (!drift) return "—";
   const value =
     drift.max_cusum != null && Number.isFinite(drift.max_cusum)
-      ? ` (${deNumber(drift.max_cusum)}σ)`
+      ? ` (${deNumber(drift.max_cusum)})`
       : "";
   if (drift.status === "normal") return `unauffällig${value}`;
   if (drift.status === "drift") return `Drift erkannt${value}`;

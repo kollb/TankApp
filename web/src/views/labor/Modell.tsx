@@ -469,7 +469,7 @@ export function ModellView({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Regime-Kanten im Kalender</p>
-            <p className="mt-2 text-xs text-slate-400">Config.regimes: deklarierte Kanten Datum Quelle Betrag je Sorte zu Engine schaetzt delta_hat t_hat slot-gematcht zu Dummy in features zu Projektions-Kante zu Deckel cap(t) zu Zensierung.</p>
+            <p className="mt-2 text-xs text-slate-400">Config.regimes: deklarierte Kanten Datum Quelle Betrag je Sorte zu Engine schätzt delta_hat t_hat slot-gematcht zu Dummy in features zu Projektions-Kante zu Deckel cap(t) zu Zensierung.</p>
             <p className="mt-2 text-xs text-slate-500">Status: announced detected in_force. Quelle: Gesetzesblatt. Betrag: ct/L je Sorte.</p>
             <p className="mt-2 text-xs text-slate-500">Zensierung: at_cap_points Punkte am Deckel, p_at_cap Anteil. Liegt der Anteil am Deckel über 20 Prozent, ist der Deckel bindend.</p>
           </div>
@@ -479,14 +479,14 @@ export function ModellView({
                   verglichen, gematcht auf Wochentag und Stunde.</p>
               <div className="rounded bg-slate-950/70 p-2 font-mono text-xs">{"delta_reg = median(t in match)(p_post-p_pre) t_hat via CUSUM Dummy 1(t>=kante) in X"}</div>
               <p>Projektions-Kante: _segment_bounds setzt bei Regime-Kante neue Segment-Grenze wie 12:00. Deckel: cap(t)=base+delta_regime, Zensierung: p_capped = clip(p, cap), at_cap = p ge cap minus epsilon.</p>
-              <p className="mt-2 text-amber-300/80">Hinweis M8: Erster Winter nach der 12-Uhr-Regel - Deckel bindend? Siehe Daten-Tab.</p>
+                <p className="mt-2 text-amber-300/80">Hinweis M8: Erster Winter nach der 12-Uhr-Regel — Deckel bindend? Siehe Daten-Tab.</p>
             </ForTheCurious>
           </div>
         </div>
       </ParamCardShell>
 
       <LabBlock id="spielplatz" open={open.spielplatz} onToggle={() => toggle("spielplatz")} headline="Spielplatz" question={labSection("spielplatz").question} blockRef={(node) => { blockRefs.current.spielplatz = node; }}>
-        <p className="text-xs leading-relaxed text-slate-400">Freies Pruefen auf echten Vergangenheits-Preisen - nicht auf Prognosen, deshalb ehrlich vergleichbar.</p>
+        <p className="text-xs leading-relaxed text-slate-400">Freies Prüfen auf echten Vergangenheits-Preisen — nicht auf Prognosen, deshalb ehrlich vergleichbar.</p>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
             <div className="flex items-center gap-2">
@@ -498,7 +498,7 @@ export function ModellView({
             {scenario ? (
               <ul className="mt-2 space-y-1 text-xs leading-relaxed text-slate-300">
                 <li>Station im Blick: <strong className="text-slate-100">{selected?.name ?? "-"}</strong></li>
-                <li>Gewartet haette sie an <strong className="text-slate-100">{scenario.wait} von {scenario.days}</strong> Tagen.</li>
+                <li>Gewartet hätte sie an <strong className="text-slate-100">{scenario.wait} von {scenario.days}</strong> Tagen.</li>
                 <li>Richtig entschieden: <strong className="text-slate-100">{scenario.hits} von {scenario.days}</strong> Tagen.</li>
                 <li>Verlust aus falschem Warten: <strong className="text-slate-100">{euro(scenario.regret)} €</strong> bei {deTrimmed(liters, 0)} L.</li>
                 {labMu != null ? <li>Trainings-Erwartung: <strong className="text-slate-100">mu = {centPerLiter(labMu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}), {labSaves.length} Trainings-Tage.</li> : activeLabDayRow ? <li>Backtest-Erwartung (kein publiziertes Form-Modell): <strong className="text-slate-100">mu = {centPerLiter(activeLabDayRow.mu)}</strong> ({labDayClass === 0 ? "Werktag" : "Wochenende"}) — das Trainings-Form-Modell fehlt (models dict leer), die Backtest-Zeile liefert mu.</li> : <li className="text-slate-500">Werkstück Modellvergleich: Die Engine veröffentlicht kein Form-Modell je Station.</li>}
@@ -529,7 +529,7 @@ export function ModellView({
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
           <p className="text-xs font-semibold text-slate-200">Echte Preise im Zeitraum</p>
           <div className="mt-2 flex flex-wrap gap-1 text-xs">{[{ hours: 24, label: timeSpanLabel(24) }, { hours: 72, label: timeSpanLabel(72) }, { hours: 168, label: timeSpanLabel(168) }].map((option) => <button key={option.hours} aria-pressed={spanHours === option.hours} onClick={() => setSpanHours(option.hours)} className={`rounded-md border px-2 py-1 font-semibold ${spanHours === option.hours ? "border-violet-500/40 bg-violet-500/10 text-violet-200" : "border-slate-800 text-slate-500 hover:text-slate-300"}`}>{option.label}</button>)}<span className="self-center text-slate-500">· {spanLabel}</span></div>
-          {history.error || history.data?.error_code ? <div className="mt-3"><LoadError errorCode={history.data?.error_code || history.errorCode} fallback="Die Preis-Reihe konnte nicht geladen werden." onRetry={refreshNow} compact /></div> : observations.length ? <div className="mt-3"><LineChart height={200} series={observations} gapMinutes={30} xTicks={autoTimeTicks(Date.now() - spanHours * 3600000, Date.now())} yFmt={(value) => euro(value, 3)} ariaLabel="Beobachtete Preise der gewaehlten Station" ariaDescription={`Beobachtete Preise, ${spanLabel}. ${lineChartAlt({ series: observations, fmtY: (v) => euroPerLiter(v), fmtX: (x) => `${timeLabel(new Date(x).toISOString())} Uhr` })}`} /><ReadingAid headline={`Gemessene Preise: ${spanLabel}.`} text="Luecken sind ehrlich: Wo keine offene Meldung vorliegt, steht keine Linie." /></div> : history.pending && !history.data ? <div className="mt-3"><SkeletonChart height="h-48" label="Preis-Reihe wird geladen" /></div> : <div className="mt-3"><Empty>Keine Preise in diesem Zeitraum - Meldungen entstehen nur 06-24 Uhr.</Empty></div>}
+          {history.error || history.data?.error_code ? <div className="mt-3"><LoadError errorCode={history.data?.error_code || history.errorCode} fallback="Die Preis-Reihe konnte nicht geladen werden." onRetry={refreshNow} compact /></div> : observations.length ? <div className="mt-3"><LineChart height={200} series={observations} gapMinutes={30} xTicks={autoTimeTicks(Date.now() - spanHours * 3600000, Date.now())} yFmt={(value) => euro(value, 3)} ariaLabel="Beobachtete Preise der gewählten Station" ariaDescription={`Beobachtete Preise, ${spanLabel}. ${lineChartAlt({ series: observations, fmtY: (v) => euroPerLiter(v), fmtX: (x) => `${timeLabel(new Date(x).toISOString())} Uhr` })}`} /><ReadingAid headline={`Gemessene Preise: ${spanLabel}.`} text="Lücken sind ehrlich: Wo keine offene Meldung vorliegt, steht keine Linie." /></div> : history.pending && !history.data ? <div className="mt-3"><SkeletonChart height="h-48" label="Preis-Reihe wird geladen" /></div> : <div className="mt-3"><Empty>Keine Preise in diesem Zeitraum — Meldungen entstehen nur 06–24 Uhr.</Empty></div>}
         </div>
         <SelfCheck
           question="Ist ein höheres ε automatisch sicherer?"

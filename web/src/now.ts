@@ -454,7 +454,7 @@ export function nowFacts(input: NowInput): NowFact[] {
           value: "—",
           detail:
             stage === "C"
-              ? "Keine Prognose — Preise vergleichen"
+              ? "Keine Prognose für die Entscheidung — Preise vergleichen"
               : "Heute kein Fenster mit Vorsprung",
         }
       : {
@@ -530,7 +530,10 @@ export function nowSteps(input: NowInput): NowStep[] {
         `${hourRangeLabel(
           berlinHour(new Date(later.start)),
           berlinHour(new Date(later.end)),
-        )} wäre noch besser (${euro(laterSaving)} € weniger)`,
+        )} wäre noch besser (${euro(laterSaving)} € weniger bei ${deTrimmed(
+          decide?.quantity?.used_liters ?? input.liters,
+          0,
+        )} L)`,
       target: "week",
     });
   }
@@ -571,15 +574,17 @@ export function dayLabel(stamp: string | null | undefined, now = Date.now()) {
  * Wann der Modell-Lauf war — NICHT der Zeitpunkt dieser Antwort.
  *
  * `stats_summary.generated_at` ist die Berechnungszeit des Servers (also
- * „gerade eben“ bei jedem Refresh) und taugt nicht als Frische-Aussage. Die
- * Publikation der Engine (`rolling_picp_7d_as_of`) bzw. der Fit-Zeitpunkt
- * (`debug.fitted_at`) datieren den Lauf wirklich.
+ * „gerade eben“ bei jedem Refresh) und taugt nicht als Frische-Aussage. Der
+ * Fit-Zeitpunkt der Veröffentlichung (`debug.fitted_at` = `origin` der
+ * Publikation, siehe `app/refresh.py`) datiert den Lauf wirklich. Nur wenn
+ * die Antwort ihn nicht mitliefert, bleibt der Stand des Rolling-Fensters
+ * (`rolling_picp_7d_as_of`) — der ist ein reiner Kalendertag und las die
+ * Fußzeile „Prognose vor 1 Tag“, obwohl der Lauf Minuten zurücklag
+ * (Befund 25.09.2026, siehe `now.test.ts`).
  */
 export function forecastStamp(decide: DecideResult | null): string | null {
   if (!decide) return null;
-  return (
-    decide.quality?.rolling_picp_7d_as_of ?? decide.debug?.fitted_at ?? null
-  );
+  return decide.debug?.fitted_at ?? decide.quality?.rolling_picp_7d_as_of ?? null;
 }
 
 export type NowFreshness = { text: string; tone: "ok" | "warn" | "bad" };
@@ -909,7 +914,9 @@ export function nowBestNow(input: NowInput): NowBestNow {
       : saveCt === null
         ? null
         : saveCt <= 0.05
-          ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
+          ? anchor && best.station.station_id === anchor.id
+            ? `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — und zugleich der Preis, den die Empfehlung für „jetzt tanken“ ansetzt.`
+            : `${best.station.name} ist gerade am günstigsten (${euroPerLiter(best.price)}) — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}).`
           : `${best.station.name} ist gerade am günstigsten: ${centPerLiter(saveCt)} unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (${reference.station ?? "gewählte Station"}, ${euroPerLiter(anchorPrice)}) — das sind ${euro(saveEur ?? 0)} € bei ${litersText} L.`;
 
   return {

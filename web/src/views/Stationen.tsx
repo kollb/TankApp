@@ -412,7 +412,8 @@ export function StationenView(props: StationenViewProps) {
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
           „offen“ zeigt nur Stationen mit aktuellem Preis für den gewählten
           Kraftstoff. Der Zeitwert wirkt auf die Umweg-Rechnung des Servers —
-          als Was-wäre-wenn, das Profil bleibt unverändert.
+          als Was-wäre-wenn, das Profil bleibt unverändert. Die Euro-Beträge
+          in der Liste rechnen mit der Tankmenge von {deTrimmed(liters, 0)} L.
         </p>
       </div>
 
