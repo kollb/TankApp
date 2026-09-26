@@ -370,10 +370,6 @@ export function JetztView(props: JetztViewProps) {
       <h1 id="jetzt-title" className="text-2xl font-bold tracking-tight text-white">
         Jetzt
       </h1>
-      <p className="mt-1 text-xs leading-relaxed text-slate-400">
-        Eine Entscheidung, drei Fakten, nächste Schritte.
-      </p>
-
       {/* Due-Prompt nach Fensterende (aus dem Alltagstab übernommen) */}
       {dueEpisode && !dueDismissed && (
         <section
@@ -487,13 +483,6 @@ export function JetztView(props: JetztViewProps) {
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setSheetOpen(true)}
-                aria-haspopup="dialog"
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
-              >
-                Warum?
-              </button>
               {verdict.mapsUrl && (
                 <a
                   href={verdict.mapsUrl}
@@ -510,6 +499,13 @@ export function JetztView(props: JetztViewProps) {
                   <ArrowRight size={15} aria-hidden="true" />
                 </a>
               )}
+              <button
+                onClick={() => setSheetOpen(true)}
+                aria-haspopup="dialog"
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Warum?
+              </button>
             </div>
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}

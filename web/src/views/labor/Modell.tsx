@@ -276,7 +276,7 @@ export function ModellView({
         </div>
       </LabBlock>
 
-      <div className={activeCard === 1 ? undefined : "hidden"}>
+      <div className={activeCard === 1 ? undefined : "hidden"} hidden={activeCard !== 1} aria-hidden={activeCard !== 1}>
       <ParamCardShell anchor={PARAM_CARDS[0].anchor} number={PARAM_CARDS[0].number} title={PARAM_CARDS[0].title} chain={PARAM_CARDS[0].chain} sentence={PARAM_CARDS[0].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -317,7 +317,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 2 ? undefined : "hidden"}>
+      <div className={activeCard === 2 ? undefined : "hidden"} hidden={activeCard !== 2} aria-hidden={activeCard !== 2}>
       <ParamCardShell anchor={PARAM_CARDS[1].anchor} number={PARAM_CARDS[1].number} title={PARAM_CARDS[1].title} chain={PARAM_CARDS[1].chain} sentence={PARAM_CARDS[1].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -345,7 +345,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 3 ? undefined : "hidden"}>
+      <div className={activeCard === 3 ? undefined : "hidden"} hidden={activeCard !== 3} aria-hidden={activeCard !== 3}>
       <ParamCardShell anchor={PARAM_CARDS[2].anchor} number={PARAM_CARDS[2].number} title={PARAM_CARDS[2].title} chain={PARAM_CARDS[2].chain} sentence={PARAM_CARDS[2].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -367,7 +367,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 4 ? undefined : "hidden"}>
+      <div className={activeCard === 4 ? undefined : "hidden"} hidden={activeCard !== 4} aria-hidden={activeCard !== 4}>
       <ParamCardShell anchor={PARAM_CARDS[3].anchor} number={PARAM_CARDS[3].number} title={PARAM_CARDS[3].title} chain={PARAM_CARDS[3].chain} sentence={PARAM_CARDS[3].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -402,7 +402,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 5 ? undefined : "hidden"}>
+      <div className={activeCard === 5 ? undefined : "hidden"} hidden={activeCard !== 5} aria-hidden={activeCard !== 5}>
       <ParamCardShell anchor={PARAM_CARDS[4].anchor} number={PARAM_CARDS[4].number} title={PARAM_CARDS[4].title} chain={PARAM_CARDS[4].chain} sentence={PARAM_CARDS[4].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -456,7 +456,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 6 ? undefined : "hidden"}>
+      <div className={activeCard === 6 ? undefined : "hidden"} hidden={activeCard !== 6} aria-hidden={activeCard !== 6}>
       <ParamCardShell anchor={PARAM_CARDS[5].anchor} number={PARAM_CARDS[5].number} title={PARAM_CARDS[5].title} chain={PARAM_CARDS[5].chain} sentence={PARAM_CARDS[5].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -487,7 +487,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 7 ? undefined : "hidden"}>
+      <div className={activeCard === 7 ? undefined : "hidden"} hidden={activeCard !== 7} aria-hidden={activeCard !== 7}>
       <ParamCardShell anchor={PARAM_CARDS[6].anchor} number={PARAM_CARDS[6].number} title={PARAM_CARDS[6].title} chain={PARAM_CARDS[6].chain} sentence={PARAM_CARDS[6].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -516,7 +516,7 @@ export function ModellView({
       </ParamCardShell>
       </div>
 
-      <div className={activeCard === 8 ? undefined : "hidden"}>
+      <div className={activeCard === 8 ? undefined : "hidden"} hidden={activeCard !== 8} aria-hidden={activeCard !== 8}>
       <ParamCardShell anchor={PARAM_CARDS[7].anchor} number={PARAM_CARDS[7].number} title={PARAM_CARDS[7].title} chain={PARAM_CARDS[7].chain} sentence={PARAM_CARDS[7].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">

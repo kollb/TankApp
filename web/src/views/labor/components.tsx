@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   BookOpen,
+  ChevronRight,
   FlaskConical,
   Gauge,
   ListChecks,
@@ -73,8 +74,13 @@ export function LabBlock({
             {question}
           </span>
         </span>
-        <span className="mt-1 shrink-0 text-xs font-semibold text-slate-500">
-          {open ? "zuklappen" : "aufklappen"}
+        <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-semibold text-slate-500">
+          <ChevronRight
+            size={16}
+            className={`transition-transform ${open ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          />
+          <span className="sr-only">{open ? "zuklappen" : "aufklappen"}</span>
         </span>
       </button>
       {open && (
@@ -148,7 +154,7 @@ export function ParamCardShell({
   anchor,
   number,
   title,
-  chain,
+  chain: _chain,
   sentence,
   children,
 }: {
@@ -171,10 +177,7 @@ export function ParamCardShell({
             {number}
           </span>
           <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-            <p className={`text-xs font-bold uppercase tracking-[.2em] ${LAB_ACCENT}`}>
-              Karte {number} · {chain}
-            </p>
-            <h3 id={`${anchor}-title`} className="mt-0.5 text-base font-semibold text-white">
+            <h3 id={`${anchor}-title`} className="text-base font-semibold text-white">
               {title}
             </h3>
             <p className="mt-1 text-sm leading-relaxed text-slate-300">{sentence}</p>
