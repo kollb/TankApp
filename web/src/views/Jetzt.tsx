@@ -788,10 +788,7 @@ export function JetztView(props: JetztViewProps) {
           `ui-neuentwurf-mockup`: 88 px) statt als drei gestapelte Karten
           (409 px, „Zu lang auf mobil“, 18.09.2026); ab `sm` unverändert die
           großen Karten. Dieselben Werte aus `nowFacts`, zwei Anordnungen. */}
-      <div id="jetzt-fakten" className="mt-6 scroll-mt-24">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-        2 · Drei Fakten
-      </p>
+      <div id="jetzt-fakten" className="mt-4 scroll-mt-24">
       <div className="grid grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3">
         {facts.map((fact, index) => (
           <div
@@ -869,7 +866,7 @@ export function JetztView(props: JetztViewProps) {
       {steps.length > 0 && (
         <>
           <h2 className="mt-6 text-sm font-semibold text-slate-200">
-            3 · Nächste Schritte
+            Nächste Schritte
           </h2>
           <div className="mt-2 grid grid-cols-1 gap-2">
             {steps.map((step) => (
@@ -904,7 +901,7 @@ export function JetztView(props: JetztViewProps) {
             className="mt-6 flex scroll-mt-24 items-center gap-2 text-sm font-semibold text-slate-200"
           >
             <CalendarDays size={15} className="text-emerald-400" aria-hidden="true" />
-            4 · Heute im Blick
+            Heute im Blick
           </h2>
           <div className={`${panel} mt-2 p-4`}>
             <p className="text-xs leading-relaxed text-slate-300">

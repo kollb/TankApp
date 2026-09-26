@@ -72,7 +72,7 @@ export function LaborView(props: LaborViewProps) {
 
       {/* Sub-Tab-Bar */}
       <div
-        className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-800 pb-px"
+        className="mb-4 flex gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/60 p-1"
         role="tablist"
         aria-label="Labor Bereiche"
       >
@@ -83,10 +83,10 @@ export function LaborView(props: LaborViewProps) {
             aria-selected={laborSubTab === tab.id}
             aria-controls={`labor-subtab-${tab.id}`}
             onClick={() => handleSubTab(tab.id)}
-            className={`tap-44 shrink-0 border-b-2 px-3 text-xs font-semibold transition-colors ${
+            className={`tap-44 shrink-0 rounded-lg px-3 text-xs font-semibold transition-colors ${
               laborSubTab === tab.id
-                ? "border-violet-400 text-violet-200"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "bg-slate-800 text-violet-300 shadow"
+                : "text-slate-500 hover:text-slate-200"
             }`}
           >
             {tab.label}

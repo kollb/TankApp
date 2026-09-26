@@ -141,8 +141,7 @@ describe("Jetzt: Aufbau", () => {
     const steps = html.indexOf('id="jetzt-schritte"');
     const day = html.indexOf('id="jetzt-heute"');
     const fresh = html.indexOf("Preise vor 4 Minuten");
-    expect(html).toContain("2 · Drei Fakten");
-    expect(html).toContain("4 · Heute im Blick");
+    expect(html).toContain("Heute im Blick");
     expect(facts).toBeGreaterThan(decision);
     expect(steps).toBeGreaterThan(facts);
     expect(day).toBeGreaterThan(steps);
