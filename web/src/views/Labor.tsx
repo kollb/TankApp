@@ -60,9 +60,8 @@ export function LaborView(props: LaborViewProps) {
             Verstehen, warum die App das sagt
           </h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
-            Vier Bereiche: Überblick (Fan-Chart + Tagebuch), Modell & Parameter (8 Karten in Kette), Güte &
-            Kalibrierung (PICP, Reliability, Heatmaps), Daten & Rohdaten (CSV, API, 12-Uhr-Hinweis). Erklär-Treppe
-            springt punktgenau: ?subtab=…&section=…#karte-…
+            Vier Bereiche: Überblick (eine offene Sektion), Modell & Parameter (8 Karten im Raster, eine offen),
+            Güte & Kalibrierung, Daten & Rohdaten. Erklär-Treppe: ?subtab=…&section=…#karte-…
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

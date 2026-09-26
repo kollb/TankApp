@@ -96,7 +96,7 @@ export function UeberblickView({
     prognose: true,
     sicherheit: false,
     stationen: false,
-    lernen: true,
+    lernen: false,
     glossar: false,
     spielplatz: false,
   });
@@ -105,7 +105,13 @@ export function UeberblickView({
   const [diaryFilter, setDiaryFilter] = useState<DiaryFilterId>("all");
 
   const toggle = (id: LabSectionId) =>
-    setOpen((current) => ({ ...current, [id]: !current[id] }));
+    setOpen((current) => {
+      const nextOpen = !current[id];
+      const closed = Object.fromEntries(
+        Object.keys(current).map((key) => [key, false]),
+      ) as Record<LabSectionId, boolean>;
+      return { ...closed, [id]: nextOpen };
+    });
 
   const jumpTo = (id: LabSectionId) => {
     setOpen((current) => ({ ...current, [id]: true }));
@@ -227,6 +233,30 @@ export function UeberblickView({
           {best ? ` · Vergleichsanker: ${best.name}` : ""}
         </p>
       </div>
+
+      <nav aria-label="Abschnitte im Überblick" className="flex flex-wrap gap-1.5">
+        {(
+          [
+            { id: "prognose" as const, n: "1", label: "Prognose" },
+            { id: "lernen" as const, n: "4", label: "Lernen" },
+            { id: "glossar" as const, n: "5", label: "Glossar" },
+          ] as const
+        ).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => jumpTo(item.id)}
+            className={`rounded-full border px-2.5 py-1 text-[0.6875rem] font-semibold ${
+              open[item.id]
+                ? "border-violet-500/40 bg-violet-500/10 text-violet-100"
+                : "border-slate-700 bg-slate-900 text-slate-400 hover:text-violet-200"
+            }`}
+          >
+            <span className="font-mono text-violet-300">{item.n}</span>
+            {` · ${item.label}`}
+          </button>
+        ))}
+      </nav>
 
       {/* Prognose */}
       <LabBlock

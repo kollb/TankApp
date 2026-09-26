@@ -87,11 +87,19 @@ export function ModellView({
     stationen: true,
     lernen: false,
     glossar: false,
-    spielplatz: true,
+    spielplatz: false,
   });
+  const [activeCard, setActiveCard] = useState(1);
   const blockRefs = useRef<Record<string, HTMLElement | null>>({});
 
-  const toggle = (id: LabSectionId) => setOpen((cur) => ({ ...cur, [id]: !cur[id] }));
+  const toggle = (id: LabSectionId) =>
+    setOpen((cur) => {
+      const nextOpen = !cur[id];
+      const closed = Object.fromEntries(
+        Object.keys(cur).map((key) => [key, false]),
+      ) as Record<LabSectionId, boolean>;
+      return { ...closed, [id]: nextOpen };
+    });
   const jumpTo = (id: LabSectionId) => {
     setOpen((cur) => ({ ...cur, [id]: true }));
     blockRefs.current[id]?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -104,6 +112,8 @@ export function ModellView({
       onFocusHandled();
     }
     if (typeof focusSection === "string" && (focusSection as string).startsWith("karte-")) {
+      const card = PARAM_CARDS.find((entry) => entry.anchor === focusSection);
+      if (card) setActiveCard(card.number);
       const el = document.getElementById(focusSection);
       el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
       onFocusHandled();
@@ -114,6 +124,8 @@ export function ModellView({
     const hash = window.location.hash.replace(/^#/, "");
     if (!hash) return;
     if (hash.startsWith("karte-")) {
+      const card = PARAM_CARDS.find((entry) => entry.anchor === hash);
+      if (card) setActiveCard(card.number);
       setTimeout(() => {
         document.getElementById(hash)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
       }, 100);
@@ -199,20 +211,30 @@ export function ModellView({
   return (
     <div className="grid grid-cols-1 gap-4">
       <div className="rounded-lg border border-violet-500/20 bg-slate-900/60 p-4">
-        <h2 className="text-sm font-semibold text-white">Parameterschrank — 8 Karten in Kette</h2>
+        <h2 className="text-sm font-semibold text-white">Parameterschrank — eine Karte zur Zeit</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
-          Struktur, AR(2), Bootstrap, 12-Uhr-Projektion, Ensemble, Selektion, Schwellen, Regime. Jede Karte: Satz,
-          Diagramm, Parameter, Formel. B2/B3 Größen bei ihrer Karte, Beta(5,5)-CI auf Karte 7.
+          Acht Schritte, Raster statt Kette. Klick öffnet genau eine Karte (Satz, Diagramm, Formel).
+          Beta(5,5)-CI auf Karte 7, Regime auf Karte 8.
         </p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           {PARAM_CARDS.map((card) => (
-            <a
+            <button
               key={card.id}
-              href={`#${card.anchor}`}
-              className="tap-44 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-semibold text-slate-400 hover:text-violet-200"
+              id={card.anchor}
+              type="button"
+              aria-pressed={activeCard === card.number}
+              onClick={() => setActiveCard(card.number)}
+              className={`tap-44 scroll-mt-28 rounded-lg border px-2 py-2 text-left text-xs font-semibold ${
+                activeCard === card.number
+                  ? "border-violet-500/40 bg-violet-500/10 text-violet-100"
+                  : "border-slate-700 bg-slate-900 text-slate-400 hover:text-violet-200"
+              }`}
             >
-              {card.number} · {card.title}
-            </a>
+              <span className="block font-mono text-[0.625rem] text-violet-300">
+                Karte {card.number}
+              </span>
+              {card.title}
+            </button>
           ))}
         </div>
       </div>
@@ -239,6 +261,7 @@ export function ModellView({
         </div>
       </LabBlock>
 
+      <div className={activeCard === 1 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[0].anchor} number={PARAM_CARDS[0].number} title={PARAM_CARDS[0].title} chain={PARAM_CARDS[0].chain} sentence={PARAM_CARDS[0].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -277,7 +300,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 2 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[1].anchor} number={PARAM_CARDS[1].number} title={PARAM_CARDS[1].title} chain={PARAM_CARDS[1].chain} sentence={PARAM_CARDS[1].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -303,7 +328,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 3 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[2].anchor} number={PARAM_CARDS[2].number} title={PARAM_CARDS[2].title} chain={PARAM_CARDS[2].chain} sentence={PARAM_CARDS[2].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -323,7 +350,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 4 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[3].anchor} number={PARAM_CARDS[3].number} title={PARAM_CARDS[3].title} chain={PARAM_CARDS[3].chain} sentence={PARAM_CARDS[3].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -356,7 +385,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 5 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[4].anchor} number={PARAM_CARDS[4].number} title={PARAM_CARDS[4].title} chain={PARAM_CARDS[4].chain} sentence={PARAM_CARDS[4].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -408,7 +439,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 6 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[5].anchor} number={PARAM_CARDS[5].number} title={PARAM_CARDS[5].title} chain={PARAM_CARDS[5].chain} sentence={PARAM_CARDS[5].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -437,7 +470,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 7 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[6].anchor} number={PARAM_CARDS[6].number} title={PARAM_CARDS[6].title} chain={PARAM_CARDS[6].chain} sentence={PARAM_CARDS[6].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -464,7 +499,9 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
+      <div className={activeCard === 8 ? undefined : "hidden"}>
       <ParamCardShell anchor={PARAM_CARDS[7].anchor} number={PARAM_CARDS[7].number} title={PARAM_CARDS[7].title} chain={PARAM_CARDS[7].chain} sentence={PARAM_CARDS[7].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -484,6 +521,7 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
+      </div>
 
       <LabBlock id="spielplatz" open={open.spielplatz} onToggle={() => toggle("spielplatz")} headline="Spielplatz" question={labSection("spielplatz").question} blockRef={(node) => { blockRefs.current.spielplatz = node; }}>
         <p className="text-xs leading-relaxed text-slate-400">Freies Prüfen auf echten Vergangenheits-Preisen — nicht auf Prognosen, deshalb ehrlich vergleichbar.</p>

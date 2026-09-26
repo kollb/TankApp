@@ -161,7 +161,7 @@ export function ParamCardShell({
 }) {
   return (
     <section
-      id={anchor}
+      id={`${anchor}-detail`}
       className={`${panel} scroll-mt-28 overflow-hidden border-violet-500/20`}
       aria-labelledby={`${anchor}-title`}
     >

@@ -148,7 +148,7 @@ describe("Labor B5: 4 Sub-Tabs Aufbau", () => {
     expect(html).toContain("Schritt 1");
   });
 
-  it("zeigt im Modell-Tab 8 Karten in Kettenreihenfolge", () => {
+  it("zeigt im Modell-Tab 8 Karten im Raster", () => {
     const html = render({}, { laborSubTab: "modell" });
     for (const card of PARAM_CARDS) {
       expect(html).toContain(card.anchor);
