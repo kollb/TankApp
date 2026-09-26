@@ -210,49 +210,10 @@ export function ModellView({
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      <div className="rounded-lg border border-violet-500/20 bg-slate-900/60 p-4">
-        <h2 className="text-sm font-semibold text-white">Parameterschrank</h2>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">
-          Acht Schritte in der Reihenfolge des Modells. Der Streifen zeigt den aktiven
-          Schritt — darunter nur diese Karte (Satz, Diagramm, Formel).
-        </p>
-        <ol
-          className="mt-3 flex items-start gap-0 overflow-x-auto pb-1"
-          aria-label="Modellkette, acht Schritte"
-        >
-          {PARAM_CARDS.map((card, index) => (
-            <li key={card.id} className="flex min-w-0 flex-1 items-center">
-              <button
-                id={card.anchor}
-                type="button"
-                aria-current={activeCard === card.number ? "step" : undefined}
-                aria-pressed={activeCard === card.number}
-                onClick={() => setActiveCard(card.number)}
-                className={`tap-44 scroll-mt-28 flex min-w-[2.75rem] flex-col items-center gap-1 px-1 ${
-                  activeCard === card.number ? "text-violet-100" : "text-slate-400 hover:text-violet-200"
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
-                    activeCard === card.number
-                      ? "border-violet-400 bg-violet-500/20 text-violet-100"
-                      : "border-slate-600 bg-slate-950 text-slate-300"
-                  }`}
-                >
-                  {card.number}
-                </span>
-                <span className="hidden max-w-[5.5rem] truncate text-center text-xs font-semibold sm:block">
-                  {card.title}
-                </span>
-                <span className="sr-only">{`Karte ${card.number}`}</span>
-              </button>
-              {index < PARAM_CARDS.length - 1 && (
-                <span className="mx-0.5 mt-4 h-px min-w-2 flex-1 bg-slate-700" aria-hidden="true" />
-              )}
-            </li>
-          ))}
-        </ol>
-      </div>
+      <p className="text-xs leading-relaxed text-slate-400">
+        Parameterschrank — acht Schritte in Kette. Der Satz bleibt sichtbar,
+        Diagramm und Formel nur am offenen Schritt.
+      </p>
 
       <LabBlock id="stationen" open={open.stationen} onToggle={() => toggle("stationen")} headline="3 · Stationen" question={labSection("stationen").question} blockRef={(node) => { blockRefs.current.stationen = node; }}>
         <ThreeSentences
@@ -276,8 +237,7 @@ export function ModellView({
         </div>
       </LabBlock>
 
-      <div className={activeCard === 1 ? undefined : "hidden"} hidden={activeCard !== 1} aria-hidden={activeCard !== 1}>
-      <ParamCardShell anchor={PARAM_CARDS[0].anchor} number={PARAM_CARDS[0].number} title={PARAM_CARDS[0].title} chain={PARAM_CARDS[0].chain} sentence={PARAM_CARDS[0].sentence}>
+      <ParamCardShell expanded={activeCard === 1} onToggle={() => setActiveCard(1)} anchor={PARAM_CARDS[0].anchor} number={PARAM_CARDS[0].number} title={PARAM_CARDS[0].title} chain={PARAM_CARDS[0].chain} sentence={PARAM_CARDS[0].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Huber-Gewichte über der Tagesform</p>
@@ -315,10 +275,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 2 ? undefined : "hidden"} hidden={activeCard !== 2} aria-hidden={activeCard !== 2}>
-      <ParamCardShell anchor={PARAM_CARDS[1].anchor} number={PARAM_CARDS[1].number} title={PARAM_CARDS[1].title} chain={PARAM_CARDS[1].chain} sentence={PARAM_CARDS[1].sentence}>
+      <ParamCardShell expanded={activeCard === 2} onToggle={() => setActiveCard(2)} anchor={PARAM_CARDS[1].anchor} number={PARAM_CARDS[1].number} title={PARAM_CARDS[1].title} chain={PARAM_CARDS[1].chain} sentence={PARAM_CARDS[1].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: phi1/phi2 und Stabilität</p>
@@ -343,10 +301,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 3 ? undefined : "hidden"} hidden={activeCard !== 3} aria-hidden={activeCard !== 3}>
-      <ParamCardShell anchor={PARAM_CARDS[2].anchor} number={PARAM_CARDS[2].number} title={PARAM_CARDS[2].title} chain={PARAM_CARDS[2].chain} sentence={PARAM_CARDS[2].sentence}>
+      <ParamCardShell expanded={activeCard === 3} onToggle={() => setActiveCard(3)} anchor={PARAM_CARDS[2].anchor} number={PARAM_CARDS[2].number} title={PARAM_CARDS[2].title} chain={PARAM_CARDS[2].chain} sentence={PARAM_CARDS[2].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Tagesblock-Gewichte EW-HWZ</p>
@@ -365,10 +321,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 4 ? undefined : "hidden"} hidden={activeCard !== 4} aria-hidden={activeCard !== 4}>
-      <ParamCardShell anchor={PARAM_CARDS[3].anchor} number={PARAM_CARDS[3].number} title={PARAM_CARDS[3].title} chain={PARAM_CARDS[3].chain} sentence={PARAM_CARDS[3].sentence}>
+      <ParamCardShell expanded={activeCard === 4} onToggle={() => setActiveCard(4)} anchor={PARAM_CARDS[3].anchor} number={PARAM_CARDS[3].number} title={PARAM_CARDS[3].title} chain={PARAM_CARDS[3].chain} sentence={PARAM_CARDS[3].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: PAVA-Pooling einer Rohkurve</p>
@@ -400,10 +354,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 5 ? undefined : "hidden"} hidden={activeCard !== 5} aria-hidden={activeCard !== 5}>
-      <ParamCardShell anchor={PARAM_CARDS[4].anchor} number={PARAM_CARDS[4].number} title={PARAM_CARDS[4].title} chain={PARAM_CARDS[4].chain} sentence={PARAM_CARDS[4].sentence}>
+      <ParamCardShell expanded={activeCard === 5} onToggle={() => setActiveCard(5)} anchor={PARAM_CARDS[4].anchor} number={PARAM_CARDS[4].number} title={PARAM_CARDS[4].title} chain={PARAM_CARDS[4].chain} sentence={PARAM_CARDS[4].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             {/* R3/F7: Der Titel hieß „Gewichte je Horizont“, obwohl der Fit
@@ -454,10 +406,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 6 ? undefined : "hidden"} hidden={activeCard !== 6} aria-hidden={activeCard !== 6}>
-      <ParamCardShell anchor={PARAM_CARDS[5].anchor} number={PARAM_CARDS[5].number} title={PARAM_CARDS[5].title} chain={PARAM_CARDS[5].chain} sentence={PARAM_CARDS[5].sentence}>
+      <ParamCardShell expanded={activeCard === 6} onToggle={() => setActiveCard(6)} anchor={PARAM_CARDS[5].anchor} number={PARAM_CARDS[5].number} title={PARAM_CARDS[5].title} chain={PARAM_CARDS[5].chain} sentence={PARAM_CARDS[5].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: delta_hat je Station · {activeCity || "Stadt"}</p>
@@ -485,10 +435,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 7 ? undefined : "hidden"} hidden={activeCard !== 7} aria-hidden={activeCard !== 7}>
-      <ParamCardShell anchor={PARAM_CARDS[6].anchor} number={PARAM_CARDS[6].number} title={PARAM_CARDS[6].title} chain={PARAM_CARDS[6].chain} sentence={PARAM_CARDS[6].sentence}>
+      <ParamCardShell expanded={activeCard === 7} onToggle={() => setActiveCard(7)} anchor={PARAM_CARDS[6].anchor} number={PARAM_CARDS[6].number} title={PARAM_CARDS[6].title} chain={PARAM_CARDS[6].chain} sentence={PARAM_CARDS[6].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Trefferquote mit Beta(5,5)-CI</p>
@@ -514,10 +462,8 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
-      <div className={activeCard === 8 ? undefined : "hidden"} hidden={activeCard !== 8} aria-hidden={activeCard !== 8}>
-      <ParamCardShell anchor={PARAM_CARDS[7].anchor} number={PARAM_CARDS[7].number} title={PARAM_CARDS[7].title} chain={PARAM_CARDS[7].chain} sentence={PARAM_CARDS[7].sentence}>
+      <ParamCardShell expanded={activeCard === 8} onToggle={() => setActiveCard(8)} anchor={PARAM_CARDS[7].anchor} number={PARAM_CARDS[7].number} title={PARAM_CARDS[7].title} chain={PARAM_CARDS[7].chain} sentence={PARAM_CARDS[7].sentence}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Diagramm: Regime-Kanten im Kalender</p>
@@ -536,7 +482,6 @@ export function ModellView({
           </div>
         </div>
       </ParamCardShell>
-      </div>
 
       <LabBlock id="spielplatz" open={open.spielplatz} onToggle={() => toggle("spielplatz")} headline="Spielplatz" question={labSection("spielplatz").question} blockRef={(node) => { blockRefs.current.spielplatz = node; }}>
         <p className="text-xs leading-relaxed text-slate-400">Freies Prüfen auf echten Vergangenheits-Preisen — nicht auf Prognosen, deshalb ehrlich vergleichbar.</p>
