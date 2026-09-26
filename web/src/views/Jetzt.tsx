@@ -386,7 +386,7 @@ export function JetztView(props: JetztViewProps) {
           <a
             key={item.n}
             href={item.href}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-[0.6875rem] font-semibold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-200"
+            className="tap-44 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-200"
           >
             <span className="font-mono text-emerald-400">{item.n}</span>
             {item.label}
