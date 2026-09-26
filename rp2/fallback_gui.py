@@ -2328,12 +2328,12 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
     <div class="cols">
     <div class="col col-a">
 
-    <p class="section-kicker"><span class="idx">1 · </span>Preisvergleich</p>
+    <p class="section-kicker"><span class="idx">1 · </span>Jetzt</p>
     <section class="card answer" id="answer-card" aria-labelledby="answer-title">
       <div class="muted"><span class="spinner"></span> Lade …</div>
     </section>
 
-    <p class="section-kicker"><span class="idx">2 · </span>Heute im Überblick — kompakt</p>
+    <p class="section-kicker"><span class="idx">2 · </span>Heute im Blick</p>
     <section class="card" aria-labelledby="daystrip-title">
       <h2 id="daystrip-title">Tagesverlauf <span class="sub" id="daystrip-sub"></span></h2>
       <div class="daystrip-compact" id="daystrip-compact"></div>
@@ -2352,7 +2352,7 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
     </div>
     <div class="col col-b">
 
-    <p class="section-kicker"><span class="idx">3 · </span>Stationen — die 3 günstigsten</p>
+    <p class="section-kicker"><span class="idx">3 · </span>Stationen</p>
     <section class="card" aria-labelledby="stations-title">
       <div class="row">
         <h2 id="stations-title">Stationen <span class="sub" id="stations-sub"></span></h2>

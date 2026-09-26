@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   BookOpen,
+  ChevronRight,
   FlaskConical,
   Gauge,
   ListChecks,
@@ -73,8 +74,13 @@ export function LabBlock({
             {question}
           </span>
         </span>
-        <span className="mt-1 shrink-0 text-xs font-semibold text-slate-500">
-          {open ? "zuklappen" : "aufklappen"}
+        <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-semibold text-slate-500">
+          <ChevronRight
+            size={16}
+            className={`transition-transform ${open ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          />
+          <span className="sr-only">{open ? "zuklappen" : "aufklappen"}</span>
         </span>
       </button>
       {open && (
@@ -148,8 +154,10 @@ export function ParamCardShell({
   anchor,
   number,
   title,
-  chain,
+  chain: _chain,
   sentence,
+  expanded = true,
+  onToggle,
   children,
 }: {
   anchor: string;
@@ -157,6 +165,8 @@ export function ParamCardShell({
   title: string;
   chain: string;
   sentence: string;
+  expanded?: boolean;
+  onToggle?: () => void;
   children?: ReactNode;
 }) {
   return (
@@ -165,23 +175,28 @@ export function ParamCardShell({
       className={`${panel} scroll-mt-28 overflow-hidden border-violet-500/20`}
       aria-labelledby={`${anchor}-title`}
     >
-      <div className="px-4 py-3.5">
-        <div className="flex items-start gap-3">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${LAB_BORDER} ${LAB_BG} ${LAB_ACCENT} text-xs font-bold`}>
-            {number}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-start gap-3 px-4 py-3.5 text-left hover:bg-violet-500/5"
+      >
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${LAB_BORDER} ${LAB_BG} ${LAB_ACCENT} text-xs font-bold`}>
+          {number}
+        </span>
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          <span className="block text-xs font-semibold text-violet-300">{`Karte ${number}`}</span>
+          <span id={`${anchor}-title`} role="heading" aria-level={3} className="mt-0.5 block text-base font-semibold text-white">
+            {title}
           </span>
-          <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-            <p className={`text-xs font-bold uppercase tracking-[.2em] ${LAB_ACCENT}`}>
-              Karte {number} · {chain}
-            </p>
-            <h3 id={`${anchor}-title`} className="mt-0.5 text-base font-semibold text-white">
-              {title}
-            </h3>
-            <p className="mt-1 text-sm leading-relaxed text-slate-300">{sentence}</p>
-          </div>
+          <span className="mt-1 block text-sm leading-relaxed text-slate-300">{sentence}</span>
+        </span>
+      </button>
+      {children && (
+        <div className={expanded ? "border-t border-slate-800 px-4 py-4" : "hidden"}>
+          {children}
         </div>
-        {children && <div className="mt-4">{children}</div>}
-      </div>
+      )}
     </section>
   );
 }
