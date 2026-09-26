@@ -53,10 +53,10 @@ export function LaborView(props: LaborViewProps) {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 id="labor-title" className="text-2xl font-bold tracking-tight text-white">
-            Labor
+            Verstehen, warum die App das sagt
           </h1>
           <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
-            Warum die Empfehlung so lautet — eine Sektion, ein Schritt zur Zeit.
+            Eine Sektion, ein Schritt zur Zeit.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
