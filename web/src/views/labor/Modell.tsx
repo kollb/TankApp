@@ -211,32 +211,47 @@ export function ModellView({
   return (
     <div className="grid grid-cols-1 gap-4">
       <div className="rounded-lg border border-violet-500/20 bg-slate-900/60 p-4">
-        <h2 className="text-sm font-semibold text-white">Parameterschrank — eine Karte zur Zeit</h2>
+        <h2 className="text-sm font-semibold text-white">Parameterschrank</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
-          Acht Schritte, Raster statt Kette. Klick öffnet genau eine Karte (Satz, Diagramm, Formel).
-          Beta(5,5)-CI auf Karte 7, Regime auf Karte 8.
+          Acht Schritte in der Reihenfolge des Modells. Der Streifen zeigt den aktiven
+          Schritt — darunter nur diese Karte (Satz, Diagramm, Formel).
         </p>
-        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-          {PARAM_CARDS.map((card) => (
-            <button
-              key={card.id}
-              id={card.anchor}
-              type="button"
-              aria-pressed={activeCard === card.number}
-              onClick={() => setActiveCard(card.number)}
-              className={`tap-44 scroll-mt-28 rounded-lg border px-2 py-2 text-left text-xs font-semibold ${
-                activeCard === card.number
-                  ? "border-violet-500/40 bg-violet-500/10 text-violet-100"
-                  : "border-slate-700 bg-slate-900 text-slate-400 hover:text-violet-200"
-              }`}
-            >
-              <span className="block font-mono text-[0.625rem] text-violet-300">
-                Karte {card.number}
-              </span>
-              {card.title}
-            </button>
+        <ol
+          className="mt-3 flex items-start gap-0 overflow-x-auto pb-1"
+          aria-label="Modellkette, acht Schritte"
+        >
+          {PARAM_CARDS.map((card, index) => (
+            <li key={card.id} className="flex min-w-0 flex-1 items-center">
+              <button
+                id={card.anchor}
+                type="button"
+                aria-current={activeCard === card.number ? "step" : undefined}
+                aria-pressed={activeCard === card.number}
+                onClick={() => setActiveCard(card.number)}
+                className={`tap-44 scroll-mt-28 flex min-w-[2.75rem] flex-col items-center gap-1 px-1 ${
+                  activeCard === card.number ? "text-violet-100" : "text-slate-400 hover:text-violet-200"
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
+                    activeCard === card.number
+                      ? "border-violet-400 bg-violet-500/20 text-violet-100"
+                      : "border-slate-600 bg-slate-950 text-slate-300"
+                  }`}
+                >
+                  {card.number}
+                </span>
+                <span className="hidden max-w-[5.5rem] truncate text-center text-xs font-semibold sm:block">
+                  {card.title}
+                </span>
+                <span className="sr-only">{`Karte ${card.number}`}</span>
+              </button>
+              {index < PARAM_CARDS.length - 1 && (
+                <span className="mx-0.5 mt-4 h-px min-w-2 flex-1 bg-slate-700" aria-hidden="true" />
+              )}
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
 
       <LabBlock id="stationen" open={open.stationen} onToggle={() => toggle("stationen")} headline="3 · Stationen" question={labSection("stationen").question} blockRef={(node) => { blockRefs.current.stationen = node; }}>

@@ -136,14 +136,13 @@ describe("Jetzt: Aufbau", () => {
     const html = render({
       decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
     });
-    const toc = html.indexOf("Aufbau dieser Seite");
     const decision = html.indexOf('id="jetzt-entscheidung"');
     const facts = html.indexOf('id="jetzt-fakten"');
     const steps = html.indexOf('id="jetzt-schritte"');
     const day = html.indexOf('id="jetzt-heute"');
     const fresh = html.indexOf("Preise vor 4 Minuten");
-    expect(toc).toBeGreaterThanOrEqual(0);
-    expect(decision).toBeGreaterThan(toc);
+    expect(html).toContain("2 · Drei Fakten");
+    expect(html).toContain("4 · Heute im Blick");
     expect(facts).toBeGreaterThan(decision);
     expect(steps).toBeGreaterThan(facts);
     expect(day).toBeGreaterThan(steps);

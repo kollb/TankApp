@@ -373,26 +373,6 @@ export function JetztView(props: JetztViewProps) {
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
         Eine Entscheidung, drei Fakten, nächste Schritte.
       </p>
-      <nav
-        aria-label="Aufbau dieser Seite"
-        className="mt-3 flex flex-wrap gap-1.5"
-      >
-        {[
-          { n: 1, href: "#jetzt-entscheidung", label: "Entscheidung" },
-          { n: 2, href: "#jetzt-fakten", label: "Drei Fakten" },
-          { n: 3, href: "#jetzt-schritte", label: "Nächste Schritte" },
-          { n: 4, href: "#jetzt-heute", label: "Heute im Blick" },
-        ].map((item) => (
-          <a
-            key={item.n}
-            href={item.href}
-            className="tap-44 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-200"
-          >
-            <span className="font-mono text-emerald-400">{item.n}</span>
-            {item.label}
-          </a>
-        ))}
-      </nav>
 
       {/* Due-Prompt nach Fensterende (aus dem Alltagstab übernommen) */}
       {dueEpisode && !dueDismissed && (
@@ -812,10 +792,11 @@ export function JetztView(props: JetztViewProps) {
           `ui-neuentwurf-mockup`: 88 px) statt als drei gestapelte Karten
           (409 px, „Zu lang auf mobil“, 18.09.2026); ab `sm` unverändert die
           großen Karten. Dieselben Werte aus `nowFacts`, zwei Anordnungen. */}
-      <div
-        id="jetzt-fakten"
-        className="mt-4 grid scroll-mt-24 grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3"
-      >
+      <div id="jetzt-fakten" className="mt-6 scroll-mt-24">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
+        2 · Drei Fakten
+      </p>
+      <div className="grid grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3">
         {facts.map((fact, index) => (
           <div
             key={fact.label}
@@ -885,13 +866,14 @@ export function JetztView(props: JetztViewProps) {
           </div>
         ))}
       </div>
+      </div>
 
       {/* ③ Nächste Schritte */}
       <div id="jetzt-schritte" className="scroll-mt-24">
       {steps.length > 0 && (
         <>
           <h2 className="mt-6 text-sm font-semibold text-slate-200">
-            Nächste Schritte
+            3 · Nächste Schritte
           </h2>
           <div className="mt-2 grid grid-cols-1 gap-2">
             {steps.map((step) => (
@@ -926,7 +908,7 @@ export function JetztView(props: JetztViewProps) {
             className="mt-6 flex scroll-mt-24 items-center gap-2 text-sm font-semibold text-slate-200"
           >
             <CalendarDays size={15} className="text-emerald-400" aria-hidden="true" />
-            Heute im Blick
+            4 · Heute im Blick
           </h2>
           <div className={`${panel} mt-2 p-4`}>
             <p className="text-xs leading-relaxed text-slate-300">
