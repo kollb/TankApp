@@ -136,15 +136,15 @@ describe("Jetzt: Aufbau", () => {
     const html = render({
       decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
     });
-    const decision = html.indexOf("Warten bis 18–20 Uhr");
-    const facts = html.indexOf("Bestes Fenster heute");
-    const steps = html.indexOf("Nächste Schritte");
-    const day = html.indexOf("Heute im Blick");
+    const decision = html.indexOf('id="jetzt-entscheidung"');
+    const facts = html.indexOf('id="jetzt-fakten"');
+    const steps = html.indexOf('id="jetzt-schritte"');
+    const day = html.indexOf('id="jetzt-heute"');
     const fresh = html.indexOf("Preise vor 4 Minuten");
-    expect(decision).toBeGreaterThanOrEqual(0);
+    expect(html).toContain("Heute im Blick");
     expect(facts).toBeGreaterThan(decision);
-    expect(steps === -1 || steps > facts).toBe(true);
-    expect(day).toBeGreaterThan(facts);
+    expect(steps).toBeGreaterThan(facts);
+    expect(day).toBeGreaterThan(steps);
     expect(fresh).toBeGreaterThan(day);
   });
 
@@ -235,7 +235,10 @@ describe("Jetzt: Aufbau", () => {
     const html = render({
       decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
     });
-    const grid = html.slice(html.indexOf("sm:grid-cols-3"), html.indexOf("Nächste Schritte"));
+    const grid = html.slice(
+      html.indexOf('id="jetzt-fakten"'),
+      html.indexOf('id="jetzt-schritte"'),
+    );
     expect(grid).toContain("Jetzt hier");
     expect(grid).toContain("Bestes Fenster heute");
     expect(grid).toContain("Tank reicht?");

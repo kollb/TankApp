@@ -68,7 +68,13 @@ export function GueteView({
   const blockRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const toggle = (id: LabSectionId) =>
-    setOpen((current) => ({ ...current, [id]: !current[id] }));
+    setOpen((current) => {
+      const nextOpen = !current[id];
+      const closed = Object.fromEntries(
+        Object.keys(current).map((key) => [key, false]),
+      ) as Record<LabSectionId, boolean>;
+      return { ...closed, [id]: nextOpen };
+    });
   const jumpTo = (id: LabSectionId) => {
     setOpen((current) => ({ ...current, [id]: true }));
     blockRefs.current[id]?.scrollIntoView?.({ behavior: "smooth", block: "start" });

@@ -370,10 +370,6 @@ export function JetztView(props: JetztViewProps) {
       <h1 id="jetzt-title" className="text-2xl font-bold tracking-tight text-white">
         Jetzt
       </h1>
-      <p className="mt-1 text-xs leading-relaxed text-slate-400">
-        Eine Entscheidung, drei Fakten, nächste Schritte.
-      </p>
-
       {/* Due-Prompt nach Fensterende (aus dem Alltagstab übernommen) */}
       {dueEpisode && !dueDismissed && (
         <section
@@ -429,7 +425,7 @@ export function JetztView(props: JetztViewProps) {
       )}
 
       {/* ① Entscheidung */}
-      <div className="mt-4">
+      <div id="jetzt-entscheidung" className="mt-4 scroll-mt-24">
         {decideRes.pending && !decide && !setup ? (
           <SkeletonPanel lines={3} label="Empfehlung wird berechnet" />
         ) : setup ? (
@@ -487,13 +483,6 @@ export function JetztView(props: JetztViewProps) {
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setSheetOpen(true)}
-                aria-haspopup="dialog"
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
-              >
-                Warum?
-              </button>
               {verdict.mapsUrl && (
                 <a
                   href={verdict.mapsUrl}
@@ -510,6 +499,13 @@ export function JetztView(props: JetztViewProps) {
                   <ArrowRight size={15} aria-hidden="true" />
                 </a>
               )}
+              <button
+                onClick={() => setSheetOpen(true)}
+                aria-haspopup="dialog"
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Warum?
+              </button>
             </div>
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}
@@ -792,7 +788,8 @@ export function JetztView(props: JetztViewProps) {
           `ui-neuentwurf-mockup`: 88 px) statt als drei gestapelte Karten
           (409 px, „Zu lang auf mobil“, 18.09.2026); ab `sm` unverändert die
           großen Karten. Dieselben Werte aus `nowFacts`, zwei Anordnungen. */}
-      <div className="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3">
+      <div id="jetzt-fakten" className="mt-4 scroll-mt-24">
+      <div className="grid grid-cols-6 gap-2 sm:grid-cols-3 sm:gap-3">
         {facts.map((fact, index) => (
           <div
             key={fact.label}
@@ -862,8 +859,10 @@ export function JetztView(props: JetztViewProps) {
           </div>
         ))}
       </div>
+      </div>
 
       {/* ③ Nächste Schritte */}
+      <div id="jetzt-schritte" className="scroll-mt-24">
       {steps.length > 0 && (
         <>
           <h2 className="mt-6 text-sm font-semibold text-slate-200">
@@ -887,6 +886,7 @@ export function JetztView(props: JetztViewProps) {
           </div>
         </>
       )}
+      </div>
 
       {/* ④ Heute im Blick — seit 0.36.0 mit Zahlen statt nur Farben
           (Nutzer-Feedback 14.09.2026: „zu wenig Infos“). Alles aus den
@@ -896,7 +896,10 @@ export function JetztView(props: JetztViewProps) {
           eingeklappt — die Aussage und die Kennzahlen bleiben oben. */}
       {stripCells.length > 0 && (
         <>
-          <h2 className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-200">
+          <h2
+            id="jetzt-heute"
+            className="mt-6 flex scroll-mt-24 items-center gap-2 text-sm font-semibold text-slate-200"
+          >
             <CalendarDays size={15} className="text-emerald-400" aria-hidden="true" />
             Heute im Blick
           </h2>

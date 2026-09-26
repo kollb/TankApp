@@ -96,7 +96,7 @@ export function UeberblickView({
     prognose: true,
     sicherheit: false,
     stationen: false,
-    lernen: true,
+    lernen: false,
     glossar: false,
     spielplatz: false,
   });
@@ -105,7 +105,13 @@ export function UeberblickView({
   const [diaryFilter, setDiaryFilter] = useState<DiaryFilterId>("all");
 
   const toggle = (id: LabSectionId) =>
-    setOpen((current) => ({ ...current, [id]: !current[id] }));
+    setOpen((current) => {
+      const nextOpen = !current[id];
+      const closed = Object.fromEntries(
+        Object.keys(current).map((key) => [key, false]),
+      ) as Record<LabSectionId, boolean>;
+      return { ...closed, [id]: nextOpen };
+    });
 
   const jumpTo = (id: LabSectionId) => {
     setOpen((current) => ({ ...current, [id]: true }));
