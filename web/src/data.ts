@@ -4472,6 +4472,11 @@ export function applyAppTheme(theme: AppTheme): void {
  * §4.1/§4.2) und den Startwert-Kommentaren in app/thresholds.py — keine
  * erfundenen Bedeutungen. `kind` wählt den Formatter: €-Beträge über
  * euro(), Wahrscheinlichkeiten über percentLabel() (MICROCOPY).
+ *
+ * Urteilstöne (UI-Neugestaltung 2026-09-26): Die beiden Warten-Bänder
+ * (high/mid in app/thresholds.py) tragen denselben Ton — Blau. Das
+ * Mid-Bänder kennzeichnet sich sprachlich („Eher warten“), nicht mehr
+ * mit Gelb: Gelb/Amber sind Warn- und Alter-Töne, nicht Urteilstage.
  */
 export type ThresholdRowDef = {
   key: string;
@@ -4482,25 +4487,25 @@ export type ThresholdRowDef = {
 export const THRESHOLD_ROWS: readonly ThresholdRowDef[] = [
   {
     key: "wait_eur_high",
-    action: "Warten (grün)",
+    action: "Warten (blau)",
     condition: "Mindest-Ersparnis",
     kind: "eur",
   },
   {
     key: "wait_p_high",
-    action: "Warten (grün)",
+    action: "Warten (blau)",
     condition: "Mindest-Trefferquote",
     kind: "percent",
   },
   {
     key: "wait_eur_mid",
-    action: "Warten (gelb)",
+    action: "Warten — „Eher warten“",
     condition: "Mindest-Ersparnis",
     kind: "eur",
   },
   {
     key: "wait_p_mid",
-    action: "Warten (gelb)",
+    action: "Warten — „Eher warten“",
     condition: "Mindest-Trefferquote",
     kind: "percent",
   },
