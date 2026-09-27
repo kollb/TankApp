@@ -4,6 +4,40 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.70.2] – 2026-09-27
+
+**Tank-Guide: eine Frage, eine Antwort — und drei Fallback-Stufen, die
+nichts erfinden.**
+
+- **Erfassungsreihenfolge:** Farbe → Handlungs-Headline → günstigster Preis
+  in der Nähe → Handlung. Alles Statistische ordnet sich dem unter und
+  wohnt im Labor.
+- **Geld in Nutzer-Einheiten:** Unterschiede stehen als Betrag auf die
+  Tankmenge (`ca. 3,60 € pro Tankfüllung`), Zeitangaben als konkrete
+  Uhrzeit (`Gegen 19 Uhr ca. 8 Cent günstiger`) — nie als Cent je Liter,
+  nie als Spanne oder Dichte.
+- **Drei Fallback-Stufen:** Stufe 1 live mit Prognose, Stufe 2 ohne
+  Prognose (Preise weiter live), Stufe 3 offline. Statt Modal oder
+  Alert-Dialog ein Inline-Banner über der Karte: erst was weiter geht,
+  dann was fehlt, mit genau einer Handlung „Erneut versuchen“. Stufe 2 und
+  3 zeigen die Faustregel (vier Tageszeiten) anstelle der Stundenbalken.
+- **Heute im Überblick:** die nächsten acht Stunden als Ampel-Balken aus
+  `windows_today` — kein zweiter Aufruf; ein Tipp nennt den cent-genauen
+  Preis.
+- **Sicherheit:** drei Balken (`Sehr sicher` / `Ziemlich sicher` /
+  `Kaum einschätzbar`) statt einer Konfidenz-Prozentzahl; die Treffsicherheit
+  nennt die Zählung (`An 26 von 30 Tagen …`) oder den Lernstand.
+- **Labor:** vier freiwillige Blöcke — „Was den Preis gerade bewegt“
+  (Balken nur mit echtem Messwert), Treffsicherheit als Punkte-Raster aus
+  dem Advice-Ledger, persönliches Tankprofil (Tankmenge × Wartebereitschaft)
+  und Experimente (offline deaktiviert mit Grund). Beta-Badge und Leitsatz
+  machen klar: Der Guide funktioniert ohne das Labor.
+- **Rot bleibt dem Tankrest:** Der Entwurf ordnet „Warten“ Rot zu; in dieser
+  App warnt Rot vor einer knappen Reserve. Die Reihenfolge des Entwurfs ist
+  übernommen, nicht seine Farbe gegen eine bestehende Warnung.
+- **M3-Farbrollen:** Urteilstöne, Chips, Banner und Ampel stehen als Rollen
+  in `styles.css` (beide Themen, Kontrast je Paar geprüft).
+
 ## [0.70.1] – 2026-09-27
 
 - **Gültigkeit auf „Jetzt“:** In den letzten 30 Minuten ergänzt ein

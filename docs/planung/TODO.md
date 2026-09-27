@@ -1,11 +1,41 @@
 # Notwendige nächste Schritte
 
-> Stand: 27.09.2026 · App-Version 0.70.1
+> Stand: 27.09.2026 · App-Version 0.70.2
 
 ## Inhaltsverzeichnis
 
 - [A14: Rechts- und Terminbasis klären](#a14-rechts--und-terminbasis-klären)
 - [N1: NAS/Pi-Integrationsfehler beheben](#n1-naspi-integrationsfehler-beheben)
+- [D1: Archiv-Verweise ohne Datei aufräumen](#d1-archiv-verweise-ohne-datei-aufräumen)
+
+### D1: Archiv-Verweise ohne Datei aufräumen
+
+**P2 · Dokumentation, kein Produktverhalten.** Gefunden am 27.09.2026 beim
+lokalen Prüflauf (vor jedem Push, AGENTS.md): `tests/test_ledger_drift.py::
+test_neu_archivierte_berichte_haben_nachfolger` schlägt fehl, weil zwei
+archivierte Berichte fehlen, während `docs/archiv/README.md` und drei
+Testdateien auf sie verweisen:
+
+- `docs/archiv/BEFUND-UX-MATH-2026-09-19.md`
+- `docs/archiv/ANALYSE-B0-B1-B2-2026-09-19.md`
+
+Beide liegen in keinem Commit des Repositories. **Nicht** nachträglich
+verfassen: Ein Prüfbericht lässt sich nicht rekonstruieren, und ein
+geschriebenes „Historischer Prüfbericht“ ohne Belege wäre genau die
+Evidenz-Fiktion, die §1 verbietet.
+
+- [ ] Klären, ob die Berichte außerhalb des Repositories existieren (Alt-
+      Rechner, Mail, NAS-Archiv) und dann als Datei nachziehen — mit
+      unverändertem Inhalt und Stand-Banner.
+- [ ] Andernfalls die Verweise entfernen: Zeile in `docs/archiv/README.md`,
+      die Namensliste in `tests/test_ledger_drift.py` sowie die
+      Herkunftshinweise in `tests/test_b0_invariance.py` und
+      `tests/test_regime_check.py` — dort dann ohne Datumsbeleg benennen,
+      welche Invariante gilt und warum.
+
+**Abnahme:** `python3 -m pytest -q` läuft ohne `FileNotFoundError`, und kein
+Dokument verweist auf eine Datei, die es nicht gibt
+(`tests/test_operations.py::test_local_documentation_links_exist` grün).
 
 **Statusmodell:** Drei Zustände, keine vierte Liste. **Offen** sind A14 und
 NP2 unten — die einzigen P0-Aufträge dieser Datei. **Zustandsgesperrt** ist

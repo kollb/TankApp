@@ -1,14 +1,17 @@
 # Oberfläche und Interaktion
 
-> Stand: 26.09.2026 · App-Version 0.70.0
+> Stand: 27.09.2026 · App-Version 0.70.2
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
+> Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
+> ([Release 0.70.2](../releases/CHANGELOG.md#0702--2026-09-27)).
 
 ## Inhaltsverzeichnis
 
 - [Navigation](#navigation)
 - [Bereiche](#bereiche)
+- [Tank-Guide: eine Frage, eine Antwort](#tank-guide-eine-frage-eine-antwort)
 - [Labor-Unterbereiche](#labor-unterbereiche)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
 - [Urteilstöne und Elevation](#urteilstöne-und-elevation)
@@ -70,13 +73,65 @@ zunächst eingeklappt. Ohne Empfehlung entfällt eine zusätzliche Freitext-
 Wiederholung derselben Aussage. Mit Empfehlung kann sie Referenz und
 persönlichen Vorteil erläutern.
 
+## Tank-Guide: eine Frage, eine Antwort
+
+Der Bereich „Jetzt“ beantwortet genau eine Frage: **Soll ich jetzt tanken?**
+Die Erfassung läuft in vier Schritten, alles Statistische ordnet sich unter
+(`web/src/guide.ts` hält die Texte und die Rechnung):
+
+1. Farbe der Karte — Grün = jetzt tanken, Rot = Reserve wird knapp,
+   Blau = besser warten, neutral = keine Zeit-Empfehlung.
+2. Handlungs-Headline — „Jetzt tanken.“, „Besser warten.“,
+   „Tanken, wann’s passt.“
+3. Günstigster Preis in der Nähe.
+4. Primäre Handlung (Route oder Erinnerung), daneben „Warum?“
+
+**Geld und Zeit stehen in Nutzer-Einheiten:** Cent je Liter sind eine
+Modellgröße, die Antwort ist der Betrag auf die Tankmenge
+(`ca. 3,60 € pro Tankfüllung`). Zeitangaben sind konkrete Uhrzeiten
+(„Gegen 19 Uhr“), nie Spannen und nie Wahrscheinlichkeitsdichten.
+
+### Drei Fallback-Stufen
+
+Ein anhaltender Zustand bekommt **kein** Modal und keinen Alert-Dialog. Das
+Inline-Banner sitzt über der Karte und lässt die Preise sichtbar.
+
+| Stufe | Auslöser | Karte | Unter der Karte |
+|---|---|---|---|
+| 1 · Voller Guide | Verbindung und `decision_ready` | Urteilston wie oben | Stundenbalken (nächste 8 Stunden, aus `windows_today`) |
+| 2 · Ohne Prognose | `decision_ready=false`, Preise live | Neutral (Outlined Card), „Günstigste Tankstelle gerade“ | Faustregel: vier Tageszeiten, typischer Verlauf |
+| 3 · Offline | keine Verbindung | Neutral, gedämpfte Preise mit Stand | Faustregel |
+
+Beide Fallback-Stufen bieten **eine** Handlung: „Erneut versuchen“ mit
+Inline-Ladeindikator. Kommen die Daten zurück, springt die Ansicht leise auf
+Stufe 1 und bestätigt mit einer Snackbar („Wieder online. Alles ist aktuell.“).
+
+**Eine Farbe, eine Bedeutung.** Der Entwurf („Tankklar“) ordnet „Warten“ Rot
+zu. Rot trägt in dieser App aber schon eine sicherheitsrelevante Aussage:
+„Reserve reicht nicht bis zum Fenster“. Rot wird deshalb **nicht**
+umgewidmet — „Besser warten“ bleibt blau. Die Reihenfolge des Entwurfs ist
+übernommen, nicht seine Farbe gegen eine bestehende Warnung.
+
+### Labor: die freiwilligen Blöcke
+
+Das Labor ist ein Angebot, kein Pfad zur Empfehlung — der Guide funktioniert
+ohne jede Zahl von dort. Neben Fan-Chart, Vertrauens-Konto und Tagebuch
+stehen vier Blöcke (`web/src/views/labor/BetaBlocks.tsx`):
+
+| Block | Frage | Datenpfad |
+|---|---|---|
+| Was den Preis gerade bewegt | Warum ist es gerade teuer oder günstig? | Tagesspielraum (Tagesstreifen) und Stationsspanne — Balken **nur** mit Messwert, sonst sichtbar ohne Balken |
+| Wie oft lag die Empfehlung richtig? | Kann ich der App trauen? | Advice-Ledger: ein Punkt je abgerechnete Empfehlung; ohne Zählung der Lernstand |
+| Persönliches Tankprofil | Was bringt es **mir**? | Tankmenge × Wartebereitschaft gegen die echten Fenster des Tages; lokale Vorschau, das Profil bleibt in „Ich“ |
+| Experimente | Was gibt es Neues? | Lokale Schalter, offline deaktiviert mit dem Grund „Braucht eine Verbindung“ |
+
 ## Labor-Unterbereiche
 
 Das Labor ist im Checkout bereits in vier Sub-Tabs aufgeteilt:
 
 | Sub-Tab | Inhalt |
 |---|---|
-| Überblick | Geführter Fan-Chart, Vertrauens-Konto und Tagebuch |
+| Überblick | Geführter Fan-Chart, Vertrauens-Konto, Tagebuch **und die vier freiwilligen Blöcke** (Einflüsse, Treffsicherheit, Tankprofil, Experimente) |
 | Modell & Parameter | Acht Karten: Struktur, AR(2), Bootstrap, 12-Uhr-Projektion, Ensemble, Selektion, Schwellen, Regime |
 | Güte & Kalibrierung | Rolling-PICP, Reliability, Brier, Backtest und Heatmaps |
 | Daten & Rohdaten | Reichweite, Roh-Tabellen, CSV-Export, API-Explorer und Winter-Hinweis |

@@ -1,12 +1,15 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 27.09.2026 · App-Version **0.70.1** · gilt für `web/src/**`, `web/rp2/**`,
+> Stand: 27.09.2026 · App-Version **0.70.2** · gilt für `web/src/**`, `web/rp2/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt. Neu am 26.09.2026 (UI-Neugestaltung): Urteilstöne
 > (grün/blau/rot/grau), Gültigkeits-Chip, abgelaufene Freigabe,
 > S1-Nützlichkeitssatz, Lesemodus-Muster. Ergänzt am 27.09.2026:
-> Restminuten, Kontext-/Tagesstreifen-Sheets und React-Leseausgabe.
+> Restminuten, Kontext-/Tagesstreifen-Sheets und React-Leseausgabe. Ergänzt
+> mit 0.70.2: die Muster des Tank-Guides (§4b) — drei Fallback-Stufen,
+> Sicherheits-Balken, Geld in Nutzer-Einheiten, Faustregel — und die
+> Übersetzungstabelle „Technische Floskel → Microcopy“ als eigener Abschnitt.
 
 Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
