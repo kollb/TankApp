@@ -1,9 +1,11 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 20.09.2026 · App-Version **0.61.0** · gilt für `web/src/**`,
+> Stand: 26.09.2026 · App-Version **0.70.0** · gilt für `web/src/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
-> sehen bekommt.
+> sehen bekommt. Neu am 26.09.2026 (UI-Neugestaltung): Urteilstöne
+> (grün/blau/rot/grau), Gültigkeits-Chip, abgelaufene Freigabe,
+> S1-Nützlichkeitssatz, Lesemodus-Muster.
 
 Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
@@ -187,6 +189,7 @@ Diese Sätze stehen so im Template (`rp2/fallback_gui.py`, Marker
 | Abstand zur günstigsten | Delta-Chip `beste` / `+<x> ct` (ct/L für Unterschiede, €/L für Niveaus) |
 | Sortierung | Knöpfe `Preis` · `Nähe` · `Aktuell`, darunter `Sortierung wirkt auf die Liste, nicht auf den Preisvergleich.` |
 | Ansicht | `Alltag` · `Werkstatt`; Datenstatus-Karte `Woher die Daten kommen` |
+| Lesemodus (26.09.2026, UI-Neugestaltung) | Badge `Lesemodus · RP2` statt „FALLBACK · RP2“ — dieselbe Marke, reduzierte Edition, kein Fehlerbild. Status-Banner, solange das NAS nicht erreichbar ist: `NAS ist gerade nicht erreichbar — die Preise zeigen den letzten gemeldeten Stand. Zur Orientierung, nicht zur Entscheidung.` (tonal warn, nie bad; ohne Konfiguration: `NAS ist nicht konfiguriert — diese Ansicht zeigt lokale Preise. Zur Orientierung, nicht zur Entscheidung.`). Footer-Satz: `Es wird weitergesammelt — der Collector schreibt auch jetzt in den Puffer.` |
 | Sticky-Chip | `Günstigste <Preis> €/L · <erste drei Wörter des Namens> …` |
 | Cache-Qualität | `Gültige Prognosedaten — keine Fensterentscheidung` bzw. `Historischer Cache — Qualität oder Gültigkeit nicht bestätigt` |
 | Ehrlichkeits-Zeile | `Quantile sind keine kalibrierte Wahrscheinlichkeit und keine erwartete Nettoersparnis.` |
@@ -204,12 +207,15 @@ dann der Grund.
 
 | Stelle | Muster |
 |---|---|
-| Ausgänge der Ampel-Karte 2.0 | `Jetzt tanken` (grün) · `Warten bis 18–20 Uhr` (grün, mit Uhr) · `Woanders tanken · <Station>` (blau) · `Keine klare Empfehlung` (grau) |
+| Ausgänge der Ampel-Karte 2.0 | `Jetzt tanken` (grün) · `Warten bis 18–20 Uhr` (blau, mit Uhr) · `Woanders tanken · <Station>` (blau) · `Keine klare Empfehlung` (grau). **Urteilstöne (26.09.2026, UI-Neugestaltung):** Blau ist die geplante, Geld sparende Handlung „warten“ — Grün bleibt „jetzt handeln“. Rot ist die eine echte Risikolage: `Jetzt tanken` (rot), wenn der Tankrest das Warten blockiert (`tank.blocks_wait`) — „Warten riskant“ steht dann im Grund. Rot ist nie Dekor und nie Wartungs-Alarm; grau bleibt ohne Glow |
+| Gültigkeits-Chip (A21-B1.4) | `gültig bis <17:45>` (Tageszeit über `timeOfDayLabel`, Europe/Berlin) — nur bei freigegebener, nicht abgelaufener Aktion; eine Ablehnung altert nicht und trägt keinen Chip |
+| Abgelaufene Freigabe | Chip + Headline `Empfehlung abgelaufen`, Grund `Die Empfehlung ist abgelaufen — neu berechnet wird automatisch. Preise und Fakten bleiben sichtbar.`, Knopf `Empfehlung neu laden` (Muster `<Sache> neu laden`, §5). Graue Karte, kein Fehler — `valid_until` liegt in der Vergangenheit (offene Seite, gecachte Antwort) |
+| M7-Grund (Server, `m7_pending`) | `Keine Empfehlung — die Kalibrierung steht noch aus. Die Preismeldungen sind unverfälscht, der Preisvergleich bleibt.` — Handlung zuerst, dann Grund, dann das Nützliche; „Kalibrierung“ bleibt als Wort (test_b4) |
 | Ersparniszeile | `Erwartet <4,0> ct/L günstiger ≈ <1,60> €` — ct/L für Unterschiede, € für Beträge. **O45: ct/L und € kommen aus derselben Basis** — beide aus dem Medianpreis des Fensters (`expected_saving_median_eur`). Trägt nur das Fensterminimum einen Vorsprung, steht `Im günstigsten Moment ≈ <2,09> € günstiger` statt einer Zahl, die der genannte Fensterpreis nicht trägt |
 | Grund der Empfehlung (Server, O45) | `Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu <2,09> €, im Mittel <0,44> €.` · gelb: `Eher warten: Fenster spart voraussichtlich <…>.` Ohne Fensterminima-Draws fallen beide Größen zusammen, dann bleibt die kurze Fassung `Warten spart bis zu <2,40> €.` Beträge auch hier in de-DE (`2,09 €`, nie `2.09 €`) |
 | Brutto/netto-Trennung bei „Woanders tanken“ (B1) | Ebene-1-Hinweis: `Das Prozent misst die reine Preisdifferenz (brutto); der €-Betrag rechnet Umweg und Zeit ab (netto).` — seit 23.09.2026 Pflicht, weil Karten-Prozent (`p_lohnt`-Gate: `p_better_alt`) und der Server-Verdict zwei verschiedene Ereignisse messen |
 | Sicherheitssatz (Stufe A) | `bei 40 L · ziemlich sicher (82 %)` · `<…> eher sicher (64 %)` · `<…> unsicher` — auf Stufe A kommt das **Wort aus dem Prozentwert** (Schwellen 75 / 55). Der Server-Badge beschreibt die Streuung der Lage; beide zusammen ergäben Sätze wie „unsicher (99 %)“ |
-| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Die Preise unten sind gemessen.` — `n` ist der M7-Gate-Schnitt (`gate_n`, Vertragskohorte über die Lernzeit), nicht das 30-Tage-Fenster (Befund A3, 23.09.2026) |
+| Stufe C / S1 grau | `Keine klare Empfehlung` + `Das Modell lernt noch — <n> von 100 abgeschlossenen Empfehlungen. Vergleich und Umweg-Rechnung funktionieren bereits.` — `n` ist der M7-Gate-Schnitt (`gate_n`, Vertragskohorte über die Lernzeit), nicht das 30-Tage-Fenster (Befund A3, 23.09.2026). Der Schlusssatz benennt, was in der Lernphase **schon** trägt (UI-Neugestaltung 26.09.2026): die App ist keine tote Fläche |
 | Drei Fakten | `Jetzt hier` · `Bestes Fenster heute` · `Tank reicht?` — immer dieselben drei, immer diese Reihenfolge |
 | Fakt ohne Zahl | `—` mit Grund: `Kein bestätigter Preis in der Sicht` · `Heute kein Fenster mit Vorsprung` · `Tankstand nicht angegeben` · `Keine Prognose für die Entscheidung — Preise vergleichen` (Stufe C: die Fenster der Woche bleiben erreichbar, die Karte nennt aber keine Prognose, die keine Entscheidung trägt) |
 | Frische-Fußzeile | `Preise vor 4 Minuten · Prognose vor 35 Minuten · <Ort>` (Alter in Worten über `ageLabel`, Schwellen wie `dataAgeNote`) |

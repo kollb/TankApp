@@ -192,7 +192,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   );
   const table = page.locator("table").filter({ hasText: "Mindest-Ersparnis" });
   await expect(
-    table.locator("tr", { hasText: "Warten (grün)" }).first(),
+    table.locator("tr", { hasText: "Warten (blau)" }).first(),
   ).toContainText("2,00 €");
   await expect(
     table.locator("tr", { hasText: "wenn P(Warten) unter" }),

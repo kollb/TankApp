@@ -18,9 +18,7 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [ENGINE.md](../referenz/ENGINE.md) | 0.70.0 |
 | [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.65.0 |
 | [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.64.0 |
-| [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.70.0 |
 | [RP2.md](../betrieb/RP2.md) | 0.61.0 |
-| [UI](../produkt/UI.md) | 0.70.0 |
 | [BETRIEB.md](../betrieb/BETRIEB.md) | 0.68.0 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.68.0 |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 0.59.1 |

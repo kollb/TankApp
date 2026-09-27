@@ -253,6 +253,44 @@ describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
     expect(now).toContain('headline: "Keine klare Empfehlung"');
   });
 
+  // ── 4b. Urteilstöne und abgelaufene Freigabe (UI-Neugestaltung, 26.09.2026) ──
+
+  it("die Urteils-Chips sind exakt die vier festen Ausgänge", () => {
+    // Ein Wort pro Ausgang — §4b. Die Töne (grün/blau/rot/grau) stecken
+    // in den Karten-/Chip-Klassen, nicht im Wort: „Warten“ ist blau,
+    // „Jetzt tanken“ grün, rot nur bei Tankrest-Risiko.
+    const jetzt = read("views/Jetzt.tsx");
+    const match = jetzt.match(/const CHIP_TEXT = \{([\s\S]*?)\} as const/);
+    expect(match, "CHIP_TEXT fehlt in views/Jetzt.tsx").not.toBeNull();
+    const keys = [
+      ...userVisible(match![1]).matchAll(/^\s*(\w+):/gm),
+    ].map((item) => item[1]);
+    expect(keys).toEqual([
+      "refuel_now",
+      "wait",
+      "refuel_elsewhere",
+      "no_advice",
+    ]);
+  });
+
+  it("die abgelaufene Freigabe hat eine Headline an einer Stelle", () => {
+    // A21-B1.4: `valid_until` vergangen → Karteninhalt wechselt. Der
+    // Satz steht in now.ts (eine Stelle, ein Wort), die Karte rendert
+    // ihn in views/Jetzt.tsx.
+    const now = read("now.ts");
+    expect(now).toContain('headline: "Empfehlung abgelaufen"');
+  });
+
+  it("der Gültigkeits-Chip formatiert über timeOfDayLabel", () => {
+    // §3: Zahlen und Zeiten laufen über die Formatter in data.ts — der
+    // Chip „gültig bis 17:45“ stellt die Tageszeit nie selbst her.
+    const jetzt = read("views/Jetzt.tsx");
+    expect(jetzt).toContain("timeOfDayLabel");
+    expect(jetzt).toContain("gültig bis");
+    const data = read("data.ts");
+    expect(data).toContain("export function timeOfDayLabel");
+  });
+
   // ── 5. Tonfall: kein Ausrufezeichen, keine ✓/!-Präfixe (§1, T2) ──
 
   it.each(FILES)("%s: kein Ausrufezeichen am Satzende", (relativePath) => {

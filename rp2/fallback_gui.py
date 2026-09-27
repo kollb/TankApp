@@ -2280,7 +2280,9 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 
 <div class="stickies">
 <header class="topbar">
-  <div class="brand">TankApp <span class="mode-badge">FALLBACK · RP2</span></div>
+  <!-- UI-Neugestaltung (2026-09-26): „Lesemodus“ statt „FALLBACK“ — dieselbe
+       Marke, reduzierte Edition, kein Fehlerbild. -->
+  <div class="brand">TankApp <span class="mode-badge">Lesemodus · RP2</span></div>
   <div class="topbar-right">
     <button class="pill" id="nas-pill" type="button" title="NAS-Erreichbarkeit sofort neu prüfen">
       <span class="dot"></span><span class="pill-text" id="nas-text">NAS wird geprüft</span>
@@ -2412,8 +2414,9 @@ table.raw td .st-name { white-space: nowrap; max-width: 260px; }
 
   <footer class="foot">
     <p>Diese Adresse läuft auf dem <b>RP2</b>. Sobald das <b>NAS bereit</b> ist,
-    öffnet ein Klick auf den NAS-Status die vollständige Ansicht. Dieser Tab bleibt bis dahin im Pi-Modus.
-    Preise kommen aus dem Collector-Puffer; gecachte Prognosen können veraltet sein.</p>
+    öffnet ein Klick auf den NAS-Status die vollständige Ansicht. Dieser Tab bleibt bis dahin im Lesemodus.
+    Preise kommen aus dem Collector-Puffer; gecachte Prognosen können veraltet sein.
+    Es wird weitergesammelt — der Collector schreibt auch jetzt in den Puffer.</p>
     <p>Nur Preisvergleich — keine Tank-, Warte- oder Fensterentscheidung.
     Quantile sind beschreibende Prognosedaten, keine Aktionsfreigabe.
     Auto-Refresh alle 60 s; keine garantierte Umschaltzeit.</p>
@@ -2641,10 +2644,18 @@ function renderAll(p) {
 function renderHeader(health) {
   const h = health || {};
   const nas = h.nas || {};
+  // UI-Neugestaltung (2026-09-26): Der Lesemodus benennt sich selbst —
+  // ein ruhiger Status-Satz (warn, nie bad) statt eines Fehlerbilds.
+  // Solange das NAS erreichbar ist, trägt die Vollversion die Aussage.
+  if (!nas.online) {
+    banner(nas.configured
+      ? "NAS ist gerade nicht erreichbar — die Preise zeigen den letzten gemeldeten Stand. Zur Orientierung, nicht zur Entscheidung."
+      : "NAS ist nicht konfiguriert — diese Ansicht zeigt lokale Preise. Zur Orientierung, nicht zur Entscheidung.");
+  }
   const nasPill = $("#nas-pill");
   if (!nas.configured) {
     nasPill.className = "pill bad";
-    nasPill.title = "NAS nicht konfiguriert — diese Adresse läuft dauerhaft im Fallback-Modus.";
+    nasPill.title = "NAS nicht konfiguriert — diese Adresse läuft dauerhaft im Lesemodus.";
     $("#nas-text").textContent = "NAS nicht konfiguriert";
   } else if (nas.online) {
     nasPill.className = "pill ok";
@@ -2652,7 +2663,7 @@ function renderHeader(health) {
     $("#nas-text").textContent = "NAS bereit — Ansicht öffnen";
   } else {
     nasPill.className = "pill bad";
-    nasPill.title = "NAS nicht erreichbar" + (nas.error ? " (" + nas.error + ")" : "") + " — Fallback-Modus. Klick prüft sofort neu.";
+    nasPill.title = "NAS nicht erreichbar" + (nas.error ? " (" + nas.error + ")" : "") + " — Lesemodus. Klick prüft sofort neu.";
     $("#nas-text").textContent = nas.state === "recovering" ? "NAS kehrt zurück" :
       nas.state === "nas_degraded" ? "NAS eingeschränkt" : "NAS offline";
     nasPill.title = nas.hint || nasPill.title;

@@ -157,6 +157,16 @@ describe("Stufen der Sicherheit (§10)", () => {
     expect(verdict?.percent).toBeNull();
   });
 
+  it("die Lernphase benennt, was schon funktioniert (S1, UI-Neugestaltung)", () => {
+    // Die App ist in der Lernphase keine tote Fläche: Vergleich und
+    // Umweg-Rechnung tragen sich mit Live-Preisen — der Satz sagt es.
+    const learning = decide("no_advice", { calibrated: false }, { reason_short: "" });
+    learning.personal_stats.advice.last_30d_total = 12;
+    expect(learningNote(learning)).toContain(
+      "Vergleich und Umweg-Rechnung funktionieren bereits.",
+    );
+  });
+
   it("A3: der Lernstand zählt den M7-Vertragsschnitt, nicht das 30-Tage-Fenster", () => {
     // Befund A3 (23.09.2026): „X von 100 abgeschlossenen Empfehlungen" lief
     // auf dem 30-Tage-Fenster (last_30d_total) — volatil und falsch. Der
@@ -198,7 +208,10 @@ describe("Ampel-Karte 2.0: vier Ausgänge", () => {
   it("Warten nennt Fenster, Ersparnis und Sicherheit", () => {
     const verdict = nowVerdict(input());
     expect(verdict?.action).toBe("wait");
-    expect(verdict?.tone).toBe("green");
+    // UI-Neugestaltung (2026-09-26): „Warten“ ist die Geld sparende,
+    // geplante Empfehlung — Blau. Grün bleibt „jetzt handeln“, Rot ist
+    // dem echten Risiko (Tankrest) vorbehalten.
+    expect(verdict?.tone).toBe("blue");
     expect(verdict?.headline).toBe("Warten bis 18–20 Uhr");
     expect(verdict?.amount).toContain("günstiger");
     expect(verdict?.amount).toContain("4,0 ct/L");
@@ -266,6 +279,64 @@ describe("Ampel-Karte 2.0: vier Ausgänge", () => {
 
   it("ohne Daten gibt es nichts zu sagen", () => {
     expect(nowVerdict(input({ decide: null }))).toBeNull();
+  });
+});
+
+describe("Urteilstöne und Gültigkeit (UI-Neugestaltung 2026-09-26)", () => {
+  it("Jetzt tanken bleibt grün, solange der Tank das Warten nicht blockiert", () => {
+    const verdict = nowVerdict(
+      input({ decide: decide("refuel_now", {}, { p_correct: null }) }),
+    );
+    expect(verdict?.tone).toBe("green");
+    expect(verdict?.expired).toBe(false);
+  });
+
+  it("Tankrest, der das Warten blockiert, macht die Karte rot", () => {
+    // Die eine echte Risikolage: Warten ist physisch riskant — Rot,
+    // nicht Grün. Der Server meldet das über `tank.blocks_wait`.
+    const blocked = decide("refuel_now", {}, { p_correct: null });
+    blocked.tank = {
+      input: "input",
+      tank_percent: 15,
+      tank_capacity_l: 50,
+      range_km: 60,
+      reserve_range_km: 30,
+      state: "low",
+      blocks_wait: true,
+      message: "Der Tankrest reicht für etwa 60 km.",
+    };
+    const verdict = nowVerdict(input({ decide: blocked }));
+    expect(verdict?.action).toBe("refuel_now");
+    expect(verdict?.tone).toBe("red");
+  });
+
+  it("valid_until fließt in die Karte, ohne freigegebene Aktion bleibt es leer", () => {
+    const released = decide("wait", { valid_until: "2026-09-14T17:45:00+02:00" });
+    expect(nowVerdict(input({ decide: released }))?.validUntil).toBe(
+      "2026-09-14T17:45:00+02:00",
+    );
+    const denied = decide("no_advice", {}, { reason_short: "Preise springen." });
+    const gray = nowVerdict(input({ decide: denied }));
+    expect(gray?.validUntil).toBeNull();
+    expect(gray?.expired).toBe(false);
+  });
+
+  it("abgelaufene Freigabe wechselt den Karteninhalt — kein Fehler, kein Rot", () => {
+    // Der Vertrag: ab `valid_until` darf der Cache die Aktion nicht mehr
+    // zeigen. Die Karte wird grau und benennt den Zustand.
+    const stale = decide("wait", { valid_until: "2026-09-14T11:00:00+02:00" });
+    const verdict = nowVerdict(input({ decide: stale }));
+    expect(verdict?.expired).toBe(true);
+    expect(verdict?.tone).toBe("gray");
+    expect(verdict?.headline).toBe("Empfehlung abgelaufen");
+    expect(verdict?.percent).toBeNull();
+  });
+
+  it("gültige Freigabe läuft erst ab, wenn die Zeit vergangen ist", () => {
+    const fresh = decide("wait", { valid_until: "2026-09-14T17:45:00+02:00" });
+    const verdict = nowVerdict(input({ decide: fresh }));
+    expect(verdict?.expired).toBe(false);
+    expect(verdict?.headline).toBe("Warten bis 18–20 Uhr");
   });
 });
 

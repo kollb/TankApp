@@ -344,8 +344,8 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
       const row = THRESHOLD_ROWS.find((r) => r.key === key);
       expect(row, `Zeile für ${key} fehlt`).toBeDefined();
     }
-    expect(html).toContain("Warten (grün)");
-    expect(html).toContain("Warten (gelb)");
+    expect(html).toContain("Warten (blau)");
+    expect(html).toContain("Warten — „Eher warten“");
     expect(html).toContain("Woanders tanken");
     expect(html).toContain("Jetzt tanken");
     // Server-Werte, formatiert.

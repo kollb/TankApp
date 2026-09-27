@@ -208,10 +208,13 @@ export function learningNote(decide: DecideResult | null): string | null {
   if (!decide?.primary || decide.calibrated) return null;
   const progress = m7Progress(decide);
   if (!progress || progress.done >= progress.need) return null;
+  // UI-Neugestaltung (S1): Die Lernphase ist keine tote Fläche — der
+  // Preisvergleich und die Umweg-Rechnung tragen sich schon mit
+  // Live-Preisen. Der Satz benennt das, statt nur zu zählen.
   return (
     `Das Modell lernt noch — ${countLabel(progress.done)} von ` +
     `${countLabel(progress.need)} abgeschlossenen Empfehlungen. ` +
-    "Die Preise unten sind gemessen."
+    "Vergleich und Umweg-Rechnung funktionieren bereits."
   );
 }
 
@@ -230,8 +233,15 @@ export type NowInput = {
 
 export type NowVerdict = {
   action: AdviceAction;
-  /** Grün = Handlung, Blau = Vergleich, Grau = ehrlich unentschieden. */
-  tone: "green" | "blue" | "gray";
+  /**
+   * Urteilstöne (UI-Neugestaltung 2026-09-26): Grün = jetzt handeln,
+   * Blau = warten bis Fenster (geplante, Geld sparende Handlung),
+   * Rot = echtes Risiko (Warten durch Tankstand blockiert),
+   * Grau = ehrlich unentschieden. Rot ist kein Dekor und kein
+   * Wartungs-Alarm — es markiert die einzige Situation, in der das
+   * Warten physisch riskant ist.
+   */
+  tone: "green" | "blue" | "red" | "gray";
   headline: string;
   amount: string | null;
   detail: string;
@@ -240,6 +250,16 @@ export type NowVerdict = {
   /** Nur auf Stufe A gefüllt. */
   percent: number | null;
   word: string | null;
+  /** Ende der Gültigkeit der Freigabe (ISO) — `null` ohne freigegebene
+   *  Aktion oder ohne Angabe des Servers (A21-B1.4). */
+  validUntil: string | null;
+  /**
+   * `true`, wenn `valid_until` vergangen ist (geöffnete Seite, gecachte
+   * Antwort): die Karte wechselt ihren Inhalt, statt eine abgelaufene
+   * Handlung weiter zu zeigen — der Vertrag verbietet genau das
+   * („ab hier darf ein Cache die Aktion nicht erneut zeigen“).
+   */
+  expired: boolean;
 };
 
 /**
@@ -305,6 +325,35 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
   const { detail, percent, word } = confidenceDetail(decide, input.liters);
   const reason = p.reason_short ? [p.reason_short, detail].join(" · ") : detail;
 
+  // Abgelaufene Freigabe (A21-B1.4): `valid_until` liegt in der
+  // Vergangenheit (Seite offen gehalten, Antwort gecacht) — der Vertrag
+  // verbietet, die Aktion erneut zu zeigen. Die Karte wechselt ihren
+  // Inhalt; ein Fehler ist das nicht.
+  const validUntil = decide.valid_until ?? null;
+  const nowMs = input.now ?? Date.now();
+  const expired =
+    p.action !== "no_advice" &&
+    validUntil !== null &&
+    Number.isFinite(Date.parse(validUntil)) &&
+    Date.parse(validUntil) < nowMs;
+  if (expired) {
+    return {
+      action: p.action,
+      tone: "gray",
+      headline: "Empfehlung abgelaufen",
+      amount: null,
+      detail:
+        "Die Empfehlung ist abgelaufen — neu berechnet wird automatisch. " +
+        "Preise und Fakten bleiben sichtbar.",
+      stationName: null,
+      mapsUrl: null,
+      percent: null,
+      word: null,
+      validUntil,
+      expired: true,
+    };
+  }
+
   if (p.action === "wait") {
     const window = p.recommended_window;
     const range = window
@@ -334,9 +383,12 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       // Erwartungswert oder Garantie getarnt.
       amount = `Fensterpotenzial ≈ ${euro(bestSaving)} € günstiger`;
     }
+    // UI-Neugestaltung: „Warten“ ist die Geld sparende, geplante
+    // Empfehlung — Blau statt Grün, damit Grün nur „jetzt handeln“
+    // trägt und Rot ausschließlich dem echten Risiko (Tankrest).
     return {
       action: p.action,
-      tone: "green",
+      tone: "blue",
       headline: range ? `Warten bis ${range}` : "Warten lohnt sich",
       amount,
       detail: reason,
@@ -344,13 +396,18 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: p.station.maps_url ?? null,
       percent,
       word,
+      validUntil: decide.valid_until ?? null,
+      expired: false,
     };
   }
 
   if (p.action === "refuel_now") {
+    // Tankrest blockiert das Warten: das ist das eine echte Risiko —
+    // die Karte wird rot, nicht grün (Urteilstöne, UI-Neugestaltung).
+    const tankBlocksWait = decide.tank?.blocks_wait === true;
     return {
       action: p.action,
-      tone: "green",
+      tone: tankBlocksWait ? "red" : "green",
       headline: "Jetzt tanken",
       amount:
         p.station.price_now != null
@@ -361,6 +418,8 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: p.station.maps_url ?? null,
       percent,
       word,
+      validUntil: decide.valid_until ?? null,
+      expired: false,
     };
   }
 
@@ -380,6 +439,8 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
       mapsUrl: alt?.maps_url ?? p.station.maps_url ?? null,
       percent,
       word,
+      validUntil: decide.valid_until ?? null,
+      expired: false,
     };
   }
 
@@ -402,6 +463,9 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     mapsUrl: null,
     percent: null,
     word: null,
+    // Eine Ablehnung altert nicht (Vertrag) — es gibt kein Gültigkeitsende.
+    validUntil: null,
+    expired: false,
   };
 }
 

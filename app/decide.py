@@ -207,9 +207,12 @@ _BLOCK_REASON_TEXT = {
         "Gehäufte Preisanstiege außerhalb der 12-Uhr-Regel — der "
         "Regimezustand wird geprüft, bis dahin keine Empfehlung."
     ),
+    # UI-Neugestaltung (2026-09-26): Handlung zuerst, dann der Grund,
+    # dann das Nützliche — „Kalibrierung“ bleibt als Fachbegriff stehen
+    # (test_b4 prüft auf das Wort).
     "m7_pending": (
-        "Kalibrierung steht noch aus: Preismeldungen sind unverfälscht, "
-        "Empfehlungen aber noch nicht freigegeben."
+        "Keine Empfehlung — die Kalibrierung steht noch aus. "
+        "Die Preismeldungen sind unverfälscht, der Preisvergleich bleibt."
     ),
     "tank_full": "Der Tank ist voll — für diese Planung ist keine Tankmenge verfügbar.",
     "what_if_only": (

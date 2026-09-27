@@ -38,6 +38,7 @@ import {
   euro,
   euroPerLiter,
   PROFILE_BOUNDS,
+  timeOfDayLabel,
   type DecideResult,
   type ResourceState,
   type Station,
@@ -131,16 +132,32 @@ export interface JetztViewProps {
   now?: number;
 }
 
+/*
+ * Urteilstöne (UI-Neugestaltung 2026-09-26): Grün = jetzt handeln,
+ * Blau = warten bis Fenster, Rot = echtes Risiko (Tankrest blockiert
+ * das Warten), Grau = ehrlich unentschieden. Die Urteils-Karte ist die
+ * einzige Karte der Seite mit Elevation (Glow) — der Blick landet
+ * automatisch dort.
+ */
 const CARD_TONE = {
   green:
     "border-emerald-500/30 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900",
   blue: "border-sky-500/30 bg-gradient-to-br from-sky-950/60 via-slate-900 to-slate-900",
+  red: "border-rose-500/30 bg-gradient-to-br from-rose-950/60 via-slate-900 to-slate-900",
   gray: "border-slate-700 bg-slate-900/80",
+} as const;
+
+const CARD_GLOW = {
+  green: "glow-emerald",
+  blue: "glow-blue",
+  red: "glow-rose",
+  gray: "",
 } as const;
 
 const CHIP = {
   green: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   blue: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+  red: "border-rose-500/30 bg-rose-500/10 text-rose-300",
   gray: "border-slate-700 bg-slate-800/60 text-slate-300",
 } as const;
 
@@ -280,6 +297,10 @@ export function JetztView(props: JetztViewProps) {
     timeValue,
   };
   const verdict = nowVerdict(input);
+  // Gültigkeits-Chip: nur für freigegebene, nicht abgelaufene Aktionen —
+  // eine Ablehnung altert nicht (A21-B1.4).
+  const validUntilLabel =
+    verdict && !verdict.expired ? timeOfDayLabel(verdict.validUntil) : null;
   const facts = nowFacts(input);
   const steps = nowSteps(input);
   // „Was ist gerade am besten?“ — die Antwort ohne Modell (S0/S1/C).
@@ -453,9 +474,41 @@ export function JetztView(props: JetztViewProps) {
               <ArrowRight size={15} aria-hidden="true" />
             </button>
           </div>
+        ) : verdict?.expired ? (
+          /* Abgelaufene Freigabe: der Karteninhalt wechselt — kein Fehler,
+             keine rote Fläche. Fakten und Preisvergleich bleiben darunter
+             sichtbar (Übergangsregel, UI-Neugestaltung). */
+          <div
+            className={`${panel} p-5 sm:p-7 ${CARD_TONE.gray}`}
+            aria-labelledby="jetzt-headline"
+          >
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
+            >
+              <Clock size={13} aria-hidden="true" />
+              Empfehlung abgelaufen
+            </span>
+            <h2
+              id="jetzt-headline"
+              className="mt-3 text-xl font-bold text-white sm:text-2xl"
+            >
+              {verdict.headline}
+            </h2>
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
+              {verdict.detail}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={onRetry}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Empfehlung neu laden
+              </button>
+            </div>
+          </div>
         ) : verdict && verdict.action !== "no_advice" ? (
           <div
-            className={`${panel} p-5 sm:p-7 ${CARD_TONE[verdict.tone]}`}
+            className={`${panel} p-5 sm:p-7 ${CARD_TONE[verdict.tone]} ${CARD_GLOW[verdict.tone]}`}
             aria-labelledby="jetzt-headline"
           >
             <span
@@ -483,6 +536,15 @@ export function JetztView(props: JetztViewProps) {
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              {validUntilLabel && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs font-bold text-slate-300"
+                  title="Freigabe der Empfehlung — danach wird neu berechnet"
+                >
+                  <Clock size={12} aria-hidden="true" />
+                  gültig bis {validUntilLabel}
+                </span>
+              )}
               {verdict.mapsUrl && (
                 <a
                   href={verdict.mapsUrl}
