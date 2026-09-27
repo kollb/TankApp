@@ -4,6 +4,22 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.70.1] – 2026-09-27
+
+- **Gültigkeit auf „Jetzt“:** In den letzten 30 Minuten ergänzt ein
+  amberfarbener Chip die Berliner Ablaufzeit um aufgerundete Restminuten.
+  Die geöffnete Ansicht aktualisiert sich auch ohne neue Serverantwort;
+  exakt ab `valid_until` ersetzt die neutrale Ablaufkarte die Empfehlung.
+- **Kontext und Tagesdetails:** Stadt/Kraftstoff und Tagesstreifen als
+  zugängliche Bottom Sheets mit Fokusbegrenzung, Escape und Fokusrückgabe.
+- **RP2-React-Leseausgabe:** Separater Vite-Build, gleiche Formatierer und
+  Theme, lokale Preise/Verläufe/Cache-Quantile. Python bleibt Server und
+  Notausgabe ohne Bundle. `pi-v1` und lokale Assets bleiben nach NAS-Rückkehr
+  stabil; Wechsel nur per Klick mit erhaltenen Eingaben. Hardwarefreigabe
+  laut Auftraggeber, keine neue Messung in dieser Änderung.
+- **Konzeptpflege:** FAB- und Lernfortschritts-Angaben an die dokumentierten
+  Umsetzungsentscheidungen angeglichen; verbleibende Ausbaugrenzen benannt.
+
 ## [0.70.0] – 2026-09-24
 
 **Audit-Umsetzung: Sperrung messbar, Verträge eindeutig, Preisvergleich trägt

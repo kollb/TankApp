@@ -78,3 +78,6 @@ netrc
 
 # Lokale virtuelle Umgebung
 .venv/
+
+# React-Leseausgabe: vor dem RP2-Deployment lokal bauen
+/rp2/dist/

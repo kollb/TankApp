@@ -390,3 +390,9 @@ html.ptr-off body {
   padding: 9px;
   translate: -50% -50%;
 }
+
+/* Sheets are narrower than the viewport. Size cells against their available
+   width, not the desktop/landscape viewport breakpoints above. */
+dialog .daystrip-cells {
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+}

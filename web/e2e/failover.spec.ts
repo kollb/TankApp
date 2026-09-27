@@ -125,3 +125,32 @@ test("NAS-Tab überlebt Ausfall mit Beleg-Outbox und ungesendetem Entwurf", asyn
   expect(errors).toEqual([]);
   await other.close();
 });
+
+test("React-Leseausgabe lädt lokale Assets, bleibt lesend und zeigt echte Pufferwerte", async ({ page }) => {
+  const writes: string[] = [];
+  page.on("request", r => { if (!["GET", "HEAD"].includes(r.method())) writes.push(r.url()); });
+  await link("offline");
+  await page.goto(pi + "/?fallback=1");
+  await expect(page.getByText("Lesemodus · RP2", { exact: true })).toBeVisible();
+  expect(await page.locator('script[type="module"]').getAttribute("src")).toMatch(/^\/pi-assets\//);
+  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  await expect(page.getByText(/Stationen · gemeldete Preise/)).toBeVisible();
+  // The list is fed by the real Pi handler, not a client-side fixture.
+  const rows = page.locator("li button");
+  await expect(rows.first()).toBeVisible();
+  await rows.first().click();
+  const detail = page.getByRole("dialog");
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(/Verlauf wird geladen/)).toHaveCount(0);
+  await expect(detail.getByText(/Uhr/)).toHaveCount(19);
+  await page.keyboard.press("Escape");
+  await expect(detail).toBeHidden();
+  await recover(page);
+  // The NAS must never take over the Pi asset namespace after recovery.
+  const asset = await page.locator('script[type="module"]').getAttribute("src");
+  const response = await page.request.get(pi + asset);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("javascript");
+  expect(writes).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

@@ -119,7 +119,9 @@ test("city/fuel changes never mix prices, closures never win", async ({
   });
   await expect(fRow).toBeVisible();
   await expect(fRow).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
   await page.getByLabel("Stadt", { exact: true }).selectOption("Gütersloh");
+  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
   const gRow = page.getByRole("button", {
     name: "G-Station als Referenz und Detail wählen",
   });
@@ -133,7 +135,9 @@ test("city/fuel changes never mix prices, closures never win", async ({
     "aria-valuetext",
     "55 Liter",
   );
+  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
   await page.getByRole("button", { name: "Diesel", exact: true }).click();
+  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
   await expect(page.getByText("1,689", { exact: false })).toHaveCount(0);
@@ -141,6 +145,7 @@ test("city/fuel changes never mix prices, closures never win", async ({
   // Nach dem Reload startet die App wieder in „Jetzt“ — für die Stationen-
   // Namen erneut dorthin wechseln.
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
   await expect(page.getByLabel("Stadt", { exact: true })).toHaveValue(
     "Gütersloh",
   );
@@ -148,6 +153,7 @@ test("city/fuel changes never mix prices, closures never win", async ({
   await expect(
     page.getByRole("button", { name: "Diesel", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
   // Die Tankmenge übersteht den Reload (geräte-lokal gespeichert).
   await clickArea(page, "Ich");
   await expect(page.locator("#liters")).toHaveValue("55");
@@ -334,4 +340,18 @@ test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", 
       .filter({ visible: true })
       .first(),
   ).toBeVisible();
+});
+
+test("Kontext-Sheet: Escape und Tastaturfokus kehren zum Auslöser zurück", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" });
+  await trigger.click();
+  const sheet = page.getByRole("dialog", { name: "Stadt und Kraftstoff", exact: true });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Stadt und Kraftstoff schließen" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(sheet.getByRole("button", { name: "Auswahl übernehmen" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(trigger).toBeFocused();
 });

@@ -20,6 +20,7 @@ import {
   nowStage,
   nowSteps,
   nowVerdict,
+  nowValidity,
   savingPerLiterCt,
   timeInputToBerlinIso,
   wordFromPercent,
@@ -970,5 +971,35 @@ describe("Priorität 1: Abdeckung und Netto-Vergleich (A70)", () => {
     });
     expect(missing.kind).toBe("not_comparable");
     expect(missing.text).toContain("Nicht sinnvoll vergleichbar");
+  });
+});
+
+
+describe("Gültigkeits-Countdown", () => {
+  const verdictAt = (ms: number, action: "wait" | "no_advice" = "wait") =>
+    nowVerdict(input({ decide: decide(action, { valid_until: new Date(ms).toISOString() }), now: NOW }));
+
+  it("zeigt vor den letzten 30 Minuten nur die Berliner Uhrzeit", () => {
+    expect(nowValidity(verdictAt(NOW + 31 * 60000), NOW)).toEqual({
+      label: "gültig bis 12:31", endingSoon: false,
+    });
+  });
+  it("warnt ab genau 30 Minuten und rundet Restminuten auf", () => {
+    expect(nowValidity(verdictAt(NOW + 30 * 60000), NOW)).toEqual({
+      label: "gültig bis 12:30 · noch 30 min", endingSoon: true,
+    });
+    expect(nowValidity(verdictAt(NOW + 1), NOW)?.label).toContain("noch 1 min");
+  });
+  it("endet exakt an der Freigabegrenze", () => {
+    expect(verdictAt(NOW)?.expired).toBe(true);
+    expect(nowValidity(verdictAt(NOW), NOW)).toBeNull();
+    expect(nowValidity(verdictAt(NOW - 1), NOW)).toBeNull();
+  });
+  it("erfindet keinen Countdown für fehlende, ungültige oder abgelehnte Freigaben", () => {
+    expect(nowValidity(null, NOW)).toBeNull();
+    expect(nowValidity(verdictAt(NOW + 60000, "no_advice"), NOW)).toBeNull();
+    const verdict = verdictAt(NOW + 60000)!;
+    expect(nowValidity({ ...verdict, validUntil: "invalid" }, NOW)).toBeNull();
+    expect(nowValidity({ ...verdict, validUntil: null }, NOW)).toBeNull();
   });
 });

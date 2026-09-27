@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 24.09.2026 · App-Version 0.70.0
+> Stand: 27.09.2026 · App-Version 0.70.1
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -26,7 +26,7 @@
 | Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik | [API](../referenz/API.md) |
 | Mengen-/Nutzenvertrag | Physische freie Menge, explizites What-if, benanntes Medianpotenzial, ausführbare Strategie und Oracle-Untergrenze getrennt; historische Belege bleiben unverändert | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
-| RP2 | Readiness-geprüfter NAS-Proxy; versionierte Tab-Verträge; Pi nur Preisvergleich, keine Aktionen | [RP2](../betrieb/RP2.md) |
+| RP2 | React-Leseausgabe mit lokalem Build, Python-Notausgabe ohne Bundle; Readiness-geprüfter NAS-Proxy, versionierte Tab-Verträge; Pi nur Preisvergleich, keine Aktionen | [RP2](../betrieb/RP2.md) |
 | Qualität | Unit-Tests, Browser-Suite mit Mocks und eigene Demo-Suite ohne Mocks | [Qualität](../entwicklung/QUALITAET.md) |
 
 Die frühere Abweichung zwischen Backtest-Kern und veröffentlichtem Modell ist

@@ -83,6 +83,12 @@ jobs:
       - run: npm --prefix web ci
       - run: npm --prefix web test
       - run: npm --prefix web run build
+      - name: RP2-Leseausgabe für Deployment bereitstellen
+        uses: actions/upload-artifact@v7
+        with:
+          name: rp2-read-edition
+          path: rp2/dist/
+          if-no-files-found: error
       # Der Demo-Stack der unmocked Suite startet die echte App (numpy/pandas
       # für den Engine-Lauf) — deshalb die Python-Abhängigkeiten auch hier.
       - run: python -m pip install -r requirements-dev.txt

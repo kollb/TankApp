@@ -19,7 +19,13 @@ import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from rp2.fallback_gui import Context, NasState, install_default_template, make_server  # noqa: E402
+from rp2.fallback_gui import (  # noqa: E402
+    Context,
+    NasState,
+    install_default_template,
+    install_read_edition,
+    make_server,
+)
 
 
 def main():
@@ -109,7 +115,8 @@ def main():
             }
         }
         (root / "polling.json").write_text(json.dumps(metadata))
-        install_default_template(root / "templates")
+        if not install_read_edition(root / "templates"):
+            install_default_template(root / "templates")
         state = NasState(
             f"http://127.0.0.1:{link.server_port}",
             ttl_online=0.05,

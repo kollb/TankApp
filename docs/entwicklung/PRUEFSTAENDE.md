@@ -15,6 +15,10 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
+| [README.md](../../README.md) | 0.70.0 |
+| [UI.md](../produkt/UI.md) | 0.70.0 |
+| [API.md](../referenz/API.md) | 0.70.0 |
+| [0003-MODELL-UND-FREIGABE.md](../adr/0003-MODELL-UND-FREIGABE.md) | 0.70.0 |
 | [ENGINE.md](../referenz/ENGINE.md) | 0.70.0 |
 | [ARCHITEKTUR.md](../architektur/ARCHITEKTUR.md) | 0.65.0 |
 | [DATENWERKZEUGE.md](../referenz/DATENWERKZEUGE.md) | 0.64.0 |
