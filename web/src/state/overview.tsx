@@ -254,13 +254,13 @@ function useOverviewState() {
     0,
     (value) => value === 0 || value === 3 || value === 7,
   );
-  // C4: Dark/Light-Umschaltung (Einstellungen-Tab). Dunkel (Slate) ist der
-  // Default — die Design-Basis; die Wahl gilt gerätelokal. Der
-  // Bootstrap-Script in index.html wendet denselben Wert vor dem ersten
-  // Paint an, hier hält React meta und Klassen synchron.
+  // C4: Dark/Light-Umschaltung (Einstellungen-Tab). Hell (Material You)
+  // ist der Default — die Design-Basis der neuen GUI; die Wahl gilt
+  // gerätelokal. Der Bootstrap-Script in index.html wendet denselben Wert
+  // vor dem ersten Paint an, hier hält React meta und Klassen synchron.
   const [theme, setTheme] = usePreference<AppTheme>(
     "theme",
-    "dark",
+    "light",
     isAppTheme,
   );
   useEffect(() => {

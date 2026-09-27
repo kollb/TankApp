@@ -4432,12 +4432,11 @@ export function yearBalanceLabel(key: string): string {
 /**
  * C4: Dark/Light-Umschaltung der NAS-GUI.
  *
- * Dunkel (Slate-950) ist die Design-Basis (docs/produkt/GUI-VORLAGEN.md) und bleibt
- * der Default. „Hell (Slate)“ ist eine helle Variante derselben Skala:
- * dieselben Tailwind-Klassen, andere Token-Werte unter `html.light` in
- * styles.css — abgeleitet von der Light-Palette der Fallback-GUI
- * (rp2/fallback_gui.py), damit beide Oberflächen beieinander liegen. Die
- * Wahl gilt gerätelokal (localStorage), wie alle anderen Einstellungen.
+ * Hell (Material You, sample/good gui) ist seit der neuen GUI die
+ * Design-Basis und der Default — die `:root`-Werte in styles.css.
+ * „Dunkel“ ist eine dunkle Variante derselben Skala: dieselben
+ * Tailwind-Klassen, andere Token-Werte unter `html.dark` in styles.css.
+ * Die Wahl gilt gerätelokal (localStorage), wie alle anderen Einstellungen.
  */
 export type AppTheme = "dark" | "light";
 export const APP_THEMES = ["dark", "light"] as const;
@@ -4446,12 +4445,12 @@ export function isAppTheme(value: unknown): value is AppTheme {
 }
 /** theme-color-Meta je Thema (Browser-UI/Adressleiste). */
 export const APP_THEME_META_COLOR: Record<AppTheme, string> = {
-  dark: "#020617",
-  light: "#eef2f7",
+  dark: "#0b0f19",
+  light: "#f5fbf5",
 };
 /**
- * Wendet das Thema auf <html> an: Klasse `light` (dunkel ist die
- * Default-Klasse `dark` in index.html) plus theme-color-Meta. Idempotent —
+ * Wendet das Thema auf <html> an: Klasse `dark` (hell ist die
+ * Default-Klasse `light` in index.html) plus theme-color-Meta. Idempotent —
  * der Bootstrap-Script in index.html macht vor dem ersten Paint dasselbe
  * ohne React, damit kein Theme-Flash sichtbar wird.
  */

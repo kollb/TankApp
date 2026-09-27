@@ -97,12 +97,15 @@ function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
 }
 
 describe("C5: Kontrast AA der gedämpften Texttöne", () => {
-  const dark = colorTokens(block(":root {"));
-  const light = colorTokens(block("html.light {"));
+  // Seit der neuen GUI (Material You, sample/good gui) ist hell der
+  // Default (`:root`) und dunkel die Variante (`html.dark`) — die Blöcke
+  // stehen deshalb getauscht gegenüber dem ursprünglichen Ratchet.
+  const light = colorTokens(block(":root {"));
+  const dark = colorTokens(block("html.dark {"));
 
   // Flächen, auf denen gedämpfter Text wirklich liegt.
   const darkSurfaces = ["#0b0f19", "#020617", "#0f172a", "#1e293b"];
-  const lightSurfaces = ["#eef2f7", "#ffffff", "#e2e8f0"];
+  const lightSurfaces = ["#f5fbf5", "#ffffff", "#e9efe9", "#e4eae3"];
 
   it.each(["slate-500", "slate-600"])(
     "dunkel: --color-%s hält 4,5:1 auf allen dunklen Flächen",
@@ -124,7 +127,7 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
       const value = light[name];
       expect(
         value,
-        `${name} wird unter html.light nicht angehoben`,
+        `${name} wird im hellen Default (:root) nicht angehoben`,
       ).toBeDefined();
       for (const surface of lightSurfaces) {
         expect(
@@ -219,12 +222,14 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
 // werden soll. Geprüft werden deshalb die Paare, nicht die Einzelwerte.
 // ---------------------------------------------------------------------------
 describe("M3-Farbrollen des Tank-Guides", () => {
-  const dark = colorTokens(block(":root {"));
-  const light = colorTokens(block("html.light {"));
+  // Hell ist der Default (`:root`), dunkel die Variante (`html.dark`).
+  const light = colorTokens(block(":root {"));
+  const dark = colorTokens(block("html.dark {"));
 
   /** Fläche → Textton, der auf ihr liegt (M3: container/on-container). */
   const pairs: [string, string][] = [
     ["m3-primary-container", "m3-on-primary-container"],
+    ["m3-secondary-container", "m3-on-secondary-container"],
     ["m3-error-container", "m3-on-error-container"],
     ["m3-tertiary-container", "m3-on-tertiary-container"],
     ["m3-warn-container", "m3-on-warn-container"],
@@ -232,6 +237,10 @@ describe("M3-Farbrollen des Tank-Guides", () => {
     ["m3-error", "m3-on-error"],
     ["m3-tertiary", "m3-on-tertiary"],
     ["m3-inverse-surface", "m3-on-inverse-surface"],
+    ["m3-surface", "m3-on-surface"],
+    ["m3-surface-lowest", "m3-on-surface"],
+    ["m3-surface-low", "m3-on-surface-variant"],
+    ["m3-surface-high", "m3-on-surface-variant"],
   ];
 
   const m3Keys = (tokens: Record<string, string>) =>

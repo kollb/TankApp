@@ -633,14 +633,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
               ) : (
                 <Sun size={14} aria-hidden="true" />
               )}
-              {value === "dark" ? "Dunkel (Standard)" : "Hell"}
+              {value === "dark" ? "Dunkel" : "Hell (Standard)"}
             </button>
           ))}
         </div>
         <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          Dunkel ist die Design-Basis und der Default. Hell ist eine helle
-          Variante derselben Skala — dieselbe Farbwelt wie die Fallback-GUI
-          am RP2. Die Wahl gilt nur auf diesem Gerät.
+          Hell (Material You) ist die Design-Basis und der Default — das
+          Konzept der neuen GUI. Dunkel ist eine dunkle Variante derselben
+          Skala: dieselben Klassen, andere Token-Werte. Die Wahl gilt nur
+          auf diesem Gerät.
         </p>
       </section>
 

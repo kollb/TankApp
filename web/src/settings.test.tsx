@@ -445,16 +445,19 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
   });
 
   it("bietet beide Themen mit aria-pressed", () => {
+    // Seit der neuen GUI (Material You) lautet das helle Thema
+    // „Hell (Standard)“ und ist der Default; „Dunkel“ bleibt auswählbar.
+    // Test-Default props: theme = "dark" — dann trägt der erste Button
+    // (Dunkel) das aria-pressed; bei theme = "light" der zweite (Hell).
     const dark = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
-    expect(dark).toContain("Dunkel (Standard)");
-    expect(dark).toContain("Hell");
-    // Im Theme-Block trägt der dunkle Button das aria-pressed.
+    expect(dark).toContain("Hell (Standard)");
+    expect(dark).toContain("Dunkel");
     const darkGroup = dark.slice(
       dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
     );
     expect(
       darkGroup.indexOf('aria-pressed="true"') <
-        darkGroup.indexOf("Dunkel (Standard)"),
+        darkGroup.indexOf("Dunkel"),
     ).toBe(true);
 
     const light = renderToStaticMarkup(
@@ -465,7 +468,7 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
     );
     expect(
       lightGroup.indexOf('aria-pressed="true"') >
-        lightGroup.indexOf("Dunkles Slate"),
+        lightGroup.indexOf("Dunkel"),
     ).toBe(true);
   });
 

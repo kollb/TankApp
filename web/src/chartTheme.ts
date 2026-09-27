@@ -2,7 +2,7 @@
 //
 // Die Fläche war bis 0.41.1 dunkel verdrahtet: 64 feste Hex-Werte in
 // StationMap, LabCharts, LineChart, Labor und Stationen, kein einziger
-// `var(--color…)`-Zugriff. `html.light` biegt nur die Tailwind-Token um
+// `var(--color…)`-Zugriff. `html.dark` biegt nur die Tailwind-Token um
 // (styles.css) — die SVGs blieben dunkel. Sichtbare Folge: Achsentext
 // `#94a3b8` auf weißer Karte ≈ 2,4:1 (AA verlangt 4,5:1), die Fadenkreuze
 // `#1e293b` verschwinden auf heller Fläche.
@@ -102,12 +102,14 @@ export const LIGHT_CHART: ChartPalette = {
 };
 
 export function chartPalette(theme: AppTheme): ChartPalette {
-  return theme === "light" ? LIGHT_CHART : DARK_CHART;
+  return theme === "dark" ? DARK_CHART : LIGHT_CHART;
 }
 
 function currentTheme(): AppTheme {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.classList.contains("light") ? "light" : "dark";
+  // Seit der neuen GUI ist hell der Default (`:root`) — dunkel trägt die
+  // Klasse `dark`, nicht mehr umgekehrt.
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 /**
