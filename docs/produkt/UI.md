@@ -18,6 +18,18 @@
 
 ## Navigation
 
+Seit 0.70.1 öffnet der Kontext-Chip im Kopf Stadt und Kraftstoff in einem
+Bottom Sheet. Tagesstreifen-Details öffnen ebenfalls als Sheet; native
+Dialoge begrenzen den Tastaturfokus und schließen mit Escape, danach
+kehrt der Fokus zum Auslöser zurück. Der Gültigkeits-Chip zählt die
+letzten 30 Minuten herunter; ab dem Ablaufzeitpunkt wird die Empfehlung
+auch ohne neue Serverantwort durch die neutrale Ablaufkarte ersetzt.
+
+Die RP2-Leseausgabe (`web/rp2`) teilt Theme, Formatter und Sheet mit der
+Vollversion, bleibt aber ausdrücklich beim lesenden `pi-v1`-Vertrag.
+Navigation: Jetzt · Stationen · Mehr. Python bleibt Server und Notausgabe,
+wenn kein React-Build installiert ist; [Deployment](../betrieb/RP2.md#template-updates).
+
 Die Alltagsnavigation folgt **3+1**:
 
 ```text

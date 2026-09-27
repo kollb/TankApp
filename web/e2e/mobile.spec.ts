@@ -349,7 +349,7 @@ test.describe("Mobil: kein Querlauf", () => {
     // eingeklappt — „die Entscheidung braucht ihn nicht“. Der Ratchet
     // hält genau das: Auslöser sichtbar, Profilsatz nicht gemalt.
     const strip = page.locator("#jetzt-daystrip");
-    await expect(strip.locator("summary")).toBeVisible();
+    await expect(strip).toBeVisible();
     await expect(strip.locator(".daystrip-cells")).toBeHidden();
   });
 

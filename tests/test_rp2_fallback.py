@@ -2113,3 +2113,33 @@ def test_complete_write_rejections_keep_outbox_error_codes(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_read_edition_install_is_local_and_keeps_old_asset_hashes(tmp_path):
+    build = tmp_path / "bundle"
+    assets = build / "pi-assets"
+    assets.mkdir(parents=True)
+    (assets / "read-new.js").write_text("// new", encoding="utf-8")
+    (build / "index.html").write_text(
+        '<script src="/pi-assets/read-new.js"></script>', encoding="utf-8"
+    )
+    target = tmp_path / "templates"
+    (target / "pi-assets").mkdir(parents=True)
+    (target / "pi-assets/read-old.js").write_text("// old", encoding="utf-8")
+    assert rp2.install_read_edition(target, build)
+    assert (target / "index.html").read_bytes() == (build / "index.html").read_bytes()
+    assert (target / "pi-assets/read-new.js").is_file()
+    assert (target / "pi-assets/read-old.js").is_file()
+    assert not rp2.install_read_edition(target, tmp_path / "missing")
+    assert (target / "index.html").read_bytes() == (build / "index.html").read_bytes()
+
+
+def test_read_edition_rejects_incomplete_bundle(tmp_path):
+    build = tmp_path / "build"
+    (build / "pi-assets").mkdir(parents=True)
+    (build / "index.html").write_text(
+        '<script src="/pi-assets/missing.js"></script>', encoding="utf-8"
+    )
+    target = tmp_path / "templates"
+    assert not rp2.install_read_edition(target, build)
+    assert not (target / "index.html").exists()

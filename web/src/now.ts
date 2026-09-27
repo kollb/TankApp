@@ -35,6 +35,7 @@ import {
   NO_DATA_LINE,
   M7_MIN_RECOMMENDATIONS,
   percentLabel,
+  timeOfDayLabel,
   type AdviceAction,
   type DecideResult,
   type Station,
@@ -262,6 +263,24 @@ export type NowVerdict = {
   expired: boolean;
 };
 
+/** Gültigkeit mit ehrlichem Minuten-Countdown, nie für Ablehnungen. */
+export function nowValidity(verdict: NowVerdict | null, now = Date.now()): {
+  label: string;
+  endingSoon: boolean;
+} | null {
+  if (!verdict || verdict.expired || verdict.action === "no_advice" || !verdict.validUntil) return null;
+  const remaining = Date.parse(verdict.validUntil) - now;
+  const time = timeOfDayLabel(verdict.validUntil);
+  if (!Number.isFinite(remaining) || remaining <= 0 || !time) return null;
+  const endingSoon = remaining <= 30 * 60000;
+  return {
+    label: `gültig bis ${time}` + (endingSoon
+      ? ` · noch ${countLabel(Math.ceil(remaining / 60000))} min`
+      : ""),
+    endingSoon,
+  };
+}
+
 /**
  * O45: Der UI-Betrag aus derselben Basis wie der Preis daneben — dem
  * Medianpreis des Fensters (`expected_saving_median_eur`). Fenster zeigen
@@ -335,7 +354,7 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
     p.action !== "no_advice" &&
     validUntil !== null &&
     Number.isFinite(Date.parse(validUntil)) &&
-    Date.parse(validUntil) < nowMs;
+    Date.parse(validUntil) <= nowMs;
   if (expired) {
     return {
       action: p.action,

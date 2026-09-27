@@ -285,8 +285,11 @@ describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
     // §3: Zahlen und Zeiten laufen über die Formatter in data.ts — der
     // Chip „gültig bis 17:45“ stellt die Tageszeit nie selbst her.
     const jetzt = read("views/Jetzt.tsx");
-    expect(jetzt).toContain("timeOfDayLabel");
-    expect(jetzt).toContain("gültig bis");
+    expect(jetzt).toContain("nowValidity(verdict, now)");
+    const now = read("now.ts");
+    expect(now).toContain("timeOfDayLabel(verdict.validUntil)");
+    expect(now).toContain("gültig bis");
+    expect(now).toContain("countLabel(Math.ceil(remaining / 60000))");
     const data = read("data.ts");
     expect(data).toContain("export function timeOfDayLabel");
   });

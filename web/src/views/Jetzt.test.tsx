@@ -291,11 +291,11 @@ describe("Jetzt: Aufbau", () => {
         { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
       ],
     });
-    // Die Karte trägt selbst ein `<details>` (Annahmen) — der Streifen hat
-    // deshalb ein eigenes `id`, damit der Ratchet den richtigen meint.
-    const details = html.match(/<details[^>]*id="jetzt-daystrip"[^>]*>/);
-    expect(details, "Der Streifen sitzt nicht hinter `<details>`").not.toBeNull();
-    expect(details![0]).not.toContain("open");
+    const trigger = html.match(/<button[^>]*id="jetzt-daystrip"[^>]*>/);
+    expect(trigger).not.toBeNull();
+    expect(trigger![0]).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("<dialog");
+    expect(html).not.toMatch(/<dialog[^>]* open/);
     expect(html).toContain("Tagesstreifen 06–24 Uhr");
     // Reihenfolge: Kennzahlen (Zeilenliste) vor dem eingeklappten Detail.
     expect(html.indexOf("Tagesmedian")).toBeLessThan(

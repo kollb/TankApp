@@ -27,6 +27,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
+import { BottomSheet } from "../components/BottomSheet";
 import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -38,7 +39,6 @@ import {
   euro,
   euroPerLiter,
   PROFILE_BOUNDS,
-  timeOfDayLabel,
   type DecideResult,
   type ResourceState,
   type Station,
@@ -55,6 +55,7 @@ import {
   nowNetBest,
   nowSteps,
   nowVerdict,
+  nowValidity,
   TANK_QUICK,
   timeInputToBerlinIso,
   windowMarks,
@@ -244,7 +245,7 @@ export function JetztView(props: JetztViewProps) {
     dueEpisode,
     forecastAt,
     liters,
-    now,
+    now: fixedNow,
     onAssumptions,
     onAssumptionsReset,
     onConfirmRecommended,
@@ -263,6 +264,7 @@ export function JetztView(props: JetztViewProps) {
     tankPercent,
     timeValue,
   } = props;
+  const [dayOpen, setDayOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [assumptionsOpen, setAssumptionsOpen] = useState(false);
   // Eingaben als String halten (deutsche Tastaturen: „1,689“).
@@ -283,6 +285,28 @@ export function JetztView(props: JetztViewProps) {
   }, [assumptionsOpen]);
 
   const decide = decideRes.data ?? null;
+  // Auch ohne neue Serverantwort läuft die Freigabe ab. Der nächste Tick
+  // liegt spätestens am Ablaufzeitpunkt, nicht erst beim nächsten Poll.
+  const [clock, setClock] = useState(() => Date.now());
+  const now = fixedNow ?? Math.max(clock, Date.now());
+  useEffect(() => {
+    if (fixedNow !== undefined) return;
+    const deadline = Date.parse(decide?.valid_until ?? "");
+    const remaining = deadline - Date.now();
+    const delay = remaining > 0 ? Math.min(60000, remaining) : 60000;
+    const timer = globalThis.setTimeout(() => setClock(Date.now()), delay);
+    return () => globalThis.clearTimeout(timer);
+  }, [clock, fixedNow, decide?.valid_until]);
+  useEffect(() => {
+    if (fixedNow !== undefined) return;
+    const update = () => setClock(Date.now());
+    globalThis.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      globalThis.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [fixedNow]);
   const problemCode =
     decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
   const calculationLiters = decide?.quantity?.used_liters ?? liters;
@@ -299,8 +323,7 @@ export function JetztView(props: JetztViewProps) {
   const verdict = nowVerdict(input);
   // Gültigkeits-Chip: nur für freigegebene, nicht abgelaufene Aktionen —
   // eine Ablehnung altert nicht (A21-B1.4).
-  const validUntilLabel =
-    verdict && !verdict.expired ? timeOfDayLabel(verdict.validUntil) : null;
+  const validity = nowValidity(verdict, now);
   const facts = nowFacts(input);
   const steps = nowSteps(input);
   // „Was ist gerade am besten?“ — die Antwort ohne Modell (S0/S1/C).
@@ -536,13 +559,13 @@ export function JetztView(props: JetztViewProps) {
               </p>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              {validUntilLabel && (
+              {validity && (
                 <span
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs font-bold text-slate-300"
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${validity.endingSoon ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-slate-700 bg-slate-800/60 text-slate-300"}`}
                   title="Freigabe der Empfehlung — danach wird neu berechnet"
                 >
                   <Clock size={12} aria-hidden="true" />
-                  gültig bis {validUntilLabel}
+                  {validity.label}
                 </span>
               )}
               {verdict.mapsUrl && (
@@ -1047,23 +1070,11 @@ export function JetztView(props: JetztViewProps) {
                 </dd>
               </div>
             </dl>
-            {/* B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Tagesstreifen
-                ist die einzige Visualisierung auf diesem Bildschirm und
-                standardmäßig eingeklappt — die Entscheidung braucht ihn
-                nicht (Regel „1 + 3 + 1“). Die Kennzahlen darüber bleiben
-                sichtbar; das Stundenprofil öffnet sich hinter einem Tap.
-                `<details>` statt Zustands-Wechsel: Der Inhalt bleibt im
-                Dokument (Render- und Barrierefreiheitstests messen weiter
-                dasselbe), nur der Malbereich ist bis zum Aufklappen weg. */}
-            <details id="jetzt-daystrip" className="group mt-3">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-700 hover:text-slate-100 [&::-webkit-details-marker]:hidden">
-                <ChevronRight
-                  size={13}
-                  className="transition-transform group-open:rotate-90"
-                  aria-hidden="true"
-                />
-                Tagesstreifen 06–24 Uhr
-              </summary>
+            <button id="jetzt-daystrip" onClick={() => setDayOpen(true)} aria-haspopup="dialog"
+              className="mt-3 flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-300">
+              <ChevronRight size={13} aria-hidden="true" /> Tagesstreifen 06–24 Uhr
+            </button>
+            <BottomSheet open={dayOpen} title="Heute im Blick — Tagesstreifen" onClose={() => setDayOpen(false)}>
               <div className="mt-3">
             <div className="daystrip-cells grid gap-1.5">
               {stripCells.map((cell) => {
@@ -1160,7 +1171,7 @@ export function JetztView(props: JetztViewProps) {
               Höhe im Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
             </p>
               </div>
-            </details>
+            </BottomSheet>
           </div>
         </>
       )}

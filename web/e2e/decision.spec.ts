@@ -366,3 +366,31 @@ test("Abgelehnter Beleg (400) bleibt ein Fehler", async ({ page }) => {
   await expect(page.getByText(/Speichern fehlgeschlagen/)).toBeVisible();
   await expect(page.getByText(/lokal vorgemerkt/)).toHaveCount(0);
 });
+
+// UI-Neugestaltung: eine offen gehaltene Seite darf keine abgelaufene
+// Empfehlung behalten, auch wenn der Server denselben Cache liefert.
+test("Gültigkeits-Countdown wechselt ohne neue Freigabe zur Ablaufkarte", async ({ page }) => {
+  const now = new Date("2026-09-27T10:00:00Z");
+  await page.clock.install({ time: now });
+  await stubBase(page);
+  await page.route("**/api/v1/overview?*", async (route) => {
+    await route.fulfill({ json: {
+      generated_at: now.toISOString(),
+      decide: { ...DECIDE_FIXTURE, calibrated: true, decision_ready: true,
+        valid_until: "2026-09-27T10:01:30Z" },
+      fills: { count: 0, fills: [], error_code: null },
+      stats_summary: STATS_FIXTURE,
+      episodes: { count: 0, episodes: [] },
+      day: { points: [], error_code: null },
+      error_code: null,
+    } });
+  });
+  await page.goto("/");
+  await expect(page.getByText("gültig bis 12:01 · noch 2 min", { exact: true })).toBeVisible();
+  await page.clock.runFor(60000);
+  await expect(page.getByText("gültig bis 12:01 · noch 1 min", { exact: true })).toBeVisible();
+  await page.clock.runFor(30000);
+  await expect(page.getByRole("heading", { name: "Empfehlung abgelaufen", exact: true })).toBeVisible();
+  await expect(page.getByText(/gültig bis 12:01/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Empfehlung neu laden", exact: true })).toBeVisible();
+});

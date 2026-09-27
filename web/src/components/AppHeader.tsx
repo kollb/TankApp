@@ -10,6 +10,8 @@ import {
   Share2,
   SquarePen,
 } from "lucide-react";
+import { useState } from "react";
+import { BottomSheet } from "./BottomSheet";
 import type { Fuel } from "../data";
 import type { OverviewState } from "../state/overview";
 
@@ -24,6 +26,7 @@ export function AppHeader({
       (Lighthouse-Gate `cumulative-layout-shift`). */
   ready: boolean;
 }) {
+  const [contextOpen, setContextOpen] = useState(false);
   const {
     activeCity,
     data,
@@ -84,6 +87,13 @@ export function AppHeader({
             Zeile, sonst erweitern sie die Dokument-Breite. */}
         {ready && (
         <div className="relative flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+          <button onClick={() => setContextOpen(true)} aria-label="Stadt und Kraftstoff auswählen"
+            aria-haspopup="dialog" className="flex min-w-0 items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold">
+            <MapPin size={14} className="shrink-0 text-emerald-400" />
+            <span className="truncate">{activeCity || "Stadt auswählen"} · {fuel === "diesel" ? "Diesel" : fuel.toUpperCase()}</span>
+          </button>
+          <BottomSheet open={contextOpen} title="Stadt und Kraftstoff" onClose={() => setContextOpen(false)}>
+            <div className="flex flex-wrap gap-4">
           <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
             <MapPin size={14} className="text-emerald-400" />
             <span className="sr-only">Stadt</span>
@@ -122,6 +132,9 @@ export function AppHeader({
               </button>
             ))}
           </div>
+            </div>
+            <button onClick={() => setContextOpen(false)} className="mt-5 rounded-lg bg-emerald-500 px-4 py-2 font-bold text-slate-950">Auswahl übernehmen</button>
+          </BottomSheet>
           {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
               Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
               Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
@@ -159,7 +172,7 @@ export function AppHeader({
             <SquarePen size={16} aria-hidden="true" />
           </button>
           {/* B4: aggregierter System-Alarm als roter/gelber/grüner Punkt. */}
-          {h && (
+          {h && alarms.length > 0 && (
             <span
               role="status"
               title={

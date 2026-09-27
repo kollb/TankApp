@@ -46,6 +46,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -1010,6 +1011,11 @@ def make_server(ctx: Context, host: str = "0.0.0.0", port: int = 8000):
                 if url.path == "/api/v1/nas-check":
                     self._api(url.path, query)
                     return
+                # Dedicated local asset namespace: an open Pi tab must still
+                # load its chunks when the NAS recovers during page loading.
+                if url.path.startswith("/pi-assets/"):
+                    self._static(url.path)
+                    return
                 if not force_fb and ctx.nas.base_url and ctx.nas.is_online():
                     if self._proxy():
                         return
@@ -1683,6 +1689,36 @@ def install_default_template(template_dir: Path) -> Path:
     return template
 
 
+def install_read_edition(template_dir: Path, build_dir: Path | None = None) -> bool:
+    """Install a prebuilt React edition; keep the embedded emergency GUI otherwise.
+
+    No Node runtime or network request on the Pi. Build on the deployment
+    host using npm --prefix web run build:rp2, then copy rp2/dist alongside
+    this module. The legacy template remains the recovery path without assets.
+    """
+    build_dir = build_dir or Path(__file__).resolve().parent / "dist"
+    index = build_dir / "index.html"
+    assets = build_dir / "pi-assets"
+    if not index.is_file() or not assets.is_dir():
+        return False
+    references = re.findall(
+        r'(?:src|href)="(/pi-assets/[^"?#]+)"', index.read_text(encoding="utf-8")
+    )
+    if not references or any(
+        not (build_dir / ref.lstrip("/")).resolve().is_relative_to(assets.resolve())
+        or not (build_dir / ref.lstrip("/")).is_file()
+        for ref in references
+    ):
+        return False
+    template_dir.mkdir(parents=True, exist_ok=True)
+    # Hashed assets first, entry point last; keep old hashes for open tabs.
+    shutil.copytree(assets, template_dir / "pi-assets", dirs_exist_ok=True)
+    temporary = template_dir / "index.html.new"
+    shutil.copyfile(index, temporary)
+    temporary.replace(template_dir / "index.html")
+    return True
+
+
 def nas_config_from_env() -> tuple[str | None, str | None]:
     health = os.environ.get("NAS_HEALTH_URL", "").strip()
     if health:
@@ -1754,7 +1790,8 @@ def main():
         nas_health=nas_health,
         force_fallback=force_fallback,
     )
-    install_default_template(template_dir)
+    if not install_read_edition(template_dir):
+        install_default_template(template_dir)
 
     print(f"Starte RP2 Fallback-GUI + NAS-Proxy auf 0.0.0.0:{port}")
     print(f"NAS: {ctx.nas.base_url or 'NICHT konfiguriert (immer Fallback)'}")

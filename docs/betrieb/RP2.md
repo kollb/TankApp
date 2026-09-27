@@ -95,7 +95,8 @@ rp2/
 ├── tankapp-fallback-gui.service     # systemd-Unit für die GUI
 ├── tankapp-forecast-cache.service   # systemd-Unit für den Cache
 ├── journald.conf.d/                 # Drop-in-Beispiel: Journal-Cap 50M (G2)
-└── templates/index.html             # wird beim Start selbst erzeugt (gitignored)
+├── dist/                            # extern gebautes React-Bundle (gitignored)
+└── templates/                       # installierte Ausgabe, Notausgabe ohne Build
 ```
 
 Dokumentation liegt ausschließlich in `docs/` — diese Datei. Die alten
@@ -518,24 +519,48 @@ ss -tulnp | grep 8000
 
 ## Template-Updates
 
-Die Fallback-GUI erzeugt ihre HTML-Vorlage beim Start selbst
-(`rp2/templates/index.html`, gitignored) und versieht sie mit einem
-Inhalts-Hash-Marker:
+Seit 0.70.1 wird die React-Leseausgabe außerhalb des RP2 gebaut. Auf dem
+RP2 sind weder Node noch npm erforderlich. Die Ressourcenfreigabe wurde
+vom Auftraggeber bestätigt; die Softwaretests ersetzen keine neue
+Hardwaremessung.
 
-```html
-<!-- tankapp-fallback-gui v2.x sha:… -->
+Auf dem Entwicklungs-/Deployment-Rechner (Node 22):
+
+```bash
+npm --prefix web ci
+npm --prefix web run build
+# Nur das RP2-Bundle bei bereits geprüften Typen:
+npm --prefix web run build:rp2
+# Zielhostname und Checkout-Pfad an die Installation anpassen:
+rsync -av rp2/dist/ pi@rp2:~/TankApp/rp2/dist/
 ```
 
-Ändert sich das Template im Repo, wird die alte Datei beim nächsten Service-Start
-nach `index.html.old` gesichert und die neue installiert. **Lokale Anpassungen
-unterhalb des Markers überleben**, solange sie den aktuellen Marker tragen.
-Update-Workflow:
+Danach auf dem RP2 den zugehörigen Code aktualisieren und neu starten:
 
 ```bash
 cd ~/TankApp && git pull
 sudo systemctl restart tankapp-fallback-gui
-grep -o "tankapp-fallback-gui [^>]*" rp2/templates/index.html   # Marker = neuer Stand?
+curl -fsS 'http://127.0.0.1:8000/?fallback=1' | grep pi-assets
 ```
+
+`install_read_edition` kopiert zuerst die gehashten Dateien aus `rp2/dist`
+nach `rp2/templates/pi-assets/`, zuletzt wird `index.html` atomar ersetzt.
+Beide Verzeichnisse sind Build-/Installationsartefakte, nicht versioniert.
+Alte Asset-Hashes bleiben für offene Tabs erhalten. Sie können bei einer
+Wartung nach Schließen aller alten Tabs aus `templates/pi-assets` entfernt
+werden; ein Neustart installiert die aktuellen Dateien erneut.
+
+Ohne `rp2/dist/index.html` und `rp2/dist/pi-assets` installiert der Server
+weiterhin die eingebettete Notausgabe mit Inhalts-Hash-Marker. Zum Rollback
+kann `rp2/dist` außerhalb des Checkouts gesichert und entfernt werden;
+der nächste Neustart stellt die Notausgabe her. Kein CDN und keine
+NAS-Verbindung sind zum Start der Leseausgabe nötig.
+
+Die React-Ausgabe nutzt ausschließlich lesende `pi-v1`-Anfragen. Ihr
+`/pi-assets/`-Namensraum bleibt auch nach NAS-Rückkehr lokal. Erst ein
+expliziter Klick auf den NAS-Status prüft erneut und wechselt nach
+Sicherung der Eingaben in die Vollversion. Der Collector und dessen
+flüchtiger Prognose-Cache ändern sich nicht.
 
 ## Wartung: Logs, Journal, SD-Karte
 

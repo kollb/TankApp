@@ -1,6 +1,6 @@
 # UI-Neugestaltung — Konzept (umgesetzt am 26.09.2026)
 
-> Stand: 26.09.2026 · Design-Entwurf, Kern am 26.09.2026 umgesetzt
+> Stand: 27.09.2026 · Design-Entwurf, Kern am 26.09.2026 umgesetzt
 > (Urteilstöne, Gültigkeits-Chip, abgelaufene Freigabe, S1-Texte,
 > Lesemodus auf dem RP2). Beschreibt die konzeptionelle Darstellung,
 > das Layout und die Microcopy für die beiden Haupt-States
@@ -29,6 +29,7 @@
 - [7. Material-3-Komponentenkarte](#7-material-3-komponentenkarte)
 - [8. Vom Modell zum Indikator](#8-vom-modell-zum-indikator)
 - [9. Entscheidungen bei der Umsetzung](#9-entscheidungen-bei-der-umsetzung-26092026)
+- [10. Restumfang](#10-restumfang-nach-abgleich-am-27092026)
 
 ## 1. Befund: Was heute nicht trägt
 
@@ -96,7 +97,7 @@ Seed von der Markenfarbe):
 | Jetzt tanken | primary (grün tonal) | Entscheidungs-Karte, primärer Button | „Jetzt tanken — 4,2 ct/L unter Tagesmedian.“ |
 | Warten bis Fenster | tertiary (blau/teal tonal) | Entscheidungs-Karte | „Warten — Fenster 18–20 Uhr, bis zu 1,80 € gespart.“ |
 | Echtes Risiko | error (rot tonal) | „Warten riskant“, Tank-Reserve untergrenze | „Warten riskant — Rest reicht für 60 km.“ |
-| Zeitlimit, Alter, Lernphase | warning (amber tonal) | Alter-Chips, Lernkarte, veraltete Prognose | „vor 3 h“, „Tag 12 von ~30“ |
+| Zeitlimit, Alter, Lernphase | warning (amber tonal) | Alter-Chips, Lernkarte, veraltete Prognose | „vor 3 h“, „<n> von 100 abgeschlossenen Empfehlungen“ |
 | Keine Empfehlung | neutral (surface tonal, grau) | Entscheidungs-Karte Stufe C / gesperrt | „Keine klare Empfehlung heute.“ |
 | Modellwissen | violett | nur im Labor | Labor-Akzent, Beweis-Links |
 | Information, Vergleich | blau (info) | Vergleich, Stationsdetails | Umweg-Rechnung |
@@ -264,9 +265,8 @@ Variante „abgelaufen“; NAS weg → Übergang in den Lesemodus (§5c).
   dreizeilig): Name, Straße, Preis, Δ zur Referenz (Farbe nach
   Vorzeichen), „geöffnet bis 22 Uhr“, Mini-Verlauf (24 h, vorhanden
   bleibt im Detail — Bestands-Abgrenzung).
-- **Vergleich:** Zwei Stationen anwählbar → Extended FAB
-  „Vergleichen (2)“ → modaler Bottom Sheet: A/B-Reihe, Preis-Delta,
-  Umweg-Rechnung, beide Verläufe übereinander.
+- **Vergleich:** Bestehender Vergleichs-Modus A/B statt eines zusätzlichen
+  FABs (Entscheidung §9): Preis-Delta, Umweg-Rechnung und Verläufe.
 - Stationsdetail: Tagesverlauf (Chart mit Textalternative),
   Datenqualität (letzter Poll, Lücken) — Betriebsdetails bleiben
   hier und in „System“, nicht auf Alltagskarten.
@@ -385,7 +385,8 @@ Fehler-Konzert, kein anderer Look. Aufbau von oben nach unten
 
 Regeln für den Lesemodus:
 
-- **Keine Empfehlung, keine Aktion, keine Eingabe** — aber auch kein
+- **Keine Empfehlung und keine schreibende Aktion** (lokale Kontext- und
+  Tankmengen-Eingaben bleiben für den Rückwechsel erhalten) — aber auch kein
   Fehlerbild. Der Banner ist Tonal (neutral bis amber), nie error-
   rot; Rot bleibt dem echten Risiko vorbehalten (§3).
 - **Datenalter überall sichtbar**, nie versteckt: je Zeile und in
@@ -538,10 +539,10 @@ erlaubt; Einschübe mit „—“; Zahlen über die Formatter).
 | Kontext, Filter | Filter-Chips, Segmented Buttons | Stadt/Kraftstoff, „nur offene“, Sortierung, Tank ¼/½/¾/voll |
 | Begründung + Beweis | **Standard Bottom Sheet** | „Details“ — Reihenfolge Antwort, Begründung, Chart |
 | Stationsvergleich | **Modal Bottom Sheet** | A/B + Umweg-Rechnung |
-| Kontextabhängige Hauptaktion | **Extended FAB** (einer pro Screen) | Stationen: „Vergleichen (2)“ · Ich: „Beleg erfassen“ |
+| Kontextabhängige Hauptaktion | Bestehende Buttons / Vergleichs-Modus | Stationen: A/B · Ich: „Tanken erfassen“; keine FABs (§9) |
 | Kurz-Rückmeldung | **Snackbar** | ok/warn/error, je eine Zeile, `role="status"`/`"alert"` |
 | Dauerzustand | **Banner** (M3, Tonal) | Lesemodus, Lernphase, Sperrung — kein Snackbar |
-| Lernphase, Abdeckung | Linear Progress (determiniert) | „Tag 12 von ~30“ |
+| Lernphase, Abdeckung | Linear Progress (determiniert) | „<n> von 100 abgeschlossenen Empfehlungen“ |
 | Laden | **Skelette** (Shimmer) | Karte ② als Skelett; keine Spinner-Fläche |
 | Kurz-Laden (Aktion) | Circular Progress Indicator | nur in Buttons |
 | Zerstörend | Dialog | „Beleg löschen?“ — einziger Dialog im Alltag |
@@ -566,7 +567,7 @@ Spinner als Dauerzustand.
 | 72-/168-h unkalibriert | Label-Chip „Szenarioprognose“ | Wochen-Karte |
 | `decision_ready=false` + `blocking_reasons` | graue Karte + ein deutscher Grund-Satz | System: Vollliste |
 | `valid_until` | Chip „gültig bis 17:45“; in den letzten 30 Min Countdown | Entscheidungs-Karte |
-| M7-Gate-Fortschritt | „Tag 12 von ~30“ + Balken | Lernkarte, Labor |
+| M7-Gate-Fortschritt | „<n> von 100 abgeschlossenen Empfehlungen“ + Balken | Lernkarte, Labor |
 | Regime, Modellvertrag, Fit-ID | im Alltag unsichtbar | Labor, System |
 
 Faustregel: **Zahlen, die Handeln tragen, stehen an der Spitze;
@@ -581,13 +582,13 @@ stehen im Labor.**
 2. **S2-Sperrgründe auf der Startseite** — eine Grundzeile: die
    graue Karte zeigt den Server-Grund (`reason_short`), mehr nicht;
    die Volliste bleibt in „System“. Bestand, unverändert bestätigt.
-3. **Lesemodus-Technik** — Beibehaltung der Python-GUI
-   (`rp2/fallback_gui.py`) mit übernommener Signalik: Marke/Badge
-   („Lesemodus · RP2“), Selbstbenennungs-Banner, Footer-Satz
-   „Es wird weitergesammelt“. Eine React-Build für den RP2 bleibt
-   offen — erst wenn die RP2-Ressourcen (CPU, RAM) ein Vite-Bundle
-   tragen, lohnt der Wechsel; die Signalik ist seither
-   technologie-unabhängig festgelegt.
+3. **Lesemodus-Technik** — seit 27.09.2026 React-Leseausgabe
+   (`web/rp2/`) mit geteilten Formatierern, Theme und Bottom Sheet.
+   Die Ressourcenprüfung gilt laut Auftraggeber als durchgeführt und grün;
+   dies ist keine in dieser Sitzung neu erhobene Hardwaremessung.
+   Vite baut außerhalb des RP2; Python (`rp2/fallback_gui.py`) liefert
+   das Bundle und die unveränderte lokale API aus. Ohne installierten
+   Build bleibt das eingebettete Python-Template als Notausgabe verfügbar.
 4. **Umschaltung Lesemodus → Vollversion** — ein Klick auf den
    NAS-Status (zwei erfolgreiche Probes), kein Automatismus:
    „keine garantierte Umschaltzeit“ ist ein Betriebsversprechen.
@@ -603,3 +604,37 @@ stehen im Labor.**
    §4b „Ebene 1“) — Korrektur zum Entwurf, der „Details“ vorschlug.
 8. **Keine FABs** — bestehende Wege bleiben (Vergleichs-Modus A/B
    in „Stationen“, Button „Tanken erfassen“ in „Ich“).
+
+
+## 10. Restumfang nach Abgleich am 27.09.2026
+
+Der Kern ist umgesetzt, nicht jede Wireframe-Idee. Nachgezogen wurden der
+amberfarbene Countdown in den letzten 30 Minuten (§8), die Aktualisierung
+bei offen gehaltener Seite ohne neue Serverantwort und die inklusive
+Ablaufgrenze: Ab `valid_until` gilt die Empfehlung nicht mehr.
+Tests decken 30-Minuten-Grenze, Rundung, fehlende/ungültige Zeitangaben,
+Ablehnungen und den Ablauf ab. FABs und ein tagbasierter M7-Fortschritt
+sind keine offenen Aufgaben: Sie widersprechen den Umsetzungsentscheidungen.
+
+Mit bestätigter Ressourcenfreigabe ebenfalls umgesetzt:
+
+- Gemeinsamer Kontext-Chip für Stadt/Kraftstoff mit Bottom Sheet; native
+  Fokusbegrenzung, Escape und Rückkehr zum Auslöser.
+- Tagesstreifen im Bottom Sheet; Stundenwerte und Textalternative bleiben
+  erhalten. Zellen richten sich nach der Sheet-Breite, nicht dem Viewport.
+- React-Leseausgabe mit Jetzt/Stationen/Mehr, Preisalter je Station,
+  lokalem Tagesverlauf, beschreibenden Cache-Quantilen und Light/Dark.
+- Lokales Asset-Namenspräfix `/pi-assets/`, auch bei NAS-Rückkehr niemals
+  zum NAS weitergeleitet; alle Datenanfragen bleiben beim Vertrag `pi-v1`.
+- Expliziter NAS-Rückwechsel mit Sicherung der Stadt, des Kraftstoffs und
+  der gerade eingegebenen Tankmenge. Keine Schreib-API im Lesemodus.
+- Build und Installation siehe [RP2-Betrieb](../betrieb/RP2.md#template-updates).
+  Der Standard-Web-Build erzeugt beide Ausgaben; die Browser-Abnahme
+  verwendet das echte Bundle gegen die echten NAS-/Pi-Handler.
+
+Die erfundenen Beispielbeträge, Trefferhäufigkeiten und Öffnungszeiten
+bleiben Layout-Beispiele, keine fest zu implementierenden UI-Aussagen.
+Die in §9 beibehaltenen Bestandswege (Sterne, A/B-Vergleich, Beleg-Button)
+bleiben bewusst erhalten. Tankmenge und Kontext im Lesemodus sind lokale
+Eingaben für Vergleich/Rückwechsel, keine Aktionsfreigabe. Ohne Cache
+entfällt die Modell-Darstellung; die Diagnose in „Mehr“ nennt den Grund.
