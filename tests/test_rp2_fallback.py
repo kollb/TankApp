@@ -777,6 +777,20 @@ def test_template_uses_city_options_for_short_city_filters():
     assert 'entry.value + " · " + entry.label' in html
 
 
+def test_fallback_names_itself_as_read_mode():
+    """UI-Neugestaltung (2026-09-26): Die Fallback-Oberfläche ist eine
+    reduzierte Edition derselben Marke, kein Fehlerbild — sie heißt
+    „Lesemodus“, benennt sich selbst (Banner) und sagt, was weiterläuft."""
+    html = rp2.DEFAULT_INDEX_HTML
+    assert 'mode-badge">Lesemodus · RP2' in html
+    # Die Kernzeile des Lesemodus: Datenalter ehrlich, keine Entscheidung.
+    assert "Zur Orientierung, nicht zur Entscheidung." in html
+    # Der Banner wird nur gesetzt, solange das NAS nicht erreichbar ist.
+    assert "NAS ist gerade nicht erreichbar" in html
+    # Sammlung läuft weiter — der Nutzer darf nicht glauben, alles stünde still.
+    assert "Es wird weitergesammelt" in html
+
+
 def test_answer_card_has_three_facts_and_freshness_footer():
     """GUI-Neuentwurf §5.1 im Gleichschritt: Die Antwort-Karte der Pi-GUI
     trägt dieselben drei Fakten in derselben Reihenfolge wie „Jetzt“ in der
