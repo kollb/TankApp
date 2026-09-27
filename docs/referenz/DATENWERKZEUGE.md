@@ -83,7 +83,7 @@ Bundesländer; diese private Datei nicht durch eine Beispielkonfiguration ersetz
 - Preis-Zwillinge und explizite Ersatzvorschläge: [Engine-Referenz](ENGINE.md#preis-zwillinge).
   Ein Vorschlag ändert nicht das aktive Set und repariert keine Namenskollisionen.
 
-Spezialfälle nur bei Bedarf: [UUID-Migration](../archiv/STATIONS-UUID-MIGRATION.md) und
+Spezialfälle nur bei Bedarf: UUID-Migration und
 [Engine-Diagnose](ENGINE.md).
 
 ## 12-Uhr-Regel-Check
@@ -97,7 +97,7 @@ Vorgesetzes-Muster, aus dem dann Zahlen wie „Günstigste Stunde 20–22 Uhr“
 stammen?
 
 **Ergebnis des Echteinsatzes (Live + Archiv-Kontrast):**
-[BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) — Live regeltreu
+`BEFUND-12-UHR-REGEL.md` — Live regeltreu
 (100 % am Mittagspunkt), Archiv zeigt den Regime-Wechsel 01.04.2026,
 Folgearbeit als B30 ausgelagert.
 
@@ -109,7 +109,7 @@ kann sie mit Ständen vor der UUID-Migration nicht beantworten:
 - **Influx-Export** (`export_influx.py`) umfasst sicher nur die **UUID-Ära**:
   Der Uploader schreibt `station_id`-Tags erst seit der Migration
   (ca. 07.–09.09.2026,
-  [STATIONS-UUID-MIGRATION](../archiv/STATIONS-UUID-MIGRATION.md)). Ältere
+  STATIONS-UUID-MIGRATION). Ältere
   Legacy-Punkte tragen nur den Stationsnamen; steht der mehrfach im aktiven
   Polling-Set (Namenszwilling wie „Aral Tankstelle“), bricht der Export
   bewusst ab — „mehrdeutig“, UUIDs werden nicht geraten, und weder darf ein
@@ -196,7 +196,7 @@ CSVs wie für die Selektion (export via `data-tools/export_influx.py`).
 `analysis/regime_check.py` (neu 19.09.2026). Anlass ist der Tankrabatt
 (−17 ct/L ab 01.10.2026, befristet bis 31.12.2026) und der Spritpreisdeckel
 (spätestens 01.01.2027). Befund, Konzept und Messtabellen:
-[BEFUND-UX-MATH-2026-09-19.md](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel) **Teil 5**.
+`BEFUND-UX-MATH-2026-09-19.md` **Teil 5**.
 
 Der Check beantwortet die Frage, die jede Regime-Behandlung voraussetzt:
 **Wie stark, wie schnell und wie unterschiedlich gibt der Bestand eine
@@ -252,8 +252,8 @@ hartkodierte Daten-Abzug, das Schritt-Dummy-Äquivalent und die Variante mit
 geschätzter Kante, jeweils mit Bias, Intervallbreite und `P_besser` gegen die
 Wahrheit — plus die Projektions-Lemmata (Regime-Kante gegen 12-Uhr-PAVA,
 Deckel-Clip vor/nach der Projektion). **Die Reihen sind synthetisch**, auf die
-Live-Messwerte des
-[12-Uhr-Befunds](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) kalibriert
+Live-Messwerte der
+12-Uhr-Regel kalibriert
 (Tagesspanne 17 ct, Tief Median 7 Uhr, Hoch Median 12 Uhr, 44 % Mittagssprünge
 ≥ 2 ct); die Kalibrierung steht unter Test. Sie belegen Mechanismen und
 Vorzeichen, keine Beträge für den Echtbestand — die liefert der Messpfad oben.

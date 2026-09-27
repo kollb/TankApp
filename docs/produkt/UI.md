@@ -178,9 +178,7 @@ Prognosekalibrierung und Produktfreigabe getrennt sichtbar.
 
 ## Urteilstöne und Elevation
 
-Seit 26.09.2026 (UI-Neugestaltung, Konzept in
-[planung/UI-NEUGESTALTUNG-2026-09-26.md](../planung/UI-NEUGESTALTUNG-2026-09-26.md))
-trägt jede Urteils-Karte vier Töne mit fester Bedeutung:
+Seit 26.09.2026 trägt jede Urteils-Karte vier Töne mit fester Bedeutung:
 
 | Ton | Bedeutung | Beispiel |
 |---|---|---|

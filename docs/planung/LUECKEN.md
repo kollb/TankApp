@@ -21,7 +21,7 @@
 | Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe | [UI](../produkt/UI.md) |
 | Labor | Vier Sub-Tabs, acht Parameterkarten, Beta-Intervall, CSV/API-Rohdatenraum; Layout-Regressionsschutz für lange Bezeichner bei 320/390 px | [UI](../produkt/UI.md#labor-unterbereiche) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
-| Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 | [Befund](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md#3-mathematische-modelle-und-performance) |
+| Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt „Jetzt“, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik | [API](../referenz/API.md) |
 | Mengen-/Nutzenvertrag | Physische freie Menge, explizites What-if, benanntes Medianpotenzial, ausführbare Strategie und Oracle-Untergrenze getrennt; historische Belege bleiben unverändert | [API](../referenz/API.md) |
@@ -41,7 +41,7 @@ Der Labor-Umbau einschließlich des schmalen Kartenumbruchs ist implementiert;
 B5 ist im [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20) dokumentiert
 und wird nicht erneut beauftragt.
 
-Der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md)
+Der NAS-/Pi-Befund vom 20.09.2026
 ergänzt bestätigte Integrationsfehler. Batch 1/2 und der konservative
 Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
 [TODO](TODO.md#n1-naspi-integrationsfehler-beheben). Es gelten folgende Grenzen:
@@ -99,8 +99,8 @@ nicht erledigt, aber auch keine voraussetzungslose Pflichtliste.
 
 **Unverbindliche Review-Vorschläge** (Konditionierung beider Stationen,
 dynamische Frischeschwelle, engeres Slope-Gate, PIT-Tail-Gitter, Mehrtage-
-Hinweis und Regime-Dedup) bleiben im
-[Originalreview](../archiv/ANALYSE-B0-B1-B2-2026-09-19.md#empfehlungen).
+Hinweis und Regime-Dedup) bleiben unverbindliche
+Vorschläge.
 Sie sind keine zugesagten Features und erzeugen ohne konkrete Entscheidung
 keinen Eintrag in TODO. Dasselbe gilt für zusätzliche Ensemble-Gewichte.
 
@@ -148,6 +148,7 @@ Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 | Ledger-Fallback | Laplace `(hits + 5)/(n + 10)` entspricht dem Beta(5,5)-Mittelwert; kein unbegründeter Schätzerwechsel |
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
+| Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
 | M3-Kartenflächen der Entscheidung | Banner, Chips, Balken und Labor tragen die M3-Rollen seit 0.70.2. Die Entscheidungskarte selbst behält ihre bewährten Ton-Klassen (`CARD_TONE`): Der Wechsel auf `GUIDE_TONE_CLASS` ist eine reine Farbumstellung mit Kontrastfolgen für alle Kindelemente und braucht eine Sichtprüfung im Browser — hierfür stand in dieser Runde kein Browser zur Verfügung (`GUIDE_TONE_CLASS`, `GUIDE_CARD` und `guideCardClass` liegen bereit) |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte

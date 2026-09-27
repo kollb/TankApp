@@ -1,14 +1,21 @@
-"""Regressions-Schutz für analysis/regime_check.py und den Befund
-docs/archiv/BEFUND-UX-MATH-2026-09-19.md, Teil 5.
+"""Regressions-Schutz für analysis/regime_check.py.
 
-Genagelt werden die Aussagen, die der Befund *misst* und auf denen die
-Regime-Schicht (R2–R4) aufsetzt:
+Genagelt werden die Aussagen, auf denen die Regime-Schicht (R2–R4) aufsetzt —
+jede mit ihrer Invariante und deren Grund, nicht mit einem Datumsbeleg: der
+frühere Verweis auf `BEFUND-UX-MATH-2026-09-19.md` (Teil 5) und auf
+`BEFUND-12-UHR-REGEL-2026-09-18.md` (§2.1) ist mit D1 (27.09.2026) entfernt,
+weil beide Berichte in keinem Commit des Repositories liegen.
 
 - der Kantenschätzer findet Termin und Betrag einer bekannten Steuer-Änderung
-  in beide Richtungen und nutzt **keine** Daten nach dem Cutoff,
-- ohne echte Kante bleibt er unter der Schwelle (kein Fehlalarm),
-- die Tagesform des Simulationsgenerators bleibt auf die Live-Messwerte aus
-  docs/archiv/BEFUND-12-UHR-REGEL-2026-09-18.md §2.1 kalibriert,
+  in beide Richtungen und nutzt **keine** Daten nach dem Cutoff — sonst wäre
+  der Schätzer eine Fortschreibung der Zukunft und keine Messung,
+- ohne echte Kante bleibt er unter der Schwelle (kein Fehlalarm) — ein
+  Regime-Alarm, der Streuung als Kante liest, kostet Vertrauen, das keine
+  spätere Korrektur zurückholt,
+- die Tagesform des Simulationsgenerators bleibt auf die gemessene
+  12-Uhr-Bodenkante kalibriert (Preiserhöhungen nur um 12:00 Uhr, siehe
+  Engine, „12-Uhr-Regel“) — ohne diesen Anker prüft die Simulation eine
+  Tagesform, die es im Feld nicht gibt,
 - die beiden Projektions-Lemmata: eine Regime-Kante als Segmentgrenze erhält
   den Schritt (sonst poolt die 12-Uhr-PAVA ihn weg), und ein bewegter Deckel
   gehört **vor** die Projektion (danach erzeugt er einen illegalen Anstieg).

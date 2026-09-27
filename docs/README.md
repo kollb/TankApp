@@ -65,7 +65,7 @@ Die aktuelle App-Version wird in `app/version.py` geführt.
 
 - [Release-Historie](releases/CHANGELOG.md): Änderungen je App-Version.
 - [Archiv](archiv/README.md): datierte Prüfungen, Messbelege und alte Anleitungen.
-- [NAS-/Pi-Befund vom 20.09.2026](archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md):
+- NAS-/Pi-Befund vom 20.09.2026:
   Architektur, Failover, Datenintegrität, Sicherheit und Modellgrenzen;
   reproduzierte Fehler getrennt von offenen Hardware-/Qualitätsnachweisen.
 

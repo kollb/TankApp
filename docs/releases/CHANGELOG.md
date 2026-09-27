@@ -45,6 +45,20 @@ nichts erfinden.**
   Ausnahme: Was der Antwort widerspricht (eine andere Station ist netto
   günstiger), bleibt sichtbar. Gemessen im echten Chromium: 1,41
   Viewports (Ratchet: ≤ 1,5).
+- **D1 aufgelöst — kein Verweis mehr ins Leere:** 96 Verweise in 16
+  Dokumenten zeigten auf Archiv-Berichte, auf
+  `planung/UI-NEUGESTALTUNG-2026-09-26.md` und auf
+  `sample/good statistic gui` — alles Dateien, die in keinem Commit liegen.
+  Sie sind entfernt; wo der Titel als Beleg zählt (Archiv-Verzeichnis,
+  Änderungsliste), steht er als Text. `docs/archiv/README.md` sagt das
+  ausdrücklich, [LUECKEN](../planung/LUECKEN.md#bewusste-grenzen) führt es
+  als bewusste Grenze, und
+  `tests/test_operations.py::test_local_documentation_links_exist` ist damit
+  grün. Die Prüfregel für künftige Prüfberichte
+  (`tests/test_ledger_drift.py`) scannt das Archiv-Verzeichnis statt eine
+  Namensliste zu führen; die Herkunftshinweise in
+  `tests/test_b0_invariance.py` und `tests/test_regime_check.py` nennen die
+  Invariante und ihren Grund ohne Datumsbeleg.
 - **Ersparnis nur mit Zeit-Aussage:** „Was bringt Warten?“ rechnet nur,
   wenn die Karte selbst Zeiten vergleicht („Warten bis …“, „Jetzt
   tanken“). Bei „Woanders tanken“ und „Keine klare Empfehlung“ behauptete
@@ -110,7 +124,7 @@ unverändert; neu sind Freigabelogik, Messung, GUI-Ehrlichkeit und Doku.
 
 **Labor-Ehrlichkeit: zwei Zähler, zwei MASE, echte Mediane** — die fünf
 offenen Punkte der dritten Befundrunde
-([BEFUND-PARAMETERSCHRANK-R3-2026-09-23](../archiv/BEFUND-PARAMETERSCHRANK-R3-2026-09-23.md#5-umsetzung-0690))
+(BEFUND-PARAMETERSCHRANK-R3-2026-09-23)
 plus eigene Befunde derselben Prüfung. GUI und Dokumentation; die Engine
 rechnet unverändert.
 
@@ -173,7 +187,7 @@ rechnet unverändert.
 23.09.2026)** — Behebt die leeren Karten in **Labor → Modell & Parameter**
 („Kein Beta-Vektor im Forecast-Payload") und den abweichenden
 Demo-Ziehungsvertrag. Befund-Dokument:
-[BEFUND-GUI-MATHE-R2-2026-09-23](../archiv/BEFUND-GUI-MATHE-R2-2026-09-23.md).
+BEFUND-GUI-MATHE-R2-2026-09-23.
 
 - **N1 — Modell-Parameter im Forecast-Payload:** `beta` (13 Koeffizienten),
   `ar_phi`, `holiday_beta`/`holiday_source`, die Rechtslage-Felder
@@ -611,7 +625,7 @@ M3, M5, M6)** — [Issue #184](https://github.com/kollb/TankApp/issues/184).
 
 **Batch 1 (P0): Belegpersistenz, Ledger-Integrität, Publikationskonsistenz
 (I1, S3, A1, S4)** — die P0-Korrekturgruppe des
-[NAS-/Pi-Befunds vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md),
+NAS-/Pi-Befunds vom 20.09.2026,
 ausgeführt als [Issue #181](https://github.com/kollb/TankApp/issues/181).
 
 - **I1 — Outbox statt Offline-Queue.** Die Browser-Schreibwarteschlange wird
@@ -668,7 +682,7 @@ ausgeführt als [Issue #181](https://github.com/kollb/TankApp/issues/181).
   unverändert. Ein zusätzlicher Test verlängert die Regime-Erklärung gezielt
   um einen ungetrennten Bezeichner und prüft Text-Erhalt, sichtbaren Overflow
   und dieselben geometrischen Layoutgrenzen bei 320 und 390 px.
-- Der [NAS-/Pi-Befund zum Stand 0.59.1](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md)
+- Der NAS-/Pi-Befund zum Stand 0.59.1
   ist archiviert und indiziert; seine offenen Integritäts-, Schutz-, Failover-
   und Modellkorrekturen sind mit Abnahmekriterien in TODO und Grenzen in
   LUECKEN übernommen. Dieser Release behebt nur den Labor-Layoutfehler,
@@ -684,7 +698,7 @@ Doku, kein Code).**
   Frankfurt, Export ab 15.06.2026) auf dem Daten-Host; Berichte unter
   `data/analysis/` (E10: 586.297 gültige Beobachtungen / 282 Stationen,
   Diesel: 591.280 / 284). Die Echtzahlen sind in
-  [BEFUND-UX-MATH-2026-09-19.md](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)
+  `BEFUND-UX-MATH-2026-09-19.md`
   §5.8 nachgetragen.
 - **Betrag (robust):** δ Median **+21,0 ct E10** (p10–p90 17,0–23,0,
   Spread 11,0) bzw. **+25,0 ct Diesel** (22,5–28,0, Spread 10,5) gegen
@@ -721,7 +735,7 @@ Doku, kein Code).**
 ## [0.59.0] – 2026-09-19
 
 **B4 — Navigation 3+1 und „Jetzt“ entschlackt
-([UX/Mathe-Befund, Teil 4](../archiv/BEFUND-UX-MATH-2026-09-19.md#b4--navigation-31-parallel-zu-b2b3-möglich)).**
+(UX/Mathe-Befund, Teil 4).**
 
 - **Bottom-Bar 3+1:** Die Haupt-Tab-Regel ist `Jetzt · Woche · Stationen`;
   `Labor`, `Ich`, `System` und `Glossar` leben hinter einem einzigen
@@ -769,7 +783,7 @@ Doku, kein Code).**
 
 ## [0.58.0] – 2026-09-19
 
-**B3 — Mehrtage & Kerne (M2, M4) des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md).**
+**B3 — Mehrtage & Kerne (M2, M4) des UX/Mathe-Befunds.**
 
 - **Day-Pair-Bootstrap:** Aufeinanderfolgende Prognose-Kalendertage ziehen
   aufeinanderfolgende Trainingsblöcke (`TANKAPP_DAYPAIR`, Default an). Aus
@@ -788,7 +802,7 @@ Doku, kein Code).**
 
 ## [0.57.0] – 2026-09-19
 
-**B2 — Kalibrierungsschicht des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b2--kalibrierungsschicht-der-kernbatch).**
+**B2 — Kalibrierungsschicht des UX/Mathe-Befunds.**
 
 - Neue monotone PIT-Rekalibrierung für **24-h**-Bootstrap-Pfade: PAVA lernt aus
   den B0-Rolling-Backtest-Paaren eine CDF und legt nur Draw-Ränge um; gemeinsame
@@ -815,7 +829,7 @@ Doku, kein Code).**
 
 ## [0.56.0] – 2026-09-19
 
-**B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich): Messgrundlagen — unsichtbar, bitgleich.**
+**B0 des UX/Mathe-Befunds: Messgrundlagen — unsichtbar, bitgleich.**
 Die Engine tat bis 0.55.2 drei Dinge stumm: Sie stauchte instabile
 AR(2)-Koeffizienten (×0,9, bis zu 100-mal, dann φ = 0), sie mischte zwei
 Modellkerne mit Gewichten, deren Streuung niemand kannte, und die
@@ -890,7 +904,7 @@ Band, keine Empfehlung bewegt sich.
 - **`TANKAPP_REGIMES`** (`app/regimes.py`, `Settings.regimes`,
   `engine_config`): leer = die vier bekannten Termine (Mai-Juni-Rabatt 2026
   Start/Ende im Archiv, 01.10.2026 −17 ct/L angekündigt, 01.01.2027 +17 ct/L
-  angekündigt; Koalitionseinigung vom 19.09.2026, Befund Teil 5), `0`/`off`
+  angekündigt; Koalitionseinigung vom 19.09.2026), `0`/`off`
   = kein Kalender, JSON-Liste oder `.json`-Pfad = eigener Kalender. Der
   Spritpreisdeckel ist **kein** eigener Eintrag, solange seine Ausgestaltung
   offen ist (A15). Ein kaputter Kalender bricht `Settings.from_env` mit Grund
@@ -1145,7 +1159,7 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
 
 ## [0.54.0] – 2026-09-18
 
-**Batch 8 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#batch-8--p3--schliff) ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
+**Batch 8 des Optimierungs-Befunds ist abgeschlossen — und damit der ganze Befund.** O28 und O41 kamen mit PR #154 auf `main`, ohne Versionswechsel; hier folgen die beiden ausstehenden Befunde **O32** und **O40** plus die Release-Arbeit, die der halbe Batch offen ließ. Vorab geprüft: Aus Batch 1–7 ist keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 
 ### Die Belegmaske zeigt den Live-Preis (O32)
 
@@ -1203,7 +1217,7 @@ durch die Prüfung, weil die Regel sie gar nicht erfasste.
 
 ### Doku und Prüfstand
 
-- Der [Optimierungs-Befund](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md) trägt den
+- Der Optimierungs-Befund trägt den
   Umsetzungsvermerk je Check; [LUECKEN.md](../planung/LUECKEN.md) und
   [TODO.md](../planung/TODO.md) stehen auf 0.54.0. **Ehrlich dazu:** O28 und O41 lagen
   seit PR #154 auf `main`, ohne dass Version, CHANGELOG oder Befund es sagten —
@@ -1348,7 +1362,7 @@ Tagesstreifen“ beschreibt:
 
 ## [0.52.0] – 2026-09-18
 
-**Batch 7 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
+**Batch 7 des Optimierungs-Befunds ist umgesetzt:** Betrieb, Rest. Kosten sind messbar und budgetiert, Sperren sitzen nicht mehr im Lesepfad, und was getestet wird, ist was läuft. Vorab geprüft: Aus Batch 1–6 war keine Folgeumsetzung offen — O22(d) ist mit 0.49.0 umgesetzt, das zweite automatische Backup-Ziel (B25) und das fehlende Form-Modell je Station stehen begründet in [TODO.md](../planung/TODO.md) bzw. [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis).
 
 ### Billigere Antworten (O25)
 
@@ -1494,7 +1508,7 @@ er ausgeblendet hat.**
 
 ### Nachgerechnet: die Prämisse war veraltet
 
-- **[docs/BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md) §4** kündigte an,
+- **`docs/BEFUND-12-UHR-REGEL.md` §4** kündigte an,
   die Panels „sagen sonst weiter die alte Welt". Alle Muster-Fenster beginnen
   heute hinter dem Gesetz (Kalibrierung 42 Tage → 2026-08-07, Heatmap 84 Tage →
   2026-06-26, Modell 120 Tage → 2026-05-21; das Gesetz ist 170 Tage her) — aus
@@ -1509,7 +1523,7 @@ er ausgeblendet hat.**
 
 **Offen:** der DoD-Backtest „ohne Qualitätsverlust" braucht echte NAS-Daten
 über beide Rechtslagen. Er ist nicht gelaufen; das Runbook liegt in
-[UMSETZUNG-B30-12-UHR-BODENKANTE.md](../archiv/UMSETZUNG-B30-12-UHR-BODENKANTE-2026-09-18.md).
+`UMSETZUNG-B30-12-UHR-BODENKANTE.md`.
 
 **Prüfung:** `ruff check` + `ruff format --check` (117 Dateien), `pytest -q`
 (1079 passed, davon 28 neu in `tests/test_b30_law_floor.py`),
@@ -1531,7 +1545,7 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 
 ### Dokumentiert
 
-- **[docs/BEFUND-12-UHR-REGEL.md](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md):** Der
+- **`docs/BEFUND-12-UHR-REGEL.md`:** Der
   abgeschlossene Check in fünf Lagen — Problem („Abend günstig" trotz
   12-Uhr-Gesetz), Befund (Live: 100 % der 169 Anstiege am Mittagspunkt,
   Tief Median 7 Uhr; Archiv: Regime-Wechsel 01.04.2026 sichtbar —
@@ -1545,7 +1559,7 @@ liegt als Report vor (Schritt 3 bewusst ausgelagert).**
 Streifen-Testreihen (Kalendertag + Band) gemeinsam.
 
 ## [0.50.0] – 2026-09-17
-**Batch 6 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis) bzw. im [Todo](../planung/TODO.md).
+**Batch 6 des Optimierungs-Befunds ist umgesetzt:** Anzeige und Alltag. Jede Zahl nennt ihre Referenz, jedes Labor-Werkzeug hat entweder Daten oder einen ehrlichen Text, und die persönliche Datenexposition ist eine Entscheidung statt einer Nebenwirkung. Vorab geprüft: Aus Batch 1–5 war keine Folgeumsetzung offen — die verbleibenden Punkte (zweites Backup-Ziel B25, numerische Hebel B22, Desktop-Zweispalter C12) stehen begründet in [LUECKEN.md](../planung/LUECKEN.md#ausstehender-betriebsnachweis) bzw. im [Todo](../planung/TODO.md).
 - **Eine Quelle für den Score, Tankmenge aus dem Profil (O21):** `app/stats_summary.py::_score_rows` ist die Referenz; `web/src/data.ts::scoreRows` rechnet dieselbe Formel nach — vorher teilte `pot_share` Euro durch ct/L und lag um `Liter/100` daneben. `tests/fixtures/score_parity.json` nagelt beide Seiten auf dieselben Eingaben fest. Die Tankmenge kommt jetzt aus dem Profil (10–100 L) und läuft bis in `SelectionConfig.tank_volume`; `liters`/`eps` und ihre Herkunft (`profile`/`default`) fahren in jedem Score-Block mit und stehen im Text.
 - **Ersparnis rechnet gegen die Empfehlung (O19):** `nowBestNow` nannte die Differenz zur *teuersten* Station im Set „deine Ersparnis“. Anker ist jetzt dieselbe Referenz wie in `p_lohnt`/`ref_nowcast`, im Kleingedruckten benannt; „billigste bis teuerste“ bleibt sichtbar — als Spanne, nicht als persönlicher Gewinn.
 - **Tagesstreifen mit fester Farbskala (O20):** Die Töne hingen am Min/Max des Tages, deshalb färbte eine neue günstige Meldung frühere Stunden um. Die Skala ist jetzt ein festes Band (25/75-Perzentil über höchstens 168 Stunden, ab drei Berliner Tagen), und je Stunde steht das **Minimum** statt der letzten Meldung — Streifen und Fenstersuche zeigen dieselbe Größe.
@@ -1799,7 +1813,7 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.48.0] – 2026-09-17
 
-**Batch 5 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check) ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
+**Batch 5 des Optimierungs-Befunds ist umgesetzt:** Rechnung und Statistik verwenden dieselben benannten Grundlagen statt still unterschiedlicher Näherungen.
 
 ### Geändert
 
@@ -1812,7 +1826,7 @@ installierbar); der Server-Teil läuft als `tests/test_e2e_demo.py` mit.
 
 ## [0.47.0] – 2026-09-17
 
-**Batch 4 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 4 des Optimierungs-Befunds
 ist umgesetzt: Betrieb — Kosten, Haltbarkeit, Kohärenz. Der Dauerbetrieb kostet
 messbar weniger (O23, O24), eine Konfigurationsänderung wirkt in der ganzen App
 (O36), und ein ausfallendes Backup wird gelb statt unsichtbar (O33). Vorab
@@ -1940,7 +1954,7 @@ und O43 stehen begründet in
 
 ## [0.46.0] – 2026-09-17
 
-**Batch 3 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 3 des Optimierungs-Befunds
 ist umgesetzt: Was die GUI behauptet, ist belegt — und was sie empfehlen
 will, meldet sich. Der δ̂-Balken im Labor zeichnet (O16), Live-Preise kennen
 Plausibilitätsgrenzen (O35), das empfohlene Fenster schickt eine Meldung
@@ -2001,7 +2015,7 @@ installierbar).
 
 ## [0.45.0] – 2026-09-17
 
-**Batch 2 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 2 des Optimierungs-Befunds
 ist umgesetzt: Die Zahlen, auf denen M7 steht. Der Ledger misst jetzt, was er zu
 messen behauptet — P-Quellen getrennt (O5), kein erfundener Belegpreis (O17),
 Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
@@ -2085,13 +2099,13 @@ Gate mit Intervall gegen Referenzen (O6), Rolling-PICP in Tagen mit Hysterese
   nicht aus dem Server-Stempel) — als Nebenbefund aus der O17-Umsetzung
   dokumentiert und nach Batch 5 (P2, Rechnung und Statistik im Einzelnen)
   verwiesen, statt Batch-2-Scope-Creep. Siehe
-  [OPTIMIERUNGS-BEFUND.md](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#o43--beleg-ohne-zeitstempel-lernt-die-stunde-nicht-aus-dem-server-stempel).
+  `OPTIMIERUNGS-BEFUND.md`.
 - Browser-Suiten (Alltag, Demo, Mobil) wie gehabt der CI vorbehalten —
   Chromium ist in der Sandbox nicht installierbar.
 
 ## [0.44.0] – 2026-09-16
 
-**Batch 1 des [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)
+**Batch 1 des Optimierungs-Befunds
 ist umgesetzt: zwei stille Falschaussagen. Die GUI-Buchung galt als 12-Uhr-Tankung
 (O1), und die Veröffentlichung der Prognosen war ab rund fünf Stationen nicht
 mehr lesbar — ohne Fehler, ohne Alarm (O22).**
@@ -2275,7 +2289,7 @@ wo Doku liegt — und die Reste, die er offen ließ, sind geschlossen.**
 ### Geändert
 
 - **Prüfbericht archiviert:**
-  [docs/archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md](../archiv/REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md)
+  Der Prüfbericht `REVIEW-NEUE-GUI-FALLBACK-2026-09-15.md`
   enthält den Wortlaut der Tiefenanalyse aus
   [PR #121](https://github.com/kollb/TankApp/pull/121) unverändert (Prüfstand
   0.37.0); §9 ist der Erledigt-Nachweis je Befund — B1–B12, M1/M8 und der
@@ -2469,7 +2483,7 @@ Lighthouse-Gate misst jetzt CLS ≈ 0 auf allen drei Zuständen.**
 Oberfläche folgt dem eigenen Entwurf (Typografie, Geräte-Raster, Routing,
 Erklär-Treppe, Designsystem) und misst sich ehrlich.**
 
-Der [GUI-UX-Befund](../archiv/GUI-UX-BEFUND.md) (Stand 0.38.0) hatte der
+Der GUI-UX-Befund (Stand 0.38.0) hatte der
 gebauten GUI eine „nicht umgesetzte Hälfte des Entwurfs“ bescheinigt: zu kleine
 Schrift, ein Navigations-Streifen statt der Geräte-Raster, Bereichszustand ohne
 URL, eine Erklär-Treppe mit Sprüngen statt Sheets am Ort, ein Lighthouse-Gate,
@@ -2536,7 +2550,7 @@ Erledigt-Vermerk ins Archiv.
 ### Dokumentation
 
 - GUI-UX-Befund mit Erledigt-Vermerk archiviert
-  ([docs/archiv/GUI-UX-BEFUND.md](../archiv/GUI-UX-BEFUND.md));
+  (`docs/archiv/GUI-UX-BEFUND.md`);
   docs/planung/TODO.md führt die Abnahme unter „C. GUI / UX“ und als offene Zeile C12
   (zweispaltiger Desktop-Inhalt).
 ## [0.40.0] – 2026-09-15
@@ -3385,7 +3399,7 @@ bleibt byte-identisch.
 Tabelle, Alltag und Werkstatt getrennt — und sie liest den Preis-Puffer nur
 noch einmal pro Zyklus.** Umgesetzt ist das gebilligte Konzept aus
 [PR #112](https://github.com/kollb/TankApp/pull/112) nach der Arbeits-Checkliste
-[docs/UMSETZUNG-FALLBACK-GUI-V2.md](../archiv/UMSETZUNG-FALLBACK-GUI-V2-2026-09-14.md).
+`docs/UMSETZUNG-FALLBACK-GUI-V2.md`.
 
 ### Hinzugefügt
 

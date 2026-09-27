@@ -73,10 +73,10 @@ Entwurfsrest.
 
 Neu archiviert:
 
-- [BEFUND-UX-MATH-2026-09-19.md](../archiv/BEFUND-UX-MATH-2026-09-19.md):
+- `BEFUND-UX-MATH-2026-09-19.md`:
   Stichtagsbericht mit umfangreichen Messbelegen. Gültige Aussagen und offene
   Arbeit sind nach UI, Regime-Plan, Projektstand und TODO extrahiert.
-- [ANALYSE-B0-B1-B2-2026-09-19.md](../archiv/ANALYSE-B0-B1-B2-2026-09-19.md):
+- `ANALYSE-B0-B1-B2-2026-09-19.md`:
   Review eines bestimmten Code-Stands; unentschiedene Vorschläge bleiben im TODO.
 
 Das vorhandene Archiv wird nicht nochmals in lebende Dokumente kopiert.

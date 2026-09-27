@@ -163,10 +163,24 @@ def test_root_bleibt_frei_von_fachdokumenten() -> None:
     assert {path.name for path in (ROOT / "docs").glob("*.md")} == {"README.md"}
 
 
-def test_neu_archivierte_berichte_haben_nachfolger() -> None:
-    for name in ("BEFUND-UX-MATH-2026-09-19", "ANALYSE-B0-B1-B2-2026-09-19"):
-        path = ROOT / "docs/archiv" / f"{name}.md"
+def test_archivierte_pruefberichte_haben_nachfolger() -> None:
+    """Jeder Prüfbericht im Archiv trägt Stand-Banner, Nachfolger und Eintrag.
+
+    Geschrieben für `BEFUND-UX-MATH-2026-09-19` und
+    `ANALYSE-B0-B1-B2-2026-09-19`. Beide liegen in **keinem** Commit dieses
+    Repositories; nachziehen lassen sie sich nicht, ohne Evidenz zu fiktieren
+    (§1). Ihre Verweise sind mit D1 (27.09.2026) entfernt — deshalb tritt an
+    die Stelle der festen Namensliste ein Verzeichnis-Scan: Die Regel gilt
+    weiter, verlangt aber keine Datei, die es nicht gibt. Liegt gerade kein
+    Prüfbericht im Bestand, ist die Prüfung leer statt fehlerhaft.
+    """
+    # Prüfberichte tragen eines dieser Kürzel vor dem Datum.
+    klassen = ("BEFUND-", "ANALYSE-", "GUTACHTEN-", "PRUEFSTAND-", "TIEFENANALYSE-")
+    readme = _read(ROOT / "docs/archiv/README.md")
+    for path in sorted((ROOT / "docs/archiv").glob("*.md")):
+        if path.name == "README.md" or not path.name.startswith(klassen):
+            continue
         head = "\n".join(_read(path).splitlines()[:12])
-        assert "Historischer Prüfbericht" in head
-        assert "../planung/TODO.md" in head
-        assert f"({name}.md)" in _read(ROOT / "docs/archiv/README.md")
+        assert "Historischer Prüfbericht" in head, f"{path.name}: kein Stand-Banner"
+        assert "../planung/TODO.md" in head, f"{path.name}: kein Nachfolger"
+        assert path.name in readme, f"{path.name}: fehlt im Archiv-Verzeichnis"

@@ -2,7 +2,8 @@
 
 > Stand: 20.09.2026 · App-Version 0.59.1
 > **Planungsdokument, keine Rechtsauskunft und keine Implementierungszusage.**
-> Quelle: [datierter UX-/Mathe-Befund](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel).
+> Quelle: UX-/Mathe-Befund vom 19.09.2026 (Bericht nicht im Bestand; seine
+> Aussagen sind hier übernommen).
 
 ## Inhaltsverzeichnis
 
@@ -130,8 +131,8 @@ keine zukünftigen Marktpreise und keinen neuen Benchmark des aktuellen Defaults
 - Ein bewegter Deckel nach der Projektion konnte einen Anstieg von +5 ct/L
   erzeugen; Reihenfolge und Randbedingungen müssen daher geprüft werden.
 
-Vollständige Messtabellen bleiben im
-[Originalbefund](../archiv/BEFUND-UX-MATH-2026-09-19.md#510-anhang-a-messtabellen).
+Vollständige Messtabellen liegen nicht im Repository — der Bericht ist
+kein Bestandteil dieses Checkouts.
 Aufruf des Messwerkzeugs:
 [Datenwerkzeuge](../referenz/DATENWERKZEUGE.md#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
 

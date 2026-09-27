@@ -35,7 +35,7 @@
 > überwacht (Alarm `backup_stale`, `backup` im Health-Payload),
 > `ops/nas/backup.sh` behält zusätzlich sechs Monatsstände, und der Server
 > antwortet mit HTTP/1.1 (O23, O24, O33 — Batch 4 des
-> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md)).
+> Optimierungs-Befunds).
 > Seit 0.46.0: Fenster-Meldungen über den ntfy-Kanal (O29) mit
 > dokumentierter Push-Modus-Entscheidung (O42, `TANKAPP_NTFY_MODE`),
 > Plausibilitätsgrenzen für Live-Preise samt Zähler und Alarm
@@ -489,7 +489,7 @@ Fehler-Fall in `runtime/engine/last-attempt.json`.
 
 Ein Regime-Wechsel ist ein datierter Eingriff ins Preisniveau — der Tankrabatt
 ab 01.10.2026 (−17 ct/L), sein Ende zum 01.01.2027, im Archiv der Mai-Juni-
-Rabatt 2026 ([Befund Teil 5](../archiv/BEFUND-UX-MATH-2026-09-19.md#teil-5-regime-wechsel--tankrabatt-und-spritpreisdeckel)).
+Rabatt 2026.
 Seit 0.56.0 kennt der Modell-Lauf diese Termine als **Kalender**, der wie
 `price_law_local` durchgereicht wird (`Settings.regimes` →
 `engine.config.Config.regimes`). **Gerechnet wird damit noch nichts:** Fit und
@@ -521,8 +521,7 @@ Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
 Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](../referenz/API.md#forecast-messfelder-b0-seit-0560)),
 dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.
 
-**Betreiber-Checkliste (Stand 0.56.0; Begründung im
-[Befund §5.13](../archiv/BEFUND-UX-MATH-2026-09-19.md#513-nachtrag-0560-modularität-konfigurierbarkeit-betreiber-pflichten)):**
+**Betreiber-Checkliste (Stand 0.56.0):**
 
 1. **Heute: nichts.** Wie gewohnt ausliefern (`nas-up`). Der Kalender kommt
    als Default mit, der Lauf markiert von allein; Prognose, Band und
@@ -1384,7 +1383,7 @@ keine Webhook-Felder — die GUI sagt dann „keine Angabe“ statt „in Ordnun
 
 ### System-Alarme und GUI-Neuentwurf (seit 0.35.0)
 
-Betriebs-Entscheidung zu Checkliste [2.4](../archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md): Das
+Betriebs-Entscheidung: Das
 GUI-Neuentwurf-Konzept ([UI.md](../produkt/UI.md) §11,
 Entscheidung 14.9.) streicht **Preis-Erinnerungen, Preis-Alarme und Push
 ersatzlos**. Damit ist gemeint, dass die App keine Preis-Mitteilungen mehr
@@ -1593,8 +1592,7 @@ python3 data-tools/export_influx.py --env-file data/influx.env --uuid-only
    ersetzen keinen Live-Gütenachweis.
 
 Eine **optionale** Nachlieferung alter JSONL-Sicherungen (Replay) ist nur mit
-belegter ursprünglicher Zeitzone zulässig und steht vollständig im Archiv:
-[archiv/STATIONS-UUID-MIGRATION.md](../archiv/STATIONS-UUID-MIGRATION.md) —
+belegter ursprünglicher Zeitzone zulässig:
 `upload_influx.py --replay --replay-timezone …`, erst im Dry-Run; bei
 `TIME_OFFSET_MISSING` keine Uhrzeit raten.
 

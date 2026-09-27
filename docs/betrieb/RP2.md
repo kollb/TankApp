@@ -63,7 +63,7 @@ Browser ──► http://<RP2-IP>:8000
                      • Heartbeat aus meta/heartbeat.json (Collector-Livestatus)
 ```
 
-> Alternativvorschlag aus dem [Gutachten](../archiv/GUTACHTEN-2026-09-10.md) (10.09.2026), ein
+> Alternativvorschlag aus dem Gutachten (10.09.2026), ein
 > PyQt6-Desktop-Widget als Fallback zu betreiben, wurde geprüft und **nicht
 > übernommen**: Der browserbasierte Fallback braucht auf dem RP2 keine
 > GUI-Runtime und bleibt Konzept (Bewertung: Gutachten-Nachtrag).

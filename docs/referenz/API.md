@@ -27,7 +27,7 @@
 > `POST …/outcome`, `DELETE /fills/{id}` und `GET /fills/{id}` nur noch mit
 > `Authorization: Bearer <TANKAPP_READ_TOKEN>`, siehe
 > [Auth & Limits](#auth--limits)). Davor seit 0.52.0 (Batch 7 des
-> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
+> Optimierungs-Befunds):
 > jede Antwort trägt `X-Process-Time` und `/health` einen
 > [`performance`](#health)-Block (O37); `If-None-Match` → `304` gilt nicht mehr
 > nur für `/overview`, sondern auch für `decide`, `stations`, `heatmap`,
@@ -51,7 +51,7 @@
 > zusätzlich `index_bytes`/`file_count`/`largest_file_bytes` und den Grund
 > `incomplete`, die Endpunkte liefern dieselbe Struktur wie vorher.
 > Davor neu seit 0.48.0 (Batch 5 des
-> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check)):
+> Optimierungs-Befunds):
 > normierte Fenstersterne mit Rohwert/Basisrate (O12), 0,5-Gleichstände (O7),
 > strikte Belegfenster und Netto-Umweg-Provenienz (O8/O9), 7×24-
 > Personalisierung (O2/O3), Forecast-Support (O10), LOO-Heatmap (O11),
@@ -69,7 +69,7 @@
 > `alarms[]` + `version`/`commit` in `/health` (B4/B9). Seit 0.40.0 nennt das
 > Advice-Tagebuch den Grund einer Ablehnung (`decline_reason`) und den Namen der
 > Station (`station_name`). Seit **0.44.0** (Batch 1 des
-> [Optimierungs-Befunds](../archiv/OPTIMIERUNGS-BEFUND-2026-09-18.md#10-batches-priorität-und-check))
+> Optimierungs-Befunds)
 > trägt jeder Beleg die Herkunft seiner Tankuhrzeit (`clock_hour_source`, O1),
 > der Feedback-Store hat `schema_version` **4** (Altbestände werden beim Laden
 > migriert, siehe [BETRIEB.md](../betrieb/BETRIEB.md)), und `/health` nennt Größe und
@@ -1305,7 +1305,7 @@ Liefert letzten publizierten Ausblick:
 
 ### Forecast-Messfelder (B0, seit 0.56.0)
 
-Batch B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+Batch B0 des UX/Mathe-Befunds
 hängt jeder Prognose Messfelder an — **Diagnose, keine Nutzerzahl:**
 `points`/Quantile sind bitgleich zu 0.55.2 (Invarianz-Test
 `tests/test_b0_invariance.py`). Sie stehen in `runtime/engine/forecasts/*.json`,
@@ -1416,7 +1416,7 @@ Antwort:
   der Bestand mischt Vor- und Nach-Gesetz-Preise. Fehlen beide Felder (alte
   Version), ist die Kante unbekannt — die GUI behauptet dann keine. Auf dem
   heutigen Bestand ist `points_before_law` 0: Alle Beobachtungsfenster beginnen
-  hinter dem 01.04.2026 ([Befund §4.1](../archiv/BEFUND-12-UHR-REGEL-2026-09-18.md#41-die-prämisse-war-rechnerisch-veraltet))
+  hinter dem 01.04.2026.
 - Berechnung: aus InfluxDB letzte N Wochen, nur offene Preise; Berlin-Zeit je Zelle
 
 Fehler:
