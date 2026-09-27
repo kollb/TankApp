@@ -162,7 +162,15 @@ export function guideTone(input: {
   return "neutral";
 }
 
-/** M3-Flächenklasse je Ton (styles.css) — ein Ton, eine Klasse. */
+/**
+ * M3-Flächenklasse je Ton (styles.css) — ein Ton, eine Klasse.
+ *
+ * Noch nicht an der Entscheidungskarte verdrahtet: Die Karte trägt ihre
+ * bewährten Ton-Klassen (`CARD_TONE` in `views/Jetzt.tsx`). Ein Wechsel
+ * färbt auch alle Kindelemente um und braucht eine Sichtprüfung im
+ * Browser (dokumentierte Grenze: LUECKEN, „M3-Kartenflächen der
+ * Entscheidung“). Banner, Chips und Balken nutzen die Rollen bereits.
+ */
 export const GUIDE_TONE_CLASS: Record<
   GuideTone,
   { card: string; chip: string; button: string }

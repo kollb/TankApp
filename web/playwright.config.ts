@@ -4,15 +4,7 @@ export default defineConfig({
   // Die Demo-/Mobil-/Failover-Suiten haben ihre eigene
   // Konfiguration: playwright.demo.config.ts (Port 1357, echte Daten) —
   // `demo.spec.ts`, `mobile.spec.ts` und `failover.spec.ts` (echte Handler).
-  // `diag-mobile.spec.ts` ist eine temporäre Mess-Suite (nur
-  // playwright.demo.config.ts) und wird mit der Scrolltiefen-Diagnose
-  // wieder entfernt.
-  testIgnore: [
-    "demo.spec.ts",
-    "mobile.spec.ts",
-    "failover.spec.ts",
-    "diag-mobile.spec.ts",
-  ],
+  testIgnore: ["demo.spec.ts", "mobile.spec.ts", "failover.spec.ts"],
   // In CI Fehler als GitHub-Annotation an den PR hängen (Testname, Datei,
   // Zeile) — sonst stecken sie nur im Log-Archiv, das man erst herunterladen
   // muss. Lokal bleibt die gewohnte Listenausgabe.

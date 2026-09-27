@@ -96,11 +96,24 @@ Modellgröße, die Antwort ist der Betrag auf die Tankmenge
 Ein anhaltender Zustand bekommt **kein** Modal und keinen Alert-Dialog. Das
 Inline-Banner sitzt über der Karte und lässt die Preise sichtbar.
 
-| Stufe | Auslöser | Karte | Unter der Karte |
+| Stufe | Auslöser | Karte | Tagesverlauf (im Blatt „Heute im Blick“) |
 |---|---|---|---|
 | 1 · Voller Guide | Verbindung und `decision_ready` | Urteilston wie oben | Stundenbalken (nächste 8 Stunden, aus `windows_today`) |
-| 2 · Ohne Prognose | `decision_ready=false`, Preise live | Neutral (Outlined Card), „Günstigste Tankstelle gerade“ | Faustregel: vier Tageszeiten, typischer Verlauf |
+| 2 · Ohne Prognose | `decision_ready=false`, Preise live | Neutral (Outlined Card) mit „Jetzt am günstigsten: <Station>“ — ein Ort, kein Urteil über die Zeit | Faustregel: vier Tageszeiten, typischer Verlauf |
 | 3 · Offline | keine Verbindung | Neutral, gedämpfte Preise mit Stand | Faustregel |
+
+Der Tagesverlauf liegt **einen Tipp entfernt**, nicht offen unter der Karte:
+Die Startseite trägt eine Frage und eine Antwort (B4 aus dem Befund
+UX/Mathe 2026-09-19). Wer den Tag sehen will, tippt „Tagesstreifen 06–24
+Uhr“ und bekommt Streifen **und** Balken bzw. Faustregel in einem Blatt.
+Gemessene Scrolltiefe des Entscheidungsbildschirms: 1,41 Viewports auf
+390 × 844 (Ratchet in `web/e2e/mobile.spec.ts`: ≤ 1,5).
+
+Die Karte selbst trägt die Antwort und höchstens zwei Sätze dazu; Spanne,
+Preisalter und die Bestätigung des Netto-Vergleichs stehen hinter „Mehr zum
+Vergleich“. Was der Antwort **widerspricht** (eine andere Station ist netto
+günstiger), bleibt sichtbar — eine Karte darf nicht „hier am günstigsten“
+sagen und das Gegenteil einklappen.
 
 Beide Fallback-Stufen bieten **eine** Handlung: „Erneut versuchen“ mit
 Inline-Ladeindikator. Kommen die Daten zurück, springt die Ansicht leise auf

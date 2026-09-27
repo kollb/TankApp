@@ -37,6 +37,18 @@ nichts erfinden.**
   übernommen, nicht seine Farbe gegen eine bestehende Warnung.
 - **M3-Farbrollen:** Urteilstöne, Chips, Banner und Ampel stehen als Rollen
   in `styles.css` (beide Themen, Kontrast je Paar geprüft).
+- **Der Entscheidungsbildschirm bleibt kurz (B4):** Die Stundenbalken bzw.
+  die Faustregel liegen im Blatt „Heute im Blick“ statt offen auf der
+  Startseite, „Was bringt Warten?“ ist eine Zeile, und die graue Karte
+  trägt die Antwort statt vier Absätzen: Kategorie und Zustand in einer
+  Reihe, Spanne/Preisalter/Bestätigung hinter „Mehr zum Vergleich“.
+  Ausnahme: Was der Antwort widerspricht (eine andere Station ist netto
+  günstiger), bleibt sichtbar. Gemessen im echten Chromium: 1,41
+  Viewports (Ratchet: ≤ 1,5).
+- **Ersparnis nur mit Zeit-Aussage:** „Was bringt Warten?“ rechnet nur,
+  wenn die Karte selbst Zeiten vergleicht („Warten bis …“, „Jetzt
+  tanken“). Bei „Woanders tanken“ und „Keine klare Empfehlung“ behauptete
+  der Vergleich sonst eine Differenz, die die Entscheidung nicht trifft.
 
 ## [0.70.1] – 2026-09-27
 

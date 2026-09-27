@@ -148,6 +148,7 @@ Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 | Ledger-Fallback | Laplace `(hits + 5)/(n + 10)` entspricht dem Beta(5,5)-Mittelwert; kein unbegründeter Schätzerwechsel |
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
+| M3-Kartenflächen der Entscheidung | Banner, Chips, Balken und Labor tragen die M3-Rollen seit 0.70.2. Die Entscheidungskarte selbst behält ihre bewährten Ton-Klassen (`CARD_TONE`): Der Wechsel auf `GUIDE_TONE_CLASS` ist eine reine Farbumstellung mit Kontrastfolgen für alle Kindelemente und braucht eine Sichtprüfung im Browser — hierfür stand in dieser Runde kein Browser zur Verfügung (`GUIDE_TONE_CLASS`, `GUIDE_CARD` und `guideCardClass` liegen bereit) |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte
 UI-/Laufzeitoptimierungen und Modellfreigabe sind in den
