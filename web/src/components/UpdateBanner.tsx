@@ -44,14 +44,14 @@ export function UpdateBannerView({
       </div>
       <button
         onClick={onReload}
-        className="rounded-lg bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-400"
+        className="m3-btn-relaxed rounded-full px-4 py-2 text-xs font-bold transition"
       >
         {notice.action}
       </button>
       <button
         onClick={onDismiss}
         aria-label={notice.dismiss}
-        className="rounded-lg px-2 py-2 text-sky-200/80 transition hover:text-white"
+        className="rounded-lg px-2 py-2 text-sky-200/80 transition hover:text-slate-100"
       >
         <X size={16} aria-hidden="true" />
       </button>

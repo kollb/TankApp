@@ -38,7 +38,7 @@
 // Inhalt. Das Studio-Blatt hängt an derselben Fixierung — es kann von
 // keinem Inhalt überdeckt werden.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Car,
@@ -113,11 +113,35 @@ function activeClasses(id: TabId, active: boolean): string {
     // (Befund §1.6: bleibt, es wandert nur in die Studio-Gruppe).
     return active
       ? "bg-violet-500/15 text-violet-300"
-      : "text-slate-500 hover:bg-slate-900 hover:text-violet-300";
+      : "text-on-surface-variant hover:bg-sc-low hover:text-violet-300";
   }
   return active
-    ? "bg-emerald-500/10 text-emerald-400"
-    : "text-slate-500 hover:bg-slate-900 hover:text-slate-200";
+    ? "bg-secondary-container text-on-secondary-container"
+    : "text-on-surface-variant hover:bg-sc-low hover:text-on-surface";
+}
+
+/**
+ * Aktiv-Markierung der M3-Navigation: Icon sitzt in einer Pill
+ * (Secondary Container), die Beschriftung darunter bzw. daneben.
+ */
+function ActivePill({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={`flex h-8 w-16 items-center justify-center rounded-full ${
+        active
+          ? "bg-secondary-container text-on-secondary-container"
+          : "text-inherit"
+      }`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function NavButton({
@@ -132,28 +156,38 @@ function NavButton({
   mobile: boolean;
 }) {
   const Icon = item.icon;
+  if (mobile) {
+    return (
+      <button
+        onClick={() => onSelect(item.id)}
+        aria-current={active ? "page" : undefined}
+        className={`flex min-h-11 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors ${activeClasses(item.id, active)}`}
+      >
+        <ActivePill active={active}>
+          <Icon size={20} aria-hidden="true" />
+        </ActivePill>
+        {/* Mobil: „Stationen“ ist mit 10 px Semibold ~2 px breiter als seine
+            Zelle und malte über den Nachbarn (U3-Fix). Etwas enger gesetzt
+            passt es; auf sehr schmalen Geräten wird der Rest sauber
+            abgeschnitten statt gemalt. */}
+        <span
+          className={`max-w-full truncate tracking-tighter ${
+            active ? "font-semibold text-on-surface" : ""
+          }`}
+        >
+          {item.label}
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       onClick={() => onSelect(item.id)}
       aria-current={active ? "page" : undefined}
-      className={
-        mobile
-          ? `flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[0.625rem] font-semibold transition-colors ${activeClasses(item.id, active)}`
-          : `flex min-h-11 items-center gap-3 rounded-lg px-4 text-sm font-semibold transition-colors ${activeClasses(item.id, active)}`
-      }
+      className={`flex min-h-11 items-center gap-3 rounded-full px-4 text-sm font-semibold transition-colors ${activeClasses(item.id, active)}`}
     >
-      <Icon size={mobile ? 18 : 17} aria-hidden="true" />
-      {/* Mobil: „Stationen“ ist mit 10 px Semibold ~2 px breiter als seine
-          Zelle und malte über den Nachbarn (U3-Fix). Etwas enger gesetzt
-          passt es; auf sehr schmalen Geräten wird der Rest sauber
-          abgeschnitten statt gemalt. */}
-      {mobile ? (
-        <span className="max-w-full truncate tracking-tighter">
-          {item.label}
-        </span>
-      ) : (
-        item.label
-      )}
+      <Icon size={17} aria-hidden="true" />
+      {item.label}
     </button>
   );
 }
@@ -190,9 +224,9 @@ function StudioSheet({
     <div
       role="dialog"
       aria-label="Studio"
-      className="rounded-t-2xl border-t border-slate-700 bg-slate-900/98 p-2 shadow-[0_-12px_32px_rgba(0,0,0,0.5)]"
+      className="rounded-t-[28px] border-t border-outline-variant bg-sc-lowest p-2 elev-3"
     >
-      <p className="px-2 pb-1 pt-1.5 text-[0.625rem] font-semibold uppercase tracking-widest text-slate-500">
+      <p className="px-2 pb-1 pt-1.5 text-[0.625rem] font-semibold uppercase tracking-widest text-on-surface-variant">
         Studio
       </p>
       {/* `grid-cols-1` ist Pflicht, nicht Deko (A11y-Ratchet M1): eine
@@ -216,7 +250,7 @@ function StudioSheet({
                   {item.label}
                 </span>
                 {item.note && (
-                  <span className="block truncate text-xs font-normal text-slate-400">
+                  <span className="block truncate text-xs font-normal text-on-surface-variant">
                     {item.note}
                   </span>
                 )}
@@ -272,7 +306,7 @@ export function MobileNav({
       )}
       <nav
         aria-label="Bereiche"
-        className="border-t border-slate-800 bg-slate-950"
+        className="border-t border-outline-variant bg-sc pb-2"
       >
         <div className="mx-auto grid max-w-3xl grid-cols-4">
           {MAIN_NAV_ITEMS.map((item) => (
@@ -292,14 +326,18 @@ export function MobileNav({
             aria-haspopup="dialog"
             aria-expanded={studioOpen}
             aria-current={studioActive ? "page" : undefined}
-            className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[0.625rem] font-semibold transition-colors ${
+            className={`flex min-h-11 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors ${
               studioActive
-                ? "bg-emerald-500/10 text-emerald-400"
-                : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
+                ? "text-on-surface"
+                : "text-on-surface-variant hover:text-on-surface"
             }`}
           >
-            <MoreHorizontal size={18} aria-hidden="true" />
-            <span>Mehr</span>
+            <ActivePill active={studioActive}>
+              <MoreHorizontal size={20} aria-hidden="true" />
+            </ActivePill>
+            <span className={studioActive ? "font-semibold text-on-surface" : ""}>
+              Mehr
+            </span>
           </button>
         </div>
       </nav>
@@ -333,8 +371,8 @@ export function SideNav({
           mobile={false}
         />
       ))}
-      <div aria-hidden="true" className="my-2 border-t border-slate-800" />
-      <p className="px-4 pb-1 text-[0.625rem] font-semibold uppercase tracking-widest text-slate-600">
+      <div aria-hidden="true" className="my-2 border-t border-outline-variant" />
+      <p className="px-4 pb-1 text-[0.625rem] font-semibold uppercase tracking-widest text-on-surface-variant">
         Studio
       </p>
       {STUDIO_NAV_ITEMS.map((item) => (

@@ -68,7 +68,7 @@ export function Level1Sheet({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/80 p-4 sm:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/50 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="level1-title"
@@ -78,14 +78,14 @@ export function Level1Sheet({
     >
       <div className={`${dialog} max-h-[85vh] w-full max-w-lg overflow-y-auto p-5`}>
         <div className="flex items-start justify-between gap-3">
-          <h2 id="level1-title" className="text-base font-bold text-white">
+          <h2 id="level1-title" className="text-base font-bold text-slate-100">
             {title}
           </h2>
           <button
             ref={closeRef}
             onClick={onClose}
             aria-label="Begründung schließen"
-            className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 hover:text-white"
+            className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 hover:text-slate-100"
           >
             <X size={15} aria-hidden="true" />
           </button>

@@ -1,11 +1,14 @@
 # Oberfläche und Interaktion
 
-> Stand: 27.09.2026 · App-Version 0.70.2
+> Stand: 27.09.2026 · App-Version 0.71.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
 > ([Release 0.70.2](../releases/CHANGELOG.md#0702--2026-09-27)).
+> Neu in 0.71.0: GUI v2 — helles Material-You-Design nach `sample/good gui`
+> als Standard; der bisherige dunkle Stand bleibt als Thema „Dunkel“
+> ([Release 0.71.0](../releases/CHANGELOG.md#0710--2026-09-27)).
 
 ## Inhaltsverzeichnis
 

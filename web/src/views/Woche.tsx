@@ -216,7 +216,7 @@ export function WocheView(props: WocheViewProps) {
 
   return (
     <section aria-labelledby="woche-title">
-      <h1 id="woche-title" className="text-2xl font-bold tracking-tight text-white">
+      <h1 id="woche-title" className="text-2xl font-bold tracking-tight text-slate-100">
         Woche
       </h1>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
@@ -401,7 +401,7 @@ export function WocheView(props: WocheViewProps) {
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">
             Ausgewählt
           </p>
-          <h3 className="mt-1 text-lg font-bold text-white">{summary.headline}</h3>
+          <h3 className="mt-1 text-lg font-bold text-slate-100">{summary.headline}</h3>
           <p className="mt-1 font-mono text-sm text-slate-200">
             Erwartet {deTrimmed(selected.window.expected_price, 3)} €/L
             {summary.savingLine ? ` · ${summary.savingLine}` : ""}

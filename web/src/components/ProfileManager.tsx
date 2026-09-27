@@ -15,7 +15,7 @@ import {
 import { dialog } from "./ui";
 
 const FIELD =
-  "w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500";
+  "w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500";
 const BUTTON_GHOST =
   "rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50";
 
@@ -94,7 +94,7 @@ export function ProfileManager({
           <div>
             <h2
               id="profile-manager-title"
-              className="flex items-center gap-2 text-base font-bold text-white"
+              className="flex items-center gap-2 text-base font-bold text-slate-100"
             >
               <Car size={18} className="text-emerald-400" aria-hidden="true" />
               Fahrzeug-Profile
@@ -108,7 +108,7 @@ export function ProfileManager({
           <button
             onClick={onClose}
             aria-label="Profil-Verwaltung schließen"
-            className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 hover:text-white"
+            className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 hover:text-slate-100"
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -228,7 +228,7 @@ export function ProfileManager({
                     <button
                       type="submit"
                       disabled={busy || !renameValue.trim()}
-                      className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+                      className="m3-btn-now rounded-full px-3 py-2 text-xs font-bold disabled:opacity-50"
                     >
                       Speichern
                     </button>
@@ -266,7 +266,7 @@ export function ProfileManager({
             type="submit"
             disabled={busy || !newName.trim()}
             title="Neues Profil aus den Einstellungen"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="m3-btn-now inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={14} aria-hidden="true" />
             Aus aktuellen Einstellungen erstellen

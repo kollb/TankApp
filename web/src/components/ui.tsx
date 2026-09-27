@@ -35,11 +35,16 @@ export const radius = {
 
 /**
  * Karten-Grundklasse aller Panels — eine Stelle für Rand, Radius, Hintergrund.
+ *
+ * M3 (GUI v2): Helle Karten tragen Elevation 1 statt eines harten Rahmens;
+ * im dunklen Stand bleibt der Rahmen die Trennung (Tönung statt Schatten).
+ * Die Werte kommen aus styles.css (Slate-Token je Thema) — hier steht nur
+ * die Form, keine Farbe.
  */
-export const panel = `${radius.card} border border-slate-800 bg-slate-900/80`;
+export const panel = `${radius.card} border border-slate-800/50 bg-slate-900 elev-1`;
 
 /** Modale Dialoge (Level-1-Sheet, Profil-Verwaltung) — Card-Optik, deckend. */
-export const dialog = `${radius.card} border border-slate-800 bg-slate-900 shadow-2xl`;
+export const dialog = `${radius.card} border border-slate-800/60 bg-slate-900 shadow-2xl`;
 
 /** Leerer Bereich / Hinweis: gestrichelter Rand, kein Alarm-Ton. */
 export function Empty({ children }: { children: ReactNode }) {
@@ -142,7 +147,7 @@ export function Metric({
           </span>
         )}
       </div>
-      <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
+      <div className="my-2 text-2xl font-bold tracking-tight text-slate-100 tabular-nums sm:text-3xl">
         {value}
       </div>
       <div className="text-xs leading-relaxed text-slate-400">{detail}</div>

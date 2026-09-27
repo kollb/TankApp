@@ -217,8 +217,9 @@ describe("Ich: Einstellungen am Wirkungsort", () => {
   it("Stadt, Darstellung und Über — ohne Eingabefelder für die Schwellen", () => {
     const html = render({ initialSection: "settings" });
     expect(html).toContain('id="settings-city"');
-    expect(html).toContain("Hell");
-    expect(html).toContain("Dunkel (Standard)");
+    // Seit der neuen GUI ist „Hell (Standard)“ der Default, „Dunkel“ die Option.
+    expect(html).toContain("Hell (Standard)");
+    expect(html).toContain("Dunkel");
   });
 });
 

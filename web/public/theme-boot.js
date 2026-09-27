@@ -1,6 +1,7 @@
 /* C4: Theme vor dem ersten Paint anwenden (localStorage „tankapp.theme“,
-   Default „dark“ = dunkles Slate, die Design-Basis). React übernimmt in
-   Dashboard.tsx denselben Wert und hält meta/Classes synchron.
+   Default „light“ = helles Material-You-Schema, die neue Design-Basis
+   (UX-Konzept v2, sample/good gui). React übernimmt in data.ts denselben
+   Wert und hält meta/Classes synchron.
 
    Warum eine eigene Datei statt eines Inline-Skripts: Der Server sendet
    `Content-Security-Policy: script-src 'self'` ohne 'unsafe-inline' — ein
@@ -9,13 +10,13 @@
    unter `script-src 'self'` und blockiert als klassisches Skript im <head>
    weiterhin das erste Paint, solange sie ohne defer/async eingebunden ist. */
 try {
-  var t = JSON.parse(localStorage.getItem("tankapp.theme") || '"dark"');
-  if (t === "light") {
-    document.documentElement.classList.remove("dark");
-    document.documentElement.classList.add("light");
+  var t = JSON.parse(localStorage.getItem("tankapp.theme") || '"light"');
+  if (t === "dark") {
+    document.documentElement.classList.remove("light");
+    document.documentElement.classList.add("dark");
     var m = document.querySelector('meta[name="theme-color"]');
-    if (m) m.setAttribute("content", "#eef2f7");
+    if (m) m.setAttribute("content", "#0b0f19");
   }
 } catch (e) {
-  /* Storage gesperrt → dunkler Default bleibt. */
+  /* Storage gesperrt → heller Default bleibt. */
 }

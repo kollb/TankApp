@@ -4,6 +4,8 @@
 // OverviewContext.
 import {
   Car,
+  Check,
+  ChevronDown,
   Fuel as FuelIcon,
   MapPin,
   RefreshCw,
@@ -50,7 +52,7 @@ export function AppHeader({
     setRefresh,
   } = ov;
   return (
-    <header className="app-header z-40 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sm:sticky sm:top-0">
+    <header className="app-header z-40 border-b border-outline-variant bg-surface/95 backdrop-blur-md sm:sticky sm:top-0">
       {/* U3 (überarbeitet 16.09.2026): Auf schmalen Viewports **bricht** die
           Steuerzeile um, statt seitlich zu scrollen. Der Streifen war 748 px
           breit und zeigte in 209 px Fensterbreite kaum zwei Steuerungen — wer
@@ -68,14 +70,14 @@ export function AppHeader({
           className="tap-44 flex shrink-0 items-center gap-3"
           aria-label="TankApp Startseite"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-sky-500 text-slate-950 shadow-lg shadow-emerald-500/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-on-primary">
             <FuelIcon size={21} />
           </div>
           <div className="hidden sm:block">
-            <h1 className="text-lg font-black tracking-tight text-white">
+            <h1 className="text-lg font-black tracking-tight text-on-surface">
               TankApp
             </h1>
-            <p className="app-tagline hidden text-xs text-slate-500 sm:block">
+            <p className="app-tagline hidden text-xs text-on-surface-variant sm:block">
               Dein Tank-Kompass. Ohne Rätselraten.
             </p>
           </div>
@@ -88,14 +90,15 @@ export function AppHeader({
         {ready && (
         <div className="relative flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <button onClick={() => setContextOpen(true)} aria-label="Stadt und Kraftstoff auswählen"
-            aria-haspopup="dialog" className="flex min-w-0 items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold">
-            <MapPin size={14} className="shrink-0 text-emerald-400" />
+            aria-haspopup="dialog" className="flex min-w-0 items-center gap-1.5 rounded-full border border-outline-variant bg-sc-lowest py-2 pl-3 pr-2 text-xs font-bold hover:bg-sc-low">
+            <MapPin size={14} className="shrink-0 text-primary" />
             <span className="truncate">{activeCity || "Stadt auswählen"} · {fuel === "diesel" ? "Diesel" : fuel.toUpperCase()}</span>
+            <ChevronDown size={14} className="shrink-0 text-on-surface-variant" />
           </button>
           <BottomSheet open={contextOpen} title="Stadt und Kraftstoff" onClose={() => setContextOpen(false)}>
             <div className="flex flex-wrap gap-4">
-          <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
-            <MapPin size={14} className="text-emerald-400" />
+          <label className="flex shrink-0 items-center gap-2 rounded-lg border border-outline-variant bg-sc-lowest px-3 py-2 text-xs">
+            <MapPin size={14} className="text-primary" />
             <span className="sr-only">Stadt</span>
             <select
               aria-label="Stadt"
@@ -105,7 +108,7 @@ export function AppHeader({
                 setSelectedId("");
               }}
               disabled={!data?.cities.length}
-              className="max-w-40 bg-slate-950 pr-1 text-slate-100"
+              className="max-w-40 bg-transparent pr-1 text-on-surface"
             >
               {data?.cities.length ? (
                 data.cities.map((label) => (
@@ -116,30 +119,32 @@ export function AppHeader({
               )}
             </select>
           </label>
+          {/* M3 Filter Chips (Konzept v2): Häkchen bei der Auswahl. */}
           <div
             role="group"
             aria-label="Kraftstoff"
-            className="flex shrink-0 rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+            className="flex shrink-0 flex-wrap items-center gap-2"
           >
             {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
               <button
                 key={value}
                 aria-pressed={fuel === value}
                 onClick={() => setFuel(value)}
-                className={`rounded-lg px-3 py-1.5 transition-colors ${fuel === value ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+                className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${fuel === value ? "border-transparent bg-secondary-container text-on-secondary-container" : "border-outline-variant text-on-surface-variant hover:bg-sc-low"}`}
               >
+                {fuel === value && <Check size={16} aria-hidden="true" />}
                 {value === "diesel" ? "Diesel" : value.toUpperCase()}
               </button>
             ))}
           </div>
             </div>
-            <button onClick={() => setContextOpen(false)} className="mt-5 rounded-lg bg-emerald-500 px-4 py-2 font-bold text-slate-950">Auswahl übernehmen</button>
+            <button onClick={() => setContextOpen(false)} className="m3-btn-now mt-5 rounded-full px-5 py-2.5 text-sm font-semibold">Auswahl übernehmen</button>
           </BottomSheet>
           {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
               Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
               Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
-          <label className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
-            <Car size={14} className="text-emerald-400" />
+          <label className="flex shrink-0 items-center gap-2 rounded-full border border-outline-variant bg-sc-lowest px-3 py-2 text-xs hover:bg-sc-low">
+            <Car size={14} className="text-primary" />
             <span className="sr-only">Fahrzeug-Profil</span>
             <select
               aria-label="Fahrzeug-Profil"
@@ -152,7 +157,7 @@ export function AppHeader({
                   ? `Aktives Profil „${activeProfile.name}“ — Felder gelten haushaltsweit`
                   : "Kein Profil aktiv — Einstellungen gelten nur auf diesem Gerät"
               }
-              className="max-w-40 bg-slate-950 pr-1 text-slate-100"
+              className="max-w-40 bg-transparent pr-1 text-on-surface"
             >
               <option value="">Kein Profil (nur dieses Gerät)</option>
               {(profilesRes.data?.profiles ?? []).map((profile) => (
@@ -167,7 +172,7 @@ export function AppHeader({
             title="Profile anlegen, umbenennen, löschen (A1)"
             onClick={() => setProfileManagerOpen(true)}
             disabled={profilesBusy}
-            className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
           >
             <SquarePen size={16} aria-hidden="true" />
           </button>
@@ -211,7 +216,7 @@ export function AppHeader({
               aria-label="Ansicht als Link teilen"
               title="Ansicht als Link kopieren"
               onClick={copyShareLink}
-              className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
             >
               <Share2 size={16} aria-hidden="true" />
             </button>
@@ -221,7 +226,7 @@ export function AppHeader({
             {shareNote && (
               <span
                 role="status"
-                className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-xs leading-snug text-slate-200 shadow-xl"
+                className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-outline-variant bg-sc-lowest p-2.5 text-xs leading-snug text-on-surface shadow-xl"
               >
                 {shareNote}
               </span>
@@ -232,12 +237,12 @@ export function AppHeader({
             title="Datenansicht aktualisieren"
             onClick={() => setRefresh((value) => value + 1)}
             disabled={prices.pending}
-            className="rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-slate-300 hover:text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
           >
             <RefreshCw
               size={16}
               className={
-                prices.pending ? "animate-spin text-emerald-400" : ""
+                prices.pending ? "animate-spin text-primary" : ""
               }
             />
           </button>

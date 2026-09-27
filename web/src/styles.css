@@ -1,153 +1,161 @@
 @import "tailwindcss";
 
 /*
- * C5 — Kontrast (AA), dunkler Standardstand.
+ * Neue GUI („Tankklar“, sample/good gui) — Material Design 3, helle Basis.
  *
- * Tailwinds slate-500 (#64748b) erreicht auf den dunklen Flächen dieses
- * Layouts (#0b0f19, #020617, #0f172a, #1e293b) nur 3,1:1, slate-600 nur
- * 1,9:1 — beides unter der AA-Schwelle 4,5:1 für normalen Text. Deshalb sind
- * die beiden gedämpften Töne hier angehoben, statt die Klasse an ~150
- * Stellen zu tauschen: die Skala bleibt (400 heller als 500 heller als 600),
- * die Rolle „gedämpft“ bleibt, nur die Helligkeit passt zum Hintergrund.
- * Geprüft von src/a11y.test.ts gegen genau diese Flächen.
+ * Die Design-Basis ist jetzt das helle Material-You-Schema des Konzepts
+ * (Primary #006c4c, Error #ba1a1a, Tertiary #3d6373, Warnung #7c5800,
+ * Surface-Rampe #ffffff → #e4eae3 auf #f5fbf5). `:root` trägt diesen
+ * Stand. Wer „Dunkel“ wählt, bekommt unter `html.dark` die bisherige
+ * dunkle Slate-Welt — jede Klasse im Code bleibt unverändert, nur die
+ * Variablen kippen (derselbe Schwenk wie früher `html.light`, umgekehrt).
+ *
+ * Geprüft von src/a11y.test.ts: gedämpfte Texttöne ≥ 4,5:1 auf ihren
+ * Flächen, jedes M3-Paar container/on-container ≥ 4,5:1, die Ampel der
+ * Stundenbalken ≥ 3:1 (Fläche, kein Text).
  */
-:root {
-  --color-slate-500: #8598b0; /* 4,96:1 auf slate-800, 7,6:1 auf slate-950 */
-  --color-slate-600: #8295ad; /* 4,77:1 auf slate-800, 7,3:1 auf slate-950 */
 
-  /*
-   * M3-Farbrollen (Material You) — dunkler Stand.
-   *
-   * Der Tank-Guide antwortet in einer Farbe: Grün = jetzt tanken, Rot =
-   * besser warten, Blau = kein Zeitdruck. Damit diese drei Töne überall
-   * dieselbe Bedeutung haben, stehen sie hier als **Rollen** und nicht als
-   * verstreute Hexwerte. Die Paare container/on-container stammen aus dem
-   * M3-Referenzschema zu den Leitfarben des Konzepts (Primary #006c4c,
-   * Error #ba1a1a, Tertiary #3d6373); im dunklen Stand sind es die
-   * dazugehörigen Dark-Töne, damit Text auf der Tonal-Fläche AA hält.
-   * Geprüft von src/a11y.test.ts: jedes Paar ≥ 4,5:1.
-   */
-  --color-m3-primary: #6cdbac;
-  --color-m3-on-primary: #003826;
-  --color-m3-primary-container: #00513a;
-  --color-m3-on-primary-container: #89f8c7;
+/*
+ * M3-Rohpalette des Konzepts als Tailwind-Tokens (sample-Bezeichner):
+ * bg-primary, text-on-surface, bg-sc-low, border-outline-variant, …
+ *
+ * `@theme inline` kompiliert die Klassen als Verweis `var(--color-m3-…)`.
+ * Die Werte selbst stehen im `:root`- bzw. `html.dark`-Block weiter unten
+ * — so schaltet auch jede M3-Utility zuverlässig zwischen den Themen,
+ * statt die helle Palette fest zu verdrahten.
+ */
+@theme inline {
+  --color-primary: var(--color-m3-primary);
+  --color-on-primary: var(--color-m3-on-primary);
+  --color-primary-container: var(--color-m3-primary-container);
+  --color-on-primary-container: var(--color-m3-on-primary-container);
 
-  --color-m3-error: #ffb4ab;
-  --color-m3-on-error: #690005;
-  --color-m3-error-container: #93000a;
-  --color-m3-on-error-container: #ffdad6;
+  --color-secondary-container: var(--color-m3-secondary-container);
+  --color-on-secondary-container: var(--color-m3-on-secondary-container);
 
-  --color-m3-tertiary: #a5cff0;
-  --color-m3-on-tertiary: #023543;
-  --color-m3-tertiary-container: #234b5c;
-  --color-m3-on-tertiary-container: #c1e8fb;
+  --color-error: var(--color-m3-error);
+  --color-on-error: var(--color-m3-on-error);
+  --color-error-container: var(--color-m3-error-container);
+  --color-on-error-container: var(--color-m3-on-error-container);
 
-  /* „Warmes Warn-Banner“ (Stufe 3, offline) — Amber, kein Error-Rot:
-     Offline ist kein Fehler der Nutzerin oder des Nutzers. */
-  --color-m3-warn: #f2b23b;
-  --color-m3-on-warn: #452c00;
-  --color-m3-warn-container: #4a3300;
-  --color-m3-on-warn-container: #ffdea3;
+  --color-tertiary: var(--color-m3-tertiary);
+  --color-on-tertiary: var(--color-m3-on-tertiary);
+  --color-tertiary-container: var(--color-m3-tertiary-container);
+  --color-on-tertiary-container: var(--color-m3-on-tertiary-container);
 
-  /* Ampel der Stundenbalken („Heute im Überblick“): Flächen, kein Text —
-     3:1 gegen die Kartenfläche genügen (WCAG 1.4.11). */
-  --color-m3-bar-low: #10b981;
-  --color-m3-bar-mid: #f59e0b;
-  --color-m3-bar-high: #f43f5e;
+  --color-warn: var(--color-m3-warn);
+  --color-warn-container: var(--color-m3-warn-container);
+  --color-on-warn-container: var(--color-m3-on-warn-container);
 
-  /* Flächen-Abstufung ohne harte Schlagschatten (M3 Surface Containers). */
-  --color-m3-surface-lowest: #0b0f19;
-  --color-m3-surface-low: #0f172a;
-  --color-m3-surface-high: #1e293b;
-  --color-m3-outline: #334155;
-  --color-m3-outline-variant: #475569;
-  /* Snackbar („Wieder online“): invertierte Fläche hebt die Bestätigung
-     von allem ab, was darunter liegt. */
-  --color-m3-inverse-surface: #e2e8f0;
-  --color-m3-on-inverse-surface: #1e293b;
-  --color-m3-inverse-primary: #006c4c;
-}
+  --color-surface: var(--color-m3-surface);
+  --color-sc-lowest: var(--color-m3-surface-lowest);
+  --color-sc-low: var(--color-m3-surface-low);
+  --color-sc: var(--color-m3-sc);
+  --color-sc-high: var(--color-m3-surface-high);
+  --color-sc-highest: var(--color-m3-sc-highest);
 
-@layer base {
-  body {
-    background-color: #0b0f19;
-    color: #f1f5f9;
-    font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-      Arial, sans-serif;
-  }
-  /* Lighthouse-CLS (0.40.1): Der Gutter für die vertikale Scrollbar wird von
-     Anfang an reserviert. Ohne ihn taucht die Scrollbar in dem Moment auf, in
-     dem der Inhalt länger als der Viewport wird — der Viewport wird schlag-
-     artig schmaler, die zentrierte Hülle und die Kopfzeile verschieben sich
-     horizontal, und genau das zählte das Lighthouse-Gate als Layout-Shift
-     (Score ~0,95). Mit stabilem Gutter bleibt die Breite über alle Zustände
-     gleich. Auf Mobilgeräten mit Overlay-Scrollbars ändert sich nichts. */
-  html {
-    scrollbar-gutter: stable;
-  }
+  --color-on-surface: var(--color-m3-on-surface);
+  --color-on-surface-variant: var(--color-m3-on-surface-variant);
+  --color-outline: var(--color-m3-outline);
+  --color-outline-variant: var(--color-m3-outline-variant);
+
+  --color-inverse-surface: var(--color-m3-inverse-surface);
+  --color-inverse-on-surface: var(--color-m3-on-inverse-surface);
+  --color-inverse-primary: var(--color-m3-inverse-primary);
 }
 
 /*
- * C4: „Hell (Slate)“ — helle Variante derselben Tailwind-Skala.
- *
- * Tailwind v4 kompiliert Farbklassen als Verweis auf CSS-Variablen
- * (bg-slate-900 → var(--color-slate-900)). Unter `html.light` werden die
- * Variablen deshalb nur umgebogen, jede Klasse im Code bleibt unverändert.
- * Die Werte folgen der Light-Palette der Fallback-GUI (rp2/fallback_gui.py):
- * dieselbe Skala, andere Helligkeit — Akzent-Texttöne (emerald/amber/rose/
- * sky 200–400) werden dort dunkler, wo sie in Dunkel hell waren.
+ * Elevation der M3-Ebene (sample/good gui/index.css): Level 1 für Karten
+ * über der Fläche, Level 3 für FAB und Snackbar.
  */
-html.light {
-  /* Slate-Skala: Rollen bleiben, Helligkeit kippt (Seite, Karten, Ränder,
-     Text — von hell nach dunkel gelesen wie oben im Dark-Stand). */
-  --color-slate-50: #ffffff;
-  --color-slate-100: #0f172a;
-  --color-slate-200: #1e293b;
-  --color-slate-300: #334155;
-  --color-slate-400: #475569;
-  /* C5: #64748b erreicht auf der hellen Seitenfläche (#eef2f7) nur 3,9:1 —
-     #55677c hält ≥ 4,7:1 auf Karte, Seite und slate-800. */
-  --color-slate-500: #55677c;
-  --color-slate-600: #55677c;
-  --color-slate-700: #cbd5e1;
-  --color-slate-800: #e2e8f0;
-  --color-slate-900: #ffffff;
-  --color-slate-950: #eef2f7;
-  /* text-white ist im Dark-Stand heller Text; im Light-Stand wird daraus
-     der Haupttext. bg-white/border-white kommen im Code nicht vor. */
-  --color-white: #0f172a;
-  /* Akzent-Texttöne auf hellen Flächen: dunklere Abstufungen, damit die
-     Kontraste halten (Fallback-GUI-Light als Referenz). */
-  --color-emerald-200: #065f46;
-  --color-emerald-300: #047857;
-  --color-emerald-400: #047857;
-  --color-emerald-500: #047857;
-  --color-amber-200: #78350f;
-  --color-amber-300: #92400e;
-  --color-amber-400: #b45309;
-  --color-rose-200: #991b1b;
-  --color-rose-300: #b91c1c;
-  --color-rose-400: #dc2626;
-  --color-sky-200: #0c4a6e;
-  --color-sky-300: #075985;
-  --color-sky-400: #0369a1;
-  /* Dunkle Tönungen (900/950) sind im Dark-Stand halbtransparente
-     Hintergrundtöne von Warn-Boxen und Verläufen; im Light-Stand werden
-     daraus helle Töne, damit dieselben Tinte auf weiß lesbar bleiben. */
-  --color-emerald-900: #a7f3d0;
-  --color-emerald-950: #d1fae5;
-  --color-amber-950: #fef3c7;
-  --color-rose-950: #fee2e2;
-  --color-sky-950: #e0f2fe;
+.elev-1 {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    0 1px 3px 1px rgba(0, 0, 0, 0.08);
+}
+.elev-3 {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    0 4px 8px 3px rgba(0, 0, 0, 0.1);
+}
 
-  /* Dieselben M3-Rollen im hellen Stand — hier die Leitfarben des
-     Konzepts selbst: Primary #006c4c, Error #ba1a1a, Tertiary #3d6373.
-     Ein Rollenwechsel kippt nur die Werte, keine Klasse im Code. */
+/*
+ * Helles Material-You-Schema (Default) — siehe Kopfkommentar.
+ *
+ * Die Tailwind-Slates tragen Rollen (Seite, Karte, Rand, Text, gedämpft)
+ * weiter; nur die Helligkeit und der Farbton kommen jetzt aus dem
+ * M3-Grün-Raster. Die gedämpften Töne slate-500/600 sind bewusst dunkler
+ * als Tailwinds Original, damit sie auf allen hellen Flächen AA halten.
+ */
+:root {
+  /* Slate-Skala in M3-Grünwerten: */
+  --color-slate-50: #ffffff;
+  --color-slate-100: #171d1a;
+  --color-slate-200: #212822;
+  --color-slate-300: #404943;
+  --color-slate-400: #4a5550;
+  --color-slate-500: #566058; /* ≥ 4,5:1 auf allen hellen Flächen */
+  --color-slate-600: #566058; /* Rolle „gebrochen“, Ton wie 500 */
+  --color-slate-700: #bfc9c1; /* Ränder */
+  --color-slate-800: #e4eae3; /* Insets, Trenner (Surface-High) */
+  --color-slate-900: #ffffff; /* Karten (Surface-Lowest) */
+  --color-slate-950: #f5fbf5; /* Seite (Surface) */
+  /* text-white ist im dunklen Stand heller Text; im hellen der Haupttext. */
+  --color-white: #171d1a;
+
+  /* Akzent-Texttöne auf hellen Flächen: Emerald trägt jetzt die
+     Primary-Linie #006c4c („die App ist grün“), Amber/Warn das Ocker des
+     Konzepts, Rose das Error-Rot #ba1a1a, Sky das Schieferblau. */
+  --color-emerald-200: #005741;
+  --color-emerald-300: #006c4c;
+  --color-emerald-400: #0d7d58;
+  --color-emerald-500: #006c4c;
+  /* Pastell-Töne (50/100/600) tragen im dunklen Stand helle Textrollen auf
+     getönten Flächen — im hellen Stand sind es dunkle Texttöne auf hellen
+     Tönungen (M3 on-container). */
+  --color-emerald-100: #002114;
+  --color-amber-100: #261900;
+  --color-rose-100: #410002;
+  --color-sky-100: #001f29;
+  --color-violet-100: #341e6b;
+  --color-violet-200: #4c1d95;
+  --color-violet-300: #5b21b6;
+  --color-violet-400: #6d28d9;
+  --color-amber-200: #5c4700;
+  --color-amber-300: #7c5800;
+  --color-amber-400: #8a6400;
+  --color-rose-200: #8c1d18;
+  --color-rose-300: #ba1a1a;
+  --color-rose-400: #d32f2f;
+  --color-sky-200: #1f4a5c;
+  --color-sky-300: #274f61;
+  --color-sky-400: #3d6373;
+  /* Helle Tönungen für Info-/Warn-/Erfolgsflächen im hinteren Rang. */
+  --color-emerald-900: #c9f5dc;
+  --color-emerald-950: #e0f8ea;
+  --color-amber-950: #fdf0d0;
+  --color-rose-950: #fee9e7;
+  --color-sky-950: #e3f0f7;
+
+  /*
+   * M3-Farbrollen (Material You) — Leitfarben exakt nach Konzept
+   * (UX-Konzept v2, sample/good gui):
+   * Primary #006c4c / Container #89f8c7 · Error #ba1a1a / #ffdad6 ·
+   * Tertiary #3d6373 / #c1e8fb · Warnung #7c5800 / #ffdea3.
+   *
+   * Der Tank-Guide antwortet in einer Farbe: Grün = jetzt tanken, Blau =
+   * besser warten, Grau = kein Zeitdruck, Rot = Tankrest-Risiko, Ocker =
+   * offline. Keine Komponente trägt eigene Hexwerte — sonst erzählt
+   * „Rot“ an zwei Stellen zweierlei.
+   */
   --color-m3-primary: #006c4c;
   --color-m3-on-primary: #ffffff;
   --color-m3-primary-container: #89f8c7;
   --color-m3-on-primary-container: #002114;
+
+  --color-m3-secondary-container: #cfe9d9;
+  --color-m3-on-secondary-container: #0b1f16;
+  --color-m3-on-secondary: #ffffff;
 
   --color-m3-error: #ba1a1a;
   --color-m3-on-error: #ffffff;
@@ -159,42 +167,156 @@ html.light {
   --color-m3-tertiary-container: #c1e8fb;
   --color-m3-on-tertiary-container: #001f29;
 
+  /* „Warmes Warn-Banner“ (Stufe 3, offline) — Ocker statt Error-Rot:
+     Offline ist kein Fehler der Nutzerin oder des Nutzers. */
   --color-m3-warn: #7c5800;
   --color-m3-on-warn: #ffffff;
   --color-m3-warn-container: #ffdea3;
   --color-m3-on-warn-container: #261900;
 
-  --color-m3-bar-low: #047857;
-  --color-m3-bar-mid: #b45309;
-  --color-m3-bar-high: #b91c1c;
+  /* Ampel der Stundenbalken („Heute im Überblick“): Flächen, kein Text —
+     3:1 gegen die Kartenfläche genügen (WCAG 1.4.11). Das Mittel-Gelb des
+     Konzepts (#d9a400) hätte auf Weiß nur 2,3:1 — darum um eine Stufe
+     abgedunkelt, optisch derselbe ockerne Ton. */
+  --color-m3-bar-low: #006c4c;
+  --color-m3-bar-mid: #b08800;
+  --color-m3-bar-high: #ba1a1a;
 
+  /* Flächen-Abstufung ohne harte Schlagschatten (M3 Surface Containers)
+     auf der Seite #f5fbf5 — exakt die Rampe des Konzepts. */
+  --color-m3-surface: #f5fbf5;
   --color-m3-surface-lowest: #ffffff;
-  --color-m3-surface-low: #f6f8fb;
-  --color-m3-surface-high: #e2e8f0;
-  --color-m3-outline: #55677c;
-  --color-m3-outline-variant: #cbd5e1;
+  --color-m3-surface-low: #eff5ef;
+  --color-m3-sc: #e9efe9;
+  --color-m3-surface-high: #e4eae3;
+  --color-m3-sc-highest: #dee4de;
+  --color-m3-on-surface: #171d1a;
+  --color-m3-on-surface-variant: #404943;
+  --color-m3-outline: #707973;
+  --color-m3-outline-variant: #bfc9c1;
+  /* Snackbar („Wieder online“): invertierte Fläche. */
   --color-m3-inverse-surface: #2b322e;
   --color-m3-on-inverse-surface: #ecf2ec;
   --color-m3-inverse-primary: #6cdbac;
 }
-html.light body {
-  background-color: #eef2f7;
-  color: #0f172a;
+
+/*
+ * Dunkles Thema („Dunkel“ in den Einstellungen): die bisherige
+ * Design-Welt — dunkler Slate-Hintergrund, Emerald-/Sky-/Amber-Akzente,
+ * M3-Rollen in ihren Dark-Farben. Nichts davon ändert eine Klasse im
+ * Code; die Wahl ist gerätelokal (C4).
+ */
+html.dark {
+  /* C5: Auf den dunklen Flächen angehoben (Tailwinds slate-500/#64748b
+     hielte nur 3,1:1 auf slate-950). */
+  --color-slate-500: #8598b0;
+  --color-slate-600: #8295ad;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+  --color-white: #ffffff;
+
+  --color-emerald-200: #6ee7b7;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  /* Pastell = helle Textrolle im Dunklen (siehe :root-Kommentar). */
+  --color-emerald-100: #d1fae5;
+  --color-amber-100: #fef3c7;
+  --color-rose-100: #ffe4e6;
+  --color-sky-100: #e0f2fe;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
+  --color-amber-200: #fcd34d;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-rose-200: #fda4af;
+  --color-rose-300: #fda4af;
+  --color-rose-400: #fb7185;
+  --color-sky-200: #7dd3fc;
+  --color-sky-300: #7dd3fc;
+  --color-sky-400: #38bdf8;
+  --color-emerald-900: #064e3b;
+  --color-emerald-950: #022c22;
+  --color-amber-950: #451a03;
+  --color-rose-950: #4c0519;
+  --color-sky-950: #082f49;
+
+  --color-m3-primary: #6cdbac;
+  --color-m3-on-primary: #003826;
+  --color-m3-primary-container: #00513a;
+  --color-m3-on-primary-container: #89f8c7;
+
+  --color-m3-secondary-container: #33473d;
+  --color-m3-on-secondary-container: #cfe9d9;
+  --color-m3-on-secondary: #003826;
+
+  --color-m3-error: #ffb4ab;
+  --color-m3-on-error: #690005;
+  --color-m3-error-container: #93000a;
+  --color-m3-on-error-container: #ffdad6;
+
+  --color-m3-tertiary: #a5cff0;
+  --color-m3-on-tertiary: #023543;
+  --color-m3-tertiary-container: #234b5c;
+  --color-m3-on-tertiary-container: #c1e8fb;
+
+  --color-m3-warn: #f2b23b;
+  --color-m3-on-warn: #452c00;
+  --color-m3-warn-container: #4a3300;
+  --color-m3-on-warn-container: #ffdea3;
+
+  --color-m3-bar-low: #10b981;
+  --color-m3-bar-mid: #f59e0b;
+  --color-m3-bar-high: #f43f5e;
+
+  --color-m3-surface: #0b0f19;
+  --color-m3-surface-lowest: #0b0f19;
+  --color-m3-surface-low: #0f172a;
+  --color-m3-sc: #16202f;
+  --color-m3-surface-high: #1e293b;
+  --color-m3-sc-highest: #293548;
+  --color-m3-on-surface: #f1f5f9;
+  --color-m3-on-surface-variant: #8b9bb0;
+  --color-m3-outline: #334155;
+  --color-m3-outline-variant: #475569;
+  --color-m3-inverse-surface: #e2e8f0;
+  --color-m3-on-inverse-surface: #1e293b;
+  --color-m3-inverse-primary: #006c4c;
 }
-html.light ::-webkit-scrollbar-track {
-  background: #e2e8f0;
+
+@layer base {
+  body {
+    background-color: #f5fbf5;
+    color: #171d1a;
+    font-family:
+      Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Lighthouse-CLS (0.40.1): Der Gutter für die vertikale Scrollbar wird
+     von Anfang an reserviert — ohne ihn taucht die Scrollbar in dem
+     Moment auf, in dem der Inhalt länger als der Viewport wird, der
+     Viewport wird schlagartig schmaler, und genau das zählte das
+     Lighthouse-Gate als Layout-Shift (Score ~0,95). Auf Mobilgeräten mit
+     Overlay-Scrollbars ändert sich nichts. */
+  html {
+    scrollbar-gutter: stable;
+  }
 }
-html.light ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-}
-html.light ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-html.light :focus-visible {
-  outline-color: #047857;
-}
-html.light input[type="range"] {
-  accent-color: #047857;
+
+html.dark body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
 }
 
 /* Custom scrollbars */
@@ -203,24 +325,30 @@ html.light input[type="range"] {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #e4eae3;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #b9c4bc;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
+  background: #8a978f;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
 
 /*
- * Elevation der Urteils-Karte (UI-Neugestaltung 2026-09-26): Die
- * Entscheidungs-Karte ist die einzige Karte der Seite mit Elevation —
- * sie „schwebt“ über den flachen Tonal-Karten (Fakten, Tagesstreifen,
- * Umweg). Jede Glow-Farbe folgt dem Urteilston: Grün = jetzt handeln,
- * Blau = warten bis Fenster, Rot = echtes Risiko (Tankrest). Grau
- * (keine Empfehlung) bleibt bewusst ohne Glow — Zurückhaltung ohne
- * Alarm.
+ * Elevation der Urteils-Karte (UI-Neugestaltung 2026-09-26): Der Glow
+ * bleibt die dunkle Variante — in der hellen M3-GUI trägt die
+ * Entscheidungskarte ihre Container-Farbe ohne Schatten (Elevation 0,
+ * die Farbe trägt die Hierarchie).
  */
 .glow-emerald {
   box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
@@ -238,10 +366,10 @@ html.light input[type="range"] {
 /* --------------------------------------------------------------------------
  * M3-Komponentenflächen des Tank-Guides.
  *
- * Eine Rolle, eine Klasse: Der Ton einer Aussage (grün/rot/blau/neutral)
+ * Eine Rolle, eine Klasse: Der Ton einer Aussage (grün/blau/grau/rot/neutral)
  * wechselt über dieselbe Klasse in beiden Themen. Keine Komponente trägt
- * deshalb eigene Farben — sonst erzählt „Rot“ an zwei Stellen zweierlei.
- * Geprüft von src/a11y.test.ts (Kontrast jedes Paares, beide Themen).
+ * deshalb eigene Farben. Geprüft von src/a11y.test.ts (Kontrast jedes
+ * Paares, beide Themen).
  * ------------------------------------------------------------------------ */
 .m3-now {
   background-color: var(--color-m3-primary-container);
@@ -255,11 +383,10 @@ html.light input[type="range"] {
   background-color: var(--color-m3-tertiary-container);
   color: var(--color-m3-on-tertiary-container);
 }
-/* Outlined Card (Stufe 2): dieselbe Fläche, nur umrandet — die Karte
-   bleibt an ihrem Platz, sie urteilt bloß nicht mehr. */
+/* Outlined Card (Stufe 2/„kein Zeitdruck“): neutrale Fläche, nur umrandet. */
 .m3-neutral {
   background-color: var(--color-m3-surface-lowest);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
   border: 1px solid var(--color-m3-outline-variant);
 }
 .m3-on-now {
@@ -285,7 +412,7 @@ html.light input[type="range"] {
 }
 .m3-chip-neutral {
   background-color: var(--color-m3-surface-high);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
 }
 .m3-btn-now {
   background-color: var(--color-m3-primary);
@@ -301,7 +428,7 @@ html.light input[type="range"] {
 }
 .m3-btn-tonal {
   background-color: var(--color-m3-surface-high);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
 }
 .m3-banner-neutral {
   background-color: var(--color-m3-tertiary-container);
@@ -342,7 +469,7 @@ html.light input[type="range"] {
  * eine Utility-Klasse sticht sie wieder. `font-family`/`font-feature-*`
  * einzeln statt `font:`, damit nur die Schriftart erbt und die Größe der
  * Klasse gehört. Geprüft von src/a11y.test.ts (U1) und e2e/mobile.spec.ts.
- * -------------------------------------------------------------------------- */
+ * ------------------------------------------------------------------------ */
 @layer base {
   button,
   select,
@@ -367,7 +494,7 @@ select {
   cursor: pointer;
 }
 :focus-visible {
-  outline: 2px solid #34d399;
+  outline: 2px solid var(--color-m3-primary);
   outline-offset: 4px;
 }
 button:disabled {
@@ -375,7 +502,7 @@ button:disabled {
   opacity: 0.5;
 }
 input[type="range"] {
-  accent-color: #34d399;
+  accent-color: var(--color-m3-primary);
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -490,6 +617,12 @@ html.ptr-off body {
   }
 }
 
+/* Sheets are narrower than the viewport. Size cells against their available
+   width, not the desktop/landscape viewport breakpoints above. */
+dialog .daystrip-cells {
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+}
+
 /* --------------------------------------------------------------------------
  * C8 — Querformat am Handy (z. B. 844 × 390).
  *
@@ -567,10 +700,4 @@ html.ptr-off body {
   width: max-content;
   padding: 9px;
   translate: -50% -50%;
-}
-
-/* Sheets are narrower than the viewport. Size cells against their available
-   width, not the desktop/landscape viewport breakpoints above. */
-dialog .daystrip-cells {
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
 }

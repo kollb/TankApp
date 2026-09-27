@@ -151,7 +151,7 @@ export function ApiExplorer({
                   ? "cursor-not-allowed border-slate-800 bg-slate-950/50 text-slate-600"
                   : path === entry.path && answer !== null
                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
+                    : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100"
               }`}
             >
               GET {entry.label}

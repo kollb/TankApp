@@ -190,7 +190,7 @@ export function UeberblickView({
       <div className="rounded-lg border border-violet-500/20 bg-slate-900/70 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">
+            <h2 className="text-sm font-semibold text-slate-100">
               Vertrauens-Konto ({activeCity || "kein Ort"} · {fuelLabel})
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-slate-300">

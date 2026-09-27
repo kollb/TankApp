@@ -52,7 +52,7 @@ export function HourBars({ outlook, title = "Heute im Überblick" }: HourBarsPro
   return (
     <section className={`${panel} p-4`} aria-labelledby="hourbars-title">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="hourbars-title" className="text-sm font-semibold text-white">
+        <h2 id="hourbars-title" className="text-sm font-semibold text-slate-100">
           {title}
         </h2>
         <span className="text-xs text-slate-500">Nächste 8 Stunden</span>
@@ -71,7 +71,7 @@ export function HourBars({ outlook, title = "Heute im Überblick" }: HourBarsPro
           return (
             <div key={`${bar.hour}-${bar.label}`} className="relative flex-1">
               {isActive && bar.price !== null && (
-                <span className="absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[0.6875rem] font-semibold text-white shadow-lg">
+                <span className="absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[0.6875rem] font-semibold text-slate-100 shadow-lg">
                   {euroPerLiter(bar.price)}
                 </span>
               )}
@@ -130,7 +130,7 @@ export function RuleOfThumb() {
           <Lightbulb size={18} aria-hidden="true" />
         </span>
         <div className="min-w-0">
-          <h2 id="rule-title" className="text-sm font-semibold text-white">
+          <h2 id="rule-title" className="text-sm font-semibold text-slate-100">
             {RULE_OF_THUMB.title}
           </h2>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-400">

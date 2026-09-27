@@ -162,7 +162,7 @@ export function DatenView() {
 
       {/* Datenreichweite */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-        <h3 className="text-sm font-semibold text-white">Datenreichweite & Herkunft</h3>
+        <h3 className="text-sm font-semibold text-slate-100">Datenreichweite & Herkunft</h3>
         <div className="mt-3 grid grid-cols-1 gap-3 text-xs leading-relaxed text-slate-400 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="font-semibold text-slate-200">Preise (Live)</p>
@@ -239,7 +239,7 @@ export function DatenView() {
 
       {/* Rohdaten-Tabellen — Diagramm/Rohdaten-Trennung Ratchet: data-testid */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4" data-testid="rohdaten-section">
-        <h3 className="text-sm font-semibold text-white">Rohdaten — Tabellen (keine Diagramme)</h3>
+        <h3 className="text-sm font-semibold text-slate-100">Rohdaten — Tabellen (keine Diagramme)</h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
           Diese Sektion enthält ausschließlich Tabellen und Zahlen — keine LineChart, kein HeatmapGrid. Diagramme
           wohnen in den anderen Sub-Tabs (Überblick, Modell, Güte). Das ist das Diagramm/Rohdaten-Trennungs-Ratchet.
@@ -360,7 +360,7 @@ export function DatenView() {
 
       {/* CSV-Export */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4" data-testid="csv-export-section">
-        <h3 className="text-sm font-semibold text-white">CSV-Export</h3>
+        <h3 className="text-sm font-semibold text-slate-100">CSV-Export</h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
           Export enthält nur abgerechnete Empfehlungen und echte Beobachtungen — keine Schätzungen. Dateiformat: UTF-8,
           Semikolon-getrennt, deutsches Zahlenformat im Export per Punkt (maschinenlesbar).
@@ -395,7 +395,7 @@ export function DatenView() {
 
       {/* API-Explorer */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4" data-testid="api-explorer-section">
-        <h3 className="text-sm font-semibold text-white">API-Explorer (Rohdaten-Tab)</h3>
+        <h3 className="text-sm font-semibold text-slate-100">API-Explorer (Rohdaten-Tab)</h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">
           Direkte API-Pfade — gleiche URLs, die die GUI nutzt. Kopieren, im Browser öffnen oder mit curl abfragen.
           Persönliche Daten brauchen ein Lese-Token (System-Tab → Persönliche Daten).

@@ -129,7 +129,7 @@ export function IchView(props: IchViewProps) {
 
   return (
     <section aria-labelledby="ich-title">
-      <h1 id="ich-title" className="text-2xl font-bold tracking-tight text-white">
+      <h1 id="ich-title" className="text-2xl font-bold tracking-tight text-slate-100">
         Ich
       </h1>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
@@ -236,7 +236,7 @@ function FillsSection(props: IchViewProps) {
       >
         <h3
           id="ich-fills-quick-heading"
-          className="flex items-center gap-2 text-sm font-semibold text-white"
+          className="flex items-center gap-2 text-sm font-semibold text-slate-100"
         >
           <FuelIcon size={16} className="text-emerald-400" />
           Tanken erfassen
@@ -259,7 +259,7 @@ function FillsSection(props: IchViewProps) {
                 aria-label="Station des Belegs"
                 value={quickStationId}
                 onChange={(e) => setQuickStationId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
               >
                 {pinnedFirstStations.length ? (
                   pinnedFirstStations.map((row) => (
@@ -285,7 +285,7 @@ function FillsSection(props: IchViewProps) {
                 onChange={(e) => setQuickLitersStr(commaToDot(e.target.value))}
                 aria-invalid={quickDraft.litersError != null}
                 title={`${fillLimitHint("liters")} — wie auf dem Kassenbon`}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
               />
               <span className="mt-1 block text-xs text-slate-500">
                 {fillLimitHint("liters")} · z. B. 45,5.
@@ -306,7 +306,7 @@ function FillsSection(props: IchViewProps) {
                 onChange={(e) => setQuickPriceStr(commaToDot(e.target.value))}
                 aria-invalid={quickDraft.priceError != null}
                 title={`${fillLimitHint("price")} — wie an der Säule`}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
               />
               <span className="mt-1 block text-xs text-slate-500">
                 {fillLimitHint("price")} · Vorschlag: frischer Preis der
@@ -343,7 +343,7 @@ function FillsSection(props: IchViewProps) {
                     ? "Eingabe korrigieren"
                     : "Beleg buchen"
             }
-            className="mt-4 w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
+            className="m3-btn-now mt-4 w-full rounded-full px-4 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
           >
             {fillSubmitting ? "Wird verbucht …" : "Beleg buchen"}
           </button>
@@ -635,7 +635,7 @@ function BalanceSection(props: IchViewProps) {
               <p className="text-xs uppercase tracking-wider text-slate-500">
                 Getankt
               </p>
-              <p className="mt-1 text-xl font-bold text-white tabular-nums">
+              <p className="mt-1 text-xl font-bold text-slate-100 tabular-nums">
                 {euro(latest.total_eur)} €
               </p>
               <p className="mt-1 text-xs text-slate-500">

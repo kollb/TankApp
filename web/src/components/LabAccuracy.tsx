@@ -43,7 +43,7 @@ export function LabAccuracy({
   const grid = accuracyDots({ hits, ties, total });
   return (
     <section className={`${panel} p-4`} aria-labelledby="lab-accuracy-title">
-      <h2 id="lab-accuracy-title" className="text-sm font-semibold text-white">
+      <h2 id="lab-accuracy-title" className="text-sm font-semibold text-slate-100">
         Wie oft lag die Empfehlung richtig?
       </h2>
 

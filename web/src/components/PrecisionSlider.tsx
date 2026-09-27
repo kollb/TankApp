@@ -119,7 +119,7 @@ export function PrecisionSlider({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="h-11 w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 text-right font-mono text-xs text-white focus:border-emerald-500"
+            className="h-11 w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 text-right font-mono text-xs text-slate-100 focus:border-emerald-500"
           />
           <span className="text-xs text-slate-500">{unit}</span>
         </span>

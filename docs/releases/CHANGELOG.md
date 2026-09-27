@@ -4,6 +4,44 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.71.0] – 2026-09-27
+
+**GUI v2: Die Oberfläche spricht jetzt Material You — das Konzept aus
+`sample/good gui` wird die GUI.** Alle Funktionen, Texte und Abläufe
+bleiben; geändert wird ausschließlich, wie die App aussieht.
+
+- **Helles M3 als Standard:** Die Farbwelt des Konzepts ist jetzt das
+  Grundthema — Seite `#f5fbf5`, Karten weiß mit Elevation 1, Primary
+  `#006c4c` / Container `#89f8c7`, Tertiary `#3d6373`, Error `#ba1a1a`,
+  Warn `#7c5800`. Der bisherige dunkle Stand bleibt als Thema „Dunkel“
+  unverändert wählbar (gerätelokal, C4).
+- **Design-Basis über Tokens:** Die gesamte Farbfläche liegt in
+  `styles.css` (`--color-m3-*`-Rollen je Thema); keine Komponente trägt
+  eigene Hexwerte. `kein dunkel-first mehr`: `:root` ist hell,
+  `html.dark` ist das bisherige Design.
+- **App-Shell:** Kopfzeile mit runder Brand-Fläche in Primary,
+  Stadt-/Profil-Auswahl als M3-Pills, Sprit-Wahl als M3-Filter-Chips
+  (Secondary Container + Häkchen); Navigation mit ActivePill (aktives
+  Ziel in einer Secondary-Container-Pille) mobil wie desktop.
+- **Tank-Kompass:** Urteilskarten tragen M3-Container-Töne statt
+  Farbverläufen mit Glow — „jetzt tanken“ grün (Primary-Container),
+  „warten“ blau (Tertiary-Container), „Rot bleibt dem Tankrest“
+  (Error-Container), unklar als Outlined Card. Route, „Warum?“,
+  Einrichten und alle Primär-Handlungen sind M3-Pill-Buttons (48 px);
+  Chips sind gefüllte M3-Pills.
+- **Alle übrigen Bereiche:** `text-white` ist ersetzt (im hellen Thema
+  unsichtbar), CTAs als Pills, Kraftstoff-Wahl in den Einstellungen als
+  M3-Segmented-Control.
+- **Behoben:** `m3-neutral`/`m3-chip-neutral`/`m3-btn-tonal` trugen
+  weißen Text auf weißer Fläche — jetzt On-Surface. Der Wechsel der
+  Entscheidungskarte auf die M3-Rollen (in 0.70.2 dokumentiert
+  zurückgestellt) ist damit abgeschlossen (LUECKEN.md).
+
+### Geändert
+
+- Die Kraftstoff-Pillen und weitere kleine Handlungen nutzen durchgängig
+  die Pill-Form (`rounded-full`); Inhalt und Verhalten unverändert.
+
 ## [0.70.2] – 2026-09-27
 
 **Tank-Guide: eine Frage, eine Antwort — und drei Fallback-Stufen, die

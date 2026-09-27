@@ -133,7 +133,7 @@ function StatusRowCard({ row }: { row: SystemStatusRow }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-xs font-semibold text-slate-200">{row.label}</span>
-          <span className="text-xs font-bold text-white">{row.headline}</span>
+          <span className="text-xs font-bold text-slate-100">{row.headline}</span>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-slate-400">{row.detail}</p>
         {row.meta && <p className="mt-1 font-mono text-xs text-slate-500 [overflow-wrap:anywhere]">{row.meta}</p>}
@@ -287,7 +287,7 @@ export function SystemView(props: SystemViewProps) {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="mb-1 text-xs font-bold uppercase tracking-[.2em] text-emerald-500">System · Anlage &amp; Daten</p>
-          <h1 id="system-title" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <h1 id="system-title" className="text-2xl font-bold tracking-tight text-slate-100 sm:text-3xl">
             Einmal einrichten. Weiterlaufen lassen.
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
@@ -486,7 +486,7 @@ export function SystemView(props: SystemViewProps) {
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs uppercase tracking-wider text-slate-500">Stationen im Set</p>
-            <p className="mt-1 text-lg font-bold text-white">{countLabel(coverage.stationCount)}</p>
+            <p className="mt-1 text-lg font-bold text-slate-100">{countLabel(coverage.stationCount)}</p>
             <p className="mt-1 text-xs text-slate-500">
               {coverage.cities.length ? coverage.cities.join(" · ") : "Keine Stadt"} · {coverage.fuel.toUpperCase()}
             </p>

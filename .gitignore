@@ -81,3 +81,4 @@ netrc
 
 # React-Leseausgabe: vor dem RP2-Deployment lokal bauen
 /rp2/dist/
+.venv-demo/

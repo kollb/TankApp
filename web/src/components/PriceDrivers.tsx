@@ -42,7 +42,7 @@ export function PriceDrivers({
 }: PriceDriversProps) {
   return (
     <section className={`${panel} p-4`} aria-labelledby="lab-drivers-title">
-      <h2 id="lab-drivers-title" className="text-sm font-semibold text-white">
+      <h2 id="lab-drivers-title" className="text-sm font-semibold text-slate-100">
         {title}
       </h2>
       <p className="mt-0.5 text-xs leading-relaxed text-slate-400">

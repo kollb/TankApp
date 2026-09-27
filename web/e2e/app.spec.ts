@@ -208,13 +208,15 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
 
   // Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
   // einen Reload (Bootstrap-Script in index.html, localStorage).
+  // Seit GUI v2 ist „Hell (Standard)“ der Default, „Dunkel“ die Option —
+  // die Prüfung läuft spiegelbildlich zur früheren dunklen Basis.
   await page
-    .getByRole("button", { name: "Hell", exact: true })
+    .getByRole("button", { name: "Dunkel", exact: true })
     .click();
-  await expect(page.locator("html")).toHaveClass(/light/);
+  await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
-  await expect(page.locator("html")).toHaveClass(/light/);
-  // Zurück auf den Default (dunkel), damit andere Tests nicht
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  // Zurück auf den Default (hell), damit andere Tests nicht
   // von dieser Ansicht abhängen. Nach dem Reload startet die App in
   // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
   await clickArea(page, "Ich");
@@ -222,9 +224,9 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
     .getByRole("tab", { name: "Einstellungen", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Dunkel (Standard)", exact: true })
+    .getByRole("button", { name: "Hell (Standard)", exact: true })
     .click();
-  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveClass(/light/);
 });
 
 // ---------------------------------------------------------------------------
