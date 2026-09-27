@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 27.09.2026 · App-Version **0.71.0** · gilt für `web/src/**`, `web/rp2/**`,
+> Stand: 27.09.2026 · App-Version **0.72.0** · gilt für `web/src/**`, `web/rp2/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt. Neu am 26.09.2026 (UI-Neugestaltung): Urteilstöne
@@ -535,3 +535,15 @@ Geprüft in `web/src/microcopy.test.ts` („„Auto“ zeigt den Automatik-Wert�
 
 Neue Formulierung unklar? Kürzeste Variante wählen, die noch erklärt, **was
 zu tun ist** — und sie hier eintragen, wenn sie ein Muster ist.
+
+## Design-Lab: Demo-Texte (0.72.0)
+
+- Die simulierten Statuschips „Live“ und „Offline“ gelten nur für das Szenario.
+  Der Rahmen nennt dauerhaft „Beispieldaten · keine Live-Empfehlung“; mobil
+  steht „Demo · keine echten Live-Daten“ über dem Mockup.
+- Bestätigungen dürfen keine echten Aktionen behaupten: „Demo-Erinnerung für
+  19 Uhr gestellt“, „Demo-Verbindung wiederhergestellt. Stufe 1 ist aktiv.“
+- Gütewerte tragen „Beispiel“ und „Kein Nachweis der Live-Modellgüte“.
+  „Gradient Boosting“ und „MAE ± 1,1 ct/L“ sind Konzeptparameter.
+- Lokale Einstellungen werden nicht angeblich synchronisiert. Versprechen über
+  Push-Nachrichten oder produktive Mutationen gehören nicht in den Prototyp.

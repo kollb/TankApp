@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.72.0] – 2026-09-27
+
+- **Interaktives M3-Design-Lab:** `/?konzept=1` übernimmt `sample/good gui`
+  als isolierten React-/TypeScript-Prototyp mit Framer Motion, Smartphone-Rahmen,
+  Guide, ergänztem Labor, bedienbarer Demo-Karte und Demo-Alarmen.
+- **Konzept-Panel:** Szenarien für drei Datenlagen und drei Empfehlungen,
+  Nummerierung, Aufbau, Microcopy, Komponenten und Fallback-Matrix. Auf Mobil
+  schaltet „Konzept & Steuerung“ zwischen Vorschau und Panel um.
+- **Funktionserhalt:** Die bisherige Live-App bleibt unter `/` und ihren
+  bestehenden Tab-URLs erhalten. „Neue GUI“ öffnet den Prototyp; Rücklinks
+  führen zu allen bestehenden Funktionsbereichen. Das ist keine Migration
+  der Live-API in das Smartphone-Mockup.
+- **Ehrliche Demo-Grenze:** Beispielpreise, Modellgüte und MAE sind kein
+  Live-Nachweis. Alarme und Experimente schreiben nur in einen eigenen lokalen
+  Namensraum; keine produktiven Mutationen oder Push-Nachrichten.
+- **Interaktion:** persistente Profilwerte, Sparrechner, wirksames Rückgängig,
+  SVG-Zeitpunkte per Tastatur, echte externe Routen und simulierter Offline-Retry.
+
 ## [0.71.0] – 2026-09-27
 
 **GUI v2: Die Oberfläche spricht jetzt Material You — das Konzept aus

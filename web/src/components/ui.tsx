@@ -29,6 +29,7 @@ import { HelpCircle, Info } from "lucide-react";
  */
 export const radius = {
   card: "rounded-2xl",
+  inset: "rounded-xl",
   chip: "rounded-lg",
   control: "rounded-md",
 } as const;
