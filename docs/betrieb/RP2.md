@@ -292,7 +292,8 @@ http://<RP2-IP>:8000
 - NAS bereit: vollständige NAS-GUI. Bei späterem Ausfall bleibt der Tab
   erhalten; nur Stationen/Preise haben einen kompatiblen lokalen Ersatz.
   Persönliche Eingaben bleiben im Tab, vorgemerkte Belege in IndexedDB.
-- NAS nicht bereit: Fallback-GUI v5 („FALLBACK · RP2“), nur Preisvergleich,
+- NAS nicht bereit: Fallback-GUI v5 („Lesemodus · RP2“, seit 26.09.2026
+  so benannt), nur Preisvergleich,
   Tagesstreifen und Stationsliste. Ein veralteter ausgewählter Preis heißt
   „Preis-Momentaufnahme“, selbst wenn eine andere Station frisch meldet.
   Drei Fakten: „Jetzt hier“ · „Fensterentscheidung — nur auf dem NAS“ ·

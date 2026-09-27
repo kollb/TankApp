@@ -1451,7 +1451,7 @@ siehe [RP2.md](RP2.md#fallback-api-und-umschaltzeiten)).
 Zu prüfen ist nur, welche Oberfläche dort ausgeliefert wird:
 
 ```bash
-curl -s http://<RP2-IP>:8000/ | head -3          # v4-Vorlage („FALLBACK · RP2“) oder SPA?
+curl -s http://<RP2-IP>:8000/ | head -3          # v4-Vorlage („Lesemodus · RP2“) oder SPA?
 curl -s http://<RP2-IP>:8000/api/v1/health | python3 -m json.tool | head -20
 grep -o 'tankapp-fallback-gui [^>]*' rp2/templates/index.html   # Template-Marker
 ```

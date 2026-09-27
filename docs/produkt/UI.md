@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 20.09.2026 · App-Version 0.60.0
+> Stand: 26.09.2026 · App-Version 0.70.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
@@ -11,6 +11,7 @@
 - [Bereiche](#bereiche)
 - [Labor-Unterbereiche](#labor-unterbereiche)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
+- [Urteilstöne und Elevation](#urteilstöne-und-elevation)
 - [Zustände und Datenwahrheit](#zustände-und-datenwahrheit)
 - [Mobil, Desktop und Barrierefreiheit](#mobil-desktop-und-barrierefreiheit)
 - [Änderungen abnehmen](#änderungen-abnehmen)
@@ -94,6 +95,50 @@ Formulierungen stehen in [Microcopy](MICROCOPY.md).
 Fenster-Vorteil („bis zu“) und Median-Erwartung sind verschiedene Größen.
 Die GUI darf sie weder sprachlich noch rechnerisch austauschen. Ebenso bleiben
 Prognosekalibrierung und Produktfreigabe getrennt sichtbar.
+
+## Urteilstöne und Elevation
+
+Seit 26.09.2026 (UI-Neugestaltung, Konzept in
+[planung/UI-NEUGESTALTUNG-2026-09-26.md](../planung/UI-NEUGESTALTUNG-2026-09-26.md))
+trägt jede Urteils-Karte vier Töne mit fester Bedeutung:
+
+| Ton | Bedeutung | Beispiel |
+|---|---|---|
+| Grün (primary) | jetzt handeln | `Jetzt tanken` bei Preisvorteil |
+| Blau (tertiary) | warten bis Fenster — die geplante, Geld sparende Handlung | `Warten bis 18–20 Uhr` · `Woanders tanken` |
+| Rot (error) | echtes Risiko — Tankrest blockiert das Warten | `Jetzt tanken` bei `tank.blocks_wait` |
+| Grau (neutral) | ehrlich unentschieden | `Keine klare Empfehlung` · abgelaufene Freigabe |
+
+Rot ist keine Dekoration und kein Wartungs-Alarm: Es markiert genau die
+eine Situation, in der das Warten physisch riskant ist. Grau (keine
+Empfehlung) ist ein regulärer Produktzustand — bewusst ohne Elevation.
+
+Die Urteils-Karte ist die **einzige Karte der Seite mit Elevation**
+(Glow nach Urteilston: `glow-emerald` / `glow-blue` / `glow-rose`);
+Fakten-, Tagesstreifen- und Umweg-Karten bleiben flach (Tonal). Der
+Blick auf „Jetzt“ erreicht die Antwort deshalb ohne Suchen.
+
+Zu den Tönen gehören zwei Zustands-Chips:
+
+- **Gültigkeits-Chip** `gültig bis 17:45` — die Freigabe trägt ihr
+  `valid_until` (A21-B1.4) sichtbar; Tageszeit über `timeOfDayLabel`.
+  Eine Ablehnung altert nicht und trägt keinen Chip.
+- **Abgelaufene Freigabe** — liegt `valid_until` in der Vergangenheit
+  (offene Seite, gecachte Antwort), wechselt der Karteninhalt in die
+  graue Variante `Empfehlung abgelaufen`. Das ist ein Inhaltswechsel,
+  kein Fehler: Der Vertrag verbietet, die Aktion erneut zu zeigen;
+  Preise und Fakten bleiben darunter sichtbar.
+
+Die Lernphase (S1) benennt, was schon funktioniert:
+`Vergleich und Umweg-Rechnung funktionieren bereits.` — die App ist in
+der Lernphase keine tote Fläche (Muster in [Microcopy](MICROCOPY.md) §4b).
+
+Die RP2-Fallback-Oberfläche heißt **Lesemodus** (Badge `Lesemodus · RP2`):
+dieselbe Marke, reduzierte Edition, kein Fehlerbild. Solange das NAS
+nicht erreichbar ist, benennt sich der Status-Banner selbst —
+`NAS ist gerade nicht erreichbar — die Preise zeigen den letzten
+gemeldeten Stand. Zur Orientierung, nicht zur Entscheidung.` (Muster in
+[Microcopy](MICROCOPY.md) §4a).
 
 ## Zustände und Datenwahrheit
 
