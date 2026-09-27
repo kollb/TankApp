@@ -3485,6 +3485,18 @@ export function timeLabel(stamp?: string | null) {
       })
     : "Noch kein Stand";
 }
+
+/** „17:45“ — nur die Tageszeit (Europe/Berlin) für den Gültigkeits-Chip. */
+export function timeOfDayLabel(stamp?: string | null): string | null {
+  if (!stamp) return null;
+  const value = new Date(stamp);
+  if (Number.isNaN(value.getTime())) return null;
+  return value.toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 // Issue 50: Daten-Watermark der Ereignis-Pipeline ist Epochensekunde —
 // als Berliner de-DE-Zeit anzeigen, ungültige/fehlende Werte ehrlich „—“.
 export function epochLabel(stamp?: string | number | null) {
