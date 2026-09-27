@@ -108,8 +108,19 @@
      Konzepts, Rose das Error-Rot #ba1a1a, Sky das Schieferblau. */
   --color-emerald-200: #005741;
   --color-emerald-300: #006c4c;
-  --color-emerald-400: #006c4c;
+  --color-emerald-400: #0d7d58;
   --color-emerald-500: #006c4c;
+  /* Pastell-Töne (50/100/600) tragen im dunklen Stand helle Textrollen auf
+     getönten Flächen — im hellen Stand sind es dunkle Texttöne auf hellen
+     Tönungen (M3 on-container). */
+  --color-emerald-100: #002114;
+  --color-amber-100: #261900;
+  --color-rose-100: #410002;
+  --color-sky-100: #001f29;
+  --color-violet-100: #341e6b;
+  --color-violet-200: #4c1d95;
+  --color-violet-300: #5b21b6;
+  --color-violet-400: #6d28d9;
   --color-amber-200: #5c4700;
   --color-amber-300: #7c5800;
   --color-amber-400: #8a6400;
@@ -216,6 +227,15 @@ html.dark {
   --color-emerald-300: #6ee7b7;
   --color-emerald-400: #34d399;
   --color-emerald-500: #10b981;
+  /* Pastell = helle Textrolle im Dunklen (siehe :root-Kommentar). */
+  --color-emerald-100: #d1fae5;
+  --color-amber-100: #fef3c7;
+  --color-rose-100: #ffe4e6;
+  --color-sky-100: #e0f2fe;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
   --color-amber-200: #fcd34d;
   --color-amber-300: #fcd34d;
   --color-amber-400: #fbbf24;
