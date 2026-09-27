@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 27.09.2026 · App-Version 0.70.2
+> Stand: 27.09.2026 · App-Version 0.71.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -149,7 +149,7 @@ Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
 | Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
-| M3-Kartenflächen der Entscheidung | Banner, Chips, Balken und Labor tragen die M3-Rollen seit 0.70.2. Die Entscheidungskarte selbst behält ihre bewährten Ton-Klassen (`CARD_TONE`): Der Wechsel auf `GUIDE_TONE_CLASS` ist eine reine Farbumstellung mit Kontrastfolgen für alle Kindelemente und braucht eine Sichtprüfung im Browser — hierfür stand in dieser Runde kein Browser zur Verfügung (`GUIDE_TONE_CLASS`, `GUIDE_CARD` und `guideCardClass` liegen bereit) |
+| ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt jetzt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der Vorlage `sample/good gui`. Die namentlich vorbereiteten `GUIDE_TONE_CLASS`-Sätze in `views/guide.ts` bleiben bestehen; sie sind mit den styles.css-Klassen deckungsgleich |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte
 UI-/Laufzeitoptimierungen und Modellfreigabe sind in den
