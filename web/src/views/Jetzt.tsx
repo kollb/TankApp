@@ -392,14 +392,23 @@ export function JetztView(props: JetztViewProps) {
   /**
    * „Was bringt Warten?“: derselbe Abstand, den die Karte in ct/L nennt,
    * hier als Betrag auf die Tankmenge gerechnet (`guideBenefit`).
+   *
+   * Nur, wenn die Karte selbst eine Zeit-Aussage trägt: „Warten bis …“
+   * und „Jetzt tanken“ vergleichen jetzt mit dem Fenster. „Woanders
+   * tanken“ und „Keine klare Empfehlung“ sind Orts- bzw.
+   * Enthaltungs-Aussagen — dort würde der Vergleich eine Differenz
+   * behaupten, die die Entscheidung nicht trifft (C0: nichts erfinden).
    */
   const priceNow = bestNow.price ?? decide?.primary?.station?.price_now ?? null;
-  const benefit = guideBenefit({
-    tone: cardTone,
-    centDiff: savingPerLiterCt(priceNow, window?.expected_price ?? null),
-    liters: calculationLiters,
-    atIso: window?.start ?? null,
-  });
+  const benefit =
+    verdict && (verdict.action === "wait" || verdict.action === "refuel_now")
+      ? guideBenefit({
+          tone: cardTone,
+          centDiff: savingPerLiterCt(priceNow, window?.expected_price ?? null),
+          liters: calculationLiters,
+          atIso: window?.start ?? null,
+        })
+      : null;
 
   const commitLiters = () => {
     const value = Number(litersStr.replace(",", "."));
@@ -1135,7 +1144,7 @@ export function JetztView(props: JetztViewProps) {
               </div>
             </dl>
             <button id="jetzt-daystrip" onClick={() => setDayOpen(true)} aria-haspopup="dialog"
-              className="mt-3 flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-300">
+              className="mt-2 flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300">
               <ChevronRight size={13} aria-hidden="true" /> Tagesstreifen 06–24 Uhr
             </button>
             <BottomSheet open={dayOpen} title="Heute im Blick — Tagesstreifen" onClose={() => setDayOpen(false)}>
@@ -1234,23 +1243,30 @@ export function JetztView(props: JetztViewProps) {
               {dayPanel.coverage} Zahl = €/L (Stunden-Minimum) · Balken =
               Höhe im Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
             </p>
+            {/* ④ „Heute im Überblick“ — liegt bewusst hier im Blatt und nicht
+                offen auf der Startseite. Grund: Der Streifen unten ist die
+                einzige Visualisierung, die der Startseite bleibt (B4); die
+                Stundenbalken sind die Langform derselben Aussage und würden
+                die Karte von ihrer einen Antwort wegdrücken. Wer den
+                Tagesverlauf sehen will, findet ihn hier — einen Tipp entfernt. */}
+            <div className="mt-4 border-t border-slate-800 pt-3">
+              <HourBars outlook={outlook} />
+            </div>
               </div>
             </BottomSheet>
           </div>
         </>
       )}
 
-      {/* ⑤ Was bringt Warten? — der Abstand als Betrag auf die Tankmenge.
-          Danach die nächsten acht Stunden als Balken (Stufe 1) oder die
-          Faustregel (Stufe 2 und 3). */}
+      {/* ⑤ Was bringt Warten? — der Abstand als Betrag auf die Tankmenge,
+          eine Zeile, kein eigener Block. Die Stundenbalken bzw. die
+          Faustregel stehen im Blatt „Heute im Blick“ — die Startseite bleibt
+          damit kurz (S1: eine Frage, eine Antwort). */}
       {benefit && (
-        <div className="mt-4">
+        <div className="mt-3">
           <BenefitWidget benefit={benefit} />
         </div>
       )}
-      <div className="mt-4">
-        <HourBars outlook={outlook} />
-      </div>
 
       {/* Frische-Fußzeile (T8: ein Baustein für alle Bereiche) */}
       <FreshnessLine text={freshness.text} tone={freshness.tone} place={activeCity} />

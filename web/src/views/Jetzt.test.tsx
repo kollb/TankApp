@@ -633,8 +633,26 @@ describe("Tank-Guide: Fallback-Stufen", () => {
 
   it("die Ersparnis steht als Betrag auf der Tankmenge", () => {
     const html = render();
-    expect(html).toContain("Was bringt Warten?");
     // 1,749 €/L jetzt gegen 1,709 €/L im Fenster = 4 ct/L × 40 L = 1,60 €.
     expect(html).toContain("ca. 1,60 € gespart · 40 L");
+  });
+
+  it("ohne Zeit-Aussage der Karte kein Ersparnis-Betrag", () => {
+    // „Woanders tanken“ und „Keine klare Empfehlung“ vergleichen Orte,
+    // keine Zeiten — ein Betrag pro Tankfüllung würde hier eine Differenz
+    // behaupten, die die Entscheidung nicht trifft.
+    for (const action of ["refuel_elsewhere", "no_advice"] as const) {
+      const html = render({
+        decideRes: {
+          data: { ...decide(action), decision_ready: true },
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 0,
+        },
+      });
+      expect(html).not.toContain("gespart ·");
+      expect(html).not.toContain("Warten kostet");
+    }
   });
 });

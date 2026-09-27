@@ -24,6 +24,11 @@ export function GuideConfidence({
   onTone = false,
   className = "",
 }: GuideConfidenceProps) {
+  // Ohne Messung keine Stufe. Eine fehlende Messung auf „Kaum
+  // einschätzbar“ abzubilden, wäre ein Urteil über eine Zahl, die es nicht
+  // gibt — und würde die Karte schlechter reden, als sie ist. In diesem
+  // Fall trägt der Lernstand (`learningNote`) die Aussage.
+  if (percent === null || !Number.isFinite(percent)) return null;
   const stage: ConfidenceStage = confidenceStage(percent);
   const word = CONFIDENCE_TEXT[stage];
   return (
