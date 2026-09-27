@@ -1,10 +1,19 @@
 import { euro, euroPerLiter } from "../data";
-import type { ReactNode } from "react";
+import type { ReactNode, KeyboardEvent } from "react";
 
-export function Price({ value, className = "" }: { value: number; className?: string }) {
+export function Price({
+  value,
+  className = "",
+}: {
+  value: number;
+  className?: string;
+}) {
   const s = euro(value, 3);
   return (
-    <span aria-label={euroPerLiter(value)} className={`tabular-nums whitespace-nowrap ${className}`}>
+    <span
+      aria-label={euroPerLiter(value)}
+      className={`tabular-nums whitespace-nowrap ${className}`}
+    >
       {s.slice(0, -1)}
       <sup className="relative -top-[0.1em] text-[0.55em]">{s.slice(-1)}</sup>
       <span className="ml-0.5 text-[0.55em] font-medium">€</span>
@@ -24,7 +33,17 @@ export function Anno({ n, show }: { n: number; show: boolean }) {
   );
 }
 
-export function BrandAvatar({ brand, bg, fg, size = 40 }: { brand: string; bg: string; fg: string; size?: number }) {
+export function BrandAvatar({
+  brand,
+  bg,
+  fg,
+  size = 40,
+}: {
+  brand: string;
+  bg: string;
+  fg: string;
+  size?: number;
+}) {
   return (
     <span
       className="grid grid-cols-1 shrink-0 place-items-center rounded-full text-xs font-black tracking-tight"
@@ -35,11 +54,22 @@ export function BrandAvatar({ brand, bg, fg, size = 40 }: { brand: string; bg: s
   );
 }
 
-export function Confidence({ level, text, onDark = false }: { level: 1 | 2 | 3; text: string; onDark?: boolean }) {
+export function Confidence({
+  level,
+  text,
+  onDark = false,
+}: {
+  level: 1 | 2 | 3;
+  text: string;
+  onDark?: boolean;
+}) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium" title="So sicher sind wir uns">
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium"
+      title="So sicher sind wir uns"
+    >
       <span className="flex items-end gap-[2px]" aria-hidden>
-        {[1, 2, 3].map(i => (
+        {[1, 2, 3].map((i) => (
           <span
             key={i}
             className={`w-[4px] rounded-full ${i <= level ? "bg-current" : onDark ? "bg-current opacity-25" : "bg-current opacity-20"}`}
@@ -52,14 +82,58 @@ export function Confidence({ level, text, onDark = false }: { level: 1 | 2 | 3; 
   );
 }
 
-export function SectionTitle({ title, sub, action }: { title: string; sub?: string; action?: ReactNode }) {
+export function SectionTitle({
+  title,
+  sub,
+  action,
+}: {
+  title: string;
+  sub?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
       <div>
-        <h2 className="text-base font-semibold leading-6 text-on-surface">{title}</h2>
+        <h2 className="text-base font-semibold leading-6 text-on-surface">
+          {title}
+        </h2>
         {sub && <p className="text-sm text-on-surface-variant">{sub}</p>}
       </div>
       {action}
     </div>
   );
+}
+
+/** Arrow/Home/End navigation for a radio group or tablist, with roving focus. */
+export function navigateGroup(event: KeyboardEvent<HTMLElement>) {
+  if (
+    ![
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+    ].includes(event.key)
+  )
+    return;
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      'button[role="radio"], button[role="tab"]',
+    ),
+  ].filter((item) => !item.disabled);
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  if (current < 0 || !items.length) return;
+  event.preventDefault();
+  const index =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : (current +
+            (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) +
+            items.length) %
+          items.length;
+  items[index].focus();
+  items[index].click();
 }

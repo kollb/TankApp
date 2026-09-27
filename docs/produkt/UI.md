@@ -272,4 +272,5 @@ Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
 UX-Panel rechts. Mobil schaltet „Konzept & Steuerung“ die Ansicht um. Der
 Desktop-Link „Neue GUI“ sitzt in der Live-Kopfzeile. Die Live-App bleibt unter
 `/` und den bisherigen Tab-URLs; deren Funktionen werden nicht durch Demo-Daten
-ersetzt. Karte/Alarme im Prototyp sind ausdrücklich Demo-Interaktionen.
+ersetzt. Karte/Alarme im Prototyp sind ausdrücklich Demo-Interaktionen. Bedienung und
+Funktionsabdeckung stehen in [GUI-VORLAGEN](GUI-VORLAGEN.md).

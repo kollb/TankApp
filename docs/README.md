@@ -30,7 +30,7 @@
 | [Konzept](produkt/KONZEPT.md) | Produktregeln, drei Fragen und ehrliche Grenzen |
 | [UI](produkt/UI.md) | Aktuelle Navigation, Bereiche und Anzeigeprinzipien |
 | [Microcopy](produkt/MICROCOPY.md) | Verbindliche Regeln für Nutzertexte |
-| [GUI-Vorlagen](produkt/GUI-VORLAGEN.md) | Übernahme aus den geschützten Prototypen in `sample/` |
+| [GUI-Vorlagen](produkt/GUI-VORLAGEN.md) | M3-Design-Lab, Funktionsabdeckung und Trennung von Demo und Live-App |
 | [Architektur](architektur/ARCHITEKTUR.md) | Geräte, Datenfluss und Ressourcen |
 | [ADRs](adr/README.md) | Entscheidungen mit Kontext und Konsequenzen |
 

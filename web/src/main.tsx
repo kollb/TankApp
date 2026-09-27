@@ -5,11 +5,18 @@ import { registerServiceWorker } from "./service-worker";
 import "./styles.css";
 
 const ConceptApp = lazy(() => import("./concept/App"));
-const isConcept = new URLSearchParams(window.location.search).get("konzept") === "1";
+const isConcept =
+  new URLSearchParams(window.location.search).get("konzept") === "1";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {isConcept ? <Suspense fallback={<p className="p-8">Konzept wird geladen …</p>}><ConceptApp /></Suspense> : <Dashboard />}
+    {isConcept ? (
+      <Suspense fallback={<p className="p-8">Konzept wird geladen …</p>}>
+        <ConceptApp />
+      </Suspense>
+    ) : (
+      <Dashboard />
+    )}
   </React.StrictMode>,
 );
 
