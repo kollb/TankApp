@@ -209,6 +209,71 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
 });
 
 // ---------------------------------------------------------------------------
+// M3-Farbrollen des Tank-Guides.
+//
+// Der Guide antwortet in einer Farbe (Grün = jetzt tanken, Rot = besser
+// warten, Blau = kein Zeitdruck, warmes Amber = offline). Diese Bedeutung
+// trägt nur, wenn Text auf der jeweiligen Tonal-Fläche auch im zweiten
+// Thema lesbar bleibt — ein helles Grün mit weißem Text wäre im Light-Stand
+// ein AA-Bruch an genau der Stelle, die in unter einer Sekunde erfasst
+// werden soll. Geprüft werden deshalb die Paare, nicht die Einzelwerte.
+// ---------------------------------------------------------------------------
+describe("M3-Farbrollen des Tank-Guides", () => {
+  const dark = colorTokens(block(":root {"));
+  const light = colorTokens(block("html.light {"));
+
+  /** Fläche → Textton, der auf ihr liegt (M3: container/on-container). */
+  const pairs: [string, string][] = [
+    ["m3-primary-container", "m3-on-primary-container"],
+    ["m3-error-container", "m3-on-error-container"],
+    ["m3-tertiary-container", "m3-on-tertiary-container"],
+    ["m3-warn-container", "m3-on-warn-container"],
+    ["m3-primary", "m3-on-primary"],
+    ["m3-error", "m3-on-error"],
+    ["m3-tertiary", "m3-on-tertiary"],
+    ["m3-inverse-surface", "m3-on-inverse-surface"],
+  ];
+
+  const m3Keys = (tokens: Record<string, string>) =>
+    Object.keys(tokens)
+      .filter((name) => name.startsWith("m3-"))
+      .sort();
+
+  it("beide Themen definieren dieselben Rollen", () => {
+    expect(m3Keys(light)).toEqual(m3Keys(dark));
+  });
+
+  it.each([
+    ["dunkel", dark],
+    ["hell", light],
+  ] as const)("%s: jeder M3-Ton hält 4,5:1 auf seiner Fläche", (_name, tokens) => {
+    for (const [surface, text] of pairs) {
+      expect(tokens[surface], `${surface} fehlt`).toBeDefined();
+      expect(tokens[text], `${text} fehlt`).toBeDefined();
+      expect(
+        contrast(tokens[text], tokens[surface]),
+        `${text} (${tokens[text]}) auf ${surface} (${tokens[surface]})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  // Die Stundenbalken sind Flächen, kein Text: 3:1 (WCAG 1.4.11) reichen,
+  // damit die Ampel auch auf der Karte erkennbar bleibt.
+  it.each([
+    ["dunkel", dark, "#0f172a"],
+    ["hell", light, "#ffffff"],
+  ] as const)("%s: die Ampel der Stundenbalken hebt sich ab", (_name, tokens, surface) => {
+    for (const role of ["m3-bar-low", "m3-bar-mid", "m3-bar-high"]) {
+      expect(tokens[role], `${role} fehlt`).toBeDefined();
+      expect(
+        contrast(tokens[role], surface),
+        `${role} (${tokens[role]}) auf ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // U1 — Typografie: keine px-fixierte Kleinschrift.
 //
 // UI-NEUENTWURF §14: „System-Schriftgröße wird respektiert (keine

@@ -14,6 +14,58 @@
 :root {
   --color-slate-500: #8598b0; /* 4,96:1 auf slate-800, 7,6:1 auf slate-950 */
   --color-slate-600: #8295ad; /* 4,77:1 auf slate-800, 7,3:1 auf slate-950 */
+
+  /*
+   * M3-Farbrollen (Material You) — dunkler Stand.
+   *
+   * Der Tank-Guide antwortet in einer Farbe: Grün = jetzt tanken, Rot =
+   * besser warten, Blau = kein Zeitdruck. Damit diese drei Töne überall
+   * dieselbe Bedeutung haben, stehen sie hier als **Rollen** und nicht als
+   * verstreute Hexwerte. Die Paare container/on-container stammen aus dem
+   * M3-Referenzschema zu den Leitfarben des Konzepts (Primary #006c4c,
+   * Error #ba1a1a, Tertiary #3d6373); im dunklen Stand sind es die
+   * dazugehörigen Dark-Töne, damit Text auf der Tonal-Fläche AA hält.
+   * Geprüft von src/a11y.test.ts: jedes Paar ≥ 4,5:1.
+   */
+  --color-m3-primary: #6cdbac;
+  --color-m3-on-primary: #003826;
+  --color-m3-primary-container: #00513a;
+  --color-m3-on-primary-container: #89f8c7;
+
+  --color-m3-error: #ffb4ab;
+  --color-m3-on-error: #690005;
+  --color-m3-error-container: #93000a;
+  --color-m3-on-error-container: #ffdad6;
+
+  --color-m3-tertiary: #a5cff0;
+  --color-m3-on-tertiary: #023543;
+  --color-m3-tertiary-container: #234b5c;
+  --color-m3-on-tertiary-container: #c1e8fb;
+
+  /* „Warmes Warn-Banner“ (Stufe 3, offline) — Amber, kein Error-Rot:
+     Offline ist kein Fehler der Nutzerin oder des Nutzers. */
+  --color-m3-warn: #f2b23b;
+  --color-m3-on-warn: #452c00;
+  --color-m3-warn-container: #4a3300;
+  --color-m3-on-warn-container: #ffdea3;
+
+  /* Ampel der Stundenbalken („Heute im Überblick“): Flächen, kein Text —
+     3:1 gegen die Kartenfläche genügen (WCAG 1.4.11). */
+  --color-m3-bar-low: #10b981;
+  --color-m3-bar-mid: #f59e0b;
+  --color-m3-bar-high: #f43f5e;
+
+  /* Flächen-Abstufung ohne harte Schlagschatten (M3 Surface Containers). */
+  --color-m3-surface-lowest: #0b0f19;
+  --color-m3-surface-low: #0f172a;
+  --color-m3-surface-high: #1e293b;
+  --color-m3-outline: #334155;
+  --color-m3-outline-variant: #475569;
+  /* Snackbar („Wieder online“): invertierte Fläche hebt die Bestätigung
+     von allem ab, was darunter liegt. */
+  --color-m3-inverse-surface: #e2e8f0;
+  --color-m3-on-inverse-surface: #1e293b;
+  --color-m3-inverse-primary: #006c4c;
 }
 
 @layer base {
@@ -88,6 +140,42 @@ html.light {
   --color-amber-950: #fef3c7;
   --color-rose-950: #fee2e2;
   --color-sky-950: #e0f2fe;
+
+  /* Dieselben M3-Rollen im hellen Stand — hier die Leitfarben des
+     Konzepts selbst: Primary #006c4c, Error #ba1a1a, Tertiary #3d6373.
+     Ein Rollenwechsel kippt nur die Werte, keine Klasse im Code. */
+  --color-m3-primary: #006c4c;
+  --color-m3-on-primary: #ffffff;
+  --color-m3-primary-container: #89f8c7;
+  --color-m3-on-primary-container: #002114;
+
+  --color-m3-error: #ba1a1a;
+  --color-m3-on-error: #ffffff;
+  --color-m3-error-container: #ffdad6;
+  --color-m3-on-error-container: #410002;
+
+  --color-m3-tertiary: #3d6373;
+  --color-m3-on-tertiary: #ffffff;
+  --color-m3-tertiary-container: #c1e8fb;
+  --color-m3-on-tertiary-container: #001f29;
+
+  --color-m3-warn: #7c5800;
+  --color-m3-on-warn: #ffffff;
+  --color-m3-warn-container: #ffdea3;
+  --color-m3-on-warn-container: #261900;
+
+  --color-m3-bar-low: #047857;
+  --color-m3-bar-mid: #b45309;
+  --color-m3-bar-high: #b91c1c;
+
+  --color-m3-surface-lowest: #ffffff;
+  --color-m3-surface-low: #f6f8fb;
+  --color-m3-surface-high: #e2e8f0;
+  --color-m3-outline: #55677c;
+  --color-m3-outline-variant: #cbd5e1;
+  --color-m3-inverse-surface: #2b322e;
+  --color-m3-on-inverse-surface: #ecf2ec;
+  --color-m3-inverse-primary: #6cdbac;
 }
 html.light body {
   background-color: #eef2f7;
@@ -145,6 +233,96 @@ html.light input[type="range"] {
 }
 .glow-rose {
   box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.28);
+}
+
+/* --------------------------------------------------------------------------
+ * M3-Komponentenflächen des Tank-Guides.
+ *
+ * Eine Rolle, eine Klasse: Der Ton einer Aussage (grün/rot/blau/neutral)
+ * wechselt über dieselbe Klasse in beiden Themen. Keine Komponente trägt
+ * deshalb eigene Farben — sonst erzählt „Rot“ an zwei Stellen zweierlei.
+ * Geprüft von src/a11y.test.ts (Kontrast jedes Paares, beide Themen).
+ * ------------------------------------------------------------------------ */
+.m3-now {
+  background-color: var(--color-m3-primary-container);
+  color: var(--color-m3-on-primary-container);
+}
+.m3-wait {
+  background-color: var(--color-m3-error-container);
+  color: var(--color-m3-on-error-container);
+}
+.m3-relaxed {
+  background-color: var(--color-m3-tertiary-container);
+  color: var(--color-m3-on-tertiary-container);
+}
+/* Outlined Card (Stufe 2): dieselbe Fläche, nur umrandet — die Karte
+   bleibt an ihrem Platz, sie urteilt bloß nicht mehr. */
+.m3-neutral {
+  background-color: var(--color-m3-surface-lowest);
+  color: var(--color-white);
+  border: 1px solid var(--color-m3-outline-variant);
+}
+.m3-on-now {
+  color: var(--color-m3-primary);
+}
+.m3-on-wait {
+  color: var(--color-m3-error);
+}
+.m3-on-relaxed {
+  color: var(--color-m3-tertiary);
+}
+.m3-chip-now {
+  background-color: var(--color-m3-primary);
+  color: var(--color-m3-on-primary);
+}
+.m3-chip-wait {
+  background-color: var(--color-m3-error);
+  color: var(--color-m3-on-error);
+}
+.m3-chip-relaxed {
+  background-color: var(--color-m3-tertiary);
+  color: var(--color-m3-on-tertiary);
+}
+.m3-chip-neutral {
+  background-color: var(--color-m3-surface-high);
+  color: var(--color-white);
+}
+.m3-btn-now {
+  background-color: var(--color-m3-primary);
+  color: var(--color-m3-on-primary);
+}
+.m3-btn-wait {
+  background-color: var(--color-m3-error);
+  color: var(--color-m3-on-error);
+}
+.m3-btn-relaxed {
+  background-color: var(--color-m3-tertiary);
+  color: var(--color-m3-on-tertiary);
+}
+.m3-btn-tonal {
+  background-color: var(--color-m3-surface-high);
+  color: var(--color-white);
+}
+.m3-banner-neutral {
+  background-color: var(--color-m3-tertiary-container);
+  color: var(--color-m3-on-tertiary-container);
+}
+.m3-banner-warn {
+  background-color: var(--color-m3-warn-container);
+  color: var(--color-m3-on-warn-container);
+}
+.m3-snackbar {
+  background-color: var(--color-m3-inverse-surface);
+  color: var(--color-m3-on-inverse-surface);
+}
+.m3-bar-low {
+  background-color: var(--color-m3-bar-low);
+}
+.m3-bar-mid {
+  background-color: var(--color-m3-bar-mid);
+}
+.m3-bar-high {
+  background-color: var(--color-m3-bar-high);
 }
 
 /* --------------------------------------------------------------------------
