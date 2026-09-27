@@ -108,7 +108,7 @@ export function guideBanner(
         (options.hasPrices === false
           ? "Der Preisvergleich trägt die Entscheidung."
           : "Alle Preise sind trotzdem live. ") +
-        "Die Zeit-Empfehlung kommt nach der Freigabe — der Zählstand steht in der Karte.",
+        "Die Zeit-Empfehlung kommt nach der Freigabe.",
       retry: "Erneut versuchen",
       retrying: "Verbinde …",
       tone: "neutral",

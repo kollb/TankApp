@@ -42,7 +42,7 @@ export function GuideBanner({
   return (
     <section
       aria-label={banner.title}
-      className={`mb-4 flex flex-col gap-3 p-4 ${radius.card} ${
+      className={`mb-3 flex flex-col gap-2 p-3 ${radius.card} ${
         banner.tone === "warn" ? "m3-banner-warn" : "m3-banner-neutral"
       }`}
     >
