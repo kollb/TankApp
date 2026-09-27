@@ -147,7 +147,7 @@ export function Metric({
           </span>
         )}
       </div>
-      <div className="my-2 text-2xl font-bold tracking-tight text-white tabular-nums sm:text-3xl">
+      <div className="my-2 text-2xl font-bold tracking-tight text-slate-100 tabular-nums sm:text-3xl">
         {value}
       </div>
       <div className="text-xs leading-relaxed text-slate-400">{detail}</div>

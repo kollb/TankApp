@@ -456,17 +456,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <div
                 role="group"
                 aria-label="Kraftstoff wählen"
-                className="mt-3 flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+                className="mt-3 flex rounded-full border border-outline-variant bg-sc-lowest p-1 text-xs font-bold"
               >
                 {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
                   <button
                     key={value}
                     aria-pressed={fuel === value}
                     onClick={() => setFuel(value)}
-                    className={`rounded-lg px-3 py-1.5 transition-colors ${
+                    className={`rounded-full px-3 py-1.5 transition-colors ${
                       fuel === value
-                        ? "bg-emerald-500 text-slate-950"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-secondary-container text-on-secondary-container"
+                        : "text-on-surface-variant hover:text-on-surface"
                     }`}
                   >
                     {value === "diesel" ? "Diesel" : value.toUpperCase()}
@@ -625,7 +625,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-bold transition-colors ${
                 theme === value
                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                  : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
+                  : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100"
               }`}
             >
               {value === "dark" ? (

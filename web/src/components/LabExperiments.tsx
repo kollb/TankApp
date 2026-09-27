@@ -56,7 +56,7 @@ export function LabExperiments({
     <section className={`${panel} p-4`} aria-labelledby="lab-exp-title">
       <div className="flex items-center gap-2">
         <FlaskConical size={15} className="text-violet-300" aria-hidden="true" />
-        <h2 id="lab-exp-title" className="text-sm font-semibold text-white">
+        <h2 id="lab-exp-title" className="text-sm font-semibold text-slate-100">
           Experimente
         </h2>
       </div>

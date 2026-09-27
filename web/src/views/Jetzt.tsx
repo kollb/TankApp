@@ -492,7 +492,7 @@ export function JetztView(props: JetztViewProps) {
       {dueEpisode && !dueDismissed && (
         <section
           aria-label="Rückmeldung nach Fensterende"
-          className={`mb-4 ${radius.card} border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 p-4 shadow-xl`}
+          className={`mb-4 ${radius.card} border border-amber-500/40 bg-amber-950/50 p-4 elev-1`}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
@@ -520,7 +520,7 @@ export function JetztView(props: JetztViewProps) {
                     ? "Kein frischer Preis — bitte manuell erfassen"
                     : `Wie empfohlen ${euro(dueFillPrice, 3)} €/L`
                 }
-                className="rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition shadow-md hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="m3-btn-now rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Ja, wie empfohlen (
                 {dueFillPrice !== null ? `${euro(dueFillPrice, 3)} €/L` : "Preis unbekannt"})

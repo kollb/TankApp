@@ -69,7 +69,7 @@ export function LabBlock({
             id={`labor-${id}-title`}
             role="heading"
             aria-level={2}
-            className="mt-0.5 block text-base font-semibold text-white"
+            className="mt-0.5 block text-base font-semibold text-slate-100"
           >
             {question}
           </span>
@@ -186,7 +186,7 @@ export function ParamCardShell({
         </span>
         <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
           <span className="block text-xs font-semibold text-violet-300">{`Karte ${number}`}</span>
-          <span id={`${anchor}-title`} role="heading" aria-level={3} className="mt-0.5 block text-base font-semibold text-white">
+          <span id={`${anchor}-title`} role="heading" aria-level={3} className="mt-0.5 block text-base font-semibold text-slate-100">
             {title}
           </span>
           <span className="mt-1 block text-sm leading-relaxed text-slate-300">{sentence}</span>

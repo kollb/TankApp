@@ -52,7 +52,7 @@ export function LaborView(props: LaborViewProps) {
     <section aria-labelledby="labor-title" className="pb-2">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 id="labor-title" className="text-2xl font-bold tracking-tight text-white">
+          <h1 id="labor-title" className="text-2xl font-bold tracking-tight text-slate-100">
             Verstehen, warum die App das sagt
           </h1>
           {/* Beta-Badge und Leitsatz (Entwurf „Tankklar“): Das Labor ist

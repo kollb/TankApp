@@ -34,7 +34,7 @@ export function GlossaryView() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-white">
+                <h3 className="text-base font-semibold text-slate-100">
                   {entry.de}{" "}
                   <span className="font-normal text-slate-400">
                     — {entry.term}
@@ -70,7 +70,7 @@ export function GlossaryView() {
       <section className={`${panel} mt-6 p-5 sm:p-6`}>
         <div className="flex items-center gap-2">
           <BookOpen size={16} className="text-sky-400" />
-          <h3 className="text-sm font-semibold text-white">
+          <h3 className="text-sm font-semibold text-slate-100">
             Noch Fragen?
           </h3>
         </div>

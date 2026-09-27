@@ -118,7 +118,7 @@ export function InstallHint({ onNote }: { onNote?: (message: string) => void }) 
           type="button"
           onClick={() => void install()}
           disabled={busy}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
+          className="m3-btn-now rounded-full px-4 py-2 text-xs font-bold transition disabled:opacity-50"
         >
           {text.action}
         </button>

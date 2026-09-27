@@ -314,7 +314,7 @@ export function StationenView(props: StationenViewProps) {
 
   return (
     <section aria-labelledby="stationen-title">
-      <h1 id="stationen-title" className="text-2xl font-bold tracking-tight text-white">
+      <h1 id="stationen-title" className="text-2xl font-bold tracking-tight text-slate-100">
         Stationen
       </h1>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
@@ -424,14 +424,14 @@ export function StationenView(props: StationenViewProps) {
             <MapPin size={13} aria-hidden="true" />
             Noch keine Stationen
           </span>
-          <h2 className="mt-3 text-xl font-bold text-white">Erst Stationen einrichten, dann der Atlas</h2>
+          <h2 className="mt-3 text-xl font-bold text-slate-100">Erst Stationen einrichten, dann der Atlas</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">
             Sobald die App Stationen beobachtet, stehen hier Karte, Liste
             und Vergleich — mit den aktuellen Preisen.
           </p>
           <button
             onClick={() => onNavigate("system")}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+            className="m3-btn-now mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold"
           >
             Einrichtung ansehen
             <ArrowRight size={15} aria-hidden="true" />

@@ -94,7 +94,7 @@ export function LabProfile({
 
   return (
     <section className={`${panel} p-4`} aria-labelledby="lab-profile-title">
-      <h2 id="lab-profile-title" className="text-sm font-semibold text-white">
+      <h2 id="lab-profile-title" className="text-sm font-semibold text-slate-100">
         Persönliches Tankprofil
       </h2>
       <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
@@ -104,7 +104,7 @@ export function LabProfile({
       <label className="mt-3 block">
         <span className="flex items-baseline justify-between text-xs text-slate-400">
           <span>Tankmenge</span>
-          <span className="font-semibold text-white tabular-nums">
+          <span className="font-semibold text-slate-100 tabular-nums">
             {deTrimmed(liters, 0)} Liter
           </span>
         </span>
