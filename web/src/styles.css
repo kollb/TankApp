@@ -383,10 +383,10 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-m3-tertiary-container);
   color: var(--color-m3-on-tertiary-container);
 }
-/* Outlined Card (Stufe 2/„kein Zeitdruck“): dieselbe Fläche, nur umrandet. */
+/* Outlined Card (Stufe 2/„kein Zeitdruck“): neutrale Fläche, nur umrandet. */
 .m3-neutral {
   background-color: var(--color-m3-surface-lowest);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
   border: 1px solid var(--color-m3-outline-variant);
 }
 .m3-on-now {
@@ -412,7 +412,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 .m3-chip-neutral {
   background-color: var(--color-m3-surface-high);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
 }
 .m3-btn-now {
   background-color: var(--color-m3-primary);
@@ -428,7 +428,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 .m3-btn-tonal {
   background-color: var(--color-m3-surface-high);
-  color: var(--color-white);
+  color: var(--color-m3-on-surface);
 }
 .m3-banner-neutral {
   background-color: var(--color-m3-tertiary-container);

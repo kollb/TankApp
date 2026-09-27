@@ -152,32 +152,46 @@ export interface JetztViewProps {
 }
 
 /*
- * Urteilstöne (UI-Neugestaltung 2026-09-26): Grün = jetzt handeln,
- * Blau = warten bis Fenster, Rot = echtes Risiko (Tankrest blockiert
- * das Warten), Grau = ehrlich unentschieden. Die Urteils-Karte ist die
- * einzige Karte der Seite mit Elevation (Glow) — der Blick landet
- * automatisch dort.
+ * Urteilstöne (GUI v2, Material You): Grün = jetzt handeln, Blau =
+ * warten bis Fenster, Rot = echtes Risiko (Tankrest blockiert das
+ * Warten), Grau = ehrlich unentschieden. Die Flächen kommen aus den
+ * M3-Rollen in styles.css (Container + On-Container): Primary-Container
+ * für „jetzt“, Tertiary-Container für „warten“, Error-Container nur
+ * fürs Tankrest-Risiko, die neutrale Karte ist eine Outlined Card —
+ * exakt die Farbwelt der Vorlage (sample/good gui). „Rot bleibt dem
+ * Tankrest“ gilt weiter (CHANGELOG): Warten ist hier blau.
+ *
+ * STRONG_TONE/SUB_TONE sind die Texttöne AUF diesen Flächen: die
+ * Pastell-Token (-100) sind pro Thema als On-Container-Ton bzw.
+ * dunkler Pedant gemappt — dadurch trägt dieselbe Klasse hell wie
+ * dunkel den passenden Text.
  */
 const CARD_TONE = {
-  green:
-    "border-emerald-500/30 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900",
-  blue: "border-sky-500/30 bg-gradient-to-br from-sky-950/60 via-slate-900 to-slate-900",
-  red: "border-rose-500/30 bg-gradient-to-br from-rose-950/60 via-slate-900 to-slate-900",
-  gray: "border-slate-700 bg-slate-900/80",
-} as const;
-
-const CARD_GLOW = {
-  green: "glow-emerald",
-  blue: "glow-blue",
-  red: "glow-rose",
-  gray: "",
+  green: "m3-now elev-1",
+  blue: "m3-relaxed elev-1",
+  red: "m3-wait elev-1",
+  gray: "m3-neutral",
 } as const;
 
 const CHIP = {
-  green: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  blue: "border-sky-500/30 bg-sky-500/10 text-sky-300",
-  red: "border-rose-500/30 bg-rose-500/10 text-rose-300",
-  gray: "border-slate-700 bg-slate-800/60 text-slate-300",
+  green: "m3-chip-now",
+  blue: "m3-chip-relaxed",
+  red: "m3-chip-wait",
+  gray: "m3-chip-neutral border border-outline-variant",
+} as const;
+
+const STRONG_TONE = {
+  green: "text-emerald-100",
+  blue: "text-sky-100",
+  red: "text-rose-100",
+  gray: "text-slate-100",
+} as const;
+
+const SUB_TONE = {
+  green: "text-emerald-100/80",
+  blue: "text-sky-100/80",
+  red: "text-rose-100/80",
+  gray: "text-slate-400",
 } as const;
 
 // V4 (GUI-TEXT-BEFUND): kein Zeichen als Textersatz. „Jetzt tanken“,
@@ -471,7 +485,7 @@ export function JetztView(props: JetztViewProps) {
 
   return (
     <section aria-labelledby="jetzt-title">
-      <h1 id="jetzt-title" className="text-2xl font-bold tracking-tight text-white">
+      <h1 id="jetzt-title" className="text-2xl font-bold tracking-tight text-slate-100">
         Jetzt
       </h1>
       {/* Due-Prompt nach Fensterende (aus dem Alltagstab übernommen) */}
@@ -489,7 +503,7 @@ export function JetztView(props: JetztViewProps) {
                 <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
                   Fenster vorbei
                 </span>
-                <h2 className="mt-0.5 text-base font-bold text-white">
+                <h2 className="mt-0.5 text-base font-bold text-slate-100">
                   Gerade getankt?
                 </h2>
                 <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
@@ -519,7 +533,7 @@ export function JetztView(props: JetztViewProps) {
               </button>
               <button
                 onClick={() => onDismissDue(dueEpisode.id)}
-                className="rounded-lg px-3 py-2.5 text-xs text-slate-400 transition hover:text-white"
+                className="rounded-lg px-3 py-2.5 text-xs text-slate-400 transition hover:text-slate-100"
               >
                 Noch nicht
               </button>
@@ -545,15 +559,15 @@ export function JetztView(props: JetztViewProps) {
         ) : setup ? (
           <div className={`${panel} p-5 sm:p-7`}>
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
             >
               <Compass size={13} aria-hidden="true" />
               Noch keine Daten
             </span>
-            <h2 className="mt-3 text-xl font-bold text-white sm:text-2xl">
+            <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-100">
               Einrichten in drei Schritten
             </h2>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
               Schritt 1: Ort und Kraftstoff wählen · Schritt 2: Stationen
               festlegen · Schritt 3: Collector prüfen. Danach erscheinen
               Preise in wenigen Minuten, die erste Empfehlung nach einigen
@@ -561,10 +575,10 @@ export function JetztView(props: JetztViewProps) {
             </p>
             <button
               onClick={() => onNavigate("system")}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+              className="m3-btn-now mt-5 inline-flex h-12 items-center gap-2 rounded-full px-6 text-sm font-bold"
             >
               Einrichtung starten
-              <ArrowRight size={15} aria-hidden="true" />
+              <ArrowRight size={16} aria-hidden="true" />
             </button>
           </div>
         ) : verdict?.expired ? (
@@ -576,24 +590,24 @@ export function JetztView(props: JetztViewProps) {
             aria-labelledby="jetzt-headline"
           >
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
             >
               <Clock size={13} aria-hidden="true" />
               Empfehlung abgelaufen
             </span>
             <h2
               id="jetzt-headline"
-              className="mt-3 text-xl font-bold text-white sm:text-2xl"
+              className="mt-3 text-2xl font-extrabold tracking-tight text-slate-100"
             >
               {verdict.headline}
             </h2>
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
               {verdict.detail}
             </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 onClick={onRetry}
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+                className="inline-flex h-12 items-center justify-center rounded-full border border-outline-variant bg-sc-low px-6 text-sm font-semibold text-on-surface transition hover:bg-sc"
               >
                 Empfehlung neu laden
               </button>
@@ -601,43 +615,40 @@ export function JetztView(props: JetztViewProps) {
           </div>
         ) : verdict && verdict.action !== "no_advice" ? (
           <div
-            className={`${panel} p-5 sm:p-7 ${CARD_TONE[verdict.tone]} ${CARD_GLOW[verdict.tone]}`}
+            className={`${panel} p-5 sm:p-7 ${CARD_TONE[verdict.tone]}`}
             aria-labelledby="jetzt-headline"
           >
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP[verdict.tone]}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${CHIP[verdict.tone]}`}
             >
               {CHIP_TEXT[verdict.action]}
             </span>
             <h2
               id="jetzt-headline"
-              className="mt-3 text-xl font-bold text-white sm:text-2xl"
+              className={`mt-3 text-[1.625rem] font-extrabold tracking-tight sm:text-[1.75rem] ${STRONG_TONE[verdict.tone]}`}
             >
               {verdict.headline}
             </h2>
             {verdict.amount && (
-              <p className="mt-2 text-2xl font-black tracking-tight text-white tabular-nums sm:text-3xl">
+              <p
+                className={`mt-2 text-2xl font-black tracking-tight tabular-nums sm:text-3xl ${STRONG_TONE[verdict.tone]}`}
+              >
                 {verdict.amount}
               </p>
             )}
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
+            <p
+              className={`mt-2 max-w-xl text-sm leading-relaxed ${SUB_TONE[verdict.tone]}`}
+            >
               {verdict.detail}
             </p>
             {hint && (
-              <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
+              <p
+                className={`mt-2 max-w-xl text-xs leading-relaxed ${SUB_TONE[verdict.tone]}`}
+              >
                 {hint}
               </p>
             )}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {validity && (
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${validity.endingSoon ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-slate-700 bg-slate-800/60 text-slate-300"}`}
-                  title="Freigabe der Empfehlung — danach wird neu berechnet"
-                >
-                  <Clock size={12} aria-hidden="true" />
-                  {validity.label}
-                </span>
-              )}
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               {verdict.mapsUrl && (
                 <a
                   href={verdict.mapsUrl}
@@ -648,22 +659,31 @@ export function JetztView(props: JetztViewProps) {
                      als <a> mit 36 px unter dem Touch-Ziel (C5/WCAG 2.5.5) —
                      die 44-px-Regel in styles.css greift bei Links nur mit
                      dieser Klasse. */
-                  className="tap-44 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                  className="tap-44 m3-btn-now inline-flex h-12 items-center justify-center gap-2 rounded-full px-6 text-sm font-bold"
                 >
                   Route
-                  <ArrowRight size={15} aria-hidden="true" />
+                  <ArrowRight size={16} aria-hidden="true" />
                 </a>
-              )}
-              {verdict && (
-                <GuideConfidence percent={verdict.percent} onTone />
               )}
               <button
                 onClick={() => setSheetOpen(true)}
                 aria-haspopup="dialog"
-                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+                className="inline-flex h-12 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest px-6 text-sm font-semibold text-on-surface transition hover:bg-sc-low"
               >
                 Warum?
               </button>
+              {verdict && (
+                <GuideConfidence percent={verdict.percent} onTone />
+              )}
+              {validity && (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${validity.endingSoon ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-outline-variant text-on-surface-variant"}`}
+                  title="Freigabe der Empfehlung — danach wird neu berechnet"
+                >
+                  <Clock size={12} aria-hidden="true" />
+                  {validity.label}
+                </span>
+              )}
             </div>
             {/* Was-wäre-wenn in der Karte (§5.1): die Annahmen, die die
                 Empfehlung tragen — live, über denselben Server-Aufruf. */}
@@ -675,7 +695,7 @@ export function JetztView(props: JetztViewProps) {
               }`}
             >
               <summary
-                className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden"
+                className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-slate-400 hover:text-slate-100 [&::-webkit-details-marker]:hidden"
                 onClick={() => setAssumptionsOpen(true)}
               >
                 <span className="flex items-center gap-2 font-semibold">
@@ -728,7 +748,7 @@ export function JetztView(props: JetztViewProps) {
                       onChange={(e) => setLitersStr(e.target.value)}
                       onBlur={commitLiters}
                       onKeyDown={(e) => e.key === "Enter" && commitLiters()}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
                     />
                     <span className="mt-1 block text-xs text-slate-500">
                       {deTrimmed(PROFILE_BOUNDS.liters.min, 0)}–
@@ -743,7 +763,7 @@ export function JetztView(props: JetztViewProps) {
                       value={latestByStr}
                       onChange={(e) => setLatestByStr(e.target.value)}
                       onBlur={commitLatestBy}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
                     />
                     <span className="mt-1 block text-xs text-slate-500">
                       leer = keine Grenze · Fenster danach fallen weg
@@ -758,7 +778,7 @@ export function JetztView(props: JetztViewProps) {
                       onChange={(e) => setTimeValueStr(e.target.value)}
                       onBlur={commitTimeValue}
                       onKeyDown={(e) => e.key === "Enter" && commitTimeValue()}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white focus:border-emerald-500"
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
                     />
                     <span
                       className="mt-1 block text-xs text-slate-500"
@@ -850,7 +870,7 @@ export function JetztView(props: JetztViewProps) {
                 zwei Etiketten waren der teuerste Leerlauf der Karte. */}
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
               >
                 {verdict?.action === "no_advice"
                   ? CHIP_TEXT.no_advice
@@ -862,14 +882,14 @@ export function JetztView(props: JetztViewProps) {
             </div>
             <h2
               id="jetzt-headline"
-              className="mt-2 text-xl font-bold text-white sm:text-2xl"
+              className="mt-2 text-2xl font-extrabold tracking-tight text-slate-100"
             >
               {bestNow.station
                 ? `Jetzt am günstigsten: ${bestNow.station.name}`
                 : "Keine klare Empfehlung"}
             </h2>
             {bestNow.price !== null && (
-              <p className="mt-1 text-2xl font-black tracking-tight text-white tabular-nums sm:text-3xl">
+              <p className="mt-1 text-2xl font-black tracking-tight text-slate-100 tabular-nums sm:text-3xl">
                 {euroPerLiter(bestNow.price)}
               </p>
             )}
@@ -919,21 +939,21 @@ export function JetztView(props: JetztViewProps) {
                 Intent-Zeile der grünen Karte): auf 390 px steht er neben
                 der Route in derselben 44-px-Zeile statt darunter als
                 zweiter Button. */}
-            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2">
               {bestNow.mapsUrl && (
                 <a
                   href={bestNow.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="tap-44 inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
+                  className="tap-44 m3-btn-now inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full px-6 text-sm font-bold"
                 >
                   Route starten
-                  <ArrowRight size={15} aria-hidden="true" />
+                  <ArrowRight size={16} aria-hidden="true" />
                 </a>
               )}
               <button
                 onClick={() => onNavigate("stations")}
-                className="min-w-0 text-xs font-semibold text-slate-400 underline decoration-dotted underline-offset-4 hover:text-slate-200"
+                className="min-w-0 text-sm font-semibold text-emerald-400 underline decoration-dotted underline-offset-4 hover:text-emerald-300"
               >
                 Alle {bestNow.freshCount} Preise vergleichen
               </button>
@@ -941,7 +961,7 @@ export function JetztView(props: JetztViewProps) {
             {/* Statistik und Begründung bleiben erreichbar — nur nicht im
                 Weg der einen Antwort. */}
             <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 text-xs">
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 font-semibold text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 font-semibold text-slate-400 hover:text-slate-100 [&::-webkit-details-marker]:hidden">
                 <ChevronRight size={13} aria-hidden="true" />
                 Mehr zum Vergleich
               </summary>
@@ -997,7 +1017,7 @@ export function JetztView(props: JetztViewProps) {
               <span className="block text-[0.625rem] uppercase leading-tight tracking-wide text-slate-500 sm:text-xs sm:tracking-widest">
                 {fact.label}
               </span>
-              <span className="block text-sm font-bold text-white tabular-nums sm:mt-1 sm:text-lg">
+              <span className="block text-sm font-bold text-slate-100 tabular-nums sm:mt-1 sm:text-lg">
                 {fact.value}
               </span>
               <span className="block text-[0.6875rem] leading-snug text-slate-400 sm:mt-1 sm:text-xs sm:leading-relaxed">
@@ -1021,7 +1041,7 @@ export function JetztView(props: JetztViewProps) {
                       className={`rounded-lg border px-1.5 py-0.5 text-[0.6875rem] font-bold sm:px-2.5 sm:py-1 sm:text-xs ${
                         tankPercent === item.percent
                           ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                          : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                          : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-100"
                       }`}
                     >
                       {item.label}
