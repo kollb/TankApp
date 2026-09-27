@@ -16,8 +16,10 @@
 // `microcopy.test.ts` (Regel 7) — diese Datei steht dort in der Liste.
 
 import {
+  berlinHour,
   deTrimmed,
   euro,
+  euroPerLiter,
   timeOfDayLabel,
   type AdviceAction,
 } from "./data";
@@ -343,3 +345,120 @@ export const WHY_SHEET = {
   confidenceLabel: "So sicher ist die Empfehlung",
   open: "Warum?",
 };
+
+// ---------------------------------------------------------------------------
+// „Heute im Überblick“ — die nächsten Stunden als Balken
+//
+// Acht Stunden, acht Balken: Grün = Tiefpreis, Gelb = Mittel, Rot =
+// Hochpreis. Keine Achse, kein Gitter, keine Kurve — die Frage ist nicht
+// „Wie genau ist der Verlauf?“, sondern „Wann ist es günstig?“.
+//
+// Die Preise kommen aus den **Fenstern der Entscheidung** (`windows_today`):
+// jede Stunde trägt den erwarteten Preis des Fensters, in dem sie liegt.
+// Damit bleibt die Prognose eine einzige Quelle und der Guide braucht
+// keinen zweiten Aufruf — die 1-Sekunden-Regel gilt auch fürs Laden.
+//
+// Die Ampel bewertet die Höhe **im gezeigten Zeitraum** und nennt ihre
+// Grenzen darunter. Eine absolute Skala würde an einem ruhigen Tag aus
+// 0,3 Cent Unterschied ein rot-grünes Drama machen.
+// ---------------------------------------------------------------------------
+export type HourBar = {
+  /** Berliner Stunde (0–24, „24“ = Mitternacht). */
+  hour: number;
+  /** Achsen-Text: „Jetzt“ für die laufende Stunde, sonst die Stunde. */
+  label: string;
+  /** Erwarteter Preis in €/L — `null`, wenn die Stunde nicht belegt ist. */
+  price: number | null;
+  level: DayPartLevel;
+  isNow: boolean;
+};
+
+export type HourOutlook = {
+  bars: HourBar[];
+  /** Nennt die Grenzen der Ampel — sonst ist die Farbe eine Behauptung. */
+  note: string | null;
+  /** Stunde mit dem niedrigsten erwarteten Preis (für die Hervorhebung). */
+  bestHour: number | null;
+};
+
+export function hourlyOutlook(input: {
+  windows:
+    | Array<{ start: string; end: string; expected_price: number | null }>
+    | null
+    | undefined;
+  now: number;
+  hours?: number;
+}): HourOutlook {
+  const hours = input.hours ?? 8;
+  const windows = (input.windows ?? []).filter(
+    (w) => w.expected_price !== null && Number.isFinite(w.expected_price),
+  );
+  const nowHour = berlinHour(new Date(input.now));
+  const bars: HourBar[] = Array.from({ length: hours }, (_, i) => {
+    const hour = Math.floor(nowHour) + i;
+    const clock = hour % 24;
+    const price = priceForHour(windows, hour);
+    return {
+      hour: clock,
+      label: i === 0 ? "Jetzt" : String(clock).padStart(2, "0"),
+      price,
+      level: "mid" as DayPartLevel,
+      isNow: i === 0,
+    };
+  });
+  const values = bars
+    .map((b) => b.price)
+    .filter((p): p is number => p !== null);
+  if (values.length === 0) return { bars, note: null, bestHour: null };
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min;
+  // `spread` ist €/L, die Schwelle liegt bei einem **Cent**: Unter einem
+  // Cent Unterschied ist „teuer“ eine Erfindung — dann tragen alle Balken
+  // dieselbe mittlere Stufe, und der Text sagt warum.
+  const flat = spread * 100 < 1;
+  for (const bar of bars) {
+    if (bar.price === null) continue;
+    bar.level = flat
+      ? "mid"
+      : bar.price <= min + spread / 3
+        ? "low"
+        : bar.price >= min + (spread * 2) / 3
+          ? "high"
+          : "mid";
+  }
+  const best = bars.reduce<HourBar | null>((acc, bar) => {
+    if (bar.price === null) return acc;
+    if (acc === null || acc.price === null) return bar;
+    return bar.price < acc.price ? bar : acc;
+  }, null);
+  return {
+    bars,
+    note: flat
+      ? "Alle Balken gleich: die nächsten Stunden liegen unter einem Cent auseinander."
+      : `Ampel im gezeigten Zeitraum: grün bis ${euroPerLiter(min)}, rot ab ${euroPerLiter(max)}.`,
+    bestHour: best?.hour ?? null,
+  };
+}
+
+/**
+ * Erwarteter Preis der Stunde — aus dem Fenster, in dem die Stunde liegt.
+ *
+ * Stunden zählen fortlaufend (23, 24, 25 …), damit ein Fenster über
+ * Mitternacht nicht auseinanderfällt; der Fenstervergleich rechnet deshalb
+ * beide Grenzen in „Stunden seit Berliner Tagesbeginn“ um.
+ */
+function priceForHour(
+  windows: Array<{ start: string; end: string; expected_price: number | null }>,
+  hour: number,
+): number | null {
+  for (const w of windows) {
+    const start = berlinHour(new Date(w.start));
+    let end = berlinHour(new Date(w.end));
+    if (end <= start) end += 24;
+    const h = hour < start ? hour + 24 : hour;
+    if (h >= start && h < end) return w.expected_price;
+  }
+  return null;
+}

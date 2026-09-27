@@ -27,7 +27,11 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
+import { BenefitWidget } from "../components/BenefitWidget";
 import { BottomSheet } from "../components/BottomSheet";
+import { GuideBanner } from "../components/GuideBanner";
+import { GuideConfidence } from "../components/GuideConfidence";
+import { HourBars } from "../components/HourBars";
 import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -38,11 +42,18 @@ import {
   deTrimmed,
   euro,
   euroPerLiter,
+  timeOfDayLabel,
   PROFILE_BOUNDS,
   type DecideResult,
   type ResourceState,
   type Station,
 } from "../data";
+import {
+  guideBenefit,
+  guideLevel,
+  guideTone,
+  hourlyOutlook,
+} from "../guide";
 import {
   assumptionHint,
   learningNote,
@@ -56,6 +67,7 @@ import {
   nowSteps,
   nowVerdict,
   nowValidity,
+  savingPerLiterCt,
   TANK_QUICK,
   timeInputToBerlinIso,
   windowMarks,
@@ -99,6 +111,12 @@ export interface JetztViewProps {
   stripBand: StripBand | null;
   /** Jüngste Preismeldung — die Fußzeile nennt das Alter. */
   pricesAt: string | null;
+  /**
+   * Verbindung des Geräts (`navigator.onLine`). Ohne Verbindung fällt der
+   * Guide auf Stufe 3 („Offline“) zurück — Banner, gedämpfte Preise und
+   * die Faustregel. `undefined` gilt als online (Tests, erste Frames).
+   */
+  online?: boolean;
   forecastAt: string | null;
   /** Ziele des Neuentwurfs — jetzt echte Bereiche. */
   onNavigate: (target: NowTarget) => void;
@@ -256,6 +274,7 @@ export function JetztView(props: JetztViewProps) {
     onOpenFills,
     onRetry,
     onTankQuick,
+    online,
     pricesAt,
     selectedId,
     stations,
@@ -321,6 +340,20 @@ export function JetztView(props: JetztViewProps) {
     timeValue,
   };
   const verdict = nowVerdict(input);
+  /**
+   * 3-Stufen-Fallback des Guides: Stufe 1 live + Prognose, Stufe 2 ohne
+   * Prognose (Preise live), Stufe 3 offline (letzter Stand). Abgeleitet
+   * aus echten Zuständen, nie aus einer Vermutung (`guide.ts`).
+   */
+  const level = guideLevel({
+    online: online ?? true,
+    decisionReady: decide?.decision_ready ?? null,
+  });
+  const cardTone = guideTone({
+    action: verdict?.action ?? null,
+    tone: verdict?.tone ?? null,
+    expired: verdict?.expired ?? false,
+  });
   // Gültigkeits-Chip: nur für freigegebene, nicht abgelaufene Aktionen —
   // eine Ablehnung altert nicht (A21-B1.4).
   const validity = nowValidity(verdict, now);
@@ -349,6 +382,24 @@ export function JetztView(props: JetztViewProps) {
   const window =
     decide?.windows_today?.[0] ?? decide?.primary?.recommended_window ?? null;
   const marks = windowMarks(window);
+  /**
+   * „Heute im Überblick“: die nächsten acht Stunden aus den Fenstern der
+   * Entscheidung. Auf Stufe 2 und 3 tritt die Faustregel an ihre Stelle —
+   * eine zwischengespeicherte Prognose wäre keine Prognose mehr.
+   */
+  const outlook =
+    level === "full" ? hourlyOutlook({ windows: decide?.windows_today, now }) : null;
+  /**
+   * „Was bringt Warten?“: derselbe Abstand, den die Karte in ct/L nennt,
+   * hier als Betrag auf die Tankmenge gerechnet (`guideBenefit`).
+   */
+  const priceNow = bestNow.price ?? decide?.primary?.station?.price_now ?? null;
+  const benefit = guideBenefit({
+    tone: cardTone,
+    centDiff: savingPerLiterCt(priceNow, window?.expected_price ?? null),
+    liters: calculationLiters,
+    atIso: window?.start ?? null,
+  });
 
   const commitLiters = () => {
     const value = Number(litersStr.replace(",", "."));
@@ -470,6 +521,15 @@ export function JetztView(props: JetztViewProps) {
 
       {/* ① Entscheidung */}
       <div id="jetzt-entscheidung" className="mt-4 scroll-mt-24">
+        {/* Inline-Banner statt Modal: Ein anhaltender Zustand erklärt sich
+            über der Karte und lässt die Preise sichtbar (Stufe 2 und 3). */}
+        <GuideBanner
+          level={level}
+          stand={timeOfDayLabel(pricesAt)}
+          hasPrices={stations.length > 0}
+          retrying={decideRes.pending}
+          onRetry={onRetry}
+        />
         {decideRes.pending && !decide && !setup ? (
           <SkeletonPanel lines={3} label="Empfehlung wird berechnet" />
         ) : setup ? (
@@ -583,6 +643,9 @@ export function JetztView(props: JetztViewProps) {
                   Route
                   <ArrowRight size={15} aria-hidden="true" />
                 </a>
+              )}
+              {verdict && (
+                <GuideConfidence percent={verdict.percent} onTone />
               )}
               <button
                 onClick={() => setSheetOpen(true)}
@@ -1175,6 +1238,18 @@ export function JetztView(props: JetztViewProps) {
           </div>
         </>
       )}
+
+      {/* ⑤ Was bringt Warten? — der Abstand als Betrag auf die Tankmenge.
+          Danach die nächsten acht Stunden als Balken (Stufe 1) oder die
+          Faustregel (Stufe 2 und 3). */}
+      {benefit && (
+        <div className="mt-4">
+          <BenefitWidget benefit={benefit} />
+        </div>
+      )}
+      <div className="mt-4">
+        <HourBars outlook={outlook} />
+      </div>
 
       {/* Frische-Fußzeile (T8: ein Baustein für alle Bereiche) */}
       <FreshnessLine text={freshness.text} tone={freshness.tone} place={activeCity} />

@@ -466,6 +466,9 @@ function DashboardShell() {
               gotoTab("ich");
             }}
             onIntent={(intent, mapsUrl) => handleIntent(intent, mapsUrl)}
+            /* Verbindung des Geräts (navigator.onLine): steuert Stufe 3 des
+               Guides — ohne Netz trägt die Karte den letzten Stand. */
+            online={browserOnline}
           />
         )}
 

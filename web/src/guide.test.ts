@@ -26,6 +26,7 @@ import {
   guideRestoredNote,
   guideTone,
   guideWaitSubline,
+  hourlyOutlook,
   accuracySentence,
   perFillText,
   timePhrase,
@@ -255,7 +256,13 @@ describe("Faustregel (Stufe 2 und 3)", () => {
 // Sprach-Ratchet: die Übersetzungstabelle aus docs/produkt/MICROCOPY.md.
 // ---------------------------------------------------------------------------
 // Erweitert sich mit jedem Baustein des Guides (die Liste wächst mit).
-const GUIDE_FILES = ["guide.ts"];
+const GUIDE_FILES = [
+  "guide.ts",
+  "components/GuideBanner.tsx",
+  "components/GuideConfidence.tsx",
+  "components/HourBars.tsx",
+  "components/BenefitWidget.tsx",
+];
 
 function read(relativePath: string): string {
   return readFileSync(
@@ -330,5 +337,81 @@ describe("Sprache des Guides (MICROCOPY §4b)", () => {
     const open = (text.match(/„/g) ?? []).length;
     const close = (text.match(/“/g) ?? []).length;
     expect(close, `${file}: ${open}× „ aber ${close}× “`).toBe(open);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// „Heute im Überblick“ — Stundenbalken
+// ---------------------------------------------------------------------------
+/** 17:00 Europe/Berlin an einem Septembertag (MESZ, UTC+2). */
+const AFTERNOON_MS = Date.parse("2026-09-27T15:00:00.000Z");
+
+function window(start: string, end: string, price: number) {
+  return { start, end, expected_price: price };
+}
+
+describe("Stundenbalken", () => {
+  const windows = [
+    window("2026-09-27T18:00:00+02:00", "2026-09-27T20:00:00+02:00", 1.689),
+    window("2026-09-27T20:00:00+02:00", "2026-09-27T22:00:00+02:00", 1.709),
+    window("2026-09-27T22:00:00+02:00", "2026-09-28T01:00:00+02:00", 1.669),
+  ];
+
+  it("acht Balken ab der laufenden Stunde, der erste heißt „Jetzt“", () => {
+    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
+    expect(bars).toHaveLength(8);
+    expect(bars[0].label).toBe("Jetzt");
+    expect(bars[0].isNow).toBe(true);
+    expect(bars.map((b) => b.hour)).toEqual([17, 18, 19, 20, 21, 22, 23, 0]);
+  });
+
+  it("jede Stunde trägt den Preis des Fensters, in dem sie liegt", () => {
+    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
+    expect(bars[0].price).toBeNull(); // 17 Uhr liegt vor dem ersten Fenster
+    expect(bars[1].price).toBe(1.689);
+    expect(bars[3].price).toBe(1.709);
+    expect(bars[5].price).toBe(1.669);
+  });
+
+  it("ein Fenster über Mitternacht fällt nicht auseinander", () => {
+    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
+    // 23 Uhr und 0 Uhr liegen beide im 22–01-Uhr-Fenster.
+    expect(bars[6].price).toBe(1.669);
+    expect(bars[7].price).toBe(1.669);
+  });
+
+  it("die Ampel teilt den gezeigten Zeitraum in Drittel", () => {
+    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
+    expect(bars[1].level).toBe("mid"); // 1,689
+    expect(bars[3].level).toBe("high"); // 1,709
+    expect(bars[5].level).toBe("low"); // 1,669
+  });
+
+  it("ein flacher Tag bekommt kein rot-grünes Drama", () => {
+    const flat = [
+      window("2026-09-27T18:00:00+02:00", "2026-09-27T22:00:00+02:00", 1.699),
+      window("2026-09-27T22:00:00+02:00", "2026-09-28T01:00:00+02:00", 1.6995),
+    ];
+    const { bars, note } = hourlyOutlook({ windows: flat, now: AFTERNOON_MS });
+    expect(bars.every((b) => b.level === "mid")).toBe(true);
+    expect(note).toContain("unter einem Cent");
+  });
+
+  it("die Notiz nennt die Grenzen der Ampel — sonst ist Farbe Behauptung", () => {
+    const { note, bestHour } = hourlyOutlook({ windows, now: AFTERNOON_MS });
+    expect(note).toContain("grün bis 1,669 €/L");
+    expect(note).toContain("rot ab 1,709 €/L");
+    expect(bestHour).toBe(22);
+  });
+
+  it("ohne Fenster gibt es Balken ohne Preis und ohne Urteil", () => {
+    const { bars, note, bestHour } = hourlyOutlook({
+      windows: [],
+      now: AFTERNOON_MS,
+    });
+    expect(bars).toHaveLength(8);
+    expect(bars.every((b) => b.price === null)).toBe(true);
+    expect(note).toBeNull();
+    expect(bestHour).toBeNull();
   });
 });
