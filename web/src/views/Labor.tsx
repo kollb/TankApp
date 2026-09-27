@@ -55,9 +55,18 @@ export function LaborView(props: LaborViewProps) {
           <h1 id="labor-title" className="text-2xl font-bold tracking-tight text-white">
             Verstehen, warum die App das sagt
           </h1>
-          <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
-            Eine Sektion, ein Schritt zur Zeit.
-          </p>
+          {/* Beta-Badge und Leitsatz (Entwurf „Tankklar“): Das Labor ist
+              freiwillig. Wer nur tanken will, muss es nie öffnen — der
+              Guide funktioniert ohne jede Zahl von hier. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[0.6875rem] font-bold uppercase tracking-wider text-violet-300">
+              Beta
+            </span>
+            <p className="max-w-xl text-xs leading-relaxed text-slate-400">
+              Alles hier ist optional. Die Empfehlung im Guide funktioniert
+              auch ohne.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

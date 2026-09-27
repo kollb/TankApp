@@ -20,7 +20,7 @@ löschen und nicht durch ein unverbundenes Landingpage-Design ersetzen.
 | Vorlage | Übernahme |
 |---|---|
 | [`good gui`](../../sample/good%20gui) | Alltags-Homepage: `TankAppDashboard`, sticky Navigation, Kampagnen-/Kraftstoff-Umschalter, `DecisionCockpit`, Tagesstreifen, Umwegvergleich und Feedback-Karten. |
-| [`good statistic gui`](../../sample/good%20statistic%20gui) | Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
+| `good statistic gui` | Werkstatt: `DecisionLab`, Scoreboard, Kalibrierungsdiagramm, Schwellen-Slider, `StationPanel`, `PairPanel` und SVG-Charts. |
 
 ## Visuelle Leitplanken aus dem vorhandenen Code
 

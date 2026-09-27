@@ -564,3 +564,95 @@ describe("Jetzt: Preisvergleich trägt die Ansicht (A70, Priorität 1)", () => {
     expect(html).toContain("1 von 2 eingerichteten Stationen mit frischem Preis");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tank-Guide: 3-Stufen-Fallback in der Ansicht
+//
+// Die Stufen kommen aus echten Zuständen (`browserOnline`, `decision_ready`),
+// nicht aus einer Vermutung. Geprüft wird, was jemand an der Säule sieht:
+// ein Banner über der Karte statt eines Modals — und die Faustregel dort,
+// wo keine Prognose steht.
+// ---------------------------------------------------------------------------
+describe("Tank-Guide: Fallback-Stufen", () => {
+  it("Stufe 1 trägt kein Banner — eine volle Ansicht erklärt sich nicht", () => {
+    const html = render();
+    expect(html).not.toContain("Die Prognose macht gerade Pause");
+    expect(html).not.toContain("m3-banner-warn");
+  });
+
+  it("Stufe 2: die Prognose pausiert, die Preise bleiben live", () => {
+    const html = render({
+      decideRes: {
+        data: { ...decide("wait"), decision_ready: false },
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    expect(html).toContain("Die Prognose macht gerade Pause");
+    expect(html).toContain("Alle Preise sind trotzdem live");
+    expect(html).toContain("Erneut versuchen");
+  });
+
+  it("Stufe 3: offline steht der Datenstand und was weiter geht", () => {
+    const html = render({ online: false });
+    expect(html).toContain("m3-banner-warn");
+    expect(html).toContain("Route starten und die Faustregel funktionieren weiter");
+    expect(html).toContain("kann abweichen");
+  });
+
+  it("jede Stufe bietet genau eine Handlung zum Wiederverbinden", () => {
+    const html = render({ online: false });
+    const hits = html.match(/Erneut versuchen/g) ?? [];
+    expect(hits).toHaveLength(1);
+  });
+
+  it("Stufe 2 und 3 zeigen die Faustregel statt der Stundenbalken", () => {
+    const offline = render({ online: false });
+    expect(offline).toContain("Faustregel für heute");
+    expect(offline).toContain("Keine Prognose für heute");
+    const paused = render({
+      decideRes: {
+        data: { ...decide("wait"), decision_ready: false },
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    expect(paused).toContain("Faustregel für heute");
+  });
+
+  it("Stufe 1 zeigt die nächsten acht Stunden als Balken", () => {
+    const html = render();
+    expect(html).toContain("Heute im Überblick");
+    expect(html).toContain("Nächste 8 Stunden");
+    expect(html).not.toContain("Faustregel für heute");
+  });
+
+  it("die Ersparnis steht als Betrag auf der Tankmenge", () => {
+    const html = render();
+    // 1,749 €/L jetzt gegen 1,709 €/L im Fenster = 4 ct/L × 40 L = 1,60 €.
+    expect(html).toContain("ca. 1,60 € gespart · 40 L");
+  });
+
+  it("ohne Zeit-Aussage der Karte kein Ersparnis-Betrag", () => {
+    // „Woanders tanken“ und „Keine klare Empfehlung“ vergleichen Orte,
+    // keine Zeiten — ein Betrag pro Tankfüllung würde hier eine Differenz
+    // behaupten, die die Entscheidung nicht trifft.
+    for (const action of ["refuel_elsewhere", "no_advice"] as const) {
+      const html = render({
+        decideRes: {
+          data: { ...decide(action), decision_ready: true },
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 0,
+        },
+      });
+      expect(html).not.toContain("gespart ·");
+      expect(html).not.toContain("Warten kostet");
+    }
+  });
+});

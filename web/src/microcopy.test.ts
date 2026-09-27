@@ -62,6 +62,9 @@ const FILES = [
   "views/Woche.tsx",
   "views/Ich.tsx",
   "lab.ts",
+  // Tank-Guide (Screen A): Texte der Entscheidungskarte, des Fallback-Banners
+  // und des Spar-Rechners — dieselben Regeln wie in jeder View.
+  "guide.ts",
   "views/Labor.tsx",
   "system.ts",
   "views/System.tsx",

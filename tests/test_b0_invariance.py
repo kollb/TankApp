@@ -1,7 +1,13 @@
 """B0 — Messgrundlagen: die Prognose bleibt bitgleich.
 
-Der Befund (BEFUND-UX-MATH-2026-09-19.md, Teil 4, B0) verlangt Zähler,
-PIT-Paare und Regime-Marker **ohne** eine einzige Prognosezahl zu ändern.
+**Die Invariante (B0):** Ein Umbau, der Zähler, PIT-Paare oder Regime-Marker
+einführt, darf **keine** Prognosezahl verändern — der Messwert vorher und
+nachher ist bitgleich. **Warum:** Nur so ist eine später gemessene Änderung
+einer Absicht zuzuordnen (B2/B3) und nicht einem Beifang des Umbaus; ohne
+diese Trennung ließe sich keine Güte-Aussage mehr über die Zeit vergleichen.
+Der Bezug gilt unabhängig von einem Stichtagsbericht — der frühere
+Verweis auf `BEFUND-UX-MATH-2026-09-19.md` ist mit D1 (27.09.2026) entfernt,
+weil der Bericht in keinem Commit des Repositories liegt.
 Ein Versprechen dieser Art ist nur mit einem Referenzwert prüfbar, der *vor*
 dem Umbau festgehalten wurde: `tests/fixtures/b0_invariance.json` wurde am
 Stand `dacea676` (0.55.2, vor jeder B0-Änderung) aus genau der synthetischen

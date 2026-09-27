@@ -42,6 +42,7 @@ import {
   ThreeSentences,
 } from "./components";
 import { GlossaryView } from "../Glossary";
+import { LabBetaBlocks } from "./BetaBlocks";
 
 export function UeberblickView({
   focusSection,
@@ -383,6 +384,10 @@ export function UeberblickView({
           answer="Schritt 4 zeigt die echten Punkte über dem Band. Punkte außerhalb des hellen Bandes kommen vor — sie sind der Grund, warum vor dem Prozentwert die Kalibrierung geprüft wird (Abschnitt 2)."
         />
       </LabBlock>
+
+      {/* Die freiwilligen Blöcke des Entwurfs: Einflüsse, Treffsicherheit,
+          Tankprofil, Experimente — eigener Zustand, eigene Datei. */}
+      <LabBetaBlocks />
 
       {/* Lernen */}
       <LabBlock

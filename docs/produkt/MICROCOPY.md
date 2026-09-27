@@ -1,12 +1,15 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 27.09.2026 · App-Version **0.70.1** · gilt für `web/src/**`, `web/rp2/**`,
+> Stand: 27.09.2026 · App-Version **0.70.2** · gilt für `web/src/**`, `web/rp2/**`,
 > `rp2/fallback_gui.py`, Fehlertexte in `app/**`, die Push-Texte in
 > `app/notify.py` (§4f) und für jede neue Zeile Text, die ein Nutzer zu
 > sehen bekommt. Neu am 26.09.2026 (UI-Neugestaltung): Urteilstöne
 > (grün/blau/rot/grau), Gültigkeits-Chip, abgelaufene Freigabe,
 > S1-Nützlichkeitssatz, Lesemodus-Muster. Ergänzt am 27.09.2026:
-> Restminuten, Kontext-/Tagesstreifen-Sheets und React-Leseausgabe.
+> Restminuten, Kontext-/Tagesstreifen-Sheets und React-Leseausgabe. Ergänzt
+> mit 0.70.2: die Muster des Tank-Guides (§4b) — drei Fallback-Stufen,
+> Sicherheits-Balken, Geld in Nutzer-Einheiten, Faustregel — und die
+> Übersetzungstabelle „Technische Floskel → Microcopy“ als eigener Abschnitt.
 
 Eine Seite, damit Texte nicht je Panel neu erfunden werden. Wer eine
 Formulierung sucht, findet hier Tonfall, Einheiten, Zahlen, Zitate und die
@@ -144,7 +147,7 @@ Punkt. Eingabefelder akzeptieren beides (`commaToDot`), zeigen aber Komma.
 | Gemeint | Wort in der App |
 |---|---|
 | die Bereiche der App | **Jetzt** (Einstieg), **Stationen**, **Woche**, **Ich**, **Labor**, **System** — die Ziel-Navigation aus [UI.md](UI.md) §4; die alten Tabs **Alltag**, **Werkstatt** und **Einstellungen** sind mit 0.35.0/0.36.0 ersetzt (nicht „Statistik“, nicht „Prüfstand“) |
-| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in [UMSETZUNG-GUI-NEUENTWURF.md](../archiv/UMSETZUNG-GUI-NEUENTWURF-2026-09-14.md)) |
+| die sechs Bereiche des Neuentwurfs | **Jetzt**, **Stationen**, **Woche**, **Ich**, **Labor**, **System** — dieselbe Liste, hier als Planungs-Begriff (Phasen 1–4 in `UMSETZUNG-GUI-NEUENTWURF.md`) |
 | eine Tankstelle | **Station** |
 | ein gebuchter Tankvorgang | **Beleg** (nicht „Fill“, nicht „Buchung“, nicht „Füllung“, nicht „Tankbeleg“ — auch nicht als Überschrift) |
 | die Rechengröße für Tankvolumen | **Tankmenge** (10–100 L) — im Beleg heißt dieselbe Spalte **Liter** und meint die getankten Liter (5–100 L) |
@@ -230,9 +233,43 @@ dann der Grund.
 | Fällig-Prompt: Ein-Tipp-Beleg (O17, 0.45.0) | Knopf nennt den gebuchten Live-Preis: `Ja, wie empfohlen (<1,719> €/L)`; ohne Live-Preis ist er aus: `Ja, wie empfohlen (Preis unbekannt)`. Wer ihn in der Lücke zwischen Anzeige und Tipp verliert, landet in der Maske mit `Kein frischer Preis für diese Station — bitte den Preis an der Säule eintragen.` — gebucht wird nie der Prognose-Median |
 | Ich → Belege: Prognosepreis (O17, 0.45.0) | Altbestand ohne gezahlten Preis trägt `Prognosepreis — kein gezahlter Preis`; die Bilanz nennt darunter die zweite Spalte: `Ohne Prognosepreis: <+2,00> € (<1> Beleg zählt nicht mit).` (Mehrzahl: `<n> Belege zählen nicht mit`) |
 | Günstigste Station jetzt (O19, 0.50.0; B4 0.59.0) | `<Station> ist gerade am günstigsten: <4,0> ct/L unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,749> €/L) — das sind <1,80> € bei <45> L.` Die persönliche Zahl rechnet **immer** gegen den Anker der Empfehlung (`ref_nowcast`), nie gegen die teuerste Station im Set; die Referenz steht im Satz. Daneben, als Spanne benannt: `Günstigste bis teuerste: <5,0> ct/L · <2,25> € bei <45> L`. **B4 (0.59.0):** Ohne Empfehlung steht der Satz nicht mehr — die Karte zeigt denselben Inhalt (günstigster Preis in Headline/Betrag, Spanne in der Chip-Zeile) schon kompakter, und der Satz würde ihn nur noch einmal umstellen (`nowBestNow.sentence` = `null`). Ist die Referenz selbst die günstigste Station, gibt es keinen Vergleich mit sich selbst (0.70.1): `<Station> ist gerade am günstigsten (<1,709> €/L) — und zugleich der Preis, den die Empfehlung für „jetzt tanken“ ansetzt.` Eine andere Station ohne klaren Vorsprung behält den Gegensatz: `… — aber nicht unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (<Referenz-Station>, <1,709> €/L).` |
-| Graue Karte als Preisvergleich (A70, 0.70.0) | Titelzeile `Jetzt günstig tanken` (klein, großgeschrieben, grün) über Chip und Headline — die Karte beantwortet „Wo ist es jetzt günstig?“ auch ohne freigegebene Empfehlung. Darunter, fest: `Günstigste bekannte Station unter den beobachteten Stationen` + Preisalter (`Preise vor <4> Minuten`) + Abdeckung (`<2> von <3> eingerichteten Stationen mit frischem Preis`). Kein Marktversprechen: „bekannt“ und „beobachtet“ markieren die Grenze des Sets (§5c: „Set“ selbst steht hier nicht) |
+| Graue Karte als Preisvergleich (A70, 0.70.0; B4 0.70.2) | Kategorie und Zustand stehen in **einer** Reihe (Chip + Titelzeile `Jetzt günstig tanken`), darunter Headline, Preis und der Antwortsatz. Fest sichtbar: `Günstigste bekannte Station unter den beobachteten Stationen` + Abdeckung (`<2> von <3> eingerichteten Stationen mit frischem Preis`). Kein Marktversprechen: „bekannt“ und „beobachtet“ markieren die Grenze des Sets (§5c: „Set“ selbst steht hier nicht). **Das Preisalter steht nicht mehr in der Karte** — die Frische-Fußzeile trägt es für alle Bereiche (T8); zweimal dieselbe Minute liest niemand. **B4 (0.70.2):** Die Karte trägt die Antwort und höchstens zwei Sätze dazu. Statistik (`Günstigste bis teuerste: …`) und die Bestätigung des Netto-Vergleichs liegen hinter `Mehr zum Vergleich`; **was der Antwort widerspricht** (eine andere Station ist netto günstiger), bleibt sichtbar — die Karte darf nicht „hier am günstigsten“ sagen und das Gegenteil verstecken |
 | Netto-Vergleich für die Fahrt (A70, 0.70.0) | Eine Zeile unter der Abdeckung, Server-Wahrheit (`alternatives_nearby` → `worth_it`/`net_eur`): `Für diese Fahrt am günstigsten: <Station> (netto <1,40> € bei <40> L).` · `Für diese Fahrt zählt der Preis an der Säule — der Umweg frisst den Abstand.` · `Nicht sinnvoll vergleichbar: <keine Alternative mit Umwegrechnung \| kein frischer Preis \| kein Preis an der Säule>.` — ehrlich statt erfunden, wenn die Umwegrechnung fehlt |
+| Tank-Guide: Erfassungsreihenfolge (0.70.2) | Farbe der Karte → Handlungs-Headline → günstigster Preis in der Nähe → Handlung. Alles Statistische ordnet sich dem unter und wohnt im Labor |
+| Drei-Stufen-Fallback (0.70.2) | Stufe 1 trägt **kein** Banner. Stufe 2 (Prognose pausiert, Preise live): ruhiges Inline-Banner `Die Prognose macht gerade Pause` + `Alle Preise sind trotzdem live. Die Zeit-Empfehlung kommt zurück, sobald der Dienst wieder antwortet.`; die Karte bleibt an ihrem Platz, wird zur Outlined Card und zeigt `Günstigste Tankstelle gerade`. Stufe 3 (offline): warmes Banner `Offline` + `Stand: <14:32> Uhr. Route starten und die Faustregel funktionieren weiter. Der Preis an der Säule kann abweichen.` **Reihenfolge: erst was weiter geht, dann was fehlt** (§5a). Beide Stufen bieten `Erneut versuchen` (währenddessen `Verbinde …`) — nie ein Vollbild-Modal, nie ein Alert-Dialog |
+| Stufe 2, zwei Fälle (0.70.2) | Der Sperrgrund entscheidet den Ton: **Pause** (`forecast_missing`, `forecast_expired`, `data_stale` …) → `Die Prognose macht gerade Pause` + `Die Zeit-Empfehlung kommt zurück, sobald der Dienst wieder antwortet.` · **noch nicht freigegeben** (`model_not_released`, `m7_pending`, `quality_missing`) → `Die Prognose ist noch nicht freigegeben` + `Die Zeit-Empfehlung kommt nach der Freigabe.` „Macht gerade Pause“ verspräche bei einem lernenden Modell eine Rückkehr in Minuten. Der Zählstand selbst bleibt in der Karte (`learningNote`), damit er nicht doppelt steht (Nutzer-Feedback 16.09.2026) |
+| Wiederherstellung (0.70.2) | Snackbar, eine Zeile, kein Fehler-Vokabular: `Wieder online. Alles ist aktuell.` bzw. `Prognose ist zurück.` |
+| Sicherheit als Balken (0.70.2) | `Sehr sicher` (3 von 3 Balken) · `Ziemlich sicher` (2) · `Kaum einschätzbar` (1) — **nie** „Konfidenz: 87 %“. Stufen aus dem gemessenen Wert (Schwellen 80 / 60), das Wort bleibt bewusst grob |
+| Treffsicherheit (0.70.2) | `An <26> von <30> Tagen lag die Empfehlung richtig.` — Zählung statt Prozent. Ohne Messung: `Noch nicht gemessen — die ersten Empfehlungen sind Lern-Fälle.` |
+| Geld in Nutzer-Einheiten (0.70.2) | Unterschiede über die Tankfüllung: `ca. <3,60> € pro Tankfüllung` · `Bis <19:00> Uhr: ca. <3,60> € gespart · <45> L` · `Warten kostet bis <19:00> Uhr ca. <3,15> € mehr · <45> L`. Unter 0,50 € ist der Weg die Antwort: `Heute bringt Warten kaum etwas: unter 0,50 € pro Tankfüllung. Der kürzere Weg zählt mehr.` |
+| Uhrzeit statt Spanne (0.70.2) | `Gegen <19:00> Uhr ca. <8> Cent günstiger.` — eine Uhrzeit, ein Betrag. Keine Spanne („18–20 Uhr“) und keine Wahrscheinlichkeitsdichte als Antwort auf „Soll ich jetzt tanken?“ **Zeitvergleiche über den Tag nennen ganze Cent** (Zahl über `deTrimmed`); `ct/L` bleibt der Preisdifferenz je Liter (§3) |
+| Faustregel (Stufe 2 und 3) (0.70.2) | `Faustregel für heute` + `Abends zwischen 18 und 22 Uhr ist Tanken meist am günstigsten, morgens am teuersten.` + Pflicht-Hinweis `Typischer Verlauf der letzten 8 Wochen. Keine Prognose für heute — gilt auch ohne Verbindung.` Eine Faustregel darf nie wie eine Prognose aussehen |
 | Bilanz netto nach Umweg (O30, 0.50.0) | `Nach Umweg: <+6,34> € — Umwegkosten <1,66> € bei <1> Beleg, davon <1> mit geschätzter Strecke.` ohne Beleg mit Umweg `Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.` | `Ich` (Bilanz-Karte, O30) | Die Brutto-Zeile heißt ausdrücklich „brutto“, die Netto-Zeile steht darunter — dieselbe Formel wie die Entscheidung (`p_lohnt`, O9), Belege ohne Umweg erfinden keine Kilometer. |
+
+#### Übersetzungstabelle Technik → Alltag (0.70.2)
+
+Die linke Spalte steht in keinem Nutzertext des Guides. `guide.test.ts`
+prüft das mechanisch gegen die Guide-Quellen (`GUIDE_FILES`).
+
+| Technische Floskel (nie) | Microcopy (immer) |
+|---|---|
+| Prognose-Konfidenz: 87 % | `Sehr sicher` (3 von 3 Balken) |
+| Erwartete Delta-Änderung: −0,08 €/l | `Gegen 19 Uhr ca. 8 Cent günstiger` |
+| Kaufsignal: neutral / abwarten | `Kein Zeitdruck · Tanken, wann’s passt` |
+| Error 503: Forecast service unavailable | `Die Prognose macht gerade Pause. Alle Preise sind trotzdem live.` |
+| Offline / No Connection | `Offline · Stand: 14:32 Uhr` |
+| Stale cache / Daten veraltet | `Stand 14:32 Uhr · Preis an der Säule kann abweichen` |
+| Feature Importance / Shapley Values | `Was den Preis gerade bewegt` |
+| Quantil-Regression P10–P90 | `Hier landet der Preis ziemlich sicher` |
+| Backtest Hit-Rate 86,7 % | `An 26 von 30 Tagen lag die Empfehlung richtig` |
+| Risikoaversions-Koeffizient | `Wartebereitschaft: Wie lange darf das Warten dauern?` |
+
+**Eine Farbe, eine Bedeutung.** Der Entwurf ordnet „Warten“ Rot zu. In dieser
+App trägt Rot bereits eine sicherheitsrelevante Aussage: „Warten ist riskant,
+die Reserve reicht nicht bis zum Fenster“ (Urteilstöne, 26.09.2026). Rot wird
+darum **nicht** umgewidmet; „Besser warten“ bleibt blau, „Kein Zeitdruck“
+neutral. Wer den Entwurf übernimmt, übernimmt die Reihenfolge — nicht die
+Farbe gegen eine bestehende Warnung.
 
 ### 4c. Bereich „Labor“: feste Muster
 

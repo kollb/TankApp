@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 27.09.2026 · App-Version 0.70.1
+> Stand: 27.09.2026 · App-Version 0.70.2
 
 ## Inhaltsverzeichnis
 
@@ -12,10 +12,17 @@ NP2 unten — die einzigen P0-Aufträge dieser Datei. **Zustandsgesperrt** ist
 `decision_ready=false`, seit 0.70.0 dokumentierter Produkt-Blocker, kein
 TODO-Punkt: Der Preisvergleich trägt „Jetzt“, die Sperrung ist in
 `/v1/health` → `decision_availability` messbar, M7-Schnitte landen im Archiv
-`runtime/m7/archive.jsonl`. **Abgeschlossen** ist die Audit-Arbeit A70 aus
+`runtime/m7/archive.jsonl`. **Abgeschlossen** sind die Audit-Arbeit A70 aus
 dem Prüfbericht — Vertragsmatrix, Abnahme-Manifest, Lücken-Ablation,
 Verfügbarkeitsmessung — mit
-[Release 0.70.0](../releases/CHANGELOG.md#0700--2026-09-24) umgesetzt.
+[Release 0.70.0](../releases/CHANGELOG.md#0700--2026-09-24) sowie **D1**
+(Archiv-Verweise ohne Datei) am 27.09.2026: Die zwei genannten Berichte
+liegen in keinem Commit und bleiben es. `docs/archiv/README.md` führt die
+Titel als Text, die Prüfregel in `tests/test_ledger_drift.py` scannt das
+Archiv-Verzeichnis statt eine Namensliste zu führen, und die
+Herkunftshinweise in `tests/test_b0_invariance.py` sowie
+`tests/test_regime_check.py` nennen die Invariante ohne Datumsbeleg. Kein
+Dokument verweist noch auf eine Datei, die es nicht gibt.
 Betriebsnachweise, die nur Zeit oder Feldmessung brauchen, stehen in
 [LUECKEN.md](LUECKEN.md#ausstehender-betriebsnachweis), nicht hier.
 
@@ -39,7 +46,7 @@ beauftragen.
 
 **P0/P1/P2 · Priorität je bestätigter Vertragsverletzung wie unten benannt.**
 
-Grundlage ist der [NAS-/Pi-Befund vom 20.09.2026](../archiv/BEFUND-TANKAPP-NAS-PI-2026-09-20.md).
+Grundlage ist der NAS-/Pi-Befund vom 20.09.2026.
 Die folgenden Punkte betreffen nachgewiesene Vertragsverletzungen, keine
 neuen Features. NP1 ist umgesetzt (Release 0.60.0), NP5 mit 0.63.0, NP6 mit 0.63.1; NP2 ist noch offen. Alternative
 Architekturen, neue Schreibauthentisierung, Hardwarebudgets und optionale

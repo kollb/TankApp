@@ -239,7 +239,7 @@ Pakete aus `analysis/requirements.txt`. Ohne separates Ziel wird der Ausschluss
 abgelehnt. Keine Kandidaten erfinden oder Grenzen lockern, um das Set aufzufüllen.
 
 **Nicht als Reparatur vermischter Influx-Namensserien aktivieren.** Erst die
-[UUID-Identität klären](../archiv/STATIONS-UUID-MIGRATION.md); Vergleich und Vorschlag migrieren
+UUID-Identität der Stationen klären; Vergleich und Vorschlag migrieren
 keine Daten. Alte Daten oder Ack-Dateien nicht löschen/zurücksetzen. Der gebündelte
 Aktivierungsbefehl `tankapp.py activate-polling` ist ausdrücklich nur für die
 Addition neuer Stadtsets gedacht und weist Änderungen bestehender Sets ab.
@@ -542,7 +542,7 @@ Nur alte Punkte ohne UUID benötigen die Namenszuordnung. **Unbekannte/mehrdeuti
 Legacy-Namen führen zum Abbruch**, nicht zu geratenen IDs.
 
 Bei `Aral Tankstelle: mehrdeutig` und unterschiedlichen Preisverläufen im Vergleich:
-[Stations-UUID-Anleitung](../archiv/STATIONS-UUID-MIGRATION.md) durchführen. Danach bewusst nur
+zuerst die Stations-UUIDs eindeutig zuordnen. Danach bewusst nur
 UUID-getaggte Punkte lesen:
 
 ```powershell
@@ -723,7 +723,7 @@ nicht gefittet.
 > Dieser Abschnitt ist gegen 0.56.0 geschrieben; die übrigen Abschnitte dieser
 > Datei stehen auf 0.11.0 (siehe [README.md](../entwicklung/PRUEFSTAENDE.md#nicht-gegen-die-aktuelle-version-geprüft)).
 
-Batch B0 des [UX/Mathe-Befunds](../archiv/BEFUND-UX-MATH-2026-09-19.md#b0--messgrundlagen-unsichtbar-bitgleich)
+Batch B0 des UX/Mathe-Befunds
 macht sichtbar, was die Engine bis 0.55.2 stumm tat, und legt die Datenbasis
 für die Kalibrierungsschicht (B2). **Keine Prognosezahl ändert sich:**
 `tests/test_b0_invariance.py` vergleicht Fit, Prognose (beide Kerne, Ensemble,
@@ -899,9 +899,9 @@ Ledger-M7-Gate getrennt.
 | Netz-/Lesefehler, obwohl der RPi schreibt | Schreib- und Lesezugriff sowie Rechner-/Proxy-Weg unterscheiden. Phase, HTTP-Status, Fehlerklasse und `errno`/`winerror` aus dem neuen Check beachten; Token zunächst unverändert lassen. |
 | Timeout, DNS-, Verbindungs- oder TLS-Fehler | Betroffenen Schritt beachten und Verbindung/Dienst prüfen. Ein sporadischer Timeout erklärt nicht gleichzeitig wiederkehrende HTTP 401. |
 | Influx HTTP 404 / keine Zeilen | Organisation, Bucket und Zeitraum prüfen. Eine alte Exportdatei ist kein Nachweis, dass der neue Lauf erfolgreich war. |
-| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren: [Ablauf](../archiv/STATIONS-UUID-MIGRATION.md). |
-| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. [Ablauf §3a](../archiv/STATIONS-UUID-MIGRATION.md). Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
-| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache: [Replay-Prüfung](../archiv/STATIONS-UUID-MIGRATION.md). Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
+| Stationsname mehrdeutig | Nicht als Preis-Zwilling löschen. Uploader auf UUID-Tags aktualisieren, Original-JSONL aus einer Sicherung nachliefern, danach `--uuid-only` exportieren. |
+| Replay: `TIME_OFFSET_MISSING` | Ursprüngliche Collector-Zeitzone auf dem RPi klären; anschließend ausdrücklich `--replay-timezone` im Dry-Run und tatsächlichen Replay verwenden. Keine feste Uhrzeit/Quelle in der Sicherung umschreiben. |
+| Replay-Prüfung: JSONL-Zeile abgelehnt | Gemeint ist die Preisdatei unter `$BACKUP/poll`, nicht die Stationsliste. Neue Fehlercodes mit Feldursache. Kein `source` umschreiben, keine Zeile/Ack-Datei löschen. |
 | Zu wenig Training / Exit 2 | QA und Skip-Gründe lesen, mehr Historie bereitstellen; keine Demo-Daten als Ersatz einspeisen. |
 
 Für Diesel/E5 beim Export `--fuel diesel` / `--fuel e5` zusätzlich setzen

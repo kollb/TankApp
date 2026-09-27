@@ -11,7 +11,7 @@ den Gesamtstatus `partial (some_models_unavailable)` zu. Dieses Runbook tauscht
 sie kontrolliert oder filtert sie bereits bei der Kandidatensuche aus.
 
 Verwandt, aber anders gelagert: [Preis-Zwillinge](../referenz/ENGINE.md#preis-zwillinge)
-(redundante Stationen per Selektion ersetzen) und [UUID-Migration](../archiv/STATIONS-UUID-MIGRATION.md)
+(redundante Stationen per Selektion ersetzen) und die UUID-Migration
 (vermischte Namensserien — nicht durch einen Tausch reparierbar).
 
 ## Inhaltsverzeichnis
