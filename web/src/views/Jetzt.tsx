@@ -821,7 +821,17 @@ export function JetztView(props: JetztViewProps) {
              Bis 0.35.0 stand hier die graue Karte mit einer Nebenliste —
              der günstigste offene Preis ist aber die Antwort, die man
              sucht (Nutzer-Feedback 14.09.2026). */
-          <div className={`${panel} p-5 sm:p-7 ${CARD_TONE.gray}`}>
+          /* Ohne Prognose bleibt die Tatsache: der Preisvergleich jetzt.
+             Bis 0.35.0 stand hier die graue Karte mit einer Nebenliste —
+             der günstigste offene Preis ist aber die Antwort, die man
+             sucht (Nutzer-Feedback 14.09.2026).
+
+             B4 (Befund §1.2: „1 + 3 + 1“): Die Karte trägt die Antwort und
+             höchstens zwei Sätze dazu. Statistik (Spanne) und Bestätigung
+             („kein Umweg lohnt“) liegen hinter „Mehr zum Vergleich“; das
+             Preisalter steht in der Frische-Fußzeile, nicht zweimal. Was
+             der Antwort **widerspricht**, bleibt sichtbar. */
+          <div className={`${panel} p-4 sm:p-7 ${CARD_TONE.gray}`}>
             {/* Der Fehler steht über der Tatsache: erst sagen, dass die
                 Prognose fehlt, dann den Preisvergleich zeigen — statt den
                 Nutzer ohne Zahlen stehen zu lassen. */}
@@ -836,10 +846,9 @@ export function JetztView(props: JetztViewProps) {
                 />
               </div>
             )}
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-              Jetzt günstig tanken
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* Kategorie und Zustand in EINER Reihe: zwei Zeilen nur für
+                zwei Etiketten waren der teuerste Leerlauf der Karte. */}
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${CHIP.gray}`}
               >
@@ -847,62 +856,43 @@ export function JetztView(props: JetztViewProps) {
                   ? CHIP_TEXT.no_advice
                   : "Preisvergleich"}
               </span>
-              {bestNow.spreadEur !== null && (
-                <span className="text-xs text-slate-400">
-                  Günstigste bis teuerste: {centPerLiter(bestNow.spreadCt ?? 0)} ·
-                  {" "}
-                  {euro(bestNow.spreadEur)} € bei {deTrimmed(calculationLiters, 0)} L
-                </span>
-              )}
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                Jetzt günstig tanken
+              </span>
             </div>
             <h2
               id="jetzt-headline"
-              className="mt-3 text-xl font-bold text-white sm:text-2xl"
+              className="mt-2 text-xl font-bold text-white sm:text-2xl"
             >
               {bestNow.station
                 ? `Jetzt am günstigsten: ${bestNow.station.name}`
                 : "Keine klare Empfehlung"}
             </h2>
             {bestNow.price !== null && (
-              <p className="mt-2 text-2xl font-black tracking-tight text-white tabular-nums sm:text-3xl">
+              <p className="mt-1 text-2xl font-black tracking-tight text-white tabular-nums sm:text-3xl">
                 {euroPerLiter(bestNow.price)}
               </p>
             )}
-            {/* Priorität 1: Abdeckung der beobachteten Stationen — bewusst
-                keine freie Umgebungssuche, also auch kein Marktversprechen
-                (§5c: „Set“ bleibt Betriebssprache und steht hier nicht). */}
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
-              Günstigste bekannte Station unter den beobachteten Stationen
-              {coverage.ageLine ? ` · ${coverage.ageLine}` : ""} ·{" "}
-              {coverage.line}
-            </p>
-            {/* Priorität 1: Netto-Vergleich für die Fahrt — günstigster Preis
-                vs. netto günstigste Wahl vs. nicht sinnvoll vergleichbar. */}
-            <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-300">
-              {netBest.text}
-            </p>
-            {/* B4 (Befund UX/Mathe 2026-09-19, §1.4.1): `sentence` ist
-                `null`, wenn die Karte dieselbe Information schon kompakter
-                zeigt (Spanne in der Chip-Zeile, Preis in Headline/Betrag).
-                Dann bleibt die Karte bei „1 + 3 + 1“ ohne Wiederholungs-Satz. */}
+            {/* Die Antwort in einem Satz: welche Station, wie viel günstiger
+                und gegen welche Referenz (`nowBestNow.sentence`). */}
             {bestNow.sentence && (
               <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-300">
                 {bestNow.sentence}
               </p>
             )}
-            {/* A21-B1.4: `detail` der grauen Antwort führt den **Servergrund**
-                (Sperrgrund der Freigabekette bzw. Tabellenablehnung) —
-                nowVerdict: `reason_short || learning`. Der Zählstand
+            {/* Satzgrenze des Sets (§5c: „bekannt“/„beobachtet“, kein
+                Marktversprechen). Das Preisalter steht hier nicht mehr —
+                die Frische-Fußzeile trägt es für alle Bereiche (T8), und
+                zweimal dieselbe Minute liest niemand. */}
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
+              Günstigste bekannte Station unter den beobachteten Stationen ·{" "}
+              {coverage.line}
+            </p>
+            {/* A21-B1.4: Der **Servergrund** führt (Sperrgrund der
+                Freigabekette bzw. Tabellenablehnung) — der Zählstand
                 („Das Modell lernt noch …“) steht dann in der eigenen Zeile
-                darunter — jeweils genau einmal, nie doppelt (Nutzer-Feedback
-                16.09.2026: „Das Modell lernt noch … ist doppelt“). Ohne
-                Servergrund **ist** `detail` der Lernhinweis — dann nicht
-                noch einmal darunter. */}
-            {verdict?.detail && verdict.action === "no_advice" && (
-              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
-                {verdict.detail}
-              </p>
-            )}
+                darunter; ohne Servergrund **ist** `detail` der Lernhinweis
+                und steht genau einmal (Nutzer-Feedback 16.09.2026). */}
             {verdict?.action === "no_advice" &&
               learning &&
               verdict.detail !== learning && (
@@ -910,14 +900,25 @@ export function JetztView(props: JetztViewProps) {
                   {learning}
                 </p>
               )}
+            {/* Widerspricht die Netto-Rechnung der Headline (eine andere
+                Station ist **netto** günstiger), steht sie sichtbar — eine
+                Karte darf nicht „hier am günstigsten“ sagen und das
+                Gegenteil verstecken. Bestätigt sie die Antwort nur, liegt
+                sie im Detail darunter. */}
+            {netBest.kind === "net" && (
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-300">
+                {netBest.text}
+              </p>
+            )}
             {/* B4 (Befund UX/Mathe 19.09.2026, §1.4.1): Die Stationszeilen-
                 Liste lebt hier nicht mehr — „Stationen“ ist der einzige Ort
-                der Stationsliste (keine Dopplung, kein zweiter Ort derselben
-                Wahrheit). Hier bleibt die Entscheidung plus der Einweg:
-                der günstigste offene Preis (oben) und die Handlung. Die
-                zweite Aktion ist ein leiser Textlink (wie die Intent-Zeile
-                der grünen Karte): auf 390 px steht er neben der Route in
-                derselben 44-px-Zeile statt darunter als zweiter Button. */}
+                der Stationsliste (keine Dopplung, kein zweiter Ort
+                derselben Wahrheit). Hier bleibt die Entscheidung plus der
+                Einweg: der günstigste offene Preis (oben) und die Handlung.
+                Die zweite Aktion ist ein leiser Textlink (wie die
+                Intent-Zeile der grünen Karte): auf 390 px steht er neben
+                der Route in derselben 44-px-Zeile statt darunter als
+                zweiter Button. */}
             <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
               {bestNow.mapsUrl && (
                 <a
@@ -926,7 +927,7 @@ export function JetztView(props: JetztViewProps) {
                   rel="noopener noreferrer"
                   className="tap-44 inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400"
                 >
-                  Route zur günstigsten
+                  Route starten
                   <ArrowRight size={15} aria-hidden="true" />
                 </a>
               )}
@@ -937,6 +938,34 @@ export function JetztView(props: JetztViewProps) {
                 Alle {bestNow.freshCount} Preise vergleichen
               </button>
             </div>
+            {/* Statistik und Begründung bleiben erreichbar — nur nicht im
+                Weg der einen Antwort. */}
+            <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 text-xs">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 font-semibold text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden">
+                <ChevronRight size={13} aria-hidden="true" />
+                Mehr zum Vergleich
+              </summary>
+              <div className="space-y-1.5 border-t border-slate-800 px-3 py-2.5 leading-relaxed text-slate-400">
+                {netBest.kind !== "net" && <p>{netBest.text}</p>}
+                {bestNow.spreadEur !== null && (
+                  <p>
+                    Günstigste bis teuerste:{" "}
+                    {centPerLiter(bestNow.spreadCt ?? 0)} ·{" "}
+                    {euro(bestNow.spreadEur)} € bei{" "}
+                    {deTrimmed(calculationLiters, 0)} L
+                  </p>
+                )}
+                {coverage.ageLine && <p>{coverage.ageLine}</p>}
+                {/* Der Servergrund steht hier, wenn das Banner ihn nicht
+                    schon trägt (Stufe 2 und 3) — und nie doppelt zum
+                    Lernhinweis. */}
+                {level === "full" &&
+                  verdict?.detail &&
+                  verdict.detail !== learning && (
+                    <p>{verdict.detail}</p>
+                  )}
+              </div>
+            </details>
           </div>
         )}
       </div>
