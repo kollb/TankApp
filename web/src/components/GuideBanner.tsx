@@ -18,6 +18,12 @@ export interface GuideBannerProps {
   stand?: string | null;
   /** Ob aktuell Preise vorliegen (Stufe 2: „trotzdem live“). */
   hasPrices?: boolean;
+  /**
+   * Sperrgründe der Freigabekette (`blocking_reasons`). Sie entscheiden,
+   * ob die Prognose **pausiert** (kommt von allein zurück) oder **noch
+   * nicht freigegeben** ist (braucht abgerechnete Empfehlungen).
+   */
+  blockingReasons?: string[] | null;
   retrying?: boolean;
   onRetry: () => void;
 }
@@ -26,10 +32,11 @@ export function GuideBanner({
   level,
   stand = null,
   hasPrices = true,
+  blockingReasons = null,
   retrying = false,
   onRetry,
 }: GuideBannerProps) {
-  const banner = guideBanner(level, { stand, hasPrices });
+  const banner = guideBanner(level, { stand, hasPrices, blockingReasons });
   if (!banner) return null;
   const Icon = level === "offline" ? WifiOff : TriangleAlert;
   return (

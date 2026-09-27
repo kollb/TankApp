@@ -88,6 +88,28 @@ describe("3-Stufen-Fallback", () => {
     expect(banner?.tone).toBe("neutral");
   });
 
+  it("ein noch nicht freigegebenes Modell ist keine Pause", () => {
+    // „Macht gerade Pause“ verspräche eine Rückkehr in Minuten. Bei
+    // `m7_pending` braucht es abgerechnete Empfehlungen — das Banner
+    // nennt deshalb die Folge, der Zählstand bleibt in der Karte.
+    const banner = guideBanner("noForecast", {
+      hasPrices: true,
+      blockingReasons: ["paths_invalid", "m7_pending"],
+    });
+    expect(banner?.title).toBe("Die Prognose ist noch nicht freigegeben");
+    expect(banner?.body).toContain("Alle Preise sind trotzdem live");
+    expect(banner?.body).not.toContain("Dienst wieder antwortet");
+  });
+
+  it("die echte Pause nennt den Dienst, nicht die Freigabe", () => {
+    const banner = guideBanner("noForecast", {
+      hasPrices: true,
+      blockingReasons: ["forecast_missing"],
+    });
+    expect(banner?.title).toBe("Die Prognose macht gerade Pause");
+    expect(banner?.body).toContain("Dienst wieder antwortet");
+  });
+
   it("beide Stufen bieten „Erneut versuchen“ mit Ladewort", () => {
     for (const level of ["offline", "noForecast"] as const) {
       const banner = guideBanner(level, { stand: "14:32" });

@@ -55,9 +55,28 @@ export function guideLevel(input: {
  * „Zuerst sagen, was weiterhin geht, erst danach, was fehlt“ (MICROCOPY §5a).
  * Deshalb steht die Route in beiden Texten vor dem fehlenden Modell.
  */
+/**
+ * Sperrgründe, die **keine** Pause sind, sondern ein noch nicht
+ * freigegebenes Modell (A21-B1.4). „Die Prognose macht gerade Pause“
+ * verspräche hier eine Rückkehr in Minuten — tatsächlich braucht es
+ * abgerechnete Empfehlungen. Der Zählstand steht in der Karte
+ * (`learningNote`); das Banner nennt die Folge, nicht dieselbe Zahl
+ * noch einmal (Nutzer-Feedback 16.09.2026: doppelter Lernsatz).
+ */
+export const LEARNING_REASONS: readonly string[] = [
+  "model_not_released",
+  "m7_pending",
+  "quality_missing",
+];
+
 export function guideBanner(
   level: GuideLevel,
-  options: { stand?: string | null; hasPrices?: boolean } = {},
+  options: {
+    stand?: string | null;
+    hasPrices?: boolean;
+    /** `blocking_reasons` der API — entscheidet „Pause“ gegen „noch nicht freigegeben“. */
+    blockingReasons?: string[] | null;
+  } = {},
 ): {
   title: string;
   body: string;
@@ -77,6 +96,22 @@ export function guideBanner(
       retry: "Erneut versuchen",
       retrying: "Verbinde …",
       tone: "warn",
+    };
+  }
+  const learning = (options.blockingReasons ?? []).some((reason) =>
+    LEARNING_REASONS.includes(reason),
+  );
+  if (learning) {
+    return {
+      title: "Die Prognose ist noch nicht freigegeben",
+      body:
+        (options.hasPrices === false
+          ? "Der Preisvergleich trägt die Entscheidung."
+          : "Alle Preise sind trotzdem live. ") +
+        "Die Zeit-Empfehlung kommt nach der Freigabe — der Zählstand steht in der Karte.",
+      retry: "Erneut versuchen",
+      retrying: "Verbinde …",
+      tone: "neutral",
     };
   }
   const tail = "Die Zeit-Empfehlung kommt zurück, sobald der Dienst wieder antwortet.";

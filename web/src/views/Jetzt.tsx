@@ -527,6 +527,7 @@ export function JetztView(props: JetztViewProps) {
           level={level}
           stand={timeOfDayLabel(pricesAt)}
           hasPrices={stations.length > 0}
+          blockingReasons={decide?.blocking_reasons ?? null}
           retrying={decideRes.pending}
           onRetry={onRetry}
         />
