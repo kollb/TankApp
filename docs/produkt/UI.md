@@ -1,14 +1,18 @@
 # Oberfläche und Interaktion
 
-> Stand: 27.09.2026 · App-Version 0.72.0
+> Stand: 28.09.2026 · App-Version 0.73.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
 > ([Release 0.70.2](../releases/CHANGELOG.md#0702--2026-09-27)).
-> Neu in 0.71.0: GUI v2 — helles Material-You-Design nach `sample/good gui`
-> als Standard; der bisherige dunkle Stand bleibt als Thema „Dunkel“
+> Neu in 0.71.0: GUI v2 — das Material-You-Schema aus `sample/good gui` wird
+> die Gestaltung; beide Themen tragen dieselben Rollen
 > ([Release 0.71.0](../releases/CHANGELOG.md#0710--2026-09-27)).
+> Neu in 0.73.0: **Dunkel ist die Voreinstellung** („System“ folgt dem Gerät,
+> Rückfall Dunkel) und das Konzept ist unter `/?konzept=1` die echte Ansicht —
+> Desktop zuerst, mit den drei Fallback-Stufen
+> ([Release 0.73.0](../releases/CHANGELOG.md#0730--2026-09-28)).
 
 ## Inhaltsverzeichnis
 
@@ -254,6 +258,10 @@ Werten, nicht nur Reihennamen.
   [ADR 0002](../adr/0002-PRODUKTUMFANG.md).
 - Dark/Light, Typografie und Komponenten übernehmen die gestalterische Basis
   der [GUI-Vorlagen](GUI-VORLAGEN.md), aber keine Demo-Datenlogik.
+- Der Neubau ist **Desktop zuerst**: Kopfzeile, Seitenleiste und zwei Spalten
+  ab 1024 px; darunter dieselbe Reihenfolge in einer Spalte mit unterer Leiste
+  und „Mehr“-Blatt. Geprüft in `web/e2e/konzept.spec.ts` für 1440 px und
+  390 px.
 
 ## Änderungen abnehmen
 
@@ -266,11 +274,45 @@ Für das Labor bleiben alle sechs historischen Abschnittssprünge sowie der
 Umbruch langer Bezeichner in den Parameterkarten Teil der Demo-Browser-Suite.
 Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
 
-## Interaktives Design-Lab (0.72.0)
+## Konzept-Neubau („GUI v3“, 0.73.0)
 
-`/?konzept=1` öffnet den M3-Prototyp aus `sample/good gui`: Smartphone links,
-UX-Panel rechts. Mobil schaltet „Konzept & Steuerung“ die Ansicht um. Der
-Desktop-Link „Neue GUI“ sitzt in der Live-Kopfzeile. Die Live-App bleibt unter
-`/` und den bisherigen Tab-URLs; deren Funktionen werden nicht durch Demo-Daten
-ersetzt. Karte/Alarme im Prototyp sind ausdrücklich Demo-Interaktionen. Bedienung und
-Funktionsabdeckung stehen in [GUI-VORLAGEN](GUI-VORLAGEN.md).
+`/?konzept=1` ist die **echte** Ansicht: dieselben Endpunkte, dieselben
+Freigabegates, dieselben Formatter wie unter `/` — nur Gestaltung und
+Anordnung kommen aus dem Konzept. Der frühere Prototyp mit Handy-Rahmen,
+Steuerpanel und Beispieldaten ist entfernt
+([Release 0.73.0](../releases/CHANGELOG.md#0730--2026-09-28)); Details und die
+Übernahmeregeln stehen in [GUI-Vorlagen](GUI-VORLAGEN.md).
+
+- **Kopfzeile** trägt Kontext (Stadt · Kraftstoff), Zustand, Darstellung und
+  Aktualisieren. **Seitenleiste** links: Jetzt · Woche · Stationen, darunter
+  das Studio (Labor, Ich, System, Glossar). Am Handy trägt die untere Leiste
+  dieselben Einträge, Studio hinter „Mehr“.
+- **Jetzt** beantwortet weiter genau eine Frage. Die Antwort steht in der
+  einzigen Karte mit Elevation; darunter drei Fakten, höchstens drei
+  Schritte, rechts der Tagesverlauf, das Was-wäre-wenn und der Tankstand.
+- **Stufe 2 und 3** bleiben unverändert ehrlich: ein Inline-Banner über der
+  Antwort erklärt, was fehlt und was trotzdem geht, mit genau einer Handlung
+  („Erneut versuchen“). Ohne Verbindung nennt die Karte den Stand und die
+  Faustregel — keine zwischengespeicherte Prognose als Prognose.
+- **Bereiche außer „Jetzt“** laufen in der bisherigen Gestaltung weiter und
+  werden über `views/Sections.tsx` für beide Hüllen einmal gerendert. Der
+  Neubau sagt offen, wo das noch so ist; jeder migrierte Bereich ersetzt dort
+  einen Block.
+
+## Darstellung und Themen
+
+Die Wahl steht in den Einstellungen (Ich → Einstellungen → Darstellung) und
+hat drei Zustände:
+
+| Wahl | Anzeige | Speicher |
+|---|---|---|
+| **System** (Voreinstellung) | folgt `prefers-color-scheme`, live | kein Schlüssel |
+| Dunkel | immer dunkel | `tankapp.theme = "dark"` |
+| Hell | immer hell | `tankapp.theme = "light"` |
+
+Sagt das Gerät nichts (oder ist die Abfrage nicht möglich), gilt **Dunkel** —
+das ist der Rückfall, keine Vorliebe. `public/theme-boot.js` wendet dieselben
+Regeln vor dem ersten Paint an, `src/theme.ts` hält sie fest (mit
+`theme.test.ts`), `applyAppTheme` hält Klasse und `theme-color` synchron.
+Beide Themen sind dasselbe Material-You-Schema; keine Komponente trägt eigene
+Farbwerte.

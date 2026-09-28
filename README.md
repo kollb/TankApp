@@ -4,7 +4,7 @@ TankApp beantwortet mit echten Tankstellenpreisen drei Fragen: **Jetzt oder
 warten? Hier oder woanders? Heute oder später?** Preisbeobachtung,
 Modellprognose und persönliche Tankbilanz bleiben dabei getrennt.
 
-> Stand: 24.09.2026 · App-Version **0.70.0**
+> Stand: 28.09.2026 · App-Version **0.73.0**
 > [Dokumentation](docs/README.md) · [Offene Aufgaben](docs/planung/TODO.md) ·
 > [Release-Historie](docs/releases/CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md)
 
@@ -37,6 +37,14 @@ Modellprognose und persönliche Tankbilanz bleiben dabei getrennt.
 Die Hauptnavigation besteht aus **Jetzt, Woche, Stationen** und **Mehr**.
 Hinter „Mehr“ liegen Labor, Ich, System und Glossar; auf dem Desktop sind
 sie als Studio-Gruppe erreichbar. Details: [UI](docs/produkt/UI.md).
+
+Der Konzept-Neubau liegt unter `/?konzept=1`: dieselben Endpunkte, dieselben
+Freigabegates, aber Desktop zuerst (Kopfzeile, Seitenleiste, zwei Spalten) und
+am Handy dieselbe Reihenfolge in einer Spalte. Dort ist „Jetzt“ neu gebaut,
+die übrigen Bereiche laufen noch in der bisherigen Gestaltung. Die
+Darstellung ist standardmäßig **dunkel** und folgt sonst dem Betriebssystem;
+Hell bleibt wählbar. Stand der Migration:
+[GUI-Vorlagen](docs/produkt/GUI-VORLAGEN.md).
 
 Der Modell-Default ist `profile_ar2` mit gemeinsamer Bootstrap-Ziehung und
 Day-Pair-Blöcken. Eine technische PIT-Rekalibrierung ist nur für 24 Stunden

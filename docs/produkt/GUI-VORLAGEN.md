@@ -1,95 +1,97 @@
-# GUI-Vorlagen und interaktiver M3-Prototyp
+# GUI-Vorlagen und Übernahme ins Produkt
 
-> Stand: 27.09.2026. `sample/good gui` bleibt die geschützte gestalterische
-> und technische Basis. Der ausführbare Prototyp liegt in `web/src/concept/`.
+> Stand: 28.09.2026 · App-Version 0.73.0
+> `sample/good gui` bleibt die geschützte gestalterische und technische Basis.
+> Das Konzept ist seit 0.73.0 **umgesetzt**: `/?konzept=1` ist die echte
+> Ansicht (`web/src/v3/`), kein Prototyp mit Beispieldaten.
 
 ## Inhaltsverzeichnis
 
 - [Vorlagen und Übernahme](#vorlagen-und-übernahme)
-- [Visuelle Leitplanken aus dem vorhandenen Code](#visuelle-leitplanken-aus-dem-vorhandenen-code)
-- [Daten und Design getrennt migrieren](#daten-und-design-getrennt-migrieren)
-- [Bedienung und Funktionsabdeckung](#bedienung-und-funktionsabdeckung)
+- [Visuelle Leitplanken](#visuelle-leitplanken)
+- [Was live ist und was nicht](#was-live-ist-und-was-nicht)
+- [Bereich für Bereich](#bereich-für-bereich)
 - [Prüfung](#prüfung)
 
 ## Vorlagen und Übernahme
 
-Die Dateien in [`sample/good gui`](../../sample/good%20gui) bleiben unverändert.
-Sie enthalten `App`, `PhoneApp`, `ConceptPanel`, Tokens, Beispieldaten und
-Labor-Konzepttexte. Die Vorlage importiert einen `LabScreen`, der im aktuellen
-Bestand fehlt. In `web/src/concept/` ist dieser Screen ergänzt; Importpfade
-sind an die ausführbare React-App angepasst. Karte und Alarme der Vorlage
-waren Snackbar-Platzhalter und haben jetzt eigene Demo-Ansichten.
+Die Dateien in [`sample/good gui`](../../sample/good%20gui) bleiben unverändert
+im Checkout. Sie enthalten `App`, `PhoneApp`, `ConceptPanel`, Tokens,
+Beispieldaten und Labor-Konzepttexte und sind ausdrücklich **Vorlage**, nicht
+Laufzeitcode: Nichts in `web/` importiert daraus, und die Übernahme ist keine
+Kopie, sondern eine Übersetzung in die echten Bausteine der App.
 
 Die ältere Referenz `sample/good statistic gui` ist im aktuellen Checkout
-nicht vorhanden. Vorhandene produktive Labor-/Statistikfunktionen in `web/src/`
-werden durch diese Änderung weder gelöscht noch durch Demo-Logik ersetzt.
+nicht vorhanden. Vorhandene produktive Labor- und Statistikfunktionen werden
+weder gelöscht noch durch Demo-Logik ersetzt.
 
-## Visuelle Leitplanken aus dem vorhandenen Code
+Der frühere ausführbare Prototyp (`web/src/concept/`) ist mit dem
+[Release 0.73.0](../releases/CHANGELOG.md#0730--2026-09-28) entfernt: Handy-Rahmen,
+Steuerpanel und `tankapp-concept:*`-Beispieldaten hatten ihren Zweck erfüllt,
+sobald die Gestaltung auf echten Daten stand. Was bleibt, ist die Gestaltung —
+umgesetzt in `web/src/v3/`, geprüft von `web/src/v3/v3.test.tsx` und
+`web/e2e/konzept.spec.ts`.
 
-- Helles Material You: Primary `#006c4c`, Mint `#89f8c7`, Error `#ba1a1a`,
-  Rosa `#ffdad6`, Tertiary `#3d6373`, Eisblau `#c1e8fb`, Warnung `#7c5800`
-  auf `#ffdea3`. Surface-Rampe Weiß bis `#e4eae3`.
-- Desktop: Smartphone mit Statusbar und Dynamic Island links; unabhängig
-  scrollendes Konzept-Panel rechts. Mobil: Vollbild-App und expliziter
-  Umschalter „Konzept & Steuerung“ statt zweier winziger Spalten.
-- Material-3-Karten, Filter Chips, Segmented Buttons, Navigation Bar, Extended
-  FAB, Switches, Snackbar und Bottom Sheet. SVG-Diagramme bleiben ohne externe
-  Chart-Runtime interaktiv.
-- Tailwind und Lucide für Komponenten; Framer Motion für Übergänge. Reduzierte
-  Bewegung wird respektiert. Der helle Prototyp überschreibt Tokens nur in
-  seinem eigenen Root, nicht das wählbare Thema der Live-App.
+## Visuelle Leitplanken
 
-## Daten und Design getrennt migrieren
+- Material You in **zwei** Themen, dieselben Rollen: Primary `#6cdbac` auf
+  `#00513a` (dunkel) bzw. `#006c4c` auf `#89f8c7` (hell), Tertiary
+  `#a5cff0`/`#3d6373`, Warnung `#ffdea3` auf `#56430a`, Error `#ffb4ab` auf
+  `#93000a`. Voreinstellung ist „System“ mit Rückfall **Dunkel**
+  ([Darstellung](UI.md#darstellung-und-themen)).
+- Desktop ist die Grundform: Kopfzeile, Seitenleiste links, Inhalt in zwei
+  Spalten. Das Handy erbt dieselbe Reihenfolge in einer Spalte und bekommt die
+  untere Leiste mit „Mehr“-Blatt statt der Seitenleiste — kein Bereich
+  verschwindet in einem Raster.
+- Karten tragen Tonflächen und Ränder, nicht Schatten. Elevation hat genau
+  eine Karte je Seite: die Antwort.
+- Vier Urteilstöne mit fester Bedeutung bleiben unangetastet: Grün = jetzt
+  handeln, Blau = warten, Rot = Tankrest blockiert das Warten, Grau =
+  ehrlich unentschieden.
+- Diagramme und Karten bleiben ohne externe Chart-Runtime (SVG), reduzierte
+  Bewegung wird respektiert.
 
-**Einstieg:** `/?konzept=1`, zusätzlich „Neue GUI“ in der Desktop-Kopfzeile.
-Der Parameter lädt einen eigenen Chunk. Die produktive Oberfläche bleibt
-unter `/` und ihren bestehenden Tab-URLs erhalten; Rücklinks führen zu allen
-Funktionsbereichen. Beide Ansichten liegen im selben Produktionsbuild.
+## Was live ist und was nicht
 
-Das Mockup verwendet deterministische Beispieldaten, keine Live-API. Insbesondere:
+Die Ansicht unter `/?konzept=1` liest **dieselben Endpunkte** wie die
+klassische Oberfläche: `/api/v1/overview`, `/api/v1/decide`, Preise, Alarme,
+Profile. Es gibt keine Beispieldaten, keine simulierten Empfehlungen und
+keine eigenen Schreibwege. Konkret:
 
-- „Live“, „Offline“ und der Retry sind vom Panel gesteuerte Szenarien. Der Retry
-  simuliert die Wiederherstellung, er misst keine Netzwerkverbindung.
-- „26 von 30 Tagen“, „9 von 10 Fällen“, MAE und Gradient Boosting sind markierte
-  Konzeptwerte, keine Modellfreigabe oder Gütemessung der produktiven Engine.
-- Profile, Kraftstoff, Experimente und Demo-Alarme verwenden ausschließlich
-  `tankapp-concept:*` in Local Storage. Blockierter Speicher fällt auf
-  Sitzungszustand zurück. Keine Synchronisation und keine Push-Nachrichten.
-- Die schematische Karte benötigt keine Kartenkacheln. Die Routenaktion öffnet
-  Google Maps mit der Beispieladresse; externe Navigation braucht ggf. Netz.
-- Echte Preis-/Modellabfragen, Profile, Tankbuch, Feedback, Alarme, Export,
-  Offline-Queue, System und Failover bleiben in den bestehenden Live-Views.
+- Die Antwort auf „Soll ich jetzt tanken?“ kommt aus `now.ts`, der Tonschlüssel
+  aus `guide.ts` — inklusive der drei Fallback-Stufen (volle Prognose, ohne
+  Freigabe, offline) und der Gültigkeitsgrenze `valid_until`.
+- Der Sperrzustand `decision_ready=false` bleibt sichtbar: Banner mit einer
+  Handlung, kein erfundenes Urteil.
+- Preise, Frische-Zeile, Abdeckung und Quellenangabe kommen aus den
+  bestehenden Formattern (`data.ts`); die Ansicht formatiert nichts selbst.
+- Die klassische Ansicht bleibt unter `/` vollständig erreichbar; beide
+  Ansichten teilen sich Zustand, Adresse und Freigabegates.
 
-Das ist **keine vollständige Portierung der produktiven API ins Smartphone**.
-Diese Grenze steht auch in [LUECKEN](../planung/LUECKEN.md#bewusste-grenzen).
-Eine spätere Integration muss bestehende Freigabegates und Fehlerzustände
-übernehmen, nicht fixe Demo-Ergebnisse an produktive Schreibaktionen hängen.
+## Bereich für Bereich
 
-## Bedienung und Funktionsabdeckung
-
-| Bereich | Bedienbare Funktionen |
+| Bereich | Stand 0.73.0 |
 |---|---|
-| Guide | Kraftstoff, drei Empfehlungen, drei Datenlagen, Retry-Spinner, Preis-Badges, Sortierung Preis/Nähe, Routen, einklappender Karten-FAB, Warum-Sheet |
-| Labor | Fächer mit P10–P90-Band und Tiefpunkt, SVG-Zeitpunkte per Klick/Tastatur, typische/graue Fallback-Kurve, fünf Faktoren, 30-Tage-Raster |
-| Tankprofil | HTML-Range 20–80 Liter, drei Warteoptionen, sofortige Beispielrechnung pro Füllung/Jahr, lokale Speicherung |
-| Experimente | Drei Switches, echte Undo-Funktion, offline deaktiviert mit Begründung |
-| Karte | Vier auswählbare Stationen, schematische Positionen, externe Routenaktion |
-| Alarme | Zielpreis validieren, lokal speichern, anzeigen, löschen; offline keine Neuanlage |
-| Konzept | Screen-/Datenlagen-/Empfehlungswahl, Nummerierung, Aufbau, Texte, zwölf Komponenten je Hauptscreen, Matrix und fünf Leitregeln |
-| Barrierearme Bedienung | Benannte Steuerelemente, roving Fokus in Tabs/Radio-Gruppen, Pfeiltasten/Home/End, Escape/Fokus-Rückgabe im Sheet, inerte Umgebung, Reduced Motion |
+| Jetzt | im neuen Raster neu gebaut (`v3/Guide.tsx`) |
+| Woche, Stationen, Labor, Ich, System, Glossar | voll bedienbar in der bisherigen Gestaltung, eingehängt über `views/Sections.tsx`; der Neubau sagt das sichtbar an |
 
-Rechner-Annahmen: 24 Füllungen/Jahr; je nach Warteoption 0, 3,5 oder 8 ct/L.
-Diese Annahmen stehen direkt im Mockup und sind keine garantierte Ersparnis.
+`views/Sections.tsx` rendert diese sechs Bereiche für **beide** Hüllen
+einmal. Eine zweite Verdrahtung der Props wäre eine zweite Wahrheit: Bei jeder
+Änderung an `state/overview.tsx` würde eine der Oberflächen stillschweigend
+auseinanderlaufen. Die Migration eines Bereichs heißt deshalb: eine neue Seite
+in `web/src/v3/` bauen und ihren Block in `Sections.tsx` entfernen — nie
+kopieren.
 
 ## Prüfung
 
-- `web/src/concept/state.test.ts`: Rechenbasis, Kurvenlänge, Preisstufen,
-  kodierte Routenziele. Die bestehenden Format-/A11y-Ratchets gelten ebenfalls.
-- `web/e2e/concept.spec.ts`: Desktop und Mobil; alle Empfehlungen und Datenlagen,
-  Retry, Sheet, Sortierung, Karte, Alarme, Slider, Persistenz, Undo und Konzepttabs.
-- Bestehende E2E-Suiten prüfen die Live-App weiter, inklusive echter
-  Demo-Serverantworten. Der Prototyp ersetzt diese Nachweise nicht.
-- Lokaler Browser benötigt die üblichen Systembibliotheken und Schriften.
-  Fehlt die in `styles.css` bevorzugte Roboto-Schrift, kann die abweichende
-  Fallback-Metrik den bestehenden Scrollhöhenratchet verändern. Keine Grenzwerte
-  lockern, um eine abweichende Testumgebung zu kaschieren.
+- `web/src/v3/v3.test.tsx`: die drei Guide-Stufen, Urteilstöne, Herkunft,
+  Annahmen und die Hülle (Bereiche in beiden Rastern) gegen injizierte
+  Zustände.
+- `web/e2e/konzept.spec.ts` (Browser, Desktop 1440 px + Mobil 390 px):
+  echte Ansicht ohne Vorschau-Rahmen, Bereichswechsel über die Adresse,
+  schmales Raster ohne Querlauf, System-Darstellung mit dunklem Rückfall.
+- Die Ratchets aus `a11y.test.ts` (Kontrast aller M3-Paare in beiden Themen,
+  44-px-Ziele, Grid-Spalten) und `format-convention.test.ts` gelten für `v3/`
+  ohne Ausnahme.
+- Ein bestandener Browserlauf ist ein Layout-Nachweis, keine Modell- oder
+  Hardwareabnahme.

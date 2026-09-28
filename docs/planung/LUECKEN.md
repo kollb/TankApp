@@ -136,12 +136,16 @@ Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 
 ## Bewusste Grenzen
 
-**M3-Prototyp (0.72.0):** `/?konzept=1` ist das bedienbare Design-Lab,
-keine neue Live-Datenoberfläche. Die bisherigen Funktionen bleiben unter `/`
-erhalten und werden aus dem Prototyp verlinkt. Die Übertragung der echten
-API-Zustände, Profil-/Belegmutationen und Freigabegates in das Smartphone-Layout
-ist noch nicht erfolgt. Beispiel-MAE, Gradient Boosting, Treffsicherheit und
-Sparbeträge sind keine Aussagen über die produktive Engine.
+**Konzept-Neubau (0.73.0):** `/?konzept=1` ist die echte Ansicht mit
+denselben Endpunkten, Freigabegates und Formattern — kein Design-Lab mit
+Beispieldaten (das Lab ist entfernt). Offen bleibt die **Migration der
+übrigen Bereiche**: Woche, Stationen, Labor, Ich, System und Glossar laufen
+dort noch in der bisherigen Gestaltung (voll bedienbar, über
+`views/Sections.tsx` für beide Hüllen einmal gerendert). Die neue Ansicht ist
+damit kein neuer Datenweg: Sie liest dieselben Antworten und erbt deren
+Grenzen — `decision_ready=false`, abgelaufene Freigaben, dünne Abdeckung und
+ungültige Kalibrierung bleiben sichtbar. Ein bestandener Browserlauf des
+Neubaus ist keine Modell- oder Hardwareabnahme.
 
 | Thema | Entscheidung |
 |---|---|

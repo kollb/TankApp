@@ -4,6 +4,47 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.73.0] – 2026-09-28
+
+**Das Konzept ist umgesetzt, nicht als Beispiel-GUI.** `/?konzept=1` ist die
+echte Ansicht: dieselben Endpunkte, dieselben Freigabegates, dieselben
+Formatter — Handy-Rahmen, Steuerpanel und Beispieldaten des Prototyps sind
+entfernt.
+
+- **Dunkel als Voreinstellung:** Die Darstellung hat drei Zustände — „System“
+  (Voreinstellung, folgt `prefers-color-scheme` live), „Dunkel“, „Hell“. Ohne
+  Angabe des Geräts gilt Dunkel; nur eine ausdrückliche Wahl liegt in
+  `tankapp.theme`, „System“ entfernt den Schlüssel wieder. `src/theme.ts` hält
+  die Regeln, `public/theme-boot.js` wendet sie vor dem ersten Paint an,
+  `index.html` startet mit `class="dark"`. Die Einstellungen zeigen drei
+  Knöpfe statt zwei.
+- **Dunkle Palette des Konzepts:** `html.dark` trägt dieselbe
+  Material-You-Skala wie das helle Thema (Seite `#0f1512`, Karte `#1a201c`,
+  Inset `#262d29`, Primary `#6cdbac`, Tertiary `#a5cff0`, Warnung `#ffdea3`
+  auf `#56430a`) statt der bisherigen Slate-Welt. Diagrammpalette und
+  Kontrast-Ratchet ziehen mit; der Ratchet liest die geprüften Flächen aus den
+  Token selbst.
+- **Neubau `web/src/v3/` (Desktop zuerst):** Kopfzeile mit Kontext, Zustand,
+  Darstellung und Aktualisieren; Seitenleiste links (Jetzt · Woche ·
+  Stationen, darunter Studio); am Handy dieselbe Reihenfolge in einer Spalte
+  mit unterer Leiste und „Mehr“-Blatt. Sprungmarke, sichere Zone und
+  Fokusführung inklusive.
+- **„Jetzt“ neu gebaut, auf echten Daten:** eine Frage, eine Antwort aus
+  `now.ts`/`guide.ts` — mit Betrag, Gültigkeit und Herkunft; darunter drei
+  Fakten, höchstens drei Schritte, Tagesverlauf, Was-wäre-wenn und
+  Tankstand-Schnellwahl. Die drei Fallback-Stufen bleiben: Stufe 2 und 3
+  tragen das Inline-Banner mit genau einer Handlung, Stufe 3 nennt Stand und
+  Faustregel statt einer Empfehlung.
+- **Eine Verdrahtung für beide Hüllen:** `views/Sections.tsx` rendert die
+  übrigen sechs Bereiche einmal für die klassische Oberfläche **und** für den
+  Neubau; der Neubau sagt sichtbar, wo noch die bisherige Gestaltung steht.
+- **Entfernt:** `web/src/concept/**` (Prototyp mit Demo-Daten) und
+  `web/e2e/concept.spec.ts`. `sample/good gui` bleibt als Design-Basis
+  unangetastet.
+- **Prüfung:** `web/src/v3/v3.test.tsx` (drei Stufen, Urteilstöne, Hülle),
+  `web/src/theme.test.ts`, `web/e2e/konzept.spec.ts` (Browser: echte Ansicht,
+  Bereichswechsel über die Adresse, schmales Raster, System-Darstellung).
+
 ## [0.72.0] – 2026-09-27
 
 - **Interaktives M3-Design-Lab:** `/?konzept=1` übernimmt `sample/good gui`
