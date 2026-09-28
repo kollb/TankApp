@@ -226,7 +226,9 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Zurück auf den Default („System“): die Wahl verschwindet wieder, das
   // Gerät entscheidet — hier hell. Damit hängen andere Tests nicht von
   // dieser Ansicht ab.
-  await themeGroup.getByRole("button", { name: "System", exact: true }).click();
+  // Der „System“-Knopf trägt zusätzlich den gerade angezeigten Stand
+  // („System dunkel“) — der Name beginnt mit der Wahl.
+  await themeGroup.getByRole("button", { name: /^System/ }).click();
   expect(
     await page.evaluate(() => localStorage.getItem("tankapp.theme")),
   ).toBe(null);
