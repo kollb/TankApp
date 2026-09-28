@@ -106,6 +106,8 @@ function DashboardShell() {
     setStationsSpanHours,
     theme,
     setTheme,
+    themeChoice,
+    setThemeChoice,
     tankCapacity,
     setTankCapacity,
     tankPercent,
@@ -567,6 +569,8 @@ function DashboardShell() {
               refreshNow,
               theme,
               setTheme,
+              themeChoice,
+              setThemeChoice,
               pinnedStations: pinnedFirstStations
                 .filter((row) => pinnedIds.includes(row.station_id))
                 .map((station) => ({ station })),

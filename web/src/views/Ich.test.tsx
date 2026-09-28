@@ -67,6 +67,8 @@ const settings: SettingsPanelProps = {
   refreshNow: noop,
   theme: "dark",
   setTheme: noop,
+  themeChoice: "dark",
+  setThemeChoice: noop,
   pinnedStations: [],
   togglePin: noop,
   version: "0.35.0",
@@ -218,8 +220,9 @@ describe("Ich: Einstellungen am Wirkungsort", () => {
     const html = render({ initialSection: "settings" });
     expect(html).toContain('id="settings-city"');
     // Seit der neuen GUI ist „Hell (Standard)“ der Default, „Dunkel“ die Option.
-    expect(html).toContain("Hell (Standard)");
-    expect(html).toContain("Dunkel");
+    expect(html).toContain(">System<");
+    expect(html).toContain(">Dunkel<");
+    expect(html).toContain(">Hell<");
   });
 });
 

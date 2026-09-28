@@ -1,7 +1,9 @@
-/* C4: Theme vor dem ersten Paint anwenden (localStorage „tankapp.theme“,
-   Default „light“ = helles Material-You-Schema, die neue Design-Basis
-   (UX-Konzept v2, sample/good gui). React übernimmt in data.ts denselben
-   Wert und hält meta/Classes synchron.
+/* Theme vor dem ersten Paint anwenden (localStorage „tankapp.theme“).
+   Voreinstellung ist „System“: Die Anzeige folgt `prefers-color-scheme`,
+   Rückfall ist **dunkel**. Eine gespeicherte Wahl („dark“/„light“) sticht
+   das System; der Schlüssel fehlt genau dann, wenn „System“ gewählt ist.
+   React rechnet dieselben Regeln in src/theme.ts und hält Klasse und
+   theme-color-Meta synchron.
 
    Warum eine eigene Datei statt eines Inline-Skripts: Der Server sendet
    `Content-Security-Policy: script-src 'self'` ohne 'unsafe-inline' — ein
@@ -9,14 +11,30 @@
    Laden geflackert (Stand 0.30.0). Eine eigene, selbst gehostete Datei läuft
    unter `script-src 'self'` und blockiert als klassisches Skript im <head>
    weiterhin das erste Paint, solange sie ohne defer/async eingebunden ist. */
-try {
-  var t = JSON.parse(localStorage.getItem("tankapp.theme") || '"light"');
-  if (t === "dark") {
-    document.documentElement.classList.remove("light");
-    document.documentElement.classList.add("dark");
-    var m = document.querySelector('meta[name="theme-color"]');
-    if (m) m.setAttribute("content", "#0b0f19");
+(function () {
+  var theme = "dark";
+  try {
+    var stored = localStorage.getItem("tankapp.theme");
+    if (stored !== null) {
+      var choice = JSON.parse(stored);
+      if (choice === "dark" || choice === "light") theme = choice;
+    }
+  } catch (e) {
+    /* Storage gesperrt → System (bzw. dunkler Rückfall) entscheidet. */
   }
-} catch (e) {
-  /* Storage gesperrt → heller Default bleibt. */
-}
+  if (theme === "dark") {
+    try {
+      if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+        theme = "light";
+      }
+    } catch (e) {
+      /* Kein matchMedia: dunkler Rückfall bleibt. */
+    }
+  }
+  if (theme === "light") {
+    document.documentElement.classList.remove("dark");
+    document.documentElement.classList.add("light");
+    var lightMeta = document.querySelector('meta[name="theme-color"]');
+    if (lightMeta) lightMeta.setAttribute("content", "#f5fbf5");
+  }
+})();

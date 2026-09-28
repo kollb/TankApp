@@ -18,18 +18,24 @@ import {
   Gauge,
   Info,
   MapPin,
+  MonitorSmartphone,
   Moon,
   Scale,
   SlidersHorizontal,
   Star,
   Sun,
+  type LucideIcon,
 } from "lucide-react";
 import { PrecisionSlider } from "../components/PrecisionSlider";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
 import {
-  APP_THEMES,
+  THEME_CHOICES,
+  THEME_CHOICE_LABEL,
+  type ThemeChoice,
+} from "../theme";
+import {
   clockLabel,
   deTrimmed,
   euroPerHour,
@@ -355,6 +361,13 @@ export function VehiclePanel(props: VehiclePanelProps) {
   );
 }
 
+/** Symbol je Darstellungswahl — Markup, keine Datenlogik. */
+const THEME_CHOICE_ICON: Record<ThemeChoice, LucideIcon> = {
+  system: MonitorSmartphone,
+  dark: Moon,
+  light: Sun,
+};
+
 export interface SettingsPanelProps {
   // Kontext (Kopfzeile und Einstellungen teilen sich dieselben Werte)
   data: Stations | null;
@@ -366,8 +379,12 @@ export interface SettingsPanelProps {
   statsSummaryRes: ResourceState<StatsSummary>;
   refreshNow: () => void;
   // Darstellung
+  /** Angewandtes Thema (dunkel/hell) — für Umschalter und Diagramme. */
   theme: AppTheme;
   setTheme: (t: AppTheme) => void;
+  /** Gespeicherte Wahl: „system“ folgt dem Betriebssystem (Voreinstellung). */
+  themeChoice: ThemeChoice;
+  setThemeChoice: (c: ThemeChoice) => void;
   // Daten (am Wirkungsort: angepinnte Stationen, Beleg-Export)
   pinnedStations: Array<{ station: Station; }>;
   togglePin: (stationId: string) => void;
@@ -393,8 +410,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setCity,
     setFuel,
     setTheme,
+    setThemeChoice,
     statsSummaryRes,
     theme,
+    themeChoice,
     togglePin,
     version,
   } = props;
@@ -614,34 +633,47 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </div>
         <div
           role="group"
-          aria-label="Darstellung (dunkel oder hell)"
-          className="flex flex-wrap gap-2"
+          aria-label="Darstellung (System, dunkel oder hell)"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-3"
         >
-          {APP_THEMES.map((value) => (
-            <button
-              key={value}
-              aria-pressed={theme === value}
-              onClick={() => setTheme(value)}
-              className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-bold transition-colors ${
-                theme === value
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                  : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100"
-              }`}
-            >
-              {value === "dark" ? (
-                <Moon size={14} aria-hidden="true" />
-              ) : (
-                <Sun size={14} aria-hidden="true" />
-              )}
-              {value === "dark" ? "Dunkel" : "Hell (Standard)"}
-            </button>
-          ))}
+          {THEME_CHOICES.map((value) => {
+            const Icon = THEME_CHOICE_ICON[value];
+            return (
+              <button
+                key={value}
+                aria-pressed={themeChoice === value}
+                onClick={() => {
+                  // „System“ entfernt die gespeicherte Wahl; dunkel/hell
+                  // schreiben sie ausdrücklich fort (src/theme.ts).
+                  setThemeChoice(value);
+                  if (value !== "system") setTheme(value);
+                }}
+                className={`flex items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs font-bold transition-colors ${
+                  themeChoice === value
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon size={14} aria-hidden="true" />
+                  {THEME_CHOICE_LABEL[value]}
+                </span>
+                {value === "system" && (
+                  <span className="font-mono text-xs font-normal text-slate-500">
+                    {theme === "dark" ? "dunkel" : "hell"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          Hell (Material You) ist die Design-Basis und der Default — das
-          Konzept der neuen GUI. Dunkel ist eine dunkle Variante derselben
-          Skala: dieselben Klassen, andere Token-Werte. Die Wahl gilt nur
-          auf diesem Gerät.
+          Voreinstellung ist <strong>System</strong>: Die App folgt der
+          Einstellung des Geräts und fällt auf Dunkel zurück, wenn das
+          Betriebssystem nichts sagt. <strong>Dunkel</strong> und{" "}
+          <strong>Hell</strong> sind eine ausdrückliche Wahl für dieses Gerät
+          — beide sind dasselbe Material-You-Schema, nur mit anderen
+          Flächen- und Texttönen.
         </p>
       </section>
 

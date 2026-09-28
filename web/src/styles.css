@@ -201,56 +201,70 @@
 }
 
 /*
- * Dunkles Thema („Dunkel“ in den Einstellungen): die bisherige
- * Design-Welt — dunkler Slate-Hintergrund, Emerald-/Sky-/Amber-Akzente,
- * M3-Rollen in ihren Dark-Farben. Nichts davon ändert eine Klasse im
- * Code; die Wahl ist gerätelokal (C4).
+ * Dunkles Thema — seit dem Konzept-Neubau die **Voreinstellung**.
+ *
+ * Die Wahl „System“ (siehe `src/theme.ts` und `public/theme-boot.js`) folgt
+ * `prefers-color-scheme` und fällt auf Dunkel zurück; das helle Thema bleibt
+ * unter `:root` vollständig erhalten und ist über die Einstellungen wählbar.
+ *
+ * Dunkel ist nicht mehr die alte Slate-Welt, sondern dieselbe
+ * Material-You-Skala wie das Konzept: grün getönte neutrale Flächen
+ * (Seite #0f1512, Karte #1a201c, Inset #262d29) und dieselben Farbrollen
+ * (Primary #6cdbac, Tertiary #a5cff0, Warnung #ffdea3 auf #56430a, Error
+ * #ffb4ab auf #93000a). Kein Element im Code kennt einen Hexwert —
+ * umgeschaltet wird ausschließlich über diese Token.
+ *
+ * Kontrast: jedes container/on-container-Paar, jeder gedämpfte Textton und
+ * die Ampel der Stundenbalken halten ihren Schwellwert auf der jeweiligen
+ * Fläche; `a11y.test.ts` prüft die Paare, nicht die Optik.
  */
 html.dark {
-  /* C5: Auf den dunklen Flächen angehoben (Tailwinds slate-500/#64748b
-     hielte nur 3,1:1 auf slate-950). */
-  --color-slate-500: #8598b0;
-  --color-slate-600: #8295ad;
-
-  --color-slate-50: #f8fafc;
-  --color-slate-100: #f1f5f9;
-  --color-slate-200: #e2e8f0;
-  --color-slate-300: #cbd5e1;
-  --color-slate-400: #94a3b8;
-  --color-slate-700: #334155;
-  --color-slate-800: #1e293b;
-  --color-slate-900: #0f172a;
-  --color-slate-950: #020617;
+  /* Textrollen: stark → gedämpft. slate-500/600 sind die gedämpften Töne
+     und halten 4,5:1 auf Seite, Karte, Inset und höchster Fläche. */
+  --color-slate-50: #f2f6f3;
+  --color-slate-100: #e3e9e5;
+  --color-slate-200: #cfd7d2;
+  --color-slate-300: #b8c2bb;
+  --color-slate-400: #a8b3ac;
+  --color-slate-500: #a8b3ac;
+  --color-slate-600: #a8b3ac;
+  /* Ränder (700), Insets (800), Karten (900), Seite (950). */
+  --color-slate-700: #3d453f;
+  --color-slate-800: #262d29;
+  --color-slate-900: #1a201c;
+  --color-slate-950: #0f1512;
   --color-white: #ffffff;
 
-  --color-emerald-200: #6ee7b7;
-  --color-emerald-300: #6ee7b7;
-  --color-emerald-400: #34d399;
-  --color-emerald-500: #10b981;
-  /* Pastell = helle Textrolle im Dunklen (siehe :root-Kommentar). */
+  /* Akzent-Texttöne auf dunklen Flächen. */
   --color-emerald-100: #d1fae5;
+  --color-emerald-200: #89f8c7;
+  --color-emerald-300: #6cdbac;
+  --color-emerald-400: #4fc99a;
+  --color-emerald-500: #6cdbac;
   --color-amber-100: #fef3c7;
+  --color-amber-200: #f5c65a;
+  --color-amber-300: #f0c04a;
+  --color-amber-400: #e0ae35;
   --color-rose-100: #ffe4e6;
+  --color-rose-200: #ffc9c4;
+  --color-rose-300: #ffb4ab;
+  --color-rose-400: #ff8a80;
   --color-sky-100: #e0f2fe;
+  --color-sky-200: #c1e8fb;
+  --color-sky-300: #a5cff0;
+  --color-sky-400: #7fb8dd;
   --color-violet-100: #ede9fe;
   --color-violet-200: #ddd6fe;
-  --color-violet-300: #c4b5fd;
-  --color-violet-400: #a78bfa;
-  --color-amber-200: #fcd34d;
-  --color-amber-300: #fcd34d;
-  --color-amber-400: #fbbf24;
-  --color-rose-200: #fda4af;
-  --color-rose-300: #fda4af;
-  --color-rose-400: #fb7185;
-  --color-sky-200: #7dd3fc;
-  --color-sky-300: #7dd3fc;
-  --color-sky-400: #38bdf8;
-  --color-emerald-900: #064e3b;
-  --color-emerald-950: #022c22;
-  --color-amber-950: #451a03;
-  --color-rose-950: #4c0519;
-  --color-sky-950: #082f49;
+  --color-violet-300: #cfbcff;
+  --color-violet-400: #b69df8;
+  /* Getönte Flächen im hinteren Rang (Erfolg, Warnung, Fehler, Info). */
+  --color-emerald-900: #10382b;
+  --color-emerald-950: #0d2a20;
+  --color-amber-950: #3a2c07;
+  --color-rose-950: #3a1512;
+  --color-sky-950: #10303f;
 
+  /* M3-Farbrollen — dieselben Rollen wie im hellen Thema. */
   --color-m3-primary: #6cdbac;
   --color-m3-on-primary: #003826;
   --color-m3-primary-container: #00513a;
@@ -270,27 +284,28 @@ html.dark {
   --color-m3-tertiary-container: #234b5c;
   --color-m3-on-tertiary-container: #c1e8fb;
 
-  --color-m3-warn: #f2b23b;
-  --color-m3-on-warn: #452c00;
-  --color-m3-warn-container: #4a3300;
+  --color-m3-warn: #ffd07a;
+  --color-m3-on-warn: #3d2e00;
+  --color-m3-warn-container: #56430a;
   --color-m3-on-warn-container: #ffdea3;
 
-  --color-m3-bar-low: #10b981;
-  --color-m3-bar-mid: #f59e0b;
-  --color-m3-bar-high: #f43f5e;
+  /* Ampel der Stundenbalken: Flächen, kein Text — 3:1 genügen. */
+  --color-m3-bar-low: #6cdbac;
+  --color-m3-bar-mid: #f0c04a;
+  --color-m3-bar-high: #ffb4ab;
 
-  --color-m3-surface: #0b0f19;
-  --color-m3-surface-lowest: #0b0f19;
-  --color-m3-surface-low: #0f172a;
-  --color-m3-sc: #16202f;
-  --color-m3-surface-high: #1e293b;
-  --color-m3-sc-highest: #293548;
-  --color-m3-on-surface: #f1f5f9;
-  --color-m3-on-surface-variant: #8b9bb0;
-  --color-m3-outline: #334155;
-  --color-m3-outline-variant: #475569;
-  --color-m3-inverse-surface: #e2e8f0;
-  --color-m3-on-inverse-surface: #1e293b;
+  --color-m3-surface: #0f1512;
+  --color-m3-surface-lowest: #1a201c;
+  --color-m3-surface-low: #141a17;
+  --color-m3-sc: #222925;
+  --color-m3-surface-high: #262d29;
+  --color-m3-sc-highest: #323a35;
+  --color-m3-on-surface: #e3e9e5;
+  --color-m3-on-surface-variant: #b8c2bb;
+  --color-m3-outline: #8b958e;
+  --color-m3-outline-variant: #414a44;
+  --color-m3-inverse-surface: #e3e9e5;
+  --color-m3-on-inverse-surface: #2b322e;
   --color-m3-inverse-primary: #006c4c;
 }
 
@@ -315,8 +330,8 @@ html.dark {
 }
 
 html.dark body {
-  background-color: #0b0f19;
-  color: #f1f5f9;
+  background-color: #0f1512;
+  color: #e3e9e5;
 }
 
 /* Custom scrollbars */

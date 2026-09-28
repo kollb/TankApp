@@ -4432,11 +4432,11 @@ export function yearBalanceLabel(key: string): string {
 /**
  * C4: Dark/Light-Umschaltung der NAS-GUI.
  *
- * Hell (Material You, sample/good gui) ist seit der neuen GUI die
- * Design-Basis und der Default — die `:root`-Werte in styles.css.
- * „Dunkel“ ist eine dunkle Variante derselben Skala: dieselben
- * Tailwind-Klassen, andere Token-Werte unter `html.dark` in styles.css.
- * Die Wahl gilt gerätelokal (localStorage), wie alle anderen Einstellungen.
+ * Beide Themen sind Material You: `:root` trägt den hellen Stand,
+ * `html.dark` den dunklen (styles.css). Welches Thema gilt, entscheidet seit
+ * dem Konzept-Neubau die **Wahl** in `src/theme.ts`: „System“ folgt dem
+ * Betriebssystem und fällt auf Dunkel zurück, „Dunkel“/„Hell“ sind eine
+ * ausdrückliche, gerätelokale Wahl (localStorage).
  */
 export type AppTheme = "dark" | "light";
 export const APP_THEMES = ["dark", "light"] as const;
@@ -4445,14 +4445,14 @@ export function isAppTheme(value: unknown): value is AppTheme {
 }
 /** theme-color-Meta je Thema (Browser-UI/Adressleiste). */
 export const APP_THEME_META_COLOR: Record<AppTheme, string> = {
-  dark: "#0b0f19",
+  dark: "#0f1512",
   light: "#f5fbf5",
 };
 /**
- * Wendet das Thema auf <html> an: Klasse `dark` (hell ist die
- * Default-Klasse `light` in index.html) plus theme-color-Meta. Idempotent —
- * der Bootstrap-Script in index.html macht vor dem ersten Paint dasselbe
- * ohne React, damit kein Theme-Flash sichtbar wird.
+ * Wendet das Thema auf <html> an: Klasse `dark` oder `light` (die
+ * Default-Klasse in index.html ist `dark`) plus theme-color-Meta. Idempotent
+ * — `public/theme-boot.js` macht vor dem ersten Paint dasselbe ohne React,
+ * damit kein Theme-Flash sichtbar wird.
  */
 export function applyAppTheme(theme: AppTheme): void {
   const root = document.documentElement;

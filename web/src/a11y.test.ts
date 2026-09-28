@@ -97,15 +97,25 @@ function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
 }
 
 describe("C5: Kontrast AA der gedämpften Texttöne", () => {
-  // Seit der neuen GUI (Material You, sample/good gui) ist hell der
-  // Default (`:root`) und dunkel die Variante (`html.dark`) — die Blöcke
-  // stehen deshalb getauscht gegenüber dem ursprünglichen Ratchet.
+  // `:root` trägt den hellen Stand, `html.dark` den dunklen (styles.css).
+  // Welches Thema gilt, entscheidet seit dem Konzept-Neubau die Wahl in
+  // src/theme.ts: „System“ (Voreinstellung, Rückfall Dunkel) oder eine
+  // ausdrückliche Wahl. Beide Paletten müssen für sich AA halten.
   const light = colorTokens(block(":root {"));
   const dark = colorTokens(block("html.dark {"));
 
-  // Flächen, auf denen gedämpfter Text wirklich liegt.
-  const darkSurfaces = ["#0b0f19", "#020617", "#0f172a", "#1e293b"];
-  const lightSurfaces = ["#f5fbf5", "#ffffff", "#e9efe9", "#e4eae3"];
+  // Flächen, auf denen gedämpfter Text wirklich liegt — aus den Token
+  // selbst gelesen (Seite, Karte, Inset, höchste Fläche). So kann kein
+  // Palettenwechsel die Prüfung stillschweigend auf alte Werte zeigen
+  // lassen, die es im Thema nicht mehr gibt.
+  const surfacesOf = (tokens: Record<string, string>) => [
+    tokens["m3-surface"],
+    tokens["m3-surface-lowest"],
+    tokens["m3-surface-high"],
+    tokens["m3-sc-highest"],
+  ];
+  const darkSurfaces = surfacesOf(dark);
+  const lightSurfaces = surfacesOf(light);
 
   it.each(["slate-500", "slate-600"])(
     "dunkel: --color-%s hält 4,5:1 auf allen dunklen Flächen",
@@ -141,8 +151,8 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
   // V1 (GUI-TEXT-BEFUND): Diagramme kennen beide Themen. Vorher waren 64 feste
   // Hexwerte verdrahtet — Achsentext #94a3b8 auf weißer Karte ≈ 2,4:1.
   it.each([
-    ["dunkel", DARK_CHART, "#0f172a"],
-    ["hell", LIGHT_CHART, "#ffffff"],
+    ["dunkel", DARK_CHART, DARK_CHART.surface],
+    ["hell", LIGHT_CHART, LIGHT_CHART.surface],
   ] as const)(
     "Diagrammpalette %s: Texttöne halten 4,5:1 auf der Diagrammfläche",
     (_name, palette, surface) => {
@@ -189,20 +199,22 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
   });
 
   it("die übrigen Texttöne der Skala bleiben lesbar", () => {
-    const palette: Record<string, string> = {
-      "#f8fafc": "#0b0f19", // slate-50
-      "#f1f5f9": "#0b0f19", // slate-100
-      "#e2e8f0": "#0f172a", // slate-200
-      "#cbd5e1": "#1e293b", // slate-300
-      "#94a3b8": "#1e293b", // slate-400
-      "#6ee7b7": "#1e293b", // emerald-300
-      "#34d399": "#1e293b", // emerald-400
-      "#fcd34d": "#1e293b", // amber-300
-      "#fbbf24": "#1e293b", // amber-400
-      "#fda4af": "#1e293b", // rose-300
-      "#38bdf8": "#1e293b", // sky-400
+    // Dunkler Stand: Akzenttöne auf der Kartenfläche, starke/gedämpfte
+    // Textrollen auf Seite und Karte. Der helle Stand hat eigene Paare
+    // (siehe M3-Block unten).
+    const page = "#0f1512";
+    const card = "#1a201c";
+    const dark: Record<string, string> = {
+      "#e3e9e5": page, // slate-100 (starker Text)
+      "#b8c2bb": card, // slate-300
+      "#a8b3ac": card, // slate-500/600 (gedämpft)
+      "#6cdbac": card, // emerald-300
+      "#f0c04a": card, // amber-300
+      "#ffb4ab": card, // rose-300
+      "#7fb8dd": card, // sky-400
+      "#cfbcff": card, // violet-300
     };
-    for (const [color, surface] of Object.entries(palette)) {
+    for (const [color, surface] of Object.entries(dark)) {
       expect(
         contrast(color, surface),
         `${color} auf ${surface}`,
@@ -222,7 +234,7 @@ describe("C5: Kontrast AA der gedämpften Texttöne", () => {
 // werden soll. Geprüft werden deshalb die Paare, nicht die Einzelwerte.
 // ---------------------------------------------------------------------------
 describe("M3-Farbrollen des Tank-Guides", () => {
-  // Hell ist der Default (`:root`), dunkel die Variante (`html.dark`).
+  // Beide Blöcke aus styles.css: hell (`:root`), dunkel (`html.dark`).
   const light = colorTokens(block(":root {"));
   const dark = colorTokens(block("html.dark {"));
 

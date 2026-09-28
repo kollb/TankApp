@@ -185,6 +185,8 @@ function settingsProps(
     refreshNow: () => {},
     theme: "dark",
     setTheme: () => {},
+    themeChoice: "dark",
+    setThemeChoice: () => {},
     pinnedStations: [{ station: station("st-1", "Shell Hauptstraße") }],
     togglePin: () => {},
     version: "0.35.0",
@@ -444,32 +446,48 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
     expect(html).toContain("Rauschband");
   });
 
-  it("bietet beide Themen mit aria-pressed", () => {
-    // Seit der neuen GUI (Material You) lautet das helle Thema
-    // „Hell (Standard)“ und ist der Default; „Dunkel“ bleibt auswählbar.
-    // Test-Default props: theme = "dark" — dann trägt der erste Button
-    // (Dunkel) das aria-pressed; bei theme = "light" der zweite (Hell).
-    const dark = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
-    expect(dark).toContain("Hell (Standard)");
-    expect(dark).toContain("Dunkel");
-    const darkGroup = dark.slice(
-      dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
-    );
-    expect(
-      darkGroup.indexOf('aria-pressed="true"') <
-        darkGroup.indexOf("Dunkel"),
-    ).toBe(true);
+  it("bietet System, Dunkel und Hell mit aria-pressed", () => {
+    // Voreinstellung ist „System“ (folgt dem Betriebssystem, Rückfall
+    // Dunkel). „Dunkel“ und „Hell“ sind ausdrückliche Wahlen. Der Test
+    // prüft die Zuordnung Auswahl ↔ aria-pressed, nicht die Reihenfolge
+    // zufälliger Treffer: „System“ steht vor „Dunkel“ vor „Hell“.
+    const group = (html: string) => {
+      const at = html.indexOf('aria-label="Darstellung (System, dunkel oder hell)"');
+      expect(at, "Darstellungsgruppe fehlt").toBeGreaterThanOrEqual(0);
+      return html.slice(at);
+    };
 
-    const light = renderToStaticMarkup(
-      <SettingsPanel {...settingsProps({ theme: "light" })} />,
+    const system = group(renderToStaticMarkup(<SettingsPanel {...settingsProps()} />));
+    expect(system).toContain(">System<");
+    expect(system).toContain(">Dunkel<");
+    expect(system).toContain(">Hell<");
+    expect(system.indexOf('aria-pressed="true"')).toBeLessThan(
+      system.indexOf(">Dunkel<"),
     );
-    const lightGroup = light.slice(
-      light.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
+
+    const dark = group(
+      renderToStaticMarkup(
+        <SettingsPanel
+          {...settingsProps({ theme: "dark", themeChoice: "dark" })}
+        />,
+      ),
     );
+    const darkButton = dark.indexOf(">Dunkel<");
+    expect(dark.lastIndexOf('aria-pressed="true"', darkButton)).toBeGreaterThan(
+      dark.indexOf(">System<"),
+    );
+
+    const light = group(
+      renderToStaticMarkup(
+        <SettingsPanel
+          {...settingsProps({ theme: "light", themeChoice: "light" })}
+        />,
+      ),
+    );
+    const lightButton = light.indexOf(">Hell<");
     expect(
-      lightGroup.indexOf('aria-pressed="true"') >
-        lightGroup.indexOf("Dunkel"),
-    ).toBe(true);
+      light.lastIndexOf('aria-pressed="true"', lightButton),
+    ).toBeGreaterThan(light.indexOf(">Dunkel<"));
   });
 
   it("listet angepinnte Stationen mit lösen-Button und zeigt die Version", () => {
@@ -484,6 +502,8 @@ describe("Ich → Einstellungen (SettingsPanel)", () => {
 
 describe("Theme-Logik (data.ts)", () => {
   it("kennt genau zwei Themen und lehnt alles andere ab", () => {
+    // `APP_THEMES` sind die **angewandten** Themen (data.ts). Die Wahl
+    // „System“ lebt in src/theme.ts (ThemeChoice) und wird dort geprüft.
     expect([...APP_THEMES]).toEqual(["dark", "light"]);
     expect(isAppTheme("dark")).toBe(true);
     expect(isAppTheme("light")).toBe(true);

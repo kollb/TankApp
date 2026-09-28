@@ -20,8 +20,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useAppTheme } from "../theme";
 import {
-  applyAppTheme,
   autoTimeValue,
   checkFillDraft,
   currentPrice,
@@ -29,7 +29,6 @@ import {
   heatmapPath,
   HEATMAP_DEFAULT_BASIS,
   HEATMAP_DEFAULT_WEEKS,
-  isAppTheme,
   isHeatmapBasis,
   isHeatmapWeeks,
   livePhaseHint,
@@ -254,18 +253,21 @@ function useOverviewState() {
     0,
     (value) => value === 0 || value === 3 || value === 7,
   );
-  // C4: Dark/Light-Umschaltung (Einstellungen-Tab). Hell (Material You)
-  // ist der Default — die Design-Basis der neuen GUI; die Wahl gilt
-  // gerätelokal. Der Bootstrap-Script in index.html wendet denselben Wert
-  // vor dem ersten Paint an, hier hält React meta und Klassen synchron.
-  const [theme, setTheme] = usePreference<AppTheme>(
-    "theme",
-    "light",
-    isAppTheme,
+  // C4 + Konzept-Neubau: Die Darstellung kommt aus `useAppTheme` — Wahl
+  // „System“ (folgt dem Betriebssystem, Rückfall Dunkel) oder eine
+  // ausdrückliche Wahl Dunkel/Hell. `theme` ist das **angewandte** Thema für
+  // Komponenten (Diagramme, Karten), `themeChoice` die gespeicherte Wahl für
+  // die Einstellungen. `applyAppTheme` läuft im Hook; `public/theme-boot.js`
+  // wendet dieselben Regeln vor dem ersten Paint an.
+  const {
+    choice: themeChoice,
+    theme,
+    setChoice: setThemeChoice,
+  } = useAppTheme();
+  const setTheme = useCallback(
+    (next: AppTheme) => setThemeChoice(next),
+    [setThemeChoice],
   );
-  useEffect(() => {
-    applyAppTheme(theme);
-  }, [theme]);
   const [heatmapKind, setHeatmapKind] = usePreference<"level" | "probability">(
     "heatmapKind",
     "probability",
@@ -1446,6 +1448,8 @@ function useOverviewState() {
     horizonDays,
     theme,
     setTheme,
+    themeChoice,
+    setThemeChoice,
     heatmapKind,
     setHeatmapKind,
     heatmapWeeks,

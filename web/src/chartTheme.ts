@@ -56,25 +56,25 @@ export type ChartPalette = {
 };
 
 export const DARK_CHART: ChartPalette = {
-  axis: "#334155",
-  grid: "#1e293b",
-  text: "#94a3b8",
-  textStrong: "#f1f5f9",
-  // #475569 wäre auf der Diagrammfläche nur 2,4:1 — auch für einen Strich
-  // zu wenig (WCAG 1.4.11 verlangt 3:1). slate-500 hält 3,75:1.
-  tick: "#64748b",
-  accent: "#38bdf8",
-  accentEdge: "#0284c7",
-  positive: "#34d399",
-  negative: "#fb7185",
-  warn: "#f59e0b",
-  warnSoft: "#fbbf24",
-  violet: "#a78bfa",
-  surface: "#0f172a",
-  onSurface: "#ffffff",
-  border: "#cbd5e1",
-  marker: "#e2e8f0",
-  muted: "#64748b",
+  axis: "#4a5550",
+  grid: "#2a322d",
+  text: "#b8c2bb",
+  textStrong: "#f2f6f3",
+  // #8b958e hält 5,4:1 auf der dunklen Kartenfläche (#1a201c) — als Tick
+  // (Strich, WCAG 1.4.11) reichen 3:1, als Text wären es 4,5:1.
+  tick: "#8b958e",
+  accent: "#7fb8dd",
+  accentEdge: "#4f93bd",
+  positive: "#6cdbac",
+  negative: "#ffb4ab",
+  warn: "#f0c04a",
+  warnSoft: "#f5c65a",
+  violet: "#cfbcff",
+  surface: "#1a201c",
+  onSurface: "#e3e9e5",
+  border: "#b8c2bb",
+  marker: "#cfd7d2",
+  muted: "#8b958e",
 };
 
 /**
